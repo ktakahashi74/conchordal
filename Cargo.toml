@@ -1,0 +1,35 @@
+[package]
+name = "concord"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"]}
+ctrlc = "3.4"
+
+# GUI
+eframe = "0.32"
+egui = "0.32"
+egui_plot = "0.33"
+
+# Concurrency
+rayon = "1.10"
+crossbeam-channel = "0.5"
+
+# DSP / Math
+rustfft = "6"
+ndarray = "0.15"
+
+# Serde for future config
+serde = { version = "1.0", features = ["derive"] }
+ron = "0.8"
+
+# Logging / tracing (optional)
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+
+# Audio I/O
+cpal = "0.15"
+hound = "3.5"
+
+ringbuf = "0.4"

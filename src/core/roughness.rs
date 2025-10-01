@@ -1,69 +1,132 @@
 use crate::core::gammatone::gammatone_filterbank;
 use crate::core::hilbert::hilbert_envelope;
-use crate::core::gammatone::erb_hz;
 
-/// R（ラフネス）を計算する
-/// input: 波形
-/// center_freqs: ガンマトーン中心周波数リスト
-/// sample_rate: サンプリング周波数
-pub fn roughness_r(input: &[f32], center_freqs: &[f32], sample_rate: f32) -> f32 {
-    // 1. ガンマトーンフィルタバンク
-    let channels = gammatone_filterbank(input, center_freqs, sample_rate);
-
-    // 2. 包絡に変換
-    let envelopes: Vec<Vec<f32>> = channels
-        .iter()
-        .map(|ch| hilbert_envelope(ch))
-        .collect();
-
-    // 3. 各チャネルの平均エネルギー
-    let means: Vec<f32> = envelopes
-        .iter()
-        .map(|env| env.iter().map(|v| v.abs()).sum::<f32>() / env.len() as f32)
-        .collect();
-
-    // 4. ペアごとの相互作用を合計
-    let mut r_total = 0.0;
-    for i in 0..center_freqs.len() {
-        for j in (i+1)..center_freqs.len() {
-            let fc = 0.5 * (center_freqs[i] + center_freqs[j]);
-            let erb = erb_hz(fc);
-            let df = (center_freqs[i] - center_freqs[j]).abs();
-            let w = (-0.5 * (df / erb).powi(2)).exp();
-            r_total += w * (means[i] * means[j]);
-        }
-    }
-
-    r_total
+/// Common analysis result (kept minimal here)
+#[derive(Clone, Debug)]
+pub struct AnalysisData {
+    pub signal: Vec<f32>,
+    pub fs: f32,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::core::roughness::roughness_r;
+/// Landscape parameters
+#[derive(Clone, Copy, Debug)]
+pub enum RVariant {
+    Gammatone,
+    Dummy,
+}
 
-    fn sine(fs: f32, f: f32, n: usize) -> Vec<f32> {
-        (0..n).map(|i| (2.0 * std::f32::consts::PI * f * (i as f32) / fs).sin()).collect()
-    }
+#[derive(Clone, Copy, Debug)]
+pub enum CVariant {
+    Dummy,
+    FromHilbert,
+}
 
-    #[test]
-    fn roughness_is_low_for_single_tone() {
-        let fs = 16000.0;
-        let x = sine(fs, 440.0, 4096);
-        let cfs = vec![440.0, 880.0, 1320.0];
-        let r = roughness_r(&x, &cfs, fs);
-        assert!(r < 0.1, "R = {}", r);
-    }
+#[derive(Clone, Debug)]
+pub struct LandscapeParams {
+    pub alpha: f32,
+    pub beta: f32,
+    pub r_variant: RVariant,
+    pub c_variant: CVariant,
+}
 
-    #[test]
-    fn roughness_increases_for_close_tones() {
-        let fs = 16000.0;
-        let n = 4096;
-        let x1 = sine(fs, 440.0, n);
-        let x2 = sine(fs, 450.0, n);
-        let x: Vec<f32> = x1.iter().zip(x2.iter()).map(|(a, b)| a + b).collect();
-        let cfs = vec![440.0, 450.0, 1000.0];
-        let r = roughness_r(&x, &cfs, fs);
-        assert!(r > 0.1, "R = {}", r);
+#[derive(Clone, Debug, Default)]
+pub struct LandscapeFrame {
+    pub freqs_hz: Vec<f32>,
+    pub r: Vec<f32>,
+    pub c: Vec<f32>,
+    pub k: Vec<f32>,
+}
+
+impl LandscapeFrame {
+    pub fn recompute_k(&mut self, p: &LandscapeParams) {
+        self.k = self
+            .r
+            .iter()
+            .zip(self.c.iter())
+            .map(|(rr, cc)| p.alpha * *cc - p.beta * *rr)
+            .collect();
     }
 }
+
+// ---------------------------------------------------------
+// Roughness R (gammatone-based)
+// ---------------------------------------------------------
+
+fn compute_r_gammatone(signal: &[f32], fs: f32, freqs_hz: &[f32]) -> Vec<f32> {
+    let outs = gammatone_filterbank(signal, freqs_hz, fs);
+    outs.into_iter()
+        .map(|ch| {
+            let env = hilbert_envelope(&ch);
+            let mean = env.iter().sum::<f32>() / env.len() as f32;
+            if mean <= 1e-9 {
+                return 0.0;
+            }
+            let var = env.iter().map(|&v| (v - mean).powi(2)).sum::<f32>() / env.len() as f32;
+            (var.sqrt()) / mean
+        })
+        .collect()
+}
+
+fn compute_r_dummy(freqs_hz: &[f32]) -> Vec<f32> {
+    vec![0.0; freqs_hz.len()]
+}
+
+// ---------------------------------------------------------
+// Consonance C (dummy / hilbert-based placeholder)
+// ---------------------------------------------------------
+
+fn compute_c_dummy(freqs_hz: &[f32]) -> Vec<f32> {
+    vec![0.0; freqs_hz.len()]
+}
+
+fn compute_c_hilbert(signal: &[f32], fs: f32, freqs_hz: &[f32]) -> Vec<f32> {
+    let outs = gammatone_filterbank(signal, freqs_hz, fs);
+    outs.into_iter()
+        .map(|ch| {
+            let env = hilbert_envelope(&ch);
+            let mean = env.iter().sum::<f32>() / env.len() as f32;
+            mean * 0.1 // dummy scaling
+        })
+        .collect()
+}
+
+// ---------------------------------------------------------
+// Variant selector
+// ---------------------------------------------------------
+
+fn compute_r(data: &AnalysisData, variant: RVariant, freqs: &[f32]) -> Vec<f32> {
+    match variant {
+        RVariant::Gammatone => compute_r_gammatone(&data.signal, data.fs, freqs),
+        RVariant::Dummy => compute_r_dummy(freqs),
+    }
+}
+
+fn compute_c(data: &AnalysisData, variant: CVariant, freqs: &[f32]) -> Vec<f32> {
+    match variant {
+        CVariant::Dummy => compute_c_dummy(freqs),
+        CVariant::FromHilbert => compute_c_hilbert(&data.signal, data.fs, freqs),
+    }
+}
+
+// ---------------------------------------------------------
+// Main landscape computation
+// ---------------------------------------------------------
+
+pub fn compute_landscape(data: &AnalysisData, p: &LandscapeParams, freqs: &[f32]) -> LandscapeFrame {
+    let r = compute_r(data, p.r_variant, freqs);
+    let c = compute_c(data, p.c_variant, freqs);
+    let k: Vec<f32> = r
+        .iter()
+        .zip(&c)
+        .map(|(rr, cc)| p.alpha * *cc - p.beta * *rr)
+        .collect();
+
+    LandscapeFrame {
+        freqs_hz: freqs.to_vec(),
+        r,
+        c,
+        k,
+    }
+}
+
+

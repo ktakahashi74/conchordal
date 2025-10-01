@@ -31,10 +31,15 @@ fn main() -> eframe::Result<()> {
     ctrlc::set_handler(move || {
         stop_flag_for_ctrlc.store(true, Ordering::SeqCst);
     }).expect("Error setting Ctrl-C handler");
-    
-    let native_options = eframe::NativeOptions::default();
+
+
+    let native_options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_inner_size([1200.0, 1200.0]),
+        ..Default::default()
+    };
     eframe::run_native(
-        "Concord (skeleton)",
+        "Conchordal",
         native_options,
         Box::new(|cc| Ok(Box::new(app::App::new(cc, args, stop_flag.clone())))),
     )

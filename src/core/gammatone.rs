@@ -3,11 +3,7 @@
 
 use rustfft::{num_complex::Complex};
 
-#[inline]
-pub fn erb_hz(fc: f32) -> f32 {
-    // Glasberg & Moore ERB
-    24.7 * (4.37 * fc / 1000.0 + 1.0)
-}
+use crate::core::erb::erb_bw_hz;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Biquad {
@@ -51,7 +47,7 @@ impl Biquad {
 /// overall |H(e^{jθ})| = 1 at θ = 2π f_c / fs.
 pub fn design_gammatone_biquads(fc: f32, fs: f32) -> (Biquad, Biquad) {
     let theta = 2.0 * std::f32::consts::PI * fc / fs;
-    let erb = erb_hz(fc);
+    let erb = erb_bw_hz(fc);
     let b_hz = 1.019 * erb; // Patterson/Slaney
     let r = (-2.0 * std::f32::consts::PI * b_hz / fs).exp(); // pole radius
     let a1 = -2.0 * r * theta.cos();
@@ -104,18 +100,10 @@ pub fn gammatone_filterbank(
 #[cfg(test)]
 mod tests {
     use super::*;
-
+    use crate::core::util::sine;
+    
     use approx::assert_abs_diff_eq;
-    
-    fn sine(fs: f32, f: f32, n: usize) -> Vec<f32> {
-	(0..n).map(|i| (2.0 * std::f32::consts::PI * f * (i as f32) / fs).sin()).collect()
-    }
 
-    #[test]
-    fn erb_formula_sane() {
-	assert_abs_diff_eq!(erb_hz(1000.0), 132.0, epsilon = 1.0); // ~132 Hz
-    }
-    
     #[test]
     fn biquad_coefficients_range() {
 	let fs = 48000.0;

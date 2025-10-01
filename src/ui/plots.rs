@@ -37,7 +37,7 @@ pub fn log2_plot_hz(
                 let f = 440.0 * 2f32.powf((note as f32 - 69.0) / 12.0); // MIDI→Hz
                 if (20.0..=20_000.0).contains(&f) {
                     let x = (f as f64).log2();
-                    plot_ui.vline(egui_plot::VLine::new("", x).color(egui::Color32::LIGHT_GRAY));
+                    plot_ui.vline(egui_plot::VLine::new("", x).color(egui::Color32::DARK_GRAY));
                 }
             }
             plot_ui.line(line);

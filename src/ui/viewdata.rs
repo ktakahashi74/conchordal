@@ -1,21 +1,22 @@
 use crate::core::landscape::LandscapeFrame;
 
+
 #[derive(Clone, Debug, Default)]
-pub struct WaveChunk {
-    pub fs: f64,
+pub struct WaveFrame {
+    pub fs: f32,
     pub samples: Vec<f32>,
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct UiFrame {
-    pub wave: WaveChunk,
+pub struct SpecFrame {
     pub spec_hz: Vec<f32>,
     pub amps: Vec<f32>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct UiFrame {
+    pub wave: WaveFrame,
+    pub spec: SpecFrame,
     pub landscape: LandscapeFrame,
 }
 
-impl UiFrame {
-    pub fn empty() -> Self {
-        Self::default()
-    }
-}

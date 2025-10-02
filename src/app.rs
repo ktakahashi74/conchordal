@@ -139,7 +139,7 @@ fn worker_loop(
 
     // Population (life) — single pure tone at 440 Hz as requested
     let mut pop = Population::new(PopulationParams {
-        initial_tones_hz: vec![440.0],
+        initial_tones_hz: vec![440.0, 470.0],
         amplitude: 1000.0,
     });
 
@@ -161,9 +161,6 @@ fn worker_loop(
         fmax: 8000.0,
         delta_e: 0.05,
     };
-
-    // ERB grid
-    let freqs = erb_space(20.0, 8000.0, 0.05);
 
     let mut next_deadline = Instant::now();
     let hop_duration = Duration::from_secs_f32(hop as f32 / fs);

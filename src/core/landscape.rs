@@ -99,64 +99,65 @@ pub fn compute_r_kernelconv(signal: &[f32], fs: f32) -> Vec<f32> {
     r_vals
 }
 
-/// Roughness R on ERB grid using Plomp–Levelt / Sethares pairwise model.
 pub fn compute_r_gammatone(signal: &[f32], fs: f32, freqs_hz: &[f32]) -> Vec<f32> {
     if freqs_hz.is_empty() {
         return Vec::new();
     }
 
-    // 1) Filterbank
     let outs = gammatone_filterbank(signal, freqs_hz, fs);
 
-    // 2) Carrier RMS amplitude per channel
-    let amps: Vec<f32> = outs
-        .iter()
+    outs.into_iter()
         .map(|ch| {
             if ch.is_empty() {
                 return 0.0;
             }
-            let n = ch.len();
-            let a = n / 4;
-            let b = (3 * n) / 4;
-            let seg = &ch[a..b.max(a + 1)];
-            (seg.iter().map(|&v| v * v).sum::<f32>() / seg.len() as f32).sqrt()
-        })
-        .collect();
 
-    // 3) Kernel parameters
-    let alpha_low: f32 = 3.5;
-    let beta_low: f32 = 5.75;
-    let alpha_high: f32 = 2.8;
-    let beta_high: f32 = 4.6;
+            // Hilbert envelope
+            let mut env = hilbert_envelope(&ch);
 
-    // 4) Pairwise interaction
-    let mut rvals = vec![0.0f32; freqs_hz.len()];
-    for i in 0..freqs_hz.len() {
-        for j in (i + 1)..freqs_hz.len() {
-            let fi = freqs_hz[i];
-            let fj = freqs_hz[j];
-            let erb = erb_bw_hz(0.5 * (fi + fj)).max(1e-6);
-            let s = (fi - fj).abs() / erb;
-
-            if s < 0.02 {
-                continue;
+            // --- (1) Drop edges / transient ---
+            let drop = (0.1 * fs) as usize; // 100 ms margin
+            if env.len() <= 2 * drop {
+                return 0.0;
             }
+            env = env[drop..env.len() - drop].to_vec();
 
-            let (a, b) = if fj > fi {
-                (alpha_high, beta_high)
-            } else {
-                (alpha_low, beta_low)
-            };
-            let kappa = (-a * s).exp() - (-b * s).exp();
+            // --- (2) High-pass to remove DC drift ---
+            let mut hp = OnePoleHP::new(fs, 30.0);
+            let env_hp: Vec<f32> = env.into_iter().map(|x| hp.proc(x)).collect();
 
-            let contrib = amps[i] * amps[j] * kappa.max(0.0);
+            // --- (3) Roughness as RMS of fluctuation ---
+            let mean = env_hp.iter().copied().sum::<f32>() / env_hp.len() as f32;
+            let var = env_hp.iter().map(|&v| (v - mean).powi(2)).sum::<f32>() / env_hp.len() as f32;
+            var.sqrt()
+        })
+        .collect()
+}
 
-            rvals[i] += contrib;
-            rvals[j] += contrib;
+// One-pole HPF at fc Hz
+struct OnePoleHP {
+    a1: f32,
+    b0: f32,
+    x1: f32,
+    y1: f32,
+}
+impl OnePoleHP {
+    fn new(fs: f32, fc: f32) -> Self {
+        let rc = 1.0 / (2.0 * std::f32::consts::PI * fc);
+        let alpha = rc / (rc + 1.0 / fs);
+        Self {
+            a1: alpha,
+            b0: (1.0 + alpha) / 2.0,
+            x1: 0.0,
+            y1: 0.0,
         }
     }
-
-    rvals
+    fn proc(&mut self, x: f32) -> f32 {
+        let y = self.b0 * (x - self.x1) + self.a1 * self.y1;
+        self.x1 = x;
+        self.y1 = y;
+        y
+    }
 }
 
 fn compute_r_dummy(freqs_hz: &[f32]) -> Vec<f32> {
@@ -377,5 +378,39 @@ mod tests {
             lf_close.r[i440],
             lf_peak.r[i440]
         );
+    }
+
+    // helper: generate sine with fade-in/out
+    fn sine_with_fade(freq: f32, fs: f32, dur_sec: f32) -> Vec<f32> {
+        let n = (fs * dur_sec) as usize;
+        let mut sig = Vec::with_capacity(n);
+        for i in 0..n {
+            let t = i as f32 / fs;
+            let win = if i < (0.05 * fs) as usize {
+                // 50ms fade in
+                (i as f32 / (0.05 * fs)).min(1.0)
+            } else if i > n - (0.05 * fs) as usize {
+                ((n - i) as f32 / (0.05 * fs)).min(1.0)
+            } else {
+                1.0
+            };
+            sig.push((2.0 * std::f32::consts::PI * freq * t).sin() * win);
+        }
+        sig
+    }
+
+    #[test]
+    fn pure_tone_gives_near_zero_r() {
+        let fs = 48000.0;
+        let tone = sine_with_fade(440.0, fs, 1.0);
+        let freqs: Vec<f32> = (100..2000).step_by(100).map(|f| f as f32).collect();
+
+        let r_vals = compute_r_gammatone(&tone, fs, &freqs);
+
+        // average roughness across channels should be very small
+        let mean_r = r_vals.iter().sum::<f32>() / r_vals.len() as f32;
+        println!("mean R for pure tone = {}", mean_r);
+
+        assert!(mean_r < 1e-3, "pure tone roughness too large: {}", mean_r);
     }
 }

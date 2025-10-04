@@ -1,53 +1,105 @@
-use egui::{CentralPanel, SidePanel, TopBottomPanel};
-use crate::core::gammatone::gammatone_filterbank;
 use crate::ui::plots::{log2_plot_hz, time_plot};
 use crate::ui::viewdata::UiFrame;
+use egui::{CentralPanel, TopBottomPanel};
+use egui_plot::{Line, Plot, PlotPoints};
+
+use crate::core::landscape::LandscapeFrame;
+
+use egui::{Color32, ColorImage};
+
+/// Plot cochlea state: line (R per channel) + heatmap (history).
+pub fn draw_cochlea_state(ui: &mut egui::Ui, frame: &LandscapeFrame) {
+    Plot::new("cochlea_state_plot")
+        .legend(egui_plot::Legend::default())
+        .allow_scroll(false)
+        .allow_drag(false)
+        .height(250.0)
+        // 横軸を log2(Hz) に変換した値で表示
+        .x_axis_formatter(|mark, _range| {
+            let hz = 2f64.powf(mark.value);
+            format!("{:.0} Hz", hz)
+        })
+        .include_x((20.0f64).log2())
+        .include_x((20_000.0f64).log2())
+        .include_y(0.0)
+        .include_y(1.0)
+        .show(ui, |plot_ui| {
+            // --- 折れ線プロット（最新 R） ---
+            if !frame.freqs_hz.is_empty() && frame.r_last.len() == frame.freqs_hz.len() {
+                let pts: PlotPoints = frame
+                    .freqs_hz
+                    .iter()
+                    .cloned()
+                    .zip(frame.r_last.iter().cloned())
+                    .map(|(f, r)| [f.log2() as f64, r as f64])
+                    .collect();
+                plot_ui.line(Line::new("R (latest)", pts));
+            }
+
+            // --- ヒートマップ（履歴） ---
+            // if !frame.r_hist.is_empty() {
+            //     let rows = frame.r_hist.len();
+            //     let cols = frame.r_hist[0].len();
+            //     if rows > 0 && cols > 0 {
+            //         let mut buf = vec![0.0f64; rows * cols];
+            //         for (row, hist_row) in frame.r_hist.iter().enumerate() {
+            //             for (col, &v) in hist_row.iter().enumerate() {
+            //                 buf[row * cols + col] = v as f64;
+            //             }
+            //         }
+            //         let hm = Heatmap::new(buf, cols, rows)
+            //             .name("R history")
+            //             .color_map(egui_plot::ColorMap::Viridis);
+            //         plot_ui.heatmap(hm);
+            //     }
+            //}
+        });
+
+    ui.label("x: log2(freq) / time (heat), y: channel index, color: R amplitude");
+}
 
 pub fn main_window(ctx: &egui::Context, frame: &UiFrame) {
     TopBottomPanel::top("top").show(ctx, |ui| {
         ui.heading("Concord — Skeleton");
-        ui.label("Wave + Landscape (R_v1 roughness only; C=0; K=-R)");
+        ui.label("Wave + Landscape (Cochlea roughness R; C dummy; K=-R)");
     });
 
-    // SidePanel::left("left").resizable(true).show(ctx, |ui| {
-    //     ui.heading("Spectrum (amps)");
-    // });
-    
     CentralPanel::default().show(ctx, |ui| {
         ui.heading("Waveform");
-        time_plot(ui, "Current Hop Wave", frame.wave.fs as f64, &frame.wave.samples);
+        time_plot(
+            ui,
+            "Current Hop Wave",
+            frame.wave.fs as f64,
+            &frame.wave.samples,
+        );
 
-	// ui.heading("Spectrum");
-	// ui.separator();
-	// log2_plot_hz(ui, "Amplitude Spectrum",
-	// 	     &frame.spec.spec_hz, &frame.spec.amps,
-	// 	     "A[k]", 0.0, (frame.spec.amps.iter().cloned().fold(0.0, f32::max) * 1.1 + 1e-6) as f64);
+        ui.separator();
+        ui.heading("Synth Spectrum");
 
-	use crate::core::hilbert::hilbert_envelope; 
-	let outs = gammatone_filterbank(&frame.wave.samples, &frame.landscape.freqs_hz, frame.wave.fs);
-	let amps: Vec<f32> = outs
-        .iter()
-        .map(|ch| {
-            let env = hilbert_envelope(ch);
-            let rms = (env.iter().map(|&v| v * v).sum::<f32>() / env.len() as f32).sqrt();
-            rms
-        })
-        .collect();
+        if frame.spec.spec_hz.len() > 1 && frame.spec.amps.len() > 1 {
+            let max_amp = frame.spec.amps.iter().cloned().fold(0.0, f32::max);
+            crate::ui::plots::log2_hist_hz(
+                ui,
+                "Amplitude Spectrum",
+                &frame.spec.spec_hz[1..], // remove DC
+                &frame.spec.amps[1..],
+                "A[k]",
+                0.0,
+                (max_amp * 1.05) as f64,
+            );
+        }
 
-	log2_plot_hz(ui, "Gamma Tone Filterbank Frequencies",
-		     &frame.landscape.freqs_hz, 
-		     amps.as_slice(),
-		     "Freqs", 0.0, 2.0);
+        ui.separator();
+        ui.heading("Cochlea State");
+        crate::ui::windows::draw_cochlea_state(ui, &frame.landscape);
 
-
-
-	ui.separator();
+        ui.separator();
         ui.heading("Landscape");
-        let max_r = frame.landscape.r.iter().cloned().fold(0.0, f32::max);
-        let min_k = frame.landscape.k.iter().cloned().fold(0.0, f32::min);
-        let max_k = frame.landscape.k.iter().cloned().fold(0.0, f32::max);
 
-	
+        let max_r = frame.landscape.r_last.iter().cloned().fold(0.0, f32::max);
+        let min_k = frame.landscape.k_last.iter().cloned().fold(0.0, f32::min);
+        let max_k = frame.landscape.k_last.iter().cloned().fold(0.0, f32::max);
+
         ui.columns(1, |cols| {
             let ui = &mut cols[0];
 
@@ -56,21 +108,19 @@ pub fn main_window(ctx: &egui::Context, frame: &UiFrame) {
                 ui,
                 "Roughness Landscape (R)",
                 &frame.landscape.freqs_hz,
-                &frame.landscape.r,
+                &frame.landscape.r_last,
                 "R",
                 0.0,
-		(max_r * 1.05) as f64,
+                //                (max_r * 1.05) as f64,
+                1.0,
             );
 
-	    println!("max_r = {:?}", max_r);
-	    println!("frame.landscape.r = {:?}", frame.landscape.r);
-
-            // Consonance (まだダミー)
+            // Consonance (dummy)
             log2_plot_hz(
                 ui,
                 "Consonance C (dummy 0)",
                 &frame.landscape.freqs_hz,
-                &frame.landscape.c,
+                &frame.landscape.c_last,
                 "C",
                 0.0,
                 1.0,
@@ -81,13 +131,11 @@ pub fn main_window(ctx: &egui::Context, frame: &UiFrame) {
                 ui,
                 "K = alpha*C - beta*R",
                 &frame.landscape.freqs_hz,
-                &frame.landscape.k,
+                &frame.landscape.k_last,
                 "K",
                 (min_k * 1.1) as f64,
                 (max_k * 1.1) as f64,
             );
         });
-
-
     });
 }

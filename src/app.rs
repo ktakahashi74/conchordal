@@ -15,9 +15,7 @@ use crossbeam_channel::{Receiver, Sender, bounded};
 use crate::audio::output::AudioOutput;
 use crate::audio::writer::WavOutput;
 use crate::core::erb::erb_space;
-use crate::core::landscape::{
-    AnalysisData, CVariant, LandscapeParams, RVariant, compute_landscape_erb,
-};
+use crate::core::landscape::{CVariant, Landscape, LandscapeFrame, LandscapeParams, RVariant};
 use crate::life::population::{Population, PopulationParams};
 use crate::synth::engine::{SynthConfig, SynthEngine};
 use crate::ui::viewdata::{SpecFrame, UiFrame, WaveFrame};
@@ -137,13 +135,14 @@ fn worker_loop(
     let hop: usize = fft_size / 2;
     let n_bins = fft_size / 2 + 1;
 
-    // Population (life) — single pure tone at 440 Hz as requested
+    // Population (life) — single pure tone at 440 Hz
     let mut pop = Population::new(PopulationParams {
-        initial_tones_hz: vec![440.0, 470.0],
-        amplitude: 1000.0,
+        initial_tones_hz: vec![440.0, 460.0],
+        //initial_tones_hz: vec![440.0],
+        amplitude: 500.0,
     });
 
-    // Synth engine (phase-accumulator iSTFT skeleton)
+    // Synth engine
     let mut synth = SynthEngine::new(SynthConfig {
         fs,
         fft_size,
@@ -151,16 +150,21 @@ fn worker_loop(
         n_bins,
     });
 
-    // Landscape parameters (R_v1 roughness only / C=Dummy)
-    let cfg = LandscapeParams {
-        r_variant: RVariant::Gammatone,
-        c_variant: CVariant::Dummy,
+    // Landscape parameters (stateful cochlea R only / C=Dummy)
+
+    let freqs_hz = erb_space(20.0, 8000.0, 0.1);
+
+    let lparams = LandscapeParams {
+        fs,
+        freqs_hz: freqs_hz,
+        use_lp_300hz: true,
+        max_hist_cols: 256,
         alpha: 1.0,
         beta: 1.0,
-        fmin: 20.0,
-        fmax: 8000.0,
-        delta_e: 0.05,
+        r_variant: RVariant::Cochlea,
+        c_variant: CVariant::Dummy,
     };
+    let mut landscape = Landscape::new(lparams);
 
     let mut next_deadline = Instant::now();
     let hop_duration = Duration::from_secs_f32(hop as f32 / fs);
@@ -178,11 +182,6 @@ fn worker_loop(
 
         // 2) synth: render hop
         let time_chunk = synth.render_hop(&amps);
-        println!(
-            "Generated chunk: {} samples, first={:.3}",
-            time_chunk.len(),
-            time_chunk.get(0).cloned().unwrap_or(0.0)
-        );
 
         // send out audio signal
         if let Some(prod) = audio_prod.as_mut() {
@@ -193,17 +192,14 @@ fn worker_loop(
             let _ = tx.try_send(time_chunk.clone());
         }
 
-        // 3) landscape from current signal
-        let analysis = AnalysisData {
-            signal: time_chunk.clone(),
-            fs,
-        };
-        let lframe = compute_landscape_erb(&analysis, &cfg);
+        // 3) landscape update
+        landscape.process_block(&time_chunk);
+        let lframe: LandscapeFrame = landscape.snapshot(None);
 
         // 4) package for UI
         let ui_frame = UiFrame {
             wave: WaveFrame {
-                fs: fs as f32,
+                fs,
                 samples: time_chunk,
             },
             spec: SpecFrame {

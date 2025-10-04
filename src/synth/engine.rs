@@ -1,6 +1,6 @@
 use rustfft::num_complex::Complex32;
 
-use crate::core::fft::{bin_freqs_hz, ISTFT};
+use crate::core::fft::{ISTFT, bin_freqs_hz};
 
 #[derive(Clone, Debug)]
 pub struct SynthConfig {
@@ -13,7 +13,7 @@ pub struct SynthConfig {
 pub struct SynthEngine {
     cfg: SynthConfig,
     istft: ISTFT,
-    phase: Vec<f32>,  // phase accumulator per bin
+    phase: Vec<f32>, // phase accumulator per bin
     bin_freqs: Vec<f32>,
 }
 
@@ -22,7 +22,12 @@ impl SynthEngine {
         let istft = ISTFT::new(cfg.fft_size, cfg.hop);
         let phase = vec![0.0f32; cfg.n_bins];
         let bin_freqs = bin_freqs_hz(cfg.fs, cfg.fft_size);
-        Self { cfg, istft, phase, bin_freqs }
+        Self {
+            cfg,
+            istft,
+            phase,
+            bin_freqs,
+        }
     }
 
     pub fn bin_freqs_hz(&self) -> Vec<f32> {

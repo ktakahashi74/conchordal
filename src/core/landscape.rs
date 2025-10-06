@@ -1,16 +1,19 @@
 //! core/landscape.rs — Landscape computed by stateful cochlea front-end.
 
 use crate::core::cochlea::Cochlea;
+use crate::core::erb::ErbSpace;
 
 /// Which variant of roughness to compute (only Cochlea supported here).
 #[derive(Clone, Copy, Debug)]
 pub enum RVariant {
+    KernelConv,
     Cochlea,
     Dummy,
 }
 
 #[derive(Clone, Copy, Debug)]
 pub enum CVariant {
+    CochleaPl,
     Dummy,
 }
 
@@ -18,7 +21,6 @@ pub enum CVariant {
 #[derive(Clone, Debug)]
 pub struct LandscapeParams {
     pub fs: f32,
-    pub freqs_hz: Vec<f32>,
     pub use_lp_300hz: bool,
     pub max_hist_cols: usize,
     pub alpha: f32,
@@ -38,6 +40,7 @@ pub struct LandscapeFrame {
     /// History buffer [channels][time cols].
     pub r_hist: Vec<Vec<f32>>,
     pub k_hist: Vec<Vec<f32>>,
+    pub plv_last: Option<Vec<Vec<f32>>>,
 }
 
 pub struct Landscape {
@@ -46,38 +49,60 @@ pub struct Landscape {
     last_r: Vec<f32>,
     last_c: Vec<f32>,
     last_k: Vec<f32>,
+    last_plv: Option<Vec<Vec<f32>>>,
 }
 
 impl Landscape {
     /// Build landscape from params; keeps cochlea states across blocks.
-    pub fn new(params: LandscapeParams) -> Self {
-        let mut cochlea = Cochlea::new(params.fs, &params.freqs_hz, params.use_lp_300hz);
+    pub fn new(params: LandscapeParams, erb_space: ErbSpace) -> Self {
+        let ch = erb_space.n_bins();
+        let mut cochlea = Cochlea::new(params.fs, erb_space, params.use_lp_300hz);
         cochlea.reset();
-        let ch = params.freqs_hz.len();
         Self {
             cochlea,
             params,
             last_r: vec![0.0; ch],
             last_c: vec![0.0; ch],
             last_k: vec![0.0; ch],
+            last_plv: Some(vec![vec![0.0; ch]; ch]),
         }
     }
 
-    /// Process one audio block and update R/C/K.
+    /// Process one block: cochlea update + R/C/K compute.
     pub fn process_block(&mut self, x: &[f32]) {
+        // Unified cochlea step (envelope + PLV)o
+        let (env_vec, plv_mat) = self.cochlea.process_block_core(x);
+
+        // --- R ---
         match self.params.r_variant {
             RVariant::Cochlea => {
-                self.last_r = self.cochlea.process_block_mean(x);
+                self.last_r = self.cochlea.compute_r_from_env(&env_vec);
             }
-            RVariant::Dummy => {
-                self.last_r.fill(0.0);
+            RVariant::KernelConv => {
+                let (env_vec, plv_mat) = self.cochlea.process_block_core(x);
+                use crate::core::roughness_kernel::{KernelParams, compute_r_kernelconv};
+                let erb_step = 0.01;
+                let kp = KernelParams::default();
+                self.last_r = compute_r_kernelconv(&env_vec, &self.cochlea.erb_space, &kp);
+                self.last_plv = Some(plv_mat);
+            }
+            RVariant::Dummy => self.last_r.fill(0.0),
+        }
+
+        // --- C ---
+        match self.params.c_variant {
+            CVariant::CochleaPl => {
+                self.last_c = self.cochlea.compute_c_from_plv(&plv_mat);
+                self.last_plv = Some(plv_mat);
+            }
+            CVariant::Dummy => {
+                self.last_c.fill(0.0);
+                let ch = self.last_c.len();
+                self.last_plv = Some(vec![vec![0.0; ch]; ch]);
             }
         }
 
-        // C is not yet implemented (dummy).
-        self.last_c = vec![0.0; self.params.freqs_hz.len()];
-
-        // Compute K = α*C - β*R
+        // --- K ---
         self.last_k = self
             .last_r
             .iter()
@@ -86,13 +111,23 @@ impl Landscape {
             .collect();
     }
 
+    /// Helper: append new column to history buffers.
+    fn push_hist(bufs: &mut [Vec<f32>], new: &[f32], max_len: usize) {
+        for (i, &v) in new.iter().enumerate() {
+            if bufs[i].len() == max_len {
+                bufs[i].remove(0);
+            }
+            bufs[i].push(v);
+        }
+    }
+
     /// Extract a snapshot for UI.
     pub fn snapshot(&self, mut prev: Option<LandscapeFrame>) -> LandscapeFrame {
-        let ch = self.params.freqs_hz.len();
+        let ch = self.cochlea.n_ch();
         let mut out = prev.unwrap_or_default();
 
         if out.freqs_hz.len() != ch {
-            out.freqs_hz = self.params.freqs_hz.clone();
+            out.freqs_hz = self.cochlea.erb_space.freqs_hz().to_vec();
             out.fs = self.params.fs;
             out.r_last = vec![0.0; ch];
             out.c_last = vec![0.0; ch];
@@ -105,38 +140,16 @@ impl Landscape {
         out.c_last.clone_from(&self.last_c);
         out.k_last.clone_from(&self.last_k);
 
-        // Append history
-        for (ci, &v) in self.last_r.iter().enumerate() {
-            if out.r_hist[ci].len() == self.params.max_hist_cols {
-                out.r_hist[ci].remove(0);
-            }
-            out.r_hist[ci].push(v);
-        }
-        for (ci, &v) in self.last_k.iter().enumerate() {
-            if out.k_hist[ci].len() == self.params.max_hist_cols {
-                out.k_hist[ci].remove(0);
-            }
-            out.k_hist[ci].push(v);
-        }
+        Self::push_hist(&mut out.r_hist, &self.last_r, self.params.max_hist_cols);
+        Self::push_hist(&mut out.k_hist, &self.last_k, self.params.max_hist_cols);
 
+        if let Some(plv) = &self.last_plv {
+            out.plv_last = Some(plv.clone());
+        }
         out
     }
 
     pub fn params(&self) -> &LandscapeParams {
         &self.params
-    }
-
-    pub fn retune(&mut self, new_freqs_hz: Vec<f32>) {
-        self.params.freqs_hz = new_freqs_hz;
-        self.cochlea = Cochlea::new(
-            self.params.fs,
-            &self.params.freqs_hz,
-            self.params.use_lp_300hz,
-        );
-        self.cochlea.reset();
-        let ch = self.params.freqs_hz.len();
-        self.last_r = vec![0.0; ch];
-        self.last_c = vec![0.0; ch];
-        self.last_k = vec![0.0; ch];
     }
 }

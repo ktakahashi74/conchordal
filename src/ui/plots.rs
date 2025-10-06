@@ -1,7 +1,7 @@
 use crate::core::landscape::LandscapeFrame;
 use egui_plot::{Bar, BarChart, Line, Plot, PlotPoints};
 
-/// log2 軸で周波数を描画するヒストグラム
+/// log2 軸で周波数を描画するヒストグラム（自動幅調整版）
 pub fn log2_hist_hz(
     ui: &mut egui::Ui,
     title: &str,
@@ -12,17 +12,38 @@ pub fn log2_hist_hz(
     y_max: f64,
 ) {
     assert_eq!(xs_hz.len(), ys.len());
+    if xs_hz.is_empty() {
+        return;
+    }
 
-    // 棒グラフを生成
-    let bars: Vec<Bar> = xs_hz
-        .iter()
-        .zip(ys.iter())
-        .map(|(x, y)| {
-            Bar::new(x.log2() as f64, *y as f64).width(0.02) // log2スケール上での棒の幅（調整可）
-        })
-        .collect();
+    // 各ビンごとに棒の幅を決める
+    let mut bars: Vec<Bar> = Vec::with_capacity(xs_hz.len());
+    for i in 0..xs_hz.len() {
+        let f = xs_hz[i].max(1.0); // 0Hz対策
+        let f_left = if i > 0 { xs_hz[i - 1].max(1.0) } else { f };
+        let f_right = if i + 1 < xs_hz.len() {
+            xs_hz[i + 1].max(1.0)
+        } else {
+            f
+        };
+
+        // log2 軸上の幅を近傍から推定
+        let left = (f_left.log2() + f.log2()) * 0.5;
+        let right = (f_right.log2() + f.log2()) * 0.5;
+        let width = (right - left).abs().max(0.001);
+
+        bars.push(
+            Bar::new(f.log2() as f64, ys[i] as f64)
+                .width(width as f64)
+                .fill(egui::Color32::DARK_RED)
+                .stroke(egui::Stroke::NONE),
+        );
+    }
 
     let chart = BarChart::new(y_label, bars);
+
+    let min_x = xs_hz.iter().cloned().fold(f32::MAX, f32::min).max(1.0);
+    let max_x = xs_hz.iter().cloned().fold(f32::MIN, f32::max);
 
     Plot::new(title)
         .height(150.0)
@@ -30,8 +51,8 @@ pub fn log2_hist_hz(
         .allow_drag(false)
         .include_y(y_min)
         .include_y(y_max)
-        .include_x((xs_hz.iter().cloned().fold(f32::MAX, f32::min).max(1.0) as f64).log2())
-        .include_x((xs_hz.iter().cloned().fold(f32::MIN, f32::max) as f64).log2())
+        .include_x((min_x as f64).log2())
+        .include_x((max_x as f64).log2())
         .x_axis_formatter(|mark, _range| {
             let hz = 2f64.powf(mark.value);
             if hz < 1000.0 {
@@ -102,7 +123,7 @@ pub fn time_plot(ui: &mut egui::Ui, title: &str, fs: f64, samples: &[f32]) {
     let line = Line::new("wave", points);
 
     ui.vertical(|ui| {
-        ui.label(title);
+        //ui.label(title);
 
         Plot::new(title)
             .height(150.0)

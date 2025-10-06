@@ -14,7 +14,7 @@ use crossbeam_channel::{Receiver, Sender, bounded};
 
 use crate::audio::output::AudioOutput;
 use crate::audio::writer::WavOutput;
-use crate::core::erb::erb_space;
+use crate::core::erb::ErbSpace;
 use crate::core::landscape::{CVariant, Landscape, LandscapeFrame, LandscapeParams, RVariant};
 use crate::life::population::{Population, PopulationParams};
 use crate::synth::engine::{SynthConfig, SynthEngine};
@@ -36,6 +36,7 @@ impl App {
         cc: &eframe::CreationContext<'_>,
         args: crate::Args,
         stop_flag: Arc<AtomicBool>,
+        tones: Vec<(f32, f32)>,
     ) -> Self {
         // Channels
         let (ui_frame_tx, ui_frame_rx) = bounded::<UiFrame>(8);
@@ -57,6 +58,15 @@ impl App {
             None
         };
 
+        let initial_tones_hz: Vec<f32> = tones.iter().map(|(f, _)| *f).collect();
+        let amplitude = tones.iter().map(|(_, a)| *a).fold(0.0, f32::max);
+
+        // Population (life) — single pure tone at 440 Hz
+        let mut pop = Population::new(PopulationParams {
+            initial_tones_hz: initial_tones_hz,
+            amplitude: amplitude,
+        });
+
         // worker に渡すのは wav_tx.clone()
         let wav_tx_for_worker = if args.wav.is_some() {
             Some(wav_tx.clone())
@@ -70,7 +80,13 @@ impl App {
             thread::Builder::new()
                 .name("worker".into())
                 .spawn(move || {
-                    worker_loop(ui_frame_tx, audio_prod, wav_tx_for_worker, stop_flag_worker)
+                    worker_loop(
+                        ui_frame_tx,
+                        pop,
+                        audio_prod,
+                        wav_tx_for_worker,
+                        stop_flag_worker,
+                    )
                 })
                 .expect("spawn worker"),
         );
@@ -125,6 +141,7 @@ impl Drop for App {
 
 fn worker_loop(
     ui_tx: Sender<UiFrame>,
+    pop: Population,
     mut audio_prod: Option<ringbuf::HeapProd<f32>>,
     wav_tx: Option<Sender<Vec<f32>>>,
     exiting: Arc<AtomicBool>,
@@ -134,13 +151,6 @@ fn worker_loop(
     let fft_size: usize = 4096;
     let hop: usize = fft_size / 2;
     let n_bins = fft_size / 2 + 1;
-
-    // Population (life) — single pure tone at 440 Hz
-    let mut pop = Population::new(PopulationParams {
-        initial_tones_hz: vec![440.0, 460.0],
-        //initial_tones_hz: vec![440.0],
-        amplitude: 500.0,
-    });
 
     // Synth engine
     let mut synth = SynthEngine::new(SynthConfig {
@@ -152,19 +162,19 @@ fn worker_loop(
 
     // Landscape parameters (stateful cochlea R only / C=Dummy)
 
-    let freqs_hz = erb_space(20.0, 8000.0, 0.1);
+    let erb_space = ErbSpace::new(20.0, 8000.0, 0.1);
 
     let lparams = LandscapeParams {
         fs,
-        freqs_hz: freqs_hz,
         use_lp_300hz: true,
         max_hist_cols: 256,
-        alpha: 1.0,
-        beta: 1.0,
+        alpha: 0.8,
+        beta: 0.2,
         r_variant: RVariant::Cochlea,
-        c_variant: CVariant::Dummy,
+        //r_variant: RVariant::KernelConv,
+        c_variant: CVariant::CochleaPl,
     };
-    let mut landscape = Landscape::new(lparams);
+    let mut landscape = Landscape::new(lparams, erb_space);
 
     let mut next_deadline = Instant::now();
     let hop_duration = Duration::from_secs_f32(hop as f32 / fs);

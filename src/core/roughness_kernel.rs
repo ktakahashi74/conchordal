@@ -9,6 +9,8 @@
 use crate::core::erb::{ErbSpace, erb_bw_hz, hz_to_erb};
 use crate::core::fft::apply_hann_window;
 use rustfft::{FftPlanner, num_complex::Complex32};
+//use std::cmp::Ordering;
+use std::sync::OnceLock;
 
 // ======================================================================
 // Kernel definition (Plomp–Levelt inspired, biologically extended)
@@ -55,6 +57,20 @@ impl Default for KernelParams {
             w_neural: 0.3,
         }
     }
+}
+
+// ======================================================================
+// --- Kernel LUT caching via OnceLock
+// ======================================================================
+
+static KERNEL_CACHE: OnceLock<(Vec<f32>, usize)> = OnceLock::new();
+
+/// Returns cached kernel LUT (reuses previous if params & step unchanged)
+fn get_cached_kernel(kparams: &KernelParams, erb_step: f32) -> &'static (Vec<f32>, usize) {
+    KERNEL_CACHE.get_or_init(|| {
+        let (lut, hw) = build_kernel_erbstep(kparams, erb_step);
+        (lut, hw)
+    })
 }
 
 /// two-layer asymmetric ERB-domain kernel g(ΔERB).
@@ -167,37 +183,32 @@ pub fn potential_r_from_psd_direct(
 
     // === LUT ===
     let half_width_erb = kparams.half_width_erb.max(0.5);
-    let lut_step: f32 = 0.001;
-    let (lut, hw) = build_kernel_erbstep(kparams, lut_step);
+    let lut_step: f32 = 0.005;
+    //let (lut, hw) = build_kernel_erbstep(kparams, lut_step);
+    let (lut, hw) = get_cached_kernel(kparams, lut_step);
 
     let mut r = vec![0.0f32; n];
 
-    // === 近傍積分（O(N·K)） ===
-    for i in 1..n {
-        let fi_erb = hz_to_erb(f[i]);
+    // === O(N·K) === neighbor integration
+    let erb: Vec<f32> = f.iter().map(|&x| hz_to_erb(x)).collect();
+    let bw: Vec<f32> = f.iter().map(|&x| erb_bw_hz(x).max(1e-12)).collect();
+    let du_hz: Vec<f32> = bw.iter().map(|&b| df / b).collect();
+
+    for i in 0..n {
+        let fi_erb = erb[i];
         let ei = e[i];
         let mut r_sum = 0.0;
-        let mut j = i;
 
-        // --- forward (ΔERB > 0)
-        while j < n {
-            let d = hz_to_erb(f[j]) - fi_erb;
-            if d > half_width_erb {
-                break;
-            }
-            r_sum += e[j] * lut_interp(&lut, lut_step, hw, d) * df / erb_bw_hz(f[j]).max(1e-12);
-            j += 1;
+        // binary search for integration bounds
+        let j_lo = erb.partition_point(|&x| x < fi_erb - half_width_erb);
+        let j_hi = erb.partition_point(|&x| x <= fi_erb + half_width_erb);
+
+        for j in j_lo..j_hi {
+            let d = erb[j] - fi_erb;
+            let w = lut_interp(&lut, lut_step, *hw, d);
+            r_sum += e[j] * w * du_hz[j];
         }
-        // --- backward (ΔERB < 0)
-        j = i.saturating_sub(1);
-        while j > 0 {
-            let d = hz_to_erb(f[j]) - fi_erb;
-            if d < -half_width_erb {
-                break;
-            }
-            r_sum += e[j] * lut_interp(&lut, lut_step, hw, d) * df / erb_bw_hz(f[j]).max(1e-12);
-            j -= 1;
-        }
+
         r[i] = r_sum * ei.powf(alpha); // local salience weighting
     }
 

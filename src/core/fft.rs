@@ -13,6 +13,26 @@ pub fn hann_window(n: usize) -> Vec<f32> {
         .collect()
 }
 
+/// Apply Hann window in place to a real-valued buffer and
+/// return the mean-square value U = mean(w²) for physical scaling.
+///
+/// For Hann window, U = 3/8 = 0.375 (verified analytically).
+/// This is computed once here for flexibility (not recomputed per sample).
+pub fn apply_hann_window(buf: &mut [Complex32]) -> f32 {
+    let n = buf.len();
+    if n <= 1 {
+        return 1.0;
+    }
+
+    let win = hann_window(n);
+    for (x, &w) in buf.iter_mut().zip(&win) {
+        x.re *= w;
+    }
+
+    // U = mean(w²) = 3/8
+    3.0 / 8.0
+}
+
 // ======================================================================
 // Inverse STFT (OLA-based)
 // ======================================================================

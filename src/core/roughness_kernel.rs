@@ -7,7 +7,7 @@
 //! RVariant::KernelConv.
 
 use crate::core::erb::{ErbSpace, erb_bw_hz, hz_to_erb};
-use crate::core::fft::fft_convolve_same;
+use crate::core::fft::apply_hann_window;
 use rustfft::{FftPlanner, num_complex::Complex32};
 
 // ======================================================================
@@ -61,24 +61,29 @@ impl Default for KernelParams {
 #[inline]
 fn eval_kernel_delta_erb(params: &KernelParams, d_erb: f32) -> f32 {
     // Continuous version of two-layer asymmetric kernel (no normalization here)
-    let de = d_erb;
     let sigma = params.sigma_erb.max(1e-6);
     let tau = params.tau_erb.max(1e-6);
     let s_sup = params.suppress_sigma_erb.max(1e-6);
     let sig_n = params.sigma_neural_erb.max(1e-6);
 
+    let desq = d_erb * d_erb;
+
     // === Cochlear base: Gaussian + (tail on *positive* side) ===
     // ΔERB > 0 → 高域側（f_j > f_i）では tail
-    let g_gauss = (-(de * de) / (2.0 * sigma * sigma)).exp();
-    let g_tail = if de >= 0.0 { (-de / tau).exp() } else { 0.0 };
+    let g_gauss = (-desq / (2.0 * sigma * sigma)).exp();
+    let g_tail = if d_erb >= 0.0 {
+        (-d_erb / tau).exp()
+    } else {
+        0.0
+    };
     let base = (1.0 - params.mix_tail) * g_gauss + params.mix_tail * g_tail;
 
     // Center suppression (fusion zone)
-    let suppress = 1.0 - (-(de * de) / (2.0 * s_sup * s_sup)).exp();
+    let suppress = 1.0 - (-desq / (2.0 * s_sup * s_sup)).exp();
     let g_coch = base * suppress.powf(params.suppress_pow);
 
     // Neural broad Gaussian
-    let g_neural = (-(de * de) / (2.0 * sig_n * sig_n)).exp();
+    let g_neural = (-desq / (2.0 * sig_n * sig_n)).exp();
 
     (1.0 - params.w_neural) * g_coch + params.w_neural * g_neural
 }
@@ -98,12 +103,10 @@ pub fn build_kernel_erbstep(params: &KernelParams, erb_step: f32) -> (Vec<f32>, 
         .collect();
 
     // L1 normalization: ∫g dΔERB ≈ Σg * step = 1
-    let sum: f32 = g.iter().sum();
+    let sum = g.iter().copied().sum::<f32>();
     if sum > 0.0 {
-        let scale = 1.0 / sum;
-        for v in &mut g {
-            *v *= scale;
-        }
+        let inv = 1.0 / sum;
+        g.iter_mut().for_each(|v| *v *= inv);
     }
 
     (g, n_side)
@@ -111,13 +114,17 @@ pub fn build_kernel_erbstep(params: &KernelParams, erb_step: f32) -> (Vec<f32>, 
 
 #[inline]
 fn lut_interp(lut: &[f32], step: f32, hw: usize, d_erb: f32) -> f32 {
-    let t = d_erb / step + hw as f32; // ΔERB=0 が中心
-    let i = t.floor() as isize;
-    if i < 0 || i as usize >= lut.len() - 1 {
+    let t = d_erb / step + hw as f32;
+    let i = t.floor();
+    let i0 = i as isize;
+    let i1 = i0 + 1;
+    if i0 < 0 || (i1 as usize) >= lut.len() {
         return 0.0;
     }
-    let frac = t - i as f32;
-    lut[i as usize] * (1.0 - frac) + lut[i as usize + 1] * frac
+    let frac = t - i;
+    let a = lut[i0 as usize];
+    let b = lut[i1 as usize];
+    a + frac * (b - a)
 }
 
 /// Direct potential-R from PSD bins (no ERB resampling, no FFT).
@@ -163,34 +170,35 @@ pub fn potential_r_from_psd_direct(
     let lut_step: f32 = 0.001;
     let (lut, hw) = build_kernel_erbstep(kparams, lut_step);
 
-    // === 近傍積分（O(N·K)） ===
     let mut r = vec![0.0f32; n];
+
+    // === 近傍積分（O(N·K)） ===
     for i in 1..n {
-        let fi = f[i];
+        let fi_erb = hz_to_erb(f[i]);
         let ei = e[i];
+        let mut r_sum = 0.0;
+        let mut j = i;
 
-        let fi_erb = hz_to_erb(fi);
-        for j in 0..n {
-            let fj = f[j];
-            //let bw = erb_bw_hz(0.5 * (fi + fj));
-            //let d = (fj - fi) / bw; // 符号付き ΔERB
-            let d = hz_to_erb(fj) - fi_erb; // 符号付き ΔERB
-            if d.abs() > half_width_erb {
-                continue;
+        // --- forward (ΔERB > 0)
+        while j < n {
+            let d = hz_to_erb(f[j]) - fi_erb;
+            if d > half_width_erb {
+                break;
             }
-            //let w = eval_kernel_delta_erb(kparams, d);
-            let w = lut_interp(&lut, lut_step, hw, d);
-            // ★ ERB 数の微小幅：df を含める（PSD は 1/Hz スケール）
-            let du = df / erb_bw_hz(fj).max(1e-12);
-            r[i] += e[j] * w * du;
+            r_sum += e[j] * lut_interp(&lut, lut_step, hw, d) * df / erb_bw_hz(f[j]).max(1e-12);
+            j += 1;
         }
-
-        // 自己項除去はしない。  kernel の中心抑制で対応。
-        //let g0 = lut[hw];
-        //r[i] = (r[i] - ei * g0 * (df / erb_bw_hz(fi).max(1e-12))).max(0.0);
-
-        // 局所サリエンス重み
-        r[i] *= ei.powf(alpha);
+        // --- backward (ΔERB < 0)
+        j = i.saturating_sub(1);
+        while j > 0 {
+            let d = hz_to_erb(f[j]) - fi_erb;
+            if d < -half_width_erb {
+                break;
+            }
+            r_sum += e[j] * lut_interp(&lut, lut_step, hw, d) * df / erb_bw_hz(f[j]).max(1e-12);
+            j -= 1;
+        }
+        r[i] = r_sum * ei.powf(alpha); // local salience weighting
     }
 
     // === R_total：ERB-number 軸で台形積分（df と整合済みなのでそのまま）
@@ -231,30 +239,27 @@ pub fn potential_r_from_signal_direct(
     let mut buf: Vec<Complex32> = signal.iter().map(|&x| Complex32::new(x, 0.0)).collect();
     buf.resize(n, Complex32::new(0.0, 0.0));
 
-    // 2. apply Hann window  （窓掛けと同時に U=mean(w^2) を計算）
-    let mut w2_sum = 0.0f32;
-    for (i, x) in buf.iter_mut().enumerate() {
-        let w = 0.5 - 0.5 * (2.0 * std::f32::consts::PI * i as f32 / n as f32).cos();
-        x.re *= w;
-        w2_sum += w * w;
-    }
-    let U = w2_sum / n as f32; // mean(w^2)
+    // 2. apply Hann window
+    let U = apply_hann_window(&mut buf);
 
     // 3. FFT
     let mut planner = FftPlanner::<f32>::new();
     let fft = planner.plan_fft_forward(n);
     fft.process(&mut buf);
 
-    // 4. One-sided PSD (1/Hz) per periodogram
+    // 4. One-sided PSD with Welch scaling (U = 3/8 for Hann)
     let nfft = n as f32;
-    let n_half = n / 2; // Nyquist は含めない（片側 N/2 本）
-    let scale = 1.0 / (fs * nfft * U); // Welchスケール
+    let n_half = n / 2;
+    let scale = 1.0 / (fs * nfft * U);
     let mut psd = vec![0.0f32; n_half];
-    for i in 0..n_half {
+
+    // DC
+    let mag2 = buf[0].re * buf[0].re + buf[0].im * buf[0].im;
+    psd[0] = mag2 * scale; // no factor 2 for DC
+
+    for i in 1..n_half {
         let mag2 = buf[i].re * buf[i].re + buf[i].im * buf[i].im;
-        // 片側化: DCを除き2倍（Nyquistは配列に含めていないので気にしない）
-        let two_sided_to_one = if i == 0 { 1.0 } else { 2.0 };
-        psd[i] = mag2 * scale * two_sided_to_one;
+        psd[i] = mag2 * scale * 2.0;
     }
 
     // 5. pass to ΔERB convolution

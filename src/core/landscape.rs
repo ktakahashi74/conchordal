@@ -99,16 +99,8 @@ impl Landscape {
                     self.params.fs,
                     &self.params.kernel_params,
                     0.5,
-                    0.5, //                    erb_space,
-                         //                    &self.params.kernel_params,
+                    0.0, // salience parameter
                 );
-
-                // self.last_r = compute_potential_r_from_spectrum(
-                //     x,
-                //     self.params.fs,
-                //     erb_space,
-                //     &self.params.kernel_params,
-                // );
             }
             RVariant::Dummy => self.last_r.fill(0.0),
         }

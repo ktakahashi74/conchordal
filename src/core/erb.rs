@@ -174,4 +174,29 @@ mod tests {
             e_max
         );
     }
+
+    #[test]
+    fn delta_erb_mapping_matches_exact() {
+        use super::*;
+        // 1 kHz 近傍で複数の周波数差をチェック
+        let fi = 1000.0f32;
+        let steps_hz = [
+            -300.0, -150.0, -75.0, -30.0, -15.0, 0.0, 15.0, 30.0, 75.0, 150.0, 300.0,
+        ];
+
+        for df_hz in steps_hz {
+            let fj = (fi + df_hz).max(1.0);
+            let d_exact = hz_to_erb(fj) - hz_to_erb(fi);
+            let bw_mid = erb_bw_hz(0.5 * (fi + fj));
+            let d_approx = (fj - fi) / bw_mid;
+
+            // 誤差（相対）: ±3% 以内なら OK とする
+            let denom = d_exact.abs().max(1e-6);
+            let rel_err = (d_exact - d_approx).abs() / denom;
+            assert!(
+                rel_err < 0.03,
+                "ΔERB approx mismatch at df={df_hz}: exact={d_exact}, approx={d_approx}, rel_err={rel_err}"
+            );
+        }
+    }
 }

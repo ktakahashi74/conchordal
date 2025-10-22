@@ -149,7 +149,7 @@ fn worker_loop(
 ) {
     // --- Parameters ---
     let fs: f32 = 48_000.0;
-    let fft_size: usize = 8192;
+    let fft_size: usize = 16384; ///////////////////////////8192;
     let hop: usize = fft_size / 2;
     let n_bins = fft_size / 2 + 1;
 

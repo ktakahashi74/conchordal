@@ -16,6 +16,7 @@ use crate::audio::output::AudioOutput;
 use crate::audio::writer::WavOutput;
 use crate::core::erb::ErbSpace;
 use crate::core::landscape::{CVariant, Landscape, LandscapeFrame, LandscapeParams, RVariant};
+use crate::core::roughness_kernel::KernelParams;
 use crate::life::population::{Population, PopulationParams};
 use crate::synth::engine::{SynthConfig, SynthEngine};
 use crate::ui::viewdata::{SpecFrame, UiFrame, WaveFrame};
@@ -148,7 +149,7 @@ fn worker_loop(
 ) {
     // --- Parameters ---
     let fs: f32 = 48_000.0;
-    let fft_size: usize = 4096;
+    let fft_size: usize = 8192;
     let hop: usize = fft_size / 2;
     let n_bins = fft_size / 2 + 1;
 
@@ -162,7 +163,7 @@ fn worker_loop(
 
     // Landscape parameters (stateful cochlea R only / C=Dummy)
 
-    let erb_space = ErbSpace::new(20.0, 8000.0, 0.1);
+    let erb_space = ErbSpace::new(20.0, 8000.0, 0.005);
 
     let lparams = LandscapeParams {
         fs,
@@ -170,9 +171,11 @@ fn worker_loop(
         max_hist_cols: 256,
         alpha: 0.8,
         beta: 0.2,
-        r_variant: RVariant::Cochlea,
-        //r_variant: RVariant::KernelConv,
-        c_variant: CVariant::CochleaPl,
+        //r_variant: RVariant::CochleaPotential,
+        r_variant: RVariant::KernelConv,
+        //c_variant: CVariant::CochleaPl,
+        c_variant: CVariant::Dummy,
+        kernel_params: KernelParams::default(),
     };
     let mut landscape = Landscape::new(lparams, erb_space);
 

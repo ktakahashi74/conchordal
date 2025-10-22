@@ -1,13 +1,16 @@
-//! core/landscape.rs — Landscape computed by stateful cochlea front-end.
+// core/landscape.rs — Landscape computed by stateful cochlea front-end.
 
 use crate::core::cochlea::Cochlea;
 use crate::core::erb::ErbSpace;
+//use crate::core::roughness::compute_potential_r_from_signal;
 
-/// Which variant of roughness to compute (only Cochlea supported here).
+use crate::core::roughness_kernel::{KernelParams, potential_r_from_signal_direct};
+
 #[derive(Clone, Copy, Debug)]
 pub enum RVariant {
     KernelConv,
     Cochlea,
+    CochleaPotential,
     Dummy,
 }
 
@@ -17,7 +20,6 @@ pub enum CVariant {
     Dummy,
 }
 
-/// Parameters for the landscape.
 #[derive(Clone, Debug)]
 pub struct LandscapeParams {
     pub fs: f32,
@@ -27,9 +29,9 @@ pub struct LandscapeParams {
     pub beta: f32,
     pub r_variant: RVariant,
     pub c_variant: CVariant,
+    pub kernel_params: KernelParams,
 }
 
-/// One frame of the landscape for UI.
 #[derive(Clone, Debug, Default)]
 pub struct LandscapeFrame {
     pub fs: f32,
@@ -37,7 +39,7 @@ pub struct LandscapeFrame {
     pub r_last: Vec<f32>,
     pub c_last: Vec<f32>,
     pub k_last: Vec<f32>,
-    /// History buffer [channels][time cols].
+    pub env_last: Vec<f32>,
     pub r_hist: Vec<Vec<f32>>,
     pub k_hist: Vec<Vec<f32>>,
     pub plv_last: Option<Vec<Vec<f32>>>,
@@ -49,13 +51,13 @@ pub struct Landscape {
     last_r: Vec<f32>,
     last_c: Vec<f32>,
     last_k: Vec<f32>,
+    env_last: Vec<f32>,
     last_plv: Option<Vec<Vec<f32>>>,
 }
 
 impl Landscape {
-    /// Build landscape from params; keeps cochlea states across blocks.
     pub fn new(params: LandscapeParams, erb_space: ErbSpace) -> Self {
-        let ch = erb_space.n_bins();
+        let ch = erb_space.len();
         let mut cochlea = Cochlea::new(params.fs, erb_space, params.use_lp_300hz);
         cochlea.reset();
         Self {
@@ -64,27 +66,49 @@ impl Landscape {
             last_r: vec![0.0; ch],
             last_c: vec![0.0; ch],
             last_k: vec![0.0; ch],
+            env_last: vec![0.0; ch],
             last_plv: Some(vec![vec![0.0; ch]; ch]),
         }
     }
 
     /// Process one block: cochlea update + R/C/K compute.
     pub fn process_block(&mut self, x: &[f32]) {
-        // Unified cochlea step (envelope + PLV)o
-        let (env_vec, plv_mat) = self.cochlea.process_block_core(x);
+        // Unified cochlea step (envelope + PLV)
+        //        let (env_vec, plv_mat) = self.cochlea.process_block_core(x);
+
+        //        let env_levels = self.cochlea.current_envelope_levels();
+        //        self.env_last = env_levels.clone();
 
         // --- R ---
         match self.params.r_variant {
             RVariant::Cochlea => {
-                self.last_r = self.cochlea.compute_r_from_env(&env_vec);
+                //self.last_r = self.cochlea.compute_r_from_env(&env_vec);
+            }
+            RVariant::CochleaPotential => {
+                let e_ch = self.cochlea.current_envelope_levels(); // envelope mean per channel
+                let erb_space = &self.cochlea.erb_space;
+                let freqs = erb_space.freqs_hz();
+
+                //                self.last_r = compute_potential_r(&e_ch, freqs, erb_space, &PotRParams::default());
             }
             RVariant::KernelConv => {
-                let (env_vec, plv_mat) = self.cochlea.process_block_core(x);
-                use crate::core::roughness_kernel::{KernelParams, compute_r_kernelconv};
-                let erb_step = 0.01;
-                let kp = KernelParams::default();
-                self.last_r = compute_r_kernelconv(&env_vec, &self.cochlea.erb_space, &kp);
-                self.last_plv = Some(plv_mat);
+                let erb_space = &self.cochlea.erb_space; // 既存 cochlea が持つ ERB 定義だけ利用
+
+                (self.last_r, _) = potential_r_from_signal_direct(
+                    x,
+                    self.params.fs,
+                    &self.params.kernel_params,
+                    0.5,
+                    0.5, //                    erb_space,
+                         //                    &self.params.kernel_params,
+                );
+
+                // self.last_r = compute_potential_r_from_spectrum(
+                //     x,
+                //     self.params.fs,
+                //     erb_space,
+                //     &self.params.kernel_params,
+                // );
             }
             RVariant::Dummy => self.last_r.fill(0.0),
         }
@@ -92,15 +116,15 @@ impl Landscape {
         // --- C ---
         match self.params.c_variant {
             CVariant::CochleaPl => {
-                self.last_c = self.cochlea.compute_c_from_plv(&plv_mat);
-                self.last_plv = Some(plv_mat);
+                //                self.last_c = self.cochlea.compute_c_from_plv(&plv_mat);
             }
             CVariant::Dummy => {
                 self.last_c.fill(0.0);
-                let ch = self.last_c.len();
-                self.last_plv = Some(vec![vec![0.0; ch]; ch]);
             }
         }
+
+        // PLV スナップショットは共通で最新を保存
+        //      self.last_plv = Some(plv_mat);
 
         // --- K ---
         self.last_k = self
@@ -111,7 +135,6 @@ impl Landscape {
             .collect();
     }
 
-    /// Helper: append new column to history buffers.
     fn push_hist(bufs: &mut [Vec<f32>], new: &[f32], max_len: usize) {
         for (i, &v) in new.iter().enumerate() {
             if bufs[i].len() == max_len {
@@ -121,7 +144,6 @@ impl Landscape {
         }
     }
 
-    /// Extract a snapshot for UI.
     pub fn snapshot(&self, mut prev: Option<LandscapeFrame>) -> LandscapeFrame {
         let ch = self.cochlea.n_ch();
         let mut out = prev.unwrap_or_default();
@@ -132,6 +154,7 @@ impl Landscape {
             out.r_last = vec![0.0; ch];
             out.c_last = vec![0.0; ch];
             out.k_last = vec![0.0; ch];
+            out.env_last = vec![0.0; ch];
             out.r_hist = vec![Vec::with_capacity(self.params.max_hist_cols); ch];
             out.k_hist = vec![Vec::with_capacity(self.params.max_hist_cols); ch];
         }
@@ -139,6 +162,7 @@ impl Landscape {
         out.r_last.clone_from(&self.last_r);
         out.c_last.clone_from(&self.last_c);
         out.k_last.clone_from(&self.last_k);
+        out.env_last.clone_from(&self.env_last);
 
         Self::push_hist(&mut out.r_hist, &self.last_r, self.params.max_hist_cols);
         Self::push_hist(&mut out.k_hist, &self.last_k, self.params.max_hist_cols);

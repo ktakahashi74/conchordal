@@ -76,7 +76,7 @@ impl ErbSpace {
 
     /// Return number of ERB bins.
     #[inline]
-    pub fn n_bins(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.freqs_hz.len()
     }
 
@@ -84,6 +84,13 @@ impl ErbSpace {
     #[inline]
     pub fn freqs_hz(&self) -> &[f32] {
         &self.freqs_hz
+    }
+
+    pub fn index_of_freq(&self, f_hz: f32) -> usize {
+        self.freqs_hz
+            .iter()
+            .position(|&f| f >= f_hz)
+            .unwrap_or(self.freqs_hz.len() - 1)
     }
 }
 
@@ -153,7 +160,7 @@ mod tests {
     #[test]
     fn test_erbspace_extreme_range() {
         let space = ErbSpace::new(20.0, 20000.0, 0.25);
-        let n = space.n_bins();
+        let n = space.len();
         assert!(n > 100, "unexpectedly few bins for wide band: {n}");
         // ERB最小・最大が整合していること
         let e_min = hz_to_erb(20.0);

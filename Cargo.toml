@@ -19,9 +19,9 @@ clap = { version = "4.5", features = ["derive"]}
 ctrlc = "3.4"
 
 # GUI
-eframe = "0.32"
-egui = "0.32"
-egui_plot = "0.33"
+eframe = "0.33"
+egui = "0.33"
+egui_plot = "0.34"
 
 # Concurrency
 rayon = "1.10"

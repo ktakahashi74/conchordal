@@ -1,5 +1,5 @@
 use crate::core::landscape::LandscapeFrame;
-use egui_plot::{Bar, BarChart, Line, Plot, PlotPoints};
+use egui_plot::{Bar, BarChart, GridInput, GridMark, Line, Plot, PlotPoints, log_grid_spacer};
 
 /// log2 軸で周波数を描画するヒストグラム（自動幅調整版）
 pub fn log2_hist_hz(
@@ -67,7 +67,7 @@ pub fn log2_hist_hz(
         });
 }
 
-/// log2 軸で周波数を描画するスペクトル系プロット
+/// log₂スケールで周波数を描画する汎用プロット関数
 pub fn log2_plot_hz(
     ui: &mut egui::Ui,
     title: &str,
@@ -77,39 +77,55 @@ pub fn log2_plot_hz(
     y_min: f64,
     y_max: f64,
 ) {
-    assert_eq!(xs_hz.len(), ys.len());
+    assert_eq!(
+        xs_hz.len(),
+        ys.len(),
+        "x/y length mismatch: {} vs {}",
+        xs_hz.len(),
+        ys.len()
+    );
 
+    // === X軸を log2(Hz) に変換 ===
     let points: PlotPoints = xs_hz
         .iter()
         .zip(ys.iter())
-        .map(|(x, y)| [x.log2() as f64, *y as f64])
+        .map(|(&xx, &yy)| [xx.log2() as f64, yy as f64])
         .collect();
+
+    // === egui_plot用 Line オブジェクト ===
     let line = Line::new(y_label, points);
 
+    // === X軸範囲（20〜20kHz）を log2に変換 ===
+    let x_min = (10.0f64).log2();
+    //let x_min = 1.0;
+    let x_max = (24_000.0f64).log2();
+
+    // === 描画 ===
     Plot::new(title)
-        .height(150.0)
-        //        .data_aspect(1.0)
+        .height(160.0)
         .allow_scroll(false)
         .allow_drag(false)
+        .include_x(x_min)
+        .include_x(x_max)
         .include_y(y_min)
         .include_y(y_max)
-        .include_x((20.0f64).log2())
-        .include_x((20_000.0f64).log2())
+        .x_grid_spacer(log_grid_spacer(10))
         .x_axis_formatter(|mark, _range| {
             let hz = 2f64.powf(mark.value);
-            format!("{:.0} Hz", hz)
+            format!("{:.0}", hz)
         })
         .y_axis_formatter(|mark, _range| format!("{:.2}", mark.value))
         .show(ui, |plot_ui| {
-            // // 半音ごとのガイドライン
-            // for note in 20..=120 {
-            //     let f = 440.0 * 2f32.powf((note as f32 - 69.0) / 12.0); // MIDI→Hz
+            plot_ui.line(line);
+
+            // === 任意: 半音ガイドライン ===
+            // for note in 21..=108 {
+            //     let f = 440.0 * 2f32.powf((note as f32 - 69.0) / 12.0);
             //     if (20.0..=20_000.0).contains(&f) {
             //         let x = (f as f64).log2();
-            //         plot_ui.vline(egui_plot::VLine::new("", x).color(egui::Color32::DARK_GRAY));
+            //         plot_ui.vline(egui_plot::VLine::new(x).color(egui::Color32::DARK_GRAY));
             //     }
             // }
-            plot_ui.line(line);
         });
 }
 

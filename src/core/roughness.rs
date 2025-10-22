@@ -1,250 +1,299 @@
-// R via ERB-domain kernel convolution.
+//! core/roughness.rs — Potential roughness (pre-cochlear) computation.
+//!
+//! Computes “potential roughness” R_pot directly from the pre-cochlear spectrum,
+//! using the same biologically grounded ERB-domain kernel as `roughness_kernel.rs`.
+//!
+//! - pure tone → reproduces kernel shape (central dip and side peak)
+//! - complex spectrum → yields Plomp–Levelt type roughness map
+//!
+//! This module reuses the same `KernelParams`, `build_kernel`, and
+//! `fft_convolve_same()` definitions from `core::roughness_kernel`.
 
-use crate::core::erb::{erb_to_hz, hz_to_erb};
+use crate::core::erb::ErbSpace;
+use crate::core::roughness_kernel::{KernelParams, build_kernel, fft_convolve_same};
 use rustfft::{FftPlanner, num_complex::Complex32};
 
-/// Linear interp on monotonic x.
-fn lerp_samples(x: &[f32], y: &[f32], xq: f32) -> f32 {
-    let n = x.len();
-    if xq <= x[0] {
-        return y[0];
+// ======================================================================
+// Utility functions
+// ======================================================================
+
+/// Linear interpolation in a uniformly spaced 1D array (index domain).
+#[inline]
+fn interp_linear(arr: &[f32], idx: f32) -> f32 {
+    if arr.is_empty() {
+        return 0.0;
     }
-    if xq >= x[n - 1] {
-        return y[n - 1];
+    let n = arr.len();
+    if idx <= 0.0 {
+        return arr[0];
     }
-    // binary search
-    let mut lo = 0usize;
-    let mut hi = n - 1;
-    while hi - lo > 1 {
-        let mid = (lo + hi) / 2;
-        if x[mid] <= xq {
-            lo = mid;
-        } else {
-            hi = mid;
-        }
+    let imax = (n - 1) as f32;
+    if idx >= imax {
+        return arr[n - 1];
     }
-    let t = (xq - x[lo]) / (x[hi] - x[lo]);
-    y[lo] * (1.0 - t) + y[hi] * t
+    let i0 = idx.floor() as usize;
+    let t = idx - i0 as f32;
+    let i1 = i0 + 1;
+    arr[i0] * (1.0 - t) + arr[i1] * t
 }
 
-/// Build asymmetric ERB kernel g(ΔERB).
-pub struct KernelParams {
-    pub sigma_erb: f32,      // Gaussian width
-    pub tau_erb: f32,        // high-side exponential tail
-    pub mix_tail: f32,       // tail mix [0..1]
-    pub half_width_erb: f32, // kernel radius in ERB units
+// ======================================================================
+// ERB resampling and core computation
+// ======================================================================
+
+/// Resample a linear power spectrum (`|X(f)|²` up to Nyquist) onto the ERB grid.
+/// - `power_lin[0..n_fft/2]` assumed, uniform Δf = fs/(2*n_bins)
+pub fn resample_linear_power_to_erb(power_lin: &[f32], fs: f32, erb_space: &ErbSpace) -> Vec<f32> {
+    let n_bins = power_lin.len().max(1);
+    let df = (fs * 0.5) / (n_bins as f32);
+    let mut e_erb = Vec::with_capacity(erb_space.freqs_hz.len());
+    for &f_hz in &erb_space.freqs_hz {
+        let idx = (f_hz / df).clamp(0.0, (n_bins - 1) as f32);
+        e_erb.push(interp_linear(power_lin, idx));
+    }
+    e_erb
 }
 
-impl Default for KernelParams {
-    fn default() -> Self {
-        Self {
-            sigma_erb: 0.6,
-            tau_erb: 1.2,
-            mix_tail: 0.25,
-            half_width_erb: 4.0,
-        }
-    }
-}
-
-/// Returns g centered at 0 with ERB step `erb_step`. Length is odd.
-fn build_kernel(params: &KernelParams, erb_step: f32) -> (Vec<f32>, usize) {
-    let hw = (params.half_width_erb / erb_step).ceil() as i32;
-    let len = (2 * hw + 1) as usize;
-    let mut g = vec![0.0f32; len];
-    for i in 0..len {
-        let d_idx = i as i32 - hw;
-        let d_erb = d_idx as f32 * erb_step;
-        let g_gauss = (-(d_erb * d_erb) / (params.sigma_erb * params.sigma_erb)).exp();
-        let g_tail = if d_erb >= 0.0 {
-            (-d_erb.abs() / params.tau_erb).exp()
-        } else {
-            0.0
-        };
-        g[i] = (1.0 - params.mix_tail) * g_gauss + params.mix_tail * g_tail;
-    }
-    // L1 normalize (sum to 1)
-    let sum: f32 = g.iter().sum();
-    if sum > 0.0 {
-        for v in &mut g {
-            *v /= sum;
-        }
-    }
-    (g, hw as usize)
-}
-
-/// Convolution (same-size) on ERB grid via FFT. Real-only.
-fn fft_convolve_same(x: &[f32], h: &[f32]) -> Vec<f32> {
-    let n = x.len();
-    let m = h.len();
-    let n_conv = n + m - 1;
-    let n_fft = n_conv.next_power_of_two();
-
-    let mut planner = FftPlanner::new();
-    let fft = planner.plan_fft_forward(n_fft);
-    let ifft = planner.plan_fft_inverse(n_fft);
-
-    let mut X = vec![Complex32::new(0.0, 0.0); n_fft];
-    let mut H = vec![Complex32::new(0.0, 0.0); n_fft];
-
-    for (i, &v) in x.iter().enumerate() {
-        X[i].re = v;
-    }
-    for (i, &v) in h.iter().enumerate() {
-        H[i].re = v;
-    }
-
-    fft.process(&mut X);
-    fft.process(&mut H);
-    for i in 0..n_fft {
-        X[i] *= H[i];
-    }
-    ifft.process(&mut X);
-
-    // scale by n_fft (rustfft unnormalized inverse)
-    let scale = 1.0 / n_fft as f32;
-    for xi in &mut X {
-        *xi *= scale;
-    }
-
-    // center “same”: take indices [ (m-1)/2 .. (m-1)/2 + n )
-    let offset = (m - 1) / 2;
-    (0..n).map(|i| X[i + offset].re).collect()
-}
-
-/// Public API: compute roughness R by ERB-kernel convolution (ERB-uniform grid).
-/// Assumes `freqs_hz` was generated by `erb_space()`, i.e. ERB-rate is uniform.
+/// Compute potential roughness R_pot from ERB-sampled energy array.
 ///
-/// - `e_ch`: per-channel energy/envelope (≥0)
-/// - `freqs_hz`: center frequencies (ERB-uniform)
-/// - `erb_step`: ERB grid step used in erb_space()
-/// - `params`: kernel params
-pub fn compute_r_kernelconv(
-    e_ch: &[f32],
-    freqs_hz: &[f32],
-    erb_step: f32,
+/// This is the *physically defined* interference potential, independent of
+/// cochlear filtering.  For a pure tone, the output equals the kernel shape.
+pub fn compute_potential_r_from_erb_energy(
+    e_erb: &[f32],
+    erb_space: &ErbSpace,
     params: &KernelParams,
 ) -> Vec<f32> {
-    let n_ch = e_ch.len();
-    if n_ch == 0 {
+    if e_erb.is_empty() {
         return vec![];
     }
 
-    // --- 1. build kernel (ΔERB domain) ---
-    let (g, _halfw) = build_kernel(params, erb_step);
+    let (g, _) = build_kernel(params, erb_space.erb_step);
+    let r = fft_convolve_same(e_erb, &g);
 
-    // --- 2. convolve envelope along ERB axis ---
-    let r_conv = fft_convolve_same(e_ch, &g);
+    // Optional local weighting (Fechner-like loudness compression)
+    r.iter()
+        .zip(e_erb.iter())
+        .map(|(ri, &ei)| ri * (ei.abs() + 1e-12).powf(0.5))
+        .collect()
+}
 
-    // --- 3. optional local weighting by sqrt(energy) ---
-    let mut r_ch = Vec::with_capacity(n_ch);
-    for (r, &e) in r_conv.iter().zip(e_ch) {
-        r_ch.push(r * (e.abs() + 1e-12).sqrt());
+/// Compute potential roughness from a linear power spectrum (|X(f)|²).
+pub fn compute_potential_r_from_linear_power(
+    power_lin: &[f32],
+    fs: f32,
+    erb_space: &ErbSpace,
+    params: &KernelParams,
+) -> Vec<f32> {
+    let e_erb = resample_linear_power_to_erb(power_lin, fs, erb_space);
+    compute_potential_r_from_erb_energy(&e_erb, erb_space, params)
+}
+
+/// Compute potential roughness directly from a time-domain signal (mono).
+/// Internally computes |FFT|², resamples to ERB, then applies the kernel.
+pub fn compute_potential_r_from_signal(
+    x: &[f32],
+    fs: f32,
+    erb_space: &ErbSpace,
+    params: &KernelParams,
+) -> Vec<f32> {
+    if x.is_empty() {
+        return vec![];
     }
 
-    r_ch
+    // zero-pad to next power of two
+    let mut n = 1usize;
+    while n < x.len() {
+        n <<= 1;
+    }
+
+    let mut buf: Vec<Complex32> = vec![Complex32::new(0.0, 0.0); n];
+    for (i, &xi) in x.iter().enumerate() {
+        buf[i].re = xi;
+    }
+
+    let mut planner = FftPlanner::new();
+    let fft = planner.plan_fft_forward(n);
+    fft.process(&mut buf);
+
+    // one-sided power spectrum
+    let nh = n / 2;
+    let mut power_lin = vec![0.0f32; nh + 1];
+    for k in 0..=nh {
+        let c = buf[k];
+        power_lin[k] = c.re * c.re + c.im * c.im;
+    }
+
+    compute_potential_r_from_linear_power(&power_lin, fs, erb_space, params)
 }
+
+// ======================================================================
+// Post-cochlear variant (for comparison)
+// ======================================================================
+
+/// Compute cochlear roughness (post-filter envelope convolution).
+/// This version uses the same kernel but assumes cochlear envelope inputs.
+/// Not a “potential R” but often correlates with perceptual roughness.
+pub fn compute_cochlear_r_from_envelope(
+    e_ch: &[f32],
+    erb_space: &ErbSpace,
+    params: &KernelParams,
+) -> Vec<f32> {
+    if e_ch.is_empty() {
+        return vec![];
+    }
+    let (g, _) = build_kernel(params, erb_space.erb_step);
+    let r = fft_convolve_same(e_ch, &g);
+    r.iter()
+        .zip(e_ch.iter())
+        .map(|(ri, &ei)| ri * (ei.abs() + 1e-12).powf(0.5))
+        .collect()
+}
+
+// ======================================================================
+// Tests
+// ======================================================================
+
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    use rand::random;
-
-    // === 基本特性 ===========================================================
+    use crate::core::roughness_kernel::KernelParams;
 
     #[test]
-    fn kernel_is_l1_normalized() {
-        let (g, _) = build_kernel(&KernelParams::default(), 0.1);
-        let sum: f32 = g.iter().sum();
-        assert!((sum - 1.0).abs() < 1e-4, "kernel sum = {sum}");
-    }
+    fn pure_tone_reproduces_kernel_shape() {
+        // build a mock ERB energy vector (single spike)
+        let erb_space = ErbSpace::new(100.0, 8000.0, 0.005);
+        let p = KernelParams::default();
+        let (g, hw) = build_kernel(&p, erb_space.erb_step);
+        let n_ch = 801;
+        let center = n_ch / 2;
+        let mut e = vec![0.0f32; n_ch];
+        e[center] = 1.0;
 
-    #[test]
-    fn kernel_has_central_peak() {
-        let (g, _) = build_kernel(&KernelParams::default(), 0.1);
-        let mid = g.len() / 2;
-        assert!(
-            g[mid] >= g[mid - 1] && g[mid] >= g[mid + 1],
-            "center not peak"
-        );
-    }
+        let r = compute_potential_r_from_erb_energy(&e, &erb_space, &p);
 
-    // === FFT畳み込みの整合性 ===============================================
+        // --- safe slice bounds
+        let lo = center.saturating_sub(hw);
+        let hi = (center + hw).min(n_ch - 1);
 
-    #[test]
-    fn impulse_response_matches_kernel_shape() {
-        // インパルス畳み込み → 出力はほぼカーネル形になる
-        let n = 129;
-        let mut x = vec![0.0f32; n];
-        x[n / 2] = 1.0;
-        let (g, _) = build_kernel(&KernelParams::default(), 0.1);
-        let y = fft_convolve_same(&x, &g);
-        let mid = n / 2;
-        assert!(
-            y[mid] > y[mid - 2] && y[mid] > y[mid + 2],
-            "impulse conv not centered peak"
-        );
-    }
-
-    // === compute_r_kernelconv の動作 =======================================
-
-    #[test]
-    fn zero_energy_returns_zero() {
-        let freqs: Vec<f32> = (0..32).map(|i| 100.0 * 1.06f32.powi(i as i32)).collect();
-        let e = vec![0.0; freqs.len()];
-        let r = compute_r_kernelconv(&e, &freqs, 0.1, &KernelParams::default());
-        assert!(
-            r.iter().all(|&v| v.abs() < 1e-9),
-            "nonzero output for zero input"
-        );
-    }
-
-    #[test]
-    fn narrowband_energy_yields_local_peak() {
-        // 400–600 Hzにエネルギを集中 → 同帯域付近でRが最大
-        let freqs: Vec<f32> = (0..64).map(|i| 50.0 * 1.06f32.powi(i as i32)).collect();
-        let e: Vec<f32> = freqs
-            .iter()
-            .map(|&f| if (f > 400.0 && f < 600.0) { 1.0 } else { 0.0 })
-            .collect();
-        let r = compute_r_kernelconv(&e, &freqs, 0.1, &KernelParams::default());
-
-        let imax = r
-            .iter()
-            .enumerate()
-            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
-            .unwrap()
-            .0;
-        let fmax = freqs[imax];
-        assert!(
-            (fmax > 300.0) && (fmax < 700.0),
-            "peak at unexpected freq: {fmax}"
-        );
-    }
-
-    #[test]
-    fn monotonically_increasing_freqs_are_ok() {
-        // 非単調freqsを与えるとpanicしないかを確認
-        let freqs: Vec<f32> = vec![100.0, 200.0, 400.0, 800.0];
-        let e: Vec<f32> = vec![1.0, 0.5, 0.2, 0.1];
-        let r = compute_r_kernelconv(&e, &freqs, 0.2, &KernelParams::default());
-        assert_eq!(r.len(), freqs.len());
-    }
-
-    #[test]
-    fn stable_under_small_perturbations() {
-        // エネルギに微小ノイズを加えても大きく揺れないこと
-        let freqs: Vec<f32> = (0..64).map(|i| 100.0 * 1.07f32.powi(i as i32)).collect();
-        let mut e: Vec<f32> = freqs
-            .iter()
-            .map(|&f| (f > 500.0 && f < 1500.0) as i32 as f32)
-            .collect();
-        let r1 = compute_r_kernelconv(&e, &freqs, 0.1, &KernelParams::default());
-        for v in &mut e {
-            *v += (rand::random::<f32>() - 0.5) * 1e-3;
+        let mut mae = 0.0;
+        let mut n = 0;
+        for (ri, &gi) in r[lo..=hi].iter().zip(g.iter()) {
+            mae += (ri - gi).abs();
+            n += 1;
         }
-        let r2 = compute_r_kernelconv(&e, &freqs, 0.1, &KernelParams::default());
-        let diff: f32 =
-            r1.iter().zip(&r2).map(|(a, b)| (a - b).abs()).sum::<f32>() / r1.len() as f32;
-        assert!(diff < 1e-2, "unstable output diff={diff}");
+        mae /= n as f32;
+        assert!(mae < 1e-3, "MAE too large: {}", mae);
+    }
+
+    #[test]
+    #[ignore] // 実行時: cargo test -- --ignored
+    fn plot_kernel_shape_for_pure_tone_png() -> Result<(), Box<dyn std::error::Error>> {
+        use plotters::prelude::*;
+
+        // === 定数設定 ===
+        let erb_step = 0.005_f32;
+        let n_ch = 1201usize;
+        let center = n_ch / 2;
+
+        let p = KernelParams::default();
+        let (g, hw) = build_kernel(&p, erb_step);
+
+        // --- 純音（ERB上のスパイク入力） ---
+        let mut e = vec![0.0f32; n_ch];
+        e[center] = 1.0;
+
+        // === R_pot の計算（中心合わせあり） ===
+        let r = crate::core::roughness_kernel::fft_convolve_same(&e, &g);
+
+        // === 表示領域の切り出し ===
+        let lo = center.saturating_sub(hw);
+        let hi = (center + hw).min(n_ch - 1);
+
+        let view_len = hi - lo + 1;
+        let xs: Vec<f32> = (0..view_len)
+            .map(|i| (i as f32 - hw as f32) * erb_step)
+            .collect();
+        let g_view = g.clone();
+        let r_view = r[lo..=hi].to_vec();
+
+        // === 正規化 ===
+        let g_max = g_view.iter().cloned().fold(0.0, f32::max).max(1e-9);
+        let r_max = r_view.iter().cloned().fold(0.0, f32::max).max(1e-9);
+        let g_norm: Vec<f32> = g_view.iter().map(|&v| v / g_max).collect();
+        let r_norm: Vec<f32> = r_view.iter().map(|&v| v / r_max).collect();
+
+        // === プロット領域設定 ===
+        let path = std::path::Path::new("target/pure_tone_kernel_shape.png");
+        let size = (1400, 600);
+        let root = BitMapBackend::new(path, size).into_drawing_area();
+        root.fill(&WHITE)?;
+        let plot = root.margin(40, 40, 40, 40);
+
+        // 軸と枠
+        let (w, h) = (size.0 as i32 - 80, size.1 as i32 - 80);
+        let left = 0;
+        let bottom = h;
+        let right = w;
+        let top = 0;
+
+        // スケール変換
+        let x_min = -(hw as f32) * erb_step;
+        let x_max = (hw as f32) * erb_step;
+        let y_min = 0.0;
+        let y_max = 1.05;
+        let sx = (right - left) as f32 / (x_max - x_min);
+        let sy = (bottom - top) as f32 / (y_max - y_min);
+        let to_px = |x: f32, y: f32| -> (i32, i32) {
+            let px = left as f32 + (x - x_min) * sx;
+            let py = bottom as f32 - (y - y_min) * sy;
+            (px.round() as i32, py.round() as i32)
+        };
+
+        // 枠と基準線
+        plot.draw(&PathElement::new(
+            vec![(left, bottom), (right, bottom)],
+            &BLACK,
+        ))?;
+        plot.draw(&PathElement::new(vec![(left, bottom), (left, top)], &BLACK))?;
+        let (x0_px, _) = to_px(0.0, 0.0);
+        plot.draw(&PathElement::new(
+            vec![(x0_px, bottom), (x0_px, top)],
+            &BLACK.mix(0.2),
+        ))?;
+
+        // === カーネル曲線（青） ===
+        let g_points: Vec<(i32, i32)> = xs
+            .iter()
+            .zip(g_norm.iter())
+            .map(|(&x, &y)| to_px(x, y))
+            .collect();
+        plot.draw(&PathElement::new(
+            g_points,
+            ShapeStyle::from(&BLUE).stroke_width(2),
+        ))?;
+
+        // === R_pot 曲線（赤、中心揃い） ===
+        let r_points: Vec<(i32, i32)> = xs
+            .iter()
+            .zip(r_norm.iter())
+            .map(|(&x, &y)| to_px(x, y))
+            .collect();
+        plot.draw(&PathElement::new(
+            r_points,
+            ShapeStyle::from(&RED.mix(0.6)).stroke_width(1),
+        ))?;
+
+        // 簡易目盛り（ΔERB ±0.25, ±0.5）
+        for &tick in &[-0.5f32, -0.25, 0.25, 0.5] {
+            let (tx, _) = to_px(tick, 0.0);
+            plot.draw(&PathElement::new(
+                vec![(tx, bottom), (tx, bottom - 8)],
+                &BLACK.mix(0.4),
+            ))?;
+        }
+
+        root.present()?;
+        eprintln!("Saved kernel plot to {}", path.display());
+        Ok(())
     }
 }

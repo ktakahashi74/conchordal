@@ -5,5 +5,6 @@ pub mod gammatone;
 pub mod hilbert;
 pub mod landscape;
 pub mod ratios;
+//pub mod roughness;
 pub mod roughness_kernel;
 pub mod util;

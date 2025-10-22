@@ -450,7 +450,7 @@ impl Cochlea {
             .iter()
             .map(|&cf| CochlearChan::new(fs, cf, use_lp_300hz))
             .collect();
-        let n = erb_space.n_bins();
+        let n = erb_space.len();
         let plv_pairs = (0..n)
             .map(|_| (0..n).map(|_| EwPhasor::new(0.100 * fs)).collect())
             .collect();
@@ -552,29 +552,12 @@ impl Cochlea {
                 let _ = ch.complex_buf.push_overwrite(y4);
                 ch.complex_out = y4;
             }
-            env_vec[ci] = acc / x.len() as f32;
+            env_vec[ci] = ch.complex_out.norm(); //acc / x.len() as f32;
         }
 
         // After updating all channels, build PLV matrix
         let plv_mat = self.current_plv_matrix();
         (env_vec, plv_mat)
-    }
-
-    /// Compute roughness R vector from channel envelopes (mean-normalized + HP/LP path).
-    /// Simplified form used in Landscape integration.
-    pub fn compute_r_from_env(&self, env: &[f32]) -> Vec<f32> {
-        if env.is_empty() {
-            return vec![];
-        }
-        let n = env.len();
-        let mut r = vec![0.0f32; n];
-        for (i, &e) in env.iter().enumerate() {
-            // Roughness proxy: normalized modulation energy
-            let cf = self.erb_space.freqs_hz()[i];
-            let weight = 1.0 / (1.0 + (cf / 1500.0).powi(2));
-            r[i] = (e.abs()).sqrt() * weight;
-        }
-        r
     }
 
     /// Compute phase-locking-based consonance vector from PLV matrix.
@@ -719,6 +702,12 @@ impl Cochlea {
     /// Return per-channel roughness RMS estimates.
     pub fn current_r_vector(&self) -> Vec<f32> {
         self.chans.iter().map(|ch| ch.rms.p.sqrt()).collect()
+    }
+
+    /// Return per-channel current envelope power (mean amplitude after EW integration).
+    /// Used as input to potential-R computation.
+    pub fn current_envelope_levels(&self) -> Vec<f32> {
+        self.chans.iter().map(|ch| ch.mean.m.max(0.0)).collect()
     }
 
     fn update_pairwise_plv_once(&mut self) {

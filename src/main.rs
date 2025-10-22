@@ -21,8 +21,8 @@ fn parse_tones(s: &str) -> Vec<(f32, f32)> {
             let f = parts.next()?.trim().parse::<f32>().ok()?;
             let a = parts
                 .next()
-                .map(|x| x.trim().parse::<f32>().unwrap_or(1.0))
-                .unwrap_or(1.0);
+                .map(|x| x.trim().parse::<f32>().unwrap_or(100.))
+                .unwrap_or(100.);
             Some((f, a))
         })
         .collect()

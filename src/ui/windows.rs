@@ -85,14 +85,13 @@ pub fn show_plv_heatmap(
     });
 }
 
-/// Plot cochlea state: line (R per channel) + heatmap (history).
+/// Plot cochlea envelope state: per-channel envelope energy distribution.
 pub fn draw_cochlea_state(ui: &mut egui::Ui, frame: &LandscapeFrame) -> PlotResponse<()> {
-    Plot::new("cochlea_state_plot")
+    Plot::new("cochlea_envelope_plot")
         .legend(egui_plot::Legend::default())
         .allow_scroll(false)
         .allow_drag(false)
         .height(150.0)
-        // 横軸を log2(Hz) に変換した値で表示
         .x_axis_formatter(|mark, _range| {
             let hz = 2f64.powf(mark.value);
             format!("{:.0} Hz", hz)
@@ -102,16 +101,16 @@ pub fn draw_cochlea_state(ui: &mut egui::Ui, frame: &LandscapeFrame) -> PlotResp
         .include_y(0.0)
         .include_y(1.0)
         .show(ui, |plot_ui| {
-            // --- 折れ線プロット（最新 R） ---
-            if !frame.freqs_hz.is_empty() && frame.r_last.len() == frame.freqs_hz.len() {
+            // --- 包絡レベルラインプロット ---
+            if !frame.freqs_hz.is_empty() && frame.env_last.len() == frame.freqs_hz.len() {
                 let pts: PlotPoints = frame
                     .freqs_hz
                     .iter()
                     .cloned()
-                    .zip(frame.r_last.iter().cloned())
-                    .map(|(f, r)| [f.log2() as f64, r as f64])
+                    .zip(frame.env_last.iter().cloned())
+                    .map(|(f, e)| [f.log2() as f64, e as f64])
                     .collect();
-                plot_ui.line(Line::new("R (latest)", pts));
+                plot_ui.line(Line::new("Envelope level", pts));
             }
         })
 }
@@ -212,16 +211,35 @@ pub fn main_window(ctx: &egui::Context, frame: &UiFrame) {
             let ui = &mut cols[0];
 
             // Roughness R
-            log2_plot_hz(
-                ui,
-                "Roughness Landscape (R)",
-                &frame.landscape.freqs_hz,
-                &frame.landscape.r_last,
-                "R",
-                0.0,
-                (max_r * 1.05) as f64,
-                //1.0,
-            );
+            // log2_plot_hz(
+            //     ui,
+            //     "Roughness Landscape (R)",
+            //     &frame.landscape.freqs_hz,
+            //     &frame.landscape.r_last,
+            //     "R",
+            //     0.0,
+            //     (max_r * 1.05) as f64,
+            //     //1.0,
+            // );
+
+            {
+                let n = frame.landscape.r_last.len();
+                let fs = frame.landscape.fs;
+                if n > 1 {
+                    let df = fs / (2.0 * n as f32);
+                    let freqs_hz: Vec<f32> = (0..n).map(|i| i as f32 * df).collect();
+                    println!("xs_hz: {:?}", freqs_hz);
+                    log2_plot_hz(
+                        ui,
+                        "Roughness Landscape (R)",
+                        &freqs_hz[1..], // remove DC
+                        &frame.landscape.r_last[1..],
+                        "R",
+                        0.0,
+                        (max_r * 1.05) as f64,
+                    );
+                }
+            }
 
             // Consonance (dummy)
             log2_plot_hz(
@@ -234,16 +252,16 @@ pub fn main_window(ctx: &egui::Context, frame: &UiFrame) {
                 1.0,
             );
 
-            // K = alpha*C - beta*R
-            log2_plot_hz(
-                ui,
-                "K = alpha*C - beta*R",
-                &frame.landscape.freqs_hz,
-                &frame.landscape.k_last,
-                "K",
-                (min_k * 1.1) as f64,
-                (max_k * 1.1) as f64,
-            );
+            // // K = alpha*C - beta*R
+            // log2_plot_hz(
+            //     ui,
+            //     "K = alpha*C - beta*R",
+            //     &frame.landscape.freqs_hz,
+            //     &frame.landscape.k_last,
+            //     "K",
+            //     (min_k * 1.1) as f64,
+            //     (max_k * 1.1) as f64,
+            // );
         });
     });
 }

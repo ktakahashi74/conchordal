@@ -228,7 +228,6 @@ pub fn main_window(ctx: &egui::Context, frame: &UiFrame) {
                 if n > 1 {
                     let df = fs / (2.0 * n as f32);
                     let freqs_hz: Vec<f32> = (0..n).map(|i| i as f32 * df).collect();
-                    println!("xs_hz: {:?}", freqs_hz);
                     log2_plot_hz(
                         ui,
                         "Roughness Landscape (R)",

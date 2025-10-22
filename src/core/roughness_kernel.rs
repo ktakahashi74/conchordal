@@ -293,7 +293,6 @@ mod tests {
         assert!(g.iter().all(|&v| v >= 0.0), "kernel must be non-negative");
         assert_eq!(g.len(), 2 * hw + 1, "length = 2*hw+1");
         let edge_mean = (g[0] + g[g.len() - 1]) * 0.5;
-        eprintln!("edge mean: {}", edge_mean);
         assert!(edge_mean < 1e-4, "edges should decay toward zero");
     }
 
@@ -302,7 +301,6 @@ mod tests {
     fn kernel_center_is_suppressed_but_not_zero() {
         let (g, hw) = make_kernel();
         let center = g[hw];
-        eprintln!("center value: {}", center);
         assert!(
             center > 0.0 && center < 0.005,
             "center should be small but >0"
@@ -970,10 +968,6 @@ mod tests {
         }
         mae /= g1.len() as f32;
 
-        println!(
-            "MAE between build_kernel and eval_kernel_delta_erb = {}",
-            mae
-        );
         assert!(mae < 1e-3, "Kernel shapes differ (MAE={})", mae);
 
         // --- 可視化（確認用） ---
@@ -1024,7 +1018,6 @@ mod tests {
             .draw()?;
 
         root.present()?;
-        println!("Output: {}", out_path);
         Ok(())
     }
 }

@@ -1,9 +1,12 @@
 // core/landscape.rs — Landscape computed by stateful cochlea front-end.
 
+use rustfft::num_complex::Complex32;
+
 use crate::core::cochlea::Cochlea;
 use crate::core::erb::ErbSpace;
 //use crate::core::roughness::compute_potential_r_from_signal;
 
+use crate::core::fft::analytic_signal;
 use crate::core::roughness_kernel::{KernelParams, potential_r_from_signal_direct};
 
 #[derive(Clone, Copy, Debug)]
@@ -53,6 +56,7 @@ pub struct Landscape {
     last_k: Vec<f32>,
     env_last: Vec<f32>,
     last_plv: Option<Vec<Vec<f32>>>,
+    analytic_last: Option<Vec<Complex32>>,
 }
 
 impl Landscape {
@@ -68,16 +72,14 @@ impl Landscape {
             last_k: vec![0.0; ch],
             env_last: vec![0.0; ch],
             last_plv: Some(vec![vec![0.0; ch]; ch]),
+            analytic_last: None,
         }
     }
 
     /// Process one block: cochlea update + R/C/K compute.
     pub fn process_block(&mut self, x: &[f32]) {
-        // Unified cochlea step (envelope + PLV)
-        //        let (env_vec, plv_mat) = self.cochlea.process_block_core(x);
-
-        //        let env_levels = self.cochlea.current_envelope_levels();
-        //        self.env_last = env_levels.clone();
+        let analytic = analytic_signal(x);
+        self.analytic_last = Some(analytic.clone());
 
         // --- R ---
         match self.params.r_variant {

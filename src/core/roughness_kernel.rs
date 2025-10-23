@@ -7,7 +7,9 @@
 //! RVariant::KernelConv.
 
 use crate::core::erb::{ErbSpace, erb_bw_hz, hz_to_erb};
-use crate::core::fft::{apply_hann_window, apply_hann_window_complex, fft_convolve_same};
+use crate::core::fft::{
+    analytic_signal, apply_hann_window, apply_hann_window_complex, fft_convolve_same,
+};
 use rustfft::{FftPlanner, num_complex::Complex32};
 //use std::cmp::Ordering;
 use std::sync::OnceLock;
@@ -222,9 +224,49 @@ pub fn potential_r_from_psd_direct(
     (r, r_total)
 }
 
-// ======================================================================
-// Analytic-signal version of potential_r_from_signal_direct()
-// ======================================================================
+/// Potential R from analytic (Hilbert) signal.
+/// Uses ΔERB neighbor integration (same as potential_r_from_psd_direct).
+pub fn potential_r_from_analytic(
+    analytic: &[Complex32],
+    fs: f32,
+    params: &KernelParams,
+    gamma: f32,
+    alpha: f32,
+) -> (Vec<f32>, f32) {
+    if analytic.is_empty() {
+        return (vec![], 0.0);
+    }
+
+    // 1. Envelope amplitude from analytic signal
+    let amp: Vec<f32> = analytic.iter().map(|z| z.norm()).collect();
+    let n = amp.len().next_power_of_two();
+
+    // 2. Prepare complex buffer (for FFT)
+    let mut buf: Vec<Complex32> = amp.iter().map(|&x| Complex32::new(x, 0.0)).collect();
+    buf.resize(n, Complex32::new(0.0, 0.0));
+
+    // 3. Apply Hann window (real version)
+    let U = crate::core::fft::apply_hann_window_complex(&mut buf);
+
+    // 4. FFT
+    let mut planner = FftPlanner::new();
+    let fft = planner.plan_fft_forward(n);
+    fft.process(&mut buf);
+
+    // 5. One-sided PSD with proper scaling
+    let n_half = n / 2;
+    let scale = 1.0 / (fs * n as f32 * U);
+    let mut psd = vec![0.0f32; n_half];
+    for i in 0..n_half {
+        psd[i] = buf[i].norm_sqr() * scale * 2.0;
+    }
+
+    // 6. Neighbor integration (ΔERB-domain convolution)
+    potential_r_from_psd_direct(&psd, fs, params, gamma, alpha)
+}
+
+/// Direct potential-R from real signal.
+/// Internally computes analytic signal (Hilbert) and passes to PSD→ERB convolution.
 pub fn potential_r_from_signal_direct(
     signal: &[f32],
     fs: f32,
@@ -236,70 +278,28 @@ pub fn potential_r_from_signal_direct(
         return (vec![], 0.0);
     }
 
-    // 1. Hilbert analytic signal
-    let analytic = hilbert_transform(signal);
+    // 1. Analytic signal via Hilbert transform
+    let mut analytic = analytic_signal(signal);
     let n = analytic.len();
 
-    // apply hann window
-    let mut buf: Vec<Complex32> = analytic;
-    let U = apply_hann_window_complex(&mut buf); // 実版と同じ補正
+    // 2. Apply Hann window (complex)
+    let U = apply_hann_window_complex(&mut analytic);
 
-    // 2. FFT
+    // 3. FFT
     let mut planner = FftPlanner::new();
     let fft = planner.plan_fft_forward(n);
-    fft.process(&mut buf);
+    fft.process(&mut analytic);
 
-    // 3. Power spectrum (one-sided, normalized)
+    // 4. One-sided PSD (normalized)
     let scale = 1.0 / (fs * n as f32 * U);
     let n_half = n / 2;
-    let psd: Vec<f32> = buf[..n_half]
+    let psd: Vec<f32> = analytic[..n_half]
         .iter()
-        .map(|z| z.norm_sqr() * scale) // factor 2 for one-sided
+        .map(|z| z.norm_sqr() * scale)
         .collect();
 
-    // 4. Pass to existing ERB-domain neighbor integration
+    // 5. ERB-domain convolution
     potential_r_from_psd_direct(&psd, fs, params, gamma, alpha)
-}
-
-/// Simple Hilbert transform (analytic signal) using FFT.
-/// Returns Vec<Complex32> same length as input.
-fn hilbert_transform(x: &[f32]) -> Vec<Complex32> {
-    let n = x.len();
-    let mut planner = FftPlanner::new();
-    let fft = planner.plan_fft_forward(n);
-    let ifft = planner.plan_fft_inverse(n);
-
-    // FFT
-    let mut buf: Vec<Complex32> = x.iter().map(|&v| Complex32::new(v, 0.0)).collect();
-    fft.process(&mut buf);
-
-    // Build Hilbert multiplier
-    let mut h = vec![Complex32::new(0.0, 0.0); n];
-    if n > 0 {
-        h[0] = Complex32::new(1.0, 0.0);
-        if n % 2 == 0 {
-            h[n / 2] = Complex32::new(1.0, 0.0);
-            for k in 1..(n / 2) {
-                h[k] = Complex32::new(2.0, 0.0);
-            }
-        } else {
-            for k in 1..((n + 1) / 2) {
-                h[k] = Complex32::new(2.0, 0.0);
-            }
-        }
-    }
-
-    // Apply and IFFT
-    for (z, &w) in buf.iter_mut().zip(h.iter()) {
-        *z *= w;
-    }
-    ifft.process(&mut buf);
-
-    // Normalize
-    let norm = 1.0 / n as f32;
-    buf.iter_mut().for_each(|z| *z *= norm);
-
-    buf
 }
 
 /// Direct potential-R from time-domain signal

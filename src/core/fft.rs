@@ -178,6 +178,49 @@ pub fn fft_convolve_same(x: &[f32], h: &[f32]) -> Vec<f32> {
     y_full[start..end].to_vec()
 }
 
+/// Compute analytic signal via Hilbert transform.
+/// Output: complex-valued analytic signal (same length as input).
+pub fn analytic_signal(x: &[f32]) -> Vec<Complex32> {
+    let n = x.len().next_power_of_two();
+    let mut buf: Vec<Complex32> = x.iter().map(|&v| Complex32::new(v, 0.0)).collect();
+    buf.resize(n, Complex32::new(0.0, 0.0));
+
+    let mut planner = FftPlanner::new();
+    let fft = planner.plan_fft_forward(n);
+    let ifft = planner.plan_fft_inverse(n);
+
+    // Forward FFT
+    fft.process(&mut buf);
+
+    // Hilbert frequency multiplier
+    let mut h = vec![Complex32::new(0.0, 0.0); n];
+    if n > 0 {
+        h[0] = Complex32::new(1.0, 0.0);
+        if n % 2 == 0 {
+            h[n / 2] = Complex32::new(1.0, 0.0);
+            for k in 1..(n / 2) {
+                h[k] = Complex32::new(2.0, 0.0);
+            }
+        } else {
+            for k in 1..((n + 1) / 2) {
+                h[k] = Complex32::new(2.0, 0.0);
+            }
+        }
+    }
+
+    // Apply H and IFFT
+    for (z, &w) in buf.iter_mut().zip(h.iter()) {
+        *z *= w;
+    }
+    ifft.process(&mut buf);
+
+    // Normalize
+    let norm = 1.0 / n as f32;
+    buf.iter_mut().for_each(|z| *z *= norm);
+
+    buf
+}
+
 // ======================================================================
 // Utility
 // ======================================================================

@@ -223,7 +223,6 @@ pub fn potential_r_from_psd_direct(
 
     (r, r_total)
 }
-
 /// Potential R from analytic (Hilbert) signal.
 /// Uses ΔERB neighbor integration (same as potential_r_from_psd_direct).
 pub fn potential_r_from_analytic(
@@ -237,31 +236,38 @@ pub fn potential_r_from_analytic(
         return (vec![], 0.0);
     }
 
-    // 1. Envelope amplitude from analytic signal
-    let amp: Vec<f32> = analytic.iter().map(|z| z.norm()).collect();
-    let n = amp.len().next_power_of_two();
+    // 1) コピー + 2の冪にゼロパディング（必要なら）
+    let n0 = analytic.len();
+    let n = n0.next_power_of_two();
+    let mut buf: Vec<Complex32> = Vec::with_capacity(n);
+    buf.extend_from_slice(analytic);
+    if n > n0 {
+        buf.resize(n, Complex32::new(0.0, 0.0));
+    }
 
-    // 2. Prepare complex buffer (for FFT)
-    let mut buf: Vec<Complex32> = amp.iter().map(|&x| Complex32::new(x, 0.0)).collect();
-    buf.resize(n, Complex32::new(0.0, 0.0));
-
-    // 3. Apply Hann window (real version)
+    // 2) 複素Hann窓（エネルギー補正 U を返す版）
     let U = crate::core::fft::apply_hann_window_complex(&mut buf);
 
-    // 4. FFT
+    // 3) FFT
     let mut planner = FftPlanner::new();
     let fft = planner.plan_fft_forward(n);
     fft.process(&mut buf);
 
-    // 5. One-sided PSD with proper scaling
+    // 4) 片側PSD（Welchスケーリング）
+    //    DCのみ×1、1..n/2-1 を×2、（偶数n時のNyquistは×1）にするならその分岐を書く。
     let n_half = n / 2;
-    let scale = 1.0 / (fs * n as f32 * U);
-    let mut psd = vec![0.0f32; n_half];
-    for i in 0..n_half {
-        psd[i] = buf[i].norm_sqr() * scale * 2.0;
-    }
+    let base_scale = 1.0 / (fs * n as f32 * U);
 
-    // 6. Neighbor integration (ΔERB-domain convolution)
+    let mut psd = vec![0.0f32; n_half];
+    // DC
+    psd[0] = buf[0].norm_sqr() * base_scale;
+    // 1..n/2-1
+    for i in 1..n_half {
+        psd[i] = buf[i].norm_sqr() * base_scale * 2.0;
+    }
+    // （必要なら n 偶数時の Nyquist はここで扱う。psd は n/2 要素なので既に除外。）
+
+    // 5) ΔERB近傍積分へ
     potential_r_from_psd_direct(&psd, fs, params, gamma, alpha)
 }
 
@@ -278,28 +284,9 @@ pub fn potential_r_from_signal_direct(
         return (vec![], 0.0);
     }
 
-    // 1. Analytic signal via Hilbert transform
-    let mut analytic = analytic_signal(signal);
-    let n = analytic.len();
+    let analytic = analytic_signal(signal);
 
-    // 2. Apply Hann window (complex)
-    let U = apply_hann_window_complex(&mut analytic);
-
-    // 3. FFT
-    let mut planner = FftPlanner::new();
-    let fft = planner.plan_fft_forward(n);
-    fft.process(&mut analytic);
-
-    // 4. One-sided PSD (normalized)
-    let scale = 1.0 / (fs * n as f32 * U);
-    let n_half = n / 2;
-    let psd: Vec<f32> = analytic[..n_half]
-        .iter()
-        .map(|z| z.norm_sqr() * scale)
-        .collect();
-
-    // 5. ERB-domain convolution
-    potential_r_from_psd_direct(&psd, fs, params, gamma, alpha)
+    potential_r_from_analytic(&analytic, fs, params, gamma, alpha)
 }
 
 /// Direct potential-R from time-domain signal

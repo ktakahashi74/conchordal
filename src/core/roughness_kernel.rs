@@ -7,7 +7,7 @@
 //! RVariant::KernelConv.
 
 use crate::core::erb::{ErbSpace, erb_bw_hz, hz_to_erb};
-use crate::core::fft::apply_hann_window;
+use crate::core::fft::{apply_hann_window, apply_hann_window_complex, fft_convolve_same};
 use rustfft::{FftPlanner, num_complex::Complex32};
 //use std::cmp::Ordering;
 use std::sync::OnceLock;
@@ -63,13 +63,13 @@ impl Default for KernelParams {
 // --- Kernel LUT caching via OnceLock
 // ======================================================================
 
-static KERNEL_CACHE: OnceLock<(Vec<f32>, usize)> = OnceLock::new();
+static KERNEL_CACHE: OnceLock<(Vec<f32>, usize, f32)> = OnceLock::new();
 
 /// Returns cached kernel LUT (reuses previous if params & step unchanged)
-fn get_cached_kernel(kparams: &KernelParams, erb_step: f32) -> &'static (Vec<f32>, usize) {
+fn get_cached_kernel(kparams: &KernelParams, erb_step: f32) -> &'static (Vec<f32>, usize, f32) {
     KERNEL_CACHE.get_or_init(|| {
         let (lut, hw) = build_kernel_erbstep(kparams, erb_step);
-        (lut, hw)
+        (lut, hw, erb_step)
     })
 }
 
@@ -184,8 +184,8 @@ pub fn potential_r_from_psd_direct(
     // === LUT ===
     let half_width_erb = kparams.half_width_erb.max(0.5);
     let lut_step: f32 = 0.005;
-    //let (lut, hw) = build_kernel_erbstep(kparams, lut_step);
-    let (lut, hw) = get_cached_kernel(kparams, lut_step);
+    let (lut, hw) = build_kernel_erbstep(kparams, lut_step);
+    //let (lut, hw, _) = get_cached_kernel(kparams, lut_step);
 
     let mut r = vec![0.0f32; n];
 
@@ -205,7 +205,7 @@ pub fn potential_r_from_psd_direct(
 
         for j in j_lo..j_hi {
             let d = erb[j] - fi_erb;
-            let w = lut_interp(&lut, lut_step, *hw, d);
+            let w = lut_interp(&lut, lut_step, hw, d);
             r_sum += e[j] * w * du_hz[j];
         }
 
@@ -222,19 +222,88 @@ pub fn potential_r_from_psd_direct(
     (r, r_total)
 }
 
-/// Computes potential roughness directly from a mono waveform.
-/// Performs: window → FFT → |X|² → ΔERB convolution via potential_r_from_psd_direct().
-///
-/// # Arguments
-/// * `signal` - mono input signal
-/// * `fs` - sampling rate [Hz]
-/// * `params` - kernel parameters
-/// * `gamma` - loudness compression exponent (typically 0.5)
-/// * `alpha` - local salience weighting exponent (typically 0.5)
-///
-/// # Returns
-/// (R_per_bin, R_total)
+// ======================================================================
+// Analytic-signal version of potential_r_from_signal_direct()
+// ======================================================================
 pub fn potential_r_from_signal_direct(
+    signal: &[f32],
+    fs: f32,
+    params: &KernelParams,
+    gamma: f32,
+    alpha: f32,
+) -> (Vec<f32>, f32) {
+    if signal.is_empty() {
+        return (vec![], 0.0);
+    }
+
+    // 1. Hilbert analytic signal
+    let analytic = hilbert_transform(signal);
+    let n = analytic.len();
+
+    // apply hann window
+    let mut buf: Vec<Complex32> = analytic;
+    let U = apply_hann_window_complex(&mut buf); // 実版と同じ補正
+
+    // 2. FFT
+    let mut planner = FftPlanner::new();
+    let fft = planner.plan_fft_forward(n);
+    fft.process(&mut buf);
+
+    // 3. Power spectrum (one-sided, normalized)
+    let scale = 1.0 / (fs * n as f32 * U);
+    let n_half = n / 2;
+    let psd: Vec<f32> = buf[..n_half]
+        .iter()
+        .map(|z| z.norm_sqr() * scale) // factor 2 for one-sided
+        .collect();
+
+    // 4. Pass to existing ERB-domain neighbor integration
+    potential_r_from_psd_direct(&psd, fs, params, gamma, alpha)
+}
+
+/// Simple Hilbert transform (analytic signal) using FFT.
+/// Returns Vec<Complex32> same length as input.
+fn hilbert_transform(x: &[f32]) -> Vec<Complex32> {
+    let n = x.len();
+    let mut planner = FftPlanner::new();
+    let fft = planner.plan_fft_forward(n);
+    let ifft = planner.plan_fft_inverse(n);
+
+    // FFT
+    let mut buf: Vec<Complex32> = x.iter().map(|&v| Complex32::new(v, 0.0)).collect();
+    fft.process(&mut buf);
+
+    // Build Hilbert multiplier
+    let mut h = vec![Complex32::new(0.0, 0.0); n];
+    if n > 0 {
+        h[0] = Complex32::new(1.0, 0.0);
+        if n % 2 == 0 {
+            h[n / 2] = Complex32::new(1.0, 0.0);
+            for k in 1..(n / 2) {
+                h[k] = Complex32::new(2.0, 0.0);
+            }
+        } else {
+            for k in 1..((n + 1) / 2) {
+                h[k] = Complex32::new(2.0, 0.0);
+            }
+        }
+    }
+
+    // Apply and IFFT
+    for (z, &w) in buf.iter_mut().zip(h.iter()) {
+        *z *= w;
+    }
+    ifft.process(&mut buf);
+
+    // Normalize
+    let norm = 1.0 / n as f32;
+    buf.iter_mut().for_each(|z| *z *= norm);
+
+    buf
+}
+
+/// Direct potential-R from time-domain signal
+pub fn potential_r_from_signal_direct_orig(
     signal: &[f32],
     fs: f32,
     params: &KernelParams,

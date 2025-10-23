@@ -33,6 +33,28 @@ pub fn apply_hann_window(buf: &mut [Complex32]) -> f32 {
     3.0 / 8.0
 }
 
+/// Apply Hann window (complex-valued input).
+///
+/// Multiplies each sample by w[i] = 0.5 * (1 - cos(2πi / N)),
+/// and returns the Welch normalization factor U = Σw[i]^2 / N.
+///
+/// Same behavior and scaling as `apply_hann_window()` for real signals.
+pub fn apply_hann_window_complex(buf: &mut [Complex32]) -> f32 {
+    let n = buf.len();
+    if n == 0 {
+        return 1.0;
+    }
+
+    let mut sum_sq = 0.0f32;
+    for (i, x) in buf.iter_mut().enumerate() {
+        let w = 0.5 * (1.0 - (2.0 * std::f32::consts::PI * i as f32 / n as f32).cos());
+        *x *= w;
+        sum_sq += w * w;
+    }
+
+    sum_sq / n as f32
+}
+
 // ======================================================================
 // Inverse STFT (OLA-based)
 // ======================================================================

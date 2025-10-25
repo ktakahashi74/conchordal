@@ -7,9 +7,7 @@
 //! RVariant::KernelConv.
 
 use crate::core::erb::{ErbSpace, erb_bw_hz, hz_to_erb};
-use crate::core::fft::{
-    analytic_signal, apply_hann_window, apply_hann_window_complex, fft_convolve_same,
-};
+use crate::core::fft::{apply_hann_window, apply_hann_window_complex, fft_convolve_same, hilbert};
 use rustfft::{FftPlanner, num_complex::Complex32};
 //use std::cmp::Ordering;
 use std::sync::OnceLock;
@@ -284,7 +282,7 @@ pub fn potential_r_from_signal_direct(
         return (vec![], 0.0);
     }
 
-    let analytic = analytic_signal(signal);
+    let analytic = hilbert(signal);
 
     potential_r_from_analytic(&analytic, fs, params, gamma, alpha)
 }

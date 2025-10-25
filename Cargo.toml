@@ -14,7 +14,11 @@ opt-level = 3
 lto = true
 #debug = true
 
+
 [dependencies]
+anyhow = "1.0"
+
+
 clap = { version = "4.5", features = ["derive"]}
 ctrlc = "3.4"
 
@@ -32,6 +36,7 @@ rustfft = "6"
 ndarray = "0.15"
 wide = "0.8"
 rand = "0.9"
+scirs2-signal = "0.1.0-rc.2"
 
 # Serde for future config
 serde = { version = "1.0", features = ["derive"] }

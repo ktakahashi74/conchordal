@@ -6,8 +6,8 @@ use crate::core::cochlea::Cochlea;
 use crate::core::erb::ErbSpace;
 //use crate::core::roughness::compute_potential_r_from_signal;
 
-use crate::core::fft::analytic_signal;
-use crate::core::roughness_kernel::{KernelParams, potential_r_from_signal_direct};
+use crate::core::fft::hilbert;
+use crate::core::roughness_kernel::{KernelParams, potential_r_from_analytic};
 
 #[derive(Clone, Copy, Debug)]
 pub enum RVariant {
@@ -78,7 +78,7 @@ impl Landscape {
 
     /// Process one block: cochlea update + R/C/K compute.
     pub fn process_block(&mut self, x: &[f32]) {
-        let analytic = analytic_signal(x);
+        let analytic = hilbert(x);
         self.analytic_last = Some(analytic.clone());
 
         // --- R ---
@@ -87,17 +87,15 @@ impl Landscape {
                 //self.last_r = self.cochlea.compute_r_from_env(&env_vec);
             }
             RVariant::CochleaPotential => {
-                let e_ch = self.cochlea.current_envelope_levels(); // envelope mean per channel
-                let erb_space = &self.cochlea.erb_space;
-                let freqs = erb_space.freqs_hz();
+                // let e_ch = self.cochlea.current_envelope_levels(); // envelope mean per channel
+                // let erb_space = &self.cochlea.erb_space;
+                // let freqs = erb_space.freqs_hz();
 
                 //                self.last_r = compute_potential_r(&e_ch, freqs, erb_space, &PotRParams::default());
             }
             RVariant::KernelConv => {
-                let erb_space = &self.cochlea.erb_space; // 既存 cochlea が持つ ERB 定義だけ利用
-
-                (self.last_r, _) = potential_r_from_signal_direct(
-                    x,
+                (self.last_r, _) = potential_r_from_analytic(
+                    &analytic,
                     self.params.fs,
                     &self.params.kernel_params,
                     0.5,

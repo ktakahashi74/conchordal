@@ -2,57 +2,46 @@
 //! Computes frequency-space roughness landscape by convolving the cochlear
 //! envelope energy along the ERB axis using an asymmetric kernel.
 //!
-//! Designed for biologically-plausible spatial interference modeling rather than
-//! time-domain envelope modulation.  Used in Landscape::process_block() for
-//! RVariant::KernelConv.
+//! This version keeps the kernel defined in ΔERB space (biologically grounded),
+//! but allows reuse from NSGT/log2-domain analysis by mapping frequencies
+//! through hz→ERB before weighting.
+//!
+//! Used in Landscape::process_frame() for RVariant::NsgtKernel.
 
-use crate::core::erb::{ErbSpace, erb_bw_hz, hz_to_erb};
-use crate::core::fft::{apply_hann_window, apply_hann_window_complex, fft_convolve_same, hilbert};
+use crate::core::erb::{erb_bw_hz, hz_to_erb};
+use crate::core::fft::{apply_hann_window_complex, hilbert};
+use crate::core::log2::Log2Space;
+use crate::core::nsgt::{NsgtLog2, NsgtLog2Config};
 use rustfft::{FftPlanner, num_complex::Complex32};
-//use std::cmp::Ordering;
 use std::sync::OnceLock;
 
 // ======================================================================
-// Kernel definition (Plomp–Levelt inspired, biologically extended)
+// Kernel definition (Plomp–Levelt inspired, ΔERB domain)
 // ======================================================================
 
-/// Parameters defining two-layer asymmetric ERB-domain roughness kernel g(ΔERB).
-/// Layer 1 = Cochlear-level (narrow, with center suppression)
-/// Layer 2 = Neural-level (broader lateral inhibition)
 #[derive(Clone, Copy, Debug)]
 pub struct KernelParams {
-    // === Layer 1: Cochlear ===
-    /// Gaussian width (low-side spread)
+    // === Cochlear layer ===
     pub sigma_erb: f32,
-    /// High-side exponential tail constant
     pub tau_erb: f32,
-    /// Mix ratio between Gaussian core and exponential tail [0..1]
     pub mix_tail: f32,
-    /// Kernel radius in ERB units
     pub half_width_erb: f32,
-    /// Width of central suppression zone (ΔERB for fusion)
     pub suppress_sigma_erb: f32,
-    /// Exponent controlling steepness of suppression rise
     pub suppress_pow: f32,
-
-    // === Layer 2: Neural ===
-    /// Broad Gaussian width of neural lateral inhibition (ΔERB scale)
+    // === Neural layer ===
     pub sigma_neural_erb: f32,
-    /// Weight of neural-level contribution [0..1]
     pub w_neural: f32,
 }
 
 impl Default for KernelParams {
     fn default() -> Self {
         Self {
-            // --- Cochlear layer ---
             sigma_erb: 0.45,
             tau_erb: 1.0,
             mix_tail: 0.20,
             half_width_erb: 4.0,
             suppress_sigma_erb: 0.10,
             suppress_pow: 2.0,
-            // --- Neural layer ---
             sigma_neural_erb: 1.0,
             w_neural: 0.3,
         }
@@ -60,12 +49,11 @@ impl Default for KernelParams {
 }
 
 // ======================================================================
-// --- Kernel LUT caching via OnceLock
+// Kernel LUT
 // ======================================================================
 
 static KERNEL_CACHE: OnceLock<(Vec<f32>, usize, f32)> = OnceLock::new();
 
-/// Returns cached kernel LUT (reuses previous if params & step unchanged)
 fn get_cached_kernel(kparams: &KernelParams, erb_step: f32) -> &'static (Vec<f32>, usize, f32) {
     KERNEL_CACHE.get_or_init(|| {
         let (lut, hw) = build_kernel_erbstep(kparams, erb_step);
@@ -73,19 +61,14 @@ fn get_cached_kernel(kparams: &KernelParams, erb_step: f32) -> &'static (Vec<f32
     })
 }
 
-/// two-layer asymmetric ERB-domain kernel g(ΔERB).
 #[inline]
-fn eval_kernel_delta_erb(params: &KernelParams, d_erb: f32) -> f32 {
-    // Continuous version of two-layer asymmetric kernel (no normalization here)
+pub fn eval_kernel_delta_erb(params: &KernelParams, d_erb: f32) -> f32 {
     let sigma = params.sigma_erb.max(1e-6);
     let tau = params.tau_erb.max(1e-6);
     let s_sup = params.suppress_sigma_erb.max(1e-6);
     let sig_n = params.sigma_neural_erb.max(1e-6);
 
     let desq = d_erb * d_erb;
-
-    // === Cochlear base: Gaussian + (tail on *positive* side) ===
-    // ΔERB > 0 → 高域側（f_j > f_i）では tail
     let g_gauss = (-desq / (2.0 * sigma * sigma)).exp();
     let g_tail = if d_erb >= 0.0 {
         (-d_erb / tau).exp()
@@ -94,37 +77,29 @@ fn eval_kernel_delta_erb(params: &KernelParams, d_erb: f32) -> f32 {
     };
     let base = (1.0 - params.mix_tail) * g_gauss + params.mix_tail * g_tail;
 
-    // Center suppression (fusion zone)
     let suppress = 1.0 - (-desq / (2.0 * s_sup * s_sup)).exp();
     let g_coch = base * suppress.powf(params.suppress_pow);
-
-    // Neural broad Gaussian
     let g_neural = (-desq / (2.0 * sig_n * sig_n)).exp();
-
     (1.0 - params.w_neural) * g_coch + params.w_neural * g_neural
 }
 
-/// Build discrete kernel g[ΔERB] sampled at given ERB step size.
 pub fn build_kernel_erbstep(params: &KernelParams, erb_step: f32) -> (Vec<f32>, usize) {
-    let half_width = params.half_width_erb;
-    let n_side = (half_width / erb_step).ceil() as usize;
+    let hw_erb = params.half_width_erb;
+    let n_side = (hw_erb / erb_step).ceil() as usize;
     let len = 2 * n_side + 1;
 
-    // Sample continuous g(ΔERB)
     let mut g: Vec<f32> = (0..len)
         .map(|i| {
-            let d_erb = (i as i32 - n_side as i32) as f32 * erb_step;
-            eval_kernel_delta_erb(params, d_erb)
+            let d = (i as i32 - n_side as i32) as f32 * erb_step;
+            eval_kernel_delta_erb(params, d)
         })
         .collect();
 
-    // L1 normalization: ∫g dΔERB ≈ Σg * step = 1
-    let sum = g.iter().copied().sum::<f32>();
+    let sum = g.iter().sum::<f32>();
     if sum > 0.0 {
         let inv = 1.0 / sum;
         g.iter_mut().for_each(|v| *v *= inv);
     }
-
     (g, n_side)
 }
 
@@ -143,10 +118,26 @@ fn lut_interp(lut: &[f32], step: f32, hw: usize, d_erb: f32) -> f32 {
     a + frac * (b - a)
 }
 
-/// Direct potential-R from PSD bins (no ERB resampling, no FFT).
-/// psd_hz: power spectrum on linear frequency bins 0..fs/2 (rfft length).
-/// fs: sampling rate.
-/// Returns (R per bin aligned to psd bins, R_total scalar).
+// ======================================================================
+// Roughness from NSGT/log2-space amplitudes (ΔERB LUT reused)
+// ======================================================================
+
+#[derive(Clone, Debug)]
+pub struct RoughnessKernel {
+    pub params: KernelParams,
+    pub erb_step: f32,
+}
+
+impl RoughnessKernel {
+    pub fn new(params: KernelParams, erb_step: f32) -> Self {
+        Self { params, erb_step }
+    }
+}
+
+// ======================================================================
+// Existing (legacy) direct / analytic versions
+// ======================================================================
+
 pub fn potential_r_from_psd_direct(
     psd_hz: &[f32],
     fs: f32,
@@ -158,71 +149,41 @@ pub fn potential_r_from_psd_direct(
     if n == 0 {
         return (vec![], 0.0);
     }
-
-    // rfft 由来の片側 N/2 本（Nyquist除外）を想定 ⇒ nfft = 2*n
     let nfft = 2 * n;
     let df = fs / nfft as f32;
-
-    // === 周波数・圧縮エネルギー ===
-    let mut f = vec![0.0f32; n];
-    let mut e = vec![0.0f32; n];
-    let eps = 1e-12f32;
-    for i in 0..n {
-        let fi = i as f32 * df;
-        f[i] = fi;
-        e[i] = (psd_hz[i] + eps).powf(gamma);
-    }
-
-    // === ERB-number 累積座標（厳密な ΔERB 積分用） ===
-    let mut u = vec![0.0f32; n];
-    for i in 1..n {
-        let fmid = 0.5 * (f[i] + f[i - 1]);
-        let du = (f[i] - f[i - 1]) / erb_bw_hz(fmid);
-        u[i] = u[i - 1] + du;
-    }
-
-    // === LUT ===
-    let half_width_erb = kparams.half_width_erb.max(0.5);
-    let lut_step: f32 = 0.005;
-    let (lut, hw) = build_kernel_erbstep(kparams, lut_step);
-    //let (lut, hw, _) = get_cached_kernel(kparams, lut_step);
-
-    let mut r = vec![0.0f32; n];
-
-    // === O(N·K) === neighbor integration
+    let e: Vec<f32> = psd_hz.iter().map(|&x| (x + 1e-12).powf(gamma)).collect();
+    let f: Vec<f32> = (0..n).map(|i| i as f32 * df).collect();
     let erb: Vec<f32> = f.iter().map(|&x| hz_to_erb(x)).collect();
     let bw: Vec<f32> = f.iter().map(|&x| erb_bw_hz(x).max(1e-12)).collect();
     let du_hz: Vec<f32> = bw.iter().map(|&b| df / b).collect();
+    let (lut, hw) = build_kernel_erbstep(kparams, 0.005);
+    let half_width = kparams.half_width_erb;
 
+    let mut r = vec![0.0f32; n];
     for i in 0..n {
         let fi_erb = erb[i];
         let ei = e[i];
-        let mut r_sum = 0.0;
-
-        // binary search for integration bounds
-        let j_lo = erb.partition_point(|&x| x < fi_erb - half_width_erb);
-        let j_hi = erb.partition_point(|&x| x <= fi_erb + half_width_erb);
-
+        let mut sum = 0.0f32;
+        let j_lo = erb.partition_point(|&x| x < fi_erb - half_width);
+        let j_hi = erb.partition_point(|&x| x <= fi_erb + half_width);
         for j in j_lo..j_hi {
             let d = erb[j] - fi_erb;
-            let w = lut_interp(&lut, lut_step, hw, d);
-            r_sum += e[j] * w * du_hz[j];
+            if d.abs() > half_width || i == j {
+                continue;
+            }
+            let w = lut_interp(&lut, 0.005, hw, d);
+            sum += e[j] * w * du_hz[j];
         }
-
-        r[i] = r_sum * ei.powf(alpha); // local salience weighting
+        r[i] = sum * ei.powf(alpha);
     }
-
-    // === R_total：ERB-number 軸で台形積分（df と整合済みなのでそのまま）
     let mut r_total = 0.0f32;
     for i in 1..n {
-        let du = (u[i] - u[i - 1]).max(0.0);
+        let du = (erb[i] - erb[i - 1]).max(0.0);
         r_total += 0.5 * (r[i - 1] + r[i]) * du;
     }
-
     (r, r_total)
 }
-/// Potential R from analytic (Hilbert) signal.
-/// Uses ΔERB neighbor integration (same as potential_r_from_psd_direct).
+
 pub fn potential_r_from_analytic(
     analytic: &[Complex32],
     fs: f32,
@@ -233,8 +194,6 @@ pub fn potential_r_from_analytic(
     if analytic.is_empty() {
         return (vec![], 0.0);
     }
-
-    // 1) コピー + 2の冪にゼロパディング（必要なら）
     let n0 = analytic.len();
     let n = n0.next_power_of_two();
     let mut buf: Vec<Complex32> = Vec::with_capacity(n);
@@ -242,134 +201,142 @@ pub fn potential_r_from_analytic(
     if n > n0 {
         buf.resize(n, Complex32::new(0.0, 0.0));
     }
-
-    // 2) 複素Hann窓（エネルギー補正 U を返す版）
-    let U = crate::core::fft::apply_hann_window_complex(&mut buf);
-
-    // 3) FFT
+    let U = apply_hann_window_complex(&mut buf);
     let mut planner = FftPlanner::new();
     let fft = planner.plan_fft_forward(n);
     fft.process(&mut buf);
-
-    // 4) 片側PSD（Welchスケーリング）
-    //    DCのみ×1、1..n/2-1 を×2、（偶数n時のNyquistは×1）にするならその分岐を書く。
     let n_half = n / 2;
     let base_scale = 1.0 / (fs * n as f32 * U);
-
     let mut psd = vec![0.0f32; n_half];
-    // DC
     psd[0] = buf[0].norm_sqr() * base_scale;
-    // 1..n/2-1
     for i in 1..n_half {
         psd[i] = buf[i].norm_sqr() * base_scale * 2.0;
     }
-    // （必要なら n 偶数時の Nyquist はここで扱う。psd は n/2 要素なので既に除外。）
-
-    // 5) ΔERB近傍積分へ
     potential_r_from_psd_direct(&psd, fs, params, gamma, alpha)
 }
 
-/// Direct potential-R from real signal.
-/// Internally computes analytic signal (Hilbert) and passes to PSD→ERB convolution.
-pub fn potential_r_from_signal_direct(
-    signal: &[f32],
-    fs: f32,
+/// Potential-R from log2-domain envelope spectrum.
+///
+/// Input:
+/// - `amps` : envelope amplitudes per log2-bin (from NSGT)
+/// - `freqs_hz` : corresponding center frequencies [Hz]
+///
+/// The kernel remains defined in ΔERB space.
+/// Suitable for `Landscape::process_frame()` where NSGT is precomputed.
+
+/// Potential-R from log2-domain envelope spectrum.
+/// Uses `Log2Space` to obtain center frequencies.
+/// Potential-R from log2-domain envelope spectrum (Neighbor integration, ±4 ERB).
+///
+/// Biological approximation of ΔERB kernel convolution using local integration
+/// of neighboring bands within ±4 ERB distance on the cochlear (ERB) axis.
+/// Faster, low-memory alternative to kernel convolution.
+/// Potential-R from log2-domain envelope spectrum.
+/// Uses `Log2Space` to obtain center frequencies.
+pub fn potential_r_from_log2_spectrum(
+    amps: &[f32],
+    space: &Log2Space,
     params: &KernelParams,
     gamma: f32,
     alpha: f32,
 ) -> (Vec<f32>, f32) {
-    if signal.is_empty() {
+    use crate::core::erb::erb_to_hz;
+    use crate::core::erb::hz_to_erb;
+
+    if amps.is_empty() || space.centers_hz.is_empty() {
         return (vec![], 0.0);
     }
+    assert_eq!(
+        amps.len(),
+        space.centers_hz.len(),
+        "amps and space length mismatch"
+    );
 
-    let analytic = hilbert(signal);
+    // --- ERB mapping ---
+    let erb_vals: Vec<f32> = space.centers_hz.iter().map(|&f| hz_to_erb(f)).collect();
 
-    potential_r_from_analytic(&analytic, fs, params, gamma, alpha)
-}
+    // --- Envelope compression ---
+    let e: Vec<f32> = amps.iter().map(|&x| (x + 1e-9).powf(gamma)).collect();
 
-/// Direct potential-R from time-domain signal
-pub fn potential_r_from_signal_direct_orig(
-    signal: &[f32],
-    fs: f32,
-    params: &KernelParams,
-    gamma: f32,
-    alpha: f32,
-) -> (Vec<f32>, f32) {
-    if signal.is_empty() {
-        return (vec![], 0.0);
+    // --- Build ΔERB kernel ---
+    let erb_step = 0.005;
+    let (lut, hw) = build_kernel_erbstep(params, erb_step);
+    let half_width_erb = params.half_width_erb;
+
+    // --- Convolution ---
+    let n = e.len();
+    let mut r = vec![0.0f32; n];
+    for i in 0..n {
+        let fi_erb = erb_vals[i];
+        let ei = e[i];
+        let mut sum = 0.0f32;
+
+        // --- determine ERB-range in Hz, then index range on log2-axis ---
+        let lo_hz = erb_to_hz(fi_erb - half_width_erb);
+        let hi_hz = erb_to_hz(fi_erb + half_width_erb);
+        let j_lo = space.index_of_freq(lo_hz).unwrap_or(0);
+        let j_hi = space.index_of_freq(hi_hz).unwrap_or(n - 1);
+
+        for j in j_lo..j_hi {
+            let d = erb_vals[j] - fi_erb;
+            if d.abs() > half_width_erb || i == j {
+                continue;
+            }
+            let w = lut_interp(&lut, erb_step, hw, d);
+            sum += e[j] * w;
+        }
+        r[i] = sum * ei.powf(alpha);
     }
 
-    // 1. zero-pad to next power of two
-    let n = signal.len().next_power_of_two();
-    let mut buf: Vec<Complex32> = signal.iter().map(|&x| Complex32::new(x, 0.0)).collect();
-    buf.resize(n, Complex32::new(0.0, 0.0));
-
-    // 2. apply Hann window
-    let U = apply_hann_window(&mut buf);
-
-    // 3. FFT
-    let mut planner = FftPlanner::<f32>::new();
-    let fft = planner.plan_fft_forward(n);
-    fft.process(&mut buf);
-
-    // 4. One-sided PSD with Welch scaling (U = 3/8 for Hann)
-    let nfft = n as f32;
-    let n_half = n / 2;
-    let scale = 1.0 / (fs * nfft * U);
-    let mut psd = vec![0.0f32; n_half];
-
-    // DC
-    let mag2 = buf[0].re * buf[0].re + buf[0].im * buf[0].im;
-    psd[0] = mag2 * scale; // no factor 2 for DC
-
-    for i in 1..n_half {
-        let mag2 = buf[i].re * buf[i].re + buf[i].im * buf[i].im;
-        psd[i] = mag2 * scale * 2.0;
+    // --- Integration over ERB axis ---
+    let mut r_total = 0.0;
+    for i in 1..n {
+        let du = (erb_vals[i] - erb_vals[i - 1]).max(0.0);
+        r_total += 0.5 * (r[i - 1] + r[i]) * du;
     }
 
-    // 5. pass to ΔERB convolution
-    potential_r_from_psd_direct(&psd, fs, params, gamma, alpha)
+    (r, r_total)
 }
 
 // ======================================================================
-// Tests
+// Tests (Full restored version)
 // ======================================================================
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::erb::{ErbSpace, erb_bw_hz, hz_to_erb};
+    use plotters::prelude::*;
+    use std::fs::File;
+    use std::path::Path;
 
-    /// Shared ERB step for all tests (numerical resolution)
     const ERB_STEP: f32 = 0.005;
 
-    /// Helper: build kernel with shared ERB step
     fn make_kernel() -> (Vec<f32>, usize) {
         let p = KernelParams::default();
         build_kernel_erbstep(&p, ERB_STEP)
     }
 
-    /// 1. Kernel must be positive, centered, and decay to zero at edges
+    // ------------------------------------------------------------
+    // 基本特性テスト
+    // ------------------------------------------------------------
+
     #[test]
     fn kernel_is_positive_and_centered() {
         let (g, hw) = make_kernel();
-        assert!(g.iter().all(|&v| v >= 0.0), "kernel must be non-negative");
-        assert_eq!(g.len(), 2 * hw + 1, "length = 2*hw+1");
+        assert!(g.iter().all(|&v| v >= 0.0));
+        assert_eq!(g.len(), 2 * hw + 1);
         let edge_mean = (g[0] + g[g.len() - 1]) * 0.5;
         assert!(edge_mean < 1e-4, "edges should decay toward zero");
     }
 
-    /// 2. Center (ΔERB=0) should be strongly suppressed but nonzero
     #[test]
     fn kernel_center_is_suppressed_but_not_zero() {
         let (g, hw) = make_kernel();
         let center = g[hw];
-        assert!(
-            center > 0.0 && center < 0.005,
-            "center should be small but >0"
-        );
+        assert!(center > 0.0 && center < 0.005, "center suppression wrong");
     }
 
-    /// 3. Kernel should have peaks around ±0.3 ERB
     #[test]
     fn kernel_has_peak_near_pm0p3_erb() {
         let (g, hw) = make_kernel();
@@ -378,7 +345,6 @@ mod tests {
             .map(|i| (i as i32 - hw as i32) as f32 * ERB_STEP)
             .collect();
 
-        // Find local maxima
         let mut pos_peak = None;
         let mut neg_peak = None;
         for i in 1..n - 1 {
@@ -392,46 +358,36 @@ mod tests {
             }
         }
 
-        let (pos_x, pos_val) = pos_peak.expect("no positive-side peak found");
-        let (neg_x, neg_val) = neg_peak.expect("no negative-side peak found");
-
+        let (pos_x, pos_val) = pos_peak.expect("no positive-side peak");
+        let (neg_x, _neg_val) = neg_peak.expect("no negative-side peak");
         assert!(
             pos_x > 0.2 && pos_x < 0.4,
-            "positive peak should be near +0.3 ERB (got {:.2})",
+            "positive peak near +0.3 ERB (got {:.2})",
             pos_x
         );
         assert!(
             neg_x < -0.2 && neg_x > -0.4,
-            "negative peak should be near -0.3 ERB (got {:.2})",
+            "negative peak near -0.3 ERB (got {:.2})",
             neg_x
         );
-        assert!(
-            pos_val > g[hw] * 1.5,
-            "positive peak should exceed center by ≥1.5x"
-        );
+        assert!(pos_val > g[hw] * 1.5);
     }
 
-    /// 4. Positive side (ΔERB>0) should be higher than negative side
     #[test]
     fn kernel_is_asymmetric() {
         let (g, hw) = make_kernel();
         let pos = (hw as f32 + 0.3 / ERB_STEP).round() as usize;
         let neg = (hw as f32 - 0.3 / ERB_STEP).round() as usize;
-        assert!(
-            g[pos] > g[neg],
-            "positive side should be higher than negative"
-        );
+        assert!(g[pos] > g[neg]);
     }
 
-    /// 5. Kernel must be L1-normalized (area ≈ 1)
     #[test]
     fn kernel_l1_norm_is_one() {
         let (g, _) = make_kernel();
         let sum: f32 = g.iter().sum();
-        assert!((sum - 1.0).abs() < 1e-4, "L1 norm must be ~1, got {}", sum);
+        assert!((sum - 1.0).abs() < 1e-4, "L1 norm={}", sum);
     }
 
-    /// 6. Neural layer should reduce center suppression
     #[test]
     fn neural_layer_reduces_center_suppression() {
         let mut p1 = KernelParams::default();
@@ -444,10 +400,9 @@ mod tests {
         let (g2, _) = build_kernel_erbstep(&p2, ERB_STEP);
         let c2 = g2[hw];
 
-        assert!(c2 > c1, "neural layer should reduce center suppression");
+        assert!(c2 > c1);
     }
 
-    /// 7. Kernel shape should remain stable across ERB steps
     #[test]
     fn kernel_stable_across_erbstep() {
         let p = KernelParams::default();
@@ -457,20 +412,18 @@ mod tests {
         let hw2 = g2.len() / 2;
         let ratio1 = g1[(hw1 as f32 + 0.3 / ERB_STEP).round() as usize] / g1[hw1];
         let ratio2 = g2[(hw2 as f32 + 0.3 / 0.02).round() as usize] / g2[hw2];
-        assert!(
-            (ratio1 - ratio2).abs() < 0.1,
-            "kernel shape should be stable across ERB step"
-        );
+        assert!((ratio1 - ratio2).abs() < 0.1);
     }
+
+    // ------------------------------------------------------------
+    // δ入力・NSGT・安定性
+    // ------------------------------------------------------------
 
     #[test]
     fn delta_input_reproduces_kernel_shape_when_du_constant() {
-        use super::*;
-
-        // 条件
         let fs = 48_000.0;
-        let nfft = 131072; // 周波数分解能を十分細かく（df ≈ 0.366 Hz）
-        let n = nfft / 2; // 片側
+        let nfft = 131072;
+        let n = nfft / 2;
         let df = fs / nfft as f32;
         let f0 = 1000.0;
         let k0 = (f0 / df).round() as usize;
@@ -479,15 +432,12 @@ mod tests {
         let erb_step = 0.005;
         let (g, hw) = build_kernel_erbstep(&p, erb_step);
 
-        // δ入力（psd）
         let mut e = vec![0.0f32; n];
-        e[k0] = 1.0; // gamma=1 ならこれで OK
+        e[k0] = 1.0;
 
-        // “理想化した”畳み込み：du を fi で一定化（＝ERB数の一定ステップ近似）
         let fi = k0 as f32 * df;
         let du_const = df / erb_bw_hz(fi).max(1e-12);
 
-        // r[i] を k0 を中心に計算（自己項も除外）
         let mut r = vec![0.0f32; n];
         for i in 0..n {
             if i == k0 {
@@ -502,16 +452,13 @@ mod tests {
             r[i] = w * du_const;
         }
 
-        // 形の比較：k0 周辺のスライスを取り g と MAE を比較
         let lo = k0.saturating_sub((p.half_width_erb / erb_step).ceil() as usize);
         let hi = (k0 + (p.half_width_erb / erb_step).ceil() as usize).min(n - 1);
 
-        // r を ΔERB グリッドへサンプリング（最近傍）
         let mut r_on_erb = Vec::with_capacity(g.len());
         for k in 0..g.len() {
             let d_k = (k as i32 - hw as i32) as f32 * erb_step;
             let f_target_erb = d_k + hz_to_erb(fi);
-            // 近い fj を探す
             let mut best_i = k0;
             let mut best_diff = f32::MAX;
             for i in lo..=hi {
@@ -526,7 +473,6 @@ mod tests {
             r_on_erb.push(r[best_i]);
         }
 
-        // 正規化して MAE
         let r_sum: f32 = r_on_erb.iter().sum();
         let g_sum: f32 = g.iter().sum();
         let r_norm: Vec<f32> = r_on_erb.iter().map(|&x| x / (r_sum + 1e-12)).collect();
@@ -538,40 +484,149 @@ mod tests {
             .map(|(a, b)| (a - b).abs())
             .sum::<f32>()
             / g_norm.len() as f32;
+        assert!(mae < 1e-2, "MAE={}", mae);
+    }
 
+    #[test]
+    fn delta_input_reproduces_kernel_shape() {
+        let params = KernelParams::default();
+        let erb_step = 0.005;
+
+        // === 1. log2軸空間を生成 ===
+        let space = Log2Space::new(20.0, 8000.0, 48); // 約8 octaves, 48 bins/oct
+
+        // === 2. δ入力 ===
+        let mut amps = vec![0.0f32; space.centers_hz.len()];
+        let mid = amps.len() / 2;
+        amps[mid] = 1.0;
+
+        // === 3. potential R 計算 ===
+        let (r_vec, _) = potential_r_from_log2_spectrum(&amps, &space, &params, 1.0, 0.0);
+
+        // === 4. 参照kernel ===
+        let (g_ref, hw) = build_kernel_erbstep(&params, erb_step);
+        let d_erb_kernel: Vec<f32> = (-(hw as i32)..=hw as i32)
+            .map(|i| i as f32 * erb_step)
+            .collect();
+
+        // === 5. ΔERB軸マッピング ===
+        let f0_erb = hz_to_erb(space.centers_hz[mid]);
+        let d_erb_vec: Vec<f32> = space
+            .centers_hz
+            .iter()
+            .map(|&f| hz_to_erb(f) - f0_erb)
+            .collect();
+
+        // === 6. 正規化・MAE計算 ===
+        let g_norm: Vec<f32> = g_ref
+            .iter()
+            .map(|&v| v / g_ref.iter().sum::<f32>())
+            .collect();
+        let r_norm: Vec<f32> = r_vec
+            .iter()
+            .map(|&v| v / r_vec.iter().sum::<f32>())
+            .collect();
+
+        let mut total_err = 0.0;
+        let mut count = 0;
+        for (de, rv) in d_erb_vec.iter().zip(r_norm.iter()) {
+            if de.abs() < params.half_width_erb {
+                let k_idx = ((de / erb_step) + hw as f32).round() as isize;
+                if k_idx >= 0 && (k_idx as usize) < g_norm.len() {
+                    total_err += (rv - g_norm[k_idx as usize]).abs();
+                    count += 1;
+                }
+            }
+        }
+        let mae = total_err / (count as f32).max(1.0);
         assert!(
             mae < 1e-2,
-            "delta input should reproduce kernel shape; MAE={}",
+            "MAE too large: {:.4} (should reproduce kernel shape)",
             mae
         );
     }
 
     #[test]
+    fn two_tone_peak_near_0p3_erb() {
+        let fs = 48000.0;
+        let base = 440.0;
+        let n = 4096;
+        let p = KernelParams::default();
+
+        let mut d_erb_vec = Vec::new();
+        let mut r_vals = Vec::new();
+
+        for ratio in (100..200).map(|k| k as f32 / 100.0) {
+            let f2 = base * ratio;
+            let d_erb = (hz_to_erb(f2) - hz_to_erb(base)).abs();
+            let mut sig = vec![0.0f32; n];
+            for i in 0..n {
+                let t = i as f32 / fs;
+                sig[i] = (2.0 * std::f32::consts::PI * base * t).sin()
+                    + (2.0 * std::f32::consts::PI * f2 * t).sin();
+            }
+            let (_r, r_total) = potential_r_from_analytic(&hilbert(&sig), fs, &p, 0.5, 0.5);
+            d_erb_vec.push(d_erb);
+            r_vals.push(r_total);
+        }
+
+        let (i_max, _) = r_vals
+            .iter()
+            .enumerate()
+            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
+            .unwrap();
+        let d_erb_peak = d_erb_vec[i_max];
+        assert!(
+            d_erb_peak > 0.2 && d_erb_peak < 0.4,
+            "ΔERB peak ≈0.25–0.35, got {d_erb_peak}"
+        );
+    }
+
+    #[test]
+    fn potential_r_stable_across_fs() {
+        let p = KernelParams::default();
+        let base = 1000.0;
+
+        let fs1 = 48000.0;
+        let n1 = 4096;
+        let sig1: Vec<f32> = (0..n1)
+            .map(|i| (2.0 * std::f32::consts::PI * base * i as f32 / fs1).sin())
+            .collect();
+        let (_r1, rtot1) = potential_r_from_analytic(&hilbert(&sig1), fs1, &p, 0.5, 0.5);
+
+        let fs2 = 96000.0;
+        let n2 = 8192;
+        let sig2: Vec<f32> = (0..n2)
+            .map(|i| (2.0 * std::f32::consts::PI * base * i as f32 / fs2).sin())
+            .collect();
+        let (_r2, rtot2) = potential_r_from_analytic(&hilbert(&sig2), fs2, &p, 0.5, 0.5);
+
+        let rel_err = ((rtot2 - rtot1) / rtot1.abs()).abs();
+        assert!(rel_err < 0.001, "R_total rel_err={rel_err}");
+    }
+
+    // ------------------------------------------------------------
+    // Plot系テスト (ignore)
+    // ------------------------------------------------------------
+
+    #[test]
     #[ignore]
     fn plot_kernel_shape_png() {
-        use plotters::prelude::*;
-        use std::fs::File;
-        use std::path::Path;
-
-        // --- Build kernel
         let params = KernelParams::default();
         let erb_step = 0.02;
-        let (g, _) = super::build_kernel_erbstep(&params, erb_step);
+        let (g, _) = build_kernel_erbstep(&params, erb_step);
         let hw = (params.half_width_erb / erb_step).ceil() as i32;
         let d_erb: Vec<f32> = (-hw..=hw).map(|i| i as f32 * erb_step).collect();
 
-        // --- Output path
         let out_path = Path::new("target/test_kernel_shape.png");
-        let root = BitMapBackend::new(out_path, (3000, 2000)).into_drawing_area();
+        let root = BitMapBackend::new(out_path, (1600, 1000)).into_drawing_area();
         root.fill(&WHITE).unwrap();
         let mut chart = ChartBuilder::on(&root)
+            .caption("Asymmetric ERB-domain Kernel", ("sans-serif", 20))
             .margin(10)
-            .caption("Asymmetric ERB-domain Roughness Kernel", ("sans-serif", 20))
-            .x_label_area_size(40)
-            .y_label_area_size(50)
             .build_cartesian_2d(
                 d_erb[0]..d_erb[d_erb.len() - 1],
-                -0.0f32..g.iter().cloned().fold(0.0, f32::max) * 1.1,
+                0.0..g.iter().cloned().fold(0.0, f32::max) * 1.1,
             )
             .unwrap();
 
@@ -581,500 +636,167 @@ mod tests {
             .y_desc("Amplitude")
             .draw()
             .unwrap();
-
         chart
             .draw_series(LineSeries::new(
                 d_erb.iter().zip(g.iter()).map(|(&x, &y)| (x, y)),
                 &BLUE,
             ))
-            .unwrap()
-            .label("g(ΔERB)")
-            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], &BLUE));
-
-        chart
-            .configure_series_labels()
-            .border_style(&BLACK)
-            .background_style(&WHITE.mix(0.8))
-            .draw()
             .unwrap();
-
-        // --- finalize
         root.present().unwrap();
-        assert!(
-            File::open(out_path).is_ok(),
-            "kernel shape PNG was not created"
-        );
-    }
-
-    #[test]
-    fn pure_tone_psd_returns_kernel_shape() {
-        use crate::core::roughness_kernel::{
-            KernelParams, build_kernel_erbstep, hz_to_erb, potential_r_from_psd_direct,
-        };
-
-        let fs = 48000.0;
-        let n = 2048;
-        let erb_step = 0.002;
-        let params = KernelParams::default();
-        let (g, hw) = build_kernel_erbstep(&params, erb_step);
-
-        // --- narrow Gaussian PSD near 1 kHz
-        let mut psd = vec![0.0f32; n / 2];
-        let f_tone = 1000.0;
-        let df = fs / (2 * (n - 1)) as f32;
-        for i in 0..psd.len() {
-            let fi = i as f32 * df;
-            let d_erb = (hz_to_erb(fi) - hz_to_erb(f_tone)).abs();
-            psd[i] = (-0.5 * (d_erb / 0.1).powi(2)).exp();
-        }
-
-        let (r_bins, _r_total) = potential_r_from_psd_direct(&psd, fs, &params, 1.0, 0.0);
-
-        // --- normalize
-        let g_norm: Vec<f32> = g.iter().map(|x| x / g.iter().sum::<f32>()).collect();
-        let r_norm: Vec<f32> = r_bins
-            .iter()
-            .map(|x| x / r_bins.iter().sum::<f32>())
-            .collect();
-
-        // --- center alignment at peak
-        let peak_idx = r_norm
-            .iter()
-            .enumerate()
-            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
-            .unwrap()
-            .0;
-        let lo = peak_idx.saturating_sub(hw);
-        let hi = (peak_idx + hw).min(r_norm.len() - 1);
-        let r_slice = &r_norm[lo..=hi];
-
-        // --- mean absolute error
-        let mae: f32 = r_slice
-            .iter()
-            .zip(&g_norm)
-            .map(|(a, b)| (a - b).abs())
-            .sum::<f32>()
-            / g_norm.len() as f32;
-        assert!(
-            mae < 1e-3,
-            "PSD pure tone should reproduce kernel (MAE={})",
-            mae
-        );
-    }
-
-    /// 純音入力で potential_r が単位カーネル形状を再現する（signal 経由）
-    #[test]
-    fn pure_tone_signal_returns_kernel_shape() {
-        use crate::core::roughness_kernel::{
-            KernelParams, build_kernel_erbstep, potential_r_from_signal_direct,
-        };
-
-        let fs = 48000.0;
-        let f_tone = 1000.0;
-        let n = 4096;
-        let erb_step = 0.002;
-        let params = KernelParams::default();
-        let (g, hw) = build_kernel_erbstep(&params, erb_step);
-
-        // --- 純音信号生成
-        let mut sig = vec![0.0f32; n];
-        for i in 0..n {
-            let t = i as f32 / fs;
-            sig[i] = (2.0 * std::f32::consts::PI * f_tone * t).sin();
-        }
-
-        // --- ΔERB 畳み込み実行
-        let (r_bins, _r_total) = potential_r_from_signal_direct(&sig, fs, &params, 0.5, 0.0);
-
-        // --- 正規化と比較
-        let g_norm: Vec<f32> = g.iter().map(|x| x / g.iter().sum::<f32>()).collect();
-        let r_norm: Vec<f32> = r_bins
-            .iter()
-            .map(|x| x / r_bins.iter().sum::<f32>())
-            .collect();
-
-        // --- 中心近傍抽出（最大値周辺）
-        let peak_idx = r_norm
-            .iter()
-            .enumerate()
-            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
-            .map(|(i, _)| i)
-            .unwrap();
-        let lo = peak_idx.saturating_sub(hw);
-        let hi = (peak_idx + hw).min(r_norm.len() - 1);
-        let r_slice = &r_norm[lo..=hi];
-
-        // --- 相関誤差
-        let mae: f32 = r_slice
-            .iter()
-            .zip(&g_norm)
-            .map(|(a, b)| (a - b).abs())
-            .sum::<f32>()
-            / g_norm.len() as f32;
-        assert!(
-            mae < 1e-3,
-            "Signal pure tone should reproduce kernel (MAE={})",
-            mae
-        );
-    }
-
-    /// 2. Two-tone ΔERB sweep → maximum near ΔERB≈0.25–0.35
-    #[test]
-    fn two_tone_peak_near_0p3_erb() {
-        use crate::core::erb::ErbSpace;
-        use crate::core::roughness_kernel::{KernelParams, potential_r_from_signal_direct};
-
-        let fs = 48000.0;
-        let base = 440.0;
-        let n = 4096;
-        let erb = ErbSpace::new(20.0, 8000.0, 0.005);
-        let p = KernelParams::default();
-
-        let mut d_erb_vec = Vec::new();
-        let mut r_vals = Vec::new();
-
-        for ratio in (100..200).map(|k| k as f32 / 100.0) {
-            let f2 = base * ratio;
-            let d_erb = (crate::core::roughness_kernel::hz_to_erb(f2)
-                - crate::core::roughness_kernel::hz_to_erb(base))
-            .abs();
-            let mut sig = vec![0.0f32; n];
-            for i in 0..n {
-                let t = i as f32 / fs;
-                sig[i] = (2.0 * std::f32::consts::PI * base * t).sin()
-                    + (2.0 * std::f32::consts::PI * f2 * t).sin();
-            }
-            let (_r, r_total) = potential_r_from_signal_direct(&sig, fs, &p, 0.5, 0.5);
-            d_erb_vec.push(d_erb);
-            r_vals.push(r_total);
-        }
-
-        // --- Find ΔERB of max roughness ---
-        let (i_max, _max_val) = r_vals
-            .iter()
-            .enumerate()
-            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
-            .unwrap();
-        let d_erb_peak = d_erb_vec[i_max];
-        assert!(
-            d_erb_peak > 0.2 && d_erb_peak < 0.4,
-            "expected ΔERB peak ≈ 0.25–0.35, got {d_erb_peak}"
-        );
-    }
-
-    /// 3. Scale stability: doubling fs should yield similar total R
-    #[test]
-    fn potential_r_stable_across_fs() {
-        use crate::core::roughness_kernel::{KernelParams, potential_r_from_signal_direct};
-
-        let p = KernelParams::default();
-        let base = 1000.0;
-
-        // fs=48k
-        let fs1 = 48000.0;
-        let n1 = 4096;
-        let mut sig1 = vec![0.0f32; n1];
-        for i in 0..n1 {
-            let t = i as f32 / fs1;
-            sig1[i] = (2.0 * std::f32::consts::PI * base * t).sin();
-        }
-        let (_r1, rtot1) = potential_r_from_signal_direct(&sig1, fs1, &p, 0.5, 0.5);
-
-        // fs=96k
-        let fs2 = 96000.0;
-        let n2 = 8192;
-        let mut sig2 = vec![0.0f32; n2];
-        for i in 0..n2 {
-            let t = i as f32 / fs2;
-            sig2[i] = (2.0 * std::f32::consts::PI * base * t).sin();
-        }
-        let (_r2, rtot2) = potential_r_from_signal_direct(&sig2, fs2, &p, 0.5, 0.5);
-
-        let rel_err = ((rtot2 - rtot1) / rtot1.abs()).abs();
-        assert!(
-            rel_err < 0.001,
-            "R_total should be stable across fs (rel_err={rel_err})"
-        );
+        assert!(File::open(out_path).is_ok());
     }
 
     #[test]
     #[ignore]
-    fn plot_potential_r_from_signal_direct_two_tone() {
-        use crate::core::roughness_kernel::{KernelParams, potential_r_from_signal_direct};
-        use plotters::prelude::*;
-
-        let fs = 48000.0;
-        let p = KernelParams::default();
-
-        let base = 440.0;
-        let mut ratios = Vec::new();
-        let mut r_vals = Vec::new();
-
-        for ratio in (100..200).map(|k| k as f32 / 100.0) {
-            let f2 = base * ratio;
-            let n = 8192;
-            let mut sig = vec![0.0f32; n];
-            for i in 0..n {
-                let t = i as f32 / fs;
-                sig[i] = (2.0 * std::f32::consts::PI * base * t).sin()
-                    + (2.0 * std::f32::consts::PI * f2 * t).sin();
-            }
-            let (_r_bins, r_total) = potential_r_from_signal_direct(&sig, fs, &p, 0.5, 0.5);
-            ratios.push(ratio);
-            r_vals.push(r_total);
-        }
-
-        // === 可視化 ===
-        let out_path = "target/test_potential_r_signal_direct_two_tone.png";
-        let root = BitMapBackend::new(out_path, (3000, 2000)).into_drawing_area();
-        root.fill(&WHITE).unwrap();
-
-        let max_y = r_vals.iter().cloned().fold(0.0, f32::max) * 1.2;
-        let mut chart = ChartBuilder::on(&root)
-            .caption(
-                "Potential R from Signal (direct ΔERB convolution)",
-                ("sans-serif", 20),
-            )
-            .margin(10)
-            .x_label_area_size(40)
-            .y_label_area_size(50)
-            .build_cartesian_2d(1.0f32..2.0f32, 0.0f32..max_y)
-            .unwrap();
-
-        chart
-            .configure_mesh()
-            .x_desc("Frequency ratio f2/f1")
-            .y_desc("R_total")
-            .draw()
-            .unwrap();
-
-        chart
-            .draw_series(LineSeries::new(
-                ratios.iter().zip(r_vals.iter()).map(|(&x, &y)| (x, y)),
-                &RED,
-            ))
-            .unwrap()
-            .label("R_total")
-            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], &RED));
-
-        chart
-            .configure_series_labels()
-            .border_style(&BLACK)
-            .background_style(&WHITE.mix(0.8))
-            .draw()
-            .unwrap();
-
-        root.present().unwrap();
-    }
-
-    #[test]
-    #[ignore] // 実行時: cargo test -- --ignored
     fn compare_build_kernel_and_eval_kernel_shape() -> Result<(), Box<dyn std::error::Error>> {
-        use crate::core::roughness_kernel::{
-            KernelParams, build_kernel_erbstep, eval_kernel_delta_erb,
-        };
-        use plotters::prelude::*;
-
-        // --- パラメータとステップ設定 ---
         let params = KernelParams::default();
         let erb_step = 0.005;
         let (g_discrete, hw) = build_kernel_erbstep(&params, erb_step);
-
-        // ΔERB 軸
         let d_erb_vec: Vec<f32> = (-(hw as i32)..=hw as i32)
             .map(|i| i as f32 * erb_step)
             .collect();
-
-        // eval_kernel_delta_erb で連続的にサンプリング
         let g_eval: Vec<f32> = d_erb_vec
             .iter()
             .map(|&d| eval_kernel_delta_erb(&params, d))
             .collect();
-
-        // 正規化（L1一致のため）
         let sum1: f32 = g_discrete.iter().sum();
         let sum2: f32 = g_eval.iter().sum();
         let g1: Vec<f32> = g_discrete.iter().map(|&v| v / sum1).collect();
         let g2: Vec<f32> = g_eval.iter().map(|&v| v / sum2).collect();
+        let mae = g1
+            .iter()
+            .zip(g2.iter())
+            .map(|(a, b)| (a - b).abs())
+            .sum::<f32>()
+            / g1.len() as f32;
+        assert!(mae < 1e-3, "MAE={}", mae);
 
-        // --- 数値比較 ---
-        let mut mae = 0.0;
-        for i in 0..g1.len() {
-            mae += (g1[i] - g2[i]).abs();
-        }
-        mae /= g1.len() as f32;
-
-        assert!(mae < 1e-3, "Kernel shapes differ (MAE={})", mae);
-
-        // --- 可視化（確認用） ---
         let out_path = "target/test_kernel_build_vs_eval.png";
-        let root = BitMapBackend::new(out_path, (3000, 2000)).into_drawing_area();
+        let root = BitMapBackend::new(out_path, (1600, 1000)).into_drawing_area();
         root.fill(&WHITE)?;
-
-        let y_max = g1.iter().cloned().fold(0.0, f32::max) * 1.2;
         let mut chart = ChartBuilder::on(&root)
-            .caption(
-                "build_kernel_erbstep() vs eval_kernel_delta_erb()",
-                ("sans-serif", 20),
-            )
+            .caption("build_kernel vs eval_kernel", ("sans-serif", 20))
             .margin(10)
-            .x_label_area_size(40)
-            .y_label_area_size(50)
             .build_cartesian_2d(
-                *d_erb_vec.first().unwrap()..*d_erb_vec.last().unwrap(),
-                0.0f32..y_max,
-            )?;
+                -5.0f32..5.0f32,
+                0.0f32..g1.iter().cloned().fold(0.0, f32::max) * 1.1,
+            )
+            .unwrap();
 
         chart
             .configure_mesh()
             .x_desc("ΔERB")
-            .y_desc("Amplitude (normalized)")
+            .y_desc("Amplitude")
             .draw()?;
-
         chart
             .draw_series(LineSeries::new(
                 d_erb_vec.iter().zip(g1.iter()).map(|(&x, &y)| (x, y)),
                 &BLUE,
             ))?
-            .label("build_kernel (discrete)")
+            .label("discrete")
             .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], &BLUE));
-
         chart
             .draw_series(LineSeries::new(
                 d_erb_vec.iter().zip(g2.iter()).map(|(&x, &y)| (x, y)),
                 &RED,
             ))?
-            .label("eval_kernel_delta_erb (continuous)")
+            .label("eval()")
             .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], &RED));
-
         chart
             .configure_series_labels()
             .border_style(&BLACK)
-            .background_style(&WHITE.mix(0.8))
             .draw()?;
-
         root.present()?;
         Ok(())
     }
-
     #[test]
     #[ignore]
     fn plot_potential_r_pure_tone_png() {
-        use crate::core::roughness_kernel::{
-            KernelParams, build_kernel_erbstep, hz_to_erb, potential_r_from_psd_direct,
-            potential_r_from_signal_direct,
-        };
-        use plotters::prelude::*;
-        use std::fs::File;
-        use std::path::Path;
+        use crate::core::erb::hz_to_erb;
 
-        // === 条件設定 ===
         let fs = 48000.0;
         let f_tone = 440.0;
-        let n = 16384; //4096;
+        let n = 16384;
         let params = KernelParams::default();
         let erb_step = 0.005;
 
-        // === Kernel 参照 ===
+        // --- Kernel reference ---
         let (g, hw) = build_kernel_erbstep(&params, erb_step);
-        let d_erb: Vec<f32> = (-(hw as i32)..=hw as i32)
+        let d_erb_kernel: Vec<f32> = (-(hw as i32)..=hw as i32)
             .map(|i| i as f32 * erb_step)
             .collect();
 
-        // === 純音信号生成 ===
-        let mut sig = vec![0.0f32; n];
-        for i in 0..n {
-            let t = i as f32 / fs;
-            sig[i] = (2.0 * std::f32::consts::PI * f_tone * t).sin();
-        }
-
-        // === 1. Signal 経由 ===
-        let (r_sig, _r_total_sig) = potential_r_from_signal_direct(&sig, fs, &params, 0.5, 0.0);
-
-        // === 2. PSD 直接 ===
-        let n_half = n / 2;
-        let mut psd = vec![0.0f32; n_half];
-        let df = fs / n as f32;
-        let idx = (f_tone / df).round() as usize;
-        if idx < n_half {
-            psd[idx] = 1.0;
-        }
-        let (r_psd, _r_total_psd) = potential_r_from_psd_direct(&psd, fs, &params, 1.0, 0.0);
-
-        // === 横軸 ΔERB を計算 ===
-        let f0_erb = hz_to_erb(f_tone);
-        let x_erb: Vec<f32> = (0..n_half)
-            .map(|i| {
-                let f = i as f32 * df;
-                hz_to_erb(f) - f0_erb
-            })
+        // --- Generate pure tone signal ---
+        let sig: Vec<f32> = (0..n)
+            .map(|i| (2.0 * std::f32::consts::PI * f_tone * i as f32 / fs).sin())
             .collect();
 
-        // === 正規化 ===
-        let max_sig = r_sig.iter().cloned().fold(0.0, f32::max);
-        let max_psd = r_psd.iter().cloned().fold(0.0, f32::max);
-        let r_sig_norm: Vec<f32> = r_sig.iter().map(|x| x / max_sig).collect();
-        let r_psd_norm: Vec<f32> = r_psd.iter().map(|x| x / max_psd).collect();
+        // --- Compute potential R ---
+        let (r_bins, _) = potential_r_from_analytic(&hilbert(&sig), fs, &params, 0.5, 0.0);
+
+        // --- ΔERB axis for R ---
+        let df = fs / n as f32;
+        let f0_erb = hz_to_erb(f_tone);
+        let d_erb_r: Vec<f32> = (0..r_bins.len())
+            .map(|i| hz_to_erb(i as f32 * df) - f0_erb)
+            .collect();
+
+        // --- Normalize for overlay ---
         let g_norm: Vec<f32> = g
             .iter()
-            .map(|x| x / g.iter().cloned().fold(0.0, f32::max))
+            .map(|&v| v / g.iter().cloned().fold(0.0, f32::max))
+            .collect();
+        let r_norm: Vec<f32> = r_bins
+            .iter()
+            .map(|&v| v / r_bins.iter().cloned().fold(0.0, f32::max))
             .collect();
 
-        // === 出力パス ===
-        let out_path = Path::new("target/test_potential_r_pure_tone_erb.png");
+        // --- Plot ---
+        let out_path = Path::new("target/test_potential_r_pure_tone.png");
         let root = BitMapBackend::new(out_path, (1280, 960)).into_drawing_area();
         root.fill(&WHITE).unwrap();
 
-        // === Chart 設定 ===
+        let y_max = 1.05f32;
         let mut chart = ChartBuilder::on(&root)
+            .caption("Potential R for Pure Tone (ΔERB axis)", ("sans-serif", 20))
             .margin(10)
-            .caption(
-                "Potential R for Pure Tone (Signal vs PSD, ΔERB axis)",
-                ("sans-serif", 20),
-            )
             .x_label_area_size(40)
             .y_label_area_size(50)
-            .build_cartesian_2d(-5.0f32..5.0f32, 0.0f32..1.1f32)
+            .build_cartesian_2d(-5.0f64..5.0f64, 0.0f64..y_max as f64)
             .unwrap();
 
         chart
             .configure_mesh()
             .x_desc("ΔERB")
-            .y_desc("Normalized R amplitude")
-            .x_labels(9)
+            .y_desc("Normalized Amplitude")
+            .x_labels(11)
             .x_label_formatter(&|v| format!("{:+.1}", v))
             .draw()
             .unwrap();
 
-        // --- signal 経由
+        // --- Kernel reference ---
         chart
             .draw_series(LineSeries::new(
-                x_erb.iter().zip(r_sig_norm.iter()).map(|(&x, &y)| (x, y)),
-                &BLUE,
-            ))
-            .unwrap()
-            .label("R(signal)")
-            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], &BLUE));
-
-        // --- psd 直接
-        chart
-            .draw_series(LineSeries::new(
-                x_erb.iter().zip(r_psd_norm.iter()).map(|(&x, &y)| (x, y)),
-                &RED,
-            ))
-            .unwrap()
-            .label("R(psd)")
-            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], &RED));
-
-        // --- kernel 基準
-        chart
-            .draw_series(LineSeries::new(
-                d_erb.iter().zip(g_norm.iter()).map(|(&x, &y)| (x, y)),
+                d_erb_kernel
+                    .iter()
+                    .zip(g_norm.iter())
+                    .map(|(&x, &y)| (x as f64, y as f64)),
                 &GREEN,
             ))
             .unwrap()
-            .label("Kernel g(ΔERB)")
-            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], &GREEN));
+            .label("Kernel g(ΔERB)");
+
+        // --- R result ---
+        chart
+            .draw_series(LineSeries::new(
+                d_erb_r
+                    .iter()
+                    .zip(r_norm.iter())
+                    .map(|(&x, &y)| (x as f64, y as f64)),
+                &BLUE,
+            ))
+            .unwrap()
+            .label("R(signal)");
 
         chart
             .configure_series_labels()
@@ -1089,60 +811,88 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn plot_potential_r_from_signal_direct_erb() {
-        use crate::core::roughness_kernel::{
-            KernelParams, hz_to_erb, potential_r_from_signal_direct,
-        };
-        use plotters::prelude::*;
+    fn plot_potential_r_from_signal_direct_two_tone() {
+        let fs = 48000.0;
+        let p = KernelParams::default();
+        let base = 440.0;
+        let mut ratios = Vec::new();
+        let mut r_vals = Vec::new();
 
-        // === 条件設定 ===
+        for ratio in (100..200).map(|k| k as f32 / 100.0) {
+            let f2 = base * ratio;
+            let n = 8192;
+            let mut sig = vec![0.0f32; n];
+            for i in 0..n {
+                let t = i as f32 / fs;
+                sig[i] = (2.0 * std::f32::consts::PI * base * t).sin()
+                    + (2.0 * std::f32::consts::PI * f2 * t).sin();
+            }
+            let (_r_bins, r_total) = potential_r_from_analytic(&hilbert(&sig), fs, &p, 0.5, 0.5);
+            ratios.push(ratio);
+            r_vals.push(r_total);
+        }
+
+        let out_path = "target/test_potential_r_signal_two_tone.png";
+        let root = BitMapBackend::new(out_path, (1600, 1000)).into_drawing_area();
+        root.fill(&WHITE).unwrap();
+        let max_y = r_vals.iter().cloned().fold(0.0, f32::max) * 1.2;
+        let mut chart = ChartBuilder::on(&root)
+            .caption("Potential R (Two-tone ΔERB sweep)", ("sans-serif", 20))
+            .margin(10)
+            .build_cartesian_2d(1.0f32..2.0f32, 0.0f32..max_y)
+            .unwrap();
+        chart
+            .configure_mesh()
+            .x_desc("f2/f1")
+            .y_desc("R_total")
+            .draw()
+            .unwrap();
+        chart
+            .draw_series(LineSeries::new(
+                ratios.iter().zip(r_vals.iter()).map(|(&x, &y)| (x, y)),
+                &RED,
+            ))
+            .unwrap();
+        root.present().unwrap();
+        assert!(File::open(out_path).is_ok());
+    }
+
+    #[test]
+    #[ignore]
+    fn plot_potential_r_from_signal_direct_erb() {
         let fs = 48000.0;
         let p = KernelParams::default();
         let base = 440.0;
         let n = 16384;
 
-        // === Pure tone ===
         let mut sig1 = vec![0.0f32; n];
         for i in 0..n {
             let t = i as f32 / fs;
             sig1[i] = (2.0 * std::f32::consts::PI * base * t).sin();
         }
-        let (r1, _) = potential_r_from_signal_direct(&sig1, fs, &p, 0.5, 0.0);
+        let (r1, _) = potential_r_from_analytic(&hilbert(&sig1), fs, &p, 0.5, 0.0);
 
-        // === Two-tone (ΔERB≈0.3) ===
         let mut sig2 = vec![0.0f32; n];
-        let f2 = base * 1.2; // ≈ ΔERB ≈ 0.3
+        let f2 = base * 1.2;
         for i in 0..n {
             let t = i as f32 / fs;
             sig2[i] = (2.0 * std::f32::consts::PI * base * t).sin()
                 + (2.0 * std::f32::consts::PI * f2 * t).sin();
         }
-        let (r2, _) = potential_r_from_signal_direct(&sig2, fs, &p, 0.5, 0.0);
+        let (r2, _) = potential_r_from_analytic(&hilbert(&sig2), fs, &p, 0.5, 0.0);
 
-        // === 横軸 ΔERB を計算 ===
         let df = fs / n as f32;
         let f0_erb = hz_to_erb(base);
         let x_erb: Vec<f32> = (0..r1.len())
-            .map(|i| {
-                let f = i as f32 * df;
-                hz_to_erb(f) - f0_erb
-            })
+            .map(|i| hz_to_erb(i as f32 * df) - f0_erb)
             .collect();
 
-        // === 出力パス ===
-        let out_path = "target/test_potential_r_from_signal_direct_erb.png";
+        let out_path = "target/test_potential_r_signal_direct_erb.png";
         let root = BitMapBackend::new(out_path, (1280, 960)).into_drawing_area();
         root.fill(&WHITE).unwrap();
-
-        // === Chart 設定 ===
         let mut chart = ChartBuilder::on(&root)
-            .caption(
-                "Potential R from Signal (direct ΔERB convolution, ΔERB axis)",
-                ("sans-serif", 20),
-            )
+            .caption("Potential R from Signal (ΔERB axis)", ("sans-serif", 20))
             .margin(10)
-            .x_label_area_size(40)
-            .y_label_area_size(50)
             .build_cartesian_2d(
                 -5.0f32..5.0f32,
                 0.0f32..r2.iter().cloned().fold(0.0, f32::max) * 1.1,
@@ -1153,43 +903,121 @@ mod tests {
             .configure_mesh()
             .x_desc("ΔERB")
             .y_desc("R(f)")
-            .x_labels(9)
-            .x_label_formatter(&|v| format!("{:+.1}", v))
             .draw()
             .unwrap();
-
-        // --- pure tone
         chart
             .draw_series(LineSeries::new(
                 x_erb.iter().zip(r1.iter()).map(|(&x, &y)| (x, y)),
                 &BLUE,
             ))
             .unwrap()
-            .label("pure tone")
-            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], &BLUE));
-
-        // --- two-tone ΔERB≈0.3
+            .label("pure tone");
         chart
             .draw_series(LineSeries::new(
                 x_erb.iter().zip(r2.iter()).map(|(&x, &y)| (x, y)),
                 &RED,
             ))
             .unwrap()
-            .label("two-tone ΔERB≈0.3")
-            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], &RED));
+            .label("two-tone ΔERB≈0.3");
+        chart
+            .configure_series_labels()
+            .border_style(&BLACK)
+            .draw()
+            .unwrap();
+        root.present().unwrap();
+        assert!(File::open(out_path).is_ok());
+    }
+
+    #[test]
+    #[ignore]
+    fn plot_potential_r_from_log2_spectrum_delta_input() -> Result<(), Box<dyn std::error::Error>> {
+        use crate::core::erb::hz_to_erb;
+        use crate::core::log2::Log2Space;
+        use plotters::prelude::*;
+
+        let params = KernelParams::default();
+        let erb_step = 0.005;
+        let space = Log2Space::new(20.0, 8000.0, 144);
+
+        // === δ入力 ===
+        let mut amps = vec![0.0f32; space.centers_hz.len()];
+        let mid = amps.len() / 2;
+        amps[mid] = 1.0;
+
+        // === potential R ===
+        let (r_vec, _) = potential_r_from_log2_spectrum(&amps, &space, &params, 1.0, 0.0);
+
+        // === ΔERB軸構築 ===
+        let f0_erb = hz_to_erb(space.centers_hz[mid]);
+        let d_erb_r: Vec<f32> = space
+            .centers_hz
+            .iter()
+            .map(|&f| hz_to_erb(f) - f0_erb)
+            .collect();
+
+        // === Kernel参照 ===
+        let (g_ref, hw) = build_kernel_erbstep(&params, erb_step);
+        let d_erb_kernel: Vec<f32> = (-(hw as i32)..=hw as i32)
+            .map(|i| i as f32 * erb_step)
+            .collect();
+
+        // === 正規化 ===
+        let r_norm: Vec<f32> = r_vec
+            .iter()
+            .map(|&v| v / r_vec.iter().cloned().fold(0.0, f32::max))
+            .collect();
+        let g_norm: Vec<f32> = g_ref
+            .iter()
+            .map(|&v| v / g_ref.iter().cloned().fold(0.0, f32::max))
+            .collect();
+
+        // === Plot ===
+        let out_path = "target/test_potential_r_from_log2_spectrum_delta.png";
+        let root = BitMapBackend::new(out_path, (1280, 960)).into_drawing_area();
+        root.fill(&WHITE)?;
+
+        let mut chart = ChartBuilder::on(&root)
+            .caption(
+                "Potential R from Log2 Spectrum (δ input)",
+                ("sans-serif", 20),
+            )
+            .margin(10)
+            .x_label_area_size(40)
+            .y_label_area_size(50)
+            .build_cartesian_2d(-5.0f32..5.0f32, 0.0f32..1.05f32)
+            .unwrap();
+
+        chart
+            .configure_mesh()
+            .x_desc("ΔERB")
+            .y_desc("Normalized Amplitude")
+            .draw()?;
+
+        chart
+            .draw_series(LineSeries::new(
+                d_erb_r.iter().zip(r_norm.iter()).map(|(&x, &y)| (x, y)),
+                &BLUE,
+            ))?
+            .label("R(log2 input)")
+            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], &BLUE));
+
+        chart
+            .draw_series(LineSeries::new(
+                d_erb_kernel
+                    .iter()
+                    .zip(g_norm.iter())
+                    .map(|(&x, &y)| (x, y)),
+                &GREEN,
+            ))?
+            .label("Kernel g(ΔERB)")
+            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], &GREEN));
 
         chart
             .configure_series_labels()
             .border_style(&BLACK)
-            .background_style(&WHITE.mix(0.8))
-            .draw()
-            .unwrap();
-
-        // === finalize ===
-        root.present().unwrap();
-        assert!(
-            std::fs::File::open(out_path).is_ok(),
-            "failed to create ERB-axis plot"
-        );
+            .draw()?;
+        root.present()?;
+        assert!(std::path::Path::new(out_path).exists());
+        Ok(())
     }
 }

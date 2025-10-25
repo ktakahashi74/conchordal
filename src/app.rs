@@ -14,9 +14,11 @@ use crossbeam_channel::{Receiver, Sender, bounded};
 
 use crate::audio::output::AudioOutput;
 use crate::audio::writer::WavOutput;
-use crate::core::erb::ErbSpace;
+// NSGT/log2 landscape 用に Cochlea/ErbSpace 依存を外す
+use crate::core::consonance_kernel::ConsonanceKernel;
 use crate::core::landscape::{CVariant, Landscape, LandscapeFrame, LandscapeParams, RVariant};
-use crate::core::roughness_kernel::KernelParams;
+use crate::core::nsgt::{NsgtLog2, NsgtLog2Config};
+use crate::core::roughness_kernel::{KernelParams, RoughnessKernel};
 use crate::life::population::{Population, PopulationParams};
 use crate::synth::engine::{SynthConfig, SynthEngine};
 use crate::ui::viewdata::{SpecFrame, UiFrame, WaveFrame};
@@ -62,10 +64,10 @@ impl App {
         let initial_tones_hz: Vec<f32> = tones.iter().map(|(f, _)| *f).collect();
         let amplitude = tones.iter().map(|(_, a)| *a).fold(0.0, f32::max);
 
-        // Population (life) — single pure tone at 440 Hz
+        // Population (life)
         let mut pop = Population::new(PopulationParams {
-            initial_tones_hz: initial_tones_hz,
-            amplitude: amplitude,
+            initial_tones_hz,
+            amplitude,
         });
 
         // worker に渡すのは wav_tx.clone()
@@ -101,8 +103,8 @@ impl App {
             last_frame: UiFrame::default(),
             _audio: audio_out,
             wav_tx: Some(wav_tx),
-            wav_handle: wav_handle,
-            worker_handle: worker_handle,
+            wav_handle,
+            worker_handle,
             exiting: stop_flag,
         }
     }
@@ -149,7 +151,7 @@ fn worker_loop(
 ) {
     // --- Parameters ---
     let fs: f32 = 48_000.0;
-    let fft_size: usize = 16384; ///////////////////////////8192;
+    let fft_size: usize = 16_384;
     let hop: usize = fft_size / 2;
     let n_bins = fft_size / 2 + 1;
 
@@ -161,23 +163,29 @@ fn worker_loop(
         n_bins,
     });
 
-    // Landscape parameters (stateful cochlea R only / C=Dummy)
+    // === NSGT (log2) analyzer & Landscape parameters ===
+    // NsgtLog2::new(fs, fmin, fmax, bins_per_oct, hop_seconds)
 
-    let erb_space = ErbSpace::new(20.0, 8000.0, 0.005);
+    let mut nsgt = NsgtLog2::new(NsgtLog2Config {
+        fs,
+        fmin: 20.0,
+        fmax: 8000.0,
+        bins_per_oct: 96,
+        overlap: 0.5, // or your desired overlap (0.5 = 50%)
+    });
 
     let lparams = LandscapeParams {
         fs,
-        use_lp_300hz: true,
+        hop_s: nsgt.hop_s(),
         max_hist_cols: 256,
         alpha: 0.8,
         beta: 0.2,
-        //r_variant: RVariant::CochleaPotential,
-        r_variant: RVariant::KernelConv,
-        //c_variant: CVariant::CochleaPl,
+        r_variant: RVariant::NsgtKernel,
         c_variant: CVariant::Dummy,
-        kernel_params: KernelParams::default(),
+        roughness_kernel: RoughnessKernel::new(KernelParams::default(), 0.005), // ΔERB LUT step
+        consonance_kernel: ConsonanceKernel::default(),
     };
-    let mut landscape = Landscape::new(lparams, erb_space);
+    let mut landscape = Landscape::new(lparams, nsgt);
 
     let mut next_deadline = Instant::now();
     let hop_duration = Duration::from_secs_f32(hop as f32 / fs);
@@ -205,8 +213,8 @@ fn worker_loop(
             let _ = tx.try_send(time_chunk.clone());
         }
 
-        // 3) landscape update
-        landscape.process_block(&time_chunk);
+        // 3) landscape update (NSGT/log2-domain)
+        landscape.process_frame(&time_chunk);
         let lframe: LandscapeFrame = landscape.snapshot(None);
 
         // 4) package for UI

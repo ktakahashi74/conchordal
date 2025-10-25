@@ -1,38 +1,36 @@
-// core/landscape.rs — Landscape computed by stateful cochlea front-end.
+//! core/landscape.rs — Landscape computed on log2(NSGT) domain.
+//! Each frame integrates time–frequency features from analytic bands
+//! (NSGT output) to compute potential roughness (R) and consonance (C).
 
 use rustfft::num_complex::Complex32;
 
-use crate::core::cochlea::Cochlea;
-use crate::core::erb::ErbSpace;
-//use crate::core::roughness::compute_potential_r_from_signal;
-
-use crate::core::fft::hilbert;
-use crate::core::roughness_kernel::{KernelParams, potential_r_from_analytic};
+use crate::core::consonance_kernel::ConsonanceKernel;
+use crate::core::nsgt::{BandCoeffs, NsgtLog2}; // NSGT log2-domain transform
+use crate::core::roughness_kernel::{RoughnessKernel, potential_r_from_log2_spectrum};
 
 #[derive(Clone, Copy, Debug)]
 pub enum RVariant {
-    KernelConv,
-    Cochlea,
-    CochleaPotential,
+    NsgtKernel, // NSGT + Δlog2 kernel convolution
     Dummy,
 }
 
 #[derive(Clone, Copy, Debug)]
 pub enum CVariant {
-    CochleaPl,
+    NsgtPhaseLock, // PLV-like consonance via phase correlation
     Dummy,
 }
 
 #[derive(Clone, Debug)]
 pub struct LandscapeParams {
     pub fs: f32,
-    pub use_lp_300hz: bool,
+    pub hop_s: f32, // hop size [s] (e.g. 0.01)
     pub max_hist_cols: usize,
     pub alpha: f32,
     pub beta: f32,
     pub r_variant: RVariant,
     pub c_variant: CVariant,
-    pub kernel_params: KernelParams,
+    pub roughness_kernel: RoughnessKernel,
+    pub consonance_kernel: ConsonanceKernel,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -42,83 +40,93 @@ pub struct LandscapeFrame {
     pub r_last: Vec<f32>,
     pub c_last: Vec<f32>,
     pub k_last: Vec<f32>,
-    pub env_last: Vec<f32>,
+    pub amp_last: Vec<f32>,
     pub r_hist: Vec<Vec<f32>>,
     pub k_hist: Vec<Vec<f32>>,
-    pub plv_last: Option<Vec<Vec<f32>>>,
 }
 
 pub struct Landscape {
-    cochlea: Cochlea,
+    nsgt: NsgtLog2,
     params: LandscapeParams,
     last_r: Vec<f32>,
     last_c: Vec<f32>,
     last_k: Vec<f32>,
-    env_last: Vec<f32>,
-    last_plv: Option<Vec<Vec<f32>>>,
+    amp_last: Vec<f32>,
     analytic_last: Option<Vec<Complex32>>,
 }
 
 impl Landscape {
-    pub fn new(params: LandscapeParams, erb_space: ErbSpace) -> Self {
-        let ch = erb_space.len();
-        let mut cochlea = Cochlea::new(params.fs, erb_space, params.use_lp_300hz);
-        cochlea.reset();
+    pub fn new(params: LandscapeParams, nsgt: NsgtLog2) -> Self {
+        let n_ch = nsgt.freqs_hz().len();
         Self {
-            cochlea,
+            nsgt,
             params,
-            last_r: vec![0.0; ch],
-            last_c: vec![0.0; ch],
-            last_k: vec![0.0; ch],
-            env_last: vec![0.0; ch],
-            last_plv: Some(vec![vec![0.0; ch]; ch]),
+            last_r: vec![0.0; n_ch],
+            last_c: vec![0.0; n_ch],
+            last_k: vec![0.0; n_ch],
+            amp_last: vec![0.0; n_ch],
             analytic_last: None,
         }
     }
 
-    /// Process one block: cochlea update + R/C/K compute.
-    pub fn process_block(&mut self, x: &[f32]) {
-        let analytic = hilbert(x);
-        self.analytic_last = Some(analytic.clone());
+    /// Process one hop frame: NSGT update + R/C/K compute.
+    pub fn process_frame(&mut self, x: &[f32]) {
+        // --- 1. NSGT analysis (single pass) ---
+        // 各バンドに必ず値を持たせる：係数が無ければ 0 を入れる
+        let bands = self.nsgt.analyze(x);
 
-        // --- R ---
+        // 代表複素数（中心フレーム or 0）
+        let analytic_flat: Vec<Complex32> = bands
+            .iter()
+            .map(|b| {
+                b.coeffs
+                    .get(b.coeffs.len().saturating_sub(1) / 2)
+                    .copied()
+                    .unwrap_or(Complex32::new(0.0, 0.0))
+            })
+            .collect();
+        self.analytic_last = Some(analytic_flat);
+
+        // 包絡（平均振幅 or 0）
+        let amp: Vec<f32> = bands
+            .iter()
+            .map(|b| {
+                if b.coeffs.is_empty() {
+                    0.0
+                } else {
+                    b.coeffs.iter().map(|z| z.norm()).sum::<f32>() / b.coeffs.len() as f32
+                }
+            })
+            .collect();
+        self.amp_last = amp.clone();
+
+        // --- 2. Roughness (potential R) ---
         match self.params.r_variant {
-            RVariant::Cochlea => {
-                //self.last_r = self.cochlea.compute_r_from_env(&env_vec);
-            }
-            RVariant::CochleaPotential => {
-                // let e_ch = self.cochlea.current_envelope_levels(); // envelope mean per channel
-                // let erb_space = &self.cochlea.erb_space;
-                // let freqs = erb_space.freqs_hz();
-
-                //                self.last_r = compute_potential_r(&e_ch, freqs, erb_space, &PotRParams::default());
-            }
-            RVariant::KernelConv => {
-                (self.last_r, _) = potential_r_from_analytic(
-                    &analytic,
-                    self.params.fs,
-                    &self.params.kernel_params,
-                    0.5,
-                    0.0, // salience parameter
-                );
+            RVariant::NsgtKernel => {
+                // (self.last_r, _) = potential_r_from_log2_spectrum(
+                //     &self.nsgt.freqs_hz(),
+                //     &self.params.roughness_kernel.params,
+                //     1.0,
+                //     0.0,
+                //     false,
+                // );
             }
             RVariant::Dummy => self.last_r.fill(0.0),
         }
 
-        // --- C ---
+        // --- 3. Consonance (potential C) ---
         match self.params.c_variant {
-            CVariant::CochleaPl => {
-                //                self.last_c = self.cochlea.compute_c_from_plv(&plv_mat);
+            CVariant::NsgtPhaseLock => {
+                self.last_c.fill(0.0); // Placeholder for actual implementation
+                //     self.last_c = self.params.consonance_kernel.compute_from_nsgt(
+                //         self.analytic_last.as_ref().unwrap(),
+                //         self.nsgt.freqs_hz(),
+                //     );
             }
-            CVariant::Dummy => {
-                self.last_c.fill(0.0);
-            }
+            CVariant::Dummy => self.last_c.fill(0.0),
         }
 
-        // PLV スナップショットは共通で最新を保存
-        //      self.last_plv = Some(plv_mat);
-
-        // --- K ---
+        // --- 4. Combine to landscape K = αC − βR ---
         self.last_k = self
             .last_r
             .iter()
@@ -137,35 +145,36 @@ impl Landscape {
     }
 
     pub fn snapshot(&self, mut prev: Option<LandscapeFrame>) -> LandscapeFrame {
-        let ch = self.cochlea.n_ch();
+        let n_ch = self.nsgt.freqs_hz().len();
         let mut out = prev.unwrap_or_default();
 
-        if out.freqs_hz.len() != ch {
-            out.freqs_hz = self.cochlea.erb_space.freqs_hz().to_vec();
+        if out.freqs_hz.len() != n_ch {
+            out.freqs_hz = self.nsgt.freqs_hz().to_vec();
             out.fs = self.params.fs;
-            out.r_last = vec![0.0; ch];
-            out.c_last = vec![0.0; ch];
-            out.k_last = vec![0.0; ch];
-            out.env_last = vec![0.0; ch];
-            out.r_hist = vec![Vec::with_capacity(self.params.max_hist_cols); ch];
-            out.k_hist = vec![Vec::with_capacity(self.params.max_hist_cols); ch];
+            out.r_last = vec![0.0; n_ch];
+            out.c_last = vec![0.0; n_ch];
+            out.k_last = vec![0.0; n_ch];
+            out.amp_last = vec![0.0; n_ch];
+            out.r_hist = vec![Vec::with_capacity(self.params.max_hist_cols); n_ch];
+            out.k_hist = vec![Vec::with_capacity(self.params.max_hist_cols); n_ch];
         }
 
         out.r_last.clone_from(&self.last_r);
         out.c_last.clone_from(&self.last_c);
         out.k_last.clone_from(&self.last_k);
-        out.env_last.clone_from(&self.env_last);
+        out.amp_last.clone_from(&self.amp_last);
 
         Self::push_hist(&mut out.r_hist, &self.last_r, self.params.max_hist_cols);
         Self::push_hist(&mut out.k_hist, &self.last_k, self.params.max_hist_cols);
 
-        if let Some(plv) = &self.last_plv {
-            out.plv_last = Some(plv.clone());
-        }
         out
     }
 
     pub fn params(&self) -> &LandscapeParams {
         &self.params
+    }
+
+    pub fn nsgt(&self) -> &NsgtLog2 {
+        &self.nsgt
     }
 }

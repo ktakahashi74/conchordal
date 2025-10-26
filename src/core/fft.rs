@@ -14,26 +14,23 @@ pub fn hann_window(n: usize) -> Vec<f32> {
     w.into_iter().map(|x| x as f32).collect()
 }
 
-/// Apply Hann window (periodic) in place to a real-valued buffer and
-/// return the mean-square value U = mean(w²) for physical scaling.
-///
-/// For Hann window, U = 3/8 = 0.375 (verified analytically).
-/// This is computed once here for flexibility (not recomputed per sample).
-pub fn apply_hann_window(buf: &mut [Complex32]) -> f32 {
+/// Apply Hann window to a real-valued buffer in-place.
+/// Returns the energy correction factor U = mean(w²) ≈ 3/8 for normalization.
+pub fn apply_hann_window_real(buf: &mut [f32]) -> f32 {
     let n = buf.len();
     if n <= 1 {
         return 1.0;
     }
 
     let win = hann_window(n);
-    let mut sum_sq = 0.;
+    let mut sum_sq = 0.0;
     for (x, &w) in buf.iter_mut().zip(&win) {
-        x.re *= w;
+        *x *= w;
         sum_sq += w * w;
     }
 
     // U = mean(w²) = 3/8
-    sum_sq / buf.len() as f32
+    sum_sq / n as f32
 }
 
 /// Apply Hann window (complex-valued input, periodic).

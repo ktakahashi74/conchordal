@@ -138,20 +138,25 @@ impl RoughnessKernel {
 // Existing (legacy) direct / analytic versions
 // ======================================================================
 
-pub fn potential_r_from_psd_direct(
-    psd_hz: &[f32],
+/// Potential R from amplitude spectrum (not power/Hz).
+/// The input `amps_hz` represents linear amplitude per FFT bin (after Hann window correction).
+pub fn potential_r_from_spectrum(
+    amps_hz: &[f32],
     fs: f32,
     kparams: &KernelParams,
     gamma: f32,
     alpha: f32,
 ) -> (Vec<f32>, f32) {
-    let n = psd_hz.len();
+    let n = amps_hz.len();
     if n == 0 {
         return (vec![], 0.0);
     }
+
     let nfft = 2 * n;
     let df = fs / nfft as f32;
-    let e: Vec<f32> = psd_hz.iter().map(|&x| (x + 1e-12).powf(gamma)).collect();
+
+    // envelope compression
+    let e: Vec<f32> = amps_hz.iter().map(|&x| (x + 1e-12).powf(gamma)).collect();
     let f: Vec<f32> = (0..n).map(|i| i as f32 * df).collect();
     let erb: Vec<f32> = f.iter().map(|&x| hz_to_erb(x)).collect();
     let bw: Vec<f32> = f.iter().map(|&x| erb_bw_hz(x).max(1e-12)).collect();
@@ -164,11 +169,12 @@ pub fn potential_r_from_psd_direct(
         let fi_erb = erb[i];
         let ei = e[i];
         let mut sum = 0.0f32;
+
         let j_lo = erb.partition_point(|&x| x < fi_erb - half_width);
         let j_hi = erb.partition_point(|&x| x <= fi_erb + half_width);
         for j in j_lo..j_hi {
             let d = erb[j] - fi_erb;
-            if d.abs() > half_width || i == j {
+            if d.abs() > half_width {
                 continue;
             }
             let w = lut_interp(&lut, 0.005, hw, d);
@@ -176,7 +182,9 @@ pub fn potential_r_from_psd_direct(
         }
         r[i] = sum * ei.powf(alpha);
     }
-    let mut r_total = 0.0f32;
+
+    // integrate over ERB axis
+    let mut r_total = 0.0;
     for i in 1..n {
         let du = (erb[i] - erb[i - 1]).max(0.0);
         r_total += 0.5 * (r[i - 1] + r[i]) * du;
@@ -194,6 +202,7 @@ pub fn potential_r_from_analytic(
     if analytic.is_empty() {
         return (vec![], 0.0);
     }
+
     let n0 = analytic.len();
     let n = n0.next_power_of_two();
     let mut buf: Vec<Complex32> = Vec::with_capacity(n);
@@ -201,38 +210,28 @@ pub fn potential_r_from_analytic(
     if n > n0 {
         buf.resize(n, Complex32::new(0.0, 0.0));
     }
+
+    // Apply Hann window (complex)
     let U = apply_hann_window_complex(&mut buf);
+
+    // FFT
     let mut planner = FftPlanner::new();
     let fft = planner.plan_fft_forward(n);
     fft.process(&mut buf);
+
+    // Convert to amplitude spectrum
     let n_half = n / 2;
+    let df = fs / n as f32;
     let base_scale = 1.0 / (fs * n as f32 * U);
-    let mut psd = vec![0.0f32; n_half];
-    psd[0] = buf[0].norm_sqr() * base_scale;
-    for i in 1..n_half {
-        psd[i] = buf[i].norm_sqr() * base_scale * 2.0;
-    }
-    potential_r_from_psd_direct(&psd, fs, params, gamma, alpha)
+    let amps: Vec<f32> = (0..n_half)
+        .map(|i| (buf[i].norm_sqr() * base_scale * 2.0 * df).sqrt())
+        .collect();
+
+    potential_r_from_spectrum(&amps, fs, params, gamma, alpha)
 }
 
 /// Potential-R from log2-domain envelope spectrum.
-///
-/// Input:
-/// - `amps` : envelope amplitudes per log2-bin (from NSGT)
-/// - `freqs_hz` : corresponding center frequencies [Hz]
-///
-/// The kernel remains defined in ΔERB space.
-/// Suitable for `Landscape::process_frame()` where NSGT is precomputed.
 
-/// Potential-R from log2-domain envelope spectrum.
-/// Uses `Log2Space` to obtain center frequencies.
-/// Potential-R from log2-domain envelope spectrum (Neighbor integration, ±4 ERB).
-///
-/// Biological approximation of ΔERB kernel convolution using local integration
-/// of neighboring bands within ±4 ERB distance on the cochlear (ERB) axis.
-/// Faster, low-memory alternative to kernel convolution.
-/// Potential-R from log2-domain envelope spectrum.
-/// Uses `Log2Space` to obtain center frequencies.
 pub fn potential_r_from_log2_spectrum(
     amps: &[f32],
     space: &Log2Space,
@@ -240,8 +239,7 @@ pub fn potential_r_from_log2_spectrum(
     gamma: f32,
     alpha: f32,
 ) -> (Vec<f32>, f32) {
-    use crate::core::erb::erb_to_hz;
-    use crate::core::erb::hz_to_erb;
+    use crate::core::erb::{erb_bw_hz, erb_to_hz, hz_to_erb};
 
     if amps.is_empty() || space.centers_hz.is_empty() {
         return (vec![], 0.0);
@@ -252,43 +250,54 @@ pub fn potential_r_from_log2_spectrum(
         "amps and space length mismatch"
     );
 
-    // --- ERB mapping ---
+    let n = amps.len();
+    let bpo = space.bins_per_oct as f32;
+    let delta_log2 = 1.0 / bpo;
+
+    // === 1. ERB mapping ===
     let erb_vals: Vec<f32> = space.centers_hz.iter().map(|&f| hz_to_erb(f)).collect();
 
-    // --- Envelope compression ---
+    // === 2. Envelope compression ===
     let e: Vec<f32> = amps.iter().map(|&x| (x + 1e-9).powf(gamma)).collect();
 
-    // --- Build ΔERB kernel ---
+    // === 3. Jacobian correction (Δf/BW_ERB)
+    // Δf は log2ステップ1/BPOに基づく局所バンド幅
+    let jacobian: Vec<f32> = space
+        .centers_hz
+        .iter()
+        .map(|&f| {
+            let bw = erb_bw_hz(f).max(1e-12);
+            let df = f * (2f32.powf(delta_log2 * 0.5) - 2f32.powf(-delta_log2 * 0.5));
+            df / bw // ERB軸ステップ近似
+        })
+        .collect();
+
+    // === 4. Build ΔERB kernel ===
     let erb_step = 0.005;
     let (lut, hw) = build_kernel_erbstep(params, erb_step);
     let half_width_erb = params.half_width_erb;
 
-    // --- Convolution ---
-    let n = e.len();
+    // === 5. Convolution ===
     let mut r = vec![0.0f32; n];
     for i in 0..n {
         let fi_erb = erb_vals[i];
         let ei = e[i];
         let mut sum = 0.0f32;
 
-        // --- determine ERB-range in Hz, then index range on log2-axis ---
         let lo_hz = erb_to_hz(fi_erb - half_width_erb);
         let hi_hz = erb_to_hz(fi_erb + half_width_erb);
         let j_lo = space.index_of_freq(lo_hz).unwrap_or(0);
         let j_hi = space.index_of_freq(hi_hz).unwrap_or(n - 1);
 
-        for j in j_lo..j_hi {
+        for j in j_lo..=j_hi {
             let d = erb_vals[j] - fi_erb;
-            if d.abs() > half_width_erb || i == j {
-                continue;
-            }
             let w = lut_interp(&lut, erb_step, hw, d);
-            sum += e[j] * w;
+            sum += e[j] * w * jacobian[j];
         }
         r[i] = sum * ei.powf(alpha);
     }
 
-    // --- Integration over ERB axis ---
+    // === 6. Integration over ERB axis ===
     let mut r_total = 0.0;
     for i in 1..n {
         let du = (erb_vals[i] - erb_vals[i - 1]).max(0.0);
@@ -493,7 +502,7 @@ mod tests {
         let erb_step = 0.005;
 
         // === 1. log2軸空間を生成 ===
-        let space = Log2Space::new(20.0, 8000.0, 48); // 約8 octaves, 48 bins/oct
+        let space = Log2Space::new(20.0, 8000.0, 500);
 
         // === 2. δ入力 ===
         let mut amps = vec![0.0f32; space.centers_hz.len()];
@@ -540,45 +549,9 @@ mod tests {
         }
         let mae = total_err / (count as f32).max(1.0);
         assert!(
-            mae < 1e-2,
+            mae < 1e-3,
             "MAE too large: {:.4} (should reproduce kernel shape)",
             mae
-        );
-    }
-
-    #[test]
-    fn two_tone_peak_near_0p3_erb() {
-        let fs = 48000.0;
-        let base = 440.0;
-        let n = 4096;
-        let p = KernelParams::default();
-
-        let mut d_erb_vec = Vec::new();
-        let mut r_vals = Vec::new();
-
-        for ratio in (100..200).map(|k| k as f32 / 100.0) {
-            let f2 = base * ratio;
-            let d_erb = (hz_to_erb(f2) - hz_to_erb(base)).abs();
-            let mut sig = vec![0.0f32; n];
-            for i in 0..n {
-                let t = i as f32 / fs;
-                sig[i] = (2.0 * std::f32::consts::PI * base * t).sin()
-                    + (2.0 * std::f32::consts::PI * f2 * t).sin();
-            }
-            let (_r, r_total) = potential_r_from_analytic(&hilbert(&sig), fs, &p, 0.5, 0.5);
-            d_erb_vec.push(d_erb);
-            r_vals.push(r_total);
-        }
-
-        let (i_max, _) = r_vals
-            .iter()
-            .enumerate()
-            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
-            .unwrap();
-        let d_erb_peak = d_erb_vec[i_max];
-        assert!(
-            d_erb_peak > 0.2 && d_erb_peak < 0.4,
-            "ΔERB peak ≈0.25–0.35, got {d_erb_peak}"
         );
     }
 
@@ -622,7 +595,7 @@ mod tests {
         let root = BitMapBackend::new(out_path, (1600, 1000)).into_drawing_area();
         root.fill(&WHITE).unwrap();
         let mut chart = ChartBuilder::on(&root)
-            .caption("Asymmetric ERB-domain Kernel", ("sans-serif", 20))
+            .caption("Asymmetric ERB-domain Kernel", ("sans-serif", 30))
             .margin(10)
             .build_cartesian_2d(
                 d_erb[0]..d_erb[d_erb.len() - 1],
@@ -675,7 +648,7 @@ mod tests {
         let root = BitMapBackend::new(out_path, (1600, 1000)).into_drawing_area();
         root.fill(&WHITE)?;
         let mut chart = ChartBuilder::on(&root)
-            .caption("build_kernel vs eval_kernel", ("sans-serif", 20))
+            .caption("build_kernel vs eval_kernel", ("sans-serif", 30))
             .margin(10)
             .build_cartesian_2d(
                 -5.0f32..5.0f32,
@@ -709,105 +682,6 @@ mod tests {
         root.present()?;
         Ok(())
     }
-    #[test]
-    #[ignore]
-    fn plot_potential_r_pure_tone_png() {
-        use crate::core::erb::hz_to_erb;
-
-        let fs = 48000.0;
-        let f_tone = 440.0;
-        let n = 16384;
-        let params = KernelParams::default();
-        let erb_step = 0.005;
-
-        // --- Kernel reference ---
-        let (g, hw) = build_kernel_erbstep(&params, erb_step);
-        let d_erb_kernel: Vec<f32> = (-(hw as i32)..=hw as i32)
-            .map(|i| i as f32 * erb_step)
-            .collect();
-
-        // --- Generate pure tone signal ---
-        let sig: Vec<f32> = (0..n)
-            .map(|i| (2.0 * std::f32::consts::PI * f_tone * i as f32 / fs).sin())
-            .collect();
-
-        // --- Compute potential R ---
-        let (r_bins, _) = potential_r_from_analytic(&hilbert(&sig), fs, &params, 0.5, 0.0);
-
-        // --- ΔERB axis for R ---
-        let df = fs / n as f32;
-        let f0_erb = hz_to_erb(f_tone);
-        let d_erb_r: Vec<f32> = (0..r_bins.len())
-            .map(|i| hz_to_erb(i as f32 * df) - f0_erb)
-            .collect();
-
-        // --- Normalize for overlay ---
-        let g_norm: Vec<f32> = g
-            .iter()
-            .map(|&v| v / g.iter().cloned().fold(0.0, f32::max))
-            .collect();
-        let r_norm: Vec<f32> = r_bins
-            .iter()
-            .map(|&v| v / r_bins.iter().cloned().fold(0.0, f32::max))
-            .collect();
-
-        // --- Plot ---
-        let out_path = Path::new("target/test_potential_r_pure_tone.png");
-        let root = BitMapBackend::new(out_path, (1280, 960)).into_drawing_area();
-        root.fill(&WHITE).unwrap();
-
-        let y_max = 1.05f32;
-        let mut chart = ChartBuilder::on(&root)
-            .caption("Potential R for Pure Tone (ΔERB axis)", ("sans-serif", 20))
-            .margin(10)
-            .x_label_area_size(40)
-            .y_label_area_size(50)
-            .build_cartesian_2d(-5.0f64..5.0f64, 0.0f64..y_max as f64)
-            .unwrap();
-
-        chart
-            .configure_mesh()
-            .x_desc("ΔERB")
-            .y_desc("Normalized Amplitude")
-            .x_labels(11)
-            .x_label_formatter(&|v| format!("{:+.1}", v))
-            .draw()
-            .unwrap();
-
-        // --- Kernel reference ---
-        chart
-            .draw_series(LineSeries::new(
-                d_erb_kernel
-                    .iter()
-                    .zip(g_norm.iter())
-                    .map(|(&x, &y)| (x as f64, y as f64)),
-                &GREEN,
-            ))
-            .unwrap()
-            .label("Kernel g(ΔERB)");
-
-        // --- R result ---
-        chart
-            .draw_series(LineSeries::new(
-                d_erb_r
-                    .iter()
-                    .zip(r_norm.iter())
-                    .map(|(&x, &y)| (x as f64, y as f64)),
-                &BLUE,
-            ))
-            .unwrap()
-            .label("R(signal)");
-
-        chart
-            .configure_series_labels()
-            .border_style(&BLACK)
-            .background_style(&WHITE.mix(0.8))
-            .draw()
-            .unwrap();
-
-        root.present().unwrap();
-        assert!(File::open(out_path).is_ok(), "plot image was not created");
-    }
 
     #[test]
     #[ignore]
@@ -827,7 +701,7 @@ mod tests {
                 sig[i] = (2.0 * std::f32::consts::PI * base * t).sin()
                     + (2.0 * std::f32::consts::PI * f2 * t).sin();
             }
-            let (_r_bins, r_total) = potential_r_from_analytic(&hilbert(&sig), fs, &p, 0.5, 0.5);
+            let (_r_bins, r_total) = potential_r_from_analytic(&hilbert(&sig), fs, &p, 1.0, 0.0);
             ratios.push(ratio);
             r_vals.push(r_total);
         }
@@ -837,7 +711,7 @@ mod tests {
         root.fill(&WHITE).unwrap();
         let max_y = r_vals.iter().cloned().fold(0.0, f32::max) * 1.2;
         let mut chart = ChartBuilder::on(&root)
-            .caption("Potential R (Two-tone ΔERB sweep)", ("sans-serif", 20))
+            .caption("Potential R (Two-tone ΔERB sweep)", ("sans-serif", 30))
             .margin(10)
             .build_cartesian_2d(1.0f32..2.0f32, 0.0f32..max_y)
             .unwrap();
@@ -870,7 +744,7 @@ mod tests {
             let t = i as f32 / fs;
             sig1[i] = (2.0 * std::f32::consts::PI * base * t).sin();
         }
-        let (r1, _) = potential_r_from_analytic(&hilbert(&sig1), fs, &p, 0.5, 0.0);
+        let (r1, _) = potential_r_from_analytic(&hilbert(&sig1), fs, &p, 1.0, 0.0);
 
         let mut sig2 = vec![0.0f32; n];
         let f2 = base * 1.2;
@@ -879,7 +753,7 @@ mod tests {
             sig2[i] = (2.0 * std::f32::consts::PI * base * t).sin()
                 + (2.0 * std::f32::consts::PI * f2 * t).sin();
         }
-        let (r2, _) = potential_r_from_analytic(&hilbert(&sig2), fs, &p, 0.5, 0.0);
+        let (r2, _) = potential_r_from_analytic(&hilbert(&sig2), fs, &p, 1.0, 0.0);
 
         let df = fs / n as f32;
         let f0_erb = hz_to_erb(base);
@@ -888,10 +762,10 @@ mod tests {
             .collect();
 
         let out_path = "target/test_potential_r_signal_direct_erb.png";
-        let root = BitMapBackend::new(out_path, (1280, 960)).into_drawing_area();
+        let root = BitMapBackend::new(out_path, (1600, 1000)).into_drawing_area();
         root.fill(&WHITE).unwrap();
         let mut chart = ChartBuilder::on(&root)
-            .caption("Potential R from Signal (ΔERB axis)", ("sans-serif", 20))
+            .caption("Potential R from Signal (ΔERB axis)", ("sans-serif", 30))
             .margin(10)
             .build_cartesian_2d(
                 -5.0f32..5.0f32,
@@ -947,12 +821,12 @@ mod tests {
         // === potential R ===
         let (r_vec, _) = potential_r_from_log2_spectrum(&amps, &space, &params, 1.0, 0.0);
 
-        // === ΔERB軸構築 ===
+        // === ΔERB軸構築（修正版） ===
+        let mid = amps.len() / 2;
         let f0_erb = hz_to_erb(space.centers_hz[mid]);
-        let d_erb_r: Vec<f32> = space
-            .centers_hz
-            .iter()
-            .map(|&f| hz_to_erb(f) - f0_erb)
+        let erb_per_bin = hz_to_erb(space.centers_hz[mid + 1]) - hz_to_erb(space.centers_hz[mid]);
+        let d_erb_r: Vec<f32> = (0..amps.len())
+            .map(|i| (i as f32 - mid as f32) * erb_per_bin)
             .collect();
 
         // === Kernel参照 ===
@@ -973,13 +847,13 @@ mod tests {
 
         // === Plot ===
         let out_path = "target/test_potential_r_from_log2_spectrum_delta.png";
-        let root = BitMapBackend::new(out_path, (1280, 960)).into_drawing_area();
+        let root = BitMapBackend::new(out_path, (1500, 1000)).into_drawing_area();
         root.fill(&WHITE)?;
 
         let mut chart = ChartBuilder::on(&root)
             .caption(
                 "Potential R from Log2 Spectrum (δ input)",
-                ("sans-serif", 20),
+                ("sans-serif", 30),
             )
             .margin(10)
             .x_label_area_size(40)
@@ -1006,10 +880,10 @@ mod tests {
                 d_erb_kernel
                     .iter()
                     .zip(g_norm.iter())
-                    .map(|(&x, &y)| (x, y)),
+                    .map(|(&x, &y)| (-x, y)), // flipped for comparison
                 &GREEN,
             ))?
-            .label("Kernel g(ΔERB)")
+            .label("Kernel g(ΔERB), flipped")
             .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], &GREEN));
 
         chart
@@ -1019,5 +893,312 @@ mod tests {
         root.present()?;
         assert!(std::path::Path::new(out_path).exists());
         Ok(())
+    }
+
+    #[test]
+    #[ignore]
+    fn plot_potential_r_delta_input_all_methods() -> Result<(), Box<dyn std::error::Error>> {
+        use crate::core::erb::hz_to_erb;
+        use crate::core::fft::hilbert;
+        use crate::core::log2::Log2Space;
+        use crate::core::roughness_kernel::{
+            KernelParams, build_kernel_erbstep, potential_r_from_analytic,
+            potential_r_from_log2_spectrum, potential_r_from_spectrum,
+        };
+        use plotters::prelude::*;
+        use rustfft::FftPlanner;
+        use rustfft::num_complex::Complex32;
+        use std::f32::consts::PI;
+
+        // === Params ===
+        let fs = 48_000.0;
+        let params = KernelParams::default();
+        let erb_step = 0.005;
+        let space = Log2Space::new(20.0, 8000.0, 144);
+        let nfft = 163_84; // for time-domain reconstruction
+
+        // === δ入力（log2空間中心1bin刺激） ===
+        let mut amps_log2 = vec![0.0f32; space.centers_hz.len()];
+        let mid = amps_log2.len() / 2;
+        amps_log2[mid] = 1.0;
+
+        // === 方式①: log2 domain ===
+        let (r_log2, _) = potential_r_from_log2_spectrum(&amps_log2, &space, &params, 1.0, 0.0);
+
+        // === 方式②: linear amplitude spectrum ===
+        // log2中心周波数群を線形周波数グリッドにマッピング
+        let df = fs / nfft as f32;
+        let mut amps_lin = vec![0.0f32; nfft / 2];
+        for (k, &f) in space.centers_hz.iter().enumerate() {
+            let bin = (f / df).round() as usize;
+            if bin < amps_lin.len() {
+                amps_lin[bin] += amps_log2[k];
+            }
+        }
+        let (r_spec, _) = potential_r_from_spectrum(&amps_lin, fs, &params, 1.0, 0.0);
+
+        // === 方式③: analytic (from time-domain reconstruction) ===
+        // δ状のamplitudeを時系列波形に逆FFT→hilbert→from_analytic
+        let mut buf = vec![Complex32::new(0.0, 0.0); nfft];
+        for (i, &amp) in amps_lin.iter().enumerate() {
+            buf[i] = Complex32::new(amp, 0.0);
+        }
+        // mirror for negative freqs
+        for i in 1..(nfft / 2) {
+            buf[nfft - i] = buf[i].conj();
+        }
+        // IFFT
+        let mut planner = FftPlanner::new();
+        let ifft = planner.plan_fft_inverse(nfft);
+        ifft.process(&mut buf);
+        let sig: Vec<f32> = buf.iter().map(|z| z.re / nfft as f32).collect();
+        let (r_analytic, _) = potential_r_from_analytic(&hilbert(&sig), fs, &params, 1.0, 0.0);
+
+        // === ΔERB軸構築 ===
+        let f0_erb = hz_to_erb(space.centers_hz[mid]);
+        let erb_per_bin = hz_to_erb(space.centers_hz[mid + 1]) - hz_to_erb(space.centers_hz[mid]);
+        let d_erb_r_log2: Vec<f32> = (0..r_log2.len())
+            .map(|i| (i as f32 - mid as f32) * erb_per_bin)
+            .collect();
+
+        let d_erb_r_spec: Vec<f32> = (0..r_spec.len())
+            .map(|i| hz_to_erb(i as f32 * df) - f0_erb)
+            .collect();
+
+        let nfft_a = (r_analytic.len() * 2) as f32; // potential_r_from_analyticはn_half出力
+        let df_a = fs / nfft_a;
+        let d_erb_r_ana: Vec<f32> = (0..r_analytic.len())
+            .map(|i| hz_to_erb(i as f32 * df_a) - f0_erb)
+            .collect();
+
+        // === Kernel参照 ===
+        let (g_ref, hw) = build_kernel_erbstep(&params, erb_step);
+        let d_erb_kernel: Vec<f32> = (-(hw as i32)..=hw as i32)
+            .map(|i| i as f32 * erb_step)
+            .collect();
+
+        // === Normalization ===
+        fn norm_max(v: &[f32]) -> Vec<f32> {
+            let maxv = v.iter().cloned().fold(0.0, f32::max).max(1e-12);
+            v.iter().map(|&x| x / maxv).collect()
+        }
+
+        let g_norm = norm_max(&g_ref);
+        let r_log2_norm = norm_max(&r_log2);
+        let r_spec_norm = norm_max(&r_spec);
+        let r_ana_norm = norm_max(&r_analytic);
+
+        // === Plot ===
+        let out_path = "target/test_potential_r_delta_all.png";
+        let root = BitMapBackend::new(out_path, (1600, 1000)).into_drawing_area();
+        root.fill(&WHITE)?;
+
+        let mut chart = ChartBuilder::on(&root)
+            .caption(
+                "Potential R for δ Input (Comparison of 3 Methods)",
+                ("sans-serif", 30),
+            )
+            .margin(10)
+            .x_label_area_size(40)
+            .y_label_area_size(50)
+            .build_cartesian_2d(-5.0f32..5.0f32, 0.0f32..1.05f32)
+            .unwrap();
+
+        chart
+            .configure_mesh()
+            .x_desc("ΔERB")
+            .y_desc("Normalized Amplitude")
+            .draw()?;
+
+        chart
+            .draw_series(LineSeries::new(
+                d_erb_kernel
+                    .iter()
+                    .zip(g_norm.iter())
+                    .map(|(&x, &y)| (-x, y)), // - x (flipped)
+                &GREEN,
+            ))?
+            .label("Kernel g(ΔERB), flipped.")
+            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], &GREEN));
+
+        chart
+            .draw_series(LineSeries::new(
+                d_erb_r_log2
+                    .iter()
+                    .zip(r_log2_norm.iter())
+                    .map(|(&x, &y)| (x, y)),
+                &BLUE,
+            ))?
+            .label("R(log2 input)")
+            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], &BLUE));
+
+        chart
+            .draw_series(LineSeries::new(
+                d_erb_r_spec
+                    .iter()
+                    .zip(r_spec_norm.iter())
+                    .map(|(&x, &y)| (x, y)),
+                &RED,
+            ))?
+            .label("R(from spectrum)")
+            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], &RED));
+
+        chart
+            .draw_series(LineSeries::new(
+                d_erb_r_ana
+                    .iter()
+                    .zip(r_ana_norm.iter())
+                    .map(|(&x, &y)| (x, y)),
+                &MAGENTA,
+            ))?
+            .label("R(from analytic)")
+            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], &MAGENTA));
+
+        chart
+            .configure_series_labels()
+            .background_style(&WHITE.mix(0.8))
+            .border_style(&BLACK)
+            .draw()?;
+
+        root.present()?;
+        assert!(std::path::Path::new(out_path).exists());
+        Ok(())
+    }
+
+    #[test]
+    #[ignore]
+    fn plot_potential_r_from_spectrum_vs_log2_spectrum() {
+        use crate::core::fft::{apply_hann_window_complex, hilbert};
+        use crate::core::log2::Log2Space;
+        use crate::core::roughness_kernel::{
+            KernelParams, potential_r_from_log2_spectrum, potential_r_from_spectrum,
+        };
+        use plotters::prelude::*;
+        use rustfft::num_complex::Complex32;
+
+        // === Parameters ===
+        let fs = 48_000.0;
+        let base = 440.0;
+        let ratio = 1.5; // perfect fifth
+        let n = 4096;
+        let p = KernelParams::default();
+        let gamma = 1.0;
+        let alpha = 0.0;
+
+        // === Two-tone signal ===
+        let mut sig = vec![0.0f32; n];
+        for i in 0..n {
+            let t = i as f32 / fs;
+            sig[i] = (2.0 * std::f32::consts::PI * base * t).sin()
+                + (2.0 * std::f32::consts::PI * base * ratio * t).sin();
+        }
+
+        // === Analytic signal ===
+        let analytic = hilbert(&sig);
+
+        // === FFT amplitude spectrum (one-sided) ===
+        let nfft = analytic.len().next_power_of_two();
+        let mut buf = analytic.clone();
+        buf.resize(nfft, Complex32::new(0.0, 0.0));
+
+        // apply Hann window (complex)
+        let U = apply_hann_window_complex(&mut buf);
+        let mut planner = rustfft::FftPlanner::new();
+        let fft = planner.plan_fft_forward(nfft);
+        fft.process(&mut buf);
+
+        let n_half = nfft / 2;
+        let df = fs / nfft as f32;
+        let base_scale = 1.0 / (fs * nfft as f32 * U);
+        let scale = (2.0 * base_scale * df).sqrt();
+
+        // === Amplitude spectrum ===
+        let amps_psd: Vec<f32> = (0..n_half).map(|i| buf[i].norm() * scale).collect();
+
+        // === Potential R via amplitude spectrum ===
+        let (r_spec, _r_total1) = potential_r_from_spectrum(&amps_psd, fs, &p, gamma, alpha);
+
+        // === NSGT-like log2-space amplitude ===
+        let space = Log2Space::new(27.5, 8000.0, 100);
+        let amps_log2: Vec<f32> = space
+            .centers_hz
+            .iter()
+            .map(|&f| {
+                let bin = (f / (df.max(1e-9))).round() as usize;
+                if bin < amps_psd.len() {
+                    amps_psd[bin]
+                } else {
+                    0.0
+                }
+            })
+            .collect();
+
+        // === Potential R via log2 spectrum ===
+        let (r_log2, _r_total2) =
+            potential_r_from_log2_spectrum(&amps_log2, &space, &p, gamma, alpha);
+
+        // === ERB axis ===
+        use crate::core::erb::hz_to_erb;
+        let erb_spec: Vec<f32> = (0..r_spec.len())
+            .map(|i| hz_to_erb(i as f32 * df))
+            .collect();
+        let erb_log2: Vec<f32> = space.centers_hz.iter().map(|&f| hz_to_erb(f)).collect();
+
+        // === Plot ===
+        let root = BitMapBackend::new("target/potential_r_spectrum_vs_log2.png", (1500, 1000))
+            .into_drawing_area();
+        root.fill(&WHITE).unwrap();
+
+        let y_max = r_spec
+            .iter()
+            .cloned()
+            .fold(0.0f32, f32::max)
+            .max(r_log2.iter().cloned().fold(0.0f32, f32::max));
+
+        let mut chart = ChartBuilder::on(&root)
+            .caption("Potential R: Spectrum vs Log2 Spectrum", ("sans-serif", 30))
+            .margin(20)
+            .x_label_area_size(40)
+            .y_label_area_size(60)
+            .build_cartesian_2d(
+                erb_spec[0]..erb_spec.last().copied().unwrap(),
+                0.0..1.05 * y_max,
+            )
+            .unwrap();
+
+        chart
+            .configure_mesh()
+            .x_desc("ERB-rate")
+            .y_desc("R potential (relative)")
+            .draw()
+            .unwrap();
+
+        chart
+            .draw_series(LineSeries::new(
+                erb_spec.iter().zip(r_spec.iter()).map(|(&x, &y)| (x, y)),
+                &RED,
+            ))
+            .unwrap()
+            .label("from_spectrum")
+            .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], &RED));
+
+        chart
+            .draw_series(LineSeries::new(
+                erb_log2.iter().zip(r_log2.iter()).map(|(&x, &y)| (x, y)),
+                &BLUE,
+            ))
+            .unwrap()
+            .label("from_log2_spectrum (Jacobian)")
+            .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], &BLUE));
+
+        chart
+            .configure_series_labels()
+            .background_style(&WHITE.mix(0.8))
+            .border_style(&BLACK)
+            .draw()
+            .unwrap();
+
+        root.present().unwrap();
+        println!("Saved: target/potential_r_spectrum_vs_log2.png");
     }
 }

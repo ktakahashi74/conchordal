@@ -329,8 +329,8 @@ mod tests {
         let nsgt = NsgtKernelLog2::new(NsgtLog2Config::default(), Log2Space::new(20.0, 8000.0, 96));
         let a = mk_sine(fs, 440.0, 1.0);
         let b: Vec<f32> = a.iter().map(|v| v * 2.0).collect();
-        let e1: f32 = nsgt.analyze_power_mean(&a).iter().sum();
-        let e2: f32 = nsgt.analyze_power_mean(&b).iter().sum();
+        let e1: f32 = nsgt.analyze_psd(&a).iter().sum();
+        let e2: f32 = nsgt.analyze_psd(&b).iter().sum();
         assert_relative_eq!(e2 / e1, 4.0, epsilon = 0.15, max_relative = 0.15);
     }
     #[test]

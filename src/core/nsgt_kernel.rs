@@ -237,20 +237,6 @@ impl NsgtKernelLog2 {
             .collect()
     }
 
-    /// PSDライク（per-Hzの正規化は呼び出し側で）。ここは“平均パワーそのもの”を返す簡易版。
-    pub fn analyze_power_mean(&self, x: &[f32]) -> Vec<f32> {
-        self.analyze(x)
-            .iter()
-            .map(|b| {
-                if b.coeffs.is_empty() {
-                    0.0
-                } else {
-                    b.coeffs.iter().map(|z| z.norm_sqr()).sum::<f32>() / b.coeffs.len() as f32
-                }
-            })
-            .collect()
-    }
-
     /// Hann窓用 ENBW 補正を含む Power Spectral Density [power/Hz]
     pub fn analyze_psd(&self, x: &[f32]) -> Vec<f32> {
         let fs = self.cfg.fs;

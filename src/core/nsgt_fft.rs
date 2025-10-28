@@ -44,41 +44,58 @@ pub struct NsgtFftLog2 {
 // =====================================================
 
 impl NsgtFftLog2 {
+    /// Construct FFT-batched NSGT analyzer grouped by octave.
+    /// Each group's window length L is decided at the group's f_min,
+    /// so that f* = Q fs / L <= f_min and the inflection never falls inside.
     pub fn new(cfg: NsgtLog2Config, space: Log2Space) -> Self {
         let fs = cfg.fs;
         let bpo = space.bins_per_oct as f32;
         let q = 1.0 / (2f32.powf(1.0 / bpo) - 1.0);
 
-        let mut bands_all: Vec<(f32, f32, usize)> = space
-            .centers_hz
-            .iter()
-            .zip(&space.centers_log2)
-            .map(|(&f, &log2_f)| {
-                let L = (q * fs / f).ceil() as usize;
-                let L_pow2 = L.next_power_of_two().max(32);
-                (f, log2_f, L_pow2)
-            })
-            .collect();
+        // ← 必要なら false にして非2冪L（さらに滑らか、やや遅い）
+        let use_pow2 = true;
 
-        use itertools::Itertools;
+        use std::collections::BTreeMap;
+        let mut by_oct: BTreeMap<i32, Vec<(f32, f32)>> = BTreeMap::new();
+        for (&f, &log2f) in space.centers_hz.iter().zip(space.centers_log2.iter()) {
+            by_oct
+                .entry(log2f.floor() as i32)
+                .or_default()
+                .push((f, log2f));
+        }
+
         let mut groups = Vec::new();
-        for (L_pow2, subset) in &bands_all.into_iter().group_by(|(_, _, L)| *L) {
-            let hop = ((1.0 - cfg.overlap) * L_pow2 as f32).round().max(1.0) as usize;
-            let window = hann_periodic(L_pow2);
+        for (_oct, mut bins) in by_oct {
+            bins.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+            let f_min = bins.first().unwrap().0;
+
+            // 決定式： L_g = ceil(Q fs / f_min)
+            let mut Lg = (q * fs / f_min).ceil() as usize;
+            Lg = Lg.max(32);
+            if use_pow2 {
+                Lg = Lg.next_power_of_two();
+            }
+
+            let hop = ((1.0 - cfg.overlap) * Lg as f32).round().max(1.0) as usize;
+            let window = hann_periodic(Lg);
+
             let mut planner = FftPlanner::<f32>::new();
-            let fft = planner.plan_fft_forward(L_pow2);
-            let bands: Vec<_> = subset
-                .map(|(f, log2_f, _)| {
-                    let bin = (f * L_pow2 as f32 / fs).round() as usize;
+            let fft = planner.plan_fft_forward(Lg);
+
+            let bands: Vec<_> = bins
+                .into_iter()
+                .map(|(f, log2f)| {
+                    let bin = (f * Lg as f32 / fs).round() as usize;
                     BandInfo {
                         f_hz: f,
-                        log2_hz: log2_f,
+                        log2_hz: log2f,
                         bin,
                     }
                 })
                 .collect();
+
             groups.push(BandGroup {
-                win_len: L_pow2,
+                win_len: Lg,
                 hop,
                 window,
                 bands,
@@ -88,6 +105,97 @@ impl NsgtFftLog2 {
 
         Self { cfg, space, groups }
     }
+
+    //impl NsgtFftLog2 {
+    // pub fn new(cfg: NsgtLog2Config, space: Log2Space) -> Self {
+    //     let fs = cfg.fs;
+    //     let bpo = space.bins_per_oct as f32;
+    //     let q = 1.0 / (2f32.powf(1.0 / bpo) - 1.0);
+
+    //     let mut bands_all: Vec<(f32, f32, usize)> = space
+    //         .centers_hz
+    //         .iter()
+    //         .zip(&space.centers_log2)
+    //         .map(|(&f, &log2_f)| {
+    //             let L = (q * fs / f).ceil() as usize;
+    //             let L_pow2 = L.next_power_of_two().max(32);
+    //             (f, log2_f, L_pow2)
+    //         })
+    //         .collect();
+
+    //     use itertools::Itertools;
+    //     let mut groups = Vec::new();
+    //     for (L_pow2, subset) in &bands_all.into_iter().group_by(|(_, _, L)| *L) {
+    //         let hop = ((1.0 - cfg.overlap) * L_pow2 as f32).round().max(1.0) as usize;
+    //         let window = hann_periodic(L_pow2);
+    //         let mut planner = FftPlanner::<f32>::new();
+    //         let fft = planner.plan_fft_forward(L_pow2);
+    //         let bands: Vec<_> = subset
+    //             .map(|(f, log2_f, _)| {
+    //                 let bin = (f * L_pow2 as f32 / fs).round() as usize;
+    //                 BandInfo {
+    //                     f_hz: f,
+    //                     log2_hz: log2_f,
+    //                     bin,
+    //                 }
+    //             })
+    //             .collect();
+    //         groups.push(BandGroup {
+    //             win_len: L_pow2,
+    //             hop,
+    //             window,
+    //             bands,
+    //             fft,
+    //         });
+    //     }
+
+    //     Self { cfg, space, groups }
+    // }
+
+    // pub fn new(cfg: NsgtLog2Config, space: Log2Space) -> Self {
+    //     let fs = cfg.fs;
+    //     let bpo = space.bins_per_oct as f32;
+    //     let q = 1.0 / (2f32.powf(1.0 / bpo) - 1.0);
+
+    //     let mut bands_all: Vec<(f32, f32, usize)> = space
+    //         .centers_hz
+    //         .iter()
+    //         .zip(&space.centers_log2)
+    //         .map(|(&f, &log2_f)| {
+    //             let L = (q * fs / f).ceil() as usize;
+    //             let L_pow2 = L.next_power_of_two().max(32);
+    //             (f, log2_f, L_pow2)
+    //         })
+    //         .collect();
+
+    //     use itertools::Itertools;
+    //     let mut groups = Vec::new();
+    //     for (L_pow2, subset) in &bands_all.into_iter().group_by(|(_, _, L)| *L) {
+    //         let hop = ((1.0 - cfg.overlap) * L_pow2 as f32).round().max(1.0) as usize;
+    //         let window = hann_periodic(L_pow2);
+    //         let mut planner = FftPlanner::<f32>::new();
+    //         let fft = planner.plan_fft_forward(L_pow2);
+    //         let bands: Vec<_> = subset
+    //             .map(|(f, log2_f, _)| {
+    //                 let bin = (f * L_pow2 as f32 / fs).round() as usize;
+    //                 BandInfo {
+    //                     f_hz: f,
+    //                     log2_hz: log2_f,
+    //                     bin,
+    //                 }
+    //             })
+    //             .collect();
+    //         groups.push(BandGroup {
+    //             win_len: L_pow2,
+    //             hop,
+    //             window,
+    //             bands,
+    //             fft,
+    //         });
+    //     }
+
+    //     Self { cfg, space, groups }
+    // }
 
     pub fn analyze(&self, x: &[f32]) -> Vec<BandCoeffs> {
         let fs = self.cfg.fs;
@@ -449,11 +557,11 @@ mod tests {
     #[ignore]
     fn plot_nsgt_log2_noise_response() {
         let fs = 48_000.0;
-        let secs = 100.0;
+        let secs = 10.0;
         let n = (fs * secs) as usize;
         let nsgt = NsgtFftLog2::new(
             NsgtLog2Config { fs, overlap: 0.5 },
-            Log2Space::new(35.0, 24_000.0, 384),
+            Log2Space::new(35.0, 24_000.0, 50),
         );
         let mut rng = rand::rng();
         let white: Vec<f32> = (0..n).map(|_| rng.random_range(-1.0f32..1.0)).collect();

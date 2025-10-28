@@ -77,7 +77,7 @@ pub fn eval_kernel_delta_erb(params: &KernelParams, d_erb: f32) -> f32 {
     };
     let base = (1.0 - params.mix_tail) * g_gauss + params.mix_tail * g_tail;
 
-    let suppress = 1.0 - (-desq / (2.0 * s_sup * s_sup)).exp();
+    let suppress = (1.0 - (-desq / (2.0 * s_sup * s_sup)).exp()).clamp(0.0, 1.0);
     let g_coch = base * suppress.powf(params.suppress_pow);
     let g_neural = (-desq / (2.0 * sig_n * sig_n)).exp();
     (1.0 - params.w_neural) * g_coch + params.w_neural * g_neural

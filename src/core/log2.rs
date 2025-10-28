@@ -75,6 +75,18 @@ impl Log2Space {
         Some(idx)
     }
 
+    pub fn delta_hz_at(&self, f: f32) -> Option<f32> {
+        let idx = self.index_of_freq(f)?;
+        let df = if idx == 0 {
+            self.centers_hz[1] - self.centers_hz[0]
+        } else if idx + 1 >= self.centers_hz.len() {
+            self.centers_hz[idx] - self.centers_hz[idx - 1]
+        } else {
+            (self.centers_hz[idx + 1] - self.centers_hz[idx - 1]) / 2.0
+        };
+        Some(df.max(10.0)) // lower bound
+    }
+
     /// Return Δlog2 between two frequencies.
     #[inline]
     pub fn delta_log2(&self, f1: f32, f2: f32) -> f32 {

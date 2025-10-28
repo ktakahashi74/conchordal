@@ -6,6 +6,7 @@ use rustfft::num_complex::Complex32;
 
 use crate::core::consonance_kernel::ConsonanceKernel;
 use crate::core::nsgt::{BandCoeffs, NsgtLog2}; // NSGT log2-domain transform
+use crate::core::nsgt_kernel::NsgtKernelLog2;
 use crate::core::roughness_kernel::{RoughnessKernel, potential_r_from_log2_spectrum};
 
 #[derive(Clone, Copy, Debug)]
@@ -23,7 +24,6 @@ pub enum CVariant {
 #[derive(Clone, Debug)]
 pub struct LandscapeParams {
     pub fs: f32,
-    pub hop_s: f32, // hop size [s] (e.g. 0.01)
     pub max_hist_cols: usize,
     pub alpha: f32,
     pub beta: f32,
@@ -40,31 +40,31 @@ pub struct LandscapeFrame {
     pub r_last: Vec<f32>,
     pub c_last: Vec<f32>,
     pub k_last: Vec<f32>,
-    pub amp_last: Vec<f32>,
+    pub amps_last: Vec<f32>,
     pub r_hist: Vec<Vec<f32>>,
     pub k_hist: Vec<Vec<f32>>,
 }
 
 pub struct Landscape {
-    nsgt: NsgtLog2,
+    nsgt: NsgtKernelLog2,
     params: LandscapeParams,
     last_r: Vec<f32>,
     last_c: Vec<f32>,
     last_k: Vec<f32>,
-    amp_last: Vec<f32>,
+    amps_last: Vec<f32>,
     analytic_last: Option<Vec<Complex32>>,
 }
 
 impl Landscape {
-    pub fn new(params: LandscapeParams, nsgt: NsgtLog2) -> Self {
-        let n_ch = nsgt.freqs_hz().len();
+    pub fn new(params: LandscapeParams, nsgt: NsgtKernelLog2) -> Self {
+        let n_ch = nsgt.space().n_bins();
         Self {
             nsgt,
             params,
             last_r: vec![0.0; n_ch],
             last_c: vec![0.0; n_ch],
             last_k: vec![0.0; n_ch],
-            amp_last: vec![0.0; n_ch],
+            amps_last: vec![0.0; n_ch],
             analytic_last: None,
         }
     }
@@ -88,7 +88,7 @@ impl Landscape {
         self.analytic_last = Some(analytic_flat);
 
         // 包絡（平均振幅 or 0）
-        let amp: Vec<f32> = bands
+        let amps: Vec<f32> = bands
             .iter()
             .map(|b| {
                 if b.coeffs.is_empty() {
@@ -98,18 +98,18 @@ impl Landscape {
                 }
             })
             .collect();
-        self.amp_last = amp.clone();
+        self.amps_last = amps.clone();
 
         // --- 2. Roughness (potential R) ---
         match self.params.r_variant {
             RVariant::NsgtKernel => {
-                // (self.last_r, _) = potential_r_from_log2_spectrum(
-                //     &self.nsgt.freqs_hz(),
-                //     &self.params.roughness_kernel.params,
-                //     1.0,
-                //     0.0,
-                //     false,
-                // );
+                //     (self.last_r, _) = potential_r_from_log2_spectrum(
+                //         amps,
+                //         &self.params.roughness_kernel.params,
+                //         1.0,
+                //         0.0,
+                //         false,
+                //     );
             }
             RVariant::Dummy => self.last_r.fill(0.0),
         }
@@ -145,16 +145,16 @@ impl Landscape {
     }
 
     pub fn snapshot(&self, mut prev: Option<LandscapeFrame>) -> LandscapeFrame {
-        let n_ch = self.nsgt.freqs_hz().len();
+        let n_ch = self.nsgt.space().n_bins();
         let mut out = prev.unwrap_or_default();
 
         if out.freqs_hz.len() != n_ch {
-            out.freqs_hz = self.nsgt.freqs_hz().to_vec();
+            out.freqs_hz = self.nsgt.space().centers_hz.to_vec();
             out.fs = self.params.fs;
             out.r_last = vec![0.0; n_ch];
             out.c_last = vec![0.0; n_ch];
             out.k_last = vec![0.0; n_ch];
-            out.amp_last = vec![0.0; n_ch];
+            out.amps_last = vec![0.0; n_ch];
             out.r_hist = vec![Vec::with_capacity(self.params.max_hist_cols); n_ch];
             out.k_hist = vec![Vec::with_capacity(self.params.max_hist_cols); n_ch];
         }
@@ -162,7 +162,7 @@ impl Landscape {
         out.r_last.clone_from(&self.last_r);
         out.c_last.clone_from(&self.last_c);
         out.k_last.clone_from(&self.last_k);
-        out.amp_last.clone_from(&self.amp_last);
+        out.amps_last.clone_from(&self.amps_last);
 
         Self::push_hist(&mut out.r_hist, &self.last_r, self.params.max_hist_cols);
         Self::push_hist(&mut out.k_hist, &self.last_k, self.params.max_hist_cols);
@@ -172,9 +172,5 @@ impl Landscape {
 
     pub fn params(&self) -> &LandscapeParams {
         &self.params
-    }
-
-    pub fn nsgt(&self) -> &NsgtLog2 {
-        &self.nsgt
     }
 }

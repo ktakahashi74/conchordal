@@ -7,17 +7,15 @@ use std::thread;
 use std::time::{Duration, Instant};
 use tracing::*;
 
-use clap::Parser;
-use ringbuf::HeapProd;
-
 use crossbeam_channel::{Receiver, Sender, bounded};
 
 use crate::audio::output::AudioOutput;
 use crate::audio::writer::WavOutput;
-// NSGT/log2 landscape 用に Cochlea/ErbSpace 依存を外す
 use crate::core::consonance_kernel::ConsonanceKernel;
 use crate::core::landscape::{CVariant, Landscape, LandscapeFrame, LandscapeParams, RVariant};
+use crate::core::log2::Log2Space;
 use crate::core::nsgt::{NsgtLog2, NsgtLog2Config};
+use crate::core::nsgt_kernel::NsgtKernelLog2;
 use crate::core::roughness_kernel::{KernelParams, RoughnessKernel};
 use crate::life::population::{Population, PopulationParams};
 use crate::synth::engine::{SynthConfig, SynthEngine};
@@ -164,19 +162,21 @@ fn worker_loop(
     });
 
     // === NSGT (log2) analyzer & Landscape parameters ===
-    // NsgtLog2::new(fs, fmin, fmax, bins_per_oct, hop_seconds)
+    let space = Log2Space::new(
+        27.5, // A0
+        8000.0, 144,
+    );
 
-    let mut nsgt = NsgtLog2::new(NsgtLog2Config {
-        fs,
-        fmin: 20.0,
-        fmax: 8000.0,
-        bins_per_oct: 96,
-        overlap: 0.5, // or your desired overlap (0.5 = 50%)
-    });
+    let mut nsgt = NsgtKernelLog2::new(
+        NsgtLog2Config {
+            fs,
+            overlap: 0.5, // or your desired overlap (0.5 = 50%)
+        },
+        space,
+    );
 
     let lparams = LandscapeParams {
         fs,
-        hop_s: nsgt.hop_s(),
         max_hist_cols: 256,
         alpha: 0.8,
         beta: 0.2,

@@ -149,6 +149,7 @@ fn worker_loop(
     // --- Parameters ---
     let fs: f32 = 48_000.0;
     let fft_size: usize = 16_384;
+
     let hop: usize = fft_size / 2;
     let n_bins = fft_size / 2 + 1;
 
@@ -163,7 +164,7 @@ fn worker_loop(
     // === NSGT (log2) analyzer & Landscape parameters ===
     let space = Log2Space::new(
         27.5, // A0
-        8000.0, 144,
+        8000.0, 200,
     );
 
     let mut nsgt = NsgtKernelLog2::new(

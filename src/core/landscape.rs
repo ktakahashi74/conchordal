@@ -89,13 +89,13 @@ impl Landscape {
 
         // === 3. potential R 計算 ===
         //    gamma, alpha は感度パラメータ（例: 1.0, 0.0）
-        let (r_vec, r_total) = self.params.roughness_kernel.potential_r_from_log2_spectrum(
+        let (r, r_total) = self.params.roughness_kernel.potential_r_from_log2_spectrum(
             &envelope,
             space,
             self.params.gamma,
             self.params.alpha,
         );
-
+        self.last_r = r;
         // === 4. potential C 計算（必要に応じて） ===
         //    phase-based。隣接bandの位相同期からC_plを算出
         //        let c_total = match self.params.c_variant {

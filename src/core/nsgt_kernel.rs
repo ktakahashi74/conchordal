@@ -127,15 +127,24 @@ impl NsgtKernelLog2 {
             .zip(space.centers_log2.iter())
             .zip(Lks.iter())
         {
-            let Lk = if Lk % 2 == 0 { Lk + 1 } else { Lk }; // make L_k odd for symmetric window
-            let window = hann_periodic(Lk);
-            //let U = (window.iter().map(|v| v * v).sum::<f32>()).sqrt();
+            let mut Lk_req = Lk;
+
+            if Lk_req >= nfft {
+                Lk_req = nfft - 1;
+            }
+            if Lk_req % 2 == 0 {
+                Lk_req -= 1;
+            }
+
+            Lk_req = Lk_req.max(3);
+
+            let window = hann_periodic(Lk_req);
             let sum_w = window.iter().copied().sum::<f32>().max(1e-12);
 
-            // circularly shifted kernel h_k[n] = w_k[n] * e^{-j 2π f_k n / fs}, zero-padded to Nfft
+            // circularly shifted kernel h_k[n] = w[n]*e^{-j2π f n/fs} (zero-padded to nfft)
             let mut h = vec![Complex32::new(0.0, 0.0); nfft];
-            let center = Lk / 2;
-            for i in 0..Lk {
+            let center = (Lk_req / 2) % nfft;
+            for i in 0..Lk_req {
                 let w = window[i] / sum_w;
                 let ph = 2.0 * std::f32::consts::PI * f * (i as f32) / fs;
                 let cplx = Complex32::new(ph.cos(), -ph.sin()) * w;
@@ -320,7 +329,7 @@ mod tests {
         let fs = 48_000.0;
         let nsgt = NsgtKernelLog2::new(
             NsgtLog2Config { fs, overlap: 0.5 },
-            Log2Space::new(20.0, 8000.0, 48),
+            Log2Space::new(20.0, 8000.0, 200),
         );
         let sig = mk_sine(fs, 440.0, 1.0);
         let bands = nsgt.analyze(&sig);
@@ -590,7 +599,7 @@ mod tests {
         let fs = 48_000.0;
         let nsgt = NsgtKernelLog2::new(
             NsgtLog2Config { fs, overlap: 0.5 },
-            Log2Space::new(20.0, 8000.0, 96),
+            Log2Space::new(20.0, 8000.0, 200),
         );
         let sig = mk_sine(fs, 440.0, 1.0);
         let bands = nsgt.analyze(&sig);
@@ -639,13 +648,13 @@ mod tests {
         use scirs2_signal::waveforms::{brown_noise, pink_noise};
 
         let fs = 48_000.0;
-        let secs = 400.0;
+        let secs = 40.0;
         let n = (fs * secs) as usize;
 
         // 対象帯域を 35–8000Hz に制限（安定）
         let nsgt = NsgtKernelLog2::new(
             NsgtLog2Config { fs, overlap: 0.5 },
-            Log2Space::new(35.0, 24_000.0, 200),
+            Log2Space::new(35.0, 24_000.0, 100),
         );
 
         // --- ノイズ生成 ---

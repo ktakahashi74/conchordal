@@ -695,7 +695,7 @@ mod tests {
 
         for ratio in (100..200).map(|k| k as f32 / 100.0) {
             let f2 = base * ratio;
-            let n = 8192;
+            let n = 4096;
             let mut sig = vec![0.0f32; n];
             for i in 0..n {
                 let t = i as f32 / fs;

@@ -16,9 +16,52 @@
 //! - Complex linear interpolation is unnecessary (the kernel itself represents the continuous frequency).
 
 use crate::core::log2::Log2Space;
-use crate::core::nsgt::{BandCoeffs, NsgtLog2Config};
 use rustfft::{FftPlanner, num_complex::Complex32};
 use std::sync::Arc;
+
+// =====================================================
+// Config structures
+// =====================================================
+
+/// NSGT configuration (log2-axis, analysis-only).
+#[derive(Clone, Copy, Debug)]
+pub struct NsgtLog2Config {
+    /// Sampling rate [Hz]
+    pub fs: f32,
+    /// Overlap ratio in [0, 0.95). 0.5 = 50% overlap (default-good)
+    pub overlap: f32,
+}
+
+impl Default for NsgtLog2Config {
+    fn default() -> Self {
+        Self {
+            fs: 48_000.0,
+            overlap: 0.5,
+        }
+    }
+}
+
+/// Band descriptor on log2 axis.
+#[derive(Clone, Debug)]
+pub struct NsgtBand {
+    pub f_hz: f32,
+    pub win_len: usize,
+    pub hop: usize,
+    pub window: Vec<f32>,
+    pub log2_hz: f32,
+    pub q: f32,
+}
+
+/// Analysis result for one band.
+#[derive(Clone, Debug)]
+pub struct BandCoeffs {
+    pub coeffs: Vec<Complex32>,
+    pub t_sec: Vec<f32>,
+    pub f_hz: f32,
+    pub log2_hz: f32,
+    pub win_len: usize,
+    pub hop: usize,
+}
 
 #[derive(Clone, Debug)]
 struct KernelBand {

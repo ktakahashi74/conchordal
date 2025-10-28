@@ -14,8 +14,7 @@ use crate::audio::writer::WavOutput;
 use crate::core::consonance_kernel::ConsonanceKernel;
 use crate::core::landscape::{CVariant, Landscape, LandscapeFrame, LandscapeParams, RVariant};
 use crate::core::log2::Log2Space;
-use crate::core::nsgt::{NsgtLog2, NsgtLog2Config};
-use crate::core::nsgt_kernel::NsgtKernelLog2;
+use crate::core::nsgt_kernel::{BandCoeffs, NsgtKernelLog2, NsgtLog2Config};
 use crate::core::roughness_kernel::{KernelParams, RoughnessKernel};
 use crate::life::population::{Population, PopulationParams};
 use crate::synth::engine::{SynthConfig, SynthEngine};
@@ -178,8 +177,8 @@ fn worker_loop(
     let lparams = LandscapeParams {
         fs,
         max_hist_cols: 256,
-        alpha: 0.8,
-        beta: 0.2,
+        gamma: 1.0,
+        alpha: 0.0,
         r_variant: RVariant::NsgtKernel,
         c_variant: CVariant::Dummy,
         roughness_kernel: RoughnessKernel::new(KernelParams::default(), 0.005), // ΔERB LUT step

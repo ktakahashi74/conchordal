@@ -15,6 +15,7 @@ use crate::core::consonance_kernel::ConsonanceKernel;
 use crate::core::landscape::{CVariant, Landscape, LandscapeFrame, LandscapeParams, RVariant};
 use crate::core::log2::Log2Space;
 use crate::core::nsgt_kernel::{BandCoeffs, NsgtKernelLog2, NsgtLog2Config};
+use crate::core::nsgt_rt::RtNsgtKernelLog2;
 use crate::core::roughness_kernel::{KernelParams, RoughnessKernel};
 use crate::life::population::{Population, PopulationParams};
 use crate::synth::engine::{SynthConfig, SynthEngine};
@@ -148,47 +149,53 @@ fn worker_loop(
 ) {
     // --- Parameters ---
     let fs: f32 = 48_000.0;
-    let fft_size: usize = 16_384;
-
-    let hop: usize = fft_size / 2;
-    let n_bins = fft_size / 2 + 1;
-
-    // Synth engine
-    let mut synth = SynthEngine::new(SynthConfig {
-        fs,
-        fft_size,
-        hop,
-        n_bins,
-    });
+    //    let fft_size: usize = 16_384;
+    //let hop: usize = fft_size / 2;
 
     // === NSGT (log2) analyzer & Landscape parameters ===
-    let space = Log2Space::new(
-        27.5, // A0
-        8000.0, 200,
-    );
+    let space = Log2Space::new(100.0, 4000.0, 128);
 
-    let mut nsgt = NsgtKernelLog2::new(
+    let mut nsgt = RtNsgtKernelLog2::new(NsgtKernelLog2::new(
         NsgtLog2Config {
             fs,
             overlap: 0.5, // or your desired overlap (0.5 = 50%)
+            nfft_override: Some(8192),
         },
         space,
-    );
+    ));
 
     let lparams = LandscapeParams {
         fs,
         max_hist_cols: 256,
         gamma: 1.0,
         alpha: 0.0,
-        r_variant: RVariant::NsgtKernel,
+        r_variant: RVariant::NsgtRt,
         c_variant: CVariant::Dummy,
         roughness_kernel: RoughnessKernel::new(KernelParams::default(), 0.005), // ΔERB LUT step
         consonance_kernel: ConsonanceKernel::default(),
     };
-    let mut landscape = Landscape::new(lparams, nsgt);
 
     let mut next_deadline = Instant::now();
+
+    let nfft = nsgt.nsgt.nfft();
+    let hop = nsgt.hop();
+    let n_bins = nfft / 2 + 1;
+
+    println!("nfft {nfft}, hop {hop}");
+
     let hop_duration = Duration::from_secs_f32(hop as f32 / fs);
+
+    let mut landscape = Landscape::new(lparams, nsgt);
+
+    // Synth engine
+    let mut synth = SynthEngine::new(SynthConfig {
+        fs,
+        hop,
+        n_bins,
+        fft_size: nfft,
+    });
+
+    println!("nfft = {nfft}, hop = {hop},");
 
     loop {
         if exiting.load(Ordering::SeqCst) {
@@ -199,7 +206,7 @@ fn worker_loop(
         next_deadline += hop_duration;
 
         // 1) population → spectral amplitude A[k]
-        let amps = pop.project_spectrum(n_bins, fs, fft_size);
+        let amps = pop.project_spectrum(n_bins, fs, nfft);
 
         // 2) synth: render hop
         let time_chunk = synth.render_hop(&amps);
@@ -215,7 +222,7 @@ fn worker_loop(
 
         // 3) landscape update (NSGT/log2-domain)
         landscape.process_frame(&time_chunk);
-        let lframe: LandscapeFrame = landscape.snapshot(None);
+        let lframe: LandscapeFrame = landscape.snapshot();
 
         // 4) package for UI
         let ui_frame = UiFrame {

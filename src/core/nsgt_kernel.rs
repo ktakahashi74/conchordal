@@ -30,6 +30,7 @@ pub struct NsgtLog2Config {
     pub fs: f32,
     /// Overlap ratio in [0, 0.95). 0.5 = 50% overlap (default-good)
     pub overlap: f32,
+    pub nfft_override: Option<usize>,
 }
 
 impl Default for NsgtLog2Config {
@@ -37,6 +38,7 @@ impl Default for NsgtLog2Config {
         Self {
             fs: 48_000.0,
             overlap: 0.5,
+            nfft_override: None,
         }
     }
 }
@@ -64,18 +66,18 @@ pub struct BandCoeffs {
 }
 
 #[derive(Clone, Debug)]
-struct KernelBand {
-    f_hz: f32,
-    log2_hz: f32,
-    win_len: usize, // L_k
+pub struct KernelBand {
+    pub f_hz: f32,
+    pub log2_hz: f32,
+    pub win_len: usize, // L_k
     // frequency-domain kernel (sparse): store (bin index, conj(K_k[bin])) for computation (multiplication-only)
-    spec_conj_sparse: Vec<(usize, Complex32)>,
+    pub spec_conj_sparse: Vec<(usize, Complex32)>,
 }
 
 #[derive(Clone)]
 pub struct NsgtKernelLog2 {
-    cfg: NsgtLog2Config,
-    space: Log2Space,
+    pub cfg: NsgtLog2Config,
+    pub space: Log2Space,
     nfft: usize,
     hop: usize,
     fft: Arc<dyn rustfft::Fft<f32>>,
@@ -95,7 +97,8 @@ impl NsgtKernelLog2 {
 
         let fs = cfg.fs;
         let bpo = space.bins_per_oct as f32;
-        let q = 1.0 / (2f32.powf(1.0 / bpo) - 1.0);
+        let raw_q = 1.0 / (2f32.powf(1.0 / bpo) - 1.0);
+        let q = raw_q.clamp(5.0, 40.0); // prevent excessive window size
 
         // Calculate L_k for each band
         let mut Lks: Vec<usize> = space
@@ -107,7 +110,12 @@ impl NsgtKernelLog2 {
         // Nfft determination: next power of two based on max L_k (zero-padding to sharpen the kernel)
         let zpad_pow2: usize = 2;
         let max_L = *Lks.iter().max().unwrap_or(&1024);
-        let mut nfft = (max_L * zpad_pow2).next_power_of_two().max(1024);
+
+        let mut nfft = if let Some(n) = cfg.nfft_override {
+            n
+        } else {
+            (max_L * zpad_pow2).next_power_of_two().max(1024)
+        };
 
         // upper limit for practical use (to avoid excessively large FFT)
         if nfft > 1 << 18 {
@@ -522,7 +530,7 @@ mod tests {
 
         let nsgt = NsgtKernelLog2::new(
             NsgtLog2Config { fs, overlap: 0.5 },
-            Log2Space::new(35.0, 8000.0, 200),
+            Log2Space::new(35.0, 4000.0, 200),
         );
 
         // --- ノイズ生成 ---

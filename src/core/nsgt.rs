@@ -70,9 +70,9 @@ pub struct BandCoeffs {
 
 #[derive(Clone, Debug)]
 pub struct NsgtLog2 {
-    cfg: NsgtLog2Config,
-    bands: Vec<NsgtBand>,
-    space: Log2Space,
+    pub cfg: NsgtLog2Config,
+    pub bands: Vec<NsgtBand>,
+    pub space: Log2Space,
 }
 
 impl NsgtLog2 {

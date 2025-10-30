@@ -10,5 +10,6 @@ pub mod consonance_kernel;
 pub mod log2;
 pub mod nsgt;
 pub mod nsgt_kernel;
+pub mod nsgt_rt;
 pub mod roughness_kernel;
 pub mod util;

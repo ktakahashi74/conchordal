@@ -170,7 +170,11 @@ mod tests {
         let secs = 0.5;
         let sig = mk_sine(fs, 440.0, secs);
         let nsgt = NsgtKernelLog2::new(
-            NsgtLog2Config { fs, overlap: 0.5 },
+            NsgtLog2Config {
+                fs,
+                overlap: 0.5,
+                ..Default::default()
+            },
             Log2Space::new(200.0, 4000.0, 96),
         );
         let mut rt = RtNsgtKernelLog2::new(nsgt);

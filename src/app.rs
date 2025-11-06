@@ -9,10 +9,9 @@ use tracing::*;
 
 use crossbeam_channel::{Receiver, Sender, bounded};
 
-use crate::audio::output::AudioOutput;
 use crate::audio::writer::WavOutput;
 use crate::core::consonance_kernel::ConsonanceKernel;
-use crate::core::landscape::{CVariant, Landscape, LandscapeFrame, LandscapeParams, RVariant};
+use crate::core::landscape::{Landscape, LandscapeFrame, LandscapeParams};
 use crate::core::log2::Log2Space;
 use crate::core::nsgt_kernel::{BandCoeffs, NsgtKernelLog2, NsgtLog2Config};
 use crate::core::nsgt_rt::RtNsgtKernelLog2;
@@ -20,6 +19,7 @@ use crate::core::roughness_kernel::{KernelParams, RoughnessKernel};
 use crate::life::population::{Population, PopulationParams};
 use crate::synth::engine::{SynthConfig, SynthEngine};
 use crate::ui::viewdata::{SpecFrame, UiFrame, WaveFrame};
+use crate::{audio::output::AudioOutput, core::consonance_kernel::ConsonanceParams};
 
 pub struct App {
     ui_frame_rx: Receiver<UiFrame>,
@@ -155,6 +155,15 @@ fn worker_loop(
     // === NSGT (log2) analyzer & Landscape parameters ===
     let space = Log2Space::new(100.0, 4000.0, 128);
 
+    let lparams = LandscapeParams {
+        fs,
+        max_hist_cols: 256,
+        gamma: 1.0,
+        alpha: 0.0,
+        roughness_kernel: RoughnessKernel::new(KernelParams::default(), 0.005), // ΔERB LUT step
+        consonance_kernel: ConsonanceKernel::new(&space, ConsonanceParams::default()),
+    };
+
     let mut nsgt = RtNsgtKernelLog2::new(NsgtKernelLog2::new(
         NsgtLog2Config {
             fs,
@@ -163,17 +172,6 @@ fn worker_loop(
         },
         space,
     ));
-
-    let lparams = LandscapeParams {
-        fs,
-        max_hist_cols: 256,
-        gamma: 1.0,
-        alpha: 0.0,
-        r_variant: RVariant::NsgtRt,
-        c_variant: CVariant::Dummy,
-        roughness_kernel: RoughnessKernel::new(KernelParams::default(), 0.005), // ΔERB LUT step
-        consonance_kernel: ConsonanceKernel::default(),
-    };
 
     let mut next_deadline = Instant::now();
 

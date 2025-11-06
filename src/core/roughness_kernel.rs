@@ -301,10 +301,6 @@ impl RoughnessKernel {
     }
 }
 
-// ======================================================================
-// Tests (updated for LUT-based RoughnessKernel, logic unchanged)
-// ======================================================================
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -336,7 +336,11 @@ mod tests {
     fn pure_tone_near_target() {
         let fs = 48_000.0;
         let nsgt = NsgtKernelLog2::new(
-            NsgtLog2Config { fs, overlap: 0.5 },
+            NsgtLog2Config {
+                fs,
+                overlap: 0.5,
+                ..Default::default()
+            },
             Log2Space::new(20.0, 8000.0, 200),
         );
         let sig = mk_sine(fs, 440.0, 1.0);
@@ -489,7 +493,14 @@ mod tests {
         let sig = mk_sine(fs, 440.0, 1.0);
 
         let e_mean = |overlap: f32| {
-            let nsgt = NsgtKernelLog2::new(NsgtLog2Config { fs, overlap }, space.clone());
+            let nsgt = NsgtKernelLog2::new(
+                NsgtLog2Config {
+                    fs,
+                    overlap,
+                    ..Default::default()
+                },
+                space.clone(),
+            );
             let out = nsgt.analyze(&sig);
             let sum_e: f32 = out
                 .iter()
@@ -529,7 +540,11 @@ mod tests {
         let n = (fs * secs) as usize;
 
         let nsgt = NsgtKernelLog2::new(
-            NsgtLog2Config { fs, overlap: 0.5 },
+            NsgtLog2Config {
+                fs,
+                overlap: 0.5,
+                ..Default::default()
+            },
             Log2Space::new(35.0, 4000.0, 200),
         );
 
@@ -606,7 +621,11 @@ mod tests {
 
         let fs = 48_000.0;
         let nsgt = NsgtKernelLog2::new(
-            NsgtLog2Config { fs, overlap: 0.5 },
+            NsgtLog2Config {
+                fs,
+                overlap: 0.5,
+                ..Default::default()
+            },
             Log2Space::new(20.0, 8000.0, 200),
         );
         let sig = mk_sine(fs, 440.0, 1.0);
@@ -661,7 +680,11 @@ mod tests {
 
         // 対象帯域を 35–8000Hz に制限（安定）
         let nsgt = NsgtKernelLog2::new(
-            NsgtLog2Config { fs, overlap: 0.5 },
+            NsgtLog2Config {
+                fs,
+                overlap: 0.5,
+                ..Default::default()
+            },
             Log2Space::new(35.0, 24_000.0, 100),
         );
 

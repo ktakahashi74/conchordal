@@ -406,17 +406,27 @@ mod tests {
         let e2: f32 = nsgt.analyze_psd(&b).iter().sum();
         assert_relative_eq!(e2 / e1, 4.0, epsilon = 0.15, max_relative = 0.15);
     }
+
     #[test]
-    fn window_len_monotonic_vs_freq() {
-        // L_k は f が上がるほど単調非増加のはず
-        let nsgt = NsgtKernelLog2::new(NsgtLog2Config::default(), Log2Space::new(20.0, 8000.0, 48));
+    fn win_len_decreases_with_freq() {
+        let nsgt = NsgtKernelLog2::new(NsgtLog2Config::default(), Log2Space::new(20.0, 8000.0, 96));
         let lens: Vec<usize> = nsgt.bands().iter().map(|b| b.win_len).collect();
         for w in lens.windows(2) {
-            assert!(
-                w[0] >= w[1],
-                "win_len should be non-increasing with frequency"
-            );
+            assert!(w[0] >= w[1], "win_len not monotonic: {} < {}", w[0], w[1]);
         }
+    }
+
+    #[test]
+    fn log2_space_linear_check() {
+        let space = Log2Space::new(20.0, 8000.0, 48);
+        let diffs: Vec<f32> = space.centers_log2.windows(2).map(|x| x[1] - x[0]).collect();
+        let mean = diffs.iter().sum::<f32>() / diffs.len() as f32;
+        let var = diffs
+            .iter()
+            .map(|d| (d - mean).abs() / mean)
+            .max_by(|a, b| a.partial_cmp(b).unwrap())
+            .unwrap();
+        assert!(var < 1e-3, "log2 spacing nonuniform >0.1%");
     }
 
     #[test]
@@ -455,44 +465,26 @@ mod tests {
     }
 
     #[test]
-    fn energy_conservation() {
-        // 440 Hz の正弦波を 1 秒間生成
+    fn parseval_consistency() {
         let fs = 48_000.0;
-        let f0 = 440.0;
-        let sig = mk_sine(fs, f0, 1.0);
+        let f0 = 880.0;
+        let sig = (0..(fs as usize))
+            .map(|i| (2.0 * std::f32::consts::PI * f0 * i as f32 / fs).sin())
+            .collect::<Vec<_>>();
 
-        // log2軸空間（楽音帯域）
-        let space = Log2Space::new(35.0, 8000.0, 200);
+        let space = Log2Space::new(20.0, 8000.0, 200);
         let nsgt = NsgtKernelLog2::new(NsgtLog2Config::default(), space.clone());
 
-        // === 1. 入力信号の平均パワー ===
-        // 正弦波の平均パワーは 0.5 に近い（sin²の平均＝1/2）
-        let energy_signal: f32 = sig.iter().map(|x| x * x).sum::<f32>() / sig.len() as f32;
-
-        // === 2. NSGT出力の per-Hz パワースペクトル密度 ===
+        let e_time = sig.iter().map(|x| x * x).sum::<f32>() / sig.len() as f32;
         let psd = nsgt.analyze_psd(&sig);
 
-        // === 3. Δf [Hz] で積分して総パワーを算出 ===
-        let freqs = &space.centers_hz;
-        let mut energy_coeffs = 0.0;
-        for i in 0..freqs.len() - 1 {
-            let df = (freqs[i + 1] - freqs[i]).max(1e-9);
-            energy_coeffs += psd[i] * df;
-        }
+        let e_freq = psd
+            .iter()
+            .zip(space.centers_hz.windows(2))
+            .map(|(p, f)| p * (f[1] - f[0]))
+            .sum::<f32>();
 
-        // === 4. 比率を比較 ===
-        let ratio = energy_coeffs / energy_signal; // 4x hann window scale correction
-
-        eprintln!(
-            "energy_coeffs={:.6}, energy_signal={:.6}, ratio={:.3}",
-            energy_coeffs, energy_signal, ratio
-        );
-
-        // 理想的には ratio ≈ 1.0 （±10% 誤差許容）
-        assert!(
-            (0.9..=1.1).contains(&ratio),
-            "Energy mismatch: ratio={ratio:.3}, coeffs={energy_coeffs:.6}, signal={energy_signal:.6}"
-        );
+        assert_relative_eq!(e_freq / e_time, 1.0, epsilon = 0.1);
     }
 
     #[test]
@@ -540,83 +532,163 @@ mod tests {
     }
 
     #[test]
-    fn noise_response_slope() {
+    fn single_tone_peak_shape() {
+        let fs = 48_000.0;
+        let f0 = 1000.0;
+        let space = Log2Space::new(100.0, 5000.0, 200);
+        let nsgt = NsgtKernelLog2::new(NsgtLog2Config::default(), space.clone());
+        let sig = (0..(fs as usize))
+            .map(|i| (2.0 * std::f32::consts::PI * f0 * i as f32 / fs).sin())
+            .collect::<Vec<_>>();
+
+        let psd = nsgt.analyze_psd(&sig);
+        let freqs = &space.centers_hz;
+        let (i_peak, &p_peak) = psd
+            .iter()
+            .enumerate()
+            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
+            .unwrap();
+        let f_peak = freqs[i_peak];
+
+        // ピーク位置が ±1/12oct 以内
+        let cents = 1200.0 * ((f_peak / f0).log2()).abs();
+        assert!(
+            cents < 100.0,
+            "peak off by {:.1} cents @ {:.2} Hz",
+            cents,
+            f_peak
+        );
+
+        // --- 主ローブ外側のみでフランクを評価する ---
+        // Hann の 1st zero は概ね |Δf| = 2/T,  T = Lk / fs
+        let Lk = nsgt.bands()[i_peak].win_len as f32; // Lk_req
+        let T = Lk / fs;
+        let df_zero = 2.0 / T; // [Hz]
+
+        let mut flank_max = 0.0f32;
+        let mut flank_count = 0usize;
+        for (i, &p) in psd.iter().enumerate() {
+            let df = (freqs[i] - f_peak).abs();
+            if df >= df_zero {
+                flank_max = flank_max.max(p);
+                flank_count += 1;
+            }
+        }
+        assert!(
+            flank_count > 0,
+            "no bins outside main lobe to evaluate flank"
+        );
+
+        // 主ローブ外では少なくとも ≈10×（>10.0）下がっていることを期待（約10.8 dB）
+        assert!(
+            p_peak / flank_max > 10.0,
+            "peak too broad or flat: peak={}, flank_max={}, df_zero={:.2} Hz, Lk={}",
+            p_peak,
+            flank_max,
+            df_zero,
+            Lk as usize
+        );
+    }
+
+    #[test]
+    fn amplitude_scaling_quadratic() {
+        let fs = 48_000.0;
+        let f0 = 440.0;
+        let sig1: Vec<f32> = (0..(fs as usize))
+            .map(|i| (2.0 * std::f32::consts::PI * f0 * i as f32 / fs).sin())
+            .collect();
+        let sig2: Vec<f32> = sig1.iter().map(|x| x * 2.0).collect();
+
+        let space = Log2Space::new(20.0, 8000.0, 96);
+        let nsgt = NsgtKernelLog2::new(NsgtLog2Config::default(), space);
+        let e1: f32 = nsgt.analyze_psd(&sig1).iter().sum();
+        let e2: f32 = nsgt.analyze_psd(&sig2).iter().sum();
+
+        assert_relative_eq!(e2 / e1, 4.0, epsilon = 0.1);
+    }
+
+    #[test]
+    fn overlap_independence() {
+        let fs = 48_000.0;
+        let f0 = 880.0;
+        let sig = (0..(fs as usize))
+            .map(|i| (2.0 * std::f32::consts::PI * f0 * i as f32 / fs).sin())
+            .collect::<Vec<_>>();
+        let space = Log2Space::new(20.0, 8000.0, 96);
+
+        let energies: Vec<f32> = [0.25, 0.5, 0.75]
+            .iter()
+            .map(|&ov| {
+                let nsgt = NsgtKernelLog2::new(
+                    NsgtLog2Config {
+                        fs,
+                        overlap: ov,
+                        ..Default::default()
+                    },
+                    space.clone(),
+                );
+                nsgt.analyze_psd(&sig).iter().sum::<f32>()
+            })
+            .collect();
+
+        let mean = energies.iter().sum::<f32>() / energies.len() as f32;
+        for &e in &energies {
+            assert_relative_eq!(e / mean, 1.0, epsilon = 0.2);
+        }
+    }
+
+    #[test]
+    fn noise_slope_accuracy() {
         use rand::Rng;
         use scirs2_signal::waveforms::{brown_noise, pink_noise};
 
         let fs = 48_000.0;
-        let secs = 6.0; // 長時間で平均化
-        let n = (fs * secs) as usize;
-
-        let nsgt = NsgtKernelLog2::new(
-            NsgtLog2Config {
-                fs,
-                overlap: 0.5,
-                ..Default::default()
-            },
-            Log2Space::new(35.0, 4000.0, 200),
-        );
-
-        // --- ノイズ生成 ---
+        let n = (fs * 4.0) as usize;
         let mut rng = rand::rng();
-        let white: Vec<f32> = (0..n).map(|_| rng.random_range(-1.0f32..1.0)).collect();
-        let pink: Vec<f32> = pink_noise(n, Some(42))
+        let white: Vec<f32> = (0..n).map(|_| rng.random_range(-1.0..1.0)).collect();
+        let pink: Vec<f32> = pink_noise(n, Some(1))
             .unwrap()
             .iter()
             .map(|&v| v as f32)
             .collect();
-        let brown: Vec<f32> = brown_noise(n, Some(42))
+        let brown: Vec<f32> = brown_noise(n, Some(1))
             .unwrap()
             .iter()
             .map(|&v| v as f32)
             .collect();
 
-        // --- ENBW補正付き PSD (per-Hz 正規化) ---
-        let psd_enbw = |bands: &[BandCoeffs]| -> Vec<f32> {
-            bands
-                .iter()
-                .map(|b| {
-                    let mean_pow = b.coeffs.iter().map(|z| z.norm_sqr()).sum::<f32>()
-                        / (b.coeffs.len().max(1) as f32);
-                    let enbw_hz = 1.5_f32 * fs / (b.win_len as f32);
-                    mean_pow / enbw_hz.max(1e-12)
-                })
-                .collect()
+        let space = Log2Space::new(50.0, 8000.0, 150);
+        let nsgt = NsgtKernelLog2::new(NsgtLog2Config::default(), space.clone());
+
+        let psd_white = nsgt.analyze_psd(&white);
+        let psd_pink = nsgt.analyze_psd(&pink);
+        let psd_brown = nsgt.analyze_psd(&brown);
+
+        let slope = |psd: &[f32]| {
+            let y: Vec<f32> = psd.iter().map(|v| 10.0 * v.max(1e-20).log10()).collect();
+            let x = &space.centers_log2;
+            let (sx, sy, sxx, sxy, n) = x.iter().zip(&y).fold(
+                (0.0, 0.0, 0.0, 0.0, 0.0),
+                |(sx, sy, sxx, sxy, n), (xv, yv)| {
+                    (
+                        sx + *xv,
+                        sy + *yv,
+                        sxx + *xv * *xv,
+                        sxy + *xv * *yv,
+                        n + 1.0,
+                    )
+                },
+            );
+            (n * sxy - sx * sy) / (n * sxx - sx * sx)
         };
 
-        // --- per-Hz正規化済み PSD を取得 ---
-        let w_psd = nsgt.analyze_psd(&white);
-        let p_psd = nsgt.analyze_psd(&pink);
-        let b_psd = nsgt.analyze_psd(&brown);
+        let s_white = slope(&psd_white);
+        let s_pink = slope(&psd_pink);
+        let s_brown = slope(&psd_brown);
 
-        // --- 傾き算出（dB/oct） ---
-        let slope_db_per_oct = |psd: &[f32], space: &Log2Space| -> f32 {
-            let logp: Vec<f32> = psd.iter().map(|v| 10.0 * v.max(1e-20).log10()).collect();
-            let xs: &Vec<f32> = &space.centers_log2;
-            let n = xs.len() as f32;
-            let mx = xs.iter().sum::<f32>() / n;
-            let my = logp.iter().sum::<f32>() / n;
-            let num = xs
-                .iter()
-                .zip(&logp)
-                .map(|(x, y)| (x - mx) * (y - my))
-                .sum::<f32>();
-            let den = xs.iter().map(|x| (x - mx).powi(2)).sum::<f32>();
-            num / den
-        };
-
-        let s_white = slope_db_per_oct(&w_psd, nsgt.space());
-        let s_pink = slope_db_per_oct(&p_psd, nsgt.space());
-        let s_brown = slope_db_per_oct(&b_psd, nsgt.space());
-
-        eprintln!("white slope(dB/oct) = {:.2}", s_white);
-        eprintln!("pink  slope(dB/oct) = {:.2}", s_pink);
-        eprintln!("brown slope(dB/oct) = {:.2}", s_brown);
-
-        // --- 検証 ---
-        assert!(s_white.abs() < 0.8, "white slope unexpected");
-        assert!((s_pink + 3.0).abs() < 1.0, "pink slope unexpected");
-        assert!((s_brown + 6.0).abs() < 1.5, "brown slope unexpected");
+        assert!(s_white.abs() < 0.8, "white slope {s_white}");
+        assert!((s_pink + 3.0).abs() < 1.0, "pink slope {s_pink}");
+        assert!((s_brown + 6.0).abs() < 1.5, "brown slope {s_brown}");
     }
 
     // ==============================

@@ -332,6 +332,7 @@ fn hann_periodic(n: usize) -> Vec<f32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::utils::{brown_noise, pink_noise, white_noise};
     use approx::assert_relative_eq;
 
     fn mk_sine(fs: f32, f: f32, secs: f32) -> Vec<f32> {
@@ -639,23 +640,12 @@ mod tests {
 
     #[test]
     fn noise_slope_accuracy() {
-        use rand::Rng;
-        use scirs2_signal::waveforms::{brown_noise, pink_noise};
-
         let fs = 48_000.0;
         let n = (fs * 4.0) as usize;
-        let mut rng = rand::rng();
-        let white: Vec<f32> = (0..n).map(|_| rng.random_range(-1.0..1.0)).collect();
-        let pink: Vec<f32> = pink_noise(n, Some(1))
-            .unwrap()
-            .iter()
-            .map(|&v| v as f32)
-            .collect();
-        let brown: Vec<f32> = brown_noise(n, Some(1))
-            .unwrap()
-            .iter()
-            .map(|&v| v as f32)
-            .collect();
+
+        let white: Vec<f32> = white_noise(n, 1).iter().map(|&v| v as f32).collect();
+        let pink: Vec<f32> = pink_noise(n, 1).iter().map(|&v| v as f32).collect();
+        let brown: Vec<f32> = brown_noise(n, 1).iter().map(|&v| v as f32).collect();
 
         let space = Log2Space::new(50.0, 8000.0, 150);
         let nsgt = NsgtKernelLog2::new(NsgtLog2Config::default(), space.clone());
@@ -753,8 +743,6 @@ mod tests {
     #[ignore]
     fn plot_nsgt_log2_noise_response_kernel() {
         use plotters::prelude::*;
-        use rand::Rng;
-        use scirs2_signal::waveforms::{brown_noise, pink_noise};
 
         let fs = 48_000.0;
         let secs = 40.0;
@@ -770,18 +758,9 @@ mod tests {
         );
 
         // --- ノイズ生成 ---
-        let mut rng = rand::rng();
-        let white: Vec<f32> = (0..n).map(|_| rng.random_range(-1.0f32..1.0)).collect();
-        let pink: Vec<f32> = pink_noise(n, Some(42))
-            .unwrap()
-            .iter()
-            .map(|&v| v as f32)
-            .collect();
-        let brown: Vec<f32> = brown_noise(n, Some(42))
-            .unwrap()
-            .iter()
-            .map(|&v| v as f32)
-            .collect();
+        let white: Vec<f32> = white_noise(n, 42).iter().map(|&v| v as f32).collect();
+        let pink: Vec<f32> = pink_noise(n, 42).iter().map(|&v| v as f32).collect();
+        let brown: Vec<f32> = brown_noise(n, 42).iter().map(|&v| v as f32).collect();
 
         // --- per-Hz正規化済み PSD を取得 ---
         let w_psd = nsgt.analyze_psd(&white);

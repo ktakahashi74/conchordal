@@ -1,4 +1,3 @@
-//pub mod cochlea;
 pub mod consonance_kernel;
 pub mod erb;
 pub mod fft;

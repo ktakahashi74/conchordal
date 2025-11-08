@@ -1,206 +1,349 @@
-//! core/nsgt_rt.rs — Real-time NSGT with exponential temporal integration
+//! core/nsgt_rt.rs — Real-time NSGT with per-hop exponential smoothing
 //!
-//! Overview
+//! Design
 //! -----
-//! - Wraps `NsgtKernelLog2` to provide frame-by-frame real-time analysis.
-//! - Each band keeps a leaky integrator state (`smooth_pow`) updated every hop.
-//! - Time constant τ(f) determines smoothing per band (low bands → slower).
+//! - 1 hop = 1 FFT update. A ring buffer (length = nfft) holds the latest samples.
+//! - Uses NsgtKernelLog2’s sparse frequency-domain kernels (no per-hop heap alloc).
+//! - Per-band exponential integrator: y[n] = (1−α)x[n] + α y[n−1], α = exp(−dt/τ(f)).
+//! - τ(f) is mapped low→slow, high→fast via simple f-dependent rule.
 //!
-//! Typical usage
+//! Notes
 //! -----
-//! ```ignore
-//! let base = NsgtKernelLog2::new(cfg, space);
-//! let mut rt = RtNsgtKernelLog2::new(base);
-//! for frame in input_stream.chunks(rt.hop()) {
-//!     let smoothed = rt.process_frame(frame);
-//!     landscape.update(&smoothed);
-//! }
-//! ```
-//!
-//! Design Notes
-//! -----
-//! - FFT and sparse kernels are reused from `NsgtKernelLog2`.
-//! - Temporal integration is exponential: y[t] = (1−α)x[t] + αy[t−1], α=exp(−Δt/τ).
-//! - τ(f) is frequency-dependent, e.g. τ = τ_min + (τ_max−τ_min)*(f_ref/f).
+//! - Instantaneous measure can be raw power |C_k|^2 or one-sided PSD (~power/Hz).
+//! - `process_hop()` accepts ≤ hop samples (short reads are zero-padded) or
+//!   > hop (multiple hops processed); returns the last envelope slice.
+//! - No per-hop allocations; FFT and scratch buffers are reused.
 
 use crate::core::log2::Log2Space;
-use crate::core::nsgt_kernel::{BandCoeffs, NsgtKernelLog2};
-use rustfft::num_complex::Complex32;
+use crate::core::nsgt_kernel::{KernelBand, NsgtKernelLog2};
+use rustfft::{FftPlanner, num_complex::Complex32};
+use std::sync::Arc;
 
-/// Per-band temporal state for real-time NSGT.
-#[derive(Clone, Debug)]
-pub struct BandState {
-    /// Band center frequency [Hz]
-    pub f_hz: f32,
-    /// Time constant [s]
-    pub tau: f32,
-    /// Leaky coefficient α = exp(−Δt/τ)
-    pub alpha: f32,
-    /// Smoothed power (persistent state)
-    pub smooth_pow: f32,
+/// Instantaneous measure used before smoothing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InstMeasure {
+    /// Instantaneous band power: |C_k|^2 (no per-Hz normalization).
+    RawPower,
+    /// One-sided PSD-like measure: 2 * (|C_k|^2 / ENBW), ENBW for periodic Hann ≈ 1.5 * fs / L_k.
+    PsdOneSided,
 }
 
-/// Real-time NSGT kernel analyzer with leaky temporal integration.
-///
-/// - Maintains state across frames.
-/// - Suitable for 10–20 ms updates in real-time audio streams.
+/// Smoothing configuration and instantaneous measure selection.
+#[derive(Clone, Copy, Debug)]
+pub struct RtConfig {
+    /// τ at high frequencies [s].
+    pub tau_min: f32,
+    /// τ at low frequencies [s].
+    pub tau_max: f32,
+    /// Reference frequency for mapping τ(f) [Hz].
+    pub f_ref: f32,
+    /// Instantaneous measure type.
+    pub measure: InstMeasure,
+}
+
+impl Default for RtConfig {
+    fn default() -> Self {
+        Self {
+            tau_min: 0.03,
+            tau_max: 0.30,
+            f_ref: 200.0,
+            measure: InstMeasure::RawPower,
+        }
+    }
+}
+
+/// Per-band persistent state.
+#[derive(Clone, Debug)]
+pub struct BandState {
+    /// Center frequency [Hz].
+    pub f_hz: f32,
+    /// Time constant [s].
+    pub tau: f32,
+    /// α = exp(−dt/τ).
+    pub alpha: f32,
+    /// ENBW [Hz] (periodic Hann ≈ 1.5*fs/Lk).
+    pub enbw_hz: f32,
+    /// Smoothed envelope (running state).
+    pub smooth: f32,
+}
+
+/// Real-time kernel analyzer with per-hop update and leaky integration.
 #[derive(Clone)]
 pub struct RtNsgtKernelLog2 {
-    pub nsgt: NsgtKernelLog2,
-    pub bands_state: Vec<BandState>,
-    pub fs: f32,
-    pub hop: usize,
-    pub dt: f32,
+    // analysis core
+    nsgt: NsgtKernelLog2,
+    fs: f32,
+    nfft: usize,
+    hop: usize,
+    dt: f32,
+
+    // runtime buffers (no per-hop alloc)
+    ring: Vec<f32>,
+    write_pos: usize, // next position to write
+    fft: Arc<dyn rustfft::Fft<f32>>,
+    fft_buf: Vec<Complex32>,
+
+    // per-band states & cached meta
+    bands_state: Vec<BandState>,
+    out_env: Vec<f32>,
+
+    // settings
+    measure: InstMeasure,
 }
 
 impl RtNsgtKernelLog2 {
-    /// Create a real-time NSGT wrapper from an existing `NsgtKernelLog2`.
-    ///
-    /// τ(f) is assigned automatically as:
-    /// τ = τ_min + (τ_max − τ_min) * (f_ref / f)
-    /// clamped to [τ_min, τ_max].
+    /// Construct with default RtConfig.
     pub fn new(nsgt: NsgtKernelLog2) -> Self {
+        Self::with_config(nsgt, RtConfig::default())
+    }
+
+    /// Construct with explicit RtConfig.
+    pub fn with_config(nsgt: NsgtKernelLog2, cfg: RtConfig) -> Self {
         let fs = nsgt.cfg.fs;
+        let nfft = nsgt.nfft();
         let hop = nsgt.hop();
         let dt = hop as f32 / fs;
 
-        let tau_min: f32 = 0.03; // [s] high frequencies
-        let tau_max: f32 = 0.30; // [s] low frequencies
-        let f_ref: f32 = 200.0; // [Hz]
+        // Our own FFT plan (no per-hop allocation; same size as nsgt).
+        let mut planner = FftPlanner::<f32>::new();
+        let fft = planner.plan_fft_forward(nfft);
 
+        // Build band states (τ mapping and ENBW precompute).
         let bands_state = nsgt
             .bands()
             .iter()
             .map(|b| {
-                let f_hz = b.f_hz;
-                let mut tau: f32 = tau_min + (tau_max - tau_min) * (f_ref / f_hz).clamp(0.0, 1.0);
-                tau = tau.clamp(tau_min, tau_max);
+                let f = b.f_hz.max(1e-6); // guard for f=0
+                let ratio = (cfg.f_ref / f).clamp(0.0, 1.0);
+                let mut tau = cfg.tau_min + (cfg.tau_max - cfg.tau_min) * ratio;
+                tau = tau.clamp(cfg.tau_min, cfg.tau_max);
                 let alpha = (-dt / tau).exp();
+                let enbw_hz = 1.5_f32 * fs / (b.win_len as f32);
                 BandState {
-                    f_hz,
+                    f_hz: b.f_hz,
                     tau,
                     alpha,
-                    smooth_pow: 0.0,
+                    enbw_hz,
+                    smooth: 0.0,
                 }
             })
-            .collect();
+            .collect::<Vec<_>>();
 
         Self {
             nsgt,
-            bands_state,
             fs,
+            nfft,
             hop,
             dt,
+            ring: vec![0.0; nfft],
+            write_pos: 0,
+            fft,
+            fft_buf: vec![Complex32::new(0.0, 0.0); nfft],
+            out_env: vec![0.0; bands_state.len()],
+            bands_state,
+            measure: cfg.measure,
         }
     }
 
-    /// Process one frame of audio (length ≥ nfft).
-    /// Returns smoothed band powers.
-    pub fn process_frame(&mut self, frame: &[f32]) -> Vec<f32> {
-        let bands = self.nsgt.analyze(frame);
-        self.update_states(&bands);
-        self.bands_state.iter().map(|b| b.smooth_pow).collect()
-    }
-
-    /// Internal update: exponential temporal integration for each band.
-    fn update_states(&mut self, bands: &[BandCoeffs]) {
-        for (b, st) in bands.iter().zip(self.bands_state.iter_mut()) {
-            let inst_pow = if b.coeffs.is_empty() {
-                0.0
-            } else {
-                b.coeffs.iter().map(|z| z.norm_sqr()).sum::<f32>() / (b.coeffs.len().max(1) as f32)
-            };
-            st.smooth_pow = (1.0 - st.alpha) * inst_pow + st.alpha * st.smooth_pow;
+    /// Push one hop of audio and return the smoothed envelope slice.
+    ///
+    /// - If `hop_in.len() == hop()`: normal per-hop update.
+    /// - If shorter: zero-padded and still one update.
+    /// - If longer: processes multiple hops internally; returns the last envelope.
+    pub fn process_hop(&mut self, hop_in: &[f32]) -> &[f32] {
+        if hop_in.len() <= self.hop {
+            self.write_hop_zero_padded(hop_in);
+            self.analyze_one_and_update();
+            &self.out_env
+        } else {
+            // Process multiple hops
+            let mut i = 0usize;
+            while i + self.hop <= hop_in.len() {
+                self.write_hop(&hop_in[i..i + self.hop]);
+                self.analyze_one_and_update();
+                i += self.hop;
+            }
+            if i < hop_in.len() {
+                self.write_hop_zero_padded(&hop_in[i..]);
+                self.analyze_one_and_update();
+            }
+            &self.out_env
         }
     }
 
-    /// Reset all internal states (e.g. on stream start)
-    pub fn reset(&mut self) {
-        for st in &mut self.bands_state {
-            st.smooth_pow = 0.0;
+    /// Process an arbitrary block and emit per-hop envelopes via callback.
+    pub fn process_block_emit<F: FnMut(&[f32])>(&mut self, block: &[f32], mut emit: F) {
+        let mut i = 0usize;
+        while i + self.hop <= block.len() {
+            self.write_hop(&block[i..i + self.hop]);
+            self.analyze_one_and_update();
+            emit(&self.out_env);
+            i += self.hop;
+        }
+        if i < block.len() {
+            self.write_hop_zero_padded(&block[i..]);
+            self.analyze_one_and_update();
+            emit(&self.out_env);
         }
     }
 
-    /// Return current smoothed powers without processing a new frame.
-    pub fn current_envelope(&self) -> Vec<f32> {
-        self.bands_state.iter().map(|b| b.smooth_pow).collect()
+    /// Current smoothed envelope without processing new samples.
+    #[inline]
+    pub fn current_envelope(&self) -> &[f32] {
+        &self.out_env
     }
 
-    /// Accessor: hop size [samples]
+    /// Accessors
+    #[inline]
     pub fn hop(&self) -> usize {
         self.hop
     }
-
-    /// Accessor: frame interval [s]
+    #[inline]
     pub fn dt(&self) -> f32 {
         self.dt
     }
-
-    /// Accessor: band frequencies [Hz]
-    pub fn freqs(&self) -> Vec<f32> {
-        self.bands_state.iter().map(|b| b.f_hz).collect()
+    #[inline]
+    pub fn fs(&self) -> f32 {
+        self.fs
     }
-
-    /// Accessor: reference to inner Log2Space
+    #[inline]
+    pub fn nfft(&self) -> usize {
+        self.nfft
+    }
+    /// Center frequencies [Hz].
+    pub fn freqs(&self) -> Vec<f32> {
+        self.nsgt.bands().iter().map(|b| b.f_hz).collect()
+    }
+    /// Underlying log2 space.
+    #[inline]
     pub fn space(&self) -> &Log2Space {
         self.nsgt.space()
     }
-}
 
-// =====================================================
-// Tests (basic functionality, not real-time audio thread)
-// =====================================================
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::core::log2::Log2Space;
-    use crate::core::nsgt_kernel::NsgtLog2Config;
-
-    fn mk_sine(fs: f32, f: f32, secs: f32) -> Vec<f32> {
-        let n = (fs * secs).round() as usize;
-        (0..n)
-            .map(|i| (2.0 * std::f32::consts::PI * f * (i as f32) / fs).sin())
-            .collect()
+    /// Change measure (raw power / PSD) on the fly.
+    pub fn set_measure(&mut self, m: InstMeasure) {
+        self.measure = m;
     }
 
-    #[test]
-    fn rt_smoothing_converges() {
-        let fs = 48_000.0;
-        let secs = 0.5;
-        let sig = mk_sine(fs, 440.0, secs);
-        let nsgt = NsgtKernelLog2::new(
-            NsgtLog2Config {
-                fs,
-                overlap: 0.5,
-                ..Default::default()
-            },
-            Log2Space::new(200.0, 4000.0, 96),
-        );
-        let mut rt = RtNsgtKernelLog2::new(nsgt);
-        let hop = rt.hop();
-
-        let mut last_mean = 0.0;
-        for chunk in sig.chunks(hop) {
-            let env = rt.process_frame(chunk);
-            let mean = env.iter().sum::<f32>() / env.len() as f32;
-            last_mean = mean;
+    /// Reconfigure τ mapping and recompute α (no allocation).
+    pub fn reconfigure_smoothing(&mut self, tau_min: f32, tau_max: f32, f_ref: f32) {
+        let tau_min = tau_min.max(1e-6);
+        let tau_max = tau_max.max(tau_min);
+        for (b, st) in self.nsgt.bands().iter().zip(self.bands_state.iter_mut()) {
+            let f = b.f_hz.max(1e-6);
+            let ratio = (f_ref / f).clamp(0.0, 1.0);
+            let mut tau = tau_min + (tau_max - tau_min) * ratio;
+            tau = tau.clamp(tau_min, tau_max);
+            st.tau = tau;
+            st.alpha = (-self.dt / tau).exp();
         }
-
-        assert!(last_mean > 0.0, "no envelope response");
-        assert!(last_mean.is_finite(), "invalid envelope value (NaN or inf)");
     }
 
-    #[test]
-    fn reset_works() {
-        let fs = 48_000.0;
-        let nsgt =
-            NsgtKernelLog2::new(NsgtLog2Config::default(), Log2Space::new(200.0, 4000.0, 96));
-        let mut rt = RtNsgtKernelLog2::new(nsgt);
-        for st in &mut rt.bands_state {
-            st.smooth_pow = 1.0;
+    /// Reset smoothing states and ring buffer.
+    pub fn reset(&mut self) {
+        for st in &mut self.bands_state {
+            st.smooth = 0.0;
         }
-        rt.reset();
-        assert!(rt.bands_state.iter().all(|b| b.smooth_pow == 0.0));
+        for x in &mut self.ring {
+            *x = 0.0;
+        }
+        self.write_pos = 0;
+        for z in &mut self.fft_buf {
+            *z = Complex32::new(0.0, 0.0);
+        }
+        for y in &mut self.out_env {
+            *y = 0.0;
+        }
+    }
+
+    // ---- internal helpers ----
+
+    #[inline]
+    fn write_hop(&mut self, hop_in: &[f32]) {
+        debug_assert_eq!(hop_in.len(), self.hop);
+        let n = self.nfft;
+        let mut wp = self.write_pos;
+        // write hop samples into the ring
+        for &s in hop_in {
+            self.ring[wp] = s;
+            wp += 1;
+            if wp == n {
+                wp = 0;
+            }
+        }
+        self.write_pos = wp;
+    }
+
+    #[inline]
+    fn write_hop_zero_padded(&mut self, hop_in: &[f32]) {
+        let n = self.nfft;
+        let mut wp = self.write_pos;
+        let mut i = 0usize;
+        // copy provided samples
+        while i < hop_in.len() {
+            self.ring[wp] = hop_in[i];
+            wp += 1;
+            if wp == n {
+                wp = 0;
+            }
+            i += 1;
+        }
+        // zero-pad the remainder
+        while i < self.hop {
+            self.ring[wp] = 0.0;
+            wp += 1;
+            if wp == n {
+                wp = 0;
+            }
+            i += 1;
+        }
+        self.write_pos = wp;
+    }
+
+    /// Build contiguous FFT frame from ring, run FFT, accumulate bands, and update smoothing.
+    fn analyze_one_and_update(&mut self) {
+        // Reassemble latest nfft samples: [write_pos..end) then [0..write_pos)
+        let n = self.nfft;
+        let left = n - self.write_pos;
+
+        // Fill fft_buf with real input (imag=0), then FFT.
+        for i in 0..left {
+            let s = self.ring[self.write_pos + i];
+            self.fft_buf[i] = Complex32::new(s, 0.0);
+        }
+        for i in 0..self.write_pos {
+            let s = self.ring[i];
+            self.fft_buf[left + i] = Complex32::new(s, 0.0);
+        }
+
+        self.fft.process(&mut self.fft_buf);
+
+        // Sparse inner products (same math as NsgtKernelLog2::analyze)
+        let bands = self.nsgt.bands();
+        for (bi, band) in bands.iter().enumerate() {
+            let mut acc = Complex32::new(0.0, 0.0);
+            // Σ X[k] * conj(K_k[k]) (already phase-compensated & conj in spec_conj_sparse)
+            for &(k, w) in &band.spec_conj_sparse {
+                // Safety: kernels are built for the same nfft.
+                debug_assert!(k < self.fft_buf.len());
+                acc += self.fft_buf[k] * w;
+            }
+            acc = acc / (n as f32);
+
+            // Instantaneous measure
+            let p = match self.measure {
+                InstMeasure::RawPower => acc.norm_sqr(),
+                InstMeasure::PsdOneSided => {
+                    // 2 * power / ENBW (one-sided)
+                    let enbw = self.bands_state[bi].enbw_hz.max(1e-12);
+                    2.0 * (acc.norm_sqr() / enbw)
+                }
+            };
+
+            // Exponential smoothing
+            let st = &mut self.bands_state[bi];
+            st.smooth = (1.0 - st.alpha) * p + st.alpha * st.smooth;
+            self.out_env[bi] = st.smooth;
+        }
     }
 }

@@ -149,11 +149,9 @@ fn worker_loop(
 ) {
     // --- Parameters ---
     let fs: f32 = 48_000.0;
-    //    let fft_size: usize = 16_384;
-    //let hop: usize = fft_size / 2;
 
     // === NSGT (log2) analyzer & Landscape parameters ===
-    let space = Log2Space::new(100.0, 4000.0, 200);
+    let space = Log2Space::new(100.0, 8000.0, 200);
 
     let lparams = LandscapeParams {
         fs,
@@ -171,14 +169,14 @@ fn worker_loop(
         NsgtLog2Config {
             fs,
             overlap: 0.5,
-            nfft_override: Some(8192),
+            nfft_override: Some(16384),
         },
         space,
     ));
 
     let mut next_deadline = Instant::now();
 
-    let nfft = nsgt.nsgt.nfft();
+    let nfft = nsgt.nfft();
     let hop = nsgt.hop();
     let n_bins = nfft / 2 + 1;
 

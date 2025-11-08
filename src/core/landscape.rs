@@ -1,7 +1,9 @@
 //! core/landscape.rs — Landscape computed on log2(NSGT-RT) domain.
-//! Each incoming frame updates the potential roughness (R) and consonance (C)
-//! using a real-time NSGT analyzer. A lightweight psychoacoustic normalization
-//! (subjective intensity + leaky integration) runs before kernels.
+//!
+//! Each incoming hop updates the potential roughness (R) and consonance (C)
+//! using a real-time NSGT analyzer with leaky temporal integration.
+//! Psychoacoustic normalization (subjective intensity + leaky smoothing)
+//! runs before applying the R/C kernels.
 
 use crate::core::consonance_kernel::ConsonanceKernel;
 use crate::core::nsgt_rt::RtNsgtKernelLog2;
@@ -15,7 +17,7 @@ pub struct LandscapeParams {
     pub alpha: f32,
     pub roughness_kernel: RoughnessKernel,
     pub consonance_kernel: ConsonanceKernel,
-    // --- Added: normalization params ---
+
     /// Exponent for subjective intensity (≈ specific loudness). Typical: 0.23
     pub loudness_exp: f32,
     /// Reference power for normalization. Tune to your signal scale.
@@ -35,6 +37,7 @@ pub struct LandscapeFrame {
     pub amps_last: Vec<f32>,
 }
 
+/// Maintains real-time psychoacoustic landscape (R/C/K) driven by NSGT-RT.
 pub struct Landscape {
     nsgt_rt: RtNsgtKernelLog2,
     params: LandscapeParams,
@@ -61,75 +64,65 @@ impl Landscape {
         }
     }
 
-    /// Map NSGT magnitude to subjective intensity (≈ specific loudness) and
-    /// apply a first-order leaky integrator (attack/decay via single tau).
-    /// This keeps values non-negative, compresses dynamic range, and stabilizes
-    /// short-term fluctuations. Output aligns R/C scales better.
+    /// Convert magnitude envelope → subjective intensity (power law)
+    /// and apply a leaky integrator to stabilize dynamics.
     fn normalize(&mut self, envelope: &[f32], dt_sec: f32) -> Vec<f32> {
-        let eps = 0.0; //1e-12_f32;
-        let exp = self.params.loudness_exp; //.max(0.01);
+        let exp = self.params.loudness_exp.max(0.01);
         let tau_s = (self.params.tau_ms.max(1.0)) * 1e-3;
-        let a = (-dt_sec / tau_s).exp(); // leaky factor in [0,1)
-
+        let a = (-dt_sec / tau_s).exp();
         let mut out = vec![0.0f32; envelope.len()];
+
         for (i, &mag) in envelope.iter().enumerate() {
-            // 1) magnitude → power
             let pow = mag * mag;
-            // 2) subjective intensity (power law compression)
-            let subj = ((pow / self.params.ref_power) + eps).powf(exp);
-            // 3) leaky integration
+            let subj = (pow / self.params.ref_power).powf(exp);
             let y_prev = self.norm_state[i];
             let y = a * y_prev + (1.0 - a) * subj;
-            //let y = subj;
             self.norm_state[i] = y;
             out[i] = y;
         }
         out
     }
 
-    /// Process one streaming frame (e.g. hop-size worth of samples)
+    /// Process one hop of samples (length = hop). Real-time streaming entry point.
     pub fn process_frame(&mut self, x_frame: &[f32]) -> LandscapeFrame {
         let fs = self.params.fs;
-
-        // === 1. NSGT-RT analysis (streaming) ===
-        let envelope: Vec<f32> = self.nsgt_rt.process_frame(x_frame);
-
-        // === 2. Psychoacoustic normalization (subjective intensity + leaky) ===
         let dt_sec = (x_frame.len() as f32) / fs;
+
+        // === 1. NSGT-RT analysis (streaming hop) ===
+        let envelope: Vec<f32> = self.nsgt_rt.process_hop(x_frame).to_vec();
+
+        // === 2. Psychoacoustic normalization ===
         let norm_env = self.normalize(&envelope, dt_sec);
-        //let norm_env = envelope.clone();
-        self.amps_last.clone_from(&norm_env); // keep the preprocessed view
+        self.amps_last.clone_from(&norm_env);
 
-        // Frequency space (log2 bins)
+        // === 3. Roughness potential R ===
         let space = self.nsgt_rt.space();
-
-        // === 3. potential R ===
         let (r, _r_total) = self
             .params
             .roughness_kernel
             .potential_r_from_log2_spectrum(&norm_env, space);
 
-        // === 4. potential C ===
+        // === 4. Consonance potential C ===
         let (c, _norm) = self
             .params
             .consonance_kernel
             .potential_c_from_log2_spectrum(&norm_env, space, self.params.gamma);
 
-        // === 5. potential K (example: gate-like fusion) ===
+        // === 5. Combined potential K ===
         let k: Vec<f32> = r.iter().zip(&c).map(|(ri, ci)| ci * (1.0 - ri)).collect();
 
-        // Update internal state
-        self.last_r = r;
-        self.last_c = c;
-        self.last_k = k;
+        // === 6. Update state ===
+        self.last_r.clone_from(&r);
+        self.last_c.clone_from(&c);
+        self.last_k.clone_from(&k);
 
         LandscapeFrame {
             fs,
             freqs_hz: space.centers_hz.clone(),
-            r_last: self.last_r.clone(),
-            c_last: self.last_c.clone(),
-            k_last: self.last_k.clone(),
-            amps_last: self.amps_last.clone(), // preprocessed subjective intensity
+            r_last: r,
+            c_last: c,
+            k_last: k,
+            amps_last: self.amps_last.clone(),
         }
     }
 
@@ -140,11 +133,30 @@ impl Landscape {
             r_last: self.last_r.clone(),
             c_last: self.last_c.clone(),
             k_last: self.last_k.clone(),
-            amps_last: self.amps_last.clone(), // preprocessed subjective intensity
+            amps_last: self.amps_last.clone(),
         }
     }
 
     pub fn params(&self) -> &LandscapeParams {
         &self.params
+    }
+
+    pub fn reset(&mut self) {
+        self.nsgt_rt.reset();
+        for x in &mut self.norm_state {
+            *x = 0.0;
+        }
+        for x in &mut self.amps_last {
+            *x = 0.0;
+        }
+        for x in &mut self.last_r {
+            *x = 0.0;
+        }
+        for x in &mut self.last_c {
+            *x = 0.0;
+        }
+        for x in &mut self.last_k {
+            *x = 0.0;
+        }
     }
 }

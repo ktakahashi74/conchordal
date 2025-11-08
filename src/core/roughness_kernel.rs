@@ -1,10 +1,6 @@
 //! core/roughness_kernel.rs — Roughness R via ERB-domain kernel convolution.
-//! Computes frequency-space roughness landscape by convolving the cochlear
-//! envelope energy along the ERB axis using an asymmetric kernel.
-//!
-//! This version keeps the kernel defined in ΔERB space (biologically grounded),
-//! but allows reuse from NSGT/log2-domain analysis by mapping frequencies
-//! through hz→ERB before weighting.
+//! Computes frequency-space roughness landscape by convolving the
+//! envelope energy using an asymmetric kernel.
 
 use crate::core::erb::{erb_bw_hz, hz_to_erb};
 use crate::core::fft::{apply_hann_window_complex, hilbert};
@@ -82,7 +78,7 @@ pub fn build_kernel_erbstep(params: &KernelParams, erb_step: f32) -> (Vec<f32>, 
         })
         .collect();
 
-    let sum = g.iter().sum::<f32>();
+    let sum = g.iter().sum::<f32>() * erb_step;
     if sum > 0.0 {
         let inv = 1.0 / sum;
         g.iter_mut().for_each(|v| *v *= inv);
@@ -103,6 +99,23 @@ fn lut_interp(lut: &[f32], step: f32, hw: usize, d_erb: f32) -> f32 {
     let a = lut[i0 as usize];
     let b = lut[i1 as usize];
     a + frac * (b - a)
+}
+
+fn local_du_from_grid(erb: &[f32]) -> Vec<f32> {
+    let n = erb.len();
+    let mut du = vec![0.0; n];
+    if n == 0 {
+        return du;
+    }
+    if n == 1 {
+        return du;
+    }
+    du[0] = (erb[1] - erb[0]).max(0.0);
+    du[n - 1] = (erb[n - 1] - erb[n - 2]).max(0.0);
+    for i in 1..n - 1 {
+        du[i] = 0.5 * (erb[i + 1] - erb[i - 1]).max(0.0);
+    }
+    du
 }
 
 // ======================================================================
@@ -142,18 +155,14 @@ impl RoughnessKernel {
         let nfft = 2 * n;
         let df = fs / nfft as f32;
 
-        // Envelope compression
-        let e: Vec<f32> = amps_hz.to_vec();
         let f: Vec<f32> = (0..n).map(|i| i as f32 * df).collect();
         let erb: Vec<f32> = f.iter().map(|&x| hz_to_erb(x)).collect();
-        let bw: Vec<f32> = f.iter().map(|&x| erb_bw_hz(x).max(1e-12)).collect();
-        let du_hz: Vec<f32> = bw.iter().map(|&b| df / b).collect();
         let half_width = self.params.half_width_erb;
+        let du = local_du_from_grid(&erb);
 
         let mut r = vec![0.0f32; n];
         for i in 0..n {
             let fi_erb = erb[i];
-            let ei = e[i];
             let mut sum = 0.0f32;
 
             let j_lo = erb.partition_point(|&x| x < fi_erb - half_width);
@@ -164,17 +173,14 @@ impl RoughnessKernel {
                     continue;
                 }
                 let w = lut_interp(&self.lut, self.erb_step, self.hw, d);
-                sum += e[j] * w * du_hz[j];
+                sum += amps_hz[j] * w * du[j];
             }
             r[i] = sum;
         }
 
         // Integrate over ERB axis
-        let mut r_total = 0.0;
-        for i in 1..n {
-            let du = (erb[i] - erb[i - 1]).max(0.0);
-            r_total += 0.5 * (r[i - 1] + r[i]) * du;
-        }
+        let r_total: f32 = r.iter().zip(du.iter()).map(|(ri, dui)| ri * dui).sum();
+
         (r, r_total)
     }
 
@@ -214,9 +220,6 @@ impl RoughnessKernel {
         self.potential_r_from_spectrum(&amps, fs)
     }
 
-    // ------------------------------------------------------------------
-    // Potential R from log2-domain amplitude spectrum (NSGT)
-    // ------------------------------------------------------------------
     /// Compute roughness potential R from log2-domain amplitude spectrum (NSGT).
     /// Input amplitudes are already perceptually normalized (subjective intensity),
     /// so no further compression is applied here.
@@ -225,7 +228,7 @@ impl RoughnessKernel {
         amps: &[f32],
         space: &Log2Space,
     ) -> (Vec<f32>, f32) {
-        use crate::core::erb::{erb_bw_hz, erb_to_hz, hz_to_erb};
+        use crate::core::erb::{erb_to_hz, hz_to_erb};
 
         if amps.is_empty() || space.centers_hz.is_empty() {
             return (vec![], 0.0);
@@ -239,25 +242,17 @@ impl RoughnessKernel {
         let n = amps.len();
 
         // (1) Map to ERB axis
-        let erb_vals: Vec<f32> = space.centers_hz.iter().map(|&f| hz_to_erb(f)).collect();
+        let erb: Vec<f32> = space.centers_hz.iter().map(|&f| hz_to_erb(f)).collect();
 
-        // (2) No compression here — amplitudes are already subjective intensity
-        let e: &[f32] = amps;
+        // (2) Weight per ERB
+        let du = local_du_from_grid(&erb);
 
-        // (3) Weight per ERB: use 1/BW_ERB(f) since input is per-band energy
-        let weight_erb: Vec<f32> = space
-            .centers_hz
-            .iter()
-            .map(|&f| 1.0 / erb_bw_hz(f).max(1e-12))
-            .collect();
-
-        // (4) Convolution over ERB axis
+        // (3) Convolution over ERB axis
         let half_width_erb = self.params.half_width_erb;
         let mut r = vec![0.0f32; n];
 
         for i in 0..n {
-            let fi_erb = erb_vals[i];
-            let ei = e[i];
+            let fi_erb = erb[i];
             let mut sum = 0.0f32;
 
             let lo_hz = erb_to_hz(fi_erb - half_width_erb);
@@ -265,20 +260,16 @@ impl RoughnessKernel {
             let j_lo = space.index_of_freq(lo_hz).unwrap_or(0);
             let j_hi = space.index_of_freq(hi_hz).unwrap_or(n - 1);
 
-            for j in j_lo..=j_hi {
-                let d = erb_vals[j] - fi_erb;
+            for j in j_lo..j_hi {
+                let d = erb[j] - fi_erb;
                 let w = lut_interp(&self.lut, self.erb_step, self.hw, d);
-                sum += e[j] * w * weight_erb[j];
+                sum += amps[j] * w * du[j];
             }
             r[i] = sum;
         }
 
-        // (5) Integration over ERB axis
-        let mut r_total = 0.0;
-        for i in 1..n {
-            let du = (erb_vals[i] - erb_vals[i - 1]).max(0.0);
-            r_total += 0.5 * (r[i - 1] + r[i]) * du;
-        }
+        // (4) Integration over ERB axis
+        let r_total: f32 = r.iter().zip(du.iter()).map(|(ri, dui)| ri * dui).sum();
 
         (r, r_total)
     }
@@ -311,7 +302,14 @@ mod tests {
         assert!(g.iter().all(|&v| v >= 0.0));
         assert_eq!(g.len(), 2 * hw + 1);
         let edge_mean = (g[0] + g[g.len() - 1]) * 0.5;
-        assert!(edge_mean < 1e-4, "edges should decay toward zero");
+
+        let pos = (hw as f32 + 0.3 / ERB_STEP).round() as usize;
+        let peak = g[pos].max(1e-12);
+        assert!(
+            edge_mean / peak < 5e-3,
+            "edges should decay (edge/peak={})",
+            edge_mean / peak
+        );
     }
 
     #[test]
@@ -320,7 +318,18 @@ mod tests {
         let g = &k.lut;
         let hw = k.hw;
         let center = g[hw];
-        assert!(center > 0.0 && center < 0.005, "center suppression wrong");
+
+        // 近傍の代表ピークを取得（+0.3 ERB 付近）
+        let pos = (hw as f32 + 0.3 / ERB_STEP).round() as usize;
+        let peak = g[pos];
+
+        assert!(center > 0.0, "center should be positive");
+        // 抑圧されている＝ピークより十分小さい（閾値は経験的に 15–30% 程度）
+        assert!(
+            center < 0.5 * peak,
+            "center suppression too weak: c/peak={}",
+            center / peak
+        );
     }
 
     #[test]
@@ -376,7 +385,8 @@ mod tests {
         let k = make_kernel();
         let g = &k.lut;
         let sum: f32 = g.iter().sum();
-        assert!((sum - 1.0).abs() < 1e-4, "L1 norm={}", sum);
+        let sum_cont = sum * k.erb_step;
+        assert!((sum_cont - 1.0).abs() < 1e-4, "L1 norm={}", sum_cont);
     }
 
     #[test]

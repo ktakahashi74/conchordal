@@ -81,35 +81,6 @@ pub fn show_plv_heatmap(
     });
 }
 
-/// === Draw envelope amplitude over log2 freq ===
-pub fn draw_nsgt_envelope(ui: &mut egui::Ui, frame: &LandscapeFrame) -> PlotResponse<()> {
-    Plot::new("nsgt_envelope_plot")
-        .legend(egui_plot::Legend::default())
-        .allow_scroll(false)
-        .allow_drag(false)
-        .height(150.0)
-        .x_axis_formatter(|mark, _| {
-            let hz = 2f64.powf(mark.value);
-            format!("{:.0} Hz", hz)
-        })
-        .include_x((20.0f64).log2())
-        .include_x((20_000.0f64).log2())
-        .include_y(0.0)
-        .include_y(1.0)
-        .show(ui, |plot_ui| {
-            if !frame.freqs_hz.is_empty() && frame.amps_last.len() == frame.freqs_hz.len() {
-                let pts: PlotPoints = frame
-                    .freqs_hz
-                    .iter()
-                    .cloned()
-                    .zip(frame.amps_last.iter().cloned())
-                    .map(|(f, e)| [f.log2() as f64, e as f64])
-                    .collect();
-                plot_ui.line(Line::new("Envelope", pts));
-            }
-        })
-}
-
 /// === Main window ===
 pub fn main_window(ctx: &egui::Context, frame: &UiFrame) {
     TopBottomPanel::top("top").show(ctx, |ui| {
@@ -164,43 +135,19 @@ pub fn main_window(ctx: &egui::Context, frame: &UiFrame) {
         });
 
         ui.separator();
+        ui.heading("Analytic");
 
-        // // === Envelope & PLV ===
-        //        ui.horizontal(|ui| {
-        // Envelope (NSGT)
-        ui.vertical(|ui| {
-            ui.heading("NSGT Envelope");
-            ui.allocate_ui_with_layout(
-                Vec2::new(750.0, 180.0),
-                egui::Layout::top_down(egui::Align::LEFT),
-                |ui| {
-                    draw_nsgt_envelope(ui, &frame.landscape);
-                },
-            );
-        });
+        log2_plot_hz(
+            ui,
+            "NSGT envelope",
+            &frame.landscape.freqs_hz,
+            &frame.landscape.amps_last,
+            "NSGT",
+            0.0,
+            (1.05) as f64,
+        );
 
         ui.separator();
-
-        //     // PLV heatmap
-        //     ui.vertical(|ui| {
-        //         ui.heading("Phase Locking (PLV)");
-        //         ScrollArea::vertical().max_height(140.0).show(ui, |ui| {
-        //             if let Some(plv) = &frame.landscape.plv_last {
-        //                 let freqs = &frame.landscape.freqs_hz;
-        //                 thread_local! {
-        //                     static TEX_PLV: std::cell::RefCell<Option<TextureHandle>> =
-        //                         std::cell::RefCell::new(None);
-        //                 }
-        //                 TEX_PLV.with(|tex| {
-        //                     let mut tex_ref = tex.borrow_mut();
-        //                     show_plv_heatmap(ui, freqs, freqs, plv, &mut *tex_ref);
-        //                 });
-        //             } else {
-        //                 ui.label("PLV data not available yet.");
-        //             }
-        //         });
-        //     });
-        // });
 
         ui.separator();
         ui.heading("Landscape");

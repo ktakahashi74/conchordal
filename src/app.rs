@@ -153,7 +153,7 @@ fn worker_loop(
     //let hop: usize = fft_size / 2;
 
     // === NSGT (log2) analyzer & Landscape parameters ===
-    let space = Log2Space::new(100.0, 4000.0, 128);
+    let space = Log2Space::new(100.0, 4000.0, 200);
 
     let lparams = LandscapeParams {
         fs,
@@ -170,7 +170,7 @@ fn worker_loop(
     let mut nsgt = RtNsgtKernelLog2::new(NsgtKernelLog2::new(
         NsgtLog2Config {
             fs,
-            overlap: 0.5, // or your desired overlap (0.5 = 50%)
+            overlap: 0.5,
             nfft_override: Some(8192),
         },
         space,

@@ -6,8 +6,6 @@
 //!   zero-pad it to length Nfft, center it, and take FFT → K_k[ν] (frequency-domain kernel).
 //! - For each frame, compute X[ν] = FFT{x_frame} only once, and obtain C_k = (1/Nfft) Σ_ν X[ν] * conj(K_k[ν]).
 //! - K_k is **sparsified** by thresholding: we store only (index, weight) of nonzero bins for fast accumulation.
-//! - Normalization: window energy U_k = √Σ w_k^2 is already included (divided by U_k). We do NOT divide by L here
-//!   (handled on the test/PSD side).
 //!
 //! Design Notes
 //! -----
@@ -98,7 +96,7 @@ impl NsgtKernelLog2 {
         let fs = cfg.fs;
         let bpo = space.bins_per_oct as f32;
         let raw_q = 1.0 / (2f32.powf(1.0 / bpo) - 1.0);
-        let q = raw_q.clamp(5.0, 40.0); // prevent excessive window size
+        let q = raw_q.clamp(5.0, 80.0); // prevent excessive window size
 
         // Calculate L_k for each band
         let mut Lks: Vec<usize> = space
@@ -151,12 +149,13 @@ impl NsgtKernelLog2 {
 
             // circularly shifted kernel h_k[n] = w[n]*e^{-j2π f n/fs} (zero-padded to nfft)
             let mut h = vec![Complex32::new(0.0, 0.0); nfft];
-            let center = (Lk_req / 2) % nfft;
+            let center = Lk_req / 2;
+            let shift = (nfft / 2 + nfft - center) % nfft; // place kernel center at NFFT/2
             for i in 0..Lk_req {
                 let w = window[i] / sum_w;
                 let ph = 2.0 * std::f32::consts::PI * f * (i as f32) / fs;
                 let cplx = Complex32::new(ph.cos(), -ph.sin()) * w;
-                let idx = (i + nfft - center) % nfft;
+                let idx = (i + shift) % nfft;
                 h[idx] = cplx;
             }
 
@@ -172,19 +171,28 @@ impl NsgtKernelLog2 {
                     max_mag = m;
                 }
             }
-            let tol = (1e-5f32).max(1e-6 * max_mag.sqrt()); // 実用的な下限
+            let tol = 1e-6 * max_mag.sqrt();
+            //            let tol = (1e-5f32).max(1e-6 * max_mag.sqrt()); // 実用的な下限
             let mut sparse: Vec<(usize, Complex32)> = Vec::new();
-            for (idx, &z) in H.iter().enumerate() {
+            let two_pi_over_n = 2.0 * std::f32::consts::PI / (nfft as f32);
+            let shift_f = shift as f32;
+            for (k, &z) in H.iter().enumerate() {
                 if z.norm() >= tol {
-                    // 後の内積時に X * conj(K) をそのまま足せるよう conj を先にしておく
-                    sparse.push((idx, z.conj()));
+                    // --- phase compensation --
+                    // time shift in h[n] -> linear phase exp(-j 2π k * shift / N) in H[k]
+                    // To undo that (so that inner product is lag=0), multiply conj(H[k]) by exp(-j 2π k * shift / N)
+                    let theta = two_pi_over_n * (k as f32) * shift_f;
+                    let rot_back = Complex32::new(theta.cos(), -theta.sin());
+
+                    // store conj(H[k]) * rot_back
+                    sparse.push((k, z.conj() * rot_back));
                 }
             }
 
             bands.push(KernelBand {
                 f_hz: f,
                 log2_hz: log2_f,
-                win_len: Lk,
+                win_len: Lk_req,
                 spec_conj_sparse: sparse,
             });
         }
@@ -297,7 +305,7 @@ impl NsgtKernelLog2 {
             .collect()
     }
 
-    /// Hann窓用 ENBW 補正を含む Power Spectral Density [power/Hz]
+    /// Hann窓用 ENBW 補正を含む Power Spectral Density [power/Hz] (**one-sided**)
     pub fn analyze_psd(&self, x: &[f32]) -> Vec<f32> {
         let fs = self.cfg.fs;
         self.analyze(x)
@@ -306,7 +314,8 @@ impl NsgtKernelLog2 {
                 let mean_pow = b.coeffs.iter().map(|z| z.norm_sqr()).sum::<f32>()
                     / (b.coeffs.len().max(1) as f32);
                 let enbw_hz = 1.5_f32 * fs / (b.win_len as f32);
-                mean_pow / enbw_hz.max(1e-12)
+                // two-sided -> one-sided
+                2.0 * (mean_pow / enbw_hz.max(1e-12))
             })
             .collect()
     }
@@ -472,7 +481,7 @@ mod tests {
         }
 
         // === 4. 比率を比較 ===
-        let ratio = 4.0 * energy_coeffs / energy_signal; // 4x hann window scale correction
+        let ratio = energy_coeffs / energy_signal; // 4x hann window scale correction
 
         eprintln!(
             "energy_coeffs={:.6}, energy_signal={:.6}, ratio={:.3}",
@@ -667,6 +676,7 @@ mod tests {
 
         root.present().unwrap();
     }
+
     #[test]
     #[ignore]
     fn plot_nsgt_log2_noise_response_kernel() {
@@ -678,7 +688,6 @@ mod tests {
         let secs = 40.0;
         let n = (fs * secs) as usize;
 
-        // 対象帯域を 35–8000Hz に制限（安定）
         let nsgt = NsgtKernelLog2::new(
             NsgtLog2Config {
                 fs,
@@ -743,7 +752,7 @@ mod tests {
             .x_label_area_size(40)
             .y_label_area_size(60)
             .build_cartesian_2d(
-                (35f32.log2())..(8_000f32.log2()),
+                (35f32.log2())..(24_000f32.log2()),
                 (y_min - 10.0)..(y_max + 10.0),
             )
             .unwrap();

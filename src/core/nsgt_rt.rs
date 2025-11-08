@@ -72,7 +72,7 @@ impl RtNsgtKernelLog2 {
             .bands()
             .iter()
             .map(|b| {
-                let f_hz = b.f_hz; // 修正：private対策 → pub化済み or getter前提
+                let f_hz = b.f_hz;
                 let mut tau: f32 = tau_min + (tau_max - tau_min) * (f_ref / f_hz).clamp(0.0, 1.0);
                 tau = tau.clamp(tau_min, tau_max);
                 let alpha = (-dt / tau).exp();

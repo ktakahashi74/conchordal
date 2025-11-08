@@ -80,6 +80,7 @@ impl Landscape {
             // 3) leaky integration
             let y_prev = self.norm_state[i];
             let y = a * y_prev + (1.0 - a) * subj;
+            //let y = subj;
             self.norm_state[i] = y;
             out[i] = y;
         }

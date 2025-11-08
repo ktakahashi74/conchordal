@@ -162,6 +162,9 @@ fn worker_loop(
         alpha: 0.0,
         roughness_kernel: RoughnessKernel::new(KernelParams::default(), 0.005), // ΔERB LUT step
         consonance_kernel: ConsonanceKernel::new(&space, ConsonanceParams::default()),
+        loudness_exp: 0.23, // Zwicker
+        tau_ms: 80.0,
+        ref_power: 1e-6,
     };
 
     let mut nsgt = RtNsgtKernelLog2::new(NsgtKernelLog2::new(

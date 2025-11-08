@@ -60,7 +60,7 @@ impl RtNsgtKernelLog2 {
     /// τ = τ_min + (τ_max − τ_min) * (f_ref / f)
     /// clamped to [τ_min, τ_max].
     pub fn new(nsgt: NsgtKernelLog2) -> Self {
-        let fs = nsgt.cfg.fs; // 修正：Log2Spaceにはfsがないのでcfgから取得
+        let fs = nsgt.cfg.fs;
         let hop = nsgt.hop();
         let dt = hop as f32 / fs;
 

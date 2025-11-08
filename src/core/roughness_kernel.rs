@@ -133,13 +133,7 @@ impl RoughnessKernel {
     // Potential R from amplitude spectrum (linear frequency axis)
     // ------------------------------------------------------------------
 
-    pub fn potential_r_from_spectrum(
-        &self,
-        amps_hz: &[f32],
-        fs: f32,
-        gamma: f32,
-        alpha: f32,
-    ) -> (Vec<f32>, f32) {
+    pub fn potential_r_from_spectrum(&self, amps_hz: &[f32], fs: f32) -> (Vec<f32>, f32) {
         let n = amps_hz.len();
         if n == 0 {
             return (vec![], 0.0);
@@ -149,7 +143,7 @@ impl RoughnessKernel {
         let df = fs / nfft as f32;
 
         // Envelope compression
-        let e: Vec<f32> = amps_hz.iter().map(|&x| (x + 1e-12).powf(gamma)).collect();
+        let e: Vec<f32> = amps_hz.to_vec();
         let f: Vec<f32> = (0..n).map(|i| i as f32 * df).collect();
         let erb: Vec<f32> = f.iter().map(|&x| hz_to_erb(x)).collect();
         let bw: Vec<f32> = f.iter().map(|&x| erb_bw_hz(x).max(1e-12)).collect();
@@ -172,7 +166,7 @@ impl RoughnessKernel {
                 let w = lut_interp(&self.lut, self.erb_step, self.hw, d);
                 sum += e[j] * w * du_hz[j];
             }
-            r[i] = sum * ei.powf(alpha);
+            r[i] = sum;
         }
 
         // Integrate over ERB axis
@@ -188,13 +182,7 @@ impl RoughnessKernel {
     // Potential R from analytic (Hilbert) signal
     // ------------------------------------------------------------------
 
-    pub fn potential_r_from_analytic(
-        &self,
-        analytic: &[Complex32],
-        fs: f32,
-        gamma: f32,
-        alpha: f32,
-    ) -> (Vec<f32>, f32) {
+    pub fn potential_r_from_analytic(&self, analytic: &[Complex32], fs: f32) -> (Vec<f32>, f32) {
         if analytic.is_empty() {
             return (vec![], 0.0);
         }
@@ -223,19 +211,19 @@ impl RoughnessKernel {
             .map(|i| (buf[i].norm_sqr() * base_scale * 2.0 * df).sqrt())
             .collect();
 
-        self.potential_r_from_spectrum(&amps, fs, gamma, alpha)
+        self.potential_r_from_spectrum(&amps, fs)
     }
 
     // ------------------------------------------------------------------
     // Potential R from log2-domain amplitude spectrum (NSGT)
     // ------------------------------------------------------------------
-
+    /// Compute roughness potential R from log2-domain amplitude spectrum (NSGT).
+    /// Input amplitudes are already perceptually normalized (subjective intensity),
+    /// so no further compression is applied here.
     pub fn potential_r_from_log2_spectrum(
         &self,
         amps: &[f32],
         space: &Log2Space,
-        gamma: f32,
-        alpha: f32,
     ) -> (Vec<f32>, f32) {
         use crate::core::erb::{erb_bw_hz, erb_to_hz, hz_to_erb};
 
@@ -249,29 +237,24 @@ impl RoughnessKernel {
         );
 
         let n = amps.len();
-        let bpo = space.bins_per_oct as f32;
-        let delta_log2 = 1.0 / bpo;
 
         // (1) Map to ERB axis
         let erb_vals: Vec<f32> = space.centers_hz.iter().map(|&f| hz_to_erb(f)).collect();
 
-        // (2) Envelope compression
-        let e: Vec<f32> = amps.iter().map(|&x| (x + 1e-9).powf(gamma)).collect();
+        // (2) No compression here — amplitudes are already subjective intensity
+        let e: &[f32] = amps;
 
-        // (3) Jacobian correction (Δf / BW_ERB)
-        let jacobian: Vec<f32> = space
+        // (3) Weight per ERB: use 1/BW_ERB(f) since input is per-band energy
+        let weight_erb: Vec<f32> = space
             .centers_hz
             .iter()
-            .map(|&f| {
-                let bw = erb_bw_hz(f).max(1e-12);
-                let df = f * (2f32.powf(delta_log2 * 0.5) - 2f32.powf(-delta_log2 * 0.5));
-                df / bw
-            })
+            .map(|&f| 1.0 / erb_bw_hz(f).max(1e-12))
             .collect();
 
         // (4) Convolution over ERB axis
         let half_width_erb = self.params.half_width_erb;
         let mut r = vec![0.0f32; n];
+
         for i in 0..n {
             let fi_erb = erb_vals[i];
             let ei = e[i];
@@ -285,9 +268,9 @@ impl RoughnessKernel {
             for j in j_lo..=j_hi {
                 let d = erb_vals[j] - fi_erb;
                 let w = lut_interp(&self.lut, self.erb_step, self.hw, d);
-                sum += e[j] * w * jacobian[j];
+                sum += e[j] * w * weight_erb[j];
             }
-            r[i] = sum * ei.powf(alpha);
+            r[i] = sum;
         }
 
         // (5) Integration over ERB axis
@@ -508,7 +491,7 @@ mod tests {
         let mid = amps.len() / 2;
         amps[mid] = 1.0;
 
-        let (r_vec, _) = k.potential_r_from_log2_spectrum(&amps, &space, 1.0, 0.0);
+        let (r_vec, _) = k.potential_r_from_log2_spectrum(&amps, &space);
 
         let g_ref = &k.lut;
         let hw = k.hw;
@@ -558,14 +541,14 @@ mod tests {
         let sig1: Vec<f32> = (0..n1)
             .map(|i| (2.0 * std::f32::consts::PI * base * i as f32 / fs1).sin())
             .collect();
-        let (_r1, rtot1) = k.potential_r_from_analytic(&hilbert(&sig1), fs1, 0.5, 0.5);
+        let (_r1, rtot1) = k.potential_r_from_analytic(&hilbert(&sig1), fs1);
 
         let fs2 = 96000.0;
         let n2 = 8192;
         let sig2: Vec<f32> = (0..n2)
             .map(|i| (2.0 * std::f32::consts::PI * base * i as f32 / fs2).sin())
             .collect();
-        let (_r2, rtot2) = k.potential_r_from_analytic(&hilbert(&sig2), fs2, 0.5, 0.5);
+        let (_r2, rtot2) = k.potential_r_from_analytic(&hilbert(&sig2), fs2);
 
         let rel_err = ((rtot2 - rtot1) / rtot1.abs()).abs();
         assert!(rel_err < 0.001, "R_total rel_err={rel_err}");
@@ -698,7 +681,7 @@ mod tests {
                 sig[i] = (2.0 * std::f32::consts::PI * base * t).sin()
                     + (2.0 * std::f32::consts::PI * f2 * t).sin();
             }
-            let (_r_bins, r_total) = k.potential_r_from_analytic(&hilbert(&sig), fs, 1.0, 0.0);
+            let (_r_bins, r_total) = k.potential_r_from_analytic(&hilbert(&sig), fs);
             ratios.push(ratio);
             r_vals.push(r_total);
         }
@@ -741,7 +724,7 @@ mod tests {
             let t = i as f32 / fs;
             sig1[i] = (2.0 * std::f32::consts::PI * base * t).sin();
         }
-        let (r1, _) = k.potential_r_from_analytic(&hilbert(&sig1), fs, 1.0, 0.0);
+        let (r1, _) = k.potential_r_from_analytic(&hilbert(&sig1), fs);
 
         let mut sig2 = vec![0.0f32; n];
         let f2 = base * 1.2;
@@ -750,7 +733,7 @@ mod tests {
             sig2[i] = (2.0 * std::f32::consts::PI * base * t).sin()
                 + (2.0 * std::f32::consts::PI * f2 * t).sin();
         }
-        let (r2, _) = k.potential_r_from_analytic(&hilbert(&sig2), fs, 1.0, 0.0);
+        let (r2, _) = k.potential_r_from_analytic(&hilbert(&sig2), fs);
 
         let df = fs / n as f32;
         let f0_erb = hz_to_erb(base);
@@ -813,7 +796,7 @@ mod tests {
         let mid = amps.len() / 2;
         amps[mid] = 1.0;
 
-        let (r_vec, _) = k.potential_r_from_log2_spectrum(&amps, &space, 1.0, 0.0);
+        let (r_vec, _) = k.potential_r_from_log2_spectrum(&amps, &space);
 
         let mid = amps.len() / 2;
         let f0_erb = hz_to_erb(space.centers_hz[mid]);
@@ -903,7 +886,7 @@ mod tests {
         let mid = amps_log2.len() / 2;
         amps_log2[mid] = 1.0;
 
-        let (r_log2, _) = k.potential_r_from_log2_spectrum(&amps_log2, &space, 1.0, 0.0);
+        let (r_log2, _) = k.potential_r_from_log2_spectrum(&amps_log2, &space);
 
         let df = fs / nfft as f32;
         let mut amps_lin = vec![0.0f32; nfft / 2];
@@ -913,7 +896,7 @@ mod tests {
                 amps_lin[bin] += amps_log2[kidx];
             }
         }
-        let (r_spec, _) = k.potential_r_from_spectrum(&amps_lin, fs, 1.0, 0.0);
+        let (r_spec, _) = k.potential_r_from_spectrum(&amps_lin, fs);
 
         let mut buf = vec![Complex32::new(0.0, 0.0); nfft];
         for (i, &amp) in amps_lin.iter().enumerate() {
@@ -926,7 +909,7 @@ mod tests {
         let ifft = planner.plan_fft_inverse(nfft);
         ifft.process(&mut buf);
         let sig: Vec<f32> = buf.iter().map(|z| z.re / nfft as f32).collect();
-        let (r_analytic, _) = k.potential_r_from_analytic(&hilbert(&sig), fs, 1.0, 0.0);
+        let (r_analytic, _) = k.potential_r_from_analytic(&hilbert(&sig), fs);
 
         // plotting same as original (omitted for brevity)
         Ok(())

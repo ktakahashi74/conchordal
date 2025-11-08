@@ -75,16 +75,28 @@ impl Log2Space {
         Some(idx)
     }
 
-    pub fn delta_hz_at(&self, f: f32) -> Option<f32> {
-        let idx = self.index_of_freq(f)?;
-        let df = if idx == 0 {
-            self.centers_hz[1] - self.centers_hz[0]
-        } else if idx + 1 >= self.centers_hz.len() {
-            self.centers_hz[idx] - self.centers_hz[idx - 1]
+    /// Approximate linear bandwidth (Hz) of a log2-space bin.
+    ///
+    /// - Constant-Q spacing: Δlog2 = 1 / bins_per_oct.
+    /// - Formula: Δf = f * (2^(Δlog2/2) − 2^(−Δlog2/2)).
+    /// - Q = f / Δf = 1 / (2^(Δlog2/2) − 2^(−Δlog2/2)).
+    ///
+    /// Use `bandwidth_hz_at(i)` for bin index, or this for arbitrary frequency.
+    #[inline]
+    pub fn bandwidth_hz(&self, f_hz: f32) -> f32 {
+        let half_step = 0.5 * self.step_log2;
+        let delta = 2f32.powf(half_step) - 2f32.powf(-half_step);
+        (f_hz * delta).max(1e-6)
+    }
+
+    /// Bandwidth (Hz) of the i-th bin center.
+    #[inline]
+    pub fn bandwidth_hz_at(&self, i: usize) -> f32 {
+        if let Some(&f_hz) = self.centers_hz.get(i) {
+            self.bandwidth_hz(f_hz)
         } else {
-            (self.centers_hz[idx + 1] - self.centers_hz[idx - 1]) / 2.0
-        };
-        Some(df.max(10.0)) // lower bound
+            0.0
+        }
     }
 
     /// Return Δlog2 between two frequencies.
@@ -108,5 +120,41 @@ mod tests {
         let ratio = s.centers_hz[idx] / s.centers_hz[0];
         // One octave ≈ factor 2
         assert!(ratio > 1.9 && ratio < 2.1);
+    }
+
+    #[test]
+    fn test_bandwidth_constant_q_relation() {
+        let space = Log2Space::new(100.0, 6400.0, 24);
+        let q_target = 1.0 / (2f32.powf(1.0 / (24.0 * 2.0)) - 2f32.powf(-1.0 / (24.0 * 2.0)));
+        for &f in &[100.0, 400.0, 1600.0, 6400.0] {
+            let bw = space.bandwidth_hz(f);
+            let q = f / bw;
+            assert!(
+                (q / q_target - 1.0).abs() < 1e-5,
+                "Q mismatch: got {q}, want {q_target}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_bandwidth_hz_at_matches_bandwidth_hz() {
+        let space = Log2Space::new(100.0, 6400.0, 24);
+        for i in [0, space.n_bins() / 2, space.n_bins() - 1] {
+            let bw_f = space.bandwidth_hz(space.centers_hz[i]);
+            let bw_i = space.bandwidth_hz_at(i);
+            assert!((bw_f - bw_i).abs() / bw_f < 1e-6, "Mismatch at bin {i}");
+        }
+    }
+
+    #[test]
+    fn test_bandwidth_scales_linearly_with_frequency() {
+        let space = Log2Space::new(100.0, 6400.0, 12);
+        let bw1 = space.bandwidth_hz(100.0);
+        let bw2 = space.bandwidth_hz(200.0);
+        let bw4 = space.bandwidth_hz(400.0);
+        let ratio12 = bw2 / bw1;
+        let ratio24 = bw4 / bw2;
+        assert!((ratio12 - 2.0).abs() < 0.05);
+        assert!((ratio24 - 2.0).abs() < 0.05);
     }
 }

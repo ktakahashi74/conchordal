@@ -203,10 +203,7 @@ impl NsgtLog2 {
                 b.coeffs.iter().map(|z| z.norm_sqr()).sum::<f32>() / (b.coeffs.len().max(1) as f32);
 
             // (2) bandwidth
-            let bw_hz = self
-                .space
-                .delta_hz_at(b.f_hz)
-                .unwrap_or(fs / (b.win_len as f32));
+            let bw_hz = self.space.bandwidth_hz(b.f_hz);
 
             // (3) moderate correction → multiply by sqrt(Δf)
             let psd_adj = mean_pow * bw_hz.sqrt();

@@ -1,11 +1,11 @@
 //! core/landscape.rs — Landscape computed on log2(NSGT-RT) domain.
 //!
-//! Each incoming hop updates the potential roughness (R) and consonance (C)
+//! Each incoming hop updates the potential roughness (R) and harmonicity (H)
 //! using a real-time NSGT analyzer with leaky temporal integration.
 //! Psychoacoustic normalization (subjective intensity + leaky smoothing)
-//! runs before applying the R/C kernels.
+//! runs before applying the R/H kernels.
 
-use crate::core::consonance_kernel::ConsonanceKernel;
+use crate::core::harmonicity_kernel::HarmonicityKernel;
 use crate::core::nsgt_rt::RtNsgtKernelLog2;
 use crate::core::roughness_kernel::RoughnessKernel;
 
@@ -16,7 +16,7 @@ pub struct LandscapeParams {
     pub gamma: f32,
     pub alpha: f32,
     pub roughness_kernel: RoughnessKernel,
-    pub consonance_kernel: ConsonanceKernel,
+    pub harmonicity_kernel: HarmonicityKernel,
 
     /// Exponent for subjective intensity (≈ specific loudness). Typical: 0.23
     pub loudness_exp: f32,
@@ -31,8 +31,8 @@ pub struct LandscapeFrame {
     pub fs: f32,
     pub freqs_hz: Vec<f32>,
     pub r_last: Vec<f32>,
+    pub h_last: Vec<f32>,
     pub c_last: Vec<f32>,
-    pub k_last: Vec<f32>,
     /// Preprocessed subjective intensity (after normalize()) on log2 bins.
     pub amps_last: Vec<f32>,
 }
@@ -42,8 +42,8 @@ pub struct Landscape {
     nsgt_rt: RtNsgtKernelLog2,
     params: LandscapeParams,
     last_r: Vec<f32>,
+    last_h: Vec<f32>,
     last_c: Vec<f32>,
-    last_k: Vec<f32>,
     /// State of the leaky integrator per bin (subjective intensity domain).
     norm_state: Vec<f32>,
     /// Last preprocessed amplitudes (subjective intensity).
@@ -57,8 +57,8 @@ impl Landscape {
             nsgt_rt,
             params,
             last_r: vec![0.0; n_ch],
+            last_h: vec![0.0; n_ch],
             last_c: vec![0.0; n_ch],
-            last_k: vec![0.0; n_ch],
             norm_state: vec![0.0; n_ch],
             amps_last: vec![0.0; n_ch],
         }
@@ -102,26 +102,26 @@ impl Landscape {
             .roughness_kernel
             .potential_r_from_log2_spectrum(&norm_env, space);
 
-        // === 4. Consonance potential C ===
-        let (c, _norm) = self
+        // === 4. Harmonicity potential C ===
+        let (h, _norm) = self
             .params
-            .consonance_kernel
-            .potential_c_from_log2_spectrum(&norm_env, space, self.params.gamma);
+            .harmonicity_kernel
+            .potential_h_from_log2_spectrum(&norm_env, space, self.params.gamma);
 
         // === 5. Combined potential K ===
-        let k: Vec<f32> = r.iter().zip(&c).map(|(ri, ci)| ci * (1.0 - ri)).collect();
+        let c: Vec<f32> = r.iter().zip(&h).map(|(ri, hi)| hi * (1.0 - ri)).collect();
 
         // === 6. Update state ===
         self.last_r.clone_from(&r);
+        self.last_h.clone_from(&h);
         self.last_c.clone_from(&c);
-        self.last_k.clone_from(&k);
 
         LandscapeFrame {
             fs,
             freqs_hz: space.centers_hz.clone(),
             r_last: r,
+            h_last: h,
             c_last: c,
-            k_last: k,
             amps_last: self.amps_last.clone(),
         }
     }
@@ -131,8 +131,8 @@ impl Landscape {
             fs: self.params.fs,
             freqs_hz: self.nsgt_rt.space().centers_hz.clone(),
             r_last: self.last_r.clone(),
+            h_last: self.last_c.clone(),
             c_last: self.last_c.clone(),
-            k_last: self.last_k.clone(),
             amps_last: self.amps_last.clone(),
         }
     }
@@ -152,10 +152,10 @@ impl Landscape {
         for x in &mut self.last_r {
             *x = 0.0;
         }
-        for x in &mut self.last_c {
+        for x in &mut self.last_h {
             *x = 0.0;
         }
-        for x in &mut self.last_k {
+        for x in &mut self.last_c {
             *x = 0.0;
         }
     }

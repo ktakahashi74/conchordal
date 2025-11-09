@@ -10,7 +10,7 @@ use tracing::*;
 use crossbeam_channel::{Receiver, Sender, bounded};
 
 use crate::audio::writer::WavOutput;
-use crate::core::consonance_kernel::ConsonanceKernel;
+use crate::core::harmonicity_kernel::HarmonicityKernel;
 use crate::core::landscape::{Landscape, LandscapeFrame, LandscapeParams};
 use crate::core::log2::Log2Space;
 use crate::core::nsgt_kernel::{BandCoeffs, NsgtKernelLog2, NsgtLog2Config};
@@ -19,7 +19,7 @@ use crate::core::roughness_kernel::{KernelParams, RoughnessKernel};
 use crate::life::population::{Population, PopulationParams};
 use crate::synth::engine::{SynthConfig, SynthEngine};
 use crate::ui::viewdata::{SpecFrame, UiFrame, WaveFrame};
-use crate::{audio::output::AudioOutput, core::consonance_kernel::ConsonanceParams};
+use crate::{audio::output::AudioOutput, core::harmonicity_kernel::HarmonicityParams};
 
 pub struct App {
     ui_frame_rx: Receiver<UiFrame>,
@@ -159,7 +159,7 @@ fn worker_loop(
         gamma: 1.0,
         alpha: 0.0,
         roughness_kernel: RoughnessKernel::new(KernelParams::default(), 0.005), // ΔERB LUT step
-        consonance_kernel: ConsonanceKernel::new(&space, ConsonanceParams::default()),
+        harmonicity_kernel: HarmonicityKernel::new(&space, HarmonicityParams::default()),
         loudness_exp: 0.23, // Zwicker
         tau_ms: 80.0,
         ref_power: 1e-6,

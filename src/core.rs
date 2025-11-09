@@ -1,6 +1,6 @@
-pub mod consonance_kernel;
 pub mod erb;
 pub mod fft;
+pub mod harmonicity_kernel;
 pub mod landscape;
 pub mod log2;
 pub mod nsgt;

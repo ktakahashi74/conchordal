@@ -112,8 +112,8 @@ pub fn main_window(ctx: &egui::Context, frame: &UiFrame) {
                 "DEBUG: len(freqs)={}, len(R)={}, len(C)={}, len(K)={}",
                 frame.landscape.freqs_hz.len(),
                 frame.landscape.r_last.len(),
-                frame.landscape.c_last.len(),
-                frame.landscape.k_last.len()
+                frame.landscape.h_last.len(),
+                frame.landscape.c_last.len()
             );
 
             // === Spectrum ===
@@ -153,13 +153,13 @@ pub fn main_window(ctx: &egui::Context, frame: &UiFrame) {
         ui.heading("Landscape");
 
         let max_r = frame.landscape.r_last.iter().cloned().fold(0.0, f32::max);
-        let min_k = frame.landscape.k_last.iter().cloned().fold(0.0, f32::min);
-        let max_k = frame.landscape.k_last.iter().cloned().fold(0.0, f32::max);
+        let min_c = frame.landscape.c_last.iter().cloned().fold(0.0, f32::min);
+        let max_c = frame.landscape.c_last.iter().cloned().fold(0.0, f32::max);
 
         ui.columns(1, |cols| {
             let ui = &mut cols[0];
 
-            // Roughness R (log2)
+            // Roughness R
             log2_plot_hz(
                 ui,
                 "Roughness Landscape (R)",
@@ -170,26 +170,26 @@ pub fn main_window(ctx: &egui::Context, frame: &UiFrame) {
                 (max_r * 1.05) as f64,
             );
 
-            // Consonance C (phase-based)
+            // Harmonicity H
             log2_plot_hz(
                 ui,
-                "Consonance Landscape (C)",
+                "Harmonicity Landscape (H)",
                 &frame.landscape.freqs_hz,
-                &frame.landscape.c_last,
-                "C",
+                &frame.landscape.h_last,
+                "H",
                 0.0,
                 1.0,
             );
 
-            // Combined potential K = αC − βR
+            // Combined Consonance C
             log2_plot_hz(
                 ui,
-                "Potential K = αC − βR",
+                "Consonance potential",
                 &frame.landscape.freqs_hz,
-                &frame.landscape.k_last,
-                "K",
-                (min_k * 1.1) as f64,
-                (max_k * 1.1) as f64,
+                &frame.landscape.c_last,
+                "C",
+                (min_c * 1.1) as f64,
+                (max_c * 1.1) as f64,
             );
         });
     });

@@ -223,21 +223,23 @@ impl HarmonicityKernel {
         &self,
         envelope: &[f32],
         space: &Log2Space,
-        gamma_amp: f32,
     ) -> (Vec<f32>, f32) {
         assert_eq!(space.bins_per_oct, self.bins_per_oct);
         assert_eq!(space.n_bins(), envelope.len());
-        let weights_full: Vec<f32> = if (gamma_amp - 1.0).abs() < 1e-12 {
-            envelope.iter().map(|&a| a.max(0.0)).collect()
-        } else {
-            envelope
-                .iter()
-                .map(|&a| a.max(0.0).powf(gamma_amp))
-                .collect()
-        };
+
+        // 1) assume envelope is already perceptually normalized
+        let weights_full: Vec<f32> = envelope.iter().map(|&a| a.max(0.0)).collect();
+
+        // 2) fold to chroma
         let chroma = Self::fold_to_chroma(&weights_full, self.bins_per_oct);
+
+        // 3) normalization for level invariance
         let denom: f32 = chroma.iter().sum::<f32>().max(1e-12);
+
+        // 4) circular convolution (FFT)
         let num = Self::circ_convolve_fft(&chroma, &self.kernel_one_oct);
+
+        // 5) expand to full bins
         let b = self.bins_per_oct as usize;
         let mut h_field = vec![0.0; space.n_bins()];
         for i in 0..space.n_bins() {
@@ -317,7 +319,7 @@ mod tests {
         let mut env = vec![0.0f32; space.n_bins()];
         let i0 = space.index_of_freq(440.0).unwrap();
         env[i0] = 1.0;
-        let (h_field, denom) = hk.potential_h_from_log2_spectrum(&env, &space, 1.0);
+        let (h_field, denom) = hk.potential_h_from_log2_spectrum(&env, &space);
         assert!((denom - 1.0).abs() < 1e-6);
         let chroma = HarmonicityKernel::fold_to_chroma(&env, space.bins_per_oct);
         let num = HarmonicityKernel::circ_convolve_fft(&chroma, hk.kernel_one_oct());

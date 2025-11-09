@@ -156,7 +156,6 @@ fn worker_loop(
     let lparams = LandscapeParams {
         fs,
         max_hist_cols: 256,
-        gamma: 1.0,
         alpha: 0.0,
         roughness_kernel: RoughnessKernel::new(KernelParams::default(), 0.005), // ΔERB LUT step
         harmonicity_kernel: HarmonicityKernel::new(&space, HarmonicityParams::default()),

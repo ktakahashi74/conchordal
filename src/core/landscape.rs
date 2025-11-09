@@ -13,7 +13,6 @@ use crate::core::roughness_kernel::RoughnessKernel;
 pub struct LandscapeParams {
     pub fs: f32,
     pub max_hist_cols: usize,
-    pub gamma: f32,
     pub alpha: f32,
     pub roughness_kernel: RoughnessKernel,
     pub harmonicity_kernel: HarmonicityKernel,
@@ -106,7 +105,7 @@ impl Landscape {
         let (h, _norm) = self
             .params
             .harmonicity_kernel
-            .potential_h_from_log2_spectrum(&norm_env, space, self.params.gamma);
+            .potential_h_from_log2_spectrum(&norm_env, space);
 
         // === 5. Combined potential K ===
         let c: Vec<f32> = r.iter().zip(&h).map(|(ri, hi)| hi * (1.0 - ri)).collect();

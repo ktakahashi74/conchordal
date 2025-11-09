@@ -176,21 +176,6 @@ impl HarmonicityKernel {
         k
     }
 
-    fn circ_convolve(a: &[f32], k: &[f32]) -> Vec<f32> {
-        let b = a.len();
-        assert_eq!(b, k.len());
-        let mut y = vec![0.0; b];
-        for i in 0..b {
-            let mut acc = 0.0;
-            for d in 0..b {
-                let j = (i + b - d) % b;
-                acc += a[j] * k[d];
-            }
-            y[i] = acc;
-        }
-        y
-    }
-
     fn circ_convolve_fft(a: &[f32], k: &[f32]) -> Vec<f32> {
         let n = a.len();
         assert_eq!(n, k.len());
@@ -227,19 +212,16 @@ impl HarmonicityKernel {
         assert_eq!(space.bins_per_oct, self.bins_per_oct);
         assert_eq!(space.n_bins(), envelope.len());
 
-        // 1) assume envelope is already perceptually normalized
-        let weights_full: Vec<f32> = envelope.iter().map(|&a| a.max(0.0)).collect();
+        // fold to chroma
+        let chroma = Self::fold_to_chroma(&envelope, self.bins_per_oct);
 
-        // 2) fold to chroma
-        let chroma = Self::fold_to_chroma(&weights_full, self.bins_per_oct);
-
-        // 3) normalization for level invariance
+        // normalization for level invariance
         let denom: f32 = chroma.iter().sum::<f32>().max(1e-12);
 
-        // 4) circular convolution (FFT)
+        // circular convolution (FFT)
         let num = Self::circ_convolve_fft(&chroma, &self.kernel_one_oct);
 
-        // 5) expand to full bins
+        // expand to full bins
         let b = self.bins_per_oct as usize;
         let mut h_field = vec![0.0; space.n_bins()];
         for i in 0..space.n_bins() {
@@ -298,6 +280,21 @@ mod tests {
 
     #[test]
     fn fft_matches_naive() {
+        fn circ_convolve(a: &[f32], k: &[f32]) -> Vec<f32> {
+            let b = a.len();
+            assert_eq!(b, k.len());
+            let mut y = vec![0.0; b];
+            for i in 0..b {
+                let mut acc = 0.0;
+                for d in 0..b {
+                    let j = (i + b - d) % b;
+                    acc += a[j] * k[d];
+                }
+                y[i] = acc;
+            }
+            y
+        }
+
         let b = 64usize;
         let a: Vec<f32> = (0..b)
             .map(|i| ((i as f32 * 0.13).sin() + 1.0) * 0.5)
@@ -305,7 +302,7 @@ mod tests {
         let k: Vec<f32> = (0..b)
             .map(|i| ((i as f32 * 0.07).cos() + 1.0) * 0.5)
             .collect();
-        let y_naive = HarmonicityKernel::circ_convolve(&a, &k);
+        let y_naive = circ_convolve(&a, &k);
         let y_fft = HarmonicityKernel::circ_convolve_fft(&a, &k);
         for (u, v) in y_naive.iter().zip(y_fft.iter()) {
             assert!((u - v).abs() < 1e-5);

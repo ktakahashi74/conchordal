@@ -221,6 +221,39 @@ fn conv_same_direct(x: &[f32], h: &[f32]) -> Vec<f32> {
     y_full[start..start + nx].to_vec()
 }
 
+pub fn linear_convolve_fft(a: &[f32], k: &[f32]) -> Vec<f32> {
+    use rustfft::{FftPlanner, num_complex::Complex32};
+    let n = a.len();
+    let m = k.len();
+    let l = (n + m - 1).next_power_of_two();
+    let mut planner = FftPlanner::<f32>::new();
+    let fft = planner.plan_fft_forward(l);
+    let ifft = planner.plan_fft_inverse(l);
+
+    let mut aspec = vec![Complex32::new(0.0, 0.0); l];
+    let mut kspec = vec![Complex32::new(0.0, 0.0); l];
+    for i in 0..n {
+        aspec[i].re = a[i];
+    }
+    for i in 0..m {
+        kspec[i].re = k[i];
+    }
+
+    fft.process(&mut aspec);
+    fft.process(&mut kspec);
+    for i in 0..l {
+        aspec[i] *= kspec[i];
+    }
+    ifft.process(&mut aspec);
+
+    let scale = 1.0 / (l as f32);
+    let mut y = vec![0.0f32; n + m - 1];
+    for i in 0..y.len() {
+        y[i] = aspec[i].re * scale;
+    }
+    y
+}
+
 /// Compute analytic signal (Hilbert transform).
 /// Returns complex output: real=input, imag=Hilbert(x).
 pub fn hilbert(x: &[f32]) -> Vec<Complex32> {
@@ -562,6 +595,129 @@ mod tests {
         assert!(y.iter().all(|&v| v >= 0.0));
         let mid = y[y.len() / 2];
         assert!(mid > 10.0);
+    }
+
+    fn conv_naive(a: &[f32], b: &[f32]) -> Vec<f32> {
+        let n = a.len();
+        let m = b.len();
+        let mut y = vec![0.0f32; n + m - 1];
+        for i in 0..n {
+            for j in 0..m {
+                y[i + j] += a[i] * b[j];
+            }
+        }
+        y
+    }
+
+    fn assert_close(a: &[f32], b: &[f32], tol: f32) {
+        assert_eq!(
+            a.len(),
+            b.len(),
+            "length mismatch: {} vs {}",
+            a.len(),
+            b.len()
+        );
+        for (i, (u, v)) in a.iter().zip(b.iter()).enumerate() {
+            let d = (u - v).abs();
+            assert!(
+                d <= tol,
+                "idx {} diff {} exceeds tol {}; u={}, v={}",
+                i,
+                d,
+                tol,
+                u,
+                v
+            );
+        }
+    }
+
+    fn seq(len: usize, w1: f32, w2: f32) -> Vec<f32> {
+        // deterministic, diverse values without RNG
+        (0..len)
+            .map(|i| {
+                let x = i as f32;
+                (x * w1).sin() + 0.25 * (x * w2).cos() + 0.1 * (x * (w1 + w2)).sin()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn length_and_values_match_naive_small_cases() {
+        let cases = [
+            (1usize, 1usize),
+            (2, 3),
+            (3, 2),
+            (5, 5),
+            (8, 13),
+            (16, 7),
+            (31, 9),
+            (64, 33),
+        ];
+        for (n, m) in cases {
+            let a = seq(n, 0.13, 0.07);
+            let b = seq(m, 0.21, 0.05);
+            let y_fft = linear_convolve_fft(&a, &b);
+            let y_nv = conv_naive(&a, &b);
+            assert_eq!(y_fft.len(), n + m - 1);
+            assert_close(&y_fft, &y_nv, 1e-5);
+        }
+    }
+
+    #[test]
+    fn commutativity_holds() {
+        let a = seq(37, 0.17, 0.11);
+        let b = seq(23, 0.09, 0.06);
+        let y_ab = linear_convolve_fft(&a, &b);
+        let y_ba = linear_convolve_fft(&b, &a);
+        assert_close(&y_ab, &y_ba, 1e-5);
+    }
+
+    #[test]
+    fn impulse_and_shift() {
+        // delta at 0 -> identity
+        let b = seq(19, 0.12, 0.03);
+        let y = linear_convolve_fft(&[1.0], &b);
+        assert_close(&y, &b, 1e-6);
+
+        // delta at index j -> right shift by j
+        let j = 7usize;
+        let mut a = vec![0.0f32; j + 1];
+        a[j] = 1.0;
+        let y = linear_convolve_fft(&a, &b);
+        assert_eq!(y.len(), a.len() + b.len() - 1);
+        // y[0..j] == 0
+        assert!(y[..j].iter().all(|&v| v.abs() < 1e-6));
+        // y[j..j+b.len()] == b
+        assert_close(&y[j..j + b.len()], &b, 1e-6);
+    }
+
+    #[test]
+    fn ones_rectangular_triangle() {
+        // ones * ones -> triangle with plateau when lengths differ
+        let a = vec![1.0f32; 5];
+        let b = vec![1.0f32; 3];
+        let y = linear_convolve_fft(&a, &b);
+        let expected = vec![1.0, 2.0, 3.0, 3.0, 3.0, 2.0, 1.0];
+        assert_close(&y, &expected, 1e-6);
+    }
+
+    #[test]
+    fn primes_non_power_of_two_lengths_match_naive() {
+        // hard case for FFT sizing and zero-padding
+        let a = seq(97, 0.131, 0.071);
+        let b = seq(113, 0.083, 0.047);
+        let y_fft = linear_convolve_fft(&a, &b);
+        let y_nv = conv_naive(&a, &b);
+        assert_eq!(y_fft.len(), a.len() + b.len() - 1);
+        assert_close(&y_fft, &y_nv, 2e-5);
+    }
+
+    #[test]
+    fn zeros_propagate() {
+        let a = vec![0.0f32; 17];
+        let b = seq(9, 0.2, 0.15);
+        let y = linear_convolve_fft(&a, &b);
+        assert!(y.iter().all(|&v| v.abs() < 1e-7));
     }
 
     // ==============================

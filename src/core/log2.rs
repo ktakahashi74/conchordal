@@ -75,6 +75,10 @@ impl Log2Space {
         Some(idx)
     }
 
+    pub fn freq_of_index(&self, i: usize) -> f32 {
+        self.centers_hz[i]
+    }
+
     /// Approximate linear bandwidth (Hz) of a log2-space bin.
     ///
     /// - Constant-Q spacing: Δlog2 = 1 / bins_per_oct.

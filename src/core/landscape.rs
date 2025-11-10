@@ -106,6 +106,7 @@ impl Landscape {
             .params
             .harmonicity_kernel
             .potential_h_from_log2_spectrum(&norm_env, space);
+        //.potential_h_with_freq_gate(&norm_env, space);
 
         // === 5. Combined potential K ===
         let c: Vec<f32> = r.iter().zip(&h).map(|(ri, hi)| hi * (1.0 - ri)).collect();

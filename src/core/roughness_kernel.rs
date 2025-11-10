@@ -675,54 +675,6 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn plot_potential_r_from_signal_direct_two_tone() {
-        let fs = 48000.0;
-        let k = RoughnessKernel::new(KernelParams::default(), 0.005);
-        let base = 440.0;
-        let mut ratios = Vec::new();
-        let mut r_vals = Vec::new();
-
-        for ratio in (100..200).map(|k| k as f32 / 100.0) {
-            let f2 = base * ratio;
-            let n = 4096;
-            let mut sig = vec![0.0f32; n];
-            for i in 0..n {
-                let t = i as f32 / fs;
-                sig[i] = (2.0 * std::f32::consts::PI * base * t).sin()
-                    + (2.0 * std::f32::consts::PI * f2 * t).sin();
-            }
-            let (_r_bins, r_total) = k.potential_r_from_analytic(&hilbert(&sig), fs);
-            ratios.push(ratio);
-            r_vals.push(r_total);
-        }
-
-        let out_path = "target/test_potential_r_signal_two_tone.png";
-        let root = BitMapBackend::new(out_path, (1600, 1000)).into_drawing_area();
-        root.fill(&WHITE).unwrap();
-        let max_y = r_vals.iter().cloned().fold(0.0, f32::max) * 1.2;
-        let mut chart = ChartBuilder::on(&root)
-            .caption("Potential R (Two-tone ΔERB sweep)", ("sans-serif", 30))
-            .margin(10)
-            .build_cartesian_2d(1.0f32..2.0f32, 0.0f32..max_y)
-            .unwrap();
-        chart
-            .configure_mesh()
-            .x_desc("f2/f1")
-            .y_desc("R_total")
-            .draw()
-            .unwrap();
-        chart
-            .draw_series(LineSeries::new(
-                ratios.iter().zip(r_vals.iter()).map(|(&x, &y)| (x, y)),
-                &RED,
-            ))
-            .unwrap();
-        root.present().unwrap();
-        assert!(File::open(out_path).is_ok());
-    }
-
-    #[test]
-    #[ignore]
     fn plot_potential_r_from_signal_direct_erb() {
         let fs = 48000.0;
         let k = RoughnessKernel::new(KernelParams::default(), 0.005);

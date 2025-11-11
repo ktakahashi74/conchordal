@@ -362,6 +362,20 @@ mod tests {
     }
 
     #[test]
+    fn tfs_gate_expected_values() {
+        let mut p = HarmonicityParams::default();
+        p.freq_gate = true;
+        p.tfs_f_pl_hz = 4500.0;
+        p.tfs_eta = 4.0;
+
+        let g1 = super::HarmonicityKernel::absfreq_gate(4500.0, &p);
+        let g2 = super::HarmonicityKernel::absfreq_gate(9000.0, &p);
+
+        assert!((g1 - 0.5).abs() < 1e-6); // knee = 0.5
+        assert!(g2 < 0.07); // 9kHz≈1/(1+16)=0.0588
+    }
+
+    #[test]
     fn freq_gate_reduces_high_freq_when_enabled() {
         let mut p = HarmonicityParams::default();
         p.freq_gate = true;

@@ -109,7 +109,8 @@ impl Landscape {
         //.potential_h_with_freq_gate(&norm_env, space);
 
         // === 5. Combined potential K ===
-        let c: Vec<f32> = r.iter().zip(&h).map(|(ri, hi)| hi * (1.0 - ri)).collect();
+        //let c: Vec<f32> = r.iter().zip(&h).map(|(ri, hi)| hi * (1.0 - ri)).collect();
+        let c: Vec<f32> = r.iter().zip(&h).map(|(ri, hi)| hi - ri).collect();
 
         // === 6. Update state ===
         self.last_r.clone_from(&r);
@@ -131,7 +132,7 @@ impl Landscape {
             fs: self.params.fs,
             freqs_hz: self.nsgt_rt.space().centers_hz.clone(),
             r_last: self.last_r.clone(),
-            h_last: self.last_c.clone(),
+            h_last: self.last_h.clone(),
             c_last: self.last_c.clone(),
             amps_last: self.amps_last.clone(),
         }

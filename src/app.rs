@@ -218,9 +218,8 @@ fn worker_loop(
             let _ = tx.try_send(time_chunk.clone());
         }
 
-        // 3) landscape update (NSGT/log2-domain)
-        landscape.process_frame(&time_chunk);
-        let lframe: LandscapeFrame = landscape.snapshot();
+        // 3) landscape update
+        let lframe = landscape.process_frame(&time_chunk);
 
         // 4) package for UI
         let ui_frame = UiFrame {

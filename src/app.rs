@@ -162,6 +162,7 @@ fn worker_loop(
         loudness_exp: 0.23, // Zwicker
         tau_ms: 80.0,
         ref_power: 1e-6,
+        roughness_k: 0.1,
     };
 
     let mut nsgt = RtNsgtKernelLog2::new(NsgtKernelLog2::new(

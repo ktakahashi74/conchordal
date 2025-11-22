@@ -23,6 +23,10 @@ pub struct LandscapeParams {
     pub ref_power: f32,
     /// Leaky integration time constant [ms]. Typical: 60–120 ms.
     pub tau_ms: f32,
+
+    /// Roughness normalization constant (k).
+    /// Controls the saturation curve: D_index = R / (R_total + k).
+    pub roughness_k: f32,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -96,10 +100,12 @@ impl Landscape {
 
         // === 3. Roughness potential R ===
         let space = self.nsgt_rt.space();
-        let (r, _r_total) = self
+        let (r, r_total) = self
             .params
             .roughness_kernel
             .potential_r_from_log2_spectrum(&norm_env, space);
+
+        println!("{r_total}");
 
         // === 4. Harmonicity potential C ===
         let (h, _norm) = self
@@ -110,7 +116,20 @@ impl Landscape {
 
         // === 5. Combined potential K ===
         //let c: Vec<f32> = r.iter().zip(&h).map(|(ri, hi)| hi * (1.0 - ri)).collect();
-        let c: Vec<f32> = r.iter().zip(&h).map(|(ri, hi)| hi - ri).collect();
+        //        let c: Vec<f32> = r.iter().zip(&h).map(|(ri, hi)| hi - ri).collect();
+
+        let k = self.params.roughness_k.max(1e-6);
+        let denom_inv = 1.0 / (r_total + k);
+
+        let c: Vec<f32> = r
+            .iter()
+            .zip(&h)
+            .map(|(ri, hi)| {
+                let d_index = ri * denom_inv;
+                //hi * (1.0 - d_index)
+                hi - d_index
+            })
+            .collect();
 
         // === 6. Update state ===
         self.last_r.clone_from(&r);

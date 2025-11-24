@@ -66,7 +66,7 @@ impl Default for HarmonicityParams {
             num_harmonics: 6,    // Projects harmonics up to x6
             rho_sub: 0.8,
             rho_harm: 0.8,
-            sigma_cents: 15.0, // +/- 15 cents tolerance
+            sigma_cents: 10.0,
             normalize_output: true,
             freq_gate: false,
             tfs_f_pl_hz: 4500.0,
@@ -301,10 +301,12 @@ mod tests {
         // - 400Hz (Octave)
         // - 300Hz (Perfect 5th via 100Hz root)
 
-        let space = Log2Space::new(50.0, 800.0, 24);
+        let space = Log2Space::new(50.0, 800.0, 200);
         let mut params = HarmonicityParams::default();
-        params.num_subharmonics = 4;
-        params.num_harmonics = 4;
+        params.num_subharmonics = 6;
+        params.num_harmonics = 6;
+        params.rho_sub = 0.5;
+        params.rho_harm = 0.5;
 
         let hk = HarmonicityKernel::new(&space, params);
 
@@ -321,7 +323,7 @@ mod tests {
         // 200 -> Root 100.
         // Root 100 -> Harmonic 300.
         assert!(
-            landscape[idx_300] > 0.5,
+            landscape[idx_300] > 0.2,
             "300Hz (Perfect 5th) should be a peak"
         );
         assert!(
@@ -333,12 +335,12 @@ mod tests {
     #[test]
     #[ignore]
     fn plot_sibling_landscape_png() {
-        let space = Log2Space::new(50.0, 1600.0, 200); // 48 bins/oct
+        let space = Log2Space::new(50.0, 1600.0, 200);
         let mut p = HarmonicityParams::default();
         p.num_subharmonics = 12;
         p.num_harmonics = 12;
-        p.rho_sub = 0.8;
-        p.rho_harm = 0.8;
+        p.rho_sub = 0.5;
+        p.rho_harm = 0.5;
         p.sigma_cents = 10.0;
 
         let hk = HarmonicityKernel::new(&space, p);

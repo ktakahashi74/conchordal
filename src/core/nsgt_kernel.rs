@@ -13,7 +13,7 @@
 //! - Use a periodic Hann window for each band with length L_k. Normalization by /U_k is already applied.
 //! - Complex linear interpolation is unnecessary (the kernel itself represents the continuous frequency).
 
-use crate::core::log2::Log2Space;
+use crate::core::log2space::Log2Space;
 use rustfft::{FftPlanner, num_complex::Complex32};
 use std::sync::Arc;
 

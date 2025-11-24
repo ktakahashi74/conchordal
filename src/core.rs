@@ -2,7 +2,7 @@ pub mod erb;
 pub mod fft;
 pub mod harmonicity_kernel;
 pub mod landscape;
-pub mod log2;
+pub mod log2space;
 pub mod nsgt;
 pub mod nsgt_kernel;
 pub mod nsgt_rt;

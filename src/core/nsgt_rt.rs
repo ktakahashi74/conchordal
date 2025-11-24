@@ -14,7 +14,7 @@
 //!   > hop (multiple hops processed); returns the last envelope slice.
 //! - No per-hop allocations; FFT and scratch buffers are reused.
 
-use crate::core::log2::Log2Space;
+use crate::core::log2space::Log2Space;
 use crate::core::nsgt_kernel::{KernelBand, NsgtKernelLog2};
 use rustfft::{FftPlanner, num_complex::Complex32};
 use std::sync::Arc;

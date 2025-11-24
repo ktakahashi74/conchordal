@@ -17,7 +17,7 @@
 //! - Goertzel avoids per-frame FFT overhead, efficient for sparse-band constant-Q.
 //! - Dense or long-window use cases may prefer batched FFT (TODO).
 
-use crate::core::log2::Log2Space;
+use crate::core::log2space::Log2Space;
 use rustfft::num_complex::Complex32;
 
 // =====================================================
@@ -274,7 +274,7 @@ fn analyze_band_goertzel(x: &[f32], fs: f32, band: &NsgtBand) -> (Vec<Complex32>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::log2::Log2Space;
+    use crate::core::log2space::Log2Space;
     use approx::assert_relative_eq;
 
     fn mk_sine(fs: f32, f: f32, secs: f32) -> Vec<f32> {

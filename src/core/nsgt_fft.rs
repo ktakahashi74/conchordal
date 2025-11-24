@@ -3,7 +3,7 @@
 //! Faster constant-Q analysis using FFT batches grouped by window length.
 //! Compatible with `NsgtLog2` output format (for downstream roughness/consonance).
 
-use crate::core::log2::Log2Space;
+use crate::core::log2space::Log2Space;
 use crate::core::nsgt::{BandCoeffs, NsgtLog2Config};
 use rustfft::{FftPlanner, num_complex::Complex32};
 use std::sync::Arc;

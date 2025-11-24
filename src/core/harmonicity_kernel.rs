@@ -22,7 +22,7 @@
 //! - 500Hz (Major 3rd via 100Hz root)
 //! ...without using any hardcoded ratio templates.
 
-use crate::core::log2::Log2Space;
+use crate::core::log2space::Log2Space;
 
 #[inline]
 fn log2f(x: f32) -> f32 {
@@ -62,10 +62,10 @@ pub struct HarmonicityParams {
 impl Default for HarmonicityParams {
     fn default() -> Self {
         Self {
-            num_subharmonics: 6, // Checks roots down to 1/6
-            num_harmonics: 6,    // Projects harmonics up to x6
-            rho_sub: 0.8,
-            rho_harm: 0.8,
+            num_subharmonics: 12,
+            num_harmonics: 12,
+            rho_sub: 0.6,
+            rho_harm: 0.6,
             sigma_cents: 10.0,
             normalize_output: true,
             freq_gate: false,
@@ -288,7 +288,7 @@ impl HarmonicityKernel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::log2::Log2Space;
+    use crate::core::log2space::Log2Space;
     use plotters::prelude::*;
     use std::fs::File;
     use std::path::Path;

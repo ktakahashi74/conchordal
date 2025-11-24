@@ -4,7 +4,7 @@
 
 use crate::core::erb::{erb_bw_hz, hz_to_erb};
 use crate::core::fft::{apply_hann_window_complex, hilbert};
-use crate::core::log2::Log2Space;
+use crate::core::log2space::Log2Space;
 use rustfft::{FftPlanner, num_complex::Complex32};
 
 // ======================================================================
@@ -748,7 +748,7 @@ mod tests {
     #[ignore]
     fn plot_potential_r_from_log2_spectrum_delta_input() -> Result<(), Box<dyn std::error::Error>> {
         use crate::core::erb::hz_to_erb;
-        use crate::core::log2::Log2Space;
+        use crate::core::log2space::Log2Space;
         use plotters::prelude::*;
 
         let k = RoughnessKernel::new(KernelParams::default(), 0.005);
@@ -833,7 +833,7 @@ mod tests {
     fn plot_potential_r_delta_input_all_methods() -> Result<(), Box<dyn std::error::Error>> {
         use crate::core::erb::hz_to_erb;
         use crate::core::fft::hilbert;
-        use crate::core::log2::Log2Space;
+        use crate::core::log2space::Log2Space;
         use plotters::prelude::*;
         use rustfft::{FftPlanner, num_complex::Complex32};
         use std::f32::consts::PI;

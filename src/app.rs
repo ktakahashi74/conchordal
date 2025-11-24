@@ -12,7 +12,7 @@ use crossbeam_channel::{Receiver, Sender, bounded};
 use crate::audio::writer::WavOutput;
 use crate::core::harmonicity_kernel::HarmonicityKernel;
 use crate::core::landscape::{Landscape, LandscapeFrame, LandscapeParams};
-use crate::core::log2::Log2Space;
+use crate::core::log2space::Log2Space;
 use crate::core::nsgt_kernel::{BandCoeffs, NsgtKernelLog2, NsgtLog2Config};
 use crate::core::nsgt_rt::RtNsgtKernelLog2;
 use crate::core::roughness_kernel::{KernelParams, RoughnessKernel};

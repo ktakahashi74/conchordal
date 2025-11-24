@@ -8,7 +8,7 @@
 
 use crate::core::erb::erb_bw_hz;
 use crate::core::fft::linear_convolve_fft;
-use crate::core::log2::Log2Space;
+use crate::core::log2space::Log2Space;
 
 #[inline]
 fn log2f(x: f32) -> f32 {
@@ -299,7 +299,7 @@ impl HarmonicityKernel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::log2::Log2Space;
+    use crate::core::log2space::Log2Space;
     use plotters::prelude::*;
     use std::fs::File;
     use std::path::Path;

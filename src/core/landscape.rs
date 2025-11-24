@@ -6,7 +6,7 @@
 //! runs before applying the R/H kernels.
 
 use crate::core::harmonicity_kernel::HarmonicityKernel;
-use crate::core::log2::Log2Space;
+use crate::core::log2space::Log2Space;
 use crate::core::nsgt_rt::RtNsgtKernelLog2;
 use crate::core::roughness_kernel::RoughnessKernel;
 

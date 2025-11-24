@@ -6,6 +6,7 @@
 //! runs before applying the R/H kernels.
 
 use crate::core::harmonicity_kernel::HarmonicityKernel;
+use crate::core::log2::Log2Space;
 use crate::core::nsgt_rt::RtNsgtKernelLog2;
 use crate::core::roughness_kernel::RoughnessKernel;
 
@@ -29,10 +30,10 @@ pub struct LandscapeParams {
     pub roughness_k: f32,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct LandscapeFrame {
     pub fs: f32,
-    pub freqs_hz: Vec<f32>,
+    pub space: Log2Space,
     pub r_last: Vec<f32>,
     pub h_last: Vec<f32>,
     pub c_last: Vec<f32>,
@@ -138,7 +139,7 @@ impl Landscape {
 
         LandscapeFrame {
             fs,
-            freqs_hz: space.centers_hz.clone(),
+            space: space.clone(),
             r_last: r,
             h_last: h,
             c_last: c,
@@ -149,7 +150,7 @@ impl Landscape {
     pub fn snapshot(&self) -> LandscapeFrame {
         LandscapeFrame {
             fs: self.params.fs,
-            freqs_hz: self.nsgt_rt.space().centers_hz.clone(),
+            space: self.nsgt_rt.space().clone(),
             r_last: self.last_r.clone(),
             h_last: self.last_h.clone(),
             c_last: self.last_c.clone(),
@@ -177,6 +178,21 @@ impl Landscape {
         }
         for x in &mut self.last_c {
             *x = 0.0;
+        }
+    }
+}
+
+impl Default for LandscapeFrame {
+    fn default() -> Self {
+        let space = Log2Space::new(1.0, 2.0, 1);
+        let n = space.n_bins();
+        Self {
+            fs: 0.0,
+            space,
+            r_last: vec![0.0; n],
+            h_last: vec![0.0; n],
+            c_last: vec![0.0; n],
+            amps_last: vec![0.0; n],
         }
     }
 }

@@ -110,7 +110,7 @@ pub fn main_window(ctx: &egui::Context, frame: &UiFrame) {
             ui.separator();
             eprintln!(
                 "DEBUG: len(freqs)={}, len(R)={}, len(C)={}, len(K)={}",
-                frame.landscape.freqs_hz.len(),
+                frame.landscape.space.n_bins(),
                 frame.landscape.r_last.len(),
                 frame.landscape.h_last.len(),
                 frame.landscape.c_last.len()
@@ -140,7 +140,7 @@ pub fn main_window(ctx: &egui::Context, frame: &UiFrame) {
         log2_plot_hz(
             ui,
             "NSGT envelope",
-            &frame.landscape.freqs_hz,
+            &frame.landscape.space.centers_hz,
             &frame.landscape.amps_last,
             "NSGT",
             0.0,
@@ -163,7 +163,7 @@ pub fn main_window(ctx: &egui::Context, frame: &UiFrame) {
             log2_plot_hz(
                 ui,
                 "Roughness Landscape (R)",
-                &frame.landscape.freqs_hz,
+                &frame.landscape.space.centers_hz,
                 &frame.landscape.r_last,
                 "R",
                 0.0,
@@ -174,7 +174,7 @@ pub fn main_window(ctx: &egui::Context, frame: &UiFrame) {
             log2_plot_hz(
                 ui,
                 "Harmonicity Landscape (H)",
-                &frame.landscape.freqs_hz,
+                &frame.landscape.space.centers_hz,
                 &frame.landscape.h_last,
                 "H",
                 0.0,
@@ -185,7 +185,7 @@ pub fn main_window(ctx: &egui::Context, frame: &UiFrame) {
             log2_plot_hz(
                 ui,
                 "Consonance potential",
-                &frame.landscape.freqs_hz,
+                &frame.landscape.space.centers_hz,
                 &frame.landscape.c_last,
                 "C",
                 (min_c * 1.1) as f64,

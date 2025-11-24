@@ -62,11 +62,11 @@ pub struct HarmonicityParams {
 impl Default for HarmonicityParams {
     fn default() -> Self {
         Self {
-            num_subharmonics: 12,
-            num_harmonics: 12,
-            rho_sub: 0.6,
+            num_subharmonics: 8,
+            num_harmonics: 16,
+            rho_sub: 0.7,
             rho_harm: 0.6,
-            sigma_cents: 10.0,
+            sigma_cents: 4.0,
             normalize_output: true,
             freq_gate: false,
             tfs_f_pl_hz: 4500.0,
@@ -335,18 +335,12 @@ mod tests {
     #[test]
     fn test_complex_ratios_detection() {
         // Test: Can we detect 7:4 (Harmonic 7th) and 6:5 (Minor 3rd)?
-        
+
         let space = Log2Space::new(20.0, 1600.0, 100);
         let mut params = HarmonicityParams::default();
-        
-        params.num_subharmonics = 12; 
-        params.num_harmonics = 12;
-        params.rho_sub = 0.4; 
-        params.rho_harm = 0.4;
-        params.sigma_cents = 15.0;
-        
+
         let hk = HarmonicityKernel::new(&space, params);
-        
+
         let mut env = vec![0.0; space.n_bins()];
         let f_input = 400.0;
         if let Some(idx) = space.index_of_freq(f_input) {
@@ -355,10 +349,10 @@ mod tests {
 
         let (landscape, _) = hk.potential_h_from_log2_spectrum(&env, &space);
 
-        let idx_m3 = space.index_of_freq(400.0 * 1.2).unwrap();      // 6:5
-        let idx_h7 = space.index_of_freq(400.0 * 1.75).unwrap();     // 7:4
-        
-        // Tritone (approx 1.414). 
+        let idx_m3 = space.index_of_freq(400.0 * 1.2).unwrap(); // 6:5
+        let idx_h7 = space.index_of_freq(400.0 * 1.75).unwrap(); // 7:4
+
+        // Tritone (approx 1.414).
         // Note: This is close to 7:5 (1.40), so it will have significant potential!
         let idx_tritone = space.index_of_freq(400.0 * 1.414).unwrap();
 
@@ -366,27 +360,30 @@ mod tests {
         println!("Potential at 7:4 (h7): {}", landscape[idx_h7]);
         println!("Potential at Tritone:  {}", landscape[idx_tritone]);
 
-        assert!(landscape[idx_m3] > landscape[idx_tritone] * 1.1, "6:5 should be more stable than tritone");
-        assert!(landscape[idx_h7] > landscape[idx_tritone] * 1.1, "7:4 should be more stable than tritone");
+        assert!(
+            landscape[idx_m3] > landscape[idx_tritone] * 1.1,
+            "6:5 should be more stable than tritone"
+        );
+        assert!(
+            landscape[idx_h7] > landscape[idx_tritone] * 1.1,
+            "7:4 should be more stable than tritone"
+        );
     }
-    
+
     #[test]
     #[ignore]
     fn plot_sibling_landscape_png() {
-        let space = Log2Space::new(20.0, 1600.0, 200);
+        let space = Log2Space::new(20.0, 8000.0, 200);
+	
         let mut p = HarmonicityParams::default();
-        p.num_subharmonics = 12;
-        p.num_harmonics = 12;
-        p.rho_sub = 0.5;
-        p.rho_harm = 0.5;
-        p.sigma_cents = 10.0;
 
         let hk = HarmonicityKernel::new(&space, p);
 
-        // Input: 200Hz (G3 approx)
         let mut env = vec![0.0; space.n_bins()];
-        let f_input = 200.0;
-        env[space.index_of_freq(f_input).unwrap()] = 1.0;
+        let f_input = 440.0;
+        if let Some(idx) = space.index_of_freq(f_input) {
+            env[idx] = 1.0;
+        }
 
         let (y, _) = hk.potential_h_from_log2_spectrum(&env, &space);
         let xs: Vec<f32> = (0..space.n_bins())
@@ -397,21 +394,22 @@ mod tests {
         let root = BitMapBackend::new(out_path, (1200, 600)).into_drawing_area();
         root.fill(&WHITE).unwrap();
 
-        let max_y = y.iter().cloned().fold(0.0, f32::max) * 1.1;
-
         let mut chart = ChartBuilder::on(&root)
             .caption(
                 format!("Sibling Landscape (Input: {}Hz)", f_input),
                 ("sans-serif", 20),
             )
             .margin(10)
-            .build_cartesian_2d(20.0f32..2000.0f32, 0.0f32..max_y)
+            .x_label_area_size(40)
+            .y_label_area_size(40)
+            .build_cartesian_2d(20.0f32..8000.0f32, 0.0f32..1.05f32)
             .unwrap();
 
         chart
             .configure_mesh()
             .x_desc("Frequency [Hz]")
-            .y_desc("Potential (Stability)")
+            .y_desc("Potential (0.0 - 1.0)")
+            .y_labels(10)
             .draw()
             .unwrap();
 
@@ -422,7 +420,7 @@ mod tests {
             ))
             .unwrap();
 
-        // Mark expected emergent ratios
+        // Mark expected mergent ratios
         let markers = vec![
             (f_input * 1.5, "3:2", RED),
             (f_input * 1.25, "5:4", MAGENTA),
@@ -430,17 +428,13 @@ mod tests {
             (f_input * 2.0, "2:1", GREEN),
         ];
 
-        for (freq, label, color) in markers {
+        for (freq, _label, color) in markers {
             chart
                 .draw_series(std::iter::once(PathElement::new(
-                    vec![(freq, 0.0), (freq, max_y)],
+                    vec![(freq, 0.0), (freq, 1.0)],
                     color.mix(0.5),
                 )))
                 .unwrap();
-
-            // Simple label positioning
-            // (Note: Text positioning in plotters is absolute or relative to coord,
-            // here just drawing lines for verification)
         }
 
         root.present().unwrap();

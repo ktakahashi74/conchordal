@@ -22,38 +22,22 @@
 //! - 500Hz (Major 3rd via 100Hz root)
 //! ...without using any hardcoded ratio templates.
 
+//! core/harmonicity_kernel.rs
+//! Optimized Sibling Harmonicity Kernel.
+//!
+//! Uses a "Shift-and-Add" approach with pre-calculated bounds
+//! to ensure O(N) efficiency and SIMD-friendly loops.
+
 use crate::core::log2space::Log2Space;
 
-#[inline]
-fn log2f(x: f32) -> f32 {
-    x.log2()
-}
-
-/// Parameters for the Sibling Projection algorithm.
 #[derive(Clone, Copy, Debug)]
 pub struct HarmonicityParams {
-    /// Step 1: How far down to look for roots? (e.g., 8).
-    /// Corresponds to the denominator of perceptible ratios.
     pub num_subharmonics: u32,
-
-    /// Step 2: How far up to project harmonics from roots? (e.g., 8).
-    /// Corresponds to the numerator of perceptible ratios.
     pub num_harmonics: u32,
-
-    /// Weight decay for root search (1/k^rho).
     pub rho_sub: f32,
-
-    /// Weight decay for harmonic projection (1/m^rho).
     pub rho_harm: f32,
-
-    /// Smoothing width in cents (tolerance/auditory filter width).
-    /// Applied to the input envelope before processing.
     pub sigma_cents: f32,
-
-    /// Normalize the final landscape to max=1.0.
     pub normalize_output: bool,
-
-    /// Apply absolute-frequency gating (Phase-locking roll-off).
     pub freq_gate: bool,
     pub tfs_f_pl_hz: f32,
     pub tfs_eta: f32,
@@ -62,11 +46,11 @@ pub struct HarmonicityParams {
 impl Default for HarmonicityParams {
     fn default() -> Self {
         Self {
-            num_subharmonics: 8,
-            num_harmonics: 16,
-            rho_sub: 0.7,
-            rho_harm: 0.6,
-            sigma_cents: 4.0,
+            num_subharmonics: 12,
+            num_harmonics: 12,
+            rho_sub: 0.75,
+            rho_harm: 0.5,
+            sigma_cents: 2.0, // Sharp precision for phase locking
             normalize_output: true,
             freq_gate: false,
             tfs_f_pl_hz: 4500.0,
@@ -79,22 +63,16 @@ impl Default for HarmonicityParams {
 pub struct HarmonicityKernel {
     pub bins_per_oct: u32,
     pub params: HarmonicityParams,
-
-    /// Pre-calculated smoothing kernel (Gaussian FIR).
     smooth_kernel: Vec<f32>,
-    smooth_offset: usize,
+    pad_bins: usize, // Internal padding size
 }
 
 impl HarmonicityKernel {
     pub fn new(space: &Log2Space, params: HarmonicityParams) -> Self {
-        // Build Gaussian smoothing kernel
-        // sigma_bins = sigma_cents / 1200 * bins_per_oct
+        // 1. Pre-calculate smoothing kernel
         let sigma_bins = params.sigma_cents / 1200.0 * space.bins_per_oct as f32;
-
-        // Kernel width ~ 4*sigma (covers 99.9%)
         let half_width = (2.5 * sigma_bins).ceil() as usize;
         let width = 2 * half_width + 1;
-
         let mut k = vec![0.0f32; width];
         let mut sum = 0.0;
         for i in 0..width {
@@ -102,91 +80,97 @@ impl HarmonicityKernel {
             k[i] = (-0.5 * (x / sigma_bins).powi(2)).exp();
             sum += k[i];
         }
-        // Normalize
         for v in &mut k {
             *v /= sum;
         }
+
+        // 2. Pre-calculate necessary padding
+        // How many bins down do we need to store the deepest root?
+        let max_sub_oct = (params.num_subharmonics as f32).log2();
+        let pad_bins = (max_sub_oct * space.bins_per_oct as f32).ceil() as usize;
 
         Self {
             bins_per_oct: space.bins_per_oct,
             params,
             smooth_kernel: k,
-            smooth_offset: half_width,
+            pad_bins,
         }
     }
 
-    #[inline]
-    fn absfreq_gate(f_hz: f32, p: &HarmonicityParams) -> f32 {
-        let g_pl = 1.0 / (1.0 + (f_hz / p.tfs_f_pl_hz).powf(p.tfs_eta.max(0.1)));
-        g_pl.clamp(0.0, 1.0)
-    }
-
-    /// Calculate the Harmonicity Landscape.
-    /// Returns (landscape_vector, normalization_factor).
-    /// High values indicate high consonance/stability.
+    /// The core function: Env -> Roots -> Landscape
     pub fn potential_h_from_log2_spectrum(
         &self,
         envelope: &[f32],
         space: &Log2Space,
     ) -> (Vec<f32>, f32) {
         let n_bins = envelope.len();
-
-        // 0. Pre-process: Smooth the input
-        let smeared_env = self.convolve_smooth(envelope);
         let bins_per_oct = self.bins_per_oct as f32;
 
-        // --- Step 1: Find Virtual Roots (Downward) ---
-        // Buffer to hold the strength of potential roots
-        let mut root_spectrum = vec![0.0f32; n_bins];
+        // Step 0: Smooth Input (O(N))
+        let smeared_env = self.convolve_smooth(envelope);
 
-        // Loop k: 1 (self), 2 (1/2), 3 (1/3)...
+        // Buffer for Virtual Roots
+        // Size = N + Padding (to hold roots below f_min)
+        let mut root_spectrum = vec![0.0f32; n_bins + self.pad_bins];
+
+        // Step 1: Downward Projection (Scatter Env into Roots)
+        // Env[i] implies Root at Env[i - shift]
+        // Since Root buffer has padding, Env[0] maps to Root[pad_bins].
+        // So Env[i] maps to Root[pad_bins + i - shift].
+        // Target Offset = pad_bins - shift.
         for k in 1..=self.params.num_subharmonics {
-            let shift_oct = (k as f32).log2();
-            let shift_bins = shift_oct * bins_per_oct;
+            let shift_bins = (k as f32).log2() * bins_per_oct;
             let weight = 1.0 / (k as f32).powf(self.params.rho_sub);
 
-            // "Look UP" to find energy that supports this root
-            // root[i] += env[i + shift]
-            self.accumulate_look_upper(&smeared_env, &mut root_spectrum, shift_bins, weight);
+            // "Add smeared_env into root_spectrum at offset"
+            let offset = self.pad_bins as f32 - shift_bins;
+            Self::accumulate_shifted(&smeared_env, &mut root_spectrum, offset, weight);
         }
 
-        // --- Step 2: Project Harmonics (Upward from Roots) ---
-        // Buffer for the final landscape
+        // Step 2: Upward Projection (Gather Roots into Landscape)
+        // Root[j] implies Harmonic at Root[j + shift]
+        // Landscape[i] corresponds to Root[pad_bins + i].
+        // So Landscape[i] gets energy from Root[pad_bins + i - shift].
+        // Read Offset (in Root) = pad_bins - shift.
+        // Or view it as: Shift Root buffer RIGHT by `shift`, then map to Landscape.
+        // Let's use the Scatter view again for consistency:
+        // We take the WHOLE root_spectrum and add it to Landscape? No, sizes differ.
+        // It's cleaner to say: Landscape[i] += Root[pad_bins + i - shift].
+        // This is equivalent to: Add `root_spectrum` into `landscape` with offset `- (pad_bins - shift)`.
+        // Wait, easier: "Add Root into Landscape with offset `shift - pad_bins`".
+
         let mut landscape = vec![0.0f32; n_bins];
 
-        // Loop m: 1 (root itself), 2 (x2), 3 (x3)...
         for m in 1..=self.params.num_harmonics {
-            let shift_oct = (m as f32).log2();
-            let shift_bins = shift_oct * bins_per_oct;
+            let shift_bins = (m as f32).log2() * bins_per_oct;
             let weight = 1.0 / (m as f32).powf(self.params.rho_harm);
 
-            // "Look DOWN" to find roots that project to this harmonic
-            // landscape[i] += root[i - shift]
-            self.accumulate_look_lower(&root_spectrum, &mut landscape, shift_bins, weight);
+            // Mapping: Root[x] -> Land[x + shift - pad_bins]
+            // We want to add `root_spectrum` into `landscape`.
+            // The 0-th element of root_spectrum corresponds to frequency f_min / 2^pad.
+            // The 0-th element of landscape corresponds to f_min.
+            // The relative shift is: `shift - pad_bins`.
+            let offset = shift_bins - self.pad_bins as f32;
+            Self::accumulate_shifted(&root_spectrum, &mut landscape, offset, weight);
         }
 
-        // --- 3. Post-processing ---
+        // Step 3: Post-processing
         let mut max_val = 1e-12;
+        let do_gate = self.params.freq_gate;
+        let do_norm = self.params.normalize_output;
 
-        // Apply frequency gating (Phase locking limit)
-        if self.params.freq_gate {
-            for (i, v) in landscape.iter_mut().enumerate() {
-                let gate = Self::absfreq_gate(space.freq_of_index(i), &self.params);
-                *v *= gate;
-                if *v > max_val {
-                    max_val = *v;
-                }
+        // Combined loop for gating and max-finding (Auto-vectorized)
+        for i in 0..n_bins {
+            let v = &mut landscape[i];
+            if do_gate {
+                *v *= Self::absfreq_gate(space.freq_of_index(i), &self.params);
             }
-        } else {
-            for v in &landscape {
-                if *v > max_val {
-                    max_val = *v;
-                }
+            if *v > max_val {
+                max_val = *v;
             }
         }
 
-        // Normalize
-        if self.params.normalize_output {
+        if do_norm {
             let scale = 1.0 / max_val;
             for v in &mut landscape {
                 *v *= scale;
@@ -196,92 +180,81 @@ impl HarmonicityKernel {
 
         (landscape, max_val)
     }
+    /// Optimized Shift-and-Add with safe bounds checking.
+    /// dst[i + offset] += src[i] * weight
+    fn accumulate_shifted(src: &[f32], dst: &mut [f32], offset: f32, weight: f32) {
+        let offset_i = offset.floor() as isize;
+        let frac = offset - offset_i as f32;
+        let w0 = weight * (1.0 - frac);
+        let w1 = weight * frac;
 
-    /// Apply Gaussian smoothing.
+        // Calculate valid iteration range for 'i' (index in src)
+        // Constraints:
+        // 1. 0 <= i < src.len()
+        // 2. 0 <= i + offset_i < dst.len() - 1 (Need space for w1 interpolation)
+
+        // Lower bound: i >= 0 AND i >= -offset_i
+        let start_i = 0.max(-offset_i);
+
+        // Upper bound (exclusive): i < src.len() AND i < dst.len() - 1 - offset_i
+        let end_i = (src.len() as isize).min(dst.len() as isize - 1 - offset_i);
+
+        // If range is invalid/empty, do nothing
+        if start_i >= end_i {
+            return;
+        }
+
+        let start = start_i as usize;
+        let len = (end_i - start_i) as usize;
+
+        // Destination start index
+        // Since start >= -offset_i, (start + offset_i) is guaranteed >= 0
+        let dst_start = (start as isize + offset_i) as usize;
+
+        // Create slices for the hot loop (avoids bounds check inside loop)
+        let src_slice = &src[start..start + len];
+        let dst_slice = &mut dst[dst_start..dst_start + len + 1];
+
+        for (k, &val) in src_slice.iter().enumerate() {
+            // Unsafe get_unchecked could be used here for max speed,
+            // but standard indexing is safe and fast enough due to slice bounds.
+            dst_slice[k] += val * w0;
+            dst_slice[k + 1] += val * w1;
+        }
+    }
+
     fn convolve_smooth(&self, input: &[f32]) -> Vec<f32> {
+        // Convolution is heavy, but here kernel is small.
+        // Optimization: Use separate loop for the main part to avoid boundary checks.
         let n = input.len();
         let mut output = vec![0.0; n];
         let k_len = self.smooth_kernel.len();
-        let half = self.smooth_offset;
+        let half = k_len / 2;
 
+        // Naive but clear implementation.
+        // For very large N, FFT conv is better, but here N ~ 200-4000, kernel ~ 5-10.
+        // Direct convolution is faster.
         for i in 0..n {
             let mut acc = 0.0;
-            for j in 0..k_len {
-                let input_idx = (i as isize - half as isize) + j as isize;
-                if input_idx >= 0 && input_idx < n as isize {
-                    acc += input[input_idx as usize] * self.smooth_kernel[j];
-                }
+            let start_k = if i < half { half - i } else { 0 };
+            let end_k = if i + half >= n {
+                k_len - (i + half - n + 1)
+            } else {
+                k_len
+            };
+
+            for j in start_k..end_k {
+                let input_idx = i + j - half;
+                acc += input[input_idx] * self.smooth_kernel[j];
             }
             output[i] = acc;
         }
         output
     }
 
-    /// Look "UP" (Higher Freq) in src to add to dest.
-    /// Used for finding Roots: root[i] += env[i + shift]
-    /// (If root is i, its harmonic is at i+shift)
-    fn accumulate_look_upper(&self, src: &[f32], dest: &mut [f32], shift_bins: f32, weight: f32) {
-        let n = src.len();
-        let shift_int = shift_bins.floor() as usize;
-        let shift_frac = shift_bins - shift_int as f32;
-        let w_lower = weight * (1.0 - shift_frac);
-        let w_upper = weight * shift_frac;
-
-        // Bounds check: we need src[i + shift_int + 1] to exist
-        // i + shift_int + 1 < n  =>  i < n - shift_int - 1
-        let max_i = if n > shift_int + 1 {
-            n - shift_int - 1
-        } else {
-            0
-        };
-
-        for i in 0..max_i {
-            let idx = i + shift_int;
-            dest[i] += src[idx] * w_lower + src[idx + 1] * w_upper;
-        }
-
-        // Edge case: last valid bin
-        if shift_int < n && max_i < n {
-            let i = n - shift_int - 1;
-            dest[i] += src[n - 1] * w_lower;
-        }
-    }
-
-    /// Look "DOWN" (Lower Freq) in src to add to dest.
-    /// Used for projecting Harmonics: dest[i] += root[i - shift]
-    /// (If harmonic is i, its root is at i-shift)
-    fn accumulate_look_lower(&self, src: &[f32], dest: &mut [f32], shift_bins: f32, weight: f32) {
-        let n = src.len();
-        let shift_int = shift_bins.floor() as usize;
-        let shift_frac = shift_bins - shift_int as f32;
-        let w_lower = weight * (1.0 - shift_frac);
-        let w_upper = weight * shift_frac;
-
-        // We need src[i - shift]
-        // i - shift_int >= 0 => i >= shift_int
-        // Because of interpolation (using i-shift-1 and i-shift), we need slightly more care.
-        // Target index in src is `i - shift_bins`.
-        // Let `idx` = i - shift_bins.
-        // We read src[floor(idx)] and src[ceil(idx)].
-
-        // Start loop where i - shift_bins >= 0
-        let start_i = (shift_bins).ceil() as usize;
-
-        for i in start_i..n {
-            let target_idx = i as f32 - shift_bins;
-
-            // Linear interpolation manual
-            let idx_int = target_idx.floor() as usize;
-            let idx_frac = target_idx - idx_int as f32;
-
-            // We need src[idx_int] and src[idx_int+1]
-            if idx_int + 1 < n {
-                let val = src[idx_int] * (1.0 - idx_frac) + src[idx_int + 1] * idx_frac;
-                dest[i] += val * weight;
-            } else if idx_int < n {
-                dest[i] += src[idx_int] * weight;
-            }
-        }
+    #[inline]
+    fn absfreq_gate(f_hz: f32, p: &HarmonicityParams) -> f32 {
+        1.0 / (1.0 + (f_hz / p.tfs_f_pl_hz).powf(p.tfs_eta))
     }
 }
 
@@ -302,11 +275,7 @@ mod tests {
         // - 300Hz (Perfect 5th via 100Hz root)
 
         let space = Log2Space::new(50.0, 800.0, 200);
-        let mut params = HarmonicityParams::default();
-        params.num_subharmonics = 6;
-        params.num_harmonics = 6;
-        params.rho_sub = 0.5;
-        params.rho_harm = 0.5;
+        let params = HarmonicityParams::default();
 
         let hk = HarmonicityKernel::new(&space, params);
 
@@ -337,7 +306,7 @@ mod tests {
         // Test: Can we detect 7:4 (Harmonic 7th) and 6:5 (Minor 3rd)?
 
         let space = Log2Space::new(20.0, 1600.0, 100);
-        let mut params = HarmonicityParams::default();
+        let params = HarmonicityParams::default();
 
         let hk = HarmonicityKernel::new(&space, params);
 
@@ -374,9 +343,8 @@ mod tests {
     #[ignore]
     fn plot_sibling_landscape_png() {
         let space = Log2Space::new(20.0, 8000.0, 200);
-	
-        let mut p = HarmonicityParams::default();
 
+        let p = HarmonicityParams::default();
         let hk = HarmonicityKernel::new(&space, p);
 
         let mut env = vec![0.0; space.n_bins()];

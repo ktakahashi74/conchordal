@@ -333,9 +333,47 @@ mod tests {
     }
 
     #[test]
+    fn test_complex_ratios_detection() {
+        // Test: Can we detect 7:4 (Harmonic 7th) and 6:5 (Minor 3rd)?
+        
+        let space = Log2Space::new(20.0, 1600.0, 100);
+        let mut params = HarmonicityParams::default();
+        
+        params.num_subharmonics = 12; 
+        params.num_harmonics = 12;
+        params.rho_sub = 0.4; 
+        params.rho_harm = 0.4;
+        params.sigma_cents = 15.0;
+        
+        let hk = HarmonicityKernel::new(&space, params);
+        
+        let mut env = vec![0.0; space.n_bins()];
+        let f_input = 400.0;
+        if let Some(idx) = space.index_of_freq(f_input) {
+            env[idx] = 1.0;
+        }
+
+        let (landscape, _) = hk.potential_h_from_log2_spectrum(&env, &space);
+
+        let idx_m3 = space.index_of_freq(400.0 * 1.2).unwrap();      // 6:5
+        let idx_h7 = space.index_of_freq(400.0 * 1.75).unwrap();     // 7:4
+        
+        // Tritone (approx 1.414). 
+        // Note: This is close to 7:5 (1.40), so it will have significant potential!
+        let idx_tritone = space.index_of_freq(400.0 * 1.414).unwrap();
+
+        println!("Potential at 6:5 (m3): {}", landscape[idx_m3]);
+        println!("Potential at 7:4 (h7): {}", landscape[idx_h7]);
+        println!("Potential at Tritone:  {}", landscape[idx_tritone]);
+
+        assert!(landscape[idx_m3] > landscape[idx_tritone] * 1.1, "6:5 should be more stable than tritone");
+        assert!(landscape[idx_h7] > landscape[idx_tritone] * 1.1, "7:4 should be more stable than tritone");
+    }
+    
+    #[test]
     #[ignore]
     fn plot_sibling_landscape_png() {
-        let space = Log2Space::new(50.0, 1600.0, 200);
+        let space = Log2Space::new(20.0, 1600.0, 200);
         let mut p = HarmonicityParams::default();
         p.num_subharmonics = 12;
         p.num_harmonics = 12;
@@ -367,7 +405,7 @@ mod tests {
                 ("sans-serif", 20),
             )
             .margin(10)
-            .build_cartesian_2d(50.0f32..1000.0f32, 0.0f32..max_y)
+            .build_cartesian_2d(20.0f32..2000.0f32, 0.0f32..max_y)
             .unwrap();
 
         chart

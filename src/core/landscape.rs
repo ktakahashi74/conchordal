@@ -147,6 +147,68 @@ impl Landscape {
         }
     }
 
+    /// Process a precomputed spectral body (already in frequency domain).
+    /// Expects `spectrum_body` to represent linear-frequency magnitudes (nfft/2+1).
+    pub fn process_precomputed_spectrum(&mut self, spectrum_body: &[f32]) -> LandscapeFrame {
+        let fs = self.params.fs;
+        let n_bins_lin = spectrum_body.len();
+        let nfft = (n_bins_lin.saturating_sub(1)) * 2;
+        let df = if nfft > 0 { fs / nfft as f32 } else { 0.0 };
+
+        let space = self.nsgt_rt.space().clone();
+        let mut log_env = vec![0.0f32; space.n_bins()];
+
+        for (i, &mag) in spectrum_body.iter().enumerate() {
+            let f = i as f32 * df;
+            if let Some(idx) = space.index_of_freq(f) {
+                log_env[idx] += mag;
+            }
+        }
+
+        let dt_sec = self.nsgt_rt.dt();
+
+        // Psychoacoustic normalization
+        let norm_env = self.normalize(&log_env, dt_sec);
+        self.amps_last.clone_from(&norm_env);
+
+        // Roughness
+        let (r, r_total) = self
+            .params
+            .roughness_kernel
+            .potential_r_from_log2_spectrum(&norm_env, &space);
+
+        // Harmonicity
+        let (h, _norm) = self
+            .params
+            .harmonicity_kernel
+            .potential_h_from_log2_spectrum(&norm_env, &space);
+
+        let k = self.params.roughness_k.max(1e-6);
+        let denom_inv = 1.0 / (r_total + k);
+
+        let c: Vec<f32> = r
+            .iter()
+            .zip(&h)
+            .map(|(ri, hi)| {
+                let d_index = ri * denom_inv;
+                hi - d_index
+            })
+            .collect();
+
+        self.last_r.clone_from(&r);
+        self.last_h.clone_from(&h);
+        self.last_c.clone_from(&c);
+
+        LandscapeFrame {
+            fs,
+            space,
+            r_last: r,
+            h_last: h,
+            c_last: c,
+            amps_last: self.amps_last.clone(),
+        }
+    }
+
     pub fn snapshot(&self) -> LandscapeFrame {
         LandscapeFrame {
             fs: self.params.fs,

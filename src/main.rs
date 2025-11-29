@@ -13,21 +13,6 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
-/// Parse a comma-separated list like "440:0.8,880:0.5"
-fn parse_tones(s: &str) -> Vec<(f32, f32)> {
-    s.split(',')
-        .filter_map(|pair| {
-            let mut parts = pair.split(':');
-            let f = parts.next()?.trim().parse::<f32>().ok()?;
-            let a = parts
-                .next()
-                .map(|x| x.trim().parse::<f32>().unwrap_or(100.))
-                .unwrap_or(100.);
-            Some((f, a))
-        })
-        .collect()
-}
-
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
 struct Args {
@@ -39,22 +24,13 @@ struct Args {
     #[arg(long)]
     wav: Option<String>,
 
-    /// Input tones in the form f1:amp,f2:amp,...
-    #[arg(long)]
-    tones: Option<String>,
+    /// JSON5 scenario path (required).
+    #[arg(value_name = "SCENARIO_PATH")]
+    scenario_path: String,
 }
 
 fn main() -> eframe::Result<()> {
     let args = Args::parse();
-
-    // Parse tones argument (default 440 Hz @ amp=1.0)
-    let tones_parsed = args
-        .tones
-        .as_deref()
-        .map(parse_tones)
-        .unwrap_or_else(|| vec![(440.0, 500.0)]);
-
-    println!("Using tones: {:?}", tones_parsed);
 
     let stop_flag = Arc::new(AtomicBool::new(false));
     let stop_flag_for_ctrlc = stop_flag.clone();
@@ -72,13 +48,6 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         "Conchordal",
         native_options,
-        Box::new(|cc| {
-            Ok(Box::new(app::App::new(
-                cc,
-                args,
-                stop_flag.clone(),
-                tones_parsed,
-            )))
-        }),
+        Box::new(|cc| Ok(Box::new(app::App::new(cc, args, stop_flag.clone())))),
     )
 }

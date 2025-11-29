@@ -60,10 +60,12 @@ src/
     roughness_kernel.rs
     utils.rs
   life/
+    conductor.rs
     individual.rs
     meta.rs
     mod.rs
     population.rs
+    scenario.rs
   synth/
     engine.rs
     mod.rs
@@ -77,13 +79,112 @@ src/
   core.rs
   main.rs
 .gitignore
-a.tar
 AGENTS.md
 Cargo.toml
+nohup.out
 </directory_structure>
 
 <files>
 This section contains the contents of the repository's files.
+
+<file path="src/life/conductor.rs">
+use std::collections::VecDeque;
+
+use tracing::debug;
+
+use super::population::Population;
+use super::scenario::{Action, Episode, Scenario};
+
+#[derive(Debug, Clone)]
+struct QueuedEvent {
+    frame: u64,
+    actions: Vec<Action>,
+}
+
+#[derive(Debug)]
+pub struct Conductor {
+    event_queue: VecDeque<QueuedEvent>,
+}
+
+impl Conductor {
+    pub fn from_scenario(s: Scenario) -> Self {
+        let mut events: Vec<QueuedEvent> = s
+            .episodes
+            .into_iter()
+            .flat_map(|ep| flatten_episode(ep))
+            .collect();
+
+        events.sort_by_key(|e| e.frame);
+
+        Self {
+            event_queue: events.into(),
+        }
+    }
+
+    /// Apply any events scheduled up to and including `frame`.
+    pub fn dispatch_until(&mut self, frame: u64, population: &mut Population) {
+        while let Some(ev) = self.event_queue.front() {
+            if ev.frame > frame {
+                break;
+            }
+
+            let ev = self.event_queue.pop_front().expect("front exists");
+            debug!("Dispatching event at frame {}", ev.frame);
+            for action in ev.actions {
+                population.apply_action(action);
+            }
+        }
+    }
+
+    pub fn is_done(&self) -> bool {
+        self.event_queue.is_empty()
+    }
+}
+
+fn flatten_episode(ep: Episode) -> impl Iterator<Item = QueuedEvent> {
+    ep.events.into_iter().map(move |ev| QueuedEvent {
+        frame: ep.start_frame + ev.frame,
+        actions: ev.actions,
+    })
+}
+</file>
+
+<file path="src/life/scenario.rs">
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Scenario {
+    pub episodes: Vec<Episode>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Episode {
+    pub start_frame: u64,
+    pub events: Vec<Event>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Event {
+    pub frame: u64,
+    pub actions: Vec<Action>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentConfig {
+    pub id: u64,
+    pub freq_hz: f32,
+    pub amp: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum Action {
+    AddAgent { agent: AgentConfig },
+    RemoveAgent { id: u64 },
+    SetFreq { id: u64, freq_hz: f32 },
+    SetAmp { id: u64, amp: f32 },
+}
+</file>
 
 <file path="src/audio/buffer.rs">
 // Generic audio buffer type to support mono/stereo interleaved data
@@ -477,15 +578,47 @@ pub fn brown_noise(n: usize, seed: u64) -> Vec<f32> {
 </file>
 
 <file path="src/life/individual.rs">
-#[derive(Clone, Debug)]
-pub struct PureTone {
+/// Abstraction for any audio-producing agent that can paint energy into a spectrum.
+/// This is kept Send + Sync so it can live in shared state across threads.
+pub trait AudioAgent: Send + Sync {
+    fn id(&self) -> u64;
+    fn render_spectrum(&self, amps: &mut [f32], fs: f32, nfft: usize);
+    fn set_amp(&mut self, amp: f32);
+    fn set_freq(&mut self, freq: f32);
+}
+
+#[derive(Debug)]
+pub struct PureToneAgent {
+    id: u64,
     pub freq_hz: f32,
     pub amp: f32,
 }
 
-impl PureTone {
-    pub fn new(freq_hz: f32, amp: f32) -> Self {
-        Self { freq_hz, amp }
+impl PureToneAgent {
+    pub fn new(id: u64, freq_hz: f32, amp: f32) -> Self {
+        Self { id, freq_hz, amp }
+    }
+}
+
+impl AudioAgent for PureToneAgent {
+    fn id(&self) -> u64 {
+        self.id
+    }
+
+    fn render_spectrum(&self, amps: &mut [f32], fs: f32, nfft: usize) {
+        let bin_f = self.freq_hz * nfft as f32 / fs;
+        let k = bin_f.round() as isize;
+        if k >= 0 && (k as usize) < amps.len() {
+            amps[k as usize] += self.amp;
+        }
+    }
+
+    fn set_amp(&mut self, amp: f32) {
+        self.amp = amp;
+    }
+
+    fn set_freq(&mut self, freq: f32) {
+        self.freq_hz = freq;
     }
 }
 </file>
@@ -503,44 +636,84 @@ pub struct MetaParams {
 pub mod individual;
 pub mod meta;
 pub mod population;
+pub mod scenario;
+pub mod conductor;
 </file>
 
 <file path="src/life/population.rs">
-use super::individual::PureTone;
+use super::individual::{AudioAgent, PureToneAgent};
+use super::scenario::{Action, AgentConfig};
+use tracing::warn;
 
-#[derive(Clone, Debug)]
 pub struct PopulationParams {
     pub initial_tones_hz: Vec<f32>,
     pub amplitude: f32,
 }
 
-#[derive(Clone, Debug)]
 pub struct Population {
-    pub tones: Vec<PureTone>,
+    pub agents: Vec<Box<dyn AudioAgent>>,
 }
 
 impl Population {
     pub fn new(p: PopulationParams) -> Self {
-        let tones = p
+        let agents = p
             .initial_tones_hz
             .into_iter()
-            .map(|f| PureTone::new(f, p.amplitude))
+            .enumerate()
+            .map(|(idx, f)| Box::new(PureToneAgent::new(idx as u64, f, p.amplitude)) as Box<dyn AudioAgent>)
             .collect();
-        Self { tones }
+        Self { agents }
+    }
+
+    fn find_agent_mut(&mut self, id: u64) -> Option<&mut Box<dyn AudioAgent>> {
+        self.agents.iter_mut().find(|a| a.id() == id)
+    }
+
+    pub fn apply_action(&mut self, action: Action) {
+        match action {
+            Action::AddAgent { agent } => self.upsert_agent(agent),
+            Action::RemoveAgent { id } => self.remove_agent(id),
+            Action::SetFreq { id, freq_hz } => {
+                if let Some(a) = self.find_agent_mut(id) {
+                    a.set_freq(freq_hz);
+                } else {
+                    warn!("SetFreq: agent {id} not found");
+                }
+            }
+            Action::SetAmp { id, amp } => {
+                if let Some(a) = self.find_agent_mut(id) {
+                    a.set_amp(amp);
+                } else {
+                    warn!("SetAmp: agent {id} not found");
+                }
+            }
+        }
+    }
+
+    pub fn upsert_agent(&mut self, cfg: AgentConfig) {
+        if let Some(existing) = self.find_agent_mut(cfg.id) {
+            existing.set_freq(cfg.freq_hz);
+            existing.set_amp(cfg.amp);
+            return;
+        }
+
+        let agent = Box::new(PureToneAgent::new(cfg.id, cfg.freq_hz, cfg.amp)) as Box<dyn AudioAgent>;
+        self.agents.push(agent);
+    }
+
+    pub fn remove_agent(&mut self, id: u64) {
+        self.agents.retain(|a| a.id() != id);
     }
 
     /// Project tones to magnitude spectrum bins using simple triangular (soft) binning.
-    pub fn project_spectrum(&self, n_bins: usize, fs: f32, n_fft: usize) -> Vec<f32> {
+    pub fn process_frame(&mut self, n_bins: usize, fs: f32, n_fft: usize) -> Vec<f32> {
         let mut amps = vec![0.0f32; n_bins];
 
-	for t in &self.tones {
-            let bin_f = t.freq_hz * n_fft as f32 / fs;
-            let k = bin_f.round() as isize;
-            if k >= 0 && (k as usize) < n_bins {
-		amps[k as usize] += t.amp;
-            }
-	}
-	amps
+        for agent in self.agents.iter_mut() {
+            agent.render_spectrum(&mut amps, fs, n_fft);
+        }
+
+        amps
     }
 }
 </file>
@@ -559,49 +732,6 @@ pub mod viewdata;
 // Placeholder for future configuration loading (serde/ron).
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize, Default)]
 pub struct Config {}
-</file>
-
-<file path="AGENTS.md">
-# Repository Guidelines
-
-## Project Structure & Module Organization
-- Source lives in `src/` with focused modules:
-  - `core/` (DSP primitives: `fft.rs`, `gammatone.rs`, `erb.rs`, `hilbert.rs`, `roughness.rs`, `landscape.rs`, `util.rs`)
-  - `audio/` (I/O: `buffer.rs`, `output.rs`, `writer.rs`)
-  - `synth/` (synthesis engine)
-  - `ui/` (views, plots, windows)
-  - `life/` (evolutionary components: `individual.rs`, `population.rs`, `meta.rs`)
-- Entrypoints: `src/main.rs` (binary) and `src/app.rs` (app wiring). Config lives in `src/config.rs`.
-- Sample assets like `a.wav` are acceptable for dev; prefer an `assets/` folder for larger or generated files.
-
-## Build, Test, and Development Commands
-- Build (debug): `cargo build` — compiles the crate and dependencies.
-- Run (debug): `cargo run` — runs the main binary.
-- Run (optimized): `cargo run --release` — useful for audio/DSP perf.
-- Tests: `cargo test` — runs unit/integration tests.
-- Format: `cargo fmt --all` — applies `rustfmt`.
-- Lint: `cargo clippy -- -D warnings` — lints and fails on warnings.
-
-## Coding Style & Naming Conventions
-- Indentation: 4 spaces; rely on `rustfmt` with default settings.
-- Naming: `snake_case` for functions/modules, `CamelCase` for types/traits, `SCREAMING_SNAKE_CASE` for consts.
-- Files: one module per file where practical; keep public APIs minimal (`pub(crate)` when possible).
-- Audio/DSP code: prefer `f32`, avoid allocations in real‑time paths; document units and ranges.
-
-## Testing Guidelines
-- Unit tests colocated via `#[cfg(test)] mod tests { ... }` in each module.
-- Integration tests (if added) live under `tests/` and use `*_tests.rs` naming.
-- Favor deterministic fixtures for DSP (seeded data) and assert spectral/temporal properties.
-- Run `cargo test` before PRs; keep tests fast (<1s per module when possible).
-
-## Commit & Pull Request Guidelines
-- Commits: imperative mood, concise subject (≤72 chars), optional body. Prefix with scope when helpful (e.g., `core:`, `audio:`, `ui:`).
-- PRs: clear description, rationale, before/after notes; link issues; include screenshots for UI/plot changes and short audio notes for synthesis changes.
-- CI hygiene: ensure `cargo fmt`, `clippy`, and `test` pass locally.
-
-## Security & Configuration Tips
-- Centralize tunables in `src/config.rs`. Do not commit secrets or large generated audio; ignore via `.gitignore`.
-- Prefer environment variables (`std::env`) or config files for local overrides.
 </file>
 
 <file path="src/core/harmonicity_kernel_templatematch.rs">
@@ -1375,6 +1505,46 @@ pub struct UiFrame {
 }
 </file>
 
+<file path="AGENTS.md">
+# Repository Guidelines
+
+## Project Structure & Module Organization
+- Source lives in `src/` with focused modules:
+  - `core/` (Psychoacoustic DSP primitives):
+    - `log2space.rs`: Log-frequency coordinate system (octave-based).
+    - `nsgt*.rs`: Non-Stationary Gabor Transform implementations (RT, FFT, and Kernel variants).
+    - `harmonicity_kernel.rs`: Virtual pitch/root detection via harmonic templates.
+    - `roughness_kernel.rs`: Sensory dissonance calculation via interference kernels.
+    - `landscape.rs`: Real-time integration of Roughness and Harmonicity.
+    - `fft.rs`: FFT wrappers and Hilbert transform logic.
+    - `erb.rs`: Equivalent Rectangular Bandwidth scales.
+  - `audio/` (Real-time I/O):
+    - `output.rs`: cpal stream management (ringbuffer producer).
+    - `buffer.rs`: Interleaved audio buffer types.
+    - `writer.rs`: Disk recording (WAV).
+  - `synth/`: Synthesis engine (phase-vocoder/additive based on NSGT bins).
+  - `ui/`: Egui views, plots, and visualization logic.
+  - `life/`: Evolutionary components (Genotype/Phenotype).
+- Entrypoints: `src/main.rs` (binary) and `src/app.rs` (GUI/Thread wiring).
+
+## Build, Test, and Development Commands
+- Build (debug): `cargo build`
+- Run (release): `cargo run --release` (Recommended for real-time DSP performance)
+- Tests: `cargo test` (Includes DSP unit tests for kernel shapes and transform accuracy)
+- Format: `cargo fmt --all`
+- Lint: `cargo clippy -- -D warnings`
+
+## Coding Style & Naming Conventions
+- **DSP Efficiency**: Prefer `f32`. Avoid allocations in the audio thread (`worker_loop`). Use `Vec::with_capacity` or pre-allocated ringbuffers.
+- **Math**: Use `f32::sin_cos` for phasors.
+- **Naming**: `snake_case` for modules/functions, `CamelCase` for structs/traits.
+
+## Architecture Notes for Agents
+- The core perception model is **Landscape**. It ingests audio, transforms it to Log2-frequency space via NSGT, and computes two potentials:
+  1. **Roughness (R)**: Amplitude fluctuations within critical bands (dissonance).
+  2. **Harmonicity (H)**: Periodicity/Template matching (consonance/fusion).
+</file>
+
 <file path="src/core/nsgt_fft.rs">
 //! core/nsgt_fft.rs — Log2-axis NSGT (FFT-batched analysis version)
 //!
@@ -2038,17 +2208,6 @@ mod tests {
 }
 </file>
 
-<file path=".gitignore">
-/target
-/debug
-
-*~
-\#*\#
-.\#*
-*.bak
-a.wav
-</file>
-
 <file path="src/core/erb.rs">
 //! core/erb.rs — ERB scale utilities and ErbSpace definition.
 
@@ -2339,6 +2498,21 @@ fn main() -> eframe::Result<()> {
         }),
     )
 }
+</file>
+
+<file path=".gitignore">
+/target
+/debug
+
+*~
+\#*\#
+.\#*
+*.bak
+a.wav
+repomix-output.xml
+*.tgz
+*.tar
+.aider*
 </file>
 
 <file path="src/ui/plots.rs">
@@ -4339,6 +4513,7 @@ hound = "3.5"
 
 ringbuf = "0.4"
 approx = "0.5"
+json5 = "0.4.1"
 
 [dev-dependencies]
 plotters = "0.3"
@@ -6707,7 +6882,6 @@ mod tests {
 </file>
 
 <file path="src/app.rs">
-use egui::{Order, ViewportCommand};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -6720,15 +6894,33 @@ use crossbeam_channel::{Receiver, Sender, bounded};
 
 use crate::audio::writer::WavOutput;
 use crate::core::harmonicity_kernel::HarmonicityKernel;
-use crate::core::landscape::{Landscape, LandscapeFrame, LandscapeParams};
+use crate::core::landscape::{Landscape, LandscapeParams};
 use crate::core::log2space::Log2Space;
-use crate::core::nsgt_kernel::{BandCoeffs, NsgtKernelLog2, NsgtLog2Config};
+use crate::core::nsgt_kernel::{NsgtKernelLog2, NsgtLog2Config};
 use crate::core::nsgt_rt::RtNsgtKernelLog2;
 use crate::core::roughness_kernel::{KernelParams, RoughnessKernel};
+use crate::life::conductor::Conductor;
 use crate::life::population::{Population, PopulationParams};
+use crate::life::scenario::Scenario;
 use crate::synth::engine::{SynthConfig, SynthEngine};
 use crate::ui::viewdata::{SpecFrame, UiFrame, WaveFrame};
 use crate::{audio::output::AudioOutput, core::harmonicity_kernel::HarmonicityParams};
+
+const SAMPLE_SCENARIO_JSON5: &str = r#"
+{
+  episodes: [
+    {
+      start_frame: 0,
+      events: [
+        { frame: 0, actions: [ { type: "add_agent", agent: { id: 100, freq_hz: 330.0, amp: 300.0 } } ] },
+        { frame: 24, actions: [ { type: "set_freq", id: 100, freq_hz: 550.0 } ] },
+        { frame: 48, actions: [ { type: "set_amp", id: 100, amp: 150.0 } ] },
+        { frame: 72, actions: [ { type: "remove_agent", id: 100 } ] }
+      ]
+    }
+  ]
+}
+"#;
 
 pub struct App {
     ui_frame_rx: Receiver<UiFrame>,
@@ -6772,10 +6964,16 @@ impl App {
         let amplitude = tones.iter().map(|(_, a)| *a).fold(0.0, f32::max);
 
         // Population (life)
-        let mut pop = Population::new(PopulationParams {
+        let pop = Population::new(PopulationParams {
             initial_tones_hz,
             amplitude,
         });
+
+        let scenario = json5::from_str::<Scenario>(SAMPLE_SCENARIO_JSON5).unwrap_or_else(|e| {
+            eprintln!("Failed to parse sample scenario JSON5: {e}");
+            Scenario { episodes: Vec::new() }
+        });
+        let conductor = Conductor::from_scenario(scenario);
 
         // worker に渡すのは wav_tx.clone()
         let wav_tx_for_worker = if args.wav.is_some() {
@@ -6793,6 +6991,7 @@ impl App {
                     worker_loop(
                         ui_frame_tx,
                         pop,
+                        conductor,
                         audio_prod,
                         wav_tx_for_worker,
                         stop_flag_worker,
@@ -6851,7 +7050,8 @@ impl Drop for App {
 
 fn worker_loop(
     ui_tx: Sender<UiFrame>,
-    pop: Population,
+    mut pop: Population,
+    mut conductor: Conductor,
     mut audio_prod: Option<ringbuf::HeapProd<f32>>,
     wav_tx: Option<Sender<Vec<f32>>>,
     exiting: Arc<AtomicBool>,
@@ -6905,6 +7105,8 @@ fn worker_loop(
 
     println!("nfft = {nfft}, hop = {hop},");
 
+    let mut frame_idx: u64 = 0;
+
     loop {
         if exiting.load(Ordering::SeqCst) {
             eprintln!("Stopping worker thread.");
@@ -6913,8 +7115,10 @@ fn worker_loop(
 
         next_deadline += hop_duration;
 
+        conductor.dispatch_until(frame_idx, &mut pop);
+
         // 1) population → spectral amplitude A[k]
-        let amps = pop.project_spectrum(n_bins, fs, nfft);
+        let amps = pop.process_frame(n_bins, fs, nfft);
 
         // 2) synth: render hop
         let time_chunk = synth.render_hop(&amps);
@@ -6953,6 +7157,8 @@ fn worker_loop(
             next_deadline = now;
             trace!("worker overrun");
         }
+
+        frame_idx += 1;
     }
 }
 </file>

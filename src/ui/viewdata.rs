@@ -1,6 +1,5 @@
 use crate::core::landscape::LandscapeFrame;
 
-
 #[derive(Clone, Debug, Default)]
 pub struct WaveFrame {
     pub fs: f32,
@@ -19,4 +18,3 @@ pub struct UiFrame {
     pub spec: SpecFrame,
     pub landscape: LandscapeFrame,
 }
-

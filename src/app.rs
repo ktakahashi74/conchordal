@@ -1,4 +1,3 @@
-use egui::{Order, ViewportCommand};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -11,13 +10,14 @@ use crossbeam_channel::{Receiver, Sender, bounded};
 
 use crate::audio::writer::WavOutput;
 use crate::core::harmonicity_kernel::HarmonicityKernel;
-use crate::core::landscape::{Landscape, LandscapeFrame, LandscapeParams};
+use crate::core::landscape::{Landscape, LandscapeParams};
 use crate::core::log2space::Log2Space;
-use crate::core::nsgt_kernel::{BandCoeffs, NsgtKernelLog2, NsgtLog2Config};
+use crate::core::nsgt_kernel::{NsgtKernelLog2, NsgtLog2Config};
 use crate::core::nsgt_rt::RtNsgtKernelLog2;
 use crate::core::roughness_kernel::{KernelParams, RoughnessKernel};
+use crate::life::conductor::Conductor;
 use crate::life::population::{Population, PopulationParams};
-use crate::synth::engine::{SynthConfig, SynthEngine};
+use crate::life::scenario::Scenario;
 use crate::ui::viewdata::{SpecFrame, UiFrame, WaveFrame};
 use crate::{audio::output::AudioOutput, core::harmonicity_kernel::HarmonicityParams};
 
@@ -37,7 +37,6 @@ impl App {
         cc: &eframe::CreationContext<'_>,
         args: crate::Args,
         stop_flag: Arc<AtomicBool>,
-        tones: Vec<(f32, f32)>,
     ) -> Self {
         // Channels
         let (ui_frame_tx, ui_frame_rx) = bounded::<UiFrame>(8);
@@ -59,14 +58,28 @@ impl App {
             None
         };
 
-        let initial_tones_hz: Vec<f32> = tones.iter().map(|(f, _)| *f).collect();
-        let amplitude = tones.iter().map(|(_, a)| *a).fold(0.0, f32::max);
-
         // Population (life)
-        let mut pop = Population::new(PopulationParams {
-            initial_tones_hz,
-            amplitude,
+        let pop = Population::new(PopulationParams {
+            initial_tones_hz: vec![440.0],
+            amplitude: 0.0,
         });
+
+        let path = args.scenario_path.clone();
+        let scenario = match std::fs::read_to_string(&path) {
+            Ok(s) => json5::from_str::<Scenario>(&s).unwrap_or_else(|e| {
+                eprintln!("Failed to parse scenario file {path}: {e}");
+                Scenario {
+                    episodes: Vec::new(),
+                }
+            }),
+            Err(err) => {
+                eprintln!("Failed to read scenario file {path}: {err}");
+                Scenario {
+                    episodes: Vec::new(),
+                }
+            }
+        };
+        let conductor = Conductor::from_scenario(scenario);
 
         // worker に渡すのは wav_tx.clone()
         let wav_tx_for_worker = if args.wav.is_some() {
@@ -84,6 +97,7 @@ impl App {
                     worker_loop(
                         ui_frame_tx,
                         pop,
+                        conductor,
                         audio_prod,
                         wav_tx_for_worker,
                         stop_flag_worker,
@@ -142,7 +156,8 @@ impl Drop for App {
 
 fn worker_loop(
     ui_tx: Sender<UiFrame>,
-    pop: Population,
+    mut pop: Population,
+    mut conductor: Conductor,
     mut audio_prod: Option<ringbuf::HeapProd<f32>>,
     wav_tx: Option<Sender<Vec<f32>>>,
     exiting: Arc<AtomicBool>,
@@ -165,7 +180,7 @@ fn worker_loop(
         roughness_k: 0.1,
     };
 
-    let mut nsgt = RtNsgtKernelLog2::new(NsgtKernelLog2::new(
+    let nsgt = RtNsgtKernelLog2::new(NsgtKernelLog2::new(
         NsgtLog2Config {
             fs,
             overlap: 0.5,
@@ -186,15 +201,8 @@ fn worker_loop(
 
     let mut landscape = Landscape::new(lparams, nsgt);
 
-    // Synth engine
-    let mut synth = SynthEngine::new(SynthConfig {
-        fs,
-        hop,
-        n_bins,
-        fft_size: nfft,
-    });
-
-    println!("nfft = {nfft}, hop = {hop},");
+    let mut current_time: f32 = 0.0;
+    let mut frame_idx: u64 = 0;
 
     loop {
         if exiting.load(Ordering::SeqCst) {
@@ -204,11 +212,10 @@ fn worker_loop(
 
         next_deadline += hop_duration;
 
-        // 1) population → spectral amplitude A[k]
-        let amps = pop.project_spectrum(n_bins, fs, nfft);
+        conductor.dispatch_until(current_time, &mut pop);
 
-        // 2) synth: render hop
-        let time_chunk = synth.render_hop(&amps);
+        // 1) population → waveform
+        let time_chunk = pop.process_audio(hop, fs);
 
         // send out audio signal
         if let Some(prod) = audio_prod.as_mut() {
@@ -219,8 +226,11 @@ fn worker_loop(
             let _ = tx.try_send(time_chunk.clone());
         }
 
-        // 3) landscape update
-        let lframe = landscape.process_frame(&time_chunk);
+        // 2) spectral body for landscape
+        let body = pop.render_landscape_body(frame_idx, n_bins, fs, nfft);
+
+        // 3) landscape update using painted spectrum
+        let lframe = landscape.process_precomputed_spectrum(&body);
 
         // 4) package for UI
         let ui_frame = UiFrame {
@@ -229,8 +239,8 @@ fn worker_loop(
                 samples: time_chunk,
             },
             spec: SpecFrame {
-                spec_hz: synth.bin_freqs_hz(),
-                amps,
+                spec_hz: lframe.space.centers_hz.clone(),
+                amps: lframe.amps_last.clone(),
             },
             landscape: lframe,
         };
@@ -244,5 +254,8 @@ fn worker_loop(
             next_deadline = now;
             trace!("worker overrun");
         }
+
+        current_time += hop_duration.as_secs_f32();
+        frame_idx += 1;
     }
 }

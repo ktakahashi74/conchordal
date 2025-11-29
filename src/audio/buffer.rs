@@ -7,7 +7,10 @@ pub struct AudioBuffer {
 
 impl AudioBuffer {
     pub fn mono(samples: Vec<f32>) -> Self {
-        Self { channels: 1, samples }
+        Self {
+            channels: 1,
+            samples,
+        }
     }
 
     pub fn stereo(left: Vec<f32>, right: Vec<f32>) -> Self {
@@ -17,6 +20,9 @@ impl AudioBuffer {
             interleaved.push(l);
             interleaved.push(r);
         }
-        Self { channels: 2, samples: interleaved }
+        Self {
+            channels: 2,
+            samples: interleaved,
+        }
     }
 }

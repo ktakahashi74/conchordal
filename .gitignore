@@ -9,3 +9,5 @@ a.wav
 repomix-output.xml
 *.tgz
 *.tar
+.aider*
+nohup.out

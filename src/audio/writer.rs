@@ -1,12 +1,16 @@
 use crossbeam_channel::Receiver;
-use hound::{WavWriter, WavSpec, SampleFormat};
+use hound::{SampleFormat, WavSpec, WavWriter};
 
 pub struct WavOutput {
     // Writer is kept alive in the thread
 }
 
 impl WavOutput {
-    pub fn run(rx: Receiver<Vec<f32>>, path: String, sample_rate: u32) -> std::thread::JoinHandle<()>{
+    pub fn run(
+        rx: Receiver<Vec<f32>>,
+        path: String,
+        sample_rate: u32,
+    ) -> std::thread::JoinHandle<()> {
         std::thread::spawn(move || {
             let spec = WavSpec {
                 channels: 1,

@@ -62,6 +62,15 @@
           actions: [ { type: "remove_agent", id: 100 } ]
         }
       ]
+    },
+    {
+      start_time: 5.0,
+      events: [
+        {
+          time: 0.0,
+          actions: [ { type: "finish" } ]
+        }
+      ]
     }
   ]
 }

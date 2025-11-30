@@ -107,6 +107,15 @@
           ]
         }
       ]
+    },
+    {
+      start_time: 15.0,
+      events: [
+        {
+          time: 0.0,
+          actions: [ { type: "finish" } ]
+        }
+      ]
     }
   ]
 }

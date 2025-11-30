@@ -243,6 +243,13 @@ fn worker_loop(
         };
         let _ = ui_tx.try_send(ui_frame);
 
+        // Check for scenario completion or explicit finish
+        if pop.abort_requested || (conductor.is_done() && pop.agents.is_empty()) {
+            info!("Scenario finished. Exiting.");
+            exiting.store(true, Ordering::SeqCst);
+            break;
+        }
+
         // Simple timing
         let now = Instant::now();
         if now < next_deadline {

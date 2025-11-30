@@ -124,6 +124,7 @@ pub enum Action {
         id: u64,
         amp: f32,
     },
+    Finish,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

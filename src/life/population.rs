@@ -12,6 +12,7 @@ pub struct PopulationParams {
 pub struct Population {
     pub agents: Vec<Box<dyn AudioAgent>>,
     current_frame: u64,
+    pub abort_requested: bool,
 }
 
 impl Population {
@@ -37,6 +38,7 @@ impl Population {
         Self {
             agents,
             current_frame: 0,
+            abort_requested: false,
         }
     }
 
@@ -182,6 +184,9 @@ impl Population {
             Action::AddAgent { agent } => {
                 let spawned = agent.spawn(self.current_frame);
                 self.add_agent(spawned);
+            }
+            Action::Finish => {
+                self.abort_requested = true;
             }
             Action::SpawnAgents {
                 method,

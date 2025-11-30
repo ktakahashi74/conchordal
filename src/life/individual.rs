@@ -95,8 +95,8 @@ impl AudioAgent for PureToneAgent {
         amps: &mut [f32],
         fs: f32,
         nfft: usize,
-        current_frame: u64,
-        dt_sec: f32,
+        _current_frame: u64,
+        _dt_sec: f32,
     ) {
         // Use the gain computed during render_wave to avoid double decay per hop.
         let gain = self.last_gain;

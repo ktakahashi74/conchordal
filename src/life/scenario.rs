@@ -47,7 +47,7 @@ impl AgentConfig {
         }
     }
 
-    pub fn spawn(&self) -> Box<dyn AudioAgent> {
+    pub fn spawn(&self, start_frame: u64) -> Box<dyn AudioAgent> {
         match self {
             AgentConfig::PureTone {
                 id,
@@ -56,8 +56,13 @@ impl AgentConfig {
                 phase,
                 lifecycle,
             } => {
-                let mut agent =
-                    PureToneAgent::new(*id, *freq, *amp, 0, lifecycle.clone().create_lifecycle());
+                let mut agent = PureToneAgent::new(
+                    *id,
+                    *freq,
+                    *amp,
+                    start_frame,
+                    lifecycle.clone().create_lifecycle(),
+                );
                 if let Some(p) = phase {
                     agent.set_phase(*p);
                 }
@@ -85,12 +90,12 @@ mod tests {
             },
         };
 
-        let agent = cfg.spawn();
+        let agent = cfg.spawn(5);
         let pt = agent.as_any().downcast_ref::<PureToneAgent>().unwrap();
         assert_eq!(pt.id, 7);
         assert_eq!(pt.freq_hz, 220.0);
         assert_eq!(pt.amp, 0.3);
-        assert_eq!(pt.start_frame, 0);
+        assert_eq!(pt.start_frame, 5);
         // LifecycleConfig::Sustain stores envelope; not directly inspectable here but spawn should succeed.
     }
 }

@@ -53,6 +53,60 @@
           ]
         }
       ]
+    },
+    {
+      start_time: 3.0,
+      events: [
+        {
+          time: 0.0,
+          actions: [
+            {
+              type: "spawn_agents",
+              method: {
+                mode: "harmonic_density",
+                min_freq: 150.0,
+                max_freq: 1200.0,
+                temperature: 0.5
+              },
+              count: 4,
+              base_id: 4000,
+              amp: 0.22,
+              lifecycle: {
+                type: "sustain",
+                initial_energy: 1.2,
+                metabolism_rate: 0.12,
+                envelope: { attack_sec: 0.01, decay_sec: 0.25, sustain_level: 0.2 }
+              }
+            }
+          ]
+        },
+        {
+          time: 0.5,
+          actions: [
+            {
+              type: "spawn_agents",
+              method: { mode: "zero_crossing", min_freq: 200.0, max_freq: 1600.0 },
+              count: 2,
+              base_id: 5000,
+              amp: 0.2,
+              lifecycle: { type: "decay", initial_energy: 1.0, half_life_sec: 0.45 }
+            }
+          ]
+        },
+        {
+          time: 1.0,
+          actions: [
+            {
+              type: "spawn_agents",
+              method: { mode: "low_harmonicity", min_freq: 180.0, max_freq: 1440.0 },
+              count: 2,
+              base_id: 6000,
+              amp: 0.2,
+              lifecycle: { type: "decay", initial_energy: 1.1, half_life_sec: 0.35 }
+            }
+          ]
+        }
+      ]
     }
   ]
 }

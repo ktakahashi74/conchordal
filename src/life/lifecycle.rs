@@ -95,7 +95,8 @@ impl Lifecycle for SustainLifecycle {
     fn process(&mut self, dt: f32, age: f32) -> f32 {
         if self.energy > 0.0 {
             self.energy -= self.metabolism_rate * dt;
-        } else {
+        }
+        if self.energy < 0.0 {
             self.energy = 0.0;
         }
 
@@ -106,19 +107,22 @@ impl Lifecycle for SustainLifecycle {
 
         let gain_env = if age < attack {
             (age / attack).min(1.0)
+        } else if age < attack + decay {
+            let t = (age - attack) / decay;
+            1.0 + (sustain - 1.0) * t.clamp(0.0, 1.0)
         } else {
-            let t_decay = age - attack;
-            sustain + (1.0 - sustain) * (-t_decay / decay).exp()
+            sustain
         };
 
-        // Energy directly scales the envelope; no normalization here so callers can choose absolute amplitude.
-        let energy_gain = self.energy.max(0.0);
-
-        if self.energy <= 0.0 {
+        let mut energy_gain = self.energy;
+        if energy_gain <= 0.0 {
             self.fade_out_factor *= 0.9;
+            energy_gain = self.fade_out_factor;
+        } else {
+            self.fade_out_factor = 1.0;
         }
 
-        let gain = gain_env * self.fade_out_factor * energy_gain;
+        let gain = gain_env * energy_gain;
         self.alive = self.energy > 0.0 || gain > 1e-4;
         gain
     }

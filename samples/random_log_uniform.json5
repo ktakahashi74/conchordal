@@ -1,0 +1,82 @@
+{
+  // Baseline: random_log_uniform spawn, with a 440 Hz tone laid 1s earlier.
+  episodes: [
+    {
+      start_time: 0.0,
+      events: [
+        {
+          time: 0.0,
+          actions: [
+            {
+              type: "add_agent",
+              agent: {
+                type: "pure_tone",
+                id: 1,
+                freq: 440.0,
+                amp: 0.25,
+                lifecycle: { type: "decay", initial_energy: 1.0, half_life_sec: 0.8 }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      start_time: 1.0,
+      events: [
+        {
+          time: 0.0,
+          actions: [
+            {
+              type: "spawn_agents",
+              method: { mode: "random_log_uniform", min_freq: 220.0, max_freq: 880.0 },
+              count: 2,
+              base_id: 1000,
+              amp: 0.2,
+              lifecycle: { type: "decay", initial_energy: 1.0, half_life_sec: 0.5 }
+            }
+          ]
+        },
+        {
+          time: 1.0,
+          actions: [
+            {
+              type: "spawn_agents",
+              method: { mode: "random_log_uniform", min_freq: 220.0, max_freq: 880.0 },
+              count: 2,
+              base_id: 1100,
+              amp: 0.2,
+              lifecycle: { type: "decay", initial_energy: 1.0, half_life_sec: 0.5 }
+            }
+          ]
+        },
+        {
+          time: 2.0,
+          actions: [
+            {
+              type: "spawn_agents",
+              method: { mode: "random_log_uniform", min_freq: 220.0, max_freq: 880.0 },
+              count: 2,
+              base_id: 1200,
+              amp: 0.2,
+              lifecycle: { type: "decay", initial_energy: 1.0, half_life_sec: 0.5 }
+            }
+          ]
+        },
+        {
+          time: 3.0,
+          actions: [
+            {
+              type: "spawn_agents",
+              method: { mode: "random_log_uniform", min_freq: 220.0, max_freq: 880.0 },
+              count: 2,
+              base_id: 1300,
+              amp: 0.2,
+              lifecycle: { type: "decay", initial_energy: 1.0, half_life_sec: 0.5 }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

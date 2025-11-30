@@ -1,5 +1,7 @@
 use super::individual::{AudioAgent, PureToneAgent};
 use super::scenario::{Action, AgentConfig, SpawnMethod};
+use crate::core::landscape::LandscapeFrame;
+use rand::{Rng, distr::Distribution, distr::weighted::WeightedIndex};
 use tracing::warn;
 
 pub struct PopulationParams {
@@ -9,6 +11,7 @@ pub struct PopulationParams {
 
 pub struct Population {
     pub agents: Vec<Box<dyn AudioAgent>>,
+    current_frame: u64,
 }
 
 impl Population {
@@ -28,10 +31,13 @@ impl Population {
                         half_life_sec: 0.5,
                     },
                 };
-                cfg.spawn()
+                cfg.spawn(0)
             })
             .collect();
-        Self { agents }
+        Self {
+            agents,
+            current_frame: 0,
+        }
     }
 
     fn find_agent_mut(&mut self, id: u64) -> Option<&mut Box<dyn AudioAgent>> {
@@ -44,10 +50,137 @@ impl Population {
         self.agents.push(agent);
     }
 
-    pub fn apply_action(&mut self, action: Action) {
+    pub fn set_current_frame(&mut self, frame: u64) {
+        self.current_frame = frame;
+    }
+
+    fn decide_frequency(&self, method: &SpawnMethod, landscape: &LandscapeFrame) -> f32 {
+        use rand::Rng;
+
+        let space = &landscape.space;
+        let n_bins = space.n_bins();
+        if n_bins == 0 {
+            return 440.0;
+        }
+
+        let (min_freq, max_freq) = match method {
+            SpawnMethod::Harmonicity { min_freq, max_freq }
+            | SpawnMethod::LowHarmonicity { min_freq, max_freq }
+            | SpawnMethod::HarmonicDensity {
+                min_freq, max_freq, ..
+            }
+            | SpawnMethod::ZeroCrossing { min_freq, max_freq }
+            | SpawnMethod::SpectralGap { min_freq, max_freq }
+            | SpawnMethod::RandomLogUniform { min_freq, max_freq } => (*min_freq, *max_freq),
+        };
+
+        let mut idx_min = space.index_of_freq(min_freq).unwrap_or(0);
+        let mut idx_max = space
+            .index_of_freq(max_freq)
+            .unwrap_or_else(|| n_bins.saturating_sub(1));
+        if idx_min > idx_max {
+            std::mem::swap(&mut idx_min, &mut idx_max);
+        }
+        idx_max = idx_max.min(n_bins.saturating_sub(1));
+        if idx_min >= n_bins || idx_min > idx_max {
+            return space.freq_of_index(n_bins / 2);
+        }
+
+        let pick_idx = match method {
+            SpawnMethod::Harmonicity { .. } => {
+                let mut best = idx_min;
+                let mut best_val = f32::MIN;
+                for i in idx_min..=idx_max {
+                    if let Some(&v) = landscape.c_last.get(i) {
+                        if v > best_val {
+                            best_val = v;
+                            best = i;
+                        }
+                    }
+                }
+                best
+            }
+            SpawnMethod::LowHarmonicity { .. } => {
+                let mut best = idx_min;
+                let mut best_val = f32::MAX;
+                for i in idx_min..=idx_max {
+                    if let Some(&v) = landscape.c_last.get(i) {
+                        if v < best_val {
+                            best_val = v;
+                            best = i;
+                        }
+                    }
+                }
+                best
+            }
+            SpawnMethod::ZeroCrossing { .. } => {
+                let mut best = idx_min;
+                let mut best_val = f32::MAX;
+                for i in idx_min..=idx_max {
+                    if let Some(&v) = landscape.c_last.get(i) {
+                        let d = v.abs();
+                        if d < best_val {
+                            best_val = d;
+                            best = i;
+                        }
+                    }
+                }
+                best
+            }
+            SpawnMethod::SpectralGap { .. } => {
+                let mut best = idx_min;
+                let mut best_val = f32::MAX;
+                for i in idx_min..=idx_max {
+                    if let Some(&v) = landscape.amps_last.get(i) {
+                        if v < best_val {
+                            best_val = v;
+                            best = i;
+                        }
+                    }
+                }
+                best
+            }
+            SpawnMethod::HarmonicDensity { temperature, .. } => {
+                let mut weights: Vec<f32> = (idx_min..=idx_max)
+                    .map(|i| landscape.c_last.get(i).copied().unwrap_or(0.0).max(0.0))
+                    .collect();
+                if let Some(temp) = temperature {
+                    if *temp > 0.0 {
+                        for w in &mut weights {
+                            *w = w.powf(1.0 / temp);
+                        }
+                    }
+                }
+                if let Ok(dist) = WeightedIndex::new(&weights) {
+                    let mut rng = rand::thread_rng();
+                    idx_min + dist.sample(&mut rng)
+                } else {
+                    // fallback to random log-uniform
+                    let mut rng = rand::thread_rng();
+                    let min_l = min_freq.log2();
+                    let max_l = max_freq.log2();
+                    let r = rng.gen_range(min_l..max_l);
+                    let f = 2.0f32.powf(r);
+                    return f;
+                }
+            }
+            SpawnMethod::RandomLogUniform { .. } => {
+                let mut rng = rand::thread_rng();
+                let min_l = min_freq.log2();
+                let max_l = max_freq.log2();
+                let r = rng.gen_range(min_l..max_l);
+                let f = 2.0f32.powf(r);
+                return f;
+            }
+        };
+
+        space.freq_of_index(pick_idx.min(n_bins - 1))
+    }
+
+    pub fn apply_action(&mut self, action: Action, landscape: &LandscapeFrame) {
         match action {
             Action::AddAgent { agent } => {
-                let spawned = agent.spawn();
+                let spawned = agent.spawn(self.current_frame);
                 self.add_agent(spawned);
             }
             Action::SpawnAgents {
@@ -57,49 +190,8 @@ impl Population {
                 amp,
                 lifecycle,
             } => {
-                use rand::Rng;
-                let mut rng = rand::thread_rng();
-
-                fn sample_log_uniform(
-                    rng: &mut rand::rngs::ThreadRng,
-                    min_freq: f32,
-                    max_freq: f32,
-                ) -> f32 {
-                    let min_l = min_freq.log2();
-                    let max_l = max_freq.log2();
-                    let r = rng.gen_range(min_l..max_l);
-                    2.0f32.powf(r)
-                }
-
                 for i in 0..count {
-                    let freq = match &method {
-                        SpawnMethod::RandomLogUniform { min_freq, max_freq } => {
-                            sample_log_uniform(&mut rng, *min_freq, *max_freq)
-                        }
-                        SpawnMethod::Harmonicity { min_freq, max_freq } => {
-                            // Placeholder: choose geometric mean of range.
-                            (min_freq * max_freq).sqrt()
-                        }
-                        SpawnMethod::LowHarmonicity { min_freq, max_freq } => {
-                            // Placeholder: alternate picking range edges.
-                            if i % 2 == 0 { *min_freq } else { *max_freq }
-                        }
-                        SpawnMethod::HarmonicDensity {
-                            min_freq, max_freq, ..
-                        } => {
-                            // Placeholder: log-uniform sampling until density-based spawn is available.
-                            sample_log_uniform(&mut rng, *min_freq, *max_freq)
-                        }
-                        SpawnMethod::ZeroCrossing { min_freq, max_freq } => {
-                            // Placeholder: choose midpoint in log-space.
-                            (min_freq * max_freq).sqrt()
-                        }
-                        SpawnMethod::SpectralGap { min_freq, max_freq } => {
-                            // Placeholder: log-uniform sampling until gap detection is implemented.
-                            sample_log_uniform(&mut rng, *min_freq, *max_freq)
-                        }
-                    };
-
+                    let freq = self.decide_frequency(&method, landscape);
                     let cfg = AgentConfig::PureTone {
                         id: base_id + i as u64,
                         freq,
@@ -107,7 +199,7 @@ impl Population {
                         phase: None,
                         lifecycle: lifecycle.clone(),
                     };
-                    let spawned = cfg.spawn();
+                    let spawned = cfg.spawn(self.current_frame);
                     self.add_agent(spawned);
                 }
             }
@@ -149,6 +241,7 @@ impl Population {
         current_frame: u64,
         dt_sec: f32,
     ) -> Vec<f32> {
+        self.current_frame = current_frame;
         let mut buf = vec![0.0f32; samples_len];
         for agent in self.agents.iter_mut() {
             if agent.is_alive() {
@@ -167,6 +260,7 @@ impl Population {
         nfft: usize,
         dt_sec: f32,
     ) -> Vec<f32> {
+        self.current_frame = current_frame;
         let mut amps = vec![0.0f32; n_bins];
         for agent in self.agents.iter_mut() {
             if agent.is_alive() {

@@ -4,6 +4,7 @@ use tracing::debug;
 
 use super::population::Population;
 use super::scenario::{Action, Episode, Scenario};
+use crate::core::landscape::LandscapeFrame;
 
 #[derive(Debug, Clone)]
 struct QueuedEvent {
@@ -36,7 +37,13 @@ impl Conductor {
     }
 
     /// Apply any events scheduled up to and including current time.
-    pub fn dispatch_until(&mut self, time_sec: f32, population: &mut Population) {
+    pub fn dispatch_until(
+        &mut self,
+        time_sec: f32,
+        _current_frame: u64,
+        landscape: &LandscapeFrame,
+        population: &mut Population,
+    ) {
         while let Some(ev) = self.event_queue.front() {
             if ev.time > time_sec {
                 break;
@@ -45,7 +52,7 @@ impl Conductor {
             let ev = self.event_queue.pop_front().expect("front exists");
             debug!("Dispatching event at t={}", ev.time);
             for action in ev.actions {
-                population.apply_action(action);
+                population.apply_action(action, landscape);
             }
         }
     }

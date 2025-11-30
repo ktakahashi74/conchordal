@@ -10,7 +10,7 @@ use crossbeam_channel::{Receiver, Sender, bounded};
 
 use crate::audio::writer::WavOutput;
 use crate::core::harmonicity_kernel::HarmonicityKernel;
-use crate::core::landscape::{Landscape, LandscapeParams};
+use crate::core::landscape::{Landscape, LandscapeFrame, LandscapeParams};
 use crate::core::log2space::Log2Space;
 use crate::core::nsgt_kernel::{NsgtKernelLog2, NsgtLog2Config};
 use crate::core::nsgt_rt::RtNsgtKernelLog2;
@@ -194,6 +194,7 @@ fn worker_loop(
     let hop_duration = Duration::from_secs_f32(hop as f32 / fs);
 
     let mut landscape = Landscape::new(lparams, nsgt);
+    let mut current_landscape: LandscapeFrame = landscape.snapshot();
 
     let mut current_time: f32 = 0.0;
     let mut frame_idx: u64 = 0;
@@ -204,9 +205,10 @@ fn worker_loop(
             break;
         }
 
+        pop.set_current_frame(frame_idx);
         next_deadline += hop_duration;
 
-        conductor.dispatch_until(current_time, &mut pop);
+        conductor.dispatch_until(current_time, frame_idx, &current_landscape, &mut pop);
 
         // 1) population → waveform
         let time_chunk = pop.process_audio(hop, fs, frame_idx, hop_duration.as_secs_f32());
@@ -225,6 +227,7 @@ fn worker_loop(
 
         // 3) landscape update using painted spectrum
         let lframe = landscape.process_precomputed_spectrum(&body);
+        current_landscape = lframe.clone();
 
         // 4) package for UI
         let ui_frame = UiFrame {

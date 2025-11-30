@@ -119,7 +119,7 @@
       ]
     },
     {
-      start_time: 6.0,
+      start_time: 10.0,
       events: [
         {
           time: 0.0,

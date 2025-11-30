@@ -56,9 +56,12 @@ impl Population {
         self.current_frame = frame;
     }
 
-    fn decide_frequency(&self, method: &SpawnMethod, landscape: &LandscapeFrame) -> f32 {
-        use rand::Rng;
-
+    fn decide_frequency<R: Rng + ?Sized>(
+        &self,
+        method: &SpawnMethod,
+        landscape: &LandscapeFrame,
+        rng: &mut R,
+    ) -> f32 {
         let space = &landscape.space;
         let n_bins = space.n_bins();
         if n_bins == 0 {
@@ -87,6 +90,16 @@ impl Population {
         if idx_min >= n_bins || idx_min > idx_max {
             return space.freq_of_index(n_bins / 2);
         }
+
+        let jitter_bin = |idx: usize, rng: &mut R| -> f32 {
+            let idx = idx.min(n_bins - 1);
+            let center = space.freq_of_index(idx);
+            let step = space.step();
+            let half = step * 0.5;
+            let center_log2 = center.log2();
+            let sample_log2 = rng.random_range((center_log2 - half)..(center_log2 + half));
+            2.0f32.powf(sample_log2).clamp(space.fmin, space.fmax)
+        };
 
         let pick_idx = match method {
             SpawnMethod::Harmonicity { .. } => {
@@ -154,29 +167,26 @@ impl Population {
                     }
                 }
                 if let Ok(dist) = WeightedIndex::new(&weights) {
-                    let mut rng = rand::thread_rng();
-                    idx_min + dist.sample(&mut rng)
+                    idx_min + dist.sample(rng)
                 } else {
                     // fallback to random log-uniform
-                    let mut rng = rand::thread_rng();
                     let min_l = min_freq.log2();
                     let max_l = max_freq.log2();
-                    let r = rng.gen_range(min_l..max_l);
+                    let r = rng.random_range(min_l..max_l);
                     let f = 2.0f32.powf(r);
                     return f;
                 }
             }
             SpawnMethod::RandomLogUniform { .. } => {
-                let mut rng = rand::thread_rng();
                 let min_l = min_freq.log2();
                 let max_l = max_freq.log2();
-                let r = rng.gen_range(min_l..max_l);
+                let r = rng.random_range(min_l..max_l);
                 let f = 2.0f32.powf(r);
                 return f;
             }
         };
 
-        space.freq_of_index(pick_idx.min(n_bins - 1))
+        jitter_bin(pick_idx, rng)
     }
 
     pub fn apply_action(&mut self, action: Action, landscape: &LandscapeFrame) {
@@ -195,13 +205,15 @@ impl Population {
                 amp,
                 lifecycle,
             } => {
+                let mut rng = rand::thread_rng();
                 for i in 0..count {
-                    let freq = self.decide_frequency(&method, landscape);
+                    let freq = self.decide_frequency(&method, landscape, &mut rng);
+                    let phase = rng.random_range(0.0..std::f32::consts::TAU);
                     let cfg = AgentConfig::PureTone {
                         id: base_id + i as u64,
                         freq,
                         amp,
-                        phase: None,
+                        phase: Some(phase),
                         lifecycle: lifecycle.clone(),
                     };
                     let spawned = cfg.spawn(self.current_frame);

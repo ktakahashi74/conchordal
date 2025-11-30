@@ -1,5 +1,5 @@
 {
-  // Simple two-episode scenario using pure tone agents and envelopes
+  // Lifecycle-enabled sample scenario
   episodes: [
     {
       start_time: 0.0,
@@ -11,23 +11,27 @@
               type: "add_agent",
               agent: {
                 type: "pure_tone",
-                id: 1,
-                freq: 220.0,
-                amp: 0.3,
+                id: 100,
+                freq: 330.0,
+                amp: 0.25,
                 phase: 0.0,
-                envelope: { attack_sec: 0.05, decay_sec: 0.25, sustain_level: 0.4 }
+                lifecycle: { type: "decay", initial_energy: 1.0, half_life_sec: 0.5 }
               }
             }
           ]
         },
         {
-          time: 0.75,
-          actions: [ { type: "set_freq", id: 1, freq_hz: 330.0 } ]
+          time: 0.6,
+          actions: [ { type: "set_freq", id: 100, freq_hz: 550.0 } ]
+        },
+        {
+          time: 1.0,
+          actions: [ { type: "set_amp", id: 100, amp: 0.1 } ]
         }
       ]
     },
     {
-      start_time: 1.5,
+      start_time: 1.2,
       events: [
         {
           time: 0.0,
@@ -36,21 +40,26 @@
               type: "add_agent",
               agent: {
                 type: "pure_tone",
-                id: 2,
+                id: 200,
                 freq: 440.0,
-                amp: 0.25,
-                envelope: { attack_sec: 0.02, decay_sec: 0.2, sustain_level: 0.6 }
+                amp: 0.4,
+                lifecycle: {
+                  type: "sustain",
+                  initial_energy: 1.0,
+                  metabolism_rate: 0.15,
+                  envelope: { attack_sec: 0.05, decay_sec: 0.1, sustain_level: 0.2 }
+                }
               }
             }
           ]
         },
         {
-          time: 0.5,
-          actions: [ { type: "set_amp", id: 2, amp: 0.15 } ]
+          time: 0.8,
+          actions: [ { type: "set_freq", id: 200, freq_hz: 660.0 } ]
         },
         {
-          time: 1.0,
-          actions: [ { type: "remove_agent", id: 1 } ]
+          time: 1.4,
+          actions: [ { type: "remove_agent", id: 100 } ]
         }
       ]
     }

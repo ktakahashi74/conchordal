@@ -1,15 +1,22 @@
-use super::scenario::EnvelopeConfig;
+use super::lifecycle::Lifecycle;
 
 /// Hybrid synthesis agents render both time-domain audio and a spectral "body".
 pub trait AudioAgent: Send + Sync + 'static {
     fn id(&self) -> u64;
     /// Generate audio samples (mixing into the buffer).
     /// Handles continuous phase to prevent clicks.
-    fn render_wave(&mut self, buffer: &mut [f32], fs: f32);
+    fn render_wave(&mut self, buffer: &mut [f32], fs: f32, current_frame: u64, dt_sec: f32);
 
     /// Project the agent's "body" (energy) onto the spectral bins.
     /// Used for Landscape analysis (Roughness/Harmonicity).
-    fn render_body(&self, spectrum: &mut [f32], nfft: usize, fs: f32, current_frame: u64);
+    fn render_spectrum(
+        &mut self,
+        amps: &mut [f32],
+        fs: f32,
+        nfft: usize,
+        current_frame: u64,
+        dt_sec: f32,
+    );
 
     fn is_alive(&self) -> bool;
     fn as_any(&self) -> &dyn std::any::Any;
@@ -22,9 +29,9 @@ pub struct PureToneAgent {
     pub freq_hz: f32,
     pub amp: f32,
     pub start_frame: u64,
-    pub envelope: EnvelopeConfig,
+    pub lifecycle: Box<dyn Lifecycle>,
     phase: f32,
-    alive: bool,
+    last_gain: f32,
 }
 
 impl PureToneAgent {
@@ -33,20 +40,16 @@ impl PureToneAgent {
         freq_hz: f32,
         amp: f32,
         start_frame: u64,
-        envelope: Option<EnvelopeConfig>,
+        lifecycle: Box<dyn super::lifecycle::Lifecycle>,
     ) -> Self {
         Self {
             id,
             freq_hz,
             amp,
             start_frame,
-            envelope: envelope.unwrap_or(EnvelopeConfig {
-                attack_sec: 0.01,
-                decay_sec: 0.2,
-                sustain_level: 0.2,
-            }),
+            lifecycle,
             phase: 0.0,
-            alive: true,
+            last_gain: 1.0,
         }
     }
 
@@ -63,7 +66,7 @@ impl PureToneAgent {
     }
 
     pub fn kill(&mut self) {
-        self.alive = false;
+        // Lifecycle decides liveness; no-op here.
     }
 }
 
@@ -72,14 +75,14 @@ impl AudioAgent for PureToneAgent {
         self.id
     }
 
-    fn render_wave(&mut self, buffer: &mut [f32], fs: f32) {
-        if !self.alive {
-            return;
-        }
+    fn render_wave(&mut self, buffer: &mut [f32], fs: f32, current_frame: u64, dt_sec: f32) {
+        let age = current_frame.saturating_sub(self.start_frame) as f32 * dt_sec;
+        let gain = self.lifecycle.process(dt_sec, age);
+        self.last_gain = gain;
         let omega = 2.0 * std::f32::consts::PI * self.freq_hz / fs;
         for s in buffer.iter_mut() {
             let sin = self.phase.sin();
-            *s += self.amp * sin;
+            *s += self.amp * gain * sin;
             self.phase = self.phase + omega;
             if self.phase > std::f32::consts::TAU {
                 self.phase -= std::f32::consts::TAU;
@@ -87,34 +90,26 @@ impl AudioAgent for PureToneAgent {
         }
     }
 
-    fn render_body(&self, spectrum: &mut [f32], nfft: usize, fs: f32, current_frame: u64) {
-        if !self.alive {
-            return;
-        }
-        let elapsed_frames = current_frame.saturating_sub(self.start_frame);
-        let t_sec = elapsed_frames as f32 * (nfft as f32 / fs);
-
-        let env = &self.envelope;
-        let attack = env.attack_sec.max(1e-6);
-        let decay = env.decay_sec.max(1e-6);
-        let sustain = env.sustain_level.clamp(0.0, 1.0);
-
-        let gain = if t_sec < attack {
-            (t_sec / attack).min(1.0)
-        } else {
-            let t_decay = t_sec - attack;
-            sustain + (1.0 - sustain) * (-t_decay / decay).exp()
-        };
+    fn render_spectrum(
+        &mut self,
+        amps: &mut [f32],
+        fs: f32,
+        nfft: usize,
+        current_frame: u64,
+        dt_sec: f32,
+    ) {
+        // Use the gain computed during render_wave to avoid double decay per hop.
+        let gain = self.last_gain;
 
         let bin_f = self.freq_hz * nfft as f32 / fs;
         let k = bin_f.round() as isize;
-        if k >= 0 && (k as usize) < spectrum.len() {
-            spectrum[k as usize] += self.amp * gain;
+        if k >= 0 && (k as usize) < amps.len() {
+            amps[k as usize] += self.amp * gain;
         }
     }
 
     fn is_alive(&self) -> bool {
-        self.alive
+        self.lifecycle.is_alive()
     }
 
     fn as_any(&self) -> &dyn std::any::Any {
@@ -129,37 +124,33 @@ impl AudioAgent for PureToneAgent {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::life::scenario::EnvelopeConfig;
+    use crate::life::lifecycle::LifecycleConfig;
 
     fn approx_eq(a: f32, b: f32, tol: f32) {
         assert!((a - b).abs() <= tol, "expected {b}, got {a}, tol {tol}");
     }
 
     #[test]
-    fn envelope_applies_attack_and_decay() {
-        let env = EnvelopeConfig {
-            attack_sec: 0.1,
-            decay_sec: 0.2,
-            sustain_level: 0.5,
-        };
-        let agent = PureToneAgent::new(1, 100.0, 1.0, 10, Some(env));
+    fn decay_lifecycle_drops_gain_per_hop() {
+        let lifecycle = LifecycleConfig::Decay {
+            initial_energy: 1.0,
+            half_life_sec: 0.2,
+        }
+        .create_lifecycle();
+        let mut agent = PureToneAgent::new(1, 100.0, 1.0, 0, lifecycle);
+        agent.set_phase(std::f32::consts::FRAC_PI_2); // sin = 1 at phase π/2
+
         let fs = 1000.0;
-        let nfft = 100; // treated as hop for envelope timing here
-        let mut body = vec![0.0f32; 64];
+        let dt_sec = 0.1; // hop = 0.1 s
 
-        // At spawn frame: gain should be ~0
-        agent.render_body(&mut body, nfft, fs, 10);
-        approx_eq(body[10], 0.0, 1e-4);
+        let mut buf = vec![0.0f32; 1];
+        agent.render_wave(&mut buf, fs, 0, dt_sec);
+        // gain should be sqrt(0.5) ≈ 0.707
+        approx_eq(buf[0], 0.707, 1e-3);
 
-        // One frame later (0.1s): end of attack -> gain ~1
-        let mut body = vec![0.0f32; 64];
-        agent.render_body(&mut body, nfft, fs, 11);
-        approx_eq(body[10], 1.0, 1e-3);
-
-        // After entering decay: should be between sustain and 1.0
-        let mut body = vec![0.0f32; 64];
-        agent.render_body(&mut body, nfft, fs, 12);
-        // expected sustain + (1-sustain)*exp(-0.1/0.2) ≈ 0.803
-        approx_eq(body[10], 0.803, 5e-3);
+        agent.set_phase(std::f32::consts::FRAC_PI_2);
+        let mut buf = vec![0.0f32; 1];
+        agent.render_wave(&mut buf, fs, 1, dt_sec);
+        approx_eq(buf[0], 0.5, 1e-3);
     }
 }

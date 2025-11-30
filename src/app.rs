@@ -65,20 +65,14 @@ impl App {
         });
 
         let path = args.scenario_path.clone();
-        let scenario = match std::fs::read_to_string(&path) {
-            Ok(s) => json5::from_str::<Scenario>(&s).unwrap_or_else(|e| {
-                eprintln!("Failed to parse scenario file {path}: {e}");
-                Scenario {
-                    episodes: Vec::new(),
-                }
-            }),
-            Err(err) => {
-                eprintln!("Failed to read scenario file {path}: {err}");
-                Scenario {
-                    episodes: Vec::new(),
-                }
-            }
-        };
+        let contents = std::fs::read_to_string(&path).unwrap_or_else(|err| {
+            eprintln!("Failed to read scenario file {path}: {err}");
+            std::process::exit(1);
+        });
+        let scenario = json5::from_str::<Scenario>(&contents).unwrap_or_else(|e| {
+            eprintln!("Failed to parse scenario file {path}: {e}");
+            std::process::exit(1);
+        });
         let conductor = Conductor::from_scenario(scenario);
 
         // worker に渡すのは wav_tx.clone()
@@ -215,7 +209,7 @@ fn worker_loop(
         conductor.dispatch_until(current_time, &mut pop);
 
         // 1) population → waveform
-        let time_chunk = pop.process_audio(hop, fs);
+        let time_chunk = pop.process_audio(hop, fs, frame_idx, hop_duration.as_secs_f32());
 
         // send out audio signal
         if let Some(prod) = audio_prod.as_mut() {
@@ -227,7 +221,7 @@ fn worker_loop(
         }
 
         // 2) spectral body for landscape
-        let body = pop.render_landscape_body(frame_idx, n_bins, fs, nfft);
+        let body = pop.process_frame(frame_idx, n_bins, fs, nfft, hop_duration.as_secs_f32());
 
         // 3) landscape update using painted spectrum
         let lframe = landscape.process_precomputed_spectrum(&body);

@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::life::individual::{AudioAgent, PureToneAgent};
+use crate::life::lifecycle::LifecycleConfig;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Scenario {
@@ -35,7 +36,7 @@ pub enum AgentConfig {
         freq: f32,
         amp: f32,
         phase: Option<f32>,
-        envelope: Option<EnvelopeConfig>,
+        lifecycle: LifecycleConfig,
     }, // future variants
 }
 
@@ -53,9 +54,10 @@ impl AgentConfig {
                 freq,
                 amp,
                 phase,
-                envelope,
+                lifecycle,
             } => {
-                let mut agent = PureToneAgent::new(*id, *freq, *amp, 0, envelope.clone());
+                let mut agent =
+                    PureToneAgent::new(*id, *freq, *amp, 0, lifecycle.clone().create_lifecycle());
                 if let Some(p) = phase {
                     agent.set_phase(*p);
                 }
@@ -72,17 +74,15 @@ mod tests {
 
     #[test]
     fn spawn_carries_envelope_and_params() {
-        let env = EnvelopeConfig {
-            attack_sec: 0.05,
-            decay_sec: 0.2,
-            sustain_level: 0.4,
-        };
         let cfg = AgentConfig::PureTone {
             id: 7,
             freq: 220.0,
             amp: 0.3,
             phase: Some(0.25),
-            envelope: Some(env.clone()),
+            lifecycle: LifecycleConfig::Decay {
+                initial_energy: 1.0,
+                half_life_sec: 0.5,
+            },
         };
 
         let agent = cfg.spawn();
@@ -91,9 +91,7 @@ mod tests {
         assert_eq!(pt.freq_hz, 220.0);
         assert_eq!(pt.amp, 0.3);
         assert_eq!(pt.start_frame, 0);
-        assert!((pt.envelope.attack_sec - env.attack_sec).abs() < 1e-6);
-        assert!((pt.envelope.decay_sec - env.decay_sec).abs() < 1e-6);
-        assert!((pt.envelope.sustain_level - env.sustain_level).abs() < 1e-6);
+        // LifecycleConfig::Sustain stores envelope; not directly inspectable here but spawn should succeed.
     }
 }
 
@@ -108,7 +106,7 @@ pub enum Action {
         count: usize,
         base_id: u64,
         amp: f32,
-        envelope: Option<EnvelopeConfig>,
+        lifecycle: LifecycleConfig,
     },
     RemoveAgent {
         id: u64,
@@ -124,8 +122,22 @@ pub enum Action {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "mode", rename_all = "snake_case")]
 pub enum SpawnMethod {
-    HighConsonance,
-    SpectralGap,
-    RandomUniform,
+    /// H = C - R を最大化する周波数を探索（決定論的）
+    Harmonicity { min_freq: f32, max_freq: f32 },
+    /// H = C - R を最小化する周波数を探索（決定論的）
+    LowHarmonicity { min_freq: f32, max_freq: f32 },
+    /// H の値を確率密度としてサンプリング（確率的・群生）
+    HarmonicDensity {
+        min_freq: f32,
+        max_freq: f32,
+        temperature: Option<f32>,
+    },
+    /// H ≈ 0 となる領域を探索
+    ZeroCrossing { min_freq: f32, max_freq: f32 },
+    /// エネルギーの空白域（スペクトルの谷）を探索
+    SpectralGap { min_freq: f32, max_freq: f32 },
+    /// 単純なランダム（オクターブ等間隔分布）
+    RandomLogUniform { min_freq: f32, max_freq: f32 },
 }

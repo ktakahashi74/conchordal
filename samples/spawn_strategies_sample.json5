@@ -1,0 +1,58 @@
+{
+  episodes: [
+    {
+      start_time: 0.0,
+      events: [
+        {
+          time: 0.0,
+          actions: [
+            {
+              type: "spawn_agents",
+              method: { mode: "random_log_uniform", min_freq: 220.0, max_freq: 880.0 },
+              count: 3,
+              base_id: 1000,
+              amp: 0.2,
+              lifecycle: { type: "decay", initial_energy: 1.0, half_life_sec: 0.4 }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      start_time: 1.5,
+      events: [
+        {
+          time: 0.0,
+          actions: [
+            {
+              type: "spawn_agents",
+              method: { mode: "harmonicity", min_freq: 330.0, max_freq: 990.0 },
+              count: 2,
+              base_id: 2000,
+              amp: 0.25,
+              lifecycle: {
+                type: "sustain",
+                initial_energy: 1.0,
+                metabolism_rate: 0.08,
+                envelope: { attack_sec: 0.05, decay_sec: 0.2, sustain_level: 0.4 }
+              }
+            }
+          ]
+        },
+        {
+          time: 0.8,
+          actions: [
+            {
+              type: "spawn_agents",
+              method: { mode: "spectral_gap", min_freq: 260.0, max_freq: 1040.0 },
+              count: 1,
+              base_id: 3000,
+              amp: 0.18,
+              lifecycle: { type: "decay", initial_energy: 0.8, half_life_sec: 0.6 }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

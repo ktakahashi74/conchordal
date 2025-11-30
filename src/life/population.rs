@@ -1,5 +1,5 @@
 use super::individual::{AudioAgent, PureToneAgent};
-use super::scenario::{Action, AgentConfig};
+use super::scenario::{Action, AgentConfig, SpawnMethod};
 use tracing::warn;
 
 pub struct PopulationParams {
@@ -23,7 +23,10 @@ impl Population {
                     freq: f,
                     amp: p.amplitude,
                     phase: None,
-                    envelope: None,
+                    lifecycle: crate::life::lifecycle::LifecycleConfig::Decay {
+                        initial_energy: 1.0,
+                        half_life_sec: 0.5,
+                    },
                 };
                 cfg.spawn()
             })
@@ -47,8 +50,66 @@ impl Population {
                 let spawned = agent.spawn();
                 self.add_agent(spawned);
             }
-            Action::SpawnAgents { .. } => {
-                todo!("SpawnAgents logic not implemented yet");
+            Action::SpawnAgents {
+                method,
+                count,
+                base_id,
+                amp,
+                lifecycle,
+            } => {
+                use rand::Rng;
+                let mut rng = rand::thread_rng();
+
+                fn sample_log_uniform(
+                    rng: &mut rand::rngs::ThreadRng,
+                    min_freq: f32,
+                    max_freq: f32,
+                ) -> f32 {
+                    let min_l = min_freq.log2();
+                    let max_l = max_freq.log2();
+                    let r = rng.gen_range(min_l..max_l);
+                    2.0f32.powf(r)
+                }
+
+                for i in 0..count {
+                    let freq = match &method {
+                        SpawnMethod::RandomLogUniform { min_freq, max_freq } => {
+                            sample_log_uniform(&mut rng, *min_freq, *max_freq)
+                        }
+                        SpawnMethod::Harmonicity { min_freq, max_freq } => {
+                            // Placeholder: choose geometric mean of range.
+                            (min_freq * max_freq).sqrt()
+                        }
+                        SpawnMethod::LowHarmonicity { min_freq, max_freq } => {
+                            // Placeholder: alternate picking range edges.
+                            if i % 2 == 0 { *min_freq } else { *max_freq }
+                        }
+                        SpawnMethod::HarmonicDensity {
+                            min_freq, max_freq, ..
+                        } => {
+                            // Placeholder: log-uniform sampling until density-based spawn is available.
+                            sample_log_uniform(&mut rng, *min_freq, *max_freq)
+                        }
+                        SpawnMethod::ZeroCrossing { min_freq, max_freq } => {
+                            // Placeholder: choose midpoint in log-space.
+                            (min_freq * max_freq).sqrt()
+                        }
+                        SpawnMethod::SpectralGap { min_freq, max_freq } => {
+                            // Placeholder: log-uniform sampling until gap detection is implemented.
+                            sample_log_uniform(&mut rng, *min_freq, *max_freq)
+                        }
+                    };
+
+                    let cfg = AgentConfig::PureTone {
+                        id: base_id + i as u64,
+                        freq,
+                        amp,
+                        phase: None,
+                        lifecycle: lifecycle.clone(),
+                    };
+                    let spawned = cfg.spawn();
+                    self.add_agent(spawned);
+                }
             }
             Action::RemoveAgent { id } => self.remove_agent(id),
             Action::SetFreq { id, freq_hz } => {
@@ -81,30 +142,38 @@ impl Population {
     }
 
     /// Mix audio samples for the next hop.
-    pub fn process_audio(&mut self, samples_len: usize, fs: f32) -> Vec<f32> {
+    pub fn process_audio(
+        &mut self,
+        samples_len: usize,
+        fs: f32,
+        current_frame: u64,
+        dt_sec: f32,
+    ) -> Vec<f32> {
         let mut buf = vec![0.0f32; samples_len];
         for agent in self.agents.iter_mut() {
             if agent.is_alive() {
-                agent.render_wave(&mut buf, fs);
+                agent.render_wave(&mut buf, fs, current_frame, dt_sec);
             }
         }
         buf
     }
 
     /// Render spectral bodies for landscape processing.
-    pub fn render_landscape_body(
-        &self,
+    pub fn process_frame(
+        &mut self,
         current_frame: u64,
         n_bins: usize,
         fs: f32,
-        n_fft: usize,
+        nfft: usize,
+        dt_sec: f32,
     ) -> Vec<f32> {
-        let mut body = vec![0.0f32; n_bins];
-        for agent in self.agents.iter() {
+        let mut amps = vec![0.0f32; n_bins];
+        for agent in self.agents.iter_mut() {
             if agent.is_alive() {
-                agent.render_body(&mut body, n_fft, fs, current_frame);
+                agent.render_spectrum(&mut amps, fs, nfft, current_frame, dt_sec);
             }
         }
-        body
+        self.agents.retain(|a| a.is_alive());
+        amps
     }
 }

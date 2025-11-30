@@ -63,8 +63,21 @@ impl Conductor {
 }
 
 fn flatten_episode(ep: Episode) -> impl Iterator<Item = QueuedEvent> {
-    ep.events.into_iter().map(move |ev| QueuedEvent {
-        time: ep.start_time + ev.time,
-        actions: ev.actions,
-    })
+    let mut out: Vec<QueuedEvent> = Vec::new();
+    for ev in ep.events {
+        if let Some(rep) = &ev.repeat {
+            for i in 0..rep.count {
+                out.push(QueuedEvent {
+                    time: ep.start_time + ev.time + i as f32 * rep.interval,
+                    actions: ev.actions.clone(),
+                });
+            }
+        } else {
+            out.push(QueuedEvent {
+                time: ep.start_time + ev.time,
+                actions: ev.actions,
+            });
+        }
+    }
+    out.into_iter()
 }

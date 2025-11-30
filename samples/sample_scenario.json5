@@ -11,7 +11,7 @@
               type: "add_agent",
               agent: {
                 type: "pure_tone",
-                id: 100,
+                tag: "lead",
                 freq: 330.0,
                 amp: 0.25,
                 phase: 0.0,
@@ -22,11 +22,11 @@
         },
         {
           time: 0.6,
-          actions: [ { type: "set_freq", id: 100, freq_hz: 550.0 } ]
+          actions: [ { type: "set_freq", target: "lead", freq_hz: 550.0 } ]
         },
         {
           time: 1.0,
-          actions: [ { type: "set_amp", id: 100, amp: 0.1 } ]
+          actions: [ { type: "set_amp", target: "lead", amp: 0.1 } ]
         }
       ]
     },
@@ -40,7 +40,7 @@
               type: "add_agent",
               agent: {
                 type: "pure_tone",
-                id: 200,
+                tag: "pad",
                 freq: 440.0,
                 amp: 0.4,
                 lifecycle: {
@@ -55,11 +55,11 @@
         },
         {
           time: 0.8,
-          actions: [ { type: "set_freq", id: 200, freq_hz: 660.0 } ]
+          actions: [ { type: "set_freq", target: "pad", freq_hz: 660.0 } ]
         },
         {
           time: 1.4,
-          actions: [ { type: "remove_agent", id: 100 } ]
+          actions: [ { type: "remove_agent", target: "lead" } ]
         }
       ]
     },
@@ -70,6 +70,25 @@
           time: 0.0,
           actions: [ { type: "finish" } ]
         }
+      ]
+    },
+    {
+      start_time: 8.0,
+      events: [
+        {
+          time: 0.0,
+          repeat: { count: 10, interval: 0.15, id_offset: 10 },
+              actions: [
+                {
+                  type: "spawn_agents",
+                  method: { mode: "harmonicity", min_freq: 400.0, max_freq: 1200.0 },
+                  count: 2,
+                  tag: "burst",
+                  amp: 0.15,
+                  lifecycle: { type: "decay", initial_energy: 0.8, half_life_sec: 0.3 }
+                }
+              ]
+            }
       ]
     }
   ]

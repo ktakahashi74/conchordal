@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use crate::life::individual::AgentMetadata;
 use crate::life::individual::{AudioAgent, PureToneAgent};
 use crate::life::lifecycle::LifecycleConfig;
 
@@ -22,8 +23,16 @@ pub struct Episode {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RepeatConfig {
+    pub count: usize,           // 繰り返し回数
+    pub interval: f32,          // 実行間隔（秒）
+    pub id_offset: Option<u64>, // 回ごとに base_id をずらす量（SpawnAgents用）
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Event {
     pub time: f32,
+    pub repeat: Option<RepeatConfig>,
     pub actions: Vec<Action>,
 }
 
@@ -32,36 +41,52 @@ pub struct Event {
 pub enum AgentConfig {
     #[serde(rename = "pure_tone")]
     PureTone {
-        id: u64,
         freq: f32,
         amp: f32,
         phase: Option<f32>,
         lifecycle: LifecycleConfig,
+        tag: Option<String>,
     }, // future variants
 }
 
 impl AgentConfig {
-    pub fn id(&self) -> u64 {
+    pub fn id(&self) -> Option<u64> {
         match self {
-            AgentConfig::PureTone { id, .. } => *id,
+            AgentConfig::PureTone { .. } => None,
         }
     }
 
-    pub fn spawn(&self, start_frame: u64) -> Box<dyn AudioAgent> {
+    pub fn tag(&self) -> Option<&String> {
+        match self {
+            AgentConfig::PureTone { tag, .. } => tag.as_ref(),
+        }
+    }
+
+    pub fn spawn(
+        &self,
+        assigned_id: u64,
+        start_frame: u64,
+        mut metadata: AgentMetadata,
+    ) -> Box<dyn AudioAgent> {
+        metadata.id = assigned_id;
+        if metadata.tag.is_none() {
+            metadata.tag = self.tag().cloned();
+        }
         match self {
             AgentConfig::PureTone {
-                id,
                 freq,
                 amp,
                 phase,
                 lifecycle,
+                ..
             } => {
                 let mut agent = PureToneAgent::new(
-                    *id,
+                    assigned_id,
                     *freq,
                     *amp,
                     start_frame,
                     lifecycle.clone().create_lifecycle(),
+                    metadata,
                 );
                 if let Some(p) = phase {
                     agent.set_phase(*p);
@@ -80,7 +105,6 @@ mod tests {
     #[test]
     fn spawn_carries_envelope_and_params() {
         let cfg = AgentConfig::PureTone {
-            id: 7,
             freq: 220.0,
             amp: 0.3,
             phase: Some(0.25),
@@ -88,9 +112,19 @@ mod tests {
                 initial_energy: 1.0,
                 half_life_sec: 0.5,
             },
+            tag: Some("test".into()),
         };
 
-        let agent = cfg.spawn(5);
+        let agent = cfg.spawn(
+            7,
+            5,
+            AgentMetadata {
+                id: 7,
+                tag: Some("test".into()),
+                group_idx: 0,
+                member_idx: 0,
+            },
+        );
         let pt = agent.as_any().downcast_ref::<PureToneAgent>().unwrap();
         assert_eq!(pt.id, 7);
         assert_eq!(pt.freq_hz, 220.0);
@@ -109,19 +143,19 @@ pub enum Action {
     SpawnAgents {
         method: SpawnMethod,
         count: usize,
-        base_id: u64,
         amp: f32,
         lifecycle: LifecycleConfig,
+        tag: Option<String>,
     },
     RemoveAgent {
-        id: u64,
+        target: String,
     },
     SetFreq {
-        id: u64,
+        target: String,
         freq_hz: f32,
     },
     SetAmp {
-        id: u64,
+        target: String,
         amp: f32,
     },
     Finish,

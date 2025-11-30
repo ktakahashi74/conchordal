@@ -3,6 +3,7 @@ use super::lifecycle::Lifecycle;
 /// Hybrid synthesis agents render both time-domain audio and a spectral "body".
 pub trait AudioAgent: Send + Sync + 'static {
     fn id(&self) -> u64;
+    fn metadata(&self) -> &AgentMetadata;
     /// Generate audio samples (mixing into the buffer).
     /// Handles continuous phase to prevent clicks.
     fn render_wave(&mut self, buffer: &mut [f32], fs: f32, current_frame: u64, dt_sec: f32);
@@ -23,6 +24,14 @@ pub trait AudioAgent: Send + Sync + 'static {
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct AgentMetadata {
+    pub id: u64,             // internal unique id
+    pub tag: Option<String>, // semantic tag
+    pub group_idx: usize,    // spawn group counter per tag
+    pub member_idx: usize,   // index within the spawn call
+}
+
 #[derive(Debug)]
 pub struct PureToneAgent {
     pub id: u64,
@@ -30,6 +39,7 @@ pub struct PureToneAgent {
     pub amp: f32,
     pub start_frame: u64,
     pub lifecycle: Box<dyn Lifecycle>,
+    pub metadata: AgentMetadata,
     phase: f32,
     last_gain: f32,
 }
@@ -41,6 +51,7 @@ impl PureToneAgent {
         amp: f32,
         start_frame: u64,
         lifecycle: Box<dyn super::lifecycle::Lifecycle>,
+        metadata: AgentMetadata,
     ) -> Self {
         Self {
             id,
@@ -48,6 +59,7 @@ impl PureToneAgent {
             amp,
             start_frame,
             lifecycle,
+            metadata,
             phase: 0.0,
             last_gain: 1.0,
         }
@@ -73,6 +85,10 @@ impl PureToneAgent {
 impl AudioAgent for PureToneAgent {
     fn id(&self) -> u64 {
         self.id
+    }
+
+    fn metadata(&self) -> &AgentMetadata {
+        &self.metadata
     }
 
     fn render_wave(&mut self, buffer: &mut [f32], fs: f32, current_frame: u64, dt_sec: f32) {
@@ -137,7 +153,13 @@ mod tests {
             half_life_sec: 0.2,
         }
         .create_lifecycle();
-        let mut agent = PureToneAgent::new(1, 100.0, 1.0, 0, lifecycle);
+        let metadata = AgentMetadata {
+            id: 1,
+            tag: None,
+            group_idx: 0,
+            member_idx: 0,
+        };
+        let mut agent = PureToneAgent::new(1, 100.0, 1.0, 0, lifecycle, metadata);
         agent.set_phase(std::f32::consts::FRAC_PI_2); // sin = 1 at phase π/2
 
         let fs = 1000.0;

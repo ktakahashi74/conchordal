@@ -10,7 +10,7 @@
               type: "spawn_agents",
               method: { mode: "random_log_uniform", min_freq: 220.0, max_freq: 880.0 },
               count: 3,
-              base_id: 1000,
+              tag: "rnd",
               amp: 0.2,
               lifecycle: { type: "decay", initial_energy: 1.0, half_life_sec: 0.4 }
             }
@@ -28,7 +28,7 @@
               type: "spawn_agents",
               method: { mode: "harmonicity", min_freq: 330.0, max_freq: 990.0 },
               count: 2,
-              base_id: 2000,
+              tag: "harm",
               amp: 0.25,
               lifecycle: {
                 type: "sustain",
@@ -46,7 +46,7 @@
               type: "spawn_agents",
               method: { mode: "spectral_gap", min_freq: 260.0, max_freq: 1040.0 },
               count: 1,
-              base_id: 3000,
+              tag: "gap",
               amp: 0.18,
               lifecycle: { type: "decay", initial_energy: 0.8, half_life_sec: 0.6 }
             }
@@ -69,7 +69,7 @@
                 temperature: 0.5
               },
               count: 4,
-              base_id: 4000,
+              tag: "hdens",
               amp: 0.22,
               lifecycle: {
                 type: "sustain",
@@ -87,7 +87,7 @@
               type: "spawn_agents",
               method: { mode: "zero_crossing", min_freq: 200.0, max_freq: 1600.0 },
               count: 2,
-              base_id: 5000,
+              tag: "zero",
               amp: 0.2,
               lifecycle: { type: "decay", initial_energy: 1.0, half_life_sec: 0.45 }
             }
@@ -100,7 +100,7 @@
               type: "spawn_agents",
               method: { mode: "low_harmonicity", min_freq: 180.0, max_freq: 1440.0 },
               count: 2,
-              base_id: 6000,
+              tag: "lowharm",
               amp: 0.2,
               lifecycle: { type: "decay", initial_energy: 1.1, half_life_sec: 0.35 }
             }

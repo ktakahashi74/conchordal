@@ -11,7 +11,6 @@
               type: "add_agent",
               agent: {
                 type: "pure_tone",
-                id: 1,
                 freq: 440.0,
                 amp: 0.25,
                 lifecycle: { type: "decay", initial_energy: 1.0, half_life_sec: 0.8 }
@@ -31,7 +30,7 @@
               type: "spawn_agents",
               method: { mode: "harmonicity", min_freq: 220.0, max_freq: 880.0 },
               count: 2,
-              base_id: 2000,
+              tag: "harm",
               amp: 0.22,
               lifecycle: {
                 type: "sustain",
@@ -49,7 +48,7 @@
               type: "spawn_agents",
               method: { mode: "harmonicity", min_freq: 220.0, max_freq: 880.0 },
               count: 2,
-              base_id: 2100,
+              tag: "harm",
               amp: 0.22,
               lifecycle: {
                 type: "sustain",
@@ -67,7 +66,7 @@
               type: "spawn_agents",
               method: { mode: "harmonicity", min_freq: 220.0, max_freq: 880.0 },
               count: 2,
-              base_id: 2200,
+              tag: "harm",
               amp: 0.22,
               lifecycle: {
                 type: "sustain",
@@ -85,7 +84,7 @@
               type: "spawn_agents",
               method: { mode: "harmonicity", min_freq: 220.0, max_freq: 880.0 },
               count: 2,
-              base_id: 2300,
+              tag: "harm",
               amp: 0.22,
               lifecycle: {
                 type: "sustain",

@@ -1,7 +1,8 @@
-use super::individual::{AudioAgent, PureToneAgent};
+use super::individual::{AgentMetadata, AudioAgent, PureToneAgent};
 use super::scenario::{Action, AgentConfig, SpawnMethod};
 use crate::core::landscape::LandscapeFrame;
 use rand::{Rng, distr::Distribution, distr::weighted::WeightedIndex};
+use std::collections::HashMap;
 use tracing::warn;
 
 pub struct PopulationParams {
@@ -13,6 +14,8 @@ pub struct Population {
     pub agents: Vec<Box<dyn AudioAgent>>,
     current_frame: u64,
     pub abort_requested: bool,
+    next_auto_id: u64,
+    tag_counters: HashMap<String, usize>,
 }
 
 impl Population {
@@ -23,7 +26,6 @@ impl Population {
             .enumerate()
             .map(|(idx, f)| {
                 let cfg = AgentConfig::PureTone {
-                    id: idx as u64,
                     freq: f,
                     amp: p.amplitude,
                     phase: None,
@@ -31,14 +33,23 @@ impl Population {
                         initial_energy: 1.0,
                         half_life_sec: 0.5,
                     },
+                    tag: None,
                 };
-                cfg.spawn(0)
+                let metadata = AgentMetadata {
+                    id: idx as u64,
+                    tag: None,
+                    group_idx: 0,
+                    member_idx: idx,
+                };
+                cfg.spawn(idx as u64, 0, metadata)
             })
             .collect();
         Self {
             agents,
             current_frame: 0,
             abort_requested: false,
+            next_auto_id: 1_000_000,
+            tag_counters: HashMap::new(),
         }
     }
 
@@ -54,6 +65,74 @@ impl Population {
 
     pub fn set_current_frame(&mut self, frame: u64) {
         self.current_frame = frame;
+    }
+
+    fn next_group_idx(&mut self, tag: Option<&str>) -> usize {
+        if let Some(t) = tag {
+            let entry = self.tag_counters.entry(t.to_string()).or_insert(0);
+            let idx = *entry;
+            *entry += 1;
+            idx
+        } else {
+            0
+        }
+    }
+
+    fn resolve_targets(&mut self, target_str: &str) -> Vec<u64> {
+        let mut tag_end = target_str.find('[').unwrap_or(target_str.len());
+        if tag_end == 0 {
+            return Vec::new();
+        }
+        if tag_end > target_str.len() {
+            tag_end = target_str.len();
+        }
+        let tag = &target_str[..tag_end];
+        let mut rest = &target_str[tag_end..];
+        let mut group_idx: Option<usize> = None;
+        let mut member_idx: Option<usize> = None;
+
+        if rest.starts_with('[') {
+            if let Some(end) = rest.find(']') {
+                let grp_str = &rest[1..end];
+                if let Ok(g) = grp_str.parse::<usize>() {
+                    group_idx = Some(g);
+                }
+                rest = &rest[(end + 1)..];
+                if rest.starts_with('[') {
+                    if let Some(end2) = rest.find(']') {
+                        let mem_str = &rest[1..end2];
+                        if let Ok(m) = mem_str.parse::<usize>() {
+                            member_idx = Some(m);
+                        }
+                    }
+                }
+            }
+        }
+
+        self.agents
+            .iter()
+            .filter_map(|a| {
+                let meta = a.metadata();
+                if let Some(t) = &meta.tag {
+                    if t != tag {
+                        return None;
+                    }
+                } else {
+                    return None;
+                }
+                if let Some(g) = group_idx {
+                    if meta.group_idx != g {
+                        return None;
+                    }
+                }
+                if let Some(m) = member_idx {
+                    if meta.member_idx != m {
+                        return None;
+                    }
+                }
+                Some(meta.id)
+            })
+            .collect()
     }
 
     fn decide_frequency<R: Rng + ?Sized>(
@@ -192,7 +271,20 @@ impl Population {
     pub fn apply_action(&mut self, action: Action, landscape: &LandscapeFrame) {
         match action {
             Action::AddAgent { agent } => {
-                let spawned = agent.spawn(self.current_frame);
+                let id = {
+                    let id = self.next_auto_id;
+                    self.next_auto_id += 1;
+                    id
+                };
+                let tag = agent.tag().cloned();
+                let group_idx = self.next_group_idx(tag.as_deref());
+                let metadata = AgentMetadata {
+                    id,
+                    tag,
+                    group_idx,
+                    member_idx: 0,
+                };
+                let spawned = agent.spawn(id, self.current_frame, metadata);
                 self.add_agent(spawned);
             }
             Action::Finish => {
@@ -201,46 +293,69 @@ impl Population {
             Action::SpawnAgents {
                 method,
                 count,
-                base_id,
                 amp,
                 lifecycle,
+                tag,
             } => {
                 let mut rng = rand::thread_rng();
+                let group_idx = self.next_group_idx(tag.as_deref());
                 for i in 0..count {
                     let freq = self.decide_frequency(&method, landscape, &mut rng);
                     let phase = rng.random_range(0.0..std::f32::consts::TAU);
+                    let id = {
+                        let id = self.next_auto_id;
+                        self.next_auto_id += 1;
+                        id
+                    };
                     let cfg = AgentConfig::PureTone {
-                        id: base_id + i as u64,
                         freq,
                         amp,
                         phase: Some(phase),
                         lifecycle: lifecycle.clone(),
+                        tag: tag.clone(),
                     };
-                    let spawned = cfg.spawn(self.current_frame);
+                    let metadata = AgentMetadata {
+                        id,
+                        tag: tag.clone(),
+                        group_idx,
+                        member_idx: i,
+                    };
+                    let spawned = cfg.spawn(id, self.current_frame, metadata);
                     self.add_agent(spawned);
                 }
             }
-            Action::RemoveAgent { id } => self.remove_agent(id),
-            Action::SetFreq { id, freq_hz } => {
-                if let Some(a) = self.find_agent_mut(id) {
-                    if let Some(pt) = a.as_any_mut().downcast_mut::<PureToneAgent>() {
-                        pt.set_freq(freq_hz);
-                    } else {
-                        warn!("SetFreq: agent {id} is not a PureToneAgent");
-                    }
-                } else {
-                    warn!("SetFreq: agent {id} not found");
+            Action::RemoveAgent { target } => {
+                let ids = self.resolve_targets(&target);
+                for id in ids {
+                    self.remove_agent(id);
                 }
             }
-            Action::SetAmp { id, amp } => {
-                if let Some(a) = self.find_agent_mut(id) {
-                    if let Some(pt) = a.as_any_mut().downcast_mut::<PureToneAgent>() {
-                        pt.set_amp(amp);
+            Action::SetFreq { target, freq_hz } => {
+                let ids = self.resolve_targets(&target);
+                for id in ids {
+                    if let Some(a) = self.find_agent_mut(id) {
+                        if let Some(pt) = a.as_any_mut().downcast_mut::<PureToneAgent>() {
+                            pt.set_freq(freq_hz);
+                        } else {
+                            warn!("SetFreq: agent {id} is not a PureToneAgent");
+                        }
                     } else {
-                        warn!("SetAmp: agent {id} is not a PureToneAgent");
+                        warn!("SetFreq: agent {id} not found");
                     }
-                } else {
-                    warn!("SetAmp: agent {id} not found");
+                }
+            }
+            Action::SetAmp { target, amp } => {
+                let ids = self.resolve_targets(&target);
+                for id in ids {
+                    if let Some(a) = self.find_agent_mut(id) {
+                        if let Some(pt) = a.as_any_mut().downcast_mut::<PureToneAgent>() {
+                            pt.set_amp(amp);
+                        } else {
+                            warn!("SetAmp: agent {id} is not a PureToneAgent");
+                        }
+                    } else {
+                        warn!("SetAmp: agent {id} not found");
+                    }
                 }
             }
         }

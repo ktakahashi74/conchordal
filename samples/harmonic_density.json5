@@ -11,7 +11,6 @@
               type: "add_agent",
               agent: {
                 type: "pure_tone",
-                id: 1,
                 freq: 440.0,
                 amp: 0.25,
                 lifecycle: { type: "decay", initial_energy: 1.0, half_life_sec: 0.8 }
@@ -36,7 +35,7 @@
                 temperature: 0.7
               },
               count: 3,
-              base_id: 4000,
+              tag: "hdens",
               amp: 0.2,
               lifecycle: {
                 type: "sustain",
@@ -59,7 +58,7 @@
                 temperature: 0.7
               },
               count: 3,
-              base_id: 4100,
+              tag: "hdens",
               amp: 0.2,
               lifecycle: {
                 type: "sustain",
@@ -82,7 +81,7 @@
                 temperature: 0.7
               },
               count: 3,
-              base_id: 4200,
+              tag: "hdens",
               amp: 0.2,
               lifecycle: {
                 type: "sustain",
@@ -105,7 +104,7 @@
                 temperature: 0.7
               },
               count: 3,
-              base_id: 4300,
+              tag: "hdens",
               amp: 0.2,
               lifecycle: {
                 type: "sustain",

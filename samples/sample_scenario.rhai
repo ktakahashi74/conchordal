@@ -20,6 +20,6 @@ finish();
 // Repeat burst at 8s (will not execute if finish stops earlier)
 wait(3.0); // to 8.0s
 for i in 0..10 {
-    spawn("burst", #{ mode: "harmonicity", min_freq: 400.0, max_freq: 1200.0 }, #{ type: "decay", initial_energy: 0.8, half_life_sec: 0.3 }, 2, 0.15);
+    spawn_agents("burst", #{ mode: "harmonicity", min_freq: 400.0, max_freq: 1200.0 }, #{ type: "decay", initial_energy: 0.8, half_life_sec: 0.3 }, 2, 0.15);
     wait(0.15);
 }

@@ -3,7 +3,7 @@ use std::fs;
 use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, anyhow};
-use rhai::{Engine, EvalAltResult, Map, Position, FLOAT};
+use rhai::{Engine, EvalAltResult, FLOAT, Map, Position};
 use serde_json::{self, Value};
 
 use super::lifecycle::LifecycleConfig;
@@ -219,6 +219,19 @@ impl ScriptHost {
                 ctx.spawn(tag, method_map, life_map, count, amp as f32)
             },
         );
+        let ctx_for_spawn_alias = ctx.clone();
+        engine.register_fn(
+            "spawn_agents",
+            move |tag: &str,
+                  method_map: Map,
+                  life_map: Map,
+                  count: i64,
+                  amp: FLOAT|
+                  -> Result<(), Box<EvalAltResult>> {
+                let mut ctx = ctx_for_spawn_alias.lock().expect("lock script context");
+                ctx.spawn(tag, method_map, life_map, count, amp as f32)
+            },
+        );
 
         let ctx_for_add_agent = ctx.clone();
         engine.register_fn(
@@ -397,5 +410,63 @@ mod tests {
         assert_time_close(pad_time.expect("pad time"), 0.6);
         assert_time_close(after_time.expect("after time"), 0.3);
         assert_time_close(finish_time.expect("finish time"), 0.3);
+    }
+
+    #[test]
+    fn spawn_uses_relative_episode_time() {
+        let scenario = run_script(
+            r#"
+            section("alpha");
+            wait(1.2);
+            let method = #{ mode: "random_log_uniform", min_freq: 100.0, max_freq: 200.0 };
+            let life = #{ type: "decay", initial_energy: 1.0, half_life_sec: 0.5 };
+            spawn_agents("tag", method, life, 3, 0.25);
+        "#,
+        );
+
+        let ep = scenario.episodes.first().expect("episode exists");
+        assert_eq!(ep.name.as_deref(), Some("alpha"));
+        assert_time_close(ep.start_time, 0.0);
+        assert_eq!(ep.events.len(), 1);
+
+        let ev = &ep.events[0];
+        assert_time_close(ev.time, 1.2);
+        assert_eq!(ev.actions.len(), 1);
+        match &ev.actions[0] {
+            Action::SpawnAgents {
+                count,
+                amp,
+                lifecycle,
+                tag,
+                method: SpawnMethod::RandomLogUniform { min_freq, max_freq },
+            } => {
+                assert_eq!(*count, 3);
+                assert_time_close(*amp, 0.25);
+                assert_eq!(*min_freq, 100.0);
+                assert_eq!(*max_freq, 200.0);
+                assert!(matches!(lifecycle, LifecycleConfig::Decay { .. }));
+                assert_eq!(tag.as_deref(), Some("tag"));
+            }
+            other => panic!("unexpected action: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn episode_created_when_section_absent() {
+        let scenario = run_script(
+            r#"
+            add_agent("init", 330.0, 0.2, #{ type: "decay", initial_energy: 1.0, half_life_sec: 0.5 });
+            wait(0.3);
+            finish();
+        "#,
+        );
+
+        assert_eq!(scenario.episodes.len(), 1);
+        let ep = &scenario.episodes[0];
+        assert!(ep.name.is_none());
+        assert_time_close(ep.start_time, 0.0);
+        assert_eq!(ep.events.len(), 2);
+        assert_time_close(ep.events[0].time, 0.0);
+        assert_time_close(ep.events[1].time, 0.3);
     }
 }

@@ -22,7 +22,7 @@
 ## Build, Test, and Development Commands
 - Build (debug): `cargo build`
 - Run (release): `cargo run --release` (Recommended for real-time DSP performance)
-- Tests: `cargo test` (Includes DSP unit tests for kernel shapes and transform accuracy)
+- Tests: `cargo test`.  Run tests always after modifying code.
 - Format: `cargo fmt --all`
 - Lint: `cargo clippy -- -D warnings`
 

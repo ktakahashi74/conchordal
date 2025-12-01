@@ -18,6 +18,8 @@ pub struct EnvelopeConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Episode {
+    #[serde(default)]
+    pub name: Option<String>,
     pub start_time: f32,
     pub events: Vec<Event>,
 }

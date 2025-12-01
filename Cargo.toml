@@ -53,6 +53,7 @@ hound = "3.5"
 ringbuf = "0.4"
 approx = "0.5"
 json5 = "0.4.1"
+rhai = { version = "1.19", features = ["serde"] }
 
 [dev-dependencies]
 plotters = "0.3"

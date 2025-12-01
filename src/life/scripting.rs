@@ -1,0 +1,401 @@
+use std::collections::HashMap;
+use std::fs;
+use std::sync::{Arc, Mutex};
+
+use anyhow::{Context, anyhow};
+use rhai::{Engine, EvalAltResult, Map, Position, FLOAT};
+use serde_json::{self, Value};
+
+use super::lifecycle::LifecycleConfig;
+use super::scenario::{Action, AgentConfig, Episode, Event, Scenario, SpawnMethod};
+
+const SCRIPT_PRELUDE: &str = r#"
+// Rhai-side helper to run blocks in parallel time branches
+fn parallel(callback) {
+    push_time();
+    callback.call();
+    pop_time();
+}
+"#;
+
+#[derive(Debug, Clone)]
+pub struct ScriptContext {
+    pub cursor: f32,
+    pub episode_start_time: f32,
+    pub time_stack: Vec<f32>,
+    pub scenario: Scenario,
+    pub tag_counters: HashMap<String, usize>,
+}
+
+impl Default for ScriptContext {
+    fn default() -> Self {
+        Self {
+            cursor: 0.0,
+            episode_start_time: 0.0,
+            time_stack: Vec::new(),
+            scenario: Scenario {
+                episodes: Vec::new(),
+            },
+            tag_counters: HashMap::new(),
+        }
+    }
+}
+
+impl ScriptContext {
+    fn current_episode_mut(&mut self) -> &mut Episode {
+        if self.scenario.episodes.is_empty() {
+            self.scenario.episodes.push(Episode {
+                name: None,
+                start_time: self.episode_start_time,
+                events: Vec::new(),
+            });
+        }
+        self.scenario.episodes.last_mut().expect("episode exists")
+    }
+
+    pub fn section(&mut self, name: &str) {
+        let episode = Episode {
+            name: Some(name.to_string()),
+            start_time: self.cursor,
+            events: Vec::new(),
+        };
+        self.episode_start_time = self.cursor;
+        self.scenario.episodes.push(episode);
+    }
+
+    pub fn wait(&mut self, sec: f32) {
+        self.cursor += sec;
+    }
+
+    pub fn push_time(&mut self) {
+        self.time_stack.push(self.cursor);
+    }
+
+    pub fn pop_time(&mut self) {
+        if let Some(t) = self.time_stack.pop() {
+            self.cursor = t;
+        }
+    }
+
+    fn push_event(&mut self, actions: Vec<Action>) {
+        let rel_time = self.cursor - self.episode_start_time;
+        let episode = self.current_episode_mut();
+        episode.events.push(Event {
+            time: rel_time,
+            repeat: None,
+            actions,
+        });
+    }
+
+    pub fn spawn(
+        &mut self,
+        tag: &str,
+        method_map: Map,
+        life_map: Map,
+        count: i64,
+        amp: f32,
+    ) -> Result<(), Box<EvalAltResult>> {
+        let method = Self::from_map::<SpawnMethod>(method_map, "SpawnMethod")?;
+        let lifecycle = Self::from_map::<LifecycleConfig>(life_map, "LifecycleConfig")?;
+        let c = count.max(0) as usize;
+        let action = Action::SpawnAgents {
+            method,
+            count: c,
+            amp,
+            lifecycle,
+            tag: Some(tag.to_string()),
+        };
+        self.push_event(vec![action]);
+        Ok(())
+    }
+
+    pub fn add_agent(
+        &mut self,
+        tag: &str,
+        freq: f32,
+        amp: f32,
+        life_map: Map,
+    ) -> Result<(), Box<EvalAltResult>> {
+        let lifecycle = Self::from_map::<LifecycleConfig>(life_map, "LifecycleConfig")?;
+        let agent = AgentConfig::PureTone {
+            freq,
+            amp,
+            phase: None,
+            lifecycle,
+            tag: Some(tag.to_string()),
+        };
+        let action = Action::AddAgent { agent };
+        self.push_event(vec![action]);
+        Ok(())
+    }
+
+    pub fn set_freq(&mut self, target: &str, freq: f32) {
+        self.push_event(vec![Action::SetFreq {
+            target: target.to_string(),
+            freq_hz: freq,
+        }]);
+    }
+
+    pub fn set_amp(&mut self, target: &str, amp: f32) {
+        self.push_event(vec![Action::SetAmp {
+            target: target.to_string(),
+            amp,
+        }]);
+    }
+
+    pub fn remove(&mut self, target: &str) {
+        self.push_event(vec![Action::RemoveAgent {
+            target: target.to_string(),
+        }]);
+    }
+
+    pub fn finish(&mut self) {
+        self.push_event(vec![Action::Finish]);
+    }
+
+    pub fn print(&mut self, msg: &str) {
+        println!("[rhai] {}", msg);
+    }
+
+    fn from_map<T: serde::de::DeserializeOwned>(
+        map: Map,
+        name: &str,
+    ) -> Result<T, Box<EvalAltResult>> {
+        let val: Value = serde_json::to_value(map).map_err(|e| {
+            Box::new(EvalAltResult::ErrorRuntime(
+                format!("serialize map for {name}: {e}").into(),
+                Position::NONE,
+            ))
+        })?;
+        serde_json::from_value(val).map_err(|e| {
+            Box::new(EvalAltResult::ErrorRuntime(
+                format!("deserialize {name}: {e}").into(),
+                Position::NONE,
+            ))
+        })
+    }
+}
+
+pub struct ScriptHost;
+
+impl ScriptHost {
+    fn create_engine(ctx: Arc<Mutex<ScriptContext>>) -> Engine {
+        let mut engine = Engine::new();
+
+        let ctx_for_section = ctx.clone();
+        engine.register_fn("section", move |name: &str| {
+            let mut ctx = ctx_for_section.lock().expect("lock script context");
+            ctx.section(name);
+        });
+
+        let ctx_for_wait = ctx.clone();
+        engine.register_fn("wait", move |sec: FLOAT| {
+            let mut ctx = ctx_for_wait.lock().expect("lock script context");
+            ctx.wait(sec as f32);
+        });
+
+        let ctx_for_push_time = ctx.clone();
+        engine.register_fn("push_time", move || {
+            let mut ctx = ctx_for_push_time.lock().expect("lock script context");
+            ctx.push_time();
+        });
+
+        let ctx_for_pop_time = ctx.clone();
+        engine.register_fn("pop_time", move || {
+            let mut ctx = ctx_for_pop_time.lock().expect("lock script context");
+            ctx.pop_time();
+        });
+
+        let ctx_for_spawn = ctx.clone();
+        engine.register_fn(
+            "spawn",
+            move |tag: &str,
+                  method_map: Map,
+                  life_map: Map,
+                  count: i64,
+                  amp: FLOAT|
+                  -> Result<(), Box<EvalAltResult>> {
+                let mut ctx = ctx_for_spawn.lock().expect("lock script context");
+                ctx.spawn(tag, method_map, life_map, count, amp as f32)
+            },
+        );
+
+        let ctx_for_add_agent = ctx.clone();
+        engine.register_fn(
+            "add_agent",
+            move |tag: &str,
+                  freq: FLOAT,
+                  amp: FLOAT,
+                  life_map: Map|
+                  -> Result<(), Box<EvalAltResult>> {
+                let mut ctx = ctx_for_add_agent.lock().expect("lock script context");
+                ctx.add_agent(tag, freq as f32, amp as f32, life_map)
+            },
+        );
+
+        let ctx_for_set_freq = ctx.clone();
+        engine.register_fn("set_freq", move |target: &str, freq: FLOAT| {
+            let mut ctx = ctx_for_set_freq.lock().expect("lock script context");
+            ctx.set_freq(target, freq as f32);
+        });
+
+        let ctx_for_set_amp = ctx.clone();
+        engine.register_fn("set_amp", move |target: &str, amp: FLOAT| {
+            let mut ctx = ctx_for_set_amp.lock().expect("lock script context");
+            ctx.set_amp(target, amp as f32);
+        });
+
+        let ctx_for_remove = ctx.clone();
+        engine.register_fn("remove", move |target: &str| {
+            let mut ctx = ctx_for_remove.lock().expect("lock script context");
+            ctx.remove(target);
+        });
+
+        let ctx_for_finish = ctx.clone();
+        engine.register_fn("finish", move || {
+            let mut ctx = ctx_for_finish.lock().expect("lock script context");
+            ctx.finish();
+        });
+
+        let ctx_for_print = ctx;
+        engine.register_fn("print", move |msg: &str| {
+            let mut ctx = ctx_for_print.lock().expect("lock script context");
+            ctx.print(msg);
+        });
+
+        engine
+    }
+
+    pub fn load_script(path: &str) -> anyhow::Result<Scenario> {
+        let src = fs::read_to_string(path).with_context(|| format!("read script {path}"))?;
+        let ctx = Arc::new(Mutex::new(ScriptContext::default()));
+        let engine = ScriptHost::create_engine(ctx.clone());
+        let script_src = format!("{SCRIPT_PRELUDE}\n{src}");
+
+        engine
+            .eval::<()>(&script_src)
+            .map_err(|e| anyhow!(e.to_string()))
+            .with_context(|| format!("execute script {path}"))?;
+
+        let ctx_out = ctx.lock().expect("lock script context");
+        Ok(ctx_out.scenario.clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn run_script(src: &str) -> Scenario {
+        let ctx = Arc::new(Mutex::new(ScriptContext::default()));
+        let engine = ScriptHost::create_engine(ctx.clone());
+        let script_src = format!("{SCRIPT_PRELUDE}\n{src}");
+        engine.eval::<()>(&script_src).expect("script runs");
+        ctx.lock().expect("lock ctx").scenario.clone()
+    }
+
+    fn assert_time_close(actual: f32, expected: f32) {
+        let diff = (actual - expected).abs();
+        assert!(
+            diff < 1e-5,
+            "time mismatch: expected {expected}, got {actual}"
+        );
+    }
+
+    #[test]
+    fn section_sets_start_and_relative_times() {
+        let scenario = run_script(
+            r#"
+            section("intro");
+            add_agent("lead", 440.0, 0.2, #{ type: "decay", initial_energy: 1.0, half_life_sec: 0.5 });
+            wait(1.0);
+            section("break");
+            add_agent("hit", 880.0, 0.1, #{ type: "decay", initial_energy: 0.8, half_life_sec: 0.2 });
+            wait(0.5);
+            finish();
+        "#,
+        );
+
+        assert_eq!(scenario.episodes.len(), 2);
+
+        let intro = &scenario.episodes[0];
+        assert_eq!(intro.name.as_deref(), Some("intro"));
+        assert_time_close(intro.start_time, 0.0);
+        assert_eq!(intro.events.len(), 1);
+        assert_time_close(intro.events[0].time, 0.0);
+
+        let break_ep = &scenario.episodes[1];
+        assert_eq!(break_ep.name.as_deref(), Some("break"));
+        assert_time_close(break_ep.start_time, 1.0);
+        assert_eq!(break_ep.events.len(), 2);
+        let mut has_hit = false;
+        let mut has_finish = false;
+        for ev in &break_ep.events {
+            for action in &ev.actions {
+                match action {
+                    Action::AddAgent { agent } => {
+                        let AgentConfig::PureTone { tag, .. } = agent;
+                        if tag.as_deref() == Some("hit") {
+                            assert_time_close(ev.time, 0.0);
+                            has_hit = true;
+                        }
+                    }
+                    Action::Finish => {
+                        assert_time_close(ev.time, 0.5);
+                        has_finish = true;
+                    }
+                    _ => {}
+                }
+            }
+        }
+        assert!(has_hit, "expected add_agent event for hit");
+        assert!(has_finish, "expected finish event");
+    }
+
+    #[test]
+    fn parallel_restores_time_after_block() {
+        let scenario = run_script(
+            r#"
+            section("intro");
+            wait(0.1);
+            parallel(|| {
+                wait(0.5);
+                add_agent("pad", 200.0, 0.1, #{ type: "decay", initial_energy: 1.0, half_life_sec: 0.3 });
+            });
+            wait(0.2);
+            add_agent("after", 300.0, 0.1, #{ type: "decay", initial_energy: 1.0, half_life_sec: 0.3 });
+            finish();
+        "#,
+        );
+
+        let intro = &scenario
+            .episodes
+            .first()
+            .expect("intro episode should exist");
+        assert_eq!(intro.events.len(), 3);
+
+        let mut pad_time = None;
+        let mut after_time = None;
+        let mut finish_time = None;
+        for ev in &intro.events {
+            for action in &ev.actions {
+                match action {
+                    Action::AddAgent { agent } => {
+                        let AgentConfig::PureTone { tag, .. } = agent;
+                        match tag.as_deref() {
+                            Some("pad") => pad_time = Some(ev.time),
+                            Some("after") => after_time = Some(ev.time),
+                            _ => {}
+                        }
+                    }
+                    Action::Finish => finish_time = Some(ev.time),
+                    _ => {}
+                }
+            }
+        }
+
+        assert_time_close(pad_time.expect("pad time"), 0.6);
+        assert_time_close(after_time.expect("after time"), 0.3);
+        assert_time_close(finish_time.expect("finish time"), 0.3);
+    }
+}

@@ -7,9 +7,9 @@ use super::scenario::{Action, Episode, Scenario};
 use crate::core::landscape::LandscapeFrame;
 
 #[derive(Debug, Clone)]
-struct QueuedEvent {
-    time: f32,
-    actions: Vec<Action>,
+pub struct QueuedEvent {
+    pub time: f32,
+    pub actions: Vec<Action>,
 }
 
 #[derive(Debug)]
@@ -31,6 +31,18 @@ impl Conductor {
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
 
+        Self {
+            event_queue: events.into(),
+        }
+    }
+
+    pub fn from_events(events: Vec<QueuedEvent>) -> Self {
+        let mut events = events;
+        events.sort_by(|a, b| {
+            a.time
+                .partial_cmp(&b.time)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         Self {
             event_queue: events.into(),
         }

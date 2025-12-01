@@ -27,8 +27,8 @@
 - Lint: `cargo clippy -- -D warnings`
 
 ## Coding Style & Naming Conventions
+- **Comments**:  All comments must be in concise English.  Do not use Japanese in code comments.
 - **DSP Efficiency**: Prefer `f32`. Avoid allocations in the audio thread (`worker_loop`). Use `Vec::with_capacity` or pre-allocated ringbuffers.
-- **Math**: Use `f32::sin_cos` for phasors.
 - **Naming**: `snake_case` for modules/functions, `CamelCase` for structs/traits.
 
 ## Architecture Notes for Agents

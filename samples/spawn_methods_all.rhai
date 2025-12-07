@@ -1,6 +1,4 @@
-// Rhai version of spawn_methods_all.json5
-
-// seed tone
+// Demo all spawn modes in sequence
 add_agent("seed", 440.0, 0.25, #{ type: "decay", initial_energy: 1.0, half_life_sec: 0.8 });
 
 spawn_agents("rand_all", #{ mode: "random_log_uniform", min_freq: 220.0, max_freq: 880.0 }, #{ type: "decay", initial_energy: 1.0, half_life_sec: 0.5 }, 2, 0.2);

@@ -45,7 +45,7 @@ fn load_scenario_from_path(path: &str) -> Result<Scenario, String> {
         .to_ascii_lowercase();
     match ext.as_str() {
         "rhai" => ScriptHost::load_script(path)
-            .map_err(|e| format!("Failed to run scenario script {path}: {e}")),
+            .map_err(|e| format!("Failed to run scenario script {path}: {e:#}")),
         "json" | "json5" => {
             let contents = std::fs::read_to_string(path)
                 .map_err(|err| format!("Failed to read {path}: {err}"))?;
@@ -90,4 +90,8 @@ fn main() -> eframe::Result<()> {
         native_options,
         Box::new(|cc| Ok(Box::new(app::App::new(cc, args, stop_flag.clone())))),
     )
+    .map_err(|e| {
+        eprintln!("Error: {:?}", e);
+        e
+    })
 }

@@ -3,8 +3,7 @@ use std::fs;
 use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, anyhow};
-use rhai::{Engine, EvalAltResult, FLOAT, Map, Position};
-use serde_json::{self, Value};
+use rhai::{Dynamic, Engine, EvalAltResult, FLOAT, Map, Position};
 
 use super::lifecycle::LifecycleConfig;
 use super::scenario::{Action, AgentConfig, Episode, Event, Scenario, SpawnMethod};
@@ -153,23 +152,15 @@ impl ScriptContext {
         self.push_event(vec![Action::Finish]);
     }
 
-    pub fn print(&mut self, msg: &str) {
-        println!("[rhai] {}", msg);
-    }
-
     fn from_map<T: serde::de::DeserializeOwned>(
         map: Map,
         name: &str,
     ) -> Result<T, Box<EvalAltResult>> {
-        let val: Value = serde_json::to_value(map).map_err(|e| {
+        let dyn_map = Dynamic::from_map(map.clone());
+        rhai::serde::from_dynamic::<T>(&dyn_map).map_err(|e| {
+            let debug_map = format!("{:?}", map);
             Box::new(EvalAltResult::ErrorRuntime(
-                format!("serialize map for {name}: {e}").into(),
-                Position::NONE,
-            ))
-        })?;
-        serde_json::from_value(val).map_err(|e| {
-            Box::new(EvalAltResult::ErrorRuntime(
-                format!("deserialize {name}: {e}").into(),
+                format!("Error parsing {name}: {e} (input: {debug_map})").into(),
                 Position::NONE,
             ))
         })
@@ -181,6 +172,7 @@ pub struct ScriptHost;
 impl ScriptHost {
     fn create_engine(ctx: Arc<Mutex<ScriptContext>>) -> Engine {
         let mut engine = Engine::new();
+        engine.on_print(|msg| println!("[rhai] {msg}"));
 
         let ctx_for_section = ctx.clone();
         engine.register_fn("section", move |name: &str| {
@@ -270,12 +262,6 @@ impl ScriptHost {
             ctx.finish();
         });
 
-        let ctx_for_print = ctx;
-        engine.register_fn("print", move |msg: &str| {
-            let mut ctx = ctx_for_print.lock().expect("lock script context");
-            ctx.print(msg);
-        });
-
         engine
     }
 
@@ -285,10 +271,11 @@ impl ScriptHost {
         let engine = ScriptHost::create_engine(ctx.clone());
         let script_src = format!("{SCRIPT_PRELUDE}\n{src}");
 
-        engine
-            .eval::<()>(&script_src)
-            .map_err(|e| anyhow!(e.to_string()))
-            .with_context(|| format!("execute script {path}"))?;
+        if let Err(e) = engine.eval::<()>(&script_src) {
+            // Print structured error to help diagnose script issues (e.g., type mismatches).
+            println!("Debug script error: {:?}", e);
+            return Err(anyhow!(e.to_string())).with_context(|| format!("execute script {path}"));
+        }
 
         let ctx_out = ctx.lock().expect("lock script context");
         Ok(ctx_out.scenario.clone())
@@ -468,5 +455,12 @@ mod tests {
         assert_eq!(ep.events.len(), 2);
         assert_time_close(ep.events[0].time, 0.0);
         assert_time_close(ep.events[1].time, 0.3);
+    }
+
+    #[test]
+    fn sample_script_file_executes() {
+        let scenario = ScriptHost::load_script("samples/sample_scenario.rhai")
+            .expect("sample script should run");
+        assert!(!scenario.episodes.is_empty());
     }
 }

@@ -3,7 +3,7 @@ use super::scenario::{Action, AgentConfig, SpawnMethod};
 use crate::core::landscape::LandscapeFrame;
 use rand::{Rng, distr::Distribution, distr::weighted::WeightedIndex};
 use std::collections::HashMap;
-use tracing::warn;
+use tracing::{debug, warn};
 
 pub struct PopulationParams {
     pub initial_tones_hz: Vec<f32>,
@@ -399,7 +399,17 @@ impl Population {
                 agent.render_spectrum(&mut amps, fs, nfft, current_frame, dt_sec);
             }
         }
-        self.agents.retain(|a| a.is_alive());
+        let before_count = self.agents.len();
+        self.agents.retain(|agent| agent.is_alive());
+        let removed_count = before_count - self.agents.len();
+
+        if removed_count > 0 {
+            debug!(
+                "Cleaned up {} dead agents. Remaining: {}",
+                removed_count,
+                self.agents.len()
+            );
+        }
         amps
     }
 }

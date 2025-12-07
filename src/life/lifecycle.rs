@@ -8,6 +8,8 @@ pub enum LifecycleConfig {
     Decay {
         initial_energy: f32,
         half_life_sec: f32,
+        #[serde(default = "default_decay_attack")]
+        attack_sec: f32,
     },
     Sustain {
         initial_energy: f32,
@@ -22,7 +24,12 @@ impl LifecycleConfig {
             LifecycleConfig::Decay {
                 initial_energy,
                 half_life_sec,
-            } => Box::new(DecayLifecycle::new(initial_energy, half_life_sec)),
+                attack_sec,
+            } => Box::new(DecayLifecycle::new(
+                initial_energy,
+                half_life_sec,
+                attack_sec,
+            )),
             LifecycleConfig::Sustain {
                 initial_energy,
                 metabolism_rate,
@@ -42,27 +49,42 @@ pub trait Lifecycle: Send + Sync + std::fmt::Debug {
     fn is_alive(&self) -> bool;
 }
 
+pub fn default_decay_attack() -> f32 {
+    0.01
+}
+
 #[derive(Debug)]
 pub struct DecayLifecycle {
     energy: f32,
     lambda: f32,
+    attack_sec: f32,
 }
 
 impl DecayLifecycle {
-    pub fn new(initial_energy: f32, half_life_sec: f32) -> Self {
+    pub fn new(initial_energy: f32, half_life_sec: f32, attack_sec: f32) -> Self {
         let half_life_sec = half_life_sec.max(1e-6);
         let lambda = (0.5f32).ln() / half_life_sec;
         Self {
             energy: initial_energy.max(0.0),
             lambda,
+            attack_sec: attack_sec.max(1e-6),
         }
     }
 }
 
 impl Lifecycle for DecayLifecycle {
-    fn process(&mut self, dt: f32, _age: f32) -> f32 {
+    fn process(&mut self, dt: f32, age: f32) -> f32 {
         self.energy *= (self.lambda * dt).exp();
-        self.energy
+        if self.energy.abs() < 1e-8 {
+            self.energy = 0.0;
+        }
+        let attack_gain = (age / self.attack_sec).min(1.0);
+        let gain = self.energy * attack_gain;
+        if gain < 1e-6 {
+            0.0
+        } else {
+            gain
+        }
     }
 
     fn is_alive(&self) -> bool {
@@ -75,7 +97,6 @@ pub struct SustainLifecycle {
     energy: f32,
     metabolism_rate: f32,
     envelope: EnvelopeConfig,
-    fade_out_factor: f32,
     alive: bool,
 }
 
@@ -85,7 +106,6 @@ impl SustainLifecycle {
             energy: initial_energy.max(0.0),
             metabolism_rate,
             envelope,
-            fade_out_factor: 1.0,
             alive: true,
         }
     }
@@ -95,9 +115,13 @@ impl Lifecycle for SustainLifecycle {
     fn process(&mut self, dt: f32, age: f32) -> f32 {
         if self.energy > 0.0 {
             self.energy -= self.metabolism_rate * dt;
+            if self.energy < 0.0 {
+                self.energy = 0.0;
+            }
         }
-        if self.energy < 0.0 {
-            self.energy = 0.0;
+        if self.energy <= 0.0 {
+            self.alive = false;
+            return 0.0;
         }
 
         let env = &self.envelope;
@@ -114,17 +138,14 @@ impl Lifecycle for SustainLifecycle {
             sustain
         };
 
-        let mut energy_gain = self.energy;
-        if energy_gain <= 0.0 {
-            self.fade_out_factor *= 0.9;
-            energy_gain = self.fade_out_factor;
+        let gain = gain_env * self.energy;
+        if gain <= 1e-6 {
+            self.alive = false;
+            0.0
         } else {
-            self.fade_out_factor = 1.0;
+            self.alive = true;
+            gain
         }
-
-        let gain = gain_env * energy_gain;
-        self.alive = self.energy > 0.0 || gain > 1e-4;
-        gain
     }
 
     fn is_alive(&self) -> bool {

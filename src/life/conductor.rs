@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use tracing::debug;
+use tracing::info;
 
 use super::population::Population;
 use super::scenario::{Action, Episode, Scenario};
@@ -62,7 +62,7 @@ impl Conductor {
             }
 
             let ev = self.event_queue.pop_front().expect("front exists");
-            debug!("Dispatching event at t={}", ev.time);
+            info!("[t={:.6}] Dispatching event", ev.time);
             for action in ev.actions {
                 population.apply_action(action, landscape);
             }

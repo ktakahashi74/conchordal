@@ -3,7 +3,7 @@ use super::scenario::{Action, AgentConfig, SpawnMethod};
 use crate::core::landscape::LandscapeFrame;
 use rand::{Rng, distr::Distribution, distr::weighted::WeightedIndex};
 use std::collections::HashMap;
-use tracing::{debug, warn};
+use tracing::{info, warn};
 
 pub struct PopulationParams {
     pub initial_tones_hz: Vec<f32>,
@@ -32,6 +32,7 @@ impl Population {
                     lifecycle: crate::life::lifecycle::LifecycleConfig::Decay {
                         initial_energy: 1.0,
                         half_life_sec: 0.5,
+                        attack_sec: crate::life::lifecycle::default_decay_attack(),
                     },
                     tag: None,
                 };
@@ -404,10 +405,13 @@ impl Population {
         let removed_count = before_count - self.agents.len();
 
         if removed_count > 0 {
-            debug!(
-                "Cleaned up {} dead agents. Remaining: {}",
+            let t = current_frame as f32 * dt_sec;
+            info!(
+                "[t={:.6}] Cleaned up {} dead agents. Remaining: {} (frame_idx={})",
+                t,
                 removed_count,
-                self.agents.len()
+                self.agents.len(),
+                current_frame
             );
         }
         amps

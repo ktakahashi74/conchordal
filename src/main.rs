@@ -13,6 +13,7 @@ use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
+use tracing_subscriber::EnvFilter;
 
 use crate::life::scenario::Scenario;
 use crate::life::scripting::ScriptHost;
@@ -57,6 +58,15 @@ fn load_scenario_from_path(path: &str) -> Result<Scenario, String> {
 }
 
 fn main() -> eframe::Result<()> {
+    // Initialize tracing/logging (honors RUST_LOG).
+    // Use an info default when RUST_LOG is unset; no wall-clock timestamps (we log sim time instead).
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_target(false)
+        .without_time()
+        .try_init();
+
     let args = Args::parse();
 
     if args.serialize_json5 {

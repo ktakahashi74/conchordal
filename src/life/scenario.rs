@@ -82,12 +82,13 @@ impl AgentConfig {
                 lifecycle,
                 ..
             } => {
+                let lifecycle = lifecycle.clone().create_lifecycle();
                 let mut agent = PureToneAgent::new(
                     assigned_id,
                     *freq,
                     *amp,
                     start_frame,
-                    lifecycle.clone().create_lifecycle(),
+                    lifecycle,
                     metadata,
                 );
                 if let Some(p) = phase {
@@ -113,6 +114,7 @@ mod tests {
             lifecycle: LifecycleConfig::Decay {
                 initial_energy: 1.0,
                 half_life_sec: 0.5,
+                attack_sec: crate::life::lifecycle::default_decay_attack(),
             },
             tag: Some("test".into()),
         };

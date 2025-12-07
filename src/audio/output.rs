@@ -2,6 +2,7 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
 use ringbuf::traits::*;
 use ringbuf::{HeapCons, HeapProd, HeapRb};
+use tracing::debug;
 
 /// 出力デバイスに接続するモジュール
 pub struct AudioOutput {
@@ -34,8 +35,6 @@ impl AudioOutput {
             .build_output_stream(
                 &config,
                 move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-                    eprintln!("CPAL callback: requested {} samples", data.len());
-
                     let mut frames_filled = 0;
                     let n_frames = data.len() / channels as usize;
 
@@ -96,7 +95,7 @@ impl AudioOutput {
 impl Drop for AudioOutput {
     fn drop(&mut self) {
         if self.stream.is_some() {
-            eprintln!("AudioOutput drop: stopping CPAL stream.");
+            debug!("AudioOutput drop: stopping CPAL stream.");
         }
         self.stream.take();
     }

@@ -108,14 +108,6 @@ pub fn main_window(ctx: &egui::Context, frame: &UiFrame) {
             });
 
             ui.separator();
-            eprintln!(
-                "DEBUG: len(freqs)={}, len(R)={}, len(C)={}, len(K)={}",
-                frame.landscape.space.n_bins(),
-                frame.landscape.r_last.len(),
-                frame.landscape.h_last.len(),
-                frame.landscape.c_last.len()
-            );
-
             // === Spectrum ===
             ui.vertical(|ui| {
                 ui.heading("Synth Spectrum");

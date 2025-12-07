@@ -92,17 +92,19 @@ impl AudioAgent for PureToneAgent {
     }
 
     fn render_wave(&mut self, buffer: &mut [f32], fs: f32, current_frame: u64, dt_sec: f32) {
-        let age = current_frame.saturating_sub(self.start_frame) as f32 * dt_sec;
-        let gain = self.lifecycle.process(dt_sec, age);
-        self.last_gain = gain;
+        let mut age = current_frame.saturating_sub(self.start_frame) as f32 * dt_sec;
+        let dt_per_sample = dt_sec / buffer.len() as f32;
         let omega = 2.0 * std::f32::consts::PI * self.freq_hz / fs;
         for s in buffer.iter_mut() {
+            let gain = self.lifecycle.process(dt_per_sample, age);
+            self.last_gain = gain;
             let sin = self.phase.sin();
             *s += self.amp * gain * sin;
             self.phase = self.phase + omega;
             if self.phase > std::f32::consts::TAU {
                 self.phase -= std::f32::consts::TAU;
             }
+            age += dt_per_sample;
         }
     }
 
@@ -151,6 +153,7 @@ mod tests {
         let lifecycle = LifecycleConfig::Decay {
             initial_energy: 1.0,
             half_life_sec: 0.2,
+            attack_sec: crate::life::lifecycle::default_decay_attack(),
         }
         .create_lifecycle();
         let metadata = AgentMetadata {
@@ -167,8 +170,8 @@ mod tests {
 
         let mut buf = vec![0.0f32; 1];
         agent.render_wave(&mut buf, fs, 0, dt_sec);
-        // gain should be sqrt(0.5) ≈ 0.707
-        approx_eq(buf[0], 0.707, 1e-3);
+        // With attack, first sample should start near zero.
+        approx_eq(buf[0], 0.0, 1e-3);
 
         agent.set_phase(std::f32::consts::FRAC_PI_2);
         let mut buf = vec![0.0f32; 1];

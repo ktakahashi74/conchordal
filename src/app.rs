@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 use tracing::*;
 
 use crossbeam_channel::{Receiver, Sender, bounded};
+use ringbuf::traits::Observer;
 
 use crate::audio::writer::WavOutput;
 use crate::core::harmonicity_kernel::HarmonicityKernel;
@@ -141,7 +142,7 @@ impl App {
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         if self.exiting.load(Ordering::SeqCst) {
-            eprintln!("SIGINT received: closing window.");
+            debug!("SIGINT received: closing window.");
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             return;
         }
@@ -157,7 +158,7 @@ impl eframe::App for App {
 
 impl Drop for App {
     fn drop(&mut self) {
-        eprintln!("App drop. Finalizing..");
+        debug!("App drop. Finalizing..");
 
         self.wav_tx.take();
 
@@ -205,8 +206,6 @@ fn worker_loop(
         space,
     ));
 
-    let mut next_deadline = Instant::now();
-
     let nfft = nsgt.nfft();
     let hop = nsgt.hop();
     let n_bins = nfft / 2 + 1;
@@ -220,6 +219,11 @@ fn worker_loop(
 
     let mut current_time: f32 = 0.0;
     let mut frame_idx: u64 = 0;
+    let mut last_clip_log = Instant::now();
+    let mut interval_start = Instant::now();
+    let mut min_occupancy: Option<usize> = None;
+    let mut max_peak: f32 = 0.0;
+    let mut slow_chunks: u32 = 0;
 
     loop {
         if exiting.load(Ordering::SeqCst) {
@@ -227,61 +231,127 @@ fn worker_loop(
             break;
         }
 
-        pop.set_current_frame(frame_idx);
-        next_deadline += hop_duration;
+        if audio_prod.is_none() {
+            thread::sleep(Duration::from_millis(10));
+            continue;
+        }
 
-        conductor.dispatch_until(current_time, frame_idx, &current_landscape, &mut pop);
+        let prod = audio_prod.as_mut().expect("audio producer exists");
 
-        // 1) population → waveform
-        let time_chunk = pop.process_audio(hop, fs, frame_idx, hop_duration.as_secs_f32());
+        // Diagnostics: monitor buffer occupancy (producer side).
+        let free = prod.vacant_len();
+        let cap = prod.capacity().get();
+        let occ = cap.saturating_sub(free);
+        min_occupancy = Some(min_occupancy.map_or(occ, |m| m.min(occ)));
 
-        // send out audio signal
-        if let Some(prod) = audio_prod.as_mut() {
+        let mut produced_any = false;
+        while prod.vacant_len() >= hop {
+            produced_any = true;
+            pop.set_current_frame(frame_idx);
+
+            let t_start = Instant::now();
+            conductor.dispatch_until(current_time, frame_idx, &current_landscape, &mut pop);
+
+            let time_chunk =
+                pop.process_audio(hop, fs, frame_idx, hop_duration.as_secs_f32());
+
+            if last_clip_log.elapsed() > Duration::from_millis(200) {
+                if let Some(peak) = time_chunk
+                    .iter()
+                    .map(|v| v.abs())
+                    .max_by(|a, b| a.total_cmp(b))
+                {
+                    max_peak = max_peak.max(peak);
+                    if peak > 0.98 {
+                        warn!(
+                            "[t={:.6}] Audio peak high: {:.3} at frame_idx={}. Consider more headroom.",
+                            current_time,
+                            peak,
+                            frame_idx
+                        );
+                        last_clip_log = Instant::now();
+                    } else if peak > 0.9 {
+                        warn!(
+                            "[t={:.6}] Audio peak nearing clip: {:.3} at frame_idx={}",
+                            current_time,
+                            peak,
+                            frame_idx
+                        );
+                        last_clip_log = Instant::now();
+                    }
+                }
+            }
+
             AudioOutput::push_samples(prod, &time_chunk);
+
+            if let Some(tx) = &wav_tx {
+                let _ = tx.try_send(time_chunk.clone());
+            }
+
+            let body =
+                pop.process_frame(frame_idx, n_bins, fs, nfft, hop_duration.as_secs_f32());
+            let lframe = landscape.process_precomputed_spectrum(&body);
+            current_landscape = lframe.clone();
+
+            let ui_frame = UiFrame {
+                wave: WaveFrame {
+                    fs,
+                    samples: time_chunk,
+                },
+                spec: SpecFrame {
+                    spec_hz: lframe.space.centers_hz.clone(),
+                    amps: lframe.amps_last.clone(),
+                },
+                landscape: lframe,
+            };
+            let _ = ui_tx.try_send(ui_frame);
+
+            if pop.abort_requested || (conductor.is_done() && pop.agents.is_empty()) {
+                info!("[t={:.6}] Scenario finished. Exiting.", current_time);
+                exiting.store(true, Ordering::SeqCst);
+                break;
+            }
+
+            current_time += hop_duration.as_secs_f32();
+            frame_idx += 1;
+
+            let elapsed = t_start.elapsed();
+            if elapsed > hop_duration {
+                slow_chunks += 1;
+                warn!(
+                    "[t={:.6}] Audio chunk compute slow: {:?} (hop {:?}) frame_idx={}",
+                    current_time,
+                    elapsed,
+                    hop_duration,
+                    frame_idx
+                );
+            }
         }
 
-        if let Some(tx) = &wav_tx {
-            let _ = tx.try_send(time_chunk.clone());
-        }
-
-        // 2) spectral body for landscape
-        let body = pop.process_frame(frame_idx, n_bins, fs, nfft, hop_duration.as_secs_f32());
-
-        // 3) landscape update using painted spectrum
-        let lframe = landscape.process_precomputed_spectrum(&body);
-        current_landscape = lframe.clone();
-
-        // 4) package for UI
-        let ui_frame = UiFrame {
-            wave: WaveFrame {
-                fs,
-                samples: time_chunk,
-            },
-            spec: SpecFrame {
-                spec_hz: lframe.space.centers_hz.clone(),
-                amps: lframe.amps_last.clone(),
-            },
-            landscape: lframe,
-        };
-        let _ = ui_tx.try_send(ui_frame);
-
-        // Check for scenario completion or explicit finish
-        if pop.abort_requested || (conductor.is_done() && pop.agents.is_empty()) {
-            info!("Scenario finished. Exiting.");
-            exiting.store(true, Ordering::SeqCst);
+        if exiting.load(Ordering::SeqCst) {
             break;
         }
 
-        // Simple timing
-        let now = Instant::now();
-        if now < next_deadline {
-            std::thread::sleep(next_deadline - now);
-        } else {
-            next_deadline = now;
-            trace!("worker overrun");
+        if !produced_any {
+            thread::sleep(Duration::from_millis(1));
         }
 
-        current_time += hop_duration.as_secs_f32();
-        frame_idx += 1;
+        if interval_start.elapsed() > Duration::from_secs(1) {
+            if let Some(min_occ) = min_occupancy.take() {
+                let cap = prod.capacity().get();
+                debug!(
+                    "[t={:.6}] Audio stats: min_occ={}, cap={}, hop={}, max_peak={:.3}, slow_chunks={}",
+                    current_time,
+                    min_occ,
+                    cap,
+                    hop,
+                    max_peak,
+                    slow_chunks
+                );
+            }
+            max_peak = 0.0;
+            slow_chunks = 0;
+            interval_start = Instant::now();
+        }
     }
 }

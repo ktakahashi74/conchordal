@@ -23,16 +23,16 @@ let life = #{
 section("stream");
 
 // Seed tone so density has something to latch onto
-spawn_agents("base", method, life, 1, 0.2);
+spawn_agents("base", method, life, 1, 0.14);
 wait(0.25);
 
 // 50-note stream
 for i in 0..50 {
-    spawn_agents("voice", method, life, 1, 0.15);
+    spawn_agents("voice", method, life, 1, 0.08);
 
     // Reinforce base every 10 notes to keep the field consonant
     if i % 10 == 0 {
-        spawn_agents("base_layer", method, life, 1, 0.2);
+        spawn_agents("base_layer", method, life, 1, 0.12);
     }
 
     wait(0.25);

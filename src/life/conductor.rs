@@ -62,7 +62,8 @@ impl Conductor {
             }
 
             let ev = self.event_queue.pop_front().expect("front exists");
-            info!("[t={:.6}] Dispatching event", ev.time);
+            let action_descs: Vec<String> = ev.actions.iter().map(ToString::to_string).collect();
+            info!("[t={:.3}] Event: {}", ev.time, action_descs.join(" | "));
             for action in ev.actions {
                 population.apply_action(action, landscape);
             }

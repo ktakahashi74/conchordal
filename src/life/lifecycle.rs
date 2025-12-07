@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::scenario::EnvelopeConfig;
+use std::fmt;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -39,6 +40,35 @@ impl LifecycleConfig {
                 metabolism_rate,
                 envelope,
             )),
+        }
+    }
+}
+
+impl fmt::Display for LifecycleConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            LifecycleConfig::Decay {
+                initial_energy,
+                half_life_sec,
+                attack_sec,
+            } => write!(
+                f,
+                "lifecycle=decay(init={:.2}, half={:.3}s, attack={:.3}s)",
+                initial_energy, half_life_sec, attack_sec
+            ),
+            LifecycleConfig::Sustain {
+                initial_energy,
+                metabolism_rate,
+                envelope,
+            } => write!(
+                f,
+                "lifecycle=sustain(init={:.2}, metab={:.3}/s, env=[atk={:.3}s, dec={:.3}s, sus={:.2}])",
+                initial_energy,
+                metabolism_rate,
+                envelope.attack_sec,
+                envelope.decay_sec,
+                envelope.sustain_level
+            ),
         }
     }
 }

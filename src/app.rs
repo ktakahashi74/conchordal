@@ -17,6 +17,7 @@ use crate::core::log2space::Log2Space;
 use crate::core::nsgt_kernel::{NsgtKernelLog2, NsgtLog2Config};
 use crate::core::nsgt_rt::RtNsgtKernelLog2;
 use crate::core::roughness_kernel::{KernelParams, RoughnessKernel};
+use crate::life::analysis_worker;
 use crate::life::conductor::Conductor;
 use crate::life::population::{Population, PopulationParams};
 use crate::life::scenario::Scenario;
@@ -66,6 +67,51 @@ impl App {
             initial_tones_hz: vec![440.0],
             amplitude: 0.0,
         });
+
+        // Analysis/NSGT setup
+        let fs: f32 = 48_000.0;
+        let space = Log2Space::new(100.0, 8000.0, 200);
+        let lparams = LandscapeParams {
+            fs,
+            max_hist_cols: 256,
+            alpha: 0.0,
+            roughness_kernel: RoughnessKernel::new(KernelParams::default(), 0.005), // ΔERB LUT step
+            harmonicity_kernel: HarmonicityKernel::new(&space, HarmonicityParams::default()),
+            loudness_exp: 0.23, // Zwicker
+            tau_ms: 80.0,
+            ref_power: 1e-6,
+            roughness_k: 0.1,
+        };
+        let nfft = 16_384usize;
+        let nsgt = RtNsgtKernelLog2::new(NsgtKernelLog2::new(
+            NsgtLog2Config {
+                fs,
+                overlap: 0.5,
+                nfft_override: Some(nfft),
+            },
+            space,
+        ));
+        let hop = nsgt.hop();
+        let hop_duration = Duration::from_secs_f32(hop as f32 / fs);
+        let n_bins = nfft / 2 + 1;
+
+        let landscape = Landscape::new(lparams, nsgt.clone());
+
+        // Analysis pipeline channels
+        let (audio_to_analysis_tx, audio_to_analysis_rx) = bounded::<(u64, Vec<f32>)>(64);
+        let (landscape_from_analysis_tx, landscape_from_analysis_rx) =
+            bounded::<(u64, LandscapeFrame)>(4);
+
+        // Spawn analysis thread
+        {
+            let landscape = landscape;
+            std::thread::Builder::new()
+                .name("analysis".into())
+                .spawn(move || {
+                    analysis_worker::run(landscape, audio_to_analysis_rx, landscape_from_analysis_tx)
+                })
+                .expect("spawn analysis worker");
+        }
 
         let path = args.scenario_path.clone();
         let ext = Path::new(&path)
@@ -118,6 +164,13 @@ impl App {
                         audio_prod,
                         wav_tx_for_worker,
                         stop_flag_worker,
+                        audio_to_analysis_tx,
+                        landscape_from_analysis_rx,
+                        hop,
+                        hop_duration,
+                        fs,
+                        n_bins,
+                        nfft,
                     )
                 })
                 .expect("spawn worker"),
@@ -178,44 +231,15 @@ fn worker_loop(
     mut audio_prod: Option<ringbuf::HeapProd<f32>>,
     wav_tx: Option<Sender<Vec<f32>>>,
     exiting: Arc<AtomicBool>,
+    audio_to_analysis_tx: Sender<(u64, Vec<f32>)>,
+    landscape_from_analysis_rx: Receiver<(u64, LandscapeFrame)>,
+    hop: usize,
+    hop_duration: Duration,
+    fs: f32,
+    n_bins: usize,
+    nfft: usize,
 ) {
-    // --- Parameters ---
-    let fs: f32 = 48_000.0;
-
-    // === NSGT (log2) analyzer & Landscape parameters ===
-    let space = Log2Space::new(100.0, 8000.0, 200);
-
-    let lparams = LandscapeParams {
-        fs,
-        max_hist_cols: 256,
-        alpha: 0.0,
-        roughness_kernel: RoughnessKernel::new(KernelParams::default(), 0.005), // ΔERB LUT step
-        harmonicity_kernel: HarmonicityKernel::new(&space, HarmonicityParams::default()),
-        loudness_exp: 0.23, // Zwicker
-        tau_ms: 80.0,
-        ref_power: 1e-6,
-        roughness_k: 0.1,
-    };
-
-    let nsgt = RtNsgtKernelLog2::new(NsgtKernelLog2::new(
-        NsgtLog2Config {
-            fs,
-            overlap: 0.5,
-            nfft_override: Some(16384),
-        },
-        space,
-    ));
-
-    let nfft = nsgt.nfft();
-    let hop = nsgt.hop();
-    let n_bins = nfft / 2 + 1;
-
-    println!("nfft {nfft}, hop {hop}");
-
-    let hop_duration = Duration::from_secs_f32(hop as f32 / fs);
-
-    let mut landscape = Landscape::new(lparams, nsgt);
-    let mut current_landscape: LandscapeFrame = landscape.snapshot();
+    let mut current_landscape: LandscapeFrame = LandscapeFrame::default();
 
     let mut current_time: f32 = 0.0;
     let mut frame_idx: u64 = 0;
@@ -224,6 +248,7 @@ fn worker_loop(
     let mut min_occupancy: Option<usize> = None;
     let mut max_peak: f32 = 0.0;
     let mut slow_chunks: u32 = 0;
+    let mut last_lag_warn = Instant::now();
 
     loop {
         if exiting.load(Ordering::SeqCst) {
@@ -254,6 +279,10 @@ fn worker_loop(
 
             let time_chunk =
                 pop.process_audio(hop, fs, frame_idx, hop_duration.as_secs_f32());
+
+            // Build high-resolution spectrum for analysis (linear nfft, mapped to log space in worker).
+            let spectrum_body =
+                pop.process_frame(frame_idx, n_bins, fs, nfft, hop_duration.as_secs_f32());
 
             if last_clip_log.elapsed() > Duration::from_millis(200) {
                 if let Some(peak) = time_chunk
@@ -288,10 +317,22 @@ fn worker_loop(
                 let _ = tx.try_send(time_chunk.clone());
             }
 
-            let body =
-                pop.process_frame(frame_idx, n_bins, fs, nfft, hop_duration.as_secs_f32());
-            let lframe = landscape.process_precomputed_spectrum(&body);
-            current_landscape = lframe.clone();
+            let _ = audio_to_analysis_tx.try_send((frame_idx, spectrum_body));
+
+            while let Ok((analyzed_id, lframe)) = landscape_from_analysis_rx.try_recv() {
+                current_landscape = lframe;
+                let lag = frame_idx.saturating_sub(analyzed_id);
+                if lag >= 2 && last_lag_warn.elapsed() > Duration::from_secs(1) {
+                    warn!(
+                        "[t={:.3}] Analysis lag: {} frames (Audio={}, Analysis={})",
+                        current_time,
+                        lag,
+                        frame_idx,
+                        analyzed_id
+                    );
+                    last_lag_warn = Instant::now();
+                }
+            }
 
             let ui_frame = UiFrame {
                 wave: WaveFrame {
@@ -299,10 +340,10 @@ fn worker_loop(
                     samples: time_chunk,
                 },
                 spec: SpecFrame {
-                    spec_hz: lframe.space.centers_hz.clone(),
-                    amps: lframe.amps_last.clone(),
+                    spec_hz: current_landscape.space.centers_hz.clone(),
+                    amps: current_landscape.amps_last.clone(),
                 },
-                landscape: lframe,
+                landscape: current_landscape.clone(),
             };
             let _ = ui_tx.try_send(ui_frame);
 

@@ -5,3 +5,4 @@ pub mod meta;
 pub mod population;
 pub mod scenario;
 pub mod scripting;
+pub mod analysis_worker;

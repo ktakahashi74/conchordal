@@ -89,6 +89,13 @@ impl Landscape {
 
     /// Process one hop of samples (length = hop). Real-time streaming entry point.
     pub fn process_frame(&mut self, x_frame: &[f32]) -> LandscapeFrame {
+        self.update_spectrum(x_frame);
+        self.compute_potentials();
+        self.snapshot()
+    }
+
+    /// Update spectrum state (NSGT + normalization) without computing potentials.
+    pub fn update_spectrum(&mut self, x_frame: &[f32]) {
         let fs = self.params.fs;
         let dt_sec = (x_frame.len() as f32) / fs;
 
@@ -98,53 +105,42 @@ impl Landscape {
         // === 2. Psychoacoustic normalization ===
         let norm_env = self.normalize(&envelope, dt_sec);
         self.amps_last.clone_from(&norm_env);
+    }
 
-        // === 3. Roughness potential R ===
+    /// Compute potentials from the current normalized spectrum.
+    pub fn compute_potentials(&mut self) {
+        if self.amps_last.is_empty() {
+            return;
+        }
         let space = self.nsgt_rt.space();
+
+        // Roughness potential R
         let (r, r_total) = self
             .params
             .roughness_kernel
-            .potential_r_from_log2_spectrum(&norm_env, space);
+            .potential_r_from_log2_spectrum(&self.amps_last, space);
 
-        println!("{r_total}");
-
-        // === 4. Harmonicity potential C ===
+        // Harmonicity potential C
         let (h, _norm) = self
             .params
             .harmonicity_kernel
-            .potential_h_from_log2_spectrum(&norm_env, space);
-        //.potential_h_with_freq_gate(&norm_env, space);
+            .potential_h_from_log2_spectrum(&self.amps_last, space);
 
-        // === 5. Combined potential K ===
-        //let c: Vec<f32> = r.iter().zip(&h).map(|(ri, hi)| hi * (1.0 - ri)).collect();
-        //        let c: Vec<f32> = r.iter().zip(&h).map(|(ri, hi)| hi - ri).collect();
-
+        // Combined potential K (here: C - D_index)
         let k = self.params.roughness_k.max(1e-6);
         let denom_inv = 1.0 / (r_total + k);
-
         let c: Vec<f32> = r
             .iter()
             .zip(&h)
             .map(|(ri, hi)| {
                 let d_index = ri * denom_inv;
-                //hi * (1.0 - d_index)
                 hi - d_index
             })
             .collect();
 
-        // === 6. Update state ===
         self.last_r.clone_from(&r);
         self.last_h.clone_from(&h);
         self.last_c.clone_from(&c);
-
-        LandscapeFrame {
-            fs,
-            space: space.clone(),
-            r_last: r,
-            h_last: h,
-            c_last: c,
-            amps_last: self.amps_last.clone(),
-        }
     }
 
     /// Process a precomputed spectral body (already in frequency domain).

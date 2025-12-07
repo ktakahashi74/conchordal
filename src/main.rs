@@ -10,8 +10,8 @@ mod ui;
 use clap::Parser;
 use std::path::Path;
 use std::sync::{
-    Arc,
     atomic::{AtomicBool, Ordering},
+    Arc,
 };
 use tracing_subscriber::EnvFilter;
 
@@ -64,6 +64,7 @@ fn main() -> eframe::Result<()> {
     let _ = tracing_subscriber::fmt()
         .with_env_filter(filter)
         .with_target(false)
+        .with_level(true)
         .without_time()
         .try_init();
 

@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
 use crate::life::individual::AgentMetadata;
 use crate::life::individual::{AudioAgent, PureToneAgent};
@@ -100,6 +101,27 @@ impl AgentConfig {
     }
 }
 
+impl fmt::Display for AgentConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AgentConfig::PureTone {
+                freq,
+                amp,
+                tag,
+                lifecycle,
+                ..
+            } => {
+                let tag_str = tag.as_deref().unwrap_or("-");
+                write!(
+                    f,
+                    "PureTone(tag={}, freq={:.1} Hz, amp={:.3}, {})",
+                    tag_str, freq, amp, lifecycle
+                )
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -165,6 +187,36 @@ pub enum Action {
     Finish,
 }
 
+impl fmt::Display for Action {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Action::AddAgent { agent } => write!(f, "AddAgent {}", agent),
+            Action::SpawnAgents {
+                method,
+                count,
+                amp,
+                lifecycle,
+                tag,
+            } => {
+                let tag_str = tag.as_deref().unwrap_or("-");
+                write!(
+                    f,
+                    "SpawnAgents tag={} count={} amp={:.3} {} {}",
+                    tag_str, count, amp, method, lifecycle
+                )
+            }
+            Action::RemoveAgent { target } => write!(f, "RemoveAgent target={}", target),
+            Action::SetFreq { target, freq_hz } => {
+                write!(f, "SetFreq target={} freq={:.2} Hz", target, freq_hz)
+            }
+            Action::SetAmp { target, amp } => {
+                write!(f, "SetAmp target={} amp={:.3}", target, amp)
+            }
+            Action::Finish => write!(f, "Finish"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "mode", rename_all = "snake_case")]
 pub enum SpawnMethod {
@@ -184,4 +236,41 @@ pub enum SpawnMethod {
     SpectralGap { min_freq: f32, max_freq: f32 },
     /// 単純なランダム（オクターブ等間隔分布）
     RandomLogUniform { min_freq: f32, max_freq: f32 },
+}
+
+impl fmt::Display for SpawnMethod {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SpawnMethod::Harmonicity { min_freq, max_freq } => {
+                write!(f, "method=harmonicity({:.1}-{:.1} Hz)", min_freq, max_freq)
+            }
+            SpawnMethod::LowHarmonicity { min_freq, max_freq } => write!(
+                f,
+                "method=low_harmonicity({:.1}-{:.1} Hz)",
+                min_freq, max_freq
+            ),
+            SpawnMethod::HarmonicDensity {
+                min_freq,
+                max_freq,
+                temperature,
+            } => write!(
+                f,
+                "method=harmonic_density({:.1}-{:.1} Hz, temp={})",
+                min_freq,
+                max_freq,
+                temperature.unwrap_or(1.0)
+            ),
+            SpawnMethod::ZeroCrossing { min_freq, max_freq } => {
+                write!(f, "method=zero_crossing({:.1}-{:.1} Hz)", min_freq, max_freq)
+            }
+            SpawnMethod::SpectralGap { min_freq, max_freq } => {
+                write!(f, "method=spectral_gap({:.1}-{:.1} Hz)", min_freq, max_freq)
+            }
+            SpawnMethod::RandomLogUniform { min_freq, max_freq } => write!(
+                f,
+                "method=random_log_uniform({:.1}-{:.1} Hz)",
+                min_freq, max_freq
+            ),
+        }
+    }
 }

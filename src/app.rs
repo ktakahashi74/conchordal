@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::path::Path;
 use std::sync::{
     Arc,
@@ -29,6 +30,8 @@ pub struct App {
     ui_frame_rx: Receiver<UiFrame>,
     _ctrl_tx: Sender<()>, // placeholder
     last_frame: UiFrame,
+    ui_queue: VecDeque<UiFrame>,
+    visual_delay_frames: usize,
     _audio: Option<AudioOutput>,
     wav_tx: Option<Sender<Vec<f32>>>,
     worker_handle: Option<std::thread::JoinHandle<()>>,
@@ -148,7 +151,7 @@ impl App {
             }
         };
 
-        // worker に渡すのは wav_tx.clone()
+        // Give the worker its own handle if WAV output is enabled.
         let wav_tx_for_worker = if args.wav.is_some() {
             Some(wav_tx.clone())
         } else {
@@ -187,6 +190,8 @@ impl App {
             ui_frame_rx,
             _ctrl_tx: ctrl_tx,
             last_frame: UiFrame::default(),
+            ui_queue: VecDeque::new(),
+            visual_delay_frames: 1,
             _audio: audio_out,
             wav_tx: Some(wav_tx),
             wav_handle,
@@ -205,8 +210,13 @@ impl eframe::App for App {
         }
 
         // Pull newest frame (drain to latest)
-        while let Ok(f) = self.ui_frame_rx.try_recv() {
-            self.last_frame = f;
+        while let Ok(frame) = self.ui_frame_rx.try_recv() {
+            self.ui_queue.push_back(frame);
+        }
+        if self.ui_queue.len() > self.visual_delay_frames {
+            if let Some(frame) = self.ui_queue.pop_front() {
+                self.last_frame = frame;
+            }
         }
         crate::ui::windows::main_window(ctx, &self.last_frame);
         ctx.request_repaint_after(std::time::Duration::from_millis(16));

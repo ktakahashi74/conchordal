@@ -10,12 +10,19 @@ pub struct PopulationParams {
     pub amplitude: f32,
 }
 
+#[derive(Default)]
+struct WorkBuffers {
+    audio: Vec<f32>,
+    amps: Vec<f32>,
+}
+
 pub struct Population {
     pub agents: Vec<Box<dyn AudioAgent>>,
     current_frame: u64,
     pub abort_requested: bool,
     next_auto_id: u64,
     tag_counters: HashMap<String, usize>,
+    buffers: WorkBuffers,
 }
 
 impl Population {
@@ -51,6 +58,7 @@ impl Population {
             abort_requested: false,
             next_auto_id: 1_000_000,
             tag_counters: HashMap::new(),
+            buffers: WorkBuffers::default(),
         }
     }
 
@@ -373,15 +381,16 @@ impl Population {
         fs: f32,
         current_frame: u64,
         dt_sec: f32,
-    ) -> Vec<f32> {
+    ) -> &[f32] {
         self.current_frame = current_frame;
-        let mut buf = vec![0.0f32; samples_len];
+        self.buffers.audio.resize(samples_len, 0.0);
+        self.buffers.audio.fill(0.0);
         for agent in self.agents.iter_mut() {
             if agent.is_alive() {
-                agent.render_wave(&mut buf, fs, current_frame, dt_sec);
+                agent.render_wave(&mut self.buffers.audio, fs, current_frame, dt_sec);
             }
         }
-        buf
+        &self.buffers.audio
     }
 
     /// Render spectral bodies for landscape processing.
@@ -392,12 +401,13 @@ impl Population {
         fs: f32,
         nfft: usize,
         dt_sec: f32,
-    ) -> Vec<f32> {
+    ) -> &[f32] {
         self.current_frame = current_frame;
-        let mut amps = vec![0.0f32; n_bins];
+        self.buffers.amps.resize(n_bins, 0.0);
+        self.buffers.amps.fill(0.0);
         for agent in self.agents.iter_mut() {
             if agent.is_alive() {
-                agent.render_spectrum(&mut amps, fs, nfft, current_frame, dt_sec);
+                agent.render_spectrum(&mut self.buffers.amps, fs, nfft, current_frame, dt_sec);
             }
         }
         let before_count = self.agents.len();
@@ -414,6 +424,6 @@ impl Population {
                 current_frame
             );
         }
-        amps
+        &self.buffers.amps
     }
 }

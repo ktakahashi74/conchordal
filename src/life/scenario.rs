@@ -84,14 +84,8 @@ impl AgentConfig {
                 ..
             } => {
                 let lifecycle = lifecycle.clone().create_lifecycle();
-                let mut agent = PureToneAgent::new(
-                    assigned_id,
-                    *freq,
-                    *amp,
-                    start_frame,
-                    lifecycle,
-                    metadata,
-                );
+                let mut agent =
+                    PureToneAgent::new(assigned_id, *freq, *amp, start_frame, lifecycle, metadata);
                 if let Some(p) = phase {
                     agent.set_phase(*p);
                 }
@@ -261,7 +255,11 @@ impl fmt::Display for SpawnMethod {
                 temperature.unwrap_or(1.0)
             ),
             SpawnMethod::ZeroCrossing { min_freq, max_freq } => {
-                write!(f, "method=zero_crossing({:.1}-{:.1} Hz)", min_freq, max_freq)
+                write!(
+                    f,
+                    "method=zero_crossing({:.1}-{:.1} Hz)",
+                    min_freq, max_freq
+                )
             }
             SpawnMethod::SpectralGap { min_freq, max_freq } => {
                 write!(f, "method=spectral_gap({:.1}-{:.1} Hz)", min_freq, max_freq)

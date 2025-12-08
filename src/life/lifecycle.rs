@@ -110,11 +110,7 @@ impl Lifecycle for DecayLifecycle {
         }
         let attack_gain = (age / self.attack_sec).min(1.0);
         let gain = self.energy * attack_gain;
-        if gain < 1e-6 {
-            0.0
-        } else {
-            gain
-        }
+        if gain < 1e-6 { 0.0 } else { gain }
     }
 
     fn is_alive(&self) -> bool {

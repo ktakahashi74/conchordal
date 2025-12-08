@@ -108,7 +108,11 @@ impl App {
             std::thread::Builder::new()
                 .name("analysis".into())
                 .spawn(move || {
-                    analysis_worker::run(landscape, audio_to_analysis_rx, landscape_from_analysis_tx)
+                    analysis_worker::run(
+                        landscape,
+                        audio_to_analysis_rx,
+                        landscape_from_analysis_tx,
+                    )
                 })
                 .expect("spawn analysis worker");
         }
@@ -277,47 +281,47 @@ fn worker_loop(
             let t_start = Instant::now();
             conductor.dispatch_until(current_time, frame_idx, &current_landscape, &mut pop);
 
-            let time_chunk =
-                pop.process_audio(hop, fs, frame_idx, hop_duration.as_secs_f32());
+            let time_chunk_vec = {
+                let time_chunk = pop.process_audio(hop, fs, frame_idx, hop_duration.as_secs_f32());
 
-            // Build high-resolution spectrum for analysis (linear nfft, mapped to log space in worker).
-            let spectrum_body =
-                pop.process_frame(frame_idx, n_bins, fs, nfft, hop_duration.as_secs_f32());
-
-            if last_clip_log.elapsed() > Duration::from_millis(200) {
-                if let Some(peak) = time_chunk
-                    .iter()
-                    .map(|v| v.abs())
-                    .max_by(|a, b| a.total_cmp(b))
-                {
-                    max_peak = max_peak.max(peak);
-                    if peak > 0.98 {
-                        warn!(
-                            "[t={:.6}] Audio peak high: {:.3} at frame_idx={}. Consider more headroom.",
-                            current_time,
-                            peak,
-                            frame_idx
-                        );
-                        last_clip_log = Instant::now();
-                    } else if peak > 0.9 {
-                        warn!(
-                            "[t={:.6}] Audio peak nearing clip: {:.3} at frame_idx={}",
-                            current_time,
-                            peak,
-                            frame_idx
-                        );
-                        last_clip_log = Instant::now();
+                if last_clip_log.elapsed() > Duration::from_millis(200) {
+                    if let Some(peak) = time_chunk
+                        .iter()
+                        .map(|v| v.abs())
+                        .max_by(|a, b| a.total_cmp(b))
+                    {
+                        max_peak = max_peak.max(peak);
+                        if peak > 0.98 {
+                            warn!(
+                                "[t={:.6}] Audio peak high: {:.3} at frame_idx={}. Consider more headroom.",
+                                current_time, peak, frame_idx
+                            );
+                            last_clip_log = Instant::now();
+                        } else if peak > 0.9 {
+                            warn!(
+                                "[t={:.6}] Audio peak nearing clip: {:.3} at frame_idx={}",
+                                current_time, peak, frame_idx
+                            );
+                            last_clip_log = Instant::now();
+                        }
                     }
                 }
+
+                AudioOutput::push_samples(prod, time_chunk);
+
+                let chunk_vec = time_chunk.to_vec();
+                if let Some(tx) = &wav_tx {
+                    let _ = tx.try_send(chunk_vec.clone());
+                }
+                chunk_vec
+            };
+
+            // Build high-resolution spectrum for analysis (linear nfft, mapped to log space in worker).
+            {
+                let spectrum_body =
+                    pop.process_frame(frame_idx, n_bins, fs, nfft, hop_duration.as_secs_f32());
+                let _ = audio_to_analysis_tx.try_send((frame_idx, spectrum_body.to_vec()));
             }
-
-            AudioOutput::push_samples(prod, &time_chunk);
-
-            if let Some(tx) = &wav_tx {
-                let _ = tx.try_send(time_chunk.clone());
-            }
-
-            let _ = audio_to_analysis_tx.try_send((frame_idx, spectrum_body));
 
             while let Ok((analyzed_id, lframe)) = landscape_from_analysis_rx.try_recv() {
                 current_landscape = lframe;
@@ -325,10 +329,7 @@ fn worker_loop(
                 if lag >= 2 && last_lag_warn.elapsed() > Duration::from_secs(1) {
                     warn!(
                         "[t={:.3}] Analysis lag: {} frames (Audio={}, Analysis={})",
-                        current_time,
-                        lag,
-                        frame_idx,
-                        analyzed_id
+                        current_time, lag, frame_idx, analyzed_id
                     );
                     last_lag_warn = Instant::now();
                 }
@@ -337,7 +338,7 @@ fn worker_loop(
             let ui_frame = UiFrame {
                 wave: WaveFrame {
                     fs,
-                    samples: time_chunk,
+                    samples: time_chunk_vec,
                 },
                 spec: SpecFrame {
                     spec_hz: current_landscape.space.centers_hz.clone(),
@@ -361,10 +362,7 @@ fn worker_loop(
                 slow_chunks += 1;
                 warn!(
                     "[t={:.6}] Audio chunk compute slow: {:?} (hop {:?}) frame_idx={}",
-                    current_time,
-                    elapsed,
-                    hop_duration,
-                    frame_idx
+                    current_time, elapsed, hop_duration, frame_idx
                 );
             }
         }
@@ -382,12 +380,7 @@ fn worker_loop(
                 let cap = prod.capacity().get();
                 debug!(
                     "[t={:.6}] Audio stats: min_occ={}, cap={}, hop={}, max_peak={:.3}, slow_chunks={}",
-                    current_time,
-                    min_occ,
-                    cap,
-                    hop,
-                    max_peak,
-                    slow_chunks
+                    current_time, min_occ, cap, hop, max_peak, slow_chunks
                 );
             }
             max_peak = 0.0;

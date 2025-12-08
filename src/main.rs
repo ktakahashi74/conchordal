@@ -10,8 +10,8 @@ mod ui;
 use clap::Parser;
 use std::path::Path;
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
     Arc,
+    atomic::{AtomicBool, Ordering},
 };
 use tracing_subscriber::EnvFilter;
 

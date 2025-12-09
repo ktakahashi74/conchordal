@@ -1,4 +1,5 @@
 use crate::core::landscape::LandscapeFrame;
+use egui::Color32;
 use egui_plot::{Bar, BarChart, GridInput, GridMark, Line, Plot, PlotPoints, log_grid_spacer};
 
 /// log2 軸で周波数を描画するヒストグラム（自動幅調整版）
@@ -15,6 +16,11 @@ pub fn log2_hist_hz(
     if xs_hz.is_empty() {
         return;
     }
+
+    const HZ_TICKS: [f64; 10] = [
+        20.0, 50.0, 100.0, 200.0, 500.0, 1_000.0, 2_000.0, 5_000.0, 10_000.0, 20_000.0,
+    ];
+    let tick_marks_log2: Vec<f64> = HZ_TICKS.iter().map(|hz| hz.log2()).collect();
 
     // 各ビンごとに棒の幅を決める
     let mut bars: Vec<Bar> = Vec::with_capacity(xs_hz.len());
@@ -35,24 +41,43 @@ pub fn log2_hist_hz(
         bars.push(
             Bar::new(f.log2() as f64, ys[i] as f64)
                 .width(width as f64)
-                .fill(egui::Color32::DARK_RED)
+                .fill(Color32::from_rgb(240, 120, 120)) // match Roughness accent
                 .stroke(egui::Stroke::NONE),
         );
     }
 
     let chart = BarChart::new(y_label, bars);
 
-    let min_x = xs_hz.iter().cloned().fold(f32::MAX, f32::min).max(1.0);
-    let max_x = xs_hz.iter().cloned().fold(f32::MIN, f32::max);
+    let y_max_fixed = if y_max <= y_min { y_min + 1.0 } else { y_max };
 
+    let tick_marks_log2_for_grid = tick_marks_log2.clone();
     Plot::new(title)
         .height(150.0)
         .allow_scroll(false)
         .allow_drag(false)
         .include_y(y_min)
-        .include_y(y_max)
-        .include_x((min_x as f64).log2())
-        .include_x((max_x as f64).log2())
+        .include_y(y_max_fixed)
+        .include_x((20.0f64).log2())
+        .include_x((20_000.0f64).log2())
+        .default_x_bounds((20.0f64).log2(), (20_000.0f64).log2())
+        .default_y_bounds(y_min, y_max_fixed)
+        .x_grid_spacer(move |_input: GridInput| {
+            tick_marks_log2_for_grid
+                .iter()
+                .enumerate()
+                .map(|(i, &v)| {
+                    let step_size = if i + 1 < tick_marks_log2_for_grid.len() {
+                        tick_marks_log2_for_grid[i + 1] - v
+                    } else {
+                        tick_marks_log2_for_grid[i] - tick_marks_log2_for_grid[i - 1]
+                    };
+                    GridMark {
+                        value: v,
+                        step_size,
+                    }
+                })
+                .collect()
+        })
         .x_axis_formatter(|mark, _range| {
             let hz = 2f64.powf(mark.value);
             if hz < 1000.0 {
@@ -76,6 +101,7 @@ pub fn log2_plot_hz(
     y_label: &str,
     y_min: f64,
     y_max: f64,
+    height: f32,
 ) {
     assert_eq!(
         xs_hz.len(),
@@ -102,7 +128,7 @@ pub fn log2_plot_hz(
 
     // === 描画 ===
     Plot::new(title)
-        .height(160.0)
+        .height(height)
         .allow_scroll(false)
         .allow_drag(false)
         .include_x(x_min)
@@ -145,6 +171,9 @@ pub fn time_plot(ui: &mut egui::Ui, title: &str, fs: f64, samples: &[f32]) {
             .height(150.0)
             .allow_scroll(false)
             .allow_drag(false)
+            .include_y(-1.1)
+            .include_y(1.1)
+            .default_y_bounds(-1.1, 1.1)
             .x_axis_formatter(|mark, _| format!("{:.3} s", mark.value))
             .y_axis_formatter(|mark, _| format!("{:.2}", mark.value))
             .show(ui, |plot_ui| {

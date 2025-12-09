@@ -1,13 +1,10 @@
 use crate::ui::plots::{log2_plot_hz, time_plot};
 use crate::ui::viewdata::UiFrame;
 use egui::{CentralPanel, TopBottomPanel, Vec2};
-use egui_plot::{Line, Plot, PlotPoints};
-
-use crate::core::landscape::LandscapeFrame;
 
 use egui::epaint::{ColorImage, TextureHandle};
-use egui::{Color32, Response, ScrollArea, Ui};
-use egui_plot::{PlotImage, PlotPoint, PlotResponse};
+use egui::{Color32, Ui};
+use egui_plot::{Plot, PlotImage, PlotPoint};
 
 /// === PLV heatmap ===
 pub fn show_plv_heatmap(
@@ -112,7 +109,6 @@ pub fn main_window(ctx: &egui::Context, frame: &UiFrame) {
             ui.vertical(|ui| {
                 ui.heading("Synth Spectrum");
                 if frame.spec.spec_hz.len() > 1 && frame.spec.amps.len() > 1 {
-                    let max_amp = frame.spec.amps.iter().cloned().fold(0.0, f32::max);
                     crate::ui::plots::log2_hist_hz(
                         ui,
                         "Amplitude Spectrum",
@@ -120,7 +116,7 @@ pub fn main_window(ctx: &egui::Context, frame: &UiFrame) {
                         &frame.spec.amps[1..],
                         "A[k]",
                         0.0,
-                        (max_amp * 1.05) as f64,
+                        20.0,
                     );
                 }
             });
@@ -136,52 +132,61 @@ pub fn main_window(ctx: &egui::Context, frame: &UiFrame) {
             &frame.landscape.amps_last,
             "NSGT",
             0.0,
-            (1.05) as f64,
+            (11.) as f64,
+            120.0,
         );
 
         ui.separator();
 
-        ui.separator();
-        ui.heading("Landscape");
-
-        let max_r = frame.landscape.r_last.iter().cloned().fold(0.0, f32::max);
-        let min_c = frame.landscape.c_last.iter().cloned().fold(0.0, f32::min);
-        let max_c = frame.landscape.c_last.iter().cloned().fold(0.0, f32::max);
+        let roughness: Vec<f32> = frame.landscape.r_last.iter().map(|v| v.max(0.0)).collect();
+        let harmonicity: Vec<f32> = frame
+            .landscape
+            .h_last
+            .iter()
+            .map(|v| v.clamp(0.0, 1.0))
+            .collect();
+        let consonance = &frame.landscape.c_last;
 
         ui.columns(1, |cols| {
             let ui = &mut cols[0];
 
-            // Roughness R
-            log2_plot_hz(
-                ui,
-                "Roughness Landscape (R)",
-                &frame.landscape.space.centers_hz,
-                &frame.landscape.r_last,
-                "R",
-                0.0,
-                (max_r * 1.05) as f64,
-            );
-
-            // Harmonicity H
-            log2_plot_hz(
-                ui,
-                "Harmonicity Landscape (H)",
-                &frame.landscape.space.centers_hz,
-                &frame.landscape.h_last,
-                "H",
-                0.0,
-                1.0,
-            );
-
+            ui.heading("Consonance Landscape");
             // Combined Consonance C
             log2_plot_hz(
                 ui,
-                "Consonance potential",
+                "Consonance Landscape",
                 &frame.landscape.space.centers_hz,
-                &frame.landscape.c_last,
+                consonance,
                 "C",
-                (min_c * 1.1) as f64,
-                (max_c * 1.1) as f64,
+                -1.0,
+                1.0,
+                150.0,
+            );
+
+            ui.heading("Roughness");
+            // Roughness R
+            log2_plot_hz(
+                ui,
+                "Roughness",
+                &frame.landscape.space.centers_hz,
+                &roughness,
+                "R",
+                0.0,
+                1.0,
+                120.0,
+            );
+
+            ui.heading("Harmonicity");
+            // Harmonicity H
+            log2_plot_hz(
+                ui,
+                "Harmonicity",
+                &frame.landscape.space.centers_hz,
+                &harmonicity,
+                "H",
+                0.0,
+                1.0,
+                120.0,
             );
         });
     });

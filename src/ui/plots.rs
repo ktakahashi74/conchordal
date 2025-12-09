@@ -17,9 +17,8 @@ pub fn log2_hist_hz(
         return;
     }
 
-    const HZ_TICKS: [f64; 10] = [
-        20.0, 50.0, 100.0, 200.0, 500.0, 1_000.0, 2_000.0, 5_000.0, 10_000.0, 20_000.0,
-    ];
+    // Use a sparser set to keep labels from colliding.
+    const HZ_TICKS: [f64; 5] = [20.0, 100.0, 1_000.0, 10_000.0, 20_000.0];
     let tick_marks_log2: Vec<f64> = HZ_TICKS.iter().map(|hz| hz.log2()).collect();
 
     // 各ビンごとに棒の幅を決める
@@ -52,7 +51,7 @@ pub fn log2_hist_hz(
 
     let tick_marks_log2_for_grid = tick_marks_log2.clone();
     Plot::new(title)
-        .height(150.0)
+        .height(180.0)
         .allow_scroll(false)
         .allow_drag(false)
         .include_y(y_min)

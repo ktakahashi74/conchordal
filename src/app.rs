@@ -73,7 +73,7 @@ impl App {
 
         // Analysis/NSGT setup
         let fs: f32 = 48_000.0;
-        let space = Log2Space::new(100.0, 8000.0, 200);
+        let space = Log2Space::new(55.0, 8000.0, 200);
         let lparams = LandscapeParams {
             fs,
             max_hist_cols: 256,

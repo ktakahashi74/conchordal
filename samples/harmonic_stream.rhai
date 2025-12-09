@@ -3,8 +3,8 @@ print("Harmonic Density Stream: 50 notes");
 // Strategy: harmonic density sampling (uses current consonance as a PDF)
 let method = #{
     mode: "harmonic_density",
-    min_freq: 150.0,
-    max_freq: 1500.0,
+    min_freq: 55.0,
+    max_freq: 2500.0,
     temperature: 1.5, // wider spread for variety
 };
 

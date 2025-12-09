@@ -51,7 +51,7 @@ pub fn log2_hist_hz(
 
     let tick_marks_log2_for_grid = tick_marks_log2.clone();
     Plot::new(title)
-        .height(180.0)
+        .height(150.0)
         .allow_scroll(false)
         .allow_drag(false)
         .include_y(y_min)

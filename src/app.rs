@@ -51,7 +51,7 @@ impl App {
 
         // Audio
         let (audio_out, audio_prod) = if args.play {
-            let (out, prod) = AudioOutput::new(50.0);
+            let (out, prod) = AudioOutput::new(150.0);
             (Some(out), Some(prod))
         } else {
             (None, None)
@@ -86,19 +86,22 @@ impl App {
             roughness_k: 0.1,
         };
         let nfft = 16_384usize;
-        let nsgt = RtNsgtKernelLog2::new(NsgtKernelLog2::new(
+        let hop = 512usize;
+        let overlap = 1.0 - (hop as f32 / nfft as f32);
+        let nsgt_kernel = NsgtKernelLog2::new(
             NsgtLog2Config {
                 fs,
-                overlap: 0.5,
+                overlap,
                 nfft_override: Some(nfft),
             },
             space,
-        ));
-        let hop = nsgt.hop();
+        );
+        let nsgt = RtNsgtKernelLog2::new(nsgt_kernel.clone());
         let hop_duration = Duration::from_secs_f32(hop as f32 / fs);
         let n_bins = nfft / 2 + 1;
 
-        let landscape = Landscape::new(lparams, nsgt.clone());
+        let mut landscape = Landscape::new(lparams.clone(), nsgt.clone());
+        let analysis_landscape = Landscape::new(lparams, nsgt.clone());
 
         // Analysis pipeline channels
         let (audio_to_analysis_tx, audio_to_analysis_rx) = bounded::<(u64, Vec<f32>)>(64);
@@ -107,12 +110,11 @@ impl App {
 
         // Spawn analysis thread
         {
-            let landscape = landscape;
             std::thread::Builder::new()
                 .name("analysis".into())
                 .spawn(move || {
                     analysis_worker::run(
-                        landscape,
+                        analysis_landscape,
                         audio_to_analysis_rx,
                         landscape_from_analysis_tx,
                     )
@@ -168,6 +170,7 @@ impl App {
                         ui_frame_tx,
                         pop,
                         conductor,
+                        landscape,
                         audio_prod,
                         wav_tx_for_worker,
                         stop_flag_worker,
@@ -247,6 +250,7 @@ fn worker_loop(
     ui_tx: Sender<UiFrame>,
     mut pop: Population,
     mut conductor: Conductor,
+    mut landscape: Landscape,
     mut audio_prod: Option<ringbuf::HeapProd<f32>>,
     wav_tx: Option<Sender<Vec<f32>>>,
     exiting: Arc<AtomicBool>,
@@ -297,7 +301,8 @@ fn worker_loop(
             conductor.dispatch_until(current_time, frame_idx, &current_landscape, &mut pop);
 
             let time_chunk_vec = {
-                let time_chunk = pop.process_audio(hop, fs, frame_idx, hop_duration.as_secs_f32());
+                let time_chunk =
+                    pop.process_audio(hop, fs, frame_idx, hop_duration.as_secs_f32(), &landscape);
 
                 if last_clip_log.elapsed() > Duration::from_millis(200) {
                     if let Some(peak) = time_chunk
@@ -331,8 +336,10 @@ fn worker_loop(
                 chunk_vec
             };
 
+            landscape.update_rhythm(&time_chunk_vec);
+
             // Build high-resolution spectrum for analysis (linear nfft, mapped to log space in worker).
-            {
+            if frame_idx % 4 == 0 {
                 let spectrum_body =
                     pop.process_frame(frame_idx, n_bins, fs, nfft, hop_duration.as_secs_f32());
                 let _ = audio_to_analysis_tx.try_send((frame_idx, spectrum_body.to_vec()));
@@ -340,6 +347,7 @@ fn worker_loop(
 
             while let Ok((analyzed_id, lframe)) = landscape_from_analysis_rx.try_recv() {
                 current_landscape = lframe;
+                landscape.apply_frame(&current_landscape);
                 let lag = frame_idx.saturating_sub(analyzed_id);
                 if lag >= 2 && last_lag_warn.elapsed() > Duration::from_secs(1) {
                     warn!(

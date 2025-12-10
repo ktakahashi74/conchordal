@@ -1,4 +1,4 @@
-use super::individual::{AgentMetadata, AudioAgent, PureToneAgent};
+use super::individual::{AgentMetadata, AudioAgent, Individual};
 use super::scenario::{Action, AgentConfig, SpawnMethod};
 use crate::core::landscape::LandscapeFrame;
 use rand::{Rng, distr::Distribution, distr::weighted::WeightedIndex};
@@ -193,10 +193,22 @@ impl Population {
             SpawnMethod::Harmonicity { .. } => {
                 let mut best = idx_min;
                 let mut best_val = f32::MIN;
+                // Penalize already loud bins to avoid crowding.
+                let max_amp = landscape
+                    .amps_last
+                    .get(idx_min..=idx_max)
+                    .map(|slice| slice.iter().cloned().fold(0.0f32, f32::max))
+                    .unwrap_or(0.0)
+                    .max(1e-6);
+                let penalty_weight = 0.5;
                 for i in idx_min..=idx_max {
-                    if let Some(&v) = landscape.c_last.get(i) {
-                        if v > best_val {
-                            best_val = v;
+                    if let (Some(&c_val), Some(&amp)) =
+                        (landscape.c_last.get(i), landscape.amps_last.get(i))
+                    {
+                        let crowded = amp / max_amp;
+                        let score = c_val - penalty_weight * crowded;
+                        if score > best_val {
+                            best_val = score;
                             best = i;
                         }
                     }
@@ -343,10 +355,10 @@ impl Population {
                 let ids = self.resolve_targets(&target);
                 for id in ids {
                     if let Some(a) = self.find_agent_mut(id) {
-                        if let Some(pt) = a.as_any_mut().downcast_mut::<PureToneAgent>() {
-                            pt.set_freq(freq_hz);
+                        if let Some(ind) = a.as_any_mut().downcast_mut::<Individual>() {
+                            ind.freq_hz = freq_hz;
                         } else {
-                            warn!("SetFreq: agent {id} is not a PureToneAgent");
+                            warn!("SetFreq: agent {id} is not an Individual");
                         }
                     } else {
                         warn!("SetFreq: agent {id} not found");
@@ -357,10 +369,10 @@ impl Population {
                 let ids = self.resolve_targets(&target);
                 for id in ids {
                     if let Some(a) = self.find_agent_mut(id) {
-                        if let Some(pt) = a.as_any_mut().downcast_mut::<PureToneAgent>() {
-                            pt.set_amp(amp);
+                        if let Some(ind) = a.as_any_mut().downcast_mut::<Individual>() {
+                            ind.amp = amp;
                         } else {
-                            warn!("SetAmp: agent {id} is not a PureToneAgent");
+                            warn!("SetAmp: agent {id} is not an Individual");
                         }
                     } else {
                         warn!("SetAmp: agent {id} not found");
@@ -381,13 +393,14 @@ impl Population {
         fs: f32,
         current_frame: u64,
         dt_sec: f32,
+        landscape: &crate::core::landscape::Landscape,
     ) -> &[f32] {
         self.current_frame = current_frame;
         self.buffers.audio.resize(samples_len, 0.0);
         self.buffers.audio.fill(0.0);
         for agent in self.agents.iter_mut() {
             if agent.is_alive() {
-                agent.render_wave(&mut self.buffers.audio, fs, current_frame, dt_sec);
+                agent.render_wave(&mut self.buffers.audio, fs, current_frame, dt_sec, landscape);
             }
         }
         &self.buffers.audio

@@ -2,8 +2,9 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 use crate::life::individual::AgentMetadata;
-use crate::life::individual::{AudioAgent, PureToneAgent};
+use crate::life::individual::{ArticulationState, AudioAgent, Individual, PinkNoise, Sensitivity};
 use crate::life::lifecycle::LifecycleConfig;
+use rand::{Rng as _, rng};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Scenario {
@@ -76,21 +77,33 @@ impl AgentConfig {
             metadata.tag = self.tag().cloned();
         }
         match self {
-            AgentConfig::PureTone {
-                freq,
-                amp,
-                phase,
-                lifecycle,
-                ..
-            } => {
-                let lifecycle = lifecycle.clone().create_lifecycle();
-                let mut agent =
-                    PureToneAgent::new(assigned_id, *freq, *amp, start_frame, lifecycle, metadata);
-                if let Some(p) = phase {
-                    agent.set_phase(*p);
-                }
-                Box::new(agent)
-            }
+            AgentConfig::PureTone { freq, amp, .. } => Box::new(Individual {
+                id: assigned_id,
+                metadata,
+                freq_hz: *freq,
+                amp: *amp,
+                energy: 1.0,
+                basal_cost: 0.0005,
+                action_cost: 0.02,
+                recharge_rate: 0.01,
+                sensitivity: Sensitivity {
+                    delta: 1.0,
+                    theta: 1.0,
+                    alpha: 0.5,
+                    beta: 0.5,
+                },
+                rhythm_phase: 0.0,
+                rhythm_freq: rng().random_range(0.5..3.0),
+                audio_phase: 0.0,
+                env_level: 0.0,
+                state: ArticulationState::Idle,
+                attack_step: 1.0 / (48_000.0 * 0.005),
+                decay_factor: (-1.0f32 / (48_000.0 * 0.25)).exp(),
+                omega: 0.0,
+                noise_1f: PinkNoise::new(assigned_id, 0.001, 0.99),
+                confidence: 1.0,
+                gate_threshold: 0.02,
+            }),
         }
     }
 }
@@ -119,7 +132,7 @@ impl fmt::Display for AgentConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::life::individual::PureToneAgent;
+    use crate::life::individual::Individual;
 
     #[test]
     fn spawn_carries_envelope_and_params() {
@@ -145,12 +158,10 @@ mod tests {
                 member_idx: 0,
             },
         );
-        let pt = agent.as_any().downcast_ref::<PureToneAgent>().unwrap();
-        assert_eq!(pt.id, 7);
-        assert_eq!(pt.freq_hz, 220.0);
-        assert_eq!(pt.amp, 0.3);
-        assert_eq!(pt.start_frame, 5);
-        // LifecycleConfig::Sustain stores envelope; not directly inspectable here but spawn should succeed.
+        let ind = agent.as_any().downcast_ref::<Individual>().unwrap();
+        assert_eq!(ind.id, 7);
+        assert_eq!(ind.freq_hz, 220.0);
+        assert_eq!(ind.amp, 0.3);
     }
 }
 

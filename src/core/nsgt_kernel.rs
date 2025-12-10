@@ -89,8 +89,8 @@ impl NsgtKernelLog2 {
     /// - hop is based on Nfft (shared across all bands): hop = round((1-overlap)*Nfft)
     pub fn new(cfg: NsgtLog2Config, space: Log2Space) -> Self {
         assert!(
-            cfg.overlap >= 0.0 && cfg.overlap < 0.95,
-            "Overlap must be in [0,0.95)"
+            cfg.overlap >= 0.0 && cfg.overlap < 0.99,
+            "Overlap must be in [0,0.99)"
         );
 
         let fs = cfg.fs;

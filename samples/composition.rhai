@@ -1,37 +1,33 @@
-print("Composition Start (No BPM)");
+print("Mini composition: pulse -> bloom -> dissolve");
 
-// Functions
-fn pattern_kick() {
-    for i in 0..4 {
-        add_agent("kick", 60.0, 0.5, #{ type: "decay", initial_energy: 1.0, half_life_sec: 0.1 });
-        wait(0.5);
+// Simple Euclidean-ish pattern helper (quarter-ish grid)
+fn pulse(tag, freq, amp, count, spacing) {
+    for i in 0..count {
+        add_agent(tag + "_" + i, freq, amp, #{ type: "decay", initial_energy: 1.0, half_life_sec: 0.18 });
+        wait(spacing);
     }
 }
 
-fn pattern_bass() {
-    add_agent("bass", 110.0, 0.3, #{ type: "sustain", initial_energy: 1.0, metabolism_rate: 0.1, envelope: #{ attack_sec: 0.05, decay_sec: 0.2, sustain_level: 0.5 } });
-    wait(1.0);
-    add_agent("bass", 165.0, 0.3, #{ type: "sustain", initial_energy: 1.0, metabolism_rate: 0.1, envelope: #{ attack_sec: 0.05, decay_sec: 0.2, sustain_level: 0.5 } }); // 5th
-    wait(1.0);
+section("pulse");
+pulse("kick", 60.0, 0.45, 6, 0.25); // drives the field
+
+section("bloom");
+parallel(|| { // bass anchor + slow pads
+    add_agent("bass", 96.0, 0.35, #{ type: "decay", initial_energy: 1.1, half_life_sec: 0.5, attack_sec: 0.05 });
+    wait(0.4);
+    add_agent("pad", 192.0, 0.28, #{ type: "decay", initial_energy: 1.0, half_life_sec: 0.7, attack_sec: 0.4 });
+});
+parallel(|| { // shimmer hits
+    pulse("shimmer", 1200.0, 0.12, 8, 0.125);
+});
+wait(1.0);
+
+section("dissolve");
+let melt = #{ type: "decay", initial_energy: 1.0, half_life_sec: 0.35 };
+let drift = #{ mode: "harmonic_density", min_freq: 200.0, max_freq: 1400.0, temperature: 1.0 };
+for i in 0..6 {
+    spawn_agents("drift", drift, melt, 2, 0.16);
+    wait(0.2);
 }
-
-// --- Section 1 ---
-section("intro");
-
-parallel(|| {
-    pattern_kick();
-});
-
-parallel(|| {
-    pattern_bass();
-});
-
-// Time advanced inside parallel blocks; advance here to set section length
-wait(2.0);
-
-// --- Section 2 ---
-section("break");
-add_agent("cymbal", 2000.0, 0.1, #{ type: "decay", initial_energy: 1.0, half_life_sec: 1.0 });
-wait(2.0);
-
+wait(1.0);
 finish();

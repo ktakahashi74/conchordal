@@ -1,11 +1,19 @@
-// Baseline random_log_uniform demo
-add_agent("seed", 440.0, 0.25, #{ type: "decay", initial_energy: 1.0, half_life_sec: 0.8 });
-wait(1.0);
-let method = #{ mode: "random_log_uniform", min_freq: 220.0, max_freq: 880.0 };
-let life = #{ type: "decay", initial_energy: 1.0, half_life_sec: 0.5 };
-for i in 0..4 {
-    spawn_agents("rand", method, life, 2, 0.2);
-    wait(1.0);
+print("Random Log-Uniform: spray then thin out");
+
+let method = #{ mode: "random_log_uniform", min_freq: 160.0, max_freq: 1800.0 };
+let life = #{ type: "decay", initial_energy: 1.0, half_life_sec: 0.45 };
+
+section("spray");
+for i in 0..6 {
+    spawn_agents("spray_" + i, method, life, 3, 0.18);
+    wait(0.4);
 }
-wait(2.0);
+
+section("fade");
+for i in 0..3 {
+    spawn_agents("tail_" + i, method, life, 1, 0.14);
+    wait(0.6);
+}
+
+wait(1.5);
 finish();

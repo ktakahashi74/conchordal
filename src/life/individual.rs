@@ -103,6 +103,7 @@ pub struct Individual {
     pub state: ArticulationState,
     pub attack_step: f32,
     pub decay_factor: f32,
+    pub retrigger: bool,
     pub omega: f32,
     pub noise_1f: PinkNoise,
     pub confidence: f32,
@@ -141,7 +142,8 @@ impl Individual {
             self.rhythm_phase -= 2.0 * PI;
             let gate_bias = 0.2;
             let gate = delta_mag + trigger_force + gate_bias;
-            if gate > self.gate_threshold && self.state == ArticulationState::Idle {
+            if gate > self.gate_threshold && self.state == ArticulationState::Idle && self.retrigger
+            {
                 self.audio_phase = 0.0;
                 self.env_level = 0.0;
                 self.state = ArticulationState::Attack;
@@ -227,7 +229,13 @@ impl AudioAgent for Individual {
     }
 
     fn is_alive(&self) -> bool {
-        self.energy > 0.0
+        if self.energy <= 0.0 {
+            return false;
+        }
+        if !self.retrigger && self.state == ArticulationState::Idle {
+            return false;
+        }
+        true
     }
 
     fn as_any(&self) -> &dyn std::any::Any {

@@ -77,33 +77,87 @@ impl AgentConfig {
             metadata.tag = self.tag().cloned();
         }
         match self {
-            AgentConfig::PureTone { freq, amp, .. } => Box::new(Individual {
-                id: assigned_id,
-                metadata,
-                freq_hz: *freq,
-                amp: *amp,
-                energy: 1.0,
-                basal_cost: 0.0005,
-                action_cost: 0.02,
-                recharge_rate: 0.01,
-                sensitivity: Sensitivity {
-                    delta: 1.0,
-                    theta: 1.0,
-                    alpha: 0.5,
-                    beta: 0.5,
-                },
-                rhythm_phase: 0.0,
-                rhythm_freq: rng().random_range(0.5..3.0),
-                audio_phase: 0.0,
-                env_level: 0.0,
-                state: ArticulationState::Idle,
-                attack_step: 1.0 / (48_000.0 * 0.005),
-                decay_factor: (-1.0f32 / (48_000.0 * 0.25)).exp(),
-                omega: 0.0,
-                noise_1f: PinkNoise::new(assigned_id, 0.001, 0.99),
-                confidence: 1.0,
-                gate_threshold: 0.02,
-            }),
+            AgentConfig::PureTone {
+                freq,
+                amp,
+                lifecycle,
+                ..
+            } => {
+                let fs = 48_000.0f32;
+                let (energy, basal_cost, recharge_rate, attack_step, decay_factor, state, sensitivity, retrigger) =
+                    match lifecycle {
+                        LifecycleConfig::Decay {
+                            initial_energy,
+                            half_life_sec,
+                            attack_sec,
+                        } => {
+                            let atk = attack_sec.max(0.0005);
+                            let attack_step = 1.0 / (fs * atk);
+                            let decay_sec = half_life_sec.max(0.01);
+                            let decay_factor = (-1.0f32 / (fs * decay_sec)).exp();
+                            let basal = 0.0;
+                            (
+                                *initial_energy,
+                                basal,
+                                0.0,
+                                attack_step,
+                                decay_factor,
+                                ArticulationState::Attack,
+                                Sensitivity::default(), // fire-and-forget
+                                false,                   // one-shot
+                            )
+                        }
+                        LifecycleConfig::Sustain {
+                            initial_energy,
+                            metabolism_rate,
+                            envelope,
+                        } => {
+                            let atk = envelope.attack_sec.max(0.0005);
+                            let attack_step = 1.0 / (fs * atk);
+                            let decay_sec = envelope.decay_sec.max(0.01);
+                            let decay_factor = (-1.0f32 / (fs * decay_sec)).exp();
+                            (
+                                *initial_energy,
+                                *metabolism_rate,
+                                0.5, // simple default recharge
+                                attack_step,
+                                decay_factor,
+                                ArticulationState::Idle,
+                                Sensitivity {
+                                    delta: 1.0,
+                                    theta: 1.0,
+                                    alpha: 0.5,
+                                    beta: 0.5,
+                                },
+                                true, // can retrigger rhythmically
+                            )
+                        }
+                    };
+
+                Box::new(Individual {
+                    id: assigned_id,
+                    metadata,
+                    freq_hz: *freq,
+                    amp: *amp,
+                    energy,
+                    basal_cost,
+                    action_cost: 0.02,
+                    recharge_rate,
+                    sensitivity,
+                    rhythm_phase: 0.0,
+                    rhythm_freq: rng().random_range(0.5..3.0),
+                    audio_phase: 0.0,
+                    env_level: 0.0,
+                    state,
+                    attack_step,
+                    decay_factor,
+                    retrigger,
+                    omega: 0.0,
+                    noise_1f: PinkNoise::new(assigned_id, 0.001, 0.99),
+                    confidence: 1.0,
+                    gate_threshold: 0.02,
+                })
+            }
         }
     }
 }

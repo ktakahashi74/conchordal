@@ -1,11 +1,16 @@
-// Harmonicity spawn demo
-add_agent("seed", 440.0, 0.25, #{ type: "decay", initial_energy: 1.0, half_life_sec: 0.8 });
-wait(1.0);
-let method = #{ mode: "harmonicity", min_freq: 220.0, max_freq: 880.0 };
-let life = #{ type: "sustain", initial_energy: 1.0, metabolism_rate: 0.1, envelope: #{ attack_sec: 0.02, decay_sec: 0.3, sustain_level: 0.3 } };
-for i in 0..4 {
-    spawn_agents("harm", method, life, 2, 0.22);
-    wait(1.0);
+print("Harmonicity demo: climb into peaks, then settle");
+
+// Seed: One-shot long decay
+add_agent("seed", 330.0, 0.24, #{ type: "decay", initial_energy: 1.0, half_life_sec: 2.0, attack_sec: 0.05 });
+wait(0.5);
+
+let method = #{ mode: "harmonicity", min_freq: 200.0, max_freq: 1200.0 };
+let life = #{ type: "decay", initial_energy: 1.0, half_life_sec: 0.4, attack_sec: 0.02 };
+
+for i in 0..6 {
+    spawn_agents("harm_" + i, method, life, 2, 0.16 + i * 0.01);
+    wait(0.7);
 }
-wait(2.0);
+
+wait(1.5);
 finish();

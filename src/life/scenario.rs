@@ -152,7 +152,7 @@ impl AgentConfig {
                     decay_factor,
                     retrigger,
                     omega: 0.0,
-                    noise_1f: PinkNoise::new(assigned_id, 0.001, 0.99),
+                    noise_1f: PinkNoise::new(assigned_id, 0.001),
                     confidence: 1.0,
                     gate_threshold: 0.02,
                 })

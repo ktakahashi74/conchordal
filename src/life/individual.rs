@@ -1,5 +1,6 @@
 use crate::core::landscape::Landscape;
 use crate::core::modulation::NeuralRhythms;
+use crate::core::utils::pink_noise_tick;
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 use std::f32::consts::PI;
@@ -86,25 +87,26 @@ pub enum ArticulationState {
 #[derive(Debug, Clone)]
 pub struct PinkNoise {
     rng: SmallRng,
-    state: f32,
-    leak: f32,
+    b0: f32,
+    b1: f32,
+    b2: f32,
     gain: f32,
 }
 
 impl PinkNoise {
-    pub fn new(seed: u64, gain: f32, leak: f32) -> Self {
+    pub fn new(seed: u64, gain: f32) -> Self {
         Self {
             rng: SmallRng::seed_from_u64(seed),
-            state: 0.0,
-            leak: leak.clamp(0.0, 0.9999),
+            b0: 0.0,
+            b1: 0.0,
+            b2: 0.0,
             gain,
         }
     }
 
     pub fn next(&mut self) -> f32 {
-        let white: f32 = self.rng.gen_range(-1.0..=1.0);
-        self.state = self.state * self.leak + white * (1.0 - self.leak);
-        self.state * self.gain
+        let pink = pink_noise_tick(&mut self.rng, &mut self.b0, &mut self.b1, &mut self.b2);
+        pink * self.gain
     }
 }
 

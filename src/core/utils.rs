@@ -1,5 +1,15 @@
 use rand::{Rng, SeedableRng};
 
+/// Single-sample pink noise (Paul Kellet 3-pole filter).
+pub fn pink_noise_tick<R: Rng + ?Sized>(rng: &mut R, b0: &mut f32, b1: &mut f32, b2: &mut f32) -> f32 {
+    let white = rng.random_range(-1.0..1.0);
+    *b0 = 0.99765 * *b0 + white * 0.099_046_0;
+    *b1 = 0.96300 * *b1 + white * 0.296_516_4;
+    *b2 = 0.57000 * *b2 + white * 1.052_691_3;
+    let pink = *b0 + *b1 + *b2 + white * 0.1848;
+    pink * 0.03
+}
+
 // --- noise generators ---
 pub fn white_noise(n: usize, seed: u64) -> Vec<f32> {
     let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
@@ -14,13 +24,7 @@ pub fn pink_noise(n: usize, seed: u64) -> Vec<f32> {
     let mut b2 = 0.0f32;
     let mut out = Vec::with_capacity(n);
     for _ in 0..n {
-        let white = rng.random_range(-1.0..1.0);
-        // Paul Kellet 3-pole filter (approx −3 dB/oct)
-        b0 = 0.99765 * b0 + white * 0.0990460;
-        b1 = 0.96300 * b1 + white * 0.2965164;
-        b2 = 0.57000 * b2 + white * 1.0526913;
-        let pink = b0 + b1 + b2 + white * 0.1848;
-        out.push((pink * 0.03) as f32); // normalize
+        out.push(pink_noise_tick(&mut rng, &mut b0, &mut b1, &mut b2));
     }
     out
 }

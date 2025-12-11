@@ -8,7 +8,13 @@ pub fn run(
     spectrum_rx: Receiver<(u64, Vec<f32>)>,
     landscape_tx: Sender<(u64, LandscapeFrame)>,
 ) {
-    while let Ok((frame_id, spectrum_body)) = spectrum_rx.recv() {
+    while let Ok((mut frame_id, mut spectrum_body)) = spectrum_rx.recv() {
+        // Drain any backlog and keep only the most recent spectrum to avoid fixed lag.
+        for (latest_id, latest_body) in spectrum_rx.try_iter() {
+            frame_id = latest_id;
+            spectrum_body = latest_body;
+        }
+
         // 1. Map linear spectrum to log2 space and compute potentials.
         let snapshot = landscape.process_precomputed_spectrum(&spectrum_body);
 

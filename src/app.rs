@@ -45,13 +45,11 @@ impl App {
         args: crate::Args,
         stop_flag: Arc<AtomicBool>,
     ) -> Self {
-        // Channels
-        let (ui_frame_tx, ui_frame_rx) = bounded::<UiFrame>(8);
-        let (ctrl_tx, _ctrl_rx) = bounded::<()>(1);
+        let latency_ms = 100.0;
 
         // Audio
         let (audio_out, audio_prod) = if args.play {
-            let (out, prod) = AudioOutput::new(150.0);
+            let (out, prod) = AudioOutput::new(latency_ms);
             (Some(out), Some(prod))
         } else {
             (None, None)
@@ -99,6 +97,13 @@ impl App {
         let nsgt = RtNsgtKernelLog2::new(nsgt_kernel.clone());
         let hop_duration = Duration::from_secs_f32(hop as f32 / fs);
         let n_bins = nfft / 2 + 1;
+        let hop_ms = (hop as f32 / fs) * 1000.0;
+        let visual_delay_frames = (latency_ms / hop_ms).ceil() as usize + 1; // small safety margin
+        let ui_channel_capacity = (visual_delay_frames + 4).max(16);
+
+        // Channels
+        let (ui_frame_tx, ui_frame_rx) = bounded::<UiFrame>(ui_channel_capacity);
+        let (ctrl_tx, _ctrl_rx) = bounded::<()>(1);
 
         let mut landscape = Landscape::new(lparams.clone(), nsgt.clone());
         let analysis_landscape = Landscape::new(lparams, nsgt.clone());
@@ -199,7 +204,7 @@ impl App {
             _ctrl_tx: ctrl_tx,
             last_frame: UiFrame::default(),
             ui_queue: VecDeque::new(),
-            visual_delay_frames: 1,
+            visual_delay_frames,
             _audio: audio_out,
             wav_tx: Some(wav_tx),
             wav_handle,
@@ -221,7 +226,7 @@ impl eframe::App for App {
         while let Ok(frame) = self.ui_frame_rx.try_recv() {
             self.ui_queue.push_back(frame);
         }
-        if self.ui_queue.len() > self.visual_delay_frames {
+        while self.ui_queue.len() > self.visual_delay_frames {
             if let Some(frame) = self.ui_queue.pop_front() {
                 self.last_frame = frame;
             }
@@ -339,13 +344,17 @@ fn worker_loop(
             landscape.update_rhythm(&time_chunk_vec);
 
             // Build high-resolution spectrum for analysis (linear nfft, mapped to log space in worker).
-            if frame_idx % 4 == 0 {
+            {
                 let spectrum_body =
                     pop.process_frame(frame_idx, n_bins, fs, nfft, hop_duration.as_secs_f32());
                 let _ = audio_to_analysis_tx.try_send((frame_idx, spectrum_body.to_vec()));
             }
 
+            let mut latest_analysis: Option<(u64, LandscapeFrame)> = None;
             while let Ok((analyzed_id, lframe)) = landscape_from_analysis_rx.try_recv() {
+                latest_analysis = Some((analyzed_id, lframe));
+            }
+            if let Some((analyzed_id, lframe)) = latest_analysis {
                 current_landscape = lframe;
                 landscape.apply_frame(&current_landscape);
                 let lag = frame_idx.saturating_sub(analyzed_id);

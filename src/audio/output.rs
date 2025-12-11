@@ -28,7 +28,7 @@ impl AudioOutput {
         };
 
         let capacity = (sample_rate as f32 * latency_ms / 1000.0) as usize;
-        let rb = HeapRb::<f32>::new(capacity * channels as usize * 10);
+        let rb = HeapRb::<f32>::new(capacity * channels as usize * 2);
         let (prod, mut cons): (HeapProd<f32>, HeapCons<f32>) = rb.split();
 
         let stream = device

@@ -3,6 +3,7 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use ringbuf::traits::*;
 use ringbuf::{HeapCons, HeapProd, HeapRb};
 use tracing::debug;
+use anyhow::Context;
 
 /// 出力デバイスに接続するモジュール
 pub struct AudioOutput {
@@ -13,11 +14,15 @@ pub struct AudioOutput {
 
 impl AudioOutput {
     /// AudioOutput を開始し、ワーカーループ側が push できる Producer を返す
-    pub fn new(latency_ms: f32) -> (Self, HeapProd<f32>) {
+    pub fn new(latency_ms: f32) -> anyhow::Result<(Self, HeapProd<f32>)> {
         let host = cpal::default_host();
-        let device = host.default_output_device().expect("No output device");
+        let device = host
+            .default_output_device()
+            .context("No default output device")?;
 
-        let supported_config = device.default_output_config().expect("No default config");
+        let supported_config = device
+            .default_output_config()
+            .context("No default config")?;
         let sample_rate = supported_config.sample_rate().0;
         let channels = supported_config.channels();
 
@@ -53,17 +58,17 @@ impl AudioOutput {
                 |err| eprintln!("Stream error: {:?}", err),
                 None,
             )
-            .unwrap();
-        stream.play().unwrap();
+            .context("Failed to build output stream")?;
+        stream.play().context("Failed to start output stream")?;
 
-        (
+        Ok((
             Self {
                 stream: Some(stream),
                 capacity,
                 config,
             },
             prod,
-        )
+        ))
     }
 
     pub fn stop(&mut self) {

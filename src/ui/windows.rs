@@ -79,13 +79,16 @@ pub fn show_plv_heatmap(
 }
 
 /// === Main window ===
-pub fn main_window(ctx: &egui::Context, frame: &UiFrame) {
+pub fn main_window(ctx: &egui::Context, frame: &UiFrame, audio_error: Option<&str>) {
     TopBottomPanel::top("top").show(ctx, |ui| {
         ui.heading("Conchordal — NSGT Landscape Viewer");
         ui.label("Wave + Landscape (log₂-space R, PLV-based C)");
     });
 
     CentralPanel::default().show(ctx, |ui| {
+        if let Some(err) = audio_error {
+            ui.colored_label(egui::Color32::RED, format!("Audio init failed: {err}"));
+        }
         ui.horizontal(|ui| {
             // === Waveform ===
             ui.vertical(|ui| {

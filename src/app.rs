@@ -37,6 +37,7 @@ pub struct App {
     ui_queue: VecDeque<UiFrame>,
     visual_delay_frames: usize,
     _audio: Option<AudioOutput>,
+    audio_init_error: Option<String>,
     wav_tx: Option<Sender<Vec<f32>>>,
     worker_handle: Option<std::thread::JoinHandle<()>>,
     wav_handle: Option<std::thread::JoinHandle<()>>,
@@ -53,11 +54,17 @@ impl App {
         let latency_ms = config.audio.latency_ms;
 
         // Audio
-        let (audio_out, audio_prod) = if args.play {
-            let (out, prod) = AudioOutput::new(latency_ms);
-            (Some(out), Some(prod))
+        let (audio_out, audio_prod, audio_init_error) = if args.play {
+            match AudioOutput::new(latency_ms) {
+                Ok((out, prod)) => (Some(out), Some(prod), None),
+                Err(e) => {
+                    let msg = e.to_string();
+                    eprintln!("Audio init failed: {msg}");
+                    (None, None, Some(msg))
+                }
+            }
         } else {
-            (None, None)
+            (None, None, None)
         };
 
         // WAV
@@ -211,6 +218,7 @@ impl App {
             ui_queue: VecDeque::new(),
             visual_delay_frames,
             _audio: audio_out,
+            audio_init_error,
             wav_tx: Some(wav_tx),
             wav_handle,
             worker_handle,
@@ -236,7 +244,7 @@ impl eframe::App for App {
                 self.last_frame = frame;
             }
         }
-        crate::ui::windows::main_window(ctx, &self.last_frame);
+        crate::ui::windows::main_window(ctx, &self.last_frame, self.audio_init_error.as_deref());
         ctx.request_repaint_after(std::time::Duration::from_millis(16));
     }
 }

@@ -53,6 +53,8 @@ pub struct Landscape {
     norm_state: Vec<f32>,
     /// Last preprocessed amplitudes (subjective intensity).
     amps_last: Vec<f32>,
+    /// A-weighting gains per bin for loudness correction.
+    loudness_weights: Vec<f32>,
     pub rhythm: NeuralRhythms,
     modulation_bank: Option<ModulationBank>,
     lp_200_state: f32,
@@ -62,6 +64,12 @@ pub struct Landscape {
 impl Landscape {
     pub fn new(params: LandscapeParams, nsgt_rt: RtNsgtKernelLog2) -> Self {
         let n_ch = nsgt_rt.space().n_bins();
+        let loudness_weights = nsgt_rt
+            .space()
+            .centers_hz
+            .iter()
+            .map(|&f| crate::core::utils::a_weighting_gain(f))
+            .collect();
         Self {
             nsgt_rt,
             params,
@@ -70,6 +78,7 @@ impl Landscape {
             last_c: vec![0.0; n_ch],
             norm_state: vec![0.0; n_ch],
             amps_last: vec![0.0; n_ch],
+            loudness_weights,
             rhythm: NeuralRhythms::default(),
             modulation_bank: None,
             lp_200_state: 0.0,
@@ -86,7 +95,8 @@ impl Landscape {
         let mut out = vec![0.0f32; envelope.len()];
 
         for (i, &mag) in envelope.iter().enumerate() {
-            let pow = mag * mag;
+            let weighted_mag = mag * self.loudness_weights[i];
+            let pow = weighted_mag * weighted_mag;
             let subj = (pow / self.params.ref_power).powf(exp);
             let y_prev = self.norm_state[i];
             let y = a * y_prev + (1.0 - a) * subj;

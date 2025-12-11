@@ -1,3 +1,221 @@
-// Placeholder for future configuration loading (serde/ron).
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, Default)]
-pub struct Config {}
+use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::Path;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AudioConfig {
+    #[serde(default = "AudioConfig::default_latency_ms")]
+    pub latency_ms: f32,
+    #[serde(default = "AudioConfig::default_sample_rate")]
+    pub sample_rate: u32,
+}
+
+impl AudioConfig {
+    fn default_latency_ms() -> f32 {
+        50.0
+    }
+    fn default_sample_rate() -> u32 {
+        48_000
+    }
+}
+
+impl Default for AudioConfig {
+    fn default() -> Self {
+        Self {
+            latency_ms: Self::default_latency_ms(),
+            sample_rate: Self::default_sample_rate(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AnalysisConfig {
+    #[serde(default = "AnalysisConfig::default_nfft")]
+    pub nfft: usize,
+    #[serde(default = "AnalysisConfig::default_hop_size")]
+    pub hop_size: usize,
+    #[serde(default = "AnalysisConfig::default_tau_ms")]
+    pub tau_ms: f32,
+}
+
+impl AnalysisConfig {
+    fn default_nfft() -> usize {
+        16_384
+    }
+    fn default_hop_size() -> usize {
+        512
+    }
+    fn default_tau_ms() -> f32 {
+        80.0
+    }
+}
+
+impl Default for AnalysisConfig {
+    fn default() -> Self {
+        Self {
+            nfft: Self::default_nfft(),
+            hop_size: Self::default_hop_size(),
+            tau_ms: Self::default_tau_ms(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PsychoAcousticsConfig {
+    #[serde(default = "PsychoAcousticsConfig::default_loudness_exp")]
+    pub loudness_exp: f32,
+    #[serde(default = "PsychoAcousticsConfig::default_roughness_k")]
+    pub roughness_k: f32,
+}
+
+impl PsychoAcousticsConfig {
+    fn default_loudness_exp() -> f32 {
+        0.23
+    }
+    fn default_roughness_k() -> f32 {
+        0.1
+    }
+}
+
+impl Default for PsychoAcousticsConfig {
+    fn default() -> Self {
+        Self {
+            loudness_exp: Self::default_loudness_exp(),
+            roughness_k: Self::default_roughness_k(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AppConfig {
+    #[serde(default)]
+    pub audio: AudioConfig,
+    #[serde(default)]
+    pub analysis: AnalysisConfig,
+    #[serde(default)]
+    pub psychoacoustics: PsychoAcousticsConfig,
+}
+
+impl AppConfig {
+    fn round_f32(x: f32) -> f32 {
+        (x * 1_000_000.0).round() / 1_000_000.0
+    }
+
+    fn rounded(mut self) -> Self {
+        self.audio.latency_ms = Self::round_f32(self.audio.latency_ms);
+        self.analysis.tau_ms = Self::round_f32(self.analysis.tau_ms);
+        self.psychoacoustics.loudness_exp =
+            Self::round_f32(self.psychoacoustics.loudness_exp);
+        self.psychoacoustics.roughness_k = Self::round_f32(self.psychoacoustics.roughness_k);
+        self
+    }
+
+    pub fn load_or_default(path: &str) -> Self {
+        let path_obj = Path::new(path);
+        if path_obj.exists() {
+            match fs::read_to_string(path_obj) {
+                Ok(contents) => match toml::from_str(&contents) {
+                    Ok(cfg) => return cfg,
+                    Err(err) => {
+                        eprintln!("Failed to parse config {path}: {err}. Using defaults.");
+                    }
+                },
+                Err(err) => {
+                    eprintln!("Failed to read config {path}: {err}. Using defaults.");
+                }
+            }
+            return Self::default();
+        }
+
+        // File does not exist: write defaults and return them.
+        let default_cfg = Self::default().rounded();
+        if let Ok(text) = toml::to_string_pretty(&default_cfg) {
+            if let Err(err) = fs::write(path_obj, text) {
+                eprintln!("Failed to write default config to {path}: {err}");
+            }
+        } else {
+            eprintln!("Failed to serialize default config; continuing with defaults");
+        }
+        default_cfg
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    fn unique_path(name: &str) -> std::path::PathBuf {
+        let mut p = std::env::temp_dir();
+        p.push(format!(
+            "conchordal_config_test_{}_{}",
+            name,
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        p
+    }
+
+    #[test]
+    fn load_or_default_writes_defaults_cleanly() {
+        let path = unique_path("defaults.toml");
+        let path_str = path.to_string_lossy().to_string();
+        // Ensure clean slate
+        let _ = fs::remove_file(&path);
+
+        let cfg = AppConfig::load_or_default(&path_str);
+        assert!(path.exists(), "config file should be created");
+        assert_eq!(cfg.audio.latency_ms, 50.0);
+        assert_eq!(cfg.audio.sample_rate, 48_000);
+        assert_eq!(cfg.psychoacoustics.loudness_exp, 0.23);
+        assert_eq!(cfg.psychoacoustics.roughness_k, 0.1);
+
+        let contents = fs::read_to_string(&path).expect("read written config");
+        assert!(
+            contents.contains("loudness_exp = 0.23"),
+            "should write concise loudness_exp"
+        );
+        assert!(
+            contents.contains("roughness_k = 0.1"),
+            "should write concise roughness_k"
+        );
+
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn load_or_default_reads_existing() {
+        let path = unique_path("custom.toml");
+        let path_str = path.to_string_lossy().to_string();
+        let custom = AppConfig {
+            audio: AudioConfig {
+                latency_ms: 75.0,
+                sample_rate: 44_100,
+            },
+            analysis: AnalysisConfig {
+                nfft: 8192,
+                hop_size: 256,
+                tau_ms: 60.0,
+            },
+            psychoacoustics: PsychoAcousticsConfig {
+                loudness_exp: 0.3,
+                roughness_k: 0.2,
+            },
+        };
+        let text = toml::to_string_pretty(&custom).unwrap();
+        fs::write(&path, text).unwrap();
+
+        let cfg = AppConfig::load_or_default(&path_str);
+        assert_eq!(cfg.audio.latency_ms, 75.0);
+        assert_eq!(cfg.audio.sample_rate, 44_100);
+        assert_eq!(cfg.analysis.nfft, 8192);
+        assert_eq!(cfg.analysis.hop_size, 256);
+        assert_eq!(cfg.analysis.tau_ms, 60.0);
+        assert_eq!(cfg.psychoacoustics.loudness_exp, 0.3);
+        assert_eq!(cfg.psychoacoustics.roughness_k, 0.2);
+
+        let _ = fs::remove_file(&path);
+    }
+}

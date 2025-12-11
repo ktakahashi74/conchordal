@@ -24,7 +24,11 @@ use crate::life::population::{Population, PopulationParams};
 use crate::life::scenario::Scenario;
 use crate::life::scripting::ScriptHost;
 use crate::ui::viewdata::{SpecFrame, UiFrame, WaveFrame};
-use crate::{audio::output::AudioOutput, core::harmonicity_kernel::HarmonicityParams};
+use crate::{
+    audio::output::AudioOutput,
+    config::AppConfig,
+    core::harmonicity_kernel::HarmonicityParams,
+};
 
 pub struct App {
     ui_frame_rx: Receiver<UiFrame>,
@@ -43,9 +47,10 @@ impl App {
     pub fn new(
         cc: &eframe::CreationContext<'_>,
         args: crate::Args,
+        config: AppConfig,
         stop_flag: Arc<AtomicBool>,
     ) -> Self {
-        let latency_ms = 100.0;
+        let latency_ms = config.audio.latency_ms;
 
         // Audio
         let (audio_out, audio_prod) = if args.play {
@@ -58,7 +63,7 @@ impl App {
         // WAV
         let (wav_tx, wav_rx) = bounded::<Vec<f32>>(16);
         let wav_handle = if let Some(path) = args.wav.clone() {
-            Some(WavOutput::run(wav_rx, path, 48000))
+            Some(WavOutput::run(wav_rx, path, config.audio.sample_rate))
         } else {
             None
         };
@@ -70,7 +75,7 @@ impl App {
         });
 
         // Analysis/NSGT setup
-        let fs: f32 = 48_000.0;
+        let fs: f32 = config.audio.sample_rate as f32;
         let space = Log2Space::new(55.0, 8000.0, 200);
         let lparams = LandscapeParams {
             fs,
@@ -78,13 +83,13 @@ impl App {
             alpha: 0.0,
             roughness_kernel: RoughnessKernel::new(KernelParams::default(), 0.005), // ΔERB LUT step
             harmonicity_kernel: HarmonicityKernel::new(&space, HarmonicityParams::default()),
-            loudness_exp: 0.23, // Zwicker
-            tau_ms: 80.0,
+            loudness_exp: config.psychoacoustics.loudness_exp, // Zwicker
+            tau_ms: config.analysis.tau_ms,
             ref_power: 1e-6,
-            roughness_k: 0.1,
+            roughness_k: config.psychoacoustics.roughness_k,
         };
-        let nfft = 16_384usize;
-        let hop = 512usize;
+        let nfft = config.analysis.nfft;
+        let hop = config.analysis.hop_size;
         let overlap = 1.0 - (hop as f32 / nfft as f32);
         let nsgt_kernel = NsgtKernelLog2::new(
             NsgtLog2Config {

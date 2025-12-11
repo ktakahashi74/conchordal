@@ -11,3 +11,4 @@ repomix-output.xml
 *.tar
 .aider*
 nohup.out
+config.toml

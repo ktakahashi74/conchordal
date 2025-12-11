@@ -15,10 +15,11 @@ use std::sync::{
 };
 use tracing_subscriber::EnvFilter;
 
+use crate::config::AppConfig;
 use crate::life::scenario::Scenario;
 use crate::life::scripting::ScriptHost;
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 #[command(author, version, about)]
 struct Args {
     /// Play audio in realtime
@@ -36,6 +37,10 @@ struct Args {
     /// Serialize scenario to JSON5 and exit
     #[arg(long, default_value_t = false)]
     serialize_json5: bool,
+
+    /// Path to config TOML
+    #[arg(long, default_value = "config.toml")]
+    config: String,
 }
 
 fn load_scenario_from_path(path: &str) -> Result<Scenario, String> {
@@ -69,6 +74,7 @@ fn main() -> eframe::Result<()> {
         .try_init();
 
     let args = Args::parse();
+    let config = AppConfig::load_or_default(&args.config);
 
     if args.serialize_json5 {
         let scenario = load_scenario_from_path(&args.scenario_path).unwrap_or_else(|e| {
@@ -99,7 +105,7 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         "Conchordal",
         native_options,
-        Box::new(|cc| Ok(Box::new(app::App::new(cc, args, stop_flag.clone())))),
+        Box::new(move |cc| Ok(Box::new(app::App::new(cc, args.clone(), config.clone(), stop_flag.clone())))),
     )
     .map_err(|e| {
         eprintln!("Error: {:?}", e);

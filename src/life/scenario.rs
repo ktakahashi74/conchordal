@@ -1,8 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-use crate::life::individual::AgentMetadata;
-use crate::life::individual::{ArticulationState, AudioAgent, Individual, PinkNoise, Sensitivity};
+use crate::life::individual::{Agent, AgentMetadata, ArticulationState, Individual, PinkNoise, Sensitivity};
 use crate::life::lifecycle::LifecycleConfig;
 use rand::{Rng as _, rng};
 
@@ -71,7 +70,7 @@ impl AgentConfig {
         assigned_id: u64,
         start_frame: u64,
         mut metadata: AgentMetadata,
-    ) -> Box<dyn AudioAgent> {
+    ) -> Agent {
         metadata.id = assigned_id;
         if metadata.tag.is_none() {
             metadata.tag = self.tag().cloned();
@@ -134,7 +133,7 @@ impl AgentConfig {
                         }
                     };
 
-                Box::new(Individual {
+                Agent::Individual(Individual {
                     id: assigned_id,
                     metadata,
                     freq_hz: *freq,
@@ -186,7 +185,6 @@ impl fmt::Display for AgentConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::life::individual::Individual;
 
     #[test]
     fn spawn_carries_envelope_and_params() {
@@ -212,10 +210,13 @@ mod tests {
                 member_idx: 0,
             },
         );
-        let ind = agent.as_any().downcast_ref::<Individual>().unwrap();
-        assert_eq!(ind.id, 7);
-        assert_eq!(ind.freq_hz, 220.0);
-        assert_eq!(ind.amp, 0.3);
+        match agent {
+            Agent::Individual(ind) => {
+                assert_eq!(ind.id, 7);
+                assert_eq!(ind.freq_hz, 220.0);
+                assert_eq!(ind.amp, 0.3);
+            }
+        }
     }
 }
 

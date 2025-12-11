@@ -1,4 +1,4 @@
-use super::individual::{AgentMetadata, AudioAgent, Individual};
+use super::individual::{Agent, AgentMetadata};
 use super::scenario::{Action, AgentConfig, SpawnMethod};
 use crate::core::landscape::LandscapeFrame;
 use rand::{Rng, distr::Distribution, distr::weighted::WeightedIndex};
@@ -17,7 +17,7 @@ struct WorkBuffers {
 }
 
 pub struct Population {
-    pub agents: Vec<Box<dyn AudioAgent>>,
+    pub agents: Vec<Agent>,
     current_frame: u64,
     pub abort_requested: bool,
     next_auto_id: u64,
@@ -62,11 +62,11 @@ impl Population {
         }
     }
 
-    fn find_agent_mut(&mut self, id: u64) -> Option<&mut Box<dyn AudioAgent>> {
+    fn find_agent_mut(&mut self, id: u64) -> Option<&mut Agent> {
         self.agents.iter_mut().find(|a| a.id() == id)
     }
 
-    pub fn add_agent(&mut self, agent: Box<dyn AudioAgent>) {
+    pub fn add_agent(&mut self, agent: Agent) {
         let id = agent.id();
         self.agents.retain(|a| a.id() != id);
         self.agents.push(agent);
@@ -355,10 +355,10 @@ impl Population {
                 let ids = self.resolve_targets(&target);
                 for id in ids {
                     if let Some(a) = self.find_agent_mut(id) {
-                        if let Some(ind) = a.as_any_mut().downcast_mut::<Individual>() {
-                            ind.freq_hz = freq_hz;
-                        } else {
-                            warn!("SetFreq: agent {id} is not an Individual");
+                        match a {
+                            Agent::Individual(ind) => {
+                                ind.freq_hz = freq_hz;
+                            }
                         }
                     } else {
                         warn!("SetFreq: agent {id} not found");
@@ -369,10 +369,10 @@ impl Population {
                 let ids = self.resolve_targets(&target);
                 for id in ids {
                     if let Some(a) = self.find_agent_mut(id) {
-                        if let Some(ind) = a.as_any_mut().downcast_mut::<Individual>() {
-                            ind.amp = amp;
-                        } else {
-                            warn!("SetAmp: agent {id} is not an Individual");
+                        match a {
+                            Agent::Individual(ind) => {
+                                ind.amp = amp;
+                            }
                         }
                     } else {
                         warn!("SetAmp: agent {id} not found");

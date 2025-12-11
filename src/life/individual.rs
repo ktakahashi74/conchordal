@@ -5,28 +5,54 @@ use rand::{Rng, SeedableRng};
 use std::f32::consts::PI;
 
 /// Hybrid synthesis agents render both time-domain audio and a spectral "body".
-pub trait AudioAgent: Send + Sync + 'static {
-    fn id(&self) -> u64;
-    fn metadata(&self) -> &AgentMetadata;
-    fn render_wave(
+pub enum Agent {
+    Individual(Individual),
+}
+
+impl Agent {
+    pub fn id(&self) -> u64 {
+        match self {
+            Agent::Individual(ind) => ind.id(),
+        }
+    }
+
+    pub fn metadata(&self) -> &AgentMetadata {
+        match self {
+            Agent::Individual(ind) => ind.metadata(),
+        }
+    }
+
+    pub fn render_wave(
         &mut self,
         buffer: &mut [f32],
         fs: f32,
         current_frame: u64,
         dt_sec: f32,
         landscape: &Landscape,
-    );
-    fn render_spectrum(
+    ) {
+        match self {
+            Agent::Individual(ind) => ind.render_wave(buffer, fs, current_frame, dt_sec, landscape),
+        }
+    }
+
+    pub fn render_spectrum(
         &mut self,
         amps: &mut [f32],
         fs: f32,
         nfft: usize,
         current_frame: u64,
         dt_sec: f32,
-    );
-    fn is_alive(&self) -> bool;
-    fn as_any(&self) -> &dyn std::any::Any;
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
+    ) {
+        match self {
+            Agent::Individual(ind) => ind.render_spectrum(amps, fs, nfft, current_frame, dt_sec),
+        }
+    }
+
+    pub fn is_alive(&self) -> bool {
+        match self {
+            Agent::Individual(ind) => ind.is_alive(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -156,16 +182,16 @@ impl Individual {
     }
 }
 
-impl AudioAgent for Individual {
-    fn id(&self) -> u64 {
+impl Individual {
+    pub fn id(&self) -> u64 {
         self.id
     }
 
-    fn metadata(&self) -> &AgentMetadata {
+    pub fn metadata(&self) -> &AgentMetadata {
         &self.metadata
     }
 
-    fn render_wave(
+    pub fn render_wave(
         &mut self,
         buffer: &mut [f32],
         fs: f32,
@@ -209,7 +235,7 @@ impl AudioAgent for Individual {
         }
     }
 
-    fn render_spectrum(
+    pub fn render_spectrum(
         &mut self,
         amps: &mut [f32],
         fs: f32,
@@ -228,7 +254,7 @@ impl AudioAgent for Individual {
         }
     }
 
-    fn is_alive(&self) -> bool {
+    pub fn is_alive(&self) -> bool {
         if self.energy <= 0.0 {
             return false;
         }
@@ -236,13 +262,5 @@ impl AudioAgent for Individual {
             return false;
         }
         true
-    }
-
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
     }
 }

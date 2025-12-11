@@ -6,3 +6,6 @@ pub mod meta;
 pub mod population;
 pub mod scenario;
 pub mod scripting;
+
+#[cfg(test)]
+mod tests;

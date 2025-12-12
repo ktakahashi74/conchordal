@@ -100,13 +100,17 @@ impl Population {
         let mut group_idx: Option<usize> = None;
         let mut member_idx: Option<usize> = None;
 
-        if rest.starts_with('[') && let Some(end) = rest.find(']') {
+        if rest.starts_with('[')
+            && let Some(end) = rest.find(']')
+        {
             let grp_str = &rest[1..end];
             if let Ok(g) = grp_str.parse::<usize>() {
                 group_idx = Some(g);
             }
             rest = &rest[(end + 1)..];
-            if rest.starts_with('[') && let Some(end2) = rest.find(']') {
+            if rest.starts_with('[')
+                && let Some(end2) = rest.find(']')
+            {
                 let mem_str = &rest[1..end2];
                 if let Ok(m) = mem_str.parse::<usize>() {
                     member_idx = Some(m);
@@ -125,10 +129,14 @@ impl Population {
                 } else {
                     return None;
                 }
-                if let Some(g) = group_idx && meta.group_idx != g {
+                if let Some(g) = group_idx
+                    && meta.group_idx != g
+                {
                     return None;
                 }
-                if let Some(m) = member_idx && meta.member_idx != m {
+                if let Some(m) = member_idx
+                    && meta.member_idx != m
+                {
                     return None;
                 }
                 Some(meta.id)
@@ -211,7 +219,9 @@ impl Population {
                 let mut best = idx_min;
                 let mut best_val = f32::MAX;
                 for i in idx_min..=idx_max {
-                    if let Some(&v) = landscape.c_last.get(i) && v < best_val {
+                    if let Some(&v) = landscape.c_last.get(i)
+                        && v < best_val
+                    {
                         best_val = v;
                         best = i;
                     }
@@ -246,7 +256,9 @@ impl Population {
                     let mut best = idx_min;
                     let mut best_val = f32::MAX;
                     for i in idx_min..=idx_max {
-                        if let Some(&v) = landscape.amps_last.get(i) && v < best_val {
+                        if let Some(&v) = landscape.amps_last.get(i)
+                            && v < best_val
+                        {
                             best_val = v;
                             best = i;
                         }
@@ -258,7 +270,9 @@ impl Population {
                 let mut weights: Vec<f32> = (idx_min..=idx_max)
                     .map(|i| landscape.c_last.get(i).copied().unwrap_or(0.0).max(0.0))
                     .collect();
-                if let Some(temp) = temperature && *temp > 0.0 {
+                if let Some(temp) = temperature
+                    && *temp > 0.0
+                {
                     for w in &mut weights {
                         *w = w.powf(1.0 / temp);
                     }

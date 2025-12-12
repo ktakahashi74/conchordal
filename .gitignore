@@ -12,3 +12,9 @@ repomix-output.xml
 .aider*
 nohup.out
 config.toml
+
+# System/editor cruft
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

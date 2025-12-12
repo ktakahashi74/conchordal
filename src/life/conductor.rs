@@ -19,11 +19,8 @@ pub struct Conductor {
 
 impl Conductor {
     pub fn from_scenario(s: Scenario) -> Self {
-        let mut events: Vec<QueuedEvent> = s
-            .episodes
-            .into_iter()
-            .flat_map(flatten_episode)
-            .collect();
+        let mut events: Vec<QueuedEvent> =
+            s.episodes.into_iter().flat_map(flatten_episode).collect();
 
         events.sort_by(|a, b| {
             a.time

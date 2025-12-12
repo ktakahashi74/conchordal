@@ -7,7 +7,7 @@ use crate::core::fft::apply_hann_window_complex;
 #[cfg(test)]
 use crate::core::fft::hilbert;
 use crate::core::log2space::Log2Space;
-use rustfft::{num_complex::Complex32, FftPlanner};
+use rustfft::{FftPlanner, num_complex::Complex32};
 
 // ======================================================================
 // Kernel parameter definition (Plomp–Levelt inspired, ΔERB domain)

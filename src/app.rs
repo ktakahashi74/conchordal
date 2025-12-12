@@ -391,7 +391,7 @@ fn worker_loop(
             };
             let _ = ui_tx.try_send(ui_frame);
 
-            if pop.abort_requested || (conductor.is_done() && pop.agents.is_empty()) {
+            if pop.abort_requested || (conductor.is_done() && pop.individuals.is_empty()) {
                 info!("[t={:.6}] Scenario finished. Exiting.", current_time);
                 exiting.store(true, Ordering::SeqCst);
                 break;

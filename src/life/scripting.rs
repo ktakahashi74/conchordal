@@ -6,7 +6,9 @@ use anyhow::{Context, anyhow};
 use rhai::{Engine, EvalAltResult, FLOAT, Map, Position};
 
 use super::lifecycle::LifecycleConfig;
-use super::scenario::{Action, AgentConfig, Episode, Event, Scenario, SpawnMethod, TimbreGenotype};
+use super::scenario::{
+    Action, Episode, Event, IndividualConfig, Scenario, SpawnMethod, TimbreGenotype,
+};
 
 const SCRIPT_PRELUDE: &str = r#"
 // Rhai-side helper to run blocks in parallel time branches
@@ -154,7 +156,7 @@ impl ScriptContext {
                     .get("phase")
                     .and_then(|v| v.as_float().ok())
                     .map(|p| p as f32);
-                AgentConfig::PureTone {
+                IndividualConfig::PureTone {
                     freq,
                     amp,
                     phase,
@@ -165,7 +167,7 @@ impl ScriptContext {
             "harmonic" => {
                 let genotype =
                     Self::from_map::<TimbreGenotype>(extra_map, "TimbreGenotype (harmonic)")?;
-                AgentConfig::Harmonic {
+                IndividualConfig::Harmonic {
                     freq,
                     amp,
                     genotype,
@@ -388,7 +390,7 @@ mod tests {
             for action in &ev.actions {
                 match action {
                     Action::AddAgent { agent } => {
-                        if let AgentConfig::PureTone { tag, .. } = agent {
+                        if let IndividualConfig::PureTone { tag, .. } = agent {
                             if tag.as_deref() == Some("hit") {
                                 assert_time_close(ev.time, 0.0);
                                 has_hit = true;
@@ -436,7 +438,7 @@ mod tests {
             for action in &ev.actions {
                 match action {
                     Action::AddAgent { agent } => {
-                        if let AgentConfig::PureTone { tag, .. } = agent {
+                        if let IndividualConfig::PureTone { tag, .. } = agent {
                             match tag.as_deref() {
                                 Some("pad") => pad_time = Some(ev.time),
                                 Some("after") => after_time = Some(ev.time),

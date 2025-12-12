@@ -28,24 +28,24 @@ pub trait AudioAgent {
     fn is_alive(&self) -> bool;
 }
 
-/// Hybrid synthesis agents render both time-domain audio and a spectral "body".
-pub enum Agent {
-    Individual(Individual),
-    Harmonic(HarmonicIndividual),
+/// Hybrid synthesis individuals render both time-domain audio and a spectral "body".
+pub enum Individual {
+    PureTone(PureTone),
+    Harmonic(Harmonic),
 }
 
-impl Agent {
+impl Individual {
     pub fn id(&self) -> u64 {
         match self {
-            Agent::Individual(ind) => ind.id(),
-            Agent::Harmonic(ind) => ind.id(),
+            Individual::PureTone(ind) => ind.id(),
+            Individual::Harmonic(ind) => ind.id(),
         }
     }
 
     pub fn metadata(&self) -> &AgentMetadata {
         match self {
-            Agent::Individual(ind) => ind.metadata(),
-            Agent::Harmonic(ind) => ind.metadata(),
+            Individual::PureTone(ind) => ind.metadata(),
+            Individual::Harmonic(ind) => ind.metadata(),
         }
     }
 
@@ -58,8 +58,12 @@ impl Agent {
         landscape: &Landscape,
     ) {
         match self {
-            Agent::Individual(ind) => ind.render_wave(buffer, fs, current_frame, dt_sec, landscape),
-            Agent::Harmonic(ind) => ind.render_wave(buffer, fs, current_frame, dt_sec, landscape),
+            Individual::PureTone(ind) => {
+                ind.render_wave(buffer, fs, current_frame, dt_sec, landscape)
+            }
+            Individual::Harmonic(ind) => {
+                ind.render_wave(buffer, fs, current_frame, dt_sec, landscape)
+            }
         }
     }
 
@@ -72,15 +76,15 @@ impl Agent {
         dt_sec: f32,
     ) {
         match self {
-            Agent::Individual(ind) => ind.render_spectrum(amps, fs, nfft, current_frame, dt_sec),
-            Agent::Harmonic(ind) => ind.render_spectrum(amps, fs, nfft, current_frame, dt_sec),
+            Individual::PureTone(ind) => ind.render_spectrum(amps, fs, nfft, current_frame, dt_sec),
+            Individual::Harmonic(ind) => ind.render_spectrum(amps, fs, nfft, current_frame, dt_sec),
         }
     }
 
     pub fn is_alive(&self) -> bool {
         match self {
-            Agent::Individual(ind) => ind.is_alive(),
-            Agent::Harmonic(ind) => ind.is_alive(),
+            Individual::PureTone(ind) => ind.is_alive(),
+            Individual::Harmonic(ind) => ind.is_alive(),
         }
     }
 }
@@ -139,9 +143,9 @@ impl PinkNoise {
     }
 }
 
-/// Bio-Neuro-Rhythmic individual.
+/// Legacy pure tone voice (single oscillator).
 #[derive(Debug, Clone)]
-pub struct Individual {
+pub struct PureTone {
     pub id: u64,
     pub metadata: AgentMetadata,
     pub freq_hz: f32,
@@ -167,8 +171,9 @@ pub struct Individual {
     pub gate_threshold: f32,
 }
 
+/// Additive harmonic voice.
 #[derive(Debug, Clone)]
-pub struct HarmonicIndividual {
+pub struct Harmonic {
     pub id: u64,
     pub metadata: AgentMetadata,
     pub base_freq_hz: f32,
@@ -194,7 +199,7 @@ pub struct HarmonicIndividual {
     pub jitter_gen: PinkNoise,
 }
 
-impl Individual {
+impl PureTone {
     pub fn update(&mut self, consonance: f32, rhythms: &NeuralRhythms, dt: f32) {
         let dt = dt.max(1e-4);
 
@@ -240,7 +245,7 @@ impl Individual {
     }
 }
 
-impl Individual {
+impl PureTone {
     pub fn id(&self) -> u64 {
         self.id
     }
@@ -323,13 +328,13 @@ impl Individual {
     }
 }
 
-impl AudioAgent for Individual {
+impl AudioAgent for PureTone {
     fn id(&self) -> u64 {
-        Individual::id(self)
+        PureTone::id(self)
     }
 
     fn metadata(&self) -> &AgentMetadata {
-        Individual::metadata(self)
+        PureTone::metadata(self)
     }
 
     fn render_wave(
@@ -340,7 +345,7 @@ impl AudioAgent for Individual {
         dt_sec: f32,
         landscape: &Landscape,
     ) {
-        Individual::render_wave(self, buffer, fs, current_frame, dt_sec, landscape);
+        PureTone::render_wave(self, buffer, fs, current_frame, dt_sec, landscape);
     }
 
     fn render_spectrum(
@@ -351,15 +356,15 @@ impl AudioAgent for Individual {
         current_frame: u64,
         dt_sec: f32,
     ) {
-        Individual::render_spectrum(self, amps, fs, nfft, current_frame, dt_sec);
+        PureTone::render_spectrum(self, amps, fs, nfft, current_frame, dt_sec);
     }
 
     fn is_alive(&self) -> bool {
-        Individual::is_alive(self)
+        PureTone::is_alive(self)
     }
 }
 
-impl HarmonicIndividual {
+impl Harmonic {
     fn update(&mut self, consonance: f32, rhythms: &NeuralRhythms, dt: f32) {
         let dt = dt.max(1e-4);
 
@@ -555,13 +560,13 @@ impl HarmonicIndividual {
     }
 }
 
-impl AudioAgent for HarmonicIndividual {
+impl AudioAgent for Harmonic {
     fn id(&self) -> u64 {
-        HarmonicIndividual::id(self)
+        Harmonic::id(self)
     }
 
     fn metadata(&self) -> &AgentMetadata {
-        HarmonicIndividual::metadata(self)
+        Harmonic::metadata(self)
     }
 
     fn render_wave(
@@ -572,7 +577,7 @@ impl AudioAgent for HarmonicIndividual {
         dt_sec: f32,
         landscape: &Landscape,
     ) {
-        HarmonicIndividual::render_wave(self, buffer, fs, current_frame, dt_sec, landscape);
+        Harmonic::render_wave(self, buffer, fs, current_frame, dt_sec, landscape);
     }
 
     fn render_spectrum(
@@ -583,10 +588,10 @@ impl AudioAgent for HarmonicIndividual {
         current_frame: u64,
         dt_sec: f32,
     ) {
-        HarmonicIndividual::render_spectrum(self, amps, fs, nfft, current_frame, dt_sec);
+        Harmonic::render_spectrum(self, amps, fs, nfft, current_frame, dt_sec);
     }
 
     fn is_alive(&self) -> bool {
-        HarmonicIndividual::is_alive(self)
+        Harmonic::is_alive(self)
     }
 }

@@ -1,5 +1,5 @@
-use super::individual::{Agent, AgentMetadata};
-use super::scenario::{Action, AgentConfig, SpawnMethod};
+use super::individual::{AgentMetadata, Individual};
+use super::scenario::{Action, IndividualConfig, SpawnMethod};
 use crate::core::landscape::LandscapeFrame;
 use rand::{Rng, distr::Distribution, distr::weighted::WeightedIndex};
 use std::collections::HashMap;
@@ -17,7 +17,7 @@ struct WorkBuffers {
 }
 
 pub struct Population {
-    pub agents: Vec<Agent>,
+    pub individuals: Vec<Individual>,
     current_frame: u64,
     pub abort_requested: bool,
     next_auto_id: u64,
@@ -27,12 +27,12 @@ pub struct Population {
 
 impl Population {
     pub fn new(p: PopulationParams) -> Self {
-        let agents = p
+        let individuals = p
             .initial_tones_hz
             .into_iter()
             .enumerate()
             .map(|(idx, f)| {
-                let cfg = AgentConfig::PureTone {
+                let cfg = IndividualConfig::PureTone {
                     freq: f,
                     amp: p.amplitude,
                     phase: None,
@@ -53,7 +53,7 @@ impl Population {
             })
             .collect();
         Self {
-            agents,
+            individuals,
             current_frame: 0,
             abort_requested: false,
             next_auto_id: 1_000_000,
@@ -62,14 +62,14 @@ impl Population {
         }
     }
 
-    fn find_agent_mut(&mut self, id: u64) -> Option<&mut Agent> {
-        self.agents.iter_mut().find(|a| a.id() == id)
+    fn find_individual_mut(&mut self, id: u64) -> Option<&mut Individual> {
+        self.individuals.iter_mut().find(|a| a.id() == id)
     }
 
-    pub fn add_agent(&mut self, agent: Agent) {
-        let id = agent.id();
-        self.agents.retain(|a| a.id() != id);
-        self.agents.push(agent);
+    pub fn add_individual(&mut self, individual: Individual) {
+        let id = individual.id();
+        self.individuals.retain(|a| a.id() != id);
+        self.individuals.push(individual);
     }
 
     pub fn set_current_frame(&mut self, frame: u64) {
@@ -118,7 +118,7 @@ impl Population {
             }
         }
 
-        self.agents
+        self.individuals
             .iter()
             .filter_map(|a| {
                 let meta = a.metadata();
@@ -306,7 +306,7 @@ impl Population {
                     member_idx: 0,
                 };
                 let spawned = agent.spawn(id, self.current_frame, metadata);
-                self.add_agent(spawned);
+                self.add_individual(spawned);
             }
             Action::Finish => {
                 self.abort_requested = true;
@@ -328,7 +328,7 @@ impl Population {
                         self.next_auto_id += 1;
                         id
                     };
-                    let cfg = AgentConfig::PureTone {
+                    let cfg = IndividualConfig::PureTone {
                         freq,
                         amp,
                         phase: Some(phase),
@@ -342,7 +342,7 @@ impl Population {
                         member_idx: i,
                     };
                     let spawned = cfg.spawn(id, self.current_frame, metadata);
-                    self.add_agent(spawned);
+                    self.add_individual(spawned);
                 }
             }
             Action::RemoveAgent { target } => {
@@ -354,12 +354,12 @@ impl Population {
             Action::SetFreq { target, freq_hz } => {
                 let ids = self.resolve_targets(&target);
                 for id in ids {
-                    if let Some(a) = self.find_agent_mut(id) {
+                    if let Some(a) = self.find_individual_mut(id) {
                         match a {
-                            Agent::Individual(ind) => {
+                            Individual::PureTone(ind) => {
                                 ind.freq_hz = freq_hz;
                             }
-                            Agent::Harmonic(ind) => {
+                            Individual::Harmonic(ind) => {
                                 ind.base_freq_hz = freq_hz;
                             }
                         }
@@ -371,12 +371,12 @@ impl Population {
             Action::SetAmp { target, amp } => {
                 let ids = self.resolve_targets(&target);
                 for id in ids {
-                    if let Some(a) = self.find_agent_mut(id) {
+                    if let Some(a) = self.find_individual_mut(id) {
                         match a {
-                            Agent::Individual(ind) => {
+                            Individual::PureTone(ind) => {
                                 ind.amp = amp;
                             }
-                            Agent::Harmonic(ind) => {
+                            Individual::Harmonic(ind) => {
                                 ind.amp = amp;
                             }
                         }
@@ -389,7 +389,7 @@ impl Population {
     }
 
     pub fn remove_agent(&mut self, id: u64) {
-        self.agents.retain(|a| a.id() != id);
+        self.individuals.retain(|a| a.id() != id);
     }
 
     /// Mix audio samples for the next hop.
@@ -404,7 +404,7 @@ impl Population {
         self.current_frame = current_frame;
         self.buffers.audio.resize(samples_len, 0.0);
         self.buffers.audio.fill(0.0);
-        for agent in self.agents.iter_mut() {
+        for agent in self.individuals.iter_mut() {
             if agent.is_alive() {
                 agent.render_wave(
                     &mut self.buffers.audio,
@@ -430,22 +430,22 @@ impl Population {
         self.current_frame = current_frame;
         self.buffers.amps.resize(n_bins, 0.0);
         self.buffers.amps.fill(0.0);
-        for agent in self.agents.iter_mut() {
+        for agent in self.individuals.iter_mut() {
             if agent.is_alive() {
                 agent.render_spectrum(&mut self.buffers.amps, fs, nfft, current_frame, dt_sec);
             }
         }
-        let before_count = self.agents.len();
-        self.agents.retain(|agent| agent.is_alive());
-        let removed_count = before_count - self.agents.len();
+        let before_count = self.individuals.len();
+        self.individuals.retain(|agent| agent.is_alive());
+        let removed_count = before_count - self.individuals.len();
 
         if removed_count > 0 {
             let t = current_frame as f32 * dt_sec;
             info!(
-                "[t={:.6}] Cleaned up {} dead agents. Remaining: {} (frame_idx={})",
+                "[t={:.6}] Cleaned up {} dead individuals. Remaining: {} (frame_idx={})",
                 t,
                 removed_count,
-                self.agents.len(),
+                self.individuals.len(),
                 current_frame
             );
         }

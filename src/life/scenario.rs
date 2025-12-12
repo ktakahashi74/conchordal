@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 use crate::life::individual::{
-    Agent, AgentMetadata, ArticulationState, HarmonicIndividual, Individual, PinkNoise, Sensitivity,
+    AgentMetadata, ArticulationState, Harmonic, Individual, PinkNoise, PureTone, Sensitivity,
 };
 use crate::life::lifecycle::LifecycleConfig;
 use rand::{Rng as _, rng};
@@ -71,7 +71,7 @@ pub struct Event {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
-pub enum AgentConfig {
+pub enum IndividualConfig {
     #[serde(rename = "pure_tone")]
     PureTone {
         freq: f32,
@@ -90,18 +90,18 @@ pub enum AgentConfig {
     },
 }
 
-impl AgentConfig {
+impl IndividualConfig {
     pub fn id(&self) -> Option<u64> {
         match self {
-            AgentConfig::PureTone { .. } => None,
-            AgentConfig::Harmonic { .. } => None,
+            IndividualConfig::PureTone { .. } => None,
+            IndividualConfig::Harmonic { .. } => None,
         }
     }
 
     pub fn tag(&self) -> Option<&String> {
         match self {
-            AgentConfig::PureTone { tag, .. } => tag.as_ref(),
-            AgentConfig::Harmonic { tag, .. } => tag.as_ref(),
+            IndividualConfig::PureTone { tag, .. } => tag.as_ref(),
+            IndividualConfig::Harmonic { tag, .. } => tag.as_ref(),
         }
     }
 
@@ -168,13 +168,18 @@ impl AgentConfig {
         }
     }
 
-    pub fn spawn(&self, assigned_id: u64, start_frame: u64, mut metadata: AgentMetadata) -> Agent {
+    pub fn spawn(
+        &self,
+        assigned_id: u64,
+        start_frame: u64,
+        mut metadata: AgentMetadata,
+    ) -> Individual {
         metadata.id = assigned_id;
         if metadata.tag.is_none() {
             metadata.tag = self.tag().cloned();
         }
         match self {
-            AgentConfig::PureTone {
+            IndividualConfig::PureTone {
                 freq,
                 amp,
                 lifecycle,
@@ -192,7 +197,7 @@ impl AgentConfig {
                     retrigger,
                 ) = Self::envelope_from_lifecycle(lifecycle, fs);
 
-                Agent::Individual(Individual {
+                Individual::PureTone(PureTone {
                     id: assigned_id,
                     metadata,
                     freq_hz: *freq,
@@ -216,7 +221,7 @@ impl AgentConfig {
                     gate_threshold: 0.02,
                 })
             }
-            AgentConfig::Harmonic {
+            IndividualConfig::Harmonic {
                 freq,
                 amp,
                 genotype,
@@ -242,7 +247,7 @@ impl AgentConfig {
                     phases.push(rng.random_range(0.0..std::f32::consts::TAU));
                     detune_phases.push(rng.random_range(0.0..std::f32::consts::TAU));
                 }
-                Agent::Harmonic(HarmonicIndividual {
+                Individual::Harmonic(Harmonic {
                     id: assigned_id,
                     metadata,
                     base_freq_hz: *freq,
@@ -272,10 +277,10 @@ impl AgentConfig {
     }
 }
 
-impl fmt::Display for AgentConfig {
+impl fmt::Display for IndividualConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            AgentConfig::PureTone {
+            IndividualConfig::PureTone {
                 freq,
                 amp,
                 tag,
@@ -289,7 +294,7 @@ impl fmt::Display for AgentConfig {
                     tag_str, freq, amp, lifecycle
                 )
             }
-            AgentConfig::Harmonic {
+            IndividualConfig::Harmonic {
                 freq,
                 amp,
                 tag,
@@ -313,7 +318,7 @@ mod tests {
 
     #[test]
     fn spawn_carries_envelope_and_params() {
-        let cfg = AgentConfig::PureTone {
+        let cfg = IndividualConfig::PureTone {
             freq: 220.0,
             amp: 0.3,
             phase: Some(0.25),
@@ -336,12 +341,12 @@ mod tests {
             },
         );
         match agent {
-            Agent::Individual(ind) => {
+            Individual::PureTone(ind) => {
                 assert_eq!(ind.id, 7);
                 assert_eq!(ind.freq_hz, 220.0);
                 assert_eq!(ind.amp, 0.3);
             }
-            Agent::Harmonic(_) => panic!("expected pure tone"),
+            Individual::Harmonic(_) => panic!("expected pure tone"),
         }
     }
 }
@@ -350,7 +355,7 @@ mod tests {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Action {
     AddAgent {
-        agent: AgentConfig,
+        agent: IndividualConfig,
     },
     SpawnAgents {
         method: SpawnMethod,

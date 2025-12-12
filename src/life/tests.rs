@@ -1,8 +1,8 @@
 use super::conductor::Conductor;
-use super::individual::{Agent, AgentMetadata, ArticulationState};
+use super::individual::{AgentMetadata, ArticulationState, Individual};
 use super::population::{Population, PopulationParams};
 use super::scenario::{
-    Action, AgentConfig, Episode, Event, HarmonicMode, Scenario, TimbreGenotype,
+    Action, Episode, Event, HarmonicMode, IndividualConfig, Scenario, TimbreGenotype,
 };
 use crate::core::harmonicity_kernel::HarmonicityKernel;
 use crate::core::harmonicity_kernel::HarmonicityParams;
@@ -24,7 +24,7 @@ fn test_population_add_remove_agent() {
     let mut pop = Population::new(params);
     let landscape = LandscapeFrame::default();
 
-    assert_eq!(pop.agents.len(), 0, "Population should start empty");
+    assert_eq!(pop.individuals.len(), 0, "Population should start empty");
 
     // 2. Add Agent
     let life = LifecycleConfig::Decay {
@@ -32,7 +32,7 @@ fn test_population_add_remove_agent() {
         half_life_sec: 1.0,
         attack_sec: 0.01,
     };
-    let agent_cfg = AgentConfig::PureTone {
+    let agent_cfg = IndividualConfig::PureTone {
         freq: 440.0,
         amp: 0.5,
         phase: None,
@@ -42,14 +42,14 @@ fn test_population_add_remove_agent() {
     let action_add = Action::AddAgent { agent: agent_cfg };
 
     pop.apply_action(action_add, &landscape);
-    assert_eq!(pop.agents.len(), 1, "Agent should be added");
+    assert_eq!(pop.individuals.len(), 1, "Agent should be added");
 
     // 3. Remove Agent
     let action_remove = Action::RemoveAgent {
         target: "test_agent".to_string(),
     };
     pop.apply_action(action_remove, &landscape);
-    assert_eq!(pop.agents.len(), 0, "Agent should be removed");
+    assert_eq!(pop.individuals.len(), 0, "Agent should be removed");
 }
 
 #[test]
@@ -132,7 +132,7 @@ fn test_agent_lifecycle_decay_death() {
         half_life_sec: 0.05,
         attack_sec: 0.001,
     };
-    let agent_cfg = AgentConfig::PureTone {
+    let agent_cfg = IndividualConfig::PureTone {
         freq: 440.0,
         amp: 0.5,
         phase: None,
@@ -141,7 +141,7 @@ fn test_agent_lifecycle_decay_death() {
     };
     pop.apply_action(Action::AddAgent { agent: agent_cfg }, &landscape);
 
-    assert_eq!(pop.agents.len(), 1, "Agent added");
+    assert_eq!(pop.individuals.len(), 1, "Agent added");
 
     // 2. Simulate time passing via process_frame
     // We need to run enough frames for energy to drop below threshold (1e-4)
@@ -166,7 +166,7 @@ fn test_agent_lifecycle_decay_death() {
 
     // 3. Verify agent is cleaned up
     assert_eq!(
-        pop.agents.len(),
+        pop.individuals.len(),
         0,
         "Agent should have died due to energy decay after {:.2}s",
         time
@@ -186,7 +186,7 @@ fn harmonic_render_spectrum_hits_expected_bins() {
         jitter: 0.5,
         unison: 0.1,
     };
-    let cfg = AgentConfig::Harmonic {
+    let cfg = IndividualConfig::Harmonic {
         freq: 480.0,
         amp: 0.8,
         genotype,
@@ -207,7 +207,7 @@ fn harmonic_render_spectrum_hits_expected_bins() {
     let mut amps = vec![0.0f32; 64];
 
     match &mut agent {
-        Agent::Harmonic(ind) => {
+        Individual::Harmonic(ind) => {
             ind.state = ArticulationState::Decay;
             ind.env_level = 1.0;
             ind.render_spectrum(&mut amps, 48_000.0, 1024, 0, 0.0);

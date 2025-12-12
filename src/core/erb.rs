@@ -117,7 +117,7 @@ mod tests {
     #[test]
     fn test_erbspace_creation() {
         let space = ErbSpace::new(50.0, 8000.0, 0.5);
-        // ERB stepが0.5でも10点以上はあるはず
+        // Even with a coarse ERB step there should be ample bins.
         assert!(
             space.freqs_hz.len() > 10,
             "too few bins: {}",
@@ -129,7 +129,7 @@ mod tests {
             "max freq exceeded"
         );
 
-        // 周波数は単調増加していること
+        // Frequency axis must be strictly increasing.
         let diffs: Vec<f32> = space.freqs_hz.windows(2).map(|w| w[1] - w[0]).collect();
         assert!(diffs.iter().all(|&d| d > 0.0), "non-monotonic freqs");
     }
@@ -150,7 +150,7 @@ mod tests {
     fn test_erb_bw_reference_values() {
         let bw_1k = erb_bw_hz(1000.0);
         let bw_4k = erb_bw_hz(4000.0);
-        // 理論値に近いこと（132.6Hz程度と500Hz程度）
+        // Matches known reference values around 132.6 Hz and 456.4 Hz.
         assert!((bw_1k - 132.6).abs() < 1.0, "bw(1kHz) mismatch: {bw_1k}");
         assert!((bw_4k - 456.4).abs() < 1.0, "bw(4kHz) mismatch: {bw_4k}");
         assert!(bw_4k > bw_1k);

@@ -163,7 +163,7 @@ impl NsgtKernelLog2 {
             let mut kernel_freq = h.clone();
             fft.process(&mut kernel_freq);
 
-            // 疎化（最大値に対して相対しきい値を掛ける）
+            // Sparsify with a relative magnitude threshold.
             let mut max_mag = 0.0f32;
             for z in &kernel_freq {
                 let m = z.norm_sqr();
@@ -172,7 +172,6 @@ impl NsgtKernelLog2 {
                 }
             }
             let tol = 1e-6 * max_mag.sqrt();
-            //            let tol = (1e-5f32).max(1e-6 * max_mag.sqrt()); // 実用的な下限
             let mut sparse: Vec<(usize, Complex32)> = Vec::new();
             let two_pi_over_n = 2.0 * std::f32::consts::PI / (nfft as f32);
             let shift_f = shift as f32;

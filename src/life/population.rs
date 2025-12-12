@@ -233,15 +233,26 @@ impl Population {
                 best
             }
             SpawnMethod::SpectralGap { .. } => {
-                let mut best = idx_min;
-                let mut best_val = f32::MAX;
-                for i in idx_min..=idx_max {
-                    if let Some(&v) = landscape.amps_last.get(i) && v < best_val {
-                        best_val = v;
-                        best = i;
+                let weights: Vec<f32> = (idx_min..=idx_max)
+                    .map(|i| {
+                        let amp = landscape.amps_last.get(i).copied().unwrap_or(0.0).max(1e-6);
+                        1.0 / amp
+                    })
+                    .collect();
+                if let Ok(dist) = WeightedIndex::new(&weights) {
+                    idx_min + dist.sample(rng)
+                } else {
+                    // Fallback to the quietest bin.
+                    let mut best = idx_min;
+                    let mut best_val = f32::MAX;
+                    for i in idx_min..=idx_max {
+                        if let Some(&v) = landscape.amps_last.get(i) && v < best_val {
+                            best_val = v;
+                            best = i;
+                        }
                     }
+                    best
                 }
-                best
             }
             SpawnMethod::HarmonicDensity { temperature, .. } => {
                 let mut weights: Vec<f32> = (idx_min..=idx_max)

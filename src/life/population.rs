@@ -100,20 +100,16 @@ impl Population {
         let mut group_idx: Option<usize> = None;
         let mut member_idx: Option<usize> = None;
 
-        if rest.starts_with('[') {
-            if let Some(end) = rest.find(']') {
-                let grp_str = &rest[1..end];
-                if let Ok(g) = grp_str.parse::<usize>() {
-                    group_idx = Some(g);
-                }
-                rest = &rest[(end + 1)..];
-                if rest.starts_with('[') {
-                    if let Some(end2) = rest.find(']') {
-                        let mem_str = &rest[1..end2];
-                        if let Ok(m) = mem_str.parse::<usize>() {
-                            member_idx = Some(m);
-                        }
-                    }
+        if rest.starts_with('[') && let Some(end) = rest.find(']') {
+            let grp_str = &rest[1..end];
+            if let Ok(g) = grp_str.parse::<usize>() {
+                group_idx = Some(g);
+            }
+            rest = &rest[(end + 1)..];
+            if rest.starts_with('[') && let Some(end2) = rest.find(']') {
+                let mem_str = &rest[1..end2];
+                if let Ok(m) = mem_str.parse::<usize>() {
+                    member_idx = Some(m);
                 }
             }
         }
@@ -129,15 +125,11 @@ impl Population {
                 } else {
                     return None;
                 }
-                if let Some(g) = group_idx {
-                    if meta.group_idx != g {
-                        return None;
-                    }
+                if let Some(g) = group_idx && meta.group_idx != g {
+                    return None;
                 }
-                if let Some(m) = member_idx {
-                    if meta.member_idx != m {
-                        return None;
-                    }
+                if let Some(m) = member_idx && meta.member_idx != m {
+                    return None;
                 }
                 Some(meta.id)
             })
@@ -318,7 +310,7 @@ impl Population {
                 lifecycle,
                 tag,
             } => {
-                let mut rng = rand::thread_rng();
+                let mut rng = rand::rng();
                 let group_idx = self.next_group_idx(tag.as_deref());
                 for i in 0..count {
                     let freq = self.decide_frequency(&method, landscape, &mut rng);

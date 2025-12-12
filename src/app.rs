@@ -115,7 +115,7 @@ impl App {
         let (ui_frame_tx, ui_frame_rx) = bounded::<UiFrame>(ui_channel_capacity);
         let (ctrl_tx, _ctrl_rx) = bounded::<()>(1);
 
-        let mut landscape = Landscape::new(lparams.clone(), nsgt.clone());
+        let landscape = Landscape::new(lparams.clone(), nsgt.clone());
         let analysis_landscape = Landscape::new(lparams, nsgt.clone());
 
         // Analysis pipeline channels
@@ -262,6 +262,7 @@ impl Drop for App {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn worker_loop(
     ui_tx: Sender<UiFrame>,
     mut pop: Population,
@@ -320,26 +321,25 @@ fn worker_loop(
                 let time_chunk =
                     pop.process_audio(hop, fs, frame_idx, hop_duration.as_secs_f32(), &landscape);
 
-                if last_clip_log.elapsed() > Duration::from_millis(200) {
-                    if let Some(peak) = time_chunk
+                if last_clip_log.elapsed() > Duration::from_millis(200)
+                    && let Some(peak) = time_chunk
                         .iter()
                         .map(|v| v.abs())
                         .max_by(|a, b| a.total_cmp(b))
-                    {
-                        max_peak = max_peak.max(peak);
-                        if peak > 0.98 {
-                            warn!(
-                                "[t={:.6}] Audio peak high: {:.3} at frame_idx={}. Consider more headroom.",
-                                current_time, peak, frame_idx
-                            );
-                            last_clip_log = Instant::now();
-                        } else if peak > 0.9 {
-                            warn!(
-                                "[t={:.6}] Audio peak nearing clip: {:.3} at frame_idx={}",
-                                current_time, peak, frame_idx
-                            );
-                            last_clip_log = Instant::now();
-                        }
+                {
+                    max_peak = max_peak.max(peak);
+                    if peak > 0.98 {
+                        warn!(
+                            "[t={:.6}] Audio peak high: {:.3} at frame_idx={}. Consider more headroom.",
+                            current_time, peak, frame_idx
+                        );
+                        last_clip_log = Instant::now();
+                    } else if peak > 0.9 {
+                        warn!(
+                            "[t={:.6}] Audio peak nearing clip: {:.3} at frame_idx={}",
+                            current_time, peak, frame_idx
+                        );
+                        last_clip_log = Instant::now();
                     }
                 }
 

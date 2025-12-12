@@ -3,8 +3,6 @@
 //! Provides uniform log2(Hz) mapping used by NSGT and kernel convolution.
 //! Example: 27.5 Hz → log2(27.5)=4.78, 55 Hz→5.78 (1 octave up).
 
-use std::f32::consts::LOG2_10;
-
 /// Uniform log2(Hz) frequency space.
 #[derive(Clone, Debug)]
 pub struct Log2Space {

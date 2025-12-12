@@ -20,10 +20,10 @@
 //! - 400Hz (Octave)
 //! - 300Hz (Perfect 5th via 100Hz root)
 //! - 500Hz (Major 3rd via 100Hz root)
-//! ...without using any hardcoded ratio templates.
+//!   ...without using any hardcoded ratio templates.
 
-//! core/harmonicity_kernel.rs
-//! Optimized Sibling Harmonicity Kernel.
+//!   core/harmonicity_kernel.rs
+//!   Optimized Sibling Harmonicity Kernel.
 //!
 //! Uses a "Shift-and-Add" approach with pre-calculated bounds
 //! to ensure O(N) efficiency and SIMD-friendly loops.

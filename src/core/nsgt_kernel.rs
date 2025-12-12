@@ -99,7 +99,7 @@ impl NsgtKernelLog2 {
         let q = raw_q.clamp(5.0, 80.0); // prevent excessive window size
 
         // Calculate L_k for each band
-        let mut Lks: Vec<usize> = space
+        let win_lengths: Vec<usize> = space
             .centers_hz
             .iter()
             .map(|&f| ((q * fs / f).round() as usize).max(16)) // or ceil?
@@ -107,12 +107,12 @@ impl NsgtKernelLog2 {
 
         // Nfft determination: next power of two based on max L_k (zero-padding to sharpen the kernel)
         let zpad_pow2: usize = 2;
-        let max_L = *Lks.iter().max().unwrap_or(&1024);
+        let max_win_len = *win_lengths.iter().max().unwrap_or(&1024);
 
         let mut nfft = if let Some(n) = cfg.nfft_override {
             n
         } else {
-            (max_L * zpad_pow2).next_power_of_two().max(1024)
+            (max_win_len * zpad_pow2).next_power_of_two().max(1024)
         };
 
         // upper limit for practical use (to avoid excessively large FFT)
@@ -127,31 +127,31 @@ impl NsgtKernelLog2 {
 
         // Precompute kernels for each band (frequency domain, conjugated and sparsified)
         let mut bands: Vec<KernelBand> = Vec::with_capacity(space.centers_hz.len());
-        for ((&f, &log2_f), &Lk) in space
+        for ((&f, &log2_f), &win_len) in space
             .centers_hz
             .iter()
             .zip(space.centers_log2.iter())
-            .zip(Lks.iter())
+            .zip(win_lengths.iter())
         {
-            let mut Lk_req = Lk;
+            let mut win_len_req = win_len;
 
-            if Lk_req >= nfft {
-                Lk_req = nfft - 1;
+            if win_len_req >= nfft {
+                win_len_req = nfft - 1;
             }
-            if Lk_req % 2 == 0 {
-                Lk_req -= 1;
+            if win_len_req % 2 == 0 {
+                win_len_req -= 1;
             }
 
-            Lk_req = Lk_req.max(3);
+            win_len_req = win_len_req.max(3);
 
-            let window = hann_periodic(Lk_req);
+            let window = hann_periodic(win_len_req);
             let sum_w = window.iter().copied().sum::<f32>().max(1e-12);
 
             // circularly shifted kernel h_k[n] = w[n]*e^{-j2π f n/fs} (zero-padded to nfft)
             let mut h = vec![Complex32::new(0.0, 0.0); nfft];
-            let center = Lk_req / 2;
+            let center = win_len_req / 2;
             let shift = (nfft / 2 + nfft - center) % nfft; // place kernel center at NFFT/2
-            for i in 0..Lk_req {
+            for i in 0..win_len_req {
                 let w = window[i] / sum_w;
                 let ph = 2.0 * std::f32::consts::PI * f * (i as f32) / fs;
                 let cplx = Complex32::new(ph.cos(), -ph.sin()) * w;
@@ -160,12 +160,12 @@ impl NsgtKernelLog2 {
             }
 
             // K_k = FFT{h_k}
-            let mut H = h.clone();
-            fft.process(&mut H);
+            let mut kernel_freq = h.clone();
+            fft.process(&mut kernel_freq);
 
             // 疎化（最大値に対して相対しきい値を掛ける）
             let mut max_mag = 0.0f32;
-            for z in &H {
+            for z in &kernel_freq {
                 let m = z.norm_sqr();
                 if m > max_mag {
                     max_mag = m;
@@ -176,7 +176,7 @@ impl NsgtKernelLog2 {
             let mut sparse: Vec<(usize, Complex32)> = Vec::new();
             let two_pi_over_n = 2.0 * std::f32::consts::PI / (nfft as f32);
             let shift_f = shift as f32;
-            for (k, &z) in H.iter().enumerate() {
+            for (k, &z) in kernel_freq.iter().enumerate() {
                 if z.norm() >= tol {
                     // --- phase compensation --
                     // time shift in h[n] -> linear phase exp(-j 2π k * shift / N) in H[k]
@@ -192,7 +192,7 @@ impl NsgtKernelLog2 {
             bands.push(KernelBand {
                 f_hz: f,
                 log2_hz: log2_f,
-                win_len: Lk_req,
+                win_len: win_len_req,
                 spec_conj_sparse: sparse,
             });
         }
@@ -561,10 +561,10 @@ mod tests {
         );
 
         // --- 主ローブ外側のみでフランクを評価する ---
-        // Hann の 1st zero は概ね |Δf| = 2/T,  T = Lk / fs
-        let Lk = nsgt.bands()[i_peak].win_len as f32; // Lk_req
-        let T = Lk / fs;
-        let df_zero = 2.0 / T; // [Hz]
+        // Hann の 1st zero は概ね |Δf| = 2/T,  T = win_len / fs
+        let win_len = nsgt.bands()[i_peak].win_len as f32; // Lk_req
+        let period = win_len / fs;
+        let df_zero = 2.0 / period; // [Hz]
 
         let mut flank_max = 0.0f32;
         let mut flank_count = 0usize;
@@ -587,7 +587,7 @@ mod tests {
             p_peak,
             flank_max,
             df_zero,
-            Lk as usize
+            win_len as usize
         );
     }
 

@@ -40,7 +40,6 @@ impl AudioOutput {
             .build_output_stream(
                 &config,
                 move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-                    let mut frames_filled = 0;
                     let n_frames = data.len() / channels as usize;
 
                     for frame in 0..n_frames {
@@ -51,8 +50,6 @@ impl AudioOutput {
                         for ch in 0..channels {
                             data[frame * channels as usize + ch as usize] = s;
                         }
-
-                        frames_filled += 1;
                     }
                 },
                 |err| eprintln!("Stream error: {:?}", err),

@@ -2,82 +2,6 @@ use crate::ui::plots::{log2_plot_hz, time_plot};
 use crate::ui::viewdata::UiFrame;
 use egui::{CentralPanel, TopBottomPanel, Vec2};
 
-use egui::epaint::{ColorImage, TextureHandle};
-use egui::{Color32, Ui};
-use egui_plot::{Plot, PlotImage, PlotPoint};
-
-/// === PLV heatmap ===
-pub fn show_plv_heatmap(
-    ui: &mut Ui,
-    freqs_x: &[f32],
-    freqs_y: &[f32],
-    plv: &[Vec<f32>],
-    tex: &mut Option<TextureHandle>,
-) {
-    let nx = freqs_x.len();
-    let ny = freqs_y.len();
-    if nx == 0 || ny == 0 {
-        ui.label("PLV data empty.");
-        return;
-    }
-
-    // --- build color pixels (flip vertically) ---
-    let mut pixels = vec![Color32::BLACK; nx * ny];
-    for j in 0..ny {
-        let row = ny - 1 - j; // flip vertically (low freq bottom)
-        for i in 0..nx {
-            let v = plv
-                .get(j)
-                .and_then(|r| r.get(i))
-                .copied()
-                .unwrap_or(0.0)
-                .clamp(0.0, 1.0);
-            let r = (v * 255.0) as u8;
-            let b = ((1.0 - v) * 255.0) as u8;
-            pixels[row * nx + i] = Color32::from_rgb(r, 0, b);
-        }
-    }
-
-    // --- upload texture ---
-    let img = ColorImage::new([nx, ny], pixels);
-    let texture = tex.get_or_insert_with(|| {
-        ui.ctx()
-            .load_texture("plv_heatmap", img.clone(), egui::TextureOptions::LINEAR)
-    });
-    texture.set(img, egui::TextureOptions::LINEAR);
-
-    // --- coordinate ranges ---
-    let fx_min = *freqs_x.first().unwrap();
-    let fx_max = *freqs_x.last().unwrap();
-    let fy_min = *freqs_y.first().unwrap();
-    let fy_max = *freqs_y.last().unwrap();
-
-    // --- draw plot ---
-    let plot = Plot::new("plv_plot")
-        .data_aspect(1.0)
-        .allow_zoom(false)
-        .allow_scroll(false)
-        .include_x(fx_min as f64)
-        .include_x(fx_max as f64)
-        .include_y(fy_min as f64)
-        .include_y(fy_max as f64);
-
-    plot.show(ui, |plot_ui| {
-        let center_x = (fx_min + fx_max) * 0.5;
-        let center_y = (fy_min + fy_max) * 0.5;
-        let size_x = fx_max - fx_min;
-        let size_y = fy_max - fy_min;
-
-        let img = PlotImage::new(
-            "plv_img",
-            texture.id(),
-            PlotPoint::new(center_x, center_y),
-            Vec2::new(size_x, size_y),
-        );
-        plot_ui.image(img);
-    });
-}
-
 /// === Main window ===
 pub fn main_window(ctx: &egui::Context, frame: &UiFrame, audio_error: Option<&str>) {
     TopBottomPanel::top("top").show(ctx, |ui| {
@@ -135,7 +59,7 @@ pub fn main_window(ctx: &egui::Context, frame: &UiFrame, audio_error: Option<&st
             &frame.landscape.amps_last,
             "NSGT",
             0.0,
-            (11.) as f64,
+            11_f64,
             120.0,
         );
 

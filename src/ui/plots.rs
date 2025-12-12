@@ -1,4 +1,3 @@
-use crate::core::landscape::LandscapeFrame;
 use egui::Color32;
 use egui_plot::{Bar, BarChart, GridInput, GridMark, Line, Plot, PlotPoints, log_grid_spacer};
 
@@ -92,6 +91,7 @@ pub fn log2_hist_hz(
 }
 
 /// log₂スケールで周波数を描画する汎用プロット関数
+#[allow(clippy::too_many_arguments)]
 pub fn log2_plot_hz(
     ui: &mut egui::Ui,
     title: &str,

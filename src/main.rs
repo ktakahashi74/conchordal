@@ -1,10 +1,13 @@
+#![allow(dead_code)]
+#![allow(unused_imports)]
+#![allow(unused_variables)]
+
 // Entry point: launches the egui/eframe app and spawns worker threads.
 mod app;
 mod audio;
 mod config;
 mod core;
 mod life;
-mod synth;
 mod ui;
 
 use clap::Parser;

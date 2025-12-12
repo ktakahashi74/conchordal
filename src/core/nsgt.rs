@@ -95,7 +95,7 @@ impl NsgtLog2 {
             .map(|(&f, &log2_f)| {
                 let mut win_len = (q * fs / f).ceil() as usize;
                 win_len = win_len.max(16);
-                if win_len % 2 == 0 {
+                if win_len.is_multiple_of(2) {
                     win_len += 1;
                 }
                 let hop = ((1.0 - cfg.overlap) * win_len as f32).round().max(1.0) as usize;
@@ -189,7 +189,6 @@ impl NsgtLog2 {
             return Vec::new();
         }
 
-        let fs = self.cfg.fs;
         let mut psd_vals = Vec::with_capacity(bands.len());
 
         for b in bands {
@@ -234,14 +233,14 @@ fn hann_periodic(n: usize) -> Vec<f32> {
 // /// Windowed Goertzel per band across time.
 fn analyze_band_goertzel(x: &[f32], fs: f32, band: &NsgtBand) -> (Vec<Complex32>, Vec<usize>) {
     let n = x.len();
-    let L = band.win_len;
+    let win_len = band.win_len;
     let h = band.hop;
     let f = band.f_hz;
     let omega = 2.0 * std::f32::consts::PI * f / fs;
 
     let mut centers = Vec::new();
-    let mut c = L / 2;
-    while c + L / 2 <= n + (L / 2) {
+    let mut c = win_len / 2;
+    while c + win_len / 2 <= n + (win_len / 2) {
         centers.push(c);
         c += h;
         if c == 0 {
@@ -251,17 +250,17 @@ fn analyze_band_goertzel(x: &[f32], fs: f32, band: &NsgtBand) -> (Vec<Complex32>
 
     let mut coeffs = Vec::with_capacity(centers.len());
     for &c in &centers {
-        let start = c.saturating_sub(L / 2);
+        let start = c.saturating_sub(win_len / 2);
         let mut acc_re = 0.0;
         let mut acc_im = 0.0;
-        for i in 0..L {
+        for i in 0..win_len {
             let xi = if start + i < n { x[start + i] } else { 0.0 };
             let w = band.window[i];
             let ph = omega * (start + i) as f32;
             acc_re += xi * w * ph.cos();
             acc_im -= xi * w * ph.sin();
         }
-        let norm = (2.0 / L as f32).sqrt();
+        let norm = (2.0 / win_len as f32).sqrt();
         coeffs.push(Complex32::new(acc_re * norm, acc_im * norm));
     }
     (coeffs, centers)

@@ -22,7 +22,7 @@ impl Conductor {
         let mut events: Vec<QueuedEvent> = s
             .episodes
             .into_iter()
-            .flat_map(|ep| flatten_episode(ep))
+            .flat_map(flatten_episode)
             .collect();
 
         events.sort_by(|a, b| {

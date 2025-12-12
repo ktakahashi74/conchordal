@@ -2,10 +2,12 @@
 //! Computes frequency-space roughness landscape by convolving the
 //! envelope energy using an asymmetric kernel.
 
-use crate::core::erb::{erb_bw_hz, hz_to_erb};
-use crate::core::fft::{apply_hann_window_complex, hilbert};
+use crate::core::erb::hz_to_erb;
+use crate::core::fft::apply_hann_window_complex;
+#[cfg(test)]
+use crate::core::fft::hilbert;
 use crate::core::log2space::Log2Space;
-use rustfft::{FftPlanner, num_complex::Complex32};
+use rustfft::{num_complex::Complex32, FftPlanner};
 
 // ======================================================================
 // Kernel parameter definition (Plomp–Levelt inspired, ΔERB domain)
@@ -202,7 +204,7 @@ impl RoughnessKernel {
         }
 
         // Apply Hann window (complex)
-        let U = apply_hann_window_complex(&mut buf);
+        let window_gain = apply_hann_window_complex(&mut buf);
 
         // FFT
         let mut planner = FftPlanner::new();
@@ -212,7 +214,7 @@ impl RoughnessKernel {
         // Convert to amplitude spectrum
         let n_half = n / 2;
         let df = fs / n as f32;
-        let base_scale = 1.0 / (fs * n as f32 * U);
+        let base_scale = 1.0 / (fs * n as f32 * window_gain);
         let amps: Vec<f32> = (0..n_half)
             .map(|i| (buf[i].norm_sqr() * base_scale * 2.0 * df).sqrt())
             .collect();
@@ -278,7 +280,7 @@ impl RoughnessKernel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::erb::{ErbSpace, erb_bw_hz, hz_to_erb};
+    use crate::core::erb::{erb_bw_hz, hz_to_erb};
     use plotters::prelude::*;
     use std::fs::File;
     use std::path::Path;
@@ -505,7 +507,7 @@ mod tests {
 
         let g_ref = &k.lut;
         let hw = k.hw;
-        let d_erb_kernel: Vec<f32> = (-(hw as i32)..=hw as i32)
+        let _d_erb_kernel: Vec<f32> = (-(hw as i32)..=hw as i32)
             .map(|i| i as f32 * ERB_STEP)
             .collect();
 
@@ -761,7 +763,7 @@ mod tests {
         let (r_vec, _) = k.potential_r_from_log2_spectrum(&amps, &space);
 
         let mid = amps.len() / 2;
-        let f0_erb = hz_to_erb(space.centers_hz[mid]);
+        let _f0_erb = hz_to_erb(space.centers_hz[mid]);
         let erb_per_bin = hz_to_erb(space.centers_hz[mid + 1]) - hz_to_erb(space.centers_hz[mid]);
         let d_erb_r: Vec<f32> = (0..amps.len())
             .map(|i| (i as f32 - mid as f32) * erb_per_bin)
@@ -831,12 +833,9 @@ mod tests {
     #[test]
     #[ignore]
     fn plot_potential_r_delta_input_all_methods() -> Result<(), Box<dyn std::error::Error>> {
-        use crate::core::erb::hz_to_erb;
         use crate::core::fft::hilbert;
         use crate::core::log2space::Log2Space;
-        use plotters::prelude::*;
         use rustfft::{FftPlanner, num_complex::Complex32};
-        use std::f32::consts::PI;
 
         let fs = 48_000.0;
         let params = KernelParams::default();
@@ -848,7 +847,7 @@ mod tests {
         let mid = amps_log2.len() / 2;
         amps_log2[mid] = 1.0;
 
-        let (r_log2, _) = k.potential_r_from_log2_spectrum(&amps_log2, &space);
+        let (_r_log2, _) = k.potential_r_from_log2_spectrum(&amps_log2, &space);
 
         let df = fs / nfft as f32;
         let mut amps_lin = vec![0.0f32; nfft / 2];
@@ -858,7 +857,7 @@ mod tests {
                 amps_lin[bin] += amps_log2[kidx];
             }
         }
-        let (r_spec, _) = k.potential_r_from_spectrum(&amps_lin, fs);
+        let (_r_spec, _) = k.potential_r_from_spectrum(&amps_lin, fs);
 
         let mut buf = vec![Complex32::new(0.0, 0.0); nfft];
         for (i, &amp) in amps_lin.iter().enumerate() {
@@ -871,7 +870,7 @@ mod tests {
         let ifft = planner.plan_fft_inverse(nfft);
         ifft.process(&mut buf);
         let sig: Vec<f32> = buf.iter().map(|z| z.re / nfft as f32).collect();
-        let (r_analytic, _) = k.potential_r_from_analytic(&hilbert(&sig), fs);
+        let (_r_analytic, _) = k.potential_r_from_analytic(&hilbert(&sig), fs);
 
         // plotting same as original (omitted for brevity)
         Ok(())

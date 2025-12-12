@@ -77,7 +77,7 @@ pub fn apply_hann_window_complex(buf: &mut [Complex32]) -> f32 {
 // Inverse STFT (OLA-based)
 // ======================================================================
 
-pub struct ISTFT {
+pub struct Istft {
     pub n: usize,
     pub hop: usize,
     pub window: Vec<f32>,
@@ -87,7 +87,7 @@ pub struct ISTFT {
     write_pos: usize,
 }
 
-impl ISTFT {
+impl Istft {
     pub fn new(n: usize, hop: usize) -> Self {
         assert!(hop == n / 2);
         let mut planner = FftPlanner::<f32>::new();
@@ -110,9 +110,7 @@ impl ISTFT {
         assert_eq!(spec_half.len(), n / 2 + 1);
 
         // Reconstruct Hermitian symmetry
-        for k in 0..=n / 2 {
-            self.tmp[k] = spec_half[k];
-        }
+        self.tmp[..=n / 2].copy_from_slice(&spec_half[..=n / 2]);
         for k in 1..n / 2 {
             self.tmp[n - k] = self.tmp[k].conj();
         }
@@ -123,22 +121,22 @@ impl ISTFT {
 
         // Apply window
         let mut win_frame = vec![0.0f32; n];
-        for i in 0..n {
-            win_frame[i] = self.tmp[i].re * inv_n * self.window[i];
+        for (i, win) in win_frame.iter_mut().enumerate().take(n) {
+            *win = self.tmp[i].re * inv_n * self.window[i];
         }
 
         // Overlap-add
-        for i in 0..n {
+        for (i, acc) in win_frame.iter().enumerate().take(n) {
             let idx = (self.write_pos + i) % n;
-            self.ola_buffer[idx] += win_frame[i];
+            self.ola_buffer[idx] += *acc;
         }
         self.write_pos = (self.write_pos + self.hop) % n;
 
         // Output next hop
         let mut out = vec![0.0; self.hop];
-        for i in 0..self.hop {
+        for (i, sample) in out.iter_mut().enumerate().take(self.hop) {
             let idx = (self.write_pos + i) % n;
-            out[i] = self.ola_buffer[idx];
+            *sample = self.ola_buffer[idx];
             self.ola_buffer[idx] = 0.0;
         }
         out
@@ -186,7 +184,7 @@ pub fn fft_convolve_same(x: &[f32], h: &[f32]) -> Vec<f32> {
 
     // Multiply spectra
     for i in 0..n_fft {
-        xa[i] = xa[i] * hb[i];
+        xa[i] *= hb[i];
     }
 
     // IFFT and scale
@@ -272,14 +270,14 @@ pub fn hilbert(x: &[f32]) -> Vec<Complex32> {
     let mut h = vec![Complex32::new(0.0, 0.0); n];
     if n > 0 {
         h[0] = Complex32::new(1.0, 0.0);
-        if n % 2 == 0 {
+        if n.is_multiple_of(2) {
             h[n / 2] = Complex32::new(1.0, 0.0);
-            for k in 1..(n / 2) {
-                h[k] = Complex32::new(2.0, 0.0);
+            for entry in h.iter_mut().take(n / 2).skip(1) {
+                *entry = Complex32::new(2.0, 0.0);
             }
         } else {
-            for k in 1..((n + 1) / 2) {
-                h[k] = Complex32::new(2.0, 0.0);
+            for entry in h.iter_mut().take(n.div_ceil(2)).skip(1) {
+                *entry = Complex32::new(2.0, 0.0);
             }
         }
     }
@@ -782,7 +780,7 @@ mod tests {
         // Feed pure-DC spectra; after one hop warmup, output should be ~1.0.
         let n = 1024;
         let hop = n / 2;
-        let mut istft = ISTFT::new(n, hop);
+        let mut istft = Istft::new(n, hop);
 
         let mut out_all = Vec::new();
         for _ in 0..4 {

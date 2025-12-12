@@ -75,10 +75,10 @@ impl HarmonicityKernel {
         let width = 2 * half_width + 1;
         let mut k = vec![0.0f32; width];
         let mut sum = 0.0;
-        for i in 0..width {
+        for (i, kv) in k.iter_mut().enumerate().take(width) {
             let x = (i as isize - half_width as isize) as f32;
-            k[i] = (-0.5 * (x / sigma_bins).powi(2)).exp();
-            sum += k[i];
+            *kv = (-0.5 * (x / sigma_bins).powi(2)).exp();
+            sum += *kv;
         }
         for v in &mut k {
             *v /= sum;
@@ -160,8 +160,7 @@ impl HarmonicityKernel {
         let do_norm = self.params.normalize_output;
 
         // Combined loop for gating and max-finding (Auto-vectorized)
-        for i in 0..n_bins {
-            let v = &mut landscape[i];
+        for (i, v) in landscape.iter_mut().enumerate().take(n_bins) {
             if do_gate {
                 *v *= Self::absfreq_gate(space.freq_of_index(i), &self.params);
             }
@@ -234,9 +233,9 @@ impl HarmonicityKernel {
         // Naive but clear implementation.
         // For very large N, FFT conv is better, but here N ~ 200-4000, kernel ~ 5-10.
         // Direct convolution is faster.
-        for i in 0..n {
+        for (i, out_val) in output.iter_mut().enumerate().take(n) {
             let mut acc = 0.0;
-            let start_k = if i < half { half - i } else { 0 };
+            let start_k = half.saturating_sub(i);
             let end_k = if i + half >= n {
                 k_len - (i + half - n + 1)
             } else {
@@ -247,7 +246,7 @@ impl HarmonicityKernel {
                 let input_idx = i + j - half;
                 acc += input[input_idx] * self.smooth_kernel[j];
             }
-            output[i] = acc;
+            *out_val = acc;
         }
         output
     }

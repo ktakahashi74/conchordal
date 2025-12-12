@@ -328,7 +328,7 @@ impl RtNsgtKernelLog2 {
                 debug_assert!(k < self.fft_buf.len());
                 acc += self.fft_buf[k] * w;
             }
-            acc = acc / (n as f32);
+            acc /= n as f32;
 
             // Instantaneous measure
             let p = match self.measure {

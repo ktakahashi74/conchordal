@@ -418,7 +418,7 @@ impl Harmonic {
         let k = (idx + 1) as f32;
         let slope = self.genotype.brightness.max(0.0);
         let mut amp = 1.0 / k.powf(slope.max(1e-6));
-        if (idx + 1) % 2 == 0 {
+        if (idx + 1).is_multiple_of(2) {
             amp *= 1.0 - self.genotype.comb.clamp(0.0, 1.0);
         }
         let damping = self.genotype.damping.max(0.0);

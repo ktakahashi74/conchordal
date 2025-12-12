@@ -211,11 +211,9 @@ impl Population {
                 let mut best = idx_min;
                 let mut best_val = f32::MAX;
                 for i in idx_min..=idx_max {
-                    if let Some(&v) = landscape.c_last.get(i) {
-                        if v < best_val {
-                            best_val = v;
-                            best = i;
-                        }
+                    if let Some(&v) = landscape.c_last.get(i) && v < best_val {
+                        best_val = v;
+                        best = i;
                     }
                 }
                 best
@@ -238,11 +236,9 @@ impl Population {
                 let mut best = idx_min;
                 let mut best_val = f32::MAX;
                 for i in idx_min..=idx_max {
-                    if let Some(&v) = landscape.amps_last.get(i) {
-                        if v < best_val {
-                            best_val = v;
-                            best = i;
-                        }
+                    if let Some(&v) = landscape.amps_last.get(i) && v < best_val {
+                        best_val = v;
+                        best = i;
                     }
                 }
                 best
@@ -251,11 +247,9 @@ impl Population {
                 let mut weights: Vec<f32> = (idx_min..=idx_max)
                     .map(|i| landscape.c_last.get(i).copied().unwrap_or(0.0).max(0.0))
                     .collect();
-                if let Some(temp) = temperature {
-                    if *temp > 0.0 {
-                        for w in &mut weights {
-                            *w = w.powf(1.0 / temp);
-                        }
+                if let Some(temp) = temperature && *temp > 0.0 {
+                    for w in &mut weights {
+                        *w = w.powf(1.0 / temp);
                     }
                 }
                 if let Ok(dist) = WeightedIndex::new(&weights) {

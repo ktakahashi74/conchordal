@@ -151,8 +151,8 @@ impl NsgtKernelLog2 {
             let mut h = vec![Complex32::new(0.0, 0.0); nfft];
             let center = win_len_req / 2;
             let shift = (nfft / 2 + nfft - center) % nfft; // place kernel center at NFFT/2
-            for i in 0..win_len_req {
-                let w = window[i] / sum_w;
+            for (i, &win) in window.iter().enumerate().take(win_len_req) {
+                let w = win / sum_w;
                 let ph = 2.0 * std::f32::consts::PI * f * (i as f32) / fs;
                 let cplx = Complex32::new(ph.cos(), -ph.sin()) * w;
                 let idx = (i + shift) % nfft;
@@ -272,7 +272,7 @@ impl NsgtKernelLog2 {
                 for &(k, w) in &b.spec_conj_sparse {
                     acc += buf[k] * w;
                 }
-                acc = acc / (nfft as f32); // 1/Nfft スケーリング（rustfftの正規化に対応）
+                acc /= nfft as f32; // 1/Nfft スケーリング（rustfftの正規化に対応）
                 out[b_idx].coeffs.push(acc);
                 out[b_idx].t_sec.push((start + nfft / 2) as f32 / fs);
             }

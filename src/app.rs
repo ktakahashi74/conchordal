@@ -25,9 +25,7 @@ use crate::life::scenario::Scenario;
 use crate::life::scripting::ScriptHost;
 use crate::ui::viewdata::{SpecFrame, UiFrame, WaveFrame};
 use crate::{
-    audio::output::AudioOutput,
-    config::AppConfig,
-    core::harmonicity_kernel::HarmonicityParams,
+    audio::output::AudioOutput, config::AppConfig, core::harmonicity_kernel::HarmonicityParams,
 };
 
 pub struct App {

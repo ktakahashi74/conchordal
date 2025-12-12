@@ -104,8 +104,7 @@ impl AppConfig {
     fn rounded(mut self) -> Self {
         self.audio.latency_ms = Self::round_f32(self.audio.latency_ms);
         self.analysis.tau_ms = Self::round_f32(self.analysis.tau_ms);
-        self.psychoacoustics.loudness_exp =
-            Self::round_f32(self.psychoacoustics.loudness_exp);
+        self.psychoacoustics.loudness_exp = Self::round_f32(self.psychoacoustics.loudness_exp);
         self.psychoacoustics.roughness_k = Self::round_f32(self.psychoacoustics.roughness_k);
         self
     }

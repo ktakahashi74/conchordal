@@ -1,7 +1,9 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-use crate::life::individual::{Agent, AgentMetadata, ArticulationState, Individual, PinkNoise, Sensitivity};
+use crate::life::individual::{
+    Agent, AgentMetadata, ArticulationState, HarmonicIndividual, Individual, PinkNoise, Sensitivity,
+};
 use crate::life::lifecycle::LifecycleConfig;
 use rand::{Rng as _, rng};
 
@@ -15,6 +17,34 @@ pub struct EnvelopeConfig {
     pub attack_sec: f32,
     pub decay_sec: f32,
     pub sustain_level: f32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HarmonicMode {
+    Harmonic, // Integer multiples (1, 2, 3...)
+    Metallic, // Non-integer ratios (e.g., k^1.4)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TimbreGenotype {
+    pub mode: HarmonicMode,
+
+    // --- Structure ---
+    pub stiffness: f32, // Inharmonicity coefficient
+
+    // --- Color ---
+    pub brightness: f32, // Spectral slope decay
+    pub comb: f32,       // Even harmonic attenuation
+
+    // --- Physics (Time-variant) ---
+    pub damping: f32, // High-frequency decay factor based on energy level
+
+    // --- Fluctuation & Texture ---
+    pub vibrato_rate: f32,
+    pub vibrato_depth: f32,
+    pub jitter: f32, // 1/f Pink Noise FM strength
+    pub unison: f32, // Detune amount (0.0 = single)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -50,27 +80,95 @@ pub enum AgentConfig {
         lifecycle: LifecycleConfig,
         tag: Option<String>,
     }, // future variants
+    #[serde(rename = "harmonic")]
+    Harmonic {
+        freq: f32,
+        amp: f32,
+        genotype: TimbreGenotype,
+        lifecycle: LifecycleConfig, // Controls the global amplitude envelope
+        tag: Option<String>,
+    },
 }
 
 impl AgentConfig {
     pub fn id(&self) -> Option<u64> {
         match self {
             AgentConfig::PureTone { .. } => None,
+            AgentConfig::Harmonic { .. } => None,
         }
     }
 
     pub fn tag(&self) -> Option<&String> {
         match self {
             AgentConfig::PureTone { tag, .. } => tag.as_ref(),
+            AgentConfig::Harmonic { tag, .. } => tag.as_ref(),
         }
     }
 
-    pub fn spawn(
-        &self,
-        assigned_id: u64,
-        start_frame: u64,
-        mut metadata: AgentMetadata,
-    ) -> Agent {
+    fn envelope_from_lifecycle(
+        lifecycle: &LifecycleConfig,
+        fs: f32,
+    ) -> (
+        f32,
+        f32,
+        f32,
+        f32,
+        f32,
+        ArticulationState,
+        Sensitivity,
+        bool,
+    ) {
+        match lifecycle {
+            LifecycleConfig::Decay {
+                initial_energy,
+                half_life_sec,
+                attack_sec,
+            } => {
+                let atk = attack_sec.max(0.0005);
+                let attack_step = 1.0 / (fs * atk);
+                let decay_sec = half_life_sec.max(0.01);
+                let decay_factor = (-1.0f32 / (fs * decay_sec)).exp();
+                let basal = 0.0;
+                (
+                    *initial_energy,
+                    basal,
+                    0.0,
+                    attack_step,
+                    decay_factor,
+                    ArticulationState::Attack,
+                    Sensitivity::default(), // fire-and-forget
+                    false,                  // one-shot
+                )
+            }
+            LifecycleConfig::Sustain {
+                initial_energy,
+                metabolism_rate,
+                envelope,
+            } => {
+                let atk = envelope.attack_sec.max(0.0005);
+                let attack_step = 1.0 / (fs * atk);
+                let decay_sec = envelope.decay_sec.max(0.01);
+                let decay_factor = (-1.0f32 / (fs * decay_sec)).exp();
+                (
+                    *initial_energy,
+                    *metabolism_rate,
+                    0.5, // simple default recharge
+                    attack_step,
+                    decay_factor,
+                    ArticulationState::Idle,
+                    Sensitivity {
+                        delta: 1.0,
+                        theta: 1.0,
+                        alpha: 0.5,
+                        beta: 0.5,
+                    },
+                    true, // can retrigger rhythmically
+                )
+            }
+        }
+    }
+
+    pub fn spawn(&self, assigned_id: u64, start_frame: u64, mut metadata: AgentMetadata) -> Agent {
         metadata.id = assigned_id;
         if metadata.tag.is_none() {
             metadata.tag = self.tag().cloned();
@@ -83,55 +181,16 @@ impl AgentConfig {
                 ..
             } => {
                 let fs = 48_000.0f32;
-                let (energy, basal_cost, recharge_rate, attack_step, decay_factor, state, sensitivity, retrigger) =
-                    match lifecycle {
-                        LifecycleConfig::Decay {
-                            initial_energy,
-                            half_life_sec,
-                            attack_sec,
-                        } => {
-                            let atk = attack_sec.max(0.0005);
-                            let attack_step = 1.0 / (fs * atk);
-                            let decay_sec = half_life_sec.max(0.01);
-                            let decay_factor = (-1.0f32 / (fs * decay_sec)).exp();
-                            let basal = 0.0;
-                            (
-                                *initial_energy,
-                                basal,
-                                0.0,
-                                attack_step,
-                                decay_factor,
-                                ArticulationState::Attack,
-                                Sensitivity::default(), // fire-and-forget
-                                false,                   // one-shot
-                            )
-                        }
-                        LifecycleConfig::Sustain {
-                            initial_energy,
-                            metabolism_rate,
-                            envelope,
-                        } => {
-                            let atk = envelope.attack_sec.max(0.0005);
-                            let attack_step = 1.0 / (fs * atk);
-                            let decay_sec = envelope.decay_sec.max(0.01);
-                            let decay_factor = (-1.0f32 / (fs * decay_sec)).exp();
-                            (
-                                *initial_energy,
-                                *metabolism_rate,
-                                0.5, // simple default recharge
-                                attack_step,
-                                decay_factor,
-                                ArticulationState::Idle,
-                                Sensitivity {
-                                    delta: 1.0,
-                                    theta: 1.0,
-                                    alpha: 0.5,
-                                    beta: 0.5,
-                                },
-                                true, // can retrigger rhythmically
-                            )
-                        }
-                    };
+                let (
+                    energy,
+                    basal_cost,
+                    recharge_rate,
+                    attack_step,
+                    decay_factor,
+                    state,
+                    sensitivity,
+                    retrigger,
+                ) = Self::envelope_from_lifecycle(lifecycle, fs);
 
                 Agent::Individual(Individual {
                     id: assigned_id,
@@ -157,6 +216,58 @@ impl AgentConfig {
                     gate_threshold: 0.02,
                 })
             }
+            AgentConfig::Harmonic {
+                freq,
+                amp,
+                genotype,
+                lifecycle,
+                ..
+            } => {
+                let fs = 48_000.0f32;
+                let (
+                    energy,
+                    basal_cost,
+                    recharge_rate,
+                    attack_step,
+                    decay_factor,
+                    state,
+                    sensitivity,
+                    retrigger,
+                ) = Self::envelope_from_lifecycle(lifecycle, fs);
+                let mut rng = rng();
+                let partials = 16;
+                let mut phases = Vec::with_capacity(partials);
+                let mut detune_phases = Vec::with_capacity(partials);
+                for _ in 0..partials {
+                    phases.push(rng.random_range(0.0..std::f32::consts::TAU));
+                    detune_phases.push(rng.random_range(0.0..std::f32::consts::TAU));
+                }
+                Agent::Harmonic(HarmonicIndividual {
+                    id: assigned_id,
+                    metadata,
+                    base_freq_hz: *freq,
+                    amp: *amp,
+                    genotype: genotype.clone(),
+                    energy,
+                    basal_cost,
+                    action_cost: 0.02,
+                    recharge_rate,
+                    sensitivity,
+                    rhythm_phase: 0.0,
+                    rhythm_freq: rng.random_range(0.5..3.0),
+                    lfo_phase: 0.0,
+                    env_level: 0.0,
+                    state,
+                    attack_step,
+                    decay_factor,
+                    retrigger,
+                    confidence: 1.0,
+                    gate_threshold: 0.02,
+                    phases,
+                    detune_phases,
+                    jitter_gen: PinkNoise::new(assigned_id.wrapping_add(start_frame), 0.001),
+                })
+            }
         }
     }
 }
@@ -176,6 +287,20 @@ impl fmt::Display for AgentConfig {
                     f,
                     "PureTone(tag={}, freq={:.1} Hz, amp={:.3}, {})",
                     tag_str, freq, amp, lifecycle
+                )
+            }
+            AgentConfig::Harmonic {
+                freq,
+                amp,
+                tag,
+                lifecycle,
+                genotype,
+            } => {
+                let tag_str = tag.as_deref().unwrap_or("-");
+                write!(
+                    f,
+                    "Harmonic(tag={}, mode={:?}, freq={:.1} Hz, amp={:.3}, {})",
+                    tag_str, genotype.mode, freq, amp, lifecycle
                 )
             }
         }
@@ -216,6 +341,7 @@ mod tests {
                 assert_eq!(ind.freq_hz, 220.0);
                 assert_eq!(ind.amp, 0.3);
             }
+            Agent::Harmonic(_) => panic!("expected pure tone"),
         }
     }
 }

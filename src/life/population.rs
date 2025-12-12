@@ -359,6 +359,9 @@ impl Population {
                             Agent::Individual(ind) => {
                                 ind.freq_hz = freq_hz;
                             }
+                            Agent::Harmonic(ind) => {
+                                ind.base_freq_hz = freq_hz;
+                            }
                         }
                     } else {
                         warn!("SetFreq: agent {id} not found");
@@ -371,6 +374,9 @@ impl Population {
                     if let Some(a) = self.find_agent_mut(id) {
                         match a {
                             Agent::Individual(ind) => {
+                                ind.amp = amp;
+                            }
+                            Agent::Harmonic(ind) => {
                                 ind.amp = amp;
                             }
                         }
@@ -400,7 +406,13 @@ impl Population {
         self.buffers.audio.fill(0.0);
         for agent in self.agents.iter_mut() {
             if agent.is_alive() {
-                agent.render_wave(&mut self.buffers.audio, fs, current_frame, dt_sec, landscape);
+                agent.render_wave(
+                    &mut self.buffers.audio,
+                    fs,
+                    current_frame,
+                    dt_sec,
+                    landscape,
+                );
             }
         }
         &self.buffers.audio

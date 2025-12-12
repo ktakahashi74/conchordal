@@ -42,7 +42,7 @@ pub struct LandscapeFrame {
     pub amps_last: Vec<f32>,
 }
 
-    /// Maintains real-time psychoacoustic landscape (R/C/K) driven by NSGT-RT.
+/// Maintains real-time psychoacoustic landscape (R/C/K) driven by NSGT-RT.
 pub struct Landscape {
     nsgt_rt: RtNsgtKernelLog2,
     params: LandscapeParams,

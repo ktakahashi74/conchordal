@@ -105,7 +105,14 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         "Conchordal",
         native_options,
-        Box::new(move |cc| Ok(Box::new(app::App::new(cc, args.clone(), config.clone(), stop_flag.clone())))),
+        Box::new(move |cc| {
+            Ok(Box::new(app::App::new(
+                cc,
+                args.clone(),
+                config.clone(),
+                stop_flag.clone(),
+            )))
+        }),
     )
     .map_err(|e| {
         eprintln!("Error: {:?}", e);

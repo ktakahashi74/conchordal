@@ -1,9 +1,9 @@
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
+use anyhow::Context;
 use ringbuf::traits::*;
 use ringbuf::{HeapCons, HeapProd, HeapRb};
 use tracing::debug;
-use anyhow::Context;
 
 /// 出力デバイスに接続するモジュール
 pub struct AudioOutput {

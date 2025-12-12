@@ -3,10 +3,10 @@ use std::fs;
 use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, anyhow};
-use rhai::{Dynamic, Engine, EvalAltResult, FLOAT, Map, Position};
+use rhai::{Engine, EvalAltResult, FLOAT, Map, Position};
 
 use super::lifecycle::LifecycleConfig;
-use super::scenario::{Action, AgentConfig, Episode, Event, Scenario, SpawnMethod};
+use super::scenario::{Action, AgentConfig, Episode, Event, Scenario, SpawnMethod, TimbreGenotype};
 
 const SCRIPT_PRELUDE: &str = r#"
 // Rhai-side helper to run blocks in parallel time branches
@@ -115,17 +115,7 @@ impl ScriptContext {
         amp: f32,
         life_map: Map,
     ) -> Result<(), Box<EvalAltResult>> {
-        let lifecycle = Self::from_map::<LifecycleConfig>(life_map, "LifecycleConfig")?;
-        let agent = AgentConfig::PureTone {
-            freq,
-            amp,
-            phase: None,
-            lifecycle,
-            tag: Some(tag.to_string()),
-        };
-        let action = Action::AddAgent { agent };
-        self.push_event(vec![action]);
-        Ok(())
+        self.add_agent_kind(tag, "pure_tone", freq, amp, Map::new(), life_map)
     }
 
     pub fn set_freq(&mut self, target: &str, freq: f32) {
@@ -148,6 +138,53 @@ impl ScriptContext {
         }]);
     }
 
+    pub fn add_agent_kind(
+        &mut self,
+        tag: &str,
+        kind: &str,
+        freq: f32,
+        amp: f32,
+        extra_map: Map,
+        life_map: Map,
+    ) -> Result<(), Box<EvalAltResult>> {
+        let lifecycle = Self::from_map::<LifecycleConfig>(life_map, "LifecycleConfig")?;
+        let agent = match kind {
+            "pure_tone" => {
+                let phase = extra_map
+                    .get("phase")
+                    .and_then(|v| v.as_float().ok())
+                    .map(|p| p as f32);
+                AgentConfig::PureTone {
+                    freq,
+                    amp,
+                    phase,
+                    lifecycle,
+                    tag: Some(tag.to_string()),
+                }
+            }
+            "harmonic" => {
+                let genotype =
+                    Self::from_map::<TimbreGenotype>(extra_map, "TimbreGenotype (harmonic)")?;
+                AgentConfig::Harmonic {
+                    freq,
+                    amp,
+                    genotype,
+                    lifecycle,
+                    tag: Some(tag.to_string()),
+                }
+            }
+            other => {
+                return Err(Box::new(EvalAltResult::ErrorRuntime(
+                    format!("Unknown agent kind: {other}").into(),
+                    Position::NONE,
+                )));
+            }
+        };
+        let action = Action::AddAgent { agent };
+        self.push_event(vec![action]);
+        Ok(())
+    }
+
     pub fn finish(&mut self) {
         self.push_event(vec![Action::Finish]);
     }
@@ -156,14 +193,22 @@ impl ScriptContext {
         map: Map,
         name: &str,
     ) -> Result<T, Box<EvalAltResult>> {
-        let dyn_map = Dynamic::from_map(map.clone());
-        rhai::serde::from_dynamic::<T>(&dyn_map).map_err(|e| {
-            let debug_map = format!("{:?}", map);
-            Box::new(EvalAltResult::ErrorRuntime(
-                format!("Error parsing {name}: {e} (input: {debug_map})").into(),
-                Position::NONE,
-            ))
-        })
+        serde_json::to_value(&map)
+            .map_err(|e| {
+                Box::new(EvalAltResult::ErrorRuntime(
+                    format!("Error serializing {name}: {e}").into(),
+                    Position::NONE,
+                ))
+            })
+            .and_then(|v| {
+                serde_json::from_value::<T>(v).map_err(|e| {
+                    let debug_map = format!("{:?}", map);
+                    Box::new(EvalAltResult::ErrorRuntime(
+                        format!("Error parsing {name}: {e} (input: {debug_map})").into(),
+                        Position::NONE,
+                    ))
+                })
+            })
     }
 }
 
@@ -256,6 +301,15 @@ impl ScriptHost {
             ctx.remove(target);
         });
 
+        let ctx_for_add_agent_kind = ctx.clone();
+        engine.register_fn(
+            "add_agent",
+            move |tag: &str, kind: &str, freq: FLOAT, amp: FLOAT, extra_map: Map, life_map: Map| {
+                let mut ctx = ctx_for_add_agent_kind.lock().expect("lock script context");
+                ctx.add_agent_kind(tag, kind, freq as f32, amp as f32, extra_map, life_map)
+            },
+        );
+
         let ctx_for_finish = ctx.clone();
         engine.register_fn("finish", move || {
             let mut ctx = ctx_for_finish.lock().expect("lock script context");
@@ -334,10 +388,11 @@ mod tests {
             for action in &ev.actions {
                 match action {
                     Action::AddAgent { agent } => {
-                        let AgentConfig::PureTone { tag, .. } = agent;
-                        if tag.as_deref() == Some("hit") {
-                            assert_time_close(ev.time, 0.0);
-                            has_hit = true;
+                        if let AgentConfig::PureTone { tag, .. } = agent {
+                            if tag.as_deref() == Some("hit") {
+                                assert_time_close(ev.time, 0.0);
+                                has_hit = true;
+                            }
                         }
                     }
                     Action::Finish => {
@@ -381,11 +436,12 @@ mod tests {
             for action in &ev.actions {
                 match action {
                     Action::AddAgent { agent } => {
-                        let AgentConfig::PureTone { tag, .. } = agent;
-                        match tag.as_deref() {
-                            Some("pad") => pad_time = Some(ev.time),
-                            Some("after") => after_time = Some(ev.time),
-                            _ => {}
+                        if let AgentConfig::PureTone { tag, .. } = agent {
+                            match tag.as_deref() {
+                                Some("pad") => pad_time = Some(ev.time),
+                                Some("after") => after_time = Some(ev.time),
+                                _ => {}
+                            }
                         }
                     }
                     Action::Finish => finish_time = Some(ev.time),

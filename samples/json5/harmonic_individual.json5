@@ -1,0 +1,86 @@
+{
+  // Demonstrates the HarmonicIndividual additive agent with lifecycle + damping-led timbre evolution.
+  episodes: [
+    {
+      name: "harmonic_open",
+      start_time: 0.0,
+      events: [
+        {
+          time: 0.0,
+          actions: [
+            {
+              type: "add_agent",
+              agent: {
+                type: "harmonic",
+                tag: "bell",
+                freq: 330.0,
+                amp: 0.32,
+                genotype: {
+                  mode: "harmonic",
+                  stiffness: 0.01,
+                  brightness: 1.05,
+                  comb: 0.25,
+                  damping: 0.35,
+                  vibrato_rate: 5.0,
+                  vibrato_depth: 0.01,
+                  jitter: 0.05,
+                  unison: 0.02
+                },
+                lifecycle: { type: "decay", initial_energy: 1.0, half_life_sec: 1.8, attack_sec: 0.02 }
+              }
+            }
+          ]
+        },
+        {
+          // A brighter metallic variant that sustains and slowly darkens.
+          time: 1.2,
+          actions: [
+            {
+              type: "add_agent",
+              agent: {
+                type: "harmonic",
+                tag: "metal",
+                freq: 196.0,
+                amp: 0.24,
+                genotype: {
+                  mode: "metallic",
+                  stiffness: 0.04,
+                  brightness: 0.9,
+                  comb: 0.1,
+                  damping: 0.5,
+                  vibrato_rate: 6.5,
+                  vibrato_depth: 0.015,
+                  jitter: 0.08,
+                  unison: 0.05
+                },
+                lifecycle: {
+                  type: "sustain",
+                  initial_energy: 1.0,
+                  metabolism_rate: 0.12,
+                  envelope: { attack_sec: 0.05, decay_sec: 0.4, sustain_level: 0.25 }
+                }
+              }
+            }
+          ]
+        },
+        {
+          // Gentle detune to show phase-coherent partials shifting in pitch.
+          time: 2.0,
+          actions: [ { type: "set_freq", target: "bell", freq_hz: 346.0 } ]
+        },
+        {
+          time: 3.0,
+          actions: [ { type: "set_amp", target: "metal", amp: 0.18 } ]
+        }
+      ]
+    },
+    {
+      name: "cleanup",
+      start_time: 5.0,
+      events: [
+        { time: 0.0, actions: [ { type: "remove_agent", target: "bell" } ] },
+        { time: 0.5, actions: [ { type: "finish" } ] }
+      ]
+    }
+  ]
+}

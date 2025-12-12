@@ -1,15 +1,18 @@
 use super::conductor::Conductor;
+use super::individual::{Agent, AgentMetadata, ArticulationState};
 use super::population::{Population, PopulationParams};
-use super::scenario::{Action, AgentConfig, Episode, Event, Scenario};
-use crate::core::landscape::LandscapeFrame;
-use crate::life::lifecycle::LifecycleConfig;
-use crate::core::harmonicity_kernel::HarmonicityParams;
+use super::scenario::{
+    Action, AgentConfig, Episode, Event, HarmonicMode, Scenario, TimbreGenotype,
+};
 use crate::core::harmonicity_kernel::HarmonicityKernel;
+use crate::core::harmonicity_kernel::HarmonicityParams;
+use crate::core::landscape::LandscapeFrame;
 use crate::core::landscape::{Landscape, LandscapeParams};
 use crate::core::log2space::Log2Space;
 use crate::core::nsgt_kernel::{NsgtKernelLog2, NsgtLog2Config};
 use crate::core::nsgt_rt::RtNsgtKernelLog2;
 use crate::core::roughness_kernel::{KernelParams, RoughnessKernel};
+use crate::life::lifecycle::LifecycleConfig;
 
 #[test]
 fn test_population_add_remove_agent() {
@@ -83,10 +86,7 @@ fn test_conductor_timing() {
 
     // 3. Dispatch at T=1.1 (Should fire)
     conductor.dispatch_until(1.1, 100, &landscape, &mut pop);
-    assert!(
-        pop.abort_requested,
-        "Finish action should fire at T=1.1"
-    );
+    assert!(pop.abort_requested, "Finish action should fire at T=1.1");
 }
 
 fn make_test_landscape(fs: f32) -> Landscape {
@@ -170,5 +170,63 @@ fn test_agent_lifecycle_decay_death() {
         0,
         "Agent should have died due to energy decay after {:.2}s",
         time
+    );
+}
+
+#[test]
+fn harmonic_render_spectrum_hits_expected_bins() {
+    let genotype = TimbreGenotype {
+        mode: HarmonicMode::Harmonic,
+        stiffness: 0.0,
+        brightness: 1.0,
+        comb: 0.5,
+        damping: 0.2,
+        vibrato_rate: 5.0,
+        vibrato_depth: 0.01,
+        jitter: 0.5,
+        unison: 0.1,
+    };
+    let cfg = AgentConfig::Harmonic {
+        freq: 480.0,
+        amp: 0.8,
+        genotype,
+        lifecycle: LifecycleConfig::Decay {
+            initial_energy: 1.0,
+            half_life_sec: 1.0,
+            attack_sec: 0.01,
+        },
+        tag: None,
+    };
+    let metadata = AgentMetadata {
+        id: 99,
+        tag: None,
+        group_idx: 0,
+        member_idx: 0,
+    };
+    let mut agent = cfg.spawn(metadata.id, 0, metadata);
+    let mut amps = vec![0.0f32; 64];
+
+    match &mut agent {
+        Agent::Harmonic(ind) => {
+            ind.state = ArticulationState::Decay;
+            ind.env_level = 1.0;
+            ind.render_spectrum(&mut amps, 48_000.0, 1024, 0, 0.0);
+        }
+        _ => panic!("expected harmonic agent"),
+    }
+
+    let base_bin = ((480.0f32 * 1024.0 / 48_000.0).round()) as usize;
+    let even_bin = ((960.0f32 * 1024.0 / 48_000.0).round()) as usize;
+    assert!(
+        amps[base_bin] > 0.0,
+        "fundamental bin should receive energy"
+    );
+    assert!(
+        amps[even_bin] > 0.0,
+        "second harmonic bin should receive energy"
+    );
+    assert!(
+        amps[base_bin] > amps[even_bin],
+        "comb and brightness should attenuate even harmonic"
     );
 }

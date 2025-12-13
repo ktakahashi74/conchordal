@@ -378,6 +378,9 @@ fn worker_loop(
                 }
             }
 
+            let mut ui_landscape = current_landscape.clone();
+            ui_landscape.rhythm = landscape.rhythm;
+
             let ui_frame = UiFrame {
                 wave: WaveFrame {
                     fs,
@@ -387,7 +390,7 @@ fn worker_loop(
                     spec_hz: current_landscape.space.centers_hz.clone(),
                     amps: current_landscape.amps_last.clone(),
                 },
-                landscape: current_landscape.clone(),
+                landscape: ui_landscape,
             };
             let _ = ui_tx.try_send(ui_frame);
 

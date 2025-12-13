@@ -59,6 +59,7 @@ impl Resonator {
 pub struct ModulationBank {
     bands: [Resonator; 4],
     last: NeuralRhythms,
+    long_term_avg: f32,
 }
 
 impl ModulationBank {
@@ -75,17 +76,22 @@ impl ModulationBank {
         Self {
             bands,
             last: NeuralRhythms::default(),
+            long_term_avg: 0.0,
         }
     }
 
     /// Update the modulation bank with band energies (low, mid, high).
     pub fn update(&mut self, low: f32, mid: f32, high: f32) -> NeuralRhythms {
         // Sum energy across bands; a more elaborate model could weight bands differently.
-        let x = (low.max(0.0) + mid.max(0.0) + high.max(0.0)).sqrt(); // compress
-        self.last.delta = self.bands[0].process(x);
-        self.last.theta = self.bands[1].process(x);
-        self.last.alpha = self.bands[2].process(x);
-        self.last.beta = self.bands[3].process(x);
+        let x_raw = (low.max(0.0) + mid.max(0.0) + high.max(0.0)).sqrt(); // compress
+        // DC reject: track slow average and feed AC component to the resonators.
+        self.long_term_avg = 0.995 * self.long_term_avg + 0.005 * x_raw;
+        let x_ac = x_raw - self.long_term_avg;
+
+        self.last.delta = self.bands[0].process(x_ac);
+        self.last.theta = self.bands[1].process(x_ac);
+        self.last.alpha = self.bands[2].process(x_ac);
+        self.last.beta = self.bands[3].process(x_ac);
         self.last
     }
 

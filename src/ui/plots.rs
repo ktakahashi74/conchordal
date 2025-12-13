@@ -1,4 +1,4 @@
-use egui::Color32;
+use egui::{Align2, Color32, FontId, Stroke};
 use egui_plot::{Bar, BarChart, GridInput, GridMark, Line, Plot, PlotPoints, log_grid_spacer};
 
 /// log2 軸で周波数を描画するヒストグラム（自動幅調整版）
@@ -178,5 +178,47 @@ pub fn time_plot(ui: &mut egui::Ui, title: &str, fs: f64, samples: &[f32]) {
             .show(ui, |plot_ui| {
                 plot_ui.line(line);
             });
+    });
+}
+
+/// Visualize neural rhythms (Delta/Theta/Alpha/Beta) as radial gauges.
+pub fn neural_compass(ui: &mut egui::Ui, rhythms: &crate::core::modulation::NeuralRhythms) {
+    let bands = [
+        ("Delta", Color32::from_rgb(52, 152, 219), rhythms.delta),
+        ("Theta", Color32::from_rgb(46, 204, 113), rhythms.theta),
+        ("Alpha", Color32::from_rgb(241, 196, 15), rhythms.alpha),
+        ("Beta", Color32::from_rgb(231, 76, 60), rhythms.beta),
+    ];
+
+    ui.horizontal(|ui| {
+        for (label, color, rhythm) in bands {
+            let desired = egui::vec2(90.0, 100.0);
+            let (rect, _resp) = ui.allocate_exact_size(desired, egui::Sense::hover());
+            let painter = ui.painter_at(rect);
+            let center = rect.center();
+            let radius = rect.width().min(rect.height()) * 0.35;
+
+            // Background circle
+            painter.circle_stroke(center, radius, Stroke::new(1.0, color.gamma_multiply(0.35)));
+            painter.circle_filled(center, 4.0, Color32::WHITE);
+            painter.circle_stroke(center, 4.0, Stroke::new(1.0, color.gamma_multiply(0.6)));
+
+            // Needle
+            let vis_mag = (rhythm.mag * 6.0).min(1.0); // boost low values for visibility
+            let length = radius * (0.1 + 0.9 * vis_mag);
+            let angle = rhythm.phase - std::f32::consts::FRAC_PI_2;
+            let tip = center + egui::vec2(angle.cos(), angle.sin()) * length;
+            let thickness = 1.5 + 3.0 * vis_mag;
+            painter.line_segment([center, tip], Stroke::new(thickness, color));
+
+            // Label
+            painter.text(
+                rect.center_top() + egui::vec2(0.0, 8.0),
+                Align2::CENTER_TOP,
+                label,
+                FontId::proportional(12.0),
+                color,
+            );
+        }
     });
 }

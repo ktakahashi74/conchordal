@@ -38,6 +38,7 @@ pub struct LandscapeFrame {
     pub r_last: Vec<f32>,
     pub h_last: Vec<f32>,
     pub c_last: Vec<f32>,
+    pub rhythm: NeuralRhythms,
     /// Preprocessed subjective intensity (after normalize()) on log2 bins.
     pub amps_last: Vec<f32>,
 }
@@ -220,6 +221,7 @@ impl Landscape {
             r_last: r,
             h_last: h,
             c_last: c,
+            rhythm: self.rhythm,
             amps_last: self.amps_last.clone(),
         }
     }
@@ -231,6 +233,7 @@ impl Landscape {
             r_last: self.last_r.clone(),
             h_last: self.last_h.clone(),
             c_last: self.last_c.clone(),
+            rhythm: self.rhythm,
             amps_last: self.amps_last.clone(),
         }
     }
@@ -329,6 +332,7 @@ impl Default for LandscapeFrame {
             r_last: vec![0.0; n],
             h_last: vec![0.0; n],
             c_last: vec![0.0; n],
+            rhythm: NeuralRhythms::default(),
             amps_last: vec![0.0; n],
         }
     }

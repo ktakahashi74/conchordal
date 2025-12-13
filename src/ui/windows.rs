@@ -1,4 +1,4 @@
-use crate::ui::plots::{log2_plot_hz, time_plot};
+use crate::ui::plots::{log2_plot_hz, neural_compass, time_plot};
 use crate::ui::viewdata::UiFrame;
 use egui::{CentralPanel, TopBottomPanel, Vec2};
 
@@ -51,6 +51,8 @@ pub fn main_window(ctx: &egui::Context, frame: &UiFrame, audio_error: Option<&st
 
         ui.separator();
         ui.heading("Analytic");
+        ui.label("Neural Rhythms");
+        neural_compass(ui, &frame.landscape.rhythm);
 
         log2_plot_hz(
             ui,

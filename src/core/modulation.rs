@@ -21,6 +21,7 @@ struct Resonator {
     state_re: f32,
     state_im: f32,
     scale: f32,
+    vitality: f32,
 }
 
 impl Resonator {
@@ -37,16 +38,19 @@ impl Resonator {
             state_re: 0.0,
             state_im: 0.0,
             scale: 1.0 - rho,
+            vitality: 0.0,
         }
     }
 
     fn process(&mut self, x: f32) -> NeuralRhythm {
+        let mag_sq = self.state_re * self.state_re + self.state_im * self.state_im;
+        let effective_rho = self.rho + self.vitality * (1.0 - mag_sq);
         // Rotate previous state
         let re_rot = self.state_re * self.cos_t - self.state_im * self.sin_t;
         let im_rot = self.state_re * self.sin_t + self.state_im * self.cos_t;
         // Decay and inject new energy
-        let re = self.rho * re_rot + self.scale * x;
-        let im = self.rho * im_rot;
+        let re = effective_rho * re_rot + self.scale * x;
+        let im = effective_rho * im_rot;
         self.state_re = re;
         self.state_im = im;
         let mag = (re * re + im * im).sqrt();
@@ -60,6 +64,7 @@ pub struct ModulationBank {
     bands: [Resonator; 4],
     last: NeuralRhythms,
     long_term_avg: f32,
+    vitality: f32,
 }
 
 impl ModulationBank {
@@ -77,6 +82,14 @@ impl ModulationBank {
             bands,
             last: NeuralRhythms::default(),
             long_term_avg: 0.0,
+            vitality: 0.0,
+        }
+    }
+
+    pub fn set_vitality(&mut self, v: f32) {
+        self.vitality = v;
+        for band in &mut self.bands {
+            band.vitality = v;
         }
     }
 
@@ -97,5 +110,46 @@ impl ModulationBank {
 
     pub fn last(&self) -> NeuralRhythms {
         self.last
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_self_oscillation() {
+        let mut res = Resonator::new(2.0, 5.0, 100.0);
+        res.vitality = 0.5;
+
+        // Kick the resonator into motion.
+        for _ in 0..16 {
+            res.process(0.6);
+        }
+
+        // With positive vitality, energy should settle into a limit cycle even with no further input.
+        let mut steady_mag = 0.0;
+        for _ in 0..200 {
+            steady_mag = res.process(0.0).mag;
+        }
+
+        // Linear version should decay toward zero under the same conditions.
+        let mut linear = Resonator::new(2.0, 5.0, 100.0);
+        for _ in 0..16 {
+            linear.process(0.6);
+        }
+        let mut decayed_mag = 0.0;
+        for _ in 0..200 {
+            decayed_mag = linear.process(0.0).mag;
+        }
+
+        assert!(
+            steady_mag > 0.3,
+            "expected sustained oscillation; got mag={steady_mag}"
+        );
+        assert!(
+            decayed_mag < 0.05,
+            "expected linear resonator to decay; got mag={decayed_mag}"
+        );
     }
 }

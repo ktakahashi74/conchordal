@@ -202,6 +202,11 @@ pub fn neural_compass(ui: &mut egui::Ui, rhythms: &crate::core::modulation::Neur
             painter.circle_stroke(center, radius, Stroke::new(1.0, color.gamma_multiply(0.35)));
             painter.circle_filled(center, 4.0, Color32::WHITE);
             painter.circle_stroke(center, 4.0, Stroke::new(1.0, color.gamma_multiply(0.6)));
+            let top = center + egui::vec2(0.0, -radius);
+            painter.line_segment(
+                [center, top],
+                Stroke::new(1.0, Color32::WHITE.gamma_multiply(0.3)),
+            );
 
             // Needle
             let vis_mag = (rhythm.mag * 6.0).min(1.0); // boost low values for visibility

@@ -23,6 +23,7 @@ pub struct Population {
     next_auto_id: u64,
     tag_counters: HashMap<String, usize>,
     buffers: WorkBuffers,
+    pub global_vitality: f32,
 }
 
 impl Population {
@@ -59,6 +60,7 @@ impl Population {
             next_auto_id: 1_000_000,
             tag_counters: HashMap::new(),
             buffers: WorkBuffers::default(),
+            global_vitality: 0.0,
         }
     }
 
@@ -395,6 +397,9 @@ impl Population {
                         warn!("SetAmp: agent {id} not found");
                     }
                 }
+            }
+            Action::SetRhythmVitality { value } => {
+                self.global_vitality = value;
             }
         }
     }

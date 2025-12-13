@@ -375,6 +375,9 @@ pub enum Action {
         target: String,
         amp: f32,
     },
+    SetRhythmVitality {
+        value: f32,
+    },
     Finish,
 }
 
@@ -402,6 +405,9 @@ impl fmt::Display for Action {
             }
             Action::SetAmp { target, amp } => {
                 write!(f, "SetAmp target={} amp={:.3}", target, amp)
+            }
+            Action::SetRhythmVitality { value } => {
+                write!(f, "SetRhythmVitality value={:.3}", value)
             }
             Action::Finish => write!(f, "Finish"),
         }

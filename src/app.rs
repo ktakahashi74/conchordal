@@ -316,6 +316,7 @@ fn worker_loop(
 
             let t_start = Instant::now();
             conductor.dispatch_until(current_time, frame_idx, &current_landscape, &mut pop);
+            landscape.set_vitality(pop.global_vitality);
 
             let time_chunk_vec = {
                 let time_chunk =

@@ -134,6 +134,10 @@ impl ScriptContext {
         }]);
     }
 
+    pub fn set_rhythm_vitality(&mut self, value: f32) {
+        self.push_event(vec![Action::SetRhythmVitality { value }]);
+    }
+
     pub fn remove(&mut self, target: &str) {
         self.push_event(vec![Action::RemoveAgent {
             target: target.to_string(),
@@ -295,6 +299,12 @@ impl ScriptHost {
         engine.register_fn("set_amp", move |target: &str, amp: FLOAT| {
             let mut ctx = ctx_for_set_amp.lock().expect("lock script context");
             ctx.set_amp(target, amp as f32);
+        });
+
+        let ctx_for_set_vitality = ctx.clone();
+        engine.register_fn("set_rhythm_vitality", move |value: FLOAT| {
+            let mut ctx = ctx_for_set_vitality.lock().expect("lock script context");
+            ctx.set_rhythm_vitality(value as f32);
         });
 
         let ctx_for_remove = ctx.clone();

@@ -60,6 +60,7 @@ pub struct Landscape {
     modulation_bank: Option<ModulationBank>,
     lp_200_state: f32,
     lp_2k_state: f32,
+    modulation_vitality: f32,
 }
 
 impl Landscape {
@@ -84,6 +85,7 @@ impl Landscape {
             modulation_bank: None,
             lp_200_state: 0.0,
             lp_2k_state: 0.0,
+            modulation_vitality: 0.0,
         }
     }
 
@@ -274,7 +276,9 @@ impl Landscape {
         let hop_len = audio_chunk.len() as f32;
         if self.modulation_bank.is_none() {
             let env_rate = fs / hop_len.max(1.0);
-            self.modulation_bank = Some(ModulationBank::new(env_rate));
+            let mut bank = ModulationBank::new(env_rate);
+            bank.set_vitality(self.modulation_vitality);
+            self.modulation_bank = Some(bank);
         }
 
         let dt = 1.0 / fs;
@@ -319,6 +323,13 @@ impl Landscape {
         self.last_h.clone_from(&frame.h_last);
         self.last_c.clone_from(&frame.c_last);
         self.amps_last.clone_from(&frame.amps_last);
+    }
+
+    pub fn set_vitality(&mut self, v: f32) {
+        self.modulation_vitality = v;
+        if let Some(bank) = &mut self.modulation_bank {
+            bank.set_vitality(v);
+        }
     }
 }
 

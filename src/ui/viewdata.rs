@@ -17,4 +17,5 @@ pub struct UiFrame {
     pub wave: WaveFrame,
     pub spec: SpecFrame,
     pub landscape: LandscapeFrame,
+    pub time_sec: f32,
 }

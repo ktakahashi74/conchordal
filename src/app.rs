@@ -40,9 +40,23 @@ pub struct App {
     worker_handle: Option<std::thread::JoinHandle<()>>,
     wav_handle: Option<std::thread::JoinHandle<()>>,
     exiting: Arc<AtomicBool>,
+    rhythm_history: VecDeque<(f64, crate::core::modulation::NeuralRhythms)>,
 }
 
 impl App {
+    fn push_frame(&mut self, frame: UiFrame) {
+        let t = frame.time_sec as f64;
+        self.rhythm_history.push_back((t, frame.landscape.rhythm));
+        while self
+            .rhythm_history
+            .front()
+            .map_or(false, |(time, _)| *time < t - 5.0)
+        {
+            self.rhythm_history.pop_front();
+        }
+        self.last_frame = frame;
+    }
+
     pub fn new(
         cc: &eframe::CreationContext<'_>,
         args: crate::Args,
@@ -221,6 +235,7 @@ impl App {
             wav_handle,
             worker_handle,
             exiting: stop_flag,
+            rhythm_history: VecDeque::with_capacity(1024),
         }
     }
 }
@@ -239,10 +254,15 @@ impl eframe::App for App {
         }
         while self.ui_queue.len() > self.visual_delay_frames {
             if let Some(frame) = self.ui_queue.pop_front() {
-                self.last_frame = frame;
+                self.push_frame(frame);
             }
         }
-        crate::ui::windows::main_window(ctx, &self.last_frame, self.audio_init_error.as_deref());
+        crate::ui::windows::main_window(
+            ctx,
+            &self.last_frame,
+            &self.rhythm_history,
+            self.audio_init_error.as_deref(),
+        );
         ctx.request_repaint_after(std::time::Duration::from_millis(16));
     }
 }
@@ -392,6 +412,7 @@ fn worker_loop(
                     amps: current_landscape.amps_last.clone(),
                 },
                 landscape: ui_landscape,
+                time_sec: current_time,
             };
             let _ = ui_tx.try_send(ui_frame);
 

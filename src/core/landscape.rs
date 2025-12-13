@@ -85,7 +85,7 @@ impl Landscape {
             modulation_bank: None,
             lp_200_state: 0.0,
             lp_2k_state: 0.0,
-            modulation_vitality: 0.0,
+            modulation_vitality: 0.1,
         }
     }
 
@@ -265,6 +265,7 @@ impl Landscape {
         self.lp_200_state = 0.0;
         self.lp_2k_state = 0.0;
         self.modulation_bank = None;
+        self.modulation_vitality = 0.1;
     }
 
     /// Lightweight rhythm extractor driven by time-domain audio.

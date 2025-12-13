@@ -1,9 +1,15 @@
-use crate::ui::plots::{log2_plot_hz, neural_compass, time_plot};
+use crate::ui::plots::{log2_plot_hz, neural_compass, neural_phase_plot, time_plot};
 use crate::ui::viewdata::UiFrame;
 use egui::{CentralPanel, TopBottomPanel, Vec2};
+use std::collections::VecDeque;
 
 /// === Main window ===
-pub fn main_window(ctx: &egui::Context, frame: &UiFrame, audio_error: Option<&str>) {
+pub fn main_window(
+    ctx: &egui::Context,
+    frame: &UiFrame,
+    rhythm_history: &VecDeque<(f64, crate::core::modulation::NeuralRhythms)>,
+    audio_error: Option<&str>,
+) {
     TopBottomPanel::top("top").show(ctx, |ui| {
         ui.heading("Conchordal — NSGT Landscape Viewer");
         ui.label("Wave + Landscape (log₂-space R, PLV-based C)");
@@ -51,8 +57,18 @@ pub fn main_window(ctx: &egui::Context, frame: &UiFrame, audio_error: Option<&st
 
         ui.separator();
         ui.heading("Analytic");
-        ui.label("Neural Rhythms");
-        neural_compass(ui, &frame.landscape.rhythm);
+        ui.horizontal(|ui| {
+            ui.vertical(|ui| {
+                ui.label("Neural Rhythms");
+                neural_compass(ui, &frame.landscape.rhythm);
+            });
+            ui.separator();
+            ui.vertical(|ui| {
+                ui.set_min_width(ui.available_width());
+                ui.label("Neural Phase Slope");
+                neural_phase_plot(ui, rhythm_history);
+            });
+        });
 
         log2_plot_hz(
             ui,

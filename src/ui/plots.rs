@@ -1,5 +1,8 @@
 use egui::{Align2, Color32, FontId, Stroke};
-use egui_plot::{Bar, BarChart, GridInput, GridMark, Line, Plot, PlotPoints, log_grid_spacer};
+use egui_plot::{
+    Bar, BarChart, GridInput, GridMark, Line, Plot, PlotPoints, Points, log_grid_spacer,
+};
+use std::collections::VecDeque;
 
 /// log2 軸で周波数を描画するヒストグラム（自動幅調整版）
 pub fn log2_hist_hz(
@@ -181,6 +184,160 @@ pub fn time_plot(ui: &mut egui::Ui, title: &str, fs: f64, samples: &[f32]) {
     });
 }
 
+fn phase_to_unit(phase: f64) -> f64 {
+    let mut p = phase % std::f64::consts::TAU;
+    if p < 0.0 {
+        p += std::f64::consts::TAU;
+    }
+    p
+}
+
+fn band_segments<F>(
+    history: &VecDeque<(f64, crate::core::modulation::NeuralRhythms)>,
+    mut accessor: F,
+) -> (Vec<(PlotPoints, f32)>, Vec<([f64; 2], f32)>)
+where
+    F: FnMut(&crate::core::modulation::NeuralRhythms) -> (f64, f32),
+{
+    let mut segments: Vec<(PlotPoints, f32)> = Vec::new();
+    let mut current_points: Vec<[f64; 2]> = Vec::new();
+    let mut current_mags: Vec<f64> = Vec::new();
+    let mut markers: Vec<([f64; 2], f32)> = Vec::new();
+    let mut last: Option<(f64, f64, f64)> = None; // (time, phase, mag)
+    let tau = std::f64::consts::TAU;
+
+    for (t, rhythms) in history {
+        let (phase_raw, mag) = accessor(rhythms);
+        let phase = phase_to_unit(phase_raw);
+        let mag_clamped = mag.clamp(0.0, 1.0) as f64;
+
+        if let Some((prev_t, prev_phase, prev_mag)) = last {
+            // Detect wrap by looking for a large negative jump.
+            if prev_phase - phase > std::f64::consts::PI {
+                // Compute crossing time where phase hits 2π.
+                let delta_phase = (phase + tau) - prev_phase;
+                if delta_phase.abs() > f64::EPSILON {
+                    let frac = (tau - prev_phase) / delta_phase;
+                    let t_cross = prev_t + frac * (t - prev_t);
+                    // Close current segment at 2π
+                    current_points.push([t_cross, tau]);
+                    current_mags.push(prev_mag);
+                    if !current_points.is_empty() {
+                        let avg_mag = if current_mags.is_empty() {
+                            0.0
+                        } else {
+                            current_mags.iter().sum::<f64>() / current_mags.len() as f64
+                        };
+                        segments.push((PlotPoints::from(current_points.clone()), avg_mag as f32));
+                    }
+                    // Marker at wrap
+                    let marker_alpha = (mag_clamped * 4.0).clamp(0.3, 1.0) as f32;
+                    markers.push(([t_cross, 0.0], marker_alpha));
+                    // Start new segment from 0 at the crossing
+                    current_points.clear();
+                    current_mags.clear();
+                    current_points.push([t_cross, 0.0]);
+                    current_mags.push(mag_clamped);
+                }
+            }
+        }
+
+        current_points.push([*t, phase]);
+        current_mags.push(mag_clamped);
+        last = Some((*t, phase, mag_clamped));
+    }
+
+    if !current_points.is_empty() {
+        let avg_mag = if current_mags.is_empty() {
+            0.0
+        } else {
+            current_mags.iter().sum::<f64>() / current_mags.len() as f64
+        };
+        segments.push((PlotPoints::from(current_points), avg_mag as f32));
+    }
+
+    (segments, markers)
+}
+
+/// Visualize neural phases over time as sawtooth traces with wrap markers.
+pub fn neural_phase_plot(
+    ui: &mut egui::Ui,
+    history: &VecDeque<(f64, crate::core::modulation::NeuralRhythms)>,
+) {
+    type BandAccessor = fn(&crate::core::modulation::NeuralRhythms) -> (f64, f32);
+    let tau = std::f64::consts::TAU;
+    if history.is_empty() {
+        ui.label("No rhythm data");
+        return;
+    }
+
+    let x_min = history.front().map(|(t, _)| *t).unwrap_or(0.0);
+    let x_max = history.back().map(|(t, _)| *t).unwrap_or(1.0);
+
+    let bands = [
+        (
+            "Delta",
+            Color32::from_rgb(80, 180, 255),
+            (|r: &crate::core::modulation::NeuralRhythms| (r.delta.phase as f64, r.delta.mag))
+                as BandAccessor,
+        ),
+        (
+            "Theta",
+            Color32::from_rgb(70, 225, 135),
+            (|r: &crate::core::modulation::NeuralRhythms| (r.theta.phase as f64, r.theta.mag))
+                as BandAccessor,
+        ),
+        (
+            "Alpha",
+            Color32::from_rgb(255, 215, 60),
+            (|r: &crate::core::modulation::NeuralRhythms| (r.alpha.phase as f64, r.alpha.mag))
+                as BandAccessor,
+        ),
+        (
+            "Beta",
+            Color32::from_rgb(255, 110, 90),
+            (|r: &crate::core::modulation::NeuralRhythms| (r.beta.phase as f64, r.beta.mag))
+                as BandAccessor,
+        ),
+    ];
+
+    Plot::new("neural_phase_plot")
+        .height(220.0)
+        .allow_drag(false)
+        .allow_scroll(false)
+        .include_y(0.0)
+        .include_y(tau)
+        .include_x(x_min)
+        .include_x(x_max)
+        .y_axis_formatter(|mark, _| format!("{:.2}", mark.value))
+        .x_axis_formatter(|mark, _| format!("{:.1} s", mark.value))
+        .show(ui, |plot_ui| {
+            for (label, color, accessor) in bands {
+                let (segments, markers) = band_segments(history, accessor);
+                let mut first = true;
+                for (points, mag_avg) in segments {
+                    let alpha = (mag_avg * 4.0).clamp(0.3, 1.0);
+                    let c = color.gamma_multiply(alpha);
+                    let mut line = Line::new("", points).color(c);
+                    if first {
+                        line = line.name(label);
+                        first = false;
+                    }
+                    plot_ui.line(line);
+                }
+                for (pt, marker_alpha) in markers {
+                    if marker_alpha > 0.3 {
+                        let marker_color = color.gamma_multiply(marker_alpha);
+                        let pts = Points::new("", PlotPoints::from(vec![pt]))
+                            .color(marker_color)
+                            .radius(2.5);
+                        plot_ui.points(pts);
+                    }
+                }
+            }
+        });
+}
+
 /// Visualize neural rhythms (Delta/Theta/Alpha/Beta) as radial gauges.
 pub fn neural_compass(ui: &mut egui::Ui, rhythms: &crate::core::modulation::NeuralRhythms) {
     let bands = [
@@ -209,7 +366,7 @@ pub fn neural_compass(ui: &mut egui::Ui, rhythms: &crate::core::modulation::Neur
             );
 
             // Needle
-            let vis_mag = (rhythm.mag * 6.0).min(1.0); // boost low values for visibility
+            let vis_mag = (rhythm.mag * 1.5).min(1.0); // gentler boost to avoid saturation
             let length = radius * (0.1 + 0.9 * vis_mag);
             let angle = rhythm.phase - std::f32::consts::FRAC_PI_2;
             let tip = center + egui::vec2(angle.cos(), angle.sin()) * length;

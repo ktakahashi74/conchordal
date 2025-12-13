@@ -1,6 +1,6 @@
 # Conchordal
 
-**Direct Cognitive Coupling.**
+**Emergent Music through Direct Cognitive Coupling.**
 
 > **Note:** This software is in a **Research Alpha Phase**. It is an open laboratory for researchers and artists exploring the direct link between computational audio and human auditory cognition.
 
@@ -113,4 +113,4 @@ Distributed under the terms of both the MIT license and the Apache License (Vers
 
 ### Author
 
-Created by Koichi Takahashi
+Created by Koichi Takahashi <info@conchordal.org>

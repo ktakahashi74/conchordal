@@ -1,6 +1,6 @@
 # Conchordal
 
-**Emergent Music through Direct Cognitive Coupling.**
+**A bio-acoustic instrument for generative composition.**
 
 > **Note:** This software is in a **Research Alpha Phase**. It is an open laboratory for researchers and artists exploring the direct link between computational audio and human auditory cognition.
 

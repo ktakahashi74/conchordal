@@ -15,6 +15,7 @@ pub struct QueuedEvent {
 #[derive(Debug)]
 pub struct Conductor {
     event_queue: VecDeque<QueuedEvent>,
+    total_duration: f32,
 }
 
 impl Conductor {
@@ -28,8 +29,10 @@ impl Conductor {
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
 
+        let total_duration = events.last().map(|ev| ev.time).unwrap_or(0.0);
         Self {
             event_queue: events.into(),
+            total_duration,
         }
     }
 
@@ -40,8 +43,10 @@ impl Conductor {
                 .partial_cmp(&b.time)
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
+        let total_duration = events.last().map(|ev| ev.time).unwrap_or(0.0);
         Self {
             event_queue: events.into(),
+            total_duration,
         }
     }
 
@@ -69,6 +74,14 @@ impl Conductor {
 
     pub fn is_done(&self) -> bool {
         self.event_queue.is_empty()
+    }
+
+    pub fn total_duration(&self) -> f32 {
+        self.total_duration
+    }
+
+    pub fn remaining_events(&self) -> usize {
+        self.event_queue.len()
     }
 }
 

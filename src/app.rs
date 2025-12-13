@@ -23,7 +23,7 @@ use crate::life::conductor::Conductor;
 use crate::life::population::{Population, PopulationParams};
 use crate::life::scenario::Scenario;
 use crate::life::scripting::ScriptHost;
-use crate::ui::viewdata::{SpecFrame, UiFrame, WaveFrame};
+use crate::ui::viewdata::{SimulationMeta, SpecFrame, UiFrame, WaveFrame};
 use crate::{
     audio::output::AudioOutput, config::AppConfig, core::harmonicity_kernel::HarmonicityParams,
 };
@@ -340,27 +340,28 @@ fn worker_loop(
             conductor.dispatch_until(current_time, frame_idx, &current_landscape, &mut pop);
             landscape.set_vitality(pop.global_vitality);
 
-            let time_chunk_vec = {
+            let (time_chunk_vec, max_abs) = {
                 let time_chunk =
                     pop.process_audio(hop, fs, frame_idx, hop_duration.as_secs_f32(), &landscape);
 
-                if last_clip_log.elapsed() > Duration::from_millis(200)
-                    && let Some(peak) = time_chunk
-                        .iter()
-                        .map(|v| v.abs())
-                        .max_by(|a, b| a.total_cmp(b))
-                {
-                    max_peak = max_peak.max(peak);
-                    if peak > 0.98 {
+                let max_abs = time_chunk
+                    .iter()
+                    .map(|v| v.abs())
+                    .max_by(|a, b| a.total_cmp(b))
+                    .unwrap_or(0.0);
+
+                if last_clip_log.elapsed() > Duration::from_millis(200) {
+                    max_peak = max_peak.max(max_abs);
+                    if max_abs > 0.98 {
                         warn!(
                             "[t={:.6}] Audio peak high: {:.3} at frame_idx={}. Consider more headroom.",
-                            current_time, peak, frame_idx
+                            current_time, max_abs, frame_idx
                         );
                         last_clip_log = Instant::now();
-                    } else if peak > 0.9 {
+                    } else if max_abs > 0.9 {
                         warn!(
                             "[t={:.6}] Audio peak nearing clip: {:.3} at frame_idx={}",
-                            current_time, peak, frame_idx
+                            current_time, max_abs, frame_idx
                         );
                         last_clip_log = Instant::now();
                     }
@@ -372,7 +373,7 @@ fn worker_loop(
                 if let Some(tx) = &wav_tx {
                     let _ = tx.try_send(chunk_vec.clone());
                 }
-                chunk_vec
+                (chunk_vec, max_abs)
             };
 
             landscape.update_rhythm(&time_chunk_vec);
@@ -415,6 +416,13 @@ fn worker_loop(
                 },
                 landscape: ui_landscape,
                 time_sec: current_time,
+                meta: SimulationMeta {
+                    time_sec: current_time,
+                    duration_sec: conductor.total_duration(),
+                    agent_count: pop.individuals.len(),
+                    event_queue_len: conductor.remaining_events(),
+                    peak_level: max_abs,
+                },
             };
             let _ = ui_tx.try_send(ui_frame);
 

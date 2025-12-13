@@ -13,9 +13,19 @@ pub struct SpecFrame {
 }
 
 #[derive(Clone, Debug, Default)]
+pub struct SimulationMeta {
+    pub time_sec: f32,
+    pub duration_sec: f32,
+    pub agent_count: usize,
+    pub event_queue_len: usize,
+    pub peak_level: f32,
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct UiFrame {
     pub wave: WaveFrame,
     pub spec: SpecFrame,
     pub landscape: LandscapeFrame,
     pub time_sec: f32,
+    pub meta: SimulationMeta,
 }

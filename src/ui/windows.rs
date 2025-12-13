@@ -36,14 +36,10 @@ fn draw_level_meters(
 
     let inner = rect.shrink2(Vec2::new(0.0, pad_y));
     let to_height = |db: f32| ((db - min_db) / -min_db).clamp(0.0, 1.0) * inner.height();
-    let color_for = |amp: f32| {
-        if amp > 1.0 {
-            egui::Color32::RED
-        } else if amp > 0.5 {
-            egui::Color32::YELLOW
-        } else {
-            egui::Color32::GREEN
-        }
+    let color_for = |amp: f32| match amp_to_db(amp) {
+        db if db >= 0.0 => egui::Color32::RED,
+        db if db >= -6.0 => egui::Color32::YELLOW,
+        _ => egui::Color32::GREEN,
     };
 
     // Tick labels
@@ -87,7 +83,7 @@ fn draw_level_meters(
                 egui::pos2(m_rect.left() + 2.5, win_y),
                 egui::pos2(m_rect.right() - 2.5, win_y),
             ],
-            egui::Stroke::new(2.0, egui::Color32::YELLOW),
+            egui::Stroke::new(2.0, color_for(win)),
         );
 
         p.text(
@@ -240,25 +236,6 @@ pub fn main_window(
             let row_height = 100.0;
             ui.horizontal(|ui| {
                 ui.set_height(row_height);
-                // === Waveform ===
-                ui.vertical(|ui| {
-                    ui.label("Waveform");
-                    ui.allocate_ui_with_layout(
-                        Vec2::new(420.0, row_height),
-                        egui::Layout::top_down(egui::Align::LEFT),
-                        |ui| {
-                            time_plot(
-                                ui,
-                                "Current Hop Wave",
-                                frame.wave.fs as f64,
-                                &frame.wave.samples,
-                                row_height,
-                            );
-                        },
-                    );
-                });
-
-                ui.separator();
                 // === Level meter ===
                 ui.vertical(|ui| {
                     ui.label("Level");
@@ -272,6 +249,25 @@ pub fn main_window(
                                 frame.meta.window_peak[0],
                                 frame.meta.channel_peak[1],
                                 frame.meta.window_peak[1],
+                            );
+                        },
+                    );
+                });
+
+                ui.separator();
+                // === Waveform ===
+                ui.vertical(|ui| {
+                    ui.label("Waveform");
+                    ui.allocate_ui_with_layout(
+                        Vec2::new(420.0, row_height),
+                        egui::Layout::top_down(egui::Align::LEFT),
+                        |ui| {
+                            time_plot(
+                                ui,
+                                "Current Hop Wave",
+                                frame.wave.fs as f64,
+                                &frame.wave.samples,
+                                row_height,
                             );
                         },
                     );

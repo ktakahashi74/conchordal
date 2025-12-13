@@ -28,6 +28,109 @@ use crate::{
     audio::output::AudioOutput, config::AppConfig, core::harmonicity_kernel::HarmonicityParams,
 };
 
+struct AudioMonitor {
+    min_occupancy: Option<usize>,
+    max_peak: f32,
+    slow_chunks: u32,
+    last_stats_log: Instant,
+    last_clip_log: Instant,
+    last_lag_warn: Instant,
+}
+
+impl AudioMonitor {
+    fn new() -> Self {
+        let now = Instant::now();
+        Self {
+            min_occupancy: None,
+            max_peak: 0.0,
+            slow_chunks: 0,
+            last_stats_log: now,
+            last_clip_log: now,
+            last_lag_warn: now,
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn update(
+        &mut self,
+        current_time: f32,
+        frame_idx: u64,
+        hop: usize,
+        hop_duration: Duration,
+        buffer_capacity: usize,
+        buffer_occupancy: usize,
+        chunk_peak: f32,
+        chunk_elapsed: Duration,
+        analysis_lag: Option<u64>,
+        conductor_done: bool,
+    ) -> f32 {
+        self.min_occupancy = Some(
+            self.min_occupancy
+                .map_or(buffer_occupancy, |m| m.min(buffer_occupancy)),
+        );
+        self.max_peak = self.max_peak.max(chunk_peak);
+
+        if self.last_clip_log.elapsed() > Duration::from_millis(200) {
+            if chunk_peak > 0.98 {
+                warn!(
+                    "[t={:.6}] Audio peak high: {:.3} at frame_idx={}. Consider more headroom.",
+                    current_time, chunk_peak, frame_idx
+                );
+                self.last_clip_log = Instant::now();
+            } else if chunk_peak > 0.9 {
+                warn!(
+                    "[t={:.6}] Audio peak nearing clip: {:.3} at frame_idx={}",
+                    current_time, chunk_peak, frame_idx
+                );
+                self.last_clip_log = Instant::now();
+            } else if conductor_done && chunk_peak > 1e-4 {
+                warn!(
+                    "[t={:.6}] Scenario done but audio active: peak={:.4}",
+                    current_time, chunk_peak
+                );
+                self.last_clip_log = Instant::now();
+            }
+        }
+
+        if chunk_elapsed > hop_duration {
+            self.slow_chunks += 1;
+            warn!(
+                "[t={:.6}] Audio chunk compute slow: {:?} (hop {:?}) frame_idx={}",
+                current_time, chunk_elapsed, hop_duration, frame_idx
+            );
+        }
+
+        if let Some(lag) = analysis_lag {
+            if lag >= 2 && self.last_lag_warn.elapsed() > Duration::from_secs(1) {
+                warn!(
+                    "[t={:.3}] Analysis lag: {} frames (Audio={}, Analysis={})",
+                    current_time,
+                    lag,
+                    frame_idx,
+                    frame_idx.saturating_sub(lag)
+                );
+                self.last_lag_warn = Instant::now();
+            }
+        }
+
+        let peak_level = self.max_peak;
+
+        if self.last_stats_log.elapsed() > Duration::from_secs(1) {
+            if let Some(min_occ) = self.min_occupancy.take() {
+                debug!(
+                    "[t={:.6}] Audio stats: min_occ={}, cap={}, hop={}, max_peak={:.3}, slow_chunks={}",
+                    current_time, min_occ, buffer_capacity, hop, peak_level, self.slow_chunks
+                );
+            }
+            self.max_peak = 0.0;
+            self.slow_chunks = 0;
+            self.last_stats_log = Instant::now();
+        }
+
+        peak_level
+    }
+}
+
 pub struct App {
     ui_frame_rx: Receiver<UiFrame>,
     _ctrl_tx: Sender<()>, // placeholder
@@ -373,12 +476,9 @@ fn worker_loop(
 
     let mut current_time: f32 = 0.0;
     let mut frame_idx: u64 = 0;
-    let mut last_clip_log = Instant::now();
-    let mut interval_start = Instant::now();
-    let mut min_occupancy: Option<usize> = None;
-    let mut max_peak: f32 = 0.0;
-    let mut slow_chunks: u32 = 0;
-    let mut last_lag_warn = Instant::now();
+    let mut monitor = AudioMonitor::new();
+    let mut last_ui_update = Instant::now();
+    let ui_min_interval = Duration::from_millis(33);
 
     // Initial UI frame so metadata is visible before playback starts.
     let init_meta = SimulationMeta {
@@ -427,16 +527,13 @@ fn worker_loop(
         }
 
         let prod = audio_prod.as_mut().expect("audio producer exists");
-
-        // Diagnostics: monitor buffer occupancy (producer side).
-        let free = prod.vacant_len();
-        let cap = prod.capacity().get();
-        let occ = cap.saturating_sub(free);
-        min_occupancy = Some(min_occupancy.map_or(occ, |m| m.min(occ)));
+        let buffer_capacity = prod.capacity().get();
 
         let mut produced_any = false;
         while prod.vacant_len() >= hop {
             produced_any = true;
+            let free = prod.vacant_len();
+            let occupancy = buffer_capacity.saturating_sub(free);
             pop.set_current_frame(frame_idx);
 
             let t_start = Instant::now();
@@ -457,34 +554,6 @@ fn worker_loop(
                 // If mono, mirror to right channel for display.
                 if channel_peak[1] == 0.0 {
                     channel_peak[1] = channel_peak[0];
-                }
-
-                if last_clip_log.elapsed() > Duration::from_millis(200) {
-                    max_peak = max_peak.max(max_abs);
-                    if max_abs > 0.98 {
-                        warn!(
-                            "[t={:.6}] Audio peak high: {:.3} at frame_idx={}. Consider more headroom.",
-                            current_time, max_abs, frame_idx
-                        );
-                        last_clip_log = Instant::now();
-                    } else if max_abs > 0.9 {
-                        warn!(
-                            "[t={:.6}] Audio peak nearing clip: {:.3} at frame_idx={}",
-                            current_time, max_abs, frame_idx
-                        );
-                        last_clip_log = Instant::now();
-                    }
-                }
-
-                if conductor.is_done()
-                    && max_abs > 1e-4
-                    && last_clip_log.elapsed() > Duration::from_millis(200)
-                {
-                    warn!(
-                        "[t={:.6}] Scenario done but audio active: peak={:.4}",
-                        current_time, max_abs
-                    );
-                    last_clip_log = Instant::now();
                 }
 
                 AudioOutput::push_samples(prod, time_chunk);
@@ -513,36 +582,16 @@ fn worker_loop(
             latest_spec_amps.extend_from_slice(&spectrum_body);
             let _ = audio_to_analysis_tx.try_send((frame_idx, spectrum_body.to_vec()));
 
-            let mut latest_analysis: Option<(u64, LandscapeFrame)> = None;
+            let mut latest_analysis: Option<LandscapeFrame> = None;
+            let mut latest_analysis_lag: Option<u64> = None;
             while let Ok((analyzed_id, lframe)) = landscape_from_analysis_rx.try_recv() {
-                latest_analysis = Some((analyzed_id, lframe));
+                latest_analysis_lag = Some(frame_idx.saturating_sub(analyzed_id));
+                latest_analysis = Some(lframe);
             }
-            if let Some((analyzed_id, lframe)) = latest_analysis {
+            if let Some(lframe) = latest_analysis {
                 current_landscape = lframe;
                 landscape.apply_frame(&current_landscape);
-                let lag = frame_idx.saturating_sub(analyzed_id);
-                if lag >= 2 && last_lag_warn.elapsed() > Duration::from_secs(1) {
-                    warn!(
-                        "[t={:.3}] Analysis lag: {} frames (Audio={}, Analysis={})",
-                        current_time, lag, frame_idx, analyzed_id
-                    );
-                    last_lag_warn = Instant::now();
-                }
             }
-
-            // Map linear spectrum to log2 bins for UI.
-            let mut ui_log_amps = vec![0.0f32; log_space.n_bins()];
-            for (i, &amp) in latest_spec_amps.iter().enumerate() {
-                let f = i as f32 * fs / nfft as f32;
-                if let Some(idx) = log_space.index_of_freq(f) {
-                    if let Some(slot) = ui_log_amps.get_mut(idx) {
-                        *slot += amp;
-                    }
-                }
-            }
-
-            let mut ui_landscape = current_landscape.clone();
-            ui_landscape.rhythm = landscape.rhythm;
 
             let finished_now =
                 pop.abort_requested || (conductor.is_done() && pop.individuals.is_empty());
@@ -550,31 +599,74 @@ fn worker_loop(
                 playback_state = PlaybackState::Finished;
             }
 
-            let ui_frame = UiFrame {
-                wave: WaveFrame {
+            let must_send_ui = conductor.is_done() || pop.abort_requested;
+            let should_send_ui = must_send_ui || last_ui_update.elapsed() >= ui_min_interval;
+
+            let mut wave_frame: Option<WaveFrame> = None;
+            let mut spec_frame: Option<SpecFrame> = None;
+            let mut ui_landscape: Option<LandscapeFrame> = None;
+            if should_send_ui {
+                // Map linear spectrum to log2 bins for UI only when we intend to send.
+                let mut ui_log_amps = vec![0.0f32; log_space.n_bins()];
+                for (i, &amp) in latest_spec_amps.iter().enumerate() {
+                    let f = i as f32 * fs / nfft as f32;
+                    if let Some(idx) = log_space.index_of_freq(f) {
+                        if let Some(slot) = ui_log_amps.get_mut(idx) {
+                            *slot += amp;
+                        }
+                    }
+                }
+                wave_frame = Some(WaveFrame {
                     fs,
-                    samples: time_chunk_vec,
-                },
-                spec: SpecFrame {
+                    samples: time_chunk_vec.clone(),
+                });
+                spec_frame = Some(SpecFrame {
                     spec_hz: log_space.centers_hz.clone(),
                     amps: ui_log_amps.iter().map(|&x| x.sqrt()).collect(),
-                },
-                landscape: ui_landscape,
-                time_sec: current_time,
-                meta: SimulationMeta {
+                });
+                let mut landscape_frame = current_landscape.clone();
+                landscape_frame.rhythm = landscape.rhythm;
+                ui_landscape = Some(landscape_frame);
+            }
+
+            let elapsed = t_start.elapsed();
+            let peak_level = monitor.update(
+                current_time,
+                frame_idx,
+                hop,
+                hop_duration,
+                buffer_capacity,
+                occupancy,
+                max_abs,
+                elapsed,
+                latest_analysis_lag,
+                conductor.is_done(),
+            );
+
+            if let (Some(wave_frame), Some(spec_frame), Some(ui_landscape)) =
+                (wave_frame, spec_frame, ui_landscape)
+            {
+                let ui_frame = UiFrame {
+                    wave: wave_frame,
+                    spec: spec_frame,
+                    landscape: ui_landscape,
                     time_sec: current_time,
-                    duration_sec: conductor.total_duration(),
-                    agent_count: pop.individuals.len(),
-                    event_queue_len: conductor.remaining_events(),
-                    peak_level: max_abs,
-                    scenario_name: scenario_name.clone(),
-                    scene_name: conductor.current_scene_name(current_time),
-                    playback_state: playback_state.clone(),
-                    channel_peak,
-                    window_peak: channel_peak,
-                },
-            };
-            let _ = ui_tx.try_send(ui_frame);
+                    meta: SimulationMeta {
+                        time_sec: current_time,
+                        duration_sec: conductor.total_duration(),
+                        agent_count: pop.individuals.len(),
+                        event_queue_len: conductor.remaining_events(),
+                        peak_level,
+                        scenario_name: scenario_name.clone(),
+                        scene_name: conductor.current_scene_name(current_time),
+                        playback_state: playback_state.clone(),
+                        channel_peak,
+                        window_peak: channel_peak,
+                    },
+                };
+                let _ = ui_tx.try_send(ui_frame);
+                last_ui_update = Instant::now();
+            }
 
             if finished_now {
                 finished = true;
@@ -596,15 +688,6 @@ fn worker_loop(
                 current_time += hop_duration.as_secs_f32();
                 frame_idx += 1;
             }
-
-            let elapsed = t_start.elapsed();
-            if elapsed > hop_duration {
-                slow_chunks += 1;
-                warn!(
-                    "[t={:.6}] Audio chunk compute slow: {:?} (hop {:?}) frame_idx={}",
-                    current_time, elapsed, hop_duration, frame_idx
-                );
-            }
         }
 
         if exiting.load(Ordering::SeqCst) || (finished && !wait_user_exit) {
@@ -613,19 +696,6 @@ fn worker_loop(
 
         if !produced_any {
             thread::sleep(Duration::from_millis(1));
-        }
-
-        if interval_start.elapsed() > Duration::from_secs(1) {
-            if let Some(min_occ) = min_occupancy.take() {
-                let cap = prod.capacity().get();
-                debug!(
-                    "[t={:.6}] Audio stats: min_occ={}, cap={}, hop={}, max_peak={:.3}, slow_chunks={}",
-                    current_time, min_occ, cap, hop, max_peak, slow_chunks
-                );
-            }
-            max_peak = 0.0;
-            slow_chunks = 0;
-            interval_start = Instant::now();
         }
     }
 }

@@ -23,7 +23,7 @@ use crate::life::conductor::Conductor;
 use crate::life::population::{Population, PopulationParams};
 use crate::life::scenario::Scenario;
 use crate::life::scripting::ScriptHost;
-use crate::ui::viewdata::{SimulationMeta, SpecFrame, UiFrame, WaveFrame};
+use crate::ui::viewdata::{PlaybackState, SimulationMeta, SpecFrame, UiFrame, WaveFrame};
 use crate::{
     audio::output::AudioOutput, config::AppConfig, core::harmonicity_kernel::HarmonicityParams,
 };
@@ -41,6 +41,7 @@ pub struct App {
     wav_handle: Option<std::thread::JoinHandle<()>>,
     exiting: Arc<AtomicBool>,
     rhythm_history: VecDeque<(f64, crate::core::modulation::NeuralRhythms)>,
+    start_flag: Arc<AtomicBool>,
 }
 
 impl App {
@@ -183,12 +184,17 @@ impl App {
 
         // Spawn worker thread
         let stop_flag_worker = stop_flag.clone();
+        let start_flag = Arc::new(AtomicBool::new(!config.playback.wait_user_start));
+        let start_flag_for_worker = start_flag.clone();
+
         let worker_handle = Some(
             thread::Builder::new()
                 .name("worker".into())
                 .spawn(move || {
                     worker_loop(
                         scenario_label,
+                        config.playback.wait_user_exit,
+                        start_flag_for_worker,
                         ui_frame_tx,
                         pop,
                         conductor,
@@ -233,6 +239,7 @@ impl App {
             worker_handle,
             exiting: stop_flag,
             rhythm_history: VecDeque::with_capacity(4096),
+            start_flag,
         }
     }
 }
@@ -265,11 +272,18 @@ impl eframe::App for App {
                 self.last_frame = frame;
             }
         }
+
+        if self.last_frame.meta.playback_state == PlaybackState::Finished {
+            self.wav_tx.take();
+        }
+
         crate::ui::windows::main_window(
             ctx,
             &self.last_frame,
             &self.rhythm_history,
             self.audio_init_error.as_deref(),
+            &self.exiting,
+            &self.start_flag,
         );
         ctx.request_repaint_after(std::time::Duration::from_millis(16));
     }
@@ -293,6 +307,8 @@ impl Drop for App {
 #[allow(clippy::too_many_arguments)]
 fn worker_loop(
     scenario_name: String,
+    wait_user_exit: bool,
+    start_flag: Arc<AtomicBool>,
     ui_tx: Sender<UiFrame>,
     mut pop: Population,
     mut conductor: Conductor,
@@ -309,6 +325,13 @@ fn worker_loop(
     nfft: usize,
 ) {
     let mut current_landscape: LandscapeFrame = LandscapeFrame::default();
+    let mut playback_state = if start_flag.load(Ordering::SeqCst) {
+        PlaybackState::Playing
+    } else {
+        PlaybackState::NotStarted
+    };
+    let mut finish_logged = false;
+    let mut finished = false;
 
     let mut current_time: f32 = 0.0;
     let mut frame_idx: u64 = 0;
@@ -319,10 +342,43 @@ fn worker_loop(
     let mut slow_chunks: u32 = 0;
     let mut last_lag_warn = Instant::now();
 
+    // Initial UI frame so metadata is visible before playback starts.
+    let init_meta = SimulationMeta {
+        time_sec: current_time,
+        duration_sec: conductor.total_duration(),
+        agent_count: pop.individuals.len(),
+        event_queue_len: conductor.remaining_events(),
+        peak_level: 0.0,
+        scenario_name: scenario_name.clone(),
+        scene_name: conductor.current_scene_name(current_time),
+        playback_state: playback_state.clone(),
+    };
+    let init_frame = UiFrame {
+        wave: WaveFrame {
+            fs,
+            samples: Vec::new(),
+        },
+        spec: SpecFrame {
+            spec_hz: current_landscape.space.centers_hz.clone(),
+            amps: current_landscape.amps_last.clone(),
+        },
+        landscape: current_landscape.clone(),
+        time_sec: current_time,
+        meta: init_meta,
+    };
+    let _ = ui_tx.try_send(init_frame);
+
     loop {
         if exiting.load(Ordering::SeqCst) {
             eprintln!("Stopping worker thread.");
             break;
+        }
+
+        if playback_state == PlaybackState::NotStarted && !start_flag.load(Ordering::SeqCst) {
+            thread::sleep(Duration::from_millis(10));
+            continue;
+        } else if playback_state == PlaybackState::NotStarted {
+            playback_state = PlaybackState::Playing;
         }
 
         if audio_prod.is_none() {
@@ -408,6 +464,12 @@ fn worker_loop(
             let mut ui_landscape = current_landscape.clone();
             ui_landscape.rhythm = landscape.rhythm;
 
+            let finished_now =
+                pop.abort_requested || (conductor.is_done() && pop.individuals.is_empty());
+            if finished_now {
+                playback_state = PlaybackState::Finished;
+            }
+
             let ui_frame = UiFrame {
                 wave: WaveFrame {
                     fs,
@@ -427,13 +489,25 @@ fn worker_loop(
                     peak_level: max_abs,
                     scenario_name: scenario_name.clone(),
                     scene_name: conductor.current_scene_name(current_time),
+                    playback_state: playback_state.clone(),
                 },
             };
             let _ = ui_tx.try_send(ui_frame);
 
-            if pop.abort_requested || (conductor.is_done() && pop.individuals.is_empty()) {
-                info!("[t={:.6}] Scenario finished. Exiting.", current_time);
-                exiting.store(true, Ordering::SeqCst);
+            if finished_now {
+                finished = true;
+                if !finish_logged {
+                    let note = if wait_user_exit {
+                        "Waiting for user exit."
+                    } else {
+                        "Exiting."
+                    };
+                    info!("[t={:.6}] Scenario finished. {note}", current_time);
+                    finish_logged = true;
+                }
+                if !wait_user_exit {
+                    exiting.store(true, Ordering::SeqCst);
+                }
                 break;
             }
 
@@ -450,7 +524,7 @@ fn worker_loop(
             }
         }
 
-        if exiting.load(Ordering::SeqCst) {
+        if exiting.load(Ordering::SeqCst) || finished {
             break;
         }
 

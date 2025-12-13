@@ -12,6 +12,14 @@ pub struct SpecFrame {
     pub amps: Vec<f32>,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum PlaybackState {
+    #[default]
+    NotStarted,
+    Playing,
+    Finished,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct SimulationMeta {
     pub time_sec: f32,
@@ -21,6 +29,7 @@ pub struct SimulationMeta {
     pub peak_level: f32,
     pub scenario_name: String,
     pub scene_name: Option<String>,
+    pub playback_state: PlaybackState,
 }
 
 #[derive(Clone, Debug, Default)]

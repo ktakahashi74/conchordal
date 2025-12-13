@@ -94,6 +94,34 @@ pub struct AppConfig {
     pub analysis: AnalysisConfig,
     #[serde(default)]
     pub psychoacoustics: PsychoAcousticsConfig,
+    #[serde(default)]
+    pub playback: PlaybackConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlaybackConfig {
+    #[serde(default = "PlaybackConfig::default_wait_user_exit")]
+    pub wait_user_exit: bool,
+    #[serde(default = "PlaybackConfig::default_wait_user_start")]
+    pub wait_user_start: bool,
+}
+
+impl PlaybackConfig {
+    fn default_wait_user_exit() -> bool {
+        true
+    }
+    fn default_wait_user_start() -> bool {
+        false
+    }
+}
+
+impl Default for PlaybackConfig {
+    fn default() -> Self {
+        Self {
+            wait_user_exit: Self::default_wait_user_exit(),
+            wait_user_start: Self::default_wait_user_start(),
+        }
+    }
 }
 
 impl AppConfig {
@@ -202,6 +230,10 @@ mod tests {
                 loudness_exp: 0.3,
                 roughness_k: 0.2,
             },
+            playback: PlaybackConfig {
+                wait_user_exit: false,
+                wait_user_start: true,
+            },
         };
         let text = toml::to_string_pretty(&custom).unwrap();
         fs::write(&path, text).unwrap();
@@ -214,6 +246,8 @@ mod tests {
         assert_eq!(cfg.analysis.tau_ms, 60.0);
         assert_eq!(cfg.psychoacoustics.loudness_exp, 0.3);
         assert_eq!(cfg.psychoacoustics.roughness_k, 0.2);
+        assert!(!cfg.playback.wait_user_exit);
+        assert!(cfg.playback.wait_user_start);
 
         let _ = fs::remove_file(&path);
     }

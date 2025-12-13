@@ -1,7 +1,9 @@
 use crate::ui::plots::{log2_plot_hz, neural_compass, neural_phase_plot, time_plot};
-use crate::ui::viewdata::UiFrame;
-use egui::{CentralPanel, TopBottomPanel, Vec2};
+use crate::ui::viewdata::{PlaybackState, UiFrame};
+use egui::{CentralPanel, Key, TopBottomPanel, Vec2};
 use std::collections::VecDeque;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 fn format_time(sec: f32) -> String {
     let total_secs = sec.max(0.0).floor() as u64;
@@ -16,6 +18,8 @@ pub fn main_window(
     frame: &UiFrame,
     rhythm_history: &VecDeque<(f64, crate::core::modulation::NeuralRhythms)>,
     audio_error: Option<&str>,
+    exit_flag: &Arc<AtomicBool>,
+    start_flag: &Arc<AtomicBool>,
 ) {
     TopBottomPanel::top("top").show(ctx, |ui| {
         ui.heading("Conchordal");
@@ -46,11 +50,69 @@ pub fn main_window(
             format_time(frame.meta.time_sec),
             format_time(frame.meta.duration_sec)
         );
-        ui.add(
-            egui::ProgressBar::new(progress)
-                .text(progress_text)
-                .desired_width(ui.available_width()),
-        );
+
+        ui.horizontal(|ui| {
+            let btn_size = 18.0;
+            let bar_width =
+                (ui.available_width() - btn_size - ui.spacing().item_spacing.x).max(50.0);
+            ui.add(
+                egui::ProgressBar::new(progress)
+                    .text(progress_text)
+                    .desired_width(bar_width),
+            );
+
+            let (rect, resp) = ui.allocate_exact_size(Vec2::splat(btn_size), egui::Sense::click());
+            let painter = ui.painter_at(rect);
+            let tooltip = match frame.meta.playback_state {
+                PlaybackState::NotStarted => {
+                    let points = vec![
+                        rect.left_top(),
+                        egui::pos2(rect.right(), rect.center().y),
+                        rect.left_bottom(),
+                    ];
+                    painter.add(egui::Shape::convex_polygon(
+                        points,
+                        egui::Color32::GREEN,
+                        egui::Stroke::NONE,
+                    ));
+                    "Start (Space)"
+                }
+                PlaybackState::Playing => {
+                    painter.add(egui::Shape::circle_filled(
+                        rect.center(),
+                        rect.width() * 0.45,
+                        egui::Color32::GREEN,
+                    ));
+                    "Exit"
+                }
+                PlaybackState::Finished => {
+                    painter.add(egui::Shape::line_segment(
+                        [rect.left_top(), rect.right_bottom()],
+                        egui::Stroke::new(2.0, egui::Color32::RED),
+                    ));
+                    painter.add(egui::Shape::line_segment(
+                        [rect.right_top(), rect.left_bottom()],
+                        egui::Stroke::new(2.0, egui::Color32::RED),
+                    ));
+                    "Exit"
+                }
+            };
+            let resp = resp.on_hover_text(tooltip);
+            if resp.clicked() {
+                match frame.meta.playback_state {
+                    PlaybackState::NotStarted => start_flag.store(true, Ordering::SeqCst),
+                    PlaybackState::Playing | PlaybackState::Finished => {
+                        exit_flag.store(true, Ordering::SeqCst)
+                    }
+                }
+            }
+        });
+
+        if frame.meta.playback_state == PlaybackState::NotStarted
+            && ctx.input(|i| i.focused && i.key_pressed(egui::Key::Space))
+        {
+            start_flag.store(true, Ordering::SeqCst);
+        }
 
         ui.horizontal(|ui| {
             ui.label(format!("Agents: {}", frame.meta.agent_count));

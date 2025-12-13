@@ -44,6 +44,14 @@ struct Args {
     /// Path to config TOML
     #[arg(long, default_value = "config.toml")]
     config: String,
+
+    /// Wait for user action to exit after playback (overrides config)
+    #[arg(long, num_args = 0..=1, default_missing_value = "false")]
+    wait_user_exit: Option<bool>,
+
+    /// Wait for user action before starting playback (overrides config)
+    #[arg(long, num_args = 0..=1, default_missing_value = "true")]
+    wait_user_start: Option<bool>,
 }
 
 fn load_scenario_from_path(path: &str) -> Result<Scenario, String> {
@@ -77,7 +85,13 @@ fn main() -> eframe::Result<()> {
         .try_init();
 
     let args = Args::parse();
-    let config = AppConfig::load_or_default(&args.config);
+    let mut config = AppConfig::load_or_default(&args.config);
+    if let Some(val) = args.wait_user_exit {
+        config.playback.wait_user_exit = val;
+    }
+    if let Some(val) = args.wait_user_start {
+        config.playback.wait_user_start = val;
+    }
 
     if args.serialize_json5 {
         let scenario = load_scenario_from_path(&args.scenario_path).unwrap_or_else(|e| {

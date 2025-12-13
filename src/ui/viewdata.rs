@@ -26,10 +26,11 @@ pub struct SimulationMeta {
     pub duration_sec: f32,
     pub agent_count: usize,
     pub event_queue_len: usize,
-    pub peak_level: f32,
     pub scenario_name: String,
     pub scene_name: Option<String>,
     pub playback_state: PlaybackState,
+    pub channel_peak: [f32; 2],
+    pub window_peak: [f32; 2],
 }
 
 #[derive(Clone, Debug, Default)]

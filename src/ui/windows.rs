@@ -12,6 +12,99 @@ fn format_time(sec: f32) -> String {
     format!("{minutes:02}:{seconds:02}")
 }
 
+fn amp_to_db(a: f32) -> f32 {
+    if a <= 0.0 { -60.0 } else { 20.0 * a.log10() }
+}
+
+fn draw_level_meters(
+    ui: &mut egui::Ui,
+    left_inst: f32,
+    left_win: f32,
+    right_inst: f32,
+    right_win: f32,
+) {
+    let meter_height = ui.available_height().max(40.0);
+    let label_width = 34.0;
+    let meter_width = 22.0;
+    let spacing = 8.0;
+    let pad_y = 8.0;
+    let total_width = label_width + spacing + meter_width * 2.0 + spacing;
+    let (rect, _resp) =
+        ui.allocate_exact_size(Vec2::new(total_width, meter_height), egui::Sense::hover());
+    let painter = ui.painter_at(rect);
+    let min_db = -60.0;
+
+    let inner = rect.shrink2(Vec2::new(0.0, pad_y));
+    let to_height = |db: f32| ((db - min_db) / -min_db).clamp(0.0, 1.0) * inner.height();
+    let color_for = |amp: f32| {
+        if amp > 1.0 {
+            egui::Color32::RED
+        } else if amp > 0.5 {
+            egui::Color32::YELLOW
+        } else {
+            egui::Color32::GREEN
+        }
+    };
+
+    // Tick labels
+    for &db in &[0.0, -6.0, -12.0, -30.0, -60.0] {
+        let h = to_height(db);
+        let y = inner.bottom() - h;
+        painter.text(
+            egui::pos2(rect.left() + label_width - 2.0, y),
+            egui::Align2::RIGHT_CENTER,
+            format!("{db:.0}"),
+            egui::FontId::proportional(11.0),
+            ui.visuals().text_color(),
+        );
+    }
+
+    let draw_meter = |p: &egui::Painter, base: egui::Pos2, inst: f32, win: f32, label: &str| {
+        let inst_db = amp_to_db(inst).max(min_db);
+        let win_db = amp_to_db(win).max(min_db);
+        let inst_h = to_height(inst_db);
+        let win_h = to_height(win_db);
+
+        let m_rect = egui::Rect::from_min_size(
+            base + egui::vec2(0.0, pad_y),
+            Vec2::new(meter_width, inner.height()),
+        );
+        p.rect_stroke(
+            m_rect,
+            2.0,
+            egui::Stroke::new(1.0, p.ctx().style().visuals.window_stroke().color),
+            egui::StrokeKind::Inside,
+        );
+        let inst_rect = egui::Rect::from_min_size(
+            egui::pos2(m_rect.left() + 3.0, m_rect.bottom() - inst_h),
+            Vec2::new(meter_width - 6.0, inst_h),
+        );
+        p.rect_filled(inst_rect, 0.0, color_for(inst));
+
+        let win_y = m_rect.bottom() - win_h;
+        p.line_segment(
+            [
+                egui::pos2(m_rect.left() + 2.5, win_y),
+                egui::pos2(m_rect.right() - 2.5, win_y),
+            ],
+            egui::Stroke::new(2.0, egui::Color32::YELLOW),
+        );
+
+        p.text(
+            m_rect.center_top() + egui::vec2(0.0, 4.0),
+            egui::Align2::CENTER_TOP,
+            label,
+            egui::FontId::proportional(12.0),
+            p.ctx().style().visuals.text_color(),
+        );
+    };
+
+    let left_origin = rect.left_top() + egui::vec2(label_width + spacing, 0.0);
+    let right_origin = left_origin + egui::vec2(meter_width + spacing, 0.0);
+    draw_meter(&painter, left_origin, left_inst, left_win, "L");
+    draw_meter(&painter, right_origin, right_inst, right_win, "R");
+}
+
 /// === Main window ===
 pub fn main_window(
     ctx: &egui::Context,
@@ -118,23 +211,6 @@ pub fn main_window(
             ui.label(format!("Agents: {}", frame.meta.agent_count));
             ui.separator();
             ui.label(format!("Events: {}", frame.meta.event_queue_len));
-            ui.separator();
-            let peak_db = if frame.meta.peak_level > 0.0 {
-                20.0 * frame.meta.peak_level.log10()
-            } else {
-                f32::NEG_INFINITY
-            };
-            let peak_text = if peak_db.is_infinite() {
-                "Peak: -inf dB".to_string()
-            } else {
-                format!("Peak: {:.1} dB", peak_db)
-            };
-            let peak_color = if frame.meta.peak_level > 1.0 {
-                egui::Color32::RED
-            } else {
-                ui.visuals().text_color()
-            };
-            ui.colored_label(peak_color, peak_text);
         });
     });
 
@@ -142,54 +218,81 @@ pub fn main_window(
         if let Some(err) = audio_error {
             ui.colored_label(egui::Color32::RED, format!("Audio init failed: {err}"));
         }
-        ui.horizontal(|ui| {
-            // === Waveform ===
-            ui.vertical(|ui| {
-                ui.heading("Waveform");
-                ui.allocate_ui_with_layout(
-                    Vec2::new(500.0, 180.0),
-                    egui::Layout::top_down(egui::Align::LEFT),
-                    |ui| {
-                        time_plot(
-                            ui,
-                            "Current Hop Wave",
-                            frame.wave.fs as f64,
-                            &frame.wave.samples,
-                        );
-                    },
-                );
-            });
-
-            ui.separator();
-            // === Spectrum ===
-            ui.vertical(|ui| {
-                ui.heading("Synth Spectrum");
-                if frame.spec.spec_hz.len() > 1 && frame.spec.amps.len() > 1 {
-                    crate::ui::plots::log2_hist_hz(
-                        ui,
-                        "Amplitude Spectrum",
-                        &frame.spec.spec_hz[1..],
-                        &frame.spec.amps[1..],
-                        "A[k]",
-                        0.0,
-                        20.0,
+        ui.vertical(|ui| {
+            ui.label("Audio");
+            let row_height = 100.0;
+            ui.horizontal(|ui| {
+                ui.set_height(row_height);
+                // === Waveform ===
+                ui.vertical(|ui| {
+                    ui.label("Waveform");
+                    ui.allocate_ui_with_layout(
+                        Vec2::new(420.0, row_height),
+                        egui::Layout::top_down(egui::Align::LEFT),
+                        |ui| {
+                            time_plot(
+                                ui,
+                                "Current Hop Wave",
+                                frame.wave.fs as f64,
+                                &frame.wave.samples,
+                                row_height,
+                            );
+                        },
                     );
-                }
+                });
+
+                ui.separator();
+                // === Level meter ===
+                ui.vertical(|ui| {
+                    ui.label("Level");
+                    ui.allocate_ui_with_layout(
+                        Vec2::new(110.0, row_height),
+                        egui::Layout::left_to_right(egui::Align::Min),
+                        |ui| {
+                            draw_level_meters(
+                                ui,
+                                frame.meta.channel_peak[0],
+                                frame.meta.window_peak[0],
+                                frame.meta.channel_peak[1],
+                                frame.meta.window_peak[1],
+                            );
+                        },
+                    );
+                });
+
+                ui.separator();
+                // === Spectrum ===
+                ui.vertical(|ui| {
+                    ui.label("Synth Spectrum");
+                    if frame.spec.spec_hz.len() > 1 && frame.spec.amps.len() > 1 {
+                        crate::ui::plots::log2_hist_hz(
+                            ui,
+                            "Amplitude Spectrum",
+                            &frame.spec.spec_hz[1..],
+                            &frame.spec.amps[1..],
+                            "A[k]",
+                            0.0,
+                            1.1,
+                            row_height,
+                        );
+                    }
+                });
             });
         });
 
         ui.separator();
         ui.heading("Neural Phases");
+        let height = 150.0;
         ui.horizontal(|ui| {
             ui.vertical(|ui| {
                 //ui.set_width(0.0);
                 //ui.label("Neural Phases");
-                neural_compass(ui, &frame.landscape.rhythm);
+                neural_compass(ui, &frame.landscape.rhythm, height);
             });
             ui.vertical(|ui| {
                 ui.set_min_width(ui.available_width());
                 //                ui.label("Neural Phase Slope");
-                neural_phase_plot(ui, rhythm_history);
+                neural_phase_plot(ui, rhythm_history, height);
             });
         });
 

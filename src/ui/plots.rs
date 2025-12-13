@@ -14,6 +14,7 @@ pub fn log2_hist_hz(
     y_label: &str,
     y_min: f64,
     y_max: f64,
+    height: f32,
 ) {
     assert_eq!(xs_hz.len(), ys.len());
     if xs_hz.is_empty() {
@@ -54,7 +55,7 @@ pub fn log2_hist_hz(
 
     let tick_marks_log2_for_grid = tick_marks_log2.clone();
     Plot::new(title)
-        .height(150.0)
+        .height(height)
         .allow_scroll(false)
         .allow_drag(false)
         .include_y(y_min)
@@ -159,7 +160,7 @@ pub fn log2_plot_hz(
 }
 
 /// 波形表示（時間軸）
-pub fn time_plot(ui: &mut egui::Ui, title: &str, fs: f64, samples: &[f32]) {
+pub fn time_plot(ui: &mut egui::Ui, title: &str, fs: f64, samples: &[f32], height: f32) {
     let points: PlotPoints = samples
         .iter()
         .enumerate()
@@ -171,7 +172,7 @@ pub fn time_plot(ui: &mut egui::Ui, title: &str, fs: f64, samples: &[f32]) {
         //ui.label(title);
 
         Plot::new(title)
-            .height(150.0)
+            .height(height)
             .allow_scroll(false)
             .allow_drag(false)
             .include_y(-1.1)
@@ -197,6 +198,7 @@ fn phase_to_unit(phase: f64) -> f64 {
 pub fn neural_phase_plot(
     ui: &mut egui::Ui,
     history: &VecDeque<(f64, crate::core::modulation::NeuralRhythms)>,
+    height: f32,
 ) {
     type BandAccessor = fn(&crate::core::modulation::NeuralRhythms) -> (f64, f32);
     let tau = std::f64::consts::TAU;
@@ -227,7 +229,7 @@ pub fn neural_phase_plot(
     ];
 
     Plot::new("neural_phase_plot")
-        .height(170.0)
+        .height(height)
         .allow_drag(true)
         .allow_scroll(true)
         .include_y(0.0)
@@ -361,7 +363,11 @@ pub fn neural_phase_plot(
 }
 
 /// Visualize neural rhythms (Delta/Theta/Alpha/Beta) as radial gauges.
-pub fn neural_compass(ui: &mut egui::Ui, rhythms: &crate::core::modulation::NeuralRhythms) {
+pub fn neural_compass(
+    ui: &mut egui::Ui,
+    rhythms: &crate::core::modulation::NeuralRhythms,
+    height: f32,
+) {
     let bands = [
         ("Delta", Color32::from_rgb(52, 152, 219), rhythms.delta),
         ("Theta", Color32::from_rgb(46, 204, 113), rhythms.theta),
@@ -369,9 +375,10 @@ pub fn neural_compass(ui: &mut egui::Ui, rhythms: &crate::core::modulation::Neur
         ("Beta", Color32::from_rgb(231, 76, 60), rhythms.beta),
     ];
 
+    let cheight = (height / 4.0) * 0.95;
     ui.vertical(|ui| {
         for (label, color, rhythm) in bands {
-            let desired = egui::vec2(130.0, 40.0);
+            let desired = egui::vec2(130.0, cheight);
             let (rect, _resp) = ui.allocate_exact_size(desired, egui::Sense::hover());
             let painter = ui.painter_at(rect);
             let center = rect.center();

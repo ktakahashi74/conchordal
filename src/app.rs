@@ -42,6 +42,7 @@ pub struct App {
     exiting: Arc<AtomicBool>,
     rhythm_history: VecDeque<(f64, crate::core::modulation::NeuralRhythms)>,
     start_flag: Arc<AtomicBool>,
+    level_history: VecDeque<(std::time::Instant, [f32; 2])>,
 }
 
 impl App {
@@ -240,6 +241,7 @@ impl App {
             exiting: stop_flag,
             rhythm_history: VecDeque::with_capacity(4096),
             start_flag,
+            level_history: VecDeque::with_capacity(256),
         }
     }
 }
@@ -255,7 +257,9 @@ impl eframe::App for App {
         // Drain all frames for high-frequency rhythm updates.
         while let Ok(frame) = self.ui_frame_rx.try_recv() {
             let t = frame.time_sec as f64;
-            self.rhythm_history.push_back((t, frame.landscape.rhythm));
+            if frame.meta.playback_state != PlaybackState::Finished {
+                self.rhythm_history.push_back((t, frame.landscape.rhythm));
+            }
             self.ui_queue.push_back(frame);
         }
         if let Some((t_last, _)) = self.rhythm_history.back().copied() {
@@ -270,6 +274,23 @@ impl eframe::App for App {
         while !self.ui_queue.is_empty() {
             if let Some(frame) = self.ui_queue.pop_front() {
                 self.last_frame = frame;
+                // Track 1-second peak history for level meter.
+                let now = std::time::Instant::now();
+                self.level_history
+                    .push_back((now, self.last_frame.meta.channel_peak));
+                while let Some((t, _)) = self.level_history.front() {
+                    if now.duration_since(*t).as_secs_f32() > 1.0 {
+                        self.level_history.pop_front();
+                    } else {
+                        break;
+                    }
+                }
+                let mut window_peak = [0.0f32; 2];
+                for (_, peaks) in &self.level_history {
+                    window_peak[0] = window_peak[0].max(peaks[0]);
+                    window_peak[1] = window_peak[1].max(peaks[1]);
+                }
+                self.last_frame.meta.window_peak = window_peak;
             }
         }
 
@@ -324,7 +345,7 @@ fn worker_loop(
     n_bins: usize,
     nfft: usize,
 ) {
-    let mut current_landscape: LandscapeFrame = LandscapeFrame::default();
+    let mut current_landscape: LandscapeFrame = landscape.snapshot();
     let mut playback_state = if start_flag.load(Ordering::SeqCst) {
         PlaybackState::Playing
     } else {
@@ -332,6 +353,8 @@ fn worker_loop(
     };
     let mut finish_logged = false;
     let mut finished = false;
+    let mut latest_spec_amps: Vec<f32> = current_landscape.amps_last.clone();
+    let log_space = current_landscape.space.clone();
 
     let mut current_time: f32 = 0.0;
     let mut frame_idx: u64 = 0;
@@ -348,10 +371,11 @@ fn worker_loop(
         duration_sec: conductor.total_duration(),
         agent_count: pop.individuals.len(),
         event_queue_len: conductor.remaining_events(),
-        peak_level: 0.0,
         scenario_name: scenario_name.clone(),
         scene_name: conductor.current_scene_name(current_time),
         playback_state: playback_state.clone(),
+        channel_peak: [0.0; 2],
+        window_peak: [0.0; 2],
     };
     let init_frame = UiFrame {
         wave: WaveFrame {
@@ -360,7 +384,7 @@ fn worker_loop(
         },
         spec: SpecFrame {
             spec_hz: current_landscape.space.centers_hz.clone(),
-            amps: current_landscape.amps_last.clone(),
+            amps: latest_spec_amps.clone(),
         },
         landscape: current_landscape.clone(),
         time_sec: current_time,
@@ -403,11 +427,21 @@ fn worker_loop(
             conductor.dispatch_until(current_time, frame_idx, &current_landscape, &mut pop);
             landscape.set_vitality(pop.global_vitality);
 
-            let (time_chunk_vec, max_abs) = {
+            let (time_chunk_vec, max_abs, channel_peak) = {
                 let time_chunk =
                     pop.process_audio(hop, fs, frame_idx, hop_duration.as_secs_f32(), &landscape);
 
                 let max_abs = time_chunk.iter().fold(0.0f32, |m, &v| m.max(v.abs()));
+
+                let mut channel_peak = [0.0f32; 2];
+                for (idx, &sample) in time_chunk.iter().enumerate() {
+                    let ch = idx % 2;
+                    channel_peak[ch] = channel_peak[ch].max(sample.abs());
+                }
+                // If mono, mirror to right channel for display.
+                if channel_peak[1] == 0.0 {
+                    channel_peak[1] = channel_peak[0];
+                }
 
                 if last_clip_log.elapsed() > Duration::from_millis(200) {
                     max_peak = max_peak.max(max_abs);
@@ -432,17 +466,19 @@ fn worker_loop(
                 if let Some(tx) = &wav_tx {
                     let _ = tx.try_send(chunk_vec.clone());
                 }
-                (chunk_vec, max_abs)
+                (chunk_vec, max_abs, channel_peak)
             };
 
-            landscape.update_rhythm(&time_chunk_vec);
+            if !finished {
+                landscape.update_rhythm(&time_chunk_vec);
+            }
 
             // Build high-resolution spectrum for analysis (linear nfft, mapped to log space in worker).
-            {
-                let spectrum_body =
-                    pop.process_frame(frame_idx, n_bins, fs, nfft, hop_duration.as_secs_f32());
-                let _ = audio_to_analysis_tx.try_send((frame_idx, spectrum_body.to_vec()));
-            }
+            let spectrum_body =
+                pop.process_frame(frame_idx, n_bins, fs, nfft, hop_duration.as_secs_f32());
+            latest_spec_amps.clear();
+            latest_spec_amps.extend_from_slice(&spectrum_body);
+            let _ = audio_to_analysis_tx.try_send((frame_idx, spectrum_body.to_vec()));
 
             let mut latest_analysis: Option<(u64, LandscapeFrame)> = None;
             while let Ok((analyzed_id, lframe)) = landscape_from_analysis_rx.try_recv() {
@@ -461,6 +497,17 @@ fn worker_loop(
                 }
             }
 
+            // Map linear spectrum to log2 bins for UI.
+            let mut ui_log_amps = vec![0.0f32; log_space.n_bins()];
+            for (i, &amp) in latest_spec_amps.iter().enumerate() {
+                let f = i as f32 * fs / nfft as f32;
+                if let Some(idx) = log_space.index_of_freq(f) {
+                    if let Some(slot) = ui_log_amps.get_mut(idx) {
+                        *slot += amp;
+                    }
+                }
+            }
+
             let mut ui_landscape = current_landscape.clone();
             ui_landscape.rhythm = landscape.rhythm;
 
@@ -476,8 +523,8 @@ fn worker_loop(
                     samples: time_chunk_vec,
                 },
                 spec: SpecFrame {
-                    spec_hz: current_landscape.space.centers_hz.clone(),
-                    amps: current_landscape.amps_last.clone(),
+                    spec_hz: log_space.centers_hz.clone(),
+                    amps: ui_log_amps.iter().map(|&x| x.sqrt()).collect(),
                 },
                 landscape: ui_landscape,
                 time_sec: current_time,
@@ -486,10 +533,11 @@ fn worker_loop(
                     duration_sec: conductor.total_duration(),
                     agent_count: pop.individuals.len(),
                     event_queue_len: conductor.remaining_events(),
-                    peak_level: max_abs,
                     scenario_name: scenario_name.clone(),
                     scene_name: conductor.current_scene_name(current_time),
                     playback_state: playback_state.clone(),
+                    channel_peak,
+                    window_peak: channel_peak,
                 },
             };
             let _ = ui_tx.try_send(ui_frame);
@@ -508,11 +556,12 @@ fn worker_loop(
                 if !wait_user_exit {
                     exiting.store(true, Ordering::SeqCst);
                 }
-                break;
             }
 
-            current_time += hop_duration.as_secs_f32();
-            frame_idx += 1;
+            if !finished {
+                current_time += hop_duration.as_secs_f32();
+                frame_idx += 1;
+            }
 
             let elapsed = t_start.elapsed();
             if elapsed > hop_duration {
@@ -524,7 +573,7 @@ fn worker_loop(
             }
         }
 
-        if exiting.load(Ordering::SeqCst) || finished {
+        if exiting.load(Ordering::SeqCst) || (finished && !wait_user_exit) {
             break;
         }
 

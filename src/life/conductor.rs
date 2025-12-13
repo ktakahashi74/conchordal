@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use tracing::info;
 
 use super::population::Population;
-use super::scenario::{Action, Episode, Scenario};
+use super::scenario::{Action, Scene, Scenario};
 use crate::core::landscape::LandscapeFrame;
 
 #[derive(Debug, Clone)]
@@ -20,8 +20,7 @@ pub struct Conductor {
 
 impl Conductor {
     pub fn from_scenario(s: Scenario) -> Self {
-        let mut events: Vec<QueuedEvent> =
-            s.episodes.into_iter().flat_map(flatten_episode).collect();
+        let mut events: Vec<QueuedEvent> = s.scenes.into_iter().flat_map(flatten_scene).collect();
 
         events.sort_by(|a, b| {
             a.time
@@ -85,7 +84,7 @@ impl Conductor {
     }
 }
 
-fn flatten_episode(ep: Episode) -> impl Iterator<Item = QueuedEvent> {
+fn flatten_scene(ep: Scene) -> impl Iterator<Item = QueuedEvent> {
     let mut out: Vec<QueuedEvent> = Vec::new();
     for ev in ep.events {
         if let Some(rep) = &ev.repeat {

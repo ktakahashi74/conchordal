@@ -8,10 +8,10 @@ fn pulse(tag, freq, amp, count, spacing) {
     }
 }
 
-section("pulse");
+scene("pulse");
 pulse("kick", 60.0, 0.45, 6, 0.25); // drives the field
 
-section("bloom");
+scene("bloom");
 parallel(|| { // bass anchor + slow pads
     add_agent("bass", 96.0, 0.35, #{ type: "decay", initial_energy: 1.1, half_life_sec: 0.5, attack_sec: 0.05 });
     wait(0.4);
@@ -22,7 +22,7 @@ parallel(|| { // shimmer hits
 });
 wait(1.0);
 
-section("dissolve");
+scene("dissolve");
 let melt = #{ type: "decay", initial_energy: 1.0, half_life_sec: 0.35 };
 let drift = #{ mode: "harmonic_density", min_freq: 200.0, max_freq: 1400.0, temperature: 1.0 };
 for i in 0..6 {

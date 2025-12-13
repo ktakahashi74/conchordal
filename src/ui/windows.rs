@@ -18,9 +18,9 @@ pub fn main_window(
     audio_error: Option<&str>,
 ) {
     TopBottomPanel::top("top").show(ctx, |ui| {
-        ui.heading("Conchordal");
+        ui.heading("Conchordal — NSGT Landscape Viewer");
+        ui.label("Wave + Landscape (log₂-space R, PLV-based C)");
 
-        ui.label("Scenario progress");
         let progress = if frame.meta.duration_sec > 0.0 {
             (frame.meta.time_sec / frame.meta.duration_sec).clamp(0.0, 1.0)
         } else {
@@ -37,7 +37,6 @@ pub fn main_window(
                 .desired_width(ui.available_width()),
         );
 
-        ui.label("Status");
         ui.horizontal(|ui| {
             ui.label(format!("Agents: {}", frame.meta.agent_count));
             ui.separator();

@@ -7,7 +7,7 @@ use rhai::{Engine, EvalAltResult, FLOAT, Map, Position};
 
 use super::lifecycle::LifecycleConfig;
 use super::scenario::{
-    Action, Episode, Event, IndividualConfig, Scenario, SpawnMethod, TimbreGenotype,
+    Action, Event, IndividualConfig, Scenario, Scene, SpawnMethod, TimbreGenotype,
 };
 
 const SCRIPT_PRELUDE: &str = r#"
@@ -22,7 +22,7 @@ fn parallel(callback) {
 #[derive(Debug, Clone)]
 pub struct ScriptContext {
     pub cursor: f32,
-    pub episode_start_time: f32,
+    pub scene_start_time: f32,
     pub time_stack: Vec<f32>,
     pub scenario: Scenario,
     pub tag_counters: HashMap<String, usize>,
@@ -32,10 +32,10 @@ impl Default for ScriptContext {
     fn default() -> Self {
         Self {
             cursor: 0.0,
-            episode_start_time: 0.0,
+            scene_start_time: 0.0,
             time_stack: Vec::new(),
             scenario: Scenario {
-                episodes: Vec::new(),
+                scenes: Vec::new(),
             },
             tag_counters: HashMap::new(),
         }
@@ -43,25 +43,25 @@ impl Default for ScriptContext {
 }
 
 impl ScriptContext {
-    fn current_episode_mut(&mut self) -> &mut Episode {
-        if self.scenario.episodes.is_empty() {
-            self.scenario.episodes.push(Episode {
+    fn current_scene_mut(&mut self) -> &mut Scene {
+        if self.scenario.scenes.is_empty() {
+            self.scenario.scenes.push(Scene {
                 name: None,
-                start_time: self.episode_start_time,
+                start_time: self.scene_start_time,
                 events: Vec::new(),
             });
         }
-        self.scenario.episodes.last_mut().expect("episode exists")
+        self.scenario.scenes.last_mut().expect("scene exists")
     }
 
-    pub fn section(&mut self, name: &str) {
-        let episode = Episode {
+    pub fn scene(&mut self, name: &str) {
+        let scene = Scene {
             name: Some(name.to_string()),
             start_time: self.cursor,
             events: Vec::new(),
         };
-        self.episode_start_time = self.cursor;
-        self.scenario.episodes.push(episode);
+        self.scene_start_time = self.cursor;
+        self.scenario.scenes.push(scene);
     }
 
     pub fn wait(&mut self, sec: f32) {
@@ -79,9 +79,9 @@ impl ScriptContext {
     }
 
     fn push_event(&mut self, actions: Vec<Action>) {
-        let rel_time = self.cursor - self.episode_start_time;
-        let episode = self.current_episode_mut();
-        episode.events.push(Event {
+        let rel_time = self.cursor - self.scene_start_time;
+        let scene = self.current_scene_mut();
+        scene.events.push(Event {
             time: rel_time,
             repeat: None,
             actions,
@@ -225,10 +225,17 @@ impl ScriptHost {
         let mut engine = Engine::new();
         engine.on_print(|msg| println!("[rhai] {msg}"));
 
+        let ctx_for_scene = ctx.clone();
+        engine.register_fn("scene", move |name: &str| {
+            let mut ctx = ctx_for_scene.lock().expect("lock script context");
+            ctx.scene(name);
+        });
+
+        // Backward compatibility for existing scripts still using `section`.
         let ctx_for_section = ctx.clone();
         engine.register_fn("section", move |name: &str| {
             let mut ctx = ctx_for_section.lock().expect("lock script context");
-            ctx.section(name);
+            ctx.scene(name);
         });
 
         let ctx_for_wait = ctx.clone();
@@ -369,28 +376,28 @@ mod tests {
     }
 
     #[test]
-    fn section_sets_start_and_relative_times() {
+    fn scene_sets_start_and_relative_times() {
         let scenario = run_script(
             r#"
-            section("intro");
+            scene("intro");
             add_agent("lead", 440.0, 0.2, #{ type: "decay", initial_energy: 1.0, half_life_sec: 0.5 });
             wait(1.0);
-            section("break");
+            scene("break");
             add_agent("hit", 880.0, 0.1, #{ type: "decay", initial_energy: 0.8, half_life_sec: 0.2 });
             wait(0.5);
             finish();
         "#,
         );
 
-        assert_eq!(scenario.episodes.len(), 2);
+        assert_eq!(scenario.scenes.len(), 2);
 
-        let intro = &scenario.episodes[0];
+        let intro = &scenario.scenes[0];
         assert_eq!(intro.name.as_deref(), Some("intro"));
         assert_time_close(intro.start_time, 0.0);
         assert_eq!(intro.events.len(), 1);
         assert_time_close(intro.events[0].time, 0.0);
 
-        let break_ep = &scenario.episodes[1];
+        let break_ep = &scenario.scenes[1];
         assert_eq!(break_ep.name.as_deref(), Some("break"));
         assert_time_close(break_ep.start_time, 1.0);
         assert_eq!(break_ep.events.len(), 2);
@@ -423,7 +430,7 @@ mod tests {
     fn parallel_restores_time_after_block() {
         let scenario = run_script(
             r#"
-            section("intro");
+            scene("intro");
             wait(0.1);
             parallel(|| {
                 wait(0.5);
@@ -435,10 +442,7 @@ mod tests {
         "#,
         );
 
-        let intro = &scenario
-            .episodes
-            .first()
-            .expect("intro episode should exist");
+        let intro = &scenario.scenes.first().expect("intro scene should exist");
         assert_eq!(intro.events.len(), 3);
 
         let mut pad_time = None;
@@ -468,10 +472,10 @@ mod tests {
     }
 
     #[test]
-    fn spawn_uses_relative_episode_time() {
+    fn spawn_uses_relative_scene_time() {
         let scenario = run_script(
             r#"
-            section("alpha");
+            scene("alpha");
             wait(1.2);
             let method = #{ mode: "random_log_uniform", min_freq: 100.0, max_freq: 200.0 };
             let life = #{ type: "decay", initial_energy: 1.0, half_life_sec: 0.5 };
@@ -479,7 +483,7 @@ mod tests {
         "#,
         );
 
-        let ep = scenario.episodes.first().expect("episode exists");
+        let ep = scenario.scenes.first().expect("scene exists");
         assert_eq!(ep.name.as_deref(), Some("alpha"));
         assert_time_close(ep.start_time, 0.0);
         assert_eq!(ep.events.len(), 1);
@@ -507,7 +511,7 @@ mod tests {
     }
 
     #[test]
-    fn episode_created_when_section_absent() {
+    fn scene_created_when_scene_absent() {
         let scenario = run_script(
             r#"
             add_agent("init", 330.0, 0.2, #{ type: "decay", initial_energy: 1.0, half_life_sec: 0.5 });
@@ -516,8 +520,8 @@ mod tests {
         "#,
         );
 
-        assert_eq!(scenario.episodes.len(), 1);
-        let ep = &scenario.episodes[0];
+        assert_eq!(scenario.scenes.len(), 1);
+        let ep = &scenario.scenes[0];
         assert!(ep.name.is_none());
         assert_time_close(ep.start_time, 0.0);
         assert_eq!(ep.events.len(), 2);
@@ -527,9 +531,9 @@ mod tests {
 
     #[test]
     fn sample_script_file_executes() {
-        let scenario = ScriptHost::load_script("samples/sample_scenario.rhai")
-            .expect("sample script should run");
-        assert!(!scenario.episodes.is_empty());
+        let scenario =
+            ScriptHost::load_script("samples/sample_scenario.rhai").expect("sample script should run");
+        assert!(!scenario.scenes.is_empty());
     }
 
     #[test]

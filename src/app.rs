@@ -346,9 +346,7 @@ fn worker_loop(
 
                 let max_abs = time_chunk
                     .iter()
-                    .map(|v| v.abs())
-                    .max_by(|a, b| a.total_cmp(b))
-                    .unwrap_or(0.0);
+                    .fold(0.0f32, |m, &v| m.max(v.abs()));
 
                 if last_clip_log.elapsed() > Duration::from_millis(200) {
                     max_peak = max_peak.max(max_abs);

@@ -13,13 +13,13 @@ fn play_chord(root, tag) {
     remove("pad_" + tag);
 }
 
-section("ii");
+scene("ii");
 play_chord(146.83, "ii"); // Dm7
 
-section("v");
+scene("v");
 play_chord(196.00, "v"); // G7
 
-section("i");
+scene("i");
 play_chord(130.81, "i"); // Cmaj
 
 wait(1.0);

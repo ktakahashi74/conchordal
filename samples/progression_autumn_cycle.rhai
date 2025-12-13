@@ -25,7 +25,7 @@ let chords = [
     #{ name: "Am",  freq: 110.00, dur: 1.8 },
 ];
 
-section("cycle");
+scene("cycle");
 for ch in chords {
     play_step(ch.name, ch.freq, ch.dur);
 }

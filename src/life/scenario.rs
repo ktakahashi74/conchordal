@@ -9,7 +9,8 @@ use rand::{Rng as _, rng};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Scenario {
-    pub episodes: Vec<Episode>,
+    #[serde(alias = "episodes")]
+    pub scenes: Vec<Scene>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -48,7 +49,7 @@ pub struct TimbreGenotype {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Episode {
+pub struct Scene {
     #[serde(default)]
     pub name: Option<String>,
     pub start_time: f32,

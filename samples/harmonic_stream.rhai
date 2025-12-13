@@ -4,11 +4,11 @@ print("Harmonic Density Stream: flowing 1/f voices");
 let method = #{ mode: "harmonic_density", min_freq: 70.0, max_freq: 2600.0, temperature: 1.2 };
 let life = #{ type: "decay", initial_energy: 1.0, half_life_sec: 0.6, attack_sec: 0.08 };
 
-section("seed");
+scene("seed");
 spawn_agents("anchor", method, life, 2, 0.12);
 wait(0.35);
 
-section("flow");
+scene("flow");
 for i in 0..48 {
     // occasional louder anchors to re-center the PDF
     if i % 12 == 0 { spawn_agents("anchor", method, life, 1, 0.16); }

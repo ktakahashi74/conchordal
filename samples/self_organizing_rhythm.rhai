@@ -20,7 +20,7 @@ let life_plucking = #{
 // ============================================================
 // Phase 1: The Seed (メトロノームによる強制引き込み)
 // ============================================================
-section("Phase 1: Metronome");
+scene("Phase 1: Metronome");
 print("--- [1] Injecting strong beat (Delta band driver) ---");
 
 // 1. 強力なキック音 (60Hz) を配置
@@ -37,7 +37,7 @@ wait(2.0); // リズムが安定するのを待つ
 // ============================================================
 // Phase 2: The Swarm (群れの投入)
 // ============================================================
-section("Phase 2: Recruitment");
+scene("Phase 2: Recruitment");
 print("--- [2] Spawning agents with random phases ---");
 
 // 2. 多数の個体を投入 (200Hz - 800Hz)
@@ -62,7 +62,7 @@ wait(4.0); // 同期が進むのをじっくり待つ
 // ============================================================
 // Phase 3: Emergence (自律維持)
 // ============================================================
-section("Phase 3: Emergence");
+scene("Phase 3: Emergence");
 print("--- [3] REMOVING THE METRONOME (Watch self-sustain) ---");
 
 // 3. 親（キック）を削除
@@ -77,7 +77,7 @@ wait(6.0);
 // ============================================================
 // Phase 4: Perturbation (撹乱と再同期)
 // ============================================================
-section("Phase 4: Perturbation");
+scene("Phase 4: Perturbation");
 print("--- [4] Injecting counter-rhythm (High freq) ---");
 
 // 4. 全く違うテンポ感の音（高域のクリック音）を入れて撹乱してみる

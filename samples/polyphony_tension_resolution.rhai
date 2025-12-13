@@ -24,16 +24,16 @@ fn chord_block(root, name, sustain_amp, tension_amp, dur) {
     wait(dur * 0.25);
 }
 
-section("Imaj7");
+scene("Imaj7");
 chord_block(130.81, "Cmaj7", 0.32, 0.18, 2.0);
 
-section("IIm7");
+scene("IIm7");
 chord_block(146.83, "Dm7", 0.3, 0.18, 1.8);
 
-section("V7");
+scene("V7");
 chord_block(196.00, "G7", 0.34, 0.2, 2.2);
 
-section("Imaj7_resolve");
+scene("Imaj7_resolve");
 chord_block(130.81, "Cmaj7_final", 0.36, 0.14, 2.4);
 
 wait(1.0);

@@ -20,7 +20,7 @@ let life_pulse = #{
 // ==========================================
 // Phase 1: Gravity (調性の確立)
 // ==========================================
-section("Phase 1: Gravity");
+scene("Phase 1: Gravity");
 print("--- [1] Establishing Harmonic Root (C2 + G2) ---");
 
 add_agent("root", 65.41, 0.5, life_drone); // C2
@@ -31,7 +31,7 @@ wait(1.0);
 // ==========================================
 // Phase 2: Rhythm Driver
 // ==========================================
-section("Phase 2: The Clock");
+scene("Phase 2: The Clock");
 print("--- [2] Injecting Rhythm Driver ---");
 
 add_agent("kick", 65.41, 0.6, #{ 
@@ -45,7 +45,7 @@ wait(3.0);
 // ==========================================
 // Phase 3: The Chord (確率的分散)
 // ==========================================
-section("Phase 3: Voicing");
+scene("Phase 3: Voicing");
 print("--- [3] Spawning agents with Harmonic Density ---");
 
 // 【変更点】 harmonicity -> harmonic_density
@@ -73,7 +73,7 @@ wait(5.0);
 // ==========================================
 // Phase 4: Autonomy
 // ==========================================
-section("Phase 4: Autonomy");
+scene("Phase 4: Autonomy");
 print("--- [4] Removing Anchor & Kick ---");
 
 remove("kick");

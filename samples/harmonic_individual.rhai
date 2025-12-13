@@ -1,6 +1,6 @@
 // HarmonicIndividual demo: bell-like decay and metallic sustain with damping-led spectral darkening.
 
-section("harmonic_open");
+scene("harmonic_open");
 
 let bell_env = #{
     type: "decay",
@@ -48,7 +48,7 @@ set_freq("bell", 346.0); // gentle lift
 wait(1.0);
 set_amp("metal", 0.18);
 
-section("cleanup");
+scene("cleanup");
 remove("bell");
 wait(0.5);
 finish();

@@ -2,7 +2,7 @@ use super::conductor::Conductor;
 use super::individual::{AgentMetadata, ArticulationState, Individual};
 use super::population::{Population, PopulationParams};
 use super::scenario::{
-    Action, Episode, Event, HarmonicMode, IndividualConfig, Scenario, TimbreGenotype,
+    Action, Event, HarmonicMode, IndividualConfig, Scenario, Scene, TimbreGenotype,
 };
 use crate::core::harmonicity_kernel::HarmonicityKernel;
 use crate::core::harmonicity_kernel::HarmonicityParams;
@@ -61,13 +61,13 @@ fn test_conductor_timing() {
         repeat: None,
         actions: vec![action],
     };
-    let episode = Episode {
+    let episode = Scene {
         name: Some("test".into()),
         start_time: 0.0,
         events: vec![event],
     };
     let scenario = Scenario {
-        episodes: vec![episode],
+        scenes: vec![episode],
     };
 
     let mut conductor = Conductor::from_scenario(scenario);

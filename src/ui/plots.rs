@@ -1,6 +1,7 @@
 use egui::{Align2, Color32, FontId, Stroke};
 use egui_plot::{
-    Bar, BarChart, GridInput, GridMark, Line, Plot, PlotPoints, Points, log_grid_spacer,
+    Bar, BarChart, GridInput, GridMark, Line, LineStyle, Plot, PlotPoints, Points, VLine,
+    log_grid_spacer,
 };
 use std::collections::VecDeque;
 
@@ -192,73 +193,6 @@ fn phase_to_unit(phase: f64) -> f64 {
     p
 }
 
-fn band_segments<F>(
-    history: &VecDeque<(f64, crate::core::modulation::NeuralRhythms)>,
-    mut accessor: F,
-) -> (Vec<(PlotPoints, f32)>, Vec<([f64; 2], f32)>)
-where
-    F: FnMut(&crate::core::modulation::NeuralRhythms) -> (f64, f32),
-{
-    let mut segments: Vec<(PlotPoints, f32)> = Vec::new();
-    let mut current_points: Vec<[f64; 2]> = Vec::new();
-    let mut current_mags: Vec<f64> = Vec::new();
-    let mut markers: Vec<([f64; 2], f32)> = Vec::new();
-    let mut last: Option<(f64, f64, f64)> = None; // (time, phase, mag)
-    let tau = std::f64::consts::TAU;
-
-    for (t, rhythms) in history {
-        let (phase_raw, mag) = accessor(rhythms);
-        let phase = phase_to_unit(phase_raw);
-        let mag_clamped = mag.clamp(0.0, 1.0) as f64;
-
-        if let Some((prev_t, prev_phase, prev_mag)) = last {
-            // Detect wrap by looking for a large negative jump.
-            if prev_phase - phase > std::f64::consts::PI {
-                // Compute crossing time where phase hits 2π.
-                let delta_phase = (phase + tau) - prev_phase;
-                if delta_phase.abs() > f64::EPSILON {
-                    let frac = (tau - prev_phase) / delta_phase;
-                    let t_cross = prev_t + frac * (t - prev_t);
-                    // Close current segment at 2π
-                    current_points.push([t_cross, tau]);
-                    current_mags.push(prev_mag);
-                    if !current_points.is_empty() {
-                        let avg_mag = if current_mags.is_empty() {
-                            0.0
-                        } else {
-                            current_mags.iter().sum::<f64>() / current_mags.len() as f64
-                        };
-                        segments.push((PlotPoints::from(current_points.clone()), avg_mag as f32));
-                    }
-                    // Marker at wrap
-                    let marker_alpha = (mag_clamped * 4.0).clamp(0.3, 1.0) as f32;
-                    markers.push(([t_cross, 0.0], marker_alpha));
-                    // Start new segment from 0 at the crossing
-                    current_points.clear();
-                    current_mags.clear();
-                    current_points.push([t_cross, 0.0]);
-                    current_mags.push(mag_clamped);
-                }
-            }
-        }
-
-        current_points.push([*t, phase]);
-        current_mags.push(mag_clamped);
-        last = Some((*t, phase, mag_clamped));
-    }
-
-    if !current_points.is_empty() {
-        let avg_mag = if current_mags.is_empty() {
-            0.0
-        } else {
-            current_mags.iter().sum::<f64>() / current_mags.len() as f64
-        };
-        segments.push((PlotPoints::from(current_points), avg_mag as f32));
-    }
-
-    (segments, markers)
-}
-
 /// Visualize neural phases over time as sawtooth traces with wrap markers.
 pub fn neural_phase_plot(
     ui: &mut egui::Ui,
@@ -266,73 +200,161 @@ pub fn neural_phase_plot(
 ) {
     type BandAccessor = fn(&crate::core::modulation::NeuralRhythms) -> (f64, f32);
     let tau = std::f64::consts::TAU;
-    if history.is_empty() {
+    if history.len() < 2 {
         ui.label("No rhythm data");
         return;
     }
 
     let x_min = history.front().map(|(t, _)| *t).unwrap_or(0.0);
-    let x_max = history.back().map(|(t, _)| *t).unwrap_or(1.0);
+    let x_max = history.back().map(|(t, _)| *t).unwrap_or(5.0);
+    let window_start = x_max - 5.0;
+    let window_end = window_start + 5.0;
+    let y_ticks = vec![0.0, std::f64::consts::PI, tau];
 
-    let bands = [
-        (
-            "Delta",
-            Color32::from_rgb(80, 180, 255),
-            (|r: &crate::core::modulation::NeuralRhythms| (r.delta.phase as f64, r.delta.mag))
-                as BandAccessor,
-        ),
-        (
-            "Theta",
-            Color32::from_rgb(70, 225, 135),
-            (|r: &crate::core::modulation::NeuralRhythms| (r.theta.phase as f64, r.theta.mag))
-                as BandAccessor,
-        ),
-        (
-            "Alpha",
-            Color32::from_rgb(255, 215, 60),
-            (|r: &crate::core::modulation::NeuralRhythms| (r.alpha.phase as f64, r.alpha.mag))
-                as BandAccessor,
-        ),
-        (
-            "Beta",
-            Color32::from_rgb(255, 110, 90),
-            (|r: &crate::core::modulation::NeuralRhythms| (r.beta.phase as f64, r.beta.mag))
-                as BandAccessor,
-        ),
+    let bands: [(&str, Color32, BandAccessor); 4] = [
+        ("Delta", Color32::from_rgb(80, 180, 255), |r| {
+            (r.delta.phase as f64, r.delta.mag)
+        }),
+        ("Theta", Color32::from_rgb(70, 225, 135), |r| {
+            (r.theta.phase as f64, r.theta.mag)
+        }),
+        ("Alpha", Color32::from_rgb(255, 215, 60), |r| {
+            (r.alpha.phase as f64, r.alpha.mag)
+        }),
+        ("Beta", Color32::from_rgb(255, 110, 90), |r| {
+            (r.beta.phase as f64, r.beta.mag)
+        }),
     ];
 
     Plot::new("neural_phase_plot")
-        .height(220.0)
-        .allow_drag(false)
-        .allow_scroll(false)
+        .height(170.0)
+        .allow_drag(true)
+        .allow_scroll(true)
         .include_y(0.0)
         .include_y(tau)
-        .include_x(x_min)
-        .include_x(x_max)
-        .y_axis_formatter(|mark, _| format!("{:.2}", mark.value))
+        .include_x(window_start)
+        .include_x(window_end)
+        .default_x_bounds(window_start, window_end)
+        .y_grid_spacer(move |_input| {
+            y_ticks
+                .iter()
+                .enumerate()
+                .map(|(i, &v)| {
+                    let step_size = if i + 1 < y_ticks.len() {
+                        y_ticks[i + 1] - v
+                    } else if i > 0 {
+                        y_ticks[i] - y_ticks[i - 1]
+                    } else {
+                        std::f64::consts::PI
+                    };
+                    GridMark {
+                        value: v,
+                        step_size,
+                    }
+                })
+                .collect()
+        })
+        .y_axis_formatter(|mark, _| {
+            let v = mark.value;
+            if (v).abs() < 1e-3 {
+                "0".to_string()
+            } else if (v - std::f64::consts::PI).abs() < 1e-3 {
+                "π".to_string()
+            } else if (v - std::f64::consts::TAU).abs() < 1e-3 {
+                "2π".to_string()
+            } else {
+                String::new()
+            }
+        })
         .x_axis_formatter(|mark, _| format!("{:.1} s", mark.value))
         .show(ui, |plot_ui| {
-            for (label, color, accessor) in bands {
-                let (segments, markers) = band_segments(history, accessor);
+            for (band_idx, (label, color, accessor)) in bands.iter().enumerate() {
+                let mut segments: Vec<(PlotPoints, f32)> = Vec::new();
+                let mut marker_lines: Vec<(f64, Color32, f32, LineStyle)> = Vec::new();
+                let mut marker_points: Vec<([f64; 2], Color32, f32)> = Vec::new();
+
+                let mut iter = history.iter();
+                let Some((t0, r0)) = iter.next() else {
+                    continue;
+                };
+                let (p0_raw, m0) = accessor(r0);
+                let mut prev_phase = phase_to_unit(p0_raw);
+                let mut prev_t = *t0;
+                let mut current_points = vec![[prev_t, prev_phase]];
+                let mut mags = vec![m0];
+
+                for (t1, r1) in history.iter().skip(1) {
+                    let (p_raw, m) = accessor(r1);
+                    let phase = phase_to_unit(p_raw);
+                    let wrap = prev_phase - phase > std::f64::consts::PI;
+                    if wrap {
+                        let delta_phase = (phase + tau) - prev_phase;
+                        if delta_phase.abs() > f64::EPSILON {
+                            let frac = (tau - prev_phase) / delta_phase;
+                            let t_cross = prev_t + frac * (*t1 - prev_t);
+                            current_points.push([t_cross, tau]);
+                            mags.push(m);
+                            let avg = mags.iter().copied().sum::<f32>() / mags.len() as f32;
+                            segments.push((PlotPoints::from(current_points.clone()), avg));
+
+                            let marker_alpha = (m * 4.0).clamp(0.2, 1.0);
+                            if marker_alpha > 0.3 {
+                                match band_idx {
+                                    0 => marker_lines.push((
+                                        t_cross,
+                                        color.gamma_multiply(marker_alpha),
+                                        1.5,
+                                        LineStyle::Dotted { spacing: 5.0 },
+                                    )),
+                                    1 => marker_points.push((
+                                        [t_cross, 0.0],
+                                        color.gamma_multiply(marker_alpha),
+                                        3.0,
+                                    )),
+                                    _ => {}
+                                }
+                            }
+
+                            current_points.clear();
+                            mags.clear();
+                            current_points.push([t_cross, 0.0]);
+                            mags.push(m);
+                            current_points.push([*t1, phase]);
+                            mags.push(m);
+                        }
+                    } else {
+                        current_points.push([*t1, phase]);
+                        mags.push(m);
+                    }
+                    prev_phase = phase;
+                    prev_t = *t1;
+                }
+
+                if !current_points.is_empty() {
+                    let avg = mags.iter().copied().sum::<f32>() / mags.len() as f32;
+                    segments.push((PlotPoints::from(current_points), avg));
+                }
+
                 let mut first = true;
                 for (points, mag_avg) in segments {
-                    let alpha = (mag_avg * 4.0).clamp(0.3, 1.0);
+                    let alpha = (mag_avg * 4.0).clamp(0.2, 1.0);
                     let c = color.gamma_multiply(alpha);
                     let mut line = Line::new("", points).color(c);
                     if first {
-                        line = line.name(label);
+                        line = line.name(*label);
                         first = false;
                     }
                     plot_ui.line(line);
                 }
-                for (pt, marker_alpha) in markers {
-                    if marker_alpha > 0.3 {
-                        let marker_color = color.gamma_multiply(marker_alpha);
-                        let pts = Points::new("", PlotPoints::from(vec![pt]))
-                            .color(marker_color)
-                            .radius(2.5);
-                        plot_ui.points(pts);
-                    }
+
+                for (x, c, width, style) in marker_lines {
+                    plot_ui.vline(VLine::new("", x).color(c).width(width).style(style));
+                }
+                for (pt, c, radius) in marker_points {
+                    let pts = Points::new("", PlotPoints::from(vec![pt]))
+                        .color(c)
+                        .radius(radius);
+                    plot_ui.points(pts);
                 }
             }
         });
@@ -347,18 +369,18 @@ pub fn neural_compass(ui: &mut egui::Ui, rhythms: &crate::core::modulation::Neur
         ("Beta", Color32::from_rgb(231, 76, 60), rhythms.beta),
     ];
 
-    ui.horizontal(|ui| {
+    ui.vertical(|ui| {
         for (label, color, rhythm) in bands {
-            let desired = egui::vec2(90.0, 100.0);
+            let desired = egui::vec2(130.0, 40.0);
             let (rect, _resp) = ui.allocate_exact_size(desired, egui::Sense::hover());
             let painter = ui.painter_at(rect);
             let center = rect.center();
-            let radius = rect.width().min(rect.height()) * 0.35;
+            let radius = rect.width().min(rect.height()) * 0.45;
 
             // Background circle
             painter.circle_stroke(center, radius, Stroke::new(1.0, color.gamma_multiply(0.35)));
-            painter.circle_filled(center, 4.0, Color32::WHITE);
-            painter.circle_stroke(center, 4.0, Stroke::new(1.0, color.gamma_multiply(0.6)));
+            painter.circle_filled(center, 2.0, Color32::WHITE);
+            painter.circle_stroke(center, 2.0, Stroke::new(1.0, color.gamma_multiply(0.6)));
             let top = center + egui::vec2(0.0, -radius);
             painter.line_segment(
                 [center, top],
@@ -375,7 +397,7 @@ pub fn neural_compass(ui: &mut egui::Ui, rhythms: &crate::core::modulation::Neur
 
             // Label
             painter.text(
-                rect.center_top() + egui::vec2(0.0, 8.0),
+                rect.center_top() + egui::vec2(-40.0, 10.0),
                 Align2::CENTER_TOP,
                 label,
                 FontId::proportional(12.0),

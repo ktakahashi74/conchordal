@@ -56,19 +56,22 @@ pub fn main_window(
         });
 
         ui.separator();
-        ui.heading("Analytic");
+        ui.heading("Neural Phases");
         ui.horizontal(|ui| {
             ui.vertical(|ui| {
-                ui.label("Neural Rhythms");
+                //ui.set_width(0.0);
+                //ui.label("Neural Phases");
                 neural_compass(ui, &frame.landscape.rhythm);
             });
-            ui.separator();
             ui.vertical(|ui| {
                 ui.set_min_width(ui.available_width());
-                ui.label("Neural Phase Slope");
+                //                ui.label("Neural Phase Slope");
                 neural_phase_plot(ui, rhythm_history);
             });
         });
+
+        ui.separator();
+        ui.heading("Analytic");
 
         log2_plot_hz(
             ui,

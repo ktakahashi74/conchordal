@@ -44,19 +44,6 @@ pub struct App {
 }
 
 impl App {
-    fn push_frame(&mut self, frame: UiFrame) {
-        let t = frame.time_sec as f64;
-        self.rhythm_history.push_back((t, frame.landscape.rhythm));
-        while self
-            .rhythm_history
-            .front()
-            .map_or(false, |(time, _)| *time < t - 5.0)
-        {
-            self.rhythm_history.pop_front();
-        }
-        self.last_frame = frame;
-    }
-
     pub fn new(
         cc: &eframe::CreationContext<'_>,
         args: crate::Args,
@@ -235,7 +222,7 @@ impl App {
             wav_handle,
             worker_handle,
             exiting: stop_flag,
-            rhythm_history: VecDeque::with_capacity(1024),
+            rhythm_history: VecDeque::with_capacity(4096),
         }
     }
 }
@@ -248,13 +235,24 @@ impl eframe::App for App {
             return;
         }
 
-        // Pull newest frame (drain to latest)
+        // Drain all frames for high-frequency rhythm updates.
         while let Ok(frame) = self.ui_frame_rx.try_recv() {
+            let t = frame.time_sec as f64;
+            self.rhythm_history.push_back((t, frame.landscape.rhythm));
             self.ui_queue.push_back(frame);
         }
-        while self.ui_queue.len() > self.visual_delay_frames {
+        if let Some((t_last, _)) = self.rhythm_history.back().copied() {
+            while self
+                .rhythm_history
+                .front()
+                .map_or(false, |(time, _)| *time < t_last - 5.0)
+            {
+                self.rhythm_history.pop_front();
+            }
+        }
+        while !self.ui_queue.is_empty() {
             if let Some(frame) = self.ui_queue.pop_front() {
-                self.push_frame(frame);
+                self.last_frame = frame;
             }
         }
         crate::ui::windows::main_window(

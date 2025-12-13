@@ -54,6 +54,21 @@ impl App {
     ) -> Self {
         let latency_ms = config.audio.latency_ms;
 
+        let repaint_ctx = cc.egui_ctx.clone();
+        let stop_flag_watch = stop_flag.clone();
+        std::thread::spawn(move || {
+            while !stop_flag_watch.load(Ordering::SeqCst) {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            repaint_ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            repaint_ctx.request_repaint();
+            std::thread::sleep(Duration::from_millis(200));
+            if stop_flag_watch.load(Ordering::SeqCst) {
+                // Force exit in case the event loop is asleep (e.g., window not exposed).
+                std::process::exit(0);
+            }
+        });
+
         // Audio
         let (audio_out, audio_prod, audio_init_error) = if args.play {
             match AudioOutput::new(latency_ms) {

@@ -202,12 +202,16 @@ impl App {
                 .expect("spawn worker"),
         );
 
-        // Egui visuals tweak (dark)
-        cc.egui_ctx.set_pixels_per_point(1.25);
+        //cc.egui_ctx.set_pixels_per_point(1.0);
         cc.egui_ctx
             .send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::Vec2 {
                 x: 1200.0,
-                y: 1100.0,
+                y: 1600.0,
+            }));
+        cc.egui_ctx
+            .send_viewport_cmd(egui::ViewportCommand::MinInnerSize(egui::Vec2 {
+                x: 1200.0,
+                y: 1600.0,
             }));
 
         Self {

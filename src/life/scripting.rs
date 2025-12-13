@@ -34,9 +34,7 @@ impl Default for ScriptContext {
             cursor: 0.0,
             scene_start_time: 0.0,
             time_stack: Vec::new(),
-            scenario: Scenario {
-                scenes: Vec::new(),
-            },
+            scenario: Scenario { scenes: Vec::new() },
             tag_counters: HashMap::new(),
         }
     }
@@ -531,8 +529,8 @@ mod tests {
 
     #[test]
     fn sample_script_file_executes() {
-        let scenario =
-            ScriptHost::load_script("samples/sample_scenario.rhai").expect("sample script should run");
+        let scenario = ScriptHost::load_script("samples/sample_scenario.rhai")
+            .expect("sample script should run");
         assert!(!scenario.scenes.is_empty());
     }
 

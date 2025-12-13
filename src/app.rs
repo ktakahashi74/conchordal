@@ -139,6 +139,11 @@ impl App {
         }
 
         let path = args.scenario_path.clone();
+        let scenario_label = Path::new(&path)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("scenario")
+            .to_string();
         let ext = Path::new(&path)
             .extension()
             .and_then(|s| s.to_str())
@@ -183,6 +188,7 @@ impl App {
                 .name("worker".into())
                 .spawn(move || {
                     worker_loop(
+                        scenario_label,
                         ui_frame_tx,
                         pop,
                         conductor,
@@ -286,6 +292,7 @@ impl Drop for App {
 
 #[allow(clippy::too_many_arguments)]
 fn worker_loop(
+    scenario_name: String,
     ui_tx: Sender<UiFrame>,
     mut pop: Population,
     mut conductor: Conductor,
@@ -344,9 +351,7 @@ fn worker_loop(
                 let time_chunk =
                     pop.process_audio(hop, fs, frame_idx, hop_duration.as_secs_f32(), &landscape);
 
-                let max_abs = time_chunk
-                    .iter()
-                    .fold(0.0f32, |m, &v| m.max(v.abs()));
+                let max_abs = time_chunk.iter().fold(0.0f32, |m, &v| m.max(v.abs()));
 
                 if last_clip_log.elapsed() > Duration::from_millis(200) {
                     max_peak = max_peak.max(max_abs);
@@ -420,6 +425,8 @@ fn worker_loop(
                     agent_count: pop.individuals.len(),
                     event_queue_len: conductor.remaining_events(),
                     peak_level: max_abs,
+                    scenario_name: scenario_name.clone(),
+                    scene_name: conductor.current_scene_name(current_time),
                 },
             };
             let _ = ui_tx.try_send(ui_frame);

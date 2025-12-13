@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use tracing::info;
 
 use super::population::Population;
-use super::scenario::{Action, Scene, Scenario};
+use super::scenario::{Action, Scenario, Scene};
 use crate::core::landscape::LandscapeFrame;
 
 #[derive(Debug, Clone)]
@@ -12,14 +12,35 @@ pub struct QueuedEvent {
     pub actions: Vec<Action>,
 }
 
+#[derive(Debug, Clone)]
+struct SceneInfo {
+    name: Option<String>,
+    start_time: f32,
+}
+
 #[derive(Debug)]
 pub struct Conductor {
     event_queue: VecDeque<QueuedEvent>,
     total_duration: f32,
+    scenes: Vec<SceneInfo>,
 }
 
 impl Conductor {
     pub fn from_scenario(s: Scenario) -> Self {
+        let mut scenes: Vec<SceneInfo> = s
+            .scenes
+            .iter()
+            .map(|sc| SceneInfo {
+                name: sc.name.clone(),
+                start_time: sc.start_time,
+            })
+            .collect();
+        scenes.sort_by(|a, b| {
+            a.start_time
+                .partial_cmp(&b.start_time)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
         let mut events: Vec<QueuedEvent> = s.scenes.into_iter().flat_map(flatten_scene).collect();
 
         events.sort_by(|a, b| {
@@ -32,6 +53,7 @@ impl Conductor {
         Self {
             event_queue: events.into(),
             total_duration,
+            scenes,
         }
     }
 
@@ -46,6 +68,7 @@ impl Conductor {
         Self {
             event_queue: events.into(),
             total_duration,
+            scenes: Vec::new(),
         }
     }
 
@@ -81,6 +104,18 @@ impl Conductor {
 
     pub fn remaining_events(&self) -> usize {
         self.event_queue.len()
+    }
+
+    pub fn current_scene_name(&self, time_sec: f32) -> Option<String> {
+        let mut current: Option<String> = None;
+        for scene in &self.scenes {
+            if time_sec + f32::EPSILON >= scene.start_time {
+                current = scene.name.clone();
+            } else {
+                break;
+            }
+        }
+        current
     }
 }
 

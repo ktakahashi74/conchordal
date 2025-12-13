@@ -19,6 +19,8 @@ pub struct SimulationMeta {
     pub agent_count: usize,
     pub event_queue_len: usize,
     pub peak_level: f32,
+    pub scenario_name: String,
+    pub scene_name: Option<String>,
 }
 
 #[derive(Clone, Debug, Default)]

@@ -18,8 +18,23 @@ pub fn main_window(
     audio_error: Option<&str>,
 ) {
     TopBottomPanel::top("top").show(ctx, |ui| {
-        ui.heading("Conchordal — NSGT Landscape Viewer");
-        ui.label("Wave + Landscape (log₂-space R, PLV-based C)");
+        ui.heading("Conchordal");
+
+        ui.horizontal(|ui| {
+            let scenario = if frame.meta.scenario_name.is_empty() {
+                "Unknown".to_string()
+            } else {
+                frame.meta.scenario_name.clone()
+            };
+            let scene = frame
+                .meta
+                .scene_name
+                .clone()
+                .unwrap_or_else(|| "—".to_string());
+            ui.label(format!("Scenario: {scenario}"));
+            ui.separator();
+            ui.label(format!("Scene: {scene}"));
+        });
 
         let progress = if frame.meta.duration_sec > 0.0 {
             (frame.meta.time_sec / frame.meta.duration_sec).clamp(0.0, 1.0)

@@ -442,6 +442,7 @@ impl Population {
         fs: f32,
         nfft: usize,
         dt_sec: f32,
+        scenario_finished: bool,
     ) -> &[f32] {
         self.current_frame = current_frame;
         self.buffers.amps.resize(n_bins, 0.0);
@@ -457,13 +458,28 @@ impl Population {
 
         if removed_count > 0 {
             let t = current_frame as f32 * dt_sec;
-            info!(
-                "[t={:.6}] Cleaned up {} dead individuals. Remaining: {} (frame_idx={})",
-                t,
-                removed_count,
-                self.individuals.len(),
-                current_frame
-            );
+            let prefix = if scenario_finished || self.abort_requested {
+                "Event after scenario close: "
+            } else {
+                ""
+            };
+            if scenario_finished || self.abort_requested {
+                warn!(
+                    "{prefix}[t={:.6}] Cleaned up {} dead individuals. Remaining: {} (frame_idx={})",
+                    t,
+                    removed_count,
+                    self.individuals.len(),
+                    current_frame
+                );
+            } else {
+                info!(
+                    "{prefix}[t={:.6}] Cleaned up {} dead individuals. Remaining: {} (frame_idx={})",
+                    t,
+                    removed_count,
+                    self.individuals.len(),
+                    current_frame
+                );
+            }
         }
         &self.buffers.amps
     }

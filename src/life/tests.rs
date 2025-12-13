@@ -160,7 +160,7 @@ fn test_agent_lifecycle_decay_death() {
     // Run for 1.0 second (should be plenty for 0.05s half-life to die)
     for i in 0..100 {
         pop.process_audio(samples_per_hop, fs, i, dt, &landscape_rt);
-        pop.process_frame(i, 513, fs, nfft, dt);
+        pop.process_frame(i, 513, fs, nfft, dt, false);
         time += dt;
     }
 

@@ -211,6 +211,23 @@ pub fn main_window(
             ui.label(format!("Agents: {}", frame.meta.agent_count));
             ui.separator();
             ui.label(format!("Events: {}", frame.meta.event_queue_len));
+            ui.separator();
+            let peak_db = if frame.meta.peak_level > 0.0 {
+                20.0 * frame.meta.peak_level.log10()
+            } else {
+                f32::NEG_INFINITY
+            };
+            let peak_text = if peak_db.is_infinite() {
+                "Peak: -inf dB".to_string()
+            } else {
+                format!("Peak: {:.1} dB", peak_db)
+            };
+            let peak_color = if frame.meta.peak_level > 1.0 {
+                egui::Color32::RED
+            } else {
+                ui.visuals().text_color()
+            };
+            ui.colored_label(peak_color, peak_text);
         });
     });
 

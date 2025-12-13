@@ -386,6 +386,7 @@ fn worker_loop(
         duration_sec: conductor.total_duration(),
         agent_count: pop.individuals.len(),
         event_queue_len: conductor.remaining_events(),
+        peak_level: 0.0,
         scenario_name: scenario_name.clone(),
         scene_name: conductor.current_scene_name(current_time),
         playback_state: playback_state.clone(),
@@ -475,6 +476,17 @@ fn worker_loop(
                     }
                 }
 
+                if conductor.is_done()
+                    && max_abs > 1e-4
+                    && last_clip_log.elapsed() > Duration::from_millis(200)
+                {
+                    warn!(
+                        "[t={:.6}] Scenario done but audio active: peak={:.4}",
+                        current_time, max_abs
+                    );
+                    last_clip_log = Instant::now();
+                }
+
                 AudioOutput::push_samples(prod, time_chunk);
 
                 let chunk_vec = time_chunk.to_vec();
@@ -489,8 +501,14 @@ fn worker_loop(
             }
 
             // Build high-resolution spectrum for analysis (linear nfft, mapped to log space in worker).
-            let spectrum_body =
-                pop.process_frame(frame_idx, n_bins, fs, nfft, hop_duration.as_secs_f32());
+            let spectrum_body = pop.process_frame(
+                frame_idx,
+                n_bins,
+                fs,
+                nfft,
+                hop_duration.as_secs_f32(),
+                conductor.is_done(),
+            );
             latest_spec_amps.clear();
             latest_spec_amps.extend_from_slice(&spectrum_body);
             let _ = audio_to_analysis_tx.try_send((frame_idx, spectrum_body.to_vec()));
@@ -548,6 +566,7 @@ fn worker_loop(
                     duration_sec: conductor.total_duration(),
                     agent_count: pop.individuals.len(),
                     event_queue_len: conductor.remaining_events(),
+                    peak_level: max_abs,
                     scenario_name: scenario_name.clone(),
                     scene_name: conductor.current_scene_name(current_time),
                     playback_state: playback_state.clone(),

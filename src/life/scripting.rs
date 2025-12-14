@@ -158,23 +158,45 @@ impl ScriptContext {
                     .get("phase")
                     .and_then(|v| v.as_float().ok())
                     .map(|p| p as f32);
+                let rhythm_freq = extra_map
+                    .get("rhythm_freq")
+                    .and_then(|v| v.as_float().ok())
+                    .map(|p| p as f32);
+                let rhythm_sensitivity = extra_map
+                    .get("rhythm_sensitivity")
+                    .and_then(|v| v.as_float().ok())
+                    .map(|p| p as f32);
                 IndividualConfig::PureTone {
                     freq,
                     amp,
                     phase,
+                    rhythm_freq,
+                    rhythm_sensitivity,
                     lifecycle,
                     tag: Some(tag.to_string()),
                 }
             }
             "harmonic" => {
-                let genotype =
-                    Self::from_map::<TimbreGenotype>(extra_map, "TimbreGenotype (harmonic)")?;
+                let genotype = Self::from_map::<TimbreGenotype>(
+                    extra_map.clone(),
+                    "TimbreGenotype (harmonic)",
+                )?;
+                let rhythm_freq = extra_map
+                    .get("rhythm_freq")
+                    .and_then(|v| v.as_float().ok())
+                    .map(|p| p as f32);
+                let rhythm_sensitivity = extra_map
+                    .get("rhythm_sensitivity")
+                    .and_then(|v| v.as_float().ok())
+                    .map(|p| p as f32);
                 IndividualConfig::Harmonic {
                     freq,
                     amp,
                     genotype,
                     lifecycle,
                     tag: Some(tag.to_string()),
+                    rhythm_freq,
+                    rhythm_sensitivity,
                 }
             }
             other => {

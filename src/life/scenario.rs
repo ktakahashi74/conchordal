@@ -79,6 +79,10 @@ pub enum IndividualConfig {
         freq: f32,
         amp: f32,
         phase: Option<f32>,
+        #[serde(default)]
+        rhythm_freq: Option<f32>,
+        #[serde(default)]
+        rhythm_sensitivity: Option<f32>,
         lifecycle: LifecycleConfig,
         tag: Option<String>,
     }, // future variants
@@ -89,6 +93,10 @@ pub enum IndividualConfig {
         genotype: TimbreGenotype,
         lifecycle: LifecycleConfig, // Controls the global amplitude envelope
         tag: Option<String>,
+        #[serde(default)]
+        rhythm_freq: Option<f32>,
+        #[serde(default)]
+        rhythm_sensitivity: Option<f32>,
     },
 }
 
@@ -191,6 +199,8 @@ impl IndividualConfig {
                 amp,
                 phase,
                 lifecycle,
+                rhythm_freq,
+                rhythm_sensitivity,
                 ..
             } => {
                 let fs = 48_000.0f32;
@@ -214,9 +224,12 @@ impl IndividualConfig {
                         basal_cost,
                         action_cost,
                         recharge_rate,
-                        sensitivity,
+                        sensitivity: Sensitivity {
+                            beta: rhythm_sensitivity.unwrap_or(sensitivity.beta),
+                            ..sensitivity
+                        },
                         rhythm_phase: 0.0,
-                        rhythm_freq: rng().random_range(0.5..3.0),
+                        rhythm_freq: rhythm_freq.unwrap_or_else(|| rng().random_range(0.5..3.0)),
                         env_level: 0.0,
                         state,
                         attack_step,
@@ -239,6 +252,8 @@ impl IndividualConfig {
                 amp,
                 genotype,
                 lifecycle,
+                rhythm_freq,
+                rhythm_sensitivity,
                 ..
             } => {
                 let fs = 48_000.0f32;
@@ -269,9 +284,12 @@ impl IndividualConfig {
                         basal_cost,
                         action_cost,
                         recharge_rate,
-                        sensitivity,
+                        sensitivity: Sensitivity {
+                            beta: rhythm_sensitivity.unwrap_or(sensitivity.beta),
+                            ..sensitivity
+                        },
                         rhythm_phase: 0.0,
-                        rhythm_freq: rng.random_range(0.5..3.0),
+                        rhythm_freq: rhythm_freq.unwrap_or_else(|| rng.random_range(0.5..3.0)),
                         env_level: 0.0,
                         state,
                         attack_step,
@@ -323,6 +341,7 @@ impl fmt::Display for IndividualConfig {
                 tag,
                 lifecycle,
                 genotype,
+                ..
             } => {
                 let tag_str = tag.as_deref().unwrap_or("-");
                 write!(
@@ -345,6 +364,8 @@ mod tests {
             freq: 220.0,
             amp: 0.3,
             phase: Some(0.25),
+            rhythm_freq: None,
+            rhythm_sensitivity: None,
             lifecycle: LifecycleConfig::Decay {
                 initial_energy: 1.0,
                 half_life_sec: 0.5,

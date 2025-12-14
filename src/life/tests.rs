@@ -38,6 +38,8 @@ fn test_population_add_remove_agent() {
         freq: 440.0,
         amp: 0.5,
         phase: None,
+        rhythm_freq: None,
+        rhythm_sensitivity: None,
         lifecycle: life,
         tag: Some("test_agent".to_string()),
     };
@@ -138,6 +140,8 @@ fn test_agent_lifecycle_decay_death() {
         freq: 440.0,
         amp: 0.5,
         phase: None,
+        rhythm_freq: None,
+        rhythm_sensitivity: None,
         lifecycle: life,
         tag: None,
     };
@@ -198,6 +202,8 @@ fn harmonic_render_spectrum_hits_expected_bins() {
             attack_sec: 0.01,
         },
         tag: None,
+        rhythm_freq: None,
+        rhythm_sensitivity: None,
     };
     let metadata = AgentMetadata {
         id: 99,

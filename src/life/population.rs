@@ -24,6 +24,7 @@ pub struct Population {
     tag_counters: HashMap<String, usize>,
     buffers: WorkBuffers,
     pub global_vitality: f32,
+    shutdown_gain: f32,
 }
 
 impl Population {
@@ -37,6 +38,8 @@ impl Population {
                     freq: f,
                     amp: p.amplitude,
                     phase: None,
+                    rhythm_freq: None,
+                    rhythm_sensitivity: None,
                     lifecycle: crate::life::lifecycle::LifecycleConfig::Decay {
                         initial_energy: 1.0,
                         half_life_sec: 0.5,
@@ -61,6 +64,7 @@ impl Population {
             tag_counters: HashMap::new(),
             buffers: WorkBuffers::default(),
             global_vitality: 0.1,
+            shutdown_gain: 1.0,
         }
     }
 
@@ -345,6 +349,8 @@ impl Population {
                         freq,
                         amp,
                         phase: Some(phase),
+                        rhythm_freq: None,
+                        rhythm_sensitivity: None,
                         lifecycle: lifecycle.clone(),
                         tag: tag.clone(),
                     };
@@ -420,17 +426,38 @@ impl Population {
         self.current_frame = current_frame;
         self.buffers.audio.resize(samples_len, 0.0);
         self.buffers.audio.fill(0.0);
-        for agent in self.individuals.iter_mut() {
-            if agent.is_alive() {
-                agent.render_wave(
-                    &mut self.buffers.audio,
-                    fs,
-                    current_frame,
-                    dt_sec,
-                    landscape,
-                );
+        if !self.individuals.is_empty() {
+            for agent in self.individuals.iter_mut() {
+                if agent.is_alive() {
+                    agent.render_wave(
+                        &mut self.buffers.audio,
+                        fs,
+                        current_frame,
+                        dt_sec,
+                        landscape,
+                    );
+                }
             }
         }
+
+        if self.abort_requested {
+            if !self.individuals.is_empty() {
+                let step = 1.0 / (0.05 * fs.max(1.0)); // fade over ~50ms
+                for s in &mut self.buffers.audio {
+                    *s *= self.shutdown_gain;
+                    self.shutdown_gain -= step;
+                    if self.shutdown_gain <= 0.0 {
+                        self.shutdown_gain = 0.0;
+                    }
+                }
+                if self.shutdown_gain <= 0.0 {
+                    self.individuals.clear();
+                }
+            } else {
+                self.buffers.audio.fill(0.0);
+            }
+        }
+
         &self.buffers.audio
     }
 

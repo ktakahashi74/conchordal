@@ -15,6 +15,7 @@ pub trait AudioAgent {
         current_frame: u64,
         dt_sec: f32,
         landscape: &Landscape,
+        global_coupling: f32,
     );
     fn render_spectrum(
         &mut self,
@@ -36,7 +37,13 @@ pub struct ArticulationSignal {
 }
 
 pub trait NeuralCore {
-    fn process(&mut self, consonance: f32, rhythms: &NeuralRhythms, dt: f32) -> ArticulationSignal;
+    fn process(
+        &mut self,
+        consonance: f32,
+        rhythms: &NeuralRhythms,
+        dt: f32,
+        global_coupling: f32,
+    ) -> ArticulationSignal;
     fn is_alive(&self) -> bool;
 }
 
@@ -128,7 +135,13 @@ pub struct KuramotoCore {
 }
 
 impl NeuralCore for KuramotoCore {
-    fn process(&mut self, consonance: f32, rhythms: &NeuralRhythms, dt: f32) -> ArticulationSignal {
+    fn process(
+        &mut self,
+        consonance: f32,
+        rhythms: &NeuralRhythms,
+        dt: f32,
+        global_coupling: f32,
+    ) -> ArticulationSignal {
         let dt = dt.max(1e-4);
 
         self.energy -= self.basal_cost * dt;
@@ -148,7 +161,9 @@ impl NeuralCore for KuramotoCore {
         let coupling = (self.sensitivity.beta * (1.0 / (self.confidence + 1e-3))).min(10.0);
         let noise = self.noise_1f.next();
         let rhythm_omega = 2.0 * PI * self.rhythm_freq;
-        let d_phi = rhythm_omega + noise + coupling * (delta_phase - self.rhythm_phase).sin();
+        let d_phi = rhythm_omega
+            + noise
+            + coupling * global_coupling * (delta_phase - self.rhythm_phase).sin();
         self.rhythm_phase += d_phi * dt;
 
         if self.rhythm_phase >= 2.0 * PI {
@@ -203,6 +218,101 @@ impl NeuralCore for KuramotoCore {
             return false;
         }
         true
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SequencedCore {
+    pub timer: f32,
+    pub duration: f32,
+    pub env_level: f32,
+}
+
+impl NeuralCore for SequencedCore {
+    fn process(
+        &mut self,
+        _consonance: f32,
+        rhythms: &NeuralRhythms,
+        dt: f32,
+        _global_coupling: f32,
+    ) -> ArticulationSignal {
+        self.timer += dt.max(0.0);
+        let active = self.timer < self.duration;
+        self.env_level = if active { 1.0 } else { 0.0 };
+        ArticulationSignal {
+            amplitude: self.env_level,
+            is_active: active,
+            relaxation: rhythms.alpha.mag,
+            tension: 0.0,
+        }
+    }
+
+    fn is_alive(&self) -> bool {
+        self.timer < self.duration
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct DroneCore {
+    pub phase: f32,
+    pub sway_rate: f32,
+}
+
+impl NeuralCore for DroneCore {
+    fn process(
+        &mut self,
+        _consonance: f32,
+        rhythms: &NeuralRhythms,
+        dt: f32,
+        _global_coupling: f32,
+    ) -> ArticulationSignal {
+        let dt = dt.max(1e-4);
+        let omega = 2.0 * PI * self.sway_rate.max(0.01);
+        self.phase = (self.phase + omega * dt).rem_euclid(2.0 * PI);
+        let lfo = 0.5 * (self.phase.sin() + 1.0);
+        let relax_boost = 1.0 + rhythms.alpha.mag * 0.5;
+        let amplitude = (0.3 + 0.7 * lfo) * relax_boost;
+        ArticulationSignal {
+            amplitude: amplitude.clamp(0.0, 1.0),
+            is_active: true,
+            relaxation: rhythms.alpha.mag,
+            tension: rhythms.beta.mag * 0.25,
+        }
+    }
+
+    fn is_alive(&self) -> bool {
+        true
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum AnyCore {
+    Entrain(KuramotoCore),
+    Seq(SequencedCore),
+    Drone(DroneCore),
+}
+
+impl NeuralCore for AnyCore {
+    fn process(
+        &mut self,
+        consonance: f32,
+        rhythms: &NeuralRhythms,
+        dt: f32,
+        global_coupling: f32,
+    ) -> ArticulationSignal {
+        match self {
+            AnyCore::Entrain(c) => c.process(consonance, rhythms, dt, global_coupling),
+            AnyCore::Seq(c) => c.process(consonance, rhythms, dt, global_coupling),
+            AnyCore::Drone(c) => c.process(consonance, rhythms, dt, global_coupling),
+        }
+    }
+
+    fn is_alive(&self) -> bool {
+        match self {
+            AnyCore::Entrain(c) => c.is_alive(),
+            AnyCore::Seq(c) => c.is_alive(),
+            AnyCore::Drone(c) => c.is_alive(),
+        }
     }
 }
 
@@ -405,8 +515,8 @@ impl<N: NeuralCore, B: SoundBody> Individual<N, B> {
     }
 }
 
-pub type PureTone = Individual<KuramotoCore, SineBody>;
-pub type Harmonic = Individual<KuramotoCore, HarmonicBody>;
+pub type PureTone = Individual<AnyCore, SineBody>;
+pub type Harmonic = Individual<AnyCore, HarmonicBody>;
 
 /// Hybrid synthesis individuals render both time-domain audio and a spectral "body".
 pub enum IndividualWrapper {
@@ -430,6 +540,7 @@ impl<N: NeuralCore, B: SoundBody> AudioAgent for Individual<N, B> {
         _current_frame: u64,
         dt_sec: f32,
         landscape: &Landscape,
+        global_coupling: f32,
     ) {
         if buffer.is_empty() {
             return;
@@ -438,7 +549,9 @@ impl<N: NeuralCore, B: SoundBody> AudioAgent for Individual<N, B> {
         let rhythms = landscape.rhythm;
         let consonance = landscape.consonance_at(self.body.base_freq_hz());
         for sample in buffer.iter_mut() {
-            let signal = self.core.process(consonance, &rhythms, dt_per_sample);
+            let signal = self
+                .core
+                .process(consonance, &rhythms, dt_per_sample, global_coupling);
             self.last_signal = signal;
             if !signal.is_active || signal.amplitude <= 0.0 {
                 continue;
@@ -490,14 +603,25 @@ impl AudioAgent for IndividualWrapper {
         current_frame: u64,
         dt_sec: f32,
         landscape: &Landscape,
+        global_coupling: f32,
     ) {
         match self {
-            IndividualWrapper::PureTone(ind) => {
-                ind.render_wave(buffer, fs, current_frame, dt_sec, landscape)
-            }
-            IndividualWrapper::Harmonic(ind) => {
-                ind.render_wave(buffer, fs, current_frame, dt_sec, landscape)
-            }
+            IndividualWrapper::PureTone(ind) => ind.render_wave(
+                buffer,
+                fs,
+                current_frame,
+                dt_sec,
+                landscape,
+                global_coupling,
+            ),
+            IndividualWrapper::Harmonic(ind) => ind.render_wave(
+                buffer,
+                fs,
+                current_frame,
+                dt_sec,
+                landscape,
+                global_coupling,
+            ),
         }
     }
 

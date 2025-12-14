@@ -1,10 +1,10 @@
 use super::conductor::Conductor;
 use super::individual::{
-    AgentMetadata, ArticulationSignal, ArticulationState, AudioAgent, IndividualWrapper,
+    AgentMetadata, ArticulationSignal, AudioAgent, IndividualWrapper, NeuralCore, SequencedCore,
 };
 use super::population::{Population, PopulationParams};
 use super::scenario::{
-    Action, Event, HarmonicMode, IndividualConfig, Scenario, Scene, TimbreGenotype,
+    Action, BrainConfig, Event, HarmonicMode, IndividualConfig, Scenario, Scene, TimbreGenotype,
 };
 use crate::core::harmonicity_kernel::HarmonicityKernel;
 use crate::core::harmonicity_kernel::HarmonicityParams;
@@ -15,6 +15,7 @@ use crate::core::nsgt_kernel::{NsgtKernelLog2, NsgtLog2Config};
 use crate::core::nsgt_rt::RtNsgtKernelLog2;
 use crate::core::roughness_kernel::{KernelParams, RoughnessKernel};
 use crate::life::lifecycle::LifecycleConfig;
+use serde_json;
 
 #[test]
 fn test_population_add_remove_agent() {
@@ -40,19 +41,19 @@ fn test_population_add_remove_agent() {
         phase: None,
         rhythm_freq: None,
         rhythm_sensitivity: None,
-        lifecycle: life,
+        brain: BrainConfig::Entrain { lifecycle: life },
         tag: Some("test_agent".to_string()),
     };
     let action_add = Action::AddAgent { agent: agent_cfg };
 
-    pop.apply_action(action_add, &landscape);
+    pop.apply_action(action_add, &landscape, None);
     assert_eq!(pop.individuals.len(), 1, "Agent should be added");
 
     // 3. Remove Agent
     let action_remove = Action::RemoveAgent {
         target: "test_agent".to_string(),
     };
-    pop.apply_action(action_remove, &landscape);
+    pop.apply_action(action_remove, &landscape, None);
     assert_eq!(pop.individuals.len(), 0, "Agent should be removed");
 }
 
@@ -82,14 +83,14 @@ fn test_conductor_timing() {
     let landscape = LandscapeFrame::default();
 
     // 2. Dispatch at T=0.5 (Should NOT fire)
-    conductor.dispatch_until(0.5, 0, &landscape, &mut pop);
+    conductor.dispatch_until(0.5, 0, &landscape, None, &mut pop);
     assert!(
         !pop.abort_requested,
         "Finish action should not fire yet at T=0.5"
     );
 
     // 3. Dispatch at T=1.1 (Should fire)
-    conductor.dispatch_until(1.1, 100, &landscape, &mut pop);
+    conductor.dispatch_until(1.1, 100, &landscape, None, &mut pop);
     assert!(pop.abort_requested, "Finish action should fire at T=1.1");
 }
 
@@ -142,10 +143,10 @@ fn test_agent_lifecycle_decay_death() {
         phase: None,
         rhythm_freq: None,
         rhythm_sensitivity: None,
-        lifecycle: life,
+        brain: BrainConfig::Entrain { lifecycle: life },
         tag: None,
     };
-    pop.apply_action(Action::AddAgent { agent: agent_cfg }, &landscape);
+    pop.apply_action(Action::AddAgent { agent: agent_cfg }, &landscape, None);
 
     assert_eq!(pop.individuals.len(), 1, "Agent added");
 
@@ -196,10 +197,12 @@ fn harmonic_render_spectrum_hits_expected_bins() {
         freq: 480.0,
         amp: 0.8,
         genotype,
-        lifecycle: LifecycleConfig::Decay {
-            initial_energy: 1.0,
-            half_life_sec: 1.0,
-            attack_sec: 0.01,
+        brain: BrainConfig::Entrain {
+            lifecycle: LifecycleConfig::Decay {
+                initial_energy: 1.0,
+                half_life_sec: 1.0,
+                attack_sec: 0.01,
+            },
         },
         tag: None,
         rhythm_freq: None,
@@ -216,8 +219,6 @@ fn harmonic_render_spectrum_hits_expected_bins() {
 
     match &mut agent {
         IndividualWrapper::Harmonic(ind) => {
-            ind.core.state = ArticulationState::Decay;
-            ind.core.env_level = 1.0;
             ind.last_signal = ArticulationSignal {
                 amplitude: 1.0,
                 is_active: true,
@@ -242,5 +243,42 @@ fn harmonic_render_spectrum_hits_expected_bins() {
     assert!(
         amps[base_bin] > amps[even_bin],
         "comb and brightness should attenuate even harmonic"
+    );
+}
+
+#[test]
+fn legacy_lifecycle_deserializes_as_brain_entrain() {
+    let json = r#"{
+        "type": "pure_tone",
+        "freq": 330.0,
+        "amp": 0.4,
+        "lifecycle": { "type": "decay", "initial_energy": 1.0, "half_life_sec": 0.25 }
+    }"#;
+    let cfg: IndividualConfig = serde_json::from_str(json).expect("legacy config parses");
+    match cfg {
+        IndividualConfig::PureTone { brain, .. } => match brain {
+            BrainConfig::Entrain { lifecycle } => {
+                assert!(matches!(lifecycle, LifecycleConfig::Decay { .. }))
+            }
+            other => panic!("expected entrain brain, got {:?}", other),
+        },
+        other => panic!("unexpected variant: {:?}", other),
+    }
+}
+
+#[test]
+fn sequenced_core_stops_after_duration() {
+    let mut core = SequencedCore {
+        timer: 0.0,
+        duration: 0.1,
+        env_level: 0.0,
+    };
+    let rhythms = crate::core::modulation::NeuralRhythms::default();
+    let active = core.process(0.0, &rhythms, 0.05, 1.0);
+    assert!(active.is_active, "core should be active before duration");
+    let finished = core.process(0.0, &rhythms, 0.1, 1.0);
+    assert!(
+        !finished.is_active && !core.is_alive(),
+        "core should stop after duration"
     );
 }

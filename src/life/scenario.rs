@@ -1,12 +1,16 @@
-use serde::{Deserialize, Serialize};
+use serde::{
+    Deserialize, Serialize,
+    de::{self, Deserializer},
+};
 use std::fmt;
 
 use crate::life::individual::{
-    AgentMetadata, ArticulationState, Harmonic, HarmonicBody, IndividualWrapper, KuramotoCore,
-    PinkNoise, PureTone, Sensitivity, SineBody,
+    AgentMetadata, AnyCore, ArticulationState, DroneCore, Harmonic, HarmonicBody,
+    IndividualWrapper, KuramotoCore, PinkNoise, PureTone, Sensitivity, SequencedCore, SineBody,
 };
 use crate::life::lifecycle::LifecycleConfig;
 use rand::{Rng as _, rng};
+use serde_json::Value;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Scenario {
@@ -49,6 +53,93 @@ pub struct TimbreGenotype {
     pub unison: f32, // Detune amount (0.0 = single)
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "brain", rename_all = "snake_case")]
+pub enum BrainConfig {
+    Entrain {
+        #[serde(flatten)]
+        lifecycle: LifecycleConfig,
+    },
+    Seq {
+        duration: f32,
+    },
+    Drone {
+        #[serde(default)]
+        sway: f32,
+    },
+}
+
+impl Default for BrainConfig {
+    fn default() -> Self {
+        BrainConfig::Entrain {
+            lifecycle: LifecycleConfig::Decay {
+                initial_energy: 1.0,
+                half_life_sec: 0.5,
+                attack_sec: crate::life::lifecycle::default_decay_attack(),
+            },
+        }
+    }
+}
+
+fn default_brain() -> BrainConfig {
+    BrainConfig::default()
+}
+
+fn deserialize_brain_config<'de, D>(deserializer: D) -> Result<BrainConfig, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Debug, Clone, Deserialize)]
+    #[serde(tag = "brain", rename_all = "snake_case")]
+    enum Tagged {
+        Entrain {
+            #[serde(flatten)]
+            lifecycle: LifecycleConfig,
+        },
+        Seq {
+            duration: f32,
+        },
+        Drone {
+            #[serde(default)]
+            sway: f32,
+        },
+    }
+
+    let value = Value::deserialize(deserializer)?;
+    if let Ok(tagged) = Tagged::deserialize(value.clone()) {
+        return Ok(match tagged {
+            Tagged::Entrain { lifecycle } => BrainConfig::Entrain { lifecycle },
+            Tagged::Seq { duration } => BrainConfig::Seq { duration },
+            Tagged::Drone { sway } => BrainConfig::Drone { sway },
+        });
+    }
+    if let Ok(lifecycle) = LifecycleConfig::deserialize(value.clone()) {
+        return Ok(BrainConfig::Entrain { lifecycle });
+    }
+    Err(de::Error::custom(
+        "failed to parse brain config or legacy lifecycle",
+    ))
+}
+
+impl<'de> Deserialize<'de> for BrainConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserialize_brain_config(deserializer)
+    }
+}
+
+impl fmt::Display for BrainConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            BrainConfig::Entrain { lifecycle } => write!(f, "brain=entrain {}", lifecycle),
+            BrainConfig::Seq { duration } => write!(f, "brain=seq(duration={duration:.3}s)"),
+            BrainConfig::Drone { sway } => write!(f, "brain=drone(sway={sway:.3})"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Scene {
     #[serde(default)]
@@ -83,7 +174,12 @@ pub enum IndividualConfig {
         rhythm_freq: Option<f32>,
         #[serde(default)]
         rhythm_sensitivity: Option<f32>,
-        lifecycle: LifecycleConfig,
+        #[serde(
+            default = "default_brain",
+            alias = "lifecycle",
+            deserialize_with = "deserialize_brain_config"
+        )]
+        brain: BrainConfig,
         tag: Option<String>,
     }, // future variants
     #[serde(rename = "harmonic")]
@@ -91,7 +187,12 @@ pub enum IndividualConfig {
         freq: f32,
         amp: f32,
         genotype: TimbreGenotype,
-        lifecycle: LifecycleConfig, // Controls the global amplitude envelope
+        #[serde(
+            default = "default_brain",
+            alias = "lifecycle",
+            deserialize_with = "deserialize_brain_config"
+        )]
+        brain: BrainConfig, // Controls the global amplitude envelope
         tag: Option<String>,
         #[serde(default)]
         rhythm_freq: Option<f32>,
@@ -183,6 +284,65 @@ impl IndividualConfig {
         }
     }
 
+    fn core_from_brain(
+        brain: &BrainConfig,
+        fs: f32,
+        assigned_id: u64,
+        rhythm_freq: &Option<f32>,
+        rhythm_sensitivity: &Option<f32>,
+        noise_seed: u64,
+    ) -> AnyCore {
+        match brain {
+            BrainConfig::Entrain { lifecycle } => {
+                let (
+                    energy,
+                    basal_cost,
+                    recharge_rate,
+                    attack_step,
+                    decay_factor,
+                    state,
+                    sensitivity,
+                    retrigger,
+                    action_cost,
+                ) = Self::envelope_from_lifecycle(lifecycle, fs);
+                let mut rng = rng();
+                AnyCore::Entrain(KuramotoCore {
+                    energy,
+                    basal_cost,
+                    action_cost,
+                    recharge_rate,
+                    sensitivity: Sensitivity {
+                        beta: rhythm_sensitivity.unwrap_or(sensitivity.beta),
+                        ..sensitivity
+                    },
+                    rhythm_phase: 0.0,
+                    rhythm_freq: rhythm_freq.unwrap_or_else(|| rng.random_range(0.5..3.0)),
+                    env_level: 0.0,
+                    state,
+                    attack_step,
+                    decay_factor,
+                    retrigger,
+                    noise_1f: PinkNoise::new(noise_seed, 0.001),
+                    confidence: 1.0,
+                    gate_threshold: 0.02,
+                })
+            }
+            BrainConfig::Seq { duration } => AnyCore::Seq(SequencedCore {
+                timer: 0.0,
+                duration: duration.max(0.0),
+                env_level: 0.0,
+            }),
+            BrainConfig::Drone { sway } => {
+                let mut rng = rng();
+                let sway_rate = if *sway <= 0.0 { 0.05 } else { *sway };
+                AnyCore::Drone(DroneCore {
+                    phase: rng.random_range(0.0..std::f32::consts::TAU),
+                    sway_rate,
+                })
+            }
+        }
+    }
+
     pub fn spawn(
         &self,
         assigned_id: u64,
@@ -198,47 +358,24 @@ impl IndividualConfig {
                 freq,
                 amp,
                 phase,
-                lifecycle,
                 rhythm_freq,
                 rhythm_sensitivity,
+                brain,
                 ..
             } => {
                 let fs = 48_000.0f32;
-                let (
-                    energy,
-                    basal_cost,
-                    recharge_rate,
-                    attack_step,
-                    decay_factor,
-                    state,
-                    sensitivity,
-                    retrigger,
-                    action_cost,
-                ) = Self::envelope_from_lifecycle(lifecycle, fs);
 
                 IndividualWrapper::PureTone(PureTone {
                     id: assigned_id,
                     metadata,
-                    core: KuramotoCore {
-                        energy,
-                        basal_cost,
-                        action_cost,
-                        recharge_rate,
-                        sensitivity: Sensitivity {
-                            beta: rhythm_sensitivity.unwrap_or(sensitivity.beta),
-                            ..sensitivity
-                        },
-                        rhythm_phase: 0.0,
-                        rhythm_freq: rhythm_freq.unwrap_or_else(|| rng().random_range(0.5..3.0)),
-                        env_level: 0.0,
-                        state,
-                        attack_step,
-                        decay_factor,
-                        retrigger,
-                        noise_1f: PinkNoise::new(assigned_id, 0.001),
-                        confidence: 1.0,
-                        gate_threshold: 0.02,
-                    },
+                    core: Self::core_from_brain(
+                        brain,
+                        fs,
+                        assigned_id,
+                        rhythm_freq,
+                        rhythm_sensitivity,
+                        assigned_id,
+                    ),
                     body: SineBody {
                         freq_hz: *freq,
                         amp: *amp,
@@ -251,23 +388,12 @@ impl IndividualConfig {
                 freq,
                 amp,
                 genotype,
-                lifecycle,
                 rhythm_freq,
                 rhythm_sensitivity,
+                brain,
                 ..
             } => {
                 let fs = 48_000.0f32;
-                let (
-                    energy,
-                    basal_cost,
-                    recharge_rate,
-                    attack_step,
-                    decay_factor,
-                    state,
-                    sensitivity,
-                    retrigger,
-                    action_cost,
-                ) = Self::envelope_from_lifecycle(lifecycle, fs);
                 let mut rng = rng();
                 let partials = 16;
                 let mut phases = Vec::with_capacity(partials);
@@ -279,26 +405,14 @@ impl IndividualConfig {
                 IndividualWrapper::Harmonic(Harmonic {
                     id: assigned_id,
                     metadata,
-                    core: KuramotoCore {
-                        energy,
-                        basal_cost,
-                        action_cost,
-                        recharge_rate,
-                        sensitivity: Sensitivity {
-                            beta: rhythm_sensitivity.unwrap_or(sensitivity.beta),
-                            ..sensitivity
-                        },
-                        rhythm_phase: 0.0,
-                        rhythm_freq: rhythm_freq.unwrap_or_else(|| rng.random_range(0.5..3.0)),
-                        env_level: 0.0,
-                        state,
-                        attack_step,
-                        decay_factor,
-                        retrigger,
-                        noise_1f: PinkNoise::new(assigned_id.wrapping_add(start_frame), 0.001),
-                        confidence: 1.0,
-                        gate_threshold: 0.02,
-                    },
+                    core: Self::core_from_brain(
+                        brain,
+                        fs,
+                        assigned_id,
+                        rhythm_freq,
+                        rhythm_sensitivity,
+                        assigned_id.wrapping_add(start_frame),
+                    ),
                     body: HarmonicBody {
                         base_freq_hz: *freq,
                         amp: *amp,
@@ -325,21 +439,21 @@ impl fmt::Display for IndividualConfig {
                 freq,
                 amp,
                 tag,
-                lifecycle,
+                brain,
                 ..
             } => {
                 let tag_str = tag.as_deref().unwrap_or("-");
                 write!(
                     f,
                     "PureTone(tag={}, freq={:.1} Hz, amp={:.3}, {})",
-                    tag_str, freq, amp, lifecycle
+                    tag_str, freq, amp, brain
                 )
             }
             IndividualConfig::Harmonic {
                 freq,
                 amp,
                 tag,
-                lifecycle,
+                brain,
                 genotype,
                 ..
             } => {
@@ -347,7 +461,7 @@ impl fmt::Display for IndividualConfig {
                 write!(
                     f,
                     "Harmonic(tag={}, mode={:?}, freq={:.1} Hz, amp={:.3}, {})",
-                    tag_str, genotype.mode, freq, amp, lifecycle
+                    tag_str, genotype.mode, freq, amp, brain
                 )
             }
         }
@@ -366,10 +480,12 @@ mod tests {
             phase: Some(0.25),
             rhythm_freq: None,
             rhythm_sensitivity: None,
-            lifecycle: LifecycleConfig::Decay {
-                initial_energy: 1.0,
-                half_life_sec: 0.5,
-                attack_sec: crate::life::lifecycle::default_decay_attack(),
+            brain: BrainConfig::Entrain {
+                lifecycle: LifecycleConfig::Decay {
+                    initial_energy: 1.0,
+                    half_life_sec: 0.5,
+                    attack_sec: crate::life::lifecycle::default_decay_attack(),
+                },
             },
             tag: Some("test".into()),
         };
@@ -405,7 +521,12 @@ pub enum Action {
         method: SpawnMethod,
         count: usize,
         amp: f32,
-        lifecycle: LifecycleConfig,
+        #[serde(
+            default = "default_brain",
+            alias = "lifecycle",
+            deserialize_with = "deserialize_brain_config"
+        )]
+        brain: BrainConfig,
         tag: Option<String>,
     },
     RemoveAgent {
@@ -422,6 +543,12 @@ pub enum Action {
     SetRhythmVitality {
         value: f32,
     },
+    SetGlobalCoupling {
+        value: f32,
+    },
+    SetRoughnessTolerance {
+        value: f32,
+    },
     Finish,
 }
 
@@ -433,14 +560,14 @@ impl fmt::Display for Action {
                 method,
                 count,
                 amp,
-                lifecycle,
+                brain,
                 tag,
             } => {
                 let tag_str = tag.as_deref().unwrap_or("-");
                 write!(
                     f,
                     "SpawnAgents tag={} count={} amp={:.3} {} {}",
-                    tag_str, count, amp, method, lifecycle
+                    tag_str, count, amp, method, brain
                 )
             }
             Action::RemoveAgent { target } => write!(f, "RemoveAgent target={}", target),
@@ -452,6 +579,12 @@ impl fmt::Display for Action {
             }
             Action::SetRhythmVitality { value } => {
                 write!(f, "SetRhythmVitality value={:.3}", value)
+            }
+            Action::SetGlobalCoupling { value } => {
+                write!(f, "SetGlobalCoupling value={:.3}", value)
+            }
+            Action::SetRoughnessTolerance { value } => {
+                write!(f, "SetRoughnessTolerance value={:.3}", value)
             }
             Action::Finish => write!(f, "Finish"),
         }

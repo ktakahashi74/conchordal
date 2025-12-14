@@ -332,6 +332,10 @@ impl Landscape {
             bank.set_vitality(v);
         }
     }
+
+    pub fn set_roughness_k(&mut self, k: f32) {
+        self.params.roughness_k = k.max(1e-6);
+    }
 }
 
 impl Default for LandscapeFrame {

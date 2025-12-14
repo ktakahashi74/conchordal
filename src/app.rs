@@ -537,7 +537,13 @@ fn worker_loop(
             pop.set_current_frame(frame_idx);
 
             let t_start = Instant::now();
-            conductor.dispatch_until(current_time, frame_idx, &current_landscape, &mut pop);
+            conductor.dispatch_until(
+                current_time,
+                frame_idx,
+                &current_landscape,
+                Some(&mut landscape),
+                &mut pop,
+            );
             landscape.set_vitality(pop.global_vitality);
 
             let (time_chunk_vec, max_abs, channel_peak) = {

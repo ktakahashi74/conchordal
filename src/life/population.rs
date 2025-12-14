@@ -1,6 +1,6 @@
 use super::individual::{AgentMetadata, AudioAgent, IndividualWrapper, SoundBody};
-use super::scenario::{Action, IndividualConfig, SpawnMethod};
-use crate::core::landscape::LandscapeFrame;
+use super::scenario::{Action, BrainConfig, IndividualConfig, SpawnMethod};
+use crate::core::landscape::{Landscape, LandscapeFrame};
 use rand::{Rng, distr::Distribution, distr::weighted::WeightedIndex};
 use std::collections::HashMap;
 use tracing::{info, warn};
@@ -24,6 +24,7 @@ pub struct Population {
     tag_counters: HashMap<String, usize>,
     buffers: WorkBuffers,
     pub global_vitality: f32,
+    pub global_coupling: f32,
     shutdown_gain: f32,
 }
 
@@ -40,10 +41,12 @@ impl Population {
                     phase: None,
                     rhythm_freq: None,
                     rhythm_sensitivity: None,
-                    lifecycle: crate::life::lifecycle::LifecycleConfig::Decay {
-                        initial_energy: 1.0,
-                        half_life_sec: 0.5,
-                        attack_sec: crate::life::lifecycle::default_decay_attack(),
+                    brain: BrainConfig::Entrain {
+                        lifecycle: crate::life::lifecycle::LifecycleConfig::Decay {
+                            initial_energy: 1.0,
+                            half_life_sec: 0.5,
+                            attack_sec: crate::life::lifecycle::default_decay_attack(),
+                        },
                     },
                     tag: None,
                 };
@@ -64,6 +67,7 @@ impl Population {
             tag_counters: HashMap::new(),
             buffers: WorkBuffers::default(),
             global_vitality: 0.1,
+            global_coupling: 1.0,
             shutdown_gain: 1.0,
         }
     }
@@ -306,7 +310,12 @@ impl Population {
         jitter_bin(pick_idx, rng)
     }
 
-    pub fn apply_action(&mut self, action: Action, landscape: &LandscapeFrame) {
+    pub fn apply_action(
+        &mut self,
+        action: Action,
+        landscape: &LandscapeFrame,
+        landscape_rt: Option<&mut Landscape>,
+    ) {
         match action {
             Action::AddAgent { agent } => {
                 let id = {
@@ -332,7 +341,7 @@ impl Population {
                 method,
                 count,
                 amp,
-                lifecycle,
+                brain,
                 tag,
             } => {
                 let mut rng = rand::rng();
@@ -351,7 +360,7 @@ impl Population {
                         phase: Some(phase),
                         rhythm_freq: None,
                         rhythm_sensitivity: None,
-                        lifecycle: lifecycle.clone(),
+                        brain: brain.clone(),
                         tag: tag.clone(),
                     };
                     let metadata = AgentMetadata {
@@ -407,6 +416,16 @@ impl Population {
             Action::SetRhythmVitality { value } => {
                 self.global_vitality = value;
             }
+            Action::SetGlobalCoupling { value } => {
+                self.global_coupling = value;
+            }
+            Action::SetRoughnessTolerance { value } => {
+                if let Some(landscape) = landscape_rt {
+                    landscape.set_roughness_k(value);
+                } else {
+                    warn!("SetRoughnessTolerance ignored: no landscape handle");
+                }
+            }
         }
     }
 
@@ -435,6 +454,7 @@ impl Population {
                         current_frame,
                         dt_sec,
                         landscape,
+                        self.global_coupling,
                     );
                 }
             }

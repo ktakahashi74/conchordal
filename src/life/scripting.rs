@@ -5,9 +5,8 @@ use std::sync::{Arc, Mutex};
 use anyhow::{Context, anyhow};
 use rhai::{Engine, EvalAltResult, FLOAT, Map, Position};
 
-use super::lifecycle::LifecycleConfig;
 use super::scenario::{
-    Action, Event, IndividualConfig, Scenario, Scene, SpawnMethod, TimbreGenotype,
+    Action, BrainConfig, Event, IndividualConfig, Scenario, Scene, SpawnMethod, TimbreGenotype,
 };
 
 const SCRIPT_PRELUDE: &str = r#"
@@ -95,13 +94,13 @@ impl ScriptContext {
         amp: f32,
     ) -> Result<(), Box<EvalAltResult>> {
         let method = Self::from_map::<SpawnMethod>(method_map, "SpawnMethod")?;
-        let lifecycle = Self::from_map::<LifecycleConfig>(life_map, "LifecycleConfig")?;
+        let brain = Self::from_map::<BrainConfig>(life_map, "BrainConfig")?;
         let c = count.max(0) as usize;
         let action = Action::SpawnAgents {
             method,
             count: c,
             amp,
-            lifecycle,
+            brain,
             tag: Some(tag.to_string()),
         };
         self.push_event(vec![action]);
@@ -136,6 +135,14 @@ impl ScriptContext {
         self.push_event(vec![Action::SetRhythmVitality { value }]);
     }
 
+    pub fn set_global_coupling(&mut self, value: f32) {
+        self.push_event(vec![Action::SetGlobalCoupling { value }]);
+    }
+
+    pub fn set_roughness_tolerance(&mut self, value: f32) {
+        self.push_event(vec![Action::SetRoughnessTolerance { value }]);
+    }
+
     pub fn remove(&mut self, target: &str) {
         self.push_event(vec![Action::RemoveAgent {
             target: target.to_string(),
@@ -151,7 +158,7 @@ impl ScriptContext {
         extra_map: Map,
         life_map: Map,
     ) -> Result<(), Box<EvalAltResult>> {
-        let lifecycle = Self::from_map::<LifecycleConfig>(life_map, "LifecycleConfig")?;
+        let brain = Self::from_map::<BrainConfig>(life_map, "BrainConfig")?;
         let agent = match kind {
             "pure_tone" => {
                 let phase = extra_map
@@ -172,7 +179,7 @@ impl ScriptContext {
                     phase,
                     rhythm_freq,
                     rhythm_sensitivity,
-                    lifecycle,
+                    brain,
                     tag: Some(tag.to_string()),
                 }
             }
@@ -193,7 +200,7 @@ impl ScriptContext {
                     freq,
                     amp,
                     genotype,
-                    lifecycle,
+                    brain,
                     tag: Some(tag.to_string()),
                     rhythm_freq,
                     rhythm_sensitivity,
@@ -332,6 +339,18 @@ impl ScriptHost {
         engine.register_fn("set_rhythm_vitality", move |value: FLOAT| {
             let mut ctx = ctx_for_set_vitality.lock().expect("lock script context");
             ctx.set_rhythm_vitality(value as f32);
+        });
+
+        let ctx_for_set_coupling = ctx.clone();
+        engine.register_fn("set_global_coupling", move |value: FLOAT| {
+            let mut ctx = ctx_for_set_coupling.lock().expect("lock script context");
+            ctx.set_global_coupling(value as f32);
+        });
+
+        let ctx_for_set_roughness = ctx.clone();
+        engine.register_fn("set_roughness_tolerance", move |value: FLOAT| {
+            let mut ctx = ctx_for_set_roughness.lock().expect("lock script context");
+            ctx.set_roughness_tolerance(value as f32);
         });
 
         let ctx_for_remove = ctx.clone();
@@ -515,7 +534,7 @@ mod tests {
             Action::SpawnAgents {
                 count,
                 amp,
-                lifecycle,
+                brain,
                 tag,
                 method: SpawnMethod::RandomLogUniform { min_freq, max_freq },
             } => {
@@ -523,7 +542,7 @@ mod tests {
                 assert_time_close(*amp, 0.25);
                 assert_eq!(*min_freq, 100.0);
                 assert_eq!(*max_freq, 200.0);
-                assert!(matches!(lifecycle, LifecycleConfig::Decay { .. }));
+                assert!(matches!(brain, BrainConfig::Entrain { .. }));
                 assert_eq!(tag.as_deref(), Some("tag"));
             }
             other => panic!("unexpected action: {:?}", other),

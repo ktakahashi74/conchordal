@@ -15,6 +15,10 @@ pub enum LifecycleConfig {
     Sustain {
         initial_energy: f32,
         metabolism_rate: f32,
+        #[serde(default)]
+        recharge_rate: Option<f32>,
+        #[serde(default)]
+        action_cost: Option<f32>,
         envelope: EnvelopeConfig,
     },
 }
@@ -35,6 +39,7 @@ impl LifecycleConfig {
                 initial_energy,
                 metabolism_rate,
                 envelope,
+                ..
             } => Box::new(SustainLifecycle::new(
                 initial_energy,
                 metabolism_rate,
@@ -59,12 +64,16 @@ impl fmt::Display for LifecycleConfig {
             LifecycleConfig::Sustain {
                 initial_energy,
                 metabolism_rate,
+                recharge_rate,
+                action_cost,
                 envelope,
             } => write!(
                 f,
-                "lifecycle=sustain(init={:.2}, metab={:.3}/s, env=[atk={:.3}s, dec={:.3}s, sus={:.2}])",
+                "lifecycle=sustain(init={:.2}, metab={:.3}/s, recharge={:.3}, action_cost={:.3}, env=[atk={:.3}s, dec={:.3}s, sus={:.2}])",
                 initial_energy,
                 metabolism_rate,
+                recharge_rate.unwrap_or(0.5),
+                action_cost.unwrap_or(0.02),
                 envelope.attack_sec,
                 envelope.decay_sec,
                 envelope.sustain_level

@@ -119,6 +119,7 @@ impl IndividualConfig {
         ArticulationState,
         Sensitivity,
         bool,
+        f32,
     ) {
         match lifecycle {
             LifecycleConfig::Decay {
@@ -140,11 +141,14 @@ impl IndividualConfig {
                     ArticulationState::Attack,
                     Sensitivity::default(), // fire-and-forget
                     false,                  // one-shot
+                    0.02,
                 )
             }
             LifecycleConfig::Sustain {
                 initial_energy,
                 metabolism_rate,
+                recharge_rate,
+                action_cost,
                 envelope,
             } => {
                 let atk = envelope.attack_sec.max(0.0005);
@@ -154,7 +158,7 @@ impl IndividualConfig {
                 (
                     *initial_energy,
                     *metabolism_rate,
-                    0.5, // simple default recharge
+                    recharge_rate.unwrap_or(0.5), // configurable recharge
                     attack_step,
                     decay_factor,
                     ArticulationState::Idle,
@@ -165,6 +169,7 @@ impl IndividualConfig {
                         beta: 0.5,
                     },
                     true, // can retrigger rhythmically
+                    action_cost.unwrap_or(0.02),
                 )
             }
         }
@@ -198,6 +203,7 @@ impl IndividualConfig {
                     state,
                     sensitivity,
                     retrigger,
+                    action_cost,
                 ) = Self::envelope_from_lifecycle(lifecycle, fs);
 
                 IndividualWrapper::PureTone(PureTone {
@@ -206,7 +212,7 @@ impl IndividualConfig {
                     core: KuramotoCore {
                         energy,
                         basal_cost,
-                        action_cost: 0.02,
+                        action_cost,
                         recharge_rate,
                         sensitivity,
                         rhythm_phase: 0.0,
@@ -245,6 +251,7 @@ impl IndividualConfig {
                     state,
                     sensitivity,
                     retrigger,
+                    action_cost,
                 ) = Self::envelope_from_lifecycle(lifecycle, fs);
                 let mut rng = rng();
                 let partials = 16;
@@ -260,7 +267,7 @@ impl IndividualConfig {
                     core: KuramotoCore {
                         energy,
                         basal_cost,
-                        action_cost: 0.02,
+                        action_cost,
                         recharge_rate,
                         sensitivity,
                         rhythm_phase: 0.0,

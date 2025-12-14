@@ -1,4 +1,4 @@
-use super::individual::{AgentMetadata, Individual};
+use super::individual::{AgentMetadata, AudioAgent, IndividualWrapper, SoundBody};
 use super::scenario::{Action, IndividualConfig, SpawnMethod};
 use crate::core::landscape::LandscapeFrame;
 use rand::{Rng, distr::Distribution, distr::weighted::WeightedIndex};
@@ -17,7 +17,7 @@ struct WorkBuffers {
 }
 
 pub struct Population {
-    pub individuals: Vec<Individual>,
+    pub individuals: Vec<IndividualWrapper>,
     current_frame: u64,
     pub abort_requested: bool,
     next_auto_id: u64,
@@ -64,11 +64,11 @@ impl Population {
         }
     }
 
-    fn find_individual_mut(&mut self, id: u64) -> Option<&mut Individual> {
+    fn find_individual_mut(&mut self, id: u64) -> Option<&mut IndividualWrapper> {
         self.individuals.iter_mut().find(|a| a.id() == id)
     }
 
-    pub fn add_individual(&mut self, individual: Individual) {
+    pub fn add_individual(&mut self, individual: IndividualWrapper) {
         let id = individual.id();
         self.individuals.retain(|a| a.id() != id);
         self.individuals.push(individual);
@@ -369,11 +369,11 @@ impl Population {
                 for id in ids {
                     if let Some(a) = self.find_individual_mut(id) {
                         match a {
-                            Individual::PureTone(ind) => {
-                                ind.freq_hz = freq_hz;
+                            IndividualWrapper::PureTone(ind) => {
+                                ind.body.set_freq(freq_hz);
                             }
-                            Individual::Harmonic(ind) => {
-                                ind.base_freq_hz = freq_hz;
+                            IndividualWrapper::Harmonic(ind) => {
+                                ind.body.set_freq(freq_hz);
                             }
                         }
                     } else {
@@ -386,11 +386,11 @@ impl Population {
                 for id in ids {
                     if let Some(a) = self.find_individual_mut(id) {
                         match a {
-                            Individual::PureTone(ind) => {
-                                ind.amp = amp;
+                            IndividualWrapper::PureTone(ind) => {
+                                ind.body.set_amp(amp);
                             }
-                            Individual::Harmonic(ind) => {
-                                ind.amp = amp;
+                            IndividualWrapper::Harmonic(ind) => {
+                                ind.body.set_amp(amp);
                             }
                         }
                     } else {

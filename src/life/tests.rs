@@ -1,5 +1,7 @@
 use super::conductor::Conductor;
-use super::individual::{AgentMetadata, ArticulationState, Individual};
+use super::individual::{
+    AgentMetadata, ArticulationSignal, ArticulationState, AudioAgent, IndividualWrapper,
+};
 use super::population::{Population, PopulationParams};
 use super::scenario::{
     Action, Event, HarmonicMode, IndividualConfig, Scenario, Scene, TimbreGenotype,
@@ -207,9 +209,15 @@ fn harmonic_render_spectrum_hits_expected_bins() {
     let mut amps = vec![0.0f32; 64];
 
     match &mut agent {
-        Individual::Harmonic(ind) => {
-            ind.state = ArticulationState::Decay;
-            ind.env_level = 1.0;
+        IndividualWrapper::Harmonic(ind) => {
+            ind.core.state = ArticulationState::Decay;
+            ind.core.env_level = 1.0;
+            ind.last_signal = ArticulationSignal {
+                amplitude: 1.0,
+                is_active: true,
+                relaxation: 0.0,
+                tension: 0.0,
+            };
             ind.render_spectrum(&mut amps, 48_000.0, 1024, 0, 0.0);
         }
         _ => panic!("expected harmonic agent"),

@@ -2,7 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 use crate::life::individual::{
-    AgentMetadata, ArticulationState, Harmonic, Individual, PinkNoise, PureTone, Sensitivity,
+    AgentMetadata, ArticulationState, Harmonic, HarmonicBody, IndividualWrapper, KuramotoCore,
+    PinkNoise, PureTone, Sensitivity, SineBody,
 };
 use crate::life::lifecycle::LifecycleConfig;
 use rand::{Rng as _, rng};
@@ -174,7 +175,7 @@ impl IndividualConfig {
         assigned_id: u64,
         start_frame: u64,
         mut metadata: AgentMetadata,
-    ) -> Individual {
+    ) -> IndividualWrapper {
         metadata.id = assigned_id;
         if metadata.tag.is_none() {
             metadata.tag = self.tag().cloned();
@@ -183,6 +184,7 @@ impl IndividualConfig {
             IndividualConfig::PureTone {
                 freq,
                 amp,
+                phase,
                 lifecycle,
                 ..
             } => {
@@ -198,28 +200,32 @@ impl IndividualConfig {
                     retrigger,
                 ) = Self::envelope_from_lifecycle(lifecycle, fs);
 
-                Individual::PureTone(PureTone {
+                IndividualWrapper::PureTone(PureTone {
                     id: assigned_id,
                     metadata,
-                    freq_hz: *freq,
-                    amp: *amp,
-                    energy,
-                    basal_cost,
-                    action_cost: 0.02,
-                    recharge_rate,
-                    sensitivity,
-                    rhythm_phase: 0.0,
-                    rhythm_freq: rng().random_range(0.5..3.0),
-                    audio_phase: 0.0,
-                    env_level: 0.0,
-                    state,
-                    attack_step,
-                    decay_factor,
-                    retrigger,
-                    omega: 0.0,
-                    noise_1f: PinkNoise::new(assigned_id, 0.001),
-                    confidence: 1.0,
-                    gate_threshold: 0.02,
+                    core: KuramotoCore {
+                        energy,
+                        basal_cost,
+                        action_cost: 0.02,
+                        recharge_rate,
+                        sensitivity,
+                        rhythm_phase: 0.0,
+                        rhythm_freq: rng().random_range(0.5..3.0),
+                        env_level: 0.0,
+                        state,
+                        attack_step,
+                        decay_factor,
+                        retrigger,
+                        noise_1f: PinkNoise::new(assigned_id, 0.001),
+                        confidence: 1.0,
+                        gate_threshold: 0.02,
+                    },
+                    body: SineBody {
+                        freq_hz: *freq,
+                        amp: *amp,
+                        audio_phase: phase.unwrap_or(0.0),
+                    },
+                    last_signal: Default::default(),
                 })
             }
             IndividualConfig::Harmonic {
@@ -248,30 +254,39 @@ impl IndividualConfig {
                     phases.push(rng.random_range(0.0..std::f32::consts::TAU));
                     detune_phases.push(rng.random_range(0.0..std::f32::consts::TAU));
                 }
-                Individual::Harmonic(Harmonic {
+                IndividualWrapper::Harmonic(Harmonic {
                     id: assigned_id,
                     metadata,
-                    base_freq_hz: *freq,
-                    amp: *amp,
-                    genotype: genotype.clone(),
-                    energy,
-                    basal_cost,
-                    action_cost: 0.02,
-                    recharge_rate,
-                    sensitivity,
-                    rhythm_phase: 0.0,
-                    rhythm_freq: rng.random_range(0.5..3.0),
-                    lfo_phase: 0.0,
-                    env_level: 0.0,
-                    state,
-                    attack_step,
-                    decay_factor,
-                    retrigger,
-                    confidence: 1.0,
-                    gate_threshold: 0.02,
-                    phases,
-                    detune_phases,
-                    jitter_gen: PinkNoise::new(assigned_id.wrapping_add(start_frame), 0.001),
+                    core: KuramotoCore {
+                        energy,
+                        basal_cost,
+                        action_cost: 0.02,
+                        recharge_rate,
+                        sensitivity,
+                        rhythm_phase: 0.0,
+                        rhythm_freq: rng.random_range(0.5..3.0),
+                        env_level: 0.0,
+                        state,
+                        attack_step,
+                        decay_factor,
+                        retrigger,
+                        noise_1f: PinkNoise::new(assigned_id.wrapping_add(start_frame), 0.001),
+                        confidence: 1.0,
+                        gate_threshold: 0.02,
+                    },
+                    body: HarmonicBody {
+                        base_freq_hz: *freq,
+                        amp: *amp,
+                        genotype: genotype.clone(),
+                        lfo_phase: 0.0,
+                        phases,
+                        detune_phases,
+                        jitter_gen: PinkNoise::new(
+                            assigned_id.wrapping_add(start_frame ^ 0xdead_beef),
+                            0.001,
+                        ),
+                    },
+                    last_signal: Default::default(),
                 })
             }
         }
@@ -342,12 +357,12 @@ mod tests {
             },
         );
         match agent {
-            Individual::PureTone(ind) => {
+            IndividualWrapper::PureTone(ind) => {
                 assert_eq!(ind.id, 7);
-                assert_eq!(ind.freq_hz, 220.0);
-                assert_eq!(ind.amp, 0.3);
+                assert_eq!(ind.body.freq_hz, 220.0);
+                assert_eq!(ind.body.amp, 0.3);
             }
-            Individual::Harmonic(_) => panic!("expected pure tone"),
+            IndividualWrapper::Harmonic(_) => panic!("expected pure tone"),
         }
     }
 }

@@ -13,7 +13,7 @@ use ringbuf::traits::Observer;
 
 use crate::audio::writer::WavOutput;
 use crate::core::harmonicity_kernel::HarmonicityKernel;
-use crate::core::landscape::{Landscape, LandscapeFrame, LandscapeParams};
+use crate::core::landscape::{Landscape, LandscapeFrame, LandscapeParams, LandscapeUpdate};
 use crate::core::log2space::Log2Space;
 use crate::core::nsgt_kernel::{NsgtKernelLog2, NsgtLog2Config};
 use crate::core::nsgt_rt::RtNsgtKernelLog2;
@@ -235,6 +235,7 @@ impl App {
         // Channels
         let (ui_frame_tx, ui_frame_rx) = bounded::<UiFrame>(ui_channel_capacity);
         let (ctrl_tx, _ctrl_rx) = bounded::<()>(1);
+        let (harmonicity_tx, harmonicity_rx) = bounded::<LandscapeUpdate>(8);
 
         let landscape = Landscape::new(lparams.clone(), nsgt.clone());
         let analysis_landscape = Landscape::new(lparams, nsgt.clone());
@@ -253,6 +254,7 @@ impl App {
                         analysis_landscape,
                         audio_to_analysis_rx,
                         landscape_from_analysis_tx,
+                        harmonicity_rx,
                     )
                 })
                 .expect("spawn analysis worker");
@@ -323,6 +325,7 @@ impl App {
                         stop_flag_worker,
                         audio_to_analysis_tx,
                         landscape_from_analysis_rx,
+                        harmonicity_tx,
                         hop,
                         hop_duration,
                         fs,
@@ -457,6 +460,7 @@ fn worker_loop(
     exiting: Arc<AtomicBool>,
     audio_to_analysis_tx: Sender<(u64, Vec<f32>)>,
     landscape_from_analysis_rx: Receiver<(u64, LandscapeFrame)>,
+    harmonicity_tx: Sender<LandscapeUpdate>,
     hop: usize,
     hop_duration: Duration,
     fs: f32,
@@ -545,6 +549,10 @@ fn worker_loop(
                 &mut pop,
             );
             landscape.set_vitality(pop.global_vitality);
+            if let Some(update) = pop.take_pending_harmonicity_update() {
+                landscape.update_harmonicity_params(update.mirror, update.limit);
+                let _ = harmonicity_tx.try_send(update);
+            }
 
             let (time_chunk_vec, max_abs, channel_peak) = {
                 let time_chunk =

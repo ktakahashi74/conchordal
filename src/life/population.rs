@@ -1,6 +1,6 @@
 use super::individual::{AgentMetadata, AudioAgent, IndividualWrapper, SoundBody};
 use super::scenario::{Action, BrainConfig, IndividualConfig, SpawnMethod};
-use crate::core::landscape::{Landscape, LandscapeFrame};
+use crate::core::landscape::{Landscape, LandscapeFrame, LandscapeUpdate};
 use rand::{Rng, distr::Distribution, distr::weighted::WeightedIndex};
 use std::collections::HashMap;
 use tracing::{info, warn};
@@ -26,6 +26,7 @@ pub struct Population {
     pub global_vitality: f32,
     pub global_coupling: f32,
     shutdown_gain: f32,
+    pending_harmonicity: Option<LandscapeUpdate>,
 }
 
 impl Population {
@@ -69,6 +70,7 @@ impl Population {
             global_vitality: 0.1,
             global_coupling: 1.0,
             shutdown_gain: 1.0,
+            pending_harmonicity: None,
         }
     }
 
@@ -167,11 +169,9 @@ impl Population {
         }
 
         let (min_freq, max_freq) = match method {
-            SpawnMethod::Harmonicity { min_freq, max_freq }
-            | SpawnMethod::LowHarmonicity { min_freq, max_freq }
-            | SpawnMethod::HarmonicDensity {
-                min_freq, max_freq, ..
-            }
+            SpawnMethod::Harmonicity { min_freq, max_freq, .. }
+            | SpawnMethod::LowHarmonicity { min_freq, max_freq, .. }
+            | SpawnMethod::HarmonicDensity { min_freq, max_freq, .. }
             | SpawnMethod::ZeroCrossing { min_freq, max_freq }
             | SpawnMethod::SpectralGap { min_freq, max_freq }
             | SpawnMethod::RandomLogUniform { min_freq, max_freq } => (*min_freq, *max_freq),
@@ -189,6 +189,21 @@ impl Population {
             return space.freq_of_index(n_bins / 2);
         }
 
+        let max_amp_raw = landscape
+            .amps_last
+            .get(idx_min..=idx_max)
+            .map(|slice| slice.iter().cloned().fold(0.0f32, f32::max))
+            .unwrap_or(0.0);
+        let apply_crowding = max_amp_raw > 0.0;
+        let max_amp = max_amp_raw.max(1e-6);
+        let crowding_factors: Vec<f32> = if apply_crowding {
+            (idx_min..=idx_max)
+                .map(|i| landscape.amps_last.get(i).copied().unwrap_or(0.0) / max_amp)
+                .collect()
+        } else {
+            vec![0.0; idx_max.saturating_sub(idx_min).saturating_add(1)]
+        };
+
         let jitter_bin = |idx: usize, rng: &mut R| -> f32 {
             let idx = idx.min(n_bins - 1);
             let center = space.freq_of_index(idx);
@@ -203,20 +218,21 @@ impl Population {
             SpawnMethod::Harmonicity { .. } => {
                 let mut best = idx_min;
                 let mut best_val = f32::MIN;
-                // Penalize already loud bins to avoid crowding.
-                let max_amp = landscape
-                    .amps_last
-                    .get(idx_min..=idx_max)
-                    .map(|slice| slice.iter().cloned().fold(0.0f32, f32::max))
-                    .unwrap_or(0.0)
-                    .max(1e-6);
-                let penalty_weight = 0.5;
+                let crowd = match method {
+                    SpawnMethod::Harmonicity { crowding, .. } => crowding.unwrap_or(0.0),
+                    _ => 0.0,
+                };
                 for i in idx_min..=idx_max {
                     if let (Some(&c_val), Some(&amp)) =
                         (landscape.c_last.get(i), landscape.amps_last.get(i))
                     {
-                        let crowded = amp / max_amp;
-                        let score = c_val - penalty_weight * crowded;
+                        let crowded = if apply_crowding {
+                            crowding_factors[i - idx_min]
+                        } else {
+                            0.0
+                        };
+                        let penalty = crowd * crowded;
+                        let score = c_val - penalty;
                         if score > best_val {
                             best_val = score;
                             best = i;
@@ -277,8 +293,22 @@ impl Population {
                 }
             }
             SpawnMethod::HarmonicDensity { temperature, .. } => {
+                let crowd = match method {
+                    SpawnMethod::HarmonicDensity { crowding, .. } => crowding.unwrap_or(0.0),
+                    _ => 0.0,
+                };
                 let mut weights: Vec<f32> = (idx_min..=idx_max)
-                    .map(|i| landscape.c_last.get(i).copied().unwrap_or(0.0).max(0.0))
+                    .enumerate()
+                    .map(|(local_idx, i)| {
+                        let c_val = landscape.c_last.get(i).copied().unwrap_or(0.0).max(0.0);
+                        let crowded = if apply_crowding {
+                            crowding_factors.get(local_idx).copied().unwrap_or(0.0)
+                        } else {
+                            0.0
+                        };
+                        let penalty = crowd * crowded;
+                        (c_val - penalty).max(0.0)
+                    })
                     .collect();
                 if let Some(temp) = temperature
                     && *temp > 0.0
@@ -426,7 +456,17 @@ impl Population {
                     warn!("SetRoughnessTolerance ignored: no landscape handle");
                 }
             }
+            Action::SetHarmonicity { mirror, limit } => {
+                let mut pending = self.pending_harmonicity.unwrap_or_default();
+                pending.mirror = mirror.or(pending.mirror);
+                pending.limit = limit.or(pending.limit);
+                self.pending_harmonicity = Some(pending);
+            }
         }
+    }
+
+    pub fn take_pending_harmonicity_update(&mut self) -> Option<LandscapeUpdate> {
+        self.pending_harmonicity.take()
     }
 
     pub fn remove_agent(&mut self, id: u64) {

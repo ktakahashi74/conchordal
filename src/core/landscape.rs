@@ -31,6 +31,12 @@ pub struct LandscapeParams {
     pub roughness_k: f32,
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+pub struct LandscapeUpdate {
+    pub mirror: Option<f32>,
+    pub limit: Option<u32>,
+}
+
 #[derive(Clone, Debug)]
 pub struct LandscapeFrame {
     pub fs: f32,
@@ -335,6 +341,18 @@ impl Landscape {
 
     pub fn set_roughness_k(&mut self, k: f32) {
         self.params.roughness_k = k.max(1e-6);
+    }
+
+    pub fn update_harmonicity_params(&mut self, mirror: Option<f32>, limit: Option<u32>) {
+        let mut params = self.params.harmonicity_kernel.params;
+        if let Some(m) = mirror {
+            params.mirror_weight = m;
+        }
+        if let Some(l) = limit {
+            params.param_limit = l;
+        }
+        let space = self.nsgt_rt.space().clone();
+        self.params.harmonicity_kernel = HarmonicityKernel::new(&space, params);
     }
 }
 

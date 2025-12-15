@@ -8,7 +8,7 @@ let method = #{ mode: "harmonic_density", min_freq: 160.0, max_freq: 1500.0, tem
 let life = #{ type: "decay", initial_energy: 1.0, half_life_sec: 0.7, attack_sec: 0.02 };
 
 // Four waves of density, slowly cooling the PDF
-for i in 0..4 {
+for i in 0..8 {
     let amp = 0.14 + i * 0.02;
     spawn_agents("hdens_" + i, method, life, 3, amp);
     wait(0.6);

@@ -143,6 +143,19 @@ impl ScriptContext {
         self.push_event(vec![Action::SetRoughnessTolerance { value }]);
     }
 
+    pub fn set_harmonicity(&mut self, map: Map) -> Result<(), Box<EvalAltResult>> {
+        let mirror = map
+            .get("mirror")
+            .and_then(|v| v.as_float().ok())
+            .map(|v| v as f32);
+        let limit = map
+            .get("limit")
+            .and_then(|v| v.as_int().ok())
+            .map(|v| v.max(0) as u32);
+        self.push_event(vec![Action::SetHarmonicity { mirror, limit }]);
+        Ok(())
+    }
+
     pub fn remove(&mut self, target: &str) {
         self.push_event(vec![Action::RemoveAgent {
             target: target.to_string(),
@@ -352,6 +365,15 @@ impl ScriptHost {
             let mut ctx = ctx_for_set_roughness.lock().expect("lock script context");
             ctx.set_roughness_tolerance(value as f32);
         });
+
+        let ctx_for_set_harmonicity = ctx.clone();
+        engine.register_fn(
+            "set_harmonicity",
+            move |map: Map| -> Result<(), Box<EvalAltResult>> {
+                let mut ctx = ctx_for_set_harmonicity.lock().expect("lock script context");
+                ctx.set_harmonicity(map)
+            },
+        );
 
         let ctx_for_remove = ctx.clone();
         engine.register_fn("remove", move |target: &str| {

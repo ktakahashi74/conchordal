@@ -32,26 +32,41 @@ use crate::core::log2space::Log2Space;
 
 #[derive(Clone, Copy, Debug)]
 pub struct HarmonicityParams {
+    /// Downward projections for root candidates.
     pub num_subharmonics: u32,
+    /// Upward projections for harmonic candidates.
     pub num_harmonics: u32,
-    pub rho_sub: f32,
-    pub rho_harm: f32,
+    /// Global cap on iteration count (overrides per-path counts if smaller).
+    pub param_limit: u32,
+    /// Decay exponent for Path A (common root path).
+    pub rho_common_root: f32,
+    /// Decay exponent for Path B (common overtone/undertone path).
+    pub rho_common_overtone: f32,
+    /// Gaussian smoothing width in cents on log2 spectrum.
     pub sigma_cents: f32,
+    /// Normalize output to peak of 1.0.
     pub normalize_output: bool,
+    /// Blend ratio: 0 = Path A only, 1 = Path B only.
+    pub mirror_weight: f32,
+    /// Apply absolute-frequency gating for TFS roll-off.
     pub freq_gate: bool,
+    /// Frequency pivot for TFS gate (Hz).
     pub tfs_f_pl_hz: f32,
+    /// Slope of TFS gate.
     pub tfs_eta: f32,
 }
 
 impl Default for HarmonicityParams {
     fn default() -> Self {
         Self {
-            num_subharmonics: 12,
-            num_harmonics: 12,
-            rho_sub: 0.75,
-            rho_harm: 0.5,
-            sigma_cents: 2.0, // Sharp precision for phase locking
+            num_subharmonics: 10,
+            num_harmonics: 8,
+            param_limit: 16,
+            rho_common_root: 0.4,
+            rho_common_overtone: 0.2,
+            sigma_cents: 3.0, // Slightly wider peaks to ease sampling
             normalize_output: true,
+            mirror_weight: 0.3,
             freq_gate: false,
             tfs_f_pl_hz: 4500.0,
             tfs_eta: 4.0,
@@ -65,10 +80,13 @@ pub struct HarmonicityKernel {
     pub params: HarmonicityParams,
     smooth_kernel: Vec<f32>,
     pad_bins: usize, // Internal padding size
+    limit: u32,
 }
 
 impl HarmonicityKernel {
     pub fn new(space: &Log2Space, params: HarmonicityParams) -> Self {
+        let limit = Self::effective_limit(&params);
+
         // 1. Pre-calculate smoothing kernel
         let sigma_bins = params.sigma_cents / 1200.0 * space.bins_per_oct as f32;
         let half_width = (2.5 * sigma_bins).ceil() as usize;
@@ -85,15 +103,16 @@ impl HarmonicityKernel {
         }
 
         // 2. Pre-calculate necessary padding
-        // How many bins down do we need to store the deepest root?
-        let max_sub_oct = (params.num_subharmonics as f32).log2();
-        let pad_bins = (max_sub_oct * space.bins_per_oct as f32).ceil() as usize;
+        // pad_bins must allow shifting both down (roots) and up (overtone mirror path).
+        let max_oct = (limit as f32).max(1.0).log2();
+        let pad_bins = (max_oct * space.bins_per_oct as f32).ceil() as usize;
 
         Self {
             bins_per_oct: space.bins_per_oct,
             params,
             smooth_kernel: k,
             pad_bins,
+            limit,
         }
     }
 
@@ -105,53 +124,55 @@ impl HarmonicityKernel {
     ) -> (Vec<f32>, f32) {
         let n_bins = envelope.len();
         let bins_per_oct = self.bins_per_oct as f32;
+        let mirror = self.params.mirror_weight.clamp(0.0, 1.0);
+        let limit = self.limit.max(1);
 
         // Step 0: Smooth Input (O(N))
         let smeared_env = self.convolve_smooth(envelope);
 
-        // Buffer for Virtual Roots
-        // Size = N + Padding (to hold roots below f_min)
-        let mut root_spectrum = vec![0.0f32; n_bins + self.pad_bins];
+        // Buffer for Virtual Roots / Overtones (centered with padding on both sides)
+        let padding = self.pad_bins;
+        let center_offset = padding as f32;
+        let buf_len = n_bins + 2 * padding;
+        let mut root_spectrum = vec![0.0f32; buf_len];
+        let mut overtone_spectrum = vec![0.0f32; buf_len];
 
-        // Step 1: Downward Projection (Scatter Env into Roots)
-        // Env[i] implies Root at Env[i - shift]
-        // Since Root buffer has padding, Env[0] maps to Root[pad_bins].
-        // So Env[i] maps to Root[pad_bins + i - shift].
-        // Target Offset = pad_bins - shift.
-        for k in 1..=self.params.num_subharmonics {
+        // === Path A: Common Root / Overtone Series (down then up) ===
+        for k in 1..=limit {
             let shift_bins = (k as f32).log2() * bins_per_oct;
-            let weight = 1.0 / (k as f32).powf(self.params.rho_sub);
-
-            // "Add smeared_env into root_spectrum at offset"
-            let offset = self.pad_bins as f32 - shift_bins;
+            let weight = (k as f32).powf(-self.params.rho_common_root);
+            let offset = center_offset - shift_bins;
             Self::accumulate_shifted(&smeared_env, &mut root_spectrum, offset, weight);
         }
 
-        // Step 2: Upward Projection (Gather Roots into Landscape)
-        // Root[j] implies Harmonic at Root[j + shift]
-        // Landscape[i] corresponds to Root[pad_bins + i].
-        // So Landscape[i] gets energy from Root[pad_bins + i - shift].
-        // Read Offset (in Root) = pad_bins - shift.
-        // Or view it as: Shift Root buffer RIGHT by `shift`, then map to Landscape.
-        // Let's use the Scatter view again for consistency:
-        // We take the WHOLE root_spectrum and add it to Landscape? No, sizes differ.
-        // It's cleaner to say: Landscape[i] += Root[pad_bins + i - shift].
-        // This is equivalent to: Add `root_spectrum` into `landscape` with offset `- (pad_bins - shift)`.
-        // Wait, easier: "Add Root into Landscape with offset `shift - pad_bins`".
-
-        let mut landscape = vec![0.0f32; n_bins];
-
-        for m in 1..=self.params.num_harmonics {
+        let mut landscape_a = vec![0.0f32; n_bins];
+        for m in 1..=limit {
             let shift_bins = (m as f32).log2() * bins_per_oct;
-            let weight = 1.0 / (m as f32).powf(self.params.rho_harm);
+            let weight = (m as f32).powf(-self.params.rho_common_root);
+            let offset = shift_bins - center_offset;
+            Self::accumulate_shifted(&root_spectrum, &mut landscape_a, offset, weight);
+        }
 
-            // Mapping: Root[x] -> Land[x + shift - pad_bins]
-            // We want to add `root_spectrum` into `landscape`.
-            // The 0-th element of root_spectrum corresponds to frequency f_min / 2^pad.
-            // The 0-th element of landscape corresponds to f_min.
-            // The relative shift is: `shift - pad_bins`.
-            let offset = shift_bins - self.pad_bins as f32;
-            Self::accumulate_shifted(&root_spectrum, &mut landscape, offset, weight);
+        // === Path B: Common Overtone / Undertone Series (up then down) ===
+        for k in 1..=limit {
+            let shift_bins = (k as f32).log2() * bins_per_oct;
+            let weight = (k as f32).powf(-self.params.rho_common_overtone);
+            let offset = center_offset + shift_bins;
+            Self::accumulate_shifted(&smeared_env, &mut overtone_spectrum, offset, weight);
+        }
+
+        let mut landscape_b = vec![0.0f32; n_bins];
+        for m in 1..=limit {
+            let shift_bins = (m as f32).log2() * bins_per_oct;
+            let weight = (m as f32).powf(-self.params.rho_common_overtone);
+            let offset = -shift_bins - center_offset;
+            Self::accumulate_shifted(&overtone_spectrum, &mut landscape_b, offset, weight);
+        }
+
+        // Blend A/B
+        let mut landscape = vec![0.0f32; n_bins];
+        for i in 0..n_bins {
+            landscape[i] = (1.0 - mirror) * landscape_a[i] + mirror * landscape_b[i];
         }
 
         // Step 3: Post-processing
@@ -178,6 +199,15 @@ impl HarmonicityKernel {
         }
 
         (landscape, max_val)
+    }
+    fn effective_limit(params: &HarmonicityParams) -> u32 {
+        let fallback = params.num_subharmonics.max(params.num_harmonics).max(1);
+        let limit = if params.param_limit == 0 {
+            fallback
+        } else {
+            params.param_limit
+        };
+        limit.max(1)
     }
     /// Optimized Shift-and-Add with safe bounds checking.
     /// dst[i + offset] += src[i] * weight
@@ -264,6 +294,78 @@ mod tests {
     use plotters::prelude::*;
     use std::fs::File;
     use std::path::Path;
+
+    #[test]
+    fn test_minor_triad_lcm_reach() {
+        let space = Log2Space::new(80.0, 2000.0, 180);
+        let mut params = HarmonicityParams::default();
+        params.mirror_weight = 1.0;
+        let hk = HarmonicityKernel::new(&space, params);
+
+        let mut env = vec![0.0; space.n_bins()];
+        let triad = [200.0, 240.0, 300.0]; // 10:12:15 (Just minor triad)
+        for &f in &triad {
+            if let Some(idx) = space.index_of_freq(f) {
+                env[idx] = 1.0;
+            }
+        }
+
+        let (landscape, _) = hk.potential_h_from_log2_spectrum(&env, &space);
+        let triad_indices: Vec<usize> = triad
+            .iter()
+            .filter_map(|&f| space.index_of_freq(f))
+            .collect();
+
+        let triad_max = triad_indices
+            .iter()
+            .map(|&i| landscape[i])
+            .fold(0.0f32, f32::max);
+        let other_max = landscape
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| !triad_indices.contains(i))
+            .map(|(_, &v)| v)
+            .fold(0.0f32, f32::max);
+
+        assert!(
+            triad_max >= other_max * 0.9,
+            "Mirror path should reinforce triad members via common overtone"
+        );
+        for idx in triad_indices {
+            assert!(
+                landscape[idx] > 1e-3,
+                "Triad bin should accumulate stability"
+            );
+        }
+    }
+
+    #[test]
+    fn test_param_limit_caps_iterations() {
+        let space = Log2Space::new(50.0, 800.0, 160);
+        let mut params_full = HarmonicityParams::default();
+        params_full.normalize_output = false;
+        params_full.param_limit = 6;
+        let hk_full = HarmonicityKernel::new(&space, params_full);
+
+        let mut params_limited = params_full;
+        params_limited.param_limit = 1;
+        let hk_limited = HarmonicityKernel::new(&space, params_limited);
+
+        let mut env = vec![0.0; space.n_bins()];
+        if let Some(idx) = space.index_of_freq(200.0) {
+            env[idx] = 1.0;
+        }
+
+        let (land_full, _) = hk_full.potential_h_from_log2_spectrum(&env, &space);
+        let (land_limited, _) = hk_limited.potential_h_from_log2_spectrum(&env, &space);
+
+        let idx_300 = space.index_of_freq(300.0).expect("bin exists");
+        let ratio = land_limited[idx_300] / land_full[idx_300].max(1e-6);
+        assert!(
+            ratio < 0.9,
+            "Higher-order peaks should diminish when param_limit is small (ratio={ratio})"
+        );
+    }
 
     #[test]
     fn test_sibling_consonance_creation() {

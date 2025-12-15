@@ -549,6 +549,10 @@ pub enum Action {
     SetRoughnessTolerance {
         value: f32,
     },
+    SetHarmonicity {
+        mirror: Option<f32>,
+        limit: Option<u32>,
+    },
     Finish,
 }
 
@@ -586,6 +590,11 @@ impl fmt::Display for Action {
             Action::SetRoughnessTolerance { value } => {
                 write!(f, "SetRoughnessTolerance value={:.3}", value)
             }
+            Action::SetHarmonicity { mirror, limit } => {
+                let m = mirror.map(|v| format!("{:.3}", v)).unwrap_or_else(|| "-".into());
+                let l = limit.map(|v| v.to_string()).unwrap_or_else(|| "-".into());
+                write!(f, "SetHarmonicity mirror={} limit={}", m, l)
+            }
             Action::Finish => write!(f, "Finish"),
         }
     }
@@ -595,14 +604,23 @@ impl fmt::Display for Action {
 #[serde(tag = "mode", rename_all = "snake_case")]
 pub enum SpawnMethod {
     /// H = C - R を最大化する周波数を探索（決定論的）
-    Harmonicity { min_freq: f32, max_freq: f32 },
+    Harmonicity {
+        min_freq: f32,
+        max_freq: f32,
+        crowding: Option<f32>,
+    },
     /// H = C - R を最小化する周波数を探索（決定論的）
-    LowHarmonicity { min_freq: f32, max_freq: f32 },
+    LowHarmonicity {
+        min_freq: f32,
+        max_freq: f32,
+        crowding: Option<f32>,
+    },
     /// H の値を確率密度としてサンプリング（確率的・群生）
     HarmonicDensity {
         min_freq: f32,
         max_freq: f32,
         temperature: Option<f32>,
+        crowding: Option<f32>,
     },
     /// H ≈ 0 となる領域を探索
     ZeroCrossing { min_freq: f32, max_freq: f32 },
@@ -615,25 +633,42 @@ pub enum SpawnMethod {
 impl fmt::Display for SpawnMethod {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            SpawnMethod::Harmonicity { min_freq, max_freq } => {
-                write!(f, "method=harmonicity({:.1}-{:.1} Hz)", min_freq, max_freq)
-            }
-            SpawnMethod::LowHarmonicity { min_freq, max_freq } => write!(
+            SpawnMethod::Harmonicity {
+                min_freq,
+                max_freq,
+                crowding,
+            } => write!(
                 f,
-                "method=low_harmonicity({:.1}-{:.1} Hz)",
-                min_freq, max_freq
+                "method=harmonicity({:.1}-{:.1} Hz, crowding={})",
+                min_freq,
+                max_freq,
+                crowding.unwrap_or(0.0)
+            ),
+            SpawnMethod::LowHarmonicity {
+                min_freq,
+                max_freq,
+                crowding,
+            } => write!(
+                f,
+                "method=low_harmonicity({:.1}-{:.1} Hz, crowding={})",
+                min_freq,
+                max_freq,
+                crowding.unwrap_or(0.0)
             ),
             SpawnMethod::HarmonicDensity {
                 min_freq,
                 max_freq,
                 temperature,
-            } => write!(
-                f,
-                "method=harmonic_density({:.1}-{:.1} Hz, temp={})",
-                min_freq,
-                max_freq,
-                temperature.unwrap_or(1.0)
-            ),
+                crowding,
+            } => {
+                let temp = temperature.unwrap_or(1.0);
+                let crowd = crowding.unwrap_or(0.0);
+                write!(
+                    f,
+                    "method=harmonic_density({:.1}-{:.1} Hz, temp={}, crowding={})",
+                    min_freq, max_freq, temp, crowd
+                )
+            }
             SpawnMethod::ZeroCrossing { min_freq, max_freq } => {
                 write!(
                     f,

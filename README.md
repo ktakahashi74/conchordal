@@ -26,9 +26,15 @@ The environment represents the structure of human hearing in both frequency and 
     * **Consonance (C):** Simulates **Cognitive Integration**. The resultant fitness terrain ($C = H - R_{norm}$).
 
 * **Neural Rhythms (Time):** Instead of a grid, rhythm emerges from entrainment to simulated **Neural Oscillations (Brainwaves)**:
-    * **Delta Band (~0.5-4Hz):** Governs the macroscopic **Pulse** and musical **Phrasing**.
+
+	* **Delta Band (~0.5-4Hz):** Governs the macroscopic **Pulse** and musical **Phrasing**.
+
     * **Theta Band (~4-8Hz):** Dictates **Articulation** and syllabic grouping.
-    * **Beta Band (~15-30Hz):** Controls micro-timing (groove) and ensemble tightness.
+
+    * **Alpha Band (~8-13Hz):** Influences **Texture** and timbral fluctuation (e.g., unison detuning).
+
+    * **Beta Band (~13-30Hz):** Controls micro-timing (groove) and ensemble tightness.
+	
 
 ### 2. The Population (The Collective)
 

@@ -327,6 +327,7 @@ pub fn main_window(
             0.0,
             11_f64,
             120.0,
+            Some("landscape_group"),
         );
 
         ui.separator();
@@ -354,6 +355,7 @@ pub fn main_window(
                 -1.0,
                 1.0,
                 150.0,
+                Some("landscape_group"),
             );
 
             ui.heading("Roughness");
@@ -367,6 +369,7 @@ pub fn main_window(
                 0.0,
                 1.0,
                 120.0,
+                Some("landscape_group"),
             );
 
             ui.heading("Harmonicity");
@@ -380,6 +383,7 @@ pub fn main_window(
                 0.0,
                 1.0,
                 120.0,
+                Some("landscape_group"),
             );
         });
     });

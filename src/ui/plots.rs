@@ -1,5 +1,5 @@
 use crate::ui::viewdata::AgentStateInfo;
-use egui::{Align2, Color32, FontId, Stroke};
+use egui::{Align2, Color32, FontId, Id, Stroke, Vec2b};
 use egui_plot::{
     Bar, BarChart, GridInput, GridMark, Line, LineStyle, Plot, PlotPoints, Points, VLine,
     log_grid_spacer,
@@ -107,6 +107,7 @@ pub fn log2_plot_hz(
     y_min: f64,
     y_max: f64,
     height: f32,
+    link_group: Option<&str>,
 ) {
     assert_eq!(
         xs_hz.len(),
@@ -127,12 +128,11 @@ pub fn log2_plot_hz(
     let line = Line::new(y_label, points);
 
     // === X軸範囲（20〜20kHz）を log2に変換 ===
-    let x_min = (10.0f64).log2();
-    //let x_min = 1.0;
-    let x_max = (24_000.0f64).log2();
+    let x_min = (20.0f64).log2();
+    let x_max = (20_000.0f64).log2();
 
     // === 描画 ===
-    Plot::new(title)
+    let mut plot = Plot::new(title)
         .height(height)
         .allow_scroll(false)
         .allow_drag(false)
@@ -145,19 +145,23 @@ pub fn log2_plot_hz(
             let hz = 2f64.powf(mark.value);
             format!("{:.0}", hz)
         })
-        .y_axis_formatter(|mark, _range| format!("{:.2}", mark.value))
-        .show(ui, |plot_ui| {
-            plot_ui.line(line);
+        .y_axis_formatter(|mark, _range| format!("{:.2}", mark.value));
+    if let Some(link) = link_group {
+        plot = plot.link_axis(Id::new(link), Vec2b::new(true, false));
+    }
 
-            // === 任意: 半音ガイドライン ===
-            // for note in 21..=108 {
-            //     let f = 440.0 * 2f32.powf((note as f32 - 69.0) / 12.0);
-            //     if (20.0..=20_000.0).contains(&f) {
-            //         let x = (f as f64).log2();
-            //         plot_ui.vline(egui_plot::VLine::new(x).color(egui::Color32::DARK_GRAY));
-            //     }
-            // }
-        });
+    plot.show(ui, |plot_ui| {
+        plot_ui.line(line);
+
+        // === 任意: 半音ガイドライン ===
+        // for note in 21..=108 {
+        //     let f = 440.0 * 2f32.powf((note as f32 - 69.0) / 12.0);
+        //     if (20.0..=20_000.0).contains(&f) {
+        //         let x = (f as f64).log2();
+        //         plot_ui.vline(egui_plot::VLine::new(x).color(egui::Color32::DARK_GRAY));
+        //     }
+        // }
+    });
 }
 
 /// 波形表示（時間軸）
@@ -365,62 +369,44 @@ pub fn neural_phase_plot(
 
 /// Show current vs target frequency for each agent with intent arrows.
 pub fn plot_population_dynamics(ui: &mut egui::Ui, agents: &[AgentStateInfo], height: f32) {
-    if agents.is_empty() {
-        ui.label("No agents");
-        return;
-    }
-    let mut lines: Vec<Line> = Vec::with_capacity(agents.len());
-    let mut starts: Vec<[f64; 2]> = Vec::with_capacity(agents.len());
-    let mut targets: Vec<[f64; 2]> = Vec::with_capacity(agents.len());
-    for (row, agent) in agents.iter().enumerate() {
-        let y = row as f64;
-        let x0 = agent.freq_hz.max(1.0).log2() as f64;
-        let x1 = agent.target_freq.max(1.0).log2() as f64;
-        lines.push(
-            Line::new(format!("agent-intent-{}", agent.id), vec![[x0, y], [x1, y]])
-                .color(Color32::from_rgb(80, 140, 255))
-                .style(LineStyle::Solid),
-        );
-        starts.push([x0, y]);
-        targets.push([x1, y]);
-    }
-
-    Plot::new("population_dynamics")
+    let x_min = (20.0f64).log2();
+    let x_max = (20_000.0f64).log2();
+    let plot = Plot::new("population_dynamics")
         .height(height)
         .allow_scroll(true)
         .allow_drag(true)
         .include_y(-1.0)
-        .include_y(agents.len() as f64 + 1.0)
-        .include_x((20.0f64).log2())
-        .include_x((20_000.0f64).log2())
-        .y_axis_formatter(|mark, _| format!("{:.0}", mark.value))
+        .include_y(1.0)
+        .include_x(x_min)
+        .include_x(x_max)
         .x_axis_formatter(|mark, _| format!("{:.0} Hz", 2f64.powf(mark.value)))
-        .show(ui, |plot_ui| {
-            for line in lines {
-                plot_ui.line(line);
-            }
-            // Mass indicator (integration window scales radius).
-            for (row, agent) in agents.iter().enumerate() {
-                let y = row as f64;
-                let x = agent.freq_hz.max(1.0).log2() as f64;
-                let radius = (agent.integration_window * 4.0).clamp(2.0, 12.0);
-                plot_ui.points(
-                    Points::new(format!("mass-{}", agent.id), vec![[x, y]])
-                        .radius(radius as f32)
-                        .color(Color32::from_rgba_unmultiplied(120, 170, 255, 90)),
+        .y_axis_formatter(|mark, _| format!("{:.2}", mark.value))
+        .link_axis(Id::new("landscape_group"), Vec2b::new(true, false));
+
+    plot.show(ui, |plot_ui| {
+        for agent in agents {
+            let y = agent.consonance as f64;
+            let x = agent.freq_hz.max(1.0).log2() as f64;
+            let xt = agent.target_freq.max(1.0).log2() as f64;
+            if (x - xt).abs() > f64::EPSILON {
+                plot_ui.line(
+                    Line::new(format!("intent-{}", agent.id), vec![[x, y], [xt, y]])
+                        .color(Color32::from_rgb(80, 140, 255))
+                        .style(LineStyle::Dashed { length: 4.0 }),
                 );
             }
+            let t = agent.habituation.clamp(0.0, 1.0);
+            let r = (50.0 + 205.0 * t) as u8;
+            let g = (120.0 + 40.0 * (1.0 - t)) as u8;
+            let b = (230.0 * (1.0 - t) + 30.0 * t) as u8;
+            let radius = (agent.integration_window * 40.0).clamp(2.0, 20.0);
             plot_ui.points(
-                Points::new("starts", starts.clone())
-                    .color(Color32::from_gray(180))
-                    .radius(2.5),
+                Points::new(format!("agent-{}", agent.id), vec![[x, y]])
+                    .radius(radius as f32)
+                    .color(Color32::from_rgb(r, g, b)),
             );
-            plot_ui.points(
-                Points::new("targets", targets.clone())
-                    .color(Color32::from_rgb(80, 140, 255))
-                    .radius(3.5),
-            );
-        });
+        }
+    });
 }
 
 /// Visualize neural rhythms (Delta/Theta/Alpha/Beta) as radial gauges.

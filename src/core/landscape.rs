@@ -453,6 +453,14 @@ impl Landscape {
         let space = self.nsgt_rt.space();
         (space.fmin, space.fmax)
     }
+
+    pub fn get_habituation_at(&self, freq_hz: f32) -> f32 {
+        sample_linear(&self.habituation_state, self.nsgt_rt.space(), freq_hz)
+    }
+
+    pub fn get_crowding_at(&self, freq_hz: f32) -> f32 {
+        sample_linear(&self.amps_last, self.nsgt_rt.space(), freq_hz)
+    }
 }
 
 impl Default for LandscapeFrame {
@@ -469,4 +477,21 @@ impl Default for LandscapeFrame {
             amps_last: vec![0.0; n],
         }
     }
+}
+
+fn sample_linear(data: &[f32], space: &Log2Space, freq_hz: f32) -> f32 {
+    if data.is_empty() || freq_hz < space.fmin || freq_hz > space.fmax {
+        return 0.0;
+    }
+    let l = freq_hz.log2();
+    let step = space.step();
+    let base = space.centers_log2[0];
+    let pos = (l - base) / step;
+    let idx = pos.floor() as usize;
+    let frac = pos - pos.floor();
+    let idx0 = idx.min(data.len().saturating_sub(1));
+    let idx1 = (idx0 + 1).min(data.len().saturating_sub(1));
+    let v0 = data.get(idx0).copied().unwrap_or(0.0);
+    let v1 = data.get(idx1).copied().unwrap_or(v0);
+    v0 + (v1 - v0) * frac as f32
 }

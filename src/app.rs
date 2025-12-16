@@ -672,21 +672,29 @@ fn worker_loop(
                     .iter()
                     .map(|agent| match agent {
                         crate::life::individual::IndividualWrapper::PureTone(ind) => {
+                            let f = ind.body.base_freq_hz();
                             AgentStateInfo {
                                 id: ind.id,
-                                freq_hz: ind.body.base_freq_hz(),
+                                freq_hz: f,
                                 target_freq: ind.target_freq,
                                 integration_window: ind.integration_window,
                                 breath_gain: ind.breath_gain,
+                                consonance: landscape.evaluate_pitch(f),
+                                habituation: landscape.get_habituation_at(f),
+                                crowding: landscape.get_crowding_at(f),
                             }
                         }
                         crate::life::individual::IndividualWrapper::Harmonic(ind) => {
+                            let f = ind.body.base_freq_hz();
                             AgentStateInfo {
                                 id: ind.id,
-                                freq_hz: ind.body.base_freq_hz(),
+                                freq_hz: f,
                                 target_freq: ind.target_freq,
                                 integration_window: ind.integration_window,
                                 breath_gain: ind.breath_gain,
+                                consonance: landscape.evaluate_pitch(f),
+                                habituation: landscape.get_habituation_at(f),
+                                crowding: landscape.get_crowding_at(f),
                             }
                         }
                     })

@@ -375,11 +375,6 @@ impl App {
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        if ctx.input(|i| i.viewport().close_requested()) {
-            // Honor OS window close requests by stopping the worker thread.
-            self.exiting.store(true, Ordering::SeqCst);
-        }
-
         if self.exiting.load(Ordering::SeqCst) {
             debug!("SIGINT received: closing window.");
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -445,9 +440,6 @@ impl eframe::App for App {
 impl Drop for App {
     fn drop(&mut self) {
         debug!("App drop. Finalizing..");
-
-        // Request shutdown so worker threads can exit before we join them.
-        self.exiting.store(true, Ordering::SeqCst);
 
         self.wav_tx.take();
 

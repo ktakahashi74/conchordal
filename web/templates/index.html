@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero">
+    <div class="hero-container">
+        <h1 class="hero-title">{{ config.title }}</h1>
+        <p class="hero-subtitle">{{ config.extra.project_tagline }}</p>
+        <p class="hero-subtitle">
+            {% if lang == "ja" %}
+                詳細は近日公開予定です。
+            {% else %}
+                More is coming soon.
+            {% endif %}
+        </p>
+        <div class="hero-actions">
+            <a class="btn btn-primary" href="{% if lang == 'ja' %}/ja/manifesto{% else %}/manifesto{% endif %}">{% if lang == "ja" %}マニフェスト{% else %}Manifesto{% endif %}</a>
+            <a class="btn btn-secondary" href="{{ get_url(path="/docs", lang=lang) }}">{% if lang == "ja" %}ドキュメント{% else %}Documentation{% endif %}</a>
+            <a class="btn" href="{{ config.extra.github_url }}" target="_blank" rel="noopener">GitHub</a>
+        </div>
+    </div>
+</section>
+{% endblock content %}

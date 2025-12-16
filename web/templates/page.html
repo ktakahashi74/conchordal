@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page.title }} | {{ config.title }}{% endblock title %}
+
+{% block description %}
+{% if page.description %}{{ page.description }}{% else %}{% if lang == 'ja' %}生成的作曲のための生体音響楽器{% else %}A bio-acoustic instrument for generative composition{% endif %}{% endif %}
+{% endblock description %}
+
+{% block og_title %}{{ page.title }} | {{ config.title }}{% endblock og_title %}
+
+{% block og_description %}
+{% if page.description %}{{ page.description }}{% else %}{% if lang == 'ja' %}生成的作曲のための生体音響楽器{% else %}A bio-acoustic instrument for generative composition{% endif %}{% endif %}
+{% endblock og_description %}
+
+{% block content %}
+<article class="page">
+    <div class="container">
+        <header class="page-header">
+            <h1 class="page-title">{{ page.title }}</h1>
+            {% set author = page.author or page.extra.author %}
+            {% set author_email = page.author_email or page.extra.author_email %}
+            {% set show_date = page.extra.show_date is not defined or page.extra.show_date %}
+            {% if (show_date and page.date) or author or author_email %}
+            <div class="page-meta">
+                {% if show_date and page.date %}
+                <time class="page-date" datetime="{{ page.date }}">
+                    {{ page.date | date(format="%B %d, %Y") }}
+                </time>
+                {% endif %}
+                {% if author %}
+                <span class="page-author">{{ author }}</span>
+                {% endif %}
+                {% if author_email %}
+                <a class="page-author-email" href="mailto:{{ author_email }}">{{ author_email }}</a>
+                {% endif %}
+            </div>
+            {% endif %}
+        </header>
+
+        <div class="page-content">
+            {{ page.content | safe }}
+        </div>
+
+        {% if page.extra.github_edit_url %}
+        <footer class="page-footer">
+            <a href="{{ page.extra.github_edit_url }}" class="edit-link" target="_blank" rel="noopener">
+                {% if lang == "ja" %}
+                    このページを編集
+                {% else %}
+                    Edit this page
+                {% endif %}
+            </a>
+        </footer>
+        {% endif %}
+    </div>
+</article>
+{% endblock content %}

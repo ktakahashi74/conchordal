@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="{{ lang | default(value='en') }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}{{ config.title }}{% endblock title %}</title>
+    <meta name="description" content="{% block description %}{% if lang == 'ja' %}生成的作曲のための生体音響楽器{% else %}A bio-acoustic instrument for generative composition{% endif %}{% endblock description %}">
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/x-icon" href="{{ get_url(path='favicon.ico') }}">
+
+    <!-- Stylesheets -->
+    <link rel="stylesheet" href="{{ get_url(path='main.css') }}">
+
+    <!-- Open Graph -->
+    <meta property="og:title" content="{% block og_title %}{{ config.title }}{% endblock og_title %}">
+    <meta property="og:description" content="{% block og_description %}{% if lang == 'ja' %}生成的作曲のための生体音響楽器{% else %}A bio-acoustic instrument for generative composition{% endif %}{% endblock og_description %}">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="{{ config.base_url }}">
+
+    {% block head %}{% endblock head %}
+</head>
+<body>
+    <header class="header">
+        <nav class="nav">
+            <div class="nav-container">
+                <a href="{% if lang == 'ja' %}/ja{% else %}/{% endif %}" class="nav-brand">
+                    {{ config.title }}
+                </a>
+
+                <div class="nav-menu">
+                    <a href="{% if lang == 'ja' %}/ja{% else %}/{% endif %}" class="nav-link">
+                        {% if lang == "ja" %}ホーム{% else %}Home{% endif %}
+                    </a>
+                    <a href="{% if lang == 'ja' %}/ja/manifesto{% else %}/manifesto{% endif %}" class="nav-link">
+                        {% if lang == "ja" %}マニフェスト{% else %}Manifesto{% endif %}
+                    </a>
+                    <a href="{% if lang == 'ja' %}/ja/docs{% else %}/docs{% endif %}" class="nav-link">
+                        {% if lang == "ja" %}ドキュメント{% else %}Documentation{% endif %}
+                    </a>
+                    <a href="{{ config.extra.github_url }}" class="nav-link" target="_blank" rel="noopener">
+                        GitHub
+                    </a>
+
+                    <!-- Language switcher -->
+                    <div class="lang-switcher">
+                        {% if lang == "ja" %}
+                            {% if page %}
+                                <a href="{{ page.permalink | replace(from='/ja/', to='/') | replace(from='/ja', to='/') }}" class="lang-link">EN</a>
+                            {% else %}
+                                <a href="/" class="lang-link">EN</a>
+                            {% endif %}
+                        {% else %}
+                            {% if page %}
+                                <a href="/ja{{ page.permalink | replace(from=config.base_url, to='') }}" class="lang-link">日本語</a>
+                            {% else %}
+                                <a href="/ja" class="lang-link">日本語</a>
+                            {% endif %}
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <main class="main">
+        {% block content %}{% endblock content %}
+    </main>
+
+    <footer class="footer">
+        <div class="footer-container">
+            <p>
+                &copy; {{ now() | date(format="%Y") }} Conchordal.
+                {% if lang == "ja" %}
+                    ソースコードは <a href="{{ config.extra.github_url }}" target="_blank" rel="noopener">GitHub</a> で公開されています。
+                {% else %}
+                    Source code available on <a href="{{ config.extra.github_url }}" target="_blank" rel="noopener">GitHub</a>.
+                {% endif %}
+            </p>
+        </div>
+    </footer>
+
+    {% block scripts %}{% endblock scripts %}
+</body>
+</html>

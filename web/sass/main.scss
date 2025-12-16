@@ -1,0 +1,533 @@
+// Dark minimal theme for Conchordal
+
+// Color palette
+$bg-primary: #0a0a0a;
+$bg-secondary: #111111;
+$bg-tertiary: #1a1a1a;
+$text-primary: #e4e4e7;
+$text-secondary: #a1a1aa;
+$text-muted: #71717a;
+$accent-primary: #3b82f6;
+$accent-secondary: #1d4ed8;
+$border-color: #27272a;
+$border-light: #3f3f46;
+
+// Typography
+$font-family-base: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+$font-family-mono: "SF Mono", "Monaco", "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace;
+
+// Spacing
+$container-max-width: 1200px;
+$spacing-xs: 0.25rem;
+$spacing-sm: 0.5rem;
+$spacing-md: 1rem;
+$spacing-lg: 1.5rem;
+$spacing-xl: 2rem;
+$spacing-2xl: 3rem;
+$spacing-3xl: 4rem;
+
+// Breakpoints
+$breakpoint-sm: 640px;
+$breakpoint-md: 768px;
+$breakpoint-lg: 1024px;
+$breakpoint-xl: 1280px;
+
+// Reset and base styles
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+    font-family: $font-family-base;
+    background-color: $bg-primary;
+    color: $text-primary;
+    line-height: 1.6;
+    font-size: 16px;
+}
+
+// Typography
+h1, h2, h3, h4, h5, h6 {
+    font-weight: 600;
+    line-height: 1.25;
+    margin-bottom: $spacing-md;
+}
+
+h1 {
+    font-size: 2.25rem;
+    @media (min-width: $breakpoint-md) {
+        font-size: 3rem;
+    }
+}
+
+h2 {
+    font-size: 1.875rem;
+    @media (min-width: $breakpoint-md) {
+        font-size: 2.25rem;
+    }
+}
+
+h3 {
+    font-size: 1.5rem;
+}
+
+p {
+    margin-bottom: $spacing-md;
+}
+
+a {
+    color: $accent-primary;
+    text-decoration: none;
+    transition: color 0.2s ease;
+
+    &:hover {
+        color: $accent-secondary;
+    }
+}
+
+// Layout components
+.container {
+    max-width: $container-max-width;
+    margin: 0 auto;
+    padding: 0 $spacing-md;
+
+    @media (min-width: $breakpoint-md) {
+        padding: 0 $spacing-xl;
+    }
+}
+
+// Header and navigation
+.header {
+    background-color: $bg-secondary;
+    border-bottom: 1px solid $border-color;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.nav {
+    padding: $spacing-md 0;
+}
+
+.nav-container {
+    max-width: $container-max-width;
+    margin: 0 auto;
+    padding: 0 $spacing-md;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    @media (min-width: $breakpoint-md) {
+        padding: 0 $spacing-xl;
+    }
+}
+
+.nav-brand {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: $text-primary;
+    text-decoration: none;
+
+    &:hover {
+        color: $accent-primary;
+    }
+}
+
+.nav-menu {
+    display: flex;
+    align-items: center;
+    gap: $spacing-lg;
+
+    @media (max-width: $breakpoint-md) {
+        gap: $spacing-md;
+    }
+}
+
+.nav-link {
+    color: $text-secondary;
+    font-weight: 500;
+    padding: $spacing-sm $spacing-md;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+
+    &:hover {
+        color: $text-primary;
+        background-color: $bg-tertiary;
+    }
+}
+
+.lang-switcher {
+    margin-left: $spacing-md;
+    padding-left: $spacing-md;
+    border-left: 1px solid $border-color;
+}
+
+.lang-link {
+    color: $text-muted;
+    font-size: 0.875rem;
+    font-weight: 500;
+    padding: $spacing-xs $spacing-sm;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+
+    &:hover {
+        color: $text-primary;
+        background-color: $bg-tertiary;
+    }
+}
+
+// Main content
+.main {
+    min-height: calc(100vh - 200px);
+}
+
+// Hero section
+.hero {
+    padding: $spacing-3xl 0;
+    text-align: center;
+    background:
+        linear-gradient(135deg, rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.4)),
+        url('/conc.jpg') center/cover no-repeat;
+    color: $text-primary;
+}
+
+.hero-container {
+    max-width: $container-max-width;
+    margin: 0 auto;
+    padding: 0 $spacing-md;
+
+    @media (min-width: $breakpoint-md) {
+        padding: 0 $spacing-xl;
+    }
+}
+
+.hero-title {
+    font-size: 3rem;
+    margin-bottom: $spacing-lg;
+    background: linear-gradient(135deg, $text-primary, $accent-primary);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+
+    @media (min-width: $breakpoint-md) {
+        font-size: 4rem;
+    }
+}
+
+.hero-subtitle {
+    font-size: 1.25rem;
+    color: $text-secondary;
+    margin-bottom: $spacing-2xl;
+    max-width: 600px;
+    margin-left: auto;
+    margin-right: auto;
+
+    @media (min-width: $breakpoint-md) {
+        font-size: 1.5rem;
+    }
+}
+
+.hero-actions {
+    display: flex;
+    gap: $spacing-lg;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+// Buttons
+.btn {
+    display: inline-block;
+    padding: $spacing-md $spacing-xl;
+    border-radius: 8px;
+    font-weight: 600;
+    text-decoration: none;
+    transition: all 0.2s ease;
+    border: 2px solid transparent;
+    cursor: pointer;
+}
+
+.btn-primary {
+    background-color: $accent-primary;
+    color: white;
+
+    &:hover {
+        background-color: $accent-secondary;
+        color: white;
+    }
+}
+
+.btn-secondary {
+    background-color: transparent;
+    color: $accent-primary;
+    border-color: $accent-primary;
+
+    &:hover {
+        background-color: $accent-primary;
+        color: white;
+    }
+}
+
+// Features section
+.features {
+    padding: $spacing-3xl 0;
+    background-color: $bg-secondary;
+}
+
+.features-grid {
+    display: grid;
+    gap: $spacing-2xl;
+    margin-top: $spacing-2xl;
+
+    @media (min-width: $breakpoint-md) {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+.feature {
+    text-align: center;
+    padding: $spacing-xl;
+    background-color: $bg-tertiary;
+    border-radius: 12px;
+    border: 1px solid $border-color;
+
+    h3 {
+        color: $accent-primary;
+        margin-bottom: $spacing-md;
+    }
+
+    p {
+        color: $text-secondary;
+        margin-bottom: 0;
+    }
+}
+
+// Page content
+.page {
+    padding: $spacing-2xl 0;
+}
+
+.page-header {
+    text-align: center;
+    margin-bottom: $spacing-2xl;
+    padding-bottom: $spacing-xl;
+    border-bottom: 1px solid $border-color;
+}
+
+.page-title {
+    margin-bottom: $spacing-md;
+}
+
+.page-subtitle {
+    color: $text-secondary;
+    max-width: 700px;
+    margin: 0 auto;
+}
+
+.page-meta {
+    color: $text-muted;
+    font-size: 0.875rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: $spacing-sm;
+    flex-wrap: wrap;
+
+    a {
+        color: inherit;
+        text-decoration: underline;
+    }
+}
+
+.page-content {
+    max-width: 800px;
+    margin: 0 auto;
+
+    h2 {
+        margin-top: $spacing-2xl;
+        margin-bottom: $spacing-lg;
+        color: $accent-primary;
+    }
+
+    h3 {
+        margin-top: $spacing-xl;
+        margin-bottom: $spacing-md;
+    }
+
+    ul, ol {
+        margin-bottom: $spacing-md;
+        padding-left: $spacing-xl;
+    }
+
+    li {
+        margin-bottom: $spacing-sm;
+    }
+
+    blockquote {
+        border-left: 4px solid $accent-primary;
+        padding-left: $spacing-lg;
+        margin: $spacing-xl 0;
+        font-style: italic;
+        color: $text-secondary;
+    }
+
+    code {
+        background-color: $bg-tertiary;
+        padding: $spacing-xs $spacing-sm;
+        border-radius: 4px;
+        font-family: $font-family-mono;
+        font-size: 0.875rem;
+        color: $accent-primary;
+    }
+
+    pre {
+        background-color: $bg-tertiary;
+        padding: $spacing-lg;
+        border-radius: 8px;
+        overflow-x: auto;
+        margin: $spacing-lg 0;
+
+        code {
+            background: none;
+            padding: 0;
+            color: $text-primary;
+        }
+    }
+}
+
+.page-list {
+    max-width: 800px;
+    margin: $spacing-xl auto 0;
+    display: grid;
+    gap: $spacing-lg;
+}
+
+.page-list-item h3 {
+    margin-bottom: $spacing-xs;
+}
+
+.page-list-item p {
+    margin: 0;
+    color: $text-secondary;
+}
+
+.page-footer {
+    text-align: center;
+    margin-top: $spacing-2xl;
+    padding-top: $spacing-xl;
+    border-top: 1px solid $border-color;
+}
+
+.edit-link {
+    color: $text-muted;
+    font-size: 0.875rem;
+
+    &:hover {
+        color: $accent-primary;
+    }
+}
+
+// Recent updates section
+.recent-updates {
+    padding: $spacing-3xl 0;
+    background-color: $bg-secondary;
+}
+
+.updates-list {
+    margin-top: $spacing-2xl;
+}
+
+.update-item {
+    padding: $spacing-xl;
+    background-color: $bg-tertiary;
+    border-radius: 8px;
+    border: 1px solid $border-color;
+    margin-bottom: $spacing-lg;
+
+    &:last-child {
+        margin-bottom: 0;
+    }
+
+    h3 {
+        margin-bottom: $spacing-sm;
+
+        a {
+            color: $text-primary;
+
+            &:hover {
+                color: $accent-primary;
+            }
+        }
+    }
+
+    p {
+        margin-bottom: $spacing-sm;
+    }
+}
+
+.update-date {
+    color: $text-muted;
+    font-size: 0.875rem;
+    margin-bottom: $spacing-md !important;
+}
+
+// Footer
+.footer {
+    background-color: $bg-secondary;
+    border-top: 1px solid $border-color;
+    padding: $spacing-2xl 0;
+    margin-top: auto;
+}
+
+.footer-container {
+    max-width: $container-max-width;
+    margin: 0 auto;
+    padding: 0 $spacing-md;
+    text-align: center;
+
+    @media (min-width: $breakpoint-md) {
+        padding: 0 $spacing-xl;
+    }
+
+    p {
+        color: $text-muted;
+        margin: 0;
+    }
+
+    a {
+        color: $text-secondary;
+
+        &:hover {
+            color: $accent-primary;
+        }
+    }
+}
+
+// Responsive adjustments
+@media (max-width: $breakpoint-md) {
+    .hero-title {
+        font-size: 2.5rem;
+    }
+
+    .hero-subtitle {
+        font-size: 1.125rem;
+    }
+
+    .nav-menu {
+        gap: $spacing-sm;
+    }
+
+    .nav-link {
+        padding: $spacing-xs $spacing-sm;
+        font-size: 0.875rem;
+    }
+
+    .btn {
+        padding: $spacing-sm $spacing-lg;
+        font-size: 0.875rem;
+    }
+}

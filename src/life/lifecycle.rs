@@ -174,7 +174,12 @@ impl Lifecycle for SustainLifecycle {
         };
 
         let gain = gain_env * self.energy;
-        if gain <= 1e-6 {
+        if age < attack + decay && self.energy > 0.0 {
+            self.alive = true;
+            return gain;
+        }
+
+        if self.energy <= 0.0 || (gain <= 1e-6 && age > attack) {
             self.alive = false;
             0.0
         } else {

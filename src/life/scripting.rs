@@ -131,6 +131,35 @@ impl ScriptContext {
         }]);
     }
 
+    pub fn set_drift(&mut self, target: &str, value: f32) {
+        self.push_event(vec![Action::SetDrift {
+            target: target.to_string(),
+            value,
+        }]);
+    }
+
+    pub fn set_commitment(&mut self, target: &str, value: f32) {
+        self.push_event(vec![Action::SetCommitment {
+            target: target.to_string(),
+            value,
+        }]);
+    }
+
+    pub fn set_habituation_sensitivity(&mut self, target: &str, value: f32) {
+        self.push_event(vec![Action::SetHabituationSensitivity {
+            target: target.to_string(),
+            value,
+        }]);
+    }
+
+    pub fn set_habituation_params(&mut self, weight: f32, tau: f32, max_depth: f32) {
+        self.push_event(vec![Action::SetHabituationParams {
+            weight,
+            tau,
+            max_depth,
+        }]);
+    }
+
     pub fn set_rhythm_vitality(&mut self, value: f32) {
         self.push_event(vec![Action::SetRhythmVitality { value }]);
     }
@@ -186,12 +215,22 @@ impl ScriptContext {
                     .get("rhythm_sensitivity")
                     .and_then(|v| v.as_float().ok())
                     .map(|p| p as f32);
+                let commitment = extra_map
+                    .get("commitment")
+                    .and_then(|v| v.as_float().ok())
+                    .map(|p| p as f32);
+                let habituation_sensitivity = extra_map
+                    .get("habituation_sensitivity")
+                    .and_then(|v| v.as_float().ok())
+                    .map(|p| p as f32);
                 IndividualConfig::PureTone {
                     freq,
                     amp,
                     phase,
                     rhythm_freq,
                     rhythm_sensitivity,
+                    commitment,
+                    habituation_sensitivity,
                     brain,
                     tag: Some(tag.to_string()),
                 }
@@ -209,6 +248,14 @@ impl ScriptContext {
                     .get("rhythm_sensitivity")
                     .and_then(|v| v.as_float().ok())
                     .map(|p| p as f32);
+                let commitment = extra_map
+                    .get("commitment")
+                    .and_then(|v| v.as_float().ok())
+                    .map(|p| p as f32);
+                let habituation_sensitivity = extra_map
+                    .get("habituation_sensitivity")
+                    .and_then(|v| v.as_float().ok())
+                    .map(|p| p as f32);
                 IndividualConfig::Harmonic {
                     freq,
                     amp,
@@ -217,6 +264,8 @@ impl ScriptContext {
                     tag: Some(tag.to_string()),
                     rhythm_freq,
                     rhythm_sensitivity,
+                    commitment,
+                    habituation_sensitivity,
                 }
             }
             other => {
@@ -346,6 +395,45 @@ impl ScriptHost {
         engine.register_fn("set_amp", move |target: &str, amp: FLOAT| {
             let mut ctx = ctx_for_set_amp.lock().expect("lock script context");
             ctx.set_amp(target, amp as f32);
+        });
+
+        let ctx_for_set_drift = ctx.clone();
+        engine.register_fn("set_drift", move |target: &str, value: FLOAT| {
+            let mut ctx = ctx_for_set_drift.lock().expect("lock script context");
+            ctx.set_drift(target, value as f32);
+        });
+
+        let ctx_for_set_commitment = ctx.clone();
+        engine.register_fn("set_commitment", move |target: &str, value: FLOAT| {
+            let mut ctx = ctx_for_set_commitment.lock().expect("lock script context");
+            ctx.set_commitment(target, value as f32);
+        });
+
+        let ctx_for_set_habituation_sens = ctx.clone();
+        engine.register_fn(
+            "set_habituation_sensitivity",
+            move |target: &str, value: FLOAT| {
+                let mut ctx = ctx_for_set_habituation_sens
+                    .lock()
+                    .expect("lock script context");
+                ctx.set_habituation_sensitivity(target, value as f32);
+            },
+        );
+
+        let ctx_for_set_habituation = ctx.clone();
+        engine.register_fn(
+            "set_habituation_params",
+            move |weight: FLOAT, tau: FLOAT, max_depth: FLOAT| {
+                let mut ctx = ctx_for_set_habituation.lock().expect("lock script context");
+                ctx.set_habituation_params(weight as f32, tau as f32, max_depth as f32);
+            },
+        );
+        let ctx_for_set_habituation_alias = ctx.clone();
+        engine.register_fn("set_habituation", move |weight: FLOAT, tau: FLOAT| {
+            let mut ctx = ctx_for_set_habituation_alias
+                .lock()
+                .expect("lock script context");
+            ctx.set_habituation_params(weight as f32, tau as f32, 1.0);
         });
 
         let ctx_for_set_vitality = ctx.clone();
@@ -606,7 +694,11 @@ mod tests {
                 .and_then(|s| s.to_str())
                 .unwrap_or_default()
                 .to_string();
-            if !name.ends_with(".rhai") || name.starts_with('#') || name.ends_with('~') {
+            if !name.ends_with(".rhai")
+                || name.starts_with('#')
+                || name.starts_with('.')
+                || name.ends_with('~')
+            {
                 continue;
             }
             ScriptHost::load_script(path.to_str().expect("path str"))

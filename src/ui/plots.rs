@@ -1,3 +1,4 @@
+use crate::ui::viewdata::AgentStateInfo;
 use egui::{Align2, Color32, FontId, Stroke};
 use egui_plot::{
     Bar, BarChart, GridInput, GridMark, Line, LineStyle, Plot, PlotPoints, Points, VLine,
@@ -359,6 +360,66 @@ pub fn neural_phase_plot(
                     plot_ui.points(pts);
                 }
             }
+        });
+}
+
+/// Show current vs target frequency for each agent with intent arrows.
+pub fn plot_population_dynamics(ui: &mut egui::Ui, agents: &[AgentStateInfo], height: f32) {
+    if agents.is_empty() {
+        ui.label("No agents");
+        return;
+    }
+    let mut lines: Vec<Line> = Vec::with_capacity(agents.len());
+    let mut starts: Vec<[f64; 2]> = Vec::with_capacity(agents.len());
+    let mut targets: Vec<[f64; 2]> = Vec::with_capacity(agents.len());
+    for (row, agent) in agents.iter().enumerate() {
+        let y = row as f64;
+        let x0 = agent.freq_hz.max(1.0).log2() as f64;
+        let x1 = agent.target_freq.max(1.0).log2() as f64;
+        lines.push(
+            Line::new(format!("agent-intent-{}", agent.id), vec![[x0, y], [x1, y]])
+                .color(Color32::from_rgb(80, 140, 255))
+                .style(LineStyle::Solid),
+        );
+        starts.push([x0, y]);
+        targets.push([x1, y]);
+    }
+
+    Plot::new("population_dynamics")
+        .height(height)
+        .allow_scroll(true)
+        .allow_drag(true)
+        .include_y(-1.0)
+        .include_y(agents.len() as f64 + 1.0)
+        .include_x((20.0f64).log2())
+        .include_x((20_000.0f64).log2())
+        .y_axis_formatter(|mark, _| format!("{:.0}", mark.value))
+        .x_axis_formatter(|mark, _| format!("{:.0} Hz", 2f64.powf(mark.value)))
+        .show(ui, |plot_ui| {
+            for line in lines {
+                plot_ui.line(line);
+            }
+            // Mass indicator (integration window scales radius).
+            for (row, agent) in agents.iter().enumerate() {
+                let y = row as f64;
+                let x = agent.freq_hz.max(1.0).log2() as f64;
+                let radius = (agent.integration_window * 4.0).clamp(2.0, 12.0);
+                plot_ui.points(
+                    Points::new(format!("mass-{}", agent.id), vec![[x, y]])
+                        .radius(radius as f32)
+                        .color(Color32::from_rgba_unmultiplied(120, 170, 255, 90)),
+                );
+            }
+            plot_ui.points(
+                Points::new("starts", starts.clone())
+                    .color(Color32::from_gray(180))
+                    .radius(2.5),
+            );
+            plot_ui.points(
+                Points::new("targets", targets.clone())
+                    .color(Color32::from_rgb(80, 140, 255))
+                    .radius(3.5),
+            );
         });
 }
 

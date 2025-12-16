@@ -41,6 +41,8 @@ fn test_population_add_remove_agent() {
         phase: None,
         rhythm_freq: None,
         rhythm_sensitivity: None,
+        commitment: None,
+        habituation_sensitivity: None,
         brain: BrainConfig::Entrain { lifecycle: life },
         tag: Some("test_agent".to_string()),
     };
@@ -102,6 +104,9 @@ fn make_test_landscape(fs: f32) -> Landscape {
         alpha: 0.0,
         roughness_kernel: RoughnessKernel::new(KernelParams::default(), 0.01),
         harmonicity_kernel: HarmonicityKernel::new(&space, HarmonicityParams::default()),
+        habituation_tau: 8.0,
+        habituation_weight: 0.5,
+        habituation_max_depth: 1.0,
         loudness_exp: 0.23,
         tau_ms: 80.0,
         ref_power: 1e-6,
@@ -143,6 +148,8 @@ fn test_agent_lifecycle_decay_death() {
         phase: None,
         rhythm_freq: None,
         rhythm_sensitivity: None,
+        commitment: None,
+        habituation_sensitivity: None,
         brain: BrainConfig::Entrain { lifecycle: life },
         tag: None,
     };
@@ -207,6 +214,8 @@ fn harmonic_render_spectrum_hits_expected_bins() {
         tag: None,
         rhythm_freq: None,
         rhythm_sensitivity: None,
+        commitment: None,
+        habituation_sensitivity: None,
     };
     let metadata = AgentMetadata {
         id: 99,

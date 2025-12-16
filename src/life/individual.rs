@@ -2,7 +2,7 @@ use crate::core::landscape::Landscape;
 use crate::core::modulation::NeuralRhythms;
 use crate::core::utils::pink_noise_tick;
 use crate::life::scenario::{HarmonicMode, TimbreGenotype};
-use rand::{SeedableRng, rngs::SmallRng};
+use rand::{Rng as _, SeedableRng, rngs::SmallRng};
 use std::f32::consts::PI;
 
 pub trait AudioAgent {
@@ -507,11 +507,100 @@ pub struct Individual<N: NeuralCore, B: SoundBody> {
     pub core: N,
     pub body: B,
     pub last_signal: ArticulationSignal,
+    pub target_freq: f32,
+    pub integration_window: f32,
+    pub accumulated_time: f32,
+    pub breath_gain: f32,
+    pub commitment: f32,
+    pub habituation_sensitivity: f32,
+    pub last_theta_sample: f32,
 }
 
 impl<N: NeuralCore, B: SoundBody> Individual<N, B> {
     pub fn metadata(&self) -> &AgentMetadata {
         &self.metadata
+    }
+
+    pub fn update_organic_movement(
+        &mut self,
+        rhythms: &NeuralRhythms,
+        dt: f32,
+        landscape: &Landscape,
+    ) {
+        let dt = dt.max(0.0);
+        let current_freq = self.body.base_freq_hz().max(1.0);
+        if self.target_freq <= 0.0 {
+            self.target_freq = current_freq;
+        }
+        self.integration_window = 0.05 + 6.0 / current_freq.max(1.0);
+        self.accumulated_time += dt;
+
+        let theta_signal = rhythms.theta.mag * rhythms.theta.phase.sin();
+        let theta_cross = self.last_theta_sample <= 0.0 && theta_signal > 0.0;
+        self.last_theta_sample = theta_signal;
+
+        if theta_cross && self.accumulated_time >= self.integration_window {
+            self.accumulated_time = 0.0;
+            let neighbor_ratio = 2f32.powf(200.0 / 1200.0);
+            let mut candidates = vec![
+                self.target_freq,
+                self.target_freq * neighbor_ratio,
+                self.target_freq / neighbor_ratio,
+                self.target_freq * 1.5,
+                self.target_freq * 0.66,
+            ];
+            candidates.retain(|f| f.is_finite());
+
+            let (fmin, fmax) = landscape.freq_bounds();
+            let mut best_freq = self.target_freq.clamp(fmin, fmax);
+            let mut best_score = f32::MIN;
+            for f in candidates {
+                let clamped = f.clamp(fmin, fmax);
+                let score = landscape.evaluate_pitch(clamped);
+                let distance_oct = (clamped.max(1.0).log2() - current_freq.log2()).abs();
+                let penalty = distance_oct * self.integration_window * 0.5;
+                let adjusted = score - penalty;
+                if adjusted > best_score {
+                    best_score = adjusted;
+                    best_freq = clamped;
+                }
+            }
+
+            let current_score = landscape.evaluate_pitch(self.target_freq.clamp(fmin, fmax));
+            let improvement = best_score - current_score;
+            let satisfaction = ((current_score + 1.0) * 0.5).clamp(0.0, 1.0);
+            let habituation_penalty = (1.0 - satisfaction) * self.habituation_sensitivity.max(0.0);
+            let mut stay_prob =
+                (self.commitment.clamp(0.0, 1.0) * satisfaction) - habituation_penalty;
+            stay_prob = stay_prob.clamp(0.0, 1.0);
+
+            if improvement > 0.0 {
+                self.target_freq = best_freq;
+            } else {
+                let mut rng = rand::rng();
+                if rng.random_range(0.0..1.0) > stay_prob {
+                    self.target_freq = best_freq;
+                }
+            }
+        }
+
+        let (fmin, fmax) = landscape.freq_bounds();
+        self.target_freq = self.target_freq.clamp(fmin, fmax);
+        let distance_cents = 1200.0
+            * (self.target_freq.max(1e-3) / current_freq.max(1e-3))
+                .log2()
+                .abs();
+        let move_threshold = 30.0;
+        if distance_cents > move_threshold {
+            self.breath_gain = (self.breath_gain - dt * 1.5).max(0.0);
+            if self.breath_gain < 0.1 {
+                self.body.set_freq(self.target_freq);
+            }
+        } else {
+            self.body.set_freq(self.target_freq);
+            let attack_rate = 1.0 + rhythms.beta.mag;
+            self.breath_gain = (self.breath_gain + dt * attack_rate).clamp(0.0, 1.0);
+        }
     }
 }
 
@@ -547,13 +636,16 @@ impl<N: NeuralCore, B: SoundBody> AudioAgent for Individual<N, B> {
         }
         let dt_per_sample = dt_sec / buffer.len() as f32;
         let rhythms = landscape.rhythm;
-        let consonance = landscape.consonance_at(self.body.base_freq_hz());
         for sample in buffer.iter_mut() {
-            let signal = self
-                .core
-                .process(consonance, &rhythms, dt_per_sample, global_coupling);
+            self.update_organic_movement(&rhythms, dt_per_sample, landscape);
+            let consonance = landscape.evaluate_pitch(self.body.base_freq_hz());
+            let mut signal =
+                self.core
+                    .process(consonance, &rhythms, dt_per_sample, global_coupling);
+            signal.amplitude *= self.breath_gain;
+            signal.is_active = signal.is_active && signal.amplitude > 0.0;
             self.last_signal = signal;
-            if !signal.is_active || signal.amplitude <= 0.0 {
+            if !signal.is_active {
                 continue;
             }
             self.body

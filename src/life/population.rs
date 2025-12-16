@@ -26,7 +26,7 @@ pub struct Population {
     pub global_vitality: f32,
     pub global_coupling: f32,
     shutdown_gain: f32,
-    pending_harmonicity: Option<LandscapeUpdate>,
+    pending_update: Option<LandscapeUpdate>,
 }
 
 impl Population {
@@ -42,6 +42,8 @@ impl Population {
                     phase: None,
                     rhythm_freq: None,
                     rhythm_sensitivity: None,
+                    commitment: None,
+                    habituation_sensitivity: None,
                     brain: BrainConfig::Entrain {
                         lifecycle: crate::life::lifecycle::LifecycleConfig::Decay {
                             initial_energy: 1.0,
@@ -70,7 +72,7 @@ impl Population {
             global_vitality: 0.1,
             global_coupling: 1.0,
             shutdown_gain: 1.0,
-            pending_harmonicity: None,
+            pending_update: None,
         }
     }
 
@@ -169,9 +171,15 @@ impl Population {
         }
 
         let (min_freq, max_freq) = match method {
-            SpawnMethod::Harmonicity { min_freq, max_freq, .. }
-            | SpawnMethod::LowHarmonicity { min_freq, max_freq, .. }
-            | SpawnMethod::HarmonicDensity { min_freq, max_freq, .. }
+            SpawnMethod::Harmonicity {
+                min_freq, max_freq, ..
+            }
+            | SpawnMethod::LowHarmonicity {
+                min_freq, max_freq, ..
+            }
+            | SpawnMethod::HarmonicDensity {
+                min_freq, max_freq, ..
+            }
             | SpawnMethod::ZeroCrossing { min_freq, max_freq }
             | SpawnMethod::SpectralGap { min_freq, max_freq }
             | SpawnMethod::RandomLogUniform { min_freq, max_freq } => (*min_freq, *max_freq),
@@ -390,6 +398,8 @@ impl Population {
                         phase: Some(phase),
                         rhythm_freq: None,
                         rhythm_sensitivity: None,
+                        commitment: None,
+                        habituation_sensitivity: None,
                         brain: brain.clone(),
                         tag: tag.clone(),
                     };
@@ -457,16 +467,74 @@ impl Population {
                 }
             }
             Action::SetHarmonicity { mirror, limit } => {
-                let mut pending = self.pending_harmonicity.unwrap_or_default();
+                let mut pending = self.pending_update.unwrap_or_default();
                 pending.mirror = mirror.or(pending.mirror);
                 pending.limit = limit.or(pending.limit);
-                self.pending_harmonicity = Some(pending);
+                self.pending_update = Some(pending);
+            }
+            Action::SetCommitment { target, value } => {
+                let ids = self.resolve_targets(&target);
+                for id in ids {
+                    if let Some(agent) = self.find_individual_mut(id) {
+                        let v = value.clamp(0.0, 1.0);
+                        match agent {
+                            IndividualWrapper::PureTone(ind) => ind.commitment = v,
+                            IndividualWrapper::Harmonic(ind) => ind.commitment = v,
+                        }
+                    } else {
+                        warn!("SetCommitment: agent {id} not found");
+                    }
+                }
+            }
+            Action::SetDrift { target, value } => {
+                let ids = self.resolve_targets(&target);
+                for id in ids {
+                    if let Some(agent) = self.find_individual_mut(id) {
+                        let v = (1.0 / (1.0 + value.abs())).clamp(0.0, 1.0);
+                        match agent {
+                            IndividualWrapper::PureTone(ind) => ind.commitment = v,
+                            IndividualWrapper::Harmonic(ind) => ind.commitment = v,
+                        }
+                    } else {
+                        warn!("SetDrift: agent {id} not found");
+                    }
+                }
+            }
+            Action::SetHabituationSensitivity { target, value } => {
+                let ids = self.resolve_targets(&target);
+                for id in ids {
+                    if let Some(agent) = self.find_individual_mut(id) {
+                        let v = value.max(0.0);
+                        match agent {
+                            IndividualWrapper::PureTone(ind) => ind.habituation_sensitivity = v,
+                            IndividualWrapper::Harmonic(ind) => ind.habituation_sensitivity = v,
+                        }
+                    } else {
+                        warn!("SetHabituationSensitivity: agent {id} not found");
+                    }
+                }
+            }
+            Action::SetHabituationParams {
+                weight,
+                tau,
+                max_depth,
+            } => {
+                if let Some(landscape) = landscape_rt {
+                    landscape.update_habituation_params(weight, tau, max_depth);
+                } else {
+                    warn!("SetHabituation ignored: no landscape handle");
+                }
+                let mut pending = self.pending_update.unwrap_or_default();
+                pending.habituation_weight = Some(weight);
+                pending.habituation_tau = Some(tau);
+                pending.habituation_max_depth = Some(max_depth);
+                self.pending_update = Some(pending);
             }
         }
     }
 
-    pub fn take_pending_harmonicity_update(&mut self) -> Option<LandscapeUpdate> {
-        self.pending_harmonicity.take()
+    pub fn take_pending_update(&mut self) -> Option<LandscapeUpdate> {
+        self.pending_update.take()
     }
 
     pub fn remove_agent(&mut self, id: u64) {

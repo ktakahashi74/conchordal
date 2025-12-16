@@ -9,3 +9,5 @@ pub mod scripting;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_organic;

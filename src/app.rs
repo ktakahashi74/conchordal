@@ -20,10 +20,13 @@ use crate::core::nsgt_rt::RtNsgtKernelLog2;
 use crate::core::roughness_kernel::{KernelParams, RoughnessKernel};
 use crate::life::analysis_worker;
 use crate::life::conductor::Conductor;
+use crate::life::individual::SoundBody;
 use crate::life::population::{Population, PopulationParams};
 use crate::life::scenario::Scenario;
 use crate::life::scripting::ScriptHost;
-use crate::ui::viewdata::{PlaybackState, SimulationMeta, SpecFrame, UiFrame, WaveFrame};
+use crate::ui::viewdata::{
+    AgentStateInfo, PlaybackState, SimulationMeta, SpecFrame, UiFrame, WaveFrame,
+};
 use crate::{
     audio::output::AudioOutput, config::AppConfig, core::harmonicity_kernel::HarmonicityParams,
 };
@@ -209,6 +212,9 @@ impl App {
             alpha: 0.0,
             roughness_kernel: RoughnessKernel::new(KernelParams::default(), 0.005), // ΔERB LUT step
             harmonicity_kernel: HarmonicityKernel::new(&space, HarmonicityParams::default()),
+            habituation_tau: 8.0,
+            habituation_weight: 0.5,
+            habituation_max_depth: 1.0,
             loudness_exp: config.psychoacoustics.loudness_exp, // Zwicker
             tau_ms: config.analysis.tau_ms,
             ref_power: 1e-6,
@@ -509,6 +515,7 @@ fn worker_loop(
         landscape: current_landscape.clone(),
         time_sec: current_time,
         meta: init_meta,
+        agents: Vec::new(),
     };
     let _ = ui_tx.try_send(init_frame);
 
@@ -549,8 +556,8 @@ fn worker_loop(
                 &mut pop,
             );
             landscape.set_vitality(pop.global_vitality);
-            if let Some(update) = pop.take_pending_harmonicity_update() {
-                landscape.update_harmonicity_params(update.mirror, update.limit);
+            if let Some(update) = pop.take_pending_update() {
+                landscape.apply_update(update);
                 let _ = harmonicity_tx.try_send(update);
             }
 
@@ -660,6 +667,30 @@ fn worker_loop(
             if let (Some(wave_frame), Some(spec_frame), Some(ui_landscape)) =
                 (wave_frame, spec_frame, ui_landscape)
             {
+                let agent_states: Vec<AgentStateInfo> = pop
+                    .individuals
+                    .iter()
+                    .map(|agent| match agent {
+                        crate::life::individual::IndividualWrapper::PureTone(ind) => {
+                            AgentStateInfo {
+                                id: ind.id,
+                                freq_hz: ind.body.base_freq_hz(),
+                                target_freq: ind.target_freq,
+                                integration_window: ind.integration_window,
+                                breath_gain: ind.breath_gain,
+                            }
+                        }
+                        crate::life::individual::IndividualWrapper::Harmonic(ind) => {
+                            AgentStateInfo {
+                                id: ind.id,
+                                freq_hz: ind.body.base_freq_hz(),
+                                target_freq: ind.target_freq,
+                                integration_window: ind.integration_window,
+                                breath_gain: ind.breath_gain,
+                            }
+                        }
+                    })
+                    .collect();
                 let ui_frame = UiFrame {
                     wave: wave_frame,
                     spec: spec_frame,
@@ -677,6 +708,7 @@ fn worker_loop(
                         channel_peak,
                         window_peak: channel_peak,
                     },
+                    agents: agent_states,
                 };
                 let _ = ui_tx.try_send(ui_frame);
                 last_ui_update = Instant::now();

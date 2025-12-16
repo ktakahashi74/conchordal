@@ -12,6 +12,15 @@ pub struct SpecFrame {
     pub amps: Vec<f32>,
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct AgentStateInfo {
+    pub id: u64,
+    pub freq_hz: f32,
+    pub target_freq: f32,
+    pub integration_window: f32,
+    pub breath_gain: f32,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum PlaybackState {
     #[default]
@@ -41,4 +50,5 @@ pub struct UiFrame {
     pub landscape: LandscapeFrame,
     pub time_sec: f32,
     pub meta: SimulationMeta,
+    pub agents: Vec<AgentStateInfo>,
 }

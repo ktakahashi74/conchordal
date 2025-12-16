@@ -18,6 +18,12 @@ pub struct LandscapeParams {
     pub alpha: f32,
     pub roughness_kernel: RoughnessKernel,
     pub harmonicity_kernel: HarmonicityKernel,
+    /// Habituation integration time constant [s].
+    pub habituation_tau: f32,
+    /// Weight of habituation penalty in consonance.
+    pub habituation_weight: f32,
+    /// Maximum depth of habituation penalty.
+    pub habituation_max_depth: f32,
 
     /// Exponent for subjective intensity (≈ specific loudness). Typical: 0.23
     pub loudness_exp: f32,
@@ -35,6 +41,9 @@ pub struct LandscapeParams {
 pub struct LandscapeUpdate {
     pub mirror: Option<f32>,
     pub limit: Option<u32>,
+    pub habituation_weight: Option<f32>,
+    pub habituation_tau: Option<f32>,
+    pub habituation_max_depth: Option<f32>,
 }
 
 #[derive(Clone, Debug)]
@@ -60,6 +69,8 @@ pub struct Landscape {
     norm_state: Vec<f32>,
     /// Last preprocessed amplitudes (subjective intensity).
     amps_last: Vec<f32>,
+    /// Habituation state per bin (boredom integration).
+    habituation_state: Vec<f32>,
     /// A-weighting gains per bin for loudness correction.
     loudness_weights: Vec<f32>,
     pub rhythm: NeuralRhythms,
@@ -85,6 +96,7 @@ impl Landscape {
             last_h: vec![0.0; n_ch],
             last_c: vec![0.0; n_ch],
             norm_state: vec![0.0; n_ch],
+            habituation_state: vec![0.0; n_ch],
             amps_last: vec![0.0; n_ch],
             loudness_weights,
             rhythm: NeuralRhythms::default(),
@@ -141,6 +153,9 @@ impl Landscape {
             return;
         }
         let space = self.nsgt_rt.space();
+        if self.habituation_state.len() != self.amps_last.len() {
+            self.habituation_state.resize(self.amps_last.len(), 0.0);
+        }
 
         // Roughness potential R
         let (r, r_total) = self
@@ -154,15 +169,27 @@ impl Landscape {
             .harmonicity_kernel
             .potential_h_from_log2_spectrum(&self.amps_last, space);
 
+        // Habituation (boredom): leaky integration of recent amplitudes.
+        let tau = self.params.habituation_tau.max(1e-3);
+        let dt = self.nsgt_rt.dt();
+        let a = (-dt / tau).exp();
+        let max_depth = self.params.habituation_max_depth.max(0.0);
+        for (state, &amp) in self.habituation_state.iter_mut().zip(&self.amps_last) {
+            let y = a * *state + (1.0 - a) * amp;
+            *state = y.min(max_depth);
+        }
+
         // Combined potential K (here: C - D_index)
         let k = self.params.roughness_k.max(1e-6);
         let denom_inv = 1.0 / (r_total + k);
+        let weight = self.params.habituation_weight.max(0.0);
         let c: Vec<f32> = r
             .iter()
             .zip(&h)
-            .map(|(ri, hi)| {
+            .zip(&self.habituation_state)
+            .map(|((ri, hi), hab)| {
                 let d_index = ri * denom_inv;
-                hi - d_index
+                hi - d_index - weight * hab
             })
             .collect();
 
@@ -207,15 +234,30 @@ impl Landscape {
             .harmonicity_kernel
             .potential_h_from_log2_spectrum(&norm_env, &space);
 
+        if self.habituation_state.len() != self.amps_last.len() {
+            self.habituation_state.resize(self.amps_last.len(), 0.0);
+        }
+
+        // Habituation (boredom): leaky integration of recent amplitudes.
+        let tau = self.params.habituation_tau.max(1e-3);
+        let dt = self.nsgt_rt.dt();
+        let a = (-dt / tau).exp();
+        let max_depth = self.params.habituation_max_depth.max(0.0);
+        for (state, &amp) in self.habituation_state.iter_mut().zip(&self.amps_last) {
+            let y = a * *state + (1.0 - a) * amp;
+            *state = y.min(max_depth);
+        }
+
         let k = self.params.roughness_k.max(1e-6);
         let denom_inv = 1.0 / (r_total + k);
 
         let c: Vec<f32> = r
             .iter()
             .zip(&h)
-            .map(|(ri, hi)| {
+            .zip(&self.habituation_state)
+            .map(|((ri, hi), hab)| {
                 let d_index = ri * denom_inv;
-                hi - d_index
+                hi - d_index - self.params.habituation_weight.max(0.0) * hab
             })
             .collect();
 
@@ -265,6 +307,9 @@ impl Landscape {
             *x = 0.0;
         }
         for x in &mut self.last_c {
+            *x = 0.0;
+        }
+        for x in &mut self.habituation_state {
             *x = 0.0;
         }
         self.rhythm = NeuralRhythms::default();
@@ -330,6 +375,9 @@ impl Landscape {
         self.last_h.clone_from(&frame.h_last);
         self.last_c.clone_from(&frame.c_last);
         self.amps_last.clone_from(&frame.amps_last);
+        if self.habituation_state.len() != self.amps_last.len() {
+            self.habituation_state.resize(self.amps_last.len(), 0.0);
+        }
     }
 
     pub fn set_vitality(&mut self, v: f32) {
@@ -353,6 +401,57 @@ impl Landscape {
         }
         let space = self.nsgt_rt.space().clone();
         self.params.harmonicity_kernel = HarmonicityKernel::new(&space, params);
+    }
+
+    pub fn update_habituation_params(&mut self, weight: f32, tau: f32, max_depth: f32) {
+        self.params.habituation_weight = weight.max(0.0);
+        self.params.habituation_tau = tau.max(1e-3);
+        self.params.habituation_max_depth = max_depth.max(0.0);
+    }
+
+    pub fn apply_update(&mut self, upd: LandscapeUpdate) {
+        if upd.mirror.is_some() || upd.limit.is_some() {
+            self.update_harmonicity_params(upd.mirror, upd.limit);
+        }
+        if upd.habituation_weight.is_some()
+            || upd.habituation_tau.is_some()
+            || upd.habituation_max_depth.is_some()
+        {
+            let w = upd
+                .habituation_weight
+                .unwrap_or(self.params.habituation_weight);
+            let tau = upd.habituation_tau.unwrap_or(self.params.habituation_tau);
+            let max_d = upd
+                .habituation_max_depth
+                .unwrap_or(self.params.habituation_max_depth);
+            self.update_habituation_params(w, tau, max_d);
+        }
+    }
+
+    pub fn evaluate_pitch(&self, freq_hz: f32) -> f32 {
+        if self.last_c.is_empty() {
+            return -2.0;
+        }
+        let space = self.nsgt_rt.space();
+        if freq_hz < space.fmin || freq_hz > space.fmax {
+            return -2.0;
+        }
+        let l = freq_hz.log2();
+        let step = space.step();
+        let base = space.centers_log2[0];
+        let pos = (l - base) / step;
+        let idx = pos.floor() as usize;
+        let frac = pos - pos.floor();
+        let idx0 = idx.min(self.last_c.len().saturating_sub(1));
+        let idx1 = (idx0 + 1).min(self.last_c.len().saturating_sub(1));
+        let c0 = self.last_c.get(idx0).copied().unwrap_or(0.0);
+        let c1 = self.last_c.get(idx1).copied().unwrap_or(c0);
+        c0 + (c1 - c0) * frac as f32
+    }
+
+    pub fn freq_bounds(&self) -> (f32, f32) {
+        let space = self.nsgt_rt.space();
+        (space.fmin, space.fmax)
     }
 }
 

@@ -1,4 +1,6 @@
-use crate::ui::plots::{log2_plot_hz, neural_compass, neural_phase_plot, time_plot};
+use crate::ui::plots::{
+    log2_plot_hz, neural_compass, neural_phase_plot, plot_population_dynamics, time_plot,
+};
 use crate::ui::viewdata::{PlaybackState, UiFrame};
 use egui::{CentralPanel, Key, TopBottomPanel, Vec2};
 use std::collections::VecDeque;
@@ -308,6 +310,10 @@ pub fn main_window(
                 neural_phase_plot(ui, rhythm_history, height);
             });
         });
+
+        ui.separator();
+        ui.heading("Population Dynamics");
+        plot_population_dynamics(ui, &frame.agents, 140.0);
 
         ui.separator();
         ui.heading("Analytic");

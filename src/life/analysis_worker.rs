@@ -17,7 +17,7 @@ pub fn run(
         }
 
         for upd in update_rx.try_iter() {
-            landscape.update_harmonicity_params(upd.mirror, upd.limit);
+            landscape.apply_update(upd);
         }
 
         // 1. Map linear spectrum to log2 space and compute potentials.

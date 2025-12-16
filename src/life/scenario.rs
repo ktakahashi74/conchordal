@@ -174,6 +174,10 @@ pub enum IndividualConfig {
         rhythm_freq: Option<f32>,
         #[serde(default)]
         rhythm_sensitivity: Option<f32>,
+        #[serde(default)]
+        commitment: Option<f32>,
+        #[serde(default)]
+        habituation_sensitivity: Option<f32>,
         #[serde(
             default = "default_brain",
             alias = "lifecycle",
@@ -198,6 +202,10 @@ pub enum IndividualConfig {
         rhythm_freq: Option<f32>,
         #[serde(default)]
         rhythm_sensitivity: Option<f32>,
+        #[serde(default)]
+        commitment: Option<f32>,
+        #[serde(default)]
+        habituation_sensitivity: Option<f32>,
     },
 }
 
@@ -360,10 +368,16 @@ impl IndividualConfig {
                 phase,
                 rhythm_freq,
                 rhythm_sensitivity,
+                commitment,
+                habituation_sensitivity,
                 brain,
                 ..
             } => {
                 let fs = 48_000.0f32;
+                let target_freq = freq.max(1.0);
+                let integration_window = 0.05 + 6.0 / target_freq;
+                let commitment = commitment.unwrap_or(0.5).clamp(0.0, 1.0);
+                let habituation = habituation_sensitivity.unwrap_or(1.0).max(0.0);
 
                 IndividualWrapper::PureTone(PureTone {
                     id: assigned_id,
@@ -382,6 +396,13 @@ impl IndividualConfig {
                         audio_phase: phase.unwrap_or(0.0),
                     },
                     last_signal: Default::default(),
+                    target_freq,
+                    integration_window,
+                    accumulated_time: 0.0,
+                    breath_gain: 1.0,
+                    commitment,
+                    habituation_sensitivity: habituation,
+                    last_theta_sample: 0.0,
                 })
             }
             IndividualConfig::Harmonic {
@@ -390,6 +411,8 @@ impl IndividualConfig {
                 genotype,
                 rhythm_freq,
                 rhythm_sensitivity,
+                commitment,
+                habituation_sensitivity,
                 brain,
                 ..
             } => {
@@ -402,6 +425,10 @@ impl IndividualConfig {
                     phases.push(rng.random_range(0.0..std::f32::consts::TAU));
                     detune_phases.push(rng.random_range(0.0..std::f32::consts::TAU));
                 }
+                let target_freq = freq.max(1.0);
+                let integration_window = 0.05 + 6.0 / target_freq;
+                let commitment = commitment.unwrap_or(0.5).clamp(0.0, 1.0);
+                let habituation = habituation_sensitivity.unwrap_or(1.0).max(0.0);
                 IndividualWrapper::Harmonic(Harmonic {
                     id: assigned_id,
                     metadata,
@@ -426,6 +453,13 @@ impl IndividualConfig {
                         ),
                     },
                     last_signal: Default::default(),
+                    target_freq,
+                    integration_window,
+                    accumulated_time: 0.0,
+                    breath_gain: 1.0,
+                    commitment,
+                    habituation_sensitivity: habituation,
+                    last_theta_sample: 0.0,
                 })
             }
         }
@@ -480,6 +514,8 @@ mod tests {
             phase: Some(0.25),
             rhythm_freq: None,
             rhythm_sensitivity: None,
+            commitment: None,
+            habituation_sensitivity: None,
             brain: BrainConfig::Entrain {
                 lifecycle: LifecycleConfig::Decay {
                     initial_energy: 1.0,
@@ -553,6 +589,23 @@ pub enum Action {
         mirror: Option<f32>,
         limit: Option<u32>,
     },
+    SetCommitment {
+        target: String,
+        value: f32,
+    },
+    SetDrift {
+        target: String,
+        value: f32,
+    },
+    SetHabituationSensitivity {
+        target: String,
+        value: f32,
+    },
+    SetHabituationParams {
+        weight: f32,
+        tau: f32,
+        max_depth: f32,
+    },
     Finish,
 }
 
@@ -591,10 +644,34 @@ impl fmt::Display for Action {
                 write!(f, "SetRoughnessTolerance value={:.3}", value)
             }
             Action::SetHarmonicity { mirror, limit } => {
-                let m = mirror.map(|v| format!("{:.3}", v)).unwrap_or_else(|| "-".into());
+                let m = mirror
+                    .map(|v| format!("{:.3}", v))
+                    .unwrap_or_else(|| "-".into());
                 let l = limit.map(|v| v.to_string()).unwrap_or_else(|| "-".into());
                 write!(f, "SetHarmonicity mirror={} limit={}", m, l)
             }
+            Action::SetCommitment { target, value } => {
+                write!(f, "SetCommitment target={} value={:.3}", target, value)
+            }
+            Action::SetDrift { target, value } => {
+                write!(f, "SetDrift target={} value={:.3}", target, value)
+            }
+            Action::SetHabituationSensitivity { target, value } => {
+                write!(
+                    f,
+                    "SetHabituationSensitivity target={} value={:.3}",
+                    target, value
+                )
+            }
+            Action::SetHabituationParams {
+                weight,
+                tau,
+                max_depth,
+            } => write!(
+                f,
+                "SetHabituation weight={:.3} tau={:.3} max={:.3}",
+                weight, tau, max_depth
+            ),
             Action::Finish => write!(f, "Finish"),
         }
     }

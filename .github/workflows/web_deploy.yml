@@ -27,10 +27,6 @@ jobs:
         with:
           tool: zola
 
-      - name: Configure Pages
-        id: pages
-        uses: actions/configure-pages@v4
-
       - name: Build site
         run: zola build
         working-directory: web

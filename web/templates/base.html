@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% if page %}{{ page.title }} · {% elif section %}{{ section.title }} · {% endif %}{{ config.extra.site_title }}</title>
+    <link rel="stylesheet" href="{{ get_url(path="style.css") }}">
+  </head>
+  <body>
+    <header>
+      <div class="logo">
+        <a href="{{ get_url(path="/", lang=lang) }}">{{ config.extra.site_title }}</a>
+      </div>
+
+      {% if lang and lang == "ja" %}
+        {% set menu_items = config.extra.menu_items_ja %}
+      {% else %}
+        {% set menu_items = config.extra.menu_items %}
+      {% endif %}
+      {% if menu_items %}
+      <nav class="site-nav">
+        {% for item in menu_items %}
+          <a href="{{ get_url(path=item.url) }}">{{ item.name }}</a>
+        {% endfor %}
+      </nav>
+      {% endif %}
+
+      {% set current = page | default(value=section) %}
+      {% if current and current.translations | length > 0 %}
+        <nav class="lang-switch">
+          {% if lang == "en" %}
+            {% set ja = current.translations | filter(attribute="lang", value="ja") | first %}
+            {% if ja %}<a href="{{ ja.permalink }}">JA</a>{% endif %}
+            <a class="active" href="#">EN</a>
+          {% elif lang == "ja" %}
+            {% set en = current.translations | filter(attribute="lang", value="en") | first %}
+            {% if en %}<a href="{{ en.permalink }}">EN</a>{% endif %}
+            <a class="active" href="#">JA</a>
+          {% else %}
+            <span class="lang-switch">EN / JA</span>
+          {% endif %}
+        </nav>
+      {% endif %}
+    </header>
+    <main>
+      {% block content %}{% endblock content %}
+    </main>
+  </body>
+</html>

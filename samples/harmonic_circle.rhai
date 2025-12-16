@@ -1,7 +1,7 @@
 print(">>> Harmonic Circle: Spread Voicing <<<");
 
 // ==========================================
-// 音色定義
+// Timbre definitions
 // ==========================================
 let life_drone = #{
     type: "decay",
@@ -18,7 +18,7 @@ let life_pulse = #{
 };
 
 // ==========================================
-// Phase 1: Gravity (調性の確立)
+// Phase 1: Gravity (establish tonality)
 // ==========================================
 scene("Phase 1: Gravity");
 print("--- [1] Establishing Harmonic Root (C2 + G2) ---");
@@ -43,25 +43,25 @@ add_agent("kick", 65.41, 0.6, #{
 wait(3.0);
 
 // ==========================================
-// Phase 3: The Chord (確率的分散)
+// Phase 3: The Chord (probabilistic spread)
 // ==========================================
 scene("Phase 3: Voicing");
 print("--- [3] Spawning agents with Harmonic Density ---");
 
-// 【変更点】 harmonicity -> harmonic_density
-// temperature: 
-//   0.1 = ほぼ最大値しか選ばない（Unison）
-//   1.0 = 協和度に従って自然にバラける（Natural）
-//   2.0 = 協和度が低いところもたまに選ぶ（Jazzy/Noise）
+// Note: harmonicity -> harmonic_density
+// temperature:
+//   0.1 = snaps to the strongest peak (unison-like)
+//   1.0 = spreads naturally by consonance
+//   2.0 = occasionally samples low-consonance spots (jazzy/noisy)
 let method_spread = #{ 
     mode: "harmonicity", 
     min_freq: 130.0, // C3
-    max_freq: 1050.0, // C6付近まで広げる
-    temperature: 0.5 // 少し鋭めに（きれいな和音を狙う）
+    max_freq: 1050.0, // up to about C6
+    temperature: 0.5 // a bit sharp to favor clean voicings
 };
 
 for i in 0..6 {
-    // 6体を投入。確率的に C, E, G, B などの倍音に散らばるはず
+    // Drop 6 voices; they should probabilistically land on C/E/G/B partials.
     spawn_agents("voice_" + i, method_spread, life_pulse, 1, 0.22);
     print(" -> Add Voice " + i);
     wait(1.0); 
@@ -77,8 +77,8 @@ scene("Phase 4: Autonomy");
 print("--- [4] Removing Anchor & Kick ---");
 
 remove("kick");
-// ドローンも消して、残った6体の相互作用だけで和音が保たれるか実験
-// （harmonic_densityで選ばれた音は物理的に協和しているので、ドローンが消えても響き合うはず）
+// Also fade the drones; test whether the 6-voice interaction alone holds the chord.
+// (harmonic_density choices should still resonate without the anchor)
 set_amp("root", 0.0);
 set_amp("fifth", 0.0);
 

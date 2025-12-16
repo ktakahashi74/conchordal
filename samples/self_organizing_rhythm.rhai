@@ -1,48 +1,46 @@
 print(">>> Experiment: Self-Organizing Rhythm <<<");
 
 // ============================================================
-// 設定: 同期を聞き取りやすくするための「パーカッシブ」な設定
+// Setup: percussive so synchronization is easy to hear
 // ============================================================
 
-// 長く生きるが、音自体は短い「プラック（撥弦）音」
-// アタックが鋭いため、タイミングのズレや同期が明確に聞こえます。
+// Long-lived agents, but the sound is a short pluck.
+// Sharp attack makes timing offsets and sync obvious.
 let life_plucking = #{
     type: "sustain",
     initial_energy: 1.5,
-    metabolism_rate: 0.05, // なかなか死なない
+    metabolism_rate: 0.05, // slow to die
     envelope: #{ 
-        attack_sec: 0.005, // 非常に鋭いアタック
-        decay_sec: 0.1,    // すぐ減衰
-        sustain_level: 0.0 // 音は切れる（リズムの「点」を作る）
+        attack_sec: 0.005, // very sharp attack
+        decay_sec: 0.1,    // quick decay
+        sustain_level: 0.0 // percussive blip (discrete rhythm)
     }
 };
 
 // ============================================================
-// Phase 1: The Seed (メトロノームによる強制引き込み)
+// Phase 1: The Seed (metronome-driven entrainment)
 // ============================================================
 scene("Phase 1: Metronome");
 print("--- [1] Injecting strong beat (Delta band driver) ---");
 
-// 1. 強力なキック音 (60Hz) を配置
-// これがランドスケープの Low/Delta 帯域を激しく揺らし、リズムの基準を作ります
+// 1. Place a strong kick (60 Hz) to shake the low/delta band and set a reference.
 add_agent("kick", 60.0, 0.5, #{ 
     type: "sustain", 
     initial_energy: 2.0, 
-    metabolism_rate: 0.0, // 死なない
+    metabolism_rate: 0.0, // does not die
     envelope: #{ attack_sec: 0.01, decay_sec: 0.2, sustain_level: 0.0 }
 });
 
-wait(2.0); // リズムが安定するのを待つ
+wait(2.0); // allow rhythm to settle
 
 // ============================================================
-// Phase 2: The Swarm (群れの投入)
+// Phase 2: The Swarm (group injection)
 // ============================================================
 scene("Phase 2: Recruitment");
 print("--- [2] Spawning agents with random phases ---");
 
-// 2. 多数の個体を投入 (200Hz - 800Hz)
-// 最初は位相がバラバラなので「ザワザワ」した音になりますが、
-// 徐々にキックのリズム（Delta帯域）に引き込まれていきます。
+// 2. Inject many agents (200–800 Hz).
+// Phases start messy, then get pulled toward the kick (delta band).
 let method_flock = #{ 
     mode: "harmonic_density", 
     min_freq: 200.0, 
@@ -50,47 +48,45 @@ let method_flock = #{
     temperature: 1.0 
 };
 
-// 4回に分けて投入し、層を厚くする
+// Add in four waves to thicken layers
 for i in 0..4 {
     spawn_agents("follower", method_flock, life_plucking, 4, 0.08);
-    wait(1.0); // 次の投入まで少し待つ
+    wait(1.0); // pause before next batch
 }
 
 print("--- Listening for synchronization... ---");
-wait(4.0); // 同期が進むのをじっくり待つ
+wait(4.0); // give time to synchronize
 
 // ============================================================
-// Phase 3: Emergence (自律維持)
+// Phase 3: Emergence (self-sustain)
 // ============================================================
 scene("Phase 3: Emergence");
 print("--- [3] REMOVING THE METRONOME (Watch self-sustain) ---");
 
-// 3. 親（キック）を削除
-// これにより「正解」がなくなります。
-// 個体たちは「仲間の音」だけを頼りに、リズムを維持しようとします。
+// 3. Remove the parent kick; no external reference remains.
+// Agents try to keep rhythm by mutual coupling alone.
 remove("kick");
 
-// ここでリズムが崩壊せず、少し揺らぎながらも「グルーヴ」が残れば成功です。
-// まさに「盆踊り」のように、中心がなくなっても輪が回り続ける現象です。
+// Success if the groove persists (with some wobble) after the leader vanishes.
 wait(6.0);
 
 // ============================================================
-// Phase 4: Perturbation (撹乱と再同期)
+// Phase 4: Perturbation (disrupt and resync)
 // ============================================================
 scene("Phase 4: Perturbation");
 print("--- [4] Injecting counter-rhythm (High freq) ---");
 
-// 4. 全く違うテンポ感の音（高域のクリック音）を入れて撹乱してみる
-// High/Alpha帯域が刺激され、既存の個体のタイミングが微調整（Micro-timing）されるか観察
+// 4. Inject high clicks with a different tempo to perturb the groove.
+// Watch whether high/alpha stimulation micro-adjusts timing.
 let life_click = #{ type: "decay", initial_energy: 0.8, half_life_sec: 0.2 };
 let method_click = #{ mode: "random_log_uniform", min_freq: 2000.0, max_freq: 4000.0 };
 
 for i in 0..8 {
     spawn_agents("noise", method_click, life_click, 2, 0.1);
-    wait(0.25); // 早いパルス
+    wait(0.25); // fast pulse
 }
 
-wait(3.0); // 撹乱後の落ち着きを確認
+wait(3.0); // observe post-perturbation settling
 
-// 終了
+// Done
 finish();

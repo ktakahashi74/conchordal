@@ -13,6 +13,7 @@ repomix-output.xml
 .aider*
 nohup.out
 config.toml
+!web/config.toml
 
 # System/editor cruft
 .DS_Store

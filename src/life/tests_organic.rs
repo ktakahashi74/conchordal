@@ -106,7 +106,7 @@ fn test_scan_logic() {
     }
     landscape.apply_frame(&frame);
 
-    agent.accumulated_time = agent.integration_window;
+    agent.accumulated_time = 5.0;
     agent.last_theta_sample = -0.1;
     let mut rhythms = NeuralRhythms::default();
     rhythms.theta.mag = 1.0;

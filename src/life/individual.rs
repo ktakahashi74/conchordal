@@ -532,7 +532,7 @@ impl<N: NeuralCore, B: SoundBody> Individual<N, B> {
         if self.target_freq <= 0.0 {
             self.target_freq = current_freq;
         }
-        self.integration_window = 0.05 + 6.0 / current_freq.max(1.0);
+        self.integration_window = 2.0 + 10.0 / current_freq.max(1.0);
         self.accumulated_time += dt;
 
         let theta_signal = rhythms.theta.mag * rhythms.theta.phase.sin();
@@ -580,7 +580,7 @@ impl<N: NeuralCore, B: SoundBody> Individual<N, B> {
                 (self.commitment.clamp(0.0, 1.0) * satisfaction) - habituation_penalty;
             stay_prob = stay_prob.clamp(0.0, 1.0);
 
-            if improvement > 0.0 {
+            if improvement > 0.1 {
                 self.target_freq = best_freq;
             } else {
                 let mut rng = rand::rng();
@@ -596,7 +596,7 @@ impl<N: NeuralCore, B: SoundBody> Individual<N, B> {
             * (self.target_freq.max(1e-3) / current_freq.max(1e-3))
                 .log2()
                 .abs();
-        let move_threshold = 30.0;
+        let move_threshold = 10.0;
         if distance_cents > move_threshold {
             self.breath_gain = (self.breath_gain - dt * 1.5).max(0.0);
             if self.breath_gain < 0.1 {

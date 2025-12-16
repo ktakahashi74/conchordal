@@ -399,7 +399,8 @@ pub fn plot_population_dynamics(ui: &mut egui::Ui, agents: &[AgentStateInfo], he
             let r = (50.0 + 205.0 * t) as u8;
             let g = (120.0 + 40.0 * (1.0 - t)) as u8;
             let b = (230.0 * (1.0 - t) + 30.0 * t) as u8;
-            let radius = (agent.integration_window * 40.0).clamp(2.0, 20.0);
+            // 時間窓の対数を取ることで、周波数軸（logスケール）に対してサイズの変化を線形にする
+            let radius = (agent.integration_window.max(1.0).log2() * 4.0).clamp(3.0, 20.0);
             plot_ui.points(
                 Points::new(format!("agent-{}", agent.id), vec![[x, y]])
                     .radius(radius as f32)

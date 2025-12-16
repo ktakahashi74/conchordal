@@ -559,7 +559,13 @@ impl<N: NeuralCore, B: SoundBody> Individual<N, B> {
                 let score = landscape.evaluate_pitch(clamped);
                 let distance_oct = (clamped.max(1.0).log2() - current_freq.log2()).abs();
                 let penalty = distance_oct * self.integration_window * 0.5;
-                let adjusted = score - penalty;
+                // Spectral tilt pressure encourages 1/f balance (reduces upward masking and adapts to efficient auditory coding).
+                let satiety = landscape.get_spectral_satiety(clamped);
+                let overcrowding_weight = 2.0;
+                let mut adjusted = score - penalty;
+                if satiety > 1.0 {
+                    adjusted -= (satiety - 1.0) * overcrowding_weight;
+                }
                 if adjusted > best_score {
                     best_score = adjusted;
                     best_freq = clamped;

@@ -461,6 +461,17 @@ impl Landscape {
     pub fn get_crowding_at(&self, freq_hz: f32) -> f32 {
         sample_linear(&self.amps_last, self.nsgt_rt.space(), freq_hz)
     }
+
+    pub fn get_spectral_satiety(&self, freq_hz: f32) -> f32 {
+        if freq_hz <= 0.0 {
+            return 0.0;
+        }
+        // Spectral tilt pressure: higher bands reach "full" with less energy (1/f-like).
+        let amp = sample_linear(&self.amps_last, self.nsgt_rt.space(), freq_hz).max(0.0);
+        let k = 1000.0f32; // reference frequency for satiety scaling
+        let weight = freq_hz / k;
+        amp * weight
+    }
 }
 
 impl Default for LandscapeFrame {

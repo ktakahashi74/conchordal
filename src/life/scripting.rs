@@ -680,29 +680,35 @@ mod tests {
 
     #[test]
     fn sample_script_file_executes() {
-        let scenario = ScriptHost::load_script("samples/sample_scenario.rhai")
+        let scenario = ScriptHost::load_script("samples/01_fundamentals/spawn_basics.rhai")
             .expect("sample script should run");
         assert!(!scenario.scenes.is_empty());
     }
 
     #[test]
     fn all_sample_scripts_parse() {
-        for entry in std::fs::read_dir("samples").expect("samples dir exists") {
-            let path = entry.expect("dir entry").path();
-            let name = path
-                .file_name()
-                .and_then(|s| s.to_str())
-                .unwrap_or_default()
-                .to_string();
-            if !name.ends_with(".rhai")
-                || name.starts_with('#')
-                || name.starts_with('.')
-                || name.ends_with('~')
-            {
-                continue;
+        let mut stack = vec![std::path::PathBuf::from("samples")];
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).expect("samples dir exists") {
+                let path = entry.expect("dir entry").path();
+                let name = path
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or_default()
+                    .to_string();
+                if name.starts_with('#') || name.starts_with('.') || name.ends_with('~') {
+                    continue;
+                }
+                if path.is_dir() {
+                    stack.push(path);
+                    continue;
+                }
+                if path.extension().and_then(|s| s.to_str()) != Some("rhai") {
+                    continue;
+                }
+                ScriptHost::load_script(path.to_str().expect("path str"))
+                    .unwrap_or_else(|e| panic!("script {name} should parse: {e}"));
             }
-            ScriptHost::load_script(path.to_str().expect("path str"))
-                .unwrap_or_else(|e| panic!("script {name} should parse: {e}"));
         }
     }
 }

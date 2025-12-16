@@ -136,13 +136,10 @@ impl Population {
             .iter()
             .filter_map(|a| {
                 let meta = a.metadata();
-                if let Some(t) = &meta.tag {
-                    if t != tag {
-                        return None;
-                    }
-                } else {
+                let Some(t) = &meta.tag else { return None };
+                if !wildcard_match(tag, t) {
                     return None;
-                }
+                };
                 if let Some(g) = group_idx
                     && meta.group_idx != g
                 {
@@ -638,4 +635,36 @@ impl Population {
         }
         &self.buffers.amps
     }
+}
+
+fn wildcard_match(pattern: &str, text: &str) -> bool {
+    fn helper(pat: &[u8], text: &[u8]) -> bool {
+        if pat.is_empty() {
+            return text.is_empty();
+        }
+        match pat[0] {
+            b'*' => {
+                if pat.len() == 1 {
+                    return true;
+                }
+                for i in 0..=text.len() {
+                    if helper(&pat[1..], &text[i..]) {
+                        return true;
+                    }
+                }
+                false
+            }
+            c => {
+                if text.is_empty() || c != text[0] {
+                    false
+                } else {
+                    helper(&pat[1..], &text[1..])
+                }
+            }
+        }
+    }
+    if pattern == "*" {
+        return true;
+    }
+    helper(pattern.as_bytes(), text.as_bytes())
 }

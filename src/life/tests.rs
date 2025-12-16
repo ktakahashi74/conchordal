@@ -60,6 +60,62 @@ fn test_population_add_remove_agent() {
 }
 
 #[test]
+fn wildcard_target_removes_matching_agents() {
+    let params = PopulationParams {
+        initial_tones_hz: vec![],
+        amplitude: 0.1,
+    };
+    let mut pop = Population::new(params);
+    let landscape = LandscapeFrame::default();
+
+    let life = LifecycleConfig::Decay {
+        initial_energy: 1.0,
+        half_life_sec: 1.0,
+        attack_sec: 0.01,
+    };
+    let agent_cfg1 = IndividualConfig::PureTone {
+        freq: 440.0,
+        amp: 0.5,
+        phase: None,
+        rhythm_freq: None,
+        rhythm_sensitivity: None,
+        commitment: None,
+        habituation_sensitivity: None,
+        brain: BrainConfig::Entrain {
+            lifecycle: life.clone(),
+        },
+        tag: Some("test_a".to_string()),
+    };
+    let agent_cfg2 = IndividualConfig::PureTone {
+        freq: 330.0,
+        amp: 0.4,
+        phase: None,
+        rhythm_freq: None,
+        rhythm_sensitivity: None,
+        commitment: None,
+        habituation_sensitivity: None,
+        brain: BrainConfig::Entrain { lifecycle: life },
+        tag: Some("test_b".to_string()),
+    };
+    pop.apply_action(Action::AddAgent { agent: agent_cfg1 }, &landscape, None);
+    pop.apply_action(Action::AddAgent { agent: agent_cfg2 }, &landscape, None);
+    assert_eq!(pop.individuals.len(), 2);
+
+    pop.apply_action(
+        Action::RemoveAgent {
+            target: "test_*".to_string(),
+        },
+        &landscape,
+        None,
+    );
+    assert_eq!(
+        pop.individuals.len(),
+        0,
+        "Wildcard should remove both agents"
+    );
+}
+
+#[test]
 fn test_conductor_timing() {
     // 1. Create a Scenario with an event at T=1.0s
     let action = Action::Finish; // Simple marker action

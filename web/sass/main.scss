@@ -192,7 +192,7 @@ a {
     text-align: center;
     background:
         linear-gradient(135deg, rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.4)),
-        url('/conc.jpg') center/cover no-repeat;
+        url('/conc.jpg') center top/cover no-repeat;
     color: $text-primary;
 }
 
@@ -330,7 +330,7 @@ a {
 
 .page-meta {
     color: $text-muted;
-    font-size: 0.875rem;
+    font-size: 1rem; // Adjusted from 0.875rem
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -530,4 +530,63 @@ a {
         padding: $spacing-sm $spacing-lg;
         font-size: 0.875rem;
     }
+}
+
+// Minimal Styles for Hero Content (Text & Links)
+
+.hero-intro {
+    font-size: 1.125rem;
+    line-height: 1.8;
+    color: $text-secondary;
+    max-width: 600px;
+    margin: $spacing-xl auto;
+    font-weight: 300;
+    
+    p {
+        margin-bottom: $spacing-md;
+    }
+}
+
+.hero-links {
+    margin-top: $spacing-xl;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: $spacing-md;
+    flex-wrap: wrap;
+    font-family: $font-family-mono;
+    font-size: 0.9rem;
+    letter-spacing: 0.05em;
+}
+
+.minimal-link {
+    color: $text-muted;
+    text-transform: uppercase;
+    position: relative;
+    padding: $spacing-xs 0;
+    text-decoration: none;
+    
+    &::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 0;
+        height: 1px;
+        background-color: $accent-primary;
+        transition: width 0.3s ease;
+    }
+
+    &:hover {
+        color: $text-primary;
+        
+        &::after {
+            width: 100%;
+        }
+    }
+}
+
+.link-divider {
+    color: $border-light;
+    font-size: 0.8em;
 }

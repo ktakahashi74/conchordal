@@ -17,27 +17,47 @@
     <div class="container">
         <header class="page-header">
             <h1 class="page-title">{{ page.title }}</h1>
-            {% set author = page.author or page.extra.author %}
-            {% set author_email = page.author_email or page.extra.author_email %}
-            {% set show_date = page.extra.show_date is not defined or page.extra.show_date %}
-            {% if (show_date and page.date) or author or author_email %}
+            
+            {% if (page.date and (page.extra.show_date is not defined or page.extra.show_date)) or (page.extra.author is defined) or (page.extra.author_email is defined) %}
             <div class="page-meta">
-                {% if show_date and page.date %}
+                {% if page.date and (page.extra.show_date is not defined or page.extra.show_date) %}
                 <time class="page-date" datetime="{{ page.date }}">
                     {{ page.date | date(format="%B %d, %Y") }}
                 </time>
                 {% endif %}
-                {% if author %}
-                <span class="page-author">{{ author }}</span>
+                {% if page.extra.author is defined %}
+                <span class="page-author">{{ page.extra.author }}</span>
                 {% endif %}
-                {% if author_email %}
-                <a class="page-author-email" href="mailto:{{ author_email }}">{{ author_email }}</a>
+                {% if page.extra.author_email is defined %}
+                <a class="page-author-email" href="mailto:{{ page.extra.author_email }}">{{ page.extra.author_email }}</a>
                 {% endif %}
             </div>
             {% endif %}
         </header>
 
         <div class="page-content">
+            {% if page.toc %}
+            <div class="toc-container" style="background: #1a1a1a; padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem; border: 1px solid #27272a;">
+                <h3 style="margin-top: 0; color: #e4e4e7; font-size: 1.25rem;">Table of Contents</h3>
+                <ul style="padding-left: 1.5rem; margin-bottom: 0;">
+                {% for h1 in page.toc %}
+                    <li style="margin-bottom: 0.5rem;">
+                        <a href="{{ h1.permalink | safe }}" style="color: #a1a1aa; text-decoration: none;">{{ h1.title }}</a>
+                        {% if h1.children %}
+                            <ul style="margin-top: 0.25rem; margin-bottom: 0.25rem;">
+                                {% for h2 in h1.children %}
+                                    <li style="margin-bottom: 0.25rem;">
+                                        <a href="{{ h2.permalink | safe }}" style="color: #71717a; text-decoration: none; font-size: 0.95em;">{{ h2.title }}</a>
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                        {% endif %}
+                    </li>
+                {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+
             {{ page.content | safe }}
         </div>
 
@@ -55,3 +75,21 @@
     </div>
 </article>
 {% endblock content %}
+
+{% block scripts %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" crossorigin="anonymous">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js" crossorigin="anonymous"></script>
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        console.log("KaTeX auto-render initialized");
+        renderMathInElement(document.body, {
+          delimiters: [
+              {left: '$$', right: '$$', display: true},
+              {left: '$', right: '$', display: false},
+          ],
+          throwOnError : false
+        });
+    });
+</script>
+{% endblock scripts %}

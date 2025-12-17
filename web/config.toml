@@ -1,6 +1,5 @@
 # The URL the site will be built for
 base_url = "https://www.conchordal.org"
-title = "Conchordal"
 
 # Whether to automatically compile all Sass files in the sass directory
 compile_sass = true
@@ -12,7 +11,10 @@ build_search_index = false
 default_language = "en"
 
 [languages.en]
+title = "Conchordal"
+
 [languages.ja]
+title = "Conchordal"
 
 [markdown]
 # Whether to do syntax highlighting

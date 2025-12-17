@@ -2,14 +2,11 @@
 title = "Manifesto Conchordal"
 description = "音楽とは、物理的な振動現象と、それを受け取る人間の認知システムとの間に生じる相互作用の劇である"
 date = 2025-12-25
+
+[extra]
 author = "Koichi Takahashi"
 author_email = "info@conchordal.org"
-show_date = false
 +++
-
-**Author:** Koichi Takahashi  
-**Email:** [info@conchordal.org](mailto:info@conchordal.org)  
-**Date:** 2025年12月25日
 
 **音楽とは、物理的な振動現象と、それを受け取る人間の認知システムとの間に生じる相互作用の劇である。**
 

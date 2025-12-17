@@ -2,14 +2,11 @@
 title = "Manifesto Conchordal"
 description = "Music is the drama that unfolds between physical vibration and the human cognitive system that receives it"
 date = 2025-12-25
+
+[extra]
 author = "Koichi Takahashi"
 author_email = "info@conchordal.org"
-show_date = false
 +++
-
-**Author:** Koichi Takahashi  
-**Email:** [info@conchordal.org](mailto:info@conchordal.org)  
-**Date:** December 25, 2025
 
 ***Music is the drama that unfolds between physical vibration and the human cognitive system that receives it.***
 

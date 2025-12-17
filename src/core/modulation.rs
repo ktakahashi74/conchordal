@@ -100,8 +100,10 @@ impl RhythmDynamics {
         self.alpha_energy = a_alpha * self.alpha_energy + (1.0 - a_alpha) * target_alpha;
         self.alpha_energy = self.alpha_energy.clamp(0.0, 1.0);
 
-        let theta_mag = flux_env.clamp(0.0, 1.0);
-        let delta_mag = theta_mag;
+        // Presence follows the smoothed flux to keep beat/measure magnitudes informative.
+        let presence = (self.last_flux * 2.0).clamp(0.1, 1.0);
+        let theta_mag = presence;
+        let delta_mag = presence;
 
         self.last = NeuralRhythms {
             delta: NeuralRhythm {

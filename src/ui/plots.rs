@@ -1,5 +1,5 @@
 use crate::ui::viewdata::AgentStateInfo;
-use egui::{Align2, Color32, FontId, Id, Stroke, Vec2b};
+use egui::{Align2, Color32, FontId, Id, RichText, Stroke, Vec2, Vec2b};
 use egui_plot::{
     Bar, BarChart, GridInput, GridMark, Line, LineStyle, Plot, PlotPoints, Points, VLine,
     log_grid_spacer,
@@ -180,180 +180,122 @@ pub fn time_plot(ui: &mut egui::Ui, title: &str, fs: f64, samples: &[f32], heigh
     });
 }
 
-fn phase_to_unit(phase: f64) -> f64 {
-    let mut p = phase % std::f64::consts::TAU;
-    if p < 0.0 {
-        p += std::f64::consts::TAU;
-    }
-    p
-}
-
-/// Visualize neural phases over time as sawtooth traces with wrap markers.
-pub fn neural_phase_plot(
+/// Show magnitude history for neural rhythms to avoid phase aliasing.
+pub fn neural_activity_plot(
     ui: &mut egui::Ui,
     history: &VecDeque<(f64, crate::core::modulation::NeuralRhythms)>,
     height: f32,
 ) {
-    type BandAccessor = fn(&crate::core::modulation::NeuralRhythms) -> (f64, f32);
-    let tau = std::f64::consts::TAU;
     if history.len() < 2 {
         ui.label("No rhythm data");
         return;
     }
 
-    let x_min = history.front().map(|(t, _)| *t).unwrap_or(0.0);
-    let x_max = history.back().map(|(t, _)| *t).unwrap_or(5.0);
+    let x_max = history.back().map(|(t, _)| *t).unwrap_or(0.0);
     let window_start = x_max - 5.0;
-    let window_end = window_start + 5.0;
-    let y_ticks = vec![0.0, std::f64::consts::PI, tau];
+    let window_end = (window_start + 5.0).max(window_start + 0.1);
 
-    let bands: [(&str, Color32, BandAccessor); 4] = [
-        ("Delta", Color32::from_rgb(80, 180, 255), |r| {
-            (r.delta.phase as f64, r.delta.mag)
-        }),
-        ("Theta", Color32::from_rgb(70, 225, 135), |r| {
-            (r.theta.phase as f64, r.theta.mag)
-        }),
-        ("Alpha", Color32::from_rgb(255, 215, 60), |r| {
-            (r.alpha.phase as f64, r.alpha.mag)
-        }),
-        ("Beta", Color32::from_rgb(255, 110, 90), |r| {
-            (r.beta.phase as f64, r.beta.mag)
-        }),
-    ];
-
-    Plot::new("neural_phase_plot")
+    Plot::new("neural_activity")
         .height(height)
         .allow_drag(true)
         .allow_scroll(true)
         .include_y(0.0)
-        .include_y(tau)
+        .include_y(1.0)
         .include_x(window_start)
         .include_x(window_end)
         .default_x_bounds(window_start, window_end)
-        .y_grid_spacer(move |_input| {
-            y_ticks
-                .iter()
-                .enumerate()
-                .map(|(i, &v)| {
-                    let step_size = if i + 1 < y_ticks.len() {
-                        y_ticks[i + 1] - v
-                    } else if i > 0 {
-                        y_ticks[i] - y_ticks[i - 1]
-                    } else {
-                        std::f64::consts::PI
-                    };
-                    GridMark {
-                        value: v,
-                        step_size,
-                    }
-                })
-                .collect()
-        })
-        .y_axis_formatter(|mark, _| {
-            let v = mark.value;
-            if (v).abs() < 1e-3 {
-                "0".to_string()
-            } else if (v - std::f64::consts::PI).abs() < 1e-3 {
-                "π".to_string()
-            } else if (v - std::f64::consts::TAU).abs() < 1e-3 {
-                "2π".to_string()
-            } else {
-                String::new()
-            }
-        })
+        .y_axis_formatter(|mark, _| format!("{:.1}", mark.value))
         .x_axis_formatter(|mark, _| format!("{:.1} s", mark.value))
         .show(ui, |plot_ui| {
-            for (band_idx, (label, color, accessor)) in bands.iter().enumerate() {
-                let mut segments: Vec<(PlotPoints, f32)> = Vec::new();
-                let mut marker_lines: Vec<(f64, Color32, f32, LineStyle)> = Vec::new();
-                let mut marker_points: Vec<([f64; 2], Color32, f32)> = Vec::new();
+            let colors = [
+                (Color32::from_rgb(80, 180, 255), "Delta (Phase)"),
+                (Color32::from_rgb(70, 225, 135), "Theta (Phase)"),
+                (Color32::from_rgb(255, 215, 60), "Alpha (Mag)"),
+                (Color32::from_rgb(255, 110, 90), "Beta (Mag)"),
+            ];
 
-                let mut iter = history.iter();
-                let Some((t0, r0)) = iter.next() else {
-                    continue;
-                };
-                let (p0_raw, m0) = accessor(r0);
-                let mut prev_phase = phase_to_unit(p0_raw);
-                let mut prev_t = *t0;
-                let mut current_points = vec![[prev_t, prev_phase]];
-                let mut mags = vec![m0];
+            for (idx, (color, name)) in colors.iter().enumerate() {
+                let is_phase = idx <= 1;
+                let mut segments: Vec<(Vec<[f64; 2]>, Color32)> = Vec::new();
+                let mut current_pts: Vec<[f64; 2]> = Vec::new();
+                let mut current_opacity: f32 = 1.0;
+                let mut prev_val = 0.0f64;
+                let mut prev_t = 0.0f64;
+                let mut has_prev = false;
 
-                for (t1, r1) in history.iter().skip(1) {
-                    let (p_raw, m) = accessor(r1);
-                    let phase = phase_to_unit(p_raw);
-                    let wrap = prev_phase - phase > std::f64::consts::PI;
-                    if wrap {
-                        let delta_phase = (phase + tau) - prev_phase;
-                        if delta_phase.abs() > f64::EPSILON {
-                            let frac = (tau - prev_phase) / delta_phase;
-                            let t_cross = prev_t + frac * (*t1 - prev_t);
-                            current_points.push([t_cross, tau]);
-                            mags.push(m);
-                            let avg = mags.iter().copied().sum::<f32>() / mags.len() as f32;
-                            segments.push((PlotPoints::from(current_points.clone()), avg));
+                for (t, r) in history {
+                    let (val, mag) = match idx {
+                        0 => (
+                            (r.delta.phase as f64).rem_euclid(std::f64::consts::TAU)
+                                / std::f64::consts::TAU,
+                            r.delta.mag,
+                        ),
+                        1 => (
+                            (r.theta.phase as f64).rem_euclid(std::f64::consts::TAU)
+                                / std::f64::consts::TAU,
+                            r.theta.mag,
+                        ),
+                        2 => (r.alpha.mag.clamp(0.0, 1.0) as f64, r.alpha.mag),
+                        3 => (r.beta.mag.clamp(0.0, 1.0) as f64, r.beta.mag),
+                        _ => (0.0, 0.0),
+                    };
 
-                            let vis = ((1.0f32 + (m * 50.0)).ln() / (1.0f32 + 50.0).ln())
-                                .clamp(0.35, 1.0);
-                            let marker_alpha = vis;
-                            if marker_alpha > 0.25 {
-                                match band_idx {
-                                    0 => marker_lines.push((
-                                        t_cross,
-                                        color.gamma_multiply(marker_alpha),
-                                        1.5,
-                                        LineStyle::Dotted { spacing: 5.0 },
-                                    )),
-                                    1 => marker_points.push((
-                                        [t_cross, 0.0],
-                                        color.gamma_multiply(marker_alpha),
-                                        3.0,
-                                    )),
-                                    _ => {}
-                                }
-                            }
+                    let raw_opacity = 0.3 + 0.7 * mag.clamp(0.0, 1.0);
+                    let new_opacity = ((raw_opacity * 10.0).round() / 10.0) as f32;
 
-                            current_points.clear();
-                            mags.clear();
-                            current_points.push([t_cross, 0.0]);
-                            mags.push(m);
-                            current_points.push([*t1, phase]);
-                            mags.push(m);
-                        }
-                    } else {
-                        current_points.push([*t1, phase]);
-                        mags.push(m);
+                    if !has_prev {
+                        current_opacity = new_opacity;
+                        current_pts.push([*t, val]);
+                        prev_val = val;
+                        prev_t = *t;
+                        has_prev = true;
+                        continue;
                     }
-                    prev_phase = phase;
-                    prev_t = *t1;
+
+                    let is_wrap = is_phase && (val - prev_val < -0.5);
+                    let is_opacity_change = (new_opacity - current_opacity).abs() > 0.05;
+
+                    if is_wrap {
+                        let dt = *t - prev_t;
+                        let v_diff = (val + 1.0) - prev_val;
+                        if v_diff > 1e-5 {
+                            let frac = (1.0 - prev_val) / v_diff;
+                            let t_cross = prev_t + dt * frac;
+                            current_pts.push([t_cross, 1.0]);
+                            segments.push((current_pts, color.gamma_multiply(current_opacity)));
+                            current_pts = Vec::new();
+                            current_pts.push([t_cross, 0.0]);
+                        } else {
+                            segments.push((current_pts, color.gamma_multiply(current_opacity)));
+                            current_pts = Vec::new();
+                        }
+
+                        current_pts.push([*t, val]);
+                        current_opacity = new_opacity;
+                    } else if is_opacity_change {
+                        segments.push((current_pts.clone(), color.gamma_multiply(current_opacity)));
+                        let last_pt = *current_pts.last().unwrap();
+                        current_pts = vec![last_pt, [*t, val]];
+                        current_opacity = new_opacity;
+                    } else {
+                        current_pts.push([*t, val]);
+                    }
+
+                    prev_val = val;
+                    prev_t = *t;
                 }
 
-                if !current_points.is_empty() {
-                    let avg = mags.iter().copied().sum::<f32>() / mags.len() as f32;
-                    segments.push((PlotPoints::from(current_points), avg));
+                if !current_pts.is_empty() {
+                    segments.push((current_pts, color.gamma_multiply(current_opacity)));
                 }
 
-                let mut first = true;
-                for (points, mag_avg) in segments {
-                    let vis =
-                        ((1.0f32 + (mag_avg * 50.0)).ln() / (1.0f32 + 50.0).ln()).clamp(0.35, 1.0);
-                    let c = color.gamma_multiply(vis);
-                    let mut line = Line::new("", points).color(c);
-                    if first {
-                        line = line.name(*label);
-                        first = false;
+                for (seg_i, (pts, col)) in segments.into_iter().enumerate() {
+                    let series = PlotPoints::from(pts);
+                    let mut line = Line::new("", series).color(col).width(2.0);
+                    if seg_i == 0 {
+                        line = line.name(*name);
                     }
                     plot_ui.line(line);
-                }
-
-                for (x, c, width, style) in marker_lines {
-                    plot_ui.vline(VLine::new("", x).color(c).width(width).style(style));
-                }
-                for (pt, c, radius) in marker_points {
-                    let pts = Points::new("", PlotPoints::from(vec![pt]))
-                        .color(c)
-                        .radius(radius);
-                    plot_ui.points(pts);
                 }
             }
         });
@@ -408,11 +350,15 @@ pub fn neural_compass(
     rhythms: &crate::core::modulation::NeuralRhythms,
     height: f32,
 ) {
+    let color_delta = Color32::from_rgb(80, 180, 255);
+    let color_theta = Color32::from_rgb(70, 225, 135);
+    let color_alpha = Color32::from_rgb(255, 215, 60);
+    let color_beta = Color32::from_rgb(255, 110, 90);
     let bands = [
-        ("Delta", Color32::from_rgb(52, 152, 219), rhythms.delta),
-        ("Theta", Color32::from_rgb(46, 204, 113), rhythms.theta),
-        ("Alpha", Color32::from_rgb(241, 196, 15), rhythms.alpha),
-        ("Beta", Color32::from_rgb(231, 76, 60), rhythms.beta),
+        ("Delta", color_delta, rhythms.delta),
+        ("Theta", color_theta, rhythms.theta),
+        ("Alpha", color_alpha, rhythms.alpha),
+        ("Beta", color_beta, rhythms.beta),
     ];
 
     let cheight = (height / 4.0) * 0.95;
@@ -451,6 +397,128 @@ pub fn neural_compass(
                 FontId::proportional(12.0),
                 color,
             );
+        }
+    });
+}
+
+/// Draw a mandala-style rhythm compass combining meter, beat, stability, and error without fast rotation.
+pub fn draw_rhythm_mandala(
+    ui: &mut egui::Ui,
+    rhythms: &crate::core::modulation::NeuralRhythms,
+    size: Vec2,
+) {
+    let side = size.x.min(size.y).clamp(80.0, 200.0);
+    let scale = (side / 150.0).clamp(0.6, 1.2);
+    let (rect, _resp) = ui.allocate_exact_size(Vec2::splat(side), egui::Sense::hover());
+    let painter = ui.painter_at(rect);
+
+    let center = rect.center();
+    let radius = rect.width().min(rect.height()) * 0.42;
+    let start_angle = -std::f32::consts::FRAC_PI_2;
+    let wrap = |p: f32| {
+        let mut v = p % std::f32::consts::TAU;
+        if v < 0.0 {
+            v += std::f32::consts::TAU;
+        }
+        v
+    };
+
+    // Delta: orbiting marker outside the base ring.
+    let get_visuals = |mag: f32, color: Color32| {
+        let m = mag.clamp(0.0, 1.0);
+        let alpha = 0.3 + 0.7 * m;
+        let weight = m;
+        (color.gamma_multiply(alpha), weight)
+    };
+
+    let color_delta = Color32::from_rgb(80, 180, 255);
+    let color_theta = Color32::from_rgb(70, 225, 135);
+    let color_alpha = Color32::from_rgb(255, 215, 60);
+    let color_beta = Color32::from_rgb(255, 110, 90);
+
+    // Delta: progress arc as the meter with magnitude-driven opacity/width.
+    let delta_phase = wrap(rhythms.delta.phase);
+    let outer_r = radius * 1.15;
+    let (d_color, d_weight) = get_visuals(rhythms.delta.mag, color_delta);
+    painter.circle_stroke(
+        center,
+        outer_r,
+        Stroke::new(1.0, d_color.gamma_multiply(0.2)),
+    );
+    if delta_phase > 0.01 {
+        let steps = (delta_phase * 12.0).max(2.0) as usize;
+        let points: Vec<egui::Pos2> = (0..=steps)
+            .map(|i| {
+                let angle = start_angle + (delta_phase * i as f32 / steps as f32);
+                center + egui::vec2(angle.cos(), angle.sin()) * outer_r
+            })
+            .collect();
+        let width = 2.0 + d_weight * 4.0;
+        painter.add(egui::Shape::line(points, Stroke::new(width, d_color)));
+    }
+    let delta_tip_angle = start_angle + delta_phase;
+    let delta_tip_pos = center + egui::vec2(delta_tip_angle.cos(), delta_tip_angle.sin()) * outer_r;
+    painter.circle_filled(delta_tip_pos, 2.0 + d_weight * 2.0, d_color);
+
+    // Theta: base ring plus a slow cursor.
+    let base_circle = Color32::from_gray(210);
+    painter.circle_stroke(center, radius, Stroke::new(2.0, base_circle));
+    let (t_color, t_weight) = get_visuals(rhythms.theta.mag, color_theta);
+    let theta_angle = start_angle + wrap(rhythms.theta.phase);
+    let theta_pos = center + egui::vec2(theta_angle.cos(), theta_angle.sin()) * radius;
+    let dot_radius = 3.0 + t_weight * 5.0;
+    painter.circle_filled(theta_pos, dot_radius, t_color);
+    painter.circle_stroke(
+        theta_pos,
+        dot_radius + 2.0,
+        Stroke::new(1.0, t_color.gamma_multiply(0.5)),
+    );
+    painter.circle_filled(center, 3.0, base_circle);
+
+    // Alpha: stability axis along the vertical.
+    let alpha_mag = rhythms.alpha.mag.clamp(0.0, 1.0);
+    let alpha_vis = 0.25 + 0.75 * alpha_mag;
+    let alpha_color = color_alpha.gamma_multiply(alpha_vis);
+    let alpha_width = 2.0 + 6.0 * alpha_mag;
+    painter.line_segment(
+        [
+            center + egui::vec2(0.0, -radius),
+            center + egui::vec2(0.0, radius),
+        ],
+        Stroke::new(alpha_width, alpha_color),
+    );
+
+    // Beta: prediction error cross-grid.
+    let beta_mag = rhythms.beta.mag.clamp(0.0, 1.0);
+    let beta_vis = 0.2 + 0.8 * beta_mag;
+    let beta_color = color_beta.gamma_multiply(beta_vis);
+    let beta_width = 1.5 + 6.0 * beta_mag;
+    painter.line_segment(
+        [
+            center + egui::vec2(0.0, -radius),
+            center + egui::vec2(0.0, radius),
+        ],
+        Stroke::new(beta_width, beta_color),
+    );
+    painter.line_segment(
+        [
+            center + egui::vec2(-radius, 0.0),
+            center + egui::vec2(radius, 0.0),
+        ],
+        Stroke::new(beta_width, beta_color),
+    );
+    ui.add_space(6.0 * scale);
+    ui.horizontal(|ui| {
+        let labels = [
+            ("Delta", color_delta),
+            ("Theta", color_theta),
+            ("Alpha", color_alpha),
+            ("Beta", color_beta),
+        ];
+        for (label, color) in labels {
+            let size = (11.0 * scale).clamp(9.0, 12.0);
+            ui.label(RichText::new(label).color(color).size(size));
+            ui.add_space(6.0 * scale);
         }
     });
 }

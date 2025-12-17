@@ -1,5 +1,5 @@
 use crate::ui::plots::{
-    log2_plot_hz, neural_compass, neural_phase_plot, plot_population_dynamics, time_plot,
+    draw_rhythm_mandala, log2_plot_hz, neural_activity_plot, plot_population_dynamics, time_plot,
 };
 use crate::ui::viewdata::{PlaybackState, UiFrame};
 use egui::{CentralPanel, Key, TopBottomPanel, Vec2};
@@ -296,18 +296,21 @@ pub fn main_window(
         });
 
         ui.separator();
-        ui.heading("Neural Phases");
-        let height = 150.0;
+        ui.heading("Neural Activity");
+        let height = 100.0;
+        let legend_room = 12.0;
+        let block_height = height + legend_room;
         ui.horizontal(|ui| {
             ui.vertical(|ui| {
-                //ui.set_width(0.0);
-                //ui.label("Neural Phases");
-                neural_compass(ui, &frame.landscape.rhythm, height);
+                ui.set_min_height(block_height);
+                let side_len = (height - legend_room).max(60.0);
+                let side = Vec2::splat(side_len);
+                draw_rhythm_mandala(ui, &frame.landscape.rhythm, side);
             });
             ui.vertical(|ui| {
                 ui.set_min_width(ui.available_width());
-                //                ui.label("Neural Phase Slope");
-                neural_phase_plot(ui, rhythm_history, height);
+                ui.set_min_height(block_height);
+                neural_activity_plot(ui, rhythm_history, block_height);
             });
         });
 

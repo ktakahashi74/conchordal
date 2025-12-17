@@ -53,8 +53,8 @@ impl Default for RhythmDynamics {
             last_flux: 0.0,
             theta_freq: 6.0,
             coupling_strength: 20.0,
-            beta_tau: 0.15, // ~150 ms for smoother surprise
-            alpha_tau: 0.2, // ~200 ms stability build-up
+            beta_tau: 0.2, // ~200 ms for smoother surprise
+            alpha_tau: 0.5, // longer stability build-up
             last: NeuralRhythms::default(),
         }
     }
@@ -72,8 +72,9 @@ impl RhythmDynamics {
 
     pub fn update(&mut self, dt: f32, flux: f32) -> NeuralRhythms {
         let dt = dt.max(1e-4);
-        // Light smoothing on flux to avoid impulsive jitter.
-        let flux_env = 0.8 * self.last_flux + 0.2 * flux.max(0.0);
+        // Light smoothing on flux to avoid impulsive jitter, with boosted sensitivity.
+        let input_flux = flux * 5.0;
+        let flux_env = 0.8 * self.last_flux + 0.2 * input_flux.max(0.0);
         self.last_flux = flux_env;
 
         // Theta (beat) oscillator with PRC coupling toward phase 0 on flux.
@@ -93,12 +94,12 @@ impl RhythmDynamics {
 
         let a_beta = (-dt / self.beta_tau).exp();
         self.beta_energy = a_beta * self.beta_energy + (1.0 - a_beta) * error;
-        self.beta_energy = self.beta_energy.clamp(0.0, 1.0);
+        self.beta_energy = self.beta_energy.clamp(0.05, 1.0);
 
         let a_alpha = (-dt / self.alpha_tau).exp();
-        let target_alpha = (stability + 0.1).min(1.0);
+        let target_alpha = (stability + 0.1).clamp(0.0, 1.0);
         self.alpha_energy = a_alpha * self.alpha_energy + (1.0 - a_alpha) * target_alpha;
-        self.alpha_energy = self.alpha_energy.clamp(0.0, 1.0);
+        self.alpha_energy = self.alpha_energy.clamp(0.05, 1.0);
 
         // Presence follows the smoothed flux to keep beat/measure magnitudes informative.
         let presence = (self.last_flux * 2.0).clamp(0.1, 1.0);

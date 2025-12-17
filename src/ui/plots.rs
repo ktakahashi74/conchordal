@@ -453,7 +453,7 @@ pub fn draw_rhythm_mandala(
                 center + egui::vec2(angle.cos(), angle.sin()) * outer_r
             })
             .collect();
-        let width = 2.0 + d_weight * 4.0;
+        let width = 3.5 + d_weight * 5.5;
         painter.add(egui::Shape::line(points, Stroke::new(width, d_color)));
     }
     let delta_tip_angle = start_angle + delta_phase;
@@ -461,12 +461,12 @@ pub fn draw_rhythm_mandala(
     painter.circle_filled(delta_tip_pos, 2.0 + d_weight * 2.0, d_color);
 
     // Theta: base ring plus a slow cursor.
-    let base_circle = Color32::from_gray(210);
-    painter.circle_stroke(center, radius, Stroke::new(2.0, base_circle));
+    let base_circle = Color32::from_gray(180);
+    painter.circle_stroke(center, radius, Stroke::new(2.5, base_circle));
     let (t_color, t_weight) = get_visuals(rhythms.theta.mag, color_theta);
     let theta_angle = start_angle + wrap(rhythms.theta.phase);
     let theta_pos = center + egui::vec2(theta_angle.cos(), theta_angle.sin()) * radius;
-    let dot_radius = 3.0 + t_weight * 5.0;
+    let dot_radius = 4.5 + t_weight * 6.5;
     painter.circle_filled(theta_pos, dot_radius, t_color);
     painter.circle_stroke(
         theta_pos,

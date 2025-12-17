@@ -7,7 +7,7 @@
 
 use crate::core::harmonicity_kernel::HarmonicityKernel;
 use crate::core::log2space::Log2Space;
-use crate::core::modulation::{ModulationBank, NeuralRhythms};
+use crate::core::modulation::{NeuralRhythms, RhythmDynamics};
 use crate::core::nsgt_rt::RtNsgtKernelLog2;
 use crate::core::roughness_kernel::RoughnessKernel;
 
@@ -74,10 +74,8 @@ pub struct Landscape {
     /// A-weighting gains per bin for loudness correction.
     loudness_weights: Vec<f32>,
     pub rhythm: NeuralRhythms,
-    modulation_bank: Option<ModulationBank>,
+    rhythm_dynamics: RhythmDynamics,
     lp_200_state: f32,
-    lp_2k_state: f32,
-    modulation_vitality: f32,
 }
 
 impl Landscape {
@@ -100,10 +98,8 @@ impl Landscape {
             amps_last: vec![0.0; n_ch],
             loudness_weights,
             rhythm: NeuralRhythms::default(),
-            modulation_bank: None,
+            rhythm_dynamics: RhythmDynamics::default(),
             lp_200_state: 0.0,
-            lp_2k_state: 0.0,
-            modulation_vitality: 0.1,
         }
     }
 
@@ -156,9 +152,8 @@ impl Landscape {
         if self.habituation_state.len() != self.amps_last.len() {
             self.habituation_state.resize(self.amps_last.len(), 0.0);
         }
-
         // Roughness potential R
-        let (r, r_total) = self
+        let (r, _r_total) = self
             .params
             .roughness_kernel
             .potential_r_from_log2_spectrum(&self.amps_last, space);
@@ -181,6 +176,7 @@ impl Landscape {
 
         // Combined potential K (here: C - D_index)
         let k = self.params.roughness_k.max(1e-6);
+        let r_total = r.iter().copied().sum::<f32>();
         let denom_inv = 1.0 / (r_total + k);
         let weight = self.params.habituation_weight.max(0.0);
         let c: Vec<f32> = r
@@ -233,6 +229,7 @@ impl Landscape {
             .params
             .harmonicity_kernel
             .potential_h_from_log2_spectrum(&norm_env, &space);
+        let r_total = r.iter().copied().sum::<f32>();
 
         if self.habituation_state.len() != self.amps_last.len() {
             self.habituation_state.resize(self.amps_last.len(), 0.0);
@@ -313,10 +310,8 @@ impl Landscape {
             *x = 0.0;
         }
         self.rhythm = NeuralRhythms::default();
+        self.rhythm_dynamics = RhythmDynamics::default();
         self.lp_200_state = 0.0;
-        self.lp_2k_state = 0.0;
-        self.modulation_bank = None;
-        self.modulation_vitality = 0.1;
     }
 
     /// Lightweight rhythm extractor driven by time-domain audio.
@@ -326,39 +321,20 @@ impl Landscape {
         }
         let fs = self.params.fs;
         let hop_len = audio_chunk.len() as f32;
-        if self.modulation_bank.is_none() {
-            let env_rate = fs / hop_len.max(1.0);
-            let mut bank = ModulationBank::new(env_rate);
-            bank.set_vitality(self.modulation_vitality);
-            self.modulation_bank = Some(bank);
-        }
-
-        let dt = 1.0 / fs;
-        let alpha_200 = 1.0 - (-2.0 * std::f32::consts::PI * 200.0 * dt).exp();
-        let alpha_2k = 1.0 - (-2.0 * std::f32::consts::PI * 2000.0 * dt).exp();
+        let dt = hop_len / fs.max(1.0);
+        let alpha_200 = 1.0 - (-2.0 * std::f32::consts::PI * 200.0 * (1.0 / fs)).exp();
 
         let mut energy_sum = 0.0f32;
         for &s in audio_chunk {
             let x2 = s * s;
             energy_sum += x2;
-            // Lowpass at 200 Hz on energy
             self.lp_200_state += alpha_200 * (x2 - self.lp_200_state);
-            // Lowpass at 2 kHz on energy
-            self.lp_2k_state += alpha_2k * (x2 - self.lp_2k_state);
         }
 
-        let mean_energy = energy_sum / hop_len.max(1.0);
-        let low_energy = self.lp_200_state.max(0.0);
-        let mid_energy = (self.lp_2k_state - self.lp_200_state).max(0.0);
-        let high_energy = (mean_energy - self.lp_2k_state).max(0.0);
+        let current_energy = energy_sum / hop_len.max(1.0);
+        let flux = (current_energy - self.lp_200_state).max(0.0);
 
-        let low = low_energy.sqrt();
-        let mid = mid_energy.sqrt();
-        let high = high_energy.sqrt();
-
-        if let Some(bank) = &mut self.modulation_bank {
-            self.rhythm = bank.update(low, mid, high);
-        }
+        self.rhythm = self.rhythm_dynamics.update(dt, flux);
     }
 
     pub fn consonance_at(&self, freq_hz: f32) -> f32 {
@@ -381,10 +357,7 @@ impl Landscape {
     }
 
     pub fn set_vitality(&mut self, v: f32) {
-        self.modulation_vitality = v;
-        if let Some(bank) = &mut self.modulation_bank {
-            bank.set_vitality(v);
-        }
+        self.rhythm_dynamics.set_vitality(v);
     }
 
     pub fn set_roughness_k(&mut self, k: f32) {

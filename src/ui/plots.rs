@@ -152,15 +152,6 @@ pub fn log2_plot_hz(
 
     plot.show(ui, |plot_ui| {
         plot_ui.line(line);
-
-        // === 任意: 半音ガイドライン ===
-        // for note in 21..=108 {
-        //     let f = 440.0 * 2f32.powf((note as f32 - 69.0) / 12.0);
-        //     if (20.0..=20_000.0).contains(&f) {
-        //         let x = (f as f64).log2();
-        //         plot_ui.vline(egui_plot::VLine::new(x).color(egui::Color32::DARK_GRAY));
-        //     }
-        // }
     });
 }
 
@@ -174,8 +165,6 @@ pub fn time_plot(ui: &mut egui::Ui, title: &str, fs: f64, samples: &[f32], heigh
     let line = Line::new("wave", points);
 
     ui.vertical(|ui| {
-        //ui.label(title);
-
         Plot::new(title)
             .height(height)
             .allow_scroll(false)
@@ -304,8 +293,10 @@ pub fn neural_phase_plot(
                             let avg = mags.iter().copied().sum::<f32>() / mags.len() as f32;
                             segments.push((PlotPoints::from(current_points.clone()), avg));
 
-                            let marker_alpha = (m * 4.0).clamp(0.2, 1.0);
-                            if marker_alpha > 0.3 {
+                            let vis = ((1.0f32 + (m * 50.0)).ln() / (1.0f32 + 50.0).ln())
+                                .clamp(0.35, 1.0);
+                            let marker_alpha = vis;
+                            if marker_alpha > 0.25 {
                                 match band_idx {
                                     0 => marker_lines.push((
                                         t_cross,
@@ -344,8 +335,9 @@ pub fn neural_phase_plot(
 
                 let mut first = true;
                 for (points, mag_avg) in segments {
-                    let alpha = (mag_avg * 4.0).clamp(0.2, 1.0);
-                    let c = color.gamma_multiply(alpha);
+                    let vis =
+                        ((1.0f32 + (mag_avg * 50.0)).ln() / (1.0f32 + 50.0).ln()).clamp(0.35, 1.0);
+                    let c = color.gamma_multiply(vis);
                     let mut line = Line::new("", points).color(c);
                     if first {
                         line = line.name(*label);
@@ -442,12 +434,13 @@ pub fn neural_compass(
                 Stroke::new(1.0, Color32::WHITE.gamma_multiply(0.3)),
             );
 
-            // Needle
-            let vis_mag = (rhythm.mag * 1.5).min(1.0); // gentler boost to avoid saturation
-            let length = radius * (0.1 + 0.9 * vis_mag);
+            // Needle with log-style gain and a visible floor.
+            let vis_mag =
+                ((1.0f32 + (rhythm.mag * 50.0)).ln() / (1.0f32 + 50.0).ln()).clamp(0.35, 1.0);
+            let length = radius * (0.3 + 0.7 * vis_mag);
             let angle = rhythm.phase - std::f32::consts::FRAC_PI_2;
             let tip = center + egui::vec2(angle.cos(), angle.sin()) * length;
-            let thickness = 1.5 + 3.0 * vis_mag;
+            let thickness = 2.0 + 3.8 * vis_mag;
             painter.line_segment([center, tip], Stroke::new(thickness, color));
 
             // Label

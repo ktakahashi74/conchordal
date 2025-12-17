@@ -14,97 +14,114 @@ pub struct NeuralRhythms {
     pub beta: NeuralRhythm,  // 15–30 Hz
 }
 
-struct Resonator {
-    rho: f32,
-    cos_t: f32,
-    sin_t: f32,
-    state_re: f32,
-    state_im: f32,
-    scale: f32,
-    vitality: f32,
-}
-
-impl Resonator {
-    fn new(center_hz: f32, q: f32, sample_rate: f32) -> Self {
-        let omega = 2.0 * PI * center_hz / sample_rate;
-        let cos_t = omega.cos();
-        let sin_t = omega.sin();
-        // Pole radius from Q; tighter q -> slower decay.
-        let rho = (-omega / (2.0 * q.max(0.1))).exp().min(0.9999);
-        Self {
-            rho,
-            cos_t,
-            sin_t,
-            state_re: 0.0,
-            state_im: 0.0,
-            scale: 1.0 - rho,
-            vitality: 0.0,
-        }
+fn wrap_phase(phase: &mut f32) {
+    let tau = 2.0 * PI;
+    while *phase >= tau {
+        *phase -= tau;
     }
-
-    fn process(&mut self, x: f32) -> NeuralRhythm {
-        let mag_sq = self.state_re * self.state_re + self.state_im * self.state_im;
-        let effective_rho = self.rho + self.vitality * (1.0 - mag_sq);
-        // Rotate previous state
-        let re_rot = self.state_re * self.cos_t - self.state_im * self.sin_t;
-        let im_rot = self.state_re * self.sin_t + self.state_im * self.cos_t;
-        // Decay and inject new energy
-        let re = effective_rho * re_rot + self.scale * x;
-        let im = effective_rho * im_rot;
-        self.state_re = re;
-        self.state_im = im;
-        let mag = (re * re + im * im).sqrt();
-        let phase = im.atan2(re);
-        NeuralRhythm { mag, phase }
+    while *phase < 0.0 {
+        *phase += tau;
     }
 }
 
-/// Extracts neural-band modulations from 3-band energy envelopes.
-pub struct ModulationBank {
-    bands: [Resonator; 4],
+/// Predictive-coding rhythm dynamics driven by transient flux.
+#[derive(Clone, Debug)]
+pub struct RhythmDynamics {
+    pub theta_phase: f32,
+    pub delta_phase: f32,
+    pub alpha_phase: f32,
+    pub beta_phase: f32,
+    pub beta_energy: f32,
+    pub alpha_energy: f32,
+    pub last_flux: f32,
+    theta_freq: f32,
+    coupling_strength: f32,
+    beta_tau: f32,
+    alpha_tau: f32,
     last: NeuralRhythms,
-    long_term_avg: f32,
-    vitality: f32,
 }
 
-impl ModulationBank {
-    pub fn new(envelope_rate_hz: f32) -> Self {
-        // Center frequencies for the neural bands.
-        let centers = [1.0, 6.0, 10.0, 22.0];
-        let q = 2.5;
-        let bands = [
-            Resonator::new(centers[0], q, envelope_rate_hz),
-            Resonator::new(centers[1], q, envelope_rate_hz),
-            Resonator::new(centers[2], q, envelope_rate_hz),
-            Resonator::new(centers[3], q, envelope_rate_hz),
-        ];
+impl Default for RhythmDynamics {
+    fn default() -> Self {
         Self {
-            bands,
+            theta_phase: 0.0,
+            delta_phase: 0.0,
+            alpha_phase: 0.0,
+            beta_phase: 0.0,
+            beta_energy: 0.0,
+            alpha_energy: 0.0,
+            last_flux: 0.0,
+            theta_freq: 6.0,
+            coupling_strength: 20.0,
+            beta_tau: 0.15, // ~150 ms for smoother surprise
+            alpha_tau: 0.2, // ~200 ms stability build-up
             last: NeuralRhythms::default(),
-            long_term_avg: 0.0,
-            vitality: 0.0,
         }
+    }
+}
+
+impl RhythmDynamics {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn set_vitality(&mut self, v: f32) {
-        self.vitality = v;
-        for band in &mut self.bands {
-            band.vitality = v;
-        }
+        // Map vitality into flux scaling to keep response bounded.
+        self.last_flux *= v.max(0.0);
     }
 
-    /// Update the modulation bank with band energies (low, mid, high).
-    pub fn update(&mut self, low: f32, mid: f32, high: f32) -> NeuralRhythms {
-        // Sum energy across bands; a more elaborate model could weight bands differently.
-        let x_raw = (low.max(0.0) + mid.max(0.0) + high.max(0.0)).sqrt(); // compress
-        // DC reject: track slow average and feed AC component to the resonators.
-        self.long_term_avg = 0.995 * self.long_term_avg + 0.005 * x_raw;
-        let x_ac = x_raw - self.long_term_avg;
+    pub fn update(&mut self, dt: f32, flux: f32) -> NeuralRhythms {
+        let dt = dt.max(1e-4);
+        // Light smoothing on flux to avoid impulsive jitter.
+        let flux_env = 0.8 * self.last_flux + 0.2 * flux.max(0.0);
+        self.last_flux = flux_env;
 
-        self.last.delta = self.bands[0].process(x_ac);
-        self.last.theta = self.bands[1].process(x_ac);
-        self.last.alpha = self.bands[2].process(x_ac);
-        self.last.beta = self.bands[3].process(x_ac);
+        // Theta (beat) oscillator with PRC coupling toward phase 0 on flux.
+        let omega = 2.0 * PI * self.theta_freq;
+        let d_theta = (omega + self.coupling_strength * flux_env * (-self.theta_phase).sin()) * dt;
+
+        // Harmonic phase grid
+        self.theta_phase = (self.theta_phase + d_theta).rem_euclid(2.0 * PI);
+        self.delta_phase = (self.delta_phase + d_theta * 0.25).rem_euclid(2.0 * PI);
+        self.alpha_phase = (self.alpha_phase + d_theta * 2.0).rem_euclid(2.0 * PI);
+        self.beta_phase = (self.beta_phase + d_theta * 4.0).rem_euclid(2.0 * PI);
+
+        // Predictive coding magnitudes
+        let alignment = self.theta_phase.cos();
+        let error = flux_env * (1.0 - alignment).max(0.0);
+        let stability = flux_env * alignment.max(0.0);
+
+        let a_beta = (-dt / self.beta_tau).exp();
+        self.beta_energy = a_beta * self.beta_energy + (1.0 - a_beta) * error;
+        self.beta_energy = self.beta_energy.clamp(0.0, 1.0);
+
+        let a_alpha = (-dt / self.alpha_tau).exp();
+        let target_alpha = (stability + 0.1).min(1.0);
+        self.alpha_energy = a_alpha * self.alpha_energy + (1.0 - a_alpha) * target_alpha;
+        self.alpha_energy = self.alpha_energy.clamp(0.0, 1.0);
+
+        let theta_mag = flux_env.clamp(0.0, 1.0);
+        let delta_mag = theta_mag;
+
+        self.last = NeuralRhythms {
+            delta: NeuralRhythm {
+                mag: delta_mag,
+                phase: self.delta_phase,
+            },
+            theta: NeuralRhythm {
+                mag: theta_mag,
+                phase: self.theta_phase,
+            },
+            alpha: NeuralRhythm {
+                mag: self.alpha_energy,
+                phase: self.alpha_phase,
+            },
+            beta: NeuralRhythm {
+                mag: self.beta_energy,
+                phase: self.beta_phase,
+            },
+        };
+
         self.last
     }
 
@@ -118,38 +135,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_self_oscillation() {
-        let mut res = Resonator::new(2.0, 5.0, 100.0);
-        res.vitality = 0.5;
-
-        // Kick the resonator into motion.
-        for _ in 0..16 {
-            res.process(0.6);
+    fn beta_tracks_prediction_error() {
+        let mut dyn_model = RhythmDynamics::default();
+        let mut beta = 0.0;
+        for _ in 0..100 {
+            let rhythms = dyn_model.update(0.01, 1.0);
+            beta = rhythms.beta.mag;
         }
-
-        // With positive vitality, energy should settle into a limit cycle even with no further input.
-        let mut steady_mag = 0.0;
-        for _ in 0..200 {
-            steady_mag = res.process(0.0).mag;
-        }
-
-        // Linear version should decay toward zero under the same conditions.
-        let mut linear = Resonator::new(2.0, 5.0, 100.0);
-        for _ in 0..16 {
-            linear.process(0.6);
-        }
-        let mut decayed_mag = 0.0;
-        for _ in 0..200 {
-            decayed_mag = linear.process(0.0).mag;
-        }
-
-        assert!(
-            steady_mag > 0.3,
-            "expected sustained oscillation; got mag={steady_mag}"
-        );
-        assert!(
-            decayed_mag < 0.05,
-            "expected linear resonator to decay; got mag={decayed_mag}"
-        );
+        assert!(beta > 0.001, "beta should rise under persistent error");
     }
 }

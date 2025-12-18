@@ -12,13 +12,16 @@ use crossbeam_channel::{Receiver, Sender, bounded};
 use ringbuf::traits::Observer;
 
 use crate::audio::writer::WavOutput;
+use crate::core::analysis_worker;
 use crate::core::harmonicity_kernel::HarmonicityKernel;
-use crate::core::landscape::{Landscape, LandscapeFrame, LandscapeParams, LandscapeUpdate};
+use crate::core::landscape::{
+    AudioAnalysisFrame, Landscape, LandscapeFrame, LandscapeParams, LandscapeUpdate,
+};
 use crate::core::log2space::Log2Space;
 use crate::core::nsgt_kernel::{NsgtKernelLog2, NsgtLog2Config};
 use crate::core::nsgt_rt::RtNsgtKernelLog2;
 use crate::core::roughness_kernel::{KernelParams, RoughnessKernel};
-use crate::life::analysis_worker;
+use crate::core::roughness_worker;
 use crate::life::conductor::Conductor;
 use crate::life::individual::SoundBody;
 use crate::life::population::{Population, PopulationParams};
@@ -64,7 +67,8 @@ impl AudioMonitor {
         buffer_occupancy: usize,
         chunk_peak: f32,
         chunk_elapsed: Duration,
-        analysis_lag: Option<u64>,
+        harmonicity_lag: Option<u64>,
+        roughness_lag: Option<u64>,
         conductor_done: bool,
     ) -> f32 {
         self.min_occupancy = Some(
@@ -103,16 +107,18 @@ impl AudioMonitor {
             );
         }
 
-        if let Some(lag) = analysis_lag
-            && lag >= 2
-            && self.last_lag_warn.elapsed() > Duration::from_secs(1)
-        {
+        let should_warn = harmonicity_lag.is_some_and(|lag| lag >= 2)
+            || roughness_lag.is_some_and(|lag| lag >= 2);
+        if should_warn && self.last_lag_warn.elapsed() > Duration::from_secs(1) {
+            let h = harmonicity_lag
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "-".into());
+            let r = roughness_lag
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "-".into());
             warn!(
-                "[t={:.3}] Analysis lag: {} frames (Audio={}, Analysis={})",
-                current_time,
-                lag,
-                frame_idx,
-                frame_idx.saturating_sub(lag)
+                "[t={:.3}] Analysis lag (frames): H={} R={} (Audio(gen)={})",
+                current_time, h, r, frame_idx
             );
             self.last_lag_warn = Instant::now();
         }
@@ -206,7 +212,7 @@ impl App {
 
         // Analysis/NSGT setup
         let fs: f32 = config.audio.sample_rate as f32;
-        let space = Log2Space::new(55.0, 8000.0, 200);
+        let space = Log2Space::new(55.0, 8000.0, 100);
         let lparams = LandscapeParams {
             fs,
             max_hist_cols: 256,
@@ -243,6 +249,7 @@ impl App {
         let (ui_frame_tx, ui_frame_rx) = bounded::<UiFrame>(ui_channel_capacity);
         let (ctrl_tx, _ctrl_rx) = bounded::<()>(1);
         let (harmonicity_tx, harmonicity_rx) = bounded::<LandscapeUpdate>(8);
+        let (roughness_tx, roughness_rx) = bounded::<LandscapeUpdate>(8);
 
         let landscape = Landscape::new(lparams.clone(), nsgt.clone());
         let worker_fs = lparams.fs;
@@ -253,6 +260,9 @@ impl App {
         let (audio_to_analysis_tx, audio_to_analysis_rx) = bounded::<(u64, Vec<f32>)>(64);
         let (landscape_from_analysis_tx, landscape_from_analysis_rx) =
             bounded::<(u64, Vec<f32>, Vec<f32>)>(4);
+        let (audio_to_roughness_tx, audio_to_roughness_rx) = bounded::<(u64, Vec<f32>)>(64);
+        let (roughness_from_analysis_tx, roughness_from_analysis_rx) =
+            bounded::<(u64, AudioAnalysisFrame)>(4);
 
         // Spawn analysis thread
         {
@@ -269,6 +279,22 @@ impl App {
                     )
                 })
                 .expect("spawn analysis worker");
+        }
+
+        // Spawn roughness thread (NSGT-RT based audio analysis).
+        {
+            let rough_landscape = Landscape::new(lparams.clone(), nsgt.clone());
+            std::thread::Builder::new()
+                .name("roughness".into())
+                .spawn(move || {
+                    roughness_worker::run(
+                        rough_landscape,
+                        audio_to_roughness_rx,
+                        roughness_from_analysis_tx,
+                        roughness_rx,
+                    )
+                })
+                .expect("spawn roughness worker");
         }
 
         let path = args.scenario_path.clone();
@@ -337,6 +363,9 @@ impl App {
                         audio_to_analysis_tx,
                         landscape_from_analysis_rx,
                         harmonicity_tx,
+                        audio_to_roughness_tx,
+                        roughness_from_analysis_rx,
+                        roughness_tx,
                         hop,
                         hop_duration,
                         fs,
@@ -480,6 +509,9 @@ fn worker_loop(
     audio_to_analysis_tx: Sender<(u64, Vec<f32>)>,
     landscape_from_analysis_rx: Receiver<(u64, Vec<f32>, Vec<f32>)>,
     harmonicity_tx: Sender<LandscapeUpdate>,
+    audio_to_roughness_tx: Sender<(u64, Vec<f32>)>,
+    roughness_from_analysis_rx: Receiver<(u64, AudioAnalysisFrame)>,
+    roughness_tx: Sender<LandscapeUpdate>,
     hop: usize,
     hop_duration: Duration,
     fs: f32,
@@ -502,6 +534,8 @@ fn worker_loop(
     let mut monitor = AudioMonitor::new();
     let mut last_ui_update = Instant::now();
     let ui_min_interval = Duration::from_millis(33);
+    let mut last_h_analysis_frame: Option<u64> = None;
+    let mut last_r_analysis_frame: Option<u64> = None;
 
     // Initial UI frame so metadata is visible before playback starts.
     let init_meta = SimulationMeta {
@@ -560,18 +594,55 @@ fn worker_loop(
             let occupancy = buffer_capacity.saturating_sub(free);
             pop.set_current_frame(frame_idx);
 
+            // Keep analysis aligned to generated frames: allow 1-frame delay, but do not advance
+            // more than that. This keeps `C/R/H` coherent for population dynamics.
+            let required_prev = frame_idx.saturating_sub(1);
+            loop {
+                // Merge analysis results (latest-only) into the landscape.
+                let mut latest_body: Option<(u64, Vec<f32>, Vec<f32>)> = None;
+                while let Ok((analyzed_id, h_scan, body_log)) =
+                    landscape_from_analysis_rx.try_recv()
+                {
+                    last_h_analysis_frame = Some(analyzed_id);
+                    latest_body = Some((analyzed_id, h_scan, body_log));
+                }
+                if let Some((_, h_scan, body_log)) = latest_body {
+                    landscape.apply_body_analysis(h_scan, body_log);
+                }
+
+                let mut latest_audio: Option<(u64, AudioAnalysisFrame)> = None;
+                while let Ok((analyzed_id, frame)) = roughness_from_analysis_rx.try_recv() {
+                    last_r_analysis_frame = Some(analyzed_id);
+                    latest_audio = Some((analyzed_id, frame));
+                }
+                if let Some((_, frame)) = latest_audio {
+                    landscape.apply_audio_analysis(frame);
+                }
+
+                // For frame 0 there is no previous frame to wait for.
+                if frame_idx == 0 {
+                    break;
+                }
+                let h_ok = last_h_analysis_frame.is_some_and(|id| id >= required_prev);
+                let r_ok = last_r_analysis_frame.is_some_and(|id| id >= required_prev);
+                if h_ok && r_ok {
+                    break;
+                }
+                if exiting.load(Ordering::SeqCst) {
+                    break;
+                }
+                thread::sleep(Duration::from_micros(200));
+            }
+
+            current_landscape = landscape.snapshot();
+
             let t_start = Instant::now();
-            conductor.dispatch_until(
-                current_time,
-                frame_idx,
-                &current_landscape,
-                Some(&mut landscape),
-                &mut pop,
-            );
+            conductor.dispatch_until(current_time, frame_idx, &current_landscape, None, &mut pop);
             landscape.set_vitality(pop.global_vitality);
             if let Some(update) = pop.take_pending_update() {
                 landscape.apply_update(update);
                 let _ = harmonicity_tx.try_send(update);
+                let _ = roughness_tx.try_send(update);
             }
 
             let (time_chunk_vec, max_abs, channel_peak) = {
@@ -601,7 +672,6 @@ fn worker_loop(
 
             if !finished {
                 landscape.update_rhythm(&time_chunk_vec);
-                current_landscape = landscape.process_audio_frame(&time_chunk_vec);
             }
 
             // Build high-resolution spectrum for analysis (linear nfft, mapped to log space in worker).
@@ -616,17 +686,12 @@ fn worker_loop(
             latest_spec_amps.clear();
             latest_spec_amps.extend_from_slice(spectrum_body);
             let _ = audio_to_analysis_tx.try_send((frame_idx, spectrum_body.to_vec()));
+            let _ = audio_to_roughness_tx.try_send((frame_idx, time_chunk_vec.clone()));
 
-            let mut latest_analysis: Option<(Vec<f32>, Vec<f32>)> = None;
-            let mut latest_analysis_lag: Option<u64> = None;
-            while let Ok((analyzed_id, h_scan, body_log)) = landscape_from_analysis_rx.try_recv() {
-                latest_analysis_lag = Some(frame_idx.saturating_sub(analyzed_id));
-                latest_analysis = Some((h_scan, body_log));
-            }
-            if let Some((h_scan, body_log)) = latest_analysis {
-                landscape.apply_body_analysis(h_scan, body_log);
-                current_landscape = landscape.snapshot();
-            }
+            // Lag is measured against generated frames, because population dynamics depend on
+            // the landscape evolution in the generated timebase (not wall-clock playback).
+            let harmonicity_lag = last_h_analysis_frame.map(|id| frame_idx.saturating_sub(id));
+            let roughness_lag = last_r_analysis_frame.map(|id| frame_idx.saturating_sub(id));
 
             let finished_now =
                 pop.abort_requested || (conductor.is_done() && pop.individuals.is_empty());
@@ -674,7 +739,8 @@ fn worker_loop(
                 occupancy,
                 max_abs,
                 elapsed,
-                latest_analysis_lag,
+                harmonicity_lag,
+                roughness_lag,
                 conductor.is_done(),
             );
 

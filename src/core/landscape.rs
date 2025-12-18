@@ -65,6 +65,14 @@ pub struct LandscapeFrame {
     pub amps: Vec<f32>,
 }
 
+/// Audio-only analysis result (NSGT-RT + normalization + roughness + habituation).
+#[derive(Clone, Debug)]
+pub struct AudioAnalysisFrame {
+    pub amps_audio: Vec<f32>,
+    pub r_scan: Vec<f32>,
+    pub habituation_state: Vec<f32>,
+}
+
 /// Maintains real-time psychoacoustic landscape (R/C/K) driven by NSGT-RT.
 pub struct Landscape {
     nsgt_rt: RtNsgtKernelLog2,
@@ -162,6 +170,33 @@ impl Landscape {
         self.snapshot()
     }
 
+    /// Stream A: audio analysis only (no H integration output required by the caller).
+    pub fn process_audio_frame_audio_only(&mut self, audio_chunk: &[f32]) -> AudioAnalysisFrame {
+        let dt_sec = (audio_chunk.len() as f32) / self.params.fs.max(1.0);
+
+        // 1. NSGT-RT analysis (streaming hop)
+        let raw_env: Vec<f32> = self.nsgt_rt.process_hop(audio_chunk).to_vec();
+
+        // 2. Psychoacoustic normalization (audio)
+        self.normalize_audio(&raw_env, dt_sec);
+
+        // 3. Roughness profile from audio
+        let (r, _) = self
+            .params
+            .roughness_kernel
+            .potential_r_from_log2_spectrum(&self.amps_audio, self.nsgt_rt.space());
+        self.r_scan.clone_from(&r);
+
+        // 4. Habituation from audio
+        self.update_habituation(dt_sec);
+
+        AudioAnalysisFrame {
+            amps_audio: self.amps_audio.clone(),
+            r_scan: self.r_scan.clone(),
+            habituation_state: self.habituation_state.clone(),
+        }
+    }
+
     // ============================================================================================
     // Stream B: Body analysis integration (async)
     // ============================================================================================
@@ -173,6 +208,20 @@ impl Landscape {
         }
         if body_spectrum.len() == self.amps_body.len() {
             self.amps_body = body_spectrum;
+        }
+        self.update_consonance();
+    }
+
+    /// Inject audio-derived results computed off-thread.
+    pub fn apply_audio_analysis(&mut self, frame: AudioAnalysisFrame) {
+        if frame.amps_audio.len() == self.amps_audio.len() {
+            self.amps_audio = frame.amps_audio;
+        }
+        if frame.r_scan.len() == self.r_scan.len() {
+            self.r_scan = frame.r_scan;
+        }
+        if frame.habituation_state.len() == self.habituation_state.len() {
+            self.habituation_state = frame.habituation_state;
         }
         self.update_consonance();
     }

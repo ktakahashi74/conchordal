@@ -1,15 +1,19 @@
 use crossbeam_channel::{Receiver, Sender};
 
-use crate::core::landscape::{Landscape, LandscapeUpdate};
+use crate::core::harmonicity_kernel::HarmonicityKernel;
+use crate::core::landscape::LandscapeUpdate;
+use crate::core::log2space::Log2Space;
 
 /// Result payload from the analysis worker:
 /// `(frame_id, h_scan, body_log_spectrum)`.
 pub type HarmonicityResult = (u64, Vec<f32>, Vec<f32>);
 
-/// Heavy-weight analysis worker: receives mixed spectral bodies, computes harmonicity only,
-/// and publishes the result for the main thread to merge.
+/// Analysis worker: receives mixed spectral bodies, computes harmonicity only, and publishes
+/// the result for the main thread to merge.
 pub fn run(
-    mut landscape_template: Landscape,
+    fs: f32,
+    space: Log2Space,
+    mut harmonicity_kernel: HarmonicityKernel,
     spectrum_rx: Receiver<(u64, Vec<f32>)>,
     result_tx: Sender<HarmonicityResult>,
     update_rx: Receiver<LandscapeUpdate>,
@@ -21,14 +25,37 @@ pub fn run(
             spectrum_body = latest_body;
         }
 
-        // Apply parameter updates (harmonicity kernel params are relevant here).
+        // Apply parameter updates (only H-kernel parameters matter here).
         for upd in update_rx.try_iter() {
-            landscape_template.apply_update(upd);
+            if upd.mirror.is_some() || upd.limit.is_some() {
+                let mut p = harmonicity_kernel.params;
+                if let Some(m) = upd.mirror {
+                    p.mirror_weight = m;
+                }
+                if let Some(l) = upd.limit {
+                    p.param_limit = l;
+                }
+                harmonicity_kernel = HarmonicityKernel::new(&space, p);
+            }
         }
 
-        let (h_scan, body_log) = landscape_template.calculate_h_from_linear(&spectrum_body);
+        // 1) Linear -> Log2 mapping.
+        let n_bins_lin = spectrum_body.len();
+        let nfft = (n_bins_lin.saturating_sub(1)) * 2;
+        let df = if nfft > 0 { fs / nfft as f32 } else { 0.0 };
 
-        // Publish (drop if receiver is full).
-        let _ = result_tx.try_send((frame_id, h_scan, body_log));
+        let mut amps_log = vec![0.0f32; space.n_bins()];
+        for (i, &mag) in spectrum_body.iter().enumerate() {
+            let f = i as f32 * df;
+            if let Some(idx) = space.index_of_freq(f) {
+                amps_log[idx] += mag;
+            }
+        }
+
+        // 2) Compute H.
+        let (h_scan, _) = harmonicity_kernel.potential_h_from_log2_spectrum(&amps_log, &space);
+
+        // 3) Publish (drop if receiver is full).
+        let _ = result_tx.try_send((frame_id, h_scan, amps_log));
     }
 }

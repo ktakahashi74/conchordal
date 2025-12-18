@@ -19,7 +19,6 @@ use crate::core::nsgt_kernel::{NsgtKernelLog2, NsgtLog2Config};
 use crate::core::nsgt_rt::RtNsgtKernelLog2;
 use crate::core::roughness_kernel::{KernelParams, RoughnessKernel};
 use crate::life::analysis_worker;
-use crate::life::analysis_worker::HarmonicityResult;
 use crate::life::conductor::Conductor;
 use crate::life::individual::SoundBody;
 use crate::life::population::{Population, PopulationParams};
@@ -245,12 +244,14 @@ impl App {
         let (harmonicity_tx, harmonicity_rx) = bounded::<LandscapeUpdate>(8);
 
         let landscape = Landscape::new(lparams.clone(), nsgt.clone());
-        let analysis_landscape = Landscape::new(lparams, nsgt.clone());
+        let worker_fs = lparams.fs;
+        let worker_space = landscape.snapshot().space.clone();
+        let worker_kernel = lparams.harmonicity_kernel.clone();
 
         // Analysis pipeline channels
         let (audio_to_analysis_tx, audio_to_analysis_rx) = bounded::<(u64, Vec<f32>)>(64);
         let (landscape_from_analysis_tx, landscape_from_analysis_rx) =
-            bounded::<HarmonicityResult>(4);
+            bounded::<(u64, Vec<f32>, Vec<f32>)>(4);
 
         // Spawn analysis thread
         {
@@ -258,7 +259,9 @@ impl App {
                 .name("analysis".into())
                 .spawn(move || {
                     analysis_worker::run(
-                        analysis_landscape,
+                        worker_fs,
+                        worker_space,
+                        worker_kernel,
                         audio_to_analysis_rx,
                         landscape_from_analysis_tx,
                         harmonicity_rx,
@@ -474,7 +477,7 @@ fn worker_loop(
     wav_tx: Option<Sender<Vec<f32>>>,
     exiting: Arc<AtomicBool>,
     audio_to_analysis_tx: Sender<(u64, Vec<f32>)>,
-    landscape_from_analysis_rx: Receiver<HarmonicityResult>,
+    landscape_from_analysis_rx: Receiver<(u64, Vec<f32>, Vec<f32>)>,
     harmonicity_tx: Sender<LandscapeUpdate>,
     hop: usize,
     hop_duration: Duration,

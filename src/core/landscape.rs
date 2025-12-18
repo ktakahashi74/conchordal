@@ -354,7 +354,20 @@ impl Landscape {
     }
 
     pub fn get_crowding_at(&self, freq_hz: f32) -> f32 {
-        sample_linear(&self.amps_body, self.nsgt_rt.space(), freq_hz)
+        // Crowding represents "occupied" spectral territory by agent intention (body),
+        // not necessarily what is currently sounding (audio).
+        //
+        // Safety: if body spectrum isn't available, return 0.0 (no crowding yet).
+        if self.amps_body.is_empty() {
+            0.0
+        } else {
+            sample_linear(&self.amps_body, self.nsgt_rt.space(), freq_hz)
+        }
+    }
+
+    /// Debug/visualization helper: returns the actual audio-derived level at `freq_hz`.
+    pub fn get_audio_level_at(&self, freq_hz: f32) -> f32 {
+        sample_linear(&self.amps_audio, self.nsgt_rt.space(), freq_hz)
     }
 
     pub fn get_spectral_satiety(&self, freq_hz: f32) -> f32 {

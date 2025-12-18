@@ -19,6 +19,7 @@ use crate::core::nsgt_kernel::{NsgtKernelLog2, NsgtLog2Config};
 use crate::core::nsgt_rt::RtNsgtKernelLog2;
 use crate::core::roughness_kernel::{KernelParams, RoughnessKernel};
 use crate::life::analysis_worker;
+use crate::life::analysis_worker::HarmonicityResult;
 use crate::life::conductor::Conductor;
 use crate::life::individual::SoundBody;
 use crate::life::population::{Population, PopulationParams};
@@ -249,7 +250,7 @@ impl App {
         // Analysis pipeline channels
         let (audio_to_analysis_tx, audio_to_analysis_rx) = bounded::<(u64, Vec<f32>)>(64);
         let (landscape_from_analysis_tx, landscape_from_analysis_rx) =
-            bounded::<(u64, LandscapeFrame)>(4);
+            bounded::<HarmonicityResult>(4);
 
         // Spawn analysis thread
         {
@@ -473,7 +474,7 @@ fn worker_loop(
     wav_tx: Option<Sender<Vec<f32>>>,
     exiting: Arc<AtomicBool>,
     audio_to_analysis_tx: Sender<(u64, Vec<f32>)>,
-    landscape_from_analysis_rx: Receiver<(u64, LandscapeFrame)>,
+    landscape_from_analysis_rx: Receiver<HarmonicityResult>,
     harmonicity_tx: Sender<LandscapeUpdate>,
     hop: usize,
     hop_duration: Duration,
@@ -489,7 +490,7 @@ fn worker_loop(
     };
     let mut finish_logged = false;
     let mut finished = false;
-    let mut latest_spec_amps: Vec<f32> = current_landscape.amps_last.clone();
+    let mut latest_spec_amps: Vec<f32> = current_landscape.amps.clone();
     let log_space = current_landscape.space.clone();
 
     let mut current_time: f32 = 0.0;
@@ -596,6 +597,7 @@ fn worker_loop(
 
             if !finished {
                 landscape.update_rhythm(&time_chunk_vec);
+                current_landscape = landscape.process_audio_frame(&time_chunk_vec);
             }
 
             // Build high-resolution spectrum for analysis (linear nfft, mapped to log space in worker).
@@ -611,15 +613,15 @@ fn worker_loop(
             latest_spec_amps.extend_from_slice(&spectrum_body);
             let _ = audio_to_analysis_tx.try_send((frame_idx, spectrum_body.to_vec()));
 
-            let mut latest_analysis: Option<LandscapeFrame> = None;
+            let mut latest_analysis: Option<(Vec<f32>, Vec<f32>)> = None;
             let mut latest_analysis_lag: Option<u64> = None;
-            while let Ok((analyzed_id, lframe)) = landscape_from_analysis_rx.try_recv() {
+            while let Ok((analyzed_id, h_scan, body_log)) = landscape_from_analysis_rx.try_recv() {
                 latest_analysis_lag = Some(frame_idx.saturating_sub(analyzed_id));
-                latest_analysis = Some(lframe);
+                latest_analysis = Some((h_scan, body_log));
             }
-            if let Some(lframe) = latest_analysis {
-                current_landscape = lframe;
-                landscape.apply_frame(&current_landscape);
+            if let Some((h_scan, body_log)) = latest_analysis {
+                landscape.apply_body_analysis(h_scan, body_log);
+                current_landscape = landscape.snapshot();
             }
 
             let finished_now =

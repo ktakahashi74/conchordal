@@ -1,29 +1,34 @@
 use crossbeam_channel::{Receiver, Sender};
 
-use crate::core::landscape::{Landscape, LandscapeFrame, LandscapeUpdate};
+use crate::core::landscape::{Landscape, LandscapeUpdate};
 
-/// Heavy-weight analysis worker: receives mixed spectral bodies, runs landscape update, and publishes frames.
+/// Result payload from the analysis worker:
+/// `(frame_id, h_scan, body_log_spectrum)`.
+pub type HarmonicityResult = (u64, Vec<f32>, Vec<f32>);
+
+/// Heavy-weight analysis worker: receives mixed spectral bodies, computes harmonicity only,
+/// and publishes the result for the main thread to merge.
 pub fn run(
-    mut landscape: Landscape,
+    mut landscape_template: Landscape,
     spectrum_rx: Receiver<(u64, Vec<f32>)>,
-    landscape_tx: Sender<(u64, LandscapeFrame)>,
+    result_tx: Sender<HarmonicityResult>,
     update_rx: Receiver<LandscapeUpdate>,
 ) {
     while let Ok((mut frame_id, mut spectrum_body)) = spectrum_rx.recv() {
-        // Drain any backlog and keep only the most recent spectrum to avoid fixed lag.
+        // Drain backlog and keep only the most recent spectrum to avoid fixed lag.
         for (latest_id, latest_body) in spectrum_rx.try_iter() {
             frame_id = latest_id;
             spectrum_body = latest_body;
         }
 
+        // Apply parameter updates (harmonicity kernel params are relevant here).
         for upd in update_rx.try_iter() {
-            landscape.apply_update(upd);
+            landscape_template.apply_update(upd);
         }
 
-        // 1. Map linear spectrum to log2 space and compute potentials.
-        let snapshot = landscape.process_precomputed_spectrum(&spectrum_body);
+        let (h_scan, body_log) = landscape_template.calculate_h_from_linear(&spectrum_body);
 
-        // 2. Publish (drop if receiver is full)
-        let _ = landscape_tx.try_send((frame_id, snapshot));
+        // Publish (drop if receiver is full).
+        let _ = result_tx.try_send((frame_id, h_scan, body_log));
     }
 }

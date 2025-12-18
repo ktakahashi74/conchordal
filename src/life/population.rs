@@ -195,7 +195,7 @@ impl Population {
         }
 
         let max_amp_raw = landscape
-            .amps_last
+            .amps
             .get(idx_min..=idx_max)
             .map(|slice| slice.iter().cloned().fold(0.0f32, f32::max))
             .unwrap_or(0.0);
@@ -203,7 +203,7 @@ impl Population {
         let max_amp = max_amp_raw.max(1e-6);
         let crowding_factors: Vec<f32> = if apply_crowding {
             (idx_min..=idx_max)
-                .map(|i| landscape.amps_last.get(i).copied().unwrap_or(0.0) / max_amp)
+                .map(|i| landscape.amps.get(i).copied().unwrap_or(0.0) / max_amp)
                 .collect()
         } else {
             vec![0.0; idx_max.saturating_sub(idx_min).saturating_add(1)]
@@ -229,7 +229,7 @@ impl Population {
                 };
                 for i in idx_min..=idx_max {
                     if let (Some(&c_val), Some(&amp)) =
-                        (landscape.c_last.get(i), landscape.amps_last.get(i))
+                        (landscape.c_scan.get(i), landscape.amps.get(i))
                     {
                         let crowded = if apply_crowding {
                             crowding_factors[i - idx_min]
@@ -250,7 +250,7 @@ impl Population {
                 let mut best = idx_min;
                 let mut best_val = f32::MAX;
                 for i in idx_min..=idx_max {
-                    if let Some(&v) = landscape.c_last.get(i)
+                    if let Some(&v) = landscape.c_scan.get(i)
                         && v < best_val
                     {
                         best_val = v;
@@ -263,7 +263,7 @@ impl Population {
                 let mut best = idx_min;
                 let mut best_val = f32::MAX;
                 for i in idx_min..=idx_max {
-                    if let Some(&v) = landscape.c_last.get(i) {
+                    if let Some(&v) = landscape.c_scan.get(i) {
                         let d = v.abs();
                         if d < best_val {
                             best_val = d;
@@ -276,7 +276,7 @@ impl Population {
             SpawnMethod::SpectralGap { .. } => {
                 let weights: Vec<f32> = (idx_min..=idx_max)
                     .map(|i| {
-                        let amp = landscape.amps_last.get(i).copied().unwrap_or(0.0).max(1e-6);
+                        let amp = landscape.amps.get(i).copied().unwrap_or(0.0).max(1e-6);
                         1.0 / amp
                     })
                     .collect();
@@ -287,7 +287,7 @@ impl Population {
                     let mut best = idx_min;
                     let mut best_val = f32::MAX;
                     for i in idx_min..=idx_max {
-                        if let Some(&v) = landscape.amps_last.get(i)
+                        if let Some(&v) = landscape.amps.get(i)
                             && v < best_val
                         {
                             best_val = v;
@@ -305,7 +305,7 @@ impl Population {
                 let mut weights: Vec<f32> = (idx_min..=idx_max)
                     .enumerate()
                     .map(|(local_idx, i)| {
-                        let c_val = landscape.c_last.get(i).copied().unwrap_or(0.0).max(0.0);
+                        let c_val = landscape.c_scan.get(i).copied().unwrap_or(0.0).max(0.0);
                         let crowded = if apply_crowding {
                             crowding_factors.get(local_idx).copied().unwrap_or(0.0)
                         } else {

@@ -1,9 +1,12 @@
-//! core/landscape.rs — Landscape computed on log2(NSGT-RT) domain.
+//! core/landscape.rs — Landscape computed on a log2-frequency domain.
 //!
-//! Each incoming hop updates the potential roughness (R) and harmonicity (H)
-//! using a real-time NSGT analyzer with leaky temporal integration.
-//! Psychoacoustic normalization (subjective intensity + leaky smoothing)
-//! runs before applying the R/H kernels.
+//! This module intentionally separates the sources of the two perceptual axes:
+//! - Roughness (R): derived from the actual audio input via NSGT-RT.
+//! - Harmonicity (H): derived from an externally provided "spectrum body"
+//!   (e.g. collective agent intent provided by `AnalysisWorker`).
+//!
+//! The `LandscapeFrame` snapshot can therefore contain an R value coming from
+//! the latest audio hop and an H value coming from the latest body update.
 
 use crate::core::harmonicity_kernel::HarmonicityKernel;
 use crate::core::log2space::Log2Space;
@@ -46,31 +49,48 @@ pub struct LandscapeUpdate {
     pub habituation_max_depth: Option<f32>,
 }
 
+/// DTO for UI visualization.
 #[derive(Clone, Debug)]
 pub struct LandscapeFrame {
     pub fs: f32,
     pub space: Log2Space,
-    pub r_last: Vec<f32>,
-    pub h_last: Vec<f32>,
-    pub c_last: Vec<f32>,
+    /// Roughness profile derived from the audio stream.
+    pub r_scan: Vec<f32>,
+    /// Harmonicity profile derived from the agent/body stream.
+    pub h_scan: Vec<f32>,
+    /// Integrated consonance profile (H ⊖ R ⊖ habituation).
+    pub c_scan: Vec<f32>,
     pub rhythm: NeuralRhythms,
-    /// Preprocessed subjective intensity (after normalize()) on log2 bins.
-    pub amps_last: Vec<f32>,
+    /// Audio-derived spectrum used for visualization.
+    pub amps: Vec<f32>,
 }
 
 /// Maintains real-time psychoacoustic landscape (R/C/K) driven by NSGT-RT.
 pub struct Landscape {
     nsgt_rt: RtNsgtKernelLog2,
     params: LandscapeParams,
-    last_r: Vec<f32>,
-    last_h: Vec<f32>,
-    last_c: Vec<f32>,
-    /// State of the leaky integrator per bin (subjective intensity domain).
-    norm_state: Vec<f32>,
-    /// Last preprocessed amplitudes (subjective intensity).
-    amps_last: Vec<f32>,
-    /// Habituation state per bin (boredom integration).
+    // === Stream A: Audio reality ===
+    /// Roughness profile derived from the audio stream.
+    r_scan: Vec<f32>,
+    /// Audio-derived (psychoacoustically normalized) spectrum.
+    pub amps_audio: Vec<f32>,
+    /// Leaky integration state for audio loudness normalization.
+    norm_state_audio: Vec<f32>,
+    /// Habituation state per bin (boredom integration), driven by audio.
     habituation_state: Vec<f32>,
+
+    // === Stream B: Agent intention (body) ===
+    /// Harmonicity profile derived from the agent/body stream.
+    h_scan: Vec<f32>,
+    /// Body-derived spectrum mapped to log2 bins (no temporal smoothing).
+    pub amps_body: Vec<f32>,
+
+    // === Integrated ===
+    /// Integrated consonance profile.
+    c_scan: Vec<f32>,
+
+    // Cache: local ERB integration weights for summations.
+    du_cache: Vec<f32>,
     /// A-weighting gains per bin for loudness correction.
     loudness_weights: Vec<f32>,
     pub rhythm: NeuralRhythms,
@@ -87,15 +107,25 @@ impl Landscape {
             .iter()
             .map(|&f| crate::core::utils::a_weighting_gain(f))
             .collect();
+
+        let erb_coords: Vec<f32> = nsgt_rt
+            .space()
+            .centers_hz
+            .iter()
+            .map(|&f| crate::core::erb::hz_to_erb(f))
+            .collect();
+        let du_cache = local_du_from_grid(&erb_coords);
         Self {
             nsgt_rt,
             params,
-            last_r: vec![0.0; n_ch],
-            last_h: vec![0.0; n_ch],
-            last_c: vec![0.0; n_ch],
-            norm_state: vec![0.0; n_ch],
+            r_scan: vec![0.0; n_ch],
+            amps_audio: vec![0.0; n_ch],
+            norm_state_audio: vec![0.0; n_ch],
             habituation_state: vec![0.0; n_ch],
-            amps_last: vec![0.0; n_ch],
+            h_scan: vec![0.0; n_ch],
+            amps_body: vec![0.0; n_ch],
+            c_scan: vec![0.0; n_ch],
+            du_cache,
             loudness_weights,
             rhythm: NeuralRhythms::default(),
             rhythm_dynamics: RhythmDynamics::default(),
@@ -103,185 +133,91 @@ impl Landscape {
         }
     }
 
-    /// Convert magnitude envelope → subjective intensity (power law)
-    /// and apply a leaky integrator to stabilize dynamics.
-    fn normalize(&mut self, envelope: &[f32], dt_sec: f32) -> Vec<f32> {
-        let exp = self.params.loudness_exp.max(0.01);
-        let tau_s = (self.params.tau_ms.max(1.0)) * 1e-3;
-        let a = (-dt_sec / tau_s).exp();
-        let mut out = vec![0.0f32; envelope.len()];
-
-        for (i, &mag) in envelope.iter().enumerate() {
-            let weighted_mag = mag * self.loudness_weights[i];
-            let pow = weighted_mag * weighted_mag;
-            let subj = (pow / self.params.ref_power).powf(exp);
-            let y_prev = self.norm_state[i];
-            let y = a * y_prev + (1.0 - a) * subj;
-            self.norm_state[i] = y;
-            out[i] = y;
-        }
-        out
+    /// Backwards-compatible alias for the audio thread entry point.
+    pub fn process_frame(&mut self, x_frame: &[f32]) -> LandscapeFrame {
+        self.process_audio_frame(x_frame)
     }
 
-    /// Process one hop of samples (length = hop). Real-time streaming entry point.
-    pub fn process_frame(&mut self, x_frame: &[f32]) -> LandscapeFrame {
-        self.update_spectrum(x_frame);
-        self.compute_potentials();
+    /// Stream A: audio thread entry point.
+    ///
+    /// Runs NSGT-RT → loudness normalization → roughness (R) → habituation → consonance (C).
+    /// Harmonicity (H) is not updated here; it is provided asynchronously via `apply_body_analysis`.
+    pub fn process_audio_frame(&mut self, audio_chunk: &[f32]) -> LandscapeFrame {
+        let dt_sec = (audio_chunk.len() as f32) / self.params.fs.max(1.0);
+
+        // 1. NSGT-RT analysis (streaming hop)
+        let raw_env: Vec<f32> = self.nsgt_rt.process_hop(audio_chunk).to_vec();
+
+        // 2. Psychoacoustic normalization (audio)
+        self.normalize_audio(&raw_env, dt_sec);
+
+        // 3. Roughness profile from audio
+        let (r, _) = self
+            .params
+            .roughness_kernel
+            .potential_r_from_log2_spectrum(&self.amps_audio, self.nsgt_rt.space());
+        self.r_scan.clone_from(&r);
+
+        // 4. Habituation from audio
+        self.update_habituation(dt_sec);
+
+        // 5. Integrate consonance from current R/H
+        self.update_consonance();
+
         self.snapshot()
     }
 
-    /// Update spectrum state (NSGT + normalization) without computing potentials.
-    pub fn update_spectrum(&mut self, x_frame: &[f32]) {
-        let fs = self.params.fs;
-        let dt_sec = (x_frame.len() as f32) / fs;
+    // ============================================================================================
+    // Stream B: Body analysis integration (async)
+    // ============================================================================================
 
-        // === 1. NSGT-RT analysis (streaming hop) ===
-        let envelope: Vec<f32> = self.nsgt_rt.process_hop(x_frame).to_vec();
-
-        // === 2. Psychoacoustic normalization ===
-        let norm_env = self.normalize(&envelope, dt_sec);
-        self.amps_last.clone_from(&norm_env);
+    /// Called when the analysis worker returns a new H scan.
+    pub fn apply_body_analysis(&mut self, h_scan: Vec<f32>, body_spectrum: Vec<f32>) {
+        if h_scan.len() == self.h_scan.len() {
+            self.h_scan = h_scan;
+        }
+        if body_spectrum.len() == self.amps_body.len() {
+            self.amps_body = body_spectrum;
+        }
+        self.update_consonance();
     }
 
-    /// Compute potentials from the current normalized spectrum.
-    pub fn compute_potentials(&mut self) {
-        if self.amps_last.is_empty() {
-            return;
-        }
-        let space = self.nsgt_rt.space();
-        if self.habituation_state.len() != self.amps_last.len() {
-            self.habituation_state.resize(self.amps_last.len(), 0.0);
-        }
-        // Roughness potential R
-        let (r, _r_total) = self
-            .params
-            .roughness_kernel
-            .potential_r_from_log2_spectrum(&self.amps_last, space);
-
-        // Harmonicity potential C
-        let (h, _norm) = self
-            .params
-            .harmonicity_kernel
-            .potential_h_from_log2_spectrum(&self.amps_last, space);
-
-        // Habituation (boredom): leaky integration of recent amplitudes.
-        let tau = self.params.habituation_tau.max(1e-3);
-        let dt = self.nsgt_rt.dt();
-        let a = (-dt / tau).exp();
-        let max_depth = self.params.habituation_max_depth.max(0.0);
-        for (state, &amp) in self.habituation_state.iter_mut().zip(&self.amps_last) {
-            let y = a * *state + (1.0 - a) * amp;
-            *state = y.min(max_depth);
-        }
-
-        // Combined potential K (here: C - D_index)
-        let k = self.params.roughness_k.max(1e-6);
-        let r_total = r.iter().copied().sum::<f32>();
-        let denom_inv = 1.0 / (r_total + k);
-        let weight = self.params.habituation_weight.max(0.0);
-        let c: Vec<f32> = r
-            .iter()
-            .zip(&h)
-            .zip(&self.habituation_state)
-            .map(|((ri, hi), hab)| {
-                let d_index = ri * denom_inv;
-                hi - d_index - weight * hab
-            })
-            .collect();
-
-        self.last_r.clone_from(&r);
-        self.last_h.clone_from(&h);
-        self.last_c.clone_from(&c);
-    }
-
-    /// Process a precomputed spectral body (already in frequency domain).
-    /// Expects `spectrum_body` to represent linear-frequency magnitudes (nfft/2+1).
-    pub fn process_precomputed_spectrum(&mut self, spectrum_body: &[f32]) -> LandscapeFrame {
+    /// Helper for the analysis worker to calculate H without affecting the main thread state.
+    /// Returns `(h_scan, amps_body_log2)`.
+    pub fn calculate_h_from_linear(&self, spectrum_lin: &[f32]) -> (Vec<f32>, Vec<f32>) {
         let fs = self.params.fs;
-        let n_bins_lin = spectrum_body.len();
+        let n_bins_lin = spectrum_lin.len();
         let nfft = (n_bins_lin.saturating_sub(1)) * 2;
         let df = if nfft > 0 { fs / nfft as f32 } else { 0.0 };
 
-        let space = self.nsgt_rt.space().clone();
-        let mut log_env = vec![0.0f32; space.n_bins()];
+        let space = self.nsgt_rt.space();
+        let mut amps_log = vec![0.0f32; space.n_bins()];
 
-        for (i, &mag) in spectrum_body.iter().enumerate() {
+        // Map linear → log2 bins
+        for (i, &mag) in spectrum_lin.iter().enumerate() {
             let f = i as f32 * df;
             if let Some(idx) = space.index_of_freq(f) {
-                log_env[idx] += mag;
+                amps_log[idx] += mag;
             }
         }
 
-        let dt_sec = self.nsgt_rt.dt();
-
-        // Psychoacoustic normalization
-        let norm_env = self.normalize(&log_env, dt_sec);
-        self.amps_last.clone_from(&norm_env);
-
-        // Roughness
-        let (r, r_total) = self
-            .params
-            .roughness_kernel
-            .potential_r_from_log2_spectrum(&norm_env, &space);
-
-        // Harmonicity
-        let (h, _norm) = self
+        let (h, _) = self
             .params
             .harmonicity_kernel
-            .potential_h_from_log2_spectrum(&norm_env, &space);
-        let r_total = r.iter().copied().sum::<f32>();
+            .potential_h_from_log2_spectrum(&amps_log, space);
 
-        if self.habituation_state.len() != self.amps_last.len() {
-            self.habituation_state.resize(self.amps_last.len(), 0.0);
-        }
-
-        // Habituation (boredom): leaky integration of recent amplitudes.
-        let tau = self.params.habituation_tau.max(1e-3);
-        let dt = self.nsgt_rt.dt();
-        let a = (-dt / tau).exp();
-        let max_depth = self.params.habituation_max_depth.max(0.0);
-        for (state, &amp) in self.habituation_state.iter_mut().zip(&self.amps_last) {
-            let y = a * *state + (1.0 - a) * amp;
-            *state = y.min(max_depth);
-        }
-
-        let k = self.params.roughness_k.max(1e-6);
-        let denom_inv = 1.0 / (r_total + k);
-
-        let c: Vec<f32> = r
-            .iter()
-            .zip(&h)
-            .zip(&self.habituation_state)
-            .map(|((ri, hi), hab)| {
-                let d_index = ri * denom_inv;
-                hi - d_index - self.params.habituation_weight.max(0.0) * hab
-            })
-            .collect();
-
-        self.last_r.clone_from(&r);
-        self.last_h.clone_from(&h);
-        self.last_c.clone_from(&c);
-
-        LandscapeFrame {
-            fs,
-            space,
-            r_last: r,
-            h_last: h,
-            c_last: c,
-            rhythm: self.rhythm,
-            amps_last: self.amps_last.clone(),
-        }
+        (h, amps_log)
     }
 
     pub fn snapshot(&self) -> LandscapeFrame {
         LandscapeFrame {
             fs: self.params.fs,
             space: self.nsgt_rt.space().clone(),
-            r_last: self.last_r.clone(),
-            h_last: self.last_h.clone(),
-            c_last: self.last_c.clone(),
+            r_scan: self.r_scan.clone(),
+            h_scan: self.h_scan.clone(),
+            c_scan: self.c_scan.clone(),
             rhythm: self.rhythm,
-            amps_last: self.amps_last.clone(),
+            amps: self.amps_audio.clone(),
         }
     }
 
@@ -291,24 +227,13 @@ impl Landscape {
 
     pub fn reset(&mut self) {
         self.nsgt_rt.reset();
-        for x in &mut self.norm_state {
-            *x = 0.0;
-        }
-        for x in &mut self.amps_last {
-            *x = 0.0;
-        }
-        for x in &mut self.last_r {
-            *x = 0.0;
-        }
-        for x in &mut self.last_h {
-            *x = 0.0;
-        }
-        for x in &mut self.last_c {
-            *x = 0.0;
-        }
-        for x in &mut self.habituation_state {
-            *x = 0.0;
-        }
+        self.r_scan.fill(0.0);
+        self.h_scan.fill(0.0);
+        self.c_scan.fill(0.0);
+        self.amps_audio.fill(0.0);
+        self.amps_body.fill(0.0);
+        self.norm_state_audio.fill(0.0);
+        self.habituation_state.fill(0.0);
         self.rhythm = NeuralRhythms::default();
         self.rhythm_dynamics = RhythmDynamics::default();
         self.lp_200_state = 0.0;
@@ -339,21 +264,18 @@ impl Landscape {
 
     pub fn consonance_at(&self, freq_hz: f32) -> f32 {
         if let Some(idx) = self.nsgt_rt.space().index_of_freq(freq_hz) {
-            self.last_c.get(idx).copied().unwrap_or(0.0)
+            self.c_scan.get(idx).copied().unwrap_or(0.0)
         } else {
             0.0
         }
     }
 
-    /// Inject externally computed potentials (e.g., from analysis thread).
+    /// Inject a full snapshot (used by tests).
     pub fn apply_frame(&mut self, frame: &LandscapeFrame) {
-        self.last_r.clone_from(&frame.r_last);
-        self.last_h.clone_from(&frame.h_last);
-        self.last_c.clone_from(&frame.c_last);
-        self.amps_last.clone_from(&frame.amps_last);
-        if self.habituation_state.len() != self.amps_last.len() {
-            self.habituation_state.resize(self.amps_last.len(), 0.0);
-        }
+        self.r_scan.clone_from(&frame.r_scan);
+        self.h_scan.clone_from(&frame.h_scan);
+        self.c_scan.clone_from(&frame.c_scan);
+        self.amps_audio.clone_from(&frame.amps);
     }
 
     pub fn set_vitality(&mut self, v: f32) {
@@ -402,7 +324,7 @@ impl Landscape {
     }
 
     pub fn evaluate_pitch(&self, freq_hz: f32) -> f32 {
-        if self.last_c.is_empty() {
+        if self.c_scan.is_empty() {
             return -2.0;
         }
         let space = self.nsgt_rt.space();
@@ -415,10 +337,10 @@ impl Landscape {
         let pos = (l - base) / step;
         let idx = pos.floor() as usize;
         let frac = pos - pos.floor();
-        let idx0 = idx.min(self.last_c.len().saturating_sub(1));
-        let idx1 = (idx0 + 1).min(self.last_c.len().saturating_sub(1));
-        let c0 = self.last_c.get(idx0).copied().unwrap_or(0.0);
-        let c1 = self.last_c.get(idx1).copied().unwrap_or(c0);
+        let idx0 = idx.min(self.c_scan.len().saturating_sub(1));
+        let idx1 = (idx0 + 1).min(self.c_scan.len().saturating_sub(1));
+        let c0 = self.c_scan.get(idx0).copied().unwrap_or(0.0);
+        let c1 = self.c_scan.get(idx1).copied().unwrap_or(c0);
         c0 + (c1 - c0) * frac as f32
     }
 
@@ -432,7 +354,7 @@ impl Landscape {
     }
 
     pub fn get_crowding_at(&self, freq_hz: f32) -> f32 {
-        sample_linear(&self.amps_last, self.nsgt_rt.space(), freq_hz)
+        sample_linear(&self.amps_body, self.nsgt_rt.space(), freq_hz)
     }
 
     pub fn get_spectral_satiety(&self, freq_hz: f32) -> f32 {
@@ -440,7 +362,7 @@ impl Landscape {
             return 0.0;
         }
         // Spectral tilt pressure: higher bands reach "full" with less energy (1/f-like).
-        let amp = sample_linear(&self.amps_last, self.nsgt_rt.space(), freq_hz).max(0.0);
+        let amp = sample_linear(&self.amps_audio, self.nsgt_rt.space(), freq_hz).max(0.0);
         let k = 1000.0f32; // reference frequency for satiety scaling
         let weight = freq_hz / k;
         amp * weight
@@ -454,11 +376,67 @@ impl Default for LandscapeFrame {
         Self {
             fs: 0.0,
             space,
-            r_last: vec![0.0; n],
-            h_last: vec![0.0; n],
-            c_last: vec![0.0; n],
+            r_scan: vec![0.0; n],
+            h_scan: vec![0.0; n],
+            c_scan: vec![0.0; n],
             rhythm: NeuralRhythms::default(),
-            amps_last: vec![0.0; n],
+            amps: vec![0.0; n],
+        }
+    }
+}
+
+impl Landscape {
+    fn normalize_audio(&mut self, raw_env: &[f32], dt_sec: f32) {
+        let exp = self.params.loudness_exp.max(0.01);
+        let tau_s = (self.params.tau_ms.max(1.0)) * 1e-3;
+        let a = (-dt_sec / tau_s).exp();
+
+        for (i, &mag) in raw_env.iter().enumerate() {
+            let weighted_mag = mag * self.loudness_weights[i];
+            let pow = weighted_mag * weighted_mag;
+            let subj = (pow / self.params.ref_power).powf(exp);
+            let prev = self.norm_state_audio[i];
+            let next = a * prev + (1.0 - a) * subj;
+            self.norm_state_audio[i] = next;
+            self.amps_audio[i] = next;
+        }
+    }
+
+    fn update_habituation(&mut self, dt_sec: f32) {
+        let tau = self.params.habituation_tau.max(1e-3);
+        let a = (-dt_sec / tau).exp();
+        let max_depth = self.params.habituation_max_depth.max(0.0);
+
+        for (state, &amp) in self.habituation_state.iter_mut().zip(&self.amps_audio) {
+            let next = a * *state + (1.0 - a) * amp;
+            *state = next.min(max_depth);
+        }
+    }
+
+    fn update_consonance(&mut self) {
+        // C = H - D_index - habituation
+        // D_index = R / (R_total + k)
+        if self.r_scan.is_empty() || self.h_scan.is_empty() {
+            return;
+        }
+
+        let r_total: f32 = self
+            .r_scan
+            .iter()
+            .zip(&self.du_cache)
+            .map(|(r, du)| r * du)
+            .sum();
+
+        let k = self.params.roughness_k.max(1e-6);
+        let denom_inv = 1.0 / (r_total + k);
+        let w_hab = self.params.habituation_weight.max(0.0);
+
+        for i in 0..self.c_scan.len() {
+            let r_val = self.r_scan[i];
+            let h_val = self.h_scan[i];
+            let hab = self.habituation_state[i];
+            let d_index = r_val * denom_inv;
+            self.c_scan[i] = h_val - d_index - w_hab * hab;
         }
     }
 }
@@ -478,4 +456,18 @@ fn sample_linear(data: &[f32], space: &Log2Space, freq_hz: f32) -> f32 {
     let v0 = data.get(idx0).copied().unwrap_or(0.0);
     let v1 = data.get(idx1).copied().unwrap_or(v0);
     v0 + (v1 - v0) * frac as f32
+}
+
+fn local_du_from_grid(erb: &[f32]) -> Vec<f32> {
+    let n = erb.len();
+    let mut du = vec![0.0; n];
+    if n < 2 {
+        return du;
+    }
+    du[0] = (erb[1] - erb[0]).max(0.0);
+    du[n - 1] = (erb[n - 1] - erb[n - 2]).max(0.0);
+    for i in 1..n - 1 {
+        du[i] = 0.5 * (erb[i + 1] - erb[i - 1]).max(0.0);
+    }
+    du
 }

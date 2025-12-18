@@ -90,17 +90,17 @@ fn test_scan_logic() {
     let mut landscape = make_landscape();
     let mut agent = spawn_agent(220.0, 3);
     let mut frame = landscape.snapshot();
-    let n = frame.c_last.len();
-    frame.amps_last = vec![1.0; n];
-    frame.c_last.fill(-5.0);
+    let n = frame.c_scan.len();
+    frame.amps = vec![1.0; n];
+    frame.c_scan.fill(-5.0);
     let idx_cur = frame
         .space
         .index_of_freq(agent.body.base_freq_hz())
         .unwrap_or(0);
-    frame.c_last[idx_cur] = -5.0;
+    frame.c_scan[idx_cur] = -5.0;
     let target_alt = agent.body.base_freq_hz() * 1.5;
     if let Some(idx_alt) = frame.space.index_of_freq(target_alt) {
-        if let Some(c) = frame.c_last.get_mut(idx_alt) {
+        if let Some(c) = frame.c_scan.get_mut(idx_alt) {
             *c = 5.0;
         }
     }

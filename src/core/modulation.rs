@@ -53,7 +53,7 @@ impl Default for RhythmDynamics {
             last_flux: 0.0,
             theta_freq: 6.0,
             coupling_strength: 20.0,
-            beta_tau: 0.2, // ~200 ms for smoother surprise
+            beta_tau: 0.2,  // ~200 ms for smoother surprise
             alpha_tau: 0.5, // longer stability build-up
             last: NeuralRhythms::default(),
         }

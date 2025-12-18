@@ -5,8 +5,8 @@ $bg-primary: #0a0a0a;
 $bg-secondary: #111111;
 $bg-tertiary: #1a1a1a;
 $text-primary: #e4e4e7;
-$text-secondary: #a1a1aa;
-$text-muted: #71717a;
+$text-secondary: #d4d4d8;
+$text-muted: #a1a1aa;
 $accent-primary: #3b82f6;
 $accent-secondary: #1d4ed8;
 $border-color: #27272a;
@@ -110,6 +110,13 @@ a {
     z-index: 100;
 }
 
+.is-home .header {
+    background-color: transparent;
+    border-bottom: none;
+    position: absolute;
+    width: 100%;
+}
+
 .nav {
     padding: $spacing-md 0;
 }
@@ -188,11 +195,11 @@ a {
 
 // Hero section
 .hero {
-    padding: $spacing-3xl 0;
+    padding: 12rem 0 $spacing-3xl 0;
     text-align: center;
     background:
         linear-gradient(135deg, rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.4)),
-        url('/conc.jpg') center top/cover no-repeat;
+        url('/conc.png') center top / 100% no-repeat;
     color: $text-primary;
 }
 
@@ -539,7 +546,7 @@ a {
     line-height: 1.8;
     color: $text-secondary;
     max-width: 600px;
-    margin: $spacing-xl auto;
+    margin: 12rem auto $spacing-xl;
     font-weight: 300;
     
     p {

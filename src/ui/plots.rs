@@ -6,7 +6,8 @@ use egui_plot::{
 };
 use std::collections::VecDeque;
 
-/// log2 軸で周波数を描画するヒストグラム（自動幅調整版）
+/// Histogram on a log2 frequency axis (auto bin width).
+#[allow(clippy::too_many_arguments)]
 pub fn log2_hist_hz(
     ui: &mut egui::Ui,
     title: &str,
@@ -26,10 +27,10 @@ pub fn log2_hist_hz(
     const HZ_TICKS: [f64; 5] = [20.0, 100.0, 1_000.0, 10_000.0, 20_000.0];
     let tick_marks_log2: Vec<f64> = HZ_TICKS.iter().map(|hz| hz.log2()).collect();
 
-    // 各ビンごとに棒の幅を決める
+    // Choose a bar width per bin based on neighbor spacing in log2 frequency.
     let mut bars: Vec<Bar> = Vec::with_capacity(xs_hz.len());
     for i in 0..xs_hz.len() {
-        let f = xs_hz[i].max(1.0); // 0Hz対策
+        let f = xs_hz[i].max(1.0); // Avoid log2(0).
         let f_left = if i > 0 { xs_hz[i - 1].max(1.0) } else { f };
         let f_right = if i + 1 < xs_hz.len() {
             xs_hz[i + 1].max(1.0)
@@ -37,7 +38,7 @@ pub fn log2_hist_hz(
             f
         };
 
-        // log2 軸上の幅を近傍から推定
+        // Estimate bar width in log2 space from neighbor centers.
         let left = (f_left.log2() + f.log2()) * 0.5;
         let right = (f_right.log2() + f.log2()) * 0.5;
         let width = (right - left).abs().max(0.001);
@@ -241,7 +242,7 @@ pub fn neural_activity_plot(
                     };
 
                     let raw_opacity = 0.3 + 0.7 * mag.clamp(0.0, 1.0);
-                    let new_opacity = ((raw_opacity * 10.0).round() / 10.0) as f32;
+                    let new_opacity = (raw_opacity * 10.0).round() / 10.0;
 
                     if !has_prev {
                         current_opacity = new_opacity;
@@ -263,8 +264,7 @@ pub fn neural_activity_plot(
                             let t_cross = prev_t + dt * frac;
                             current_pts.push([t_cross, 1.0]);
                             segments.push((current_pts, color.gamma_multiply(current_opacity)));
-                            current_pts = Vec::new();
-                            current_pts.push([t_cross, 0.0]);
+                            current_pts = vec![[t_cross, 0.0]];
                         } else {
                             segments.push((current_pts, color.gamma_multiply(current_opacity)));
                             current_pts = Vec::new();
@@ -333,11 +333,11 @@ pub fn plot_population_dynamics(ui: &mut egui::Ui, agents: &[AgentStateInfo], he
             let r = (50.0 + 205.0 * t) as u8;
             let g = (120.0 + 40.0 * (1.0 - t)) as u8;
             let b = (230.0 * (1.0 - t) + 30.0 * t) as u8;
-            // 時間窓の対数を取ることで、周波数軸（logスケール）に対してサイズの変化を線形にする
+            // Use log2(window) so point size varies smoothly on a log-frequency x-axis.
             let radius = (agent.integration_window.max(1.0).log2() * 4.0).clamp(3.0, 20.0);
             plot_ui.points(
                 Points::new(format!("agent-{}", agent.id), vec![[x, y]])
-                    .radius(radius as f32)
+                    .radius(radius)
                     .color(Color32::from_rgb(r, g, b)),
             );
         }

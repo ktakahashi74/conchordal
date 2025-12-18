@@ -22,14 +22,13 @@ fn play_step(name, root, dur) {
     };
 
     // 2. Spawn method configuration (Critical section)
-    // Explicitly set 'crowding' to avoid overlap during initial placement
+    // Use `min_dist_erb` to avoid overlap during initial placement
     let pad_method = #{ 
         mode: "harmonicity", 
         min_freq: root * 2.0, 
         max_freq: root * 5.5,
-        // Set high to encourage dispersion
-        // Note: The Rust struct field is likely named 'crowding', not 'crowding_sensitivity'.
-        crowding: 5.0 
+        // Minimum ERB distance between spawned fundamentals
+        min_dist_erb: 1.0
     };
 
     print(" -> " + name + " @ " + root + "Hz");
@@ -42,8 +41,7 @@ fn play_step(name, root, dur) {
 
     for i in 0..3 {
         // Spawn pads sequentially
-        // By waiting each time, the next pad can sense the impact (crowding)
-        // caused by the previous pad on the landscape.
+        // By waiting each time, the next pad can sense the impact caused by the previous pad on the landscape.
         spawn_agents("pad_" + name + "_" + i, pad_method, pad_life, 1, 0.14);
         wait(0.2); 
     }

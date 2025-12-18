@@ -73,6 +73,9 @@ impl Conductor {
     }
 
     /// Apply any events scheduled up to and including current time.
+    ///
+    /// Note: spawn placement rules (e.g. minimum ERB distance between fundamentals) are enforced
+    /// inside `Population` when handling spawn actions.
     pub fn dispatch_until(
         &mut self,
         time_sec: f32,

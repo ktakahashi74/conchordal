@@ -133,11 +133,6 @@ impl Landscape {
         }
     }
 
-    /// Backwards-compatible alias for the audio thread entry point.
-    pub fn process_frame(&mut self, x_frame: &[f32]) -> LandscapeFrame {
-        self.process_audio_frame(x_frame)
-    }
-
     /// Stream A: audio thread entry point.
     ///
     /// Runs NSGT-RT → loudness normalization → roughness (R) → habituation → consonance (C).
@@ -341,7 +336,7 @@ impl Landscape {
         let idx1 = (idx0 + 1).min(self.c_scan.len().saturating_sub(1));
         let c0 = self.c_scan.get(idx0).copied().unwrap_or(0.0);
         let c1 = self.c_scan.get(idx1).copied().unwrap_or(c0);
-        c0 + (c1 - c0) * frac as f32
+        c0 + (c1 - c0) * frac
     }
 
     pub fn freq_bounds(&self) -> (f32, f32) {
@@ -351,18 +346,6 @@ impl Landscape {
 
     pub fn get_habituation_at(&self, freq_hz: f32) -> f32 {
         sample_linear(&self.habituation_state, self.nsgt_rt.space(), freq_hz)
-    }
-
-    pub fn get_crowding_at(&self, freq_hz: f32) -> f32 {
-        // Crowding represents "occupied" spectral territory by agent intention (body),
-        // not necessarily what is currently sounding (audio).
-        //
-        // Safety: if body spectrum isn't available, return 0.0 (no crowding yet).
-        if self.amps_body.is_empty() {
-            0.0
-        } else {
-            sample_linear(&self.amps_body, self.nsgt_rt.space(), freq_hz)
-        }
     }
 
     /// Debug/visualization helper: returns the actual audio-derived level at `freq_hz`.
@@ -468,7 +451,7 @@ fn sample_linear(data: &[f32], space: &Log2Space, freq_hz: f32) -> f32 {
     let idx1 = (idx0 + 1).min(data.len().saturating_sub(1));
     let v0 = data.get(idx0).copied().unwrap_or(0.0);
     let v1 = data.get(idx1).copied().unwrap_or(v0);
-    v0 + (v1 - v0) * frac as f32
+    v0 + (v1 - v0) * frac
 }
 
 fn local_du_from_grid(erb: &[f32]) -> Vec<f32> {

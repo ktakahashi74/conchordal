@@ -680,31 +680,86 @@ impl fmt::Display for Action {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "mode", rename_all = "snake_case")]
 pub enum SpawnMethod {
-    /// H = C - R を最大化する周波数を探索（決定論的）
+    /// Deterministically search a frequency that maximizes H = C - R.
     Harmonicity {
         min_freq: f32,
         max_freq: f32,
-        crowding: Option<f32>,
+        /// Minimum ERB distance between newborn fundamentals at spawn time. Default: 1.0
+        min_dist_erb: Option<f32>,
     },
-    /// H = C - R を最小化する周波数を探索（決定論的）
+    /// Deterministically search a frequency that minimizes H = C - R.
     LowHarmonicity {
         min_freq: f32,
         max_freq: f32,
-        crowding: Option<f32>,
+        /// Minimum ERB distance between newborn fundamentals at spawn time. Default: 1.0
+        min_dist_erb: Option<f32>,
     },
-    /// H の値を確率密度としてサンプリング（確率的・群生）
+    /// Stochastically sample using H as a density (temperature controls sharpness).
     HarmonicDensity {
         min_freq: f32,
         max_freq: f32,
         temperature: Option<f32>,
-        crowding: Option<f32>,
+        /// Minimum ERB distance between newborn fundamentals at spawn time. Default: 1.0
+        min_dist_erb: Option<f32>,
     },
-    /// H ≈ 0 となる領域を探索
-    ZeroCrossing { min_freq: f32, max_freq: f32 },
-    /// エネルギーの空白域（スペクトルの谷）を探索
-    SpectralGap { min_freq: f32, max_freq: f32 },
-    /// 単純なランダム（オクターブ等間隔分布）
-    RandomLogUniform { min_freq: f32, max_freq: f32 },
+    /// Search for a region where H ≈ 0 (near a zero crossing).
+    ZeroCrossing {
+        min_freq: f32,
+        max_freq: f32,
+        /// Minimum ERB distance between newborn fundamentals at spawn time. Default: 1.0
+        min_dist_erb: Option<f32>,
+    },
+    /// Search for an energy gap (a spectral valley).
+    SpectralGap {
+        min_freq: f32,
+        max_freq: f32,
+        /// Minimum ERB distance between newborn fundamentals at spawn time. Default: 1.0
+        min_dist_erb: Option<f32>,
+    },
+    /// Random log-uniform sampling between `min_freq` and `max_freq`.
+    RandomLogUniform {
+        min_freq: f32,
+        max_freq: f32,
+        /// Minimum ERB distance between newborn fundamentals at spawn time. Default: 1.0
+        min_dist_erb: Option<f32>,
+    },
+}
+
+impl SpawnMethod {
+    pub fn freq_range_hz(&self) -> (f32, f32) {
+        match self {
+            SpawnMethod::Harmonicity {
+                min_freq, max_freq, ..
+            }
+            | SpawnMethod::LowHarmonicity {
+                min_freq, max_freq, ..
+            }
+            | SpawnMethod::HarmonicDensity {
+                min_freq, max_freq, ..
+            }
+            | SpawnMethod::ZeroCrossing {
+                min_freq, max_freq, ..
+            }
+            | SpawnMethod::SpectralGap {
+                min_freq, max_freq, ..
+            }
+            | SpawnMethod::RandomLogUniform {
+                min_freq, max_freq, ..
+            } => (*min_freq, *max_freq),
+        }
+    }
+
+    pub fn min_dist_erb_or_default(&self) -> f32 {
+        let min_dist_erb = match self {
+            SpawnMethod::Harmonicity { min_dist_erb, .. }
+            | SpawnMethod::LowHarmonicity { min_dist_erb, .. }
+            | SpawnMethod::HarmonicDensity { min_dist_erb, .. }
+            | SpawnMethod::ZeroCrossing { min_dist_erb, .. }
+            | SpawnMethod::SpectralGap { min_dist_erb, .. }
+            | SpawnMethod::RandomLogUniform { min_dist_erb, .. } => *min_dist_erb,
+        };
+        min_dist_erb.unwrap_or(1.0)
+    }
 }
 
 impl fmt::Display for SpawnMethod {
@@ -713,53 +768,75 @@ impl fmt::Display for SpawnMethod {
             SpawnMethod::Harmonicity {
                 min_freq,
                 max_freq,
-                crowding,
+                min_dist_erb,
             } => write!(
                 f,
-                "method=harmonicity({:.1}-{:.1} Hz, crowding={})",
+                "method=harmonicity({:.1}-{:.1} Hz, min_dist_erb={})",
                 min_freq,
                 max_freq,
-                crowding.unwrap_or(0.0)
+                min_dist_erb.unwrap_or(1.0)
             ),
             SpawnMethod::LowHarmonicity {
                 min_freq,
                 max_freq,
-                crowding,
+                min_dist_erb,
             } => write!(
                 f,
-                "method=low_harmonicity({:.1}-{:.1} Hz, crowding={})",
+                "method=low_harmonicity({:.1}-{:.1} Hz, min_dist_erb={})",
                 min_freq,
                 max_freq,
-                crowding.unwrap_or(0.0)
+                min_dist_erb.unwrap_or(1.0)
             ),
             SpawnMethod::HarmonicDensity {
                 min_freq,
                 max_freq,
                 temperature,
-                crowding,
+                min_dist_erb,
             } => {
                 let temp = temperature.unwrap_or(1.0);
-                let crowd = crowding.unwrap_or(0.0);
                 write!(
                     f,
-                    "method=harmonic_density({:.1}-{:.1} Hz, temp={}, crowding={})",
-                    min_freq, max_freq, temp, crowd
+                    "method=harmonic_density({:.1}-{:.1} Hz, temp={}, min_dist_erb={})",
+                    min_freq,
+                    max_freq,
+                    temp,
+                    min_dist_erb.unwrap_or(1.0)
                 )
             }
-            SpawnMethod::ZeroCrossing { min_freq, max_freq } => {
+            SpawnMethod::ZeroCrossing {
+                min_freq,
+                max_freq,
+                min_dist_erb,
+            } => {
                 write!(
                     f,
-                    "method=zero_crossing({:.1}-{:.1} Hz)",
-                    min_freq, max_freq
+                    "method=zero_crossing({:.1}-{:.1} Hz, min_dist_erb={})",
+                    min_freq,
+                    max_freq,
+                    min_dist_erb.unwrap_or(1.0)
                 )
             }
-            SpawnMethod::SpectralGap { min_freq, max_freq } => {
-                write!(f, "method=spectral_gap({:.1}-{:.1} Hz)", min_freq, max_freq)
-            }
-            SpawnMethod::RandomLogUniform { min_freq, max_freq } => write!(
+            SpawnMethod::SpectralGap {
+                min_freq,
+                max_freq,
+                min_dist_erb,
+            } => write!(
                 f,
-                "method=random_log_uniform({:.1}-{:.1} Hz)",
-                min_freq, max_freq
+                "method=spectral_gap({:.1}-{:.1} Hz, min_dist_erb={})",
+                min_freq,
+                max_freq,
+                min_dist_erb.unwrap_or(1.0)
+            ),
+            SpawnMethod::RandomLogUniform {
+                min_freq,
+                max_freq,
+                min_dist_erb,
+            } => write!(
+                f,
+                "method=random_log_uniform({:.1}-{:.1} Hz, min_dist_erb={})",
+                min_freq,
+                max_freq,
+                min_dist_erb.unwrap_or(1.0)
             ),
         }
     }

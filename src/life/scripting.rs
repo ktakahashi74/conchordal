@@ -646,7 +646,12 @@ mod tests {
                 amp,
                 brain,
                 tag,
-                method: SpawnMethod::RandomLogUniform { min_freq, max_freq },
+                method:
+                    SpawnMethod::RandomLogUniform {
+                        min_freq,
+                        max_freq,
+                        min_dist_erb: None,
+                    },
             } => {
                 assert_eq!(*count, 3);
                 assert_time_close(*amp, 0.25);

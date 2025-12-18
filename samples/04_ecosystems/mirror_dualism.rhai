@@ -29,7 +29,13 @@ set_harmonicity(#{ mirror: 0.0 });
 wait(0.5);
 
 // Use harmonic_density with moderate temp to allow 3rds/5ths to emerge
-let method_major = #{ mode: "harmonic_density", min_freq: 130.0, max_freq: 1050.0, temperature: 0.5, crowding: 2.0 };
+let method_major = #{
+    mode: "harmonic_density",
+    min_freq: 130.0,
+    max_freq: 1050.0,
+    temperature: 0.5,
+    min_dist_erb: 1.0
+};
 let life_pulse = #{ type: "decay", initial_energy: 1.0, half_life_sec: 0.8 };
 
 for i in 0..6 {
@@ -59,7 +65,13 @@ print("--- [2] Weight 0.8: Common Overtone (Minor) ---");
 set_harmonicity(#{ mirror: 1.0 }); 
 wait(1.0); // Allow landscape to update
 
-let method_mirror = #{ mode: "harmonic_density", min_freq: 130.0, max_freq: 1050.0, temperature: 0.5, crowding: 2.0 };
+let method_mirror = #{
+    mode: "harmonic_density",
+    min_freq: 130.0,
+    max_freq: 1050.0,
+    temperature: 0.5,
+    min_dist_erb: 1.0
+};
 
 for i in 0..6 {
     // Probabilistically selects F, Ab (F Minor / Ab Major context)

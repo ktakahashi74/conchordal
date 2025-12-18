@@ -30,8 +30,31 @@ pub struct Population {
 }
 
 impl Population {
+    /// Returns true if `freq_hz` is within `min_dist_erb` (ERB scale) of any existing agent's base
+    /// frequency.
+    pub fn is_range_occupied(&self, freq_hz: f32, min_dist_erb: f32) -> bool {
+        if !freq_hz.is_finite() || min_dist_erb <= 0.0 {
+            return false;
+        }
+        let target_erb = crate::core::erb::hz_to_erb(freq_hz.max(1e-6));
+        for agent in &self.individuals {
+            let base_hz = match agent {
+                IndividualWrapper::PureTone(ind) => ind.body.base_freq_hz(),
+                IndividualWrapper::Harmonic(ind) => ind.body.base_freq_hz(),
+            };
+            if !base_hz.is_finite() {
+                continue;
+            }
+            let d_erb = (crate::core::erb::hz_to_erb(base_hz.max(1e-6)) - target_erb).abs();
+            if d_erb < min_dist_erb {
+                return true;
+            }
+        }
+        false
+    }
+
     pub fn new(p: PopulationParams) -> Self {
-        let individuals = p
+        let individuals: Vec<IndividualWrapper> = p
             .initial_tones_hz
             .into_iter()
             .enumerate()
@@ -167,20 +190,7 @@ impl Population {
             return 440.0;
         }
 
-        let (min_freq, max_freq) = match method {
-            SpawnMethod::Harmonicity {
-                min_freq, max_freq, ..
-            }
-            | SpawnMethod::LowHarmonicity {
-                min_freq, max_freq, ..
-            }
-            | SpawnMethod::HarmonicDensity {
-                min_freq, max_freq, ..
-            }
-            | SpawnMethod::ZeroCrossing { min_freq, max_freq }
-            | SpawnMethod::SpectralGap { min_freq, max_freq }
-            | SpawnMethod::RandomLogUniform { min_freq, max_freq } => (*min_freq, *max_freq),
-        };
+        let (min_freq, max_freq) = method.freq_range_hz();
 
         let mut idx_min = space.index_of_freq(min_freq).unwrap_or(0);
         let mut idx_max = space
@@ -194,20 +204,7 @@ impl Population {
             return space.freq_of_index(n_bins / 2);
         }
 
-        let max_amp_raw = landscape
-            .amps
-            .get(idx_min..=idx_max)
-            .map(|slice| slice.iter().cloned().fold(0.0f32, f32::max))
-            .unwrap_or(0.0);
-        let apply_crowding = max_amp_raw > 0.0;
-        let max_amp = max_amp_raw.max(1e-6);
-        let crowding_factors: Vec<f32> = if apply_crowding {
-            (idx_min..=idx_max)
-                .map(|i| landscape.amps.get(i).copied().unwrap_or(0.0) / max_amp)
-                .collect()
-        } else {
-            vec![0.0; idx_max.saturating_sub(idx_min).saturating_add(1)]
-        };
+        let min_dist_erb = method.min_dist_erb_or_default();
 
         let jitter_bin = |idx: usize, rng: &mut R| -> f32 {
             let idx = idx.min(n_bins - 1);
@@ -219,65 +216,101 @@ impl Population {
             2.0f32.powf(sample_log2).clamp(space.fmin, space.fmax)
         };
 
+        let jitter_free_bin = |idx: usize, rng: &mut R| -> f32 {
+            let center = space.freq_of_index(idx.min(n_bins - 1));
+            // Try a few times to jitter within the bin while avoiding occupied bands.
+            for _ in 0..16 {
+                let f = jitter_bin(idx, rng);
+                if !self.is_range_occupied(f, min_dist_erb) {
+                    return f;
+                }
+            }
+            center
+        };
+
         let pick_idx = match method {
             SpawnMethod::Harmonicity { .. } => {
                 let mut best = idx_min;
                 let mut best_val = f32::MIN;
-                let crowd = match method {
-                    SpawnMethod::Harmonicity { crowding, .. } => crowding.unwrap_or(0.0),
-                    _ => 0.0,
-                };
+                let mut found = false;
                 for i in idx_min..=idx_max {
-                    if let (Some(&c_val), Some(&amp)) =
-                        (landscape.c_scan.get(i), landscape.amps.get(i))
+                    let f = space.freq_of_index(i);
+                    if self.is_range_occupied(f, min_dist_erb) {
+                        continue;
+                    }
+                    if let Some(&c_val) = landscape.c_scan.get(i)
+                        && c_val > best_val
                     {
-                        let crowded = if apply_crowding {
-                            crowding_factors[i - idx_min]
-                        } else {
-                            0.0
-                        };
-                        let penalty = crowd * crowded;
-                        let score = c_val - penalty;
-                        if score > best_val {
-                            best_val = score;
+                        found = true;
+                        best_val = c_val;
+                        best = i;
+                    }
+                }
+                if found {
+                    best
+                } else {
+                    // Fallback: everything is occupied; pick the best bin ignoring occupancy.
+                    let mut best = idx_min;
+                    let mut best_val = f32::MIN;
+                    for i in idx_min..=idx_max {
+                        if let Some(&c_val) = landscape.c_scan.get(i)
+                            && c_val > best_val
+                        {
+                            best_val = c_val;
                             best = i;
                         }
                     }
+                    best
                 }
-                best
             }
             SpawnMethod::LowHarmonicity { .. } => {
                 let mut best = idx_min;
                 let mut best_val = f32::MAX;
+                let mut found = false;
                 for i in idx_min..=idx_max {
+                    let f = space.freq_of_index(i);
+                    if self.is_range_occupied(f, min_dist_erb) {
+                        continue;
+                    }
                     if let Some(&v) = landscape.c_scan.get(i)
                         && v < best_val
                     {
+                        found = true;
                         best_val = v;
                         best = i;
                     }
                 }
-                best
+                if found { best } else { idx_min }
             }
             SpawnMethod::ZeroCrossing { .. } => {
                 let mut best = idx_min;
                 let mut best_val = f32::MAX;
+                let mut found = false;
                 for i in idx_min..=idx_max {
+                    let f = space.freq_of_index(i);
+                    if self.is_range_occupied(f, min_dist_erb) {
+                        continue;
+                    }
                     if let Some(&v) = landscape.c_scan.get(i) {
                         let d = v.abs();
                         if d < best_val {
+                            found = true;
                             best_val = d;
                             best = i;
                         }
                     }
                 }
-                best
+                if found { best } else { idx_min }
             }
             SpawnMethod::SpectralGap { .. } => {
                 let weights: Vec<f32> = (idx_min..=idx_max)
                     .map(|i| {
+                        let f = space.freq_of_index(i);
+                        if self.is_range_occupied(f, min_dist_erb) {
+                            return 0.0;
+                        }
                         let amp = landscape.amps.get(i).copied().unwrap_or(0.0).max(1e-6);
-                        1.0 / amp
+                        (1.0 / amp).max(0.0)
                     })
                     .collect();
                 if let Ok(dist) = WeightedIndex::new(&weights) {
@@ -287,6 +320,10 @@ impl Population {
                     let mut best = idx_min;
                     let mut best_val = f32::MAX;
                     for i in idx_min..=idx_max {
+                        let f = space.freq_of_index(i);
+                        if self.is_range_occupied(f, min_dist_erb) {
+                            continue;
+                        }
                         if let Some(&v) = landscape.amps.get(i)
                             && v < best_val
                         {
@@ -298,21 +335,15 @@ impl Population {
                 }
             }
             SpawnMethod::HarmonicDensity { temperature, .. } => {
-                let crowd = match method {
-                    SpawnMethod::HarmonicDensity { crowding, .. } => crowding.unwrap_or(0.0),
-                    _ => 0.0,
-                };
                 let mut weights: Vec<f32> = (idx_min..=idx_max)
                     .enumerate()
                     .map(|(local_idx, i)| {
-                        let c_val = landscape.c_scan.get(i).copied().unwrap_or(0.0).max(0.0);
-                        let crowded = if apply_crowding {
-                            crowding_factors.get(local_idx).copied().unwrap_or(0.0)
-                        } else {
-                            0.0
-                        };
-                        let penalty = crowd * crowded;
-                        (c_val - penalty).max(0.0)
+                        let f = space.freq_of_index(i);
+                        if self.is_range_occupied(f, min_dist_erb) {
+                            return 0.0;
+                        }
+                        let _ = local_idx;
+                        landscape.c_scan.get(i).copied().unwrap_or(0.0).max(0.0)
                     })
                     .collect();
                 if let Some(temp) = temperature
@@ -328,21 +359,31 @@ impl Population {
                     // fallback to random log-uniform
                     let min_l = min_freq.log2();
                     let max_l = max_freq.log2();
-                    let r = rng.random_range(min_l..max_l);
-                    let f = 2.0f32.powf(r);
-                    return f;
+                    for _ in 0..32 {
+                        let r = rng.random_range(min_l..max_l);
+                        let f = 2.0f32.powf(r);
+                        if !self.is_range_occupied(f, min_dist_erb) {
+                            return f;
+                        }
+                    }
+                    return 2.0f32.powf(rng.random_range(min_l..max_l));
                 }
             }
             SpawnMethod::RandomLogUniform { .. } => {
                 let min_l = min_freq.log2();
                 let max_l = max_freq.log2();
-                let r = rng.random_range(min_l..max_l);
-                let f = 2.0f32.powf(r);
-                return f;
+                for _ in 0..32 {
+                    let r = rng.random_range(min_l..max_l);
+                    let f = 2.0f32.powf(r);
+                    if !self.is_range_occupied(f, min_dist_erb) {
+                        return f;
+                    }
+                }
+                return 2.0f32.powf(rng.random_range(min_l..max_l));
             }
         };
 
-        jitter_bin(pick_idx, rng)
+        jitter_free_bin(pick_idx, rng)
     }
 
     pub fn apply_action(

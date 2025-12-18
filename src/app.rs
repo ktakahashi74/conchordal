@@ -103,17 +103,18 @@ impl AudioMonitor {
             );
         }
 
-        if let Some(lag) = analysis_lag {
-            if lag >= 2 && self.last_lag_warn.elapsed() > Duration::from_secs(1) {
-                warn!(
-                    "[t={:.3}] Analysis lag: {} frames (Audio={}, Analysis={})",
-                    current_time,
-                    lag,
-                    frame_idx,
-                    frame_idx.saturating_sub(lag)
-                );
-                self.last_lag_warn = Instant::now();
-            }
+        if let Some(lag) = analysis_lag
+            && lag >= 2
+            && self.last_lag_warn.elapsed() > Duration::from_secs(1)
+        {
+            warn!(
+                "[t={:.3}] Analysis lag: {} frames (Audio={}, Analysis={})",
+                current_time,
+                lag,
+                frame_idx,
+                frame_idx.saturating_sub(lag)
+            );
+            self.last_lag_warn = Instant::now();
         }
 
         let peak_level = self.max_peak;
@@ -402,7 +403,7 @@ impl eframe::App for App {
             while self
                 .rhythm_history
                 .front()
-                .map_or(false, |(time, _)| *time < t_last - 5.0)
+                .is_some_and(|(time, _)| *time < t_last - 5.0)
             {
                 self.rhythm_history.pop_front();
             }
@@ -613,7 +614,7 @@ fn worker_loop(
                 conductor.is_done(),
             );
             latest_spec_amps.clear();
-            latest_spec_amps.extend_from_slice(&spectrum_body);
+            latest_spec_amps.extend_from_slice(spectrum_body);
             let _ = audio_to_analysis_tx.try_send((frame_idx, spectrum_body.to_vec()));
 
             let mut latest_analysis: Option<(Vec<f32>, Vec<f32>)> = None;
@@ -644,10 +645,10 @@ fn worker_loop(
                 let mut ui_log_amps = vec![0.0f32; log_space.n_bins()];
                 for (i, &amp) in latest_spec_amps.iter().enumerate() {
                     let f = i as f32 * fs / nfft as f32;
-                    if let Some(idx) = log_space.index_of_freq(f) {
-                        if let Some(slot) = ui_log_amps.get_mut(idx) {
-                            *slot += amp;
-                        }
+                    if let Some(idx) = log_space.index_of_freq(f)
+                        && let Some(slot) = ui_log_amps.get_mut(idx)
+                    {
+                        *slot += amp;
                     }
                 }
                 wave_frame = Some(WaveFrame {
@@ -694,7 +695,6 @@ fn worker_loop(
                                 breath_gain: ind.breath_gain,
                                 consonance: landscape.evaluate_pitch(f),
                                 habituation: landscape.get_habituation_at(f),
-                                crowding: landscape.get_crowding_at(f),
                             }
                         }
                         crate::life::individual::IndividualWrapper::Harmonic(ind) => {
@@ -707,7 +707,6 @@ fn worker_loop(
                                 breath_gain: ind.breath_gain,
                                 consonance: landscape.evaluate_pitch(f),
                                 habituation: landscape.get_habituation_at(f),
-                                crowding: landscape.get_crowding_at(f),
                             }
                         }
                     })

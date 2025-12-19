@@ -197,10 +197,20 @@ impl App {
             (None, None, None)
         };
 
+        // Decide runtime sample rate: use actual stream rate when playing, otherwise config value.
+        let runtime_sample_rate: u32 = if args.play {
+            audio_out
+                .as_ref()
+                .map(|out| out.config.sample_rate.0)
+                .unwrap_or(config.audio.sample_rate)
+        } else {
+            config.audio.sample_rate
+        };
+
         // WAV
         let (wav_tx, wav_rx) = bounded::<Vec<f32>>(16);
         let wav_handle = if let Some(path) = args.wav.clone() {
-            Some(WavOutput::run(wav_rx, path, config.audio.sample_rate))
+            Some(WavOutput::run(wav_rx, path, runtime_sample_rate))
         } else {
             None
         };
@@ -212,7 +222,7 @@ impl App {
         });
 
         // Analysis/NSGT setup
-        let fs: f32 = config.audio.sample_rate as f32;
+        let fs: f32 = runtime_sample_rate as f32;
         let space = Log2Space::new(55.0, 8000.0, 100);
         let lparams = LandscapeParams {
             fs,

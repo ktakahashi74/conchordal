@@ -34,7 +34,7 @@ impl Default for KernelParams {
             tau_erb: 1.0,
             mix_tail: 0.20,
             half_width_erb: 4.0,
-            suppress_sigma_erb: 0.08,
+            suppress_sigma_erb: 0.1,
             suppress_pow: 3.0,
             sigma_neural_erb: 1.0,
             w_neural: 0.0,

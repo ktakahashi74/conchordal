@@ -1,5 +1,6 @@
 use crate::ui::plots::{
-    draw_rhythm_mandala, log2_plot_hz, neural_activity_plot, plot_population_dynamics, time_plot,
+    draw_rhythm_mandala, draw_roughness_harmonicity, log2_plot_hz, neural_activity_plot,
+    plot_population_dynamics, time_plot,
 };
 use crate::ui::viewdata::{PlaybackState, UiFrame};
 use egui::{CentralPanel, Key, TopBottomPanel, Vec2};
@@ -331,22 +332,11 @@ pub fn main_window(
             11_f64,
             120.0,
             Some("landscape_group"),
+            None,
         );
 
         ui.separator();
 
-        let roughness: Vec<f32> = frame
-            .landscape
-            .roughness
-            .iter()
-            .map(|v| v.max(0.0))
-            .collect();
-        let harmonicity: Vec<f32> = frame
-            .landscape
-            .harmonicity
-            .iter()
-            .map(|v| v.clamp(0.0, 1.0))
-            .collect();
         let consonance = &frame.landscape.consonance;
 
         ui.columns(1, |cols| {
@@ -364,33 +354,17 @@ pub fn main_window(
                 1.0,
                 150.0,
                 Some("landscape_group"),
+                None,
             );
 
-            ui.heading("Roughness");
-            // Roughness R
-            log2_plot_hz(
+            ui.heading("Roughness / Harmonicity");
+            draw_roughness_harmonicity(
                 ui,
-                "Roughness",
+                "Roughness / Harmonicity",
                 &frame.landscape.space.centers_hz,
-                &roughness,
-                "R",
-                0.0,
-                1.0,
-                120.0,
-                Some("landscape_group"),
-            );
-
-            ui.heading("Harmonicity");
-            // Harmonicity H
-            log2_plot_hz(
-                ui,
-                "Harmonicity",
-                &frame.landscape.space.centers_hz,
-                &harmonicity,
-                "H",
-                0.0,
-                1.0,
-                120.0,
+                &frame.landscape.harmonicity,
+                &frame.landscape.roughness,
+                150.0,
                 Some("landscape_group"),
             );
         });

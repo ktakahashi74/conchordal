@@ -109,6 +109,7 @@ pub fn log2_plot_hz(
     y_max: f64,
     height: f32,
     link_group: Option<&str>,
+    line_color: Option<Color32>,
 ) {
     assert_eq!(
         xs_hz.len(),
@@ -126,7 +127,10 @@ pub fn log2_plot_hz(
         .collect();
 
     // === egui_plot用 Line オブジェクト ===
-    let line = Line::new(y_label, points);
+    let mut line = Line::new(y_label, points);
+    if let Some(color) = line_color {
+        line = line.color(color);
+    }
 
     // === X軸範囲（20〜20kHz）を log2に変換 ===
     let x_min = (20.0f64).log2();
@@ -153,6 +157,69 @@ pub fn log2_plot_hz(
 
     plot.show(ui, |plot_ui| {
         plot_ui.line(line);
+    });
+}
+
+/// Draw harmonicity above zero and roughness below zero on a log2 axis.
+pub fn draw_roughness_harmonicity(
+    ui: &mut egui::Ui,
+    title: &str,
+    xs_hz: &[f32],
+    harmonicity: &[f32],
+    roughness: &[f32],
+    height: f32,
+    link_group: Option<&str>,
+) {
+    assert_eq!(
+        xs_hz.len(),
+        harmonicity.len(),
+        "x/h length mismatch: {} vs {}",
+        xs_hz.len(),
+        harmonicity.len()
+    );
+    assert_eq!(
+        xs_hz.len(),
+        roughness.len(),
+        "x/r length mismatch: {} vs {}",
+        xs_hz.len(),
+        roughness.len()
+    );
+    if xs_hz.is_empty() {
+        return;
+    }
+
+    let points_h: PlotPoints = xs_hz
+        .iter()
+        .zip(harmonicity.iter())
+        .map(|(&xx, &yy)| [xx.log2() as f64, yy.clamp(0.0, 1.0) as f64])
+        .collect();
+    let points_r: PlotPoints = xs_hz
+        .iter()
+        .zip(roughness.iter())
+        .map(|(&xx, &yy)| [xx.log2() as f64, -(yy.clamp(0.0, 1.0) as f64)])
+        .collect();
+
+    let mut plot = Plot::new(title)
+        .height(height)
+        .allow_scroll(false)
+        .allow_drag(false)
+        .include_x((20.0f64).log2())
+        .include_x((20_000.0f64).log2())
+        .include_y(-1.0)
+        .include_y(1.0)
+        .x_grid_spacer(log_grid_spacer(10))
+        .x_axis_formatter(|mark, _range| {
+            let hz = 2f64.powf(mark.value);
+            format!("{:.0}", hz)
+        })
+        .y_axis_formatter(|mark, _range| format!("{:.2}", mark.value));
+    if let Some(link) = link_group {
+        plot = plot.link_axis(Id::new(link), Vec2b::new(true, false));
+    }
+
+    plot.show(ui, |plot_ui| {
+        plot_ui.line(Line::new("H", points_h));
+        plot_ui.line(Line::new("R", points_r));
     });
 }
 

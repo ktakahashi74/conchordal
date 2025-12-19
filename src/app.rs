@@ -12,16 +12,17 @@ use crossbeam_channel::{Receiver, Sender, bounded};
 use ringbuf::traits::Observer;
 
 use crate::audio::writer::WavOutput;
-use crate::core::analysis_worker;
-use crate::core::dorsal::DorsalStream;
 use crate::core::harmonicity_kernel::HarmonicityKernel;
+use crate::core::harmonicity_worker;
 use crate::core::landscape::{Landscape, LandscapeFrame, LandscapeParams, LandscapeUpdate};
 use crate::core::log2space::Log2Space;
 use crate::core::nsgt_kernel::{NsgtKernelLog2, NsgtLog2Config};
 use crate::core::nsgt_rt::RtNsgtKernelLog2;
 use crate::core::roughness_kernel::{KernelParams, RoughnessKernel};
 use crate::core::roughness_worker;
-use crate::core::ventral::VentralStream;
+use crate::core::stream::{
+    dorsal::DorsalStream, harmonicity::HarmonicityStream, roughness::RoughnessStream,
+};
 use crate::life::conductor::Conductor;
 use crate::life::individual::SoundBody;
 use crate::life::population::{Population, PopulationParams};
@@ -252,35 +253,36 @@ impl App {
         let (roughness_tx, roughness_rx) = bounded::<LandscapeUpdate>(8);
 
         let base_space = nsgt.space().clone();
-        let worker_fs = lparams.fs;
-        let worker_space = base_space.clone();
-        let worker_kernel = lparams.harmonicity_kernel.clone();
-        let ventral = VentralStream::new(lparams.clone(), nsgt.clone());
+        let roughness_stream = RoughnessStream::new(lparams.clone(), nsgt.clone());
+        let harmonicity_stream = HarmonicityStream::new(
+            lparams.fs,
+            base_space.clone(),
+            lparams.harmonicity_kernel.clone(),
+        );
         let landscape = Landscape::new(base_space.clone());
         let dorsal = DorsalStream::new(fs);
         let lparams_runtime = lparams.clone();
 
         // Analysis pipeline channels
-        let (audio_to_analysis_tx, audio_to_analysis_rx) = bounded::<(u64, Vec<f32>)>(64);
-        let (landscape_from_analysis_tx, landscape_from_analysis_rx) =
+        let (spectrum_to_harmonicity_tx, spectrum_to_harmonicity_rx) =
+            bounded::<(u64, Vec<f32>)>(64);
+        let (harmonicity_result_tx, harmonicity_result_rx) =
             bounded::<(u64, Vec<f32>, Vec<f32>)>(4);
         let (audio_to_roughness_tx, audio_to_roughness_rx) = bounded::<(u64, Vec<f32>)>(64);
         let (roughness_from_analysis_tx, roughness_from_analysis_rx) =
             bounded::<(u64, Landscape)>(4);
 
-        // Spawn analysis thread
+        // Spawn harmonicity thread
         {
             std::thread::Builder::new()
-                .name("analysis".into())
+                .name("harmonicity".into())
                 .spawn(move || {
-                    analysis_worker::run(
-                        worker_fs,
-                        worker_space,
-                        worker_kernel,
-                        audio_to_analysis_rx,
-                        landscape_from_analysis_tx,
+                    harmonicity_worker::run(
+                        harmonicity_stream,
+                        spectrum_to_harmonicity_rx,
+                        harmonicity_result_tx,
                         harmonicity_rx,
-                    )
+                    );
                 })
                 .expect("spawn analysis worker");
         }
@@ -291,7 +293,7 @@ impl App {
                 .name("roughness".into())
                 .spawn(move || {
                     roughness_worker::run(
-                        ventral,
+                        roughness_stream,
                         audio_to_roughness_rx,
                         roughness_from_analysis_tx,
                         roughness_rx,
@@ -365,8 +367,8 @@ impl App {
                         audio_prod,
                         wav_tx_for_worker,
                         stop_flag_worker,
-                        audio_to_analysis_tx,
-                        landscape_from_analysis_rx,
+                        spectrum_to_harmonicity_tx,
+                        harmonicity_result_rx,
                         harmonicity_tx,
                         audio_to_roughness_tx,
                         roughness_from_analysis_rx,
@@ -513,8 +515,8 @@ fn worker_loop(
     mut audio_prod: Option<ringbuf::HeapProd<f32>>,
     wav_tx: Option<Sender<Vec<f32>>>,
     exiting: Arc<AtomicBool>,
-    audio_to_analysis_tx: Sender<(u64, Vec<f32>)>,
-    landscape_from_analysis_rx: Receiver<(u64, Vec<f32>, Vec<f32>)>,
+    spectrum_to_harmonicity_tx: Sender<(u64, Vec<f32>)>,
+    harmonicity_result_rx: Receiver<(u64, Vec<f32>, Vec<f32>)>,
     harmonicity_tx: Sender<LandscapeUpdate>,
     audio_to_roughness_tx: Sender<(u64, Vec<f32>)>,
     roughness_from_analysis_rx: Receiver<(u64, Landscape)>,
@@ -608,9 +610,7 @@ fn worker_loop(
             loop {
                 // Merge analysis results (latest-only) into the landscape.
                 let mut latest_body: Option<(u64, Vec<f32>, Vec<f32>)> = None;
-                while let Ok((analyzed_id, h_scan, body_log)) =
-                    landscape_from_analysis_rx.try_recv()
-                {
+                while let Ok((analyzed_id, h_scan, body_log)) = harmonicity_result_rx.try_recv() {
                     last_h_analysis_frame = Some(analyzed_id);
                     latest_body = Some((analyzed_id, h_scan, body_log));
                 }
@@ -624,7 +624,13 @@ fn worker_loop(
                     latest_audio = Some((analyzed_id, frame));
                 }
                 if let Some((_, frame)) = latest_audio {
-                    current_landscape = frame;
+                    if current_landscape.space.n_bins() != frame.space.n_bins() {
+                        current_landscape.space = frame.space.clone();
+                    }
+                    current_landscape.roughness = frame.roughness;
+                    current_landscape.roughness_total = frame.roughness_total;
+                    current_landscape.habituation = frame.habituation;
+                    current_landscape.subjective_intensity = frame.subjective_intensity;
                 }
 
                 if let Some(h_scan) = &latest_h_scan {
@@ -654,7 +660,7 @@ fn worker_loop(
                 current_time,
                 frame_idx,
                 &current_landscape,
-                None::<&mut crate::core::ventral::VentralStream>,
+                None::<&mut crate::core::stream::roughness::RoughnessStream>,
                 &mut pop,
             );
             dorsal.set_vitality(pop.global_vitality);
@@ -695,8 +701,9 @@ fn worker_loop(
                 (chunk_vec, max_abs, channel_peak)
             };
 
+            let mono_chunk = time_chunk_vec.clone();
             if !finished {
-                current_landscape.rhythm = dorsal.process(&time_chunk_vec);
+                current_landscape.rhythm = dorsal.process(&mono_chunk);
             }
 
             // Build high-resolution spectrum for analysis (linear nfft, mapped to log space in worker).
@@ -710,8 +717,8 @@ fn worker_loop(
             );
             latest_spec_amps.clear();
             latest_spec_amps.extend_from_slice(spectrum_body);
-            let _ = audio_to_analysis_tx.try_send((frame_idx, spectrum_body.to_vec()));
-            let _ = audio_to_roughness_tx.try_send((frame_idx, time_chunk_vec.clone()));
+            let _ = spectrum_to_harmonicity_tx.try_send((frame_idx, spectrum_body.to_vec()));
+            let _ = audio_to_roughness_tx.try_send((frame_idx, mono_chunk.clone()));
 
             // Lag is measured against generated frames, because population dynamics depend on
             // the landscape evolution in the generated timebase (not wall-clock playback).

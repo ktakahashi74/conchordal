@@ -1,8 +1,7 @@
-pub mod analysis_worker;
-pub mod dorsal;
 pub mod erb;
 pub mod fft;
 pub mod harmonicity_kernel;
+pub mod harmonicity_worker;
 pub mod landscape;
 pub mod log2space;
 pub mod modulation;
@@ -11,5 +10,5 @@ pub mod nsgt_kernel;
 pub mod nsgt_rt;
 pub mod roughness_kernel;
 pub mod roughness_worker;
+pub mod stream;
 pub mod utils;
-pub mod ventral;

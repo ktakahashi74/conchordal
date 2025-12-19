@@ -395,7 +395,7 @@ impl Population {
         &mut self,
         action: Action,
         landscape: &LandscapeFrame,
-        landscape_rt: Option<&mut crate::core::ventral::VentralStream>,
+        landscape_rt: Option<&mut crate::core::stream::roughness::RoughnessStream>,
     ) {
         match action {
             Action::AddAgent { agent } => {
@@ -507,8 +507,8 @@ impl Population {
                     roughness_k: Some(value),
                     ..Default::default()
                 };
-                if let Some(ventral) = landscape_rt {
-                    ventral.apply_update(upd);
+                if let Some(roughness) = landscape_rt {
+                    roughness.apply_update(upd);
                 }
                 let mut pending = self.pending_update.unwrap_or_default();
                 pending.roughness_k = Some(value);
@@ -573,8 +573,8 @@ impl Population {
                     habituation_max_depth: Some(max_depth),
                     ..Default::default()
                 };
-                if let Some(ventral) = landscape_rt {
-                    ventral.apply_update(upd);
+                if let Some(roughness) = landscape_rt {
+                    roughness.apply_update(upd);
                 }
                 let mut pending = self.pending_update.unwrap_or_default();
                 pending.habituation_weight = Some(weight);

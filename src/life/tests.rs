@@ -140,7 +140,7 @@ fn test_conductor_timing() {
         0.5,
         0,
         &landscape,
-        None::<&mut crate::core::ventral::VentralStream>,
+        None::<&mut crate::core::stream::roughness::RoughnessStream>,
         &mut pop,
     );
     assert!(
@@ -153,7 +153,7 @@ fn test_conductor_timing() {
         1.1,
         100,
         &landscape,
-        None::<&mut crate::core::ventral::VentralStream>,
+        None::<&mut crate::core::stream::roughness::RoughnessStream>,
         &mut pop,
     );
     assert!(pop.abort_requested, "Finish action should fire at T=1.1");

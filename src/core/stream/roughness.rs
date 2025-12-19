@@ -2,9 +2,9 @@ use crate::core::landscape::{Landscape, LandscapeParams, LandscapeUpdate};
 use crate::core::nsgt_rt::RtNsgtKernelLog2;
 use crate::core::utils;
 
-/// Ventral Stream (What Pathway)
-/// Handles slow, detailed spectral analysis, harmonicity, and object identification.
-pub struct VentralStream {
+/// Roughness Stream (formerly Ventral).
+/// Handles slow spectral analysis focused on roughness and habituation.
+pub struct RoughnessStream {
     nsgt_rt: RtNsgtKernelLog2,
     params: LandscapeParams,
 
@@ -13,11 +13,11 @@ pub struct VentralStream {
     habituation_state: Vec<f32>, // Boredom integrator
     loudness_weights: Vec<f32>,  // A-weighting curve
 
-    // Last computed state (The Map)
+    // Last computed state (roughness-side of the landscape)
     last_landscape: Landscape,
 }
 
-impl VentralStream {
+impl RoughnessStream {
     pub fn new(params: LandscapeParams, nsgt_rt: RtNsgtKernelLog2) -> Self {
         let n_bins = nsgt_rt.space().n_bins();
         let loudness_weights = nsgt_rt
@@ -28,7 +28,7 @@ impl VentralStream {
             .collect();
 
         Self {
-            nsgt_rt: nsgt_rt.clone(), // Clone the kernel logic
+            nsgt_rt: nsgt_rt.clone(),
             params,
             norm_state: vec![0.0; n_bins],
             habituation_state: vec![0.0; n_bins],
@@ -43,11 +43,12 @@ impl VentralStream {
     }
 
     /// Process audio chunk asynchronously.
-    /// Returns the updated Landscape (The Map).
+    /// Returns the updated Landscape (roughness/habituation only).
     pub fn process(&mut self, audio: &[f32]) -> Landscape {
         if audio.is_empty() {
             return self.last_landscape.clone();
         }
+
         // 1. Update Spectrum (NSGT + Normalization)
         let envelope: Vec<f32> = {
             let env = self.nsgt_rt.process_hop(audio);
@@ -56,7 +57,7 @@ impl VentralStream {
         let dt_sec = audio.len() as f32 / self.params.fs;
         let norm_env = self.normalize(&envelope, dt_sec);
 
-        // 2. Compute Potentials (Roughness / Harmonicity)
+        // 2. Compute Roughness and habituation
         self.compute_potentials(&norm_env);
 
         // 3. Return snapshot
@@ -89,12 +90,6 @@ impl VentralStream {
             .roughness_kernel
             .potential_r_from_log2_spectrum(amps, space);
 
-        // Harmonicity
-        let (h, _) = self
-            .params
-            .harmonicity_kernel
-            .potential_h_from_log2_spectrum(amps, space);
-
         // Habituation
         let tau = self.params.habituation_tau.max(1e-3);
         let dt = self.nsgt_rt.dt();
@@ -106,28 +101,10 @@ impl VentralStream {
             *state = y.min(max_depth);
         }
 
-        // Combine to Consonance (C)
-        let k = self.params.roughness_k.max(1e-6);
-        let denom_inv = 1.0 / (r_total + k);
-        let w_hab = self.params.habituation_weight.max(0.0);
-
-        let c: Vec<f32> = r
-            .iter()
-            .zip(&h)
-            .zip(&self.habituation_state)
-            .map(|((ri, hi), hab)| {
-                let d_index = ri * denom_inv;
-                hi - d_index - w_hab * hab
-            })
-            .collect();
-
-        // Update State
         self.last_landscape.roughness = r;
-        self.last_landscape.harmonicity = h;
-        self.last_landscape.consonance = c;
-        self.last_landscape.subjective_intensity = amps.to_vec();
-        self.last_landscape.habituation = self.habituation_state.clone();
         self.last_landscape.roughness_total = r_total;
+        self.last_landscape.habituation = self.habituation_state.clone();
+        self.last_landscape.subjective_intensity = amps.to_vec();
     }
 
     pub fn reset(&mut self) {
@@ -138,12 +115,6 @@ impl VentralStream {
     }
 
     pub fn apply_update(&mut self, upd: LandscapeUpdate) {
-        if let Some(m) = upd.mirror {
-            self.params.harmonicity_kernel.params.mirror_weight = m;
-        }
-        if let Some(l) = upd.limit {
-            self.params.harmonicity_kernel.params.param_limit = l;
-        }
         if let Some(k) = upd.roughness_k {
             self.params.roughness_k = k.max(1e-6);
         }

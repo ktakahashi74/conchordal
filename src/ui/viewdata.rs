@@ -1,9 +1,11 @@
+use std::sync::Arc;
+
 use crate::core::landscape::LandscapeFrame;
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct WaveFrame {
     pub fs: f32,
-    pub samples: Vec<f32>,
+    pub samples: Arc<[f32]>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -53,4 +55,13 @@ pub struct UiFrame {
     pub time_sec: f32,
     pub meta: SimulationMeta,
     pub agents: Vec<AgentStateInfo>,
+}
+
+impl Default for WaveFrame {
+    fn default() -> Self {
+        Self {
+            fs: 0.0,
+            samples: Arc::from(Vec::<f32>::new()),
+        }
+    }
 }

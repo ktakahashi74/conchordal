@@ -150,7 +150,7 @@ pub struct App {
     visual_delay_frames: usize,
     _audio: Option<AudioOutput>,
     audio_init_error: Option<String>,
-    wav_tx: Option<Sender<Vec<f32>>>,
+    wav_tx: Option<Sender<Arc<[f32]>>>,
     worker_handle: Option<std::thread::JoinHandle<()>>,
     wav_handle: Option<std::thread::JoinHandle<()>>,
     exiting: Arc<AtomicBool>,
@@ -208,7 +208,7 @@ impl App {
         };
 
         // WAV
-        let (wav_tx, wav_rx) = bounded::<Vec<f32>>(16);
+        let (wav_tx, wav_rx) = bounded::<Arc<[f32]>>(16);
         let wav_handle = if let Some(path) = args.wav.clone() {
             Some(WavOutput::run(wav_rx, path, runtime_sample_rate))
         } else {
@@ -275,10 +275,11 @@ impl App {
 
         // Analysis pipeline channels
         let (spectrum_to_harmonicity_tx, spectrum_to_harmonicity_rx) =
-            bounded::<(u64, Vec<f32>)>(64);
+            bounded::<(u64, Arc<[f32]>)>(64);
         let (harmonicity_result_tx, harmonicity_result_rx) =
             bounded::<(u64, Vec<f32>, Vec<f32>)>(4);
-        let (audio_to_roughness_tx, audio_to_roughness_rx) = bounded::<(u64, Vec<f32>)>(64);
+        let (audio_to_roughness_tx, audio_to_roughness_rx) =
+            bounded::<(u64, Arc<[f32]>)>(64);
         let (roughness_from_analysis_tx, roughness_from_analysis_rx) =
             bounded::<(u64, Landscape)>(4);
 
@@ -523,12 +524,12 @@ fn worker_loop(
     mut lparams: LandscapeParams,
     mut dorsal: DorsalStream,
     mut audio_prod: Option<ringbuf::HeapProd<f32>>,
-    wav_tx: Option<Sender<Vec<f32>>>,
+    wav_tx: Option<Sender<Arc<[f32]>>>,
     exiting: Arc<AtomicBool>,
-    spectrum_to_harmonicity_tx: Sender<(u64, Vec<f32>)>,
+    spectrum_to_harmonicity_tx: Sender<(u64, Arc<[f32]>)>,
     harmonicity_result_rx: Receiver<(u64, Vec<f32>, Vec<f32>)>,
     harmonicity_tx: Sender<LandscapeUpdate>,
-    audio_to_roughness_tx: Sender<(u64, Vec<f32>)>,
+    audio_to_roughness_tx: Sender<(u64, Arc<[f32]>)>,
     roughness_from_analysis_rx: Receiver<(u64, Landscape)>,
     roughness_tx: Sender<LandscapeUpdate>,
     hop: usize,
@@ -573,7 +574,7 @@ fn worker_loop(
     let init_frame = UiFrame {
         wave: WaveFrame {
             fs,
-            samples: Vec::new(),
+            samples: Arc::from(Vec::<f32>::new()),
         },
         spec: SpecFrame {
             spec_hz: current_landscape.space.centers_hz.clone(),
@@ -684,7 +685,7 @@ fn worker_loop(
 
             // [FIX] Audio is MONO. Treat it as such.
             // Previously incorrectly treated as stereo, leading to bad metering and destructive downsampling.
-            let (time_chunk_vec, max_abs, channel_peak) = {
+            let (mono_chunk, max_abs, channel_peak) = {
                 let time_chunk = pop.process_audio(
                     hop,
                     fs,
@@ -709,19 +710,18 @@ fn worker_loop(
                     AudioOutput::push_samples(prod, time_chunk);
                 }
 
-                let chunk_vec = time_chunk.to_vec();
+                let mono_chunk: Arc<[f32]> = Arc::from(time_chunk);
                 if let Some(tx) = &wav_tx {
-                    let _ = tx.try_send(chunk_vec.clone());
+                    let _ = tx.try_send(Arc::clone(&mono_chunk));
                 }
 
                 // Channel peak for UI (Duplicate Mono to L/R)
-                (chunk_vec, max_p, [max_p, max_p])
+                (mono_chunk, max_p, [max_p, max_p])
             };
 
             // [FIX] No Downmix needed. The signal is already Mono.
-            let mono_chunk = time_chunk_vec.clone();
             if !finished {
-                current_landscape.rhythm = dorsal.process(&mono_chunk);
+                current_landscape.rhythm = dorsal.process(mono_chunk.as_ref());
             }
 
             // Build high-resolution spectrum for analysis (linear nfft, mapped to log space in worker).
@@ -735,8 +735,9 @@ fn worker_loop(
             );
             latest_spec_amps.clear();
             latest_spec_amps.extend_from_slice(spectrum_body);
-            let _ = spectrum_to_harmonicity_tx.try_send((frame_idx, spectrum_body.to_vec()));
-            let _ = audio_to_roughness_tx.try_send((frame_idx, mono_chunk.clone()));
+            let spectrum_body = Arc::from(spectrum_body);
+            let _ = spectrum_to_harmonicity_tx.try_send((frame_idx, spectrum_body));
+            let _ = audio_to_roughness_tx.try_send((frame_idx, Arc::clone(&mono_chunk)));
 
             // Lag is measured against generated frames, because population dynamics depend on
             // the landscape evolution in the generated timebase (not wall-clock playback).
@@ -768,7 +769,7 @@ fn worker_loop(
                 }
                 wave_frame = Some(WaveFrame {
                     fs,
-                    samples: time_chunk_vec.clone(),
+                    samples: Arc::clone(&mono_chunk),
                 });
                 spec_frame = Some(SpecFrame {
                     spec_hz: log_space.centers_hz.clone(),

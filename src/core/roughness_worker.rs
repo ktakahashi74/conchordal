@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crossbeam_channel::{Receiver, Sender};
 
 use crate::core::landscape::{Landscape, LandscapeUpdate};
@@ -11,7 +13,7 @@ pub type RoughnessResult = (u64, Landscape);
 /// and publishes the latest analysis for the main thread to merge.
 pub fn run(
     mut stream: RoughnessStream,
-    hop_rx: Receiver<(u64, Vec<f32>)>,
+    hop_rx: Receiver<(u64, Arc<[f32]>)>,
     result_tx: Sender<RoughnessResult>,
     update_rx: Receiver<LandscapeUpdate>,
 ) {
@@ -32,9 +34,9 @@ pub fn run(
         }
 
         // Process each hop in-order to preserve the per-hop dt used by the normalizers.
-        let mut analysis = stream.process(&hops[0]);
+        let mut analysis = stream.process(hops[0].as_ref());
         for hop in &hops[1..] {
-            analysis = stream.process(hop);
+            analysis = stream.process(hop.as_ref());
         }
         let _ = result_tx.try_send((frame_id, analysis));
     }

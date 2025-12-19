@@ -268,7 +268,7 @@ pub fn main_window(
                                 ui,
                                 "Current Hop Wave",
                                 frame.wave.fs as f64,
-                                &frame.wave.samples,
+                                frame.wave.samples.as_ref(),
                                 row_height,
                             );
                         },

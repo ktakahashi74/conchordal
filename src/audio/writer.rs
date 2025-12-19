@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crossbeam_channel::Receiver;
 use hound::{SampleFormat, WavSpec, WavWriter};
 
@@ -7,7 +9,7 @@ pub struct WavOutput {
 
 impl WavOutput {
     pub fn run(
-        rx: Receiver<Vec<f32>>,
+        rx: Receiver<Arc<[f32]>>,
         path: String,
         sample_rate: u32,
     ) -> std::thread::JoinHandle<()> {
@@ -21,7 +23,7 @@ impl WavOutput {
             let mut writer = WavWriter::create(path, spec).expect("create wav");
 
             while let Ok(samples) = rx.recv() {
-                for s in samples {
+                for &s in samples.iter() {
                     let v = (s.clamp(-1.0, 1.0) * i16::MAX as f32) as i16;
                     writer.write_sample(v).unwrap();
                 }

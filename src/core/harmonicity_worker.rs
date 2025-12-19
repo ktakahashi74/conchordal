@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crossbeam_channel::{Receiver, Sender};
 
 use crate::core::landscape::LandscapeUpdate;
@@ -11,7 +13,7 @@ pub type HarmonicityResult = (u64, Vec<f32>, Vec<f32>);
 /// the result for the main thread to merge.
 pub fn run(
     mut stream: HarmonicityStream,
-    spectrum_rx: Receiver<(u64, Vec<f32>)>,
+    spectrum_rx: Receiver<(u64, Arc<[f32]>)>,
     result_tx: Sender<HarmonicityResult>,
     update_rx: Receiver<LandscapeUpdate>,
 ) {
@@ -26,7 +28,7 @@ pub fn run(
             stream.update_params(upd);
         }
 
-        let (h_scan, amps_log) = stream.process(&spectrum_body);
+        let (h_scan, amps_log) = stream.process(spectrum_body.as_ref());
         let _ = result_tx.try_send((frame_id, h_scan, amps_log));
     }
 }

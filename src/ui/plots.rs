@@ -1,7 +1,7 @@
 use crate::ui::viewdata::AgentStateInfo;
-use egui::{Align2, Color32, FontId, Id, RichText, Stroke, Vec2, Vec2b};
+use egui::{Align2, Color32, FontId, Id, Stroke, Vec2, Vec2b};
 use egui_plot::{
-    Bar, BarChart, GridInput, GridMark, Line, LineStyle, Plot, PlotPoints, Points, VLine,
+    Bar, BarChart, GridInput, GridMark, Line, LineStyle, Plot, PlotPoints, Points, Polygon, VLine,
     log_grid_spacer,
 };
 use std::collections::VecDeque;
@@ -224,7 +224,14 @@ pub fn draw_roughness_harmonicity(
 }
 
 /// 波形表示（時間軸）
-pub fn time_plot(ui: &mut egui::Ui, title: &str, fs: f64, samples: &[f32], height: f32) {
+pub fn time_plot(
+    ui: &mut egui::Ui,
+    title: &str,
+    fs: f64,
+    samples: &[f32],
+    height: f32,
+    show_y_axis: bool,
+) {
     let points: PlotPoints = samples
         .iter()
         .enumerate()
@@ -233,18 +240,22 @@ pub fn time_plot(ui: &mut egui::Ui, title: &str, fs: f64, samples: &[f32], heigh
     let line = Line::new("wave", points);
 
     ui.vertical(|ui| {
-        Plot::new(title)
+        let mut plot = Plot::new(title)
             .height(height)
             .allow_scroll(false)
             .allow_drag(false)
             .include_y(-1.1)
             .include_y(1.1)
             .default_y_bounds(-1.1, 1.1)
-            .x_axis_formatter(|mark, _| format!("{:.3} s", mark.value))
-            .y_axis_formatter(|mark, _| format!("{:.2}", mark.value))
-            .show(ui, |plot_ui| {
-                plot_ui.line(line);
-            });
+            .x_axis_formatter(|mark, _| format!("{:.3} s", mark.value));
+        if show_y_axis {
+            plot = plot.y_axis_formatter(|mark, _| format!("{:.2}", mark.value));
+        } else {
+            plot = plot.y_axis_formatter(|_, _| String::new());
+        }
+        plot.show(ui, |plot_ui| {
+            plot_ui.line(line);
+        });
     });
 }
 
@@ -253,17 +264,16 @@ pub fn neural_activity_plot(
     ui: &mut egui::Ui,
     history: &VecDeque<(f64, crate::core::modulation::NeuralRhythms)>,
     height: f32,
+    window_start: f64,
+    window_end: f64,
+    link_group: Option<&str>,
 ) {
     if history.len() < 2 {
         ui.label("No rhythm data");
         return;
     }
 
-    let x_max = history.back().map(|(t, _)| *t).unwrap_or(0.0);
-    let window_start = x_max - 5.0;
-    let window_end = (window_start + 5.0).max(window_start + 0.1);
-
-    Plot::new("neural_activity")
+    let mut plot = Plot::new("neural_activity")
         .height(height)
         .allow_drag(true)
         .allow_scroll(true)
@@ -272,9 +282,12 @@ pub fn neural_activity_plot(
         .include_x(window_start)
         .include_x(window_end)
         .default_x_bounds(window_start, window_end)
-        .y_axis_formatter(|mark, _| format!("{:.1}", mark.value))
-        .x_axis_formatter(|mark, _| format!("{:.1} s", mark.value))
-        .show(ui, |plot_ui| {
+        .y_axis_formatter(|mark, _| format!("{:>6.2}", mark.value))
+        .x_axis_formatter(|mark, _| format!("{:.1} s", mark.value));
+    if let Some(link) = link_group {
+        plot = plot.link_axis(Id::new(link), Vec2b::new(true, false));
+    }
+    plot.show(ui, |plot_ui| {
             let colors = [
                 (Color32::from_rgb(80, 180, 255), "Delta (Phase)"),
                 (Color32::from_rgb(70, 225, 135), "Theta (Phase)"),
@@ -434,6 +447,94 @@ pub fn plot_population_dynamics(
                     .color(Color32::from_rgb(r, g, b)),
             );
         }
+    });
+}
+
+pub fn spectrum_time_freq_axes(
+    ui: &mut egui::Ui,
+    history: &VecDeque<(f64, crate::ui::viewdata::DorsalFrame)>,
+    height: f32,
+    window_start: f64,
+    window_end: f64,
+    link_group: Option<&str>,
+) {
+    let mut plot = Plot::new("time_freq_spectrum")
+        .height(height)
+        .allow_drag(true)
+        .allow_scroll(true)
+        .include_x(window_start)
+        .include_x(window_end)
+        .include_y(0.0)
+        .include_y(3.0)
+        .default_x_bounds(window_start, window_end)
+        .default_y_bounds(0.0, 3.0)
+        .x_axis_formatter(|mark, _| format!("{:.1} s", mark.value))
+        .y_axis_formatter(|mark, _| format!("{:>6.1}", mark.value));
+    if let Some(link) = link_group {
+        plot = plot.link_axis(Id::new(link), Vec2b::new(true, false));
+    }
+
+    plot.show(ui, |plot_ui| {
+        let samples: Vec<(f64, crate::ui::viewdata::DorsalFrame)> = history
+            .iter()
+            .filter(|(t, _)| *t >= window_start && *t <= window_end)
+            .map(|(t, d)| (*t, *d))
+            .collect();
+        if samples.len() < 2 {
+            return;
+        }
+
+        let mut max_energy = 0.0f32;
+        let mut max_flux = 0.0f32;
+        for (_, d) in &samples {
+            max_energy = max_energy.max(d.e_low).max(d.e_mid).max(d.e_high);
+            max_flux = max_flux.max(d.flux);
+        }
+        let energy_scale = if max_energy > 0.0 {
+            1.0 / max_energy
+        } else {
+            0.0
+        };
+        let flux_scale = if max_flux > 0.0 { 3.0 / max_flux } else { 0.0 };
+
+        let band_specs = [
+            (2.0f64, Color32::from_rgb(220, 60, 60), "high"),
+            (1.0f64, Color32::from_rgb(220, 180, 60), "mid"),
+            (0.0f64, Color32::from_rgb(60, 180, 80), "low"),
+        ];
+
+        for i in 0..(samples.len() - 1) {
+            let (t0, d0) = samples[i];
+            let (t1, _) = samples[i + 1];
+            let x0 = t0;
+            let x1 = t1.max(t0 + 0.0001);
+
+            let vals = [d0.e_high, d0.e_mid, d0.e_low];
+            for (band_idx, (y_base, base_color, _name)) in band_specs.iter().enumerate() {
+                let intensity = (vals[band_idx] * energy_scale).clamp(0.0, 1.0);
+                let alpha = (30.0 + 225.0 * intensity) as u8;
+                let color = Color32::from_rgba_unmultiplied(
+                    base_color.r(),
+                    base_color.g(),
+                    base_color.b(),
+                    alpha,
+                );
+                let y0 = *y_base;
+                let y1 = y0 + 1.0;
+                let poly = vec![[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+                plot_ui.polygon(Polygon::new("", poly).fill_color(color).stroke(Stroke::NONE));
+            }
+        }
+
+        let flux_points: PlotPoints = samples
+            .iter()
+            .map(|(t, d)| [*t, (d.flux * flux_scale) as f64])
+            .collect();
+        plot_ui.line(
+            Line::new("flux", flux_points)
+                .color(Color32::from_rgb(140, 140, 140))
+                .width(1.5),
+        );
     });
 }
 
@@ -600,18 +701,4 @@ pub fn draw_rhythm_mandala(
         ],
         Stroke::new(beta_width, beta_color),
     );
-    ui.add_space(6.0 * scale);
-    ui.horizontal(|ui| {
-        let labels = [
-            ("Delta", color_delta),
-            ("Theta", color_theta),
-            ("Alpha", color_alpha),
-            ("Beta", color_beta),
-        ];
-        for (label, color) in labels {
-            let size = (11.0 * scale).clamp(9.0, 12.0);
-            ui.label(RichText::new(label).color(color).size(size));
-            ui.add_space(6.0 * scale);
-        }
-    });
 }

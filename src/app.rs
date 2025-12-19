@@ -29,7 +29,7 @@ use crate::life::population::{Population, PopulationParams};
 use crate::life::scenario::Scenario;
 use crate::life::scripting::ScriptHost;
 use crate::ui::viewdata::{
-    AgentStateInfo, PlaybackState, SimulationMeta, SpecFrame, UiFrame, WaveFrame,
+    AgentStateInfo, DorsalFrame, PlaybackState, SimulationMeta, SpecFrame, UiFrame, WaveFrame,
 };
 use crate::{
     audio::output::AudioOutput, config::AppConfig, core::harmonicity_kernel::HarmonicityParams,
@@ -155,6 +155,7 @@ pub struct App {
     wav_handle: Option<std::thread::JoinHandle<()>>,
     exiting: Arc<AtomicBool>,
     rhythm_history: VecDeque<(f64, crate::core::modulation::NeuralRhythms)>,
+    dorsal_history: VecDeque<(f64, DorsalFrame)>,
     start_flag: Arc<AtomicBool>,
     level_history: VecDeque<(std::time::Instant, [f32; 2])>,
 }
@@ -419,6 +420,7 @@ impl App {
             worker_handle,
             exiting: stop_flag,
             rhythm_history: VecDeque::with_capacity(4096),
+            dorsal_history: VecDeque::with_capacity(4096),
             start_flag,
             level_history: VecDeque::with_capacity(256),
         }
@@ -443,16 +445,29 @@ impl eframe::App for App {
             let t = frame.time_sec as f64;
             if frame.meta.playback_state != PlaybackState::Finished {
                 self.rhythm_history.push_back((t, frame.landscape.rhythm));
+                self.dorsal_history.push_back((t, frame.dorsal));
             }
             self.ui_queue.push_back(frame);
         }
-        if let Some((t_last, _)) = self.rhythm_history.back().copied() {
+        let t_last = self
+            .rhythm_history
+            .back()
+            .map(|(t, _)| *t)
+            .or_else(|| self.dorsal_history.back().map(|(t, _)| *t));
+        if let Some(t_last) = t_last {
             while self
                 .rhythm_history
                 .front()
                 .is_some_and(|(time, _)| *time < t_last - 5.0)
             {
                 self.rhythm_history.pop_front();
+            }
+            while self
+                .dorsal_history
+                .front()
+                .is_some_and(|(time, _)| *time < t_last - 5.0)
+            {
+                self.dorsal_history.pop_front();
             }
         }
         while !self.ui_queue.is_empty() {
@@ -486,6 +501,7 @@ impl eframe::App for App {
             ctx,
             &self.last_frame,
             &self.rhythm_history,
+            &self.dorsal_history,
             self.audio_init_error.as_deref(),
             &self.exiting,
             &self.start_flag,
@@ -580,6 +596,7 @@ fn worker_loop(
             spec_hz: current_landscape.space.centers_hz.clone(),
             amps: vec![0.0; current_landscape.space.n_bins()],
         },
+        dorsal: DorsalFrame::default(),
         landscape: current_landscape.clone(),
         time_sec: current_time,
         meta: init_meta,
@@ -723,6 +740,7 @@ fn worker_loop(
             if !finished {
                 current_landscape.rhythm = dorsal.process(mono_chunk.as_ref());
             }
+            let dorsal_metrics = dorsal.last_metrics();
 
             // Build high-resolution spectrum for analysis (linear nfft, mapped to log space in worker).
             let spectrum_body = pop.process_frame(
@@ -829,6 +847,12 @@ fn worker_loop(
                 let ui_frame = UiFrame {
                     wave: wave_frame,
                     spec: spec_frame,
+                    dorsal: DorsalFrame {
+                        e_low: dorsal_metrics.e_low,
+                        e_mid: dorsal_metrics.e_mid,
+                        e_high: dorsal_metrics.e_high,
+                        flux: dorsal_metrics.flux,
+                    },
                     landscape: ui_landscape,
                     time_sec: current_time,
                     meta: SimulationMeta {

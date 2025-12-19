@@ -13,7 +13,16 @@ pub struct DorsalStream {
     lp_low_state: f32, // ~200Hz
     lp_mid_state: f32, // ~3000Hz
     prev_band_energy: [f32; 3],
+    last_metrics: DorsalMetrics,
     fs: f32,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct DorsalMetrics {
+    pub e_low: f32,
+    pub e_mid: f32,
+    pub e_high: f32,
+    pub flux: f32,
 }
 
 impl DorsalStream {
@@ -23,6 +32,7 @@ impl DorsalStream {
             lp_low_state: 0.0,
             lp_mid_state: 0.0,
             prev_band_energy: [0.0; 3],
+            last_metrics: DorsalMetrics::default(),
             fs,
         }
     }
@@ -77,6 +87,12 @@ impl DorsalStream {
             }
             self.prev_band_energy[i] = currents[i];
         }
+        self.last_metrics = DorsalMetrics {
+            e_low: currents[0],
+            e_mid: currents[1],
+            e_high: currents[2],
+            flux: raw_flux,
+        };
 
         // --- 2. Non-linear Boost (Simulating Neural Activation) ---
         // High gain (500.0) + tanh saturation to detect ambient shifts
@@ -92,9 +108,14 @@ impl DorsalStream {
         self.lp_low_state = 0.0;
         self.lp_mid_state = 0.0;
         self.prev_band_energy = [0.0; 3];
+        self.last_metrics = DorsalMetrics::default();
     }
 
     pub fn set_vitality(&mut self, v: f32) {
         self.dynamics.set_vitality(v);
+    }
+
+    pub fn last_metrics(&self) -> DorsalMetrics {
+        self.last_metrics
     }
 }

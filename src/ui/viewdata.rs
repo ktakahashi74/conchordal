@@ -14,6 +14,14 @@ pub struct SpecFrame {
     pub amps: Vec<f32>,
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+pub struct DorsalFrame {
+    pub e_low: f32,
+    pub e_mid: f32,
+    pub e_high: f32,
+    pub flux: f32,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct AgentStateInfo {
     pub id: u64,
@@ -51,6 +59,7 @@ pub struct SimulationMeta {
 pub struct UiFrame {
     pub wave: WaveFrame,
     pub spec: SpecFrame,
+    pub dorsal: DorsalFrame,
     pub landscape: LandscapeFrame,
     pub time_sec: f32,
     pub meta: SimulationMeta,

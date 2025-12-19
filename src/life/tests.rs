@@ -6,14 +6,9 @@ use super::population::{Population, PopulationParams};
 use super::scenario::{
     Action, BrainConfig, Event, HarmonicMode, IndividualConfig, Scenario, Scene, TimbreGenotype,
 };
-use crate::core::harmonicity_kernel::HarmonicityKernel;
-use crate::core::harmonicity_kernel::HarmonicityParams;
+use crate::core::landscape::Landscape;
 use crate::core::landscape::LandscapeFrame;
-use crate::core::landscape::{Landscape, LandscapeParams};
 use crate::core::log2space::Log2Space;
-use crate::core::nsgt_kernel::{NsgtKernelLog2, NsgtLog2Config};
-use crate::core::nsgt_rt::RtNsgtKernelLog2;
-use crate::core::roughness_kernel::{KernelParams, RoughnessKernel};
 use crate::life::lifecycle::LifecycleConfig;
 use serde_json;
 
@@ -141,45 +136,32 @@ fn test_conductor_timing() {
     let landscape = LandscapeFrame::default();
 
     // 2. Dispatch at T=0.5 (Should NOT fire)
-    conductor.dispatch_until(0.5, 0, &landscape, None, &mut pop);
+    conductor.dispatch_until(
+        0.5,
+        0,
+        &landscape,
+        None::<&mut crate::core::ventral::VentralStream>,
+        &mut pop,
+    );
     assert!(
         !pop.abort_requested,
         "Finish action should not fire yet at T=0.5"
     );
 
     // 3. Dispatch at T=1.1 (Should fire)
-    conductor.dispatch_until(1.1, 100, &landscape, None, &mut pop);
+    conductor.dispatch_until(
+        1.1,
+        100,
+        &landscape,
+        None::<&mut crate::core::ventral::VentralStream>,
+        &mut pop,
+    );
     assert!(pop.abort_requested, "Finish action should fire at T=1.1");
 }
 
-fn make_test_landscape(fs: f32) -> Landscape {
+fn make_test_landscape(_fs: f32) -> Landscape {
     let space = Log2Space::new(55.0, 4000.0, 64);
-    let lparams = LandscapeParams {
-        fs,
-        max_hist_cols: 64,
-        alpha: 0.0,
-        roughness_kernel: RoughnessKernel::new(KernelParams::default(), 0.01),
-        harmonicity_kernel: HarmonicityKernel::new(&space, HarmonicityParams::default()),
-        habituation_tau: 8.0,
-        habituation_weight: 0.5,
-        habituation_max_depth: 1.0,
-        loudness_exp: 0.23,
-        tau_ms: 80.0,
-        ref_power: 1e-6,
-        roughness_k: 0.1,
-    };
-    let overlap = 0.5;
-    let nfft = 2048usize;
-    let nsgt_kernel = NsgtKernelLog2::new(
-        NsgtLog2Config {
-            fs,
-            overlap,
-            nfft_override: Some(nfft),
-        },
-        space,
-    );
-    let nsgt = RtNsgtKernelLog2::new(nsgt_kernel);
-    Landscape::new(lparams, nsgt)
+    Landscape::new(space)
 }
 
 #[test]

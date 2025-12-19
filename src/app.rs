@@ -13,15 +13,15 @@ use ringbuf::traits::Observer;
 
 use crate::audio::writer::WavOutput;
 use crate::core::analysis_worker;
+use crate::core::dorsal::DorsalStream;
 use crate::core::harmonicity_kernel::HarmonicityKernel;
-use crate::core::landscape::{
-    AudioAnalysisFrame, Landscape, LandscapeFrame, LandscapeParams, LandscapeUpdate,
-};
+use crate::core::landscape::{Landscape, LandscapeFrame, LandscapeParams, LandscapeUpdate};
 use crate::core::log2space::Log2Space;
 use crate::core::nsgt_kernel::{NsgtKernelLog2, NsgtLog2Config};
 use crate::core::nsgt_rt::RtNsgtKernelLog2;
 use crate::core::roughness_kernel::{KernelParams, RoughnessKernel};
 use crate::core::roughness_worker;
+use crate::core::ventral::VentralStream;
 use crate::life::conductor::Conductor;
 use crate::life::individual::SoundBody;
 use crate::life::population::{Population, PopulationParams};
@@ -251,10 +251,14 @@ impl App {
         let (harmonicity_tx, harmonicity_rx) = bounded::<LandscapeUpdate>(8);
         let (roughness_tx, roughness_rx) = bounded::<LandscapeUpdate>(8);
 
-        let landscape = Landscape::new(lparams.clone(), nsgt.clone());
+        let base_space = nsgt.space().clone();
         let worker_fs = lparams.fs;
-        let worker_space = landscape.snapshot().space.clone();
+        let worker_space = base_space.clone();
         let worker_kernel = lparams.harmonicity_kernel.clone();
+        let ventral = VentralStream::new(lparams.clone(), nsgt.clone());
+        let landscape = Landscape::new(base_space.clone());
+        let dorsal = DorsalStream::new(fs);
+        let lparams_runtime = lparams.clone();
 
         // Analysis pipeline channels
         let (audio_to_analysis_tx, audio_to_analysis_rx) = bounded::<(u64, Vec<f32>)>(64);
@@ -262,7 +266,7 @@ impl App {
             bounded::<(u64, Vec<f32>, Vec<f32>)>(4);
         let (audio_to_roughness_tx, audio_to_roughness_rx) = bounded::<(u64, Vec<f32>)>(64);
         let (roughness_from_analysis_tx, roughness_from_analysis_rx) =
-            bounded::<(u64, AudioAnalysisFrame)>(4);
+            bounded::<(u64, Landscape)>(4);
 
         // Spawn analysis thread
         {
@@ -283,12 +287,11 @@ impl App {
 
         // Spawn roughness thread (NSGT-RT based audio analysis).
         {
-            let rough_landscape = Landscape::new(lparams.clone(), nsgt.clone());
             std::thread::Builder::new()
                 .name("roughness".into())
                 .spawn(move || {
                     roughness_worker::run(
-                        rough_landscape,
+                        ventral,
                         audio_to_roughness_rx,
                         roughness_from_analysis_tx,
                         roughness_rx,
@@ -357,6 +360,8 @@ impl App {
                         pop,
                         conductor,
                         landscape,
+                        lparams_runtime,
+                        dorsal,
                         audio_prod,
                         wav_tx_for_worker,
                         stop_flag_worker,
@@ -502,7 +507,9 @@ fn worker_loop(
     ui_tx: Sender<UiFrame>,
     mut pop: Population,
     mut conductor: Conductor,
-    mut landscape: Landscape,
+    current_landscape: Landscape,
+    mut lparams: LandscapeParams,
+    mut dorsal: DorsalStream,
     mut audio_prod: Option<ringbuf::HeapProd<f32>>,
     wav_tx: Option<Sender<Vec<f32>>>,
     exiting: Arc<AtomicBool>,
@@ -510,7 +517,7 @@ fn worker_loop(
     landscape_from_analysis_rx: Receiver<(u64, Vec<f32>, Vec<f32>)>,
     harmonicity_tx: Sender<LandscapeUpdate>,
     audio_to_roughness_tx: Sender<(u64, Vec<f32>)>,
-    roughness_from_analysis_rx: Receiver<(u64, AudioAnalysisFrame)>,
+    roughness_from_analysis_rx: Receiver<(u64, Landscape)>,
     roughness_tx: Sender<LandscapeUpdate>,
     hop: usize,
     hop_duration: Duration,
@@ -518,7 +525,7 @@ fn worker_loop(
     n_bins: usize,
     nfft: usize,
 ) {
-    let mut current_landscape: LandscapeFrame = landscape.snapshot();
+    let mut current_landscape: LandscapeFrame = current_landscape;
     let mut playback_state = if start_flag.load(Ordering::SeqCst) {
         PlaybackState::Playing
     } else {
@@ -526,7 +533,7 @@ fn worker_loop(
     };
     let mut finish_logged = false;
     let mut finished = false;
-    let mut latest_spec_amps: Vec<f32> = current_landscape.amps.clone();
+    let mut latest_spec_amps: Vec<f32> = vec![0.0; n_bins];
     let log_space = current_landscape.space.clone();
 
     let mut current_time: f32 = 0.0;
@@ -536,6 +543,7 @@ fn worker_loop(
     let ui_min_interval = Duration::from_millis(33);
     let mut last_h_analysis_frame: Option<u64> = None;
     let mut last_r_analysis_frame: Option<u64> = None;
+    let mut latest_h_scan: Option<Vec<f32>> = None;
 
     // Initial UI frame so metadata is visible before playback starts.
     let init_meta = SimulationMeta {
@@ -557,7 +565,7 @@ fn worker_loop(
         },
         spec: SpecFrame {
             spec_hz: current_landscape.space.centers_hz.clone(),
-            amps: latest_spec_amps.clone(),
+            amps: vec![0.0; current_landscape.space.n_bins()],
         },
         landscape: current_landscape.clone(),
         time_sec: current_time,
@@ -606,17 +614,24 @@ fn worker_loop(
                     last_h_analysis_frame = Some(analyzed_id);
                     latest_body = Some((analyzed_id, h_scan, body_log));
                 }
-                if let Some((_, h_scan, body_log)) = latest_body {
-                    landscape.apply_body_analysis(h_scan, body_log);
+                if let Some((_, h_scan, _body_log)) = latest_body {
+                    latest_h_scan = Some(h_scan);
                 }
 
-                let mut latest_audio: Option<(u64, AudioAnalysisFrame)> = None;
+                let mut latest_audio: Option<(u64, Landscape)> = None;
                 while let Ok((analyzed_id, frame)) = roughness_from_analysis_rx.try_recv() {
                     last_r_analysis_frame = Some(analyzed_id);
                     latest_audio = Some((analyzed_id, frame));
                 }
                 if let Some((_, frame)) = latest_audio {
-                    landscape.apply_audio_analysis(frame);
+                    current_landscape = frame;
+                }
+
+                if let Some(h_scan) = &latest_h_scan {
+                    if h_scan.len() == current_landscape.harmonicity.len() {
+                        current_landscape.harmonicity.clone_from(h_scan);
+                        current_landscape.recompute_consonance(&lparams);
+                    }
                 }
 
                 // For frame 0 there is no previous frame to wait for.
@@ -634,20 +649,30 @@ fn worker_loop(
                 thread::sleep(Duration::from_micros(200));
             }
 
-            current_landscape = landscape.snapshot();
-
             let t_start = Instant::now();
-            conductor.dispatch_until(current_time, frame_idx, &current_landscape, None, &mut pop);
-            landscape.set_vitality(pop.global_vitality);
+            conductor.dispatch_until(
+                current_time,
+                frame_idx,
+                &current_landscape,
+                None::<&mut crate::core::ventral::VentralStream>,
+                &mut pop,
+            );
+            dorsal.set_vitality(pop.global_vitality);
             if let Some(update) = pop.take_pending_update() {
-                landscape.apply_update(update);
+                apply_params_update(&mut lparams, &update);
+                current_landscape.recompute_consonance(&lparams);
                 let _ = harmonicity_tx.try_send(update);
                 let _ = roughness_tx.try_send(update);
             }
 
             let (time_chunk_vec, max_abs, channel_peak) = {
-                let time_chunk =
-                    pop.process_audio(hop, fs, frame_idx, hop_duration.as_secs_f32(), &landscape);
+                let time_chunk = pop.process_audio(
+                    hop,
+                    fs,
+                    frame_idx,
+                    hop_duration.as_secs_f32(),
+                    &current_landscape,
+                );
 
                 let max_abs = time_chunk.iter().fold(0.0f32, |m, &v| m.max(v.abs()));
 
@@ -671,7 +696,7 @@ fn worker_loop(
             };
 
             if !finished {
-                landscape.update_rhythm(&time_chunk_vec);
+                current_landscape.rhythm = dorsal.process(&time_chunk_vec);
             }
 
             // Build high-resolution spectrum for analysis (linear nfft, mapped to log space in worker).
@@ -724,9 +749,7 @@ fn worker_loop(
                     spec_hz: log_space.centers_hz.clone(),
                     amps: ui_log_amps.iter().map(|&x| x.sqrt()).collect(),
                 });
-                let mut landscape_frame = current_landscape.clone();
-                landscape_frame.rhythm = landscape.rhythm;
-                ui_landscape = Some(landscape_frame);
+                ui_landscape = Some(current_landscape.clone());
             }
 
             let elapsed = t_start.elapsed();
@@ -759,8 +782,8 @@ fn worker_loop(
                                 target_freq: ind.target_freq,
                                 integration_window: ind.integration_window,
                                 breath_gain: ind.breath_gain,
-                                consonance: landscape.evaluate_pitch(f),
-                                habituation: landscape.get_habituation_at(f),
+                                consonance: current_landscape.evaluate_pitch(f),
+                                habituation: current_landscape.get_habituation_at(f),
                             }
                         }
                         crate::life::individual::IndividualWrapper::Harmonic(ind) => {
@@ -771,8 +794,8 @@ fn worker_loop(
                                 target_freq: ind.target_freq,
                                 integration_window: ind.integration_window,
                                 breath_gain: ind.breath_gain,
-                                consonance: landscape.evaluate_pitch(f),
-                                habituation: landscape.get_habituation_at(f),
+                                consonance: current_landscape.evaluate_pitch(f),
+                                habituation: current_landscape.get_habituation_at(f),
                             }
                         }
                     })
@@ -829,5 +852,26 @@ fn worker_loop(
         if !produced_any {
             thread::sleep(Duration::from_millis(1));
         }
+    }
+}
+
+fn apply_params_update(params: &mut LandscapeParams, upd: &LandscapeUpdate) {
+    if let Some(m) = upd.mirror {
+        params.harmonicity_kernel.params.mirror_weight = m;
+    }
+    if let Some(l) = upd.limit {
+        params.harmonicity_kernel.params.param_limit = l;
+    }
+    if let Some(k) = upd.roughness_k {
+        params.roughness_k = k.max(1e-6);
+    }
+    if let Some(w) = upd.habituation_weight {
+        params.habituation_weight = w;
+    }
+    if let Some(tau) = upd.habituation_tau {
+        params.habituation_tau = tau;
+    }
+    if let Some(max_d) = upd.habituation_max_depth {
+        params.habituation_max_depth = max_d;
     }
 }

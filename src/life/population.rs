@@ -238,7 +238,7 @@ impl Population {
                     if self.is_range_occupied(f, min_dist_erb) {
                         continue;
                     }
-                    if let Some(&c_val) = landscape.c_scan.get(i)
+                    if let Some(&c_val) = landscape.consonance.get(i)
                         && c_val > best_val
                     {
                         found = true;
@@ -253,7 +253,7 @@ impl Population {
                     let mut best = idx_min;
                     let mut best_val = f32::MIN;
                     for i in idx_min..=idx_max {
-                        if let Some(&c_val) = landscape.c_scan.get(i)
+                        if let Some(&c_val) = landscape.consonance.get(i)
                             && c_val > best_val
                         {
                             best_val = c_val;
@@ -272,7 +272,7 @@ impl Population {
                     if self.is_range_occupied(f, min_dist_erb) {
                         continue;
                     }
-                    if let Some(&v) = landscape.c_scan.get(i)
+                    if let Some(&v) = landscape.consonance.get(i)
                         && v < best_val
                     {
                         found = true;
@@ -291,7 +291,7 @@ impl Population {
                     if self.is_range_occupied(f, min_dist_erb) {
                         continue;
                     }
-                    if let Some(&v) = landscape.c_scan.get(i) {
+                    if let Some(&v) = landscape.consonance.get(i) {
                         let d = v.abs();
                         if d < best_val {
                             found = true;
@@ -309,8 +309,13 @@ impl Population {
                         if self.is_range_occupied(f, min_dist_erb) {
                             return 0.0;
                         }
-                        let amp = landscape.amps.get(i).copied().unwrap_or(0.0).max(1e-6);
-                        (1.0 / amp).max(0.0)
+                        let amp = landscape
+                            .subjective_intensity
+                            .get(i)
+                            .copied()
+                            .unwrap_or(0.0)
+                            .max(1e-6);
+                        (1.0f32 / amp).max(0.0)
                     })
                     .collect();
                 if let Ok(dist) = WeightedIndex::new(&weights) {
@@ -324,7 +329,7 @@ impl Population {
                         if self.is_range_occupied(f, min_dist_erb) {
                             continue;
                         }
-                        if let Some(&v) = landscape.amps.get(i)
+                        if let Some(&v) = landscape.subjective_intensity.get(i)
                             && v < best_val
                         {
                             best_val = v;
@@ -343,7 +348,7 @@ impl Population {
                             return 0.0;
                         }
                         let _ = local_idx;
-                        landscape.c_scan.get(i).copied().unwrap_or(0.0).max(0.0)
+                        landscape.consonance.get(i).copied().unwrap_or(0.0).max(0.0)
                     })
                     .collect();
                 if let Some(temp) = temperature
@@ -390,7 +395,7 @@ impl Population {
         &mut self,
         action: Action,
         landscape: &LandscapeFrame,
-        landscape_rt: Option<&mut Landscape>,
+        landscape_rt: Option<&mut crate::core::ventral::VentralStream>,
     ) {
         match action {
             Action::AddAgent { agent } => {
@@ -498,11 +503,16 @@ impl Population {
                 self.global_coupling = value;
             }
             Action::SetRoughnessTolerance { value } => {
-                if let Some(landscape) = landscape_rt {
-                    landscape.set_roughness_k(value);
-                } else {
-                    warn!("SetRoughnessTolerance ignored: no landscape handle");
+                let upd = LandscapeUpdate {
+                    roughness_k: Some(value),
+                    ..Default::default()
+                };
+                if let Some(ventral) = landscape_rt {
+                    ventral.apply_update(upd);
                 }
+                let mut pending = self.pending_update.unwrap_or_default();
+                pending.roughness_k = Some(value);
+                self.pending_update = Some(pending);
             }
             Action::SetHarmonicity { mirror, limit } => {
                 let mut pending = self.pending_update.unwrap_or_default();
@@ -557,10 +567,14 @@ impl Population {
                 tau,
                 max_depth,
             } => {
-                if let Some(landscape) = landscape_rt {
-                    landscape.update_habituation_params(weight, tau, max_depth);
-                } else {
-                    warn!("SetHabituation ignored: no landscape handle");
+                let upd = LandscapeUpdate {
+                    habituation_weight: Some(weight),
+                    habituation_tau: Some(tau),
+                    habituation_max_depth: Some(max_depth),
+                    ..Default::default()
+                };
+                if let Some(ventral) = landscape_rt {
+                    ventral.apply_update(upd);
                 }
                 let mut pending = self.pending_update.unwrap_or_default();
                 pending.habituation_weight = Some(weight);

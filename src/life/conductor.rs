@@ -81,7 +81,7 @@ impl Conductor {
         time_sec: f32,
         _current_frame: u64,
         landscape: &LandscapeFrame,
-        mut landscape_rt: Option<&mut crate::core::landscape::Landscape>,
+        mut ventral_rt: Option<&mut crate::core::ventral::VentralStream>,
         population: &mut Population,
     ) {
         while let Some(ev) = self.event_queue.front() {
@@ -93,7 +93,7 @@ impl Conductor {
             let action_descs: Vec<String> = ev.actions.iter().map(ToString::to_string).collect();
             info!("[t={:.3}] Event: {}", ev.time, action_descs.join(" | "));
             for action in ev.actions {
-                population.apply_action(action, landscape, landscape_rt.as_deref_mut());
+                population.apply_action(action, landscape, ventral_rt.as_deref_mut());
             }
         }
     }

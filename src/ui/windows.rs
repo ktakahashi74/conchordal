@@ -325,7 +325,7 @@ pub fn main_window(
             ui,
             "NSGT envelope",
             &frame.landscape.space.centers_hz,
-            &frame.landscape.amps,
+            &frame.landscape.subjective_intensity,
             "NSGT",
             0.0,
             11_f64,
@@ -335,14 +335,19 @@ pub fn main_window(
 
         ui.separator();
 
-        let roughness: Vec<f32> = frame.landscape.r_scan.iter().map(|v| v.max(0.0)).collect();
+        let roughness: Vec<f32> = frame
+            .landscape
+            .roughness
+            .iter()
+            .map(|v| v.max(0.0))
+            .collect();
         let harmonicity: Vec<f32> = frame
             .landscape
-            .h_scan
+            .harmonicity
             .iter()
             .map(|v| v.clamp(0.0, 1.0))
             .collect();
-        let consonance = &frame.landscape.c_scan;
+        let consonance = &frame.landscape.consonance;
 
         ui.columns(1, |cols| {
             let ui = &mut cols[0];

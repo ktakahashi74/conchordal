@@ -276,23 +276,6 @@ pub fn main_window(
                     );
                 });
 
-                ui.separator();
-                // === Spectrum ===
-                ui.vertical(|ui| {
-                    ui.label("Sound bodies");
-                    if frame.spec.spec_hz.len() > 1 && frame.spec.amps.len() > 1 {
-                        crate::ui::plots::log2_hist_hz(
-                            ui,
-                            "Sound bodies",
-                            &frame.spec.spec_hz[1..],
-                            &frame.spec.amps[1..],
-                            "A[k]",
-                            0.0,
-                            1.1,
-                            row_height,
-                        );
-                    }
-                });
             });
         });
 
@@ -317,7 +300,13 @@ pub fn main_window(
 
         ui.separator();
         ui.heading("Population Dynamics");
-        plot_population_dynamics(ui, &frame.agents, 140.0);
+        plot_population_dynamics(
+            ui,
+            &frame.agents,
+            &frame.spec.spec_hz,
+            &frame.spec.amps,
+            140.0,
+        );
 
         ui.separator();
         ui.heading("Subjective Intensity");

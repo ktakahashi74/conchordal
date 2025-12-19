@@ -369,7 +369,13 @@ pub fn neural_activity_plot(
 }
 
 /// Show current vs target frequency for each agent with intent arrows.
-pub fn plot_population_dynamics(ui: &mut egui::Ui, agents: &[AgentStateInfo], height: f32) {
+pub fn plot_population_dynamics(
+    ui: &mut egui::Ui,
+    agents: &[AgentStateInfo],
+    spec_hz: &[f32],
+    spec_amps: &[f32],
+    height: f32,
+) {
     let x_min = (20.0f64).log2();
     let x_max = (20_000.0f64).log2();
     let plot = Plot::new("population_dynamics")
@@ -377,7 +383,7 @@ pub fn plot_population_dynamics(ui: &mut egui::Ui, agents: &[AgentStateInfo], he
         .allow_scroll(true)
         .allow_drag(true)
         .include_y(-1.0)
-        .include_y(1.0)
+        .include_y(1.1)
         .include_x(x_min)
         .include_x(x_max)
         .x_axis_formatter(|mark, _| format!("{:.0} Hz", 2f64.powf(mark.value)))
@@ -385,6 +391,26 @@ pub fn plot_population_dynamics(ui: &mut egui::Ui, agents: &[AgentStateInfo], he
         .link_axis(Id::new("landscape_group"), Vec2b::new(true, false));
 
     plot.show(ui, |plot_ui| {
+        if spec_hz.len() > 1 && spec_amps.len() > 1 {
+            let mut bars: Vec<Bar> = Vec::with_capacity(spec_hz.len().saturating_sub(1));
+            for i in 1..spec_hz.len().min(spec_amps.len()) {
+                let f = spec_hz[i].max(1.0);
+                let f_left = if i > 1 { spec_hz[i - 1].max(1.0) } else { f };
+                let f_right = if i + 1 < spec_hz.len() {
+                    spec_hz[i + 1].max(1.0)
+                } else {
+                    f
+                };
+                let left = (f_left.log2() + f.log2()) * 0.5;
+                let right = (f_right.log2() + f.log2()) * 0.5;
+                let width = (right - left).abs().max(0.001);
+                bars.push(
+                    Bar::new(f.log2() as f64, spec_amps[i] as f64).width(width as f64),
+                );
+            }
+            plot_ui.bar_chart(BarChart::new("Sound bodies", bars));
+        }
+
         for agent in agents {
             let y = agent.consonance as f64;
             let x = agent.freq_hz.max(1.0).log2() as f64;

@@ -599,19 +599,20 @@ fn worker_loop(
             playback_state = PlaybackState::Playing;
         }
 
-        if audio_prod.is_none() {
-            thread::sleep(Duration::from_millis(10));
-            continue;
-        }
-
-        let prod = audio_prod.as_mut().expect("audio producer exists");
-        let buffer_capacity = prod.capacity().get();
+        let buffer_capacity = audio_prod
+            .as_ref()
+            .map(|p| p.capacity().get())
+            .unwrap_or(hop);
 
         let mut produced_any = false;
-        while prod.vacant_len() >= hop {
+        let mut process_frame = |mut prod_opt: Option<&mut ringbuf::HeapProd<f32>>| {
             produced_any = true;
-            let free = prod.vacant_len();
-            let occupancy = buffer_capacity.saturating_sub(free);
+            let (free, occupancy) = if let Some(prod) = prod_opt.as_ref() {
+                let free = prod.vacant_len();
+                (free, buffer_capacity.saturating_sub(free))
+            } else {
+                (hop, 0)
+            };
             pop.set_current_frame(frame_idx);
 
             // Keep analysis aligned to generated frames: allow 1-frame delay, but do not advance
@@ -704,7 +705,9 @@ fn worker_loop(
                 // Output to Audio Backend
                 // Note: If the audio backend expects Stereo, we might need to duplicate samples here.
                 // But typically ringbuf just takes the slice. Assuming backend handles mono or we rely on OS mixing.
-                AudioOutput::push_samples(prod, time_chunk);
+                if let Some(prod) = prod_opt.as_deref_mut() {
+                    AudioOutput::push_samples(prod, time_chunk);
+                }
 
                 let chunk_vec = time_chunk.to_vec();
                 if let Some(tx) = &wav_tx {
@@ -865,6 +868,15 @@ fn worker_loop(
                 current_time += hop_duration.as_secs_f32();
                 frame_idx += 1;
             }
+        };
+
+        if let Some(prod) = audio_prod.as_mut() {
+            while prod.vacant_len() >= hop {
+                process_frame(Some(prod));
+            }
+        } else {
+            // Offline/render-only mode: progress even without audio output.
+            process_frame(None);
         }
 
         if exiting.load(Ordering::SeqCst) || (finished && !wait_user_exit) {

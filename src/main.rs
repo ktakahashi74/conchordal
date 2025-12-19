@@ -28,7 +28,7 @@ use crate::life::scripting::ScriptHost;
 #[command(author, version, about)]
 struct Args {
     /// Play audio in realtime
-    #[arg(long, default_value_t = true)]
+    #[arg(long, default_value_t = true, num_args = 0..=1, default_missing_value = "true")]
     play: bool,
 
     /// Write audio to wav file

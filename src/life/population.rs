@@ -30,6 +30,7 @@ pub struct Population {
 }
 
 impl Population {
+    const RELEASE_SEC_DEFAULT: f32 = 0.03;
     /// Returns true if `freq_hz` is within `min_dist_erb` (ERB scale) of any existing agent's base
     /// frequency.
     pub fn is_range_occupied(&self, freq_hz: f32, min_dist_erb: f32) -> bool {
@@ -460,6 +461,22 @@ impl Population {
                 let ids = self.resolve_targets(&target);
                 for id in ids {
                     self.remove_agent(id);
+                }
+            }
+            Action::ReleaseAgent {
+                target,
+                release_sec,
+            } => {
+                let ids = self.resolve_targets(&target);
+                let sec = if release_sec > 0.0 {
+                    release_sec
+                } else {
+                    Self::RELEASE_SEC_DEFAULT
+                };
+                for id in ids {
+                    if let Some(agent) = self.find_individual_mut(id) {
+                        agent.start_release(sec);
+                    }
                 }
             }
             Action::SetFreq { target, freq_hz } => {

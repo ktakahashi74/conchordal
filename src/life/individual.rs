@@ -507,6 +507,9 @@ pub struct Individual<N: NeuralCore, B: SoundBody> {
     pub core: N,
     pub body: B,
     pub last_signal: ArticulationSignal,
+    pub release_gain: f32,
+    pub release_sec: f32,
+    pub release_pending: bool,
     pub target_freq: f32,
     pub integration_window: f32,
     pub accumulated_time: f32,
@@ -608,6 +611,15 @@ impl<N: NeuralCore, B: SoundBody> Individual<N, B> {
             self.breath_gain = (self.breath_gain + dt * attack_rate).clamp(0.0, 1.0);
         }
     }
+
+    pub fn start_release(&mut self, release_sec: f32) {
+        if self.release_pending {
+            return;
+        }
+        self.release_pending = true;
+        self.release_sec = release_sec.max(1e-4);
+        self.release_gain = self.release_gain.clamp(0.0, 1.0);
+    }
 }
 
 pub type PureTone = Individual<AnyCore, SineBody>;
@@ -617,6 +629,15 @@ pub type Harmonic = Individual<AnyCore, HarmonicBody>;
 pub enum IndividualWrapper {
     PureTone(PureTone),
     Harmonic(Harmonic),
+}
+
+impl IndividualWrapper {
+    pub fn start_release(&mut self, release_sec: f32) {
+        match self {
+            IndividualWrapper::PureTone(ind) => ind.start_release(release_sec),
+            IndividualWrapper::Harmonic(ind) => ind.start_release(release_sec),
+        }
+    }
 }
 
 impl<N: NeuralCore, B: SoundBody> AudioAgent for Individual<N, B> {
@@ -649,6 +670,11 @@ impl<N: NeuralCore, B: SoundBody> AudioAgent for Individual<N, B> {
                 self.core
                     .process(consonance, &rhythms, dt_per_sample, global_coupling);
             signal.amplitude *= self.breath_gain;
+            if self.release_pending {
+                let step = dt_per_sample / self.release_sec.max(1e-6);
+                self.release_gain = (self.release_gain - step).max(0.0);
+            }
+            signal.amplitude *= self.release_gain;
             signal.is_active = signal.is_active && signal.amplitude > 0.0;
             self.last_signal = signal;
             if !signal.is_active {
@@ -675,7 +701,7 @@ impl<N: NeuralCore, B: SoundBody> AudioAgent for Individual<N, B> {
     }
 
     fn is_alive(&self) -> bool {
-        self.core.is_alive()
+        self.core.is_alive() && self.release_gain > 0.0
     }
 }
 

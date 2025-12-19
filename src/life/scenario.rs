@@ -396,6 +396,9 @@ impl IndividualConfig {
                         audio_phase: phase.unwrap_or(0.0),
                     },
                     last_signal: Default::default(),
+                    release_gain: 1.0,
+                    release_sec: 0.03,
+                    release_pending: false,
                     target_freq,
                     integration_window,
                     accumulated_time: 0.0,
@@ -453,6 +456,9 @@ impl IndividualConfig {
                         ),
                     },
                     last_signal: Default::default(),
+                    release_gain: 1.0,
+                    release_sec: 0.03,
+                    release_pending: false,
                     target_freq,
                     integration_window,
                     accumulated_time: 0.0,
@@ -568,6 +574,10 @@ pub enum Action {
     RemoveAgent {
         target: String,
     },
+    ReleaseAgent {
+        target: String,
+        release_sec: f32,
+    },
     SetFreq {
         target: String,
         freq_hz: f32,
@@ -628,6 +638,14 @@ impl fmt::Display for Action {
                 )
             }
             Action::RemoveAgent { target } => write!(f, "RemoveAgent target={}", target),
+            Action::ReleaseAgent {
+                target,
+                release_sec,
+            } => write!(
+                f,
+                "ReleaseAgent target={} sec={:.3}",
+                target, release_sec
+            ),
             Action::SetFreq { target, freq_hz } => {
                 write!(f, "SetFreq target={} freq={:.2} Hz", target, freq_hz)
             }

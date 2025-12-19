@@ -49,7 +49,7 @@ fn play_step(name, root, dur) {
     // Wait for the remaining duration
     // (Simplified logic: assumes total wait fits within duration)
     wait(dur);
-    
+
     remove("bass_" + name);
     
     // Wildcard removal depends on implementation (verified: supported in population.rs)

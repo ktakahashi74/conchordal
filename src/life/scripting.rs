@@ -191,6 +191,13 @@ impl ScriptContext {
         }]);
     }
 
+    pub fn release(&mut self, target: &str, sec: f32) {
+        self.push_event(vec![Action::ReleaseAgent {
+            target: target.to_string(),
+            release_sec: sec,
+        }]);
+    }
+
     pub fn add_agent_kind(
         &mut self,
         tag: &str,
@@ -467,6 +474,12 @@ impl ScriptHost {
         engine.register_fn("remove", move |target: &str| {
             let mut ctx = ctx_for_remove.lock().expect("lock script context");
             ctx.remove(target);
+        });
+
+        let ctx_for_release = ctx.clone();
+        engine.register_fn("release", move |target: &str, sec: FLOAT| {
+            let mut ctx = ctx_for_release.lock().expect("lock script context");
+            ctx.release(target, sec as f32);
         });
 
         let ctx_for_add_agent_kind = ctx.clone();

@@ -701,7 +701,11 @@ fn worker_loop(
                 (chunk_vec, max_abs, channel_peak)
             };
 
-            let mono_chunk = time_chunk_vec.clone();
+            // Downmix interleaved stereo (L, R, L, R...) to mono for rhythm/roughness paths.
+            let mono_chunk: Vec<f32> = time_chunk_vec
+                .chunks_exact(2)
+                .map(|frame| (frame[0] + frame[1]) * 0.5)
+                .collect();
             if !finished {
                 current_landscape.rhythm = dorsal.process(&mono_chunk);
             }

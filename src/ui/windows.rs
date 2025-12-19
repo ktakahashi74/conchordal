@@ -27,11 +27,11 @@ fn draw_level_meters(
     right_win: f32,
     meter_width_scale: f32,
 ) {
-    let meter_height = ui.available_height().max(40.0);
-    let label_width = 34.0;
+    let meter_height = ui.available_height().max(80.0);
+    let label_width = 20.0;
     let meter_width = 22.0 * meter_width_scale;
     let spacing = 8.0;
-    let pad_y = 8.0;
+    let pad_y = 4.0;
     let total_width = label_width + spacing + meter_width * 2.0 + spacing;
     let (rect, _resp) =
         ui.allocate_exact_size(Vec2::new(total_width, meter_height), egui::Sense::hover());
@@ -105,10 +105,10 @@ fn draw_level_meters(
     draw_meter(&painter, right_origin, right_inst, right_win, "R");
 }
 
-fn split_20_80_widths(ui: &egui::Ui, min_left: f32, min_right: f32) -> (f32, f32) {
+fn split_widths(ui: &egui::Ui, ratio: f32, min_left: f32, min_right: f32) -> (f32, f32) {
     let sep = ui.spacing().item_spacing.x;
     let available = ui.available_width();
-    let left_target = (available * 0.2).max(min_left);
+    let left_target = (available * ratio).max(min_left);
     let left_width = left_target.min((available - min_right - sep).max(0.0));
     let right_width = (available - left_width - sep).max(0.0);
     (left_width, right_width)
@@ -232,7 +232,7 @@ pub fn main_window(
         let x_max = rhythm_history.back().map(|(t, _)| *t).unwrap_or(0.0);
         let window_start = x_max - 5.0;
         let window_end = (window_start + 5.0).max(window_start + 0.1);
-        let (left_width, right_width) = split_20_80_widths(ui, 140.0, 200.0);
+        let (left_width, right_width) = split_widths(ui, 0.17, 100.0, 200.0);
         let row_height = 100.0;
         let height = 100.0;
         let legend_room = 12.0;
@@ -271,14 +271,14 @@ pub fn main_window(
                                     frame.meta.window_peak[0],
                                     frame.meta.channel_peak[1],
                                     frame.meta.window_peak[1],
-                                    0.6,
+                                    0.5,
                                 );
                             });
 
                             ui.separator();
                             // === Waveform ===
                             ui.vertical(|ui| {
-                                ui.label("Waveform");
+                                ui.label("Wave frame");
                                 ui.allocate_ui_with_layout(
                                     Vec2::new(ui.available_width(), row_height),
                                     egui::Layout::top_down(egui::Align::LEFT),
@@ -306,9 +306,10 @@ pub fn main_window(
                             ui.set_min_height(block_height);
                             let side_len = (height - legend_room).max(60.0);
                             let side = Vec2::splat(side_len);
+                            ui.add_space(10.0);
                             ui.horizontal(|ui| {
+                                ui.add_space(8.0);
                                 draw_rhythm_mandala(ui, &frame.landscape.rhythm, side);
-                                ui.add_space(6.0);
                                 ui.vertical(|ui| {
                                     let labels = [
                                         ("Delta", egui::Color32::from_rgb(80, 180, 255)),
@@ -318,9 +319,7 @@ pub fn main_window(
                                     ];
                                     for (label, color) in labels {
                                         ui.label(
-                                            egui::RichText::new(label)
-                                                .color(color)
-                                                .size(14.0),
+                                            egui::RichText::new(label).color(color).size(14.0),
                                         );
                                     }
                                 });
@@ -335,6 +334,8 @@ pub fn main_window(
                 Vec2::new(right_width, row_height + block_height),
                 egui::Layout::top_down(egui::Align::LEFT),
                 |ui| {
+                    let old_spacing = ui.spacing().item_spacing;
+                    ui.spacing_mut().item_spacing.y = 0.0;
                     ui.label("Auditory attention");
                     spectrum_time_freq_axes(
                         ui,
@@ -344,8 +345,9 @@ pub fn main_window(
                         window_end,
                         Some(time_link_id),
                     );
+                    ui.spacing_mut().item_spacing = old_spacing;
                     ui.separator();
-                    ui.label("Neural activity (time)");
+                    ui.label("Neural activity");
                     ui.allocate_ui_with_layout(
                         Vec2::new(right_width, block_height),
                         egui::Layout::top_down(egui::Align::LEFT),

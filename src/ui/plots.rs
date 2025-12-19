@@ -223,7 +223,6 @@ pub fn draw_roughness_harmonicity(
     });
 }
 
-/// 波形表示（時間軸）
 pub fn time_plot(
     ui: &mut egui::Ui,
     title: &str,
@@ -282,103 +281,103 @@ pub fn neural_activity_plot(
         .include_x(window_start)
         .include_x(window_end)
         .default_x_bounds(window_start, window_end)
-        .y_axis_formatter(|mark, _| format!("{:>6.2}", mark.value))
+        .y_axis_formatter(|_, _| String::new())
         .x_axis_formatter(|mark, _| format!("{:.1} s", mark.value));
     if let Some(link) = link_group {
         plot = plot.link_axis(Id::new(link), Vec2b::new(true, false));
     }
     plot.show(ui, |plot_ui| {
-            let colors = [
-                (Color32::from_rgb(80, 180, 255), "Delta (Phase)"),
-                (Color32::from_rgb(70, 225, 135), "Theta (Phase)"),
-                (Color32::from_rgb(255, 215, 60), "Alpha (Mag)"),
-                (Color32::from_rgb(255, 110, 90), "Beta (Mag)"),
-            ];
+        let colors = [
+            (Color32::from_rgb(80, 180, 255), "Delta (Phase)"),
+            (Color32::from_rgb(70, 225, 135), "Theta (Phase)"),
+            (Color32::from_rgb(255, 215, 60), "Alpha (Mag)"),
+            (Color32::from_rgb(255, 110, 90), "Beta (Mag)"),
+        ];
 
-            for (idx, (color, name)) in colors.iter().enumerate() {
-                let is_phase = idx <= 1;
-                let mut segments: Vec<(Vec<[f64; 2]>, Color32)> = Vec::new();
-                let mut current_pts: Vec<[f64; 2]> = Vec::new();
-                let mut current_opacity: f32 = 1.0;
-                let mut prev_val = 0.0f64;
-                let mut prev_t = 0.0f64;
-                let mut has_prev = false;
+        for (idx, (color, name)) in colors.iter().enumerate() {
+            let is_phase = idx <= 1;
+            let mut segments: Vec<(Vec<[f64; 2]>, Color32)> = Vec::new();
+            let mut current_pts: Vec<[f64; 2]> = Vec::new();
+            let mut current_opacity: f32 = 1.0;
+            let mut prev_val = 0.0f64;
+            let mut prev_t = 0.0f64;
+            let mut has_prev = false;
 
-                for (t, r) in history {
-                    let (val, mag) = match idx {
-                        0 => (
-                            (r.delta.phase as f64).rem_euclid(std::f64::consts::TAU)
-                                / std::f64::consts::TAU,
-                            r.delta.mag,
-                        ),
-                        1 => (
-                            (r.theta.phase as f64).rem_euclid(std::f64::consts::TAU)
-                                / std::f64::consts::TAU,
-                            r.theta.mag,
-                        ),
-                        2 => (r.alpha.mag.clamp(0.0, 1.0) as f64, r.alpha.mag),
-                        3 => (r.beta.mag.clamp(0.0, 1.0) as f64, r.beta.mag),
-                        _ => (0.0, 0.0),
-                    };
+            for (t, r) in history {
+                let (val, mag) = match idx {
+                    0 => (
+                        (r.delta.phase as f64).rem_euclid(std::f64::consts::TAU)
+                            / std::f64::consts::TAU,
+                        r.delta.mag,
+                    ),
+                    1 => (
+                        (r.theta.phase as f64).rem_euclid(std::f64::consts::TAU)
+                            / std::f64::consts::TAU,
+                        r.theta.mag,
+                    ),
+                    2 => (r.alpha.mag.clamp(0.0, 1.0) as f64, r.alpha.mag),
+                    3 => (r.beta.mag.clamp(0.0, 1.0) as f64, r.beta.mag),
+                    _ => (0.0, 0.0),
+                };
 
-                    let raw_opacity = 0.3 + 0.7 * mag.clamp(0.0, 1.0);
-                    let new_opacity = (raw_opacity * 10.0).round() / 10.0;
+                let raw_opacity = 0.3 + 0.7 * mag.clamp(0.0, 1.0);
+                let new_opacity = (raw_opacity * 10.0).round() / 10.0;
 
-                    if !has_prev {
-                        current_opacity = new_opacity;
-                        current_pts.push([*t, val]);
-                        prev_val = val;
-                        prev_t = *t;
-                        has_prev = true;
-                        continue;
-                    }
-
-                    let is_wrap = is_phase && (val - prev_val < -0.5);
-                    let is_opacity_change = (new_opacity - current_opacity).abs() > 0.05;
-
-                    if is_wrap {
-                        let dt = *t - prev_t;
-                        let v_diff = (val + 1.0) - prev_val;
-                        if v_diff > 1e-5 {
-                            let frac = (1.0 - prev_val) / v_diff;
-                            let t_cross = prev_t + dt * frac;
-                            current_pts.push([t_cross, 1.0]);
-                            segments.push((current_pts, color.gamma_multiply(current_opacity)));
-                            current_pts = vec![[t_cross, 0.0]];
-                        } else {
-                            segments.push((current_pts, color.gamma_multiply(current_opacity)));
-                            current_pts = Vec::new();
-                        }
-
-                        current_pts.push([*t, val]);
-                        current_opacity = new_opacity;
-                    } else if is_opacity_change {
-                        segments.push((current_pts.clone(), color.gamma_multiply(current_opacity)));
-                        let last_pt = *current_pts.last().unwrap();
-                        current_pts = vec![last_pt, [*t, val]];
-                        current_opacity = new_opacity;
-                    } else {
-                        current_pts.push([*t, val]);
-                    }
-
+                if !has_prev {
+                    current_opacity = new_opacity;
+                    current_pts.push([*t, val]);
                     prev_val = val;
                     prev_t = *t;
+                    has_prev = true;
+                    continue;
                 }
 
-                if !current_pts.is_empty() {
-                    segments.push((current_pts, color.gamma_multiply(current_opacity)));
-                }
+                let is_wrap = is_phase && (val - prev_val < -0.5);
+                let is_opacity_change = (new_opacity - current_opacity).abs() > 0.05;
 
-                for (seg_i, (pts, col)) in segments.into_iter().enumerate() {
-                    let series = PlotPoints::from(pts);
-                    let mut line = Line::new("", series).color(col).width(2.0);
-                    if seg_i == 0 {
-                        line = line.name(*name);
+                if is_wrap {
+                    let dt = *t - prev_t;
+                    let v_diff = (val + 1.0) - prev_val;
+                    if v_diff > 1e-5 {
+                        let frac = (1.0 - prev_val) / v_diff;
+                        let t_cross = prev_t + dt * frac;
+                        current_pts.push([t_cross, 1.0]);
+                        segments.push((current_pts, color.gamma_multiply(current_opacity)));
+                        current_pts = vec![[t_cross, 0.0]];
+                    } else {
+                        segments.push((current_pts, color.gamma_multiply(current_opacity)));
+                        current_pts = Vec::new();
                     }
-                    plot_ui.line(line);
+
+                    current_pts.push([*t, val]);
+                    current_opacity = new_opacity;
+                } else if is_opacity_change {
+                    segments.push((current_pts.clone(), color.gamma_multiply(current_opacity)));
+                    let last_pt = *current_pts.last().unwrap();
+                    current_pts = vec![last_pt, [*t, val]];
+                    current_opacity = new_opacity;
+                } else {
+                    current_pts.push([*t, val]);
                 }
+
+                prev_val = val;
+                prev_t = *t;
             }
-        });
+
+            if !current_pts.is_empty() {
+                segments.push((current_pts, color.gamma_multiply(current_opacity)));
+            }
+
+            for (seg_i, (pts, col)) in segments.into_iter().enumerate() {
+                let series = PlotPoints::from(pts);
+                let mut line = Line::new("", series).color(col).width(2.0);
+                if seg_i == 0 {
+                    line = line.name(*name);
+                }
+                plot_ui.line(line);
+            }
+        }
+    });
 }
 
 /// Show current vs target frequency for each agent with intent arrows.
@@ -417,9 +416,7 @@ pub fn plot_population_dynamics(
                 let left = (f_left.log2() + f.log2()) * 0.5;
                 let right = (f_right.log2() + f.log2()) * 0.5;
                 let width = (right - left).abs().max(0.001);
-                bars.push(
-                    Bar::new(f.log2() as f64, spec_amps[i] as f64).width(width as f64),
-                );
+                bars.push(Bar::new(f.log2() as f64, spec_amps[i] as f64).width(width as f64));
             }
             plot_ui.bar_chart(BarChart::new("Sound bodies", bars));
         }
@@ -469,7 +466,7 @@ pub fn spectrum_time_freq_axes(
         .default_x_bounds(window_start, window_end)
         .default_y_bounds(0.0, 3.0)
         .x_axis_formatter(|mark, _| format!("{:.1} s", mark.value))
-        .y_axis_formatter(|mark, _| format!("{:>6.1}", mark.value));
+        .y_axis_formatter(|_, _| String::new());
     if let Some(link) = link_group {
         plot = plot.link_axis(Id::new(link), Vec2b::new(true, false));
     }
@@ -522,7 +519,11 @@ pub fn spectrum_time_freq_axes(
                 let y0 = *y_base;
                 let y1 = y0 + 1.0;
                 let poly = vec![[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
-                plot_ui.polygon(Polygon::new("", poly).fill_color(color).stroke(Stroke::NONE));
+                plot_ui.polygon(
+                    Polygon::new("", poly)
+                        .fill_color(color)
+                        .stroke(Stroke::NONE),
+                );
             }
         }
 
@@ -607,7 +608,7 @@ pub fn draw_rhythm_mandala(
     let painter = ui.painter_at(rect);
 
     let center = rect.center();
-    let radius = rect.width().min(rect.height()) * 0.42;
+    let radius = rect.width().min(rect.height()) * 0.39;
     let start_angle = -std::f32::consts::FRAC_PI_2;
     let wrap = |p: f32| {
         let mut v = p % std::f32::consts::TAU;
@@ -647,7 +648,7 @@ pub fn draw_rhythm_mandala(
                 center + egui::vec2(angle.cos(), angle.sin()) * outer_r
             })
             .collect();
-        let width = 3.5 + d_weight * 5.5;
+        let width = 1.0 + d_weight * 3.0;
         painter.add(egui::Shape::line(points, Stroke::new(width, d_color)));
     }
     let delta_tip_angle = start_angle + delta_phase;
@@ -660,11 +661,11 @@ pub fn draw_rhythm_mandala(
     let (t_color, t_weight) = get_visuals(rhythms.theta.mag, color_theta);
     let theta_angle = start_angle + wrap(rhythms.theta.phase);
     let theta_pos = center + egui::vec2(theta_angle.cos(), theta_angle.sin()) * radius;
-    let dot_radius = 4.5 + t_weight * 6.5;
+    let dot_radius = 2.0 + t_weight * 3.0;
     painter.circle_filled(theta_pos, dot_radius, t_color);
     painter.circle_stroke(
         theta_pos,
-        dot_radius + 2.0,
+        dot_radius + 1.0,
         Stroke::new(1.0, t_color.gamma_multiply(0.5)),
     );
     painter.circle_filled(center, 3.0, base_circle);

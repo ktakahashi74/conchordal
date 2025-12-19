@@ -209,23 +209,6 @@ pub fn main_window(
             ui.label(format!("Agents: {}", frame.meta.agent_count));
             ui.separator();
             ui.label(format!("Events: {}", frame.meta.event_queue_len));
-            ui.separator();
-            let peak_db = if frame.meta.peak_level > 0.0 {
-                20.0 * frame.meta.peak_level.log10()
-            } else {
-                f32::NEG_INFINITY
-            };
-            let peak_text = if peak_db.is_infinite() {
-                "Peak: -inf dB".to_string()
-            } else {
-                format!("Peak: {:.1} dB", peak_db)
-            };
-            let peak_color = if frame.meta.peak_level > 1.0 {
-                egui::Color32::RED
-            } else {
-                ui.visuals().text_color()
-            };
-            ui.colored_label(peak_color, peak_text);
         });
     });
 
@@ -240,7 +223,24 @@ pub fn main_window(
                 ui.set_height(row_height);
                 // === Level meter ===
                 ui.vertical(|ui| {
-                    ui.label("Level");
+                    //ui.separator();
+                    let peak_db = if frame.meta.peak_level > 0.0 {
+                        20.0 * frame.meta.peak_level.log10()
+                    } else {
+                        f32::NEG_INFINITY
+                    };
+                    let peak_text = if peak_db.is_infinite() {
+                        "Peak: -inf dB".to_string()
+                    } else {
+                        format!("  Peak:  {:>6.1} dB", peak_db)
+                    };
+                    let peak_color = if frame.meta.peak_level > 1.0 {
+                        egui::Color32::RED
+                    } else {
+                        ui.visuals().text_color()
+                    };
+                    ui.colored_label(peak_color, peak_text);
+
                     ui.allocate_ui_with_layout(
                         Vec2::new(110.0, row_height),
                         egui::Layout::left_to_right(egui::Align::Min),
@@ -278,11 +278,11 @@ pub fn main_window(
                 ui.separator();
                 // === Spectrum ===
                 ui.vertical(|ui| {
-                    ui.label("Synth Spectrum");
+                    ui.label("Sound bodies");
                     if frame.spec.spec_hz.len() > 1 && frame.spec.amps.len() > 1 {
                         crate::ui::plots::log2_hist_hz(
                             ui,
-                            "Amplitude Spectrum",
+                            "Sound bodies",
                             &frame.spec.spec_hz[1..],
                             &frame.spec.amps[1..],
                             "A[k]",
@@ -319,14 +319,14 @@ pub fn main_window(
         plot_population_dynamics(ui, &frame.agents, 140.0);
 
         ui.separator();
-        ui.heading("Analytic");
+        ui.heading("Subjective Intensity");
 
         log2_plot_hz(
             ui,
-            "NSGT envelope",
+            "Subjective Intensity",
             &frame.landscape.space.centers_hz,
             &frame.landscape.subjective_intensity,
-            "NSGT",
+            "Amplitude",
             0.0,
             11_f64,
             120.0,

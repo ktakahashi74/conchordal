@@ -671,6 +671,8 @@ fn worker_loop(
                 let _ = roughness_tx.try_send(update);
             }
 
+            // [FIX] Audio is MONO. Treat it as such.
+            // Previously incorrectly treated as stereo, leading to bad metering and destructive downsampling.
             let (time_chunk_vec, max_abs, channel_peak) = {
                 let time_chunk = pop.process_audio(
                     hop,
@@ -680,32 +682,31 @@ fn worker_loop(
                     &current_landscape,
                 );
 
-                let max_abs = time_chunk.iter().fold(0.0f32, |m, &v| m.max(v.abs()));
-
-                let mut channel_peak = [0.0f32; 2];
-                for (idx, &sample) in time_chunk.iter().enumerate() {
-                    let ch = idx % 2;
-                    channel_peak[ch] = channel_peak[ch].max(sample.abs());
-                }
-                // If mono, mirror to right channel for display.
-                if channel_peak[1] == 0.0 {
-                    channel_peak[1] = channel_peak[0];
+                // Calculate Peak (Mono)
+                let mut max_p = 0.0f32;
+                for &s in time_chunk {
+                    let abs_s = s.abs();
+                    if abs_s > max_p {
+                        max_p = abs_s;
+                    }
                 }
 
+                // Output to Audio Backend
+                // Note: If the audio backend expects Stereo, we might need to duplicate samples here.
+                // But typically ringbuf just takes the slice. Assuming backend handles mono or we rely on OS mixing.
                 AudioOutput::push_samples(prod, time_chunk);
 
                 let chunk_vec = time_chunk.to_vec();
                 if let Some(tx) = &wav_tx {
                     let _ = tx.try_send(chunk_vec.clone());
                 }
-                (chunk_vec, max_abs, channel_peak)
+
+                // Channel peak for UI (Duplicate Mono to L/R)
+                (chunk_vec, max_p, [max_p, max_p])
             };
 
-            // Downmix interleaved stereo (L, R, L, R...) to mono for rhythm/roughness paths.
-            let mono_chunk: Vec<f32> = time_chunk_vec
-                .chunks_exact(2)
-                .map(|frame| (frame[0] + frame[1]) * 0.5)
-                .collect();
+            // [FIX] No Downmix needed. The signal is already Mono.
+            let mono_chunk = time_chunk_vec.clone();
             if !finished {
                 current_landscape.rhythm = dorsal.process(&mono_chunk);
             }

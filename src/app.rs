@@ -804,7 +804,7 @@ fn worker_loop(
                             AgentStateInfo {
                                 id: ind.id,
                                 freq_hz: f,
-                                target_freq: ind.target_freq,
+                                target_freq: 2.0f32.powf(ind.target_pitch_log2),
                                 integration_window: ind.integration_window,
                                 breath_gain: ind.breath_gain,
                                 consonance: current_landscape.evaluate_pitch(f),
@@ -816,7 +816,7 @@ fn worker_loop(
                             AgentStateInfo {
                                 id: ind.id,
                                 freq_hz: f,
-                                target_freq: ind.target_freq,
+                                target_freq: 2.0f32.powf(ind.target_pitch_log2),
                                 integration_window: ind.integration_window,
                                 breath_gain: ind.breath_gain,
                                 consonance: current_landscape.evaluate_pitch(f),

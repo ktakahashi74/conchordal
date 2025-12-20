@@ -82,10 +82,10 @@ fn test_scan_logic() {
     rhythms.theta.mag = 1.0;
     rhythms.theta.phase = 0.25;
 
-    let before = agent.target_freq;
+    let before = agent.target_pitch_log2;
     agent.update_organic_movement(&rhythms, 0.01, &landscape);
     assert!(
-        agent.target_freq > before,
+        agent.target_pitch_log2 > before,
         "agent should move toward higher-scoring neighbor"
     );
 }
@@ -95,7 +95,7 @@ fn test_breath_gating() {
     let landscape = make_landscape();
     let mut agent = spawn_agent(330.0, 4);
     let original = agent.body.base_freq_hz();
-    agent.target_freq = original * 1.5;
+    agent.target_pitch_log2 = (original * 1.5).log2();
     agent.breath_gain = 1.0;
 
     let rhythms = NeuralRhythms::default();

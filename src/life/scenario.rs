@@ -375,6 +375,7 @@ impl IndividualConfig {
             } => {
                 let fs = 48_000.0f32;
                 let target_freq = freq.max(1.0);
+                let target_pitch_log2 = target_freq.log2();
                 let integration_window = 0.05 + 6.0 / target_freq;
                 let commitment = commitment.unwrap_or(0.5).clamp(0.0, 1.0);
                 let habituation = habituation_sensitivity.unwrap_or(1.0).max(0.0);
@@ -399,7 +400,9 @@ impl IndividualConfig {
                     release_gain: 1.0,
                     release_sec: 0.03,
                     release_pending: false,
-                    target_freq,
+                    target_pitch_log2,
+                    tessitura_center: target_pitch_log2,
+                    tessitura_gravity: 0.1,
                     integration_window,
                     accumulated_time: 0.0,
                     breath_gain: 1.0,
@@ -429,6 +432,7 @@ impl IndividualConfig {
                     detune_phases.push(rng.random_range(0.0..std::f32::consts::TAU));
                 }
                 let target_freq = freq.max(1.0);
+                let target_pitch_log2 = target_freq.log2();
                 let integration_window = 0.05 + 6.0 / target_freq;
                 let commitment = commitment.unwrap_or(0.5).clamp(0.0, 1.0);
                 let habituation = habituation_sensitivity.unwrap_or(1.0).max(0.0);
@@ -459,7 +463,9 @@ impl IndividualConfig {
                     release_gain: 1.0,
                     release_sec: 0.03,
                     release_pending: false,
-                    target_freq,
+                    target_pitch_log2,
+                    tessitura_center: target_pitch_log2,
+                    tessitura_gravity: 0.1,
                     integration_window,
                     accumulated_time: 0.0,
                     breath_gain: 1.0,

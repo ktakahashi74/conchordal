@@ -77,6 +77,10 @@ impl Landscape {
         self.sample_linear(&self.consonance, freq_hz)
     }
 
+    pub fn evaluate_pitch_log2(&self, log_freq: f32) -> f32 {
+        self.sample_linear_log2(&self.consonance, log_freq)
+    }
+
     pub fn consonance_at(&self, freq_hz: f32) -> f32 {
         self.evaluate_pitch(freq_hz)
     }
@@ -107,6 +111,10 @@ impl Landscape {
         (self.space.fmin, self.space.fmax)
     }
 
+    pub fn freq_bounds_log2(&self) -> (f32, f32) {
+        (self.space.fmin.log2(), self.space.fmax.log2())
+    }
+
     pub fn recompute_consonance(&mut self, params: &LandscapeParams) {
         let k = params.roughness_k.max(1e-6);
         let denom_inv = 1.0 / (self.roughness_total + k);
@@ -124,9 +132,16 @@ impl Landscape {
             return 0.0;
         }
         let l = freq_hz.log2();
+        self.sample_linear_log2(data, l)
+    }
+
+    fn sample_linear_log2(&self, data: &[f32], log_freq: f32) -> f32 {
+        if data.is_empty() {
+            return 0.0;
+        }
         let step = self.space.step();
         let base = self.space.centers_log2[0];
-        let pos = (l - base) / step;
+        let pos = (log_freq - base) / step;
         let idx = pos.floor() as usize;
         let frac = pos - pos.floor();
         let idx0 = idx.min(data.len().saturating_sub(1));

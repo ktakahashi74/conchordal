@@ -18,6 +18,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     fs::create_dir_all(out_dir)?;
 
     for (name, content) in markdown {
+        let content = content.replace("</br>", "<br/>");
         let path = out_dir.join(format!("{name}.md"));
         fs::write(path, content)?;
     }

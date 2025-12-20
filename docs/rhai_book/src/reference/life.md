@@ -26,7 +26,7 @@ Add a pure-tone agent at a fixed frequency.
 
 </div>
 </div>
-</br>
+<br/>
 <div style='box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)'>
     <h2 class="func-name"> <code>fn</code> finish </h2>
 
@@ -48,7 +48,7 @@ Finish the scenario and stop playback.
 
 </div>
 </div>
-</br>
+<br/>
 <div style='box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)'>
     <h2 class="func-name"> <code>fn</code> pop_time </h2>
 
@@ -70,7 +70,7 @@ Restore the most recently pushed cursor time.
 
 </div>
 </div>
-</br>
+<br/>
 <div style='box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)'>
     <h2 class="func-name"> <code>fn</code> push_time </h2>
 
@@ -92,7 +92,7 @@ Save the current cursor time onto the time stack.
 
 </div>
 </div>
-</br>
+<br/>
 <div style='box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)'>
     <h2 class="func-name"> <code>fn</code> release </h2>
 
@@ -114,7 +114,7 @@ Release an agent over `sec` seconds.
 
 </div>
 </div>
-</br>
+<br/>
 <div style='box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)'>
     <h2 class="func-name"> <code>fn</code> remove </h2>
 
@@ -136,7 +136,7 @@ Remove an agent (by tag or id) immediately.
 
 </div>
 </div>
-</br>
+<br/>
 <div style='box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)'>
     <h2 class="func-name"> <code>fn</code> scene </h2>
 
@@ -158,7 +158,7 @@ Start a new named scene at the current cursor time.
 
 </div>
 </div>
-</br>
+<br/>
 <div style='box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)'>
     <h2 class="func-name"> <code>fn</code> section </h2>
 
@@ -180,7 +180,7 @@ Backward-compatible alias for `scene`.
 
 </div>
 </div>
-</br>
+<br/>
 <div style='box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)'>
     <h2 class="func-name"> <code>fn</code> set_amp </h2>
 
@@ -202,7 +202,7 @@ Set an agent's amplitude (linear gain).
 
 </div>
 </div>
-</br>
+<br/>
 <div style='box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)'>
     <h2 class="func-name"> <code>fn</code> set_commitment </h2>
 
@@ -224,7 +224,7 @@ Set an agent's commitment parameter.
 
 </div>
 </div>
-</br>
+<br/>
 <div style='box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)'>
     <h2 class="func-name"> <code>fn</code> set_drift </h2>
 
@@ -246,7 +246,7 @@ Set an agent's drift parameter.
 
 </div>
 </div>
-</br>
+<br/>
 <div style='box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)'>
     <h2 class="func-name"> <code>fn</code> set_freq </h2>
 
@@ -268,7 +268,7 @@ Set an agent's fundamental frequency in Hz.
 
 </div>
 </div>
-</br>
+<br/>
 <div style='box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)'>
     <h2 class="func-name"> <code>fn</code> set_global_coupling </h2>
 
@@ -290,7 +290,7 @@ Set the global coupling strength across agents.
 
 </div>
 </div>
-</br>
+<br/>
 <div style='box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)'>
     <h2 class="func-name"> <code>fn</code> set_habituation </h2>
 
@@ -312,7 +312,7 @@ Backward-compatible alias for `set_habituation_params` with max_depth = 1.0.
 
 </div>
 </div>
-</br>
+<br/>
 <div style='box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)'>
     <h2 class="func-name"> <code>fn</code> set_habituation_params </h2>
 
@@ -334,7 +334,7 @@ Set habituation parameters (weight, tau, max_depth).
 
 </div>
 </div>
-</br>
+<br/>
 <div style='box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)'>
     <h2 class="func-name"> <code>fn</code> set_habituation_sensitivity </h2>
 
@@ -356,7 +356,7 @@ Set an agent's habituation sensitivity.
 
 </div>
 </div>
-</br>
+<br/>
 <div style='box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)'>
     <h2 class="func-name"> <code>fn</code> set_harmonicity </h2>
 
@@ -382,7 +382,7 @@ Configure harmonicity calculation parameters.
 
 </div>
 </div>
-</br>
+<br/>
 <div style='box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)'>
     <h2 class="func-name"> <code>fn</code> set_rhythm_vitality </h2>
 
@@ -404,7 +404,7 @@ Set the global rhythm vitality (affects oscillatory dynamics).
 
 </div>
 </div>
-</br>
+<br/>
 <div style='box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)'>
     <h2 class="func-name"> <code>fn</code> set_roughness_tolerance </h2>
 
@@ -426,7 +426,7 @@ Set the global roughness tolerance.
 
 </div>
 </div>
-</br>
+<br/>
 <div style='box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)'>
     <h2 class="func-name"> <code>fn</code> spawn </h2>
 
@@ -460,7 +460,7 @@ Spawn multiple agents using a frequency selection method and life config.
 
 </div>
 </div>
-</br>
+<br/>
 <div style='box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)'>
     <h2 class="func-name"> <code>fn</code> spawn_agents </h2>
 
@@ -482,7 +482,7 @@ Alias for `spawn` to keep existing scripts working.
 
 </div>
 </div>
-</br>
+<br/>
 <div style='box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)'>
     <h2 class="func-name"> <code>fn</code> wait </h2>
 
@@ -504,4 +504,4 @@ Advance the global time cursor by `sec` seconds.
 
 </div>
 </div>
-</br>
+<br/>

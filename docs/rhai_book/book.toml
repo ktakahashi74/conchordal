@@ -3,4 +3,4 @@ title = "Rhai Script Reference"
 src = "src"
 
 [build]
-build-dir = "../../static/docs/rhai"
+build-dir = "../../web/static/docs/rhai"

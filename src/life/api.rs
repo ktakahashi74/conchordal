@@ -45,6 +45,14 @@ pub mod script_api {
     /// - Legacy/entrain lifecycle: `{ type: "decay", initial_energy, half_life_sec, attack_sec? }`
     /// - Sustain lifecycle: `{ type: "sustain", initial_energy, metabolism_rate, recharge_rate?, action_cost?, envelope: { attack_sec, decay_sec, sustain_level } }`
     /// - Explicit brain: `{ brain: "seq", duration }` or `{ brain: "drone", sway? }`
+    ///
+    /// # Parameter Schemas
+    ///
+    /// ## Method Map (SpawnMethod)
+    #[doc = include_str!("../../docs/schemas/spawn_method.md")]
+    ///
+    /// ## Life Map (BrainConfig)
+    #[doc = include_str!("../../docs/schemas/brain_config.md")]
     #[rhai_fn(return_raw)]
     pub fn spawn(
         ctx: &mut ScriptContext,
@@ -94,6 +102,14 @@ pub mod script_api {
     ///   `jitter`, `unison` plus the optional rhythm/commitment/habituation fields above.
     ///
     /// `life_map` schema: see `spawn` for the supported brain/lifecycle formats.
+    ///
+    /// # Parameter Schemas
+    ///
+    /// ## Extra Map (TimbreGenotype)
+    #[doc = include_str!("../../docs/schemas/timbre_genotype.md")]
+    ///
+    /// ## Life Map (BrainConfig)
+    #[doc = include_str!("../../docs/schemas/brain_config.md")]
     #[rhai_fn(name = "add_agent", return_raw)]
     pub fn add_agent_kind(
         ctx: &mut ScriptContext,

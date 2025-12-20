@@ -2,6 +2,7 @@ use serde::{
     Deserialize, Serialize,
     de::{self, Deserializer},
 };
+use schemars::JsonSchema;
 use std::fmt;
 
 use crate::life::individual::{
@@ -18,21 +19,21 @@ pub struct Scenario {
     pub scenes: Vec<Scene>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct EnvelopeConfig {
     pub attack_sec: f32,
     pub decay_sec: f32,
     pub sustain_level: f32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum HarmonicMode {
     Harmonic, // Integer multiples (1, 2, 3...)
     Metallic, // Non-integer ratios (e.g., k^1.4)
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct TimbreGenotype {
     pub mode: HarmonicMode,
 
@@ -53,7 +54,7 @@ pub struct TimbreGenotype {
     pub unison: f32, // Detune amount (0.0 = single)
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 #[serde(tag = "brain", rename_all = "snake_case")]
 pub enum BrainConfig {
     Entrain {
@@ -695,7 +696,7 @@ impl fmt::Display for Action {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "mode", rename_all = "snake_case")]
 pub enum SpawnMethod {
     /// Deterministically search a frequency that maximizes H = C - R.

@@ -2,6 +2,8 @@
 /debug
 /web/public
 /web/static/docs/rhai
+/docs/schemas
+/docs/rhai_book/src/reference
 
 *~
 \#*\#

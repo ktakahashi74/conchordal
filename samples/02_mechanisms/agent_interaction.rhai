@@ -42,7 +42,7 @@ add_agent("seeker_m2", 140.0, 0.4, life_seeker); // near C3 (~130 Hz)
 set_commitment("seeker_tritone", 0.5);
 set_commitment("seeker_m2", 0.67); // moves more slowly
 
-print(">>> Observe: They should slide to the nearest consonant peak (G or C) <<<");
+print(">>> Observe: They should hop to the nearest consonant peak (G or C) <<<");
 wait(5.0);
 
 // ==========================================

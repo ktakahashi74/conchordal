@@ -275,8 +275,7 @@ impl App {
             bounded::<(u64, Arc<[f32]>)>(64);
         let (harmonicity_result_tx, harmonicity_result_rx) =
             bounded::<(u64, Vec<f32>, Vec<f32>)>(4);
-        let (audio_to_roughness_tx, audio_to_roughness_rx) =
-            bounded::<(u64, Arc<[f32]>)>(64);
+        let (audio_to_roughness_tx, audio_to_roughness_rx) = bounded::<(u64, Arc<[f32]>)>(64);
         let (roughness_from_analysis_tx, roughness_from_analysis_rx) =
             bounded::<(u64, Landscape)>(4);
 

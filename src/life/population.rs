@@ -482,14 +482,15 @@ impl Population {
             }
             Action::SetFreq { target, freq_hz } => {
                 let ids = self.resolve_targets(&target);
+                let log_freq = freq_hz.max(1.0).log2();
                 for id in ids {
                     if let Some(a) = self.find_individual_mut(id) {
                         match a {
                             IndividualWrapper::PureTone(ind) => {
-                                ind.body.set_freq(freq_hz);
+                                ind.force_set_pitch_log2(log_freq);
                             }
                             IndividualWrapper::Harmonic(ind) => {
-                                ind.body.set_freq(freq_hz);
+                                ind.force_set_pitch_log2(log_freq);
                             }
                         }
                     } else {

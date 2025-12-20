@@ -18,11 +18,7 @@ pub trait AudioAgent {
         landscape: &Landscape,
         global_coupling: f32,
     );
-    fn render_spectrum(
-        &mut self,
-        amps: &mut [f32],
-        space: &Log2Space,
-    );
+    fn render_spectrum(&mut self, amps: &mut [f32], space: &Log2Space);
     fn is_alive(&self) -> bool;
 }
 
@@ -549,6 +545,15 @@ impl<N: NeuralCore, B: SoundBody> Individual<N, B> {
         &self.metadata
     }
 
+    pub fn force_set_pitch_log2(&mut self, log_freq: f32) {
+        let log_freq = log_freq.max(0.0);
+        self.body.set_pitch_log2(log_freq);
+        self.target_pitch_log2 = log_freq;
+        self.breath_gain = 1.0;
+        self.accumulated_time = 0.0;
+        self.last_theta_sample = 0.0;
+    }
+
     pub fn update_organic_movement(
         &mut self,
         rhythms: &NeuralRhythms,
@@ -585,8 +590,8 @@ impl<N: NeuralCore, B: SoundBody> Individual<N, B> {
             let (fmin, fmax) = landscape.freq_bounds_log2();
             let mut best_pitch = self.target_pitch_log2.clamp(fmin, fmax);
             let mut best_score = f32::MIN;
-            for p in candidates {
-                let clamped = p.clamp(fmin, fmax);
+            let adjusted_score = |pitch_log2: f32| -> f32 {
+                let clamped = pitch_log2.clamp(fmin, fmax);
                 let score = landscape.evaluate_pitch_log2(clamped);
                 let distance_oct = (clamped - current_pitch_log2).abs();
                 let penalty = distance_oct * self.integration_window * 0.5;
@@ -599,16 +604,21 @@ impl<N: NeuralCore, B: SoundBody> Individual<N, B> {
                 if satiety > 1.0 {
                     adjusted -= (satiety - 1.0) * overcrowding_weight;
                 }
+                adjusted
+            };
+
+            for p in candidates {
+                let clamped = p.clamp(fmin, fmax);
+                let adjusted = adjusted_score(clamped);
                 if adjusted > best_score {
                     best_score = adjusted;
                     best_pitch = clamped;
                 }
             }
 
-            let current_score =
-                landscape.evaluate_pitch_log2(self.target_pitch_log2.clamp(fmin, fmax));
-            let improvement = best_score - current_score;
-            let satisfaction = ((current_score + 1.0) * 0.5).clamp(0.0, 1.0);
+            let current_adjusted = adjusted_score(self.target_pitch_log2);
+            let improvement = best_score - current_adjusted;
+            let satisfaction = ((current_adjusted + 1.0) * 0.5).clamp(0.0, 1.0);
             let habituation_penalty = (1.0 - satisfaction) * self.habituation_sensitivity.max(0.0);
             let mut stay_prob =
                 (self.commitment.clamp(0.0, 1.0) * satisfaction) - habituation_penalty;
@@ -713,11 +723,7 @@ impl<N: NeuralCore, B: SoundBody> AudioAgent for Individual<N, B> {
         }
     }
 
-    fn render_spectrum(
-        &mut self,
-        amps: &mut [f32],
-        space: &Log2Space,
-    ) {
+    fn render_spectrum(&mut self, amps: &mut [f32], space: &Log2Space) {
         let signal = self.last_signal;
         if !signal.is_active || signal.amplitude <= 0.0 {
             return;
@@ -774,11 +780,7 @@ impl AudioAgent for IndividualWrapper {
         }
     }
 
-    fn render_spectrum(
-        &mut self,
-        amps: &mut [f32],
-        space: &Log2Space,
-    ) {
+    fn render_spectrum(&mut self, amps: &mut [f32], space: &Log2Space) {
         match self {
             IndividualWrapper::PureTone(ind) => ind.render_spectrum(amps, space),
             IndividualWrapper::Harmonic(ind) => ind.render_spectrum(amps, space),

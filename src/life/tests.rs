@@ -1,6 +1,7 @@
 use super::conductor::Conductor;
 use super::individual::{
     AgentMetadata, ArticulationSignal, AudioAgent, IndividualWrapper, NeuralCore, SequencedCore,
+    SoundBody,
 };
 use super::population::{Population, PopulationParams};
 use super::scenario::{
@@ -291,6 +292,64 @@ fn harmonic_render_spectrum_hits_expected_bins() {
         amps[base_bin] > amps[even_bin],
         "comb and brightness should attenuate even harmonic"
     );
+}
+
+#[test]
+fn set_freq_syncs_target_pitch_log2() {
+    let space = Log2Space::new(55.0, 880.0, 12);
+    let landscape = LandscapeFrame::new(space);
+    let mut pop = Population::new(PopulationParams {
+        initial_tones_hz: vec![220.0],
+        amplitude: 0.1,
+    });
+
+    let agent = pop.individuals.first_mut().expect("agent exists");
+    match agent {
+        IndividualWrapper::PureTone(ind) => {
+            ind.metadata.tag = Some("test_agent".to_string());
+        }
+        IndividualWrapper::Harmonic(ind) => {
+            ind.metadata.tag = Some("test_agent".to_string());
+        }
+    }
+
+    pop.apply_action(
+        Action::SetFreq {
+            target: "test_agent".to_string(),
+            freq_hz: 440.0,
+        },
+        &landscape,
+        None,
+    );
+
+    let log_target = 440.0f32.log2();
+    let agent = pop.individuals.first_mut().expect("agent exists");
+    match agent {
+        IndividualWrapper::PureTone(ind) => {
+            assert!((ind.target_pitch_log2 - log_target).abs() < 1e-6);
+            assert!((ind.body.base_freq_hz() - 440.0).abs() < 1e-3);
+            ind.tessitura_center = ind.target_pitch_log2;
+            ind.tessitura_gravity = 0.0;
+            let rhythms = crate::core::modulation::NeuralRhythms::default();
+            for _ in 0..16 {
+                ind.update_organic_movement(&rhythms, 0.1, &landscape);
+            }
+            assert!((ind.target_pitch_log2 - log_target).abs() < 1e-6);
+            assert!((ind.body.base_freq_hz() - 440.0).abs() < 1e-3);
+        }
+        IndividualWrapper::Harmonic(ind) => {
+            assert!((ind.target_pitch_log2 - log_target).abs() < 1e-6);
+            assert!((ind.body.base_freq_hz() - 440.0).abs() < 1e-3);
+            ind.tessitura_center = ind.target_pitch_log2;
+            ind.tessitura_gravity = 0.0;
+            let rhythms = crate::core::modulation::NeuralRhythms::default();
+            for _ in 0..16 {
+                ind.update_organic_movement(&rhythms, 0.1, &landscape);
+            }
+            assert!((ind.target_pitch_log2 - log_target).abs() < 1e-6);
+            assert!((ind.body.base_freq_hz() - 440.0).abs() < 1e-3);
+        }
+    }
 }
 
 #[test]

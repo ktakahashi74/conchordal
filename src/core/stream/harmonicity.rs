@@ -35,9 +35,9 @@ impl HarmonicityStream {
             "harmonicity spectrum must match log2 space"
         );
         let amps_log = spectrum_log.to_vec();
-        let (h_scan, _) =
-            self.kernel
-                .potential_h_from_log2_spectrum(&amps_log, &self.space);
+        let (h_scan, _) = self
+            .kernel
+            .potential_h_from_log2_spectrum(&amps_log, &self.space);
         (h_scan, amps_log)
     }
 }

@@ -113,3 +113,28 @@ fn test_breath_gating() {
         original
     );
 }
+
+#[test]
+fn movement_compares_adjusted_scores() {
+    let space = Log2Space::new(32.0, 512.0, 12);
+    let landscape = Landscape::new(space);
+    let mut agent = spawn_agent(64.0, 5);
+    let current_pitch = 64.0f32.log2();
+    agent.body.set_pitch_log2(current_pitch);
+    agent.target_pitch_log2 = current_pitch;
+    agent.tessitura_center = current_pitch - 1.0;
+    agent.tessitura_gravity = 1.0;
+    agent.last_theta_sample = -1.0;
+    agent.accumulated_time = 10.0;
+
+    let mut rhythms = NeuralRhythms::default();
+    rhythms.theta.mag = 1.0;
+    rhythms.theta.phase = std::f32::consts::FRAC_PI_2;
+
+    let before = agent.target_pitch_log2;
+    agent.update_organic_movement(&rhythms, 0.01, &landscape);
+    assert!(
+        agent.target_pitch_log2 < before,
+        "expected adjusted-score improvement to move toward tessitura center"
+    );
+}

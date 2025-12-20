@@ -26,7 +26,7 @@ set_habituation_sensitivity("seeker_csharp", 1.5);
 wait(8.0);
 
 scene("anchor_moves");
-// Phase 3: anchor slides to F2; swarm should re-lock on F-major colors
+// Phase 3: anchor hops to F2; swarm should re-lock on F-major colors
 set_freq("anchor", 87.307); // F2
 set_commitment("anchor", 0.8);
 

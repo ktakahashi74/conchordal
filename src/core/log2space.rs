@@ -145,11 +145,7 @@ mod tests {
     #[test]
     fn test_log2space_geometric_spacing() {
         let s = Log2Space::new(55.0, 3520.0, 24);
-        let ratios: Vec<f32> = s
-            .centers_hz
-            .windows(2)
-            .map(|w| w[1] / w[0])
-            .collect();
+        let ratios: Vec<f32> = s.centers_hz.windows(2).map(|w| w[1] / w[0]).collect();
         let target = ratios[0];
         assert!(ratios.iter().all(|&r| (r / target - 1.0).abs() < 1e-6));
         assert!(s.centers_hz.windows(2).all(|w| w[1] > w[0]));

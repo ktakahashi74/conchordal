@@ -647,11 +647,7 @@ impl fmt::Display for Action {
             Action::ReleaseAgent {
                 target,
                 release_sec,
-            } => write!(
-                f,
-                "ReleaseAgent target={} sec={:.3}",
-                target, release_sec
-            ),
+            } => write!(f, "ReleaseAgent target={} sec={:.3}", target, release_sec),
             Action::SetFreq { target, freq_hz } => {
                 write!(f, "SetFreq target={} freq={:.2} Hz", target, freq_hz)
             }

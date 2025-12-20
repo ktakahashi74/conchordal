@@ -202,9 +202,8 @@ fn test_agent_lifecycle_decay_death() {
     // After 0.10s -> 0.25
     // ...
     // After 1.0s -> ~0.0
-    let fs = 48_000.0;
-    let nfft = 1024;
     let dt = 0.01; // 10ms steps
+    let fs = 48_000.0;
     let samples_per_hop = (fs * dt) as usize;
     let landscape_rt = make_test_landscape(fs);
     let mut time = 0.0;
@@ -212,7 +211,7 @@ fn test_agent_lifecycle_decay_death() {
     // Run for 1.0 second (should be plenty for 0.05s half-life to die)
     for i in 0..100 {
         pop.process_audio(samples_per_hop, fs, i, dt, &landscape_rt);
-        pop.process_frame(i, 513, fs, nfft, dt, false);
+        pop.process_frame(i, &landscape_rt.space, dt, false);
         time += dt;
     }
 
@@ -239,7 +238,7 @@ fn harmonic_render_spectrum_hits_expected_bins() {
         unison: 0.1,
     };
     let cfg = IndividualConfig::Harmonic {
-        freq: 480.0,
+        freq: 55.0,
         amp: 0.8,
         genotype,
         brain: BrainConfig::Entrain {
@@ -262,7 +261,8 @@ fn harmonic_render_spectrum_hits_expected_bins() {
         member_idx: 0,
     };
     let mut agent = cfg.spawn(metadata.id, 0, metadata);
-    let mut amps = vec![0.0f32; 64];
+    let space = Log2Space::new(55.0, 1760.0, 12);
+    let mut amps = vec![0.0f32; space.n_bins()];
 
     match &mut agent {
         IndividualWrapper::Harmonic(ind) => {
@@ -272,13 +272,13 @@ fn harmonic_render_spectrum_hits_expected_bins() {
                 relaxation: 0.0,
                 tension: 0.0,
             };
-            ind.render_spectrum(&mut amps, 48_000.0, 1024, 0, 0.0);
+            ind.render_spectrum(&mut amps, &space);
         }
         _ => panic!("expected harmonic agent"),
     }
 
-    let base_bin = ((480.0f32 * 1024.0 / 48_000.0).round()) as usize;
-    let even_bin = ((960.0f32 * 1024.0 / 48_000.0).round()) as usize;
+    let base_bin = space.index_of_freq(55.0).expect("base bin");
+    let even_bin = space.index_of_freq(110.0).expect("even bin");
     assert!(
         amps[base_bin] > 0.0,
         "fundamental bin should receive energy"
@@ -291,6 +291,31 @@ fn harmonic_render_spectrum_hits_expected_bins() {
         amps[base_bin] > amps[even_bin],
         "comb and brightness should attenuate even harmonic"
     );
+}
+
+#[test]
+fn population_spectrum_uses_log2_space() {
+    let space = Log2Space::new(55.0, 880.0, 12);
+    let params = PopulationParams {
+        initial_tones_hz: vec![55.0],
+        amplitude: 0.5,
+    };
+    let mut pop = Population::new(params);
+    if let Some(IndividualWrapper::PureTone(ind)) = pop.individuals.first_mut() {
+        ind.last_signal = ArticulationSignal {
+            amplitude: 1.0,
+            is_active: true,
+            relaxation: 0.0,
+            tension: 0.0,
+        };
+    } else {
+        panic!("expected pure tone agent");
+    }
+
+    let amps = pop.process_frame(0, &space, 0.01, false);
+    assert_eq!(amps.len(), space.n_bins());
+    let idx = space.index_of_freq(55.0).expect("base bin");
+    assert!(amps[idx] > 0.0);
 }
 
 #[test]

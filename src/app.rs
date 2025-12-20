@@ -252,7 +252,6 @@ impl App {
         );
         let nsgt = RtNsgtKernelLog2::new(nsgt_kernel.clone());
         let hop_duration = Duration::from_secs_f32(hop as f32 / fs);
-        let n_bins = nfft / 2 + 1;
         let hop_ms = (hop as f32 / fs) * 1000.0;
         let visual_delay_frames = (latency_ms / hop_ms).ceil() as usize + 1; // small safety margin
         let ui_channel_capacity = (visual_delay_frames + 4).max(16);
@@ -265,11 +264,8 @@ impl App {
 
         let base_space = nsgt.space().clone();
         let roughness_stream = RoughnessStream::new(lparams.clone(), nsgt.clone());
-        let harmonicity_stream = HarmonicityStream::new(
-            lparams.fs,
-            base_space.clone(),
-            lparams.harmonicity_kernel.clone(),
-        );
+        let harmonicity_stream =
+            HarmonicityStream::new(base_space.clone(), lparams.harmonicity_kernel.clone());
         let landscape = Landscape::new(base_space.clone());
         let dorsal = DorsalStream::new(fs);
         let lparams_runtime = lparams.clone();
@@ -388,8 +384,6 @@ impl App {
                         hop,
                         hop_duration,
                         fs,
-                        n_bins,
-                        nfft,
                     )
                 })
                 .expect("spawn worker"),
@@ -551,8 +545,6 @@ fn worker_loop(
     hop: usize,
     hop_duration: Duration,
     fs: f32,
-    n_bins: usize,
-    nfft: usize,
 ) {
     let mut current_landscape: LandscapeFrame = current_landscape;
     let mut playback_state = if start_flag.load(Ordering::SeqCst) {
@@ -562,8 +554,8 @@ fn worker_loop(
     };
     let mut finish_logged = false;
     let mut finished = false;
-    let mut latest_spec_amps: Vec<f32> = vec![0.0; n_bins];
-    let log_space = current_landscape.space.clone();
+    let mut latest_spec_amps: Vec<f32> = vec![0.0; current_landscape.space.n_bins()];
+    let mut log_space = current_landscape.space.clone();
 
     let mut current_time: f32 = 0.0;
     let mut frame_idx: u64 = 0;
@@ -655,6 +647,7 @@ fn worker_loop(
                 if let Some((_, frame)) = latest_audio {
                     if current_landscape.space.n_bins() != frame.space.n_bins() {
                         current_landscape.space = frame.space.clone();
+                        log_space = current_landscape.space.clone();
                     }
                     current_landscape.roughness = frame.roughness;
                     current_landscape.roughness_total = frame.roughness_total;
@@ -742,12 +735,10 @@ fn worker_loop(
             }
             let dorsal_metrics = dorsal.last_metrics();
 
-            // Build high-resolution spectrum for analysis (linear nfft, mapped to log space in worker).
+            // Build log2 spectrum for analysis and UI (aligned with landscape space).
             let spectrum_body = pop.process_frame(
                 frame_idx,
-                n_bins,
-                fs,
-                nfft,
+                &current_landscape.space,
                 hop_duration.as_secs_f32(),
                 conductor.is_done(),
             );
@@ -775,23 +766,13 @@ fn worker_loop(
             let mut spec_frame: Option<SpecFrame> = None;
             let mut ui_landscape: Option<LandscapeFrame> = None;
             if should_send_ui {
-                // Map linear spectrum to log2 bins for UI only when we intend to send.
-                let mut ui_log_amps = vec![0.0f32; log_space.n_bins()];
-                for (i, &amp) in latest_spec_amps.iter().enumerate() {
-                    let f = i as f32 * fs / nfft as f32;
-                    if let Some(idx) = log_space.index_of_freq(f)
-                        && let Some(slot) = ui_log_amps.get_mut(idx)
-                    {
-                        *slot += amp;
-                    }
-                }
                 wave_frame = Some(WaveFrame {
                     fs,
                     samples: Arc::clone(&mono_chunk),
                 });
                 spec_frame = Some(SpecFrame {
                     spec_hz: log_space.centers_hz.clone(),
-                    amps: ui_log_amps.iter().map(|&x| x.sqrt()).collect(),
+                    amps: latest_spec_amps.iter().map(|&x| x.sqrt()).collect(),
                 });
                 ui_landscape = Some(current_landscape.clone());
             }

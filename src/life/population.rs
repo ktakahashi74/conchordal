@@ -1,6 +1,7 @@
 use super::individual::{AgentMetadata, AudioAgent, IndividualWrapper, SoundBody};
 use super::scenario::{Action, BrainConfig, IndividualConfig, SpawnMethod};
 use crate::core::landscape::{Landscape, LandscapeFrame, LandscapeUpdate};
+use crate::core::log2space::Log2Space;
 use rand::{Rng, distr::Distribution, distr::weighted::WeightedIndex};
 use std::collections::HashMap;
 use tracing::{info, warn};
@@ -658,22 +659,20 @@ impl Population {
         &self.buffers.audio
     }
 
-    /// Render spectral bodies for landscape processing.
+    /// Render spectral bodies on the provided log2 axis (explicit for external DSP handoff).
     pub fn process_frame(
         &mut self,
         current_frame: u64,
-        n_bins: usize,
-        fs: f32,
-        nfft: usize,
+        space: &Log2Space,
         dt_sec: f32,
         scenario_finished: bool,
     ) -> &[f32] {
         self.current_frame = current_frame;
-        self.buffers.amps.resize(n_bins, 0.0);
+        self.buffers.amps.resize(space.n_bins(), 0.0);
         self.buffers.amps.fill(0.0);
         for agent in self.individuals.iter_mut() {
             if agent.is_alive() {
-                agent.render_spectrum(&mut self.buffers.amps, fs, nfft, current_frame, dt_sec);
+                agent.render_spectrum(&mut self.buffers.amps, space);
             }
         }
         let before_count = self.individuals.len();

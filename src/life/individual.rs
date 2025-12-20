@@ -1,4 +1,5 @@
 use crate::core::landscape::Landscape;
+use crate::core::log2space::Log2Space;
 use crate::core::modulation::NeuralRhythms;
 use crate::core::utils::pink_noise_tick;
 use crate::life::scenario::{HarmonicMode, TimbreGenotype};
@@ -20,10 +21,7 @@ pub trait AudioAgent {
     fn render_spectrum(
         &mut self,
         amps: &mut [f32],
-        fs: f32,
-        nfft: usize,
-        current_frame: u64,
-        dt_sec: f32,
+        space: &Log2Space,
     );
     fn is_alive(&self) -> bool;
 }
@@ -55,8 +53,7 @@ pub trait SoundBody {
     fn project_spectral_body(
         &mut self,
         amps: &mut [f32],
-        fs: f32,
-        nfft: usize,
+        space: &Log2Space,
         signal: &ArticulationSignal,
     );
 }
@@ -112,6 +109,32 @@ impl PinkNoise {
     pub fn next(&mut self) -> f32 {
         let pink = pink_noise_tick(&mut self.rng, &mut self.b0, &mut self.b1, &mut self.b2);
         pink * self.gain
+    }
+}
+
+fn add_log2_energy(amps: &mut [f32], space: &Log2Space, freq_hz: f32, energy: f32) {
+    if !freq_hz.is_finite() || energy == 0.0 {
+        return;
+    }
+    if freq_hz < space.fmin || freq_hz > space.fmax {
+        return;
+    }
+    let log_f = freq_hz.log2();
+    let base = space.centers_log2[0];
+    let step = space.step();
+    let pos = (log_f - base) / step;
+    let idx_base = pos.floor();
+    let idx = idx_base as isize;
+    if idx < 0 {
+        return;
+    }
+    let idx = idx as usize;
+    let frac = pos - idx_base;
+    if idx + 1 < amps.len() {
+        amps[idx] += energy * (1.0 - frac);
+        amps[idx + 1] += energy * frac;
+    } else if idx < amps.len() {
+        amps[idx] += energy;
     }
 }
 
@@ -353,18 +376,14 @@ impl SoundBody for SineBody {
     fn project_spectral_body(
         &mut self,
         amps: &mut [f32],
-        fs: f32,
-        nfft: usize,
+        space: &Log2Space,
         signal: &ArticulationSignal,
     ) {
         if !signal.is_active || signal.amplitude <= 0.0 {
             return;
         }
-        let bin_f = self.freq_hz * nfft as f32 / fs;
-        let k = bin_f.round() as isize;
-        if k >= 0 && (k as usize) < amps.len() {
-            amps[k as usize] += self.amp.max(0.0) * signal.amplitude;
-        }
+        let energy = self.amp.max(0.0) * signal.amplitude;
+        add_log2_energy(amps, space, self.freq_hz, energy);
     }
 }
 
@@ -475,8 +494,7 @@ impl SoundBody for HarmonicBody {
     fn project_spectral_body(
         &mut self,
         amps: &mut [f32],
-        fs: f32,
-        nfft: usize,
+        space: &Log2Space,
         signal: &ArticulationSignal,
     ) {
         if !signal.is_active || signal.amplitude <= 0.0 {
@@ -490,12 +508,8 @@ impl SoundBody for HarmonicBody {
         for idx in 0..partials {
             let ratio = self.partial_ratio(idx);
             let freq = self.base_freq_hz * ratio;
-            let bin_f = freq * nfft as f32 / fs;
-            let k = bin_f.round() as isize;
-            if k >= 0 && (k as usize) < amps.len() {
-                let part_amp = self.compute_partial_amp(idx, signal.amplitude);
-                amps[k as usize] += amp_scale * part_amp;
-            }
+            let part_amp = self.compute_partial_amp(idx, signal.amplitude);
+            add_log2_energy(amps, space, freq, amp_scale * part_amp);
         }
     }
 }
@@ -688,16 +702,13 @@ impl<N: NeuralCore, B: SoundBody> AudioAgent for Individual<N, B> {
     fn render_spectrum(
         &mut self,
         amps: &mut [f32],
-        fs: f32,
-        nfft: usize,
-        _current_frame: u64,
-        _dt_sec: f32,
+        space: &Log2Space,
     ) {
         let signal = self.last_signal;
         if !signal.is_active || signal.amplitude <= 0.0 {
             return;
         }
-        self.body.project_spectral_body(amps, fs, nfft, &signal);
+        self.body.project_spectral_body(amps, space, &signal);
     }
 
     fn is_alive(&self) -> bool {
@@ -752,18 +763,11 @@ impl AudioAgent for IndividualWrapper {
     fn render_spectrum(
         &mut self,
         amps: &mut [f32],
-        fs: f32,
-        nfft: usize,
-        current_frame: u64,
-        dt_sec: f32,
+        space: &Log2Space,
     ) {
         match self {
-            IndividualWrapper::PureTone(ind) => {
-                ind.render_spectrum(amps, fs, nfft, current_frame, dt_sec)
-            }
-            IndividualWrapper::Harmonic(ind) => {
-                ind.render_spectrum(amps, fs, nfft, current_frame, dt_sec)
-            }
+            IndividualWrapper::PureTone(ind) => ind.render_spectrum(amps, space),
+            IndividualWrapper::Harmonic(ind) => ind.render_spectrum(amps, space),
         }
     }
 

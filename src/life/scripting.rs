@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 use anyhow::{Context, anyhow};
 use rhai::{Engine, EvalAltResult, FLOAT, Map, Position};
 
+use super::api::script_api as api;
 use super::scenario::{
     Action, BrainConfig, Event, IndividualConfig, Scenario, Scene, SpawnMethod, TimbreGenotype,
 };
@@ -324,32 +325,32 @@ impl ScriptHost {
         let ctx_for_scene = ctx.clone();
         engine.register_fn("scene", move |name: &str| {
             let mut ctx = ctx_for_scene.lock().expect("lock script context");
-            ctx.scene(name);
+            api::scene(&mut ctx, name);
         });
 
         // Backward compatibility for existing scripts still using `section`.
         let ctx_for_section = ctx.clone();
         engine.register_fn("section", move |name: &str| {
             let mut ctx = ctx_for_section.lock().expect("lock script context");
-            ctx.scene(name);
+            api::section(&mut ctx, name);
         });
 
         let ctx_for_wait = ctx.clone();
         engine.register_fn("wait", move |sec: FLOAT| {
             let mut ctx = ctx_for_wait.lock().expect("lock script context");
-            ctx.wait(sec as f32);
+            api::wait(&mut ctx, sec);
         });
 
         let ctx_for_push_time = ctx.clone();
         engine.register_fn("push_time", move || {
             let mut ctx = ctx_for_push_time.lock().expect("lock script context");
-            ctx.push_time();
+            api::push_time(&mut ctx);
         });
 
         let ctx_for_pop_time = ctx.clone();
         engine.register_fn("pop_time", move || {
             let mut ctx = ctx_for_pop_time.lock().expect("lock script context");
-            ctx.pop_time();
+            api::pop_time(&mut ctx);
         });
 
         let ctx_for_spawn = ctx.clone();
@@ -362,7 +363,7 @@ impl ScriptHost {
                   amp: FLOAT|
                   -> Result<(), Box<EvalAltResult>> {
                 let mut ctx = ctx_for_spawn.lock().expect("lock script context");
-                ctx.spawn(tag, method_map, life_map, count, amp as f32)
+                api::spawn(&mut ctx, tag, method_map, life_map, count, amp)
             },
         );
         let ctx_for_spawn_alias = ctx.clone();
@@ -375,7 +376,7 @@ impl ScriptHost {
                   amp: FLOAT|
                   -> Result<(), Box<EvalAltResult>> {
                 let mut ctx = ctx_for_spawn_alias.lock().expect("lock script context");
-                ctx.spawn(tag, method_map, life_map, count, amp as f32)
+                api::spawn_agents(&mut ctx, tag, method_map, life_map, count, amp)
             },
         );
 
@@ -388,32 +389,32 @@ impl ScriptHost {
                   life_map: Map|
                   -> Result<(), Box<EvalAltResult>> {
                 let mut ctx = ctx_for_add_agent.lock().expect("lock script context");
-                ctx.add_agent(tag, freq as f32, amp as f32, life_map)
+                api::add_agent(&mut ctx, tag, freq, amp, life_map)
             },
         );
 
         let ctx_for_set_freq = ctx.clone();
         engine.register_fn("set_freq", move |target: &str, freq: FLOAT| {
             let mut ctx = ctx_for_set_freq.lock().expect("lock script context");
-            ctx.set_freq(target, freq as f32);
+            api::set_freq(&mut ctx, target, freq);
         });
 
         let ctx_for_set_amp = ctx.clone();
         engine.register_fn("set_amp", move |target: &str, amp: FLOAT| {
             let mut ctx = ctx_for_set_amp.lock().expect("lock script context");
-            ctx.set_amp(target, amp as f32);
+            api::set_amp(&mut ctx, target, amp);
         });
 
         let ctx_for_set_drift = ctx.clone();
         engine.register_fn("set_drift", move |target: &str, value: FLOAT| {
             let mut ctx = ctx_for_set_drift.lock().expect("lock script context");
-            ctx.set_drift(target, value as f32);
+            api::set_drift(&mut ctx, target, value);
         });
 
         let ctx_for_set_commitment = ctx.clone();
         engine.register_fn("set_commitment", move |target: &str, value: FLOAT| {
             let mut ctx = ctx_for_set_commitment.lock().expect("lock script context");
-            ctx.set_commitment(target, value as f32);
+            api::set_commitment(&mut ctx, target, value);
         });
 
         let ctx_for_set_habituation_sens = ctx.clone();
@@ -423,7 +424,7 @@ impl ScriptHost {
                 let mut ctx = ctx_for_set_habituation_sens
                     .lock()
                     .expect("lock script context");
-                ctx.set_habituation_sensitivity(target, value as f32);
+                api::set_habituation_sensitivity(&mut ctx, target, value);
             },
         );
 
@@ -432,7 +433,7 @@ impl ScriptHost {
             "set_habituation_params",
             move |weight: FLOAT, tau: FLOAT, max_depth: FLOAT| {
                 let mut ctx = ctx_for_set_habituation.lock().expect("lock script context");
-                ctx.set_habituation_params(weight as f32, tau as f32, max_depth as f32);
+                api::set_habituation_params(&mut ctx, weight, tau, max_depth);
             },
         );
         let ctx_for_set_habituation_alias = ctx.clone();
@@ -440,25 +441,25 @@ impl ScriptHost {
             let mut ctx = ctx_for_set_habituation_alias
                 .lock()
                 .expect("lock script context");
-            ctx.set_habituation_params(weight as f32, tau as f32, 1.0);
+            api::set_habituation(&mut ctx, weight, tau);
         });
 
         let ctx_for_set_vitality = ctx.clone();
         engine.register_fn("set_rhythm_vitality", move |value: FLOAT| {
             let mut ctx = ctx_for_set_vitality.lock().expect("lock script context");
-            ctx.set_rhythm_vitality(value as f32);
+            api::set_rhythm_vitality(&mut ctx, value);
         });
 
         let ctx_for_set_coupling = ctx.clone();
         engine.register_fn("set_global_coupling", move |value: FLOAT| {
             let mut ctx = ctx_for_set_coupling.lock().expect("lock script context");
-            ctx.set_global_coupling(value as f32);
+            api::set_global_coupling(&mut ctx, value);
         });
 
         let ctx_for_set_roughness = ctx.clone();
         engine.register_fn("set_roughness_tolerance", move |value: FLOAT| {
             let mut ctx = ctx_for_set_roughness.lock().expect("lock script context");
-            ctx.set_roughness_tolerance(value as f32);
+            api::set_roughness_tolerance(&mut ctx, value);
         });
 
         let ctx_for_set_harmonicity = ctx.clone();
@@ -466,20 +467,20 @@ impl ScriptHost {
             "set_harmonicity",
             move |map: Map| -> Result<(), Box<EvalAltResult>> {
                 let mut ctx = ctx_for_set_harmonicity.lock().expect("lock script context");
-                ctx.set_harmonicity(map)
+                api::set_harmonicity(&mut ctx, map)
             },
         );
 
         let ctx_for_remove = ctx.clone();
         engine.register_fn("remove", move |target: &str| {
             let mut ctx = ctx_for_remove.lock().expect("lock script context");
-            ctx.remove(target);
+            api::remove(&mut ctx, target);
         });
 
         let ctx_for_release = ctx.clone();
         engine.register_fn("release", move |target: &str, sec: FLOAT| {
             let mut ctx = ctx_for_release.lock().expect("lock script context");
-            ctx.release(target, sec as f32);
+            api::release(&mut ctx, target, sec);
         });
 
         let ctx_for_add_agent_kind = ctx.clone();
@@ -487,14 +488,14 @@ impl ScriptHost {
             "add_agent",
             move |tag: &str, kind: &str, freq: FLOAT, amp: FLOAT, extra_map: Map, life_map: Map| {
                 let mut ctx = ctx_for_add_agent_kind.lock().expect("lock script context");
-                ctx.add_agent_kind(tag, kind, freq as f32, amp as f32, extra_map, life_map)
+                api::add_agent_kind(&mut ctx, tag, kind, freq, amp, extra_map, life_map)
             },
         );
 
         let ctx_for_finish = ctx.clone();
         engine.register_fn("finish", move || {
             let mut ctx = ctx_for_finish.lock().expect("lock script context");
-            ctx.finish();
+            api::finish(&mut ctx);
         });
 
         engine

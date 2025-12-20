@@ -1,0 +1,6 @@
+[book]
+title = "Rhai Script Reference"
+src = "src"
+
+[build]
+build-dir = "../../static/docs/rhai"

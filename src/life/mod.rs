@@ -3,6 +3,7 @@ pub mod individual;
 pub mod lifecycle;
 pub mod meta;
 pub mod population;
+pub mod api;
 pub mod scenario;
 pub mod scripting;
 

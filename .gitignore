@@ -1,6 +1,7 @@
 /target
 /debug
 /web/public
+/web/static/docs/rhai
 
 *~
 \#*\#

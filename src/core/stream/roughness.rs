@@ -151,6 +151,7 @@ mod tests {
                 nfft_override: Some(256),
             },
             space.clone(),
+            None,
         );
         let rt = RtNsgtKernelLog2::with_config(
             nsgt,

@@ -373,6 +373,7 @@ mod tests {
                 nfft_override: Some(256),
             },
             space,
+            None,
         );
         let cfg = RtConfig {
             tau_min: 1e-6,

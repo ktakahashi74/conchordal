@@ -249,6 +249,7 @@ impl App {
                 nfft_override: Some(nfft),
             },
             space,
+            None,
         );
         let nsgt = RtNsgtKernelLog2::new(nsgt_kernel.clone());
         let hop_duration = Duration::from_secs_f32(hop as f32 / fs);

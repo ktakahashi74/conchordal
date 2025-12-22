@@ -22,6 +22,7 @@ use std::sync::Arc;
 // =====================================================
 // Config structures
 // =====================================================
+const MIN_WIN_LEN: usize = 16;
 
 /// NSGT configuration (log2-axis, analysis-only).
 #[derive(Clone, Copy, Debug)]
@@ -41,6 +42,40 @@ impl Default for NsgtLog2Config {
             nfft_override: None,
         }
     }
+}
+
+/// Frequency-dependent cap on analysis window length.
+#[derive(Clone, Copy, Debug)]
+pub struct WinLenCap {
+    /// Apply cap at and above this frequency [Hz].
+    pub pivot_hz: f32,
+    /// Maximum window length above pivot [s].
+    pub max_len_above_s: f32,
+}
+
+impl WinLenCap {
+    /// Cap length in samples (rounded), clamped to < nfft and normalized.
+    pub fn cap_samples(&self, fs: f32, nfft: usize) -> usize {
+        let raw = (self.max_len_above_s * fs).round().max(1.0) as usize;
+        finalize_win_len(raw, nfft)
+    }
+}
+
+fn finalize_win_len(mut len: usize, nfft: usize) -> usize {
+    let nfft_cap = nfft.saturating_sub(1).max(1);
+    if len < MIN_WIN_LEN {
+        len = MIN_WIN_LEN;
+    }
+    if len > nfft_cap {
+        len = nfft_cap;
+    }
+    if len % 2 == 0 {
+        len = len.saturating_sub(1);
+    }
+    if len < 3 {
+        len = 3.min(nfft_cap);
+    }
+    len
 }
 
 /// Band descriptor on log2 axis.
@@ -89,7 +124,9 @@ impl NsgtKernelLog2 {
     ///
     /// - Nfft is set to the next power of two of max(L_k) (multiplied by `zpad_pow2`, default=2).
     /// - hop is based on Nfft (shared across all bands): hop = round((1-overlap)*Nfft)
-    pub fn new(cfg: NsgtLog2Config, space: Log2Space) -> Self {
+    /// - win_len_cap limits high-frequency window length without clamping Q, preserving
+    ///   time resolution when bins_per_oct is increased.
+    pub fn new(cfg: NsgtLog2Config, space: Log2Space, win_len_cap: Option<WinLenCap>) -> Self {
         assert!(
             cfg.overlap >= 0.0 && cfg.overlap < 0.99,
             "Overlap must be in [0,0.99)"
@@ -98,13 +135,32 @@ impl NsgtKernelLog2 {
         let fs = cfg.fs;
         let bpo = space.bins_per_oct as f32;
         let raw_q = 1.0 / (2f32.powf(1.0 / bpo) - 1.0);
-        let q = raw_q.clamp(5.0, 80.0); // prevent excessive window size
+        let q_min = 5.0;
+        let q_max = 80.0;
+        // With a frequency-dependent window cap, do not clamp q_max. This allows
+        // higher Q (better peak separation) without increasing high-frequency window length.
+        let q = if win_len_cap.is_some() {
+            raw_q.max(q_min)
+        } else {
+            raw_q.clamp(q_min, q_max)
+        };
 
-        // Calculate L_k for each band
+        // Calculate L_k for each band. With win_len_cap, high-frequency windows are capped
+        // to preserve time resolution while allowing higher Q via bins_per_oct.
+        // With fixed nfft_override, low bands may still hit nfft-1.
         let win_lengths: Vec<usize> = space
             .centers_hz
             .iter()
-            .map(|&f| ((q * fs / f).round() as usize).max(16)) // or ceil?
+            .map(|&f| {
+                let mut len = (q * fs / f).round().max(1.0) as usize;
+                if let Some(cap) = win_len_cap {
+                    if f >= cap.pivot_hz {
+                        let cap_raw = (cap.max_len_above_s * fs).round().max(1.0) as usize;
+                        len = len.min(cap_raw);
+                    }
+                }
+                len
+            })
             .collect();
 
         // Nfft determination: next power of two based on max L_k (zero-padding to sharpen the kernel)
@@ -135,16 +191,10 @@ impl NsgtKernelLog2 {
             .zip(space.centers_log2.iter())
             .zip(win_lengths.iter())
         {
-            let mut win_len_req = win_len;
-
-            if win_len_req >= nfft {
-                win_len_req = nfft - 1;
-            }
-            if win_len_req % 2 == 0 {
-                win_len_req -= 1;
-            }
-
-            win_len_req = win_len_req.max(3);
+            // Apply constraints: cap (if any), nfft limit, odd length, and minimum length.
+            // With win_len_cap, the cap dominates high frequencies to preserve time resolution
+            // even when bins_per_oct (Q) is increased.
+            let win_len_req = finalize_win_len(win_len, nfft);
 
             let window = hann_periodic(win_len_req);
             let sum_w = window.iter().copied().sum::<f32>().max(1e-12);
@@ -173,7 +223,7 @@ impl NsgtKernelLog2 {
                     max_mag = m;
                 }
             }
-            let tol = 1e-6 * max_mag.sqrt();
+            let tol = (1e-6 * max_mag.sqrt()).max(1e-20);
             let mut sparse: Vec<(usize, Complex32)> = Vec::new();
             for (k, &z) in kernel_freq.iter().enumerate() {
                 if z.norm() >= tol {
@@ -364,6 +414,7 @@ mod tests {
                 ..Default::default()
             },
             Log2Space::new(20.0, 8000.0, 200),
+            None,
         );
         let sig = mk_sine_len(fs, 440.0, nsgt.nfft());
         let bands = nsgt.analyze(&sig);
@@ -388,7 +439,11 @@ mod tests {
     #[test]
     fn multi_tone_localization() {
         let fs = 48_000.0;
-        let nsgt = NsgtKernelLog2::new(NsgtLog2Config::default(), Log2Space::new(20.0, 8000.0, 96));
+        let nsgt = NsgtKernelLog2::new(
+            NsgtLog2Config::default(),
+            Log2Space::new(20.0, 8000.0, 96),
+            None,
+        );
         for f in [55.0, 110.0, 220.0, 440.0, 880.0, 1760.0] {
             let sig = mk_sine_len(fs, f, nsgt.nfft());
             let bands = nsgt.analyze(&sig);
@@ -412,7 +467,11 @@ mod tests {
     #[test]
     fn amplitude_linearity() {
         let fs = 48_000.0;
-        let nsgt = NsgtKernelLog2::new(NsgtLog2Config::default(), Log2Space::new(20.0, 8000.0, 96));
+        let nsgt = NsgtKernelLog2::new(
+            NsgtLog2Config::default(),
+            Log2Space::new(20.0, 8000.0, 96),
+            None,
+        );
         let a = mk_sine(fs, 440.0, 1.0);
         let b: Vec<f32> = a.iter().map(|v| v * 2.0).collect();
         let e1: f32 = nsgt.analyze_psd(&a).iter().sum();
@@ -422,7 +481,11 @@ mod tests {
 
     #[test]
     fn win_len_decreases_with_freq() {
-        let nsgt = NsgtKernelLog2::new(NsgtLog2Config::default(), Log2Space::new(20.0, 8000.0, 96));
+        let nsgt = NsgtKernelLog2::new(
+            NsgtLog2Config::default(),
+            Log2Space::new(20.0, 8000.0, 96),
+            None,
+        );
         let lens: Vec<usize> = nsgt.bands().iter().map(|b| b.win_len).collect();
         for w in lens.windows(2) {
             assert!(w[0] >= w[1], "win_len not monotonic: {} < {}", w[0], w[1]);
@@ -444,7 +507,11 @@ mod tests {
 
     #[test]
     fn empty_signal_returns_empty() {
-        let nsgt = NsgtKernelLog2::new(NsgtLog2Config::default(), Log2Space::new(20.0, 8000.0, 48));
+        let nsgt = NsgtKernelLog2::new(
+            NsgtLog2Config::default(),
+            Log2Space::new(20.0, 8000.0, 48),
+            None,
+        );
         let out = nsgt.analyze(&[]);
         assert!(out.is_empty());
     }
@@ -459,6 +526,7 @@ mod tests {
                 nfft_override: Some(256),
             },
             Log2Space::new(4000.0, 8000.0, 12),
+            None,
         );
         let mut sig = vec![0.0f32; 512];
         let imp = 200usize;
@@ -493,6 +561,7 @@ mod tests {
                 nfft_override: Some(512),
             },
             Log2Space::new(4000.0, 8000.0, 12),
+            None,
         );
 
         let bi = nsgt.bands().len() - 1;
@@ -541,7 +610,7 @@ mod tests {
         // Check that total energy is roughly frequency-independent.
         let fs = 48_000.0;
         let space = Log2Space::new(20.0, 8000.0, 96);
-        let nsgt = NsgtKernelLog2::new(NsgtLog2Config::default(), space.clone());
+        let nsgt = NsgtKernelLog2::new(NsgtLog2Config::default(), space.clone(), None);
 
         let sig_low = mk_sine_len(fs, 220.0, nsgt.nfft());
         let sig_high = mk_sine_len(fs, 1760.0, nsgt.nfft());
@@ -569,7 +638,7 @@ mod tests {
         let fs = 48_000.0;
         let f0 = 880.0;
         let space = Log2Space::new(20.0, 8000.0, 200);
-        let nsgt = NsgtKernelLog2::new(NsgtLog2Config::default(), space.clone());
+        let nsgt = NsgtKernelLog2::new(NsgtLog2Config::default(), space.clone(), None);
         let sig = mk_sine_len(fs, f0, nsgt.nfft());
 
         let e_time = sig.iter().map(|x| x * x).sum::<f32>() / sig.len() as f32;
@@ -598,6 +667,7 @@ mod tests {
                     ..Default::default()
                 },
                 space.clone(),
+                None,
             );
             let out = nsgt.analyze(&sig);
             let sum_e: f32 = out
@@ -620,7 +690,7 @@ mod tests {
     #[test]
     fn band_count_matches_space() {
         let space = Log2Space::new(20.0, 8000.0, 96);
-        let nsgt = NsgtKernelLog2::new(NsgtLog2Config::default(), space.clone());
+        let nsgt = NsgtKernelLog2::new(NsgtLog2Config::default(), space.clone(), None);
         assert_eq!(
             nsgt.bands().len(),
             space.centers_hz.len(),
@@ -633,7 +703,7 @@ mod tests {
         let fs = 48_000.0;
         let f0 = 1000.0;
         let space = Log2Space::new(100.0, 5000.0, 200);
-        let nsgt = NsgtKernelLog2::new(NsgtLog2Config::default(), space.clone());
+        let nsgt = NsgtKernelLog2::new(NsgtLog2Config::default(), space.clone(), None);
         let sig = mk_sine_len(fs, f0, nsgt.nfft());
 
         let psd = nsgt.analyze_psd(&sig);
@@ -695,7 +765,7 @@ mod tests {
         let sig2: Vec<f32> = sig1.iter().map(|x| x * 2.0).collect();
 
         let space = Log2Space::new(20.0, 8000.0, 96);
-        let nsgt = NsgtKernelLog2::new(NsgtLog2Config::default(), space);
+        let nsgt = NsgtKernelLog2::new(NsgtLog2Config::default(), space, None);
         let e1: f32 = nsgt.analyze_psd(&sig1).iter().sum();
         let e2: f32 = nsgt.analyze_psd(&sig2).iter().sum();
 
@@ -721,6 +791,7 @@ mod tests {
                         ..Default::default()
                     },
                     space.clone(),
+                    None,
                 );
                 nsgt.analyze_psd(&sig).iter().sum::<f32>()
             })
@@ -742,7 +813,7 @@ mod tests {
         let brown: Vec<f32> = brown_noise(n, 1).iter().map(|&v| v as f32).collect();
 
         let space = Log2Space::new(50.0, 8000.0, 150);
-        let nsgt = NsgtKernelLog2::new(NsgtLog2Config::default(), space.clone());
+        let nsgt = NsgtKernelLog2::new(NsgtLog2Config::default(), space.clone(), None);
 
         let psd_white = nsgt.analyze_psd(&white);
         let psd_pink = nsgt.analyze_psd(&pink);
@@ -775,6 +846,121 @@ mod tests {
         assert!((s_brown + 6.0).abs() < 1.5, "brown slope {s_brown}");
     }
 
+    #[test]
+    fn win_len_cap_applies_above_pivot() {
+        let fs = 48_000.0;
+        let nfft = 4096;
+        let pivot_hz = 2000.0;
+        let cap = WinLenCap {
+            pivot_hz,
+            max_len_above_s: 256.0 / fs,
+        };
+        let space = Log2Space::new(200.0, 8000.0, 96);
+        let nsgt = NsgtKernelLog2::new(
+            NsgtLog2Config {
+                fs,
+                overlap: 0.9,
+                nfft_override: Some(nfft),
+            },
+            space,
+            Some(cap),
+        );
+        let cap_eff = cap.cap_samples(fs, nfft);
+
+        let mut max_above = 0usize;
+        for b in nsgt.bands().iter().filter(|b| b.f_hz >= pivot_hz) {
+            assert!(
+                b.win_len <= cap_eff,
+                "win_len exceeds cap: f_hz={}, win_len={}, cap={}",
+                b.f_hz,
+                b.win_len,
+                cap_eff
+            );
+            max_above = max_above.max(b.win_len);
+        }
+        assert!(
+            max_above == cap_eff,
+            "cap not binding above pivot: max_above={}, cap={}",
+            max_above,
+            cap_eff
+        );
+    }
+
+    #[test]
+    fn win_len_cap_limits_growth_with_bins_per_oct() {
+        let fs = 48_000.0;
+        let nfft = 4096;
+        let pivot_hz = 2000.0;
+        let cap = WinLenCap {
+            pivot_hz,
+            max_len_above_s: 256.0 / fs,
+        };
+        let cap_eff = cap.cap_samples(fs, nfft);
+
+        for bpo in [24u32, 96u32] {
+            let space = Log2Space::new(200.0, 8000.0, bpo);
+            let nsgt = NsgtKernelLog2::new(
+                NsgtLog2Config {
+                    fs,
+                    overlap: 0.9,
+                    nfft_override: Some(nfft),
+                },
+                space,
+                Some(cap),
+            );
+            let max_above = nsgt
+                .bands()
+                .iter()
+                .filter(|b| b.f_hz >= pivot_hz)
+                .map(|b| b.win_len)
+                .max()
+                .unwrap_or(0);
+            assert!(
+                max_above == cap_eff,
+                "cap not enforced for bpo={}: max_above={}, cap={}",
+                bpo,
+                max_above,
+                cap_eff
+            );
+        }
+    }
+
+    #[test]
+    fn win_len_cap_none_allows_longer_high_band() {
+        let fs = 48_000.0;
+        let nfft = 4096;
+        let pivot_hz = 2000.0;
+        let cap = WinLenCap {
+            pivot_hz,
+            max_len_above_s: 256.0 / fs,
+        };
+        let cap_eff = cap.cap_samples(fs, nfft);
+        let space = Log2Space::new(200.0, 8000.0, 96);
+        let nsgt = NsgtKernelLog2::new(
+            NsgtLog2Config {
+                fs,
+                overlap: 0.9,
+                nfft_override: Some(nfft),
+            },
+            space,
+            None,
+        );
+        let max_above = nsgt
+            .bands()
+            .iter()
+            .filter(|b| b.f_hz >= pivot_hz)
+            .map(|b| b.win_len)
+            .max()
+            .unwrap_or(0);
+
+        assert!(
+            max_above > cap_eff,
+            "expected uncapped win_len above pivot: max_above={}, cap={}",
+            max_above,
+            cap_eff
+        );
+    }
+
     // ==============================
     // Visualization (plotting): cargo test -- --ignored
     // ==============================
@@ -793,6 +979,7 @@ mod tests {
                 ..Default::default()
             },
             Log2Space::new(20.0, 8000.0, 200),
+            None,
         );
         let sig = mk_sine_len(fs, 440.0, nsgt.nfft());
         let bands = nsgt.analyze(&sig);
@@ -850,6 +1037,7 @@ mod tests {
                 ..Default::default()
             },
             Log2Space::new(35.0, 24_000.0, 100),
+            None,
         );
 
         // Noise generation.

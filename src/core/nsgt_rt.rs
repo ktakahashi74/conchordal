@@ -322,7 +322,7 @@ impl RtNsgtKernelLog2 {
         let bands = self.nsgt.bands();
         for (bi, band) in bands.iter().enumerate() {
             let mut acc = Complex32::new(0.0, 0.0);
-            // Σ X[k] * conj(K_k[k]) (already phase-compensated & conj in spec_conj_sparse)
+            // Σ X[k] * conj(K_k[k]) (already conj in spec_conj_sparse)
             for &(k, w) in &band.spec_conj_sparse {
                 // Safety: kernels are built for the same nfft.
                 debug_assert!(k < self.fft_buf.len());

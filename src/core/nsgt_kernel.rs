@@ -173,18 +173,11 @@ impl NsgtKernelLog2 {
             }
             let tol = 1e-6 * max_mag.sqrt();
             let mut sparse: Vec<(usize, Complex32)> = Vec::new();
-            let two_pi_over_n = 2.0 * std::f32::consts::PI / (nfft as f32);
-            let shift_f = shift as f32;
             for (k, &z) in kernel_freq.iter().enumerate() {
                 if z.norm() >= tol {
-                    // --- phase compensation --
-                    // time shift in h[n] -> linear phase exp(-j 2π k * shift / N) in H[k]
-                    // To undo that (so that inner product is lag=0), multiply conj(H[k]) by exp(-j 2π k * shift / N)
-                    let theta = two_pi_over_n * (k as f32) * shift_f;
-                    let rot_back = Complex32::new(theta.cos(), -theta.sin());
-
-                    // store conj(H[k]) * rot_back
-                    sparse.push((k, z.conj() * rot_back));
+                    // The kernel is already centered at NFFT/2 in time-domain; do not undo this shift,
+                    // so coefficient time tags remain consistent with t_sec = (start + nfft/2) / fs.
+                    sparse.push((k, z.conj()));
                 }
             }
 
@@ -341,6 +334,12 @@ mod tests {
             .collect()
     }
 
+    fn mk_sine_len(fs: f32, f: f32, n: usize) -> Vec<f32> {
+        (0..n)
+            .map(|i| (2.0 * std::f32::consts::PI * f * (i as f32) / fs).sin())
+            .collect()
+    }
+
     #[test]
     fn pure_tone_near_target() {
         let fs = 48_000.0;
@@ -352,7 +351,7 @@ mod tests {
             },
             Log2Space::new(20.0, 8000.0, 200),
         );
-        let sig = mk_sine(fs, 440.0, 1.0);
+        let sig = mk_sine_len(fs, 440.0, nsgt.nfft());
         let bands = nsgt.analyze(&sig);
         let (mut best_f, mut best_val) = (0.0, 0.0);
         for b in &bands {
@@ -377,7 +376,7 @@ mod tests {
         let fs = 48_000.0;
         let nsgt = NsgtKernelLog2::new(NsgtLog2Config::default(), Log2Space::new(20.0, 8000.0, 96));
         for f in [55.0, 110.0, 220.0, 440.0, 880.0, 1760.0] {
-            let sig = mk_sine(fs, f, 1.0);
+            let sig = mk_sine_len(fs, f, nsgt.nfft());
             let bands = nsgt.analyze(&sig);
             let (mut best_f, mut best_val) = (0.0, 0.0);
             for b in &bands {
@@ -437,14 +436,48 @@ mod tests {
     }
 
     #[test]
+    fn impulse_peak_aligns_with_time_tag() {
+        let fs = 48_000.0;
+        let nsgt = NsgtKernelLog2::new(
+            NsgtLog2Config {
+                fs,
+                overlap: 0.98,
+                nfft_override: Some(256),
+            },
+            Log2Space::new(4000.0, 8000.0, 12),
+        );
+        let mut sig = vec![0.0f32; 512];
+        let imp = 200usize;
+        sig[imp] = 1.0;
+
+        let bands = nsgt.analyze(&sig);
+        let band = bands.last().expect("no bands returned");
+        let (i_peak, _) = band
+            .coeffs
+            .iter()
+            .enumerate()
+            .max_by(|a, b| a.1.norm_sqr().partial_cmp(&b.1.norm_sqr()).unwrap())
+            .expect("no coefficients returned");
+
+        let t_peak = band.t_sec[i_peak];
+        let hop = nsgt.hop() as f32;
+        let err = (t_peak * fs - imp as f32).abs();
+
+        assert!(
+            err <= hop,
+            "impulse peak misaligned: err={err:.2} samples (hop={hop:.2})"
+        );
+    }
+
+    #[test]
     fn low_vs_high_freq_energy_scaling() {
         // 周波数によらず全体のエネルギーが概ね一定であることを確認
         let fs = 48_000.0;
         let space = Log2Space::new(20.0, 8000.0, 96);
         let nsgt = NsgtKernelLog2::new(NsgtLog2Config::default(), space.clone());
 
-        let sig_low = mk_sine(fs, 220.0, 1.0);
-        let sig_high = mk_sine(fs, 1760.0, 1.0);
+        let sig_low = mk_sine_len(fs, 220.0, nsgt.nfft());
+        let sig_high = mk_sine_len(fs, 1760.0, nsgt.nfft());
 
         let integrate_psd = |x: &[f32]| -> f32 {
             let psd = nsgt.analyze_psd(x);
@@ -468,12 +501,9 @@ mod tests {
     fn parseval_consistency() {
         let fs = 48_000.0;
         let f0 = 880.0;
-        let sig = (0..(fs as usize))
-            .map(|i| (2.0 * std::f32::consts::PI * f0 * i as f32 / fs).sin())
-            .collect::<Vec<_>>();
-
         let space = Log2Space::new(20.0, 8000.0, 200);
         let nsgt = NsgtKernelLog2::new(NsgtLog2Config::default(), space.clone());
+        let sig = mk_sine_len(fs, f0, nsgt.nfft());
 
         let e_time = sig.iter().map(|x| x * x).sum::<f32>() / sig.len() as f32;
         let psd = nsgt.analyze_psd(&sig);
@@ -537,9 +567,7 @@ mod tests {
         let f0 = 1000.0;
         let space = Log2Space::new(100.0, 5000.0, 200);
         let nsgt = NsgtKernelLog2::new(NsgtLog2Config::default(), space.clone());
-        let sig = (0..(fs as usize))
-            .map(|i| (2.0 * std::f32::consts::PI * f0 * i as f32 / fs).sin())
-            .collect::<Vec<_>>();
+        let sig = mk_sine_len(fs, f0, nsgt.nfft());
 
         let psd = nsgt.analyze_psd(&sig);
         let freqs = &space.centers_hz;
@@ -694,11 +722,12 @@ mod tests {
             NsgtLog2Config {
                 fs,
                 overlap: 0.5,
+                nfft_override: Some(16_384),
                 ..Default::default()
             },
             Log2Space::new(20.0, 8000.0, 200),
         );
-        let sig = mk_sine(fs, 440.0, 1.0);
+        let sig = mk_sine_len(fs, 440.0, nsgt.nfft());
         let bands = nsgt.analyze(&sig);
 
         let points: Vec<(f32, f32)> = bands

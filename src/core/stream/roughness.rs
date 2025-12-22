@@ -11,7 +11,7 @@ pub struct RoughnessStream {
     // Internal States
     norm_state: Vec<f32>,        // Leaky integrator for loudness
     habituation_state: Vec<f32>, // Boredom integrator
-    loudness_weights: Vec<f32>,  // A-weighting curve
+    loudness_weights_pow: Vec<f32>, // A-weighting power curve (gain^2)
 
     // Last computed state (roughness-side of the landscape)
     last_landscape: Landscape,
@@ -20,11 +20,14 @@ pub struct RoughnessStream {
 impl RoughnessStream {
     pub fn new(params: LandscapeParams, nsgt_rt: RtNsgtKernelLog2) -> Self {
         let n_bins = nsgt_rt.space().n_bins();
-        let loudness_weights = nsgt_rt
+        let loudness_weights_pow = nsgt_rt
             .space()
             .centers_hz
             .iter()
-            .map(|&f| utils::a_weighting_gain(f))
+            .map(|&f| {
+                let g = utils::a_weighting_gain(f);
+                g * g
+            })
             .collect();
 
         Self {
@@ -32,7 +35,7 @@ impl RoughnessStream {
             params,
             norm_state: vec![0.0; n_bins],
             habituation_state: vec![0.0; n_bins],
-            loudness_weights,
+            loudness_weights_pow,
             last_landscape: Landscape::new(nsgt_rt.space().clone()),
         }
     }
@@ -70,10 +73,10 @@ impl RoughnessStream {
         let a = (-dt_sec / tau_s).exp();
         let mut out = vec![0.0f32; envelope.len()];
 
-        for (i, &mag) in envelope.iter().enumerate() {
-            let weighted_mag = mag * self.loudness_weights[i];
-            let pow = weighted_mag * weighted_mag;
-            let subj = (pow / self.params.ref_power).powf(exp);
+        // RT NSGT provides band power, so apply power-domain weighting and compression.
+        for (i, &pow) in envelope.iter().enumerate() {
+            let weighted_pow = pow * self.loudness_weights_pow[i];
+            let subj = (weighted_pow / self.params.ref_power).powf(exp);
             let y = a * self.norm_state[i] + (1.0 - a) * subj;
             self.norm_state[i] = y;
             out[i] = y;
@@ -127,5 +130,93 @@ impl RoughnessStream {
         if let Some(depth) = upd.habituation_max_depth {
             self.params.habituation_max_depth = depth;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::harmonicity_kernel::{HarmonicityKernel, HarmonicityParams};
+    use crate::core::log2space::Log2Space;
+    use crate::core::nsgt_kernel::{NsgtKernelLog2, NsgtLog2Config};
+    use crate::core::nsgt_rt::{InstMeasure, RtConfig, RtNsgtKernelLog2};
+    use crate::core::roughness_kernel::{KernelParams, RoughnessKernel};
+
+    fn build_stream(fs: f32) -> RoughnessStream {
+        let space = Log2Space::new(200.0, 4000.0, 12);
+        let nsgt = NsgtKernelLog2::new(
+            NsgtLog2Config {
+                fs,
+                overlap: 0.5,
+                nfft_override: Some(256),
+            },
+            space.clone(),
+        );
+        let rt = RtNsgtKernelLog2::with_config(
+            nsgt,
+            RtConfig {
+                tau_min: 1e-6,
+                tau_max: 1e-6,
+                f_ref: 200.0,
+                measure: InstMeasure::RawPower,
+            },
+        );
+
+        let params = LandscapeParams {
+            fs,
+            max_hist_cols: 1,
+            alpha: 0.0,
+            roughness_kernel: RoughnessKernel::new(KernelParams::default(), 0.005),
+            harmonicity_kernel: HarmonicityKernel::new(&space, HarmonicityParams::default()),
+            habituation_tau: 1.0,
+            habituation_weight: 0.0,
+            habituation_max_depth: 1.0,
+            loudness_exp: 1.0,
+            ref_power: 1.0,
+            tau_ms: 1.0,
+            roughness_k: 1.0,
+        };
+
+        RoughnessStream::new(params, rt)
+    }
+
+    #[test]
+    fn normalize_scales_with_power_input() {
+        let fs = 48_000.0;
+        let mut stream = build_stream(fs);
+        let n = stream.nsgt_rt.space().n_bins();
+        let base: Vec<f32> = (0..n).map(|i| 0.1 + (i as f32) * 0.001).collect();
+        let scaled: Vec<f32> = base.iter().map(|v| v * 4.0).collect();
+
+        let out1 = stream.normalize(&base, 1.0);
+        let mut stream2 = build_stream(fs);
+        let out2 = stream2.normalize(&scaled, 1.0);
+
+        let (imax, v1) = out1
+            .iter()
+            .enumerate()
+            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
+            .unwrap();
+        assert!(*v1 > 1e-6, "unexpected near-zero normalized power");
+        let ratio = out2[imax] / *v1;
+        assert!(
+            (ratio - 4.0).abs() < 0.1,
+            "expected ~4x scaling for power input, got {ratio:.3}"
+        );
+    }
+
+    #[test]
+    fn a_weighting_uses_power_gain() {
+        let fs = 48_000.0;
+        let stream = build_stream(fs);
+        let i = stream.loudness_weights_pow.len() / 2;
+        let f = stream.nsgt_rt.space().centers_hz[i];
+        let g = utils::a_weighting_gain(f);
+        let expected = g * g;
+        let got = stream.loudness_weights_pow[i];
+        assert!(
+            (got - expected).abs() < 1e-6,
+            "expected A-weighting power gain, got {got:.6} vs {expected:.6}"
+        );
     }
 }

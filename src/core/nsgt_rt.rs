@@ -9,7 +9,7 @@
 //!
 //! Notes
 //! -----
-//! - Instantaneous measure can be raw power |C_k|^2 or one-sided PSD (~power/Hz).
+//! - Instantaneous measure is raw power |C_k|^2 or one-sided PSD (~power/Hz).
 //! - `process_hop()` accepts ≤ hop samples (short reads are zero-padded) or
 //!   > hop (multiple hops processed); returns the last envelope slice.
 //! - No per-hop allocations; FFT and scratch buffers are reused.
@@ -63,7 +63,7 @@ pub struct BandState {
     pub alpha: f32,
     /// ENBW [Hz] (periodic Hann ≈ 1.5*fs/Lk).
     pub enbw_hz: f32,
-    /// Smoothed envelope (running state).
+    /// Smoothed band power/PSD (running state).
     pub smooth: f32,
 }
 
@@ -145,7 +145,7 @@ impl RtNsgtKernelLog2 {
         }
     }
 
-    /// Push one hop of audio and return the smoothed envelope slice.
+    /// Push one hop of audio and return the smoothed band power/PSD slice.
     ///
     /// - If `hop_in.len() == hop()`: normal per-hop update.
     /// - If shorter: zero-padded and still one update.
@@ -171,7 +171,7 @@ impl RtNsgtKernelLog2 {
         }
     }
 
-    /// Process an arbitrary block and emit per-hop envelopes via callback.
+    /// Process an arbitrary block and emit per-hop band power/PSD slices via callback.
     pub fn process_block_emit<F: FnMut(&[f32])>(&mut self, block: &[f32], mut emit: F) {
         let mut i = 0usize;
         while i + self.hop <= block.len() {
@@ -187,7 +187,7 @@ impl RtNsgtKernelLog2 {
         }
     }
 
-    /// Current smoothed envelope without processing new samples.
+    /// Current smoothed band power/PSD without processing new samples.
     #[inline]
     pub fn current_envelope(&self) -> &[f32] {
         &self.out_env
@@ -345,5 +345,65 @@ impl RtNsgtKernelLog2 {
             st.smooth = (1.0 - st.alpha) * p + st.alpha * st.smooth;
             self.out_env[bi] = st.smooth;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::log2space::Log2Space;
+    use crate::core::nsgt_kernel::NsgtLog2Config;
+    use core::f32::consts::PI;
+
+    fn mk_sine(len: usize, f_hz: f32, fs: f32, amp: f32) -> Vec<f32> {
+        let w = 2.0 * PI * f_hz / fs;
+        (0..len)
+            .map(|i| amp * (w * i as f32).cos())
+            .collect()
+    }
+
+    #[test]
+    fn rt_raw_power_scales_quadratically() {
+        let fs = 48_000.0;
+        let space = Log2Space::new(200.0, 4000.0, 12);
+        let nsgt = NsgtKernelLog2::new(
+            NsgtLog2Config {
+                fs,
+                overlap: 0.5,
+                nfft_override: Some(256),
+            },
+            space,
+        );
+        let cfg = RtConfig {
+            tau_min: 1e-6,
+            tau_max: 1e-6,
+            f_ref: 200.0,
+            measure: InstMeasure::RawPower,
+        };
+
+        let mut rt = RtNsgtKernelLog2::with_config(nsgt.clone(), cfg);
+        let f = rt.freqs()[rt.freqs().len() / 2];
+        let len = rt.nfft() * 4;
+        let sig1 = mk_sine(len, f, fs, 1.0);
+        let sig2 = mk_sine(len, f, fs, 2.0);
+
+        let mut env1 = Vec::new();
+        rt.process_block_emit(&sig1, |env| env1 = env.to_vec());
+
+        let mut rt2 = RtNsgtKernelLog2::with_config(nsgt, cfg);
+        let mut env2 = Vec::new();
+        rt2.process_block_emit(&sig2, |env| env2 = env.to_vec());
+
+        let (imax, p1) = env1
+            .iter()
+            .enumerate()
+            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
+            .unwrap();
+        assert!(*p1 > 1e-6, "unexpected near-zero band power");
+        let ratio = env2[imax] / *p1;
+        assert!(
+            (ratio - 4.0).abs() < 0.1,
+            "expected ~4x power scaling, got {ratio:.3}"
+        );
     }
 }

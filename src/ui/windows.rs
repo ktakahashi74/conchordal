@@ -397,13 +397,8 @@ pub fn main_window(
             &frame.landscape.subjective_intensity,
             "Amplitude",
             0.0,
-<<<<<<< HEAD
             1.0,
             120.0,
-=======
-            11_f64,
-            81.6,
->>>>>>> 042215d (windowsize: 1200 x 850)
             Some("landscape_group"),
             None,
         );

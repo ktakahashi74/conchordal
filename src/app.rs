@@ -392,12 +392,12 @@ impl App {
         cc.egui_ctx
             .send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::Vec2 {
                 x: 1200.0,
-                y: 1600.0,
+                y: 850.0,
             }));
         cc.egui_ctx
             .send_viewport_cmd(egui::ViewportCommand::MinInnerSize(egui::Vec2 {
                 x: 1200.0,
-                y: 1600.0,
+                y: 850.0,
             }));
 
         Self {

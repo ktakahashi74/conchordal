@@ -117,7 +117,7 @@ fn main() -> eframe::Result<()> {
     .expect("Error setting Ctrl-C handler");
 
     let native_options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_inner_size([1200.0, 1200.0]),
+        viewport: egui::ViewportBuilder::default().with_inner_size([1200.0, 850.0]),
         ..Default::default()
     };
 

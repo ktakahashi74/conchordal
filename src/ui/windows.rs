@@ -27,7 +27,7 @@ fn draw_level_meters(
     right_win: f32,
     meter_width_scale: f32,
 ) {
-    let meter_height = ui.available_height().max(80.0);
+    let meter_height = (ui.available_height() * 0.8).max(80.0);
     let label_width = 20.0;
     let meter_width = 22.0 * meter_width_scale;
     let spacing = 8.0;
@@ -125,9 +125,9 @@ pub fn main_window(
     start_flag: &Arc<AtomicBool>,
 ) {
     TopBottomPanel::top("top").show(ctx, |ui| {
-        ui.heading("Conchordal");
-
         ui.horizontal(|ui| {
+            ui.heading("Conchordal");
+            ui.separator();
             let scenario = if frame.meta.scenario_name.is_empty() {
                 "Unknown".to_string()
             } else {
@@ -141,6 +141,8 @@ pub fn main_window(
             ui.label(format!("Scenario: {scenario}"));
             ui.separator();
             ui.label(format!("Scene: {scene}"));
+            ui.separator();
+            ui.label(format!("Events: {}", frame.meta.event_queue_len));
         });
 
         let progress = if frame.meta.duration_sec > 0.0 {
@@ -217,11 +219,6 @@ pub fn main_window(
             start_flag.store(true, Ordering::SeqCst);
         }
 
-        ui.horizontal(|ui| {
-            ui.label(format!("Agents: {}", frame.meta.agent_count));
-            ui.separator();
-            ui.label(format!("Events: {}", frame.meta.event_queue_len));
-        });
     });
 
     CentralPanel::default().show(ctx, |ui| {
@@ -232,46 +229,53 @@ pub fn main_window(
         let x_max = rhythm_history.back().map(|(t, _)| *t).unwrap_or(0.0);
         let window_start = x_max - 5.0;
         let window_end = (window_start + 5.0).max(window_start + 0.1);
-        let (left_width, right_width) = split_widths(ui, 0.17, 100.0, 200.0);
+        let (left_width, _) = split_widths(ui, 0.17, 100.0, 200.0);
         let row_height = 100.0;
         let height = 100.0;
         let legend_room = 12.0;
         let block_height = height + legend_room;
+        let attention_height = row_height * 0.7;
+        let neural_time_height = block_height * 0.7;
+        let left_row_height = attention_height;
+        let left_block_height = neural_time_height;
         ui.horizontal(|ui| {
             ui.allocate_ui_with_layout(
-                Vec2::new(left_width, row_height + block_height),
+                Vec2::new(left_width, left_row_height + left_block_height),
                 egui::Layout::top_down(egui::Align::LEFT),
                 |ui| {
-                    ui.heading("Audio");
+                    let peak_db = if frame.meta.peak_level > 0.0 {
+                        20.0 * frame.meta.peak_level.log10()
+                    } else {
+                        f32::NEG_INFINITY
+                    };
+                    let peak_text = if peak_db.is_infinite() {
+                        "-inf dB".to_string()
+                    } else {
+                        format!("{:>5.1} dB", peak_db)
+                    };
+                    let peak_color = if frame.meta.peak_level > 1.0 {
+                        egui::Color32::RED
+                    } else {
+                        ui.visuals().text_color()
+                    };
+                    ui.horizontal(|ui| {
+                        ui.heading("Audio");
+                        ui.separator();
+                        ui.colored_label(peak_color, format!("Peak level: {peak_text}"));
+                    });
                     ui.allocate_ui_with_layout(
-                        Vec2::new(left_width, row_height),
+                        Vec2::new(left_width, left_row_height),
                         egui::Layout::left_to_right(egui::Align::Min),
                         |ui| {
                             // === Level meter ===
                             ui.vertical(|ui| {
-                                let peak_db = if frame.meta.peak_level > 0.0 {
-                                    20.0 * frame.meta.peak_level.log10()
-                                } else {
-                                    f32::NEG_INFINITY
-                                };
-                                let peak_text = if peak_db.is_infinite() {
-                                    "-inf dB".to_string()
-                                } else {
-                                    format!("{:>5.1} dB", peak_db)
-                                };
-                                let peak_color = if frame.meta.peak_level > 1.0 {
-                                    egui::Color32::RED
-                                } else {
-                                    ui.visuals().text_color()
-                                };
-                                ui.colored_label(peak_color, peak_text);
                                 draw_level_meters(
                                     ui,
                                     frame.meta.channel_peak[0],
                                     frame.meta.window_peak[0],
                                     frame.meta.channel_peak[1],
                                     frame.meta.window_peak[1],
-                                    0.5,
+                                    0.45,
                                 );
                             });
 
@@ -280,7 +284,7 @@ pub fn main_window(
                             ui.vertical(|ui| {
                                 ui.label("Wave frame");
                                 ui.allocate_ui_with_layout(
-                                    Vec2::new(ui.available_width(), row_height),
+                                    Vec2::new(ui.available_width(), left_row_height),
                                     egui::Layout::top_down(egui::Align::LEFT),
                                     |ui| {
                                         time_plot(
@@ -288,7 +292,7 @@ pub fn main_window(
                                             "Current Hop Wave",
                                             frame.wave.fs as f64,
                                             frame.wave.samples.as_ref(),
-                                            row_height,
+                                            left_row_height,
                                             false,
                                         );
                                     },
@@ -300,11 +304,11 @@ pub fn main_window(
                     ui.separator();
                     ui.heading("Neural Activity");
                     ui.allocate_ui_with_layout(
-                        Vec2::new(left_width, block_height),
+                        Vec2::new(left_width, left_block_height),
                         egui::Layout::top_down(egui::Align::LEFT),
                         |ui| {
-                            ui.set_min_height(block_height);
-                            let side_len = (height - legend_room).max(60.0);
+                            ui.set_min_height(left_block_height);
+                            let side_len = ((left_block_height - legend_room) * 0.4).max(60.0);
                             let side = Vec2::splat(side_len);
                             ui.add_space(10.0);
                             ui.horizontal(|ui| {
@@ -319,7 +323,7 @@ pub fn main_window(
                                     ];
                                     for (label, color) in labels {
                                         ui.label(
-                                            egui::RichText::new(label).color(color).size(14.0),
+                                            egui::RichText::new(label).color(color).size(12.0),
                                         );
                                     }
                                 });
@@ -330,8 +334,9 @@ pub fn main_window(
             );
 
             ui.separator();
+            let right_width = ui.available_width().max(0.0);
             ui.allocate_ui_with_layout(
-                Vec2::new(right_width, row_height + block_height),
+                Vec2::new(right_width, attention_height + neural_time_height),
                 egui::Layout::top_down(egui::Align::LEFT),
                 |ui| {
                     let old_spacing = ui.spacing().item_spacing;
@@ -340,7 +345,7 @@ pub fn main_window(
                     spectrum_time_freq_axes(
                         ui,
                         dorsal_history,
-                        row_height,
+                        attention_height,
                         window_start,
                         window_end,
                         Some(time_link_id),
@@ -349,15 +354,15 @@ pub fn main_window(
                     ui.separator();
                     ui.label("Neural activity");
                     ui.allocate_ui_with_layout(
-                        Vec2::new(right_width, block_height),
+                        Vec2::new(right_width, neural_time_height),
                         egui::Layout::top_down(egui::Align::LEFT),
                         |ui| {
                             ui.set_min_width(right_width);
-                            ui.set_min_height(block_height);
+                            ui.set_min_height(neural_time_height);
                             neural_activity_plot(
                                 ui,
                                 rhythm_history,
-                                block_height,
+                                neural_time_height,
                                 window_start,
                                 window_end,
                                 Some(time_link_id),
@@ -369,13 +374,17 @@ pub fn main_window(
         });
 
         ui.separator();
-        ui.heading("Population Dynamics");
+        ui.horizontal(|ui| {
+            ui.heading("Population Dynamics");
+            ui.separator();
+            ui.label(format!("Agents: {}", frame.meta.agent_count));
+        });
         plot_population_dynamics(
             ui,
             &frame.agents,
             &frame.spec.spec_hz,
             &frame.spec.amps,
-            140.0,
+            119.0,
         );
 
         ui.separator();
@@ -388,8 +397,13 @@ pub fn main_window(
             &frame.landscape.subjective_intensity,
             "Amplitude",
             0.0,
+<<<<<<< HEAD
             1.0,
             120.0,
+=======
+            11_f64,
+            81.6,
+>>>>>>> 042215d (windowsize: 1200 x 850)
             Some("landscape_group"),
             None,
         );
@@ -411,7 +425,7 @@ pub fn main_window(
                 "C",
                 -1.0,
                 1.0,
-                150.0,
+                102.0,
                 Some("landscape_group"),
                 None,
             );
@@ -423,7 +437,7 @@ pub fn main_window(
                 &frame.landscape.space.centers_hz,
                 &frame.landscape.harmonicity,
                 &frame.landscape.roughness,
-                150.0,
+                102.0,
                 Some("landscape_group"),
             );
         });

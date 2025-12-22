@@ -2,9 +2,11 @@
 //!
 //! Overview
 //! -----
-//! - For each band k, we precompute a time-domain kernel h_k[n] = w_k[n] * e^{-j 2π f_k n / fs},
-//!   zero-pad it to length Nfft, center it, and take FFT → K_k[ν] (frequency-domain kernel).
-//! - For each frame, compute X[ν] = FFT{x_frame} only once, and obtain C_k = (1/Nfft) Σ_ν X[ν] * conj(K_k[ν]).
+//! - For each band k, we precompute a time-domain kernel h_k[n] = w_k[n] * exp(+j 2*pi f_k n / fs),
+//!   zero-pad it to length Nfft, center it, and take FFT -> K_k[nu] (frequency-domain kernel).
+//! - For each frame, compute X[nu] = FFT{x_frame} only once, and obtain
+//!   C_k = (1/Nfft) * sum_nu X[nu] * conj(K_k[nu]) = sum_n x[n] * conj(h_k[n]),
+//!   so conj(h_k[n]) contains the standard analysis factor exp(-j omega n).
 //! - K_k is **sparsified** by thresholding: we store only (index, weight) of nonzero bins for fast accumulation.
 //!
 //! Design Notes
@@ -147,14 +149,14 @@ impl NsgtKernelLog2 {
             let window = hann_periodic(win_len_req);
             let sum_w = window.iter().copied().sum::<f32>().max(1e-12);
 
-            // circularly shifted kernel h_k[n] = w[n]*e^{-j2π f n/fs} (zero-padded to nfft)
+            // Circularly shifted kernel h_k[n] = w[n]*exp(+j 2*pi f n/fs) (zero-padded to nfft).
             let mut h = vec![Complex32::new(0.0, 0.0); nfft];
             let center = win_len_req / 2;
             let shift = (nfft / 2 + nfft - center) % nfft; // place kernel center at NFFT/2
             for (i, &win) in window.iter().enumerate().take(win_len_req) {
                 let w = win / sum_w;
                 let ph = 2.0 * std::f32::consts::PI * f * (i as f32) / fs;
-                let cplx = Complex32::new(ph.cos(), -ph.sin()) * w;
+                let cplx = Complex32::new(ph.cos(), ph.sin()) * w;
                 let idx = (i + shift) % nfft;
                 h[idx] = cplx;
             }
@@ -212,7 +214,7 @@ impl NsgtKernelLog2 {
         &self.bands
     }
 
-    /// 解析：各フレームで X を一回だけ計算し、全バンドの C_k を周波数領域の疎内積で同時計算
+    /// Analysis: compute X once per frame and accumulate sparse inner products for all bands.
     pub fn analyze(&self, x: &[f32]) -> Vec<BandCoeffs> {
         let fs = self.cfg.fs;
         if x.is_empty() {
@@ -228,7 +230,7 @@ impl NsgtKernelLog2 {
             (x.len() - nfft) / hop + 1
         };
 
-        // 出力スロット
+        // Output slots.
         let mut out: Vec<BandCoeffs> = self
             .bands
             .iter()
@@ -245,7 +247,7 @@ impl NsgtKernelLog2 {
         let mut buf = vec![Complex32::new(0.0, 0.0); nfft];
 
         for frame_idx in 0..n_frames {
-            // フレーミング（矩形。カーネル側に窓が含まれるためここで追加窓は不要）
+            // Rectangular framing; the kernel already contains the analysis window.
             let start = frame_idx * hop;
             for i in 0..nfft {
                 let xi = if start + i < x.len() {
@@ -259,13 +261,13 @@ impl NsgtKernelLog2 {
             // X = FFT{x}
             self.fft.process(&mut buf);
 
-            // 各バンドの疎内積： C_k = (1/Nfft) Σ X[ν] * conj(K_k[ν])
+            // Sparse inner product per band: C_k = (1/Nfft) * sum X[nu] * conj(K_k[nu]) = sum x[n] * conj(h_k[n]).
             for (b_idx, b) in self.bands.iter().enumerate() {
                 let mut acc = Complex32::new(0.0, 0.0);
                 for &(k, w) in &b.spec_conj_sparse {
                     acc += buf[k] * w;
                 }
-                acc /= nfft as f32; // 1/Nfft スケーリング（rustfftの正規化に対応）
+                acc /= nfft as f32; // 1/Nfft scaling to match rustfft normalization.
                 out[b_idx].coeffs.push(acc);
                 out[b_idx].t_sec.push((start + nfft / 2) as f32 / fs);
             }
@@ -274,7 +276,7 @@ impl NsgtKernelLog2 {
         out
     }
 
-    /// 平均振幅（envelope的）。/L・per-Hz正規化はしない（利用側で定義）
+    /// Mean magnitude (envelope). No per-L or per-Hz normalization; caller defines it.
     pub fn analyze_envelope(&self, x: &[f32]) -> Vec<f32> {
         let bands = self.analyze(x);
         bands
@@ -284,7 +286,7 @@ impl NsgtKernelLog2 {
                 if m == 0 {
                     0.0
                 } else {
-                    // 端部1フレームずつ除外（エッジ効果の影響を消す）
+                    // Drop one frame at each edge to reduce boundary effects.
                     let (start, end) = if m > 2 { (1, m - 1) } else { (0, m) };
                     let slice = &b.coeffs[start..end];
                     if slice.is_empty() {
@@ -297,7 +299,7 @@ impl NsgtKernelLog2 {
             .collect()
     }
 
-    /// Hann窓用 ENBW 補正を含む Power Spectral Density [power/Hz] (**one-sided**)
+    /// Power spectral density [power/Hz] with ENBW correction for Hann window (**one-sided**).
     pub fn analyze_psd(&self, x: &[f32]) -> Vec<f32> {
         let fs = self.cfg.fs;
         self.analyze(x)
@@ -338,6 +340,18 @@ mod tests {
         (0..n)
             .map(|i| (2.0 * std::f32::consts::PI * f * (i as f32) / fs).sin())
             .collect()
+    }
+
+    fn wrap_to_pi(mut x: f32) -> f32 {
+        use core::f32::consts::PI;
+        let two_pi = 2.0 * PI;
+        while x <= -PI {
+            x += two_pi;
+        }
+        while x > PI {
+            x -= two_pi;
+        }
+        x
     }
 
     #[test]
@@ -470,8 +484,61 @@ mod tests {
     }
 
     #[test]
+    fn phase_shift_sign_matches_standard_analysis() {
+        let fs = 48_000.0;
+        let nsgt = NsgtKernelLog2::new(
+            NsgtLog2Config {
+                fs,
+                overlap: 0.98,
+                nfft_override: Some(512),
+            },
+            Log2Space::new(4000.0, 8000.0, 12),
+        );
+
+        let bi = nsgt.bands().len() - 1;
+        let f = nsgt.bands()[bi].f_hz;
+        let omega = 2.0 * std::f32::consts::PI * f / fs;
+        let len = nsgt.nfft() * 8;
+        let delta = 1usize;
+        let delta_f = delta as f32;
+
+        let x0_cos: Vec<f32> = (0..len).map(|n| (omega * n as f32).cos()).collect();
+        let x0_sin: Vec<f32> = (0..len).map(|n| (omega * n as f32).sin()).collect();
+        let x1_cos: Vec<f32> = (0..len)
+            .map(|n| (omega * (n as f32 - delta_f)).cos())
+            .collect();
+        let x1_sin: Vec<f32> = (0..len)
+            .map(|n| (omega * (n as f32 - delta_f)).sin())
+            .collect();
+
+        let bands0_cos = nsgt.analyze(&x0_cos);
+        let bands0_sin = nsgt.analyze(&x0_sin);
+        let bands1_cos = nsgt.analyze(&x1_cos);
+        let bands1_sin = nsgt.analyze(&x1_sin);
+
+        let fi = bands0_cos[bi].coeffs.len() / 2;
+        let c0_cos = bands0_cos[bi].coeffs[fi];
+        let c0_sin = bands0_sin[bi].coeffs[fi];
+        let c1_cos = bands1_cos[bi].coeffs[fi];
+        let c1_sin = bands1_sin[bi].coeffs[fi];
+
+        let j = Complex32::new(0.0, 1.0);
+        let c0 = c0_cos + j * c0_sin;
+        let c1 = c1_cos + j * c1_sin;
+
+        assert!(c0.norm() > 1e-3, "base coefficient too small");
+
+        let d = c1 * c0.conj();
+        let phase = d.im.atan2(d.re);
+        let expected = -omega * delta_f;
+        let err = wrap_to_pi(phase - expected).abs();
+
+        assert!(err < 1e-2, "phase error too large: {err}");
+    }
+
+    #[test]
     fn low_vs_high_freq_energy_scaling() {
-        // 周波数によらず全体のエネルギーが概ね一定であることを確認
+        // Check that total energy is roughly frequency-independent.
         let fs = 48_000.0;
         let space = Log2Space::new(20.0, 8000.0, 96);
         let nsgt = NsgtKernelLog2::new(NsgtLog2Config::default(), space.clone());
@@ -578,7 +645,7 @@ mod tests {
             .unwrap();
         let f_peak = freqs[i_peak];
 
-        // ピーク位置が ±1/12oct 以内
+        // Peak location should be within +/- 1/12 octave.
         let cents = 1200.0 * ((f_peak / f0).log2()).abs();
         assert!(
             cents < 100.0,
@@ -587,8 +654,8 @@ mod tests {
             f_peak
         );
 
-        // --- 主ローブ外側のみでフランクを評価する ---
-        // Hann の 1st zero は概ね |Δf| = 2/T,  T = win_len / fs
+        // Evaluate flanks only outside the main lobe.
+        // Hann first zero is roughly |df| = 2/T, T = win_len / fs.
         let win_len = nsgt.bands()[i_peak].win_len as f32; // Lk_req
         let period = win_len / fs;
         let df_zero = 2.0 / period; // [Hz]
@@ -607,7 +674,7 @@ mod tests {
             "no bins outside main lobe to evaluate flank"
         );
 
-        // 主ローブ外では少なくとも ≈10×（>10.0）下がっていることを期待（約10.8 dB）
+        // Outside the main lobe, expect at least ~10x drop (~10.8 dB).
         assert!(
             p_peak / flank_max > 10.0,
             "peak too broad or flat: peak={}, flank_max={}, df_zero={:.2} Hz, Lk={}",
@@ -709,7 +776,7 @@ mod tests {
     }
 
     // ==============================
-    // 可視化（プロット用）: cargo test -- --ignored
+    // Visualization (plotting): cargo test -- --ignored
     // ==============================
 
     #[test]
@@ -785,17 +852,17 @@ mod tests {
             Log2Space::new(35.0, 24_000.0, 100),
         );
 
-        // --- ノイズ生成 ---
+        // Noise generation.
         let white: Vec<f32> = white_noise(n, 42).iter().map(|&v| v as f32).collect();
         let pink: Vec<f32> = pink_noise(n, 42).iter().map(|&v| v as f32).collect();
         let brown: Vec<f32> = brown_noise(n, 42).iter().map(|&v| v as f32).collect();
 
-        // --- per-Hz正規化済み PSD を取得 ---
+        // Get per-Hz normalized PSD.
         let w_psd = nsgt.analyze_psd(&white);
         let p_psd = nsgt.analyze_psd(&pink);
         let b_psd = nsgt.analyze_psd(&brown);
 
-        // dB換算
+        // Convert to dB.
         let to_db =
             |v: &[f32]| -> Vec<f32> { v.iter().map(|x| 10.0 * x.max(1e-20).log10()).collect() };
         let w_db = to_db(&w_psd);
@@ -804,7 +871,7 @@ mod tests {
 
         let log2x = nsgt.space().centers_log2.clone();
 
-        // --- 描画 ---
+        // Plot.
         let root = BitMapBackend::new("target/nsgt_kernel_noise_psd_db.png", (1500, 1000))
             .into_drawing_area();
         root.fill(&WHITE).unwrap();

@@ -17,6 +17,7 @@
 
 use crate::core::log2space::Log2Space;
 use rustfft::{FftPlanner, num_complex::Complex32};
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 // =====================================================
@@ -32,6 +33,8 @@ pub struct NsgtLog2Config {
     /// Overlap ratio in [0, 0.95). 0.5 = 50% overlap (default-good)
     pub overlap: f32,
     pub nfft_override: Option<usize>,
+    /// Kernel time alignment within the FFT frame.
+    pub kernel_align: KernelAlign,
 }
 
 impl Default for NsgtLog2Config {
@@ -40,7 +43,22 @@ impl Default for NsgtLog2Config {
             fs: 48_000.0,
             overlap: 0.5,
             nfft_override: None,
+            kernel_align: KernelAlign::Center,
         }
+    }
+}
+
+/// Time placement of kernels within the FFT frame.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum KernelAlign {
+    Center,
+    Right,
+}
+
+impl Default for KernelAlign {
+    fn default() -> Self {
+        Self::Center
     }
 }
 
@@ -202,7 +220,10 @@ impl NsgtKernelLog2 {
             // Circularly shifted kernel h_k[n] = w[n]*exp(+j 2*pi f n/fs) (zero-padded to nfft).
             let mut h = vec![Complex32::new(0.0, 0.0); nfft];
             let center = win_len_req / 2;
-            let shift = (nfft / 2 + nfft - center) % nfft; // place kernel center at NFFT/2
+            let shift = match cfg.kernel_align {
+                KernelAlign::Center => (nfft / 2 + nfft - center) % nfft,
+                KernelAlign::Right => nfft - win_len_req,
+            };
             for (i, &win) in window.iter().enumerate().take(win_len_req) {
                 let w = win / sum_w;
                 let ph = 2.0 * std::f32::consts::PI * f * (i as f32) / fs;
@@ -227,8 +248,7 @@ impl NsgtKernelLog2 {
             let mut sparse: Vec<(usize, Complex32)> = Vec::new();
             for (k, &z) in kernel_freq.iter().enumerate() {
                 if z.norm() >= tol {
-                    // The kernel is already centered at NFFT/2 in time-domain; do not undo this shift,
-                    // so coefficient time tags remain consistent with t_sec = (start + nfft/2) / fs.
+                    // Keep time-domain alignment (center/right); do not undo the shift here.
                     sparse.push((k, z.conj()));
                 }
             }
@@ -262,6 +282,13 @@ impl NsgtKernelLog2 {
     }
     pub fn bands(&self) -> &[KernelBand] {
         &self.bands
+    }
+    #[inline]
+    pub fn time_ref_sample_in_frame(&self) -> usize {
+        match self.cfg.kernel_align {
+            KernelAlign::Center => self.nfft / 2,
+            KernelAlign::Right => self.nfft.saturating_sub(1),
+        }
     }
 
     /// Analysis: compute X once per frame and accumulate sparse inner products for all bands.
@@ -319,7 +346,8 @@ impl NsgtKernelLog2 {
                 }
                 acc /= nfft as f32; // 1/Nfft scaling to match rustfft normalization.
                 out[b_idx].coeffs.push(acc);
-                out[b_idx].t_sec.push((start + nfft / 2) as f32 / fs);
+                let t_ref = self.time_ref_sample_in_frame();
+                out[b_idx].t_sec.push((start + t_ref) as f32 / fs);
             }
         }
 
@@ -524,6 +552,7 @@ mod tests {
                 fs,
                 overlap: 0.98,
                 nfft_override: Some(256),
+                ..Default::default()
             },
             Log2Space::new(4000.0, 8000.0, 12),
             None,
@@ -552,6 +581,90 @@ mod tests {
     }
 
     #[test]
+    fn impulse_time_alignment_center_vs_right() {
+        let fs = 48_000.0;
+        let nfft = 1024;
+        let space = Log2Space::new(100.0, 5000.0, 96);
+        let target_f = 1000.0;
+
+        let cfg_center = NsgtLog2Config {
+            fs,
+            overlap: 0.5,
+            nfft_override: Some(nfft),
+            kernel_align: KernelAlign::Center,
+        };
+        let nsgt_center = NsgtKernelLog2::new(cfg_center, space.clone(), None);
+        let bi = nsgt_center
+            .bands()
+            .iter()
+            .enumerate()
+            .min_by(|a, b| {
+                let da = (a.1.f_hz - target_f).abs();
+                let db = (b.1.f_hz - target_f).abs();
+                da.partial_cmp(&db).unwrap()
+            })
+            .map(|(i, _)| i)
+            .unwrap();
+
+        let hop = nsgt_center.hop();
+        let frame_idx = 3usize;
+        let start = frame_idx * hop;
+        let len = start + nfft + 1;
+
+        let mut sig_center = vec![0.0f32; len];
+        let t_imp_center = start + nfft / 2;
+        sig_center[t_imp_center] = 1.0;
+        let bands_center = nsgt_center.analyze(&sig_center);
+        let band_center = &bands_center[bi];
+        let (i_peak_center, _) = band_center
+            .coeffs
+            .iter()
+            .enumerate()
+            .max_by(|a, b| a.1.norm_sqr().partial_cmp(&b.1.norm_sqr()).unwrap())
+            .unwrap();
+        assert_eq!(i_peak_center, frame_idx, "center peak frame mismatch");
+        let expected_center = (start + nfft / 2) as f32 / fs;
+        let got_center = band_center.t_sec[frame_idx];
+        assert!(
+            (got_center - expected_center).abs() < 1e-9,
+            "center t_sec mismatch: got={}, expected={}",
+            got_center,
+            expected_center
+        );
+
+        let cfg_right = NsgtLog2Config {
+            fs,
+            overlap: 0.5,
+            nfft_override: Some(nfft),
+            kernel_align: KernelAlign::Right,
+        };
+        let nsgt_right = NsgtKernelLog2::new(cfg_right, space, None);
+        let win_len = nsgt_right.bands()[bi].win_len;
+        let center = win_len / 2;
+
+        let mut sig_right = vec![0.0f32; len];
+        let t_imp_right = start + (nfft - win_len + center);
+        sig_right[t_imp_right] = 1.0;
+        let bands_right = nsgt_right.analyze(&sig_right);
+        let band_right = &bands_right[bi];
+        let (i_peak_right, _) = band_right
+            .coeffs
+            .iter()
+            .enumerate()
+            .max_by(|a, b| a.1.norm_sqr().partial_cmp(&b.1.norm_sqr()).unwrap())
+            .unwrap();
+        assert_eq!(i_peak_right, frame_idx, "right peak frame mismatch");
+        let expected_right = (start + nfft - 1) as f32 / fs;
+        let got_right = band_right.t_sec[frame_idx];
+        assert!(
+            (got_right - expected_right).abs() < 1e-9,
+            "right t_sec mismatch: got={}, expected={}",
+            got_right,
+            expected_right
+        );
+    }
+
+    #[test]
     fn phase_shift_sign_matches_standard_analysis() {
         let fs = 48_000.0;
         let nsgt = NsgtKernelLog2::new(
@@ -559,6 +672,7 @@ mod tests {
                 fs,
                 overlap: 0.98,
                 nfft_override: Some(512),
+                ..Default::default()
             },
             Log2Space::new(4000.0, 8000.0, 12),
             None,
@@ -861,6 +975,7 @@ mod tests {
                 fs,
                 overlap: 0.9,
                 nfft_override: Some(nfft),
+                ..Default::default()
             },
             space,
             Some(cap),
@@ -904,6 +1019,7 @@ mod tests {
                     fs,
                     overlap: 0.9,
                     nfft_override: Some(nfft),
+                    ..Default::default()
                 },
                 space,
                 Some(cap),
@@ -941,6 +1057,7 @@ mod tests {
                 fs,
                 overlap: 0.9,
                 nfft_override: Some(nfft),
+                ..Default::default()
             },
             space,
             None,

@@ -1,3 +1,4 @@
+use crate::core::nsgt_kernel::KernelAlign;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
@@ -36,6 +37,8 @@ pub struct AnalysisConfig {
     pub hop_size: usize,
     #[serde(default = "AnalysisConfig::default_tau_ms")]
     pub tau_ms: f32,
+    #[serde(default)]
+    pub kernel_align: KernelAlign,
 }
 
 impl AnalysisConfig {
@@ -46,7 +49,7 @@ impl AnalysisConfig {
         512
     }
     fn default_tau_ms() -> f32 {
-        80.0
+        10.0
     }
 }
 
@@ -56,6 +59,7 @@ impl Default for AnalysisConfig {
             nfft: Self::default_nfft(),
             hop_size: Self::default_hop_size(),
             tau_ms: Self::default_tau_ms(),
+            kernel_align: KernelAlign::Right,
         }
     }
 }
@@ -73,7 +77,7 @@ impl PsychoAcousticsConfig {
         0.23
     }
     fn default_roughness_k() -> f32 {
-        0.1
+        1.0
     }
 }
 
@@ -225,6 +229,7 @@ mod tests {
                 nfft: 8192,
                 hop_size: 256,
                 tau_ms: 60.0,
+                kernel_align: KernelAlign::Center,
             },
             psychoacoustics: PsychoAcousticsConfig {
                 loudness_exp: 0.3,

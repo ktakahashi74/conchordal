@@ -44,8 +44,8 @@ pub struct RtConfig {
 impl Default for RtConfig {
     fn default() -> Self {
         Self {
-            tau_min: 0.03,
-            tau_max: 0.30,
+            tau_min: 0.005,
+            tau_max: 0.020,
             f_ref: 200.0,
             measure: InstMeasure::RawPower,
         }
@@ -357,9 +357,7 @@ mod tests {
 
     fn mk_sine(len: usize, f_hz: f32, fs: f32, amp: f32) -> Vec<f32> {
         let w = 2.0 * PI * f_hz / fs;
-        (0..len)
-            .map(|i| amp * (w * i as f32).cos())
-            .collect()
+        (0..len).map(|i| amp * (w * i as f32).cos()).collect()
     }
 
     #[test]
@@ -371,6 +369,7 @@ mod tests {
                 fs,
                 overlap: 0.5,
                 nfft_override: Some(256),
+                ..Default::default()
             },
             space,
             None,

@@ -218,7 +218,6 @@ pub fn main_window(
         {
             start_flag.store(true, Ordering::SeqCst);
         }
-
     });
 
     CentralPanel::default().show(ctx, |ui| {
@@ -397,7 +396,7 @@ pub fn main_window(
             &frame.landscape.subjective_intensity,
             "Amplitude",
             0.0,
-            1.0,
+            4.0,
             120.0,
             Some("landscape_group"),
             None,

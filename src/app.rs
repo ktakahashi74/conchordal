@@ -224,7 +224,7 @@ impl App {
 
         // Analysis/NSGT setup
         let fs: f32 = runtime_sample_rate as f32;
-        let space = Log2Space::new(55.0, 8000.0, 100);
+        let space = Log2Space::new(55.0, 8000.0, 96);
         let lparams = LandscapeParams {
             fs,
             max_hist_cols: 256,
@@ -236,7 +236,7 @@ impl App {
             habituation_max_depth: 1.0,
             loudness_exp: config.psychoacoustics.loudness_exp, // Zwicker
             tau_ms: config.analysis.tau_ms,
-            ref_power: 1e-6,
+            ref_power: 1e-4,
             roughness_k: config.psychoacoustics.roughness_k,
         };
         let nfft = config.analysis.nfft;
@@ -247,6 +247,7 @@ impl App {
                 fs,
                 overlap,
                 nfft_override: Some(nfft),
+                kernel_align: config.analysis.kernel_align,
             },
             space,
             None,

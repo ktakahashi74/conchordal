@@ -9,8 +9,8 @@ pub struct RoughnessStream {
     params: LandscapeParams,
 
     // Internal States
-    norm_state: Vec<f32>,        // Leaky integrator for loudness
-    habituation_state: Vec<f32>, // Boredom integrator
+    norm_state: Vec<f32>,           // Leaky integrator for loudness
+    habituation_state: Vec<f32>,    // Boredom integrator
     loudness_weights_pow: Vec<f32>, // A-weighting power curve (gain^2)
 
     // Last computed state (roughness-side of the landscape)
@@ -149,6 +149,7 @@ mod tests {
                 fs,
                 overlap: 0.5,
                 nfft_override: Some(256),
+                ..Default::default()
             },
             space.clone(),
             None,

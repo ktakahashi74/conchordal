@@ -16,8 +16,8 @@ use crate::core::harmonicity_kernel::HarmonicityKernel;
 use crate::core::harmonicity_worker;
 use crate::core::landscape::{Landscape, LandscapeFrame, LandscapeParams, LandscapeUpdate};
 use crate::core::log2space::Log2Space;
-use crate::core::nsgt_kernel::{NsgtKernelLog2, NsgtLog2Config};
-use crate::core::nsgt_rt::RtNsgtKernelLog2;
+use crate::core::nsgt_kernel::{NsgtKernelLog2, NsgtLog2Config, PowerMode};
+use crate::core::nsgt_rt::{RtConfig, RtNsgtKernelLog2};
 use crate::core::roughness_kernel::{KernelParams, RoughnessKernel};
 use crate::core::roughness_worker;
 use crate::core::stream::{
@@ -242,6 +242,11 @@ impl App {
         let nfft = config.analysis.nfft;
         let hop = config.analysis.hop_size;
         let overlap = 1.0 - (hop as f32 / nfft as f32);
+        let power_mode = if config.psychoacoustics.use_incoherent_power {
+            PowerMode::Incoherent
+        } else {
+            PowerMode::Coherent
+        };
         let nsgt_kernel = NsgtKernelLog2::new(
             NsgtLog2Config {
                 fs,
@@ -251,8 +256,9 @@ impl App {
             },
             space,
             None,
+            power_mode,
         );
-        let nsgt = RtNsgtKernelLog2::new(nsgt_kernel.clone());
+        let nsgt = RtNsgtKernelLog2::with_config(nsgt_kernel.clone(), RtConfig::default());
         let hop_duration = Duration::from_secs_f32(hop as f32 / fs);
         let hop_ms = (hop as f32 / fs) * 1000.0;
         let visual_delay_frames = (latency_ms / hop_ms).ceil() as usize + 1; // small safety margin

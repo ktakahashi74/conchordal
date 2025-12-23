@@ -70,6 +70,8 @@ pub struct PsychoAcousticsConfig {
     pub loudness_exp: f32,
     #[serde(default = "PsychoAcousticsConfig::default_roughness_k")]
     pub roughness_k: f32,
+    #[serde(default = "PsychoAcousticsConfig::default_use_incoherent_power")]
+    pub use_incoherent_power: bool,
 }
 
 impl PsychoAcousticsConfig {
@@ -79,6 +81,9 @@ impl PsychoAcousticsConfig {
     fn default_roughness_k() -> f32 {
         0.1
     }
+    fn default_use_incoherent_power() -> bool {
+        false
+    }
 }
 
 impl Default for PsychoAcousticsConfig {
@@ -86,6 +91,7 @@ impl Default for PsychoAcousticsConfig {
         Self {
             loudness_exp: Self::default_loudness_exp(),
             roughness_k: Self::default_roughness_k(),
+            use_incoherent_power: Self::default_use_incoherent_power(),
         }
     }
 }
@@ -202,6 +208,7 @@ mod tests {
         assert_eq!(cfg.audio.sample_rate, 48_000);
         assert_eq!(cfg.psychoacoustics.loudness_exp, 0.23);
         assert_eq!(cfg.psychoacoustics.roughness_k, 0.1);
+        assert!(!cfg.psychoacoustics.use_incoherent_power);
 
         let contents = fs::read_to_string(&path).expect("read written config");
         assert!(
@@ -211,6 +218,10 @@ mod tests {
         assert!(
             contents.contains("roughness_k = 0.1"),
             "should write concise roughness_k"
+        );
+        assert!(
+            contents.contains("use_incoherent_power = false"),
+            "should write use_incoherent_power"
         );
 
         let _ = fs::remove_file(&path);
@@ -234,6 +245,7 @@ mod tests {
             psychoacoustics: PsychoAcousticsConfig {
                 loudness_exp: 0.3,
                 roughness_k: 0.2,
+                use_incoherent_power: false,
             },
             playback: PlaybackConfig {
                 wait_user_exit: false,
@@ -251,6 +263,7 @@ mod tests {
         assert_eq!(cfg.analysis.tau_ms, 60.0);
         assert_eq!(cfg.psychoacoustics.loudness_exp, 0.3);
         assert_eq!(cfg.psychoacoustics.roughness_k, 0.2);
+        assert!(!cfg.psychoacoustics.use_incoherent_power);
         assert!(!cfg.playback.wait_user_exit);
         assert!(cfg.playback.wait_user_start);
 

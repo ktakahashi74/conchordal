@@ -164,12 +164,12 @@ mod tests {
     use crate::core::harmonicity_kernel::{HarmonicityKernel, HarmonicityParams};
     use crate::core::log2space::Log2Space;
     use crate::core::nsgt_kernel::{NsgtKernelLog2, NsgtLog2Config};
-    use crate::core::nsgt_rt::{InstMeasure, RtConfig, RtNsgtKernelLog2};
+    use crate::core::nsgt_rt::{RtConfig, RtNsgtKernelLog2};
     use crate::core::roughness_kernel::{KernelParams, RoughnessKernel};
 
     fn build_stream(fs: f32) -> RoughnessStream {
         let space = Log2Space::new(200.0, 4000.0, 12);
-        let nsgt = NsgtKernelLog2::new(
+        let nsgt = NsgtKernelLog2::new_coherent(
             NsgtLog2Config {
                 fs,
                 overlap: 0.5,
@@ -185,7 +185,6 @@ mod tests {
                 tau_min: 1e-6,
                 tau_max: 1e-6,
                 f_ref: 200.0,
-                measure: InstMeasure::RawPower,
             },
         );
 

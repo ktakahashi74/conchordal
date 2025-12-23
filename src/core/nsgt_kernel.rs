@@ -119,19 +119,31 @@ pub struct BandCoeffs {
     pub hop: usize,
 }
 
+/// Power accumulation mode for RT NSGT.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PowerMode {
+    /// Coherent power (includes cross terms): |Σ X[k] * conj(K[k])|^2.
+    Coherent,
+    /// Incoherent power (no cross terms): Σ |X[k]|^2 * |K[k]|^2.
+    Incoherent,
+}
+
 #[derive(Clone, Debug)]
 pub struct KernelBand {
     pub f_hz: f32,
     pub log2_hz: f32,
     pub win_len: usize, // L_k
-    // frequency-domain kernel (sparse): store (bin index, conj(K_k[bin])) for computation (multiplication-only)
-    pub spec_conj_sparse: Vec<(usize, Complex32)>,
+    // frequency-domain kernel (sparse): store (bin index, conj(K_k[bin])) for computation
+    pub spec_conj_sparse: Option<Vec<(usize, Complex32)>>,
+    // frequency-domain kernel power (sparse): store (bin index, |K_k[bin]|^2)
+    pub spec_pow_sparse: Option<Vec<(usize, f32)>>,
 }
 
 #[derive(Clone)]
 pub struct NsgtKernelLog2 {
     pub cfg: NsgtLog2Config,
     pub space: Log2Space,
+    pub power_mode: PowerMode,
     nfft: usize,
     hop: usize,
     fft: Arc<dyn rustfft::Fft<f32>>,
@@ -145,7 +157,12 @@ impl NsgtKernelLog2 {
     /// - hop is based on Nfft (shared across all bands): hop = round((1-overlap)*Nfft)
     /// - win_len_cap limits high-frequency window length without clamping Q, preserving
     ///   time resolution when bins_per_oct is increased.
-    pub fn new(cfg: NsgtLog2Config, space: Log2Space, win_len_cap: Option<WinLenCap>) -> Self {
+    pub fn new(
+        cfg: NsgtLog2Config,
+        space: Log2Space,
+        win_len_cap: Option<WinLenCap>,
+        power_mode: PowerMode,
+    ) -> Self {
         assert!(
             cfg.overlap >= 0.0 && cfg.overlap < 0.99,
             "Overlap must be in [0,0.99)"
@@ -246,11 +263,28 @@ impl NsgtKernelLog2 {
                 }
             }
             let tol = (1e-6 * max_mag.sqrt()).max(1e-20);
-            let mut sparse: Vec<(usize, Complex32)> = Vec::new();
-            for (k, &z) in kernel_freq.iter().enumerate() {
-                if z.norm() >= tol {
-                    // Keep time-domain alignment (center/right); do not undo the shift here.
-                    sparse.push((k, z.conj()));
+            let (mut sparse_conj, mut sparse_pow) = (None, None);
+            match power_mode {
+                PowerMode::Coherent => {
+                    let mut v = Vec::new();
+                    for (k, &z) in kernel_freq.iter().enumerate() {
+                        if z.norm() >= tol {
+                            // Keep time-domain alignment (center/right); do not undo the shift here.
+                            v.push((k, z.conj()));
+                        }
+                    }
+                    sparse_conj = Some(v);
+                }
+                PowerMode::Incoherent => {
+                    let mut v = Vec::new();
+                    for (k, &z) in kernel_freq.iter().enumerate() {
+                        if z.norm() >= tol {
+                            // |K|^2 does not depend on phase (safe for any alignment).
+                            let w_conj = z.conj();
+                            v.push((k, w_conj.norm_sqr()));
+                        }
+                    }
+                    sparse_pow = Some(v);
                 }
             }
 
@@ -258,18 +292,29 @@ impl NsgtKernelLog2 {
                 f_hz: f,
                 log2_hz: log2_f,
                 win_len: win_len_req,
-                spec_conj_sparse: sparse,
+                spec_conj_sparse: sparse_conj,
+                spec_pow_sparse: sparse_pow,
             });
         }
 
         Self {
             cfg,
             space,
+            power_mode,
             nfft,
             hop,
             fft,
             bands,
         }
+    }
+
+    /// Construct with coherent power mode (backwards-compatible default).
+    pub fn new_coherent(
+        cfg: NsgtLog2Config,
+        space: Log2Space,
+        win_len_cap: Option<WinLenCap>,
+    ) -> Self {
+        Self::new(cfg, space, win_len_cap, PowerMode::Coherent)
     }
 
     pub fn space(&self) -> &Log2Space {
@@ -298,6 +343,10 @@ impl NsgtKernelLog2 {
         if x.is_empty() {
             return Vec::new();
         }
+        debug_assert!(
+            self.power_mode == PowerMode::Coherent,
+            "analyze() requires PowerMode::Coherent"
+        );
 
         let nfft = self.nfft;
         let hop = self.hop;
@@ -341,8 +390,12 @@ impl NsgtKernelLog2 {
 
             // Sparse inner product per band: C_k = (1/Nfft) * sum X[nu] * conj(K_k[nu]) = sum x[n] * conj(h_k[n]).
             for (b_idx, b) in self.bands.iter().enumerate() {
+                let sparse = b
+                    .spec_conj_sparse
+                    .as_ref()
+                    .expect("coherent kernel required for analyze()");
                 let mut acc = Complex32::new(0.0, 0.0);
-                for &(k, w) in &b.spec_conj_sparse {
+                for &(k, w) in sparse {
                     acc += buf[k] * w;
                 }
                 acc /= nfft as f32; // 1/Nfft scaling to match rustfft normalization.
@@ -381,6 +434,10 @@ impl NsgtKernelLog2 {
     /// Power spectral density [power/Hz] with ENBW correction for Hann window (**one-sided**).
     pub fn analyze_psd(&self, x: &[f32]) -> Vec<f32> {
         let fs = self.cfg.fs;
+        debug_assert!(
+            self.power_mode == PowerMode::Coherent,
+            "analyze_psd() requires PowerMode::Coherent"
+        );
         self.analyze(x)
             .iter()
             .map(|b| {
@@ -426,9 +483,46 @@ mod tests {
     }
 
     #[test]
+    fn power_mode_sparse_storage_is_exclusive() {
+        let fs = 48_000.0;
+        let space = Log2Space::new(200.0, 4000.0, 12);
+        let coherent = NsgtKernelLog2::new(
+            NsgtLog2Config {
+                fs,
+                overlap: 0.5,
+                nfft_override: Some(256),
+                ..Default::default()
+            },
+            space.clone(),
+            None,
+            PowerMode::Coherent,
+        );
+        for band in coherent.bands() {
+            assert!(band.spec_conj_sparse.is_some());
+            assert!(band.spec_pow_sparse.is_none());
+        }
+
+        let incoherent = NsgtKernelLog2::new(
+            NsgtLog2Config {
+                fs,
+                overlap: 0.5,
+                nfft_override: Some(256),
+                ..Default::default()
+            },
+            space,
+            None,
+            PowerMode::Incoherent,
+        );
+        for band in incoherent.bands() {
+            assert!(band.spec_conj_sparse.is_none());
+            assert!(band.spec_pow_sparse.is_some());
+        }
+    }
+
+    #[test]
     fn pure_tone_near_target() {
         let fs = 48_000.0;
-        let nsgt = NsgtKernelLog2::new(
+        let nsgt = NsgtKernelLog2::new_coherent(
             NsgtLog2Config {
                 fs,
                 overlap: 0.5,
@@ -460,7 +554,7 @@ mod tests {
     #[test]
     fn multi_tone_localization() {
         let fs = 48_000.0;
-        let nsgt = NsgtKernelLog2::new(
+        let nsgt = NsgtKernelLog2::new_coherent(
             NsgtLog2Config::default(),
             Log2Space::new(20.0, 8000.0, 96),
             None,
@@ -488,7 +582,7 @@ mod tests {
     #[test]
     fn amplitude_linearity() {
         let fs = 48_000.0;
-        let nsgt = NsgtKernelLog2::new(
+        let nsgt = NsgtKernelLog2::new_coherent(
             NsgtLog2Config::default(),
             Log2Space::new(20.0, 8000.0, 96),
             None,
@@ -502,7 +596,7 @@ mod tests {
 
     #[test]
     fn win_len_decreases_with_freq() {
-        let nsgt = NsgtKernelLog2::new(
+        let nsgt = NsgtKernelLog2::new_coherent(
             NsgtLog2Config::default(),
             Log2Space::new(20.0, 8000.0, 96),
             None,
@@ -528,7 +622,7 @@ mod tests {
 
     #[test]
     fn empty_signal_returns_empty() {
-        let nsgt = NsgtKernelLog2::new(
+        let nsgt = NsgtKernelLog2::new_coherent(
             NsgtLog2Config::default(),
             Log2Space::new(20.0, 8000.0, 48),
             None,
@@ -540,7 +634,7 @@ mod tests {
     #[test]
     fn impulse_peak_aligns_with_time_tag() {
         let fs = 48_000.0;
-        let nsgt = NsgtKernelLog2::new(
+        let nsgt = NsgtKernelLog2::new_coherent(
             NsgtLog2Config {
                 fs,
                 overlap: 0.98,
@@ -586,7 +680,7 @@ mod tests {
             nfft_override: Some(nfft),
             kernel_align: KernelAlign::Center,
         };
-        let nsgt_center = NsgtKernelLog2::new(cfg_center, space.clone(), None);
+        let nsgt_center = NsgtKernelLog2::new_coherent(cfg_center, space.clone(), None);
         let bi = nsgt_center
             .bands()
             .iter()
@@ -631,7 +725,7 @@ mod tests {
             nfft_override: Some(nfft),
             kernel_align: KernelAlign::Right,
         };
-        let nsgt_right = NsgtKernelLog2::new(cfg_right, space, None);
+        let nsgt_right = NsgtKernelLog2::new_coherent(cfg_right, space, None);
         let win_len = nsgt_right.bands()[bi].win_len;
         let center = win_len / 2;
 
@@ -660,7 +754,7 @@ mod tests {
     #[test]
     fn phase_shift_sign_matches_standard_analysis() {
         let fs = 48_000.0;
-        let nsgt = NsgtKernelLog2::new(
+        let nsgt = NsgtKernelLog2::new_coherent(
             NsgtLog2Config {
                 fs,
                 overlap: 0.98,
@@ -717,7 +811,7 @@ mod tests {
         // Check that total energy is roughly frequency-independent.
         let fs = 48_000.0;
         let space = Log2Space::new(20.0, 8000.0, 96);
-        let nsgt = NsgtKernelLog2::new(NsgtLog2Config::default(), space.clone(), None);
+        let nsgt = NsgtKernelLog2::new_coherent(NsgtLog2Config::default(), space.clone(), None);
 
         let sig_low = mk_sine_len(fs, 220.0, nsgt.nfft());
         let sig_high = mk_sine_len(fs, 1760.0, nsgt.nfft());
@@ -745,7 +839,7 @@ mod tests {
         let fs = 48_000.0;
         let f0 = 880.0;
         let space = Log2Space::new(20.0, 8000.0, 200);
-        let nsgt = NsgtKernelLog2::new(NsgtLog2Config::default(), space.clone(), None);
+        let nsgt = NsgtKernelLog2::new_coherent(NsgtLog2Config::default(), space.clone(), None);
         let sig = mk_sine_len(fs, f0, nsgt.nfft());
 
         let e_time = sig.iter().map(|x| x * x).sum::<f32>() / sig.len() as f32;
@@ -767,7 +861,7 @@ mod tests {
         let sig = mk_sine(fs, 440.0, 1.0);
 
         let e_mean = |overlap: f32| {
-            let nsgt = NsgtKernelLog2::new(
+            let nsgt = NsgtKernelLog2::new_coherent(
                 NsgtLog2Config {
                     fs,
                     overlap,
@@ -797,7 +891,7 @@ mod tests {
     #[test]
     fn band_count_matches_space() {
         let space = Log2Space::new(20.0, 8000.0, 96);
-        let nsgt = NsgtKernelLog2::new(NsgtLog2Config::default(), space.clone(), None);
+        let nsgt = NsgtKernelLog2::new_coherent(NsgtLog2Config::default(), space.clone(), None);
         assert_eq!(
             nsgt.bands().len(),
             space.centers_hz.len(),
@@ -810,7 +904,7 @@ mod tests {
         let fs = 48_000.0;
         let f0 = 1000.0;
         let space = Log2Space::new(100.0, 5000.0, 200);
-        let nsgt = NsgtKernelLog2::new(NsgtLog2Config::default(), space.clone(), None);
+        let nsgt = NsgtKernelLog2::new_coherent(NsgtLog2Config::default(), space.clone(), None);
         let sig = mk_sine_len(fs, f0, nsgt.nfft());
 
         let psd = nsgt.analyze_psd(&sig);
@@ -872,7 +966,7 @@ mod tests {
         let sig2: Vec<f32> = sig1.iter().map(|x| x * 2.0).collect();
 
         let space = Log2Space::new(20.0, 8000.0, 96);
-        let nsgt = NsgtKernelLog2::new(NsgtLog2Config::default(), space, None);
+        let nsgt = NsgtKernelLog2::new_coherent(NsgtLog2Config::default(), space, None);
         let e1: f32 = nsgt.analyze_psd(&sig1).iter().sum();
         let e2: f32 = nsgt.analyze_psd(&sig2).iter().sum();
 
@@ -891,7 +985,7 @@ mod tests {
         let energies: Vec<f32> = [0.25, 0.5, 0.75]
             .iter()
             .map(|&ov| {
-                let nsgt = NsgtKernelLog2::new(
+                let nsgt = NsgtKernelLog2::new_coherent(
                     NsgtLog2Config {
                         fs,
                         overlap: ov,
@@ -920,7 +1014,7 @@ mod tests {
         let brown: Vec<f32> = brown_noise(n, 1).iter().map(|&v| v as f32).collect();
 
         let space = Log2Space::new(50.0, 8000.0, 150);
-        let nsgt = NsgtKernelLog2::new(NsgtLog2Config::default(), space.clone(), None);
+        let nsgt = NsgtKernelLog2::new_coherent(NsgtLog2Config::default(), space.clone(), None);
 
         let psd_white = nsgt.analyze_psd(&white);
         let psd_pink = nsgt.analyze_psd(&pink);
@@ -963,7 +1057,7 @@ mod tests {
             max_len_above_s: 256.0 / fs,
         };
         let space = Log2Space::new(200.0, 8000.0, 96);
-        let nsgt = NsgtKernelLog2::new(
+        let nsgt = NsgtKernelLog2::new_coherent(
             NsgtLog2Config {
                 fs,
                 overlap: 0.9,
@@ -1007,7 +1101,7 @@ mod tests {
 
         for bpo in [24u32, 96u32] {
             let space = Log2Space::new(200.0, 8000.0, bpo);
-            let nsgt = NsgtKernelLog2::new(
+            let nsgt = NsgtKernelLog2::new_coherent(
                 NsgtLog2Config {
                     fs,
                     overlap: 0.9,
@@ -1045,7 +1139,7 @@ mod tests {
         };
         let cap_eff = cap.cap_samples(fs, nfft);
         let space = Log2Space::new(200.0, 8000.0, 96);
-        let nsgt = NsgtKernelLog2::new(
+        let nsgt = NsgtKernelLog2::new_coherent(
             NsgtLog2Config {
                 fs,
                 overlap: 0.9,
@@ -1081,7 +1175,7 @@ mod tests {
         use plotters::prelude::*;
 
         let fs = 48_000.0;
-        let nsgt = NsgtKernelLog2::new(
+        let nsgt = NsgtKernelLog2::new_coherent(
             NsgtLog2Config {
                 fs,
                 overlap: 0.5,
@@ -1140,7 +1234,7 @@ mod tests {
         let secs = 40.0;
         let n = (fs * secs) as usize;
 
-        let nsgt = NsgtKernelLog2::new(
+        let nsgt = NsgtKernelLog2::new_coherent(
             NsgtLog2Config {
                 fs,
                 overlap: 0.5,

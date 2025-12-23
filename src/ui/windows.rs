@@ -115,6 +115,7 @@ fn split_widths(ui: &egui::Ui, ratio: f32, min_left: f32, min_right: f32) -> (f3
 }
 
 /// === Main window ===
+#[allow(clippy::too_many_arguments)]
 pub fn main_window(
     ctx: &egui::Context,
     frame: &UiFrame,

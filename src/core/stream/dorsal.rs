@@ -80,12 +80,12 @@ impl DorsalStream {
 
         // Sum positive flux across bands
         let mut raw_flux = 0.0;
-        for i in 0..3 {
-            let diff = currents[i] - self.prev_band_energy[i];
+        for (i, &cur) in currents.iter().enumerate() {
+            let diff = cur - self.prev_band_energy[i];
             if diff > 0.0 {
                 raw_flux += diff;
             }
-            self.prev_band_energy[i] = currents[i];
+            self.prev_band_energy[i] = cur;
         }
         self.last_metrics = DorsalMetrics {
             e_low: currents[0],

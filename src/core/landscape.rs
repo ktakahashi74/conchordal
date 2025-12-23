@@ -194,7 +194,7 @@ impl Landscape {
         let idx1 = (idx0 + 1).min(data.len().saturating_sub(1));
         let v0 = data.get(idx0).copied().unwrap_or(0.0);
         let v1 = data.get(idx1).copied().unwrap_or(v0);
-        v0 + (v1 - v0) * frac as f32
+        v0 + (v1 - v0) * frac
     }
 }
 

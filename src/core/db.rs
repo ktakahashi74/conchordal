@@ -1,7 +1,7 @@
 //! dB conversion helpers with explicit power/amplitude semantics.
 //! - Power uses 10*log10(·) and dB to ratio uses /10.
 //! - Amplitude uses 20*log10(·) and dB to ratio uses /20.
-//! EPS_POWER is applied to avoid log10(0).
+//!   EPS_POWER is applied to avoid log10(0).
 
 /// Minimum power floor for log conversions.
 pub const EPS_POWER: f32 = 1e-20;

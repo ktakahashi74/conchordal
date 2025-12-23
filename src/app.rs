@@ -211,11 +211,10 @@ impl App {
 
         // WAV
         let (wav_tx, wav_rx) = bounded::<Arc<[f32]>>(16);
-        let wav_handle = if let Some(path) = args.wav.clone() {
-            Some(WavOutput::run(wav_rx, path, runtime_sample_rate))
-        } else {
-            None
-        };
+        let wav_handle = args
+            .wav
+            .clone()
+            .map(|path| WavOutput::run(wav_rx, path, runtime_sample_rate));
 
         // Population (life)
         let pop = Population::new(PopulationParams {
@@ -675,11 +674,11 @@ fn worker_loop(
                     current_landscape.nsgt_power = frame.nsgt_power;
                 }
 
-                if let Some(h_scan) = &latest_h_scan {
-                    if h_scan.len() == current_landscape.harmonicity.len() {
-                        current_landscape.harmonicity.clone_from(h_scan);
-                        current_landscape.recompute_consonance(&lparams);
-                    }
+                if let Some(h_scan) = &latest_h_scan
+                    && h_scan.len() == current_landscape.harmonicity.len()
+                {
+                    current_landscape.harmonicity.clone_from(h_scan);
+                    current_landscape.recompute_consonance(&lparams);
                 }
 
                 // For frame 0 there is no previous frame to wait for.

@@ -50,17 +50,12 @@ impl Default for NsgtLog2Config {
 }
 
 /// Time placement of kernels within the FFT frame.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum KernelAlign {
+    #[default]
     Center,
     Right,
-}
-
-impl Default for KernelAlign {
-    fn default() -> Self {
-        Self::Center
-    }
 }
 
 /// Frequency-dependent cap on analysis window length.
@@ -88,7 +83,7 @@ fn finalize_win_len(mut len: usize, nfft: usize) -> usize {
     if len > nfft_cap {
         len = nfft_cap;
     }
-    if len % 2 == 0 {
+    if len.is_multiple_of(2) {
         len = len.saturating_sub(1);
     }
     if len < 3 {
@@ -189,11 +184,11 @@ impl NsgtKernelLog2 {
             .iter()
             .map(|&f| {
                 let mut len = (q * fs / f).round().max(1.0) as usize;
-                if let Some(cap) = win_len_cap {
-                    if f >= cap.pivot_hz {
-                        let cap_raw = (cap.max_len_above_s * fs).round().max(1.0) as usize;
-                        len = len.min(cap_raw);
-                    }
+                if let Some(cap) = win_len_cap
+                    && f >= cap.pivot_hz
+                {
+                    let cap_raw = (cap.max_len_above_s * fs).round().max(1.0) as usize;
+                    len = len.min(cap_raw);
                 }
                 len
             })

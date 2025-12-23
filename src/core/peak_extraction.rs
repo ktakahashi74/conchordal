@@ -78,9 +78,9 @@ fn local_prominence_db_power(power_density: &[f32], idx: usize) -> f32 {
     let left_min = min_val;
 
     min_val = peak;
-    for j in (idx + 1)..power_density.len() {
-        min_val = min_val.min(power_density[j]);
-        if power_density[j] > peak {
+    for &v in power_density.iter().skip(idx + 1) {
+        min_val = min_val.min(v);
+        if v > peak {
             break;
         }
     }
@@ -156,10 +156,10 @@ pub fn extract_peaks_density(
             continue;
         }
         selected.push(cand);
-        if let Some(max_peaks) = cfg.max_peaks {
-            if selected.len() >= max_peaks {
-                break;
-            }
+        if let Some(max_peaks) = cfg.max_peaks
+            && selected.len() >= max_peaks
+        {
+            break;
         }
     }
 
@@ -204,14 +204,13 @@ pub fn extract_peaks_density(
         })
         .collect();
 
-    if keep.iter().all(|&k| !k) && max_mass > 0.0 {
-        if let Some((idx, _)) = mass_sum
+    if keep.iter().all(|&k| !k) && max_mass > 0.0
+        && let Some((idx, _)) = mass_sum
             .iter()
             .enumerate()
             .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
-        {
-            keep[idx] = true;
-        }
+    {
+        keep[idx] = true;
     }
 
     if keep.iter().any(|&k| k) {

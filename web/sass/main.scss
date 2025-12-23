@@ -336,6 +336,7 @@ a {
 }
 
 .page-meta {
+    display: none;
     color: $text-muted;
     font-size: 1rem; // Adjusted from 0.875rem
     display: inline-flex;

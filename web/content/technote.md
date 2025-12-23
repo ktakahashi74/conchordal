@@ -1,11 +1,17 @@
 +++
 title = "Technical Note: The Physics of Conchordal"
-date = 2024-05-20
+date = 2025-12-25
 description = "A deep dive into the psychoacoustic algorithms, logarithmic signal processing, and artificial life strategies powering the Conchordal ecosystem."
 template = "page.html"
 [extra]
-author = "Conchordal Team"
+author = "Koichi Takahashi"
 +++
+
+[Download PDF](/pdf/conchordal_technote.pdf)
+
+**Author:** Koichi Takahashi  
+**Date:** 2025-12-25  
+**Email:** info@conchordal.org
 
 # 1. Introduction: The Bio-Acoustic Paradigm
 

@@ -8,6 +8,12 @@ author = "Koichi Takahashi"
 author_email = "info@conchordal.org"
 +++
 
+[Download PDF](/pdf/conchordal_manifesto.pdf)
+
+**Author:** Koichi Takahashi  
+**Date:** 2025-12-25  
+**Email:** info@conchordal.org
+
 ***Music is the drama that unfolds between physical vibration and the human cognitive system that receives it.***
 
 Yet conventional music production has confined sound within "grids of symbols"—staff notation and piano rolls—freezing this dynamic relationship into static form. Composition became the act of selecting specific points from an infinitely expansive acoustic space and arranging them along a temporal axis. Sound was reduced to raw material, an object to be dominated by human will.

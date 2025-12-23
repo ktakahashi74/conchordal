@@ -8,8 +8,6 @@ author = "髙橋恒一"
 author_email = "info@conchordal.org"
 +++
 
-[PDFをダウンロード](/pdf/conchordal_manifesto_ja.pdf)
-
 **著者:** 髙橋恒一  
 **日付:** 2025-12-25  
 **Email:** info@conchordal.org

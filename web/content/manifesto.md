@@ -8,8 +8,6 @@ author = "Koichi Takahashi"
 author_email = "info@conchordal.org"
 +++
 
-[Download PDF](/pdf/conchordal_manifesto.pdf)
-
 **Author:** Koichi Takahashi  
 **Date:** 2025-12-25  
 **Email:** info@conchordal.org

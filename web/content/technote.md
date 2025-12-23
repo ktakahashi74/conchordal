@@ -7,8 +7,6 @@ template = "page.html"
 author = "Koichi Takahashi"
 +++
 
-[Download PDF](/pdf/conchordal_technote.pdf)
-
 **Author:** Koichi Takahashi  
 **Date:** 2025-12-25  
 **Email:** info@conchordal.org

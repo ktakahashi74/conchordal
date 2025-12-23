@@ -1,5 +1,7 @@
 use crate::core::landscape::{Landscape, LandscapeParams, LandscapeUpdate};
 use crate::core::nsgt_rt::RtNsgtKernelLog2;
+use crate::core::peak_extraction::{PeakExtractConfig, extract_peaks_density, peaks_to_delta_density};
+use crate::core::roughness_kernel::erb_grid;
 use crate::core::utils;
 
 /// Roughness Stream (formerly Ventral).
@@ -87,11 +89,22 @@ impl RoughnessStream {
     fn compute_potentials(&mut self, amps: &[f32]) {
         let space = self.nsgt_rt.space();
 
-        // Roughness
-        let (r, r_total) = self
-            .params
-            .roughness_kernel
-            .potential_r_from_log2_spectrum(amps, space);
+        // Roughness: convert density spectrum to delta peaks first.
+        let peaks_cfg = PeakExtractConfig::default();
+        let peaks = extract_peaks_density(amps, space, &peaks_cfg);
+        let (erb, du) = erb_grid(space);
+        let (r, r_total, intensity) = if peaks.is_empty() {
+            let (r_vec, total) = self
+                .params
+                .roughness_kernel
+                .potential_r_from_log2_spectrum(amps, space);
+            (r_vec, total, amps.to_vec())
+        } else {
+            let r_vec = self.params.roughness_kernel.potential_r_from_peaks(&peaks, space);
+            let total: f32 = r_vec.iter().zip(du.iter()).map(|(ri, dui)| ri * dui).sum();
+            let delta = peaks_to_delta_density(&peaks, &du, erb.len());
+            (r_vec, total, delta)
+        };
 
         // Habituation
         let tau = self.params.habituation_tau.max(1e-3);
@@ -107,7 +120,7 @@ impl RoughnessStream {
         self.last_landscape.roughness = r;
         self.last_landscape.roughness_total = r_total;
         self.last_landscape.habituation = self.habituation_state.clone();
-        self.last_landscape.subjective_intensity = amps.to_vec();
+        self.last_landscape.subjective_intensity = intensity;
     }
 
     pub fn reset(&mut self) {

@@ -77,7 +77,7 @@ impl PsychoAcousticsConfig {
         0.23
     }
     fn default_roughness_k() -> f32 {
-        1.0
+        0.1
     }
 }
 

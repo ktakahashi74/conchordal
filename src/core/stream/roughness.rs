@@ -1,8 +1,8 @@
+use crate::core::a_weighting;
 use crate::core::landscape::{Landscape, LandscapeParams, LandscapeUpdate};
 use crate::core::nsgt_rt::RtNsgtKernelLog2;
 use crate::core::peak_extraction::{PeakExtractConfig, extract_peaks_density};
 use crate::core::roughness_kernel::erb_grid;
-use crate::core::utils;
 
 /// Roughness Stream (formerly Ventral).
 /// Handles slow spectral analysis focused on roughness and habituation.
@@ -26,10 +26,7 @@ impl RoughnessStream {
             .space()
             .centers_hz
             .iter()
-            .map(|&f| {
-                let g = utils::a_weighting_gain(f);
-                g * g
-            })
+            .map(|&f| a_weighting::a_weighting_gain_pow(f))
             .collect();
 
         Self {
@@ -59,6 +56,7 @@ impl RoughnessStream {
             let env = self.nsgt_rt.process_hop(audio);
             env.to_vec()
         };
+        self.last_landscape.nsgt_power = envelope.clone();
         let dt_sec = audio.len() as f32 / self.params.fs;
         let norm_env = self.normalize(&envelope, dt_sec);
 
@@ -109,14 +107,14 @@ impl RoughnessStream {
         out
     }
 
-    fn compute_potentials(&mut self, amps: &[f32]) {
+    fn compute_potentials(&mut self, density: &[f32]) {
         let space = self.nsgt_rt.space();
 
         // Roughness
         let (r, r_total) = self
             .params
             .roughness_kernel
-            .potential_r_from_log2_spectrum(amps, space);
+            .potential_r_from_log2_spectrum(density, space);
 
         // Habituation
         let tau = self.params.habituation_tau.max(1e-3);
@@ -124,15 +122,15 @@ impl RoughnessStream {
         let a = (-dt / tau).exp();
         let max_depth = self.params.habituation_max_depth.max(0.0);
 
-        for (state, &amp) in self.habituation_state.iter_mut().zip(amps) {
-            let y = a * *state + (1.0 - a) * amp;
+        for (state, &val) in self.habituation_state.iter_mut().zip(density) {
+            let y = a * *state + (1.0 - a) * val;
             *state = y.min(max_depth);
         }
 
         self.last_landscape.roughness = r;
         self.last_landscape.roughness_total = r_total;
         self.last_landscape.habituation = self.habituation_state.clone();
-        self.last_landscape.subjective_intensity = amps.to_vec();
+        self.last_landscape.subjective_intensity = density.to_vec();
     }
 
     pub fn reset(&mut self) {
@@ -235,8 +233,7 @@ mod tests {
         let stream = build_stream(fs);
         let i = stream.loudness_weights_pow.len() / 2;
         let f = stream.nsgt_rt.space().centers_hz[i];
-        let g = utils::a_weighting_gain(f);
-        let expected = g * g;
+        let expected = a_weighting::a_weighting_gain_pow(f);
         let got = stream.loudness_weights_pow[i];
         assert!(
             (got - expected).abs() < 1e-6,

@@ -3,7 +3,7 @@ use crate::ui::plots::{
     plot_population_dynamics, spectrum_time_freq_axes, time_plot,
 };
 use crate::ui::viewdata::{PlaybackState, UiFrame};
-use egui::{CentralPanel, Key, TopBottomPanel, Vec2};
+use egui::{CentralPanel, Color32, Key, TopBottomPanel, Vec2};
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -123,6 +123,7 @@ pub fn main_window(
     audio_error: Option<&str>,
     exit_flag: &Arc<AtomicBool>,
     start_flag: &Arc<AtomicBool>,
+    show_raw_nsgt_power: &mut bool,
 ) {
     TopBottomPanel::top("top").show(ctx, |ui| {
         ui.horizontal(|ui| {
@@ -387,19 +388,56 @@ pub fn main_window(
         );
 
         ui.separator();
-        ui.heading("Subjective Intensity");
+        ui.horizontal(|ui| {
+            ui.heading("Subjective Intensity");
+            ui.checkbox(show_raw_nsgt_power, "Show raw NSGT power");
+        });
+
+        let intensity_max = frame
+            .landscape
+            .subjective_intensity
+            .iter()
+            .cloned()
+            .fold(0.0f32, f32::max);
+        let y_min = 0.0;
+        let y_max = intensity_max.max(50.0) as f64;
+
+        let overlay_vals = if *show_raw_nsgt_power {
+            let raw_max = frame
+                .landscape
+                .nsgt_power
+                .iter()
+                .cloned()
+                .fold(0.0f32, f32::max)
+                .max(1e-6);
+            let scale = intensity_max.max(1e-6) / raw_max;
+            Some(
+                frame
+                    .landscape
+                    .nsgt_power
+                    .iter()
+                    .map(|&p| p * scale)
+                    .collect::<Vec<f32>>(),
+            )
+        } else {
+            None
+        };
+        let overlay = overlay_vals
+            .as_ref()
+            .map(|vals| (vals.as_slice(), "NSGT power (linear)", Color32::from_rgb(80, 160, 220)));
 
         log2_plot_hz(
             ui,
             "Subjective Intensity",
             &frame.landscape.space.centers_hz,
             &frame.landscape.subjective_intensity,
-            "Amplitude",
-            0.0,
-            50.0,
-            120.0,
+            "Intensity",
+            y_min,
+            y_max,
+            102.0,
             Some("landscape_group"),
             None,
+            overlay,
         );
 
         ui.separator();
@@ -421,6 +459,7 @@ pub fn main_window(
                 1.0,
                 102.0,
                 Some("landscape_group"),
+                None,
                 None,
             );
 

@@ -1,3 +1,6 @@
+pub mod a_weighting;
+pub mod db;
+pub mod density;
 pub mod erb;
 pub mod fft;
 pub mod harmonicity_kernel;

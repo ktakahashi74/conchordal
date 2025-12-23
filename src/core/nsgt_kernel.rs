@@ -1021,7 +1021,10 @@ mod tests {
         let psd_brown = nsgt.analyze_psd(&brown);
 
         let slope = |psd: &[f32]| {
-            let y: Vec<f32> = psd.iter().map(|v| 10.0 * v.max(1e-20).log10()).collect();
+            let y: Vec<f32> = psd
+                .iter()
+                .map(|v| crate::core::db::power_to_db(*v))
+                .collect();
             let x = &space.centers_log2;
             let (sx, sy, sxx, sxy, n) = x.iter().zip(&y).fold(
                 (0.0, 0.0, 0.0, 0.0, 0.0),
@@ -1255,8 +1258,11 @@ mod tests {
         let b_psd = nsgt.analyze_psd(&brown);
 
         // Convert to dB.
-        let to_db =
-            |v: &[f32]| -> Vec<f32> { v.iter().map(|x| 10.0 * x.max(1e-20).log10()).collect() };
+        let to_db = |v: &[f32]| -> Vec<f32> {
+            v.iter()
+                .map(|x| crate::core::db::power_to_db(*x))
+                .collect()
+        };
         let w_db = to_db(&w_psd);
         let p_db = to_db(&p_psd);
         let b_db = to_db(&b_psd);

@@ -1,7 +1,9 @@
 //! core/roughness_kernel.rs — Roughness R via ERB-domain kernel convolution.
 //! Computes frequency-space roughness landscape by convolving the
 //! envelope energy using an asymmetric kernel.
+//! density: per-ERB power density; mass: sum(density * du) over ERB.
 
+use crate::core::density;
 use crate::core::erb::hz_to_erb;
 use crate::core::fft::apply_hann_window_complex;
 #[cfg(test)]
@@ -188,7 +190,7 @@ impl RoughnessKernel {
         }
 
         // Integrate over ERB axis
-        let r_total: f32 = r.iter().zip(du.iter()).map(|(ri, dui)| ri * dui).sum();
+        let r_total = density::density_to_mass(&r, &du);
 
         (r, r_total)
     }
@@ -230,7 +232,7 @@ impl RoughnessKernel {
     }
 
     /// Compute roughness potential R from log2-domain amplitude spectrum (NSGT).
-    /// Input amplitudes are ERB-density values (mass per ERB), so the internal
+    /// Input values are ERB power densities (mass per ERB), so the internal
     /// accumulation performs a du-weighted integral. This models the potential
     /// roughness increase from adding a unit pure tone.
     pub fn potential_r_from_log2_spectrum_density(
@@ -276,7 +278,7 @@ impl RoughnessKernel {
         }
 
         // (3) Integration over ERB axis
-        let r_total: f32 = r.iter().zip(du.iter()).map(|(ri, dui)| ri * dui).sum();
+        let r_total = density::density_to_mass(&r, &du);
 
         (r, r_total)
     }
@@ -651,11 +653,13 @@ mod tests {
             density[i] = (-0.5 * x * x).exp();
         }
 
-        let total_mass: f32 = density.iter().zip(du.iter()).map(|(a, d)| a * d).sum();
+        let total_mass = density::density_to_mass(&density, &du);
         let cfg = PeakExtractConfig {
             max_peaks: None,
-            min_rel_db: -120.0,
-            min_prominence_db: 0.0,
+            min_rel_db_power: -120.0,
+            min_prominence_db_power: 0.0,
+            min_rel_mass_db_power: -70.0,
+            min_mass_fraction: None,
             min_sep_erb: 0.2,
         };
         let peaks = extract_peaks_density(&density, &space, &cfg);

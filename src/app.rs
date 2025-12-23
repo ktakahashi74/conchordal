@@ -158,6 +158,7 @@ pub struct App {
     dorsal_history: VecDeque<(f64, DorsalFrame)>,
     start_flag: Arc<AtomicBool>,
     level_history: VecDeque<(std::time::Instant, [f32; 2])>,
+    show_raw_nsgt_power: bool,
 }
 
 impl App {
@@ -424,6 +425,7 @@ impl App {
             dorsal_history: VecDeque::with_capacity(4096),
             start_flag,
             level_history: VecDeque::with_capacity(256),
+            show_raw_nsgt_power: false,
         }
     }
 }
@@ -506,6 +508,7 @@ impl eframe::App for App {
             self.audio_init_error.as_deref(),
             &self.exiting,
             &self.start_flag,
+            &mut self.show_raw_nsgt_power,
         );
         ctx.request_repaint_after(std::time::Duration::from_millis(16));
     }
@@ -660,6 +663,7 @@ fn worker_loop(
                     current_landscape.roughness_total = frame.roughness_total;
                     current_landscape.habituation = frame.habituation;
                     current_landscape.subjective_intensity = frame.subjective_intensity;
+                    current_landscape.nsgt_power = frame.nsgt_power;
                 }
 
                 if let Some(h_scan) = &latest_h_scan {

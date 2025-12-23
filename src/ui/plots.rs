@@ -110,6 +110,7 @@ pub fn log2_plot_hz(
     height: f32,
     link_group: Option<&str>,
     line_color: Option<Color32>,
+    overlay: Option<(&[f32], &str, Color32)>,
 ) {
     assert_eq!(
         xs_hz.len(),
@@ -131,6 +132,21 @@ pub fn log2_plot_hz(
     if let Some(color) = line_color {
         line = line.color(color);
     }
+    let overlay_line = overlay.map(|(ys2, label, color)| {
+        assert_eq!(
+            xs_hz.len(),
+            ys2.len(),
+            "x/overlay length mismatch: {} vs {}",
+            xs_hz.len(),
+            ys2.len()
+        );
+        let points: PlotPoints = xs_hz
+            .iter()
+            .zip(ys2.iter())
+            .map(|(&xx, &yy)| [xx.log2() as f64, yy as f64])
+            .collect();
+        Line::new(label, points).color(color)
+    });
 
     // === X軸範囲（20〜20kHz）を log2に変換 ===
     let x_min = (20.0f64).log2();
@@ -157,6 +173,9 @@ pub fn log2_plot_hz(
 
     plot.show(ui, |plot_ui| {
         plot_ui.line(line);
+        if let Some(line) = overlay_line {
+            plot_ui.line(line);
+        }
     });
 }
 

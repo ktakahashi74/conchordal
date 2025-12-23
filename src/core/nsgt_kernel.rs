@@ -12,9 +12,10 @@
 //! Design Notes
 //! -----
 //! - Frame length is fixed to Nfft. hop is a single global value based on overlap (shared across all bands).
-//! - Use a periodic Hann window for each band with length L_k. Normalization by /U_k is already applied.
+//! - Use a symmetric Hann window for each band with length L_k. Normalization by /U_k is already applied.
 //! - Complex linear interpolation is unnecessary (the kernel itself represents the continuous frequency).
 
+use crate::core::fft::hann_window_symmetric;
 use crate::core::log2space::Log2Space;
 use rustfft::{FftPlanner, num_complex::Complex32};
 use serde::{Deserialize, Serialize};
@@ -214,7 +215,7 @@ impl NsgtKernelLog2 {
             // even when bins_per_oct (Q) is increased.
             let win_len_req = finalize_win_len(win_len, nfft);
 
-            let window = hann_periodic(win_len_req);
+            let window = hann_window_symmetric(win_len_req);
             let sum_w = window.iter().copied().sum::<f32>().max(1e-12);
 
             // Circularly shifted kernel h_k[n] = w[n]*exp(+j 2*pi f n/fs) (zero-padded to nfft).
@@ -391,14 +392,6 @@ impl NsgtKernelLog2 {
             })
             .collect()
     }
-}
-
-// ===== util =====
-
-fn hann_periodic(n: usize) -> Vec<f32> {
-    (0..n)
-        .map(|i| 0.5 * (1.0 - (2.0 * std::f32::consts::PI * (i as f32) / n as f32).cos()))
-        .collect()
 }
 
 #[cfg(test)]

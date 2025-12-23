@@ -186,3 +186,121 @@ pub fn peaks_to_delta_density(peaks: &[Peak], du: &[f32], len: usize) -> Vec<f32
 
     density
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::log2space::Log2Space;
+    use crate::core::roughness_kernel::erb_grid;
+
+    #[test]
+    fn small_peaks_are_dropped_and_mass_is_conserved() {
+        let space = Log2Space::new(100.0, 2000.0, 64);
+        let (_erb, du) = erb_grid(&space);
+        let mut density = vec![0.0f32; space.centers_hz.len()];
+
+        let main = density.len() / 2;
+        density[main] = 1.0;
+        density[main - 2] = 0.05;
+        density[main + 2] = 0.08;
+        density[main - 3] = 0.01;
+        density[main + 3] = 0.02;
+
+        let cfg = PeakExtractConfig {
+            max_peaks: None,
+            min_rel_db: -20.0,
+            min_prominence_db: 0.0,
+            min_sep_erb: 0.1,
+        };
+        let peaks = extract_peaks_density(&density, &space, &cfg);
+        assert_eq!(peaks.len(), 1);
+
+        let max_amp = density.iter().cloned().fold(0.0f32, f32::max);
+        let min_abs = max_amp * 10.0f32.powf(cfg.min_rel_db / 20.0);
+        let expected_mass: f32 = density
+            .iter()
+            .zip(du.iter())
+            .filter(|&(&a, _)| a >= min_abs)
+            .map(|(&a, &d)| a * d)
+            .sum();
+        let diff = (peaks[0].mass - expected_mass).abs();
+        assert!(diff < 1e-6, "mass diff {}", diff);
+    }
+
+    #[test]
+    fn compress_after_aggregate_removes_split_advantage() {
+        let space = Log2Space::new(200.0, 2000.0, 48);
+        let (_erb, du) = erb_grid(&space);
+        let exp = 0.23f32;
+        let ref_power = 1.0f32;
+        let cfg = PeakExtractConfig {
+            max_peaks: None,
+            min_rel_db: -120.0,
+            min_prominence_db: 0.0,
+            min_sep_erb: 0.2,
+        };
+
+        let total_mass = 1.0f32;
+        let idx = space.centers_hz.len() / 2;
+        let idx2 = idx + 1;
+
+        let mut density_single = vec![0.0f32; space.centers_hz.len()];
+        density_single[idx] = total_mass / du[idx].max(1e-12);
+
+        let mut density_split = vec![0.0f32; space.centers_hz.len()];
+        density_split[idx] = (total_mass * 0.5) / du[idx].max(1e-12);
+        density_split[idx2] = (total_mass * 0.5) / du[idx2].max(1e-12);
+
+        let new_single = compress_total_after_aggregate(
+            &density_single,
+            &space,
+            exp,
+            ref_power,
+            &cfg,
+        );
+        let new_split = compress_total_after_aggregate(
+            &density_split,
+            &space,
+            exp,
+            ref_power,
+            &cfg,
+        );
+        assert!(
+            (new_single - new_split).abs() < 1e-6,
+            "aggregate mismatch: {} vs {}",
+            new_single,
+            new_split
+        );
+
+        let old_single = compress_total_per_bin(&density_single, &du, exp, ref_power);
+        let old_split = compress_total_per_bin(&density_split, &du, exp, ref_power);
+        assert!(
+            old_split > old_single * 1.01,
+            "split should be larger: {} vs {}",
+            old_split,
+            old_single
+        );
+    }
+
+    fn compress_total_after_aggregate(
+        density: &[f32],
+        space: &Log2Space,
+        exp: f32,
+        ref_power: f32,
+        cfg: &PeakExtractConfig,
+    ) -> f32 {
+        let peaks = extract_peaks_density(density, space, cfg);
+        peaks
+            .iter()
+            .map(|p| (p.mass / ref_power).powf(exp))
+            .sum::<f32>()
+    }
+
+    fn compress_total_per_bin(density: &[f32], du: &[f32], exp: f32, ref_power: f32) -> f32 {
+        density
+            .iter()
+            .zip(du.iter())
+            .map(|(&a, &d)| (a * d / ref_power).powf(exp))
+            .sum::<f32>()
+    }
+}

@@ -1,6 +1,6 @@
 use crate::core::landscape::{Landscape, LandscapeParams, LandscapeUpdate};
 use crate::core::nsgt_rt::RtNsgtKernelLog2;
-use crate::core::peak_extraction::{PeakExtractConfig, extract_peaks_density, peaks_to_delta_density};
+use crate::core::peak_extraction::{PeakExtractConfig, extract_peaks_density};
 use crate::core::roughness_kernel::erb_grid;
 use crate::core::utils;
 
@@ -74,12 +74,35 @@ impl RoughnessStream {
         let tau_s = (self.params.tau_ms.max(1.0)) * 1e-3;
         let a = (-dt_sec / tau_s).exp();
         let mut out = vec![0.0f32; envelope.len()];
+        let ref_power = self.params.ref_power.max(1e-12);
+        let space = self.nsgt_rt.space();
+        let (_erb, du) = erb_grid(space);
 
-        // RT NSGT provides band power, so apply power-domain weighting and compression.
+        // RT NSGT provides band power; convert to ERB density and extract peaks before compression.
+        let mut pow_density_w = vec![0.0f32; envelope.len()];
         for (i, &pow) in envelope.iter().enumerate() {
-            let weighted_pow = pow * self.loudness_weights_pow[i];
-            let subj = (weighted_pow / self.params.ref_power).powf(exp);
-            let y = a * self.norm_state[i] + (1.0 - a) * subj;
+            let dui = du[i].max(1e-12);
+            let pow_density = pow / dui;
+            pow_density_w[i] = pow_density * self.loudness_weights_pow[i];
+        }
+
+        let peaks = extract_peaks_density(&pow_density_w, space, &PeakExtractConfig::default());
+        let mut subj_density_delta = vec![0.0f32; envelope.len()];
+        for peak in peaks {
+            if peak.bin_idx >= du.len() {
+                continue;
+            }
+            let dui = du[peak.bin_idx];
+            if dui <= 0.0 {
+                continue;
+            }
+            let subj_mass = (peak.mass / ref_power).powf(exp);
+            subj_density_delta[peak.bin_idx] += subj_mass / dui;
+        }
+
+        // Leaky integrator on compressed delta density.
+        for i in 0..envelope.len() {
+            let y = a * self.norm_state[i] + (1.0 - a) * subj_density_delta[i];
             self.norm_state[i] = y;
             out[i] = y;
         }
@@ -89,22 +112,11 @@ impl RoughnessStream {
     fn compute_potentials(&mut self, amps: &[f32]) {
         let space = self.nsgt_rt.space();
 
-        // Roughness: convert density spectrum to delta peaks first.
-        let peaks_cfg = PeakExtractConfig::default();
-        let peaks = extract_peaks_density(amps, space, &peaks_cfg);
-        let (erb, du) = erb_grid(space);
-        let (r, r_total, intensity) = if peaks.is_empty() {
-            let (r_vec, total) = self
-                .params
-                .roughness_kernel
-                .potential_r_from_log2_spectrum(amps, space);
-            (r_vec, total, amps.to_vec())
-        } else {
-            let r_vec = self.params.roughness_kernel.potential_r_from_peaks(&peaks, space);
-            let total: f32 = r_vec.iter().zip(du.iter()).map(|(ri, dui)| ri * dui).sum();
-            let delta = peaks_to_delta_density(&peaks, &du, erb.len());
-            (r_vec, total, delta)
-        };
+        // Roughness
+        let (r, r_total) = self
+            .params
+            .roughness_kernel
+            .potential_r_from_log2_spectrum(amps, space);
 
         // Habituation
         let tau = self.params.habituation_tau.max(1e-3);
@@ -120,7 +132,7 @@ impl RoughnessStream {
         self.last_landscape.roughness = r;
         self.last_landscape.roughness_total = r_total;
         self.last_landscape.habituation = self.habituation_state.clone();
-        self.last_landscape.subjective_intensity = intensity;
+        self.last_landscape.subjective_intensity = amps.to_vec();
     }
 
     pub fn reset(&mut self) {
@@ -200,20 +212,18 @@ mod tests {
         let fs = 48_000.0;
         let mut stream = build_stream(fs);
         let n = stream.nsgt_rt.space().n_bins();
-        let base: Vec<f32> = (0..n).map(|i| 0.1 + (i as f32) * 0.001).collect();
+        let mut base = vec![0.0f32; n];
+        let peak = n / 2;
+        base[peak] = 1.0;
         let scaled: Vec<f32> = base.iter().map(|v| v * 4.0).collect();
 
         let out1 = stream.normalize(&base, 1.0);
         let mut stream2 = build_stream(fs);
         let out2 = stream2.normalize(&scaled, 1.0);
 
-        let (imax, v1) = out1
-            .iter()
-            .enumerate()
-            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
-            .unwrap();
-        assert!(*v1 > 1e-6, "unexpected near-zero normalized power");
-        let ratio = out2[imax] / *v1;
+        let v1 = out1[peak];
+        assert!(v1 > 1e-6, "unexpected near-zero normalized power");
+        let ratio = out2[peak] / v1;
         assert!(
             (ratio - 4.0).abs() < 0.1,
             "expected ~4x scaling for power input, got {ratio:.3}"

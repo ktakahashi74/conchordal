@@ -24,7 +24,7 @@ use std::sync::Arc;
 pub enum InstMeasure {
     /// Instantaneous band power: |C_k|^2 (no per-Hz normalization).
     RawPower,
-    /// One-sided PSD-like measure: 2 * (|C_k|^2 / ENBW), ENBW for periodic Hann ≈ 1.5 * fs / L_k.
+    /// One-sided PSD-like measure: 2 * (|C_k|^2 / ENBW), ENBW for Hann ≈ 1.5 * fs / L_k.
     PsdOneSided,
 }
 
@@ -61,7 +61,7 @@ pub struct BandState {
     pub tau: f32,
     /// α = exp(−dt/τ).
     pub alpha: f32,
-    /// ENBW [Hz] (periodic Hann ≈ 1.5*fs/Lk).
+    /// ENBW [Hz] (Hann ≈ 1.5*fs/Lk).
     pub enbw_hz: f32,
     /// Smoothed band power/PSD (running state).
     pub smooth: f32,

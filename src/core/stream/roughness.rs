@@ -1,4 +1,6 @@
 use crate::core::a_weighting;
+use crate::core::density;
+use crate::core::landscape::{RoughnessScalarMode, map_roughness01};
 use crate::core::landscape::{Landscape, LandscapeParams, LandscapeUpdate};
 use crate::core::nsgt_rt::RtNsgtKernelLog2;
 use crate::core::peak_extraction::{PeakExtractConfig, extract_peaks_density};
@@ -109,12 +111,33 @@ impl RoughnessStream {
 
     fn compute_potentials(&mut self, density: &[f32]) {
         let space = self.nsgt_rt.space();
+        let (_erb, du) = erb_grid(space);
+        let loudness_mass = density::density_to_mass(density, &du);
 
         // Roughness
         let (r, r_total) = self
             .params
             .roughness_kernel
             .potential_r_from_log2_spectrum(density, space);
+        let r_max = r.iter().cloned().fold(0.0f32, f32::max);
+        let r_p95 = percentile_95(&r);
+        let r_scalar_raw = match self.params.roughness_scalar_mode {
+            RoughnessScalarMode::Total => r_total,
+            RoughnessScalarMode::Max => r_max,
+            RoughnessScalarMode::P95 => r_p95,
+        };
+        let r_norm = r_scalar_raw / (loudness_mass + 1e-12);
+        let r01_scalar = map_roughness01(r_norm, self.params.roughness_half);
+        let r01 = if loudness_mass > 0.0 {
+            r.iter()
+                .map(|&ri| {
+                    let r_norm_i = ri / (loudness_mass + 1e-12);
+                    map_roughness01(r_norm_i, self.params.roughness_half)
+                })
+                .collect()
+        } else {
+            vec![0.0; r.len()]
+        };
 
         // Habituation
         let tau = self.params.habituation_tau.max(1e-3);
@@ -128,7 +151,14 @@ impl RoughnessStream {
         }
 
         self.last_landscape.roughness = r;
+        self.last_landscape.roughness01 = r01;
         self.last_landscape.roughness_total = r_total;
+        self.last_landscape.roughness_max = r_max;
+        self.last_landscape.roughness_p95 = r_p95;
+        self.last_landscape.roughness_scalar_raw = r_scalar_raw;
+        self.last_landscape.roughness_norm = r_norm;
+        self.last_landscape.roughness01_scalar = r01_scalar;
+        self.last_landscape.loudness_mass = loudness_mass;
         self.last_landscape.habituation = self.habituation_state.clone();
         self.last_landscape.subjective_intensity = density.to_vec();
     }
@@ -154,6 +184,18 @@ impl RoughnessStream {
             self.params.habituation_max_depth = depth;
         }
     }
+}
+
+fn percentile_95(vals: &[f32]) -> f32 {
+    if vals.is_empty() {
+        return 0.0;
+    }
+    let mut buf = vals.to_vec();
+    let idx = ((buf.len() - 1) as f32 * 0.95).round() as usize;
+    let (_, v, _) = buf.select_nth_unstable_by(idx, |a, b| {
+        a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)
+    });
+    *v
 }
 
 #[cfg(test)]
@@ -192,6 +234,8 @@ mod tests {
             alpha: 0.0,
             roughness_kernel: RoughnessKernel::new(KernelParams::default(), 0.005),
             harmonicity_kernel: HarmonicityKernel::new(&space, HarmonicityParams::default()),
+            roughness_scalar_mode: RoughnessScalarMode::Total,
+            roughness_half: 0.1,
             habituation_tau: 1.0,
             habituation_weight: 0.0,
             habituation_max_depth: 1.0,

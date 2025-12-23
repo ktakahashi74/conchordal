@@ -232,6 +232,8 @@ impl App {
             alpha: 0.0,
             roughness_kernel: RoughnessKernel::new(KernelParams::default(), 0.005), // ΔERB LUT step
             harmonicity_kernel: HarmonicityKernel::new(&space, HarmonicityParams::default()),
+            roughness_scalar_mode: crate::core::landscape::RoughnessScalarMode::Total,
+            roughness_half: 0.1,
             habituation_tau: 8.0,
             habituation_weight: 0.5,
             habituation_max_depth: 1.0,
@@ -660,7 +662,14 @@ fn worker_loop(
                         log_space = current_landscape.space.clone();
                     }
                     current_landscape.roughness = frame.roughness;
+                    current_landscape.roughness01 = frame.roughness01;
                     current_landscape.roughness_total = frame.roughness_total;
+                    current_landscape.roughness_max = frame.roughness_max;
+                    current_landscape.roughness_p95 = frame.roughness_p95;
+                    current_landscape.roughness_scalar_raw = frame.roughness_scalar_raw;
+                    current_landscape.roughness_norm = frame.roughness_norm;
+                    current_landscape.roughness01_scalar = frame.roughness01_scalar;
+                    current_landscape.loudness_mass = frame.loudness_mass;
                     current_landscape.habituation = frame.habituation;
                     current_landscape.subjective_intensity = frame.subjective_intensity;
                     current_landscape.nsgt_power = frame.nsgt_power;

@@ -13,6 +13,10 @@ pub struct LandscapeParams {
     pub alpha: f32,
     pub roughness_kernel: crate::core::roughness_kernel::RoughnessKernel,
     pub harmonicity_kernel: crate::core::harmonicity_kernel::HarmonicityKernel,
+    /// Scalar roughness summary used for normalization and diagnostics.
+    pub roughness_scalar_mode: RoughnessScalarMode,
+    /// Half-saturation point for roughness normalization (R_norm).
+    pub roughness_half: f32,
     /// Habituation integration time constant [s].
     pub habituation_tau: f32,
     /// Weight of habituation penalty in consonance.
@@ -42,17 +46,33 @@ pub struct LandscapeUpdate {
     pub habituation_max_depth: Option<f32>,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub enum RoughnessScalarMode {
+    Total,
+    Max,
+    P95,
+}
+
 /// Pure data snapshot for UI and agent evaluation.
 #[derive(Clone, Debug)]
 pub struct Landscape {
     pub space: Log2Space,
     pub roughness: Vec<f32>,
+    pub roughness01: Vec<f32>,
     pub harmonicity: Vec<f32>,
+    pub harmonicity01: Vec<f32>,
     pub consonance: Vec<f32>,
+    pub consonance01: Vec<f32>,
     pub subjective_intensity: Vec<f32>,
     pub nsgt_power: Vec<f32>,
     pub habituation: Vec<f32>,
     pub roughness_total: f32,
+    pub roughness_max: f32,
+    pub roughness_p95: f32,
+    pub roughness_scalar_raw: f32,
+    pub roughness_norm: f32,
+    pub roughness01_scalar: f32,
+    pub loudness_mass: f32,
     pub rhythm: NeuralRhythms,
 }
 
@@ -65,12 +85,21 @@ impl Landscape {
         Self {
             space,
             roughness: vec![0.0; n],
+            roughness01: vec![0.0; n],
             harmonicity: vec![0.0; n],
+            harmonicity01: vec![0.0; n],
             consonance: vec![0.0; n],
+            consonance01: vec![0.0; n],
             subjective_intensity: vec![0.0; n],
             nsgt_power: vec![0.0; n],
             habituation: vec![0.0; n],
             roughness_total: 0.0,
+            roughness_max: 0.0,
+            roughness_p95: 0.0,
+            roughness_scalar_raw: 0.0,
+            roughness_norm: 0.0,
+            roughness01_scalar: 0.0,
+            loudness_mass: 0.0,
             rhythm: NeuralRhythms::default(),
         }
     }
@@ -118,14 +147,29 @@ impl Landscape {
     }
 
     pub fn recompute_consonance(&mut self, params: &LandscapeParams) {
+        // Current raw consonance uses roughness_total as the scalar normalizer.
         let k = params.roughness_k.max(1e-6);
         let denom_inv = 1.0 / (self.roughness_total + k);
         let w_hab = params.habituation_weight.max(0.0);
+        if self.harmonicity01.len() != self.harmonicity.len() {
+            self.harmonicity01 = vec![0.0; self.harmonicity.len()];
+        }
+        if self.consonance01.len() != self.consonance.len() {
+            self.consonance01 = vec![0.0; self.consonance.len()];
+        }
+        if self.roughness01.len() != self.roughness.len() {
+            self.roughness01 = vec![0.0; self.roughness.len()];
+        }
         for i in 0..self.consonance.len() {
             let r = *self.roughness.get(i).unwrap_or(&0.0);
             let h = *self.harmonicity.get(i).unwrap_or(&0.0);
             let hab = *self.habituation.get(i).unwrap_or(&0.0);
             self.consonance[i] = h - r * denom_inv - w_hab * hab;
+            let h01 = h.clamp(0.0, 1.0);
+            let r01 = self.roughness01[i].clamp(0.0, 1.0);
+            let c01 = h01 * (1.0 - r01) - w_hab * hab;
+            self.harmonicity01[i] = h01;
+            self.consonance01[i] = c01.clamp(0.0, 1.0);
         }
     }
 
@@ -151,6 +195,57 @@ impl Landscape {
         let v0 = data.get(idx0).copied().unwrap_or(0.0);
         let v1 = data.get(idx1).copied().unwrap_or(v0);
         v0 + (v1 - v0) * frac as f32
+    }
+}
+
+pub fn map_roughness01(r_norm: f32, r_half: f32) -> f32 {
+    let half = r_half.max(1e-12);
+    let denom = r_norm + half;
+    if denom <= 0.0 {
+        0.0
+    } else {
+        (r_norm / denom).clamp(0.0, 1.0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn roughness01_in_range_and_halfpoint() {
+        let r_half = 0.2;
+        let r0 = map_roughness01(0.0, r_half);
+        let r_half_out = map_roughness01(r_half, r_half);
+        let r_big = map_roughness01(10.0, r_half);
+        assert!(r0 >= 0.0 && r0 <= 1.0);
+        assert!((r_half_out - 0.5).abs() < 1e-6);
+        assert!(r_big >= 0.0 && r_big <= 1.0);
+    }
+
+    #[test]
+    fn roughness01_invariant_to_joint_scaling() {
+        let r_half = 0.3;
+        let r_raw = 2.0;
+        let loudness = 5.0;
+        let r_norm = r_raw / (loudness + 1e-12);
+        let r01 = map_roughness01(r_norm, r_half);
+        let scale = 4.0;
+        let r_norm2 = (r_raw * scale) / (loudness * scale + 1e-12);
+        let r012 = map_roughness01(r_norm2, r_half);
+        assert!((r01 - r012).abs() < 1e-6);
+    }
+
+    #[test]
+    fn c01_stays_in_range() {
+        let h01 = [0.0f32, 0.5, 1.0];
+        let r01 = [0.0f32, 0.4, 1.0];
+        for &h in &h01 {
+            for &r in &r01 {
+                let c = (h * (1.0 - r)).clamp(0.0, 1.0);
+                assert!(c >= 0.0 && c <= 1.0);
+            }
+        }
     }
 }
 

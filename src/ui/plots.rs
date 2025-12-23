@@ -210,12 +210,18 @@ pub fn draw_roughness_harmonicity(
     let points_h: PlotPoints = xs_hz
         .iter()
         .zip(harmonicity.iter())
-        .map(|(&xx, &yy)| [xx.log2() as f64, yy.clamp(0.0, 1.0) as f64])
+        .map(|(&xx, &yy)| {
+            let v = if yy.is_finite() { yy } else { 0.0 };
+            [xx.log2() as f64, v.clamp(0.0, 1.0) as f64]
+        })
         .collect();
     let points_r: PlotPoints = xs_hz
         .iter()
         .zip(roughness.iter())
-        .map(|(&xx, &yy)| [xx.log2() as f64, -(yy.clamp(0.0, 1.0) as f64)])
+        .map(|(&xx, &yy)| {
+            let v = if yy.is_finite() { yy } else { 0.0 };
+            [xx.log2() as f64, -(v.clamp(0.0, 1.0) as f64)]
+        })
         .collect();
 
     let mut plot = Plot::new(title)
@@ -226,6 +232,7 @@ pub fn draw_roughness_harmonicity(
         .include_x((20_000.0f64).log2())
         .include_y(-1.0)
         .include_y(1.0)
+        .default_y_bounds(-1.0, 1.0)
         .x_grid_spacer(log_grid_spacer(10))
         .x_axis_formatter(|mark, _range| {
             let hz = 2f64.powf(mark.value);

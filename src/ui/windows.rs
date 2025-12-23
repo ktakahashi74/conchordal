@@ -468,8 +468,8 @@ pub fn main_window(
                 ui,
                 "Roughness / Harmonicity",
                 &frame.landscape.space.centers_hz,
-                &frame.landscape.harmonicity,
-                &frame.landscape.roughness,
+                &frame.landscape.harmonicity01,
+                &frame.landscape.roughness01,
                 102.0,
                 Some("landscape_group"),
             );

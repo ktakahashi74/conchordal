@@ -129,6 +129,10 @@ mod tests {
             ref_power: 1.0,
             tau_ms: 1.0,
             roughness_k: 1.0,
+            roughness_ref_f0_hz: 1000.0,
+            roughness_ref_sep_erb: 0.25,
+            roughness_ref_mass_split: 0.5,
+            roughness_ref_eps: 1e-12,
         }
     }
 

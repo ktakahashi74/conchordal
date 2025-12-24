@@ -15,7 +15,7 @@ pub struct LandscapeParams {
     pub harmonicity_kernel: crate::core::harmonicity_kernel::HarmonicityKernel,
     /// Scalar roughness summary used for normalization and diagnostics.
     pub roughness_scalar_mode: RoughnessScalarMode,
-    /// Half-saturation point for roughness normalization (R_norm).
+    /// Half-saturation point for roughness range compression (legacy).
     pub roughness_half: f32,
     /// Habituation integration time constant [s].
     pub habituation_tau: f32,
@@ -34,6 +34,15 @@ pub struct LandscapeParams {
     /// Roughness normalization constant (k).
     /// Controls the saturation curve: D_index = R / (R_total + k).
     pub roughness_k: f32,
+
+    /// Reference f0 (Hz) for roughness shape normalization.
+    pub roughness_ref_f0_hz: f32,
+    /// ERB separation for the 2-peak reference stimulus.
+    pub roughness_ref_sep_erb: f32,
+    /// Mass split between the two reference peaks (peak A mass).
+    pub roughness_ref_mass_split: f32,
+    /// Epsilon for roughness normalization and mass checks.
+    pub roughness_ref_eps: f32,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -58,6 +67,7 @@ pub enum RoughnessScalarMode {
 pub struct Landscape {
     pub space: Log2Space,
     pub roughness: Vec<f32>,
+    pub roughness_shape_raw: Vec<f32>,
     pub roughness01: Vec<f32>,
     pub harmonicity: Vec<f32>,
     pub harmonicity01: Vec<f32>,
@@ -85,6 +95,7 @@ impl Landscape {
         Self {
             space,
             roughness: vec![0.0; n],
+            roughness_shape_raw: vec![0.0; n],
             roughness01: vec![0.0; n],
             harmonicity: vec![0.0; n],
             harmonicity01: vec![0.0; n],
@@ -199,6 +210,7 @@ impl Landscape {
 }
 
 pub fn map_roughness01(r_norm: f32, r_half: f32) -> f32 {
+    // Range compression helper (not a psychoacoustic normalization).
     let half = r_half.max(1e-12);
     let denom = r_norm + half;
     if denom <= 0.0 {

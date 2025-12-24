@@ -179,6 +179,9 @@ impl RoughnessKernel {
             let j_lo = erb.partition_point(|&x| x < fi_erb - half_width);
             let j_hi = erb.partition_point(|&x| x <= fi_erb + half_width);
             for j in j_lo..j_hi {
+                if j == i {
+                    continue;
+                }
                 let d = erb[j] - fi_erb;
                 if d.abs() > half_width {
                     continue;
@@ -270,6 +273,9 @@ impl RoughnessKernel {
             let j_hi = space.index_of_freq(hi_hz).unwrap_or(n - 1);
 
             for j in j_lo..j_hi {
+                if j == i {
+                    continue;
+                }
                 let d = erb[j] - fi_erb;
                 let w = lut_interp(&self.lut, self.erb_step, self.hw, d);
                 sum += amps_density[j] * w * du[j];
@@ -312,6 +318,9 @@ impl RoughnessKernel {
             let j_lo = space.index_of_freq(lo_hz).unwrap_or(0);
             let j_hi = space.index_of_freq(hi_hz).unwrap_or(erb.len() - 1);
             for peak in peaks {
+                if peak.bin_idx == i {
+                    continue;
+                }
                 let d = peak.u_erb - u_i;
                 if d.abs() > half_width_erb {
                     continue;
@@ -541,9 +550,11 @@ mod tests {
         }
 
         let r_sum: f32 = r_on_erb.iter().sum();
-        let g_sum: f32 = g.iter().sum();
+        let mut g_adj = g.clone();
+        g_adj[hw] = 0.0;
+        let g_sum: f32 = g_adj.iter().sum();
         let r_norm: Vec<f32> = r_on_erb.iter().map(|&x| x / (r_sum + 1e-12)).collect();
-        let g_norm: Vec<f32> = g.iter().map(|&x| x / (g_sum + 1e-12)).collect();
+        let g_norm: Vec<f32> = g_adj.iter().map(|&x| x / (g_sum + 1e-12)).collect();
 
         let mae: f32 = r_norm
             .iter()
@@ -579,9 +590,11 @@ mod tests {
             .map(|&f| hz_to_erb(f) - f0_erb)
             .collect();
 
-        let g_norm: Vec<f32> = g_ref
+        let mut g_adj = g_ref.clone();
+        g_adj[hw] = 0.0;
+        let g_norm: Vec<f32> = g_adj
             .iter()
-            .map(|&v| v / g_ref.iter().sum::<f32>())
+            .map(|&v| v / g_adj.iter().sum::<f32>())
             .collect();
         let r_norm: Vec<f32> = r_vec
             .iter()

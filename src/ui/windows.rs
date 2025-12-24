@@ -401,7 +401,7 @@ pub fn main_window(
             .cloned()
             .fold(0.0f32, f32::max);
         let y_min = 0.0;
-        let y_max = intensity_max.max(50.0) as f64;
+        let y_max = 100.0;
 
         let overlay_vals = if *show_raw_nsgt_power {
             let raw_max = frame

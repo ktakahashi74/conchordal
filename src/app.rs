@@ -240,6 +240,10 @@ impl App {
             tau_ms: config.analysis.tau_ms,
             ref_power: 1e-4,
             roughness_k: config.psychoacoustics.roughness_k,
+            roughness_ref_f0_hz: 1000.0,
+            roughness_ref_sep_erb: 0.25,
+            roughness_ref_mass_split: 0.5,
+            roughness_ref_eps: 1e-12,
         };
         let nfft = config.analysis.nfft;
         let hop = config.analysis.hop_size;
@@ -656,7 +660,11 @@ fn worker_loop(
                     latest_audio = Some((analyzed_id, frame));
                 }
                 if let Some((_, frame)) = latest_audio {
-                    if current_landscape.space.n_bins() != frame.space.n_bins() {
+                    let space_changed = current_landscape.space.n_bins() != frame.space.n_bins()
+                        || current_landscape.space.fmin != frame.space.fmin
+                        || current_landscape.space.fmax != frame.space.fmax
+                        || current_landscape.space.bins_per_oct != frame.space.bins_per_oct;
+                    if space_changed {
                         current_landscape.space = frame.space.clone();
                         log_space = current_landscape.space.clone();
                     }

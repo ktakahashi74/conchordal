@@ -18,6 +18,8 @@ pub struct PeakExtractConfig {
     pub max_peaks: Option<usize>,
     /// Power-domain threshold (10*log10), relative to max density.
     pub min_rel_db_power: f32,
+    /// Absolute power-density threshold in input units.
+    pub min_abs_power_density: Option<f32>,
     /// Power-domain prominence (10*log10) for local peak selection.
     pub min_prominence_db_power: f32,
     /// Mass-domain threshold (10*log10), relative to max peak mass.
@@ -34,6 +36,7 @@ impl Default for PeakExtractConfig {
         Self {
             max_peaks: Some(64),
             min_rel_db_power: -40.0,
+            min_abs_power_density: None,
             min_prominence_db_power: 10.0,
             min_rel_mass_db_power: -45.0,
             min_mass_fraction: None,
@@ -50,10 +53,23 @@ impl PeakExtractConfig {
         }
     }
 
+    pub fn nsgt_default() -> Self {
+        Self {
+            max_peaks: Some(32),
+            min_rel_db_power: -50.0,
+            min_abs_power_density: Some(1e-6),
+            min_prominence_db_power: 10.0,
+            min_rel_mass_db_power: -50.0,
+            min_mass_fraction: Some(0.05),
+            min_sep_erb: 0.2,
+        }
+    }
+
     pub fn normal() -> Self {
         Self {
             max_peaks: None,
             min_rel_db_power: -60.0,
+            min_abs_power_density: None,
             min_prominence_db_power: 3.0,
             min_rel_mass_db_power: -70.0,
             min_mass_fraction: None,
@@ -103,12 +119,29 @@ pub fn extract_peaks_density(
     assert_eq!(power_density.len(), space.centers_hz.len());
 
     let (erb, du) = erb_grid(space);
+    extract_peaks_density_with_grid(power_density, &erb, &du, cfg)
+}
+
+pub fn extract_peaks_density_with_grid(
+    power_density: &[f32],
+    erb: &[f32],
+    du: &[f32],
+    cfg: &PeakExtractConfig,
+) -> Vec<Peak> {
+    if power_density.is_empty() || erb.is_empty() || du.is_empty() {
+        return vec![];
+    }
+    assert_eq!(power_density.len(), erb.len());
+    assert_eq!(power_density.len(), du.len());
+
     let max_power = power_density.iter().cloned().fold(0.0f32, f32::max);
     if max_power <= 0.0 {
         return vec![];
     }
 
-    let min_abs = max_power * db::db_to_power_ratio(cfg.min_rel_db_power);
+    let min_abs_rel = max_power * db::db_to_power_ratio(cfg.min_rel_db_power);
+    let min_abs_abs = cfg.min_abs_power_density.unwrap_or(0.0);
+    let min_abs = min_abs_rel.max(min_abs_abs);
 
     #[derive(Clone, Copy, Debug)]
     struct Candidate {
@@ -248,15 +281,7 @@ pub fn extract_peaks_density(
             continue;
         }
         let u_erb = u_weighted[k] / mass;
-        let mut bin_idx = 0usize;
-        let mut best = f32::MAX;
-        for (i, &u) in erb.iter().enumerate() {
-            let d = (u - u_erb).abs();
-            if d < best {
-                best = d;
-                bin_idx = i;
-            }
-        }
+        let bin_idx = sel.idx;
         peaks.push(Peak {
             u_erb,
             mass,
@@ -295,6 +320,7 @@ mod tests {
         let cfg = PeakExtractConfig {
             max_peaks: None,
             min_rel_db_power: -10.0,
+            min_abs_power_density: None,
             min_prominence_db_power: 0.0,
             min_rel_mass_db_power: -50.0,
             min_mass_fraction: None,
@@ -304,7 +330,9 @@ mod tests {
         assert_eq!(peaks.len(), 1);
 
         let max_amp = density.iter().cloned().fold(0.0f32, f32::max);
-        let min_abs = max_amp * db::db_to_power_ratio(cfg.min_rel_db_power);
+        let min_abs_rel = max_amp * db::db_to_power_ratio(cfg.min_rel_db_power);
+        let min_abs_abs = cfg.min_abs_power_density.unwrap_or(0.0);
+        let min_abs = min_abs_rel.max(min_abs_abs);
         let mut masked = vec![0.0f32; density.len()];
         for (i, &a) in density.iter().enumerate() {
             if a >= min_abs {
@@ -325,6 +353,7 @@ mod tests {
         let cfg = PeakExtractConfig {
             max_peaks: None,
             min_rel_db_power: -120.0,
+            min_abs_power_density: None,
             min_prominence_db_power: 0.0,
             min_rel_mass_db_power: -70.0,
             min_mass_fraction: None,
@@ -482,6 +511,7 @@ mod tests {
         let cfg = PeakExtractConfig {
             max_peaks: None,
             min_rel_db_power: -120.0,
+            min_abs_power_density: None,
             min_prominence_db_power: 0.0,
             min_rel_mass_db_power: 3.0,
             min_mass_fraction: Some(0.9),
@@ -489,5 +519,85 @@ mod tests {
         };
         let peaks = extract_peaks_density(&density, &space, &cfg);
         assert!(!peaks.is_empty(), "expected at least one peak");
+    }
+
+    #[test]
+    fn nsgt_default_collapses_small_ripples() {
+        let space = Log2Space::new(100.0, 4000.0, 96);
+        let (_erb, _du) = erb_grid(&space);
+        let mut density = vec![0.0f32; space.centers_hz.len()];
+        let center = density.len() / 2;
+        density[center] = 1.0;
+        density[center - 12] = 0.02;
+        density[center + 14] = 0.015;
+
+        let peaks = extract_peaks_density(&density, &space, &PeakExtractConfig::nsgt_default());
+        assert_eq!(peaks.len(), 1, "expected one dominant peak");
+        assert_eq!(peaks[0].bin_idx, center);
+    }
+
+    #[test]
+    fn min_abs_power_density_blocks_floor_peaks() {
+        let space = Log2Space::new(100.0, 4000.0, 96);
+        let (_erb, _du) = erb_grid(&space);
+        let mut density = vec![0.0f32; space.centers_hz.len()];
+        let center = density.len() / 2;
+        density[center] = 1.0;
+        density[center - 10] = 0.04;
+        density[center + 12] = 0.03;
+
+        let cfg = PeakExtractConfig {
+            max_peaks: None,
+            min_rel_db_power: -120.0,
+            min_abs_power_density: Some(0.05),
+            min_prominence_db_power: 0.0,
+            min_rel_mass_db_power: -120.0,
+            min_mass_fraction: None,
+            min_sep_erb: 0.1,
+        };
+        let peaks = extract_peaks_density(&density, &space, &cfg);
+        assert_eq!(peaks.len(), 1, "floor peaks should be ignored");
+        assert_eq!(peaks[0].bin_idx, center);
+    }
+
+    #[test]
+    fn bin_idx_is_stable_across_mass_skew() {
+        let space = Log2Space::new(120.0, 4000.0, 64);
+        let (erb, _du) = erb_grid(&space);
+        let center = erb.len() / 2;
+
+        let mut density_right = vec![0.0f32; erb.len()];
+        density_right[center] = 1.0;
+        for i in 1..6 {
+            density_right[center + i] = 0.95 - 0.05 * i as f32;
+        }
+
+        let mut density_left = vec![0.0f32; erb.len()];
+        density_left[center] = 1.0;
+        for i in 1..6 {
+            density_left[center - i] = 0.95 - 0.05 * i as f32;
+        }
+
+        let cfg = PeakExtractConfig {
+            max_peaks: None,
+            min_rel_db_power: -120.0,
+            min_abs_power_density: None,
+            min_prominence_db_power: 0.0,
+            min_rel_mass_db_power: -120.0,
+            min_mass_fraction: None,
+            min_sep_erb: 0.1,
+        };
+        let peaks_right = extract_peaks_density(&density_right, &space, &cfg);
+        let peaks_left = extract_peaks_density(&density_left, &space, &cfg);
+        assert_eq!(peaks_right.len(), 1);
+        assert_eq!(peaks_left.len(), 1);
+        assert_eq!(peaks_right[0].bin_idx, center);
+        assert_eq!(peaks_left[0].bin_idx, center);
+
+        let u_mid = 0.5 * (erb[center] + erb[center + 1]);
+        assert!(
+            peaks_right[0].u_erb > u_mid || peaks_left[0].u_erb < u_mid,
+            "expected centroid skew without bin jitter"
+        );
     }
 }

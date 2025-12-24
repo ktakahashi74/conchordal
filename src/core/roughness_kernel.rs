@@ -657,6 +657,7 @@ mod tests {
         let cfg = PeakExtractConfig {
             max_peaks: None,
             min_rel_db_power: -120.0,
+            min_abs_power_density: None,
             min_prominence_db_power: 0.0,
             min_rel_mass_db_power: -70.0,
             min_mass_fraction: None,

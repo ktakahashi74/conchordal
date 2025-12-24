@@ -2,7 +2,9 @@
 
 **A bio-acoustic instrument for generative composition.**
 
-> **Note:** This software is in a **Research Alpha Phase**. It is an open laboratory for researchers and artists exploring the direct link between computational audio and human auditory cognition.
+> **Note: Research Alpha** — An early preview for researchers and developers. Features are incomplete and may be unstable. Composers and creators: please wait for beta.
+
+![Conchordal Interface](assets/screenshot1.png)
 
 ## Concept: Emergence over Composition
 
@@ -61,52 +63,37 @@ This allows for the creation of structured "works" where the overall form is int
 
 ## Technical Stack
 
-Built in **Rust** for lock-free concurrency and real-time safety.
-
-* **DSP Kernel:** High-performance, SIMD-friendly convolution for psychoacoustic evaluation.
-* **Log-Frequency Space:** All calculations occur in a perception-aligned logarithmic coordinate system.
-* **Scripting:** Scenario definitions using **Rhai**, allowing dynamic experimentation with ecosystem parameters.
-* **Visualization:** Real-time psychoacoustic monitoring via `egui`.
+* Written entirely in **Rust** for high performance and memory safety.
+* **Multi-platform** support (Linux, macOS, and Windows).
+* Multi-threaded architecture with **lock-free concurrency** to ensure real-time DSP stability.
+* High-performance **Non-stationary Gabor transform (NSGT)** analysis engine, complemented by dedicated psychoacoustic evaluation and synthesis kernels.
+* Extensible **ALife engine** utilizing energy metabolism and Kuramoto-style entrainment for emergent behavior.
+* Scenario scripting via an embedded **Rhai** interpreter for dynamic control.
+* Real-time psychoacoustic monitoring and visualization via `egui`.
 
 ## Getting Started
-
-### Prerequisites
-
-* Rust (latest stable)
-* ALSA dev headers (Linux only: `libasound2-dev`)
 
 ### Installation & Run
 
 Run in release mode to ensure the DSP thread meets real-time deadlines.
 
 ```bash
-git clone [https://github.com/ktakahashi74/conchordal.git](https://github.com/ktakahashi74/conchordal.git)
+git clone https://github.com/ktakahashi74/conchordal.git
 cd conchordal
-cargo run --release -- samples/harmonic_density.rhai
+cargo run --release -- samples/03_structures/autumn_cycle.rhai
 ```
 
 ### Experimentation
 
-Define the ecosystem's initial conditions using Rhai scripts (see samples/).
+Define the ecosystem's initial conditions using Rhai scripts.
 
-```Rust
-// Example: Spawning a population that seeks harmonic density
-let life_config = #{
-    type: "sustain",
-    initial_energy: 1.0,
-    metabolism_rate: 0.05,
-    envelope: #{ attack_sec: 0.1, decay_sec: 0.2, sustain_level: 0.5 }
-};
+```rust
+// Basic setup: Spawn 5 agents that seek harmonic stability
+let life = #{ type: "decay", initial_energy: 1.0, half_life_sec: 2.0 };
+let method = #{ mode: "harmonicity", min_freq: 200.0, max_freq: 1200.0 };
 
-let method = #{ 
-    mode: "harmonic_density", 
-    min_freq: 200.0, 
-    max_freq: 1200.0, 
-    temperature: 0.7 
-};
-
-// Spawn 5 individuals into the population
-spawn_agents("swarm", method, life_config, 5, 0.2);
+spawn_agents("my_swarm", method, life, 5, 0.15);
+wait(10.0);
 ```
 
 ### Contributing

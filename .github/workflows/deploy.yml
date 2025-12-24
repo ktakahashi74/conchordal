@@ -21,19 +21,18 @@ jobs:
         with:
           tool: zola
 
+
       - name: Build Zola
-        run: |
-          cd web
-          # Build explicitly into the repository root's public directory
-          zola build --output-dir ../public
+        working-directory: web
+        run: zola build --output-dir ../public
 
       - name: Check Output
-        run: ls -R public
+        run: ls -R ../public
 
       - name: Deploy
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./public
-          # Ensure CNAME is maintained even if zola doesn't copy it (though it should)
+
           cname: www.conchordal.org

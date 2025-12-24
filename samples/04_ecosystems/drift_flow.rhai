@@ -19,7 +19,7 @@ set_habituation_sensitivity("anchor", 0.0);
 
 wait(1.0);
 
-print("--- Injecting Dissonant Tone (C#3) -> Watch it slide to C3 or E3 ---");
+print("--- Injecting Dissonant Tone (C#3) -> Watch it hop to C3 or E3 ---");
 // Drop a semitone-above tone (C#3 ≈ 138.59) above C3 (130.81)
 // Check whether the pull guides it toward C3 or E3
 add_agent("slider", 138.59, 0.4, #{ type: "sustain", initial_energy: 2.0, metabolism_rate: 0.0, envelope: #{ attack_sec: 0.5, decay_sec: 0.5, sustain_level: 1.0 } });
@@ -63,7 +63,7 @@ let life = #{ type: "sustain", initial_energy: 5.0, metabolism_rate: 0.05, envel
 
 for i in 0..5 {
     spawn_agents("swarm_" + i, method, life, 1, 0.15);
-    set_commitment("swarm_" + i, 0.56); // glide loosely
+    set_commitment("swarm_" + i, 0.56); // hop loosely
     set_habituation_sensitivity("swarm_" + i, 1.5); // sensitive
     wait(0.5);
 }

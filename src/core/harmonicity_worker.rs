@@ -9,8 +9,8 @@ use crate::core::stream::harmonicity::HarmonicityStream;
 /// `(frame_id, h_scan, body_log_spectrum)`.
 pub type HarmonicityResult = (u64, Vec<f32>, Vec<f32>);
 
-/// Harmonicity worker: receives mixed spectral bodies, computes harmonicity only, and publishes
-/// the result for the main thread to merge.
+/// Harmonicity worker: receives mixed log2 spectral bodies, computes harmonicity only, and
+/// publishes the result for the main thread to merge.
 pub fn run(
     mut stream: HarmonicityStream,
     spectrum_rx: Receiver<(u64, Arc<[f32]>)>,

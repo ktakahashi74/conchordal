@@ -9,26 +9,17 @@
 //!
 //! Notes
 //! -----
-//! - Instantaneous measure can be raw power |C_k|^2 or one-sided PSD (~power/Hz).
+//! - Instantaneous measure is raw power (coherent or incoherent, fixed at kernel creation).
 //! - `process_hop()` accepts ≤ hop samples (short reads are zero-padded) or
 //!   > hop (multiple hops processed); returns the last envelope slice.
 //! - No per-hop allocations; FFT and scratch buffers are reused.
 
 use crate::core::log2space::Log2Space;
-use crate::core::nsgt_kernel::NsgtKernelLog2;
+use crate::core::nsgt_kernel::{NsgtKernelLog2, PowerMode};
 use rustfft::{FftPlanner, num_complex::Complex32};
 use std::sync::Arc;
 
-/// Instantaneous measure used before smoothing.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum InstMeasure {
-    /// Instantaneous band power: |C_k|^2 (no per-Hz normalization).
-    RawPower,
-    /// One-sided PSD-like measure: 2 * (|C_k|^2 / ENBW), ENBW for periodic Hann ≈ 1.5 * fs / L_k.
-    PsdOneSided,
-}
-
-/// Smoothing configuration and instantaneous measure selection.
+/// Smoothing configuration.
 #[derive(Clone, Copy, Debug)]
 pub struct RtConfig {
     /// τ at high frequencies [s].
@@ -37,17 +28,14 @@ pub struct RtConfig {
     pub tau_max: f32,
     /// Reference frequency for mapping τ(f) [Hz].
     pub f_ref: f32,
-    /// Instantaneous measure type.
-    pub measure: InstMeasure,
 }
 
 impl Default for RtConfig {
     fn default() -> Self {
         Self {
-            tau_min: 0.03,
-            tau_max: 0.30,
+            tau_min: 0.005,
+            tau_max: 0.020,
             f_ref: 200.0,
-            measure: InstMeasure::RawPower,
         }
     }
 }
@@ -61,9 +49,9 @@ pub struct BandState {
     pub tau: f32,
     /// α = exp(−dt/τ).
     pub alpha: f32,
-    /// ENBW [Hz] (periodic Hann ≈ 1.5*fs/Lk).
+    /// ENBW [Hz] (Hann ≈ 1.5*fs/Lk).
     pub enbw_hz: f32,
-    /// Smoothed envelope (running state).
+    /// Smoothed band power (running state).
     pub smooth: f32,
 }
 
@@ -88,7 +76,7 @@ pub struct RtNsgtKernelLog2 {
     out_env: Vec<f32>,
 
     // settings
-    measure: InstMeasure,
+    power_mode: PowerMode,
 }
 
 impl RtNsgtKernelLog2 {
@@ -103,6 +91,7 @@ impl RtNsgtKernelLog2 {
         let nfft = nsgt.nfft();
         let hop = nsgt.hop();
         let dt = hop as f32 / fs;
+        let power_mode = nsgt.power_mode;
 
         // Our own FFT plan (no per-hop allocation; same size as nsgt).
         let mut planner = FftPlanner::<f32>::new();
@@ -141,11 +130,11 @@ impl RtNsgtKernelLog2 {
             fft_buf: vec![Complex32::new(0.0, 0.0); nfft],
             out_env: vec![0.0; bands_state.len()],
             bands_state,
-            measure: cfg.measure,
+            power_mode,
         }
     }
 
-    /// Push one hop of audio and return the smoothed envelope slice.
+    /// Push one hop of audio and return the smoothed band power/PSD slice.
     ///
     /// - If `hop_in.len() == hop()`: normal per-hop update.
     /// - If shorter: zero-padded and still one update.
@@ -171,7 +160,7 @@ impl RtNsgtKernelLog2 {
         }
     }
 
-    /// Process an arbitrary block and emit per-hop envelopes via callback.
+    /// Process an arbitrary block and emit per-hop band power/PSD slices via callback.
     pub fn process_block_emit<F: FnMut(&[f32])>(&mut self, block: &[f32], mut emit: F) {
         let mut i = 0usize;
         while i + self.hop <= block.len() {
@@ -187,7 +176,7 @@ impl RtNsgtKernelLog2 {
         }
     }
 
-    /// Current smoothed envelope without processing new samples.
+    /// Current smoothed band power/PSD without processing new samples.
     #[inline]
     pub fn current_envelope(&self) -> &[f32] {
         &self.out_env
@@ -218,11 +207,6 @@ impl RtNsgtKernelLog2 {
     #[inline]
     pub fn space(&self) -> &Log2Space {
         self.nsgt.space()
-    }
-
-    /// Change measure (raw power / PSD) on the fly.
-    pub fn set_measure(&mut self, m: InstMeasure) {
-        self.measure = m;
     }
 
     /// Reconfigure τ mapping and recompute α (no allocation).
@@ -320,23 +304,37 @@ impl RtNsgtKernelLog2 {
 
         // Sparse inner products (same math as NsgtKernelLog2::analyze)
         let bands = self.nsgt.bands();
+        let inv_nfft = 1.0 / n as f32;
+        let inv_nfft2 = inv_nfft * inv_nfft;
         for (bi, band) in bands.iter().enumerate() {
-            let mut acc = Complex32::new(0.0, 0.0);
-            // Σ X[k] * conj(K_k[k]) (already phase-compensated & conj in spec_conj_sparse)
-            for &(k, w) in &band.spec_conj_sparse {
-                // Safety: kernels are built for the same nfft.
-                debug_assert!(k < self.fft_buf.len());
-                acc += self.fft_buf[k] * w;
-            }
-            acc /= n as f32;
-
-            // Instantaneous measure
-            let p = match self.measure {
-                InstMeasure::RawPower => acc.norm_sqr(),
-                InstMeasure::PsdOneSided => {
-                    // 2 * power / ENBW (one-sided)
-                    let enbw = self.bands_state[bi].enbw_hz.max(1e-12);
-                    2.0 * (acc.norm_sqr() / enbw)
+            // Instantaneous measure (power mode fixed at kernel creation time)
+            let p = match self.power_mode {
+                PowerMode::Coherent => {
+                    let sparse = band
+                        .spec_conj_sparse
+                        .as_ref()
+                        .expect("coherent kernel required for RT");
+                    let mut acc = Complex32::new(0.0, 0.0);
+                    // Σ X[k] * conj(K_k[k]) (already conj in spec_conj_sparse)
+                    for &(k, w) in sparse {
+                        // Safety: kernels are built for the same nfft.
+                        debug_assert!(k < self.fft_buf.len());
+                        acc += self.fft_buf[k] * w;
+                    }
+                    acc *= inv_nfft;
+                    acc.norm_sqr()
+                }
+                PowerMode::Incoherent => {
+                    let sparse = band
+                        .spec_pow_sparse
+                        .as_ref()
+                        .expect("incoherent kernel required for RT");
+                    let mut sum = 0.0f32;
+                    for &(k, w_pow) in sparse {
+                        debug_assert!(k < self.fft_buf.len());
+                        sum += self.fft_buf[k].norm_sqr() * w_pow;
+                    }
+                    sum * inv_nfft2
                 }
             };
 
@@ -345,5 +343,201 @@ impl RtNsgtKernelLog2 {
             st.smooth = (1.0 - st.alpha) * p + st.alpha * st.smooth;
             self.out_env[bi] = st.smooth;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::log2space::Log2Space;
+    use crate::core::nsgt_kernel::NsgtLog2Config;
+    use core::f32::consts::PI;
+
+    fn mk_sine(len: usize, f_hz: f32, fs: f32, amp: f32) -> Vec<f32> {
+        let w = 2.0 * PI * f_hz / fs;
+        (0..len).map(|i| amp * (w * i as f32).cos()).collect()
+    }
+
+    fn mk_two_sine(len: usize, f1_hz: f32, f2_hz: f32, fs: f32, amp: f32) -> Vec<f32> {
+        let w1 = 2.0 * PI * f1_hz / fs;
+        let w2 = 2.0 * PI * f2_hz / fs;
+        (0..len)
+            .map(|i| {
+                let t = i as f32;
+                amp * (w1 * t).cos() + amp * (w2 * t).cos()
+            })
+            .collect()
+    }
+
+    fn std_dev(data: &[f32]) -> f32 {
+        if data.is_empty() {
+            return 0.0;
+        }
+        let mean = data.iter().sum::<f32>() / data.len() as f32;
+        let mut var = 0.0f32;
+        for &v in data {
+            let d = v - mean;
+            var += d * d;
+        }
+        (var / data.len() as f32).sqrt()
+    }
+
+    #[test]
+    fn rt_raw_power_scales_quadratically() {
+        let fs = 48_000.0;
+        let space = Log2Space::new(200.0, 4000.0, 12);
+        let nsgt = NsgtKernelLog2::new(
+            NsgtLog2Config {
+                fs,
+                overlap: 0.5,
+                nfft_override: Some(256),
+                ..Default::default()
+            },
+            space,
+            None,
+            PowerMode::Coherent,
+        );
+        let cfg = RtConfig {
+            tau_min: 1e-6,
+            tau_max: 1e-6,
+            f_ref: 200.0,
+        };
+
+        let mut rt = RtNsgtKernelLog2::with_config(nsgt.clone(), cfg);
+        let f = rt.freqs()[rt.freqs().len() / 2];
+        let len = rt.nfft() * 4;
+        let sig1 = mk_sine(len, f, fs, 1.0);
+        let sig2 = mk_sine(len, f, fs, 2.0);
+
+        let mut env1 = Vec::new();
+        rt.process_block_emit(&sig1, |env| env1 = env.to_vec());
+
+        let mut rt2 = RtNsgtKernelLog2::with_config(nsgt, cfg);
+        let mut env2 = Vec::new();
+        rt2.process_block_emit(&sig2, |env| env2 = env.to_vec());
+
+        let (imax, p1) = env1
+            .iter()
+            .enumerate()
+            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
+            .unwrap();
+        assert!(*p1 > 1e-6, "unexpected near-zero band power");
+        let ratio = env2[imax] / *p1;
+        assert!(
+            (ratio - 4.0).abs() < 0.1,
+            "expected ~4x power scaling, got {ratio:.3}"
+        );
+    }
+
+    #[test]
+    fn rt_incoherent_power_reduces_beating_variance() {
+        let fs = 48_000.0;
+        let space = Log2Space::new(200.0, 4000.0, 12);
+        let nsgt_coh = NsgtKernelLog2::new(
+            NsgtLog2Config {
+                fs,
+                overlap: 0.5,
+                nfft_override: Some(512),
+                ..Default::default()
+            },
+            space.clone(),
+            None,
+            PowerMode::Coherent,
+        );
+        let nsgt_incoh = NsgtKernelLog2::new(
+            NsgtLog2Config {
+                fs,
+                overlap: 0.5,
+                nfft_override: Some(512),
+                ..Default::default()
+            },
+            space,
+            None,
+            PowerMode::Incoherent,
+        );
+        let cfg = RtConfig {
+            tau_min: 1e-6,
+            tau_max: 1e-6,
+            f_ref: 200.0,
+        };
+        let f1 = 1000.0;
+        let f2 = 1007.0;
+        let len = nsgt_coh.nfft() * 16;
+        let sig = mk_two_sine(len, f1, f2, fs, 0.5);
+
+        let mut rt_coh = RtNsgtKernelLog2::with_config(nsgt_coh, cfg);
+        let mut rt_incoh = RtNsgtKernelLog2::with_config(nsgt_incoh, cfg);
+
+        let band_idx = rt_coh
+            .freqs()
+            .iter()
+            .enumerate()
+            .min_by(|a, b| {
+                (a.1 - f1)
+                    .abs()
+                    .partial_cmp(&(b.1 - f1).abs())
+                    .unwrap()
+            })
+            .map(|(i, _)| i)
+            .unwrap_or(0);
+
+        let mut series_coh = Vec::new();
+        rt_coh.process_block_emit(&sig, |env| series_coh.push(env[band_idx]));
+        let mut series_incoh = Vec::new();
+        rt_incoh.process_block_emit(&sig, |env| series_incoh.push(env[band_idx]));
+
+        let std_coh = std_dev(&series_coh);
+        let std_incoh = std_dev(&series_incoh);
+        assert!(
+            std_incoh < std_coh * 0.8,
+            "expected incoherent variance to drop: std_incoh={std_incoh:.6} std_coh={std_coh:.6}"
+        );
+    }
+
+    #[test]
+    fn rt_incoherent_power_scales_quadratically() {
+        let fs = 48_000.0;
+        let space = Log2Space::new(200.0, 4000.0, 12);
+        let nsgt = NsgtKernelLog2::new(
+            NsgtLog2Config {
+                fs,
+                overlap: 0.5,
+                nfft_override: Some(256),
+                ..Default::default()
+            },
+            space,
+            None,
+            PowerMode::Incoherent,
+        );
+        let cfg = RtConfig {
+            tau_min: 1e-6,
+            tau_max: 1e-6,
+            f_ref: 200.0,
+        };
+
+        let mut rt = RtNsgtKernelLog2::with_config(nsgt.clone(), cfg);
+        let f = rt.freqs()[rt.freqs().len() / 2];
+        let len = rt.nfft() * 4;
+        let sig1 = mk_sine(len, f, fs, 1.0);
+        let sig2 = mk_sine(len, f, fs, 2.0);
+
+        let mut env1 = Vec::new();
+        rt.process_block_emit(&sig1, |env| env1 = env.to_vec());
+
+        let mut rt2 = RtNsgtKernelLog2::with_config(nsgt, cfg);
+        let mut env2 = Vec::new();
+        rt2.process_block_emit(&sig2, |env| env2 = env.to_vec());
+
+        let (imax, p1) = env1
+            .iter()
+            .enumerate()
+            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
+            .unwrap();
+        assert!(*p1 > 1e-6, "unexpected near-zero band power");
+        let ratio = env2[imax] / *p1;
+        assert!(
+            (ratio - 4.0).abs() < 0.1,
+            "expected ~4x power scaling, got {ratio:.3}"
+        );
     }
 }

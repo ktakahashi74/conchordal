@@ -1,12 +1,15 @@
 //! core/roughness_kernel.rs — Roughness R via ERB-domain kernel convolution.
 //! Computes frequency-space roughness landscape by convolving the
 //! envelope energy using an asymmetric kernel.
+//! density: per-ERB power density; mass: sum(density * du) over ERB.
 
+use crate::core::density;
 use crate::core::erb::hz_to_erb;
 use crate::core::fft::apply_hann_window_complex;
 #[cfg(test)]
 use crate::core::fft::hilbert;
 use crate::core::log2space::Log2Space;
+use crate::core::peak_extraction::Peak;
 use rustfft::{FftPlanner, num_complex::Complex32};
 
 // ======================================================================
@@ -120,6 +123,12 @@ fn local_du_from_grid(erb: &[f32]) -> Vec<f32> {
     du
 }
 
+pub(crate) fn erb_grid(space: &Log2Space) -> (Vec<f32>, Vec<f32>) {
+    let erb: Vec<f32> = space.centers_hz.iter().map(|&f| hz_to_erb(f)).collect();
+    let du = local_du_from_grid(&erb);
+    (erb, du)
+}
+
 // ======================================================================
 // Roughness kernel (holds LUT, no global cache)
 // ======================================================================
@@ -181,7 +190,7 @@ impl RoughnessKernel {
         }
 
         // Integrate over ERB axis
-        let r_total: f32 = r.iter().zip(du.iter()).map(|(ri, dui)| ri * dui).sum();
+        let r_total = density::density_to_mass(&r, &du);
 
         (r, r_total)
     }
@@ -223,33 +232,31 @@ impl RoughnessKernel {
     }
 
     /// Compute roughness potential R from log2-domain amplitude spectrum (NSGT).
-    /// Input amplitudes are already perceptually normalized (subjective intensity),
-    /// so no further compression is applied here.
-    pub fn potential_r_from_log2_spectrum(
+    /// Input values are ERB power densities (mass per ERB), so the internal
+    /// accumulation performs a du-weighted integral. This models the potential
+    /// roughness increase from adding a unit pure tone.
+    pub fn potential_r_from_log2_spectrum_density(
         &self,
-        amps: &[f32],
+        amps_density: &[f32],
         space: &Log2Space,
     ) -> (Vec<f32>, f32) {
-        use crate::core::erb::{erb_to_hz, hz_to_erb};
+        use crate::core::erb::erb_to_hz;
 
-        if amps.is_empty() || space.centers_hz.is_empty() {
+        if amps_density.is_empty() || space.centers_hz.is_empty() {
             return (vec![], 0.0);
         }
         assert_eq!(
-            amps.len(),
+            amps_density.len(),
             space.centers_hz.len(),
             "amps and space length mismatch"
         );
 
-        let n = amps.len();
+        let n = amps_density.len();
 
         // (1) Map to ERB axis
-        let erb: Vec<f32> = space.centers_hz.iter().map(|&f| hz_to_erb(f)).collect();
+        let (erb, du) = erb_grid(space);
 
-        // (2) Weight per ERB
-        let du = local_du_from_grid(&erb);
-
-        // (3) Convolution over ERB axis
+        // (2) Convolution over ERB axis
         let half_width_erb = self.params.half_width_erb;
         let mut r = vec![0.0f32; n];
 
@@ -265,15 +272,62 @@ impl RoughnessKernel {
             for j in j_lo..j_hi {
                 let d = erb[j] - fi_erb;
                 let w = lut_interp(&self.lut, self.erb_step, self.hw, d);
-                sum += amps[j] * w * du[j];
+                sum += amps_density[j] * w * du[j];
             }
             r[i] = sum;
         }
 
-        // (4) Integration over ERB axis
-        let r_total: f32 = r.iter().zip(du.iter()).map(|(ri, dui)| ri * dui).sum();
+        // (3) Integration over ERB axis
+        let r_total = density::density_to_mass(&r, &du);
 
         (r, r_total)
+    }
+
+    /// Compatibility wrapper for ERB-density input.
+    pub fn potential_r_from_log2_spectrum(
+        &self,
+        amps: &[f32],
+        space: &Log2Space,
+    ) -> (Vec<f32>, f32) {
+        self.potential_r_from_log2_spectrum_density(amps, space)
+    }
+
+    /// Compute roughness potential R from delta peaks (pure-tone interactions).
+    /// Each peak mass is the ERB-integrated area (sum of density * du).
+    pub fn potential_r_from_peaks(&self, peaks: &[Peak], space: &Log2Space) -> Vec<f32> {
+        if peaks.is_empty() || space.centers_hz.is_empty() {
+            return vec![];
+        }
+
+        use crate::core::erb::erb_to_hz;
+
+        let (erb, _du) = erb_grid(space);
+        let half_width_erb = self.params.half_width_erb;
+        let mut r = vec![0.0f32; erb.len()];
+
+        for (i, &u_i) in erb.iter().enumerate() {
+            let mut sum = 0.0f32;
+            let lo_hz = erb_to_hz(u_i - half_width_erb);
+            let hi_hz = erb_to_hz(u_i + half_width_erb);
+            let j_lo = space.index_of_freq(lo_hz).unwrap_or(0);
+            let j_hi = space.index_of_freq(hi_hz).unwrap_or(erb.len() - 1);
+            for peak in peaks {
+                let d = peak.u_erb - u_i;
+                if d.abs() > half_width_erb {
+                    continue;
+                }
+                if peak.bin_idx < erb.len()
+                    && (peak.bin_idx < j_lo || peak.bin_idx >= j_hi)
+                {
+                    continue;
+                }
+                let w = lut_interp(&self.lut, self.erb_step, self.hw, d);
+                sum += peak.mass * w;
+            }
+            r[i] = sum;
+        }
+
+        r
     }
 }
 
@@ -281,7 +335,9 @@ impl RoughnessKernel {
 mod tests {
     use super::*;
     use crate::core::erb::{erb_bw_hz, hz_to_erb};
+    use crate::core::peak_extraction::{PeakExtractConfig, extract_peaks_density};
     use plotters::prelude::*;
+    use rand::{Rng, SeedableRng};
     use std::fs::File;
     use std::path::Path;
 
@@ -545,6 +601,72 @@ mod tests {
         }
         let mae = total_err / (count as f32).max(1.0);
         assert!(mae < 1e-3, "MAE too large: {:.4}", mae);
+    }
+
+    #[test]
+    fn potential_r_peaks_matches_density_delta_input() {
+        let k = make_kernel();
+        let space = Log2Space::new(40.0, 8000.0, 256);
+        let (erb, du) = erb_grid(&space);
+
+        let mut rng = rand::rngs::StdRng::seed_from_u64(7);
+        let mut peaks = Vec::new();
+        let mut density = vec![0.0f32; erb.len()];
+        let mut used = vec![false; erb.len()];
+
+        for _ in 0..12 {
+            let mut idx = rng.random_range(0..erb.len());
+            while used[idx] {
+                idx = rng.random_range(0..erb.len());
+            }
+            used[idx] = true;
+            let mass = rng.random_range(0.1f32..2.0f32);
+            if du[idx] > 0.0 {
+                density[idx] += mass / du[idx];
+            }
+            peaks.push(Peak {
+                u_erb: erb[idx],
+                mass,
+                bin_idx: idx,
+            });
+        }
+
+        let (r_density, _) = k.potential_r_from_log2_spectrum_density(&density, &space);
+        let r_peaks = k.potential_r_from_peaks(&peaks, &space);
+
+        for i in 0..r_density.len() {
+            let diff = (r_density[i] - r_peaks[i]).abs();
+            assert!(diff < 1e-4, "bin {} diff {}", i, diff);
+        }
+    }
+
+    #[test]
+    fn peak_extraction_conserves_cluster_mass() {
+        let space = Log2Space::new(80.0, 8000.0, 128);
+        let (erb, du) = erb_grid(&space);
+        let mut density = vec![0.0f32; erb.len()];
+
+        let center = erb.len() / 2;
+        let sigma = 2.0f32;
+        for i in 0..erb.len() {
+            let x = (i as f32 - center as f32) / sigma;
+            density[i] = (-0.5 * x * x).exp();
+        }
+
+        let total_mass = density::density_to_mass(&density, &du);
+        let cfg = PeakExtractConfig {
+            max_peaks: None,
+            min_rel_db_power: -120.0,
+            min_prominence_db_power: 0.0,
+            min_rel_mass_db_power: -70.0,
+            min_mass_fraction: None,
+            min_sep_erb: 0.2,
+        };
+        let peaks = extract_peaks_density(&density, &space, &cfg);
+
+        assert_eq!(peaks.len(), 1);
+        let diff = (peaks[0].mass - total_mass).abs();
+        assert!(diff < 1e-4, "mass diff {}", diff);
     }
 
     #[test]

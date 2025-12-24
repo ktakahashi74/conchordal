@@ -14,6 +14,14 @@ pub struct Log2Space {
     pub step_log2: f32,
 }
 
+/// Explicit log2 axis specification (for external DSP handoff or regeneration).
+#[derive(Clone, Copy, Debug)]
+pub struct Log2SpaceSpec {
+    pub fmin: f32,
+    pub fmax: f32,
+    pub bins_per_oct: u32,
+}
+
 impl Log2Space {
     /// Create a log2-space grid between fmin..fmax (inclusive).
     pub fn new(fmin: f32, fmax: f32, bins_per_oct: u32) -> Self {
@@ -42,6 +50,16 @@ impl Log2Space {
     #[inline]
     pub fn n_bins(&self) -> usize {
         self.centers_hz.len()
+    }
+
+    /// Compact metadata for re-creating this log2 axis elsewhere.
+    #[inline]
+    pub fn spec(&self) -> Log2SpaceSpec {
+        Log2SpaceSpec {
+            fmin: self.fmin,
+            fmax: self.fmax,
+            bins_per_oct: self.bins_per_oct,
+        }
     }
 
     /// Convert Hz → log2(Hz)
@@ -122,6 +140,17 @@ mod tests {
         let ratio = s.centers_hz[idx] / s.centers_hz[0];
         // One octave ≈ factor 2
         assert!(ratio > 1.9 && ratio < 2.1);
+    }
+
+    #[test]
+    fn test_log2space_geometric_spacing() {
+        let s = Log2Space::new(55.0, 3520.0, 24);
+        let ratios: Vec<f32> = s.centers_hz.windows(2).map(|w| w[1] / w[0]).collect();
+        let target = ratios[0];
+        assert!(ratios.iter().all(|&r| (r / target - 1.0).abs() < 1e-6));
+        assert!(s.centers_hz.windows(2).all(|w| w[1] > w[0]));
+        assert!(s.centers_hz[0] >= s.fmin);
+        assert!(s.centers_hz.last().unwrap() <= &s.fmax);
     }
 
     #[test]

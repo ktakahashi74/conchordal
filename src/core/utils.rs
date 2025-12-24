@@ -74,6 +74,7 @@ pub fn brown_noise(n: usize, seed: u64) -> Vec<f32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::db;
 
     #[test]
     fn test_a_weighting_reference_values() {
@@ -86,7 +87,7 @@ mod tests {
 
         for (f, expected_db) in cases {
             let gain = a_weighting_gain(f);
-            let db = 20.0 * gain.log10();
+            let db = db::amp_to_db(gain);
             assert!(
                 (db - expected_db).abs() < 0.5,
                 "A-weighting mismatch at {} Hz: expected ~{} dB, got {:.2} dB",
@@ -132,7 +133,7 @@ mod tests {
                 let t = i as f32 / n_points as f32;
                 let f = (log_min + t * (log_max - log_min)).exp();
                 let g = a_weighting_gain(f);
-                let db = 20.0 * g.max(1e-9).log10();
+                let db = db::amp_to_db(g);
                 (f, db)
             })
             .collect();

@@ -1,3 +1,6 @@
+pub mod a_weighting;
+pub mod db;
+pub mod density;
 pub mod erb;
 pub mod fft;
 pub mod harmonicity_kernel;
@@ -8,6 +11,7 @@ pub mod modulation;
 pub mod nsgt;
 pub mod nsgt_kernel;
 pub mod nsgt_rt;
+pub mod peak_extraction;
 pub mod roughness_kernel;
 pub mod roughness_worker;
 pub mod stream;

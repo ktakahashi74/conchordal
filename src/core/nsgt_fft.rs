@@ -593,8 +593,11 @@ mod tests {
         let bands_w = nsgt.analyze(&white);
         let bands_p = nsgt.analyze(&pink);
         let bands_b = nsgt.analyze(&brown);
-        let to_db =
-            |x: &[f32]| -> Vec<f32> { x.iter().map(|v| 10.0 * v.max(1e-20).log10()).collect() };
+        let to_db = |x: &[f32]| -> Vec<f32> {
+            x.iter()
+                .map(|v| crate::core::db::power_to_db(*v))
+                .collect()
+        };
         let white_db = to_db(&psd_norm(&bands_w));
         let pink_db = to_db(&psd_norm(&bands_p));
         let brown_db = to_db(&psd_norm(&bands_b));

@@ -1,4 +1,5 @@
 use crate::core::landscape::Landscape;
+use crate::core::log2space::Log2Space;
 use crate::core::modulation::NeuralRhythms;
 use crate::core::utils::pink_noise_tick;
 use crate::life::scenario::{HarmonicMode, TimbreGenotype};
@@ -17,14 +18,7 @@ pub trait AudioAgent {
         landscape: &Landscape,
         global_coupling: f32,
     );
-    fn render_spectrum(
-        &mut self,
-        amps: &mut [f32],
-        fs: f32,
-        nfft: usize,
-        current_frame: u64,
-        dt_sec: f32,
-    );
+    fn render_spectrum(&mut self, amps: &mut [f32], space: &Log2Space);
     fn is_alive(&self) -> bool;
 }
 
@@ -50,13 +44,13 @@ pub trait NeuralCore {
 pub trait SoundBody {
     fn base_freq_hz(&self) -> f32;
     fn set_freq(&mut self, freq: f32);
+    fn set_pitch_log2(&mut self, log_freq: f32);
     fn set_amp(&mut self, amp: f32);
     fn articulate_wave(&mut self, sample: &mut f32, fs: f32, dt: f32, signal: &ArticulationSignal);
     fn project_spectral_body(
         &mut self,
         amps: &mut [f32],
-        fs: f32,
-        nfft: usize,
+        space: &Log2Space,
         signal: &ArticulationSignal,
     );
 }
@@ -112,6 +106,32 @@ impl PinkNoise {
     pub fn next(&mut self) -> f32 {
         let pink = pink_noise_tick(&mut self.rng, &mut self.b0, &mut self.b1, &mut self.b2);
         pink * self.gain
+    }
+}
+
+fn add_log2_energy(amps: &mut [f32], space: &Log2Space, freq_hz: f32, energy: f32) {
+    if !freq_hz.is_finite() || energy == 0.0 {
+        return;
+    }
+    if freq_hz < space.fmin || freq_hz > space.fmax {
+        return;
+    }
+    let log_f = freq_hz.log2();
+    let base = space.centers_log2[0];
+    let step = space.step();
+    let pos = (log_f - base) / step;
+    let idx_base = pos.floor();
+    let idx = idx_base as isize;
+    if idx < 0 {
+        return;
+    }
+    let idx = idx as usize;
+    let frac = pos - idx_base;
+    if idx + 1 < amps.len() {
+        amps[idx] += energy * (1.0 - frac);
+        amps[idx + 1] += energy * frac;
+    } else if idx < amps.len() {
+        amps[idx] += energy;
     }
 }
 
@@ -332,6 +352,10 @@ impl SoundBody for SineBody {
         self.freq_hz = freq;
     }
 
+    fn set_pitch_log2(&mut self, log_freq: f32) {
+        self.freq_hz = 2.0f32.powf(log_freq);
+    }
+
     fn set_amp(&mut self, amp: f32) {
         self.amp = amp;
     }
@@ -353,18 +377,14 @@ impl SoundBody for SineBody {
     fn project_spectral_body(
         &mut self,
         amps: &mut [f32],
-        fs: f32,
-        nfft: usize,
+        space: &Log2Space,
         signal: &ArticulationSignal,
     ) {
         if !signal.is_active || signal.amplitude <= 0.0 {
             return;
         }
-        let bin_f = self.freq_hz * nfft as f32 / fs;
-        let k = bin_f.round() as isize;
-        if k >= 0 && (k as usize) < amps.len() {
-            amps[k as usize] += self.amp.max(0.0) * signal.amplitude;
-        }
+        let energy = self.amp.max(0.0) * signal.amplitude;
+        add_log2_energy(amps, space, self.freq_hz, energy);
     }
 }
 
@@ -417,6 +437,10 @@ impl SoundBody for HarmonicBody {
 
     fn set_freq(&mut self, freq: f32) {
         self.base_freq_hz = freq;
+    }
+
+    fn set_pitch_log2(&mut self, log_freq: f32) {
+        self.base_freq_hz = 2.0f32.powf(log_freq);
     }
 
     fn set_amp(&mut self, amp: f32) {
@@ -475,8 +499,7 @@ impl SoundBody for HarmonicBody {
     fn project_spectral_body(
         &mut self,
         amps: &mut [f32],
-        fs: f32,
-        nfft: usize,
+        space: &Log2Space,
         signal: &ArticulationSignal,
     ) {
         if !signal.is_active || signal.amplitude <= 0.0 {
@@ -490,12 +513,8 @@ impl SoundBody for HarmonicBody {
         for idx in 0..partials {
             let ratio = self.partial_ratio(idx);
             let freq = self.base_freq_hz * ratio;
-            let bin_f = freq * nfft as f32 / fs;
-            let k = bin_f.round() as isize;
-            if k >= 0 && (k as usize) < amps.len() {
-                let part_amp = self.compute_partial_amp(idx, signal.amplitude);
-                amps[k as usize] += amp_scale * part_amp;
-            }
+            let part_amp = self.compute_partial_amp(idx, signal.amplitude);
+            add_log2_energy(amps, space, freq, amp_scale * part_amp);
         }
     }
 }
@@ -510,7 +529,9 @@ pub struct Individual<N: NeuralCore, B: SoundBody> {
     pub release_gain: f32,
     pub release_sec: f32,
     pub release_pending: bool,
-    pub target_freq: f32,
+    pub target_pitch_log2: f32,
+    pub tessitura_center: f32,
+    pub tessitura_gravity: f32,
     pub integration_window: f32,
     pub accumulated_time: f32,
     pub breath_gain: f32,
@@ -524,6 +545,15 @@ impl<N: NeuralCore, B: SoundBody> Individual<N, B> {
         &self.metadata
     }
 
+    pub fn force_set_pitch_log2(&mut self, log_freq: f32) {
+        let log_freq = log_freq.max(0.0);
+        self.body.set_pitch_log2(log_freq);
+        self.target_pitch_log2 = log_freq;
+        self.breath_gain = 1.0;
+        self.accumulated_time = 0.0;
+        self.last_theta_sample = 0.0;
+    }
+
     pub fn update_organic_movement(
         &mut self,
         rhythms: &NeuralRhythms,
@@ -532,8 +562,9 @@ impl<N: NeuralCore, B: SoundBody> Individual<N, B> {
     ) {
         let dt = dt.max(0.0);
         let current_freq = self.body.base_freq_hz().max(1.0);
-        if self.target_freq <= 0.0 {
-            self.target_freq = current_freq;
+        let current_pitch_log2 = current_freq.log2();
+        if self.target_pitch_log2 <= 0.0 {
+            self.target_pitch_log2 = current_pitch_log2;
         }
         self.integration_window = 2.0 + 10.0 / current_freq.max(1.0);
         self.accumulated_time += dt;
@@ -544,69 +575,76 @@ impl<N: NeuralCore, B: SoundBody> Individual<N, B> {
 
         if theta_cross && self.accumulated_time >= self.integration_window {
             self.accumulated_time = 0.0;
-            let neighbor_ratio = 2f32.powf(200.0 / 1200.0);
+            let neighbor_step = 200.0 / 1200.0;
+            let perfect_fifth = 1.5f32.log2();
+            let imperfect_fifth = 0.66f32.log2();
             let mut candidates = vec![
-                self.target_freq,
-                self.target_freq * neighbor_ratio,
-                self.target_freq / neighbor_ratio,
-                self.target_freq * 1.5,
-                self.target_freq * 0.66,
+                self.target_pitch_log2,
+                self.target_pitch_log2 + neighbor_step,
+                self.target_pitch_log2 - neighbor_step,
+                self.target_pitch_log2 + perfect_fifth,
+                self.target_pitch_log2 + imperfect_fifth,
             ];
             candidates.retain(|f| f.is_finite());
 
-            let (fmin, fmax) = landscape.freq_bounds();
-            let mut best_freq = self.target_freq.clamp(fmin, fmax);
+            let (fmin, fmax) = landscape.freq_bounds_log2();
+            let mut best_pitch = self.target_pitch_log2.clamp(fmin, fmax);
             let mut best_score = f32::MIN;
-            for f in candidates {
-                let clamped = f.clamp(fmin, fmax);
-                let score = landscape.evaluate_pitch(clamped);
-                let distance_oct = (clamped.max(1.0).log2() - current_freq.log2()).abs();
+            let adjusted_score = |pitch_log2: f32| -> f32 {
+                let clamped = pitch_log2.clamp(fmin, fmax);
+                let score = landscape.evaluate_pitch_log2(clamped);
+                let distance_oct = (clamped - current_pitch_log2).abs();
                 let penalty = distance_oct * self.integration_window * 0.5;
+                let dist = clamped - self.tessitura_center;
+                let gravity_penalty = dist * dist * self.tessitura_gravity;
                 // Spectral tilt pressure encourages 1/f balance (reduces upward masking and adapts to efficient auditory coding).
-                let satiety = landscape.get_spectral_satiety(clamped);
+                let satiety = landscape.get_spectral_satiety(2.0f32.powf(clamped));
                 let overcrowding_weight = 2.0;
-                let mut adjusted = score - penalty;
+                let mut adjusted = score - penalty - gravity_penalty;
                 if satiety > 1.0 {
                     adjusted -= (satiety - 1.0) * overcrowding_weight;
                 }
+                adjusted
+            };
+
+            for p in candidates {
+                let clamped = p.clamp(fmin, fmax);
+                let adjusted = adjusted_score(clamped);
                 if adjusted > best_score {
                     best_score = adjusted;
-                    best_freq = clamped;
+                    best_pitch = clamped;
                 }
             }
 
-            let current_score = landscape.evaluate_pitch(self.target_freq.clamp(fmin, fmax));
-            let improvement = best_score - current_score;
-            let satisfaction = ((current_score + 1.0) * 0.5).clamp(0.0, 1.0);
+            let current_adjusted = adjusted_score(self.target_pitch_log2);
+            let improvement = best_score - current_adjusted;
+            let satisfaction = ((current_adjusted + 1.0) * 0.5).clamp(0.0, 1.0);
             let habituation_penalty = (1.0 - satisfaction) * self.habituation_sensitivity.max(0.0);
             let mut stay_prob =
                 (self.commitment.clamp(0.0, 1.0) * satisfaction) - habituation_penalty;
             stay_prob = stay_prob.clamp(0.0, 1.0);
 
             if improvement > 0.1 {
-                self.target_freq = best_freq;
+                self.target_pitch_log2 = best_pitch;
             } else {
                 let mut rng = rand::rng();
                 if rng.random_range(0.0..1.0) > stay_prob {
-                    self.target_freq = best_freq;
+                    self.target_pitch_log2 = best_pitch;
                 }
             }
         }
 
-        let (fmin, fmax) = landscape.freq_bounds();
-        self.target_freq = self.target_freq.clamp(fmin, fmax);
-        let distance_cents = 1200.0
-            * (self.target_freq.max(1e-3) / current_freq.max(1e-3))
-                .log2()
-                .abs();
+        let (fmin, fmax) = landscape.freq_bounds_log2();
+        self.target_pitch_log2 = self.target_pitch_log2.clamp(fmin, fmax);
+        let distance_cents = 1200.0 * (self.target_pitch_log2 - current_pitch_log2).abs();
         let move_threshold = 10.0;
         if distance_cents > move_threshold {
             self.breath_gain = (self.breath_gain - dt * 1.5).max(0.0);
             if self.breath_gain < 0.1 {
-                self.body.set_freq(self.target_freq);
+                self.body.set_pitch_log2(self.target_pitch_log2);
             }
         } else {
-            self.body.set_freq(self.target_freq);
+            self.body.set_pitch_log2(self.target_pitch_log2);
             let attack_rate = 1.0 + rhythms.beta.mag;
             self.breath_gain = (self.breath_gain + dt * attack_rate).clamp(0.0, 1.0);
         }
@@ -685,19 +723,12 @@ impl<N: NeuralCore, B: SoundBody> AudioAgent for Individual<N, B> {
         }
     }
 
-    fn render_spectrum(
-        &mut self,
-        amps: &mut [f32],
-        fs: f32,
-        nfft: usize,
-        _current_frame: u64,
-        _dt_sec: f32,
-    ) {
+    fn render_spectrum(&mut self, amps: &mut [f32], space: &Log2Space) {
         let signal = self.last_signal;
         if !signal.is_active || signal.amplitude <= 0.0 {
             return;
         }
-        self.body.project_spectral_body(amps, fs, nfft, &signal);
+        self.body.project_spectral_body(amps, space, &signal);
     }
 
     fn is_alive(&self) -> bool {
@@ -749,21 +780,10 @@ impl AudioAgent for IndividualWrapper {
         }
     }
 
-    fn render_spectrum(
-        &mut self,
-        amps: &mut [f32],
-        fs: f32,
-        nfft: usize,
-        current_frame: u64,
-        dt_sec: f32,
-    ) {
+    fn render_spectrum(&mut self, amps: &mut [f32], space: &Log2Space) {
         match self {
-            IndividualWrapper::PureTone(ind) => {
-                ind.render_spectrum(amps, fs, nfft, current_frame, dt_sec)
-            }
-            IndividualWrapper::Harmonic(ind) => {
-                ind.render_spectrum(amps, fs, nfft, current_frame, dt_sec)
-            }
+            IndividualWrapper::PureTone(ind) => ind.render_spectrum(amps, space),
+            IndividualWrapper::Harmonic(ind) => ind.render_spectrum(amps, space),
         }
     }
 

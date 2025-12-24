@@ -3,8 +3,9 @@ title = "Conchordal"
 description = "A bio-acoustic instrument for generative composition"
 +++
 
-Conchordal is a bio-mimetic ecosystem for emergent psychoacoustics.
+Music is the drama between vibration and the mind that perceives.
 
-By reconstructing the mechanisms of human auditory cognition as a virtual landscape, it allows sound to behave not as fixed symbols, but as autonomous life forms.
+Conchordal is a bio-mimetic ecosystem where cognition becomes terrain, and sounds move free—not as symbols, but as life that breathes.
 
 Here, music is not composed; it grows.
+

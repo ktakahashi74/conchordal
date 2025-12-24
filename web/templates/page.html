@@ -18,17 +18,19 @@
         <header class="page-header">
             <h1 class="page-title">{{ page.title }}</h1>
             
-            {% if (page.date and (page.extra.show_date is not defined or page.extra.show_date)) or (page.extra.author is defined) or (page.extra.author_email is defined) %}
+            {# Logic: If date exists AND show_date is true (default true), OR author info exists #}
+            {% set show_date = page.extra.show_date | default(value=true) %}
+            {% if (page.date and show_date) or page.extra.author or page.extra.author_email %}
             <div class="page-meta">
-                {% if page.date and (page.extra.show_date is not defined or page.extra.show_date) %}
+                {% if page.date and show_date %}
                 <time class="page-date" datetime="{{ page.date }}">
                     {{ page.date | date(format="%B %d, %Y") }}
                 </time>
                 {% endif %}
-                {% if page.extra.author is defined %}
+                {% if page.extra.author %}
                 <span class="page-author">{{ page.extra.author }}</span>
                 {% endif %}
-                {% if page.extra.author_email is defined %}
+                {% if page.extra.author_email %}
                 <a class="page-author-email" href="mailto:{{ page.extra.author_email }}">{{ page.extra.author_email }}</a>
                 {% endif %}
             </div>

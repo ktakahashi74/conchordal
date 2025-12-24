@@ -21,21 +21,12 @@ jobs:
         with:
           tool: zola
 
-      - name: Build and Prepare
-        run: |
-          # 1. Build inside the web directory (creates web/public)
-          cd web
-          zola build
-          
-          # 2. Move the generated public folder to the repository root
-          # (Remove existing root public if it exists, though checkout usually handles this)
-          rm -rf ../public
-          mv public ../public
+      - name: Build Zola
+        # Tells Zola to look in 'web' for the site, but output to 'public' in the current (root) dir.
+        run: zola build --root web --output-dir public
 
       - name: Check Output (Debug)
-        run: |
-          echo "Listing root public directory:"
-          ls -R public
+        run: ls -R public
 
       - name: Deploy
         uses: peaceiris/actions-gh-pages@v3

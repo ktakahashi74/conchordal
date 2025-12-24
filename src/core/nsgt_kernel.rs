@@ -12,10 +12,10 @@
 //! Design Notes
 //! -----
 //! - Frame length is fixed to Nfft. hop is a single global value based on overlap (shared across all bands).
-//! - Use a symmetric Hann window for each band with length L_k. Normalization by /U_k is already applied.
+//! - Use a symmetric Blackman-Harris window for each band with length L_k. Normalization by /U_k is already applied.
 //! - Complex linear interpolation is unnecessary (the kernel itself represents the continuous frequency).
 
-use crate::core::fft::hann_window_symmetric;
+use crate::core::fft::blackman_harris_window_symmetric;
 use crate::core::log2space::Log2Space;
 use rustfft::{FftPlanner, num_complex::Complex32};
 use serde::{Deserialize, Serialize};
@@ -128,6 +128,7 @@ pub struct KernelBand {
     pub f_hz: f32,
     pub log2_hz: f32,
     pub win_len: usize, // L_k
+    pub enbw_hz: f32,
     // frequency-domain kernel (sparse): store (bin index, conj(K_k[bin])) for computation
     pub spec_conj_sparse: Option<Vec<(usize, Complex32)>>,
     // frequency-domain kernel power (sparse): store (bin index, |K_k[bin]|^2)
@@ -227,8 +228,10 @@ impl NsgtKernelLog2 {
             // even when bins_per_oct (Q) is increased.
             let win_len_req = finalize_win_len(win_len, nfft);
 
-            let window = hann_window_symmetric(win_len_req);
+            let window = blackman_harris_window_symmetric(win_len_req);
             let sum_w = window.iter().copied().sum::<f32>().max(1e-12);
+            let sum_w2 = window.iter().map(|w| w * w).sum::<f32>();
+            let enbw_hz = (fs * sum_w2 / (sum_w * sum_w)).max(1e-12);
 
             // Circularly shifted kernel h_k[n] = w[n]*exp(+j 2*pi f n/fs) (zero-padded to nfft).
             let mut h = vec![Complex32::new(0.0, 0.0); nfft];
@@ -287,6 +290,7 @@ impl NsgtKernelLog2 {
                 f_hz: f,
                 log2_hz: log2_f,
                 win_len: win_len_req,
+                enbw_hz,
                 spec_conj_sparse: sparse_conj,
                 spec_pow_sparse: sparse_pow,
             });
@@ -426,19 +430,19 @@ impl NsgtKernelLog2 {
             .collect()
     }
 
-    /// Power spectral density [power/Hz] with ENBW correction for Hann window (**one-sided**).
+    /// Power spectral density [power/Hz] with ENBW correction (**one-sided**).
     pub fn analyze_psd(&self, x: &[f32]) -> Vec<f32> {
-        let fs = self.cfg.fs;
         debug_assert!(
             self.power_mode == PowerMode::Coherent,
             "analyze_psd() requires PowerMode::Coherent"
         );
         self.analyze(x)
             .iter()
-            .map(|b| {
+            .enumerate()
+            .map(|(i, b)| {
                 let mean_pow = b.coeffs.iter().map(|z| z.norm_sqr()).sum::<f32>()
                     / (b.coeffs.len().max(1) as f32);
-                let enbw_hz = 1.5_f32 * fs / (b.win_len as f32);
+                let enbw_hz = self.bands[i].enbw_hz.max(1e-12);
                 // two-sided -> one-sided
                 2.0 * (mean_pow / enbw_hz.max(1e-12))
             })
@@ -477,6 +481,45 @@ mod tests {
         x
     }
 
+    fn kernel_sidelobe_db(nfft: usize, sparse: &[(usize, Complex32)]) -> f32 {
+        let mut mags = vec![0.0f32; nfft];
+        for &(k, z) in sparse {
+            if k < nfft {
+                mags[k] = z.norm();
+            }
+        }
+        let (k_peak, peak) = mags
+            .iter()
+            .enumerate()
+            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
+            .map(|(k, &v)| (k, v))
+            .unwrap();
+        let peak = peak.max(1e-20);
+        let thr = peak * 1e-4;
+
+        let mut left = k_peak;
+        while left > 0 && mags[left - 1] >= thr {
+            left -= 1;
+        }
+        let mut right = k_peak;
+        while right + 1 < nfft && mags[right + 1] >= thr {
+            right += 1;
+        }
+
+        let mut side = 0.0f32;
+        for (k, &m) in mags.iter().enumerate() {
+            if k < left || k > right {
+                if m > side {
+                    side = m;
+                }
+            }
+        }
+        if side <= 0.0 {
+            return f32::NEG_INFINITY;
+        }
+        20.0 * (side / peak).log10()
+    }
+
     #[test]
     fn power_mode_sparse_storage_is_exclusive() {
         let fs = 48_000.0;
@@ -512,6 +555,33 @@ mod tests {
             assert!(band.spec_conj_sparse.is_none());
             assert!(band.spec_pow_sparse.is_some());
         }
+    }
+
+    #[test]
+    fn kernel_sidelobe_level_midband() {
+        let space = Log2Space::new(20.0, 8000.0, 96);
+        let nsgt = NsgtKernelLog2::new_coherent(NsgtLog2Config::default(), space, None);
+        let target_hz = 1000.0;
+        let (bi, _) = nsgt
+            .space()
+            .centers_hz
+            .iter()
+            .enumerate()
+            .min_by(|a, b| {
+                (a.1 - target_hz)
+                    .abs()
+                    .partial_cmp(&(b.1 - target_hz).abs())
+                    .unwrap()
+            })
+            .unwrap();
+
+        let band = &nsgt.bands()[bi];
+        let sparse = band.spec_conj_sparse.as_ref().expect("coherent sparse missing");
+        let side_db = kernel_sidelobe_db(nsgt.nfft(), sparse);
+        assert!(
+            side_db < -70.0,
+            "kernel side lobe too high: {side_db:.2} dB"
+        );
     }
 
     #[test]
@@ -921,7 +991,7 @@ mod tests {
         );
 
         // Evaluate flanks only outside the main lobe.
-        // Hann first zero is roughly |df| = 2/T, T = win_len / fs.
+        // Use |df| = 2/T (T = win_len / fs) as a conservative main-lobe width scale.
         let win_len = nsgt.bands()[i_peak].win_len as f32; // Lk_req
         let period = win_len / fs;
         let df_zero = 2.0 / period; // [Hz]

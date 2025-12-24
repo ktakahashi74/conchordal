@@ -32,12 +32,12 @@ pub struct PeakExtractConfig {
 impl Default for PeakExtractConfig {
     fn default() -> Self {
         Self {
-            max_peaks: None,
-            min_rel_db_power: -35.0,
+            max_peaks: Some(64),
+            min_rel_db_power: -40.0,
             min_prominence_db_power: 10.0,
-            min_rel_mass_db_power: -35.0,
+            min_rel_mass_db_power: -45.0,
             min_mass_fraction: None,
-            min_sep_erb: 0.30,
+            min_sep_erb: 0.2,
         }
     }
 }
@@ -204,7 +204,8 @@ pub fn extract_peaks_density(
         })
         .collect();
 
-    if keep.iter().all(|&k| !k) && max_mass > 0.0
+    if keep.iter().all(|&k| !k)
+        && max_mass > 0.0
         && let Some((idx, _)) = mass_sum
             .iter()
             .enumerate()

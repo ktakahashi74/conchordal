@@ -18,11 +18,14 @@
         <header class="page-header">
             <h1 class="page-title">{{ page.title }}</h1>
             
-            {# Logic: If date exists AND show_date is true (default true), OR author info exists #}
+            {# Logic: Calculate conditions separately to avoid parser errors #}
             {% set show_date = page.extra.show_date | default(value=true) %}
-            {% if (page.date and show_date) or page.extra.author or page.extra.author_email %}
+            {% set has_date = page.date and show_date %}
+            {% set has_author = page.extra.author or page.extra.author_email %}
+
+            {% if has_date or has_author %}
             <div class="page-meta">
-                {% if page.date and show_date %}
+                {% if has_date %}
                 <time class="page-date" datetime="{{ page.date }}">
                     {{ page.date | date(format="%B %d, %Y") }}
                 </time>

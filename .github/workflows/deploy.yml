@@ -1,28 +1,33 @@
-name: Deploy Zola Site
+name: Deploy
 
 on:
   push:
     branches:
       - main
 
+permissions:
+  contents: write
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Install Zola
         uses: taiki-e/install-action@v2
         with:
-          tool: zola@0.19.2
+          tool: zola
 
-      - name: Build
-        run: cd web && zola build --output-dir ../public
+      - name: Build Zola
+        run: |
+          cd web
+          # Build explicitly into the repository root's public directory
+          zola build --output-dir ../public
 
-      - name: List files
+      - name: Check Output
         run: ls -R public
 
       - name: Deploy
@@ -30,4 +35,5 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./public
-          publish_branch: gh-pages
+          # Ensure CNAME is maintained even if zola doesn't copy it (though it should)
+          cname: www.conchordal.org

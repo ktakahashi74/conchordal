@@ -1,0 +1,15 @@
+[[item]]
+name = "Home"
+path = "/"
+[[item]]
+name = "Manifesto"
+path = "/manifesto"
+[[item]]
+name = "Technote"
+path = "/technote"
+[[item]]
+name = "Documentation"
+path = "/docs"
+[[item]]
+name = "GitHub"
+path = "https://github.com/ktakahashi74/conchordal"

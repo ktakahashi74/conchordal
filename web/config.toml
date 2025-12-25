@@ -1,5 +1,7 @@
-# The URL the site will be built for
-base_url = "https://www.conchordal.org"
+base_url = "https://conchordal.org"
+
+theme = "zola-grayscale"
+author = "Conchordal"
 
 # Whether to automatically compile all Sass files in the sass directory
 compile_sass = true
@@ -12,9 +14,11 @@ default_language = "en"
 
 [languages.en]
 title = "Conchordal"
+description = "A bio-acoustic instrument for generative composition"
 
 [languages.ja]
 title = "Conchordal"
+description = "A bio-acoustic instrument for generative composition"
 
 [markdown]
 # Whether to do syntax highlighting

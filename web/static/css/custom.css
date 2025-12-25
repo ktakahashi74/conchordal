@@ -1,0 +1,7 @@
+.masthead h1 {
+    background: linear-gradient(135deg, #e4e4e7, #3b82f6);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+}

@@ -1,0 +1,7 @@
+[[contact]]
+name = "GitHub"
+address = """<a href="https://github.com/ktakahashi74/conchordal" target="_blank" rel="noopener">github.com/ktakahashi74/conchordal</a>"""
+icon = "fa-github"
+[[social]]
+icon = "fa-github"
+url = "https://github.com/ktakahashi74/conchordal"

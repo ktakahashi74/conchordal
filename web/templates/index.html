@@ -1,38 +1,66 @@
-{% extends "base.html" %}
+{% extends "zola-grayscale/templates/index.html" %}
 
-{% block body_class %}is-home{% endblock body_class %}
-
-{% block content %}
-<section class="hero">
-    <div class="hero-container">
-        <h1 class="hero-title">{{ config.title }}</h1>
-        <p class="hero-subtitle">{{ config.extra.project_tagline }}</p>
-        
-        <div class="hero-intro">
-            {{ section.content | safe }}
-        </div>
-
-        <div class="hero-media">
-            <img src="/screenshot1.png" alt="Conchordal Screenshot" class="media-content">
-        </div>
-
-        <div class="hero-links">
-            <a class="minimal-link" href="{% if lang == 'ja' %}/ja/manifesto{% else %}/manifesto{% endif %}">
-                {% if lang == "ja" %}マニフェスト{% else %}Manifesto{% endif %}
-            </a>
-            <span class="link-divider">/</span>
-            <a class="minimal-link" href="/technote">
-                Technote
-            </a>
-            <span class="link-divider">/</span>
-            <a class="minimal-link" href="{% if lang == 'ja' %}/ja/docs{% else %}/docs{% endif %}">
-                {% if lang == "ja" %}ドキュメント{% else %}Documentation{% endif %}
-            </a>
-            <span class="link-divider">/</span>
-            <a class="minimal-link" href="{{ config.extra.github_url }}" target="_blank" rel="noopener">
-                GitHub
-            </a>
+{% block navigation %}
+<nav class="navbar navbar-expand-lg navbar-light fixed-top" id="mainNav">
+    <div class="container px-4 px-lg-5">
+        <a class="navbar-brand" href="{% if lang == 'ja' %}/ja{% else %}/{% endif %}#page-top">{{ config.title }}</a>
+        <button class="navbar-toggler navbar-toggler-right" type="button" data-bs-toggle="collapse" data-bs-target="#navbarResponsive" aria-controls="navbarResponsive" aria-expanded="false" aria-label="Toggle navigation">
+            Menu
+            <i class="fas fa-bars"></i>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarResponsive">
+            <ul class="navbar-nav ms-auto">
+                <li class="nav-item">
+                    <a class="nav-link" href="{% if lang == 'ja' %}/ja{% else %}/{% endif %}#page-top">Home</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="{% if lang == 'ja' %}/ja/manifesto{% else %}/manifesto{% endif %}">Manifesto</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="/technote">Technote</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="{% if lang == 'ja' %}/ja/docs{% else %}/docs{% endif %}">Documentation</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="{{ config.extra.github_url }}" target="_blank" rel="noopener">GitHub</a>
+                </li>
+                <li class="nav-item">
+                    {% if lang == "ja" %}
+                        <a class="nav-link" href="/">EN</a>
+                    {% else %}
+                        <a class="nav-link" href="/ja">日本語</a>
+                    {% endif %}
+                </li>
+            </ul>
         </div>
     </div>
-</section>
-{% endblock content %}
+</nav>
+{% endblock navigation %}
+
+{% block masthead_title %}{{ config.title }}{% endblock masthead_title %}
+{% block masthead %}
+<header class="masthead">
+    <div class="container px-4 px-lg-5 d-flex h-100 align-items-center justify-content-center">
+        <div class="d-flex justify-content-center">
+            <div class="text-center">
+                <h1 class="mx-auto my-0 text-uppercase">{{ config.title }}</h1>
+                <h2 class="text-white-50 mx-auto mt-2 mb-4">
+                    {{ config.extra.project_tagline }}
+                </h2>
+                {% if section is defined and section.content %}
+                    <div class="text-white-50 mx-auto mb-5 masthead-content">
+                        {{ section.content | safe }}
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</header>
+{% endblock masthead %}
+
+{% block about %}{% endblock about %}
+
+{% block projects %}{% endblock projects %}
+{% block signup %}{% endblock signup %}
+{% block contact %}{% endblock contact %}

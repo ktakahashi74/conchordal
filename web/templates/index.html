@@ -1,5 +1,9 @@
 {% extends "zola-grayscale/templates/index.html" %}
 
+{% block extra_head %}
+<link rel="stylesheet" type="text/css" href="{{ get_url(path="css/custom.css", cachebust=true) }}">
+{% endblock extra_head %}
+
 {% block navigation %}
 <nav class="navbar navbar-expand-lg navbar-light fixed-top" id="mainNav">
     <div class="container px-4 px-lg-5">

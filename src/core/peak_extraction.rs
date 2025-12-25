@@ -417,7 +417,7 @@ mod tests {
     #[test]
     fn side_lobe_peak_dropped_by_mass_filter() {
         let space = Log2Space::new(80.0, 8000.0, 128);
-        let (erb, du) = erb_grid(&space);
+        let (erb, _du) = erb_grid(&space);
         let mut density = vec![0.0f32; erb.len()];
 
         let center = erb.len() / 2;

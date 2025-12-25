@@ -96,6 +96,16 @@ spawn_agents("my_swarm", method, life, 5, 0.15);
 wait(10.0);
 ```
 
+## Timeline & Roadmap
+
+- **circa. 1994** — Core concept conceived 
+- **Aug 25th 2025** — Project started 
+- **Dec 25th 2025** — Source & web release (pre-alpha) ← *current* 
+- **Early 2026** — Demo scenarios 
+- **Summer 2026** — Beta, featuring first compositions
+
+
+
 ### Contributing
 
 We invite engineers and artists who are exploring the frontiers of Auditory Scene Analysis and Computational Creativity. Check the Issue Tracker for open research topics.

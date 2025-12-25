@@ -6,6 +6,15 @@
     -webkit-text-fill-color: transparent;
 }
 
+.navbar-toggler {
+    border-color: #3b82f6;
+    color: #e4e4e7;
+}
+
+.navbar-toggler .fa-bars {
+    color: #3b82f6;
+}
+
 .masthead .text-center {
     max-width: 720px;
     margin-left: auto;

@@ -1,0 +1,272 @@
+{% import "macros/debug.html" as debug %}
+{% import "macros/head.html" as head %}
+{% import "macros/analytics.html" as analytics %}
+
+{% set navigation = load_data(path="navigation.toml") %}
+{% set contact = load_data(path="contact.toml") %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {% block head %}
+    {{ analytics::google_analytics() }}
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <meta name="description" content="{{ config.description }}" />
+    <meta name="author" content="{{ config.author }}" />
+    {% block title %}{{ head::title() }}{% endblock title %}
+    <link rel="icon" type="image/x-icon" href="{{ get_url(path="assets/favicon.ico") }}" />
+    <!-- Font Awesome icons (free version)-->
+    <script src="https://use.fontawesome.com/releases/v6.7.1/js/all.js" crossorigin="anonymous"></script>
+    <!-- Google fonts-->
+    <link href="https://fonts.googleapis.com/css?family=Varela+Round" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css?family=Nunito:200,200i,300,300i,400,400i,600,600i,700,700i,800,800i,900,900i" rel="stylesheet" />
+    <!-- Core theme CSS (includes Bootstrap)-->
+    <link href="{{ get_url(path="css/styles.css") }}" rel="stylesheet" />
+    {% block extra_head %}
+    <link rel="stylesheet" type="text/css" href="{{ get_url(path="css/custom.css") }}">
+    {% endblock extra_head %}
+    {% endblock head %}
+</head>
+<body id="{% block body_id %}page-top{% endblock body_id %}">
+    {% block navigation %}
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-light fixed-top" id="mainNav">
+        <div class="container px-4 px-lg-5">
+            <a class="navbar-brand" href="{{ get_url(path="/") }}#page-top">{% block nav_home_title %}{{ config.title }}{% endblock nav_home_title %}</a>
+            <button class="navbar-toggler navbar-toggler-right" type="button" data-bs-toggle="collapse" data-bs-target="#navbarResponsive" aria-controls="navbarResponsive" aria-expanded="false" aria-label="Toggle navigation">
+                Menu
+                <i class="fas fa-bars"></i>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarResponsive">
+                <ul class="navbar-nav ms-auto">
+                    {% for item in navigation.item %}
+                    <li class="nav-itempdown">
+                        <a class="nav-link" href="{{ item.path | safe }}">{{ item.name }}</a>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+    </nav>
+    {% endblock navigation %}
+    {% block masthead %}
+    <!-- Masthead -->
+    <header class="masthead">
+        <div class="container px-4 px-lg-5 d-flex h-100 align-items-center justify-content-center">
+            <div class="d-flex justify-content-center">
+                <div class="text-center">
+                    <h1 class="mx-auto my-0 text-uppercase">{% block masthead_title %}{{ config.title }}{% endblock masthead_title %}</h1>
+                    <h2 class="text-white-50 mx-auto mt-2 mb-5">{% block masthead_description %}{{ config.description }}{% endblock masthead_description %}</h2>
+                    {% block masthead_button %}<a class="btn btn-primary" href="{% block masthead_button_url %}#about{% endblock masthead_button_url %}" id="{% block masthead_button_id %}getstarted{% endblock masthead_button_id %}">{% block masthead_button_label %}Get Started{% endblock masthead_button_label %}</a>{% endblock masthead_button %}
+                </div>
+            </div>
+        </div>
+    </header>
+    {% endblock masthead %}
+    {% block content %}
+    {% block about %}
+    <!-- About -->
+    <section class="about-section text-center" id="{% block about_id %}about{% endblock about_id %}">
+        <div class="container px-4 px-lg-5">
+            <div class="row gx-4 gx-lg-5 justify-content-center">
+                <div class="col-lg-8">
+                    <h2 class="text-white mb-4">{% block about_title %}Built with Bootstrap 5{% endblock about_title %}</h2>
+                    <p class="text-white-50">
+                        {% block about_description %}
+                            {{ config.title }} is a free port Bootstrap theme created by Start Bootstrap. It can be yours right now, simply download the theme into your Zola themes from
+                            <a href="https://startbootstrap.com/theme/grayscale/">GitHub.</a>
+                            The theme is open source, and you can use it for any purpose, personal or commercial.
+                        {% endblock about_description %}
+                    </p>
+                </div>
+            </div>
+            {% block about_image %}
+            <img class="img-fluid" src="{{ get_url(path="assets/img/ipad.png") }}" alt="..." />
+            {% endblock about_image %}
+        </div>
+    </section>
+    {% endblock about %}
+    {% block projects %}
+    <!-- Projects-->
+    <section class="projects-section bg-light" id="{% block projects_id %}projects{% endblock projects_id %}">
+        <div class="container px-4 px-lg-5">
+            {% block feature_project %}
+            <!-- Featured Project Row -->
+            <div class="row gx-0 mb-4 mb-lg-5 align-items-center">
+                <div class="col-xl-8 col-lg-7">
+                    {% block feature_project_thumbnail %}
+                    <img class="img-fluid mb-3 mb-lg-0" src="{{ get_url(path="assets/img/bg-masthead.jpg") }}" alt="...">
+                    {% endblock feature_project_thumbnail %}
+                </div>
+                <div class="col-xl-4 col-lg-5">
+                    {% block feature_project_content %}
+                    <div class="featured-text text-center text-lg-left">
+                        <h4>{% block feature_project_title %}Shoreline{% endblock feature_project_title %}</h4>
+                        <p class="text-black-50 mb-0">
+                        {% block feature_project_description %}
+                        {{ config.title }} is open source and MIT licensed. This means you can use it for any project
+                        - even commercial projects! Download it, customize it, and publish your website!
+                        {% endblock feature_project_description %}
+                        </p>
+                    </div>
+                    {% endblock feature_project_content %}
+                </div>
+            </div>
+            {% endblock feature_project %}
+            {% block project_1 %}
+            <!-- Project One Row -->
+            <div class="row gx-0 mb-5 mb-lg-0 justify-content-center">
+                <div class="col-lg-6">
+                    {% block project_1_thumbnail %}
+                    <img class="img-fluid" src="{{ get_url(path="assets/img/demo-image-01.jpg") }}" alt="...">
+                    {% endblock project_1_thumbnail %}
+                </div>
+                <div class="col-lg-6">
+                    {% block project_1_content %}
+                    <div class="bg-black text-center h-100 project">
+                        <div class="d-flex h-100">
+                            <div class="project-text w-100 my-auto text-center text-lg-left">
+                                <h4 class="text-white">{% block project_1_title %}Misty{% endblock project_1_title %}</h4>
+                                <p class="mb-0 text-white-50">
+                                {% block project_1_description %}
+                                An example of where you can put an image of a project, or anything else, along with a description.
+                                {% endblock project_1_description %}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    {% endblock project_1_content %}
+                </div>
+            </div>
+            {% endblock project_1 %}
+            {% block project_2 %}
+            <!-- Project Two Row -->
+            <div class="row gx-0 mb-5 mb-lg-0 justify-content-center">
+                <div class="col-lg-6">
+                    {% block project_2_thumbnail %}
+                    <img class="img-fluid" src="{{ get_url(path="assets/img/demo-image-02.jpg") }}" alt="...">
+                    {% endblock project_2_thumbnail %}
+                </div>
+                <div class="col-lg-6 order-lg-first">
+                    {% block project_2_content %}
+                    <div class="bg-black text-center h-100 project">
+                        <div class="d-flex h-100">
+                            <div class="project-text w-100 my-auto text-center text-lg-right">
+                                <h4 class="text-white">{% block project_2_title %}Mountains{% endblock project_2_title %}</h4>
+                                <p class="mb-0 text-white-50">
+                                {% block project_2_description %}
+                                Another example of a project with its respective description. These sections work well responsively as well!
+                                {% endblock project_2_description %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endblock project_2_content %}
+                </div>
+            </div>
+            {% endblock project_2 %}
+            {% block extra_projects %}{% endblock extra_projects %}
+        </div>
+    </section>
+    {% endblock projects %}
+    {% endblock content %}
+    {% block signup %}
+    <!-- Signup -->
+    <section class="signup-section" id="{% block signup_id%}signup{% endblock signup_id %}">
+        <div class="container px-4 px-lg-5">
+            <div class="row gx-4 gx-lg-5">
+                <div class="col-md-10 col-lg-8 mx-auto text-center">
+                    <i class="fa-regular {% block signup_icon %}fa-paper-plane{% endblock signup_icon %} fa-2x mb-2 text-white"></i>
+                    <h2 class="text-white mb-5">{% block signup_title %}Subscribe to receive updates!{% endblock signup_title %}</h2>
+                    {% block signup_form %}
+                    <!-- * * * * * * * * * * * * * * *-->
+                    <!-- * * SB Forms Contact Form * *-->
+                    <!-- * * * * * * * * * * * * * * *-->
+                    <!-- This form is pre-integrated with SB Forms.-->
+                    <!-- To make this form functional, sign up at-->
+                    <!-- https://startbootstrap.com/solution/contact-forms-->
+                    <!-- to get an API token!-->
+                    <form class="form-signup" id="contactForm" data-sb-form-api-token="{{ config.extra.sb_forms_api_token | default(value="API_TOKEN") }}">
+                        <!-- Email address input-->
+                        <div class="row input-group-newsletter">
+                            <div class="col"><input class="form-control is-invalid" id="emailAddress" type="email" placeholder="Enter email address..." aria-label="Enter email address..." data-sb-validations="required,email" data-sb-can-submit="no"></div>
+                            <div class="col-auto"><button class="btn btn-primary disabled" id="submitButton" type="submit">Notify Me!</button></div>
+                        </div>
+                        <div class="invalid-feedback mt-2" data-sb-feedback="emailAddress:required">An email is required.</div>
+                        <div class="invalid-feedback mt-2" data-sb-feedback="emailAddress:email">Email is not valid.</div>
+                        <!-- Submit success message-->
+                        <!---->
+                        <!-- This is what your users will see when the form-->
+                        <!-- has successfully submitted-->
+                        <div class="d-none" id="submitSuccessMessage">
+                            <div class="text-center mb-3 mt-2 text-white">
+                                <div class="fw-bolder">Form submission successful!</div>
+                                To activate this form, sign up at
+                                <br>
+                                <a href="https://startbootstrap.com/solution/contact-forms">https://startbootstrap.com/solution/contact-forms</a>
+                                </div>
+                            </div>
+                        <!-- Submit error message-->
+                        <!---->
+                        <!-- This is what your users will see when there is-->
+                        <!-- an error submitting the form-->
+                        <div class="d-none" id="submitErrorMessage"><div class="text-center text-danger mb-3 mt-2">Error sending message!</div></div>
+                    </form>
+                    {% endblock signup_form %}
+                </div>
+            </div>
+        </div>
+    </section>
+    {% endblock signup %}
+    {% block contact %}
+    <!-- Contact -->
+    <section class="contact-section bg-black" id="{% block contact_id %}contact{% endblock contact_id %}">
+        <div class="container px-4 px-lg-5">
+            {% block contact_contact %}
+            <div class="row gx-4 gx-lg-5">
+            {% for item in contact.contact %}
+            <div class="col-md-4 mb-3 mb-md-0">
+                <div class="card py-4 h-100">
+                    <div class="card-body text-center">
+                        <i class="fas {{ item.icon }} text-primary mb-2"></i>
+                        <h4 class="text-uppercase m-0">{{ item.name }}</h4>
+                        <hr class="my-4 mx-auto" />
+                        <div class="small text-black-50">{{ item.address|safe }}</div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+            </div>
+            {% endblock contact_contact %}
+            {% block contact_social %}
+            <div class="social d-flex justify-content-center">
+                {% for item in contact.social %}
+                <a class="mx-2" href="{{ item.url | safe }}"><i class="fa-brands {{ item.icon }} fa-xl" aria-hidden="true"></i></a>
+                {% endfor %}
+            </div>
+            {% endblock contact_social %}
+        </div>
+    </section>
+    {% endblock contact %}
+    {% block footer %}
+    <!-- Footer -->
+    <footer class="footer bg-black small text-center text-white-50">
+        <div class="container px-4 px-lg-5">{% block footer_copyright %}Copyright &copy; {{ config.author }} {{ now() | date(format="%Y") }}{% endblock footer_copyright %}</div>
+        {% block extra_footer %}{% endblock extra_footer %}
+        {% block footer_debug %}{{ debug::debug(context=__tera_context, name="__tera_context") }}{% endblock footer_debug %}
+    </footer>
+    {% endblock footer %}
+<!-- Bootstrap core JS -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+<!-- Core theme JS -->
+<script src="{{ get_url(path="js/scripts.js") }}"></script>
+{% block extra_scripts %}{% endblock extra_scripts %}
+{% if config.extra.sb_forms_api_token %}
+<!-- * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *-->
+<!-- * *                               SB Forms JS                               * *-->
+<!-- * * Activate your form at https://startbootstrap.com/solution/contact-forms * *-->
+<!-- * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *-->
+<script src="https://cdn.startbootstrap.com/sb-forms-latest.js"></script>
+{% endif %}
+</body>
+</html>

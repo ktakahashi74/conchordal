@@ -82,3 +82,12 @@
 body {
     overflow-x: hidden;
 }
+
+@media (min-width: 992px) {
+    .masthead {
+        height: auto;
+        min-height: 100vh;
+        padding-top: 6rem;
+        padding-bottom: 0;
+    }
+}

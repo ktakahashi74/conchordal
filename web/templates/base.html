@@ -32,16 +32,16 @@
 
                 <div class="nav-menu">
                     <a href="{% if lang == 'ja' %}/ja{% else %}/{% endif %}" class="nav-link">
-                        {% if lang == "ja" %}ホーム{% else %}Home{% endif %}
+                        Home
                     </a>
                     <a href="{% if lang == 'ja' %}/ja/manifesto{% else %}/manifesto{% endif %}" class="nav-link">
-                        {% if lang == "ja" %}マニフェスト{% else %}Manifesto{% endif %}
+                        Manifesto
                     </a>
                     <a href="/technote" class="nav-link">
                         Technote
                     </a>
                     <a href="{% if lang == 'ja' %}/ja/docs{% else %}/docs{% endif %}" class="nav-link">
-                        {% if lang == "ja" %}ドキュメント{% else %}Documentation{% endif %}
+                        Documentation
                     </a>
                     <a href="{{ config.extra.github_url }}" class="nav-link" target="_blank" rel="noopener">
                         GitHub

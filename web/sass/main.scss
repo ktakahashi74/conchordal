@@ -149,6 +149,8 @@ a {
     display: flex;
     align-items: center;
     gap: $spacing-lg;
+    flex-wrap: wrap;
+    justify-content: flex-end;
 
     @media (max-width: $breakpoint-md) {
         gap: $spacing-md;
@@ -405,6 +407,11 @@ a {
             color: $text-primary;
         }
     }
+
+    img {
+        max-width: 100%;
+        height: auto;
+    }
 }
 
 .page-list {
@@ -517,6 +524,10 @@ a {
 
 // Responsive adjustments
 @media (max-width: $breakpoint-md) {
+    .hero {
+        padding: 8rem 0 $spacing-2xl 0;
+    }
+
     .hero-title {
         font-size: 2.5rem;
     }

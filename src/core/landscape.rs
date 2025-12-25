@@ -117,12 +117,27 @@ impl Landscape {
         }
     }
 
-    /// Raw consonance (unbounded). Prefer `evaluate_pitch01` for normalized usage.
+    pub fn resize_to_space(&mut self, space: Log2Space) {
+        let n = space.n_bins();
+        self.space = space;
+        self.roughness.resize(n, 0.0);
+        self.roughness_shape_raw.resize(n, 0.0);
+        self.roughness01.resize(n, 0.0);
+        self.harmonicity.resize(n, 0.0);
+        self.harmonicity01.resize(n, 0.0);
+        self.consonance.resize(n, 0.0);
+        self.consonance01.resize(n, 0.0);
+        self.subjective_intensity.resize(n, 0.0);
+        self.nsgt_power.resize(n, 0.0);
+        self.habituation.resize(n, 0.0);
+    }
+
+    /// Signed consonance [-1, 1]. Prefer `evaluate_pitch01` for normalized usage.
     pub fn evaluate_pitch(&self, freq_hz: f32) -> f32 {
         self.sample_linear(&self.consonance, freq_hz)
     }
 
-    /// Raw consonance (unbounded). Prefer `evaluate_pitch01_log2` for normalized usage.
+    /// Signed consonance [-1, 1]. Prefer `evaluate_pitch01_log2` for normalized usage.
     pub fn evaluate_pitch_log2(&self, log_freq: f32) -> f32 {
         self.sample_linear_log2(&self.consonance, log_freq)
     }
@@ -176,9 +191,6 @@ impl Landscape {
     }
 
     pub fn recompute_consonance(&mut self, params: &LandscapeParams) {
-        // Current raw consonance uses roughness_total as the scalar normalizer.
-        let k = params.roughness_k.max(1e-6);
-        let denom_inv = 1.0 / (self.roughness_total + k);
         let w_hab = params.habituation_weight.max(0.0);
         let w_r = params.consonance_roughness_weight.max(0.0);
         if self.harmonicity01.len() != self.harmonicity.len() {
@@ -191,14 +203,15 @@ impl Landscape {
             self.roughness01 = vec![0.0; self.roughness.len()];
         }
         for i in 0..self.consonance.len() {
-            let r = *self.roughness.get(i).unwrap_or(&0.0);
             let h = *self.harmonicity.get(i).unwrap_or(&0.0);
             let hab = *self.habituation.get(i).unwrap_or(&0.0);
-            self.consonance[i] = h - r * denom_inv - w_hab * hab;
             let h01 = h.clamp(0.0, 1.0);
             let r01 = self.roughness01[i].clamp(0.0, 1.0);
-            let c01 = h01 - w_r * r01 - w_hab * hab;
+            let c_signed_raw = h01 - w_r * r01 - w_hab * hab;
+            let c_signed = c_signed_raw.clamp(-1.0, 1.0);
+            let c01 = (c_signed + 1.0) * 0.5;
             self.harmonicity01[i] = h01;
+            self.consonance[i] = c_signed;
             self.consonance01[i] = c01.clamp(0.0, 1.0);
         }
     }
@@ -299,7 +312,8 @@ mod tests {
         let r01 = [0.0f32, 0.4, 1.0];
         for &h in &h01 {
             for &r in &r01 {
-                let c = (h * (1.0 - r)).clamp(0.0, 1.0);
+                let c_signed = (h - r).clamp(-1.0, 1.0);
+                let c = ((c_signed + 1.0) * 0.5).clamp(0.0, 1.0);
                 assert!(c >= 0.0 && c <= 1.0);
             }
         }
@@ -340,7 +354,8 @@ mod tests {
             let h = landscape.harmonicity[i].clamp(0.0, 1.0);
             let r = landscape.roughness01[i].clamp(0.0, 1.0);
             let hab = landscape.habituation[i];
-            let c_pred = (h - w_r * r - w_hab * hab).clamp(0.0, 1.0);
+            let c_signed = (h - w_r * r - w_hab * hab).clamp(-1.0, 1.0);
+            let c_pred = ((c_signed + 1.0) * 0.5).clamp(0.0, 1.0);
             let c = landscape.consonance01[i];
             assert!((c - c_pred).abs() < 1e-6, "i={i} c={c} c_pred={c_pred}");
         }
@@ -389,11 +404,36 @@ mod tests {
 
         landscape.roughness01 = vec![0.5; n];
         landscape.recompute_consonance(&params);
-        assert!((landscape.consonance01[0] - 0.5).abs() < 1e-6);
+        assert!((landscape.consonance01[0] - 0.75).abs() < 1e-6);
 
         landscape.roughness01 = vec![1.0; n];
         landscape.recompute_consonance(&params);
-        assert!((landscape.consonance01[0] - 0.0).abs() < 1e-6);
+        assert!((landscape.consonance01[0] - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn resize_to_space_keeps_lengths_and_allows_recompute() {
+        let space_a = Log2Space::new(100.0, 400.0, 12);
+        let space_b = Log2Space::new(80.0, 800.0, 24);
+        let mut landscape = Landscape::new(space_a);
+        landscape.harmonicity.fill(0.6);
+        landscape.roughness01.fill(0.2);
+        landscape.habituation.fill(0.1);
+
+        landscape.resize_to_space(space_b.clone());
+        let n = space_b.n_bins();
+        assert_eq!(landscape.roughness.len(), n);
+        assert_eq!(landscape.roughness01.len(), n);
+        assert_eq!(landscape.harmonicity.len(), n);
+        assert_eq!(landscape.harmonicity01.len(), n);
+        assert_eq!(landscape.consonance.len(), n);
+        assert_eq!(landscape.consonance01.len(), n);
+        assert_eq!(landscape.subjective_intensity.len(), n);
+        assert_eq!(landscape.nsgt_power.len(), n);
+        assert_eq!(landscape.habituation.len(), n);
+
+        let params = build_params(&space_b);
+        landscape.recompute_consonance(&params);
     }
 }
 

@@ -303,7 +303,7 @@ pub fn main_window(
                     );
 
                     ui.separator();
-                    ui.heading("Neural Activity");
+                    ui.heading("Neural Mandala");
                     ui.allocate_ui_with_layout(
                         Vec2::new(left_width, left_block_height),
                         egui::Layout::top_down(egui::Align::LEFT),
@@ -447,7 +447,7 @@ pub fn main_window(
 
         ui.separator();
 
-        let consonance = &frame.landscape.consonance01;
+        let consonance = &frame.landscape.consonance;
 
         ui.columns(1, |cols| {
             let ui = &mut cols[0];
@@ -460,7 +460,7 @@ pub fn main_window(
                 &frame.landscape.space.centers_hz,
                 consonance,
                 "C",
-                0.0,
+                -1.0,
                 1.0,
                 102.0,
                 Some("landscape_group"),

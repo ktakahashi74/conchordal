@@ -688,7 +688,7 @@ fn worker_loop(
                         || current_landscape.space.fmax != frame.space.fmax
                         || current_landscape.space.bins_per_oct != frame.space.bins_per_oct;
                     if space_changed {
-                        current_landscape.space = frame.space.clone();
+                        current_landscape.resize_to_space(frame.space.clone());
                         log_space = current_landscape.space.clone();
                     }
                     current_landscape.roughness = frame.roughness;
@@ -740,16 +740,16 @@ fn worker_loop(
                             .copied()
                             .unwrap_or(0.0);
                         let c = current_landscape
-                            .consonance01
+                            .consonance
                             .get(max_i)
                             .copied()
                             .unwrap_or(0.0);
                         let c_pred = (h
                             - lparams.consonance_roughness_weight * r
                             - lparams.habituation_weight * hab)
-                            .clamp(0.0, 1.0);
+                            .clamp(-1.0, 1.0);
                         debug!(
-                            "c01_check bin={} h={:.4} r={:.4} hab={:.4} c={:.4} c_pred={:.4}",
+                            "c_signed_check bin={} h={:.4} r={:.4} hab={:.4} c={:.4} c_pred={:.4}",
                             max_i, h, r, hab, c, c_pred
                         );
                     }

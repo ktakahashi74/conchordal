@@ -349,11 +349,10 @@ impl Population {
                     .enumerate()
                     .map(|(local_idx, i)| {
                         let f = space.freq_of_index(i);
-                        if self.is_range_occupied(f, min_dist_erb) {
-                            return 0.0;
-                        }
+                        let occupied = self.is_range_occupied(f, min_dist_erb);
                         let _ = local_idx;
-                        landscape.consonance01.get(i).copied().unwrap_or(0.0)
+                        let c01 = landscape.consonance01.get(i).copied().unwrap_or(0.0);
+                        harmonic_density_weight(c01, occupied)
                     })
                     .collect();
                 if let Some(temp) = temperature
@@ -712,6 +711,15 @@ impl Population {
     }
 }
 
+fn harmonic_density_weight(c01: f32, occupied: bool) -> f32 {
+    if occupied {
+        return 0.0;
+    }
+    let c = c01.clamp(0.0, 1.0);
+    let eps = 1e-6f32;
+    eps + (1.0 - eps) * c
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -745,6 +753,36 @@ mod tests {
         let freq = pop.decide_frequency(&method, &landscape, &mut rng);
         let picked_idx = space.index_of_freq(freq).expect("picked idx");
         assert_eq!(picked_idx, idx_high);
+    }
+
+    #[test]
+    fn harmonic_density_weight_eps_floor() {
+        let w = harmonic_density_weight(0.0, false);
+        assert!(w > 0.0);
+    }
+
+    #[test]
+    fn harmonic_density_weight_occupied_is_zero() {
+        let w = harmonic_density_weight(1.0, true);
+        assert_eq!(w, 0.0);
+    }
+
+    #[test]
+    fn harmonic_density_weighted_index_accepts_zero_c01() {
+        let weights = vec![
+            harmonic_density_weight(0.0, false),
+            harmonic_density_weight(0.0, false),
+        ];
+        assert!(WeightedIndex::new(&weights).is_ok());
+    }
+
+    #[test]
+    fn harmonic_density_weighted_index_fails_when_all_occupied() {
+        let weights = vec![
+            harmonic_density_weight(1.0, true),
+            harmonic_density_weight(0.2, true),
+        ];
+        assert!(WeightedIndex::new(&weights).is_err());
     }
 }
 

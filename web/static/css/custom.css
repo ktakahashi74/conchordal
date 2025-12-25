@@ -15,6 +15,22 @@
     color: #3b82f6;
 }
 
+.navbar-toggler:hover,
+.navbar-toggler:focus {
+    color: #e4e4e7;
+    border-color: #3b82f6;
+    box-shadow: none;
+}
+
+.navbar-toggler:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 0.15rem rgba(59, 130, 246, 0.35);
+}
+
+.navbar-light .navbar-toggler {
+    background-color: transparent;
+}
+
 .masthead .text-center {
     max-width: 720px;
     margin-left: auto;

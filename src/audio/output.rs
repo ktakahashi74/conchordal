@@ -3,7 +3,7 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use anyhow::Context;
 use ringbuf::traits::*;
 use ringbuf::{HeapCons, HeapProd, HeapRb};
-use tracing::debug;
+use tracing::{debug, info};
 
 /// 出力デバイスに接続するモジュール
 pub struct AudioOutput {
@@ -32,8 +32,26 @@ impl AudioOutput {
             buffer_size: cpal::BufferSize::Default,
         };
 
-        let capacity = (sample_rate as f32 * latency_ms / 1000.0) as usize;
-        let rb = HeapRb::<f32>::new(capacity * channels as usize * 2);
+        let target_frames = (sample_rate as f32 * latency_ms / 1000.0).round().max(1.0) as usize;
+        let min_frames = match supported_config.buffer_size() {
+            cpal::SupportedBufferSize::Range { min, .. } => (*min as usize) * 2,
+            cpal::SupportedBufferSize::Unknown => 512,
+        };
+        let capacity_frames = (target_frames * 2).max(min_frames);
+        if capacity_frames > target_frames * 2 {
+            info!(
+                "Audio buffer raised to min frames: target={} actual={} (sr={} ch={})",
+                target_frames * 2,
+                capacity_frames,
+                sample_rate,
+                channels
+            );
+        }
+        info!(
+            "Audio buffer config: sr={} ch={} target_frames={} capacity_frames={}",
+            sample_rate, channels, target_frames, capacity_frames
+        );
+        let rb = HeapRb::<f32>::new(capacity_frames);
         let (prod, mut cons): (HeapProd<f32>, HeapCons<f32>) = rb.split();
 
         let stream = device
@@ -61,7 +79,7 @@ impl AudioOutput {
         Ok((
             Self {
                 stream: Some(stream),
-                capacity,
+                capacity: capacity_frames,
                 config,
             },
             prod,

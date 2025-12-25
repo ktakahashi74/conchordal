@@ -158,6 +158,7 @@ pub struct App {
     start_flag: Arc<AtomicBool>,
     level_history: VecDeque<(std::time::Instant, [f32; 2])>,
     show_raw_nsgt_power: bool,
+    has_ui_frame: bool,
 }
 
 impl App {
@@ -200,10 +201,17 @@ impl App {
 
         // Decide runtime sample rate: use actual stream rate when playing, otherwise config value.
         let runtime_sample_rate: u32 = if args.play {
-            audio_out
+            let device_rate = audio_out
                 .as_ref()
                 .map(|out| out.config.sample_rate.0)
-                .unwrap_or(config.audio.sample_rate)
+                .unwrap_or(config.audio.sample_rate);
+            if device_rate != config.audio.sample_rate {
+                info!(
+                    "Runtime sample rate overridden by device: {} (config {})",
+                    device_rate, config.audio.sample_rate
+                );
+            }
+            device_rate
         } else {
             config.audio.sample_rate
         };
@@ -271,7 +279,11 @@ impl App {
         let nsgt = RtNsgtKernelLog2::with_config(nsgt_kernel.clone(), RtConfig::default());
         let hop_duration = Duration::from_secs_f32(hop as f32 / fs);
         let hop_ms = (hop as f32 / fs) * 1000.0;
-        let visual_delay_frames = (latency_ms / hop_ms).ceil() as usize + 1; // small safety margin
+        let visual_delay_frames = 0;
+        info!(
+            "Visual delay frames: {} (latency_ms={:.1}, hop_ms={:.2})",
+            visual_delay_frames, latency_ms, hop_ms
+        );
         let ui_channel_capacity = (visual_delay_frames + 4).max(16);
 
         // Channels
@@ -430,32 +442,20 @@ impl App {
             start_flag,
             level_history: VecDeque::with_capacity(256),
             show_raw_nsgt_power: false,
+            has_ui_frame: false,
         }
     }
-}
 
-impl eframe::App for App {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        if ctx.input(|i| i.viewport().close_requested()) {
-            // Honor OS window close requests by stopping the worker thread.
-            self.exiting.store(true, Ordering::SeqCst);
+    fn apply_ui_frame(&mut self, frame: UiFrame) {
+        self.last_frame = frame;
+
+        let t = self.last_frame.time_sec as f64;
+        if self.last_frame.meta.playback_state != PlaybackState::Finished {
+            self.rhythm_history
+                .push_back((t, self.last_frame.landscape.rhythm));
+            self.dorsal_history.push_back((t, self.last_frame.dorsal));
         }
 
-        if self.exiting.load(Ordering::SeqCst) {
-            debug!("SIGINT received: closing window.");
-            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-            return;
-        }
-
-        // Drain all frames for high-frequency rhythm updates.
-        while let Ok(frame) = self.ui_frame_rx.try_recv() {
-            let t = frame.time_sec as f64;
-            if frame.meta.playback_state != PlaybackState::Finished {
-                self.rhythm_history.push_back((t, frame.landscape.rhythm));
-                self.dorsal_history.push_back((t, frame.dorsal));
-            }
-            self.ui_queue.push_back(frame);
-        }
         let t_last = self
             .rhythm_history
             .back()
@@ -477,26 +477,53 @@ impl eframe::App for App {
                 self.dorsal_history.pop_front();
             }
         }
-        while !self.ui_queue.is_empty() {
+
+        // Track 1-second peak history for level meter.
+        let now = std::time::Instant::now();
+        self.level_history
+            .push_back((now, self.last_frame.meta.channel_peak));
+        while let Some((t, _)) = self.level_history.front() {
+            if now.duration_since(*t).as_secs_f32() > 1.0 {
+                self.level_history.pop_front();
+            } else {
+                break;
+            }
+        }
+        let mut window_peak = [0.0f32; 2];
+        for (_, peaks) in &self.level_history {
+            window_peak[0] = window_peak[0].max(peaks[0]);
+            window_peak[1] = window_peak[1].max(peaks[1]);
+        }
+        self.last_frame.meta.window_peak = window_peak;
+    }
+}
+
+impl eframe::App for App {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if ctx.input(|i| i.viewport().close_requested()) {
+            // Honor OS window close requests by stopping the worker thread.
+            self.exiting.store(true, Ordering::SeqCst);
+        }
+
+        if self.exiting.load(Ordering::SeqCst) {
+            debug!("SIGINT received: closing window.");
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            return;
+        }
+
+        // Drain all frames into the delay queue.
+        while let Ok(frame) = self.ui_frame_rx.try_recv() {
+            self.ui_queue.push_back(frame);
+        }
+        if !self.has_ui_frame
+            && let Some(frame) = self.ui_queue.pop_front()
+        {
+            self.apply_ui_frame(frame);
+            self.has_ui_frame = true;
+        }
+        while self.ui_queue.len() > self.visual_delay_frames {
             if let Some(frame) = self.ui_queue.pop_front() {
-                self.last_frame = frame;
-                // Track 1-second peak history for level meter.
-                let now = std::time::Instant::now();
-                self.level_history
-                    .push_back((now, self.last_frame.meta.channel_peak));
-                while let Some((t, _)) = self.level_history.front() {
-                    if now.duration_since(*t).as_secs_f32() > 1.0 {
-                        self.level_history.pop_front();
-                    } else {
-                        break;
-                    }
-                }
-                let mut window_peak = [0.0f32; 2];
-                for (_, peaks) in &self.level_history {
-                    window_peak[0] = window_peak[0].max(peaks[0]);
-                    window_peak[1] = window_peak[1].max(peaks[1]);
-                }
-                self.last_frame.meta.window_peak = window_peak;
+                self.apply_ui_frame(frame);
             }
         }
 

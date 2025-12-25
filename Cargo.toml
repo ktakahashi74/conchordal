@@ -8,6 +8,9 @@ repository = "https://github.com/ktakahashi74/conchordal"
 keywords = ["audio", "alife", "music", "art", "rust"]
 categories = ["multimedia::audio", "science"]
 
+[lib]
+test = false
+
 [profile.dev]
 opt-level = 1
 debug = true

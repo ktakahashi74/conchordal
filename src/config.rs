@@ -70,6 +70,8 @@ pub struct PsychoAcousticsConfig {
     pub loudness_exp: f32,
     #[serde(default = "PsychoAcousticsConfig::default_roughness_k")]
     pub roughness_k: f32,
+    #[serde(default = "PsychoAcousticsConfig::default_roughness_weight")]
+    pub roughness_weight: f32,
     #[serde(default = "PsychoAcousticsConfig::default_use_incoherent_power")]
     pub use_incoherent_power: bool,
 }
@@ -81,6 +83,9 @@ impl PsychoAcousticsConfig {
     fn default_roughness_k() -> f32 {
         0.1
     }
+    fn default_roughness_weight() -> f32 {
+        0.5
+    }
     fn default_use_incoherent_power() -> bool {
         false
     }
@@ -91,6 +96,7 @@ impl Default for PsychoAcousticsConfig {
         Self {
             loudness_exp: Self::default_loudness_exp(),
             roughness_k: Self::default_roughness_k(),
+            roughness_weight: Self::default_roughness_weight(),
             use_incoherent_power: Self::default_use_incoherent_power(),
         }
     }
@@ -144,6 +150,8 @@ impl AppConfig {
         self.analysis.tau_ms = Self::round_f32(self.analysis.tau_ms);
         self.psychoacoustics.loudness_exp = Self::round_f32(self.psychoacoustics.loudness_exp);
         self.psychoacoustics.roughness_k = Self::round_f32(self.psychoacoustics.roughness_k);
+        self.psychoacoustics.roughness_weight =
+            Self::round_f32(self.psychoacoustics.roughness_weight);
         self
     }
 
@@ -222,6 +230,7 @@ mod tests {
         assert_eq!(cfg.audio.sample_rate, 48_000);
         assert_eq!(cfg.psychoacoustics.loudness_exp, 0.23);
         assert_eq!(cfg.psychoacoustics.roughness_k, 0.1);
+        assert_eq!(cfg.psychoacoustics.roughness_weight, 0.5);
         assert!(!cfg.psychoacoustics.use_incoherent_power);
 
         let contents = fs::read_to_string(&path).expect("read written config");
@@ -232,6 +241,10 @@ mod tests {
         assert!(
             contents.contains("# roughness_k = 0.1"),
             "should write commented roughness_k"
+        );
+        assert!(
+            contents.contains("# roughness_weight = 0.5"),
+            "should write commented roughness_weight"
         );
         assert!(
             contents.contains("# use_incoherent_power = false"),
@@ -259,6 +272,7 @@ mod tests {
             psychoacoustics: PsychoAcousticsConfig {
                 loudness_exp: 0.3,
                 roughness_k: 0.2,
+                roughness_weight: 0.8,
                 use_incoherent_power: false,
             },
             playback: PlaybackConfig {
@@ -277,6 +291,7 @@ mod tests {
         assert_eq!(cfg.analysis.tau_ms, 60.0);
         assert_eq!(cfg.psychoacoustics.loudness_exp, 0.3);
         assert_eq!(cfg.psychoacoustics.roughness_k, 0.2);
+        assert_eq!(cfg.psychoacoustics.roughness_weight, 0.8);
         assert!(!cfg.psychoacoustics.use_incoherent_power);
         assert!(!cfg.playback.wait_user_exit);
         assert!(cfg.playback.wait_user_start);

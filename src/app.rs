@@ -248,7 +248,7 @@ impl App {
             habituation_tau: 8.0,
             habituation_weight: 0.5,
             habituation_max_depth: 1.0,
-            consonance_roughness_weight: 0.5,
+            consonance_roughness_weight: config.psychoacoustics.roughness_weight,
             loudness_exp: config.psychoacoustics.loudness_exp, // Zwicker
             tau_ms: config.analysis.tau_ms,
             ref_power: 1e-4,

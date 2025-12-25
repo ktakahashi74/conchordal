@@ -162,8 +162,6 @@ impl NeuralCore for KuramotoCore {
         dt: f32,
         global_coupling: f32,
     ) -> ArticulationSignal {
-        let dt = dt.max(1e-4);
-
         self.energy -= self.basal_cost * dt;
         if self.energy <= 0.0 {
             self.state = ArticulationState::Idle;
@@ -286,7 +284,6 @@ impl NeuralCore for DroneCore {
         dt: f32,
         _global_coupling: f32,
     ) -> ArticulationSignal {
-        let dt = dt.max(1e-4);
         let omega = 2.0 * PI * self.sway_rate.max(0.01);
         self.phase = (self.phase + omega * dt).rem_euclid(2.0 * PI);
         let lfo = 0.5 * (self.phase.sin() + 1.0);

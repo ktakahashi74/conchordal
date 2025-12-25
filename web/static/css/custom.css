@@ -69,8 +69,8 @@
 }
 
 .masthead-image {
-    width: 100%;
-    max-width: 900px;
+    width: 75%;
+    max-width: 675px;
     height: auto;
     border-radius: 12px;
     box-shadow: 0 20px 40px rgba(0, 0, 0, 0.45);

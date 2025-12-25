@@ -20,7 +20,7 @@ fn test_population_add_remove_agent() {
         initial_tones_hz: vec![],
         amplitude: 0.1,
     };
-    let mut pop = Population::new(params);
+    let mut pop = Population::new(params, 48_000.0);
     let landscape = LandscapeFrame::default();
 
     assert_eq!(pop.individuals.len(), 0, "Population should start empty");
@@ -61,7 +61,7 @@ fn wildcard_target_removes_matching_agents() {
         initial_tones_hz: vec![],
         amplitude: 0.1,
     };
-    let mut pop = Population::new(params);
+    let mut pop = Population::new(params, 48_000.0);
     let landscape = LandscapeFrame::default();
 
     let life = LifecycleConfig::Decay {
@@ -130,10 +130,13 @@ fn test_conductor_timing() {
     };
 
     let mut conductor = Conductor::from_scenario(scenario);
-    let mut pop = Population::new(PopulationParams {
-        initial_tones_hz: vec![],
-        amplitude: 0.0,
-    });
+    let mut pop = Population::new(
+        PopulationParams {
+            initial_tones_hz: vec![],
+            amplitude: 0.0,
+        },
+        48_000.0,
+    );
     let landscape = LandscapeFrame::default();
 
     // 2. Dispatch at T=0.5 (Should NOT fire)
@@ -172,7 +175,7 @@ fn test_agent_lifecycle_decay_death() {
         initial_tones_hz: vec![],
         amplitude: 0.1,
     };
-    let mut pop = Population::new(params);
+    let mut pop = Population::new(params, 48_000.0);
     let landscape = LandscapeFrame::default(); // Dummy landscape
 
     // Half-life = 0.05s (very fast decay)
@@ -261,7 +264,7 @@ fn harmonic_render_spectrum_hits_expected_bins() {
         group_idx: 0,
         member_idx: 0,
     };
-    let mut agent = cfg.spawn(metadata.id, 0, metadata);
+    let mut agent = cfg.spawn(metadata.id, 0, metadata, 48_000.0);
     let space = Log2Space::new(55.0, 1760.0, 12);
     let mut amps = vec![0.0f32; space.n_bins()];
 
@@ -298,10 +301,13 @@ fn harmonic_render_spectrum_hits_expected_bins() {
 fn set_freq_syncs_target_pitch_log2() {
     let space = Log2Space::new(55.0, 880.0, 12);
     let landscape = LandscapeFrame::new(space);
-    let mut pop = Population::new(PopulationParams {
-        initial_tones_hz: vec![220.0],
-        amplitude: 0.1,
-    });
+    let mut pop = Population::new(
+        PopulationParams {
+            initial_tones_hz: vec![220.0],
+            amplitude: 0.1,
+        },
+        48_000.0,
+    );
 
     let agent = pop.individuals.first_mut().expect("agent exists");
     match agent {
@@ -359,7 +365,7 @@ fn population_spectrum_uses_log2_space() {
         initial_tones_hz: vec![55.0],
         amplitude: 0.5,
     };
-    let mut pop = Population::new(params);
+    let mut pop = Population::new(params, 48_000.0);
     if let Some(IndividualWrapper::PureTone(ind)) = pop.individuals.first_mut() {
         ind.last_signal = ArticulationSignal {
             amplitude: 1.0,

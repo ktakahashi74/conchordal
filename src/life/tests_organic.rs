@@ -37,7 +37,7 @@ fn spawn_agent(freq: f32, id: u64) -> crate::life::individual::PureTone {
         group_idx: 0,
         member_idx: 0,
     };
-    match cfg.spawn(id, 0, meta) {
+    match cfg.spawn(id, 0, meta, 48_000.0) {
         IndividualWrapper::PureTone(ind) => ind,
         _ => unreachable!(),
     }
@@ -144,10 +144,13 @@ fn movement_compares_adjusted_scores() {
 #[test]
 fn setfreq_sync_prevents_snapback() {
     let landscape = make_landscape();
-    let mut pop = Population::new(PopulationParams {
-        initial_tones_hz: vec![220.0],
-        amplitude: 0.1,
-    });
+    let mut pop = Population::new(
+        PopulationParams {
+            initial_tones_hz: vec![220.0],
+            amplitude: 0.1,
+        },
+        48_000.0,
+    );
 
     let agent = pop.individuals.first_mut().expect("agent exists");
     match agent {

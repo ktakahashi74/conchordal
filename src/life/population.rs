@@ -28,6 +28,7 @@ pub struct Population {
     pub global_coupling: f32,
     shutdown_gain: f32,
     pending_update: Option<LandscapeUpdate>,
+    fs: f32,
 }
 
 impl Population {
@@ -55,7 +56,8 @@ impl Population {
         false
     }
 
-    pub fn new(p: PopulationParams) -> Self {
+    pub fn new(p: PopulationParams, fs: f32) -> Self {
+        info!("Population sample rate: {:.1} Hz", fs);
         let individuals: Vec<IndividualWrapper> = p
             .initial_tones_hz
             .into_iter()
@@ -84,7 +86,7 @@ impl Population {
                     group_idx: 0,
                     member_idx: idx,
                 };
-                cfg.spawn(idx as u64, 0, metadata)
+                cfg.spawn(idx as u64, 0, metadata, fs)
             })
             .collect();
         Self {
@@ -98,6 +100,7 @@ impl Population {
             global_coupling: 1.0,
             shutdown_gain: 1.0,
             pending_update: None,
+            fs,
         }
     }
 
@@ -414,7 +417,7 @@ impl Population {
                     group_idx,
                     member_idx: 0,
                 };
-                let spawned = agent.spawn(id, self.current_frame, metadata);
+                let spawned = agent.spawn(id, self.current_frame, metadata, self.fs);
                 self.add_individual(spawned);
             }
             Action::Finish => {
@@ -454,7 +457,7 @@ impl Population {
                         group_idx,
                         member_idx: i,
                     };
-                    let spawned = cfg.spawn(id, self.current_frame, metadata);
+                    let spawned = cfg.spawn(id, self.current_frame, metadata, self.fs);
                     self.add_individual(spawned);
                 }
             }
@@ -726,10 +729,13 @@ mod tests {
         landscape.consonance01[idx_high] = 1.0;
         landscape.consonance[idx_raw] = 10.0;
 
-        let pop = Population::new(PopulationParams {
-            initial_tones_hz: Vec::new(),
-            amplitude: 0.0,
-        });
+        let pop = Population::new(
+            PopulationParams {
+                initial_tones_hz: Vec::new(),
+                amplitude: 0.0,
+            },
+            48_000.0,
+        );
         let method = SpawnMethod::Harmonicity {
             min_freq: 100.0,
             max_freq: 400.0,

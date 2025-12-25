@@ -357,6 +357,7 @@ impl IndividualConfig {
         assigned_id: u64,
         start_frame: u64,
         mut metadata: AgentMetadata,
+        fs: f32,
     ) -> IndividualWrapper {
         metadata.id = assigned_id;
         if metadata.tag.is_none() {
@@ -374,7 +375,6 @@ impl IndividualConfig {
                 brain,
                 ..
             } => {
-                let fs = 48_000.0f32;
                 let target_freq = freq.max(1.0);
                 let target_pitch_log2 = target_freq.log2();
                 let integration_window = 0.05 + 6.0 / target_freq;
@@ -423,7 +423,6 @@ impl IndividualConfig {
                 brain,
                 ..
             } => {
-                let fs = 48_000.0f32;
                 let mut rng = rng();
                 let partials = 16;
                 let mut phases = Vec::with_capacity(partials);
@@ -548,6 +547,7 @@ mod tests {
                 group_idx: 0,
                 member_idx: 0,
             },
+            48_000.0,
         );
         match agent {
             IndividualWrapper::PureTone(ind) => {

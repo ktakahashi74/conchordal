@@ -150,7 +150,6 @@ pub struct App {
     visual_delay_frames: usize,
     _audio: Option<AudioOutput>,
     audio_init_error: Option<String>,
-    wav_tx: Option<Sender<Arc<[f32]>>>,
     worker_handle: Option<std::thread::JoinHandle<()>>,
     wav_handle: Option<std::thread::JoinHandle<()>>,
     exiting: Arc<AtomicBool>,
@@ -210,17 +209,22 @@ impl App {
         };
 
         // WAV
-        let (wav_tx, wav_rx) = bounded::<Arc<[f32]>>(16);
-        let wav_handle = args
-            .wav
-            .clone()
-            .map(|path| WavOutput::run(wav_rx, path, runtime_sample_rate));
+        let (wav_tx, wav_handle) = if let Some(path) = args.wav.clone() {
+            let (wav_tx, wav_rx) = bounded::<Arc<[f32]>>(16);
+            let wav_handle = WavOutput::run(wav_rx, path, runtime_sample_rate);
+            (Some(wav_tx), Some(wav_handle))
+        } else {
+            (None, None)
+        };
 
         // Population (life)
-        let pop = Population::new(PopulationParams {
-            initial_tones_hz: vec![440.0],
-            amplitude: 0.0,
-        });
+        let pop = Population::new(
+            PopulationParams {
+                initial_tones_hz: vec![440.0],
+                amplitude: 0.0,
+            },
+            runtime_sample_rate as f32,
+        );
 
         // Analysis/NSGT setup
         let fs: f32 = runtime_sample_rate as f32;
@@ -360,11 +364,7 @@ impl App {
         };
 
         // Give the worker its own handle if WAV output is enabled.
-        let wav_tx_for_worker = if args.wav.is_some() {
-            Some(wav_tx.clone())
-        } else {
-            None
-        };
+        let wav_tx_for_worker = wav_tx;
 
         // Spawn worker thread
         let stop_flag_worker = stop_flag.clone();
@@ -422,7 +422,6 @@ impl App {
             visual_delay_frames,
             _audio: audio_out,
             audio_init_error,
-            wav_tx: Some(wav_tx),
             wav_handle,
             worker_handle,
             exiting: stop_flag,
@@ -501,10 +500,6 @@ impl eframe::App for App {
             }
         }
 
-        if self.last_frame.meta.playback_state == PlaybackState::Finished {
-            self.wav_tx.take();
-        }
-
         crate::ui::windows::main_window(
             ctx,
             &self.last_frame,
@@ -525,8 +520,6 @@ impl Drop for App {
 
         // Request shutdown so worker threads can exit before we join them.
         self.exiting.store(true, Ordering::SeqCst);
-
-        self.wav_tx.take();
 
         if let Some(handle) = self.worker_handle.take() {
             let _ = handle.join();
@@ -549,7 +542,7 @@ fn worker_loop(
     mut lparams: LandscapeParams,
     mut dorsal: DorsalStream,
     mut audio_prod: Option<ringbuf::HeapProd<f32>>,
-    wav_tx: Option<Sender<Arc<[f32]>>>,
+    mut wav_tx: Option<Sender<Arc<[f32]>>>,
     exiting: Arc<AtomicBool>,
     spectrum_to_harmonicity_tx: Sender<(u64, Arc<[f32]>)>,
     harmonicity_result_rx: Receiver<(u64, Vec<f32>, Vec<f32>)>,
@@ -748,7 +741,7 @@ fn worker_loop(
                 }
 
                 let mono_chunk: Arc<[f32]> = Arc::from(time_chunk);
-                if let Some(tx) = &wav_tx {
+                if let Some(tx) = wav_tx.as_ref() {
                     let _ = tx.try_send(Arc::clone(&mono_chunk));
                 }
 
@@ -781,9 +774,13 @@ fn worker_loop(
             let roughness_lag = last_r_analysis_frame.map(|id| frame_idx.saturating_sub(id));
 
             let finished_now =
-                pop.abort_requested || (conductor.is_done() && pop.individuals.is_empty());
+                pop.individuals.is_empty() && (conductor.is_done() || pop.abort_requested);
             if finished_now {
                 playback_state = PlaybackState::Finished;
+            }
+            if finished_now && wav_tx.is_some() {
+                wav_tx.take();
+                info!("[t={:.6}] WAV closed.", current_time);
             }
 
             let must_send_ui = conductor.is_done() || pop.abort_requested;

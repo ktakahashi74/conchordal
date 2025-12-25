@@ -167,7 +167,21 @@ impl AppConfig {
         // File does not exist: write defaults and return them.
         let default_cfg = Self::default().rounded();
         if let Ok(text) = toml::to_string_pretty(&default_cfg) {
-            if let Err(err) = fs::write(path_obj, text) {
+            let mut commented = String::new();
+            for line in text.lines() {
+                let trimmed = line.trim();
+                if trimmed.is_empty() {
+                    commented.push('\n');
+                } else if trimmed.starts_with('[') && trimmed.ends_with(']') {
+                    commented.push_str(line);
+                    commented.push('\n');
+                } else {
+                    commented.push_str("# ");
+                    commented.push_str(line);
+                    commented.push('\n');
+                }
+            }
+            if let Err(err) = fs::write(path_obj, commented) {
                 eprintln!("Failed to write default config to {path}: {err}");
             }
         } else {
@@ -212,16 +226,16 @@ mod tests {
 
         let contents = fs::read_to_string(&path).expect("read written config");
         assert!(
-            contents.contains("loudness_exp = 0.23"),
-            "should write concise loudness_exp"
+            contents.contains("# loudness_exp = 0.23"),
+            "should write commented loudness_exp"
         );
         assert!(
-            contents.contains("roughness_k = 0.1"),
-            "should write concise roughness_k"
+            contents.contains("# roughness_k = 0.1"),
+            "should write commented roughness_k"
         );
         assert!(
-            contents.contains("use_incoherent_power = false"),
-            "should write use_incoherent_power"
+            contents.contains("# use_incoherent_power = false"),
+            "should write commented use_incoherent_power"
         );
 
         let _ = fs::remove_file(&path);

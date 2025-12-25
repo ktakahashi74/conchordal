@@ -158,6 +158,24 @@ a {
     }
 }
 
+.nav-toggle {
+    display: none;
+    background: none;
+    border: 1px solid $border-color;
+    color: $text-secondary;
+    padding: $spacing-xs $spacing-md;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    cursor: pointer;
+
+    &:hover {
+        color: $text-primary;
+        border-color: $border-light;
+    }
+}
+
 .nav-link {
     color: $text-secondary;
     font-weight: 500;
@@ -535,6 +553,12 @@ a {
         text-align: center;
     }
 
+    .nav-toggle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
     .hero {
         padding: 8rem 0 $spacing-2xl 0;
     }
@@ -551,6 +575,11 @@ a {
         gap: $spacing-sm;
         width: 100%;
         justify-content: center;
+        display: none;
+    }
+
+    .nav-menu.is-open {
+        display: flex;
     }
 
     .nav-link {

@@ -30,7 +30,11 @@
                     {{ config.title }}
                 </a>
 
-                <div class="nav-menu">
+                <button class="nav-toggle" type="button" aria-controls="site-nav" aria-expanded="false">
+                    Menu
+                </button>
+
+                <div class="nav-menu" id="site-nav">
                     <a href="{% if lang == 'ja' %}/ja{% else %}/{% endif %}" class="nav-link">
                         Home
                     </a>
@@ -86,5 +90,18 @@
     </footer>
 
     {% block scripts %}{% endblock scripts %}
+    <script>
+        (function () {
+            var toggle = document.querySelector('.nav-toggle');
+            var menu = document.querySelector('#site-nav');
+            if (!toggle || !menu) {
+                return;
+            }
+            toggle.addEventListener('click', function () {
+                var isOpen = menu.classList.toggle('is-open');
+                toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+            });
+        })();
+    </script>
 </body>
 </html>

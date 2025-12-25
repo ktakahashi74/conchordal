@@ -115,16 +115,32 @@ impl Landscape {
         }
     }
 
+    /// Raw consonance (unbounded). Prefer `evaluate_pitch01` for normalized usage.
     pub fn evaluate_pitch(&self, freq_hz: f32) -> f32 {
         self.sample_linear(&self.consonance, freq_hz)
     }
 
+    /// Raw consonance (unbounded). Prefer `evaluate_pitch01_log2` for normalized usage.
     pub fn evaluate_pitch_log2(&self, log_freq: f32) -> f32 {
         self.sample_linear_log2(&self.consonance, log_freq)
     }
 
+    pub fn evaluate_pitch01(&self, freq_hz: f32) -> f32 {
+        self.sample_linear(&self.consonance01, freq_hz)
+            .clamp(0.0, 1.0)
+    }
+
+    pub fn evaluate_pitch01_log2(&self, log_freq: f32) -> f32 {
+        self.sample_linear_log2(&self.consonance01, log_freq)
+            .clamp(0.0, 1.0)
+    }
+
     pub fn consonance_at(&self, freq_hz: f32) -> f32 {
         self.evaluate_pitch(freq_hz)
+    }
+
+    pub fn consonance01_at(&self, freq_hz: f32) -> f32 {
+        self.evaluate_pitch01(freq_hz)
     }
 
     pub fn get_crowding_at(&self, freq_hz: f32) -> f32 {
@@ -258,6 +274,23 @@ mod tests {
                 assert!(c >= 0.0 && c <= 1.0);
             }
         }
+    }
+
+    #[test]
+    fn evaluate_pitch01_uses_consonance01() {
+        let mut landscape = Landscape::new(Log2Space::new(100.0, 400.0, 12));
+        landscape.consonance.fill(10.0);
+        landscape.consonance01.fill(0.3);
+        let val = landscape.evaluate_pitch01(200.0);
+        assert!((val - 0.3).abs() < 1e-6, "val={val}");
+    }
+
+    #[test]
+    fn evaluate_pitch01_is_clamped() {
+        let mut landscape = Landscape::new(Log2Space::new(100.0, 400.0, 12));
+        landscape.consonance01.fill(1.2);
+        let val = landscape.evaluate_pitch01(200.0);
+        assert!((val - 1.0).abs() < 1e-6, "val={val}");
     }
 }
 

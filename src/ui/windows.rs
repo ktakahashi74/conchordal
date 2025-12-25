@@ -443,7 +443,7 @@ pub fn main_window(
 
         ui.separator();
 
-        let consonance = &frame.landscape.consonance;
+        let consonance = &frame.landscape.consonance01;
 
         ui.columns(1, |cols| {
             let ui = &mut cols[0];
@@ -456,7 +456,7 @@ pub fn main_window(
                 &frame.landscape.space.centers_hz,
                 consonance,
                 "C",
-                -1.0,
+                0.0,
                 1.0,
                 102.0,
                 Some("landscape_group"),

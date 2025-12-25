@@ -63,18 +63,18 @@ fn test_inertia_calculation() {
 fn test_scan_logic() {
     let mut landscape = make_landscape();
     let mut agent = spawn_agent(220.0, 3);
-    let n = landscape.consonance.len();
+    let n = landscape.consonance01.len();
     landscape.subjective_intensity = vec![1.0; n];
-    landscape.consonance.fill(-5.0);
+    landscape.consonance01.fill(0.0);
     let idx_cur = landscape
         .space
         .index_of_freq(agent.body.base_freq_hz())
         .unwrap_or(0);
-    landscape.consonance[idx_cur] = -5.0;
+    landscape.consonance01[idx_cur] = 0.0;
     let target_alt = agent.body.base_freq_hz() * 1.5;
     if let Some(idx_alt) = landscape.space.index_of_freq(target_alt) {
-        if let Some(c) = landscape.consonance.get_mut(idx_alt) {
-            *c = 5.0;
+        if let Some(c) = landscape.consonance01.get_mut(idx_alt) {
+            *c = 1.0;
         }
     }
 

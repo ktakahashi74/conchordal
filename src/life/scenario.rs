@@ -723,7 +723,7 @@ pub enum SpawnMethod {
         /// Minimum ERB distance between newborn fundamentals at spawn time. Default: 1.0
         min_dist_erb: Option<f32>,
     },
-    /// Search for a region where H ≈ 0 (near a zero crossing).
+    /// Search for a region where H ≈ 0.5 (midpoint of normalized consonance).
     ZeroCrossing {
         min_freq: f32,
         max_freq: f32,

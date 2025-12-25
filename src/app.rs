@@ -834,7 +834,7 @@ fn worker_loop(
                                 target_freq: 2.0f32.powf(ind.target_pitch_log2),
                                 integration_window: ind.integration_window,
                                 breath_gain: ind.breath_gain,
-                                consonance: current_landscape.evaluate_pitch(f),
+                                consonance: current_landscape.evaluate_pitch01(f),
                                 habituation: current_landscape.get_habituation_at(f),
                             }
                         }
@@ -846,7 +846,7 @@ fn worker_loop(
                                 target_freq: 2.0f32.powf(ind.target_pitch_log2),
                                 integration_window: ind.integration_window,
                                 breath_gain: ind.breath_gain,
-                                consonance: current_landscape.evaluate_pitch(f),
+                                consonance: current_landscape.evaluate_pitch01(f),
                                 habituation: current_landscape.get_habituation_at(f),
                             }
                         }

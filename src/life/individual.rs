@@ -592,7 +592,7 @@ impl<N: NeuralCore, B: SoundBody> Individual<N, B> {
             let mut best_score = f32::MIN;
             let adjusted_score = |pitch_log2: f32| -> f32 {
                 let clamped = pitch_log2.clamp(fmin, fmax);
-                let score = landscape.evaluate_pitch_log2(clamped);
+                let score = landscape.evaluate_pitch01_log2(clamped);
                 let distance_oct = (clamped - current_pitch_log2).abs();
                 let penalty = distance_oct * self.integration_window * 0.5;
                 let dist = clamped - self.tessitura_center;
@@ -703,7 +703,7 @@ impl<N: NeuralCore, B: SoundBody> AudioAgent for Individual<N, B> {
         let rhythms = landscape.rhythm;
         for sample in buffer.iter_mut() {
             self.update_organic_movement(&rhythms, dt_per_sample, landscape);
-            let consonance = landscape.evaluate_pitch(self.body.base_freq_hz());
+            let consonance = landscape.evaluate_pitch01(self.body.base_freq_hz());
             let mut signal =
                 self.core
                     .process(consonance, &rhythms, dt_per_sample, global_coupling);

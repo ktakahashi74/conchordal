@@ -240,7 +240,7 @@ impl Population {
                     if self.is_range_occupied(f, min_dist_erb) {
                         continue;
                     }
-                    if let Some(&c_val) = landscape.consonance.get(i)
+                    if let Some(&c_val) = landscape.consonance01.get(i)
                         && c_val > best_val
                     {
                         found = true;
@@ -255,7 +255,7 @@ impl Population {
                     let mut best = idx_min;
                     let mut best_val = f32::MIN;
                     for i in idx_min..=idx_max {
-                        if let Some(&c_val) = landscape.consonance.get(i)
+                        if let Some(&c_val) = landscape.consonance01.get(i)
                             && c_val > best_val
                         {
                             best_val = c_val;
@@ -274,7 +274,7 @@ impl Population {
                     if self.is_range_occupied(f, min_dist_erb) {
                         continue;
                     }
-                    if let Some(&v) = landscape.consonance.get(i)
+                    if let Some(&v) = landscape.consonance01.get(i)
                         && v < best_val
                     {
                         found = true;
@@ -293,8 +293,8 @@ impl Population {
                     if self.is_range_occupied(f, min_dist_erb) {
                         continue;
                     }
-                    if let Some(&v) = landscape.consonance.get(i) {
-                        let d = v.abs();
+                    if let Some(&v) = landscape.consonance01.get(i) {
+                        let d = (v - 0.5).abs();
                         if d < best_val {
                             found = true;
                             best_val = d;
@@ -350,7 +350,11 @@ impl Population {
                             return 0.0;
                         }
                         let _ = local_idx;
-                        landscape.consonance.get(i).copied().unwrap_or(0.0).max(0.0)
+                        landscape
+                            .consonance01
+                            .get(i)
+                            .copied()
+                            .unwrap_or(0.0)
                     })
                     .collect();
                 if let Some(temp) = temperature
@@ -706,6 +710,39 @@ impl Population {
             }
         }
         &self.buffers.amps
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rand::SeedableRng;
+
+    #[test]
+    fn decide_frequency_uses_consonance01() {
+        let space = Log2Space::new(100.0, 400.0, 12);
+        let mut landscape = LandscapeFrame::new(space.clone());
+        landscape.consonance.fill(-10.0);
+        landscape.consonance01.fill(0.0);
+
+        let idx_high = space.index_of_freq(200.0).expect("idx");
+        let idx_raw = space.index_of_freq(300.0).expect("idx");
+        landscape.consonance01[idx_high] = 1.0;
+        landscape.consonance[idx_raw] = 10.0;
+
+        let pop = Population::new(PopulationParams {
+            initial_tones_hz: Vec::new(),
+            amplitude: 0.0,
+        });
+        let method = SpawnMethod::Harmonicity {
+            min_freq: 100.0,
+            max_freq: 400.0,
+            min_dist_erb: Some(0.0),
+        };
+        let mut rng = rand::rngs::StdRng::seed_from_u64(7);
+        let freq = pop.decide_frequency(&method, &landscape, &mut rng);
+        let picked_idx = space.index_of_freq(freq).expect("picked idx");
+        assert_eq!(picked_idx, idx_high);
     }
 }
 

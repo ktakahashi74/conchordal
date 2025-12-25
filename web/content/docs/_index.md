@@ -6,4 +6,6 @@ sort_by = "weight"
 
 # Conchordal Documentation
 
-Coming soon.
+Resources:
+
+- [Rhai Reference](/docs/rhai/)

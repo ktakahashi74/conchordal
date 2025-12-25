@@ -372,6 +372,14 @@ a {
     }
 }
 
+.page-meta-list {
+    flex-direction: column;
+    align-items: center;
+    gap: $spacing-xs;
+    margin-top: $spacing-sm;
+    text-align: center;
+}
+
 .page-content {
     max-width: 800px;
     margin: 0 auto;

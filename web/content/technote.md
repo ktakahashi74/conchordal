@@ -5,11 +5,11 @@ description = "A deep dive into the psychoacoustic algorithms, logarithmic signa
 template = "page.html"
 [extra]
 author = "Koichi Takahashi"
+last_updated = "2025-12-25"
+source_version = "0.1.0"
+source_snapshot = "2025-12-25T11:36:55Z"
+generated_by = "Claude Opus 4.5"
 +++
-
-**Author:** Koichi Takahashi  
-**Date:** 2025-12-25  
-**Email:** info@conchordal.org
 
 # 1. Introduction: The Bio-Acoustic Paradigm
 
@@ -296,29 +296,39 @@ Conchordal is implemented in Rust to satisfy the stringent requirements of real-
 
 ## 6.1 Threading Model
 
-The application creates three primary thread contexts:
+The application creates four primary thread contexts:
 
 1.  **Audio Thread (Real-Time Priority)**:
     *   Managed by `cpal` in `audio/output.rs`.
     *   **Constraint**: Must never block. No Mutexes, no memory allocation.
     *   **Responsibility**: Iterates through the `Population`, calling `render_wave` on every active agent, mixing the output, and pushing to the hardware buffer. It reads from a read-only snapshot of the Landscape.
 
-2.  **Analysis Worker (Background Priority)**:
-    *   Defined in `life/analysis_worker.rs`.
-    *   **Responsibility**: Performs the heavy DSP. It receives copies of the audio buffer via a ring buffer. It runs the NSGT, Roughness convolution, and Harmonicity projection.
-    *   **Update Cycle**: When analysis is complete, it constructs a new `LandscapeFrame` and sends it to the Audio thread via a lock-free Single-Producer Single-Consumer (SPSC) channel.
+2.  **Harmonicity Worker (Background Priority)**:
+    *   Defined in `core/stream/harmonicity.rs`.
+    *   **Responsibility**: Receives spectral data (log2 amplitude spectrum) and computes the Harmonicity field using the Sibling Projection algorithm.
+    *   **Update Cycle**: When analysis is complete, it sends the updated Harmonicity data back to the main loop via a lock-free SPSC channel.
 
-3.  **App/GUI Thread (Main)**:
+3.  **Roughness Worker (Background Priority)**:
+    *   Defined in `core/stream/roughness.rs`.
+    *   **Responsibility**: Receives audio chunks and computes the Roughness field via ERB-domain convolution.
+    *   **Update Cycle**: Sends updated Roughness data back to the main loop via a separate SPSC channel.
+
+4.  **App/GUI Thread (Main)**:
     *   Runs the `egui` visualizer and the `Rhai` scripting engine.
     *   **Responsibility**: Handles user input, visualizing the Landscape (`ui/plots.rs`), and executing the Scenario script. It sends command actions (e.g., `SpawnAgent`, `SetGlobalParameter`) to the `Population`.
+    *   **DorsalStream**: Rhythm analysis (`core/stream/dorsal.rs`) runs synchronously within the main loop, processing audio chunks to extract rhythmic energy metrics (e_low, e_mid, e_high, flux) for the `NeuralRhythms` modulation bank.
 
 ## 6.2 Data Flow and Double Buffering
 
-To maintain data consistency without locking the audio thread, Conchordal uses a double-buffering strategy for the Landscape.
+To maintain data consistency without locking the audio thread, Conchordal uses a multi-channel update strategy for the Landscape.
 
-1.  The Analysis Worker builds a new Landscape in the background.
-2.  The `Population` holds the "current" Landscape.
-3.  When a new frame arrives from the worker, the `Population` atomically swaps the pointer (or replaces the data structure) at the start of a processing block. This ensures that the audio thread always sees a consistent snapshot of the physics, even if the analysis lags slightly behind real-time.
+1.  The **Harmonicity Worker** builds the Harmonicity field from the log2 spectrum in the background.
+2.  The **Roughness Worker** builds the Roughness field from audio chunks in the background.
+3.  The **Main Loop** receives updates from both workers via separate SPSC channels and merges them into the `LandscapeFrame`.
+4.  The `Population` holds the "current" Landscape. When new data arrives from either worker, the main loop updates the corresponding field and recomputes the combined Consonance.
+5.  The **DorsalStream** processes audio synchronously to update rhythm metrics, which are stored in `landscape.rhythm`.
+
+This decoupled architecture ensures that the audio thread always sees a consistent snapshot of the physics, even if the analysis workers lag slightly behind real-time. Each worker can operate at its own pace without blocking the others.
 
 ## 6.3 The Conductor: Scripting with Rhai
 
@@ -326,9 +336,15 @@ The Conductor module acts as the interface between the human artist and the ecos
 
 The `ScriptHost` struct maps internal Rust functions to Rhai commands:
 
-*   `spawn(tag, method, life,...)`: Maps to `Action::SpawnAgents`. Allows defining probabilistic spawn clouds (e.g., "Spawn 5 agents in the 200-400Hz range using Harmonicity density").
-*   `set_harmonicity(map)`: Maps to `Action::SetHarmonicity`. Allows real-time modulation of physics parameters like `mirror_weight`.
+*   `spawn_agents(tag, method, life, count, amp)`: Maps to `Action::SpawnAgents`. Allows defining probabilistic spawn clouds (e.g., "Spawn 5 agents in the 200-400Hz range using Harmonicity density").
+*   `add_agent(tag, freq, amp, life)`: Maps to `Action::AddAgent`. Spawns a single agent at a specific frequency.
+*   `set_harmonicity(map)`: Maps to `Action::SetHarmonicity`. Allows real-time modulation of physics parameters like `mirror_weight` and `limit`.
+*   `set_roughness_tolerance(value)`: Adjusts the Roughness penalty weight in the Consonance calculation.
+*   `set_habituation(weight, tau, max_depth)`: Configures the Habituation mechanism parameters.
+*   `set_rhythm_vitality(value)`: Controls the self-oscillation energy of the DorsalStream rhythm section.
 *   `wait(seconds)`: A non-blocking wait that yields control back to the event loop, allowing the script to govern the timeline.
+*   `scene(name)`: Marks the beginning of a named scene for visualization and debugging.
+*   `remove(target)`: Removes agents matching the target pattern (supports wildcards like `"kick_*"`).
 
 **Scenario Parsing**: Scenarios are loaded from `.rhai` or `.json5` files. This separation allows users to compose the "Macro-Structure" (the narrative arc, the changing laws of physics) while the "Micro-Structure" (the specific notes and rhythms) emerges from the agents' adaptation to those changes.
 
@@ -336,7 +352,7 @@ The `ScriptHost` struct maps internal Rust functions to Rhai commands:
 
 The following examples, derived from the `samples/` directory, illustrate how specific parameter configurations lead to complex musical behaviors.
 
-## 7.1 Case Study: Self-Organizing Rhythm (`self_organizing_rhythm.rhai`)
+## 7.1 Case Study: Self-Organizing Rhythm (`samples/02_mechanisms/rhythmic_sync.rhai`)
 
 This script demonstrates the emergent quantization of time.
 
@@ -344,7 +360,7 @@ This script demonstrates the emergent quantization of time.
 2.  **Phase 2 (The Swarm)**: A cloud of agents is spawned with random phases.
 3.  **Emergence**: Because the agents have `KuramotoCore` brains coupled to the Delta band, they sense the rhythm established by the Kick. Over a period of seconds, their phases drift and lock into alignment with the Kick. The result is a synchronized pulse that was not explicitly programmed into the swarm—it arose from the physics of the coupled oscillators.
 
-## 7.2 Case Study: Mirror Dualism (`mirror_dualism.rhai`)
+## 7.2 Case Study: Mirror Dualism (`samples/04_ecosystems/mirror_dualism.rhai`)
 
 This script explores the structural role of the `mirror_weight` parameter.
 
@@ -352,7 +368,7 @@ This script explores the structural role of the `mirror_weight` parameter.
 2.  **State A (Major)**: `set_harmonicity(#{ mirror: 0.0 })`. The system uses the Common Root projection (Overtone Series). Agents seeking consonance cluster around E4 and G4, forming a C Major triad.
 3.  **State B (Minor)**: `set_harmonicity(#{ mirror: 1.0 })`. The system switches to Common Overtone projection (Undertone Series). The "gravity" of the landscape inverts. Agents now find stability at Ab3 and F3 (intervals of a minor sixth and perfect fourth relative to C), creating a Phrygian/Minor texture. This demonstrates that "Tonality" in Conchordal is a manipulable environmental variable, akin to temperature or gravity.
 
-## 7.3 Case Study: Drift and Flow (`drift_and_flow.rhai`)
+## 7.3 Case Study: Drift and Flow (`samples/04_ecosystems/drift_flow.rhai`)
 
 This script validates the hop-based movement logic.
 
@@ -377,7 +393,7 @@ Future development of Conchordal will focus on spatialization (extending the lan
 | `mirror_weight` | `Harmonicity` | 0.0-1.0 | Balance between Overtone (Major) and Undertone (Minor) gravity. |
 | `habituation_tau` | `Landscape` | Seconds | Time constant for auditory fatigue/boredom. |
 | `roughness_k` | `Landscape` | Float | Weight of dissonance penalty in fitness function. |
-| `vitality` | `NeuralRhythms` | 0.0-1.0 | Self-oscillation energy of the rhythm section. |
+| `vitality` | `DorsalStream` | 0.0-1.0 | Self-oscillation energy of the rhythm section. |
 | `commitment` | `Individual` | 0.0-1.0 | Resistance to movement/change of an agent. |
 
 # Appendix B: Mathematical Summary

@@ -715,7 +715,7 @@ fn worker_loop(
 
                 if roughness_updated || harmonicity_updated {
                     current_landscape.recompute_consonance(&lparams);
-                    if cfg!(debug_assertions) && frame_idx % 30 == 0 {
+                    if cfg!(debug_assertions) && frame_idx.is_multiple_of(30) {
                         let mut max_r = 0.0f32;
                         let mut max_i = 0usize;
                         for (i, &r) in current_landscape.roughness01.iter().enumerate() {

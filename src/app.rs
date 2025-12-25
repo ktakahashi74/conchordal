@@ -206,7 +206,7 @@ impl App {
                 .map(|out| out.config.sample_rate.0)
                 .unwrap_or(config.audio.sample_rate);
             if device_rate != config.audio.sample_rate {
-                info!(
+                debug!(
                     "Runtime sample rate overridden by device: {} (config {})",
                     device_rate, config.audio.sample_rate
                 );
@@ -280,7 +280,7 @@ impl App {
         let hop_duration = Duration::from_secs_f32(hop as f32 / fs);
         let hop_ms = (hop as f32 / fs) * 1000.0;
         let visual_delay_frames = 0;
-        info!(
+        debug!(
             "Visual delay frames: {} (latency_ms={:.1}, hop_ms={:.2})",
             visual_delay_frames, latency_ms, hop_ms
         );

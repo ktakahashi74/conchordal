@@ -4,7 +4,7 @@ use crate::core::landscape::{LandscapeFrame, LandscapeUpdate};
 use crate::core::log2space::Log2Space;
 use rand::{Rng, distr::Distribution, distr::weighted::WeightedIndex};
 use std::collections::HashMap;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 pub struct PopulationParams {
     pub initial_tones_hz: Vec<f32>,
@@ -57,7 +57,7 @@ impl Population {
     }
 
     pub fn new(p: PopulationParams, fs: f32) -> Self {
-        info!("Population sample rate: {:.1} Hz", fs);
+        debug!("Population sample rate: {:.1} Hz", fs);
         let individuals: Vec<IndividualWrapper> = p
             .initial_tones_hz
             .into_iter()

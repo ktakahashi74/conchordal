@@ -325,9 +325,7 @@ impl RoughnessKernel {
                 if d.abs() > half_width_erb {
                     continue;
                 }
-                if peak.bin_idx < erb.len()
-                    && (peak.bin_idx < j_lo || peak.bin_idx >= j_hi)
-                {
+                if peak.bin_idx < erb.len() && (peak.bin_idx < j_lo || peak.bin_idx >= j_hi) {
                     continue;
                 }
                 let w = lut_interp(&self.lut, self.erb_step, self.hw, d);

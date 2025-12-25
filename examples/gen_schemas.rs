@@ -87,9 +87,7 @@ fn schema_object_table(obj: &SchemaObject) -> Option<String> {
         let schema = &properties[key];
         let type_name = schema_type_name(schema);
         let description = schema_description(schema);
-        out.push_str(&format!(
-            "| {key} | {type_name} | {description} |\n"
-        ));
+        out.push_str(&format!("| {key} | {type_name} | {description} |\n"));
     }
 
     out.push('\n');

@@ -38,10 +38,7 @@ pub fn blackman_harris_window_symmetric(n: usize) -> Vec<f32> {
             let mut w = Vec::with_capacity(n);
             for i in 0..n {
                 let phi = two_pi * i as f64 / denom;
-                let w_i = a0
-                    - a1 * phi.cos()
-                    + a2 * (2.0 * phi).cos()
-                    - a3 * (3.0 * phi).cos();
+                let w_i = a0 - a1 * phi.cos() + a2 * (2.0 * phi).cos() - a3 * (3.0 * phi).cos();
                 w.push(w_i.max(0.0) as f32);
             }
             w
@@ -500,11 +497,7 @@ mod tests {
 
         let half = nfft / 2;
         let mags: Vec<f32> = buf[..half].iter().map(|z| z.norm()).collect();
-        let peak = mags
-            .iter()
-            .copied()
-            .fold(0.0f32, f32::max)
-            .max(1e-20);
+        let peak = mags.iter().copied().fold(0.0f32, f32::max).max(1e-20);
 
         let thr = peak * 1e-4;
         let mut k = 1usize;
@@ -513,10 +506,7 @@ mod tests {
         }
         assert!(k < half, "main lobe extends too far");
 
-        let side = mags[k..]
-            .iter()
-            .copied()
-            .fold(0.0f32, f32::max);
+        let side = mags[k..].iter().copied().fold(0.0f32, f32::max);
         if side > 0.0 {
             let side_db = 20.0 * (side / peak).log10();
             assert!(side_db < -70.0, "side lobe too high: {side_db:.2} dB");

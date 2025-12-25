@@ -67,12 +67,8 @@ impl SpectralFrontEnd {
             raw_density[i] = density;
         }
 
-        let peaks = extract_peaks_density_with_grid(
-            &raw_density,
-            &self.erb,
-            &self.du,
-            &self.peak_cfg,
-        );
+        let peaks =
+            extract_peaks_density_with_grid(&raw_density, &self.erb, &self.du, &self.peak_cfg);
 
         let mut subj_density_delta = vec![0.0f32; nsgt_power.len()];
         for peak in &peaks {
@@ -109,9 +105,9 @@ impl SpectralFrontEnd {
 mod tests {
     use super::*;
     use crate::core::harmonicity_kernel::{HarmonicityKernel, HarmonicityParams};
+    use crate::core::landscape::{LandscapeParams, RoughnessScalarMode};
     use crate::core::log2space::Log2Space;
     use crate::core::roughness_kernel::{KernelParams, RoughnessKernel};
-    use crate::core::landscape::{LandscapeParams, RoughnessScalarMode};
 
     fn build_params(fs: f32, space: &Log2Space) -> LandscapeParams {
         LandscapeParams {

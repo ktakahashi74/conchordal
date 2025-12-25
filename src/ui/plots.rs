@@ -120,7 +120,9 @@ pub fn log2_plot_hz(
         ys.len()
     );
     debug_assert!(
-        xs_hz.windows(2).all(|w| w[0].is_finite() && w[1].is_finite() && w[1] > w[0]),
+        xs_hz
+            .windows(2)
+            .all(|w| w[0].is_finite() && w[1].is_finite() && w[1] > w[0]),
         "log2_plot_hz expects strictly increasing finite x values"
     );
 

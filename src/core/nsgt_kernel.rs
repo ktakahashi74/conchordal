@@ -576,7 +576,10 @@ mod tests {
             .unwrap();
 
         let band = &nsgt.bands()[bi];
-        let sparse = band.spec_conj_sparse.as_ref().expect("coherent sparse missing");
+        let sparse = band
+            .spec_conj_sparse
+            .as_ref()
+            .expect("coherent sparse missing");
         let side_db = kernel_sidelobe_db(nsgt.nfft(), sparse);
         assert!(
             side_db < -70.0,
@@ -1324,9 +1327,7 @@ mod tests {
 
         // Convert to dB.
         let to_db = |v: &[f32]| -> Vec<f32> {
-            v.iter()
-                .map(|x| crate::core::db::power_to_db(*x))
-                .collect()
+            v.iter().map(|x| crate::core::db::power_to_db(*x)).collect()
         };
         let w_db = to_db(&w_psd);
         let p_db = to_db(&p_psd);

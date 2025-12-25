@@ -3,11 +3,7 @@
 
 /// Integrate a density over du to produce total mass.
 pub fn density_to_mass(density: &[f32], du: &[f32]) -> f32 {
-    density
-        .iter()
-        .zip(du.iter())
-        .map(|(d, du)| d * du)
-        .sum()
+    density.iter().zip(du.iter()).map(|(d, du)| d * du).sum()
 }
 
 /// Convert peak masses into a delta density vector.

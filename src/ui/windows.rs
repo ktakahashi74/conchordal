@@ -423,9 +423,13 @@ pub fn main_window(
         } else {
             None
         };
-        let overlay = overlay_vals
-            .as_ref()
-            .map(|vals| (vals.as_slice(), "NSGT power (linear)", Color32::from_rgb(80, 160, 220)));
+        let overlay = overlay_vals.as_ref().map(|vals| {
+            (
+                vals.as_slice(),
+                "NSGT power (linear)",
+                Color32::from_rgb(80, 160, 220),
+            )
+        });
 
         log2_plot_hz(
             ui,

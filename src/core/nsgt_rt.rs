@@ -472,12 +472,7 @@ mod tests {
             .freqs()
             .iter()
             .enumerate()
-            .min_by(|a, b| {
-                (a.1 - f1)
-                    .abs()
-                    .partial_cmp(&(b.1 - f1).abs())
-                    .unwrap()
-            })
+            .min_by(|a, b| (a.1 - f1).abs().partial_cmp(&(b.1 - f1).abs()).unwrap())
             .map(|(i, _)| i)
             .unwrap_or(0);
 

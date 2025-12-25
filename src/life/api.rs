@@ -184,10 +184,7 @@ pub mod script_api {
     /// - `mirror`: f32 (optional, mirror weighting)
     /// - `limit`: i64 (optional, partials limit)
     #[rhai_fn(return_raw)]
-    pub fn set_harmonicity(
-        ctx: &mut ScriptContext,
-        map: Map,
-    ) -> Result<(), Box<EvalAltResult>> {
+    pub fn set_harmonicity(ctx: &mut ScriptContext, map: Map) -> Result<(), Box<EvalAltResult>> {
         ctx.set_harmonicity(map)
     }
 

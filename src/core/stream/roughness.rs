@@ -13,7 +13,7 @@ pub struct RoughnessStream {
     roughness_ref: f32,
 
     // Internal States
-    habituation_state: Vec<f32>,    // Boredom integrator
+    habituation_state: Vec<f32>, // Boredom integrator
 
     // Last computed state (roughness-side of the landscape)
     last_landscape: Landscape,
@@ -187,7 +187,11 @@ fn build_reference_density(
     let target_erb = erb[a] + params.roughness_ref_sep_erb;
     let mut b = nearest_bin_by_erb(&erb, target_erb);
     if b == a && erb.len() > 1 {
-        b = if a + 1 < erb.len() { a + 1 } else { a.saturating_sub(1) };
+        b = if a + 1 < erb.len() {
+            a + 1
+        } else {
+            a.saturating_sub(1)
+        };
     }
 
     let mut ref_density = vec![0.0f32; erb.len()];
@@ -313,10 +317,7 @@ mod tests {
             .potential_r_from_log2_spectrum_density(&ref_density, &space);
         let r_ref = compute_roughness_reference(&params, &space);
 
-        let peak = r_shape
-            .iter()
-            .copied()
-            .fold(0.0f32, f32::max);
+        let peak = r_shape.iter().copied().fold(0.0f32, f32::max);
         let r01_peak = (peak / r_ref).clamp(0.0, 1.0);
         let r01_scalar = (r_total / r_ref).clamp(0.0, 1.0);
 

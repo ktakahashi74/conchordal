@@ -1,8 +1,8 @@
+use schemars::JsonSchema;
 use serde::{
     Deserialize, Serialize,
     de::{self, Deserializer},
 };
-use schemars::JsonSchema;
 use std::fmt;
 
 use crate::life::individual::{

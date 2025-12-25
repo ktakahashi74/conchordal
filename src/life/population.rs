@@ -350,11 +350,7 @@ impl Population {
                             return 0.0;
                         }
                         let _ = local_idx;
-                        landscape
-                            .consonance01
-                            .get(i)
-                            .copied()
-                            .unwrap_or(0.0)
+                        landscape.consonance01.get(i).copied().unwrap_or(0.0)
                     })
                     .collect();
                 if let Some(temp) = temperature

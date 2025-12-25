@@ -128,6 +128,7 @@ a {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    flex-wrap: wrap;
 
     @media (min-width: $breakpoint-md) {
         padding: 0 $spacing-xl;
@@ -524,6 +525,16 @@ a {
 
 // Responsive adjustments
 @media (max-width: $breakpoint-md) {
+    .nav-container {
+        justify-content: center;
+        gap: $spacing-sm;
+    }
+
+    .nav-brand {
+        width: 100%;
+        text-align: center;
+    }
+
     .hero {
         padding: 8rem 0 $spacing-2xl 0;
     }
@@ -538,11 +549,19 @@ a {
 
     .nav-menu {
         gap: $spacing-sm;
+        width: 100%;
+        justify-content: center;
     }
 
     .nav-link {
         padding: $spacing-xs $spacing-sm;
         font-size: 0.875rem;
+    }
+
+    .lang-switcher {
+        margin-left: 0;
+        padding-left: 0;
+        border-left: none;
     }
 
     .btn {

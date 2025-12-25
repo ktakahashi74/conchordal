@@ -14,9 +14,44 @@
     padding-right: 1.25rem;
 }
 
+.masthead h1 {
+    font-size: 3.2rem;
+    letter-spacing: 0.08em;
+}
+
+@media (max-width: 768px) {
+    .masthead h1 {
+        font-size: 2.4rem;
+        letter-spacing: 0.06em;
+    }
+}
+
+.masthead h2 {
+    font-size: 1.1rem;
+}
+
+.masthead-content {
+    font-size: 1rem;
+}
+
 .masthead-content {
     overflow-wrap: anywhere;
     word-break: break-word;
+}
+
+.masthead-media {
+    margin-top: 2rem;
+}
+
+.masthead-image {
+    width: 100%;
+    max-width: 900px;
+    height: auto;
+    border-radius: 12px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.45);
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
 }
 
 body {

@@ -4,8 +4,6 @@ on:
   push:
     branches:
       - main
-    paths:
-      - 'web/**'
   workflow_dispatch:
 
 permissions:
@@ -24,19 +22,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
       - name: Install Zola
         uses: taiki-e/install-action@v2
         with:
           tool: zola@0.19.2
 
       - name: Build
-        run: zola build
-        working-directory: web
+        run: zola build --root web --output-dir public
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: web/public
+          path: public
 
   deploy:
     environment:

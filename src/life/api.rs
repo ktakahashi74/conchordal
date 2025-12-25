@@ -205,5 +205,5 @@ pub mod script_api {
 }
 
 pub fn module() -> Module {
-    exported_module!(script_api).into()
+    exported_module!(script_api)
 }

@@ -103,7 +103,7 @@ impl PinkNoise {
         }
     }
 
-    pub fn next(&mut self) -> f32 {
+    pub fn sample(&mut self) -> f32 {
         let pink = pink_noise_tick(&mut self.rng, &mut self.b0, &mut self.b1, &mut self.b2);
         pink * self.gain
     }
@@ -179,7 +179,7 @@ impl NeuralCore for KuramotoCore {
         let beta_err = rhythms.beta.mag * self.sensitivity.beta;
         self.confidence = 1.0 - beta_err;
         let coupling = (self.sensitivity.beta * (1.0 / (self.confidence + 1e-3))).min(10.0);
-        let noise = self.noise_1f.next();
+        let noise = self.noise_1f.sample();
         let rhythm_omega = 2.0 * PI * self.rhythm_freq;
         let d_phi = rhythm_omega
             + noise
@@ -466,7 +466,7 @@ impl SoundBody for HarmonicBody {
         let vibrato =
             self.genotype.vibrato_depth * (1.0 + signal.relaxation * 0.5) * self.lfo_phase.sin();
         let jitter_scale = (1.0 + signal.tension * 0.5) * (signal.amplitude + 0.1);
-        let jitter = self.jitter_gen.next() * self.genotype.jitter * jitter_scale;
+        let jitter = self.jitter_gen.sample() * self.genotype.jitter * jitter_scale;
         let base_freq = (self.base_freq_hz * (1.0 + vibrato + jitter)).max(1.0);
         let unison = (self.genotype.unison * (1.0 + signal.relaxation * 0.5)).max(0.0);
 

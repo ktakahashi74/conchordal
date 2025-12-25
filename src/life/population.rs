@@ -1,6 +1,6 @@
 use super::individual::{AgentMetadata, AudioAgent, IndividualWrapper, SoundBody};
 use super::scenario::{Action, BrainConfig, IndividualConfig, SpawnMethod};
-use crate::core::landscape::{Landscape, LandscapeFrame, LandscapeUpdate};
+use crate::core::landscape::{LandscapeFrame, LandscapeUpdate};
 use crate::core::log2space::Log2Space;
 use rand::{Rng, distr::Distribution, distr::weighted::WeightedIndex};
 use std::collections::HashMap;

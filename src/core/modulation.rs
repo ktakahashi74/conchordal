@@ -14,16 +14,6 @@ pub struct NeuralRhythms {
     pub beta: NeuralRhythm,  // 15–30 Hz
 }
 
-fn wrap_phase(phase: &mut f32) {
-    let tau = 2.0 * PI;
-    while *phase >= tau {
-        *phase -= tau;
-    }
-    while *phase < 0.0 {
-        *phase += tau;
-    }
-}
-
 /// Predictive-coding rhythm dynamics driven by transient flux.
 #[derive(Clone, Debug)]
 pub struct RhythmDynamics {

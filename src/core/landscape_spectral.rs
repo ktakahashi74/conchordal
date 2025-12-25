@@ -16,7 +16,6 @@ pub struct SpectralFrame {
 }
 
 pub struct SpectralFrontEnd {
-    space: Log2Space,
     erb: Vec<f32>,
     du: Vec<f32>,
     loudness_weights_pow: Vec<f32>,
@@ -34,7 +33,6 @@ impl SpectralFrontEnd {
             .collect::<Vec<f32>>();
         let n = space.n_bins();
         Self {
-            space,
             erb,
             du,
             loudness_weights_pow,

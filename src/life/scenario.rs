@@ -296,7 +296,7 @@ impl IndividualConfig {
     fn core_from_brain(
         brain: &BrainConfig,
         fs: f32,
-        assigned_id: u64,
+        _assigned_id: u64,
         rhythm_freq: &Option<f32>,
         rhythm_sensitivity: &Option<f32>,
         noise_seed: u64,

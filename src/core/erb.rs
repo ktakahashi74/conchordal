@@ -80,6 +80,12 @@ impl ErbSpace {
         self.freqs_hz.len()
     }
 
+    /// Returns true if there are no ERB bins.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.freqs_hz.is_empty()
+    }
+
     /// Return reference to frequency vector [Hz].
     #[inline]
     pub fn freqs_hz(&self) -> &[f32] {

@@ -29,6 +29,12 @@ jobs:
       - name: Cache cargo
         uses: swatinem/rust-cache@v2
 
+      - name: Generate schemas (informational)
+        run: cargo run --example gen_schemas
+
+      - name: Check schemas up to date (non-blocking)
+        run: git diff --exit-code docs/schemas || true
+
       - name: Check format
         run: cargo fmt --all -- --check
 

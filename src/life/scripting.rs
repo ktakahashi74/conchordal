@@ -328,13 +328,6 @@ impl ScriptHost {
             api::scene(&mut ctx, name);
         });
 
-        // Backward compatibility for existing scripts still using `section`.
-        let ctx_for_section = ctx.clone();
-        engine.register_fn("section", move |name: &str| {
-            let mut ctx = ctx_for_section.lock().expect("lock script context");
-            api::section(&mut ctx, name);
-        });
-
         let ctx_for_wait = ctx.clone();
         engine.register_fn("wait", move |sec: FLOAT| {
             let mut ctx = ctx_for_wait.lock().expect("lock script context");
@@ -353,20 +346,7 @@ impl ScriptHost {
             api::pop_time(&mut ctx);
         });
 
-        let ctx_for_spawn = ctx.clone();
-        engine.register_fn(
-            "spawn",
-            move |tag: &str,
-                  method_map: Map,
-                  life_map: Map,
-                  count: i64,
-                  amp: FLOAT|
-                  -> Result<(), Box<EvalAltResult>> {
-                let mut ctx = ctx_for_spawn.lock().expect("lock script context");
-                api::spawn(&mut ctx, tag, method_map, life_map, count, amp)
-            },
-        );
-        let ctx_for_spawn_alias = ctx.clone();
+        let ctx_for_spawn_agents = ctx.clone();
         engine.register_fn(
             "spawn_agents",
             move |tag: &str,
@@ -375,11 +355,10 @@ impl ScriptHost {
                   count: i64,
                   amp: FLOAT|
                   -> Result<(), Box<EvalAltResult>> {
-                let mut ctx = ctx_for_spawn_alias.lock().expect("lock script context");
+                let mut ctx = ctx_for_spawn_agents.lock().expect("lock script context");
                 api::spawn_agents(&mut ctx, tag, method_map, life_map, count, amp)
             },
         );
-
         let ctx_for_add_agent = ctx.clone();
         engine.register_fn(
             "add_agent",
@@ -430,18 +409,18 @@ impl ScriptHost {
 
         let ctx_for_set_habituation = ctx.clone();
         engine.register_fn(
-            "set_habituation_params",
+            "set_habituation",
             move |weight: FLOAT, tau: FLOAT, max_depth: FLOAT| {
                 let mut ctx = ctx_for_set_habituation.lock().expect("lock script context");
-                api::set_habituation_params(&mut ctx, weight, tau, max_depth);
+                api::set_habituation(&mut ctx, weight, tau, max_depth);
             },
         );
-        let ctx_for_set_habituation_alias = ctx.clone();
+        let ctx_for_set_habituation_basic = ctx.clone();
         engine.register_fn("set_habituation", move |weight: FLOAT, tau: FLOAT| {
-            let mut ctx = ctx_for_set_habituation_alias
+            let mut ctx = ctx_for_set_habituation_basic
                 .lock()
                 .expect("lock script context");
-            api::set_habituation(&mut ctx, weight, tau);
+            api::set_habituation_basic(&mut ctx, weight, tau);
         });
 
         let ctx_for_set_vitality = ctx.clone();

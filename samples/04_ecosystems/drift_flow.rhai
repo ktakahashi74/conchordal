@@ -38,7 +38,7 @@ print("--- [2] Enabling Habituation (Red Arrows appear) ---");
 
 // Make the environment more prone to boredom
 // Expect red arrows (habituation) to grow under the slider
-set_habituation_params(3.0, 2.0, 1.0); // weight=3.0 (strong), tau=2.0s (fast)
+set_habituation(3.0, 2.0, 1.0); // weight=3.0 (strong), tau=2.0s (fast)
 
 // Enable agent sensitivity
 set_habituation_sensitivity("slider", 1.0);
@@ -55,7 +55,7 @@ print("--- [3] Spawning Swarm & Moving Anchor ---");
 
 remove("slider");
 // Lightly reset environment
-set_habituation_params(0.5, 5.0, 1.0); // gentler settings
+set_habituation(0.5, 5.0, 1.0); // gentler settings
 
 // Drop a swarm (spread across C overtones)
 let method = #{ mode: "harmonicity", min_freq: 130.0, max_freq: 800.0 };

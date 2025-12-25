@@ -12,11 +12,6 @@ pub mod script_api {
         ctx.scene(name);
     }
 
-    /// Backward-compatible alias for `scene`.
-    pub fn section(ctx: &mut ScriptContext, name: &str) {
-        ctx.scene(name);
-    }
-
     /// Advance the global time cursor by `sec` seconds.
     pub fn wait(ctx: &mut ScriptContext, sec: FLOAT) {
         ctx.wait(sec as f32);
@@ -53,19 +48,6 @@ pub mod script_api {
     ///
     /// ## Life Map (BrainConfig)
     #[doc = include_str!("../../docs/schemas/brain_config.md")]
-    #[rhai_fn(return_raw)]
-    pub fn spawn(
-        ctx: &mut ScriptContext,
-        tag: &str,
-        method_map: Map,
-        life_map: Map,
-        count: i64,
-        amp: FLOAT,
-    ) -> Result<(), Box<EvalAltResult>> {
-        ctx.spawn(tag, method_map, life_map, count, amp as f32)
-    }
-
-    /// Alias for `spawn` to keep existing scripts working.
     #[rhai_fn(return_raw)]
     pub fn spawn_agents(
         ctx: &mut ScriptContext,
@@ -149,17 +131,12 @@ pub mod script_api {
     }
 
     /// Set habituation parameters (weight, tau, max_depth).
-    pub fn set_habituation_params(
-        ctx: &mut ScriptContext,
-        weight: FLOAT,
-        tau: FLOAT,
-        max_depth: FLOAT,
-    ) {
+    pub fn set_habituation(ctx: &mut ScriptContext, weight: FLOAT, tau: FLOAT, max_depth: FLOAT) {
         ctx.set_habituation_params(weight as f32, tau as f32, max_depth as f32);
     }
 
-    /// Backward-compatible alias for `set_habituation_params` with max_depth = 1.0.
-    pub fn set_habituation(ctx: &mut ScriptContext, weight: FLOAT, tau: FLOAT) {
+    /// Set habituation parameters with default max_depth = 1.0.
+    pub fn set_habituation_basic(ctx: &mut ScriptContext, weight: FLOAT, tau: FLOAT) {
         ctx.set_habituation_params(weight as f32, tau as f32, 1.0);
     }
 

@@ -72,7 +72,7 @@ scene("cycle");
 
 // Set global habituation/crowding parameters (if not already set)
 // Prevents energy accumulation in one spot by triggering 'boredom' quickly
-set_habituation_params(0.5, 2.0, 1.0); 
+set_habituation(0.5, 2.0, 1.0); 
 
 for ch in chords {
     play_step(ch.name, ch.freq, ch.dur);

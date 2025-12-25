@@ -1,6 +1,6 @@
 // Autonomous Harmonic Progression demo
 scene("anchor_intro");
-set_habituation_params(0.6, 6.0, 1.0);
+set_habituation(0.6, 6.0, 1.0);
 
 // Phase 1: anchor on C2
 add_agent(

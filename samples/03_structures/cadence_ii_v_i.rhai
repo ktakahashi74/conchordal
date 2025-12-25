@@ -7,7 +7,7 @@ fn play_chord(root, tag) {
 
     add_agent("bass_" + tag, root, 0.36, bass_life);
     wait(0.18);
-    spawn_agents("pad_" + tag, pad_method, pad_life, 3, 0.2);
+spawn_agents("pad_" + tag, pad_method, pad_life, 3, 0.2);
     wait(1.4);
     remove("bass_" + tag);
     remove("pad_" + tag);

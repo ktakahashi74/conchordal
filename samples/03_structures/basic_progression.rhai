@@ -69,8 +69,8 @@ let chords = [
 scene("cycle_organic");
 
 // ランドスケープ設定（飽きの早さなどを調整）
-// set_habituation_params(weight, tau, max_depth)
-set_habituation_params(0.5, 4.0, 1.0); 
+// set_habituation(weight, tau, max_depth)
+set_habituation(0.5, 4.0, 1.0); 
 
 for ch in chords {
     play_step(ch.name, ch.freq, ch.dur);

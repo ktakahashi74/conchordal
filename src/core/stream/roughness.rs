@@ -10,7 +10,8 @@ pub struct RoughnessStream {
     nsgt_rt: RtNsgtKernelLog2,
     params: LandscapeParams,
     spectral_frontend: SpectralFrontEnd,
-    roughness_ref: f32,
+    roughness_ref_total: f32,
+    roughness_ref_peak: f32,
 
     // Internal States
     habituation_state: Vec<f32>, // Boredom integrator
@@ -23,13 +24,15 @@ impl RoughnessStream {
     pub fn new(params: LandscapeParams, nsgt_rt: RtNsgtKernelLog2) -> Self {
         let n_bins = nsgt_rt.space().n_bins();
         let spectral_frontend = SpectralFrontEnd::new(nsgt_rt.space().clone(), &params);
-        let roughness_ref = compute_roughness_reference(&params, nsgt_rt.space());
+        let (roughness_ref_total, roughness_ref_peak) =
+            compute_roughness_reference(&params, nsgt_rt.space());
 
         Self {
             nsgt_rt: nsgt_rt.clone(),
             params,
             spectral_frontend,
-            roughness_ref,
+            roughness_ref_total,
+            roughness_ref_peak,
             habituation_state: vec![0.0; n_bins],
             last_landscape: Landscape::new(nsgt_rt.space().clone()),
         }
@@ -97,12 +100,13 @@ impl RoughnessStream {
             (vec![0.0; r_strength.len()], 0.0)
         };
 
-        let r_ref = self.roughness_ref.max(eps);
+        let r_ref_peak = self.roughness_ref_peak.max(eps);
+        let r_ref_total = self.roughness_ref_total.max(eps);
         let r01 = r_shape_raw
             .iter()
-            .map(|&ri| (ri / r_ref).clamp(0.0, 1.0))
+            .map(|&ri| (ri / r_ref_peak).clamp(0.0, 1.0))
             .collect::<Vec<f32>>();
-        let r01_scalar = (r_shape_total / r_ref).clamp(0.0, 1.0);
+        let r01_scalar = (r_shape_total / r_ref_total).clamp(0.0, 1.0);
 
         // Habituation
         let tau = self.params.habituation_tau.max(1e-3);
@@ -165,13 +169,14 @@ fn normalize_density(density: &[f32], du: &[f32], eps: f32) -> (Vec<f32>, f32) {
 fn compute_roughness_reference(
     params: &LandscapeParams,
     space: &crate::core::log2space::Log2Space,
-) -> f32 {
+) -> (f32, f32) {
     let eps = params.roughness_ref_eps.max(1e-12);
     let ref_density = build_reference_density(params, space);
-    let (_r, r_total) = params
+    let (r, r_total) = params
         .roughness_kernel
         .potential_r_from_log2_spectrum_density(&ref_density, space);
-    r_total.max(eps)
+    let r_peak = r.iter().copied().fold(0.0f32, f32::max).max(eps);
+    (r_total.max(eps), r_peak)
 }
 
 fn build_reference_density(
@@ -267,6 +272,7 @@ mod tests {
             habituation_tau: 1.0,
             habituation_weight: 0.0,
             habituation_max_depth: 1.0,
+            consonance_roughness_weight: 0.5,
             loudness_exp: 1.0,
             ref_power: 1.0,
             tau_ms: 1.0,
@@ -315,11 +321,11 @@ mod tests {
         let (r_shape, r_total) = params
             .roughness_kernel
             .potential_r_from_log2_spectrum_density(&ref_density, &space);
-        let r_ref = compute_roughness_reference(&params, &space);
+        let (r_ref_total, r_ref_peak) = compute_roughness_reference(&params, &space);
 
         let peak = r_shape.iter().copied().fold(0.0f32, f32::max);
-        let r01_peak = (peak / r_ref).clamp(0.0, 1.0);
-        let r01_scalar = (r_total / r_ref).clamp(0.0, 1.0);
+        let r01_peak = (peak / r_ref_peak).clamp(0.0, 1.0);
+        let r01_scalar = (r_total / r_ref_total).clamp(0.0, 1.0);
 
         assert!((r01_scalar - 1.0).abs() < 1e-5, "scalar {r01_scalar}");
         assert!(r01_peak <= 1.0 + 1e-6, "peak {r01_peak}");

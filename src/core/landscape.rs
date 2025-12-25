@@ -23,6 +23,8 @@ pub struct LandscapeParams {
     pub habituation_weight: f32,
     /// Maximum depth of habituation penalty.
     pub habituation_max_depth: f32,
+    /// Roughness penalty weight in consonance01.
+    pub consonance_roughness_weight: f32,
 
     /// Exponent for subjective intensity (≈ specific loudness). Typical: 0.23
     pub loudness_exp: f32,
@@ -178,6 +180,7 @@ impl Landscape {
         let k = params.roughness_k.max(1e-6);
         let denom_inv = 1.0 / (self.roughness_total + k);
         let w_hab = params.habituation_weight.max(0.0);
+        let w_r = params.consonance_roughness_weight.max(0.0);
         if self.harmonicity01.len() != self.harmonicity.len() {
             self.harmonicity01 = vec![0.0; self.harmonicity.len()];
         }
@@ -194,7 +197,7 @@ impl Landscape {
             self.consonance[i] = h - r * denom_inv - w_hab * hab;
             let h01 = h.clamp(0.0, 1.0);
             let r01 = self.roughness01[i].clamp(0.0, 1.0);
-            let c01 = h01 * (1.0 - r01) - w_hab * hab;
+            let c01 = h01 - w_r * r01 - w_hab * hab;
             self.harmonicity01[i] = h01;
             self.consonance01[i] = c01.clamp(0.0, 1.0);
         }
@@ -239,6 +242,32 @@ pub fn map_roughness01(r_norm: f32, r_half: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::harmonicity_kernel::{HarmonicityKernel, HarmonicityParams};
+    use crate::core::roughness_kernel::{KernelParams, RoughnessKernel};
+
+    fn build_params(space: &Log2Space) -> LandscapeParams {
+        LandscapeParams {
+            fs: 48_000.0,
+            max_hist_cols: 1,
+            alpha: 0.0,
+            roughness_kernel: RoughnessKernel::new(KernelParams::default(), 0.005),
+            harmonicity_kernel: HarmonicityKernel::new(space, HarmonicityParams::default()),
+            roughness_scalar_mode: RoughnessScalarMode::Total,
+            roughness_half: 0.1,
+            habituation_tau: 1.0,
+            habituation_weight: 0.2,
+            habituation_max_depth: 1.0,
+            consonance_roughness_weight: 0.5,
+            loudness_exp: 1.0,
+            ref_power: 1.0,
+            tau_ms: 1.0,
+            roughness_k: 1.0,
+            roughness_ref_f0_hz: 1000.0,
+            roughness_ref_sep_erb: 0.25,
+            roughness_ref_mass_split: 0.5,
+            roughness_ref_eps: 1e-12,
+        }
+    }
 
     #[test]
     fn roughness01_in_range_and_halfpoint() {
@@ -291,6 +320,80 @@ mod tests {
         landscape.consonance01.fill(1.2);
         let val = landscape.evaluate_pitch01(200.0);
         assert!((val - 1.0).abs() < 1e-6, "val={val}");
+    }
+
+    #[test]
+    fn consonance01_matches_formula_after_updates() {
+        let space = Log2Space::new(100.0, 400.0, 12);
+        let params = build_params(&space);
+        let mut landscape = Landscape::new(space);
+        let n = landscape.roughness01.len();
+        landscape.harmonicity = vec![0.25; n];
+        landscape.roughness = vec![0.0; n];
+        landscape.roughness01 = vec![0.4; n];
+        landscape.habituation = vec![0.3; n];
+        landscape.recompute_consonance(&params);
+
+        let w_hab = params.habituation_weight;
+        let w_r = params.consonance_roughness_weight;
+        for i in 0..n {
+            let h = landscape.harmonicity[i].clamp(0.0, 1.0);
+            let r = landscape.roughness01[i].clamp(0.0, 1.0);
+            let hab = landscape.habituation[i];
+            let c_pred = (h - w_r * r - w_hab * hab).clamp(0.0, 1.0);
+            let c = landscape.consonance01[i];
+            assert!((c - c_pred).abs() < 1e-6, "i={i} c={c} c_pred={c_pred}");
+        }
+    }
+
+    #[test]
+    fn consonance01_independent_of_update_order() {
+        let space = Log2Space::new(100.0, 400.0, 12);
+        let params = build_params(&space);
+        let mut a = Landscape::new(space.clone());
+        let n = a.roughness01.len();
+        a.harmonicity = vec![0.75; n];
+        a.roughness01 = vec![0.35; n];
+        a.habituation = vec![0.1; n];
+        a.recompute_consonance(&params);
+        let c_a = a.consonance01.clone();
+
+        let mut b = Landscape::new(space);
+        b.roughness01 = vec![0.35; n];
+        b.harmonicity = vec![0.75; n];
+        b.habituation = vec![0.1; n];
+        b.recompute_consonance(&params);
+        for i in 0..n {
+            let da = c_a[i];
+            let db = b.consonance01[i];
+            assert!((da - db).abs() < 1e-6, "i={i} da={da} db={db}");
+        }
+    }
+
+    #[test]
+    fn consonance01_decreases_linearly_with_roughness() {
+        let space = Log2Space::new(100.0, 400.0, 12);
+        let mut params = build_params(&space);
+        params.habituation_weight = 0.0;
+        params.consonance_roughness_weight = 1.0;
+
+        let mut landscape = Landscape::new(space);
+        let n = landscape.roughness01.len();
+        landscape.harmonicity = vec![1.0; n];
+        landscape.roughness = vec![0.0; n];
+        landscape.habituation = vec![0.0; n];
+
+        landscape.roughness01 = vec![0.0; n];
+        landscape.recompute_consonance(&params);
+        assert!((landscape.consonance01[0] - 1.0).abs() < 1e-6);
+
+        landscape.roughness01 = vec![0.5; n];
+        landscape.recompute_consonance(&params);
+        assert!((landscape.consonance01[0] - 0.5).abs() < 1e-6);
+
+        landscape.roughness01 = vec![1.0; n];
+        landscape.recompute_consonance(&params);
+        assert!((landscape.consonance01[0] - 0.0).abs() < 1e-6);
     }
 }
 

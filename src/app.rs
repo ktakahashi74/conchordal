@@ -248,6 +248,7 @@ impl App {
             habituation_tau: 8.0,
             habituation_weight: 0.5,
             habituation_max_depth: 1.0,
+            consonance_roughness_weight: 0.5,
             loudness_exp: config.psychoacoustics.loudness_exp, // Zwicker
             tau_ms: config.analysis.tau_ms,
             ref_power: 1e-4,
@@ -679,6 +680,8 @@ fn worker_loop(
                     last_r_analysis_frame = Some(analyzed_id);
                     latest_audio = Some((analyzed_id, frame));
                 }
+                let mut roughness_updated = false;
+                let mut harmonicity_updated = false;
                 if let Some((_, frame)) = latest_audio {
                     let space_changed = current_landscape.space.n_bins() != frame.space.n_bins()
                         || current_landscape.space.fmin != frame.space.fmin
@@ -700,13 +703,56 @@ fn worker_loop(
                     current_landscape.habituation = frame.habituation;
                     current_landscape.subjective_intensity = frame.subjective_intensity;
                     current_landscape.nsgt_power = frame.nsgt_power;
+                    roughness_updated = true;
                 }
 
                 if let Some(h_scan) = &latest_h_scan
                     && h_scan.len() == current_landscape.harmonicity.len()
                 {
                     current_landscape.harmonicity.clone_from(h_scan);
+                    harmonicity_updated = true;
+                }
+
+                if roughness_updated || harmonicity_updated {
                     current_landscape.recompute_consonance(&lparams);
+                    if cfg!(debug_assertions) && frame_idx % 30 == 0 {
+                        let mut max_r = 0.0f32;
+                        let mut max_i = 0usize;
+                        for (i, &r) in current_landscape.roughness01.iter().enumerate() {
+                            if r.is_finite() && r > max_r {
+                                max_r = r;
+                                max_i = i;
+                            }
+                        }
+                        let h = current_landscape
+                            .harmonicity01
+                            .get(max_i)
+                            .copied()
+                            .unwrap_or(0.0);
+                        let r = current_landscape
+                            .roughness01
+                            .get(max_i)
+                            .copied()
+                            .unwrap_or(0.0);
+                        let hab = current_landscape
+                            .habituation
+                            .get(max_i)
+                            .copied()
+                            .unwrap_or(0.0);
+                        let c = current_landscape
+                            .consonance01
+                            .get(max_i)
+                            .copied()
+                            .unwrap_or(0.0);
+                        let c_pred = (h
+                            - lparams.consonance_roughness_weight * r
+                            - lparams.habituation_weight * hab)
+                            .clamp(0.0, 1.0);
+                        debug!(
+                            "c01_check bin={} h={:.4} r={:.4} hab={:.4} c={:.4} c_pred={:.4}",
+                            max_i, h, r, hab, c, c_pred
+                        );
+                    }
                 }
 
                 // For frame 0 there is no previous frame to wait for.

@@ -122,6 +122,7 @@ mod tests {
             habituation_tau: 1.0,
             habituation_weight: 0.0,
             habituation_max_depth: 1.0,
+            consonance_roughness_weight: 0.5,
             loudness_exp: 1.0,
             ref_power: 1.0,
             tau_ms: 1.0,

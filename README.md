@@ -75,7 +75,8 @@ This allows for the creation of structured "works" where the overall form is int
 
 ### Installation & Run
 
-Run in release mode to ensure the DSP thread meets real-time deadlines.
+
+Run a sample scenario.
 
 ```bash
 git clone https://github.com/ktakahashi74/conchordal.git
@@ -95,6 +96,36 @@ let method = #{ mode: "harmonicity", min_freq: 200.0, max_freq: 1200.0 };
 spawn_agents("my_swarm", method, life, 5, 0.15);
 wait(10.0);
 ```
+
+### Testing and other commands
+
+Run the test suite with:
+
+```bash
+cargo test
+```
+
+If you want to pass the GitHub CI checks after code changes, run:
+
+```bash
+cargo fmt --all
+cargo clippy -- -D warnings
+```
+
+The following command generates plot images under `target/` for visual kernel checks.
+
+```bash
+cargo test -- --ignored
+```
+
+If you want the docs to be up to date after changes, run:
+
+```bash
+cargo run --example gen_schemas
+cargo run --example generate_script_docs
+scripts/generate_rhai_docs.sh
+```
+
 
 ## Timeline & Roadmap
 

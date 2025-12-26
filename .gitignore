@@ -1,7 +1,6 @@
 /target
 /debug
 /web/public
-/web/static/docs/rhai
 /docs/rhai_book/src/reference
 
 *~

@@ -3,18 +3,20 @@
 scripts/update_technote.py
 
 Auto-update technote.md based on current codebase using Claude.
+Also generates Japanese translation (technote.ja.md).
 
 Output:
-  - docs/generated/technote.{timestamp}.md  (versioned history)
-  - web/content/technote.md                 (production copy)
+  - docs/generated/technote.{timestamp}.md     (English, versioned)
+  - docs/generated/technote.ja.{timestamp}.md  (Japanese, versioned)
+  - web/content/technote.md                    (English, production)
+  - web/content/technote.ja.md                 (Japanese, production)
 
 Usage:
   python scripts/update_technote.py                    # Default (Claude CLI, opus)
   python scripts/update_technote.py --model sonnet     # Use different model
-  python scripts/update_technote.py --use-api          # Use Anthropic API
+  python scripts/update_technote.py --skip-ja          # English only
+  python scripts/update_technote.py --ja-only          # Japanese only (from existing English)
   python scripts/update_technote.py --dry-run          # Preview only
-  python scripts/update_technote.py --skip-repomix     # Skip repomix step
-  python scripts/update_technote.py --technote PATH    # Specify source file
 """
 
 import argparse
@@ -250,6 +252,8 @@ def main():
     parser.add_argument("--use-api", action="store_true", help="Use API instead of CLI")
     parser.add_argument("--dry-run", action="store_true", help="Preview only")
     parser.add_argument("--skip-repomix", action="store_true", help="Skip repomix")
+    parser.add_argument("--skip-ja", action="store_true", help="Skip Japanese translation")
+    parser.add_argument("--ja-only", action="store_true", help="Only generate Japanese (from existing English)")
     parser.add_argument("--context", type=Path, default=CONTEXT_FILE, help="Context file")
     parser.add_argument("--technote", type=Path, default=TECHNOTE_PATH, help="Source technote.md path")
     args = parser.parse_args()
@@ -261,19 +265,28 @@ def main():
         print(f"Error: {args.technote} not found", file=sys.stderr)
         sys.exit(1)
 
-    # 1. Pack codebase
-    if not args.skip_repomix:
-        run_repomix()
-    if not args.context.exists():
-        print(f"Error: {args.context} not found", file=sys.stderr)
-        sys.exit(1)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    GENERATED_DIR.mkdir(parents=True, exist_ok=True)
 
-    # 2. Load system prompt
-    print(">> Loading system prompt...")
-    system_prompt = read_file(PROMPT_PATH)
+    # === English Version ===
+    if args.ja_only:
+        # Skip English generation, use existing file
+        print(">> Using existing English version...")
+        updated_content = read_file(args.technote)
+    else:
+        # 1. Pack codebase
+        if not args.skip_repomix:
+            run_repomix()
+        if not args.context.exists():
+            print(f"Error: {args.context} not found", file=sys.stderr)
+            sys.exit(1)
 
-    # 3. Build prompt (reference files by path, let Claude read them)
-    user_message = f"""Update technote.md with minimal changes.
+        # 2. Load system prompt
+        print(">> Loading system prompt...")
+        system_prompt = read_file(PROMPT_PATH)
+
+        # 3. Build prompt (reference files by path, let Claude read them)
+        user_message = f"""Update technote.md with minimal changes.
 
 Source files:
 1. Codebase context: {args.context.resolve()}
@@ -287,13 +300,13 @@ Do NOT include any explanation, thinking, or preamble before the frontmatter.
 Output ONLY the raw markdown file content.
 """
 
-    # 4. Call LLM
-    try:
-        if args.use_api:
-            # API mode needs content embedded
-            context_xml = read_file(args.context)
-            current_technote = read_file(args.technote)
-            api_message = f"""
+        # 4. Call LLM
+        try:
+            if args.use_api:
+                # API mode needs content embedded
+                context_xml = read_file(args.context)
+                current_technote = read_file(args.technote)
+                api_message = f"""
 <codebase_context>
 {context_xml}
 </codebase_context>
@@ -304,57 +317,107 @@ Output ONLY the raw markdown file content.
 
 Output the fully updated technote.md. ONLY markdown with TOML frontmatter, no filler.
 """
-            updated_content = call_llm_api(args.model, system_prompt, api_message)
+                updated_content = call_llm_api(args.model, system_prompt, api_message)
+            else:
+                updated_content = call_llm_cli(args.model, system_prompt, user_message)
+        except Exception as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
+
+        # 5. Clean output - strip everything before frontmatter
+        updated_content = updated_content.strip()
+    
+        # Find frontmatter start and discard preamble
+        if "+++" in updated_content:
+            start = updated_content.find("+++")
+            updated_content = updated_content[start:]
+        
+        # Remove trailing code fences
+        if updated_content.startswith("```"):
+            lines = updated_content.split("\n")
+            if lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            updated_content = "\n".join(lines)
+
+        # 6. Validate
+        if not validate_output(updated_content):
+            print("Warning: Validation failed. Review carefully.", file=sys.stderr)
+
+        # 7. Inject metadata
+        updated_content = inject_metadata(updated_content, args.model)
+
+        # 8. Write English version
+        if args.dry_run:
+            print("\n" + "=" * 60)
+            print("DRY RUN OUTPUT (English):")
+            print("=" * 60)
+            print(updated_content[:2000])
+            if len(updated_content) > 2000:
+                print(f"\n... ({len(updated_content)} chars)")
         else:
-            updated_content = call_llm_cli(args.model, system_prompt, user_message)
-    except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
+            generated_path = GENERATED_DIR / f"technote.{timestamp}.md"
+            write_file(generated_path, updated_content)
+            print(f">> Generated: {generated_path}")
 
-    # 5. Clean output - strip everything before frontmatter
-    updated_content = updated_content.strip()
-    
-    # Find frontmatter start and discard preamble
-    if "+++" in updated_content:
-        start = updated_content.find("+++")
-        updated_content = updated_content[start:]
-    
-    # Remove trailing code fences
-    if updated_content.startswith("```"):
-        lines = updated_content.split("\n")
-        if lines[0].startswith("```"):
-            lines = lines[1:]
-        if lines and lines[-1].strip() == "```":
-            lines = lines[:-1]
-        updated_content = "\n".join(lines)
+            write_file(TECHNOTE_PATH, updated_content)
+            print(f">> Updated: {TECHNOTE_PATH}")
 
-    # 6. Validate
-    if not validate_output(updated_content):
-        print("Warning: Validation failed. Review carefully.", file=sys.stderr)
+    # === Japanese Version ===
+    if not args.skip_ja:
+        print(">> Translating to Japanese...")
+        ja_prompt = """Translate this technical document to Japanese.
 
-    # 7. Inject metadata
-    updated_content = inject_metadata(updated_content, args.model)
+Rules:
+- Keep TOML frontmatter as-is (do not translate field names)
+- Keep LaTeX equations as-is
+- Keep code identifiers (function names, file paths, struct names) as-is
+- Translate prose naturally, not literally
+- Use appropriate technical Japanese terminology
+- Output ONLY the translated markdown, starting with +++
 
-    # 8. Write
-    if args.dry_run:
-        print("\n" + "=" * 60)
-        print("DRY RUN OUTPUT:")
-        print("=" * 60)
-        print(updated_content[:2000])
-        if len(updated_content) > 2000:
-            print(f"\n... ({len(updated_content)} chars)")
-    else:
-        # Create timestamped version in generated dir
-        GENERATED_DIR.mkdir(parents=True, exist_ok=True)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        generated_path = GENERATED_DIR / f"technote.{timestamp}.md"
-        write_file(generated_path, updated_content)
-        print(f">> Generated: {generated_path}")
+Document to translate:
+"""
+        
+        try:
+            if args.use_api:
+                ja_content = call_llm_api(args.model, ja_prompt, updated_content)
+            else:
+                ja_content = call_llm_cli(args.model, ja_prompt, updated_content)
+        except Exception as e:
+            print(f"Error translating: {e}", file=sys.stderr)
+            sys.exit(1)
 
-        # Copy to production location
-        write_file(TECHNOTE_PATH, updated_content)
-        print(f">> Updated: {TECHNOTE_PATH}")
-        print(">> Review with: git diff")
+        # Clean Japanese output
+        ja_content = ja_content.strip()
+        if "+++" in ja_content:
+            start = ja_content.find("+++")
+            ja_content = ja_content[start:]
+
+        # Validate Japanese output
+        if not validate_output(ja_content):
+            print("Warning: Japanese validation failed.", file=sys.stderr)
+
+        # Write Japanese version
+        ja_technote_path = TECHNOTE_PATH.with_suffix(".ja.md")
+        
+        if args.dry_run:
+            print("\n" + "=" * 60)
+            print("DRY RUN OUTPUT (Japanese):")
+            print("=" * 60)
+            print(ja_content[:2000])
+            if len(ja_content) > 2000:
+                print(f"\n... ({len(ja_content)} chars)")
+        else:
+            ja_generated_path = GENERATED_DIR / f"technote.ja.{timestamp}.md"
+            write_file(ja_generated_path, ja_content)
+            print(f">> Generated: {ja_generated_path}")
+
+            write_file(ja_technote_path, ja_content)
+            print(f">> Updated: {ja_technote_path}")
+
+    print(">> Review with: git diff")
 
 
 if __name__ == "__main__":

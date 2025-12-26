@@ -1,0 +1,33 @@
+{
+  "$schema": "https://repomix.com/schemas/latest/schema.json",
+  "output": {
+    "filePath": "repomix-output.xml",
+    "style": "xml",
+    "removeComments": false,
+    "removeEmptyLines": false,
+    "showLineNumbers": false,
+    "topFilesLength": 20
+  },
+  "include": [
+    "src/**/*.rs",
+    "samples/**/*.rhai",
+    "Cargo.toml",
+    "docs/**/*.md"
+  ],
+  "ignore": {
+    "useGitignore": true,
+    "useDefaultPatterns": true,
+    "customPatterns": [
+      "target/",
+      "web/themes/",
+      "web/static/",
+      "web/sass/",
+      "*.png",
+      "*.jpg",
+      "*.pdf",
+      "*.ico",
+      "*.css",
+      "*.scss"
+    ]
+  }
+}

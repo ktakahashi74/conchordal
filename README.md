@@ -84,6 +84,8 @@ cd conchordal
 cargo run --release -- samples/03_structures/autumn_cycle.rhai
 ```
 
+You need `libasound2-dev` installed on Linux (`cpal` requires ALSA headers).
+
 ### Experimentation
 
 Define the ecosystem's initial conditions using Rhai scripts.

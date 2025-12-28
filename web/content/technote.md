@@ -209,7 +209,7 @@ The "Life Engine" is the agent-based simulation layer that runs atop the DSP lan
 
 ## 4.1 The Individual Architecture
 
-The `Individual` struct (`life/individual.rs`) is the atomic unit of the ecosystem. It is composed of two distinct modules, separating the biological "Brain" from the physical "Body".
+The `Individual` struct (`life/individual.rs`) is the atomic unit of the ecosystem. It is composed of four components: a `SoundBody` actuator plus three behavior cores (Temporal, Field, Modulation).
 
 ### 4.1.1 The SoundBody (Actuator)
 
@@ -224,13 +224,13 @@ The `SoundBody` trait defines the sound generation capabilities of an agent. It 
 
 The `HarmonicBody` allows for the evolution of timbre. An agent with high stiffness might find survival difficult in a purely harmonic landscape, forcing it to seek out unique "spectral niches" where its inharmonic partials do not clash with the population.
 
-### 4.1.2 The NeuralCore (Controller)
+### 4.1.2 The Core Stack (Temporal, Field, Modulation)
 
-The `NeuralCore` trait defines the agent's behavior and internal state. It processes sensory input ($C, R, \Psi$) and determines the agent's output state (`ArticulationSignal`).
+Behavior is split into three focused cores that each handle a single axis of control:
 
-*   `KuramotoCore`: This is the most advanced brain type, implementing the Kuramoto model for phase synchronization. It couples the agent's internal clock to the global `NeuralRhythms` (see Section 5).
-*   `DroneCore`: A simplified brain for ambient textures, focusing on slow drifts and long sustain.
-*   `SequencedCore`: A deterministic brain that follows a pre-programmed envelope, useful for "machine" elements or rhythmic seeds.
+*   **TemporalCore (When/Gate)**: Manages rhythm, gating, and envelope dynamics. Variants include `entrain` (Kuramoto-like synchronization to `NeuralRhythms`), `seq` (fixed-duration envelopes), and `drone` (slow sway).
+*   **FieldCore (Where)**: Proposes the next target in log-frequency space based on consonance, distance penalties, tessitura gravity, and satiety. The default implementation is `pitch_hill_climb`.
+*   **ModulationCore (How-much)**: Outputs modulation parameters (exploration, persistence, habituation sensitivity) that bias the other cores without choosing targets or rhythms. The initial implementation is `static`.
 
 ## 4.2 Lifecycle and Metabolism
 
@@ -243,15 +243,13 @@ Agents in Conchordal are governed by energy dynamics modeled on biological metab
 
 This mechanic creates a Darwinian pressure: **Survival of the Consonant**. The musical structure emerges because only the agents that find harmonic relationships survive to be heard.
 
-## 4.3 Organic Movement Logic
+## 4.3 Field Retargeting Logic
 
-Agents are not static; they move through frequency space to improve their fitness. The `update_organic_movement` method implements discrete candidate selection with biological constraints.
+Agents are not static; they move through frequency space to improve their fitness. The execution layer (`Individual::update_field_target`) applies a retarget gate (theta zero-crossing plus an integration window) and then asks the FieldCore to propose the next target.
 
-1.  **Sensory Polling**: The agent samples the Landscape at its current frequency $f$, and at a small set of nearby candidate pitches.
-2.  **Candidate Comparison**: It compares adjusted scores (consonance minus penalties) and selects a better target when available.
-3.  **Commitment vs. Drift**:
-    *   The `commitment` parameter determines the agent's "stubbornness." A high commitment makes the agent resist moving, effectively anchoring the harmony. A low commitment makes the agent fluid, hopping more readily into new chords.
-    *   A `PinkNoise` generator adds sway (random drift). This stochasticity prevents the system from getting stuck in local optima (static chords) and gives the movement an organic, living quality.
+1.  **Retarget Gate**: The Individual integrates time based on current frequency and fires only when a theta crossing aligns with the window. This keeps retargeting rhythmic and scale-sensitive.
+2.  **Field Proposal**: The FieldCore (currently `PitchHillClimb`) evaluates a discrete set of candidates around the current target. It scores each candidate with consonance minus penalties (distance, tessitura gravity, and spectral satiety).
+3.  **Modulation Influence**: The ModulationCore supplies persistence, exploration, and habituation sensitivity. These parameters bias whether the agent stays or hops when improvements are marginal, and the FieldCore returns a `salience` score (0..1) that reflects improvement strength.
 
 The movement uses a hop policy in `Log2Space`: fade out via `breath_gain`, snap the pitch to the new target, then fade in. This yields discrete jumps rather than continuous portamento.
 
@@ -279,7 +277,7 @@ This creates a two-way interaction: The global rhythm drives the agents (entrain
 
 ## 5.3 Kuramoto Entrainment
 
-The `KuramotoCore` brain implements the Kuramoto model of coupled oscillators.
+The `entrain` TemporalCore uses a Kuramoto-style model of coupled oscillators.
 
 $$ \frac{d\theta_i}{dt} = \omega_i + \frac{K}{N} \sum_{j=1}^N \sin(\theta_j - \theta_i) $$
 
@@ -358,7 +356,7 @@ This script demonstrates the emergent quantization of time.
 
 1.  **Phase 1 (The Seed)**: A single, high-energy agent "Kick" is spawned at 60 Hz. Its periodic articulation excites the Delta band resonator in the `NeuralRhythms`.
 2.  **Phase 2 (The Swarm)**: A cloud of agents is spawned with random phases.
-3.  **Emergence**: Because the agents have `KuramotoCore` brains coupled to the Delta band, they sense the rhythm established by the Kick. Over a period of seconds, their phases drift and lock into alignment with the Kick. The result is a synchronized pulse that was not explicitly programmed into the swarm—it arose from the physics of the coupled oscillators.
+3.  **Emergence**: Because the agents use `entrain` TemporalCores coupled to the Delta band, they sense the rhythm established by the Kick. Over a period of seconds, their phases drift and lock into alignment with the Kick. The result is a synchronized pulse that was not explicitly programmed into the swarm—it arose from the physics of the coupled oscillators.
 
 ## 7.2 Case Study: Mirror Dualism (`samples/04_ecosystems/mirror_dualism.rhai`)
 

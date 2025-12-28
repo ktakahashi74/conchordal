@@ -6,10 +6,16 @@ print(">>> Comparison: Major Gravity vs Mirror Dualism <<<");
 // Center on C4 (261.63Hz).
 // "C" persists in both phases, but the attraction landscape around it changes.
 let anchor_life = #{ 
-    type: "sustain", 
-    initial_energy: 10.0, 
-    metabolism_rate: 0.0, 
-    envelope: #{ attack_sec: 2.0, decay_sec: 0.5, sustain_level: 1.0 }
+    body: #{ core: "sine" },
+    temporal: #{
+        core: "entrain",
+        type: "sustain", 
+        initial_energy: 10.0, 
+        metabolism_rate: 0.0, 
+        envelope: #{ attack_sec: 2.0, decay_sec: 0.5, sustain_level: 1.0 }
+    },
+    field: #{ core: "pitch_hill_climb" },
+    modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 1.0, exploration: 0.0 }
 };
 
 add_agent("anchor", 261.63, 0.4, anchor_life);
@@ -36,7 +42,12 @@ let method_major = #{
     temperature: 0.5,
     min_dist_erb: 1.0
 };
-let life_pulse = #{ type: "decay", initial_energy: 1.0, half_life_sec: 0.8 };
+let life_pulse = #{
+    body: #{ core: "sine" },
+    temporal: #{ core: "entrain", type: "decay", initial_energy: 1.0, half_life_sec: 0.8 },
+    field: #{ core: "pitch_hill_climb" },
+    modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 1.0, exploration: 0.0 }
+};
 
 for i in 0..6 {
     // Probabilistically selects C, E, G (C Major Triad)

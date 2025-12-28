@@ -25,7 +25,7 @@ use crate::core::stream::{
 };
 use crate::life::conductor::Conductor;
 use crate::life::individual::SoundBody;
-use crate::life::population::{Population, PopulationParams};
+use crate::life::population::Population;
 use crate::life::scenario::Scenario;
 use crate::life::scripting::ScriptHost;
 use crate::ui::viewdata::{
@@ -226,13 +226,7 @@ impl App {
         };
 
         // Population (life)
-        let pop = Population::new(
-            PopulationParams {
-                initial_tones_hz: vec![440.0],
-                amplitude: 0.0,
-            },
-            runtime_sample_rate as f32,
-        );
+        let pop = Population::new(runtime_sample_rate as f32);
 
         // Analysis/NSGT setup
         let fs: f32 = runtime_sample_rate as f32;
@@ -895,30 +889,16 @@ fn worker_loop(
                 let agent_states: Vec<AgentStateInfo> = pop
                     .individuals
                     .iter()
-                    .map(|agent| match agent {
-                        crate::life::individual::IndividualWrapper::PureTone(ind) => {
-                            let f = ind.body.base_freq_hz();
-                            AgentStateInfo {
-                                id: ind.id,
-                                freq_hz: f,
-                                target_freq: 2.0f32.powf(ind.target_pitch_log2),
-                                integration_window: ind.integration_window,
-                                breath_gain: ind.breath_gain,
-                                consonance: current_landscape.evaluate_pitch01(f),
-                                habituation: current_landscape.get_habituation_at(f),
-                            }
-                        }
-                        crate::life::individual::IndividualWrapper::Harmonic(ind) => {
-                            let f = ind.body.base_freq_hz();
-                            AgentStateInfo {
-                                id: ind.id,
-                                freq_hz: f,
-                                target_freq: 2.0f32.powf(ind.target_pitch_log2),
-                                integration_window: ind.integration_window,
-                                breath_gain: ind.breath_gain,
-                                consonance: current_landscape.evaluate_pitch01(f),
-                                habituation: current_landscape.get_habituation_at(f),
-                            }
+                    .map(|agent| {
+                        let f = agent.body.base_freq_hz();
+                        AgentStateInfo {
+                            id: agent.id,
+                            freq_hz: f,
+                            target_freq: 2.0f32.powf(agent.target_pitch_log2),
+                            integration_window: agent.integration_window,
+                            breath_gain: agent.breath_gain,
+                            consonance: current_landscape.evaluate_pitch01(f),
+                            habituation: current_landscape.get_habituation_at(f),
                         }
                     })
                     .collect();

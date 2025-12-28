@@ -1,13 +1,23 @@
 print("II - V - I anchor walk");
 
 fn play_chord(root, tag) {
-    let bass_life = #{ type: "decay", initial_energy: 1.0, half_life_sec: 0.5, attack_sec: 0.1 };
-    let pad_life = #{ type: "decay", initial_energy: 1.0, half_life_sec: 0.9, attack_sec: 0.4 };
+    let bass_life = #{
+        body: #{ core: "sine" },
+        temporal: #{ core: "entrain", type: "decay", initial_energy: 1.0, half_life_sec: 0.5, attack_sec: 0.1 },
+        field: #{ core: "pitch_hill_climb" },
+        modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 1.0, exploration: 0.0 }
+    };
+    let pad_life = #{
+        body: #{ core: "sine" },
+        temporal: #{ core: "entrain", type: "decay", initial_energy: 1.0, half_life_sec: 0.9, attack_sec: 0.4 },
+        field: #{ core: "pitch_hill_climb" },
+        modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 1.0, exploration: 0.0 }
+    };
     let pad_method = #{ mode: "harmonicity", min_freq: root * 2.0, max_freq: root * 5.0 };
 
     add_agent("bass_" + tag, root, 0.36, bass_life);
     wait(0.18);
-spawn_agents("pad_" + tag, pad_method, pad_life, 3, 0.2);
+    spawn_agents("pad_" + tag, pad_method, pad_life, 3, 0.2);
     wait(1.4);
     remove("bass_" + tag);
     remove("pad_" + tag);

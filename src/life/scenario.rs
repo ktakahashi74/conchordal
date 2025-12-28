@@ -6,16 +6,14 @@ use serde::{
 use std::fmt;
 
 use crate::life::individual::{
-    AgentMetadata, AnyCore, ArticulationState, DroneCore, Harmonic, HarmonicBody,
-    IndividualWrapper, KuramotoCore, PinkNoise, PureTone, Sensitivity, SequencedCore, SineBody,
+    AgentMetadata, AnyFieldCore, AnyModulationCore, AnyTemporalCore, Individual,
 };
 use crate::life::lifecycle::LifecycleConfig;
-use rand::{Rng as _, rng};
+use rand::SeedableRng;
 use serde_json::Value;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Scenario {
-    #[serde(alias = "episodes")]
     pub scenes: Vec<Scene>,
 }
 
@@ -54,90 +52,151 @@ pub struct TimbreGenotype {
     pub unison: f32, // Detune amount (0.0 = single)
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct LifeConfig {
+    pub body: SoundBodyConfig,
+    pub temporal: TemporalCoreConfig,
+    pub field: FieldCoreConfig,
+    pub modulation: ModulationCoreConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "core", rename_all = "snake_case", deny_unknown_fields)]
+pub enum SoundBodyConfig {
+    Sine {
+        #[serde(default)]
+        phase: Option<f32>,
+    },
+    Harmonic {
+        #[serde(flatten)]
+        genotype: TimbreGenotype,
+        #[serde(default)]
+        partials: Option<usize>,
+    },
+}
+
 #[derive(Debug, Clone, Serialize, JsonSchema)]
-#[serde(tag = "brain", rename_all = "snake_case")]
-pub enum BrainConfig {
+#[serde(tag = "core", rename_all = "snake_case", deny_unknown_fields)]
+pub enum TemporalCoreConfig {
     Entrain {
         #[serde(flatten)]
         lifecycle: LifecycleConfig,
+        #[serde(default)]
+        rhythm_freq: Option<f32>,
+        #[serde(default)]
+        rhythm_sensitivity: Option<f32>,
     },
     Seq {
         duration: f32,
     },
     Drone {
         #[serde(default)]
-        sway: f32,
+        sway: Option<f32>,
     },
 }
 
-impl Default for BrainConfig {
-    fn default() -> Self {
-        BrainConfig::Entrain {
-            lifecycle: LifecycleConfig::Decay {
-                initial_energy: 1.0,
-                half_life_sec: 0.5,
-                attack_sec: crate::life::lifecycle::default_decay_attack(),
-            },
-        }
-    }
-}
-
-fn default_brain() -> BrainConfig {
-    BrainConfig::default()
-}
-
-fn deserialize_brain_config<'de, D>(deserializer: D) -> Result<BrainConfig, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    #[derive(Debug, Clone, Deserialize)]
-    #[serde(tag = "brain", rename_all = "snake_case")]
-    enum Tagged {
-        Entrain {
-            #[serde(flatten)]
-            lifecycle: LifecycleConfig,
-        },
-        Seq {
-            duration: f32,
-        },
-        Drone {
-            #[serde(default)]
-            sway: f32,
-        },
-    }
-
-    let value = Value::deserialize(deserializer)?;
-    if let Ok(tagged) = Tagged::deserialize(value.clone()) {
-        return Ok(match tagged {
-            Tagged::Entrain { lifecycle } => BrainConfig::Entrain { lifecycle },
-            Tagged::Seq { duration } => BrainConfig::Seq { duration },
-            Tagged::Drone { sway } => BrainConfig::Drone { sway },
-        });
-    }
-    if let Ok(lifecycle) = LifecycleConfig::deserialize(value.clone()) {
-        return Ok(BrainConfig::Entrain { lifecycle });
-    }
-    Err(de::Error::custom(
-        "failed to parse brain config or legacy lifecycle",
-    ))
-}
-
-impl<'de> Deserialize<'de> for BrainConfig {
+impl<'de> Deserialize<'de> for TemporalCoreConfig {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
-        deserialize_brain_config(deserializer)
+        let value = Value::deserialize(deserializer)?;
+        let obj = value
+            .as_object()
+            .ok_or_else(|| de::Error::custom("temporal core must be a map"))?;
+        let core = obj
+            .get("core")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| de::Error::custom("temporal core missing `core`"))?;
+        match core {
+            "entrain" => {
+                let rhythm_freq = obj
+                    .get("rhythm_freq")
+                    .and_then(|v| v.as_f64())
+                    .map(|v| v as f32);
+                let rhythm_sensitivity = obj
+                    .get("rhythm_sensitivity")
+                    .and_then(|v| v.as_f64())
+                    .map(|v| v as f32);
+                let mut lifecycle_obj = obj.clone();
+                lifecycle_obj.remove("core");
+                lifecycle_obj.remove("rhythm_freq");
+                lifecycle_obj.remove("rhythm_sensitivity");
+                let lifecycle_value = Value::Object(lifecycle_obj);
+                let lifecycle =
+                    LifecycleConfig::deserialize(lifecycle_value).map_err(de::Error::custom)?;
+                Ok(TemporalCoreConfig::Entrain {
+                    lifecycle,
+                    rhythm_freq,
+                    rhythm_sensitivity,
+                })
+            }
+            "seq" => {
+                for key in obj.keys() {
+                    if key != "core" && key != "duration" {
+                        return Err(de::Error::unknown_field(key, &["core", "duration"]));
+                    }
+                }
+                let duration = obj
+                    .get("duration")
+                    .and_then(|v| v.as_f64())
+                    .ok_or_else(|| de::Error::custom("seq core requires `duration`"))?
+                    as f32;
+                Ok(TemporalCoreConfig::Seq { duration })
+            }
+            "drone" => {
+                for key in obj.keys() {
+                    if key != "core" && key != "sway" {
+                        return Err(de::Error::unknown_field(key, &["core", "sway"]));
+                    }
+                }
+                let sway = obj.get("sway").and_then(|v| v.as_f64()).map(|v| v as f32);
+                Ok(TemporalCoreConfig::Drone { sway })
+            }
+            other => Err(de::Error::unknown_variant(
+                other,
+                &["entrain", "seq", "drone"],
+            )),
+        }
     }
 }
 
-impl fmt::Display for BrainConfig {
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "core", rename_all = "snake_case", deny_unknown_fields)]
+pub enum FieldCoreConfig {
+    PitchHillClimb {
+        #[serde(default)]
+        neighbor_step_cents: Option<f32>,
+        #[serde(default)]
+        tessitura_gravity: Option<f32>,
+        #[serde(default)]
+        satiety_weight: Option<f32>,
+        #[serde(default)]
+        improvement_threshold: Option<f32>,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "core", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ModulationCoreConfig {
+    Static {
+        #[serde(default)]
+        exploration: Option<f32>,
+        #[serde(default)]
+        persistence: Option<f32>,
+        #[serde(default)]
+        habituation_sensitivity: Option<f32>,
+    },
+}
+
+impl fmt::Display for LifeConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            BrainConfig::Entrain { lifecycle } => write!(f, "brain=entrain {}", lifecycle),
-            BrainConfig::Seq { duration } => write!(f, "brain=seq(duration={duration:.3}s)"),
-            BrainConfig::Drone { sway } => write!(f, "brain=drone(sway={sway:.3})"),
-        }
+        write!(
+            f,
+            "life[body={:?}, temporal={:?}, field={:?}, modulation={:?}]",
+            self.body, self.temporal, self.field, self.modulation
+        )
     }
 }
 
@@ -164,192 +223,21 @@ pub struct Event {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type")]
-pub enum IndividualConfig {
-    #[serde(rename = "pure_tone")]
-    PureTone {
-        freq: f32,
-        amp: f32,
-        phase: Option<f32>,
-        #[serde(default)]
-        rhythm_freq: Option<f32>,
-        #[serde(default)]
-        rhythm_sensitivity: Option<f32>,
-        #[serde(default)]
-        commitment: Option<f32>,
-        #[serde(default)]
-        habituation_sensitivity: Option<f32>,
-        #[serde(
-            default = "default_brain",
-            alias = "lifecycle",
-            deserialize_with = "deserialize_brain_config"
-        )]
-        brain: BrainConfig,
-        tag: Option<String>,
-    }, // future variants
-    #[serde(rename = "harmonic")]
-    Harmonic {
-        freq: f32,
-        amp: f32,
-        genotype: TimbreGenotype,
-        #[serde(
-            default = "default_brain",
-            alias = "lifecycle",
-            deserialize_with = "deserialize_brain_config"
-        )]
-        brain: BrainConfig, // Controls the global amplitude envelope
-        tag: Option<String>,
-        #[serde(default)]
-        rhythm_freq: Option<f32>,
-        #[serde(default)]
-        rhythm_sensitivity: Option<f32>,
-        #[serde(default)]
-        commitment: Option<f32>,
-        #[serde(default)]
-        habituation_sensitivity: Option<f32>,
-    },
+#[serde(deny_unknown_fields)]
+pub struct IndividualConfig {
+    pub freq: f32,
+    pub amp: f32,
+    pub life: LifeConfig,
+    pub tag: Option<String>,
 }
 
 impl IndividualConfig {
     pub fn id(&self) -> Option<u64> {
-        match self {
-            IndividualConfig::PureTone { .. } => None,
-            IndividualConfig::Harmonic { .. } => None,
-        }
+        None
     }
 
     pub fn tag(&self) -> Option<&String> {
-        match self {
-            IndividualConfig::PureTone { tag, .. } => tag.as_ref(),
-            IndividualConfig::Harmonic { tag, .. } => tag.as_ref(),
-        }
-    }
-
-    fn envelope_from_lifecycle(
-        lifecycle: &LifecycleConfig,
-        fs: f32,
-    ) -> (
-        f32,
-        f32,
-        f32,
-        f32,
-        f32,
-        ArticulationState,
-        Sensitivity,
-        bool,
-        f32,
-    ) {
-        match lifecycle {
-            LifecycleConfig::Decay {
-                initial_energy,
-                half_life_sec,
-                attack_sec,
-            } => {
-                let atk = attack_sec.max(0.0005);
-                let attack_step = 1.0 / (fs * atk);
-                let decay_sec = half_life_sec.max(0.01);
-                let decay_factor = (-1.0f32 / (fs * decay_sec)).exp();
-                let basal = 0.0;
-                (
-                    *initial_energy,
-                    basal,
-                    0.0,
-                    attack_step,
-                    decay_factor,
-                    ArticulationState::Attack,
-                    Sensitivity::default(), // fire-and-forget
-                    false,                  // one-shot
-                    0.02,
-                )
-            }
-            LifecycleConfig::Sustain {
-                initial_energy,
-                metabolism_rate,
-                recharge_rate,
-                action_cost,
-                envelope,
-            } => {
-                let atk = envelope.attack_sec.max(0.0005);
-                let attack_step = 1.0 / (fs * atk);
-                let decay_sec = envelope.decay_sec.max(0.01);
-                let decay_factor = (-1.0f32 / (fs * decay_sec)).exp();
-                (
-                    *initial_energy,
-                    *metabolism_rate,
-                    recharge_rate.unwrap_or(0.5), // configurable recharge
-                    attack_step,
-                    decay_factor,
-                    ArticulationState::Idle,
-                    Sensitivity {
-                        delta: 1.0,
-                        theta: 1.0,
-                        alpha: 0.5,
-                        beta: 0.5,
-                    },
-                    true, // can retrigger rhythmically
-                    action_cost.unwrap_or(0.02),
-                )
-            }
-        }
-    }
-
-    fn core_from_brain(
-        brain: &BrainConfig,
-        fs: f32,
-        _assigned_id: u64,
-        rhythm_freq: &Option<f32>,
-        rhythm_sensitivity: &Option<f32>,
-        noise_seed: u64,
-    ) -> AnyCore {
-        match brain {
-            BrainConfig::Entrain { lifecycle } => {
-                let (
-                    energy,
-                    basal_cost,
-                    recharge_rate,
-                    attack_step,
-                    decay_factor,
-                    state,
-                    sensitivity,
-                    retrigger,
-                    action_cost,
-                ) = Self::envelope_from_lifecycle(lifecycle, fs);
-                let mut rng = rng();
-                AnyCore::Entrain(KuramotoCore {
-                    energy,
-                    basal_cost,
-                    action_cost,
-                    recharge_rate,
-                    sensitivity: Sensitivity {
-                        beta: rhythm_sensitivity.unwrap_or(sensitivity.beta),
-                        ..sensitivity
-                    },
-                    rhythm_phase: 0.0,
-                    rhythm_freq: rhythm_freq.unwrap_or_else(|| rng.random_range(0.5..3.0)),
-                    env_level: 0.0,
-                    state,
-                    attack_step,
-                    decay_factor,
-                    retrigger,
-                    noise_1f: PinkNoise::new(noise_seed, 0.001),
-                    confidence: 1.0,
-                    gate_threshold: 0.02,
-                })
-            }
-            BrainConfig::Seq { duration } => AnyCore::Seq(SequencedCore {
-                timer: 0.0,
-                duration: duration.max(0.0),
-                env_level: 0.0,
-            }),
-            BrainConfig::Drone { sway } => {
-                let mut rng = rng();
-                let sway_rate = if *sway <= 0.0 { 0.05 } else { *sway };
-                AnyCore::Drone(DroneCore {
-                    phase: rng.random_range(0.0..std::f32::consts::TAU),
-                    sway_rate,
-                })
-            }
-        }
+        self.tag.as_ref()
     }
 
     pub fn spawn(
@@ -358,181 +246,89 @@ impl IndividualConfig {
         start_frame: u64,
         mut metadata: AgentMetadata,
         fs: f32,
-    ) -> IndividualWrapper {
+    ) -> Individual {
         metadata.id = assigned_id;
         if metadata.tag.is_none() {
             metadata.tag = self.tag().cloned();
         }
-        match self {
-            IndividualConfig::PureTone {
-                freq,
-                amp,
-                phase,
-                rhythm_freq,
-                rhythm_sensitivity,
-                commitment,
-                habituation_sensitivity,
-                brain,
-                ..
-            } => {
-                let target_freq = freq.max(1.0);
-                let target_pitch_log2 = target_freq.log2();
-                let integration_window = 0.05 + 6.0 / target_freq;
-                let commitment = commitment.unwrap_or(0.5).clamp(0.0, 1.0);
-                let habituation = habituation_sensitivity.unwrap_or(1.0).max(0.0);
-
-                IndividualWrapper::PureTone(PureTone {
-                    id: assigned_id,
-                    metadata,
-                    core: Self::core_from_brain(
-                        brain,
-                        fs,
-                        assigned_id,
-                        rhythm_freq,
-                        rhythm_sensitivity,
-                        assigned_id,
-                    ),
-                    body: SineBody {
-                        freq_hz: *freq,
-                        amp: *amp,
-                        audio_phase: phase.unwrap_or(0.0),
-                    },
-                    last_signal: Default::default(),
-                    release_gain: 1.0,
-                    release_sec: 0.03,
-                    release_pending: false,
-                    target_pitch_log2,
-                    tessitura_center: target_pitch_log2,
-                    tessitura_gravity: 0.1,
-                    integration_window,
-                    accumulated_time: 0.0,
-                    breath_gain: 0.0,
-                    commitment,
-                    habituation_sensitivity: habituation,
-                    last_theta_sample: 0.0,
-                })
-            }
-            IndividualConfig::Harmonic {
-                freq,
-                amp,
-                genotype,
-                rhythm_freq,
-                rhythm_sensitivity,
-                commitment,
-                habituation_sensitivity,
-                brain,
-                ..
-            } => {
-                let mut rng = rng();
-                let partials = 16;
-                let mut phases = Vec::with_capacity(partials);
-                let mut detune_phases = Vec::with_capacity(partials);
-                for _ in 0..partials {
-                    phases.push(rng.random_range(0.0..std::f32::consts::TAU));
-                    detune_phases.push(rng.random_range(0.0..std::f32::consts::TAU));
-                }
-                let target_freq = freq.max(1.0);
-                let target_pitch_log2 = target_freq.log2();
-                let integration_window = 0.05 + 6.0 / target_freq;
-                let commitment = commitment.unwrap_or(0.5).clamp(0.0, 1.0);
-                let habituation = habituation_sensitivity.unwrap_or(1.0).max(0.0);
-                IndividualWrapper::Harmonic(Harmonic {
-                    id: assigned_id,
-                    metadata,
-                    core: Self::core_from_brain(
-                        brain,
-                        fs,
-                        assigned_id,
-                        rhythm_freq,
-                        rhythm_sensitivity,
-                        assigned_id.wrapping_add(start_frame),
-                    ),
-                    body: HarmonicBody {
-                        base_freq_hz: *freq,
-                        amp: *amp,
-                        genotype: genotype.clone(),
-                        lfo_phase: 0.0,
-                        phases,
-                        detune_phases,
-                        jitter_gen: PinkNoise::new(
-                            assigned_id.wrapping_add(start_frame ^ 0xdead_beef),
-                            0.001,
-                        ),
-                    },
-                    last_signal: Default::default(),
-                    release_gain: 1.0,
-                    release_sec: 0.03,
-                    release_pending: false,
-                    target_pitch_log2,
-                    tessitura_center: target_pitch_log2,
-                    tessitura_gravity: 0.1,
-                    integration_window,
-                    accumulated_time: 0.0,
-                    breath_gain: 0.0,
-                    commitment,
-                    habituation_sensitivity: habituation,
-                    last_theta_sample: 0.0,
-                })
-            }
+        let target_freq = self.freq.max(1.0);
+        let target_pitch_log2 = target_freq.log2();
+        let integration_window = 2.0 + 10.0 / target_freq;
+        let seed = assigned_id ^ start_frame.wrapping_mul(0x9E37_79B9_7F4A_7C15);
+        let mut rng = rand::rngs::SmallRng::seed_from_u64(seed);
+        let temporal = AnyTemporalCore::from_config(&self.life.temporal, fs, assigned_id, &mut rng);
+        let field = AnyFieldCore::from_config(&self.life.field, target_pitch_log2, &mut rng);
+        let modulation = AnyModulationCore::from_config(&self.life.modulation);
+        let body = crate::life::individual::AnySoundBody::from_config(
+            &self.life.body,
+            self.freq,
+            self.amp,
+            &mut rng,
+        );
+        Individual {
+            id: assigned_id,
+            metadata,
+            temporal,
+            field,
+            modulation,
+            body,
+            last_signal: Default::default(),
+            release_gain: 1.0,
+            release_sec: 0.03,
+            release_pending: false,
+            target_pitch_log2,
+            integration_window,
+            accumulated_time: 0.0,
+            breath_gain: 0.0,
+            last_theta_sample: 0.0,
+            last_target_salience: 0.0,
+            rng,
         }
     }
 }
 
 impl fmt::Display for IndividualConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            IndividualConfig::PureTone {
-                freq,
-                amp,
-                tag,
-                brain,
-                ..
-            } => {
-                let tag_str = tag.as_deref().unwrap_or("-");
-                write!(
-                    f,
-                    "PureTone(tag={}, freq={:.1} Hz, amp={:.3}, {})",
-                    tag_str, freq, amp, brain
-                )
-            }
-            IndividualConfig::Harmonic {
-                freq,
-                amp,
-                tag,
-                brain,
-                genotype,
-                ..
-            } => {
-                let tag_str = tag.as_deref().unwrap_or("-");
-                write!(
-                    f,
-                    "Harmonic(tag={}, mode={:?}, freq={:.1} Hz, amp={:.3}, {})",
-                    tag_str, genotype.mode, freq, amp, brain
-                )
-            }
-        }
+        let tag_str = self.tag.as_deref().unwrap_or("-");
+        write!(
+            f,
+            "Agent(tag={}, freq={:.1} Hz, amp={:.3}, {})",
+            tag_str, self.freq, self.amp, self.life
+        )
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::life::individual::SoundBody;
 
     #[test]
-    fn spawn_carries_envelope_and_params() {
-        let cfg = IndividualConfig::PureTone {
+    fn spawn_carries_life_config() {
+        let cfg = IndividualConfig {
             freq: 220.0,
             amp: 0.3,
-            phase: Some(0.25),
-            rhythm_freq: None,
-            rhythm_sensitivity: None,
-            commitment: None,
-            habituation_sensitivity: None,
-            brain: BrainConfig::Entrain {
-                lifecycle: LifecycleConfig::Decay {
-                    initial_energy: 1.0,
-                    half_life_sec: 0.5,
-                    attack_sec: crate::life::lifecycle::default_decay_attack(),
+            life: LifeConfig {
+                body: SoundBodyConfig::Sine { phase: Some(0.25) },
+                temporal: TemporalCoreConfig::Entrain {
+                    lifecycle: LifecycleConfig::Decay {
+                        initial_energy: 1.0,
+                        half_life_sec: 0.5,
+                        attack_sec: crate::life::lifecycle::default_decay_attack(),
+                    },
+                    rhythm_freq: None,
+                    rhythm_sensitivity: None,
+                },
+                field: FieldCoreConfig::PitchHillClimb {
+                    neighbor_step_cents: None,
+                    tessitura_gravity: None,
+                    satiety_weight: None,
+                    improvement_threshold: None,
+                },
+                modulation: ModulationCoreConfig::Static {
+                    exploration: None,
+                    persistence: None,
+                    habituation_sensitivity: None,
                 },
             },
             tag: Some("test".into()),
@@ -549,14 +345,8 @@ mod tests {
             },
             48_000.0,
         );
-        match agent {
-            IndividualWrapper::PureTone(ind) => {
-                assert_eq!(ind.id, 7);
-                assert_eq!(ind.body.freq_hz, 220.0);
-                assert_eq!(ind.body.amp, 0.3);
-            }
-            IndividualWrapper::Harmonic(_) => panic!("expected pure tone"),
-        }
+        assert_eq!(agent.id, 7);
+        assert_eq!(agent.body.base_freq_hz(), 220.0);
     }
 }
 
@@ -570,12 +360,7 @@ pub enum Action {
         method: SpawnMethod,
         count: usize,
         amp: f32,
-        #[serde(
-            default = "default_brain",
-            alias = "lifecycle",
-            deserialize_with = "deserialize_brain_config"
-        )]
-        brain: BrainConfig,
+        life: LifeConfig,
         tag: Option<String>,
     },
     RemoveAgent {
@@ -634,14 +419,14 @@ impl fmt::Display for Action {
                 method,
                 count,
                 amp,
-                brain,
+                life,
                 tag,
             } => {
                 let tag_str = tag.as_deref().unwrap_or("-");
                 write!(
                     f,
                     "SpawnAgents tag={} count={} amp={:.3} {} {}",
-                    tag_str, count, amp, method, brain
+                    tag_str, count, amp, method, life
                 )
             }
             Action::RemoveAgent { target } => write!(f, "RemoveAgent target={}", target),

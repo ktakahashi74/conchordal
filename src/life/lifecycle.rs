@@ -5,7 +5,7 @@ use super::scenario::EnvelopeConfig;
 use std::fmt;
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "type", rename_all = "snake_case")]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum LifecycleConfig {
     Decay {
         initial_energy: f32,

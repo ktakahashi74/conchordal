@@ -3,22 +3,29 @@ print(">>> Cycle of Fifths (Fixed Crowding) <<<");
 fn play_step(name, root, dur) {
     // 1. Lifecycle configuration
     let pad_life = #{ 
-        type: "decay", 
-        initial_energy: 1.0, 
-        half_life_sec: 1.0, 
-        attack_sec: 0.6,
-        // Note: Check if your Rust config maps this. Usually 'habituation_sensitivity' is in the agent config, not lifecycle.
-        // Configuration to avoid crowding during autonomous movement
-        crowding_sensitivity: 2.0 
+        body: #{ core: "sine" },
+        temporal: #{ 
+            core: "entrain",
+            type: "decay", 
+            initial_energy: 1.0, 
+            half_life_sec: 1.0, 
+            attack_sec: 0.6
+        },
+        field: #{ core: "pitch_hill_climb" },
+        modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 2.0, exploration: 0.0 }
     };
     
     let bass_life = #{ 
-        type: "decay", 
-        initial_energy: 1.0, 
-        half_life_sec: 0.6, 
-        attack_sec: 0.2,
-        // Bass goes its own way (ignores crowding)
-        crowding_sensitivity: 0.0 
+        body: #{ core: "sine" },
+        temporal: #{ 
+            core: "entrain",
+            type: "decay", 
+            initial_energy: 1.0, 
+            half_life_sec: 0.6, 
+            attack_sec: 0.2
+        },
+        field: #{ core: "pitch_hill_climb" },
+        modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 0.0, exploration: 0.0 }
     };
 
     // 2. Spawn method configuration (Critical section)

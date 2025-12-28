@@ -1,15 +1,11 @@
-use super::individual::{AgentMetadata, AudioAgent, IndividualWrapper, SoundBody};
-use super::scenario::{Action, BrainConfig, IndividualConfig, SpawnMethod};
+use super::individual::{AgentMetadata, AudioAgent, Individual, ModulationCore, SoundBody};
+use super::scenario::{Action, IndividualConfig, SpawnMethod};
 use crate::core::landscape::{LandscapeFrame, LandscapeUpdate};
 use crate::core::log2space::Log2Space;
-use rand::{Rng, distr::Distribution, distr::weighted::WeightedIndex};
+use rand::{Rng, SeedableRng, distr::Distribution, distr::weighted::WeightedIndex, rngs::SmallRng};
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 use tracing::{debug, info, warn};
-
-pub struct PopulationParams {
-    pub initial_tones_hz: Vec<f32>,
-    pub amplitude: f32,
-}
 
 #[derive(Default)]
 struct WorkBuffers {
@@ -18,7 +14,7 @@ struct WorkBuffers {
 }
 
 pub struct Population {
-    pub individuals: Vec<IndividualWrapper>,
+    pub individuals: Vec<Individual>,
     current_frame: u64,
     pub abort_requested: bool,
     next_auto_id: u64,
@@ -41,10 +37,7 @@ impl Population {
         }
         let target_erb = crate::core::erb::hz_to_erb(freq_hz.max(1e-6));
         for agent in &self.individuals {
-            let base_hz = match agent {
-                IndividualWrapper::PureTone(ind) => ind.body.base_freq_hz(),
-                IndividualWrapper::Harmonic(ind) => ind.body.base_freq_hz(),
-            };
+            let base_hz = agent.body.base_freq_hz();
             if !base_hz.is_finite() {
                 continue;
             }
@@ -56,41 +49,10 @@ impl Population {
         false
     }
 
-    pub fn new(p: PopulationParams, fs: f32) -> Self {
+    pub fn new(fs: f32) -> Self {
         debug!("Population sample rate: {:.1} Hz", fs);
-        let individuals: Vec<IndividualWrapper> = p
-            .initial_tones_hz
-            .into_iter()
-            .enumerate()
-            .map(|(idx, f)| {
-                let cfg = IndividualConfig::PureTone {
-                    freq: f,
-                    amp: p.amplitude,
-                    phase: None,
-                    rhythm_freq: None,
-                    rhythm_sensitivity: None,
-                    commitment: None,
-                    habituation_sensitivity: None,
-                    brain: BrainConfig::Entrain {
-                        lifecycle: crate::life::lifecycle::LifecycleConfig::Decay {
-                            initial_energy: 1.0,
-                            half_life_sec: 0.5,
-                            attack_sec: crate::life::lifecycle::default_decay_attack(),
-                        },
-                    },
-                    tag: None,
-                };
-                let metadata = AgentMetadata {
-                    id: idx as u64,
-                    tag: None,
-                    group_idx: 0,
-                    member_idx: idx,
-                };
-                cfg.spawn(idx as u64, 0, metadata, fs)
-            })
-            .collect();
         Self {
-            individuals,
+            individuals: Vec::new(),
             current_frame: 0,
             abort_requested: false,
             next_auto_id: 1_000_000,
@@ -104,11 +66,22 @@ impl Population {
         }
     }
 
-    fn find_individual_mut(&mut self, id: u64) -> Option<&mut IndividualWrapper> {
+    fn spawn_seed(&self, tag: Option<&str>, group_idx: usize, count: usize) -> u64 {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        self.current_frame.hash(&mut hasher);
+        group_idx.hash(&mut hasher);
+        count.hash(&mut hasher);
+        if let Some(tag) = tag {
+            tag.hash(&mut hasher);
+        }
+        hasher.finish() ^ 0x9E37_79B9_7F4A_7C15
+    }
+
+    fn find_individual_mut(&mut self, id: u64) -> Option<&mut Individual> {
         self.individuals.iter_mut().find(|a| a.id() == id)
     }
 
-    pub fn add_individual(&mut self, individual: IndividualWrapper) {
+    pub fn add_individual(&mut self, individual: Individual) {
         let id = individual.id();
         self.individuals.retain(|a| a.id() != id);
         self.individuals.push(individual);
@@ -426,28 +399,23 @@ impl Population {
                 method,
                 count,
                 amp,
-                brain,
+                life,
                 tag,
             } => {
-                let mut rng = rand::rng();
                 let group_idx = self.next_group_idx(tag.as_deref());
+                let seed = self.spawn_seed(tag.as_deref(), group_idx, count);
+                let mut rng = SmallRng::seed_from_u64(seed);
                 for i in 0..count {
                     let freq = self.decide_frequency(&method, landscape, &mut rng);
-                    let phase = rng.random_range(0.0..std::f32::consts::TAU);
                     let id = {
                         let id = self.next_auto_id;
                         self.next_auto_id += 1;
                         id
                     };
-                    let cfg = IndividualConfig::PureTone {
+                    let cfg = IndividualConfig {
                         freq,
                         amp,
-                        phase: Some(phase),
-                        rhythm_freq: None,
-                        rhythm_sensitivity: None,
-                        commitment: None,
-                        habituation_sensitivity: None,
-                        brain: brain.clone(),
+                        life: life.clone(),
                         tag: tag.clone(),
                     };
                     let metadata = AgentMetadata {
@@ -487,14 +455,7 @@ impl Population {
                 let log_freq = freq_hz.max(1.0).log2();
                 for id in ids {
                     if let Some(a) = self.find_individual_mut(id) {
-                        match a {
-                            IndividualWrapper::PureTone(ind) => {
-                                ind.force_set_pitch_log2(log_freq);
-                            }
-                            IndividualWrapper::Harmonic(ind) => {
-                                ind.force_set_pitch_log2(log_freq);
-                            }
-                        }
+                        a.force_set_pitch_log2(log_freq);
                     } else {
                         warn!("SetFreq: agent {id} not found");
                     }
@@ -504,14 +465,7 @@ impl Population {
                 let ids = self.resolve_targets(&target);
                 for id in ids {
                     if let Some(a) = self.find_individual_mut(id) {
-                        match a {
-                            IndividualWrapper::PureTone(ind) => {
-                                ind.body.set_amp(amp);
-                            }
-                            IndividualWrapper::Harmonic(ind) => {
-                                ind.body.set_amp(amp);
-                            }
-                        }
+                        a.body.set_amp(amp);
                     } else {
                         warn!("SetAmp: agent {id} not found");
                     }
@@ -546,10 +500,7 @@ impl Population {
                 for id in ids {
                     if let Some(agent) = self.find_individual_mut(id) {
                         let v = value.clamp(0.0, 1.0);
-                        match agent {
-                            IndividualWrapper::PureTone(ind) => ind.commitment = v,
-                            IndividualWrapper::Harmonic(ind) => ind.commitment = v,
-                        }
+                        agent.modulation.set_persistence(v);
                     } else {
                         warn!("SetCommitment: agent {id} not found");
                     }
@@ -559,11 +510,9 @@ impl Population {
                 let ids = self.resolve_targets(&target);
                 for id in ids {
                     if let Some(agent) = self.find_individual_mut(id) {
-                        let v = (1.0 / (1.0 + value.abs())).clamp(0.0, 1.0);
-                        match agent {
-                            IndividualWrapper::PureTone(ind) => ind.commitment = v,
-                            IndividualWrapper::Harmonic(ind) => ind.commitment = v,
-                        }
+                        // Map drift to exploration without coupling persistence.
+                        let v = value.abs().clamp(0.0, 1.0);
+                        agent.modulation.set_exploration(v);
                     } else {
                         warn!("SetDrift: agent {id} not found");
                     }
@@ -574,10 +523,7 @@ impl Population {
                 for id in ids {
                     if let Some(agent) = self.find_individual_mut(id) {
                         let v = value.max(0.0);
-                        match agent {
-                            IndividualWrapper::PureTone(ind) => ind.habituation_sensitivity = v,
-                            IndividualWrapper::Harmonic(ind) => ind.habituation_sensitivity = v,
-                        }
+                        agent.modulation.set_habituation_sensitivity(v);
                     } else {
                         warn!("SetHabituationSensitivity: agent {id} not found");
                     }
@@ -737,13 +683,7 @@ mod tests {
         landscape.consonance01[idx_high] = 1.0;
         landscape.consonance[idx_raw] = 10.0;
 
-        let pop = Population::new(
-            PopulationParams {
-                initial_tones_hz: Vec::new(),
-                amplitude: 0.0,
-            },
-            48_000.0,
-        );
+        let pop = Population::new(48_000.0);
         let method = SpawnMethod::Harmonicity {
             min_freq: 100.0,
             max_freq: 400.0,

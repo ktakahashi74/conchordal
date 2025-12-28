@@ -1,6 +1,16 @@
 // Mixed strategies in one sweep (quick listening tour)
-let decay_short = #{ type: "decay", initial_energy: 1.0, half_life_sec: 0.4 };
-let sustain_soft = #{ type: "decay", initial_energy: 1.0, half_life_sec: 0.5, attack_sec: 0.04 };
+let decay_short = #{
+    body: #{ core: "sine" },
+    temporal: #{ core: "entrain", type: "decay", initial_energy: 1.0, half_life_sec: 0.4 },
+    field: #{ core: "pitch_hill_climb" },
+    modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 1.0, exploration: 0.0 }
+};
+let sustain_soft = #{
+    body: #{ core: "sine" },
+    temporal: #{ core: "entrain", type: "decay", initial_energy: 1.0, half_life_sec: 0.5, attack_sec: 0.04 },
+    field: #{ core: "pitch_hill_climb" },
+    modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 1.0, exploration: 0.0 }
+};
 
 spawn_agents("rnd", #{ mode: "random_log_uniform", min_freq: 200.0, max_freq: 1500.0 }, decay_short, 3, 0.18); wait(0.9);
 spawn_agents("harm", #{ mode: "harmonicity", min_freq: 260.0, max_freq: 1200.0 }, sustain_soft, 2, 0.22); wait(0.8);

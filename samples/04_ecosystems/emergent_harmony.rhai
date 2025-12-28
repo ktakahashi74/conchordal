@@ -7,7 +7,18 @@ add_agent(
     "anchor",
     65.406, // C2
     0.12,
-    #{ type: "sustain", initial_energy: 1.0, metabolism_rate: 0.0, envelope: #{ attack_sec: 0.02, decay_sec: 0.2, sustain_level: 1.0 } }
+    #{
+        body: #{ core: "sine" },
+        temporal: #{
+            core: "entrain",
+            type: "sustain",
+            initial_energy: 1.0,
+            metabolism_rate: 0.0,
+            envelope: #{ attack_sec: 0.02, decay_sec: 0.2, sustain_level: 1.0 }
+        },
+        field: #{ core: "pitch_hill_climb" },
+        modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 1.0, exploration: 0.0 }
+    }
 );
 set_commitment("anchor", 0.9);
 set_habituation_sensitivity("anchor", 0.3);
@@ -16,8 +27,18 @@ wait(4.0);
 
 scene("seekers_arrive");
 // Phase 2: seekers at dissonant intervals (F#, C#)
-add_agent("seeker_fsharp", 92.499, 0.08, #{ type: "decay", initial_energy: 1.2, half_life_sec: 6.0 });
-add_agent("seeker_csharp", 69.296, 0.08, #{ type: "decay", initial_energy: 1.2, half_life_sec: 6.0 });
+add_agent("seeker_fsharp", 92.499, 0.08, #{
+    body: #{ core: "sine" },
+    temporal: #{ core: "entrain", type: "decay", initial_energy: 1.2, half_life_sec: 6.0 },
+    field: #{ core: "pitch_hill_climb" },
+    modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 1.0, exploration: 0.0 }
+});
+add_agent("seeker_csharp", 69.296, 0.08, #{
+    body: #{ core: "sine" },
+    temporal: #{ core: "entrain", type: "decay", initial_energy: 1.2, half_life_sec: 6.0 },
+    field: #{ core: "pitch_hill_climb" },
+    modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 1.0, exploration: 0.0 }
+});
 set_commitment("seeker_fsharp", 0.25);
 set_commitment("seeker_csharp", 0.25);
 set_habituation_sensitivity("seeker_fsharp", 1.5);

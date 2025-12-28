@@ -8,10 +8,16 @@ print("--- [1] Anchoring C2 (65.41Hz) ---");
 
 // Base tone (static anchor)
 add_agent("anchor", 65.41, 0.6, #{ 
-    type: "sustain", 
-    initial_energy: 10.0, 
-    metabolism_rate: 0.0,
-    envelope: #{ attack_sec: 0.1, decay_sec: 0.1, sustain_level: 1.0 }
+    body: #{ core: "sine" },
+    temporal: #{
+        core: "entrain",
+        type: "sustain", 
+        initial_energy: 10.0, 
+        metabolism_rate: 0.0,
+        envelope: #{ attack_sec: 0.1, decay_sec: 0.1, sustain_level: 1.0 }
+    },
+    field: #{ core: "pitch_hill_climb" },
+    modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 1.0, exploration: 0.0 }
 });
 // Anchor stays put (high commitment = resists movement)
 set_commitment("anchor", 1.0);
@@ -22,7 +28,18 @@ wait(1.0);
 print("--- Injecting Dissonant Tone (C#3) -> Watch it hop to C3 or E3 ---");
 // Drop a semitone-above tone (C#3 ≈ 138.59) above C3 (130.81)
 // Check whether the pull guides it toward C3 or E3
-add_agent("slider", 138.59, 0.4, #{ type: "sustain", initial_energy: 2.0, metabolism_rate: 0.0, envelope: #{ attack_sec: 0.5, decay_sec: 0.5, sustain_level: 1.0 } });
+add_agent("slider", 138.59, 0.4, #{
+    body: #{ core: "sine" },
+    temporal: #{
+        core: "entrain",
+        type: "sustain",
+        initial_energy: 2.0,
+        metabolism_rate: 0.0,
+        envelope: #{ attack_sec: 0.5, decay_sec: 0.5, sustain_level: 1.0 }
+    },
+    field: #{ core: "pitch_hill_climb" },
+    modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 1.0, exploration: 0.0 }
+});
 
 // Low commitment = moves easily
 set_commitment("slider", 0.33); // eager to move
@@ -59,7 +76,18 @@ set_habituation(0.5, 5.0, 1.0); // gentler settings
 
 // Drop a swarm (spread across C overtones)
 let method = #{ mode: "harmonicity", min_freq: 130.0, max_freq: 800.0 };
-let life = #{ type: "sustain", initial_energy: 5.0, metabolism_rate: 0.05, envelope: #{ attack_sec: 1.0, decay_sec: 1.0, sustain_level: 0.5 }};
+let life = #{
+    body: #{ core: "sine" },
+    temporal: #{
+        core: "entrain",
+        type: "sustain",
+        initial_energy: 5.0,
+        metabolism_rate: 0.05,
+        envelope: #{ attack_sec: 1.0, decay_sec: 1.0, sustain_level: 0.5 }
+    },
+    field: #{ core: "pitch_hill_climb" },
+    modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 1.0, exploration: 0.0 }
+};
 
 for i in 0..5 {
     spawn_agents("swarm_" + i, method, life, 1, 0.15);

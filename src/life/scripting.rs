@@ -6,9 +6,7 @@ use anyhow::{Context, anyhow};
 use rhai::{Engine, EvalAltResult, FLOAT, Map, Position};
 
 use super::api::script_api as api;
-use super::scenario::{
-    Action, BrainConfig, Event, IndividualConfig, Scenario, Scene, SpawnMethod, TimbreGenotype,
-};
+use super::scenario::{Action, Event, IndividualConfig, LifeConfig, Scenario, Scene, SpawnMethod};
 
 const SCRIPT_PRELUDE: &str = r#"
 // Rhai-side helper to run blocks in parallel time branches
@@ -95,13 +93,13 @@ impl ScriptContext {
         amp: f32,
     ) -> Result<(), Box<EvalAltResult>> {
         let method = Self::from_map::<SpawnMethod>(method_map, "SpawnMethod")?;
-        let brain = Self::from_map::<BrainConfig>(life_map, "BrainConfig")?;
+        let life = Self::from_map::<LifeConfig>(life_map, "LifeConfig")?;
         let c = count.max(0) as usize;
         let action = Action::SpawnAgents {
             method,
             count: c,
             amp,
-            brain,
+            life,
             tag: Some(tag.to_string()),
         };
         self.push_event(vec![action]);
@@ -115,7 +113,16 @@ impl ScriptContext {
         amp: f32,
         life_map: Map,
     ) -> Result<(), Box<EvalAltResult>> {
-        self.add_agent_kind(tag, "pure_tone", freq, amp, Map::new(), life_map)
+        let life = Self::from_map::<LifeConfig>(life_map, "LifeConfig")?;
+        let agent = IndividualConfig {
+            freq,
+            amp,
+            life,
+            tag: Some(tag.to_string()),
+        };
+        let action = Action::AddAgent { agent };
+        self.push_event(vec![action]);
+        Ok(())
     }
 
     pub fn set_freq(&mut self, target: &str, freq: f32) {
@@ -197,95 +204,6 @@ impl ScriptContext {
             target: target.to_string(),
             release_sec: sec,
         }]);
-    }
-
-    pub fn add_agent_kind(
-        &mut self,
-        tag: &str,
-        kind: &str,
-        freq: f32,
-        amp: f32,
-        extra_map: Map,
-        life_map: Map,
-    ) -> Result<(), Box<EvalAltResult>> {
-        let brain = Self::from_map::<BrainConfig>(life_map, "BrainConfig")?;
-        let agent = match kind {
-            "pure_tone" => {
-                let phase = extra_map
-                    .get("phase")
-                    .and_then(|v| v.as_float().ok())
-                    .map(|p| p as f32);
-                let rhythm_freq = extra_map
-                    .get("rhythm_freq")
-                    .and_then(|v| v.as_float().ok())
-                    .map(|p| p as f32);
-                let rhythm_sensitivity = extra_map
-                    .get("rhythm_sensitivity")
-                    .and_then(|v| v.as_float().ok())
-                    .map(|p| p as f32);
-                let commitment = extra_map
-                    .get("commitment")
-                    .and_then(|v| v.as_float().ok())
-                    .map(|p| p as f32);
-                let habituation_sensitivity = extra_map
-                    .get("habituation_sensitivity")
-                    .and_then(|v| v.as_float().ok())
-                    .map(|p| p as f32);
-                IndividualConfig::PureTone {
-                    freq,
-                    amp,
-                    phase,
-                    rhythm_freq,
-                    rhythm_sensitivity,
-                    commitment,
-                    habituation_sensitivity,
-                    brain,
-                    tag: Some(tag.to_string()),
-                }
-            }
-            "harmonic" => {
-                let genotype = Self::from_map::<TimbreGenotype>(
-                    extra_map.clone(),
-                    "TimbreGenotype (harmonic)",
-                )?;
-                let rhythm_freq = extra_map
-                    .get("rhythm_freq")
-                    .and_then(|v| v.as_float().ok())
-                    .map(|p| p as f32);
-                let rhythm_sensitivity = extra_map
-                    .get("rhythm_sensitivity")
-                    .and_then(|v| v.as_float().ok())
-                    .map(|p| p as f32);
-                let commitment = extra_map
-                    .get("commitment")
-                    .and_then(|v| v.as_float().ok())
-                    .map(|p| p as f32);
-                let habituation_sensitivity = extra_map
-                    .get("habituation_sensitivity")
-                    .and_then(|v| v.as_float().ok())
-                    .map(|p| p as f32);
-                IndividualConfig::Harmonic {
-                    freq,
-                    amp,
-                    genotype,
-                    brain,
-                    tag: Some(tag.to_string()),
-                    rhythm_freq,
-                    rhythm_sensitivity,
-                    commitment,
-                    habituation_sensitivity,
-                }
-            }
-            other => {
-                return Err(Box::new(EvalAltResult::ErrorRuntime(
-                    format!("Unknown agent kind: {other}").into(),
-                    Position::NONE,
-                )));
-            }
-        };
-        let action = Action::AddAgent { agent };
-        self.push_event(vec![action]);
-        Ok(())
     }
 
     pub fn finish(&mut self) {
@@ -462,15 +380,6 @@ impl ScriptHost {
             api::release(&mut ctx, target, sec);
         });
 
-        let ctx_for_add_agent_kind = ctx.clone();
-        engine.register_fn(
-            "add_agent",
-            move |tag: &str, kind: &str, freq: FLOAT, amp: FLOAT, extra_map: Map, life_map: Map| {
-                let mut ctx = ctx_for_add_agent_kind.lock().expect("lock script context");
-                api::add_agent_kind(&mut ctx, tag, kind, freq, amp, extra_map, life_map)
-            },
-        );
-
         let ctx_for_finish = ctx.clone();
         engine.register_fn("finish", move || {
             let mut ctx = ctx_for_finish.lock().expect("lock script context");
@@ -522,10 +431,22 @@ mod tests {
         let scenario = run_script(
             r#"
             scene("intro");
-            add_agent("lead", 440.0, 0.2, #{ type: "decay", initial_energy: 1.0, half_life_sec: 0.5 });
+            let life = #{
+                body: #{ core: "sine" },
+                temporal: #{ core: "entrain", type: "decay", initial_energy: 1.0, half_life_sec: 0.5 },
+                field: #{ core: "pitch_hill_climb" },
+                modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 1.0, exploration: 0.0 }
+            };
+            add_agent("lead", 440.0, 0.2, life);
             wait(1.0);
             scene("break");
-            add_agent("hit", 880.0, 0.1, #{ type: "decay", initial_energy: 0.8, half_life_sec: 0.2 });
+            let hit_life = #{
+                body: #{ core: "sine" },
+                temporal: #{ core: "entrain", type: "decay", initial_energy: 0.8, half_life_sec: 0.2 },
+                field: #{ core: "pitch_hill_climb" },
+                modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 1.0, exploration: 0.0 }
+            };
+            add_agent("hit", 880.0, 0.1, hit_life);
             wait(0.5);
             finish();
         "#,
@@ -549,11 +470,9 @@ mod tests {
             for action in &ev.actions {
                 match action {
                     Action::AddAgent { agent } => {
-                        if let IndividualConfig::PureTone { tag, .. } = agent {
-                            if tag.as_deref() == Some("hit") {
-                                assert_time_close(ev.time, 0.0);
-                                has_hit = true;
-                            }
+                        if agent.tag.as_deref() == Some("hit") {
+                            assert_time_close(ev.time, 0.0);
+                            has_hit = true;
                         }
                     }
                     Action::Finish => {
@@ -576,10 +495,22 @@ mod tests {
             wait(0.1);
             parallel(|| {
                 wait(0.5);
-                add_agent("pad", 200.0, 0.1, #{ type: "decay", initial_energy: 1.0, half_life_sec: 0.3 });
+                let life = #{
+                    body: #{ core: "sine" },
+                    temporal: #{ core: "entrain", type: "decay", initial_energy: 1.0, half_life_sec: 0.3 },
+                    field: #{ core: "pitch_hill_climb" },
+                    modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 1.0, exploration: 0.0 }
+                };
+                add_agent("pad", 200.0, 0.1, life);
             });
             wait(0.2);
-            add_agent("after", 300.0, 0.1, #{ type: "decay", initial_energy: 1.0, half_life_sec: 0.3 });
+            let after_life = #{
+                body: #{ core: "sine" },
+                temporal: #{ core: "entrain", type: "decay", initial_energy: 1.0, half_life_sec: 0.3 },
+                field: #{ core: "pitch_hill_climb" },
+                modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 1.0, exploration: 0.0 }
+            };
+            add_agent("after", 300.0, 0.1, after_life);
             finish();
         "#,
         );
@@ -593,15 +524,11 @@ mod tests {
         for ev in &intro.events {
             for action in &ev.actions {
                 match action {
-                    Action::AddAgent { agent } => {
-                        if let IndividualConfig::PureTone { tag, .. } = agent {
-                            match tag.as_deref() {
-                                Some("pad") => pad_time = Some(ev.time),
-                                Some("after") => after_time = Some(ev.time),
-                                _ => {}
-                            }
-                        }
-                    }
+                    Action::AddAgent { agent } => match agent.tag.as_deref() {
+                        Some("pad") => pad_time = Some(ev.time),
+                        Some("after") => after_time = Some(ev.time),
+                        _ => {}
+                    },
                     Action::Finish => finish_time = Some(ev.time),
                     _ => {}
                 }
@@ -620,7 +547,12 @@ mod tests {
             scene("alpha");
             wait(1.2);
             let method = #{ mode: "random_log_uniform", min_freq: 100.0, max_freq: 200.0 };
-            let life = #{ type: "decay", initial_energy: 1.0, half_life_sec: 0.5 };
+            let life = #{
+                body: #{ core: "sine" },
+                temporal: #{ core: "entrain", type: "decay", initial_energy: 1.0, half_life_sec: 0.5 },
+                field: #{ core: "pitch_hill_climb" },
+                modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 1.0, exploration: 0.0 }
+            };
             spawn_agents("tag", method, life, 3, 0.25);
         "#,
         );
@@ -637,7 +569,7 @@ mod tests {
             Action::SpawnAgents {
                 count,
                 amp,
-                brain,
+                life,
                 tag,
                 method:
                     SpawnMethod::RandomLogUniform {
@@ -650,7 +582,10 @@ mod tests {
                 assert_time_close(*amp, 0.25);
                 assert_eq!(*min_freq, 100.0);
                 assert_eq!(*max_freq, 200.0);
-                assert!(matches!(brain, BrainConfig::Entrain { .. }));
+                assert!(matches!(
+                    life.temporal,
+                    crate::life::scenario::TemporalCoreConfig::Entrain { .. }
+                ));
                 assert_eq!(tag.as_deref(), Some("tag"));
             }
             other => panic!("unexpected action: {:?}", other),
@@ -661,7 +596,13 @@ mod tests {
     fn scene_created_when_scene_absent() {
         let scenario = run_script(
             r#"
-            add_agent("init", 330.0, 0.2, #{ type: "decay", initial_energy: 1.0, half_life_sec: 0.5 });
+            let life = #{
+                body: #{ core: "sine" },
+                temporal: #{ core: "entrain", type: "decay", initial_energy: 1.0, half_life_sec: 0.5 },
+                field: #{ core: "pitch_hill_climb" },
+                modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 1.0, exploration: 0.0 }
+            };
+            add_agent("init", 330.0, 0.2, life);
             wait(0.3);
             finish();
         "#,

@@ -7,14 +7,20 @@ print(">>> Experiment: Self-Organizing Rhythm <<<");
 // Long-lived agents, but the sound is a short pluck.
 // Sharp attack makes timing offsets and sync obvious.
 let life_plucking = #{
-    type: "sustain",
-    initial_energy: 1.5,
-    metabolism_rate: 0.05, // slow to die
-    envelope: #{ 
-        attack_sec: 0.005, // very sharp attack
-        decay_sec: 0.1,    // quick decay
-        sustain_level: 0.0 // percussive blip (discrete rhythm)
-    }
+    body: #{ core: "sine" },
+    temporal: #{
+        core: "entrain",
+        type: "sustain",
+        initial_energy: 1.5,
+        metabolism_rate: 0.05, // slow to die
+        envelope: #{ 
+            attack_sec: 0.005, // very sharp attack
+            decay_sec: 0.1,    // quick decay
+            sustain_level: 0.0 // percussive blip (discrete rhythm)
+        }
+    },
+    field: #{ core: "pitch_hill_climb" },
+    modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 1.0, exploration: 0.0 }
 };
 
 // ============================================================
@@ -25,10 +31,16 @@ print("--- [1] Injecting strong beat (Delta band driver) ---");
 
 // 1. Place a strong kick (60 Hz) to shake the low/delta band and set a reference.
 add_agent("kick", 60.0, 0.5, #{ 
-    type: "sustain", 
-    initial_energy: 2.0, 
-    metabolism_rate: 0.0, // does not die
-    envelope: #{ attack_sec: 0.01, decay_sec: 0.2, sustain_level: 0.0 }
+    body: #{ core: "sine" },
+    temporal: #{
+        core: "entrain",
+        type: "sustain", 
+        initial_energy: 2.0, 
+        metabolism_rate: 0.0, // does not die
+        envelope: #{ attack_sec: 0.01, decay_sec: 0.2, sustain_level: 0.0 }
+    },
+    field: #{ core: "pitch_hill_climb" },
+    modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 1.0, exploration: 0.0 }
 });
 
 wait(2.0); // allow rhythm to settle
@@ -78,7 +90,12 @@ print("--- [4] Injecting counter-rhythm (High freq) ---");
 
 // 4. Inject high clicks with a different tempo to perturb the groove.
 // Watch whether high/alpha stimulation micro-adjusts timing.
-let life_click = #{ type: "decay", initial_energy: 0.8, half_life_sec: 0.2 };
+let life_click = #{
+    body: #{ core: "sine" },
+    temporal: #{ core: "entrain", type: "decay", initial_energy: 0.8, half_life_sec: 0.2 },
+    field: #{ core: "pitch_hill_climb" },
+    modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 1.0, exploration: 0.0 }
+};
 let method_click = #{ mode: "random_log_uniform", min_freq: 2000.0, max_freq: 4000.0 };
 
 for i in 0..8 {

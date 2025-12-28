@@ -1,7 +1,12 @@
 print("Spectral Gap: weave through silence");
 
 let method = #{ mode: "spectral_gap", min_freq: 120.0, max_freq: 2200.0 };
-let life = #{ type: "decay", initial_energy: 1.0, half_life_sec: 0.32 };
+let life = #{
+    body: #{ core: "sine" },
+    temporal: #{ core: "entrain", type: "decay", initial_energy: 1.0, half_life_sec: 0.32 },
+    field: #{ core: "pitch_hill_climb" },
+    modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 1.0, exploration: 0.0 }
+};
 
 scene("stitch");
 for i in 0..24 {

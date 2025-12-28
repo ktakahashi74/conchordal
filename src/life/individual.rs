@@ -2,8 +2,12 @@ use crate::core::landscape::Landscape;
 use crate::core::log2space::Log2Space;
 use crate::core::modulation::NeuralRhythms;
 use crate::core::utils::pink_noise_tick;
-use crate::life::scenario::{HarmonicMode, TimbreGenotype};
-use rand::{Rng as _, SeedableRng, rngs::SmallRng};
+use crate::life::lifecycle::LifecycleConfig;
+use crate::life::scenario::{
+    FieldCoreConfig, HarmonicMode, ModulationCoreConfig, SoundBodyConfig, TemporalCoreConfig,
+    TimbreGenotype,
+};
+use rand::{Rng, SeedableRng, rngs::SmallRng};
 use std::f32::consts::PI;
 
 pub trait AudioAgent {
@@ -30,7 +34,7 @@ pub struct ArticulationSignal {
     pub tension: f32,
 }
 
-pub trait NeuralCore {
+pub trait TemporalCore {
     fn process(
         &mut self,
         consonance: f32,
@@ -69,6 +73,80 @@ pub struct Sensitivity {
     pub theta: f32,
     pub alpha: f32,
     pub beta: f32,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ModulationState {
+    pub exploration: f32,
+    pub persistence: f32,
+    pub habituation_sensitivity: f32,
+}
+
+pub trait ModulationCore {
+    fn state(&self) -> ModulationState;
+    fn set_exploration(&mut self, value: f32);
+    fn set_persistence(&mut self, value: f32);
+    fn set_habituation_sensitivity(&mut self, value: f32);
+}
+
+#[derive(Debug, Clone)]
+pub struct StaticModulationCore {
+    state: ModulationState,
+}
+
+impl StaticModulationCore {
+    pub fn new(state: ModulationState) -> Self {
+        Self { state }
+    }
+}
+
+impl ModulationCore for StaticModulationCore {
+    fn state(&self) -> ModulationState {
+        self.state
+    }
+
+    fn set_exploration(&mut self, value: f32) {
+        self.state.exploration = value.clamp(0.0, 1.0);
+    }
+
+    fn set_persistence(&mut self, value: f32) {
+        self.state.persistence = value.clamp(0.0, 1.0);
+    }
+
+    fn set_habituation_sensitivity(&mut self, value: f32) {
+        self.state.habituation_sensitivity = value.max(0.0);
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum AnyModulationCore {
+    Static(StaticModulationCore),
+}
+
+impl ModulationCore for AnyModulationCore {
+    fn state(&self) -> ModulationState {
+        match self {
+            AnyModulationCore::Static(core) => core.state(),
+        }
+    }
+
+    fn set_exploration(&mut self, value: f32) {
+        match self {
+            AnyModulationCore::Static(core) => core.set_exploration(value),
+        }
+    }
+
+    fn set_persistence(&mut self, value: f32) {
+        match self {
+            AnyModulationCore::Static(core) => core.set_persistence(value),
+        }
+    }
+
+    fn set_habituation_sensitivity(&mut self, value: f32) {
+        match self {
+            AnyModulationCore::Static(core) => core.set_habituation_sensitivity(value),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -154,7 +232,7 @@ pub struct KuramotoCore {
     pub gate_threshold: f32,
 }
 
-impl NeuralCore for KuramotoCore {
+impl TemporalCore for KuramotoCore {
     fn process(
         &mut self,
         consonance: f32,
@@ -246,7 +324,7 @@ pub struct SequencedCore {
     pub env_level: f32,
 }
 
-impl NeuralCore for SequencedCore {
+impl TemporalCore for SequencedCore {
     fn process(
         &mut self,
         _consonance: f32,
@@ -276,7 +354,7 @@ pub struct DroneCore {
     pub sway_rate: f32,
 }
 
-impl NeuralCore for DroneCore {
+impl TemporalCore for DroneCore {
     fn process(
         &mut self,
         _consonance: f32,
@@ -303,13 +381,13 @@ impl NeuralCore for DroneCore {
 }
 
 #[derive(Debug, Clone)]
-pub enum AnyCore {
+pub enum AnyTemporalCore {
     Entrain(KuramotoCore),
     Seq(SequencedCore),
     Drone(DroneCore),
 }
 
-impl NeuralCore for AnyCore {
+impl TemporalCore for AnyTemporalCore {
     fn process(
         &mut self,
         consonance: f32,
@@ -318,17 +396,348 @@ impl NeuralCore for AnyCore {
         global_coupling: f32,
     ) -> ArticulationSignal {
         match self {
-            AnyCore::Entrain(c) => c.process(consonance, rhythms, dt, global_coupling),
-            AnyCore::Seq(c) => c.process(consonance, rhythms, dt, global_coupling),
-            AnyCore::Drone(c) => c.process(consonance, rhythms, dt, global_coupling),
+            AnyTemporalCore::Entrain(c) => c.process(consonance, rhythms, dt, global_coupling),
+            AnyTemporalCore::Seq(c) => c.process(consonance, rhythms, dt, global_coupling),
+            AnyTemporalCore::Drone(c) => c.process(consonance, rhythms, dt, global_coupling),
         }
     }
 
     fn is_alive(&self) -> bool {
         match self {
-            AnyCore::Entrain(c) => c.is_alive(),
-            AnyCore::Seq(c) => c.is_alive(),
-            AnyCore::Drone(c) => c.is_alive(),
+            AnyTemporalCore::Entrain(c) => c.is_alive(),
+            AnyTemporalCore::Seq(c) => c.is_alive(),
+            AnyTemporalCore::Drone(c) => c.is_alive(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct TargetProposal {
+    pub target_pitch_log2: f32,
+    pub salience: f32,
+}
+
+pub trait FieldCore {
+    fn propose_target<R: Rng + ?Sized>(
+        &mut self,
+        current_pitch_log2: f32,
+        current_target_log2: f32,
+        current_freq_hz: f32,
+        integration_window: f32,
+        landscape: &Landscape,
+        modulation: ModulationState,
+        rng: &mut R,
+    ) -> TargetProposal;
+}
+
+#[derive(Debug, Clone)]
+pub struct PitchHillClimbFieldCore {
+    neighbor_step_log2: f32,
+    tessitura_center: f32,
+    tessitura_gravity: f32,
+    satiety_weight: f32,
+    improvement_threshold: f32,
+}
+
+impl PitchHillClimbFieldCore {
+    pub fn new(
+        neighbor_step_cents: f32,
+        tessitura_center: f32,
+        tessitura_gravity: f32,
+        satiety_weight: f32,
+        improvement_threshold: f32,
+    ) -> Self {
+        Self {
+            neighbor_step_log2: neighbor_step_cents / 1200.0,
+            tessitura_center,
+            tessitura_gravity,
+            satiety_weight,
+            improvement_threshold,
+        }
+    }
+}
+
+impl FieldCore for PitchHillClimbFieldCore {
+    fn propose_target<R: Rng + ?Sized>(
+        &mut self,
+        current_pitch_log2: f32,
+        current_target_log2: f32,
+        _current_freq_hz: f32,
+        integration_window: f32,
+        landscape: &Landscape,
+        modulation: ModulationState,
+        rng: &mut R,
+    ) -> TargetProposal {
+        let (fmin, fmax) = landscape.freq_bounds_log2();
+        let current_target_log2 = current_target_log2.clamp(fmin, fmax);
+        let perfect_fifth = 1.5f32.log2();
+        let imperfect_fifth = 0.66f32.log2();
+        let mut candidates = vec![
+            current_target_log2,
+            current_target_log2 + self.neighbor_step_log2,
+            current_target_log2 - self.neighbor_step_log2,
+            current_target_log2 + perfect_fifth,
+            current_target_log2 + imperfect_fifth,
+        ];
+        candidates.retain(|f| f.is_finite());
+
+        let adjusted_score = |pitch_log2: f32| -> f32 {
+            let clamped = pitch_log2.clamp(fmin, fmax);
+            let score = landscape.evaluate_pitch01_log2(clamped);
+            let distance_oct = (clamped - current_pitch_log2).abs();
+            let penalty = distance_oct * integration_window * 0.5;
+            let dist = clamped - self.tessitura_center;
+            let gravity_penalty = dist * dist * self.tessitura_gravity;
+            let satiety = landscape.get_spectral_satiety(2.0f32.powf(clamped));
+            let mut adjusted = score - penalty - gravity_penalty;
+            if satiety > 1.0 {
+                adjusted -= (satiety - 1.0) * self.satiety_weight;
+            }
+            adjusted
+        };
+
+        let mut best_pitch = current_target_log2;
+        let mut best_score = f32::MIN;
+        for p in candidates {
+            let clamped = p.clamp(fmin, fmax);
+            let adjusted = adjusted_score(clamped);
+            if adjusted > best_score {
+                best_score = adjusted;
+                best_pitch = clamped;
+            }
+        }
+
+        let current_adjusted = adjusted_score(current_target_log2);
+        let improvement = best_score - current_adjusted;
+        let mut target_pitch_log2 = current_target_log2;
+
+        if improvement > self.improvement_threshold {
+            target_pitch_log2 = best_pitch;
+        } else {
+            let satisfaction = ((current_adjusted + 1.0) * 0.5).clamp(0.0, 1.0);
+            let habituation_penalty =
+                (1.0 - satisfaction) * modulation.habituation_sensitivity.max(0.0);
+            let mut stay_prob =
+                (modulation.persistence.clamp(0.0, 1.0) * satisfaction) - habituation_penalty;
+            stay_prob = stay_prob.clamp(0.0, 1.0);
+            let exploration = modulation.exploration.clamp(0.0, 1.0);
+            stay_prob = (stay_prob * (1.0 - exploration)).clamp(0.0, 1.0);
+            if rng.random_range(0.0..1.0) > stay_prob {
+                target_pitch_log2 = best_pitch;
+            }
+        }
+
+        TargetProposal {
+            target_pitch_log2,
+            salience: (improvement / 0.2).clamp(0.0, 1.0),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum AnyFieldCore {
+    PitchHillClimb(PitchHillClimbFieldCore),
+}
+
+impl FieldCore for AnyFieldCore {
+    fn propose_target<R: Rng + ?Sized>(
+        &mut self,
+        current_pitch_log2: f32,
+        current_target_log2: f32,
+        current_freq_hz: f32,
+        integration_window: f32,
+        landscape: &Landscape,
+        modulation: ModulationState,
+        rng: &mut R,
+    ) -> TargetProposal {
+        match self {
+            AnyFieldCore::PitchHillClimb(core) => core.propose_target(
+                current_pitch_log2,
+                current_target_log2,
+                current_freq_hz,
+                integration_window,
+                landscape,
+                modulation,
+                rng,
+            ),
+        }
+    }
+}
+
+impl AnyTemporalCore {
+    pub fn from_config<R: Rng + ?Sized>(
+        config: &TemporalCoreConfig,
+        fs: f32,
+        noise_seed: u64,
+        rng: &mut R,
+    ) -> Self {
+        match config {
+            TemporalCoreConfig::Entrain {
+                lifecycle,
+                rhythm_freq,
+                rhythm_sensitivity,
+            } => {
+                let (
+                    energy,
+                    basal_cost,
+                    recharge_rate,
+                    attack_step,
+                    decay_factor,
+                    state,
+                    sensitivity,
+                    retrigger,
+                    action_cost,
+                ) = envelope_from_lifecycle(lifecycle, fs);
+                AnyTemporalCore::Entrain(KuramotoCore {
+                    energy,
+                    basal_cost,
+                    action_cost,
+                    recharge_rate,
+                    sensitivity: Sensitivity {
+                        beta: rhythm_sensitivity.unwrap_or(sensitivity.beta),
+                        ..sensitivity
+                    },
+                    rhythm_phase: 0.0,
+                    rhythm_freq: rhythm_freq.unwrap_or_else(|| rng.random_range(0.5..3.0)),
+                    env_level: 0.0,
+                    state,
+                    attack_step,
+                    decay_factor,
+                    retrigger,
+                    noise_1f: PinkNoise::new(noise_seed, 0.001),
+                    confidence: 1.0,
+                    gate_threshold: 0.02,
+                })
+            }
+            TemporalCoreConfig::Seq { duration } => AnyTemporalCore::Seq(SequencedCore {
+                timer: 0.0,
+                duration: duration.max(0.0),
+                env_level: 0.0,
+            }),
+            TemporalCoreConfig::Drone { sway } => {
+                let sway_rate = sway.unwrap_or(0.05);
+                let sway_rate = if sway_rate <= 0.0 { 0.05 } else { sway_rate };
+                AnyTemporalCore::Drone(DroneCore {
+                    phase: rng.random_range(0.0..std::f32::consts::TAU),
+                    sway_rate,
+                })
+            }
+        }
+    }
+}
+
+impl AnyFieldCore {
+    pub fn from_config<R: Rng + ?Sized>(
+        config: &FieldCoreConfig,
+        initial_pitch_log2: f32,
+        _rng: &mut R,
+    ) -> Self {
+        match config {
+            FieldCoreConfig::PitchHillClimb {
+                neighbor_step_cents,
+                tessitura_gravity,
+                satiety_weight,
+                improvement_threshold,
+            } => {
+                let neighbor_step_cents = neighbor_step_cents.unwrap_or(200.0);
+                let tessitura_gravity = tessitura_gravity.unwrap_or(0.1);
+                let satiety_weight = satiety_weight.unwrap_or(2.0);
+                let improvement_threshold = improvement_threshold.unwrap_or(0.1);
+                AnyFieldCore::PitchHillClimb(PitchHillClimbFieldCore::new(
+                    neighbor_step_cents,
+                    initial_pitch_log2,
+                    tessitura_gravity,
+                    satiety_weight,
+                    improvement_threshold,
+                ))
+            }
+        }
+    }
+}
+
+impl AnyModulationCore {
+    pub fn from_config(config: &ModulationCoreConfig) -> Self {
+        match config {
+            ModulationCoreConfig::Static {
+                exploration,
+                persistence,
+                habituation_sensitivity,
+            } => {
+                let state = ModulationState {
+                    exploration: exploration.unwrap_or(0.0).clamp(0.0, 1.0),
+                    persistence: persistence.unwrap_or(0.5).clamp(0.0, 1.0),
+                    habituation_sensitivity: habituation_sensitivity.unwrap_or(1.0).max(0.0),
+                };
+                AnyModulationCore::Static(StaticModulationCore::new(state))
+            }
+        }
+    }
+}
+
+fn envelope_from_lifecycle(
+    lifecycle: &LifecycleConfig,
+    fs: f32,
+) -> (
+    f32,
+    f32,
+    f32,
+    f32,
+    f32,
+    ArticulationState,
+    Sensitivity,
+    bool,
+    f32,
+) {
+    match lifecycle {
+        LifecycleConfig::Decay {
+            initial_energy,
+            half_life_sec,
+            attack_sec,
+        } => {
+            let atk = attack_sec.max(0.0005);
+            let attack_step = 1.0 / (fs * atk);
+            let decay_sec = half_life_sec.max(0.01);
+            let decay_factor = (-1.0f32 / (fs * decay_sec)).exp();
+            let basal = 0.0;
+            (
+                *initial_energy,
+                basal,
+                0.0,
+                attack_step,
+                decay_factor,
+                ArticulationState::Attack,
+                Sensitivity::default(),
+                false,
+                0.02,
+            )
+        }
+        LifecycleConfig::Sustain {
+            initial_energy,
+            metabolism_rate,
+            recharge_rate,
+            action_cost,
+            envelope,
+        } => {
+            let atk = envelope.attack_sec.max(0.0005);
+            let attack_step = 1.0 / (fs * atk);
+            let decay_sec = envelope.decay_sec.max(0.01);
+            let decay_factor = (-1.0f32 / (fs * decay_sec)).exp();
+            (
+                *initial_energy,
+                *metabolism_rate,
+                recharge_rate.unwrap_or(0.5),
+                attack_step,
+                decay_factor,
+                ArticulationState::Idle,
+                Sensitivity {
+                    delta: 1.0,
+                    theta: 1.0,
+                    alpha: 0.5,
+                    beta: 0.5,
+                },
+                true,
+                action_cost.unwrap_or(0.02),
+            )
         }
     }
 }
@@ -517,27 +926,117 @@ impl SoundBody for HarmonicBody {
 }
 
 #[derive(Debug, Clone)]
-pub struct Individual<N: NeuralCore, B: SoundBody> {
+pub enum AnySoundBody {
+    Sine(SineBody),
+    Harmonic(HarmonicBody),
+}
+
+impl AnySoundBody {
+    pub fn from_config<R: Rng + ?Sized>(
+        config: &SoundBodyConfig,
+        freq_hz: f32,
+        amp: f32,
+        rng: &mut R,
+    ) -> Self {
+        match config {
+            SoundBodyConfig::Sine { phase } => AnySoundBody::Sine(SineBody {
+                freq_hz,
+                amp,
+                audio_phase: phase.unwrap_or_else(|| rng.random_range(0.0..std::f32::consts::TAU)),
+            }),
+            SoundBodyConfig::Harmonic { genotype, partials } => {
+                let partials = partials.unwrap_or(16).max(1);
+                let mut phases = Vec::with_capacity(partials);
+                let mut detune_phases = Vec::with_capacity(partials);
+                for _ in 0..partials {
+                    phases.push(rng.random_range(0.0..std::f32::consts::TAU));
+                    detune_phases.push(rng.random_range(0.0..std::f32::consts::TAU));
+                }
+                AnySoundBody::Harmonic(HarmonicBody {
+                    base_freq_hz: freq_hz,
+                    amp,
+                    genotype: genotype.clone(),
+                    lfo_phase: 0.0,
+                    phases,
+                    detune_phases,
+                    jitter_gen: PinkNoise::new(rng.next_u64(), 0.001),
+                })
+            }
+        }
+    }
+}
+
+impl SoundBody for AnySoundBody {
+    fn base_freq_hz(&self) -> f32 {
+        match self {
+            AnySoundBody::Sine(body) => body.base_freq_hz(),
+            AnySoundBody::Harmonic(body) => body.base_freq_hz(),
+        }
+    }
+
+    fn set_freq(&mut self, freq: f32) {
+        match self {
+            AnySoundBody::Sine(body) => body.set_freq(freq),
+            AnySoundBody::Harmonic(body) => body.set_freq(freq),
+        }
+    }
+
+    fn set_pitch_log2(&mut self, log_freq: f32) {
+        match self {
+            AnySoundBody::Sine(body) => body.set_pitch_log2(log_freq),
+            AnySoundBody::Harmonic(body) => body.set_pitch_log2(log_freq),
+        }
+    }
+
+    fn set_amp(&mut self, amp: f32) {
+        match self {
+            AnySoundBody::Sine(body) => body.set_amp(amp),
+            AnySoundBody::Harmonic(body) => body.set_amp(amp),
+        }
+    }
+
+    fn articulate_wave(&mut self, sample: &mut f32, fs: f32, dt: f32, signal: &ArticulationSignal) {
+        match self {
+            AnySoundBody::Sine(body) => body.articulate_wave(sample, fs, dt, signal),
+            AnySoundBody::Harmonic(body) => body.articulate_wave(sample, fs, dt, signal),
+        }
+    }
+
+    fn project_spectral_body(
+        &mut self,
+        amps: &mut [f32],
+        space: &Log2Space,
+        signal: &ArticulationSignal,
+    ) {
+        match self {
+            AnySoundBody::Sine(body) => body.project_spectral_body(amps, space, signal),
+            AnySoundBody::Harmonic(body) => body.project_spectral_body(amps, space, signal),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Individual {
     pub id: u64,
     pub metadata: AgentMetadata,
-    pub core: N,
-    pub body: B,
+    pub temporal: AnyTemporalCore,
+    pub field: AnyFieldCore,
+    pub modulation: AnyModulationCore,
+    pub body: AnySoundBody,
     pub last_signal: ArticulationSignal,
     pub release_gain: f32,
     pub release_sec: f32,
     pub release_pending: bool,
     pub target_pitch_log2: f32,
-    pub tessitura_center: f32,
-    pub tessitura_gravity: f32,
     pub integration_window: f32,
     pub accumulated_time: f32,
     pub breath_gain: f32,
-    pub commitment: f32,
-    pub habituation_sensitivity: f32,
     pub last_theta_sample: f32,
+    pub last_target_salience: f32,
+    pub rng: SmallRng,
 }
 
-impl<N: NeuralCore, B: SoundBody> Individual<N, B> {
+impl Individual {
     pub fn metadata(&self) -> &AgentMetadata {
         &self.metadata
     }
@@ -549,14 +1048,10 @@ impl<N: NeuralCore, B: SoundBody> Individual<N, B> {
         self.breath_gain = 1.0;
         self.accumulated_time = 0.0;
         self.last_theta_sample = 0.0;
+        self.last_target_salience = 0.0;
     }
 
-    pub fn update_organic_movement(
-        &mut self,
-        rhythms: &NeuralRhythms,
-        dt: f32,
-        landscape: &Landscape,
-    ) {
+    pub fn update_field_target(&mut self, rhythms: &NeuralRhythms, dt: f32, landscape: &Landscape) {
         let dt = dt.max(0.0);
         let current_freq = self.body.base_freq_hz().max(1.0);
         let current_pitch_log2 = current_freq.log2();
@@ -572,63 +1067,18 @@ impl<N: NeuralCore, B: SoundBody> Individual<N, B> {
 
         if theta_cross && self.accumulated_time >= self.integration_window {
             self.accumulated_time = 0.0;
-            let neighbor_step = 200.0 / 1200.0;
-            let perfect_fifth = 1.5f32.log2();
-            let imperfect_fifth = 0.66f32.log2();
-            let mut candidates = vec![
+            let modulation = self.modulation.state();
+            let proposal = self.field.propose_target(
+                current_pitch_log2,
                 self.target_pitch_log2,
-                self.target_pitch_log2 + neighbor_step,
-                self.target_pitch_log2 - neighbor_step,
-                self.target_pitch_log2 + perfect_fifth,
-                self.target_pitch_log2 + imperfect_fifth,
-            ];
-            candidates.retain(|f| f.is_finite());
-
-            let (fmin, fmax) = landscape.freq_bounds_log2();
-            let mut best_pitch = self.target_pitch_log2.clamp(fmin, fmax);
-            let mut best_score = f32::MIN;
-            let adjusted_score = |pitch_log2: f32| -> f32 {
-                let clamped = pitch_log2.clamp(fmin, fmax);
-                let score = landscape.evaluate_pitch01_log2(clamped);
-                let distance_oct = (clamped - current_pitch_log2).abs();
-                let penalty = distance_oct * self.integration_window * 0.5;
-                let dist = clamped - self.tessitura_center;
-                let gravity_penalty = dist * dist * self.tessitura_gravity;
-                // Spectral tilt pressure encourages 1/f balance (reduces upward masking and adapts to efficient auditory coding).
-                let satiety = landscape.get_spectral_satiety(2.0f32.powf(clamped));
-                let overcrowding_weight = 2.0;
-                let mut adjusted = score - penalty - gravity_penalty;
-                if satiety > 1.0 {
-                    adjusted -= (satiety - 1.0) * overcrowding_weight;
-                }
-                adjusted
-            };
-
-            for p in candidates {
-                let clamped = p.clamp(fmin, fmax);
-                let adjusted = adjusted_score(clamped);
-                if adjusted > best_score {
-                    best_score = adjusted;
-                    best_pitch = clamped;
-                }
-            }
-
-            let current_adjusted = adjusted_score(self.target_pitch_log2);
-            let improvement = best_score - current_adjusted;
-            let satisfaction = ((current_adjusted + 1.0) * 0.5).clamp(0.0, 1.0);
-            let habituation_penalty = (1.0 - satisfaction) * self.habituation_sensitivity.max(0.0);
-            let mut stay_prob =
-                (self.commitment.clamp(0.0, 1.0) * satisfaction) - habituation_penalty;
-            stay_prob = stay_prob.clamp(0.0, 1.0);
-
-            if improvement > 0.1 {
-                self.target_pitch_log2 = best_pitch;
-            } else {
-                let mut rng = rand::rng();
-                if rng.random_range(0.0..1.0) > stay_prob {
-                    self.target_pitch_log2 = best_pitch;
-                }
-            }
+                current_freq,
+                self.integration_window,
+                landscape,
+                modulation,
+                &mut self.rng,
+            );
+            self.target_pitch_log2 = proposal.target_pitch_log2;
+            self.last_target_salience = proposal.salience;
         }
 
         let (fmin, fmax) = landscape.freq_bounds_log2();
@@ -657,25 +1107,7 @@ impl<N: NeuralCore, B: SoundBody> Individual<N, B> {
     }
 }
 
-pub type PureTone = Individual<AnyCore, SineBody>;
-pub type Harmonic = Individual<AnyCore, HarmonicBody>;
-
-/// Hybrid synthesis individuals render both time-domain audio and a spectral "body".
-pub enum IndividualWrapper {
-    PureTone(PureTone),
-    Harmonic(Harmonic),
-}
-
-impl IndividualWrapper {
-    pub fn start_release(&mut self, release_sec: f32) {
-        match self {
-            IndividualWrapper::PureTone(ind) => ind.start_release(release_sec),
-            IndividualWrapper::Harmonic(ind) => ind.start_release(release_sec),
-        }
-    }
-}
-
-impl<N: NeuralCore, B: SoundBody> AudioAgent for Individual<N, B> {
+impl AudioAgent for Individual {
     fn id(&self) -> u64 {
         self.id
     }
@@ -699,10 +1131,10 @@ impl<N: NeuralCore, B: SoundBody> AudioAgent for Individual<N, B> {
         let dt_per_sample = dt_sec / buffer.len() as f32;
         let rhythms = landscape.rhythm;
         for sample in buffer.iter_mut() {
-            self.update_organic_movement(&rhythms, dt_per_sample, landscape);
+            self.update_field_target(&rhythms, dt_per_sample, landscape);
             let consonance = landscape.evaluate_pitch01(self.body.base_freq_hz());
             let mut signal =
-                self.core
+                self.temporal
                     .process(consonance, &rhythms, dt_per_sample, global_coupling);
             signal.amplitude *= self.breath_gain;
             if self.release_pending {
@@ -729,65 +1161,6 @@ impl<N: NeuralCore, B: SoundBody> AudioAgent for Individual<N, B> {
     }
 
     fn is_alive(&self) -> bool {
-        self.core.is_alive() && self.release_gain > 0.0
-    }
-}
-
-impl AudioAgent for IndividualWrapper {
-    fn id(&self) -> u64 {
-        match self {
-            IndividualWrapper::PureTone(ind) => ind.id(),
-            IndividualWrapper::Harmonic(ind) => ind.id(),
-        }
-    }
-
-    fn metadata(&self) -> &AgentMetadata {
-        match self {
-            IndividualWrapper::PureTone(ind) => ind.metadata(),
-            IndividualWrapper::Harmonic(ind) => ind.metadata(),
-        }
-    }
-
-    fn render_wave(
-        &mut self,
-        buffer: &mut [f32],
-        fs: f32,
-        current_frame: u64,
-        dt_sec: f32,
-        landscape: &Landscape,
-        global_coupling: f32,
-    ) {
-        match self {
-            IndividualWrapper::PureTone(ind) => ind.render_wave(
-                buffer,
-                fs,
-                current_frame,
-                dt_sec,
-                landscape,
-                global_coupling,
-            ),
-            IndividualWrapper::Harmonic(ind) => ind.render_wave(
-                buffer,
-                fs,
-                current_frame,
-                dt_sec,
-                landscape,
-                global_coupling,
-            ),
-        }
-    }
-
-    fn render_spectrum(&mut self, amps: &mut [f32], space: &Log2Space) {
-        match self {
-            IndividualWrapper::PureTone(ind) => ind.render_spectrum(amps, space),
-            IndividualWrapper::Harmonic(ind) => ind.render_spectrum(amps, space),
-        }
-    }
-
-    fn is_alive(&self) -> bool {
-        match self {
-            IndividualWrapper::PureTone(ind) => ind.is_alive(),
-            IndividualWrapper::Harmonic(ind) => ind.is_alive(),
-        }
+        self.temporal.is_alive() && self.release_gain > 0.0
     }
 }

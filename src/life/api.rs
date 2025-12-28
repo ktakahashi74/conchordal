@@ -36,18 +36,15 @@ pub mod script_api {
     /// - `min_dist_erb`: f32 (optional, minimum ERB spacing)
     /// - `temperature`: f32 (optional, only for `harmonic_density`)
     ///
-    /// `life_map` schema:
-    /// - Legacy/entrain lifecycle: `{ type: "decay", initial_energy, half_life_sec, attack_sec? }`
-    /// - Sustain lifecycle: `{ type: "sustain", initial_energy, metabolism_rate, recharge_rate?, action_cost?, envelope: { attack_sec, decay_sec, sustain_level } }`
-    /// - Explicit brain: `{ brain: "seq", duration }` or `{ brain: "drone", sway? }`
+    /// `life_map` schema: see `life_config` for required body/temporal/field/modulation cores.
     ///
     /// # Parameter Schemas
     ///
     /// ## Method Map (SpawnMethod)
     #[doc = include_str!("../../docs/schemas/spawn_method.md")]
     ///
-    /// ## Life Map (BrainConfig)
-    #[doc = include_str!("../../docs/schemas/brain_config.md")]
+    /// ## Life Map (LifeConfig)
+    #[doc = include_str!("../../docs/schemas/life_config.md")]
     #[rhai_fn(return_raw)]
     pub fn spawn_agents(
         ctx: &mut ScriptContext,
@@ -60,9 +57,9 @@ pub mod script_api {
         ctx.spawn(tag, method_map, life_map, count, amp as f32)
     }
 
-    /// Add a pure-tone agent at a fixed frequency.
+    /// Add an agent at a fixed frequency.
     ///
-    /// `life_map` schema: see `spawn` for the supported brain/lifecycle formats.
+    /// `life_map` schema: see `spawn` for the required body/core configs.
     #[rhai_fn(return_raw)]
     pub fn add_agent(
         ctx: &mut ScriptContext,
@@ -72,37 +69,6 @@ pub mod script_api {
         life_map: Map,
     ) -> Result<(), Box<EvalAltResult>> {
         ctx.add_agent(tag, freq as f32, amp as f32, life_map)
-    }
-
-    /// Add an agent with an explicit synthesis kind.
-    ///
-    /// `kind` values:
-    /// - `"pure_tone"`: `extra_map` may contain `phase`, `rhythm_freq`, `rhythm_sensitivity`,
-    ///   `commitment`, `habituation_sensitivity` (all optional floats).
-    /// - `"harmonic"`: `extra_map` includes the timbre genotype fields:
-    ///   `mode`, `stiffness`, `brightness`, `comb`, `damping`, `vibrato_rate`, `vibrato_depth`,
-    ///   `jitter`, `unison` plus the optional rhythm/commitment/habituation fields above.
-    ///
-    /// `life_map` schema: see `spawn` for the supported brain/lifecycle formats.
-    ///
-    /// # Parameter Schemas
-    ///
-    /// ## Extra Map (TimbreGenotype)
-    #[doc = include_str!("../../docs/schemas/timbre_genotype.md")]
-    ///
-    /// ## Life Map (BrainConfig)
-    #[doc = include_str!("../../docs/schemas/brain_config.md")]
-    #[rhai_fn(name = "add_agent", return_raw)]
-    pub fn add_agent_kind(
-        ctx: &mut ScriptContext,
-        tag: &str,
-        kind: &str,
-        freq: FLOAT,
-        amp: FLOAT,
-        extra_map: Map,
-        life_map: Map,
-    ) -> Result<(), Box<EvalAltResult>> {
-        ctx.add_agent_kind(tag, kind, freq as f32, amp as f32, extra_map, life_map)
     }
 
     /// Set an agent's fundamental frequency in Hz.

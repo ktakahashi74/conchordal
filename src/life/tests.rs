@@ -1,26 +1,46 @@
 use super::conductor::Conductor;
 use super::individual::{
-    AgentMetadata, ArticulationSignal, AudioAgent, IndividualWrapper, NeuralCore, SequencedCore,
-    SoundBody,
+    AgentMetadata, ArticulationSignal, AudioAgent, FieldCore, SequencedCore, SoundBody,
+    TemporalCore,
 };
-use super::population::{Population, PopulationParams};
+use super::population::Population;
 use super::scenario::{
-    Action, BrainConfig, Event, HarmonicMode, IndividualConfig, Scenario, Scene, TimbreGenotype,
+    Action, Event, FieldCoreConfig, HarmonicMode, IndividualConfig, LifeConfig,
+    ModulationCoreConfig, Scenario, Scene, SoundBodyConfig, TemporalCoreConfig, TimbreGenotype,
 };
 use crate::core::landscape::Landscape;
 use crate::core::landscape::LandscapeFrame;
 use crate::core::log2space::Log2Space;
 use crate::life::lifecycle::LifecycleConfig;
+use rand::SeedableRng;
 use serde_json;
+
+fn life_with_lifecycle(lifecycle: LifecycleConfig) -> LifeConfig {
+    LifeConfig {
+        body: SoundBodyConfig::Sine { phase: None },
+        temporal: TemporalCoreConfig::Entrain {
+            lifecycle,
+            rhythm_freq: None,
+            rhythm_sensitivity: None,
+        },
+        field: FieldCoreConfig::PitchHillClimb {
+            neighbor_step_cents: None,
+            tessitura_gravity: None,
+            satiety_weight: None,
+            improvement_threshold: None,
+        },
+        modulation: ModulationCoreConfig::Static {
+            exploration: None,
+            persistence: None,
+            habituation_sensitivity: None,
+        },
+    }
+}
 
 #[test]
 fn test_population_add_remove_agent() {
     // 1. Setup
-    let params = PopulationParams {
-        initial_tones_hz: vec![],
-        amplitude: 0.1,
-    };
-    let mut pop = Population::new(params, 48_000.0);
+    let mut pop = Population::new(48_000.0);
     let landscape = LandscapeFrame::default();
 
     assert_eq!(pop.individuals.len(), 0, "Population should start empty");
@@ -31,15 +51,10 @@ fn test_population_add_remove_agent() {
         half_life_sec: 1.0,
         attack_sec: 0.01,
     };
-    let agent_cfg = IndividualConfig::PureTone {
+    let agent_cfg = IndividualConfig {
         freq: 440.0,
         amp: 0.5,
-        phase: None,
-        rhythm_freq: None,
-        rhythm_sensitivity: None,
-        commitment: None,
-        habituation_sensitivity: None,
-        brain: BrainConfig::Entrain { lifecycle: life },
+        life: life_with_lifecycle(life),
         tag: Some("test_agent".to_string()),
     };
     let action_add = Action::AddAgent { agent: agent_cfg };
@@ -57,11 +72,7 @@ fn test_population_add_remove_agent() {
 
 #[test]
 fn wildcard_target_removes_matching_agents() {
-    let params = PopulationParams {
-        initial_tones_hz: vec![],
-        amplitude: 0.1,
-    };
-    let mut pop = Population::new(params, 48_000.0);
+    let mut pop = Population::new(48_000.0);
     let landscape = LandscapeFrame::default();
 
     let life = LifecycleConfig::Decay {
@@ -69,28 +80,16 @@ fn wildcard_target_removes_matching_agents() {
         half_life_sec: 1.0,
         attack_sec: 0.01,
     };
-    let agent_cfg1 = IndividualConfig::PureTone {
+    let agent_cfg1 = IndividualConfig {
         freq: 440.0,
         amp: 0.5,
-        phase: None,
-        rhythm_freq: None,
-        rhythm_sensitivity: None,
-        commitment: None,
-        habituation_sensitivity: None,
-        brain: BrainConfig::Entrain {
-            lifecycle: life.clone(),
-        },
+        life: life_with_lifecycle(life.clone()),
         tag: Some("test_a".to_string()),
     };
-    let agent_cfg2 = IndividualConfig::PureTone {
+    let agent_cfg2 = IndividualConfig {
         freq: 330.0,
         amp: 0.4,
-        phase: None,
-        rhythm_freq: None,
-        rhythm_sensitivity: None,
-        commitment: None,
-        habituation_sensitivity: None,
-        brain: BrainConfig::Entrain { lifecycle: life },
+        life: life_with_lifecycle(life),
         tag: Some("test_b".to_string()),
     };
     pop.apply_action(Action::AddAgent { agent: agent_cfg1 }, &landscape, None);
@@ -130,13 +129,7 @@ fn test_conductor_timing() {
     };
 
     let mut conductor = Conductor::from_scenario(scenario);
-    let mut pop = Population::new(
-        PopulationParams {
-            initial_tones_hz: vec![],
-            amplitude: 0.0,
-        },
-        48_000.0,
-    );
+    let mut pop = Population::new(48_000.0);
     let landscape = LandscapeFrame::default();
 
     // 2. Dispatch at T=0.5 (Should NOT fire)
@@ -171,11 +164,7 @@ fn make_test_landscape(_fs: f32) -> Landscape {
 #[test]
 fn test_agent_lifecycle_decay_death() {
     // 1. Setup Population with 1 agent that has a very short half-life
-    let params = PopulationParams {
-        initial_tones_hz: vec![],
-        amplitude: 0.1,
-    };
-    let mut pop = Population::new(params, 48_000.0);
+    let mut pop = Population::new(48_000.0);
     let landscape = LandscapeFrame::default(); // Dummy landscape
 
     // Half-life = 0.05s (very fast decay)
@@ -184,15 +173,10 @@ fn test_agent_lifecycle_decay_death() {
         half_life_sec: 0.05,
         attack_sec: 0.001,
     };
-    let agent_cfg = IndividualConfig::PureTone {
+    let agent_cfg = IndividualConfig {
         freq: 440.0,
         amp: 0.5,
-        phase: None,
-        rhythm_freq: None,
-        rhythm_sensitivity: None,
-        commitment: None,
-        habituation_sensitivity: None,
-        brain: BrainConfig::Entrain { lifecycle: life },
+        life: life_with_lifecycle(life),
         tag: None,
     };
     pop.apply_action(Action::AddAgent { agent: agent_cfg }, &landscape, None);
@@ -241,22 +225,36 @@ fn harmonic_render_spectrum_hits_expected_bins() {
         jitter: 0.5,
         unison: 0.1,
     };
-    let cfg = IndividualConfig::Harmonic {
+    let cfg = IndividualConfig {
         freq: 55.0,
         amp: 0.8,
-        genotype,
-        brain: BrainConfig::Entrain {
-            lifecycle: LifecycleConfig::Decay {
-                initial_energy: 1.0,
-                half_life_sec: 1.0,
-                attack_sec: 0.01,
+        life: LifeConfig {
+            body: SoundBodyConfig::Harmonic {
+                genotype: genotype.clone(),
+                partials: Some(16),
+            },
+            temporal: TemporalCoreConfig::Entrain {
+                lifecycle: LifecycleConfig::Decay {
+                    initial_energy: 1.0,
+                    half_life_sec: 1.0,
+                    attack_sec: 0.01,
+                },
+                rhythm_freq: None,
+                rhythm_sensitivity: None,
+            },
+            field: FieldCoreConfig::PitchHillClimb {
+                neighbor_step_cents: None,
+                tessitura_gravity: None,
+                satiety_weight: None,
+                improvement_threshold: None,
+            },
+            modulation: ModulationCoreConfig::Static {
+                exploration: None,
+                persistence: None,
+                habituation_sensitivity: None,
             },
         },
         tag: None,
-        rhythm_freq: None,
-        rhythm_sensitivity: None,
-        commitment: None,
-        habituation_sensitivity: None,
     };
     let metadata = AgentMetadata {
         id: 99,
@@ -268,18 +266,13 @@ fn harmonic_render_spectrum_hits_expected_bins() {
     let space = Log2Space::new(55.0, 1760.0, 12);
     let mut amps = vec![0.0f32; space.n_bins()];
 
-    match &mut agent {
-        IndividualWrapper::Harmonic(ind) => {
-            ind.last_signal = ArticulationSignal {
-                amplitude: 1.0,
-                is_active: true,
-                relaxation: 0.0,
-                tension: 0.0,
-            };
-            ind.render_spectrum(&mut amps, &space);
-        }
-        _ => panic!("expected harmonic agent"),
-    }
+    agent.last_signal = ArticulationSignal {
+        amplitude: 1.0,
+        is_active: true,
+        relaxation: 0.0,
+        tension: 0.0,
+    };
+    agent.render_spectrum(&mut amps, &space);
 
     let base_bin = space.index_of_freq(55.0).expect("base bin");
     let even_bin = space.index_of_freq(110.0).expect("even bin");
@@ -301,23 +294,18 @@ fn harmonic_render_spectrum_hits_expected_bins() {
 fn set_freq_syncs_target_pitch_log2() {
     let space = Log2Space::new(55.0, 880.0, 12);
     let landscape = LandscapeFrame::new(space);
-    let mut pop = Population::new(
-        PopulationParams {
-            initial_tones_hz: vec![220.0],
-            amplitude: 0.1,
-        },
-        48_000.0,
-    );
-
-    let agent = pop.individuals.first_mut().expect("agent exists");
-    match agent {
-        IndividualWrapper::PureTone(ind) => {
-            ind.metadata.tag = Some("test_agent".to_string());
-        }
-        IndividualWrapper::Harmonic(ind) => {
-            ind.metadata.tag = Some("test_agent".to_string());
-        }
-    }
+    let mut pop = Population::new(48_000.0);
+    let agent_cfg = IndividualConfig {
+        freq: 220.0,
+        amp: 0.1,
+        life: life_with_lifecycle(LifecycleConfig::Decay {
+            initial_energy: 1.0,
+            half_life_sec: 1.0,
+            attack_sec: 0.01,
+        }),
+        tag: Some("test_agent".to_string()),
+    };
+    pop.apply_action(Action::AddAgent { agent: agent_cfg }, &landscape, None);
 
     pop.apply_action(
         Action::SetFreq {
@@ -330,52 +318,36 @@ fn set_freq_syncs_target_pitch_log2() {
 
     let log_target = 440.0f32.log2();
     let agent = pop.individuals.first_mut().expect("agent exists");
-    match agent {
-        IndividualWrapper::PureTone(ind) => {
-            assert!((ind.target_pitch_log2 - log_target).abs() < 1e-6);
-            assert!((ind.body.base_freq_hz() - 440.0).abs() < 1e-3);
-            ind.tessitura_center = ind.target_pitch_log2;
-            ind.tessitura_gravity = 0.0;
-            let rhythms = crate::core::modulation::NeuralRhythms::default();
-            for _ in 0..16 {
-                ind.update_organic_movement(&rhythms, 0.1, &landscape);
-            }
-            assert!((ind.target_pitch_log2 - log_target).abs() < 1e-6);
-            assert!((ind.body.base_freq_hz() - 440.0).abs() < 1e-3);
-        }
-        IndividualWrapper::Harmonic(ind) => {
-            assert!((ind.target_pitch_log2 - log_target).abs() < 1e-6);
-            assert!((ind.body.base_freq_hz() - 440.0).abs() < 1e-3);
-            ind.tessitura_center = ind.target_pitch_log2;
-            ind.tessitura_gravity = 0.0;
-            let rhythms = crate::core::modulation::NeuralRhythms::default();
-            for _ in 0..16 {
-                ind.update_organic_movement(&rhythms, 0.1, &landscape);
-            }
-            assert!((ind.target_pitch_log2 - log_target).abs() < 1e-6);
-            assert!((ind.body.base_freq_hz() - 440.0).abs() < 1e-3);
-        }
-    }
+    assert!((agent.target_pitch_log2 - log_target).abs() < 1e-6);
+    assert!((agent.body.base_freq_hz() - 440.0).abs() < 1e-3);
 }
 
 #[test]
 fn population_spectrum_uses_log2_space() {
     let space = Log2Space::new(55.0, 880.0, 12);
-    let params = PopulationParams {
-        initial_tones_hz: vec![55.0],
-        amplitude: 0.5,
+    let mut pop = Population::new(48_000.0);
+    let agent_cfg = IndividualConfig {
+        freq: 55.0,
+        amp: 0.5,
+        life: life_with_lifecycle(LifecycleConfig::Decay {
+            initial_energy: 1.0,
+            half_life_sec: 1.0,
+            attack_sec: 0.01,
+        }),
+        tag: None,
     };
-    let mut pop = Population::new(params, 48_000.0);
-    if let Some(IndividualWrapper::PureTone(ind)) = pop.individuals.first_mut() {
-        ind.last_signal = ArticulationSignal {
-            amplitude: 1.0,
-            is_active: true,
-            relaxation: 0.0,
-            tension: 0.0,
-        };
-    } else {
-        panic!("expected pure tone agent");
-    }
+    pop.apply_action(
+        Action::AddAgent { agent: agent_cfg },
+        &LandscapeFrame::new(space.clone()),
+        None,
+    );
+    let agent = pop.individuals.first_mut().expect("agent exists");
+    agent.last_signal = ArticulationSignal {
+        amplitude: 1.0,
+        is_active: true,
+        relaxation: 0.0,
+        tension: 0.0,
+    };
 
     let amps = pop.process_frame(0, &space, 0.01, false);
     assert_eq!(amps.len(), space.n_bins());
@@ -384,23 +356,139 @@ fn population_spectrum_uses_log2_space() {
 }
 
 #[test]
-fn legacy_lifecycle_deserializes_as_brain_entrain() {
-    let json = r#"{
-        "type": "pure_tone",
-        "freq": 330.0,
-        "amp": 0.4,
-        "lifecycle": { "type": "decay", "initial_energy": 1.0, "half_life_sec": 0.25 }
-    }"#;
-    let cfg: IndividualConfig = serde_json::from_str(json).expect("legacy config parses");
-    match cfg {
-        IndividualConfig::PureTone { brain, .. } => match brain {
-            BrainConfig::Entrain { lifecycle } => {
-                assert!(matches!(lifecycle, LifecycleConfig::Decay { .. }))
-            }
-            other => panic!("expected entrain brain, got {:?}", other),
+fn life_config_deserializes_and_rejects_unknown_fields() {
+    let json = serde_json::json!({
+        "body": { "core": "sine" },
+        "temporal": {
+            "core": "entrain",
+            "type": "decay",
+            "initial_energy": 1.0,
+            "half_life_sec": 0.25
         },
-        other => panic!("unexpected variant: {:?}", other),
+        "field": { "core": "pitch_hill_climb" },
+        "modulation": { "core": "static" }
+    });
+    let cfg: LifeConfig = serde_json::from_value(json).expect("life config parses");
+    assert!(matches!(cfg.temporal, TemporalCoreConfig::Entrain { .. }));
+
+    let bad = serde_json::json!({
+        "body": { "core": "sine", "unknown": 1.0 },
+        "temporal": {
+            "core": "entrain",
+            "type": "decay",
+            "initial_energy": 1.0,
+            "half_life_sec": 0.25,
+            "unknown": 1.0
+        },
+        "field": { "core": "pitch_hill_climb" },
+        "modulation": { "core": "static" }
+    });
+    assert!(serde_json::from_value::<LifeConfig>(bad).is_err());
+
+    let missing = serde_json::json!({
+        "temporal": {
+            "core": "entrain",
+            "type": "decay",
+            "initial_energy": 1.0,
+            "half_life_sec": 0.25
+        },
+        "field": { "core": "pitch_hill_climb" },
+        "modulation": { "core": "static" }
+    });
+    assert!(serde_json::from_value::<LifeConfig>(missing).is_err());
+}
+
+#[test]
+fn field_core_proposes_target_within_bounds() {
+    let space = Log2Space::new(55.0, 880.0, 12);
+    let landscape = Landscape::new(space.clone());
+    let mut rng = rand::rngs::StdRng::seed_from_u64(4);
+    let mut field = super::individual::AnyFieldCore::from_config(
+        &FieldCoreConfig::PitchHillClimb {
+            neighbor_step_cents: None,
+            tessitura_gravity: None,
+            satiety_weight: None,
+            improvement_threshold: None,
+        },
+        220.0f32.log2(),
+        &mut rng,
+    );
+    let modulation = super::individual::ModulationState {
+        exploration: 0.0,
+        persistence: 0.5,
+        habituation_sensitivity: 1.0,
+    };
+    let proposal = field.propose_target(
+        220.0f32.log2(),
+        220.0f32.log2(),
+        220.0,
+        2.0,
+        &landscape,
+        modulation,
+        &mut rng,
+    );
+    let (fmin, fmax) = landscape.freq_bounds_log2();
+    assert!(proposal.target_pitch_log2 >= fmin && proposal.target_pitch_log2 <= fmax);
+    assert!((0.0..=1.0).contains(&proposal.salience));
+}
+
+#[test]
+fn deterministic_rng_produces_same_targets() {
+    let life = LifeConfig {
+        body: SoundBodyConfig::Sine { phase: None },
+        temporal: TemporalCoreConfig::Entrain {
+            lifecycle: LifecycleConfig::Decay {
+                initial_energy: 1.0,
+                half_life_sec: 0.5,
+                attack_sec: 0.01,
+            },
+            rhythm_freq: Some(1.0),
+            rhythm_sensitivity: None,
+        },
+        field: FieldCoreConfig::PitchHillClimb {
+            neighbor_step_cents: None,
+            tessitura_gravity: None,
+            satiety_weight: None,
+            improvement_threshold: None,
+        },
+        modulation: ModulationCoreConfig::Static {
+            exploration: Some(0.2),
+            persistence: Some(0.5),
+            habituation_sensitivity: Some(1.0),
+        },
+    };
+    let cfg = IndividualConfig {
+        freq: 220.0,
+        amp: 0.2,
+        life,
+        tag: None,
+    };
+    let meta = AgentMetadata {
+        id: 10,
+        tag: None,
+        group_idx: 0,
+        member_idx: 0,
+    };
+    let mut a = cfg.spawn(10, 4, meta.clone(), 48_000.0);
+    let mut b = cfg.spawn(10, 4, meta, 48_000.0);
+    let landscape = make_test_landscape(48_000.0);
+    let mut rhythms = crate::core::modulation::NeuralRhythms::default();
+    let dt = 0.5;
+    let mut seq_a = Vec::new();
+    let mut seq_b = Vec::new();
+    for i in 0..16 {
+        rhythms.theta.mag = 1.0;
+        rhythms.theta.phase = if i % 2 == 0 {
+            -std::f32::consts::FRAC_PI_2
+        } else {
+            std::f32::consts::FRAC_PI_2
+        };
+        a.update_field_target(&rhythms, dt, &landscape);
+        b.update_field_target(&rhythms, dt, &landscape);
+        seq_a.push(a.target_pitch_log2);
+        seq_b.push(b.target_pitch_log2);
     }
+    assert_eq!(seq_a, seq_b);
 }
 
 #[test]

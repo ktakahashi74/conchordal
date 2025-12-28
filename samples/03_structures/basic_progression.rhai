@@ -10,26 +10,30 @@ fn random_offset(base, amount) {
 fn play_step(name, root, dur) {
     // 1. Bass (Anchor): 動かない、重い、飽きない
     let bass_life = #{ 
-        type: "sustain", 
-        initial_energy: 10.0, 
-        metabolism_rate: 0.0, 
-        envelope: #{ attack_sec: 0.1, decay_sec: 0.1, sustain_level: 0.5 },
-        // 新しい有機的パラメータ
-        commitment: 1.0,              // 絶対に動かない
-        habituation_sensitivity: 0.0, // 飽きない（場所に留まる）
-        crowding_sensitivity: 0.0     // 混雑を気にしない
+        body: #{ core: "sine" },
+        temporal: #{
+            core: "entrain",
+            type: "sustain", 
+            initial_energy: 10.0, 
+            metabolism_rate: 0.0, 
+            envelope: #{ attack_sec: 0.1, decay_sec: 0.1, sustain_level: 0.5 }
+        },
+        field: #{ core: "pitch_hill_climb" },
+        modulation: #{ core: "static", persistence: 1.0, habituation_sensitivity: 0.0, exploration: 0.0 }
     };
 
     // 2. Pad (Seeker): 動きやすい、分散する
     let pad_life = #{ 
-        type: "sustain", 
-        initial_energy: 5.0, 
-        metabolism_rate: 0.0, 
-        envelope: #{ attack_sec: 1.0, decay_sec: 0.5, sustain_level: 0.6 },
-        // 新しい有機的パラメータ
-        commitment: 0.3,              // 協和点を探して動き回る
-        habituation_sensitivity: 1.0, // 同じ場所にいると飽きる
-        crowding_sensitivity: 2.0     // 他と重なるのを嫌う（和音を作る）
+        body: #{ core: "sine" },
+        temporal: #{
+            core: "entrain",
+            type: "sustain", 
+            initial_energy: 5.0, 
+            metabolism_rate: 0.0, 
+            envelope: #{ attack_sec: 1.0, decay_sec: 0.5, sustain_level: 0.6 }
+        },
+        field: #{ core: "pitch_hill_climb" },
+        modulation: #{ core: "static", persistence: 0.3, habituation_sensitivity: 1.0, exploration: 0.0 }
     };
 
     print("Playing: " + name);

@@ -8,10 +8,16 @@ print("--- [1] Anchoring C2 (65.41Hz) ---");
 
 // Anchor (immobile)
 add_agent("anchor", 65.41, 0.6, #{
-    type: "sustain",
-    initial_energy: 10.0,
-    metabolism_rate: 0.0,
-    envelope: #{ attack_sec: 0.1, decay_sec: 0.1, sustain_level: 1.0 }
+    body: #{ core: "sine" },
+    temporal: #{
+        core: "entrain",
+        type: "sustain",
+        initial_energy: 10.0,
+        metabolism_rate: 0.0,
+        envelope: #{ attack_sec: 0.1, decay_sec: 0.1, sustain_level: 1.0 }
+    },
+    field: #{ core: "pitch_hill_climb" },
+    modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 1.0, exploration: 0.0 }
 });
 set_commitment("anchor", 1.0);
 
@@ -28,10 +34,16 @@ print("--- [2] Spawning Seekers at Dissonant Intervals ---");
 // C# (minor 2nd): 69.3 Hz -> likely resolves to C (65.4) or D (73.4)
 
 let life_seeker = #{
-    type: "sustain",
-    initial_energy: 2.0,
-    metabolism_rate: 0.0,
-    envelope: #{ attack_sec: 1.0, decay_sec: 1.0, sustain_level: 0.5 }
+    body: #{ core: "sine" },
+    temporal: #{
+        core: "entrain",
+        type: "sustain",
+        initial_energy: 2.0,
+        metabolism_rate: 0.0,
+        envelope: #{ attack_sec: 1.0, decay_sec: 1.0, sustain_level: 0.5 }
+    },
+    field: #{ core: "pitch_hill_climb" },
+    modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 1.0, exploration: 0.0 }
 };
 
 // Place them slightly off the comfy spots

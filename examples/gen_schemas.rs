@@ -3,7 +3,7 @@ use std::error::Error;
 use std::fs;
 use std::path::Path;
 
-use conchordal::life::scenario::{BrainConfig, SpawnMethod, TimbreGenotype};
+use conchordal::life::scenario::{LifeConfig, SpawnMethod, TimbreGenotype};
 use schemars::schema::{
     InstanceType, RootSchema, Schema, SchemaObject, SingleOrVec, SubschemaValidation,
 };
@@ -13,7 +13,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let out_dir = Path::new("docs/schemas");
     fs::create_dir_all(out_dir)?;
 
-    write_schema_markdown("brain_config", &schema_for!(BrainConfig), out_dir)?;
+    write_schema_markdown("life_config", &schema_for!(LifeConfig), out_dir)?;
     write_schema_markdown("spawn_method", &schema_for!(SpawnMethod), out_dir)?;
     write_schema_markdown("timbre_genotype", &schema_for!(TimbreGenotype), out_dir)?;
 
@@ -230,7 +230,7 @@ fn variant_name(schema: &Schema) -> Option<String> {
     let props = &obj.object.as_ref()?.properties;
     let prop = props
         .get("mode")
-        .or_else(|| props.get("brain"))
+        .or_else(|| props.get("core"))
         .or_else(|| props.get("type"))?;
     if let Schema::Object(prop_obj) = prop {
         if let Some(values) = &prop_obj.enum_values {

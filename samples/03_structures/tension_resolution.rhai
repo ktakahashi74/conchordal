@@ -1,9 +1,24 @@
 print("Polyphony: anchor + tension + resolution");
 
 fn chord_block(root, name, sustain_amp, tension_amp, dur) {
-    let bass_life = #{ type: "decay", initial_energy: 1.0, half_life_sec: 0.5, attack_sec: 0.1 };
-    let pad_life = #{ type: "decay", initial_energy: 0.9, half_life_sec: 0.9, attack_sec: 0.4 };
-    let sting_life = #{ type: "decay", initial_energy: 0.8, half_life_sec: 0.5 };
+    let bass_life = #{
+        body: #{ core: "sine" },
+        temporal: #{ core: "entrain", type: "decay", initial_energy: 1.0, half_life_sec: 0.5, attack_sec: 0.1 },
+        field: #{ core: "pitch_hill_climb" },
+        modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 1.0, exploration: 0.0 }
+    };
+    let pad_life = #{
+        body: #{ core: "sine" },
+        temporal: #{ core: "entrain", type: "decay", initial_energy: 0.9, half_life_sec: 0.9, attack_sec: 0.4 },
+        field: #{ core: "pitch_hill_climb" },
+        modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 1.0, exploration: 0.0 }
+    };
+    let sting_life = #{
+        body: #{ core: "sine" },
+        temporal: #{ core: "entrain", type: "decay", initial_energy: 0.8, half_life_sec: 0.5 },
+        field: #{ core: "pitch_hill_climb" },
+        modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 1.0, exploration: 0.0 }
+    };
 
     // Anchor bass
     add_agent("bass_" + name, root, sustain_amp, bass_life);

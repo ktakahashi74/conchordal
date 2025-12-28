@@ -417,6 +417,7 @@ pub struct TargetProposal {
     pub salience: f32,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub trait FieldCore {
     fn propose_target<R: Rng + ?Sized>(
         &mut self,

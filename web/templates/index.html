@@ -28,7 +28,10 @@
                     <a class="nav-link" href="{% if lang == 'ja' %}/ja/docs{% else %}/docs{% endif %}">Documentation</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="{{ config.extra.github_url }}" target="_blank" rel="noopener">GitHub</a>
+                    <a class="nav-link" href="{{ config.extra.github_url }}" target="_blank" rel="noopener"><i class="fa-brands fa-github"></i> GitHub</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="{{ config.extra.x_url }}" target="_blank" rel="noopener"><i class="fa-brands fa-x-twitter"></i></a>
                 </li>
                 <li class="nav-item">
                     {% if lang == "ja" %}

@@ -29,4 +29,5 @@ highlight_theme = "base16-ocean-dark"
 [extra]
 # Put all your custom variables here
 github_url = "https://github.com/ktakahashi74/conchordal"
+x_url = "https://x.com/conchordal"
 project_tagline = "A bio-acoustic instrument for generative composition"

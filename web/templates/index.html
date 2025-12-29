@@ -70,7 +70,34 @@
 </header>
 {% endblock masthead %}
 
-{% block about %}{% endblock about %}
+{% block about %}
+<section class="roadmap-section">
+    <div class="container px-4 px-lg-5">
+        <div class="roadmap">
+            <div class="roadmap-item">
+                <span class="roadmap-date">c. 1994</span>
+                <span class="roadmap-text">Core concept conceived</span>
+            </div>
+            <div class="roadmap-item">
+                <span class="roadmap-date">Aug 2025</span>
+                <span class="roadmap-text">Project started</span>
+            </div>
+            <div class="roadmap-item current">
+                <span class="roadmap-date">Dec 2025</span>
+                <span class="roadmap-text">Source & web release (pre-alpha)</span>
+            </div>
+            <div class="roadmap-item future">
+                <span class="roadmap-date">Early 2026</span>
+                <span class="roadmap-text">Demo scenarios and tutorials</span>
+            </div>
+            <div class="roadmap-item future">
+                <span class="roadmap-date">Summer 2026</span>
+                <span class="roadmap-text">Beta with first compositions</span>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock about %}
 
 {% block projects %}{% endblock projects %}
 {% block signup %}{% endblock signup %}

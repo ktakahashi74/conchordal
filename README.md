@@ -134,7 +134,7 @@ scripts/generate_rhai_docs.sh
 - **circa. 1994** — Core concept conceived 
 - **Aug 25th 2025** — Project started 
 - **Dec 25th 2025** — Source & web release (pre-alpha) ← *current* 
-- **Early 2026** — Demo scenarios 
+- **Early 2026** — Demo scenario and tutorials
 - **Summer 2026** — Beta, featuring first compositions
 
 

@@ -1,7 +1,7 @@
 base_url = "https://conchordal.org"
 
 theme = "zola-grayscale"
-author = "Conchordal"
+author = "Koichi Takahashi / Conchordal"
 
 # Whether to automatically compile all Sass files in the sass directory
 compile_sass = true

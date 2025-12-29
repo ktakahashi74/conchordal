@@ -464,10 +464,10 @@ pub fn plot_population_dynamics(
                         .style(LineStyle::Dashed { length: 4.0 }),
                 );
             }
-            let t = agent.habituation.clamp(0.0, 1.0);
-            let r = (50.0 + 205.0 * t) as u8;
-            let g = (120.0 + 40.0 * (1.0 - t)) as u8;
-            let b = (230.0 * (1.0 - t) + 30.0 * t) as u8;
+            let t = agent.consonance.clamp(0.0, 1.0);
+            let r = (60.0 + 180.0 * (1.0 - t)) as u8;
+            let g = (80.0 + 140.0 * t) as u8;
+            let b = (180.0 - 80.0 * t) as u8;
             // Use log2(window) so point size varies smoothly on a log-frequency x-axis.
             let radius = (agent.integration_window.max(1.0).log2() * 4.0).clamp(3.0, 20.0);
             plot_ui.points(

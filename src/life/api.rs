@@ -91,21 +91,6 @@ pub mod script_api {
         ctx.set_commitment(target, value as f32);
     }
 
-    /// Set an agent's habituation sensitivity.
-    pub fn set_habituation_sensitivity(ctx: &mut ScriptContext, target: &str, value: FLOAT) {
-        ctx.set_habituation_sensitivity(target, value as f32);
-    }
-
-    /// Set habituation parameters (weight, tau, max_depth).
-    pub fn set_habituation(ctx: &mut ScriptContext, weight: FLOAT, tau: FLOAT, max_depth: FLOAT) {
-        ctx.set_habituation_params(weight as f32, tau as f32, max_depth as f32);
-    }
-
-    /// Set habituation parameters with default max_depth = 1.0.
-    pub fn set_habituation_basic(ctx: &mut ScriptContext, weight: FLOAT, tau: FLOAT) {
-        ctx.set_habituation_params(weight as f32, tau as f32, 1.0);
-    }
-
     /// Set the global rhythm vitality (affects oscillatory dynamics).
     pub fn set_rhythm_vitality(ctx: &mut ScriptContext, value: FLOAT) {
         ctx.set_rhythm_vitality(value as f32);

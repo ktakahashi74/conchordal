@@ -12,6 +12,7 @@ use crate::core::landscape::Landscape;
 use crate::core::landscape::LandscapeFrame;
 use crate::core::log2space::Log2Space;
 use crate::life::lifecycle::LifecycleConfig;
+use crate::life::perceptual::{FeaturesNow, PerceptualConfig, PerceptualContext};
 use rand::SeedableRng;
 use serde_json;
 
@@ -26,13 +27,21 @@ fn life_with_lifecycle(lifecycle: LifecycleConfig) -> LifeConfig {
         field: FieldCoreConfig::PitchHillClimb {
             neighbor_step_cents: None,
             tessitura_gravity: None,
-            satiety_weight: None,
             improvement_threshold: None,
         },
         modulation: ModulationCoreConfig::Static {
             exploration: None,
             persistence: None,
-            habituation_sensitivity: None,
+        },
+        perceptual: PerceptualConfig {
+            tau_fast: None,
+            tau_slow: None,
+            w_boredom: None,
+            w_familiarity: None,
+            rho_self: None,
+            boredom_gamma: None,
+            self_smoothing_radius: None,
+            silence_mass_epsilon: None,
         },
     }
 }
@@ -245,13 +254,21 @@ fn harmonic_render_spectrum_hits_expected_bins() {
             field: FieldCoreConfig::PitchHillClimb {
                 neighbor_step_cents: None,
                 tessitura_gravity: None,
-                satiety_weight: None,
                 improvement_threshold: None,
             },
             modulation: ModulationCoreConfig::Static {
                 exploration: None,
                 persistence: None,
-                habituation_sensitivity: None,
+            },
+            perceptual: PerceptualConfig {
+                tau_fast: None,
+                tau_slow: None,
+                w_boredom: None,
+                w_familiarity: None,
+                rho_self: None,
+                boredom_gamma: None,
+                self_smoothing_radius: None,
+                silence_mass_epsilon: None,
             },
         },
         tag: None,
@@ -366,7 +383,16 @@ fn life_config_deserializes_and_rejects_unknown_fields() {
             "half_life_sec": 0.25
         },
         "field": { "core": "pitch_hill_climb" },
-        "modulation": { "core": "static" }
+        "modulation": { "core": "static" },
+        "perceptual": {
+            "tau_fast": 0.5,
+            "tau_slow": 4.0,
+            "w_boredom": 0.8,
+            "w_familiarity": 0.2,
+            "rho_self": 0.15,
+            "boredom_gamma": 0.5,
+            "self_smoothing_radius": 1
+        }
     });
     let cfg: LifeConfig = serde_json::from_value(json).expect("life config parses");
     assert!(matches!(cfg.temporal, TemporalCoreConfig::Entrain { .. }));
@@ -381,7 +407,16 @@ fn life_config_deserializes_and_rejects_unknown_fields() {
             "unknown": 1.0
         },
         "field": { "core": "pitch_hill_climb" },
-        "modulation": { "core": "static" }
+        "modulation": { "core": "static" },
+        "perceptual": {
+            "tau_fast": 0.5,
+            "tau_slow": 4.0,
+            "w_boredom": 0.8,
+            "w_familiarity": 0.2,
+            "rho_self": 0.15,
+            "boredom_gamma": 0.5,
+            "self_smoothing_radius": 1
+        }
     });
     assert!(serde_json::from_value::<LifeConfig>(bad).is_err());
 
@@ -393,7 +428,16 @@ fn life_config_deserializes_and_rejects_unknown_fields() {
             "half_life_sec": 0.25
         },
         "field": { "core": "pitch_hill_climb" },
-        "modulation": { "core": "static" }
+        "modulation": { "core": "static" },
+        "perceptual": {
+            "tau_fast": 0.5,
+            "tau_slow": 4.0,
+            "w_boredom": 0.8,
+            "w_familiarity": 0.2,
+            "rho_self": 0.15,
+            "boredom_gamma": 0.5,
+            "self_smoothing_radius": 1
+        }
     });
     assert!(serde_json::from_value::<LifeConfig>(missing).is_err());
 }
@@ -407,7 +451,6 @@ fn field_core_proposes_target_within_bounds() {
         &FieldCoreConfig::PitchHillClimb {
             neighbor_step_cents: None,
             tessitura_gravity: None,
-            satiety_weight: None,
             improvement_threshold: None,
         },
         220.0f32.log2(),
@@ -416,7 +459,6 @@ fn field_core_proposes_target_within_bounds() {
     let modulation = super::individual::ModulationState {
         exploration: 0.0,
         persistence: 0.5,
-        habituation_sensitivity: 1.0,
     };
     let proposal = field.propose_target(
         220.0f32.log2(),
@@ -424,6 +466,23 @@ fn field_core_proposes_target_within_bounds() {
         220.0,
         2.0,
         &landscape,
+        &crate::life::perceptual::PerceptualContext::from_config(
+            &PerceptualConfig {
+                tau_fast: Some(0.5),
+                tau_slow: Some(4.0),
+                w_boredom: Some(0.8),
+                w_familiarity: Some(0.2),
+                rho_self: Some(0.0),
+                boredom_gamma: Some(0.5),
+                self_smoothing_radius: Some(0),
+                silence_mass_epsilon: Some(1e-6),
+            },
+            space.n_bins(),
+        ),
+        &crate::life::perceptual::FeaturesNow::from_subjective_intensity(&vec![
+            0.0;
+            space.n_bins()
+        ]),
         modulation,
         &mut rng,
     );
@@ -448,13 +507,21 @@ fn deterministic_rng_produces_same_targets() {
         field: FieldCoreConfig::PitchHillClimb {
             neighbor_step_cents: None,
             tessitura_gravity: None,
-            satiety_weight: None,
             improvement_threshold: None,
         },
         modulation: ModulationCoreConfig::Static {
             exploration: Some(0.2),
             persistence: Some(0.5),
-            habituation_sensitivity: Some(1.0),
+        },
+        perceptual: PerceptualConfig {
+            tau_fast: Some(0.5),
+            tau_slow: Some(4.0),
+            w_boredom: Some(0.8),
+            w_familiarity: Some(0.2),
+            rho_self: Some(0.15),
+            boredom_gamma: Some(0.5),
+            self_smoothing_radius: Some(1),
+            silence_mass_epsilon: Some(1e-6),
         },
     };
     let cfg = IndividualConfig {
@@ -505,5 +572,126 @@ fn sequenced_core_stops_after_duration() {
     assert!(
         !finished.is_active && !core.is_alive(),
         "core should stop after duration"
+    );
+}
+
+#[test]
+fn perceptual_boredom_increases_with_repetition() {
+    let config = PerceptualConfig {
+        tau_fast: Some(0.5),
+        tau_slow: Some(20.0),
+        w_boredom: Some(1.0),
+        w_familiarity: Some(0.2),
+        rho_self: Some(0.2),
+        boredom_gamma: Some(0.5),
+        self_smoothing_radius: Some(0),
+        silence_mass_epsilon: Some(1e-6),
+    };
+    let mut ctx = PerceptualContext::from_config(&config, 8);
+    let features = FeaturesNow::from_subjective_intensity(&vec![0.0f32; 8]);
+    let idx = 3;
+    let adj0 = ctx.score_adjustment(idx);
+    ctx.update(idx, &features, 0.2);
+    let adj1 = ctx.score_adjustment(idx);
+    ctx.update(idx, &features, 0.2);
+    let adj2 = ctx.score_adjustment(idx);
+    assert!(adj1 < adj0, "expected adjustment to drop after repetition");
+    assert!(adj2 < adj1, "expected adjustment to keep dropping");
+}
+
+#[test]
+fn perceptual_fast_trace_recovers_over_time() {
+    let config = PerceptualConfig {
+        tau_fast: Some(0.5),
+        tau_slow: Some(20.0),
+        w_boredom: Some(1.0),
+        w_familiarity: Some(0.2),
+        rho_self: Some(0.2),
+        boredom_gamma: Some(0.5),
+        self_smoothing_radius: Some(0),
+        silence_mass_epsilon: Some(1e-6),
+    };
+    let mut ctx = PerceptualContext::from_config(&config, 8);
+    let mut raw = vec![0.0f32; 8];
+    raw[2] = 1.0;
+    let features = FeaturesNow::from_subjective_intensity(&raw);
+    let idx = 2;
+    ctx.update(idx, &features, 0.2);
+    let adj1 = ctx.score_adjustment(idx);
+    let silence = FeaturesNow::from_subjective_intensity(&vec![0.0f32; 8]);
+    ctx.update(99, &silence, 2.0);
+    let adj2 = ctx.score_adjustment(idx);
+    assert!(adj2 > adj1, "expected boredom penalty to relax over time");
+}
+
+#[test]
+fn perceptual_rho_self_zero_ignores_self_history() {
+    let config = PerceptualConfig {
+        tau_fast: Some(0.5),
+        tau_slow: Some(20.0),
+        w_boredom: Some(1.0),
+        w_familiarity: Some(0.2),
+        rho_self: Some(0.0),
+        boredom_gamma: Some(0.5),
+        self_smoothing_radius: Some(0),
+        silence_mass_epsilon: Some(1e-6),
+    };
+    let mut ctx = PerceptualContext::from_config(&config, 8);
+    let raw = vec![1.0f32; 8];
+    let features = FeaturesNow::from_subjective_intensity(&raw);
+    ctx.update(1, &features, 0.2);
+    let adj_a = ctx.score_adjustment(1);
+    let adj_b = ctx.score_adjustment(5);
+    assert!(
+        (adj_a - adj_b).abs() < 1e-6,
+        "expected uniform adjustment when rho_self is zero"
+    );
+}
+
+#[test]
+fn perceptual_silence_still_updates_self_history() {
+    let config = PerceptualConfig {
+        tau_fast: Some(0.5),
+        tau_slow: Some(20.0),
+        w_boredom: Some(1.0),
+        w_familiarity: Some(0.2),
+        rho_self: Some(0.0),
+        boredom_gamma: Some(0.5),
+        self_smoothing_radius: Some(0),
+        silence_mass_epsilon: Some(1e-6),
+    };
+    let mut ctx = PerceptualContext::from_config(&config, 8);
+    let silence = FeaturesNow::from_subjective_intensity(&vec![0.0f32; 8]);
+    let idx = 4;
+    let adj0 = ctx.score_adjustment(idx);
+    ctx.update(idx, &silence, 0.2);
+    let adj1 = ctx.score_adjustment(idx);
+    assert!(adj1 < adj0, "expected boredom to increase in silence");
+}
+
+#[test]
+fn perceptual_silence_threshold_ignores_tiny_mass() {
+    let config = PerceptualConfig {
+        tau_fast: Some(0.5),
+        tau_slow: Some(20.0),
+        w_boredom: Some(1.0),
+        w_familiarity: Some(0.2),
+        rho_self: Some(0.15),
+        boredom_gamma: Some(0.5),
+        self_smoothing_radius: Some(0),
+        silence_mass_epsilon: Some(1e-3),
+    };
+    let mut ctx = PerceptualContext::from_config(&config, 4);
+    let features = FeaturesNow {
+        distribution: vec![0.25, 0.25, 0.25, 0.25],
+        mass: 1e-4,
+    };
+    let idx = 1;
+    let adj0 = ctx.score_adjustment(idx);
+    ctx.update(idx, &features, 0.2);
+    let adj1 = ctx.score_adjustment(idx);
+    assert!(
+        adj1 < adj0,
+        "expected self-update when mass is below epsilon"
     );
 }

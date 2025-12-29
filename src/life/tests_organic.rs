@@ -3,6 +3,7 @@ use crate::core::log2space::Log2Space;
 use crate::core::modulation::NeuralRhythms;
 use crate::life::individual::{AgentMetadata, Individual, SoundBody};
 use crate::life::lifecycle::LifecycleConfig;
+use crate::life::perceptual::PerceptualConfig;
 use crate::life::population::Population;
 use crate::life::scenario::Action;
 use crate::life::scenario::{
@@ -26,13 +27,21 @@ fn life_with_lifecycle(lifecycle: LifecycleConfig) -> LifeConfig {
         field: FieldCoreConfig::PitchHillClimb {
             neighbor_step_cents: None,
             tessitura_gravity: None,
-            satiety_weight: None,
             improvement_threshold: None,
         },
         modulation: ModulationCoreConfig::Static {
             exploration: None,
             persistence: None,
-            habituation_sensitivity: None,
+        },
+        perceptual: PerceptualConfig {
+            tau_fast: None,
+            tau_slow: None,
+            w_boredom: None,
+            w_familiarity: None,
+            rho_self: None,
+            boredom_gamma: None,
+            self_smoothing_radius: None,
+            silence_mass_epsilon: None,
         },
     }
 }

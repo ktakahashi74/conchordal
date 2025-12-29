@@ -1,6 +1,5 @@
 // Autonomous Harmonic Progression demo
 scene("anchor_intro");
-set_habituation(0.6, 6.0, 1.0);
 
 // Phase 1: anchor on C2
 add_agent(
@@ -17,11 +16,11 @@ add_agent(
             envelope: #{ attack_sec: 0.02, decay_sec: 0.2, sustain_level: 1.0 }
         },
         field: #{ core: "pitch_hill_climb" },
-        modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 1.0, exploration: 0.0 }
+        modulation: #{ core: "static", persistence: 0.5, exploration: 0.0 },
+        perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
     }
 );
 set_commitment("anchor", 0.9);
-set_habituation_sensitivity("anchor", 0.3);
 
 wait(4.0);
 
@@ -31,18 +30,18 @@ add_agent("seeker_fsharp", 92.499, 0.08, #{
     body: #{ core: "sine" },
     temporal: #{ core: "entrain", type: "decay", initial_energy: 1.2, half_life_sec: 6.0 },
     field: #{ core: "pitch_hill_climb" },
-    modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 1.0, exploration: 0.0 }
+    modulation: #{ core: "static", persistence: 0.5, exploration: 0.0 },
+    perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
 });
 add_agent("seeker_csharp", 69.296, 0.08, #{
     body: #{ core: "sine" },
     temporal: #{ core: "entrain", type: "decay", initial_energy: 1.2, half_life_sec: 6.0 },
     field: #{ core: "pitch_hill_climb" },
-    modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 1.0, exploration: 0.0 }
+    modulation: #{ core: "static", persistence: 0.5, exploration: 0.0 },
+    perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
 });
 set_commitment("seeker_fsharp", 0.25);
 set_commitment("seeker_csharp", 0.25);
-set_habituation_sensitivity("seeker_fsharp", 1.5);
-set_habituation_sensitivity("seeker_csharp", 1.5);
 
 wait(8.0);
 

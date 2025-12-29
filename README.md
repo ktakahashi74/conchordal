@@ -92,7 +92,13 @@ Define the ecosystem's initial conditions using Rhai scripts.
 
 ```rust
 // Basic setup: Spawn 5 agents that seek harmonic stability
-let life = #{ type: "decay", initial_energy: 1.0, half_life_sec: 2.0 };
+let life = #{
+  body: #{ core: "sine" },
+  temporal: #{ core: "entrain", type: "decay", initial_energy: 1.0, half_life_sec: 2.0 },
+  field: #{ core: "pitch_hill_climb" },
+  modulation: #{ core: "static" },
+  perceptual: #{}
+};
 let method = #{ mode: "harmonicity", min_freq: 200.0, max_freq: 1200.0 };
 
 spawn_agents("my_swarm", method, life, 5, 0.15);

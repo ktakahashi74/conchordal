@@ -3,6 +3,7 @@ use crate::core::log2space::Log2Space;
 use crate::core::modulation::NeuralRhythms;
 use crate::core::utils::pink_noise_tick;
 use crate::life::lifecycle::LifecycleConfig;
+use crate::life::perceptual::{FeaturesNow, PerceptualContext};
 use crate::life::scenario::{
     FieldCoreConfig, HarmonicMode, ModulationCoreConfig, SoundBodyConfig, TemporalCoreConfig,
     TimbreGenotype,
@@ -79,14 +80,12 @@ pub struct Sensitivity {
 pub struct ModulationState {
     pub exploration: f32,
     pub persistence: f32,
-    pub habituation_sensitivity: f32,
 }
 
 pub trait ModulationCore {
     fn state(&self) -> ModulationState;
     fn set_exploration(&mut self, value: f32);
     fn set_persistence(&mut self, value: f32);
-    fn set_habituation_sensitivity(&mut self, value: f32);
 }
 
 #[derive(Debug, Clone)]
@@ -112,10 +111,6 @@ impl ModulationCore for StaticModulationCore {
     fn set_persistence(&mut self, value: f32) {
         self.state.persistence = value.clamp(0.0, 1.0);
     }
-
-    fn set_habituation_sensitivity(&mut self, value: f32) {
-        self.state.habituation_sensitivity = value.max(0.0);
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -139,12 +134,6 @@ impl ModulationCore for AnyModulationCore {
     fn set_persistence(&mut self, value: f32) {
         match self {
             AnyModulationCore::Static(core) => core.set_persistence(value),
-        }
-    }
-
-    fn set_habituation_sensitivity(&mut self, value: f32) {
-        match self {
-            AnyModulationCore::Static(core) => core.set_habituation_sensitivity(value),
         }
     }
 }
@@ -426,6 +415,8 @@ pub trait FieldCore {
         current_freq_hz: f32,
         integration_window: f32,
         landscape: &Landscape,
+        perceptual: &PerceptualContext,
+        _features: &FeaturesNow,
         modulation: ModulationState,
         rng: &mut R,
     ) -> TargetProposal;
@@ -436,7 +427,6 @@ pub struct PitchHillClimbFieldCore {
     neighbor_step_log2: f32,
     tessitura_center: f32,
     tessitura_gravity: f32,
-    satiety_weight: f32,
     improvement_threshold: f32,
 }
 
@@ -445,14 +435,12 @@ impl PitchHillClimbFieldCore {
         neighbor_step_cents: f32,
         tessitura_center: f32,
         tessitura_gravity: f32,
-        satiety_weight: f32,
         improvement_threshold: f32,
     ) -> Self {
         Self {
             neighbor_step_log2: neighbor_step_cents / 1200.0,
             tessitura_center,
             tessitura_gravity,
-            satiety_weight,
             improvement_threshold,
         }
     }
@@ -466,6 +454,8 @@ impl FieldCore for PitchHillClimbFieldCore {
         _current_freq_hz: f32,
         integration_window: f32,
         landscape: &Landscape,
+        perceptual: &PerceptualContext,
+        _features: &FeaturesNow,
         modulation: ModulationState,
         rng: &mut R,
     ) -> TargetProposal {
@@ -489,12 +479,9 @@ impl FieldCore for PitchHillClimbFieldCore {
             let penalty = distance_oct * integration_window * 0.5;
             let dist = clamped - self.tessitura_center;
             let gravity_penalty = dist * dist * self.tessitura_gravity;
-            let satiety = landscape.get_spectral_satiety(2.0f32.powf(clamped));
-            let mut adjusted = score - penalty - gravity_penalty;
-            if satiety > 1.0 {
-                adjusted -= (satiety - 1.0) * self.satiety_weight;
-            }
-            adjusted
+            let base = score - penalty - gravity_penalty;
+            let idx = landscape.space.index_of_log2(clamped).unwrap_or(0);
+            base + perceptual.score_adjustment(idx)
         };
 
         let mut best_pitch = current_target_log2;
@@ -516,10 +503,7 @@ impl FieldCore for PitchHillClimbFieldCore {
             target_pitch_log2 = best_pitch;
         } else {
             let satisfaction = ((current_adjusted + 1.0) * 0.5).clamp(0.0, 1.0);
-            let habituation_penalty =
-                (1.0 - satisfaction) * modulation.habituation_sensitivity.max(0.0);
-            let mut stay_prob =
-                (modulation.persistence.clamp(0.0, 1.0) * satisfaction) - habituation_penalty;
+            let mut stay_prob = modulation.persistence.clamp(0.0, 1.0) * satisfaction;
             stay_prob = stay_prob.clamp(0.0, 1.0);
             let exploration = modulation.exploration.clamp(0.0, 1.0);
             stay_prob = (stay_prob * (1.0 - exploration)).clamp(0.0, 1.0);
@@ -548,6 +532,8 @@ impl FieldCore for AnyFieldCore {
         current_freq_hz: f32,
         integration_window: f32,
         landscape: &Landscape,
+        perceptual: &PerceptualContext,
+        features: &FeaturesNow,
         modulation: ModulationState,
         rng: &mut R,
     ) -> TargetProposal {
@@ -558,6 +544,8 @@ impl FieldCore for AnyFieldCore {
                 current_freq_hz,
                 integration_window,
                 landscape,
+                perceptual,
+                features,
                 modulation,
                 rng,
             ),
@@ -637,18 +625,15 @@ impl AnyFieldCore {
             FieldCoreConfig::PitchHillClimb {
                 neighbor_step_cents,
                 tessitura_gravity,
-                satiety_weight,
                 improvement_threshold,
             } => {
                 let neighbor_step_cents = neighbor_step_cents.unwrap_or(200.0);
                 let tessitura_gravity = tessitura_gravity.unwrap_or(0.1);
-                let satiety_weight = satiety_weight.unwrap_or(2.0);
                 let improvement_threshold = improvement_threshold.unwrap_or(0.1);
                 AnyFieldCore::PitchHillClimb(PitchHillClimbFieldCore::new(
                     neighbor_step_cents,
                     initial_pitch_log2,
                     tessitura_gravity,
-                    satiety_weight,
                     improvement_threshold,
                 ))
             }
@@ -662,12 +647,10 @@ impl AnyModulationCore {
             ModulationCoreConfig::Static {
                 exploration,
                 persistence,
-                habituation_sensitivity,
             } => {
                 let state = ModulationState {
                     exploration: exploration.unwrap_or(0.0).clamp(0.0, 1.0),
                     persistence: persistence.unwrap_or(0.5).clamp(0.0, 1.0),
-                    habituation_sensitivity: habituation_sensitivity.unwrap_or(1.0).max(0.0),
                 };
                 AnyModulationCore::Static(StaticModulationCore::new(state))
             }
@@ -1023,6 +1006,7 @@ pub struct Individual {
     pub temporal: AnyTemporalCore,
     pub field: AnyFieldCore,
     pub modulation: AnyModulationCore,
+    pub perceptual: PerceptualContext,
     pub body: AnySoundBody,
     pub last_signal: ArticulationSignal,
     pub release_gain: f32,
@@ -1067,19 +1051,28 @@ impl Individual {
         self.last_theta_sample = theta_signal;
 
         if theta_cross && self.accumulated_time >= self.integration_window {
+            let elapsed = self.accumulated_time;
             self.accumulated_time = 0.0;
             let modulation = self.modulation.state();
+            let features = FeaturesNow::from_subjective_intensity(&landscape.subjective_intensity);
+            debug_assert_eq!(features.distribution.len(), landscape.space.n_bins());
+            self.perceptual.ensure_len(features.distribution.len());
             let proposal = self.field.propose_target(
                 current_pitch_log2,
                 self.target_pitch_log2,
                 current_freq,
                 self.integration_window,
                 landscape,
+                &self.perceptual,
+                &features,
                 modulation,
                 &mut self.rng,
             );
             self.target_pitch_log2 = proposal.target_pitch_log2;
             self.last_target_salience = proposal.salience;
+            if let Some(idx) = landscape.space.index_of_log2(self.target_pitch_log2) {
+                self.perceptual.update(idx, &features, elapsed);
+            }
         }
 
         let (fmin, fmax) = landscape.freq_bounds_log2();

@@ -9,6 +9,7 @@ use crate::life::individual::{
     AgentMetadata, AnyFieldCore, AnyModulationCore, AnyTemporalCore, Individual,
 };
 use crate::life::lifecycle::LifecycleConfig;
+use crate::life::perceptual::PerceptualConfig;
 use rand::SeedableRng;
 use serde_json::Value;
 
@@ -59,6 +60,7 @@ pub struct LifeConfig {
     pub temporal: TemporalCoreConfig,
     pub field: FieldCoreConfig,
     pub modulation: ModulationCoreConfig,
+    pub perceptual: PerceptualConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -171,8 +173,6 @@ pub enum FieldCoreConfig {
         #[serde(default)]
         tessitura_gravity: Option<f32>,
         #[serde(default)]
-        satiety_weight: Option<f32>,
-        #[serde(default)]
         improvement_threshold: Option<f32>,
     },
 }
@@ -185,8 +185,6 @@ pub enum ModulationCoreConfig {
         exploration: Option<f32>,
         #[serde(default)]
         persistence: Option<f32>,
-        #[serde(default)]
-        habituation_sensitivity: Option<f32>,
     },
 }
 
@@ -194,8 +192,8 @@ impl fmt::Display for LifeConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "life[body={:?}, temporal={:?}, field={:?}, modulation={:?}]",
-            self.body, self.temporal, self.field, self.modulation
+            "life[body={:?}, temporal={:?}, field={:?}, modulation={:?}, perceptual={:?}]",
+            self.body, self.temporal, self.field, self.modulation, self.perceptual
         )
     }
 }
@@ -259,6 +257,8 @@ impl IndividualConfig {
         let temporal = AnyTemporalCore::from_config(&self.life.temporal, fs, assigned_id, &mut rng);
         let field = AnyFieldCore::from_config(&self.life.field, target_pitch_log2, &mut rng);
         let modulation = AnyModulationCore::from_config(&self.life.modulation);
+        let perceptual =
+            crate::life::perceptual::PerceptualContext::from_config(&self.life.perceptual, 0);
         let body = crate::life::individual::AnySoundBody::from_config(
             &self.life.body,
             self.freq,
@@ -271,6 +271,7 @@ impl IndividualConfig {
             temporal,
             field,
             modulation,
+            perceptual,
             body,
             last_signal: Default::default(),
             release_gain: 1.0,
@@ -322,13 +323,21 @@ mod tests {
                 field: FieldCoreConfig::PitchHillClimb {
                     neighbor_step_cents: None,
                     tessitura_gravity: None,
-                    satiety_weight: None,
                     improvement_threshold: None,
                 },
                 modulation: ModulationCoreConfig::Static {
                     exploration: None,
                     persistence: None,
-                    habituation_sensitivity: None,
+                },
+                perceptual: PerceptualConfig {
+                    tau_fast: None,
+                    tau_slow: None,
+                    w_boredom: None,
+                    w_familiarity: None,
+                    rho_self: None,
+                    boredom_gamma: None,
+                    self_smoothing_radius: None,
+                    silence_mass_epsilon: None,
                 },
             },
             tag: Some("test".into()),
@@ -399,15 +408,6 @@ pub enum Action {
         target: String,
         value: f32,
     },
-    SetHabituationSensitivity {
-        target: String,
-        value: f32,
-    },
-    SetHabituationParams {
-        weight: f32,
-        tau: f32,
-        max_depth: f32,
-    },
     Finish,
 }
 
@@ -462,22 +462,6 @@ impl fmt::Display for Action {
             Action::SetDrift { target, value } => {
                 write!(f, "SetDrift target={} value={:.3}", target, value)
             }
-            Action::SetHabituationSensitivity { target, value } => {
-                write!(
-                    f,
-                    "SetHabituationSensitivity target={} value={:.3}",
-                    target, value
-                )
-            }
-            Action::SetHabituationParams {
-                weight,
-                tau,
-                max_depth,
-            } => write!(
-                f,
-                "SetHabituation weight={:.3} tau={:.3} max={:.3}",
-                weight, tau, max_depth
-            ),
             Action::Finish => write!(f, "Finish"),
         }
     }

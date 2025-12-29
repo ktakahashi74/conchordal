@@ -19,7 +19,8 @@ fn play_step(name, root, dur) {
             envelope: #{ attack_sec: 0.1, decay_sec: 0.1, sustain_level: 0.5 }
         },
         field: #{ core: "pitch_hill_climb" },
-        modulation: #{ core: "static", persistence: 1.0, habituation_sensitivity: 0.0, exploration: 0.0 }
+        modulation: #{ core: "static", persistence: 1.0, exploration: 0.0 },
+        perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
     };
 
     // 2. Pad (Seeker): 動きやすい、分散する
@@ -33,7 +34,8 @@ fn play_step(name, root, dur) {
             envelope: #{ attack_sec: 1.0, decay_sec: 0.5, sustain_level: 0.6 }
         },
         field: #{ core: "pitch_hill_climb" },
-        modulation: #{ core: "static", persistence: 0.3, habituation_sensitivity: 1.0, exploration: 0.0 }
+        modulation: #{ core: "static", persistence: 0.3, exploration: 0.0 },
+        perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
     };
 
     print("Playing: " + name);
@@ -73,8 +75,6 @@ let chords = [
 scene("cycle_organic");
 
 // ランドスケープ設定（飽きの早さなどを調整）
-// set_habituation(weight, tau, max_depth)
-set_habituation(0.5, 4.0, 1.0); 
 
 for ch in chords {
     play_step(ch.name, ch.freq, ch.dur);

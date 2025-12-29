@@ -5,7 +5,7 @@ use crate::core::nsgt_rt::RtNsgtKernelLog2;
 use crate::core::roughness_kernel::erb_grid;
 
 /// Roughness Stream (formerly Ventral).
-/// Handles slow spectral analysis focused on roughness and habituation.
+/// Handles slow spectral analysis focused on roughness.
 pub struct RoughnessStream {
     nsgt_rt: RtNsgtKernelLog2,
     params: LandscapeParams,
@@ -13,16 +13,12 @@ pub struct RoughnessStream {
     roughness_ref_total: f32,
     roughness_ref_peak: f32,
 
-    // Internal States
-    habituation_state: Vec<f32>, // Boredom integrator
-
     // Last computed state (roughness-side of the landscape)
     last_landscape: Landscape,
 }
 
 impl RoughnessStream {
     pub fn new(params: LandscapeParams, nsgt_rt: RtNsgtKernelLog2) -> Self {
-        let n_bins = nsgt_rt.space().n_bins();
         let spectral_frontend = SpectralFrontEnd::new(nsgt_rt.space().clone(), &params);
         let (roughness_ref_total, roughness_ref_peak) =
             compute_roughness_reference(&params, nsgt_rt.space());
@@ -33,7 +29,6 @@ impl RoughnessStream {
             spectral_frontend,
             roughness_ref_total,
             roughness_ref_peak,
-            habituation_state: vec![0.0; n_bins],
             last_landscape: Landscape::new(nsgt_rt.space().clone()),
         }
     }
@@ -44,7 +39,7 @@ impl RoughnessStream {
     }
 
     /// Process audio chunk asynchronously.
-    /// Returns the updated Landscape (roughness/habituation only).
+    /// Returns the updated Landscape (roughness only).
     pub fn process(&mut self, audio: &[f32]) -> Landscape {
         if audio.is_empty() {
             return self.last_landscape.clone();
@@ -61,7 +56,7 @@ impl RoughnessStream {
             self.spectral_frontend
                 .process_nsgt_power(&envelope, dt_sec, &self.params);
 
-        // 2. Compute Roughness and habituation
+        // 2. Compute Roughness
         self.compute_potentials(
             &spectral_frame.subjective_intensity,
             spectral_frame.loudness_mass,
@@ -108,17 +103,6 @@ impl RoughnessStream {
             .collect::<Vec<f32>>();
         let r01_scalar = (r_shape_total / r_ref_total).clamp(0.0, 1.0);
 
-        // Habituation
-        let tau = self.params.habituation_tau.max(1e-3);
-        let dt = self.nsgt_rt.dt();
-        let a = (-dt / tau).exp();
-        let max_depth = self.params.habituation_max_depth.max(0.0);
-
-        for (state, &val) in self.habituation_state.iter_mut().zip(density) {
-            let y = a * *state + (1.0 - a) * val;
-            *state = y.min(max_depth);
-        }
-
         self.last_landscape.roughness = r_strength;
         self.last_landscape.roughness_shape_raw = r_shape_raw;
         self.last_landscape.roughness01 = r01;
@@ -129,29 +113,18 @@ impl RoughnessStream {
         self.last_landscape.roughness_norm = r_norm;
         self.last_landscape.roughness01_scalar = r01_scalar;
         self.last_landscape.loudness_mass = loudness_mass;
-        self.last_landscape.habituation = self.habituation_state.clone();
         self.last_landscape.subjective_intensity = density.to_vec();
     }
 
     pub fn reset(&mut self) {
         self.nsgt_rt.reset();
         self.spectral_frontend.reset();
-        self.habituation_state.fill(0.0);
         self.last_landscape = Landscape::new(self.nsgt_rt.space().clone());
     }
 
     pub fn apply_update(&mut self, upd: LandscapeUpdate) {
         if let Some(k) = upd.roughness_k {
             self.params.roughness_k = k.max(1e-6);
-        }
-        if let Some(w) = upd.habituation_weight {
-            self.params.habituation_weight = w;
-        }
-        if let Some(tau) = upd.habituation_tau {
-            self.params.habituation_tau = tau;
-        }
-        if let Some(depth) = upd.habituation_max_depth {
-            self.params.habituation_max_depth = depth;
         }
     }
 }
@@ -269,9 +242,6 @@ mod tests {
             harmonicity_kernel: HarmonicityKernel::new(space, HarmonicityParams::default()),
             roughness_scalar_mode: RoughnessScalarMode::Total,
             roughness_half: 0.1,
-            habituation_tau: 1.0,
-            habituation_weight: 0.0,
-            habituation_max_depth: 1.0,
             consonance_roughness_weight: 0.5,
             loudness_exp: 1.0,
             ref_power: 1.0,

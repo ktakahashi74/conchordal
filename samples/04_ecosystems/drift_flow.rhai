@@ -17,11 +17,11 @@ add_agent("anchor", 65.41, 0.6, #{
         envelope: #{ attack_sec: 0.1, decay_sec: 0.1, sustain_level: 1.0 }
     },
     field: #{ core: "pitch_hill_climb" },
-    modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 1.0, exploration: 0.0 }
+    modulation: #{ core: "static", persistence: 0.5, exploration: 0.0 },
+    perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
 });
 // Anchor stays put (high commitment = resists movement)
 set_commitment("anchor", 1.0);
-set_habituation_sensitivity("anchor", 0.0);
 
 wait(1.0);
 
@@ -38,30 +38,25 @@ add_agent("slider", 138.59, 0.4, #{
         envelope: #{ attack_sec: 0.5, decay_sec: 0.5, sustain_level: 1.0 }
     },
     field: #{ core: "pitch_hill_climb" },
-    modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 1.0, exploration: 0.0 }
+    modulation: #{ core: "static", persistence: 0.5, exploration: 0.0 },
+    perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
 });
 
 // Low commitment = moves easily
 set_commitment("slider", 0.33); // eager to move
-set_habituation_sensitivity("slider", 0.0); // start with no boredom
 
 wait(4.0);
 
 // ==========================================
-// Phase 2: Habituation Test
+// Phase 2: Perceptual Adaptation
 // ==========================================
-scene("Phase 2: Habituation Push");
-print("--- [2] Enabling Habituation (Red Arrows appear) ---");
+scene("Phase 2: Perceptual Push");
+print("--- [2] Perceptual adaptation (self + environment) ---");
 
-// Make the environment more prone to boredom
-// Expect red arrows (habituation) to grow under the slider
-set_habituation(3.0, 2.0, 1.0); // weight=3.0 (strong), tau=2.0s (fast)
-
-// Enable agent sensitivity
-set_habituation_sensitivity("slider", 1.0);
+// Expect perceptual traces to grow under the slider
 
 print("--- Slider should be pushed away by red arrow ---");
-// As habituation accumulates, the peak flattens into a valley, nudging the agent to a neighboring harmonic.
+// As boredom accumulates, the peak flattens into a valley, nudging the agent to a neighboring harmonic.
 wait(6.0);
 
 // ==========================================
@@ -72,7 +67,6 @@ print("--- [3] Spawning Swarm & Moving Anchor ---");
 
 remove("slider");
 // Lightly reset environment
-set_habituation(0.5, 5.0, 1.0); // gentler settings
 
 // Drop a swarm (spread across C overtones)
 let method = #{ mode: "harmonicity", min_freq: 130.0, max_freq: 800.0 };
@@ -86,13 +80,13 @@ let life = #{
         envelope: #{ attack_sec: 1.0, decay_sec: 1.0, sustain_level: 0.5 }
     },
     field: #{ core: "pitch_hill_climb" },
-    modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 1.0, exploration: 0.0 }
+    modulation: #{ core: "static", persistence: 0.5, exploration: 0.0 },
+    perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
 };
 
 for i in 0..5 {
     spawn_agents("swarm_" + i, method, life, 1, 0.15);
     set_commitment("swarm_" + i, 0.56); // hop loosely
-    set_habituation_sensitivity("swarm_" + i, 1.5); // sensitive
     wait(0.5);
 }
 

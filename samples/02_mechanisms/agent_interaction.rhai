@@ -17,7 +17,8 @@ add_agent("anchor", 65.41, 0.6, #{
         envelope: #{ attack_sec: 0.1, decay_sec: 0.1, sustain_level: 1.0 }
     },
     field: #{ core: "pitch_hill_climb" },
-    modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 1.0, exploration: 0.0 }
+    modulation: #{ core: "static", persistence: 0.5, exploration: 0.0 },
+    perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
 });
 set_commitment("anchor", 1.0);
 
@@ -43,7 +44,8 @@ let life_seeker = #{
         envelope: #{ attack_sec: 1.0, decay_sec: 1.0, sustain_level: 0.5 }
     },
     field: #{ core: "pitch_hill_climb" },
-    modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 1.0, exploration: 0.0 }
+    modulation: #{ core: "static", persistence: 0.5, exploration: 0.0 },
+    perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
 };
 
 // Place them slightly off the comfy spots

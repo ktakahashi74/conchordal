@@ -12,7 +12,8 @@ fn play_step(name, root, dur) {
             attack_sec: 0.6
         },
         field: #{ core: "pitch_hill_climb" },
-        modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 2.0, exploration: 0.0 }
+        modulation: #{ core: "static", persistence: 0.5, exploration: 0.0 },
+        perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
     };
     
     let bass_life = #{ 
@@ -25,7 +26,8 @@ fn play_step(name, root, dur) {
             attack_sec: 0.2
         },
         field: #{ core: "pitch_hill_climb" },
-        modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 0.0, exploration: 0.0 }
+        modulation: #{ core: "static", persistence: 0.5, exploration: 0.0 },
+        perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
     };
 
     // 2. Spawn method configuration (Critical section)
@@ -76,10 +78,6 @@ let chords = [
 ];
 
 scene("cycle");
-
-// Set global habituation/crowding parameters (if not already set)
-// Prevents energy accumulation in one spot by triggering 'boredom' quickly
-set_habituation(0.5, 2.0, 1.0); 
 
 for ch in chords {
     play_step(ch.name, ch.freq, ch.dur);

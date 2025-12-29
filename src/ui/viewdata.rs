@@ -30,7 +30,6 @@ pub struct AgentStateInfo {
     pub integration_window: f32,
     pub breath_gain: f32,
     pub consonance: f32,
-    pub habituation: f32,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]

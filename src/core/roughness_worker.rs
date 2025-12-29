@@ -9,7 +9,7 @@ use crate::core::stream::roughness::RoughnessStream;
 /// `(frame_id, landscape_snapshot)`.
 pub type RoughnessResult = (u64, Landscape);
 
-/// Roughness worker: receives time-domain hops, runs NSGT-based audio analysis (R + habituation),
+/// Roughness worker: receives time-domain hops, runs NSGT-based audio analysis,
 /// and publishes the latest analysis for the main thread to merge.
 pub fn run(
     mut stream: RoughnessStream,
@@ -28,7 +28,7 @@ pub fn run(
             hops.push(latest_hop);
         }
 
-        // Apply parameter updates (habituation params primarily; others are harmless here).
+        // Apply parameter updates (roughness params primarily; others are harmless here).
         for upd in update_rx.try_iter() {
             stream.apply_update(upd);
         }

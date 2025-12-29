@@ -153,21 +153,6 @@ impl ScriptContext {
         }]);
     }
 
-    pub fn set_habituation_sensitivity(&mut self, target: &str, value: f32) {
-        self.push_event(vec![Action::SetHabituationSensitivity {
-            target: target.to_string(),
-            value,
-        }]);
-    }
-
-    pub fn set_habituation_params(&mut self, weight: f32, tau: f32, max_depth: f32) {
-        self.push_event(vec![Action::SetHabituationParams {
-            weight,
-            tau,
-            max_depth,
-        }]);
-    }
-
     pub fn set_rhythm_vitality(&mut self, value: f32) {
         self.push_event(vec![Action::SetRhythmVitality { value }]);
     }
@@ -314,33 +299,6 @@ impl ScriptHost {
             api::set_commitment(&mut ctx, target, value);
         });
 
-        let ctx_for_set_habituation_sens = ctx.clone();
-        engine.register_fn(
-            "set_habituation_sensitivity",
-            move |target: &str, value: FLOAT| {
-                let mut ctx = ctx_for_set_habituation_sens
-                    .lock()
-                    .expect("lock script context");
-                api::set_habituation_sensitivity(&mut ctx, target, value);
-            },
-        );
-
-        let ctx_for_set_habituation = ctx.clone();
-        engine.register_fn(
-            "set_habituation",
-            move |weight: FLOAT, tau: FLOAT, max_depth: FLOAT| {
-                let mut ctx = ctx_for_set_habituation.lock().expect("lock script context");
-                api::set_habituation(&mut ctx, weight, tau, max_depth);
-            },
-        );
-        let ctx_for_set_habituation_basic = ctx.clone();
-        engine.register_fn("set_habituation", move |weight: FLOAT, tau: FLOAT| {
-            let mut ctx = ctx_for_set_habituation_basic
-                .lock()
-                .expect("lock script context");
-            api::set_habituation_basic(&mut ctx, weight, tau);
-        });
-
         let ctx_for_set_vitality = ctx.clone();
         engine.register_fn("set_rhythm_vitality", move |value: FLOAT| {
             let mut ctx = ctx_for_set_vitality.lock().expect("lock script context");
@@ -435,7 +393,8 @@ mod tests {
                 body: #{ core: "sine" },
                 temporal: #{ core: "entrain", type: "decay", initial_energy: 1.0, half_life_sec: 0.5 },
                 field: #{ core: "pitch_hill_climb" },
-                modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 1.0, exploration: 0.0 }
+                modulation: #{ core: "static", persistence: 0.5, exploration: 0.0 },
+                perceptual: #{ tau_fast: 0.5, tau_slow: 6.0, w_boredom: 0.8, w_familiarity: 0.2 }
             };
             add_agent("lead", 440.0, 0.2, life);
             wait(1.0);
@@ -444,7 +403,8 @@ mod tests {
                 body: #{ core: "sine" },
                 temporal: #{ core: "entrain", type: "decay", initial_energy: 0.8, half_life_sec: 0.2 },
                 field: #{ core: "pitch_hill_climb" },
-                modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 1.0, exploration: 0.0 }
+                modulation: #{ core: "static", persistence: 0.5, exploration: 0.0 },
+                perceptual: #{ tau_fast: 0.5, tau_slow: 6.0, w_boredom: 0.8, w_familiarity: 0.2 }
             };
             add_agent("hit", 880.0, 0.1, hit_life);
             wait(0.5);
@@ -499,7 +459,8 @@ mod tests {
                     body: #{ core: "sine" },
                     temporal: #{ core: "entrain", type: "decay", initial_energy: 1.0, half_life_sec: 0.3 },
                     field: #{ core: "pitch_hill_climb" },
-                    modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 1.0, exploration: 0.0 }
+                    modulation: #{ core: "static", persistence: 0.5, exploration: 0.0 },
+                    perceptual: #{ tau_fast: 0.5, tau_slow: 6.0, w_boredom: 0.8, w_familiarity: 0.2 }
                 };
                 add_agent("pad", 200.0, 0.1, life);
             });
@@ -508,7 +469,8 @@ mod tests {
                 body: #{ core: "sine" },
                 temporal: #{ core: "entrain", type: "decay", initial_energy: 1.0, half_life_sec: 0.3 },
                 field: #{ core: "pitch_hill_climb" },
-                modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 1.0, exploration: 0.0 }
+                modulation: #{ core: "static", persistence: 0.5, exploration: 0.0 },
+                perceptual: #{ tau_fast: 0.5, tau_slow: 6.0, w_boredom: 0.8, w_familiarity: 0.2 }
             };
             add_agent("after", 300.0, 0.1, after_life);
             finish();
@@ -551,7 +513,8 @@ mod tests {
                 body: #{ core: "sine" },
                 temporal: #{ core: "entrain", type: "decay", initial_energy: 1.0, half_life_sec: 0.5 },
                 field: #{ core: "pitch_hill_climb" },
-                modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 1.0, exploration: 0.0 }
+                modulation: #{ core: "static", persistence: 0.5, exploration: 0.0 },
+                perceptual: #{ tau_fast: 0.5, tau_slow: 6.0, w_boredom: 0.8, w_familiarity: 0.2 }
             };
             spawn_agents("tag", method, life, 3, 0.25);
         "#,
@@ -600,7 +563,8 @@ mod tests {
                 body: #{ core: "sine" },
                 temporal: #{ core: "entrain", type: "decay", initial_energy: 1.0, half_life_sec: 0.5 },
                 field: #{ core: "pitch_hill_climb" },
-                modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 1.0, exploration: 0.0 }
+                modulation: #{ core: "static", persistence: 0.5, exploration: 0.0 },
+                perceptual: #{ tau_fast: 0.5, tau_slow: 6.0, w_boredom: 0.8, w_familiarity: 0.2 }
             };
             add_agent("init", 330.0, 0.2, life);
             wait(0.3);

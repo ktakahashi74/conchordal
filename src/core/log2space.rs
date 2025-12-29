@@ -91,6 +91,12 @@ impl Log2Space {
         Some(idx)
     }
 
+    /// Find nearest bin index for a log2(Hz) coordinate.
+    pub fn index_of_log2(&self, log2_hz: f32) -> Option<usize> {
+        let hz = 2f32.powf(log2_hz);
+        self.index_of_freq(hz)
+    }
+
     pub fn freq_of_index(&self, i: usize) -> f32 {
         self.centers_hz[i]
     }

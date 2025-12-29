@@ -518,37 +518,6 @@ impl Population {
                     }
                 }
             }
-            Action::SetHabituationSensitivity { target, value } => {
-                let ids = self.resolve_targets(&target);
-                for id in ids {
-                    if let Some(agent) = self.find_individual_mut(id) {
-                        let v = value.max(0.0);
-                        agent.modulation.set_habituation_sensitivity(v);
-                    } else {
-                        warn!("SetHabituationSensitivity: agent {id} not found");
-                    }
-                }
-            }
-            Action::SetHabituationParams {
-                weight,
-                tau,
-                max_depth,
-            } => {
-                let upd = LandscapeUpdate {
-                    habituation_weight: Some(weight),
-                    habituation_tau: Some(tau),
-                    habituation_max_depth: Some(max_depth),
-                    ..Default::default()
-                };
-                if let Some(roughness) = landscape_rt {
-                    roughness.apply_update(upd);
-                }
-                let mut pending = self.pending_update.unwrap_or_default();
-                pending.habituation_weight = Some(weight);
-                pending.habituation_tau = Some(tau);
-                pending.habituation_max_depth = Some(max_depth);
-                self.pending_update = Some(pending);
-            }
         }
     }
 

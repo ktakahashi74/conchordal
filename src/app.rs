@@ -239,9 +239,6 @@ impl App {
             harmonicity_kernel: HarmonicityKernel::new(&space, HarmonicityParams::default()),
             roughness_scalar_mode: crate::core::landscape::RoughnessScalarMode::Total,
             roughness_half: 0.1,
-            habituation_tau: 8.0,
-            habituation_weight: 0.5,
-            habituation_max_depth: 1.0,
             consonance_roughness_weight: config.psychoacoustics.roughness_weight,
             loudness_exp: config.psychoacoustics.loudness_exp, // Zwicker
             tau_ms: config.analysis.tau_ms,
@@ -694,7 +691,6 @@ fn worker_loop(
                     current_landscape.roughness_norm = frame.roughness_norm;
                     current_landscape.roughness01_scalar = frame.roughness01_scalar;
                     current_landscape.loudness_mass = frame.loudness_mass;
-                    current_landscape.habituation = frame.habituation;
                     current_landscape.subjective_intensity = frame.subjective_intensity;
                     current_landscape.nsgt_power = frame.nsgt_power;
                     roughness_updated = true;
@@ -728,23 +724,15 @@ fn worker_loop(
                             .get(max_i)
                             .copied()
                             .unwrap_or(0.0);
-                        let hab = current_landscape
-                            .habituation
-                            .get(max_i)
-                            .copied()
-                            .unwrap_or(0.0);
                         let c = current_landscape
                             .consonance
                             .get(max_i)
                             .copied()
                             .unwrap_or(0.0);
-                        let c_pred = (h
-                            - lparams.consonance_roughness_weight * r
-                            - lparams.habituation_weight * hab)
-                            .clamp(-1.0, 1.0);
+                        let c_pred = (h - lparams.consonance_roughness_weight * r).clamp(-1.0, 1.0);
                         debug!(
-                            "c_signed_check bin={} h={:.4} r={:.4} hab={:.4} c={:.4} c_pred={:.4}",
-                            max_i, h, r, hab, c, c_pred
+                            "c_signed_check bin={} h={:.4} r={:.4} c={:.4} c_pred={:.4}",
+                            max_i, h, r, c, c_pred
                         );
                     }
                 }
@@ -898,7 +886,6 @@ fn worker_loop(
                             integration_window: agent.integration_window,
                             breath_gain: agent.breath_gain,
                             consonance: current_landscape.evaluate_pitch01(f),
-                            habituation: current_landscape.get_habituation_at(f),
                         }
                     })
                     .collect();
@@ -981,14 +968,5 @@ fn apply_params_update(params: &mut LandscapeParams, upd: &LandscapeUpdate) {
     }
     if let Some(k) = upd.roughness_k {
         params.roughness_k = k.max(1e-6);
-    }
-    if let Some(w) = upd.habituation_weight {
-        params.habituation_weight = w;
-    }
-    if let Some(tau) = upd.habituation_tau {
-        params.habituation_tau = tau;
-    }
-    if let Some(max_d) = upd.habituation_max_depth {
-        params.habituation_max_depth = max_d;
     }
 }

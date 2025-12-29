@@ -20,7 +20,8 @@ let life_plucking = #{
         }
     },
     field: #{ core: "pitch_hill_climb" },
-    modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 1.0, exploration: 0.0 }
+    modulation: #{ core: "static", persistence: 0.5, exploration: 0.0 },
+    perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
 };
 
 // ============================================================
@@ -40,7 +41,8 @@ add_agent("kick", 60.0, 0.5, #{
         envelope: #{ attack_sec: 0.01, decay_sec: 0.2, sustain_level: 0.0 }
     },
     field: #{ core: "pitch_hill_climb" },
-    modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 1.0, exploration: 0.0 }
+    modulation: #{ core: "static", persistence: 0.5, exploration: 0.0 },
+    perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
 });
 
 wait(2.0); // allow rhythm to settle
@@ -94,7 +96,8 @@ let life_click = #{
     body: #{ core: "sine" },
     temporal: #{ core: "entrain", type: "decay", initial_energy: 0.8, half_life_sec: 0.2 },
     field: #{ core: "pitch_hill_climb" },
-    modulation: #{ core: "static", persistence: 0.5, habituation_sensitivity: 1.0, exploration: 0.0 }
+    modulation: #{ core: "static", persistence: 0.5, exploration: 0.0 },
+    perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
 };
 let method_click = #{ mode: "random_log_uniform", min_freq: 2000.0, max_freq: 4000.0 };
 

@@ -3,6 +3,22 @@
 {% block extra_head %}
 <meta name="theme-color" content="#000000">
 <link rel="stylesheet" type="text/css" href="{{ get_url(path="css/custom.css", cachebust=true) }}">
+
+<!-- Open Graph -->
+<meta property="og:title" content="{{ config.title }}">
+<meta property="og:description" content="A bio-acoustic instrument for generative composition">
+<meta property="og:type" content="website">
+<meta property="og:url" content="{{ current_url | default(value=config.base_url) }}">
+<meta property="og:image" content="{{ get_url(path='screenshot1.png') }}">
+
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="{{ config.title }}">
+<meta name="twitter:description" content="A bio-acoustic instrument for generative composition">
+<meta name="twitter:image" content="{{ get_url(path='screenshot1.png') }}">
+
+<!-- Canonical -->
+<link rel="canonical" href="{{ current_url | default(value=config.base_url) }}">
 {% endblock extra_head %}
 
 {% block navigation %}

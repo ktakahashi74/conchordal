@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <!-- TODO: Remove this meta tag when ready for public launch -->
     <title>{% block title %}{{ config.title }}{% endblock title %}</title>
-    <meta name="description" content="{% block description %}{% if lang == 'ja' %}生成的作曲のための生体音響楽器{% else %}A bio-acoustic instrument for generative composition{% endif %}{% endblock description %}">
+    <meta name="description" content="{% block description %}A bio-acoustic instrument for generative composition{% endblock description %}">
     <meta name="theme-color" content="#000000">
 
     <!-- Favicon -->
@@ -16,9 +16,19 @@
 
     <!-- Open Graph -->
     <meta property="og:title" content="{% block og_title %}{{ config.title }}{% endblock og_title %}">
-    <meta property="og:description" content="{% block og_description %}{% if lang == 'ja' %}生成的作曲のための生体音響楽器{% else %}A bio-acoustic instrument for generative composition{% endif %}{% endblock og_description %}">
+    <meta property="og:description" content="{% block og_description %}A bio-acoustic instrument for generative composition{% endblock og_description %}">
     <meta property="og:type" content="website">
-    <meta property="og:url" content="{{ config.base_url }}">
+    <meta property="og:url" content="{{ current_url | default(value=config.base_url) }}">
+    <meta property="og:image" content="{{ get_url(path='screenshot1.png') }}">
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="{% block twitter_title %}{{ config.title }}{% endblock twitter_title %}">
+    <meta name="twitter:description" content="{% block twitter_description %}A bio-acoustic instrument for generative composition{% endblock twitter_description %}">
+    <meta name="twitter:image" content="{{ get_url(path='screenshot1.png') }}">
+
+    <!-- Canonical -->
+    <link rel="canonical" href="{{ current_url | default(value=config.base_url) }}">
 
     {% block head %}{% endblock head %}
 </head>

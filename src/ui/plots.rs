@@ -347,8 +347,14 @@ pub fn neural_activity_plot(
                             / std::f64::consts::TAU,
                         r.theta.mag,
                     ),
-                    2 => (r.alpha.mag.clamp(0.0, 1.0) as f64, r.alpha.mag),
-                    3 => (r.beta.mag.clamp(0.0, 1.0) as f64, r.beta.mag),
+                    2 => {
+                        let alpha_mag = 0.5 * (r.theta.alpha + r.delta.alpha);
+                        (alpha_mag.clamp(0.0, 1.0) as f64, alpha_mag)
+                    }
+                    3 => {
+                        let beta_mag = r.theta.beta.max(r.delta.beta);
+                        (beta_mag.clamp(0.0, 1.0) as f64, beta_mag)
+                    }
                     _ => (0.0, 0.0),
                 };
 
@@ -581,11 +587,27 @@ pub fn neural_compass(
     let color_theta = Color32::from_rgb(70, 225, 135);
     let color_alpha = Color32::from_rgb(255, 215, 60);
     let color_beta = Color32::from_rgb(255, 110, 90);
+    let alpha_mag = 0.5 * (rhythms.theta.alpha + rhythms.delta.alpha);
+    let beta_mag = rhythms.theta.beta.max(rhythms.delta.beta);
+    let alpha_band = crate::core::modulation::RhythmBand {
+        phase: 0.0,
+        freq_hz: 0.0,
+        mag: alpha_mag,
+        alpha: alpha_mag,
+        beta: beta_mag,
+    };
+    let beta_band = crate::core::modulation::RhythmBand {
+        phase: 0.0,
+        freq_hz: 0.0,
+        mag: beta_mag,
+        alpha: alpha_mag,
+        beta: beta_mag,
+    };
     let bands = [
         ("Delta", color_delta, rhythms.delta),
         ("Theta", color_theta, rhythms.theta),
-        ("Alpha", color_alpha, rhythms.alpha),
-        ("Beta", color_beta, rhythms.beta),
+        ("Alpha", color_alpha, alpha_band),
+        ("Beta", color_beta, beta_band),
     ];
 
     let cheight = (height / 4.0) * 0.95;
@@ -703,7 +725,7 @@ pub fn draw_rhythm_mandala(
     painter.circle_filled(center, 3.0, base_circle);
 
     // Alpha: stability axis along the vertical.
-    let alpha_mag = rhythms.alpha.mag.clamp(0.0, 1.0);
+    let alpha_mag = (0.5 * (rhythms.theta.alpha + rhythms.delta.alpha)).clamp(0.0, 1.0);
     let alpha_vis = 0.25 + 0.75 * alpha_mag;
     let alpha_color = color_alpha.gamma_multiply(alpha_vis);
     let alpha_width = 2.0 + 6.0 * alpha_mag;
@@ -716,7 +738,7 @@ pub fn draw_rhythm_mandala(
     );
 
     // Beta: prediction error cross-grid.
-    let beta_mag = rhythms.beta.mag.clamp(0.0, 1.0);
+    let beta_mag = rhythms.theta.beta.max(rhythms.delta.beta).clamp(0.0, 1.0);
     let beta_vis = 0.2 + 0.8 * beta_mag;
     let beta_color = color_beta.gamma_multiply(beta_vis);
     let beta_width = 1.5 + 6.0 * beta_mag;

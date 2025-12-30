@@ -4,6 +4,7 @@ use serde::{
     de::{self, Deserializer},
 };
 use std::fmt;
+use tracing::debug;
 
 use crate::life::individual::{
     AgentMetadata, AnyFieldCore, AnyModulationCore, AnyTemporalCore, Individual,
@@ -61,6 +62,8 @@ pub struct LifeConfig {
     pub field: FieldCoreConfig,
     pub modulation: ModulationCoreConfig,
     pub perceptual: PerceptualConfig,
+    #[serde(default)]
+    pub breath_gain_init: Option<f32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -192,8 +195,13 @@ impl fmt::Display for LifeConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "life[body={:?}, temporal={:?}, field={:?}, modulation={:?}, perceptual={:?}]",
-            self.body, self.temporal, self.field, self.modulation, self.perceptual
+            "life[body={:?}, temporal={:?}, field={:?}, modulation={:?}, perceptual={:?}, breath_gain_init={:?}]",
+            self.body,
+            self.temporal,
+            self.field,
+            self.modulation,
+            self.perceptual,
+            self.breath_gain_init
         )
     }
 }
@@ -265,6 +273,31 @@ impl IndividualConfig {
             self.amp,
             &mut rng,
         );
+        let (temporal_core, lifecycle_label, default_by_temporal) = match &self.life.temporal {
+            TemporalCoreConfig::Entrain { lifecycle, .. } => {
+                let life_label = match lifecycle {
+                    LifecycleConfig::Decay { .. } => "decay",
+                    LifecycleConfig::Sustain { .. } => "sustain",
+                };
+                ("entrain", life_label, 1.0)
+            }
+            TemporalCoreConfig::Seq { .. } => ("seq", "none", 1.0),
+            TemporalCoreConfig::Drone { .. } => ("drone", "none", 0.0),
+        };
+        let breath_gain = self
+            .life
+            .breath_gain_init
+            .unwrap_or(default_by_temporal)
+            .clamp(0.0, 1.0);
+        debug!(
+            target: "rhythm::spawn",
+            id = assigned_id,
+            tag = ?metadata.tag,
+            temporal = temporal_core,
+            lifecycle = lifecycle_label,
+            breath_gain_init = self.life.breath_gain_init,
+            breath_gain
+        );
         Individual {
             id: assigned_id,
             metadata,
@@ -280,7 +313,7 @@ impl IndividualConfig {
             target_pitch_log2,
             integration_window,
             accumulated_time: 0.0,
-            breath_gain: 0.0,
+            breath_gain,
             last_theta_sample: 0.0,
             last_target_salience: 0.0,
             rng,
@@ -339,6 +372,7 @@ mod tests {
                     self_smoothing_radius: None,
                     silence_mass_epsilon: None,
                 },
+                breath_gain_init: None,
             },
             tag: Some("test".into()),
         };

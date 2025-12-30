@@ -9,7 +9,8 @@ use crate::life::scenario::{
     TimbreGenotype,
 };
 use rand::{Rng, SeedableRng, rngs::SmallRng};
-use std::f32::consts::PI;
+use std::f32::consts::{PI, TAU};
+use tracing::debug;
 
 pub trait AudioAgent {
     fn id(&self) -> u64;
@@ -211,14 +212,63 @@ pub struct KuramotoCore {
     pub sensitivity: Sensitivity,
     pub rhythm_phase: f32,
     pub rhythm_freq: f32,
+    pub omega_rad: f32,
+    pub phase_offset: f32,
+    pub debug_id: u64,
     pub env_level: f32,
     pub state: ArticulationState,
     pub attack_step: f32,
     pub decay_factor: f32,
     pub retrigger: bool,
     pub noise_1f: PinkNoise,
-    pub confidence: f32,
-    pub gate_threshold: f32,
+    pub base_sigma: f32,
+    pub beta_gain: f32,
+    pub k_omega: f32,
+    pub bootstrap_timer: f32,
+    pub env_open_threshold: f32,
+    pub env_level_min: f32,
+    pub mag_threshold: f32,
+    pub alpha_threshold: f32,
+    pub beta_threshold: f32,
+    pub dbg_accum_time: f32,
+    pub dbg_wraps: u32,
+    pub dbg_attacks: u32,
+    pub dbg_boot_attacks: u32,
+    pub dbg_attack_logs_left: u32,
+    pub dbg_attack_count_normal: u32,
+    pub dbg_attack_sum_abs_diff: f32,
+    pub dbg_attack_sum_cos: f32,
+    pub dbg_attack_sum_sin: f32,
+    pub dbg_fail_env: u32,
+    pub dbg_fail_env_level: u32,
+    pub dbg_fail_mag: u32,
+    pub dbg_fail_alpha: u32,
+    pub dbg_fail_beta: u32,
+    pub dbg_last_env_open: f32,
+    pub dbg_last_env_level: f32,
+    pub dbg_last_theta_mag: f32,
+    pub dbg_last_theta_alpha: f32,
+    pub dbg_last_theta_beta: f32,
+    pub dbg_last_k_eff: f32,
+}
+
+fn wrap_phase(mut phi: f32) -> f32 {
+    phi = phi.rem_euclid(TAU);
+    if phi < 0.0 {
+        phi += TAU;
+    }
+    phi
+}
+
+fn angle_diff(target: f32, current: f32) -> f32 {
+    let mut diff = target - current;
+    while diff > PI {
+        diff -= TAU;
+    }
+    while diff < -PI {
+        diff += TAU;
+    }
+    diff
 }
 
 impl TemporalCore for KuramotoCore {
@@ -236,32 +286,137 @@ impl TemporalCore for KuramotoCore {
             return ArticulationSignal::default();
         }
 
-        let delta_phase = rhythms.delta.phase;
-        let delta_mag = rhythms.delta.mag * self.sensitivity.delta;
-        let theta_signal = rhythms.theta.mag * rhythms.theta.phase.cos() * self.sensitivity.theta;
-        let trigger_force = theta_signal * consonance;
+        let theta_phase = rhythms.theta.phase;
+        let theta_mag = rhythms.theta.mag;
+        let theta_alpha = rhythms.theta.alpha;
+        let theta_beta = rhythms.theta.beta;
 
-        let beta_err = rhythms.beta.mag * self.sensitivity.beta;
-        self.confidence = 1.0 - beta_err;
-        let coupling = (self.sensitivity.beta * (1.0 / (self.confidence + 1e-3))).min(10.0);
-        let noise = self.noise_1f.sample();
-        let rhythm_omega = 2.0 * PI * self.rhythm_freq;
-        let d_phi = rhythm_omega
-            + noise
-            + coupling * global_coupling * (delta_phase - self.rhythm_phase).sin();
+        let omega_target = TAU * rhythms.theta.freq_hz;
+        // base_k scales with target omega so coupling stays in rad/s units.
+        let base_k = omega_target.max(20.0);
+        let env_gate = rhythms.env_open;
+        let env_amp = rhythms.env_level.sqrt();
+        let k_eff = base_k
+            * global_coupling
+            * self.sensitivity.theta
+            * theta_mag
+            * theta_alpha
+            * env_gate
+            * env_amp;
+        self.dbg_last_env_open = rhythms.env_open;
+        self.dbg_last_env_level = rhythms.env_level;
+        self.dbg_last_theta_mag = theta_mag;
+        self.dbg_last_theta_alpha = theta_alpha;
+        self.dbg_last_theta_beta = theta_beta;
+        self.dbg_last_k_eff = k_eff;
+        self.dbg_accum_time += dt;
+
+        self.bootstrap_timer = (self.bootstrap_timer - dt).max(0.0);
+        let bootstrap_active = self.bootstrap_timer > 0.0;
+        let mut pull = self.k_omega * theta_alpha * env_gate;
+        if pull > 0.0 {
+            if bootstrap_active {
+                pull *= 4.0;
+            }
+            let blend = (pull * dt).min(1.0);
+            self.omega_rad = self.omega_rad + (omega_target - self.omega_rad) * blend;
+        }
+        let min_omega = TAU * 3.0;
+        let max_omega = TAU * 12.0;
+        self.omega_rad = self.omega_rad.clamp(min_omega, max_omega);
+        self.rhythm_freq = self.omega_rad / TAU;
+
+        let sigma = self.base_sigma * (1.0 + self.beta_gain * theta_beta);
+        let noise = self.noise_1f.sample() * sigma;
+
+        let target = wrap_phase(theta_phase + self.phase_offset);
+        let diff = angle_diff(target, wrap_phase(self.rhythm_phase));
+        let d_phi = self.omega_rad + noise + k_eff * diff.sin();
         self.rhythm_phase += d_phi * dt;
 
-        if self.rhythm_phase >= 2.0 * PI {
+        while self.rhythm_phase >= 2.0 * PI {
             self.rhythm_phase -= 2.0 * PI;
-            let gate_bias = 0.2;
-            let gate = delta_mag + trigger_force + gate_bias;
-            if gate > self.gate_threshold && self.state == ArticulationState::Idle && self.retrigger
-            {
+            self.dbg_wraps += 1;
+            let env_open_ok = rhythms.env_open > self.env_open_threshold;
+            let env_level_ok = rhythms.env_level > self.env_level_min;
+            let mag_ok = theta_mag > self.mag_threshold;
+            let alpha_ok = theta_alpha > self.alpha_threshold;
+            let beta_ok = theta_beta < self.beta_threshold;
+            if !env_open_ok {
+                self.dbg_fail_env += 1;
+            }
+            if !env_level_ok {
+                self.dbg_fail_env_level += 1;
+            }
+            if !mag_ok {
+                self.dbg_fail_mag += 1;
+            }
+            if !alpha_ok {
+                self.dbg_fail_alpha += 1;
+            }
+            if !beta_ok {
+                self.dbg_fail_beta += 1;
+            }
+
+            let target_phase = wrap_phase(theta_phase + self.phase_offset);
+            let agent_phase = wrap_phase(self.rhythm_phase);
+            let phase_err_at_attack = angle_diff(target_phase, agent_phase);
+
+            let mut attack = false;
+            let mut boot_attack = false;
+            if self.state == ArticulationState::Idle && self.retrigger {
+                if bootstrap_active {
+                    let mag_ok_boot = theta_mag > (self.mag_threshold * 0.5);
+                    let alpha_ok_boot = theta_alpha > (self.alpha_threshold * 0.5);
+                    let env_level_ok_boot = rhythms.env_level > (self.env_level_min * 0.5);
+                    if env_level_ok_boot && (mag_ok_boot || alpha_ok_boot) {
+                        attack = true;
+                        boot_attack = true;
+                    }
+                } else if env_open_ok && env_level_ok && mag_ok && alpha_ok && beta_ok {
+                    attack = true;
+                }
+            }
+
+            if attack {
                 self.env_level = 0.0;
                 self.state = ArticulationState::Attack;
                 self.energy -= self.action_cost;
                 if consonance > 0.5 {
                     self.energy += self.recharge_rate * consonance;
+                }
+                self.dbg_attacks += 1;
+                if boot_attack {
+                    self.dbg_boot_attacks += 1;
+                }
+                if !boot_attack {
+                    self.dbg_attack_count_normal += 1;
+                    self.dbg_attack_sum_abs_diff += phase_err_at_attack.abs();
+                    self.dbg_attack_sum_cos += phase_err_at_attack.cos();
+                    self.dbg_attack_sum_sin += phase_err_at_attack.sin();
+                }
+                if self.dbg_attack_logs_left > 0 {
+                    debug!(
+                        target: "rhythm::attack",
+                        id = self.debug_id,
+                        mode = if boot_attack { "bootstrap" } else { "normal" },
+                        env_open = rhythms.env_open,
+                        env_level = rhythms.env_level,
+                        env_open_threshold = self.env_open_threshold,
+                        env_level_min = self.env_level_min,
+                        mag_threshold = self.mag_threshold,
+                        alpha_threshold = self.alpha_threshold,
+                        beta_threshold = self.beta_threshold,
+                        theta_mag,
+                        theta_alpha,
+                        theta_beta,
+                        k_eff,
+                        target_phase,
+                        agent_phase,
+                        phase_err_at_attack,
+                        phase_offset = self.phase_offset
+                    );
+                    self.dbg_attack_logs_left -= 1;
                 }
             }
         }
@@ -284,8 +439,76 @@ impl TemporalCore for KuramotoCore {
             ArticulationState::Idle => {}
         }
 
-        let relaxation = rhythms.alpha.mag * self.sensitivity.alpha;
-        let tension = rhythms.beta.mag * self.sensitivity.beta;
+        if self.dbg_accum_time >= 1.0 {
+            let agent_freq_hz = self.omega_rad / TAU;
+            let freq_err_hz = agent_freq_hz - rhythms.theta.freq_hz;
+            let (attack_plv, attack_mean_abs_diff) = if self.dbg_attack_count_normal > 0 {
+                let count = self.dbg_attack_count_normal as f32;
+                let plv = (self.dbg_attack_sum_cos * self.dbg_attack_sum_cos
+                    + self.dbg_attack_sum_sin * self.dbg_attack_sum_sin)
+                    .sqrt()
+                    / count;
+                let mean_abs_diff = self.dbg_attack_sum_abs_diff / count;
+                (plv, mean_abs_diff)
+            } else {
+                (0.0, 0.0)
+            };
+            debug!(
+                target: "rhythm::metrics",
+                id = self.debug_id,
+                attack_count_normal = self.dbg_attack_count_normal,
+                attack_mean_abs_diff = attack_mean_abs_diff,
+                attack_plv_target = attack_plv,
+                last_env_open = self.dbg_last_env_open,
+                last_env_level = self.dbg_last_env_level,
+                last_theta_mag = self.dbg_last_theta_mag,
+                last_theta_alpha = self.dbg_last_theta_alpha,
+                last_theta_beta = self.dbg_last_theta_beta,
+                last_k_eff = self.dbg_last_k_eff,
+                fail_env_open = self.dbg_fail_env,
+                fail_env_level = self.dbg_fail_env_level,
+                fail_mag = self.dbg_fail_mag,
+                fail_alpha = self.dbg_fail_alpha,
+                fail_beta = self.dbg_fail_beta
+            );
+            debug!(
+                target: "rhythm::agent",
+                id = self.debug_id,
+                agent_freq_hz,
+                freq_err_hz,
+                wraps = self.dbg_wraps,
+                attacks = self.dbg_attacks,
+                boot_attacks = self.dbg_boot_attacks,
+                fail_env = self.dbg_fail_env,
+                fail_mag = self.dbg_fail_mag,
+                fail_alpha = self.dbg_fail_alpha,
+                fail_beta = self.dbg_fail_beta,
+                last_env_open = self.dbg_last_env_open,
+                last_env_level = self.dbg_last_env_level,
+                last_theta_mag = self.dbg_last_theta_mag,
+                last_theta_alpha = self.dbg_last_theta_alpha,
+                last_theta_beta = self.dbg_last_theta_beta,
+                last_k_eff = self.dbg_last_k_eff,
+                omega_rad = self.omega_rad,
+                theta_freq_hz = rhythms.theta.freq_hz
+            );
+            self.dbg_accum_time = 0.0;
+            self.dbg_wraps = 0;
+            self.dbg_attacks = 0;
+            self.dbg_boot_attacks = 0;
+            self.dbg_attack_count_normal = 0;
+            self.dbg_attack_sum_abs_diff = 0.0;
+            self.dbg_attack_sum_cos = 0.0;
+            self.dbg_attack_sum_sin = 0.0;
+            self.dbg_fail_env = 0;
+            self.dbg_fail_env_level = 0;
+            self.dbg_fail_mag = 0;
+            self.dbg_fail_alpha = 0;
+            self.dbg_fail_beta = 0;
+        }
+
+        let relaxation = rhythms.theta.alpha * self.sensitivity.alpha;
+        let tension = rhythms.theta.beta * self.sensitivity.beta;
         let is_active = self.env_level > 0.0 && self.state != ArticulationState::Idle;
         ArticulationSignal {
             amplitude: self.env_level,
@@ -327,7 +550,7 @@ impl TemporalCore for SequencedCore {
         ArticulationSignal {
             amplitude: self.env_level,
             is_active: active,
-            relaxation: rhythms.alpha.mag,
+            relaxation: rhythms.theta.alpha,
             tension: 0.0,
         }
     }
@@ -354,13 +577,13 @@ impl TemporalCore for DroneCore {
         let omega = 2.0 * PI * self.sway_rate.max(0.01);
         self.phase = (self.phase + omega * dt).rem_euclid(2.0 * PI);
         let lfo = 0.5 * (self.phase.sin() + 1.0);
-        let relax_boost = 1.0 + rhythms.alpha.mag * 0.5;
+        let relax_boost = 1.0 + rhythms.theta.alpha * 0.5;
         let amplitude = (0.3 + 0.7 * lfo) * relax_boost;
         ArticulationSignal {
             amplitude: amplitude.clamp(0.0, 1.0),
             is_active: true,
-            relaxation: rhythms.alpha.mag,
-            tension: rhythms.beta.mag * 0.25,
+            relaxation: rhythms.theta.alpha,
+            tension: rhythms.theta.beta * 0.25,
         }
     }
 
@@ -370,6 +593,7 @@ impl TemporalCore for DroneCore {
 }
 
 #[derive(Debug, Clone)]
+#[allow(clippy::large_enum_variant)]
 pub enum AnyTemporalCore {
     Entrain(KuramotoCore),
     Seq(SequencedCore),
@@ -577,25 +801,58 @@ impl AnyTemporalCore {
                     retrigger,
                     action_cost,
                 ) = envelope_from_lifecycle(lifecycle, fs);
+                let init_freq = rhythm_freq.unwrap_or_else(|| rng.random_range(5.0..7.0));
+                // Phase/offset seed diversity; theta lock uses base_k ~ omega_target in process.
                 AnyTemporalCore::Entrain(KuramotoCore {
                     energy,
                     basal_cost,
                     action_cost,
                     recharge_rate,
                     sensitivity: Sensitivity {
-                        beta: rhythm_sensitivity.unwrap_or(sensitivity.beta),
+                        // rhythm_sensitivity targets theta coupling strength.
+                        theta: rhythm_sensitivity.unwrap_or(sensitivity.theta),
                         ..sensitivity
                     },
-                    rhythm_phase: 0.0,
-                    rhythm_freq: rhythm_freq.unwrap_or_else(|| rng.random_range(0.5..3.0)),
+                    rhythm_phase: rng.random_range(0.0..std::f32::consts::TAU),
+                    rhythm_freq: init_freq,
+                    omega_rad: TAU * init_freq,
+                    phase_offset: rng.random_range(-std::f32::consts::PI..std::f32::consts::PI),
+                    debug_id: noise_seed,
                     env_level: 0.0,
                     state,
                     attack_step,
                     decay_factor,
                     retrigger,
                     noise_1f: PinkNoise::new(noise_seed, 0.001),
-                    confidence: 1.0,
-                    gate_threshold: 0.02,
+                    base_sigma: 0.3, // rad/s noise floor
+                    beta_gain: 1.0,  // beta -> noise gain
+                    k_omega: 3.0,    // omega pull toward theta
+                    bootstrap_timer: 1.5,
+                    env_open_threshold: 0.55,
+                    env_level_min: 0.02,
+                    mag_threshold: 0.04,
+                    alpha_threshold: 0.2,
+                    beta_threshold: 0.9,
+                    dbg_accum_time: 0.0,
+                    dbg_wraps: 0,
+                    dbg_attacks: 0,
+                    dbg_boot_attacks: 0,
+                    dbg_attack_logs_left: 5,
+                    dbg_attack_count_normal: 0,
+                    dbg_attack_sum_abs_diff: 0.0,
+                    dbg_attack_sum_cos: 0.0,
+                    dbg_attack_sum_sin: 0.0,
+                    dbg_fail_env: 0,
+                    dbg_fail_env_level: 0,
+                    dbg_fail_mag: 0,
+                    dbg_fail_alpha: 0,
+                    dbg_fail_beta: 0,
+                    dbg_last_env_open: 0.0,
+                    dbg_last_env_level: 0.0,
+                    dbg_last_theta_mag: 0.0,
+                    dbg_last_theta_alpha: 0.0,
+                    dbg_last_theta_beta: 0.0,
+                    dbg_last_k_eff: 0.0,
                 })
             }
             TemporalCoreConfig::Seq { duration } => AnyTemporalCore::Seq(SequencedCore {
@@ -1086,7 +1343,7 @@ impl Individual {
             }
         } else {
             self.body.set_pitch_log2(self.target_pitch_log2);
-            let attack_rate = 1.0 + rhythms.beta.mag;
+            let attack_rate = 1.0 + rhythms.theta.beta;
             self.breath_gain = (self.breath_gain + dt * attack_rate).clamp(0.0, 1.0);
         }
     }

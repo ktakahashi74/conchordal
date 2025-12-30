@@ -58,7 +58,7 @@ impl Population {
             next_auto_id: 1_000_000,
             tag_counters: HashMap::new(),
             buffers: WorkBuffers::default(),
-            global_vitality: 0.1,
+            global_vitality: 1.0,
             global_coupling: 1.0,
             shutdown_gain: 1.0,
             pending_update: None,

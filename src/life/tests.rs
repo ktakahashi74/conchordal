@@ -1,7 +1,7 @@
 use super::conductor::Conductor;
 use super::individual::{
-    AgentMetadata, ArticulationSignal, AudioAgent, FieldCore, SequencedCore, SoundBody,
-    TemporalCore,
+    AgentMetadata, ArticulationSignal, ArticulationState, AudioAgent, FieldCore, KuramotoCore,
+    PinkNoise, Sensitivity, SequencedCore, SoundBody, TemporalCore,
 };
 use super::population::Population;
 use super::scenario::{
@@ -11,6 +11,7 @@ use super::scenario::{
 use crate::core::landscape::Landscape;
 use crate::core::landscape::LandscapeFrame;
 use crate::core::log2space::Log2Space;
+use crate::core::modulation::{NeuralRhythms, RhythmBand};
 use crate::life::lifecycle::LifecycleConfig;
 use crate::life::perceptual::{FeaturesNow, PerceptualConfig, PerceptualContext};
 use rand::SeedableRng;
@@ -43,6 +44,7 @@ fn life_with_lifecycle(lifecycle: LifecycleConfig) -> LifeConfig {
             self_smoothing_radius: None,
             silence_mass_epsilon: None,
         },
+        breath_gain_init: None,
     }
 }
 
@@ -270,6 +272,7 @@ fn harmonic_render_spectrum_hits_expected_bins() {
                 self_smoothing_radius: None,
                 silence_mass_epsilon: None,
             },
+            breath_gain_init: None,
         },
         tag: None,
     };
@@ -523,6 +526,7 @@ fn deterministic_rng_produces_same_targets() {
             self_smoothing_radius: Some(1),
             silence_mass_epsilon: Some(1e-6),
         },
+        breath_gain_init: None,
     };
     let cfg = IndividualConfig {
         freq: 220.0,
@@ -556,6 +560,280 @@ fn deterministic_rng_produces_same_targets() {
         seq_b.push(b.target_pitch_log2);
     }
     assert_eq!(seq_a, seq_b);
+}
+
+#[test]
+fn kuramoto_locks_to_theta_phase() {
+    let mut core = KuramotoCore {
+        energy: 1.0,
+        basal_cost: 0.0,
+        action_cost: 0.0,
+        recharge_rate: 0.0,
+        sensitivity: Sensitivity {
+            delta: 1.0,
+            theta: 1.0,
+            alpha: 1.0,
+            beta: 1.0,
+        },
+        rhythm_phase: 1.7,
+        rhythm_freq: 5.0,
+        omega_rad: std::f32::consts::TAU * 5.0,
+        phase_offset: 0.4,
+        debug_id: 0,
+        env_level: 0.05,
+        state: ArticulationState::Idle,
+        attack_step: 0.1,
+        decay_factor: 0.9,
+        retrigger: true,
+        noise_1f: PinkNoise::new(9, 1.0),
+        base_sigma: 0.05,
+        beta_gain: 0.5,
+        k_omega: 3.0,
+        bootstrap_timer: 0.0,
+        env_open_threshold: 0.55,
+        env_level_min: 0.02,
+        mag_threshold: 0.2,
+        alpha_threshold: 0.2,
+        beta_threshold: 0.8,
+        dbg_accum_time: 0.0,
+        dbg_wraps: 0,
+        dbg_attacks: 0,
+        dbg_boot_attacks: 0,
+        dbg_attack_logs_left: 0,
+        dbg_attack_count_normal: 0,
+        dbg_attack_sum_abs_diff: 0.0,
+        dbg_attack_sum_cos: 0.0,
+        dbg_attack_sum_sin: 0.0,
+        dbg_fail_env: 0,
+        dbg_fail_env_level: 0,
+        dbg_fail_mag: 0,
+        dbg_fail_alpha: 0,
+        dbg_fail_beta: 0,
+        dbg_last_env_open: 0.0,
+        dbg_last_env_level: 0.0,
+        dbg_last_theta_mag: 0.0,
+        dbg_last_theta_alpha: 0.0,
+        dbg_last_theta_beta: 0.0,
+        dbg_last_k_eff: 0.0,
+    };
+    let mut theta_phase = 0.0;
+    let dt = 0.01;
+    for _ in 0..3000 {
+        theta_phase =
+            (theta_phase + std::f32::consts::TAU * 6.0 * dt).rem_euclid(std::f32::consts::TAU);
+        let rhythms = NeuralRhythms {
+            theta: RhythmBand {
+                phase: theta_phase,
+                freq_hz: 6.0,
+                mag: 1.0,
+                alpha: 1.0,
+                beta: 0.0,
+            },
+            delta: RhythmBand {
+                phase: 0.0,
+                freq_hz: 1.0,
+                mag: 1.0,
+                alpha: 1.0,
+                beta: 0.0,
+            },
+            env_open: 1.0,
+            env_level: 1.0,
+        };
+        core.process(0.5, &rhythms, dt, 1.0);
+    }
+
+    let target = (theta_phase + core.phase_offset).rem_euclid(std::f32::consts::TAU);
+    let mut diff = target - core.rhythm_phase.rem_euclid(std::f32::consts::TAU);
+    while diff > std::f32::consts::PI {
+        diff -= std::f32::consts::TAU;
+    }
+    while diff < -std::f32::consts::PI {
+        diff += std::f32::consts::TAU;
+    }
+    assert!(
+        diff.abs() < 0.5,
+        "phase should lock near theta target, got diff={diff}"
+    );
+}
+
+#[test]
+fn kuramoto_bootstrap_triggers_attack() {
+    let mut core = KuramotoCore {
+        energy: 1.0,
+        basal_cost: 0.0,
+        action_cost: 0.0,
+        recharge_rate: 0.0,
+        sensitivity: Sensitivity {
+            delta: 1.0,
+            theta: 1.0,
+            alpha: 1.0,
+            beta: 1.0,
+        },
+        rhythm_phase: std::f32::consts::TAU + 0.1,
+        rhythm_freq: 6.0,
+        omega_rad: 0.0,
+        phase_offset: 0.0,
+        debug_id: 1,
+        env_level: 0.05,
+        state: ArticulationState::Idle,
+        attack_step: 0.1,
+        decay_factor: 0.9,
+        retrigger: true,
+        noise_1f: PinkNoise::new(7, 0.0),
+        base_sigma: 0.0,
+        beta_gain: 0.0,
+        k_omega: 0.0,
+        bootstrap_timer: 1.0,
+        env_open_threshold: 0.55,
+        env_level_min: 0.02,
+        mag_threshold: 0.2,
+        alpha_threshold: 0.2,
+        beta_threshold: 0.9,
+        dbg_accum_time: 0.0,
+        dbg_wraps: 0,
+        dbg_attacks: 0,
+        dbg_boot_attacks: 0,
+        dbg_attack_logs_left: 0,
+        dbg_attack_count_normal: 0,
+        dbg_attack_sum_abs_diff: 0.0,
+        dbg_attack_sum_cos: 0.0,
+        dbg_attack_sum_sin: 0.0,
+        dbg_fail_env: 0,
+        dbg_fail_env_level: 0,
+        dbg_fail_mag: 0,
+        dbg_fail_alpha: 0,
+        dbg_fail_beta: 0,
+        dbg_last_env_open: 0.0,
+        dbg_last_env_level: 0.0,
+        dbg_last_theta_mag: 0.0,
+        dbg_last_theta_alpha: 0.0,
+        dbg_last_theta_beta: 0.0,
+        dbg_last_k_eff: 0.0,
+    };
+
+    let rhythms = NeuralRhythms {
+        theta: RhythmBand {
+            phase: 0.0,
+            freq_hz: 6.0,
+            mag: 1.0,
+            alpha: 1.0,
+            beta: 0.0,
+        },
+        delta: RhythmBand {
+            phase: 0.0,
+            freq_hz: 1.0,
+            mag: 0.0,
+            alpha: 0.0,
+            beta: 0.0,
+        },
+        env_open: 1.0,
+        env_level: 0.05,
+    };
+
+    core.process(0.0, &rhythms, 0.01, 1.0);
+    assert_eq!(
+        core.state,
+        ArticulationState::Attack,
+        "bootstrap should allow an attack during early onset"
+    );
+}
+
+#[test]
+fn kuramoto_normal_attacks_fire_and_lock() {
+    let mut core = KuramotoCore {
+        energy: 1.0,
+        basal_cost: 0.0,
+        action_cost: 0.0,
+        recharge_rate: 0.0,
+        sensitivity: Sensitivity {
+            delta: 1.0,
+            theta: 1.0,
+            alpha: 1.0,
+            beta: 1.0,
+        },
+        rhythm_phase: 0.1,
+        rhythm_freq: 6.0,
+        omega_rad: std::f32::consts::TAU * 6.0,
+        phase_offset: 0.0,
+        debug_id: 2,
+        env_level: 0.0,
+        state: ArticulationState::Idle,
+        attack_step: 0.1,
+        decay_factor: 0.9,
+        retrigger: true,
+        noise_1f: PinkNoise::new(11, 0.0),
+        base_sigma: 0.0,
+        beta_gain: 0.0,
+        k_omega: 0.0,
+        bootstrap_timer: 0.0,
+        env_open_threshold: 0.55,
+        env_level_min: 0.02,
+        mag_threshold: 0.03,
+        alpha_threshold: 0.2,
+        beta_threshold: 0.9,
+        dbg_accum_time: -100.0,
+        dbg_wraps: 0,
+        dbg_attacks: 0,
+        dbg_boot_attacks: 0,
+        dbg_attack_logs_left: 0,
+        dbg_attack_count_normal: 0,
+        dbg_attack_sum_abs_diff: 0.0,
+        dbg_attack_sum_cos: 0.0,
+        dbg_attack_sum_sin: 0.0,
+        dbg_fail_env: 0,
+        dbg_fail_env_level: 0,
+        dbg_fail_mag: 0,
+        dbg_fail_alpha: 0,
+        dbg_fail_beta: 0,
+        dbg_last_env_open: 0.0,
+        dbg_last_env_level: 0.0,
+        dbg_last_theta_mag: 0.0,
+        dbg_last_theta_alpha: 0.0,
+        dbg_last_theta_beta: 0.0,
+        dbg_last_k_eff: 0.0,
+    };
+
+    let dt = 0.01;
+    let mut t = 0.0;
+    for _ in 0..1500 {
+        let theta_phase = (t * 6.0 * std::f32::consts::TAU).rem_euclid(std::f32::consts::TAU);
+        let rhythms = NeuralRhythms {
+            theta: RhythmBand {
+                phase: theta_phase,
+                freq_hz: 6.0,
+                mag: 1.0,
+                alpha: 1.0,
+                beta: 0.0,
+            },
+            delta: RhythmBand {
+                phase: 0.0,
+                freq_hz: 1.0,
+                mag: 1.0,
+                alpha: 1.0,
+                beta: 0.0,
+            },
+            env_open: 1.0,
+            env_level: 1.0,
+        };
+        core.process(0.5, &rhythms, dt, 1.0);
+        t += dt;
+    }
+
+    assert!(
+        core.dbg_attack_count_normal >= 5,
+        "expected normal attacks to fire"
+    );
+    let count = core.dbg_attack_count_normal as f32;
+    let mean_abs_diff = core.dbg_attack_sum_abs_diff / count;
+    let plv = (core.dbg_attack_sum_cos * core.dbg_attack_sum_cos
+        + core.dbg_attack_sum_sin * core.dbg_attack_sum_sin)
+        .sqrt()
+        / count;
+    assert!(
+        mean_abs_diff < 0.5,
+        "mean abs diff too large: {mean_abs_diff}"
+    );
+    assert!(plv > 0.9, "attack PLV too low: {plv}");
 }
 
 #[test]

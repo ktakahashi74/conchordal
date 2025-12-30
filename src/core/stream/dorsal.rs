@@ -1,4 +1,5 @@
-use crate::core::modulation::{NeuralRhythms, RhythmDynamics};
+use crate::core::modulation::{NeuralRhythms, RhythmEngine};
+use tracing::debug;
 
 /// Dorsal Stream (Where/How Pathway)
 /// Handles fast temporal processing, rhythm extraction, and motor synchronization.
@@ -8,13 +9,16 @@ use crate::core::modulation::{NeuralRhythms, RhythmDynamics};
 /// - 3-Band Crossover Flux detection (Low/Mid/High).
 /// - Non-linear sensitivity boost for ambient signals.
 pub struct DorsalStream {
-    dynamics: RhythmDynamics,
+    dynamics: RhythmEngine,
     // IIR Filter States
     lp_low_state: f32, // ~200Hz
     lp_mid_state: f32, // ~3000Hz
     prev_band_energy: [f32; 3],
+    delta_env: f32,
     last_metrics: DorsalMetrics,
     fs: f32,
+    vitality: f32,
+    debug_timer: f32,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -28,12 +32,15 @@ pub struct DorsalMetrics {
 impl DorsalStream {
     pub fn new(fs: f32) -> Self {
         Self {
-            dynamics: RhythmDynamics::default(),
+            dynamics: RhythmEngine::default(),
             lp_low_state: 0.0,
             lp_mid_state: 0.0,
             prev_band_energy: [0.0; 3],
+            delta_env: 0.0,
             last_metrics: DorsalMetrics::default(),
             fs,
+            vitality: 1.0,
+            debug_timer: 0.0,
         }
     }
 
@@ -97,25 +104,100 @@ impl DorsalStream {
         // --- 2. Non-linear Boost (Simulating Neural Activation) ---
         // High gain (500.0) + tanh saturation to detect ambient shifts
         let drive = (raw_flux * 500.0).tanh();
+        let u_theta = drive.clamp(0.0, 1.0);
 
         // --- 3. Update Oscillators ---
         let dt = audio.len() as f32 / self.fs;
-        self.dynamics.update(dt, drive)
+        let tau_delta = 0.6;
+        let alpha = 1.0 - (-dt / tau_delta).exp();
+        self.delta_env += alpha * (u_theta - self.delta_env);
+        let u_delta = self.delta_env.clamp(0.0, 1.0);
+
+        self.debug_timer += dt;
+        if self.debug_timer >= 1.0 {
+            debug!(
+                target: "rhythm::dorsal",
+                raw_flux,
+                drive,
+                u_theta,
+                u_delta,
+                dt,
+                vitality = self.vitality
+            );
+            self.debug_timer = 0.0;
+        }
+
+        self.dynamics.update(dt, u_theta, u_delta, self.vitality)
     }
 
     pub fn reset(&mut self) {
-        self.dynamics = RhythmDynamics::default();
+        self.dynamics = RhythmEngine::default();
         self.lp_low_state = 0.0;
         self.lp_mid_state = 0.0;
         self.prev_band_energy = [0.0; 3];
+        self.delta_env = 0.0;
         self.last_metrics = DorsalMetrics::default();
+        self.vitality = 1.0;
+        self.debug_timer = 0.0;
     }
 
     pub fn set_vitality(&mut self, v: f32) {
-        self.dynamics.set_vitality(v);
+        self.vitality = v.clamp(0.0, 1.0);
     }
 
     pub fn last_metrics(&self) -> DorsalMetrics {
         self.last_metrics
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dorsal_detects_click_train() {
+        let fs = 44_100.0;
+        let hop = 512;
+        let dur_sec = 2.5;
+        let total = (fs * dur_sec) as usize;
+        let mut sig = vec![0.0f32; total];
+        let period = 1.0 / 6.0;
+        let click_len = 0.003;
+        let freq = 3000.0;
+        for i in 0..total {
+            let t = i as f32 / fs;
+            let phase = t % period;
+            if phase < click_len {
+                sig[i] = (std::f32::consts::TAU * freq * t).sin() * 0.8;
+            }
+        }
+
+        let mut dorsal = DorsalStream::new(fs);
+        let mut max_u_theta: f32 = 0.0;
+        let mut last = NeuralRhythms::default();
+        let mut idx = 0;
+        while idx < total {
+            let end = (idx + hop).min(total);
+            last = dorsal.process(&sig[idx..end]);
+            let raw_flux = dorsal.last_metrics().flux;
+            let drive = (raw_flux * 500.0).tanh();
+            max_u_theta = max_u_theta.max(drive);
+            idx = end;
+        }
+
+        assert!(
+            max_u_theta > 0.05,
+            "expected u_theta to rise above 0.05, got {max_u_theta}"
+        );
+        assert!(
+            last.theta.mag > 0.04,
+            "expected theta.mag to rise, got {}",
+            last.theta.mag
+        );
+        assert!(
+            (last.theta.freq_hz - 6.0).abs() < 1.5,
+            "expected theta.freq_hz near 6Hz, got {}",
+            last.theta.freq_hz
+        );
     }
 }

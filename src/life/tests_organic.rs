@@ -43,6 +43,7 @@ fn life_with_lifecycle(lifecycle: LifecycleConfig) -> LifeConfig {
             self_smoothing_radius: None,
             silence_mass_epsilon: None,
         },
+        breath_gain_init: None,
     }
 }
 

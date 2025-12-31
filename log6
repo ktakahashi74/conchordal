@@ -1,0 +1,187 @@
+[34mDEBUG[0m Using the glow renderer
+[34mDEBUG[0m [1mwinit::EventLoopBuilder::build[0m[2m:[0m Bound new global [59] wl_output v4
+[34mDEBUG[0m [1mwinit::EventLoopBuilder::build[0m[2m:[0m Bound new global [4] zxdg_output_manager_v1 v3
+[34mDEBUG[0m [1mwinit::EventLoopBuilder::build[0m[2m:[0m Bound new global [16] wl_seat v7
+[34mDEBUG[0m [1mwinit::EventLoopBuilder::build[0m[2m:[0m Bound new global [39] wp_cursor_shape_manager_v1 v1
+[34mDEBUG[0m [1mwinit::EventLoopBuilder::build[0m[2m:[0m supported wl_shm format Argb8888
+[34mDEBUG[0m [1mwinit::EventLoopBuilder::build[0m[2m:[0m supported wl_shm format Xrgb8888
+[34mDEBUG[0m [1mwinit::EventLoopBuilder::build[0m[2m:[0m supported wl_shm format Abgr8888
+[34mDEBUG[0m [1mwinit::EventLoopBuilder::build[0m[2m:[0m supported wl_shm format Xbgr8888
+[34mDEBUG[0m [1mwinit::EventLoopBuilder::build[0m[2m:[0m supported wl_shm format Rgb565
+[34mDEBUG[0m [1mwinit::EventLoopBuilder::build[0m[2m:[0m supported wl_shm format Argb2101010
+[34mDEBUG[0m [1mwinit::EventLoopBuilder::build[0m[2m:[0m supported wl_shm format Xrgb2101010
+[34mDEBUG[0m [1mwinit::EventLoopBuilder::build[0m[2m:[0m supported wl_shm format Abgr2101010
+[34mDEBUG[0m [1mwinit::EventLoopBuilder::build[0m[2m:[0m supported wl_shm format Xbgr2101010
+[34mDEBUG[0m [1mwinit::EventLoopBuilder::build[0m[2m:[0m supported wl_shm format Argb16161616f
+[34mDEBUG[0m [1mwinit::EventLoopBuilder::build[0m[2m:[0m supported wl_shm format Xrgb16161616f
+[34mDEBUG[0m [1mwinit::EventLoopBuilder::build[0m[2m:[0m supported wl_shm format Abgr16161616f
+[34mDEBUG[0m [1mwinit::EventLoopBuilder::build[0m[2m:[0m supported wl_shm format Xbgr16161616f
+[34mDEBUG[0m [1mwinit::EventLoopBuilder::build[0m[2m:[0m supported wl_shm format Yuyv
+[34mDEBUG[0m [1mwinit::EventLoopBuilder::build[0m[2m:[0m supported wl_shm format Nv12
+[34mDEBUG[0m [1mwinit::EventLoopBuilder::build[0m[2m:[0m supported wl_shm format P010
+[34mDEBUG[0m [1mwinit::EventLoopBuilder::build[0m[2m:[0m supported wl_shm format Yuv420
+[34mDEBUG[0m [1mwinit::EventLoopBuilder::build[0m[2m:[0m supported wl_shm format Yuv422
+[34mDEBUG[0m [1mwinit::EventLoopBuilder::build[0m[2m:[0m supported wl_shm format Yuv444
+[34mDEBUG[0m Event::Resumed
+[34mDEBUG[0m trying to create glutin Display with config: ConfigTemplateBuilder { template: ConfigTemplate { color_buffer_type: Rgb { r_size: 8, g_size: 8, b_size: 8 }, alpha_size: 8, depth_size: 0, stencil_size: 0, num_samples: None, min_swap_interval: None, max_swap_interval: None, config_surface_types: ConfigSurfaceTypes(WINDOW), api: None, transparency: false, single_buffering: false, stereoscopy: None, float_pixels: false, max_pbuffer_width: None, hardware_accelerated: None, max_pbuffer_height: None, native_window: None } }
+[34mDEBUG[0m using the first config from config picker closure. config: Egl(Config { inner: Config { raw: EglConfig(0x62fc865697c0), display: Khr(0x62fc864497c0) } })
+[33m WARN[0m [1mwinit::ActiveEventLoop::create_window[0m[1m{[0m[3mwindow_attributes[0m[2m=[0mWindowAttributes { inner_size: Some(Logical(LogicalSize { width: 1200.0, height: 850.0 })), min_inner_size: None, max_inner_size: None, position: None, resizable: true, enabled_buttons: WindowButtons(CLOSE | MINIMIZE | MAXIMIZE), title: "Conchordal", maximized: false, visible: false, transparent: false, blur: false, decorations: true, window_icon: None, preferred_theme: None, resize_increments: None, content_protected: false, window_level: Normal, active: true, cursor: Icon(Default), parent_window: None, fullscreen: None, platform_specific: PlatformSpecificWindowAttributes { name: None, activation_token: None, x11: X11WindowAttributes { visual_id: None, screen_id: None, base_size: None, override_redirect: false, x11_window_types: [Normal], embed_window: None } } }[1m}[0m[2m:[0m Ignoring unknown button type: 
+[34mDEBUG[0m Failed to set window size
+[34mDEBUG[0m successfully created GL Display with version: EGL 1.5 and supported features: DisplayFeatures(CONTEXT_ROBUSTNESS | CONTEXT_NO_ERROR | FLOAT_PIXEL_FORMAT | SWAP_CONTROL | CREATE_ES_CONTEXT | MULTISAMPLING_PIXEL_FORMATS | SRGB_FRAMEBUFFERS)
+[34mDEBUG[0m creating gl context using raw window handle: Some(Wayland(WaylandWindowHandle { surface: 0x62fc86569a30 }))
+[34mDEBUG[0m Initializing egui_winit for viewport "FFFF"
+[34mDEBUG[0m Creating a gl_surface for viewport "FFFF"
+[34mDEBUG[0m Bound new global [16] wl_seat v10
+[34mDEBUG[0m 
+opengl version: 4.6 (Core Profile) Mesa 25.2.3-1ubuntu1
+opengl renderer: AMD Radeon Graphics (radeonsi, renoir, ACO, DRM 3.64, 6.17.0-8-generic)
+opengl vendor: AMD
+[34mDEBUG[0m Shader version: Gl140 ("4.60").
+[34mDEBUG[0m Shader header: "#version 140\n".
+[34mDEBUG[0m SRGB framebuffer Support: true
+[34mDEBUG[0m GL version: "4.6 (Core Profile) Mesa 25.2.3-1ubuntu1".
+[32m INFO[0m Audio buffer config: sr=44100 ch=2 target_frames=2205 capacity_frames=4410
+[34mDEBUG[0m Runtime sample rate overridden by device: 44100 (config 48000)
+[34mDEBUG[0m Population sample rate: 44100.0 Hz
+[34mDEBUG[0m Visual delay frames: 0 (latency_ms=50.0, hop_ms=11.61)
+[rhai] >>> Rhythm Timing Validation: Theta/Attack Lock <<<
+[rhai] Logs to watch: rhythm::metrics (onset_plv_theta, onset_mean_phase_theta~0, attack_mean_abs_diff, attack_plv_target)
+[rhai] [Phase A] warmup start (2.0s)
+[rhai] [Phase A] measure start (5.0s) - metrics below are evaluation targets
+[rhai] [Phase A] end
+[rhai] [Phase B] spawn followers (amp=0.02)
+[rhai] [Phase B] coupling=0 warmup start (2.0s)
+[rhai] [Phase B] coupling=1 warmup start (3.0s)
+[rhai] [Phase B] measure start (6.0s) - metrics below are evaluation targets
+[rhai] [Phase B] end
+[rhai] [Phase C] tempo step: 6Hz -> 8Hz
+[rhai] [Phase C] warmup start (5.0s)
+[rhai] [Phase C] measure start (6.0s) - metrics below are evaluation targets
+[rhai] [Phase C] measure end
+[rhai] [Phase D] jitter warmup start (2.0s)
+[rhai] [Phase D] measure start (6.0s) - metrics below are evaluation targets
+[rhai] [Phase D] end
+[32m INFO[0m [t=0.000] Event: SetGlobalCoupling value=0.000
+[32m INFO[0m [t=0.000] Event: AddAgent Agent(tag=metro_a_warm_0, freq=3000.0 Hz, amp=0.600, life[body=Sine { phase: None }, temporal=Entrain { lifecycle: Decay { initial_energy: 1.0, half_life_sec: 0.03, attack_sec: 0.001 }, rhythm_freq: None, rhythm_sensitivity: None }, field=PitchHillClimb { neighbor_step_cents: None, tessitura_gravity: None, improvement_threshold: None }, modulation=Static { exploration: Some(0.0), persistence: Some(0.4) }, perceptual=PerceptualConfig { tau_fast: Some(0.5), tau_slow: Some(20.0), w_boredom: Some(1.0), w_familiarity: Some(0.2), rho_self: Some(0.15), boredom_gamma: Some(0.5), self_smoothing_radius: Some(1), silence_mass_epsilon: Some(1e-6) }, breath_gain_init=Some(1.0)])
+[34mDEBUG[0m [3mid[0m[2m=[0m1000000 [3mtag[0m[2m=[0mSome("metro_a_warm_0") [3mtemporal[0m[2m=[0m"entrain" [3mlifecycle[0m[2m=[0m"decay" [3mbreath_gain_init[0m[2m=[0m1.0 [3mbreath_gain[0m[2m=[0m1.0
+[32m INFO[0m [t=0.167] Event: AddAgent Agent(tag=metro_a_warm_1, freq=3000.0 Hz, amp=0.600, life[body=Sine { phase: None }, temporal=Entrain { lifecycle: Decay { initial_energy: 1.0, half_life_sec: 0.03, attack_sec: 0.001 }, rhythm_freq: None, rhythm_sensitivity: None }, field=PitchHillClimb { neighbor_step_cents: None, tessitura_gravity: None, improvement_threshold: None }, modulation=Static { exploration: Some(0.0), persistence: Some(0.4) }, perceptual=PerceptualConfig { tau_fast: Some(0.5), tau_slow: Some(20.0), w_boredom: Some(1.0), w_familiarity: Some(0.2), rho_self: Some(0.15), boredom_gamma: Some(0.5), self_smoothing_radius: Some(1), silence_mass_epsilon: Some(1e-6) }, breath_gain_init=Some(1.0)])
+[34mDEBUG[0m [3mid[0m[2m=[0m1000001 [3mtag[0m[2m=[0mSome("metro_a_warm_1") [3mtemporal[0m[2m=[0m"entrain" [3mlifecycle[0m[2m=[0m"decay" [3mbreath_gain_init[0m[2m=[0m1.0 [3mbreath_gain[0m[2m=[0m1.0
+[32m INFO[0m [t=0.197370] Cleaned up 1 dead individuals. Remaining: 1 (frame_idx=17)
+[32m INFO[0m [t=0.333] Event: AddAgent Agent(tag=metro_a_warm_2, freq=3000.0 Hz, amp=0.600, life[body=Sine { phase: None }, temporal=Entrain { lifecycle: Decay { initial_energy: 1.0, half_life_sec: 0.03, attack_sec: 0.001 }, rhythm_freq: None, rhythm_sensitivity: None }, field=PitchHillClimb { neighbor_step_cents: None, tessitura_gravity: None, improvement_threshold: None }, modulation=Static { exploration: Some(0.0), persistence: Some(0.4) }, perceptual=PerceptualConfig { tau_fast: Some(0.5), tau_slow: Some(20.0), w_boredom: Some(1.0), w_familiarity: Some(0.2), rho_self: Some(0.15), boredom_gamma: Some(0.5), self_smoothing_radius: Some(1), silence_mass_epsilon: Some(1e-6) }, breath_gain_init=Some(1.0)])
+[34mDEBUG[0m [3mid[0m[2m=[0m1000002 [3mtag[0m[2m=[0mSome("metro_a_warm_2") [3mtemporal[0m[2m=[0m"entrain" [3mlifecycle[0m[2m=[0m"decay" [3mbreath_gain_init[0m[2m=[0m1.0 [3mbreath_gain[0m[2m=[0m1.0
+[34mDEBUG[0m c_signed_check bin=548 h=0.0000 r=1.0000 c=-0.5000 c_pred=-0.5000
+[32m INFO[0m [t=0.371519] Cleaned up 1 dead individuals. Remaining: 1 (frame_idx=32)
+[32m INFO[0m [t=0.500] Event: AddAgent Agent(tag=metro_a_warm_3, freq=3000.0 Hz, amp=0.600, life[body=Sine { phase: None }, temporal=Entrain { lifecycle: Decay { initial_energy: 1.0, half_life_sec: 0.03, attack_sec: 0.001 }, rhythm_freq: None, rhythm_sensitivity: None }, field=PitchHillClimb { neighbor_step_cents: None, tessitura_gravity: None, improvement_threshold: None }, modulation=Static { exploration: Some(0.0), persistence: Some(0.4) }, perceptual=PerceptualConfig { tau_fast: Some(0.5), tau_slow: Some(20.0), w_boredom: Some(1.0), w_familiarity: Some(0.2), rho_self: Some(0.15), boredom_gamma: Some(0.5), self_smoothing_radius: Some(1), silence_mass_epsilon: Some(1e-6) }, breath_gain_init=Some(1.0)])
+[34mDEBUG[0m [3mid[0m[2m=[0m1000003 [3mtag[0m[2m=[0mSome("metro_a_warm_3") [3mtemporal[0m[2m=[0m"entrain" [3mlifecycle[0m[2m=[0m"decay" [3mbreath_gain_init[0m[2m=[0m1.0 [3mbreath_gain[0m[2m=[0m1.0
+[32m INFO[0m [t=0.534059] Cleaned up 1 dead individuals. Remaining: 1 (frame_idx=46)
+[32m INFO[0m [t=0.667] Event: AddAgent Agent(tag=metro_a_warm_4, freq=3000.0 Hz, amp=0.600, life[body=Sine { phase: None }, temporal=Entrain { lifecycle: Decay { initial_energy: 1.0, half_life_sec: 0.03, attack_sec: 0.001 }, rhythm_freq: None, rhythm_sensitivity: None }, field=PitchHillClimb { neighbor_step_cents: None, tessitura_gravity: None, improvement_threshold: None }, modulation=Static { exploration: Some(0.0), persistence: Some(0.4) }, perceptual=PerceptualConfig { tau_fast: Some(0.5), tau_slow: Some(20.0), w_boredom: Some(1.0), w_familiarity: Some(0.2), rho_self: Some(0.15), boredom_gamma: Some(0.5), self_smoothing_radius: Some(1), silence_mass_epsilon: Some(1e-6) }, breath_gain_init=Some(1.0)])
+[34mDEBUG[0m [3mid[0m[2m=[0m1000004 [3mtag[0m[2m=[0mSome("metro_a_warm_4") [3mtemporal[0m[2m=[0m"entrain" [3mlifecycle[0m[2m=[0m"decay" [3mbreath_gain_init[0m[2m=[0m1.0 [3mbreath_gain[0m[2m=[0m1.0
+[34mDEBUG[0m c_signed_check bin=547 h=0.0000 r=1.0000 c=-0.5000 c_pred=-0.5000
+[32m INFO[0m [t=0.708209] Cleaned up 1 dead individuals. Remaining: 1 (frame_idx=61)
+[32m INFO[0m [t=0.833] Event: AddAgent Agent(tag=metro_a_warm_5, freq=3000.0 Hz, amp=0.600, life[body=Sine { phase: None }, temporal=Entrain { lifecycle: Decay { initial_energy: 1.0, half_life_sec: 0.03, attack_sec: 0.001 }, rhythm_freq: None, rhythm_sensitivity: None }, field=PitchHillClimb { neighbor_step_cents: None, tessitura_gravity: None, improvement_threshold: None }, modulation=Static { exploration: Some(0.0), persistence: Some(0.4) }, perceptual=PerceptualConfig { tau_fast: Some(0.5), tau_slow: Some(20.0), w_boredom: Some(1.0), w_familiarity: Some(0.2), rho_self: Some(0.15), boredom_gamma: Some(0.5), self_smoothing_radius: Some(1), silence_mass_epsilon: Some(1e-6) }, breath_gain_init=Some(1.0)])
+[34mDEBUG[0m [3mid[0m[2m=[0m1000005 [3mtag[0m[2m=[0mSome("metro_a_warm_5") [3mtemporal[0m[2m=[0m"entrain" [3mlifecycle[0m[2m=[0m"decay" [3mbreath_gain_init[0m[2m=[0m1.0 [3mbreath_gain[0m[2m=[0m1.0
+[32m INFO[0m [t=0.870748] Cleaned up 1 dead individuals. Remaining: 1 (frame_idx=75)
+[34mDEBUG[0m [3mraw_flux[0m[2m=[0m0.0 [3mdrive[0m[2m=[0m0.0 [3mu_theta[0m[2m=[0m0.0 [3mu_delta[0m[2m=[0m0.04910644143819809 [3mdt[0m[2m=[0m0.01160997711122036 [3mvitality[0m[2m=[0m1.0
+[34mDEBUG[0m [3mu_theta[0m[2m=[0m0.0 [3mu_delta[0m[2m=[0m0.04910644143819809 [3mtheta_freq_hz[0m[2m=[0m5.911324977874756 [3mtheta_mag[0m[2m=[0m0.29001709818840027 [3mtheta_alpha[0m[2m=[0m0.868964433670044 [3mtheta_beta[0m[2m=[0m0.03269878029823303 [3mtheta_phase[0m[2m=[0m-0.19924521446228027 [3mdelta_freq_hz[0m[2m=[0m1.0001392364501953 [3mdelta_mag[0m[2m=[0m0.05490617826581001 [3mdelta_alpha[0m[2m=[0m0.9664985537528992 [3mdelta_beta[0m[2m=[0m0.0015542608452960849 [3mdelta_phase[0m[2m=[0m0.06343722343444824 [3mdelta_conf[0m[2m=[0m0.053066741675138474 [3menv_wave[0m[2m=[0m0.9989942312240601 [3menv_open[0m[2m=[0m0.9998631477355957 [3menv_level[0m[2m=[0m0.04910644143819809
+[34mDEBUG[0m [3monset_count[0m[2m=[0m6 [3monset_plv_theta[0m[2m=[0m0.968695342540741 [3monset_mean_phase_theta[0m[2m=[0m0.021055417135357857 [3monset_th[0m[2m=[0m0.4325273036956787 [3mu_theta[0m[2m=[0m0.0 [3monset_baseline[0m[2m=[0m0.040509194135665894 [3monset_std[0m[2m=[0m0.1960090547800064 [3mtheta_ioi_last[0m[2m=[0m0.16253967583179474 [3mtheta_ioi_ema[0m[2m=[0m0.16784580051898956 [3mtheta_freq_from_ioi[0m[2m=[0m5.957849502563477 [3mtheta_phase_err_at_onset[0m[2m=[0m-0.36187195777893066 [3mtheta_freq_hz[0m[2m=[0m5.911324977874756 [3mtheta_alpha[0m[2m=[0m0.868964433670044 [3mtheta_beta[0m[2m=[0m0.03269878029823303
+[32m INFO[0m [t=1.000] Event: AddAgent Agent(tag=metro_a_warm_6, freq=3000.0 Hz, amp=0.600, life[body=Sine { phase: None }, temporal=Entrain { lifecycle: Decay { initial_energy: 1.0, half_life_sec: 0.03, attack_sec: 0.001 }, rhythm_freq: None, rhythm_sensitivity: None }, field=PitchHillClimb { neighbor_step_cents: None, tessitura_gravity: None, improvement_threshold: None }, modulation=Static { exploration: Some(0.0), persistence: Some(0.4) }, perceptual=PerceptualConfig { tau_fast: Some(0.5), tau_slow: Some(20.0), w_boredom: Some(1.0), w_familiarity: Some(0.2), rho_self: Some(0.15), boredom_gamma: Some(0.5), self_smoothing_radius: Some(1), silence_mass_epsilon: Some(1e-6) }, breath_gain_init=Some(1.0)])
+[34mDEBUG[0m [3mid[0m[2m=[0m1000006 [3mtag[0m[2m=[0mSome("metro_a_warm_6") [3mtemporal[0m[2m=[0m"entrain" [3mlifecycle[0m[2m=[0m"decay" [3mbreath_gain_init[0m[2m=[0m1.0 [3mbreath_gain[0m[2m=[0m1.0
+[32m INFO[0m [t=1.033288] Cleaned up 1 dead individuals. Remaining: 1 (frame_idx=89)
+[34mDEBUG[0m c_signed_check bin=547 h=0.0000 r=1.0000 c=-0.5000 c_pred=-0.5000
+[34mDEBUG[0m c_signed_check bin=547 h=0.0000 r=1.0000 c=-0.5000 c_pred=-0.5000
+[34mDEBUG[0m c_signed_check bin=547 h=0.0000 r=1.0000 c=-0.5000 c_pred=-0.5000
+[34mDEBUG[0m c_signed_check bin=547 h=0.0000 r=1.0000 c=-0.5000 c_pred=-0.5000
+[34mDEBUG[0m c_signed_check bin=547 h=0.0000 r=1.0000 c=-0.5000 c_pred=-0.5000
+[34mDEBUG[0m c_signed_check bin=547 h=0.0000 r=1.0000 c=-0.5000 c_pred=-0.5000
+[34mDEBUG[0m c_signed_check bin=547 h=0.0000 r=1.0000 c=-0.5000 c_pred=-0.5000
+[34mDEBUG[0m [t=1.091338] Audio stats: min_occ=0, cap=4410, hop=512, max_peak=0.599, slow_chunks=0
+[32m INFO[0m [t=1.167] Event: AddAgent Agent(tag=metro_a_warm_7, freq=3000.0 Hz, amp=0.600, life[body=Sine { phase: None }, temporal=Entrain { lifecycle: Decay { initial_energy: 1.0, half_life_sec: 0.03, attack_sec: 0.001 }, rhythm_freq: None, rhythm_sensitivity: None }, field=PitchHillClimb { neighbor_step_cents: None, tessitura_gravity: None, improvement_threshold: None }, modulation=Static { exploration: Some(0.0), persistence: Some(0.4) }, perceptual=PerceptualConfig { tau_fast: Some(0.5), tau_slow: Some(20.0), w_boredom: Some(1.0), w_familiarity: Some(0.2), rho_self: Some(0.15), boredom_gamma: Some(0.5), self_smoothing_radius: Some(1), silence_mass_epsilon: Some(1e-6) }, breath_gain_init=Some(1.0)])
+[34mDEBUG[0m [3mid[0m[2m=[0m1000007 [3mtag[0m[2m=[0mSome("metro_a_warm_7") [3mtemporal[0m[2m=[0m"entrain" [3mlifecycle[0m[2m=[0m"decay" [3mbreath_gain_init[0m[2m=[0m1.0 [3mbreath_gain[0m[2m=[0m1.0
+[32m INFO[0m [t=1.207438] Cleaned up 1 dead individuals. Remaining: 1 (frame_idx=104)
+[32m INFO[0m [t=1.333] Event: AddAgent Agent(tag=metro_a_warm_8, freq=3000.0 Hz, amp=0.600, life[body=Sine { phase: None }, temporal=Entrain { lifecycle: Decay { initial_energy: 1.0, half_life_sec: 0.03, attack_sec: 0.001 }, rhythm_freq: None, rhythm_sensitivity: None }, field=PitchHillClimb { neighbor_step_cents: None, tessitura_gravity: None, improvement_threshold: None }, modulation=Static { exploration: Some(0.0), persistence: Some(0.4) }, perceptual=PerceptualConfig { tau_fast: Some(0.5), tau_slow: Some(20.0), w_boredom: Some(1.0), w_familiarity: Some(0.2), rho_self: Some(0.15), boredom_gamma: Some(0.5), self_smoothing_radius: Some(1), silence_mass_epsilon: Some(1e-6) }, breath_gain_init=Some(1.0)])
+[34mDEBUG[0m [3mid[0m[2m=[0m1000008 [3mtag[0m[2m=[0mSome("metro_a_warm_8") [3mtemporal[0m[2m=[0m"entrain" [3mlifecycle[0m[2m=[0m"decay" [3mbreath_gain_init[0m[2m=[0m1.0 [3mbreath_gain[0m[2m=[0m1.0
+[32m INFO[0m [t=1.369977] Cleaned up 1 dead individuals. Remaining: 1 (frame_idx=118)
+[34mDEBUG[0m c_signed_check bin=547 h=0.0000 r=1.0000 c=-0.5000 c_pred=-0.5000
+[34mDEBUG[0m c_signed_check bin=547 h=0.0000 r=1.0000 c=-0.5000 c_pred=-0.5000
+[34mDEBUG[0m c_signed_check bin=547 h=0.0000 r=1.0000 c=-0.5000 c_pred=-0.5000
+[34mDEBUG[0m c_signed_check bin=547 h=0.0000 r=1.0000 c=-0.5000 c_pred=-0.5000
+[34mDEBUG[0m c_signed_check bin=547 h=0.0000 r=1.0000 c=-0.5000 c_pred=-0.5000
+[34mDEBUG[0m c_signed_check bin=547 h=0.0000 r=1.0000 c=-0.5000 c_pred=-0.5000
+[34mDEBUG[0m c_signed_check bin=547 h=0.0000 r=1.0000 c=-0.5000 c_pred=-0.5000
+[32m INFO[0m [t=1.500] Event: AddAgent Agent(tag=metro_a_warm_9, freq=3000.0 Hz, amp=0.600, life[body=Sine { phase: None }, temporal=Entrain { lifecycle: Decay { initial_energy: 1.0, half_life_sec: 0.03, attack_sec: 0.001 }, rhythm_freq: None, rhythm_sensitivity: None }, field=PitchHillClimb { neighbor_step_cents: None, tessitura_gravity: None, improvement_threshold: None }, modulation=Static { exploration: Some(0.0), persistence: Some(0.4) }, perceptual=PerceptualConfig { tau_fast: Some(0.5), tau_slow: Some(20.0), w_boredom: Some(1.0), w_familiarity: Some(0.2), rho_self: Some(0.15), boredom_gamma: Some(0.5), self_smoothing_radius: Some(1), silence_mass_epsilon: Some(1e-6) }, breath_gain_init=Some(1.0)])
+[34mDEBUG[0m [3mid[0m[2m=[0m1000009 [3mtag[0m[2m=[0mSome("metro_a_warm_9") [3mtemporal[0m[2m=[0m"entrain" [3mlifecycle[0m[2m=[0m"decay" [3mbreath_gain_init[0m[2m=[0m1.0 [3mbreath_gain[0m[2m=[0m1.0
+[32m INFO[0m [t=1.532517] Cleaned up 1 dead individuals. Remaining: 1 (frame_idx=132)
+[32m INFO[0m [t=1.667] Event: AddAgent Agent(tag=metro_a_warm_10, freq=3000.0 Hz, amp=0.600, life[body=Sine { phase: None }, temporal=Entrain { lifecycle: Decay { initial_energy: 1.0, half_life_sec: 0.03, attack_sec: 0.001 }, rhythm_freq: None, rhythm_sensitivity: None }, field=PitchHillClimb { neighbor_step_cents: None, tessitura_gravity: None, improvement_threshold: None }, modulation=Static { exploration: Some(0.0), persistence: Some(0.4) }, perceptual=PerceptualConfig { tau_fast: Some(0.5), tau_slow: Some(20.0), w_boredom: Some(1.0), w_familiarity: Some(0.2), rho_self: Some(0.15), boredom_gamma: Some(0.5), self_smoothing_radius: Some(1), silence_mass_epsilon: Some(1e-6) }, breath_gain_init=Some(1.0)])
+[34mDEBUG[0m [3mid[0m[2m=[0m1000010 [3mtag[0m[2m=[0mSome("metro_a_warm_10") [3mtemporal[0m[2m=[0m"entrain" [3mlifecycle[0m[2m=[0m"decay" [3mbreath_gain_init[0m[2m=[0m1.0 [3mbreath_gain[0m[2m=[0m1.0
+[32m INFO[0m [t=1.706667] Cleaned up 1 dead individuals. Remaining: 1 (frame_idx=147)
+[34mDEBUG[0m c_signed_check bin=547 h=0.0000 r=1.0000 c=-0.5000 c_pred=-0.5000
+[34mDEBUG[0m c_signed_check bin=547 h=0.0000 r=1.0000 c=-0.5000 c_pred=-0.5000
+[34mDEBUG[0m c_signed_check bin=547 h=0.0000 r=1.0000 c=-0.5000 c_pred=-0.5000
+[34mDEBUG[0m c_signed_check bin=547 h=0.0000 r=1.0000 c=-0.5000 c_pred=-0.5000
+[34mDEBUG[0m c_signed_check bin=547 h=0.0000 r=1.0000 c=-0.5000 c_pred=-0.5000
+[34mDEBUG[0m c_signed_check bin=547 h=0.0000 r=1.0000 c=-0.5000 c_pred=-0.5000
+[34mDEBUG[0m c_signed_check bin=547 h=0.0000 r=1.0000 c=-0.5000 c_pred=-0.5000
+[34mDEBUG[0m c_signed_check bin=547 h=0.0000 r=1.0000 c=-0.5000 c_pred=-0.5000
+[34mDEBUG[0m c_signed_check bin=547 h=0.0000 r=1.0000 c=-0.5000 c_pred=-0.5000
+[32m INFO[0m [t=1.833] Event: AddAgent Agent(tag=metro_a_warm_11, freq=3000.0 Hz, amp=0.600, life[body=Sine { phase: None }, temporal=Entrain { lifecycle: Decay { initial_energy: 1.0, half_life_sec: 0.03, attack_sec: 0.001 }, rhythm_freq: None, rhythm_sensitivity: None }, field=PitchHillClimb { neighbor_step_cents: None, tessitura_gravity: None, improvement_threshold: None }, modulation=Static { exploration: Some(0.0), persistence: Some(0.4) }, perceptual=PerceptualConfig { tau_fast: Some(0.5), tau_slow: Some(20.0), w_boredom: Some(1.0), w_familiarity: Some(0.2), rho_self: Some(0.15), boredom_gamma: Some(0.5), self_smoothing_radius: Some(1), silence_mass_epsilon: Some(1e-6) }, breath_gain_init=Some(1.0)])
+[34mDEBUG[0m [3mid[0m[2m=[0m1000011 [3mtag[0m[2m=[0mSome("metro_a_warm_11") [3mtemporal[0m[2m=[0m"entrain" [3mlifecycle[0m[2m=[0m"decay" [3mbreath_gain_init[0m[2m=[0m1.0 [3mbreath_gain[0m[2m=[0m1.0
+[32m INFO[0m [t=1.869206] Cleaned up 1 dead individuals. Remaining: 1 (frame_idx=161)
+[32m INFO[0m [t=2.000] Event: AddAgent Agent(tag=metro_a_meas_0, freq=3000.0 Hz, amp=0.600, life[body=Sine { phase: None }, temporal=Entrain { lifecycle: Decay { initial_energy: 1.0, half_life_sec: 0.03, attack_sec: 0.001 }, rhythm_freq: None, rhythm_sensitivity: None }, field=PitchHillClimb { neighbor_step_cents: None, tessitura_gravity: None, improvement_threshold: None }, modulation=Static { exploration: Some(0.0), persistence: Some(0.4) }, perceptual=PerceptualConfig { tau_fast: Some(0.5), tau_slow: Some(20.0), w_boredom: Some(1.0), w_familiarity: Some(0.2), rho_self: Some(0.15), boredom_gamma: Some(0.5), self_smoothing_radius: Some(1), silence_mass_epsilon: Some(1e-6) }, breath_gain_init=Some(1.0)])
+[34mDEBUG[0m [3mid[0m[2m=[0m1000012 [3mtag[0m[2m=[0mSome("metro_a_meas_0") [3mtemporal[0m[2m=[0m"entrain" [3mlifecycle[0m[2m=[0m"decay" [3mbreath_gain_init[0m[2m=[0m1.0 [3mbreath_gain[0m[2m=[0m1.0
+[34mDEBUG[0m [3mraw_flux[0m[2m=[0m0.0937013328075409 [3mdrive[0m[2m=[0m1.0 [3mu_theta[0m[2m=[0m1.0 [3mu_delta[0m[2m=[0m0.07651954889297485 [3mdt[0m[2m=[0m0.01160997711122036 [3mvitality[0m[2m=[0m1.0
+[34mDEBUG[0m [3mu_theta[0m[2m=[0m1.0 [3mu_delta[0m[2m=[0m0.07651954889297485 [3mtheta_freq_hz[0m[2m=[0m5.984189510345459 [3mtheta_mag[0m[2m=[0m0.5073057413101196 [3mtheta_alpha[0m[2m=[0m0.7454590201377869 [3mtheta_beta[0m[2m=[0m0.08036384731531143 [3mtheta_phase[0m[2m=[0m0.2699425220489502 [3mdelta_freq_hz[0m[2m=[0m1.0000649690628052 [3mdelta_mag[0m[2m=[0m0.07287392765283585 [3mdelta_alpha[0m[2m=[0m0.9635762572288513 [3mdelta_beta[0m[2m=[0m0.0026001930236816406 [3mdelta_phase[0m[2m=[0m0.12653756141662598 [3mdelta_conf[0m[2m=[0m0.07021958380937576 [3menv_wave[0m[2m=[0m0.9960024356842041 [3menv_open[0m[2m=[0m0.9991878867149353 [3menv_level[0m[2m=[0m0.07651954889297485
+[34mDEBUG[0m [3monset_count[0m[2m=[0m7 [3monset_plv_theta[0m[2m=[0m0.9852093458175659 [3monset_mean_phase_theta[0m[2m=[0m-0.10274571925401688 [3monset_th[0m[2m=[0m0.5614185333251953 [3mu_theta[0m[2m=[0m1.0 [3monset_baseline[0m[2m=[0m0.06638674437999725 [3monset_std[0m[2m=[0m0.24751588702201843 [3mtheta_ioi_last[0m[2m=[0m0.17414964735507965 [3mtheta_ioi_ema[0m[2m=[0m0.1678915172815323 [3mtheta_freq_from_ioi[0m[2m=[0m5.9562273025512695 [3mtheta_phase_err_at_onset[0m[2m=[0m0.15581440925598145 [3mtheta_freq_hz[0m[2m=[0m5.984189510345459 [3mtheta_alpha[0m[2m=[0m0.7454590201377869 [3mtheta_beta[0m[2m=[0m0.08036384731531143
+[32m INFO[0m [t=2.031746] Cleaned up 1 dead individuals. Remaining: 1 (frame_idx=175)
+[34mDEBUG[0m c_signed_check bin=547 h=0.0000 r=1.0000 c=-0.5000 c_pred=-0.5000
+[34mDEBUG[0m c_signed_check bin=547 h=0.0000 r=1.0000 c=-0.5000 c_pred=-0.5000
+[34mDEBUG[0m c_signed_check bin=547 h=0.0000 r=1.0000 c=-0.5000 c_pred=-0.5000
+[34mDEBUG[0m c_signed_check bin=547 h=0.0000 r=1.0000 c=-0.5000 c_pred=-0.5000
+[34mDEBUG[0m c_signed_check bin=547 h=0.0000 r=1.0000 c=-0.5000 c_pred=-0.5000
+[34mDEBUG[0m c_signed_check bin=547 h=0.0000 r=1.0000 c=-0.5000 c_pred=-0.5000
+[34mDEBUG[0m c_signed_check bin=547 h=0.0000 r=1.0000 c=-0.5000 c_pred=-0.5000
+[34mDEBUG[0m c_signed_check bin=547 h=0.0000 r=1.0000 c=-0.5000 c_pred=-0.5000
+[34mDEBUG[0m [t=2.113021] Audio stats: min_occ=2493, cap=4410, hop=512, max_peak=0.600, slow_chunks=0
+[32m INFO[0m [t=2.167] Event: AddAgent Agent(tag=metro_a_meas_1, freq=3000.0 Hz, amp=0.600, life[body=Sine { phase: None }, temporal=Entrain { lifecycle: Decay { initial_energy: 1.0, half_life_sec: 0.03, attack_sec: 0.001 }, rhythm_freq: None, rhythm_sensitivity: None }, field=PitchHillClimb { neighbor_step_cents: None, tessitura_gravity: None, improvement_threshold: None }, modulation=Static { exploration: Some(0.0), persistence: Some(0.4) }, perceptual=PerceptualConfig { tau_fast: Some(0.5), tau_slow: Some(20.0), w_boredom: Some(1.0), w_familiarity: Some(0.2), rho_self: Some(0.15), boredom_gamma: Some(0.5), self_smoothing_radius: Some(1), silence_mass_epsilon: Some(1e-6) }, breath_gain_init=Some(1.0)])
+[34mDEBUG[0m [3mid[0m[2m=[0m1000013 [3mtag[0m[2m=[0mSome("metro_a_meas_1") [3mtemporal[0m[2m=[0m"entrain" [3mlifecycle[0m[2m=[0m"decay" [3mbreath_gain_init[0m[2m=[0m1.0 [3mbreath_gain[0m[2m=[0m1.0
+[32m INFO[0m [t=2.205896] Cleaned up 1 dead individuals. Remaining: 1 (frame_idx=190)
+[32m INFO[0m [t=2.333] Event: AddAgent Agent(tag=metro_a_meas_2, freq=3000.0 Hz, amp=0.600, life[body=Sine { phase: None }, temporal=Entrain { lifecycle: Decay { initial_energy: 1.0, half_life_sec: 0.03, attack_sec: 0.001 }, rhythm_freq: None, rhythm_sensitivity: None }, field=PitchHillClimb { neighbor_step_cents: None, tessitura_gravity: None, improvement_threshold: None }, modulation=Static { exploration: Some(0.0), persistence: Some(0.4) }, perceptual=PerceptualConfig { tau_fast: Some(0.5), tau_slow: Some(20.0), w_boredom: Some(1.0), w_familiarity: Some(0.2), rho_self: Some(0.15), boredom_gamma: Some(0.5), self_smoothing_radius: Some(1), silence_mass_epsilon: Some(1e-6) }, breath_gain_init=Some(1.0)])
+[34mDEBUG[0m [3mid[0m[2m=[0m1000014 [3mtag[0m[2m=[0mSome("metro_a_meas_2") [3mtemporal[0m[2m=[0m"entrain" [3mlifecycle[0m[2m=[0m"decay" [3mbreath_gain_init[0m[2m=[0m1.0 [3mbreath_gain[0m[2m=[0m1.0
+[32m INFO[0m [t=2.368435] Cleaned up 1 dead individuals. Remaining: 1 (frame_idx=204)
+[34mDEBUG[0m c_signed_check bin=547 h=0.0000 r=1.0000 c=-0.5000 c_pred=-0.5000
+[34mDEBUG[0m c_signed_check bin=547 h=0.0000 r=1.0000 c=-0.5000 c_pred=-0.5000
+[34mDEBUG[0m c_signed_check bin=547 h=0.0000 r=1.0000 c=-0.5000 c_pred=-0.5000
+[34mDEBUG[0m c_signed_check bin=547 h=0.0000 r=1.0000 c=-0.5000 c_pred=-0.5000
+[34mDEBUG[0m c_signed_check bin=547 h=0.0000 r=1.0000 c=-0.5000 c_pred=-0.5000
+[34mDEBUG[0m c_signed_check bin=547 h=0.0000 r=1.0000 c=-0.5000 c_pred=-0.5000
+[34mDEBUG[0m c_signed_check bin=547 h=0.0000 r=1.0000 c=-0.5000 c_pred=-0.5000
+[34mDEBUG[0m c_signed_check bin=547 h=0.0000 r=1.0000 c=-0.5000 c_pred=-0.5000
+[32m INFO[0m [t=2.500] Event: AddAgent Agent(tag=metro_a_meas_3, freq=3000.0 Hz, amp=0.600, life[body=Sine { phase: None }, temporal=Entrain { lifecycle: Decay { initial_energy: 1.0, half_life_sec: 0.03, attack_sec: 0.001 }, rhythm_freq: None, rhythm_sensitivity: None }, field=PitchHillClimb { neighbor_step_cents: None, tessitura_gravity: None, improvement_threshold: None }, modulation=Static { exploration: Some(0.0), persistence: Some(0.4) }, perceptual=PerceptualConfig { tau_fast: Some(0.5), tau_slow: Some(20.0), w_boredom: Some(1.0), w_familiarity: Some(0.2), rho_self: Some(0.15), boredom_gamma: Some(0.5), self_smoothing_radius: Some(1), silence_mass_epsilon: Some(1e-6) }, breath_gain_init=Some(1.0)])
+[34mDEBUG[0m [3mid[0m[2m=[0m1000015 [3mtag[0m[2m=[0mSome("metro_a_meas_3") [3mtemporal[0m[2m=[0m"entrain" [3mlifecycle[0m[2m=[0m"decay" [3mbreath_gain_init[0m[2m=[0m1.0 [3mbreath_gain[0m[2m=[0m1.0
+[32m INFO[0m [t=2.530975] Cleaned up 1 dead individuals. Remaining: 1 (frame_idx=218)
+[32m INFO[0m [t=2.667] Event: AddAgent Agent(tag=metro_a_meas_4, freq=3000.0 Hz, amp=0.600, life[body=Sine { phase: None }, temporal=Entrain { lifecycle: Decay { initial_energy: 1.0, half_life_sec: 0.03, attack_sec: 0.001 }, rhythm_freq: None, rhythm_sensitivity: None }, field=PitchHillClimb { neighbor_step_cents: None, tessitura_gravity: None, improvement_threshold: None }, modulation=Static { exploration: Some(0.0), persistence: Some(0.4) }, perceptual=PerceptualConfig { tau_fast: Some(0.5), tau_slow: Some(20.0), w_boredom: Some(1.0), w_familiarity: Some(0.2), rho_self: Some(0.15), boredom_gamma: Some(0.5), self_smoothing_radius: Some(1), silence_mass_epsilon: Some(1e-6) }, breath_gain_init=Some(1.0)])
+[34mDEBUG[0m [3mid[0m[2m=[0m1000016 [3mtag[0m[2m=[0mSome("metro_a_meas_4") [3mtemporal[0m[2m=[0m"entrain" [3mlifecycle[0m[2m=[0m"decay" [3mbreath_gain_init[0m[2m=[0m1.0 [3mbreath_gain[0m[2m=[0m1.0
+[32m INFO[0m [t=2.705125] Cleaned up 1 dead individuals. Remaining: 1 (frame_idx=233)
+[34mDEBUG[0m c_signed_check bin=547 h=0.0000 r=1.0000 c=-0.5000 c_pred=-0.5000
+[32m INFO[0m [t=2.833] Event: AddAgent Agent(tag=metro_a_meas_5, freq=3000.0 Hz, amp=0.600, life[body=Sine { phase: None }, temporal=Entrain { lifecycle: Decay { initial_energy: 1.0, half_life_sec: 0.03, attack_sec: 0.001 }, rhythm_freq: None, rhythm_sensitivity: None }, field=PitchHillClimb { neighbor_step_cents: None, tessitura_gravity: None, improvement_threshold: None }, modulation=Static { exploration: Some(0.0), persistence: Some(0.4) }, perceptual=PerceptualConfig { tau_fast: Some(0.5), tau_slow: Some(20.0), w_boredom: Some(1.0), w_familiarity: Some(0.2), rho_self: Some(0.15), boredom_gamma: Some(0.5), self_smoothing_radius: Some(1), silence_mass_epsilon: Some(1e-6) }, breath_gain_init=Some(1.0)])
+[34mDEBUG[0m [3mid[0m[2m=[0m1000017 [3mtag[0m[2m=[0mSome("metro_a_meas_5") [3mtemporal[0m[2m=[0m"entrain" [3mlifecycle[0m[2m=[0m"decay" [3mbreath_gain_init[0m[2m=[0m1.0 [3mbreath_gain[0m[2m=[0m1.0
+[32m INFO[0m [t=2.867664] Cleaned up 1 dead individuals. Remaining: 1 (frame_idx=247)
+[32m INFO[0m [t=3.000] Event: AddAgent Agent(tag=metro_a_meas_6, freq=3000.0 Hz, amp=0.600, life[body=Sine { phase: None }, temporal=Entrain { lifecycle: Decay { initial_energy: 1.0, half_life_sec: 0.03, attack_sec: 0.001 }, rhythm_freq: None, rhythm_sensitivity: None }, field=PitchHillClimb { neighbor_step_cents: None, tessitura_gravity: None, improvement_threshold: None }, modulation=Static { exploration: Some(0.0), persistence: Some(0.4) }, perceptual=PerceptualConfig { tau_fast: Some(0.5), tau_slow: Some(20.0), w_boredom: Some(1.0), w_familiarity: Some(0.2), rho_self: Some(0.15), boredom_gamma: Some(0.5), self_smoothing_radius: Some(1), silence_mass_epsilon: Some(1e-6) }, breath_gain_init=Some(1.0)])
+[34mDEBUG[0m [3mid[0m[2m=[0m1000018 [3mtag[0m[2m=[0mSome("metro_a_meas_6") [3mtemporal[0m[2m=[0m"entrain" [3mlifecycle[0m[2m=[0m"decay" [3mbreath_gain_init[0m[2m=[0m1.0 [3mbreath_gain[0m[2m=[0m1.0
+[34mDEBUG[0m [3mraw_flux[0m[2m=[0m0.0 [3mdrive[0m[2m=[0m0.0 [3mu_theta[0m[2m=[0m0.0 [3mu_delta[0m[2m=[0m0.07703479379415512 [3mdt[0m[2m=[0m0.01160997711122036 [3mvitality[0m[2m=[0m1.0
+[34mDEBUG[0m [3mu_theta[0m[2m=[0m0.0 [3mu_delta[0m[2m=[0m0.07703479379415512 [3mtheta_freq_hz[0m[2m=[0m5.991135120391846 [3mtheta_mag[0m[2m=[0m0.4167053699493408 [3mtheta_alpha[0m[2m=[0m0.7243066430091858 [3mtheta_beta[0m[2m=[0m0.09015769511461258 [3mtheta_phase[0m[2m=[0m0.6003096103668213 [3mdelta_freq_hz[0m[2m=[0m0.9999160170555115 [3mdelta_mag[0m[2m=[0m0.07718388736248016 [3mdelta_alpha[0m[2m=[0m0.9631062150001526 [3mdelta_beta[0m[2m=[0m0.002769039012491703 [3mdelta_phase[0m[2m=[0m0.188826322555542 [3mdelta_conf[0m[2m=[0m0.07433628290891647 [3menv_wave[0m[2m=[0m0.9911125898361206 [3menv_open[0m[2m=[0m0.998115062713623 [3menv_level[0m[2m=[0m0.07703479379415512
+[34mDEBUG[0m [3monset_count[0m[2m=[0m6 [3monset_plv_theta[0m[2m=[0m0.9866452813148499 [3monset_mean_phase_theta[0m[2m=[0m0.014327608048915863 [3monset_th[0m[2m=[0m0.5822092890739441 [3mu_theta[0m[2m=[0m0.0 [3monset_baseline[0m[2m=[0m0.07112328708171844 [3monset_std[0m[2m=[0m0.2555429935455322 [3mtheta_ioi_last[0m[2m=[0m0.16253967583179474 [3mtheta_ioi_ema[0m[2m=[0m0.16689354181289673 [3mtheta_freq_from_ioi[0m[2m=[0m5.9918437004089355 [3mtheta_phase_err_at_onset[0m[2m=[0m-0.03608870506286621 [3mtheta_freq_hz[0m[2m=[0m5.991135120391846 [3mtheta_alpha[0m[2m=[0m0.7243066430091858 [3mtheta_beta[0m[2m=[0m0.09015769511461258
+[32m INFO[0m [t=3.041814] Cleaned up 1 dead individuals. Remaining: 1 (frame_idx=262)
+[34mDEBUG[0m c_signed_check bin=547 h=0.0000 r=1.0000 c=-0.5000 c_pred=-0.5000
+[34mDEBUG[0m [t=3.134703] Audio stats: min_occ=2516, cap=4410, hop=512, max_peak=0.601, slow_chunks=0
+[32m INFO[0m [t=3.167] Event: AddAgent Agent(tag=metro_a_meas_7, freq=3000.0 Hz, amp=0.600, life[body=Sine { phase: None }, temporal=Entrain { lifecycle: Decay { initial_energy: 1.0, half_life_sec: 0.03, attack_sec: 0.001 }, rhythm_freq: None, rhythm_sensitivity: None }, field=PitchHillClimb { neighbor_step_cents: None, tessitura_gravity: None, improvement_threshold: None }, modulation=Static { exploration: Some(0.0), persistence: Some(0.4) }, perceptual=PerceptualConfig { tau_fast: Some(0.5), tau_slow: Some(20.0), w_boredom: Some(1.0), w_familiarity: Some(0.2), rho_self: Some(0.15), boredom_gamma: Some(0.5), self_smoothing_radius: Some(1), silence_mass_epsilon: Some(1e-6) }, breath_gain_init=Some(1.0)])
+[34mDEBUG[0m [3mid[0m[2m=[0m1000019 [3mtag[0m[2m=[0mSome("metro_a_meas_7") [3mtemporal[0m[2m=[0m"entrain" [3mlifecycle[0m[2m=[0m"decay" [3mbreath_gain_init[0m[2m=[0m1.0 [3mbreath_gain[0m[2m=[0m1.0
+[32m INFO[0m [t=3.204354] Cleaned up 1 dead individuals. Remaining: 1 (frame_idx=276)
+[34mDEBUG[0m Received WindowEvent::CloseRequested for viewport Some("FFFF")
+[34mDEBUG[0m SIGINT received: closing window.
+[34mDEBUG[0m Closing root viewport (ViewportCommand::CancelClose was not sent)
+[33m WARN[0m [t=3.309] Analysis lag (frames): H=1 R=2 (Audio(gen)=285)
+[34mDEBUG[0m App drop. Finalizing..
+[34mDEBUG[0m AudioOutput drop: stopping CPAL stream.
+[34mDEBUG[0m Asking to exit event loop…
+[34mDEBUG[0m Received Event::LoopExiting - saving app state…
+[34mDEBUG[0m eframe window closed

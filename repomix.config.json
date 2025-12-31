@@ -22,6 +22,7 @@
       "web/themes/",
       "web/static/",
       "web/sass/",
+      "docs/generated/",
       "*.png",
       "*.jpg",
       "*.pdf",

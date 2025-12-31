@@ -31,6 +31,33 @@
     background-color: transparent;
 }
 
+#mainNav {
+    background-color: #000;
+}
+
+#mainNav .navbar-brand {
+    color: #e4e4e7;
+}
+
+#mainNav .nav-link {
+    color: rgba(255, 255, 255, 0.7);
+}
+
+#mainNav .nav-link:hover {
+    color: #3b82f6;
+}
+
+#mainNav .navbar-toggler {
+    color: #3b82f6;
+    border-color: #3b82f6;
+}
+
+#mainNav .navbar-toggler:hover,
+#mainNav .navbar-toggler:focus {
+    color: #60a5fa;
+    border-color: #60a5fa;
+}
+
 .masthead .text-center {
     max-width: 720px;
     margin-left: auto;
@@ -62,6 +89,14 @@
 .masthead-content {
     overflow-wrap: anywhere;
     word-break: break-word;
+}
+
+.masthead-content a {
+    color: #3b82f6;
+}
+
+.masthead-content a:hover {
+    color: #60a5fa;
 }
 
 .masthead-media {

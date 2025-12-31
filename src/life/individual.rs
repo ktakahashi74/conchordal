@@ -882,6 +882,11 @@ impl AnyTemporalCore {
                     retrigger,
                     action_cost,
                 ) = envelope_from_lifecycle(lifecycle, fs);
+                let env_level = if matches!(state, ArticulationState::Attack) {
+                    attack_step
+                } else {
+                    0.0
+                };
                 let init_freq = rhythm_freq.unwrap_or_else(|| rng.random_range(5.0..7.0));
                 // Phase/offset seed diversity; theta lock uses base_k ~ omega_target in process.
                 AnyTemporalCore::Entrain(KuramotoCore {
@@ -899,7 +904,7 @@ impl AnyTemporalCore {
                     omega_rad: TAU * init_freq,
                     phase_offset: rng.random_range(-std::f32::consts::PI..std::f32::consts::PI),
                     debug_id: noise_seed,
-                    env_level: 0.0,
+                    env_level,
                     state,
                     attack_step,
                     decay_factor,
@@ -1479,8 +1484,6 @@ impl AudioAgent for Individual {
             if signal.is_active {
                 self.body
                     .articulate_wave(sample, fs, dt_per_sample, &signal);
-            } else {
-                *sample = 0.0;
             }
             rhythms.advance_in_place(dt_per_sample);
         }

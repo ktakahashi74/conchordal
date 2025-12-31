@@ -7,6 +7,7 @@
     - `nsgt*.rs`: Non-Stationary Gabor Transform implementations (RT, FFT, and Kernel variants).
     - `harmonicity_kernel.rs`: Virtual pitch/root detection via harmonic templates.
     - `roughness_kernel.rs`: Sensory dissonance calculation via interference kernels.
+    - `phase.rs`: Phase wrap/diff utilities (shared across rhythm + kernels).
     - `landscape.rs`: Real-time integration of Roughness and Harmonicity.
     - `fft.rs`: FFT wrappers and Hilbert transform logic.
     - `erb.rs`: Equivalent Rectangular Bandwidth scales.
@@ -14,11 +15,16 @@
     - `output.rs`: cpal stream management (ringbuffer producer).
     - `buffer.rs`: Interleaved audio buffer types.
     - `writer.rs`: Disk recording (WAV).
-  - `synth/`: Synthesis engine (phase-vocoder/additive based on NSGT bins).
-  - `ui/`: Egui views, plots, and visualization logic.
-  - `life/`: Evolutionary components (Genotype/Phenotype).
-  - `web/`: Project website in Zola.
+  - `synth/` (Synthesis engine):
+    - Phase-vocoder/additive synthesis based on NSGT bins.
+  - `ui/` (UI and visualization):
+    - Egui views, plots, and visualization logic.
+  - `life/` (Agents and behaviors):
+    - Individual/Population models, temporal cores, fields, and scenario scripting.
+  - `web/` (Project website):
+    - Zola site sources.
 - Entrypoints: `src/main.rs` (binary) and `src/app.rs` (GUI/Thread wiring).
+- Samples: validation scripts live under `samples/tests/` (formerly `samples/00_validation`).
 
 ## Build, Test, and Development Commands
 - Build (debug): `cargo build`
@@ -36,6 +42,16 @@
 - The core perception model is **Landscape**. It ingests audio, transforms it to Log2-frequency space via NSGT, and computes two potentials:
   1. **Roughness (R)**: Amplitude fluctuations within critical bands (dissonance).
   2. **Harmonicity (H)**: Periodicity/Template matching (consonance/fusion).
+
+## Scenario Script Authoring
+**Keep simple things simple, and complex things possible.**
+
+Scenarios should be approachable for newcomers while remaining expressive for advanced use cases:
+
+- A minimal scenario should require only essential parameters
+- Complex behaviors emerge from composition, not configuration bloat
+- The full parameter space remains accessible for those who need it
+
 
 ## Other
 - Don't touch `web/` when editing sourcecode. Don't touch `src/` when editing `web/`, unless otherwise specified.

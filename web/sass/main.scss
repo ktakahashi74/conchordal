@@ -348,6 +348,7 @@ a {
 
 .page-title {
     margin-bottom: $spacing-md;
+    color: $accent-primary;
 }
 
 .page-subtitle {
@@ -384,7 +385,7 @@ a {
     max-width: 800px;
     margin: 0 auto;
 
-    h2 {
+    h1, h2 {
         margin-top: $spacing-2xl;
         margin-bottom: $spacing-lg;
         color: $accent-primary;

@@ -348,7 +348,7 @@ impl ScriptHost {
     }
 
     pub fn load_script(path: &str) -> anyhow::Result<Scenario> {
-        let src = fs::read_to_string(path).with_context(|| format!("read script {path}"))?;
+        let src = fs::read_to_string(path).map_err(|err| anyhow!("read script {path}: {err}"))?;
         let ctx = Arc::new(Mutex::new(ScriptContext::default()));
         let engine = ScriptHost::create_engine(ctx.clone());
         let script_src = format!("{SCRIPT_PRELUDE}\n{src}");

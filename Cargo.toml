@@ -58,7 +58,6 @@ hound = "3.5"
 
 ringbuf = "0.4"
 approx = "0.5"
-json5 = "0.4.1"
 rhai = { version = "1.19", features = ["metadata", "serde"] }
 
 [dev-dependencies]

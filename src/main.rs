@@ -35,13 +35,9 @@ struct Args {
     #[arg(long)]
     wav: Option<String>,
 
-    /// Scenario path (.json5/.rhai)
+    /// Scenario path (.rhai only)
     #[arg(value_name = "SCENARIO_PATH")]
     scenario_path: String,
-
-    /// Serialize scenario to JSON5 and exit
-    #[arg(long, default_value_t = false)]
-    serialize_json5: bool,
 
     /// Path to config TOML
     #[arg(long, default_value = "config.toml")]
@@ -65,13 +61,9 @@ fn load_scenario_from_path(path: &str) -> Result<Scenario, String> {
     match ext.as_str() {
         "rhai" => ScriptHost::load_script(path)
             .map_err(|e| format!("Failed to run scenario script {path}: {e:#}")),
-        "json" | "json5" => {
-            let contents = std::fs::read_to_string(path)
-                .map_err(|err| format!("Failed to read {path}: {err}"))?;
-            json5::from_str::<Scenario>(&contents)
-                .map_err(|e| format!("Failed to parse scenario file {path}: {e}"))
-        }
-        _ => Err(format!("Unsupported scenario extension for {path}")),
+        _ => Err(format!(
+            "json/json5 is not supported. Scenario must be a .rhai script: {path}"
+        )),
     }
 }
 
@@ -93,19 +85,6 @@ fn main() -> eframe::Result<()> {
     }
     if let Some(val) = args.wait_user_start {
         config.playback.wait_user_start = val;
-    }
-
-    if args.serialize_json5 {
-        let scenario = load_scenario_from_path(&args.scenario_path).unwrap_or_else(|e| {
-            eprintln!("{e}");
-            std::process::exit(1);
-        });
-        let serialized = json5::to_string(&scenario).unwrap_or_else(|e| {
-            eprintln!("Failed to serialize scenario: {e}");
-            std::process::exit(1);
-        });
-        println!("{serialized}");
-        return Ok(());
     }
 
     let stop_flag = Arc::new(AtomicBool::new(false));

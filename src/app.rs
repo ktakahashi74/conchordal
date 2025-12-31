@@ -342,30 +342,15 @@ impl App {
             .and_then(|s| s.to_str())
             .unwrap_or("")
             .to_ascii_lowercase();
-        let conductor = match ext.as_str() {
-            "rhai" => {
-                let scenario = ScriptHost::load_script(&path).unwrap_or_else(|e| {
-                    eprintln!("Failed to run scenario script {path}: {e}");
-                    std::process::exit(1);
-                });
-                Conductor::from_scenario(scenario)
-            }
-            "json" | "json5" => {
-                let contents = std::fs::read_to_string(&path).unwrap_or_else(|err| {
-                    eprintln!("Failed to read scenario file {path}: {err}");
-                    std::process::exit(1);
-                });
-                let scenario = json5::from_str::<Scenario>(&contents).unwrap_or_else(|e| {
-                    eprintln!("Failed to parse scenario file {path}: {e}");
-                    std::process::exit(1);
-                });
-                Conductor::from_scenario(scenario)
-            }
-            _ => {
-                eprintln!("Unsupported scenario extension for {path}");
-                std::process::exit(1);
-            }
-        };
+        if ext != "rhai" {
+            eprintln!("Scenario must be a .rhai script: {path}");
+            std::process::exit(1);
+        }
+        let scenario = ScriptHost::load_script(&path).unwrap_or_else(|e| {
+            eprintln!("Failed to run scenario script {path}: {e:#}");
+            std::process::exit(1);
+        });
+        let conductor = Conductor::from_scenario(scenario);
 
         // Give the worker its own handle if WAV output is enabled.
         let wav_tx_for_worker = wav_tx;

@@ -3,13 +3,13 @@
 {% block title %}{{ page.title }} | {{ config.title }}{% endblock title %}
 
 {% block description %}
-{% if page.description %}{{ page.description }}{% else %}A bio-acoustic instrument for generative composition{% endif %}
+{% if page.description %}{{ page.description }}{% elif lang == 'ja' %}直接認知結合による生成音楽システム{% else %}A bio-acoustic instrument for generative composition{% endif %}
 {% endblock description %}
 
 {% block og_title %}{{ page.title }} | {{ config.title }}{% endblock og_title %}
 
 {% block og_description %}
-{% if page.description %}{{ page.description }}{% else %}A bio-acoustic instrument for generative composition{% endif %}
+{% if page.description %}{{ page.description }}{% elif lang == 'ja' %}直接認知結合による生成音楽システム{% else %}A bio-acoustic instrument for generative composition{% endif %}
 {% endblock og_description %}
 
 {% block content %}

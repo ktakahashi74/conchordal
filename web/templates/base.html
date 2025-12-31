@@ -5,7 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <!-- TODO: Remove this meta tag when ready for public launch -->
     <title>{% block title %}{{ config.title }}{% endblock title %}</title>
-    <meta name="description" content="{% block description %}A bio-acoustic instrument for generative composition{% endblock description %}">
+    <meta name="description" content="{% block description %}{% if lang == 'ja' %}直接認知結合による生成音楽システム{% else %}A bio-acoustic instrument for generative composition{% endif %}{% endblock description %}">
+    <meta name="keywords" content="{% if lang == 'ja' %}生成音楽, 直接認知結合, 音響エコシステム, 人工生命, 協和, 音楽認知, アルゴリズム作曲{% else %}generative music, direct cognitive coupling, acoustic ecosystem, artificial life, consonance, music cognition, algorithmic composition{% endif %}">
+    <meta name="author" content="髙橋恒一 (Koichi Takahashi)">
     <meta name="theme-color" content="#000000">
 
     <!-- Favicon -->
@@ -16,7 +18,7 @@
 
     <!-- Open Graph -->
     <meta property="og:title" content="{% block og_title %}{{ config.title }}{% endblock og_title %}">
-    <meta property="og:description" content="{% block og_description %}A bio-acoustic instrument for generative composition{% endblock og_description %}">
+    <meta property="og:description" content="{% block og_description %}{% if lang == 'ja' %}直接認知結合による生成音楽システム{% else %}A bio-acoustic instrument for generative composition{% endif %}{% endblock og_description %}">
     <meta property="og:type" content="website">
     <meta property="og:url" content="{{ current_url | default(value=config.base_url) }}">
     <meta property="og:image" content="{{ get_url(path='screenshot1.png') }}">
@@ -24,11 +26,22 @@
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="{% block twitter_title %}{{ config.title }}{% endblock twitter_title %}">
-    <meta name="twitter:description" content="{% block twitter_description %}A bio-acoustic instrument for generative composition{% endblock twitter_description %}">
+    <meta name="twitter:description" content="{% block twitter_description %}{% if lang == 'ja' %}直接認知結合による生成音楽システム{% else %}A bio-acoustic instrument for generative composition{% endif %}{% endblock twitter_description %}">
     <meta name="twitter:image" content="{{ get_url(path='screenshot1.png') }}">
 
     <!-- Canonical -->
     <link rel="canonical" href="{{ current_url | default(value=config.base_url) }}">
+
+    <!-- hreflang -->
+    {% if lang == "ja" %}
+    <link rel="alternate" hreflang="ja" href="{{ current_url | default(value=config.base_url ~ '/ja') }}">
+    <link rel="alternate" hreflang="en" href="{{ current_url | default(value=config.base_url) | replace(from='/ja', to='') }}">
+    <link rel="alternate" hreflang="x-default" href="{{ current_url | default(value=config.base_url) | replace(from='/ja', to='') }}">
+    {% else %}
+    <link rel="alternate" hreflang="en" href="{{ current_url | default(value=config.base_url) }}">
+    <link rel="alternate" hreflang="ja" href="{{ current_url | default(value=config.base_url) | replace(from='conchordal.org/', to='conchordal.org/ja/') }}">
+    <link rel="alternate" hreflang="x-default" href="{{ current_url | default(value=config.base_url) }}">
+    {% endif %}
 
     {% block head %}{% endblock head %}
 </head>

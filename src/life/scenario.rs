@@ -26,6 +26,16 @@ pub struct EnvelopeConfig {
     pub sustain_level: f32,
 }
 
+impl Default for EnvelopeConfig {
+    fn default() -> Self {
+        Self {
+            attack_sec: 0.01,
+            decay_sec: 0.1,
+            sustain_level: 0.0,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum HarmonicMode {
@@ -54,13 +64,34 @@ pub struct TimbreGenotype {
     pub unison: f32, // Detune amount (0.0 = single)
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+impl Default for TimbreGenotype {
+    fn default() -> Self {
+        Self {
+            mode: HarmonicMode::Harmonic,
+            stiffness: 0.0,
+            brightness: 0.6,
+            comb: 0.0,
+            damping: 0.5,
+            vibrato_rate: 5.0,
+            vibrato_depth: 0.0,
+            jitter: 0.0,
+            unison: 0.0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct LifeConfig {
+    #[serde(default)]
     pub body: SoundBodyConfig,
+    #[serde(default)]
     pub temporal: TemporalCoreConfig,
+    #[serde(default)]
     pub field: FieldCoreConfig,
+    #[serde(default)]
     pub modulation: ModulationCoreConfig,
+    #[serde(default)]
     pub perceptual: PerceptualConfig,
     #[serde(default)]
     pub breath_gain_init: Option<f32>,
@@ -74,11 +105,17 @@ pub enum SoundBodyConfig {
         phase: Option<f32>,
     },
     Harmonic {
-        #[serde(flatten)]
+        #[serde(default, flatten)]
         genotype: TimbreGenotype,
         #[serde(default)]
         partials: Option<usize>,
     },
+}
+
+impl Default for SoundBodyConfig {
+    fn default() -> Self {
+        SoundBodyConfig::Sine { phase: None }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
@@ -99,6 +136,16 @@ pub enum TemporalCoreConfig {
         #[serde(default)]
         sway: Option<f32>,
     },
+}
+
+impl Default for TemporalCoreConfig {
+    fn default() -> Self {
+        TemporalCoreConfig::Entrain {
+            lifecycle: LifecycleConfig::default(),
+            rhythm_freq: None,
+            rhythm_sensitivity: None,
+        }
+    }
 }
 
 impl<'de> Deserialize<'de> for TemporalCoreConfig {
@@ -180,6 +227,16 @@ pub enum FieldCoreConfig {
     },
 }
 
+impl Default for FieldCoreConfig {
+    fn default() -> Self {
+        FieldCoreConfig::PitchHillClimb {
+            neighbor_step_cents: None,
+            tessitura_gravity: None,
+            improvement_threshold: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "core", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ModulationCoreConfig {
@@ -189,6 +246,15 @@ pub enum ModulationCoreConfig {
         #[serde(default)]
         persistence: Option<f32>,
     },
+}
+
+impl Default for ModulationCoreConfig {
+    fn default() -> Self {
+        ModulationCoreConfig::Static {
+            exploration: None,
+            persistence: None,
+        }
+    }
 }
 
 impl fmt::Display for LifeConfig {
@@ -547,6 +613,16 @@ pub enum SpawnMethod {
         /// Minimum ERB distance between newborn fundamentals at spawn time. Default: 1.0
         min_dist_erb: Option<f32>,
     },
+}
+
+impl Default for SpawnMethod {
+    fn default() -> Self {
+        SpawnMethod::RandomLogUniform {
+            min_freq: 110.0,
+            max_freq: 440.0,
+            min_dist_erb: Some(0.0),
+        }
+    }
 }
 
 impl SpawnMethod {

@@ -17,6 +17,11 @@ fn parallel(callback) {
 }
 "#;
 
+fn rewrite_minimal_spawn(src: &str) -> String {
+    let out = src.replace("spawn (", "spawn_default(");
+    out.replace("spawn(", "spawn_default(")
+}
+
 #[derive(Debug, Clone)]
 pub struct ScriptContext {
     pub cursor: f32,
@@ -95,6 +100,22 @@ impl ScriptContext {
         let method = Self::from_map::<SpawnMethod>(method_map, "SpawnMethod")?;
         let life = Self::from_map::<LifeConfig>(life_map, "LifeConfig")?;
         let c = count.max(0) as usize;
+        let action = Action::SpawnAgents {
+            method,
+            count: c,
+            amp,
+            life,
+            tag: Some(tag.to_string()),
+        };
+        self.push_event(vec![action]);
+        Ok(())
+    }
+
+    pub fn spawn_default(&mut self, tag: &str, count: i64) -> Result<(), Box<EvalAltResult>> {
+        let method = SpawnMethod::default();
+        let life = LifeConfig::default();
+        let c = count.max(0) as usize;
+        let amp = 0.18;
         let action = Action::SpawnAgents {
             method,
             count: c,
@@ -195,6 +216,11 @@ impl ScriptContext {
         self.push_event(vec![Action::Finish]);
     }
 
+    pub fn run(&mut self, sec: f32) {
+        self.wait(sec.max(0.0));
+        self.finish();
+    }
+
     fn from_map<T: serde::de::DeserializeOwned>(
         map: Map,
         name: &str,
@@ -260,6 +286,14 @@ impl ScriptHost {
                   -> Result<(), Box<EvalAltResult>> {
                 let mut ctx = ctx_for_spawn_agents.lock().expect("lock script context");
                 api::spawn_agents(&mut ctx, tag, method_map, life_map, count, amp)
+            },
+        );
+        let ctx_for_spawn_default = ctx.clone();
+        engine.register_fn(
+            "spawn_default",
+            move |tag: &str, count: i64| -> Result<(), Box<EvalAltResult>> {
+                let mut ctx = ctx_for_spawn_default.lock().expect("lock script context");
+                api::spawn_default(&mut ctx, tag, count)
             },
         );
         let ctx_for_add_agent = ctx.clone();
@@ -344,6 +378,17 @@ impl ScriptHost {
             api::finish(&mut ctx);
         });
 
+        let ctx_for_run = ctx.clone();
+        engine.register_fn("run", move |sec: FLOAT| {
+            let mut ctx = ctx_for_run.lock().expect("lock script context");
+            api::run_float(&mut ctx, sec);
+        });
+        let ctx_for_run_int = ctx.clone();
+        engine.register_fn("run", move |sec: i64| {
+            let mut ctx = ctx_for_run_int.lock().expect("lock script context");
+            api::run_int(&mut ctx, sec);
+        });
+
         engine
     }
 
@@ -351,7 +396,7 @@ impl ScriptHost {
         let src = fs::read_to_string(path).map_err(|err| anyhow!("read script {path}: {err}"))?;
         let ctx = Arc::new(Mutex::new(ScriptContext::default()));
         let engine = ScriptHost::create_engine(ctx.clone());
-        let script_src = format!("{SCRIPT_PRELUDE}\n{src}");
+        let script_src = format!("{SCRIPT_PRELUDE}\n{}", rewrite_minimal_spawn(&src));
 
         if let Err(e) = engine.eval::<()>(&script_src) {
             // Print structured error to help diagnose script issues (e.g., type mismatches).
@@ -371,7 +416,7 @@ mod tests {
     fn run_script(src: &str) -> Scenario {
         let ctx = Arc::new(Mutex::new(ScriptContext::default()));
         let engine = ScriptHost::create_engine(ctx.clone());
-        let script_src = format!("{SCRIPT_PRELUDE}\n{src}");
+        let script_src = format!("{SCRIPT_PRELUDE}\n{}", rewrite_minimal_spawn(src));
         engine.eval::<()>(&script_src).expect("script runs");
         ctx.lock().expect("lock ctx").scenario.clone()
     }
@@ -586,6 +631,42 @@ mod tests {
         let scenario = ScriptHost::load_script("samples/01_fundamentals/spawn_basics.rhai")
             .expect("sample script should run");
         assert!(!scenario.scenes.is_empty());
+    }
+
+    #[test]
+    fn minimal_spawn_run_executes() {
+        let scenario = ScriptHost::load_script("tests/minimal_spawn_run.rhai")
+            .expect("minimal script should run");
+        let scene = scenario.scenes.first().expect("scene exists");
+        let has_spawn = scene.events.iter().any(|ev| {
+            ev.actions
+                .iter()
+                .any(|a| matches!(a, Action::SpawnAgents { .. }))
+        });
+        let has_finish = scene
+            .events
+            .iter()
+            .any(|ev| ev.actions.iter().any(|a| matches!(a, Action::Finish)));
+        assert!(has_spawn, "expected spawn event");
+        assert!(has_finish, "expected finish event");
+    }
+
+    #[test]
+    fn empty_life_map_executes() {
+        let scenario = ScriptHost::load_script("tests/empty_life_map_ok.rhai")
+            .expect("empty life map should run");
+        let scene = scenario.scenes.first().expect("scene exists");
+        let has_add = scene.events.iter().any(|ev| {
+            ev.actions
+                .iter()
+                .any(|a| matches!(a, Action::AddAgent { .. }))
+        });
+        let has_finish = scene
+            .events
+            .iter()
+            .any(|ev| ev.actions.iter().any(|a| matches!(a, Action::Finish)));
+        assert!(has_add, "expected add_agent event");
+        assert!(has_finish, "expected finish event");
     }
 
     #[test]

@@ -442,7 +442,9 @@ fn life_config_deserializes_and_rejects_unknown_fields() {
             "self_smoothing_radius": 1
         }
     });
-    assert!(serde_json::from_value::<LifeConfig>(missing).is_err());
+    let cfg_missing: LifeConfig =
+        serde_json::from_value(missing).expect("missing body should default");
+    assert!(matches!(cfg_missing.body, SoundBodyConfig::Sine { .. }));
 }
 
 #[test]

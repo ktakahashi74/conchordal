@@ -1,5 +1,5 @@
 use rhai::plugin::*;
-use rhai::{EvalAltResult, FLOAT, Map, Module};
+use rhai::{EvalAltResult, FLOAT, INT, Map, Module};
 
 use super::scripting::ScriptContext;
 
@@ -55,6 +55,16 @@ pub mod script_api {
         amp: FLOAT,
     ) -> Result<(), Box<EvalAltResult>> {
         ctx.spawn(tag, method_map, life_map, count, amp as f32)
+    }
+
+    /// Spawn agents with default method/life settings.
+    #[rhai_fn(name = "spawn_default", return_raw)]
+    pub fn spawn_default(
+        ctx: &mut ScriptContext,
+        tag: &str,
+        count: i64,
+    ) -> Result<(), Box<EvalAltResult>> {
+        ctx.spawn_default(tag, count)
     }
 
     /// Add an agent at a fixed frequency.
@@ -129,6 +139,18 @@ pub mod script_api {
     /// Finish the scenario and stop playback.
     pub fn finish(ctx: &mut ScriptContext) {
         ctx.finish();
+    }
+
+    /// Run for `sec` seconds and finish the scenario.
+    #[rhai_fn(name = "run")]
+    pub fn run_float(ctx: &mut ScriptContext, sec: FLOAT) {
+        ctx.run(sec as f32);
+    }
+
+    /// Run for `sec` seconds and finish the scenario.
+    #[rhai_fn(name = "run")]
+    pub fn run_int(ctx: &mut ScriptContext, sec: INT) {
+        ctx.run(sec as f32);
     }
 }
 

@@ -4,6 +4,15 @@ print(">>> Experiment: Self-Organizing Rhythm <<<");
 // Setup: percussive so synchronization is easy to hear
 // ============================================================
 
+// Startup stimulus: a single short click to bootstrap rhythm extraction.
+add_agent("starter", 100.0, 0.4, #{
+    body: #{ core: "sine" },
+    temporal: #{ core: "entrain", type: "decay", initial_energy: 0.6, half_life_sec: 0.03, attack_sec: 0.001 },
+    field: #{ core: "pitch_hill_climb" },
+    modulation: #{ core: "static", persistence: 0.5, exploration: 0.0 },
+    perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
+});
+
 // Long-lived agents, but the sound is a short pluck.
 // Sharp attack makes timing offsets and sync obvious.
 let life_plucking = #{

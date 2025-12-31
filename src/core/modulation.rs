@@ -1,6 +1,14 @@
 use std::f32::consts::{PI, TAU};
 use tracing::debug;
 
+fn smoothstep(lo: f32, hi: f32, x: f32) -> f32 {
+    if hi <= lo {
+        return 0.0;
+    }
+    let t = ((x - lo) / (hi - lo)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 pub struct RhythmBand {
     pub phase: f32,   // wrapped [-pi, pi]
@@ -224,7 +232,9 @@ impl RhythmEngine {
     }
 
     pub fn update(&mut self, dt: f32, u_theta: f32, u_delta: f32, vitality: f32) -> NeuralRhythms {
-        let onset_phase = AdaptiveRhythm::wrap_to_pi(self.theta.phi);
+        let phi_before = self.theta.phi;
+        let phase_before = AdaptiveRhythm::wrap_to_pi(phi_before);
+        let omega_before = self.theta.omega;
         let tau = 1.0;
         let a = (-dt / tau).exp();
         self.onset_baseline = a * self.onset_baseline + (1.0 - a) * u_theta;
@@ -237,7 +247,11 @@ impl RhythmEngine {
         self.onset_timer = (self.onset_timer - dt).max(0.0);
         self.time_since_last_onset += dt;
         let mut onset_fired = false;
+        let mut onset_phase = phase_before;
         if self.onset_timer <= 0.0 && self.prev_u_theta < onset_th && u_theta >= onset_th {
+            let denom = (u_theta - self.prev_u_theta).max(1e-6);
+            let frac = ((onset_th - self.prev_u_theta) / denom).clamp(0.0, 1.0);
+            onset_phase = AdaptiveRhythm::wrap_to_pi(phi_before + omega_before * dt * frac);
             self.onset_sum_cos += onset_phase.cos();
             self.onset_sum_sin += onset_phase.sin();
             self.onset_count += 1;
@@ -261,7 +275,7 @@ impl RhythmEngine {
                 let omega_meas = TAU / self.ioi_ema.max(1e-4);
                 self.theta.omega = self.theta.omega + (omega_meas - self.theta.omega) * 0.35;
                 self.theta.omega = self.theta.clamp_omega(self.theta.omega);
-                let phase_err = AdaptiveRhythm::wrap_to_pi(self.theta.phi);
+                let phase_err = onset_phase;
                 self.last_phase_err = phase_err;
                 self.theta.phi -= 0.5 * phase_err;
             }
@@ -277,8 +291,10 @@ impl RhythmEngine {
         let delta = self.delta.update(dt, u_delta, vitality);
         let env_wave = 0.5 + 0.5 * delta.phase.cos();
         let delta_conf = (delta.mag * delta.alpha).clamp(0.0, 1.0);
-        let wave = 1.0 + (env_wave - 1.0) * delta_conf;
-        let env_open = wave.clamp(0.0, 1.0);
+        let min_depth = 0.15;
+        let mag_scale = smoothstep(0.02, 0.08, delta.mag);
+        let depth = (min_depth + (1.0 - min_depth) * delta_conf) * (0.2 + 0.8 * mag_scale);
+        let env_open = (1.0 - depth * (1.0 - env_wave)).clamp(0.0, 1.0);
         let env_level = u_delta.clamp(0.0, 1.0);
 
         self.debug_timer += dt;
@@ -426,10 +442,15 @@ mod tests {
         engine.delta.beta = 0.0;
         engine.delta.phi = 0.0;
         engine.delta.omega = TAU;
-        let r1 = engine.update(0.25, 0.0, 1.0, 1.0);
-        let r2 = engine.update(0.25, 0.0, 1.0, 1.0);
+        let mut min_env: f32 = 1.0;
+        let mut max_env: f32 = 0.0;
+        for _ in 0..8 {
+            let r = engine.update(0.25, 0.0, 1.0, 1.0);
+            min_env = min_env.min(r.env_open);
+            max_env = max_env.max(r.env_open);
+        }
         assert!(
-            (r1.env_open - r2.env_open).abs() > 0.1,
+            (max_env - min_env) > 0.2,
             "env_open should oscillate when delta confidence is high"
         );
     }
@@ -457,7 +478,7 @@ mod tests {
         let mean_phase = sum_sin.atan2(sum_cos);
         assert!(plv > 0.9, "expected PLV > 0.9, got {plv}");
         assert!(
-            mean_phase.abs() < 0.6,
+            mean_phase.abs() < 0.3,
             "expected mean phase near 0, got {mean_phase}"
         );
     }

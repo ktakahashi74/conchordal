@@ -9,6 +9,7 @@ use crate::core::landscape::LandscapeFrame;
 #[derive(Debug, Clone)]
 pub struct QueuedEvent {
     pub time: f32,
+    pub order: u64,
     pub actions: Vec<Action>,
 }
 
@@ -47,6 +48,7 @@ impl Conductor {
             a.time
                 .partial_cmp(&b.time)
                 .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.order.cmp(&b.order))
         });
 
         let total_duration = events.last().map(|ev| ev.time).unwrap_or(0.0);
@@ -63,6 +65,7 @@ impl Conductor {
             a.time
                 .partial_cmp(&b.time)
                 .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.order.cmp(&b.order))
         });
         let total_duration = events.last().map(|ev| ev.time).unwrap_or(0.0);
         Self {
@@ -130,12 +133,14 @@ fn flatten_scene(ep: Scene) -> impl Iterator<Item = QueuedEvent> {
             for i in 0..rep.count {
                 out.push(QueuedEvent {
                     time: ep.start_time + ev.time + i as f32 * rep.interval,
+                    order: ev.order.saturating_add(i as u64),
                     actions: ev.actions.clone(),
                 });
             }
         } else {
             out.push(QueuedEvent {
                 time: ep.start_time + ev.time,
+                order: ev.order,
                 actions: ev.actions,
             });
         }

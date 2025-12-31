@@ -1,9 +1,8 @@
 use super::individual::{AgentMetadata, AudioAgent, Individual, ModulationCore, SoundBody};
-use super::scenario::{Action, IndividualConfig, SpawnMethod};
+use super::scenario::{Action, IndividualConfig, SpawnMethod, TargetRef};
 use crate::core::landscape::{LandscapeFrame, LandscapeUpdate};
 use crate::core::log2space::Log2Space;
 use rand::{Rng, SeedableRng, distr::Distribution, distr::weighted::WeightedIndex, rngs::SmallRng};
-use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use tracing::{debug, info, warn};
 
@@ -17,8 +16,6 @@ pub struct Population {
     pub individuals: Vec<Individual>,
     current_frame: u64,
     pub abort_requested: bool,
-    next_auto_id: u64,
-    tag_counters: HashMap<String, usize>,
     buffers: WorkBuffers,
     pub global_vitality: f32,
     pub global_coupling: f32,
@@ -55,8 +52,6 @@ impl Population {
             individuals: Vec::new(),
             current_frame: 0,
             abort_requested: false,
-            next_auto_id: 1_000_000,
-            tag_counters: HashMap::new(),
             buffers: WorkBuffers::default(),
             global_vitality: 1.0,
             global_coupling: 1.0,
@@ -66,10 +61,10 @@ impl Population {
         }
     }
 
-    fn spawn_seed(&self, tag: Option<&str>, group_idx: usize, count: usize) -> u64 {
+    fn spawn_seed(&self, tag: Option<&str>, group_id: u64, count: u32) -> u64 {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         self.current_frame.hash(&mut hasher);
-        group_idx.hash(&mut hasher);
+        group_id.hash(&mut hasher);
         count.hash(&mut hasher);
         if let Some(tag) = tag {
             tag.hash(&mut hasher);
@@ -83,7 +78,10 @@ impl Population {
 
     pub fn add_individual(&mut self, individual: Individual) {
         let id = individual.id();
-        self.individuals.retain(|a| a.id() != id);
+        if self.individuals.iter().any(|a| a.id() == id) {
+            warn!("AddAgent: id collision for {id}");
+            return;
+        }
         self.individuals.push(individual);
     }
 
@@ -91,69 +89,41 @@ impl Population {
         self.current_frame = frame;
     }
 
-    fn next_group_idx(&mut self, tag: Option<&str>) -> usize {
-        if let Some(t) = tag {
-            let entry = self.tag_counters.entry(t.to_string()).or_insert(0);
-            let idx = *entry;
-            *entry += 1;
-            idx
-        } else {
-            0
-        }
-    }
-
-    fn resolve_targets(&mut self, target_str: &str) -> Vec<u64> {
-        let mut tag_end = target_str.find('[').unwrap_or(target_str.len());
-        if tag_end == 0 {
-            return Vec::new();
-        }
-        if tag_end > target_str.len() {
-            tag_end = target_str.len();
-        }
-        let tag = &target_str[..tag_end];
-        let mut rest = &target_str[tag_end..];
-        let mut group_idx: Option<usize> = None;
-        let mut member_idx: Option<usize> = None;
-
-        if rest.starts_with('[')
-            && let Some(end) = rest.find(']')
-        {
-            let grp_str = &rest[1..end];
-            if let Ok(g) = grp_str.parse::<usize>() {
-                group_idx = Some(g);
-            }
-            rest = &rest[(end + 1)..];
-            if rest.starts_with('[')
-                && let Some(end2) = rest.find(']')
-            {
-                let mem_str = &rest[1..end2];
-                if let Ok(m) = mem_str.parse::<usize>() {
-                    member_idx = Some(m);
+    fn resolve_target_ids(&self, target: &TargetRef) -> Vec<u64> {
+        match target {
+            TargetRef::AgentId { id } => {
+                if self.individuals.iter().any(|a| a.id() == *id) {
+                    vec![*id]
+                } else {
+                    Vec::new()
                 }
             }
+            TargetRef::Range { base_id, count } => {
+                let end = base_id.saturating_add(u64::from(*count));
+                self.individuals
+                    .iter()
+                    .filter_map(|a| {
+                        let id = a.id();
+                        if id >= *base_id && id < end {
+                            Some(id)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect()
+            }
+            TargetRef::Tag { tag } => self
+                .individuals
+                .iter()
+                .filter_map(|a| {
+                    let meta = a.metadata();
+                    match meta.tag.as_deref() {
+                        Some(t) if t == tag => Some(meta.id),
+                        _ => None,
+                    }
+                })
+                .collect(),
         }
-
-        self.individuals
-            .iter()
-            .filter_map(|a| {
-                let meta = a.metadata();
-                let Some(t) = &meta.tag else { return None };
-                if !wildcard_match(tag, t) {
-                    return None;
-                };
-                if let Some(g) = group_idx
-                    && meta.group_idx != g
-                {
-                    return None;
-                }
-                if let Some(m) = member_idx
-                    && meta.member_idx != m
-                {
-                    return None;
-                }
-                Some(meta.id)
-            })
-            .collect()
     }
 
     fn decide_frequency<R: Rng + ?Sized>(
@@ -375,18 +345,12 @@ impl Population {
         landscape_rt: Option<&mut crate::core::stream::roughness::RoughnessStream>,
     ) {
         match action {
-            Action::AddAgent { agent } => {
-                let id = {
-                    let id = self.next_auto_id;
-                    self.next_auto_id += 1;
-                    id
-                };
+            Action::AddAgent { id, agent } => {
                 let tag = agent.tag().cloned();
-                let group_idx = self.next_group_idx(tag.as_deref());
                 let metadata = AgentMetadata {
                     id,
                     tag,
-                    group_idx,
+                    group_idx: 0,
                     member_idx: 0,
                 };
                 let spawned = agent.spawn(id, self.current_frame, metadata, self.fs);
@@ -396,22 +360,20 @@ impl Population {
                 self.abort_requested = true;
             }
             Action::SpawnAgents {
+                group_id,
+                base_id,
                 method,
                 count,
                 amp,
                 life,
                 tag,
             } => {
-                let group_idx = self.next_group_idx(tag.as_deref());
-                let seed = self.spawn_seed(tag.as_deref(), group_idx, count);
+                let seed = self.spawn_seed(tag.as_deref(), group_id, count);
                 let mut rng = SmallRng::seed_from_u64(seed);
+                let group_idx = usize::try_from(group_id).unwrap_or(usize::MAX);
                 for i in 0..count {
                     let freq = self.decide_frequency(&method, landscape, &mut rng);
-                    let id = {
-                        let id = self.next_auto_id;
-                        self.next_auto_id += 1;
-                        id
-                    };
+                    let id = base_id + u64::from(i);
                     let cfg = IndividualConfig {
                         freq,
                         amp,
@@ -422,14 +384,14 @@ impl Population {
                         id,
                         tag: tag.clone(),
                         group_idx,
-                        member_idx: i,
+                        member_idx: i as usize,
                     };
                     let spawned = cfg.spawn(id, self.current_frame, metadata, self.fs);
                     self.add_individual(spawned);
                 }
             }
             Action::RemoveAgent { target } => {
-                let ids = self.resolve_targets(&target);
+                let ids = self.resolve_target_ids(&target);
                 for id in ids {
                     self.remove_agent(id);
                 }
@@ -438,7 +400,7 @@ impl Population {
                 target,
                 release_sec,
             } => {
-                let ids = self.resolve_targets(&target);
+                let ids = self.resolve_target_ids(&target);
                 let sec = if release_sec > 0.0 {
                     release_sec
                 } else {
@@ -451,7 +413,7 @@ impl Population {
                 }
             }
             Action::SetFreq { target, freq_hz } => {
-                let ids = self.resolve_targets(&target);
+                let ids = self.resolve_target_ids(&target);
                 let log_freq = freq_hz.max(1.0).log2();
                 for id in ids {
                     if let Some(a) = self.find_individual_mut(id) {
@@ -462,7 +424,7 @@ impl Population {
                 }
             }
             Action::SetAmp { target, amp } => {
-                let ids = self.resolve_targets(&target);
+                let ids = self.resolve_target_ids(&target);
                 for id in ids {
                     if let Some(a) = self.find_individual_mut(id) {
                         a.body.set_amp(amp);
@@ -496,7 +458,7 @@ impl Population {
                 self.pending_update = Some(pending);
             }
             Action::SetCommitment { target, value } => {
-                let ids = self.resolve_targets(&target);
+                let ids = self.resolve_target_ids(&target);
                 for id in ids {
                     if let Some(agent) = self.find_individual_mut(id) {
                         let v = value.clamp(0.0, 1.0);
@@ -507,7 +469,7 @@ impl Population {
                 }
             }
             Action::SetDrift { target, value } => {
-                let ids = self.resolve_targets(&target);
+                let ids = self.resolve_target_ids(&target);
                 for id in ids {
                     if let Some(agent) = self.find_individual_mut(id) {
                         // Map drift to exploration without coupling persistence.
@@ -693,36 +655,4 @@ mod tests {
         ];
         assert!(WeightedIndex::new(&weights).is_err());
     }
-}
-
-fn wildcard_match(pattern: &str, text: &str) -> bool {
-    fn helper(pat: &[u8], text: &[u8]) -> bool {
-        if pat.is_empty() {
-            return text.is_empty();
-        }
-        match pat[0] {
-            b'*' => {
-                if pat.len() == 1 {
-                    return true;
-                }
-                for i in 0..=text.len() {
-                    if helper(&pat[1..], &text[i..]) {
-                        return true;
-                    }
-                }
-                false
-            }
-            c => {
-                if text.is_empty() || c != text[0] {
-                    false
-                } else {
-                    helper(&pat[1..], &text[1..])
-                }
-            }
-        }
-    }
-    if pattern == "*" {
-        return true;
-    }
-    helper(pattern.as_bytes(), text.as_bytes())
 }

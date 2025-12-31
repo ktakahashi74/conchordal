@@ -18,18 +18,22 @@ fn play_step(name, root, dur) {
 
     print(" -> " + name + " @ " + root + "Hz");
 
-    add_agent("bass_" + name, root, 0.38, bass_life);
+    let bass = add_agent("bass_" + name, root, 0.38, bass_life);
     wait(0.25);
 
+    let pads = [];
     for i in 0..3 {
-        spawn_agents("pad_" + name + "_" + i, pad_method, pad_life, 1, 0.14);
+        let pad = spawn_agents("pad_" + name + "_" + i, pad_method, pad_life, 1, 0.14);
+        pads.push(pad);
         wait(0.2);
     }
 
     wait(dur);
 
-    remove("bass_" + name);
-    remove("pad_" + name + "_*");
+    bass.remove();
+    for pad in pads {
+        pad.remove();
+    }
 }
 
 let chords = [

@@ -51,16 +51,19 @@ let life_pulse = #{
     perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
 };
 
+let voices_major = [];
 for i in 0..6 {
     // Probabilistically selects C, E, G (C Major Triad)
-    spawn_agents("voice_maj_" + i, method_major, life_pulse, 1, 0.2);
+    let voice = spawn_agents("voice_maj_" + i, method_major, life_pulse, 1, 0.2);
+    voices_major.push(voice);
     wait(0.8);
 }
 
 wait(2.0);
 // Clean up Phase 1 voices
-remove("voice_maj_0"); remove("voice_maj_1"); remove("voice_maj_2");
-remove("voice_maj_3"); remove("voice_maj_4"); remove("voice_maj_5");
+for v in voices_major {
+    v.remove();
+}
 
 // ==========================================
 // Phase 2: Common Overtone (Mirror / Minor)

@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::fs;
 use std::sync::{Arc, Mutex};
 
@@ -6,7 +5,10 @@ use anyhow::{Context, anyhow};
 use rhai::{Engine, EvalAltResult, FLOAT, Map, Position};
 
 use super::api::script_api as api;
-use super::scenario::{Action, Event, IndividualConfig, LifeConfig, Scenario, Scene, SpawnMethod};
+use super::scenario::{
+    Action, AgentHandle, CohortHandle, Event, IndividualConfig, LifeConfig, Scenario, Scene,
+    SpawnMethod, TagSelector, TargetRef,
+};
 
 const SCRIPT_PRELUDE: &str = r#"
 // Rhai-side helper to run blocks in parallel time branches
@@ -28,7 +30,9 @@ pub struct ScriptContext {
     pub scene_start_time: f32,
     pub time_stack: Vec<f32>,
     pub scenario: Scenario,
-    pub tag_counters: HashMap<String, usize>,
+    pub next_group_id: u64,
+    pub next_agent_id: u64,
+    pub next_event_order: u64,
 }
 
 impl Default for ScriptContext {
@@ -38,7 +42,9 @@ impl Default for ScriptContext {
             scene_start_time: 0.0,
             time_stack: Vec::new(),
             scenario: Scenario { scenes: Vec::new() },
-            tag_counters: HashMap::new(),
+            next_group_id: 1,
+            next_agent_id: 1,
+            next_event_order: 1,
         }
     }
 }
@@ -81,9 +87,12 @@ impl ScriptContext {
 
     fn push_event(&mut self, actions: Vec<Action>) {
         let rel_time = self.cursor - self.scene_start_time;
+        let order = self.next_event_order;
+        self.next_event_order += 1;
         let scene = self.current_scene_mut();
         scene.events.push(Event {
             time: rel_time,
+            order,
             repeat: None,
             actions,
         });
@@ -96,11 +105,17 @@ impl ScriptContext {
         life_map: Map,
         count: i64,
         amp: f32,
-    ) -> Result<(), Box<EvalAltResult>> {
+    ) -> Result<CohortHandle, Box<EvalAltResult>> {
         let method = Self::from_map::<SpawnMethod>(method_map, "SpawnMethod")?;
         let life = Self::from_map::<LifeConfig>(life_map, "LifeConfig")?;
-        let c = count.max(0) as usize;
+        let c = count.max(0).min(u32::MAX as i64) as u32;
+        let group_id = self.next_group_id;
+        self.next_group_id += 1;
+        let base_id = self.next_agent_id;
+        self.next_agent_id += u64::from(c);
         let action = Action::SpawnAgents {
+            group_id,
+            base_id,
             method,
             count: c,
             amp,
@@ -108,15 +123,30 @@ impl ScriptContext {
             tag: Some(tag.to_string()),
         };
         self.push_event(vec![action]);
-        Ok(())
+        Ok(CohortHandle {
+            tag: tag.to_string(),
+            group_id,
+            base_id,
+            count: c,
+        })
     }
 
-    pub fn spawn_default(&mut self, tag: &str, count: i64) -> Result<(), Box<EvalAltResult>> {
+    pub fn spawn_default(
+        &mut self,
+        tag: &str,
+        count: i64,
+    ) -> Result<CohortHandle, Box<EvalAltResult>> {
         let method = SpawnMethod::default();
         let life = LifeConfig::default();
-        let c = count.max(0) as usize;
+        let c = count.max(0).min(u32::MAX as i64) as u32;
         let amp = 0.18;
+        let group_id = self.next_group_id;
+        self.next_group_id += 1;
+        let base_id = self.next_agent_id;
+        self.next_agent_id += u64::from(c);
         let action = Action::SpawnAgents {
+            group_id,
+            base_id,
             method,
             count: c,
             amp,
@@ -124,7 +154,12 @@ impl ScriptContext {
             tag: Some(tag.to_string()),
         };
         self.push_event(vec![action]);
-        Ok(())
+        Ok(CohortHandle {
+            tag: tag.to_string(),
+            group_id,
+            base_id,
+            count: c,
+        })
     }
 
     pub fn add_agent(
@@ -133,7 +168,7 @@ impl ScriptContext {
         freq: f32,
         amp: f32,
         life_map: Map,
-    ) -> Result<(), Box<EvalAltResult>> {
+    ) -> Result<AgentHandle, Box<EvalAltResult>> {
         let life = Self::from_map::<LifeConfig>(life_map, "LifeConfig")?;
         let agent = IndividualConfig {
             freq,
@@ -141,37 +176,33 @@ impl ScriptContext {
             life,
             tag: Some(tag.to_string()),
         };
-        let action = Action::AddAgent { agent };
+        let id = self.next_agent_id;
+        self.next_agent_id += 1;
+        let action = Action::AddAgent { id, agent };
         self.push_event(vec![action]);
-        Ok(())
+        Ok(AgentHandle {
+            id,
+            tag: Some(tag.to_string()),
+        })
     }
 
-    pub fn set_freq(&mut self, target: &str, freq: f32) {
+    pub fn set_freq(&mut self, target: TargetRef, freq: f32) {
         self.push_event(vec![Action::SetFreq {
-            target: target.to_string(),
+            target,
             freq_hz: freq,
         }]);
     }
 
-    pub fn set_amp(&mut self, target: &str, amp: f32) {
-        self.push_event(vec![Action::SetAmp {
-            target: target.to_string(),
-            amp,
-        }]);
+    pub fn set_amp(&mut self, target: TargetRef, amp: f32) {
+        self.push_event(vec![Action::SetAmp { target, amp }]);
     }
 
-    pub fn set_drift(&mut self, target: &str, value: f32) {
-        self.push_event(vec![Action::SetDrift {
-            target: target.to_string(),
-            value,
-        }]);
+    pub fn set_drift(&mut self, target: TargetRef, value: f32) {
+        self.push_event(vec![Action::SetDrift { target, value }]);
     }
 
-    pub fn set_commitment(&mut self, target: &str, value: f32) {
-        self.push_event(vec![Action::SetCommitment {
-            target: target.to_string(),
-            value,
-        }]);
+    pub fn set_commitment(&mut self, target: TargetRef, value: f32) {
+        self.push_event(vec![Action::SetCommitment { target, value }]);
     }
 
     pub fn set_rhythm_vitality(&mut self, value: f32) {
@@ -199,15 +230,13 @@ impl ScriptContext {
         Ok(())
     }
 
-    pub fn remove(&mut self, target: &str) {
-        self.push_event(vec![Action::RemoveAgent {
-            target: target.to_string(),
-        }]);
+    pub fn remove(&mut self, target: TargetRef) {
+        self.push_event(vec![Action::RemoveAgent { target }]);
     }
 
-    pub fn release(&mut self, target: &str, sec: f32) {
+    pub fn release(&mut self, target: TargetRef, sec: f32) {
         self.push_event(vec![Action::ReleaseAgent {
-            target: target.to_string(),
+            target,
             release_sec: sec,
         }]);
     }
@@ -250,6 +279,31 @@ impl ScriptHost {
     fn create_engine(ctx: Arc<Mutex<ScriptContext>>) -> Engine {
         let mut engine = Engine::new();
         engine.on_print(|msg| println!("[rhai] {msg}"));
+        engine.register_type_with_name::<CohortHandle>("CohortHandle");
+        engine.register_type_with_name::<AgentHandle>("AgentHandle");
+        engine.register_type_with_name::<TagSelector>("TagSelector");
+        engine.register_iterator::<CohortHandle>();
+        engine.register_indexer_get(
+            |cohort: &mut CohortHandle, index: i64| -> Result<AgentHandle, Box<EvalAltResult>> {
+                if index < 0 {
+                    return Err(Box::new(EvalAltResult::ErrorIndexNotFound(
+                        index.into(),
+                        Position::NONE,
+                    )));
+                }
+                let idx = index as u32;
+                if idx >= cohort.count {
+                    return Err(Box::new(EvalAltResult::ErrorIndexNotFound(
+                        index.into(),
+                        Position::NONE,
+                    )));
+                }
+                Ok(AgentHandle {
+                    id: cohort.base_id + u64::from(idx),
+                    tag: Some(cohort.tag.clone()),
+                })
+            },
+        );
 
         let ctx_for_scene = ctx.clone();
         engine.register_fn("scene", move |name: &str| {
@@ -261,6 +315,11 @@ impl ScriptHost {
         engine.register_fn("wait", move |sec: FLOAT| {
             let mut ctx = ctx_for_wait.lock().expect("lock script context");
             api::wait(&mut ctx, sec);
+        });
+        let ctx_for_wait_int = ctx.clone();
+        engine.register_fn("wait", move |sec: i64| {
+            let mut ctx = ctx_for_wait_int.lock().expect("lock script context");
+            api::wait_int(&mut ctx, sec);
         });
 
         let ctx_for_push_time = ctx.clone();
@@ -283,7 +342,7 @@ impl ScriptHost {
                   life_map: Map,
                   count: i64,
                   amp: FLOAT|
-                  -> Result<(), Box<EvalAltResult>> {
+                  -> Result<CohortHandle, Box<EvalAltResult>> {
                 let mut ctx = ctx_for_spawn_agents.lock().expect("lock script context");
                 api::spawn_agents(&mut ctx, tag, method_map, life_map, count, amp)
             },
@@ -291,7 +350,7 @@ impl ScriptHost {
         let ctx_for_spawn_default = ctx.clone();
         engine.register_fn(
             "spawn_default",
-            move |tag: &str, count: i64| -> Result<(), Box<EvalAltResult>> {
+            move |tag: &str, count: i64| -> Result<CohortHandle, Box<EvalAltResult>> {
                 let mut ctx = ctx_for_spawn_default.lock().expect("lock script context");
                 api::spawn_default(&mut ctx, tag, count)
             },
@@ -303,35 +362,98 @@ impl ScriptHost {
                   freq: FLOAT,
                   amp: FLOAT,
                   life_map: Map|
-                  -> Result<(), Box<EvalAltResult>> {
+                  -> Result<AgentHandle, Box<EvalAltResult>> {
                 let mut ctx = ctx_for_add_agent.lock().expect("lock script context");
                 api::add_agent(&mut ctx, tag, freq, amp, life_map)
             },
         );
 
-        let ctx_for_set_freq = ctx.clone();
-        engine.register_fn("set_freq", move |target: &str, freq: FLOAT| {
-            let mut ctx = ctx_for_set_freq.lock().expect("lock script context");
-            api::set_freq(&mut ctx, target, freq);
+        let ctx_for_tag = ctx.clone();
+        engine.register_fn("tag", move |name: &str| {
+            let mut ctx = ctx_for_tag.lock().expect("lock script context");
+            api::tag(&mut ctx, name)
         });
 
-        let ctx_for_set_amp = ctx.clone();
-        engine.register_fn("set_amp", move |target: &str, amp: FLOAT| {
-            let mut ctx = ctx_for_set_amp.lock().expect("lock script context");
-            api::set_amp(&mut ctx, target, amp);
+        let ctx_for_set_freq_agent = ctx.clone();
+        engine.register_fn("set_freq", move |target: AgentHandle, freq: FLOAT| {
+            let mut ctx = ctx_for_set_freq_agent.lock().expect("lock script context");
+            api::set_freq_agent(&mut ctx, target, freq);
+        });
+        let ctx_for_set_freq_cohort = ctx.clone();
+        engine.register_fn("set_freq", move |target: CohortHandle, freq: FLOAT| {
+            let mut ctx = ctx_for_set_freq_cohort.lock().expect("lock script context");
+            api::set_freq_cohort(&mut ctx, target, freq);
+        });
+        let ctx_for_set_freq_tag = ctx.clone();
+        engine.register_fn("set_freq", move |target: TagSelector, freq: FLOAT| {
+            let mut ctx = ctx_for_set_freq_tag.lock().expect("lock script context");
+            api::set_freq_tag(&mut ctx, target, freq);
         });
 
-        let ctx_for_set_drift = ctx.clone();
-        engine.register_fn("set_drift", move |target: &str, value: FLOAT| {
-            let mut ctx = ctx_for_set_drift.lock().expect("lock script context");
-            api::set_drift(&mut ctx, target, value);
+        let ctx_for_set_amp_agent = ctx.clone();
+        engine.register_fn("set_amp", move |target: AgentHandle, amp: FLOAT| {
+            let mut ctx = ctx_for_set_amp_agent.lock().expect("lock script context");
+            api::set_amp_agent(&mut ctx, target, amp);
+        });
+        let ctx_for_set_amp_cohort = ctx.clone();
+        engine.register_fn("set_amp", move |target: CohortHandle, amp: FLOAT| {
+            let mut ctx = ctx_for_set_amp_cohort.lock().expect("lock script context");
+            api::set_amp_cohort(&mut ctx, target, amp);
+        });
+        let ctx_for_set_amp_tag = ctx.clone();
+        engine.register_fn("set_amp", move |target: TagSelector, amp: FLOAT| {
+            let mut ctx = ctx_for_set_amp_tag.lock().expect("lock script context");
+            api::set_amp_tag(&mut ctx, target, amp);
         });
 
-        let ctx_for_set_commitment = ctx.clone();
-        engine.register_fn("set_commitment", move |target: &str, value: FLOAT| {
-            let mut ctx = ctx_for_set_commitment.lock().expect("lock script context");
-            api::set_commitment(&mut ctx, target, value);
+        let ctx_for_set_drift_agent = ctx.clone();
+        engine.register_fn("set_drift", move |target: AgentHandle, value: FLOAT| {
+            let mut ctx = ctx_for_set_drift_agent.lock().expect("lock script context");
+            api::set_drift_agent(&mut ctx, target, value);
         });
+        let ctx_for_set_drift_cohort = ctx.clone();
+        engine.register_fn("set_drift", move |target: CohortHandle, value: FLOAT| {
+            let mut ctx = ctx_for_set_drift_cohort
+                .lock()
+                .expect("lock script context");
+            api::set_drift_cohort(&mut ctx, target, value);
+        });
+        let ctx_for_set_drift_tag = ctx.clone();
+        engine.register_fn("set_drift", move |target: TagSelector, value: FLOAT| {
+            let mut ctx = ctx_for_set_drift_tag.lock().expect("lock script context");
+            api::set_drift_tag(&mut ctx, target, value);
+        });
+
+        let ctx_for_set_commitment_agent = ctx.clone();
+        engine.register_fn(
+            "set_commitment",
+            move |target: AgentHandle, value: FLOAT| {
+                let mut ctx = ctx_for_set_commitment_agent
+                    .lock()
+                    .expect("lock script context");
+                api::set_commitment_agent(&mut ctx, target, value);
+            },
+        );
+        let ctx_for_set_commitment_cohort = ctx.clone();
+        engine.register_fn(
+            "set_commitment",
+            move |target: CohortHandle, value: FLOAT| {
+                let mut ctx = ctx_for_set_commitment_cohort
+                    .lock()
+                    .expect("lock script context");
+                api::set_commitment_cohort(&mut ctx, target, value);
+            },
+        );
+        let ctx_for_set_commitment_tag = ctx.clone();
+        engine.register_fn(
+            "set_commitment",
+            move |target: TagSelector, value: FLOAT| {
+                let mut ctx = ctx_for_set_commitment_tag
+                    .lock()
+                    .expect("lock script context");
+                api::set_commitment_tag(&mut ctx, target, value);
+            },
+        );
 
         let ctx_for_set_vitality = ctx.clone();
         engine.register_fn("set_rhythm_vitality", move |value: FLOAT| {
@@ -360,16 +482,36 @@ impl ScriptHost {
             },
         );
 
-        let ctx_for_remove = ctx.clone();
-        engine.register_fn("remove", move |target: &str| {
-            let mut ctx = ctx_for_remove.lock().expect("lock script context");
-            api::remove(&mut ctx, target);
+        let ctx_for_remove_agent = ctx.clone();
+        engine.register_fn("remove", move |target: AgentHandle| {
+            let mut ctx = ctx_for_remove_agent.lock().expect("lock script context");
+            api::remove_agent(&mut ctx, target);
+        });
+        let ctx_for_remove_cohort = ctx.clone();
+        engine.register_fn("remove", move |target: CohortHandle| {
+            let mut ctx = ctx_for_remove_cohort.lock().expect("lock script context");
+            api::remove_cohort(&mut ctx, target);
+        });
+        let ctx_for_remove_tag = ctx.clone();
+        engine.register_fn("remove", move |target: TagSelector| {
+            let mut ctx = ctx_for_remove_tag.lock().expect("lock script context");
+            api::remove_tag(&mut ctx, target);
         });
 
-        let ctx_for_release = ctx.clone();
-        engine.register_fn("release", move |target: &str, sec: FLOAT| {
-            let mut ctx = ctx_for_release.lock().expect("lock script context");
-            api::release(&mut ctx, target, sec);
+        let ctx_for_release_agent = ctx.clone();
+        engine.register_fn("release", move |target: AgentHandle, sec: FLOAT| {
+            let mut ctx = ctx_for_release_agent.lock().expect("lock script context");
+            api::release_agent(&mut ctx, target, sec);
+        });
+        let ctx_for_release_cohort = ctx.clone();
+        engine.register_fn("release", move |target: CohortHandle, sec: FLOAT| {
+            let mut ctx = ctx_for_release_cohort.lock().expect("lock script context");
+            api::release_cohort(&mut ctx, target, sec);
+        });
+        let ctx_for_release_tag = ctx.clone();
+        engine.register_fn("release", move |target: TagSelector, sec: FLOAT| {
+            let mut ctx = ctx_for_release_tag.lock().expect("lock script context");
+            api::release_tag(&mut ctx, target, sec);
         });
 
         let ctx_for_finish = ctx.clone();
@@ -474,7 +616,7 @@ mod tests {
         for ev in &break_ep.events {
             for action in &ev.actions {
                 match action {
-                    Action::AddAgent { agent } => {
+                    Action::AddAgent { agent, .. } => {
                         if agent.tag.as_deref() == Some("hit") {
                             assert_time_close(ev.time, 0.0);
                             has_hit = true;
@@ -531,7 +673,7 @@ mod tests {
         for ev in &intro.events {
             for action in &ev.actions {
                 match action {
-                    Action::AddAgent { agent } => match agent.tag.as_deref() {
+                    Action::AddAgent { agent, .. } => match agent.tag.as_deref() {
                         Some("pad") => pad_time = Some(ev.time),
                         Some("after") => after_time = Some(ev.time),
                         _ => {}
@@ -562,19 +704,22 @@ mod tests {
                 perceptual: #{ tau_fast: 0.5, tau_slow: 6.0, w_boredom: 0.8, w_familiarity: 0.2 }
             };
             spawn_agents("tag", method, life, 3, 0.25);
+            finish();
         "#,
         );
 
         let ep = scenario.scenes.first().expect("scene exists");
         assert_eq!(ep.name.as_deref(), Some("alpha"));
         assert_time_close(ep.start_time, 0.0);
-        assert_eq!(ep.events.len(), 1);
+        assert_eq!(ep.events.len(), 2);
 
         let ev = &ep.events[0];
         assert_time_close(ev.time, 1.2);
         assert_eq!(ev.actions.len(), 1);
         match &ev.actions[0] {
             Action::SpawnAgents {
+                group_id: _,
+                base_id: _,
                 count,
                 amp,
                 life,
@@ -635,14 +780,26 @@ mod tests {
 
     #[test]
     fn minimal_spawn_run_executes() {
-        let scenario = ScriptHost::load_script("tests/minimal_spawn_run.rhai")
+        let scenario = ScriptHost::load_script("samples/tests/minimal_spawn_run.rhai")
             .expect("minimal script should run");
         let scene = scenario.scenes.first().expect("scene exists");
-        let has_spawn = scene.events.iter().any(|ev| {
-            ev.actions
-                .iter()
-                .any(|a| matches!(a, Action::SpawnAgents { .. }))
-        });
+        let mut has_spawn = false;
+        for ev in &scene.events {
+            for action in &ev.actions {
+                if let Action::SpawnAgents {
+                    group_id,
+                    base_id,
+                    count,
+                    ..
+                } = action
+                {
+                    assert!(*group_id > 0);
+                    assert!(*base_id > 0);
+                    assert!(*count > 0);
+                    has_spawn = true;
+                }
+            }
+        }
         let has_finish = scene
             .events
             .iter()
@@ -653,20 +810,57 @@ mod tests {
 
     #[test]
     fn empty_life_map_executes() {
-        let scenario = ScriptHost::load_script("tests/empty_life_map_ok.rhai")
+        let scenario = ScriptHost::load_script("samples/tests/empty_life_map_ok.rhai")
             .expect("empty life map should run");
         let scene = scenario.scenes.first().expect("scene exists");
-        let has_add = scene.events.iter().any(|ev| {
-            ev.actions
-                .iter()
-                .any(|a| matches!(a, Action::AddAgent { .. }))
-        });
+        let mut has_add = false;
+        for ev in &scene.events {
+            for action in &ev.actions {
+                if let Action::AddAgent { id, .. } = action {
+                    assert!(*id > 0);
+                    has_add = true;
+                }
+            }
+        }
         let has_finish = scene
             .events
             .iter()
             .any(|ev| ev.actions.iter().any(|a| matches!(a, Action::Finish)));
         assert!(has_add, "expected add_agent event");
         assert!(has_finish, "expected finish event");
+    }
+
+    #[test]
+    fn handle_index_and_iter_executes() {
+        let scenario = ScriptHost::load_script("samples/tests/handle_index_and_iter.rhai")
+            .expect("handle iteration script should run");
+        assert!(!scenario.scenes.is_empty());
+    }
+
+    #[test]
+    fn tag_selector_ops_executes() {
+        let scenario = ScriptHost::load_script("samples/tests/tag_selector_ops.rhai")
+            .expect("tag selector script should run");
+        assert!(!scenario.scenes.is_empty());
+    }
+
+    #[test]
+    fn stable_order_same_time_is_monotonic() {
+        let scenario = ScriptHost::load_script("samples/tests/stable_order_same_time.rhai")
+            .expect("stable order script should run");
+        let scene = scenario.scenes.first().expect("scene exists");
+        let mut last_order = 0;
+        let mut freqs = Vec::new();
+        for ev in &scene.events {
+            assert!(ev.order > last_order);
+            last_order = ev.order;
+            for action in &ev.actions {
+                if let Action::SetFreq { freq_hz, .. } = action {
+                    freqs.push(*freq_hz);
+                }
+            }
+        }
+        assert_eq!(freqs, vec![200.0, 300.0]);
     }
 
     #[test]

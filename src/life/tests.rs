@@ -6,7 +6,8 @@ use super::individual::{
 use super::population::Population;
 use super::scenario::{
     Action, Event, FieldCoreConfig, HarmonicMode, IndividualConfig, LifeConfig,
-    ModulationCoreConfig, Scenario, Scene, SoundBodyConfig, TemporalCoreConfig, TimbreGenotype,
+    ModulationCoreConfig, Scenario, Scene, SoundBodyConfig, TargetRef, TemporalCoreConfig,
+    TimbreGenotype,
 };
 use crate::core::landscape::Landscape;
 use crate::core::landscape::LandscapeFrame;
@@ -68,21 +69,26 @@ fn test_population_add_remove_agent() {
         life: life_with_lifecycle(life),
         tag: Some("test_agent".to_string()),
     };
-    let action_add = Action::AddAgent { agent: agent_cfg };
+    let action_add = Action::AddAgent {
+        id: 1,
+        agent: agent_cfg,
+    };
 
     pop.apply_action(action_add, &landscape, None);
     assert_eq!(pop.individuals.len(), 1, "Agent should be added");
 
     // 3. Remove Agent
     let action_remove = Action::RemoveAgent {
-        target: "test_agent".to_string(),
+        target: TargetRef::Tag {
+            tag: "test_agent".to_string(),
+        },
     };
     pop.apply_action(action_remove, &landscape, None);
     assert_eq!(pop.individuals.len(), 0, "Agent should be removed");
 }
 
 #[test]
-fn wildcard_target_removes_matching_agents() {
+fn tag_selector_removes_matching_agents() {
     let mut pop = Population::new(48_000.0);
     let landscape = LandscapeFrame::default();
 
@@ -95,21 +101,37 @@ fn wildcard_target_removes_matching_agents() {
         freq: 440.0,
         amp: 0.5,
         life: life_with_lifecycle(life.clone()),
-        tag: Some("test_a".to_string()),
+        tag: Some("test_group".to_string()),
     };
     let agent_cfg2 = IndividualConfig {
         freq: 330.0,
         amp: 0.4,
         life: life_with_lifecycle(life),
-        tag: Some("test_b".to_string()),
+        tag: Some("test_group".to_string()),
     };
-    pop.apply_action(Action::AddAgent { agent: agent_cfg1 }, &landscape, None);
-    pop.apply_action(Action::AddAgent { agent: agent_cfg2 }, &landscape, None);
+    pop.apply_action(
+        Action::AddAgent {
+            id: 1,
+            agent: agent_cfg1,
+        },
+        &landscape,
+        None,
+    );
+    pop.apply_action(
+        Action::AddAgent {
+            id: 2,
+            agent: agent_cfg2,
+        },
+        &landscape,
+        None,
+    );
     assert_eq!(pop.individuals.len(), 2);
 
     pop.apply_action(
         Action::RemoveAgent {
-            target: "test_*".to_string(),
+            target: TargetRef::Tag {
+                tag: "test_group".to_string(),
+            },
         },
         &landscape,
         None,
@@ -117,7 +139,7 @@ fn wildcard_target_removes_matching_agents() {
     assert_eq!(
         pop.individuals.len(),
         0,
-        "Wildcard should remove both agents"
+        "Tag selector should remove both agents"
     );
 }
 
@@ -127,6 +149,7 @@ fn test_conductor_timing() {
     let action = Action::Finish; // Simple marker action
     let event = Event {
         time: 1.0,
+        order: 1,
         repeat: None,
         actions: vec![action],
     };
@@ -190,7 +213,14 @@ fn test_agent_lifecycle_decay_death() {
         life: life_with_lifecycle(life),
         tag: None,
     };
-    pop.apply_action(Action::AddAgent { agent: agent_cfg }, &landscape, None);
+    pop.apply_action(
+        Action::AddAgent {
+            id: 1,
+            agent: agent_cfg,
+        },
+        &landscape,
+        None,
+    );
 
     assert_eq!(pop.individuals.len(), 1, "Agent added");
 
@@ -325,11 +355,20 @@ fn set_freq_syncs_target_pitch_log2() {
         }),
         tag: Some("test_agent".to_string()),
     };
-    pop.apply_action(Action::AddAgent { agent: agent_cfg }, &landscape, None);
+    pop.apply_action(
+        Action::AddAgent {
+            id: 1,
+            agent: agent_cfg,
+        },
+        &landscape,
+        None,
+    );
 
     pop.apply_action(
         Action::SetFreq {
-            target: "test_agent".to_string(),
+            target: TargetRef::Tag {
+                tag: "test_agent".to_string(),
+            },
             freq_hz: 440.0,
         },
         &landscape,
@@ -357,7 +396,10 @@ fn population_spectrum_uses_log2_space() {
         tag: None,
     };
     pop.apply_action(
-        Action::AddAgent { agent: agent_cfg },
+        Action::AddAgent {
+            id: 1,
+            agent: agent_cfg,
+        },
         &LandscapeFrame::new(space.clone()),
         None,
     );

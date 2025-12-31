@@ -41,24 +41,24 @@ fn play_step(name, root, dur) {
     print("Playing: " + name);
 
     // ベース（アンカー）を配置
-    add_agent("bass_" + name, root, 0.6, bass_life);
+    let bass = add_agent("bass_" + name, root, 0.6, bass_life);
     
     // ランドスケープが形成されるのを少し待つ
     wait(0.2); 
 
     // パッドを配置（自律的に和音構成音を探させる）
     // ルートの少し上から配置し、GravityとConsonanceで落ち着かせる
-    add_agent("pad_" + name + "_1", root * 1.5, 0.3, pad_life); // 5th付近
-    add_agent("pad_" + name + "_2", root * 2.0, 0.3, pad_life); // Octave付近
-    add_agent("pad_" + name + "_3", root * 1.25, 0.3, pad_life); // 3rd付近 (Major/Minorは地形で決まる)
+    let pad_1 = add_agent("pad_" + name + "_1", root * 1.5, 0.3, pad_life); // 5th付近
+    let pad_2 = add_agent("pad_" + name + "_2", root * 2.0, 0.3, pad_life); // Octave付近
+    let pad_3 = add_agent("pad_" + name + "_3", root * 1.25, 0.3, pad_life); // 3rd付近 (Major/Minorは地形で決まる)
 
     wait(dur);
 
     // クリーンアップ
-    remove("bass_" + name);
-    remove("pad_" + name + "_1");
-    remove("pad_" + name + "_2");
-    remove("pad_" + name + "_3");
+    bass.remove();
+    pad_1.remove();
+    pad_2.remove();
+    pad_3.remove();
 }
 
 let chords = [

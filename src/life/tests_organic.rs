@@ -5,7 +5,7 @@ use crate::life::individual::{AgentMetadata, Individual, SoundBody};
 use crate::life::lifecycle::LifecycleConfig;
 use crate::life::perceptual::PerceptualConfig;
 use crate::life::population::Population;
-use crate::life::scenario::Action;
+use crate::life::scenario::{Action, TargetRef};
 use crate::life::scenario::{
     FieldCoreConfig, IndividualConfig, LifeConfig, ModulationCoreConfig, SoundBodyConfig,
     TemporalCoreConfig,
@@ -154,7 +154,14 @@ fn setfreq_sync_prevents_snapback() {
         }),
         tag: Some("setfreq_test".to_string()),
     };
-    pop.apply_action(Action::AddAgent { agent: agent_cfg }, &landscape, None);
+    pop.apply_action(
+        Action::AddAgent {
+            id: 1,
+            agent: agent_cfg,
+        },
+        &landscape,
+        None,
+    );
 
     let (old_target, old_freq) = {
         let agent = pop.individuals.first().expect("agent exists");
@@ -165,7 +172,9 @@ fn setfreq_sync_prevents_snapback() {
     let new_log = new_freq.log2();
     pop.apply_action(
         Action::SetFreq {
-            target: "setfreq_test".to_string(),
+            target: TargetRef::Tag {
+                tag: "setfreq_test".to_string(),
+            },
             freq_hz: new_freq,
         },
         &landscape,

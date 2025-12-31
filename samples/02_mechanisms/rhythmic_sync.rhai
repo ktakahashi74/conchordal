@@ -40,7 +40,7 @@ scene("Phase 1: Metronome");
 print("--- [1] Injecting strong beat (Delta band driver) ---");
 
 // 1. Place a strong kick (60 Hz) to shake the low/delta band and set a reference.
-add_agent("kick", 60.0, 0.5, #{ 
+let kick = add_agent("kick", 60.0, 0.5, #{ 
     body: #{ core: "sine" },
     temporal: #{
         core: "entrain",
@@ -88,7 +88,7 @@ print("--- [3] REMOVING THE METRONOME (Watch self-sustain) ---");
 
 // 3. Remove the parent kick; no external reference remains.
 // Agents try to keep rhythm by mutual coupling alone.
-remove("kick");
+kick.remove();
 
 // Success if the groove persists (with some wobble) after the leader vanishes.
 wait(6.0);

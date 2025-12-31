@@ -290,6 +290,7 @@ pub struct RepeatConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Event {
     pub time: f32,
+    pub order: u64,
     pub repeat: Option<RepeatConfig>,
     pub actions: Vec<Action>,
 }
@@ -387,6 +388,71 @@ impl IndividualConfig {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct CohortHandle {
+    pub tag: String,
+    pub group_id: u64,
+    pub base_id: u64,
+    pub count: u32,
+}
+
+#[derive(Debug, Clone)]
+pub struct CohortIter {
+    next: u32,
+    base_id: u64,
+    count: u32,
+    tag: Option<String>,
+}
+
+impl Iterator for CohortIter {
+    type Item = AgentHandle;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.next >= self.count {
+            return None;
+        }
+        let id = self.base_id + u64::from(self.next);
+        self.next += 1;
+        Some(AgentHandle {
+            id,
+            tag: self.tag.clone(),
+        })
+    }
+}
+
+impl IntoIterator for CohortHandle {
+    type Item = AgentHandle;
+    type IntoIter = CohortIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        CohortIter {
+            next: 0,
+            base_id: self.base_id,
+            count: self.count,
+            tag: Some(self.tag),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct AgentHandle {
+    pub id: u64,
+    pub tag: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct TagSelector {
+    pub tag: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum TargetRef {
+    AgentId { id: u64 },
+    Range { base_id: u64, count: u32 },
+    Tag { tag: String },
+}
+
 impl fmt::Display for IndividualConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let tag_str = self.tag.as_deref().unwrap_or("-");
@@ -463,28 +529,31 @@ mod tests {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Action {
     AddAgent {
+        id: u64,
         agent: IndividualConfig,
     },
     SpawnAgents {
+        group_id: u64,
+        base_id: u64,
+        count: u32,
         method: SpawnMethod,
-        count: usize,
         amp: f32,
         life: LifeConfig,
         tag: Option<String>,
     },
     RemoveAgent {
-        target: String,
+        target: TargetRef,
     },
     ReleaseAgent {
-        target: String,
+        target: TargetRef,
         release_sec: f32,
     },
     SetFreq {
-        target: String,
+        target: TargetRef,
         freq_hz: f32,
     },
     SetAmp {
-        target: String,
+        target: TargetRef,
         amp: f32,
     },
     SetRhythmVitality {
@@ -501,32 +570,46 @@ pub enum Action {
         limit: Option<u32>,
     },
     SetCommitment {
-        target: String,
+        target: TargetRef,
         value: f32,
     },
     SetDrift {
-        target: String,
+        target: TargetRef,
         value: f32,
     },
     Finish,
 }
 
+impl fmt::Display for TargetRef {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TargetRef::AgentId { id } => write!(f, "id={id}"),
+            TargetRef::Range { base_id, count } => {
+                write!(f, "range={base_id}..{}", base_id + u64::from(*count))
+            }
+            TargetRef::Tag { tag } => write!(f, "tag={tag}"),
+        }
+    }
+}
+
 impl fmt::Display for Action {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Action::AddAgent { agent } => write!(f, "AddAgent {}", agent),
+            Action::AddAgent { id, agent } => write!(f, "AddAgent id={id} {agent}"),
             Action::SpawnAgents {
                 method,
                 count,
                 amp,
                 life,
                 tag,
+                group_id,
+                base_id,
             } => {
                 let tag_str = tag.as_deref().unwrap_or("-");
                 write!(
                     f,
-                    "SpawnAgents tag={} count={} amp={:.3} {} {}",
-                    tag_str, count, amp, method, life
+                    "SpawnAgents tag={} group_id={} base_id={} count={} amp={:.3} {} {}",
+                    tag_str, group_id, base_id, count, amp, method, life
                 )
             }
             Action::RemoveAgent { target } => write!(f, "RemoveAgent target={}", target),

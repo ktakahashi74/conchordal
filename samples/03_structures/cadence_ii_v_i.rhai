@@ -17,12 +17,12 @@ fn play_chord(root, tag) {
     };
     let pad_method = #{ mode: "harmonicity", min_freq: root * 2.0, max_freq: root * 5.0 };
 
-    add_agent("bass_" + tag, root, 0.36, bass_life);
+    let bass = add_agent("bass_" + tag, root, 0.36, bass_life);
     wait(0.18);
-    spawn_agents("pad_" + tag, pad_method, pad_life, 3, 0.2);
+    let pads = spawn_agents("pad_" + tag, pad_method, pad_life, 3, 0.2);
     wait(1.4);
-    remove("bass_" + tag);
-    remove("pad_" + tag);
+    bass.remove();
+    pads.remove();
 }
 
 scene("ii");

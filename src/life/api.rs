@@ -1,6 +1,7 @@
 use rhai::plugin::*;
 use rhai::{EvalAltResult, FLOAT, INT, Map, Module};
 
+use super::scenario::{AgentHandle, CohortHandle, TagSelector, TargetRef};
 use super::scripting::ScriptContext;
 
 #[export_module]
@@ -14,6 +15,12 @@ pub mod script_api {
 
     /// Advance the global time cursor by `sec` seconds.
     pub fn wait(ctx: &mut ScriptContext, sec: FLOAT) {
+        ctx.wait(sec as f32);
+    }
+
+    /// Advance the global time cursor by `sec` seconds.
+    #[rhai_fn(name = "wait")]
+    pub fn wait_int(ctx: &mut ScriptContext, sec: INT) {
         ctx.wait(sec as f32);
     }
 
@@ -53,7 +60,7 @@ pub mod script_api {
         life_map: Map,
         count: i64,
         amp: FLOAT,
-    ) -> Result<(), Box<EvalAltResult>> {
+    ) -> Result<CohortHandle, Box<EvalAltResult>> {
         ctx.spawn(tag, method_map, life_map, count, amp as f32)
     }
 
@@ -63,7 +70,7 @@ pub mod script_api {
         ctx: &mut ScriptContext,
         tag: &str,
         count: i64,
-    ) -> Result<(), Box<EvalAltResult>> {
+    ) -> Result<CohortHandle, Box<EvalAltResult>> {
         ctx.spawn_default(tag, count)
     }
 
@@ -77,28 +84,90 @@ pub mod script_api {
         freq: FLOAT,
         amp: FLOAT,
         life_map: Map,
-    ) -> Result<(), Box<EvalAltResult>> {
+    ) -> Result<AgentHandle, Box<EvalAltResult>> {
         ctx.add_agent(tag, freq as f32, amp as f32, life_map)
     }
 
+    /// Create a dynamic selector for a tag.
+    pub fn tag(_ctx: &mut ScriptContext, name: &str) -> TagSelector {
+        TagSelector {
+            tag: name.to_string(),
+        }
+    }
+
+    fn target_from_agent(agent: AgentHandle) -> TargetRef {
+        TargetRef::AgentId { id: agent.id }
+    }
+
+    fn target_from_cohort(cohort: CohortHandle) -> TargetRef {
+        TargetRef::Range {
+            base_id: cohort.base_id,
+            count: cohort.count,
+        }
+    }
+
+    fn target_from_tag(selector: TagSelector) -> TargetRef {
+        TargetRef::Tag { tag: selector.tag }
+    }
+
     /// Set an agent's fundamental frequency in Hz.
-    pub fn set_freq(ctx: &mut ScriptContext, target: &str, freq: FLOAT) {
-        ctx.set_freq(target, freq as f32);
+    pub fn set_freq_agent(ctx: &mut ScriptContext, target: AgentHandle, freq: FLOAT) {
+        ctx.set_freq(target_from_agent(target), freq as f32);
+    }
+
+    /// Set a cohort's fundamental frequency in Hz.
+    pub fn set_freq_cohort(ctx: &mut ScriptContext, target: CohortHandle, freq: FLOAT) {
+        ctx.set_freq(target_from_cohort(target), freq as f32);
+    }
+
+    /// Set a tag selector's fundamental frequency in Hz.
+    pub fn set_freq_tag(ctx: &mut ScriptContext, target: TagSelector, freq: FLOAT) {
+        ctx.set_freq(target_from_tag(target), freq as f32);
     }
 
     /// Set an agent's amplitude (linear gain).
-    pub fn set_amp(ctx: &mut ScriptContext, target: &str, amp: FLOAT) {
-        ctx.set_amp(target, amp as f32);
+    pub fn set_amp_agent(ctx: &mut ScriptContext, target: AgentHandle, amp: FLOAT) {
+        ctx.set_amp(target_from_agent(target), amp as f32);
+    }
+
+    /// Set a cohort's amplitude (linear gain).
+    pub fn set_amp_cohort(ctx: &mut ScriptContext, target: CohortHandle, amp: FLOAT) {
+        ctx.set_amp(target_from_cohort(target), amp as f32);
+    }
+
+    /// Set a tag selector's amplitude (linear gain).
+    pub fn set_amp_tag(ctx: &mut ScriptContext, target: TagSelector, amp: FLOAT) {
+        ctx.set_amp(target_from_tag(target), amp as f32);
     }
 
     /// Set an agent's drift parameter.
-    pub fn set_drift(ctx: &mut ScriptContext, target: &str, value: FLOAT) {
-        ctx.set_drift(target, value as f32);
+    pub fn set_drift_agent(ctx: &mut ScriptContext, target: AgentHandle, value: FLOAT) {
+        ctx.set_drift(target_from_agent(target), value as f32);
+    }
+
+    /// Set a cohort's drift parameter.
+    pub fn set_drift_cohort(ctx: &mut ScriptContext, target: CohortHandle, value: FLOAT) {
+        ctx.set_drift(target_from_cohort(target), value as f32);
+    }
+
+    /// Set a tag selector's drift parameter.
+    pub fn set_drift_tag(ctx: &mut ScriptContext, target: TagSelector, value: FLOAT) {
+        ctx.set_drift(target_from_tag(target), value as f32);
     }
 
     /// Set an agent's commitment parameter.
-    pub fn set_commitment(ctx: &mut ScriptContext, target: &str, value: FLOAT) {
-        ctx.set_commitment(target, value as f32);
+    pub fn set_commitment_agent(ctx: &mut ScriptContext, target: AgentHandle, value: FLOAT) {
+        ctx.set_commitment(target_from_agent(target), value as f32);
+    }
+
+    /// Set a cohort's commitment parameter.
+    pub fn set_commitment_cohort(ctx: &mut ScriptContext, target: CohortHandle, value: FLOAT) {
+        ctx.set_commitment(target_from_cohort(target), value as f32);
+    }
+
+    /// Set a tag selector's commitment parameter.
+    pub fn set_commitment_tag(ctx: &mut ScriptContext, target: TagSelector, value: FLOAT) {
+        ctx.set_commitment(target_from_tag(target), value as f32);
     }
 
     /// Set the global rhythm vitality (affects oscillatory dynamics).
@@ -126,14 +195,34 @@ pub mod script_api {
         ctx.set_harmonicity(map)
     }
 
-    /// Remove an agent (by tag or id) immediately.
-    pub fn remove(ctx: &mut ScriptContext, target: &str) {
-        ctx.remove(target);
+    /// Remove agents immediately.
+    pub fn remove_agent(ctx: &mut ScriptContext, target: AgentHandle) {
+        ctx.remove(target_from_agent(target));
     }
 
-    /// Release an agent over `sec` seconds.
-    pub fn release(ctx: &mut ScriptContext, target: &str, sec: FLOAT) {
-        ctx.release(target, sec as f32);
+    /// Remove a cohort immediately.
+    pub fn remove_cohort(ctx: &mut ScriptContext, target: CohortHandle) {
+        ctx.remove(target_from_cohort(target));
+    }
+
+    /// Remove a tag selector immediately.
+    pub fn remove_tag(ctx: &mut ScriptContext, target: TagSelector) {
+        ctx.remove(target_from_tag(target));
+    }
+
+    /// Release agents over `sec` seconds.
+    pub fn release_agent(ctx: &mut ScriptContext, target: AgentHandle, sec: FLOAT) {
+        ctx.release(target_from_agent(target), sec as f32);
+    }
+
+    /// Release a cohort over `sec` seconds.
+    pub fn release_cohort(ctx: &mut ScriptContext, target: CohortHandle, sec: FLOAT) {
+        ctx.release(target_from_cohort(target), sec as f32);
+    }
+
+    /// Release a tag selector over `sec` seconds.
+    pub fn release_tag(ctx: &mut ScriptContext, target: TagSelector, sec: FLOAT) {
+        ctx.release(target_from_tag(target), sec as f32);
     }
 
     /// Finish the scenario and stop playback.

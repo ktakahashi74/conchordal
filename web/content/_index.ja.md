@@ -3,9 +3,12 @@ title = "Conchordal"
 description = "A bio-acoustic instrument for generative composition"
 +++
 
-音楽とは音の振動とそれを受け取る認知システムとの間に生じる劇です。
 
-Conchordalは聴覚認知そのものをランドスケープとして再構築します。
+Conchordalは生体模倣の音響エコシステム。
 
-ここでは音は生命として自ら協和を見つけ出します。
+音は記号ではなく、認知という大地の上で、呼吸する生命として響き合います。
+
+なぜそこにその音なのか。失われた音の重力が、ふたたび導きます。
+
+[→ Manifesto](/manifesto/)
 

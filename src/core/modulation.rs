@@ -1,5 +1,7 @@
-use std::f32::consts::{PI, TAU};
+use std::f32::consts::TAU;
 use tracing::debug;
+
+use crate::core::phase::wrap_pm_pi;
 
 fn smoothstep(lo: f32, hi: f32, x: f32) -> f32 {
     if hi <= lo {
@@ -80,14 +82,6 @@ impl AdaptiveRhythm {
         }
     }
 
-    fn wrap_to_pi(phi: f32) -> f32 {
-        let mut v = (phi + PI).rem_euclid(TAU) - PI;
-        if v < -PI {
-            v += TAU;
-        }
-        v
-    }
-
     fn template(&self, phi: f32) -> f32 {
         let c = phi.cos();
         if c <= 0.0 { 0.0 } else { c.powf(self.shape_p) }
@@ -108,7 +102,7 @@ impl AdaptiveRhythm {
         let v = vitality.clamp(0.0, 1.0);
         let u = u.clamp(0.0, 1.0);
 
-        let phi_wrapped = Self::wrap_to_pi(self.phi);
+        let phi_wrapped = wrap_pm_pi(self.phi);
         let g = self.template(phi_wrapped);
         let y = self.mag * g;
         let r = u - y;
@@ -137,7 +131,7 @@ impl AdaptiveRhythm {
         self.omega = self.omega.clamp(min_omega, max_omega);
 
         self.phi += (self.omega + eta_phi * grad) * dt;
-        let phi_out = Self::wrap_to_pi(self.phi);
+        let phi_out = wrap_pm_pi(self.phi);
 
         RhythmBand {
             phase: phi_out,
@@ -233,7 +227,7 @@ impl RhythmEngine {
 
     pub fn update(&mut self, dt: f32, u_theta: f32, u_delta: f32, vitality: f32) -> NeuralRhythms {
         let phi_before = self.theta.phi;
-        let phase_before = AdaptiveRhythm::wrap_to_pi(phi_before);
+        let phase_before = wrap_pm_pi(phi_before);
         let omega_before = self.theta.omega;
         let tau = 1.0;
         let a = (-dt / tau).exp();
@@ -251,7 +245,7 @@ impl RhythmEngine {
         if self.onset_timer <= 0.0 && self.prev_u_theta < onset_th && u_theta >= onset_th {
             let denom = (u_theta - self.prev_u_theta).max(1e-6);
             let frac = ((onset_th - self.prev_u_theta) / denom).clamp(0.0, 1.0);
-            onset_phase = AdaptiveRhythm::wrap_to_pi(phi_before + omega_before * dt * frac);
+            onset_phase = wrap_pm_pi(phi_before + omega_before * dt * frac);
             self.onset_sum_cos += onset_phase.cos();
             self.onset_sum_sin += onset_phase.sin();
             self.onset_count += 1;
@@ -281,7 +275,7 @@ impl RhythmEngine {
             }
             self.time_since_last_onset = 0.0;
             theta = RhythmBand {
-                phase: AdaptiveRhythm::wrap_to_pi(self.theta.phi),
+                phase: wrap_pm_pi(self.theta.phi),
                 freq_hz: self.theta.omega / TAU,
                 mag: self.theta.mag,
                 alpha: self.theta.alpha,
@@ -291,10 +285,7 @@ impl RhythmEngine {
         let delta = self.delta.update(dt, u_delta, vitality);
         let env_wave = 0.5 + 0.5 * delta.phase.cos();
         let delta_conf = (delta.mag * delta.alpha).clamp(0.0, 1.0);
-        let min_depth = 0.15;
-        let mag_scale = smoothstep(0.02, 0.08, delta.mag);
-        let depth = (min_depth + (1.0 - min_depth) * delta_conf) * (0.2 + 0.8 * mag_scale);
-        let env_open = (1.0 - depth * (1.0 - env_wave)).clamp(0.0, 1.0);
+        let env_open = compute_env_open(delta.phase, delta.mag, delta.alpha);
         let env_level = u_delta.clamp(0.0, 1.0);
 
         self.debug_timer += dt;
@@ -370,6 +361,26 @@ impl RhythmEngine {
 
     pub fn last(&self) -> NeuralRhythms {
         self.last
+    }
+}
+
+fn compute_env_open(delta_phase: f32, delta_mag: f32, delta_alpha: f32) -> f32 {
+    let env_wave = 0.5 + 0.5 * delta_phase.cos();
+    let delta_conf = (delta_mag * delta_alpha).clamp(0.0, 1.0);
+    let min_depth = 0.15;
+    let mag_scale = smoothstep(0.02, 0.08, delta_mag);
+    let depth = (min_depth + (1.0 - min_depth) * delta_conf) * (0.2 + 0.8 * mag_scale);
+    (1.0 - depth * (1.0 - env_wave)).clamp(0.0, 1.0)
+}
+
+impl NeuralRhythms {
+    pub fn advance_in_place(&mut self, dt: f32) {
+        if dt <= 0.0 {
+            return;
+        }
+        self.theta.phase = wrap_pm_pi(self.theta.phase + TAU * self.theta.freq_hz * dt);
+        self.delta.phase = wrap_pm_pi(self.delta.phase + TAU * self.delta.freq_hz * dt);
+        self.env_open = compute_env_open(self.delta.phase, self.delta.mag, self.delta.alpha);
     }
 }
 
@@ -522,6 +533,70 @@ mod tests {
         assert!(
             (freq - 8.0).abs() < 0.5,
             "expected theta near 8Hz after step, got {freq}"
+        );
+    }
+
+    #[test]
+    fn neuralrhythms_advance_wraps_phase() {
+        let mut rhythms = NeuralRhythms {
+            theta: RhythmBand {
+                phase: 0.0,
+                freq_hz: 1.0,
+                mag: 1.0,
+                alpha: 1.0,
+                beta: 0.0,
+            },
+            delta: RhythmBand {
+                phase: 0.0,
+                freq_hz: 1.0,
+                mag: 1.0,
+                alpha: 1.0,
+                beta: 0.0,
+            },
+            env_open: 1.0,
+            env_level: 0.5,
+        };
+        for _ in 0..4 {
+            rhythms.advance_in_place(0.25);
+        }
+        assert!(
+            rhythms.theta.phase.abs() < 1e-4,
+            "theta phase should wrap to 0"
+        );
+        assert!(
+            rhythms.delta.phase.abs() < 1e-4,
+            "delta phase should wrap to 0"
+        );
+    }
+
+    #[test]
+    fn neuralrhythms_env_open_updates_with_delta_phase() {
+        let mut rhythms = NeuralRhythms {
+            theta: RhythmBand {
+                phase: 0.0,
+                freq_hz: 1.0,
+                mag: 1.0,
+                alpha: 1.0,
+                beta: 0.0,
+            },
+            delta: RhythmBand {
+                phase: 0.0,
+                freq_hz: 1.0,
+                mag: 1.0,
+                alpha: 1.0,
+                beta: 0.0,
+            },
+            env_open: 1.0,
+            env_level: 0.5,
+        };
+        let env_before = rhythms.env_open;
+        rhythms.advance_in_place(0.1);
+        let env_after = rhythms.env_open;
+        assert!(env_after.is_finite());
+        assert!(env_after >= 0.0 && env_after <= 1.0);
+        assert!(
+            (env_before - env_after).abs() > 1e-4,
+            "env_open should respond to delta phase advance"
         );
     }
 }

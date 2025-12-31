@@ -453,6 +453,7 @@ impl NsgtKernelLog2 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::phase::wrap_pm_pi;
     use crate::core::utils::{brown_noise, pink_noise, white_noise};
     use approx::assert_relative_eq;
 
@@ -467,18 +468,6 @@ mod tests {
         (0..n)
             .map(|i| (2.0 * std::f32::consts::PI * f * (i as f32) / fs).sin())
             .collect()
-    }
-
-    fn wrap_to_pi(mut x: f32) -> f32 {
-        use core::f32::consts::PI;
-        let two_pi = 2.0 * PI;
-        while x <= -PI {
-            x += two_pi;
-        }
-        while x > PI {
-            x -= two_pi;
-        }
-        x
     }
 
     fn kernel_sidelobe_db(nfft: usize, sparse: &[(usize, Complex32)]) -> f32 {
@@ -869,7 +858,7 @@ mod tests {
         let d = c1 * c0.conj();
         let phase = d.im.atan2(d.re);
         let expected = -omega * delta_f;
-        let err = wrap_to_pi(phase - expected).abs();
+        let err = wrap_pm_pi(phase - expected).abs();
 
         assert!(err < 1e-2, "phase error too large: {err}");
     }

@@ -837,6 +837,102 @@ fn kuramoto_normal_attacks_fire_and_lock() {
 }
 
 #[test]
+fn kuramoto_attack_count_invariant_to_chunking() {
+    fn run_with_chunk(chunk: usize) -> u32 {
+        let mut core = KuramotoCore {
+            energy: 1.0,
+            basal_cost: 0.0,
+            action_cost: 0.0,
+            recharge_rate: 0.0,
+            sensitivity: Sensitivity {
+                delta: 1.0,
+                theta: 1.0,
+                alpha: 1.0,
+                beta: 1.0,
+            },
+            rhythm_phase: std::f32::consts::TAU - 0.01,
+            rhythm_freq: 2.0,
+            omega_rad: std::f32::consts::TAU * 2.0,
+            phase_offset: 0.0,
+            debug_id: 3,
+            env_level: 1.0,
+            state: ArticulationState::Idle,
+            attack_step: 1.0,
+            decay_factor: 0.2,
+            retrigger: true,
+            noise_1f: PinkNoise::new(11, 0.0),
+            base_sigma: 0.0,
+            beta_gain: 0.0,
+            k_omega: 0.0,
+            bootstrap_timer: 0.0,
+            env_open_threshold: 0.55,
+            env_level_min: 0.02,
+            mag_threshold: 0.01,
+            alpha_threshold: 0.01,
+            beta_threshold: 0.9,
+            dbg_accum_time: -1000.0,
+            dbg_wraps: 0,
+            dbg_attacks: 0,
+            dbg_boot_attacks: 0,
+            dbg_attack_logs_left: 0,
+            dbg_attack_count_normal: 0,
+            dbg_attack_sum_abs_diff: 0.0,
+            dbg_attack_sum_cos: 0.0,
+            dbg_attack_sum_sin: 0.0,
+            dbg_fail_env: 0,
+            dbg_fail_env_level: 0,
+            dbg_fail_mag: 0,
+            dbg_fail_alpha: 0,
+            dbg_fail_beta: 0,
+            dbg_last_env_open: 0.0,
+            dbg_last_env_level: 0.0,
+            dbg_last_theta_mag: 0.0,
+            dbg_last_theta_alpha: 0.0,
+            dbg_last_theta_beta: 0.0,
+            dbg_last_k_eff: 0.0,
+        };
+
+        let mut rhythms = NeuralRhythms {
+            theta: RhythmBand {
+                phase: 0.0,
+                freq_hz: 2.0,
+                mag: 1.0,
+                alpha: 1.0,
+                beta: 0.0,
+            },
+            delta: RhythmBand {
+                phase: 0.0,
+                freq_hz: 0.0,
+                mag: 0.0,
+                alpha: 0.0,
+                beta: 0.0,
+            },
+            env_open: 1.0,
+            env_level: 1.0,
+        };
+
+        let fs = 1000.0;
+        let dt = 1.0 / fs;
+        let total_samples = (fs * 2.0) as usize;
+        let mut idx = 0;
+        while idx < total_samples {
+            let end = (idx + chunk).min(total_samples);
+            for _ in idx..end {
+                core.process(0.0, &rhythms, dt, 1.0);
+                rhythms.advance_in_place(dt);
+            }
+            idx = end;
+        }
+        core.dbg_attack_count_normal
+    }
+
+    let a = run_with_chunk(1);
+    let b = run_with_chunk(64);
+    assert_eq!(a, b, "attack count should be chunk-size invariant");
+    assert!(a > 0, "expected at least one attack");
+}
+
+#[test]
 fn sequenced_core_stops_after_duration() {
     let mut core = SequencedCore {
         timer: 0.0,

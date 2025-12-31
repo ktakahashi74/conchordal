@@ -1,6 +1,7 @@
 use crate::core::landscape::Landscape;
 use crate::core::log2space::Log2Space;
 use crate::core::modulation::NeuralRhythms;
+use crate::core::phase::{angle_diff_pm_pi, wrap_0_tau};
 use crate::core::utils::pink_noise_tick;
 use crate::life::lifecycle::LifecycleConfig;
 use crate::life::perceptual::{FeaturesNow, PerceptualContext};
@@ -252,25 +253,6 @@ pub struct KuramotoCore {
     pub dbg_last_k_eff: f32,
 }
 
-fn wrap_phase(mut phi: f32) -> f32 {
-    phi = phi.rem_euclid(TAU);
-    if phi < 0.0 {
-        phi += TAU;
-    }
-    phi
-}
-
-fn angle_diff(target: f32, current: f32) -> f32 {
-    let mut diff = target - current;
-    while diff > PI {
-        diff -= TAU;
-    }
-    while diff < -PI {
-        diff += TAU;
-    }
-    diff
-}
-
 impl TemporalCore for KuramotoCore {
     fn process(
         &mut self,
@@ -329,8 +311,8 @@ impl TemporalCore for KuramotoCore {
         let sigma = self.base_sigma * (1.0 + self.beta_gain * theta_beta);
         let noise = self.noise_1f.sample() * sigma;
 
-        let target = wrap_phase(theta_phase + self.phase_offset);
-        let diff = angle_diff(target, wrap_phase(self.rhythm_phase));
+        let target = wrap_0_tau(theta_phase + self.phase_offset);
+        let diff = angle_diff_pm_pi(target, wrap_0_tau(self.rhythm_phase));
         let d_phi = self.omega_rad + noise + k_eff * diff.sin();
         self.rhythm_phase += d_phi * dt;
 
@@ -358,9 +340,9 @@ impl TemporalCore for KuramotoCore {
                 self.dbg_fail_beta += 1;
             }
 
-            let target_phase = wrap_phase(theta_phase + self.phase_offset);
-            let agent_phase = wrap_phase(self.rhythm_phase);
-            let phase_err_at_attack = angle_diff(target_phase, agent_phase);
+            let target_phase = wrap_0_tau(theta_phase + self.phase_offset);
+            let agent_phase = wrap_0_tau(self.rhythm_phase);
+            let phase_err_at_attack = angle_diff_pm_pi(target_phase, agent_phase);
 
             let mut attack = false;
             let mut boot_attack = false;
@@ -1380,7 +1362,7 @@ impl AudioAgent for Individual {
             return;
         }
         let dt_per_sample = dt_sec / buffer.len() as f32;
-        let rhythms = landscape.rhythm;
+        let mut rhythms = landscape.rhythm;
         for sample in buffer.iter_mut() {
             self.update_field_target(&rhythms, dt_per_sample, landscape);
             let consonance = landscape.evaluate_pitch01(self.body.base_freq_hz());
@@ -1395,11 +1377,13 @@ impl AudioAgent for Individual {
             signal.amplitude *= self.release_gain;
             signal.is_active = signal.is_active && signal.amplitude > 0.0;
             self.last_signal = signal;
-            if !signal.is_active {
-                continue;
+            if signal.is_active {
+                self.body
+                    .articulate_wave(sample, fs, dt_per_sample, &signal);
+            } else {
+                *sample = 0.0;
             }
-            self.body
-                .articulate_wave(sample, fs, dt_per_sample, &signal);
+            rhythms.advance_in_place(dt_per_sample);
         }
     }
 

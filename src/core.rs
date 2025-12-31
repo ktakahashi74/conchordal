@@ -13,6 +13,7 @@ pub mod nsgt;
 pub mod nsgt_kernel;
 pub mod nsgt_rt;
 pub mod peak_extraction;
+pub mod phase;
 pub mod roughness_kernel;
 pub mod roughness_worker;
 pub mod stream;

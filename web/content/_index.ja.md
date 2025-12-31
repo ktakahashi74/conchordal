@@ -10,5 +10,5 @@ Conchordalは生体模倣の音響エコシステム。
 
 なぜそこにその音なのか。失われた音の重力が、ふたたび導きます。
 
-[→ Manifesto](/manifesto/)
+[→ Manifesto](/ja/manifesto/)
 

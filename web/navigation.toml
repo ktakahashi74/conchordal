@@ -8,7 +8,7 @@ path = "/manifesto"
 name = "Technote"
 path = "/technote"
 [[item]]
-name = "Documentation"
+name = "Docs"
 path = "/docs"
 [[item]]
 name = "GitHub"

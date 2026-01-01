@@ -82,7 +82,7 @@ let life = #{
 };
 
 for i in 0..5 {
-    let swarm = spawn_agents("swarm_" + i, method, life, 1, 0.15);
+    let swarm = spawn("swarm_" + i, 1, #{ amp: 0.15, method: method, life: life });
     swarm.set_commitment(0.56); // hop loosely
     wait(0.5);
 }

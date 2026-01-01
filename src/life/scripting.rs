@@ -2,32 +2,81 @@ use std::fs;
 use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, anyhow};
-use rhai::{Engine, EvalAltResult, FLOAT, Map, Position};
+use rhai::{
+    Dynamic, Engine, EvalAltResult, EvalContext, Expression, FLOAT, Map, NativeCallContext,
+    Position,
+};
+use serde::Serialize;
 
 use super::api::script_api as api;
+use super::api::{
+    add_agent_at, set_agent_at, set_amp_agent, set_amp_cohort, set_amp_tag, set_cohort_at,
+    set_commitment_agent, set_commitment_cohort, set_commitment_tag, set_drift_agent,
+    set_drift_cohort, set_drift_tag, set_freq_agent, set_freq_cohort, set_freq_tag, set_tag_at,
+    set_tag_str_at, spawn_agents_at, spawn_min_at, spawn_with_opts_at,
+};
 use super::scenario::{
-    Action, AgentHandle, CohortHandle, Event, IndividualConfig, LifeConfig, Scenario, Scene,
-    SpawnMethod, TagSelector, TargetRef,
+    Action, AgentHandle, CohortHandle, IndividualConfig, LifeConfig, Scenario, SceneMarker,
+    SpawnMethod, TagSelector, TargetRef, TimedEvent,
 };
 
 const SCRIPT_PRELUDE: &str = r#"
-// Rhai-side helper to run blocks in parallel time branches
 fn parallel(callback) {
+    after(0.0, callback);
+}
+
+fn after(dt, callback) {
     push_time();
+    wait(dt);
     callback.call();
     pop_time();
 }
-"#;
 
-fn rewrite_minimal_spawn(src: &str) -> String {
-    let out = src.replace("spawn (", "spawn_default(");
-    out.replace("spawn(", "spawn_default(")
+fn at(t, callback) {
+    push_time();
+    set_time(t);
+    callback.call();
+    pop_time();
 }
+
+fn repeat(n, callback) {
+    let i = 0;
+    while i < n {
+        callback.call(i);
+        i += 1;
+    }
+}
+
+fn every(interval, count, callback) {
+    let i = 0;
+    while i < count {
+        push_time();
+        wait(i * interval);
+        callback.call(i);
+        pop_time();
+        i += 1;
+    }
+}
+
+fn spawn_every(tag, count, interval, opts) {
+    let i = 0;
+    while i < count {
+        push_time();
+        wait(i * interval);
+        spawn(tag, 1, opts);
+        pop_time();
+        i += 1;
+    }
+}
+
+fn spawn_every(tag, count, interval) {
+    spawn_every(tag, count, interval, #{});
+}
+"#;
 
 #[derive(Debug, Clone)]
 pub struct ScriptContext {
     pub cursor: f32,
-    pub scene_start_time: f32,
     pub time_stack: Vec<f32>,
     pub scenario: Scenario,
     pub next_group_id: u64,
@@ -39,9 +88,12 @@ impl Default for ScriptContext {
     fn default() -> Self {
         Self {
             cursor: 0.0,
-            scene_start_time: 0.0,
             time_stack: Vec::new(),
-            scenario: Scenario { scenes: Vec::new() },
+            scenario: Scenario {
+                scene_markers: Vec::new(),
+                events: Vec::new(),
+                duration_sec: 0.0,
+            },
             next_group_id: 1,
             next_agent_id: 1,
             next_event_order: 1,
@@ -50,29 +102,22 @@ impl Default for ScriptContext {
 }
 
 impl ScriptContext {
-    fn current_scene_mut(&mut self) -> &mut Scene {
-        if self.scenario.scenes.is_empty() {
-            self.scenario.scenes.push(Scene {
-                name: None,
-                start_time: self.scene_start_time,
-                events: Vec::new(),
-            });
-        }
-        self.scenario.scenes.last_mut().expect("scene exists")
-    }
-
     pub fn scene(&mut self, name: &str) {
-        let scene = Scene {
-            name: Some(name.to_string()),
-            start_time: self.cursor,
-            events: Vec::new(),
-        };
-        self.scene_start_time = self.cursor;
-        self.scenario.scenes.push(scene);
+        let order = self.next_event_order;
+        self.next_event_order += 1;
+        self.scenario.scene_markers.push(SceneMarker {
+            name: name.to_string(),
+            time: self.cursor,
+            order,
+        });
     }
 
     pub fn wait(&mut self, sec: f32) {
         self.cursor += sec;
+    }
+
+    pub fn set_time(&mut self, time_sec: f32) {
+        self.cursor = time_sec;
     }
 
     pub fn push_time(&mut self) {
@@ -85,15 +130,12 @@ impl ScriptContext {
         }
     }
 
-    fn push_event(&mut self, actions: Vec<Action>) {
-        let rel_time = self.cursor - self.scene_start_time;
+    fn push_event(&mut self, time_sec: f32, actions: Vec<Action>) {
         let order = self.next_event_order;
         self.next_event_order += 1;
-        let scene = self.current_scene_mut();
-        scene.events.push(Event {
-            time: rel_time,
+        self.scenario.events.push(TimedEvent {
+            time: time_sec,
             order,
-            repeat: None,
             actions,
         });
     }
@@ -105,9 +147,15 @@ impl ScriptContext {
         life_map: Map,
         count: i64,
         amp: f32,
+        position: Position,
     ) -> Result<CohortHandle, Box<EvalAltResult>> {
-        let method = Self::from_map::<SpawnMethod>(method_map, "SpawnMethod")?;
-        let life = Self::from_map::<LifeConfig>(life_map, "LifeConfig")?;
+        let method = Self::from_map::<SpawnMethod>(method_map, "SpawnMethod", position)?;
+        let life = Self::from_map_patch::<LifeConfig>(
+            life_map,
+            "LifeConfig",
+            &LifeConfig::default(),
+            position,
+        )?;
         let c = count.max(0).min(u32::MAX as i64) as u32;
         let group_id = self.next_group_id;
         self.next_group_id += 1;
@@ -122,7 +170,7 @@ impl ScriptContext {
             life,
             tag: Some(tag.to_string()),
         };
-        self.push_event(vec![action]);
+        self.push_event(self.cursor, vec![action]);
         Ok(CohortHandle {
             tag: tag.to_string(),
             group_id,
@@ -153,7 +201,90 @@ impl ScriptContext {
             life,
             tag: Some(tag.to_string()),
         };
-        self.push_event(vec![action]);
+        self.push_event(self.cursor, vec![action]);
+        Ok(CohortHandle {
+            tag: tag.to_string(),
+            group_id,
+            base_id,
+            count: c,
+        })
+    }
+
+    pub fn spawn_opts(
+        &mut self,
+        tag: &str,
+        count: i64,
+        opts: Map,
+        position: Position,
+    ) -> Result<CohortHandle, Box<EvalAltResult>> {
+        let mut unknown_keys = Vec::new();
+        for key in opts.keys() {
+            match key.as_str() {
+                "amp" | "method" | "life" => {}
+                _ => unknown_keys.push(key.to_string()),
+            }
+        }
+        if !unknown_keys.is_empty() {
+            unknown_keys.sort();
+            let msg = format!(
+                "spawn opts has unknown keys: [{}] (allowed: amp, method, life)",
+                unknown_keys.join(", ")
+            );
+            return Err(Box::new(EvalAltResult::ErrorRuntime(msg.into(), position)));
+        }
+
+        let mut amp = 0.18;
+        if let Some(value) = opts.get("amp") {
+            if let Ok(f) = value.as_float() {
+                amp = f as f32;
+            } else if let Ok(i) = value.as_int() {
+                amp = i as f32;
+            } else {
+                return Err(Box::new(EvalAltResult::ErrorRuntime(
+                    "spawn opts amp must be a number".into(),
+                    position,
+                )));
+            }
+        }
+
+        let method = if let Some(value) = opts.get("method") {
+            let map = value.clone().try_cast().ok_or_else(|| {
+                Box::new(EvalAltResult::ErrorRuntime(
+                    "spawn opts method must be a map".into(),
+                    position,
+                ))
+            })?;
+            Self::from_map::<SpawnMethod>(map, "SpawnMethod", position)?
+        } else {
+            SpawnMethod::default()
+        };
+
+        let life = if let Some(value) = opts.get("life") {
+            let map = value.clone().try_cast().ok_or_else(|| {
+                Box::new(EvalAltResult::ErrorRuntime(
+                    "spawn opts life must be a map".into(),
+                    position,
+                ))
+            })?;
+            Self::from_map_patch::<LifeConfig>(map, "LifeConfig", &LifeConfig::default(), position)?
+        } else {
+            LifeConfig::default()
+        };
+        let c = count.max(0).min(u32::MAX as i64) as u32;
+        let group_id = self.next_group_id;
+        self.next_group_id += 1;
+        let base_id = self.next_agent_id;
+        self.next_agent_id += u64::from(c);
+        let action = Action::SpawnAgents {
+            group_id,
+            base_id,
+            method,
+            count: c,
+            amp,
+            life,
+            tag: Some(tag.to_string()),
+        };
+        self.push_event(self.cursor, vec![action]);
         Ok(CohortHandle {
             tag: tag.to_string(),
             group_id,
@@ -168,8 +299,9 @@ impl ScriptContext {
         freq: f32,
         amp: f32,
         life_map: Map,
+        position: Position,
     ) -> Result<AgentHandle, Box<EvalAltResult>> {
-        let life = Self::from_map::<LifeConfig>(life_map, "LifeConfig")?;
+        let life = Self::from_map::<LifeConfig>(life_map, "LifeConfig", position)?;
         let agent = IndividualConfig {
             freq,
             amp,
@@ -179,7 +311,7 @@ impl ScriptContext {
         let id = self.next_agent_id;
         self.next_agent_id += 1;
         let action = Action::AddAgent { id, agent };
-        self.push_event(vec![action]);
+        self.push_event(self.cursor, vec![action]);
         Ok(AgentHandle {
             id,
             tag: Some(tag.to_string()),
@@ -187,34 +319,37 @@ impl ScriptContext {
     }
 
     pub fn set_freq(&mut self, target: TargetRef, freq: f32) {
-        self.push_event(vec![Action::SetFreq {
-            target,
-            freq_hz: freq,
-        }]);
+        self.push_event(
+            self.cursor,
+            vec![Action::SetFreq {
+                target,
+                freq_hz: freq,
+            }],
+        );
     }
 
     pub fn set_amp(&mut self, target: TargetRef, amp: f32) {
-        self.push_event(vec![Action::SetAmp { target, amp }]);
+        self.push_event(self.cursor, vec![Action::SetAmp { target, amp }]);
     }
 
     pub fn set_drift(&mut self, target: TargetRef, value: f32) {
-        self.push_event(vec![Action::SetDrift { target, value }]);
+        self.push_event(self.cursor, vec![Action::SetDrift { target, value }]);
     }
 
     pub fn set_commitment(&mut self, target: TargetRef, value: f32) {
-        self.push_event(vec![Action::SetCommitment { target, value }]);
+        self.push_event(self.cursor, vec![Action::SetCommitment { target, value }]);
     }
 
     pub fn set_rhythm_vitality(&mut self, value: f32) {
-        self.push_event(vec![Action::SetRhythmVitality { value }]);
+        self.push_event(self.cursor, vec![Action::SetRhythmVitality { value }]);
     }
 
     pub fn set_global_coupling(&mut self, value: f32) {
-        self.push_event(vec![Action::SetGlobalCoupling { value }]);
+        self.push_event(self.cursor, vec![Action::SetGlobalCoupling { value }]);
     }
 
     pub fn set_roughness_tolerance(&mut self, value: f32) {
-        self.push_event(vec![Action::SetRoughnessTolerance { value }]);
+        self.push_event(self.cursor, vec![Action::SetRoughnessTolerance { value }]);
     }
 
     pub fn set_harmonicity(&mut self, map: Map) -> Result<(), Box<EvalAltResult>> {
@@ -226,39 +361,146 @@ impl ScriptContext {
             .get("limit")
             .and_then(|v| v.as_int().ok())
             .map(|v| v.max(0) as u32);
-        self.push_event(vec![Action::SetHarmonicity { mirror, limit }]);
+        self.push_event(self.cursor, vec![Action::SetHarmonicity { mirror, limit }]);
+        Ok(())
+    }
+
+    pub fn set_patch(
+        &mut self,
+        target: TargetRef,
+        patch: Map,
+        position: Position,
+    ) -> Result<(), Box<EvalAltResult>> {
+        let mut unknown_keys = Vec::new();
+        for key in patch.keys() {
+            match key.as_str() {
+                "amp" | "freq" | "drift" | "commitment" => {}
+                _ => unknown_keys.push(key.to_string()),
+            }
+        }
+        if !unknown_keys.is_empty() {
+            unknown_keys.sort();
+            let msg = format!(
+                "set() patch has unknown keys: [{}] (allowed: amp, freq, drift, commitment)",
+                unknown_keys.join(", ")
+            );
+            return Err(Box::new(EvalAltResult::ErrorRuntime(msg.into(), position)));
+        }
+
+        let mut actions = Vec::new();
+        if let Some(value) = patch.get("amp") {
+            let amp = value
+                .as_float()
+                .ok()
+                .map(|v| v as f32)
+                .or_else(|| value.as_int().ok().map(|v| v as f32))
+                .ok_or_else(|| {
+                    Box::new(EvalAltResult::ErrorRuntime(
+                        "set() patch amp must be a number".into(),
+                        position,
+                    ))
+                })?;
+            actions.push(Action::SetAmp {
+                target: target.clone(),
+                amp,
+            });
+        }
+        if let Some(value) = patch.get("freq") {
+            let freq_hz = value
+                .as_float()
+                .ok()
+                .map(|v| v as f32)
+                .or_else(|| value.as_int().ok().map(|v| v as f32))
+                .ok_or_else(|| {
+                    Box::new(EvalAltResult::ErrorRuntime(
+                        "set() patch freq must be a number".into(),
+                        position,
+                    ))
+                })?;
+            actions.push(Action::SetFreq {
+                target: target.clone(),
+                freq_hz,
+            });
+        }
+        if let Some(value) = patch.get("drift") {
+            let drift = value
+                .as_float()
+                .ok()
+                .map(|v| v as f32)
+                .or_else(|| value.as_int().ok().map(|v| v as f32))
+                .ok_or_else(|| {
+                    Box::new(EvalAltResult::ErrorRuntime(
+                        "set() patch drift must be a number".into(),
+                        position,
+                    ))
+                })?;
+            actions.push(Action::SetDrift {
+                target: target.clone(),
+                value: drift,
+            });
+        }
+        if let Some(value) = patch.get("commitment") {
+            let commitment = value
+                .as_float()
+                .ok()
+                .map(|v| v as f32)
+                .or_else(|| value.as_int().ok().map(|v| v as f32))
+                .ok_or_else(|| {
+                    Box::new(EvalAltResult::ErrorRuntime(
+                        "set() patch commitment must be a number".into(),
+                        position,
+                    ))
+                })?;
+            actions.push(Action::SetCommitment {
+                target: target.clone(),
+                value: commitment,
+            });
+        }
+        if actions.is_empty() {
+            return Err(Box::new(EvalAltResult::ErrorRuntime(
+                "set() patch has no recognized keys".into(),
+                position,
+            )));
+        }
+        self.push_event(self.cursor, actions);
         Ok(())
     }
 
     pub fn remove(&mut self, target: TargetRef) {
-        self.push_event(vec![Action::RemoveAgent { target }]);
+        self.push_event(self.cursor, vec![Action::RemoveAgent { target }]);
     }
 
     pub fn release(&mut self, target: TargetRef, sec: f32) {
-        self.push_event(vec![Action::ReleaseAgent {
-            target,
-            release_sec: sec,
-        }]);
+        self.push_event(
+            self.cursor,
+            vec![Action::ReleaseAgent {
+                target,
+                release_sec: sec,
+            }],
+        );
     }
 
     pub fn finish(&mut self) {
-        self.push_event(vec![Action::Finish]);
+        self.push_event(self.cursor, vec![Action::Finish]);
+        self.scenario.duration_sec = self.scenario.duration_sec.max(self.cursor);
     }
 
     pub fn run(&mut self, sec: f32) {
-        self.wait(sec.max(0.0));
-        self.finish();
+        let end = (self.cursor + sec.max(0.0)).max(self.cursor);
+        self.scenario.duration_sec = self.scenario.duration_sec.max(end);
+        self.push_event(end, vec![Action::Finish]);
     }
 
     fn from_map<T: serde::de::DeserializeOwned>(
         map: Map,
         name: &str,
+        position: Position,
     ) -> Result<T, Box<EvalAltResult>> {
         serde_json::to_value(&map)
             .map_err(|e| {
                 Box::new(EvalAltResult::ErrorRuntime(
                     format!("Error serializing {name}: {e}").into(),
-                    Position::NONE,
+                    position,
                 ))
             })
             .and_then(|v| {
@@ -266,10 +508,54 @@ impl ScriptContext {
                     let debug_map = format!("{:?}", map);
                     Box::new(EvalAltResult::ErrorRuntime(
                         format!("Error parsing {name}: {e} (input: {debug_map})").into(),
-                        Position::NONE,
+                        position,
                     ))
                 })
             })
+    }
+
+    fn from_map_patch<T: serde::de::DeserializeOwned + Serialize>(
+        patch: Map,
+        name: &str,
+        base: &T,
+        position: Position,
+    ) -> Result<T, Box<EvalAltResult>> {
+        let base_val = serde_json::to_value(base).map_err(|e| {
+            Box::new(EvalAltResult::ErrorRuntime(
+                format!("Error serializing base {name}: {e}").into(),
+                position,
+            ))
+        })?;
+        let patch_val = serde_json::to_value(&patch).map_err(|e| {
+            Box::new(EvalAltResult::ErrorRuntime(
+                format!("Error serializing patch {name}: {e}").into(),
+                position,
+            ))
+        })?;
+        let merged = merge_json(base_val, patch_val);
+        serde_json::from_value::<T>(merged).map_err(|e| {
+            let debug_map = format!("{:?}", patch);
+            Box::new(EvalAltResult::ErrorRuntime(
+                format!("Error parsing {name}: {e} (input: {debug_map})").into(),
+                position,
+            ))
+        })
+    }
+}
+
+fn merge_json(base: serde_json::Value, patch: serde_json::Value) -> serde_json::Value {
+    match (base, patch) {
+        (serde_json::Value::Object(mut base_map), serde_json::Value::Object(patch_map)) => {
+            if patch_map.contains_key("core") || patch_map.contains_key("type") {
+                return serde_json::Value::Object(patch_map);
+            }
+            for (k, v) in patch_map {
+                let base_val = base_map.remove(&k).unwrap_or(serde_json::Value::Null);
+                base_map.insert(k, merge_json(base_val, v));
+            }
+            serde_json::Value::Object(base_map)
+        }
+        (_, patch_val) => patch_val,
     }
 }
 
@@ -319,6 +605,78 @@ impl ScriptHost {
             },
         );
 
+        let ctx_for_spawn_syntax = ctx.clone();
+        engine.register_custom_syntax_with_state_raw(
+            "spawn",
+            |symbols, look_ahead, _state| {
+                let next = match symbols.len() {
+                    0 => Some("spawn"),
+                    1 => Some("("),
+                    2 => Some("$expr$"),
+                    3 => Some(","),
+                    4 => Some("$expr$"),
+                    5 => match look_ahead {
+                        "," => Some(","),
+                        ")" => Some(")"),
+                        _ => {
+                            return Err(rhai::LexError::ImproperSymbol(
+                                look_ahead.to_string(),
+                                "Expected ',' or ')' for spawn".to_string(),
+                            )
+                            .into_err(Position::NONE));
+                        }
+                    },
+                    6 => {
+                        let last = symbols.last().map(|s| s.as_str()).unwrap_or("");
+                        if last == ")" { None } else { Some("$expr$") }
+                    }
+                    7 => Some(")"),
+                    _ => None,
+                };
+                Ok(next.map(Into::into))
+            },
+            false,
+            move |eval_ctx: &mut EvalContext, exprs: &[Expression], _state| {
+                let pos_tag = exprs[0].position();
+                let pos_count = exprs[1].position();
+                let pos_opts = exprs.get(2).map(|e| e.position()).unwrap_or(pos_tag);
+                let tag_dyn = eval_ctx.eval_expression_tree(&exprs[0])?;
+                let count_dyn = eval_ctx.eval_expression_tree(&exprs[1])?;
+                let tag = tag_dyn.try_cast::<String>().ok_or_else(|| {
+                    Box::new(EvalAltResult::ErrorRuntime(
+                        "spawn tag must be a string".into(),
+                        pos_tag,
+                    ))
+                })?;
+                let count = count_dyn.try_cast::<i64>().ok_or_else(|| {
+                    Box::new(EvalAltResult::ErrorRuntime(
+                        "spawn count must be an integer".into(),
+                        pos_count,
+                    ))
+                })?;
+                if count < 0 {
+                    return Err(Box::new(EvalAltResult::ErrorRuntime(
+                        "spawn count must be non-negative".into(),
+                        pos_count,
+                    )));
+                }
+                let mut ctx = ctx_for_spawn_syntax.lock().expect("lock script context");
+                let handle = if exprs.len() >= 3 {
+                    let opts_dyn = eval_ctx.eval_expression_tree(&exprs[2])?;
+                    let opts = opts_dyn.try_cast::<Map>().ok_or_else(|| {
+                        Box::new(EvalAltResult::ErrorRuntime(
+                            "spawn opts must be a map".into(),
+                            pos_opts,
+                        ))
+                    })?;
+                    spawn_with_opts_at(&mut ctx, &tag, count, opts, pos_opts)?
+                } else {
+                    spawn_min_at(&mut ctx, &tag, count, pos_tag)?
+                };
+                Ok(Dynamic::from(handle))
+            },
+        );
+
         let ctx_for_scene = ctx.clone();
         engine.register_fn("scene", move |name: &str| {
             let mut ctx = ctx_for_scene.lock().expect("lock script context");
@@ -347,18 +705,32 @@ impl ScriptHost {
             let mut ctx = ctx_for_pop_time.lock().expect("lock script context");
             api::pop_time(&mut ctx);
         });
+        let ctx_for_set_time = ctx.clone();
+        engine.register_fn("set_time", move |sec: FLOAT| {
+            let mut ctx = ctx_for_set_time.lock().expect("lock script context");
+            api::set_time(&mut ctx, sec);
+        });
 
         let ctx_for_spawn_agents = ctx.clone();
         engine.register_fn(
             "spawn_agents",
-            move |tag: &str,
+            move |call_ctx: NativeCallContext,
+                  tag: &str,
                   method_map: Map,
                   life_map: Map,
                   count: i64,
                   amp: FLOAT|
                   -> Result<CohortHandle, Box<EvalAltResult>> {
                 let mut ctx = ctx_for_spawn_agents.lock().expect("lock script context");
-                api::spawn_agents(&mut ctx, tag, method_map, life_map, count, amp)
+                spawn_agents_at(
+                    &mut ctx,
+                    tag,
+                    method_map,
+                    life_map,
+                    count,
+                    amp,
+                    call_ctx.call_position(),
+                )
             },
         );
         let ctx_for_spawn_default = ctx.clone();
@@ -366,19 +738,30 @@ impl ScriptHost {
             "spawn_default",
             move |tag: &str, count: i64| -> Result<CohortHandle, Box<EvalAltResult>> {
                 let mut ctx = ctx_for_spawn_default.lock().expect("lock script context");
-                api::spawn_default(&mut ctx, tag, count)
+                ctx.spawn_default(tag, count)
             },
         );
+
+        engine.register_fn("random", api::random_method);
+        engine.register_fn("random", api::random_method_opts);
+        engine.register_fn("harmonicity", api::harmonicity);
+        engine.register_fn("harmonicity", api::harmonicity_opts);
+        engine.register_fn("spectral_gap", api::spectral_gap);
+        engine.register_fn("spectral_gap", api::spectral_gap_opts);
+        engine.register_fn("harmonic_density", api::harmonic_density);
+        engine.register_fn("harmonic_density", api::harmonic_density_opts);
+        engine.register_fn("life", api::life);
         let ctx_for_add_agent = ctx.clone();
         engine.register_fn(
             "add_agent",
-            move |tag: &str,
+            move |call_ctx: NativeCallContext,
+                  tag: &str,
                   freq: FLOAT,
                   amp: FLOAT,
                   life_map: Map|
                   -> Result<AgentHandle, Box<EvalAltResult>> {
                 let mut ctx = ctx_for_add_agent.lock().expect("lock script context");
-                api::add_agent(&mut ctx, tag, freq, amp, life_map)
+                add_agent_at(&mut ctx, tag, freq, amp, life_map, call_ctx.call_position())
             },
         );
 
@@ -391,51 +774,83 @@ impl ScriptHost {
         let ctx_for_set_freq_agent = ctx.clone();
         engine.register_fn("set_freq", move |target: AgentHandle, freq: FLOAT| {
             let mut ctx = ctx_for_set_freq_agent.lock().expect("lock script context");
-            api::set_freq_agent(&mut ctx, target, freq);
+            set_freq_agent(&mut ctx, target, freq);
         });
         let ctx_for_set_freq_cohort = ctx.clone();
         engine.register_fn("set_freq", move |target: CohortHandle, freq: FLOAT| {
             let mut ctx = ctx_for_set_freq_cohort.lock().expect("lock script context");
-            api::set_freq_cohort(&mut ctx, target, freq);
+            set_freq_cohort(&mut ctx, target, freq);
         });
         let ctx_for_set_freq_tag = ctx.clone();
         engine.register_fn("set_freq", move |target: TagSelector, freq: FLOAT| {
             let mut ctx = ctx_for_set_freq_tag.lock().expect("lock script context");
-            api::set_freq_tag(&mut ctx, target, freq);
+            set_freq_tag(&mut ctx, target, freq);
         });
+        let ctx_for_set_tag_str = ctx.clone();
+        engine.register_fn(
+            "set",
+            move |call_ctx: NativeCallContext, tag: &str, patch: Map| {
+                let mut ctx = ctx_for_set_tag_str.lock().expect("lock script context");
+                set_tag_str_at(&mut ctx, tag, patch, call_ctx.call_position())
+            },
+        );
+        let ctx_for_set_agent = ctx.clone();
+        engine.register_fn(
+            "set",
+            move |call_ctx: NativeCallContext, target: AgentHandle, patch: Map| {
+                let mut ctx = ctx_for_set_agent.lock().expect("lock script context");
+                set_agent_at(&mut ctx, target, patch, call_ctx.call_position())
+            },
+        );
+        let ctx_for_set_cohort = ctx.clone();
+        engine.register_fn(
+            "set",
+            move |call_ctx: NativeCallContext, target: CohortHandle, patch: Map| {
+                let mut ctx = ctx_for_set_cohort.lock().expect("lock script context");
+                set_cohort_at(&mut ctx, target, patch, call_ctx.call_position())
+            },
+        );
+        let ctx_for_set_tag = ctx.clone();
+        engine.register_fn(
+            "set",
+            move |call_ctx: NativeCallContext, target: TagSelector, patch: Map| {
+                let mut ctx = ctx_for_set_tag.lock().expect("lock script context");
+                set_tag_at(&mut ctx, target, patch, call_ctx.call_position())
+            },
+        );
 
         let ctx_for_set_amp_agent = ctx.clone();
         engine.register_fn("set_amp", move |target: AgentHandle, amp: FLOAT| {
             let mut ctx = ctx_for_set_amp_agent.lock().expect("lock script context");
-            api::set_amp_agent(&mut ctx, target, amp);
+            set_amp_agent(&mut ctx, target, amp);
         });
         let ctx_for_set_amp_cohort = ctx.clone();
         engine.register_fn("set_amp", move |target: CohortHandle, amp: FLOAT| {
             let mut ctx = ctx_for_set_amp_cohort.lock().expect("lock script context");
-            api::set_amp_cohort(&mut ctx, target, amp);
+            set_amp_cohort(&mut ctx, target, amp);
         });
         let ctx_for_set_amp_tag = ctx.clone();
         engine.register_fn("set_amp", move |target: TagSelector, amp: FLOAT| {
             let mut ctx = ctx_for_set_amp_tag.lock().expect("lock script context");
-            api::set_amp_tag(&mut ctx, target, amp);
+            set_amp_tag(&mut ctx, target, amp);
         });
 
         let ctx_for_set_drift_agent = ctx.clone();
         engine.register_fn("set_drift", move |target: AgentHandle, value: FLOAT| {
             let mut ctx = ctx_for_set_drift_agent.lock().expect("lock script context");
-            api::set_drift_agent(&mut ctx, target, value);
+            set_drift_agent(&mut ctx, target, value);
         });
         let ctx_for_set_drift_cohort = ctx.clone();
         engine.register_fn("set_drift", move |target: CohortHandle, value: FLOAT| {
             let mut ctx = ctx_for_set_drift_cohort
                 .lock()
                 .expect("lock script context");
-            api::set_drift_cohort(&mut ctx, target, value);
+            set_drift_cohort(&mut ctx, target, value);
         });
         let ctx_for_set_drift_tag = ctx.clone();
         engine.register_fn("set_drift", move |target: TagSelector, value: FLOAT| {
             let mut ctx = ctx_for_set_drift_tag.lock().expect("lock script context");
-            api::set_drift_tag(&mut ctx, target, value);
+            set_drift_tag(&mut ctx, target, value);
         });
 
         let ctx_for_set_commitment_agent = ctx.clone();
@@ -445,7 +860,7 @@ impl ScriptHost {
                 let mut ctx = ctx_for_set_commitment_agent
                     .lock()
                     .expect("lock script context");
-                api::set_commitment_agent(&mut ctx, target, value);
+                set_commitment_agent(&mut ctx, target, value);
             },
         );
         let ctx_for_set_commitment_cohort = ctx.clone();
@@ -455,7 +870,7 @@ impl ScriptHost {
                 let mut ctx = ctx_for_set_commitment_cohort
                     .lock()
                     .expect("lock script context");
-                api::set_commitment_cohort(&mut ctx, target, value);
+                set_commitment_cohort(&mut ctx, target, value);
             },
         );
         let ctx_for_set_commitment_tag = ctx.clone();
@@ -465,7 +880,7 @@ impl ScriptHost {
                 let mut ctx = ctx_for_set_commitment_tag
                     .lock()
                     .expect("lock script context");
-                api::set_commitment_tag(&mut ctx, target, value);
+                set_commitment_tag(&mut ctx, target, value);
             },
         );
 
@@ -511,6 +926,11 @@ impl ScriptHost {
             let mut ctx = ctx_for_remove_tag.lock().expect("lock script context");
             api::remove_tag(&mut ctx, target);
         });
+        let ctx_for_remove_tag_str = ctx.clone();
+        engine.register_fn("remove", move |tag: &str| {
+            let mut ctx = ctx_for_remove_tag_str.lock().expect("lock script context");
+            api::remove_tag_str(&mut ctx, tag);
+        });
 
         let ctx_for_release_agent = ctx.clone();
         engine.register_fn("release", move |target: AgentHandle, sec: FLOAT| {
@@ -526,6 +946,11 @@ impl ScriptHost {
         engine.register_fn("release", move |target: TagSelector, sec: FLOAT| {
             let mut ctx = ctx_for_release_tag.lock().expect("lock script context");
             api::release_tag(&mut ctx, target, sec);
+        });
+        let ctx_for_release_tag_str = ctx.clone();
+        engine.register_fn("release", move |tag: &str, sec: FLOAT| {
+            let mut ctx = ctx_for_release_tag_str.lock().expect("lock script context");
+            api::release_tag_str(&mut ctx, tag, sec);
         });
 
         let ctx_for_finish = ctx.clone();
@@ -552,7 +977,7 @@ impl ScriptHost {
         let src = fs::read_to_string(path).map_err(|err| anyhow!("read script {path}: {err}"))?;
         let ctx = Arc::new(Mutex::new(ScriptContext::default()));
         let engine = ScriptHost::create_engine(ctx.clone());
-        let script_src = format!("{SCRIPT_PRELUDE}\n{}", rewrite_minimal_spawn(&src));
+        let script_src = format!("{SCRIPT_PRELUDE}\n{src}");
 
         if let Err(e) = engine.eval::<()>(&script_src) {
             // Print structured error to help diagnose script issues (e.g., type mismatches).
@@ -568,13 +993,41 @@ impl ScriptHost {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rhai::Position;
 
     fn run_script(src: &str) -> Scenario {
         let ctx = Arc::new(Mutex::new(ScriptContext::default()));
         let engine = ScriptHost::create_engine(ctx.clone());
-        let script_src = format!("{SCRIPT_PRELUDE}\n{}", rewrite_minimal_spawn(src));
+        let script_src = combined_script(src);
         engine.eval::<()>(&script_src).expect("script runs");
         ctx.lock().expect("lock ctx").scenario.clone()
+    }
+
+    fn eval_script_error_position(src: &str) -> Position {
+        let ctx = Arc::new(Mutex::new(ScriptContext::default()));
+        let engine = ScriptHost::create_engine(ctx.clone());
+        let script_src = combined_script(src);
+        let err = engine
+            .eval::<()>(&script_src)
+            .expect_err("script should error");
+        err.position()
+    }
+
+    fn combined_script(src: &str) -> String {
+        format!("{SCRIPT_PRELUDE}\n\n{src}")
+    }
+
+    fn expected_line(full: &str, needle: &str) -> usize {
+        full.lines()
+            .enumerate()
+            .find_map(|(idx, line)| {
+                if line.contains(needle) {
+                    Some(idx + 1)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_else(|| panic!("expected marker not found: {}", needle))
     }
 
     fn assert_time_close(actual: f32, expected: f32) {
@@ -611,31 +1064,25 @@ mod tests {
         "#,
         );
 
-        assert_eq!(scenario.scenes.len(), 2);
+        assert_eq!(scenario.scene_markers.len(), 2);
+        assert_eq!(scenario.scene_markers[0].name, "intro");
+        assert_time_close(scenario.scene_markers[0].time, 0.0);
+        assert_eq!(scenario.scene_markers[1].name, "break");
+        assert_time_close(scenario.scene_markers[1].time, 1.0);
 
-        let intro = &scenario.scenes[0];
-        assert_eq!(intro.name.as_deref(), Some("intro"));
-        assert_time_close(intro.start_time, 0.0);
-        assert_eq!(intro.events.len(), 1);
-        assert_time_close(intro.events[0].time, 0.0);
-
-        let break_ep = &scenario.scenes[1];
-        assert_eq!(break_ep.name.as_deref(), Some("break"));
-        assert_time_close(break_ep.start_time, 1.0);
-        assert_eq!(break_ep.events.len(), 2);
         let mut has_hit = false;
         let mut has_finish = false;
-        for ev in &break_ep.events {
+        for ev in &scenario.events {
             for action in &ev.actions {
                 match action {
                     Action::AddAgent { agent, .. } => {
                         if agent.tag.as_deref() == Some("hit") {
-                            assert_time_close(ev.time, 0.0);
+                            assert_time_close(ev.time, 1.0);
                             has_hit = true;
                         }
                     }
                     Action::Finish => {
-                        assert_time_close(ev.time, 0.5);
+                        assert_time_close(ev.time, 1.5);
                         has_finish = true;
                     }
                     _ => {}
@@ -674,13 +1121,10 @@ mod tests {
         "#,
         );
 
-        let intro = &scenario.scenes.first().expect("intro scene should exist");
-        assert_eq!(intro.events.len(), 3);
-
         let mut pad_time = None;
         let mut after_time = None;
         let mut finish_time = None;
-        for ev in &intro.events {
+        for ev in &scenario.events {
             for action in &ev.actions {
                 match action {
                     Action::AddAgent { agent, .. } => match agent.tag.as_deref() {
@@ -717,12 +1161,19 @@ mod tests {
         "#,
         );
 
-        let ep = scenario.scenes.first().expect("scene exists");
-        assert_eq!(ep.name.as_deref(), Some("alpha"));
-        assert_time_close(ep.start_time, 0.0);
-        assert_eq!(ep.events.len(), 2);
+        assert_eq!(scenario.scene_markers.len(), 1);
+        assert_eq!(scenario.scene_markers[0].name, "alpha");
+        assert_time_close(scenario.scene_markers[0].time, 0.0);
 
-        let ev = &ep.events[0];
+        let ev = scenario
+            .events
+            .iter()
+            .find(|ev| {
+                ev.actions
+                    .iter()
+                    .any(|a| matches!(a, Action::SpawnAgents { .. }))
+            })
+            .expect("spawn event");
         assert_time_close(ev.time, 1.2);
         assert_eq!(ev.actions.len(), 1);
         match &ev.actions[0] {
@@ -770,29 +1221,25 @@ mod tests {
         "#,
         );
 
-        assert_eq!(scenario.scenes.len(), 1);
-        let ep = &scenario.scenes[0];
-        assert!(ep.name.is_none());
-        assert_time_close(ep.start_time, 0.0);
-        assert_eq!(ep.events.len(), 2);
-        assert_time_close(ep.events[0].time, 0.0);
-        assert_time_close(ep.events[1].time, 0.3);
+        assert!(scenario.scene_markers.is_empty());
+        assert_eq!(scenario.events.len(), 2);
+        assert_time_close(scenario.events[0].time, 0.0);
+        assert_time_close(scenario.events[1].time, 0.3);
     }
 
     #[test]
     fn sample_script_file_executes() {
         let scenario = ScriptHost::load_script("samples/01_fundamentals/spawn_basics.rhai")
             .expect("sample script should run");
-        assert!(!scenario.scenes.is_empty());
+        assert!(!scenario.events.is_empty());
     }
 
     #[test]
     fn minimal_spawn_run_executes() {
         let scenario = ScriptHost::load_script("tests/scripts/minimal_spawn_run.rhai")
             .expect("minimal script should run");
-        let scene = scenario.scenes.first().expect("scene exists");
         let mut has_spawn = false;
-        for ev in &scene.events {
+        for ev in &scenario.events {
             for action in &ev.actions {
                 if let Action::SpawnAgents {
                     group_id,
@@ -808,7 +1255,7 @@ mod tests {
                 }
             }
         }
-        let has_finish = scene
+        let has_finish = scenario
             .events
             .iter()
             .any(|ev| ev.actions.iter().any(|a| matches!(a, Action::Finish)));
@@ -817,12 +1264,112 @@ mod tests {
     }
 
     #[test]
+    fn spawn_opts_unknown_key_has_position() {
+        let pos = eval_script_error_position(
+            r#"
+            spawn("d", 1, #{ amm: 0.1 });
+        "#,
+        );
+        assert_ne!(pos, Position::NONE);
+    }
+
+    #[test]
+    fn spawn_opts_bad_type_has_position() {
+        let pos = eval_script_error_position(
+            r#"
+            spawn("d", 1, #{ amp: "0.1" });
+        "#,
+        );
+        assert_ne!(pos, Position::NONE);
+    }
+
+    #[test]
+    fn set_patch_unknown_key_has_position() {
+        let pos = eval_script_error_position(
+            r#"
+            spawn("d", 1);
+            set("d", #{ amp: 0.1, ampp: 0.2 });
+        "#,
+        );
+        assert_ne!(pos, Position::NONE);
+    }
+
+    #[test]
+    fn set_patch_bad_type_has_position() {
+        let pos = eval_script_error_position(
+            r#"
+            spawn("d", 1);
+            set("d", #{ amp: "x" });
+        "#,
+        );
+        assert_ne!(pos, Position::NONE);
+    }
+
+    #[test]
+    fn spawn_count_error_points_to_count_arg() {
+        let src = r#"
+            spawn(
+                "d",
+                "BAD_COUNT_123",
+                #{}
+            );
+        "#;
+        let full = combined_script(src);
+        let pos = eval_script_error_position(src);
+        let expected_line = expected_line(&full, "BAD_COUNT_123");
+        assert_eq!(pos.line().unwrap(), expected_line);
+    }
+
+    #[test]
+    fn spawn_opts_error_points_to_opts_arg() {
+        let src = r#"
+            spawn(
+                "d",
+                1,
+                "BAD_OPTS_123"
+            );
+        "#;
+        let full = combined_script(src);
+        let pos = eval_script_error_position(src);
+        let expected_line = expected_line(&full, "BAD_OPTS_123");
+        assert_eq!(pos.line().unwrap(), expected_line);
+    }
+
+    #[test]
+    fn spawn_opts_unknown_key_points_to_opts_arg() {
+        let src = r#"
+            spawn(
+                "d",
+                1,
+                #{ amm_BADKEY_123: 0.1 }
+            );
+        "#;
+        let full = combined_script(src);
+        let pos = eval_script_error_position(src);
+        let expected_line = expected_line(&full, "amm_BADKEY_123");
+        assert_eq!(pos.line().unwrap(), expected_line);
+    }
+
+    #[test]
+    fn spawn_count_negative_points_to_count_arg() {
+        let src = r#"
+            spawn(
+                "d",
+                -123
+            );
+        "#;
+        let full = combined_script(src);
+        let pos = eval_script_error_position(src);
+        let expected_line = expected_line(&full, "-123");
+        assert_eq!(pos.line().unwrap(), expected_line);
+    }
+
+    #[test]
     fn empty_life_map_executes() {
         let scenario = ScriptHost::load_script("tests/scripts/empty_life_map_ok.rhai")
             .expect("empty life map should run");
-        let scene = scenario.scenes.first().expect("scene exists");
         let mut has_add = false;
-        for ev in &scene.events {
+        for ev in &scenario.events {
             for action in &ev.actions {
                 if let Action::AddAgent { id, .. } = action {
                     assert!(*id > 0);
@@ -830,7 +1377,7 @@ mod tests {
                 }
             }
         }
-        let has_finish = scene
+        let has_finish = scenario
             .events
             .iter()
             .any(|ev| ev.actions.iter().any(|a| matches!(a, Action::Finish)));
@@ -842,24 +1389,23 @@ mod tests {
     fn handle_index_and_iter_executes() {
         let scenario = ScriptHost::load_script("tests/scripts/handle_index_and_iter.rhai")
             .expect("handle iteration script should run");
-        assert!(!scenario.scenes.is_empty());
+        assert!(!scenario.events.is_empty());
     }
 
     #[test]
     fn tag_selector_ops_executes() {
         let scenario = ScriptHost::load_script("tests/scripts/tag_selector_ops.rhai")
             .expect("tag selector script should run");
-        assert!(!scenario.scenes.is_empty());
+        assert!(!scenario.events.is_empty());
     }
 
     #[test]
     fn stable_order_same_time_is_monotonic() {
         let scenario = ScriptHost::load_script("tests/scripts/stable_order_same_time.rhai")
             .expect("stable order script should run");
-        let scene = scenario.scenes.first().expect("scene exists");
         let mut last_order = 0;
         let mut freqs = Vec::new();
-        for ev in &scene.events {
+        for ev in &scenario.events {
             assert!(ev.order > last_order);
             last_order = ev.order;
             for action in &ev.actions {

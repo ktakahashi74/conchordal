@@ -16,7 +16,23 @@ use serde_json::Value;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Scenario {
-    pub scenes: Vec<Scene>,
+    pub scene_markers: Vec<SceneMarker>,
+    pub events: Vec<TimedEvent>,
+    pub duration_sec: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SceneMarker {
+    pub name: String,
+    pub time: f32,
+    pub order: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TimedEvent {
+    pub time: f32,
+    pub order: u64,
+    pub actions: Vec<Action>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -251,28 +267,7 @@ impl fmt::Display for LifeConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Scene {
-    #[serde(default)]
-    pub name: Option<String>,
-    pub start_time: f32,
-    pub events: Vec<Event>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RepeatConfig {
-    pub count: usize,           // 繰り返し回数
-    pub interval: f32,          // 実行間隔（秒）
-    pub id_offset: Option<u64>, // 回ごとに base_id をずらす量（SpawnAgents用）
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Event {
-    pub time: f32,
-    pub order: u64,
-    pub repeat: Option<RepeatConfig>,
-    pub actions: Vec<Action>,
-}
+// Scenes are represented by SceneMarker and do not own events.
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -641,7 +636,7 @@ impl fmt::Display for Action {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "mode", rename_all = "snake_case")]
+#[serde(tag = "mode", rename_all = "snake_case", deny_unknown_fields)]
 pub enum SpawnMethod {
     /// Deterministically search a frequency that maximizes H = C - R.
     Harmonicity {

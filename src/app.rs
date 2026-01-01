@@ -198,18 +198,12 @@ pub fn compile_scenario_from_script(
 }
 
 pub fn validate_scenario(scenario: &Scenario) -> Result<(), String> {
-    let mut events = Vec::new();
-    for scene in &scenario.scenes {
-        for event in &scene.events {
-            events.push(event);
-        }
-    }
-    if events.is_empty() {
+    if scenario.events.is_empty() {
         return Err("Scenario has no events".to_string());
     }
 
     let mut has_finish = false;
-    for event in &events {
+    for event in &scenario.events {
         for action in &event.actions {
             match action {
                 Action::Finish => {
@@ -245,8 +239,21 @@ pub fn validate_scenario(scenario: &Scenario) -> Result<(), String> {
         return Err("Scenario has no Finish action".to_string());
     }
 
+    if scenario.duration_sec <= 0.0 {
+        return Err("Scenario duration_sec must be > 0".to_string());
+    }
+    if let Some(max_time) = scenario
+        .events
+        .iter()
+        .map(|ev| ev.time)
+        .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+        && scenario.duration_sec + f32::EPSILON < max_time
+    {
+        return Err("Scenario duration_sec is before last event".to_string());
+    }
+
     let mut prev_order = None;
-    for event in &events {
+    for event in &scenario.events {
         let order = event.order;
         if let Some(prev) = prev_order
             && order <= prev
@@ -281,21 +288,48 @@ pub fn run_compile_only(args: crate::cli::Args, config: AppConfig) {
         eprintln!("{e}");
         std::process::exit(1);
     }
-    let scene_count = scenario.scenes.len();
+    let mut markers = scenario.scene_markers.clone();
+    markers.sort_by(|a, b| {
+        a.time
+            .partial_cmp(&b.time)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.order.cmp(&b.order))
+    });
+    for marker in &markers {
+        eprintln!(
+            "scene t={:.3} order={} name={}",
+            marker.time, marker.order, marker.name
+        );
+    }
+    let mut events = scenario.events.clone();
+    events.sort_by(|a, b| {
+        a.time
+            .partial_cmp(&b.time)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.order.cmp(&b.order))
+    });
+    for event in &events {
+        let action_descs: Vec<String> = event.actions.iter().map(ToString::to_string).collect();
+        eprintln!(
+            "event t={:.3} order={} {}",
+            event.time,
+            event.order,
+            action_descs.join(" | ")
+        );
+    }
     let mut event_count = 0usize;
     let mut action_count = 0usize;
-    for scene in &scenario.scenes {
-        event_count += scene.events.len();
-        for event in &scene.events {
-            action_count += event.actions.len();
-        }
+    let marker_count = scenario.scene_markers.len();
+    event_count += scenario.events.len();
+    for event in &scenario.events {
+        action_count += event.actions.len();
     }
     eprintln!(
-        "OK compile-only: {} (events={}, actions={}, scenes={})",
+        "OK compile-only: {} (events={}, actions={}, markers={})",
         path.display(),
         event_count,
         action_count,
-        scene_count
+        marker_count
     );
 }
 

@@ -18,7 +18,7 @@ let life = #{
 };
 
 for i in 0..6 {
-    spawn_agents("harm_" + i, method, life, 2, 0.16 + i * 0.01);
+    spawn("harm_" + i, 2, #{ amp: 0.16 + i * 0.01, method: method, life: life });
     wait(0.7);
 }
 

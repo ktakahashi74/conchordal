@@ -10,7 +10,7 @@ let life = #{
 
 scene("stitch");
 for i in 0..24 {
-    spawn_agents("gap_" + i, method, life, 1, 0.18);
+    spawn("gap_" + i, 1, #{ amp: 0.18, method: method, life: life });
     wait(0.16);
 }
 

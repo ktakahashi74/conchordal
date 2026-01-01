@@ -26,16 +26,16 @@ fn chord_block(root, name, sustain_amp, tension_amp, dur) {
 
     // Pads seek harmonic peaks above the anchor
     let pad_method = #{ mode: "harmonicity", min_freq: root * 2.0, max_freq: root * 5.0 };
-    spawn_agents("pad_" + name, pad_method, pad_life, 3, sustain_amp * 0.6);
+    spawn("pad_" + name, 3, #{ amp: sustain_amp * 0.6, method: pad_method, life: pad_life });
 
     // Midway, inject tension using low_harmonicity
     wait(dur * 0.4);
     let tension_method = #{ mode: "low_harmonicity", min_freq: root * 1.5, max_freq: root * 4.0 };
-    spawn_agents("tension_" + name, tension_method, sting_life, 2, tension_amp);
+    spawn("tension_" + name, 2, #{ amp: tension_amp, method: tension_method, life: sting_life });
 
     // Resolve: refresh harmonicity and thin tension
     wait(dur * 0.35);
-    spawn_agents("resolve_" + name, pad_method, pad_life, 2, sustain_amp * 0.5);
+    spawn("resolve_" + name, 2, #{ amp: sustain_amp * 0.5, method: pad_method, life: pad_life });
     wait(dur * 0.25);
 }
 

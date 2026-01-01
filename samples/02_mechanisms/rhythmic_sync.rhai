@@ -70,7 +70,7 @@ let method_flock = #{
 
 // Add in four waves to thicken layers
 for i in 0..4 {
-    spawn_agents("follower", method_flock, life_plucking, 4, 0.08);
+    spawn("follower", 4, #{ amp: 0.08, method: method_flock, life: life_plucking });
     wait(1.0); // pause before next batch
 }
 
@@ -107,7 +107,7 @@ let life_click = #{
 let method_click = #{ mode: "random_log_uniform", min_freq: 2000.0, max_freq: 4000.0 };
 
 for i in 0..8 {
-    spawn_agents("noise", method_click, life_click, 2, 0.1);
+    spawn("noise", 2, #{ amp: 0.1, method: method_click, life: life_click });
     wait(0.25); // fast pulse
 }
 

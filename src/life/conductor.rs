@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use tracing::info;
 
 use super::population::Population;
-use super::scenario::{Action, Scenario, Scene};
+use super::scenario::{Action, Scenario, SceneMarker, TimedEvent};
 use crate::core::landscape::LandscapeFrame;
 
 #[derive(Debug, Clone)]
@@ -15,8 +15,9 @@ pub struct QueuedEvent {
 
 #[derive(Debug, Clone)]
 struct SceneInfo {
-    name: Option<String>,
-    start_time: f32,
+    name: String,
+    time: f32,
+    order: u64,
 }
 
 #[derive(Debug)]
@@ -29,20 +30,32 @@ pub struct Conductor {
 impl Conductor {
     pub fn from_scenario(s: Scenario) -> Self {
         let mut scenes: Vec<SceneInfo> = s
-            .scenes
-            .iter()
-            .map(|sc| SceneInfo {
-                name: sc.name.clone(),
-                start_time: sc.start_time,
-            })
+            .scene_markers
+            .into_iter()
+            .map(|SceneMarker { name, time, order }| SceneInfo { name, time, order })
             .collect();
         scenes.sort_by(|a, b| {
-            a.start_time
-                .partial_cmp(&b.start_time)
+            a.time
+                .partial_cmp(&b.time)
                 .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.order.cmp(&b.order))
         });
 
-        let mut events: Vec<QueuedEvent> = s.scenes.into_iter().flat_map(flatten_scene).collect();
+        let mut events: Vec<QueuedEvent> = s
+            .events
+            .into_iter()
+            .map(
+                |TimedEvent {
+                     time,
+                     order,
+                     actions,
+                 }| QueuedEvent {
+                    time,
+                    order,
+                    actions,
+                },
+            )
+            .collect();
 
         events.sort_by(|a, b| {
             a.time
@@ -51,7 +64,7 @@ impl Conductor {
                 .then_with(|| a.order.cmp(&b.order))
         });
 
-        let total_duration = events.last().map(|ev| ev.time).unwrap_or(0.0);
+        let total_duration = s.duration_sec;
         Self {
             event_queue: events.into(),
             total_duration,
@@ -116,34 +129,12 @@ impl Conductor {
     pub fn current_scene_name(&self, time_sec: f32) -> Option<String> {
         let mut current: Option<String> = None;
         for scene in &self.scenes {
-            if time_sec + f32::EPSILON >= scene.start_time {
-                current = scene.name.clone();
+            if time_sec + f32::EPSILON >= scene.time {
+                current = Some(scene.name.clone());
             } else {
                 break;
             }
         }
         current
     }
-}
-
-fn flatten_scene(ep: Scene) -> impl Iterator<Item = QueuedEvent> {
-    let mut out: Vec<QueuedEvent> = Vec::new();
-    for ev in ep.events {
-        if let Some(rep) = &ev.repeat {
-            for i in 0..rep.count {
-                out.push(QueuedEvent {
-                    time: ep.start_time + ev.time + i as f32 * rep.interval,
-                    order: ev.order.saturating_add(i as u64),
-                    actions: ev.actions.clone(),
-                });
-            }
-        } else {
-            out.push(QueuedEvent {
-                time: ep.start_time + ev.time,
-                order: ev.order,
-                actions: ev.actions,
-            });
-        }
-    }
-    out.into_iter()
 }

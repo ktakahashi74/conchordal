@@ -23,7 +23,7 @@ fn play_step(name, root, dur) {
 
     let pads = [];
     for i in 0..3 {
-        let pad = spawn_agents("pad_" + name + "_" + i, pad_method, pad_life, 1, 0.14);
+        let pad = spawn("pad_" + name + "_" + i, 1, #{ amp: 0.14, method: pad_method, life: pad_life });
         pads.push(pad);
         wait(0.2);
     }

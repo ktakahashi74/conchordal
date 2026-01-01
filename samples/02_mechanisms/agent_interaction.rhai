@@ -80,7 +80,7 @@ print("--- [4] Spawning a swarm ---");
 // Add many bodies; peaks they create become targets, so watch for clustering vs dispersing.
 let method = #{ mode: "harmonic_density", min_freq: 200.0, max_freq: 800.0 };
 for i in 0..4 {
-    let swarm = spawn_agents("swarm_" + i, method, life_seeker, 1, 0.15);
+    let swarm = spawn("swarm_" + i, 1, #{ amp: 0.15, method: method, life: life_seeker });
     swarm.set_commitment(0.56);
     wait(0.5);
 }

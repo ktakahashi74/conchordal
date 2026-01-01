@@ -17,7 +17,7 @@ fn play_chord(root, tag) {
 
     let bass = add_agent("bass_" + tag, root, 0.36, bass_life);
     wait(0.18);
-    let pads = spawn_agents("pad_" + tag, pad_method, pad_life, 3, 0.2);
+    let pads = spawn("pad_" + tag, 3, #{ amp: 0.2, method: pad_method, life: pad_life });
     wait(1.4);
     bass.remove();
     pads.remove();

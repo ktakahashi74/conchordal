@@ -52,7 +52,7 @@ let life_pulse = #{
 let voices_major = [];
 for i in 0..6 {
     // Probabilistically selects C, E, G (C Major Triad)
-    let voice = spawn_agents("voice_maj_" + i, method_major, life_pulse, 1, 0.2);
+    let voice = spawn("voice_maj_" + i, 1, #{ amp: 0.2, method: method_major, life: life_pulse });
     voices_major.push(voice);
     wait(0.8);
 }
@@ -89,7 +89,7 @@ let method_mirror = #{
 
 for i in 0..6 {
     // Probabilistically selects F, Ab (F Minor / Ab Major context)
-    spawn_agents("voice_min_" + i, method_mirror, life_pulse, 1, 0.2);
+    spawn("voice_min_" + i, 1, #{ amp: 0.2, method: method_mirror, life: life_pulse });
     wait(0.8);
 }
 

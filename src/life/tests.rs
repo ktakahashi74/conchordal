@@ -5,8 +5,8 @@ use super::individual::{
 };
 use super::population::Population;
 use super::scenario::{
-    Action, ArticulationCoreConfig, EnvelopeConfig, Event, HarmonicMode, IndividualConfig,
-    LifeConfig, PitchCoreConfig, Scenario, Scene, SoundBodyConfig, TargetRef, TimbreGenotype,
+    Action, ArticulationCoreConfig, EnvelopeConfig, HarmonicMode, IndividualConfig, LifeConfig,
+    PitchCoreConfig, Scenario, SceneMarker, SoundBodyConfig, TargetRef, TimbreGenotype, TimedEvent,
 };
 use crate::core::landscape::Landscape;
 use crate::core::landscape::LandscapeFrame;
@@ -151,19 +151,19 @@ fn tag_selector_removes_matching_agents() {
 fn test_conductor_timing() {
     // 1. Create a Scenario with an event at T=1.0s
     let action = Action::Finish; // Simple marker action
-    let event = Event {
+    let event = TimedEvent {
         time: 1.0,
         order: 1,
-        repeat: None,
         actions: vec![action],
     };
-    let episode = Scene {
-        name: Some("test".into()),
-        start_time: 0.0,
-        events: vec![event],
-    };
     let scenario = Scenario {
-        scenes: vec![episode],
+        scene_markers: vec![SceneMarker {
+            name: "test".into(),
+            time: 0.0,
+            order: 0,
+        }],
+        events: vec![event],
+        duration_sec: 2.0,
     };
 
     let mut conductor = Conductor::from_scenario(scenario);

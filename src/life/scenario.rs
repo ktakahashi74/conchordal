@@ -7,7 +7,8 @@ use std::fmt;
 use tracing::debug;
 
 use crate::life::individual::{
-    AgentMetadata, AnyFieldCore, AnyModulationCore, AnyTemporalCore, Individual,
+    AgentMetadata, AnyArticulationCore, AnyModulationCore, AnyPitchCore, ArticulationWrapper,
+    Individual,
 };
 use crate::life::lifecycle::LifecycleConfig;
 use crate::life::perceptual::PerceptualConfig;
@@ -85,10 +86,10 @@ impl Default for TimbreGenotype {
 pub struct LifeConfig {
     #[serde(default)]
     pub body: SoundBodyConfig,
-    #[serde(default)]
-    pub temporal: TemporalCoreConfig,
-    #[serde(default)]
-    pub field: FieldCoreConfig,
+    #[serde(default, alias = "temporal")]
+    pub articulation: ArticulationCoreConfig,
+    #[serde(default, alias = "field")]
+    pub pitch: PitchCoreConfig,
     #[serde(default)]
     pub modulation: ModulationCoreConfig,
     #[serde(default)]
@@ -120,7 +121,7 @@ impl Default for SoundBodyConfig {
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 #[serde(tag = "core", rename_all = "snake_case", deny_unknown_fields)]
-pub enum TemporalCoreConfig {
+pub enum ArticulationCoreConfig {
     Entrain {
         #[serde(flatten)]
         lifecycle: LifecycleConfig,
@@ -138,9 +139,9 @@ pub enum TemporalCoreConfig {
     },
 }
 
-impl Default for TemporalCoreConfig {
+impl Default for ArticulationCoreConfig {
     fn default() -> Self {
-        TemporalCoreConfig::Entrain {
+        ArticulationCoreConfig::Entrain {
             lifecycle: LifecycleConfig::default(),
             rhythm_freq: None,
             rhythm_sensitivity: None,
@@ -148,7 +149,7 @@ impl Default for TemporalCoreConfig {
     }
 }
 
-impl<'de> Deserialize<'de> for TemporalCoreConfig {
+impl<'de> Deserialize<'de> for ArticulationCoreConfig {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
@@ -156,11 +157,11 @@ impl<'de> Deserialize<'de> for TemporalCoreConfig {
         let value = Value::deserialize(deserializer)?;
         let obj = value
             .as_object()
-            .ok_or_else(|| de::Error::custom("temporal core must be a map"))?;
+            .ok_or_else(|| de::Error::custom("articulation core must be a map"))?;
         let core = obj
             .get("core")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| de::Error::custom("temporal core missing `core`"))?;
+            .ok_or_else(|| de::Error::custom("articulation core missing `core`"))?;
         match core {
             "entrain" => {
                 let rhythm_freq = obj
@@ -178,7 +179,7 @@ impl<'de> Deserialize<'de> for TemporalCoreConfig {
                 let lifecycle_value = Value::Object(lifecycle_obj);
                 let lifecycle =
                     LifecycleConfig::deserialize(lifecycle_value).map_err(de::Error::custom)?;
-                Ok(TemporalCoreConfig::Entrain {
+                Ok(ArticulationCoreConfig::Entrain {
                     lifecycle,
                     rhythm_freq,
                     rhythm_sensitivity,
@@ -195,7 +196,7 @@ impl<'de> Deserialize<'de> for TemporalCoreConfig {
                     .and_then(|v| v.as_f64())
                     .ok_or_else(|| de::Error::custom("seq core requires `duration`"))?
                     as f32;
-                Ok(TemporalCoreConfig::Seq { duration })
+                Ok(ArticulationCoreConfig::Seq { duration })
             }
             "drone" => {
                 for key in obj.keys() {
@@ -204,7 +205,7 @@ impl<'de> Deserialize<'de> for TemporalCoreConfig {
                     }
                 }
                 let sway = obj.get("sway").and_then(|v| v.as_f64()).map(|v| v as f32);
-                Ok(TemporalCoreConfig::Drone { sway })
+                Ok(ArticulationCoreConfig::Drone { sway })
             }
             other => Err(de::Error::unknown_variant(
                 other,
@@ -216,7 +217,7 @@ impl<'de> Deserialize<'de> for TemporalCoreConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "core", rename_all = "snake_case", deny_unknown_fields)]
-pub enum FieldCoreConfig {
+pub enum PitchCoreConfig {
     PitchHillClimb {
         #[serde(default)]
         neighbor_step_cents: Option<f32>,
@@ -227,9 +228,9 @@ pub enum FieldCoreConfig {
     },
 }
 
-impl Default for FieldCoreConfig {
+impl Default for PitchCoreConfig {
     fn default() -> Self {
-        FieldCoreConfig::PitchHillClimb {
+        PitchCoreConfig::PitchHillClimb {
             neighbor_step_cents: None,
             tessitura_gravity: None,
             improvement_threshold: None,
@@ -261,10 +262,10 @@ impl fmt::Display for LifeConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "life[body={:?}, temporal={:?}, field={:?}, modulation={:?}, perceptual={:?}, breath_gain_init={:?}]",
+            "life[body={:?}, articulation={:?}, pitch={:?}, modulation={:?}, perceptual={:?}, breath_gain_init={:?}]",
             self.body,
-            self.temporal,
-            self.field,
+            self.articulation,
+            self.pitch,
             self.modulation,
             self.perceptual,
             self.breath_gain_init
@@ -329,8 +330,9 @@ impl IndividualConfig {
         let integration_window = 2.0 + 10.0 / target_freq;
         let seed = assigned_id ^ start_frame.wrapping_mul(0x9E37_79B9_7F4A_7C15);
         let mut rng = rand::rngs::SmallRng::seed_from_u64(seed);
-        let temporal = AnyTemporalCore::from_config(&self.life.temporal, fs, assigned_id, &mut rng);
-        let field = AnyFieldCore::from_config(&self.life.field, target_pitch_log2, &mut rng);
+        let core =
+            AnyArticulationCore::from_config(&self.life.articulation, fs, assigned_id, &mut rng);
+        let pitch = AnyPitchCore::from_config(&self.life.pitch, target_pitch_log2, &mut rng);
         let modulation = AnyModulationCore::from_config(&self.life.modulation);
         let perceptual =
             crate::life::perceptual::PerceptualContext::from_config(&self.life.perceptual, 0);
@@ -340,27 +342,28 @@ impl IndividualConfig {
             self.amp,
             &mut rng,
         );
-        let (temporal_core, lifecycle_label, default_by_temporal) = match &self.life.temporal {
-            TemporalCoreConfig::Entrain { lifecycle, .. } => {
+        let (articulation_core, lifecycle_label, default_by_articulation) =
+            match &self.life.articulation {
+                ArticulationCoreConfig::Entrain { lifecycle, .. } => {
                 let life_label = match lifecycle {
                     LifecycleConfig::Decay { .. } => "decay",
                     LifecycleConfig::Sustain { .. } => "sustain",
                 };
                 ("entrain", life_label, 1.0)
             }
-            TemporalCoreConfig::Seq { .. } => ("seq", "none", 1.0),
-            TemporalCoreConfig::Drone { .. } => ("drone", "none", 0.0),
-        };
+                ArticulationCoreConfig::Seq { .. } => ("seq", "none", 1.0),
+                ArticulationCoreConfig::Drone { .. } => ("drone", "none", 0.0),
+            };
         let breath_gain = self
             .life
             .breath_gain_init
-            .unwrap_or(default_by_temporal)
+            .unwrap_or(default_by_articulation)
             .clamp(0.0, 1.0);
         debug!(
             target: "rhythm::spawn",
             id = assigned_id,
             tag = ?metadata.tag,
-            temporal = temporal_core,
+            articulation = articulation_core,
             lifecycle = lifecycle_label,
             breath_gain_init = self.life.breath_gain_init,
             breath_gain
@@ -368,8 +371,8 @@ impl IndividualConfig {
         Individual {
             id: assigned_id,
             metadata,
-            temporal,
-            field,
+            articulation: ArticulationWrapper::new(core, breath_gain),
+            pitch,
             modulation,
             perceptual,
             body,
@@ -380,7 +383,6 @@ impl IndividualConfig {
             target_pitch_log2,
             integration_window,
             accumulated_time: 0.0,
-            breath_gain,
             last_theta_sample: 0.0,
             last_target_salience: 0.0,
             rng,
@@ -476,7 +478,7 @@ mod tests {
             amp: 0.3,
             life: LifeConfig {
                 body: SoundBodyConfig::Sine { phase: Some(0.25) },
-                temporal: TemporalCoreConfig::Entrain {
+                articulation: ArticulationCoreConfig::Entrain {
                     lifecycle: LifecycleConfig::Decay {
                         initial_energy: 1.0,
                         half_life_sec: 0.5,
@@ -485,7 +487,7 @@ mod tests {
                     rhythm_freq: None,
                     rhythm_sensitivity: None,
                 },
-                field: FieldCoreConfig::PitchHillClimb {
+                pitch: PitchCoreConfig::PitchHillClimb {
                     neighbor_step_cents: None,
                     tessitura_gravity: None,
                     improvement_threshold: None,

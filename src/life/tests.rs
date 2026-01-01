@@ -1,12 +1,12 @@
 use super::conductor::Conductor;
 use super::individual::{
-    AgentMetadata, ArticulationSignal, ArticulationState, AudioAgent, FieldCore, KuramotoCore,
-    PinkNoise, Sensitivity, SequencedCore, SoundBody, TemporalCore,
+    AgentMetadata, ArticulationCore, ArticulationSignal, ArticulationState, AudioAgent, Individual,
+    KuramotoCore, PinkNoise, PitchCore, Sensitivity, SequencedCore, SoundBody,
 };
 use super::population::Population;
 use super::scenario::{
-    Action, Event, FieldCoreConfig, HarmonicMode, IndividualConfig, LifeConfig,
-    ModulationCoreConfig, Scenario, Scene, SoundBodyConfig, TargetRef, TemporalCoreConfig,
+    Action, ArticulationCoreConfig, EnvelopeConfig, Event, HarmonicMode, IndividualConfig,
+    LifeConfig, ModulationCoreConfig, PitchCoreConfig, Scenario, Scene, SoundBodyConfig, TargetRef,
     TimbreGenotype,
 };
 use crate::core::landscape::Landscape;
@@ -18,15 +18,21 @@ use crate::life::perceptual::{FeaturesNow, PerceptualConfig, PerceptualContext};
 use rand::SeedableRng;
 use serde_json;
 
+fn mix_signature(mut acc: u64, value: u32) -> u64 {
+    acc ^= value as u64;
+    acc = acc.wrapping_mul(0x9E37_79B9_7F4A_7C15);
+    acc
+}
+
 fn life_with_lifecycle(lifecycle: LifecycleConfig) -> LifeConfig {
     LifeConfig {
         body: SoundBodyConfig::Sine { phase: None },
-        temporal: TemporalCoreConfig::Entrain {
+        articulation: ArticulationCoreConfig::Entrain {
             lifecycle,
             rhythm_freq: None,
             rhythm_sensitivity: None,
         },
-        field: FieldCoreConfig::PitchHillClimb {
+        pitch: PitchCoreConfig::PitchHillClimb {
             neighbor_step_cents: None,
             tessitura_gravity: None,
             improvement_threshold: None,
@@ -274,7 +280,7 @@ fn harmonic_render_spectrum_hits_expected_bins() {
                 genotype: genotype.clone(),
                 partials: Some(16),
             },
-            temporal: TemporalCoreConfig::Entrain {
+            articulation: ArticulationCoreConfig::Entrain {
                 lifecycle: LifecycleConfig::Decay {
                     initial_energy: 1.0,
                     half_life_sec: 1.0,
@@ -283,7 +289,7 @@ fn harmonic_render_spectrum_hits_expected_bins() {
                 rhythm_freq: None,
                 rhythm_sensitivity: None,
             },
-            field: FieldCoreConfig::PitchHillClimb {
+            pitch: PitchCoreConfig::PitchHillClimb {
                 neighbor_step_cents: None,
                 tessitura_gravity: None,
                 improvement_threshold: None,
@@ -440,7 +446,7 @@ fn life_config_deserializes_and_rejects_unknown_fields() {
         }
     });
     let cfg: LifeConfig = serde_json::from_value(json).expect("life config parses");
-    assert!(matches!(cfg.temporal, TemporalCoreConfig::Entrain { .. }));
+    assert!(matches!(cfg.articulation, ArticulationCoreConfig::Entrain { .. }));
 
     let bad = serde_json::json!({
         "body": { "core": "sine", "unknown": 1.0 },
@@ -490,12 +496,53 @@ fn life_config_deserializes_and_rejects_unknown_fields() {
 }
 
 #[test]
-fn field_core_proposes_target_within_bounds() {
+fn life_config_accepts_temporal_field_aliases() {
+    let alias = serde_json::json!({
+        "body": { "core": "sine" },
+        "temporal": {
+            "core": "entrain",
+            "type": "decay",
+            "initial_energy": 1.0,
+            "half_life_sec": 0.25
+        },
+        "field": { "core": "pitch_hill_climb" },
+        "modulation": { "core": "static" },
+        "perceptual": {}
+    });
+    let cfg: LifeConfig = serde_json::from_value(alias).expect("temporal/field alias parses");
+    assert!(matches!(
+        cfg.articulation,
+        ArticulationCoreConfig::Entrain { .. }
+    ));
+    assert!(matches!(cfg.pitch, PitchCoreConfig::PitchHillClimb { .. }));
+
+    let renamed = serde_json::json!({
+        "body": { "core": "sine" },
+        "articulation": {
+            "core": "entrain",
+            "type": "decay",
+            "initial_energy": 1.0,
+            "half_life_sec": 0.25
+        },
+        "pitch": { "core": "pitch_hill_climb" },
+        "modulation": { "core": "static" },
+        "perceptual": {}
+    });
+    let cfg: LifeConfig = serde_json::from_value(renamed).expect("articulation/pitch parses");
+    assert!(matches!(
+        cfg.articulation,
+        ArticulationCoreConfig::Entrain { .. }
+    ));
+    assert!(matches!(cfg.pitch, PitchCoreConfig::PitchHillClimb { .. }));
+}
+
+#[test]
+fn pitch_core_proposes_target_within_bounds() {
     let space = Log2Space::new(55.0, 880.0, 12);
     let landscape = Landscape::new(space.clone());
     let mut rng = rand::rngs::StdRng::seed_from_u64(4);
-    let mut field = super::individual::AnyFieldCore::from_config(
-        &FieldCoreConfig::PitchHillClimb {
+    let mut pitch = super::individual::AnyPitchCore::from_config(
+        &PitchCoreConfig::PitchHillClimb {
             neighbor_step_cents: None,
             tessitura_gravity: None,
             improvement_threshold: None,
@@ -507,7 +554,7 @@ fn field_core_proposes_target_within_bounds() {
         exploration: 0.0,
         persistence: 0.5,
     };
-    let proposal = field.propose_target(
+    let proposal = pitch.propose_target(
         220.0f32.log2(),
         220.0f32.log2(),
         220.0,
@@ -542,7 +589,7 @@ fn field_core_proposes_target_within_bounds() {
 fn deterministic_rng_produces_same_targets() {
     let life = LifeConfig {
         body: SoundBodyConfig::Sine { phase: None },
-        temporal: TemporalCoreConfig::Entrain {
+        articulation: ArticulationCoreConfig::Entrain {
             lifecycle: LifecycleConfig::Decay {
                 initial_energy: 1.0,
                 half_life_sec: 0.5,
@@ -551,7 +598,7 @@ fn deterministic_rng_produces_same_targets() {
             rhythm_freq: Some(1.0),
             rhythm_sensitivity: None,
         },
-        field: FieldCoreConfig::PitchHillClimb {
+        pitch: PitchCoreConfig::PitchHillClimb {
             neighbor_step_cents: None,
             tessitura_gravity: None,
             improvement_threshold: None,
@@ -598,8 +645,8 @@ fn deterministic_rng_produces_same_targets() {
         } else {
             std::f32::consts::FRAC_PI_2
         };
-        a.update_field_target(&rhythms, dt, &landscape);
-        b.update_field_target(&rhythms, dt, &landscape);
+        a.update_pitch_target(&rhythms, dt, &landscape);
+        b.update_pitch_target(&rhythms, dt, &landscape);
         seq_a.push(a.target_pitch_log2);
         seq_b.push(b.target_pitch_log2);
     }
@@ -1112,4 +1159,226 @@ fn perceptual_silence_threshold_ignores_tiny_mass() {
         adj1 < adj0,
         "expected self-update when mass is below epsilon"
     );
+}
+
+#[test]
+fn articulation_snapshot_kuramoto_signature() {
+    let fs = 48_000.0;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(11);
+    let core = ArticulationCoreConfig::Entrain {
+        lifecycle: LifecycleConfig::Sustain {
+            initial_energy: 1.0,
+            metabolism_rate: 0.0,
+            recharge_rate: Some(0.5),
+            action_cost: Some(0.02),
+            envelope: EnvelopeConfig {
+                attack_sec: 0.01,
+                decay_sec: 0.1,
+                sustain_level: 0.8,
+            },
+        },
+        rhythm_freq: Some(6.0),
+        rhythm_sensitivity: None,
+    };
+    let mut articulation =
+        super::individual::AnyArticulationCore::from_config(&core, fs, 7, &mut rng);
+    let mut rhythms = NeuralRhythms {
+        theta: RhythmBand {
+            phase: 0.0,
+            freq_hz: 6.0,
+            mag: 1.0,
+            alpha: 1.0,
+            beta: 0.2,
+        },
+        delta: RhythmBand {
+            phase: 0.0,
+            freq_hz: 0.5,
+            mag: 1.0,
+            alpha: 1.0,
+            beta: 0.0,
+        },
+        env_level: 1.0,
+        env_open: 1.0,
+    };
+    let dt = 1.0 / fs;
+    let consonance = 0.7;
+    let mut signature = 0u64;
+
+    for _ in 0..20_000 {
+        let signal = articulation.process(consonance, &rhythms, dt, 1.0);
+        signature = mix_signature(signature, signal.is_active as u32);
+        signature = mix_signature(signature, signal.amplitude.to_bits());
+        signature = mix_signature(signature, signal.relaxation.to_bits());
+        signature = mix_signature(signature, signal.tension.to_bits());
+        rhythms.advance_in_place(dt);
+    }
+
+    println!("articulation signature: {signature:016x}");
+    assert_eq!(signature, 0x798d_a9fd_3822_a1ca);
+}
+
+#[test]
+fn render_wave_snapshot_signature() {
+    let fs = 48_000.0;
+    let space = Log2Space::new(110.0, 880.0, 48);
+    let mut landscape = Landscape::new(space.clone());
+    landscape.consonance01.fill(0.1);
+    let current_freq = 220.0;
+    let target_freq: f32 = 330.0;
+    let target_log2 = target_freq.log2();
+    if let Some(idx) = landscape.space.index_of_log2(target_log2) {
+        landscape.consonance01[idx] = 0.9;
+    }
+    landscape.rhythm = NeuralRhythms {
+        theta: RhythmBand {
+            phase: 0.0,
+            freq_hz: 6.0,
+            mag: 1.0,
+            alpha: 1.0,
+            beta: 0.2,
+        },
+        delta: RhythmBand {
+            phase: 0.0,
+            freq_hz: 0.5,
+            mag: 1.0,
+            alpha: 1.0,
+            beta: 0.0,
+        },
+        env_level: 1.0,
+        env_open: 1.0,
+    };
+
+    let cfg = IndividualConfig {
+        freq: current_freq,
+        amp: 0.3,
+        life: LifeConfig {
+            body: SoundBodyConfig::Sine { phase: Some(0.0) },
+            articulation: ArticulationCoreConfig::Entrain {
+                lifecycle: LifecycleConfig::Sustain {
+                    initial_energy: 1.0,
+                    metabolism_rate: 0.0,
+                    recharge_rate: Some(0.5),
+                    action_cost: Some(0.02),
+                    envelope: EnvelopeConfig {
+                        attack_sec: 0.01,
+                        decay_sec: 0.1,
+                        sustain_level: 0.8,
+                    },
+                },
+                rhythm_freq: Some(6.0),
+                rhythm_sensitivity: None,
+            },
+            pitch: PitchCoreConfig::PitchHillClimb {
+                neighbor_step_cents: None,
+                tessitura_gravity: None,
+                improvement_threshold: None,
+            },
+            modulation: ModulationCoreConfig::Static {
+                exploration: None,
+                persistence: None,
+            },
+            perceptual: PerceptualConfig {
+                tau_fast: None,
+                tau_slow: None,
+                w_boredom: None,
+                w_familiarity: None,
+                rho_self: None,
+                boredom_gamma: None,
+                self_smoothing_radius: None,
+                silence_mass_epsilon: None,
+            },
+            breath_gain_init: Some(0.05),
+        },
+        tag: None,
+    };
+    let metadata = AgentMetadata {
+        id: 1,
+        tag: None,
+        group_idx: 0,
+        member_idx: 0,
+    };
+    let mut agent = cfg.spawn(1, 0, metadata, fs);
+    agent.target_pitch_log2 = target_log2;
+
+    let mut buffer = vec![0.0f32; 1024];
+    let dt_sec = buffer.len() as f32 / fs;
+    agent.render_wave(&mut buffer, fs, 0, dt_sec, &landscape, 1.0);
+
+    let mut signature = 0u64;
+    for sample in buffer {
+        signature = mix_signature(signature, sample.to_bits());
+    }
+
+    println!("render signature: {signature:016x}");
+    assert_eq!(signature, 0x3f6d_8c8d_dc30_d84c);
+}
+
+#[test]
+fn render_wave_uses_dt_per_sample_for_seq_core() {
+    let fs = 48_000.0;
+    let mut agent = Individual {
+        id: 1,
+        metadata: AgentMetadata {
+            id: 1,
+            tag: None,
+            group_idx: 0,
+            member_idx: 0,
+        },
+        articulation: super::individual::ArticulationWrapper::new(
+            super::individual::AnyArticulationCore::Seq(SequencedCore {
+            timer: 0.0,
+            duration: 0.1,
+            env_level: 0.0,
+            }),
+            1.0,
+        ),
+        pitch: super::individual::AnyPitchCore::PitchHillClimb(
+            super::individual::PitchHillClimbPitchCore::new(200.0, 220.0f32.log2(), 0.1, 0.1),
+        ),
+        modulation: super::individual::AnyModulationCore::Static(
+            super::individual::StaticModulationCore::new(super::individual::ModulationState {
+                exploration: 0.0,
+                persistence: 0.5,
+            }),
+        ),
+        perceptual: PerceptualContext::from_config(
+            &PerceptualConfig {
+                tau_fast: None,
+                tau_slow: None,
+                w_boredom: None,
+                w_familiarity: None,
+                rho_self: None,
+                boredom_gamma: None,
+                self_smoothing_radius: None,
+                silence_mass_epsilon: None,
+            },
+            0,
+        ),
+        body: super::individual::AnySoundBody::Sine(super::individual::SineBody {
+            freq_hz: 220.0,
+            amp: 0.1,
+            audio_phase: 0.0,
+        }),
+        last_signal: Default::default(),
+        release_gain: 1.0,
+        release_sec: 0.03,
+        release_pending: false,
+        target_pitch_log2: 220.0f32.log2(),
+        integration_window: 2.0,
+        accumulated_time: 0.0,
+        last_theta_sample: 0.0,
+        last_target_salience: 0.0,
+        rng: rand::rngs::SmallRng::seed_from_u64(9),
+    };
+    let mut buffer = vec![0.0f32; 4800];
+    let dt_sec = 0.1;
+    let landscape = make_test_landscape(fs);
+    agent.render_wave(&mut buffer, fs, 0, dt_sec, &landscape, 1.0);
+
+    match &agent.articulation.core {
+        super::individual::AnyArticulationCore::Seq(core) => {
+            assert!((core.timer - 0.1).abs() < 1e-4);
+        }
+        _ => panic!("expected seq core"),
+    }
 }

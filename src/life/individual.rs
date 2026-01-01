@@ -6,7 +6,7 @@ use crate::core::utils::pink_noise_tick;
 use crate::life::lifecycle::LifecycleConfig;
 use crate::life::perceptual::{FeaturesNow, PerceptualContext};
 use crate::life::scenario::{
-    FieldCoreConfig, HarmonicMode, ModulationCoreConfig, SoundBodyConfig, TemporalCoreConfig,
+    ArticulationCoreConfig, HarmonicMode, ModulationCoreConfig, PitchCoreConfig, SoundBodyConfig,
     TimbreGenotype,
 };
 use rand::{Rng, SeedableRng, rngs::SmallRng};
@@ -37,7 +37,81 @@ pub struct ArticulationSignal {
     pub tension: f32,
 }
 
-pub trait TemporalCore {
+#[derive(Debug, Clone, Copy, Default)]
+pub struct PlannedPitch {
+    pub target_pitch_log2: f32,
+    pub jump_cents_abs: f32,
+    pub salience: f32,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct PlannedGate {
+    pub gate: f32,
+}
+
+impl PlannedGate {
+    fn update(
+        &mut self,
+        planned: &PlannedPitch,
+        rhythms: &NeuralRhythms,
+        dt: f32,
+    ) -> bool {
+        let dt = dt.max(0.0);
+        let move_threshold = 10.0;
+        if planned.jump_cents_abs > move_threshold {
+            self.gate = (self.gate - dt * 1.5).max(0.0);
+            self.gate < 0.1
+        } else {
+            let attack_rate = 1.0 + rhythms.theta.beta;
+            self.gate = (self.gate + dt * attack_rate).clamp(0.0, 1.0);
+            true
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ArticulationWrapper {
+    pub core: AnyArticulationCore,
+    pub planned_gate: PlannedGate,
+}
+
+impl ArticulationWrapper {
+    pub fn new(core: AnyArticulationCore, gate: f32) -> Self {
+        Self {
+            core,
+            planned_gate: PlannedGate { gate },
+        }
+    }
+
+    pub fn process(
+        &mut self,
+        consonance: f32,
+        rhythms: &NeuralRhythms,
+        dt: f32,
+        global_coupling: f32,
+    ) -> ArticulationSignal {
+        self.core
+            .process(consonance, rhythms, dt, global_coupling)
+    }
+
+    pub fn is_alive(&self) -> bool {
+        self.core.is_alive()
+    }
+
+    pub fn update_gate(&mut self, planned: &PlannedPitch, rhythms: &NeuralRhythms, dt: f32) -> bool {
+        self.planned_gate.update(planned, rhythms, dt)
+    }
+
+    pub fn gate(&self) -> f32 {
+        self.planned_gate.gate
+    }
+
+    pub fn set_gate(&mut self, gate: f32) {
+        self.planned_gate.gate = gate.clamp(0.0, 1.0);
+    }
+}
+
+pub trait ArticulationCore {
     fn process(
         &mut self,
         consonance: f32,
@@ -474,7 +548,7 @@ impl KuramotoCore {
     }
 }
 
-impl TemporalCore for KuramotoCore {
+impl ArticulationCore for KuramotoCore {
     fn process(
         &mut self,
         consonance: f32,
@@ -617,7 +691,7 @@ pub struct SequencedCore {
     pub env_level: f32,
 }
 
-impl TemporalCore for SequencedCore {
+impl ArticulationCore for SequencedCore {
     fn process(
         &mut self,
         _consonance: f32,
@@ -647,7 +721,7 @@ pub struct DroneCore {
     pub sway_rate: f32,
 }
 
-impl TemporalCore for DroneCore {
+impl ArticulationCore for DroneCore {
     fn process(
         &mut self,
         _consonance: f32,
@@ -675,13 +749,13 @@ impl TemporalCore for DroneCore {
 
 #[derive(Debug, Clone)]
 #[allow(clippy::large_enum_variant)]
-pub enum AnyTemporalCore {
+pub enum AnyArticulationCore {
     Entrain(KuramotoCore),
     Seq(SequencedCore),
     Drone(DroneCore),
 }
 
-impl TemporalCore for AnyTemporalCore {
+impl ArticulationCore for AnyArticulationCore {
     fn process(
         &mut self,
         consonance: f32,
@@ -690,17 +764,17 @@ impl TemporalCore for AnyTemporalCore {
         global_coupling: f32,
     ) -> ArticulationSignal {
         match self {
-            AnyTemporalCore::Entrain(c) => c.process(consonance, rhythms, dt, global_coupling),
-            AnyTemporalCore::Seq(c) => c.process(consonance, rhythms, dt, global_coupling),
-            AnyTemporalCore::Drone(c) => c.process(consonance, rhythms, dt, global_coupling),
+            AnyArticulationCore::Entrain(c) => c.process(consonance, rhythms, dt, global_coupling),
+            AnyArticulationCore::Seq(c) => c.process(consonance, rhythms, dt, global_coupling),
+            AnyArticulationCore::Drone(c) => c.process(consonance, rhythms, dt, global_coupling),
         }
     }
 
     fn is_alive(&self) -> bool {
         match self {
-            AnyTemporalCore::Entrain(c) => c.is_alive(),
-            AnyTemporalCore::Seq(c) => c.is_alive(),
-            AnyTemporalCore::Drone(c) => c.is_alive(),
+            AnyArticulationCore::Entrain(c) => c.is_alive(),
+            AnyArticulationCore::Seq(c) => c.is_alive(),
+            AnyArticulationCore::Drone(c) => c.is_alive(),
         }
     }
 }
@@ -712,7 +786,7 @@ pub struct TargetProposal {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub trait FieldCore {
+pub trait PitchCore {
     fn propose_target<R: Rng + ?Sized>(
         &mut self,
         current_pitch_log2: f32,
@@ -728,14 +802,14 @@ pub trait FieldCore {
 }
 
 #[derive(Debug, Clone)]
-pub struct PitchHillClimbFieldCore {
+pub struct PitchHillClimbPitchCore {
     neighbor_step_log2: f32,
     tessitura_center: f32,
     tessitura_gravity: f32,
     improvement_threshold: f32,
 }
 
-impl PitchHillClimbFieldCore {
+impl PitchHillClimbPitchCore {
     pub fn new(
         neighbor_step_cents: f32,
         tessitura_center: f32,
@@ -751,7 +825,7 @@ impl PitchHillClimbFieldCore {
     }
 }
 
-impl FieldCore for PitchHillClimbFieldCore {
+impl PitchCore for PitchHillClimbPitchCore {
     fn propose_target<R: Rng + ?Sized>(
         &mut self,
         current_pitch_log2: f32,
@@ -825,11 +899,11 @@ impl FieldCore for PitchHillClimbFieldCore {
 }
 
 #[derive(Debug, Clone)]
-pub enum AnyFieldCore {
-    PitchHillClimb(PitchHillClimbFieldCore),
+pub enum AnyPitchCore {
+    PitchHillClimb(PitchHillClimbPitchCore),
 }
 
-impl FieldCore for AnyFieldCore {
+impl PitchCore for AnyPitchCore {
     fn propose_target<R: Rng + ?Sized>(
         &mut self,
         current_pitch_log2: f32,
@@ -843,7 +917,7 @@ impl FieldCore for AnyFieldCore {
         rng: &mut R,
     ) -> TargetProposal {
         match self {
-            AnyFieldCore::PitchHillClimb(core) => core.propose_target(
+            AnyPitchCore::PitchHillClimb(core) => core.propose_target(
                 current_pitch_log2,
                 current_target_log2,
                 current_freq_hz,
@@ -858,15 +932,15 @@ impl FieldCore for AnyFieldCore {
     }
 }
 
-impl AnyTemporalCore {
+impl AnyArticulationCore {
     pub fn from_config<R: Rng + ?Sized>(
-        config: &TemporalCoreConfig,
+        config: &ArticulationCoreConfig,
         fs: f32,
         noise_seed: u64,
         rng: &mut R,
     ) -> Self {
         match config {
-            TemporalCoreConfig::Entrain {
+            ArticulationCoreConfig::Entrain {
                 lifecycle,
                 rhythm_freq,
                 rhythm_sensitivity,
@@ -889,7 +963,7 @@ impl AnyTemporalCore {
                 };
                 let init_freq = rhythm_freq.unwrap_or_else(|| rng.random_range(5.0..7.0));
                 // Phase/offset seed diversity; theta lock uses base_k ~ omega_target in process.
-                AnyTemporalCore::Entrain(KuramotoCore {
+                AnyArticulationCore::Entrain(KuramotoCore {
                     energy,
                     basal_cost,
                     action_cost,
@@ -941,15 +1015,17 @@ impl AnyTemporalCore {
                     dbg_last_k_eff: 0.0,
                 })
             }
-            TemporalCoreConfig::Seq { duration } => AnyTemporalCore::Seq(SequencedCore {
+            ArticulationCoreConfig::Seq { duration } => {
+                AnyArticulationCore::Seq(SequencedCore {
                 timer: 0.0,
                 duration: duration.max(0.0),
                 env_level: 0.0,
-            }),
-            TemporalCoreConfig::Drone { sway } => {
+                })
+            }
+            ArticulationCoreConfig::Drone { sway } => {
                 let sway_rate = sway.unwrap_or(0.05);
                 let sway_rate = if sway_rate <= 0.0 { 0.05 } else { sway_rate };
-                AnyTemporalCore::Drone(DroneCore {
+                AnyArticulationCore::Drone(DroneCore {
                     phase: rng.random_range(0.0..std::f32::consts::TAU),
                     sway_rate,
                 })
@@ -958,14 +1034,14 @@ impl AnyTemporalCore {
     }
 }
 
-impl AnyFieldCore {
+impl AnyPitchCore {
     pub fn from_config<R: Rng + ?Sized>(
-        config: &FieldCoreConfig,
+        config: &PitchCoreConfig,
         initial_pitch_log2: f32,
         _rng: &mut R,
     ) -> Self {
         match config {
-            FieldCoreConfig::PitchHillClimb {
+            PitchCoreConfig::PitchHillClimb {
                 neighbor_step_cents,
                 tessitura_gravity,
                 improvement_threshold,
@@ -973,7 +1049,7 @@ impl AnyFieldCore {
                 let neighbor_step_cents = neighbor_step_cents.unwrap_or(200.0);
                 let tessitura_gravity = tessitura_gravity.unwrap_or(0.1);
                 let improvement_threshold = improvement_threshold.unwrap_or(0.1);
-                AnyFieldCore::PitchHillClimb(PitchHillClimbFieldCore::new(
+                AnyPitchCore::PitchHillClimb(PitchHillClimbPitchCore::new(
                     neighbor_step_cents,
                     initial_pitch_log2,
                     tessitura_gravity,
@@ -1346,8 +1422,8 @@ impl SoundBody for AnySoundBody {
 pub struct Individual {
     pub id: u64,
     pub metadata: AgentMetadata,
-    pub temporal: AnyTemporalCore,
-    pub field: AnyFieldCore,
+    pub articulation: ArticulationWrapper,
+    pub pitch: AnyPitchCore,
     pub modulation: AnyModulationCore,
     pub perceptual: PerceptualContext,
     pub body: AnySoundBody,
@@ -1358,7 +1434,6 @@ pub struct Individual {
     pub target_pitch_log2: f32,
     pub integration_window: f32,
     pub accumulated_time: f32,
-    pub breath_gain: f32,
     pub last_theta_sample: f32,
     pub last_target_salience: f32,
     pub rng: SmallRng,
@@ -1373,13 +1448,13 @@ impl Individual {
         let log_freq = log_freq.max(0.0);
         self.body.set_pitch_log2(log_freq);
         self.target_pitch_log2 = log_freq;
-        self.breath_gain = 1.0;
+        self.articulation.set_gate(1.0);
         self.accumulated_time = 0.0;
         self.last_theta_sample = 0.0;
         self.last_target_salience = 0.0;
     }
 
-    pub fn update_field_target(&mut self, rhythms: &NeuralRhythms, dt: f32, landscape: &Landscape) {
+    pub fn update_pitch_target(&mut self, rhythms: &NeuralRhythms, dt: f32, landscape: &Landscape) {
         let dt = dt.max(0.0);
         let current_freq = self.body.base_freq_hz().max(1.0);
         let current_pitch_log2 = current_freq.log2();
@@ -1400,7 +1475,7 @@ impl Individual {
             let features = FeaturesNow::from_subjective_intensity(&landscape.subjective_intensity);
             debug_assert_eq!(features.distribution.len(), landscape.space.n_bins());
             self.perceptual.ensure_len(features.distribution.len());
-            let proposal = self.field.propose_target(
+            let proposal = self.pitch.propose_target(
                 current_pitch_log2,
                 self.target_pitch_log2,
                 current_freq,
@@ -1420,18 +1495,6 @@ impl Individual {
 
         let (fmin, fmax) = landscape.freq_bounds_log2();
         self.target_pitch_log2 = self.target_pitch_log2.clamp(fmin, fmax);
-        let distance_cents = 1200.0 * (self.target_pitch_log2 - current_pitch_log2).abs();
-        let move_threshold = 10.0;
-        if distance_cents > move_threshold {
-            self.breath_gain = (self.breath_gain - dt * 1.5).max(0.0);
-            if self.breath_gain < 0.1 {
-                self.body.set_pitch_log2(self.target_pitch_log2);
-            }
-        } else {
-            self.body.set_pitch_log2(self.target_pitch_log2);
-            let attack_rate = 1.0 + rhythms.theta.beta;
-            self.breath_gain = (self.breath_gain + dt * attack_rate).clamp(0.0, 1.0);
-        }
     }
 
     pub fn start_release(&mut self, release_sec: f32) {
@@ -1468,12 +1531,25 @@ impl AudioAgent for Individual {
         let dt_per_sample = dt_sec / buffer.len() as f32;
         let mut rhythms = landscape.rhythm;
         for sample in buffer.iter_mut() {
-            self.update_field_target(&rhythms, dt_per_sample, landscape);
+            self.update_pitch_target(&rhythms, dt_per_sample, landscape);
+            let current_freq = self.body.base_freq_hz().max(1.0);
+            let current_pitch_log2 = current_freq.log2();
+            let planned = PlannedPitch {
+                target_pitch_log2: self.target_pitch_log2,
+                jump_cents_abs: 1200.0 * (self.target_pitch_log2 - current_pitch_log2).abs(),
+                salience: self.last_target_salience,
+            };
+            let apply_planned_pitch =
+                self.articulation
+                    .update_gate(&planned, &rhythms, dt_per_sample);
+            if apply_planned_pitch {
+                self.body.set_pitch_log2(planned.target_pitch_log2);
+            }
             let consonance = landscape.evaluate_pitch01(self.body.base_freq_hz());
             let mut signal =
-                self.temporal
+                self.articulation
                     .process(consonance, &rhythms, dt_per_sample, global_coupling);
-            signal.amplitude *= self.breath_gain;
+            signal.amplitude *= self.articulation.gate();
             if self.release_pending {
                 let step = dt_per_sample / self.release_sec.max(1e-6);
                 self.release_gain = (self.release_gain - step).max(0.0);
@@ -1498,6 +1574,6 @@ impl AudioAgent for Individual {
     }
 
     fn is_alive(&self) -> bool {
-        self.temporal.is_alive() && self.release_gain > 0.0
+        self.articulation.is_alive() && self.release_gain > 0.0
     }
 }

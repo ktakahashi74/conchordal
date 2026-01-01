@@ -1022,7 +1022,7 @@ fn worker_loop(
                             freq_hz: f,
                             target_freq: 2.0f32.powf(agent.target_pitch_log2),
                             integration_window: agent.integration_window,
-                            breath_gain: agent.breath_gain,
+                            breath_gain: agent.articulation.gate(),
                             consonance: current_landscape.evaluate_pitch01(f),
                         }
                     })

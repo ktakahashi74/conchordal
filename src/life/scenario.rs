@@ -97,6 +97,19 @@ pub struct LifeConfig {
     pub _legacy_modulation: Option<Value>,
 }
 
+impl Default for LifeConfig {
+    fn default() -> Self {
+        Self {
+            body: SoundBodyConfig::default(),
+            articulation: ArticulationCoreConfig::default(),
+            pitch: PitchCoreConfig::default(),
+            perceptual: PerceptualConfig::default(),
+            breath_gain_init: None,
+            _legacy_modulation: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "core", rename_all = "snake_case", deny_unknown_fields)]
 pub enum SoundBodyConfig {
@@ -487,7 +500,7 @@ mod tests {
                     silence_mass_epsilon: None,
                 },
                 breath_gain_init: None,
-                _legacy_modulation: None,
+                ..Default::default()
             },
             tag: Some("test".into()),
         };

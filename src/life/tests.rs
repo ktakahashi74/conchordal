@@ -49,7 +49,7 @@ fn life_with_lifecycle(lifecycle: LifecycleConfig) -> LifeConfig {
             silence_mass_epsilon: None,
         },
         breath_gain_init: None,
-        _legacy_modulation: None,
+        ..Default::default()
     }
 }
 
@@ -305,7 +305,7 @@ fn harmonic_render_spectrum_hits_expected_bins() {
                 silence_mass_epsilon: None,
             },
             breath_gain_init: None,
-            _legacy_modulation: None,
+            ..Default::default()
         },
         tag: None,
     };
@@ -610,7 +610,7 @@ fn deterministic_rng_produces_same_targets() {
             silence_mass_epsilon: Some(1e-6),
         },
         breath_gain_init: None,
-        _legacy_modulation: None,
+        ..Default::default()
     };
     let cfg = IndividualConfig {
         freq: 220.0,
@@ -1279,7 +1279,7 @@ fn render_wave_snapshot_signature() {
                 silence_mass_epsilon: None,
             },
             breath_gain_init: Some(0.05),
-            _legacy_modulation: None,
+            ..Default::default()
         },
         tag: None,
     };

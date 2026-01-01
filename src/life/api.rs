@@ -43,7 +43,7 @@ pub mod script_api {
     /// - `min_dist_erb`: f32 (optional, minimum ERB spacing)
     /// - `temperature`: f32 (optional, only for `harmonic_density`)
     ///
-    /// `life_map` schema: see `life_config` for required body/articulation/pitch/modulation cores.
+    /// `life_map` schema: see `life_config` for required body/articulation/pitch cores.
     ///
     /// # Parameter Schemas
     ///

@@ -580,7 +580,6 @@ mod tests {
                 body: #{ core: "sine" },
                 articulation: #{ core: "entrain", type: "decay", initial_energy: 1.0, half_life_sec: 0.5 },
                 pitch: #{ core: "pitch_hill_climb" },
-                modulation: #{ core: "static", persistence: 0.5, exploration: 0.0 },
                 perceptual: #{ tau_fast: 0.5, tau_slow: 6.0, w_boredom: 0.8, w_familiarity: 0.2 }
             };
             add_agent("lead", 440.0, 0.2, life);
@@ -590,7 +589,6 @@ mod tests {
                 body: #{ core: "sine" },
                 articulation: #{ core: "entrain", type: "decay", initial_energy: 0.8, half_life_sec: 0.2 },
                 pitch: #{ core: "pitch_hill_climb" },
-                modulation: #{ core: "static", persistence: 0.5, exploration: 0.0 },
                 perceptual: #{ tau_fast: 0.5, tau_slow: 6.0, w_boredom: 0.8, w_familiarity: 0.2 }
             };
             add_agent("hit", 880.0, 0.1, hit_life);
@@ -646,7 +644,6 @@ mod tests {
                     body: #{ core: "sine" },
                     articulation: #{ core: "entrain", type: "decay", initial_energy: 1.0, half_life_sec: 0.3 },
                     pitch: #{ core: "pitch_hill_climb" },
-                    modulation: #{ core: "static", persistence: 0.5, exploration: 0.0 },
                     perceptual: #{ tau_fast: 0.5, tau_slow: 6.0, w_boredom: 0.8, w_familiarity: 0.2 }
                 };
                 add_agent("pad", 200.0, 0.1, life);
@@ -656,7 +653,6 @@ mod tests {
                 body: #{ core: "sine" },
                 articulation: #{ core: "entrain", type: "decay", initial_energy: 1.0, half_life_sec: 0.3 },
                 pitch: #{ core: "pitch_hill_climb" },
-                modulation: #{ core: "static", persistence: 0.5, exploration: 0.0 },
                 perceptual: #{ tau_fast: 0.5, tau_slow: 6.0, w_boredom: 0.8, w_familiarity: 0.2 }
             };
             add_agent("after", 300.0, 0.1, after_life);
@@ -700,7 +696,6 @@ mod tests {
                 body: #{ core: "sine" },
                 articulation: #{ core: "entrain", type: "decay", initial_energy: 1.0, half_life_sec: 0.5 },
                 pitch: #{ core: "pitch_hill_climb" },
-                modulation: #{ core: "static", persistence: 0.5, exploration: 0.0 },
                 perceptual: #{ tau_fast: 0.5, tau_slow: 6.0, w_boredom: 0.8, w_familiarity: 0.2 }
             };
             spawn_agents("tag", method, life, 3, 0.25);
@@ -753,7 +748,6 @@ mod tests {
                 body: #{ core: "sine" },
                 articulation: #{ core: "entrain", type: "decay", initial_energy: 1.0, half_life_sec: 0.5 },
                 pitch: #{ core: "pitch_hill_climb" },
-                modulation: #{ core: "static", persistence: 0.5, exploration: 0.0 },
                 perceptual: #{ tau_fast: 0.5, tau_slow: 6.0, w_boredom: 0.8, w_familiarity: 0.2 }
             };
             add_agent("init", 330.0, 0.2, life);

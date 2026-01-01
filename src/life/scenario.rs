@@ -7,8 +7,7 @@ use std::fmt;
 use tracing::debug;
 
 use crate::life::individual::{
-    AgentMetadata, AnyArticulationCore, AnyModulationCore, AnyPitchCore, ArticulationWrapper,
-    Individual,
+    AgentMetadata, AnyArticulationCore, AnyPitchCore, ArticulationWrapper, Individual,
 };
 use crate::life::lifecycle::LifecycleConfig;
 use crate::life::perceptual::PerceptualConfig;
@@ -91,11 +90,11 @@ pub struct LifeConfig {
     #[serde(default, alias = "field")]
     pub pitch: PitchCoreConfig,
     #[serde(default)]
-    pub modulation: ModulationCoreConfig,
-    #[serde(default)]
     pub perceptual: PerceptualConfig,
     #[serde(default)]
     pub breath_gain_init: Option<f32>,
+    #[serde(default, alias = "modulation")]
+    pub _legacy_modulation: Option<Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -225,6 +224,10 @@ pub enum PitchCoreConfig {
         tessitura_gravity: Option<f32>,
         #[serde(default)]
         improvement_threshold: Option<f32>,
+        #[serde(default)]
+        exploration: Option<f32>,
+        #[serde(default)]
+        persistence: Option<f32>,
     },
 }
 
@@ -234,24 +237,6 @@ impl Default for PitchCoreConfig {
             neighbor_step_cents: None,
             tessitura_gravity: None,
             improvement_threshold: None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "core", rename_all = "snake_case", deny_unknown_fields)]
-pub enum ModulationCoreConfig {
-    Static {
-        #[serde(default)]
-        exploration: Option<f32>,
-        #[serde(default)]
-        persistence: Option<f32>,
-    },
-}
-
-impl Default for ModulationCoreConfig {
-    fn default() -> Self {
-        ModulationCoreConfig::Static {
             exploration: None,
             persistence: None,
         }
@@ -262,11 +247,10 @@ impl fmt::Display for LifeConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "life[body={:?}, articulation={:?}, pitch={:?}, modulation={:?}, perceptual={:?}, breath_gain_init={:?}]",
+            "life[body={:?}, articulation={:?}, pitch={:?}, perceptual={:?}, breath_gain_init={:?}]",
             self.body,
             self.articulation,
             self.pitch,
-            self.modulation,
             self.perceptual,
             self.breath_gain_init
         )
@@ -333,7 +317,6 @@ impl IndividualConfig {
         let core =
             AnyArticulationCore::from_config(&self.life.articulation, fs, assigned_id, &mut rng);
         let pitch = AnyPitchCore::from_config(&self.life.pitch, target_pitch_log2, &mut rng);
-        let modulation = AnyModulationCore::from_config(&self.life.modulation);
         let perceptual =
             crate::life::perceptual::PerceptualContext::from_config(&self.life.perceptual, 0);
         let body = crate::life::individual::AnySoundBody::from_config(
@@ -373,7 +356,6 @@ impl IndividualConfig {
             metadata,
             articulation: ArticulationWrapper::new(core, breath_gain),
             pitch,
-            modulation,
             perceptual,
             body,
             last_signal: Default::default(),
@@ -491,8 +473,6 @@ mod tests {
                     neighbor_step_cents: None,
                     tessitura_gravity: None,
                     improvement_threshold: None,
-                },
-                modulation: ModulationCoreConfig::Static {
                     exploration: None,
                     persistence: None,
                 },
@@ -507,6 +487,7 @@ mod tests {
                     silence_mass_epsilon: None,
                 },
                 breath_gain_init: None,
+                _legacy_modulation: None,
             },
             tag: Some("test".into()),
         };

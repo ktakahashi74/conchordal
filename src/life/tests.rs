@@ -6,8 +6,7 @@ use super::individual::{
 use super::population::Population;
 use super::scenario::{
     Action, ArticulationCoreConfig, EnvelopeConfig, Event, HarmonicMode, IndividualConfig,
-    LifeConfig, ModulationCoreConfig, PitchCoreConfig, Scenario, Scene, SoundBodyConfig, TargetRef,
-    TimbreGenotype,
+    LifeConfig, PitchCoreConfig, Scenario, Scene, SoundBodyConfig, TargetRef, TimbreGenotype,
 };
 use crate::core::landscape::Landscape;
 use crate::core::landscape::LandscapeFrame;
@@ -36,8 +35,6 @@ fn life_with_lifecycle(lifecycle: LifecycleConfig) -> LifeConfig {
             neighbor_step_cents: None,
             tessitura_gravity: None,
             improvement_threshold: None,
-        },
-        modulation: ModulationCoreConfig::Static {
             exploration: None,
             persistence: None,
         },
@@ -52,6 +49,7 @@ fn life_with_lifecycle(lifecycle: LifecycleConfig) -> LifeConfig {
             silence_mass_epsilon: None,
         },
         breath_gain_init: None,
+        _legacy_modulation: None,
     }
 }
 
@@ -293,8 +291,6 @@ fn harmonic_render_spectrum_hits_expected_bins() {
                 neighbor_step_cents: None,
                 tessitura_gravity: None,
                 improvement_threshold: None,
-            },
-            modulation: ModulationCoreConfig::Static {
                 exploration: None,
                 persistence: None,
             },
@@ -309,6 +305,7 @@ fn harmonic_render_spectrum_hits_expected_bins() {
                 silence_mass_epsilon: None,
             },
             breath_gain_init: None,
+            _legacy_modulation: None,
         },
         tag: None,
     };
@@ -546,14 +543,12 @@ fn pitch_core_proposes_target_within_bounds() {
             neighbor_step_cents: None,
             tessitura_gravity: None,
             improvement_threshold: None,
+            exploration: None,
+            persistence: None,
         },
         220.0f32.log2(),
         &mut rng,
     );
-    let modulation = super::individual::ModulationState {
-        exploration: 0.0,
-        persistence: 0.5,
-    };
     let proposal = pitch.propose_target(
         220.0f32.log2(),
         220.0f32.log2(),
@@ -577,7 +572,6 @@ fn pitch_core_proposes_target_within_bounds() {
             0.0;
             space.n_bins()
         ]),
-        modulation,
         &mut rng,
     );
     let (fmin, fmax) = landscape.freq_bounds_log2();
@@ -602,8 +596,6 @@ fn deterministic_rng_produces_same_targets() {
             neighbor_step_cents: None,
             tessitura_gravity: None,
             improvement_threshold: None,
-        },
-        modulation: ModulationCoreConfig::Static {
             exploration: Some(0.2),
             persistence: Some(0.5),
         },
@@ -618,6 +610,7 @@ fn deterministic_rng_produces_same_targets() {
             silence_mass_epsilon: Some(1e-6),
         },
         breath_gain_init: None,
+        _legacy_modulation: None,
     };
     let cfg = IndividualConfig {
         freq: 220.0,
@@ -1272,8 +1265,6 @@ fn render_wave_snapshot_signature() {
                 neighbor_step_cents: None,
                 tessitura_gravity: None,
                 improvement_threshold: None,
-            },
-            modulation: ModulationCoreConfig::Static {
                 exploration: None,
                 persistence: None,
             },
@@ -1288,6 +1279,7 @@ fn render_wave_snapshot_signature() {
                 silence_mass_epsilon: None,
             },
             breath_gain_init: Some(0.05),
+            _legacy_modulation: None,
         },
         tag: None,
     };
@@ -1333,13 +1325,14 @@ fn render_wave_uses_dt_per_sample_for_seq_core() {
             1.0,
         ),
         pitch: super::individual::AnyPitchCore::PitchHillClimb(
-            super::individual::PitchHillClimbPitchCore::new(200.0, 220.0f32.log2(), 0.1, 0.1),
-        ),
-        modulation: super::individual::AnyModulationCore::Static(
-            super::individual::StaticModulationCore::new(super::individual::ModulationState {
-                exploration: 0.0,
-                persistence: 0.5,
-            }),
+            super::individual::PitchHillClimbPitchCore::new(
+                200.0,
+                220.0f32.log2(),
+                0.1,
+                0.1,
+                0.0,
+                0.5,
+            ),
         ),
         perceptual: PerceptualContext::from_config(
             &PerceptualConfig {

@@ -7,8 +7,7 @@ use crate::life::perceptual::PerceptualConfig;
 use crate::life::population::Population;
 use crate::life::scenario::{Action, TargetRef};
 use crate::life::scenario::{
-    PitchCoreConfig, IndividualConfig, LifeConfig, ModulationCoreConfig, SoundBodyConfig,
-    ArticulationCoreConfig,
+    PitchCoreConfig, IndividualConfig, LifeConfig, SoundBodyConfig, ArticulationCoreConfig,
 };
 use rand::SeedableRng;
 
@@ -35,8 +34,6 @@ fn life_with_lifecycle(lifecycle: LifecycleConfig) -> LifeConfig {
             neighbor_step_cents: None,
             tessitura_gravity: None,
             improvement_threshold: None,
-        },
-        modulation: ModulationCoreConfig::Static {
             exploration: None,
             persistence: None,
         },
@@ -51,6 +48,7 @@ fn life_with_lifecycle(lifecycle: LifecycleConfig) -> LifeConfig {
             silence_mass_epsilon: None,
         },
         breath_gain_init: None,
+        _legacy_modulation: None,
     }
 }
 
@@ -316,8 +314,6 @@ fn render_wave_snapshot_signature_with_forced_snap() {
                 neighbor_step_cents: None,
                 tessitura_gravity: None,
                 improvement_threshold: None,
-            },
-            modulation: ModulationCoreConfig::Static {
                 exploration: None,
                 persistence: None,
             },
@@ -332,6 +328,7 @@ fn render_wave_snapshot_signature_with_forced_snap() {
                 silence_mass_epsilon: None,
             },
             breath_gain_init: Some(0.09),
+            _legacy_modulation: None,
         },
         tag: None,
     };

@@ -1,4 +1,4 @@
-use super::individual::{AgentMetadata, AudioAgent, Individual, ModulationCore, SoundBody};
+use super::individual::{AgentMetadata, AudioAgent, Individual, SoundBody};
 use super::scenario::{Action, IndividualConfig, SpawnMethod, TargetRef};
 use crate::core::landscape::{LandscapeFrame, LandscapeUpdate};
 use crate::core::log2space::Log2Space;
@@ -462,7 +462,7 @@ impl Population {
                 for id in ids {
                     if let Some(agent) = self.find_individual_mut(id) {
                         let v = value.clamp(0.0, 1.0);
-                        agent.modulation.set_persistence(v);
+                        agent.pitch.set_persistence(v);
                     } else {
                         warn!("SetCommitment: agent {id} not found");
                     }
@@ -474,7 +474,7 @@ impl Population {
                     if let Some(agent) = self.find_individual_mut(id) {
                         // Map drift to exploration without coupling persistence.
                         let v = value.abs().clamp(0.0, 1.0);
-                        agent.modulation.set_exploration(v);
+                        agent.pitch.set_exploration(v);
                     } else {
                         warn!("SetDrift: agent {id} not found");
                     }

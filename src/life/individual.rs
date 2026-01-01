@@ -6,8 +6,7 @@ use crate::core::utils::pink_noise_tick;
 use crate::life::lifecycle::LifecycleConfig;
 use crate::life::perceptual::{FeaturesNow, PerceptualContext};
 use crate::life::scenario::{
-    ArticulationCoreConfig, HarmonicMode, ModulationCoreConfig, PitchCoreConfig, SoundBodyConfig,
-    TimbreGenotype,
+    ArticulationCoreConfig, HarmonicMode, PitchCoreConfig, SoundBodyConfig, TimbreGenotype,
 };
 use rand::{Rng, SeedableRng, rngs::SmallRng};
 use std::f32::consts::{PI, TAU};
@@ -150,68 +149,6 @@ pub struct Sensitivity {
     pub theta: f32,
     pub alpha: f32,
     pub beta: f32,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct ModulationState {
-    pub exploration: f32,
-    pub persistence: f32,
-}
-
-pub trait ModulationCore {
-    fn state(&self) -> ModulationState;
-    fn set_exploration(&mut self, value: f32);
-    fn set_persistence(&mut self, value: f32);
-}
-
-#[derive(Debug, Clone)]
-pub struct StaticModulationCore {
-    state: ModulationState,
-}
-
-impl StaticModulationCore {
-    pub fn new(state: ModulationState) -> Self {
-        Self { state }
-    }
-}
-
-impl ModulationCore for StaticModulationCore {
-    fn state(&self) -> ModulationState {
-        self.state
-    }
-
-    fn set_exploration(&mut self, value: f32) {
-        self.state.exploration = value.clamp(0.0, 1.0);
-    }
-
-    fn set_persistence(&mut self, value: f32) {
-        self.state.persistence = value.clamp(0.0, 1.0);
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum AnyModulationCore {
-    Static(StaticModulationCore),
-}
-
-impl ModulationCore for AnyModulationCore {
-    fn state(&self) -> ModulationState {
-        match self {
-            AnyModulationCore::Static(core) => core.state(),
-        }
-    }
-
-    fn set_exploration(&mut self, value: f32) {
-        match self {
-            AnyModulationCore::Static(core) => core.set_exploration(value),
-        }
-    }
-
-    fn set_persistence(&mut self, value: f32) {
-        match self {
-            AnyModulationCore::Static(core) => core.set_persistence(value),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -796,7 +733,6 @@ pub trait PitchCore {
         landscape: &Landscape,
         perceptual: &PerceptualContext,
         _features: &FeaturesNow,
-        modulation: ModulationState,
         rng: &mut R,
     ) -> TargetProposal;
 }
@@ -807,6 +743,8 @@ pub struct PitchHillClimbPitchCore {
     tessitura_center: f32,
     tessitura_gravity: f32,
     improvement_threshold: f32,
+    exploration: f32,
+    persistence: f32,
 }
 
 impl PitchHillClimbPitchCore {
@@ -815,13 +753,25 @@ impl PitchHillClimbPitchCore {
         tessitura_center: f32,
         tessitura_gravity: f32,
         improvement_threshold: f32,
+        exploration: f32,
+        persistence: f32,
     ) -> Self {
         Self {
             neighbor_step_log2: neighbor_step_cents / 1200.0,
             tessitura_center,
             tessitura_gravity,
             improvement_threshold,
+            exploration: exploration.clamp(0.0, 1.0),
+            persistence: persistence.clamp(0.0, 1.0),
         }
+    }
+
+    pub fn set_exploration(&mut self, value: f32) {
+        self.exploration = value.clamp(0.0, 1.0);
+    }
+
+    pub fn set_persistence(&mut self, value: f32) {
+        self.persistence = value.clamp(0.0, 1.0);
     }
 }
 
@@ -835,7 +785,6 @@ impl PitchCore for PitchHillClimbPitchCore {
         landscape: &Landscape,
         perceptual: &PerceptualContext,
         _features: &FeaturesNow,
-        modulation: ModulationState,
         rng: &mut R,
     ) -> TargetProposal {
         let (fmin, fmax) = landscape.freq_bounds_log2();
@@ -882,9 +831,9 @@ impl PitchCore for PitchHillClimbPitchCore {
             target_pitch_log2 = best_pitch;
         } else {
             let satisfaction = ((current_adjusted + 1.0) * 0.5).clamp(0.0, 1.0);
-            let mut stay_prob = modulation.persistence.clamp(0.0, 1.0) * satisfaction;
+            let mut stay_prob = self.persistence.clamp(0.0, 1.0) * satisfaction;
             stay_prob = stay_prob.clamp(0.0, 1.0);
-            let exploration = modulation.exploration.clamp(0.0, 1.0);
+            let exploration = self.exploration.clamp(0.0, 1.0);
             stay_prob = (stay_prob * (1.0 - exploration)).clamp(0.0, 1.0);
             if rng.random_range(0.0..1.0) > stay_prob {
                 target_pitch_log2 = best_pitch;
@@ -913,7 +862,6 @@ impl PitchCore for AnyPitchCore {
         landscape: &Landscape,
         perceptual: &PerceptualContext,
         features: &FeaturesNow,
-        modulation: ModulationState,
         rng: &mut R,
     ) -> TargetProposal {
         match self {
@@ -925,9 +873,22 @@ impl PitchCore for AnyPitchCore {
                 landscape,
                 perceptual,
                 features,
-                modulation,
                 rng,
             ),
+        }
+    }
+}
+
+impl AnyPitchCore {
+    pub fn set_exploration(&mut self, value: f32) {
+        match self {
+            AnyPitchCore::PitchHillClimb(core) => core.set_exploration(value),
+        }
+    }
+
+    pub fn set_persistence(&mut self, value: f32) {
+        match self {
+            AnyPitchCore::PitchHillClimb(core) => core.set_persistence(value),
         }
     }
 }
@@ -1045,33 +1006,22 @@ impl AnyPitchCore {
                 neighbor_step_cents,
                 tessitura_gravity,
                 improvement_threshold,
+                exploration,
+                persistence,
             } => {
                 let neighbor_step_cents = neighbor_step_cents.unwrap_or(200.0);
                 let tessitura_gravity = tessitura_gravity.unwrap_or(0.1);
                 let improvement_threshold = improvement_threshold.unwrap_or(0.1);
+                let exploration = exploration.unwrap_or(0.0);
+                let persistence = persistence.unwrap_or(0.5);
                 AnyPitchCore::PitchHillClimb(PitchHillClimbPitchCore::new(
                     neighbor_step_cents,
                     initial_pitch_log2,
                     tessitura_gravity,
                     improvement_threshold,
+                    exploration,
+                    persistence,
                 ))
-            }
-        }
-    }
-}
-
-impl AnyModulationCore {
-    pub fn from_config(config: &ModulationCoreConfig) -> Self {
-        match config {
-            ModulationCoreConfig::Static {
-                exploration,
-                persistence,
-            } => {
-                let state = ModulationState {
-                    exploration: exploration.unwrap_or(0.0).clamp(0.0, 1.0),
-                    persistence: persistence.unwrap_or(0.5).clamp(0.0, 1.0),
-                };
-                AnyModulationCore::Static(StaticModulationCore::new(state))
             }
         }
     }
@@ -1424,7 +1374,6 @@ pub struct Individual {
     pub metadata: AgentMetadata,
     pub articulation: ArticulationWrapper,
     pub pitch: AnyPitchCore,
-    pub modulation: AnyModulationCore,
     pub perceptual: PerceptualContext,
     pub body: AnySoundBody,
     pub last_signal: ArticulationSignal,
@@ -1471,7 +1420,6 @@ impl Individual {
         if theta_cross && self.accumulated_time >= self.integration_window {
             let elapsed = self.accumulated_time;
             self.accumulated_time = 0.0;
-            let modulation = self.modulation.state();
             let features = FeaturesNow::from_subjective_intensity(&landscape.subjective_intensity);
             debug_assert_eq!(features.distribution.len(), landscape.space.n_bins());
             self.perceptual.ensure_len(features.distribution.len());
@@ -1483,7 +1431,6 @@ impl Individual {
                 landscape,
                 &self.perceptual,
                 &features,
-                modulation,
                 &mut self.rng,
             );
             self.target_pitch_log2 = proposal.target_pitch_log2;

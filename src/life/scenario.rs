@@ -80,34 +80,19 @@ impl Default for TimbreGenotype {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
 #[serde(deny_unknown_fields)]
 pub struct LifeConfig {
     #[serde(default)]
     pub body: SoundBodyConfig,
-    #[serde(default, alias = "temporal")]
+    #[serde(default)]
     pub articulation: ArticulationCoreConfig,
-    #[serde(default, alias = "field")]
+    #[serde(default)]
     pub pitch: PitchCoreConfig,
     #[serde(default)]
     pub perceptual: PerceptualConfig,
     #[serde(default)]
     pub breath_gain_init: Option<f32>,
-    #[serde(default, alias = "modulation")]
-    pub _legacy_modulation: Option<Value>,
-}
-
-impl Default for LifeConfig {
-    fn default() -> Self {
-        Self {
-            body: SoundBodyConfig::default(),
-            articulation: ArticulationCoreConfig::default(),
-            pitch: PitchCoreConfig::default(),
-            perceptual: PerceptualConfig::default(),
-            breath_gain_init: None,
-            _legacy_modulation: None,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]

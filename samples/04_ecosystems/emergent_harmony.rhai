@@ -8,15 +8,14 @@ let anchor = add_agent(
     0.12,
     #{
         body: #{ core: "sine" },
-        temporal: #{
+        articulation: #{
             core: "entrain",
             type: "sustain",
             initial_energy: 1.0,
             metabolism_rate: 0.0,
             envelope: #{ attack_sec: 0.02, decay_sec: 0.2, sustain_level: 1.0 }
         },
-        field: #{ core: "pitch_hill_climb" },
-        modulation: #{ core: "static", persistence: 0.5, exploration: 0.0 },
+        pitch: #{ core: "pitch_hill_climb" },
         perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
     }
 );
@@ -28,16 +27,14 @@ scene("seekers_arrive");
 // Phase 2: seekers at dissonant intervals (F#, C#)
 let seeker_fsharp = add_agent("seeker_fsharp", 92.499, 0.08, #{
     body: #{ core: "sine" },
-    temporal: #{ core: "entrain", type: "decay", initial_energy: 1.2, half_life_sec: 6.0 },
-    field: #{ core: "pitch_hill_climb" },
-    modulation: #{ core: "static", persistence: 0.5, exploration: 0.0 },
+    articulation: #{ core: "entrain", type: "decay", initial_energy: 1.2, half_life_sec: 6.0 },
+    pitch: #{ core: "pitch_hill_climb" },
     perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
 });
 let seeker_csharp = add_agent("seeker_csharp", 69.296, 0.08, #{
     body: #{ core: "sine" },
-    temporal: #{ core: "entrain", type: "decay", initial_energy: 1.2, half_life_sec: 6.0 },
-    field: #{ core: "pitch_hill_climb" },
-    modulation: #{ core: "static", persistence: 0.5, exploration: 0.0 },
+    articulation: #{ core: "entrain", type: "decay", initial_energy: 1.2, half_life_sec: 6.0 },
+    pitch: #{ core: "pitch_hill_climb" },
     perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
 });
 seeker_fsharp.set_commitment(0.25);

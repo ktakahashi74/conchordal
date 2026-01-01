@@ -1,13 +1,12 @@
 print(">>> Hybrid Ecosystem: Machine, Plant, and Life <<<");
 
 // 1. Machine (Seq): Strict rhythm using config maps
-// No play_tone() helper; use add_agent with temporal core "seq"
+// No play_tone() helper; use add_agent with articulation core "seq"
 scene("Phase 1: Mechanism");
 let seq_conf = #{
     body: #{ core: "sine" },
-    temporal: #{ core: "seq", duration: 0.1 },
-    field: #{ core: "pitch_hill_climb" },
-    modulation: #{ core: "static", persistence: 0.5, exploration: 0.0 },
+    articulation: #{ core: "seq", duration: 0.1 },
+    pitch: #{ core: "pitch_hill_climb" },
     perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
 };
 parallel(|| {
@@ -34,12 +33,11 @@ let drone_conf = #{
         unison: 0.05,
         partials: 16
     },
-    temporal: #{ core: "drone", sway: 0.2 },
-    field: #{ core: "pitch_hill_climb" },
-    modulation: #{ core: "static", persistence: 0.5, exploration: 0.0 },
+    articulation: #{ core: "drone", sway: 0.2 },
+    pitch: #{ core: "pitch_hill_climb" },
     perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
 };
-// Using harmonic body with drone temporal core.
+// Using harmonic body with drone articulation core.
 add_agent("pad_low", 110.0, 0.3, drone_conf);
 wait(2.0);
 
@@ -47,9 +45,8 @@ wait(2.0);
 scene("Phase 3: Inhabitants");
 let bio_life = #{
     body: #{ core: "sine" },
-    temporal: #{ core: "entrain", type: "decay", initial_energy: 1.0, half_life_sec: 0.6 },
-    field: #{ core: "pitch_hill_climb" },
-    modulation: #{ core: "static", persistence: 0.5, exploration: 0.0 },
+    articulation: #{ core: "entrain", type: "decay", initial_energy: 1.0, half_life_sec: 0.6 },
+    pitch: #{ core: "pitch_hill_climb" },
     perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
 };
 let bio_method = #{ mode: "harmonicity", min_freq: 400.0, max_freq: 800.0 };

@@ -9,15 +9,14 @@ print("--- [1] Anchoring C2 (65.41Hz) ---");
 // Anchor (immobile)
 let anchor = add_agent("anchor", 65.41, 0.6, #{
     body: #{ core: "sine" },
-    temporal: #{
+    articulation: #{
         core: "entrain",
         type: "sustain",
         initial_energy: 10.0,
         metabolism_rate: 0.0,
         envelope: #{ attack_sec: 0.1, decay_sec: 0.1, sustain_level: 1.0 }
     },
-    field: #{ core: "pitch_hill_climb" },
-    modulation: #{ core: "static", persistence: 0.5, exploration: 0.0 },
+    pitch: #{ core: "pitch_hill_climb" },
     perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
 });
 anchor.set_commitment(1.0);
@@ -36,15 +35,14 @@ print("--- [2] Spawning Seekers at Dissonant Intervals ---");
 
 let life_seeker = #{
     body: #{ core: "sine" },
-    temporal: #{
+    articulation: #{
         core: "entrain",
         type: "sustain",
         initial_energy: 2.0,
         metabolism_rate: 0.0,
         envelope: #{ attack_sec: 1.0, decay_sec: 1.0, sustain_level: 0.5 }
     },
-    field: #{ core: "pitch_hill_climb" },
-    modulation: #{ core: "static", persistence: 0.5, exploration: 0.0 },
+    pitch: #{ core: "pitch_hill_climb" },
     perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
 };
 
@@ -60,7 +58,7 @@ print(">>> Observe: They should hop to the nearest consonant peak (G or C) <<<")
 wait(5.0);
 
 // ==========================================
-// Phase 3: Tectonic shift (modulation)
+// Phase 3: Tectonic shift (drift)
 // ==========================================
 scene("Phase 3: Modulation to F");
 print("--- [3] Moving Anchor to F2 (87.31Hz) ---");

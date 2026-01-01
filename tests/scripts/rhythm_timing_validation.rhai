@@ -6,7 +6,7 @@ print("Logs to watch: rhythm::metrics (onset_plv_theta, onset_mean_phase_theta~0
 
 let click_life = #{
     body: #{ core: "sine" },
-    temporal: #{
+    articulation: #{
         core: "entrain",
         type: "decay",
         initial_energy: 1.0,
@@ -14,8 +14,7 @@ let click_life = #{
         attack_sec: 0.001
     },
     breath_gain_init: 1.0,
-    field: #{ core: "pitch_hill_climb" },
-    modulation: #{ core: "static", persistence: 0.4, exploration: 0.0 },
+    pitch: #{ core: "pitch_hill_climb" },
     perceptual: #{
         tau_fast: 0.5,
         tau_slow: 20.0,
@@ -30,7 +29,7 @@ let click_life = #{
 
 let follower_life = #{
     body: #{ core: "sine" },
-    temporal: #{
+    articulation: #{
         core: "entrain",
         type: "sustain",
         rhythm_sensitivity: 1.2,
@@ -42,8 +41,7 @@ let follower_life = #{
             sustain_level: 0.0
         }
     },
-    field: #{ core: "pitch_hill_climb" },
-    modulation: #{ core: "static", persistence: 0.4, exploration: 0.0 },
+    pitch: #{ core: "pitch_hill_climb" },
     perceptual: #{
         tau_fast: 0.5,
         tau_slow: 20.0,

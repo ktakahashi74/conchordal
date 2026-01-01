@@ -7,15 +7,14 @@ print(">>> Comparison: Major Gravity vs Mirror Dualism <<<");
 // "C" persists in both phases, but the attraction landscape around it changes.
 let anchor_life = #{ 
     body: #{ core: "sine" },
-    temporal: #{
+    articulation: #{
         core: "entrain",
         type: "sustain", 
         initial_energy: 10.0, 
         metabolism_rate: 0.0, 
         envelope: #{ attack_sec: 2.0, decay_sec: 0.5, sustain_level: 1.0 }
     },
-    field: #{ core: "pitch_hill_climb" },
-    modulation: #{ core: "static", persistence: 0.5, exploration: 0.0 },
+    pitch: #{ core: "pitch_hill_climb" },
     perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
 };
 
@@ -45,9 +44,8 @@ let method_major = #{
 };
 let life_pulse = #{
     body: #{ core: "sine" },
-    temporal: #{ core: "entrain", type: "decay", initial_energy: 1.0, half_life_sec: 0.8 },
-    field: #{ core: "pitch_hill_climb" },
-    modulation: #{ core: "static", persistence: 0.5, exploration: 0.0 },
+    articulation: #{ core: "entrain", type: "decay", initial_energy: 1.0, half_life_sec: 0.8 },
+    pitch: #{ core: "pitch_hill_climb" },
     perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
 };
 

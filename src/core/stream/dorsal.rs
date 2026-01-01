@@ -2,7 +2,7 @@ use crate::core::modulation::{NeuralRhythms, RhythmEngine};
 use tracing::debug;
 
 /// Dorsal Stream (Where/How Pathway)
-/// Handles fast temporal processing, rhythm extraction, and motor synchronization.
+/// Handles fast articulation processing, rhythm extraction, and motor synchronization.
 ///
 /// Features:
 /// - Low-latency synchronous processing.

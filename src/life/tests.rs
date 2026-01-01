@@ -424,14 +424,13 @@ fn population_spectrum_uses_log2_space() {
 fn life_config_deserializes_and_rejects_unknown_fields() {
     let json = serde_json::json!({
         "body": { "core": "sine" },
-        "temporal": {
+        "articulation": {
             "core": "entrain",
             "type": "decay",
             "initial_energy": 1.0,
             "half_life_sec": 0.25
         },
-        "field": { "core": "pitch_hill_climb" },
-        "modulation": { "core": "static" },
+        "pitch": { "core": "pitch_hill_climb" },
         "perceptual": {
             "tau_fast": 0.5,
             "tau_slow": 4.0,
@@ -447,15 +446,14 @@ fn life_config_deserializes_and_rejects_unknown_fields() {
 
     let bad = serde_json::json!({
         "body": { "core": "sine", "unknown": 1.0 },
-        "temporal": {
+        "articulation": {
             "core": "entrain",
             "type": "decay",
             "initial_energy": 1.0,
             "half_life_sec": 0.25,
             "unknown": 1.0
         },
-        "field": { "core": "pitch_hill_climb" },
-        "modulation": { "core": "static" },
+        "pitch": { "core": "pitch_hill_climb" },
         "perceptual": {
             "tau_fast": 0.5,
             "tau_slow": 4.0,
@@ -469,14 +467,13 @@ fn life_config_deserializes_and_rejects_unknown_fields() {
     assert!(serde_json::from_value::<LifeConfig>(bad).is_err());
 
     let missing = serde_json::json!({
-        "temporal": {
+        "articulation": {
             "core": "entrain",
             "type": "decay",
             "initial_energy": 1.0,
             "half_life_sec": 0.25
         },
-        "field": { "core": "pitch_hill_climb" },
-        "modulation": { "core": "static" },
+        "pitch": { "core": "pitch_hill_climb" },
         "perceptual": {
             "tau_fast": 0.5,
             "tau_slow": 4.0,
@@ -490,47 +487,6 @@ fn life_config_deserializes_and_rejects_unknown_fields() {
     let cfg_missing: LifeConfig =
         serde_json::from_value(missing).expect("missing body should default");
     assert!(matches!(cfg_missing.body, SoundBodyConfig::Sine { .. }));
-}
-
-#[test]
-fn life_config_accepts_temporal_field_aliases() {
-    let alias = serde_json::json!({
-        "body": { "core": "sine" },
-        "temporal": {
-            "core": "entrain",
-            "type": "decay",
-            "initial_energy": 1.0,
-            "half_life_sec": 0.25
-        },
-        "field": { "core": "pitch_hill_climb" },
-        "modulation": { "core": "static" },
-        "perceptual": {}
-    });
-    let cfg: LifeConfig = serde_json::from_value(alias).expect("temporal/field alias parses");
-    assert!(matches!(
-        cfg.articulation,
-        ArticulationCoreConfig::Entrain { .. }
-    ));
-    assert!(matches!(cfg.pitch, PitchCoreConfig::PitchHillClimb { .. }));
-
-    let renamed = serde_json::json!({
-        "body": { "core": "sine" },
-        "articulation": {
-            "core": "entrain",
-            "type": "decay",
-            "initial_energy": 1.0,
-            "half_life_sec": 0.25
-        },
-        "pitch": { "core": "pitch_hill_climb" },
-        "modulation": { "core": "static" },
-        "perceptual": {}
-    });
-    let cfg: LifeConfig = serde_json::from_value(renamed).expect("articulation/pitch parses");
-    assert!(matches!(
-        cfg.articulation,
-        ArticulationCoreConfig::Entrain { .. }
-    ));
-    assert!(matches!(cfg.pitch, PitchCoreConfig::PitchHillClimb { .. }));
 }
 
 #[test]

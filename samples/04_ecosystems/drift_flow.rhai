@@ -9,15 +9,14 @@ print("--- [1] Anchoring C2 (65.41Hz) ---");
 // Base tone (static anchor)
 let anchor = add_agent("anchor", 65.41, 0.6, #{ 
     body: #{ core: "sine" },
-    temporal: #{
+    articulation: #{
         core: "entrain",
         type: "sustain", 
         initial_energy: 10.0, 
         metabolism_rate: 0.0,
         envelope: #{ attack_sec: 0.1, decay_sec: 0.1, sustain_level: 1.0 }
     },
-    field: #{ core: "pitch_hill_climb" },
-    modulation: #{ core: "static", persistence: 0.5, exploration: 0.0 },
+    pitch: #{ core: "pitch_hill_climb" },
     perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
 });
 // Anchor stays put (high commitment = resists movement)
@@ -30,15 +29,14 @@ print("--- Injecting Dissonant Tone (C#3) -> Watch it hop to C3 or E3 ---");
 // Check whether the pull guides it toward C3 or E3
 let slider = add_agent("slider", 138.59, 0.4, #{
     body: #{ core: "sine" },
-    temporal: #{
+    articulation: #{
         core: "entrain",
         type: "sustain",
         initial_energy: 2.0,
         metabolism_rate: 0.0,
         envelope: #{ attack_sec: 0.5, decay_sec: 0.5, sustain_level: 1.0 }
     },
-    field: #{ core: "pitch_hill_climb" },
-    modulation: #{ core: "static", persistence: 0.5, exploration: 0.0 },
+    pitch: #{ core: "pitch_hill_climb" },
     perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
 });
 
@@ -60,7 +58,7 @@ print("--- Slider should be pushed away by red arrow ---");
 wait(6.0);
 
 // ==========================================
-// Phase 3: Mass Migration (modulation and pursuit)
+// Phase 3: Mass Migration (drift and pursuit)
 // ==========================================
 scene("Phase 3: Modulation");
 print("--- [3] Spawning Swarm & Moving Anchor ---");
@@ -72,15 +70,14 @@ slider.remove();
 let method = #{ mode: "harmonicity", min_freq: 130.0, max_freq: 800.0 };
 let life = #{
     body: #{ core: "sine" },
-    temporal: #{
+    articulation: #{
         core: "entrain",
         type: "sustain",
         initial_energy: 5.0,
         metabolism_rate: 0.05,
         envelope: #{ attack_sec: 1.0, decay_sec: 1.0, sustain_level: 0.5 }
     },
-    field: #{ core: "pitch_hill_climb" },
-    modulation: #{ core: "static", persistence: 0.5, exploration: 0.0 },
+    pitch: #{ core: "pitch_hill_climb" },
     perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
 };
 

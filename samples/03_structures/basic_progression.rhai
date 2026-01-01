@@ -11,30 +11,28 @@ fn play_step(name, root, dur) {
     // 1. Bass (Anchor): 動かない、重い、飽きない
     let bass_life = #{ 
         body: #{ core: "sine" },
-        temporal: #{
+        articulation: #{
             core: "entrain",
             type: "sustain", 
             initial_energy: 10.0, 
             metabolism_rate: 0.0, 
             envelope: #{ attack_sec: 0.1, decay_sec: 0.1, sustain_level: 0.5 }
         },
-        field: #{ core: "pitch_hill_climb" },
-        modulation: #{ core: "static", persistence: 1.0, exploration: 0.0 },
+        pitch: #{ core: "pitch_hill_climb" },
         perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
     };
 
     // 2. Pad (Seeker): 動きやすい、分散する
     let pad_life = #{ 
         body: #{ core: "sine" },
-        temporal: #{
+        articulation: #{
             core: "entrain",
             type: "sustain", 
             initial_energy: 5.0, 
             metabolism_rate: 0.0, 
             envelope: #{ attack_sec: 1.0, decay_sec: 0.5, sustain_level: 0.6 }
         },
-        field: #{ core: "pitch_hill_climb" },
-        modulation: #{ core: "static", persistence: 0.3, exploration: 0.0 },
+        pitch: #{ core: "pitch_hill_climb" },
         perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
     };
 

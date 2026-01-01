@@ -54,6 +54,10 @@ struct Args {
     /// Run without GUI (headless)
     #[arg(long, default_value_t = false)]
     nogui: bool,
+
+    /// Compile scenario script only (no GUI, no audio, no execution)
+    #[arg(long, default_value_t = false)]
+    compile_only: bool,
 }
 
 fn load_scenario_from_path(path: &str) -> Result<Scenario, String> {
@@ -91,6 +95,16 @@ fn main() -> eframe::Result<()> {
         config.playback.wait_user_start = val;
     }
 
+    let ext = Path::new(&args.scenario_path)
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if ext != "rhai" {
+        eprintln!("Scenario must be a .rhai script: {}", args.scenario_path);
+        std::process::exit(1);
+    }
+
     let stop_flag = Arc::new(AtomicBool::new(false));
     let stop_flag_for_ctrlc = stop_flag.clone();
 
@@ -98,6 +112,11 @@ fn main() -> eframe::Result<()> {
         stop_flag_for_ctrlc.store(true, Ordering::SeqCst);
     })
     .expect("Error setting Ctrl-C handler");
+
+    if args.compile_only {
+        app::run_compile_only(args, config);
+        return Ok(());
+    }
 
     if args.nogui {
         if config.playback.wait_user_start {

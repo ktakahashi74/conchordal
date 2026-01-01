@@ -26,7 +26,7 @@ use crate::core::stream::{
 use crate::life::conductor::Conductor;
 use crate::life::individual::SoundBody;
 use crate::life::population::Population;
-use crate::life::scenario::Scenario;
+use crate::life::scenario::{Action, Scenario, TargetRef};
 use crate::life::scripting::ScriptHost;
 use crate::ui::viewdata::{
     AgentStateInfo, DorsalFrame, PlaybackState, SimulationMeta, SpecFrame, UiFrame, WaveFrame,
@@ -170,6 +170,133 @@ struct RuntimeInit {
     audio_out: Option<AudioOutput>,
     audio_init_error: Option<String>,
     visual_delay_frames: usize,
+}
+
+pub fn compile_scenario_from_script(
+    script_path: &Path,
+    _args: &crate::Args,
+    _config: &AppConfig,
+) -> Result<Scenario, String> {
+    let ext = script_path
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if ext != "rhai" {
+        return Err(format!(
+            "Scenario must be a .rhai script: {}",
+            script_path.display()
+        ));
+    }
+    let path_str = script_path.to_string_lossy();
+    ScriptHost::load_script(&path_str).map_err(|e| {
+        format!(
+            "Failed to run scenario script {}: {e:#}",
+            script_path.display()
+        )
+    })
+}
+
+fn validate_scenario(scenario: &Scenario) -> Result<(), String> {
+    let mut events = Vec::new();
+    for scene in &scenario.scenes {
+        for event in &scene.events {
+            events.push(event);
+        }
+    }
+    if events.is_empty() {
+        return Err("Scenario has no events".to_string());
+    }
+
+    let mut has_finish = false;
+    for event in &events {
+        for action in &event.actions {
+            match action {
+                Action::Finish => {
+                    has_finish = true;
+                }
+                Action::SpawnAgents { count, .. } => {
+                    if *count == 0 {
+                        return Err("SpawnAgents has count=0".to_string());
+                    }
+                }
+                Action::AddAgent { id, .. } => {
+                    if *id == 0 {
+                        return Err("AddAgent has id=0".to_string());
+                    }
+                }
+                Action::RemoveAgent { target }
+                | Action::ReleaseAgent { target, .. }
+                | Action::SetFreq { target, .. }
+                | Action::SetAmp { target, .. }
+                | Action::SetCommitment { target, .. }
+                | Action::SetDrift { target, .. } => {
+                    validate_target(target)?;
+                }
+                Action::SetRhythmVitality { .. }
+                | Action::SetGlobalCoupling { .. }
+                | Action::SetRoughnessTolerance { .. }
+                | Action::SetHarmonicity { .. } => {}
+            }
+        }
+    }
+
+    if !has_finish {
+        return Err("Scenario has no Finish action".to_string());
+    }
+
+    let mut prev_order = None;
+    for event in &events {
+        let order = event.order;
+        if let Some(prev) = prev_order
+            && order <= prev
+        {
+            return Err("Event order is not strictly increasing".to_string());
+        }
+        prev_order = Some(order);
+    }
+
+    Ok(())
+}
+
+fn validate_target(target: &TargetRef) -> Result<(), String> {
+    match target {
+        TargetRef::Range { count, .. } if *count == 0 => {
+            Err("TargetRef::Range has count=0".to_string())
+        }
+        TargetRef::Tag { tag } if tag.trim().is_empty() => {
+            Err("TargetRef::Tag has empty tag".to_string())
+        }
+        _ => Ok(()),
+    }
+}
+
+pub fn run_compile_only(args: crate::Args, config: AppConfig) {
+    let path = Path::new(&args.scenario_path);
+    let scenario = compile_scenario_from_script(path, &args, &config).unwrap_or_else(|e| {
+        eprintln!("{e}");
+        std::process::exit(1);
+    });
+    if let Err(e) = validate_scenario(&scenario) {
+        eprintln!("{e}");
+        std::process::exit(1);
+    }
+    let scene_count = scenario.scenes.len();
+    let mut event_count = 0usize;
+    let mut action_count = 0usize;
+    for scene in &scenario.scenes {
+        event_count += scene.events.len();
+        for event in &scene.events {
+            action_count += event.actions.len();
+        }
+    }
+    eprintln!(
+        "OK compile-only: {} (events={}, actions={}, scenes={})",
+        path.display(),
+        event_count,
+        action_count,
+        scene_count
+    );
 }
 
 impl App {
@@ -426,23 +553,14 @@ fn init_runtime(args: crate::Args, config: AppConfig, stop_flag: Arc<AtomicBool>
             .expect("spawn roughness worker");
     }
 
-    let path = args.scenario_path.clone();
-    let scenario_label = Path::new(&path)
+    let path = Path::new(&args.scenario_path);
+    let scenario_label = path
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("scenario")
         .to_string();
-    let ext = Path::new(&path)
-        .extension()
-        .and_then(|s| s.to_str())
-        .unwrap_or("")
-        .to_ascii_lowercase();
-    if ext != "rhai" {
-        eprintln!("Scenario must be a .rhai script: {path}");
-        std::process::exit(1);
-    }
-    let scenario = ScriptHost::load_script(&path).unwrap_or_else(|e| {
-        eprintln!("Failed to run scenario script {path}: {e:#}");
+    let scenario = compile_scenario_from_script(path, &args, &config).unwrap_or_else(|e| {
+        eprintln!("{e}");
         std::process::exit(1);
     });
     let conductor = Conductor::from_scenario(scenario);
@@ -988,5 +1106,43 @@ fn apply_params_update(params: &mut LandscapeParams, upd: &LandscapeUpdate) {
     }
     if let Some(k) = upd.roughness_k {
         params.roughness_k = k.max(1e-6);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::AppConfig;
+
+    fn args_for_path(path: &Path) -> crate::Args {
+        crate::Args {
+            play: false,
+            wav: None,
+            scenario_path: path.to_string_lossy().to_string(),
+            config: "config.toml".to_string(),
+            wait_user_exit: None,
+            wait_user_start: None,
+            nogui: false,
+            compile_only: false,
+        }
+    }
+
+    #[test]
+    fn compile_only_samples_tests() {
+        let dir = Path::new("samples/tests");
+        let mut count = 0;
+        for entry in std::fs::read_dir(dir).expect("read samples/tests") {
+            let path = entry.expect("dir entry").path();
+            if path.extension().and_then(|s| s.to_str()) != Some("rhai") {
+                continue;
+            }
+            count += 1;
+            let args = args_for_path(&path);
+            let config = AppConfig::default();
+            let scenario =
+                compile_scenario_from_script(&path, &args, &config).expect("compile scenario");
+            validate_scenario(&scenario).expect("validate scenario");
+        }
+        assert!(count > 0, "no .rhai scripts found in samples/tests");
     }
 }

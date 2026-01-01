@@ -90,11 +90,13 @@ The Landscape is updated every audio frame (or block) by the Analysis Workers. I
 *   **Roughness ($R$)**: The sensory dissonance caused by rapid beating between proximal partials.
 *   **Harmonicity ($H$)**: The measure of virtual pitch strength and spectral periodicity.
 
-The net Consonance ($C$) at frequency $f$ and time $t$ is the fitness field the agents sample:
+Both metrics are normalized to the $[0, 1]$ range before combination. The net Consonance ($C$) is computed as a signed difference, then rescaled:
 
-$$ C(f,t) = H(f,t) - k_r \cdot R(f,t) $$
+$$ C_{signed} = \text{clip}(H_{01} - w_r \cdot R_{01},\; -1,\; 1) $$
 
-Individual agents maintain their own perceptual context (`PerceptualContext`) which tracks per-agent boredom and familiarity, providing additional score adjustments during pitch selection.
+$$ C_{01} = \frac{C_{signed} + 1}{2} $$
+
+where $w_r$ is the `roughness_weight` parameter (default 1.0). Individual agents maintain their own perceptual context (`PerceptualContext`) which tracks per-agent boredom and familiarity, providing additional score adjustments during pitch selection.
 
 ## 3.1 Non-Stationary Gabor Transform (NSGT)
 
@@ -149,9 +151,46 @@ Calculating roughness pairwise for all spectral bins ($N^2$ complexity) is compu
 1.  **Mapping**: The log-spaced amplitude spectrum from the NSGT is mapped (or interpolated) onto a linear ERB grid.
 2.  **Convolution**: This density $A(z)$ is convolved with the pre-calculated roughness kernel $K_{rough}$.
 
-$$ R(z) = (A * K_{rough})(z) = \int A(z-\tau) K_{rough}(\tau) d\tau $$
+$$ R_{shape}(z) = (A * K_{rough})(z) = \int A(z-\tau) K_{rough}(\tau) d\tau $$
 
-The result $R(z)$ represents the "Roughness Potential" at frequency $z$. If an agent were to place a tone at $z$, it would interact with the existing spectral energy to generate roughness proportional to $R(z)$. Agents seeking consonance actively avoid peaks in this field.
+The result $R_{shape}(z)$ represents the raw "Roughness Shape" at frequency $z$. To convert this to a normalized fitness signal, Conchordal applies a physiological saturation mapping.
+
+### 3.2.3 Physiological Saturation Mapping
+
+Raw roughness values from the convolution have unbounded range. Rather than hard-clamping, Conchordal uses a saturation curve that models the compressive nonlinearity of auditory perception. This mapping converts reference-normalized roughness ratios to the $[0, 1]$ range.
+
+**Reference Normalization**: The system maintains reference values $r_{ref,peak}$ and $r_{ref,total}$ representing "typical" roughness levels. The reference-normalized ratios are:
+
+$$ x_{peak}(u) = \frac{R_{shape}(u)}{r_{ref,peak}} $$
+
+$$ x_{total} = \frac{R_{shape,total}}{r_{ref,total}} $$
+
+**The Saturation Parameter**: The parameter `roughness_k` ($k > 0$) controls the saturation curve's shoulder. The reference ratio $x = 1$ maps to:
+
+$$ R_{ref} = \frac{1}{1+k} $$
+
+Larger $k$ reduces $R_{01}$ for the same input ratio, making the system more tolerant of roughness.
+
+**Piecewise Saturation Mapping**: The normalized roughness $R_{01}$ is computed from the reference-normalized ratio $x$ as:
+
+$$
+R_{01}(x; k) = \begin{cases}
+0 & \text{if } x \leq 0 \\
+x \cdot \frac{1}{1+k} & \text{if } 0 < x < 1 \\
+1 - \frac{k}{x+k} & \text{if } x \geq 1
+\end{cases}
+$$
+
+This function is continuous at $x = 1$ (both branches yield $\frac{1}{1+k}$) and saturates asymptotically to 1 as $x \to \infty$. The piecewise structure ensures linear response for low roughness (preserving sensitivity) while compressing extreme values (preventing saturation).
+
+**Numerical Safety**: The implementation handles edge cases robustly:
+
+*   $x = \text{NaN} \to 0$
+*   $x = +\infty \to 1$
+*   $x = -\infty \to 0$
+*   Non-finite $k$ is treated as $10^{-6}$
+
+Agents seeking consonance actively avoid peaks in the $R_{01}$ field.
 
 ## 3.3 Harmonicity ($H$): The Sibling Projection Algorithm
 
@@ -166,13 +205,13 @@ The algorithm posits that any spectral peak at frequency $f$ implies the potenti
 The algorithm operates on the `Log2Space` spectrum in two passes, utilizing the integer properties of the logarithmic grid:
 
 1.  **Downward Projection (Root Search)**: The current spectral envelope is "smeared" downward. For every bin $i$ with energy, the algorithm adds energy to bins $i - \log_2(k)$ for integers $k \in \{1, 2, \dots, N\}$.
-    
+
     $$ Roots[i] = \sum_k A[i + \log_2(k)] \cdot w_k $$
 
     Here, $w_k$ is a weighting factor that decays with harmonic index $k$ (e.g., $k^{-\rho}$), reflecting that lower harmonics imply their roots more strongly than higher ones. The result `Roots` describes the strength of the virtual pitch at every frequency.
 
 2.  **Upward Projection (Harmonic Resonance)**: The system then projects the `Roots` spectrum back upwards. If a strong root exists at $f_r$, it implies stability for all its natural harmonics ($f_r, 2f_r, 3f_r \dots$).
-    
+
     $$ H[i] = \sum_m Roots[i - \log_2(m)] \cdot w_m $$
 
 **Emergent Tonal Stability**: Consider an environment with a single tone at 200 Hz.
@@ -380,17 +419,33 @@ Future development of Conchordal will focus on spatialization (extending the lan
 | `bins_per_oct` | `Log2Space` | Int | Resolution of the frequency grid (typ. 48-96). |
 | `sigma_cents` | `Harmonicity` | Cents | Width of harmonic peaks. Lower = stricter intonation. |
 | `mirror_weight` | `Harmonicity` | 0.0-1.0 | Balance between Overtone (Major) and Undertone (Minor) gravity. |
-| `roughness_k` | `Landscape` | Float | Weight of dissonance penalty in fitness function. |
+| `roughness_k` | `Roughness` | Float | Saturation parameter for roughness mapping. Default: $(1/0.7) - 1 \approx 0.4286$ (so $x=1$ maps to $\approx 0.7$). |
+| `roughness_weight` | `Landscape` | Float | Weight of roughness penalty in consonance calculation. Default: 1.0. |
 | `vitality` | `DorsalStream` | 0.0-1.0 | Self-oscillation energy of the rhythm section. |
 | `persistence` | `ModulationCore` | 0.0-1.0 | Resistance to movement/change of an agent. |
 
 # Appendix B: Mathematical Summary
 
 **Consonance Fitness Function:**
-$$ C(f,t) = \underbrace{H(f,t)}\_{\text{Harmonicity}} - k \cdot \underbrace{R(f,t)}\_{\text{Roughness}} $$
+
+$$ C_{signed} = \text{clip}(H_{01} - w_r \cdot R_{01},\; -1,\; 1) $$
+
+$$ C_{01} = \frac{C_{signed} + 1}{2} $$
+
+**Roughness Saturation Mapping** (from reference-normalized ratio $x$ to $R_{01} \in [0,1]$):
+
+$$
+R_{01}(x; k) = \begin{cases}
+0 & \text{if } x \leq 0 \\
+x \cdot \frac{1}{1+k} & \text{if } 0 < x < 1 \\
+1 - \frac{k}{x+k} & \text{if } x \geq 1
+\end{cases}
+$$
+
+where $k$ is `roughness_k` (default $\approx 0.4286$). The function is continuous at $x=1$ and saturates to 1 as $x \to \infty$.
 
 **Harmonicity Projection (Sibling Algorithm):**
 $$ H[i] = (1-\alpha)\sum_m \left( \sum_k A[i+\log_2(k)] \right)[i-\log_2(m)] + \alpha \sum_m \left( \sum_k A[i-\log_2(k)] \right)[i+\log_2(m)] $$
 
 **Roughness Convolution:**
-$$ R(z) = \int A(\tau) \cdot K_{plomp}(|z-\tau|_{ERB}) d\tau $$
+$$ R_{shape}(z) = \int A(\tau) \cdot K_{plomp}(|z-\tau|_{ERB}) d\tau $$

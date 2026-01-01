@@ -1,5 +1,5 @@
-use crate::core::log2space::Log2Space;
 use super::articulation_core::{ArticulationSignal, PinkNoise};
+use crate::core::log2space::Log2Space;
 use crate::life::scenario::{HarmonicMode, SoundBodyConfig, TimbreGenotype};
 use rand::Rng;
 use std::f32::consts::PI;

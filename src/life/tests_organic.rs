@@ -1,13 +1,15 @@
 use crate::core::landscape::Landscape;
 use crate::core::log2space::Log2Space;
 use crate::core::modulation::NeuralRhythms;
-use crate::life::individual::{AgentMetadata, AnyArticulationCore, ArticulationCore, AudioAgent, Individual, SoundBody};
+use crate::life::individual::{
+    AgentMetadata, AnyArticulationCore, ArticulationCore, AudioAgent, Individual, SoundBody,
+};
 use crate::life::lifecycle::LifecycleConfig;
 use crate::life::perceptual::PerceptualConfig;
 use crate::life::population::Population;
 use crate::life::scenario::{Action, TargetRef};
 use crate::life::scenario::{
-    PitchCoreConfig, IndividualConfig, LifeConfig, SoundBodyConfig, ArticulationCoreConfig,
+    ArticulationCoreConfig, IndividualConfig, LifeConfig, PitchCoreConfig, SoundBodyConfig,
 };
 use rand::SeedableRng;
 

@@ -84,7 +84,7 @@ cd conchordal
 cargo run --release -- samples/03_structures/autumn_cycle.rhai
 ```
 
-You need `libasound2-dev` installed on Linux (`cpal` requires ALSA headers).
+On Linux, you need `libasound2-dev` installed (ALSA headers required by `cpal`).
 
 
 ### Scenario scripting example
@@ -170,16 +170,16 @@ Setting log levels with `RUST_LOG`:
 RUST_LOG=debug cargo run -- sample.rhai
 ```
 
-log level are either `error` `warn` `info` `debug` `trace`.
+log levels are either `error`, `warn`, `info`, `debug`, or `trace`.
 
 
 
 
 ## Timeline & Roadmap
 
-- **circa. 1994** — Core concept conceived 
-- **Aug 25th 2025** — Project started 
-- **Dec 25th 2025** — Source & web release (pre-alpha) ← *current* 
+- **circa 1994** — Core concept conceived 
+- **Aug 25, 2025** — Project started 
+- **Dec 25, 2025** — Source & web release (pre-alpha) ← *current* 
 - **Early 2026** — Demo scenario and tutorials
 - **Summer 2026** — Beta, featuring first compositions
 

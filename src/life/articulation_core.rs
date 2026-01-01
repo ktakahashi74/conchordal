@@ -63,15 +63,19 @@ impl ArticulationWrapper {
         dt: f32,
         global_coupling: f32,
     ) -> ArticulationSignal {
-        self.core
-            .process(consonance, rhythms, dt, global_coupling)
+        self.core.process(consonance, rhythms, dt, global_coupling)
     }
 
     pub fn is_alive(&self) -> bool {
         self.core.is_alive()
     }
 
-    pub fn update_gate(&mut self, planned: &PlannedPitch, rhythms: &NeuralRhythms, dt: f32) -> bool {
+    pub fn update_gate(
+        &mut self,
+        planned: &PlannedPitch,
+        rhythms: &NeuralRhythms,
+        dt: f32,
+    ) -> bool {
         self.planned_gate.update(planned, rhythms, dt)
     }
 

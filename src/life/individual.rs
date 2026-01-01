@@ -13,7 +13,7 @@ pub mod sound_body;
 
 pub use articulation_core::{
     AnyArticulationCore, ArticulationCore, ArticulationSignal, ArticulationState,
-    ArticulationWrapper, DroneCore, KuramotoCore, PlannedGate, PlannedPitch, PinkNoise,
+    ArticulationWrapper, DroneCore, KuramotoCore, PinkNoise, PlannedGate, PlannedPitch,
     Sensitivity, SequencedCore,
 };
 pub use pitch_core::{AnyPitchCore, PitchCore, PitchHillClimbPitchCore, TargetProposal};

@@ -246,11 +246,7 @@ impl fmt::Display for LifeConfig {
         write!(
             f,
             "life[body={:?}, articulation={:?}, pitch={:?}, perceptual={:?}, breath_gain_init={:?}]",
-            self.body,
-            self.articulation,
-            self.pitch,
-            self.perceptual,
-            self.breath_gain_init
+            self.body, self.articulation, self.pitch, self.perceptual, self.breath_gain_init
         )
     }
 }
@@ -326,12 +322,12 @@ impl IndividualConfig {
         let (articulation_core, lifecycle_label, default_by_articulation) =
             match &self.life.articulation {
                 ArticulationCoreConfig::Entrain { lifecycle, .. } => {
-                let life_label = match lifecycle {
-                    LifecycleConfig::Decay { .. } => "decay",
-                    LifecycleConfig::Sustain { .. } => "sustain",
-                };
-                ("entrain", life_label, 1.0)
-            }
+                    let life_label = match lifecycle {
+                        LifecycleConfig::Decay { .. } => "decay",
+                        LifecycleConfig::Sustain { .. } => "sustain",
+                    };
+                    ("entrain", life_label, 1.0)
+                }
                 ArticulationCoreConfig::Seq { .. } => ("seq", "none", 1.0),
                 ArticulationCoreConfig::Drone { .. } => ("drone", "none", 0.0),
             };

@@ -442,7 +442,10 @@ fn life_config_deserializes_and_rejects_unknown_fields() {
         }
     });
     let cfg: LifeConfig = serde_json::from_value(json).expect("life config parses");
-    assert!(matches!(cfg.articulation, ArticulationCoreConfig::Entrain { .. }));
+    assert!(matches!(
+        cfg.articulation,
+        ArticulationCoreConfig::Entrain { .. }
+    ));
 
     let bad = serde_json::json!({
         "body": { "core": "sine", "unknown": 1.0 },
@@ -1274,9 +1277,9 @@ fn render_wave_uses_dt_per_sample_for_seq_core() {
         },
         articulation: super::individual::ArticulationWrapper::new(
             super::individual::AnyArticulationCore::Seq(SequencedCore {
-            timer: 0.0,
-            duration: 0.1,
-            env_level: 0.0,
+                timer: 0.0,
+                duration: 0.1,
+                env_level: 0.0,
             }),
             1.0,
         ),

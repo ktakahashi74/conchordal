@@ -7,6 +7,7 @@
 // receive only the minimal data they need (fs/Log2Space/HarmonicityKernel), not a full Landscape.
 mod app;
 mod audio;
+mod cli;
 mod config;
 mod core;
 mod life;
@@ -20,60 +21,8 @@ use std::sync::{
 };
 use tracing_subscriber::EnvFilter;
 
+use crate::cli::Args;
 use crate::config::AppConfig;
-use crate::life::scenario::Scenario;
-use crate::life::scripting::ScriptHost;
-
-#[derive(Parser, Debug, Clone)]
-#[command(author, version, about)]
-struct Args {
-    /// Play audio in realtime
-    #[arg(long, default_value_t = true, num_args = 0..=1, default_missing_value = "true")]
-    play: bool,
-
-    /// Write audio to wav file
-    #[arg(long)]
-    wav: Option<String>,
-
-    /// Scenario path (.rhai only)
-    #[arg(value_name = "SCENARIO_PATH")]
-    scenario_path: String,
-
-    /// Path to config TOML
-    #[arg(long, default_value = "config.toml")]
-    config: String,
-
-    /// Wait for user action to exit after playback (overrides config)
-    #[arg(long, num_args = 0..=1, default_missing_value = "false")]
-    wait_user_exit: Option<bool>,
-
-    /// Wait for user action before starting playback (overrides config)
-    #[arg(long, num_args = 0..=1, default_missing_value = "true")]
-    wait_user_start: Option<bool>,
-
-    /// Run without GUI (headless)
-    #[arg(long, default_value_t = false)]
-    nogui: bool,
-
-    /// Compile scenario script only (no GUI, no audio, no execution)
-    #[arg(long, default_value_t = false)]
-    compile_only: bool,
-}
-
-fn load_scenario_from_path(path: &str) -> Result<Scenario, String> {
-    let ext = Path::new(path)
-        .extension()
-        .and_then(|s| s.to_str())
-        .unwrap_or("")
-        .to_ascii_lowercase();
-    match ext.as_str() {
-        "rhai" => ScriptHost::load_script(path)
-            .map_err(|e| format!("Failed to run scenario script {path}: {e:#}")),
-        _ => Err(format!(
-            "json/json5 is not supported. Scenario must be a .rhai script: {path}"
-        )),
-    }
-}
 
 fn main() -> eframe::Result<()> {
     // Initialize tracing/logging (honors RUST_LOG).

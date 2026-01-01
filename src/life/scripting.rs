@@ -283,18 +283,32 @@ impl ScriptHost {
         engine.register_type_with_name::<AgentHandle>("AgentHandle");
         engine.register_type_with_name::<TagSelector>("TagSelector");
         engine.register_iterator::<CohortHandle>();
+        engine.register_fn("len", |cohort: &mut CohortHandle| -> i64 {
+            cohort.len() as i64
+        });
+        engine.register_fn("is_empty", |cohort: &mut CohortHandle| -> bool {
+            cohort.is_empty()
+        });
         engine.register_indexer_get(
             |cohort: &mut CohortHandle, index: i64| -> Result<AgentHandle, Box<EvalAltResult>> {
                 if index < 0 {
-                    return Err(Box::new(EvalAltResult::ErrorIndexNotFound(
-                        index.into(),
+                    let msg = format!(
+                        "GroupHandle index out of range: tag={} index={} count={}",
+                        cohort.tag, index, cohort.count
+                    );
+                    return Err(Box::new(EvalAltResult::ErrorRuntime(
+                        msg.into(),
                         Position::NONE,
                     )));
                 }
                 let idx = index as u32;
                 if idx >= cohort.count {
-                    return Err(Box::new(EvalAltResult::ErrorIndexNotFound(
-                        index.into(),
+                    let msg = format!(
+                        "GroupHandle index out of range: tag={} index={} count={}",
+                        cohort.tag, index, cohort.count
+                    );
+                    return Err(Box::new(EvalAltResult::ErrorRuntime(
+                        msg.into(),
                         Position::NONE,
                     )));
                 }

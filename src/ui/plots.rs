@@ -1,7 +1,7 @@
 use crate::ui::viewdata::AgentStateInfo;
 use egui::{Align2, Color32, FontId, Id, Stroke, Vec2, Vec2b};
 use egui_plot::{
-    Bar, BarChart, GridInput, GridMark, Line, LineStyle, Plot, PlotPoints, Points, Polygon, VLine,
+    Bar, BarChart, GridInput, GridMark, Line, LineStyle, Plot, PlotPoints, Points, Polygon,
     log_grid_spacer,
 };
 use std::collections::VecDeque;
@@ -657,7 +657,7 @@ pub fn draw_rhythm_mandala(
     size: Vec2,
 ) {
     let side = size.x.min(size.y).clamp(80.0, 200.0);
-    let scale = (side / 150.0).clamp(0.6, 1.2);
+    let _scale = (side / 150.0).clamp(0.6, 1.2);
     let (rect, _resp) = ui.allocate_exact_size(Vec2::splat(side), egui::Sense::hover());
     let painter = ui.painter_at(rect);
 

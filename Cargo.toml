@@ -63,3 +63,4 @@ rhai = { version = "1.19", features = ["metadata", "serde"] }
 [dev-dependencies]
 plotters = "0.3"
 rhai-autodocs = "0.10"
+walkdir = "2.5"

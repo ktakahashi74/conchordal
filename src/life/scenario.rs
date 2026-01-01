@@ -393,6 +393,16 @@ pub struct CohortHandle {
     pub count: u32,
 }
 
+impl CohortHandle {
+    pub fn len(&self) -> u32 {
+        self.count
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.count == 0
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct CohortIter {
     next: u32,

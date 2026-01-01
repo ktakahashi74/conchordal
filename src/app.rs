@@ -174,7 +174,7 @@ struct RuntimeInit {
 
 pub fn compile_scenario_from_script(
     script_path: &Path,
-    _args: &crate::Args,
+    _args: &crate::cli::Args,
     _config: &AppConfig,
 ) -> Result<Scenario, String> {
     let ext = script_path
@@ -197,7 +197,7 @@ pub fn compile_scenario_from_script(
     })
 }
 
-fn validate_scenario(scenario: &Scenario) -> Result<(), String> {
+pub fn validate_scenario(scenario: &Scenario) -> Result<(), String> {
     let mut events = Vec::new();
     for scene in &scenario.scenes {
         for event in &scene.events {
@@ -271,7 +271,7 @@ fn validate_target(target: &TargetRef) -> Result<(), String> {
     }
 }
 
-pub fn run_compile_only(args: crate::Args, config: AppConfig) {
+pub fn run_compile_only(args: crate::cli::Args, config: AppConfig) {
     let path = Path::new(&args.scenario_path);
     let scenario = compile_scenario_from_script(path, &args, &config).unwrap_or_else(|e| {
         eprintln!("{e}");
@@ -302,7 +302,7 @@ pub fn run_compile_only(args: crate::Args, config: AppConfig) {
 impl App {
     pub fn new(
         cc: &eframe::CreationContext<'_>,
-        args: crate::Args,
+        args: crate::cli::Args,
         config: AppConfig,
         stop_flag: Arc<AtomicBool>,
     ) -> Self {
@@ -407,7 +407,11 @@ impl App {
     }
 }
 
-fn init_runtime(args: crate::Args, config: AppConfig, stop_flag: Arc<AtomicBool>) -> RuntimeInit {
+fn init_runtime(
+    args: crate::cli::Args,
+    config: AppConfig,
+    stop_flag: Arc<AtomicBool>,
+) -> RuntimeInit {
     let latency_ms = config.audio.latency_ms;
 
     // Audio
@@ -616,7 +620,7 @@ fn init_runtime(args: crate::Args, config: AppConfig, stop_flag: Arc<AtomicBool>
     }
 }
 
-pub fn run_headless(args: crate::Args, config: AppConfig, stop_flag: Arc<AtomicBool>) {
+pub fn run_headless(args: crate::cli::Args, config: AppConfig, stop_flag: Arc<AtomicBool>) {
     let rt = init_runtime(args, config, stop_flag);
     rt.start_flag.store(true, Ordering::SeqCst);
     let _audio = rt.audio_out;
@@ -782,7 +786,7 @@ fn worker_loop(
         let mut produced_any = false;
         let mut process_frame = |mut prod_opt: Option<&mut ringbuf::HeapProd<f32>>| {
             produced_any = true;
-            let (free, occupancy) = if let Some(prod) = prod_opt.as_ref() {
+            let (_free, occupancy) = if let Some(prod) = prod_opt.as_ref() {
                 let free = prod.vacant_len();
                 (free, buffer_capacity.saturating_sub(free))
             } else {
@@ -1106,43 +1110,5 @@ fn apply_params_update(params: &mut LandscapeParams, upd: &LandscapeUpdate) {
     }
     if let Some(k) = upd.roughness_k {
         params.roughness_k = k.max(1e-6);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::config::AppConfig;
-
-    fn args_for_path(path: &Path) -> crate::Args {
-        crate::Args {
-            play: false,
-            wav: None,
-            scenario_path: path.to_string_lossy().to_string(),
-            config: "config.toml".to_string(),
-            wait_user_exit: None,
-            wait_user_start: None,
-            nogui: false,
-            compile_only: false,
-        }
-    }
-
-    #[test]
-    fn compile_only_samples_tests() {
-        let dir = Path::new("samples/tests");
-        let mut count = 0;
-        for entry in std::fs::read_dir(dir).expect("read samples/tests") {
-            let path = entry.expect("dir entry").path();
-            if path.extension().and_then(|s| s.to_str()) != Some("rhai") {
-                continue;
-            }
-            count += 1;
-            let args = args_for_path(&path);
-            let config = AppConfig::default();
-            let scenario =
-                compile_scenario_from_script(&path, &args, &config).expect("compile scenario");
-            validate_scenario(&scenario).expect("validate scenario");
-        }
-        assert!(count > 0, "no .rhai scripts found in samples/tests");
     }
 }

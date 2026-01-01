@@ -3,7 +3,7 @@ use crate::ui::plots::{
     plot_population_dynamics, spectrum_time_freq_axes, time_plot,
 };
 use crate::ui::viewdata::{PlaybackState, UiFrame};
-use egui::{CentralPanel, Color32, Key, TopBottomPanel, Vec2};
+use egui::{CentralPanel, Color32, TopBottomPanel, Vec2};
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};

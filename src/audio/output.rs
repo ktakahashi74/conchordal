@@ -8,7 +8,6 @@ use tracing::{debug, info};
 /// 出力デバイスに接続するモジュール
 pub struct AudioOutput {
     stream: Option<cpal::Stream>,
-    capacity: usize,
     pub config: cpal::StreamConfig,
 }
 
@@ -79,7 +78,6 @@ impl AudioOutput {
         Ok((
             Self {
                 stream: Some(stream),
-                capacity: capacity_frames,
                 config,
             },
             prod,

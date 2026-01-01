@@ -91,18 +91,26 @@ You need `libasound2-dev` installed on Linux (`cpal` requires ALSA headers).
 Define the ecosystem's initial conditions using Rhai scripts.
 
 ```rust
-// Basic setup: Spawn 5 agents that seek harmonic stability
-let life = #{
-  body: #{ core: "sine" },
-  temporal: #{ core: "entrain", type: "decay", initial_energy: 1.0, half_life_sec: 2.0 },
-  field: #{ core: "pitch_hill_climb" },
-  modulation: #{ core: "static" },
-  perceptual: #{}
-};
-let method = #{ mode: "harmonicity", min_freq: 200.0, max_freq: 1200.0 };
+let drones = spawn("drones", 5);
+drones[0].set_freq(220.0);
+for a in drones {
+    a.set_amp(0.05);
+}
+run(10);
+```
 
-spawn_agents("my_swarm", method, life, 5, 0.15);
-wait(10.0);
+Tag selectors are dynamic sets and are not iterable.
+
+Compile-only (no GUI/audio execution):
+
+```bash
+cargo run -- --compile-only samples/tests/handle_index_and_iter.rhai
+```
+
+Headless execution (no GUI):
+
+```bash
+cargo run -- --nogui --play=false samples/tests/handle_index_and_iter.rhai
 ```
 
 ### Testing and other commands

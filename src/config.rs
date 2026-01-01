@@ -81,10 +81,10 @@ impl PsychoAcousticsConfig {
         0.23
     }
     fn default_roughness_k() -> f32 {
-        0.1
+        0.428571
     }
     fn default_roughness_weight() -> f32 {
-        0.5
+        1.0
     }
     fn default_use_incoherent_power() -> bool {
         false
@@ -229,8 +229,8 @@ mod tests {
         assert_eq!(cfg.audio.latency_ms, 50.0);
         assert_eq!(cfg.audio.sample_rate, 48_000);
         assert_eq!(cfg.psychoacoustics.loudness_exp, 0.23);
-        assert_eq!(cfg.psychoacoustics.roughness_k, 0.1);
-        assert_eq!(cfg.psychoacoustics.roughness_weight, 0.5);
+        assert!((cfg.psychoacoustics.roughness_k - 0.428571).abs() < 1e-6);
+        assert_eq!(cfg.psychoacoustics.roughness_weight, 1.0);
         assert!(!cfg.psychoacoustics.use_incoherent_power);
 
         let contents = fs::read_to_string(&path).expect("read written config");
@@ -239,11 +239,11 @@ mod tests {
             "should write commented loudness_exp"
         );
         assert!(
-            contents.contains("# roughness_k = 0.1"),
+            contents.contains("# roughness_k = 0.42857"),
             "should write commented roughness_k"
         );
         assert!(
-            contents.contains("# roughness_weight = 0.5"),
+            contents.contains("# roughness_weight = 1.0"),
             "should write commented roughness_weight"
         );
         assert!(

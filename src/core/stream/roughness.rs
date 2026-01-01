@@ -70,6 +70,7 @@ impl RoughnessStream {
         let space = self.nsgt_rt.space();
         let (_erb, du) = erb_grid(space);
         let eps = self.params.roughness_ref_eps.max(1e-12);
+        let roughness_k = self.params.roughness_k.max(1e-6);
 
         // Roughness strength (level-dependent).
         let (r_strength, r_total) = self
@@ -99,9 +100,9 @@ impl RoughnessStream {
         let r_ref_total = self.roughness_ref_total.max(eps);
         let r01 = r_shape_raw
             .iter()
-            .map(|&ri| (ri / r_ref_peak).clamp(0.0, 1.0))
+            .map(|&ri| roughness_ratio_to_01(ri / r_ref_peak, roughness_k))
             .collect::<Vec<f32>>();
-        let r01_scalar = (r_shape_total / r_ref_total).clamp(0.0, 1.0);
+        let r01_scalar = roughness_ratio_to_01(r_shape_total / r_ref_total, roughness_k);
 
         self.last_landscape.roughness = r_strength;
         self.last_landscape.roughness_shape_raw = r_shape_raw;
@@ -126,6 +127,29 @@ impl RoughnessStream {
         if let Some(k) = upd.roughness_k {
             self.params.roughness_k = k.max(1e-6);
         }
+    }
+}
+
+fn roughness_ratio_to_01(x: f32, k: f32) -> f32 {
+    if x.is_nan() {
+        return 0.0;
+    }
+    if x.is_infinite() {
+        return if x.is_sign_positive() { 1.0 } else { 0.0 };
+    }
+    let x = x.max(0.0);
+    let k = if k.is_finite() { k.max(1e-6) } else { 1e-6 };
+    let r_ref = 1.0 / (1.0 + k);
+    if x <= 0.0 {
+        0.0
+    } else if x < 1.0 {
+        (x * r_ref).clamp(0.0, 1.0)
+    } else {
+        let denom = x + k;
+        if denom <= 0.0 {
+            return 1.0;
+        }
+        (1.0 - k / denom).clamp(0.0, 1.0)
     }
 }
 
@@ -284,7 +308,7 @@ mod tests {
     }
 
     #[test]
-    fn reference_normalization_hits_one() {
+    fn reference_maps_to_expected() {
         let space = Log2Space::new(80.0, 8000.0, 96);
         let params = build_params(&space);
         let ref_density = build_reference_density(&params, &space);
@@ -294,11 +318,26 @@ mod tests {
         let (r_ref_total, r_ref_peak) = compute_roughness_reference(&params, &space);
 
         let peak = r_shape.iter().copied().fold(0.0f32, f32::max);
-        let r01_peak = (peak / r_ref_peak).clamp(0.0, 1.0);
-        let r01_scalar = (r_total / r_ref_total).clamp(0.0, 1.0);
+        let r01_peak = roughness_ratio_to_01(peak / r_ref_peak, params.roughness_k);
+        let r01_scalar = roughness_ratio_to_01(r_total / r_ref_total, params.roughness_k);
+        let expected = 1.0 / (1.0 + params.roughness_k.max(1e-6));
 
-        assert!((r01_scalar - 1.0).abs() < 1e-5, "scalar {r01_scalar}");
-        assert!(r01_peak <= 1.0 + 1e-6, "peak {r01_peak}");
+        assert!(
+            (r01_scalar - expected).abs() < 1e-5,
+            "scalar {r01_scalar}"
+        );
+        assert!(
+            (r01_peak - expected).abs() < 1e-5,
+            "peak {r01_peak}"
+        );
+    }
+
+    #[test]
+    fn roughness_ratio_handles_nan_and_inf() {
+        let k = 0.3;
+        assert_eq!(roughness_ratio_to_01(f32::NAN, k), 0.0);
+        assert_eq!(roughness_ratio_to_01(f32::INFINITY, k), 1.0);
+        assert_eq!(roughness_ratio_to_01(f32::NEG_INFINITY, k), 0.0);
     }
 
     #[test]

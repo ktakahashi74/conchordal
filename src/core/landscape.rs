@@ -27,8 +27,9 @@ pub struct LandscapeParams {
     /// Leaky integration time constant [ms]. Typical: 60–120 ms.
     pub tau_ms: f32,
 
-    /// Roughness normalization constant (k).
-    /// Controls the saturation curve: D_index = R / (R_total + k).
+    /// Roughness normalization constant (k) for physiological saturation.
+    /// Reference-normalized ratio x=1 maps to roughness01=1/(1+k).
+    /// Larger k reduces roughness01 for the same reference ratio.
     pub roughness_k: f32,
 
     /// Reference f0 (Hz) for roughness shape normalization.

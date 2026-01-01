@@ -9,6 +9,7 @@
 *.bak
 a.wav
 repomix-output.xml
+repomix*.xml
 *.tgz
 *.tar
 *.diff

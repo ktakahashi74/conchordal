@@ -12,8 +12,8 @@ pub mod pitch_core;
 pub mod sound_body;
 
 pub use articulation_core::{
-    AnyArticulationCore, ArticulationCore, ArticulationSignal, ArticulationState,
-    ArticulationWrapper, DroneCore, KuramotoCore, PinkNoise, PlannedGate, PlannedPitch,
+    AnyArticulationCore, ArticulationCore, ArticulationSignal, ArticulationState, ArticulationStep,
+    ArticulationWrapper, DroneCore, ErrorState, KuramotoCore, PinkNoise, PlannedGate, PlannedPitch,
     Sensitivity, SequencedCore,
 };
 pub use pitch_core::{AnyPitchCore, PitchCore, PitchHillClimbPitchCore, TargetProposal};
@@ -65,6 +65,9 @@ pub struct Individual {
     pub accumulated_time: f32,
     pub last_theta_sample: f32,
     pub last_target_salience: f32,
+    pub last_error_state: ErrorState,
+    pub last_error_cents: f32,
+    pub error_initialized: bool,
     pub rng: SmallRng,
 }
 
@@ -81,6 +84,9 @@ impl Individual {
         self.accumulated_time = 0.0;
         self.last_theta_sample = 0.0;
         self.last_target_salience = 0.0;
+        self.last_error_state = ErrorState::default();
+        self.last_error_cents = 0.0;
+        self.error_initialized = false;
     }
 
     pub fn update_pitch_target(&mut self, rhythms: &NeuralRhythms, dt: f32, landscape: &Landscape) {
@@ -134,6 +140,13 @@ impl Individual {
     }
 }
 
+#[cfg(test)]
+impl Individual {
+    pub fn debug_last_error_state(&self) -> ErrorState {
+        self.last_error_state
+    }
+}
+
 impl AudioAgent for Individual {
     fn id(&self) -> u64 {
         self.id
@@ -166,16 +179,39 @@ impl AudioAgent for Individual {
                 jump_cents_abs: 1200.0 * (self.target_pitch_log2 - current_pitch_log2).abs(),
                 salience: self.last_target_salience,
             };
-            let apply_planned_pitch =
-                self.articulation
-                    .update_gate(&planned, &rhythms, dt_per_sample);
+            let pitch_error_cents = 1200.0 * (planned.target_pitch_log2 - current_pitch_log2);
+            let d_pitch_error_cents_per_sec = if self.error_initialized && dt_per_sample > 0.0 {
+                (pitch_error_cents - self.last_error_cents) / dt_per_sample
+            } else {
+                0.0
+            };
+            self.last_error_state = ErrorState {
+                pitch_error_cents,
+                abs_pitch_error_cents: pitch_error_cents.abs(),
+                d_pitch_error_cents_per_sec,
+            };
+            self.last_error_cents = pitch_error_cents;
+            self.error_initialized = true;
+            let apply_planned_pitch = self.articulation.update_gate(
+                &planned,
+                &self.last_error_state,
+                &rhythms,
+                dt_per_sample,
+            );
             if apply_planned_pitch {
                 self.body.set_pitch_log2(planned.target_pitch_log2);
             }
             let consonance = landscape.evaluate_pitch01(self.body.base_freq_hz());
-            let mut signal =
-                self.articulation
-                    .process(consonance, &rhythms, dt_per_sample, global_coupling);
+            let step: ArticulationStep = self.articulation.process(
+                consonance,
+                &rhythms,
+                dt_per_sample,
+                global_coupling,
+                &planned,
+                &self.last_error_state,
+            );
+            debug_assert_eq!(step.apply_planned_pitch, apply_planned_pitch);
+            let mut signal = step.signal;
             signal.amplitude *= self.articulation.gate();
             if self.release_pending {
                 let step = dt_per_sample / self.release_sec.max(1e-6);

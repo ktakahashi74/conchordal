@@ -1320,6 +1320,9 @@ fn render_wave_uses_dt_per_sample_for_seq_core() {
         accumulated_time: 0.0,
         last_theta_sample: 0.0,
         last_target_salience: 0.0,
+        last_error_state: Default::default(),
+        last_error_cents: 0.0,
+        error_initialized: false,
         rng: rand::rngs::SmallRng::seed_from_u64(9),
     };
     let mut buffer = vec![0.0f32; 4800];

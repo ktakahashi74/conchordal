@@ -361,6 +361,9 @@ impl IndividualConfig {
             accumulated_time: 0.0,
             last_theta_sample: 0.0,
             last_target_salience: 0.0,
+            last_error_state: Default::default(),
+            last_error_cents: 0.0,
+            error_initialized: false,
             rng,
         }
     }

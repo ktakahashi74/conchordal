@@ -16,10 +16,23 @@ pub struct ArticulationSignal {
 }
 
 #[derive(Debug, Clone, Copy, Default)]
+pub struct ArticulationStep {
+    pub signal: ArticulationSignal,
+    pub apply_planned_pitch: bool,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
 pub struct PlannedPitch {
     pub target_pitch_log2: f32,
     pub jump_cents_abs: f32,
     pub salience: f32,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ErrorState {
+    pub pitch_error_cents: f32,
+    pub abs_pitch_error_cents: f32,
+    pub d_pitch_error_cents_per_sec: f32,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -46,6 +59,7 @@ impl PlannedGate {
 pub struct ArticulationWrapper {
     pub core: AnyArticulationCore,
     pub planned_gate: PlannedGate,
+    pub last_apply_planned_pitch: bool,
 }
 
 impl ArticulationWrapper {
@@ -53,6 +67,7 @@ impl ArticulationWrapper {
         Self {
             core,
             planned_gate: PlannedGate { gate },
+            last_apply_planned_pitch: false,
         }
     }
 
@@ -62,8 +77,14 @@ impl ArticulationWrapper {
         rhythms: &NeuralRhythms,
         dt: f32,
         global_coupling: f32,
-    ) -> ArticulationSignal {
-        self.core.process(consonance, rhythms, dt, global_coupling)
+        _planned: &PlannedPitch,
+        _error: &ErrorState,
+    ) -> ArticulationStep {
+        let signal = self.core.process(consonance, rhythms, dt, global_coupling);
+        ArticulationStep {
+            signal,
+            apply_planned_pitch: self.last_apply_planned_pitch,
+        }
     }
 
     pub fn is_alive(&self) -> bool {
@@ -73,10 +94,13 @@ impl ArticulationWrapper {
     pub fn update_gate(
         &mut self,
         planned: &PlannedPitch,
+        _error: &ErrorState,
         rhythms: &NeuralRhythms,
         dt: f32,
     ) -> bool {
-        self.planned_gate.update(planned, rhythms, dt)
+        let apply = self.planned_gate.update(planned, rhythms, dt);
+        self.last_apply_planned_pitch = apply;
+        apply
     }
 
     pub fn gate(&self) -> f32 {

@@ -80,7 +80,7 @@ impl Default for TimbreGenotype {
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct LifeConfig {
     #[serde(default)]

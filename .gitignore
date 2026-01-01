@@ -11,6 +11,8 @@ a.wav
 repomix-output.xml
 *.tgz
 *.tar
+*.diff
+log?
 .aider*
 nohup.out
 config.toml

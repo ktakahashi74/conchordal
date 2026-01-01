@@ -86,9 +86,10 @@ cargo run --release -- samples/03_structures/autumn_cycle.rhai
 
 You need `libasound2-dev` installed on Linux (`cpal` requires ALSA headers).
 
-### Experimentation
 
-Define the ecosystem's initial conditions using Rhai scripts.
+### Scenario scripting example
+
+Define the ecosystem's initial conditions using Rhai scripts as follows and save it as `sample.rhai`.
 
 ```rust
 let drones = spawn("drones", 5);
@@ -99,19 +100,12 @@ for a in drones {
 run(10);
 ```
 
-Tag selectors are dynamic sets and are not iterable.
+then run the script with
 
-Compile-only (no GUI/audio execution):
-
-```bash
-cargo run -- --compile-only samples/tests/handle_index_and_iter.rhai
+``` bash
+cargo run -- sample.rhai
 ```
 
-Headless execution (no GUI):
-
-```bash
-cargo run -- --nogui --play=false samples/tests/handle_index_and_iter.rhai
-```
 
 ### Testing and other commands
 
@@ -141,6 +135,44 @@ cargo run --example gen_schemas
 cargo run --example generate_script_docs
 scripts/generate_rhai_docs.sh
 ```
+
+
+### Running options
+
+
+Headless execution (no GUI): `--nogui`
+
+```bash
+cargo run -- --nogui sample.rhai
+```
+
+Wav file: `--wav ???.wav`
+
+```bash
+cargo run -- --wav test.wav sample.rhai
+```
+
+No playback, only wav file: `--play false --wav ???.wav`
+
+```bash
+cargo run -- --play false --wav test.wav sample.rhai
+```
+
+Compile-only (no GUI/audio execution) for script syntax check: `--compile-only`
+
+```bash
+cargo run -- --compile-only sample.rhai
+```
+
+Setting log levels with `RUST_LOG`:
+
+```bash
+RUST_LOG=debug cargo run -- sample.rhai
+```
+
+log level are either `error` `warn` `info` `debug` `trace`.
+
+
 
 
 ## Timeline & Roadmap

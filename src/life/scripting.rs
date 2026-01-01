@@ -788,7 +788,7 @@ mod tests {
 
     #[test]
     fn minimal_spawn_run_executes() {
-        let scenario = ScriptHost::load_script("samples/tests/minimal_spawn_run.rhai")
+        let scenario = ScriptHost::load_script("tests/scripts/minimal_spawn_run.rhai")
             .expect("minimal script should run");
         let scene = scenario.scenes.first().expect("scene exists");
         let mut has_spawn = false;
@@ -818,7 +818,7 @@ mod tests {
 
     #[test]
     fn empty_life_map_executes() {
-        let scenario = ScriptHost::load_script("samples/tests/empty_life_map_ok.rhai")
+        let scenario = ScriptHost::load_script("tests/scripts/empty_life_map_ok.rhai")
             .expect("empty life map should run");
         let scene = scenario.scenes.first().expect("scene exists");
         let mut has_add = false;
@@ -840,21 +840,21 @@ mod tests {
 
     #[test]
     fn handle_index_and_iter_executes() {
-        let scenario = ScriptHost::load_script("samples/tests/handle_index_and_iter.rhai")
+        let scenario = ScriptHost::load_script("tests/scripts/handle_index_and_iter.rhai")
             .expect("handle iteration script should run");
         assert!(!scenario.scenes.is_empty());
     }
 
     #[test]
     fn tag_selector_ops_executes() {
-        let scenario = ScriptHost::load_script("samples/tests/tag_selector_ops.rhai")
+        let scenario = ScriptHost::load_script("tests/scripts/tag_selector_ops.rhai")
             .expect("tag selector script should run");
         assert!(!scenario.scenes.is_empty());
     }
 
     #[test]
     fn stable_order_same_time_is_monotonic() {
-        let scenario = ScriptHost::load_script("samples/tests/stable_order_same_time.rhai")
+        let scenario = ScriptHost::load_script("tests/scripts/stable_order_same_time.rhai")
             .expect("stable order script should run");
         let scene = scenario.scenes.first().expect("scene exists");
         let mut last_order = 0;

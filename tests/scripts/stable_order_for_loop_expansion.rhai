@@ -1,3 +1,4 @@
+print("TEST_OK: stable_order_for_loop_expansion");
 let drones = spawn("drones", 2);
 for a in drones {
     a.set_amp(0.1);

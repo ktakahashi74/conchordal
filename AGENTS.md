@@ -24,7 +24,7 @@
   - `web/` (Project website):
     - Zola site sources.
 - Entrypoints: `src/main.rs` (binary) and `src/app.rs` (GUI/Thread wiring).
-- Samples: validation scripts live under `samples/tests/` (formerly `samples/00_validation`).
+- Samples: execution-test scripts live under `tests/scripts/`. Compile-only samples stay under `samples/`.
 
 ## Build, Test, and Development Commands
 - Build (debug): `cargo build`

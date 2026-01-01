@@ -1,3 +1,4 @@
+print("TEST_OK: rhythm_timing_validation");
 print(">>> Rhythm Timing Validation: Theta/Attack Lock <<<");
 print("Logs to watch: rhythm::metrics (onset_plv_theta, onset_mean_phase_theta~0, attack_mean_abs_diff, attack_plv_target)");
 // Timing plan: A warmup 2s + measure 5s, B warmup 2s (coupling=0) + 3s (coupling=1) + measure 6s,

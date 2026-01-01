@@ -240,7 +240,7 @@ The "Life Engine" is the agent-based simulation layer that runs atop the DSP lan
 
 ## 4.1 The Individual Architecture
 
-The `Individual` struct (`life/individual.rs`) is the atomic unit of the ecosystem. It is composed of four components: a `SoundBody` actuator plus three behavior cores (Temporal, Field, Modulation).
+The `Individual` struct (`life/individual.rs`) is the atomic unit of the ecosystem. It is composed of three components: a `SoundBody` actuator plus two behavior cores (`ArticulationCore`, `PitchCore`). The Individual itself acts as an integration layer, managing lifecycle (metabolism, energy), perceptual context, and the control-plane signals that coordinate the cores without coupling them directly.
 
 ### 4.1.1 The SoundBody (Actuator)
 
@@ -255,13 +255,21 @@ The `SoundBody` trait defines the sound generation capabilities of an agent. It 
 
 The `HarmonicBody` allows for the evolution of timbre. An agent with high stiffness might find survival difficult in a purely harmonic landscape, forcing it to seek out unique "spectral niches" where its inharmonic partials do not clash with the population.
 
-### 4.1.2 The Core Stack (Temporal, Field, Modulation)
+### 4.1.2 The Core Stack (Articulation, Pitch)
 
-Behavior is split into three focused cores that each handle a single axis of control:
+Behavior is split into two focused cores, each defined in a separate file to allow easy extension with new strategies:
 
-*   **TemporalCore (When/Gate)**: Manages rhythm, gating, and envelope dynamics. Variants include `entrain` (Kuramoto-like synchronization to `NeuralRhythms`), `seq` (fixed-duration envelopes), and `drone` (slow sway).
-*   **FieldCore (Where)**: Proposes the next target in log-frequency space based on consonance, distance penalties, tessitura gravity, and per-agent perceptual adjustments. The default implementation is `pitch_hill_climb`.
-*   **ModulationCore (How-much)**: Outputs modulation parameters (exploration, persistence) that bias the other cores without choosing targets or rhythms. The initial implementation is `static`.
+*   **ArticulationCore (When/Gate)** — `life/articulation_core.rs`: Manages rhythm, gating, and envelope dynamics. Variants include `entrain` (Kuramoto-like synchronization to `NeuralRhythms`), `seq` (fixed-duration envelopes), and `drone` (slow sway). The ArticulationCore receives control-plane signals from the Individual and decides when to open or close the gate.
+*   **PitchCore (Where)** — `life/pitch_core.rs`: Proposes the next target in log-frequency space based on consonance, distance penalties, tessitura gravity, and per-agent perceptual adjustments. The default implementation is `pitch_hill_climb`. Policy parameters such as persistence (resistance to movement) are encapsulated within the PitchCore, keeping the interface minimal.
+
+### 4.1.3 Control-Plane Signals: Planned and Error
+
+The Individual coordinates its cores through two orthogonal signals rather than direct coupling:
+
+*   **Planned**: The PitchCore proposes a target (`TargetProposal`), and the Individual maintains the "planned" state—next target frequency, expected jump distance, and salience. This represents the agent's *intention*.
+*   **Error**: The Individual computes the discrepancy between the SoundBody's current pitch and the planned target (signed cents, absolute cents). This represents the *result* of prior actions and is available for observation or future extensions (e.g., adaptive articulation). Importantly, the PitchCore does not read the error signal—search remains decoupled from feedback.
+
+This separation keeps each core focused: PitchCore explores the landscape, ArticulationCore shapes the envelope, and the Individual orchestrates timing and state transitions.
 
 ## 4.2 Lifecycle and Metabolism
 
@@ -274,15 +282,24 @@ Agents in Conchordal are governed by energy dynamics modeled on biological metab
 
 This mechanic creates a Darwinian pressure: **Survival of the Consonant**. The musical structure emerges because only the agents that find harmonic relationships survive to be heard.
 
-## 4.3 Field Retargeting Logic
+## 4.3 Pitch Retargeting Logic
 
-Agents are not static; they move through frequency space to improve their fitness. The execution layer (`Individual::update_field_target`) applies a retarget gate (theta zero-crossing plus an integration window) and then asks the FieldCore to propose the next target.
+Agents are not static; they move through frequency space to improve their fitness. The execution layer applies a retarget gate (theta zero-crossing plus an integration window) and then asks the PitchCore to propose the next target.
 
 1.  **Retarget Gate**: The Individual integrates time based on current frequency and fires only when a theta crossing aligns with the window. This keeps retargeting rhythmic and scale-sensitive.
-2.  **Field Proposal**: The FieldCore (currently `PitchHillClimb`) evaluates a discrete set of candidates around the current target. It scores each candidate with consonance minus penalties (distance, tessitura gravity, and per-agent perceptual adjustments from `PerceptualContext`).
-3.  **Modulation Influence**: The ModulationCore supplies persistence and exploration. These parameters bias whether the agent stays or hops when improvements are marginal, and the FieldCore returns a `salience` score (0..1) that reflects improvement strength.
+2.  **Pitch Proposal**: The PitchCore (currently `PitchHillClimb`) evaluates a discrete set of candidates around the current target. It scores each candidate with consonance minus penalties (distance, tessitura gravity, persistence bias, and per-agent perceptual adjustments from `PerceptualContext`). The proposal includes a `salience` score (0..1) reflecting improvement strength.
 
-The movement uses a hop policy in `Log2Space`: fade out via `breath_gain`, snap the pitch to the new target, then fade in. This yields discrete jumps rather than continuous portamento.
+### 4.3.1 The Hop Policy
+
+Pitch movement uses a **hop** policy rather than continuous portamento:
+
+1.  **Fade-out**: The ArticulationCore closes the gate, fading amplitude to silence.
+2.  **Snap**: The Individual updates the SoundBody's pitch to the new target (discrete jump).
+3.  **Fade-in**: The gate reopens, and the new pitch sounds.
+
+**Ordering matters**: On the sample where the snap occurs, the pitch is updated *before* consonance is evaluated, ensuring the Landscape score reflects the agent's actual sounding frequency. The error signal is computed from the *pre-snap* current pitch to maintain consistency; if post-snap error is needed in the future, it can be added as a separate signal.
+
+These timing-sensitive transitions are guarded by regression tests to prevent subtle breakage.
 
 # 5. Temporal Dynamics: Neural Rhythms
 
@@ -308,7 +325,7 @@ This creates a two-way interaction: The global rhythm drives the agents (entrain
 
 ## 5.3 Kuramoto Entrainment
 
-The `entrain` TemporalCore uses a Kuramoto-style model of coupled oscillators.
+The `entrain` ArticulationCore uses a Kuramoto-style model of coupled oscillators.
 
 $$ \frac{d\theta_i}{dt} = \omega_i + \frac{K}{N} \sum_{j=1}^N \sin(\theta_j - \theta_i) $$
 
@@ -386,7 +403,7 @@ This script demonstrates the emergent quantization of time.
 
 1.  **Phase 1 (The Seed)**: A single, high-energy agent "Kick" is spawned at 60 Hz. Its periodic articulation excites the Delta band resonator in the `NeuralRhythms`.
 2.  **Phase 2 (The Swarm)**: A cloud of agents is spawned with random phases.
-3.  **Emergence**: Because the agents use `entrain` TemporalCores coupled to the Delta band, they sense the rhythm established by the Kick. Over a period of seconds, their phases drift and lock into alignment with the Kick. The result is a synchronized pulse that was not explicitly programmed into the swarm—it arose from the physics of the coupled oscillators.
+3.  **Emergence**: Because the agents use `entrain` ArticulationCores coupled to the Delta band, they sense the rhythm established by the Kick. Over a period of seconds, their phases drift and lock into alignment with the Kick. The result is a synchronized pulse that was not explicitly programmed into the swarm—it arose from the physics of the coupled oscillators.
 
 ## 7.2 Case Study: Mirror Dualism (`samples/04_ecosystems/mirror_dualism.rhai`)
 
@@ -422,7 +439,7 @@ Future development of Conchordal will focus on spatialization (extending the lan
 | `roughness_k` | `Roughness` | Float | Saturation parameter for roughness mapping. Default: $(1/0.7) - 1 \approx 0.4286$ (so $x=1$ maps to $\approx 0.7$). |
 | `roughness_weight` | `Landscape` | Float | Weight of roughness penalty in consonance calculation. Default: 1.0. |
 | `vitality` | `DorsalStream` | 0.0-1.0 | Self-oscillation energy of the rhythm section. |
-| `persistence` | `ModulationCore` | 0.0-1.0 | Resistance to movement/change of an agent. |
+| `persistence` | `PitchCore` | 0.0-1.0 | Resistance to movement/change of an agent (policy bias within pitch selection). |
 
 # Appendix B: Mathematical Summary
 

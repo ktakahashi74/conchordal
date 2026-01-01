@@ -161,6 +161,17 @@ pub struct App {
     has_ui_frame: bool,
 }
 
+struct RuntimeInit {
+    ui_frame_rx: Receiver<UiFrame>,
+    ctrl_tx: Sender<()>,
+    worker_handle: Option<std::thread::JoinHandle<()>>,
+    wav_handle: Option<std::thread::JoinHandle<()>>,
+    start_flag: Arc<AtomicBool>,
+    audio_out: Option<AudioOutput>,
+    audio_init_error: Option<String>,
+    visual_delay_frames: usize,
+}
+
 impl App {
     pub fn new(
         cc: &eframe::CreationContext<'_>,
@@ -168,8 +179,6 @@ impl App {
         config: AppConfig,
         stop_flag: Arc<AtomicBool>,
     ) -> Self {
-        let latency_ms = config.audio.latency_ms;
-
         let repaint_ctx = cc.egui_ctx.clone();
         let stop_flag_watch = stop_flag.clone();
         std::thread::spawn(move || {
@@ -185,211 +194,7 @@ impl App {
             }
         });
 
-        // Audio
-        let (audio_out, audio_prod, audio_init_error) = if args.play {
-            match AudioOutput::new(latency_ms) {
-                Ok((out, prod)) => (Some(out), Some(prod), None),
-                Err(e) => {
-                    let msg = e.to_string();
-                    eprintln!("Audio init failed: {msg}");
-                    (None, None, Some(msg))
-                }
-            }
-        } else {
-            (None, None, None)
-        };
-
-        // Decide runtime sample rate: use actual stream rate when playing, otherwise config value.
-        let runtime_sample_rate: u32 = if args.play {
-            let device_rate = audio_out
-                .as_ref()
-                .map(|out| out.config.sample_rate.0)
-                .unwrap_or(config.audio.sample_rate);
-            if device_rate != config.audio.sample_rate {
-                debug!(
-                    "Runtime sample rate overridden by device: {} (config {})",
-                    device_rate, config.audio.sample_rate
-                );
-            }
-            device_rate
-        } else {
-            config.audio.sample_rate
-        };
-
-        // WAV
-        let (wav_tx, wav_handle) = if let Some(path) = args.wav.clone() {
-            let (wav_tx, wav_rx) = bounded::<Arc<[f32]>>(16);
-            let wav_handle = WavOutput::run(wav_rx, path, runtime_sample_rate);
-            (Some(wav_tx), Some(wav_handle))
-        } else {
-            (None, None)
-        };
-
-        // Population (life)
-        let pop = Population::new(runtime_sample_rate as f32);
-
-        // Analysis/NSGT setup
-        let fs: f32 = runtime_sample_rate as f32;
-        let space = Log2Space::new(55.0, 8000.0, 96);
-        let lparams = LandscapeParams {
-            fs,
-            max_hist_cols: 256,
-            alpha: 0.0,
-            roughness_kernel: RoughnessKernel::new(KernelParams::default(), 0.005), // ΔERB LUT step
-            harmonicity_kernel: HarmonicityKernel::new(&space, HarmonicityParams::default()),
-            roughness_scalar_mode: crate::core::landscape::RoughnessScalarMode::Total,
-            roughness_half: 0.1,
-            consonance_roughness_weight: config.psychoacoustics.roughness_weight,
-            loudness_exp: config.psychoacoustics.loudness_exp, // Zwicker
-            tau_ms: config.analysis.tau_ms,
-            ref_power: 1e-4,
-            roughness_k: config.psychoacoustics.roughness_k,
-            roughness_ref_f0_hz: 1000.0,
-            roughness_ref_sep_erb: 0.25,
-            roughness_ref_mass_split: 0.5,
-            roughness_ref_eps: 1e-12,
-        };
-        let nfft = config.analysis.nfft;
-        let hop = config.analysis.hop_size;
-        let overlap = 1.0 - (hop as f32 / nfft as f32);
-        let power_mode = if config.psychoacoustics.use_incoherent_power {
-            PowerMode::Incoherent
-        } else {
-            PowerMode::Coherent
-        };
-        let nsgt_kernel = NsgtKernelLog2::new(
-            NsgtLog2Config {
-                fs,
-                overlap,
-                nfft_override: Some(nfft),
-                kernel_align: config.analysis.kernel_align,
-            },
-            space,
-            None,
-            power_mode,
-        );
-        let nsgt = RtNsgtKernelLog2::with_config(nsgt_kernel.clone(), RtConfig::default());
-        let hop_duration = Duration::from_secs_f32(hop as f32 / fs);
-        let hop_ms = (hop as f32 / fs) * 1000.0;
-        let visual_delay_frames = 0;
-        debug!(
-            "Visual delay frames: {} (latency_ms={:.1}, hop_ms={:.2})",
-            visual_delay_frames, latency_ms, hop_ms
-        );
-        let ui_channel_capacity = (visual_delay_frames + 4).max(16);
-
-        // Channels
-        let (ui_frame_tx, ui_frame_rx) = bounded::<UiFrame>(ui_channel_capacity);
-        let (ctrl_tx, _ctrl_rx) = bounded::<()>(1);
-        let (harmonicity_tx, harmonicity_rx) = bounded::<LandscapeUpdate>(8);
-        let (roughness_tx, roughness_rx) = bounded::<LandscapeUpdate>(8);
-
-        let base_space = nsgt.space().clone();
-        let roughness_stream = RoughnessStream::new(lparams.clone(), nsgt.clone());
-        let harmonicity_stream =
-            HarmonicityStream::new(base_space.clone(), lparams.harmonicity_kernel.clone());
-        let landscape = Landscape::new(base_space.clone());
-        let dorsal = DorsalStream::new(fs);
-        let lparams_runtime = lparams.clone();
-
-        // Analysis pipeline channels
-        let (spectrum_to_harmonicity_tx, spectrum_to_harmonicity_rx) =
-            bounded::<(u64, Arc<[f32]>)>(64);
-        let (harmonicity_result_tx, harmonicity_result_rx) =
-            bounded::<(u64, Vec<f32>, Vec<f32>)>(4);
-        let (audio_to_roughness_tx, audio_to_roughness_rx) = bounded::<(u64, Arc<[f32]>)>(64);
-        let (roughness_from_analysis_tx, roughness_from_analysis_rx) =
-            bounded::<(u64, Landscape)>(4);
-
-        // Spawn harmonicity thread
-        {
-            std::thread::Builder::new()
-                .name("harmonicity".into())
-                .spawn(move || {
-                    harmonicity_worker::run(
-                        harmonicity_stream,
-                        spectrum_to_harmonicity_rx,
-                        harmonicity_result_tx,
-                        harmonicity_rx,
-                    );
-                })
-                .expect("spawn analysis worker");
-        }
-
-        // Spawn roughness thread (NSGT-RT based audio analysis).
-        {
-            std::thread::Builder::new()
-                .name("roughness".into())
-                .spawn(move || {
-                    roughness_worker::run(
-                        roughness_stream,
-                        audio_to_roughness_rx,
-                        roughness_from_analysis_tx,
-                        roughness_rx,
-                    )
-                })
-                .expect("spawn roughness worker");
-        }
-
-        let path = args.scenario_path.clone();
-        let scenario_label = Path::new(&path)
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("scenario")
-            .to_string();
-        let ext = Path::new(&path)
-            .extension()
-            .and_then(|s| s.to_str())
-            .unwrap_or("")
-            .to_ascii_lowercase();
-        if ext != "rhai" {
-            eprintln!("Scenario must be a .rhai script: {path}");
-            std::process::exit(1);
-        }
-        let scenario = ScriptHost::load_script(&path).unwrap_or_else(|e| {
-            eprintln!("Failed to run scenario script {path}: {e:#}");
-            std::process::exit(1);
-        });
-        let conductor = Conductor::from_scenario(scenario);
-
-        // Give the worker its own handle if WAV output is enabled.
-        let wav_tx_for_worker = wav_tx;
-
-        // Spawn worker thread
-        let stop_flag_worker = stop_flag.clone();
-        let start_flag = Arc::new(AtomicBool::new(!config.playback.wait_user_start));
-        let start_flag_for_worker = start_flag.clone();
-
-        let worker_handle = Some(
-            thread::Builder::new()
-                .name("worker".into())
-                .spawn(move || {
-                    worker_loop(
-                        scenario_label,
-                        config.playback.wait_user_exit,
-                        start_flag_for_worker,
-                        ui_frame_tx,
-                        pop,
-                        conductor,
-                        landscape,
-                        lparams_runtime,
-                        dorsal,
-                        audio_prod,
-                        wav_tx_for_worker,
-                        stop_flag_worker,
-                        spectrum_to_harmonicity_tx,
-                        harmonicity_result_rx,
-                        harmonicity_tx,
-                        audio_to_roughness_tx,
-                        roughness_from_analysis_rx,
-                        roughness_tx,
-                        hop,
-                        hop_duration,
-                        fs,
-                    )
-                })
-                .expect("spawn worker"),
-        );
+        let rt = init_runtime(args, config, stop_flag.clone());
 
         //cc.egui_ctx.set_pixels_per_point(1.0);
         cc.egui_ctx
@@ -404,19 +209,19 @@ impl App {
             }));
 
         Self {
-            ui_frame_rx,
-            _ctrl_tx: ctrl_tx,
+            ui_frame_rx: rt.ui_frame_rx,
+            _ctrl_tx: rt.ctrl_tx,
             last_frame: UiFrame::default(),
             ui_queue: VecDeque::new(),
-            visual_delay_frames,
-            _audio: audio_out,
-            audio_init_error,
-            wav_handle,
-            worker_handle,
+            visual_delay_frames: rt.visual_delay_frames,
+            _audio: rt.audio_out,
+            audio_init_error: rt.audio_init_error,
+            wav_handle: rt.wav_handle,
+            worker_handle: rt.worker_handle,
             exiting: stop_flag,
             rhythm_history: VecDeque::with_capacity(4096),
             dorsal_history: VecDeque::with_capacity(4096),
-            start_flag,
+            start_flag: rt.start_flag,
             level_history: VecDeque::with_capacity(256),
             show_raw_nsgt_power: false,
             has_ui_frame: false,
@@ -472,6 +277,236 @@ impl App {
             window_peak[1] = window_peak[1].max(peaks[1]);
         }
         self.last_frame.meta.window_peak = window_peak;
+    }
+}
+
+fn init_runtime(args: crate::Args, config: AppConfig, stop_flag: Arc<AtomicBool>) -> RuntimeInit {
+    let latency_ms = config.audio.latency_ms;
+
+    // Audio
+    let (audio_out, audio_prod, audio_init_error) = if args.play {
+        match AudioOutput::new(latency_ms) {
+            Ok((out, prod)) => (Some(out), Some(prod), None),
+            Err(e) => {
+                let msg = e.to_string();
+                eprintln!("Audio init failed: {msg}");
+                (None, None, Some(msg))
+            }
+        }
+    } else {
+        (None, None, None)
+    };
+
+    // Decide runtime sample rate: use actual stream rate when playing, otherwise config value.
+    let runtime_sample_rate: u32 = if args.play {
+        let device_rate = audio_out
+            .as_ref()
+            .map(|out| out.config.sample_rate.0)
+            .unwrap_or(config.audio.sample_rate);
+        if device_rate != config.audio.sample_rate {
+            debug!(
+                "Runtime sample rate overridden by device: {} (config {})",
+                device_rate, config.audio.sample_rate
+            );
+        }
+        device_rate
+    } else {
+        config.audio.sample_rate
+    };
+
+    // WAV
+    let (wav_tx, wav_handle) = if let Some(path) = args.wav.clone() {
+        let (wav_tx, wav_rx) = bounded::<Arc<[f32]>>(16);
+        let wav_handle = WavOutput::run(wav_rx, path, runtime_sample_rate);
+        (Some(wav_tx), Some(wav_handle))
+    } else {
+        (None, None)
+    };
+
+    // Population (life)
+    let pop = Population::new(runtime_sample_rate as f32);
+
+    // Analysis/NSGT setup
+    let fs: f32 = runtime_sample_rate as f32;
+    let space = Log2Space::new(55.0, 8000.0, 96);
+    let lparams = LandscapeParams {
+        fs,
+        max_hist_cols: 256,
+        alpha: 0.0,
+        roughness_kernel: RoughnessKernel::new(KernelParams::default(), 0.005), // ΔERB LUT step
+        harmonicity_kernel: HarmonicityKernel::new(&space, HarmonicityParams::default()),
+        roughness_scalar_mode: crate::core::landscape::RoughnessScalarMode::Total,
+        roughness_half: 0.1,
+        consonance_roughness_weight: config.psychoacoustics.roughness_weight,
+        loudness_exp: config.psychoacoustics.loudness_exp, // Zwicker
+        tau_ms: config.analysis.tau_ms,
+        ref_power: 1e-4,
+        roughness_k: config.psychoacoustics.roughness_k,
+        roughness_ref_f0_hz: 1000.0,
+        roughness_ref_sep_erb: 0.25,
+        roughness_ref_mass_split: 0.5,
+        roughness_ref_eps: 1e-12,
+    };
+    let nfft = config.analysis.nfft;
+    let hop = config.analysis.hop_size;
+    let overlap = 1.0 - (hop as f32 / nfft as f32);
+    let power_mode = if config.psychoacoustics.use_incoherent_power {
+        PowerMode::Incoherent
+    } else {
+        PowerMode::Coherent
+    };
+    let nsgt_kernel = NsgtKernelLog2::new(
+        NsgtLog2Config {
+            fs,
+            overlap,
+            nfft_override: Some(nfft),
+            kernel_align: config.analysis.kernel_align,
+        },
+        space,
+        None,
+        power_mode,
+    );
+    let nsgt = RtNsgtKernelLog2::with_config(nsgt_kernel.clone(), RtConfig::default());
+    let hop_duration = Duration::from_secs_f32(hop as f32 / fs);
+    let hop_ms = (hop as f32 / fs) * 1000.0;
+    let visual_delay_frames = 0;
+    debug!(
+        "Visual delay frames: {} (latency_ms={:.1}, hop_ms={:.2})",
+        visual_delay_frames, latency_ms, hop_ms
+    );
+    let ui_channel_capacity = (visual_delay_frames + 4).max(16);
+
+    // Channels
+    let (ui_frame_tx, ui_frame_rx) = bounded::<UiFrame>(ui_channel_capacity);
+    let (ctrl_tx, _ctrl_rx) = bounded::<()>(1);
+    let (harmonicity_tx, harmonicity_rx) = bounded::<LandscapeUpdate>(8);
+    let (roughness_tx, roughness_rx) = bounded::<LandscapeUpdate>(8);
+
+    let base_space = nsgt.space().clone();
+    let roughness_stream = RoughnessStream::new(lparams.clone(), nsgt.clone());
+    let harmonicity_stream =
+        HarmonicityStream::new(base_space.clone(), lparams.harmonicity_kernel.clone());
+    let landscape = Landscape::new(base_space.clone());
+    let dorsal = DorsalStream::new(fs);
+    let lparams_runtime = lparams.clone();
+
+    // Analysis pipeline channels
+    let (spectrum_to_harmonicity_tx, spectrum_to_harmonicity_rx) = bounded::<(u64, Arc<[f32]>)>(64);
+    let (harmonicity_result_tx, harmonicity_result_rx) = bounded::<(u64, Vec<f32>, Vec<f32>)>(4);
+    let (audio_to_roughness_tx, audio_to_roughness_rx) = bounded::<(u64, Arc<[f32]>)>(64);
+    let (roughness_from_analysis_tx, roughness_from_analysis_rx) = bounded::<(u64, Landscape)>(4);
+
+    // Spawn harmonicity thread
+    {
+        std::thread::Builder::new()
+            .name("harmonicity".into())
+            .spawn(move || {
+                harmonicity_worker::run(
+                    harmonicity_stream,
+                    spectrum_to_harmonicity_rx,
+                    harmonicity_result_tx,
+                    harmonicity_rx,
+                );
+            })
+            .expect("spawn analysis worker");
+    }
+
+    // Spawn roughness thread (NSGT-RT based audio analysis).
+    {
+        std::thread::Builder::new()
+            .name("roughness".into())
+            .spawn(move || {
+                roughness_worker::run(
+                    roughness_stream,
+                    audio_to_roughness_rx,
+                    roughness_from_analysis_tx,
+                    roughness_rx,
+                )
+            })
+            .expect("spawn roughness worker");
+    }
+
+    let path = args.scenario_path.clone();
+    let scenario_label = Path::new(&path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("scenario")
+        .to_string();
+    let ext = Path::new(&path)
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if ext != "rhai" {
+        eprintln!("Scenario must be a .rhai script: {path}");
+        std::process::exit(1);
+    }
+    let scenario = ScriptHost::load_script(&path).unwrap_or_else(|e| {
+        eprintln!("Failed to run scenario script {path}: {e:#}");
+        std::process::exit(1);
+    });
+    let conductor = Conductor::from_scenario(scenario);
+
+    // Give the worker its own handle if WAV output is enabled.
+    let wav_tx_for_worker = wav_tx;
+
+    // Spawn worker thread
+    let stop_flag_worker = stop_flag.clone();
+    let start_flag = Arc::new(AtomicBool::new(!config.playback.wait_user_start));
+    let start_flag_for_worker = start_flag.clone();
+
+    let worker_handle = Some(
+        thread::Builder::new()
+            .name("worker".into())
+            .spawn(move || {
+                worker_loop(
+                    scenario_label,
+                    config.playback.wait_user_exit,
+                    start_flag_for_worker,
+                    ui_frame_tx,
+                    pop,
+                    conductor,
+                    landscape,
+                    lparams_runtime,
+                    dorsal,
+                    audio_prod,
+                    wav_tx_for_worker,
+                    stop_flag_worker,
+                    spectrum_to_harmonicity_tx,
+                    harmonicity_result_rx,
+                    harmonicity_tx,
+                    audio_to_roughness_tx,
+                    roughness_from_analysis_rx,
+                    roughness_tx,
+                    hop,
+                    hop_duration,
+                    fs,
+                )
+            })
+            .expect("spawn worker"),
+    );
+
+    RuntimeInit {
+        ui_frame_rx,
+        ctrl_tx,
+        worker_handle,
+        wav_handle,
+        start_flag,
+        audio_out,
+        audio_init_error,
+        visual_delay_frames,
+    }
+}
+
+pub fn run_headless(args: crate::Args, config: AppConfig, stop_flag: Arc<AtomicBool>) {
+    let rt = init_runtime(args, config, stop_flag);
+    rt.start_flag.store(true, Ordering::SeqCst);
+    let _audio = rt.audio_out;
+    if let Some(handle) = rt.worker_handle {
+        let _ = handle.join();
+    }
+    if let Some(handle) = rt.wav_handle {
+        let _ = handle.join();
     }
 }
 

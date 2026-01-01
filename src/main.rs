@@ -50,6 +50,10 @@ struct Args {
     /// Wait for user action before starting playback (overrides config)
     #[arg(long, num_args = 0..=1, default_missing_value = "true")]
     wait_user_start: Option<bool>,
+
+    /// Run without GUI (headless)
+    #[arg(long, default_value_t = false)]
+    nogui: bool,
 }
 
 fn load_scenario_from_path(path: &str) -> Result<Scenario, String> {
@@ -94,6 +98,19 @@ fn main() -> eframe::Result<()> {
         stop_flag_for_ctrlc.store(true, Ordering::SeqCst);
     })
     .expect("Error setting Ctrl-C handler");
+
+    if args.nogui {
+        if config.playback.wait_user_start {
+            eprintln!("--nogui forces wait_user_start=false");
+        }
+        if config.playback.wait_user_exit {
+            eprintln!("--nogui forces wait_user_exit=false");
+        }
+        config.playback.wait_user_start = false;
+        config.playback.wait_user_exit = false;
+        app::run_headless(args, config, stop_flag);
+        return Ok(());
+    }
 
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_inner_size([1200.0, 850.0]),

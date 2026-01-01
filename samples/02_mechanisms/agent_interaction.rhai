@@ -7,7 +7,8 @@ scene("Phase 1: Anchor C2");
 print("--- [1] Anchoring C2 (65.41Hz) ---");
 
 // Anchor (immobile)
-let anchor = add_agent("anchor", 65.41, 0.6, #{
+let anchor_method = #{ mode: "random_log_uniform", min_freq: 65.41, max_freq: 65.41 };
+let anchor = spawn("anchor", 1, #{ amp: 0.6, method: anchor_method, life: #{
     body: #{ core: "sine" },
     articulation: #{
         core: "entrain",
@@ -18,8 +19,8 @@ let anchor = add_agent("anchor", 65.41, 0.6, #{
     },
     pitch: #{ core: "pitch_hill_climb" },
     perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
-});
-anchor.set_commitment(1.0);
+} });
+set(anchor, #{ commitment: 1.0 });
 
 wait(1.0);
 
@@ -47,12 +48,14 @@ let life_seeker = #{
 };
 
 // Place them slightly off the comfy spots
-let seeker_tritone = add_agent("seeker_tritone", 92.5, 0.4, life_seeker);
-let seeker_m2 = add_agent("seeker_m2", 140.0, 0.4, life_seeker); // near C3 (~130 Hz)
+let seeker_tritone_method = #{ mode: "random_log_uniform", min_freq: 92.5, max_freq: 92.5 };
+let seeker_m2_method = #{ mode: "random_log_uniform", min_freq: 140.0, max_freq: 140.0 };
+let seeker_tritone = spawn("seeker_tritone", 1, #{ amp: 0.4, method: seeker_tritone_method, life: life_seeker });
+let seeker_m2 = spawn("seeker_m2", 1, #{ amp: 0.4, method: seeker_m2_method, life: life_seeker }); // near C3 (~130 Hz)
 
 // Set commitment (higher = more stubborn)
-seeker_tritone.set_commitment(0.5);
-seeker_m2.set_commitment(0.67); // moves more slowly
+set(seeker_tritone, #{ commitment: 0.5 });
+set(seeker_m2, #{ commitment: 0.67 }); // moves more slowly
 
 print(">>> Observe: They should hop to the nearest consonant peak (G or C) <<<");
 wait(5.0);
@@ -65,7 +68,7 @@ print("--- [3] Moving Anchor to F2 (87.31Hz) ---");
 
 // Force-move the anchor; landscape flips.
 // Formerly comfy spots (C, G) may become dissonant relative to F.
-anchor.set_freq(87.31);
+set(anchor, #{ freq: 87.31 });
 
 // Agents scan periodically; they should notice F overtones feel better and retarget.
 
@@ -81,9 +84,9 @@ print("--- [4] Spawning a swarm ---");
 let method = #{ mode: "harmonic_density", min_freq: 200.0, max_freq: 800.0 };
 for i in 0..4 {
     let swarm = spawn("swarm_" + i, 1, #{ amp: 0.15, method: method, life: life_seeker });
-    swarm.set_commitment(0.56);
+    set(swarm, #{ commitment: 0.56 });
     wait(0.5);
 }
 
 wait(5.0);
-finish();
+end();

@@ -15,12 +15,13 @@ fn play_chord(root, tag) {
     };
     let pad_method = #{ mode: "harmonicity", min_freq: root * 2.0, max_freq: root * 5.0 };
 
-    let bass = add_agent("bass_" + tag, root, 0.36, bass_life);
+    let bass_method = #{ mode: "random_log_uniform", min_freq: root, max_freq: root };
+    let bass = spawn("bass_" + tag, 1, #{ amp: 0.36, method: bass_method, life: bass_life });
     wait(0.18);
     let pads = spawn("pad_" + tag, 3, #{ amp: 0.2, method: pad_method, life: pad_life });
     wait(1.4);
-    bass.remove();
-    pads.remove();
+    remove(bass);
+    remove(pads);
 }
 
 scene("ii");
@@ -33,4 +34,4 @@ scene("i");
 play_chord(130.81, "i"); // Cmaj
 
 wait(1.0);
-finish();
+end();

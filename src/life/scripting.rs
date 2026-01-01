@@ -1,23 +1,19 @@
 use std::fs;
 use std::sync::{Arc, Mutex};
 
-use anyhow::{Context, anyhow};
 use rhai::{
     Dynamic, Engine, EvalAltResult, EvalContext, Expression, FLOAT, Map, NativeCallContext,
     Position,
 };
 use serde::Serialize;
 
-use super::api::script_api as api;
 use super::api::{
-    add_agent_at, set_agent_at, set_amp_agent, set_amp_cohort, set_amp_tag, set_cohort_at,
-    set_commitment_agent, set_commitment_cohort, set_commitment_tag, set_drift_agent,
-    set_drift_cohort, set_drift_tag, set_freq_agent, set_freq_cohort, set_freq_tag, set_tag_at,
-    set_tag_str_at, spawn_agents_at, spawn_min_at, spawn_with_opts_at,
+    pop_time, push_time, set_agent_at, set_cohort_at, set_tag_str_at, set_time, spawn_min_at,
+    spawn_with_opts_at,
 };
 use super::scenario::{
     Action, AgentHandle, CohortHandle, IndividualConfig, LifeConfig, Scenario, SceneMarker,
-    SpawnMethod, TagSelector, TargetRef, TimedEvent,
+    SpawnMethod, TargetRef, TimedEvent,
 };
 
 const SCRIPT_PRELUDE: &str = r#"
@@ -26,17 +22,17 @@ fn parallel(callback) {
 }
 
 fn after(dt, callback) {
-    push_time();
+    __internal_push_time();
     wait(dt);
     callback.call();
-    pop_time();
+    __internal_pop_time();
 }
 
 fn at(t, callback) {
-    push_time();
-    set_time(t);
+    __internal_push_time();
+    __internal_set_time(t);
     callback.call();
-    pop_time();
+    __internal_pop_time();
 }
 
 fn repeat(n, callback) {
@@ -50,10 +46,10 @@ fn repeat(n, callback) {
 fn every(interval, count, callback) {
     let i = 0;
     while i < count {
-        push_time();
+        __internal_push_time();
         wait(i * interval);
         callback.call(i);
-        pop_time();
+        __internal_pop_time();
         i += 1;
     }
 }
@@ -61,10 +57,10 @@ fn every(interval, count, callback) {
 fn spawn_every(tag, count, interval, opts) {
     let i = 0;
     while i < count {
-        push_time();
+        __internal_push_time();
         wait(i * interval);
         spawn(tag, 1, opts);
-        pop_time();
+        __internal_pop_time();
         i += 1;
     }
 }
@@ -82,6 +78,7 @@ pub struct ScriptContext {
     pub next_group_id: u64,
     pub next_agent_id: u64,
     pub next_event_order: u64,
+    pub ended: bool,
 }
 
 impl Default for ScriptContext {
@@ -97,12 +94,24 @@ impl Default for ScriptContext {
             next_group_id: 1,
             next_agent_id: 1,
             next_event_order: 1,
+            ended: false,
         }
     }
 }
 
 impl ScriptContext {
-    pub fn scene(&mut self, name: &str) {
+    fn ensure_not_ended(&self, position: Position) -> Result<(), Box<EvalAltResult>> {
+        if self.ended {
+            return Err(Box::new(EvalAltResult::ErrorRuntime(
+                "script already ended".into(),
+                position,
+            )));
+        }
+        Ok(())
+    }
+
+    pub fn scene(&mut self, name: &str, position: Position) -> Result<(), Box<EvalAltResult>> {
+        self.ensure_not_ended(position)?;
         let order = self.next_event_order;
         self.next_event_order += 1;
         self.scenario.scene_markers.push(SceneMarker {
@@ -110,24 +119,37 @@ impl ScriptContext {
             time: self.cursor,
             order,
         });
+        Ok(())
     }
 
-    pub fn wait(&mut self, sec: f32) {
-        self.cursor += sec;
+    pub fn wait(&mut self, sec: f32, position: Position) -> Result<(), Box<EvalAltResult>> {
+        self.ensure_not_ended(position)?;
+        self.cursor += sec.max(0.0);
+        Ok(())
     }
 
-    pub fn set_time(&mut self, time_sec: f32) {
-        self.cursor = time_sec;
+    pub fn set_time(
+        &mut self,
+        time_sec: f32,
+        position: Position,
+    ) -> Result<(), Box<EvalAltResult>> {
+        self.ensure_not_ended(position)?;
+        self.cursor = time_sec.max(0.0);
+        Ok(())
     }
 
-    pub fn push_time(&mut self) {
+    pub fn push_time(&mut self, position: Position) -> Result<(), Box<EvalAltResult>> {
+        self.ensure_not_ended(position)?;
         self.time_stack.push(self.cursor);
+        Ok(())
     }
 
-    pub fn pop_time(&mut self) {
+    pub fn pop_time(&mut self, position: Position) -> Result<(), Box<EvalAltResult>> {
+        self.ensure_not_ended(position)?;
         if let Some(t) = self.time_stack.pop() {
             self.cursor = t;
         }
+        Ok(())
     }
 
     fn push_event(&mut self, time_sec: f32, actions: Vec<Action>) {
@@ -149,6 +171,7 @@ impl ScriptContext {
         amp: f32,
         position: Position,
     ) -> Result<CohortHandle, Box<EvalAltResult>> {
+        self.ensure_not_ended(position)?;
         let method = Self::from_map::<SpawnMethod>(method_map, "SpawnMethod", position)?;
         let life = Self::from_map_patch::<LifeConfig>(
             life_map,
@@ -217,6 +240,7 @@ impl ScriptContext {
         opts: Map,
         position: Position,
     ) -> Result<CohortHandle, Box<EvalAltResult>> {
+        self.ensure_not_ended(position)?;
         let mut unknown_keys = Vec::new();
         for key in opts.keys() {
             match key.as_str() {
@@ -301,6 +325,7 @@ impl ScriptContext {
         life_map: Map,
         position: Position,
     ) -> Result<AgentHandle, Box<EvalAltResult>> {
+        self.ensure_not_ended(position)?;
         let life = Self::from_map::<LifeConfig>(life_map, "LifeConfig", position)?;
         let agent = IndividualConfig {
             freq,
@@ -340,19 +365,42 @@ impl ScriptContext {
         self.push_event(self.cursor, vec![Action::SetCommitment { target, value }]);
     }
 
-    pub fn set_rhythm_vitality(&mut self, value: f32) {
+    pub fn set_rhythm_vitality(
+        &mut self,
+        value: f32,
+        position: Position,
+    ) -> Result<(), Box<EvalAltResult>> {
+        self.ensure_not_ended(position)?;
         self.push_event(self.cursor, vec![Action::SetRhythmVitality { value }]);
+        Ok(())
     }
 
-    pub fn set_global_coupling(&mut self, value: f32) {
+    pub fn set_global_coupling(
+        &mut self,
+        value: f32,
+        position: Position,
+    ) -> Result<(), Box<EvalAltResult>> {
+        self.ensure_not_ended(position)?;
         self.push_event(self.cursor, vec![Action::SetGlobalCoupling { value }]);
+        Ok(())
     }
 
-    pub fn set_roughness_tolerance(&mut self, value: f32) {
+    pub fn set_roughness_tolerance(
+        &mut self,
+        value: f32,
+        position: Position,
+    ) -> Result<(), Box<EvalAltResult>> {
+        self.ensure_not_ended(position)?;
         self.push_event(self.cursor, vec![Action::SetRoughnessTolerance { value }]);
+        Ok(())
     }
 
-    pub fn set_harmonicity(&mut self, map: Map) -> Result<(), Box<EvalAltResult>> {
+    pub fn set_harmonicity(
+        &mut self,
+        map: Map,
+        position: Position,
+    ) -> Result<(), Box<EvalAltResult>> {
+        self.ensure_not_ended(position)?;
         let mirror = map
             .get("mirror")
             .and_then(|v| v.as_float().ok())
@@ -371,6 +419,7 @@ impl ScriptContext {
         patch: Map,
         position: Position,
     ) -> Result<(), Box<EvalAltResult>> {
+        self.ensure_not_ended(position)?;
         let mut unknown_keys = Vec::new();
         for key in patch.keys() {
             match key.as_str() {
@@ -466,11 +515,23 @@ impl ScriptContext {
         Ok(())
     }
 
-    pub fn remove(&mut self, target: TargetRef) {
+    pub fn remove(
+        &mut self,
+        target: TargetRef,
+        position: Position,
+    ) -> Result<(), Box<EvalAltResult>> {
+        self.ensure_not_ended(position)?;
         self.push_event(self.cursor, vec![Action::RemoveAgent { target }]);
+        Ok(())
     }
 
-    pub fn release(&mut self, target: TargetRef, sec: f32) {
+    pub fn release(
+        &mut self,
+        target: TargetRef,
+        sec: f32,
+        position: Position,
+    ) -> Result<(), Box<EvalAltResult>> {
+        self.ensure_not_ended(position)?;
         self.push_event(
             self.cursor,
             vec![Action::ReleaseAgent {
@@ -478,17 +539,26 @@ impl ScriptContext {
                 release_sec: sec,
             }],
         );
+        Ok(())
     }
 
-    pub fn finish(&mut self) {
-        self.push_event(self.cursor, vec![Action::Finish]);
-        self.scenario.duration_sec = self.scenario.duration_sec.max(self.cursor);
+    pub fn end(&mut self, position: Position) -> Result<(), Box<EvalAltResult>> {
+        self.end_at(self.cursor, position)
     }
 
-    pub fn run(&mut self, sec: f32) {
-        let end = (self.cursor + sec.max(0.0)).max(self.cursor);
+    pub fn end_at(&mut self, t_abs: f32, position: Position) -> Result<(), Box<EvalAltResult>> {
+        if t_abs < 0.0 {
+            return Err(Box::new(EvalAltResult::ErrorRuntime(
+                "end_at time must be non-negative".into(),
+                position,
+            )));
+        }
+        self.ensure_not_ended(position)?;
+        let end = t_abs.max(0.0);
         self.scenario.duration_sec = self.scenario.duration_sec.max(end);
         self.push_event(end, vec![Action::Finish]);
+        self.ended = true;
+        Ok(())
     }
 
     fn from_map<T: serde::de::DeserializeOwned>(
@@ -562,12 +632,28 @@ fn merge_json(base: serde_json::Value, patch: serde_json::Value) -> serde_json::
 pub struct ScriptHost;
 
 impl ScriptHost {
+    fn last_non_empty_line(full: &str) -> u16 {
+        let mut last_non_empty = None;
+        let mut count = 0usize;
+        for (idx, line) in full.lines().enumerate() {
+            count = idx + 1;
+            if !line.trim().is_empty() {
+                last_non_empty = Some(idx + 1);
+            }
+        }
+        let line = last_non_empty.unwrap_or(count.max(1));
+        line as u16
+    }
+
+    fn combined_script(src: &str) -> String {
+        format!("{SCRIPT_PRELUDE}\n\n{src}")
+    }
+
     fn create_engine(ctx: Arc<Mutex<ScriptContext>>) -> Engine {
         let mut engine = Engine::new();
         engine.on_print(|msg| println!("[rhai] {msg}"));
         engine.register_type_with_name::<CohortHandle>("CohortHandle");
         engine.register_type_with_name::<AgentHandle>("AgentHandle");
-        engine.register_type_with_name::<TagSelector>("TagSelector");
         engine.register_iterator::<CohortHandle>();
         engine.register_fn("len", |cohort: &mut CohortHandle| -> i64 {
             cohort.len() as i64
@@ -678,114 +764,57 @@ impl ScriptHost {
         );
 
         let ctx_for_scene = ctx.clone();
-        engine.register_fn("scene", move |name: &str| {
-            let mut ctx = ctx_for_scene.lock().expect("lock script context");
-            api::scene(&mut ctx, name);
-        });
+        engine.register_fn(
+            "scene",
+            move |call_ctx: NativeCallContext, name: &str| -> Result<(), Box<EvalAltResult>> {
+                let mut ctx = ctx_for_scene.lock().expect("lock script context");
+                ctx.scene(name, call_ctx.call_position())
+            },
+        );
 
         let ctx_for_wait = ctx.clone();
-        engine.register_fn("wait", move |sec: FLOAT| {
-            let mut ctx = ctx_for_wait.lock().expect("lock script context");
-            api::wait(&mut ctx, sec);
-        });
+        engine.register_fn(
+            "wait",
+            move |call_ctx: NativeCallContext, sec: FLOAT| -> Result<(), Box<EvalAltResult>> {
+                let mut ctx = ctx_for_wait.lock().expect("lock script context");
+                ctx.wait(sec as f32, call_ctx.call_position())
+            },
+        );
         let ctx_for_wait_int = ctx.clone();
-        engine.register_fn("wait", move |sec: i64| {
-            let mut ctx = ctx_for_wait_int.lock().expect("lock script context");
-            api::wait_int(&mut ctx, sec);
-        });
+        engine.register_fn(
+            "wait",
+            move |call_ctx: NativeCallContext, sec: i64| -> Result<(), Box<EvalAltResult>> {
+                let mut ctx = ctx_for_wait_int.lock().expect("lock script context");
+                ctx.wait(sec as f32, call_ctx.call_position())
+            },
+        );
 
         let ctx_for_push_time = ctx.clone();
-        engine.register_fn("push_time", move || {
-            let mut ctx = ctx_for_push_time.lock().expect("lock script context");
-            api::push_time(&mut ctx);
-        });
+        engine.register_fn(
+            "__internal_push_time",
+            move |call_ctx: NativeCallContext| -> Result<(), Box<EvalAltResult>> {
+                let mut ctx = ctx_for_push_time.lock().expect("lock script context");
+                push_time(&mut ctx, call_ctx.call_position())
+            },
+        );
 
         let ctx_for_pop_time = ctx.clone();
-        engine.register_fn("pop_time", move || {
-            let mut ctx = ctx_for_pop_time.lock().expect("lock script context");
-            api::pop_time(&mut ctx);
-        });
+        engine.register_fn(
+            "__internal_pop_time",
+            move |call_ctx: NativeCallContext| -> Result<(), Box<EvalAltResult>> {
+                let mut ctx = ctx_for_pop_time.lock().expect("lock script context");
+                pop_time(&mut ctx, call_ctx.call_position())
+            },
+        );
         let ctx_for_set_time = ctx.clone();
-        engine.register_fn("set_time", move |sec: FLOAT| {
-            let mut ctx = ctx_for_set_time.lock().expect("lock script context");
-            api::set_time(&mut ctx, sec);
-        });
-
-        let ctx_for_spawn_agents = ctx.clone();
         engine.register_fn(
-            "spawn_agents",
-            move |call_ctx: NativeCallContext,
-                  tag: &str,
-                  method_map: Map,
-                  life_map: Map,
-                  count: i64,
-                  amp: FLOAT|
-                  -> Result<CohortHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_spawn_agents.lock().expect("lock script context");
-                spawn_agents_at(
-                    &mut ctx,
-                    tag,
-                    method_map,
-                    life_map,
-                    count,
-                    amp,
-                    call_ctx.call_position(),
-                )
-            },
-        );
-        let ctx_for_spawn_default = ctx.clone();
-        engine.register_fn(
-            "spawn_default",
-            move |tag: &str, count: i64| -> Result<CohortHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_spawn_default.lock().expect("lock script context");
-                ctx.spawn_default(tag, count)
+            "__internal_set_time",
+            move |call_ctx: NativeCallContext, sec: FLOAT| -> Result<(), Box<EvalAltResult>> {
+                let mut ctx = ctx_for_set_time.lock().expect("lock script context");
+                set_time(&mut ctx, sec, call_ctx.call_position())
             },
         );
 
-        engine.register_fn("random", api::random_method);
-        engine.register_fn("random", api::random_method_opts);
-        engine.register_fn("harmonicity", api::harmonicity);
-        engine.register_fn("harmonicity", api::harmonicity_opts);
-        engine.register_fn("spectral_gap", api::spectral_gap);
-        engine.register_fn("spectral_gap", api::spectral_gap_opts);
-        engine.register_fn("harmonic_density", api::harmonic_density);
-        engine.register_fn("harmonic_density", api::harmonic_density_opts);
-        engine.register_fn("life", api::life);
-        let ctx_for_add_agent = ctx.clone();
-        engine.register_fn(
-            "add_agent",
-            move |call_ctx: NativeCallContext,
-                  tag: &str,
-                  freq: FLOAT,
-                  amp: FLOAT,
-                  life_map: Map|
-                  -> Result<AgentHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_add_agent.lock().expect("lock script context");
-                add_agent_at(&mut ctx, tag, freq, amp, life_map, call_ctx.call_position())
-            },
-        );
-
-        let ctx_for_tag = ctx.clone();
-        engine.register_fn("tag", move |name: &str| {
-            let mut ctx = ctx_for_tag.lock().expect("lock script context");
-            api::tag(&mut ctx, name)
-        });
-
-        let ctx_for_set_freq_agent = ctx.clone();
-        engine.register_fn("set_freq", move |target: AgentHandle, freq: FLOAT| {
-            let mut ctx = ctx_for_set_freq_agent.lock().expect("lock script context");
-            set_freq_agent(&mut ctx, target, freq);
-        });
-        let ctx_for_set_freq_cohort = ctx.clone();
-        engine.register_fn("set_freq", move |target: CohortHandle, freq: FLOAT| {
-            let mut ctx = ctx_for_set_freq_cohort.lock().expect("lock script context");
-            set_freq_cohort(&mut ctx, target, freq);
-        });
-        let ctx_for_set_freq_tag = ctx.clone();
-        engine.register_fn("set_freq", move |target: TagSelector, freq: FLOAT| {
-            let mut ctx = ctx_for_set_freq_tag.lock().expect("lock script context");
-            set_freq_tag(&mut ctx, target, freq);
-        });
         let ctx_for_set_tag_str = ctx.clone();
         engine.register_fn(
             "set",
@@ -810,185 +839,225 @@ impl ScriptHost {
                 set_cohort_at(&mut ctx, target, patch, call_ctx.call_position())
             },
         );
-        let ctx_for_set_tag = ctx.clone();
-        engine.register_fn(
-            "set",
-            move |call_ctx: NativeCallContext, target: TagSelector, patch: Map| {
-                let mut ctx = ctx_for_set_tag.lock().expect("lock script context");
-                set_tag_at(&mut ctx, target, patch, call_ctx.call_position())
-            },
-        );
-
-        let ctx_for_set_amp_agent = ctx.clone();
-        engine.register_fn("set_amp", move |target: AgentHandle, amp: FLOAT| {
-            let mut ctx = ctx_for_set_amp_agent.lock().expect("lock script context");
-            set_amp_agent(&mut ctx, target, amp);
-        });
-        let ctx_for_set_amp_cohort = ctx.clone();
-        engine.register_fn("set_amp", move |target: CohortHandle, amp: FLOAT| {
-            let mut ctx = ctx_for_set_amp_cohort.lock().expect("lock script context");
-            set_amp_cohort(&mut ctx, target, amp);
-        });
-        let ctx_for_set_amp_tag = ctx.clone();
-        engine.register_fn("set_amp", move |target: TagSelector, amp: FLOAT| {
-            let mut ctx = ctx_for_set_amp_tag.lock().expect("lock script context");
-            set_amp_tag(&mut ctx, target, amp);
-        });
-
-        let ctx_for_set_drift_agent = ctx.clone();
-        engine.register_fn("set_drift", move |target: AgentHandle, value: FLOAT| {
-            let mut ctx = ctx_for_set_drift_agent.lock().expect("lock script context");
-            set_drift_agent(&mut ctx, target, value);
-        });
-        let ctx_for_set_drift_cohort = ctx.clone();
-        engine.register_fn("set_drift", move |target: CohortHandle, value: FLOAT| {
-            let mut ctx = ctx_for_set_drift_cohort
-                .lock()
-                .expect("lock script context");
-            set_drift_cohort(&mut ctx, target, value);
-        });
-        let ctx_for_set_drift_tag = ctx.clone();
-        engine.register_fn("set_drift", move |target: TagSelector, value: FLOAT| {
-            let mut ctx = ctx_for_set_drift_tag.lock().expect("lock script context");
-            set_drift_tag(&mut ctx, target, value);
-        });
-
-        let ctx_for_set_commitment_agent = ctx.clone();
-        engine.register_fn(
-            "set_commitment",
-            move |target: AgentHandle, value: FLOAT| {
-                let mut ctx = ctx_for_set_commitment_agent
-                    .lock()
-                    .expect("lock script context");
-                set_commitment_agent(&mut ctx, target, value);
-            },
-        );
-        let ctx_for_set_commitment_cohort = ctx.clone();
-        engine.register_fn(
-            "set_commitment",
-            move |target: CohortHandle, value: FLOAT| {
-                let mut ctx = ctx_for_set_commitment_cohort
-                    .lock()
-                    .expect("lock script context");
-                set_commitment_cohort(&mut ctx, target, value);
-            },
-        );
-        let ctx_for_set_commitment_tag = ctx.clone();
-        engine.register_fn(
-            "set_commitment",
-            move |target: TagSelector, value: FLOAT| {
-                let mut ctx = ctx_for_set_commitment_tag
-                    .lock()
-                    .expect("lock script context");
-                set_commitment_tag(&mut ctx, target, value);
-            },
-        );
 
         let ctx_for_set_vitality = ctx.clone();
-        engine.register_fn("set_rhythm_vitality", move |value: FLOAT| {
-            let mut ctx = ctx_for_set_vitality.lock().expect("lock script context");
-            api::set_rhythm_vitality(&mut ctx, value);
-        });
+        engine.register_fn(
+            "set_rhythm_vitality",
+            move |call_ctx: NativeCallContext, value: FLOAT| -> Result<(), Box<EvalAltResult>> {
+                let mut ctx = ctx_for_set_vitality.lock().expect("lock script context");
+                ctx.set_rhythm_vitality(value as f32, call_ctx.call_position())
+            },
+        );
 
         let ctx_for_set_coupling = ctx.clone();
-        engine.register_fn("set_global_coupling", move |value: FLOAT| {
-            let mut ctx = ctx_for_set_coupling.lock().expect("lock script context");
-            api::set_global_coupling(&mut ctx, value);
-        });
+        engine.register_fn(
+            "set_global_coupling",
+            move |call_ctx: NativeCallContext, value: FLOAT| -> Result<(), Box<EvalAltResult>> {
+                let mut ctx = ctx_for_set_coupling.lock().expect("lock script context");
+                ctx.set_global_coupling(value as f32, call_ctx.call_position())
+            },
+        );
 
         let ctx_for_set_roughness = ctx.clone();
-        engine.register_fn("set_roughness_tolerance", move |value: FLOAT| {
-            let mut ctx = ctx_for_set_roughness.lock().expect("lock script context");
-            api::set_roughness_tolerance(&mut ctx, value);
-        });
+        engine.register_fn(
+            "set_roughness_tolerance",
+            move |call_ctx: NativeCallContext, value: FLOAT| -> Result<(), Box<EvalAltResult>> {
+                let mut ctx = ctx_for_set_roughness.lock().expect("lock script context");
+                ctx.set_roughness_tolerance(value as f32, call_ctx.call_position())
+            },
+        );
 
         let ctx_for_set_harmonicity = ctx.clone();
         engine.register_fn(
             "set_harmonicity",
-            move |map: Map| -> Result<(), Box<EvalAltResult>> {
+            move |call_ctx: NativeCallContext, map: Map| -> Result<(), Box<EvalAltResult>> {
                 let mut ctx = ctx_for_set_harmonicity.lock().expect("lock script context");
-                api::set_harmonicity(&mut ctx, map)
+                ctx.set_harmonicity(map, call_ctx.call_position())
             },
         );
 
         let ctx_for_remove_agent = ctx.clone();
-        engine.register_fn("remove", move |target: AgentHandle| {
-            let mut ctx = ctx_for_remove_agent.lock().expect("lock script context");
-            api::remove_agent(&mut ctx, target);
-        });
+        engine.register_fn(
+            "remove",
+            move |call_ctx: NativeCallContext, target: AgentHandle| {
+                let mut ctx = ctx_for_remove_agent.lock().expect("lock script context");
+                ctx.remove(
+                    TargetRef::AgentId { id: target.id },
+                    call_ctx.call_position(),
+                )
+            },
+        );
         let ctx_for_remove_cohort = ctx.clone();
-        engine.register_fn("remove", move |target: CohortHandle| {
-            let mut ctx = ctx_for_remove_cohort.lock().expect("lock script context");
-            api::remove_cohort(&mut ctx, target);
-        });
-        let ctx_for_remove_tag = ctx.clone();
-        engine.register_fn("remove", move |target: TagSelector| {
-            let mut ctx = ctx_for_remove_tag.lock().expect("lock script context");
-            api::remove_tag(&mut ctx, target);
-        });
+        engine.register_fn(
+            "remove",
+            move |call_ctx: NativeCallContext, target: CohortHandle| {
+                let mut ctx = ctx_for_remove_cohort.lock().expect("lock script context");
+                ctx.remove(
+                    TargetRef::Range {
+                        base_id: target.base_id,
+                        count: target.count,
+                    },
+                    call_ctx.call_position(),
+                )
+            },
+        );
         let ctx_for_remove_tag_str = ctx.clone();
-        engine.register_fn("remove", move |tag: &str| {
+        engine.register_fn("remove", move |call_ctx: NativeCallContext, tag: &str| {
             let mut ctx = ctx_for_remove_tag_str.lock().expect("lock script context");
-            api::remove_tag_str(&mut ctx, tag);
+            ctx.remove(
+                TargetRef::Tag {
+                    tag: tag.to_string(),
+                },
+                call_ctx.call_position(),
+            )
         });
 
         let ctx_for_release_agent = ctx.clone();
-        engine.register_fn("release", move |target: AgentHandle, sec: FLOAT| {
-            let mut ctx = ctx_for_release_agent.lock().expect("lock script context");
-            api::release_agent(&mut ctx, target, sec);
-        });
+        engine.register_fn(
+            "release",
+            move |call_ctx: NativeCallContext, target: AgentHandle, sec: FLOAT| {
+                let mut ctx = ctx_for_release_agent.lock().expect("lock script context");
+                ctx.release(
+                    TargetRef::AgentId { id: target.id },
+                    sec as f32,
+                    call_ctx.call_position(),
+                )
+            },
+        );
         let ctx_for_release_cohort = ctx.clone();
-        engine.register_fn("release", move |target: CohortHandle, sec: FLOAT| {
-            let mut ctx = ctx_for_release_cohort.lock().expect("lock script context");
-            api::release_cohort(&mut ctx, target, sec);
-        });
-        let ctx_for_release_tag = ctx.clone();
-        engine.register_fn("release", move |target: TagSelector, sec: FLOAT| {
-            let mut ctx = ctx_for_release_tag.lock().expect("lock script context");
-            api::release_tag(&mut ctx, target, sec);
-        });
+        engine.register_fn(
+            "release",
+            move |call_ctx: NativeCallContext, target: CohortHandle, sec: FLOAT| {
+                let mut ctx = ctx_for_release_cohort.lock().expect("lock script context");
+                ctx.release(
+                    TargetRef::Range {
+                        base_id: target.base_id,
+                        count: target.count,
+                    },
+                    sec as f32,
+                    call_ctx.call_position(),
+                )
+            },
+        );
         let ctx_for_release_tag_str = ctx.clone();
-        engine.register_fn("release", move |tag: &str, sec: FLOAT| {
-            let mut ctx = ctx_for_release_tag_str.lock().expect("lock script context");
-            api::release_tag_str(&mut ctx, tag, sec);
-        });
+        engine.register_fn(
+            "release",
+            move |call_ctx: NativeCallContext, tag: &str, sec: FLOAT| {
+                let mut ctx = ctx_for_release_tag_str.lock().expect("lock script context");
+                ctx.release(
+                    TargetRef::Tag {
+                        tag: tag.to_string(),
+                    },
+                    sec as f32,
+                    call_ctx.call_position(),
+                )
+            },
+        );
 
-        let ctx_for_finish = ctx.clone();
-        engine.register_fn("finish", move || {
-            let mut ctx = ctx_for_finish.lock().expect("lock script context");
-            api::finish(&mut ctx);
-        });
-
-        let ctx_for_run = ctx.clone();
-        engine.register_fn("run", move |sec: FLOAT| {
-            let mut ctx = ctx_for_run.lock().expect("lock script context");
-            api::run_float(&mut ctx, sec);
-        });
-        let ctx_for_run_int = ctx.clone();
-        engine.register_fn("run", move |sec: i64| {
-            let mut ctx = ctx_for_run_int.lock().expect("lock script context");
-            api::run_int(&mut ctx, sec);
-        });
+        let ctx_for_end = ctx.clone();
+        engine.register_fn(
+            "end",
+            move |call_ctx: NativeCallContext| -> Result<(), Box<EvalAltResult>> {
+                let mut ctx = ctx_for_end.lock().expect("lock script context");
+                ctx.end(call_ctx.call_position())
+            },
+        );
+        let ctx_for_end_at = ctx.clone();
+        engine.register_fn(
+            "end_at",
+            move |call_ctx: NativeCallContext, sec: FLOAT| -> Result<(), Box<EvalAltResult>> {
+                let mut ctx = ctx_for_end_at.lock().expect("lock script context");
+                ctx.end_at(sec as f32, call_ctx.call_position())
+            },
+        );
+        let ctx_for_end_at_int = ctx.clone();
+        engine.register_fn(
+            "end_at",
+            move |call_ctx: NativeCallContext, sec: i64| -> Result<(), Box<EvalAltResult>> {
+                let mut ctx = ctx_for_end_at_int.lock().expect("lock script context");
+                ctx.end_at(sec as f32, call_ctx.call_position())
+            },
+        );
 
         engine
     }
 
-    pub fn load_script(path: &str) -> anyhow::Result<Scenario> {
-        let src = fs::read_to_string(path).map_err(|err| anyhow!("read script {path}: {err}"))?;
+    pub fn load_script(path: &str) -> Result<Scenario, ScriptError> {
+        let src = fs::read_to_string(path)
+            .map_err(|err| ScriptError::new(format!("read script {path}: {err}"), None))?;
         let ctx = Arc::new(Mutex::new(ScriptContext::default()));
         let engine = ScriptHost::create_engine(ctx.clone());
-        let script_src = format!("{SCRIPT_PRELUDE}\n{src}");
+        let script_src = ScriptHost::combined_script(&src);
 
         if let Err(e) = engine.eval::<()>(&script_src) {
             // Print structured error to help diagnose script issues (e.g., type mismatches).
             println!("Debug script error: {:?}", e);
-            return Err(anyhow!(e.to_string())).with_context(|| format!("execute script {path}"));
+            return Err(ScriptError::from_eval(
+                e,
+                Some(&format!("execute script {path}")),
+            ));
         }
 
         let ctx_out = ctx.lock().expect("lock script context");
+        if !ctx_out.ended {
+            let line = ScriptHost::last_non_empty_line(&script_src);
+            let pos = Position::new(line, 1);
+            let msg = "script must call end() or end_at(t) to specify duration";
+            return Err(
+                ScriptError::new(msg, Some(pos)).with_context(format!("execute script {path}"))
+            );
+        }
         Ok(ctx_out.scenario.clone())
     }
 }
+
+#[derive(Debug, Clone)]
+pub struct ScriptError {
+    pub message: String,
+    pub position: Option<Position>,
+}
+
+impl ScriptError {
+    pub fn new(message: impl Into<String>, position: Option<Position>) -> Self {
+        Self {
+            message: message.into(),
+            position,
+        }
+    }
+
+    pub fn with_context(mut self, context: impl AsRef<str>) -> Self {
+        let ctx = context.as_ref();
+        self.message = format!("{ctx}: {}", self.message);
+        self
+    }
+
+    pub fn from_eval(err: Box<EvalAltResult>, context: Option<&str>) -> Self {
+        let pos = err.position();
+        let position = if pos == Position::NONE {
+            None
+        } else {
+            Some(pos)
+        };
+        let mut err = ScriptError::new(err.to_string(), position);
+        if let Some(ctx) = context {
+            err = err.with_context(ctx);
+        }
+        err
+    }
+}
+
+impl std::fmt::Display for ScriptError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(pos) = self.position {
+            let line = pos.line().unwrap_or(0);
+            write!(f, "{} (line {line})", self.message)
+        } else {
+            write!(f, "{}", self.message)
+        }
+    }
+}
+
+impl std::error::Error for ScriptError {}
 
 #[cfg(test)]
 mod tests {
@@ -998,7 +1067,7 @@ mod tests {
     fn run_script(src: &str) -> Scenario {
         let ctx = Arc::new(Mutex::new(ScriptContext::default()));
         let engine = ScriptHost::create_engine(ctx.clone());
-        let script_src = combined_script(src);
+        let script_src = ScriptHost::combined_script(src);
         engine.eval::<()>(&script_src).expect("script runs");
         ctx.lock().expect("lock ctx").scenario.clone()
     }
@@ -1006,15 +1075,38 @@ mod tests {
     fn eval_script_error_position(src: &str) -> Position {
         let ctx = Arc::new(Mutex::new(ScriptContext::default()));
         let engine = ScriptHost::create_engine(ctx.clone());
-        let script_src = combined_script(src);
-        let err = engine
-            .eval::<()>(&script_src)
-            .expect_err("script should error");
-        err.position()
+        let script_src = ScriptHost::combined_script(src);
+        match engine.eval::<()>(&script_src) {
+            Ok(_) => {
+                if !ctx.lock().expect("lock ctx").ended {
+                    let line = ScriptHost::last_non_empty_line(&script_src);
+                    Position::new(line, 1)
+                } else {
+                    panic!("script should error");
+                }
+            }
+            Err(err) => err.position(),
+        }
     }
 
-    fn combined_script(src: &str) -> String {
-        format!("{SCRIPT_PRELUDE}\n\n{src}")
+    fn eval_script_error(src: &str) -> Box<EvalAltResult> {
+        let ctx = Arc::new(Mutex::new(ScriptContext::default()));
+        let engine = ScriptHost::create_engine(ctx.clone());
+        let script_src = ScriptHost::combined_script(src);
+        match engine.eval::<Dynamic>(&script_src) {
+            Ok(_) => {
+                if !ctx.lock().expect("lock ctx").ended {
+                    let line = ScriptHost::last_non_empty_line(&script_src);
+                    Box::new(EvalAltResult::ErrorRuntime(
+                        "script must call end() or end_at(t) to specify duration".into(),
+                        Position::new(line, 1),
+                    ))
+                } else {
+                    panic!("script should error");
+                }
+            }
+            Err(err) => err,
+        }
     }
 
     fn expected_line(full: &str, needle: &str) -> usize {
@@ -1049,7 +1141,8 @@ mod tests {
                 pitch: #{ core: "pitch_hill_climb" },
                 perceptual: #{ tau_fast: 0.5, tau_slow: 6.0, w_boredom: 0.8, w_familiarity: 0.2 }
             };
-            add_agent("lead", 440.0, 0.2, life);
+            let lead_method = #{ mode: "random_log_uniform", min_freq: 440.0, max_freq: 440.0 };
+            spawn("lead", 1, #{ amp: 0.2, method: lead_method, life: life });
             wait(1.0);
             scene("break");
             let hit_life = #{
@@ -1058,9 +1151,10 @@ mod tests {
                 pitch: #{ core: "pitch_hill_climb" },
                 perceptual: #{ tau_fast: 0.5, tau_slow: 6.0, w_boredom: 0.8, w_familiarity: 0.2 }
             };
-            add_agent("hit", 880.0, 0.1, hit_life);
+            let hit_method = #{ mode: "random_log_uniform", min_freq: 880.0, max_freq: 880.0 };
+            spawn("hit", 1, #{ amp: 0.1, method: hit_method, life: hit_life });
             wait(0.5);
-            finish();
+            end();
         "#,
         );
 
@@ -1075,8 +1169,8 @@ mod tests {
         for ev in &scenario.events {
             for action in &ev.actions {
                 match action {
-                    Action::AddAgent { agent, .. } => {
-                        if agent.tag.as_deref() == Some("hit") {
+                    Action::SpawnAgents { tag, .. } => {
+                        if tag.as_deref() == Some("hit") {
                             assert_time_close(ev.time, 1.0);
                             has_hit = true;
                         }
@@ -1089,7 +1183,7 @@ mod tests {
                 }
             }
         }
-        assert!(has_hit, "expected add_agent event for hit");
+        assert!(has_hit, "expected spawn event for hit");
         assert!(has_finish, "expected finish event");
     }
 
@@ -1107,7 +1201,8 @@ mod tests {
                     pitch: #{ core: "pitch_hill_climb" },
                     perceptual: #{ tau_fast: 0.5, tau_slow: 6.0, w_boredom: 0.8, w_familiarity: 0.2 }
                 };
-                add_agent("pad", 200.0, 0.1, life);
+                let pad_method = #{ mode: "random_log_uniform", min_freq: 200.0, max_freq: 200.0 };
+                spawn("pad", 1, #{ amp: 0.1, method: pad_method, life: life });
             });
             wait(0.2);
             let after_life = #{
@@ -1116,8 +1211,9 @@ mod tests {
                 pitch: #{ core: "pitch_hill_climb" },
                 perceptual: #{ tau_fast: 0.5, tau_slow: 6.0, w_boredom: 0.8, w_familiarity: 0.2 }
             };
-            add_agent("after", 300.0, 0.1, after_life);
-            finish();
+            let after_method = #{ mode: "random_log_uniform", min_freq: 300.0, max_freq: 300.0 };
+            spawn("after", 1, #{ amp: 0.1, method: after_method, life: after_life });
+            end();
         "#,
         );
 
@@ -1127,7 +1223,7 @@ mod tests {
         for ev in &scenario.events {
             for action in &ev.actions {
                 match action {
-                    Action::AddAgent { agent, .. } => match agent.tag.as_deref() {
+                    Action::SpawnAgents { tag, .. } => match tag.as_deref() {
                         Some("pad") => pad_time = Some(ev.time),
                         Some("after") => after_time = Some(ev.time),
                         _ => {}
@@ -1156,8 +1252,8 @@ mod tests {
                 pitch: #{ core: "pitch_hill_climb" },
                 perceptual: #{ tau_fast: 0.5, tau_slow: 6.0, w_boredom: 0.8, w_familiarity: 0.2 }
             };
-            spawn_agents("tag", method, life, 3, 0.25);
-            finish();
+            spawn("tag", 3, #{ amp: 0.25, method: method, life: life });
+            end();
         "#,
         );
 
@@ -1215,9 +1311,10 @@ mod tests {
                 pitch: #{ core: "pitch_hill_climb" },
                 perceptual: #{ tau_fast: 0.5, tau_slow: 6.0, w_boredom: 0.8, w_familiarity: 0.2 }
             };
-            add_agent("init", 330.0, 0.2, life);
+            let init_method = #{ mode: "random_log_uniform", min_freq: 330.0, max_freq: 330.0 };
+            spawn("init", 1, #{ amp: 0.2, method: init_method, life: life });
             wait(0.3);
-            finish();
+            end();
         "#,
         );
 
@@ -1261,6 +1358,72 @@ mod tests {
             .any(|ev| ev.actions.iter().any(|a| matches!(a, Action::Finish)));
         assert!(has_spawn, "expected spawn event");
         assert!(has_finish, "expected finish event");
+    }
+
+    #[test]
+    fn end_at_sets_duration() {
+        let scenario = run_script(
+            r#"
+            let method = #{ mode: "random_log_uniform", min_freq: 200.0, max_freq: 200.0 };
+            spawn("d", 1, #{ amp: 0.2, method: method, life: #{} });
+            end_at(20);
+        "#,
+        );
+        assert_time_close(scenario.duration_sec, 20.0);
+        let has_finish = scenario
+            .events
+            .iter()
+            .any(|ev| ev.time == 20.0 && ev.actions.iter().any(|a| matches!(a, Action::Finish)));
+        assert!(has_finish, "expected finish at end_at time");
+    }
+
+    #[test]
+    fn end_sets_duration_from_cursor() {
+        let scenario = run_script(
+            r#"
+            wait(2);
+            end();
+        "#,
+        );
+        assert_time_close(scenario.duration_sec, 2.0);
+    }
+
+    #[test]
+    fn end_at_negative_has_position() {
+        let src = r#"
+            end_at(-1);
+        "#;
+        let full = ScriptHost::combined_script(src);
+        let pos = eval_script_error_position(src);
+        let expected_line = expected_line(&full, "end_at(-1");
+        assert_eq!(pos.line().unwrap(), expected_line);
+    }
+
+    #[test]
+    fn end_is_terminal() {
+        let src = r#"
+            end_at(1);
+            spawn("AFTER_END_123", 1);
+        "#;
+        let full = ScriptHost::combined_script(src);
+        let pos = eval_script_error_position(src);
+        let expected_line = expected_line(&full, "AFTER_END_123");
+        assert_eq!(pos.line().unwrap(), expected_line);
+    }
+
+    #[test]
+    fn end_is_required() {
+        let src = r#"
+            spawn("d", 1);
+        "#;
+        let err = eval_script_error(src);
+        let msg = err.to_string();
+        assert!(
+            msg.contains("end()") || msg.contains("end_at"),
+            "message: {msg}"
+        );
+        let pos = err.position();
+        assert_ne!(pos, Position::NONE);
     }
 
     #[test]
@@ -1314,7 +1477,7 @@ mod tests {
                 #{}
             );
         "#;
-        let full = combined_script(src);
+        let full = ScriptHost::combined_script(src);
         let pos = eval_script_error_position(src);
         let expected_line = expected_line(&full, "BAD_COUNT_123");
         assert_eq!(pos.line().unwrap(), expected_line);
@@ -1329,7 +1492,7 @@ mod tests {
                 "BAD_OPTS_123"
             );
         "#;
-        let full = combined_script(src);
+        let full = ScriptHost::combined_script(src);
         let pos = eval_script_error_position(src);
         let expected_line = expected_line(&full, "BAD_OPTS_123");
         assert_eq!(pos.line().unwrap(), expected_line);
@@ -1344,7 +1507,7 @@ mod tests {
                 #{ amm_BADKEY_123: 0.1 }
             );
         "#;
-        let full = combined_script(src);
+        let full = ScriptHost::combined_script(src);
         let pos = eval_script_error_position(src);
         let expected_line = expected_line(&full, "amm_BADKEY_123");
         assert_eq!(pos.line().unwrap(), expected_line);
@@ -1358,7 +1521,7 @@ mod tests {
                 -123
             );
         "#;
-        let full = combined_script(src);
+        let full = ScriptHost::combined_script(src);
         let pos = eval_script_error_position(src);
         let expected_line = expected_line(&full, "-123");
         assert_eq!(pos.line().unwrap(), expected_line);
@@ -1371,8 +1534,8 @@ mod tests {
         let mut has_add = false;
         for ev in &scenario.events {
             for action in &ev.actions {
-                if let Action::AddAgent { id, .. } = action {
-                    assert!(*id > 0);
+                if let Action::SpawnAgents { group_id, .. } = action {
+                    assert!(*group_id > 0);
                     has_add = true;
                 }
             }
@@ -1381,7 +1544,7 @@ mod tests {
             .events
             .iter()
             .any(|ev| ev.actions.iter().any(|a| matches!(a, Action::Finish)));
-        assert!(has_add, "expected add_agent event");
+        assert!(has_add, "expected spawn event");
         assert!(has_finish, "expected finish event");
     }
 

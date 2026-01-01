@@ -12,4 +12,4 @@ let drones = spawn("drones", 5, #{
 wait(10.0);
 drones.release(3.0);
 wait(4.0);
-finish();
+end();

@@ -1,7 +1,7 @@
 print(">>> Hybrid Ecosystem: Machine, Plant, and Life <<<");
 
 // 1. Machine (Seq): Strict rhythm using config maps
-// No play_tone() helper; use add_agent with articulation core "seq"
+// Use spawn with articulation core "seq".
 scene("Phase 1: Mechanism");
 let seq_conf = #{
     body: #{ core: "sine" },
@@ -10,8 +10,9 @@ let seq_conf = #{
     perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
 };
 parallel(|| {
+    let kick_method = #{ mode: "random_log_uniform", min_freq: 60.0, max_freq: 60.0 };
     for i in 0..8 {
-        add_agent("kick", 60.0, 0.6, seq_conf);
+        spawn("kick", 1, #{ amp: 0.6, method: kick_method, life: seq_conf });
         wait(0.5);
     }
 });
@@ -38,7 +39,8 @@ let drone_conf = #{
     perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
 };
 // Using harmonic body with drone articulation core.
-add_agent("pad_low", 110.0, 0.3, drone_conf);
+let pad_method = #{ mode: "random_log_uniform", min_freq: 110.0, max_freq: 110.0 };
+spawn("pad_low", 1, #{ amp: 0.3, method: pad_method, life: drone_conf });
 wait(2.0);
 
 // 3. Life (Entrain): Standard autonomous agents
@@ -60,4 +62,4 @@ set_global_coupling(2.0);
 set_roughness_tolerance(0.1);
 wait(5.0);
 
-finish();
+end();

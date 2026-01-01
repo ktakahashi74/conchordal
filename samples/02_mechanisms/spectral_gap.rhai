@@ -15,4 +15,4 @@ for i in 0..24 {
 }
 
 wait(1.2);
-finish();
+end();

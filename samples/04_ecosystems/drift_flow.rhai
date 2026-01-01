@@ -7,7 +7,8 @@ scene("Phase 1: Gravity Pull");
 print("--- [1] Anchoring C2 (65.41Hz) ---");
 
 // Base tone (static anchor)
-let anchor = add_agent("anchor", 65.41, 0.6, #{ 
+let anchor_method = #{ mode: "random_log_uniform", min_freq: 65.41, max_freq: 65.41 };
+let anchor = spawn("anchor", 1, #{ amp: 0.6, method: anchor_method, life: #{ 
     body: #{ core: "sine" },
     articulation: #{
         core: "entrain",
@@ -18,16 +19,17 @@ let anchor = add_agent("anchor", 65.41, 0.6, #{
     },
     pitch: #{ core: "pitch_hill_climb" },
     perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
-});
+} });
 // Anchor stays put (high commitment = resists movement)
-anchor.set_commitment(1.0);
+set(anchor, #{ commitment: 1.0 });
 
 wait(1.0);
 
 print("--- Injecting Dissonant Tone (C#3) -> Watch it hop to C3 or E3 ---");
 // Drop a semitone-above tone (C#3 ≈ 138.59) above C3 (130.81)
 // Check whether the pull guides it toward C3 or E3
-let slider = add_agent("slider", 138.59, 0.4, #{
+let slider_method = #{ mode: "random_log_uniform", min_freq: 138.59, max_freq: 138.59 };
+let slider = spawn("slider", 1, #{ amp: 0.4, method: slider_method, life: #{
     body: #{ core: "sine" },
     articulation: #{
         core: "entrain",
@@ -38,10 +40,10 @@ let slider = add_agent("slider", 138.59, 0.4, #{
     },
     pitch: #{ core: "pitch_hill_climb" },
     perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
-});
+} });
 
 // Low commitment = moves easily
-slider.set_commitment(0.33); // eager to move
+set(slider, #{ commitment: 0.33 }); // eager to move
 
 wait(4.0);
 
@@ -63,7 +65,7 @@ wait(6.0);
 scene("Phase 3: Modulation");
 print("--- [3] Spawning Swarm & Moving Anchor ---");
 
-slider.remove();
+remove(slider);
 // Lightly reset environment
 
 // Drop a swarm (spread across C overtones)
@@ -83,7 +85,7 @@ let life = #{
 
 for i in 0..5 {
     let swarm = spawn("swarm_" + i, 1, #{ amp: 0.15, method: method, life: life });
-    swarm.set_commitment(0.56); // hop loosely
+    set(swarm, #{ commitment: 0.56 }); // hop loosely
     wait(0.5);
 }
 
@@ -95,13 +97,13 @@ print(">>> Watch the blue arrows flip direction! <<<");
 // Move anchor to F2.
 // Landscape flips: C-major valleys disappear, F-major basins emerge.
 // Swarm should drift toward F overtones (A, C, Eb...).
-anchor.set_freq(87.31); 
+set(anchor, #{ freq: 87.31 }); 
 
 wait(8.0);
 
 print(">>> Releasing Anchor (Dissolution) <<<");
-anchor.remove();
+remove(anchor);
 // Removing the anchor flattens the landscape; swarm should disperse/decay.
 wait(5.0);
 
-finish();
+end();

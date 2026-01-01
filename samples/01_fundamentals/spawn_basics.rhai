@@ -19,4 +19,4 @@ spawn("hdens", 3, #{ amp: 0.2, method: #{ mode: "harmonic_density", min_freq: 16
 spawn("zero", 2, #{ amp: 0.18, method: #{ mode: "zero_crossing", min_freq: 180.0, max_freq: 1600.0 }, life: decay_short }); wait(0.8);
 spawn("lowharm", 2, #{ amp: 0.18, method: #{ mode: "low_harmonicity", min_freq: 200.0, max_freq: 1500.0 }, life: decay_short });
 wait(1.5);
-finish();
+end();

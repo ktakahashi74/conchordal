@@ -58,8 +58,9 @@ fn run_metronome(tag, hz, dur, amp, life) {
     let period = 1.0 / hz;
     let t = 0.0;
     let i = 0;
+    let method = #{ mode: "random_log_uniform", min_freq: 3000.0, max_freq: 3000.0 };
     while t < dur {
-        add_agent(tag + "_" + i, 3000.0, amp, life);
+        spawn(tag + "_" + i, 1, #{ amp: amp, method: method, life: life });
         wait(period);
         t += period;
         i += 1;
@@ -69,10 +70,11 @@ fn run_metronome(tag, hz, dur, amp, life) {
 fn run_jitter(tag, hz_lo, hz_hi, dur, amp, life) {
     let t = 0.0;
     let i = 0;
+    let method = #{ mode: "random_log_uniform", min_freq: 3000.0, max_freq: 3000.0 };
     while t < dur {
         let hz = if (i % 2) == 0 { hz_hi } else { hz_lo };
         let period = 1.0 / hz;
-        add_agent(tag + "_" + i, 3000.0, amp, life);
+        spawn(tag + "_" + i, 1, #{ amp: amp, method: method, life: life });
         wait(period);
         t += period;
         i += 1;
@@ -91,7 +93,8 @@ scene("Phase B: Followers + 6Hz");
 print("[Phase B] spawn followers (amp=0.02)");
 for i in 0..4 {
     let freq = 260.0 + (i * 40.0);
-    add_agent("follower_" + i, freq, 0.02, follower_life);
+    let method = #{ mode: "random_log_uniform", min_freq: freq, max_freq: freq };
+    spawn("follower_" + i, 1, #{ amp: 0.02, method: method, life: follower_life });
 }
 print("[Phase B] coupling=0 warmup start (2.0s)");
 set_global_coupling(0.0);
@@ -118,4 +121,4 @@ print("[Phase D] measure start (6.0s) - metrics below are evaluation targets");
 run_jitter("metro_d_meas", 7.2, 8.8, 6.0, 0.6, click_life);
 print("[Phase D] end");
 
-finish();
+end();

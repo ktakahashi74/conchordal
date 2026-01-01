@@ -190,9 +190,14 @@ pub fn compile_scenario_from_script(
     }
     let path_str = script_path.to_string_lossy();
     ScriptHost::load_script(&path_str).map_err(|e| {
+        let pos = e
+            .position
+            .map(|pos| format!(" (line {})", pos.line().unwrap_or(0)))
+            .unwrap_or_default();
         format!(
-            "Failed to run scenario script {}: {e:#}",
-            script_path.display()
+            "Failed to run scenario script {}: {}{pos}",
+            script_path.display(),
+            e.message
         )
     })
 }

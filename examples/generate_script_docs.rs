@@ -1,12 +1,10 @@
 use std::fs;
 use std::path::Path;
 
-use conchordal::life::api;
 use rhai::Engine;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut engine = Engine::new();
-    engine.register_static_module("life", api::module().into());
+    let engine = Engine::new();
 
     let docs = rhai_autodocs::export::options()
         .include_standard_packages(false)

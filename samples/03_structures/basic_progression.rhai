@@ -39,24 +39,28 @@ fn play_step(name, root, dur) {
     print("Playing: " + name);
 
     // ベース（アンカー）を配置
-    let bass = add_agent("bass_" + name, root, 0.6, bass_life);
+    let bass_method = #{ mode: "random_log_uniform", min_freq: root, max_freq: root };
+    let bass = spawn("bass_" + name, 1, #{ amp: 0.6, method: bass_method, life: bass_life });
     
     // ランドスケープが形成されるのを少し待つ
     wait(0.2); 
 
     // パッドを配置（自律的に和音構成音を探させる）
     // ルートの少し上から配置し、GravityとConsonanceで落ち着かせる
-    let pad_1 = add_agent("pad_" + name + "_1", root * 1.5, 0.3, pad_life); // 5th付近
-    let pad_2 = add_agent("pad_" + name + "_2", root * 2.0, 0.3, pad_life); // Octave付近
-    let pad_3 = add_agent("pad_" + name + "_3", root * 1.25, 0.3, pad_life); // 3rd付近 (Major/Minorは地形で決まる)
+    let pad_1_method = #{ mode: "random_log_uniform", min_freq: root * 1.5, max_freq: root * 1.5 };
+    let pad_2_method = #{ mode: "random_log_uniform", min_freq: root * 2.0, max_freq: root * 2.0 };
+    let pad_3_method = #{ mode: "random_log_uniform", min_freq: root * 1.25, max_freq: root * 1.25 };
+    let pad_1 = spawn("pad_" + name + "_1", 1, #{ amp: 0.3, method: pad_1_method, life: pad_life }); // 5th付近
+    let pad_2 = spawn("pad_" + name + "_2", 1, #{ amp: 0.3, method: pad_2_method, life: pad_life }); // Octave付近
+    let pad_3 = spawn("pad_" + name + "_3", 1, #{ amp: 0.3, method: pad_3_method, life: pad_life }); // 3rd付近 (Major/Minorは地形で決まる)
 
     wait(dur);
 
     // クリーンアップ
-    bass.remove();
-    pad_1.remove();
-    pad_2.remove();
-    pad_3.remove();
+    remove(bass);
+    remove(pad_1);
+    remove(pad_2);
+    remove(pad_3);
 }
 
 let chords = [
@@ -79,4 +83,4 @@ for ch in chords {
 }
 
 wait(2.0);
-finish();
+end();

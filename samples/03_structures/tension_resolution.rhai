@@ -21,7 +21,8 @@ fn chord_block(root, name, sustain_amp, tension_amp, dur) {
     };
 
     // Anchor bass
-    add_agent("bass_" + name, root, sustain_amp, bass_life);
+    let bass_method = #{ mode: "random_log_uniform", min_freq: root, max_freq: root };
+    spawn("bass_" + name, 1, #{ amp: sustain_amp, method: bass_method, life: bass_life });
     wait(0.18);
 
     // Pads seek harmonic peaks above the anchor
@@ -52,4 +53,4 @@ scene("Imaj7_resolve");
 chord_block(130.81, "Cmaj7_final", 0.36, 0.14, 2.4);
 
 wait(1.0);
-finish();
+end();

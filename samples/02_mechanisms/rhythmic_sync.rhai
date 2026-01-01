@@ -5,12 +5,13 @@ print(">>> Experiment: Self-Organizing Rhythm <<<");
 // ============================================================
 
 // Startup stimulus: a single short click to bootstrap rhythm extraction.
-add_agent("starter", 100.0, 0.4, #{
+let starter_method = #{ mode: "random_log_uniform", min_freq: 100.0, max_freq: 100.0 };
+spawn("starter", 1, #{ amp: 0.4, method: starter_method, life: #{
     body: #{ core: "sine" },
     articulation: #{ core: "entrain", type: "decay", initial_energy: 0.6, half_life_sec: 0.03, attack_sec: 0.001 },
     pitch: #{ core: "pitch_hill_climb" },
     perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
-});
+} });
 
 // Long-lived agents, but the sound is a short pluck.
 // Sharp attack makes timing offsets and sync obvious.
@@ -38,7 +39,8 @@ scene("Phase 1: Metronome");
 print("--- [1] Injecting strong beat (Delta band driver) ---");
 
 // 1. Place a strong kick (60 Hz) to shake the low/delta band and set a reference.
-let kick = add_agent("kick", 60.0, 0.5, #{ 
+let kick_method = #{ mode: "random_log_uniform", min_freq: 60.0, max_freq: 60.0 };
+let kick = spawn("kick", 1, #{ amp: 0.5, method: kick_method, life: #{ 
     body: #{ core: "sine" },
     articulation: #{
         core: "entrain",
@@ -49,7 +51,7 @@ let kick = add_agent("kick", 60.0, 0.5, #{
     },
     pitch: #{ core: "pitch_hill_climb" },
     perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
-});
+} });
 
 wait(2.0); // allow rhythm to settle
 
@@ -85,7 +87,7 @@ print("--- [3] REMOVING THE METRONOME (Watch self-sustain) ---");
 
 // 3. Remove the parent kick; no external reference remains.
 // Agents try to keep rhythm by mutual coupling alone.
-kick.remove();
+remove(kick);
 
 // Success if the groove persists (with some wobble) after the leader vanishes.
 wait(6.0);
@@ -114,4 +116,4 @@ for i in 0..8 {
 wait(3.0); // observe post-perturbation settling
 
 // Done
-finish();
+end();

@@ -18,7 +18,8 @@ let anchor_life = #{
     perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
 };
 
-add_agent("anchor", 261.63, 0.4, anchor_life);
+let anchor_method = #{ mode: "random_log_uniform", min_freq: 261.63, max_freq: 261.63 };
+let anchor = spawn("anchor", 1, #{ amp: 0.4, method: anchor_method, life: anchor_life });
 wait(2.0);
 
 // ==========================================
@@ -60,7 +61,7 @@ for i in 0..6 {
 wait(2.0);
 // Clean up Phase 1 voices
 for v in voices_major {
-    v.remove();
+    remove(v);
 }
 
 // ==========================================
@@ -94,4 +95,4 @@ for i in 0..6 {
 }
 
 wait(3.0);
-finish();
+end();

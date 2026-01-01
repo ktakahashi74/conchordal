@@ -93,11 +93,11 @@ Define the ecosystem's initial conditions using Rhai scripts as follows and save
 
 ```rust
 let drones = spawn("drones", 5);
-drones[0].set_freq(220.0);
+set(drones[0], #{ freq: 220.0 });
 for a in drones {
-    a.set_amp(0.05);
+    set(a, #{ amp: 0.05 });
 }
-run(10);
+end_at(10);
 ```
 
 then run the script with
@@ -105,6 +105,16 @@ then run the script with
 ``` bash
 cargo run -- sample.rhai
 ```
+
+Core scenario API (v2):
+- `spawn(tag, count[, opts])`
+- `wait(dt)`, `scene(name)`, `end()`, `end_at(t_abs)`
+- `set(target, patch)`, `release(target, duration)`, `remove(target)`
+- Prelude helpers: `after`, `at`, `parallel`, `repeat`, `every`, `spawn_every`
+
+Strict keys:
+- `spawn` opts: `amp`, `method`, `life`
+- `set` patch: `amp`, `freq`, `drift`, `commitment`
 
 
 ### Testing and other commands

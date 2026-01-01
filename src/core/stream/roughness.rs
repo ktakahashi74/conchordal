@@ -322,14 +322,8 @@ mod tests {
         let r01_scalar = roughness_ratio_to_01(r_total / r_ref_total, params.roughness_k);
         let expected = 1.0 / (1.0 + params.roughness_k.max(1e-6));
 
-        assert!(
-            (r01_scalar - expected).abs() < 1e-5,
-            "scalar {r01_scalar}"
-        );
-        assert!(
-            (r01_peak - expected).abs() < 1e-5,
-            "peak {r01_peak}"
-        );
+        assert!((r01_scalar - expected).abs() < 1e-5, "scalar {r01_scalar}");
+        assert!((r01_peak - expected).abs() < 1e-5, "peak {r01_peak}");
     }
 
     #[test]

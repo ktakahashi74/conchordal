@@ -4,6 +4,7 @@
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
         <title>Rhai Script Reference</title>
+        <meta name="robots" content="noindex">
 
 
         <!-- Custom HTML head -->
@@ -35,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-aa605025.js";
+            window.path_to_searchindex_js = "searchindex-9b39541e.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-b3d33c99.js"></script>
@@ -178,29 +179,6 @@
 <p><code>Namespace: global/life</code></p>
 <div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
     
-<h2 class="func-name"> <code>fn</code> add_agent </h2>
-
-<pre><code class="language-rust ignore">fn add_agent(ctx: ScriptContext, tag: String, freq: float, amp: float, life_map: Map)
-fn add_agent(ctx: ScriptContext, tag: String, kind: String, freq: float, amp: float, extra_map: Map, life_map: Map)</code></pre>
-<div>
-<div class="tab">
-<button group="add_agent" id="link-add_agent-Description" class="tablinks active" onclick="openTab(event, &#39;add_agent&#39;, &#39;Description&#39;)">
-Description
-</button>
-</div>
-
-<div group="add_agent" id="add_agent-Description" class="tabcontent" style="display: block;">
-Add a pure-tone agent at a fixed frequency.
-<p><code>life_map</code> schema: see <code>spawn</code> for the supported brain/lifecycle formats.</p>
-</div>
-
-</div>
-
-</div>
-
-<br />
-<div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
-    
 <h2 class="func-name"> <code>fn</code> finish </h2>
 
 <pre><code class="language-rust ignore">fn finish(ctx: ScriptContext)</code></pre>
@@ -213,6 +191,71 @@ Description
 
 <div group="finish" id="finish-Description" class="tabcontent" style="display: block;">
 Finish the scenario and stop playback.
+</div>
+
+</div>
+
+</div>
+
+<br />
+<div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
+    
+<h2 class="func-name"> <code>fn</code> harmonic_density </h2>
+
+<pre><code class="language-rust ignore">fn harmonic_density(min_freq: float, max_freq: float) -&gt; Map
+fn harmonic_density(min_freq: float, max_freq: float, opts: Map) -&gt; Map</code></pre>
+<div>
+<div class="tab">
+<button group="harmonic_density" id="link-harmonic_density-Description" class="tablinks active" onclick="openTab(event, &#39;harmonic_density&#39;, &#39;Description&#39;)">
+Description
+</button>
+</div>
+
+<div group="harmonic_density" id="harmonic_density-Description" class="tabcontent" style="display: block;">
+Harmonic density spawn method.
+</div>
+
+</div>
+
+</div>
+
+<br />
+<div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
+    
+<h2 class="func-name"> <code>fn</code> harmonicity </h2>
+
+<pre><code class="language-rust ignore">fn harmonicity(min_freq: float, max_freq: float) -&gt; Map
+fn harmonicity(min_freq: float, max_freq: float, opts: Map) -&gt; Map</code></pre>
+<div>
+<div class="tab">
+<button group="harmonicity" id="link-harmonicity-Description" class="tablinks active" onclick="openTab(event, &#39;harmonicity&#39;, &#39;Description&#39;)">
+Description
+</button>
+</div>
+
+<div group="harmonicity" id="harmonicity-Description" class="tabcontent" style="display: block;">
+Harmonicity spawn method.
+</div>
+
+</div>
+
+</div>
+
+<br />
+<div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
+    
+<h2 class="func-name"> <code>fn</code> life </h2>
+
+<pre><code class="language-rust ignore">fn life(patch: Map) -&gt; Map</code></pre>
+<div>
+<div class="tab">
+<button group="life" id="link-life-Description" class="tablinks active" onclick="openTab(event, &#39;life&#39;, &#39;Description&#39;)">
+Description
+</button>
+</div>
+
+<div group="life" id="life-Description" class="tabcontent" style="display: block;">
+Life config patch helper (returns the patch map).
 </div>
 
 </div>
@@ -264,9 +307,31 @@ Save the current cursor time onto the time stack.
 <br />
 <div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
     
+<h2 class="func-name"> <code>fn</code> random </h2>
+
+<pre><code class="language-rust ignore">fn random(min_freq: float, max_freq: float) -&gt; Map
+fn random(min_freq: float, max_freq: float, opts: Map) -&gt; Map</code></pre>
+<div>
+<div class="tab">
+<button group="random" id="link-random-Description" class="tablinks active" onclick="openTab(event, &#39;random&#39;, &#39;Description&#39;)">
+Description
+</button>
+</div>
+
+<div group="random" id="random-Description" class="tabcontent" style="display: block;">
+Random log-uniform spawn method.
+</div>
+
+</div>
+
+</div>
+
+<br />
+<div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
+    
 <h2 class="func-name"> <code>fn</code> release </h2>
 
-<pre><code class="language-rust ignore">fn release(ctx: ScriptContext, target: String, sec: float)</code></pre>
+<pre><code class="language-rust ignore">fn release(ctx: ScriptContext, tag: String, sec: float)</code></pre>
 <div>
 <div class="tab">
 <button group="release" id="link-release-Description" class="tablinks active" onclick="openTab(event, &#39;release&#39;, &#39;Description&#39;)">
@@ -275,7 +340,70 @@ Description
 </div>
 
 <div group="release" id="release-Description" class="tabcontent" style="display: block;">
-Release an agent over `sec` seconds.
+Release agents by tag over `sec` seconds.
+</div>
+
+</div>
+
+</div>
+
+<br />
+<div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
+    
+<h2 class="func-name"> <code>fn</code> release_agent </h2>
+
+<pre><code class="language-rust ignore">fn release_agent(ctx: ScriptContext, target: AgentHandle, sec: float)</code></pre>
+<div>
+<div class="tab">
+<button group="release_agent" id="link-release_agent-Description" class="tablinks active" onclick="openTab(event, &#39;release_agent&#39;, &#39;Description&#39;)">
+Description
+</button>
+</div>
+
+<div group="release_agent" id="release_agent-Description" class="tabcontent" style="display: block;">
+Release agents over `sec` seconds.
+</div>
+
+</div>
+
+</div>
+
+<br />
+<div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
+    
+<h2 class="func-name"> <code>fn</code> release_cohort </h2>
+
+<pre><code class="language-rust ignore">fn release_cohort(ctx: ScriptContext, target: CohortHandle, sec: float)</code></pre>
+<div>
+<div class="tab">
+<button group="release_cohort" id="link-release_cohort-Description" class="tablinks active" onclick="openTab(event, &#39;release_cohort&#39;, &#39;Description&#39;)">
+Description
+</button>
+</div>
+
+<div group="release_cohort" id="release_cohort-Description" class="tabcontent" style="display: block;">
+Release a cohort over `sec` seconds.
+</div>
+
+</div>
+
+</div>
+
+<br />
+<div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
+    
+<h2 class="func-name"> <code>fn</code> release_tag </h2>
+
+<pre><code class="language-rust ignore">fn release_tag(ctx: ScriptContext, target: TagSelector, sec: float)</code></pre>
+<div>
+<div class="tab">
+<button group="release_tag" id="link-release_tag-Description" class="tablinks active" onclick="openTab(event, &#39;release_tag&#39;, &#39;Description&#39;)">
+Description
+</button>
+</div>
+
+<div group="release_tag" id="release_tag-Description" class="tabcontent" style="display: block;">
+Release a tag selector over `sec` seconds.
 </div>
 
 </div>
@@ -287,7 +415,7 @@ Release an agent over `sec` seconds.
     
 <h2 class="func-name"> <code>fn</code> remove </h2>
 
-<pre><code class="language-rust ignore">fn remove(ctx: ScriptContext, target: String)</code></pre>
+<pre><code class="language-rust ignore">fn remove(ctx: ScriptContext, tag: String)</code></pre>
 <div>
 <div class="tab">
 <button group="remove" id="link-remove-Description" class="tablinks active" onclick="openTab(event, &#39;remove&#39;, &#39;Description&#39;)">
@@ -296,7 +424,92 @@ Description
 </div>
 
 <div group="remove" id="remove-Description" class="tabcontent" style="display: block;">
-Remove an agent (by tag or id) immediately.
+Remove agents by tag.
+</div>
+
+</div>
+
+</div>
+
+<br />
+<div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
+    
+<h2 class="func-name"> <code>fn</code> remove_agent </h2>
+
+<pre><code class="language-rust ignore">fn remove_agent(ctx: ScriptContext, target: AgentHandle)</code></pre>
+<div>
+<div class="tab">
+<button group="remove_agent" id="link-remove_agent-Description" class="tablinks active" onclick="openTab(event, &#39;remove_agent&#39;, &#39;Description&#39;)">
+Description
+</button>
+</div>
+
+<div group="remove_agent" id="remove_agent-Description" class="tabcontent" style="display: block;">
+Remove agents immediately.
+</div>
+
+</div>
+
+</div>
+
+<br />
+<div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
+    
+<h2 class="func-name"> <code>fn</code> remove_cohort </h2>
+
+<pre><code class="language-rust ignore">fn remove_cohort(ctx: ScriptContext, target: CohortHandle)</code></pre>
+<div>
+<div class="tab">
+<button group="remove_cohort" id="link-remove_cohort-Description" class="tablinks active" onclick="openTab(event, &#39;remove_cohort&#39;, &#39;Description&#39;)">
+Description
+</button>
+</div>
+
+<div group="remove_cohort" id="remove_cohort-Description" class="tabcontent" style="display: block;">
+Remove a cohort immediately.
+</div>
+
+</div>
+
+</div>
+
+<br />
+<div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
+    
+<h2 class="func-name"> <code>fn</code> remove_tag </h2>
+
+<pre><code class="language-rust ignore">fn remove_tag(ctx: ScriptContext, target: TagSelector)</code></pre>
+<div>
+<div class="tab">
+<button group="remove_tag" id="link-remove_tag-Description" class="tablinks active" onclick="openTab(event, &#39;remove_tag&#39;, &#39;Description&#39;)">
+Description
+</button>
+</div>
+
+<div group="remove_tag" id="remove_tag-Description" class="tabcontent" style="display: block;">
+Remove a tag selector immediately.
+</div>
+
+</div>
+
+</div>
+
+<br />
+<div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
+    
+<h2 class="func-name"> <code>fn</code> run </h2>
+
+<pre><code class="language-rust ignore">fn run(ctx: ScriptContext, sec: int)
+fn run(ctx: ScriptContext, sec: float)</code></pre>
+<div>
+<div class="tab">
+<button group="run" id="link-run-Description" class="tablinks active" onclick="openTab(event, &#39;run&#39;, &#39;Description&#39;)">
+Description
+</button>
+</div>
+
+<div group="run" id="run-Description" class="tabcontent" style="display: block;">
+Run for `sec` seconds and finish the scenario.
 </div>
 
 </div>
@@ -317,112 +530,7 @@ Description
 </div>
 
 <div group="scene" id="scene-Description" class="tabcontent" style="display: block;">
-Start a new named scene at the current cursor time.
-</div>
-
-</div>
-
-</div>
-
-<br />
-<div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
-    
-<h2 class="func-name"> <code>fn</code> section </h2>
-
-<pre><code class="language-rust ignore">fn section(ctx: ScriptContext, name: String)</code></pre>
-<div>
-<div class="tab">
-<button group="section" id="link-section-Description" class="tablinks active" onclick="openTab(event, &#39;section&#39;, &#39;Description&#39;)">
-Description
-</button>
-</div>
-
-<div group="section" id="section-Description" class="tabcontent" style="display: block;">
-Backward-compatible alias for `scene`.
-</div>
-
-</div>
-
-</div>
-
-<br />
-<div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
-    
-<h2 class="func-name"> <code>fn</code> set_amp </h2>
-
-<pre><code class="language-rust ignore">fn set_amp(ctx: ScriptContext, target: String, amp: float)</code></pre>
-<div>
-<div class="tab">
-<button group="set_amp" id="link-set_amp-Description" class="tablinks active" onclick="openTab(event, &#39;set_amp&#39;, &#39;Description&#39;)">
-Description
-</button>
-</div>
-
-<div group="set_amp" id="set_amp-Description" class="tabcontent" style="display: block;">
-Set an agent's amplitude (linear gain).
-</div>
-
-</div>
-
-</div>
-
-<br />
-<div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
-    
-<h2 class="func-name"> <code>fn</code> set_commitment </h2>
-
-<pre><code class="language-rust ignore">fn set_commitment(ctx: ScriptContext, target: String, value: float)</code></pre>
-<div>
-<div class="tab">
-<button group="set_commitment" id="link-set_commitment-Description" class="tablinks active" onclick="openTab(event, &#39;set_commitment&#39;, &#39;Description&#39;)">
-Description
-</button>
-</div>
-
-<div group="set_commitment" id="set_commitment-Description" class="tabcontent" style="display: block;">
-Set an agent's commitment parameter.
-</div>
-
-</div>
-
-</div>
-
-<br />
-<div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
-    
-<h2 class="func-name"> <code>fn</code> set_drift </h2>
-
-<pre><code class="language-rust ignore">fn set_drift(ctx: ScriptContext, target: String, value: float)</code></pre>
-<div>
-<div class="tab">
-<button group="set_drift" id="link-set_drift-Description" class="tablinks active" onclick="openTab(event, &#39;set_drift&#39;, &#39;Description&#39;)">
-Description
-</button>
-</div>
-
-<div group="set_drift" id="set_drift-Description" class="tabcontent" style="display: block;">
-Set an agent's drift parameter.
-</div>
-
-</div>
-
-</div>
-
-<br />
-<div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
-    
-<h2 class="func-name"> <code>fn</code> set_freq </h2>
-
-<pre><code class="language-rust ignore">fn set_freq(ctx: ScriptContext, target: String, freq: float)</code></pre>
-<div>
-<div class="tab">
-<button group="set_freq" id="link-set_freq-Description" class="tablinks active" onclick="openTab(event, &#39;set_freq&#39;, &#39;Description&#39;)">
-Description
-</button>
-</div>
-
-<div group="set_freq" id="set_freq-Description" class="tabcontent" style="display: block;">
-Set an agent's fundamental frequency in Hz.
+Add a named scene marker at the current cursor time.
 </div>
 
 </div>
@@ -444,69 +552,6 @@ Description
 
 <div group="set_global_coupling" id="set_global_coupling-Description" class="tabcontent" style="display: block;">
 Set the global coupling strength across agents.
-</div>
-
-</div>
-
-</div>
-
-<br />
-<div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
-    
-<h2 class="func-name"> <code>fn</code> set_habituation </h2>
-
-<pre><code class="language-rust ignore">fn set_habituation(ctx: ScriptContext, weight: float, tau: float)</code></pre>
-<div>
-<div class="tab">
-<button group="set_habituation" id="link-set_habituation-Description" class="tablinks active" onclick="openTab(event, &#39;set_habituation&#39;, &#39;Description&#39;)">
-Description
-</button>
-</div>
-
-<div group="set_habituation" id="set_habituation-Description" class="tabcontent" style="display: block;">
-Backward-compatible alias for `set_habituation_params` with max_depth = 1.0.
-</div>
-
-</div>
-
-</div>
-
-<br />
-<div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
-    
-<h2 class="func-name"> <code>fn</code> set_habituation_params </h2>
-
-<pre><code class="language-rust ignore">fn set_habituation_params(ctx: ScriptContext, weight: float, tau: float, max_depth: float)</code></pre>
-<div>
-<div class="tab">
-<button group="set_habituation_params" id="link-set_habituation_params-Description" class="tablinks active" onclick="openTab(event, &#39;set_habituation_params&#39;, &#39;Description&#39;)">
-Description
-</button>
-</div>
-
-<div group="set_habituation_params" id="set_habituation_params-Description" class="tabcontent" style="display: block;">
-Set habituation parameters (weight, tau, max_depth).
-</div>
-
-</div>
-
-</div>
-
-<br />
-<div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
-    
-<h2 class="func-name"> <code>fn</code> set_habituation_sensitivity </h2>
-
-<pre><code class="language-rust ignore">fn set_habituation_sensitivity(ctx: ScriptContext, target: String, value: float)</code></pre>
-<div>
-<div class="tab">
-<button group="set_habituation_sensitivity" id="link-set_habituation_sensitivity-Description" class="tablinks active" onclick="openTab(event, &#39;set_habituation_sensitivity&#39;, &#39;Description&#39;)">
-Description
-</button>
-</div>
-
-<div group="set_habituation_sensitivity" id="set_habituation_sensitivity-Description" class="tabcontent" style="display: block;">
-Set an agent's habituation sensitivity.
 </div>
 
 </div>
@@ -584,44 +629,18 @@ Set the global roughness tolerance.
 <br />
 <div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
     
-<h2 class="func-name"> <code>fn</code> spawn </h2>
+<h2 class="func-name"> <code>fn</code> set_time </h2>
 
-<pre><code class="language-rust ignore">fn spawn(ctx: ScriptContext, tag: String, method_map: Map, life_map: Map, count: int, amp: float)</code></pre>
+<pre><code class="language-rust ignore">fn set_time(ctx: ScriptContext, sec: float)</code></pre>
 <div>
 <div class="tab">
-<button group="spawn" id="link-spawn-Description" class="tablinks active" onclick="openTab(event, &#39;spawn&#39;, &#39;Description&#39;)">
+<button group="set_time" id="link-set_time-Description" class="tablinks active" onclick="openTab(event, &#39;set_time&#39;, &#39;Description&#39;)">
 Description
 </button>
-<button group="spawn" id="link-spawn-Parameter Schemas" class="tablinks" onclick="openTab(event, &#39;spawn&#39;, &#39;Parameter Schemas&#39;)">
-Parameter Schemas
-</button>
-<button group="spawn" id="link-spawn-Method Map (SpawnMethod)" class="tablinks" onclick="openTab(event, &#39;spawn&#39;, &#39;Method Map (SpawnMethod)&#39;)">
-Method Map (SpawnMethod)
-</button>
 </div>
 
-<div group="spawn" id="spawn-Description" class="tabcontent" style="display: block;">
-Spawn multiple agents using a frequency selection method and life config.
-<p><code>method_map</code> schema:</p>
-<ul>
-<li><code>mode</code>: <code>"harmonicity" | "low_harmonicity" | "harmonic_density" | "zero_crossing" | "spectral_gap" | "random_log_uniform"</code></li>
-<li><code>min_freq</code>: f32 (Hz)</li>
-<li><code>max_freq</code>: f32 (Hz)</li>
-<li><code>min_dist_erb</code>: f32 (optional, minimum ERB spacing)</li>
-<li><code>temperature</code>: f32 (optional, only for <code>harmonic_density</code>)</li>
-</ul>
-<p><code>life_map</code> schema:</p>
-<ul>
-<li>Legacy/entrain lifecycle: <code>{ type: "decay", initial_energy, half_life_sec, attack_sec? }</code></li>
-<li>Sustain lifecycle: <code>{ type: "sustain", initial_energy, metabolism_rate, recharge_rate?, action_cost?, envelope: { attack_sec, decay_sec, sustain_level } }</code></li>
-<li>Explicit brain: <code>{ brain: "seq", duration }</code> or <code>{ brain: "drone", sway? }</code></li>
-</ul>
-</div>
-
-<div group="spawn" id="spawn-Parameter Schemas" class="tabcontent" style="display: none;">
-</div>
-
-<div group="spawn" id="spawn-Method Map (SpawnMethod)" class="tabcontent" style="display: none;">
+<div group="set_time" id="set_time-Description" class="tabcontent" style="display: block;">
+Set the cursor to an absolute time (seconds).
 </div>
 
 </div>
@@ -631,18 +650,40 @@ Spawn multiple agents using a frequency selection method and life config.
 <br />
 <div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
     
-<h2 class="func-name"> <code>fn</code> spawn_agents </h2>
+<h2 class="func-name"> <code>fn</code> spectral_gap </h2>
 
-<pre><code class="language-rust ignore">fn spawn_agents(ctx: ScriptContext, tag: String, method_map: Map, life_map: Map, count: int, amp: float)</code></pre>
+<pre><code class="language-rust ignore">fn spectral_gap(min_freq: float, max_freq: float) -&gt; Map
+fn spectral_gap(min_freq: float, max_freq: float, opts: Map) -&gt; Map</code></pre>
 <div>
 <div class="tab">
-<button group="spawn_agents" id="link-spawn_agents-Description" class="tablinks active" onclick="openTab(event, &#39;spawn_agents&#39;, &#39;Description&#39;)">
+<button group="spectral_gap" id="link-spectral_gap-Description" class="tablinks active" onclick="openTab(event, &#39;spectral_gap&#39;, &#39;Description&#39;)">
 Description
 </button>
 </div>
 
-<div group="spawn_agents" id="spawn_agents-Description" class="tabcontent" style="display: block;">
-Alias for `spawn` to keep existing scripts working.
+<div group="spectral_gap" id="spectral_gap-Description" class="tabcontent" style="display: block;">
+Spectral gap spawn method.
+</div>
+
+</div>
+
+</div>
+
+<br />
+<div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
+    
+<h2 class="func-name"> <code>fn</code> tag </h2>
+
+<pre><code class="language-rust ignore">fn tag(_ctx: ScriptContext, name: String) -&gt; TagSelector</code></pre>
+<div>
+<div class="tab">
+<button group="tag" id="link-tag-Description" class="tablinks active" onclick="openTab(event, &#39;tag&#39;, &#39;Description&#39;)">
+Description
+</button>
+</div>
+
+<div group="tag" id="tag-Description" class="tabcontent" style="display: block;">
+Create a dynamic selector for a tag.
 </div>
 
 </div>
@@ -654,7 +695,8 @@ Alias for `spawn` to keep existing scripts working.
     
 <h2 class="func-name"> <code>fn</code> wait </h2>
 
-<pre><code class="language-rust ignore">fn wait(ctx: ScriptContext, sec: float)</code></pre>
+<pre><code class="language-rust ignore">fn wait(ctx: ScriptContext, sec: float)
+fn wait(ctx: ScriptContext, sec: int)</code></pre>
 <div>
 <div class="tab">
 <button group="wait" id="link-wait-Description" class="tablinks active" onclick="openTab(event, &#39;wait&#39;, &#39;Description&#39;)">

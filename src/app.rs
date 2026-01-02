@@ -772,6 +772,8 @@ fn worker_loop(
     let mut last_h_analysis_frame: Option<u64> = None;
     let mut last_r_analysis_frame: Option<u64> = None;
     let mut latest_h_scan: Option<Vec<f32>> = None;
+    let timebase = crate::core::timebase::Timebase { fs, hop };
+    let mut last_tick_log = Instant::now();
 
     // Initial UI frame so metadata is visible before playback starts.
     let init_meta = SimulationMeta {
@@ -830,6 +832,15 @@ fn worker_loop(
             } else {
                 (hop, 0)
             };
+            let now_tick = timebase.frame_start_tick(frame_idx);
+            let now_sec = timebase.tick_to_sec(now_tick);
+            if frame_idx == 0 || last_tick_log.elapsed() >= Duration::from_secs(1) {
+                info!(
+                    "[tick] frame_idx={} now_tick={} now_sec={:.6}",
+                    frame_idx, now_tick, now_sec
+                );
+                last_tick_log = Instant::now();
+            }
             pop.set_current_frame(frame_idx);
 
             // Keep analysis aligned to generated frames: allow 1-frame delay, but do not advance

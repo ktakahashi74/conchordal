@@ -71,7 +71,7 @@ fn spawn_agent(freq: f32, id: u64) -> Individual {
         group_idx: 0,
         member_idx: 0,
     };
-    cfg.spawn(id, 0, meta, 48_000.0)
+    cfg.spawn(id, 0, meta, 48_000.0, 0)
 }
 
 #[test]
@@ -340,7 +340,7 @@ fn render_wave_snapshot_signature_with_forced_snap() {
         group_idx: 0,
         member_idx: 0,
     };
-    let mut agent = cfg.spawn(1, 0, metadata, fs);
+    let mut agent = cfg.spawn(1, 0, metadata, fs, 0);
     agent.target_pitch_log2 = target_log2;
     let before = agent.body.base_freq_hz();
 
@@ -419,7 +419,7 @@ fn error_state_is_computed_and_stable_under_snap() {
         group_idx: 0,
         member_idx: 0,
     };
-    let mut agent = cfg.spawn(1, 0, metadata, fs);
+    let mut agent = cfg.spawn(1, 0, metadata, fs, 0);
     agent.target_pitch_log2 = target_log2;
     let before = agent.body.base_freq_hz();
     let expected_error_cents = 1200.0 * (target_log2 - before.log2());

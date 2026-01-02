@@ -157,6 +157,7 @@ fn test_conductor_timing() {
         actions: vec![action],
     };
     let scenario = Scenario {
+        seed: 0,
         scene_markers: vec![SceneMarker {
             name: "test".into(),
             time: 0.0,
@@ -315,7 +316,7 @@ fn harmonic_render_spectrum_hits_expected_bins() {
         group_idx: 0,
         member_idx: 0,
     };
-    let mut agent = cfg.spawn(metadata.id, 0, metadata, 48_000.0);
+    let mut agent = cfg.spawn(metadata.id, 0, metadata, 48_000.0, 0);
     let space = Log2Space::new(55.0, 1760.0, 12);
     let mut amps = vec![0.0f32; space.n_bins()];
 
@@ -583,8 +584,8 @@ fn deterministic_rng_produces_same_targets() {
         group_idx: 0,
         member_idx: 0,
     };
-    let mut a = cfg.spawn(10, 4, meta.clone(), 48_000.0);
-    let mut b = cfg.spawn(10, 4, meta, 48_000.0);
+    let mut a = cfg.spawn(10, 4, meta.clone(), 48_000.0, 0);
+    let mut b = cfg.spawn(10, 4, meta, 48_000.0, 0);
     let landscape = make_test_landscape(48_000.0);
     let mut rhythms = crate::core::modulation::NeuralRhythms::default();
     let dt = 0.5;
@@ -1248,7 +1249,7 @@ fn render_wave_snapshot_signature() {
         group_idx: 0,
         member_idx: 0,
     };
-    let mut agent = cfg.spawn(1, 0, metadata, fs);
+    let mut agent = cfg.spawn(1, 0, metadata, fs, 0);
     agent.target_pitch_log2 = target_log2;
 
     let mut buffer = vec![0.0f32; 1024];

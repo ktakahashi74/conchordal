@@ -16,6 +16,7 @@ use serde_json::Value;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Scenario {
+    pub seed: u64,
     pub scene_markers: Vec<SceneMarker>,
     pub events: Vec<TimedEvent>,
     pub duration_sec: f32,
@@ -293,6 +294,7 @@ impl IndividualConfig {
         start_frame: u64,
         mut metadata: AgentMetadata,
         fs: f32,
+        seed_offset: u64,
     ) -> Individual {
         metadata.id = assigned_id;
         if metadata.tag.is_none() {
@@ -301,7 +303,7 @@ impl IndividualConfig {
         let target_freq = self.freq.max(1.0);
         let target_pitch_log2 = target_freq.log2();
         let integration_window = 2.0 + 10.0 / target_freq;
-        let seed = assigned_id ^ start_frame.wrapping_mul(0x9E37_79B9_7F4A_7C15);
+        let seed = seed_offset ^ assigned_id ^ start_frame.wrapping_mul(0x9E37_79B9_7F4A_7C15);
         let mut rng = rand::rngs::SmallRng::seed_from_u64(seed);
         let core =
             AnyArticulationCore::from_config(&self.life.articulation, fs, assigned_id, &mut rng);
@@ -504,6 +506,7 @@ mod tests {
                 member_idx: 0,
             },
             48_000.0,
+            0,
         );
         assert_eq!(agent.id, 7);
         assert_eq!(agent.body.base_freq_hz(), 220.0);

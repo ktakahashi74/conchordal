@@ -22,6 +22,7 @@ pub struct Population {
     shutdown_gain: f32,
     pending_update: Option<LandscapeUpdate>,
     fs: f32,
+    seed: u64,
 }
 
 impl Population {
@@ -58,11 +59,17 @@ impl Population {
             shutdown_gain: 1.0,
             pending_update: None,
             fs,
+            seed: rand::random::<u64>(),
         }
+    }
+
+    pub fn set_seed(&mut self, seed: u64) {
+        self.seed = seed;
     }
 
     fn spawn_seed(&self, tag: Option<&str>, group_id: u64, count: u32) -> u64 {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        self.seed.hash(&mut hasher);
         self.current_frame.hash(&mut hasher);
         group_id.hash(&mut hasher);
         count.hash(&mut hasher);
@@ -353,7 +360,7 @@ impl Population {
                     group_idx: 0,
                     member_idx: 0,
                 };
-                let spawned = agent.spawn(id, self.current_frame, metadata, self.fs);
+                let spawned = agent.spawn(id, self.current_frame, metadata, self.fs, self.seed);
                 self.add_individual(spawned);
             }
             Action::Finish => {
@@ -386,7 +393,7 @@ impl Population {
                         group_idx,
                         member_idx: i as usize,
                     };
-                    let spawned = cfg.spawn(id, self.current_frame, metadata, self.fs);
+                    let spawned = cfg.spawn(id, self.current_frame, metadata, self.fs, self.seed);
                     self.add_individual(spawned);
                 }
             }

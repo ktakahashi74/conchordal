@@ -493,9 +493,6 @@ fn init_runtime(
         (None, None)
     };
 
-    // Population (life)
-    let pop = Population::new(runtime_sample_rate as f32);
-
     // Analysis/NSGT setup
     let fs: f32 = runtime_sample_rate as f32;
     let space = Log2Space::new(55.0, 8000.0, 96);
@@ -606,6 +603,8 @@ fn init_runtime(
         eprintln!("{e}");
         std::process::exit(1);
     });
+    let mut pop = Population::new(runtime_sample_rate as f32);
+    pop.set_seed(scenario.seed);
     let conductor = Conductor::from_scenario(scenario);
 
     // Give the worker its own handle if WAV output is enabled.

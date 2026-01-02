@@ -2,7 +2,7 @@ use std::fs;
 use std::sync::{Arc, Mutex};
 
 use rhai::{
-    Dynamic, Engine, EvalAltResult, EvalContext, Expression, FLOAT, Map, NativeCallContext,
+    Dynamic, Engine, EvalAltResult, EvalContext, Expression, FLOAT, INT, Map, NativeCallContext,
     Position,
 };
 use serde::Serialize;
@@ -75,6 +75,7 @@ pub struct ScriptContext {
     pub cursor: f32,
     pub time_stack: Vec<f32>,
     pub scenario: Scenario,
+    pub seed: u64,
     pub next_group_id: u64,
     pub next_agent_id: u64,
     pub next_event_order: u64,
@@ -83,14 +84,17 @@ pub struct ScriptContext {
 
 impl Default for ScriptContext {
     fn default() -> Self {
+        let seed = rand::random::<u64>();
         Self {
             cursor: 0.0,
             time_stack: Vec::new(),
             scenario: Scenario {
+                seed,
                 scene_markers: Vec::new(),
                 events: Vec::new(),
                 duration_sec: 0.0,
             },
+            seed,
             next_group_id: 1,
             next_agent_id: 1,
             next_event_order: 1,
@@ -135,6 +139,20 @@ impl ScriptContext {
     ) -> Result<(), Box<EvalAltResult>> {
         self.ensure_not_ended(position)?;
         self.cursor = time_sec.max(0.0);
+        Ok(())
+    }
+
+    pub fn set_seed(&mut self, seed: i64, position: Position) -> Result<(), Box<EvalAltResult>> {
+        self.ensure_not_ended(position)?;
+        if seed < 0 {
+            return Err(Box::new(EvalAltResult::ErrorRuntime(
+                "seed must be >= 0".into(),
+                position,
+            )));
+        }
+        let seed = seed as u64;
+        self.seed = seed;
+        self.scenario.seed = seed;
         Ok(())
     }
 
@@ -873,6 +891,15 @@ impl ScriptHost {
             move |call_ctx: NativeCallContext, map: Map| -> Result<(), Box<EvalAltResult>> {
                 let mut ctx = ctx_for_set_harmonicity.lock().expect("lock script context");
                 ctx.set_harmonicity(map, call_ctx.call_position())
+            },
+        );
+
+        let ctx_for_set_seed = ctx.clone();
+        engine.register_fn(
+            "set_seed",
+            move |call_ctx: NativeCallContext, seed: INT| -> Result<(), Box<EvalAltResult>> {
+                let mut ctx = ctx_for_set_seed.lock().expect("lock script context");
+                ctx.set_seed(seed, call_ctx.call_position())
             },
         );
 

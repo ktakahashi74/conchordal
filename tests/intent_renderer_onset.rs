@@ -12,6 +12,7 @@ fn make_intent(intent_id: u64, onset: Tick, duration: Tick, freq: f32, amp: f32)
         amp,
         tag: None,
         confidence: 1.0,
+        body: None,
     }
 }
 

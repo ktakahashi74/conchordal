@@ -18,6 +18,7 @@ fn smoke_intent_board_and_renderer() {
         amp: 0.2,
         tag: None,
         confidence: 1.0,
+        body: None,
     });
     let hits: Vec<_> = board.query_range(0..32).collect();
     assert_eq!(hits.len(), 1);

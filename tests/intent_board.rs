@@ -11,6 +11,7 @@ fn make_intent(intent_id: u64, onset: Tick, duration: Tick) -> Intent {
         amp: 0.5,
         tag: None,
         confidence: 1.0,
+        body: None,
     }
 }
 

@@ -2,7 +2,7 @@ use crate::core::landscape::Landscape;
 use crate::core::log2space::Log2Space;
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
-use crate::life::intent::Intent;
+use crate::life::intent::{BodySnapshot, Intent};
 use crate::life::perceptual::{FeaturesNow, PerceptualContext};
 use rand::rngs::SmallRng;
 
@@ -169,8 +169,10 @@ impl Individual {
             if dur_tick == 0 {
                 dur_tick = 1;
             }
-            let amp = self.base_amp().clamp(0.0, 1.0);
+            let amp = 1.0;
             let freq_hz = self.body.base_freq_hz();
+            let snapshot = self.body_snapshot();
+            let kind = snapshot.kind.clone();
             intents.push(Intent {
                 source_id: self.id,
                 intent_id: self.intent_seq,
@@ -178,8 +180,9 @@ impl Individual {
                 duration: dur_tick,
                 freq_hz,
                 amp,
-                tag: Some(format!("agent:{}", self.id)),
+                tag: Some(format!("agent:{} {}", self.id, kind)),
                 confidence: 1.0,
+                body: Some(snapshot),
             });
             self.intent_seq = self.intent_seq.wrapping_add(1);
             next = next.saturating_add(period);
@@ -188,10 +191,20 @@ impl Individual {
         intents
     }
 
-    fn base_amp(&self) -> f32 {
+    fn body_snapshot(&self) -> BodySnapshot {
         match &self.body {
-            AnySoundBody::Sine(body) => body.amp,
-            AnySoundBody::Harmonic(body) => body.amp,
+            AnySoundBody::Sine(body) => BodySnapshot {
+                kind: "sine".to_string(),
+                amp_scale: body.amp.clamp(0.0, 1.0),
+                brightness: 0.0,
+                noise_mix: 0.0,
+            },
+            AnySoundBody::Harmonic(body) => BodySnapshot {
+                kind: "harmonic".to_string(),
+                amp_scale: body.amp.clamp(0.0, 1.0),
+                brightness: body.genotype.brightness.clamp(0.0, 1.0),
+                noise_mix: body.genotype.jitter.clamp(0.0, 1.0),
+            },
         }
     }
 }

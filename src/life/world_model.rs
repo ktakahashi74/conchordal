@@ -118,6 +118,7 @@ impl WorldModel {
                 amp: *amp,
                 tag: tag.clone(),
                 confidence: *confidence,
+                body: None,
             };
             self.next_intent_id = self.next_intent_id.wrapping_add(1);
             self.board.publish(intent);

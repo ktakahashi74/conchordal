@@ -47,7 +47,26 @@ impl IntentRenderer {
                 let t_rel = (tick - intent.onset) as f32 / fs;
                 let phase = std::f32::consts::TAU * intent.freq_hz * t_rel;
                 let env = self.release_env(intent, tick);
-                self.buf[idx] += intent.amp * env * phase.cos();
+                let mut amp = intent.amp;
+                let sample = if let Some(body) = &intent.body {
+                    let amp_scale = body.amp_scale.clamp(0.0, 1.0);
+                    amp *= amp_scale;
+                    let b = body.brightness.clamp(0.0, 1.0);
+                    let s1 = phase.cos();
+                    let s2 = (2.0 * phase).cos() * 0.5;
+                    let s3 = (3.0 * phase).cos() * 0.25;
+                    let harmonic = (1.0 - b) * s1 + b * (s1 + s2 + s3);
+                    let nm = body.noise_mix.clamp(0.0, 1.0);
+                    if nm > 0.0 {
+                        let n = hash_noise(tick, intent.source_id, intent.intent_id);
+                        (1.0 - nm) * harmonic + nm * n
+                    } else {
+                        harmonic
+                    }
+                } else {
+                    phase.cos()
+                };
+                self.buf[idx] += amp * env * sample;
             }
         }
 
@@ -87,4 +106,15 @@ impl IntentRenderer {
             }
         }
     }
+}
+
+fn hash_noise(tick: Tick, source_id: u64, intent_id: u64) -> f32 {
+    let mut v = tick ^ source_id.rotate_left(17) ^ intent_id.rotate_left(41);
+    v ^= v >> 33;
+    v = v.wrapping_mul(0xff51afd7ed558ccd);
+    v ^= v >> 33;
+    v = v.wrapping_mul(0xc4ceb9fe1a85ec53);
+    v ^= v >> 33;
+    let unit = (v as u32) as f32 / u32::MAX as f32;
+    unit * 2.0 - 1.0
 }

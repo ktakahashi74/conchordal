@@ -19,6 +19,7 @@ fn limiter_clamps_peak_and_stays_finite() {
             amp: 1.0,
             tag: None,
             confidence: 1.0,
+            body: None,
         });
     }
 

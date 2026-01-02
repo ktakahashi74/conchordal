@@ -13,6 +13,15 @@ pub struct Intent {
     pub amp: f32,
     pub tag: Option<String>,
     pub confidence: f32,
+    pub body: Option<BodySnapshot>,
+}
+
+#[derive(Clone, Debug)]
+pub struct BodySnapshot {
+    pub kind: String,
+    pub amp_scale: f32,
+    pub brightness: f32,
+    pub noise_mix: f32,
 }
 
 pub struct IntentBoard {
@@ -44,17 +53,16 @@ impl IntentBoard {
             return;
         }
 
-        let push_back = self
-            .intents
-            .back()
-            .map_or(false, |last| last.onset <= intent.onset);
+        let push_back = matches!(
+            self.intents.back(),
+            Some(last) if last.onset <= intent.onset
+        );
         if push_back {
             self.intents.push_back(intent);
-        } else if self
-            .intents
-            .front()
-            .map_or(false, |first| intent.onset < first.onset)
-        {
+        } else if matches!(
+            self.intents.front(),
+            Some(first) if intent.onset < first.onset
+        ) {
             self.intents.push_front(intent);
         } else {
             let insert_at = self

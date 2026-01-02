@@ -105,7 +105,10 @@ impl WorldModel {
         } = action
         {
             let onset_tick = self.time.sec_to_tick(onset_sec.max(0.0));
-            let dur_tick = self.time.sec_to_tick(duration_sec.max(0.0));
+            let mut dur_tick = self.time.sec_to_tick(duration_sec.max(0.0));
+            if dur_tick == 0 && *duration_sec > 0.0 {
+                dur_tick = 1;
+            }
             let intent = Intent {
                 source_id: *source_id,
                 intent_id: self.next_intent_id,

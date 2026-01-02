@@ -25,6 +25,7 @@ use crate::core::stream::{
 };
 use crate::life::conductor::Conductor;
 use crate::life::individual::SoundBody;
+use crate::life::intent_renderer::IntentRenderer;
 use crate::life::population::Population;
 use crate::life::scenario::{Action, Scenario, TargetRef};
 use crate::life::scripting::ScriptHost;
@@ -639,6 +640,7 @@ fn init_runtime(
                     audio_to_roughness_tx,
                     roughness_from_analysis_rx,
                     roughness_tx,
+                    config.playback.intent_only,
                     hop,
                     hop_duration,
                     fs,
@@ -750,6 +752,7 @@ fn worker_loop(
     audio_to_roughness_tx: Sender<(u64, Arc<[f32]>)>,
     roughness_from_analysis_rx: Receiver<(u64, Landscape)>,
     roughness_tx: Sender<LandscapeUpdate>,
+    intent_only: bool,
     hop: usize,
     hop_duration: Duration,
     fs: f32,
@@ -775,10 +778,12 @@ fn worker_loop(
     let mut latest_h_scan: Option<Vec<f32>> = None;
     let timebase = crate::core::timebase::Timebase { fs, hop };
     let mut world = crate::life::world_model::WorldModel::new(timebase);
+    let mut intent_renderer = IntentRenderer::new(timebase);
     let init_now_tick = timebase.frame_start_tick(frame_idx);
     world.advance_to(init_now_tick);
     let init_world_view = world.ui_view();
     let mut last_tick_log = Instant::now();
+    let idle_silence = vec![0.0f32; hop];
 
     // Initial UI frame so metadata is visible before playback starts.
     let init_meta = SimulationMeta {
@@ -822,6 +827,16 @@ fn worker_loop(
             continue;
         } else if playback_state == PlaybackState::NotStarted {
             playback_state = PlaybackState::Playing;
+        }
+
+        if finished && wait_user_exit {
+            if let Some(prod) = audio_prod.as_mut() {
+                while prod.vacant_len() >= hop {
+                    AudioOutput::push_samples(prod, &idle_silence);
+                }
+            }
+            thread::sleep(Duration::from_millis(10));
+            continue;
         }
 
         let buffer_capacity = audio_prod
@@ -970,13 +985,17 @@ fn worker_loop(
             // [FIX] Audio is MONO. Treat it as such.
             // Previously incorrectly treated as stereo, leading to bad metering and destructive downsampling.
             let (mono_chunk, max_abs, channel_peak) = {
-                let time_chunk = pop.process_audio(
-                    hop,
-                    fs,
-                    frame_idx,
-                    hop_duration.as_secs_f32(),
-                    &current_landscape,
-                );
+                let time_chunk = if intent_only {
+                    intent_renderer.render(&world.board, now_tick)
+                } else {
+                    pop.process_audio(
+                        hop,
+                        fs,
+                        frame_idx,
+                        hop_duration.as_secs_f32(),
+                        &current_landscape,
+                    )
+                };
 
                 // Calculate Peak (Mono)
                 let mut max_p = 0.0f32;

@@ -15,8 +15,13 @@ fn args_for_path(path: &Path) -> Args {
         wait_user_exit: None,
         wait_user_start: None,
         nogui: false,
+        intent_only: None,
         compile_only: false,
     }
+}
+
+fn default_config() -> AppConfig {
+    AppConfig::default()
 }
 
 #[test]
@@ -30,7 +35,7 @@ fn compile_only_samples_tests() {
         }
         count += 1;
         let args = args_for_path(path);
-        let config = AppConfig::default();
+        let config = default_config();
         compile_scenario_from_script(path, &args, &config)
             .unwrap_or_else(|e| panic!("compile-only failed for {}: {e}", path.display()));
     }

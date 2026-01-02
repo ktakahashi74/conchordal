@@ -1,3 +1,4 @@
+print("TEST_OK: intent_polyrhythm_3_2");
 for i in 0..6 {
 intent(440.0, 0.0, 0.08, 0.4, #{ tag: "three" });
 intent(660.0, 0.0, 0.08, 0.4, #{ tag: "two" });

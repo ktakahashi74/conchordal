@@ -3,8 +3,10 @@ use crate::core::log2space::Log2Space;
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
 use crate::life::intent::{BodySnapshot, Intent};
+use crate::life::intent_planner::choose_onset_by_density;
 use crate::life::perceptual::{FeaturesNow, PerceptualContext};
 use rand::rngs::SmallRng;
+use tracing::debug;
 
 #[path = "articulation_core.rs"]
 pub mod articulation_core;
@@ -149,45 +151,71 @@ impl Individual {
         now: Tick,
         hop: usize,
         _landscape: &Landscape,
+        intents: &[Intent],
     ) -> Vec<Intent> {
         let hop_tick = hop as Tick;
-        let offset = (hop_tick / 2).max(1);
-        let mut next = self.next_intent_tick;
-        if next == 0 {
-            next = now.saturating_add(offset);
+        if self.next_intent_tick != 0 && now < self.next_intent_tick {
+            return Vec::new();
         }
 
-        let period = hop_tick.saturating_mul(4).max(1);
-        let min_next = now.saturating_add(offset);
-        if next < min_next {
-            next = min_next;
+        let mut horizon = tb.sec_to_tick(1.0);
+        if horizon == 0 {
+            horizon = 1;
         }
-        let window_end = now.saturating_add(hop_tick);
-        let mut intents = Vec::new();
-        while next < window_end {
-            let mut dur_tick = tb.sec_to_tick(0.08);
-            if dur_tick == 0 {
-                dur_tick = 1;
-            }
-            let amp = 1.0;
-            let freq_hz = self.body.base_freq_hz();
-            let snapshot = self.body_snapshot();
-            let kind = snapshot.kind.clone();
-            intents.push(Intent {
-                source_id: self.id,
-                intent_id: self.intent_seq,
-                onset: next,
-                duration: dur_tick,
-                freq_hz,
-                amp,
-                tag: Some(format!("agent:{} {}", self.id, kind)),
-                confidence: 1.0,
-                body: Some(snapshot),
-            });
-            self.intent_seq = self.intent_seq.wrapping_add(1);
-            next = next.saturating_add(period);
+        horizon = horizon.max(hop_tick.saturating_mul(4).max(1));
+        let candidates = self.articulation.propose_onsets(tb, now, horizon);
+        if candidates.is_empty() {
+            return Vec::new();
         }
-        self.next_intent_tick = next;
+        let mut eps = tb.sec_to_tick(0.01);
+        if eps == 0 {
+            eps = 1;
+        }
+        let chosen = choose_onset_by_density(&candidates, intents, eps)
+            .or_else(|| candidates.first().copied());
+        let Some(chosen) = chosen else {
+            return Vec::new();
+        };
+        if cfg!(debug_assertions) && self.intent_seq % 32 == 0 {
+            let min = chosen.saturating_sub(eps);
+            let max = chosen.saturating_add(eps);
+            let density = intents
+                .iter()
+                .filter(|intent| intent.onset >= min && intent.onset <= max)
+                .count();
+            debug!(
+                target: "intent::plan",
+                "agent={} candidates={} chosen={} density={}",
+                self.id,
+                candidates.len(),
+                chosen,
+                density
+            );
+        }
+
+        let mut dur_tick = tb.sec_to_tick(0.08);
+        if dur_tick == 0 {
+            dur_tick = 1;
+        }
+        let amp = 1.0;
+        let freq_hz = self.body.base_freq_hz();
+        let snapshot = self.body_snapshot();
+        let kind = snapshot.kind.clone();
+        let intent = Intent {
+            source_id: self.id,
+            intent_id: self.intent_seq,
+            onset: chosen,
+            duration: dur_tick,
+            freq_hz,
+            amp,
+            tag: Some(format!("agent:{} {}", self.id, kind)),
+            confidence: 1.0,
+            body: Some(snapshot),
+        };
+        self.intent_seq = self.intent_seq.wrapping_add(1);
+        let min_interval = hop_tick.max(dur_tick);
+        self.next_intent_tick = chosen.saturating_add(min_interval);
+        let intents = vec![intent];
         intents
     }
 

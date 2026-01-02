@@ -2,6 +2,7 @@ pub mod api;
 pub mod conductor;
 pub mod individual;
 pub mod intent;
+pub mod intent_planner;
 pub mod intent_renderer;
 pub mod lifecycle;
 pub mod meta;

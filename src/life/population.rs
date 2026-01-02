@@ -106,12 +106,15 @@ impl Population {
     ) {
         let tb = &world.time;
         let hop = tb.hop;
+        let past = world.board.retention_past;
+        let future = world.board.horizon_future;
+        let board_snapshot = world.board.snapshot(now, past, future);
         let mut intents = Vec::new();
         for agent in &mut self.individuals {
             if !agent.is_alive() {
                 continue;
             }
-            intents.extend(agent.plan_intents(tb, now, hop, landscape));
+            intents.extend(agent.plan_intents(tb, now, hop, landscape, &board_snapshot));
         }
         intents.sort_by_key(|i| i.onset);
         for intent in intents {

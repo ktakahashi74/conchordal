@@ -1,5 +1,6 @@
 use crate::core::modulation::NeuralRhythms;
 use crate::core::phase::{angle_diff_pm_pi, wrap_0_tau};
+use crate::core::timebase::{Tick, Timebase};
 use crate::core::utils::pink_noise_tick;
 use crate::life::lifecycle::LifecycleConfig;
 use crate::life::scenario::ArticulationCoreConfig;
@@ -109,6 +110,10 @@ impl ArticulationWrapper {
 
     pub fn set_gate(&mut self, gate: f32) {
         self.planned_gate.gate = gate.clamp(0.0, 1.0);
+    }
+
+    pub fn propose_onsets(&mut self, tb: &Timebase, now: Tick, horizon: Tick) -> Vec<Tick> {
+        self.core.propose_onsets(tb, now, horizon)
     }
 }
 
@@ -762,6 +767,66 @@ impl AnyArticulationCore {
                 })
             }
         }
+    }
+
+    pub fn propose_onsets(&mut self, tb: &Timebase, now: Tick, horizon: Tick) -> Vec<Tick> {
+        match self {
+            AnyArticulationCore::Entrain(core) => core.propose_onsets(tb, now, horizon),
+            AnyArticulationCore::Seq(core) => core.propose_onsets(tb, now, horizon),
+            AnyArticulationCore::Drone(core) => core.propose_onsets(tb, now, horizon),
+        }
+    }
+}
+
+fn min_lead_ticks(tb: &Timebase) -> Tick {
+    let mut ticks = tb.sec_to_tick(0.005);
+    if ticks == 0 {
+        ticks = 1;
+    }
+    ticks
+}
+
+impl KuramotoCore {
+    fn propose_onsets(&mut self, tb: &Timebase, now: Tick, horizon: Tick) -> Vec<Tick> {
+        let min_lead = min_lead_ticks(tb);
+        let end = now.saturating_add(horizon);
+        let mut out = Vec::new();
+        let freq = self.rhythm_freq.max(0.01);
+        let period_sec = 1.0 / freq;
+        let mut period_tick = tb.sec_to_tick(period_sec);
+        if period_tick == 0 {
+            period_tick = 1;
+        }
+        let phase = wrap_0_tau(self.rhythm_phase);
+        let phase_to_next = (TAU - phase) / TAU;
+        let to_next_tick = tb.sec_to_tick(period_sec * phase_to_next);
+        let mut next = now.saturating_add(min_lead.max(to_next_tick));
+
+        while next <= end && out.len() < 9 {
+            out.push(next);
+            next = next.saturating_add(period_tick);
+        }
+
+        if out.is_empty() {
+            out.push(now.saturating_add(min_lead));
+        }
+        out
+    }
+}
+
+impl SequencedCore {
+    fn propose_onsets(&mut self, tb: &Timebase, now: Tick, horizon: Tick) -> Vec<Tick> {
+        let _ = horizon;
+        let min_lead = min_lead_ticks(tb);
+        vec![now.saturating_add(min_lead)]
+    }
+}
+
+impl DroneCore {
+    fn propose_onsets(&mut self, tb: &Timebase, now: Tick, horizon: Tick) -> Vec<Tick> {
+        let _ = horizon;
+        let min_lead = min_lead_ticks(tb);
+        vec![now.saturating_add(min_lead)]
     }
 }
 

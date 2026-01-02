@@ -37,7 +37,25 @@ fn agents_publish_intents_and_render_audio() {
     pop.publish_intents(&mut world, &landscape, 0);
     assert!(world.board.len() > 0);
 
+    let first_intent = world
+        .board
+        .query_range(0..u64::MAX)
+        .next()
+        .expect("expected intent");
+    let render_start = first_intent.onset.saturating_sub(1);
+
     let mut renderer = IntentRenderer::new(tb);
-    let out = renderer.render(&world.board, 0);
+    let end = world
+        .board
+        .query_range(0..u64::MAX)
+        .map(|i| i.onset.saturating_add(i.duration))
+        .max()
+        .unwrap_or(render_start);
+    let mut out = Vec::new();
+    let mut tick = render_start;
+    while tick <= end {
+        out.extend_from_slice(renderer.render(&world.board, tick));
+        tick = tick.saturating_add(tb.hop as u64);
+    }
     assert!(out.iter().any(|s| s.abs() > 1e-6));
 }

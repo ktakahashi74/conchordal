@@ -366,12 +366,12 @@ impl App {
         cc.egui_ctx
             .send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::Vec2 {
                 x: 1200.0,
-                y: 850.0,
+                y: 1020.0,
             }));
         cc.egui_ctx
             .send_viewport_cmd(egui::ViewportCommand::MinInnerSize(egui::Vec2 {
                 x: 1200.0,
-                y: 850.0,
+                y: 1020.0,
             }));
 
         Self {
@@ -773,6 +773,10 @@ fn worker_loop(
     let mut last_r_analysis_frame: Option<u64> = None;
     let mut latest_h_scan: Option<Vec<f32>> = None;
     let timebase = crate::core::timebase::Timebase { fs, hop };
+    let mut world = crate::life::world_model::WorldModel::new(timebase);
+    let init_now_tick = timebase.frame_start_tick(frame_idx);
+    world.advance_to(init_now_tick);
+    let init_world_view = world.ui_view();
     let mut last_tick_log = Instant::now();
 
     // Initial UI frame so metadata is visible before playback starts.
@@ -802,6 +806,7 @@ fn worker_loop(
         time_sec: current_time,
         meta: init_meta,
         agents: Vec::new(),
+        world: init_world_view,
     };
     let _ = ui_tx.try_send(init_frame);
 
@@ -834,6 +839,7 @@ fn worker_loop(
             };
             let now_tick = timebase.frame_start_tick(frame_idx);
             let now_sec = timebase.tick_to_sec(now_tick);
+            world.advance_to(now_tick);
             if frame_idx == 0 || last_tick_log.elapsed() >= Duration::from_secs(1) {
                 info!(
                     "[tick] frame_idx={} now_tick={} now_sec={:.6}",
@@ -1036,6 +1042,8 @@ fn worker_loop(
             let mut spec_frame: Option<SpecFrame> = None;
             let mut ui_landscape: Option<LandscapeFrame> = None;
             if should_send_ui {
+                world.percept_landscape = Some(current_landscape.clone());
+                world.dorsal_metrics = Some(dorsal_metrics);
                 wave_frame = Some(WaveFrame {
                     fs,
                     samples: Arc::clone(&mono_chunk),
@@ -1065,6 +1073,7 @@ fn worker_loop(
             if let (Some(wave_frame), Some(spec_frame), Some(ui_landscape)) =
                 (wave_frame, spec_frame, ui_landscape)
             {
+                let world_view = world.ui_view();
                 let agent_states: Vec<AgentStateInfo> = pop
                     .individuals
                     .iter()
@@ -1104,6 +1113,7 @@ fn worker_loop(
                         window_peak: channel_peak,
                     },
                     agents: agent_states,
+                    world: world_view,
                 };
                 let _ = ui_tx.try_send(ui_frame);
                 last_ui_update = Instant::now();

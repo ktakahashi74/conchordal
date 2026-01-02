@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use crate::core::landscape::LandscapeFrame;
+use crate::life::world_model::WorldView;
 
 #[derive(Clone, Debug)]
 pub struct WaveFrame {
@@ -63,6 +64,7 @@ pub struct UiFrame {
     pub time_sec: f32,
     pub meta: SimulationMeta,
     pub agents: Vec<AgentStateInfo>,
+    pub world: WorldView,
 }
 
 impl Default for WaveFrame {

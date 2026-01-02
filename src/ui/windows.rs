@@ -4,6 +4,7 @@ use crate::ui::plots::{
 };
 use crate::ui::viewdata::{PlaybackState, UiFrame};
 use egui::{CentralPanel, Color32, TopBottomPanel, Vec2};
+use egui_plot::{Plot, PlotPoints, Points};
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -113,6 +114,11 @@ fn split_widths(ui: &egui::Ui, ratio: f32, min_left: f32, min_right: f32) -> (f3
     let right_width = (available - left_width - sep).max(0.0);
     (left_width, right_width)
 }
+
+const INTENT_PLOT_HEIGHT: f32 = 120.0;
+const INTENT_LIST_HEIGHT: f32 = 90.0;
+const INTENT_HEADER_HEIGHT: f32 = 40.0;
+const INTENT_BOARD_HEIGHT: f32 = INTENT_PLOT_HEIGHT + INTENT_LIST_HEIGHT + INTENT_HEADER_HEIGHT;
 
 /// === Main window ===
 #[allow(clippy::too_many_arguments)]
@@ -337,7 +343,10 @@ pub fn main_window(
             ui.separator();
             let right_width = ui.available_width().max(0.0);
             ui.allocate_ui_with_layout(
-                Vec2::new(right_width, attention_height + neural_time_height),
+                Vec2::new(
+                    right_width,
+                    attention_height + neural_time_height + INTENT_BOARD_HEIGHT,
+                ),
                 egui::Layout::top_down(egui::Align::LEFT),
                 |ui| {
                     let old_spacing = ui.spacing().item_spacing;
@@ -375,6 +384,8 @@ pub fn main_window(
         });
 
         ui.separator();
+        draw_intent_board(ui, frame);
+        ui.separator();
         ui.horizontal(|ui| {
             ui.heading("Population Dynamics");
             ui.separator();
@@ -385,7 +396,7 @@ pub fn main_window(
             &frame.agents,
             &frame.spec.spec_hz,
             &frame.spec.amps,
-            119.0,
+            72.0,
         );
 
         ui.separator();
@@ -480,4 +491,77 @@ pub fn main_window(
             );
         });
     });
+}
+
+fn draw_intent_board(ui: &mut egui::Ui, frame: &UiFrame) {
+    ui.heading("Intent Board");
+    let fs = frame.world.fs;
+    let now_tick = frame.world.now_tick;
+    let now_sec = if fs > 0.0 { now_tick as f32 / fs } else { 0.0 };
+    let past_ticks = frame.world.past_ticks;
+    let future_ticks = frame.world.future_ticks;
+    let past_sec = if fs > 0.0 {
+        past_ticks as f32 / fs
+    } else {
+        0.0
+    };
+    let future_sec = if fs > 0.0 {
+        future_ticks as f32 / fs
+    } else {
+        0.0
+    };
+
+    ui.horizontal(|ui| {
+        ui.label(format!("now_tick={now_tick}"));
+        ui.separator();
+        ui.label(format!("now_sec={now_sec:.3}"));
+        ui.separator();
+        ui.label(format!("intents={}", frame.world.intents.len()));
+        ui.separator();
+        ui.label(format!("past={} ({past_sec:.2}s)", past_ticks));
+        ui.separator();
+        ui.label(format!("future={} ({future_sec:.2}s)", future_ticks));
+    });
+
+    let series: PlotPoints = frame
+        .world
+        .intents
+        .iter()
+        .filter_map(|intent| {
+            if intent.freq_hz <= 0.0 || fs <= 0.0 {
+                return None;
+            }
+            let x = (intent.freq_hz as f64).max(1.0).log2();
+            let y = intent.onset_tick as f64 / fs as f64;
+            Some([x, y])
+        })
+        .collect();
+    let points = Points::new("intents", series)
+        .radius(3.0)
+        .color(Color32::from_rgb(240, 120, 120));
+    Plot::new("intent_board_plot")
+        .height(INTENT_PLOT_HEIGHT)
+        .allow_drag(false)
+        .allow_scroll(false)
+        .show(ui, |plot_ui| {
+            plot_ui.points(points);
+        });
+
+    ui.label("Intent list");
+    egui::ScrollArea::vertical()
+        .max_height(INTENT_LIST_HEIGHT)
+        .show(ui, |ui| {
+            for intent in &frame.world.intents {
+                let onset_sec = if fs > 0.0 {
+                    intent.onset_tick as f32 / fs
+                } else {
+                    0.0
+                };
+                let tag = intent.tag.as_deref().unwrap_or("-");
+                ui.label(format!(
+                    "t={onset_sec:.3}s f={:.1}Hz amp={:.3} src={} tag={}",
+                    intent.freq_hz, intent.amp, intent.source_id, tag
+                ));
+            }
+        });
 }

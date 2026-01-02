@@ -116,7 +116,7 @@ fn split_widths(ui: &egui::Ui, ratio: f32, min_left: f32, min_right: f32) -> (f3
 }
 
 const INTENT_PLOT_HEIGHT: f32 = 120.0;
-const INTENT_LIST_HEIGHT: f32 = 90.0;
+const INTENT_LIST_HEIGHT: f32 = 18.0;
 const INTENT_HEADER_HEIGHT: f32 = 40.0;
 const INTENT_BOARD_HEIGHT: f32 = INTENT_PLOT_HEIGHT + INTENT_LIST_HEIGHT + INTENT_HEADER_HEIGHT;
 
@@ -539,29 +539,55 @@ fn draw_intent_board(ui: &mut egui::Ui, frame: &UiFrame) {
     let points = Points::new("intents", series)
         .radius(3.0)
         .color(Color32::from_rgb(240, 120, 120));
+    let x_min_log2 = (20.0f64).log2();
+    let x_max_log2 = (20_000.0f64).log2();
+    let y_min = (now_sec - past_sec) as f64;
+    let y_max = (now_sec + future_sec) as f64;
+    let y_max_fixed = if y_max <= y_min { y_min + 1.0 } else { y_max };
+
     Plot::new("intent_board_plot")
         .height(INTENT_PLOT_HEIGHT)
         .allow_drag(false)
         .allow_scroll(false)
+        .include_x(x_min_log2)
+        .include_x(x_max_log2)
+        .default_x_bounds(x_min_log2, x_max_log2)
+        .include_y(y_min)
+        .include_y(y_max_fixed)
+        .default_y_bounds(y_min, y_max_fixed)
+        .x_axis_formatter(|mark, _range| {
+            let hz = 2f64.powf(mark.value);
+            if hz < 1000.0 {
+                format!("{:.0} Hz", hz)
+            } else {
+                format!("{:.1} kHz", hz / 1000.0)
+            }
+        })
+        .y_axis_formatter(|mark, _| format!("{:.2}s", mark.value))
         .show(ui, |plot_ui| {
             plot_ui.points(points);
         });
 
-    ui.label("Intent list");
-    egui::ScrollArea::vertical()
-        .max_height(INTENT_LIST_HEIGHT)
+    let mut list_text = String::new();
+    for (idx, intent) in frame.world.intents.iter().enumerate() {
+        if idx > 0 {
+            list_text.push_str(" | ");
+        }
+        let onset_sec = if fs > 0.0 {
+            intent.onset_tick as f32 / fs
+        } else {
+            0.0
+        };
+        let tag = intent.tag.as_deref().unwrap_or("-");
+        list_text.push_str(&format!(
+            "t={onset_sec:.3}s f={:.1}Hz amp={:.3} src={} tag={}",
+            intent.freq_hz, intent.amp, intent.source_id, tag
+        ));
+    }
+    let line_height = ui.text_style_height(&egui::TextStyle::Body);
+    egui::ScrollArea::horizontal()
+        .max_height(line_height.max(INTENT_LIST_HEIGHT))
         .show(ui, |ui| {
-            for intent in &frame.world.intents {
-                let onset_sec = if fs > 0.0 {
-                    intent.onset_tick as f32 / fs
-                } else {
-                    0.0
-                };
-                let tag = intent.tag.as_deref().unwrap_or("-");
-                ui.label(format!(
-                    "t={onset_sec:.3}s f={:.1}Hz amp={:.3} src={} tag={}",
-                    intent.freq_hz, intent.amp, intent.source_id, tag
-                ));
-            }
+            ui.add(egui::Label::new(list_text).extend());
         });
 }

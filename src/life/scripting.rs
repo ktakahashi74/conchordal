@@ -335,6 +335,98 @@ impl ScriptContext {
         })
     }
 
+    pub fn intent(
+        &mut self,
+        freq_hz: f32,
+        dt: f32,
+        duration_sec: f32,
+        amp: f32,
+        opts: Option<Map>,
+        position: Position,
+    ) -> Result<(), Box<EvalAltResult>> {
+        self.ensure_not_ended(position)?;
+
+        let mut source_id: u64 = 0;
+        let mut tag: Option<String> = None;
+        let mut confidence: f32 = 1.0;
+
+        if let Some(opts) = opts {
+            let mut unknown_keys = Vec::new();
+            for key in opts.keys() {
+                match key.as_str() {
+                    "source_id" | "tag" | "confidence" => {}
+                    _ => unknown_keys.push(key.to_string()),
+                }
+            }
+            if !unknown_keys.is_empty() {
+                unknown_keys.sort();
+                let msg = format!(
+                    "intent opts has unknown keys: [{}] (allowed: source_id, tag, confidence)",
+                    unknown_keys.join(", ")
+                );
+                return Err(Box::new(EvalAltResult::ErrorRuntime(msg.into(), position)));
+            }
+
+            if let Some(value) = opts.get("source_id") {
+                let id = value
+                    .as_int()
+                    .ok()
+                    .or_else(|| value.as_float().ok().map(|v| v as i64))
+                    .ok_or_else(|| {
+                        Box::new(EvalAltResult::ErrorRuntime(
+                            "intent opts source_id must be an integer".into(),
+                            position,
+                        ))
+                    })?;
+                if id < 0 {
+                    return Err(Box::new(EvalAltResult::ErrorRuntime(
+                        "intent opts source_id must be non-negative".into(),
+                        position,
+                    )));
+                }
+                source_id = id as u64;
+            }
+
+            if let Some(value) = opts.get("tag") {
+                let tag_value = value.clone().try_cast::<String>().ok_or_else(|| {
+                    Box::new(EvalAltResult::ErrorRuntime(
+                        "intent opts tag must be a string".into(),
+                        position,
+                    ))
+                })?;
+                tag = Some(tag_value);
+            }
+
+            if let Some(value) = opts.get("confidence") {
+                confidence = value
+                    .as_float()
+                    .ok()
+                    .map(|v| v as f32)
+                    .or_else(|| value.as_int().ok().map(|v| v as f32))
+                    .ok_or_else(|| {
+                        Box::new(EvalAltResult::ErrorRuntime(
+                            "intent opts confidence must be a number".into(),
+                            position,
+                        ))
+                    })?;
+            }
+        }
+
+        let onset_sec = (self.cursor + dt).max(0.0);
+        let duration_sec = duration_sec.max(0.0);
+        let action = Action::PostIntent {
+            source_id,
+            onset_sec,
+            duration_sec,
+            freq_hz,
+            amp,
+            tag,
+            confidence,
+        };
+        self.push_event(self.cursor, vec![action]);
+        Ok(())
+    }
+
     pub fn add_agent(
         &mut self,
         tag: &str,
@@ -778,6 +870,48 @@ impl ScriptHost {
                     spawn_min_at(&mut ctx, &tag, count, pos_tag)?
                 };
                 Ok(Dynamic::from(handle))
+            },
+        );
+
+        let ctx_for_intent = ctx.clone();
+        engine.register_fn(
+            "intent",
+            move |call_ctx: NativeCallContext,
+                  freq_hz: FLOAT,
+                  dt: FLOAT,
+                  dur: FLOAT,
+                  amp: FLOAT|
+                  -> Result<(), Box<EvalAltResult>> {
+                let mut ctx = ctx_for_intent.lock().expect("lock script context");
+                ctx.intent(
+                    freq_hz as f32,
+                    dt as f32,
+                    dur as f32,
+                    amp as f32,
+                    None,
+                    call_ctx.call_position(),
+                )
+            },
+        );
+        let ctx_for_intent_opts = ctx.clone();
+        engine.register_fn(
+            "intent",
+            move |call_ctx: NativeCallContext,
+                  freq_hz: FLOAT,
+                  dt: FLOAT,
+                  dur: FLOAT,
+                  amp: FLOAT,
+                  opts: Map|
+                  -> Result<(), Box<EvalAltResult>> {
+                let mut ctx = ctx_for_intent_opts.lock().expect("lock script context");
+                ctx.intent(
+                    freq_hz as f32,
+                    dt as f32,
+                    dur as f32,
+                    amp as f32,
+                    Some(opts),
+                    call_ctx.call_position(),
+                )
             },
         );
 

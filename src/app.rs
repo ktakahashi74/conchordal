@@ -235,7 +235,8 @@ pub fn validate_scenario(scenario: &Scenario) -> Result<(), String> {
                 Action::SetRhythmVitality { .. }
                 | Action::SetGlobalCoupling { .. }
                 | Action::SetRoughnessTolerance { .. }
-                | Action::SetHarmonicity { .. } => {}
+                | Action::SetHarmonicity { .. }
+                | Action::PostIntent { .. } => {}
             }
         }
     }
@@ -956,6 +957,7 @@ fn worker_loop(
                 &current_landscape,
                 None::<&mut crate::core::stream::roughness::RoughnessStream>,
                 &mut pop,
+                &mut world,
             );
             dorsal.set_vitality(pop.global_vitality);
             if let Some(update) = pop.take_pending_update() {

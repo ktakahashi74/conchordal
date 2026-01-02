@@ -565,6 +565,15 @@ pub enum Action {
         target: TargetRef,
         value: f32,
     },
+    PostIntent {
+        source_id: u64,
+        onset_sec: f32,
+        duration_sec: f32,
+        freq_hz: f32,
+        amp: f32,
+        tag: Option<String>,
+        confidence: f32,
+    },
     Finish,
 }
 
@@ -633,6 +642,19 @@ impl fmt::Display for Action {
             Action::SetDrift { target, value } => {
                 write!(f, "SetDrift target={} value={:.3}", target, value)
             }
+            Action::PostIntent {
+                source_id,
+                onset_sec,
+                duration_sec,
+                freq_hz,
+                amp,
+                tag,
+                confidence,
+            } => write!(
+                f,
+                "PostIntent src={} onset={:.3} dur={:.3} freq={:.1} amp={:.3} tag={:?} conf={:.2}",
+                source_id, onset_sec, duration_sec, freq_hz, amp, tag, confidence
+            ),
             Action::Finish => write!(f, "Finish"),
         }
     }

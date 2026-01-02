@@ -170,6 +170,10 @@ fn test_conductor_timing() {
     let mut conductor = Conductor::from_scenario(scenario);
     let mut pop = Population::new(48_000.0);
     let landscape = LandscapeFrame::default();
+    let mut world = crate::life::world_model::WorldModel::new(crate::core::timebase::Timebase {
+        fs: 48_000.0,
+        hop: 512,
+    });
 
     // 2. Dispatch at T=0.5 (Should NOT fire)
     conductor.dispatch_until(
@@ -178,6 +182,7 @@ fn test_conductor_timing() {
         &landscape,
         None::<&mut crate::core::stream::roughness::RoughnessStream>,
         &mut pop,
+        &mut world,
     );
     assert!(
         !pop.abort_requested,
@@ -191,6 +196,7 @@ fn test_conductor_timing() {
         &landscape,
         None::<&mut crate::core::stream::roughness::RoughnessStream>,
         &mut pop,
+        &mut world,
     );
     assert!(pop.abort_requested, "Finish action should fire at T=1.1");
 }

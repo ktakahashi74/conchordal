@@ -51,6 +51,7 @@ pub struct WorldModel {
     pub time: Timebase,
     pub now: Tick,
     pub board: IntentBoard,
+    pub next_intent_id: u64,
     pub percept_landscape: Option<LandscapeFrame>,
     pub dorsal_metrics: Option<DorsalMetrics>,
 }
@@ -63,6 +64,7 @@ impl WorldModel {
             time,
             now: 0,
             board: IntentBoard::new(retention_past, horizon_future),
+            next_intent_id: 0,
             percept_landscape: None,
             dorsal_metrics: None,
         }
@@ -88,6 +90,34 @@ impl WorldModel {
             past_ticks: past,
             future_ticks: future,
             intents,
+        }
+    }
+
+    pub fn apply_action(&mut self, action: &crate::life::scenario::Action) {
+        if let crate::life::scenario::Action::PostIntent {
+            source_id,
+            onset_sec,
+            duration_sec,
+            freq_hz,
+            amp,
+            tag,
+            confidence,
+        } = action
+        {
+            let onset_tick = self.time.sec_to_tick(onset_sec.max(0.0));
+            let dur_tick = self.time.sec_to_tick(duration_sec.max(0.0));
+            let intent = Intent {
+                source_id: *source_id,
+                intent_id: self.next_intent_id,
+                onset: onset_tick,
+                duration: dur_tick,
+                freq_hz: *freq_hz,
+                amp: *amp,
+                tag: tag.clone(),
+                confidence: *confidence,
+            };
+            self.next_intent_id = self.next_intent_id.wrapping_add(1);
+            self.board.publish(intent);
         }
     }
 }

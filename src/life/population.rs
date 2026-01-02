@@ -487,6 +487,7 @@ impl Population {
                     }
                 }
             }
+            Action::PostIntent { .. } => {}
         }
     }
 

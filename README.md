@@ -92,12 +92,11 @@ On Linux, you need `libasound2-dev` installed (ALSA headers required by `cpal`).
 Define the ecosystem's initial conditions using Rhai scripts as follows and save it as `sample.rhai`.
 
 ```rust
-let drones = spawn("drones", 5);
-set(drones[0], #{ freq: 220.0 });
-for a in drones {
-    set(a, #{ amp: 0.05 });
+for i in 0..5 {
+    spawn("a", 1);
+    wait(0.5);
 }
-end_at(10);
+end_at(5)
 ```
 
 then run the script with

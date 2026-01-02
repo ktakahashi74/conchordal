@@ -61,3 +61,13 @@ fn snapshot_clones_within_range() {
     let ids: Vec<_> = snap.iter().map(|i| i.intent_id).collect();
     assert_eq!(ids, vec![1, 2]);
 }
+
+#[test]
+fn publish_out_of_order_keeps_sorted() {
+    let mut board = IntentBoard::new(0, 0);
+    board.publish(make_intent(1, 20, 5));
+    board.publish(make_intent(2, 10, 5));
+    board.publish(make_intent(3, 15, 5));
+    let onsets: Vec<_> = board.query_range(0..100).map(|i| i.onset).collect();
+    assert_eq!(onsets, vec![10, 15, 20]);
+}

@@ -2,6 +2,8 @@ use super::individual::{AgentMetadata, AudioAgent, Individual, SoundBody};
 use super::scenario::{Action, IndividualConfig, SpawnMethod, TargetRef};
 use crate::core::landscape::{LandscapeFrame, LandscapeUpdate};
 use crate::core::log2space::Log2Space;
+use crate::core::timebase::Tick;
+use crate::life::world_model::WorldModel;
 use rand::{Rng, SeedableRng, distr::Distribution, distr::weighted::WeightedIndex, rngs::SmallRng};
 use std::hash::{Hash, Hasher};
 use tracing::{debug, info, warn};
@@ -94,6 +96,27 @@ impl Population {
 
     pub fn set_current_frame(&mut self, frame: u64) {
         self.current_frame = frame;
+    }
+
+    pub fn publish_intents(
+        &mut self,
+        world: &mut WorldModel,
+        landscape: &LandscapeFrame,
+        now: Tick,
+    ) {
+        let tb = &world.time;
+        let hop = tb.hop;
+        let mut intents = Vec::new();
+        for agent in &mut self.individuals {
+            if !agent.is_alive() {
+                continue;
+            }
+            intents.extend(agent.plan_intents(tb, now, hop, landscape));
+        }
+        intents.sort_by_key(|i| i.onset);
+        for intent in intents {
+            world.board.publish(intent);
+        }
     }
 
     fn resolve_target_ids(&self, target: &TargetRef) -> Vec<u64> {

@@ -1,6 +1,8 @@
 use crate::core::landscape::Landscape;
 use crate::core::log2space::Log2Space;
 use crate::core::modulation::NeuralRhythms;
+use crate::core::timebase::{Tick, Timebase};
+use crate::life::intent::Intent;
 use crate::life::perceptual::{FeaturesNow, PerceptualContext};
 use rand::rngs::SmallRng;
 
@@ -68,6 +70,8 @@ pub struct Individual {
     pub last_error_state: ErrorState,
     pub last_error_cents: f32,
     pub error_initialized: bool,
+    pub next_intent_tick: Tick,
+    pub intent_seq: u64,
     pub rng: SmallRng,
 }
 
@@ -137,6 +141,58 @@ impl Individual {
         self.release_pending = true;
         self.release_sec = release_sec.max(1e-4);
         self.release_gain = self.release_gain.clamp(0.0, 1.0);
+    }
+
+    pub fn plan_intents(
+        &mut self,
+        tb: &Timebase,
+        now: Tick,
+        hop: usize,
+        _landscape: &Landscape,
+    ) -> Vec<Intent> {
+        let hop_tick = hop as Tick;
+        let offset = (hop_tick / 2).max(1);
+        let mut next = self.next_intent_tick;
+        if next == 0 {
+            next = now.saturating_add(offset);
+        }
+
+        let period = hop_tick.saturating_mul(4).max(1);
+        let min_next = now.saturating_add(offset);
+        if next < min_next {
+            next = min_next;
+        }
+        let window_end = now.saturating_add(hop_tick);
+        let mut intents = Vec::new();
+        while next < window_end {
+            let mut dur_tick = tb.sec_to_tick(0.08);
+            if dur_tick == 0 {
+                dur_tick = 1;
+            }
+            let amp = self.base_amp().clamp(0.0, 1.0);
+            let freq_hz = self.body.base_freq_hz();
+            intents.push(Intent {
+                source_id: self.id,
+                intent_id: self.intent_seq,
+                onset: next,
+                duration: dur_tick,
+                freq_hz,
+                amp,
+                tag: Some(format!("agent:{}", self.id)),
+                confidence: 1.0,
+            });
+            self.intent_seq = self.intent_seq.wrapping_add(1);
+            next = next.saturating_add(period);
+        }
+        self.next_intent_tick = next;
+        intents
+    }
+
+    fn base_amp(&self) -> f32 {
+        match &self.body {
+            AnySoundBody::Sine(body) => body.amp,
+            AnySoundBody::Harmonic(body) => body.amp,
+        }
     }
 }
 

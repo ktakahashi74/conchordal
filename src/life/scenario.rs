@@ -361,6 +361,8 @@ impl IndividualConfig {
             last_error_state: Default::default(),
             last_error_cents: 0.0,
             error_initialized: false,
+            next_intent_tick: 0,
+            intent_seq: 0,
             rng,
         }
     }

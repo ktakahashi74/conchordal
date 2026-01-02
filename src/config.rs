@@ -122,6 +122,8 @@ pub struct PlaybackConfig {
     pub wait_user_start: bool,
     #[serde(default = "PlaybackConfig::default_intent_only")]
     pub intent_only: bool,
+    #[serde(default = "PlaybackConfig::default_agents_intent")]
+    pub agents_intent: bool,
 }
 
 impl PlaybackConfig {
@@ -134,6 +136,9 @@ impl PlaybackConfig {
     fn default_intent_only() -> bool {
         false
     }
+    fn default_agents_intent() -> bool {
+        false
+    }
 }
 
 impl Default for PlaybackConfig {
@@ -142,6 +147,7 @@ impl Default for PlaybackConfig {
             wait_user_exit: Self::default_wait_user_exit(),
             wait_user_start: Self::default_wait_user_start(),
             intent_only: Self::default_intent_only(),
+            agents_intent: Self::default_agents_intent(),
         }
     }
 }
@@ -285,6 +291,7 @@ mod tests {
                 wait_user_exit: false,
                 wait_user_start: true,
                 intent_only: true,
+                agents_intent: true,
             },
         };
         let text = toml::to_string_pretty(&custom).unwrap();
@@ -303,6 +310,7 @@ mod tests {
         assert!(!cfg.playback.wait_user_exit);
         assert!(cfg.playback.wait_user_start);
         assert!(cfg.playback.intent_only);
+        assert!(cfg.playback.agents_intent);
 
         let _ = fs::remove_file(&path);
     }

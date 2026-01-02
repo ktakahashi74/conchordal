@@ -39,27 +39,47 @@ impl IntentBoard {
     }
 
     pub fn publish(&mut self, intent: Intent) {
-        if let Some(last) = self.intents.back() {
-            debug_assert!(
-                last.onset <= intent.onset,
-                "IntentBoard expects non-decreasing onset order: last={} new={}",
-                last.onset,
-                intent.onset
-            );
+        if self.intents.is_empty() {
+            self.intents.push_back(intent);
+            return;
         }
-        self.intents.push_back(intent);
+
+        let push_back = self
+            .intents
+            .back()
+            .map_or(false, |last| last.onset <= intent.onset);
+        if push_back {
+            self.intents.push_back(intent);
+        } else if self
+            .intents
+            .front()
+            .map_or(false, |first| intent.onset < first.onset)
+        {
+            self.intents.push_front(intent);
+        } else {
+            let insert_at = self
+                .intents
+                .iter()
+                .position(|existing| existing.onset > intent.onset)
+                .unwrap_or(self.intents.len());
+            self.intents.insert(insert_at, intent);
+        }
+        debug_assert!(self.is_sorted_by_onset());
+    }
+
+    fn is_sorted_by_onset(&self) -> bool {
+        self.intents
+            .iter()
+            .zip(self.intents.iter().skip(1))
+            .all(|(a, b)| a.onset <= b.onset)
     }
 
     pub fn prune(&mut self, now_tick: Tick) {
         let min_keep_end = now_tick.saturating_sub(self.retention_past);
-        while let Some(front) = self.intents.front() {
-            let end = front.onset.saturating_add(front.duration);
-            if end < min_keep_end {
-                self.intents.pop_front();
-            } else {
-                break;
-            }
-        }
+        self.intents.retain(|intent| {
+            let end = intent.onset.saturating_add(intent.duration);
+            end >= min_keep_end
+        });
 
         let max_keep_onset = now_tick.saturating_add(self.horizon_future);
         while let Some(back) = self.intents.back() {

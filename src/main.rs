@@ -46,6 +46,9 @@ fn main() -> eframe::Result<()> {
     if let Some(val) = args.intent_only {
         config.playback.intent_only = val;
     }
+    if let Some(val) = args.agents_intent {
+        config.playback.agents_intent = val;
+    }
 
     let ext = Path::new(&args.scenario_path)
         .extension()

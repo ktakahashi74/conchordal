@@ -641,6 +641,7 @@ fn init_runtime(
                     roughness_from_analysis_rx,
                     roughness_tx,
                     config.playback.intent_only,
+                    config.playback.agents_intent,
                     hop,
                     hop_duration,
                     fs,
@@ -753,6 +754,7 @@ fn worker_loop(
     roughness_from_analysis_rx: Receiver<(u64, Landscape)>,
     roughness_tx: Sender<LandscapeUpdate>,
     intent_only: bool,
+    agents_intent: bool,
     hop: usize,
     hop_duration: Duration,
     fs: f32,
@@ -974,6 +976,9 @@ fn worker_loop(
                 &mut pop,
                 &mut world,
             );
+            if agents_intent {
+                pop.publish_intents(&mut world, &current_landscape, now_tick);
+            }
             dorsal.set_vitality(pop.global_vitality);
             if let Some(update) = pop.take_pending_update() {
                 apply_params_update(&mut lparams, &update);
@@ -1046,8 +1051,11 @@ fn worker_loop(
             let harmonicity_lag = last_h_analysis_frame.map(|id| frame_idx.saturating_sub(id));
             let roughness_lag = last_r_analysis_frame.map(|id| frame_idx.saturating_sub(id));
 
-            let finished_now =
-                pop.individuals.is_empty() && (conductor.is_done() || pop.abort_requested);
+            let finished_now = if intent_only && agents_intent && conductor.is_done() {
+                true
+            } else {
+                pop.individuals.is_empty() && (conductor.is_done() || pop.abort_requested)
+            };
             if finished_now {
                 playback_state = PlaybackState::Finished;
             }

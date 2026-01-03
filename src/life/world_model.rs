@@ -79,6 +79,7 @@ pub struct WorldModel {
     pub pred_params: Option<LandscapeParams>,
     pub pred_rhythm_bank: PredictiveRhythmBank,
     pub pred_rhythm_specs: Vec<RhythmBandSpec>,
+    pub timing_mode: TimingMode,
     pub plan_board: PlanBoard,
     pub next_gate_tick_est: Option<Tick>,
     pub last_committed_gate_tick: Option<Tick>,
@@ -106,6 +107,7 @@ impl WorldModel {
             pred_params: None,
             pred_rhythm_bank,
             pred_rhythm_specs,
+            timing_mode: TimingMode::Gate,
             plan_board: PlanBoard::new(),
             next_gate_tick_est: None,
             last_committed_gate_tick: None,
@@ -296,4 +298,12 @@ impl WorldModel {
             self.board.publish(intent);
         }
     }
+}
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum TimingMode {
+    /// v0: plan against the next gate and commit at gate ticks.
+    #[default]
+    Gate,
+    /// Legacy intent scheduling (tick-based).
+    Legacy,
 }

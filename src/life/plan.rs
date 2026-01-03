@@ -28,6 +28,7 @@ pub struct PlannedIntent {
     pub body: Option<BodySnapshot>,
 }
 
+/// Plan buffer for next-gate intents (converted to the schedule on commit).
 pub struct PlanBoard {
     next: BTreeMap<u64, PlannedIntent>,
 }

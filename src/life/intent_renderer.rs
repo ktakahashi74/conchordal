@@ -20,6 +20,7 @@ impl IntentRenderer {
         }
     }
 
+    /// Render scheduled intents from the IntentBoard (plans are committed before render).
     pub fn render(&mut self, board: &IntentBoard, now: Tick) -> &[f32] {
         let hop = self.time.hop;
         if self.buf.len() != hop {

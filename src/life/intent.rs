@@ -24,6 +24,7 @@ pub struct BodySnapshot {
     pub noise_mix: f32,
 }
 
+/// Schedule of committed intents (definitive timeline).
 pub struct IntentBoard {
     pub retention_past: Tick,
     pub horizon_future: Tick,

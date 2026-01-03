@@ -171,6 +171,7 @@ impl Individual {
         hop: usize,
         landscape: &Landscape,
         intents: &[Intent],
+        pred_rhythm: Option<&crate::life::predictive_rhythm::PredictiveRhythmBank>,
         pred_c_scan_at: &mut dyn FnMut(Tick) -> Option<std::sync::Arc<[f32]>>,
         agents_pitch: bool,
     ) -> Vec<Intent> {
@@ -185,9 +186,47 @@ impl Individual {
             horizon = 1;
         }
         horizon = horizon.max(hop_tick.saturating_mul(4).max(1));
-        let candidates = self.articulation.propose_onsets(tb, now, horizon);
+        let mut candidates = self.articulation.propose_onsets(tb, now, horizon);
         if candidates.is_empty() {
             return Vec::new();
+        }
+        if let Some(bank) = pred_rhythm {
+            if bank.is_informative(0.05) {
+                let mut scored: Vec<(Tick, f32)> = candidates
+                    .iter()
+                    .map(|&tick| (tick, bank.prior01_at_tick(tb, tick)))
+                    .collect();
+                scored.sort_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+                if cfg!(debug_assertions) && self.intent_seq.is_multiple_of(32) {
+                    let top_prior = scored.first().map(|(_, prior)| *prior).unwrap_or(0.0);
+                    let mut top_entries = String::new();
+                    for (i, (tick, prior)) in scored.iter().take(5).enumerate() {
+                        if i > 0 {
+                            top_entries.push_str(", ");
+                        }
+                        top_entries.push_str(&format!("{tick}:{prior:.3}"));
+                    }
+                    debug!(
+                        target: "rhythm::prior",
+                        "agent={} candidates={} top_prior={:.3} top5=[{}]",
+                        self.id,
+                        scored.len(),
+                        top_prior,
+                        top_entries
+                    );
+                }
+                let max_keep = 16usize;
+                let mut filtered: Vec<Tick> = scored
+                    .into_iter()
+                    .take(max_keep)
+                    .map(|(tick, _)| tick)
+                    .collect();
+                if filtered.is_empty() {
+                    filtered.push(candidates[0]);
+                }
+                filtered.sort_unstable();
+                candidates = filtered;
+            }
         }
         let mut eps = tb.sec_to_tick(0.01);
         if eps == 0 {

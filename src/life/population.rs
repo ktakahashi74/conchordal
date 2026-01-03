@@ -107,11 +107,13 @@ impl Population {
         perc_tick: Tick,
         agents_pitch: bool,
     ) {
+        world.update_pred_rhythm(now);
         let tb = &world.time;
         let hop = tb.hop;
         let past = world.board.retention_past;
         let future = world.board.horizon_future;
         let board_snapshot = world.board.snapshot(now, past, future);
+        let pred_rhythm = Some(&world.pred_rhythm_bank);
         let mut pred_c_cache: HashMap<Tick, std::sync::Arc<[f32]>> = HashMap::new();
         let mut pred_c_scan_at = |eval_tick: Tick| -> Option<std::sync::Arc<[f32]>> {
             if let Some(scan) = pred_c_cache.get(&eval_tick) {
@@ -140,6 +142,7 @@ impl Population {
                 hop,
                 landscape,
                 &board_snapshot,
+                pred_rhythm,
                 &mut pred_c_scan_at,
                 agents_pitch,
             ));

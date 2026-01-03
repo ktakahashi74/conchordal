@@ -128,6 +128,13 @@ We represent frequency-direction terrains as **Log2Space-aligned scans**.
 - Eval time defaults to onset + duration/2 to absorb perceptual latency.
 - Update rule: agreement01 = 1 - |err|/2, then lerp(self_confidence, agreement01, lr).
 
+## PredictiveRhythmBank (M7)
+
+- PredictiveRhythmBank is built from IntentBoard future onsets (pred-only).
+- Each band accumulates a complex sum from future onsets and decays by tau.
+- prior01 is based on phase alignment and band strength; no pred/perc mixing.
+- Onset candidates are prefiltered by prior01 before pred_c evaluation.
+
 
 ## Scenario Script Authoring
 **Keep simple things simple, and complex things possible.**

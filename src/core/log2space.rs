@@ -101,6 +101,16 @@ impl Log2Space {
         Some(idx)
     }
 
+    /// Map Hz to a continuous bin position (0..n_bins-1).
+    pub fn bin_pos_of_freq(&self, hz: f32) -> Option<f32> {
+        if !hz.is_finite() || hz < self.fmin || hz > self.fmax {
+            return None;
+        }
+        let l = hz.log2();
+        let pos = (l - self.centers_log2[0]) / self.step_log2;
+        if pos.is_finite() { Some(pos) } else { None }
+    }
+
     /// Find nearest bin index for a log2(Hz) coordinate.
     pub fn index_of_log2(&self, log2_hz: f32) -> Option<usize> {
         let hz = 2f32.powf(log2_hz);

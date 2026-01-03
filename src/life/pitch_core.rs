@@ -25,7 +25,7 @@ pub trait PitchCore {
     ) -> TargetProposal;
 
     fn propose_freqs_hz(&mut self, base_freq_hz: f32, k: usize) -> Vec<f32> {
-        self.propose_freqs_hz_with_neighbors(base_freq_hz, &[], k, k.min(8).max(1), 12.0)
+        self.propose_freqs_hz_with_neighbors(base_freq_hz, &[], k, k.clamp(1, 8), 12.0)
     }
 
     fn propose_freqs_hz_with_neighbors(

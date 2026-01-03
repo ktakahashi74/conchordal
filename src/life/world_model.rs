@@ -2,6 +2,7 @@ use crate::core::landscape::LandscapeFrame;
 use crate::core::stream::dorsal::DorsalMetrics;
 use crate::core::timebase::{Tick, Timebase};
 use crate::life::intent::{Intent, IntentBoard};
+use crate::life::predictive_spectrum::{PredKernelInputs, build_pred_kernel_inputs_from_intents};
 
 #[derive(Clone, Debug)]
 pub struct IntentView {
@@ -91,6 +92,21 @@ impl WorldModel {
             future_ticks: future,
             intents,
         }
+    }
+
+    pub fn pred_kernel_inputs_at(&self, eval_tick: Tick) -> PredKernelInputs {
+        let Some(landscape) = self.percept_landscape.as_ref() else {
+            debug_assert!(false, "pred_kernel_inputs_at requires percept_landscape");
+            return PredKernelInputs {
+                eval_tick,
+                pred_env_scan: Vec::new(),
+                pred_den_scan: Vec::new(),
+            };
+        };
+        let past = self.board.retention_past;
+        let future = self.board.horizon_future;
+        let intents = self.board.snapshot(eval_tick, past, future);
+        build_pred_kernel_inputs_from_intents(&landscape.space, &intents, eval_tick)
     }
 
     pub fn apply_action(&mut self, action: &crate::life::scenario::Action) {

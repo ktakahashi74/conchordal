@@ -212,12 +212,18 @@ impl Landscape {
             1.0,
             &mut self.harmonicity01,
         );
-        for i in 0..self.consonance.len() {
-            let h01 = self.harmonicity01[i];
-            let r01 = perc_r_state01_scan[i];
-            let (c_signed, c01) = crate::core::psycho_state::compose_c_statepm1(h01, r01, w_r);
-            self.consonance[i] = c_signed;
-            self.consonance01[i] = c01.clamp(0.0, 1.0);
+        debug_assert_eq!(self.harmonicity01.len(), self.consonance.len());
+        debug_assert_eq!(perc_r_state01_scan.len(), self.consonance.len());
+        for ((c_signed, c01), (h01, r01)) in self
+            .consonance
+            .iter_mut()
+            .zip(self.consonance01.iter_mut())
+            .zip(self.harmonicity01.iter().zip(perc_r_state01_scan.iter()))
+        {
+            let (c_signed_val, c01_val) =
+                crate::core::psycho_state::compose_c_statepm1(*h01, *r01, w_r);
+            *c_signed = c_signed_val;
+            *c01 = c01_val.clamp(0.0, 1.0);
         }
     }
 

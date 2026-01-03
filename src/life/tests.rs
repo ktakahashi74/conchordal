@@ -1330,6 +1330,7 @@ fn render_wave_uses_dt_per_sample_for_seq_core() {
         last_error_state: Default::default(),
         last_error_cents: 0.0,
         error_initialized: false,
+        last_chosen_freq_hz: 220.0,
         next_intent_tick: 0,
         intent_seq: 0,
         rng: rand::rngs::SmallRng::seed_from_u64(9),

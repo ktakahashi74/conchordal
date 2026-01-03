@@ -12,7 +12,9 @@
     "src/**/*.rs",
     "samples/**/*.rhai",
     "Cargo.toml",
-    "docs/**/*.md"
+      "docs/**/*.md",
+      "tests/**/*.rs",
+      "tests/**/*.rhai",
   ],
   "ignore": {
     "useGitignore": true,

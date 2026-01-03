@@ -3,7 +3,7 @@ use crate::core::log2space::Log2Space;
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
 use crate::life::intent::{BodySnapshot, Intent};
-use crate::life::intent_planner::choose_onset_by_density;
+use crate::life::intent_planner::{choose_freq_by_consonance, choose_onset_by_density};
 use crate::life::perceptual::{FeaturesNow, PerceptualContext};
 use rand::rngs::SmallRng;
 use tracing::debug;
@@ -72,6 +72,7 @@ pub struct Individual {
     pub last_error_state: ErrorState,
     pub last_error_cents: f32,
     pub error_initialized: bool,
+    pub last_chosen_freq_hz: f32,
     pub next_intent_tick: Tick,
     pub intent_seq: u64,
     pub rng: SmallRng,
@@ -86,6 +87,7 @@ impl Individual {
         let log_freq = log_freq.max(0.0);
         self.body.set_pitch_log2(log_freq);
         self.target_pitch_log2 = log_freq;
+        self.last_chosen_freq_hz = self.body.base_freq_hz();
         self.articulation.set_gate(1.0);
         self.accumulated_time = 0.0;
         self.last_theta_sample = 0.0;
@@ -152,13 +154,14 @@ impl Individual {
         hop: usize,
         _landscape: &Landscape,
         intents: &[Intent],
+        agents_pitch: bool,
     ) -> Vec<Intent> {
         let hop_tick = hop as Tick;
         if self.next_intent_tick != 0 && now < self.next_intent_tick {
             return Vec::new();
         }
 
-        let mut horizon = tb.sec_to_tick(1.0);
+        let mut horizon = tb.sec_to_tick(2.0);
         if horizon == 0 {
             horizon = 1;
         }
@@ -176,7 +179,7 @@ impl Individual {
         let Some(chosen) = chosen else {
             return Vec::new();
         };
-        if cfg!(debug_assertions) && self.intent_seq % 32 == 0 {
+        if cfg!(debug_assertions) && self.intent_seq.is_multiple_of(32) {
             let min = chosen.saturating_sub(eps);
             let max = chosen.saturating_add(eps);
             let density = intents
@@ -198,7 +201,39 @@ impl Individual {
             dur_tick = 1;
         }
         let amp = 1.0;
-        let freq_hz = self.body.base_freq_hz();
+        let base_freq_hz = if self.last_chosen_freq_hz > 0.0 && self.last_chosen_freq_hz.is_finite()
+        {
+            self.last_chosen_freq_hz
+        } else {
+            self.body.base_freq_hz()
+        };
+        let mut freq_hz = base_freq_hz;
+        if agents_pitch {
+            let mut freq_eps = tb.sec_to_tick(0.01);
+            if freq_eps == 0 {
+                freq_eps = 1;
+            }
+            let min = chosen.saturating_sub(freq_eps);
+            let max = chosen.saturating_add(freq_eps);
+            let neighbors: Vec<f32> = intents
+                .iter()
+                .filter(|intent| intent.onset >= min && intent.onset <= max)
+                .filter_map(|intent| {
+                    if intent.freq_hz.is_finite() && intent.freq_hz > 0.0 {
+                        Some(intent.freq_hz)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            let candidates_hz = self.pitch.propose_freqs_hz(base_freq_hz, 9);
+            if let Some(chosen_hz) =
+                choose_freq_by_consonance(&candidates_hz, &neighbors, base_freq_hz)
+            {
+                freq_hz = chosen_hz.clamp(20.0, 20_000.0);
+            }
+        }
+        self.last_chosen_freq_hz = freq_hz;
         let snapshot = self.body_snapshot();
         let kind = snapshot.kind.clone();
         let intent = Intent {

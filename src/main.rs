@@ -49,6 +49,9 @@ fn main() -> eframe::Result<()> {
     if let Some(val) = args.agents_intent {
         config.playback.agents_intent = val;
     }
+    if let Some(val) = args.agents_pitch {
+        config.playback.agents_pitch = val;
+    }
 
     let ext = Path::new(&args.scenario_path)
         .extension()

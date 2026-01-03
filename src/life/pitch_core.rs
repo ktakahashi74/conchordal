@@ -22,6 +22,8 @@ pub trait PitchCore {
         _features: &FeaturesNow,
         rng: &mut R,
     ) -> TargetProposal;
+
+    fn propose_freqs_hz(&mut self, base_freq_hz: f32, k: usize) -> Vec<f32>;
 }
 
 #[derive(Debug, Clone)]
@@ -132,6 +134,28 @@ impl PitchCore for PitchHillClimbPitchCore {
             salience: (improvement / 0.2).clamp(0.0, 1.0),
         }
     }
+
+    fn propose_freqs_hz(&mut self, base_freq_hz: f32, k: usize) -> Vec<f32> {
+        if k == 0 || !base_freq_hz.is_finite() || base_freq_hz <= 0.0 {
+            return Vec::new();
+        }
+        // Placeholder semitone offsets until PitchCore exposes richer candidate generation.
+        let steps = [
+            -12.0, -9.0, -8.0, -7.0, -6.0, -5.0, -4.0, -3.0, -2.0, 0.0, 2.0, 3.0, 4.0, 5.0, 6.0,
+            7.0, 8.0, 9.0, 12.0,
+        ];
+        let mut out = Vec::with_capacity(k.min(steps.len()));
+        for &step in &steps {
+            if out.len() >= k {
+                break;
+            }
+            let freq = base_freq_hz * 2.0f32.powf(step / 12.0);
+            if freq.is_finite() && freq > 0.0 {
+                out.push(freq);
+            }
+        }
+        out
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -162,6 +186,12 @@ impl PitchCore for AnyPitchCore {
                 features,
                 rng,
             ),
+        }
+    }
+
+    fn propose_freqs_hz(&mut self, base_freq_hz: f32, k: usize) -> Vec<f32> {
+        match self {
+            AnyPitchCore::PitchHillClimb(core) => core.propose_freqs_hz(base_freq_hz, k),
         }
     }
 }

@@ -642,6 +642,7 @@ fn init_runtime(
                     roughness_tx,
                     config.playback.intent_only,
                     config.playback.agents_intent,
+                    config.playback.agents_pitch,
                     hop,
                     hop_duration,
                     fs,
@@ -755,6 +756,7 @@ fn worker_loop(
     roughness_tx: Sender<LandscapeUpdate>,
     intent_only: bool,
     agents_intent: bool,
+    agents_pitch: bool,
     hop: usize,
     hop_duration: Duration,
     fs: f32,
@@ -977,7 +979,7 @@ fn worker_loop(
                 &mut world,
             );
             if agents_intent {
-                pop.publish_intents(&mut world, &current_landscape, now_tick);
+                pop.publish_intents(&mut world, &current_landscape, now_tick, agents_pitch);
             }
             dorsal.set_vitality(pop.global_vitality);
             if let Some(update) = pop.take_pending_update() {

@@ -103,6 +103,7 @@ impl Population {
         world: &mut WorldModel,
         landscape: &LandscapeFrame,
         now: Tick,
+        agents_pitch: bool,
     ) {
         let tb = &world.time;
         let hop = tb.hop;
@@ -114,7 +115,14 @@ impl Population {
             if !agent.is_alive() {
                 continue;
             }
-            intents.extend(agent.plan_intents(tb, now, hop, landscape, &board_snapshot));
+            intents.extend(agent.plan_intents(
+                tb,
+                now,
+                hop,
+                landscape,
+                &board_snapshot,
+                agents_pitch,
+            ));
         }
         intents.sort_by_key(|i| i.onset);
         for intent in intents {

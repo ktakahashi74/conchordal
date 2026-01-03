@@ -34,7 +34,7 @@ fn agents_publish_intents_and_render_audio() {
     let landscape = Landscape::new(space);
 
     world.advance_to(0);
-    pop.publish_intents(&mut world, &landscape, 0);
+    pop.publish_intents(&mut world, &landscape, 0, false);
     assert!(world.board.len() > 0);
 
     let first_intent = world

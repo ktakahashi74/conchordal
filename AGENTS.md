@@ -97,6 +97,13 @@ We represent frequency-direction terrains as **Log2Space-aligned scans**.
 - `_log2`: log2-frequency coordinate
 - `_idx` / `_bin`: bin index into Log2Space scans
 
+## PitchCore candidate generation policy
+
+- Prefer neighbors × `core::harmonic_ratios::HARMONIC_RATIOS` (contextual ratios) as candidates.
+- Use fallback semitone steps only when contextual candidates are insufficient.
+- The ratio set is shared with harmonicity; do not introduce a separate ratio list.
+- Candidate generation operates in Hz; any terrain evaluation maps into Log2Space bins.
+
 
 ## Scenario Script Authoring
 **Keep simple things simple, and complex things possible.**

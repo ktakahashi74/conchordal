@@ -55,16 +55,7 @@ pub fn choose_freq_by_consonance(
         return valid_candidates.first().copied();
     }
 
-    let ratios = [
-        1.0,
-        2.0,
-        1.5,
-        4.0 / 3.0,
-        5.0 / 4.0,
-        6.0 / 5.0,
-        5.0 / 3.0,
-        8.0 / 5.0,
-    ];
+    let ratios = crate::core::harmonic_ratios::HARMONIC_RATIOS;
     let neighbors: Vec<f32> = neighbor_freqs_hz
         .iter()
         .copied()
@@ -82,8 +73,9 @@ pub fn choose_freq_by_consonance(
         for nf in &neighbors {
             let ratio = if cand >= *nf { cand / *nf } else { *nf / cand };
             let mut best_cents = f32::INFINITY;
-            for &target in &ratios {
-                let cents = 1200.0 * (ratio / target).log2();
+            for &target in ratios {
+                let target_ratio = crate::core::harmonic_ratios::ratio_to_f32(target);
+                let cents = 1200.0 * (ratio / target_ratio).log2();
                 let abs_cents = cents.abs();
                 if abs_cents < best_cents {
                     best_cents = abs_cents;

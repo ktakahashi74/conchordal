@@ -226,7 +226,9 @@ impl Individual {
                     }
                 })
                 .collect();
-            let candidates_hz = self.pitch.propose_freqs_hz(base_freq_hz, 9);
+            let candidates_hz =
+                self.pitch
+                    .propose_freqs_hz_with_neighbors(base_freq_hz, &neighbors, 16, 8, 12.0);
             if let Some(chosen_hz) =
                 choose_freq_by_consonance(&candidates_hz, &neighbors, base_freq_hz)
             {

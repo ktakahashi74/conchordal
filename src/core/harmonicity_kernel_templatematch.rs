@@ -351,8 +351,8 @@ mod tests {
         let space = Log2Space::new(55.0, 3520.0, 48);
         let hk = HarmonicityKernel::new(&space, HarmonicityParams::default());
         let (mu, _w, _s) = hk.ratios_debug();
-        let targets = [1.0, 3.0 / 2.0, 4.0 / 3.0, 5.0 / 4.0, 6.0 / 5.0, 5.0 / 3.0];
-        for r in targets {
+        for &ratio in crate::core::harmonic_ratios::HARMONIC_RATIOS {
+            let r = crate::core::harmonic_ratios::ratio_to_f32(ratio);
             let m = log2f(r);
             let ok = mu
                 .iter()

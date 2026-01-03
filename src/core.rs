@@ -3,6 +3,7 @@ pub mod db;
 pub mod density;
 pub mod erb;
 pub mod fft;
+pub mod harmonic_ratios;
 pub mod harmonicity_kernel;
 pub mod harmonicity_worker;
 pub mod landscape;

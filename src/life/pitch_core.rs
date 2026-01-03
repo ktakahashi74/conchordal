@@ -1,3 +1,4 @@
+use crate::core::harmonic_ratios::{HARMONIC_RATIOS, fold_to_octave_near, ratio_to_f32};
 use crate::core::landscape::Landscape;
 use crate::life::perceptual::{FeaturesNow, PerceptualContext};
 use crate::life::scenario::PitchCoreConfig;
@@ -23,7 +24,18 @@ pub trait PitchCore {
         rng: &mut R,
     ) -> TargetProposal;
 
-    fn propose_freqs_hz(&mut self, base_freq_hz: f32, k: usize) -> Vec<f32>;
+    fn propose_freqs_hz(&mut self, base_freq_hz: f32, k: usize) -> Vec<f32> {
+        self.propose_freqs_hz_with_neighbors(base_freq_hz, &[], k, k.min(8).max(1), 12.0)
+    }
+
+    fn propose_freqs_hz_with_neighbors(
+        &mut self,
+        base_freq_hz: f32,
+        neighbor_freqs_hz: &[f32],
+        max_candidates: usize,
+        min_candidates: usize,
+        dedupe_cents: f32,
+    ) -> Vec<f32>;
 }
 
 #[derive(Debug, Clone)]
@@ -135,27 +147,90 @@ impl PitchCore for PitchHillClimbPitchCore {
         }
     }
 
-    fn propose_freqs_hz(&mut self, base_freq_hz: f32, k: usize) -> Vec<f32> {
-        if k == 0 || !base_freq_hz.is_finite() || base_freq_hz <= 0.0 {
+    fn propose_freqs_hz_with_neighbors(
+        &mut self,
+        base_freq_hz: f32,
+        neighbor_freqs_hz: &[f32],
+        max_candidates: usize,
+        min_candidates: usize,
+        dedupe_cents: f32,
+    ) -> Vec<f32> {
+        if max_candidates == 0 || !base_freq_hz.is_finite() || base_freq_hz <= 0.0 {
             return Vec::new();
         }
-        // Placeholder semitone offsets until PitchCore exposes richer candidate generation.
-        let steps = [
-            -12.0, -9.0, -8.0, -7.0, -6.0, -5.0, -4.0, -3.0, -2.0, 0.0, 2.0, 3.0, 4.0, 5.0, 6.0,
-            7.0, 8.0, 9.0, 12.0,
-        ];
-        let mut out = Vec::with_capacity(k.min(steps.len()));
-        for &step in &steps {
-            if out.len() >= k {
-                break;
-            }
-            let freq = base_freq_hz * 2.0f32.powf(step / 12.0);
-            if freq.is_finite() && freq > 0.0 {
-                out.push(freq);
+        let mut candidates = Vec::new();
+        let lo = base_freq_hz * 0.5;
+        let hi = base_freq_hz * 2.0;
+
+        if !neighbor_freqs_hz.is_empty() {
+            for &neighbor in neighbor_freqs_hz {
+                if !neighbor.is_finite() || neighbor <= 0.0 {
+                    continue;
+                }
+                for &ratio in HARMONIC_RATIOS {
+                    let r = ratio_to_f32(ratio);
+                    let forward = fold_to_octave_near(neighbor * r, base_freq_hz, lo, hi);
+                    let inverse = fold_to_octave_near(neighbor / r, base_freq_hz, lo, hi);
+                    candidates.push(forward);
+                    candidates.push(inverse);
+                }
             }
         }
-        out
+
+        candidates = dedupe_by_cents(candidates, dedupe_cents);
+        candidates.sort_by(|a, b| cmp_by_base(*a, *b, base_freq_hz));
+
+        if candidates.len() < min_candidates {
+            let steps = [
+                -12.0, -9.0, -7.0, -5.0, -4.0, -3.0, -2.0, 0.0, 2.0, 3.0, 4.0, 5.0, 7.0, 9.0, 12.0,
+            ];
+            for &step in &steps {
+                let freq = base_freq_hz * 2.0f32.powf(step / 12.0);
+                let folded = fold_to_octave_near(freq, base_freq_hz, lo, hi);
+                candidates.push(folded);
+            }
+            candidates = dedupe_by_cents(candidates, dedupe_cents);
+            candidates.sort_by(|a, b| cmp_by_base(*a, *b, base_freq_hz));
+        }
+
+        candidates
+            .into_iter()
+            .filter(|f| f.is_finite() && *f > 0.0 && *f >= 20.0 && *f <= 20_000.0)
+            .take(max_candidates)
+            .collect()
     }
+}
+
+fn dedupe_by_cents(mut freqs: Vec<f32>, dedupe_cents: f32) -> Vec<f32> {
+    if freqs.is_empty() {
+        return freqs;
+    }
+    freqs.retain(|f| f.is_finite() && *f > 0.0);
+    freqs.sort_by(|a, b| a.total_cmp(b));
+    let mut out = Vec::with_capacity(freqs.len());
+    let mut last: Option<f32> = None;
+    for f in freqs {
+        if let Some(prev) = last {
+            let cents = 1200.0f32 * (f / prev).log2().abs();
+            if cents < dedupe_cents {
+                continue;
+            }
+        }
+        last = Some(f);
+        out.push(f);
+    }
+    out
+}
+
+fn cmp_by_base(a: f32, b: f32, base: f32) -> std::cmp::Ordering {
+    let base = if base.is_finite() && base > 0.0 {
+        base
+    } else {
+        1.0
+    };
+    let da = (a / base).log2().abs();
+    let db = (b / base).log2().abs();
+    da.total_cmp(&db).then_with(|| a.total_cmp(&b))
 }
 
 #[derive(Debug, Clone)]
@@ -189,9 +264,22 @@ impl PitchCore for AnyPitchCore {
         }
     }
 
-    fn propose_freqs_hz(&mut self, base_freq_hz: f32, k: usize) -> Vec<f32> {
+    fn propose_freqs_hz_with_neighbors(
+        &mut self,
+        base_freq_hz: f32,
+        neighbor_freqs_hz: &[f32],
+        max_candidates: usize,
+        min_candidates: usize,
+        dedupe_cents: f32,
+    ) -> Vec<f32> {
         match self {
-            AnyPitchCore::PitchHillClimb(core) => core.propose_freqs_hz(base_freq_hz, k),
+            AnyPitchCore::PitchHillClimb(core) => core.propose_freqs_hz_with_neighbors(
+                base_freq_hz,
+                neighbor_freqs_hz,
+                max_candidates,
+                min_candidates,
+                dedupe_cents,
+            ),
         }
     }
 }

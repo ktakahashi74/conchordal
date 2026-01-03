@@ -17,7 +17,7 @@ pub struct LandscapeParams {
     pub roughness_scalar_mode: RoughnessScalarMode,
     /// Half-saturation point for roughness range compression (legacy).
     pub roughness_half: f32,
-    /// Roughness penalty weight in consonance01.
+    /// Weight for perc_potential_R when computing consonance01 (H - w*R).
     pub consonance_roughness_weight: f32,
 
     /// Exponent for subjective intensity (≈ specific loudness). Typical: 0.23
@@ -57,18 +57,27 @@ pub enum RoughnessScalarMode {
 }
 
 /// Pure data snapshot for UI and agent evaluation.
+/// Values here are perceptual (perc_*) unless stated otherwise.
 #[derive(Clone, Debug)]
 pub struct Landscape {
     pub space: Log2Space,
+    /// perc_potential_R over log2 frequency.
     pub roughness: Vec<f32>,
+    /// Raw shape for perc_potential_R normalization.
     pub roughness_shape_raw: Vec<f32>,
+    /// Normalized perc_potential_R [0, 1].
     pub roughness01: Vec<f32>,
+    /// perc_potential_H over log2 frequency.
     pub harmonicity: Vec<f32>,
+    /// Normalized perc_potential_H [0, 1].
     pub harmonicity01: Vec<f32>,
+    /// Combined perc_potential_H - w*perc_potential_R.
     pub consonance: Vec<f32>,
+    /// Normalized combined consonance [0, 1].
     pub consonance01: Vec<f32>,
     pub subjective_intensity: Vec<f32>,
     pub nsgt_power: Vec<f32>,
+    /// perc_state_R (summary statistics).
     pub roughness_total: f32,
     pub roughness_max: f32,
     pub roughness_p95: f32,

@@ -159,7 +159,7 @@ impl NsgtLog2 {
         out
     }
 
-    /// Mean envelope magnitude per band (for potential-R roughness kernels).
+    /// Mean envelope magnitude per band (for perc_potential_R roughness kernels).
     pub fn analyze_envelope(&self, signal: &[f32]) -> Vec<f32> {
         let bands = self.analyze(signal);
         let amps: Vec<f32> = bands
@@ -175,7 +175,7 @@ impl NsgtLog2 {
         amps
     }
 
-    /// Representative analytic vector per band (for potential-C consonance kernels).
+    /// Representative analytic vector per band (for perc_potential_H kernels).
     pub fn analyze_flattened(&self, signal: &[f32]) -> Vec<Complex32> {
         self.analyze(signal)
             .iter()

@@ -870,7 +870,7 @@ fn worker_loop(
             pop.set_current_frame(frame_idx);
 
             // Keep analysis aligned to generated frames: allow 1-frame delay, but do not advance
-            // more than that. This keeps `C/R/H` coherent for population dynamics.
+            // more than that. This keeps perc_* (R/H) coherent for population dynamics.
             let required_prev = frame_idx.saturating_sub(1);
             loop {
                 // Merge analysis results (latest-only) into the landscape.

@@ -1,5 +1,5 @@
-//! core/roughness_kernel.rs — Roughness R via ERB-domain kernel convolution.
-//! Computes frequency-space roughness landscape by convolving the
+//! core/roughness_kernel.rs — perc_potential_R via ERB-domain kernel convolution.
+//! Computes frequency-space roughness potential by convolving the
 //! envelope energy using an asymmetric kernel.
 //! density: per-ERB power density; mass: sum(density * du) over ERB.
 
@@ -234,7 +234,7 @@ impl RoughnessKernel {
         self.potential_r_from_spectrum(&amps, fs)
     }
 
-    /// Compute roughness potential R from log2-domain amplitude spectrum (NSGT).
+    /// Compute perc_potential_R roughness from log2-domain amplitude spectrum (NSGT).
     /// Input values are ERB power densities (mass per ERB), so the internal
     /// accumulation performs a du-weighted integral. This models the potential
     /// roughness increase from adding a unit pure tone.
@@ -298,7 +298,7 @@ impl RoughnessKernel {
         self.potential_r_from_log2_spectrum_density(amps, space)
     }
 
-    /// Compute roughness potential R from delta peaks (pure-tone interactions).
+    /// Compute perc_potential_R roughness from delta peaks (pure-tone interactions).
     /// Each peak mass is the ERB-integrated area (sum of density * du).
     pub fn potential_r_from_peaks(&self, peaks: &[Peak], space: &Log2Space) -> Vec<f32> {
         if peaks.is_empty() || space.centers_hz.is_empty() {

@@ -43,6 +43,42 @@
   1. **Roughness (R)**: Amplitude fluctuations within critical bands (dissonance).
   2. **Harmonicity (H)**: Periodicity/Template matching (consonance/fusion).
 
+
+## Terminology: predictive/perceptual vs potential/state (R/H)
+
+We use two orthogonal axes. Do not mix them.
+
+### Axis A: WorldModel layer (origin)
+- **predictive** (`pred_*`): hypothesis derived from IntentBoard / internal model (zero-latency).
+- **perceptual** (`perc_*`): evidence derived from actual audio analysis (NSGT/filterbank; delayed).
+- **error** (`err_*`): `err_* = perc_* - pred_*`.
+
+`perceptual` is reserved for this axis only.
+
+### Axis B: metric type (what question it answers)
+- **state** (`*_state_*`): “about the sound itself” (intrinsic/current property; usually scalar summaries).
+- **potential** (`*_potential_*`): “action-conditioned probe field” over candidate pitches.
+  - `potential_R(f)`: marginal roughness added by inserting a unit pure tone at pitch `f`.
+  - `potential_H(f)`: harmonicity/resonance scan over candidate `f` (root/tonal fit field).
+
+Potential is computed from a spectrum; it becomes `pred_` or `perc_` depending on which spectrum is used.
+
+### Naming rule (avoid ambiguity)
+Never say “perceptual R/H” without qualifiers.
+Always specify BOTH axes, e.g.:
+- `perc_state_R`, `pred_state_R`
+- `perc_potential_R`, `pred_potential_H`
+- `err_potential_R = perc_potential_R - pred_potential_R`
+
+### Mapping to current code (Landscape)
+`Landscape` currently comes from audio analysis => conceptually `perc_*`.
+- `Landscape.roughness`, `roughness01` => `perc_potential_R`
+- `Landscape.harmonicity`, `harmonicity01` => `perc_potential_H`
+- `Landscape.roughness_total/max/p95/roughness01_scalar` => `perc_state_R` (summary)
+
+
+
+
 ## Scenario Script Authoring
 **Keep simple things simple, and complex things possible.**
 

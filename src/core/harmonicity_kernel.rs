@@ -1,7 +1,7 @@
 //! core/harmonicity_kernel.rs
 //! Common Root (Sibling) Harmonicity Kernel on Log2Space.
 //!
-//! This implementation generates a consonance landscape based on the physiological
+//! This implementation generates a perc_potential_H landscape based on the physiological
 //! mechanism of "Common Root" detection (approximating autocorrelation).
 //!
 //! Algorithm: "Sibling Projection"

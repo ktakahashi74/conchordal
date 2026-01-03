@@ -30,7 +30,7 @@ pub fn choose_freq_by_consonance(
     base_freq_hz: f32,
 ) -> Option<f32> {
     // Placeholder: consonance proxy using simple ratio fit to nearby intents.
-    // Roughness/energy interactions are not modeled here yet.
+    // This is not R/H consonance (no roughness term, no spectrum interactions).
     let mut valid_candidates: Vec<f32> = candidates_hz
         .iter()
         .copied()

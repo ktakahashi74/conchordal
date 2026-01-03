@@ -1,4 +1,9 @@
+use crate::core::landscape::LandscapeParams;
 use crate::core::log2space::Log2Space;
+use crate::core::psycho_state::{
+    compose_c_statepm1_scan, compute_roughness_reference, h_pot_scan_to_h_state01_scan,
+    r_pot_scan_to_r_state01_scan,
+};
 use crate::core::roughness_kernel::erb_grid;
 use crate::core::timebase::Tick;
 use crate::life::intent::Intent;
@@ -8,6 +13,18 @@ pub struct PredKernelInputs {
     pub eval_tick: Tick,
     pub pred_env_scan: Vec<f32>,
     pub pred_den_scan: Vec<f32>,
+}
+
+#[derive(Clone, Debug)]
+pub struct PredTerrain {
+    pub eval_tick: Tick,
+    pub pred_env_scan: Vec<f32>,
+    pub pred_den_scan: Vec<f32>,
+    pub pred_h_pot_scan: Vec<f32>,
+    pub pred_r_pot_scan: Vec<f32>,
+    pub pred_h_state01_scan: Vec<f32>,
+    pub pred_r_state01_scan: Vec<f32>,
+    pub pred_c_statepm1_scan: Vec<f32>,
 }
 
 pub fn build_pred_kernel_inputs_from_intents(
@@ -35,6 +52,60 @@ pub fn build_pred_kernel_inputs_from_intents(
         eval_tick,
         pred_env_scan,
         pred_den_scan,
+    }
+}
+
+pub fn build_pred_terrain_from_intents(
+    space: &Log2Space,
+    params: &LandscapeParams,
+    intents: &[Intent],
+    eval_tick: Tick,
+) -> PredTerrain {
+    let inputs = build_pred_kernel_inputs_from_intents(space, intents, eval_tick);
+    let (pred_h_pot_scan, _) = params
+        .harmonicity_kernel
+        .potential_h_from_log2_spectrum(&inputs.pred_env_scan, space);
+    let (pred_r_pot_scan, _) = params
+        .roughness_kernel
+        .potential_r_from_log2_spectrum_density(&inputs.pred_den_scan, space);
+
+    let mut pred_h_state01_scan = vec![0.0f32; pred_h_pot_scan.len()];
+    let mut pred_r_state01_scan = vec![0.0f32; pred_r_pot_scan.len()];
+    let mut pred_c_statepm1_scan = vec![0.0f32; pred_h_pot_scan.len()];
+
+    let h_ref_max = pred_h_pot_scan.iter().copied().fold(0.0f32, f32::max);
+    let h_ref_max = if h_ref_max.is_finite() && h_ref_max > 0.0 {
+        h_ref_max
+    } else {
+        1.0
+    };
+    h_pot_scan_to_h_state01_scan(&pred_h_pot_scan, h_ref_max, &mut pred_h_state01_scan);
+
+    let rough_ref = compute_roughness_reference(params, space);
+    let rough_k = params.roughness_k.max(1e-6);
+    r_pot_scan_to_r_state01_scan(
+        &pred_r_pot_scan,
+        rough_ref.peak,
+        rough_k,
+        &mut pred_r_state01_scan,
+    );
+
+    compose_c_statepm1_scan(
+        &pred_h_state01_scan,
+        &pred_r_state01_scan,
+        params.consonance_roughness_weight,
+        &mut pred_c_statepm1_scan,
+    );
+
+    PredTerrain {
+        eval_tick,
+        pred_env_scan: inputs.pred_env_scan,
+        pred_den_scan: inputs.pred_den_scan,
+        pred_h_pot_scan,
+        pred_r_pot_scan,
+        pred_h_state01_scan,
+        pred_r_state01_scan,
+        pred_c_statepm1_scan,
     }
 }
 

@@ -104,6 +104,14 @@ We represent frequency-direction terrains as **Log2Space-aligned scans**.
 - The ratio set is shared with harmonicity; do not introduce a separate ratio list.
 - Candidate generation operates in Hz; any terrain evaluation maps into Log2Space bins.
 
+## Step3 pitch choice (pred_c)
+
+- Step3 replaces only frequency choice; onset selection remains unchanged until Step4.
+- Frequency candidates are in Hz; evaluation uses Log2Space linear interpolation on `pred_c_statepm1_scan`.
+- Selection is argmax over candidates; ties resolve by:
+  score → smaller |log2(freq/base)| → lower freq.
+- Determinism is required; avoid random tie-breaks.
+
 
 ## Scenario Script Authoring
 **Keep simple things simple, and complex things possible.**

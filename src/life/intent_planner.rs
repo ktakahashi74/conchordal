@@ -1,3 +1,4 @@
+use crate::core::log2space::{Log2Space, sample_scan_linear_log2};
 use crate::core::timebase::Tick;
 use crate::life::intent::Intent;
 
@@ -102,4 +103,54 @@ pub fn choose_freq_by_consonance(
         }
     }
     Some(best)
+}
+
+pub fn choose_best_freq_by_pred_c(
+    space: &Log2Space,
+    pred_c_statepm1_scan: &[f32],
+    freq_candidates_hz: &[f32],
+    base_freq_hz: f32,
+) -> Option<(f32, f32)> {
+    if pred_c_statepm1_scan.is_empty() || freq_candidates_hz.is_empty() {
+        return None;
+    }
+    debug_assert_eq!(pred_c_statepm1_scan.len(), space.n_bins());
+
+    let mut best_freq = 0.0f32;
+    let mut best_score = f32::NEG_INFINITY;
+    let mut best_abs_log2 = f32::INFINITY;
+
+    for &cand in freq_candidates_hz {
+        if !cand.is_finite() || cand <= 0.0 {
+            continue;
+        }
+        let score = sample_scan_linear_log2(space, pred_c_statepm1_scan, cand);
+        if !score.is_finite() || score == f32::NEG_INFINITY {
+            continue;
+        }
+        let base = if base_freq_hz.is_finite() && base_freq_hz > 0.0 {
+            base_freq_hz
+        } else {
+            cand
+        };
+        let abs_log2 = (cand / base).log2().abs();
+        let score_better = score > best_score;
+        let score_tie = (score - best_score).abs() <= 1e-6;
+        let dist_better = abs_log2 < best_abs_log2 - 1e-6;
+        let dist_tie = (abs_log2 - best_abs_log2).abs() <= 1e-6;
+        if score_better
+            || (score_tie
+                && (dist_better || (dist_tie && (cand < best_freq || best_score.is_infinite()))))
+        {
+            best_score = score;
+            best_freq = cand;
+            best_abs_log2 = abs_log2;
+        }
+    }
+
+    if best_score.is_finite() {
+        Some((best_freq, best_score))
+    } else {
+        None
+    }
 }

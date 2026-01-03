@@ -3,7 +3,7 @@ use crate::core::log2space::Log2Space;
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
 use crate::life::intent::{BodySnapshot, Intent};
-use crate::life::intent_planner::{choose_freq_by_consonance, choose_onset_by_density};
+use crate::life::intent_planner::{choose_best_freq_by_pred_c, choose_onset_by_density};
 use crate::life::perceptual::{FeaturesNow, PerceptualContext};
 use rand::rngs::SmallRng;
 use tracing::debug;
@@ -147,13 +147,15 @@ impl Individual {
         self.release_gain = self.release_gain.clamp(0.0, 1.0);
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn plan_intents(
         &mut self,
         tb: &Timebase,
         now: Tick,
         hop: usize,
-        _landscape: &Landscape,
+        landscape: &Landscape,
         intents: &[Intent],
+        pred_c_scan_at: &mut dyn FnMut(Tick) -> Option<std::sync::Arc<Vec<f32>>>,
         agents_pitch: bool,
     ) -> Vec<Intent> {
         let hop_tick = hop as Tick;
@@ -229,10 +231,17 @@ impl Individual {
             let candidates_hz =
                 self.pitch
                     .propose_freqs_hz_with_neighbors(base_freq_hz, &neighbors, 16, 8, 12.0);
-            if let Some(chosen_hz) =
-                choose_freq_by_consonance(&candidates_hz, &neighbors, base_freq_hz)
-            {
-                freq_hz = chosen_hz.clamp(20.0, 20_000.0);
+            if let Some(pred_c_scan) = pred_c_scan_at(chosen) {
+                if let Some((chosen_hz, _score)) = choose_best_freq_by_pred_c(
+                    &landscape.space,
+                    pred_c_scan.as_slice(),
+                    &candidates_hz,
+                    base_freq_hz,
+                ) {
+                    freq_hz = chosen_hz.clamp(20.0, 20_000.0);
+                } else if let Some(&fallback_hz) = candidates_hz.first() {
+                    freq_hz = fallback_hz.clamp(20.0, 20_000.0);
+                }
             }
         }
         self.last_chosen_freq_hz = freq_hz;

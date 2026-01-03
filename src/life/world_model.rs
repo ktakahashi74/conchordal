@@ -1,8 +1,11 @@
-use crate::core::landscape::LandscapeFrame;
+use crate::core::landscape::{LandscapeFrame, LandscapeParams};
 use crate::core::stream::dorsal::DorsalMetrics;
 use crate::core::timebase::{Tick, Timebase};
 use crate::life::intent::{Intent, IntentBoard};
-use crate::life::predictive_spectrum::{PredKernelInputs, build_pred_kernel_inputs_from_intents};
+use crate::life::predictive_spectrum::{
+    PredKernelInputs, PredTerrain, build_pred_kernel_inputs_from_intents,
+    build_pred_terrain_from_intents,
+};
 
 #[derive(Clone, Debug)]
 pub struct IntentView {
@@ -55,6 +58,7 @@ pub struct WorldModel {
     pub next_intent_id: u64,
     pub percept_landscape: Option<LandscapeFrame>,
     pub dorsal_metrics: Option<DorsalMetrics>,
+    pub pred_params: Option<LandscapeParams>,
 }
 
 impl WorldModel {
@@ -68,12 +72,17 @@ impl WorldModel {
             next_intent_id: 0,
             percept_landscape: None,
             dorsal_metrics: None,
+            pred_params: None,
         }
     }
 
     pub fn advance_to(&mut self, now_tick: Tick) {
         self.now = now_tick;
         self.board.prune(now_tick);
+    }
+
+    pub fn set_pred_params(&mut self, params: LandscapeParams) {
+        self.pred_params = Some(params);
     }
 
     pub fn ui_view(&self) -> WorldView {
@@ -103,10 +112,42 @@ impl WorldModel {
                 pred_den_scan: Vec::new(),
             };
         };
-        let past = self.board.retention_past;
-        let future = self.board.horizon_future;
-        let intents = self.board.snapshot(eval_tick, past, future);
+        let past = self
+            .board
+            .retention_past
+            .saturating_add(self.now.saturating_sub(eval_tick));
+        let future = self
+            .board
+            .horizon_future
+            .saturating_add(eval_tick.saturating_sub(self.now));
+        let intents = self.board.snapshot(self.now, past, future);
         build_pred_kernel_inputs_from_intents(&landscape.space, &intents, eval_tick)
+    }
+
+    pub fn pred_terrain_at(&self, eval_tick: Tick) -> Option<PredTerrain> {
+        let landscape = self.percept_landscape.as_ref()?;
+        let params = self.pred_params.as_ref()?;
+        let past = self
+            .board
+            .retention_past
+            .saturating_add(self.now.saturating_sub(eval_tick));
+        let future = self
+            .board
+            .horizon_future
+            .saturating_add(eval_tick.saturating_sub(self.now));
+        let intents = self.board.snapshot(self.now, past, future);
+        Some(build_pred_terrain_from_intents(
+            &landscape.space,
+            params,
+            &intents,
+            eval_tick,
+        ))
+    }
+
+    pub fn pred_c_statepm1_scan_at(&self, eval_tick: Tick) -> Vec<f32> {
+        self.pred_terrain_at(eval_tick)
+            .map(|terrain| terrain.pred_c_statepm1_scan)
+            .unwrap_or_default()
     }
 
     pub fn apply_action(&mut self, action: &crate::life::scenario::Action) {

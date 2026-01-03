@@ -782,6 +782,7 @@ fn worker_loop(
     let mut latest_h_scan: Option<Vec<f32>> = None;
     let timebase = crate::core::timebase::Timebase { fs, hop };
     let mut world = crate::life::world_model::WorldModel::new(timebase);
+    world.set_pred_params(lparams.clone());
     let mut intent_renderer = IntentRenderer::new(timebase);
     let init_now_tick = timebase.frame_start_tick(frame_idx);
     world.advance_to(init_now_tick);
@@ -986,6 +987,7 @@ fn worker_loop(
             if let Some(update) = pop.take_pending_update() {
                 apply_params_update(&mut lparams, &update);
                 current_landscape.recompute_consonance(&lparams);
+                world.set_pred_params(lparams.clone());
                 let _ = harmonicity_tx.try_send(update);
                 let _ = roughness_tx.try_send(update);
             }

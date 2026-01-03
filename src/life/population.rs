@@ -5,6 +5,7 @@ use crate::core::log2space::Log2Space;
 use crate::core::timebase::Tick;
 use crate::life::world_model::WorldModel;
 use rand::{Rng, SeedableRng, distr::Distribution, distr::weighted::WeightedIndex, rngs::SmallRng};
+use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use tracing::{debug, info, warn};
 
@@ -110,6 +111,19 @@ impl Population {
         let past = world.board.retention_past;
         let future = world.board.horizon_future;
         let board_snapshot = world.board.snapshot(now, past, future);
+        let mut pred_c_cache: HashMap<Tick, std::sync::Arc<Vec<f32>>> = HashMap::new();
+        let mut pred_c_scan_at = |eval_tick: Tick| -> Option<std::sync::Arc<Vec<f32>>> {
+            if let Some(scan) = pred_c_cache.get(&eval_tick) {
+                return Some(std::sync::Arc::clone(scan));
+            }
+            let scan = world.pred_c_statepm1_scan_at(eval_tick);
+            if scan.is_empty() {
+                return None;
+            }
+            let scan = std::sync::Arc::new(scan);
+            pred_c_cache.insert(eval_tick, std::sync::Arc::clone(&scan));
+            Some(scan)
+        };
         let mut intents = Vec::new();
         for agent in &mut self.individuals {
             if !agent.is_alive() {
@@ -121,6 +135,7 @@ impl Population {
                 hop,
                 landscape,
                 &board_snapshot,
+                &mut pred_c_scan_at,
                 agents_pitch,
             ));
         }

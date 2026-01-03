@@ -1,6 +1,6 @@
 use conchordal::core::landscape::Landscape;
 use conchordal::core::log2space::Log2Space;
-use conchordal::core::timebase::Timebase;
+use conchordal::core::timebase::{Tick, Timebase};
 use conchordal::life::individual::AgentMetadata;
 use conchordal::life::intent_renderer::IntentRenderer;
 use conchordal::life::population::Population;
@@ -36,6 +36,10 @@ fn agents_publish_intents_and_render_audio() {
 
     world.advance_to(0);
     pop.publish_intents(&mut world, &landscape, 0, 0, false);
+    assert!(!world.plan_board.snapshot_next().is_empty());
+    world.next_gate_tick_est = Some(1);
+    let frame_end: Tick = tb.hop as Tick;
+    world.commit_plans_if_due(0, frame_end);
     assert!(world.board.len() > 0);
 
     let first_intent = world

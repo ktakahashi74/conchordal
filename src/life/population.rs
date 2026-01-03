@@ -3,6 +3,7 @@ use super::scenario::{Action, IndividualConfig, SpawnMethod, TargetRef};
 use crate::core::landscape::{LandscapeFrame, LandscapeUpdate};
 use crate::core::log2space::Log2Space;
 use crate::core::timebase::Tick;
+use crate::life::plan::{GateTarget, PhaseRef, PlannedIntent};
 use crate::life::world_model::WorldModel;
 use rand::{Rng, SeedableRng, distr::Distribution, distr::weighted::WeightedIndex, rngs::SmallRng};
 use std::collections::HashMap;
@@ -130,26 +131,60 @@ impl Population {
             pred_c_cache.insert(eval_tick, std::sync::Arc::clone(&scan));
             Some(scan)
         };
-        let mut intents = Vec::new();
-        for agent in &mut self.individuals {
-            if !agent.is_alive() {
-                continue;
+        let (planned, remove_sources) = {
+            let mut planned = Vec::new();
+            let mut remove_sources = Vec::new();
+            for agent in &mut self.individuals {
+                if !agent.is_alive() {
+                    // v0: source_id == agent.id().
+                    remove_sources.push(agent.id());
+                    continue;
+                }
+                let mut intents = agent.plan_intents(
+                    tb,
+                    now,
+                    perc_tick,
+                    hop,
+                    landscape,
+                    &board_snapshot,
+                    pred_rhythm,
+                    &mut pred_c_scan_at,
+                    agents_pitch,
+                    true,
+                );
+                if intents.len() > 1 {
+                    // v0: PlanBoard holds one entry per source_id.
+                    intents.truncate(1);
+                }
+                if intents.is_empty() {
+                    // v0: source_id == agent.id().
+                    remove_sources.push(agent.id());
+                    continue;
+                }
+                for intent in intents {
+                    planned.push(PlannedIntent {
+                        source_id: intent.source_id,
+                        plan_id: intent.intent_id,
+                        phase: PhaseRef {
+                            gate: GateTarget::Next,
+                            target_phase: 0.0,
+                        },
+                        duration: intent.duration,
+                        freq_hz: intent.freq_hz,
+                        amp: intent.amp,
+                        tag: intent.tag.clone(),
+                        confidence: intent.confidence,
+                        body: intent.body.clone(),
+                    });
+                }
             }
-            intents.extend(agent.plan_intents(
-                tb,
-                now,
-                perc_tick,
-                hop,
-                landscape,
-                &board_snapshot,
-                pred_rhythm,
-                &mut pred_c_scan_at,
-                agents_pitch,
-            ));
+            (planned, remove_sources)
+        };
+        for source_id in remove_sources {
+            world.plan_board.remove_source(source_id);
         }
-        intents.sort_by_key(|i| i.onset);
-        for intent in intents {
-            world.board.publish(intent);
+        for planned_intent in planned {
+            world.plan_board.publish_replace(planned_intent);
         }
     }
 

@@ -174,11 +174,83 @@ impl Individual {
         pred_rhythm: Option<&crate::life::predictive_rhythm::PredictiveRhythmBank>,
         pred_c_scan_at: &mut dyn FnMut(Tick) -> Option<std::sync::Arc<[f32]>>,
         agents_pitch: bool,
+        gate_mode: bool,
     ) -> Vec<Intent> {
         self.update_self_confidence_from_perc(&landscape.space, landscape, perc_tick);
         let hop_tick = hop as Tick;
         if self.next_intent_tick != 0 && now < self.next_intent_tick {
             return Vec::new();
+        }
+
+        if gate_mode {
+            let mut dur_tick = tb.sec_to_tick(0.08);
+            if dur_tick == 0 {
+                dur_tick = 1;
+            }
+            let amp = 1.0;
+            let base_freq_hz =
+                if self.last_chosen_freq_hz > 0.0 && self.last_chosen_freq_hz.is_finite() {
+                    self.last_chosen_freq_hz
+                } else {
+                    self.body.base_freq_hz()
+                };
+            let mut freq_hz = base_freq_hz;
+            if agents_pitch {
+                let mut freq_eps = tb.sec_to_tick(0.01);
+                if freq_eps == 0 {
+                    freq_eps = 1;
+                }
+                let intent_refs = intents;
+                let mut make_freq_candidates = |onset: Tick| {
+                    let min = onset.saturating_sub(freq_eps);
+                    let max = onset.saturating_add(freq_eps);
+                    let neighbors: Vec<f32> = intent_refs
+                        .iter()
+                        .filter(|intent| intent.onset >= min && intent.onset <= max)
+                        .filter_map(|intent| {
+                            if intent.freq_hz.is_finite() && intent.freq_hz > 0.0 {
+                                Some(intent.freq_hz)
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+                    self.pitch.propose_freqs_hz_with_neighbors(
+                        base_freq_hz,
+                        &neighbors,
+                        16,
+                        8,
+                        12.0,
+                    )
+                };
+                let candidates = [now];
+                if let Some(choice) = choose_best_gesture_tf_by_pred_c(
+                    &landscape.space,
+                    &candidates,
+                    base_freq_hz,
+                    &mut make_freq_candidates,
+                    &mut *pred_c_scan_at,
+                ) {
+                    freq_hz = choice.freq_hz.clamp(20.0, 20_000.0);
+                }
+            }
+            self.last_chosen_freq_hz = freq_hz;
+            let snapshot = self.body_snapshot();
+            let kind = snapshot.kind.clone();
+            let intent = Intent {
+                source_id: self.id,
+                intent_id: self.intent_seq,
+                onset: now,
+                duration: dur_tick,
+                freq_hz,
+                amp,
+                tag: Some(format!("agent:{} {}", self.id, kind)),
+                confidence: 1.0,
+                body: Some(snapshot),
+            };
+            self.intent_seq = self.intent_seq.wrapping_add(1);
+            self.next_intent_tick = now.saturating_add(hop_tick.max(1));
+            return vec![intent];
         }
 
         let mut horizon = tb.sec_to_tick(2.0);

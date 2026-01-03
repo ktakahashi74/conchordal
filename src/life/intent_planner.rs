@@ -2,6 +2,13 @@ use crate::core::log2space::{Log2Space, sample_scan_linear_log2};
 use crate::core::timebase::Tick;
 use crate::life::intent::Intent;
 
+#[derive(Clone, Copy, Debug)]
+pub struct GestureChoiceTf {
+    pub onset: Tick,
+    pub freq_hz: f32,
+    pub score: f32,
+}
+
 pub fn choose_onset_by_density(candidates: &[Tick], intents: &[Intent], eps: Tick) -> Option<Tick> {
     if candidates.is_empty() {
         return None;
@@ -153,4 +160,75 @@ pub fn choose_best_freq_by_pred_c(
     } else {
         None
     }
+}
+
+pub fn choose_best_gesture_tf_by_pred_c(
+    space: &Log2Space,
+    onset_candidates: &[Tick],
+    base_freq_hz: f32,
+    mut make_freq_candidates: impl FnMut(Tick) -> Vec<f32>,
+    mut pred_c_scan_at: impl FnMut(Tick) -> Option<std::sync::Arc<[f32]>>,
+) -> Option<GestureChoiceTf> {
+    if onset_candidates.is_empty() {
+        return None;
+    }
+
+    let mut best_choice: Option<GestureChoiceTf> = None;
+    let mut best_abs_log2 = f32::INFINITY;
+
+    for &onset in onset_candidates {
+        let pred_c_scan = match pred_c_scan_at(onset) {
+            Some(scan) if !scan.is_empty() => scan,
+            _ => continue,
+        };
+        let mut candidates = make_freq_candidates(onset);
+        if candidates.is_empty() {
+            if base_freq_hz.is_finite() && base_freq_hz > 0.0 {
+                candidates.push(base_freq_hz);
+            }
+        }
+        let (freq_hz, score) = match choose_best_freq_by_pred_c(
+            space,
+            pred_c_scan.as_ref(),
+            &candidates,
+            base_freq_hz,
+        ) {
+            Some(choice) => choice,
+            None => continue,
+        };
+        let base = if base_freq_hz.is_finite() && base_freq_hz > 0.0 {
+            base_freq_hz
+        } else {
+            freq_hz
+        };
+        let abs_log2 = (freq_hz / base).log2().abs();
+        let choice = GestureChoiceTf {
+            onset,
+            freq_hz,
+            score,
+        };
+
+        let is_better = match best_choice {
+            None => true,
+            Some(best) => {
+                let score_better = choice.score > best.score + 1e-6;
+                let score_tie = (choice.score - best.score).abs() <= 1e-6;
+                let onset_better = choice.onset < best.onset;
+                let onset_tie = choice.onset == best.onset;
+                let dist_better = abs_log2 < best_abs_log2 - 1e-6;
+                let dist_tie = (abs_log2 - best_abs_log2).abs() <= 1e-6;
+                let freq_better = choice.freq_hz < best.freq_hz;
+                score_better
+                    || (score_tie
+                        && (onset_better
+                            || (onset_tie && (dist_better || (dist_tie && freq_better)))))
+            }
+        };
+        if is_better {
+            best_abs_log2 = abs_log2;
+            best_choice = Some(choice);
+        }
+    }
+
+    best_choice
 }

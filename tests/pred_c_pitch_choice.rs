@@ -7,12 +7,16 @@ fn pred_c_argmax_picks_peak_bin() {
     let mut scan = vec![0.0f32; space.n_bins()];
     let idx = space.index_of_freq(440.0).expect("bin");
     scan[idx] = 1.0;
+    if idx + 1 < scan.len() {
+        scan[idx + 1] = 1.0;
+    }
 
-    let candidates = vec![330.0, 440.0, 660.0];
+    let f_center = space.freq_of_index(idx);
+    let candidates = vec![330.0, f_center, 660.0];
     let (chosen, score) =
         choose_best_freq_by_pred_c(&space, &scan, &candidates, 400.0).expect("choice");
 
-    assert_eq!(chosen, 440.0);
+    assert_eq!(chosen, f_center);
     let sampled = sample_scan_linear_log2(&space, &scan, chosen);
     assert!((score - sampled).abs() < 1e-6);
 }

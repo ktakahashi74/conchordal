@@ -111,8 +111,8 @@ impl Population {
         let past = world.board.retention_past;
         let future = world.board.horizon_future;
         let board_snapshot = world.board.snapshot(now, past, future);
-        let mut pred_c_cache: HashMap<Tick, std::sync::Arc<Vec<f32>>> = HashMap::new();
-        let mut pred_c_scan_at = |eval_tick: Tick| -> Option<std::sync::Arc<Vec<f32>>> {
+        let mut pred_c_cache: HashMap<Tick, std::sync::Arc<[f32]>> = HashMap::new();
+        let mut pred_c_scan_at = |eval_tick: Tick| -> Option<std::sync::Arc<[f32]>> {
             if let Some(scan) = pred_c_cache.get(&eval_tick) {
                 return Some(std::sync::Arc::clone(scan));
             }
@@ -120,7 +120,7 @@ impl Population {
             if scan.is_empty() {
                 return None;
             }
-            let scan = std::sync::Arc::new(scan);
+            let scan: std::sync::Arc<[f32]> = std::sync::Arc::from(scan);
             pred_c_cache.insert(eval_tick, std::sync::Arc::clone(&scan));
             Some(scan)
         };

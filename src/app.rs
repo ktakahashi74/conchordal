@@ -25,9 +25,9 @@ use crate::core::stream::{
 };
 use crate::life::conductor::Conductor;
 use crate::life::individual::SoundBody;
-use crate::life::intent_renderer::IntentRenderer;
 use crate::life::population::Population;
 use crate::life::scenario::{Action, Scenario, TargetRef};
+use crate::life::schedule_renderer::ScheduleRenderer;
 use crate::life::scripting::ScriptHost;
 use crate::ui::viewdata::{
     AgentStateInfo, DorsalFrame, PlaybackState, SimulationMeta, SpecFrame, UiFrame, WaveFrame,
@@ -783,7 +783,7 @@ fn worker_loop(
     let timebase = crate::core::timebase::Timebase { fs, hop };
     let mut world = crate::life::world_model::WorldModel::new(timebase, log_space.clone());
     world.set_pred_params(lparams.clone());
-    let mut intent_renderer = IntentRenderer::new(timebase);
+    let mut schedule_renderer = ScheduleRenderer::new(timebase);
     let init_now_tick = timebase.frame_start_tick(frame_idx);
     world.advance_to(init_now_tick);
     let init_world_view = world.ui_view();
@@ -1016,7 +1016,7 @@ fn worker_loop(
             // Previously incorrectly treated as stereo, leading to bad metering and destructive downsampling.
             let (mono_chunk, max_abs, channel_peak) = {
                 let time_chunk = if intent_only {
-                    intent_renderer.render(&world.board, now_tick)
+                    schedule_renderer.render(&world.board, now_tick, &current_landscape.rhythm)
                 } else {
                     pop.process_audio(
                         hop,

@@ -213,20 +213,20 @@ impl RtNsgtKernelLog2 {
     pub fn reconfigure_smoothing(&mut self, tau_min: f32, tau_max: f32, f_ref: f32) {
         let tau_min = tau_min.max(1e-6);
         let tau_max = tau_max.max(tau_min);
-        for (b, st) in self.nsgt.bands().iter().zip(self.bands_state.iter_mut()) {
+        for (b, state) in self.nsgt.bands().iter().zip(self.bands_state.iter_mut()) {
             let f = b.f_hz.max(1e-6);
             let ratio = (f_ref / f).clamp(0.0, 1.0);
             let mut tau = tau_min + (tau_max - tau_min) * ratio;
             tau = tau.clamp(tau_min, tau_max);
-            st.tau = tau;
-            st.alpha = (-self.dt / tau).exp();
+            state.tau = tau;
+            state.alpha = (-self.dt / tau).exp();
         }
     }
 
     /// Reset smoothing states and ring buffer.
     pub fn reset(&mut self) {
-        for st in &mut self.bands_state {
-            st.smooth = 0.0;
+        for state in &mut self.bands_state {
+            state.smooth = 0.0;
         }
         for x in &mut self.ring {
             *x = 0.0;
@@ -339,9 +339,9 @@ impl RtNsgtKernelLog2 {
             };
 
             // Exponential smoothing
-            let st = &mut self.bands_state[bi];
-            st.smooth = (1.0 - st.alpha) * p + st.alpha * st.smooth;
-            self.out_env[bi] = st.smooth;
+            let state = &mut self.bands_state[bi];
+            state.smooth = (1.0 - state.alpha) * p + state.alpha * state.smooth;
+            self.out_env[bi] = state.smooth;
         }
     }
 }

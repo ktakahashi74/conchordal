@@ -179,11 +179,9 @@ impl Landscape {
         }
         for i in 0..self.consonance.len() {
             let h = *self.harmonicity.get(i).unwrap_or(&0.0);
-            let h01 = h.clamp(0.0, 1.0);
-            let r01 = self.roughness01[i].clamp(0.0, 1.0);
-            let c_signed_raw = h01 - w_r * r01;
-            let c_signed = c_signed_raw.clamp(-1.0, 1.0);
-            let c01 = (c_signed + 1.0) * 0.5;
+            let h01 = crate::core::psycho_state::clamp01(h);
+            let r01 = crate::core::psycho_state::clamp01(self.roughness01[i]);
+            let (c_signed, c01) = crate::core::psycho_state::compose_c_statepm1(h01, r01, w_r);
             self.harmonicity01[i] = h01;
             self.consonance[i] = c_signed;
             self.consonance01[i] = c01.clamp(0.0, 1.0);

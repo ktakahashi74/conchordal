@@ -2,6 +2,9 @@ use crate::core::landscape::RoughnessScalarMode;
 use crate::core::landscape::{Landscape, LandscapeParams, LandscapeUpdate};
 use crate::core::landscape_spectral::SpectralFrontEnd;
 use crate::core::nsgt_rt::RtNsgtKernelLog2;
+use crate::core::psycho_state::{
+    compute_roughness_reference, normalize_density, roughness_ratio_to_state01,
+};
 use crate::core::roughness_kernel::erb_grid;
 
 /// Roughness Stream (formerly Ventral).
@@ -20,8 +23,9 @@ pub struct RoughnessStream {
 impl RoughnessStream {
     pub fn new(params: LandscapeParams, nsgt_rt: RtNsgtKernelLog2) -> Self {
         let spectral_frontend = SpectralFrontEnd::new(nsgt_rt.space().clone(), &params);
-        let (roughness_ref_total, roughness_ref_peak) =
-            compute_roughness_reference(&params, nsgt_rt.space());
+        let ref_vals = compute_roughness_reference(&params, nsgt_rt.space());
+        let roughness_ref_total = ref_vals.total;
+        let roughness_ref_peak = ref_vals.peak;
 
         Self {
             nsgt_rt: nsgt_rt.clone(),
@@ -100,9 +104,9 @@ impl RoughnessStream {
         let r_ref_total = self.roughness_ref_total.max(eps);
         let r01 = r_shape_raw
             .iter()
-            .map(|&ri| roughness_ratio_to_01(ri / r_ref_peak, roughness_k))
+            .map(|&ri| roughness_ratio_to_state01(ri / r_ref_peak, roughness_k))
             .collect::<Vec<f32>>();
-        let r01_scalar = roughness_ratio_to_01(r_shape_total / r_ref_total, roughness_k);
+        let r01_scalar = roughness_ratio_to_state01(r_shape_total / r_ref_total, roughness_k);
 
         self.last_landscape.roughness = r_strength;
         self.last_landscape.roughness_shape_raw = r_shape_raw;
@@ -130,113 +134,6 @@ impl RoughnessStream {
     }
 }
 
-fn roughness_ratio_to_01(x: f32, k: f32) -> f32 {
-    if x.is_nan() {
-        return 0.0;
-    }
-    if x.is_infinite() {
-        return if x.is_sign_positive() { 1.0 } else { 0.0 };
-    }
-    let x = x.max(0.0);
-    let k = if k.is_finite() { k.max(1e-6) } else { 1e-6 };
-    let r_ref = 1.0 / (1.0 + k);
-    if x <= 0.0 {
-        0.0
-    } else if x < 1.0 {
-        (x * r_ref).clamp(0.0, 1.0)
-    } else {
-        let denom = x + k;
-        if denom <= 0.0 {
-            return 1.0;
-        }
-        (1.0 - k / denom).clamp(0.0, 1.0)
-    }
-}
-
-fn normalize_density(density: &[f32], du: &[f32], eps: f32) -> (Vec<f32>, f32) {
-    let mass = crate::core::density::density_to_mass(density, du);
-    if mass <= eps {
-        return (vec![0.0; density.len()], mass);
-    }
-    let inv = 1.0 / (mass + eps);
-    let p_density = density.iter().map(|&v| v * inv).collect();
-    (p_density, mass)
-}
-
-fn compute_roughness_reference(
-    params: &LandscapeParams,
-    space: &crate::core::log2space::Log2Space,
-) -> (f32, f32) {
-    let eps = params.roughness_ref_eps.max(1e-12);
-    let ref_density = build_reference_density(params, space);
-    let (r, r_total) = params
-        .roughness_kernel
-        .potential_r_from_log2_spectrum_density(&ref_density, space);
-    let r_peak = r.iter().copied().fold(0.0f32, f32::max).max(eps);
-    (r_total.max(eps), r_peak)
-}
-
-fn build_reference_density(
-    params: &LandscapeParams,
-    space: &crate::core::log2space::Log2Space,
-) -> Vec<f32> {
-    let (erb, du) = erb_grid(space);
-    if erb.is_empty() {
-        return Vec::new();
-    }
-    let f0 = params.roughness_ref_f0_hz.max(1.0);
-    let a = nearest_bin_by_freq(space, f0);
-    let target_erb = erb[a] + params.roughness_ref_sep_erb;
-    let mut b = nearest_bin_by_erb(&erb, target_erb);
-    if b == a && erb.len() > 1 {
-        b = if a + 1 < erb.len() {
-            a + 1
-        } else {
-            a.saturating_sub(1)
-        };
-    }
-
-    let mut ref_density = vec![0.0f32; erb.len()];
-    let m_a = params.roughness_ref_mass_split.clamp(0.0, 1.0);
-    let m_b = 1.0 - m_a;
-    if du[a] > 0.0 {
-        ref_density[a] += m_a / du[a];
-    }
-    if b != a && du[b] > 0.0 {
-        ref_density[b] += m_b / du[b];
-    } else if b == a && du[a] > 0.0 {
-        ref_density[a] += m_b / du[a];
-    }
-
-    ref_density
-}
-
-fn nearest_bin_by_freq(space: &crate::core::log2space::Log2Space, f0: f32) -> usize {
-    let mut best = 0;
-    let mut best_diff = f32::MAX;
-    for (i, &f) in space.centers_hz.iter().enumerate() {
-        let diff = (f - f0).abs();
-        if diff < best_diff {
-            best_diff = diff;
-            best = i;
-        }
-    }
-    best
-}
-
-fn nearest_bin_by_erb(erb: &[f32], target: f32) -> usize {
-    let mut best = 0;
-    let mut best_diff = f32::MAX;
-    for (i, &u) in erb.iter().enumerate() {
-        let diff = (u - target).abs();
-        if diff < best_diff {
-            best_diff = diff;
-            best = i;
-        }
-    }
-    best
-}
-
 fn percentile_95(vals: &[f32]) -> f32 {
     if vals.is_empty() {
         return 0.0;
@@ -255,6 +152,7 @@ mod tests {
     use crate::core::harmonicity_kernel::{HarmonicityKernel, HarmonicityParams};
     use crate::core::landscape::{LandscapeParams, RoughnessScalarMode};
     use crate::core::log2space::Log2Space;
+    use crate::core::psycho_state::build_roughness_reference_density;
     use crate::core::roughness_kernel::{KernelParams, RoughnessKernel};
 
     fn build_params(space: &Log2Space) -> LandscapeParams {
@@ -311,15 +209,15 @@ mod tests {
     fn reference_maps_to_expected() {
         let space = Log2Space::new(80.0, 8000.0, 96);
         let params = build_params(&space);
-        let ref_density = build_reference_density(&params, &space);
+        let ref_density = build_roughness_reference_density(&params, &space);
         let (r_shape, r_total) = params
             .roughness_kernel
             .potential_r_from_log2_spectrum_density(&ref_density, &space);
-        let (r_ref_total, r_ref_peak) = compute_roughness_reference(&params, &space);
+        let ref_vals = compute_roughness_reference(&params, &space);
 
         let peak = r_shape.iter().copied().fold(0.0f32, f32::max);
-        let r01_peak = roughness_ratio_to_01(peak / r_ref_peak, params.roughness_k);
-        let r01_scalar = roughness_ratio_to_01(r_total / r_ref_total, params.roughness_k);
+        let r01_peak = roughness_ratio_to_state01(peak / ref_vals.peak, params.roughness_k);
+        let r01_scalar = roughness_ratio_to_state01(r_total / ref_vals.total, params.roughness_k);
         let expected = 1.0 / (1.0 + params.roughness_k.max(1e-6));
 
         assert!((r01_scalar - expected).abs() < 1e-5, "scalar {r01_scalar}");
@@ -329,9 +227,9 @@ mod tests {
     #[test]
     fn roughness_ratio_handles_nan_and_inf() {
         let k = 0.3;
-        assert_eq!(roughness_ratio_to_01(f32::NAN, k), 0.0);
-        assert_eq!(roughness_ratio_to_01(f32::INFINITY, k), 1.0);
-        assert_eq!(roughness_ratio_to_01(f32::NEG_INFINITY, k), 0.0);
+        assert_eq!(roughness_ratio_to_state01(f32::NAN, k), 0.0);
+        assert_eq!(roughness_ratio_to_state01(f32::INFINITY, k), 1.0);
+        assert_eq!(roughness_ratio_to_state01(f32::NEG_INFINITY, k), 0.0);
     }
 
     #[test]

@@ -4,11 +4,16 @@ use crate::life::intent::IntentBoard;
 pub struct IntentRenderer {
     time: Timebase,
     buf: Vec<f32>,
+    attack_ticks: Tick,
     release_ticks: Tick,
 }
 
 impl IntentRenderer {
     pub fn new(time: Timebase) -> Self {
+        let mut attack_ticks = time.sec_to_tick(0.001);
+        if attack_ticks == 0 {
+            attack_ticks = 1;
+        }
         let mut release_ticks = time.sec_to_tick(0.005);
         if release_ticks == 0 {
             release_ticks = 1;
@@ -16,6 +21,7 @@ impl IntentRenderer {
         Self {
             time,
             buf: vec![0.0; time.hop],
+            attack_ticks,
             release_ticks,
         }
     }
@@ -47,7 +53,7 @@ impl IntentRenderer {
                 let idx = (tick - now) as usize;
                 let t_rel = (tick - intent.onset) as f32 / fs;
                 let phase = std::f32::consts::TAU * intent.freq_hz * t_rel;
-                let env = self.release_env(intent, tick);
+                let env = self.attack_env(intent, tick) * self.release_env(intent, tick);
                 let mut amp = intent.amp;
                 let sample = if let Some(body) = &intent.body {
                     let amp_scale = body.amp_scale.clamp(0.0, 1.0);
@@ -73,6 +79,22 @@ impl IntentRenderer {
 
         self.apply_limiter();
         &self.buf
+    }
+
+    fn attack_env(&self, intent: &crate::life::intent::Intent, tick: Tick) -> f32 {
+        if self.attack_ticks == 0 || intent.duration == 0 {
+            return 1.0;
+        }
+        let attack_len = self.attack_ticks.min(intent.duration);
+        if attack_len == 0 {
+            return 1.0;
+        }
+        let pos = tick.saturating_sub(intent.onset);
+        if pos < attack_len {
+            (pos.saturating_add(1) as f32 / attack_len as f32).clamp(0.0, 1.0)
+        } else {
+            1.0
+        }
     }
 
     fn release_env(&self, intent: &crate::life::intent::Intent, tick: Tick) -> f32 {

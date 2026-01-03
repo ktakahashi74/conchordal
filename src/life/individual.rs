@@ -183,7 +183,9 @@ impl Individual {
         }
 
         if gate_mode {
-            let mut dur_tick = tb.sec_to_tick(0.08);
+            let theta_hz = landscape.rhythm.theta.freq_hz;
+            let dur_sec = gate_duration_sec_from_theta(theta_hz);
+            let mut dur_tick = tb.sec_to_tick(dur_sec);
             if dur_tick == 0 {
                 dur_tick = 1;
             }
@@ -478,6 +480,31 @@ impl Individual {
                 noise_mix: body.genotype.jitter.clamp(0.0, 1.0),
             },
         }
+    }
+}
+
+fn gate_duration_sec_from_theta(theta_hz: f32) -> f32 {
+    if !theta_hz.is_finite() || theta_hz <= 0.0 {
+        return 0.08;
+    }
+    let dur_sec = 0.9 / theta_hz;
+    dur_sec.clamp(0.03, 0.5)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::gate_duration_sec_from_theta;
+
+    #[test]
+    fn gate_duration_tracks_theta() {
+        let d6 = gate_duration_sec_from_theta(6.0);
+        assert!((d6 - 0.15).abs() < 1e-6);
+
+        let d3 = gate_duration_sec_from_theta(3.0);
+        assert!((d3 - 0.3).abs() < 1e-6);
+
+        let d0 = gate_duration_sec_from_theta(0.0);
+        assert!((d0 - 0.08).abs() < 1e-6);
     }
 }
 

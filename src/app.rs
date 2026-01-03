@@ -861,6 +861,7 @@ fn worker_loop(
             let now_tick = timebase.frame_start_tick(frame_idx);
             let now_sec = timebase.tick_to_sec(now_tick);
             world.advance_to(now_tick);
+            world.update_gate_from_rhythm(now_tick, &current_landscape.rhythm);
             if frame_idx == 0 || last_tick_log.elapsed() >= Duration::from_secs(1) {
                 info!(
                     "[tick] frame_idx={} now_tick={} now_sec={:.6}",
@@ -1006,6 +1007,11 @@ fn worker_loop(
                 let _ = roughness_tx.try_send(update);
             }
 
+            let hop_tick: crate::core::timebase::Tick = hop as crate::core::timebase::Tick;
+            // frame_end is exclusive: commit when gate_tick ∈ [now_tick, frame_end)
+            let frame_end = now_tick.saturating_add(hop_tick);
+            world.commit_plans_if_due(now_tick, frame_end);
+
             // [FIX] Audio is MONO. Treat it as such.
             // Previously incorrectly treated as stereo, leading to bad metering and destructive downsampling.
             let (mono_chunk, max_abs, channel_peak) = {
@@ -1051,7 +1057,6 @@ fn worker_loop(
                 current_landscape.rhythm = dorsal.process(mono_chunk.as_ref());
             }
             let dorsal_metrics = dorsal.last_metrics();
-            world.update_gate_from_rhythm(now_tick, &current_landscape.rhythm);
 
             // Build log2 spectrum for analysis and UI (aligned with landscape space).
             let spectrum_body = pop.process_frame(

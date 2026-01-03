@@ -3,6 +3,7 @@ use serde::{
     Deserialize, Serialize,
     de::{self, Deserializer},
 };
+use std::collections::VecDeque;
 use std::fmt;
 use tracing::debug;
 
@@ -364,6 +365,9 @@ impl IndividualConfig {
             last_chosen_freq_hz: target_freq,
             next_intent_tick: 0,
             intent_seq: 0,
+            self_confidence: 0.5,
+            pred_intent_records: VecDeque::new(),
+            pred_intent_records_cap: 256,
             rng,
         }
     }

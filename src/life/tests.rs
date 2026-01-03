@@ -170,10 +170,14 @@ fn test_conductor_timing() {
     let mut conductor = Conductor::from_scenario(scenario);
     let mut pop = Population::new(48_000.0);
     let landscape = LandscapeFrame::default();
-    let mut world = crate::life::world_model::WorldModel::new(crate::core::timebase::Timebase {
-        fs: 48_000.0,
-        hop: 512,
-    });
+    let space = Log2Space::new(1.0, 2.0, 1);
+    let mut world = crate::life::world_model::WorldModel::new(
+        crate::core::timebase::Timebase {
+            fs: 48_000.0,
+            hop: 512,
+        },
+        space,
+    );
 
     // 2. Dispatch at T=0.5 (Should NOT fire)
     conductor.dispatch_until(
@@ -1333,6 +1337,9 @@ fn render_wave_uses_dt_per_sample_for_seq_core() {
         last_chosen_freq_hz: 220.0,
         next_intent_tick: 0,
         intent_seq: 0,
+        self_confidence: 0.5,
+        pred_intent_records: std::collections::VecDeque::new(),
+        pred_intent_records_cap: 256,
         rng: rand::rngs::SmallRng::seed_from_u64(9),
     };
     let mut buffer = vec![0.0f32; 4800];

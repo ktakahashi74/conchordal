@@ -781,7 +781,7 @@ fn worker_loop(
     let mut last_r_analysis_frame: Option<u64> = None;
     let mut latest_h_scan: Option<Vec<f32>> = None;
     let timebase = crate::core::timebase::Timebase { fs, hop };
-    let mut world = crate::life::world_model::WorldModel::new(timebase);
+    let mut world = crate::life::world_model::WorldModel::new(timebase, log_space.clone());
     world.set_pred_params(lparams.clone());
     let mut intent_renderer = IntentRenderer::new(timebase);
     let init_now_tick = timebase.frame_start_tick(frame_idx);
@@ -899,6 +899,7 @@ fn worker_loop(
                     if space_changed {
                         current_landscape.resize_to_space(frame.space.clone());
                         log_space = current_landscape.space.clone();
+                        world.set_space(log_space.clone());
                     }
                     current_landscape.roughness = frame.roughness;
                     current_landscape.roughness01 = frame.roughness01;
@@ -981,7 +982,20 @@ fn worker_loop(
                 &mut world,
             );
             if agents_intent {
-                pop.publish_intents(&mut world, &current_landscape, now_tick, agents_pitch);
+                let perc_frame = match (last_h_analysis_frame, last_r_analysis_frame) {
+                    (Some(h), Some(r)) => h.min(r),
+                    (Some(h), None) => h,
+                    (None, Some(r)) => r,
+                    (None, None) => frame_idx,
+                };
+                let perc_tick = timebase.frame_start_tick(perc_frame);
+                pop.publish_intents(
+                    &mut world,
+                    &current_landscape,
+                    now_tick,
+                    perc_tick,
+                    agents_pitch,
+                );
             }
             dorsal.set_vitality(pop.global_vitality);
             if let Some(update) = pop.take_pending_update() {
@@ -1076,7 +1090,6 @@ fn worker_loop(
             let mut spec_frame: Option<SpecFrame> = None;
             let mut ui_landscape: Option<LandscapeFrame> = None;
             if should_send_ui {
-                world.percept_landscape = Some(current_landscape.clone());
                 world.dorsal_metrics = Some(dorsal_metrics);
                 wave_frame = Some(WaveFrame {
                     fs,

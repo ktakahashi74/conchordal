@@ -104,6 +104,7 @@ impl Population {
         world: &mut WorldModel,
         landscape: &LandscapeFrame,
         now: Tick,
+        perc_tick: Tick,
         agents_pitch: bool,
     ) {
         let tb = &world.time;
@@ -118,6 +119,9 @@ impl Population {
             }
             let scan = world.pred_c_statepm1_scan_at(eval_tick);
             if scan.is_empty() {
+                if cfg!(debug_assertions) {
+                    debug!(target: "pred_c", "pred_c_scan empty eval_tick={}", eval_tick);
+                }
                 return None;
             }
             let scan: std::sync::Arc<[f32]> = std::sync::Arc::from(scan);
@@ -132,6 +136,7 @@ impl Population {
             intents.extend(agent.plan_intents(
                 tb,
                 now,
+                perc_tick,
                 hop,
                 landscape,
                 &board_snapshot,

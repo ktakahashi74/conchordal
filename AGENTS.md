@@ -120,6 +120,14 @@ We represent frequency-direction terrains as **Log2Space-aligned scans**.
 - Terrain sampling uses Log2Space linear interpolation.
 - Tie-break order: score → earlier onset → smaller |log2(freq/base)| → lower freq.
 
+## Self-Confidence (agent-local)
+
+- Each agent records pred_c_statepm1 at publish time (stored locally, not in Intent).
+- Later, it compares perc_c_statepm1 against the stored pred value to compute err = perc - pred.
+- pred/perc are never mixed; err is used only for confidence update.
+- Eval time defaults to onset + duration/2 to absorb perceptual latency.
+- Update rule: agreement01 = 1 - |err|/2, then lerp(self_confidence, agreement01, lr).
+
 
 ## Scenario Script Authoring
 **Keep simple things simple, and complex things possible.**

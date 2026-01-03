@@ -1,4 +1,5 @@
 use crate::core::landscape::{LandscapeFrame, LandscapeParams};
+use crate::core::log2space::Log2Space;
 use crate::core::stream::dorsal::DorsalMetrics;
 use crate::core::timebase::{Tick, Timebase};
 use crate::life::intent::{Intent, IntentBoard};
@@ -6,6 +7,7 @@ use crate::life::predictive_spectrum::{
     PredKernelInputs, PredTerrain, build_pred_kernel_inputs_from_intents,
     build_pred_terrain_from_intents,
 };
+use tracing::debug;
 
 #[derive(Clone, Debug)]
 pub struct IntentView {
@@ -53,6 +55,7 @@ impl Default for WorldView {
 
 pub struct WorldModel {
     pub time: Timebase,
+    pub space: Log2Space,
     pub now: Tick,
     pub board: IntentBoard,
     pub next_intent_id: u64,
@@ -62,11 +65,12 @@ pub struct WorldModel {
 }
 
 impl WorldModel {
-    pub fn new(time: Timebase) -> Self {
+    pub fn new(time: Timebase, space: Log2Space) -> Self {
         let retention_past = time.sec_to_tick(2.0);
         let horizon_future = time.sec_to_tick(8.0);
         Self {
             time,
+            space,
             now: 0,
             board: IntentBoard::new(retention_past, horizon_future),
             next_intent_id: 0,
@@ -83,6 +87,10 @@ impl WorldModel {
 
     pub fn set_pred_params(&mut self, params: LandscapeParams) {
         self.pred_params = Some(params);
+    }
+
+    pub fn set_space(&mut self, space: Log2Space) {
+        self.space = space;
     }
 
     pub fn ui_view(&self) -> WorldView {
@@ -104,13 +112,27 @@ impl WorldModel {
     }
 
     pub fn pred_kernel_inputs_at(&self, eval_tick: Tick) -> PredKernelInputs {
-        let Some(landscape) = self.percept_landscape.as_ref() else {
-            debug_assert!(false, "pred_kernel_inputs_at requires percept_landscape");
-            return PredKernelInputs {
-                eval_tick,
-                pred_env_scan: Vec::new(),
-                pred_den_scan: Vec::new(),
-            };
+        let past = self
+            .board
+            .retention_past
+            .saturating_add(self.now.saturating_sub(eval_tick));
+        let future = self
+            .board
+            .horizon_future
+            .saturating_add(eval_tick.saturating_sub(self.now));
+        let intents = self.board.snapshot(self.now, past, future);
+        build_pred_kernel_inputs_from_intents(&self.space, &intents, eval_tick)
+    }
+
+    pub fn pred_terrain_at(&self, eval_tick: Tick) -> Option<PredTerrain> {
+        let params = match self.pred_params.as_ref() {
+            Some(params) => params,
+            None => {
+                if cfg!(debug_assertions) {
+                    debug!(target: "pred_c", "pred_terrain missing pred_params");
+                }
+                return None;
+            }
         };
         let past = self
             .board
@@ -121,33 +143,31 @@ impl WorldModel {
             .horizon_future
             .saturating_add(eval_tick.saturating_sub(self.now));
         let intents = self.board.snapshot(self.now, past, future);
-        build_pred_kernel_inputs_from_intents(&landscape.space, &intents, eval_tick)
-    }
-
-    pub fn pred_terrain_at(&self, eval_tick: Tick) -> Option<PredTerrain> {
-        let landscape = self.percept_landscape.as_ref()?;
-        let params = self.pred_params.as_ref()?;
-        let past = self
-            .board
-            .retention_past
-            .saturating_add(self.now.saturating_sub(eval_tick));
-        let future = self
-            .board
-            .horizon_future
-            .saturating_add(eval_tick.saturating_sub(self.now));
-        let intents = self.board.snapshot(self.now, past, future);
-        Some(build_pred_terrain_from_intents(
-            &landscape.space,
-            params,
-            &intents,
-            eval_tick,
-        ))
+        let terrain = build_pred_terrain_from_intents(&self.space, params, &intents, eval_tick);
+        if cfg!(debug_assertions) && terrain.pred_c_statepm1_scan.is_empty() {
+            debug!(target: "pred_c", "pred_terrain empty scan");
+        }
+        Some(terrain)
     }
 
     pub fn pred_c_statepm1_scan_at(&self, eval_tick: Tick) -> Vec<f32> {
-        self.pred_terrain_at(eval_tick)
+        let scan = self
+            .pred_terrain_at(eval_tick)
             .map(|terrain| terrain.pred_c_statepm1_scan)
-            .unwrap_or_default()
+            .unwrap_or_default();
+        if cfg!(debug_assertions) {
+            let non_finite = scan.iter().filter(|v| !v.is_finite()).count();
+            if non_finite > 0 {
+                debug!(
+                    target: "pred_c",
+                    "pred_c_scan non_finite={} len={} eval_tick={}",
+                    non_finite,
+                    scan.len(),
+                    eval_tick
+                );
+            }
+        }
+        scan
     }
 
     pub fn apply_action(&mut self, action: &crate::life::scenario::Action) {

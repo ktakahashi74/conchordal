@@ -13,7 +13,8 @@ fn agents_publish_intents_and_render_audio() {
         fs: 48_000.0,
         hop: 64,
     };
-    let mut world = WorldModel::new(tb);
+    let space = Log2Space::new(55.0, 8000.0, 96);
+    let mut world = WorldModel::new(tb, space.clone());
     let mut pop = Population::new(tb.fs);
     let agent_cfg = IndividualConfig {
         freq: 440.0,
@@ -34,7 +35,7 @@ fn agents_publish_intents_and_render_audio() {
     let landscape = Landscape::new(space);
 
     world.advance_to(0);
-    pop.publish_intents(&mut world, &landscape, 0, false);
+    pop.publish_intents(&mut world, &landscape, 0, 0, false);
     assert!(world.board.len() > 0);
 
     let first_intent = world

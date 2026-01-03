@@ -1,11 +1,12 @@
 use crate::core::landscape::Landscape;
-use crate::core::log2space::Log2Space;
+use crate::core::log2space::{Log2Space, sample_scan_linear_log2};
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
 use crate::life::intent::{BodySnapshot, Intent};
 use crate::life::intent_planner::{choose_best_gesture_tf_by_pred_c, choose_onset_by_density};
 use crate::life::perceptual::{FeaturesNow, PerceptualContext};
 use rand::rngs::SmallRng;
+use std::collections::VecDeque;
 use tracing::debug;
 
 #[path = "articulation_core.rs"]
@@ -75,7 +76,21 @@ pub struct Individual {
     pub last_chosen_freq_hz: f32,
     pub next_intent_tick: Tick,
     pub intent_seq: u64,
+    pub self_confidence: f32,
+    pub pred_intent_records: VecDeque<PredIntentRecord>,
+    pub pred_intent_records_cap: usize,
     pub rng: SmallRng,
+}
+
+#[derive(Clone, Debug)]
+pub struct PredIntentRecord {
+    pub intent_id: u64,
+    pub onset: Tick,
+    pub end: Tick,
+    pub freq_hz: f32,
+    pub pred_c_statepm1: f32,
+    pub created_at: Tick,
+    pub eval_tick: Tick,
 }
 
 impl Individual {
@@ -152,12 +167,14 @@ impl Individual {
         &mut self,
         tb: &Timebase,
         now: Tick,
+        perc_tick: Tick,
         hop: usize,
         landscape: &Landscape,
         intents: &[Intent],
         pred_c_scan_at: &mut dyn FnMut(Tick) -> Option<std::sync::Arc<[f32]>>,
         agents_pitch: bool,
     ) -> Vec<Intent> {
+        self.update_self_confidence_from_perc(&landscape.space, landscape, perc_tick);
         let hop_tick = hop as Tick;
         if self.next_intent_tick != 0 && now < self.next_intent_tick {
             return Vec::new();
@@ -194,6 +211,7 @@ impl Individual {
         };
         let mut chosen = fallback_onset;
         let mut freq_hz = base_freq_hz;
+        let mut chosen_score: Option<f32> = None;
         if agents_pitch {
             let mut freq_eps = tb.sec_to_tick(0.01);
             if freq_eps == 0 {
@@ -222,10 +240,11 @@ impl Individual {
                 &candidates,
                 base_freq_hz,
                 &mut make_freq_candidates,
-                |t| pred_c_scan_at(t),
+                &mut *pred_c_scan_at,
             ) {
                 chosen = choice.onset;
                 freq_hz = choice.freq_hz.clamp(20.0, 20_000.0);
+                chosen_score = Some(choice.score);
             }
         }
         self.last_chosen_freq_hz = freq_hz;
@@ -236,13 +255,15 @@ impl Individual {
                 .iter()
                 .filter(|intent| intent.onset >= min && intent.onset <= max)
                 .count();
+            let score = chosen_score.unwrap_or(f32::NAN);
             debug!(
                 target: "intent::plan",
-                "agent={} candidates={} chosen={} density={}",
+                "agent={} candidates={} chosen={} density={} pred_c={:.3}",
                 self.id,
                 candidates.len(),
                 chosen,
-                density
+                density,
+                score
             );
         }
         let snapshot = self.body_snapshot();
@@ -258,11 +279,77 @@ impl Individual {
             confidence: 1.0,
             body: Some(snapshot),
         };
+        self.record_pred_intent(&intent, pred_c_scan_at, now, landscape);
         self.intent_seq = self.intent_seq.wrapping_add(1);
         let min_interval = hop_tick.max(dur_tick);
         self.next_intent_tick = chosen.saturating_add(min_interval);
         let intents = vec![intent];
         intents
+    }
+
+    pub fn update_self_confidence_from_perc(
+        &mut self,
+        space: &Log2Space,
+        perc_landscape: &Landscape,
+        perc_tick: Tick,
+    ) {
+        if self.pred_intent_records.is_empty() {
+            return;
+        }
+        let mut next_records = VecDeque::with_capacity(self.pred_intent_records.len());
+        for record in self.pred_intent_records.drain(..) {
+            if perc_tick >= record.end {
+                continue;
+            }
+            if record.eval_tick <= perc_tick && perc_tick < record.end {
+                let perc_c =
+                    sample_scan_linear_log2(space, &perc_landscape.consonance, record.freq_hz);
+                if !perc_c.is_finite() || !record.pred_c_statepm1.is_finite() {
+                    continue;
+                }
+                let err_c = perc_c - record.pred_c_statepm1;
+                if !err_c.is_finite() {
+                    continue;
+                }
+                let agreement01 = 1.0 - (err_c.abs() / 2.0).clamp(0.0, 1.0);
+                let lr = 0.05;
+                self.self_confidence = lerp(self.self_confidence, agreement01, lr).clamp(0.0, 1.0);
+                continue;
+            }
+            next_records.push_back(record);
+        }
+        self.pred_intent_records = next_records;
+    }
+
+    fn record_pred_intent(
+        &mut self,
+        intent: &Intent,
+        pred_c_scan_at: &mut dyn FnMut(Tick) -> Option<std::sync::Arc<[f32]>>,
+        now: Tick,
+        landscape: &Landscape,
+    ) {
+        let eval_tick = intent.onset.saturating_add((intent.duration / 2).max(1));
+        let pred_c_statepm1 = pred_c_scan_at(eval_tick)
+            .map(|scan| sample_scan_linear_log2(&landscape.space, scan.as_ref(), intent.freq_hz))
+            .unwrap_or(0.0);
+        let pred_c_statepm1 = if pred_c_statepm1.is_finite() {
+            pred_c_statepm1
+        } else {
+            0.0
+        };
+        let record = PredIntentRecord {
+            intent_id: intent.intent_id,
+            onset: intent.onset,
+            end: intent.onset.saturating_add(intent.duration),
+            freq_hz: intent.freq_hz,
+            pred_c_statepm1,
+            created_at: now,
+            eval_tick,
+        };
+        if self.pred_intent_records.len() >= self.pred_intent_records_cap {
+            let _ = self.pred_intent_records.pop_front();
+        }
+        self.pred_intent_records.push_back(record);
     }
 
     fn body_snapshot(&self) -> BodySnapshot {
@@ -382,4 +469,8 @@ impl AudioAgent for Individual {
     fn is_alive(&self) -> bool {
         self.articulation.is_alive() && self.release_gain > 0.0
     }
+}
+
+fn lerp(a: f32, b: f32, t: f32) -> f32 {
+    a + (b - a) * t
 }

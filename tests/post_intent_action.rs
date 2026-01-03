@@ -1,3 +1,4 @@
+use conchordal::core::log2space::Log2Space;
 use conchordal::core::timebase::Timebase;
 use conchordal::life::scenario::Action;
 use conchordal::life::world_model::WorldModel;
@@ -8,7 +9,8 @@ fn post_intent_applies_to_world_model() {
         fs: 48_000.0,
         hop: 512,
     };
-    let mut world = WorldModel::new(timebase);
+    let space = Log2Space::new(55.0, 8000.0, 96);
+    let mut world = WorldModel::new(timebase, space);
     let action = Action::PostIntent {
         source_id: 7,
         onset_sec: 1.0,

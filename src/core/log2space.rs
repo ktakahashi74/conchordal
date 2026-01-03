@@ -154,13 +154,15 @@ impl Log2Space {
 
 /// Sample a Log2Space-aligned scan by linear interpolation in log2-frequency.
 pub fn sample_scan_linear_log2(space: &Log2Space, scan: &[f32], freq_hz: f32) -> f32 {
+    if scan.is_empty() || scan.len() != space.n_bins() {
+        return f32::NEG_INFINITY;
+    }
     if !freq_hz.is_finite() || freq_hz <= 0.0 {
         return f32::NEG_INFINITY;
     }
     if freq_hz < space.fmin || freq_hz > space.fmax {
         return f32::NEG_INFINITY;
     }
-    debug_assert_eq!(scan.len(), space.n_bins());
     let pos = match space.bin_pos_of_freq(freq_hz) {
         Some(pos) => pos,
         None => return f32::NEG_INFINITY,
@@ -175,9 +177,19 @@ pub fn sample_scan_linear_log2(space: &Log2Space, scan: &[f32], freq_hz: f32) ->
     if idx + 1 < scan.len() {
         let v0 = scan[idx];
         let v1 = scan[idx + 1];
-        (v0 * (1.0 - frac)) + (v1 * frac)
+        let out = (v0 * (1.0 - frac)) + (v1 * frac);
+        if out.is_finite() {
+            out
+        } else {
+            f32::NEG_INFINITY
+        }
     } else if idx < scan.len() {
-        scan[idx]
+        let out = scan[idx];
+        if out.is_finite() {
+            out
+        } else {
+            f32::NEG_INFINITY
+        }
     } else {
         f32::NEG_INFINITY
     }

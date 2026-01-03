@@ -121,7 +121,9 @@ pub fn choose_best_freq_by_pred_c(
     if pred_c_statepm1_scan.is_empty() || freq_candidates_hz.is_empty() {
         return None;
     }
-    debug_assert_eq!(pred_c_statepm1_scan.len(), space.n_bins());
+    if pred_c_statepm1_scan.len() != space.n_bins() {
+        return None;
+    }
 
     let mut best_freq = 0.0f32;
     let mut best_score = f32::NEG_INFINITY;
@@ -182,10 +184,8 @@ pub fn choose_best_gesture_tf_by_pred_c(
             _ => continue,
         };
         let mut candidates = make_freq_candidates(onset);
-        if candidates.is_empty() {
-            if base_freq_hz.is_finite() && base_freq_hz > 0.0 {
-                candidates.push(base_freq_hz);
-            }
+        if candidates.is_empty() && base_freq_hz.is_finite() && base_freq_hz > 0.0 {
+            candidates.push(base_freq_hz);
         }
         let (freq_hz, score) = match choose_best_freq_by_pred_c(
             space,

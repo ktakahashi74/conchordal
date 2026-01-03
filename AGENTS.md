@@ -44,6 +44,7 @@
   2. **Harmonicity (H)**: Periodicity/Template matching (consonance/fusion).
 
 
+
 ## Terminology: predictive/perceptual vs potential/state (R/H)
 
 We use two orthogonal axes. Do not mix them.
@@ -55,28 +56,24 @@ We use two orthogonal axes. Do not mix them.
 
 `perceptual` is reserved for this axis only.
 
-### Axis B: metric type (what question it answers)
-- **state** (`*_state_*`): “about the sound itself” (intrinsic/current property; usually scalar summaries).
-- **potential** (`*_potential_*`): “action-conditioned probe field” over candidate pitches.
-  - `potential_R(f)`: marginal roughness added by inserting a unit pure tone at pitch `f`.
-  - `potential_H(f)`: harmonicity/resonance scan over candidate `f` (root/tonal fit field).
+### Axis B: representation (kernel output vs normalized state)
+- **potential** (`*_pot_*`): raw kernel output / physical-ish quantity (unnormalized; references not applied yet).
+- **state** (`*_state_*`): normalized / referenced / composed quantities used for decision making or logging
+  (e.g. 0..1, and `C = clamp(H01 - wR*R01, -1..1)`).
 
-Potential is computed from a spectrum; it becomes `pred_` or `perc_` depending on which spectrum is used.
+Potential/state is orthogonal to pred/perc:
+- `pred_h_pot_scan`, `pred_h_state01_scan`
+- `perc_r_pot_scan`, `perc_c_state_scan`
+- `err_c_state_scan = perc_c_state_scan - pred_c_state_scan`
 
-### Naming rule (avoid ambiguity)
-Never say “perceptual R/H” without qualifiers.
-Always specify BOTH axes, e.g.:
-- `perc_state_R`, `pred_state_R`
-- `perc_potential_R`, `pred_potential_H`
-- `err_potential_R = perc_potential_R - pred_potential_R`
+### Suffix convention (avoid ambiguity)
+Use explicit suffixes when needed:
+- `_scan`: frequency-indexed arrays (Log2Space bins)
+- `_scalar`: summary values (total/max/p95 etc.)
 
-### Mapping to current code (Landscape)
-`Landscape` currently comes from audio analysis => conceptually `perc_*`.
-- `Landscape.roughness`, `roughness01` => `perc_potential_R`
-- `Landscape.harmonicity`, `harmonicity01` => `perc_potential_H`
-- `Landscape.roughness_total/max/p95/roughness01_scalar` => `perc_state_R` (summary)
-
-
+Example:
+- `perc_r_state01_scalar`
+- `pred_c_state_scan`
 
 
 ## Scenario Script Authoring

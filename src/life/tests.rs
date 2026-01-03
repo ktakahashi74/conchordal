@@ -1317,6 +1317,7 @@ fn render_wave_uses_dt_per_sample_for_seq_core() {
             },
             0,
         ),
+        planning: crate::life::scenario::PlanningConfig::default(),
         body: super::individual::AnySoundBody::Sine(super::individual::SineBody {
             freq_hz: 220.0,
             amp: 0.1,

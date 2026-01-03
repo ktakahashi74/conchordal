@@ -5,6 +5,7 @@ use crate::core::timebase::{Tick, Timebase};
 use crate::life::intent::{BodySnapshot, Intent};
 use crate::life::intent_planner::{choose_best_gesture_tf_by_pred_c, choose_onset_by_density};
 use crate::life::perceptual::{FeaturesNow, PerceptualContext};
+use crate::life::scenario::PlanningConfig;
 use rand::rngs::SmallRng;
 use std::collections::VecDeque;
 use tracing::debug;
@@ -60,6 +61,7 @@ pub struct Individual {
     pub articulation: ArticulationWrapper,
     pub pitch: AnyPitchCore,
     pub perceptual: PerceptualContext,
+    pub planning: PlanningConfig,
     pub body: AnySoundBody,
     pub last_signal: ArticulationSignal,
     pub release_gain: f32,
@@ -184,11 +186,8 @@ impl Individual {
 
         if gate_mode {
             let theta_hz = landscape.rhythm.theta.freq_hz;
-            let dur_sec = gate_duration_sec_from_theta(theta_hz);
-            let mut dur_tick = tb.sec_to_tick(dur_sec);
-            if dur_tick == 0 {
-                dur_tick = 1;
-            }
+            let dur_sec = gate_duration_sec_from_theta(theta_hz, &self.planning);
+            let dur_tick = sec_to_tick_at_least_one(tb, dur_sec);
             let amp = 1.0;
             let base_freq_hz =
                 if self.last_chosen_freq_hz > 0.0 && self.last_chosen_freq_hz.is_finite() {
@@ -311,10 +310,7 @@ impl Individual {
         let Some(fallback_onset) = fallback_onset else {
             return Vec::new();
         };
-        let mut dur_tick = tb.sec_to_tick(0.08);
-        if dur_tick == 0 {
-            dur_tick = 1;
-        }
+        let dur_tick = sec_to_tick_at_least_one(tb, 0.08);
         let amp = 1.0;
         let base_freq_hz = if self.last_chosen_freq_hz > 0.0 && self.last_chosen_freq_hz.is_finite()
         {
@@ -483,28 +479,89 @@ impl Individual {
     }
 }
 
-fn gate_duration_sec_from_theta(theta_hz: f32) -> f32 {
+fn gate_duration_sec_from_theta(theta_hz: f32, planning: &PlanningConfig) -> f32 {
+    let fallback = 0.08;
     if !theta_hz.is_finite() || theta_hz <= 0.0 {
-        return 0.08;
+        return fallback;
     }
-    let dur_sec = 0.9 / theta_hz;
-    dur_sec.clamp(0.03, 0.5)
+
+    let mut min_s = planning.gate_dur_min_sec;
+    let mut max_s = planning.gate_dur_max_sec;
+
+    if !min_s.is_finite() || min_s <= 0.0 {
+        min_s = 0.010;
+    }
+    if !max_s.is_finite() || max_s <= 0.0 {
+        max_s = 0.50;
+    }
+    if min_s > max_s {
+        std::mem::swap(&mut min_s, &mut max_s);
+    }
+
+    let scale = if planning.gate_dur_scale.is_finite() {
+        planning.gate_dur_scale
+    } else {
+        0.90
+    };
+
+    let period_sec = 1.0 / theta_hz;
+    let dur_sec = (period_sec * scale).clamp(min_s, max_s);
+    if dur_sec.is_finite() {
+        dur_sec
+    } else {
+        fallback
+    }
+}
+
+fn sec_to_tick_at_least_one(tb: &Timebase, sec: f32) -> Tick {
+    let t = tb.sec_to_tick(sec);
+    if t < 1 { 1 } else { t }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::gate_duration_sec_from_theta;
+    use super::{gate_duration_sec_from_theta, sec_to_tick_at_least_one};
+    use crate::core::timebase::Timebase;
+    use crate::life::scenario::{PlanPitchMode, PlanningConfig};
 
     #[test]
     fn gate_duration_tracks_theta() {
-        let d6 = gate_duration_sec_from_theta(6.0);
+        let planning = PlanningConfig::default();
+        let d6 = gate_duration_sec_from_theta(6.0, &planning);
         assert!((d6 - 0.15).abs() < 1e-6);
 
-        let d3 = gate_duration_sec_from_theta(3.0);
+        let d3 = gate_duration_sec_from_theta(3.0, &planning);
         assert!((d3 - 0.3).abs() < 1e-6);
 
-        let d0 = gate_duration_sec_from_theta(0.0);
+        let d0 = gate_duration_sec_from_theta(0.0, &planning);
         assert!((d0 - 0.08).abs() < 1e-6);
+    }
+
+    #[test]
+    fn gate_duration_handles_min_max_swap() {
+        let mut planning = PlanningConfig::default();
+        planning.gate_dur_min_sec = 0.5;
+        planning.gate_dur_max_sec = 0.01;
+        let dur = gate_duration_sec_from_theta(3.0, &planning);
+        assert!(dur.is_finite());
+        assert!(dur >= 0.01 && dur <= 0.5);
+    }
+
+    #[test]
+    fn gate_duration_tick_is_at_least_one() {
+        let planning = PlanningConfig {
+            gate_dur_scale: 0.001,
+            gate_dur_min_sec: 0.0001,
+            gate_dur_max_sec: 0.0002,
+            plan_rate: 0.0,
+            pitch_mode: PlanPitchMode::Off,
+        };
+        let dur_sec = gate_duration_sec_from_theta(1000.0, &planning);
+        let tb = Timebase { fs: 10.0, hop: 64 };
+        let raw = tb.sec_to_tick(dur_sec);
+        assert!(raw < 1);
+        let clamped = sec_to_tick_at_least_one(&tb, dur_sec);
+        assert_eq!(clamped, 1);
     }
 }
 

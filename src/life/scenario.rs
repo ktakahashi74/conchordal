@@ -98,6 +98,62 @@ impl Default for TimbreGenotype {
     }
 }
 
+fn default_gate_dur_scale() -> f32 {
+    0.90
+}
+
+fn default_gate_dur_min_sec() -> f32 {
+    0.010
+}
+
+fn default_gate_dur_max_sec() -> f32 {
+    0.50
+}
+
+fn default_plan_rate() -> f32 {
+    0.0
+}
+
+fn default_plan_pitch_mode() -> PlanPitchMode {
+    PlanPitchMode::Off
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum PlanPitchMode {
+    #[default]
+    #[serde(alias = "none")]
+    Off,
+    PredC,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PlanningConfig {
+    #[serde(default = "default_gate_dur_scale")]
+    pub gate_dur_scale: f32,
+    #[serde(default = "default_gate_dur_min_sec")]
+    pub gate_dur_min_sec: f32,
+    #[serde(default = "default_gate_dur_max_sec")]
+    pub gate_dur_max_sec: f32,
+    #[serde(default = "default_plan_rate")]
+    pub plan_rate: f32,
+    #[serde(default = "default_plan_pitch_mode")]
+    pub pitch_mode: PlanPitchMode,
+}
+
+impl Default for PlanningConfig {
+    fn default() -> Self {
+        Self {
+            gate_dur_scale: default_gate_dur_scale(),
+            gate_dur_min_sec: default_gate_dur_min_sec(),
+            gate_dur_max_sec: default_gate_dur_max_sec(),
+            plan_rate: default_plan_rate(),
+            pitch_mode: default_plan_pitch_mode(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
 #[serde(deny_unknown_fields)]
 pub struct LifeConfig {
@@ -109,6 +165,8 @@ pub struct LifeConfig {
     pub pitch: PitchCoreConfig,
     #[serde(default)]
     pub perceptual: PerceptualConfig,
+    #[serde(default)]
+    pub planning: PlanningConfig,
     #[serde(default)]
     pub breath_gain_init: Option<f32>,
 }
@@ -263,8 +321,13 @@ impl fmt::Display for LifeConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "life[body={:?}, articulation={:?}, pitch={:?}, perceptual={:?}, breath_gain_init={:?}]",
-            self.body, self.articulation, self.pitch, self.perceptual, self.breath_gain_init
+            "life[body={:?}, articulation={:?}, pitch={:?}, perceptual={:?}, planning={:?}, breath_gain_init={:?}]",
+            self.body,
+            self.articulation,
+            self.pitch,
+            self.perceptual,
+            self.planning,
+            self.breath_gain_init
         )
     }
 }
@@ -349,6 +412,7 @@ impl IndividualConfig {
             articulation: ArticulationWrapper::new(core, breath_gain),
             pitch,
             perceptual,
+            planning: self.life.planning.clone(),
             body,
             last_signal: Default::default(),
             release_gain: 1.0,

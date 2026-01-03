@@ -130,31 +130,58 @@ impl Landscape {
         self.nsgt_power.resize(n, 0.0);
     }
 
+    fn assert_scan_lengths(&self) {
+        self.space
+            .assert_scan_len_named(&self.roughness, "roughness");
+        self.space
+            .assert_scan_len_named(&self.roughness_shape_raw, "roughness_shape_raw");
+        self.space
+            .assert_scan_len_named(&self.roughness01, "roughness01");
+        self.space
+            .assert_scan_len_named(&self.harmonicity, "harmonicity");
+        self.space
+            .assert_scan_len_named(&self.harmonicity01, "harmonicity01");
+        self.space
+            .assert_scan_len_named(&self.consonance, "consonance");
+        self.space
+            .assert_scan_len_named(&self.consonance01, "consonance01");
+        self.space
+            .assert_scan_len_named(&self.subjective_intensity, "subjective_intensity");
+        self.space
+            .assert_scan_len_named(&self.nsgt_power, "nsgt_power");
+    }
+
     /// Signed consonance [-1, 1]. Prefer `evaluate_pitch01` for normalized usage.
     pub fn evaluate_pitch(&self, freq_hz: f32) -> f32 {
+        self.assert_scan_lengths();
         self.sample_linear(&self.consonance, freq_hz)
     }
 
     /// Signed consonance [-1, 1]. Prefer `evaluate_pitch01_log2` for normalized usage.
     pub fn evaluate_pitch_log2(&self, log_freq: f32) -> f32 {
+        self.assert_scan_lengths();
         self.sample_linear_log2(&self.consonance, log_freq)
     }
 
     pub fn evaluate_pitch01(&self, freq_hz: f32) -> f32 {
+        self.assert_scan_lengths();
         self.sample_linear(&self.consonance01, freq_hz)
             .clamp(0.0, 1.0)
     }
 
     pub fn evaluate_pitch01_log2(&self, log_freq: f32) -> f32 {
+        self.assert_scan_lengths();
         self.sample_linear_log2(&self.consonance01, log_freq)
             .clamp(0.0, 1.0)
     }
 
     pub fn consonance_at(&self, freq_hz: f32) -> f32 {
+        self.assert_scan_lengths();
         self.evaluate_pitch(freq_hz)
     }
 
     pub fn consonance01_at(&self, freq_hz: f32) -> f32 {
+        self.assert_scan_lengths();
         self.evaluate_pitch01(freq_hz)
     }
 
@@ -167,6 +194,7 @@ impl Landscape {
     }
 
     pub fn recompute_consonance(&mut self, params: &LandscapeParams) {
+        self.assert_scan_lengths();
         let w_r = params.consonance_roughness_weight.max(0.0);
         if self.harmonicity01.len() != self.harmonicity.len() {
             self.harmonicity01 = vec![0.0; self.harmonicity.len()];
@@ -177,12 +205,17 @@ impl Landscape {
         if self.roughness01.len() != self.roughness.len() {
             self.roughness01 = vec![0.0; self.roughness.len()];
         }
+        let perc_h_pot_scan = &self.harmonicity;
+        let perc_r_state01_scan = &self.roughness01;
+        crate::core::psycho_state::h_pot_scan_to_h_state01_scan(
+            perc_h_pot_scan,
+            1.0,
+            &mut self.harmonicity01,
+        );
         for i in 0..self.consonance.len() {
-            let h = *self.harmonicity.get(i).unwrap_or(&0.0);
-            let h01 = crate::core::psycho_state::clamp01(h);
-            let r01 = crate::core::psycho_state::clamp01(self.roughness01[i]);
+            let h01 = self.harmonicity01[i];
+            let r01 = perc_r_state01_scan[i];
             let (c_signed, c01) = crate::core::psycho_state::compose_c_statepm1(h01, r01, w_r);
-            self.harmonicity01[i] = h01;
             self.consonance[i] = c_signed;
             self.consonance01[i] = c01.clamp(0.0, 1.0);
         }

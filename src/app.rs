@@ -913,11 +913,12 @@ fn worker_loop(
                     roughness_updated = true;
                 }
 
-                if let Some(h_scan) = &latest_h_scan
-                    && h_scan.len() == current_landscape.harmonicity.len()
-                {
-                    current_landscape.harmonicity.clone_from(h_scan);
-                    harmonicity_updated = true;
+                if let Some(h_scan) = &latest_h_scan {
+                    debug_assert_eq!(h_scan.len(), current_landscape.space.n_bins());
+                    if h_scan.len() == current_landscape.harmonicity.len() {
+                        current_landscape.harmonicity.clone_from(h_scan);
+                        harmonicity_updated = true;
+                    }
                 }
 
                 if roughness_updated || harmonicity_updated {

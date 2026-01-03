@@ -52,6 +52,16 @@ impl Log2Space {
         self.centers_hz.len()
     }
 
+    #[inline]
+    pub fn assert_scan_len<T>(&self, scan: &[T]) {
+        debug_assert_eq!(scan.len(), self.n_bins());
+    }
+
+    #[inline]
+    pub fn assert_scan_len_named<T>(&self, scan: &[T], name: &str) {
+        debug_assert_eq!(scan.len(), self.n_bins(), "scan length mismatch: {name}");
+    }
+
     /// Compact metadata for re-creating this log2 axis elsewhere.
     #[inline]
     pub fn spec(&self) -> Log2SpaceSpec {

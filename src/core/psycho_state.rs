@@ -60,6 +60,7 @@ pub fn roughness_ratio_to_state01(ratio: f32, k: f32) -> f32 {
 }
 
 pub fn r_pot_scan_to_r_state01_scan(r_pot_scan: &[f32], r_ref_peak: f32, k: f32, out: &mut [f32]) {
+    debug_assert_eq!(out.len(), r_pot_scan.len());
     let denom = if r_ref_peak.is_finite() && r_ref_peak > 0.0 {
         r_ref_peak
     } else {
@@ -73,6 +74,7 @@ pub fn r_pot_scan_to_r_state01_scan(r_pot_scan: &[f32], r_ref_peak: f32, k: f32,
 }
 
 pub fn h_pot_scan_to_h_state01_scan(h_pot_scan: &[f32], h_ref_max: f32, out: &mut [f32]) {
+    debug_assert_eq!(out.len(), h_pot_scan.len());
     let denom = if h_ref_max.is_finite() && h_ref_max > 0.0 {
         h_ref_max
     } else {
@@ -93,6 +95,8 @@ pub fn compose_c_statepm1(h_state01: f32, r_state01: f32, w_r: f32) -> (f32, f32
 }
 
 pub fn compose_c_statepm1_scan(h_state01: &[f32], r_state01: &[f32], w_r: f32, out: &mut [f32]) {
+    debug_assert_eq!(h_state01.len(), r_state01.len());
+    debug_assert_eq!(out.len(), h_state01.len());
     let len = out.len().min(h_state01.len()).min(r_state01.len());
     for i in 0..len {
         let (c_signed, _) = compose_c_statepm1(h_state01[i], r_state01[i], w_r);
@@ -101,6 +105,7 @@ pub fn compose_c_statepm1_scan(h_state01: &[f32], r_state01: &[f32], w_r: f32, o
 }
 
 pub fn roughness_ref_from_r_pot_scan(r_pot_scan: &[f32], du: &[f32]) -> RoughnessRef {
+    debug_assert_eq!(r_pot_scan.len(), du.len());
     let peak = r_pot_scan.iter().copied().fold(0.0f32, f32::max);
     let total = density::density_to_mass(r_pot_scan, du);
     RoughnessRef { total, peak }
@@ -141,12 +146,12 @@ pub fn build_roughness_reference_density(params: &LandscapeParams, space: &Log2S
 pub fn compute_roughness_reference(params: &LandscapeParams, space: &Log2Space) -> RoughnessRef {
     let eps = params.roughness_ref_eps.max(1e-12);
     let ref_density = build_roughness_reference_density(params, space);
-    let (r_pot_scan, _r_total) = params
+    let (r_pot_scan, r_total) = params
         .roughness_kernel
         .potential_r_from_log2_spectrum_density(&ref_density, space);
     let (_erb, du) = erb_grid(space);
     let mut ref_vals = roughness_ref_from_r_pot_scan(&r_pot_scan, &du);
-    ref_vals.total = ref_vals.total.max(eps);
+    ref_vals.total = r_total.max(eps);
     ref_vals.peak = ref_vals.peak.max(eps);
     ref_vals
 }
@@ -211,7 +216,7 @@ mod tests {
         let space = Log2Space::new(80.0, 8000.0, 96);
         let params = build_params(&space);
         let ref_density = build_roughness_reference_density(&params, &space);
-        let (r_pot_scan, _r_total) = params
+        let (r_pot_scan, r_total) = params
             .roughness_kernel
             .potential_r_from_log2_spectrum_density(&ref_density, &space);
         let (_erb, du) = erb_grid(&space);
@@ -220,6 +225,8 @@ mod tests {
         let legacy_peak = r_pot_scan.iter().copied().fold(0.0f32, f32::max);
         assert!((ref_vals.total - legacy_total).abs() < 1e-6);
         assert!((ref_vals.peak - legacy_peak).abs() < 1e-6);
+        let ref_from_kernel = compute_roughness_reference(&params, &space);
+        assert!((ref_from_kernel.total - r_total).abs() < 1e-6);
     }
 
     #[test]

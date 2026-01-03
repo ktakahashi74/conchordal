@@ -75,6 +75,28 @@ Example:
 - `perc_r_state01_scalar`
 - `pred_c_state_scan`
 
+## Frequency Space: Log2Space invariants
+
+We represent frequency-direction terrains as **Log2Space-aligned scans**.
+
+### Rules
+- **F1**: Any vector suffixed with `_scan` MUST be aligned to Log2Space bins:
+  `scan.len() == space.n_bins()`.
+- **F2**: Any function that accepts/returns a `_scan` MUST assert the invariant at boundaries
+  (debug_assert is acceptable; tests must cover it).
+- **F3**: Hz / ERB (or other psychoacoustic coordinates) are allowed as internal representations
+  (e.g. oscillators, intents, intermediate grids), but any exposed terrain field is converted to
+  Log2Space bins.
+- **F4**: Candidate evaluation against terrains MUST use log2->bin mapping (interpolation allowed).
+  Never index `_scan` with linear-Hz indices.
+
+### Naming
+- `_scan`: Log2Space bins terrain vector
+- `_hz`: linear frequency array in Hz
+- `_erb`: ERB-domain array (psychoacoustic helper)
+- `_log2`: log2-frequency coordinate
+- `_idx` / `_bin`: bin index into Log2Space scans
+
 
 ## Scenario Script Authoring
 **Keep simple things simple, and complex things possible.**

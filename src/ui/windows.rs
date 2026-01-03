@@ -510,6 +510,17 @@ fn draw_intent_board(ui: &mut egui::Ui, frame: &UiFrame) {
     } else {
         0.0
     };
+    let next_gate_tick = frame
+        .world
+        .next_gate_tick_est
+        .map(|tick| tick.to_string())
+        .unwrap_or_else(|| "None".to_string());
+    let next_gate_sec = frame
+        .world
+        .next_gate_sec_est
+        .map(|sec| format!("{sec:.3}"))
+        .unwrap_or_else(|| "None".to_string());
+    let planned_count = frame.world.planned_next.len();
 
     ui.horizontal(|ui| {
         ui.label(format!("now_tick={now_tick}"));
@@ -521,6 +532,12 @@ fn draw_intent_board(ui: &mut egui::Ui, frame: &UiFrame) {
         ui.label(format!("past={} ({past_sec:.2}s)", past_ticks));
         ui.separator();
         ui.label(format!("future={} ({future_sec:.2}s)", future_ticks));
+        ui.separator();
+        ui.label(format!("next_gate_tick={next_gate_tick}"));
+        ui.separator();
+        ui.label(format!("next_gate_sec={next_gate_sec}"));
+        ui.separator();
+        ui.label(format!("planned={planned_count}"));
     });
 
     let series: PlotPoints = frame
@@ -536,9 +553,26 @@ fn draw_intent_board(ui: &mut egui::Ui, frame: &UiFrame) {
             Some([x, y])
         })
         .collect();
+    let planned_series: PlotPoints = frame
+        .world
+        .planned_next
+        .iter()
+        .filter_map(|planned| {
+            let gate_sec = frame.world.next_gate_sec_est?;
+            if planned.freq_hz <= 0.0 {
+                return None;
+            }
+            let x = (planned.freq_hz as f64).max(1.0).log2();
+            let y = gate_sec;
+            Some([x, y])
+        })
+        .collect();
     let points = Points::new("intents", series)
         .radius(3.0)
         .color(Color32::from_rgb(240, 120, 120));
+    let planned_points = Points::new("planned_intents", planned_series)
+        .radius(4.0)
+        .color(Color32::from_rgb(120, 220, 160));
     let x_min_log2 = (20.0f64).log2();
     let x_max_log2 = (20_000.0f64).log2();
     let y_min = (now_sec - past_sec) as f64;
@@ -566,6 +600,9 @@ fn draw_intent_board(ui: &mut egui::Ui, frame: &UiFrame) {
         .y_axis_formatter(|mark, _| format!("{:.2}s", mark.value))
         .show(ui, |plot_ui| {
             plot_ui.points(points);
+            if planned_count > 0 && frame.world.next_gate_sec_est.is_some() {
+                plot_ui.points(planned_points);
+            }
         });
 
     let mut list_text = String::new();
@@ -586,8 +623,27 @@ fn draw_intent_board(ui: &mut egui::Ui, frame: &UiFrame) {
     }
     let line_height = ui.text_style_height(&egui::TextStyle::Body);
     egui::ScrollArea::horizontal()
+        .id_salt("intent_list_scroll")
         .max_height(line_height.max(INTENT_LIST_HEIGHT))
         .show(ui, |ui| {
             ui.add(egui::Label::new(list_text).extend());
+        });
+
+    let mut planned_text = String::new();
+    for (idx, planned) in frame.world.planned_next.iter().enumerate() {
+        if idx > 0 {
+            planned_text.push_str(" | ");
+        }
+        let tag = planned.tag.as_deref().unwrap_or("-");
+        planned_text.push_str(&format!(
+            "f={:.1}Hz amp={:.3} conf={:.2} src={} tag={}",
+            planned.freq_hz, planned.amp, planned.confidence, planned.source_id, tag
+        ));
+    }
+    egui::ScrollArea::horizontal()
+        .id_salt("planned_list_scroll")
+        .max_height(line_height.max(INTENT_LIST_HEIGHT))
+        .show(ui, |ui| {
+            ui.add(egui::Label::new(planned_text).extend());
         });
 }

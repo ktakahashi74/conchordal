@@ -1,8 +1,13 @@
+use std::sync::Arc;
+
 use crate::core::landscape::{LandscapeFrame, LandscapeParams};
 use crate::core::log2space::Log2Space;
+use crate::core::modulation::NeuralRhythms;
 use crate::core::stream::dorsal::DorsalMetrics;
 use crate::core::timebase::{Tick, Timebase};
+use crate::life::gate_clock::next_gate_tick;
 use crate::life::intent::{Intent, IntentBoard};
+use crate::life::plan::{PlanBoard, PlannedIntent};
 use crate::life::predictive_rhythm::{
     PredictiveRhythmBank, RhythmBandSpec, build_pred_rhythm_bank_from_intents,
     default_pred_rhythm_specs,
@@ -43,6 +48,9 @@ pub struct WorldView {
     pub past_ticks: Tick,
     pub future_ticks: Tick,
     pub intents: Vec<IntentView>,
+    pub next_gate_tick_est: Option<Tick>,
+    pub next_gate_sec_est: Option<f64>,
+    pub planned_next: Vec<PlannedIntent>,
 }
 
 impl Default for WorldView {
@@ -53,6 +61,9 @@ impl Default for WorldView {
             past_ticks: 0,
             future_ticks: 0,
             intents: Vec::new(),
+            next_gate_tick_est: None,
+            next_gate_sec_est: None,
+            planned_next: Vec::new(),
         }
     }
 }
@@ -68,6 +79,11 @@ pub struct WorldModel {
     pub pred_params: Option<LandscapeParams>,
     pub pred_rhythm_bank: PredictiveRhythmBank,
     pub pred_rhythm_specs: Vec<RhythmBandSpec>,
+    pub plan_board: PlanBoard,
+    pub next_gate_tick_est: Option<Tick>,
+    pub last_committed_gate_tick: Option<Tick>,
+    #[allow(dead_code)]
+    pub phi_epsilon: f32,
 }
 
 impl WorldModel {
@@ -90,6 +106,10 @@ impl WorldModel {
             pred_params: None,
             pred_rhythm_bank,
             pred_rhythm_specs,
+            plan_board: PlanBoard::new(),
+            next_gate_tick_est: None,
+            last_committed_gate_tick: None,
+            phi_epsilon: 1e-6,
         }
     }
 
@@ -127,13 +147,63 @@ impl WorldModel {
             .iter()
             .map(IntentView::from)
             .collect();
+        let next_gate_sec_est = self.next_gate_tick_est.and_then(|tick| {
+            if self.time.fs.is_finite() && self.time.fs > 0.0 {
+                Some(tick as f64 / self.time.fs as f64)
+            } else {
+                None
+            }
+        });
         WorldView {
             now_tick: self.now,
             fs: self.time.fs,
             past_ticks: past,
             future_ticks: future,
             intents,
+            next_gate_tick_est: self.next_gate_tick_est,
+            next_gate_sec_est,
+            planned_next: self.plan_board.snapshot_next(),
         }
+    }
+
+    pub fn update_gate_from_rhythm(&mut self, now_tick: Tick, rhythm: &NeuralRhythms) {
+        self.next_gate_tick_est = next_gate_tick(now_tick, self.time.fs, rhythm.theta, 0.0);
+    }
+
+    pub fn commit_plans_if_due(&mut self, now: Tick, frame_end: Tick) {
+        let gate_tick = match self.next_gate_tick_est {
+            Some(tick) => tick,
+            None => return,
+        };
+        if gate_tick < now || gate_tick >= frame_end {
+            return;
+        }
+        if self.last_committed_gate_tick == Some(gate_tick) {
+            return;
+        }
+
+        let planned = self.plan_board.snapshot_next();
+        for p in planned {
+            let intent = Intent {
+                source_id: p.source_id,
+                intent_id: self.next_intent_id,
+                onset: gate_tick,
+                duration: p.duration,
+                freq_hz: p.freq_hz,
+                amp: p.amp,
+                tag: p.tag.clone(),
+                confidence: p.confidence,
+                body: p.body.clone(),
+            };
+            self.next_intent_id = self.next_intent_id.wrapping_add(1);
+            self.board.publish(intent);
+        }
+        self.plan_board.clear_next();
+        self.last_committed_gate_tick = Some(gate_tick);
+    }
+
+    pub fn pred_c_next_gate(&self, _params: &LandscapeParams) -> Option<Arc<[f32]>> {
+        None
     }
 
     pub fn pred_kernel_inputs_at(&self, eval_tick: Tick) -> PredKernelInputs {

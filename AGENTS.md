@@ -38,6 +38,10 @@
 - **DSP Efficiency**: Prefer `f32`. Avoid allocations in the audio thread (`worker_loop`). Use `Vec::with_capacity` or pre-allocated ringbuffers.
 - **Naming**: `snake_case` for modules/functions, `CamelCase` for structs/traits.
 
+## Testing Policy
+- **Inline tests** (`#[cfg(test)] mod tests` in the same source file) are for module-internal logic and private APIs.
+- **Integration tests** (`tests/` directory) are for public API and cross-module behavior; treat them as black-box specs.
+
 ## Architecture Notes for Agents
 - The core perception model is **Landscape**. It ingests audio, transforms it to Log2-frequency space via NSGT, and computes two potentials:
   1. **Roughness (R)**: Amplitude fluctuations within critical bands (dissonance).

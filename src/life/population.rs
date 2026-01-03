@@ -375,6 +375,9 @@ impl Population {
                     // fallback to random log-uniform
                     let min_l = min_freq.log2();
                     let max_l = max_freq.log2();
+                    if !min_l.is_finite() || !max_l.is_finite() || min_l >= max_l {
+                        return min_freq.max(1e-6);
+                    }
                     for _ in 0..32 {
                         let r = rng.random_range(min_l..max_l);
                         let f = 2.0f32.powf(r);
@@ -388,6 +391,9 @@ impl Population {
             SpawnMethod::RandomLogUniform { .. } => {
                 let min_l = min_freq.log2();
                 let max_l = max_freq.log2();
+                if !min_l.is_finite() || !max_l.is_finite() || min_l >= max_l {
+                    return min_freq.max(1e-6);
+                }
                 for _ in 0..32 {
                     let r = rng.random_range(min_l..max_l);
                     let f = 2.0f32.powf(r);

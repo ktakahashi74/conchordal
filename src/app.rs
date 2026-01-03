@@ -1051,6 +1051,7 @@ fn worker_loop(
                 current_landscape.rhythm = dorsal.process(mono_chunk.as_ref());
             }
             let dorsal_metrics = dorsal.last_metrics();
+            world.update_gate_from_rhythm(now_tick, &current_landscape.rhythm);
 
             // Build log2 spectrum for analysis and UI (aligned with landscape space).
             let spectrum_body = pop.process_frame(

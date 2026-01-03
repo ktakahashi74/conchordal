@@ -1,5 +1,6 @@
 pub mod api;
 pub mod conductor;
+pub mod gate_clock;
 pub mod individual;
 pub mod intent;
 pub mod intent_planner;

@@ -1,11 +1,7 @@
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
-use crate::life::gate_envelope::GateEnvelope;
-use crate::life::individual::{AnySoundBody, ArticulationSignal, SoundBody};
-use crate::life::intent::{BodySnapshot, Intent, IntentBoard};
-use crate::life::scenario::{SoundBodyConfig, TimbreGenotype};
-use rand::SeedableRng;
-use rand::rngs::SmallRng;
+use crate::life::intent::{Intent, IntentBoard};
+use crate::life::sound_voice::{SoundVoice, default_release_ticks};
 use std::collections::HashMap;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -14,18 +10,10 @@ struct VoiceKey {
     intent_id: u64,
 }
 
-struct Voice {
-    intent: Intent,
-    body: AnySoundBody,
-    end_tick: Tick,
-    forced_release_tick: Option<Tick>,
-}
-
 pub struct ScheduleRenderer {
     time: Timebase,
     buf: Vec<f32>,
-    voices: HashMap<VoiceKey, Voice>,
-    envelope: GateEnvelope,
+    voices: HashMap<VoiceKey, SoundVoice>,
     add_future_ticks: Tick,
     add_past_ticks: Tick,
     did_full_resync: bool,
@@ -35,13 +23,11 @@ pub struct ScheduleRenderer {
 impl ScheduleRenderer {
     pub fn new(time: Timebase) -> Self {
         let add_future_ticks = (time.hop as Tick).saturating_mul(4).max(1);
-        let envelope = GateEnvelope::new(time);
-        let add_past_ticks = schedule_add_past_ticks(time, &envelope);
+        let add_past_ticks = schedule_add_past_ticks(time);
         Self {
             time,
             buf: vec![0.0; time.hop],
             voices: HashMap::new(),
-            envelope,
             add_future_ticks,
             add_past_ticks,
             did_full_resync: false,
@@ -61,7 +47,7 @@ impl ScheduleRenderer {
             return &self.buf;
         }
 
-        self.voices.retain(|_, voice| voice.end_tick > now);
+        self.voices.retain(|_, voice| !voice.is_done(now));
 
         let past = if self.did_full_resync {
             board.retention_past.min(self.add_past_ticks)
@@ -86,24 +72,7 @@ impl ScheduleRenderer {
             let idx = (tick - now) as usize;
             let mut acc = 0.0f32;
             for voice in self.voices.values_mut() {
-                if tick < voice.intent.onset || tick >= voice.end_tick {
-                    continue;
-                }
-                let env =
-                    self.envelope
-                        .gain_with_end(&voice.intent, tick, voice.forced_release_tick);
-                if env <= 0.0 {
-                    continue;
-                }
-                let signal = ArticulationSignal {
-                    amplitude: env,
-                    is_active: env > 0.0,
-                    relaxation: rhythms.theta.alpha,
-                    tension: rhythms.theta.beta,
-                };
-                let mut sample = 0.0f32;
-                voice.body.articulate_wave(&mut sample, fs, dt, &signal);
-                acc += sample;
+                acc += voice.render_tick(tick, fs, dt, &rhythms);
             }
             self.buf[idx] = acc;
             rhythms.advance_in_place(dt);
@@ -123,17 +92,9 @@ impl ScheduleRenderer {
 
     pub fn shutdown_at(&mut self, tick: Tick) {
         self.cutoff_tick = Some(tick);
-        let release_ticks = self.envelope.release_ticks();
-        self.voices.retain(|_, voice| voice.intent.onset <= tick);
+        self.voices.retain(|_, voice| voice.onset() <= tick);
         for voice in self.voices.values_mut() {
-            if tick < voice.intent.onset || tick >= voice.end_tick {
-                continue;
-            }
-            let intent_end = voice.intent.onset.saturating_add(voice.intent.duration);
-            if tick < intent_end {
-                voice.forced_release_tick = Some(tick);
-                voice.end_tick = tick.saturating_add(release_ticks);
-            }
+            voice.note_off(tick);
         }
     }
 
@@ -144,7 +105,7 @@ impl ScheduleRenderer {
         let end_tick = intent
             .onset
             .saturating_add(intent.duration)
-            .saturating_add(self.envelope.release_ticks());
+            .saturating_add(default_release_ticks(self.time));
         if end_tick <= now {
             return;
         }
@@ -155,35 +116,9 @@ impl ScheduleRenderer {
         if self.voices.contains_key(&key) {
             return;
         }
-
-        let (config, amp_scale) = match intent.body.as_ref() {
-            Some(snapshot) => (
-                sound_body_config_from_snapshot(snapshot),
-                snapshot.amp_scale,
-            ),
-            None => (SoundBodyConfig::Sine { phase: None }, 1.0),
-        };
-        let amp = intent.amp * amp_scale.clamp(0.0, 1.0);
-        if !amp.is_finite() || amp == 0.0 {
-            return;
+        if let Some(voice) = SoundVoice::from_intent(self.time, &intent) {
+            self.voices.insert(key, voice);
         }
-
-        let seed = intent
-            .intent_id
-            .wrapping_add(intent.source_id.rotate_left(17))
-            .wrapping_add(intent.onset);
-        let mut rng = SmallRng::seed_from_u64(seed);
-        let body = AnySoundBody::from_config(&config, intent.freq_hz, amp, &mut rng);
-
-        self.voices.insert(
-            key,
-            Voice {
-                intent,
-                body,
-                end_tick,
-                forced_release_tick: None,
-            },
-        );
     }
 
     fn apply_limiter(&mut self) {
@@ -205,21 +140,7 @@ impl ScheduleRenderer {
     }
 }
 
-fn sound_body_config_from_snapshot(snapshot: &BodySnapshot) -> SoundBodyConfig {
-    match snapshot.kind.as_str() {
-        "harmonic" => SoundBodyConfig::Harmonic {
-            genotype: TimbreGenotype {
-                brightness: snapshot.brightness.clamp(0.0, 1.0),
-                jitter: snapshot.noise_mix.clamp(0.0, 1.0),
-                ..TimbreGenotype::default()
-            },
-            partials: None,
-        },
-        _ => SoundBodyConfig::Sine { phase: None },
-    }
-}
-
-fn schedule_add_past_ticks(time: Timebase, envelope: &GateEnvelope) -> Tick {
+fn schedule_add_past_ticks(time: Timebase) -> Tick {
     let hop_window = (time.hop as Tick).saturating_mul(2);
-    envelope.release_ticks().max(hop_window).max(1)
+    default_release_ticks(time).max(hop_window).max(1)
 }

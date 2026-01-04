@@ -520,7 +520,8 @@ fn draw_intent_board(ui: &mut egui::Ui, frame: &UiFrame) {
         .next_gate_sec_est
         .map(|sec| format!("{sec:.3}"))
         .unwrap_or_else(|| "None".to_string());
-    let planned_count = frame.world.planned_next.len();
+    let planned_live_count = frame.world.planned_next_live.len();
+    let planned_last_count = frame.world.planned_last_committed.len();
 
     ui.horizontal(|ui| {
         ui.label(format!("now_tick={now_tick}"));
@@ -537,7 +538,10 @@ fn draw_intent_board(ui: &mut egui::Ui, frame: &UiFrame) {
         ui.separator();
         ui.label(format!("next_gate_sec={next_gate_sec}"));
         ui.separator();
-        ui.label(format!("planned={planned_count}"));
+        ui.label(format!(
+            "planned_live={} planned_last={}",
+            planned_live_count, planned_last_count
+        ));
     });
 
     let series: PlotPoints = frame
@@ -553,9 +557,9 @@ fn draw_intent_board(ui: &mut egui::Ui, frame: &UiFrame) {
             Some([x, y])
         })
         .collect();
-    let planned_series: PlotPoints = frame
+    let planned_live_series: PlotPoints = frame
         .world
-        .planned_next
+        .planned_next_live
         .iter()
         .filter_map(|planned| {
             let gate_sec = frame.world.next_gate_sec_est?;
@@ -567,12 +571,29 @@ fn draw_intent_board(ui: &mut egui::Ui, frame: &UiFrame) {
             Some([x, y])
         })
         .collect();
+    let planned_last_series: PlotPoints = frame
+        .world
+        .planned_last_committed
+        .iter()
+        .filter_map(|planned| {
+            let gate_tick = frame.world.planned_last_gate_tick?;
+            if planned.freq_hz <= 0.0 || fs <= 0.0 {
+                return None;
+            }
+            let x = (planned.freq_hz as f64).max(1.0).log2();
+            let y = gate_tick as f64 / fs as f64;
+            Some([x, y])
+        })
+        .collect();
     let points = Points::new("intents", series)
         .radius(3.0)
         .color(Color32::from_rgb(240, 120, 120));
-    let planned_points = Points::new("planned_intents", planned_series)
+    let planned_points = Points::new("planned_intents_live", planned_live_series)
         .radius(4.0)
         .color(Color32::from_rgb(120, 220, 160));
+    let planned_last_points = Points::new("planned_intents_last", planned_last_series)
+        .radius(4.0)
+        .color(Color32::from_rgb(120, 160, 240));
     let x_min_log2 = (20.0f64).log2();
     let x_max_log2 = (20_000.0f64).log2();
     let y_min = (now_sec - past_sec) as f64;
@@ -600,8 +621,11 @@ fn draw_intent_board(ui: &mut egui::Ui, frame: &UiFrame) {
         .y_axis_formatter(|mark, _| format!("{:.2}s", mark.value))
         .show(ui, |plot_ui| {
             plot_ui.points(points);
-            if planned_count > 0 && frame.world.next_gate_sec_est.is_some() {
+            if planned_live_count > 0 && frame.world.next_gate_sec_est.is_some() {
                 plot_ui.points(planned_points);
+            }
+            if planned_last_count > 0 && frame.world.planned_last_gate_tick.is_some() {
+                plot_ui.points(planned_last_points);
             }
         });
 
@@ -630,7 +654,7 @@ fn draw_intent_board(ui: &mut egui::Ui, frame: &UiFrame) {
         });
 
     let mut planned_text = String::new();
-    for (idx, planned) in frame.world.planned_next.iter().enumerate() {
+    for (idx, planned) in frame.world.planned_next_live.iter().enumerate() {
         if idx > 0 {
             planned_text.push_str(" | ");
         }
@@ -640,10 +664,27 @@ fn draw_intent_board(ui: &mut egui::Ui, frame: &UiFrame) {
             planned.freq_hz, planned.amp, planned.confidence, planned.source_id, tag
         ));
     }
+    let mut planned_last_text = String::new();
+    for (idx, planned) in frame.world.planned_last_committed.iter().enumerate() {
+        if idx > 0 {
+            planned_last_text.push_str(" | ");
+        }
+        let tag = planned.tag.as_deref().unwrap_or("-");
+        planned_last_text.push_str(&format!(
+            "f={:.1}Hz amp={:.3} conf={:.2} src={} tag={}",
+            planned.freq_hz, planned.amp, planned.confidence, planned.source_id, tag
+        ));
+    }
     egui::ScrollArea::horizontal()
         .id_salt("planned_list_scroll")
         .max_height(line_height.max(INTENT_LIST_HEIGHT))
         .show(ui, |ui| {
             ui.add(egui::Label::new(planned_text).extend());
+        });
+    egui::ScrollArea::horizontal()
+        .id_salt("planned_last_list_scroll")
+        .max_height(line_height.max(INTENT_LIST_HEIGHT))
+        .show(ui, |ui| {
+            ui.add(egui::Label::new(planned_last_text).extend());
         });
 }

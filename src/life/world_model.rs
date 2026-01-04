@@ -46,7 +46,9 @@ pub struct WorldView {
     pub intents: Vec<IntentView>,
     pub next_gate_tick_est: Option<Tick>,
     pub next_gate_sec_est: Option<f64>,
-    pub planned_next: Vec<PlannedIntent>,
+    pub planned_next_live: Vec<PlannedIntent>,
+    pub planned_last_committed: Vec<PlannedIntent>,
+    pub planned_last_gate_tick: Option<Tick>,
 }
 
 impl Default for WorldView {
@@ -59,7 +61,9 @@ impl Default for WorldView {
             intents: Vec::new(),
             next_gate_tick_est: None,
             next_gate_sec_est: None,
-            planned_next: Vec::new(),
+            planned_next_live: Vec::new(),
+            planned_last_committed: Vec::new(),
+            planned_last_gate_tick: None,
         }
     }
 }
@@ -76,6 +80,7 @@ pub struct WorldModel {
     pub plan_board: PlanBoard,
     pub next_gate_tick_est: Option<Tick>,
     pub last_committed_gate_tick: Option<Tick>,
+    pub last_committed_plans_next: Vec<PlannedIntent>,
     #[allow(dead_code)]
     pub phi_epsilon: f32,
 }
@@ -96,6 +101,7 @@ impl WorldModel {
             plan_board: PlanBoard::new(),
             next_gate_tick_est: None,
             last_committed_gate_tick: None,
+            last_committed_plans_next: Vec::new(),
             phi_epsilon: 1e-6,
         }
     }
@@ -137,7 +143,9 @@ impl WorldModel {
             intents,
             next_gate_tick_est: self.next_gate_tick_est,
             next_gate_sec_est,
-            planned_next: self.plan_board.snapshot_next(),
+            planned_next_live: self.plan_board.snapshot_next(),
+            planned_last_committed: self.last_committed_plans_next.clone(),
+            planned_last_gate_tick: self.last_committed_gate_tick,
         }
     }
 
@@ -163,11 +171,14 @@ impl WorldModel {
         if gate_tick < now || gate_tick >= frame_end {
             return;
         }
+        let planned = self.plan_board.snapshot_next();
+        if planned.is_empty() {
+            return;
+        }
         if self.last_committed_gate_tick == Some(gate_tick) {
             return;
         }
-
-        let planned = self.plan_board.snapshot_next();
+        self.last_committed_plans_next = planned.clone();
         for p in planned {
             let intent = Intent {
                 source_id: p.source_id,
@@ -189,15 +200,11 @@ impl WorldModel {
 
     pub fn pred_c_next_gate(&self, params: &LandscapeParams) -> Option<Arc<[f32]>> {
         let eval_tick = self.next_gate_tick_est?;
-        let past = self
-            .board
-            .retention_past
-            .saturating_add(self.now.saturating_sub(eval_tick));
-        let future = self
-            .board
-            .horizon_future
-            .saturating_add(eval_tick.saturating_sub(self.now));
-        let mut intents = self.board.snapshot(self.now, past, future);
+        let mut intents = self.board.snapshot(
+            eval_tick,
+            self.board.retention_past,
+            self.board.horizon_future,
+        );
         for planned in self.plan_board.snapshot_next() {
             intents.push(Intent {
                 source_id: planned.source_id,
@@ -222,15 +229,11 @@ impl WorldModel {
     }
 
     pub fn pred_kernel_inputs_at(&self, eval_tick: Tick) -> PredKernelInputs {
-        let past = self
-            .board
-            .retention_past
-            .saturating_add(self.now.saturating_sub(eval_tick));
-        let future = self
-            .board
-            .horizon_future
-            .saturating_add(eval_tick.saturating_sub(self.now));
-        let intents = self.board.snapshot(self.now, past, future);
+        let intents = self.board.snapshot(
+            eval_tick,
+            self.board.retention_past,
+            self.board.horizon_future,
+        );
         build_pred_kernel_inputs_from_intents(&self.space, &intents, eval_tick)
     }
 
@@ -244,15 +247,11 @@ impl WorldModel {
                 return None;
             }
         };
-        let past = self
-            .board
-            .retention_past
-            .saturating_add(self.now.saturating_sub(eval_tick));
-        let future = self
-            .board
-            .horizon_future
-            .saturating_add(eval_tick.saturating_sub(self.now));
-        let intents = self.board.snapshot(self.now, past, future);
+        let intents = self.board.snapshot(
+            eval_tick,
+            self.board.retention_past,
+            self.board.horizon_future,
+        );
         let terrain = build_pred_terrain_from_intents(&self.space, params, &intents, eval_tick);
         if cfg!(debug_assertions) && terrain.pred_c_statepm1_scan.is_empty() {
             debug!(target: "pred_c", "pred_terrain empty scan");

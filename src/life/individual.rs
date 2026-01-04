@@ -95,6 +95,7 @@ pub struct PredIntentRecord {
 }
 
 impl Individual {
+    const AMP_EPS: f32 = 1e-6;
     pub fn metadata(&self) -> &AgentMetadata {
         &self.metadata
     }
@@ -243,7 +244,11 @@ impl Individual {
 
         let use_pred_c = self.planning.pitch_mode == crate::life::scenario::PlanPitchMode::PredC
             && pred_eval_tick.is_some();
-        let pred_eval_tick = pred_eval_tick.unwrap_or(now);
+        let pred_tick = if use_pred_c {
+            Some(pred_eval_tick.expect("pred_eval_tick must be Some when use_pred_c"))
+        } else {
+            None
+        };
         let plan_rate = self.planning.plan_rate;
         if plan_rate <= 0.0 || !plan_rate.is_finite() {
             return Vec::new();
@@ -255,7 +260,10 @@ impl Individual {
         let theta_hz = landscape.rhythm.theta.freq_hz;
         let dur_sec = gate_duration_sec_from_theta(theta_hz, &self.planning);
         let dur_tick = sec_to_tick_at_least_one(tb, dur_sec);
-        let amp = 1.0;
+        let amp = self.release_gain.clamp(0.0, 1.0);
+        if amp <= Self::AMP_EPS {
+            return Vec::new();
+        }
         let base_freq_hz = if self.last_chosen_freq_hz > 0.0 && self.last_chosen_freq_hz.is_finite()
         {
             self.last_chosen_freq_hz
@@ -263,7 +271,7 @@ impl Individual {
             self.body.base_freq_hz()
         };
         let mut freq_hz = base_freq_hz;
-        if use_pred_c {
+        if let Some(pred_tick) = pred_tick {
             let mut freq_eps = tb.sec_to_tick(0.01);
             if freq_eps == 0 {
                 freq_eps = 1;
@@ -286,7 +294,7 @@ impl Individual {
                 self.pitch
                     .propose_freqs_hz_with_neighbors(base_freq_hz, &neighbors, 16, 8, 12.0)
             };
-            let candidates = [now];
+            let candidates = [pred_tick];
             if let Some(choice) = choose_best_gesture_tf_by_pred_c(
                 &landscape.space,
                 &candidates,
@@ -303,7 +311,7 @@ impl Individual {
         let intent = Intent {
             source_id: self.id,
             intent_id: self.intent_seq,
-            onset: now,
+            onset: gate_tick,
             duration: dur_tick,
             freq_hz,
             amp,
@@ -311,8 +319,8 @@ impl Individual {
             confidence: 1.0,
             body: Some(snapshot),
         };
-        if use_pred_c {
-            self.record_pred_intent(&intent, pred_c_scan_at, now, pred_eval_tick, landscape);
+        if let Some(pred_tick) = pred_tick {
+            self.record_pred_intent(&intent, pred_c_scan_at, now, pred_tick, landscape);
         }
         self.intent_seq = self.intent_seq.wrapping_add(1);
         self.next_intent_tick = now.saturating_add(hop_tick.max(1));

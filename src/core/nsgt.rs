@@ -99,7 +99,7 @@ impl NsgtLog2 {
                     win_len += 1;
                 }
                 let hop = ((1.0 - cfg.overlap) * win_len as f32).round().max(1.0) as usize;
-                let window = hann_periodic(win_len);
+                let window = crate::core::fft::hann_window_periodic(win_len);
                 NsgtBand {
                     f_hz: f,
                     win_len,
@@ -223,12 +223,6 @@ impl NsgtLog2 {
 // =====================================================
 // Internal utilities
 // =====================================================
-
-fn hann_periodic(n: usize) -> Vec<f32> {
-    (0..n)
-        .map(|i| 0.5 * (1.0 - (2.0 * std::f32::consts::PI * (i as f32) / n as f32).cos()))
-        .collect()
-}
 
 // /// Windowed Goertzel per band across time.
 fn analyze_band_goertzel(x: &[f32], fs: f32, band: &NsgtBand) -> (Vec<Complex32>, Vec<usize>) {

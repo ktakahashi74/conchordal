@@ -1,3 +1,4 @@
+use crate::core::db::amp_to_db;
 use crate::ui::plots::{
     draw_rhythm_mandala, draw_roughness_harmonicity, log2_plot_hz, neural_activity_plot,
     plot_population_dynamics, spectrum_time_freq_axes, time_plot,
@@ -14,10 +15,6 @@ fn format_time(sec: f32) -> String {
     let minutes = total_secs / 60;
     let seconds = total_secs % 60;
     format!("{minutes:02}:{seconds:02}")
-}
-
-fn amp_to_db(a: f32) -> f32 {
-    if a <= 0.0 { -60.0 } else { 20.0 * a.log10() }
 }
 
 fn draw_level_meters(

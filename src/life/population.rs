@@ -11,7 +11,6 @@ use tracing::{debug, info, warn};
 
 #[derive(Default)]
 struct WorkBuffers {
-    audio: Vec<f32>,
     amps: Vec<f32>,
 }
 
@@ -624,22 +623,6 @@ impl Population {
 
     pub fn remove_agent(&mut self, id: u64) {
         self.individuals.retain(|a| a.id() != id);
-    }
-
-    /// Mix audio samples for the next hop.
-    pub fn process_audio(
-        &mut self,
-        samples_len: usize,
-        fs: f32,
-        current_frame: u64,
-        dt_sec: f32,
-        landscape: &crate::core::landscape::Landscape,
-    ) -> &[f32] {
-        self.advance(samples_len, fs, current_frame, dt_sec, landscape);
-        self.buffers.audio.resize(samples_len, 0.0);
-        self.buffers.audio.fill(0.0);
-
-        &self.buffers.audio
     }
 
     /// Advance agent state without emitting audio (ScheduleRenderer is output authority).

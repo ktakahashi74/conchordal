@@ -143,6 +143,16 @@ impl WorldModel {
 
     pub fn update_gate_from_rhythm(&mut self, now_tick: Tick, rhythm: &NeuralRhythms) {
         self.next_gate_tick_est = next_gate_tick(now_tick, self.time.fs, rhythm.theta, 0.0);
+        if self.next_gate_tick_est.is_none() && cfg!(debug_assertions) {
+            debug!(
+                target: "gate",
+                "next_gate_tick_est None: now_tick={} fs={:.3} theta_hz={:.3} theta_phase={:.3}",
+                now_tick,
+                self.time.fs,
+                rhythm.theta.freq_hz,
+                rhythm.theta.phase
+            );
+        }
     }
 
     pub fn commit_plans_if_due(&mut self, now: Tick, frame_end: Tick) {

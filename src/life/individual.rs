@@ -168,6 +168,7 @@ impl Individual {
         &mut self,
         tb: &Timebase,
         now: Tick,
+        gate_tick: Tick,
         perc_tick: Tick,
         pred_eval_tick: Option<Tick>,
         hop: usize,
@@ -178,6 +179,10 @@ impl Individual {
         self.update_self_confidence_from_perc(&landscape.space, landscape, perc_tick);
         let hop_tick = hop as Tick;
         if self.next_intent_tick != 0 && now < self.next_intent_tick {
+            return Vec::new();
+        }
+        let frame_end = now.saturating_add(hop_tick.max(1));
+        if gate_tick < now || gate_tick >= frame_end {
             return Vec::new();
         }
 

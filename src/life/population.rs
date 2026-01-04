@@ -106,6 +106,18 @@ impl Population {
         now: Tick,
         perc_tick: Tick,
     ) {
+        let gate_tick = match world.next_gate_tick_est {
+            Some(tick) => tick,
+            None => return,
+        };
+        if world.last_committed_gate_tick == Some(gate_tick) {
+            return;
+        }
+        let hop_tick = (world.time.hop as Tick).max(1);
+        let frame_end = now.saturating_add(hop_tick);
+        if gate_tick < now || gate_tick >= frame_end {
+            return;
+        }
         let tb = &world.time;
         let hop = tb.hop;
         let past = world.board.retention_past;
@@ -115,10 +127,10 @@ impl Population {
             let pred_eval_tick = world.next_gate_tick_est;
             let mut pred_c_cache: Option<Option<std::sync::Arc<[f32]>>> = None;
             let mut pred_c_real = |eval_tick: Tick| -> Option<std::sync::Arc<[f32]>> {
-                if cfg!(debug_assertions) {
-                    if let Some(pred_tick) = pred_eval_tick {
-                        debug_assert_eq!(eval_tick, pred_tick);
-                    }
+                if cfg!(debug_assertions)
+                    && let Some(pred_tick) = pred_eval_tick
+                {
+                    debug_assert_eq!(eval_tick, pred_tick);
                 }
                 if let Some(cached) = pred_c_cache.as_ref() {
                     return cached.clone();
@@ -143,6 +155,7 @@ impl Population {
                 let mut intents = agent.plan_intents(
                     tb,
                     now,
+                    gate_tick,
                     perc_tick,
                     pred_eval_tick,
                     hop,

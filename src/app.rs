@@ -11,6 +11,7 @@ use tracing::*;
 use crossbeam_channel::{Receiver, Sender, bounded};
 use ringbuf::traits::Observer;
 
+#[cfg(debug_assertions)]
 use crate::audio::writer::WavOutput;
 use crate::core::harmonicity_kernel::HarmonicityKernel;
 use crate::core::harmonicity_worker;
@@ -488,7 +489,8 @@ fn init_runtime(
         config.audio.sample_rate
     };
 
-    // WAV
+    // WAV (debug-only)
+    #[cfg(debug_assertions)]
     let (wav_tx, wav_handle) = if let Some(path) = args.wav.clone() {
         let (wav_tx, wav_rx) = bounded::<Arc<[f32]>>(16);
         let wav_handle = WavOutput::run(wav_rx, path, runtime_sample_rate);
@@ -496,6 +498,8 @@ fn init_runtime(
     } else {
         (None, None)
     };
+    #[cfg(not(debug_assertions))]
+    let (wav_tx, wav_handle) = (None, None);
 
     // Analysis/NSGT setup
     let fs: f32 = runtime_sample_rate as f32;

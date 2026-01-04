@@ -7,7 +7,8 @@ pub struct Args {
     #[arg(long, default_value_t = true, num_args = 0..=1, default_missing_value = "true")]
     pub play: bool,
 
-    /// Write audio to wav file
+    /// Write audio to wav file (debug builds only)
+    #[cfg(debug_assertions)]
     #[arg(long)]
     pub wav: Option<String>,
 

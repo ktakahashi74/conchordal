@@ -155,18 +155,6 @@ Headless execution (no GUI): `--nogui`
 cargo run -- --nogui sample.rhai
 ```
 
-Wav file: `--wav ???.wav`
-
-```bash
-cargo run -- --wav test.wav sample.rhai
-```
-
-No playback, only wav file: `--play false --wav ???.wav`
-
-```bash
-cargo run -- --play false --wav test.wav sample.rhai
-```
-
 Compile-only (no GUI/audio execution) for script syntax check: `--compile-only`
 
 ```bash

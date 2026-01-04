@@ -33,6 +33,9 @@
 - Format: `cargo fmt --all`
 - Lint: `cargo clippy -- -D warnings`
 
+## Air-Gap Protocol
+- In release builds, audio file export is forbidden. Do not add or restore any functionality that writes audio to disk (e.g., WAV export).
+
 ## Coding Style & Naming Conventions
 - **Comments**:  All comments must be in concise English.  Do not use Japanese in code comments.
 - **DSP Efficiency**: Prefer `f32`. Avoid allocations in the audio thread (`worker_loop`). Use `Vec::with_capacity` or pre-allocated ringbuffers.

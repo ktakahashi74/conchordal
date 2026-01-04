@@ -6,7 +6,7 @@ use crate::life::intent::{BodySnapshot, Intent};
 use crate::life::intent_planner::{choose_best_gesture_tf_by_pred_c, choose_onset_by_density};
 use crate::life::perceptual::{FeaturesNow, PerceptualContext};
 use crate::life::scenario::PlanningConfig;
-use rand::rngs::SmallRng;
+use rand::{Rng, rngs::SmallRng};
 use std::collections::VecDeque;
 use tracing::debug;
 
@@ -187,6 +187,13 @@ impl Individual {
 
         let use_pred_c = self.planning.pitch_mode == crate::life::scenario::PlanPitchMode::PredC;
         let pred_eval_tick = pred_eval_tick.unwrap_or(now);
+        let plan_rate = self.planning.plan_rate;
+        if plan_rate <= 0.0 || !plan_rate.is_finite() {
+            return Vec::new();
+        }
+        if plan_rate < 1.0 && self.rng.random::<f32>() >= plan_rate {
+            return Vec::new();
+        }
 
         if gate_mode {
             let theta_hz = landscape.rhythm.theta.freq_hz;

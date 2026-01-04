@@ -636,6 +636,10 @@ pub enum Action {
         target: TargetRef,
         value: f32,
     },
+    SetPlanRate {
+        target: TargetRef,
+        plan_rate: f32,
+    },
     PostIntent {
         source_id: u64,
         onset_sec: f32,
@@ -712,6 +716,9 @@ impl fmt::Display for Action {
             }
             Action::SetDrift { target, value } => {
                 write!(f, "SetDrift target={} value={:.3}", target, value)
+            }
+            Action::SetPlanRate { target, plan_rate } => {
+                write!(f, "SetPlanRate target={} rate={:.3}", target, plan_rate)
             }
             Action::PostIntent {
                 source_id,

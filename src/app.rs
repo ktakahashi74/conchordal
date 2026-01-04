@@ -230,7 +230,8 @@ pub fn validate_scenario(scenario: &Scenario) -> Result<(), String> {
                 | Action::SetFreq { target, .. }
                 | Action::SetAmp { target, .. }
                 | Action::SetCommitment { target, .. }
-                | Action::SetDrift { target, .. } => {
+                | Action::SetDrift { target, .. }
+                | Action::SetPlanRate { target, .. } => {
                     validate_target(target)?;
                 }
                 Action::SetRhythmVitality { .. }

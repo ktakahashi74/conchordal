@@ -475,6 +475,33 @@ impl ScriptContext {
         self.push_event(self.cursor, vec![Action::SetCommitment { target, value }]);
     }
 
+    pub fn set_plan_rate_source(&mut self, source_id: i64, rate: f32) {
+        // Avoid accidentally targeting agent 0 on invalid input.
+        if source_id < 0 {
+            return;
+        }
+        let id = source_id as u64;
+        self.push_event(
+            self.cursor,
+            vec![Action::SetPlanRate {
+                target: TargetRef::AgentId { id },
+                plan_rate: rate,
+            }],
+        );
+    }
+
+    pub fn set_plan_rate_tag(&mut self, tag: &str, rate: f32) {
+        self.push_event(
+            self.cursor,
+            vec![Action::SetPlanRate {
+                target: TargetRef::Tag {
+                    tag: tag.to_string(),
+                },
+                plan_rate: rate,
+            }],
+        );
+    }
+
     pub fn set_rhythm_vitality(
         &mut self,
         value: f32,
@@ -1036,6 +1063,25 @@ impl ScriptHost {
                 ctx.set_seed(seed, call_ctx.call_position())
             },
         );
+
+        let ctx_for_set_plan_rate_source = ctx.clone();
+        engine.register_fn(
+            "set_plan_rate_source",
+            move |source_id: INT, rate: FLOAT| {
+                let mut ctx = ctx_for_set_plan_rate_source
+                    .lock()
+                    .expect("lock script context");
+                ctx.set_plan_rate_source(source_id, rate as f32);
+            },
+        );
+
+        let ctx_for_set_plan_rate_tag = ctx.clone();
+        engine.register_fn("set_plan_rate_tag", move |tag: &str, rate: FLOAT| {
+            let mut ctx = ctx_for_set_plan_rate_tag
+                .lock()
+                .expect("lock script context");
+            ctx.set_plan_rate_tag(tag, rate as f32);
+        });
 
         let ctx_for_remove_agent = ctx.clone();
         engine.register_fn(

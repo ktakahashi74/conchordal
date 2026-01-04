@@ -602,6 +602,24 @@ impl Population {
                     }
                 }
             }
+            Action::SetPlanRate { target, plan_rate } => {
+                // Sanitize once at the application point (keeps individuals clean)
+                let mut rate = plan_rate;
+                if !rate.is_finite() {
+                    warn!("SetPlanRate: non-finite rate {rate} -> 0.0");
+                    rate = 0.0;
+                }
+                // Recommended range is 0..1 (0 = OFF, 1 = always)
+                rate = rate.clamp(0.0, 1.0);
+                let ids = self.resolve_target_ids(&target);
+                for id in ids {
+                    if let Some(agent) = self.find_individual_mut(id) {
+                        agent.planning.plan_rate = rate;
+                    } else {
+                        warn!("SetPlanRate: agent {id} not found");
+                    }
+                }
+            }
             Action::PostIntent { .. } => {}
         }
     }

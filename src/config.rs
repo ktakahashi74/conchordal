@@ -120,8 +120,6 @@ pub struct PlaybackConfig {
     pub wait_user_exit: bool,
     #[serde(default = "PlaybackConfig::default_wait_user_start")]
     pub wait_user_start: bool,
-    #[serde(default = "PlaybackConfig::default_intent_only")]
-    pub intent_only: bool,
 }
 
 impl PlaybackConfig {
@@ -131,9 +129,6 @@ impl PlaybackConfig {
     fn default_wait_user_start() -> bool {
         false
     }
-    fn default_intent_only() -> bool {
-        false
-    }
 }
 
 impl Default for PlaybackConfig {
@@ -141,7 +136,6 @@ impl Default for PlaybackConfig {
         Self {
             wait_user_exit: Self::default_wait_user_exit(),
             wait_user_start: Self::default_wait_user_start(),
-            intent_only: Self::default_intent_only(),
         }
     }
 }
@@ -284,7 +278,6 @@ mod tests {
             playback: PlaybackConfig {
                 wait_user_exit: false,
                 wait_user_start: true,
-                intent_only: true,
             },
         };
         let text = toml::to_string_pretty(&custom).unwrap();
@@ -302,7 +295,6 @@ mod tests {
         assert!(!cfg.psychoacoustics.use_incoherent_power);
         assert!(!cfg.playback.wait_user_exit);
         assert!(cfg.playback.wait_user_start);
-        assert!(cfg.playback.intent_only);
 
         let _ = fs::remove_file(&path);
     }

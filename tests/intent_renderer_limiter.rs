@@ -1,6 +1,7 @@
+use conchordal::core::modulation::NeuralRhythms;
 use conchordal::core::timebase::Timebase;
 use conchordal::life::intent::{Intent, IntentBoard};
-use conchordal::life::intent_renderer::IntentRenderer;
+use conchordal::life::schedule_renderer::ScheduleRenderer;
 
 #[test]
 fn limiter_clamps_peak_and_stays_finite() {
@@ -23,8 +24,9 @@ fn limiter_clamps_peak_and_stays_finite() {
         });
     }
 
-    let mut renderer = IntentRenderer::new(tb);
-    let out = renderer.render(&board, 0);
+    let mut renderer = ScheduleRenderer::new(tb);
+    let rhythms = NeuralRhythms::default();
+    let out = renderer.render(&board, 0, &rhythms);
     let mut peak = 0.0f32;
     for &s in out {
         assert!(s.is_finite());

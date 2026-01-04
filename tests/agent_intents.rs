@@ -1,10 +1,11 @@
 use conchordal::core::landscape::Landscape;
 use conchordal::core::log2space::Log2Space;
+use conchordal::core::modulation::NeuralRhythms;
 use conchordal::core::timebase::{Tick, Timebase};
 use conchordal::life::individual::AgentMetadata;
-use conchordal::life::intent_renderer::IntentRenderer;
 use conchordal::life::population::Population;
 use conchordal::life::scenario::{IndividualConfig, LifeConfig};
+use conchordal::life::schedule_renderer::ScheduleRenderer;
 use conchordal::life::world_model::WorldModel;
 
 #[test]
@@ -51,7 +52,8 @@ fn agents_publish_intents_and_render_audio() {
         .expect("expected intent");
     let render_start = first_intent.onset.saturating_sub(1);
 
-    let mut renderer = IntentRenderer::new(tb);
+    let mut renderer = ScheduleRenderer::new(tb);
+    let rhythms = NeuralRhythms::default();
     let end = world
         .board
         .query_range(0..u64::MAX)
@@ -61,7 +63,7 @@ fn agents_publish_intents_and_render_audio() {
     let mut out = Vec::new();
     let mut tick = render_start;
     while tick <= end {
-        out.extend_from_slice(renderer.render(&world.board, tick));
+        out.extend_from_slice(renderer.render(&world.board, tick, &rhythms));
         tick = tick.saturating_add(tb.hop as u64);
     }
     assert!(out.iter().any(|s| s.abs() > 1e-6));

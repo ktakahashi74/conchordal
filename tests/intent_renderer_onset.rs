@@ -1,6 +1,7 @@
+use conchordal::core::modulation::NeuralRhythms;
 use conchordal::core::timebase::{Tick, Timebase};
 use conchordal::life::intent::{Intent, IntentBoard};
-use conchordal::life::intent_renderer::IntentRenderer;
+use conchordal::life::schedule_renderer::ScheduleRenderer;
 
 fn make_intent(intent_id: u64, onset: Tick, duration: Tick, freq: f32, amp: f32) -> Intent {
     Intent {
@@ -26,10 +27,11 @@ fn onset_is_sample_accurate_across_hops() {
     let onset: Tick = tb.hop as Tick + 7;
     board.publish(make_intent(1, onset, 40, 440.0, 0.5));
 
-    let mut renderer = IntentRenderer::new(tb);
+    let mut renderer = ScheduleRenderer::new(tb);
+    let rhythms = NeuralRhythms::default();
     let mut out = Vec::new();
-    out.extend_from_slice(renderer.render(&board, 0));
-    out.extend_from_slice(renderer.render(&board, tb.hop as Tick));
+    out.extend_from_slice(renderer.render(&board, 0, &rhythms));
+    out.extend_from_slice(renderer.render(&board, tb.hop as Tick, &rhythms));
 
     let eps = 1e-6_f32;
     let first = out

@@ -18,6 +18,7 @@ struct Voice {
     intent: Intent,
     body: AnySoundBody,
     end_tick: Tick,
+    forced_release_tick: Option<Tick>,
 }
 
 pub struct ScheduleRenderer {
@@ -28,6 +29,7 @@ pub struct ScheduleRenderer {
     add_future_ticks: Tick,
     add_past_ticks: Tick,
     did_full_resync: bool,
+    cutoff_tick: Option<Tick>,
 }
 
 impl ScheduleRenderer {
@@ -43,6 +45,7 @@ impl ScheduleRenderer {
             add_future_ticks,
             add_past_ticks,
             did_full_resync: false,
+            cutoff_tick: None,
         }
     }
 
@@ -68,6 +71,11 @@ impl ScheduleRenderer {
         };
         let future = board.horizon_future.min(self.add_future_ticks);
         for intent in board.snapshot(now, past, future) {
+            if let Some(cutoff) = self.cutoff_tick
+                && intent.onset >= cutoff
+            {
+                continue;
+            }
             self.add_voice_if_needed(intent, now);
         }
 
@@ -81,7 +89,9 @@ impl ScheduleRenderer {
                 if tick < voice.intent.onset || tick >= voice.end_tick {
                     continue;
                 }
-                let env = self.envelope.gain(&voice.intent, tick);
+                let env =
+                    self.envelope
+                        .gain_with_end(&voice.intent, tick, voice.forced_release_tick);
                 if env <= 0.0 {
                     continue;
                 }
@@ -101,6 +111,30 @@ impl ScheduleRenderer {
 
         self.apply_limiter();
         &self.buf
+    }
+
+    pub fn is_idle(&self) -> bool {
+        self.voices.is_empty()
+    }
+
+    pub fn set_cutoff_tick(&mut self, cutoff: Option<Tick>) {
+        self.cutoff_tick = cutoff;
+    }
+
+    pub fn shutdown_at(&mut self, tick: Tick) {
+        self.cutoff_tick = Some(tick);
+        let release_ticks = self.envelope.release_ticks();
+        self.voices.retain(|_, voice| voice.intent.onset <= tick);
+        for voice in self.voices.values_mut() {
+            if tick < voice.intent.onset || tick >= voice.end_tick {
+                continue;
+            }
+            let intent_end = voice.intent.onset.saturating_add(voice.intent.duration);
+            if tick < intent_end {
+                voice.forced_release_tick = Some(tick);
+                voice.end_tick = tick.saturating_add(release_ticks);
+            }
+        }
     }
 
     fn add_voice_if_needed(&mut self, intent: Intent, now: Tick) {
@@ -147,6 +181,7 @@ impl ScheduleRenderer {
                 intent,
                 body,
                 end_tick,
+                forced_release_tick: None,
             },
         );
     }

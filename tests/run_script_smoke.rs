@@ -7,7 +7,7 @@ fn run_agent_intent_smoke() {
 
     let output = Command::new(exe)
         .env("RUST_LOG", "debug")
-        .args(["--nogui", "--play=false", "--intent-only=true"])
+        .args(["--nogui", "--play=false"])
         .arg(script)
         .output()
         .unwrap_or_else(|e| panic!("failed to run {script}: {e}"));

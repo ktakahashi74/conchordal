@@ -43,9 +43,6 @@ fn main() -> eframe::Result<()> {
     if let Some(val) = args.wait_user_start {
         config.playback.wait_user_start = val;
     }
-    if let Some(val) = args.intent_only {
-        config.playback.intent_only = val;
-    }
 
     let ext = Path::new(&args.scenario_path)
         .extension()

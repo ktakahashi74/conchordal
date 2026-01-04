@@ -5,7 +5,6 @@ pub(crate) mod gate_envelope;
 pub mod individual;
 pub mod intent;
 pub mod intent_planner;
-pub mod intent_renderer;
 pub mod lifecycle;
 pub mod meta;
 pub mod perceptual;

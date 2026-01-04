@@ -15,7 +15,6 @@ fn args_for_path(path: &Path) -> Args {
         wait_user_exit: None,
         wait_user_start: None,
         nogui: false,
-        intent_only: None,
         compile_only: false,
     }
 }

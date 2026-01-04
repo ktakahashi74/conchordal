@@ -25,18 +25,32 @@ impl GateEnvelope {
         }
     }
 
+    #[allow(dead_code)]
     pub fn gain(&self, intent: &Intent, tick: Tick) -> f32 {
-        if tick < intent.onset || intent.duration == 0 {
+        self.gain_with_end(intent, tick, None)
+    }
+
+    pub fn gain_with_end(&self, intent: &Intent, tick: Tick, end_override: Option<Tick>) -> f32 {
+        let intent_end =
+            end_override.unwrap_or_else(|| intent.onset.saturating_add(intent.duration));
+        let mut duration = intent_end.saturating_sub(intent.onset);
+        if duration == 0 {
+            if end_override.is_some() {
+                duration = 1;
+            } else {
+                return 0.0;
+            }
+        }
+        if tick < intent.onset {
             return 0.0;
         }
-        let intent_end = intent.onset.saturating_add(intent.duration);
         let release_end = intent_end.saturating_add(self.release_ticks);
         if tick >= release_end {
             return 0.0;
         }
 
         let pos = tick.saturating_sub(intent.onset);
-        let attack_len = self.attack_ticks.min(intent.duration);
+        let attack_len = self.attack_ticks.min(duration);
         if attack_len == 0 {
             return 0.0;
         }

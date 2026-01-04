@@ -635,43 +635,55 @@ impl Population {
         dt_sec: f32,
         landscape: &crate::core::landscape::Landscape,
     ) -> &[f32] {
-        self.current_frame = current_frame;
+        self.advance(samples_len, fs, current_frame, dt_sec, landscape);
         self.buffers.audio.resize(samples_len, 0.0);
         self.buffers.audio.fill(0.0);
-        if !self.individuals.is_empty() {
+
+        &self.buffers.audio
+    }
+
+    /// Advance agent state without emitting audio (ScheduleRenderer is output authority).
+    pub fn advance(
+        &mut self,
+        samples_len: usize,
+        _fs: f32,
+        current_frame: u64,
+        dt_sec: f32,
+        landscape: &crate::core::landscape::Landscape,
+    ) {
+        self.current_frame = current_frame;
+        if samples_len == 0 {
+            return;
+        }
+        let dt_per_sample = dt_sec / samples_len as f32;
+        if !dt_per_sample.is_finite() || dt_per_sample <= 0.0 {
+            return;
+        }
+        let mut rhythms = landscape.rhythm;
+        for _ in 0..samples_len {
             for agent in self.individuals.iter_mut() {
                 if agent.is_alive() {
-                    agent.render_wave(
-                        &mut self.buffers.audio,
-                        fs,
-                        current_frame,
-                        dt_sec,
+                    agent.update_pitch_target(&rhythms, dt_per_sample, landscape);
+                    agent.update_articulation(
+                        dt_per_sample,
+                        &rhythms,
                         landscape,
                         self.global_coupling,
                     );
                 }
             }
+            rhythms.advance_in_place(dt_per_sample);
         }
 
         if self.abort_requested {
-            if !self.individuals.is_empty() {
-                let step = 1.0 / (0.05 * fs.max(1.0)); // fade over ~50ms
-                for s in &mut self.buffers.audio {
-                    *s *= self.shutdown_gain;
-                    self.shutdown_gain -= step;
-                    if self.shutdown_gain <= 0.0 {
-                        self.shutdown_gain = 0.0;
-                    }
-                }
-                if self.shutdown_gain <= 0.0 {
-                    self.individuals.clear();
-                }
-            } else {
-                self.buffers.audio.fill(0.0);
+            let step = dt_sec / 0.05; // fade over ~50ms
+            if step.is_finite() && step > 0.0 {
+                self.shutdown_gain = (self.shutdown_gain - step).max(0.0);
+            }
+            if self.shutdown_gain <= 0.0 {
+                self.individuals.clear();
             }
         }
-
-        &self.buffers.audio
     }
 
     /// Render spectral bodies on the provided log2 axis (explicit for external DSP handoff).

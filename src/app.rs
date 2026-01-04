@@ -23,6 +23,7 @@ use crate::core::roughness_worker;
 use crate::core::stream::{
     dorsal::DorsalStream, harmonicity::HarmonicityStream, roughness::RoughnessStream,
 };
+use crate::core::timebase::Tick;
 use crate::life::conductor::Conductor;
 use crate::life::individual::SoundBody;
 use crate::life::population::Population;
@@ -641,7 +642,6 @@ fn init_runtime(
                     audio_to_roughness_tx,
                     roughness_from_analysis_rx,
                     roughness_tx,
-                    config.playback.intent_only,
                     hop,
                     hop_duration,
                     fs,
@@ -753,7 +753,6 @@ fn worker_loop(
     audio_to_roughness_tx: Sender<(u64, Arc<[f32]>)>,
     roughness_from_analysis_rx: Receiver<(u64, Landscape)>,
     roughness_tx: Sender<LandscapeUpdate>,
-    intent_only: bool,
     hop: usize,
     hop_duration: Duration,
     fs: f32,
@@ -786,6 +785,7 @@ fn worker_loop(
     let init_world_view = world.ui_view();
     let mut last_tick_log = Instant::now();
     let idle_silence = vec![0.0f32; hop];
+    let mut scenario_end_tick: Option<Tick> = None;
 
     // Initial UI frame so metadata is visible before playback starts.
     let init_meta = SimulationMeta {
@@ -979,6 +979,7 @@ fn worker_loop(
                 &mut pop,
                 &mut world,
             );
+
             let perc_frame = match (last_h_analysis_frame, last_r_analysis_frame) {
                 (Some(h), Some(r)) => h.min(r),
                 (Some(h), None) => h,
@@ -986,7 +987,9 @@ fn worker_loop(
                 (None, None) => frame_idx,
             };
             let perc_tick = timebase.frame_start_tick(perc_frame);
-            pop.publish_intents(&mut world, &current_landscape, now_tick, perc_tick);
+            if scenario_end_tick.is_none() {
+                pop.publish_intents(&mut world, &current_landscape, now_tick, perc_tick);
+            }
             dorsal.set_vitality(pop.global_vitality);
             if let Some(update) = pop.take_pending_update() {
                 apply_params_update(&mut lparams, &update);
@@ -1001,20 +1004,26 @@ fn worker_loop(
             let frame_end = now_tick.saturating_add(hop_tick);
             world.commit_plans_if_due(now_tick, frame_end);
 
+            if scenario_end_tick.is_none() && conductor.is_done() {
+                scenario_end_tick = Some(now_tick);
+                pop.individuals.clear();
+                world.plan_board.clear_next();
+                world.board.remove_onset_from(now_tick);
+                schedule_renderer.shutdown_at(now_tick);
+            }
+
             // [FIX] Audio is MONO. Treat it as such.
             // Previously incorrectly treated as stereo, leading to bad metering and destructive downsampling.
             let (mono_chunk, max_abs, channel_peak) = {
-                let time_chunk = if intent_only {
-                    schedule_renderer.render(&world.board, now_tick, &current_landscape.rhythm)
-                } else {
-                    pop.process_audio(
-                        hop,
-                        fs,
-                        frame_idx,
-                        hop_duration.as_secs_f32(),
-                        &current_landscape,
-                    )
-                };
+                pop.advance(
+                    hop,
+                    fs,
+                    frame_idx,
+                    hop_duration.as_secs_f32(),
+                    &current_landscape,
+                );
+                let time_chunk =
+                    schedule_renderer.render(&world.board, now_tick, &current_landscape.rhythm);
 
                 // Calculate Peak (Mono)
                 let mut max_p = 0.0f32;
@@ -1065,10 +1074,10 @@ fn worker_loop(
             let harmonicity_lag = last_h_analysis_frame.map(|id| frame_idx.saturating_sub(id));
             let roughness_lag = last_r_analysis_frame.map(|id| frame_idx.saturating_sub(id));
 
-            let finished_now = if intent_only && conductor.is_done() {
+            let finished_now = if pop.abort_requested {
                 true
             } else {
-                pop.individuals.is_empty() && (conductor.is_done() || pop.abort_requested)
+                scenario_end_tick.is_some() && schedule_renderer.is_idle()
             };
             if finished_now {
                 playback_state = PlaybackState::Finished;

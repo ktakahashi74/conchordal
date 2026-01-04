@@ -2,8 +2,8 @@ use conchordal::core::log2space::Log2Space;
 use conchordal::core::modulation::{NeuralRhythms, RhythmBand};
 use conchordal::core::timebase::{Tick, Timebase};
 use conchordal::life::gate_clock;
-use conchordal::life::intent_renderer::IntentRenderer;
 use conchordal::life::plan::{GateTarget, PhaseRef, PlannedIntent};
+use conchordal::life::schedule_renderer::ScheduleRenderer;
 use conchordal::life::world_model::WorldModel;
 
 #[test]
@@ -83,8 +83,8 @@ fn gate_commit_drives_sample_accurate_onset() {
     assert_eq!(committed.duration, hop_tick.saturating_mul(4));
     assert_eq!(committed.source_id, 1);
 
-    let mut renderer = IntentRenderer::new(tb);
-    let buf = renderer.render(&world.board, now_tick);
+    let mut renderer = ScheduleRenderer::new(tb);
+    let buf = renderer.render(&world.board, now_tick, &rhythms);
     let onset_idx = (gate_tick - now_tick) as usize;
     assert!(onset_idx < buf.len());
 

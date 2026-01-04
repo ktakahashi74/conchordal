@@ -1,6 +1,7 @@
+use conchordal::core::modulation::NeuralRhythms;
 use conchordal::core::timebase::Timebase;
 use conchordal::life::intent::{Intent, IntentBoard};
-use conchordal::life::intent_renderer::IntentRenderer;
+use conchordal::life::schedule_renderer::ScheduleRenderer;
 
 #[test]
 fn smoke_intent_board_and_renderer() {
@@ -23,7 +24,8 @@ fn smoke_intent_board_and_renderer() {
     let hits: Vec<_> = board.query_range(0..32).collect();
     assert_eq!(hits.len(), 1);
 
-    let mut renderer = IntentRenderer::new(tb);
-    let out = renderer.render(&board, 0);
+    let mut renderer = ScheduleRenderer::new(tb);
+    let rhythms = NeuralRhythms::default();
+    let out = renderer.render(&board, 0, &rhythms);
     assert_eq!(out.len(), tb.hop);
 }

@@ -117,4 +117,8 @@ impl IntentBoard {
         let t1 = now_tick.saturating_add(future);
         self.query_range(t0..t1).cloned().collect()
     }
+
+    pub fn remove_onset_from(&mut self, cutoff: Tick) {
+        self.intents.retain(|intent| intent.onset < cutoff);
+    }
 }

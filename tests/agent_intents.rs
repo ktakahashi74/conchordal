@@ -37,7 +37,7 @@ fn agents_publish_intents_and_render_audio() {
     let landscape = Landscape::new(space);
 
     world.advance_to(0);
-    pop.publish_intents(&mut world, &landscape, 0, 0, false);
+    pop.publish_intents(&mut world, &landscape, 0, 0);
     assert!(!world.plan_board.snapshot_next().is_empty());
     world.next_gate_tick_est = Some(1);
     let frame_end: Tick = tb.hop as Tick;

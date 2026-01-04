@@ -4,7 +4,7 @@ use crate::core::landscape::{LandscapeFrame, LandscapeUpdate};
 use crate::core::log2space::Log2Space;
 use crate::core::timebase::Tick;
 use crate::life::plan::{GateTarget, PhaseRef, PlannedIntent};
-use crate::life::world_model::{TimingMode, WorldModel};
+use crate::life::world_model::WorldModel;
 use rand::{Rng, SeedableRng, distr::Distribution, distr::weighted::WeightedIndex, rngs::SmallRng};
 use std::hash::{Hash, Hasher};
 use tracing::{debug, info, warn};
@@ -105,26 +105,14 @@ impl Population {
         landscape: &LandscapeFrame,
         now: Tick,
         perc_tick: Tick,
-        agents_pitch: bool,
     ) {
-        let use_pred_rhythm = matches!(world.timing_mode, TimingMode::Legacy);
-        let gate_mode = !use_pred_rhythm;
-        if use_pred_rhythm {
-            world.update_pred_rhythm(now);
-        }
         let tb = &world.time;
         let hop = tb.hop;
         let past = world.board.retention_past;
         let future = world.board.horizon_future;
         let board_snapshot = world.board.snapshot(now, past, future);
         let (planned, remove_sources) = {
-            let pred_rhythm = if use_pred_rhythm {
-                Some(&world.pred_rhythm_bank)
-            } else {
-                None
-            };
             let pred_eval_tick = world.next_gate_tick_est;
-            let mut pred_c_none = |_eval_tick: Tick| -> Option<std::sync::Arc<[f32]>> { None };
             let mut pred_c_cache: Option<Option<std::sync::Arc<[f32]>>> = None;
             let mut pred_c_real = |eval_tick: Tick| -> Option<std::sync::Arc<[f32]>> {
                 if cfg!(debug_assertions) {
@@ -143,11 +131,7 @@ impl Population {
                 result
             };
             let pred_c_scan_at: &mut dyn FnMut(Tick) -> Option<std::sync::Arc<[f32]>> =
-                if agents_pitch {
-                    &mut pred_c_real
-                } else {
-                    &mut pred_c_none
-                };
+                &mut pred_c_real;
             let mut planned = Vec::new();
             let mut remove_sources = Vec::new();
             for agent in &mut self.individuals {
@@ -164,10 +148,7 @@ impl Population {
                     hop,
                     landscape,
                     &board_snapshot,
-                    pred_rhythm,
                     pred_c_scan_at,
-                    agents_pitch,
-                    gate_mode,
                 );
                 if intents.len() > 1 {
                     // v0: PlanBoard holds one entry per source_id.

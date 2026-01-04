@@ -8,10 +8,6 @@ use crate::core::timebase::{Tick, Timebase};
 use crate::life::gate_clock::next_gate_tick;
 use crate::life::intent::{Intent, IntentBoard};
 use crate::life::plan::{PlanBoard, PlannedIntent};
-use crate::life::predictive_rhythm::{
-    PredictiveRhythmBank, RhythmBandSpec, build_pred_rhythm_bank_from_intents,
-    default_pred_rhythm_specs,
-};
 use crate::life::predictive_spectrum::{
     PredKernelInputs, PredTerrain, build_pred_kernel_inputs_from_intents,
     build_pred_terrain_from_intents,
@@ -77,9 +73,6 @@ pub struct WorldModel {
     pub percept_landscape: Option<LandscapeFrame>,
     pub dorsal_metrics: Option<DorsalMetrics>,
     pub pred_params: Option<LandscapeParams>,
-    pub pred_rhythm_bank: PredictiveRhythmBank,
-    pub pred_rhythm_specs: Vec<RhythmBandSpec>,
-    pub timing_mode: TimingMode,
     pub plan_board: PlanBoard,
     pub next_gate_tick_est: Option<Tick>,
     pub last_committed_gate_tick: Option<Tick>,
@@ -91,11 +84,6 @@ impl WorldModel {
     pub fn new(time: Timebase, space: Log2Space) -> Self {
         let retention_past = time.sec_to_tick(2.0);
         let horizon_future = time.sec_to_tick(8.0);
-        let pred_rhythm_specs = default_pred_rhythm_specs();
-        let pred_rhythm_bank = PredictiveRhythmBank {
-            now: 0,
-            bands: Vec::new(),
-        };
         Self {
             time,
             space,
@@ -105,9 +93,6 @@ impl WorldModel {
             percept_landscape: None,
             dorsal_metrics: None,
             pred_params: None,
-            pred_rhythm_bank,
-            pred_rhythm_specs,
-            timing_mode: TimingMode::Gate,
             plan_board: PlanBoard::new(),
             next_gate_tick_est: None,
             last_committed_gate_tick: None,
@@ -126,18 +111,6 @@ impl WorldModel {
 
     pub fn set_space(&mut self, space: Log2Space) {
         self.space = space;
-    }
-
-    pub fn update_pred_rhythm(&mut self, now: Tick) {
-        let future = self.board.horizon_future;
-        let intents = self.board.snapshot(now, 0, future);
-        self.pred_rhythm_bank = build_pred_rhythm_bank_from_intents(
-            &self.time,
-            now,
-            &intents,
-            &self.pred_rhythm_specs,
-            future,
-        );
     }
 
     pub fn ui_view(&self) -> WorldView {
@@ -328,12 +301,4 @@ impl WorldModel {
             self.board.publish(intent);
         }
     }
-}
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub enum TimingMode {
-    /// v0: plan against the next gate and commit at gate ticks.
-    #[default]
-    Gate,
-    /// Legacy intent scheduling (tick-based).
-    Legacy,
 }

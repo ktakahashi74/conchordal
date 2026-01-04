@@ -122,10 +122,6 @@ pub struct PlaybackConfig {
     pub wait_user_start: bool,
     #[serde(default = "PlaybackConfig::default_intent_only")]
     pub intent_only: bool,
-    #[serde(default = "PlaybackConfig::default_agents_intent")]
-    pub agents_intent: bool,
-    #[serde(default = "PlaybackConfig::default_agents_pitch")]
-    pub agents_pitch: bool,
 }
 
 impl PlaybackConfig {
@@ -138,12 +134,6 @@ impl PlaybackConfig {
     fn default_intent_only() -> bool {
         false
     }
-    fn default_agents_intent() -> bool {
-        false
-    }
-    fn default_agents_pitch() -> bool {
-        false
-    }
 }
 
 impl Default for PlaybackConfig {
@@ -152,8 +142,6 @@ impl Default for PlaybackConfig {
             wait_user_exit: Self::default_wait_user_exit(),
             wait_user_start: Self::default_wait_user_start(),
             intent_only: Self::default_intent_only(),
-            agents_intent: Self::default_agents_intent(),
-            agents_pitch: Self::default_agents_pitch(),
         }
     }
 }
@@ -297,8 +285,6 @@ mod tests {
                 wait_user_exit: false,
                 wait_user_start: true,
                 intent_only: true,
-                agents_intent: true,
-                agents_pitch: true,
             },
         };
         let text = toml::to_string_pretty(&custom).unwrap();
@@ -317,8 +303,6 @@ mod tests {
         assert!(!cfg.playback.wait_user_exit);
         assert!(cfg.playback.wait_user_start);
         assert!(cfg.playback.intent_only);
-        assert!(cfg.playback.agents_intent);
-        assert!(cfg.playback.agents_pitch);
 
         let _ = fs::remove_file(&path);
     }

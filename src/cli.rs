@@ -35,14 +35,6 @@ pub struct Args {
     #[arg(long, num_args = 0..=1, default_missing_value = "true")]
     pub intent_only: Option<bool>,
 
-    /// Let agents publish intents each hop
-    #[arg(long, num_args = 0..=1, default_missing_value = "true")]
-    pub agents_intent: Option<bool>,
-
-    /// Let agents choose pitch candidates
-    #[arg(long, num_args = 0..=1, default_missing_value = "true")]
-    pub agents_pitch: Option<bool>,
-
     /// Compile scenario script only (no GUI, no audio, no execution)
     #[arg(long, default_value_t = false)]
     pub compile_only: bool,

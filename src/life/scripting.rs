@@ -475,10 +475,16 @@ impl ScriptContext {
         self.push_event(self.cursor, vec![Action::SetCommitment { target, value }]);
     }
 
-    pub fn set_plan_rate_source(&mut self, source_id: i64, rate: f32) {
+    pub fn set_plan_rate_source(
+        &mut self,
+        source_id: i64,
+        rate: f32,
+        position: Position,
+    ) -> Result<(), Box<EvalAltResult>> {
+        self.ensure_not_ended(position)?;
         // Avoid accidentally targeting agent 0 on invalid input.
         if source_id < 0 {
-            return;
+            return Ok(());
         }
         let id = source_id as u64;
         self.push_event(
@@ -488,9 +494,16 @@ impl ScriptContext {
                 plan_rate: rate,
             }],
         );
+        Ok(())
     }
 
-    pub fn set_plan_rate_tag(&mut self, tag: &str, rate: f32) {
+    pub fn set_plan_rate_tag(
+        &mut self,
+        tag: &str,
+        rate: f32,
+        position: Position,
+    ) -> Result<(), Box<EvalAltResult>> {
+        self.ensure_not_ended(position)?;
         self.push_event(
             self.cursor,
             vec![Action::SetPlanRate {
@@ -500,6 +513,7 @@ impl ScriptContext {
                 plan_rate: rate,
             }],
         );
+        Ok(())
     }
 
     pub fn set_rhythm_vitality(
@@ -1067,21 +1081,30 @@ impl ScriptHost {
         let ctx_for_set_plan_rate_source = ctx.clone();
         engine.register_fn(
             "set_plan_rate_source",
-            move |source_id: INT, rate: FLOAT| {
+            move |call_ctx: NativeCallContext,
+                  source_id: INT,
+                  rate: FLOAT|
+                  -> Result<(), Box<EvalAltResult>> {
                 let mut ctx = ctx_for_set_plan_rate_source
                     .lock()
                     .expect("lock script context");
-                ctx.set_plan_rate_source(source_id, rate as f32);
+                ctx.set_plan_rate_source(source_id, rate as f32, call_ctx.call_position())
             },
         );
 
         let ctx_for_set_plan_rate_tag = ctx.clone();
-        engine.register_fn("set_plan_rate_tag", move |tag: &str, rate: FLOAT| {
-            let mut ctx = ctx_for_set_plan_rate_tag
-                .lock()
-                .expect("lock script context");
-            ctx.set_plan_rate_tag(tag, rate as f32);
-        });
+        engine.register_fn(
+            "set_plan_rate_tag",
+            move |call_ctx: NativeCallContext,
+                  tag: &str,
+                  rate: FLOAT|
+                  -> Result<(), Box<EvalAltResult>> {
+                let mut ctx = ctx_for_set_plan_rate_tag
+                    .lock()
+                    .expect("lock script context");
+                ctx.set_plan_rate_tag(tag, rate as f32, call_ctx.call_position())
+            },
+        );
 
         let ctx_for_remove_agent = ctx.clone();
         engine.register_fn(

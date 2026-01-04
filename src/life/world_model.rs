@@ -204,8 +204,38 @@ impl WorldModel {
         self.last_committed_gate_tick = Some(gate_tick);
     }
 
-    pub fn pred_c_next_gate(&self, _params: &LandscapeParams) -> Option<Arc<[f32]>> {
-        None
+    pub fn pred_c_next_gate(&self, params: &LandscapeParams) -> Option<Arc<[f32]>> {
+        let eval_tick = self.next_gate_tick_est?;
+        let past = self
+            .board
+            .retention_past
+            .saturating_add(self.now.saturating_sub(eval_tick));
+        let future = self
+            .board
+            .horizon_future
+            .saturating_add(eval_tick.saturating_sub(self.now));
+        let mut intents = self.board.snapshot(self.now, past, future);
+        for planned in self.plan_board.snapshot_next() {
+            intents.push(Intent {
+                source_id: planned.source_id,
+                intent_id: planned.plan_id,
+                onset: eval_tick,
+                duration: planned.duration,
+                freq_hz: planned.freq_hz,
+                amp: planned.amp,
+                tag: planned.tag.clone(),
+                confidence: planned.confidence,
+                body: planned.body.clone(),
+            });
+        }
+        let terrain = build_pred_terrain_from_intents(&self.space, params, &intents, eval_tick);
+        if terrain.pred_c_statepm1_scan.is_empty() {
+            if cfg!(debug_assertions) {
+                debug!(target: "pred_c", "pred_c_next_gate empty scan");
+            }
+            return None;
+        }
+        Some(Arc::from(terrain.pred_c_statepm1_scan))
     }
 
     pub fn pred_kernel_inputs_at(&self, eval_tick: Tick) -> PredKernelInputs {

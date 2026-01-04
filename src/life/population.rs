@@ -6,7 +6,6 @@ use crate::core::timebase::Tick;
 use crate::life::plan::{GateTarget, PhaseRef, PlannedIntent};
 use crate::life::world_model::{TimingMode, WorldModel};
 use rand::{Rng, SeedableRng, distr::Distribution, distr::weighted::WeightedIndex, rngs::SmallRng};
-use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use tracing::{debug, info, warn};
 
@@ -124,23 +123,24 @@ impl Population {
             } else {
                 None
             };
+            let pred_eval_tick = world.next_gate_tick_est;
             let mut pred_c_none = |_eval_tick: Tick| -> Option<std::sync::Arc<[f32]>> { None };
-            let mut pred_c_cache: Option<HashMap<Tick, std::sync::Arc<[f32]>>> = None;
+            let mut pred_c_cache: Option<Option<std::sync::Arc<[f32]>>> = None;
             let mut pred_c_real = |eval_tick: Tick| -> Option<std::sync::Arc<[f32]>> {
-                let cache = pred_c_cache.get_or_insert_with(HashMap::new);
-                if let Some(scan) = cache.get(&eval_tick) {
-                    return Some(std::sync::Arc::clone(scan));
-                }
-                let scan = world.pred_c_statepm1_scan_at(eval_tick);
-                if scan.is_empty() {
-                    if cfg!(debug_assertions) {
-                        debug!(target: "pred_c", "pred_c_scan empty eval_tick={}", eval_tick);
+                if cfg!(debug_assertions) {
+                    if let Some(pred_tick) = pred_eval_tick {
+                        debug_assert_eq!(eval_tick, pred_tick);
                     }
-                    return None;
                 }
-                let scan: std::sync::Arc<[f32]> = std::sync::Arc::from(scan);
-                cache.insert(eval_tick, std::sync::Arc::clone(&scan));
-                Some(scan)
+                if let Some(cached) = pred_c_cache.as_ref() {
+                    return cached.clone();
+                }
+                let result = (|| {
+                    let params = world.pred_params.as_ref()?;
+                    world.pred_c_next_gate(params)
+                })();
+                pred_c_cache = Some(result.clone());
+                result
             };
             let pred_c_scan_at: &mut dyn FnMut(Tick) -> Option<std::sync::Arc<[f32]>> =
                 if agents_pitch {
@@ -160,6 +160,7 @@ impl Population {
                     tb,
                     now,
                     perc_tick,
+                    pred_eval_tick,
                     hop,
                     landscape,
                     &board_snapshot,

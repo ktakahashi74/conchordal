@@ -170,6 +170,7 @@ impl Individual {
         tb: &Timebase,
         now: Tick,
         perc_tick: Tick,
+        pred_eval_tick: Option<Tick>,
         hop: usize,
         landscape: &Landscape,
         intents: &[Intent],
@@ -184,6 +185,9 @@ impl Individual {
             return Vec::new();
         }
 
+        let use_pred_c = self.planning.pitch_mode == crate::life::scenario::PlanPitchMode::PredC;
+        let pred_eval_tick = pred_eval_tick.unwrap_or(now);
+
         if gate_mode {
             let theta_hz = landscape.rhythm.theta.freq_hz;
             let dur_sec = gate_duration_sec_from_theta(theta_hz, &self.planning);
@@ -196,7 +200,7 @@ impl Individual {
                     self.body.base_freq_hz()
                 };
             let mut freq_hz = base_freq_hz;
-            if agents_pitch {
+            if agents_pitch && use_pred_c {
                 let mut freq_eps = tb.sec_to_tick(0.01);
                 if freq_eps == 0 {
                     freq_eps = 1;
@@ -321,7 +325,7 @@ impl Individual {
         let mut chosen = fallback_onset;
         let mut freq_hz = base_freq_hz;
         let mut chosen_score: Option<f32> = None;
-        if agents_pitch {
+        if agents_pitch && use_pred_c {
             let mut freq_eps = tb.sec_to_tick(0.01);
             if freq_eps == 0 {
                 freq_eps = 1;
@@ -388,7 +392,9 @@ impl Individual {
             confidence: 1.0,
             body: Some(snapshot),
         };
-        self.record_pred_intent(&intent, pred_c_scan_at, now, landscape);
+        if agents_pitch && use_pred_c {
+            self.record_pred_intent(&intent, pred_c_scan_at, now, pred_eval_tick, landscape);
+        }
         self.intent_seq = self.intent_seq.wrapping_add(1);
         let min_interval = hop_tick.max(dur_tick);
         self.next_intent_tick = chosen.saturating_add(min_interval);
@@ -435,9 +441,9 @@ impl Individual {
         intent: &Intent,
         pred_c_scan_at: &mut dyn FnMut(Tick) -> Option<std::sync::Arc<[f32]>>,
         now: Tick,
+        eval_tick: Tick,
         landscape: &Landscape,
     ) {
-        let eval_tick = intent.onset.saturating_add((intent.duration / 2).max(1));
         let pred_c_statepm1 = pred_c_scan_at(eval_tick)
             .map(|scan| sample_scan_linear_log2(&landscape.space, scan.as_ref(), intent.freq_hz))
             .unwrap_or(0.0);

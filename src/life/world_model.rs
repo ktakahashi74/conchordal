@@ -81,8 +81,6 @@ pub struct WorldModel {
     pub next_gate_tick_est: Option<Tick>,
     pub last_committed_gate_tick: Option<Tick>,
     pub last_committed_plans_next: Vec<PlannedIntent>,
-    #[allow(dead_code)]
-    pub phi_epsilon: f32,
 }
 
 impl WorldModel {
@@ -102,7 +100,6 @@ impl WorldModel {
             next_gate_tick_est: None,
             last_committed_gate_tick: None,
             last_committed_plans_next: Vec::new(),
-            phi_epsilon: 1e-6,
         }
     }
 

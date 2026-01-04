@@ -10,7 +10,6 @@ pub mod meta;
 pub mod perceptual;
 pub mod plan;
 pub mod population;
-pub mod predictive_rhythm;
 pub mod predictive_spectrum;
 pub mod scenario;
 pub mod schedule_renderer;

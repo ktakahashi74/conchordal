@@ -107,7 +107,7 @@ fn default_gate_dur_min_sec() -> f32 {
 }
 
 fn default_gate_dur_max_sec() -> f32 {
-    0.50
+    10_000.0
 }
 
 fn default_plan_rate() -> f32 {

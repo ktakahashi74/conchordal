@@ -57,6 +57,8 @@ impl ScheduleRenderer {
             board.retention_past
         };
         let future = board.horizon_future.min(self.add_future_ticks);
+        // Order is intentional: enqueue new voices first, then kick+render for this tick.
+        // This assumes add_voice_if_needed accepts onset<=now so same-tick onsets are available.
         for intent in board.snapshot(now, past, future) {
             if let Some(cutoff) = self.cutoff_tick
                 && intent.onset >= cutoff
@@ -69,6 +71,7 @@ impl ScheduleRenderer {
         let end = now.saturating_add(hop as Tick);
         let dt = 1.0 / fs;
         let mut rhythms = *rhythms;
+        // For each tick: kick due births first, then render the sample.
         for tick in now..end {
             let idx = (tick - now) as usize;
             let mut acc = 0.0f32;
@@ -109,7 +112,21 @@ impl ScheduleRenderer {
     }
 
     fn add_voice_if_needed(&mut self, intent: Intent, now: Tick) {
-        if intent.duration == 0 || intent.amp == 0.0 || intent.freq_hz <= 0.0 {
+        if intent.duration == 0 || intent.freq_hz <= 0.0 {
+            return;
+        }
+        if intent.amp == 0.0 && intent.kind != crate::life::intent::IntentKind::BirthOnce {
+            return;
+        }
+        if intent.kind == crate::life::intent::IntentKind::BirthOnce
+            && intent.articulation.is_none()
+        {
+            debug!(
+                target: "phonation::birth_skip",
+                source_id = intent.source_id,
+                intent_id = intent.intent_id,
+                "BirthOnce intent without articulation; skipping voice creation"
+            );
             return;
         }
         let end_tick = intent
@@ -155,4 +172,53 @@ impl ScheduleRenderer {
 fn schedule_add_past_ticks(time: Timebase) -> Tick {
     let hop_window = (time.hop as Tick).saturating_mul(2);
     default_release_ticks(time).max(hop_window).max(1)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::modulation::NeuralRhythms;
+    use crate::life::individual::{AnyArticulationCore, ArticulationWrapper, SequencedCore};
+
+    #[test]
+    fn birth_kick_consumed_on_onset_tick() {
+        let tb = Timebase {
+            fs: 48_000.0,
+            hop: 8,
+        };
+        let mut board = IntentBoard::new(1, 1);
+        let articulation = ArticulationWrapper::new(
+            AnyArticulationCore::Seq(SequencedCore {
+                timer: 0.0,
+                duration: 0.1,
+                env_level: 0.0,
+            }),
+            0.0,
+        );
+        board.publish(Intent {
+            source_id: 1,
+            intent_id: 0,
+            kind: crate::life::intent::IntentKind::BirthOnce,
+            onset: 0,
+            duration: 16,
+            freq_hz: 440.0,
+            amp: 0.0,
+            tag: None,
+            confidence: 1.0,
+            body: None,
+            articulation: Some(articulation),
+        });
+
+        let mut renderer = ScheduleRenderer::new(tb);
+        let rhythms = NeuralRhythms::default();
+        renderer.render(&board, 0, &rhythms);
+
+        assert!(
+            renderer
+                .voices
+                .values()
+                .all(|voice| !voice.birth_kick_pending()),
+            "expected birth kick to be consumed on onset tick"
+        );
+    }
 }

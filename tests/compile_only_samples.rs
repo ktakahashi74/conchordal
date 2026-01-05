@@ -41,6 +41,11 @@ fn compile_only_samples_tests() {
     let mut count = 0;
     for entry in WalkDir::new(dir).into_iter().filter_map(Result::ok) {
         let path = entry.path();
+        if let Some(name) = path.file_name().and_then(|n| n.to_str())
+            && name.starts_with(".#")
+        {
+            continue;
+        }
         if path.extension().and_then(|s| s.to_str()) != Some("rhai") {
             continue;
         }

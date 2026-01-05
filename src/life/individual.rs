@@ -352,7 +352,6 @@ impl Individual {
         frame_end: Tick,
         landscape: &Landscape,
     ) -> Option<Intent> {
-        const BIRTH_AMP_FLOOR: f32 = 1e-3;
         if !self.birth_pending() {
             return None;
         }
@@ -363,8 +362,7 @@ impl Individual {
         let theta_hz = landscape.rhythm.theta.freq_hz;
         let dur_sec = gate_duration_sec_from_theta(theta_hz, &self.planning);
         let dur_tick = sec_to_tick_at_least_one(tb, dur_sec);
-        let mut amp = self.body.amp().clamp(0.0, 1.0);
-        amp = amp.max(BIRTH_AMP_FLOOR);
+        let amp = self.body.amp().clamp(0.0, 1.0);
         let base_freq_hz = if self.last_chosen_freq_hz > 0.0 && self.last_chosen_freq_hz.is_finite()
         {
             self.last_chosen_freq_hz

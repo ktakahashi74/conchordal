@@ -22,10 +22,13 @@ pub struct SoundVoice {
 
 impl SoundVoice {
     pub fn from_intent(time: Timebase, mut intent: Intent) -> Option<Self> {
-        if intent.duration == 0 || intent.amp == 0.0 || intent.freq_hz <= 0.0 {
+        if intent.duration == 0 || intent.freq_hz <= 0.0 {
             return None;
         }
         if !intent.freq_hz.is_finite() || !intent.amp.is_finite() {
+            return None;
+        }
+        if intent.amp == 0.0 && intent.kind != IntentKind::BirthOnce {
             return None;
         }
 
@@ -37,7 +40,10 @@ impl SoundVoice {
             None => (SoundBodyConfig::Sine { phase: None }, 1.0),
         };
         let amp = intent.amp * amp_scale.clamp(0.0, 1.0);
-        if !amp.is_finite() || amp <= 0.0 {
+        if !amp.is_finite() {
+            return None;
+        }
+        if amp <= 0.0 && intent.kind != IntentKind::BirthOnce {
             return None;
         }
 
@@ -97,6 +103,11 @@ impl SoundVoice {
             return self.kick_birth(rhythms, dt);
         }
         false
+    }
+
+    #[cfg(test)]
+    pub(crate) fn birth_kick_pending(&self) -> bool {
+        self.birth_kick_pending
     }
 
     pub fn end_tick(&self) -> Tick {

@@ -117,7 +117,6 @@ impl ArticulationWrapper {
     }
 
     pub fn kick_birth(&mut self, rhythms: &NeuralRhythms, dt: f32) {
-        self.planned_gate.gate = 1.0;
         self.core.kick_birth(rhythms, dt);
     }
 }
@@ -830,13 +829,8 @@ impl AnyArticulationCore {
 impl KuramotoCore {
     fn kick_birth(&mut self, _rhythms: &NeuralRhythms, _dt: f32) {
         self.state = ArticulationState::Attack;
-        self.env_level = self.env_level.max(self.attack_step);
-        if self.energy.is_finite() {
-            let eps = 1e-4;
-            if self.energy < self.action_cost + eps {
-                self.energy = self.action_cost + eps;
-            }
-            self.energy = (self.energy - self.action_cost).max(0.0);
+        if self.energy.is_finite() && self.energy >= self.action_cost {
+            self.energy -= self.action_cost;
         }
     }
 }
@@ -844,7 +838,6 @@ impl KuramotoCore {
 impl SequencedCore {
     fn kick_birth(&mut self, _rhythms: &NeuralRhythms, _dt: f32) {
         self.timer = 0.0;
-        self.env_level = 1.0;
     }
 }
 

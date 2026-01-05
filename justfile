@@ -44,6 +44,9 @@ pack:
 	printf "\n### git diff --cached (staged)\n" >> "diff-{{TS}}.patch"; \
 	git diff --cached >> "diff-{{TS}}.patch"; \
 	ln -sf "diff-{{TS}}.patch" "{{DIFF_FILE}}"; \
+	if git diff --quiet && git diff --cached --quiet; then \
+		echo "Warning: No changes detected (diff is empty)."; \
+	fi; \
 	loc="${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}"; \
 	if [[ "${loc}" == ja* || "${loc}" == *ja_JP* || "${loc}" == *_JP* ]]; then \
 		lang_line="Language: Please respond in Japanese."; \
@@ -80,6 +83,9 @@ diff:
 	printf "\n### git diff --cached (staged)\n" >> "diff-{{TS}}.patch"; \
 	git diff --cached >> "diff-{{TS}}.patch"; \
 	ln -sf "diff-{{TS}}.patch" "{{DIFF_FILE}}"; \
+	if git diff --quiet && git diff --cached --quiet; then \
+		echo "Warning: No changes detected (diff is empty)."; \
+	fi; \
 	loc="${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}"; \
 	if [[ "${loc}" == ja* || "${loc}" == *ja_JP* || "${loc}" == *_JP* ]]; then \
 		lang_line="Language: Please respond in Japanese."; \

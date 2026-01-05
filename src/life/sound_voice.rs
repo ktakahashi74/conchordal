@@ -19,6 +19,7 @@ pub struct SoundVoice {
     attack_ticks: Tick,
     release_ticks: Tick,
     birth_kick_pending: bool,
+    planned_kick_pending: Option<PhonationKick>,
 }
 
 impl SoundVoice {
@@ -70,6 +71,7 @@ impl SoundVoice {
             attack_ticks,
             release_ticks,
             birth_kick_pending: intent.kind == IntentKind::BirthOnce,
+            planned_kick_pending: None,
         })
     }
 
@@ -102,6 +104,21 @@ impl SoundVoice {
         if let Some(articulation) = self.articulation.as_mut() {
             articulation.kick_planned(kick, rhythms, dt);
             return true;
+        }
+        false
+    }
+
+    pub fn schedule_planned_kick(&mut self, kick: PhonationKick) {
+        self.planned_kick_pending = Some(kick);
+    }
+
+    pub fn kick_planned_if_due(&mut self, tick: Tick, rhythms: &NeuralRhythms, dt: f32) -> bool {
+        let Some(kick) = self.planned_kick_pending else {
+            return false;
+        };
+        if tick >= self.onset {
+            self.planned_kick_pending = None;
+            return self.kick_planned(kick, rhythms, dt);
         }
         false
     }
@@ -216,5 +233,47 @@ fn sound_body_config_from_snapshot(snapshot: &BodySnapshot) -> SoundBodyConfig {
             partials: None,
         },
         _ => SoundBodyConfig::Sine { phase: None },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::life::individual::{AnyArticulationCore, ArticulationWrapper, SequencedCore};
+
+    #[test]
+    fn planned_kick_waits_for_onset() {
+        let tb = Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        };
+        let articulation = ArticulationWrapper::new(
+            AnyArticulationCore::Seq(SequencedCore {
+                timer: 0.0,
+                duration: 0.1,
+                env_level: 0.0,
+            }),
+            1.0,
+        );
+        let intent = Intent {
+            source_id: 1,
+            intent_id: 0,
+            kind: IntentKind::Normal,
+            onset: 10,
+            duration: 20,
+            freq_hz: 440.0,
+            amp: 0.5,
+            tag: None,
+            confidence: 1.0,
+            body: None,
+            articulation: Some(articulation),
+        };
+        let mut voice = SoundVoice::from_intent(tb, intent).expect("voice");
+        let rhythms = NeuralRhythms::default();
+        let dt = 1.0 / tb.fs;
+        voice.schedule_planned_kick(PhonationKick::Planned { strength: 1.0 });
+        assert!(!voice.kick_planned_if_due(9, &rhythms, dt));
+        assert!(voice.kick_planned_if_due(10, &rhythms, dt));
+        assert!(!voice.kick_planned_if_due(11, &rhythms, dt));
     }
 }

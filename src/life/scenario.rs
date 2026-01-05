@@ -131,21 +131,16 @@ pub enum BirthTiming {
     Immediate,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, JsonSchema, Default)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum PhonationIntervalConfig {
+    #[default]
     None,
     Accumulator {
         rate: f32,
         #[serde(default)]
         refractory: u32,
     },
-}
-
-impl Default for PhonationIntervalConfig {
-    fn default() -> Self {
-        PhonationIntervalConfig::None
-    }
 }
 
 impl<'de> Deserialize<'de> for PhonationIntervalConfig {

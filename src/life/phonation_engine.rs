@@ -22,6 +22,7 @@ pub enum PhonationCmd {
     },
     NoteOff {
         note_id: NoteId,
+        off_tick: Tick,
     },
 }
 
@@ -68,27 +69,48 @@ impl ThetaGateClock {
             self.gate_index + 1
         }
     }
+
+    fn gather_candidates_with<F>(
+        &mut self,
+        ctx: &CoreTickCtx,
+        out: &mut Vec<CandidateTick>,
+        mut next_gate_tick: F,
+    ) where
+        F: FnMut(Tick, &CoreTickCtx) -> Option<Tick>,
+    {
+        let mut cursor = ctx.now_tick;
+        while cursor < ctx.frame_end {
+            let gate_tick = match next_gate_tick(cursor, ctx) {
+                Some(tick) => tick,
+                None => return,
+            };
+            if gate_tick < cursor {
+                cursor = cursor.saturating_add(1);
+                continue;
+            }
+            if gate_tick < ctx.now_tick || gate_tick >= ctx.frame_end {
+                return;
+            }
+            if self.last_gate_tick == Some(gate_tick) {
+                cursor = gate_tick.saturating_add(1);
+                continue;
+            }
+            self.gate_index = self.gate_index.saturating_add(1);
+            self.last_gate_tick = Some(gate_tick);
+            out.push(CandidateTick {
+                t: gate_tick,
+                theta_gate: self.gate_index,
+                dt_theta: 1.0,
+            });
+            cursor = gate_tick.saturating_add(1);
+        }
+    }
 }
 
 impl PhonationClock for ThetaGateClock {
     fn gather_candidates(&mut self, ctx: &CoreTickCtx, out: &mut Vec<CandidateTick>) {
-        let gate_tick = next_gate_tick(ctx.now_tick, ctx.fs, ctx.rhythms.theta, 0.0);
-        let gate_tick = match gate_tick {
-            Some(tick) => tick,
-            None => return,
-        };
-        if gate_tick < ctx.now_tick || gate_tick >= ctx.frame_end {
-            return;
-        }
-        if self.last_gate_tick == Some(gate_tick) {
-            return;
-        }
-        self.gate_index = self.gate_index.saturating_add(1);
-        self.last_gate_tick = Some(gate_tick);
-        out.push(CandidateTick {
-            t: gate_tick,
-            theta_gate: self.gate_index,
-            dt_theta: 1.0,
+        self.gather_candidates_with(ctx, out, |cursor, ctx| {
+            next_gate_tick(cursor, ctx.fs, ctx.rhythms.theta, 0.0)
         });
     }
 }
@@ -159,7 +181,7 @@ impl PhonationInterval for AccumulatorInterval {
 
 pub trait PhonationConnect: Send {
     fn on_note_on(&mut self, note_id: NoteId, at_gate: i64);
-    fn poll(&mut self, now_gate: i64, out: &mut Vec<PhonationCmd>);
+    fn poll(&mut self, now_gate: i64, now_tick: Tick, out: &mut Vec<PhonationCmd>);
 }
 
 #[derive(Debug)]
@@ -183,13 +205,16 @@ impl PhonationConnect for FixedGateConnect {
         self.pending.push((note_id, off_gate));
     }
 
-    fn poll(&mut self, now_gate: i64, out: &mut Vec<PhonationCmd>) {
+    fn poll(&mut self, now_gate: i64, now_tick: Tick, out: &mut Vec<PhonationCmd>) {
         let mut idx = 0;
         while idx < self.pending.len() {
             if self.pending[idx].1 <= now_gate {
                 let note_id = self.pending[idx].0;
                 self.pending.swap_remove(idx);
-                out.push(PhonationCmd::NoteOff { note_id });
+                out.push(PhonationCmd::NoteOff {
+                    note_id,
+                    off_tick: now_tick,
+                });
             } else {
                 idx += 1;
             }
@@ -272,8 +297,11 @@ impl PhonationEngine {
     ) -> bool {
         let mut candidates = Vec::new();
         self.clock.gather_candidates(ctx, &mut candidates);
+        candidates.sort_by_key(|c| c.t);
         let mut birth_applied = false;
+        let mut had_candidate = false;
         for c in candidates {
+            had_candidate = true;
             if !birth_applied && birth_onset_tick.is_some_and(|tick| tick <= c.t) {
                 self.notify_birth_onset(c.theta_gate);
                 birth_applied = true;
@@ -290,13 +318,16 @@ impl PhonationEngine {
                 self.connect.on_note_on(note_id, c.theta_gate);
             }
             self.last_gate_index = c.theta_gate;
-        }
-        let before = out_cmds.len();
-        self.connect.poll(self.last_gate_index, out_cmds);
-        for cmd in &out_cmds[before..] {
-            if matches!(cmd, PhonationCmd::NoteOff { .. }) {
-                self.active_notes = self.active_notes.saturating_sub(1);
+            let before = out_cmds.len();
+            self.connect.poll(c.theta_gate, c.t, out_cmds);
+            for cmd in &out_cmds[before..] {
+                if matches!(cmd, PhonationCmd::NoteOff { .. }) {
+                    self.active_notes = self.active_notes.saturating_sub(1);
+                }
             }
+        }
+        if had_candidate {
+            self.last_gate_index = self.last_gate_index.max(0);
         }
         birth_applied
     }
@@ -363,5 +394,123 @@ mod tests {
         let state = CoreState { is_alive: true };
         let c = candidate_at_gate(0);
         assert!(interval.on_candidate(&c, &state).is_none());
+    }
+
+    #[test]
+    fn fixed_gate_connect_sets_off_tick() {
+        let mut connect = FixedGateConnect::new(0);
+        let mut out = Vec::new();
+        connect.on_note_on(1, 10);
+        connect.poll(10, 123, &mut out);
+        assert_eq!(
+            out,
+            vec![PhonationCmd::NoteOff {
+                note_id: 1,
+                off_tick: 123,
+            }]
+        );
+    }
+
+    #[test]
+    fn theta_gate_clock_emits_multiple_gates_in_hop() {
+        let mut clock = ThetaGateClock::default();
+        let ctx = CoreTickCtx {
+            now_tick: 0,
+            frame_end: 10,
+            fs: 1000.0,
+            rhythms: NeuralRhythms::default(),
+        };
+        let mut out = Vec::new();
+        let mut calls = 0;
+        clock.gather_candidates_with(&ctx, &mut out, |_cursor, _ctx| {
+            let tick = match calls {
+                0 => Some(0),
+                1 => Some(4),
+                2 => Some(8),
+                _ => None,
+            };
+            calls += 1;
+            tick
+        });
+        assert!(out.len() >= 2, "expected multiple gates in hop");
+        assert!(out[0].t < out[1].t);
+    }
+
+    #[test]
+    fn theta_gate_clock_emits_candidate_at_frame_start_gate() {
+        let mut clock = ThetaGateClock::default();
+        let rhythms = NeuralRhythms::default();
+        let ctx = CoreTickCtx {
+            now_tick: 0,
+            frame_end: 4,
+            fs: 1000.0,
+            rhythms,
+        };
+        let mut out = Vec::new();
+        clock.gather_candidates_with(&ctx, &mut out, |cursor, _ctx| {
+            if cursor == 0 { Some(cursor) } else { None }
+        });
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].t, 0);
+    }
+
+    #[test]
+    fn fixed_gate_connect_releases_on_next_gate_tick() {
+        let ctx = CoreTickCtx {
+            now_tick: 0,
+            frame_end: 10,
+            fs: 1000.0,
+            rhythms: NeuralRhythms::default(),
+        };
+        let mut interval = AccumulatorInterval::new(1.0, 0, 1);
+        interval.acc = 0.0;
+        struct StubClock {
+            ticks: Vec<Tick>,
+            index: usize,
+        }
+
+        impl PhonationClock for StubClock {
+            fn gather_candidates(&mut self, ctx: &CoreTickCtx, out: &mut Vec<CandidateTick>) {
+                while self.index < self.ticks.len() {
+                    let tick = self.ticks[self.index];
+                    if tick < ctx.now_tick || tick >= ctx.frame_end {
+                        return;
+                    }
+                    let gate = self.index as i64;
+                    out.push(CandidateTick {
+                        t: tick,
+                        theta_gate: gate,
+                        dt_theta: 1.0,
+                    });
+                    self.index += 1;
+                }
+            }
+        }
+
+        let mut engine = PhonationEngine {
+            clock: Box::new(StubClock {
+                ticks: vec![0, 4, 8],
+                index: 0,
+            }),
+            interval: Box::new(interval),
+            connect: Box::new(FixedGateConnect::new(1)),
+            next_note_id: 0,
+            last_gate_index: -1,
+            active_notes: 0,
+        };
+        let state = CoreState { is_alive: true };
+        let mut cmds = Vec::new();
+        let mut events = Vec::new();
+        engine.tick(&ctx, &state, None, &mut cmds, &mut events);
+        assert!(events.len() >= 2, "expected at least two note ons");
+        let first = events[0];
+        let second = events[1];
+        let off_tick = cmds.iter().find_map(|cmd| match cmd {
+            PhonationCmd::NoteOff { note_id, off_tick } if *note_id == first.note_id => {
+                Some(*off_tick)
+            }
+            _ => None,
+        });
+        assert_eq!(off_tick, Some(second.onset_tick));
     }
 }

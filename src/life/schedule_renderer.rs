@@ -101,6 +101,7 @@ impl ScheduleRenderer {
                         voice.onset()
                     );
                 }
+                voice.kick_planned_if_due(tick, &rhythms, dt);
                 acc += voice.render_tick(tick, fs, dt, &rhythms);
             }
             self.buf[idx] = acc;
@@ -170,9 +171,9 @@ impl ScheduleRenderer {
     fn apply_phonation_batches(
         &mut self,
         phonation_batches: &[PhonationBatch],
-        now: Tick,
-        rhythms: &NeuralRhythms,
-        dt: f32,
+        _now: Tick,
+        _rhythms: &NeuralRhythms,
+        _dt: f32,
     ) {
         let hold_ticks = max_phonation_hold_ticks(self.time);
         for batch in phonation_batches {
@@ -209,18 +210,18 @@ impl ScheduleRenderer {
                         };
                         if let Some(mut voice) = SoundVoice::from_intent(self.time, intent) {
                             voice.note_on(spec.onset);
-                            voice.kick_planned(kick, rhythms, dt);
+                            voice.schedule_planned_kick(kick);
                             self.voices.insert(key, voice);
                         }
                     }
-                    PhonationCmd::NoteOff { note_id } => {
+                    PhonationCmd::NoteOff { note_id, off_tick } => {
                         let key = VoiceKey {
                             source_id: batch.source_id,
                             note_id,
                             kind: VoiceKind::Phonation,
                         };
                         if let Some(voice) = self.voices.get_mut(&key) {
-                            voice.note_off(now);
+                            voice.note_off(off_tick);
                         }
                     }
                 }

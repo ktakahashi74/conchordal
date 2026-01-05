@@ -3,16 +3,11 @@ use std::ops::Range;
 
 use crate::core::timebase::Tick;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub enum IntentKind {
+    #[default]
     Normal,
     BirthOnce,
-}
-
-impl Default for IntentKind {
-    fn default() -> Self {
-        Self::Normal
-    }
 }
 
 #[derive(Clone, Debug)]

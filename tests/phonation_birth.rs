@@ -50,9 +50,8 @@ fn publish_at_hop_containing(
 ) {
     let hop = (tb.hop as Tick).max(1);
     let frame_start = onset - (onset % hop);
-    let frame_end = frame_start.saturating_add(hop);
     pop.set_current_frame((frame_start / hop) as u64);
-    pop.publish_intents(world, landscape, frame_start, frame_end);
+    pop.publish_intents(world, landscape, frame_start);
 }
 
 fn find_birth_intent(world: &WorldModel) -> Option<conchordal::life::intent::Intent> {
@@ -115,6 +114,7 @@ fn phonation_immediate_fires_next_hop() {
         life: life_with_phonation(PhonationConfig {
             on_birth: OnBirthPhonation::Once,
             timing: BirthTiming::Immediate,
+            ..Default::default()
         }),
         tag: None,
     };
@@ -152,6 +152,7 @@ fn phonation_off_skips_birth() {
         life: life_with_phonation(PhonationConfig {
             on_birth: OnBirthPhonation::Off,
             timing: BirthTiming::Gate,
+            ..Default::default()
         }),
         tag: None,
     };
@@ -204,9 +205,9 @@ fn birth_pending_prevents_prune_before_onset() {
     }
 
     let now: Tick = 0;
-    let hop = (tb.hop as Tick).max(1);
+    let _hop = (tb.hop as Tick).max(1);
     pop.set_current_frame(0);
-    pop.publish_intents(&mut world, &landscape, 0, hop);
+    pop.publish_intents(&mut world, &landscape, 0);
     assert_eq!(pop.individuals.len(), 1);
     assert!(find_birth_intent(&world).is_none());
 

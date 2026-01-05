@@ -5,6 +5,7 @@ use crate::life::individual::{
 };
 use crate::life::intent::{BodySnapshot, Intent, IntentKind};
 use crate::life::lifecycle::default_decay_attack;
+use crate::life::phonation_engine::PhonationKick;
 use crate::life::scenario::{SoundBodyConfig, TimbreGenotype};
 use rand::SeedableRng;
 use rand::rngs::SmallRng;
@@ -92,6 +93,14 @@ impl SoundVoice {
     pub fn kick_birth(&mut self, rhythms: &NeuralRhythms, dt: f32) -> bool {
         if let Some(articulation) = self.articulation.as_mut() {
             articulation.kick_birth(rhythms, dt);
+            return true;
+        }
+        false
+    }
+
+    pub fn kick_planned(&mut self, kick: PhonationKick, rhythms: &NeuralRhythms, dt: f32) -> bool {
+        if let Some(articulation) = self.articulation.as_mut() {
+            articulation.kick_planned(kick, rhythms, dt);
             return true;
         }
         false

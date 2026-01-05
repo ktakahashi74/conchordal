@@ -1,10 +1,9 @@
 use conchordal::core::landscape::Landscape;
 use conchordal::core::log2space::Log2Space;
-use conchordal::core::modulation::NeuralRhythms;
 use conchordal::core::timebase::{Tick, Timebase};
 use conchordal::life::individual::AgentMetadata;
 use conchordal::life::population::Population;
-use conchordal::life::scenario::{IndividualConfig, LifeConfig};
+use conchordal::life::scenario::{IndividualConfig, LifeConfig, PhonationIntervalConfig};
 use conchordal::life::schedule_renderer::ScheduleRenderer;
 use conchordal::life::world_model::WorldModel;
 
@@ -18,7 +17,10 @@ fn agents_publish_intents_and_render_audio() {
     let mut world = WorldModel::new(tb, space.clone());
     let mut pop = Population::new(tb);
     let mut life = LifeConfig::default();
-    life.planning.plan_rate = 1.0;
+    life.phonation.interval = PhonationIntervalConfig::Accumulator {
+        rate: 1.0,
+        refractory: 0,
+    };
     let agent_cfg = IndividualConfig {
         freq: 440.0,
         amp: 0.4,
@@ -31,41 +33,18 @@ fn agents_publish_intents_and_render_audio() {
         group_idx: 0,
         member_idx: 0,
     };
-    let agent = agent_cfg.spawn(1, 0, metadata, tb.fs, 0);
+    let agent = agent_cfg.spawn(1, 0, metadata.clone(), tb.fs, 0);
     pop.add_individual(agent);
 
-    let landscape = Landscape::new(space.clone());
+    let mut landscape = Landscape::new(space.clone());
+    landscape.rhythm.theta.freq_hz = 6.0;
+    landscape.rhythm.theta.phase = -0.01;
 
-    world.advance_to(0);
-    world.next_gate_tick_est = Some(0);
-    pop.publish_intents(&mut world, &landscape, 0, 0);
-    assert!(!world.plan_board.snapshot_next().is_empty());
-    world.next_gate_tick_est = Some(1);
-    let frame_end: Tick = tb.hop as Tick;
-    world.commit_plans_if_due(0, frame_end);
-    assert!(world.board.len() > 0);
-
-    let first_intent = world
-        .board
-        .query_range(0..u64::MAX)
-        .next()
-        .expect("expected intent");
-    let render_start = first_intent.onset.saturating_sub(1);
-
+    let phonation_batches = pop.publish_intents(&mut world, &landscape, 0);
+    assert!(!phonation_batches.is_empty());
     let mut renderer = ScheduleRenderer::new(tb);
-    let rhythms = NeuralRhythms::default();
-    let end = world
-        .board
-        .query_range(0..u64::MAX)
-        .map(|i| i.onset.saturating_add(i.duration))
-        .max()
-        .unwrap_or(render_start);
-    let mut out = Vec::new();
-    let mut tick = render_start;
-    while tick <= end {
-        out.extend_from_slice(renderer.render(&world.board, tick, &rhythms));
-        tick = tick.saturating_add(tb.hop as u64);
-    }
+    let rhythms = landscape.rhythm;
+    let out = renderer.render(&world.board, &phonation_batches, 0, &rhythms);
     assert!(out.iter().any(|s| s.abs() > 1e-6));
 }
 
@@ -79,7 +58,10 @@ fn publish_intents_runs_when_gate_in_hop_window() {
     let mut world = WorldModel::new(tb, space.clone());
     let mut pop = Population::new(tb);
     let mut life = LifeConfig::default();
-    life.planning.plan_rate = 1.0;
+    life.phonation.interval = PhonationIntervalConfig::Accumulator {
+        rate: 1.0,
+        refractory: 0,
+    };
     let agent_cfg = IndividualConfig {
         freq: 440.0,
         amp: 0.4,
@@ -92,21 +74,25 @@ fn publish_intents_runs_when_gate_in_hop_window() {
         group_idx: 0,
         member_idx: 0,
     };
-    let agent = agent_cfg.spawn(1, 0, metadata, tb.fs, 0);
+    let agent = agent_cfg.spawn(1, 0, metadata.clone(), tb.fs, 0);
     pop.add_individual(agent);
 
     let space = Log2Space::new(20.0, 20_000.0, 24);
-    let landscape = Landscape::new(space);
+    let mut landscape = Landscape::new(space.clone());
+    landscape.rhythm.theta.freq_hz = 6.0;
+    landscape.rhythm.theta.phase = -0.01;
 
     let now: Tick = 0;
-    world.advance_to(now);
-    world.next_gate_tick_est = Some(now + (tb.hop as Tick / 2));
-    pop.publish_intents(&mut world, &landscape, now, now);
-    assert!(!world.plan_board.snapshot_next().is_empty());
+    let batches = pop.publish_intents(&mut world, &landscape, now);
+    assert!(!batches.is_empty());
 
-    world.plan_board.clear_next();
-    world.last_committed_gate_tick = None;
-    world.next_gate_tick_est = Some(now + tb.hop as Tick);
-    pop.publish_intents(&mut world, &landscape, now, now);
-    assert!(world.plan_board.snapshot_next().is_empty());
+    let mut landscape_off = Landscape::new(space);
+    landscape_off.rhythm.theta.freq_hz = 1.0;
+    landscape_off.rhythm.theta.phase = 0.0;
+    let mut world_off = WorldModel::new(tb, Log2Space::new(20.0, 20_000.0, 24));
+    let mut pop_off = Population::new(tb);
+    let agent = agent_cfg.spawn(1, 0, metadata, tb.fs, 0);
+    pop_off.add_individual(agent);
+    let batches_off = pop_off.publish_intents(&mut world_off, &landscape_off, now);
+    assert!(batches_off.is_empty());
 }

@@ -39,12 +39,12 @@ fn rhythm_signal_changes_output() {
     let mut renderer0 = ScheduleRenderer::new(tb);
     let mut rhythms0 = NeuralRhythms::default();
     rhythms0.theta.beta = 0.0;
-    let out0 = renderer0.render(&board, 0, &rhythms0);
+    let out0 = renderer0.render(&board, &[], 0, &rhythms0);
 
     let mut renderer1 = ScheduleRenderer::new(tb);
     let mut rhythms1 = NeuralRhythms::default();
     rhythms1.theta.beta = 1.0;
-    let out1 = renderer1.render(&board, 0, &rhythms1);
+    let out1 = renderer1.render(&board, &[], 0, &rhythms1);
 
     let mut any_diff = false;
     for (a, b) in out0.iter().zip(out1.iter()) {

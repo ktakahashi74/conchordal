@@ -12,8 +12,7 @@ fn setup_agent(release_gain: f32) -> (conchordal::life::individual::Individual, 
         fs: 48_000.0,
         hop: 64,
     };
-    let mut life = LifeConfig::default();
-    life.planning.plan_rate = 1.0;
+    let life = LifeConfig::default();
     let agent_cfg = IndividualConfig {
         freq: 440.0,
         amp: 0.4,

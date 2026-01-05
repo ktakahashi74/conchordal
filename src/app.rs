@@ -232,8 +232,7 @@ pub fn validate_scenario(scenario: &Scenario) -> Result<(), String> {
                 | Action::SetFreq { target, .. }
                 | Action::SetAmp { target, .. }
                 | Action::SetCommitment { target, .. }
-                | Action::SetDrift { target, .. }
-                | Action::SetPlanRate { target, .. } => {
+                | Action::SetDrift { target, .. } => {
                     validate_target(target)?;
                 }
                 Action::SetRhythmVitality { .. }
@@ -993,10 +992,12 @@ fn worker_loop(
                 (None, Some(r)) => r,
                 (None, None) => frame_idx,
             };
-            let perc_tick = timebase.frame_start_tick(perc_frame);
-            if scenario_end_tick.is_none() {
-                pop.publish_intents(&mut world, &current_landscape, now_tick, perc_tick);
-            }
+            let _perc_tick = timebase.frame_start_tick(perc_frame);
+            let phonation_batches = if scenario_end_tick.is_none() {
+                pop.publish_intents(&mut world, &current_landscape, now_tick)
+            } else {
+                Vec::new()
+            };
             dorsal.set_vitality(pop.global_vitality);
             if let Some(update) = pop.take_pending_update() {
                 apply_params_update(&mut lparams, &update);
@@ -1029,8 +1030,12 @@ fn worker_loop(
                     hop_duration.as_secs_f32(),
                     &current_landscape,
                 );
-                let time_chunk =
-                    schedule_renderer.render(&world.board, now_tick, &current_landscape.rhythm);
+                let time_chunk = schedule_renderer.render(
+                    &world.board,
+                    &phonation_batches,
+                    now_tick,
+                    &current_landscape.rhythm,
+                );
 
                 // Calculate Peak (Mono)
                 let mut max_p = 0.0f32;

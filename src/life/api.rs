@@ -109,21 +109,3 @@ pub fn set_tag_str_at(
         position,
     )
 }
-
-pub fn set_plan_rate_source(
-    ctx: &mut ScriptContext,
-    source_id: i64,
-    rate: FLOAT,
-    position: Position,
-) -> Result<(), Box<EvalAltResult>> {
-    ctx.set_plan_rate_source(source_id, rate as f32, position)
-}
-
-pub fn set_plan_rate_tag(
-    ctx: &mut ScriptContext,
-    tag: &str,
-    rate: FLOAT,
-    position: Position,
-) -> Result<(), Box<EvalAltResult>> {
-    ctx.set_plan_rate_tag(tag, rate as f32, position)
-}

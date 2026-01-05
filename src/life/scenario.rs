@@ -12,6 +12,7 @@ use crate::life::individual::{
 };
 use crate::life::lifecycle::LifecycleConfig;
 use crate::life::perceptual::PerceptualConfig;
+use crate::life::phonation_engine::PhonationEngine;
 use rand::SeedableRng;
 use serde_json::Value;
 
@@ -110,10 +111,6 @@ fn default_gate_dur_max_sec() -> f32 {
     10_000.0
 }
 
-fn default_plan_rate() -> f32 {
-    0.0
-}
-
 fn default_plan_pitch_mode() -> PlanPitchMode {
     PlanPitchMode::Off
 }
@@ -134,10 +131,120 @@ pub enum BirthTiming {
     Immediate,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, JsonSchema)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum PhonationIntervalConfig {
+    None,
+    Accumulator {
+        rate: f32,
+        #[serde(default)]
+        refractory: u32,
+    },
+}
+
+impl Default for PhonationIntervalConfig {
+    fn default() -> Self {
+        PhonationIntervalConfig::None
+    }
+}
+
+impl<'de> Deserialize<'de> for PhonationIntervalConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = Value::deserialize(deserializer)?;
+        match value {
+            Value::String(s) => match s.as_str() {
+                "none" => Ok(PhonationIntervalConfig::None),
+                _ => Err(de::Error::custom(format!(
+                    "phonation interval must be \"none\" or a map (got \"{s}\")"
+                ))),
+            },
+            Value::Object(map) => {
+                let ty = map
+                    .get("type")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| de::Error::custom("phonation interval missing `type`"))?;
+                match ty {
+                    "none" => Ok(PhonationIntervalConfig::None),
+                    "accumulator" => {
+                        let rate = map.get("rate").and_then(|v| v.as_f64()).ok_or_else(|| {
+                            de::Error::custom("phonation interval accumulator requires `rate`")
+                        })? as f32;
+                        let refractory =
+                            map.get("refractory").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+                        Ok(PhonationIntervalConfig::Accumulator { rate, refractory })
+                    }
+                    _ => Err(de::Error::custom(format!(
+                        "phonation interval type must be \"none\" or \"accumulator\" (got \"{ty}\")"
+                    ))),
+                }
+            }
+            _ => Err(de::Error::custom(
+                "phonation interval must be a string or map",
+            )),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, JsonSchema)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum PhonationConnectConfig {
+    FixedGate { length_gates: u32 },
+}
+
+impl Default for PhonationConnectConfig {
+    fn default() -> Self {
+        PhonationConnectConfig::FixedGate { length_gates: 1 }
+    }
+}
+
+impl<'de> Deserialize<'de> for PhonationConnectConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = Value::deserialize(deserializer)?;
+        match value {
+            Value::String(s) => match s.as_str() {
+                "fixed_gate" => Ok(PhonationConnectConfig::FixedGate { length_gates: 1 }),
+                _ => Err(de::Error::custom(format!(
+                    "phonation connect must be \"fixed_gate\" or a map (got \"{s}\")"
+                ))),
+            },
+            Value::Object(map) => {
+                let ty = map
+                    .get("type")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| de::Error::custom("phonation connect missing `type`"))?;
+                match ty {
+                    "fixed_gate" => {
+                        let length_gates = map
+                            .get("length_gates")
+                            .or_else(|| map.get("length"))
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(1) as u32;
+                        Ok(PhonationConnectConfig::FixedGate { length_gates })
+                    }
+                    _ => Err(de::Error::custom(format!(
+                        "phonation connect type must be \"fixed_gate\" (got \"{ty}\")"
+                    ))),
+                }
+            }
+            _ => Err(de::Error::custom(
+                "phonation connect must be a string or map",
+            )),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct PhonationConfig {
     pub on_birth: OnBirthPhonation,
     pub timing: BirthTiming,
+    pub interval: PhonationIntervalConfig,
+    pub connect: PhonationConnectConfig,
 }
 
 impl Default for PhonationConfig {
@@ -145,6 +252,8 @@ impl Default for PhonationConfig {
         Self {
             on_birth: OnBirthPhonation::Once,
             timing: BirthTiming::Gate,
+            interval: PhonationIntervalConfig::None,
+            connect: PhonationConnectConfig::default(),
         }
     }
 }
@@ -160,14 +269,20 @@ impl<'de> Deserialize<'de> for PhonationConfig {
                 "once" => Ok(Self {
                     on_birth: OnBirthPhonation::Once,
                     timing: BirthTiming::Gate,
+                    interval: PhonationIntervalConfig::None,
+                    connect: PhonationConnectConfig::default(),
                 }),
                 "immediate" => Ok(Self {
                     on_birth: OnBirthPhonation::Once,
                     timing: BirthTiming::Immediate,
+                    interval: PhonationIntervalConfig::None,
+                    connect: PhonationConnectConfig::default(),
                 }),
                 "off" => Ok(Self {
                     on_birth: OnBirthPhonation::Off,
                     timing: BirthTiming::Gate,
+                    interval: PhonationIntervalConfig::None,
+                    connect: PhonationConnectConfig::default(),
                 }),
                 _ => Err(de::Error::custom(format!(
                     "phonation must be \"once\", \"immediate\", or \"off\" (got \"{s}\")"
@@ -176,6 +291,8 @@ impl<'de> Deserialize<'de> for PhonationConfig {
             Value::Object(map) => {
                 let mut on_birth = OnBirthPhonation::Once;
                 let mut timing = BirthTiming::Gate;
+                let mut interval = PhonationIntervalConfig::None;
+                let mut connect = PhonationConnectConfig::default();
                 for (k, v) in map {
                     match k.as_str() {
                         "on_birth" => {
@@ -206,6 +323,14 @@ impl<'de> Deserialize<'de> for PhonationConfig {
                                 }
                             };
                         }
+                        "interval" | "after_birth" => {
+                            interval = PhonationIntervalConfig::deserialize(v)
+                                .map_err(de::Error::custom)?;
+                        }
+                        "connect" => {
+                            connect = PhonationConnectConfig::deserialize(v)
+                                .map_err(de::Error::custom)?;
+                        }
                         _ => {
                             return Err(de::Error::custom(format!(
                                 "phonation has unknown key: {k}"
@@ -213,7 +338,12 @@ impl<'de> Deserialize<'de> for PhonationConfig {
                         }
                     }
                 }
-                Ok(Self { on_birth, timing })
+                Ok(Self {
+                    on_birth,
+                    timing,
+                    interval,
+                    connect,
+                })
             }
             _ => Err(de::Error::custom("phonation must be a string or map")),
         }
@@ -238,8 +368,6 @@ pub struct PlanningConfig {
     pub gate_dur_min_sec: f32,
     #[serde(default = "default_gate_dur_max_sec")]
     pub gate_dur_max_sec: f32,
-    #[serde(default = "default_plan_rate")]
-    pub plan_rate: f32,
     #[serde(default = "default_plan_pitch_mode")]
     pub pitch_mode: PlanPitchMode,
 }
@@ -250,7 +378,6 @@ impl Default for PlanningConfig {
             gate_dur_scale: default_gate_dur_scale(),
             gate_dur_min_sec: default_gate_dur_min_sec(),
             gate_dur_max_sec: default_gate_dur_max_sec(),
-            plan_rate: default_plan_rate(),
             pitch_mode: default_plan_pitch_mode(),
         }
     }
@@ -476,6 +603,7 @@ impl IndividualConfig {
         let mut rng = rand::rngs::SmallRng::seed_from_u64(seed);
         let core =
             AnyArticulationCore::from_config(&self.life.articulation, fs, assigned_id, &mut rng);
+        let phonation_engine = PhonationEngine::from_config(&self.life.phonation, seed);
         let pitch = AnyPitchCore::from_config(&self.life.pitch, target_pitch_log2, &mut rng);
         let perceptual =
             crate::life::perceptual::PerceptualContext::from_config(&self.life.perceptual, 0);
@@ -519,6 +647,7 @@ impl IndividualConfig {
             perceptual,
             planning: self.life.planning.clone(),
             phonation: self.life.phonation.clone(),
+            phonation_engine,
             body,
             last_signal: Default::default(),
             release_gain: 1.0,
@@ -698,25 +827,48 @@ mod tests {
         let once: PhonationConfig = serde_json::from_value(json!("once")).expect("once");
         assert_eq!(once.on_birth, OnBirthPhonation::Once);
         assert_eq!(once.timing, BirthTiming::Gate);
+        assert_eq!(once.interval, PhonationIntervalConfig::None);
 
         let immediate: PhonationConfig =
             serde_json::from_value(json!("immediate")).expect("immediate");
         assert_eq!(immediate.on_birth, OnBirthPhonation::Once);
         assert_eq!(immediate.timing, BirthTiming::Immediate);
+        assert_eq!(immediate.interval, PhonationIntervalConfig::None);
 
         let off: PhonationConfig = serde_json::from_value(json!("off")).expect("off");
         assert_eq!(off.on_birth, OnBirthPhonation::Off);
+        assert_eq!(off.interval, PhonationIntervalConfig::None);
     }
 
     #[test]
     fn phonation_map_parses() {
         let cfg: PhonationConfig = serde_json::from_value(json!({
             "on_birth": "once",
-            "timing": "gate"
+            "timing": "gate",
+            "interval": {
+                "type": "accumulator",
+                "rate": 0.25,
+                "refractory": 1
+            },
+            "connect": {
+                "type": "fixed_gate",
+                "length_gates": 2
+            }
         }))
         .expect("map");
         assert_eq!(cfg.on_birth, OnBirthPhonation::Once);
         assert_eq!(cfg.timing, BirthTiming::Gate);
+        assert_eq!(
+            cfg.interval,
+            PhonationIntervalConfig::Accumulator {
+                rate: 0.25,
+                refractory: 1
+            }
+        );
+        assert_eq!(
+            cfg.connect,
+            PhonationConnectConfig::FixedGate { length_gates: 2 }
+        );
     }
 }
 
@@ -771,10 +923,6 @@ pub enum Action {
     SetDrift {
         target: TargetRef,
         value: f32,
-    },
-    SetPlanRate {
-        target: TargetRef,
-        plan_rate: f32,
     },
     PostIntent {
         source_id: u64,
@@ -852,9 +1000,6 @@ impl fmt::Display for Action {
             }
             Action::SetDrift { target, value } => {
                 write!(f, "SetDrift target={} value={:.3}", target, value)
-            }
-            Action::SetPlanRate { target, plan_rate } => {
-                write!(f, "SetPlanRate target={} rate={:.3}", target, plan_rate)
             }
             Action::PostIntent {
                 source_id,

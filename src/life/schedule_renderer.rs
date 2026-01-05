@@ -1,14 +1,23 @@
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
+use crate::life::individual::PhonationBatch;
 use crate::life::intent::{Intent, IntentBoard};
+use crate::life::phonation_engine::PhonationCmd;
 use crate::life::sound_voice::{SoundVoice, default_release_ticks};
 use std::collections::HashMap;
 use tracing::debug;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum VoiceKind {
+    Intent,
+    Phonation,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 struct VoiceKey {
     source_id: u64,
-    intent_id: u64,
+    note_id: u64,
+    kind: VoiceKind,
 }
 
 pub struct ScheduleRenderer {
@@ -36,7 +45,13 @@ impl ScheduleRenderer {
         }
     }
 
-    pub fn render(&mut self, board: &IntentBoard, now: Tick, rhythms: &NeuralRhythms) -> &[f32] {
+    pub fn render(
+        &mut self,
+        board: &IntentBoard,
+        phonation_batches: &[PhonationBatch],
+        now: Tick,
+        rhythms: &NeuralRhythms,
+    ) -> &[f32] {
         let hop = self.time.hop;
         if self.buf.len() != hop {
             self.buf.resize(hop, 0.0);
@@ -71,6 +86,7 @@ impl ScheduleRenderer {
         let end = now.saturating_add(hop as Tick);
         let dt = 1.0 / fs;
         let mut rhythms = *rhythms;
+        self.apply_phonation_batches(phonation_batches, now, &rhythms, dt);
         // For each tick: kick due births first, then render the sample.
         for tick in now..end {
             let idx = (tick - now) as usize;
@@ -138,7 +154,8 @@ impl ScheduleRenderer {
         }
         let key = VoiceKey {
             source_id: intent.source_id,
-            intent_id: intent.intent_id,
+            note_id: intent.intent_id,
+            kind: VoiceKind::Intent,
         };
         if self.voices.contains_key(&key) {
             return;
@@ -147,6 +164,67 @@ impl ScheduleRenderer {
         if let Some(mut voice) = SoundVoice::from_intent(self.time, intent) {
             voice.note_on(onset);
             self.voices.insert(key, voice);
+        }
+    }
+
+    fn apply_phonation_batches(
+        &mut self,
+        phonation_batches: &[PhonationBatch],
+        now: Tick,
+        rhythms: &NeuralRhythms,
+        dt: f32,
+    ) {
+        let hold_ticks = max_phonation_hold_ticks(self.time);
+        for batch in phonation_batches {
+            for cmd in &batch.cmds {
+                match *cmd {
+                    PhonationCmd::NoteOn { note_id, kick } => {
+                        let key = VoiceKey {
+                            source_id: batch.source_id,
+                            note_id,
+                            kind: VoiceKind::Phonation,
+                        };
+                        if self.voices.contains_key(&key) {
+                            continue;
+                        }
+                        let spec = batch.notes.iter().find(|note| note.note_id == note_id);
+                        let Some(spec) = spec else { continue };
+                        if let Some(cutoff) = self.cutoff_tick
+                            && spec.onset >= cutoff
+                        {
+                            continue;
+                        }
+                        let intent = Intent {
+                            source_id: batch.source_id,
+                            intent_id: note_id,
+                            kind: crate::life::intent::IntentKind::Normal,
+                            onset: spec.onset,
+                            duration: hold_ticks,
+                            freq_hz: spec.freq_hz,
+                            amp: spec.amp,
+                            tag: None,
+                            confidence: 1.0,
+                            body: Some(spec.body.clone()),
+                            articulation: Some(spec.articulation.clone()),
+                        };
+                        if let Some(mut voice) = SoundVoice::from_intent(self.time, intent) {
+                            voice.note_on(spec.onset);
+                            voice.kick_planned(kick, rhythms, dt);
+                            self.voices.insert(key, voice);
+                        }
+                    }
+                    PhonationCmd::NoteOff { note_id } => {
+                        let key = VoiceKey {
+                            source_id: batch.source_id,
+                            note_id,
+                            kind: VoiceKind::Phonation,
+                        };
+                        if let Some(voice) = self.voices.get_mut(&key) {
+                            voice.note_off(now);
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -172,6 +250,12 @@ impl ScheduleRenderer {
 fn schedule_add_past_ticks(time: Timebase) -> Tick {
     let hop_window = (time.hop as Tick).saturating_mul(2);
     default_release_ticks(time).max(hop_window).max(1)
+}
+
+fn max_phonation_hold_ticks(time: Timebase) -> Tick {
+    let max_sec = 60.0;
+    let ticks = time.sec_to_tick(max_sec);
+    ticks.max(1)
 }
 
 #[cfg(test)]
@@ -211,7 +295,7 @@ mod tests {
 
         let mut renderer = ScheduleRenderer::new(tb);
         let rhythms = NeuralRhythms::default();
-        renderer.render(&board, 0, &rhythms);
+        renderer.render(&board, &[], 0, &rhythms);
 
         assert!(
             renderer

@@ -16,7 +16,6 @@ fn pred_c_eval_tick_uses_gate_tick() {
     let space = Log2Space::new(55.0, 8000.0, 96);
     let landscape = Landscape::new(space.clone());
     let mut life = LifeConfig::default();
-    life.planning.plan_rate = 1.0;
     life.planning.pitch_mode = PlanPitchMode::PredC;
     let agent_cfg = IndividualConfig {
         freq: 440.0,

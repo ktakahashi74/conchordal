@@ -84,7 +84,7 @@ fn gate_commit_drives_sample_accurate_onset() {
     assert_eq!(committed.source_id, 1);
 
     let mut renderer = ScheduleRenderer::new(tb);
-    let buf = renderer.render(&world.board, now_tick, &rhythms);
+    let buf = renderer.render(&world.board, &[], now_tick, &rhythms);
     let onset_idx = (gate_tick - now_tick) as usize;
     assert!(onset_idx < buf.len());
 

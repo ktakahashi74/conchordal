@@ -3,6 +3,7 @@ use crate::core::phase::{angle_diff_pm_pi, wrap_0_tau};
 use crate::core::timebase::{Tick, Timebase};
 use crate::core::utils::pink_noise_tick;
 use crate::life::lifecycle::LifecycleConfig;
+use crate::life::phonation_engine::PhonationKick;
 use crate::life::scenario::ArticulationCoreConfig;
 use rand::{Rng, SeedableRng, rngs::SmallRng};
 use std::f32::consts::{PI, TAU};
@@ -118,6 +119,10 @@ impl ArticulationWrapper {
 
     pub fn kick_birth(&mut self, rhythms: &NeuralRhythms, dt: f32) {
         self.core.kick_birth(rhythms, dt);
+    }
+
+    pub fn kick_planned(&mut self, kick: PhonationKick, rhythms: &NeuralRhythms, dt: f32) {
+        self.core.kick_planned(kick, rhythms, dt);
     }
 }
 
@@ -824,6 +829,17 @@ impl AnyArticulationCore {
             }
         }
     }
+
+    pub fn kick_planned(&mut self, kick: PhonationKick, rhythms: &NeuralRhythms, dt: f32) {
+        match kick {
+            PhonationKick::Birth => self.kick_birth(rhythms, dt),
+            PhonationKick::Planned { strength } => match self {
+                AnyArticulationCore::Entrain(core) => core.kick_planned(strength),
+                AnyArticulationCore::Seq(core) => core.kick_planned(strength),
+                AnyArticulationCore::Drone(core) => core.kick_planned(strength),
+            },
+        }
+    }
 }
 
 impl KuramotoCore {
@@ -833,16 +849,30 @@ impl KuramotoCore {
             self.energy -= self.action_cost;
         }
     }
+
+    fn kick_planned(&mut self, strength: f32) {
+        let strength = strength.clamp(0.0, 1.0);
+        self.state = ArticulationState::Attack;
+        if self.energy.is_finite() && self.energy >= self.action_cost {
+            self.energy -= self.action_cost * strength;
+        }
+    }
 }
 
 impl SequencedCore {
     fn kick_birth(&mut self, _rhythms: &NeuralRhythms, _dt: f32) {
         self.timer = 0.0;
     }
+
+    fn kick_planned(&mut self, _strength: f32) {
+        self.timer = 0.0;
+    }
 }
 
 impl DroneCore {
     fn kick_birth(&mut self, _rhythms: &NeuralRhythms, _dt: f32) {}
+
+    fn kick_planned(&mut self, _strength: f32) {}
 }
 
 fn min_lead_ticks(tb: &Timebase) -> Tick {

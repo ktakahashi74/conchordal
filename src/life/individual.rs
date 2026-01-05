@@ -5,8 +5,11 @@ use crate::core::timebase::{Tick, Timebase};
 use crate::life::intent::{BodySnapshot, Intent};
 use crate::life::intent_planner::choose_best_gesture_tf_by_pred_c;
 use crate::life::perceptual::{FeaturesNow, PerceptualContext};
+use crate::life::phonation_engine::{
+    CoreState, CoreTickCtx, NoteId, PhonationCmd, PhonationEngine, PhonationNoteEvent,
+};
 use crate::life::scenario::{PhonationConfig, PlanningConfig};
-use rand::{Rng, rngs::SmallRng};
+use rand::rngs::SmallRng;
 use std::collections::VecDeque;
 
 #[path = "articulation_core.rs"]
@@ -53,7 +56,7 @@ pub struct AudioSample {
     pub sample: f32,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Individual {
     pub id: u64,
     pub metadata: AgentMetadata,
@@ -62,6 +65,7 @@ pub struct Individual {
     pub perceptual: PerceptualContext,
     pub planning: PlanningConfig,
     pub phonation: PhonationConfig,
+    pub phonation_engine: PhonationEngine,
     pub body: AnySoundBody,
     pub last_signal: ArticulationSignal,
     pub release_gain: f32,
@@ -98,6 +102,23 @@ pub struct PredIntentRecord {
     pub eval_tick: Tick,
 }
 
+#[derive(Clone, Debug)]
+pub struct PhonationNoteSpec {
+    pub note_id: NoteId,
+    pub onset: Tick,
+    pub freq_hz: f32,
+    pub amp: f32,
+    pub body: BodySnapshot,
+    pub articulation: ArticulationWrapper,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct PhonationBatch {
+    pub source_id: u64,
+    pub cmds: Vec<PhonationCmd>,
+    pub notes: Vec<PhonationNoteSpec>,
+}
+
 impl Individual {
     const AMP_EPS: f32 = 1e-6;
 
@@ -110,7 +131,7 @@ impl Individual {
     }
 
     pub fn should_retain(&self) -> bool {
-        self.is_alive() || self.birth_pending()
+        self.is_alive() || self.birth_pending() || self.phonation_engine.has_active_notes()
     }
     pub fn metadata(&self) -> &AgentMetadata {
         &self.metadata
@@ -265,14 +286,6 @@ impl Individual {
         } else {
             None
         };
-        let plan_rate = self.planning.plan_rate;
-        if plan_rate <= 0.0 || !plan_rate.is_finite() {
-            return Vec::new();
-        }
-        if plan_rate < 1.0 && self.rng.random::<f32>() >= plan_rate {
-            return Vec::new();
-        }
-
         let theta_hz = landscape.rhythm.theta.freq_hz;
         let dur_sec = gate_duration_sec_from_theta(theta_hz, &self.planning);
         let dur_tick = sec_to_tick_at_least_one(tb, dur_sec);
@@ -390,6 +403,51 @@ impl Individual {
         Some(intent)
     }
 
+    pub fn tick_phonation(
+        &mut self,
+        tb: &Timebase,
+        now: Tick,
+        rhythms: &NeuralRhythms,
+    ) -> PhonationBatch {
+        let hop_tick = (tb.hop as Tick).max(1);
+        let frame_end = now.saturating_add(hop_tick);
+        let birth_onset_tick = if self.birth_pending() {
+            self.birth_onset_tick
+                .filter(|tick| *tick >= now && *tick < frame_end)
+        } else {
+            None
+        };
+        let ctx = CoreTickCtx {
+            now_tick: now,
+            frame_end,
+            fs: tb.fs,
+            rhythms: *rhythms,
+        };
+        let state = CoreState {
+            is_alive: self.is_alive(),
+        };
+        let mut cmds = Vec::new();
+        let mut events = Vec::new();
+        let birth_applied =
+            self.phonation_engine
+                .tick(&ctx, &state, birth_onset_tick, &mut cmds, &mut events);
+        if birth_onset_tick.is_some() && !birth_applied {
+            let gate_hint = self.phonation_engine.next_gate_index_hint();
+            self.phonation_engine.notify_birth_onset(gate_hint);
+        }
+        let mut notes = Vec::new();
+        for event in events {
+            if let Some(note) = self.build_phonation_note_spec(event) {
+                notes.push(note);
+            }
+        }
+        PhonationBatch {
+            source_id: self.id,
+            cmds,
+            notes,
+        }
+    }
+
     pub fn update_self_confidence_from_perc(
         &mut self,
         space: &Log2Space,
@@ -453,6 +511,29 @@ impl Individual {
             let _ = self.pred_intent_records.pop_front();
         }
         self.pred_intent_records.push_back(record);
+    }
+
+    fn build_phonation_note_spec(
+        &mut self,
+        event: PhonationNoteEvent,
+    ) -> Option<PhonationNoteSpec> {
+        let amp = self.release_gain.clamp(0.0, 1.0);
+        if amp <= Self::AMP_EPS {
+            return None;
+        }
+        let freq_hz = self.body.base_freq_hz();
+        if !freq_hz.is_finite() || freq_hz <= 0.0 {
+            return None;
+        }
+        self.last_chosen_freq_hz = freq_hz;
+        Some(PhonationNoteSpec {
+            note_id: event.note_id,
+            onset: event.onset_tick,
+            freq_hz,
+            amp,
+            body: self.body_snapshot(),
+            articulation: self.articulation.clone(),
+        })
     }
 
     fn body_snapshot(&self) -> BodySnapshot {
@@ -547,7 +628,6 @@ mod tests {
             gate_dur_scale: 0.001,
             gate_dur_min_sec: 0.0001,
             gate_dur_max_sec: 0.0002,
-            plan_rate: 0.0,
             pitch_mode: PlanPitchMode::Off,
         };
         let dur_sec = gate_duration_sec_from_theta(1000.0, &planning);

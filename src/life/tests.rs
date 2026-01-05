@@ -235,6 +235,7 @@ fn test_agent_lifecycle_decay_death() {
     life_cfg.phonation = PhonationConfig {
         on_birth: OnBirthPhonation::Off,
         timing: BirthTiming::Gate,
+        ..Default::default()
     };
     let agent_cfg = IndividualConfig {
         freq: 440.0,
@@ -1292,6 +1293,7 @@ fn render_wave_snapshot_signature() {
 #[test]
 fn render_wave_uses_dt_per_sample_for_seq_core() {
     let fs = 48_000.0;
+    let phonation = crate::life::scenario::PhonationConfig::default();
     let mut agent = Individual {
         id: 1,
         metadata: AgentMetadata {
@@ -1332,7 +1334,10 @@ fn render_wave_uses_dt_per_sample_for_seq_core() {
             0,
         ),
         planning: crate::life::scenario::PlanningConfig::default(),
-        phonation: crate::life::scenario::PhonationConfig::default(),
+        phonation: phonation.clone(),
+        phonation_engine: crate::life::phonation_engine::PhonationEngine::from_config(
+            &phonation, 9,
+        ),
         body: super::individual::AnySoundBody::Sine(super::individual::SineBody {
             freq_hz: 220.0,
             amp: 0.1,

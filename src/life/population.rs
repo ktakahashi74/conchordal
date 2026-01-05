@@ -1,11 +1,10 @@
-use super::individual::{AgentMetadata, AudioAgent, Individual, SoundBody};
+use super::individual::{AgentMetadata, AudioAgent, Individual, PhonationBatch, SoundBody};
 use super::scenario::{Action, BirthTiming, IndividualConfig, SpawnMethod, TargetRef};
 use crate::core::landscape::{LandscapeFrame, LandscapeUpdate};
 use crate::core::log2space::Log2Space;
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
 use crate::life::gate_clock::next_gate_tick;
-use crate::life::plan::{GateTarget, PhaseRef, PlannedIntent};
 use crate::life::world_model::WorldModel;
 use rand::{Rng, SeedableRng, distr::Distribution, distr::weighted::WeightedIndex, rngs::SmallRng};
 use std::hash::{Hash, Hasher};
@@ -145,117 +144,25 @@ impl Population {
         world: &mut WorldModel,
         landscape: &LandscapeFrame,
         now: Tick,
-        perc_tick: Tick,
-    ) {
+    ) -> Vec<PhonationBatch> {
         let hop_tick = (world.time.hop as Tick).max(1);
         let frame_end = now.saturating_add(hop_tick);
-        let gate_tick = world.next_gate_tick_est;
-        let gate_in_hop = gate_tick.is_some_and(|tick| tick >= now && tick < frame_end);
-        let can_plan = gate_in_hop && world.last_committed_gate_tick != gate_tick;
         let tb = &world.time;
-        let hop = tb.hop;
-        let past = world.board.retention_past;
-        let future = world.board.horizon_future;
-        let board_snapshot = if can_plan {
-            world.board.snapshot(now, past, future)
-        } else {
-            Vec::new()
-        };
-        let (planned, remove_sources, birth_intents) = {
-            let mut planned = Vec::new();
-            let mut remove_sources = Vec::new();
-            let mut birth_intents = Vec::new();
-            let pred_eval_tick = if can_plan { gate_tick } else { None };
-            let mut pred_c_cache: Option<Option<std::sync::Arc<[f32]>>> = None;
-            let mut pred_c_real = |eval_tick: Tick| -> Option<std::sync::Arc<[f32]>> {
-                if cfg!(debug_assertions)
-                    && let Some(pred_tick) = pred_eval_tick
-                {
-                    debug_assert_eq!(eval_tick, pred_tick);
-                }
-                if let Some(cached) = pred_c_cache.as_ref() {
-                    return cached.clone();
-                }
-                let result = (|| {
-                    let params = world.pred_params.as_ref()?;
-                    world.pred_c_next_gate(params)
-                })();
-                pred_c_cache = Some(result.clone());
-                result
-            };
-            let pred_c_scan_at: &mut dyn FnMut(Tick) -> Option<std::sync::Arc<[f32]>> =
-                &mut pred_c_real;
-            for agent in &mut self.individuals {
-                let birth_guard =
-                    agent.birth_pending() || agent.birth_onset_tick.is_some_and(|t| t > now);
-                if let Some(intent) = agent.take_birth_intent_if_due(tb, now, frame_end, landscape)
-                {
-                    birth_intents.push(intent);
-                }
-                if !agent.is_alive() {
-                    if !birth_guard {
-                        // v0: source_id == agent.id().
-                        remove_sources.push(agent.id());
-                    }
-                    continue;
-                }
-                if !can_plan {
-                    continue;
-                }
-                let gate_tick = match gate_tick {
-                    Some(tick) => tick,
-                    None => continue,
-                };
-                let mut intents = agent.plan_intents(
-                    tb,
-                    now,
-                    gate_tick,
-                    perc_tick,
-                    pred_eval_tick,
-                    hop,
-                    landscape,
-                    &board_snapshot,
-                    pred_c_scan_at,
-                );
-                if intents.len() > 1 {
-                    // v0: PlanBoard holds one entry per source_id.
-                    intents.truncate(1);
-                }
-                if intents.is_empty() {
-                    if !birth_guard {
-                        // v0: source_id == agent.id().
-                        remove_sources.push(agent.id());
-                    }
-                    continue;
-                }
-                for intent in intents {
-                    planned.push(PlannedIntent {
-                        source_id: intent.source_id,
-                        plan_id: intent.intent_id,
-                        phase: PhaseRef {
-                            gate: GateTarget::Next,
-                            target_phase: 0.0,
-                        },
-                        duration: intent.duration,
-                        freq_hz: intent.freq_hz,
-                        amp: intent.amp,
-                        tag: intent.tag.clone(),
-                        confidence: intent.confidence,
-                        body: intent.body.clone(),
-                    });
-                }
+        let mut birth_intents = Vec::new();
+        let mut phonation_batches = Vec::new();
+        for agent in &mut self.individuals {
+            let batch = agent.tick_phonation(tb, now, &landscape.rhythm);
+            if !batch.cmds.is_empty() {
+                phonation_batches.push(batch);
             }
-            (planned, remove_sources, birth_intents)
-        };
+            if let Some(intent) = agent.take_birth_intent_if_due(tb, now, frame_end, landscape) {
+                birth_intents.push(intent);
+            }
+        }
         for intent in birth_intents {
             world.board.publish(intent);
         }
-        for source_id in remove_sources {
-            world.plan_board.remove_source(source_id);
-        }
-        for planned_intent in planned {
-            world.plan_board.publish_replace(planned_intent);
-        }
+        phonation_batches
     }
 
     fn resolve_target_ids(&self, target: &TargetRef) -> Vec<u64> {
@@ -699,24 +606,6 @@ impl Population {
                         agent.pitch.set_exploration(v);
                     } else {
                         warn!("SetDrift: agent {id} not found");
-                    }
-                }
-            }
-            Action::SetPlanRate { target, plan_rate } => {
-                // Sanitize once at the application point (keeps individuals clean)
-                let mut rate = plan_rate;
-                if !rate.is_finite() {
-                    warn!("SetPlanRate: non-finite rate {rate} -> 0.0");
-                    rate = 0.0;
-                }
-                // Recommended range is 0..1 (0 = OFF, 1 = always)
-                rate = rate.clamp(0.0, 1.0);
-                let ids = self.resolve_target_ids(&target);
-                for id in ids {
-                    if let Some(agent) = self.find_individual_mut(id) {
-                        agent.planning.plan_rate = rate;
-                    } else {
-                        warn!("SetPlanRate: agent {id} not found");
                     }
                 }
             }

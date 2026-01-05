@@ -7,6 +7,7 @@ pub mod intent_planner;
 pub mod lifecycle;
 pub mod meta;
 pub mod perceptual;
+pub mod phonation_engine;
 pub mod plan;
 pub mod population;
 pub mod predictive_spectrum;

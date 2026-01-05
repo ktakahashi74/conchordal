@@ -118,6 +118,108 @@ fn default_plan_pitch_mode() -> PlanPitchMode {
     PlanPitchMode::Off
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, JsonSchema, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum OnBirthPhonation {
+    Off,
+    #[default]
+    Once,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, JsonSchema, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum BirthTiming {
+    #[default]
+    Gate,
+    Immediate,
+}
+
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct PhonationConfig {
+    pub on_birth: OnBirthPhonation,
+    pub timing: BirthTiming,
+}
+
+impl Default for PhonationConfig {
+    fn default() -> Self {
+        Self {
+            on_birth: OnBirthPhonation::Once,
+            timing: BirthTiming::Gate,
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for PhonationConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = Value::deserialize(deserializer)?;
+        match value {
+            Value::String(s) => match s.as_str() {
+                "once" => Ok(Self {
+                    on_birth: OnBirthPhonation::Once,
+                    timing: BirthTiming::Gate,
+                }),
+                "immediate" => Ok(Self {
+                    on_birth: OnBirthPhonation::Once,
+                    timing: BirthTiming::Immediate,
+                }),
+                "off" => Ok(Self {
+                    on_birth: OnBirthPhonation::Off,
+                    timing: BirthTiming::Gate,
+                }),
+                _ => Err(de::Error::custom(format!(
+                    "phonation must be \"once\", \"immediate\", or \"off\" (got \"{s}\")"
+                ))),
+            },
+            Value::Object(map) => {
+                let mut on_birth = OnBirthPhonation::Once;
+                let mut timing = BirthTiming::Gate;
+                for (k, v) in map {
+                    match k.as_str() {
+                        "on_birth" => {
+                            let s = v.as_str().ok_or_else(|| {
+                                de::Error::custom("phonation.on_birth must be a string")
+                            })?;
+                            on_birth = match s {
+                                "once" => OnBirthPhonation::Once,
+                                "off" => OnBirthPhonation::Off,
+                                _ => {
+                                    return Err(de::Error::custom(format!(
+                                        "phonation.on_birth must be \"once\" or \"off\" (got \"{s}\")"
+                                    )));
+                                }
+                            };
+                        }
+                        "timing" => {
+                            let s = v.as_str().ok_or_else(|| {
+                                de::Error::custom("phonation.timing must be a string")
+                            })?;
+                            timing = match s {
+                                "gate" => BirthTiming::Gate,
+                                "immediate" => BirthTiming::Immediate,
+                                _ => {
+                                    return Err(de::Error::custom(format!(
+                                        "phonation.timing must be \"gate\" or \"immediate\" (got \"{s}\")"
+                                    )));
+                                }
+                            };
+                        }
+                        _ => {
+                            return Err(de::Error::custom(format!(
+                                "phonation has unknown key: {k}"
+                            )));
+                        }
+                    }
+                }
+                Ok(Self { on_birth, timing })
+            }
+            _ => Err(de::Error::custom("phonation must be a string or map")),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum PlanPitchMode {
@@ -167,6 +269,8 @@ pub struct LifeConfig {
     pub perceptual: PerceptualConfig,
     #[serde(default)]
     pub planning: PlanningConfig,
+    #[serde(default)]
+    pub phonation: PhonationConfig,
     #[serde(default)]
     pub breath_gain_init: Option<f32>,
 }
@@ -321,12 +425,13 @@ impl fmt::Display for LifeConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "life[body={:?}, articulation={:?}, pitch={:?}, perceptual={:?}, planning={:?}, breath_gain_init={:?}]",
+            "life[body={:?}, articulation={:?}, pitch={:?}, perceptual={:?}, planning={:?}, phonation={:?}, breath_gain_init={:?}]",
             self.body,
             self.articulation,
             self.pitch,
             self.perceptual,
             self.planning,
+            self.phonation,
             self.breath_gain_init
         )
     }
@@ -413,11 +518,15 @@ impl IndividualConfig {
             pitch,
             perceptual,
             planning: self.life.planning.clone(),
+            phonation: self.life.phonation.clone(),
             body,
             last_signal: Default::default(),
             release_gain: 1.0,
             release_sec: 0.03,
             release_pending: false,
+            birth_pending: matches!(self.life.phonation.on_birth, OnBirthPhonation::Once),
+            birth_fired: false,
+            birth_onset_tick: None,
             target_pitch_log2,
             integration_window,
             accumulated_time: 0.0,
@@ -527,6 +636,7 @@ impl fmt::Display for IndividualConfig {
 mod tests {
     use super::*;
     use crate::life::individual::SoundBody;
+    use serde_json::json;
 
     #[test]
     fn spawn_carries_life_config() {
@@ -581,6 +691,32 @@ mod tests {
         );
         assert_eq!(agent.id, 7);
         assert_eq!(agent.body.base_freq_hz(), 220.0);
+    }
+
+    #[test]
+    fn phonation_sugar_parses() {
+        let once: PhonationConfig = serde_json::from_value(json!("once")).expect("once");
+        assert_eq!(once.on_birth, OnBirthPhonation::Once);
+        assert_eq!(once.timing, BirthTiming::Gate);
+
+        let immediate: PhonationConfig =
+            serde_json::from_value(json!("immediate")).expect("immediate");
+        assert_eq!(immediate.on_birth, OnBirthPhonation::Once);
+        assert_eq!(immediate.timing, BirthTiming::Immediate);
+
+        let off: PhonationConfig = serde_json::from_value(json!("off")).expect("off");
+        assert_eq!(off.on_birth, OnBirthPhonation::Off);
+    }
+
+    #[test]
+    fn phonation_map_parses() {
+        let cfg: PhonationConfig = serde_json::from_value(json!({
+            "on_birth": "once",
+            "timing": "gate"
+        }))
+        .expect("map");
+        assert_eq!(cfg.on_birth, OnBirthPhonation::Once);
+        assert_eq!(cfg.timing, BirthTiming::Gate);
     }
 }
 

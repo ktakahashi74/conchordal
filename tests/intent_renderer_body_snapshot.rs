@@ -1,12 +1,13 @@
 use conchordal::core::modulation::NeuralRhythms;
 use conchordal::core::timebase::Timebase;
-use conchordal::life::intent::{BodySnapshot, Intent, IntentBoard};
+use conchordal::life::intent::{BodySnapshot, Intent, IntentBoard, IntentKind};
 use conchordal::life::schedule_renderer::ScheduleRenderer;
 
 fn make_intent(kind: &str, brightness: f32) -> Intent {
     Intent {
         source_id: 0,
         intent_id: 1,
+        kind: IntentKind::Normal,
         onset: 5,
         duration: 20,
         freq_hz: 440.0,
@@ -19,6 +20,7 @@ fn make_intent(kind: &str, brightness: f32) -> Intent {
             brightness,
             noise_mix: 0.0,
         }),
+        articulation: None,
     }
 }
 

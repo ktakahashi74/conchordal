@@ -27,6 +27,27 @@ impl Timebase {
         self.frame_start_tick(frame_idx)
             .saturating_add(self.hop as u64)
     }
+
+    pub fn ceil_to_hop_tick(&self, tick: Tick) -> Tick {
+        let hop = self.hop as Tick;
+        if hop == 0 {
+            return tick;
+        }
+        let rem = tick % hop;
+        if rem == 0 {
+            tick
+        } else {
+            tick.saturating_add(hop - rem)
+        }
+    }
+
+    pub fn min_lead_ticks(&self) -> Tick {
+        let mut ticks = self.sec_to_tick(0.005);
+        if ticks == 0 {
+            ticks = 1;
+        }
+        ticks
+    }
 }
 
 #[cfg(test)]

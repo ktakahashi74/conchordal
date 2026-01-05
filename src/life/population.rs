@@ -1,8 +1,10 @@
 use super::individual::{AgentMetadata, AudioAgent, Individual, SoundBody};
-use super::scenario::{Action, IndividualConfig, SpawnMethod, TargetRef};
+use super::scenario::{Action, BirthTiming, IndividualConfig, SpawnMethod, TargetRef};
 use crate::core::landscape::{LandscapeFrame, LandscapeUpdate};
 use crate::core::log2space::Log2Space;
-use crate::core::timebase::Tick;
+use crate::core::modulation::NeuralRhythms;
+use crate::core::timebase::{Tick, Timebase};
+use crate::life::gate_clock::next_gate_tick;
 use crate::life::plan::{GateTarget, PhaseRef, PlannedIntent};
 use crate::life::world_model::WorldModel;
 use rand::{Rng, SeedableRng, distr::Distribution, distr::weighted::WeightedIndex, rngs::SmallRng};
@@ -23,7 +25,7 @@ pub struct Population {
     pub global_coupling: f32,
     shutdown_gain: f32,
     pending_update: Option<LandscapeUpdate>,
-    fs: f32,
+    time: Timebase,
     seed: u64,
 }
 
@@ -49,8 +51,8 @@ impl Population {
         false
     }
 
-    pub fn new(fs: f32) -> Self {
-        debug!("Population sample rate: {:.1} Hz", fs);
+    pub fn new(time: Timebase) -> Self {
+        debug!("Population sample rate: {:.1} Hz", time.fs);
         Self {
             individuals: Vec::new(),
             current_frame: 0,
@@ -60,7 +62,7 @@ impl Population {
             global_coupling: 1.0,
             shutdown_gain: 1.0,
             pending_update: None,
-            fs,
+            time,
             seed: rand::random::<u64>(),
         }
     }
@@ -98,6 +100,46 @@ impl Population {
         self.current_frame = frame;
     }
 
+    fn birth_onset_tick(&self, timing: BirthTiming, rhythm: &NeuralRhythms) -> Option<Tick> {
+        let now_tick = self.time.frame_start_tick(self.current_frame);
+        let min_lead = self.time.min_lead_ticks();
+        let base_tick = now_tick.saturating_add(min_lead);
+        let hop = (self.time.hop as Tick).max(1);
+
+        let onset = match timing {
+            BirthTiming::Gate => {
+                let gate_tick = next_gate_tick(base_tick, self.time.fs, rhythm.theta, 0.0);
+                let mut gate_tick = gate_tick.unwrap_or_else(|| {
+                    debug!(
+                        target: "phonation::birth_schedule",
+                        "gate_fallback=true now_tick={} base_tick={}",
+                        now_tick,
+                        base_tick
+                    );
+                    self.time.ceil_to_hop_tick(base_tick)
+                });
+                if gate_tick <= now_tick {
+                    gate_tick = next_gate_tick(
+                        base_tick.saturating_add(1),
+                        self.time.fs,
+                        rhythm.theta,
+                        0.0,
+                    )
+                    .unwrap_or_else(|| self.time.ceil_to_hop_tick(base_tick.saturating_add(hop)));
+                }
+                gate_tick
+            }
+            BirthTiming::Immediate => {
+                let mut tick = self.time.ceil_to_hop_tick(base_tick);
+                if tick <= now_tick {
+                    tick = tick.saturating_add(hop);
+                }
+                tick
+            }
+        };
+        Some(onset)
+    }
+
     pub fn publish_intents(
         &mut self,
         world: &mut WorldModel,
@@ -105,25 +147,25 @@ impl Population {
         now: Tick,
         perc_tick: Tick,
     ) {
-        let gate_tick = match world.next_gate_tick_est {
-            Some(tick) => tick,
-            None => return,
-        };
-        if world.last_committed_gate_tick == Some(gate_tick) {
-            return;
-        }
         let hop_tick = (world.time.hop as Tick).max(1);
         let frame_end = now.saturating_add(hop_tick);
-        if gate_tick < now || gate_tick >= frame_end {
-            return;
-        }
+        let gate_tick = world.next_gate_tick_est;
+        let gate_in_hop = gate_tick.is_some_and(|tick| tick >= now && tick < frame_end);
+        let can_plan = gate_in_hop && world.last_committed_gate_tick != gate_tick;
         let tb = &world.time;
         let hop = tb.hop;
         let past = world.board.retention_past;
         let future = world.board.horizon_future;
-        let board_snapshot = world.board.snapshot(now, past, future);
-        let (planned, remove_sources) = {
-            let pred_eval_tick = world.next_gate_tick_est;
+        let board_snapshot = if can_plan {
+            world.board.snapshot(now, past, future)
+        } else {
+            Vec::new()
+        };
+        let (planned, remove_sources, birth_intents) = {
+            let mut planned = Vec::new();
+            let mut remove_sources = Vec::new();
+            let mut birth_intents = Vec::new();
+            let pred_eval_tick = if can_plan { gate_tick } else { None };
             let mut pred_c_cache: Option<Option<std::sync::Arc<[f32]>>> = None;
             let mut pred_c_real = |eval_tick: Tick| -> Option<std::sync::Arc<[f32]>> {
                 if cfg!(debug_assertions)
@@ -143,14 +185,27 @@ impl Population {
             };
             let pred_c_scan_at: &mut dyn FnMut(Tick) -> Option<std::sync::Arc<[f32]>> =
                 &mut pred_c_real;
-            let mut planned = Vec::new();
-            let mut remove_sources = Vec::new();
             for agent in &mut self.individuals {
+                let birth_guard =
+                    agent.birth_pending() || agent.birth_onset_tick.is_some_and(|t| t > now);
+                if let Some(intent) = agent.take_birth_intent_if_due(tb, now, frame_end, landscape)
+                {
+                    birth_intents.push(intent);
+                }
                 if !agent.is_alive() {
-                    // v0: source_id == agent.id().
-                    remove_sources.push(agent.id());
+                    if !birth_guard {
+                        // v0: source_id == agent.id().
+                        remove_sources.push(agent.id());
+                    }
                     continue;
                 }
+                if !can_plan {
+                    continue;
+                }
+                let gate_tick = match gate_tick {
+                    Some(tick) => tick,
+                    None => continue,
+                };
                 let mut intents = agent.plan_intents(
                     tb,
                     now,
@@ -167,8 +222,10 @@ impl Population {
                     intents.truncate(1);
                 }
                 if intents.is_empty() {
-                    // v0: source_id == agent.id().
-                    remove_sources.push(agent.id());
+                    if !birth_guard {
+                        // v0: source_id == agent.id().
+                        remove_sources.push(agent.id());
+                    }
                     continue;
                 }
                 for intent in intents {
@@ -188,8 +245,11 @@ impl Population {
                     });
                 }
             }
-            (planned, remove_sources)
+            (planned, remove_sources, birth_intents)
         };
+        for intent in birth_intents {
+            world.board.publish(intent);
+        }
         for source_id in remove_sources {
             world.plan_board.remove_source(source_id);
         }
@@ -468,7 +528,30 @@ impl Population {
                     group_idx: 0,
                     member_idx: 0,
                 };
-                let spawned = agent.spawn(id, self.current_frame, metadata, self.fs, self.seed);
+                let mut spawned =
+                    agent.spawn(id, self.current_frame, metadata, self.time.fs, self.seed);
+                if spawned.birth_pending {
+                    let onset = self.birth_onset_tick(spawned.phonation.timing, &landscape.rhythm);
+                    spawned.set_birth_onset_tick(onset);
+                    if let Some(tick) = onset {
+                        debug!(
+                            target: "phonation::birth_schedule",
+                            "id={} now_tick={} birth_onset_tick={} timing={:?}",
+                            spawned.id,
+                            self.time.frame_start_tick(self.current_frame),
+                            tick,
+                            spawned.phonation.timing
+                        );
+                    } else {
+                        debug!(
+                            target: "phonation::birth_schedule",
+                            "id={} now_tick={} birth_onset_tick=None timing={:?}",
+                            spawned.id,
+                            self.time.frame_start_tick(self.current_frame),
+                            spawned.phonation.timing
+                        );
+                    }
+                }
                 self.add_individual(spawned);
             }
             Action::Finish => {
@@ -501,7 +584,31 @@ impl Population {
                         group_idx,
                         member_idx: i as usize,
                     };
-                    let spawned = cfg.spawn(id, self.current_frame, metadata, self.fs, self.seed);
+                    let mut spawned =
+                        cfg.spawn(id, self.current_frame, metadata, self.time.fs, self.seed);
+                    if spawned.birth_pending {
+                        let onset =
+                            self.birth_onset_tick(spawned.phonation.timing, &landscape.rhythm);
+                        spawned.set_birth_onset_tick(onset);
+                        if let Some(tick) = onset {
+                            debug!(
+                                target: "phonation::birth_schedule",
+                                "id={} now_tick={} birth_onset_tick={} timing={:?}",
+                                spawned.id,
+                                self.time.frame_start_tick(self.current_frame),
+                                tick,
+                                spawned.phonation.timing
+                            );
+                        } else {
+                            debug!(
+                                target: "phonation::birth_schedule",
+                                "id={} now_tick={} birth_onset_tick=None timing={:?}",
+                                spawned.id,
+                                self.time.frame_start_tick(self.current_frame),
+                                spawned.phonation.timing
+                            );
+                        }
+                    }
                     self.add_individual(spawned);
                 }
             }
@@ -686,7 +793,7 @@ impl Population {
             }
         }
         let before_count = self.individuals.len();
-        self.individuals.retain(|agent| agent.is_alive());
+        self.individuals.retain(|agent| agent.should_retain());
         let removed_count = before_count - self.individuals.len();
 
         if removed_count > 0 {
@@ -744,7 +851,10 @@ mod tests {
         landscape.consonance01[idx_high] = 1.0;
         landscape.consonance[idx_raw] = 10.0;
 
-        let pop = Population::new(48_000.0);
+        let pop = Population::new(Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        });
         let method = SpawnMethod::Harmonicity {
             min_freq: 100.0,
             max_freq: 400.0,

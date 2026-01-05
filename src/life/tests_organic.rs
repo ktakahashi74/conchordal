@@ -1,6 +1,7 @@
 use crate::core::landscape::Landscape;
 use crate::core::log2space::Log2Space;
 use crate::core::modulation::NeuralRhythms;
+use crate::core::timebase::Timebase;
 use crate::life::individual::{
     AgentMetadata, AnyArticulationCore, ArticulationCore, AudioAgent, Individual, SoundBody,
 };
@@ -151,7 +152,10 @@ fn test_breath_gating() {
 #[test]
 fn setfreq_sync_prevents_snapback() {
     let landscape = make_landscape();
-    let mut pop = Population::new(48_000.0);
+    let mut pop = Population::new(Timebase {
+        fs: 48_000.0,
+        hop: 64,
+    });
     let agent_cfg = IndividualConfig {
         freq: 220.0,
         amp: 0.1,

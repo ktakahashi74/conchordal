@@ -9,6 +9,7 @@ pub trait SoundBody {
     fn set_freq(&mut self, freq: f32);
     fn set_pitch_log2(&mut self, log_freq: f32);
     fn set_amp(&mut self, amp: f32);
+    fn amp(&self) -> f32;
     fn articulate_wave(&mut self, sample: &mut f32, fs: f32, dt: f32, signal: &ArticulationSignal);
     fn project_spectral_body(
         &mut self,
@@ -66,6 +67,10 @@ impl SoundBody for SineBody {
 
     fn set_amp(&mut self, amp: f32) {
         self.amp = amp;
+    }
+
+    fn amp(&self) -> f32 {
+        self.amp
     }
 
     fn articulate_wave(
@@ -153,6 +158,10 @@ impl SoundBody for HarmonicBody {
 
     fn set_amp(&mut self, amp: f32) {
         self.amp = amp;
+    }
+
+    fn amp(&self) -> f32 {
+        self.amp
     }
 
     fn articulate_wave(
@@ -294,6 +303,13 @@ impl SoundBody for AnySoundBody {
         match self {
             AnySoundBody::Sine(body) => body.set_amp(amp),
             AnySoundBody::Harmonic(body) => body.set_amp(amp),
+        }
+    }
+
+    fn amp(&self) -> f32 {
+        match self {
+            AnySoundBody::Sine(body) => body.amp(),
+            AnySoundBody::Harmonic(body) => body.amp(),
         }
     }
 

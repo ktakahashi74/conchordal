@@ -3,6 +3,7 @@ use crate::core::timebase::{Tick, Timebase};
 use crate::life::intent::{Intent, IntentBoard};
 use crate::life::sound_voice::{SoundVoice, default_release_ticks};
 use std::collections::HashMap;
+use tracing::debug;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 struct VoiceKey {
@@ -71,7 +72,16 @@ impl ScheduleRenderer {
         for tick in now..end {
             let idx = (tick - now) as usize;
             let mut acc = 0.0f32;
-            for voice in self.voices.values_mut() {
+            for (key, voice) in self.voices.iter_mut() {
+                let kicked = voice.kick_if_due(tick, &rhythms, dt);
+                if kicked {
+                    debug!(
+                        target: "phonation::birth_fire",
+                        "id={} onset={} kick_applied=true kind=BirthOnce",
+                        key.source_id,
+                        voice.onset()
+                    );
+                }
                 acc += voice.render_tick(tick, fs, dt, &rhythms);
             }
             self.buf[idx] = acc;
@@ -116,7 +126,9 @@ impl ScheduleRenderer {
         if self.voices.contains_key(&key) {
             return;
         }
-        if let Some(voice) = SoundVoice::from_intent(self.time, &intent) {
+        let onset = intent.onset;
+        if let Some(mut voice) = SoundVoice::from_intent(self.time, intent) {
+            voice.note_on(onset);
             self.voices.insert(key, voice);
         }
     }

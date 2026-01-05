@@ -1,7 +1,9 @@
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
-use crate::life::individual::{AnySoundBody, ArticulationSignal, SoundBody};
-use crate::life::intent::{BodySnapshot, Intent};
+use crate::life::individual::{
+    AnySoundBody, ArticulationSignal, ArticulationWrapper, ErrorState, PlannedPitch, SoundBody,
+};
+use crate::life::intent::{BodySnapshot, Intent, IntentKind};
 use crate::life::lifecycle::default_decay_attack;
 use crate::life::scenario::{SoundBodyConfig, TimbreGenotype};
 use rand::SeedableRng;
@@ -9,15 +11,17 @@ use rand::rngs::SmallRng;
 
 pub struct SoundVoice {
     body: AnySoundBody,
+    articulation: Option<ArticulationWrapper>,
     onset: Tick,
     hold_end: Tick,
     release_end: Tick,
     attack_ticks: Tick,
     release_ticks: Tick,
+    birth_kick_pending: bool,
 }
 
 impl SoundVoice {
-    pub fn from_intent(time: Timebase, intent: &Intent) -> Option<Self> {
+    pub fn from_intent(time: Timebase, mut intent: Intent) -> Option<Self> {
         if intent.duration == 0 || intent.amp == 0.0 || intent.freq_hz <= 0.0 {
             return None;
         }
@@ -43,6 +47,7 @@ impl SoundVoice {
             .wrapping_add(intent.onset);
         let mut rng = SmallRng::seed_from_u64(seed);
         let body = AnySoundBody::from_config(&config, intent.freq_hz, amp, &mut rng);
+        let articulation = intent.articulation.take();
 
         let attack_ticks = default_attack_ticks(time);
         let release_ticks = default_release_ticks(time);
@@ -51,11 +56,13 @@ impl SoundVoice {
 
         Some(Self {
             body,
+            articulation,
             onset: intent.onset,
             hold_end,
             release_end,
             attack_ticks,
             release_ticks,
+            birth_kick_pending: intent.kind == IntentKind::BirthOnce,
         })
     }
 
@@ -64,6 +71,32 @@ impl SoundVoice {
             self.hold_end = tick;
             self.release_end = self.hold_end.saturating_add(self.release_ticks);
         }
+    }
+
+    pub fn note_on(&mut self, tick: Tick) {
+        if tick > self.onset {
+            self.onset = tick;
+            if self.hold_end < self.onset {
+                self.hold_end = self.onset;
+                self.release_end = self.hold_end.saturating_add(self.release_ticks);
+            }
+        }
+    }
+
+    pub fn kick_birth(&mut self, rhythms: &NeuralRhythms, dt: f32) -> bool {
+        if let Some(articulation) = self.articulation.as_mut() {
+            articulation.kick_birth(rhythms, dt);
+            return true;
+        }
+        false
+    }
+
+    pub fn kick_if_due(&mut self, tick: Tick, rhythms: &NeuralRhythms, dt: f32) -> bool {
+        if self.birth_kick_pending && tick >= self.onset {
+            self.birth_kick_pending = false;
+            return self.kick_birth(rhythms, dt);
+        }
+        false
     }
 
     pub fn end_tick(&self) -> Tick {
@@ -83,12 +116,23 @@ impl SoundVoice {
         if gain <= 0.0 {
             return 0.0;
         }
-        let signal = ArticulationSignal {
-            amplitude: gain,
-            is_active: gain > 0.0,
-            relaxation: rhythms.theta.alpha,
-            tension: rhythms.theta.beta,
+        let mut signal = if let Some(articulation) = self.articulation.as_mut() {
+            let planned = PlannedPitch::default();
+            let error = ErrorState::default();
+            let step = articulation.process(1.0, rhythms, dt, 1.0, &planned, &error);
+            let mut signal = step.signal;
+            signal.amplitude *= articulation.gate();
+            signal
+        } else {
+            ArticulationSignal {
+                amplitude: 1.0,
+                is_active: true,
+                relaxation: rhythms.theta.alpha,
+                tension: rhythms.theta.beta,
+            }
         };
+        signal.amplitude *= gain;
+        signal.is_active = signal.is_active && signal.amplitude > 0.0;
         let mut sample = 0.0f32;
         self.body.articulate_wave(&mut sample, fs, dt, &signal);
         sample

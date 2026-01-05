@@ -16,7 +16,7 @@ fn agents_publish_intents_and_render_audio() {
     };
     let space = Log2Space::new(55.0, 8000.0, 96);
     let mut world = WorldModel::new(tb, space.clone());
-    let mut pop = Population::new(tb.fs);
+    let mut pop = Population::new(tb);
     let mut life = LifeConfig::default();
     life.planning.plan_rate = 1.0;
     let agent_cfg = IndividualConfig {
@@ -77,7 +77,7 @@ fn publish_intents_runs_when_gate_in_hop_window() {
     };
     let space = Log2Space::new(55.0, 8000.0, 96);
     let mut world = WorldModel::new(tb, space.clone());
-    let mut pop = Population::new(tb.fs);
+    let mut pop = Population::new(tb);
     let mut life = LifeConfig::default();
     life.planning.plan_rate = 1.0;
     let agent_cfg = IndividualConfig {

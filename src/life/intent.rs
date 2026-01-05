@@ -3,10 +3,23 @@ use std::ops::Range;
 
 use crate::core::timebase::Tick;
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum IntentKind {
+    Normal,
+    BirthOnce,
+}
+
+impl Default for IntentKind {
+    fn default() -> Self {
+        Self::Normal
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Intent {
     pub source_id: u64,
     pub intent_id: u64,
+    pub kind: IntentKind,
     pub onset: Tick,
     pub duration: Tick,
     pub freq_hz: f32,
@@ -14,6 +27,7 @@ pub struct Intent {
     pub tag: Option<String>,
     pub confidence: f32,
     pub body: Option<BodySnapshot>,
+    pub articulation: Option<crate::life::individual::ArticulationWrapper>,
 }
 
 #[derive(Clone, Debug)]

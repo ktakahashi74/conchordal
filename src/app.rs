@@ -611,7 +611,10 @@ fn init_runtime(
         eprintln!("{e}");
         std::process::exit(1);
     });
-    let mut pop = Population::new(runtime_sample_rate as f32);
+    let mut pop = Population::new(crate::core::timebase::Timebase {
+        fs: runtime_sample_rate as f32,
+        hop,
+    });
     pop.set_seed(scenario.seed);
     let conductor = Conductor::from_scenario(scenario);
 

@@ -5,7 +5,7 @@ use crate::core::timebase::{Tick, Timebase};
 use crate::life::intent::{BodySnapshot, Intent};
 use crate::life::intent_planner::choose_best_gesture_tf_by_pred_c;
 use crate::life::perceptual::{FeaturesNow, PerceptualContext};
-use crate::life::scenario::PlanningConfig;
+use crate::life::scenario::{PhonationConfig, PlanningConfig};
 use rand::{Rng, rngs::SmallRng};
 use std::collections::VecDeque;
 
@@ -61,11 +61,15 @@ pub struct Individual {
     pub pitch: AnyPitchCore,
     pub perceptual: PerceptualContext,
     pub planning: PlanningConfig,
+    pub phonation: PhonationConfig,
     pub body: AnySoundBody,
     pub last_signal: ArticulationSignal,
     pub release_gain: f32,
     pub release_sec: f32,
     pub release_pending: bool,
+    pub birth_pending: bool,
+    pub birth_fired: bool,
+    pub birth_onset_tick: Option<Tick>,
     pub target_pitch_log2: f32,
     pub integration_window: f32,
     pub accumulated_time: f32,
@@ -96,6 +100,18 @@ pub struct PredIntentRecord {
 
 impl Individual {
     const AMP_EPS: f32 = 1e-6;
+
+    pub fn birth_pending(&self) -> bool {
+        self.birth_pending && !self.birth_fired
+    }
+
+    pub fn set_birth_onset_tick(&mut self, onset: Option<Tick>) {
+        self.birth_onset_tick = onset;
+    }
+
+    pub fn should_retain(&self) -> bool {
+        self.is_alive() || self.birth_pending()
+    }
     pub fn metadata(&self) -> &AgentMetadata {
         &self.metadata
     }
@@ -311,6 +327,7 @@ impl Individual {
         let intent = Intent {
             source_id: self.id,
             intent_id: self.intent_seq,
+            kind: crate::life::intent::IntentKind::Normal,
             onset: gate_tick,
             duration: dur_tick,
             freq_hz,
@@ -318,6 +335,7 @@ impl Individual {
             tag: Some(format!("agent:{} {}", self.id, kind)),
             confidence: 1.0,
             body: Some(snapshot),
+            articulation: Some(self.articulation.clone()),
         };
         if let Some(pred_tick) = pred_tick {
             self.record_pred_intent(&intent, pred_c_scan_at, now, pred_tick, landscape);
@@ -325,6 +343,53 @@ impl Individual {
         self.intent_seq = self.intent_seq.wrapping_add(1);
         self.next_intent_tick = now.saturating_add(hop_tick.max(1));
         vec![intent]
+    }
+
+    pub fn take_birth_intent_if_due(
+        &mut self,
+        tb: &Timebase,
+        now: Tick,
+        frame_end: Tick,
+        landscape: &Landscape,
+    ) -> Option<Intent> {
+        const BIRTH_AMP_FLOOR: f32 = 1e-3;
+        if !self.birth_pending() {
+            return None;
+        }
+        let onset = self.birth_onset_tick?;
+        if onset < now || onset >= frame_end {
+            return None;
+        }
+        let theta_hz = landscape.rhythm.theta.freq_hz;
+        let dur_sec = gate_duration_sec_from_theta(theta_hz, &self.planning);
+        let dur_tick = sec_to_tick_at_least_one(tb, dur_sec);
+        let mut amp = self.body.amp().clamp(0.0, 1.0);
+        amp = amp.max(BIRTH_AMP_FLOOR);
+        let base_freq_hz = if self.last_chosen_freq_hz > 0.0 && self.last_chosen_freq_hz.is_finite()
+        {
+            self.last_chosen_freq_hz
+        } else {
+            self.body.base_freq_hz()
+        };
+        let snapshot = self.body_snapshot();
+        let kind = snapshot.kind.clone();
+        let intent = Intent {
+            source_id: self.id,
+            intent_id: self.intent_seq,
+            kind: crate::life::intent::IntentKind::BirthOnce,
+            onset,
+            duration: dur_tick,
+            freq_hz: base_freq_hz.max(1.0),
+            amp,
+            tag: Some(format!("agent:{} birth {}", self.id, kind)),
+            confidence: 1.0,
+            body: Some(snapshot),
+            articulation: Some(self.articulation.clone()),
+        };
+        self.intent_seq = self.intent_seq.wrapping_add(1);
+        self.birth_fired = true;
+        self.birth_pending = false;
+        Some(intent)
     }
 
     pub fn update_self_confidence_from_perc(

@@ -1,10 +1,11 @@
 use conchordal::core::timebase::Tick;
-use conchordal::life::intent::{Intent, IntentBoard};
+use conchordal::life::intent::{Intent, IntentBoard, IntentKind};
 
 fn make_intent(intent_id: u64, onset: Tick, duration: Tick) -> Intent {
     Intent {
         source_id: 1,
         intent_id,
+        kind: IntentKind::Normal,
         onset,
         duration,
         freq_hz: 440.0,
@@ -12,6 +13,7 @@ fn make_intent(intent_id: u64, onset: Tick, duration: Tick) -> Intent {
         tag: None,
         confidence: 1.0,
         body: None,
+        articulation: None,
     }
 }
 

@@ -5,13 +5,15 @@ use super::individual::{
 };
 use super::population::Population;
 use super::scenario::{
-    Action, ArticulationCoreConfig, EnvelopeConfig, HarmonicMode, IndividualConfig, LifeConfig,
-    PitchCoreConfig, Scenario, SceneMarker, SoundBodyConfig, TargetRef, TimbreGenotype, TimedEvent,
+    Action, ArticulationCoreConfig, BirthTiming, EnvelopeConfig, HarmonicMode, IndividualConfig,
+    LifeConfig, OnBirthPhonation, PhonationConfig, PitchCoreConfig, Scenario, SceneMarker,
+    SoundBodyConfig, TargetRef, TimbreGenotype, TimedEvent,
 };
 use crate::core::landscape::Landscape;
 use crate::core::landscape::LandscapeFrame;
 use crate::core::log2space::Log2Space;
 use crate::core::modulation::{NeuralRhythms, RhythmBand};
+use crate::core::timebase::Timebase;
 use crate::life::lifecycle::LifecycleConfig;
 use crate::life::perceptual::{FeaturesNow, PerceptualConfig, PerceptualContext};
 use rand::SeedableRng;
@@ -53,10 +55,17 @@ fn life_with_lifecycle(lifecycle: LifecycleConfig) -> LifeConfig {
     }
 }
 
+fn test_timebase() -> Timebase {
+    Timebase {
+        fs: 48_000.0,
+        hop: 64,
+    }
+}
+
 #[test]
 fn test_population_add_remove_agent() {
     // 1. Setup
-    let mut pop = Population::new(48_000.0);
+    let mut pop = Population::new(test_timebase());
     let landscape = LandscapeFrame::default();
 
     assert_eq!(pop.individuals.len(), 0, "Population should start empty");
@@ -93,7 +102,7 @@ fn test_population_add_remove_agent() {
 
 #[test]
 fn tag_selector_removes_matching_agents() {
-    let mut pop = Population::new(48_000.0);
+    let mut pop = Population::new(test_timebase());
     let landscape = LandscapeFrame::default();
 
     let life = LifecycleConfig::Decay {
@@ -168,7 +177,7 @@ fn test_conductor_timing() {
     };
 
     let mut conductor = Conductor::from_scenario(scenario);
-    let mut pop = Population::new(48_000.0);
+    let mut pop = Population::new(test_timebase());
     let landscape = LandscapeFrame::default();
     let space = Log2Space::new(1.0, 2.0, 1);
     let mut world = crate::life::world_model::WorldModel::new(
@@ -213,7 +222,7 @@ fn make_test_landscape(_fs: f32) -> Landscape {
 #[test]
 fn test_agent_lifecycle_decay_death() {
     // 1. Setup Population with 1 agent that has a very short half-life
-    let mut pop = Population::new(48_000.0);
+    let mut pop = Population::new(test_timebase());
     let landscape = LandscapeFrame::default(); // Dummy landscape
 
     // Half-life = 0.05s (very fast decay)
@@ -222,10 +231,15 @@ fn test_agent_lifecycle_decay_death() {
         half_life_sec: 0.05,
         attack_sec: 0.001,
     };
+    let mut life_cfg = life_with_lifecycle(life);
+    life_cfg.phonation = PhonationConfig {
+        on_birth: OnBirthPhonation::Off,
+        timing: BirthTiming::Gate,
+    };
     let agent_cfg = IndividualConfig {
         freq: 440.0,
         amp: 0.5,
-        life: life_with_lifecycle(life),
+        life: life_cfg,
         tag: None,
     };
     pop.apply_action(
@@ -358,7 +372,7 @@ fn harmonic_render_spectrum_hits_expected_bins() {
 fn set_freq_syncs_target_pitch_log2() {
     let space = Log2Space::new(55.0, 880.0, 12);
     let landscape = LandscapeFrame::new(space);
-    let mut pop = Population::new(48_000.0);
+    let mut pop = Population::new(test_timebase());
     let agent_cfg = IndividualConfig {
         freq: 220.0,
         amp: 0.1,
@@ -398,7 +412,7 @@ fn set_freq_syncs_target_pitch_log2() {
 #[test]
 fn population_spectrum_uses_log2_space() {
     let space = Log2Space::new(55.0, 880.0, 12);
-    let mut pop = Population::new(48_000.0);
+    let mut pop = Population::new(test_timebase());
     let agent_cfg = IndividualConfig {
         freq: 55.0,
         amp: 0.5,
@@ -1318,6 +1332,7 @@ fn render_wave_uses_dt_per_sample_for_seq_core() {
             0,
         ),
         planning: crate::life::scenario::PlanningConfig::default(),
+        phonation: crate::life::scenario::PhonationConfig::default(),
         body: super::individual::AnySoundBody::Sine(super::individual::SineBody {
             freq_hz: 220.0,
             amp: 0.1,
@@ -1327,6 +1342,9 @@ fn render_wave_uses_dt_per_sample_for_seq_core() {
         release_gain: 1.0,
         release_sec: 0.03,
         release_pending: false,
+        birth_pending: false,
+        birth_fired: false,
+        birth_onset_tick: None,
         target_pitch_log2: 220.0f32.log2(),
         integration_window: 2.0,
         accumulated_time: 0.0,

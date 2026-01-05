@@ -1,6 +1,6 @@
 use conchordal::core::modulation::NeuralRhythms;
 use conchordal::core::timebase::Timebase;
-use conchordal::life::intent::{Intent, IntentBoard};
+use conchordal::life::intent::{Intent, IntentBoard, IntentKind};
 use conchordal::life::schedule_renderer::ScheduleRenderer;
 
 #[test]
@@ -14,6 +14,7 @@ fn limiter_clamps_peak_and_stays_finite() {
         board.publish(Intent {
             source_id: 0,
             intent_id: i,
+            kind: IntentKind::Normal,
             onset: 0,
             duration: 64,
             freq_hz: 440.0 + (i as f32 * 2.0),
@@ -21,6 +22,7 @@ fn limiter_clamps_peak_and_stays_finite() {
             tag: None,
             confidence: 1.0,
             body: None,
+            articulation: None,
         });
     }
 

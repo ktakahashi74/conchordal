@@ -115,6 +115,11 @@ impl ArticulationWrapper {
     pub fn propose_onsets(&mut self, tb: &Timebase, now: Tick, horizon: Tick) -> Vec<Tick> {
         self.core.propose_onsets(tb, now, horizon)
     }
+
+    pub fn kick_birth(&mut self, rhythms: &NeuralRhythms, dt: f32) {
+        self.planned_gate.gate = 1.0;
+        self.core.kick_birth(rhythms, dt);
+    }
 }
 
 pub trait ArticulationCore {
@@ -776,14 +781,79 @@ impl AnyArticulationCore {
             AnyArticulationCore::Drone(core) => core.propose_onsets(tb, now, horizon),
         }
     }
+
+    pub fn kick_birth(&mut self, rhythms: &NeuralRhythms, dt: f32) {
+        match self {
+            AnyArticulationCore::Entrain(core) => {
+                let state_before = core.state;
+                let env_before = core.env_level;
+                let energy_before = core.energy;
+                core.kick_birth(rhythms, dt);
+                debug!(
+                    target: "phonation::kick",
+                    core = "entrain",
+                    state_before = ?state_before,
+                    state_after = ?core.state,
+                    env_before = env_before,
+                    env_after = core.env_level,
+                    energy_before = energy_before,
+                    energy_after = core.energy
+                );
+            }
+            AnyArticulationCore::Seq(core) => {
+                let env_before = core.env_level;
+                let timer_before = core.timer;
+                core.kick_birth(rhythms, dt);
+                debug!(
+                    target: "phonation::kick",
+                    core = "seq",
+                    timer_before = timer_before,
+                    timer_after = core.timer,
+                    env_before = env_before,
+                    env_after = core.env_level
+                );
+            }
+            AnyArticulationCore::Drone(core) => {
+                let phase_before = core.phase;
+                core.kick_birth(rhythms, dt);
+                debug!(
+                    target: "phonation::kick",
+                    core = "drone",
+                    phase_before = phase_before,
+                    phase_after = core.phase
+                );
+            }
+        }
+    }
+}
+
+impl KuramotoCore {
+    fn kick_birth(&mut self, _rhythms: &NeuralRhythms, _dt: f32) {
+        self.state = ArticulationState::Attack;
+        self.env_level = self.env_level.max(self.attack_step);
+        if self.energy.is_finite() {
+            let eps = 1e-4;
+            if self.energy < self.action_cost + eps {
+                self.energy = self.action_cost + eps;
+            }
+            self.energy = (self.energy - self.action_cost).max(0.0);
+        }
+    }
+}
+
+impl SequencedCore {
+    fn kick_birth(&mut self, _rhythms: &NeuralRhythms, _dt: f32) {
+        self.timer = 0.0;
+        self.env_level = 1.0;
+    }
+}
+
+impl DroneCore {
+    fn kick_birth(&mut self, _rhythms: &NeuralRhythms, _dt: f32) {}
 }
 
 fn min_lead_ticks(tb: &Timebase) -> Tick {
-    let mut ticks = tb.sec_to_tick(0.005);
-    if ticks == 0 {
-        ticks = 1;
-    }
-    ticks
+    tb.min_lead_ticks()
 }
 
 impl KuramotoCore {

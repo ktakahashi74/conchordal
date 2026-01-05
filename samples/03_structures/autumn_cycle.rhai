@@ -2,11 +2,13 @@ print(">>> Cycle of Fifths (Fixed Crowding) <<<");
 
 fn play_step(name, root, dur) {
     let pad_life = #{
-        articulation: #{ core: "entrain", type: "decay", half_life_sec: 1.0, attack_sec: 0.6 }
+        articulation: #{ core: "entrain", type: "decay", half_life_sec: 1.0, attack_sec: 0.6 },
+        planning: #{ plan_rate: 0.0, gate_dur_scale: 2.0, gate_dur_min_sec: 2.0, gate_dur_max_sec: 2.0 }
     };
 
     let bass_life = #{
-        articulation: #{ core: "entrain", type: "decay", half_life_sec: 0.6, attack_sec: 0.2 }
+        articulation: #{ core: "entrain", type: "decay", half_life_sec: 0.6, attack_sec: 0.2 },
+        planning: #{ plan_rate: 0.0, gate_dur_scale: 1.2, gate_dur_min_sec: 1.0, gate_dur_max_sec: 1.2 }
     };
 
     let pad_method = #{

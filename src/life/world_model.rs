@@ -180,6 +180,7 @@ impl WorldModel {
             let intent = Intent {
                 source_id: p.source_id,
                 intent_id: self.next_intent_id,
+                kind: crate::life::intent::IntentKind::Normal,
                 onset: gate_tick,
                 duration: p.duration,
                 freq_hz: p.freq_hz,
@@ -187,6 +188,7 @@ impl WorldModel {
                 tag: p.tag.clone(),
                 confidence: p.confidence,
                 body: p.body.clone(),
+                articulation: None,
             };
             self.next_intent_id = self.next_intent_id.wrapping_add(1);
             self.board.publish(intent);
@@ -206,6 +208,7 @@ impl WorldModel {
             intents.push(Intent {
                 source_id: planned.source_id,
                 intent_id: planned.plan_id,
+                kind: crate::life::intent::IntentKind::Normal,
                 onset: eval_tick,
                 duration: planned.duration,
                 freq_hz: planned.freq_hz,
@@ -213,6 +216,7 @@ impl WorldModel {
                 tag: planned.tag.clone(),
                 confidence: planned.confidence,
                 body: planned.body.clone(),
+                articulation: None,
             });
         }
         let terrain = build_pred_terrain_from_intents(&self.space, params, &intents, eval_tick);
@@ -295,6 +299,7 @@ impl WorldModel {
             let intent = Intent {
                 source_id: *source_id,
                 intent_id: self.next_intent_id,
+                kind: crate::life::intent::IntentKind::Normal,
                 onset: onset_tick,
                 duration: dur_tick,
                 freq_hz: *freq_hz,
@@ -302,6 +307,7 @@ impl WorldModel {
                 tag: tag.clone(),
                 confidence: *confidence,
                 body: None,
+                articulation: None,
             };
             self.next_intent_id = self.next_intent_id.wrapping_add(1);
             self.board.publish(intent);

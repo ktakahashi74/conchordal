@@ -1,7 +1,7 @@
 {
   "$schema": "https://repomix.com/schemas/latest/schema.json",
   "output": {
-    "filePath": "repomix-output.xml",
+    "filePath": "context.xml",
     "style": "xml",
     "removeComments": false,
     "removeEmptyLines": false,
@@ -9,28 +9,30 @@
     "topFilesLength": 20
   },
   "include": [
-    "src/**/*.rs",
-    "samples/**/*.rhai",
     "Cargo.toml",
-      "docs/**/*.md",
-      "tests/**/*.rs",
-      "tests/**/*.rhai",
+    "Cargo.lock",
+    "src/**/*.rs",
+    "tests/**/*.rs",
+    "docs/**/*.md",
+    "*.md",
+    "scripts/**/*.sh",
+    "samples/**/*.rhai"
   ],
   "ignore": {
     "useGitignore": true,
     "useDefaultPatterns": true,
     "customPatterns": [
       "target/",
-      "web/themes/",
-      "web/static/",
-      "web/sass/",
-      "docs/generated/",
-      "*.png",
-      "*.jpg",
-      "*.pdf",
-      "*.ico",
-      "*.css",
-      "*.scss"
+      ".git/",
+      "**/*.wav",
+      "**/*.png",
+      "**/*.jpg",
+      "context.xml",
+      "context-*.xml",
+      "diff.patch",
+      "diff-*.patch",
+      "sync_report.md",
+      ".driver_prompt.md"
     ]
   }
 }

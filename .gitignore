@@ -18,6 +18,14 @@ log?
 nohup.out
 config.toml
 !web/config.toml
+.chat_url
+.driver_prompt.md
+context.xml
+context-*.xml
+diff.patch
+diff-*.patch
+sync_report.md
+sync_report-*.md
 
 # System/editor cruft
 .DS_Store

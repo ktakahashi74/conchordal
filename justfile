@@ -6,6 +6,7 @@ PROMPT_FILE := ".driver_prompt.md"
 SYNC_FILE := "sync_report.md"
 CONTEXT_FILE := "context.xml"
 DIFF_FILE := "diff.patch"
+REQUEST_FILE := "chat_request.md"
 SYNC_MAX_BYTES := `bash -c 'echo ${SYNC_MAX_BYTES:-90000}'`
 DIFF_BASE_MODE := `bash -c 'echo ${DIFF_BASE_MODE:-head}'`
 TS := `date +"%Y%m%d-%H%M%S"`
@@ -42,10 +43,29 @@ pack:
 	printf "\n### git diff --cached (staged)\n" >> "diff-{{TS}}.patch"; \
 	git diff --cached >> "diff-{{TS}}.patch"; \
 	ln -sf "diff-{{TS}}.patch" "{{DIFF_FILE}}"; \
+	loc="$${LC_ALL:-$${LC_MESSAGES:-$${LANG:-}}}"; \
+	if [[ "$${loc}" == ja* || "$${loc}" == *ja_JP* || "$${loc}" == *_JP* ]]; then \
+		lang_line="Language: Please respond in Japanese."; \
+		request_body="添付のdiff（および必要ならログ/エラー出力）を読み、実装が仕様どおりに完了しているかレビューしてください。不完全・不整合・潜在バグ・テスト不足があれば、Codexにそのまま渡せる“修正プロンプト”を箇条書きで生成してください（必要なら追加テスト/検証手順も含めて）。"; \
+	else \
+		lang_line="Language: Please respond in English."; \
+		request_body="Review the attached diff (and logs/errors if present) and verify the implementation is complete and correct relative to the intended spec. If anything is incomplete, inconsistent, or risky (including missing tests), produce a Codex-ready fix prompt as a bullet list (include additional tests/verification steps when needed)."; \
+	fi; \
+	{ \
+		echo "# Diff return note"; \
+		echo ""; \
+		echo "I'm uploading context.xml and diff.patch (or their timestamped equivalents) for review."; \
+		echo ""; \
+		echo "## Request"; \
+		echo "$${lang_line}"; \
+		echo "$${request_body}"; \
+	} > "{{REQUEST_FILE}}"; \
+	{{CLIP}} < "{{REQUEST_FILE}}"; \
 	{{OPEN}} .; \
 	{{OPEN}} "{{CHAT_URL}}"; \
 	echo "Upload context-{{TS}}.xml and diff-{{TS}}.patch (recommended)."; \
-	echo "context.xml and diff.patch are stable aliases of the latest run."
+	echo "context.xml and diff.patch are stable aliases of the latest run."; \
+	echo "Paste chat_request.md from clipboard."
 
 diff:
 	@printf "### git diff (unstaged)\n" > "diff-{{TS}}.patch"; \
@@ -53,9 +73,28 @@ diff:
 	printf "\n### git diff --cached (staged)\n" >> "diff-{{TS}}.patch"; \
 	git diff --cached >> "diff-{{TS}}.patch"; \
 	ln -sf "diff-{{TS}}.patch" "{{DIFF_FILE}}"; \
+	loc="$${LC_ALL:-$${LC_MESSAGES:-$${LANG:-}}}"; \
+	if [[ "$${loc}" == ja* || "$${loc}" == *ja_JP* || "$${loc}" == *_JP* ]]; then \
+		lang_line="Language: Please respond in Japanese."; \
+		request_body="添付のdiff（および必要ならログ/エラー出力）を読み、実装が仕様どおりに完了しているかレビューしてください。不完全・不整合・潜在バグ・テスト不足があれば、Codexにそのまま渡せる“修正プロンプト”を箇条書きで生成してください（必要なら追加テスト/検証手順も含めて）。"; \
+	else \
+		lang_line="Language: Please respond in English."; \
+		request_body="Review the attached diff (and logs/errors if present) and verify the implementation is complete and correct relative to the intended spec. If anything is incomplete, inconsistent, or risky (including missing tests), produce a Codex-ready fix prompt as a bullet list (include additional tests/verification steps when needed)."; \
+	fi; \
+	{ \
+		echo "# Diff return note"; \
+		echo ""; \
+		echo "I'm uploading diff.patch for review."; \
+		echo ""; \
+		echo "## Request"; \
+		echo "$${lang_line}"; \
+		echo "$${request_body}"; \
+	} > "{{REQUEST_FILE}}"; \
+	{{CLIP}} < "{{REQUEST_FILE}}"; \
 	{{OPEN}} "{{CHAT_URL}}"; \
 	echo "Upload diff-{{TS}}.patch (recommended)."; \
-	echo "diff.patch is a stable alias of the latest run."
+	echo "diff.patch is a stable alias of the latest run."; \
+	echo "Paste chat_request.md from clipboard."
 
 sync:
 	@timestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"; \
@@ -67,6 +106,14 @@ sync:
 	risk_scan="$(rg -n 'unsafe\b|\bunwrap\(|\bexpect\(|process::exit|panic!\(|todo!\(|unimplemented!\(' -S . || true)"; \
 	check_output="$(cargo check 2>&1 || true)"; \
 	check_tail="$(printf "%s\n" "${check_output}" | tail -n 200)"; \
+	loc="$${LC_ALL:-$${LC_MESSAGES:-$${LANG:-}}}"; \
+	if [[ "$${loc}" == ja* || "$${loc}" == *ja_JP* || "$${loc}" == *_JP* ]]; then \
+		lang_line="Language: Please respond in Japanese."; \
+		request_body="添付のdiff（および必要ならログ/エラー出力）を読み、実装が仕様どおりに完了しているかレビューしてください。不完全・不整合・潜在バグ・テスト不足があれば、Codexにそのまま渡せる“修正プロンプト”を箇条書きで生成してください（必要なら追加テスト/検証手順も含めて）。"; \
+	else \
+		lang_line="Language: Please respond in English."; \
+		request_body="Review the attached diff (and logs/errors if present) and verify the implementation is complete and correct relative to the intended spec. If anything is incomplete, inconsistent, or risky (including missing tests), produce a Codex-ready fix prompt as a bullet list (include additional tests/verification steps when needed)."; \
+	fi; \
 	{ \
 		echo "# Sync Report"; \
 		echo ""; \
@@ -144,6 +191,12 @@ sync:
 			printf '%s\n' '```'; \
 		} > "{{SYNC_FILE}}"; \
 	fi; \
+	{ \
+		echo ""; \
+		echo "## Request"; \
+		echo "$${lang_line}"; \
+		echo "$${request_body}"; \
+	} >> "{{SYNC_FILE}}"; \
 	{{CLIP}} < "{{SYNC_FILE}}"; \
 	{{OPEN}} "{{CHAT_URL}}"; \
 	echo "Copied sync_report.md to clipboard. Paste into ChatGPT."
@@ -158,4 +211,4 @@ drive:
 	fi
 
 clean:
-	@rm -f "{{CONTEXT_FILE}}" "{{DIFF_FILE}}" "{{SYNC_FILE}}" "{{PROMPT_FILE}}" context-*.xml diff-*.patch
+	@rm -f "{{CONTEXT_FILE}}" "{{DIFF_FILE}}" "{{SYNC_FILE}}" "{{PROMPT_FILE}}" "{{REQUEST_FILE}}" context-*.xml diff-*.patch

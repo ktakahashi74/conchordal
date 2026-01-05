@@ -10,16 +10,17 @@ REQUEST_FILE := "chat_request.md"
 SYNC_MAX_BYTES := `bash -c 'echo ${SYNC_MAX_BYTES:-90000}'`
 DIFF_BASE_MODE := `bash -c 'echo ${DIFF_BASE_MODE:-head}'`
 TS := `date +"%Y%m%d-%H%M%S"`
+RISK_SCAN := `bash -c 'echo ${RISK_SCAN:-0}'`
 
 OS := `uname -s`
 IS_WSL := `bash -c 'grep -qi microsoft /proc/version /proc/sys/kernel/osrelease 2>/dev/null && echo 1 || echo 0'`
 HAS_CMD := `bash -c 'command -v cmd.exe >/dev/null 2>&1 && echo 1 || echo 0'`
 
-CLIP := `bash -c 'if [ "{{OS}}" = "Darwin" ]; then echo "pbcopy"; elif [ "{{OS}}" = "Linux" ] && [ "{{IS_WSL}}" = "1" ] && [ "{{HAS_CMD}}" = "1" ]; then echo "clip.exe"; elif [ "{{OS}}" = "Linux" ] && command -v wl-copy >/dev/null 2>&1; then echo "wl-copy"; elif [ "{{OS}}" = "Linux" ] && command -v xclip >/dev/null 2>&1; then echo "xclip -selection clipboard"; else echo "cat > /dev/null"; fi'`
 PASTE := `bash -c 'if [ "{{OS}}" = "Darwin" ]; then echo "pbpaste"; elif [ "{{OS}}" = "Linux" ] && [ "{{IS_WSL}}" = "1" ] && [ "{{HAS_CMD}}" = "1" ]; then echo "powershell.exe -c Get-Clipboard"; elif [ "{{OS}}" = "Linux" ] && command -v wl-paste >/dev/null 2>&1; then echo "wl-paste"; elif [ "{{OS}}" = "Linux" ] && command -v xclip >/dev/null 2>&1; then echo "xclip -selection clipboard -o"; else echo "cat"; fi'`
 OPEN := `bash -c 'if [ "{{OS}}" = "Darwin" ]; then echo "open"; elif [ "{{OS}}" = "Linux" ] && [ "{{IS_WSL}}" = "1" ] && [ "{{HAS_CMD}}" = "1" ]; then echo "cmd.exe /c start"; elif [ "{{OS}}" = "Linux" ] && command -v xdg-open >/dev/null 2>&1; then echo "xdg-open"; else echo "true"; fi'`
 CHAT_URL := `bash -c "if [ -f \"{{SESSION_FILE}}\" ]; then cat \"{{SESSION_FILE}}\"; else echo \"https://chatgpt.com/\"; fi"`
 REPOMIX_CMD := `bash -c 'if command -v repomix >/dev/null 2>&1; then echo "repomix"; else echo "npx repomix"; fi'`
+CLIP_WARN := `bash -c 'if [ "{{OS}}" != "Linux" ]; then echo "0"; elif command -v wl-copy >/dev/null 2>&1; then echo "0"; elif command -v xclip >/dev/null 2>&1; then echo "0"; else echo "1"; fi'`
 
 default:
 	@just --list
@@ -43,29 +44,35 @@ pack:
 	printf "\n### git diff --cached (staged)\n" >> "diff-{{TS}}.patch"; \
 	git diff --cached >> "diff-{{TS}}.patch"; \
 	ln -sf "diff-{{TS}}.patch" "{{DIFF_FILE}}"; \
-	loc="$${LC_ALL:-$${LC_MESSAGES:-$${LANG:-}}}"; \
-	if [[ "$${loc}" == ja* || "$${loc}" == *ja_JP* || "$${loc}" == *_JP* ]]; then \
+	loc="${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}"; \
+	if [[ "${loc}" == ja* || "${loc}" == *ja_JP* || "${loc}" == *_JP* ]]; then \
 		lang_line="Language: Please respond in Japanese."; \
-		request_body="添付のdiff（および必要ならログ/エラー出力）を読み、実装が仕様どおりに完了しているかレビューしてください。不完全・不整合・潜在バグ・テスト不足があれば、Codexにそのまま渡せる“修正プロンプト”を箇条書きで生成してください（必要なら追加テスト/検証手順も含めて）。"; \
 	else \
 		lang_line="Language: Please respond in English."; \
-		request_body="Review the attached diff (and logs/errors if present) and verify the implementation is complete and correct relative to the intended spec. If anything is incomplete, inconsistent, or risky (including missing tests), produce a Codex-ready fix prompt as a bullet list (include additional tests/verification steps when needed)."; \
 	fi; \
+	request_body="Review the attached diff (and logs/errors if present) and verify the implementation is complete and correct relative to the intended spec. If anything is incomplete, inconsistent, or risky (including missing tests), produce a Codex-ready fix prompt as a bullet list (include additional tests/verification steps when needed)."; \
 	{ \
 		echo "# Diff return note"; \
 		echo ""; \
 		echo "I'm uploading context.xml and diff.patch (or their timestamped equivalents) for review."; \
 		echo ""; \
 		echo "## Request"; \
-		echo "$${lang_line}"; \
-		echo "$${request_body}"; \
+		printf '%s\n' "${lang_line}"; \
+		printf '%s\n' "${request_body}"; \
 	} > "{{REQUEST_FILE}}"; \
-	{{CLIP}} < "{{REQUEST_FILE}}"; \
+	clip_cmd=""; \
+	if [ "{{OS}}" = "Darwin" ]; then clip_cmd="pbcopy"; \
+	elif [ "{{OS}}" = "Linux" ] && [ "{{IS_WSL}}" = "1" ] && [ "{{HAS_CMD}}" = "1" ]; then clip_cmd="clip.exe"; \
+	elif [ "{{OS}}" = "Linux" ] && command -v wl-copy >/dev/null 2>&1; then clip_cmd="wl-copy"; \
+	elif [ "{{OS}}" = "Linux" ] && command -v xclip >/dev/null 2>&1; then clip_cmd="xclip -selection clipboard"; \
+	fi; \
+	if [ -n "${clip_cmd}" ]; then ${clip_cmd} < "{{REQUEST_FILE}}"; else cat "{{REQUEST_FILE}}" > /dev/null; fi; \
 	{{OPEN}} .; \
 	{{OPEN}} "{{CHAT_URL}}"; \
 	echo "Upload context-{{TS}}.xml and diff-{{TS}}.patch (recommended)."; \
 	echo "context.xml and diff.patch are stable aliases of the latest run."; \
-	echo "Paste chat_request.md from clipboard."
+	echo "Paste chat_request.md from clipboard."; \
+	if [ "{{CLIP_WARN}}" = "1" ]; then echo "Warning: No clipboard tool found (wl-copy/xclip). Clipboard copy skipped."; fi
 
 diff:
 	@printf "### git diff (unstaged)\n" > "diff-{{TS}}.patch"; \
@@ -73,28 +80,34 @@ diff:
 	printf "\n### git diff --cached (staged)\n" >> "diff-{{TS}}.patch"; \
 	git diff --cached >> "diff-{{TS}}.patch"; \
 	ln -sf "diff-{{TS}}.patch" "{{DIFF_FILE}}"; \
-	loc="$${LC_ALL:-$${LC_MESSAGES:-$${LANG:-}}}"; \
-	if [[ "$${loc}" == ja* || "$${loc}" == *ja_JP* || "$${loc}" == *_JP* ]]; then \
+	loc="${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}"; \
+	if [[ "${loc}" == ja* || "${loc}" == *ja_JP* || "${loc}" == *_JP* ]]; then \
 		lang_line="Language: Please respond in Japanese."; \
-		request_body="添付のdiff（および必要ならログ/エラー出力）を読み、実装が仕様どおりに完了しているかレビューしてください。不完全・不整合・潜在バグ・テスト不足があれば、Codexにそのまま渡せる“修正プロンプト”を箇条書きで生成してください（必要なら追加テスト/検証手順も含めて）。"; \
 	else \
 		lang_line="Language: Please respond in English."; \
-		request_body="Review the attached diff (and logs/errors if present) and verify the implementation is complete and correct relative to the intended spec. If anything is incomplete, inconsistent, or risky (including missing tests), produce a Codex-ready fix prompt as a bullet list (include additional tests/verification steps when needed)."; \
 	fi; \
+	request_body="Review the attached diff (and logs/errors if present) and verify the implementation is complete and correct relative to the intended spec. If anything is incomplete, inconsistent, or risky (including missing tests), produce a Codex-ready fix prompt as a bullet list (include additional tests/verification steps when needed)."; \
 	{ \
 		echo "# Diff return note"; \
 		echo ""; \
 		echo "I'm uploading diff.patch for review."; \
 		echo ""; \
 		echo "## Request"; \
-		echo "$${lang_line}"; \
-		echo "$${request_body}"; \
+		printf '%s\n' "${lang_line}"; \
+		printf '%s\n' "${request_body}"; \
 	} > "{{REQUEST_FILE}}"; \
-	{{CLIP}} < "{{REQUEST_FILE}}"; \
+	clip_cmd=""; \
+	if [ "{{OS}}" = "Darwin" ]; then clip_cmd="pbcopy"; \
+	elif [ "{{OS}}" = "Linux" ] && [ "{{IS_WSL}}" = "1" ] && [ "{{HAS_CMD}}" = "1" ]; then clip_cmd="clip.exe"; \
+	elif [ "{{OS}}" = "Linux" ] && command -v wl-copy >/dev/null 2>&1; then clip_cmd="wl-copy"; \
+	elif [ "{{OS}}" = "Linux" ] && command -v xclip >/dev/null 2>&1; then clip_cmd="xclip -selection clipboard"; \
+	fi; \
+	if [ -n "${clip_cmd}" ]; then ${clip_cmd} < "{{REQUEST_FILE}}"; else cat "{{REQUEST_FILE}}" > /dev/null; fi; \
 	{{OPEN}} "{{CHAT_URL}}"; \
 	echo "Upload diff-{{TS}}.patch (recommended)."; \
 	echo "diff.patch is a stable alias of the latest run."; \
-	echo "Paste chat_request.md from clipboard."
+	echo "Paste chat_request.md from clipboard."; \
+	if [ "{{CLIP_WARN}}" = "1" ]; then echo "Warning: No clipboard tool found (wl-copy/xclip). Clipboard copy skipped."; fi
 
 sync:
 	@timestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"; \
@@ -103,17 +116,19 @@ sync:
 	diff_cached_stat="$(git diff --stat --cached)"; \
 	diff_full="$(git diff)"; \
 	diff_cached_full="$(git diff --cached)"; \
-	risk_scan="$(rg -n 'unsafe\b|\bunwrap\(|\bexpect\(|process::exit|panic!\(|todo!\(|unimplemented!\(' -S . || true)"; \
+	risk_scan=""; \
+	if [ "{{RISK_SCAN}}" = "1" ]; then \
+		risk_scan="$(rg -n 'unsafe\b|\bunwrap\(|\bexpect\(|process::exit|panic!\(|todo!\(|unimplemented!\(' -S . || true)"; \
+	fi; \
 	check_output="$(cargo check 2>&1 || true)"; \
 	check_tail="$(printf "%s\n" "${check_output}" | tail -n 200)"; \
-	loc="$${LC_ALL:-$${LC_MESSAGES:-$${LANG:-}}}"; \
-	if [[ "$${loc}" == ja* || "$${loc}" == *ja_JP* || "$${loc}" == *_JP* ]]; then \
+	loc="${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}"; \
+	if [[ "${loc}" == ja* || "${loc}" == *ja_JP* || "${loc}" == *_JP* ]]; then \
 		lang_line="Language: Please respond in Japanese."; \
-		request_body="添付のdiff（および必要ならログ/エラー出力）を読み、実装が仕様どおりに完了しているかレビューしてください。不完全・不整合・潜在バグ・テスト不足があれば、Codexにそのまま渡せる“修正プロンプト”を箇条書きで生成してください（必要なら追加テスト/検証手順も含めて）。"; \
 	else \
 		lang_line="Language: Please respond in English."; \
-		request_body="Review the attached diff (and logs/errors if present) and verify the implementation is complete and correct relative to the intended spec. If anything is incomplete, inconsistent, or risky (including missing tests), produce a Codex-ready fix prompt as a bullet list (include additional tests/verification steps when needed)."; \
 	fi; \
+	request_body="Review the attached diff (and logs/errors if present) and verify the implementation is complete and correct relative to the intended spec. If anything is incomplete, inconsistent, or risky (including missing tests), produce a Codex-ready fix prompt as a bullet list (include additional tests/verification steps when needed)."; \
 	{ \
 		echo "# Sync Report"; \
 		echo ""; \
@@ -139,7 +154,11 @@ sync:
 		printf '%s\n' '```'; \
 		echo ""; \
 		echo "## Risk Scan"; \
-		if [ -n "${risk_scan}" ]; then echo "${risk_scan}"; else echo "No matches."; fi; \
+		if [ "{{RISK_SCAN}}" = "1" ]; then \
+			if [ -n "${risk_scan}" ]; then echo "${risk_scan}"; else echo "No matches."; fi; \
+		else \
+			echo "Disabled (set RISK_SCAN=1 to enable)."; \
+		fi; \
 		echo ""; \
 		if [ "{{DIFF_BASE_MODE}}" = "upstream" ] && git rev-parse --abbrev-ref --symbolic-full-name @{u} >/dev/null 2>&1; then \
 			echo "## Upstream Diff Stat"; \
@@ -183,7 +202,11 @@ sync:
 			echo "${diff_cached_stat}"; \
 			echo ""; \
 			echo "## Risk Scan"; \
-			if [ -n "${risk_scan}" ]; then echo "${risk_scan}"; else echo "No matches."; fi; \
+			if [ "{{RISK_SCAN}}" = "1" ]; then \
+				if [ -n "${risk_scan}" ]; then echo "${risk_scan}"; else echo "No matches."; fi; \
+			else \
+				echo "Disabled (set RISK_SCAN=1 to enable)."; \
+			fi; \
 			echo ""; \
 			echo "## Cargo Check (tail)"; \
 			printf '%s\n' '```'; \
@@ -194,18 +217,25 @@ sync:
 	{ \
 		echo ""; \
 		echo "## Request"; \
-		echo "$${lang_line}"; \
-		echo "$${request_body}"; \
+		printf '%s\n' "${lang_line}"; \
+		printf '%s\n' "${request_body}"; \
 	} >> "{{SYNC_FILE}}"; \
-	{{CLIP}} < "{{SYNC_FILE}}"; \
+	clip_cmd=""; \
+	if [ "{{OS}}" = "Darwin" ]; then clip_cmd="pbcopy"; \
+	elif [ "{{OS}}" = "Linux" ] && [ "{{IS_WSL}}" = "1" ] && [ "{{HAS_CMD}}" = "1" ]; then clip_cmd="clip.exe"; \
+	elif [ "{{OS}}" = "Linux" ] && command -v wl-copy >/dev/null 2>&1; then clip_cmd="wl-copy"; \
+	elif [ "{{OS}}" = "Linux" ] && command -v xclip >/dev/null 2>&1; then clip_cmd="xclip -selection clipboard"; \
+	fi; \
+	if [ -n "${clip_cmd}" ]; then ${clip_cmd} < "{{SYNC_FILE}}"; else cat "{{SYNC_FILE}}" > /dev/null; fi; \
 	{{OPEN}} "{{CHAT_URL}}"; \
-	echo "Copied sync_report.md to clipboard. Paste into ChatGPT."
+	echo "Copied sync_report.md to clipboard. Paste into ChatGPT."; \
+	if [ "{{CLIP_WARN}}" = "1" ]; then echo "Warning: No clipboard tool found (wl-copy/xclip). Clipboard copy skipped."; fi
 
 drive:
 	@{{PASTE}} > "{{PROMPT_FILE}}"
 	@sed -n "1,200p" "{{PROMPT_FILE}}"
-	@if [ -n "$${AGENT_CMD:-}" ]; then \
-		eval "$${AGENT_CMD} \"$$(cat \"{{PROMPT_FILE}}\")\""; \
+	@if [ -n "${AGENT_CMD:-}" ]; then \
+		eval "${AGENT_CMD} \"$(cat \"{{PROMPT_FILE}}\")\""; \
 	else \
 		echo "Prompt saved to .driver_prompt.md. Run your agent manually."; \
 	fi

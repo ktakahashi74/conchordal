@@ -1,10 +1,14 @@
 use rand::{Rng, SeedableRng, rngs::SmallRng};
+use std::f32::consts::TAU;
 use std::fmt;
 
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::Tick;
 use crate::life::gate_clock::next_gate_tick;
-use crate::life::scenario::{PhonationConfig, PhonationConnectConfig, PhonationIntervalConfig};
+use crate::life::scenario::{
+    PhonationClockConfig, PhonationConfig, PhonationConnectConfig, PhonationIntervalConfig,
+    SubThetaModConfig,
+};
 
 pub type NoteId = u64;
 
@@ -31,10 +35,20 @@ pub enum OnsetKind {
     Birth,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct CandidateTick {
-    pub t: Tick,
-    pub theta_gate: u64,
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ClockSource {
+    GateBoundary,
+    Subdivision { n: u32 },
+    InternalPhase,
+}
+
+#[derive(Debug, Clone)]
+pub struct CandidatePoint {
+    pub tick: Tick,
+    pub gate: u64,
+    pub theta_pos: f64,
+    pub phase_in_gate: f32,
+    pub sources: Vec<ClockSource>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -58,29 +72,59 @@ pub struct ThetaGrid {
 
 impl ThetaGrid {
     /// Input candidates must be sorted by tick ascending.
-    pub fn from_candidates(candidates: &[CandidateTick]) -> Self {
+    pub fn from_candidates(candidates: &[CandidatePoint]) -> Self {
         debug_assert!(
-            candidates.windows(2).all(|p| p[0].t <= p[1].t),
+            candidates.windows(2).all(|p| p[0].tick <= p[1].tick),
             "candidates must be sorted by tick"
         );
         let mut boundaries = Vec::with_capacity(candidates.len());
         let mut last_gate = None;
         for candidate in candidates {
+            if candidate.phase_in_gate != 0.0 {
+                continue;
+            }
             if let Some(prev_gate) = last_gate {
-                if candidate.theta_gate < prev_gate {
+                if candidate.gate < prev_gate {
                     panic!("candidate gates must be non-decreasing");
                 }
-                if candidate.theta_gate == prev_gate {
+                if candidate.gate == prev_gate {
                     continue;
                 }
             }
             boundaries.push(GateBoundary {
-                gate: candidate.theta_gate,
-                tick: candidate.t,
+                gate: candidate.gate,
+                tick: candidate.tick,
             });
-            last_gate = Some(candidate.theta_gate);
+            last_gate = Some(candidate.gate);
         }
         Self { boundaries }
+    }
+
+    pub fn tick_at(&self, gate: u64, phase_in_gate: f32) -> Option<Tick> {
+        if self.boundaries.is_empty() {
+            return None;
+        }
+        let start_gate = self.boundaries[0].gate;
+        let idx = gate.checked_sub(start_gate)? as usize;
+        let next_idx = idx.checked_add(1)?;
+        let b0 = *self.boundaries.get(idx)?;
+        let b1 = *self.boundaries.get(next_idx)?;
+        if b0.gate != gate || b1.gate != gate + 1 {
+            return None;
+        }
+        let phase = phase_in_gate.clamp(0.0, 1.0);
+        let dt = b1.tick.saturating_sub(b0.tick) as f64;
+        let tick_f = b0.tick as f64 + dt * phase as f64;
+        let tick = tick_f.round() as Tick;
+        if phase > 0.0 && phase < 1.0 {
+            let lo = b0.tick.saturating_add(1);
+            let hi = b1.tick.saturating_sub(1);
+            if lo > hi {
+                return None;
+            }
+            return Some(tick.clamp(lo, hi));
+        }
+        Some(tick)
     }
 }
 
@@ -167,7 +211,7 @@ pub struct CoreState {
 }
 
 pub trait PhonationClock: Send {
-    fn gather_candidates(&mut self, ctx: &CoreTickCtx, out: &mut Vec<CandidateTick>);
+    fn gather_candidates(&mut self, ctx: &CoreTickCtx, out: &mut Vec<CandidatePoint>);
 }
 
 #[derive(Debug, Default)]
@@ -189,7 +233,7 @@ impl ThetaGateClock {
     fn gather_candidates_with<F>(
         &mut self,
         ctx: &CoreTickCtx,
-        out: &mut Vec<CandidateTick>,
+        out: &mut Vec<CandidatePoint>,
         mut next_gate_tick: F,
     ) where
         F: FnMut(Tick, &CoreTickCtx) -> Option<Tick>,
@@ -218,9 +262,12 @@ impl ThetaGateClock {
                 self.has_gate = true;
             }
             self.last_gate_tick = Some(gate_tick);
-            out.push(CandidateTick {
-                t: gate_tick,
-                theta_gate: self.gate_index,
+            out.push(CandidatePoint {
+                tick: gate_tick,
+                gate: self.gate_index,
+                theta_pos: self.gate_index as f64,
+                phase_in_gate: 0.0,
+                sources: vec![ClockSource::GateBoundary],
             });
             cursor = gate_tick.saturating_add(1);
         }
@@ -228,16 +275,172 @@ impl ThetaGateClock {
 }
 
 impl PhonationClock for ThetaGateClock {
-    fn gather_candidates(&mut self, ctx: &CoreTickCtx, out: &mut Vec<CandidateTick>) {
+    fn gather_candidates(&mut self, ctx: &CoreTickCtx, out: &mut Vec<CandidatePoint>) {
         self.gather_candidates_with(ctx, out, |cursor, ctx| {
             next_gate_tick(cursor, ctx.fs, ctx.rhythms.theta, 0.0)
         });
     }
 }
 
+#[derive(Debug)]
+pub struct SubdivisionClock {
+    pub divisions: Vec<u32>,
+}
+
+impl SubdivisionClock {
+    pub fn new(divisions: Vec<u32>) -> Self {
+        Self { divisions }
+    }
+
+    fn gather_candidates(&self, grid: &ThetaGrid, out: &mut Vec<CandidatePoint>) {
+        if grid.boundaries.len() < 2 {
+            return;
+        }
+        for boundary in &grid.boundaries[..grid.boundaries.len() - 1] {
+            let gate = boundary.gate;
+            for &n in &self.divisions {
+                if n < 2 {
+                    continue;
+                }
+                for k in 1..n {
+                    let phase = k as f32 / n as f32;
+                    if phase <= 0.0 || phase >= 1.0 {
+                        continue;
+                    }
+                    let tick = match grid.tick_at(gate, phase) {
+                        Some(tick) => tick,
+                        None => continue,
+                    };
+                    debug_assert!((gate as f64 + phase as f64).is_finite());
+                    out.push(CandidatePoint {
+                        tick,
+                        gate,
+                        theta_pos: gate as f64 + phase as f64,
+                        phase_in_gate: phase,
+                        sources: vec![ClockSource::Subdivision { n }],
+                    });
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct InternalPhaseClock {
+    pub ratio: f32,
+    pub phase: f32,
+}
+
+impl InternalPhaseClock {
+    pub fn new(ratio: f32, phase: f32) -> Self {
+        Self {
+            ratio,
+            phase: phase.rem_euclid(1.0),
+        }
+    }
+
+    fn gather_candidates(&mut self, grid: &ThetaGrid, out: &mut Vec<CandidatePoint>) {
+        if !self.ratio.is_finite() || self.ratio <= 0.0 {
+            return;
+        }
+        if grid.boundaries.len() < 2 {
+            return;
+        }
+        for boundary in &grid.boundaries[..grid.boundaries.len() - 1] {
+            let gate = boundary.gate;
+            let start_phase = self.phase;
+            let end_phase = start_phase + self.ratio;
+            let wraps = end_phase.floor() as i32;
+            for m in 1..=wraps {
+                let phase_in_gate = (m as f32 - start_phase) / self.ratio;
+                if phase_in_gate <= 0.0 || phase_in_gate >= 1.0 {
+                    continue;
+                }
+                let tick = match grid.tick_at(gate, phase_in_gate) {
+                    Some(tick) => tick,
+                    None => continue,
+                };
+                debug_assert!((gate as f64 + phase_in_gate as f64).is_finite());
+                out.push(CandidatePoint {
+                    tick,
+                    gate,
+                    theta_pos: gate as f64 + phase_in_gate as f64,
+                    phase_in_gate,
+                    sources: vec![ClockSource::InternalPhase],
+                });
+            }
+            self.phase = end_phase.rem_euclid(1.0);
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct CompositeClock {
+    gate_clock: ThetaGateClock,
+    subdivision: Option<SubdivisionClock>,
+    internal_phase: Option<InternalPhaseClock>,
+}
+
+impl CompositeClock {
+    pub fn new(
+        gate_clock: ThetaGateClock,
+        subdivision: Option<SubdivisionClock>,
+        internal_phase: Option<InternalPhaseClock>,
+    ) -> Self {
+        Self {
+            gate_clock,
+            subdivision,
+            internal_phase,
+        }
+    }
+}
+
+impl PhonationClock for CompositeClock {
+    fn gather_candidates(&mut self, ctx: &CoreTickCtx, out: &mut Vec<CandidatePoint>) {
+        let mut gate_candidates = Vec::new();
+        self.gate_clock.gather_candidates(ctx, &mut gate_candidates);
+        out.extend(gate_candidates.iter().cloned());
+        let grid = ThetaGrid::from_candidates(&gate_candidates);
+        if let Some(clock) = self.subdivision.as_ref() {
+            clock.gather_candidates(&grid, out);
+        }
+        if let Some(clock) = self.internal_phase.as_mut() {
+            clock.gather_candidates(&grid, out);
+        }
+    }
+}
+
 pub trait PhonationInterval: Send {
     fn on_candidate(&mut self, c: &IntervalInput, state: &CoreState) -> Option<PhonationKick>;
     fn on_external_onset(&mut self, _kind: OnsetKind, _at_theta_gate: u64) {}
+}
+
+pub trait SubThetaMod: Send + Sync {
+    fn mod_at_phase(&self, phase_in_gate: f32) -> f32;
+}
+
+#[derive(Debug, Default)]
+pub struct NoneMod;
+
+impl SubThetaMod for NoneMod {
+    fn mod_at_phase(&self, _phase_in_gate: f32) -> f32 {
+        1.0
+    }
+}
+
+#[derive(Debug)]
+pub struct CosineHarmonicMod {
+    pub n: u32,
+    pub depth: f32,
+    pub phase0: f32,
+}
+
+impl SubThetaMod for CosineHarmonicMod {
+    fn mod_at_phase(&self, phase_in_gate: f32) -> f32 {
+        let depth = self.depth.clamp(0.0, 1.0);
+        let phase = phase_in_gate.rem_euclid(1.0);
+        1.0 + depth * (TAU * self.n as f32 * phase + self.phase0).cos()
+    }
 }
 
 #[derive(Debug, Default)]
@@ -284,7 +487,7 @@ impl PhonationInterval for AccumulatorInterval {
         } else {
             self.rate
         };
-        let weight = c.weight.clamp(0.0, 1.0);
+        let weight = c.weight.max(0.0);
         self.acc += rate_eff * weight * c.dt_theta;
         let refractory_ok = c.gate >= self.next_allowed_gate;
         if self.acc >= 1.0 && refractory_ok {
@@ -353,8 +556,10 @@ pub struct PhonationEngine {
     pub clock: Box<dyn PhonationClock + Send>,
     pub interval: Box<dyn PhonationInterval + Send>,
     pub connect: Box<dyn PhonationConnect + Send>,
+    pub sub_theta_mod: Box<dyn SubThetaMod + Send + Sync>,
     pub next_note_id: NoteId,
     last_gate_index: Option<u64>,
+    last_theta_pos: Option<f64>,
     active_notes: u32,
 }
 
@@ -376,17 +581,49 @@ impl PhonationEngine {
                 Box::new(AccumulatorInterval::new(rate, refractory, seed))
             }
         };
+        let sub_theta_mod: Box<dyn SubThetaMod + Send + Sync> = match &config.sub_theta_mod {
+            SubThetaModConfig::None => Box::<NoneMod>::default(),
+            SubThetaModConfig::Cosine { n, depth, phase0 } => Box::new(CosineHarmonicMod {
+                n: *n,
+                depth: *depth,
+                phase0: *phase0,
+            }),
+        };
         let connect: Box<dyn PhonationConnect + Send> = match config.connect {
             PhonationConnectConfig::FixedGate { length_gates } => {
                 Box::new(FixedGateConnect::new(length_gates))
             }
         };
+        let (subdivision, internal_phase) = match &config.clock {
+            PhonationClockConfig::ThetaGate => (None, None),
+            PhonationClockConfig::Composite {
+                subdivision,
+                internal_phase,
+            } => {
+                let subdivision = subdivision
+                    .as_ref()
+                    .map(|config| SubdivisionClock::new(config.divisions.clone()));
+                let internal_phase = internal_phase
+                    .as_ref()
+                    .map(|config| InternalPhaseClock::new(config.ratio, config.phase0));
+                (subdivision, internal_phase)
+            }
+        };
         Self {
-            clock: Box::<ThetaGateClock>::default(),
+            clock: match &config.clock {
+                PhonationClockConfig::ThetaGate => Box::<ThetaGateClock>::default(),
+                PhonationClockConfig::Composite { .. } => Box::new(CompositeClock::new(
+                    ThetaGateClock::default(),
+                    subdivision,
+                    internal_phase,
+                )),
+            },
             interval,
             connect,
+            sub_theta_mod,
             next_note_id: 0,
             last_gate_index: None,
+            last_theta_pos: None,
             active_notes: 0,
         }
     }
@@ -415,13 +652,12 @@ impl PhonationEngine {
     ) -> bool {
         let mut candidates = Vec::new();
         self.clock.gather_candidates(ctx, &mut candidates);
-        candidates.sort_by_key(|c| c.t);
-        let timing_grid = ThetaGrid::from_candidates(&candidates);
+        let merged = Self::merge_candidates(candidates);
+        let timing_grid = ThetaGrid::from_candidates(&merged);
         let timing_field = TimingField::build_from(ctx, &timing_grid);
         self.process_candidates(
-            &candidates,
+            &merged,
             &timing_field,
-            ctx,
             state,
             birth_onset_tick,
             out_cmds,
@@ -432,64 +668,107 @@ impl PhonationEngine {
     #[allow(clippy::too_many_arguments)]
     fn process_candidates(
         &mut self,
-        candidates: &[CandidateTick],
+        candidates: &[CandidatePoint],
         timing_field: &TimingField,
-        _ctx: &CoreTickCtx,
         state: &CoreState,
         birth_onset_tick: Option<Tick>,
         out_cmds: &mut Vec<PhonationCmd>,
         out_events: &mut Vec<PhonationNoteEvent>,
     ) -> bool {
         let mut birth_applied = false;
-        let mut prev_gate = None;
         for c in candidates {
-            if !birth_applied && birth_onset_tick.is_some_and(|tick| tick <= c.t) {
-                self.notify_birth_onset(c.theta_gate);
+            debug_assert!(c.theta_pos.is_finite());
+            if !birth_applied && birth_onset_tick.is_some_and(|tick| tick <= c.tick) {
+                self.notify_birth_onset(c.gate);
                 birth_applied = true;
             }
-            let dt_theta = match prev_gate {
-                Some(gate) => c.theta_gate.saturating_sub(gate) as f32,
+            let dt_theta = match self.last_theta_pos {
+                Some(prev_pos) => {
+                    let dt = c.theta_pos - prev_pos;
+                    debug_assert!(
+                        dt.is_finite() && dt >= 0.0,
+                        "candidate theta_pos must be non-decreasing"
+                    );
+                    if dt < 0.0 { 0.0 } else { dt as f32 }
+                }
                 None => 1.0,
             };
+            let sub_theta_mod = if c.phase_in_gate == 0.0 {
+                1.0
+            } else {
+                self.sub_theta_mod.mod_at_phase(c.phase_in_gate)
+            };
             let input = IntervalInput {
-                gate: c.theta_gate,
-                tick: c.t,
+                gate: c.gate,
+                tick: c.tick,
                 dt_theta,
-                weight: timing_field.e(c.theta_gate),
+                weight: timing_field.e(c.gate) * sub_theta_mod,
             };
             if let Some(kick) = self.interval.on_candidate(&input, state) {
                 let note_id = self.next_note_id;
                 self.next_note_id = self.next_note_id.wrapping_add(1);
-                self.active_notes = self.active_notes.saturating_add(1);
                 out_cmds.push(PhonationCmd::NoteOn { note_id, kick });
+                self.active_notes = self.active_notes.saturating_add(1);
                 out_events.push(PhonationNoteEvent {
                     note_id,
-                    onset_tick: c.t,
+                    onset_tick: c.tick,
                 });
-                self.connect.on_note_on(note_id, c.theta_gate);
+                self.connect.on_note_on(note_id, c.gate);
             }
-            self.last_gate_index = Some(c.theta_gate);
+            self.last_gate_index = Some(c.gate);
             let before = out_cmds.len();
-            self.connect.poll(c.theta_gate, c.t, out_cmds);
+            self.connect.poll(c.gate, c.tick, out_cmds);
             for cmd in &out_cmds[before..] {
                 if matches!(cmd, PhonationCmd::NoteOff { .. }) {
                     self.active_notes = self.active_notes.saturating_sub(1);
                 }
             }
-            prev_gate = Some(c.theta_gate);
+            self.last_theta_pos = Some(c.theta_pos);
         }
         birth_applied
+    }
+
+    fn merge_candidates(mut candidates: Vec<CandidatePoint>) -> Vec<CandidatePoint> {
+        candidates.sort_by(|a, b| {
+            a.tick.cmp(&b.tick).then_with(|| {
+                a.theta_pos
+                    .partial_cmp(&b.theta_pos)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+        });
+        let mut merged: Vec<CandidatePoint> = Vec::with_capacity(candidates.len());
+        for candidate in candidates {
+            if let Some(last) = merged.last_mut()
+                && last.tick == candidate.tick
+                && last.gate == candidate.gate
+            {
+                if last.phase_in_gate != 0.0 && candidate.phase_in_gate == 0.0 {
+                    let mut replacement = candidate;
+                    replacement.sources.append(&mut last.sources);
+                    *last = replacement;
+                    continue;
+                }
+                last.sources.extend(candidate.sources);
+                continue;
+            }
+            merged.push(candidate);
+        }
+        merged
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Arc, Mutex};
 
-    fn candidate_at_gate(gate: u64) -> CandidateTick {
-        CandidateTick {
-            t: gate as u64,
-            theta_gate: gate,
+    fn candidate_at_gate(gate: u64) -> CandidatePoint {
+        CandidatePoint {
+            tick: gate as u64,
+            gate,
+            theta_pos: gate as f64,
+            phase_in_gate: 0.0,
+            sources: vec![ClockSource::GateBoundary],
         }
     }
 
@@ -501,8 +780,8 @@ mod tests {
         for gate in 0..10u64 {
             let c = candidate_at_gate(gate);
             let input = IntervalInput {
-                gate: c.theta_gate,
-                tick: c.t,
+                gate: c.gate,
+                tick: c.tick,
                 dt_theta: 1.0,
                 weight: 1.0,
             };
@@ -519,8 +798,8 @@ mod tests {
         for gate in 0..10u64 {
             let c = candidate_at_gate(gate);
             let input = IntervalInput {
-                gate: c.theta_gate,
-                tick: c.t,
+                gate: c.gate,
+                tick: c.tick,
                 dt_theta: 1.0,
                 weight: 1.0,
             };
@@ -540,8 +819,8 @@ mod tests {
         for gate in 0..6u64 {
             let c = candidate_at_gate(gate);
             let input = IntervalInput {
-                gate: c.theta_gate,
-                tick: c.t,
+                gate: c.gate,
+                tick: c.tick,
                 dt_theta: 1.0,
                 weight: 1.0,
             };
@@ -560,8 +839,8 @@ mod tests {
         let state = CoreState { is_alive: true };
         let c = candidate_at_gate(0);
         let input = IntervalInput {
-            gate: c.theta_gate,
-            tick: c.t,
+            gate: c.gate,
+            tick: c.tick,
             dt_theta: 1.0,
             weight: 1.0,
         };
@@ -668,7 +947,7 @@ mod tests {
             tick
         });
         assert!(out.len() >= 2, "expected multiple gates in hop");
-        assert!(out[0].t < out[1].t);
+        assert!(out[0].tick < out[1].tick);
     }
 
     #[test]
@@ -686,7 +965,7 @@ mod tests {
             if cursor == 0 { Some(cursor) } else { None }
         });
         assert_eq!(out.len(), 1);
-        assert_eq!(out[0].t, 0);
+        assert_eq!(out[0].tick, 0);
     }
 
     #[test]
@@ -698,13 +977,19 @@ mod tests {
             rhythms: NeuralRhythms::default(),
         };
         let candidates = vec![
-            CandidateTick {
-                t: 0,
-                theta_gate: 0,
+            CandidatePoint {
+                tick: 0,
+                gate: 0,
+                theta_pos: 0.0,
+                phase_in_gate: 0.0,
+                sources: vec![ClockSource::GateBoundary],
             },
-            CandidateTick {
-                t: 4,
-                theta_gate: 1,
+            CandidatePoint {
+                tick: 4,
+                gate: 1,
+                theta_pos: 1.0,
+                phase_in_gate: 0.0,
+                sources: vec![ClockSource::GateBoundary],
             },
         ];
         let timing_field = TimingField::from_values(0, vec![0.0, 1.0]);
@@ -714,8 +999,10 @@ mod tests {
             clock: Box::<ThetaGateClock>::default(),
             interval: Box::new(interval),
             connect: Box::new(FixedGateConnect::new(1)),
+            sub_theta_mod: Box::<NoneMod>::default(),
             next_note_id: 0,
             last_gate_index: None,
+            last_theta_pos: None,
             active_notes: 0,
         };
         let state = CoreState { is_alive: true };
@@ -724,7 +1011,6 @@ mod tests {
         engine.process_candidates(
             &candidates,
             &timing_field,
-            &ctx,
             &state,
             None,
             &mut cmds,
@@ -763,17 +1049,26 @@ mod tests {
     #[test]
     fn theta_grid_skips_duplicate_gates() {
         let candidates = vec![
-            CandidateTick {
-                t: 0,
-                theta_gate: 0,
+            CandidatePoint {
+                tick: 0,
+                gate: 0,
+                theta_pos: 0.0,
+                phase_in_gate: 0.0,
+                sources: vec![ClockSource::GateBoundary],
             },
-            CandidateTick {
-                t: 1,
-                theta_gate: 0,
+            CandidatePoint {
+                tick: 1,
+                gate: 0,
+                theta_pos: 0.0,
+                phase_in_gate: 0.0,
+                sources: vec![ClockSource::GateBoundary],
             },
-            CandidateTick {
-                t: 2,
-                theta_gate: 1,
+            CandidatePoint {
+                tick: 2,
+                gate: 1,
+                theta_pos: 1.0,
+                phase_in_gate: 0.0,
+                sources: vec![ClockSource::GateBoundary],
             },
         ];
         let grid = ThetaGrid::from_candidates(&candidates);
@@ -791,13 +1086,19 @@ mod tests {
     #[should_panic]
     fn theta_grid_panics_on_reverse_gates() {
         let candidates = vec![
-            CandidateTick {
-                t: 0,
-                theta_gate: 1,
+            CandidatePoint {
+                tick: 0,
+                gate: 1,
+                theta_pos: 1.0,
+                phase_in_gate: 0.0,
+                sources: vec![ClockSource::GateBoundary],
             },
-            CandidateTick {
-                t: 1,
-                theta_gate: 0,
+            CandidatePoint {
+                tick: 1,
+                gate: 0,
+                theta_pos: 0.0,
+                phase_in_gate: 0.0,
+                sources: vec![ClockSource::GateBoundary],
             },
         ];
         let _ = ThetaGrid::from_candidates(&candidates);
@@ -808,13 +1109,19 @@ mod tests {
     #[should_panic]
     fn theta_grid_panics_on_unsorted_ticks() {
         let candidates = vec![
-            CandidateTick {
-                t: 2,
-                theta_gate: 0,
+            CandidatePoint {
+                tick: 2,
+                gate: 0,
+                theta_pos: 0.0,
+                phase_in_gate: 0.0,
+                sources: vec![ClockSource::GateBoundary],
             },
-            CandidateTick {
-                t: 1,
-                theta_gate: 1,
+            CandidatePoint {
+                tick: 1,
+                gate: 1,
+                theta_pos: 1.0,
+                phase_in_gate: 0.0,
+                sources: vec![ClockSource::GateBoundary],
             },
         ];
         let _ = ThetaGrid::from_candidates(&candidates);
@@ -844,6 +1151,380 @@ mod tests {
     }
 
     #[test]
+    fn theta_grid_tick_at_interpolates() {
+        let grid = ThetaGrid {
+            boundaries: vec![
+                GateBoundary { gate: 0, tick: 0 },
+                GateBoundary { gate: 1, tick: 100 },
+            ],
+        };
+        assert_eq!(grid.tick_at(0, 0.5), Some(50));
+    }
+
+    #[test]
+    fn theta_grid_tick_at_avoids_boundaries() {
+        let grid = ThetaGrid {
+            boundaries: vec![
+                GateBoundary { gate: 0, tick: 0 },
+                GateBoundary { gate: 1, tick: 10 },
+            ],
+        };
+        assert_ne!(grid.tick_at(0, 0.95), Some(10));
+    }
+
+    #[test]
+    fn theta_grid_tick_at_returns_none_when_interval_too_small() {
+        let grid = ThetaGrid {
+            boundaries: vec![
+                GateBoundary { gate: 0, tick: 0 },
+                GateBoundary { gate: 1, tick: 1 },
+            ],
+        };
+        assert_eq!(grid.tick_at(0, 0.5), None);
+    }
+
+    #[test]
+    fn subdivision_clock_merges_duplicate_ticks() {
+        let grid = ThetaGrid {
+            boundaries: vec![
+                GateBoundary { gate: 0, tick: 0 },
+                GateBoundary { gate: 1, tick: 100 },
+            ],
+        };
+        let mut candidates = Vec::new();
+        let clock = SubdivisionClock::new(vec![2, 4]);
+        clock.gather_candidates(&grid, &mut candidates);
+        let merged = PhonationEngine::merge_candidates(candidates);
+        let tick_50 = merged.iter().find(|c| c.tick == 50).expect("tick 50");
+        assert!(tick_50.sources.contains(&ClockSource::Subdivision { n: 2 }));
+        assert!(tick_50.sources.contains(&ClockSource::Subdivision { n: 4 }));
+    }
+
+    #[test]
+    fn dt_theta_is_continuous() {
+        let log = Arc::new(Mutex::new(Vec::new()));
+        struct RecordingInterval {
+            log: Arc<Mutex<Vec<f32>>>,
+        }
+
+        impl PhonationInterval for RecordingInterval {
+            fn on_candidate(
+                &mut self,
+                c: &IntervalInput,
+                _state: &CoreState,
+            ) -> Option<PhonationKick> {
+                self.log.lock().expect("dt log").push(c.dt_theta);
+                None
+            }
+        }
+
+        let candidates = vec![
+            CandidatePoint {
+                tick: 0,
+                gate: 0,
+                theta_pos: 0.0,
+                phase_in_gate: 0.0,
+                sources: vec![ClockSource::GateBoundary],
+            },
+            CandidatePoint {
+                tick: 10,
+                gate: 0,
+                theta_pos: 0.5,
+                phase_in_gate: 0.5,
+                sources: vec![ClockSource::Subdivision { n: 2 }],
+            },
+            CandidatePoint {
+                tick: 20,
+                gate: 1,
+                theta_pos: 1.0,
+                phase_in_gate: 0.0,
+                sources: vec![ClockSource::GateBoundary],
+            },
+        ];
+        let timing_field = TimingField::from_values(0, vec![1.0, 1.0]);
+        let mut engine = PhonationEngine {
+            clock: Box::<ThetaGateClock>::default(),
+            interval: Box::new(RecordingInterval { log: log.clone() }),
+            connect: Box::new(FixedGateConnect::new(1)),
+            sub_theta_mod: Box::<NoneMod>::default(),
+            next_note_id: 0,
+            last_gate_index: None,
+            last_theta_pos: None,
+            active_notes: 0,
+        };
+        let state = CoreState { is_alive: true };
+        let mut cmds = Vec::new();
+        let mut events = Vec::new();
+        engine.process_candidates(
+            &candidates,
+            &timing_field,
+            &state,
+            None,
+            &mut cmds,
+            &mut events,
+        );
+        assert_eq!(*log.lock().expect("dt log"), vec![1.0, 0.5, 0.5]);
+    }
+
+    #[test]
+    fn dt_theta_large_gate_precision() {
+        let log = Arc::new(Mutex::new(Vec::new()));
+        struct RecordingInterval {
+            log: Arc<Mutex<Vec<f32>>>,
+        }
+
+        impl PhonationInterval for RecordingInterval {
+            fn on_candidate(
+                &mut self,
+                c: &IntervalInput,
+                _state: &CoreState,
+            ) -> Option<PhonationKick> {
+                self.log.lock().expect("dt log").push(c.dt_theta);
+                None
+            }
+        }
+
+        let candidates = vec![
+            CandidatePoint {
+                tick: 0,
+                gate: 20_000_000,
+                theta_pos: 20_000_000.0,
+                phase_in_gate: 0.0,
+                sources: vec![ClockSource::GateBoundary],
+            },
+            CandidatePoint {
+                tick: 1,
+                gate: 20_000_001,
+                theta_pos: 20_000_001.0,
+                phase_in_gate: 0.0,
+                sources: vec![ClockSource::GateBoundary],
+            },
+        ];
+        let timing_field = TimingField::from_values(20_000_000, vec![1.0, 1.0]);
+        let mut engine = PhonationEngine {
+            clock: Box::<ThetaGateClock>::default(),
+            interval: Box::new(RecordingInterval { log: log.clone() }),
+            connect: Box::new(FixedGateConnect::new(1)),
+            sub_theta_mod: Box::<NoneMod>::default(),
+            next_note_id: 0,
+            last_gate_index: None,
+            last_theta_pos: None,
+            active_notes: 0,
+        };
+        let state = CoreState { is_alive: true };
+        let mut cmds = Vec::new();
+        let mut events = Vec::new();
+        engine.process_candidates(
+            &candidates,
+            &timing_field,
+            &state,
+            None,
+            &mut cmds,
+            &mut events,
+        );
+        assert_eq!(*log.lock().expect("dt log"), vec![1.0, 1.0]);
+    }
+
+    #[test]
+    fn cosine_mod_has_unit_mean() {
+        let modulator = CosineHarmonicMod {
+            n: 3,
+            depth: 0.8,
+            phase0: 0.2,
+        };
+        let mut sum = 0.0;
+        let samples = 1000;
+        for i in 0..samples {
+            let phase = i as f32 / samples as f32;
+            sum += modulator.mod_at_phase(phase);
+        }
+        let avg = sum / samples as f32;
+        assert!((avg - 1.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn sub_theta_mod_biases_onset() {
+        let candidates = vec![
+            CandidatePoint {
+                tick: 0,
+                gate: 0,
+                theta_pos: 0.0,
+                phase_in_gate: 0.0,
+                sources: vec![ClockSource::GateBoundary],
+            },
+            CandidatePoint {
+                tick: 10,
+                gate: 0,
+                theta_pos: 0.5,
+                phase_in_gate: 0.5,
+                sources: vec![ClockSource::Subdivision { n: 2 }],
+            },
+            CandidatePoint {
+                tick: 20,
+                gate: 1,
+                theta_pos: 1.0,
+                phase_in_gate: 0.0,
+                sources: vec![ClockSource::GateBoundary],
+            },
+        ];
+        let timing_field = TimingField::from_values(0, vec![1.0, 1.0]);
+        let mut interval = AccumulatorInterval::new(1.0, 0, 1);
+        interval.acc = 0.0;
+        let mut engine = PhonationEngine {
+            clock: Box::<ThetaGateClock>::default(),
+            interval: Box::new(interval),
+            connect: Box::new(FixedGateConnect::new(1)),
+            sub_theta_mod: Box::new(CosineHarmonicMod {
+                n: 1,
+                depth: 1.0,
+                phase0: -std::f32::consts::PI,
+            }),
+            next_note_id: 0,
+            last_gate_index: None,
+            last_theta_pos: Some(0.0),
+            active_notes: 0,
+        };
+        let state = CoreState { is_alive: true };
+        let mut cmds = Vec::new();
+        let mut events = Vec::new();
+        engine.process_candidates(
+            &candidates,
+            &timing_field,
+            &state,
+            None,
+            &mut cmds,
+            &mut events,
+        );
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].onset_tick, 10);
+    }
+
+    #[test]
+    fn active_notes_tracks_note_on_and_off() {
+        let mut engine = PhonationEngine {
+            clock: Box::<ThetaGateClock>::default(),
+            interval: Box::new(AccumulatorInterval::new(1.0, 0, 1)),
+            connect: Box::new(FixedGateConnect::new(0)),
+            sub_theta_mod: Box::<NoneMod>::default(),
+            next_note_id: 0,
+            last_gate_index: None,
+            last_theta_pos: None,
+            active_notes: 0,
+        };
+        let state = CoreState { is_alive: true };
+        let timing_field = TimingField::from_values(0, vec![1.0]);
+        let candidates = vec![CandidatePoint {
+            tick: 0,
+            gate: 0,
+            theta_pos: 0.0,
+            phase_in_gate: 0.0,
+            sources: vec![ClockSource::GateBoundary],
+        }];
+        let mut cmds = Vec::new();
+        let mut events = Vec::new();
+        engine.process_candidates(
+            &candidates,
+            &timing_field,
+            &state,
+            None,
+            &mut cmds,
+            &mut events,
+        );
+        assert_eq!(engine.active_notes, 0, "note on/off should settle to zero");
+        assert!(
+            cmds.iter()
+                .any(|cmd| matches!(cmd, PhonationCmd::NoteOn { .. }))
+        );
+        assert!(
+            cmds.iter()
+                .any(|cmd| matches!(cmd, PhonationCmd::NoteOff { .. }))
+        );
+    }
+
+    #[test]
+    fn active_notes_increments_on_note_on() {
+        let mut engine = PhonationEngine {
+            clock: Box::<ThetaGateClock>::default(),
+            interval: Box::new(AccumulatorInterval::new(1.0, 0, 1)),
+            connect: Box::new(FixedGateConnect::new(1)),
+            sub_theta_mod: Box::<NoneMod>::default(),
+            next_note_id: 0,
+            last_gate_index: None,
+            last_theta_pos: None,
+            active_notes: 0,
+        };
+        let state = CoreState { is_alive: true };
+        let timing_field = TimingField::from_values(0, vec![1.0]);
+        let candidates = vec![CandidatePoint {
+            tick: 0,
+            gate: 0,
+            theta_pos: 0.0,
+            phase_in_gate: 0.0,
+            sources: vec![ClockSource::GateBoundary],
+        }];
+        let mut cmds = Vec::new();
+        let mut events = Vec::new();
+        engine.process_candidates(
+            &candidates,
+            &timing_field,
+            &state,
+            None,
+            &mut cmds,
+            &mut events,
+        );
+        assert_eq!(engine.active_notes, 1);
+        assert!(
+            cmds.iter()
+                .any(|cmd| matches!(cmd, PhonationCmd::NoteOn { .. }))
+        );
+        assert!(
+            !cmds
+                .iter()
+                .any(|cmd| matches!(cmd, PhonationCmd::NoteOff { .. }))
+        );
+    }
+
+    #[test]
+    fn tick_at_large_tick_precision() {
+        let grid = ThetaGrid {
+            boundaries: vec![
+                GateBoundary {
+                    gate: 0,
+                    tick: 100_000_000,
+                },
+                GateBoundary {
+                    gate: 1,
+                    tick: 100_000_100,
+                },
+            ],
+        };
+        assert_eq!(grid.tick_at(0, 0.5), Some(100_000_050));
+    }
+
+    #[test]
+    fn merge_candidates_keeps_distinct_gates() {
+        let candidates = vec![
+            CandidatePoint {
+                tick: 10,
+                gate: 0,
+                theta_pos: 0.0,
+                phase_in_gate: 0.0,
+                sources: vec![ClockSource::GateBoundary],
+            },
+            CandidatePoint {
+                tick: 10,
+                gate: 1,
+                theta_pos: 1.0,
+                phase_in_gate: 0.0,
+                sources: vec![ClockSource::GateBoundary],
+            },
+        ];
+        let merged = PhonationEngine::merge_candidates(candidates);
+        assert_eq!(merged.len(), 2);
+        assert_ne!(merged[0].gate, merged[1].gate);
+    }
+
+    #[test]
     fn fixed_gate_connect_releases_on_next_gate_tick() {
         let mut rhythms = NeuralRhythms::default();
         rhythms.env_open = 1.0;
@@ -862,16 +1543,19 @@ mod tests {
         }
 
         impl PhonationClock for StubClock {
-            fn gather_candidates(&mut self, ctx: &CoreTickCtx, out: &mut Vec<CandidateTick>) {
+            fn gather_candidates(&mut self, ctx: &CoreTickCtx, out: &mut Vec<CandidatePoint>) {
                 while self.index < self.ticks.len() {
                     let tick = self.ticks[self.index];
                     if tick < ctx.now_tick || tick >= ctx.frame_end {
                         return;
                     }
                     let gate = self.index as u64;
-                    out.push(CandidateTick {
-                        t: tick,
-                        theta_gate: gate,
+                    out.push(CandidatePoint {
+                        tick,
+                        gate,
+                        theta_pos: gate as f64,
+                        phase_in_gate: 0.0,
+                        sources: vec![ClockSource::GateBoundary],
                     });
                     self.index += 1;
                 }
@@ -885,8 +1569,10 @@ mod tests {
             }),
             interval: Box::new(interval),
             connect: Box::new(FixedGateConnect::new(1)),
+            sub_theta_mod: Box::<NoneMod>::default(),
             next_note_id: 0,
             last_gate_index: None,
+            last_theta_pos: None,
             active_notes: 0,
         };
         let state = CoreState { is_alive: true };

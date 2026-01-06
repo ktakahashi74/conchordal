@@ -2,6 +2,7 @@ use schemars::JsonSchema;
 use serde::{
     Deserialize, Serialize,
     de::{self, Deserializer},
+    ser::{SerializeMap, Serializer},
 };
 use std::collections::VecDeque;
 use std::fmt;
@@ -183,6 +184,183 @@ impl<'de> Deserialize<'de> for PhonationIntervalConfig {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SubdivisionClockConfig {
+    pub divisions: Vec<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct InternalPhaseClockConfig {
+    pub ratio: f32,
+    #[serde(default)]
+    pub phase0: f32,
+}
+
+#[derive(Debug, Clone, PartialEq, JsonSchema, Default)]
+pub enum PhonationClockConfig {
+    #[default]
+    ThetaGate,
+    Composite {
+        subdivision: Option<SubdivisionClockConfig>,
+        internal_phase: Option<InternalPhaseClockConfig>,
+    },
+}
+
+impl Serialize for PhonationClockConfig {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            PhonationClockConfig::ThetaGate => serializer.serialize_str("theta_gate"),
+            PhonationClockConfig::Composite {
+                subdivision,
+                internal_phase,
+            } => {
+                let mut map = serializer.serialize_map(None)?;
+                map.serialize_entry("type", "composite")?;
+                if let Some(config) = subdivision {
+                    map.serialize_entry("subdivision", config)?;
+                }
+                if let Some(config) = internal_phase {
+                    map.serialize_entry("internal_phase", config)?;
+                }
+                map.end()
+            }
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for PhonationClockConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = Value::deserialize(deserializer)?;
+        match value {
+            Value::String(s) => {
+                let lowered = s.to_ascii_lowercase();
+                match lowered.as_str() {
+                    "theta_gate" | "thetagate" => Ok(Self::ThetaGate),
+                    _ => Err(de::Error::custom(format!(
+                        "phonation clock must be \"theta_gate\" (got \"{s}\")"
+                    ))),
+                }
+            }
+            Value::Object(map) => {
+                let ty = map
+                    .get("type")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("composite");
+                match ty {
+                    "composite" => {
+                        let mut subdivision = None;
+                        let mut internal_phase = None;
+                        for (k, v) in map {
+                            match k.as_str() {
+                                "type" => {}
+                                "subdivision" => {
+                                    subdivision = Some(
+                                        SubdivisionClockConfig::deserialize(v)
+                                            .map_err(de::Error::custom)?,
+                                    );
+                                }
+                                "internal_phase" => {
+                                    internal_phase = Some(
+                                        InternalPhaseClockConfig::deserialize(v)
+                                            .map_err(de::Error::custom)?,
+                                    );
+                                }
+                                _ => {
+                                    return Err(de::Error::custom(format!(
+                                        "phonation clock has unknown key: {k}"
+                                    )));
+                                }
+                            }
+                        }
+                        Ok(Self::Composite {
+                            subdivision,
+                            internal_phase,
+                        })
+                    }
+                    _ => Err(de::Error::custom(format!(
+                        "phonation clock type must be \"composite\" (got \"{ty}\")"
+                    ))),
+                }
+            }
+            _ => Err(de::Error::custom("phonation clock must be a string or map")),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, JsonSchema, Default)]
+pub enum SubThetaModConfig {
+    #[default]
+    None,
+    Cosine {
+        n: u32,
+        depth: f32,
+        phase0: f32,
+    },
+}
+
+impl Serialize for SubThetaModConfig {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            SubThetaModConfig::None => serializer.serialize_str("none"),
+            SubThetaModConfig::Cosine { n, depth, phase0 } => {
+                let mut map = serializer.serialize_map(None)?;
+                map.serialize_entry("type", "cosine")?;
+                map.serialize_entry("n", n)?;
+                map.serialize_entry("depth", depth)?;
+                map.serialize_entry("phase0", phase0)?;
+                map.end()
+            }
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for SubThetaModConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = Value::deserialize(deserializer)?;
+        match value {
+            Value::String(s) => {
+                let lowered = s.to_ascii_lowercase();
+                match lowered.as_str() {
+                    "none" => Ok(Self::None),
+                    _ => Err(de::Error::custom(format!(
+                        "sub_theta_mod must be \"none\" (got \"{s}\")"
+                    ))),
+                }
+            }
+            Value::Object(map) => {
+                let ty = map.get("type").and_then(|v| v.as_str()).unwrap_or("cosine");
+                match ty {
+                    "cosine" => {
+                        let n = map.get("n").and_then(|v| v.as_u64()).unwrap_or(1) as u32;
+                        let depth = map.get("depth").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                        let phase0 =
+                            map.get("phase0").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                        Ok(Self::Cosine { n, depth, phase0 })
+                    }
+                    _ => Err(de::Error::custom(format!(
+                        "sub_theta_mod type must be \"cosine\" (got \"{ty}\")"
+                    ))),
+                }
+            }
+            _ => Err(de::Error::custom("sub_theta_mod must be a string or map")),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum PhonationConnectConfig {
@@ -240,6 +418,8 @@ pub struct PhonationConfig {
     pub timing: BirthTiming,
     pub interval: PhonationIntervalConfig,
     pub connect: PhonationConnectConfig,
+    pub clock: PhonationClockConfig,
+    pub sub_theta_mod: SubThetaModConfig,
 }
 
 impl Default for PhonationConfig {
@@ -249,6 +429,8 @@ impl Default for PhonationConfig {
             timing: BirthTiming::Gate,
             interval: PhonationIntervalConfig::None,
             connect: PhonationConnectConfig::default(),
+            clock: PhonationClockConfig::default(),
+            sub_theta_mod: SubThetaModConfig::default(),
         }
     }
 }
@@ -266,18 +448,24 @@ impl<'de> Deserialize<'de> for PhonationConfig {
                     timing: BirthTiming::Gate,
                     interval: PhonationIntervalConfig::None,
                     connect: PhonationConnectConfig::default(),
+                    clock: PhonationClockConfig::default(),
+                    sub_theta_mod: SubThetaModConfig::default(),
                 }),
                 "immediate" => Ok(Self {
                     on_birth: OnBirthPhonation::Once,
                     timing: BirthTiming::Immediate,
                     interval: PhonationIntervalConfig::None,
                     connect: PhonationConnectConfig::default(),
+                    clock: PhonationClockConfig::default(),
+                    sub_theta_mod: SubThetaModConfig::default(),
                 }),
                 "off" => Ok(Self {
                     on_birth: OnBirthPhonation::Off,
                     timing: BirthTiming::Gate,
                     interval: PhonationIntervalConfig::None,
                     connect: PhonationConnectConfig::default(),
+                    clock: PhonationClockConfig::default(),
+                    sub_theta_mod: SubThetaModConfig::default(),
                 }),
                 _ => Err(de::Error::custom(format!(
                     "phonation must be \"once\", \"immediate\", or \"off\" (got \"{s}\")"
@@ -288,6 +476,8 @@ impl<'de> Deserialize<'de> for PhonationConfig {
                 let mut timing = BirthTiming::Gate;
                 let mut interval = PhonationIntervalConfig::None;
                 let mut connect = PhonationConnectConfig::default();
+                let mut clock = PhonationClockConfig::default();
+                let mut sub_theta_mod = SubThetaModConfig::default();
                 for (k, v) in map {
                     match k.as_str() {
                         "on_birth" => {
@@ -326,6 +516,14 @@ impl<'de> Deserialize<'de> for PhonationConfig {
                             connect = PhonationConnectConfig::deserialize(v)
                                 .map_err(de::Error::custom)?;
                         }
+                        "clock" => {
+                            clock =
+                                PhonationClockConfig::deserialize(v).map_err(de::Error::custom)?;
+                        }
+                        "sub_theta_mod" => {
+                            sub_theta_mod =
+                                SubThetaModConfig::deserialize(v).map_err(de::Error::custom)?;
+                        }
                         _ => {
                             return Err(de::Error::custom(format!(
                                 "phonation has unknown key: {k}"
@@ -338,6 +536,8 @@ impl<'de> Deserialize<'de> for PhonationConfig {
                     timing,
                     interval,
                     connect,
+                    clock,
+                    sub_theta_mod,
                 })
             }
             _ => Err(de::Error::custom("phonation must be a string or map")),

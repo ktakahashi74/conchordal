@@ -33,7 +33,7 @@ session url="":
 	fi
 	@cat "{{SESSION_FILE}}"
 
-pack:
+snap:
 	@{{REPOMIX_CMD}} --config repomix.config.json; \
 	if [ -f "{{CONTEXT_FILE}}" ]; then \
 		mv "{{CONTEXT_FILE}}" "context-{{TS}}.xml"; \

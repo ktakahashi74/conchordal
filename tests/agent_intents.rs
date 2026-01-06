@@ -39,6 +39,8 @@ fn agents_publish_intents_and_render_audio() {
     let mut landscape = Landscape::new(space.clone());
     landscape.rhythm.theta.freq_hz = 6.0;
     landscape.rhythm.theta.phase = -0.01;
+    landscape.rhythm.env_open = 1.0;
+    landscape.rhythm.env_level = 1.0;
 
     let phonation_batches = pop.publish_intents(&mut world, &landscape, 0);
     assert!(!phonation_batches.is_empty());
@@ -81,6 +83,8 @@ fn publish_intents_runs_when_gate_in_hop_window() {
     let mut landscape = Landscape::new(space.clone());
     landscape.rhythm.theta.freq_hz = 6.0;
     landscape.rhythm.theta.phase = -0.01;
+    landscape.rhythm.env_open = 1.0;
+    landscape.rhythm.env_level = 1.0;
 
     let now: Tick = 0;
     let batches = pop.publish_intents(&mut world, &landscape, now);
@@ -89,6 +93,8 @@ fn publish_intents_runs_when_gate_in_hop_window() {
     let mut landscape_off = Landscape::new(space);
     landscape_off.rhythm.theta.freq_hz = 1.0;
     landscape_off.rhythm.theta.phase = 0.0;
+    landscape_off.rhythm.env_open = 1.0;
+    landscape_off.rhythm.env_level = 1.0;
     let mut world_off = WorldModel::new(tb, Log2Space::new(20.0, 20_000.0, 24));
     let mut pop_off = Population::new(tb);
     let agent = agent_cfg.spawn(1, 0, metadata, tb.fs, 0);

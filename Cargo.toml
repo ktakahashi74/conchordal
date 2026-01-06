@@ -35,7 +35,6 @@ egui = "0.33"
 egui_plot = "0.34"
 
 # Concurrency
-rayon = "1.10"
 crossbeam-channel = "0.5"
 
 # DSP / Math

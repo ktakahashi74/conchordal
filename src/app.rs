@@ -475,7 +475,7 @@ fn init_runtime(
     let runtime_sample_rate: u32 = if args.play {
         let device_rate = audio_out
             .as_ref()
-            .map(|out| out.config.sample_rate.0)
+            .map(|out| out.config.sample_rate)
             .unwrap_or(config.audio.sample_rate);
         if device_rate != config.audio.sample_rate {
             debug!(

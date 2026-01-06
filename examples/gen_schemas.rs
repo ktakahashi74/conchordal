@@ -4,10 +4,8 @@ use std::fs;
 use std::path::Path;
 
 use conchordal::life::scenario::{LifeConfig, SpawnMethod, TimbreGenotype};
-use schemars::schema::{
-    InstanceType, RootSchema, Schema, SchemaObject, SingleOrVec, SubschemaValidation,
-};
-use schemars::schema_for;
+use schemars::{Schema, schema_for};
+use serde_json::{Map, Value};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let out_dir = Path::new("docs/schemas");
@@ -20,20 +18,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn write_schema_markdown(
-    name: &str,
-    root: &RootSchema,
-    out_dir: &Path,
-) -> Result<(), Box<dyn Error>> {
+fn write_schema_markdown(name: &str, root: &Schema, out_dir: &Path) -> Result<(), Box<dyn Error>> {
     let mut output = String::new();
-    let root_schema = Schema::Object(root.schema.clone());
-    append_schema_section(&mut output, "Root", &root_schema);
+    append_schema_section(&mut output, "Root", root);
 
-    let defs: BTreeMap<String, Schema> = root
-        .definitions
-        .iter()
-        .map(|(k, v)| (k.to_string(), v.clone()))
-        .collect();
+    let defs = schema_definitions(root);
 
     for (def_name, schema) in defs.iter() {
         output.push('\n');
@@ -47,20 +36,22 @@ fn write_schema_markdown(
 }
 
 fn append_schema_section(output: &mut String, label: &str, schema: &Schema) {
-    match schema {
-        Schema::Bool(_) => {
+    match schema.as_bool() {
+        Some(_) => {
             output.push_str(&format!("{label}: any\n"));
         }
-        Schema::Object(obj) => {
+        None => {
+            let Some(obj) = schema.as_object() else {
+                output.push_str(&format!("{label}: any\n"));
+                return;
+            };
             if let Some(table) = schema_object_table(obj) {
                 output.push_str(&table);
                 return;
             }
 
-            if let Some(subschemas) = &obj.subschemas {
-                if append_variant_tables(output, subschemas) {
-                    return;
-                }
+            if append_variant_tables(output, obj) {
+                return;
             }
 
             let summary = schema_object_summary(obj);
@@ -69,11 +60,10 @@ fn append_schema_section(output: &mut String, label: &str, schema: &Schema) {
     }
 }
 
-fn schema_object_table(obj: &SchemaObject) -> Option<String> {
+fn schema_object_table(obj: &Map<String, Value>) -> Option<String> {
     let properties = obj
-        .object
-        .as_ref()
-        .map(|o| &o.properties)
+        .get("properties")
+        .and_then(Value::as_object)
         .filter(|props| !props.is_empty())?;
 
     let mut out = String::new();
@@ -94,13 +84,16 @@ fn schema_object_table(obj: &SchemaObject) -> Option<String> {
     Some(out)
 }
 
-fn append_variant_tables(output: &mut String, subschemas: &SubschemaValidation) -> bool {
-    let variants = subschemas
-        .one_of
-        .as_ref()
-        .or(subschemas.any_of.as_ref())
-        .filter(|list| !list.is_empty());
-
+fn append_variant_tables(output: &mut String, obj: &Map<String, Value>) -> bool {
+    let variants = obj
+        .get("oneOf")
+        .and_then(Value::as_array)
+        .filter(|list| !list.is_empty())
+        .or_else(|| {
+            obj.get("anyOf")
+                .and_then(Value::as_array)
+                .filter(|list| !list.is_empty())
+        });
     let Some(variants) = variants else {
         return false;
     };
@@ -109,7 +102,7 @@ fn append_variant_tables(output: &mut String, subschemas: &SubschemaValidation) 
     for (idx, schema) in variants.iter().enumerate() {
         let name = variant_name(schema).unwrap_or_else(|| format!("Variant {idx}"));
         output.push_str(&format!("### {name}\n\n"));
-        if let Schema::Object(obj) = schema {
+        if let Some(obj) = schema.as_object() {
             if let Some(table) = schema_object_table(obj) {
                 output.push_str(&table);
                 emitted = true;
@@ -125,11 +118,11 @@ fn append_variant_tables(output: &mut String, subschemas: &SubschemaValidation) 
     emitted
 }
 
-fn schema_object_summary(obj: &SchemaObject) -> String {
-    if let Some(values) = &obj.enum_values {
+fn schema_object_summary(obj: &Map<String, Value>) -> String {
+    if let Some(values) = obj.get("enum").and_then(Value::as_array) {
         let items = values
             .iter()
-            .filter_map(|v| v.as_str())
+            .filter_map(Value::as_str)
             .collect::<Vec<_>>()
             .join(", ");
         if !items.is_empty() {
@@ -137,81 +130,87 @@ fn schema_object_summary(obj: &SchemaObject) -> String {
         }
     }
 
-    if let Some(reference) = &obj.reference {
+    if let Some(reference) = obj.get("$ref").and_then(Value::as_str) {
         return format!("Reference: {reference}");
     }
 
     "Schema details are complex; see JSON schema.".to_string()
 }
 
-fn schema_summary(schema: &Schema) -> String {
+fn schema_summary(schema: &Value) -> String {
     match schema {
-        Schema::Bool(_) => "Schema details are complex; see JSON schema.".to_string(),
-        Schema::Object(obj) => schema_object_summary(obj),
+        Value::Bool(_) => "Schema details are complex; see JSON schema.".to_string(),
+        Value::Object(obj) => schema_object_summary(obj),
+        _ => "Schema details are complex; see JSON schema.".to_string(),
     }
 }
 
-fn schema_type_name(schema: &Schema) -> String {
+fn schema_type_name(schema: &Value) -> String {
     match schema {
-        Schema::Bool(_) => "any".to_string(),
-        Schema::Object(obj) => {
-            if let Some(reference) = &obj.reference {
+        Value::Bool(_) => "any".to_string(),
+        Value::Object(obj) => {
+            if let Some(reference) = obj.get("$ref").and_then(Value::as_str) {
                 return reference_name(reference);
             }
 
-            if let Some(instance_type) = &obj.instance_type {
+            if let Some(instance_type) = obj.get("type") {
                 return match instance_type {
-                    SingleOrVec::Single(t) => instance_type_name(t, obj),
-                    SingleOrVec::Vec(list) => {
+                    Value::String(t) => instance_type_name(t, obj),
+                    Value::Array(list) => {
                         let mut names = list
                             .iter()
+                            .filter_map(Value::as_str)
                             .map(|t| instance_type_name(t, obj))
                             .collect::<Vec<_>>();
                         names.sort();
                         names.join(" or ")
                     }
+                    _ => "object".to_string(),
                 };
             }
 
-            if obj.subschemas.is_some() {
+            if obj.get("oneOf").is_some() || obj.get("anyOf").is_some() {
                 return "enum/union".to_string();
             }
 
             "object".to_string()
         }
+        _ => "any".to_string(),
     }
 }
 
-fn instance_type_name(instance_type: &InstanceType, obj: &SchemaObject) -> String {
+fn instance_type_name(instance_type: &str, obj: &Map<String, Value>) -> String {
     match instance_type {
-        InstanceType::Array => array_item_type(obj).unwrap_or_else(|| "array".to_string()),
-        InstanceType::Boolean => "bool".to_string(),
-        InstanceType::Integer => "integer".to_string(),
-        InstanceType::Null => "null".to_string(),
-        InstanceType::Number => "number".to_string(),
-        InstanceType::Object => "object".to_string(),
-        InstanceType::String => "string".to_string(),
+        "array" => array_item_type(obj).unwrap_or_else(|| "array".to_string()),
+        "boolean" => "bool".to_string(),
+        "integer" => "integer".to_string(),
+        "null" => "null".to_string(),
+        "number" => "number".to_string(),
+        "object" => "object".to_string(),
+        "string" => "string".to_string(),
+        _ => "object".to_string(),
     }
 }
 
-fn array_item_type(obj: &SchemaObject) -> Option<String> {
-    let items = obj.array.as_ref()?.items.as_ref()?;
+fn array_item_type(obj: &Map<String, Value>) -> Option<String> {
+    let items = obj.get("items")?;
     let item_schema = match items {
-        SingleOrVec::Single(schema) => schema,
-        SingleOrVec::Vec(list) => list.first()?,
+        Value::Object(_) | Value::Bool(_) => items,
+        Value::Array(list) => list.first()?,
+        _ => return None,
     };
     Some(format!("{}[]", schema_type_name(item_schema)))
 }
 
-fn schema_description(schema: &Schema) -> String {
+fn schema_description(schema: &Value) -> String {
     match schema {
-        Schema::Bool(_) => String::new(),
-        Schema::Object(obj) => obj
-            .metadata
-            .as_ref()
-            .and_then(|m| m.description.as_ref())
-            .cloned()
-            .unwrap_or_default(),
+        Value::Bool(_) => String::new(),
+        Value::Object(obj) => obj
+            .get("description")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        _ => String::new(),
     }
 }
 
@@ -223,21 +222,36 @@ fn reference_name(reference: &str) -> String {
         .unwrap_or_else(|| reference.to_string())
 }
 
-fn variant_name(schema: &Schema) -> Option<String> {
-    let Schema::Object(obj) = schema else {
-        return None;
-    };
-    let props = &obj.object.as_ref()?.properties;
+fn variant_name(schema: &Value) -> Option<String> {
+    let obj = schema.as_object()?;
+    let props = obj.get("properties")?.as_object()?;
     let prop = props
         .get("mode")
         .or_else(|| props.get("core"))
         .or_else(|| props.get("type"))?;
-    if let Schema::Object(prop_obj) = prop {
-        if let Some(values) = &prop_obj.enum_values {
-            if let Some(value) = values.first().and_then(|v| v.as_str()) {
-                return Some(value.to_string());
-            }
-        }
-    }
-    None
+    let prop_obj = prop.as_object()?;
+    let values = prop_obj.get("enum")?.as_array()?;
+    values
+        .first()
+        .and_then(Value::as_str)
+        .map(|v| v.to_string())
+}
+
+fn schema_definitions(root: &Schema) -> BTreeMap<String, Schema> {
+    let Some(obj) = root.as_object() else {
+        return BTreeMap::new();
+    };
+    let defs = obj
+        .get("$defs")
+        .or_else(|| obj.get("definitions"))
+        .and_then(Value::as_object);
+    let Some(defs) = defs else {
+        return BTreeMap::new();
+    };
+    defs.iter()
+        .filter_map(|(k, v)| {
+            let schema = Schema::try_from(v.clone()).ok()?;
+            Some((k.to_string(), schema))
+        })
+        .collect()
 }

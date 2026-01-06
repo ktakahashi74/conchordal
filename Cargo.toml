@@ -27,7 +27,7 @@ lto = true
 anyhow = "1.0"
 
 clap = { version = "4.5", features = ["derive"]}
-ctrlc = "3.4"
+ctrlc = "3.5"
 
 # GUI
 eframe = "0.33"
@@ -44,22 +44,22 @@ rand = "0.9"
 # Serde for future config
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-schemars = { version = "0.8", features = ["derive"] }
-toml = "0.8"
+schemars = { version = "1.2", features = ["derive"] }
+toml = "0.9"
 
 # Logging / tracing (optional)
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 
 # Audio I/O
-cpal = "0.15"
+cpal = "0.17"
 hound = "3.5"
 
 ringbuf = "0.4"
-approx = "0.5"
-rhai = { version = "1.19", features = ["metadata", "serde"] }
+rhai = { version = "1.23", features = ["metadata", "serde"] }
 
 [dev-dependencies]
+approx = "0.5"
 plotters = "0.3"
 rhai-autodocs = "0.10"
 walkdir = "2.5"

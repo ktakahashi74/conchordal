@@ -22,12 +22,12 @@ impl AudioOutput {
         let supported_config = device
             .default_output_config()
             .context("No default config")?;
-        let sample_rate = supported_config.sample_rate().0;
+        let sample_rate = supported_config.sample_rate();
         let channels = supported_config.channels();
 
         let config = cpal::StreamConfig {
             channels,
-            sample_rate: cpal::SampleRate(sample_rate),
+            sample_rate,
             buffer_size: cpal::BufferSize::Default,
         };
 

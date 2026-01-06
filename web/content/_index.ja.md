@@ -4,11 +4,11 @@ description = "A bio-acoustic instrument for generative composition"
 +++
 
 
-Conchordalは生体模倣の音響エコシステム。
+Conchordalは、音と認知が直接つながる生成音楽エンジンです。
 
-音は記号ではなく、認知という大地の上で、呼吸する生命として響き合う。
+音を配置するのではなく、音が自ら調和を見つけ出す。
 
-なぜそこにその音なのか——響きが生む引力。
+なぜそこにその音なのか。失われた音楽の引力を取り戻す。
 
 [→ Manifesto](/ja/manifesto/)
 

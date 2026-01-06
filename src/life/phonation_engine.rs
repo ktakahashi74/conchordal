@@ -57,13 +57,28 @@ pub struct ThetaGrid {
 }
 
 impl ThetaGrid {
+    /// Input candidates must be sorted by tick ascending.
     pub fn from_candidates(candidates: &[CandidateTick]) -> Self {
+        debug_assert!(
+            candidates.windows(2).all(|p| p[0].t <= p[1].t),
+            "candidates must be sorted by tick"
+        );
         let mut boundaries = Vec::with_capacity(candidates.len());
+        let mut last_gate = None;
         for candidate in candidates {
+            if let Some(prev_gate) = last_gate {
+                if candidate.theta_gate < prev_gate {
+                    panic!("candidate gates must be non-decreasing");
+                }
+                if candidate.theta_gate == prev_gate {
+                    continue;
+                }
+            }
             boundaries.push(GateBoundary {
                 gate: candidate.theta_gate,
                 tick: candidate.t,
             });
+            last_gate = Some(candidate.theta_gate);
         }
         Self { boundaries }
     }
@@ -81,15 +96,28 @@ impl TimingField {
     }
 
     pub fn build_from(ctx: &CoreTickCtx, grid: &ThetaGrid) -> Self {
+        const MAX_GATES_PER_HOP: u64 = 4096;
         if grid.boundaries.is_empty() {
             return Self {
                 start_gate: 0,
                 e_gate: Vec::new(),
             };
         }
+        debug_assert!(
+            grid.boundaries
+                .windows(2)
+                .all(|pair| pair[0].tick <= pair[1].tick)
+        );
+        debug_assert!(
+            grid.boundaries
+                .windows(2)
+                .all(|pair| pair[0].gate < pair[1].gate)
+        );
         let mut rhythms = ctx.rhythms;
         let mut cursor_tick = ctx.now_tick;
         let mut e_gate = Vec::with_capacity(grid.boundaries.len());
+        let mut expected_gate = grid.boundaries[0].gate;
+        let mut last_weight = None;
         for boundary in &grid.boundaries {
             if boundary.tick > cursor_tick {
                 let dt_sec = (boundary.tick - cursor_tick) as f32 / ctx.fs;
@@ -97,7 +125,18 @@ impl TimingField {
                 cursor_tick = boundary.tick;
             }
             let weight = (rhythms.env_open * rhythms.env_level).clamp(0.0, 1.0);
+            if boundary.gate > expected_gate {
+                let fill_weight = last_weight.unwrap_or(1.0);
+                let missing = boundary.gate - expected_gate;
+                if missing > MAX_GATES_PER_HOP {
+                    panic!("timing field gap too large: missing={missing}");
+                }
+                // Fill gaps to keep gate-indexed lookups contiguous.
+                e_gate.extend(std::iter::repeat_n(fill_weight, missing as usize));
+            }
             e_gate.push(weight);
+            last_weight = Some(weight);
+            expected_gate = boundary.gate.saturating_add(1);
         }
         Self {
             start_gate: grid.boundaries[0].gate,
@@ -379,6 +418,28 @@ impl PhonationEngine {
         candidates.sort_by_key(|c| c.t);
         let timing_grid = ThetaGrid::from_candidates(&candidates);
         let timing_field = TimingField::build_from(ctx, &timing_grid);
+        self.process_candidates(
+            &candidates,
+            &timing_field,
+            ctx,
+            state,
+            birth_onset_tick,
+            out_cmds,
+            out_events,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn process_candidates(
+        &mut self,
+        candidates: &[CandidateTick],
+        timing_field: &TimingField,
+        _ctx: &CoreTickCtx,
+        state: &CoreState,
+        birth_onset_tick: Option<Tick>,
+        out_cmds: &mut Vec<PhonationCmd>,
+        out_events: &mut Vec<PhonationNoteEvent>,
+    ) -> bool {
         let mut birth_applied = false;
         let mut prev_gate = None;
         for c in candidates {
@@ -386,10 +447,10 @@ impl PhonationEngine {
                 self.notify_birth_onset(c.theta_gate);
                 birth_applied = true;
             }
-            let dt_theta = prev_gate
-                .map(|gate| c.theta_gate.saturating_sub(gate) as f32)
-                .filter(|dt| *dt > 0.0)
-                .unwrap_or(1.0);
+            let dt_theta = match prev_gate {
+                Some(gate) => c.theta_gate.saturating_sub(gate) as f32,
+                None => 1.0,
+            };
             let input = IntervalInput {
                 gate: c.theta_gate,
                 tick: c.t,
@@ -630,48 +691,27 @@ mod tests {
 
     #[test]
     fn phonation_engine_uses_timing_field_weight() {
-        let mut rhythms = NeuralRhythms::default();
-        rhythms.env_open = 0.0;
-        rhythms.env_level = 1.0;
-        rhythms.delta.phase = std::f32::consts::PI;
-        rhythms.delta.freq_hz = 125.0;
-        rhythms.delta.mag = 1.0;
-        rhythms.delta.alpha = 1.0;
         let ctx = CoreTickCtx {
             now_tick: 0,
             frame_end: 8,
             fs: 1000.0,
-            rhythms,
+            rhythms: NeuralRhythms::default(),
         };
-        struct StubClock {
-            ticks: Vec<Tick>,
-            index: usize,
-        }
-
-        impl PhonationClock for StubClock {
-            fn gather_candidates(&mut self, ctx: &CoreTickCtx, out: &mut Vec<CandidateTick>) {
-                while self.index < self.ticks.len() {
-                    let tick = self.ticks[self.index];
-                    if tick < ctx.now_tick || tick >= ctx.frame_end {
-                        return;
-                    }
-                    let gate = self.index as u64;
-                    out.push(CandidateTick {
-                        t: tick,
-                        theta_gate: gate,
-                    });
-                    self.index += 1;
-                }
-            }
-        }
-
+        let candidates = vec![
+            CandidateTick {
+                t: 0,
+                theta_gate: 0,
+            },
+            CandidateTick {
+                t: 4,
+                theta_gate: 1,
+            },
+        ];
+        let timing_field = TimingField::from_values(0, vec![0.0, 1.0]);
         let mut interval = AccumulatorInterval::new(1.0, 0, 1);
         interval.acc = 0.0;
         let mut engine = PhonationEngine {
-            clock: Box::new(StubClock {
-                ticks: vec![0, 4],
-                index: 0,
-            }),
+            clock: Box::<ThetaGateClock>::default(),
             interval: Box::new(interval),
             connect: Box::new(FixedGateConnect::new(1)),
             next_note_id: 0,
@@ -681,9 +721,126 @@ mod tests {
         let state = CoreState { is_alive: true };
         let mut cmds = Vec::new();
         let mut events = Vec::new();
-        engine.tick(&ctx, &state, None, &mut cmds, &mut events);
+        engine.process_candidates(
+            &candidates,
+            &timing_field,
+            &ctx,
+            &state,
+            None,
+            &mut cmds,
+            &mut events,
+        );
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].onset_tick, 4);
+    }
+
+    #[test]
+    fn timing_field_indexing_from_values() {
+        let timing_field = TimingField::from_values(10, vec![0.2, 0.8]);
+        assert_eq!(timing_field.e(10), 0.2);
+        assert_eq!(timing_field.e(11), 0.8);
+        assert_eq!(timing_field.e(12), 1.0);
+    }
+
+    #[test]
+    fn timing_field_build_from_uses_env_gate() {
+        let mut rhythms = NeuralRhythms::default();
+        rhythms.env_open = 0.0;
+        rhythms.env_level = 1.0;
+        let ctx = CoreTickCtx {
+            now_tick: 0,
+            frame_end: 4,
+            fs: 1000.0,
+            rhythms,
+        };
+        let grid = ThetaGrid {
+            boundaries: vec![GateBoundary { gate: 0, tick: 0 }],
+        };
+        let timing_field = TimingField::build_from(&ctx, &grid);
+        assert_eq!(timing_field.e(0), 0.0);
+    }
+
+    #[test]
+    fn theta_grid_skips_duplicate_gates() {
+        let candidates = vec![
+            CandidateTick {
+                t: 0,
+                theta_gate: 0,
+            },
+            CandidateTick {
+                t: 1,
+                theta_gate: 0,
+            },
+            CandidateTick {
+                t: 2,
+                theta_gate: 1,
+            },
+        ];
+        let grid = ThetaGrid::from_candidates(&candidates);
+        assert_eq!(
+            grid.boundaries,
+            vec![
+                GateBoundary { gate: 0, tick: 0 },
+                GateBoundary { gate: 1, tick: 2 },
+            ]
+        );
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic]
+    fn theta_grid_panics_on_reverse_gates() {
+        let candidates = vec![
+            CandidateTick {
+                t: 0,
+                theta_gate: 1,
+            },
+            CandidateTick {
+                t: 1,
+                theta_gate: 0,
+            },
+        ];
+        let _ = ThetaGrid::from_candidates(&candidates);
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic]
+    fn theta_grid_panics_on_unsorted_ticks() {
+        let candidates = vec![
+            CandidateTick {
+                t: 2,
+                theta_gate: 0,
+            },
+            CandidateTick {
+                t: 1,
+                theta_gate: 1,
+            },
+        ];
+        let _ = ThetaGrid::from_candidates(&candidates);
+    }
+
+    #[test]
+    fn timing_field_fill_missing_gates() {
+        let mut rhythms = NeuralRhythms::default();
+        rhythms.env_open = 0.5;
+        rhythms.env_level = 1.0;
+        let ctx = CoreTickCtx {
+            now_tick: 0,
+            frame_end: 1,
+            fs: 1000.0,
+            rhythms,
+        };
+        let grid = ThetaGrid {
+            boundaries: vec![
+                GateBoundary { gate: 0, tick: 0 },
+                GateBoundary { gate: 2, tick: 0 },
+            ],
+        };
+        let timing_field = TimingField::build_from(&ctx, &grid);
+        assert_eq!(timing_field.e(0), 0.5);
+        assert_eq!(timing_field.e(1), 0.5);
+        assert_eq!(timing_field.e(2), 0.5);
     }
 
     #[test]

@@ -81,13 +81,13 @@
                     <a class="nav-link" href="{% if lang == 'ja' %}/ja{% else %}/{% endif %}#page-top">Home</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="{% if lang == 'ja' %}/ja/manifesto{% else %}/manifesto{% endif %}">Manifesto</a>
+                    <a class="nav-link" href="{{ get_url(path='@/manifesto.md', lang=lang) }}">Manifesto</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="/technote">Technote</a>
+                    <a class="nav-link" href="{{ get_url(path='@/technote.md', lang=lang) }}">Technote</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="{% if lang == 'ja' %}/ja/docs{% else %}/docs{% endif %}">Docs</a>
+                    <a class="nav-link" href="{{ get_url(path='@/docs/_index.md', lang=lang) }}">Docs</a>
                 </li>
                 <li class="nav-item">
                     <a class="nav-link" href="{{ config.extra.github_url }}" target="_blank" rel="noopener"><i class="fa-brands fa-github"></i> GitHub</a>

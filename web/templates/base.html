@@ -3,7 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <!-- TODO: Remove this meta tag when ready for public launch -->
     <title>{% block title %}{{ config.title }}{% endblock title %}</title>
     <meta name="description" content="{% block description %}{% if lang == 'ja' %}直接認知結合による生成音楽システム{% else %}A bio-acoustic instrument for generative composition{% endif %}{% endblock description %}">
     <meta name="keywords" content="{% if lang == 'ja' %}生成音楽, 直接認知結合, 音響エコシステム, 人工生命, 協和, 音楽認知, アルゴリズム作曲{% else %}generative music, direct cognitive coupling, acoustic ecosystem, artificial life, consonance, music cognition, algorithmic composition{% endif %}">
@@ -61,13 +60,13 @@
                     <a href="{% if lang == 'ja' %}/ja{% else %}/{% endif %}" class="nav-link">
                         Home
                     </a>
-                    <a href="{% if lang == 'ja' %}/ja/manifesto{% else %}/manifesto{% endif %}" class="nav-link">
+                    <a href="{{ get_url(path='@/manifesto.md', lang=lang) }}" class="nav-link">
                         Manifesto
                     </a>
-                    <a href="/technote" class="nav-link">
+                    <a href="{{ get_url(path='@/technote.md', lang=lang) }}" class="nav-link">
                         Technote
                     </a>
-                    <a href="{% if lang == 'ja' %}/ja/docs{% else %}/docs{% endif %}" class="nav-link">
+                    <a href="{{ get_url(path='@/docs/_index.md', lang=lang) }}" class="nav-link">
                         Docs
                     </a>
                     <a href="{{ config.extra.github_url }}" class="nav-link" target="_blank" rel="noopener">

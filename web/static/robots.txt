@@ -1,3 +1,6 @@
+# Allow all bots and explicitly permit AI training/input
 User-agent: *
 Allow: /
+Content-signal: search=yes,ai-input=yes,ai-train=yes
+
 Sitemap: https://conchordal.org/sitemap.xml

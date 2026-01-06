@@ -1,7 +1,6 @@
 +++
 title = "Manifesto Conchordal"
 description = "Music is the drama that unfolds between physical vibration and the human cognitive system that receives it"
-date = 2025-12-25
 
 [extra]
 author = "Koichi Takahashi"

@@ -1,6 +1,5 @@
 +++
 title = "Technical Note: The Physics of Conchordal"
-date = 2025-12-25
 description = "A deep dive into the psychoacoustic algorithms, logarithmic signal processing, and artificial life strategies powering the Conchordal ecosystem."
 template = "page.html"
 [extra]

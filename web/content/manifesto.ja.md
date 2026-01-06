@@ -1,7 +1,6 @@
 +++
 title = "Manifesto Conchordal"
 description = "音楽とは、物理的な振動現象と、それを受け取る人間の認知システムとの間に生じる相互作用の劇である"
-date = 2025-12-25
 
 [extra]
 author = "髙橋恒一"

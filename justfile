@@ -45,7 +45,7 @@ snap:
 	if [[ "${loc}" == ja* || "${loc}" == *ja_JP* || "${loc}" == *_JP* ]]; then \
 		lang_line="Language: Please respond in Japanese."; \
 	else \
-		lang_line="Language: Please respond in English."; \
+		lang_line=""; \
 	fi; \
 	request_body="Review the attached diff (and logs/errors if present) and verify the implementation is complete and correct relative to the intended spec. If anything is incomplete, inconsistent, or risky (including missing tests), produce a Codex-ready fix prompt as a bullet list (include additional tests/verification steps when needed)."; \
 	{ \
@@ -54,7 +54,7 @@ snap:
 		echo "I'm uploading context.xml and diff.patch for review."; \
 		echo ""; \
 		echo "## Request"; \
-		printf '%s\n' "${lang_line}"; \
+		if [ -n "${lang_line}" ]; then printf '%s\n' "${lang_line}"; fi; \
 		printf '%s\n' "${request_body}"; \
 	} > "{{REQUEST_FILE}}"; \
 	clip_cmd=""; \
@@ -82,7 +82,7 @@ diff:
 	if [[ "${loc}" == ja* || "${loc}" == *ja_JP* || "${loc}" == *_JP* ]]; then \
 		lang_line="Language: Please respond in Japanese."; \
 	else \
-		lang_line="Language: Please respond in English."; \
+		lang_line=""; \
 	fi; \
 	request_body="Review the attached diff (and logs/errors if present) and verify the implementation is complete and correct relative to the intended spec. If anything is incomplete, inconsistent, or risky (including missing tests), produce a Codex-ready fix prompt as a bullet list (include additional tests/verification steps when needed)."; \
 	{ \
@@ -91,7 +91,7 @@ diff:
 		echo "I'm uploading diff.patch for review."; \
 		echo ""; \
 		echo "## Request"; \
-		printf '%s\n' "${lang_line}"; \
+		if [ -n "${lang_line}" ]; then printf '%s\n' "${lang_line}"; fi; \
 		printf '%s\n' "${request_body}"; \
 	} > "{{REQUEST_FILE}}"; \
 	clip_cmd=""; \
@@ -119,11 +119,18 @@ sync:
 	fi; \
 	check_output="$(cargo check 2>&1 || true)"; \
 	check_tail="$(printf "%s\n" "${check_output}" | tail -n 200)"; \
+	test_status_file="test_status.txt"; \
+	test_status=""; \
+	if [ -f "${test_status_file}" ]; then \
+		test_status="$(cat "${test_status_file}")"; \
+	else \
+		test_status="Missing (test_status.txt not found)."; \
+	fi; \
 	loc="${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}"; \
 	if [[ "${loc}" == ja* || "${loc}" == *ja_JP* || "${loc}" == *_JP* ]]; then \
 		lang_line="Language: Please respond in Japanese."; \
 	else \
-		lang_line="Language: Please respond in English."; \
+		lang_line=""; \
 	fi; \
 	request_body="Review the attached diff (and logs/errors if present) and verify the implementation is complete and correct relative to the intended spec. If anything is incomplete, inconsistent, or risky (including missing tests), produce a Codex-ready fix prompt as a bullet list (include additional tests/verification steps when needed)."; \
 	{ \
@@ -165,6 +172,11 @@ sync:
 		echo "## Cargo Check (tail)"; \
 		printf '%s\n' '```'; \
 		echo "${check_tail}"; \
+		printf '%s\n' '```'; \
+		echo ""; \
+		echo "## Test Status (file)"; \
+		printf '%s\n' '```'; \
+		printf '%s\n' "${test_status}"; \
 		printf '%s\n' '```'; \
 	} > "{{SYNC_FILE}}"; \
 	if [ "{{DIFF_BASE_MODE}}" = "upstream" ] && git rev-parse --abbrev-ref --symbolic-full-name @{u} >/dev/null 2>&1; then \
@@ -209,12 +221,17 @@ sync:
 			printf '%s\n' '```'; \
 			echo "${check_tail}"; \
 			printf '%s\n' '```'; \
+			echo ""; \
+			echo "## Test Status (file)"; \
+			printf '%s\n' '```'; \
+			printf '%s\n' "${test_status}"; \
+			printf '%s\n' '```'; \
 		} > "{{SYNC_FILE}}"; \
 	fi; \
 	{ \
 		echo ""; \
 		echo "## Request"; \
-		printf '%s\n' "${lang_line}"; \
+		if [ -n "${lang_line}" ]; then printf '%s\n' "${lang_line}"; fi; \
 		printf '%s\n' "${request_body}"; \
 	} >> "{{SYNC_FILE}}"; \
 	clip_cmd=""; \

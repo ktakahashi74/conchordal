@@ -27,6 +27,8 @@ diff-*.patch
 sync_report.md
 sync_report-*.md
 chat_request.md
+test_report.txt
+test_status.txt
 
 # System/editor cruft
 .DS_Store

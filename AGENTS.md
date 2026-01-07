@@ -33,6 +33,33 @@
 - Format: `cargo fmt --all`
 - Lint: `cargo clippy -- -D warnings`
 
+
+## Mandatory End-of-Task Procedure
+
+At the end of EVERY task that modifies code under src/, the agent MUST:
+
+### 1. Run cargo tests
+Run tests with full output and backtraces enabled.
+
+```bash
+set -o pipefail
+( RUST_BACKTRACE=1 cargo test -- --nocapture ) 2>&1 | tee test_report.txt
+
+```
+
+### 2. Record test status
+
+Always write the exit code and timestamp, even if tests fail.
+
+```bash
+echo "cargo test exit=$? @ $(date -Iseconds)" > test_status.txt
+```
+
+- test_report.txt must contain stdout + stderr of cargo test
+- test_status.txt must always exist after a task
+- Do NOT skip this step under any circumstances
+
+
 ## Air-Gap Protocol
 - In release builds, audio file export is forbidden. Do not add or restore any functionality that writes audio to disk (e.g., WAV export).
 

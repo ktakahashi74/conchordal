@@ -9,6 +9,7 @@ use crate::life::scenario::{
     PhonationClockConfig, PhonationConfig, PhonationConnectConfig, PhonationIntervalConfig,
     SubThetaModConfig,
 };
+use crate::life::social_density::SocialDensityTrace;
 
 pub type NoteId = u64;
 
@@ -139,7 +140,11 @@ impl TimingField {
         Self { start_gate, e_gate }
     }
 
-    pub fn build_from(ctx: &CoreTickCtx, grid: &ThetaGrid) -> Self {
+    pub fn build_from(
+        ctx: &CoreTickCtx,
+        grid: &ThetaGrid,
+        social: Option<(&SocialDensityTrace, f32)>,
+    ) -> Self {
         const MAX_GATES_PER_HOP: u64 = 4096;
         if grid.boundaries.is_empty() {
             return Self {
@@ -168,7 +173,19 @@ impl TimingField {
                 rhythms.advance_in_place(dt_sec);
                 cursor_tick = boundary.tick;
             }
-            let weight = (rhythms.env_open * rhythms.env_level).clamp(0.0, 1.0);
+            let mut weight = (rhythms.env_open * rhythms.env_level).clamp(0.0, 1.0);
+            if let Some((trace, coupling)) = social {
+                if coupling != 0.0 {
+                    let density = trace.density_at(boundary.tick);
+                    if density.is_finite() {
+                        let arg = (coupling * density).clamp(-10.0, 10.0);
+                        weight = (weight * arg.exp()).max(0.0);
+                        if !weight.is_finite() {
+                            weight = 0.0;
+                        }
+                    }
+                }
+            }
             if boundary.gate > expected_gate {
                 let fill_weight = last_weight.unwrap_or(1.0);
                 let missing = boundary.gate - expected_gate;
@@ -475,6 +492,7 @@ impl AccumulatorInterval {
 
 impl PhonationInterval for AccumulatorInterval {
     fn on_candidate(&mut self, c: &IntervalInput, _state: &CoreState) -> Option<PhonationKick> {
+        const ACC_MAX: f32 = 32.0;
         if !_state.is_alive {
             return None;
         }
@@ -489,6 +507,11 @@ impl PhonationInterval for AccumulatorInterval {
         };
         let weight = c.weight.max(0.0);
         self.acc += rate_eff * weight * c.dt_theta;
+        if !self.acc.is_finite() {
+            self.acc = ACC_MAX;
+        } else if self.acc > ACC_MAX {
+            self.acc = ACC_MAX;
+        }
         let refractory_ok = c.gate >= self.next_allowed_gate;
         if self.acc >= 1.0 && refractory_ok {
             self.acc -= 1.0;
@@ -503,9 +526,26 @@ impl PhonationInterval for AccumulatorInterval {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct ConnectNow {
+    pub tick: Tick,
+    pub gate: u64,
+    pub theta_pos: f64,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ConnectOnset {
+    pub note_id: NoteId,
+    pub tick: Tick,
+    pub gate: u64,
+    pub theta_pos: f64,
+    pub exc_gate: f32,
+    pub exc_slope: f32,
+}
+
 pub trait PhonationConnect: Send {
-    fn on_note_on(&mut self, note_id: NoteId, at_gate: u64);
-    fn poll(&mut self, now_gate: u64, now_tick: Tick, out: &mut Vec<PhonationCmd>);
+    fn on_note_on(&mut self, onset: ConnectOnset);
+    fn poll(&mut self, now: ConnectNow, out: &mut Vec<PhonationCmd>);
 }
 
 #[derive(Debug)]
@@ -524,20 +564,106 @@ impl FixedGateConnect {
 }
 
 impl PhonationConnect for FixedGateConnect {
-    fn on_note_on(&mut self, note_id: NoteId, at_gate: u64) {
-        let off_gate = at_gate + self.length_gates as u64;
-        self.pending.push((note_id, off_gate));
+    fn on_note_on(&mut self, onset: ConnectOnset) {
+        let off_gate = onset.gate + self.length_gates as u64;
+        self.pending.push((onset.note_id, off_gate));
     }
 
-    fn poll(&mut self, now_gate: u64, now_tick: Tick, out: &mut Vec<PhonationCmd>) {
+    fn poll(&mut self, now: ConnectNow, out: &mut Vec<PhonationCmd>) {
         let mut idx = 0;
         while idx < self.pending.len() {
-            if self.pending[idx].1 <= now_gate {
+            if self.pending[idx].1 <= now.gate {
                 let note_id = self.pending[idx].0;
                 self.pending.swap_remove(idx);
                 out.push(PhonationCmd::NoteOff {
                     note_id,
-                    off_tick: now_tick,
+                    off_tick: now.tick,
+                });
+            } else {
+                idx += 1;
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct FieldConnect {
+    pub hold_min_theta: f32,
+    pub hold_max_theta: f32,
+    pub curve_k: f32,
+    pub curve_x0: f32,
+    pub drop_gain: f32,
+    pending: Vec<(NoteId, f64)>,
+}
+
+impl FieldConnect {
+    pub fn new(
+        hold_min_theta: f32,
+        hold_max_theta: f32,
+        curve_k: f32,
+        curve_x0: f32,
+        drop_gain: f32,
+    ) -> Self {
+        let hold_min_theta = if hold_min_theta.is_finite() {
+            hold_min_theta.max(0.0)
+        } else {
+            0.25
+        };
+        let mut hold_max_theta = if hold_max_theta.is_finite() {
+            hold_max_theta.max(0.0)
+        } else {
+            1.0
+        };
+        if hold_max_theta < hold_min_theta {
+            hold_max_theta = hold_min_theta;
+        }
+        let curve_k = if curve_k.is_finite() { curve_k } else { 4.0 };
+        let curve_x0 = if curve_x0.is_finite() { curve_x0 } else { 0.5 };
+        let drop_gain = if drop_gain.is_finite() {
+            drop_gain
+        } else {
+            0.0
+        };
+        Self {
+            hold_min_theta,
+            hold_max_theta,
+            curve_k,
+            curve_x0,
+            drop_gain,
+            pending: Vec::new(),
+        }
+    }
+
+    fn hold_theta(&self, exc_gate: f32, exc_slope: f32) -> f32 {
+        let min = self.hold_min_theta.max(0.0);
+        let max = self.hold_max_theta.max(min);
+        let p = 1.0 / (1.0 + (-(self.curve_k * (exc_gate - self.curve_x0))).exp());
+        let mut hold = min + (max - min) * p;
+        if self.drop_gain > 0.0 && exc_slope.is_finite() {
+            let drop = (-exc_slope).max(0.0).clamp(0.0, 1.0);
+            hold *= 1.0 - self.drop_gain.clamp(0.0, 1.0) * drop;
+        }
+        hold.max(0.0)
+    }
+}
+
+impl PhonationConnect for FieldConnect {
+    fn on_note_on(&mut self, onset: ConnectOnset) {
+        let exc_gate = onset.exc_gate.clamp(0.0, 1.0);
+        let hold = self.hold_theta(exc_gate, onset.exc_slope);
+        let off_theta = onset.theta_pos + hold as f64;
+        self.pending.push((onset.note_id, off_theta));
+    }
+
+    fn poll(&mut self, now: ConnectNow, out: &mut Vec<PhonationCmd>) {
+        let mut idx = 0;
+        while idx < self.pending.len() {
+            if self.pending[idx].1 <= now.theta_pos {
+                let note_id = self.pending[idx].0;
+                self.pending.swap_remove(idx);
+                out.push(PhonationCmd::NoteOff {
+                    note_id,
+                    off_tick: now.tick,
                 });
             } else {
                 idx += 1;
@@ -550,6 +676,13 @@ impl PhonationConnect for FixedGateConnect {
 pub struct PhonationNoteEvent {
     pub note_id: NoteId,
     pub onset_tick: Tick,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct OnsetEvent {
+    pub gate: u64,
+    pub onset_tick: Tick,
+    pub strength: f32,
 }
 
 pub struct PhonationEngine {
@@ -593,6 +726,19 @@ impl PhonationEngine {
             PhonationConnectConfig::FixedGate { length_gates } => {
                 Box::new(FixedGateConnect::new(length_gates))
             }
+            PhonationConnectConfig::Field {
+                hold_min_theta,
+                hold_max_theta,
+                curve_k,
+                curve_x0,
+                drop_gain,
+            } => Box::new(FieldConnect::new(
+                hold_min_theta,
+                hold_max_theta,
+                curve_k,
+                curve_x0,
+                drop_gain,
+            )),
         };
         let (subdivision, internal_phase) = match &config.clock {
             PhonationClockConfig::ThetaGate => (None, None),
@@ -647,14 +793,21 @@ impl PhonationEngine {
         ctx: &CoreTickCtx,
         state: &CoreState,
         birth_onset_tick: Option<Tick>,
+        social: Option<&SocialDensityTrace>,
+        social_coupling: f32,
         out_cmds: &mut Vec<PhonationCmd>,
         out_events: &mut Vec<PhonationNoteEvent>,
+        out_onsets: &mut Vec<OnsetEvent>,
     ) -> bool {
         let mut candidates = Vec::new();
         self.clock.gather_candidates(ctx, &mut candidates);
         let merged = Self::merge_candidates(candidates);
         let timing_grid = ThetaGrid::from_candidates(&merged);
-        let timing_field = TimingField::build_from(ctx, &timing_grid);
+        let timing_field = TimingField::build_from(
+            ctx,
+            &timing_grid,
+            social.map(|trace| (trace, social_coupling)),
+        );
         self.process_candidates(
             &merged,
             &timing_field,
@@ -662,6 +815,7 @@ impl PhonationEngine {
             birth_onset_tick,
             out_cmds,
             out_events,
+            out_onsets,
         )
     }
 
@@ -674,8 +828,10 @@ impl PhonationEngine {
         birth_onset_tick: Option<Tick>,
         out_cmds: &mut Vec<PhonationCmd>,
         out_events: &mut Vec<PhonationNoteEvent>,
+        out_onsets: &mut Vec<OnsetEvent>,
     ) -> bool {
         let mut birth_applied = false;
+        let mut prev_gate_exc: Option<f32> = None;
         for c in candidates {
             debug_assert!(c.theta_pos.is_finite());
             if !birth_applied && birth_onset_tick.is_some_and(|tick| tick <= c.tick) {
@@ -693,6 +849,23 @@ impl PhonationEngine {
                 }
                 None => 1.0,
             };
+            let exc_gate = timing_field.e(c.gate);
+            let exc_slope = match prev_gate_exc {
+                Some(prev_exc) => (exc_gate - prev_exc).clamp(-1.0, 1.0),
+                None => 0.0,
+            };
+            let connect_now = ConnectNow {
+                tick: c.tick,
+                gate: c.gate,
+                theta_pos: c.theta_pos,
+            };
+            let before = out_cmds.len();
+            self.connect.poll(connect_now, out_cmds);
+            for cmd in &out_cmds[before..] {
+                if matches!(cmd, PhonationCmd::NoteOff { .. }) {
+                    self.active_notes = self.active_notes.saturating_sub(1);
+                }
+            }
             let sub_theta_mod = if c.phase_in_gate == 0.0 {
                 1.0
             } else {
@@ -702,7 +875,7 @@ impl PhonationEngine {
                 gate: c.gate,
                 tick: c.tick,
                 dt_theta,
-                weight: timing_field.e(c.gate) * sub_theta_mod,
+                weight: exc_gate * sub_theta_mod,
             };
             if let Some(kick) = self.interval.on_candidate(&input, state) {
                 let note_id = self.next_note_id;
@@ -713,17 +886,36 @@ impl PhonationEngine {
                     note_id,
                     onset_tick: c.tick,
                 });
-                self.connect.on_note_on(note_id, c.gate);
+                let strength = match kick {
+                    PhonationKick::Birth => 1.0,
+                    PhonationKick::Planned { strength } => strength,
+                };
+                out_onsets.push(OnsetEvent {
+                    gate: c.gate,
+                    onset_tick: c.tick,
+                    strength,
+                });
+                self.connect.on_note_on(ConnectOnset {
+                    note_id,
+                    tick: c.tick,
+                    gate: c.gate,
+                    theta_pos: c.theta_pos,
+                    exc_gate,
+                    exc_slope,
+                });
             }
             self.last_gate_index = Some(c.gate);
             let before = out_cmds.len();
-            self.connect.poll(c.gate, c.tick, out_cmds);
+            self.connect.poll(connect_now, out_cmds);
             for cmd in &out_cmds[before..] {
                 if matches!(cmd, PhonationCmd::NoteOff { .. }) {
                     self.active_notes = self.active_notes.saturating_sub(1);
                 }
             }
             self.last_theta_pos = Some(c.theta_pos);
+            if c.phase_in_gate == 0.0 {
+                prev_gate_exc = Some(exc_gate);
+            }
         }
         birth_applied
     }
@@ -911,11 +1103,41 @@ mod tests {
     }
 
     #[test]
+    fn accumulator_acc_is_clamped() {
+        let mut interval = AccumulatorInterval::new(1.0, 0, 1);
+        interval.acc = 0.0;
+        let state = CoreState { is_alive: true };
+        let input = IntervalInput {
+            gate: 0,
+            tick: 0,
+            dt_theta: 1.0,
+            weight: 1.0e9,
+        };
+        let _ = interval.on_candidate(&input, &state);
+        assert!(interval.acc.is_finite());
+        assert!(interval.acc <= 32.0);
+    }
+
+    #[test]
     fn fixed_gate_connect_sets_off_tick() {
         let mut connect = FixedGateConnect::new(0);
         let mut out = Vec::new();
-        connect.on_note_on(1, 10);
-        connect.poll(10, 123, &mut out);
+        connect.on_note_on(ConnectOnset {
+            note_id: 1,
+            tick: 123,
+            gate: 10,
+            theta_pos: 10.0,
+            exc_gate: 1.0,
+            exc_slope: 0.0,
+        });
+        connect.poll(
+            ConnectNow {
+                tick: 123,
+                gate: 10,
+                theta_pos: 10.0,
+            },
+            &mut out,
+        );
         assert_eq!(
             out,
             vec![PhonationCmd::NoteOff {
@@ -1008,6 +1230,7 @@ mod tests {
         let state = CoreState { is_alive: true };
         let mut cmds = Vec::new();
         let mut events = Vec::new();
+        let mut onsets = Vec::new();
         engine.process_candidates(
             &candidates,
             &timing_field,
@@ -1015,6 +1238,7 @@ mod tests {
             None,
             &mut cmds,
             &mut events,
+            &mut onsets,
         );
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].onset_tick, 4);
@@ -1042,7 +1266,7 @@ mod tests {
         let grid = ThetaGrid {
             boundaries: vec![GateBoundary { gate: 0, tick: 0 }],
         };
-        let timing_field = TimingField::build_from(&ctx, &grid);
+        let timing_field = TimingField::build_from(&ctx, &grid, None);
         assert_eq!(timing_field.e(0), 0.0);
     }
 
@@ -1144,7 +1368,7 @@ mod tests {
                 GateBoundary { gate: 2, tick: 0 },
             ],
         };
-        let timing_field = TimingField::build_from(&ctx, &grid);
+        let timing_field = TimingField::build_from(&ctx, &grid, None);
         assert_eq!(timing_field.e(0), 0.5);
         assert_eq!(timing_field.e(1), 0.5);
         assert_eq!(timing_field.e(2), 0.5);
@@ -1255,6 +1479,7 @@ mod tests {
         let state = CoreState { is_alive: true };
         let mut cmds = Vec::new();
         let mut events = Vec::new();
+        let mut onsets = Vec::new();
         engine.process_candidates(
             &candidates,
             &timing_field,
@@ -1262,6 +1487,7 @@ mod tests {
             None,
             &mut cmds,
             &mut events,
+            &mut onsets,
         );
         assert_eq!(*log.lock().expect("dt log"), vec![1.0, 0.5, 0.5]);
     }
@@ -1314,6 +1540,7 @@ mod tests {
         let state = CoreState { is_alive: true };
         let mut cmds = Vec::new();
         let mut events = Vec::new();
+        let mut onsets = Vec::new();
         engine.process_candidates(
             &candidates,
             &timing_field,
@@ -1321,6 +1548,7 @@ mod tests {
             None,
             &mut cmds,
             &mut events,
+            &mut onsets,
         );
         assert_eq!(*log.lock().expect("dt log"), vec![1.0, 1.0]);
     }
@@ -1387,6 +1615,7 @@ mod tests {
         let state = CoreState { is_alive: true };
         let mut cmds = Vec::new();
         let mut events = Vec::new();
+        let mut onsets = Vec::new();
         engine.process_candidates(
             &candidates,
             &timing_field,
@@ -1394,6 +1623,7 @@ mod tests {
             None,
             &mut cmds,
             &mut events,
+            &mut onsets,
         );
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].onset_tick, 10);
@@ -1422,6 +1652,7 @@ mod tests {
         }];
         let mut cmds = Vec::new();
         let mut events = Vec::new();
+        let mut onsets = Vec::new();
         engine.process_candidates(
             &candidates,
             &timing_field,
@@ -1429,6 +1660,7 @@ mod tests {
             None,
             &mut cmds,
             &mut events,
+            &mut onsets,
         );
         assert_eq!(engine.active_notes, 0, "note on/off should settle to zero");
         assert!(
@@ -1464,6 +1696,7 @@ mod tests {
         }];
         let mut cmds = Vec::new();
         let mut events = Vec::new();
+        let mut onsets = Vec::new();
         engine.process_candidates(
             &candidates,
             &timing_field,
@@ -1471,6 +1704,7 @@ mod tests {
             None,
             &mut cmds,
             &mut events,
+            &mut onsets,
         );
         assert_eq!(engine.active_notes, 1);
         assert!(
@@ -1578,7 +1812,17 @@ mod tests {
         let state = CoreState { is_alive: true };
         let mut cmds = Vec::new();
         let mut events = Vec::new();
-        engine.tick(&ctx, &state, None, &mut cmds, &mut events);
+        let mut onsets = Vec::new();
+        engine.tick(
+            &ctx,
+            &state,
+            None,
+            None,
+            0.0,
+            &mut cmds,
+            &mut events,
+            &mut onsets,
+        );
         assert!(events.len() >= 2, "expected at least two note ons");
         let first = events[0];
         let second = events[1];
@@ -1589,5 +1833,283 @@ mod tests {
             _ => None,
         });
         assert_eq!(off_tick, Some(second.onset_tick));
+    }
+
+    #[test]
+    fn timing_field_applies_social_coupling() {
+        let mut rhythms = NeuralRhythms::default();
+        rhythms.env_open = 1.0;
+        rhythms.env_level = 1.0;
+        let ctx = CoreTickCtx {
+            now_tick: 0,
+            frame_end: 20,
+            fs: 1000.0,
+            rhythms,
+        };
+        let grid = ThetaGrid {
+            boundaries: vec![
+                GateBoundary { gate: 0, tick: 0 },
+                GateBoundary { gate: 1, tick: 10 },
+            ],
+        };
+        let trace = SocialDensityTrace {
+            start_tick: 0,
+            bin_ticks: 10,
+            bins: vec![1.0, 0.0],
+        };
+        let timing_field = TimingField::build_from(&ctx, &grid, Some((&trace, -1.0)));
+        assert!(timing_field.e(0) < 0.5);
+        assert!((timing_field.e(1) - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn field_connect_holds_longer_with_high_excitation() {
+        let mut connect = FieldConnect::new(0.25, 1.0, 10.0, 0.5, 0.0);
+        connect.on_note_on(ConnectOnset {
+            note_id: 1,
+            tick: 0,
+            gate: 0,
+            theta_pos: 0.0,
+            exc_gate: 0.0,
+            exc_slope: 0.0,
+        });
+        let mut out = Vec::new();
+        connect.poll(
+            ConnectNow {
+                tick: 2,
+                gate: 0,
+                theta_pos: 0.2,
+            },
+            &mut out,
+        );
+        assert!(out.is_empty());
+        connect.poll(
+            ConnectNow {
+                tick: 3,
+                gate: 0,
+                theta_pos: 0.3,
+            },
+            &mut out,
+        );
+        assert!(
+            out.iter()
+                .any(|cmd| matches!(cmd, PhonationCmd::NoteOff { note_id: 1, .. }))
+        );
+        let mut connect = FieldConnect::new(0.25, 1.0, 10.0, 0.5, 0.0);
+        connect.on_note_on(ConnectOnset {
+            note_id: 2,
+            tick: 0,
+            gate: 0,
+            theta_pos: 0.0,
+            exc_gate: 1.0,
+            exc_slope: 0.0,
+        });
+        let mut out_high = Vec::new();
+        connect.poll(
+            ConnectNow {
+                tick: 3,
+                gate: 0,
+                theta_pos: 0.3,
+            },
+            &mut out_high,
+        );
+        assert!(out_high.is_empty());
+        connect.poll(
+            ConnectNow {
+                tick: 10,
+                gate: 1,
+                theta_pos: 1.0,
+            },
+            &mut out_high,
+        );
+        let off_tick = out_high.iter().find_map(|cmd| match cmd {
+            PhonationCmd::NoteOff {
+                note_id: 2,
+                off_tick,
+            } => Some(*off_tick),
+            _ => None,
+        });
+        assert_eq!(off_tick, Some(10));
+    }
+
+    #[test]
+    fn exc_slope_is_stable_with_sub_candidates() {
+        use std::collections::HashSet;
+        use std::sync::{Arc, Mutex};
+
+        struct TickFilteredInterval {
+            ticks: HashSet<Tick>,
+        }
+
+        impl PhonationInterval for TickFilteredInterval {
+            fn on_candidate(
+                &mut self,
+                c: &IntervalInput,
+                _state: &CoreState,
+            ) -> Option<PhonationKick> {
+                if self.ticks.contains(&c.tick) {
+                    Some(PhonationKick::Planned { strength: 1.0 })
+                } else {
+                    None
+                }
+            }
+        }
+
+        struct RecordingConnect {
+            slopes: Arc<Mutex<Vec<f32>>>,
+        }
+
+        impl PhonationConnect for RecordingConnect {
+            fn on_note_on(&mut self, onset: ConnectOnset) {
+                self.slopes.lock().expect("slopes").push(onset.exc_slope);
+            }
+
+            fn poll(&mut self, _now: ConnectNow, _out: &mut Vec<PhonationCmd>) {}
+        }
+
+        let timing_field = TimingField::from_values(0, vec![0.2, 0.8, 0.2]);
+        let state = CoreState { is_alive: true };
+
+        let slopes_base = Arc::new(Mutex::new(Vec::new()));
+        let mut engine_base = PhonationEngine {
+            clock: Box::<ThetaGateClock>::default(),
+            interval: Box::new(TickFilteredInterval {
+                ticks: [0, 10, 20].into_iter().collect(),
+            }),
+            connect: Box::new(RecordingConnect {
+                slopes: slopes_base.clone(),
+            }),
+            sub_theta_mod: Box::<NoneMod>::default(),
+            next_note_id: 0,
+            last_gate_index: None,
+            last_theta_pos: None,
+            active_notes: 0,
+        };
+        let candidates_base = vec![
+            CandidatePoint {
+                tick: 0,
+                gate: 0,
+                theta_pos: 0.0,
+                phase_in_gate: 0.0,
+                sources: vec![ClockSource::GateBoundary],
+            },
+            CandidatePoint {
+                tick: 10,
+                gate: 1,
+                theta_pos: 1.0,
+                phase_in_gate: 0.0,
+                sources: vec![ClockSource::GateBoundary],
+            },
+            CandidatePoint {
+                tick: 20,
+                gate: 2,
+                theta_pos: 2.0,
+                phase_in_gate: 0.0,
+                sources: vec![ClockSource::GateBoundary],
+            },
+        ];
+        let mut cmds = Vec::new();
+        let mut events = Vec::new();
+        let mut onsets = Vec::new();
+        engine_base.process_candidates(
+            &candidates_base,
+            &timing_field,
+            &state,
+            None,
+            &mut cmds,
+            &mut events,
+            &mut onsets,
+        );
+        let base_slopes = slopes_base.lock().expect("slopes").clone();
+
+        let slopes_sub = Arc::new(Mutex::new(Vec::new()));
+        let mut engine_sub = PhonationEngine {
+            clock: Box::<ThetaGateClock>::default(),
+            interval: Box::new(TickFilteredInterval {
+                ticks: [0, 10, 20].into_iter().collect(),
+            }),
+            connect: Box::new(RecordingConnect {
+                slopes: slopes_sub.clone(),
+            }),
+            sub_theta_mod: Box::<NoneMod>::default(),
+            next_note_id: 0,
+            last_gate_index: None,
+            last_theta_pos: None,
+            active_notes: 0,
+        };
+        let candidates_sub = vec![
+            CandidatePoint {
+                tick: 0,
+                gate: 0,
+                theta_pos: 0.0,
+                phase_in_gate: 0.0,
+                sources: vec![ClockSource::GateBoundary],
+            },
+            CandidatePoint {
+                tick: 5,
+                gate: 0,
+                theta_pos: 0.5,
+                phase_in_gate: 0.5,
+                sources: vec![ClockSource::Subdivision { n: 2 }],
+            },
+            CandidatePoint {
+                tick: 10,
+                gate: 1,
+                theta_pos: 1.0,
+                phase_in_gate: 0.0,
+                sources: vec![ClockSource::GateBoundary],
+            },
+            CandidatePoint {
+                tick: 15,
+                gate: 1,
+                theta_pos: 1.5,
+                phase_in_gate: 0.5,
+                sources: vec![ClockSource::Subdivision { n: 2 }],
+            },
+            CandidatePoint {
+                tick: 20,
+                gate: 2,
+                theta_pos: 2.0,
+                phase_in_gate: 0.0,
+                sources: vec![ClockSource::GateBoundary],
+            },
+        ];
+        let mut cmds = Vec::new();
+        let mut events = Vec::new();
+        let mut onsets = Vec::new();
+        engine_sub.process_candidates(
+            &candidates_sub,
+            &timing_field,
+            &state,
+            None,
+            &mut cmds,
+            &mut events,
+            &mut onsets,
+        );
+        let sub_slopes = slopes_sub.lock().expect("slopes").clone();
+        assert_eq!(base_slopes, sub_slopes);
+    }
+
+    #[test]
+    fn timing_field_social_coupling_clamps_exponent() {
+        let mut rhythms = NeuralRhythms::default();
+        rhythms.env_open = 1.0;
+        rhythms.env_level = 1.0;
+        let ctx = CoreTickCtx {
+            now_tick: 0,
+            frame_end: 1,
+            fs: 1000.0,
+            rhythms,
+        };
+        let grid = ThetaGrid {
+            boundaries: vec![GateBoundary { gate: 0, tick: 0 }],
+        };
+        let trace = SocialDensityTrace {
+            start_tick: 0,
+            bin_ticks: 1,
+            bins: vec![1000.0],
+        };
+        let timing_field = TimingField::build_from(&ctx, &grid, Some((&trace, 1000.0)));
+        assert!(timing_field.e(0).is_finite());
     }
 }

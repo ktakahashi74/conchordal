@@ -364,7 +364,16 @@ impl<'de> Deserialize<'de> for SubThetaModConfig {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum PhonationConnectConfig {
-    FixedGate { length_gates: u32 },
+    FixedGate {
+        length_gates: u32,
+    },
+    Field {
+        hold_min_theta: f32,
+        hold_max_theta: f32,
+        curve_k: f32,
+        curve_x0: f32,
+        drop_gain: f32,
+    },
 }
 
 impl Default for PhonationConnectConfig {
@@ -382,6 +391,13 @@ impl<'de> Deserialize<'de> for PhonationConnectConfig {
         match value {
             Value::String(s) => match s.as_str() {
                 "fixed_gate" => Ok(PhonationConnectConfig::FixedGate { length_gates: 1 }),
+                "field" => Ok(PhonationConnectConfig::Field {
+                    hold_min_theta: 0.25,
+                    hold_max_theta: 1.0,
+                    curve_k: 4.0,
+                    curve_x0: 0.5,
+                    drop_gain: 0.0,
+                }),
                 _ => Err(de::Error::custom(format!(
                     "phonation connect must be \"fixed_gate\" or a map (got \"{s}\")"
                 ))),
@@ -400,14 +416,60 @@ impl<'de> Deserialize<'de> for PhonationConnectConfig {
                             .unwrap_or(1) as u32;
                         Ok(PhonationConnectConfig::FixedGate { length_gates })
                     }
+                    "field" => {
+                        let hold_min_theta = map
+                            .get("hold_min_theta")
+                            .or_else(|| map.get("hold_min"))
+                            .and_then(|v| v.as_f64())
+                            .unwrap_or(0.25) as f32;
+                        let hold_max_theta = map
+                            .get("hold_max_theta")
+                            .or_else(|| map.get("hold_max"))
+                            .and_then(|v| v.as_f64())
+                            .unwrap_or(1.0) as f32;
+                        let curve_k =
+                            map.get("curve_k").and_then(|v| v.as_f64()).unwrap_or(4.0) as f32;
+                        let curve_x0 =
+                            map.get("curve_x0").and_then(|v| v.as_f64()).unwrap_or(0.5) as f32;
+                        let drop_gain =
+                            map.get("drop_gain").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                        Ok(PhonationConnectConfig::Field {
+                            hold_min_theta,
+                            hold_max_theta,
+                            curve_k,
+                            curve_x0,
+                            drop_gain,
+                        })
+                    }
                     _ => Err(de::Error::custom(format!(
-                        "phonation connect type must be \"fixed_gate\" (got \"{ty}\")"
+                        "phonation connect type must be \"fixed_gate\" or \"field\" (got \"{ty}\")"
                     ))),
                 }
             }
             _ => Err(de::Error::custom(
                 "phonation connect must be a string or map",
             )),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SocialConfig {
+    #[serde(default)]
+    pub coupling: f32,
+    #[serde(default)]
+    pub bin_ticks: u32,
+    #[serde(default)]
+    pub smooth: f32,
+}
+
+impl Default for SocialConfig {
+    fn default() -> Self {
+        Self {
+            coupling: 0.0,
+            bin_ticks: 0,
+            smooth: 0.0,
         }
     }
 }
@@ -420,6 +482,7 @@ pub struct PhonationConfig {
     pub connect: PhonationConnectConfig,
     pub clock: PhonationClockConfig,
     pub sub_theta_mod: SubThetaModConfig,
+    pub social: SocialConfig,
 }
 
 impl Default for PhonationConfig {
@@ -431,6 +494,7 @@ impl Default for PhonationConfig {
             connect: PhonationConnectConfig::default(),
             clock: PhonationClockConfig::default(),
             sub_theta_mod: SubThetaModConfig::default(),
+            social: SocialConfig::default(),
         }
     }
 }
@@ -450,6 +514,7 @@ impl<'de> Deserialize<'de> for PhonationConfig {
                     connect: PhonationConnectConfig::default(),
                     clock: PhonationClockConfig::default(),
                     sub_theta_mod: SubThetaModConfig::default(),
+                    social: SocialConfig::default(),
                 }),
                 "immediate" => Ok(Self {
                     on_birth: OnBirthPhonation::Once,
@@ -458,6 +523,7 @@ impl<'de> Deserialize<'de> for PhonationConfig {
                     connect: PhonationConnectConfig::default(),
                     clock: PhonationClockConfig::default(),
                     sub_theta_mod: SubThetaModConfig::default(),
+                    social: SocialConfig::default(),
                 }),
                 "off" => Ok(Self {
                     on_birth: OnBirthPhonation::Off,
@@ -466,6 +532,7 @@ impl<'de> Deserialize<'de> for PhonationConfig {
                     connect: PhonationConnectConfig::default(),
                     clock: PhonationClockConfig::default(),
                     sub_theta_mod: SubThetaModConfig::default(),
+                    social: SocialConfig::default(),
                 }),
                 _ => Err(de::Error::custom(format!(
                     "phonation must be \"once\", \"immediate\", or \"off\" (got \"{s}\")"
@@ -478,6 +545,7 @@ impl<'de> Deserialize<'de> for PhonationConfig {
                 let mut connect = PhonationConnectConfig::default();
                 let mut clock = PhonationClockConfig::default();
                 let mut sub_theta_mod = SubThetaModConfig::default();
+                let mut social = SocialConfig::default();
                 for (k, v) in map {
                     match k.as_str() {
                         "on_birth" => {
@@ -524,6 +592,9 @@ impl<'de> Deserialize<'de> for PhonationConfig {
                             sub_theta_mod =
                                 SubThetaModConfig::deserialize(v).map_err(de::Error::custom)?;
                         }
+                        "social" => {
+                            social = SocialConfig::deserialize(v).map_err(de::Error::custom)?;
+                        }
                         _ => {
                             return Err(de::Error::custom(format!(
                                 "phonation has unknown key: {k}"
@@ -538,6 +609,7 @@ impl<'de> Deserialize<'de> for PhonationConfig {
                     connect,
                     clock,
                     sub_theta_mod,
+                    social,
                 })
             }
             _ => Err(de::Error::custom("phonation must be a string or map")),

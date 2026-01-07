@@ -6,9 +6,10 @@ use crate::life::intent::{BodySnapshot, Intent};
 use crate::life::intent_planner::choose_best_gesture_tf_by_pred_c;
 use crate::life::perceptual::{FeaturesNow, PerceptualContext};
 use crate::life::phonation_engine::{
-    CoreState, CoreTickCtx, NoteId, PhonationCmd, PhonationEngine, PhonationNoteEvent,
+    CoreState, CoreTickCtx, NoteId, OnsetEvent, PhonationCmd, PhonationEngine, PhonationNoteEvent,
 };
 use crate::life::scenario::{PhonationConfig, PlanningConfig};
+use crate::life::social_density::SocialDensityTrace;
 use rand::rngs::SmallRng;
 use std::collections::VecDeque;
 
@@ -117,6 +118,7 @@ pub struct PhonationBatch {
     pub source_id: u64,
     pub cmds: Vec<PhonationCmd>,
     pub notes: Vec<PhonationNoteSpec>,
+    pub onsets: Vec<OnsetEvent>,
 }
 
 impl Individual {
@@ -408,6 +410,8 @@ impl Individual {
         tb: &Timebase,
         now: Tick,
         rhythms: &NeuralRhythms,
+        social: Option<&SocialDensityTrace>,
+        social_coupling: f32,
     ) -> PhonationBatch {
         let hop_tick = (tb.hop as Tick).max(1);
         let frame_end = now.saturating_add(hop_tick);
@@ -428,9 +432,17 @@ impl Individual {
         };
         let mut cmds = Vec::new();
         let mut events = Vec::new();
-        let birth_applied =
-            self.phonation_engine
-                .tick(&ctx, &state, birth_onset_tick, &mut cmds, &mut events);
+        let mut onsets = Vec::new();
+        let birth_applied = self.phonation_engine.tick(
+            &ctx,
+            &state,
+            birth_onset_tick,
+            social,
+            social_coupling,
+            &mut cmds,
+            &mut events,
+            &mut onsets,
+        );
         if birth_onset_tick.is_some() && !birth_applied {
             let gate_hint = self.phonation_engine.next_gate_index_hint();
             self.phonation_engine.notify_birth_onset(gate_hint);
@@ -445,6 +457,7 @@ impl Individual {
             source_id: self.id,
             cmds,
             notes,
+            onsets,
         }
     }
 

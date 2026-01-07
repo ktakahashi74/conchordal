@@ -1,10 +1,13 @@
 use super::individual::{AgentMetadata, AudioAgent, Individual, PhonationBatch, SoundBody};
-use super::scenario::{Action, BirthTiming, IndividualConfig, SpawnMethod, TargetRef};
+use super::scenario::{
+    Action, BirthTiming, IndividualConfig, SocialConfig, SpawnMethod, TargetRef,
+};
 use crate::core::landscape::{LandscapeFrame, LandscapeUpdate};
 use crate::core::log2space::Log2Space;
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
 use crate::life::gate_clock::next_gate_tick;
+use crate::life::social_density::SocialDensityTrace;
 use crate::life::world_model::WorldModel;
 use rand::{Rng, SeedableRng, distr::Distribution, distr::weighted::WeightedIndex, rngs::SmallRng};
 use std::hash::{Hash, Hasher};
@@ -26,6 +29,7 @@ pub struct Population {
     pending_update: Option<LandscapeUpdate>,
     time: Timebase,
     seed: u64,
+    social_trace: Option<SocialDensityTrace>,
 }
 
 impl Population {
@@ -63,6 +67,7 @@ impl Population {
             pending_update: None,
             time,
             seed: rand::random::<u64>(),
+            social_trace: None,
         }
     }
 
@@ -150,14 +155,32 @@ impl Population {
         let tb = &world.time;
         let mut birth_intents = Vec::new();
         let mut phonation_batches = Vec::new();
+        let social_trace = self.social_trace.as_ref();
         for agent in &mut self.individuals {
-            let batch = agent.tick_phonation(tb, now, &landscape.rhythm);
+            let social_coupling = agent.phonation.social.coupling;
+            let batch =
+                agent.tick_phonation(tb, now, &landscape.rhythm, social_trace, social_coupling);
             if !batch.cmds.is_empty() {
                 phonation_batches.push(batch);
             }
             if let Some(intent) = agent.take_birth_intent_if_due(tb, now, frame_end, landscape) {
                 birth_intents.push(intent);
             }
+        }
+        let social_enabled =
+            social_trace_enabled_from_configs(self.individuals.iter().map(|a| a.phonation.social));
+        if social_enabled {
+            let (bin_ticks, smooth) = social_trace_params(&self.individuals, hop_tick);
+            self.social_trace = Some(build_social_trace_from_batches(
+                &phonation_batches,
+                frame_end,
+                hop_tick,
+                bin_ticks,
+                smooth,
+                self.individuals.len(),
+            ));
+        } else {
+            self.social_trace = None;
         }
         for intent in birth_intents {
             world.board.publish(intent);
@@ -723,9 +746,63 @@ fn harmonic_density_weight(c01: f32, occupied: bool) -> f32 {
     eps + (1.0 - eps) * c
 }
 
+fn build_social_trace_from_batches(
+    phonation_batches: &[PhonationBatch],
+    frame_end: Tick,
+    hop_tick: Tick,
+    bin_ticks: u32,
+    smooth: f32,
+    population_size: usize,
+) -> SocialDensityTrace {
+    let mut onset_ticks = Vec::new();
+    for batch in phonation_batches {
+        for onset in &batch.onsets {
+            onset_ticks.push((onset.onset_tick.saturating_add(hop_tick), onset.strength));
+        }
+    }
+    SocialDensityTrace::from_onsets(
+        frame_end,
+        frame_end.saturating_add(hop_tick),
+        bin_ticks,
+        smooth,
+        population_size,
+        &onset_ticks,
+    )
+}
+
+fn social_trace_params(individuals: &[Individual], hop_tick: Tick) -> (u32, f32) {
+    let base = individuals
+        .iter()
+        .find(|agent| agent.phonation.social.bin_ticks != 0 || agent.phonation.social.smooth != 0.0)
+        .map(|agent| agent.phonation.social)
+        .unwrap_or_default();
+    if individuals.iter().any(|agent| {
+        agent.phonation.social.bin_ticks != base.bin_ticks
+            || agent.phonation.social.smooth != base.smooth
+    }) {
+        warn!("Population social trace params differ across agents; using first match settings");
+    }
+    let auto_bin = (hop_tick / 64).max(1);
+    let bin_ticks = if base.bin_ticks == 0 {
+        auto_bin.min(u32::MAX as Tick) as u32
+    } else {
+        base.bin_ticks
+    };
+    (bin_ticks, base.smooth)
+}
+
+fn social_trace_enabled_from_configs<I>(configs: I) -> bool
+where
+    I: IntoIterator<Item = SocialConfig>,
+{
+    configs.into_iter().any(|cfg| cfg.coupling != 0.0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::life::phonation_engine::OnsetEvent;
+    use crate::life::scenario::SocialConfig;
     use rand::SeedableRng;
 
     #[test]
@@ -783,5 +860,39 @@ mod tests {
             harmonic_density_weight(0.2, true),
         ];
         assert!(WeightedIndex::new(&weights).is_err());
+    }
+
+    #[test]
+    fn social_trace_is_delayed_by_one_hop() {
+        let batch = PhonationBatch {
+            source_id: 1,
+            cmds: Vec::new(),
+            notes: Vec::new(),
+            onsets: vec![OnsetEvent {
+                gate: 0,
+                onset_tick: 90,
+                strength: 1.0,
+            }],
+        };
+        let trace = build_social_trace_from_batches(&[batch], 100, 10, 5, 0.0, 1);
+        assert_eq!(trace.start_tick, 100);
+        assert_eq!(trace.density_at(95), 0.0);
+        assert_eq!(trace.density_at(100), 1.0);
+    }
+
+    #[test]
+    fn social_trace_enabled_with_nonzero_coupling() {
+        let base = SocialConfig {
+            coupling: 0.0,
+            bin_ticks: 0,
+            smooth: 0.0,
+        };
+        let other = SocialConfig {
+            coupling: 1.0,
+            bin_ticks: 0,
+            smooth: 0.0,
+        };
+        let configs = vec![base, other];
+        assert!(social_trace_enabled_from_configs(configs));
     }
 }

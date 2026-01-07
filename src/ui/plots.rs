@@ -97,7 +97,7 @@ pub fn log2_hist_hz(
         });
 }
 
-/// log₂スケールで周波数を描画する汎用プロット関数
+/// Generic log2-frequency plot.
 #[allow(clippy::too_many_arguments)]
 pub fn log2_plot_hz(
     ui: &mut egui::Ui,
@@ -126,14 +126,14 @@ pub fn log2_plot_hz(
         "log2_plot_hz expects strictly increasing finite x values"
     );
 
-    // === X軸を log2(Hz) に変換 ===
+    // === Convert X axis to log2(Hz) ===
     let points: PlotPoints = xs_hz
         .iter()
         .zip(ys.iter())
         .map(|(&xx, &yy)| [xx.log2() as f64, yy as f64])
         .collect();
 
-    // === egui_plot用 Line オブジェクト ===
+    // === Line object for egui_plot ===
     let mut line = Line::new(y_label, points);
     if let Some(color) = line_color {
         line = line.color(color);
@@ -154,11 +154,11 @@ pub fn log2_plot_hz(
         Line::new(label, points).color(color)
     });
 
-    // === X軸範囲（20〜20kHz）を log2に変換 ===
+    // === Convert X range (20-20 kHz) to log2 ===
     let x_min = (20.0f64).log2();
     let x_max = (20_000.0f64).log2();
 
-    // === 描画 ===
+    // === Render ===
     let mut plot = Plot::new(title)
         .height(height)
         .allow_scroll(false)

@@ -384,13 +384,13 @@ mod tests {
         let hw = k.hw;
         let center = g[hw];
 
-        // 近傍の代表ピークを取得（+0.3 ERB 付近）
+        // Pick the representative nearby peak (~+0.3 ERB).
         let pos = (hw as f32 + 0.3 / ERB_STEP).round() as usize;
         let peak = g[pos];
 
         // Allow true suppression to zero when parameters enforce it.
         assert!(center >= 0.0, "center should be non-negative");
-        // 抑圧されている＝ピークより十分小さい（閾値は経験的に 15–30% 程度）
+        // Suppressed means well below the peak (empirical ~15-30%).
         assert!(
             center < 0.5 * peak,
             "center suppression too weak: c/peak={}",

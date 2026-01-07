@@ -107,7 +107,7 @@ mod tests {
     /// Round-trip test of hz_to_erb ↔ erb_to_hz conversions.
     #[test]
     fn test_erb_conversion_roundtrip() {
-        // ERB変換の往復精度を複数点で確認
+        // Check round-trip accuracy at multiple points.
         for f in [20.0, 100.0, 1000.0, 4000.0, 8000.0, 16000.0] {
             let e = hz_to_erb(f);
             let f2 = erb_to_hz(e);
@@ -168,7 +168,7 @@ mod tests {
         let space = ErbSpace::new(20.0, 20000.0, 0.25);
         let n = space.len();
         assert!(n > 100, "unexpectedly few bins for wide band: {n}");
-        // ERB最小・最大が整合していること
+        // Ensure ERB min/max are consistent.
         let e_min = hz_to_erb(20.0);
         let e_max = hz_to_erb(20000.0);
         assert!(
@@ -184,7 +184,7 @@ mod tests {
     #[test]
     fn delta_erb_mapping_matches_exact() {
         use super::*;
-        // 1 kHz 近傍で複数の周波数差をチェック
+        // Check several frequency deltas near 1 kHz.
         let fi = 1000.0f32;
         let steps_hz = [
             -300.0, -150.0, -75.0, -30.0, -15.0, 0.0, 15.0, 30.0, 75.0, 150.0, 300.0,
@@ -196,7 +196,7 @@ mod tests {
             let bw_mid = erb_bw_hz(0.5 * (fi + fj));
             let d_approx = (fj - fi) / bw_mid;
 
-            // 誤差（相対）: ±3% 以内なら OK とする
+            // Relative error within 3% is OK.
             let denom = d_exact.abs().max(1e-6);
             let rel_err = (d_exact - d_approx).abs() / denom;
             assert!(

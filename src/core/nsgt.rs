@@ -426,13 +426,13 @@ mod tests {
     //         Log2Space::new(20.0, 8000.0, 96),
     //     );
 
-    //     // === 1. テスト信号（純音440Hz） ===
+    //     // === 1. Test signal (pure 440 Hz) ===
     //     let sig = mk_sine(fs, 440.0, 1.0);
 
-    //     // === 2. NSGT解析 ===
+    //     // === 2. NSGT analysis ===
     //     let bands = nsgt.analyze(&sig);
 
-    //     // === 3. 各バンドの平均エネルギーをlog2軸で取得 ===
+    //     // === 3. Mean energy per band in log2 axis ===
     //     let points: Vec<(f32, f32)> = bands
     //         .iter()
     //         .map(|b| {
@@ -442,7 +442,7 @@ mod tests {
     //         })
     //         .collect();
 
-    //     // === 4. 出力先 ===
+    //     // === 4. Output target ===
     //     let root = BitMapBackend::new("target/nsgt_spectrum.png", (1500, 1000)).into_drawing_area();
     //     root.fill(&WHITE).unwrap();
     //     let mut chart = ChartBuilder::on(&root)
@@ -491,13 +491,13 @@ mod tests {
     //     let secs = 4.0;
     //     let n = (fs * secs) as usize;
 
-    //     // === 1. NSGT設定 ===
+    //     // === 1. NSGT setup ===
     //     let nsgt = NsgtLog2::new(
     //         NsgtLog2Config { fs, overlap: 0.5 },
     //         Log2Space::new(35.0, 24_000.0, 96),
     //     );
 
-    //     // === 2. ノイズ生成 ===
+    //     // === 2. Generate noise ===
     //     let mut rng = rand::rng();
     //     let white: Vec<f32> = (0..n).map(|_| rng.random_range(-1.0f32..1.0)).collect();
     //     let pink: Vec<f32> = pink_noise(n, Some(42))
@@ -511,12 +511,12 @@ mod tests {
     //         .map(|&v| v as f32)
     //         .collect();
 
-    //     // === 3. フル解析 ===
+    //     // === 3. Full analysis ===
     //     let bands_w = nsgt.analyze(&white);
     //     let bands_p = nsgt.analyze(&pink);
     //     let bands_b = nsgt.analyze(&brown);
 
-    //     // === 4. PSD正規化処理 (power per Hz) ===
+    //     // === 4. PSD normalization (power per Hz) ===
     //     let psd_norm = |bands: &[BandCoeffs]| -> Vec<f32> {
     //         bands
     //             .iter()
@@ -536,7 +536,7 @@ mod tests {
     //     let psd_p = psd_norm(&bands_p);
     //     let psd_b = psd_norm(&bands_b);
 
-    //     // === 5. 対数化 [dB re power/Hz] ===
+    //     // === 5. Convert to dB [re power/Hz] ===
     //     let to_db =
     //         |x: &[f32]| -> Vec<f32> { x.iter().map(|v| 10.0 * v.max(1e-20).log10()).collect() };
     //     let white_db = to_db(&psd_w);
@@ -544,7 +544,7 @@ mod tests {
     //     let brown_db = to_db(&psd_b);
     //     let log2x = nsgt.space().centers_log2.clone();
 
-    //     // === 6. 出力 ===
+    //     // === 6. Output ===
     //     let root =
     //         BitMapBackend::new("target/nsgt_noise_psd_db.png", (1500, 1000)).into_drawing_area();
     //     root.fill(&WHITE).unwrap();
@@ -581,7 +581,7 @@ mod tests {
     //         .draw()
     //         .unwrap();
 
-    //     // === 7. プロット ===
+    //     // === 7. Plot ===
     //     chart
     //         .draw_series(LineSeries::new(
     //             log2x.iter().cloned().zip(white_db.iter().cloned()),

@@ -5,14 +5,14 @@ use ringbuf::traits::*;
 use ringbuf::{HeapCons, HeapProd, HeapRb};
 use tracing::{debug, info};
 
-/// 出力デバイスに接続するモジュール
+/// Module for connecting to the output device.
 pub struct AudioOutput {
     stream: Option<cpal::Stream>,
     pub config: cpal::StreamConfig,
 }
 
 impl AudioOutput {
-    /// AudioOutput を開始し、ワーカーループ側が push できる Producer を返す
+    /// Start AudioOutput and return a Producer for the worker loop.
     pub fn new(latency_ms: f32) -> anyhow::Result<(Self, HeapProd<f32>)> {
         let host = cpal::default_host();
         let device = host
@@ -60,10 +60,10 @@ impl AudioOutput {
                     let n_frames = data.len() / channels as usize;
 
                     for frame in 0..n_frames {
-                        // 1フレーム分のサンプル値を取り出す
+                        // Pop one frame of samples.
                         let s = cons.try_pop().unwrap_or(0.0);
 
-                        // モノラル: 全チャンネルに同じ値を複製
+                        // Mono: copy to all channels.
                         for ch in 0..channels {
                             data[frame * channels as usize + ch as usize] = s;
                         }
@@ -88,7 +88,7 @@ impl AudioOutput {
         self.stream.take(); // take and Drop
     }
 
-    /// ワーカーループが新しいサンプルを push
+    /// Worker loop pushes new samples.
     pub fn push_samples(prod: &mut HeapProd<f32>, samples: &[f32]) {
         let mut offset = 0;
         while offset < samples.len() {

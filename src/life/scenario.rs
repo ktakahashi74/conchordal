@@ -122,6 +122,7 @@ pub enum OnBirthPhonation {
     Off,
     #[default]
     Once,
+    Sustain,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, JsonSchema, Default)]
@@ -555,9 +556,10 @@ impl<'de> Deserialize<'de> for PhonationConfig {
                             on_birth = match s {
                                 "once" => OnBirthPhonation::Once,
                                 "off" => OnBirthPhonation::Off,
+                                "sustain" => OnBirthPhonation::Sustain,
                                 _ => {
                                     return Err(de::Error::custom(format!(
-                                        "phonation.on_birth must be \"once\" or \"off\" (got \"{s}\")"
+                                        "phonation.on_birth must be \"once\", \"off\", or \"sustain\" (got \"{s}\")"
                                     )));
                                 }
                             };
@@ -920,9 +922,15 @@ impl IndividualConfig {
             release_gain: 1.0,
             release_sec: 0.03,
             release_pending: false,
-            birth_pending: matches!(self.life.phonation.on_birth, OnBirthPhonation::Once),
+            birth_pending: matches!(
+                self.life.phonation.on_birth,
+                OnBirthPhonation::Once | OnBirthPhonation::Sustain
+            ),
             birth_fired: false,
             birth_onset_tick: None,
+            birth_onset_gate: None,
+            sustain_note_id: None,
+            sustain_onset_tick: None,
             target_pitch_log2,
             integration_window,
             accumulated_time: 0.0,
@@ -1136,6 +1144,15 @@ mod tests {
             cfg.connect,
             PhonationConnectConfig::FixedGate { length_gates: 2 }
         );
+    }
+
+    #[test]
+    fn phonation_on_birth_sustain_parses() {
+        let cfg: PhonationConfig =
+            serde_json::from_value(json!({ "on_birth": "sustain" })).expect("map");
+        assert_eq!(cfg.on_birth, OnBirthPhonation::Sustain);
+        assert_eq!(cfg.timing, BirthTiming::Gate);
+        assert_eq!(cfg.interval, PhonationIntervalConfig::None);
     }
 }
 

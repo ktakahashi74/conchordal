@@ -175,7 +175,7 @@ impl ScheduleRenderer {
         _rhythms: &NeuralRhythms,
         _dt: f32,
     ) {
-        let hold_ticks = max_phonation_hold_ticks(self.time);
+        let default_hold_ticks = max_phonation_hold_ticks(self.time);
         for batch in phonation_batches {
             for cmd in &batch.cmds {
                 match *cmd {
@@ -195,6 +195,7 @@ impl ScheduleRenderer {
                         {
                             continue;
                         }
+                        let hold_ticks = spec.hold_ticks.unwrap_or(default_hold_ticks);
                         let intent = Intent {
                             source_id: batch.source_id,
                             intent_id: note_id,

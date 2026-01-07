@@ -59,8 +59,13 @@ impl SoundVoice {
 
         let attack_ticks = default_attack_ticks(time);
         let release_ticks = default_release_ticks(time);
-        let hold_end = intent.onset.saturating_add(intent.duration);
-        let release_end = hold_end.saturating_add(release_ticks);
+        let (hold_end, release_end) = if intent.duration == Tick::MAX {
+            (Tick::MAX, Tick::MAX)
+        } else {
+            let hold_end = intent.onset.saturating_add(intent.duration);
+            let release_end = hold_end.saturating_add(release_ticks);
+            (hold_end, release_end)
+        };
 
         Some(Self {
             body,
@@ -275,5 +280,30 @@ mod tests {
         assert!(!voice.kick_planned_if_due(9, &rhythms, dt));
         assert!(voice.kick_planned_if_due(10, &rhythms, dt));
         assert!(!voice.kick_planned_if_due(11, &rhythms, dt));
+    }
+
+    #[test]
+    fn max_duration_note_off_releases() {
+        let tb = Timebase { fs: 1000.0, hop: 8 };
+        let intent = Intent {
+            source_id: 1,
+            intent_id: 1,
+            kind: IntentKind::Normal,
+            onset: 0,
+            duration: Tick::MAX,
+            freq_hz: 220.0,
+            amp: 0.5,
+            tag: None,
+            confidence: 1.0,
+            body: None,
+            articulation: None,
+        };
+        let mut voice = SoundVoice::from_intent(tb, intent).expect("voice");
+        let off_tick = 4;
+        voice.note_off(off_tick);
+        let done_tick = off_tick
+            .saturating_add(default_release_ticks(tb))
+            .saturating_add(1);
+        assert!(voice.is_done(done_tick));
     }
 }

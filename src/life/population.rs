@@ -27,6 +27,7 @@ pub struct Population {
     pub global_coupling: f32,
     shutdown_gain: f32,
     pending_update: Option<LandscapeUpdate>,
+    pending_phonation_batches: Vec<PhonationBatch>,
     time: Timebase,
     seed: u64,
     social_trace: Option<SocialDensityTrace>,
@@ -65,6 +66,7 @@ impl Population {
             global_coupling: 1.0,
             shutdown_gain: 1.0,
             pending_update: None,
+            pending_phonation_batches: Vec::new(),
             time,
             seed: rand::random::<u64>(),
             social_trace: None,
@@ -640,8 +642,50 @@ impl Population {
         self.pending_update.take()
     }
 
+    pub fn take_pending_phonation_batches(&mut self) -> Vec<PhonationBatch> {
+        std::mem::take(&mut self.pending_phonation_batches)
+    }
+
+    /// Assumes `set_current_frame` has been called for the current hop.
     pub fn remove_agent(&mut self, id: u64) {
-        self.individuals.retain(|a| a.id() != id);
+        let off_tick = self.time.frame_start_tick(self.current_frame);
+        let mut pending = Vec::new();
+        let mut next = Vec::with_capacity(self.individuals.len());
+        for mut agent in self.individuals.drain(..) {
+            if agent.id() == id {
+                let mut cmds = Vec::new();
+                if agent.flush_sustain_note_off(off_tick, &mut cmds) {
+                    pending.push(PhonationBatch {
+                        source_id: agent.id(),
+                        cmds,
+                        notes: Vec::new(),
+                        onsets: Vec::new(),
+                    });
+                }
+            } else {
+                next.push(agent);
+            }
+        }
+        self.individuals = next;
+        if !pending.is_empty() {
+            self.pending_phonation_batches.extend(pending);
+        }
+    }
+
+    pub fn flush_sustain_note_offs(&mut self, off_tick: Tick) -> Vec<PhonationBatch> {
+        let mut batches = Vec::new();
+        for agent in &mut self.individuals {
+            let mut cmds = Vec::new();
+            if agent.flush_sustain_note_off(off_tick, &mut cmds) {
+                batches.push(PhonationBatch {
+                    source_id: agent.id(),
+                    cmds,
+                    notes: Vec::new(),
+                    onsets: Vec::new(),
+                });
+            }
+        }
+        batches
     }
 
     /// Advance agent state without emitting audio (ScheduleRenderer is output authority).
@@ -683,6 +727,11 @@ impl Population {
                 self.shutdown_gain = (self.shutdown_gain - step).max(0.0);
             }
             if self.shutdown_gain <= 0.0 {
+                let off_tick = self.time.frame_start_tick(self.current_frame);
+                let batches = self.flush_sustain_note_offs(off_tick);
+                if !batches.is_empty() {
+                    self.pending_phonation_batches.extend(batches);
+                }
                 self.individuals.clear();
             }
         }
@@ -705,7 +754,28 @@ impl Population {
             }
         }
         let before_count = self.individuals.len();
-        self.individuals.retain(|agent| agent.should_retain());
+        let off_tick = self.time.frame_start_tick(current_frame);
+        let mut pending = Vec::new();
+        let mut next = Vec::with_capacity(self.individuals.len());
+        for mut agent in self.individuals.drain(..) {
+            if agent.should_retain() {
+                next.push(agent);
+            } else {
+                let mut cmds = Vec::new();
+                if agent.flush_sustain_note_off(off_tick, &mut cmds) {
+                    pending.push(PhonationBatch {
+                        source_id: agent.id(),
+                        cmds,
+                        notes: Vec::new(),
+                        onsets: Vec::new(),
+                    });
+                }
+            }
+        }
+        self.individuals = next;
+        if !pending.is_empty() {
+            self.pending_phonation_batches.extend(pending);
+        }
         let removed_count = before_count - self.individuals.len();
 
         if removed_count > 0 {

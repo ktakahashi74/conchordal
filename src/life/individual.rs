@@ -6,9 +6,10 @@ use crate::life::intent::{BodySnapshot, Intent};
 use crate::life::intent_planner::choose_best_gesture_tf_by_pred_c;
 use crate::life::perceptual::{FeaturesNow, PerceptualContext};
 use crate::life::phonation_engine::{
-    CoreState, CoreTickCtx, NoteId, OnsetEvent, PhonationCmd, PhonationEngine, PhonationNoteEvent,
+    CoreState, CoreTickCtx, NoteId, OnsetEvent, PhonationCmd, PhonationEngine, PhonationKick,
+    PhonationNoteEvent,
 };
-use crate::life::scenario::{PhonationConfig, PlanningConfig};
+use crate::life::scenario::{OnBirthPhonation, PhonationConfig, PlanningConfig};
 use crate::life::social_density::SocialDensityTrace;
 use rand::rngs::SmallRng;
 use std::collections::VecDeque;
@@ -75,6 +76,9 @@ pub struct Individual {
     pub birth_pending: bool,
     pub birth_fired: bool,
     pub birth_onset_tick: Option<Tick>,
+    pub birth_onset_gate: Option<u64>,
+    pub sustain_note_id: Option<NoteId>,
+    pub sustain_onset_tick: Option<Tick>,
     pub target_pitch_log2: f32,
     pub integration_window: f32,
     pub accumulated_time: f32,
@@ -107,6 +111,7 @@ pub struct PredIntentRecord {
 pub struct PhonationNoteSpec {
     pub note_id: NoteId,
     pub onset: Tick,
+    pub hold_ticks: Option<Tick>,
     pub freq_hz: f32,
     pub amp: f32,
     pub body: BodySnapshot,
@@ -130,6 +135,7 @@ impl Individual {
 
     pub fn set_birth_onset_tick(&mut self, onset: Option<Tick>) {
         self.birth_onset_tick = onset;
+        self.birth_onset_gate = None;
     }
 
     pub fn should_retain(&self) -> bool {
@@ -367,7 +373,7 @@ impl Individual {
         frame_end: Tick,
         landscape: &Landscape,
     ) -> Option<Intent> {
-        if !self.birth_pending() {
+        if !self.birth_pending() || !matches!(self.phonation.on_birth, OnBirthPhonation::Once) {
             return None;
         }
         let onset = self.birth_onset_tick?;
@@ -405,6 +411,23 @@ impl Individual {
         Some(intent)
     }
 
+    pub fn flush_sustain_note_off(
+        &mut self,
+        off_tick: Tick,
+        out_cmds: &mut Vec<PhonationCmd>,
+    ) -> bool {
+        let Some(note_id) = self.sustain_note_id else {
+            return false;
+        };
+        let onset = self.sustain_onset_tick.unwrap_or(off_tick);
+        let off_tick = off_tick.max(onset);
+        out_cmds.push(PhonationCmd::NoteOff { note_id, off_tick });
+        self.phonation_engine.register_external_note_off();
+        self.sustain_note_id = None;
+        self.sustain_onset_tick = None;
+        true
+    }
+
     pub fn tick_phonation(
         &mut self,
         tb: &Timebase,
@@ -433,7 +456,7 @@ impl Individual {
         let mut cmds = Vec::new();
         let mut events = Vec::new();
         let mut onsets = Vec::new();
-        let birth_applied = self.phonation_engine.tick(
+        let birth = self.phonation_engine.tick(
             &ctx,
             &state,
             birth_onset_tick,
@@ -443,15 +466,56 @@ impl Individual {
             &mut events,
             &mut onsets,
         );
-        if birth_onset_tick.is_some() && !birth_applied {
-            let gate_hint = self.phonation_engine.next_gate_index_hint();
+        if let Some(gate) = birth.gate {
+            self.birth_onset_gate = Some(gate);
+        }
+        let gate_hint = self.phonation_engine.next_gate_index_hint();
+        if birth_onset_tick.is_some() && !birth.applied {
             self.phonation_engine.notify_birth_onset(gate_hint);
         }
         let mut notes = Vec::new();
         for event in events {
-            if let Some(note) = self.build_phonation_note_spec(event) {
+            if let Some(note) = self.build_phonation_note_spec(event, None) {
                 notes.push(note);
             }
+        }
+        if matches!(self.phonation.on_birth, OnBirthPhonation::Sustain) {
+            if let Some(onset_tick) = birth_onset_tick {
+                if self.sustain_note_id.is_none() {
+                    let event = PhonationNoteEvent {
+                        note_id: self.phonation_engine.next_note_id,
+                        onset_tick,
+                    };
+                    if let Some(note) = self.build_phonation_note_spec(event, Some(Tick::MAX)) {
+                        let note_id = event.note_id;
+                        self.phonation_engine.next_note_id =
+                            self.phonation_engine.next_note_id.wrapping_add(1);
+                        self.phonation_engine.register_external_note_on();
+                        cmds.push(PhonationCmd::NoteOn {
+                            note_id,
+                            kick: PhonationKick::Birth,
+                        });
+                        onsets.push(OnsetEvent {
+                            gate: self.birth_onset_gate.unwrap_or(gate_hint),
+                            onset_tick,
+                            strength: 1.0,
+                        });
+                        notes.push(note);
+                        self.sustain_note_id = Some(note_id);
+                        self.sustain_onset_tick = Some(onset_tick);
+                        self.birth_fired = true;
+                        self.birth_pending = false;
+                    } else {
+                        // No retrigger: if the note spec is invalid (e.g., amp too low),
+                        // sustain stays silent and we consume the birth.
+                        self.birth_fired = true;
+                        self.birth_pending = false;
+                    }
+                }
+            }
+        }
+        if self.sustain_note_id.is_some() && !self.is_alive() {
+            self.flush_sustain_note_off(now, &mut cmds);
         }
         PhonationBatch {
             source_id: self.id,
@@ -529,6 +593,7 @@ impl Individual {
     fn build_phonation_note_spec(
         &mut self,
         event: PhonationNoteEvent,
+        hold_ticks: Option<Tick>,
     ) -> Option<PhonationNoteSpec> {
         let amp = self.release_gain.clamp(0.0, 1.0);
         if amp <= Self::AMP_EPS {
@@ -542,6 +607,7 @@ impl Individual {
         Some(PhonationNoteSpec {
             note_id: event.note_id,
             onset: event.onset_tick,
+            hold_ticks,
             freq_hz,
             amp,
             body: self.body_snapshot(),

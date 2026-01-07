@@ -993,7 +993,7 @@ fn worker_loop(
                 (None, None) => frame_idx,
             };
             let _perc_tick = timebase.frame_start_tick(perc_frame);
-            let phonation_batches = if scenario_end_tick.is_none() {
+            let mut phonation_batches = if scenario_end_tick.is_none() {
                 pop.publish_intents(&mut world, &current_landscape, now_tick)
             } else {
                 Vec::new()
@@ -1014,22 +1014,35 @@ fn worker_loop(
 
             if scenario_end_tick.is_none() && conductor.is_done() {
                 scenario_end_tick = Some(now_tick);
+                phonation_batches.extend(pop.flush_sustain_note_offs(now_tick));
                 pop.individuals.clear();
                 world.plan_board.clear_next();
                 world.board.remove_onset_from(now_tick);
                 schedule_renderer.shutdown_at(now_tick);
             }
 
+            pop.advance(
+                hop,
+                fs,
+                frame_idx,
+                hop_duration.as_secs_f32(),
+                &current_landscape,
+            );
+            let spectrum_body = pop
+                .process_frame(
+                    frame_idx,
+                    &current_landscape.space,
+                    hop_duration.as_secs_f32(),
+                    conductor.is_done(),
+                )
+                .to_vec();
+            // Pending NoteOffs from remove/prune/shutdown must reach the renderer this hop.
+            phonation_batches.extend(pop.take_pending_phonation_batches());
+            let spectrum_body: Arc<[f32]> = Arc::from(spectrum_body);
+
             // [FIX] Audio is MONO. Treat it as such.
             // Previously incorrectly treated as stereo, leading to bad metering and destructive downsampling.
             let (mono_chunk, max_abs, channel_peak) = {
-                pop.advance(
-                    hop,
-                    fs,
-                    frame_idx,
-                    hop_duration.as_secs_f32(),
-                    &current_landscape,
-                );
                 let time_chunk = schedule_renderer.render(
                     &world.board,
                     &phonation_batches,
@@ -1069,16 +1082,9 @@ fn worker_loop(
             let dorsal_metrics = dorsal.last_metrics();
 
             // Build log2 spectrum for analysis and UI (aligned with landscape space).
-            let spectrum_body = pop.process_frame(
-                frame_idx,
-                &current_landscape.space,
-                hop_duration.as_secs_f32(),
-                conductor.is_done(),
-            );
             latest_spec_amps.clear();
-            latest_spec_amps.extend_from_slice(spectrum_body);
-            let spectrum_body = Arc::from(spectrum_body);
-            let _ = spectrum_to_harmonicity_tx.try_send((frame_idx, spectrum_body));
+            latest_spec_amps.extend_from_slice(spectrum_body.as_ref());
+            let _ = spectrum_to_harmonicity_tx.try_send((frame_idx, Arc::clone(&spectrum_body)));
             let _ = audio_to_roughness_tx.try_send((frame_idx, Arc::clone(&mono_chunk)));
 
             // Lag is measured against generated frames, because population dynamics depend on

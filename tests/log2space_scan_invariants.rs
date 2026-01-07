@@ -38,6 +38,8 @@ fn pot_state_scan_len_invariants_hold() {
 }
 
 #[test]
+// compose_c_statepm1_scan uses debug_assert for length checks; skip in release where it is elided.
+#[cfg(debug_assertions)]
 #[should_panic]
 fn compose_panics_on_len_mismatch() {
     let h_state = vec![0.1f32; 4];

@@ -293,6 +293,12 @@ pub struct CoreState {
     pub is_alive: bool,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct BirthOutcome {
+    pub applied: bool,
+    pub gate: Option<u64>,
+}
+
 pub trait PhonationClock: Send {
     fn gather_candidates(&mut self, ctx: &CoreTickCtx, out: &mut Vec<CandidatePoint>);
 }
@@ -895,6 +901,14 @@ impl PhonationEngine {
         self.active_notes > 0
     }
 
+    pub(crate) fn register_external_note_on(&mut self) {
+        self.active_notes = self.active_notes.saturating_add(1);
+    }
+
+    pub(crate) fn register_external_note_off(&mut self) {
+        self.active_notes = self.active_notes.saturating_sub(1);
+    }
+
     fn schedule_note_off(&mut self, note_id: NoteId, off_tick: Tick) {
         self.pending_off
             .push(Reverse(PendingOff { off_tick, note_id }));
@@ -969,7 +983,7 @@ impl PhonationEngine {
         out_cmds: &mut Vec<PhonationCmd>,
         out_events: &mut Vec<PhonationNoteEvent>,
         out_onsets: &mut Vec<OnsetEvent>,
-    ) -> bool {
+    ) -> BirthOutcome {
         let mut candidates = Vec::new();
         self.clock.gather_candidates(ctx, &mut candidates);
         let merged = Self::merge_candidates(candidates);
@@ -1004,14 +1018,16 @@ impl PhonationEngine {
         out_cmds: &mut Vec<PhonationCmd>,
         out_events: &mut Vec<PhonationNoteEvent>,
         out_onsets: &mut Vec<OnsetEvent>,
-    ) -> bool {
+    ) -> BirthOutcome {
         let mut birth_applied = false;
+        let mut birth_gate = None;
         let mut prev_gate_exc: Option<f32> = None;
         self.drain_note_offs(ctx.now_tick, out_cmds);
         for c in candidates {
             debug_assert!(c.theta_pos.is_finite());
             if !birth_applied && birth_onset_tick.is_some_and(|tick| tick <= c.tick) {
                 self.notify_birth_onset(c.gate);
+                birth_gate = Some(c.gate);
                 birth_applied = true;
             }
             self.drain_note_offs(c.tick, out_cmds);
@@ -1111,7 +1127,10 @@ impl PhonationEngine {
             }
         }
         self.drain_note_offs(ctx.frame_end.saturating_sub(1), out_cmds);
-        birth_applied
+        BirthOutcome {
+            applied: birth_applied,
+            gate: birth_gate,
+        }
     }
 
     /// Merge rules:
@@ -1434,7 +1453,7 @@ mod tests {
         let mut events = Vec::new();
         let mut onsets = Vec::new();
         let mut timing_grid = ThetaGrid::from_candidates(&candidates);
-        engine.process_candidates(
+        let _ = engine.process_candidates(
             &ctx,
             &candidates,
             &mut timing_grid,
@@ -1798,7 +1817,7 @@ mod tests {
         let mut events = Vec::new();
         let mut onsets = Vec::new();
         let mut timing_grid = ThetaGrid::from_candidates(&candidates);
-        engine.process_candidates(
+        let _ = engine.process_candidates(
             &ctx,
             &candidates,
             &mut timing_grid,
@@ -1870,7 +1889,7 @@ mod tests {
         let mut events = Vec::new();
         let mut onsets = Vec::new();
         let mut timing_grid = ThetaGrid::from_candidates(&candidates);
-        engine.process_candidates(
+        let _ = engine.process_candidates(
             &ctx,
             &candidates,
             &mut timing_grid,
@@ -1919,7 +1938,7 @@ mod tests {
         let mut events = Vec::new();
         let mut onsets = Vec::new();
         let mut timing_grid = ThetaGrid::from_candidates(&candidates);
-        engine.process_candidates(
+        let _ = engine.process_candidates(
             &ctx,
             &candidates,
             &mut timing_grid,
@@ -1990,7 +2009,7 @@ mod tests {
         let mut events = Vec::new();
         let mut onsets = Vec::new();
         let mut timing_grid = ThetaGrid::from_candidates(&candidates);
-        engine.process_candidates(
+        let _ = engine.process_candidates(
             &ctx,
             &candidates,
             &mut timing_grid,
@@ -2076,7 +2095,7 @@ mod tests {
         let mut events = Vec::new();
         let mut onsets = Vec::new();
         let mut timing_grid = ThetaGrid::from_candidates(&candidates);
-        engine.process_candidates(
+        let _ = engine.process_candidates(
             &ctx,
             &candidates,
             &mut timing_grid,
@@ -2124,7 +2143,7 @@ mod tests {
         let mut events = Vec::new();
         let mut onsets = Vec::new();
         let mut timing_grid = ThetaGrid::from_candidates(&candidates);
-        engine.process_candidates(
+        let _ = engine.process_candidates(
             &ctx,
             &candidates,
             &mut timing_grid,
@@ -2179,7 +2198,7 @@ mod tests {
         let mut events = Vec::new();
         let mut onsets = Vec::new();
         let mut timing_grid = ThetaGrid::from_candidates(&candidates);
-        engine.process_candidates(
+        let _ = engine.process_candidates(
             &ctx,
             &candidates,
             &mut timing_grid,
@@ -2230,7 +2249,7 @@ mod tests {
         let mut cmds = Vec::new();
         let mut events = Vec::new();
         let mut onsets = Vec::new();
-        engine.process_candidates(
+        let _ = engine.process_candidates(
             &ctx,
             &candidates,
             &mut timing_grid,
@@ -2306,7 +2325,7 @@ mod tests {
         let mut events = Vec::new();
         let mut onsets = Vec::new();
         let mut timing_grid = ThetaGrid::from_candidates(&candidates);
-        engine.process_candidates(
+        let _ = engine.process_candidates(
             &ctx,
             &candidates,
             &mut timing_grid,
@@ -2678,7 +2697,7 @@ mod tests {
         let mut events = Vec::new();
         let mut onsets = Vec::new();
         let mut timing_grid = ThetaGrid::from_candidates(&candidates);
-        engine.process_candidates(
+        let _ = engine.process_candidates(
             &ctx,
             &candidates,
             &mut timing_grid,
@@ -2760,7 +2779,7 @@ mod tests {
         let mut events = Vec::new();
         let mut onsets = Vec::new();
         let mut timing_grid = ThetaGrid::from_candidates(&candidates_base);
-        engine_base.process_candidates(
+        let _ = engine_base.process_candidates(
             &ctx,
             &candidates_base,
             &mut timing_grid,
@@ -2822,7 +2841,7 @@ mod tests {
         let mut events_sub = Vec::new();
         let mut onsets_sub = Vec::new();
         let mut timing_grid = ThetaGrid::from_candidates(&candidates_sub);
-        engine_sub.process_candidates(
+        let _ = engine_sub.process_candidates(
             &ctx,
             &candidates_sub,
             &mut timing_grid,
@@ -2906,7 +2925,7 @@ mod tests {
         let mut cmds = Vec::new();
         let mut events = Vec::new();
         let mut onsets = Vec::new();
-        engine.process_candidates(
+        let _ = engine.process_candidates(
             &ctx1,
             &candidates,
             &mut timing_grid,
@@ -2939,7 +2958,7 @@ mod tests {
         let mut cmds2 = Vec::new();
         let mut events2 = Vec::new();
         let mut onsets2 = Vec::new();
-        engine.process_candidates(
+        let _ = engine.process_candidates(
             &ctx2,
             &empty,
             &mut timing_grid,
@@ -3048,7 +3067,7 @@ mod tests {
         let mut events = Vec::new();
         let mut onsets = Vec::new();
         let mut timing_grid = ThetaGrid::from_candidates(&candidates_base);
-        engine_base.process_candidates(
+        let _ = engine_base.process_candidates(
             &ctx,
             &candidates_base,
             &mut timing_grid,
@@ -3119,7 +3138,7 @@ mod tests {
         let mut events = Vec::new();
         let mut onsets = Vec::new();
         let mut timing_grid = ThetaGrid::from_candidates(&candidates_sub);
-        engine_sub.process_candidates(
+        let _ = engine_sub.process_candidates(
             &ctx,
             &candidates_sub,
             &mut timing_grid,

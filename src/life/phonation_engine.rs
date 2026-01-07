@@ -240,8 +240,8 @@ impl TimingField {
                 cursor_tick = boundary.tick;
             }
             let mut weight = (rhythms.env_open * rhythms.env_level).clamp(0.0, 1.0);
-            if let Some((trace, coupling)) = social {
-                if coupling != 0.0 {
+            match social {
+                Some((trace, coupling)) if coupling != 0.0 => {
                     let density = trace.density_at(boundary.tick);
                     if density.is_finite() {
                         let arg = (coupling * density).clamp(-10.0, 10.0);
@@ -251,6 +251,7 @@ impl TimingField {
                         }
                     }
                 }
+                _ => {}
             }
             if boundary.gate > expected_gate {
                 let fill_weight = last_weight.unwrap_or(1.0);
@@ -601,9 +602,7 @@ impl PhonationInterval for AccumulatorInterval {
         };
         let weight = c.weight.max(0.0);
         self.acc += rate_eff * weight * c.dt_theta;
-        if !self.acc.is_finite() {
-            self.acc = ACC_MAX;
-        } else if self.acc > ACC_MAX {
+        if !self.acc.is_finite() || self.acc > ACC_MAX {
             self.acc = ACC_MAX;
         }
         let refractory_ok = c.gate >= self.next_allowed_gate;
@@ -973,6 +972,7 @@ impl PhonationEngine {
         timing_grid.tick_at(off_gate, off_phase as f32)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn tick(
         &mut self,
         ctx: &CoreTickCtx,

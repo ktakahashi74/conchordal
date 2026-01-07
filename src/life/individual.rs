@@ -479,39 +479,39 @@ impl Individual {
                 notes.push(note);
             }
         }
-        if matches!(self.phonation.on_birth, OnBirthPhonation::Sustain) {
-            if let Some(onset_tick) = birth_onset_tick {
-                if self.sustain_note_id.is_none() {
-                    let event = PhonationNoteEvent {
-                        note_id: self.phonation_engine.next_note_id,
-                        onset_tick,
-                    };
-                    if let Some(note) = self.build_phonation_note_spec(event, Some(Tick::MAX)) {
-                        let note_id = event.note_id;
-                        self.phonation_engine.next_note_id =
-                            self.phonation_engine.next_note_id.wrapping_add(1);
-                        self.phonation_engine.register_external_note_on();
-                        cmds.push(PhonationCmd::NoteOn {
-                            note_id,
-                            kick: PhonationKick::Birth,
-                        });
-                        onsets.push(OnsetEvent {
-                            gate: self.birth_onset_gate.unwrap_or(gate_hint),
-                            onset_tick,
-                            strength: 1.0,
-                        });
-                        notes.push(note);
-                        self.sustain_note_id = Some(note_id);
-                        self.sustain_onset_tick = Some(onset_tick);
-                        self.birth_fired = true;
-                        self.birth_pending = false;
-                    } else {
-                        // No retrigger: if the note spec is invalid (e.g., amp too low),
-                        // sustain stays silent and we consume the birth.
-                        self.birth_fired = true;
-                        self.birth_pending = false;
-                    }
-                }
+        if let (OnBirthPhonation::Sustain, Some(onset_tick), None) = (
+            self.phonation.on_birth,
+            birth_onset_tick,
+            self.sustain_note_id,
+        ) {
+            let event = PhonationNoteEvent {
+                note_id: self.phonation_engine.next_note_id,
+                onset_tick,
+            };
+            if let Some(note) = self.build_phonation_note_spec(event, Some(Tick::MAX)) {
+                let note_id = event.note_id;
+                self.phonation_engine.next_note_id =
+                    self.phonation_engine.next_note_id.wrapping_add(1);
+                self.phonation_engine.register_external_note_on();
+                cmds.push(PhonationCmd::NoteOn {
+                    note_id,
+                    kick: PhonationKick::Birth,
+                });
+                onsets.push(OnsetEvent {
+                    gate: self.birth_onset_gate.unwrap_or(gate_hint),
+                    onset_tick,
+                    strength: 1.0,
+                });
+                notes.push(note);
+                self.sustain_note_id = Some(note_id);
+                self.sustain_onset_tick = Some(onset_tick);
+                self.birth_fired = true;
+                self.birth_pending = false;
+            } else {
+                // No retrigger: if the note spec is invalid (e.g., amp too low),
+                // sustain stays silent and we consume the birth.
+                self.birth_fired = true;
+                self.birth_pending = false;
             }
         }
         if self.sustain_note_id.is_some() && !self.is_alive() {

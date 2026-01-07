@@ -31,7 +31,7 @@ impl SocialDensityTrace {
             return Self::default();
         }
         let span = end_tick - start_tick;
-        let n_bins = ((span + bin_ticks as Tick - 1) / bin_ticks as Tick) as usize;
+        let n_bins = span.div_ceil(bin_ticks as Tick) as usize;
         let mut bins = vec![0.0; n_bins];
         for (tick, strength) in onsets {
             if *tick < start_tick || *tick >= end_tick {

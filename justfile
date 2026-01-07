@@ -9,7 +9,6 @@ DIFF_FILE := "diff.patch"
 REQUEST_FILE := "chat_request.md"
 SYNC_MAX_BYTES := `bash -c 'echo ${SYNC_MAX_BYTES:-90000}'`
 DIFF_BASE_MODE := `bash -c 'echo ${DIFF_BASE_MODE:-head}'`
-TS := `date +"%Y%m%d-%H%M%S"`
 RISK_SCAN := `bash -c 'echo ${RISK_SCAN:-0}'`
 
 OS := `uname -s`
@@ -35,15 +34,10 @@ session url="":
 
 snap:
 	@{{REPOMIX_CMD}} --config repomix.config.json; \
-	if [ -f "{{CONTEXT_FILE}}" ]; then \
-		mv "{{CONTEXT_FILE}}" "context-{{TS}}.xml"; \
-		ln -sf "context-{{TS}}.xml" "{{CONTEXT_FILE}}"; \
-	fi; \
-	printf "### git diff (unstaged)\n" > "diff-{{TS}}.patch"; \
-	git diff >> "diff-{{TS}}.patch"; \
-	printf "\n### git diff --cached (staged)\n" >> "diff-{{TS}}.patch"; \
-	git diff --cached >> "diff-{{TS}}.patch"; \
-	ln -sf "diff-{{TS}}.patch" "{{DIFF_FILE}}"; \
+	printf "### git diff (unstaged)\n" > "{{DIFF_FILE}}"; \
+	git diff >> "{{DIFF_FILE}}"; \
+	printf "\n### git diff --cached (staged)\n" >> "{{DIFF_FILE}}"; \
+	git diff --cached >> "{{DIFF_FILE}}"; \
 	if git diff --quiet && git diff --cached --quiet; then \
 		echo "Warning: No changes detected (diff is empty)."; \
 	fi; \
@@ -57,7 +51,7 @@ snap:
 	{ \
 		echo "# Diff return note"; \
 		echo ""; \
-		echo "I'm uploading context.xml and diff.patch (or their timestamped equivalents) for review."; \
+		echo "I'm uploading context.xml and diff.patch for review."; \
 		echo ""; \
 		echo "## Request"; \
 		printf '%s\n' "${lang_line}"; \
@@ -72,17 +66,15 @@ snap:
 	if [ -n "${clip_cmd}" ]; then ${clip_cmd} < "{{REQUEST_FILE}}"; else cat "{{REQUEST_FILE}}" > /dev/null; fi; \
 	{{OPEN}} .; \
 	{{OPEN}} "{{CHAT_URL}}"; \
-	echo "Upload context-{{TS}}.xml and diff-{{TS}}.patch (recommended)."; \
-	echo "context.xml and diff.patch are stable aliases of the latest run."; \
+	echo "Upload {{CONTEXT_FILE}} and {{DIFF_FILE}} (recommended)."; \
 	echo "Paste chat_request.md from clipboard."; \
 	if [ "{{CLIP_WARN}}" = "1" ]; then echo "Warning: No clipboard tool found (wl-copy/xclip). Clipboard copy skipped."; fi
 
 diff:
-	@printf "### git diff (unstaged)\n" > "diff-{{TS}}.patch"; \
-	git diff >> "diff-{{TS}}.patch"; \
-	printf "\n### git diff --cached (staged)\n" >> "diff-{{TS}}.patch"; \
-	git diff --cached >> "diff-{{TS}}.patch"; \
-	ln -sf "diff-{{TS}}.patch" "{{DIFF_FILE}}"; \
+	@printf "### git diff (unstaged)\n" > "{{DIFF_FILE}}"; \
+	git diff >> "{{DIFF_FILE}}"; \
+	printf "\n### git diff --cached (staged)\n" >> "{{DIFF_FILE}}"; \
+	git diff --cached >> "{{DIFF_FILE}}"; \
 	if git diff --quiet && git diff --cached --quiet; then \
 		echo "Warning: No changes detected (diff is empty)."; \
 	fi; \
@@ -110,8 +102,7 @@ diff:
 	fi; \
 	if [ -n "${clip_cmd}" ]; then ${clip_cmd} < "{{REQUEST_FILE}}"; else cat "{{REQUEST_FILE}}" > /dev/null; fi; \
 	{{OPEN}} "{{CHAT_URL}}"; \
-	echo "Upload diff-{{TS}}.patch (recommended)."; \
-	echo "diff.patch is a stable alias of the latest run."; \
+	echo "Upload {{DIFF_FILE}} (recommended)."; \
 	echo "Paste chat_request.md from clipboard."; \
 	if [ "{{CLIP_WARN}}" = "1" ]; then echo "Warning: No clipboard tool found (wl-copy/xclip). Clipboard copy skipped."; fi
 

@@ -165,15 +165,16 @@ impl SoundVoice {
     }
 
     pub fn apply_update(&mut self, update: &PhonationUpdate) {
-        if let Some(freq_hz) = update.freq_hz {
-            if freq_hz.is_finite() && freq_hz > 0.0 {
-                self.body.set_freq(freq_hz);
-            }
+        if let Some(freq_hz) = update.freq_hz
+            && freq_hz.is_finite()
+            && freq_hz > 0.0
+        {
+            self.body.set_freq(freq_hz);
         }
-        if let Some(amp) = update.amp {
-            if amp.is_finite() {
-                self.body.set_amp(amp.max(0.0));
-            }
+        if let Some(amp) = update.amp
+            && amp.is_finite()
+        {
+            self.body.set_amp(amp.max(0.0));
         }
     }
 

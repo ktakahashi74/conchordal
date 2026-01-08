@@ -708,13 +708,13 @@ impl Individual {
             if tick < now || tick >= frame_end {
                 continue;
             }
-            if let Some(prev) = last_tick {
-                if tick <= prev {
-                    if tick < prev {
-                        debug_assert!(tick > prev, "gate ticks must be strictly increasing");
-                    }
-                    continue;
+            if let Some(prev) = last_tick
+                && tick <= prev
+            {
+                if tick < prev {
+                    debug_assert!(tick > prev, "gate ticks must be strictly increasing");
                 }
+                continue;
             }
             ticks.push(tick);
             last_tick = Some(tick);

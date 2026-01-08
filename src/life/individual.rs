@@ -116,6 +116,7 @@ pub struct PhonationNoteSpec {
     pub hold_ticks: Option<Tick>,
     pub freq_hz: f32,
     pub amp: f32,
+    pub smoothing_tau_sec: f32,
     pub body: BodySnapshot,
     pub articulation: ArticulationWrapper,
 }
@@ -299,7 +300,7 @@ impl Individual {
         let theta_hz = landscape.rhythm.theta.freq_hz;
         let dur_sec = gate_duration_sec_from_theta(theta_hz, &self.planning);
         let dur_tick = sec_to_tick_at_least_one(tb, dur_sec);
-        let amp = self.release_gain.clamp(0.0, 1.0);
+        let amp = self.compute_target_amp();
         if amp <= Self::AMP_EPS {
             return Vec::new();
         }
@@ -347,6 +348,7 @@ impl Individual {
         self.last_chosen_freq_hz = freq_hz;
         let snapshot = self.body_snapshot();
         let kind = snapshot.kind.clone();
+        let articulation = self.articulation_snapshot_for_render();
         let intent = Intent {
             source_id: self.id,
             intent_id: self.intent_seq,
@@ -358,7 +360,7 @@ impl Individual {
             tag: Some(format!("agent:{} {}", self.id, kind)),
             confidence: 1.0,
             body: Some(snapshot),
-            articulation: Some(self.articulation.clone()),
+            articulation: Some(articulation),
         };
         if let Some(pred_tick) = pred_tick {
             self.record_pred_intent(&intent, pred_c_scan_at, now, pred_tick, landscape);
@@ -385,7 +387,7 @@ impl Individual {
         let theta_hz = landscape.rhythm.theta.freq_hz;
         let dur_sec = gate_duration_sec_from_theta(theta_hz, &self.planning);
         let dur_tick = sec_to_tick_at_least_one(tb, dur_sec);
-        let amp = self.body.amp().clamp(0.0, 1.0);
+        let amp = self.compute_target_amp();
         let base_freq_hz = if self.last_chosen_freq_hz > 0.0 && self.last_chosen_freq_hz.is_finite()
         {
             self.last_chosen_freq_hz
@@ -394,6 +396,7 @@ impl Individual {
         };
         let snapshot = self.body_snapshot();
         let kind = snapshot.kind.clone();
+        let articulation = self.articulation_snapshot_for_render();
         let intent = Intent {
             source_id: self.id,
             intent_id: self.intent_seq,
@@ -405,7 +408,7 @@ impl Individual {
             tag: Some(format!("agent:{} birth {}", self.id, kind)),
             confidence: 1.0,
             body: Some(snapshot),
-            articulation: Some(self.articulation.clone()),
+            articulation: Some(articulation),
         };
         self.intent_seq = self.intent_seq.wrapping_add(1);
         self.birth_fired = true;
@@ -598,7 +601,7 @@ impl Individual {
         event: PhonationNoteEvent,
         hold_ticks: Option<Tick>,
     ) -> Option<PhonationNoteSpec> {
-        let amp = self.release_gain.clamp(0.0, 1.0);
+        let amp = self.compute_target_amp();
         if amp <= Self::AMP_EPS {
             return None;
         }
@@ -607,15 +610,37 @@ impl Individual {
             return None;
         }
         self.last_chosen_freq_hz = freq_hz;
+        let articulation = self.articulation_snapshot_for_render();
+        let smoothing_tau_sec = self.phonation.sustain_update.smoothing;
         Some(PhonationNoteSpec {
             note_id: event.note_id,
             onset: event.onset_tick,
             hold_ticks,
             freq_hz,
             amp,
+            smoothing_tau_sec,
             body: self.body_snapshot(),
-            articulation: self.articulation.clone(),
+            articulation,
         })
+    }
+
+    pub(crate) fn compute_target_amp(&self) -> f32 {
+        let release_gain = self.release_gain.clamp(0.0, 1.0);
+        // Include articulation gate in the final target amp.
+        let gate = self.articulation.gate().clamp(0.0, 1.0);
+        let mut amp = self.body.amp() * release_gain * gate;
+        if !amp.is_finite() {
+            amp = 0.0;
+        }
+        amp.max(0.0)
+    }
+
+    /// Gate is baked into amp, so render-side gate is fixed to 1.0 while other articulation state is preserved.
+    fn articulation_snapshot_for_render(&self) -> ArticulationWrapper {
+        let mut articulation = self.articulation.clone();
+        // Normalize render gate to avoid double-applying the gate.
+        articulation.set_gate(1.0);
+        articulation
     }
 
     fn emit_sustain_updates(
@@ -643,13 +668,13 @@ impl Individual {
                 SustainUpdateTarget::Pitch => {
                     let freq_hz = self.body.base_freq_hz();
                     if freq_hz.is_finite() && freq_hz > 0.0 {
-                        update.freq_hz = Some(freq_hz);
+                        update.target_freq_hz = Some(freq_hz);
                     }
                 }
                 SustainUpdateTarget::Gain => {
-                    let amp = self.body.amp();
+                    let amp = self.compute_target_amp();
                     if amp.is_finite() {
-                        update.amp = Some(amp);
+                        update.target_amp = Some(amp);
                     }
                 }
             }
@@ -724,15 +749,17 @@ impl Individual {
 
     fn body_snapshot(&self) -> BodySnapshot {
         match &self.body {
-            AnySoundBody::Sine(body) => BodySnapshot {
+            AnySoundBody::Sine(_body) => BodySnapshot {
                 kind: "sine".to_string(),
-                amp_scale: body.amp.clamp(0.0, 1.0),
+                // Target amp already includes body gain; keep snapshot scale neutral.
+                amp_scale: 1.0,
                 brightness: 0.0,
                 noise_mix: 0.0,
             },
             AnySoundBody::Harmonic(body) => BodySnapshot {
                 kind: "harmonic".to_string(),
-                amp_scale: body.amp.clamp(0.0, 1.0),
+                // Target amp already includes body gain; keep snapshot scale neutral.
+                amp_scale: 1.0,
                 brightness: body.genotype.brightness.clamp(0.0, 1.0),
                 noise_mix: body.genotype.jitter.clamp(0.0, 1.0),
             },

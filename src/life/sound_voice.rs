@@ -28,6 +28,15 @@ pub struct SoundVoice {
     birth_kick_pending: bool,
     planned_kick_pending: Option<PhonationKick>,
     pending_updates: VecDeque<PendingUpdate>,
+    current_amp: f32,
+    target_amp: f32,
+    current_freq_hz: f32,
+    target_freq_hz: f32,
+    amp_tau_sec: f32,
+    freq_tau_sec: f32,
+    amp_alpha: f32,
+    freq_alpha: f32,
+    sample_dt: f32,
 }
 
 impl SoundVoice {
@@ -75,6 +84,20 @@ impl SoundVoice {
             (hold_end, release_end)
         };
 
+        let sample_dt = if time.fs.is_finite() && time.fs > 0.0 {
+            1.0 / time.fs
+        } else {
+            0.0
+        };
+        let current_amp = amp.max(0.0);
+        let target_amp = current_amp;
+        let current_freq_hz = intent.freq_hz;
+        let target_freq_hz = current_freq_hz;
+        let amp_tau_sec = 0.0;
+        let freq_tau_sec = 0.0;
+        let amp_alpha = smoothing_alpha(sample_dt, amp_tau_sec);
+        let freq_alpha = smoothing_alpha(sample_dt, freq_tau_sec);
+
         Some(Self {
             body,
             articulation,
@@ -86,6 +109,15 @@ impl SoundVoice {
             birth_kick_pending: intent.kind == IntentKind::BirthOnce,
             planned_kick_pending: None,
             pending_updates: VecDeque::new(),
+            current_amp,
+            target_amp,
+            current_freq_hz,
+            target_freq_hz,
+            amp_tau_sec,
+            freq_tau_sec,
+            amp_alpha,
+            freq_alpha,
+            sample_dt,
         })
     }
 
@@ -165,16 +197,25 @@ impl SoundVoice {
     }
 
     pub fn apply_update(&mut self, update: &PhonationUpdate) {
-        if let Some(freq_hz) = update.freq_hz
+        if let Some(freq_hz) = update.target_freq_hz
             && freq_hz.is_finite()
             && freq_hz > 0.0
         {
-            self.body.set_freq(freq_hz);
+            self.target_freq_hz = freq_hz;
+            if self.freq_alpha >= 1.0 {
+                self.current_freq_hz = freq_hz;
+                self.body.set_freq(freq_hz);
+            }
         }
-        if let Some(amp) = update.amp
+        if let Some(amp) = update.target_amp
             && amp.is_finite()
         {
-            self.body.set_amp(amp.max(0.0));
+            let amp = amp.max(0.0);
+            self.target_amp = amp;
+            if self.amp_alpha >= 1.0 {
+                self.current_amp = amp;
+                self.body.set_amp(amp);
+            }
         }
     }
 
@@ -184,6 +225,26 @@ impl SoundVoice {
             return self.kick_birth(rhythms, dt);
         }
         false
+    }
+
+    pub fn set_smoothing_tau_sec(&mut self, tau_sec: f32) {
+        let tau = if tau_sec.is_finite() {
+            tau_sec.max(0.0)
+        } else {
+            0.0
+        };
+        self.amp_tau_sec = tau;
+        self.freq_tau_sec = tau;
+        self.amp_alpha = smoothing_alpha(self.sample_dt, self.amp_tau_sec);
+        self.freq_alpha = smoothing_alpha(self.sample_dt, self.freq_tau_sec);
+        if self.amp_alpha >= 1.0 {
+            self.current_amp = self.target_amp;
+            self.body.set_amp(self.current_amp);
+        }
+        if self.freq_alpha >= 1.0 {
+            self.current_freq_hz = self.target_freq_hz;
+            self.body.set_freq(self.current_freq_hz);
+        }
     }
 
     #[cfg(test)]
@@ -201,6 +262,26 @@ impl SoundVoice {
         self.body.amp()
     }
 
+    #[cfg(test)]
+    pub(crate) fn debug_target_amp(&self) -> f32 {
+        self.target_amp
+    }
+
+    #[cfg(test)]
+    pub(crate) fn debug_current_amp(&self) -> f32 {
+        self.current_amp
+    }
+
+    #[cfg(test)]
+    pub(crate) fn debug_target_freq_hz(&self) -> f32 {
+        self.target_freq_hz
+    }
+
+    #[cfg(test)]
+    pub(crate) fn debug_current_freq_hz(&self) -> f32 {
+        self.current_freq_hz
+    }
+
     pub fn end_tick(&self) -> Tick {
         self.release_end
     }
@@ -214,6 +295,7 @@ impl SoundVoice {
     }
 
     pub fn render_tick(&mut self, tick: Tick, fs: f32, dt: f32, rhythms: &NeuralRhythms) -> f32 {
+        self.advance_smoothing();
         let gain = self.gain_at(tick);
         if gain <= 0.0 {
             return 0.0;
@@ -238,6 +320,27 @@ impl SoundVoice {
         let mut sample = 0.0f32;
         self.body.articulate_wave(&mut sample, fs, dt, &signal);
         sample
+    }
+
+    fn advance_smoothing(&mut self) {
+        self.current_amp = smooth_step(self.current_amp, self.target_amp, self.amp_alpha);
+        if !self.current_amp.is_finite() {
+            self.current_amp = self.target_amp;
+        }
+        self.current_amp = self.current_amp.max(0.0);
+
+        self.current_freq_hz =
+            smooth_step(self.current_freq_hz, self.target_freq_hz, self.freq_alpha);
+        if !self.current_freq_hz.is_finite() || self.current_freq_hz <= 0.0 {
+            self.current_freq_hz = self.target_freq_hz;
+        }
+
+        if self.current_amp.is_finite() {
+            self.body.set_amp(self.current_amp);
+        }
+        if self.current_freq_hz.is_finite() && self.current_freq_hz > 0.0 {
+            self.body.set_freq(self.current_freq_hz);
+        }
     }
 
     fn gain_at(&self, tick: Tick) -> f32 {
@@ -266,6 +369,31 @@ impl SoundVoice {
         };
 
         (attack * release).clamp(0.0, 1.0)
+    }
+}
+
+fn smooth_step(current: f32, target: f32, alpha: f32) -> f32 {
+    if !current.is_finite() {
+        return target;
+    }
+    if !target.is_finite() {
+        return current;
+    }
+    current + alpha * (target - current)
+}
+
+fn smoothing_alpha(dt: f32, tau_sec: f32) -> f32 {
+    if !dt.is_finite() || dt <= 0.0 {
+        return 1.0;
+    }
+    if !tau_sec.is_finite() || tau_sec <= 0.0 {
+        return 1.0;
+    }
+    let alpha = 1.0 - (-dt / tau_sec).exp();
+    if alpha.is_finite() {
+        alpha.clamp(0.0, 1.0)
+    } else {
+        1.0
     }
 }
 
@@ -387,19 +515,20 @@ mod tests {
         voice.schedule_update(
             0,
             PhonationUpdate {
-                freq_hz: Some(330.0),
-                amp: None,
+                target_freq_hz: Some(330.0),
+                target_amp: None,
             },
         );
         voice.schedule_update(
             0,
             PhonationUpdate {
-                freq_hz: Some(440.0),
-                amp: None,
+                target_freq_hz: Some(440.0),
+                target_amp: None,
             },
         );
         voice.apply_updates_if_due(0);
-        assert!((voice.body.base_freq_hz() - 440.0).abs() < 1e-6);
+        assert!((voice.debug_target_freq_hz() - 440.0).abs() < 1e-6);
+        assert!((voice.debug_current_freq_hz() - 440.0).abs() < 1e-6);
     }
 
     #[test]
@@ -423,8 +552,8 @@ mod tests {
         voice.schedule_update(
             0,
             PhonationUpdate {
-                freq_hz: Some(440.0),
-                amp: None,
+                target_freq_hz: Some(440.0),
+                target_amp: None,
             },
         );
         voice.apply_updates_if_due(0);
@@ -452,11 +581,82 @@ mod tests {
         voice.schedule_update(
             0,
             PhonationUpdate {
-                freq_hz: Some(440.0),
-                amp: None,
+                target_freq_hz: Some(440.0),
+                target_amp: None,
             },
         );
         voice.apply_updates_if_due(2);
         assert!((voice.body.base_freq_hz() - 220.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn smoothing_tau_zero_updates_immediately() {
+        let tb = Timebase { fs: 1000.0, hop: 8 };
+        let intent = Intent {
+            source_id: 1,
+            intent_id: 1,
+            kind: IntentKind::Normal,
+            onset: 0,
+            duration: 10,
+            freq_hz: 220.0,
+            amp: 0.1,
+            tag: None,
+            confidence: 1.0,
+            body: None,
+            articulation: None,
+        };
+        let mut voice = SoundVoice::from_intent(tb, intent).expect("voice");
+        voice.set_smoothing_tau_sec(0.0);
+        voice.schedule_update(
+            0,
+            PhonationUpdate {
+                target_freq_hz: Some(440.0),
+                target_amp: Some(0.5),
+            },
+        );
+        voice.apply_updates_if_due(0);
+        assert!((voice.debug_current_freq_hz() - 440.0).abs() < 1e-6);
+        assert!((voice.debug_current_amp() - 0.5).abs() < 1e-6);
+        assert!((voice.debug_target_freq_hz() - 440.0).abs() < 1e-6);
+        assert!((voice.debug_target_amp() - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn smoothing_tau_positive_moves_toward_target() {
+        let tb = Timebase { fs: 1000.0, hop: 8 };
+        let intent = Intent {
+            source_id: 1,
+            intent_id: 1,
+            kind: IntentKind::Normal,
+            onset: 0,
+            duration: 10,
+            freq_hz: 220.0,
+            amp: 0.1,
+            tag: None,
+            confidence: 1.0,
+            body: None,
+            articulation: None,
+        };
+        let mut voice = SoundVoice::from_intent(tb, intent).expect("voice");
+        voice.set_smoothing_tau_sec(0.1);
+        voice.schedule_update(
+            0,
+            PhonationUpdate {
+                target_freq_hz: Some(440.0),
+                target_amp: Some(1.0),
+            },
+        );
+        voice.apply_updates_if_due(0);
+
+        let amp_before = voice.debug_current_amp();
+        let freq_before = voice.debug_current_freq_hz();
+        let rhythms = NeuralRhythms::default();
+        let dt = 1.0 / tb.fs;
+        let _ = voice.render_tick(0, tb.fs, dt, &rhythms);
+
+        let amp_after = voice.debug_current_amp();
+        let freq_after = voice.debug_current_freq_hz();
+        assert!(amp_after > amp_before && amp_after < voice.debug_target_amp());
+        assert!(freq_after > freq_before && freq_after < voice.debug_target_freq_hz());
     }
 }

@@ -7,6 +7,7 @@ use crate::core::log2space::Log2Space;
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
 use crate::life::gate_clock::next_gate_tick;
+use crate::life::phonation_engine::{PhonationCmd, PhonationUpdate};
 use crate::life::social_density::SocialDensityTrace;
 use crate::life::world_model::WorldModel;
 use rand::{Rng, SeedableRng, distr::Distribution, distr::weighted::WeightedIndex, rngs::SmallRng};
@@ -569,22 +570,80 @@ impl Population {
             Action::SetFreq { target, freq_hz } => {
                 let ids = self.resolve_target_ids(&target);
                 let log_freq = freq_hz.max(1.0).log2();
+                let update_tick = self
+                    .time
+                    .frame_start_tick(self.current_frame)
+                    .saturating_add((self.time.hop as Tick).max(1));
+                let mut pending = Vec::new();
                 for id in ids {
                     if let Some(a) = self.find_individual_mut(id) {
                         a.force_set_pitch_log2(log_freq);
+                        if let Some(note_id) = a.sustain_note_id
+                            && a.is_alive()
+                        {
+                            let mut update = PhonationUpdate::default();
+                            let freq_hz = a.body.base_freq_hz();
+                            if freq_hz.is_finite() && freq_hz > 0.0 {
+                                update.target_freq_hz = Some(freq_hz);
+                            }
+                            if !update.is_empty() {
+                                pending.push(PhonationBatch {
+                                    source_id: a.id,
+                                    cmds: vec![PhonationCmd::Update {
+                                        note_id,
+                                        at_tick: Some(update_tick),
+                                        update,
+                                    }],
+                                    notes: Vec::new(),
+                                    onsets: Vec::new(),
+                                });
+                            }
+                        }
                     } else {
                         warn!("SetFreq: agent {id} not found");
                     }
                 }
+                if !pending.is_empty() {
+                    self.pending_phonation_batches.extend(pending);
+                }
             }
             Action::SetAmp { target, amp } => {
                 let ids = self.resolve_target_ids(&target);
+                let update_tick = self
+                    .time
+                    .frame_start_tick(self.current_frame)
+                    .saturating_add((self.time.hop as Tick).max(1));
+                let mut pending = Vec::new();
                 for id in ids {
                     if let Some(a) = self.find_individual_mut(id) {
                         a.body.set_amp(amp);
+                        if let Some(note_id) = a.sustain_note_id
+                            && a.is_alive()
+                        {
+                            let mut update = PhonationUpdate::default();
+                            let amp = a.compute_target_amp();
+                            if amp.is_finite() {
+                                update.target_amp = Some(amp);
+                            }
+                            if !update.is_empty() {
+                                pending.push(PhonationBatch {
+                                    source_id: a.id,
+                                    cmds: vec![PhonationCmd::Update {
+                                        note_id,
+                                        at_tick: Some(update_tick),
+                                        update,
+                                    }],
+                                    notes: Vec::new(),
+                                    onsets: Vec::new(),
+                                });
+                            }
+                        }
                     } else {
                         warn!("SetAmp: agent {id} not found");
                     }
+                }
+                if !pending.is_empty() {
+                    self.pending_phonation_batches.extend(pending);
                 }
             }
             Action::SetRhythmVitality { value } => {

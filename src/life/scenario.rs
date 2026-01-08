@@ -138,6 +138,7 @@ pub enum BirthTiming {
 pub enum SustainUpdateCadence {
     #[default]
     Off,
+    /// Recommended for drone-style sustain.
     Hop,
     Gate,
 }
@@ -156,7 +157,7 @@ pub struct SustainUpdateConfig {
     pub cadence: SustainUpdateCadence,
     #[serde(default)]
     pub what: Vec<SustainUpdateTarget>,
-    /// Reserved for future smoothing; currently unused and treated as 0.0.
+    /// Smoothing time constant in seconds (0.0 = immediate).
     #[serde(default)]
     pub smoothing: f32,
 }

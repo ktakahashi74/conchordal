@@ -23,13 +23,14 @@ pub enum PhonationKick {
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct PhonationUpdate {
-    pub freq_hz: Option<f32>,
-    pub amp: Option<f32>,
+    pub target_freq_hz: Option<f32>,
+    /// Final output target amp (linear).
+    pub target_amp: Option<f32>,
 }
 
 impl PhonationUpdate {
     pub fn is_empty(&self) -> bool {
-        self.freq_hz.is_none() && self.amp.is_none()
+        self.target_freq_hz.is_none() && self.target_amp.is_none()
     }
 }
 

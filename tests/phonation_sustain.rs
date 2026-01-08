@@ -540,6 +540,7 @@ fn sustain_hold_ticks_max_does_not_expire() {
         hold_ticks: Some(Tick::MAX),
         freq_hz: 440.0,
         amp: 0.5,
+        smoothing_tau_sec: 0.0,
         body: BodySnapshot {
             kind: "sine".to_string(),
             amp_scale: 1.0,
@@ -605,6 +606,7 @@ fn sustain_voice_releases_after_note_off() {
         hold_ticks: Some(Tick::MAX),
         freq_hz: 440.0,
         amp: 0.5,
+        smoothing_tau_sec: 0.0,
         body: BodySnapshot {
             kind: "sine".to_string(),
             amp_scale: 1.0,

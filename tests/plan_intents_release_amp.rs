@@ -1,7 +1,7 @@
 use conchordal::core::landscape::Landscape;
 use conchordal::core::log2space::Log2Space;
 use conchordal::core::timebase::{Tick, Timebase};
-use conchordal::life::individual::AgentMetadata;
+use conchordal::life::individual::{AgentMetadata, SoundBody};
 use conchordal::life::intent::Intent;
 use conchordal::life::scenario::{IndividualConfig, LifeConfig};
 
@@ -54,12 +54,27 @@ fn run_plan(mut agent: conchordal::life::individual::Individual, tb: &Timebase) 
 }
 
 #[test]
-fn plan_intents_uses_release_gain_for_amp() {
+fn plan_intents_uses_target_amp() {
     let (agent, tb) = setup_agent(0.25);
+    let expected_amp = agent.body.amp() * agent.release_gain * agent.articulation.gate();
     let intents = run_plan(agent, &tb);
     assert!(!intents.is_empty());
     for intent in intents {
-        assert!((intent.amp - 0.25).abs() < AMP_EPS);
+        assert!((intent.amp - expected_amp).abs() < AMP_EPS);
+    }
+}
+
+#[test]
+fn plan_intents_normalizes_articulation_gate() {
+    let (mut agent, tb) = setup_agent(0.25);
+    agent.articulation.set_gate(0.5);
+    let expected_amp = agent.body.amp() * agent.release_gain * 0.5;
+    let intents = run_plan(agent, &tb);
+    assert!(!intents.is_empty());
+    for intent in intents {
+        assert!((intent.amp - expected_amp).abs() < AMP_EPS);
+        let articulation = intent.articulation.expect("articulation");
+        assert!((articulation.gate() - 1.0).abs() < AMP_EPS);
     }
 }
 

@@ -6,10 +6,12 @@ use crate::life::intent::{BodySnapshot, Intent};
 use crate::life::intent_planner::choose_best_gesture_tf_by_pred_c;
 use crate::life::perceptual::{FeaturesNow, PerceptualContext};
 use crate::life::phonation_engine::{
-    CoreState, CoreTickCtx, NoteId, OnsetEvent, PhonationCmd, PhonationEngine, PhonationKick,
-    PhonationNoteEvent,
+    CandidatePoint, CoreState, CoreTickCtx, NoteId, OnsetEvent, PhonationClock, PhonationCmd,
+    PhonationEngine, PhonationKick, PhonationNoteEvent, PhonationUpdate, ThetaGateClock,
 };
-use crate::life::scenario::{OnBirthPhonation, PhonationConfig, PlanningConfig};
+use crate::life::scenario::{
+    OnBirthPhonation, PhonationConfig, PlanningConfig, SustainUpdateCadence, SustainUpdateTarget,
+};
 use crate::life::social_density::SocialDensityTrace;
 use rand::rngs::SmallRng;
 use std::collections::VecDeque;
@@ -514,6 +516,7 @@ impl Individual {
                 self.birth_pending = false;
             }
         }
+        self.emit_sustain_updates(now, frame_end, tb, rhythms, &mut cmds);
         if self.sustain_note_id.is_some() && !self.is_alive() {
             self.flush_sustain_note_off(now, &mut cmds);
         }
@@ -615,6 +618,110 @@ impl Individual {
         })
     }
 
+    fn emit_sustain_updates(
+        &self,
+        now: Tick,
+        frame_end: Tick,
+        tb: &Timebase,
+        rhythms: &NeuralRhythms,
+        out_cmds: &mut Vec<PhonationCmd>,
+    ) {
+        let note_id = match self.sustain_note_id {
+            Some(note_id) => note_id,
+            None => return,
+        };
+        if !self.is_alive() {
+            return;
+        }
+        let cadence = self.phonation.sustain_update.cadence;
+        if cadence == SustainUpdateCadence::Off {
+            return;
+        }
+        let mut update = PhonationUpdate::default();
+        for target in &self.phonation.sustain_update.what {
+            match target {
+                SustainUpdateTarget::Pitch => {
+                    let freq_hz = self.body.base_freq_hz();
+                    if freq_hz.is_finite() && freq_hz > 0.0 {
+                        update.freq_hz = Some(freq_hz);
+                    }
+                }
+                SustainUpdateTarget::Gain => {
+                    let amp = self.body.amp();
+                    if amp.is_finite() {
+                        update.amp = Some(amp);
+                    }
+                }
+            }
+        }
+        if update.is_empty() {
+            return;
+        }
+        match cadence {
+            SustainUpdateCadence::Hop => {
+                out_cmds.push(PhonationCmd::Update {
+                    note_id,
+                    at_tick: Some(now),
+                    update,
+                });
+            }
+            SustainUpdateCadence::Gate => {
+                for tick in Self::gate_ticks_for_window(now, frame_end, tb, rhythms) {
+                    out_cmds.push(PhonationCmd::Update {
+                        note_id,
+                        at_tick: Some(tick),
+                        update,
+                    });
+                }
+            }
+            SustainUpdateCadence::Off => {}
+        }
+    }
+
+    pub(crate) fn gate_ticks_for_window(
+        now: Tick,
+        frame_end: Tick,
+        tb: &Timebase,
+        rhythms: &NeuralRhythms,
+    ) -> Vec<Tick> {
+        let ctx = CoreTickCtx {
+            now_tick: now,
+            frame_end,
+            fs: tb.fs,
+            rhythms: *rhythms,
+        };
+        let mut clock = ThetaGateClock::default();
+        let mut candidates = Vec::new();
+        clock.gather_candidates(&ctx, &mut candidates);
+        Self::ticks_from_candidates(&candidates, now, frame_end)
+    }
+
+    pub(crate) fn ticks_from_candidates(
+        candidates: &[CandidatePoint],
+        now: Tick,
+        frame_end: Tick,
+    ) -> Vec<Tick> {
+        let mut ticks = Vec::new();
+        let mut last_tick = None;
+        for candidate in candidates {
+            let tick = candidate.tick;
+            if tick < now || tick >= frame_end {
+                continue;
+            }
+            if let Some(prev) = last_tick {
+                if tick <= prev {
+                    if tick < prev {
+                        debug_assert!(tick > prev, "gate ticks must be strictly increasing");
+                    }
+                    continue;
+                }
+            }
+            ticks.push(tick);
+            last_tick = Some(tick);
+        }
+        ticks
+    }
+
     fn body_snapshot(&self) -> BodySnapshot {
         match &self.body {
             AnySoundBody::Sine(body) => BodySnapshot {
@@ -674,9 +781,17 @@ fn sec_to_tick_at_least_one(tb: &Timebase, sec: f32) -> Tick {
 
 #[cfg(test)]
 mod tests {
+    use super::AgentMetadata;
     use super::{gate_duration_sec_from_theta, sec_to_tick_at_least_one};
-    use crate::core::timebase::Timebase;
-    use crate::life::scenario::{PlanPitchMode, PlanningConfig};
+    use crate::core::modulation::NeuralRhythms;
+    use crate::core::timebase::{Tick, Timebase};
+    use crate::life::phonation_engine::{
+        CandidatePoint, ClockSource, CoreTickCtx, PhonationClock, PhonationCmd, ThetaGateClock,
+    };
+    use crate::life::scenario::{
+        IndividualConfig, LifeConfig, OnBirthPhonation, PhonationConfig, PlanPitchMode,
+        PlanningConfig, SustainUpdateCadence, SustainUpdateConfig, SustainUpdateTarget,
+    };
 
     #[test]
     fn gate_duration_tracks_theta() {
@@ -715,6 +830,208 @@ mod tests {
         assert!(raw < 1);
         let clamped = sec_to_tick_at_least_one(&tb, dur_sec);
         assert_eq!(clamped, 1);
+    }
+
+    #[test]
+    fn sustain_update_hop_emits_updates_without_candidates() {
+        let tb = Timebase { fs: 1000.0, hop: 4 };
+        let mut life = LifeConfig::default();
+        life.phonation = PhonationConfig {
+            on_birth: OnBirthPhonation::Sustain,
+            sustain_update: SustainUpdateConfig {
+                cadence: SustainUpdateCadence::Hop,
+                what: vec![SustainUpdateTarget::Pitch],
+                smoothing: 0.0,
+            },
+            ..PhonationConfig::default()
+        };
+        let cfg = IndividualConfig {
+            freq: 220.0,
+            amp: 0.5,
+            life,
+            tag: None,
+        };
+        let metadata = AgentMetadata {
+            id: 1,
+            tag: None,
+            group_idx: 0,
+            member_idx: 0,
+        };
+        let mut agent = cfg.spawn(1, 0, metadata, tb.fs, 0);
+        agent.set_birth_onset_tick(Some(0));
+
+        let rhythms = NeuralRhythms::default();
+        let batch0 = agent.tick_phonation(&tb, 0, &rhythms, None, 0.0);
+        let (note_on0, update0, note_off0) = count_cmds(&batch0.cmds);
+        assert_eq!(note_on0, 1);
+        assert_eq!(update0, 1);
+        assert_eq!(note_off0, 0);
+        let note_id = batch0.cmds.iter().find_map(|cmd| match cmd {
+            PhonationCmd::NoteOn { note_id, .. } => Some(*note_id),
+            _ => None,
+        });
+        let Some(note_id) = note_id else {
+            panic!("expected sustain note on");
+        };
+
+        let hop = tb.hop as u64;
+        let batch1 = agent.tick_phonation(&tb, hop, &rhythms, None, 0.0);
+        let (note_on1, update1, note_off1) = count_cmds(&batch1.cmds);
+        assert_eq!(note_on1, 0);
+        assert_eq!(update1, 1);
+        assert_eq!(note_off1, 0);
+        assert!(
+            batch1.cmds.iter().all(|cmd| match cmd {
+                PhonationCmd::Update { note_id: id, .. } => *id == note_id,
+                _ => true,
+            }),
+            "update should target sustain note id"
+        );
+
+        agent.release_gain = 0.0;
+        let now2 = hop.saturating_mul(2);
+        let batch2 = agent.tick_phonation(&tb, now2, &rhythms, None, 0.0);
+        let (note_on2, update2, note_off2) = count_cmds(&batch2.cmds);
+        assert_eq!(note_on2, 0);
+        assert_eq!(update2, 0);
+        assert_eq!(note_off2, 1);
+        let off = batch2.cmds.iter().find_map(|cmd| match cmd {
+            PhonationCmd::NoteOff {
+                note_id: id,
+                off_tick,
+            } => Some((*id, *off_tick)),
+            _ => None,
+        });
+        assert_eq!(off, Some((note_id, now2)));
+    }
+
+    #[test]
+    fn sustain_update_gate_emits_updates_on_gate_ticks() {
+        let tb = Timebase {
+            fs: 1000.0,
+            hop: 64,
+        };
+        let mut life = LifeConfig::default();
+        life.phonation = PhonationConfig {
+            on_birth: OnBirthPhonation::Sustain,
+            sustain_update: SustainUpdateConfig {
+                cadence: SustainUpdateCadence::Gate,
+                what: vec![SustainUpdateTarget::Pitch],
+                smoothing: 0.0,
+            },
+            ..PhonationConfig::default()
+        };
+        let cfg = IndividualConfig {
+            freq: 220.0,
+            amp: 0.5,
+            life,
+            tag: None,
+        };
+        let metadata = AgentMetadata {
+            id: 2,
+            tag: None,
+            group_idx: 0,
+            member_idx: 0,
+        };
+        let mut agent = cfg.spawn(2, 0, metadata, tb.fs, 0);
+        agent.set_birth_onset_tick(Some(0));
+
+        let mut rhythms = NeuralRhythms::default();
+        rhythms.theta.freq_hz = 40.0;
+        rhythms.theta.phase = 0.0;
+        let now: Tick = 0;
+        let frame_end = now.saturating_add(tb.hop as u64);
+        let batch = agent.tick_phonation(&tb, now, &rhythms, None, 0.0);
+        let updates: Vec<u64> = batch
+            .cmds
+            .iter()
+            .filter_map(|cmd| match cmd {
+                PhonationCmd::Update { at_tick, .. } => *at_tick,
+                _ => None,
+            })
+            .collect();
+        assert!(!updates.is_empty(), "expected at least one gate update");
+        assert!(
+            updates.iter().all(|tick| *tick >= now && *tick < frame_end),
+            "updates must be within frame window"
+        );
+        assert!(
+            updates.windows(2).all(|pair| pair[0] < pair[1]),
+            "update ticks must be strictly increasing"
+        );
+
+        let ctx = CoreTickCtx {
+            now_tick: now,
+            frame_end,
+            fs: tb.fs,
+            rhythms,
+        };
+        let mut clock = ThetaGateClock::default();
+        let mut candidates = Vec::new();
+        clock.gather_candidates(&ctx, &mut candidates);
+        let expected: Vec<u64> = candidates
+            .iter()
+            .map(|c| c.tick)
+            .filter(|tick| *tick >= now && *tick < frame_end)
+            .collect();
+        assert_eq!(updates, expected);
+    }
+
+    #[test]
+    fn gate_ticks_skip_non_monotonic_candidates() {
+        let candidates = vec![
+            CandidatePoint {
+                tick: 10,
+                gate: 0,
+                theta_pos: 0.0,
+                phase_in_gate: 0.0,
+                sources: vec![ClockSource::GateBoundary],
+            },
+            CandidatePoint {
+                tick: 10,
+                gate: 1,
+                theta_pos: 1.0,
+                phase_in_gate: 0.0,
+                sources: vec![ClockSource::GateBoundary],
+            },
+            CandidatePoint {
+                tick: 12,
+                gate: 2,
+                theta_pos: 2.0,
+                phase_in_gate: 0.0,
+                sources: vec![ClockSource::GateBoundary],
+            },
+            CandidatePoint {
+                tick: 12,
+                gate: 3,
+                theta_pos: 3.0,
+                phase_in_gate: 0.0,
+                sources: vec![ClockSource::GateBoundary],
+            },
+            CandidatePoint {
+                tick: 14,
+                gate: 4,
+                theta_pos: 4.0,
+                phase_in_gate: 0.0,
+                sources: vec![ClockSource::GateBoundary],
+            },
+        ];
+        let ticks = super::Individual::ticks_from_candidates(&candidates, 10, 20);
+        assert_eq!(ticks, vec![10, 12, 14]);
+    }
+
+    fn count_cmds(cmds: &[PhonationCmd]) -> (usize, usize, usize) {
+        let mut note_on = 0;
+        let mut update = 0;
+        let mut note_off = 0;
+        for cmd in cmds {
+            match cmd {
+                PhonationCmd::NoteOn { .. } => note_on += 1,
+                PhonationCmd::Update { .. } => update += 1,
+                PhonationCmd::NoteOff { .. } => note_off += 1,
+            }
+        }
+        (note_on, update, note_off)
     }
 }
 

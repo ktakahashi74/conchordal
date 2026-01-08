@@ -21,6 +21,18 @@ pub enum PhonationKick {
     Planned { strength: f32 },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct PhonationUpdate {
+    pub freq_hz: Option<f32>,
+    pub amp: Option<f32>,
+}
+
+impl PhonationUpdate {
+    pub fn is_empty(&self) -> bool {
+        self.freq_hz.is_none() && self.amp.is_none()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PhonationCmd {
     NoteOn {
@@ -30,6 +42,11 @@ pub enum PhonationCmd {
     NoteOff {
         note_id: NoteId,
         off_tick: Tick,
+    },
+    Update {
+        note_id: NoteId,
+        at_tick: Option<Tick>,
+        update: PhonationUpdate,
     },
 }
 

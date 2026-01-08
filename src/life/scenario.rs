@@ -133,6 +133,44 @@ pub enum BirthTiming {
     Immediate,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SustainUpdateCadence {
+    #[default]
+    Off,
+    Hop,
+    Gate,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SustainUpdateTarget {
+    Pitch,
+    Gain,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SustainUpdateConfig {
+    #[serde(default)]
+    pub cadence: SustainUpdateCadence,
+    #[serde(default)]
+    pub what: Vec<SustainUpdateTarget>,
+    /// Reserved for future smoothing; currently unused and treated as 0.0.
+    #[serde(default)]
+    pub smoothing: f32,
+}
+
+impl Default for SustainUpdateConfig {
+    fn default() -> Self {
+        Self {
+            cadence: SustainUpdateCadence::Off,
+            what: Vec::new(),
+            smoothing: 0.0,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, JsonSchema, Default)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum PhonationIntervalConfig {
@@ -484,6 +522,7 @@ pub struct PhonationConfig {
     pub clock: PhonationClockConfig,
     pub sub_theta_mod: SubThetaModConfig,
     pub social: SocialConfig,
+    pub sustain_update: SustainUpdateConfig,
 }
 
 impl Default for PhonationConfig {
@@ -496,6 +535,7 @@ impl Default for PhonationConfig {
             clock: PhonationClockConfig::default(),
             sub_theta_mod: SubThetaModConfig::default(),
             social: SocialConfig::default(),
+            sustain_update: SustainUpdateConfig::default(),
         }
     }
 }
@@ -516,6 +556,7 @@ impl<'de> Deserialize<'de> for PhonationConfig {
                     clock: PhonationClockConfig::default(),
                     sub_theta_mod: SubThetaModConfig::default(),
                     social: SocialConfig::default(),
+                    sustain_update: SustainUpdateConfig::default(),
                 }),
                 "immediate" => Ok(Self {
                     on_birth: OnBirthPhonation::Once,
@@ -525,6 +566,7 @@ impl<'de> Deserialize<'de> for PhonationConfig {
                     clock: PhonationClockConfig::default(),
                     sub_theta_mod: SubThetaModConfig::default(),
                     social: SocialConfig::default(),
+                    sustain_update: SustainUpdateConfig::default(),
                 }),
                 "off" => Ok(Self {
                     on_birth: OnBirthPhonation::Off,
@@ -534,6 +576,7 @@ impl<'de> Deserialize<'de> for PhonationConfig {
                     clock: PhonationClockConfig::default(),
                     sub_theta_mod: SubThetaModConfig::default(),
                     social: SocialConfig::default(),
+                    sustain_update: SustainUpdateConfig::default(),
                 }),
                 _ => Err(de::Error::custom(format!(
                     "phonation must be \"once\", \"immediate\", or \"off\" (got \"{s}\")"
@@ -547,6 +590,7 @@ impl<'de> Deserialize<'de> for PhonationConfig {
                 let mut clock = PhonationClockConfig::default();
                 let mut sub_theta_mod = SubThetaModConfig::default();
                 let mut social = SocialConfig::default();
+                let mut sustain_update = SustainUpdateConfig::default();
                 for (k, v) in map {
                     match k.as_str() {
                         "on_birth" => {
@@ -597,6 +641,10 @@ impl<'de> Deserialize<'de> for PhonationConfig {
                         "social" => {
                             social = SocialConfig::deserialize(v).map_err(de::Error::custom)?;
                         }
+                        "sustain_update" => {
+                            sustain_update =
+                                SustainUpdateConfig::deserialize(v).map_err(de::Error::custom)?;
+                        }
                         _ => {
                             return Err(de::Error::custom(format!(
                                 "phonation has unknown key: {k}"
@@ -612,6 +660,7 @@ impl<'de> Deserialize<'de> for PhonationConfig {
                     clock,
                     sub_theta_mod,
                     social,
+                    sustain_update,
                 })
             }
             _ => Err(de::Error::custom("phonation must be a string or map")),

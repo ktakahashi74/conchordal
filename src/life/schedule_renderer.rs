@@ -92,6 +92,7 @@ impl ScheduleRenderer {
             let idx = (tick - now) as usize;
             let mut acc = 0.0f32;
             for (key, voice) in self.voices.iter_mut() {
+                voice.apply_updates_if_due(tick);
                 let kicked = voice.kick_if_due(tick, &rhythms, dt);
                 if kicked {
                     debug!(
@@ -171,7 +172,7 @@ impl ScheduleRenderer {
     fn apply_phonation_batches(
         &mut self,
         phonation_batches: &[PhonationBatch],
-        _now: Tick,
+        now: Tick,
         _rhythms: &NeuralRhythms,
         _dt: f32,
     ) {
@@ -225,7 +226,28 @@ impl ScheduleRenderer {
                             voice.note_off(off_tick);
                         }
                     }
+                    PhonationCmd::Update { .. } => {}
                 }
+            }
+            for cmd in &batch.cmds {
+                let PhonationCmd::Update {
+                    note_id,
+                    at_tick,
+                    update,
+                } = *cmd
+                else {
+                    continue;
+                };
+                let key = VoiceKey {
+                    source_id: batch.source_id,
+                    note_id,
+                    kind: VoiceKind::Phonation,
+                };
+                let Some(voice) = self.voices.get_mut(&key) else {
+                    continue;
+                };
+                let tick = at_tick.unwrap_or(now);
+                voice.schedule_update(tick, update);
             }
         }
     }
@@ -264,7 +286,11 @@ fn max_phonation_hold_ticks(time: Timebase) -> Tick {
 mod tests {
     use super::*;
     use crate::core::modulation::NeuralRhythms;
-    use crate::life::individual::{AnyArticulationCore, ArticulationWrapper, SequencedCore};
+    use crate::life::individual::{
+        AnyArticulationCore, ArticulationWrapper, PhonationBatch, PhonationNoteSpec, SequencedCore,
+    };
+    use crate::life::intent::BodySnapshot;
+    use crate::life::phonation_engine::{PhonationKick, PhonationUpdate};
 
     #[test]
     fn birth_kick_consumed_on_onset_tick() {
@@ -306,5 +332,64 @@ mod tests {
                 .all(|voice| !voice.birth_kick_pending()),
             "expected birth kick to be consumed on onset tick"
         );
+    }
+
+    #[test]
+    fn update_command_applies_to_voice() {
+        let tb = Timebase { fs: 1000.0, hop: 4 };
+        let mut renderer = ScheduleRenderer::new(tb);
+        let rhythms = NeuralRhythms::default();
+        let board = IntentBoard::new(1, 1);
+        let articulation = ArticulationWrapper::new(
+            AnyArticulationCore::Seq(SequencedCore {
+                timer: 0.0,
+                duration: 0.1,
+                env_level: 0.0,
+            }),
+            0.0,
+        );
+        let note_id = 1;
+        let batch = PhonationBatch {
+            source_id: 2,
+            cmds: vec![
+                PhonationCmd::Update {
+                    note_id,
+                    at_tick: Some(0),
+                    update: PhonationUpdate {
+                        freq_hz: Some(440.0),
+                        amp: Some(0.25),
+                    },
+                },
+                PhonationCmd::NoteOn {
+                    note_id,
+                    kick: PhonationKick::Planned { strength: 1.0 },
+                },
+            ],
+            notes: vec![PhonationNoteSpec {
+                note_id,
+                onset: 0,
+                hold_ticks: Some(8),
+                freq_hz: 220.0,
+                amp: 0.5,
+                body: BodySnapshot {
+                    kind: "sine".to_string(),
+                    amp_scale: 1.0,
+                    brightness: 0.0,
+                    noise_mix: 0.0,
+                },
+                articulation,
+            }],
+            onsets: Vec::new(),
+        };
+        renderer.render(&board, &[batch], 0, &rhythms);
+
+        let key = VoiceKey {
+            source_id: 2,
+            note_id,
+            kind: VoiceKind::Phonation,
+        };
+        let voice = renderer.voices.get(&key).expect("voice");
+        assert!((voice.debug_body_freq_hz() - 440.0).abs() < 1e-6);
+        assert!((voice.debug_body_amp() - 0.25).abs() < 1e-6);
     }
 }

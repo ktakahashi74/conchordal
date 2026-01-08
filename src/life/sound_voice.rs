@@ -5,10 +5,17 @@ use crate::life::individual::{
 };
 use crate::life::intent::{BodySnapshot, Intent, IntentKind};
 use crate::life::lifecycle::default_decay_attack;
-use crate::life::phonation_engine::PhonationKick;
+use crate::life::phonation_engine::{PhonationKick, PhonationUpdate};
 use crate::life::scenario::{SoundBodyConfig, TimbreGenotype};
 use rand::SeedableRng;
 use rand::rngs::SmallRng;
+use std::collections::VecDeque;
+
+#[derive(Debug, Clone, Copy)]
+struct PendingUpdate {
+    at_tick: Tick,
+    update: PhonationUpdate,
+}
 
 pub struct SoundVoice {
     body: AnySoundBody,
@@ -20,6 +27,7 @@ pub struct SoundVoice {
     release_ticks: Tick,
     birth_kick_pending: bool,
     planned_kick_pending: Option<PhonationKick>,
+    pending_updates: VecDeque<PendingUpdate>,
 }
 
 impl SoundVoice {
@@ -77,6 +85,7 @@ impl SoundVoice {
             release_ticks,
             birth_kick_pending: intent.kind == IntentKind::BirthOnce,
             planned_kick_pending: None,
+            pending_updates: VecDeque::new(),
         })
     }
 
@@ -117,6 +126,33 @@ impl SoundVoice {
         self.planned_kick_pending = Some(kick);
     }
 
+    pub fn schedule_update(&mut self, at_tick: Tick, update: PhonationUpdate) {
+        if update.is_empty() {
+            return;
+        }
+        let insert_at = self
+            .pending_updates
+            .iter()
+            .position(|pending| pending.at_tick > at_tick)
+            .unwrap_or(self.pending_updates.len());
+        self.pending_updates
+            .insert(insert_at, PendingUpdate { at_tick, update });
+    }
+
+    pub fn apply_updates_if_due(&mut self, tick: Tick) {
+        if tick >= self.hold_end {
+            self.pending_updates.clear();
+            return;
+        }
+        while let Some(pending) = self.pending_updates.front().copied() {
+            if pending.at_tick > tick {
+                break;
+            }
+            let pending = self.pending_updates.pop_front().expect("pending update");
+            self.apply_update(&pending.update);
+        }
+    }
+
     pub fn kick_planned_if_due(&mut self, tick: Tick, rhythms: &NeuralRhythms, dt: f32) -> bool {
         let Some(kick) = self.planned_kick_pending else {
             return false;
@@ -126,6 +162,19 @@ impl SoundVoice {
             return self.kick_planned(kick, rhythms, dt);
         }
         false
+    }
+
+    pub fn apply_update(&mut self, update: &PhonationUpdate) {
+        if let Some(freq_hz) = update.freq_hz {
+            if freq_hz.is_finite() && freq_hz > 0.0 {
+                self.body.set_freq(freq_hz);
+            }
+        }
+        if let Some(amp) = update.amp {
+            if amp.is_finite() {
+                self.body.set_amp(amp.max(0.0));
+            }
+        }
     }
 
     pub fn kick_if_due(&mut self, tick: Tick, rhythms: &NeuralRhythms, dt: f32) -> bool {
@@ -139,6 +188,16 @@ impl SoundVoice {
     #[cfg(test)]
     pub(crate) fn birth_kick_pending(&self) -> bool {
         self.birth_kick_pending
+    }
+
+    #[cfg(test)]
+    pub(crate) fn debug_body_freq_hz(&self) -> f32 {
+        self.body.base_freq_hz()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn debug_body_amp(&self) -> f32 {
+        self.body.amp()
     }
 
     pub fn end_tick(&self) -> Tick {
@@ -305,5 +364,98 @@ mod tests {
             .saturating_add(default_release_ticks(tb))
             .saturating_add(1);
         assert!(voice.is_done(done_tick));
+    }
+
+    #[test]
+    fn update_applies_pitch_and_orders_updates() {
+        let tb = Timebase { fs: 1000.0, hop: 8 };
+        let intent = Intent {
+            source_id: 1,
+            intent_id: 1,
+            kind: IntentKind::Normal,
+            onset: 0,
+            duration: 10,
+            freq_hz: 220.0,
+            amp: 0.5,
+            tag: None,
+            confidence: 1.0,
+            body: None,
+            articulation: None,
+        };
+        let mut voice = SoundVoice::from_intent(tb, intent).expect("voice");
+        voice.schedule_update(
+            0,
+            PhonationUpdate {
+                freq_hz: Some(330.0),
+                amp: None,
+            },
+        );
+        voice.schedule_update(
+            0,
+            PhonationUpdate {
+                freq_hz: Some(440.0),
+                amp: None,
+            },
+        );
+        voice.apply_updates_if_due(0);
+        assert!((voice.body.base_freq_hz() - 440.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn note_off_wins_over_same_tick_update() {
+        let tb = Timebase { fs: 1000.0, hop: 8 };
+        let intent = Intent {
+            source_id: 1,
+            intent_id: 1,
+            kind: IntentKind::Normal,
+            onset: 0,
+            duration: 10,
+            freq_hz: 220.0,
+            amp: 0.5,
+            tag: None,
+            confidence: 1.0,
+            body: None,
+            articulation: None,
+        };
+        let mut voice = SoundVoice::from_intent(tb, intent).expect("voice");
+        voice.note_off(0);
+        voice.schedule_update(
+            0,
+            PhonationUpdate {
+                freq_hz: Some(440.0),
+                amp: None,
+            },
+        );
+        voice.apply_updates_if_due(0);
+        assert!((voice.body.base_freq_hz() - 220.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn note_off_discards_past_update_after_release() {
+        let tb = Timebase { fs: 1000.0, hop: 8 };
+        let intent = Intent {
+            source_id: 1,
+            intent_id: 1,
+            kind: IntentKind::Normal,
+            onset: 0,
+            duration: 10,
+            freq_hz: 220.0,
+            amp: 0.5,
+            tag: None,
+            confidence: 1.0,
+            body: None,
+            articulation: None,
+        };
+        let mut voice = SoundVoice::from_intent(tb, intent).expect("voice");
+        voice.note_off(1);
+        voice.schedule_update(
+            0,
+            PhonationUpdate {
+                freq_hz: Some(440.0),
+                amp: None,
+            },
+        );
+        voice.apply_updates_if_due(2);
+        assert!((voice.body.base_freq_hz() - 220.0).abs() < 1e-6);
     }
 }

@@ -113,6 +113,12 @@ sync:
 	diff_cached_stat="$(git diff --stat --cached)"; \
 	diff_full="$(git diff)"; \
 	diff_cached_full="$(git diff --cached)"; \
+	upstream_included="0"; \
+	upstream_patch=""; \
+	if [ "{{DIFF_BASE_MODE}}" = "upstream" ] && git rev-parse --abbrev-ref --symbolic-full-name @{u} >/dev/null 2>&1; then \
+		upstream_patch="$(git diff --merge-base @{u}...HEAD)"; \
+		upstream_included="1"; \
+	fi; \
 	risk_scan=""; \
 	if [ "{{RISK_SCAN}}" = "1" ]; then \
 		risk_scan="$(rg -n 'unsafe\b|\bunwrap\(|\bexpect\(|process::exit|panic!\(|todo!\(|unimplemented!\(' -S . || true)"; \
@@ -157,6 +163,16 @@ sync:
 		echo "${diff_cached_full}"; \
 		printf '%s\n' '```'; \
 		echo ""; \
+		if [ "${upstream_included}" = "1" ]; then \
+			echo "## Upstream Diff Stat"; \
+			git diff --stat --merge-base @{u}...HEAD; \
+			echo ""; \
+			echo "## Upstream Diff (merge-base)"; \
+			printf '%s\n' '```diff'; \
+			echo "${upstream_patch}"; \
+			printf '%s\n' '```'; \
+			echo ""; \
+		fi; \
 		echo "## Risk Scan"; \
 		if [ "{{RISK_SCAN}}" = "1" ]; then \
 			if [ -n "${risk_scan}" ]; then echo "${risk_scan}"; else echo "No matches."; fi; \
@@ -164,11 +180,6 @@ sync:
 			echo "Disabled (set RISK_SCAN=1 to enable)."; \
 		fi; \
 		echo ""; \
-		if [ "{{DIFF_BASE_MODE}}" = "upstream" ] && git rev-parse --abbrev-ref --symbolic-full-name @{u} >/dev/null 2>&1; then \
-			echo "## Upstream Diff Stat"; \
-			git diff --stat --merge-base @{u}...HEAD; \
-			echo ""; \
-		fi; \
 		echo "## Cargo Check (tail)"; \
 		printf '%s\n' '```'; \
 		echo "${check_tail}"; \
@@ -179,23 +190,19 @@ sync:
 		printf '%s\n' "${test_status}"; \
 		printf '%s\n' '```'; \
 	} > "{{SYNC_FILE}}"; \
-	if [ "{{DIFF_BASE_MODE}}" = "upstream" ] && git rev-parse --abbrev-ref --symbolic-full-name @{u} >/dev/null 2>&1; then \
-		upstream_patch="$(git diff --merge-base @{u}...HEAD)"; \
-		current_size="$(wc -c < "{{SYNC_FILE}}")"; \
-		patch_size="$(printf "%s" "${upstream_patch}" | wc -c)"; \
-		target_size="$((current_size + patch_size))"; \
-		if [ "${target_size}" -le "{{SYNC_MAX_BYTES}}" ]; then \
-			{ \
-				echo ""; \
-				echo "## Upstream Diff (merge-base)"; \
-				printf '%s\n' '```diff'; \
-				echo "${upstream_patch}"; \
-				printf '%s\n' '```'; \
-			} >> "{{SYNC_FILE}}"; \
-		fi; \
-	fi; \
+	diff_file_created="0"; \
+	diff_file="{{DIFF_FILE}}"; \
 	file_size="$(wc -c < "{{SYNC_FILE}}")"; \
 	if [ "${file_size}" -gt "{{SYNC_MAX_BYTES}}" ]; then \
+		printf "### git diff (unstaged)\n" > "${diff_file}"; \
+		echo "${diff_full}" >> "${diff_file}"; \
+		printf "\n### git diff --cached (staged)\n" >> "${diff_file}"; \
+		echo "${diff_cached_full}" >> "${diff_file}"; \
+		if [ "${upstream_included}" = "1" ]; then \
+			printf "\n### git diff --merge-base @{u}...HEAD\n" >> "${diff_file}"; \
+			echo "${upstream_patch}" >> "${diff_file}"; \
+		fi; \
+		diff_file_size="$(wc -c < "${diff_file}")"; \
 		{ \
 			echo "# Sync Report (Trimmed)"; \
 			echo ""; \
@@ -209,6 +216,14 @@ sync:
 			echo ""; \
 			echo "## Diff Stat (staged)"; \
 			echo "${diff_cached_stat}"; \
+			echo ""; \
+			echo "## Diff File"; \
+			echo "${diff_file} (${diff_file_size} bytes)"; \
+			if [ "${upstream_included}" = "1" ]; then \
+				echo "Includes unstaged/staged diffs and upstream merge-base diff."; \
+			else \
+				echo "Includes unstaged/staged diffs."; \
+			fi; \
 			echo ""; \
 			echo "## Risk Scan"; \
 			if [ "{{RISK_SCAN}}" = "1" ]; then \
@@ -227,6 +242,7 @@ sync:
 			printf '%s\n' "${test_status}"; \
 			printf '%s\n' '```'; \
 		} > "{{SYNC_FILE}}"; \
+		diff_file_created="1"; \
 	fi; \
 	{ \
 		echo ""; \
@@ -242,7 +258,8 @@ sync:
 	fi; \
 	if [ -n "${clip_cmd}" ]; then ${clip_cmd} < "{{SYNC_FILE}}"; else cat "{{SYNC_FILE}}" > /dev/null; fi; \
 	{{OPEN}} "{{CHAT_URL}}"; \
-	echo "Copied sync_report.md to clipboard. Paste into ChatGPT."; \
+	if [ "${diff_file_created}" = "1" ]; then echo "Diff longer than limit. Written to ${diff_file}."; fi; \
+	echo "Copied sync_report.md to clipboard."; \
 	if [ "{{CLIP_WARN}}" = "1" ]; then echo "Warning: No clipboard tool found (wl-copy/xclip). Clipboard copy skipped."; fi
 
 drive:

@@ -66,7 +66,7 @@ snap:
 	if [ -n "${clip_cmd}" ]; then ${clip_cmd} < "{{REQUEST_FILE}}"; else cat "{{REQUEST_FILE}}" > /dev/null; fi; \
 	{{OPEN}} .; \
 	{{OPEN}} "{{CHAT_URL}}"; \
-	echo "Upload {{CONTEXT_FILE}} and {{DIFF_FILE}} (recommended)."; \
+	echo "Wrote {{CONTEXT_FILE}} and {{DIFF_FILE}}"; \
 	echo "Paste chat_request.md from clipboard."; \
 	if [ "{{CLIP_WARN}}" = "1" ]; then echo "Warning: No clipboard tool found (wl-copy/xclip). Clipboard copy skipped."; fi
 
@@ -102,7 +102,7 @@ diff:
 	fi; \
 	if [ -n "${clip_cmd}" ]; then ${clip_cmd} < "{{REQUEST_FILE}}"; else cat "{{REQUEST_FILE}}" > /dev/null; fi; \
 	{{OPEN}} "{{CHAT_URL}}"; \
-	echo "Upload {{DIFF_FILE}} (recommended)."; \
+	echo "Wrote {{DIFF_FILE}}"; \
 	echo "Paste chat_request.md from clipboard."; \
 	if [ "{{CLIP_WARN}}" = "1" ]; then echo "Warning: No clipboard tool found (wl-copy/xclip). Clipboard copy skipped."; fi
 

@@ -145,11 +145,15 @@ def write_file(path: Path, content: str) -> None:
 # LLM Calls
 # =============================================================================
 
-def run_repomix() -> None:
+def run_repomix(output_file: Path) -> None:
     """Pack codebase with repomix."""
     print(">> Running repomix...")
     try:
-        subprocess.run(["npx", "repomix"], check=True, cwd=REPO_ROOT)
+        subprocess.run(
+            ["npx", "repomix", "--output", str(output_file)],
+            check=True,
+            cwd=REPO_ROOT,
+        )
     except subprocess.CalledProcessError:
         print("Error: repomix failed.", file=sys.stderr)
         sys.exit(1)
@@ -276,7 +280,7 @@ def main():
     else:
         # 1. Pack codebase
         if not args.skip_repomix:
-            run_repomix()
+            run_repomix(args.context)
         if not args.context.exists():
             print(f"Error: {args.context} not found", file=sys.stderr)
             sys.exit(1)

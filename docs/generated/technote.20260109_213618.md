@@ -235,232 +235,70 @@ By modulating `mirror_weight`, a user can continuously morph the fundamental phy
 
 # 4. The Life Engine: Agents and Autonomy
 
-The "Life Engine" is the agent-based simulation layer that runs atop the DSP landscape. It manages the population of "Individuals," handling their lifecycle, sensory processing, vocalization timing, and audio synthesis.
+The "Life Engine" is the agent-based simulation layer that runs atop the DSP landscape. It manages the population of "Individuals," handling their lifecycle, sensory processing, and actuation (audio synthesis).
 
-## 4.1 Overview: The Individual Architecture
+## 4.1 The Individual Architecture
 
-The `Individual` struct (`life/individual.rs`) is the atomic unit of the ecosystem. Its internal structure comprises:
+The `Individual` struct (`life/individual.rs`) is the atomic unit of the ecosystem. It is composed of three components: a `SoundBody` actuator plus two behavior cores (`ArticulationCore`, `PitchCore`). The Individual itself acts as an integration layer, managing lifecycle (metabolism, energy), perceptual context, and the control-plane signals that coordinate the cores without coupling them directly.
 
-| Component | Type | Responsibility |
-|-----------|------|----------------|
-| `body` | `AnySoundBody` | Sound generation (waveform synthesis, spectral projection) |
-| `articulation` | `ArticulationWrapper` | Rhythm, gating, envelope dynamics |
-| `pitch` | `AnyPitchCore` | Pitch target selection in log-frequency space |
-| `perceptual` | `PerceptualContext` | Per-agent boredom/familiarity adaptation |
-| `phonation_engine` | `PhonationEngine` | Note timing, clock sources, social coupling |
-| `phonation` | `PhonationConfig` | Configuration for the phonation engine |
+### 4.1.1 The SoundBody (Actuator)
 
-The Individual acts as an integration layer: it orchestrates lifecycle (metabolism, energy), coordinates cores via control-plane signals (`PlannedPitch`), and manages state transitions without coupling the cores directly.
+The `SoundBody` trait defines the sound generation capabilities of an agent. It is responsible for rendering the waveform and projecting its spectral footprint back to the system (for the Landscape update).
 
-## 4.2 SoundBody: The Actuator
+*   `SineBody`: Synthesizes a pure sine tone.
+*   `HarmonicBody`: Synthesizes a complex tone consisting of a fundamental and a series of partials. This body introduces the concept of a `TimbreGenotype`, which encodes parameters such as:
+    *   `stiffness`: The inharmonicity coefficient (stretching the partial series).
+    *   `brightness`: The spectral slope (decay of higher partials).
+    *   `damping`: Frequency-dependent decay rates.
+    *   `mode`: Harmonic (integer multiples) vs. Metallic (non-integer ratios).
 
-The `SoundBody` trait (`life/sound_body.rs`) defines sound generation capabilities. Two implementations exist:
+The `HarmonicBody` allows for the evolution of timbre. An agent with high stiffness might find survival difficult in a purely harmonic landscape, forcing it to seek out unique "spectral niches" where its inharmonic partials do not clash with the population.
 
-### 4.2.1 SineBody
+### 4.1.2 The Core Stack (Articulation, Pitch)
 
-A pure sine tone oscillator. Minimal parameters:
-- `freq_hz`: Fundamental frequency
-- `amp`: Amplitude
-- `audio_phase`: Current oscillator phase
+Behavior is split into two focused cores, each defined in a separate file to allow easy extension with new strategies:
 
-### 4.2.2 HarmonicBody and TimbreGenotype
+*   **ArticulationCore (When/Gate)** — `life/articulation_core.rs`: Manages rhythm, gating, and envelope dynamics. Variants include `entrain` (Kuramoto-like synchronization to `NeuralRhythms`), `seq` (fixed-duration envelopes), and `drone` (slow sway). The ArticulationCore receives control-plane signals from the Individual and decides when to open or close the gate.
+*   **PitchCore (Where)** — `life/pitch_core.rs`: Proposes the next target in log-frequency space based on consonance, distance penalties, tessitura gravity, and per-agent perceptual adjustments. The default implementation is `pitch_hill_climb`. Policy parameters such as persistence (resistance to movement) are encapsulated within the PitchCore, keeping the interface minimal.
 
-Synthesizes a complex tone with a fundamental and configurable partials. The `TimbreGenotype` struct encodes the timbre DNA:
+### 4.1.3 Control-Plane Signals: Planned and Error
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `mode` | `HarmonicMode` | `Harmonic` (integer multiples: $1, 2, 3...$) or `Metallic` (non-integer: $k^{1.4}$) |
-| `stiffness` | `f32` | Inharmonicity coefficient; stretches partial series via $f_k = k \cdot (1 + \text{stiffness} \cdot k^2)$ |
-| `brightness` | `f32` | Spectral slope; partial amplitude decays as $k^{-\text{brightness}}$ |
-| `comb` | `f32` | Even harmonic attenuation (0–1); creates hollow timbres |
-| `damping` | `f32` | Energy-dependent high-frequency decay; higher partials fade faster at low energy |
-| `vibrato_rate` | `f32` | LFO frequency (Hz) for pitch modulation |
-| `vibrato_depth` | `f32` | Vibrato extent (fraction of frequency) |
-| `jitter` | `f32` | $1/f$ pink noise FM strength; adds organic fluctuation |
-| `unison` | `f32` | Detune amount for chorus effect (0 = single voice) |
+The Individual coordinates its cores through two orthogonal signals rather than direct coupling:
 
-**Spectral Projection**: Both bodies implement `project_spectral_body()`, which writes their energy distribution back to the `Log2Space` grid for Landscape computation. This enables the system to "see" each agent's spectral footprint.
+*   **Planned**: The PitchCore proposes a target (`TargetProposal`), and the Individual maintains the "planned" state—next target frequency, expected jump distance, and salience. This represents the agent's *intention*.
+*   **Error**: The Individual computes the discrepancy between the SoundBody's current pitch and the planned target (signed cents, absolute cents). This represents the *result* of prior actions and is available for observation or future extensions (e.g., adaptive articulation). Importantly, the PitchCore does not read the error signal—search remains decoupled from feedback.
 
-## 4.3 The Behavioral Core Stack
+This separation keeps each core focused: PitchCore explores the landscape, ArticulationCore shapes the envelope, and the Individual orchestrates timing and state transitions.
 
-Behavior is split into two focused cores, each extensible with new strategies.
+## 4.2 Lifecycle and Metabolism
 
-### 4.3.1 ArticulationCore (When/Gate)
+Agents in Conchordal are governed by energy dynamics modeled on biological metabolism. The `LifecycleConfig` defines two modes of existence:
 
-Defined in `life/articulation_core.rs`. Manages rhythm, gating, and envelope dynamics. Three variants:
+*   **Decay**: The agent is born with a fixed `initial_energy` pool. It expends this energy over time (half-life) and dies when it reaches zero. This models transient sounds like plucks or percussion.
+*   **Sustain**: The agent has a `metabolism_rate` (energy loss per second) but can gain energy via `breath_gain`.
+    *   **Breath Gain**: This is the critical feedback loop. The rate at which an agent regains energy is a function of its current Consonance.
+    *   **Survival**: An agent in a dissonant (low $C$) region "starves"—its energy depletes, its amplitude fades, and it eventually dies. An agent in a consonant (high $C$) region "feeds"—it maintains or gains energy, allowing it to sing louder and live longer.
 
-| Variant | Description | Key Parameters |
-|---------|-------------|----------------|
-| `Entrain` | Kuramoto-style coupling to `NeuralRhythms` | `lifecycle`, `rhythm_freq`, `rhythm_sensitivity` |
-| `Seq` | Fixed-duration envelope | `duration` (seconds) |
-| `Drone` | Continuous tone with slow amplitude sway | `sway` (modulation depth) |
+This mechanic creates a Darwinian pressure: **Survival of the Consonant**. The musical structure emerges because only the agents that find harmonic relationships survive to be heard.
 
-**ArticulationWrapper**: Wraps the core with a `PlannedGate` struct that manages fade-in/fade-out transitions when pitch changes occur. The gate value (0–1) multiplies the amplitude, ensuring smooth transitions.
+## 4.3 Pitch Retargeting Logic
 
-**ArticulationSignal**: The output of articulation processing:
-- `amplitude`: Current envelope level
-- `is_active`: Whether the agent is currently sounding
-- `relaxation`: Modulation signal for vibrato/unison expansion
-- `tension`: Modulation signal for jitter intensification
+Agents are not static; they move through frequency space to improve their fitness. The execution layer applies a retarget gate (theta zero-crossing plus an integration window) and then asks the PitchCore to propose the next target.
 
-### 4.3.2 PitchCore (Where)
+1.  **Retarget Gate**: The Individual integrates time based on current frequency and fires only when a theta crossing aligns with the window. This keeps retargeting rhythmic and scale-sensitive.
+2.  **Pitch Proposal**: The PitchCore (currently `PitchHillClimb`) evaluates a discrete set of candidates around the current target. It scores each candidate with consonance minus penalties (distance, tessitura gravity, persistence bias, and per-agent perceptual adjustments from `PerceptualContext`). The proposal includes a `salience` score (0..1) reflecting improvement strength.
 
-Defined in `life/pitch_core.rs`. Proposes pitch targets in log-frequency space.
+### 4.3.1 The Hop Policy
 
-**PitchHillClimbPitchCore**: The default hill-climbing implementation with parameters:
+Pitch movement uses a **hop** policy rather than continuous portamento:
 
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `neighbor_step_cents` | 200 | Step size for neighbor exploration |
-| `tessitura_gravity` | 0.1 | Penalty for distance from initial pitch center |
-| `improvement_threshold` | 0.1 | Minimum score gain to trigger movement |
-| `exploration` | 0.0 | Probability of random exploration (0–1) |
-| `persistence` | 0.5 | Resistance to movement when satisfied (0–1) |
+1.  **Fade-out**: The ArticulationCore closes the gate, fading amplitude to silence.
+2.  **Snap**: The Individual updates the SoundBody's pitch to the new target (discrete jump).
+3.  **Fade-in**: The gate reopens, and the new pitch sounds.
 
-**Scoring**: Each candidate is evaluated as:
+**Ordering matters**: On the sample where the snap occurs, the pitch is updated *before* consonance is evaluated, ensuring the Landscape score reflects the agent's actual sounding frequency. The error signal is computed from the *pre-snap* current pitch to maintain consistency; if post-snap error is needed in the future, it can be added as a separate signal.
 
-$$ \text{score} = C_{01} - d_{\text{penalty}} - g_{\text{tessitura}} + \Delta s_{\text{perceptual}} $$
-
-The `TargetProposal` output includes `target_pitch_log2` and a `salience` score (0–1) reflecting improvement strength.
-
-## 4.4 PerceptualContext: Subjective Adaptation
-
-Defined in `life/perceptual.rs`. Models per-agent habituation and preference, preventing agents from "getting stuck" at locally optimal positions.
-
-The context maintains two leaky integrators per frequency bin:
-- **h_fast**: Short-term exposure (boredom accumulator)
-- **h_slow**: Long-term exposure (familiarity accumulator)
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `tau_fast` | 0.5 s | Time constant for boredom decay |
-| `tau_slow` | 20.0 s | Time constant for familiarity decay |
-| `w_boredom` | 1.0 | Weight of boredom penalty |
-| `w_familiarity` | 0.2 | Weight of familiarity bonus |
-| `rho_self` | 0.15 | Self-injection ratio (how much the agent's own position contributes) |
-| `boredom_gamma` | 0.5 | Curvature exponent for boredom ($h_{\text{fast}}^\gamma$) |
-| `self_smoothing_radius` | 1 | Spatial smoothing radius for self-injection |
-| `silence_mass_epsilon` | 1e-6 | Threshold for detecting silence |
-
-**Score Adjustment**:
-
-$$ \Delta s = w_{\text{familiarity}} \cdot h_{\text{slow}} - w_{\text{boredom}} \cdot h_{\text{fast}}^{\gamma} $$
-
-This creates a dynamic where agents are drawn to familiar regions but pushed away from over-visited locations.
-
-## 4.5 PhonationEngine: Timing and Vocalization
-
-Defined in `life/phonation_engine.rs`. The PhonationEngine governs *when* an agent vocalizes, managing note onsets, durations, and coordination with other agents.
-
-### 4.5.1 Clock Sources
-
-The engine supports multiple clock sources for determining vocalization timing:
-
-| Source | Description |
-|--------|-------------|
-| `ThetaGate` | Aligns onsets to theta band zero-crossings from `NeuralRhythms` |
-| `Composite` | Combines subdivision and internal phase sources |
-
-**Composite Clock Configuration**:
-- `SubdivisionClockConfig`: Divides the theta gate into subdivisions (`divisions: Vec<u32>`)
-- `InternalPhaseClockConfig`: Internal oscillator with `ratio` (relative to theta) and `phase0` (initial phase)
-
-### 4.5.2 Interval and Connect Policies
-
-**PhonationIntervalConfig**: Controls spacing between note onsets:
-
-| Variant | Description |
-|---------|-------------|
-| `None` | No automatic onset generation |
-| `Accumulator` | Probabilistic onset based on `rate` with `refractory` period (gates) |
-
-**PhonationConnectConfig**: Controls note duration (legato vs staccato):
-
-| Variant | Description |
-|---------|-------------|
-| `FixedGate` | Fixed duration of `length_gates` theta cycles |
-| `Field` | Duration adapts to consonance field with sigmoid mapping |
-
-Field parameters:
-- `hold_min_theta`, `hold_max_theta`: Duration range in theta cycles
-- `curve_k`, `curve_x0`: Sigmoid shape parameters
-- `drop_gain`: Amplitude reduction for short notes
-
-### 4.5.3 SubThetaModulation
-
-Amplitude modulation within the theta cycle:
-
-| Variant | Description |
-|---------|-------------|
-| `None` | No sub-theta modulation |
-| `Cosine` | Cosine modulation with `n` (harmonic number), `depth`, `phase0` |
-
-### 4.5.4 Social Coupling
-
-The `SocialConfig` enables agents to respond to the vocalization density of the population:
-
-| Parameter | Description |
-|-----------|-------------|
-| `coupling` | Strength of social influence (0 = independent) |
-| `bin_ticks` | Temporal resolution for density measurement |
-| `smooth` | Smoothing factor for density trace |
-
-**SocialDensityTrace** (`life/social_density.rs`): Tracks the recent onset density of the population, allowing agents to synchronize or avoid crowded moments.
-
-## 4.6 Lifecycle and Metabolism
-
-Agents are governed by energy dynamics modeled on biological metabolism. The `LifecycleConfig` (`life/lifecycle.rs`) defines two modes:
-
-### 4.6.1 Decay Mode
-
-Models transient sounds (plucks, percussion):
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `initial_energy` | 1.0 | Starting energy pool |
-| `half_life_sec` | — | Exponential decay half-life |
-| `attack_sec` | 0.01 | Attack ramp duration |
-
-Energy evolves as: $E(t) = E_0 \cdot e^{\lambda t}$ where $\lambda = \ln(0.5) / t_{1/2}$
-
-### 4.6.2 Sustain Mode
-
-Models sustained sounds with metabolic feedback:
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `initial_energy` | 1.0 | Starting energy pool |
-| `metabolism_rate` | — | Energy drain per second |
-| `recharge_rate` | 0.5 | Energy gain rate (consonance-dependent) |
-| `action_cost` | 0.02 | Energy cost per vocalization |
-| `envelope` | — | ADSR config (`attack_sec`, `decay_sec`, `sustain_level`) |
-
-**Breath Gain Feedback**: The `breath_gain` parameter (set at spawn via `breath_gain_init`) determines how much consonance contributes to energy recovery. An agent in a dissonant region "starves" while one in a consonant region "feeds."
-
-This creates Darwinian pressure: **Survival of the Consonant**. Musical structure emerges because only agents that find harmonic relationships survive to be heard.
-
-## 4.7 Pitch Retargeting and the Hop Policy
-
-Agents move through frequency space to improve fitness. The execution flow:
-
-1. **Retarget Gate**: The Individual integrates time and fires when a theta zero-crossing aligns with the integration window (frequency-dependent: $w = 2 + 10/f$).
-
-2. **Pitch Proposal**: PitchCore evaluates candidates and returns a `TargetProposal` with target pitch and salience.
-
-3. **Gate Coordination**: The `ArticulationWrapper` manages the hop transition via `PlannedPitch`:
-   - `target_pitch_log2`: Next intended pitch
-   - `jump_cents_abs`: Distance to target
-   - `salience`: Improvement strength (0–1)
-
-### 4.7.1 The Hop Policy
-
-Pitch movement uses discrete **hops** rather than continuous portamento:
-
-1. **Fade-out**: Gate closes when `jump_cents_abs > 10` (movement threshold)
-2. **Snap**: When gate < 0.1, pitch updates to target
-3. **Fade-in**: Gate reopens, new pitch sounds
-
-**Ordering**: On snap, pitch updates *before* consonance evaluation, ensuring the Landscape score reflects the actual sounding frequency. These timing-sensitive transitions are guarded by regression tests.
+These timing-sensitive transitions are guarded by regression tests to prevent subtle breakage.
 
 # 5. Temporal Dynamics: Neural Rhythms
 
@@ -592,55 +430,15 @@ Future development of Conchordal will focus on spatialization (extending the lan
 
 # Appendix A: Key System Parameters
 
-## A.1 Core Analysis Parameters
-
 | Parameter | Module | Unit | Description |
 | :--- | :--- | :--- | :--- |
 | `bins_per_oct` | `Log2Space` | Int | Resolution of the frequency grid (typ. 48-96). |
 | `sigma_cents` | `Harmonicity` | Cents | Width of harmonic peaks. Lower = stricter intonation. |
 | `mirror_weight` | `Harmonicity` | 0.0-1.0 | Balance between Overtone (Major) and Undertone (Minor) gravity. |
-| `roughness_k` | `Roughness` | Float | Saturation parameter for roughness mapping. Default: $\approx 0.4286$. |
+| `roughness_k` | `Roughness` | Float | Saturation parameter for roughness mapping. Default: $(1/0.7) - 1 \approx 0.4286$ (so $x=1$ maps to $\approx 0.7$). |
 | `roughness_weight` | `Landscape` | Float | Weight of roughness penalty in consonance calculation. Default: 1.0. |
 | `vitality` | `DorsalStream` | 0.0-1.0 | Self-oscillation energy of the rhythm section. |
-
-## A.2 Individual / Life Engine Parameters
-
-| Parameter | Module | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `persistence` | `PitchCore` | 0.5 | Resistance to movement when satisfied. |
-| `exploration` | `PitchCore` | 0.0 | Random exploration probability. |
-| `neighbor_step_cents` | `PitchCore` | 200 | Step size for pitch search. |
-| `tessitura_gravity` | `PitchCore` | 0.1 | Penalty for distance from initial pitch. |
-| `tau_fast` | `PerceptualContext` | 0.5 s | Boredom decay time constant. |
-| `tau_slow` | `PerceptualContext` | 20.0 s | Familiarity decay time constant. |
-| `w_boredom` | `PerceptualContext` | 1.0 | Weight of boredom penalty. |
-| `w_familiarity` | `PerceptualContext` | 0.2 | Weight of familiarity bonus. |
-| `rho_self` | `PerceptualContext` | 0.15 | Self-injection ratio for perceptual update. |
-| `boredom_gamma` | `PerceptualContext` | 0.5 | Curvature exponent for boredom. |
-
-## A.3 Timbre Parameters (TimbreGenotype)
-
-| Parameter | Default | Description |
-| :--- | :--- | :--- |
-| `mode` | `Harmonic` | `Harmonic` (integer multiples) or `Metallic` (non-integer). |
-| `stiffness` | 0.0 | Inharmonicity coefficient. |
-| `brightness` | 0.6 | Spectral slope (higher = brighter). |
-| `comb` | 0.0 | Even harmonic attenuation. |
-| `damping` | 0.5 | Energy-dependent high-frequency decay. |
-| `vibrato_rate` | 5.0 Hz | Vibrato LFO frequency. |
-| `vibrato_depth` | 0.0 | Vibrato extent. |
-| `jitter` | 0.0 | Pink noise FM strength. |
-| `unison` | 0.0 | Detune amount for chorus effect. |
-
-## A.4 Phonation Parameters
-
-| Parameter | Module | Description |
-| :--- | :--- | :--- |
-| `interval.rate` | `PhonationEngine` | Onset accumulation rate. |
-| `interval.refractory` | `PhonationEngine` | Minimum gates between onsets. |
-| `connect.length_gates` | `PhonationEngine` | Fixed note duration in theta cycles. |
-| `clock` | `PhonationEngine` | `ThetaGate` or `Composite` clock source. |
-| `social.coupling` | `PhonationEngine` | Strength of social density influence. |
+| `persistence` | `PitchCore` | 0.0-1.0 | Resistance to movement/change of an agent (policy bias within pitch selection). |
 
 # Appendix B: Mathematical Summary
 

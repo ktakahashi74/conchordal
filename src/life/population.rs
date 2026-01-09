@@ -1,13 +1,8 @@
-use super::individual::{AgentMetadata, AudioAgent, Individual, PhonationBatch, SoundBody};
-use super::scenario::{
-    Action, BirthTiming, IndividualConfig, SocialConfig, SpawnMethod, TargetRef,
-};
+use super::individual::{AgentMetadata, Individual, PhonationBatch, SoundBody};
+use super::scenario::{Action, IndividualConfig, SocialConfig, SpawnMethod, TargetRef};
 use crate::core::landscape::{LandscapeFrame, LandscapeUpdate};
 use crate::core::log2space::Log2Space;
-use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
-use crate::life::gate_clock::next_gate_tick;
-use crate::life::phonation_engine::{PhonationCmd, PhonationUpdate};
 use crate::life::social_density::SocialDensityTrace;
 use crate::life::world_model::WorldModel;
 use rand::{Rng, SeedableRng, distr::Distribution, distr::weighted::WeightedIndex, rngs::SmallRng};
@@ -28,7 +23,6 @@ pub struct Population {
     pub global_coupling: f32,
     shutdown_gain: f32,
     pending_update: Option<LandscapeUpdate>,
-    pending_phonation_batches: Vec<PhonationBatch>,
     time: Timebase,
     seed: u64,
     social_trace: Option<SocialDensityTrace>,
@@ -36,6 +30,7 @@ pub struct Population {
 
 impl Population {
     const RELEASE_SEC_DEFAULT: f32 = 0.03;
+    const CONTROL_STEP_SAMPLES: usize = 64;
     /// Returns true if `freq_hz` is within `min_dist_erb` (ERB scale) of any existing agent's base
     /// frequency.
     pub fn is_range_occupied(&self, freq_hz: f32, min_dist_erb: f32) -> bool {
@@ -67,7 +62,6 @@ impl Population {
             global_coupling: 1.0,
             shutdown_gain: 1.0,
             pending_update: None,
-            pending_phonation_batches: Vec::new(),
             time,
             seed: rand::random::<u64>(),
             social_trace: None,
@@ -107,46 +101,6 @@ impl Population {
         self.current_frame = frame;
     }
 
-    fn birth_onset_tick(&self, timing: BirthTiming, rhythm: &NeuralRhythms) -> Option<Tick> {
-        let now_tick = self.time.frame_start_tick(self.current_frame);
-        let min_lead = self.time.min_lead_ticks();
-        let base_tick = now_tick.saturating_add(min_lead);
-        let hop = (self.time.hop as Tick).max(1);
-
-        let onset = match timing {
-            BirthTiming::Gate => {
-                let gate_tick = next_gate_tick(base_tick, self.time.fs, rhythm.theta, 0.0);
-                let mut gate_tick = gate_tick.unwrap_or_else(|| {
-                    debug!(
-                        target: "phonation::birth_schedule",
-                        "gate_fallback=true now_tick={} base_tick={}",
-                        now_tick,
-                        base_tick
-                    );
-                    self.time.ceil_to_hop_tick(base_tick)
-                });
-                if gate_tick <= now_tick {
-                    gate_tick = next_gate_tick(
-                        base_tick.saturating_add(1),
-                        self.time.fs,
-                        rhythm.theta,
-                        0.0,
-                    )
-                    .unwrap_or_else(|| self.time.ceil_to_hop_tick(base_tick.saturating_add(hop)));
-                }
-                gate_tick
-            }
-            BirthTiming::Immediate => {
-                let mut tick = self.time.ceil_to_hop_tick(base_tick);
-                if tick <= now_tick {
-                    tick = tick.saturating_add(hop);
-                }
-                tick
-            }
-        };
-        Some(onset)
-    }
-
     pub fn publish_intents(
         &mut self,
         world: &mut WorldModel,
@@ -154,9 +108,8 @@ impl Population {
         now: Tick,
     ) -> Vec<PhonationBatch> {
         let hop_tick = (world.time.hop as Tick).max(1);
-        let frame_end = now.saturating_add(hop_tick);
         let tb = &world.time;
-        let mut birth_intents = Vec::new();
+        let frame_end = now.saturating_add(hop_tick);
         let mut phonation_batches = Vec::new();
         let social_trace = self.social_trace.as_ref();
         for agent in &mut self.individuals {
@@ -165,9 +118,6 @@ impl Population {
                 agent.tick_phonation(tb, now, &landscape.rhythm, social_trace, social_coupling);
             if !batch.cmds.is_empty() {
                 phonation_batches.push(batch);
-            }
-            if let Some(intent) = agent.take_birth_intent_if_due(tb, now, frame_end, landscape) {
-                birth_intents.push(intent);
             }
         }
         let social_enabled =
@@ -184,9 +134,6 @@ impl Population {
             ));
         } else {
             self.social_trace = None;
-        }
-        for intent in birth_intents {
-            world.board.publish(intent);
         }
         phonation_batches
     }
@@ -461,30 +408,8 @@ impl Population {
                     group_idx: 0,
                     member_idx: 0,
                 };
-                let mut spawned =
+                let spawned =
                     agent.spawn(id, self.current_frame, metadata, self.time.fs, self.seed);
-                if spawned.birth_pending {
-                    let onset = self.birth_onset_tick(spawned.phonation.timing, &landscape.rhythm);
-                    spawned.set_birth_onset_tick(onset);
-                    if let Some(tick) = onset {
-                        debug!(
-                            target: "phonation::birth_schedule",
-                            "id={} now_tick={} birth_onset_tick={} timing={:?}",
-                            spawned.id,
-                            self.time.frame_start_tick(self.current_frame),
-                            tick,
-                            spawned.phonation.timing
-                        );
-                    } else {
-                        debug!(
-                            target: "phonation::birth_schedule",
-                            "id={} now_tick={} birth_onset_tick=None timing={:?}",
-                            spawned.id,
-                            self.time.frame_start_tick(self.current_frame),
-                            spawned.phonation.timing
-                        );
-                    }
-                }
                 self.add_individual(spawned);
             }
             Action::Finish => {
@@ -517,31 +442,8 @@ impl Population {
                         group_idx,
                         member_idx: i as usize,
                     };
-                    let mut spawned =
+                    let spawned =
                         cfg.spawn(id, self.current_frame, metadata, self.time.fs, self.seed);
-                    if spawned.birth_pending {
-                        let onset =
-                            self.birth_onset_tick(spawned.phonation.timing, &landscape.rhythm);
-                        spawned.set_birth_onset_tick(onset);
-                        if let Some(tick) = onset {
-                            debug!(
-                                target: "phonation::birth_schedule",
-                                "id={} now_tick={} birth_onset_tick={} timing={:?}",
-                                spawned.id,
-                                self.time.frame_start_tick(self.current_frame),
-                                tick,
-                                spawned.phonation.timing
-                            );
-                        } else {
-                            debug!(
-                                target: "phonation::birth_schedule",
-                                "id={} now_tick={} birth_onset_tick=None timing={:?}",
-                                spawned.id,
-                                self.time.frame_start_tick(self.current_frame),
-                                spawned.phonation.timing
-                            );
-                        }
-                    }
                     self.add_individual(spawned);
                 }
             }
@@ -570,80 +472,22 @@ impl Population {
             Action::SetFreq { target, freq_hz } => {
                 let ids = self.resolve_target_ids(&target);
                 let log_freq = freq_hz.max(1.0).log2();
-                let update_tick = self
-                    .time
-                    .frame_start_tick(self.current_frame)
-                    .saturating_add((self.time.hop as Tick).max(1));
-                let mut pending = Vec::new();
                 for id in ids {
                     if let Some(a) = self.find_individual_mut(id) {
                         a.force_set_pitch_log2(log_freq);
-                        if let Some(note_id) = a.sustain_note_id
-                            && a.is_alive()
-                        {
-                            let mut update = PhonationUpdate::default();
-                            let freq_hz = a.body.base_freq_hz();
-                            if freq_hz.is_finite() && freq_hz > 0.0 {
-                                update.target_freq_hz = Some(freq_hz);
-                            }
-                            if !update.is_empty() {
-                                pending.push(PhonationBatch {
-                                    source_id: a.id,
-                                    cmds: vec![PhonationCmd::Update {
-                                        note_id,
-                                        at_tick: Some(update_tick),
-                                        update,
-                                    }],
-                                    notes: Vec::new(),
-                                    onsets: Vec::new(),
-                                });
-                            }
-                        }
                     } else {
                         warn!("SetFreq: agent {id} not found");
                     }
                 }
-                if !pending.is_empty() {
-                    self.pending_phonation_batches.extend(pending);
-                }
             }
             Action::SetAmp { target, amp } => {
                 let ids = self.resolve_target_ids(&target);
-                let update_tick = self
-                    .time
-                    .frame_start_tick(self.current_frame)
-                    .saturating_add((self.time.hop as Tick).max(1));
-                let mut pending = Vec::new();
                 for id in ids {
                     if let Some(a) = self.find_individual_mut(id) {
                         a.body.set_amp(amp);
-                        if let Some(note_id) = a.sustain_note_id
-                            && a.is_alive()
-                        {
-                            let mut update = PhonationUpdate::default();
-                            let amp = a.compute_target_amp();
-                            if amp.is_finite() {
-                                update.target_amp = Some(amp);
-                            }
-                            if !update.is_empty() {
-                                pending.push(PhonationBatch {
-                                    source_id: a.id,
-                                    cmds: vec![PhonationCmd::Update {
-                                        note_id,
-                                        at_tick: Some(update_tick),
-                                        update,
-                                    }],
-                                    notes: Vec::new(),
-                                    onsets: Vec::new(),
-                                });
-                            }
-                        }
                     } else {
                         warn!("SetAmp: agent {id} not found");
                     }
-                }
-                if !pending.is_empty() {
-                    self.pending_phonation_batches.extend(pending);
                 }
             }
             Action::SetRhythmVitality { value } => {
@@ -701,53 +545,19 @@ impl Population {
         self.pending_update.take()
     }
 
-    pub fn take_pending_phonation_batches(&mut self) -> Vec<PhonationBatch> {
-        std::mem::take(&mut self.pending_phonation_batches)
-    }
-
     /// Assumes `set_current_frame` has been called for the current hop.
     pub fn remove_agent(&mut self, id: u64) {
-        let off_tick = self.time.frame_start_tick(self.current_frame);
-        let mut pending = Vec::new();
         let mut next = Vec::with_capacity(self.individuals.len());
-        for mut agent in self.individuals.drain(..) {
-            if agent.id() == id {
-                let mut cmds = Vec::new();
-                if agent.flush_sustain_note_off(off_tick, &mut cmds) {
-                    pending.push(PhonationBatch {
-                        source_id: agent.id(),
-                        cmds,
-                        notes: Vec::new(),
-                        onsets: Vec::new(),
-                    });
-                }
-            } else {
+        for agent in self.individuals.drain(..) {
+            if agent.id() != id {
                 next.push(agent);
             }
         }
         self.individuals = next;
-        if !pending.is_empty() {
-            self.pending_phonation_batches.extend(pending);
-        }
-    }
-
-    pub fn flush_sustain_note_offs(&mut self, off_tick: Tick) -> Vec<PhonationBatch> {
-        let mut batches = Vec::new();
-        for agent in &mut self.individuals {
-            let mut cmds = Vec::new();
-            if agent.flush_sustain_note_off(off_tick, &mut cmds) {
-                batches.push(PhonationBatch {
-                    source_id: agent.id(),
-                    cmds,
-                    notes: Vec::new(),
-                    onsets: Vec::new(),
-                });
-            }
-        }
-        batches
     }
 
     /// Advance agent state without emitting audio (ScheduleRenderer is output authority).
+    /// `samples_len` controls sub-stepping of control-rate updates within the block.
     pub fn advance(
         &mut self,
         samples_len: usize,
@@ -757,27 +567,29 @@ impl Population {
         landscape: &crate::core::landscape::Landscape,
     ) {
         self.current_frame = current_frame;
-        if samples_len == 0 {
+        if !dt_sec.is_finite() || dt_sec <= 0.0 {
             return;
         }
-        let dt_per_sample = dt_sec / samples_len as f32;
-        if !dt_per_sample.is_finite() || dt_per_sample <= 0.0 {
+        // Sub-step updates to keep control-rate integration stable across hop sizes.
+        let steps = (samples_len / Self::CONTROL_STEP_SAMPLES).max(1);
+        let dt_step_sec = dt_sec / steps as f32;
+        if !dt_step_sec.is_finite() || dt_step_sec <= 0.0 {
             return;
         }
         let mut rhythms = landscape.rhythm;
-        for _ in 0..samples_len {
+        for _ in 0..steps {
             for agent in self.individuals.iter_mut() {
                 if agent.is_alive() {
-                    agent.update_pitch_target(&rhythms, dt_per_sample, landscape);
+                    agent.update_pitch_target(&rhythms, dt_step_sec, landscape);
                     agent.update_articulation(
-                        dt_per_sample,
+                        dt_step_sec,
                         &rhythms,
                         landscape,
                         self.global_coupling,
                     );
                 }
             }
-            rhythms.advance_in_place(dt_per_sample);
+            rhythms.advance_in_place(dt_step_sec);
         }
 
         if self.abort_requested {
@@ -786,11 +598,6 @@ impl Population {
                 self.shutdown_gain = (self.shutdown_gain - step).max(0.0);
             }
             if self.shutdown_gain <= 0.0 {
-                let off_tick = self.time.frame_start_tick(self.current_frame);
-                let batches = self.flush_sustain_note_offs(off_tick);
-                if !batches.is_empty() {
-                    self.pending_phonation_batches.extend(batches);
-                }
                 self.individuals.clear();
             }
         }
@@ -813,28 +620,13 @@ impl Population {
             }
         }
         let before_count = self.individuals.len();
-        let off_tick = self.time.frame_start_tick(current_frame);
-        let mut pending = Vec::new();
         let mut next = Vec::with_capacity(self.individuals.len());
-        for mut agent in self.individuals.drain(..) {
+        for agent in self.individuals.drain(..) {
             if agent.should_retain() {
                 next.push(agent);
-            } else {
-                let mut cmds = Vec::new();
-                if agent.flush_sustain_note_off(off_tick, &mut cmds) {
-                    pending.push(PhonationBatch {
-                        source_id: agent.id(),
-                        cmds,
-                        notes: Vec::new(),
-                        onsets: Vec::new(),
-                    });
-                }
             }
         }
         self.individuals = next;
-        if !pending.is_empty() {
-            self.pending_phonation_batches.extend(pending);
-        }
         let removed_count = before_count - self.individuals.len();
 
         if removed_count > 0 {

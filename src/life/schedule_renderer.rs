@@ -87,21 +87,12 @@ impl ScheduleRenderer {
         let dt = 1.0 / fs;
         let mut rhythms = *rhythms;
         self.apply_phonation_batches(phonation_batches, now, &rhythms, dt);
-        // For each tick: kick due births first, then render the sample.
+        // For each tick: apply due updates, then render the sample.
         for tick in now..end {
             let idx = (tick - now) as usize;
             let mut acc = 0.0f32;
-            for (key, voice) in self.voices.iter_mut() {
+            for (_key, voice) in self.voices.iter_mut() {
                 voice.apply_updates_if_due(tick);
-                let kicked = voice.kick_if_due(tick, &rhythms, dt);
-                if kicked {
-                    debug!(
-                        target: "phonation::birth_fire",
-                        "id={} onset={} kick_applied=true kind=BirthOnce",
-                        key.source_id,
-                        voice.onset()
-                    );
-                }
                 voice.kick_planned_if_due(tick, &rhythms, dt);
                 acc += voice.render_tick(tick, fs, dt, &rhythms);
             }
@@ -133,18 +124,7 @@ impl ScheduleRenderer {
         if intent.duration == 0 || intent.freq_hz <= 0.0 {
             return;
         }
-        if intent.amp == 0.0 && intent.kind != crate::life::intent::IntentKind::BirthOnce {
-            return;
-        }
-        if intent.kind == crate::life::intent::IntentKind::BirthOnce
-            && intent.articulation.is_none()
-        {
-            debug!(
-                target: "phonation::birth_skip",
-                source_id = intent.source_id,
-                intent_id = intent.intent_id,
-                "BirthOnce intent without articulation; skipping voice creation"
-            );
+        if intent.amp == 0.0 {
             return;
         }
         let end_tick = intent
@@ -200,7 +180,6 @@ impl ScheduleRenderer {
                         let intent = Intent {
                             source_id: batch.source_id,
                             intent_id: note_id,
-                            kind: crate::life::intent::IntentKind::Normal,
                             onset: spec.onset,
                             duration: hold_ticks,
                             freq_hz: spec.freq_hz,
@@ -214,6 +193,14 @@ impl ScheduleRenderer {
                             voice.set_smoothing_tau_sec(spec.smoothing_tau_sec);
                             voice.note_on(spec.onset);
                             voice.schedule_planned_kick(kick);
+                            debug!(
+                                target: "phonation::note_on",
+                                source_id = batch.source_id,
+                                note_id,
+                                onset = spec.onset,
+                                freq_hz = spec.freq_hz,
+                                amp = spec.amp
+                            );
                             self.voices.insert(key, voice);
                         }
                     }
@@ -286,63 +273,11 @@ fn max_phonation_hold_ticks(time: Timebase) -> Tick {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::landscape::LandscapeFrame;
-    use crate::core::log2space::Log2Space;
-    use crate::core::modulation::NeuralRhythms;
-    use crate::core::timebase::Tick;
     use crate::life::individual::{
-        AgentMetadata, AnyArticulationCore, ArticulationWrapper, PhonationBatch, PhonationNoteSpec,
-        SequencedCore,
+        AnyArticulationCore, ArticulationWrapper, PhonationBatch, PhonationNoteSpec, SequencedCore,
     };
     use crate::life::intent::BodySnapshot;
-    use crate::life::phonation_engine::{NoteId, PhonationKick, PhonationUpdate};
-    use crate::life::population::Population;
-    use crate::life::scenario::{
-        Action, IndividualConfig, LifeConfig, OnBirthPhonation, PhonationConfig,
-        SustainUpdateCadence, SustainUpdateConfig, SustainUpdateTarget, TargetRef,
-    };
-
-    #[test]
-    fn birth_kick_consumed_on_onset_tick() {
-        let tb = Timebase {
-            fs: 48_000.0,
-            hop: 8,
-        };
-        let mut board = IntentBoard::new(1, 1);
-        let articulation = ArticulationWrapper::new(
-            AnyArticulationCore::Seq(SequencedCore {
-                timer: 0.0,
-                duration: 0.1,
-                env_level: 0.0,
-            }),
-            0.0,
-        );
-        board.publish(Intent {
-            source_id: 1,
-            intent_id: 0,
-            kind: crate::life::intent::IntentKind::BirthOnce,
-            onset: 0,
-            duration: 16,
-            freq_hz: 440.0,
-            amp: 0.0,
-            tag: None,
-            confidence: 1.0,
-            body: None,
-            articulation: Some(articulation),
-        });
-
-        let mut renderer = ScheduleRenderer::new(tb);
-        let rhythms = NeuralRhythms::default();
-        renderer.render(&board, &[], 0, &rhythms);
-
-        assert!(
-            renderer
-                .voices
-                .values()
-                .all(|voice| !voice.birth_kick_pending()),
-            "expected birth kick to be consumed on onset tick"
-        );
-    }
+    use crate::life::phonation_engine::{PhonationKick, PhonationUpdate};
 
     #[test]
     fn update_command_applies_to_voice() {
@@ -470,259 +405,5 @@ mod tests {
         };
         let voice = renderer.voices.get(&key).expect("voice");
         assert!((voice.debug_target_freq_hz() - 440.0).abs() < 1e-6);
-    }
-
-    #[test]
-    fn note_on_and_update_share_target_amp() {
-        let tb = Timebase { fs: 1000.0, hop: 4 };
-        let mut life = LifeConfig::default();
-        life.phonation = PhonationConfig {
-            on_birth: OnBirthPhonation::Sustain,
-            sustain_update: SustainUpdateConfig {
-                cadence: SustainUpdateCadence::Hop,
-                what: vec![SustainUpdateTarget::Gain],
-                smoothing: 0.0,
-            },
-            ..PhonationConfig::default()
-        };
-        let cfg = IndividualConfig {
-            freq: 220.0,
-            amp: 0.5,
-            life,
-            tag: None,
-        };
-        let metadata = AgentMetadata {
-            id: 1,
-            tag: None,
-            group_idx: 0,
-            member_idx: 0,
-        };
-        let mut agent = cfg.spawn(1, 0, metadata, tb.fs, 0);
-        agent.set_birth_onset_tick(Some(0));
-
-        let rhythms = NeuralRhythms::default();
-        let batch = agent.tick_phonation(&tb, 0, &rhythms, None, 0.0);
-        let note_id = batch.cmds.iter().find_map(|cmd| match cmd {
-            PhonationCmd::NoteOn { note_id, .. } => Some(*note_id),
-            _ => None,
-        });
-        let Some(note_id) = note_id else {
-            panic!("expected sustain note on");
-        };
-        let note_amp = batch
-            .notes
-            .iter()
-            .find(|note| note.note_id == note_id)
-            .map(|note| note.amp)
-            .expect("note spec");
-        let update_amp = batch.cmds.iter().find_map(|cmd| match cmd {
-            PhonationCmd::Update {
-                note_id: id,
-                update,
-                ..
-            } if *id == note_id => update.target_amp,
-            _ => None,
-        });
-        let Some(update_amp) = update_amp else {
-            panic!("expected sustain update amp");
-        };
-        assert!((note_amp - update_amp).abs() < 1e-6);
-
-        let mut renderer = ScheduleRenderer::new(tb);
-        let board = IntentBoard::new(1, 1);
-        renderer.render(&board, &[batch], 0, &rhythms);
-        let key = VoiceKey {
-            source_id: agent.id,
-            note_id,
-            kind: VoiceKind::Phonation,
-        };
-        let voice = renderer.voices.get(&key).expect("voice");
-        assert!((voice.debug_target_amp() - note_amp).abs() < 1e-6);
-        assert!((voice.debug_current_amp() - note_amp).abs() < 1e-6);
-    }
-
-    fn setup_sustain_population(
-        tb: Timebase,
-    ) -> (
-        Population,
-        LandscapeFrame,
-        PhonationBatch,
-        NoteId,
-        NeuralRhythms,
-    ) {
-        let space = Log2Space::new(55.0, 880.0, 12);
-        let landscape = LandscapeFrame::new(space);
-        let mut pop = Population::new(tb);
-        pop.set_current_frame(0);
-
-        let mut life = LifeConfig::default();
-        life.phonation = PhonationConfig {
-            on_birth: OnBirthPhonation::Sustain,
-            sustain_update: SustainUpdateConfig {
-                cadence: SustainUpdateCadence::Off,
-                what: vec![SustainUpdateTarget::Gain, SustainUpdateTarget::Pitch],
-                smoothing: 0.0,
-            },
-            ..PhonationConfig::default()
-        };
-        let cfg = IndividualConfig {
-            freq: 220.0,
-            amp: 0.5,
-            life,
-            tag: None,
-        };
-        let metadata = AgentMetadata {
-            id: 1,
-            tag: None,
-            group_idx: 0,
-            member_idx: 0,
-        };
-        let mut agent = cfg.spawn(1, 0, metadata, tb.fs, 0);
-        agent.set_birth_onset_tick(Some(0));
-        pop.add_individual(agent);
-
-        let rhythms = NeuralRhythms::default();
-        let batch = {
-            let agent = pop.individuals.first_mut().expect("agent");
-            agent.tick_phonation(&tb, 0, &rhythms, None, 0.0)
-        };
-        let note_id = batch.cmds.iter().find_map(|cmd| match cmd {
-            PhonationCmd::NoteOn { note_id, .. } => Some(*note_id),
-            _ => None,
-        });
-        let Some(note_id) = note_id else {
-            panic!("expected sustain note on");
-        };
-        (pop, landscape, batch, note_id, rhythms)
-    }
-
-    #[test]
-    fn set_amp_emits_update_when_cadence_off() {
-        let tb = Timebase { fs: 1000.0, hop: 4 };
-        let (mut pop, landscape, batch, note_id, rhythms) = setup_sustain_population(tb);
-        assert!(
-            batch
-                .cmds
-                .iter()
-                .all(|cmd| !matches!(cmd, PhonationCmd::Update { .. })),
-            "cadence off should not emit sustain updates"
-        );
-
-        pop.apply_action(
-            Action::SetAmp {
-                target: TargetRef::AgentId { id: 1 },
-                amp: 0.8,
-            },
-            &landscape,
-            None,
-        );
-        let mut pending = pop.take_pending_phonation_batches();
-        assert_eq!(pending.len(), 1, "expected implicit sustain update");
-        let update_batch = pending.pop().expect("update batch");
-        let update_cmd = update_batch
-            .cmds
-            .iter()
-            .find_map(|cmd| match cmd {
-                PhonationCmd::Update {
-                    note_id,
-                    at_tick,
-                    update,
-                } => Some((*note_id, *at_tick, *update)),
-                _ => None,
-            })
-            .expect("update cmd");
-        assert_eq!(update_cmd.0, note_id);
-        assert_eq!(update_cmd.1, Some(tb.hop as Tick));
-        assert!(
-            update_cmd.2.target_freq_hz.is_none(),
-            "set amp update should not carry target freq"
-        );
-        let target_amp = update_cmd.2.target_amp.expect("target amp");
-
-        let mut renderer = ScheduleRenderer::new(tb);
-        let board = IntentBoard::new(1, 1);
-        renderer.render(&board, &[batch, update_batch], 0, &rhythms);
-        let key = VoiceKey {
-            source_id: 1,
-            note_id,
-            kind: VoiceKind::Phonation,
-        };
-        let initial_target_freq = renderer
-            .voices
-            .get(&key)
-            .map(|voice| voice.debug_target_freq_hz())
-            .expect("voice");
-        renderer.render(&board, &[], tb.hop as Tick, &rhythms);
-        let voice = renderer.voices.get(&key).expect("voice");
-        assert!((voice.debug_target_amp() - target_amp).abs() < 1e-6);
-        assert!(
-            (voice.debug_target_freq_hz() - initial_target_freq).abs() < 1e-6,
-            "set amp update must not change target freq"
-        );
-    }
-
-    #[test]
-    fn set_freq_emits_update_when_cadence_off() {
-        let tb = Timebase { fs: 1000.0, hop: 4 };
-        let (mut pop, landscape, batch, note_id, rhythms) = setup_sustain_population(tb);
-        assert!(
-            batch
-                .cmds
-                .iter()
-                .all(|cmd| !matches!(cmd, PhonationCmd::Update { .. })),
-            "cadence off should not emit sustain updates"
-        );
-
-        pop.apply_action(
-            Action::SetFreq {
-                target: TargetRef::AgentId { id: 1 },
-                freq_hz: 330.0,
-            },
-            &landscape,
-            None,
-        );
-        let mut pending = pop.take_pending_phonation_batches();
-        assert_eq!(pending.len(), 1, "expected implicit sustain update");
-        let update_batch = pending.pop().expect("update batch");
-        let update_cmd = update_batch
-            .cmds
-            .iter()
-            .find_map(|cmd| match cmd {
-                PhonationCmd::Update {
-                    note_id,
-                    at_tick,
-                    update,
-                } => Some((*note_id, *at_tick, *update)),
-                _ => None,
-            })
-            .expect("update cmd");
-        assert_eq!(update_cmd.0, note_id);
-        assert_eq!(update_cmd.1, Some(tb.hop as Tick));
-        assert!(
-            update_cmd.2.target_amp.is_none(),
-            "set freq update should not carry target amp"
-        );
-        let target_freq = update_cmd.2.target_freq_hz.expect("target freq");
-
-        let mut renderer = ScheduleRenderer::new(tb);
-        let board = IntentBoard::new(1, 1);
-        renderer.render(&board, &[batch, update_batch], 0, &rhythms);
-        let key = VoiceKey {
-            source_id: 1,
-            note_id,
-            kind: VoiceKind::Phonation,
-        };
-        let initial_target_amp = renderer
-            .voices
-            .get(&key)
-            .map(|voice| voice.debug_target_amp())
-            .expect("voice");
-        renderer.render(&board, &[], tb.hop as Tick, &rhythms);
-        let voice = renderer.voices.get(&key).expect("voice");
-        assert!((voice.debug_target_freq_hz() - target_freq).abs() < 1e-6);
-        assert!(
-            (voice.debug_target_amp() - initial_target_amp).abs() < 1e-6,
-            "set freq update must not change target amp"
-        );
     }
 }

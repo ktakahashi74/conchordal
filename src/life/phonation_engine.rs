@@ -17,8 +17,15 @@ pub type NoteId = u64;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PhonationKick {
-    Birth,
     Planned { strength: f32 },
+}
+
+impl PhonationKick {
+    pub fn strength(self) -> f32 {
+        match self {
+            PhonationKick::Planned { strength } => strength,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -49,11 +56,6 @@ pub enum PhonationCmd {
         at_tick: Option<Tick>,
         update: PhonationUpdate,
     },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum OnsetKind {
-    Birth,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -257,7 +259,7 @@ impl TimingField {
                 rhythms.advance_in_place(dt_sec);
                 cursor_tick = boundary.tick;
             }
-            let mut weight = (rhythms.env_open * rhythms.env_level).clamp(0.0, 1.0);
+            let mut weight = rhythms.env_open.clamp(0.0, 1.0);
             match social {
                 Some((trace, coupling)) if coupling != 0.0 => {
                     let density = trace.density_at(boundary.tick);
@@ -310,12 +312,6 @@ pub struct CoreTickCtx {
 #[derive(Debug, Clone, Copy)]
 pub struct CoreState {
     pub is_alive: bool,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct BirthOutcome {
-    pub applied: bool,
-    pub gate: Option<u64>,
 }
 
 pub trait PhonationClock: Send {
@@ -542,7 +538,6 @@ impl PhonationClock for CompositeClock {
 
 pub trait PhonationInterval: Send {
     fn on_candidate(&mut self, c: &IntervalInput, state: &CoreState) -> Option<PhonationKick>;
-    fn on_external_onset(&mut self, _kind: OnsetKind, _at_theta_gate: u64) {}
 }
 
 pub trait SubThetaMod: Send + Sync {
@@ -630,10 +625,6 @@ impl PhonationInterval for AccumulatorInterval {
             return Some(PhonationKick::Planned { strength: 1.0 });
         }
         None
-    }
-
-    fn on_external_onset(&mut self, _kind: OnsetKind, at_theta_gate: u64) {
-        self.next_allowed_gate = at_theta_gate + self.refractory_gates as u64 + 1;
     }
 }
 
@@ -904,26 +895,8 @@ impl PhonationEngine {
         }
     }
 
-    pub fn next_gate_index_hint(&self) -> u64 {
-        self.last_gate_index
-            .map_or(0, |gate| gate.saturating_add(1))
-    }
-
-    pub fn notify_birth_onset(&mut self, at_theta_gate: u64) {
-        self.interval
-            .on_external_onset(OnsetKind::Birth, at_theta_gate);
-    }
-
     pub fn has_active_notes(&self) -> bool {
         self.active_notes > 0
-    }
-
-    pub(crate) fn register_external_note_on(&mut self) {
-        self.active_notes = self.active_notes.saturating_add(1);
-    }
-
-    pub(crate) fn register_external_note_off(&mut self) {
-        self.active_notes = self.active_notes.saturating_sub(1);
     }
 
     fn schedule_note_off(&mut self, note_id: NoteId, off_tick: Tick) {
@@ -995,13 +968,12 @@ impl PhonationEngine {
         &mut self,
         ctx: &CoreTickCtx,
         state: &CoreState,
-        birth_onset_tick: Option<Tick>,
         social: Option<&SocialDensityTrace>,
         social_coupling: f32,
         out_cmds: &mut Vec<PhonationCmd>,
         out_events: &mut Vec<PhonationNoteEvent>,
         out_onsets: &mut Vec<OnsetEvent>,
-    ) -> BirthOutcome {
+    ) {
         let mut candidates = Vec::new();
         self.clock.gather_candidates(ctx, &mut candidates);
         let merged = Self::merge_candidates(candidates);
@@ -1017,11 +989,10 @@ impl PhonationEngine {
             &mut timing_grid,
             &timing_field,
             state,
-            birth_onset_tick,
             out_cmds,
             out_events,
             out_onsets,
-        )
+        );
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1032,22 +1003,14 @@ impl PhonationEngine {
         timing_grid: &mut ThetaGrid,
         timing_field: &TimingField,
         state: &CoreState,
-        birth_onset_tick: Option<Tick>,
         out_cmds: &mut Vec<PhonationCmd>,
         out_events: &mut Vec<PhonationNoteEvent>,
         out_onsets: &mut Vec<OnsetEvent>,
-    ) -> BirthOutcome {
-        let mut birth_applied = false;
-        let mut birth_gate = None;
+    ) {
         let mut prev_gate_exc: Option<f32> = None;
         self.drain_note_offs(ctx.now_tick, out_cmds);
         for c in candidates {
             debug_assert!(c.theta_pos.is_finite());
-            if !birth_applied && birth_onset_tick.is_some_and(|tick| tick <= c.tick) {
-                self.notify_birth_onset(c.gate);
-                birth_gate = Some(c.gate);
-                birth_applied = true;
-            }
             self.drain_note_offs(c.tick, out_cmds);
             // dt_theta spec: same tick -> 0; negative/non-finite delta -> 0 (debug assert);
             // NaN/Inf after cast -> 0.
@@ -1108,14 +1071,10 @@ impl PhonationEngine {
                     note_id,
                     onset_tick: c.tick,
                 });
-                let strength = match kick {
-                    PhonationKick::Birth => 1.0,
-                    PhonationKick::Planned { strength } => strength,
-                };
                 out_onsets.push(OnsetEvent {
                     gate: c.gate,
                     onset_tick: c.tick,
-                    strength,
+                    strength: kick.strength(),
                 });
                 let onset = ConnectOnset {
                     note_id,
@@ -1145,10 +1104,6 @@ impl PhonationEngine {
             }
         }
         self.drain_note_offs(ctx.frame_end.saturating_sub(1), out_cmds);
-        BirthOutcome {
-            applied: birth_applied,
-            gate: birth_gate,
-        }
     }
 
     /// Merge rules:
@@ -1257,22 +1212,6 @@ mod tests {
             }
         }
         assert_eq!(fired, vec![1u64, 3, 5]);
-    }
-
-    #[test]
-    fn birth_onset_applies_refractory() {
-        let mut interval = AccumulatorInterval::new(1.0, 1, 1);
-        interval.acc = 1.0;
-        interval.on_external_onset(OnsetKind::Birth, 0);
-        let state = CoreState { is_alive: true };
-        let c = candidate_at_gate(0);
-        let input = IntervalInput {
-            gate: c.gate,
-            tick: c.tick,
-            dt_theta: 1.0,
-            weight: 1.0,
-        };
-        assert!(interval.on_candidate(&input, &state).is_none());
     }
 
     #[test]
@@ -1477,7 +1416,6 @@ mod tests {
             &mut timing_grid,
             &timing_field,
             &state,
-            None,
             &mut cmds,
             &mut events,
             &mut onsets,
@@ -1841,7 +1779,6 @@ mod tests {
             &mut timing_grid,
             &timing_field,
             &state,
-            None,
             &mut cmds,
             &mut events,
             &mut onsets,
@@ -1913,7 +1850,6 @@ mod tests {
             &mut timing_grid,
             &timing_field,
             &state,
-            None,
             &mut cmds,
             &mut events,
             &mut onsets,
@@ -1962,7 +1898,6 @@ mod tests {
             &mut timing_grid,
             &timing_field,
             &state,
-            None,
             &mut cmds,
             &mut events,
             &mut onsets,
@@ -2033,7 +1968,6 @@ mod tests {
             &mut timing_grid,
             &timing_field,
             &state,
-            None,
             &mut cmds,
             &mut events,
             &mut onsets,
@@ -2119,7 +2053,6 @@ mod tests {
             &mut timing_grid,
             &timing_field,
             &state,
-            None,
             &mut cmds,
             &mut events,
             &mut onsets,
@@ -2167,7 +2100,6 @@ mod tests {
             &mut timing_grid,
             &timing_field,
             &state,
-            None,
             &mut cmds,
             &mut events,
             &mut onsets,
@@ -2222,7 +2154,6 @@ mod tests {
             &mut timing_grid,
             &timing_field,
             &state,
-            None,
             &mut cmds,
             &mut events,
             &mut onsets,
@@ -2273,7 +2204,6 @@ mod tests {
             &mut timing_grid,
             &timing_field,
             &state,
-            None,
             &mut cmds,
             &mut events,
             &mut onsets,
@@ -2349,7 +2279,6 @@ mod tests {
             &mut timing_grid,
             &timing_field,
             &state,
-            None,
             &mut cmds,
             &mut events,
             &mut onsets,
@@ -2574,16 +2503,7 @@ mod tests {
         let mut cmds = Vec::new();
         let mut events = Vec::new();
         let mut onsets = Vec::new();
-        engine.tick(
-            &ctx,
-            &state,
-            None,
-            None,
-            0.0,
-            &mut cmds,
-            &mut events,
-            &mut onsets,
-        );
+        engine.tick(&ctx, &state, None, 0.0, &mut cmds, &mut events, &mut onsets);
         assert!(events.len() >= 2, "expected at least two note ons");
         let first = events[0];
         let second = events[1];
@@ -2721,7 +2641,6 @@ mod tests {
             &mut timing_grid,
             &timing_field,
             &state,
-            None,
             &mut cmds,
             &mut events,
             &mut onsets,
@@ -2803,7 +2722,6 @@ mod tests {
             &mut timing_grid,
             &timing_field,
             &state,
-            None,
             &mut cmds,
             &mut events,
             &mut onsets,
@@ -2865,7 +2783,6 @@ mod tests {
             &mut timing_grid,
             &timing_field,
             &state,
-            None,
             &mut cmds_sub,
             &mut events_sub,
             &mut onsets_sub,
@@ -2949,7 +2866,6 @@ mod tests {
             &mut timing_grid,
             &timing_field,
             &state,
-            None,
             &mut cmds,
             &mut events,
             &mut onsets,
@@ -2982,7 +2898,6 @@ mod tests {
             &mut timing_grid,
             &timing_field,
             &state,
-            None,
             &mut cmds2,
             &mut events2,
             &mut onsets2,
@@ -3091,7 +3006,6 @@ mod tests {
             &mut timing_grid,
             &timing_field,
             &state,
-            None,
             &mut cmds,
             &mut events,
             &mut onsets,
@@ -3162,7 +3076,6 @@ mod tests {
             &mut timing_grid,
             &timing_field,
             &state,
-            None,
             &mut cmds,
             &mut events,
             &mut onsets,

@@ -993,7 +993,7 @@ fn worker_loop(
                 (None, None) => frame_idx,
             };
             let _perc_tick = timebase.frame_start_tick(perc_frame);
-            let mut phonation_batches = if scenario_end_tick.is_none() {
+            let phonation_batches = if scenario_end_tick.is_none() {
                 pop.publish_intents(&mut world, &current_landscape, now_tick)
             } else {
                 Vec::new()
@@ -1007,16 +1007,9 @@ fn worker_loop(
                 let _ = roughness_tx.try_send(update);
             }
 
-            let hop_tick: crate::core::timebase::Tick = hop as crate::core::timebase::Tick;
-            // frame_end is exclusive: commit when gate_tick ∈ [now_tick, frame_end)
-            let frame_end = now_tick.saturating_add(hop_tick);
-            world.commit_plans_if_due(now_tick, frame_end);
-
             if scenario_end_tick.is_none() && conductor.is_done() {
                 scenario_end_tick = Some(now_tick);
-                phonation_batches.extend(pop.flush_sustain_note_offs(now_tick));
                 pop.individuals.clear();
-                world.plan_board.clear_next();
                 world.board.remove_onset_from(now_tick);
                 schedule_renderer.shutdown_at(now_tick);
             }
@@ -1036,8 +1029,6 @@ fn worker_loop(
                     conductor.is_done(),
                 )
                 .to_vec();
-            // Pending NoteOffs from remove/prune/shutdown must reach the renderer this hop.
-            phonation_batches.extend(pop.take_pending_phonation_batches());
             let spectrum_body: Arc<[f32]> = Arc::from(spectrum_body);
 
             // [FIX] Audio is MONO. Treat it as such.

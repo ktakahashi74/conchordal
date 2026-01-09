@@ -1,6 +1,6 @@
 use conchordal::core::modulation::NeuralRhythms;
 use conchordal::core::timebase::Timebase;
-use conchordal::life::intent::{Intent, IntentBoard, IntentKind};
+use conchordal::life::intent::{Intent, IntentBoard};
 use conchordal::life::schedule_renderer::ScheduleRenderer;
 
 #[test]
@@ -13,7 +13,6 @@ fn cutoff_skips_future_intents() {
     board.publish(Intent {
         source_id: 0,
         intent_id: 1,
-        kind: IntentKind::Normal,
         onset: 0,
         duration: 20,
         freq_hz: 440.0,
@@ -45,7 +44,6 @@ fn shutdown_releases_active_voices() {
     board.publish(Intent {
         source_id: 0,
         intent_id: 1,
-        kind: IntentKind::Normal,
         onset: 0,
         duration: tb.sec_to_tick(1.0),
         freq_hz: 440.0,

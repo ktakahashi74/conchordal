@@ -1,6 +1,5 @@
 use crate::core::modulation::NeuralRhythms;
 use crate::core::phase::{angle_diff_pm_pi, wrap_0_tau};
-use crate::core::timebase::{Tick, Timebase};
 use crate::core::utils::pink_noise_tick;
 use crate::life::lifecycle::LifecycleConfig;
 use crate::life::phonation_engine::PhonationKick;
@@ -18,23 +17,10 @@ pub struct ArticulationSignal {
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-pub struct ArticulationStep {
-    pub signal: ArticulationSignal,
-    pub apply_planned_pitch: bool,
-}
-
-#[derive(Debug, Clone, Copy, Default)]
 pub struct PlannedPitch {
     pub target_pitch_log2: f32,
     pub jump_cents_abs: f32,
     pub salience: f32,
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-pub struct ErrorState {
-    pub pitch_error_cents: f32,
-    pub abs_pitch_error_cents: f32,
-    pub d_pitch_error_cents_per_sec: f32,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -61,7 +47,6 @@ impl PlannedGate {
 pub struct ArticulationWrapper {
     pub core: AnyArticulationCore,
     pub planned_gate: PlannedGate,
-    pub last_apply_planned_pitch: bool,
 }
 
 impl ArticulationWrapper {
@@ -69,7 +54,6 @@ impl ArticulationWrapper {
         Self {
             core,
             planned_gate: PlannedGate { gate },
-            last_apply_planned_pitch: false,
         }
     }
 
@@ -79,14 +63,8 @@ impl ArticulationWrapper {
         rhythms: &NeuralRhythms,
         dt: f32,
         global_coupling: f32,
-        _planned: &PlannedPitch,
-        _error: &ErrorState,
-    ) -> ArticulationStep {
-        let signal = self.core.process(consonance, rhythms, dt, global_coupling);
-        ArticulationStep {
-            signal,
-            apply_planned_pitch: self.last_apply_planned_pitch,
-        }
+    ) -> ArticulationSignal {
+        self.core.process(consonance, rhythms, dt, global_coupling)
     }
 
     pub fn is_alive(&self) -> bool {
@@ -96,13 +74,10 @@ impl ArticulationWrapper {
     pub fn update_gate(
         &mut self,
         planned: &PlannedPitch,
-        _error: &ErrorState,
         rhythms: &NeuralRhythms,
         dt: f32,
     ) -> bool {
-        let apply = self.planned_gate.update(planned, rhythms, dt);
-        self.last_apply_planned_pitch = apply;
-        apply
+        self.planned_gate.update(planned, rhythms, dt)
     }
 
     pub fn gate(&self) -> f32 {
@@ -111,14 +86,6 @@ impl ArticulationWrapper {
 
     pub fn set_gate(&mut self, gate: f32) {
         self.planned_gate.gate = gate.clamp(0.0, 1.0);
-    }
-
-    pub fn propose_onsets(&mut self, tb: &Timebase, now: Tick, horizon: Tick) -> Vec<Tick> {
-        self.core.propose_onsets(tb, now, horizon)
-    }
-
-    pub fn kick_birth(&mut self, rhythms: &NeuralRhythms, dt: f32) {
-        self.core.kick_birth(rhythms, dt);
     }
 
     pub fn kick_planned(&mut self, kick: PhonationKick, rhythms: &NeuralRhythms, dt: f32) {
@@ -193,7 +160,7 @@ pub struct KuramotoCore {
     pub env_level: f32,
     pub state: ArticulationState,
     pub attack_step: f32,
-    pub decay_factor: f32,
+    pub decay_rate: f32,
     pub retrigger: bool,
     pub noise_1f: PinkNoise,
     pub base_sigma: f32,
@@ -427,17 +394,19 @@ impl KuramotoCore {
     }
 
     #[inline]
-    fn update_envelope(&mut self) {
+    fn update_envelope(&mut self, dt: f32) {
+        let dt = dt.max(0.0);
         match self.state {
             ArticulationState::Attack => {
-                self.env_level += self.attack_step;
+                self.env_level += self.attack_step * dt;
                 if self.env_level >= 1.0 {
                     self.env_level = 1.0;
                     self.state = ArticulationState::Decay;
                 }
             }
             ArticulationState::Decay => {
-                self.env_level *= self.decay_factor;
+                let decay = (-self.decay_rate * dt).exp();
+                self.env_level *= decay;
                 if self.env_level < 0.001 {
                     self.env_level = 0.0;
                     self.state = ArticulationState::Idle;
@@ -492,7 +461,7 @@ impl ArticulationCore for KuramotoCore {
             );
             attacked_this_sample = attacked_this_sample || attacked;
         }
-        self.update_envelope();
+        self.update_envelope(dt);
 
         if self.dbg_accum_time >= 1.0 {
             let agent_freq_hz = self.omega_rad / TAU;
@@ -697,7 +666,7 @@ impl AnyArticulationCore {
                     basal_cost,
                     recharge_rate,
                     attack_step,
-                    decay_factor,
+                    decay_rate,
                     state,
                     sensitivity,
                     retrigger,
@@ -728,7 +697,7 @@ impl AnyArticulationCore {
                     env_level,
                     state,
                     attack_step,
-                    decay_factor,
+                    decay_rate,
                     retrigger,
                     noise_1f: PinkNoise::new(noise_seed, 0.001),
                     base_sigma: 0.3, // rad/s noise floor
@@ -778,78 +747,17 @@ impl AnyArticulationCore {
         }
     }
 
-    pub fn propose_onsets(&mut self, tb: &Timebase, now: Tick, horizon: Tick) -> Vec<Tick> {
+    pub fn kick_planned(&mut self, kick: PhonationKick, _rhythms: &NeuralRhythms, _dt: f32) {
+        let strength = kick.strength();
         match self {
-            AnyArticulationCore::Entrain(core) => core.propose_onsets(tb, now, horizon),
-            AnyArticulationCore::Seq(core) => core.propose_onsets(tb, now, horizon),
-            AnyArticulationCore::Drone(core) => core.propose_onsets(tb, now, horizon),
-        }
-    }
-
-    pub fn kick_birth(&mut self, rhythms: &NeuralRhythms, dt: f32) {
-        match self {
-            AnyArticulationCore::Entrain(core) => {
-                let state_before = core.state;
-                let env_before = core.env_level;
-                let energy_before = core.energy;
-                core.kick_birth(rhythms, dt);
-                debug!(
-                    target: "phonation::kick",
-                    core = "entrain",
-                    state_before = ?state_before,
-                    state_after = ?core.state,
-                    env_before = env_before,
-                    env_after = core.env_level,
-                    energy_before = energy_before,
-                    energy_after = core.energy
-                );
-            }
-            AnyArticulationCore::Seq(core) => {
-                let env_before = core.env_level;
-                let timer_before = core.timer;
-                core.kick_birth(rhythms, dt);
-                debug!(
-                    target: "phonation::kick",
-                    core = "seq",
-                    timer_before = timer_before,
-                    timer_after = core.timer,
-                    env_before = env_before,
-                    env_after = core.env_level
-                );
-            }
-            AnyArticulationCore::Drone(core) => {
-                let phase_before = core.phase;
-                core.kick_birth(rhythms, dt);
-                debug!(
-                    target: "phonation::kick",
-                    core = "drone",
-                    phase_before = phase_before,
-                    phase_after = core.phase
-                );
-            }
-        }
-    }
-
-    pub fn kick_planned(&mut self, kick: PhonationKick, rhythms: &NeuralRhythms, dt: f32) {
-        match kick {
-            PhonationKick::Birth => self.kick_birth(rhythms, dt),
-            PhonationKick::Planned { strength } => match self {
-                AnyArticulationCore::Entrain(core) => core.kick_planned(strength),
-                AnyArticulationCore::Seq(core) => core.kick_planned(strength),
-                AnyArticulationCore::Drone(core) => core.kick_planned(strength),
-            },
+            AnyArticulationCore::Entrain(core) => core.kick_planned(strength),
+            AnyArticulationCore::Seq(core) => core.kick_planned(strength),
+            AnyArticulationCore::Drone(core) => core.kick_planned(strength),
         }
     }
 }
 
 impl KuramotoCore {
-    fn kick_birth(&mut self, _rhythms: &NeuralRhythms, _dt: f32) {
-        self.state = ArticulationState::Attack;
-        if self.energy.is_finite() && self.energy >= self.action_cost {
-            self.energy -= self.action_cost;
-        }
-    }
-
     fn kick_planned(&mut self, strength: f32) {
         let strength = strength.clamp(0.0, 1.0);
         self.state = ArticulationState::Attack;
@@ -860,72 +768,18 @@ impl KuramotoCore {
 }
 
 impl SequencedCore {
-    fn kick_birth(&mut self, _rhythms: &NeuralRhythms, _dt: f32) {
-        self.timer = 0.0;
-    }
-
     fn kick_planned(&mut self, _strength: f32) {
         self.timer = 0.0;
     }
 }
 
 impl DroneCore {
-    fn kick_birth(&mut self, _rhythms: &NeuralRhythms, _dt: f32) {}
-
     fn kick_planned(&mut self, _strength: f32) {}
-}
-
-fn min_lead_ticks(tb: &Timebase) -> Tick {
-    tb.min_lead_ticks()
-}
-
-impl KuramotoCore {
-    fn propose_onsets(&mut self, tb: &Timebase, now: Tick, horizon: Tick) -> Vec<Tick> {
-        let min_lead = min_lead_ticks(tb);
-        let end = now.saturating_add(horizon);
-        let mut out = Vec::new();
-        let freq = self.rhythm_freq.max(0.01);
-        let period_sec = 1.0 / freq;
-        let mut period_tick = tb.sec_to_tick(period_sec);
-        if period_tick == 0 {
-            period_tick = 1;
-        }
-        let phase = wrap_0_tau(self.rhythm_phase);
-        let phase_to_next = (TAU - phase) / TAU;
-        let to_next_tick = tb.sec_to_tick(period_sec * phase_to_next);
-        let mut next = now.saturating_add(min_lead.max(to_next_tick));
-
-        while next <= end && out.len() < 9 {
-            out.push(next);
-            next = next.saturating_add(period_tick);
-        }
-
-        if out.is_empty() {
-            out.push(now.saturating_add(min_lead));
-        }
-        out
-    }
-}
-
-impl SequencedCore {
-    fn propose_onsets(&mut self, tb: &Timebase, now: Tick, horizon: Tick) -> Vec<Tick> {
-        let _ = horizon;
-        let min_lead = min_lead_ticks(tb);
-        vec![now.saturating_add(min_lead)]
-    }
-}
-
-impl DroneCore {
-    fn propose_onsets(&mut self, tb: &Timebase, now: Tick, horizon: Tick) -> Vec<Tick> {
-        let _ = horizon;
-        let min_lead = min_lead_ticks(tb);
-        vec![now.saturating_add(min_lead)]
-    }
 }
 
 fn envelope_from_lifecycle(
     lifecycle: &LifecycleConfig,
-    fs: f32,
+    _fs: f32,
 ) -> (
     f32,
     f32,
@@ -944,16 +798,16 @@ fn envelope_from_lifecycle(
             attack_sec,
         } => {
             let atk = attack_sec.max(0.0005);
-            let attack_step = 1.0 / (fs * atk);
+            let attack_step = 1.0 / atk;
             let decay_sec = half_life_sec.max(0.01);
-            let decay_factor = (-1.0f32 / (fs * decay_sec)).exp();
+            let decay_rate = 1.0 / decay_sec;
             let basal = 0.0;
             (
                 *initial_energy,
                 basal,
                 0.0,
                 attack_step,
-                decay_factor,
+                decay_rate,
                 ArticulationState::Attack,
                 Sensitivity::default(),
                 false,
@@ -968,15 +822,15 @@ fn envelope_from_lifecycle(
             envelope,
         } => {
             let atk = envelope.attack_sec.max(0.0005);
-            let attack_step = 1.0 / (fs * atk);
+            let attack_step = 1.0 / atk;
             let decay_sec = envelope.decay_sec.max(0.01);
-            let decay_factor = (-1.0f32 / (fs * decay_sec)).exp();
+            let decay_rate = 1.0 / decay_sec;
             (
                 *initial_energy,
                 *metabolism_rate,
                 recharge_rate.unwrap_or(0.5),
                 attack_step,
-                decay_factor,
+                decay_rate,
                 ArticulationState::Idle,
                 Sensitivity {
                     delta: 1.0,

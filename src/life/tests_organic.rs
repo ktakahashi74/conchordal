@@ -3,7 +3,7 @@ use crate::core::log2space::Log2Space;
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::Timebase;
 use crate::life::individual::{
-    AgentMetadata, AnyArticulationCore, ArticulationCore, AudioAgent, Individual, SoundBody,
+    AgentMetadata, AnyArticulationCore, ArticulationCore, Individual, SoundBody,
 };
 use crate::life::lifecycle::LifecycleConfig;
 use crate::life::perceptual::PerceptualConfig;
@@ -111,7 +111,8 @@ fn test_scan_logic() {
     }
 
     agent.accumulated_time = 5.0;
-    agent.last_theta_sample = -0.1;
+    agent.last_theta_phase = 6.0;
+    agent.theta_phase_initialized = true;
     let mut rhythms = NeuralRhythms::default();
     rhythms.theta.mag = 1.0;
     rhythms.theta.phase = 0.25;
@@ -121,31 +122,6 @@ fn test_scan_logic() {
     assert!(
         agent.target_pitch_log2 > before,
         "agent should move toward higher-scoring neighbor"
-    );
-}
-
-#[test]
-fn test_breath_gating() {
-    let landscape = make_landscape();
-    let mut agent = spawn_agent(330.0, 4);
-    let original = agent.body.base_freq_hz();
-    agent.target_pitch_log2 = (original * 1.5).log2();
-    agent.articulation.set_gate(1.0);
-
-    let mut buffer = [0.0f32; 1];
-    let dt_sec = 0.05;
-    agent.render_wave(&mut buffer, 48_000.0, 0, dt_sec, &landscape, 1.0);
-
-    assert!(
-        agent.articulation.gate() < 1.0,
-        "gate should fall before snapping to target"
-    );
-    let after_freq = agent.body.base_freq_hz();
-    assert!(
-        (after_freq - original).abs() < 1e-3,
-        "frequency should remain until breath collapses ({} vs {})",
-        after_freq,
-        original
     );
 }
 
@@ -286,169 +262,5 @@ fn articulation_snapshot_kuramoto_decay_signature() {
 
     assert!(early_active, "expected early attack during decay lifecycle");
     println!("articulation decay signature: {signature:016x}");
-    assert_eq!(signature, 0x59f2_e6d9_ebab_47f9);
-}
-
-#[test]
-fn render_wave_snapshot_signature_with_forced_snap() {
-    let fs = 48_000.0;
-    let space = Log2Space::new(110.0, 880.0, 48);
-    let mut landscape = Landscape::new(space.clone());
-    landscape.consonance01.fill(0.1);
-    let current_freq = 220.0;
-    let target_freq: f32 = 440.0;
-    let target_log2 = target_freq.log2();
-    if let Some(idx) = landscape.space.index_of_log2(target_log2) {
-        landscape.consonance01[idx] = 0.9;
-    }
-
-    let cfg = IndividualConfig {
-        freq: current_freq,
-        amp: 0.3,
-        life: LifeConfig {
-            body: SoundBodyConfig::Sine { phase: Some(0.25) },
-            articulation: ArticulationCoreConfig::Entrain {
-                lifecycle: LifecycleConfig::Decay {
-                    initial_energy: 1.0,
-                    half_life_sec: 0.2,
-                    attack_sec: 0.1,
-                },
-                rhythm_freq: Some(6.0),
-                rhythm_sensitivity: None,
-            },
-            pitch: PitchCoreConfig::PitchHillClimb {
-                neighbor_step_cents: None,
-                tessitura_gravity: None,
-                improvement_threshold: None,
-                exploration: None,
-                persistence: None,
-            },
-            perceptual: PerceptualConfig {
-                tau_fast: None,
-                tau_slow: None,
-                w_boredom: None,
-                w_familiarity: None,
-                rho_self: None,
-                boredom_gamma: None,
-                self_smoothing_radius: None,
-                silence_mass_epsilon: None,
-            },
-            breath_gain_init: Some(0.09),
-            ..Default::default()
-        },
-        tag: None,
-    };
-    let metadata = AgentMetadata {
-        id: 1,
-        tag: None,
-        group_idx: 0,
-        member_idx: 0,
-    };
-    let mut agent = cfg.spawn(1, 0, metadata, fs, 0);
-    agent.target_pitch_log2 = target_log2;
-    let before = agent.body.base_freq_hz();
-
-    let mut buffer = [0.0f32; 1];
-    let dt_sec = 0.02;
-    agent.render_wave(&mut buffer, fs, 0, dt_sec, &landscape, 1.0);
-
-    let after = agent.body.base_freq_hz();
-    assert!(
-        (after - target_freq).abs() < 1e-3,
-        "expected forced snap to target pitch"
-    );
-    assert!(
-        (after - before).abs() > 1.0,
-        "expected pitch to move on forced snap"
-    );
-
-    let mut signature = 0u64;
-    signature = mix_signature(signature, buffer[0].to_bits());
-    println!("render forced snap signature: {signature:016x}");
-    assert_eq!(signature, 0xdb56_414d_adec_e240);
-}
-
-#[test]
-fn error_state_is_computed_and_stable_under_snap() {
-    let fs = 48_000.0;
-    let space = Log2Space::new(110.0, 880.0, 48);
-    let mut landscape = Landscape::new(space.clone());
-    landscape.consonance01.fill(0.1);
-    let current_freq = 220.0;
-    let target_freq: f32 = 440.0;
-    let target_log2 = target_freq.log2();
-    if let Some(idx) = landscape.space.index_of_log2(target_log2) {
-        landscape.consonance01[idx] = 0.9;
-    }
-
-    let cfg = IndividualConfig {
-        freq: current_freq,
-        amp: 0.3,
-        life: LifeConfig {
-            body: SoundBodyConfig::Sine { phase: Some(0.25) },
-            articulation: ArticulationCoreConfig::Entrain {
-                lifecycle: LifecycleConfig::Decay {
-                    initial_energy: 1.0,
-                    half_life_sec: 0.2,
-                    attack_sec: 0.1,
-                },
-                rhythm_freq: Some(6.0),
-                rhythm_sensitivity: None,
-            },
-            pitch: PitchCoreConfig::PitchHillClimb {
-                neighbor_step_cents: None,
-                tessitura_gravity: None,
-                improvement_threshold: None,
-                exploration: None,
-                persistence: None,
-            },
-            perceptual: PerceptualConfig {
-                tau_fast: None,
-                tau_slow: None,
-                w_boredom: None,
-                w_familiarity: None,
-                rho_self: None,
-                boredom_gamma: None,
-                self_smoothing_radius: None,
-                silence_mass_epsilon: None,
-            },
-            breath_gain_init: Some(0.09),
-            ..Default::default()
-        },
-        tag: None,
-    };
-    let metadata = AgentMetadata {
-        id: 1,
-        tag: None,
-        group_idx: 0,
-        member_idx: 0,
-    };
-    let mut agent = cfg.spawn(1, 0, metadata, fs, 0);
-    agent.target_pitch_log2 = target_log2;
-    let before = agent.body.base_freq_hz();
-    let expected_error_cents = 1200.0 * (target_log2 - before.log2());
-
-    let mut buffer = [0.0f32; 1];
-    let dt_sec = 0.02;
-    agent.render_wave(&mut buffer, fs, 0, dt_sec, &landscape, 1.0);
-
-    let after = agent.body.base_freq_hz();
-    assert!(
-        (after - target_freq).abs() < 1e-3,
-        "expected forced snap to target pitch"
-    );
-
-    let error = agent.debug_last_error_state();
-    assert!(
-        (error.pitch_error_cents - expected_error_cents).abs() < 1e-4,
-        "expected error computed from pre-snap pitch"
-    );
-    assert!(
-        (error.abs_pitch_error_cents - expected_error_cents.abs()).abs() < 1e-4,
-        "expected absolute error to track magnitude"
-    );
-    assert!(
-        error.d_pitch_error_cents_per_sec.abs() < 1e-4,
-        "expected initial derivative to be zero"
-    );
+    assert_eq!(signature, 0xc1be_e9d9_3e85_ee96);
 }

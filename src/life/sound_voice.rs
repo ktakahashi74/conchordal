@@ -1,9 +1,7 @@
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
-use crate::life::individual::{
-    AnySoundBody, ArticulationSignal, ArticulationWrapper, ErrorState, PlannedPitch, SoundBody,
-};
-use crate::life::intent::{BodySnapshot, Intent, IntentKind};
+use crate::life::individual::{AnySoundBody, ArticulationSignal, ArticulationWrapper, SoundBody};
+use crate::life::intent::{BodySnapshot, Intent};
 use crate::life::lifecycle::default_decay_attack;
 use crate::life::phonation_engine::{PhonationKick, PhonationUpdate};
 use crate::life::scenario::{SoundBodyConfig, TimbreGenotype};
@@ -25,7 +23,6 @@ pub struct SoundVoice {
     release_end: Tick,
     attack_ticks: Tick,
     release_ticks: Tick,
-    birth_kick_pending: bool,
     planned_kick_pending: Option<PhonationKick>,
     pending_updates: VecDeque<PendingUpdate>,
     current_amp: f32,
@@ -47,7 +44,7 @@ impl SoundVoice {
         if !intent.freq_hz.is_finite() || !intent.amp.is_finite() {
             return None;
         }
-        if intent.amp == 0.0 && intent.kind != IntentKind::BirthOnce {
+        if intent.amp == 0.0 {
             return None;
         }
 
@@ -62,7 +59,7 @@ impl SoundVoice {
         if !amp.is_finite() {
             return None;
         }
-        if amp <= 0.0 && intent.kind != IntentKind::BirthOnce {
+        if amp <= 0.0 {
             return None;
         }
 
@@ -106,7 +103,6 @@ impl SoundVoice {
             release_end,
             attack_ticks,
             release_ticks,
-            birth_kick_pending: intent.kind == IntentKind::BirthOnce,
             planned_kick_pending: None,
             pending_updates: VecDeque::new(),
             current_amp,
@@ -136,14 +132,6 @@ impl SoundVoice {
                 self.release_end = self.hold_end.saturating_add(self.release_ticks);
             }
         }
-    }
-
-    pub fn kick_birth(&mut self, rhythms: &NeuralRhythms, dt: f32) -> bool {
-        if let Some(articulation) = self.articulation.as_mut() {
-            articulation.kick_birth(rhythms, dt);
-            return true;
-        }
-        false
     }
 
     pub fn kick_planned(&mut self, kick: PhonationKick, rhythms: &NeuralRhythms, dt: f32) -> bool {
@@ -219,14 +207,6 @@ impl SoundVoice {
         }
     }
 
-    pub fn kick_if_due(&mut self, tick: Tick, rhythms: &NeuralRhythms, dt: f32) -> bool {
-        if self.birth_kick_pending && tick >= self.onset {
-            self.birth_kick_pending = false;
-            return self.kick_birth(rhythms, dt);
-        }
-        false
-    }
-
     pub fn set_smoothing_tau_sec(&mut self, tau_sec: f32) {
         let tau = if tau_sec.is_finite() {
             tau_sec.max(0.0)
@@ -245,11 +225,6 @@ impl SoundVoice {
             self.current_freq_hz = self.target_freq_hz;
             self.body.set_freq(self.current_freq_hz);
         }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn birth_kick_pending(&self) -> bool {
-        self.birth_kick_pending
     }
 
     #[cfg(test)]
@@ -301,10 +276,7 @@ impl SoundVoice {
             return 0.0;
         }
         let mut signal = if let Some(articulation) = self.articulation.as_mut() {
-            let planned = PlannedPitch::default();
-            let error = ErrorState::default();
-            let step = articulation.process(1.0, rhythms, dt, 1.0, &planned, &error);
-            let mut signal = step.signal;
+            let mut signal = articulation.process(1.0, rhythms, dt, 1.0);
             signal.amplitude *= articulation.gate();
             signal
         } else {
@@ -451,7 +423,6 @@ mod tests {
         let intent = Intent {
             source_id: 1,
             intent_id: 0,
-            kind: IntentKind::Normal,
             onset: 10,
             duration: 20,
             freq_hz: 440.0,
@@ -476,7 +447,6 @@ mod tests {
         let intent = Intent {
             source_id: 1,
             intent_id: 1,
-            kind: IntentKind::Normal,
             onset: 0,
             duration: Tick::MAX,
             freq_hz: 220.0,
@@ -501,7 +471,6 @@ mod tests {
         let intent = Intent {
             source_id: 1,
             intent_id: 1,
-            kind: IntentKind::Normal,
             onset: 0,
             duration: 10,
             freq_hz: 220.0,
@@ -537,7 +506,6 @@ mod tests {
         let intent = Intent {
             source_id: 1,
             intent_id: 1,
-            kind: IntentKind::Normal,
             onset: 0,
             duration: 10,
             freq_hz: 220.0,
@@ -566,7 +534,6 @@ mod tests {
         let intent = Intent {
             source_id: 1,
             intent_id: 1,
-            kind: IntentKind::Normal,
             onset: 0,
             duration: 10,
             freq_hz: 220.0,
@@ -595,7 +562,6 @@ mod tests {
         let intent = Intent {
             source_id: 1,
             intent_id: 1,
-            kind: IntentKind::Normal,
             onset: 0,
             duration: 10,
             freq_hz: 220.0,
@@ -627,7 +593,6 @@ mod tests {
         let intent = Intent {
             source_id: 1,
             intent_id: 1,
-            kind: IntentKind::Normal,
             onset: 0,
             duration: 10,
             freq_hz: 220.0,

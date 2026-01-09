@@ -1,13 +1,12 @@
 use super::conductor::Conductor;
 use super::individual::{
-    AgentMetadata, ArticulationCore, ArticulationSignal, ArticulationState, AudioAgent, Individual,
-    KuramotoCore, PinkNoise, PitchCore, Sensitivity, SequencedCore, SoundBody,
+    AgentMetadata, ArticulationCore, ArticulationSignal, ArticulationState, KuramotoCore,
+    PinkNoise, PitchCore, Sensitivity, SequencedCore, SoundBody,
 };
 use super::population::Population;
 use super::scenario::{
-    Action, ArticulationCoreConfig, BirthTiming, EnvelopeConfig, HarmonicMode, IndividualConfig,
-    LifeConfig, OnBirthPhonation, PhonationConfig, PitchCoreConfig, Scenario, SceneMarker,
-    SoundBodyConfig, TargetRef, TimbreGenotype, TimedEvent,
+    Action, ArticulationCoreConfig, EnvelopeConfig, HarmonicMode, IndividualConfig, LifeConfig,
+    PitchCoreConfig, Scenario, SceneMarker, SoundBodyConfig, TargetRef, TimbreGenotype, TimedEvent,
 };
 use crate::core::landscape::Landscape;
 use crate::core::landscape::LandscapeFrame;
@@ -231,12 +230,7 @@ fn test_agent_lifecycle_decay_death() {
         half_life_sec: 0.05,
         attack_sec: 0.001,
     };
-    let mut life_cfg = life_with_lifecycle(life);
-    life_cfg.phonation = PhonationConfig {
-        on_birth: OnBirthPhonation::Off,
-        timing: BirthTiming::Gate,
-        ..Default::default()
-    };
+    let life_cfg = life_with_lifecycle(life);
     let agent_cfg = IndividualConfig {
         freq: 440.0,
         amp: 0.5,
@@ -632,6 +626,59 @@ fn deterministic_rng_produces_same_targets() {
 }
 
 #[test]
+fn theta_wrap_triggers_pitch_update_with_large_dt() {
+    let mut pop = Population::new(test_timebase());
+    let landscape = make_test_landscape(48_000.0);
+    let life = LifecycleConfig::Decay {
+        initial_energy: 1.0,
+        half_life_sec: 1.0,
+        attack_sec: 0.01,
+    };
+    let agent_cfg = IndividualConfig {
+        freq: 440.0,
+        amp: 0.5,
+        life: life_with_lifecycle(life),
+        tag: None,
+    };
+    pop.apply_action(
+        Action::AddAgent {
+            id: 1,
+            agent: agent_cfg,
+        },
+        &LandscapeFrame::default(),
+        None,
+    );
+    let agent = pop.individuals.first_mut().expect("agent exists");
+    agent.accumulated_time = agent.integration_window + 1.0;
+    agent.last_theta_phase = 6.0;
+    agent.theta_phase_initialized = true;
+
+    let rhythms = NeuralRhythms {
+        theta: RhythmBand {
+            phase: 0.1,
+            freq_hz: 12.0,
+            mag: 1.0,
+            alpha: 1.0,
+            beta: 0.0,
+        },
+        delta: RhythmBand {
+            phase: 0.0,
+            freq_hz: 1.0,
+            mag: 0.0,
+            alpha: 0.0,
+            beta: 0.0,
+        },
+        env_open: 1.0,
+        env_level: 1.0,
+    };
+    agent.update_pitch_target(&rhythms, 0.5, &landscape);
+    assert_eq!(
+        agent.accumulated_time, 0.0,
+        "theta wrap should trigger a pitch update even for large dt"
+    );
+}
+
+#[test]
 fn kuramoto_locks_to_theta_phase() {
     let mut core = KuramotoCore {
         energy: 1.0,
@@ -652,7 +699,7 @@ fn kuramoto_locks_to_theta_phase() {
         env_level: 0.05,
         state: ArticulationState::Idle,
         attack_step: 0.1,
-        decay_factor: 0.9,
+        decay_rate: 0.9,
         retrigger: true,
         noise_1f: PinkNoise::new(9, 1.0),
         base_sigma: 0.05,
@@ -746,7 +793,7 @@ fn kuramoto_bootstrap_triggers_attack() {
         env_level: 0.05,
         state: ArticulationState::Idle,
         attack_step: 0.1,
-        decay_factor: 0.9,
+        decay_rate: 0.9,
         retrigger: true,
         noise_1f: PinkNoise::new(7, 0.0),
         base_sigma: 0.0,
@@ -809,6 +856,10 @@ fn kuramoto_bootstrap_triggers_attack() {
 
 #[test]
 fn kuramoto_normal_attacks_fire_and_lock() {
+    let dt = 0.01;
+    // Convert per-step envelope tuning to per-second rates for k-rate updates.
+    let attack_step = 0.1 / dt;
+    let decay_rate = -0.9f32.ln() / dt;
     let mut core = KuramotoCore {
         energy: 1.0,
         basal_cost: 0.0,
@@ -827,8 +878,8 @@ fn kuramoto_normal_attacks_fire_and_lock() {
         debug_id: 2,
         env_level: 0.0,
         state: ArticulationState::Idle,
-        attack_step: 0.1,
-        decay_factor: 0.9,
+        attack_step,
+        decay_rate,
         retrigger: true,
         noise_1f: PinkNoise::new(11, 0.0),
         base_sigma: 0.0,
@@ -862,7 +913,6 @@ fn kuramoto_normal_attacks_fire_and_lock() {
         dbg_last_k_eff: 0.0,
     };
 
-    let dt = 0.01;
     let mut t = 0.0;
     for _ in 0..1500 {
         let theta_phase = (t * 6.0 * std::f32::consts::TAU).rem_euclid(std::f32::consts::TAU);
@@ -927,7 +977,7 @@ fn kuramoto_attack_count_invariant_to_chunking() {
             env_level: 1.0,
             state: ArticulationState::Idle,
             attack_step: 1.0,
-            decay_factor: 0.2,
+            decay_rate: 0.2,
             retrigger: true,
             noise_1f: PinkNoise::new(11, 0.0),
             base_sigma: 0.0,
@@ -999,6 +1049,98 @@ fn kuramoto_attack_count_invariant_to_chunking() {
     let b = run_with_chunk(64);
     assert_eq!(a, b, "attack count should be chunk-size invariant");
     assert!(a > 0, "expected at least one attack");
+}
+
+#[test]
+fn kuramoto_process_dt_invariance() {
+    let base = KuramotoCore {
+        energy: 1.0,
+        basal_cost: 0.1,
+        action_cost: 0.0,
+        recharge_rate: 0.0,
+        sensitivity: Sensitivity {
+            delta: 0.0,
+            theta: 0.0,
+            alpha: 0.0,
+            beta: 0.0,
+        },
+        rhythm_phase: 1.0,
+        rhythm_freq: 4.0,
+        omega_rad: std::f32::consts::TAU * 4.0,
+        phase_offset: 0.0,
+        debug_id: 42,
+        env_level: 1.0,
+        state: ArticulationState::Decay,
+        attack_step: 0.0,
+        decay_rate: 1.0,
+        retrigger: false,
+        noise_1f: PinkNoise::new(5, 0.0),
+        base_sigma: 0.0,
+        beta_gain: 0.0,
+        k_omega: 0.0,
+        bootstrap_timer: 0.0,
+        env_open_threshold: 1.0,
+        env_level_min: 0.0,
+        mag_threshold: 1.0,
+        alpha_threshold: 1.0,
+        beta_threshold: -1.0,
+        dbg_accum_time: 0.0,
+        dbg_wraps: 0,
+        dbg_attacks: 0,
+        dbg_boot_attacks: 0,
+        dbg_attack_logs_left: 0,
+        dbg_attack_count_normal: 0,
+        dbg_attack_sum_abs_diff: 0.0,
+        dbg_attack_sum_cos: 0.0,
+        dbg_attack_sum_sin: 0.0,
+        dbg_fail_env: 0,
+        dbg_fail_env_level: 0,
+        dbg_fail_mag: 0,
+        dbg_fail_alpha: 0,
+        dbg_fail_beta: 0,
+        dbg_last_env_open: 0.0,
+        dbg_last_env_level: 0.0,
+        dbg_last_theta_mag: 0.0,
+        dbg_last_theta_alpha: 0.0,
+        dbg_last_theta_beta: 0.0,
+        dbg_last_k_eff: 0.0,
+    };
+    let rhythms = NeuralRhythms {
+        theta: RhythmBand {
+            phase: 0.0,
+            freq_hz: 4.0,
+            mag: 0.0,
+            alpha: 0.0,
+            beta: 0.0,
+        },
+        delta: RhythmBand {
+            phase: 0.0,
+            freq_hz: 1.0,
+            mag: 0.0,
+            alpha: 0.0,
+            beta: 0.0,
+        },
+        env_open: 0.0,
+        env_level: 0.0,
+    };
+
+    let total_sec = 0.2;
+    let steps = 20;
+    let dt = total_sec / steps as f32;
+
+    let mut fine = base.clone();
+    for _ in 0..steps {
+        fine.process(0.0, &rhythms, dt, 1.0);
+    }
+
+    let mut coarse = base;
+    coarse.process(0.0, &rhythms, total_sec, 1.0);
+
+    let tol = 1e-3;
+    assert_eq!(fine.state, coarse.state);
+    assert!((fine.env_level - coarse.env_level).abs() < tol);
+    assert!((fine.energy - coarse.energy).abs() < tol);
+    assert!((fine.rhythm_phase - coarse.rhythm_phase).abs() < tol);
 }
 
 #[test]
@@ -1192,192 +1334,5 @@ fn articulation_snapshot_kuramoto_signature() {
     }
 
     println!("articulation signature: {signature:016x}");
-    assert_eq!(signature, 0x798d_a9fd_3822_a1ca);
-}
-
-#[test]
-fn render_wave_snapshot_signature() {
-    let fs = 48_000.0;
-    let space = Log2Space::new(110.0, 880.0, 48);
-    let mut landscape = Landscape::new(space.clone());
-    landscape.consonance01.fill(0.1);
-    let current_freq = 220.0;
-    let target_freq: f32 = 330.0;
-    let target_log2 = target_freq.log2();
-    if let Some(idx) = landscape.space.index_of_log2(target_log2) {
-        landscape.consonance01[idx] = 0.9;
-    }
-    landscape.rhythm = NeuralRhythms {
-        theta: RhythmBand {
-            phase: 0.0,
-            freq_hz: 6.0,
-            mag: 1.0,
-            alpha: 1.0,
-            beta: 0.2,
-        },
-        delta: RhythmBand {
-            phase: 0.0,
-            freq_hz: 0.5,
-            mag: 1.0,
-            alpha: 1.0,
-            beta: 0.0,
-        },
-        env_level: 1.0,
-        env_open: 1.0,
-    };
-
-    let cfg = IndividualConfig {
-        freq: current_freq,
-        amp: 0.3,
-        life: LifeConfig {
-            body: SoundBodyConfig::Sine { phase: Some(0.0) },
-            articulation: ArticulationCoreConfig::Entrain {
-                lifecycle: LifecycleConfig::Sustain {
-                    initial_energy: 1.0,
-                    metabolism_rate: 0.0,
-                    recharge_rate: Some(0.5),
-                    action_cost: Some(0.02),
-                    envelope: EnvelopeConfig {
-                        attack_sec: 0.01,
-                        decay_sec: 0.1,
-                        sustain_level: 0.8,
-                    },
-                },
-                rhythm_freq: Some(6.0),
-                rhythm_sensitivity: None,
-            },
-            pitch: PitchCoreConfig::PitchHillClimb {
-                neighbor_step_cents: None,
-                tessitura_gravity: None,
-                improvement_threshold: None,
-                exploration: None,
-                persistence: None,
-            },
-            perceptual: PerceptualConfig {
-                tau_fast: None,
-                tau_slow: None,
-                w_boredom: None,
-                w_familiarity: None,
-                rho_self: None,
-                boredom_gamma: None,
-                self_smoothing_radius: None,
-                silence_mass_epsilon: None,
-            },
-            breath_gain_init: Some(0.05),
-            ..Default::default()
-        },
-        tag: None,
-    };
-    let metadata = AgentMetadata {
-        id: 1,
-        tag: None,
-        group_idx: 0,
-        member_idx: 0,
-    };
-    let mut agent = cfg.spawn(1, 0, metadata, fs, 0);
-    agent.target_pitch_log2 = target_log2;
-
-    let mut buffer = vec![0.0f32; 1024];
-    let dt_sec = buffer.len() as f32 / fs;
-    agent.render_wave(&mut buffer, fs, 0, dt_sec, &landscape, 1.0);
-
-    let mut signature = 0u64;
-    for sample in buffer {
-        signature = mix_signature(signature, sample.to_bits());
-    }
-
-    println!("render signature: {signature:016x}");
-    assert_eq!(signature, 0x3f6d_8c8d_dc30_d84c);
-}
-
-#[test]
-fn render_wave_uses_dt_per_sample_for_seq_core() {
-    let fs = 48_000.0;
-    let phonation = crate::life::scenario::PhonationConfig::default();
-    let mut agent = Individual {
-        id: 1,
-        metadata: AgentMetadata {
-            id: 1,
-            tag: None,
-            group_idx: 0,
-            member_idx: 0,
-        },
-        articulation: super::individual::ArticulationWrapper::new(
-            super::individual::AnyArticulationCore::Seq(SequencedCore {
-                timer: 0.0,
-                duration: 0.1,
-                env_level: 0.0,
-            }),
-            1.0,
-        ),
-        pitch: super::individual::AnyPitchCore::PitchHillClimb(
-            super::individual::PitchHillClimbPitchCore::new(
-                200.0,
-                220.0f32.log2(),
-                0.1,
-                0.1,
-                0.0,
-                0.5,
-            ),
-        ),
-        perceptual: PerceptualContext::from_config(
-            &PerceptualConfig {
-                tau_fast: None,
-                tau_slow: None,
-                w_boredom: None,
-                w_familiarity: None,
-                rho_self: None,
-                boredom_gamma: None,
-                self_smoothing_radius: None,
-                silence_mass_epsilon: None,
-            },
-            0,
-        ),
-        planning: crate::life::scenario::PlanningConfig::default(),
-        phonation: phonation.clone(),
-        phonation_engine: crate::life::phonation_engine::PhonationEngine::from_config(
-            &phonation, 9,
-        ),
-        body: super::individual::AnySoundBody::Sine(super::individual::SineBody {
-            freq_hz: 220.0,
-            amp: 0.1,
-            audio_phase: 0.0,
-        }),
-        last_signal: Default::default(),
-        release_gain: 1.0,
-        release_sec: 0.03,
-        release_pending: false,
-        birth_pending: false,
-        birth_fired: false,
-        birth_onset_tick: None,
-        birth_onset_gate: None,
-        sustain_note_id: None,
-        sustain_onset_tick: None,
-        target_pitch_log2: 220.0f32.log2(),
-        integration_window: 2.0,
-        accumulated_time: 0.0,
-        last_theta_sample: 0.0,
-        last_target_salience: 0.0,
-        last_error_state: Default::default(),
-        last_error_cents: 0.0,
-        error_initialized: false,
-        last_chosen_freq_hz: 220.0,
-        next_intent_tick: 0,
-        intent_seq: 0,
-        self_confidence: 0.5,
-        pred_intent_records: std::collections::VecDeque::new(),
-        pred_intent_records_cap: 256,
-        rng: rand::rngs::SmallRng::seed_from_u64(9),
-    };
-    let mut buffer = vec![0.0f32; 4800];
-    let dt_sec = 0.1;
-    let landscape = make_test_landscape(fs);
-    agent.render_wave(&mut buffer, fs, 0, dt_sec, &landscape, 1.0);
-
-    match &agent.articulation.core {
-        super::individual::AnyArticulationCore::Seq(core) => {
-            assert!((core.timer - 0.1).abs() < 1e-4);
-        }
-        _ => panic!("expected seq core"),
-    }
+    assert_eq!(signature, 0x377c_d318_ee77_c649);
 }

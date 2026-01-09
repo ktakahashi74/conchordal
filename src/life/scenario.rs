@@ -4,7 +4,6 @@ use serde::{
     de::{self, Deserializer},
     ser::{SerializeMap, Serializer},
 };
-use std::collections::VecDeque;
 use std::fmt;
 use tracing::debug;
 
@@ -100,88 +99,24 @@ impl Default for TimbreGenotype {
     }
 }
 
-fn default_gate_dur_scale() -> f32 {
-    0.90
-}
-
-fn default_gate_dur_min_sec() -> f32 {
-    0.010
-}
-
-fn default_gate_dur_max_sec() -> f32 {
-    10_000.0
-}
-
-fn default_plan_pitch_mode() -> PlanPitchMode {
-    PlanPitchMode::Off
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, JsonSchema, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum OnBirthPhonation {
-    Off,
-    #[default]
-    Once,
-    Sustain,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, JsonSchema, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum BirthTiming {
-    #[default]
-    Gate,
-    Immediate,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum SustainUpdateCadence {
-    #[default]
-    Off,
-    /// Recommended for drone-style sustain.
-    Hop,
-    Gate,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum SustainUpdateTarget {
-    Pitch,
-    Gain,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct SustainUpdateConfig {
-    #[serde(default)]
-    pub cadence: SustainUpdateCadence,
-    #[serde(default)]
-    pub what: Vec<SustainUpdateTarget>,
-    /// Smoothing time constant in seconds (0.0 = immediate).
-    #[serde(default)]
-    pub smoothing: f32,
-}
-
-impl Default for SustainUpdateConfig {
-    fn default() -> Self {
-        Self {
-            cadence: SustainUpdateCadence::Off,
-            what: Vec::new(),
-            smoothing: 0.0,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, JsonSchema, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum PhonationIntervalConfig {
-    #[default]
     None,
     Accumulator {
         rate: f32,
         #[serde(default)]
         refractory: u32,
     },
+}
+
+impl Default for PhonationIntervalConfig {
+    fn default() -> Self {
+        PhonationIntervalConfig::Accumulator {
+            rate: 1.0,
+            refractory: 1,
+        }
+    }
 }
 
 impl<'de> Deserialize<'de> for PhonationIntervalConfig {
@@ -418,7 +353,7 @@ pub enum PhonationConnectConfig {
 
 impl Default for PhonationConnectConfig {
     fn default() -> Self {
-        PhonationConnectConfig::FixedGate { length_gates: 1 }
+        PhonationConnectConfig::FixedGate { length_gates: 8 }
     }
 }
 
@@ -430,7 +365,7 @@ impl<'de> Deserialize<'de> for PhonationConnectConfig {
         let value = Value::deserialize(deserializer)?;
         match value {
             Value::String(s) => match s.as_str() {
-                "fixed_gate" => Ok(PhonationConnectConfig::FixedGate { length_gates: 1 }),
+                "fixed_gate" => Ok(PhonationConnectConfig::FixedGate { length_gates: 8 }),
                 "field" => Ok(PhonationConnectConfig::Field {
                     hold_min_theta: 0.25,
                     hold_max_theta: 1.0,
@@ -453,7 +388,7 @@ impl<'de> Deserialize<'de> for PhonationConnectConfig {
                             .get("length_gates")
                             .or_else(|| map.get("length"))
                             .and_then(|v| v.as_u64())
-                            .unwrap_or(1) as u32;
+                            .unwrap_or(8) as u32;
                         Ok(PhonationConnectConfig::FixedGate { length_gates })
                     }
                     "field" => {
@@ -514,190 +449,29 @@ impl Default for SocialConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct PhonationConfig {
-    pub on_birth: OnBirthPhonation,
-    pub timing: BirthTiming,
+    #[serde(default)]
     pub interval: PhonationIntervalConfig,
+    #[serde(default)]
     pub connect: PhonationConnectConfig,
+    #[serde(default)]
     pub clock: PhonationClockConfig,
+    #[serde(default)]
     pub sub_theta_mod: SubThetaModConfig,
+    #[serde(default)]
     pub social: SocialConfig,
-    pub sustain_update: SustainUpdateConfig,
 }
 
 impl Default for PhonationConfig {
     fn default() -> Self {
         Self {
-            on_birth: OnBirthPhonation::Once,
-            timing: BirthTiming::Gate,
-            interval: PhonationIntervalConfig::None,
+            interval: PhonationIntervalConfig::default(),
             connect: PhonationConnectConfig::default(),
             clock: PhonationClockConfig::default(),
             sub_theta_mod: SubThetaModConfig::default(),
             social: SocialConfig::default(),
-            sustain_update: SustainUpdateConfig::default(),
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for PhonationConfig {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let value = Value::deserialize(deserializer)?;
-        match value {
-            Value::String(s) => match s.as_str() {
-                "once" => Ok(Self {
-                    on_birth: OnBirthPhonation::Once,
-                    timing: BirthTiming::Gate,
-                    interval: PhonationIntervalConfig::None,
-                    connect: PhonationConnectConfig::default(),
-                    clock: PhonationClockConfig::default(),
-                    sub_theta_mod: SubThetaModConfig::default(),
-                    social: SocialConfig::default(),
-                    sustain_update: SustainUpdateConfig::default(),
-                }),
-                "immediate" => Ok(Self {
-                    on_birth: OnBirthPhonation::Once,
-                    timing: BirthTiming::Immediate,
-                    interval: PhonationIntervalConfig::None,
-                    connect: PhonationConnectConfig::default(),
-                    clock: PhonationClockConfig::default(),
-                    sub_theta_mod: SubThetaModConfig::default(),
-                    social: SocialConfig::default(),
-                    sustain_update: SustainUpdateConfig::default(),
-                }),
-                "off" => Ok(Self {
-                    on_birth: OnBirthPhonation::Off,
-                    timing: BirthTiming::Gate,
-                    interval: PhonationIntervalConfig::None,
-                    connect: PhonationConnectConfig::default(),
-                    clock: PhonationClockConfig::default(),
-                    sub_theta_mod: SubThetaModConfig::default(),
-                    social: SocialConfig::default(),
-                    sustain_update: SustainUpdateConfig::default(),
-                }),
-                _ => Err(de::Error::custom(format!(
-                    "phonation must be \"once\", \"immediate\", or \"off\" (got \"{s}\")"
-                ))),
-            },
-            Value::Object(map) => {
-                let mut on_birth = OnBirthPhonation::Once;
-                let mut timing = BirthTiming::Gate;
-                let mut interval = PhonationIntervalConfig::None;
-                let mut connect = PhonationConnectConfig::default();
-                let mut clock = PhonationClockConfig::default();
-                let mut sub_theta_mod = SubThetaModConfig::default();
-                let mut social = SocialConfig::default();
-                let mut sustain_update = SustainUpdateConfig::default();
-                for (k, v) in map {
-                    match k.as_str() {
-                        "on_birth" => {
-                            let s = v.as_str().ok_or_else(|| {
-                                de::Error::custom("phonation.on_birth must be a string")
-                            })?;
-                            on_birth = match s {
-                                "once" => OnBirthPhonation::Once,
-                                "off" => OnBirthPhonation::Off,
-                                "sustain" => OnBirthPhonation::Sustain,
-                                _ => {
-                                    return Err(de::Error::custom(format!(
-                                        "phonation.on_birth must be \"once\", \"off\", or \"sustain\" (got \"{s}\")"
-                                    )));
-                                }
-                            };
-                        }
-                        "timing" => {
-                            let s = v.as_str().ok_or_else(|| {
-                                de::Error::custom("phonation.timing must be a string")
-                            })?;
-                            timing = match s {
-                                "gate" => BirthTiming::Gate,
-                                "immediate" => BirthTiming::Immediate,
-                                _ => {
-                                    return Err(de::Error::custom(format!(
-                                        "phonation.timing must be \"gate\" or \"immediate\" (got \"{s}\")"
-                                    )));
-                                }
-                            };
-                        }
-                        "interval" | "after_birth" => {
-                            interval = PhonationIntervalConfig::deserialize(v)
-                                .map_err(de::Error::custom)?;
-                        }
-                        "connect" => {
-                            connect = PhonationConnectConfig::deserialize(v)
-                                .map_err(de::Error::custom)?;
-                        }
-                        "clock" => {
-                            clock =
-                                PhonationClockConfig::deserialize(v).map_err(de::Error::custom)?;
-                        }
-                        "sub_theta_mod" => {
-                            sub_theta_mod =
-                                SubThetaModConfig::deserialize(v).map_err(de::Error::custom)?;
-                        }
-                        "social" => {
-                            social = SocialConfig::deserialize(v).map_err(de::Error::custom)?;
-                        }
-                        "sustain_update" => {
-                            sustain_update =
-                                SustainUpdateConfig::deserialize(v).map_err(de::Error::custom)?;
-                        }
-                        _ => {
-                            return Err(de::Error::custom(format!(
-                                "phonation has unknown key: {k}"
-                            )));
-                        }
-                    }
-                }
-                Ok(Self {
-                    on_birth,
-                    timing,
-                    interval,
-                    connect,
-                    clock,
-                    sub_theta_mod,
-                    social,
-                    sustain_update,
-                })
-            }
-            _ => Err(de::Error::custom("phonation must be a string or map")),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum PlanPitchMode {
-    #[default]
-    #[serde(alias = "none")]
-    Off,
-    PredC,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct PlanningConfig {
-    #[serde(default = "default_gate_dur_scale")]
-    pub gate_dur_scale: f32,
-    #[serde(default = "default_gate_dur_min_sec")]
-    pub gate_dur_min_sec: f32,
-    #[serde(default = "default_gate_dur_max_sec")]
-    pub gate_dur_max_sec: f32,
-    #[serde(default = "default_plan_pitch_mode")]
-    pub pitch_mode: PlanPitchMode,
-}
-
-impl Default for PlanningConfig {
-    fn default() -> Self {
-        Self {
-            gate_dur_scale: default_gate_dur_scale(),
-            gate_dur_min_sec: default_gate_dur_min_sec(),
-            gate_dur_max_sec: default_gate_dur_max_sec(),
-            pitch_mode: default_plan_pitch_mode(),
         }
     }
 }
@@ -713,8 +487,6 @@ pub struct LifeConfig {
     pub pitch: PitchCoreConfig,
     #[serde(default)]
     pub perceptual: PerceptualConfig,
-    #[serde(default)]
-    pub planning: PlanningConfig,
     #[serde(default)]
     pub phonation: PhonationConfig,
     #[serde(default)]
@@ -871,12 +643,11 @@ impl fmt::Display for LifeConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "life[body={:?}, articulation={:?}, pitch={:?}, perceptual={:?}, planning={:?}, phonation={:?}, breath_gain_init={:?}]",
+            "life[body={:?}, articulation={:?}, pitch={:?}, perceptual={:?}, phonation={:?}, breath_gain_init={:?}]",
             self.body,
             self.articulation,
             self.pitch,
             self.perceptual,
-            self.planning,
             self.phonation,
             self.breath_gain_init
         )
@@ -964,7 +735,6 @@ impl IndividualConfig {
             articulation: ArticulationWrapper::new(core, breath_gain),
             pitch,
             perceptual,
-            planning: self.life.planning.clone(),
             phonation: self.life.phonation.clone(),
             phonation_engine,
             body,
@@ -972,29 +742,12 @@ impl IndividualConfig {
             release_gain: 1.0,
             release_sec: 0.03,
             release_pending: false,
-            birth_pending: matches!(
-                self.life.phonation.on_birth,
-                OnBirthPhonation::Once | OnBirthPhonation::Sustain
-            ),
-            birth_fired: false,
-            birth_onset_tick: None,
-            birth_onset_gate: None,
-            sustain_note_id: None,
-            sustain_onset_tick: None,
             target_pitch_log2,
             integration_window,
             accumulated_time: 0.0,
-            last_theta_sample: 0.0,
+            last_theta_phase: 0.0,
+            theta_phase_initialized: false,
             last_target_salience: 0.0,
-            last_error_state: Default::default(),
-            last_error_cents: 0.0,
-            error_initialized: false,
-            last_chosen_freq_hz: target_freq,
-            next_intent_tick: 0,
-            intent_seq: 0,
-            self_confidence: 0.5,
-            pred_intent_records: VecDeque::new(),
-            pred_intent_records_cap: 256,
             rng,
         }
     }
@@ -1090,7 +843,6 @@ impl fmt::Display for IndividualConfig {
 mod tests {
     use super::*;
     use crate::life::individual::SoundBody;
-    use serde_json::json;
 
     #[test]
     fn spawn_carries_life_config() {
@@ -1145,64 +897,6 @@ mod tests {
         );
         assert_eq!(agent.id, 7);
         assert_eq!(agent.body.base_freq_hz(), 220.0);
-    }
-
-    #[test]
-    fn phonation_sugar_parses() {
-        let once: PhonationConfig = serde_json::from_value(json!("once")).expect("once");
-        assert_eq!(once.on_birth, OnBirthPhonation::Once);
-        assert_eq!(once.timing, BirthTiming::Gate);
-        assert_eq!(once.interval, PhonationIntervalConfig::None);
-
-        let immediate: PhonationConfig =
-            serde_json::from_value(json!("immediate")).expect("immediate");
-        assert_eq!(immediate.on_birth, OnBirthPhonation::Once);
-        assert_eq!(immediate.timing, BirthTiming::Immediate);
-        assert_eq!(immediate.interval, PhonationIntervalConfig::None);
-
-        let off: PhonationConfig = serde_json::from_value(json!("off")).expect("off");
-        assert_eq!(off.on_birth, OnBirthPhonation::Off);
-        assert_eq!(off.interval, PhonationIntervalConfig::None);
-    }
-
-    #[test]
-    fn phonation_map_parses() {
-        let cfg: PhonationConfig = serde_json::from_value(json!({
-            "on_birth": "once",
-            "timing": "gate",
-            "interval": {
-                "type": "accumulator",
-                "rate": 0.25,
-                "refractory": 1
-            },
-            "connect": {
-                "type": "fixed_gate",
-                "length_gates": 2
-            }
-        }))
-        .expect("map");
-        assert_eq!(cfg.on_birth, OnBirthPhonation::Once);
-        assert_eq!(cfg.timing, BirthTiming::Gate);
-        assert_eq!(
-            cfg.interval,
-            PhonationIntervalConfig::Accumulator {
-                rate: 0.25,
-                refractory: 1
-            }
-        );
-        assert_eq!(
-            cfg.connect,
-            PhonationConnectConfig::FixedGate { length_gates: 2 }
-        );
-    }
-
-    #[test]
-    fn phonation_on_birth_sustain_parses() {
-        let cfg: PhonationConfig =
-            serde_json::from_value(json!({ "on_birth": "sustain" })).expect("map");
-        assert_eq!(cfg.on_birth, OnBirthPhonation::Sustain);
-        assert_eq!(cfg.timing, BirthTiming::Gate);
-        assert_eq!(cfg.interval, PhonationIntervalConfig::None);
     }
 }
 

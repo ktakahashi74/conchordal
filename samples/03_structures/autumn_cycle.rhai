@@ -1,15 +1,15 @@
-print(">>> Cycle of Fifths (Fixed Crowding) <<<");
+print(">>> Cycle of Fifths <<<");
+
 
 fn play_step(name, root, dur) {
     let pad_life = #{
-        articulation: #{ core: "entrain", type: "decay", half_life_sec: 1.0, attack_sec: 0.6 },
-        planning: #{ gate_dur_min_sec: dur +0.5}
+        articulation: #{ core: "entrain", type: "decay", half_life_sec: 1.0, attack_sec: 0.6 }
     };
 
     let bass_life = #{
         articulation: #{ core: "entrain", type: "decay", half_life_sec: 0.6, attack_sec: 0.2 },
-        planning: #{ gate_dur_min_sec: dur +1.0 }
-    };
+		phonation: #{}
+};
 
     let pad_method = #{
         mode: "harmonicity",

@@ -79,6 +79,7 @@ pub struct IntervalInput {
     pub gate: u64,
     pub tick: Tick,
     pub dt_theta: f32,
+    pub dt_sec: f32,
     pub weight: f32,
 }
 
@@ -579,18 +580,18 @@ impl PhonationInterval for NoneInterval {
 
 #[derive(Debug)]
 pub struct AccumulatorInterval {
-    pub rate: f32,
+    pub rate_hz: f32,
     pub refractory_gates: u32,
     pub acc: f32,
     pub next_allowed_gate: u64,
 }
 
 impl AccumulatorInterval {
-    pub fn new(rate: f32, refractory_gates: u32, seed: u64) -> Self {
+    pub fn new(rate_hz: f32, refractory_gates: u32, seed: u64) -> Self {
         let mut rng = SmallRng::seed_from_u64(seed);
-        let acc = rng.random::<f32>().clamp(0.0, 1.0);
+        let acc = rng.random_range(0.7..1.0);
         Self {
-            rate,
+            rate_hz,
             refractory_gates,
             acc,
             next_allowed_gate: 0,
@@ -604,17 +605,11 @@ impl PhonationInterval for AccumulatorInterval {
         if !_state.is_alive {
             return None;
         }
-        if !self.rate.is_finite() || self.rate <= 0.0 {
+        if !self.rate_hz.is_finite() || self.rate_hz <= 0.0 {
             return None;
         }
-        let max_rate = 1.0 / (self.refractory_gates as f32 + 1.0);
-        let rate_eff = if max_rate.is_finite() && max_rate > 0.0 {
-            self.rate.min(max_rate)
-        } else {
-            self.rate
-        };
         let weight = c.weight.max(0.0);
-        self.acc += rate_eff * weight * c.dt_theta;
+        self.acc += self.rate_hz * weight * c.dt_sec;
         if !self.acc.is_finite() || self.acc > ACC_MAX {
             self.acc = ACC_MAX;
         }
@@ -829,9 +824,10 @@ impl PhonationEngine {
     pub fn from_config(config: &PhonationConfig, seed: u64) -> Self {
         let interval: Box<dyn PhonationInterval + Send> = match config.interval {
             PhonationIntervalConfig::None => Box::<NoneInterval>::default(),
-            PhonationIntervalConfig::Accumulator { rate, refractory } => {
-                Box::new(AccumulatorInterval::new(rate, refractory, seed))
-            }
+            PhonationIntervalConfig::Accumulator {
+                rate: rate_hz,
+                refractory,
+            } => Box::new(AccumulatorInterval::new(rate_hz, refractory, seed)),
         };
         let sub_theta_mod: Box<dyn SubThetaMod + Send + Sync> = match &config.sub_theta_mod {
             SubThetaModConfig::None => Box::<NoneMod>::default(),
@@ -1034,6 +1030,23 @@ impl PhonationEngine {
                     None => 1.0,
                 }
             };
+            let dt_sec = if self.last_tick == Some(c.tick) {
+                0.0
+            } else {
+                match self.last_tick {
+                    Some(prev_tick) => {
+                        if c.tick < prev_tick {
+                            debug_assert!(false, "candidate ticks must be non-decreasing");
+                            0.0
+                        } else {
+                            let dt_ticks = c.tick - prev_tick;
+                            let dt = dt_ticks as f32 / ctx.fs;
+                            if dt.is_finite() { dt } else { 0.0 }
+                        }
+                    }
+                    None => 0.0,
+                }
+            };
             let exc_gate = timing_field.e(c.gate);
             let exc_slope = match prev_gate_exc {
                 Some(prev_exc) => (exc_gate - prev_exc).clamp(-1.0, 1.0),
@@ -1060,6 +1073,7 @@ impl PhonationEngine {
                 gate: c.gate,
                 tick: c.tick,
                 dt_theta,
+                dt_sec,
                 weight: exc_gate * sub_theta_mod,
             };
             if let Some(kick) = self.interval.on_candidate(&input, state) {
@@ -1166,6 +1180,7 @@ mod tests {
                 gate: c.gate,
                 tick: c.tick,
                 dt_theta: 1.0,
+                dt_sec: 1.0,
                 weight: 1.0,
             };
             assert!(interval.on_candidate(&input, &state).is_none());
@@ -1184,6 +1199,7 @@ mod tests {
                 gate: c.gate,
                 tick: c.tick,
                 dt_theta: 1.0,
+                dt_sec: 1.0,
                 weight: 1.0,
             };
             if interval.on_candidate(&input, &state).is_some() {
@@ -1205,13 +1221,14 @@ mod tests {
                 gate: c.gate,
                 tick: c.tick,
                 dt_theta: 1.0,
+                dt_sec: 1.0,
                 weight: 1.0,
             };
             if interval.on_candidate(&input, &state).is_some() {
                 fired.push(gate);
             }
         }
-        assert_eq!(fired, vec![1u64, 3, 5]);
+        assert_eq!(fired, vec![0u64, 2, 4]);
     }
 
     #[test]
@@ -1225,12 +1242,14 @@ mod tests {
                 gate: 0,
                 tick: 0,
                 dt_theta: 1.0,
+                dt_sec: 1.0,
                 weight: 0.5,
             },
             IntervalInput {
                 gate: 1,
                 tick: 1,
                 dt_theta: 1.0,
+                dt_sec: 1.0,
                 weight: 0.5,
             },
         ];
@@ -1251,13 +1270,14 @@ mod tests {
             gate: 0,
             tick: 0,
             dt_theta: 1.0,
+            dt_sec: 1.0,
             weight: 0.0,
         };
         assert!(interval.on_candidate(&input, &state).is_none());
     }
 
     #[test]
-    fn accumulator_respects_dt_theta() {
+    fn accumulator_respects_dt_sec() {
         let mut interval = AccumulatorInterval::new(1.0, 0, 1);
         interval.acc = 0.0;
         let state = CoreState { is_alive: true };
@@ -1265,6 +1285,7 @@ mod tests {
             gate: 0,
             tick: 0,
             dt_theta: 0.5,
+            dt_sec: 0.5,
             weight: 1.0,
         };
         assert!(interval.on_candidate(&input, &state).is_none());
@@ -1272,6 +1293,7 @@ mod tests {
             gate: 1,
             tick: 1,
             dt_theta: 0.5,
+            dt_sec: 0.5,
             weight: 1.0,
         };
         assert!(interval.on_candidate(&input, &state).is_some());
@@ -1286,6 +1308,7 @@ mod tests {
             gate: 0,
             tick: 0,
             dt_theta: 1.0,
+            dt_sec: 1.0,
             weight: 1.0e9,
         };
         let _ = interval.on_candidate(&input, &state);
@@ -1391,7 +1414,7 @@ mod tests {
             },
         ];
         let timing_field = TimingField::from_values(0, vec![0.0, 1.0]);
-        let mut interval = AccumulatorInterval::new(1.0, 0, 1);
+        let mut interval = AccumulatorInterval::new(250.0, 0, 1);
         interval.acc = 0.0;
         let mut engine = PhonationEngine {
             clock: Box::<ThetaGateClock>::default(),
@@ -2024,7 +2047,7 @@ mod tests {
             rhythms: NeuralRhythms::default(),
         };
         let timing_field = TimingField::from_values(0, vec![1.0, 1.0]);
-        let mut interval = AccumulatorInterval::new(1.0, 0, 1);
+        let mut interval = AccumulatorInterval::new(50.0, 0, 1);
         interval.acc = 0.0;
         let mut engine = PhonationEngine {
             clock: Box::<ThetaGateClock>::default(),
@@ -2069,9 +2092,11 @@ mod tests {
             fs: 1000.0,
             rhythms: NeuralRhythms::default(),
         };
+        let mut interval = AccumulatorInterval::new(1.0, 0, 1);
+        interval.acc = 1.0;
         let mut engine = PhonationEngine {
             clock: Box::<ThetaGateClock>::default(),
-            interval: Box::new(AccumulatorInterval::new(1.0, 0, 1)),
+            interval: Box::new(interval),
             connect: Box::new(FixedGateConnect::new(0)),
             sub_theta_mod: Box::<NoneMod>::default(),
             next_note_id: 0,
@@ -2123,9 +2148,11 @@ mod tests {
             fs: 1000.0,
             rhythms: NeuralRhythms::default(),
         };
+        let mut interval = AccumulatorInterval::new(1.0, 0, 1);
+        interval.acc = 1.0;
         let mut engine = PhonationEngine {
             clock: Box::<ThetaGateClock>::default(),
-            interval: Box::new(AccumulatorInterval::new(1.0, 0, 1)),
+            interval: Box::new(interval),
             connect: Box::new(FixedGateConnect::new(1)),
             sub_theta_mod: Box::<NoneMod>::default(),
             next_note_id: 0,
@@ -2457,7 +2484,7 @@ mod tests {
             fs: 1000.0,
             rhythms,
         };
-        let mut interval = AccumulatorInterval::new(1.0, 0, 1);
+        let mut interval = AccumulatorInterval::new(250.0, 0, 1);
         interval.acc = 0.0;
         struct StubClock {
             ticks: Vec<Tick>,

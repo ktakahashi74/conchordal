@@ -42,11 +42,23 @@ fn agents_publish_intents_and_render_audio() {
     landscape.rhythm.env_open = 1.0;
     landscape.rhythm.env_level = 1.0;
 
-    let phonation_batches = pop.publish_intents(&mut world, &landscape, 0);
+    let hop = tb.hop as Tick;
+    let mut phonation_batches = Vec::new();
+    let mut render_now: Tick = 0;
+    let mut now: Tick = 0;
+    for _ in 0..300 {
+        let batches = pop.publish_intents(&mut world, &landscape, now);
+        if !batches.is_empty() {
+            phonation_batches = batches;
+            render_now = now;
+            break;
+        }
+        now = now.saturating_add(hop);
+    }
     assert!(!phonation_batches.is_empty());
     let mut renderer = ScheduleRenderer::new(tb);
     let rhythms = landscape.rhythm;
-    let out = renderer.render(&world.board, &phonation_batches, 0, &rhythms);
+    let out = renderer.render(&world.board, &phonation_batches, render_now, &rhythms);
     assert!(out.iter().any(|s| s.abs() > 1e-6));
 }
 
@@ -86,8 +98,17 @@ fn publish_intents_runs_when_gate_in_hop_window() {
     landscape.rhythm.env_open = 1.0;
     landscape.rhythm.env_level = 1.0;
 
-    let now: Tick = 0;
-    let batches = pop.publish_intents(&mut world, &landscape, now);
+    let hop = tb.hop as Tick;
+    let mut now: Tick = 0;
+    let mut batches = Vec::new();
+    for _ in 0..300 {
+        let next = pop.publish_intents(&mut world, &landscape, now);
+        if !next.is_empty() {
+            batches = next;
+            break;
+        }
+        now = now.saturating_add(hop);
+    }
     assert!(!batches.is_empty());
 
     let mut landscape_off = Landscape::new(space);

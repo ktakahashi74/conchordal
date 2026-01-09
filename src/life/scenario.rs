@@ -449,7 +449,7 @@ impl Default for SocialConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
 #[serde(deny_unknown_fields)]
 pub struct PhonationConfig {
     #[serde(default)]
@@ -462,18 +462,6 @@ pub struct PhonationConfig {
     pub sub_theta_mod: SubThetaModConfig,
     #[serde(default)]
     pub social: SocialConfig,
-}
-
-impl Default for PhonationConfig {
-    fn default() -> Self {
-        Self {
-            interval: PhonationIntervalConfig::default(),
-            connect: PhonationConnectConfig::default(),
-            clock: PhonationClockConfig::default(),
-            sub_theta_mod: SubThetaModConfig::default(),
-            social: SocialConfig::default(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]

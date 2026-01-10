@@ -1,15 +1,20 @@
 use crate::core::landscape::Landscape;
 use crate::core::log2space::Log2Space;
 use crate::core::modulation::NeuralRhythms;
+use crate::core::phase::wrap_0_tau;
 use crate::core::timebase::{Tick, Timebase};
+use crate::life::gate_clock::next_gate_tick;
 use crate::life::intent::BodySnapshot;
 use crate::life::perceptual::{FeaturesNow, PerceptualContext};
 use crate::life::phonation_engine::{
     CoreState, CoreTickCtx, NoteId, OnsetEvent, PhonationCmd, PhonationEngine, PhonationNoteEvent,
 };
-use crate::life::scenario::PhonationConfig;
+use crate::life::scenario::{
+    BehaviorConfig, MotionAutonomy, PhonationConfig, VoiceControl, VoiceOnSpawn,
+};
 use crate::life::social_density::SocialDensityTrace;
 use rand::rngs::SmallRng;
+use std::f32::consts::TAU;
 
 #[path = "articulation_core.rs"]
 pub mod articulation_core;
@@ -34,10 +39,101 @@ pub struct AgentMetadata {
     pub member_idx: usize,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StartLatch {
+    Pending,
+    None,
+    WaitForOnset,
+    WaitForGateExitThenOnset,
+    Disabled,
+}
+
+#[derive(Clone, Debug)]
+pub struct VoiceRuntime {
+    pub voice_enabled: bool,
+    pub on_spawn: VoiceOnSpawn,
+    pub control: VoiceControl,
+    pub start_latch: StartLatch,
+}
+
+impl VoiceRuntime {
+    pub(crate) fn from_behavior(behavior: &crate::life::scenario::VoiceBehavior) -> Self {
+        let voice_enabled = !matches!(behavior.on_spawn, VoiceOnSpawn::Disabled);
+        let start_latch = if !voice_enabled {
+            StartLatch::Disabled
+        } else {
+            match behavior.on_spawn {
+                VoiceOnSpawn::Immediate => StartLatch::None,
+                VoiceOnSpawn::NextRhythm => StartLatch::Pending,
+                VoiceOnSpawn::Disabled => StartLatch::Disabled,
+            }
+        };
+        Self {
+            voice_enabled,
+            on_spawn: behavior.on_spawn,
+            control: behavior.control,
+            start_latch,
+        }
+    }
+
+    fn init_on_spawn_latch(&mut self, rhythms: &NeuralRhythms) {
+        if self.start_latch != StartLatch::Pending {
+            return;
+        }
+        if !self.voice_enabled {
+            self.start_latch = StartLatch::Disabled;
+            return;
+        }
+        match self.on_spawn {
+            VoiceOnSpawn::Immediate => {
+                self.start_latch = StartLatch::None;
+            }
+            VoiceOnSpawn::NextRhythm => {
+                let phase_in_gate = wrap_0_tau(rhythms.theta.phase) / TAU;
+                let in_gate = phase_in_gate > 1e-4;
+                self.start_latch = if in_gate {
+                    StartLatch::WaitForGateExitThenOnset
+                } else {
+                    StartLatch::WaitForOnset
+                };
+            }
+            VoiceOnSpawn::Disabled => {
+                self.voice_enabled = false;
+                self.start_latch = StartLatch::Disabled;
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct MotionRuntime {
+    pub motion_enabled: bool,
+    pub motion_policy: MotionAutonomy,
+}
+
+impl MotionRuntime {
+    pub(crate) fn from_behavior(behavior: &crate::life::scenario::AutonomyBehavior) -> Self {
+        let motion_enabled = matches!(behavior.motion, MotionAutonomy::Immediate);
+        Self {
+            motion_enabled,
+            motion_policy: behavior.motion,
+        }
+    }
+
+    pub(crate) fn note_first_utterance(&mut self) {
+        if matches!(self.motion_policy, MotionAutonomy::AfterFirstUtterance) {
+            self.motion_enabled = true;
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Individual {
     pub id: u64,
     pub metadata: AgentMetadata,
+    pub behavior: BehaviorConfig,
+    pub voice_runtime: VoiceRuntime,
+    pub motion_runtime: MotionRuntime,
     pub articulation: ArticulationWrapper,
     pub pitch: AnyPitchCore,
     pub perceptual: PerceptualContext,
@@ -169,6 +265,13 @@ impl Individual {
         landscape: &Landscape,
         global_coupling: f32,
     ) -> ArticulationSignal {
+        if self.motion_runtime.motion_enabled {
+            self.update_articulation_autonomous(dt_sec, rhythms);
+        }
+        self.tick_articulation_lifecycle(dt_sec, rhythms, landscape, global_coupling)
+    }
+
+    pub fn update_articulation_autonomous(&mut self, dt_sec: f32, rhythms: &NeuralRhythms) {
         let current_freq = self.body.base_freq_hz().max(1.0);
         let current_pitch_log2 = current_freq.log2();
         let planned = PlannedPitch {
@@ -180,6 +283,15 @@ impl Individual {
         if apply_planned_pitch {
             self.body.set_pitch_log2(planned.target_pitch_log2);
         }
+    }
+
+    pub fn tick_articulation_lifecycle(
+        &mut self,
+        dt_sec: f32,
+        rhythms: &NeuralRhythms,
+        landscape: &Landscape,
+        global_coupling: f32,
+    ) -> ArticulationSignal {
         let consonance = landscape.evaluate_pitch01(self.body.base_freq_hz());
         let mut signal = self
             .articulation
@@ -212,6 +324,19 @@ impl Individual {
         social: Option<&SocialDensityTrace>,
         social_coupling: f32,
     ) -> PhonationBatch {
+        self.voice_runtime.init_on_spawn_latch(rhythms);
+        if !self.voice_runtime.voice_enabled {
+            return PhonationBatch {
+                source_id: self.id,
+                ..Default::default()
+            };
+        }
+        if matches!(self.voice_runtime.control, VoiceControl::Scripted) {
+            return PhonationBatch {
+                source_id: self.id,
+                ..Default::default()
+            };
+        }
         let hop_tick = (tb.hop as Tick).max(1);
         let frame_end = now.saturating_add(hop_tick);
         let ctx = CoreTickCtx {
@@ -223,6 +348,20 @@ impl Individual {
         let state = CoreState {
             is_alive: self.is_alive(),
         };
+        let mut gate_exit_tick = None;
+        if matches!(
+            self.voice_runtime.start_latch,
+            StartLatch::WaitForGateExitThenOnset
+        ) {
+            gate_exit_tick = next_gate_tick(now, tb.fs, rhythms.theta, 0.0);
+            if gate_exit_tick.is_none() {
+                self.voice_runtime.start_latch = StartLatch::WaitForOnset;
+            }
+        }
+        let min_allowed_onset_tick = match self.voice_runtime.start_latch {
+            StartLatch::WaitForGateExitThenOnset => gate_exit_tick.or(Some(Tick::MAX)),
+            _ => None,
+        };
         let mut cmds = Vec::new();
         let mut events = Vec::new();
         let mut onsets = Vec::new();
@@ -231,10 +370,27 @@ impl Individual {
             &state,
             social,
             social_coupling,
+            min_allowed_onset_tick,
             &mut cmds,
             &mut events,
             &mut onsets,
         );
+        let had_note_on = cmds
+            .iter()
+            .any(|cmd| matches!(cmd, PhonationCmd::NoteOn { .. }));
+        if had_note_on {
+            self.voice_runtime.start_latch = StartLatch::None;
+            self.motion_runtime.note_first_utterance();
+        } else if matches!(
+            self.voice_runtime.start_latch,
+            StartLatch::WaitForGateExitThenOnset
+        ) {
+            if let Some(exit_tick) = gate_exit_tick
+                && exit_tick < frame_end
+            {
+                self.voice_runtime.start_latch = StartLatch::WaitForOnset;
+            }
+        }
         let mut notes = Vec::new();
         for event in events {
             if let Some(note) = self.build_phonation_note_spec(event, None) {
@@ -324,5 +480,299 @@ impl Individual {
 
     pub fn is_alive(&self) -> bool {
         self.articulation.is_alive() && self.release_gain > 0.0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::modulation::RhythmBand;
+    use crate::life::phonation_engine::{
+        CandidatePoint, ClockSource, FixedGateConnect, PhonationClock, PhonationCmd,
+        PhonationInterval, PhonationKick,
+    };
+
+    struct AlwaysInterval;
+
+    impl PhonationInterval for AlwaysInterval {
+        fn on_candidate(
+            &mut self,
+            _c: &crate::life::phonation_engine::IntervalInput,
+            _state: &crate::life::phonation_engine::CoreState,
+        ) -> Option<PhonationKick> {
+            Some(PhonationKick::Planned { strength: 1.0 })
+        }
+    }
+
+    struct TestClock {
+        points: Vec<CandidatePoint>,
+    }
+
+    impl PhonationClock for TestClock {
+        fn gather_candidates(
+            &mut self,
+            ctx: &crate::life::phonation_engine::CoreTickCtx,
+            out: &mut Vec<CandidatePoint>,
+        ) {
+            out.extend(
+                self.points
+                    .iter()
+                    .cloned()
+                    .filter(|point| point.tick >= ctx.now_tick && point.tick < ctx.frame_end),
+            );
+        }
+    }
+
+    #[test]
+    fn next_rhythm_blocks_onsets_and_note_offs_before_gate_exit() {
+        let mut life = crate::life::scenario::LifeConfig::default();
+        life.behavior.voice.on_spawn = VoiceOnSpawn::NextRhythm;
+        life.behavior.voice.control = VoiceControl::Autonomous;
+        let cfg = crate::life::scenario::IndividualConfig {
+            freq: 440.0,
+            amp: 0.5,
+            life,
+            tag: None,
+        };
+        let meta = AgentMetadata {
+            id: 1,
+            tag: None,
+            group_idx: 0,
+            member_idx: 0,
+        };
+        let mut agent = cfg.spawn(1, 0, meta, 40.0, 0);
+        agent.phonation_engine.interval = Box::new(AlwaysInterval);
+        agent.phonation_engine.connect = Box::new(FixedGateConnect::new(1));
+        agent.phonation_engine.clock = Box::new(TestClock {
+            points: vec![
+                CandidatePoint {
+                    tick: 4,
+                    gate: 0,
+                    theta_pos: 0.5,
+                    phase_in_gate: 0.5,
+                    sources: vec![ClockSource::Subdivision { n: 2 }],
+                },
+                CandidatePoint {
+                    tick: 10,
+                    gate: 1,
+                    theta_pos: 1.0,
+                    phase_in_gate: 0.0,
+                    sources: vec![ClockSource::GateBoundary],
+                },
+                CandidatePoint {
+                    tick: 20,
+                    gate: 2,
+                    theta_pos: 2.0,
+                    phase_in_gate: 0.0,
+                    sources: vec![ClockSource::GateBoundary],
+                },
+            ],
+        });
+        let tb = Timebase { fs: 40.0, hop: 8 };
+        let mut rhythms = NeuralRhythms {
+            theta: RhythmBand {
+                phase: -std::f32::consts::FRAC_PI_2,
+                freq_hz: 1.0,
+                mag: 1.0,
+                alpha: 1.0,
+                beta: 0.0,
+            },
+            env_open: 1.0,
+            ..Default::default()
+        };
+        let batch0 = agent.tick_phonation(&tb, 0, &rhythms, None, 0.0);
+        assert!(
+            !batch0
+                .cmds
+                .iter()
+                .any(|cmd| matches!(cmd, PhonationCmd::NoteOn { .. }))
+        );
+        assert!(
+            !batch0
+                .cmds
+                .iter()
+                .any(|cmd| matches!(cmd, PhonationCmd::NoteOff { .. }))
+        );
+
+        rhythms.advance_in_place(tb.hop as f32 / tb.fs);
+        let batch1 = agent.tick_phonation(&tb, 8, &rhythms, None, 0.0);
+        let onsets: Vec<Tick> = batch1.notes.iter().map(|note| note.onset).collect();
+        assert_eq!(onsets, vec![10]);
+        assert!(
+            !batch1
+                .cmds
+                .iter()
+                .any(|cmd| matches!(cmd, PhonationCmd::NoteOff { .. }))
+        );
+    }
+
+    #[test]
+    fn next_rhythm_falls_back_when_gate_exit_is_unavailable() {
+        let mut life = crate::life::scenario::LifeConfig::default();
+        life.behavior.voice.on_spawn = VoiceOnSpawn::NextRhythm;
+        life.behavior.voice.control = VoiceControl::Autonomous;
+        let cfg = crate::life::scenario::IndividualConfig {
+            freq: 440.0,
+            amp: 0.5,
+            life,
+            tag: None,
+        };
+        let meta = AgentMetadata {
+            id: 2,
+            tag: None,
+            group_idx: 0,
+            member_idx: 0,
+        };
+        let mut agent = cfg.spawn(2, 0, meta, 40.0, 0);
+        agent.phonation_engine.interval = Box::new(AlwaysInterval);
+        agent.phonation_engine.connect = Box::new(FixedGateConnect::new(1));
+        agent.phonation_engine.clock = Box::new(TestClock {
+            points: vec![CandidatePoint {
+                tick: 4,
+                gate: 0,
+                theta_pos: 0.5,
+                phase_in_gate: 0.5,
+                sources: vec![ClockSource::Subdivision { n: 2 }],
+            }],
+        });
+        let tb = Timebase { fs: 40.0, hop: 8 };
+        let rhythms = NeuralRhythms {
+            theta: RhythmBand {
+                phase: 1.0,
+                freq_hz: 0.0,
+                mag: 1.0,
+                alpha: 1.0,
+                beta: 0.0,
+            },
+            env_open: 1.0,
+            ..Default::default()
+        };
+        let batch0 = agent.tick_phonation(&tb, 0, &rhythms, None, 0.0);
+        assert!(
+            batch0
+                .cmds
+                .iter()
+                .any(|cmd| matches!(cmd, PhonationCmd::NoteOn { .. }))
+        );
+    }
+
+    #[test]
+    fn motion_after_first_utterance_enables_on_note_on() {
+        let mut life = crate::life::scenario::LifeConfig::default();
+        life.behavior.voice.on_spawn = VoiceOnSpawn::Immediate;
+        life.behavior.voice.control = VoiceControl::Autonomous;
+        life.behavior.autonomy.motion = MotionAutonomy::AfterFirstUtterance;
+        let cfg = crate::life::scenario::IndividualConfig {
+            freq: 440.0,
+            amp: 0.5,
+            life,
+            tag: None,
+        };
+        let meta = AgentMetadata {
+            id: 3,
+            tag: None,
+            group_idx: 0,
+            member_idx: 0,
+        };
+        let mut agent = cfg.spawn(3, 0, meta, 40.0, 0);
+        agent.phonation_engine.interval = Box::new(AlwaysInterval);
+        agent.phonation_engine.connect = Box::new(FixedGateConnect::new(1));
+        agent.phonation_engine.clock = Box::new(TestClock {
+            points: vec![CandidatePoint {
+                tick: 4,
+                gate: 0,
+                theta_pos: 0.5,
+                phase_in_gate: 0.5,
+                sources: vec![ClockSource::Subdivision { n: 2 }],
+            }],
+        });
+        let tb = Timebase { fs: 40.0, hop: 8 };
+        let rhythms = NeuralRhythms {
+            theta: RhythmBand {
+                phase: 0.0,
+                freq_hz: 1.0,
+                mag: 1.0,
+                alpha: 1.0,
+                beta: 0.0,
+            },
+            env_open: 1.0,
+            ..Default::default()
+        };
+        assert!(!agent.motion_runtime.motion_enabled);
+        let batch0 = agent.tick_phonation(&tb, 0, &rhythms, None, 0.0);
+        assert!(
+            batch0
+                .cmds
+                .iter()
+                .any(|cmd| matches!(cmd, PhonationCmd::NoteOn { .. }))
+        );
+        assert!(agent.motion_runtime.motion_enabled);
+    }
+
+    #[test]
+    fn voice_disabled_suppresses_note_on_across_hops() {
+        let mut life = crate::life::scenario::LifeConfig::default();
+        life.behavior.voice.on_spawn = VoiceOnSpawn::Disabled;
+        life.behavior.voice.control = VoiceControl::Autonomous;
+        let cfg = crate::life::scenario::IndividualConfig {
+            freq: 440.0,
+            amp: 0.5,
+            life,
+            tag: None,
+        };
+        let meta = AgentMetadata {
+            id: 4,
+            tag: None,
+            group_idx: 0,
+            member_idx: 0,
+        };
+        let mut agent = cfg.spawn(4, 0, meta, 40.0, 0);
+        agent.phonation_engine.interval = Box::new(AlwaysInterval);
+        agent.phonation_engine.connect = Box::new(FixedGateConnect::new(1));
+        agent.phonation_engine.clock = Box::new(TestClock {
+            points: vec![
+                CandidatePoint {
+                    tick: 4,
+                    gate: 0,
+                    theta_pos: 0.5,
+                    phase_in_gate: 0.5,
+                    sources: vec![ClockSource::Subdivision { n: 2 }],
+                },
+                CandidatePoint {
+                    tick: 10,
+                    gate: 1,
+                    theta_pos: 1.0,
+                    phase_in_gate: 0.0,
+                    sources: vec![ClockSource::GateBoundary],
+                },
+            ],
+        });
+        let tb = Timebase { fs: 40.0, hop: 8 };
+        let mut rhythms = NeuralRhythms {
+            theta: RhythmBand {
+                phase: 0.0,
+                freq_hz: 1.0,
+                mag: 1.0,
+                alpha: 1.0,
+                beta: 0.0,
+            },
+            env_open: 1.0,
+            ..Default::default()
+        };
+        let batch0 = agent.tick_phonation(&tb, 0, &rhythms, None, 0.0);
+        assert!(
+            !batch0
+                .cmds
+                .iter()
+                .any(|cmd| matches!(cmd, PhonationCmd::NoteOn { .. }))
+        );
+        rhythms.advance_in_place(tb.hop as f32 / tb.fs);
+        let batch1 = agent.tick_phonation(&tb, 8, &rhythms, None, 0.0);
+        assert!(
+            !batch1
+                .cmds
+                .iter()
+                .any(|cmd| matches!(cmd, PhonationCmd::NoteOn { .. }))
+        );
     }
 }

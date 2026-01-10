@@ -464,6 +464,72 @@ pub struct PhonationConfig {
     pub social: SocialConfig,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum VoiceOnSpawn {
+    Immediate,
+    NextRhythm,
+    Disabled,
+}
+
+impl Default for VoiceOnSpawn {
+    fn default() -> Self {
+        VoiceOnSpawn::NextRhythm
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum VoiceControl {
+    Autonomous,
+    Scripted,
+}
+
+impl Default for VoiceControl {
+    fn default() -> Self {
+        VoiceControl::Autonomous
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum MotionAutonomy {
+    Disabled,
+    Immediate,
+    AfterFirstUtterance,
+}
+
+impl Default for MotionAutonomy {
+    fn default() -> Self {
+        MotionAutonomy::Disabled
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
+#[serde(deny_unknown_fields)]
+pub struct VoiceBehavior {
+    #[serde(default)]
+    pub on_spawn: VoiceOnSpawn,
+    #[serde(default)]
+    pub control: VoiceControl,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
+#[serde(deny_unknown_fields)]
+pub struct AutonomyBehavior {
+    #[serde(default)]
+    pub motion: MotionAutonomy,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
+#[serde(deny_unknown_fields)]
+pub struct BehaviorConfig {
+    #[serde(default)]
+    pub voice: VoiceBehavior,
+    #[serde(default)]
+    pub autonomy: AutonomyBehavior,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
 #[serde(deny_unknown_fields)]
 pub struct LifeConfig {
@@ -477,6 +543,8 @@ pub struct LifeConfig {
     pub perceptual: PerceptualConfig,
     #[serde(default)]
     pub phonation: PhonationConfig,
+    #[serde(default)]
+    pub behavior: BehaviorConfig,
     #[serde(default)]
     pub breath_gain_init: Option<f32>,
 }
@@ -631,12 +699,13 @@ impl fmt::Display for LifeConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "life[body={:?}, articulation={:?}, pitch={:?}, perceptual={:?}, phonation={:?}, breath_gain_init={:?}]",
+            "life[body={:?}, articulation={:?}, pitch={:?}, perceptual={:?}, phonation={:?}, behavior={:?}, breath_gain_init={:?}]",
             self.body,
             self.articulation,
             self.pitch,
             self.perceptual,
             self.phonation,
+            self.behavior,
             self.breath_gain_init
         )
     }
@@ -691,6 +760,10 @@ impl IndividualConfig {
             self.amp,
             &mut rng,
         );
+        let behavior = self.life.behavior.clone();
+        let voice_runtime = crate::life::individual::VoiceRuntime::from_behavior(&behavior.voice);
+        let motion_runtime =
+            crate::life::individual::MotionRuntime::from_behavior(&behavior.autonomy);
         let (articulation_core, lifecycle_label, default_by_articulation) =
             match &self.life.articulation {
                 ArticulationCoreConfig::Entrain { lifecycle, .. } => {
@@ -720,6 +793,9 @@ impl IndividualConfig {
         Individual {
             id: assigned_id,
             metadata,
+            behavior,
+            voice_runtime,
+            motion_runtime,
             articulation: ArticulationWrapper::new(core, breath_gain),
             pitch,
             perceptual,

@@ -580,8 +580,11 @@ impl Population {
         for _ in 0..steps {
             for agent in self.individuals.iter_mut() {
                 if agent.is_alive() {
-                    agent.update_pitch_target(&rhythms, dt_step_sec, landscape);
-                    agent.update_articulation(
+                    if agent.motion_runtime.motion_enabled {
+                        agent.update_pitch_target(&rhythms, dt_step_sec, landscape);
+                        agent.update_articulation_autonomous(dt_step_sec, &rhythms);
+                    }
+                    agent.tick_articulation_lifecycle(
                         dt_step_sec,
                         &rhythms,
                         landscape,

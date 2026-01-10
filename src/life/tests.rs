@@ -6,7 +6,8 @@ use super::individual::{
 use super::population::Population;
 use super::scenario::{
     Action, ArticulationCoreConfig, EnvelopeConfig, HarmonicMode, IndividualConfig, LifeConfig,
-    PitchCoreConfig, Scenario, SceneMarker, SoundBodyConfig, TargetRef, TimbreGenotype, TimedEvent,
+    MotionAutonomy, PitchCoreConfig, Scenario, SceneMarker, SoundBodyConfig, TargetRef,
+    TimbreGenotype, TimedEvent, VoiceControl, VoiceOnSpawn,
 };
 use crate::core::landscape::Landscape;
 use crate::core::landscape::LandscapeFrame;
@@ -278,6 +279,43 @@ fn test_agent_lifecycle_decay_death() {
 }
 
 #[test]
+fn motion_disabled_still_advances_release_gain() {
+    let fs = 48_000.0;
+    let mut pop = Population::new(test_timebase());
+    let mut life_cfg = life_with_lifecycle(LifecycleConfig::Decay {
+        initial_energy: 1.0,
+        half_life_sec: 0.5,
+        attack_sec: 0.01,
+    });
+    life_cfg.behavior.autonomy.motion = MotionAutonomy::Disabled;
+    let agent_cfg = IndividualConfig {
+        freq: 440.0,
+        amp: 0.5,
+        life: life_cfg,
+        tag: None,
+    };
+    pop.apply_action(
+        Action::AddAgent {
+            id: 1,
+            agent: agent_cfg,
+        },
+        &LandscapeFrame::default(),
+        None,
+    );
+    let agent = pop.individuals.first_mut().expect("agent exists");
+    agent.start_release(0.05);
+    let gain_before = agent.release_gain;
+
+    let dt = 0.01;
+    let samples_per_hop = (fs * dt) as usize;
+    let landscape = make_test_landscape(fs);
+    pop.advance(samples_per_hop, fs, 0, dt, &landscape);
+
+    let gain_after = pop.individuals[0].release_gain;
+    assert!(gain_after < gain_before);
+}
+
+#[test]
 fn harmonic_render_spectrum_hits_expected_bins() {
     let genotype = TimbreGenotype {
         mode: HarmonicMode::Harmonic,
@@ -459,6 +497,15 @@ fn life_config_deserializes_and_rejects_unknown_fields() {
             "rho_self": 0.15,
             "boredom_gamma": 0.5,
             "self_smoothing_radius": 1
+        },
+        "behavior": {
+            "voice": {
+                "on_spawn": "next_rhythm",
+                "control": "autonomous"
+            },
+            "autonomy": {
+                "motion": "disabled"
+            }
         }
     });
     let cfg: LifeConfig = serde_json::from_value(json).expect("life config parses");
@@ -510,6 +557,31 @@ fn life_config_deserializes_and_rejects_unknown_fields() {
     let cfg_missing: LifeConfig =
         serde_json::from_value(missing).expect("missing body should default");
     assert!(matches!(cfg_missing.body, SoundBodyConfig::Sine { .. }));
+}
+
+#[test]
+fn behavior_config_accepts_snake_case() {
+    let json = serde_json::json!({
+        "behavior": {
+            "voice": {
+                "on_spawn": "next_rhythm",
+                "control": "scripted"
+            },
+            "autonomy": {
+                "motion": "after_first_utterance"
+            }
+        }
+    });
+    let cfg: LifeConfig = serde_json::from_value(json).expect("behavior config parses");
+    assert!(matches!(
+        cfg.behavior.voice.on_spawn,
+        VoiceOnSpawn::NextRhythm
+    ));
+    assert!(matches!(cfg.behavior.voice.control, VoiceControl::Scripted));
+    assert!(matches!(
+        cfg.behavior.autonomy.motion,
+        MotionAutonomy::AfterFirstUtterance
+    ));
 }
 
 #[test]

@@ -966,6 +966,7 @@ impl PhonationEngine {
         state: &CoreState,
         social: Option<&SocialDensityTrace>,
         social_coupling: f32,
+        min_allowed_onset_tick: Option<Tick>,
         out_cmds: &mut Vec<PhonationCmd>,
         out_events: &mut Vec<PhonationNoteEvent>,
         out_onsets: &mut Vec<OnsetEvent>,
@@ -985,6 +986,7 @@ impl PhonationEngine {
             &mut timing_grid,
             &timing_field,
             state,
+            min_allowed_onset_tick,
             out_cmds,
             out_events,
             out_onsets,
@@ -999,6 +1001,7 @@ impl PhonationEngine {
         timing_grid: &mut ThetaGrid,
         timing_field: &TimingField,
         state: &CoreState,
+        min_allowed_onset_tick: Option<Tick>,
         out_cmds: &mut Vec<PhonationCmd>,
         out_events: &mut Vec<PhonationNoteEvent>,
         out_onsets: &mut Vec<OnsetEvent>,
@@ -1006,6 +1009,9 @@ impl PhonationEngine {
         let mut prev_gate_exc: Option<f32> = None;
         self.drain_note_offs(ctx.now_tick, out_cmds);
         for c in candidates {
+            let allow_onset = min_allowed_onset_tick
+                .map(|min_tick| c.tick >= min_tick)
+                .unwrap_or(true);
             debug_assert!(c.theta_pos.is_finite());
             self.drain_note_offs(c.tick, out_cmds);
             // dt_theta spec: same tick -> 0; negative/non-finite delta -> 0 (debug assert);
@@ -1076,31 +1082,33 @@ impl PhonationEngine {
                 dt_sec,
                 weight: exc_gate * sub_theta_mod,
             };
-            if let Some(kick) = self.interval.on_candidate(&input, state) {
-                let note_id = self.next_note_id;
-                self.next_note_id = self.next_note_id.wrapping_add(1);
-                out_cmds.push(PhonationCmd::NoteOn { note_id, kick });
-                self.active_notes = self.active_notes.saturating_add(1);
-                out_events.push(PhonationNoteEvent {
-                    note_id,
-                    onset_tick: c.tick,
-                });
-                out_onsets.push(OnsetEvent {
-                    gate: c.gate,
-                    onset_tick: c.tick,
-                    strength: kick.strength(),
-                });
-                let onset = ConnectOnset {
-                    note_id,
-                    tick: c.tick,
-                    gate: c.gate,
-                    theta_pos: c.theta_pos,
-                    exc_gate,
-                    exc_slope,
-                };
-                let plan = self.connect.on_note_on(onset);
-                if let ConnectPlan::HoldTheta(hold_theta) = plan {
-                    self.schedule_hold_theta(onset, hold_theta, ctx, timing_grid);
+            if allow_onset {
+                if let Some(kick) = self.interval.on_candidate(&input, state) {
+                    let note_id = self.next_note_id;
+                    self.next_note_id = self.next_note_id.wrapping_add(1);
+                    out_cmds.push(PhonationCmd::NoteOn { note_id, kick });
+                    self.active_notes = self.active_notes.saturating_add(1);
+                    out_events.push(PhonationNoteEvent {
+                        note_id,
+                        onset_tick: c.tick,
+                    });
+                    out_onsets.push(OnsetEvent {
+                        gate: c.gate,
+                        onset_tick: c.tick,
+                        strength: kick.strength(),
+                    });
+                    let onset = ConnectOnset {
+                        note_id,
+                        tick: c.tick,
+                        gate: c.gate,
+                        theta_pos: c.theta_pos,
+                        exc_gate,
+                        exc_slope,
+                    };
+                    let plan = self.connect.on_note_on(onset);
+                    if let ConnectPlan::HoldTheta(hold_theta) = plan {
+                        self.schedule_hold_theta(onset, hold_theta, ctx, timing_grid);
+                    }
                 }
             }
             self.last_gate_index = Some(c.gate);
@@ -1439,6 +1447,7 @@ mod tests {
             &mut timing_grid,
             &timing_field,
             &state,
+            None,
             &mut cmds,
             &mut events,
             &mut onsets,
@@ -1802,6 +1811,7 @@ mod tests {
             &mut timing_grid,
             &timing_field,
             &state,
+            None,
             &mut cmds,
             &mut events,
             &mut onsets,
@@ -1873,6 +1883,7 @@ mod tests {
             &mut timing_grid,
             &timing_field,
             &state,
+            None,
             &mut cmds,
             &mut events,
             &mut onsets,
@@ -1921,6 +1932,7 @@ mod tests {
             &mut timing_grid,
             &timing_field,
             &state,
+            None,
             &mut cmds,
             &mut events,
             &mut onsets,
@@ -1991,6 +2003,7 @@ mod tests {
             &mut timing_grid,
             &timing_field,
             &state,
+            None,
             &mut cmds,
             &mut events,
             &mut onsets,
@@ -2076,6 +2089,7 @@ mod tests {
             &mut timing_grid,
             &timing_field,
             &state,
+            None,
             &mut cmds,
             &mut events,
             &mut onsets,
@@ -2125,6 +2139,7 @@ mod tests {
             &mut timing_grid,
             &timing_field,
             &state,
+            None,
             &mut cmds,
             &mut events,
             &mut onsets,
@@ -2181,6 +2196,7 @@ mod tests {
             &mut timing_grid,
             &timing_field,
             &state,
+            None,
             &mut cmds,
             &mut events,
             &mut onsets,
@@ -2231,6 +2247,7 @@ mod tests {
             &mut timing_grid,
             &timing_field,
             &state,
+            None,
             &mut cmds,
             &mut events,
             &mut onsets,
@@ -2306,6 +2323,7 @@ mod tests {
             &mut timing_grid,
             &timing_field,
             &state,
+            None,
             &mut cmds,
             &mut events,
             &mut onsets,
@@ -2530,7 +2548,16 @@ mod tests {
         let mut cmds = Vec::new();
         let mut events = Vec::new();
         let mut onsets = Vec::new();
-        engine.tick(&ctx, &state, None, 0.0, &mut cmds, &mut events, &mut onsets);
+        engine.tick(
+            &ctx,
+            &state,
+            None,
+            0.0,
+            None,
+            &mut cmds,
+            &mut events,
+            &mut onsets,
+        );
         assert!(events.len() >= 2, "expected at least two note ons");
         let first = events[0];
         let second = events[1];
@@ -2668,6 +2695,7 @@ mod tests {
             &mut timing_grid,
             &timing_field,
             &state,
+            None,
             &mut cmds,
             &mut events,
             &mut onsets,
@@ -2749,6 +2777,7 @@ mod tests {
             &mut timing_grid,
             &timing_field,
             &state,
+            None,
             &mut cmds,
             &mut events,
             &mut onsets,
@@ -2810,6 +2839,7 @@ mod tests {
             &mut timing_grid,
             &timing_field,
             &state,
+            None,
             &mut cmds_sub,
             &mut events_sub,
             &mut onsets_sub,
@@ -2893,6 +2923,7 @@ mod tests {
             &mut timing_grid,
             &timing_field,
             &state,
+            None,
             &mut cmds,
             &mut events,
             &mut onsets,
@@ -2925,6 +2956,7 @@ mod tests {
             &mut timing_grid,
             &timing_field,
             &state,
+            None,
             &mut cmds2,
             &mut events2,
             &mut onsets2,
@@ -3033,6 +3065,7 @@ mod tests {
             &mut timing_grid,
             &timing_field,
             &state,
+            None,
             &mut cmds,
             &mut events,
             &mut onsets,
@@ -3103,6 +3136,7 @@ mod tests {
             &mut timing_grid,
             &timing_field,
             &state,
+            None,
             &mut cmds,
             &mut events,
             &mut onsets,

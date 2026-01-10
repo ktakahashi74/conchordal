@@ -108,14 +108,27 @@ impl Population {
         landscape: &LandscapeFrame,
         now: Tick,
     ) -> Vec<PhonationBatch> {
+        let mut batches = Vec::new();
+        let count = self.publish_intents_into(world, landscape, now, &mut batches);
+        batches.truncate(count);
+        batches
+    }
+
+    pub(crate) fn publish_intents_into(
+        &mut self,
+        world: &mut WorldModel,
+        landscape: &LandscapeFrame,
+        now: Tick,
+        out: &mut Vec<PhonationBatch>,
+    ) -> usize {
         let hop_tick = (world.time.hop as Tick).max(1);
         let tb = &world.time;
         let frame_end = now.saturating_add(hop_tick);
-        let mut phonation_batches = Vec::new();
+        let mut used = 0usize;
         let social_trace = self.social_trace.as_ref();
         for agent in &mut self.individuals {
             let birth_duration_sec = agent
-                .birth_once_duration_sec
+                .birth_once_duration_sec()
                 .unwrap_or(Self::BIRTH_ONCE_DURATION_SEC);
             if let Some(intent) =
                 agent.take_birth_intent(tb, now, world.next_intent_id, birth_duration_sec)
@@ -124,18 +137,31 @@ impl Population {
                 world.board.publish(intent);
             }
             let social_coupling = agent.phonation.social.coupling;
-            let batch =
-                agent.tick_phonation(tb, now, &landscape.rhythm, social_trace, social_coupling);
-            if !batch.cmds.is_empty() {
-                phonation_batches.push(batch);
+            if used == out.len() {
+                out.push(PhonationBatch::default());
+            }
+            let batch = &mut out[used];
+            agent.tick_phonation_into(
+                tb,
+                now,
+                &landscape.rhythm,
+                social_trace,
+                social_coupling,
+                batch,
+            );
+            let has_output =
+                !(batch.cmds.is_empty() && batch.notes.is_empty() && batch.onsets.is_empty());
+            if has_output {
+                used += 1;
             }
         }
+        let active_batches = &out[..used];
         let social_enabled =
             social_trace_enabled_from_configs(self.individuals.iter().map(|a| a.phonation.social));
         if social_enabled {
             let (bin_ticks, smooth) = social_trace_params(&self.individuals, hop_tick);
             self.social_trace = Some(build_social_trace_from_batches(
-                &phonation_batches,
+                active_batches,
                 frame_end,
                 hop_tick,
                 bin_ticks,
@@ -145,7 +171,7 @@ impl Population {
         } else {
             self.social_trace = None;
         }
-        phonation_batches
+        used
     }
 
     fn resolve_target_ids(&self, target: &TargetRef) -> Vec<u64> {
@@ -590,16 +616,7 @@ impl Population {
         for _ in 0..steps {
             for agent in self.individuals.iter_mut() {
                 if agent.is_alive() {
-                    if agent.motion_runtime.motion_enabled {
-                        agent.update_pitch_target(&rhythms, dt_step_sec, landscape);
-                        agent.update_articulation_autonomous(dt_step_sec, &rhythms);
-                    }
-                    agent.tick_articulation_lifecycle(
-                        dt_step_sec,
-                        &rhythms,
-                        landscape,
-                        self.global_coupling,
-                    );
+                    agent.tick_control(dt_step_sec, &rhythms, landscape, self.global_coupling);
                 }
             }
             rhythms.advance_in_place(dt_step_sec);
@@ -735,9 +752,36 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::life::phonation_engine::OnsetEvent;
-    use crate::life::scenario::SocialConfig;
+    use crate::life::individual::{AnyArticulationCore, ArticulationWrapper, DroneCore};
+    use crate::life::intent::BodySnapshot;
+    use crate::life::phonation_engine::{OnsetEvent, PhonationCmd, PhonationKick};
+    use crate::life::scenario::{LifeConfig, SocialConfig, VoiceControl, VoiceOnSpawn};
+    use crate::life::world_model::WorldModel;
     use rand::SeedableRng;
+
+    fn make_dummy_note_spec() -> crate::life::individual::PhonationNoteSpec {
+        crate::life::individual::PhonationNoteSpec {
+            note_id: 1,
+            onset: 0,
+            hold_ticks: None,
+            freq_hz: 440.0,
+            amp: 0.5,
+            smoothing_tau_sec: 0.0,
+            body: BodySnapshot {
+                kind: "sine".to_string(),
+                amp_scale: 1.0,
+                brightness: 0.0,
+                noise_mix: 0.0,
+            },
+            articulation: ArticulationWrapper::new(
+                AnyArticulationCore::Drone(DroneCore {
+                    phase: 0.0,
+                    sway_rate: 1.0,
+                }),
+                1.0,
+            ),
+        }
+    }
 
     #[test]
     fn decide_frequency_uses_consonance01() {
@@ -828,5 +872,55 @@ mod tests {
         };
         let configs = vec![base, other];
         assert!(social_trace_enabled_from_configs(configs));
+    }
+
+    #[test]
+    fn publish_intents_into_clears_unused_batch() {
+        let time = Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        };
+        let space = Log2Space::new(55.0, 880.0, 12);
+        let landscape = LandscapeFrame::new(space.clone());
+        let mut world = WorldModel::new(time, space);
+        let mut pop = Population::new(time);
+
+        let mut life = LifeConfig::default();
+        life.behavior.voice.on_spawn = VoiceOnSpawn::Disabled;
+        life.behavior.voice.control = VoiceControl::Autonomous;
+        let agent_cfg = IndividualConfig {
+            freq: 440.0,
+            amp: 0.5,
+            life,
+            tag: None,
+        };
+        pop.apply_action(
+            Action::AddAgent {
+                id: 1,
+                agent: agent_cfg,
+            },
+            &landscape,
+            None,
+        );
+
+        let mut batches = vec![PhonationBatch {
+            source_id: 99,
+            cmds: vec![PhonationCmd::NoteOn {
+                note_id: 1,
+                kick: PhonationKick::Planned { strength: 1.0 },
+            }],
+            notes: vec![make_dummy_note_spec()],
+            onsets: vec![OnsetEvent {
+                gate: 0,
+                onset_tick: 0,
+                strength: 1.0,
+            }],
+        }];
+
+        let used = pop.publish_intents_into(&mut world, &landscape, 0, &mut batches);
+        assert_eq!(used, 0);
+        assert!(batches[0].cmds.is_empty());
+        assert!(batches[0].notes.is_empty());
+        assert!(batches[0].onsets.is_empty());
     }
 }

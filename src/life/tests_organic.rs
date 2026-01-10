@@ -86,7 +86,7 @@ fn test_inertia_calculation() {
     high.update_pitch_target(&rhythms, 0.01, &landscape);
 
     assert!(
-        low.integration_window > high.integration_window,
+        low.integration_window() > high.integration_window(),
         "expected heavier (low) pitch to integrate longer than high pitch"
     );
 }
@@ -110,17 +110,16 @@ fn test_scan_logic() {
         }
     }
 
-    agent.accumulated_time = 5.0;
-    agent.last_theta_phase = 6.0;
-    agent.theta_phase_initialized = true;
+    agent.set_accumulated_time(5.0);
+    agent.set_theta_phase_state(6.0, true);
     let mut rhythms = NeuralRhythms::default();
     rhythms.theta.mag = 1.0;
     rhythms.theta.phase = 0.25;
 
-    let before = agent.target_pitch_log2;
+    let before = agent.target_pitch_log2();
     agent.update_pitch_target(&rhythms, 0.01, &landscape);
     assert!(
-        agent.target_pitch_log2 > before,
+        agent.target_pitch_log2() > before,
         "agent should move toward higher-scoring neighbor"
     );
 }
@@ -153,7 +152,7 @@ fn setfreq_sync_prevents_snapback() {
 
     let (old_target, old_freq) = {
         let agent = pop.individuals.first().expect("agent exists");
-        (agent.target_pitch_log2, agent.body.base_freq_hz())
+        (agent.target_pitch_log2(), agent.body.base_freq_hz())
     };
 
     let new_freq: f32 = 440.0;
@@ -171,7 +170,7 @@ fn setfreq_sync_prevents_snapback() {
 
     let agent = pop.individuals.first_mut().expect("agent exists");
     assert!(
-        (agent.target_pitch_log2 - new_log).abs() < 1e-6,
+        (agent.target_pitch_log2() - new_log).abs() < 1e-6,
         "target should sync to new log2 pitch"
     );
     assert!(
@@ -193,7 +192,7 @@ fn setfreq_sync_prevents_snapback() {
         agent.update_pitch_target(&rhythms, dt_sec, &landscape);
     }
     assert!(
-        (agent.target_pitch_log2 - new_log).abs() < 1e-6,
+        (agent.target_pitch_log2() - new_log).abs() < 1e-6,
         "target should remain at SetFreq pitch"
     );
     assert!(
@@ -201,7 +200,7 @@ fn setfreq_sync_prevents_snapback() {
         "body should remain at SetFreq frequency"
     );
     assert!(
-        (agent.target_pitch_log2 - old_target).abs() > 0.5,
+        (agent.target_pitch_log2() - old_target).abs() > 0.5,
         "target should not drift back toward old target"
     );
     assert!(

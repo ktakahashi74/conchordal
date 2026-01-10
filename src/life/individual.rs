@@ -141,19 +141,20 @@ pub struct Individual {
     pub phonation_engine: PhonationEngine,
     pub body: AnySoundBody,
     pub last_signal: ArticulationSignal,
-    pub release_gain: f32,
-    pub release_sec: f32,
-    pub release_pending: bool,
-    pub target_pitch_log2: f32,
-    pub integration_window: f32,
-    pub accumulated_time: f32,
-    pub last_theta_phase: f32,
-    pub theta_phase_initialized: bool,
-    pub last_target_salience: f32,
+    pub(crate) release_gain: f32,
+    pub(crate) release_sec: f32,
+    pub(crate) release_pending: bool,
+    pub(crate) target_pitch_log2: Option<f32>,
+    pub(crate) integration_window: f32,
+    pub(crate) accumulated_time: f32,
+    pub(crate) last_theta_phase: f32,
+    pub(crate) theta_phase_initialized: bool,
+    pub(crate) last_target_salience: f32,
     pub rng: SmallRng,
-    pub birth_once_pending: bool,
-    pub birth_frame: u64,
-    pub birth_once_duration_sec: Option<f32>,
+    pub(crate) birth_once_pending: bool,
+    pub(crate) birth_frame: u64,
+    pub(crate) birth_once_duration_sec: Option<f32>,
+    pub(crate) phonation_scratch: PhonationScratch,
 }
 
 #[derive(Clone, Debug)]
@@ -168,12 +169,25 @@ pub struct PhonationNoteSpec {
     pub articulation: ArticulationWrapper,
 }
 
+#[derive(Debug, Default)]
+pub(crate) struct PhonationScratch {
+    events: Vec<PhonationNoteEvent>,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct PhonationBatch {
     pub source_id: u64,
     pub cmds: Vec<PhonationCmd>,
     pub notes: Vec<PhonationNoteSpec>,
     pub onsets: Vec<OnsetEvent>,
+}
+
+impl PhonationBatch {
+    pub(crate) fn clear(&mut self) {
+        self.cmds.clear();
+        self.notes.clear();
+        self.onsets.clear();
+    }
 }
 
 impl Individual {
@@ -190,10 +204,43 @@ impl Individual {
         self.id
     }
 
+    pub fn target_pitch_log2(&self) -> f32 {
+        self.target_pitch_log2
+            .unwrap_or_else(|| self.body.base_freq_hz().max(1.0).log2())
+    }
+
+    pub fn integration_window(&self) -> f32 {
+        self.integration_window
+    }
+
+    pub fn release_gain(&self) -> f32 {
+        self.release_gain
+    }
+
+    pub(crate) fn birth_once_duration_sec(&self) -> Option<f32> {
+        self.birth_once_duration_sec
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_accumulated_time(&mut self, value: f32) {
+        self.accumulated_time = value;
+    }
+
+    #[cfg(test)]
+    pub(crate) fn accumulated_time(&self) -> f32 {
+        self.accumulated_time
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_theta_phase_state(&mut self, last_phase: f32, initialized: bool) {
+        self.last_theta_phase = last_phase;
+        self.theta_phase_initialized = initialized;
+    }
+
     pub fn force_set_pitch_log2(&mut self, log_freq: f32) {
         let log_freq = log_freq.max(0.0);
         self.body.set_pitch_log2(log_freq);
-        self.target_pitch_log2 = log_freq;
+        self.target_pitch_log2 = Some(log_freq);
         self.articulation.set_gate(1.0);
         self.accumulated_time = 0.0;
         self.last_theta_phase = 0.0;
@@ -211,9 +258,7 @@ impl Individual {
         let dt_sec = dt_sec.max(0.0);
         let current_freq = self.body.base_freq_hz().max(1.0);
         let current_pitch_log2 = current_freq.log2();
-        if self.target_pitch_log2 <= 0.0 {
-            self.target_pitch_log2 = current_pitch_log2;
-        }
+        let mut target_pitch_log2 = self.target_pitch_log2.unwrap_or(current_pitch_log2);
         self.integration_window = 2.0 + 10.0 / current_freq.max(1.0);
         self.accumulated_time += dt_sec;
 
@@ -241,7 +286,7 @@ impl Individual {
             self.perceptual.ensure_len(features.distribution.len());
             let proposal = self.pitch.propose_target(
                 current_pitch_log2,
-                self.target_pitch_log2,
+                target_pitch_log2,
                 current_freq,
                 self.integration_window,
                 landscape,
@@ -249,15 +294,27 @@ impl Individual {
                 &features,
                 &mut self.rng,
             );
-            self.target_pitch_log2 = proposal.target_pitch_log2;
+            target_pitch_log2 = proposal.target_pitch_log2;
             self.last_target_salience = proposal.salience;
-            if let Some(idx) = landscape.space.index_of_log2(self.target_pitch_log2) {
+            if let Some(idx) = landscape.space.index_of_log2(target_pitch_log2) {
                 self.perceptual.update(idx, &features, elapsed);
             }
         }
 
         let (fmin, fmax) = landscape.freq_bounds_log2();
-        self.target_pitch_log2 = self.target_pitch_log2.clamp(fmin, fmax);
+        target_pitch_log2 = target_pitch_log2.clamp(fmin, fmax);
+        self.target_pitch_log2 = Some(target_pitch_log2);
+    }
+
+    /// Control-rate entry point for pitch + articulation updates.
+    pub fn tick_control(
+        &mut self,
+        dt_sec: f32,
+        rhythms: &NeuralRhythms,
+        landscape: &Landscape,
+        global_coupling: f32,
+    ) -> ArticulationSignal {
+        self.update_articulation(dt_sec, rhythms, landscape, global_coupling)
     }
 
     /// Update articulation at control rate (hop-sized steps).
@@ -269,6 +326,7 @@ impl Individual {
         global_coupling: f32,
     ) -> ArticulationSignal {
         if self.motion_runtime.motion_enabled {
+            self.update_pitch_target(rhythms, dt_sec, landscape);
             self.update_articulation_autonomous(dt_sec, rhythms);
         }
         self.tick_articulation_lifecycle(dt_sec, rhythms, landscape, global_coupling)
@@ -277,9 +335,10 @@ impl Individual {
     pub fn update_articulation_autonomous(&mut self, dt_sec: f32, rhythms: &NeuralRhythms) {
         let current_freq = self.body.base_freq_hz().max(1.0);
         let current_pitch_log2 = current_freq.log2();
+        let target_pitch_log2 = self.target_pitch_log2();
         let planned = PlannedPitch {
-            target_pitch_log2: self.target_pitch_log2,
-            jump_cents_abs: 1200.0 * (self.target_pitch_log2 - current_pitch_log2).abs(),
+            target_pitch_log2,
+            jump_cents_abs: 1200.0 * (target_pitch_log2 - current_pitch_log2).abs(),
             salience: self.last_target_salience,
         };
         let apply_planned_pitch = self.articulation.update_gate(&planned, rhythms, dt_sec);
@@ -327,18 +386,29 @@ impl Individual {
         social: Option<&SocialDensityTrace>,
         social_coupling: f32,
     ) -> PhonationBatch {
+        let mut batch = PhonationBatch::default();
+        self.tick_phonation_into(tb, now, rhythms, social, social_coupling, &mut batch);
+        batch
+    }
+
+    pub fn tick_phonation_into(
+        &mut self,
+        tb: &Timebase,
+        now: Tick,
+        rhythms: &NeuralRhythms,
+        social: Option<&SocialDensityTrace>,
+        social_coupling: f32,
+        out: &mut PhonationBatch,
+    ) {
+        out.source_id = self.id;
+        out.clear();
+        self.phonation_scratch.events.clear();
         self.voice_runtime.init_on_spawn_latch(rhythms);
         if !self.voice_runtime.voice_enabled {
-            return PhonationBatch {
-                source_id: self.id,
-                ..Default::default()
-            };
+            return;
         }
         if matches!(self.voice_runtime.control, VoiceControl::Scripted) {
-            return PhonationBatch {
-                source_id: self.id,
-                ..Default::default()
-            };
+            return;
         }
         let hop_tick = (tb.hop as Tick).max(1);
         let frame_end = now.saturating_add(hop_tick);
@@ -365,20 +435,18 @@ impl Individual {
             StartLatch::WaitForGateExitThenOnset => gate_exit_tick.or(Some(Tick::MAX)),
             _ => None,
         };
-        let mut cmds = Vec::new();
-        let mut events = Vec::new();
-        let mut onsets = Vec::new();
         self.phonation_engine.tick(
             &ctx,
             &state,
             social,
             social_coupling,
             min_allowed_onset_tick,
-            &mut cmds,
-            &mut events,
-            &mut onsets,
+            &mut out.cmds,
+            &mut self.phonation_scratch.events,
+            &mut out.onsets,
         );
-        let had_note_on = cmds
+        let had_note_on = out
+            .cmds
             .iter()
             .any(|cmd| matches!(cmd, PhonationCmd::NoteOn { .. }));
         if had_note_on {
@@ -394,45 +462,50 @@ impl Individual {
                 self.voice_runtime.start_latch = StartLatch::WaitForOnset;
             }
         }
-        let mut notes = Vec::new();
-        for event in events {
-            if let Some(note) = self.build_phonation_note_spec(event, None) {
-                notes.push(note);
-            }
+        if self.phonation_scratch.events.is_empty() {
+            debug_assert!(
+                !had_note_on,
+                "NoteOn emitted without note specs (no note events)"
+            );
+            return;
         }
-        PhonationBatch {
-            source_id: self.id,
-            cmds,
-            notes,
-            onsets,
-        }
-    }
-
-    fn build_phonation_note_spec(
-        &mut self,
-        event: PhonationNoteEvent,
-        hold_ticks: Option<Tick>,
-    ) -> Option<PhonationNoteSpec> {
         let amp = self.compute_target_amp();
         if amp <= Self::AMP_EPS {
-            return None;
+            debug_assert!(
+                !had_note_on,
+                "NoteOn emitted but amp invalid => no note specs"
+            );
+            self.phonation_scratch.events.clear();
+            return;
         }
         let freq_hz = self.body.base_freq_hz();
         if !freq_hz.is_finite() || freq_hz <= 0.0 {
-            return None;
+            debug_assert!(
+                !had_note_on,
+                "NoteOn emitted but freq invalid => no note specs"
+            );
+            self.phonation_scratch.events.clear();
+            return;
         }
         let articulation = self.articulation_snapshot_for_render();
+        let body = self.body_snapshot();
         let smoothing_tau_sec = 0.0;
-        Some(PhonationNoteSpec {
-            note_id: event.note_id,
-            onset: event.onset_tick,
-            hold_ticks,
-            freq_hz,
-            amp,
-            smoothing_tau_sec,
-            body: self.body_snapshot(),
-            articulation,
-        })
+        for event in self.phonation_scratch.events.drain(..) {
+            out.notes.push(PhonationNoteSpec {
+                note_id: event.note_id,
+                onset: event.onset_tick,
+                hold_ticks: None,
+                freq_hz,
+                amp,
+                smoothing_tau_sec,
+                body: body.clone(),
+                articulation: articulation.clone(),
+            });
+        }
+        debug_assert!(
+            !had_note_on || !out.notes.is_empty(),
+            "NoteOn emitted without note specs"
+        );
     }
 
     pub(crate) fn compute_target_amp(&self) -> f32 {

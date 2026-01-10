@@ -304,15 +304,63 @@ fn motion_disabled_still_advances_release_gain() {
     );
     let agent = pop.individuals.first_mut().expect("agent exists");
     agent.start_release(0.05);
-    let gain_before = agent.release_gain;
+    let gain_before = agent.release_gain();
 
     let dt = 0.01;
     let samples_per_hop = (fs * dt) as usize;
     let landscape = make_test_landscape(fs);
     pop.advance(samples_per_hop, fs, 0, dt, &landscape);
 
-    let gain_after = pop.individuals[0].release_gain;
+    let gain_after = pop.individuals[0].release_gain();
     assert!(gain_after < gain_before);
+}
+
+#[test]
+fn motion_disabled_does_not_change_pitch_or_target() {
+    let fs = 48_000.0;
+    let mut pop = Population::new(test_timebase());
+    let mut life_cfg = life_with_lifecycle(LifecycleConfig::Decay {
+        initial_energy: 1.0,
+        half_life_sec: 0.5,
+        attack_sec: 0.01,
+    });
+    life_cfg.behavior.autonomy.motion = MotionAutonomy::Disabled;
+    let agent_cfg = IndividualConfig {
+        freq: 440.0,
+        amp: 0.5,
+        life: life_cfg,
+        tag: None,
+    };
+    pop.apply_action(
+        Action::AddAgent {
+            id: 1,
+            agent: agent_cfg,
+        },
+        &LandscapeFrame::default(),
+        None,
+    );
+
+    let (freq_before, target_before) = {
+        let agent = pop.individuals.first().expect("agent exists");
+        (agent.body.base_freq_hz(), agent.target_pitch_log2())
+    };
+
+    let dt = 0.01;
+    let samples_per_hop = (fs * dt) as usize;
+    let landscape = make_test_landscape(fs);
+    for i in 0..50 {
+        pop.advance(samples_per_hop, fs, i, dt, &landscape);
+    }
+
+    let agent = pop.individuals.first().expect("agent exists");
+    assert!(
+        (agent.body.base_freq_hz() - freq_before).abs() <= 1e-6,
+        "motion disabled should keep base frequency stable"
+    );
+    assert!(
+        (agent.target_pitch_log2() - target_before).abs() <= 1e-6,
+        "motion disabled should keep target pitch stable"
+    );
 }
 
 #[test]
@@ -438,7 +486,7 @@ fn set_freq_syncs_target_pitch_log2() {
 
     let log_target = 440.0f32.log2();
     let agent = pop.individuals.first_mut().expect("agent exists");
-    assert!((agent.target_pitch_log2 - log_target).abs() < 1e-6);
+    assert!((agent.target_pitch_log2() - log_target).abs() < 1e-6);
     assert!((agent.body.base_freq_hz() - 440.0).abs() < 1e-3);
 }
 
@@ -691,8 +739,8 @@ fn deterministic_rng_produces_same_targets() {
         };
         a.update_pitch_target(&rhythms, dt, &landscape);
         b.update_pitch_target(&rhythms, dt, &landscape);
-        seq_a.push(a.target_pitch_log2);
-        seq_b.push(b.target_pitch_log2);
+        seq_a.push(a.target_pitch_log2());
+        seq_b.push(b.target_pitch_log2());
     }
     assert_eq!(seq_a, seq_b);
 }
@@ -721,9 +769,9 @@ fn theta_wrap_triggers_pitch_update_with_large_dt() {
         None,
     );
     let agent = pop.individuals.first_mut().expect("agent exists");
-    agent.accumulated_time = agent.integration_window + 1.0;
-    agent.last_theta_phase = 6.0;
-    agent.theta_phase_initialized = true;
+    let integration_window = agent.integration_window();
+    agent.set_accumulated_time(integration_window + 1.0);
+    agent.set_theta_phase_state(6.0, true);
 
     let rhythms = NeuralRhythms {
         theta: RhythmBand {
@@ -745,7 +793,8 @@ fn theta_wrap_triggers_pitch_update_with_large_dt() {
     };
     agent.update_pitch_target(&rhythms, 0.5, &landscape);
     assert_eq!(
-        agent.accumulated_time, 0.0,
+        agent.accumulated_time(),
+        0.0,
         "theta wrap should trigger a pitch update even for large dt"
     );
 }

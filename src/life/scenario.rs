@@ -808,7 +808,7 @@ impl IndividualConfig {
             release_gain: 1.0,
             release_sec: 0.03,
             release_pending: false,
-            target_pitch_log2,
+            target_pitch_log2: Some(target_pitch_log2),
             integration_window,
             accumulated_time: 0.0,
             last_theta_phase: 0.0,
@@ -818,6 +818,7 @@ impl IndividualConfig {
             birth_once_pending: true,
             birth_frame: start_frame,
             birth_once_duration_sec: self.life.birth_once_duration_sec,
+            phonation_scratch: Default::default(),
         }
     }
 }

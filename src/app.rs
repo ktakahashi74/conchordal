@@ -26,7 +26,7 @@ use crate::core::stream::{
 };
 use crate::core::timebase::Tick;
 use crate::life::conductor::Conductor;
-use crate::life::individual::SoundBody;
+use crate::life::individual::{PhonationBatch, SoundBody};
 use crate::life::population::Population;
 use crate::life::scenario::{Action, Scenario, TargetRef};
 use crate::life::schedule_renderer::ScheduleRenderer;
@@ -792,6 +792,7 @@ fn worker_loop(
     let mut last_tick_log = Instant::now();
     let idle_silence = vec![0.0f32; hop];
     let mut scenario_end_tick: Option<Tick> = None;
+    let mut phonation_batches_buf: Vec<PhonationBatch> = Vec::new();
 
     // Initial UI frame so metadata is visible before playback starts.
     let init_meta = SimulationMeta {
@@ -993,11 +994,17 @@ fn worker_loop(
                 (None, None) => frame_idx,
             };
             let _perc_tick = timebase.frame_start_tick(perc_frame);
-            let phonation_batches = if scenario_end_tick.is_none() {
-                pop.publish_intents(&mut world, &current_landscape, now_tick)
+            let phonation_count = if scenario_end_tick.is_none() {
+                pop.publish_intents_into(
+                    &mut world,
+                    &current_landscape,
+                    now_tick,
+                    &mut phonation_batches_buf,
+                )
             } else {
-                Vec::new()
+                0
             };
+            let phonation_batches = &phonation_batches_buf[..phonation_count];
             dorsal.set_vitality(pop.global_vitality);
             if let Some(update) = pop.take_pending_update() {
                 apply_params_update(&mut lparams, &update);
@@ -1036,7 +1043,7 @@ fn worker_loop(
             let (mono_chunk, max_abs, channel_peak) = {
                 let time_chunk = schedule_renderer.render(
                     &world.board,
-                    &phonation_batches,
+                    phonation_batches,
                     now_tick,
                     &current_landscape.rhythm,
                 );
@@ -1142,8 +1149,8 @@ fn worker_loop(
                         AgentStateInfo {
                             id: agent.id,
                             freq_hz: f,
-                            target_freq: 2.0f32.powf(agent.target_pitch_log2),
-                            integration_window: agent.integration_window,
+                            target_freq: 2.0f32.powf(agent.target_pitch_log2()),
+                            integration_window: agent.integration_window(),
                             breath_gain: agent.articulation.gate(),
                             consonance: current_landscape.evaluate_pitch01(f),
                         }

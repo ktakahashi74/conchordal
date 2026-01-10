@@ -808,6 +808,8 @@ pub struct PhonationEngine {
     last_tick: Option<Tick>,
     active_notes: u32,
     pending_off: BinaryHeap<Reverse<PendingOff>>,
+    scratch_candidates: Vec<CandidatePoint>,
+    scratch_merged: Vec<CandidatePoint>,
 }
 
 impl fmt::Debug for PhonationEngine {
@@ -888,6 +890,8 @@ impl PhonationEngine {
             last_tick: None,
             active_notes: 0,
             pending_off: BinaryHeap::new(),
+            scratch_candidates: Vec::new(),
+            scratch_merged: Vec::new(),
         }
     }
 
@@ -971,9 +975,11 @@ impl PhonationEngine {
         out_events: &mut Vec<PhonationNoteEvent>,
         out_onsets: &mut Vec<OnsetEvent>,
     ) {
-        let mut candidates = Vec::new();
-        self.clock.gather_candidates(ctx, &mut candidates);
-        let merged = Self::merge_candidates(candidates);
+        self.scratch_candidates.clear();
+        self.clock
+            .gather_candidates(ctx, &mut self.scratch_candidates);
+        Self::merge_candidates_into(&mut self.scratch_merged, &mut self.scratch_candidates);
+        let merged = std::mem::take(&mut self.scratch_merged);
         let mut timing_grid = ThetaGrid::from_candidates(&merged);
         let timing_field = TimingField::build_from(
             ctx,
@@ -991,6 +997,7 @@ impl PhonationEngine {
             out_events,
             out_onsets,
         );
+        self.scratch_merged = merged;
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1133,16 +1140,24 @@ impl PhonationEngine {
     /// - merge only when tick and gate match
     /// - prefer phase_in_gate == 0.0 (GateBoundary) as the representative
     /// - append sources (duplicates allowed)
+    #[cfg(test)]
     fn merge_candidates(mut candidates: Vec<CandidatePoint>) -> Vec<CandidatePoint> {
+        let mut merged = Vec::with_capacity(candidates.len());
+        Self::merge_candidates_into(&mut merged, &mut candidates);
+        merged
+    }
+
+    fn merge_candidates_into(out: &mut Vec<CandidatePoint>, candidates: &mut Vec<CandidatePoint>) {
         candidates.sort_by(|a, b| {
             a.tick
                 .cmp(&b.tick)
                 .then_with(|| a.gate.cmp(&b.gate))
                 .then_with(|| a.phase_in_gate.total_cmp(&b.phase_in_gate))
         });
-        let mut merged: Vec<CandidatePoint> = Vec::with_capacity(candidates.len());
-        for candidate in candidates {
-            if let Some(last) = merged.last_mut()
+        out.clear();
+        out.reserve(candidates.len());
+        for candidate in candidates.drain(..) {
+            if let Some(last) = out.last_mut()
                 && last.tick == candidate.tick
                 && last.gate == candidate.gate
             {
@@ -1155,9 +1170,8 @@ impl PhonationEngine {
                 last.sources.extend(candidate.sources);
                 continue;
             }
-            merged.push(candidate);
+            out.push(candidate);
         }
-        merged
     }
 }
 
@@ -1435,6 +1449,8 @@ mod tests {
             last_tick: None,
             active_notes: 0,
             pending_off: BinaryHeap::new(),
+            scratch_candidates: Vec::new(),
+            scratch_merged: Vec::new(),
         };
         let state = CoreState { is_alive: true };
         let mut cmds = Vec::new();
@@ -1799,6 +1815,8 @@ mod tests {
             last_tick: None,
             active_notes: 0,
             pending_off: BinaryHeap::new(),
+            scratch_candidates: Vec::new(),
+            scratch_merged: Vec::new(),
         };
         let state = CoreState { is_alive: true };
         let mut cmds = Vec::new();
@@ -1871,6 +1889,8 @@ mod tests {
             last_tick: None,
             active_notes: 0,
             pending_off: BinaryHeap::new(),
+            scratch_candidates: Vec::new(),
+            scratch_merged: Vec::new(),
         };
         let state = CoreState { is_alive: true };
         let mut cmds = Vec::new();
@@ -1920,6 +1940,8 @@ mod tests {
             last_tick: None,
             active_notes: 0,
             pending_off: BinaryHeap::new(),
+            scratch_candidates: Vec::new(),
+            scratch_merged: Vec::new(),
         };
         let state = CoreState { is_alive: true };
         let mut cmds = Vec::new();
@@ -1991,6 +2013,8 @@ mod tests {
             last_tick: None,
             active_notes: 0,
             pending_off: BinaryHeap::new(),
+            scratch_candidates: Vec::new(),
+            scratch_merged: Vec::new(),
         };
         let state = CoreState { is_alive: true };
         let mut cmds = Vec::new();
@@ -2077,6 +2101,8 @@ mod tests {
             last_tick: None,
             active_notes: 0,
             pending_off: BinaryHeap::new(),
+            scratch_candidates: Vec::new(),
+            scratch_merged: Vec::new(),
         };
         let state = CoreState { is_alive: true };
         let mut cmds = Vec::new();
@@ -2119,6 +2145,8 @@ mod tests {
             last_tick: None,
             active_notes: 0,
             pending_off: BinaryHeap::new(),
+            scratch_candidates: Vec::new(),
+            scratch_merged: Vec::new(),
         };
         let state = CoreState { is_alive: true };
         let timing_field = TimingField::from_values(0, vec![1.0]);
@@ -2176,6 +2204,8 @@ mod tests {
             last_tick: None,
             active_notes: 0,
             pending_off: BinaryHeap::new(),
+            scratch_candidates: Vec::new(),
+            scratch_merged: Vec::new(),
         };
         let state = CoreState { is_alive: true };
         let timing_field = TimingField::from_values(0, vec![1.0]);
@@ -2232,6 +2262,8 @@ mod tests {
             last_tick: None,
             active_notes: 0,
             pending_off: BinaryHeap::new(),
+            scratch_candidates: Vec::new(),
+            scratch_merged: Vec::new(),
         };
         engine.schedule_note_off(42, 5);
         let state = CoreState { is_alive: true };
@@ -2310,6 +2342,8 @@ mod tests {
             last_tick: None,
             active_notes: 0,
             pending_off: BinaryHeap::new(),
+            scratch_candidates: Vec::new(),
+            scratch_merged: Vec::new(),
         };
         engine.schedule_note_off(99, 0);
         let state = CoreState { is_alive: true };
@@ -2358,6 +2392,8 @@ mod tests {
             last_tick: None,
             active_notes: 0,
             pending_off: BinaryHeap::new(),
+            scratch_candidates: Vec::new(),
+            scratch_merged: Vec::new(),
         };
         let onset = ConnectOnset {
             note_id: 7,
@@ -2398,6 +2434,8 @@ mod tests {
             last_tick: None,
             active_notes: 0,
             pending_off: BinaryHeap::new(),
+            scratch_candidates: Vec::new(),
+            scratch_merged: Vec::new(),
         };
         let onset = ConnectOnset {
             note_id: 11,
@@ -2543,6 +2581,8 @@ mod tests {
             last_tick: None,
             active_notes: 0,
             pending_off: BinaryHeap::new(),
+            scratch_candidates: Vec::new(),
+            scratch_merged: Vec::new(),
         };
         let state = CoreState { is_alive: true };
         let mut cmds = Vec::new();
@@ -2684,6 +2724,8 @@ mod tests {
             last_tick: None,
             active_notes: 0,
             pending_off: BinaryHeap::new(),
+            scratch_candidates: Vec::new(),
+            scratch_merged: Vec::new(),
         };
         let mut cmds = Vec::new();
         let mut events = Vec::new();
@@ -2766,6 +2808,8 @@ mod tests {
             last_tick: None,
             active_notes: 0,
             pending_off: BinaryHeap::new(),
+            scratch_candidates: Vec::new(),
+            scratch_merged: Vec::new(),
         };
         let mut cmds = Vec::new();
         let mut events = Vec::new();
@@ -2828,6 +2872,8 @@ mod tests {
             last_tick: None,
             active_notes: 0,
             pending_off: BinaryHeap::new(),
+            scratch_candidates: Vec::new(),
+            scratch_merged: Vec::new(),
         };
         let mut cmds_sub = Vec::new();
         let mut events_sub = Vec::new();
@@ -2892,6 +2938,8 @@ mod tests {
             last_tick: None,
             active_notes: 0,
             pending_off: BinaryHeap::new(),
+            scratch_candidates: Vec::new(),
+            scratch_merged: Vec::new(),
         };
 
         let ctx1 = CoreTickCtx {
@@ -3031,6 +3079,8 @@ mod tests {
             last_tick: None,
             active_notes: 0,
             pending_off: BinaryHeap::new(),
+            scratch_candidates: Vec::new(),
+            scratch_merged: Vec::new(),
         };
         let candidates_base = vec![
             CandidatePoint {
@@ -3088,6 +3138,8 @@ mod tests {
             last_tick: None,
             active_notes: 0,
             pending_off: BinaryHeap::new(),
+            scratch_candidates: Vec::new(),
+            scratch_merged: Vec::new(),
         };
         let candidates_sub = vec![
             CandidatePoint {

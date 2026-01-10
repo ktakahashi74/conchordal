@@ -1089,33 +1089,31 @@ impl PhonationEngine {
                 dt_sec,
                 weight: exc_gate * sub_theta_mod,
             };
-            if allow_onset {
-                if let Some(kick) = self.interval.on_candidate(&input, state) {
-                    let note_id = self.next_note_id;
-                    self.next_note_id = self.next_note_id.wrapping_add(1);
-                    out_cmds.push(PhonationCmd::NoteOn { note_id, kick });
-                    self.active_notes = self.active_notes.saturating_add(1);
-                    out_events.push(PhonationNoteEvent {
-                        note_id,
-                        onset_tick: c.tick,
-                    });
-                    out_onsets.push(OnsetEvent {
-                        gate: c.gate,
-                        onset_tick: c.tick,
-                        strength: kick.strength(),
-                    });
-                    let onset = ConnectOnset {
-                        note_id,
-                        tick: c.tick,
-                        gate: c.gate,
-                        theta_pos: c.theta_pos,
-                        exc_gate,
-                        exc_slope,
-                    };
-                    let plan = self.connect.on_note_on(onset);
-                    if let ConnectPlan::HoldTheta(hold_theta) = plan {
-                        self.schedule_hold_theta(onset, hold_theta, ctx, timing_grid);
-                    }
+            if allow_onset && let Some(kick) = self.interval.on_candidate(&input, state) {
+                let note_id = self.next_note_id;
+                self.next_note_id = self.next_note_id.wrapping_add(1);
+                out_cmds.push(PhonationCmd::NoteOn { note_id, kick });
+                self.active_notes = self.active_notes.saturating_add(1);
+                out_events.push(PhonationNoteEvent {
+                    note_id,
+                    onset_tick: c.tick,
+                });
+                out_onsets.push(OnsetEvent {
+                    gate: c.gate,
+                    onset_tick: c.tick,
+                    strength: kick.strength(),
+                });
+                let onset = ConnectOnset {
+                    note_id,
+                    tick: c.tick,
+                    gate: c.gate,
+                    theta_pos: c.theta_pos,
+                    exc_gate,
+                    exc_slope,
+                };
+                let plan = self.connect.on_note_on(onset);
+                if let ConnectPlan::HoldTheta(hold_theta) = plan {
+                    self.schedule_hold_theta(onset, hold_theta, ctx, timing_grid);
                 }
             }
             self.last_gate_index = Some(c.gate);

@@ -464,45 +464,30 @@ pub struct PhonationConfig {
     pub social: SocialConfig,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum VoiceOnSpawn {
     Immediate,
+    #[default]
     NextRhythm,
     Disabled,
 }
 
-impl Default for VoiceOnSpawn {
-    fn default() -> Self {
-        VoiceOnSpawn::NextRhythm
-    }
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum VoiceControl {
     Autonomous,
+    #[default]
     Scripted,
 }
 
-impl Default for VoiceControl {
-    fn default() -> Self {
-        VoiceControl::Scripted
-    }
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum MotionAutonomy {
+    #[default]
     Disabled,
     Immediate,
     AfterFirstUtterance,
-}
-
-impl Default for MotionAutonomy {
-    fn default() -> Self {
-        MotionAutonomy::Disabled
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]

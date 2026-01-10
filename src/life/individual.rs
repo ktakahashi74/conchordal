@@ -455,12 +455,10 @@ impl Individual {
         } else if matches!(
             self.voice_runtime.start_latch,
             StartLatch::WaitForGateExitThenOnset
-        ) {
-            if let Some(exit_tick) = gate_exit_tick
-                && exit_tick < frame_end
-            {
-                self.voice_runtime.start_latch = StartLatch::WaitForOnset;
-            }
+        ) && let Some(exit_tick) = gate_exit_tick
+            && exit_tick < frame_end
+        {
+            self.voice_runtime.start_latch = StartLatch::WaitForOnset;
         }
         if self.phonation_scratch.events.is_empty() {
             debug_assert!(

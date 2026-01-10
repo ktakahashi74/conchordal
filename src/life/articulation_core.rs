@@ -455,9 +455,7 @@ impl KuramotoCore {
             self.vitality_level = 0.0;
             return self.vitality_level;
         }
-        if self.state == ArticulationState::Idle {
-            self.vitality_level = computed;
-        } else if self.energy > 0.0 {
+        if self.state == ArticulationState::Idle || self.energy > 0.0 {
             self.vitality_level = computed;
         }
         self.vitality_level

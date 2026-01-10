@@ -4,7 +4,7 @@ use crate::core::modulation::NeuralRhythms;
 use crate::core::phase::wrap_0_tau;
 use crate::core::timebase::{Tick, Timebase};
 use crate::life::gate_clock::next_gate_tick;
-use crate::life::intent::BodySnapshot;
+use crate::life::intent::{BodySnapshot, Intent};
 use crate::life::perceptual::{FeaturesNow, PerceptualContext};
 use crate::life::phonation_engine::{
     CoreState, CoreTickCtx, NoteId, OnsetEvent, PhonationCmd, PhonationEngine, PhonationNoteEvent,
@@ -151,6 +151,9 @@ pub struct Individual {
     pub theta_phase_initialized: bool,
     pub last_target_salience: f32,
     pub rng: SmallRng,
+    pub birth_once_pending: bool,
+    pub birth_frame: u64,
+    pub birth_once_duration_sec: Option<f32>,
 }
 
 #[derive(Clone, Debug)]
@@ -476,6 +479,60 @@ impl Individual {
             return;
         }
         self.body.project_spectral_body(amps, space, &signal);
+    }
+
+    pub(crate) fn take_birth_intent(
+        &mut self,
+        tb: &Timebase,
+        now: Tick,
+        intent_id: u64,
+        duration_sec: f32,
+    ) -> Option<Intent> {
+        if !self.birth_once_pending {
+            return None;
+        }
+        if matches!(self.behavior.voice.on_spawn, VoiceOnSpawn::Disabled) {
+            self.birth_once_pending = false;
+            return None;
+        }
+
+        let onset = tb.frame_start_tick(self.birth_frame);
+        if onset > now {
+            return None;
+        }
+        let mut duration = tb.sec_to_tick(duration_sec.max(0.0));
+        if duration == 0 && duration_sec > 0.0 {
+            duration = 1;
+        }
+        if duration == 0 {
+            self.birth_once_pending = false;
+            return None;
+        }
+
+        let amp = self.compute_target_amp();
+        if amp <= Self::AMP_EPS {
+            self.birth_once_pending = false;
+            return None;
+        }
+        let freq_hz = self.body.base_freq_hz();
+        if !freq_hz.is_finite() || freq_hz <= 0.0 {
+            self.birth_once_pending = false;
+            return None;
+        }
+
+        self.birth_once_pending = false;
+        Some(Intent {
+            source_id: self.id,
+            intent_id,
+            onset,
+            duration,
+            freq_hz,
+            amp,
+            tag: self.metadata.tag.clone(),
+            confidence: 1.0,
+            body: Some(self.body_snapshot()),
+            articulation: None,
+        })
     }
 
     pub fn is_alive(&self) -> bool {

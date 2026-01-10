@@ -3,7 +3,9 @@ use conchordal::core::log2space::Log2Space;
 use conchordal::core::timebase::{Tick, Timebase};
 use conchordal::life::individual::AgentMetadata;
 use conchordal::life::population::Population;
-use conchordal::life::scenario::{IndividualConfig, LifeConfig, PhonationIntervalConfig};
+use conchordal::life::scenario::{
+    IndividualConfig, LifeConfig, PhonationIntervalConfig, VoiceControl, VoiceOnSpawn,
+};
 use conchordal::life::schedule_renderer::ScheduleRenderer;
 use conchordal::life::world_model::WorldModel;
 
@@ -21,6 +23,8 @@ fn agents_publish_intents_and_render_audio() {
         rate: 1.0,
         refractory: 0,
     };
+    life.behavior.voice.control = VoiceControl::Autonomous;
+    life.behavior.voice.on_spawn = VoiceOnSpawn::Immediate;
     let agent_cfg = IndividualConfig {
         freq: 440.0,
         amp: 0.4,
@@ -76,6 +80,8 @@ fn publish_intents_runs_when_gate_in_hop_window() {
         rate: 1.0,
         refractory: 0,
     };
+    life.behavior.voice.control = VoiceControl::Autonomous;
+    life.behavior.voice.on_spawn = VoiceOnSpawn::Immediate;
     let agent_cfg = IndividualConfig {
         freq: 440.0,
         amp: 0.4,

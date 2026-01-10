@@ -3,13 +3,15 @@ print(">>> Cycle of Fifths <<<");
 
 fn play_step(name, root, dur) {
     let pad_life = #{
-        articulation: #{ core: "entrain", type: "decay", half_life_sec: 1.0, attack_sec: 0.6 }
+        articulation: #{ core: "entrain", type: "decay", half_life_sec: 1.0, attack_sec: 0.6 },
+        birth_once_duration_sec: dur
     };
 
     let bass_life = #{
         articulation: #{ core: "entrain", type: "decay", half_life_sec: 0.6, attack_sec: 0.2 },
-		phonation: #{}
-};
+        phonation: #{},
+        birth_once_duration_sec: dur
+    };
 
     let pad_method = #{
         mode: "harmonicity",

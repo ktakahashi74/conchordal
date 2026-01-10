@@ -31,6 +31,7 @@ pub struct Population {
 impl Population {
     const RELEASE_SEC_DEFAULT: f32 = 0.03;
     const CONTROL_STEP_SAMPLES: usize = 64;
+    pub const BIRTH_ONCE_DURATION_SEC: f32 = 0.4;
     /// Returns true if `freq_hz` is within `min_dist_erb` (ERB scale) of any existing agent's base
     /// frequency.
     pub fn is_range_occupied(&self, freq_hz: f32, min_dist_erb: f32) -> bool {
@@ -113,6 +114,15 @@ impl Population {
         let mut phonation_batches = Vec::new();
         let social_trace = self.social_trace.as_ref();
         for agent in &mut self.individuals {
+            let birth_duration_sec = agent
+                .birth_once_duration_sec
+                .unwrap_or(Self::BIRTH_ONCE_DURATION_SEC);
+            if let Some(intent) =
+                agent.take_birth_intent(tb, now, world.next_intent_id, birth_duration_sec)
+            {
+                world.next_intent_id = world.next_intent_id.wrapping_add(1);
+                world.board.publish(intent);
+            }
             let social_coupling = agent.phonation.social.coupling;
             let batch =
                 agent.tick_phonation(tb, now, &landscape.rhythm, social_trace, social_coupling);

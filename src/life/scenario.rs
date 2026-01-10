@@ -487,7 +487,7 @@ pub enum VoiceControl {
 
 impl Default for VoiceControl {
     fn default() -> Self {
-        VoiceControl::Autonomous
+        VoiceControl::Scripted
     }
 }
 
@@ -547,6 +547,8 @@ pub struct LifeConfig {
     pub behavior: BehaviorConfig,
     #[serde(default)]
     pub breath_gain_init: Option<f32>,
+    #[serde(default)]
+    pub birth_once_duration_sec: Option<f32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -813,6 +815,9 @@ impl IndividualConfig {
             theta_phase_initialized: false,
             last_target_salience: 0.0,
             rng,
+            birth_once_pending: true,
+            birth_frame: start_frame,
+            birth_once_duration_sec: self.life.birth_once_duration_sec,
         }
     }
 }

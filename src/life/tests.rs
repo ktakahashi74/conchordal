@@ -754,6 +754,9 @@ fn theta_wrap_triggers_pitch_update_with_large_dt() {
 fn kuramoto_locks_to_theta_phase() {
     let mut core = KuramotoCore {
         energy: 1.0,
+        energy_cap: 1.0,
+        vitality_exponent: 0.5,
+        vitality_level: 1.0,
         basal_cost: 0.0,
         action_cost: 0.0,
         recharge_rate: 0.0,
@@ -848,6 +851,9 @@ fn kuramoto_locks_to_theta_phase() {
 fn kuramoto_bootstrap_triggers_attack() {
     let mut core = KuramotoCore {
         energy: 1.0,
+        energy_cap: 1.0,
+        vitality_exponent: 0.5,
+        vitality_level: 1.0,
         basal_cost: 0.0,
         action_cost: 0.0,
         recharge_rate: 0.0,
@@ -934,6 +940,9 @@ fn kuramoto_normal_attacks_fire_and_lock() {
     let decay_rate = -0.9f32.ln() / dt;
     let mut core = KuramotoCore {
         energy: 1.0,
+        energy_cap: 1.0,
+        vitality_exponent: 0.5,
+        vitality_level: 1.0,
         basal_cost: 0.0,
         action_cost: 0.0,
         recharge_rate: 0.0,
@@ -1032,6 +1041,9 @@ fn kuramoto_attack_count_invariant_to_chunking() {
     fn run_with_chunk(chunk: usize) -> u32 {
         let mut core = KuramotoCore {
             energy: 1.0,
+            energy_cap: 1.0,
+            vitality_exponent: 0.5,
+            vitality_level: 1.0,
             basal_cost: 0.0,
             action_cost: 0.0,
             recharge_rate: 0.0,
@@ -1127,6 +1139,9 @@ fn kuramoto_attack_count_invariant_to_chunking() {
 fn kuramoto_process_dt_invariance() {
     let base = KuramotoCore {
         energy: 1.0,
+        energy_cap: 1.0,
+        vitality_exponent: 0.5,
+        vitality_level: 1.0,
         basal_cost: 0.1,
         action_cost: 0.0,
         recharge_rate: 0.0,

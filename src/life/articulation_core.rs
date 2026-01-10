@@ -148,6 +148,9 @@ impl PinkNoise {
 #[derive(Debug, Clone)]
 pub struct KuramotoCore {
     pub energy: f32,
+    pub energy_cap: f32,
+    pub vitality_exponent: f32,
+    pub vitality_level: f32,
     pub basal_cost: f32,
     pub action_cost: f32,
     pub recharge_rate: f32,
@@ -230,6 +233,21 @@ struct ThetaView {
     mag: f32,
     alpha: f32,
     beta: f32,
+}
+
+fn normalized_vitality(energy: f32, energy_cap: f32, vitality_exponent: f32) -> f32 {
+    if !energy.is_finite() || !energy_cap.is_finite() || energy_cap <= 0.0 {
+        return 0.0;
+    }
+    let energy_clamped = energy.clamp(0.0, energy_cap);
+    let mut vitality = (energy_clamped / energy_cap).clamp(0.0, 1.0);
+    let exponent = if vitality_exponent.is_finite() && vitality_exponent > 0.0 {
+        vitality_exponent
+    } else {
+        1.0
+    };
+    vitality = vitality.powf(exponent);
+    if vitality.is_finite() { vitality } else { 0.0 }
 }
 
 impl KuramotoCore {
@@ -415,6 +433,35 @@ impl KuramotoCore {
             ArticulationState::Idle => {}
         }
     }
+
+    #[inline]
+    fn handle_energy_depletion(&mut self) {
+        if !self.energy.is_finite() {
+            self.energy = 0.0;
+        }
+        if self.energy <= 0.0 {
+            self.energy = 0.0;
+            self.retrigger = false;
+            if self.state != ArticulationState::Idle {
+                self.state = ArticulationState::Decay;
+            }
+        }
+    }
+
+    #[inline]
+    fn update_vitality(&mut self) -> f32 {
+        let computed = normalized_vitality(self.energy, self.energy_cap, self.vitality_exponent);
+        if !self.energy.is_finite() {
+            self.vitality_level = 0.0;
+            return self.vitality_level;
+        }
+        if self.state == ArticulationState::Idle {
+            self.vitality_level = computed;
+        } else if self.energy > 0.0 {
+            self.vitality_level = computed;
+        }
+        self.vitality_level
+    }
 }
 
 impl ArticulationCore for KuramotoCore {
@@ -426,11 +473,7 @@ impl ArticulationCore for KuramotoCore {
         global_coupling: f32,
     ) -> ArticulationSignal {
         self.energy -= self.basal_cost * dt;
-        if self.energy <= 0.0 {
-            self.state = ArticulationState::Idle;
-            self.env_level = 0.0;
-            return ArticulationSignal::default();
-        }
+        self.handle_energy_depletion();
 
         let theta = ThetaView {
             phase: rhythms.theta.phase,
@@ -460,6 +503,9 @@ impl ArticulationCore for KuramotoCore {
                 step.k_eff,
             );
             attacked_this_sample = attacked_this_sample || attacked;
+        }
+        if attacked_this_sample {
+            self.handle_energy_depletion();
         }
         self.update_envelope(dt);
 
@@ -533,9 +579,10 @@ impl ArticulationCore for KuramotoCore {
 
         let relaxation = rhythms.theta.alpha * self.sensitivity.alpha;
         let tension = rhythms.theta.beta * self.sensitivity.beta;
-        let is_active = self.env_level > 0.0 && self.state != ArticulationState::Idle;
+        let vitality = self.update_vitality();
+        let is_active = self.env_level * vitality > 1e-6 && self.state != ArticulationState::Idle;
         ArticulationSignal {
-            amplitude: self.env_level,
+            amplitude: self.env_level * vitality,
             is_active,
             relaxation,
             tension,
@@ -544,7 +591,7 @@ impl ArticulationCore for KuramotoCore {
 
     fn is_alive(&self) -> bool {
         if self.energy <= 0.0 {
-            return false;
+            return self.state != ArticulationState::Idle;
         }
         if !self.retrigger && self.state == ArticulationState::Idle {
             return false;
@@ -672,6 +719,9 @@ impl AnyArticulationCore {
                     retrigger,
                     action_cost,
                 ) = envelope_from_lifecycle(lifecycle, fs);
+                let energy_cap = energy.max(0.0);
+                let vitality_exponent = 0.5;
+                let vitality_level = normalized_vitality(energy, energy_cap, vitality_exponent);
                 let env_level = if matches!(state, ArticulationState::Attack) {
                     attack_step
                 } else {
@@ -681,6 +731,9 @@ impl AnyArticulationCore {
                 // Phase/offset seed diversity; theta lock uses base_k ~ omega_target in process.
                 AnyArticulationCore::Entrain(KuramotoCore {
                     energy,
+                    energy_cap,
+                    vitality_exponent,
+                    vitality_level,
                     basal_cost,
                     action_cost,
                     recharge_rate,
@@ -842,5 +895,179 @@ fn envelope_from_lifecycle(
                 action_cost.unwrap_or(0.02),
             )
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::modulation::NeuralRhythms;
+    use std::f32::consts::TAU;
+
+    fn test_core(energy: f32) -> KuramotoCore {
+        let energy_cap = 1.0;
+        let vitality_exponent = 0.5;
+        let vitality_level = normalized_vitality(energy, energy_cap, vitality_exponent);
+        KuramotoCore {
+            energy,
+            energy_cap,
+            vitality_exponent,
+            vitality_level,
+            basal_cost: 0.0,
+            action_cost: 0.0,
+            recharge_rate: 0.0,
+            sensitivity: Sensitivity::default(),
+            rhythm_phase: 0.0,
+            rhythm_freq: 5.0,
+            omega_rad: TAU * 5.0,
+            phase_offset: 0.0,
+            debug_id: 0,
+            env_level: 1.0,
+            state: ArticulationState::Decay,
+            attack_step: 0.1,
+            decay_rate: 1.0,
+            retrigger: true,
+            noise_1f: PinkNoise::new(1, 0.0),
+            base_sigma: 0.0,
+            beta_gain: 0.0,
+            k_omega: 0.0,
+            bootstrap_timer: 0.0,
+            env_open_threshold: 0.0,
+            env_level_min: 0.0,
+            mag_threshold: 0.0,
+            alpha_threshold: 0.0,
+            beta_threshold: 1.0,
+            dbg_accum_time: 0.0,
+            dbg_wraps: 0,
+            dbg_attacks: 0,
+            dbg_boot_attacks: 0,
+            dbg_attack_logs_left: 0,
+            dbg_attack_count_normal: 0,
+            dbg_attack_sum_abs_diff: 0.0,
+            dbg_attack_sum_cos: 0.0,
+            dbg_attack_sum_sin: 0.0,
+            dbg_fail_env: 0,
+            dbg_fail_env_level: 0,
+            dbg_fail_mag: 0,
+            dbg_fail_alpha: 0,
+            dbg_fail_beta: 0,
+            dbg_last_env_open: 0.0,
+            dbg_last_env_level: 0.0,
+            dbg_last_theta_mag: 0.0,
+            dbg_last_theta_alpha: 0.0,
+            dbg_last_theta_beta: 0.0,
+            dbg_last_k_eff: 0.0,
+        }
+    }
+
+    #[test]
+    fn energy_depletion_enters_decay_without_instant_silence() {
+        let mut core = test_core(0.01);
+        core.basal_cost = 2.0;
+        core.retrigger = true;
+        core.env_level = 1.0;
+        core.state = ArticulationState::Decay;
+
+        let rhythms = NeuralRhythms::default();
+        let signal = core.process(0.0, &rhythms, 0.01, 0.0);
+
+        assert!(core.energy <= 0.0);
+        assert_eq!(core.state, ArticulationState::Decay);
+        assert!(!core.retrigger);
+        assert!(
+            signal.amplitude > 0.0,
+            "amplitude should release, not drop to zero immediately"
+        );
+    }
+
+    #[test]
+    fn attack_depletion_enters_decay_without_instant_silence() {
+        let mut core = test_core(0.01);
+        core.basal_cost = 2.0;
+        core.retrigger = true;
+        core.env_level = 0.4;
+        core.state = ArticulationState::Attack;
+
+        let rhythms = NeuralRhythms::default();
+        let signal = core.process(0.0, &rhythms, 0.01, 0.0);
+
+        assert!(core.energy <= 0.0);
+        assert_eq!(core.state, ArticulationState::Decay);
+        assert!(!core.retrigger);
+        assert!(
+            signal.amplitude > 0.0,
+            "attack depletion should release, not drop to zero immediately"
+        );
+    }
+
+    #[test]
+    fn energy_zero_releases_to_idle() {
+        let mut core = test_core(0.0);
+        core.energy = 0.0;
+        core.env_level = 1.0;
+        core.state = ArticulationState::Decay;
+        core.decay_rate = 5.0;
+
+        let rhythms = NeuralRhythms::default();
+        for _ in 0..240 {
+            core.process(0.0, &rhythms, 0.01, 0.0);
+        }
+
+        assert_eq!(core.state, ArticulationState::Idle);
+        assert_eq!(core.env_level, 0.0);
+    }
+
+    #[test]
+    fn vitality_resets_after_idle() {
+        let mut core = test_core(0.0);
+        core.energy = 0.0;
+        core.env_level = 1.0;
+        core.state = ArticulationState::Decay;
+        core.decay_rate = 6.0;
+        core.vitality_level = 0.5;
+
+        let rhythms = NeuralRhythms::default();
+        for _ in 0..300 {
+            core.process(0.0, &rhythms, 0.01, 0.0);
+        }
+        assert_eq!(core.state, ArticulationState::Idle);
+
+        let signal = core.process(0.0, &rhythms, 0.01, 0.0);
+        assert!(core.vitality_level <= 1e-6);
+        assert!(!signal.is_active);
+    }
+
+    #[test]
+    fn is_active_tracks_amplitude() {
+        let mut core = test_core(0.0);
+        core.energy = 0.0;
+        core.vitality_level = 0.0;
+        core.env_level = 0.5;
+        core.state = ArticulationState::Decay;
+        core.decay_rate = 0.0;
+
+        let rhythms = NeuralRhythms::default();
+        let signal = core.process(0.0, &rhythms, 0.01, 0.0);
+
+        assert!(signal.amplitude <= 1e-6);
+        assert!(!signal.is_active);
+    }
+
+    #[test]
+    fn vitality_scales_amplitude() {
+        let rhythms = NeuralRhythms::default();
+        let mut high = test_core(1.0);
+        high.decay_rate = 0.0;
+
+        let mut low = test_core(0.25);
+        low.decay_rate = 0.0;
+
+        let high_signal = high.process(0.0, &rhythms, 0.01, 0.0);
+        let low_signal = low.process(0.0, &rhythms, 0.01, 0.0);
+
+        assert!(
+            low_signal.amplitude < high_signal.amplitude,
+            "lower energy should yield lower amplitude via vitality"
+        );
     }
 }

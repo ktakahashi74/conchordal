@@ -385,22 +385,40 @@ impl<'de> Deserialize<'de> for PhonationConnectConfig {
                     .ok_or_else(|| de::Error::custom("phonation connect missing `type`"))?;
                 match ty {
                     "fixed_gate" => {
+                        for key in map.keys() {
+                            match key.as_str() {
+                                "type" | "length_gates" => {}
+                                _ => {
+                                    return Err(de::Error::custom(format!(
+                                        "phonation connect fixed_gate has unknown key `{key}`; allowed keys: type, length_gates",
+                                    )));
+                                }
+                            }
+                        }
                         let length_gates = map
                             .get("length_gates")
-                            .or_else(|| map.get("length"))
                             .and_then(|v| v.as_u64())
                             .unwrap_or(8) as u32;
                         Ok(PhonationConnectConfig::FixedGate { length_gates })
                     }
                     "field" => {
+                        for key in map.keys() {
+                            match key.as_str() {
+                                "type" | "hold_min_theta" | "hold_max_theta" | "curve_k"
+                                | "curve_x0" | "drop_gain" => {}
+                                _ => {
+                                    return Err(de::Error::custom(format!(
+                                        "phonation connect field has unknown key `{key}`; allowed keys: type, hold_min_theta, hold_max_theta, curve_k, curve_x0, drop_gain",
+                                    )));
+                                }
+                            }
+                        }
                         let hold_min_theta = map
                             .get("hold_min_theta")
-                            .or_else(|| map.get("hold_min"))
                             .and_then(|v| v.as_f64())
                             .unwrap_or(0.25) as f32;
                         let hold_max_theta = map
                             .get("hold_max_theta")
-                            .or_else(|| map.get("hold_max"))
                             .and_then(|v| v.as_f64())
                             .unwrap_or(1.0) as f32;
                         let curve_k =

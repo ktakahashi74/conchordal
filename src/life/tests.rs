@@ -6,8 +6,8 @@ use super::individual::{
 use super::population::Population;
 use super::scenario::{
     Action, ArticulationCoreConfig, EnvelopeConfig, HarmonicMode, IndividualConfig, LifeConfig,
-    MotionAutonomy, PitchCoreConfig, Scenario, SceneMarker, SoundBodyConfig, TargetRef,
-    TimbreGenotype, TimedEvent, VoiceControl, VoiceOnSpawn,
+    MotionAutonomy, PhonationConnectConfig, PitchCoreConfig, Scenario, SceneMarker,
+    SoundBodyConfig, TargetRef, TimbreGenotype, TimedEvent, VoiceControl, VoiceOnSpawn,
 };
 use crate::core::landscape::Landscape;
 use crate::core::landscape::LandscapeFrame;
@@ -605,6 +605,16 @@ fn life_config_deserializes_and_rejects_unknown_fields() {
     let cfg_missing: LifeConfig =
         serde_json::from_value(missing).expect("missing body should default");
     assert!(matches!(cfg_missing.body, SoundBodyConfig::Sine { .. }));
+}
+
+#[test]
+fn phonation_connect_rejects_unknown_keys() {
+    let err = serde_json::from_value::<PhonationConnectConfig>(serde_json::json!({
+        "type": "fixed_gate",
+        "mystery": 1
+    }))
+    .expect_err("unknown key should be rejected");
+    assert!(err.to_string().contains("mystery"));
 }
 
 #[test]

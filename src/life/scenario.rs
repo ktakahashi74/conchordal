@@ -550,8 +550,6 @@ pub struct LifeConfig {
     #[serde(default)]
     pub behavior: BehaviorConfig,
     #[serde(default)]
-    pub breath_gain_init: Option<f32>,
-    #[serde(default)]
     pub birth_once_duration_sec: Option<f32>,
 }
 
@@ -586,13 +584,19 @@ pub enum ArticulationCoreConfig {
         rhythm_freq: Option<f32>,
         #[serde(default)]
         rhythm_sensitivity: Option<f32>,
+        #[serde(default)]
+        breath_gain_init: Option<f32>,
     },
     Seq {
         duration: f32,
+        #[serde(default)]
+        breath_gain_init: Option<f32>,
     },
     Drone {
         #[serde(default)]
         sway: Option<f32>,
+        #[serde(default)]
+        breath_gain_init: Option<f32>,
     },
 }
 
@@ -602,6 +606,7 @@ impl Default for ArticulationCoreConfig {
             lifecycle: LifecycleConfig::default(),
             rhythm_freq: None,
             rhythm_sensitivity: None,
+            breath_gain_init: None,
         }
     }
 }
@@ -629,10 +634,15 @@ impl<'de> Deserialize<'de> for ArticulationCoreConfig {
                     .get("rhythm_sensitivity")
                     .and_then(|v| v.as_f64())
                     .map(|v| v as f32);
+                let breath_gain_init = obj
+                    .get("breath_gain_init")
+                    .and_then(|v| v.as_f64())
+                    .map(|v| v as f32);
                 let mut lifecycle_obj = obj.clone();
                 lifecycle_obj.remove("core");
                 lifecycle_obj.remove("rhythm_freq");
                 lifecycle_obj.remove("rhythm_sensitivity");
+                lifecycle_obj.remove("breath_gain_init");
                 let lifecycle_value = Value::Object(lifecycle_obj);
                 let lifecycle =
                     LifecycleConfig::deserialize(lifecycle_value).map_err(de::Error::custom)?;
@@ -640,12 +650,16 @@ impl<'de> Deserialize<'de> for ArticulationCoreConfig {
                     lifecycle,
                     rhythm_freq,
                     rhythm_sensitivity,
+                    breath_gain_init,
                 })
             }
             "seq" => {
                 for key in obj.keys() {
-                    if key != "core" && key != "duration" {
-                        return Err(de::Error::unknown_field(key, &["core", "duration"]));
+                    if key != "core" && key != "duration" && key != "breath_gain_init" {
+                        return Err(de::Error::unknown_field(
+                            key,
+                            &["core", "duration", "breath_gain_init"],
+                        ));
                     }
                 }
                 let duration = obj
@@ -653,16 +667,33 @@ impl<'de> Deserialize<'de> for ArticulationCoreConfig {
                     .and_then(|v| v.as_f64())
                     .ok_or_else(|| de::Error::custom("seq core requires `duration`"))?
                     as f32;
-                Ok(ArticulationCoreConfig::Seq { duration })
+                let breath_gain_init = obj
+                    .get("breath_gain_init")
+                    .and_then(|v| v.as_f64())
+                    .map(|v| v as f32);
+                Ok(ArticulationCoreConfig::Seq {
+                    duration,
+                    breath_gain_init,
+                })
             }
             "drone" => {
                 for key in obj.keys() {
-                    if key != "core" && key != "sway" {
-                        return Err(de::Error::unknown_field(key, &["core", "sway"]));
+                    if key != "core" && key != "sway" && key != "breath_gain_init" {
+                        return Err(de::Error::unknown_field(
+                            key,
+                            &["core", "sway", "breath_gain_init"],
+                        ));
                     }
                 }
                 let sway = obj.get("sway").and_then(|v| v.as_f64()).map(|v| v as f32);
-                Ok(ArticulationCoreConfig::Drone { sway })
+                let breath_gain_init = obj
+                    .get("breath_gain_init")
+                    .and_then(|v| v.as_f64())
+                    .map(|v| v as f32);
+                Ok(ArticulationCoreConfig::Drone {
+                    sway,
+                    breath_gain_init,
+                })
             }
             other => Err(de::Error::unknown_variant(
                 other,
@@ -705,14 +736,13 @@ impl fmt::Display for LifeConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "life[body={:?}, articulation={:?}, pitch={:?}, perceptual={:?}, phonation={:?}, behavior={:?}, breath_gain_init={:?}]",
+            "life[body={:?}, articulation={:?}, pitch={:?}, perceptual={:?}, phonation={:?}, behavior={:?}]",
             self.body,
             self.articulation,
             self.pitch,
             self.perceptual,
             self.phonation,
-            self.behavior,
-            self.breath_gain_init
+            self.behavior
         )
     }
 }
@@ -777,21 +807,27 @@ impl IndividualConfig {
         let voice_runtime = crate::life::individual::VoiceRuntime::from_behavior(&behavior.voice);
         let motion_runtime =
             crate::life::individual::MotionRuntime::from_behavior(&behavior.autonomy);
-        let (articulation_core, lifecycle_label, default_by_articulation) =
+        let (articulation_core, lifecycle_label, default_by_articulation, breath_gain_init) =
             match &self.life.articulation {
-                ArticulationCoreConfig::Entrain { lifecycle, .. } => {
+                ArticulationCoreConfig::Entrain {
+                    lifecycle,
+                    breath_gain_init,
+                    ..
+                } => {
                     let life_label = match lifecycle {
                         LifecycleConfig::Decay { .. } => "decay",
                         LifecycleConfig::Sustain { .. } => "sustain",
                     };
-                    ("entrain", life_label, 1.0)
+                    ("entrain", life_label, 1.0, *breath_gain_init)
                 }
-                ArticulationCoreConfig::Seq { .. } => ("seq", "none", 1.0),
-                ArticulationCoreConfig::Drone { .. } => ("drone", "none", 0.0),
+                ArticulationCoreConfig::Seq {
+                    breath_gain_init, ..
+                } => ("seq", "none", 1.0, *breath_gain_init),
+                ArticulationCoreConfig::Drone {
+                    breath_gain_init, ..
+                } => ("drone", "none", 0.0, *breath_gain_init),
             };
-        let breath_gain = self
-            .life
-            .breath_gain_init
+        let breath_gain = breath_gain_init
             .unwrap_or(default_by_articulation)
             .clamp(0.0, 1.0);
         debug!(
@@ -800,7 +836,7 @@ impl IndividualConfig {
             tag = ?metadata.tag,
             articulation = articulation_core,
             lifecycle = lifecycle_label,
-            breath_gain_init = self.life.breath_gain_init,
+            breath_gain_init,
             breath_gain
         );
         Individual {
@@ -932,6 +968,7 @@ mod tests {
                     },
                     rhythm_freq: None,
                     rhythm_sensitivity: None,
+                    breath_gain_init: None,
                 },
                 pitch: PitchCoreConfig::PitchHillClimb {
                     neighbor_step_cents: None,
@@ -950,7 +987,6 @@ mod tests {
                     self_smoothing_radius: None,
                     silence_mass_epsilon: None,
                 },
-                breath_gain_init: None,
                 ..Default::default()
             },
             tag: Some("test".into()),

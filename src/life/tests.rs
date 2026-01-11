@@ -32,6 +32,7 @@ fn life_with_lifecycle(lifecycle: LifecycleConfig) -> LifeConfig {
             lifecycle,
             rhythm_freq: None,
             rhythm_sensitivity: None,
+            breath_gain_init: None,
         },
         pitch: PitchCoreConfig::PitchHillClimb {
             neighbor_step_cents: None,
@@ -50,7 +51,6 @@ fn life_with_lifecycle(lifecycle: LifecycleConfig) -> LifeConfig {
             self_smoothing_radius: None,
             silence_mass_epsilon: None,
         },
-        breath_gain_init: None,
         ..Default::default()
     }
 }
@@ -392,6 +392,7 @@ fn harmonic_render_spectrum_hits_expected_bins() {
                 },
                 rhythm_freq: None,
                 rhythm_sensitivity: None,
+                breath_gain_init: None,
             },
             pitch: PitchCoreConfig::PitchHillClimb {
                 neighbor_step_cents: None,
@@ -410,7 +411,6 @@ fn harmonic_render_spectrum_hits_expected_bins() {
                 self_smoothing_radius: None,
                 silence_mass_epsilon: None,
             },
-            breath_gain_init: None,
             ..Default::default()
         },
         tag: None,
@@ -700,6 +700,7 @@ fn deterministic_rng_produces_same_targets() {
             },
             rhythm_freq: Some(1.0),
             rhythm_sensitivity: None,
+            breath_gain_init: None,
         },
         pitch: PitchCoreConfig::PitchHillClimb {
             neighbor_step_cents: None,
@@ -718,7 +719,6 @@ fn deterministic_rng_produces_same_targets() {
             self_smoothing_radius: Some(1),
             silence_mass_epsilon: Some(1e-6),
         },
-        breath_gain_init: None,
         ..Default::default()
     };
     let cfg = IndividualConfig {
@@ -1445,6 +1445,7 @@ fn articulation_snapshot_kuramoto_signature() {
         },
         rhythm_freq: Some(6.0),
         rhythm_sensitivity: None,
+        breath_gain_init: None,
     };
     let mut articulation =
         super::individual::AnyArticulationCore::from_config(&core, fs, 7, &mut rng);

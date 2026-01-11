@@ -32,6 +32,7 @@ fn life_with_lifecycle(lifecycle: LifecycleConfig) -> LifeConfig {
             lifecycle,
             rhythm_freq: None,
             rhythm_sensitivity: None,
+            breath_gain_init: None,
         },
         pitch: PitchCoreConfig::PitchHillClimb {
             neighbor_step_cents: None,
@@ -50,7 +51,6 @@ fn life_with_lifecycle(lifecycle: LifecycleConfig) -> LifeConfig {
             self_smoothing_radius: None,
             silence_mass_epsilon: None,
         },
-        breath_gain_init: None,
         ..Default::default()
     }
 }
@@ -221,6 +221,7 @@ fn articulation_snapshot_kuramoto_decay_signature() {
         },
         rhythm_freq: Some(6.0),
         rhythm_sensitivity: None,
+        breath_gain_init: None,
     };
     let mut articulation = AnyArticulationCore::from_config(&core, fs, 7, &mut rng);
     let mut rhythms = NeuralRhythms {

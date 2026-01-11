@@ -11,9 +11,9 @@ let click_life = #{
         type: "decay",
         initial_energy: 1.0,
         half_life_sec: 0.03,
-        attack_sec: 0.001
+        attack_sec: 0.001,
+        breath_gain_init: 1.0
     },
-    breath_gain_init: 1.0,
     pitch: #{ core: "pitch_hill_climb" },
     perceptual: #{
         tau_fast: 0.5,

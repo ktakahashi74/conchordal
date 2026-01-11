@@ -705,6 +705,7 @@ impl AnyArticulationCore {
                 lifecycle,
                 rhythm_freq,
                 rhythm_sensitivity,
+                ..
             } => {
                 let (
                     energy,
@@ -782,12 +783,14 @@ impl AnyArticulationCore {
                     dbg_last_k_eff: 0.0,
                 })
             }
-            ArticulationCoreConfig::Seq { duration } => AnyArticulationCore::Seq(SequencedCore {
-                timer: 0.0,
-                duration: duration.max(0.0),
-                env_level: 0.0,
-            }),
-            ArticulationCoreConfig::Drone { sway } => {
+            ArticulationCoreConfig::Seq { duration, .. } => {
+                AnyArticulationCore::Seq(SequencedCore {
+                    timer: 0.0,
+                    duration: duration.max(0.0),
+                    env_level: 0.0,
+                })
+            }
+            ArticulationCoreConfig::Drone { sway, .. } => {
                 let sway_rate = sway.unwrap_or(0.05);
                 let sway_rate = if sway_rate <= 0.0 { 0.05 } else { sway_rate };
                 AnyArticulationCore::Drone(DroneCore {

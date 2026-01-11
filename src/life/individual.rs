@@ -5,7 +5,6 @@ use crate::core::phase::wrap_0_tau;
 use crate::core::timebase::{Tick, Timebase};
 use crate::life::gate_clock::next_gate_tick;
 use crate::life::intent::{BodySnapshot, Intent};
-use crate::life::perceptual::{FeaturesNow, PerceptualContext};
 use crate::life::phonation_engine::{
     CoreState, CoreTickCtx, NoteId, OnsetEvent, PhonationCmd, PhonationEngine, PhonationNoteEvent,
 };
@@ -13,11 +12,12 @@ use crate::life::scenario::{
     BehaviorConfig, MotionAutonomy, PhonationConfig, VoiceControl, VoiceOnSpawn,
 };
 use crate::life::social_density::SocialDensityTrace;
-use rand::rngs::SmallRng;
 use std::f32::consts::TAU;
 
 #[path = "articulation_core.rs"]
 pub mod articulation_core;
+#[path = "pitch_controller.rs"]
+pub mod pitch_controller;
 #[path = "pitch_core.rs"]
 pub mod pitch_core;
 #[path = "sound_body.rs"]
@@ -28,6 +28,7 @@ pub use articulation_core::{
     ArticulationWrapper, DroneCore, KuramotoCore, PinkNoise, PlannedGate, PlannedPitch,
     Sensitivity, SequencedCore,
 };
+pub use pitch_controller::PitchController;
 pub use pitch_core::{AnyPitchCore, PitchCore, PitchHillClimbPitchCore, TargetProposal};
 pub use sound_body::{AnySoundBody, HarmonicBody, SineBody, SoundBody};
 
@@ -135,8 +136,7 @@ pub struct Individual {
     pub voice_runtime: VoiceRuntime,
     pub motion_runtime: MotionRuntime,
     pub articulation: ArticulationWrapper,
-    pub pitch: AnyPitchCore,
-    pub perceptual: PerceptualContext,
+    pub(crate) pitch_ctl: PitchController,
     pub phonation: PhonationConfig,
     pub phonation_engine: PhonationEngine,
     pub body: AnySoundBody,
@@ -144,13 +144,6 @@ pub struct Individual {
     pub(crate) release_gain: f32,
     pub(crate) release_sec: f32,
     pub(crate) release_pending: bool,
-    pub(crate) target_pitch_log2: Option<f32>,
-    pub(crate) integration_window: f32,
-    pub(crate) accumulated_time: f32,
-    pub(crate) last_theta_phase: f32,
-    pub(crate) theta_phase_initialized: bool,
-    pub(crate) last_target_salience: f32,
-    pub rng: SmallRng,
     pub(crate) birth_once_pending: bool,
     pub(crate) birth_frame: u64,
     pub(crate) birth_once_duration_sec: Option<f32>,
@@ -205,12 +198,11 @@ impl Individual {
     }
 
     pub fn target_pitch_log2(&self) -> f32 {
-        self.target_pitch_log2
-            .unwrap_or_else(|| self.body.base_freq_hz().max(1.0).log2())
+        self.pitch_ctl.target_pitch_log2()
     }
 
     pub fn integration_window(&self) -> f32 {
-        self.integration_window
+        self.pitch_ctl.integration_window()
     }
 
     pub fn release_gain(&self) -> f32 {
@@ -222,30 +214,26 @@ impl Individual {
     }
 
     #[cfg(test)]
-    pub(crate) fn set_accumulated_time(&mut self, value: f32) {
-        self.accumulated_time = value;
+    pub(crate) fn set_accumulated_time_for_test(&mut self, value: f32) {
+        self.pitch_ctl.set_accumulated_time_for_test(value);
     }
 
     #[cfg(test)]
-    pub(crate) fn accumulated_time(&self) -> f32 {
-        self.accumulated_time
+    pub(crate) fn accumulated_time_for_test(&self) -> f32 {
+        self.pitch_ctl.accumulated_time_for_test()
     }
 
     #[cfg(test)]
-    pub(crate) fn set_theta_phase_state(&mut self, last_phase: f32, initialized: bool) {
-        self.last_theta_phase = last_phase;
-        self.theta_phase_initialized = initialized;
+    pub(crate) fn set_theta_phase_state_for_test(&mut self, last_phase: f32, initialized: bool) {
+        self.pitch_ctl
+            .set_theta_phase_state_for_test(last_phase, initialized);
     }
 
     pub fn force_set_pitch_log2(&mut self, log_freq: f32) {
         let log_freq = log_freq.max(0.0);
         self.body.set_pitch_log2(log_freq);
-        self.target_pitch_log2 = Some(log_freq);
         self.articulation.set_gate(1.0);
-        self.accumulated_time = 0.0;
-        self.last_theta_phase = 0.0;
-        self.theta_phase_initialized = false;
-        self.last_target_salience = 0.0;
+        self.pitch_ctl.force_set_target_pitch_log2(log_freq);
     }
 
     /// Update pitch targets at control rate (hop-sized steps).
@@ -255,55 +243,9 @@ impl Individual {
         dt_sec: f32,
         landscape: &Landscape,
     ) {
-        let dt_sec = dt_sec.max(0.0);
-        let current_freq = self.body.base_freq_hz().max(1.0);
-        let current_pitch_log2 = current_freq.log2();
-        let mut target_pitch_log2 = self.target_pitch_log2.unwrap_or(current_pitch_log2);
-        self.integration_window = 2.0 + 10.0 / current_freq.max(1.0);
-        self.accumulated_time += dt_sec;
-
-        // Detect theta wrap to avoid missing zero-crossings at control rate.
-        let theta_phase = rhythms.theta.phase;
-        let theta_cross = if theta_phase.is_finite() && self.last_theta_phase.is_finite() {
-            let wrapped = self.theta_phase_initialized && theta_phase < self.last_theta_phase;
-            wrapped && rhythms.theta.mag.is_finite() && rhythms.theta.mag > 0.0
-        } else {
-            false
-        };
-        self.last_theta_phase = if theta_phase.is_finite() {
-            self.theta_phase_initialized = true;
-            theta_phase
-        } else {
-            self.theta_phase_initialized = false;
-            0.0
-        };
-
-        if theta_cross && self.accumulated_time >= self.integration_window {
-            let elapsed = self.accumulated_time;
-            self.accumulated_time = 0.0;
-            let features = FeaturesNow::from_subjective_intensity(&landscape.subjective_intensity);
-            debug_assert_eq!(features.distribution.len(), landscape.space.n_bins());
-            self.perceptual.ensure_len(features.distribution.len());
-            let proposal = self.pitch.propose_target(
-                current_pitch_log2,
-                target_pitch_log2,
-                current_freq,
-                self.integration_window,
-                landscape,
-                &self.perceptual,
-                &features,
-                &mut self.rng,
-            );
-            target_pitch_log2 = proposal.target_pitch_log2;
-            self.last_target_salience = proposal.salience;
-            if let Some(idx) = landscape.space.index_of_log2(target_pitch_log2) {
-                self.perceptual.update(idx, &features, elapsed);
-            }
-        }
-
-        let (fmin, fmax) = landscape.freq_bounds_log2();
-        target_pitch_log2 = target_pitch_log2.clamp(fmin, fmax);
-        self.target_pitch_log2 = Some(target_pitch_log2);
+        let current_freq = self.body.base_freq_hz();
+        self.pitch_ctl
+            .update_pitch_target(current_freq, rhythms, dt_sec, landscape);
     }
 
     /// Control-rate entry point for pitch + articulation updates.
@@ -339,7 +281,7 @@ impl Individual {
         let planned = PlannedPitch {
             target_pitch_log2,
             jump_cents_abs: 1200.0 * (target_pitch_log2 - current_pitch_log2).abs(),
-            salience: self.last_target_salience,
+            salience: self.pitch_ctl.last_target_salience(),
         };
         let apply_planned_pitch = self.articulation.update_gate(&planned, rhythms, dt_sec);
         if apply_planned_pitch {

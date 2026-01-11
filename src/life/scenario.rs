@@ -9,6 +9,7 @@ use tracing::debug;
 
 use crate::life::individual::{
     AgentMetadata, AnyArticulationCore, AnyPitchCore, ArticulationWrapper, Individual,
+    PitchController,
 };
 use crate::life::lifecycle::LifecycleConfig;
 use crate::life::perceptual::PerceptualConfig;
@@ -747,6 +748,13 @@ impl IndividualConfig {
             self.amp,
             &mut rng,
         );
+        let pitch_ctl = PitchController::new(
+            pitch,
+            perceptual,
+            target_pitch_log2,
+            integration_window,
+            rng,
+        );
         let behavior = self.life.behavior.clone();
         let voice_runtime = crate::life::individual::VoiceRuntime::from_behavior(&behavior.voice);
         let motion_runtime =
@@ -784,8 +792,7 @@ impl IndividualConfig {
             voice_runtime,
             motion_runtime,
             articulation: ArticulationWrapper::new(core, breath_gain),
-            pitch,
-            perceptual,
+            pitch_ctl,
             phonation: self.life.phonation.clone(),
             phonation_engine,
             body,
@@ -793,13 +800,6 @@ impl IndividualConfig {
             release_gain: 1.0,
             release_sec: 0.03,
             release_pending: false,
-            target_pitch_log2: Some(target_pitch_log2),
-            integration_window,
-            accumulated_time: 0.0,
-            last_theta_phase: 0.0,
-            theta_phase_initialized: false,
-            last_target_salience: 0.0,
-            rng,
             birth_once_pending: true,
             birth_frame: start_frame,
             birth_once_duration_sec: self.life.birth_once_duration_sec,

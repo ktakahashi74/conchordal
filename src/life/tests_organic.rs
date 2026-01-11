@@ -110,8 +110,8 @@ fn test_scan_logic() {
         }
     }
 
-    agent.set_accumulated_time(5.0);
-    agent.set_theta_phase_state(6.0, true);
+    agent.set_accumulated_time_for_test(5.0);
+    agent.set_theta_phase_state_for_test(6.0, true);
     let mut rhythms = NeuralRhythms::default();
     rhythms.theta.mag = 1.0;
     rhythms.theta.phase = 0.25;

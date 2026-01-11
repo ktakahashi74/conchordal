@@ -555,7 +555,7 @@ impl Population {
                 for id in ids {
                     if let Some(agent) = self.find_individual_mut(id) {
                         let v = value.clamp(0.0, 1.0);
-                        agent.pitch.set_persistence(v);
+                        agent.pitch_ctl.core_mut().set_persistence(v);
                     } else {
                         warn!("SetCommitment: agent {id} not found");
                     }
@@ -567,7 +567,7 @@ impl Population {
                     if let Some(agent) = self.find_individual_mut(id) {
                         // Map drift to exploration without coupling persistence.
                         let v = value.abs().clamp(0.0, 1.0);
-                        agent.pitch.set_exploration(v);
+                        agent.pitch_ctl.core_mut().set_exploration(v);
                     } else {
                         warn!("SetDrift: agent {id} not found");
                     }

@@ -770,8 +770,8 @@ fn theta_wrap_triggers_pitch_update_with_large_dt() {
     );
     let agent = pop.individuals.first_mut().expect("agent exists");
     let integration_window = agent.integration_window();
-    agent.set_accumulated_time(integration_window + 1.0);
-    agent.set_theta_phase_state(6.0, true);
+    agent.set_accumulated_time_for_test(integration_window + 1.0);
+    agent.set_theta_phase_state_for_test(6.0, true);
 
     let rhythms = NeuralRhythms {
         theta: RhythmBand {
@@ -793,7 +793,7 @@ fn theta_wrap_triggers_pitch_update_with_large_dt() {
     };
     agent.update_pitch_target(&rhythms, 0.5, &landscape);
     assert_eq!(
-        agent.accumulated_time(),
+        agent.accumulated_time_for_test(),
         0.0,
         "theta wrap should trigger a pitch update even for large dt"
     );

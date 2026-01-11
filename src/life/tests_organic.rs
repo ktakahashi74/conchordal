@@ -201,11 +201,11 @@ fn setfreq_sync_prevents_snapback() {
     );
     assert!(
         (agent.target_pitch_log2() - old_target).abs() > 0.5,
-        "target should not drift back toward old target"
+        "target should not slide back toward old target"
     );
     assert!(
         (agent.body.base_freq_hz() - old_freq).abs() > 1.0,
-        "body should not drift back toward old frequency"
+        "body should not slide back toward old frequency"
     );
 }
 

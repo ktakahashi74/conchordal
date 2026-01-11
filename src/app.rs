@@ -231,8 +231,8 @@ pub fn validate_scenario(scenario: &Scenario) -> Result<(), String> {
                 | Action::ReleaseAgent { target, .. }
                 | Action::SetFreq { target, .. }
                 | Action::SetAmp { target, .. }
-                | Action::SetCommitment { target, .. }
-                | Action::SetDrift { target, .. } => {
+                | Action::SetPersistence { target, .. }
+                | Action::SetExploration { target, .. } => {
                     validate_target(target)?;
                 }
                 Action::SetRhythmVitality { .. }

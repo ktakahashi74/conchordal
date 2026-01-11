@@ -20,7 +20,7 @@ let anchor = spawn("anchor", 1, #{ amp: 0.6, method: anchor_method, life: #{
     pitch: #{ core: "pitch_hill_climb" },
     perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
 } });
-set(anchor, #{ commitment: 1.0 });
+set(anchor, #{ persistence: 1.0 });
 
 wait(1.0);
 
@@ -53,15 +53,15 @@ let seeker_m2_method = #{ mode: "random_log_uniform", min_freq: 140.0, max_freq:
 let seeker_tritone = spawn("seeker_tritone", 1, #{ amp: 0.4, method: seeker_tritone_method, life: life_seeker });
 let seeker_m2 = spawn("seeker_m2", 1, #{ amp: 0.4, method: seeker_m2_method, life: life_seeker }); // near C3 (~130 Hz)
 
-// Set commitment (higher = more stubborn)
-set(seeker_tritone, #{ commitment: 0.5 });
-set(seeker_m2, #{ commitment: 0.67 }); // moves more slowly
+// Set persistence (higher = more stubborn)
+set(seeker_tritone, #{ persistence: 0.5 });
+set(seeker_m2, #{ persistence: 0.67 }); // moves more slowly
 
 print(">>> Observe: They should hop to the nearest consonant peak (G or C) <<<");
 wait(5.0);
 
 // ==========================================
-// Phase 3: Tectonic shift (drift)
+// Phase 3: Tectonic shift (exploration)
 // ==========================================
 scene("Phase 3: Modulation to F");
 print("--- [3] Moving Anchor to F2 (87.31Hz) ---");
@@ -84,7 +84,7 @@ print("--- [4] Spawning a swarm ---");
 let method = #{ mode: "harmonic_density", min_freq: 200.0, max_freq: 800.0 };
 for i in 0..4 {
     let swarm = spawn("swarm_" + i, 1, #{ amp: 0.15, method: method, life: life_seeker });
-    set(swarm, #{ commitment: 0.56 });
+    set(swarm, #{ persistence: 0.56 });
     wait(0.5);
 }
 

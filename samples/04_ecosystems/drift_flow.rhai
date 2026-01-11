@@ -20,8 +20,8 @@ let anchor = spawn("anchor", 1, #{ amp: 0.6, method: anchor_method, life: #{
     pitch: #{ core: "pitch_hill_climb" },
     perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
 } });
-// Anchor stays put (high commitment = resists movement)
-set(anchor, #{ commitment: 1.0 });
+// Anchor stays put (high persistence = resists movement)
+set(anchor, #{ persistence: 1.0 });
 
 wait(1.0);
 
@@ -42,8 +42,8 @@ let slider = spawn("slider", 1, #{ amp: 0.4, method: slider_method, life: #{
     perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
 } });
 
-// Low commitment = moves easily
-set(slider, #{ commitment: 0.33 }); // eager to move
+// Low persistence = moves easily
+set(slider, #{ persistence: 0.33 }); // eager to move
 
 wait(4.0);
 
@@ -60,7 +60,7 @@ print("--- Slider should be pushed away by red arrow ---");
 wait(6.0);
 
 // ==========================================
-// Phase 3: Mass Migration (drift and pursuit)
+// Phase 3: Mass Migration (exploration and pursuit)
 // ==========================================
 scene("Phase 3: Modulation");
 print("--- [3] Spawning Swarm & Moving Anchor ---");
@@ -85,7 +85,7 @@ let life = #{
 
 for i in 0..5 {
     let swarm = spawn("swarm_" + i, 1, #{ amp: 0.15, method: method, life: life });
-    set(swarm, #{ commitment: 0.56 }); // hop loosely
+    set(swarm, #{ persistence: 0.56 }); // hop loosely
     wait(0.5);
 }
 
@@ -96,7 +96,7 @@ print(">>> Watch the blue arrows flip direction! <<<");
 
 // Move anchor to F2.
 // Landscape flips: C-major valleys disappear, F-major basins emerge.
-// Swarm should drift toward F overtones (A, C, Eb...).
+// Swarm should move toward F overtones (A, C, Eb...).
 set(anchor, #{ freq: 87.31 }); 
 
 wait(8.0);

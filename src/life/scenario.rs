@@ -1017,11 +1017,11 @@ pub enum Action {
         mirror: Option<f32>,
         limit: Option<u32>,
     },
-    SetCommitment {
+    SetPersistence {
         target: TargetRef,
         value: f32,
     },
-    SetDrift {
+    SetExploration {
         target: TargetRef,
         value: f32,
     },
@@ -1096,11 +1096,11 @@ impl fmt::Display for Action {
                 let l = limit.map(|v| v.to_string()).unwrap_or_else(|| "-".into());
                 write!(f, "SetHarmonicity mirror={} limit={}", m, l)
             }
-            Action::SetCommitment { target, value } => {
-                write!(f, "SetCommitment target={} value={:.3}", target, value)
+            Action::SetPersistence { target, value } => {
+                write!(f, "SetPersistence target={} value={:.3}", target, value)
             }
-            Action::SetDrift { target, value } => {
-                write!(f, "SetDrift target={} value={:.3}", target, value)
+            Action::SetExploration { target, value } => {
+                write!(f, "SetExploration target={} value={:.3}", target, value)
             }
             Action::PostIntent {
                 source_id,

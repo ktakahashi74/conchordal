@@ -550,26 +550,26 @@ impl Population {
                 pending.limit = limit.or(pending.limit);
                 self.pending_update = Some(pending);
             }
-            Action::SetCommitment { target, value } => {
+            Action::SetPersistence { target, value } => {
                 let ids = self.resolve_target_ids(&target);
                 for id in ids {
                     if let Some(agent) = self.find_individual_mut(id) {
                         let v = value.clamp(0.0, 1.0);
                         agent.pitch_ctl.core_mut().set_persistence(v);
                     } else {
-                        warn!("SetCommitment: agent {id} not found");
+                        warn!("SetPersistence: agent {id} not found");
                     }
                 }
             }
-            Action::SetDrift { target, value } => {
+            Action::SetExploration { target, value } => {
                 let ids = self.resolve_target_ids(&target);
                 for id in ids {
                     if let Some(agent) = self.find_individual_mut(id) {
-                        // Map drift to exploration without coupling persistence.
+                        // Map exploration without coupling persistence.
                         let v = value.abs().clamp(0.0, 1.0);
                         agent.pitch_ctl.core_mut().set_exploration(v);
                     } else {
-                        warn!("SetDrift: agent {id} not found");
+                        warn!("SetExploration: agent {id} not found");
                     }
                 }
             }

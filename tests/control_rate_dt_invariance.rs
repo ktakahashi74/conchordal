@@ -79,7 +79,7 @@ fn control_rate_dt_invariance() {
     let gate_coarse = coarse.articulation.gate();
     assert!(
         (gate_fine - gate_coarse).abs() <= tol,
-        "gate drift fine={gate_fine:.6} coarse={gate_coarse:.6}"
+        "gate delta fine={gate_fine:.6} coarse={gate_coarse:.6}"
     );
 
     let (energy_fine, env_fine) = match &fine.articulation.core {
@@ -93,10 +93,10 @@ fn control_rate_dt_invariance() {
 
     assert!(
         (energy_fine - energy_coarse).abs() <= tol,
-        "energy drift fine={energy_fine:.6} coarse={energy_coarse:.6}"
+        "energy delta fine={energy_fine:.6} coarse={energy_coarse:.6}"
     );
     assert!(
         (env_fine - env_coarse).abs() <= tol,
-        "env_level drift fine={env_fine:.6} coarse={env_coarse:.6}"
+        "env_level delta fine={env_fine:.6} coarse={env_coarse:.6}"
     );
 }

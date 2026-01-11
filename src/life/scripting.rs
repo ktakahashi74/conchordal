@@ -467,12 +467,12 @@ impl ScriptContext {
         self.push_event(self.cursor, vec![Action::SetAmp { target, amp }]);
     }
 
-    pub fn set_drift(&mut self, target: TargetRef, value: f32) {
-        self.push_event(self.cursor, vec![Action::SetDrift { target, value }]);
+    pub fn set_exploration(&mut self, target: TargetRef, value: f32) {
+        self.push_event(self.cursor, vec![Action::SetExploration { target, value }]);
     }
 
-    pub fn set_commitment(&mut self, target: TargetRef, value: f32) {
-        self.push_event(self.cursor, vec![Action::SetCommitment { target, value }]);
+    pub fn set_persistence(&mut self, target: TargetRef, value: f32) {
+        self.push_event(self.cursor, vec![Action::SetPersistence { target, value }]);
     }
 
     pub fn set_rhythm_vitality(
@@ -533,14 +533,14 @@ impl ScriptContext {
         let mut unknown_keys = Vec::new();
         for key in patch.keys() {
             match key.as_str() {
-                "amp" | "freq" | "drift" | "commitment" => {}
+                "amp" | "freq" | "exploration" | "persistence" => {}
                 _ => unknown_keys.push(key.to_string()),
             }
         }
         if !unknown_keys.is_empty() {
             unknown_keys.sort();
             let msg = format!(
-                "set() patch has unknown keys: [{}] (allowed: amp, freq, drift, commitment)",
+                "set() patch has unknown keys: [{}] (allowed: amp, freq, exploration, persistence)",
                 unknown_keys.join(", ")
             );
             return Err(Box::new(EvalAltResult::ErrorRuntime(msg.into(), position)));
@@ -581,38 +581,38 @@ impl ScriptContext {
                 freq_hz,
             });
         }
-        if let Some(value) = patch.get("drift") {
-            let drift = value
+        if let Some(value) = patch.get("exploration") {
+            let exploration = value
                 .as_float()
                 .ok()
                 .map(|v| v as f32)
                 .or_else(|| value.as_int().ok().map(|v| v as f32))
                 .ok_or_else(|| {
                     Box::new(EvalAltResult::ErrorRuntime(
-                        "set() patch drift must be a number".into(),
+                        "set() patch exploration must be a number".into(),
                         position,
                     ))
                 })?;
-            actions.push(Action::SetDrift {
+            actions.push(Action::SetExploration {
                 target: target.clone(),
-                value: drift,
+                value: exploration,
             });
         }
-        if let Some(value) = patch.get("commitment") {
-            let commitment = value
+        if let Some(value) = patch.get("persistence") {
+            let persistence = value
                 .as_float()
                 .ok()
                 .map(|v| v as f32)
                 .or_else(|| value.as_int().ok().map(|v| v as f32))
                 .ok_or_else(|| {
                     Box::new(EvalAltResult::ErrorRuntime(
-                        "set() patch commitment must be a number".into(),
+                        "set() patch persistence must be a number".into(),
                         position,
                     ))
                 })?;
-            actions.push(Action::SetCommitment {
+            actions.push(Action::SetPersistence {
                 target: target.clone(),
-                value: commitment,
+                value: persistence,
             });
         }
         if actions.is_empty() {

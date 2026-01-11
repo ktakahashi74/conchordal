@@ -47,7 +47,7 @@ Sound is not a singular event but a mass phenomenon. The **Population** manages 
 The atomic unit of the system. Each **Individual** is an autonomous entity:
 * **Proprioception:** It senses the Landscape's spectral potentials and synchronizes its internal clock to the environmental Neural Rhythms.
 * **Metabolism:** It consumes energy to sustain articulation.
-* **Autonomy:** It makes local decisions—drifting away from dissonance (segregation) or locking onto harmonic peaks (fusion)—without a central conductor.
+* **Autonomy:** It makes local decisions—moving away from dissonance (segregation) or locking onto harmonic peaks (fusion)—without a central conductor.
 
 ## The Role of the Artist: Scenarios as Macro-Structure
 
@@ -113,7 +113,7 @@ Core scenario API (v2):
 
 Strict keys:
 - `spawn` opts: `amp`, `method`, `life`
-- `set` patch: `amp`, `freq`, `drift`, `commitment`
+- `set` patch: `amp`, `freq`, `exploration`, `persistence`
 
 
 ### Testing and other commands

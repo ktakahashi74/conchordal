@@ -23,7 +23,7 @@ let anchor = spawn(
         }
     }
 );
-set(anchor, #{ commitment: 0.9 });
+set(anchor, #{ persistence: 0.9 });
 
 wait(4.0);
 
@@ -39,15 +39,15 @@ let seeker_fsharp_method = #{ mode: "random_log_uniform", min_freq: 92.499, max_
 let seeker_csharp_method = #{ mode: "random_log_uniform", min_freq: 69.296, max_freq: 69.296 };
 let seeker_fsharp = spawn("seeker_fsharp", 1, #{ amp: 0.08, method: seeker_fsharp_method, life: seeker_life });
 let seeker_csharp = spawn("seeker_csharp", 1, #{ amp: 0.08, method: seeker_csharp_method, life: seeker_life });
-set(seeker_fsharp, #{ commitment: 0.25 });
-set(seeker_csharp, #{ commitment: 0.25 });
+set(seeker_fsharp, #{ persistence: 0.25 });
+set(seeker_csharp, #{ persistence: 0.25 });
 
 wait(8.0);
 
 scene("anchor_moves");
 // Phase 3: anchor hops to F2; swarm should re-lock on F-major colors
 set(anchor, #{ freq: 87.307 }); // F2
-set(anchor, #{ commitment: 0.8 });
+set(anchor, #{ persistence: 0.8 });
 
 wait(10.0);
 end();

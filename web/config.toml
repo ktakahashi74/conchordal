@@ -1,4 +1,4 @@
-base_url = "https://conchordal.org"
+base_url = "https://www.conchordal.org"
 
 theme = "zola-grayscale"
 author = "Koichi Takahashi / Conchordal"

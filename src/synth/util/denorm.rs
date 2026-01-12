@@ -1,0 +1,12 @@
+//! Denormal handling for audio-rate signals.
+
+const DENORM_THRESH: f32 = 1.0e-20;
+
+/// Flush denormals and non-finite values to zero.
+pub fn flush_denorm(x: f32) -> f32 {
+    if !x.is_finite() || x.abs() < DENORM_THRESH {
+        0.0
+    } else {
+        x
+    }
+}

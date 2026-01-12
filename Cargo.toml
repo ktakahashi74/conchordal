@@ -64,7 +64,12 @@ default = ["simd-wide"]
 simd-wide = ["dep:wide"]
 
 [dev-dependencies]
+criterion = "0.5"
 approx = "0.5"
 plotters = "0.3"
 rhai-autodocs = "0.10"
 walkdir = "2.5"
+
+[[bench]]
+name = "synth_resonator_bank"
+harness = false

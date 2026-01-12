@@ -942,14 +942,14 @@ impl PhonationEngine {
                 strength: 1.0,
             });
         }
-        if !state.is_alive {
-            if let Some(note_id) = self.hold.note_id.take() {
-                out_cmds.push(PhonationCmd::NoteOff {
-                    note_id,
-                    off_tick: ctx.now_tick,
-                });
-                self.active_notes = self.active_notes.saturating_sub(1);
-            }
+        if !state.is_alive
+            && let Some(note_id) = self.hold.note_id.take()
+        {
+            out_cmds.push(PhonationCmd::NoteOff {
+                note_id,
+                off_tick: ctx.now_tick,
+            });
+            self.active_notes = self.active_notes.saturating_sub(1);
         }
     }
 

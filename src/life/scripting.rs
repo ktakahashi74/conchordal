@@ -69,6 +69,13 @@ fn spawn_every(tag, count, interval) {
 }
 "#;
 
+type NormalizedSpawnPatch = (
+    AgentPatch,
+    serde_json::Value,
+    Option<serde_json::Value>,
+    Option<SpawnMethod>,
+);
+
 #[derive(Debug, Clone)]
 pub struct ScriptContext {
     pub cursor: f32,
@@ -612,15 +619,7 @@ impl ScriptContext {
         patch: Map,
         debug_map: &str,
         position: Position,
-    ) -> Result<
-        (
-            AgentPatch,
-            serde_json::Value,
-            Option<serde_json::Value>,
-            Option<SpawnMethod>,
-        ),
-        Box<EvalAltResult>,
-    > {
+    ) -> Result<NormalizedSpawnPatch, Box<EvalAltResult>> {
         let raw_val = serde_json::to_value(&patch).map_err(|e| {
             Box::new(EvalAltResult::ErrorRuntime(
                 format!("Error serializing AgentPatch: {e}").into(),
@@ -669,13 +668,13 @@ impl ScriptContext {
             None
         };
 
-        if let Some(life_val) = life_val.as_ref() {
-            if !matches!(life_val, serde_json::Value::Object(_)) {
-                return Err(Box::new(EvalAltResult::ErrorRuntime(
-                    "life must be a map".into(),
-                    position,
-                )));
-            }
+        if let Some(life_val) = life_val.as_ref()
+            && !matches!(life_val, serde_json::Value::Object(_))
+        {
+            return Err(Box::new(EvalAltResult::ErrorRuntime(
+                "life must be a map".into(),
+                position,
+            )));
         }
 
         let patch_val = serde_json::Value::Object(raw_map);
@@ -771,10 +770,10 @@ impl ScriptContext {
             )));
         };
 
-        if let Some(method) = method {
-            if !body_map.contains_key("method") {
-                body_map.insert("method".to_string(), serde_json::Value::from(method));
-            }
+        if let Some(method) = method
+            && !body_map.contains_key("method")
+        {
+            body_map.insert("method".to_string(), serde_json::Value::from(method));
         }
 
         let mut timbre_updates = Vec::new();

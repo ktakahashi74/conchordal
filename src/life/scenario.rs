@@ -463,17 +463,12 @@ impl Default for SocialConfig {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum PhonationMode {
+    #[default]
     Gated,
     Hold,
-}
-
-impl Default for PhonationMode {
-    fn default() -> Self {
-        PhonationMode::Gated
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]

@@ -249,6 +249,24 @@ impl ResonatorBank {
         }
     }
 
+    /// Process a mono block with the scalar backend (bench hook).
+    #[cfg(any(test, feature = "bench-hooks"))]
+    pub fn process_block_mono_scalar(&mut self, input: &[f32], output: &mut [f32]) {
+        assert_eq!(input.len(), output.len());
+        for (u, y) in input.iter().copied().zip(output.iter_mut()) {
+            *y = self.process_sample_scalar(u);
+        }
+    }
+
+    /// Process a mono block with the SIMD backend (bench hook).
+    #[cfg(all(any(test, feature = "bench-hooks"), feature = "simd-wide"))]
+    pub fn process_block_mono_simd(&mut self, input: &[f32], output: &mut [f32]) {
+        assert_eq!(input.len(), output.len());
+        for (u, y) in input.iter().copied().zip(output.iter_mut()) {
+            *y = self.process_sample_simd_wide8(u);
+        }
+    }
+
     /// Process a mono block; input and output slices must be same length.
     pub fn process_block_mono(&mut self, input: &[f32], output: &mut [f32]) {
         assert_eq!(input.len(), output.len());

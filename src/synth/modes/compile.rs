@@ -19,7 +19,11 @@ pub fn compile_mode(params: &ModeParams, fs: f32) -> ModeCoeffs {
     let freq_hz = clamp_finite(params.freq_hz, 1.0, freq_max, 1.0);
     let t60_s = clamp_finite(params.t60_s, 0.005, 120.0, 0.005);
 
-    let gain = if params.gain.is_finite() { params.gain } else { 0.0 };
+    let gain = if params.gain.is_finite() {
+        params.gain
+    } else {
+        0.0
+    };
     let in_gain = if params.in_gain.is_finite() {
         params.in_gain
     } else {

@@ -1,9 +1,9 @@
 //! Resonator bank using a damped Modified Coupled Form (Hz, sec).
 //! x = r*(x - e*y) + b1*u, y = r*(e*x + y) + b2*u
 
-use crate::synth::modes::{compile_mode, ModeParams};
-use crate::synth::util::flush_denorm;
 use crate::synth::SynthError;
+use crate::synth::modes::{ModeParams, compile_mode};
+use crate::synth::util::flush_denorm;
 #[cfg(feature = "simd-wide")]
 use wide::f32x8;
 
@@ -308,9 +308,7 @@ mod tests {
         ];
         bank.set_modes(&modes).unwrap();
 
-        let input: Vec<f32> = (0..256)
-            .map(|i| ((i as f32) * 0.01).sin())
-            .collect();
+        let input: Vec<f32> = (0..256).map(|i| ((i as f32) * 0.01).sin()).collect();
         let mut out_a = vec![0.0; input.len()];
         let mut out_b = vec![0.0; input.len()];
 

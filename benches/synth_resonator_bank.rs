@@ -7,9 +7,9 @@
 
 use std::f32::consts::PI;
 
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use conchordal::synth::modes::ModeParams;
 use conchordal::synth::resonator::ResonatorBank;
+use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 
 const FS: f32 = 48_000.0;
 const BLOCK_LENS: [usize; 3] = [64, 256, 1024];
@@ -31,9 +31,7 @@ fn build_modes(modes_len: usize) -> Vec<ModeParams> {
 
 fn make_sine(block_len: usize, fs: f32) -> Vec<f32> {
     let step = 2.0 * PI * 440.0 / fs;
-    (0..block_len)
-        .map(|i| (step * i as f32).sin())
-        .collect()
+    (0..block_len).map(|i| (step * i as f32).sin()).collect()
 }
 
 fn make_impulse(block_len: usize) -> Vec<f32> {

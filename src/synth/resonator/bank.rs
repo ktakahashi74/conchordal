@@ -241,11 +241,11 @@ impl ResonatorBank {
     pub fn process_sample(&mut self, u: f32) -> f32 {
         #[cfg(feature = "simd-wide")]
         {
-            return self.process_sample_simd_wide8(u);
+            self.process_sample_simd_wide8(u)
         }
         #[cfg(not(feature = "simd-wide"))]
         {
-            return self.process_sample_scalar(u);
+            self.process_sample_scalar(u)
         }
     }
 

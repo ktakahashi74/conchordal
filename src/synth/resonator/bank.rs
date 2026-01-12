@@ -4,6 +4,8 @@
 use crate::synth::modes::{compile_mode, ModeParams};
 use crate::synth::util::flush_denorm;
 use crate::synth::SynthError;
+#[cfg(feature = "simd-wide")]
+use wide::f32x8;
 
 /// Bank of resonators in a struct-of-arrays layout.
 #[derive(Debug, Clone)]
@@ -105,8 +107,9 @@ impl ResonatorBank {
         Ok(())
     }
 
-    /// Process a single sample with the damped MCF update.
-    pub fn process_sample(&mut self, u: f32) -> f32 {
+    /// Process a single sample with the damped MCF update (reference scalar).
+    #[allow(dead_code)]
+    fn process_sample_ref(&mut self, u: f32) -> f32 {
         let mut out = 0.0;
         for i in 0..self.active_len {
             let e = self.e[i];
@@ -131,6 +134,119 @@ impl ResonatorBank {
         }
 
         flush_denorm(out)
+    }
+
+    #[allow(dead_code)]
+    fn process_sample_scalar(&mut self, u: f32) -> f32 {
+        let n = self.active_len;
+        let x = &mut self.x[..n];
+        let y = &mut self.y[..n];
+        let e = &self.e[..n];
+        let r = &self.r[..n];
+        let b1 = &self.b1[..n];
+        let b2 = &self.b2[..n];
+        let gain = &self.gain[..n];
+
+        let mut out = 0.0;
+        for i in 0..n {
+            let x0 = x[i];
+            let y0 = y[i];
+
+            let mut x1 = r[i] * (x0 - e[i] * y0) + b1[i] * u;
+            x1 = flush_denorm(x1);
+
+            let mut y1 = r[i] * (e[i] * x1 + y0) + b2[i] * u;
+            y1 = flush_denorm(y1);
+
+            x[i] = x1;
+            y[i] = y1;
+
+            out += gain[i] * y1;
+        }
+
+        flush_denorm(out)
+    }
+
+    #[cfg(feature = "simd-wide")]
+    fn process_sample_simd_wide8(&mut self, u: f32) -> f32 {
+        let n = self.active_len;
+        let n8 = n & !7;
+        let x = &mut self.x[..n];
+        let y = &mut self.y[..n];
+        let e = &self.e[..n];
+        let r = &self.r[..n];
+        let b1 = &self.b1[..n];
+        let b2 = &self.b2[..n];
+        let gain = &self.gain[..n];
+
+        let mut out = 0.0;
+        let u_vec = f32x8::splat(u);
+
+        for i in (0..n8).step_by(8) {
+            let x0_arr: [f32; 8] = x[i..i + 8].try_into().unwrap();
+            let y0_arr: [f32; 8] = y[i..i + 8].try_into().unwrap();
+            let e_arr: [f32; 8] = e[i..i + 8].try_into().unwrap();
+            let r_arr: [f32; 8] = r[i..i + 8].try_into().unwrap();
+            let b1_arr: [f32; 8] = b1[i..i + 8].try_into().unwrap();
+            let b2_arr: [f32; 8] = b2[i..i + 8].try_into().unwrap();
+
+            let x0 = f32x8::from(x0_arr);
+            let y0 = f32x8::from(y0_arr);
+            let e_vec = f32x8::from(e_arr);
+            let r_vec = f32x8::from(r_arr);
+            let b1_vec = f32x8::from(b1_arr);
+            let b2_vec = f32x8::from(b2_arr);
+
+            let x1_vec = r_vec * (x0 - e_vec * y0) + b1_vec * u_vec;
+            let mut x1_arr = x1_vec.to_array();
+            for lane in &mut x1_arr {
+                *lane = flush_denorm(*lane);
+            }
+
+            let x1_vec = f32x8::from(x1_arr);
+            let y1_vec = r_vec * (e_vec * x1_vec + y0) + b2_vec * u_vec;
+            let mut y1_arr = y1_vec.to_array();
+            for lane in &mut y1_arr {
+                *lane = flush_denorm(*lane);
+            }
+
+            x[i..i + 8].copy_from_slice(&x1_arr);
+            y[i..i + 8].copy_from_slice(&y1_arr);
+
+            for k in 0..8 {
+                out += gain[i + k] * y1_arr[k];
+            }
+        }
+
+        for i in n8..n {
+            let x0 = x[i];
+            let y0 = y[i];
+
+            let mut x1 = r[i] * (x0 - e[i] * y0) + b1[i] * u;
+            x1 = flush_denorm(x1);
+
+            let mut y1 = r[i] * (e[i] * x1 + y0) + b2[i] * u;
+            y1 = flush_denorm(y1);
+
+            x[i] = x1;
+            y[i] = y1;
+
+            out += gain[i] * y1;
+        }
+
+        flush_denorm(out)
+    }
+
+    /// Process a single sample with the damped MCF update.
+    pub fn process_sample(&mut self, u: f32) -> f32 {
+        #[cfg(feature = "simd-wide")]
+        {
+            return self.process_sample_simd_wide8(u);
+        }
+        #[cfg(not(feature = "simd-wide"))]
+        {
+            return self.process_sample_scalar(u);
+        }
     }
 
     /// Process a mono block; input and output slices must be same length.
@@ -319,5 +435,66 @@ mod tests {
             ResonatorBank::new(-1.0, 1).unwrap_err(),
             SynthError::InvalidSampleRate
         );
+    }
+
+    #[test]
+    fn magic_circle_matches_sine_formula() {
+        use std::f32::consts::PI;
+
+        let fs = 48_000.0;
+        let freq = 440.0;
+        let theta = 2.0 * PI * freq / fs;
+        let e = 2.0 * (0.5 * theta).sin();
+        let denom = (0.5 * theta).cos();
+
+        let mut bank = ResonatorBank::new(fs, 8).unwrap();
+        bank.active_len = 8;
+        for i in 0..8 {
+            bank.x[i] = 1.0;
+            bank.y[i] = 0.0;
+            bank.e[i] = e;
+            bank.r[i] = 1.0;
+            bank.b1[i] = 0.0;
+            bank.b2[i] = 0.0;
+            bank.gain[i] = if i == 0 { 1.0 } else { 0.0 };
+        }
+
+        for n in 1..=256 {
+            let y = bank.process_sample(0.0);
+            let expected = (n as f32 * theta).sin() / denom;
+            let err = (y - expected).abs();
+            assert!(err < 1.0e-6, "n={n} y={y} expected={expected}");
+        }
+    }
+
+    #[test]
+    fn default_matches_reference_bit_exact() {
+        let mut bank = ResonatorBank::new(48_000.0, 16).unwrap();
+        let mut modes = Vec::with_capacity(10);
+        for i in 0..10 {
+            modes.push(ModeParams {
+                freq_hz: 110.0 + i as f32 * 27.5,
+                t60_s: 0.05 + i as f32 * 0.01,
+                gain: 0.2 + i as f32 * 0.01,
+                in_gain: 0.1 + i as f32 * 0.005,
+            });
+        }
+        bank.set_modes(&modes).unwrap();
+
+        let mut bank_ref = bank.clone();
+        let mut bank_def = bank.clone();
+
+        for i in 0..1024 {
+            let mut u = (i as f32 * 0.01).sin();
+            if i == 0 {
+                u += 1.0;
+            }
+            if i % 127 == 0 {
+                u += 0.25;
+            }
+            let y_ref = bank_ref.process_sample_ref(u);
+            let y_def = bank_def.process_sample(u);
+            assert_eq!(y_ref, y_def);
+        }
     }
 }

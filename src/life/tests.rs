@@ -5,15 +5,15 @@ use super::individual::{
 };
 use super::population::Population;
 use super::scenario::{
-    Action, ArticulationCoreConfig, EnvelopeConfig, HarmonicMode, IndividualConfig, LifeConfig,
-    MotionAutonomy, PhonationConnectConfig, PitchCoreConfig, Scenario, SceneMarker,
-    SoundBodyConfig, TargetRef, TimbreGenotype, TimedEvent, VoiceControl, VoiceOnSpawn,
+    Action, ArticulationCoreConfig, EnvelopeConfig, IndividualConfig, PhonationConnectConfig,
+    PitchCoreConfig, Scenario, SceneMarker, TimedEvent,
 };
 use crate::core::landscape::Landscape;
 use crate::core::landscape::LandscapeFrame;
 use crate::core::log2space::Log2Space;
 use crate::core::modulation::{NeuralRhythms, RhythmBand};
 use crate::core::timebase::Timebase;
+use crate::life::control::{AgentControl, BodyMethod};
 use crate::life::lifecycle::LifecycleConfig;
 use crate::life::perceptual::{FeaturesNow, PerceptualConfig, PerceptualContext};
 use rand::SeedableRng;
@@ -25,34 +25,10 @@ fn mix_signature(mut acc: u64, value: u32) -> u64 {
     acc
 }
 
-fn life_with_lifecycle(lifecycle: LifecycleConfig) -> LifeConfig {
-    LifeConfig {
-        body: SoundBodyConfig::Sine { phase: None },
-        articulation: ArticulationCoreConfig::Entrain {
-            lifecycle,
-            rhythm_freq: None,
-            rhythm_sensitivity: None,
-            breath_gain_init: None,
-        },
-        pitch: PitchCoreConfig::PitchHillClimb {
-            neighbor_step_cents: None,
-            tessitura_gravity: None,
-            improvement_threshold: None,
-            exploration: None,
-            persistence: None,
-        },
-        perceptual: PerceptualConfig {
-            tau_fast: None,
-            tau_slow: None,
-            w_boredom: None,
-            w_familiarity: None,
-            rho_self: None,
-            boredom_gamma: None,
-            self_smoothing_radius: None,
-            silence_mass_epsilon: None,
-        },
-        ..Default::default()
-    }
+fn control_with_pitch(freq_hz: f32) -> AgentControl {
+    let mut control = AgentControl::default();
+    control.pitch.center_hz = freq_hz.max(1.0);
+    control
 }
 
 fn test_timebase() -> Timebase {
@@ -71,32 +47,33 @@ fn test_population_add_remove_agent() {
     assert_eq!(pop.individuals.len(), 0, "Population should start empty");
 
     // 2. Add Agent
-    let life = LifecycleConfig::Decay {
-        initial_energy: 1.0,
-        half_life_sec: 1.0,
-        attack_sec: 0.01,
-    };
-    let agent_cfg = IndividualConfig {
-        freq: 440.0,
-        amp: 0.5,
-        life: life_with_lifecycle(life),
-        tag: Some("test_agent".to_string()),
-    };
-    let action_add = Action::AddAgent {
-        id: 1,
-        agent: agent_cfg,
-    };
-
-    pop.apply_action(action_add, &landscape, None);
+    pop.apply_action(
+        Action::Spawn {
+            tag: "test_agent".to_string(),
+            count: 1,
+            patch: serde_json::json!({
+                "pitch": { "center_hz": 440.0 }
+            }),
+        },
+        &landscape,
+        None,
+    );
     assert_eq!(pop.individuals.len(), 1, "Agent should be added");
 
     // 3. Remove Agent
-    let action_remove = Action::RemoveAgent {
-        target: TargetRef::Tag {
-            tag: "test_agent".to_string(),
+    pop.apply_action(
+        Action::Remove {
+            target: "test_agent".to_string(),
         },
-    };
-    pop.apply_action(action_remove, &landscape, None);
+        &landscape,
+        None,
+    );
+    let fs = test_timebase().fs;
+    let dt = 0.1;
+    let samples_per_hop = (fs * dt) as usize;
+    let landscape_rt = make_test_landscape(fs);
+    pop.advance(samples_per_hop, fs, 0, dt, &landscape_rt);
+    pop.process_frame(0, &landscape_rt.space, dt, false);
     assert_eq!(pop.individuals.len(), 0, "Agent should be removed");
 }
 
@@ -105,35 +82,13 @@ fn tag_selector_removes_matching_agents() {
     let mut pop = Population::new(test_timebase());
     let landscape = LandscapeFrame::default();
 
-    let life = LifecycleConfig::Decay {
-        initial_energy: 1.0,
-        half_life_sec: 1.0,
-        attack_sec: 0.01,
-    };
-    let agent_cfg1 = IndividualConfig {
-        freq: 440.0,
-        amp: 0.5,
-        life: life_with_lifecycle(life.clone()),
-        tag: Some("test_group".to_string()),
-    };
-    let agent_cfg2 = IndividualConfig {
-        freq: 330.0,
-        amp: 0.4,
-        life: life_with_lifecycle(life),
-        tag: Some("test_group".to_string()),
-    };
     pop.apply_action(
-        Action::AddAgent {
-            id: 1,
-            agent: agent_cfg1,
-        },
-        &landscape,
-        None,
-    );
-    pop.apply_action(
-        Action::AddAgent {
-            id: 2,
-            agent: agent_cfg2,
+        Action::Spawn {
+            tag: "test_group".to_string(),
+            count: 2,
+            patch: serde_json::json!({
+                "pitch": { "center_hz": 330.0 }
+            }),
         },
         &landscape,
         None,
@@ -141,14 +96,18 @@ fn tag_selector_removes_matching_agents() {
     assert_eq!(pop.individuals.len(), 2);
 
     pop.apply_action(
-        Action::RemoveAgent {
-            target: TargetRef::Tag {
-                tag: "test_group".to_string(),
-            },
+        Action::Remove {
+            target: "test_group".to_string(),
         },
         &landscape,
         None,
     );
+    let fs = test_timebase().fs;
+    let dt = 0.1;
+    let samples_per_hop = (fs * dt) as usize;
+    let landscape_rt = make_test_landscape(fs);
+    pop.advance(samples_per_hop, fs, 0, dt, &landscape_rt);
+    pop.process_frame(0, &landscape_rt.space, dt, false);
     assert_eq!(
         pop.individuals.len(),
         0,
@@ -225,27 +184,35 @@ fn test_agent_lifecycle_decay_death() {
     let mut pop = Population::new(test_timebase());
     let landscape = LandscapeFrame::default(); // Dummy landscape
 
-    // Half-life = 0.05s (very fast decay)
-    let life = LifecycleConfig::Decay {
-        initial_energy: 1.0,
-        half_life_sec: 0.05,
-        attack_sec: 0.001,
-    };
-    let life_cfg = life_with_lifecycle(life);
-    let agent_cfg = IndividualConfig {
-        freq: 440.0,
-        amp: 0.5,
-        life: life_cfg,
-        tag: None,
-    };
+    let fs = 48_000.0;
     pop.apply_action(
-        Action::AddAgent {
-            id: 1,
-            agent: agent_cfg,
+        Action::Spawn {
+            tag: "decay".to_string(),
+            count: 1,
+            patch: serde_json::json!({
+                "pitch": { "center_hz": 440.0 }
+            }),
         },
         &landscape,
         None,
     );
+    let fs = 48_000.0;
+    {
+        let agent = pop.individuals.first_mut().expect("agent exists");
+        let core_cfg = ArticulationCoreConfig::Entrain {
+            lifecycle: LifecycleConfig::Decay {
+                initial_energy: 1.0,
+                half_life_sec: 0.05,
+                attack_sec: 0.001,
+            },
+            rhythm_freq: None,
+            rhythm_sensitivity: None,
+            breath_gain_init: None,
+        };
+        let mut rng = rand::rngs::StdRng::seed_from_u64(7);
+        let core = super::individual::AnyArticulationCore::from_config(&core_cfg, fs, 1, &mut rng);
+        agent.articulation = super::individual::ArticulationWrapper::new(core, 1.0);
+    }
 
     assert_eq!(pop.individuals.len(), 1, "Agent added");
 
@@ -257,7 +224,6 @@ fn test_agent_lifecycle_decay_death() {
     // ...
     // After 1.0s -> ~0.0
     let dt = 0.01; // 10ms steps
-    let fs = 48_000.0;
     let samples_per_hop = (fs * dt) as usize;
     let landscape_rt = make_test_landscape(fs);
     let mut time = 0.0;
@@ -282,28 +248,20 @@ fn test_agent_lifecycle_decay_death() {
 fn motion_disabled_still_advances_release_gain() {
     let fs = 48_000.0;
     let mut pop = Population::new(test_timebase());
-    let mut life_cfg = life_with_lifecycle(LifecycleConfig::Decay {
-        initial_energy: 1.0,
-        half_life_sec: 0.5,
-        attack_sec: 0.01,
-    });
-    life_cfg.behavior.autonomy.motion = MotionAutonomy::Disabled;
-    let agent_cfg = IndividualConfig {
-        freq: 440.0,
-        amp: 0.5,
-        life: life_cfg,
-        tag: None,
-    };
     pop.apply_action(
-        Action::AddAgent {
-            id: 1,
-            agent: agent_cfg,
+        Action::Spawn {
+            tag: "silent".to_string(),
+            count: 1,
+            patch: serde_json::json!({
+                "pitch": { "center_hz": 440.0 },
+                "perceptual": { "enabled": false }
+            }),
         },
         &LandscapeFrame::default(),
         None,
     );
     let agent = pop.individuals.first_mut().expect("agent exists");
-    agent.start_release(0.05);
+    agent.start_remove_fade(0.05);
     let gain_before = agent.release_gain();
 
     let dt = 0.01;
@@ -319,22 +277,14 @@ fn motion_disabled_still_advances_release_gain() {
 fn motion_disabled_does_not_change_pitch_or_target() {
     let fs = 48_000.0;
     let mut pop = Population::new(test_timebase());
-    let mut life_cfg = life_with_lifecycle(LifecycleConfig::Decay {
-        initial_energy: 1.0,
-        half_life_sec: 0.5,
-        attack_sec: 0.01,
-    });
-    life_cfg.behavior.autonomy.motion = MotionAutonomy::Disabled;
-    let agent_cfg = IndividualConfig {
-        freq: 440.0,
-        amp: 0.5,
-        life: life_cfg,
-        tag: None,
-    };
     pop.apply_action(
-        Action::AddAgent {
-            id: 1,
-            agent: agent_cfg,
+        Action::Spawn {
+            tag: "silent".to_string(),
+            count: 1,
+            patch: serde_json::json!({
+                "pitch": { "center_hz": 440.0 },
+                "perceptual": { "enabled": false }
+            }),
         },
         &LandscapeFrame::default(),
         None,
@@ -365,56 +315,14 @@ fn motion_disabled_does_not_change_pitch_or_target() {
 
 #[test]
 fn harmonic_render_spectrum_hits_expected_bins() {
-    let genotype = TimbreGenotype {
-        mode: HarmonicMode::Harmonic,
-        stiffness: 0.0,
-        brightness: 1.0,
-        comb: 0.5,
-        damping: 0.2,
-        vibrato_rate: 5.0,
-        vibrato_depth: 0.01,
-        jitter: 0.5,
-        unison: 0.1,
-    };
-    let cfg = IndividualConfig {
-        freq: 55.0,
-        amp: 0.8,
-        life: LifeConfig {
-            body: SoundBodyConfig::Harmonic {
-                genotype: genotype.clone(),
-                partials: Some(16),
-            },
-            articulation: ArticulationCoreConfig::Entrain {
-                lifecycle: LifecycleConfig::Decay {
-                    initial_energy: 1.0,
-                    half_life_sec: 1.0,
-                    attack_sec: 0.01,
-                },
-                rhythm_freq: None,
-                rhythm_sensitivity: None,
-                breath_gain_init: None,
-            },
-            pitch: PitchCoreConfig::PitchHillClimb {
-                neighbor_step_cents: None,
-                tessitura_gravity: None,
-                improvement_threshold: None,
-                exploration: None,
-                persistence: None,
-            },
-            perceptual: PerceptualConfig {
-                tau_fast: None,
-                tau_slow: None,
-                w_boredom: None,
-                w_familiarity: None,
-                rho_self: None,
-                boredom_gamma: None,
-                self_smoothing_radius: None,
-                silence_mass_epsilon: None,
-            },
-            ..Default::default()
-        },
-        tag: None,
-    };
+    let mut control = control_with_pitch(55.0);
+    control.body.method = BodyMethod::Harmonic;
+    control.body.amp = 0.8;
+    control.body.timbre.brightness = 1.0;
+    control.body.timbre.inharmonic = 0.0;
+    control.body.timbre.width = 0.1;
+    control.body.timbre.motion = 0.5;
+    let cfg = IndividualConfig { control, tag: None };
     let metadata = AgentMetadata {
         id: 99,
         tag: None,
@@ -445,40 +353,35 @@ fn harmonic_render_spectrum_hits_expected_bins() {
     );
     assert!(
         amps[base_bin] > amps[even_bin],
-        "comb and brightness should attenuate even harmonic"
+        "brightness should attenuate even harmonic"
     );
 }
 
 #[test]
-fn set_freq_syncs_target_pitch_log2() {
+fn lock_constraint_sets_target_pitch_log2() {
     let space = Log2Space::new(55.0, 880.0, 12);
-    let landscape = LandscapeFrame::new(space);
+    let landscape = LandscapeFrame::new(space.clone());
     let mut pop = Population::new(test_timebase());
-    let agent_cfg = IndividualConfig {
-        freq: 220.0,
-        amp: 0.1,
-        life: life_with_lifecycle(LifecycleConfig::Decay {
-            initial_energy: 1.0,
-            half_life_sec: 1.0,
-            attack_sec: 0.01,
-        }),
-        tag: Some("test_agent".to_string()),
-    };
     pop.apply_action(
-        Action::AddAgent {
-            id: 1,
-            agent: agent_cfg,
+        Action::Spawn {
+            tag: "test_agent".to_string(),
+            count: 1,
+            patch: serde_json::json!({
+                "pitch": { "center_hz": 220.0 }
+            }),
         },
         &landscape,
         None,
     );
 
     pop.apply_action(
-        Action::SetFreq {
-            target: TargetRef::Tag {
-                tag: "test_agent".to_string(),
-            },
-            freq_hz: 440.0,
+        Action::Set {
+            target: "test_agent".to_string(),
+            patch: serde_json::json!({
+                "pitch": {
+                    "constraint": { "mode": "lock", "freq_hz": 440.0 }
+                }
+            }),
         },
         &landscape,
         None,
@@ -486,28 +389,22 @@ fn set_freq_syncs_target_pitch_log2() {
 
     let log_target = 440.0f32.log2();
     let agent = pop.individuals.first_mut().expect("agent exists");
+    let rhythms = NeuralRhythms::default();
+    agent.update_pitch_target(&rhythms, 0.01, &Landscape::new(space));
     assert!((agent.target_pitch_log2() - log_target).abs() < 1e-6);
-    assert!((agent.body.base_freq_hz() - 440.0).abs() < 1e-3);
 }
 
 #[test]
 fn population_spectrum_uses_log2_space() {
     let space = Log2Space::new(55.0, 880.0, 12);
     let mut pop = Population::new(test_timebase());
-    let agent_cfg = IndividualConfig {
-        freq: 55.0,
-        amp: 0.5,
-        life: life_with_lifecycle(LifecycleConfig::Decay {
-            initial_energy: 1.0,
-            half_life_sec: 1.0,
-            attack_sec: 0.01,
-        }),
-        tag: None,
-    };
     pop.apply_action(
-        Action::AddAgent {
-            id: 1,
-            agent: agent_cfg,
+        Action::Spawn {
+            tag: "spec".to_string(),
+            count: 1,
+            patch: serde_json::json!({
+                "pitch": { "center_hz": 55.0 }
+            }),
         },
         &LandscapeFrame::new(space.clone()),
         None,
@@ -527,84 +424,22 @@ fn population_spectrum_uses_log2_space() {
 }
 
 #[test]
-fn life_config_deserializes_and_rejects_unknown_fields() {
-    let json = serde_json::json!({
-        "body": { "core": "sine" },
-        "articulation": {
-            "core": "entrain",
-            "type": "decay",
-            "initial_energy": 1.0,
-            "half_life_sec": 0.25
-        },
-        "pitch": { "core": "pitch_hill_climb" },
-        "perceptual": {
-            "tau_fast": 0.5,
-            "tau_slow": 4.0,
-            "w_boredom": 0.8,
-            "w_familiarity": 0.2,
-            "rho_self": 0.15,
-            "boredom_gamma": 0.5,
-            "self_smoothing_radius": 1
-        },
-        "behavior": {
-            "voice": {
-                "on_spawn": "next_rhythm",
-                "control": "autonomous"
-            },
-            "autonomy": {
-                "motion": "disabled"
-            }
-        }
+fn agent_patch_rejects_unknown_fields() {
+    let good = serde_json::json!({
+        "body": { "amp": 0.25 },
+        "pitch": { "center_hz": 220.0 },
+        "perceptual": { "enabled": true }
     });
-    let cfg: LifeConfig = serde_json::from_value(json).expect("life config parses");
-    assert!(matches!(
-        cfg.articulation,
-        ArticulationCoreConfig::Entrain { .. }
-    ));
+    let patch: crate::life::control::AgentPatch =
+        serde_json::from_value(good).expect("agent patch parses");
+    assert_eq!(patch.body.unwrap().amp, Some(0.25));
 
     let bad = serde_json::json!({
-        "body": { "core": "sine", "unknown": 1.0 },
-        "articulation": {
-            "core": "entrain",
-            "type": "decay",
-            "initial_energy": 1.0,
-            "half_life_sec": 0.25,
-            "unknown": 1.0
-        },
-        "pitch": { "core": "pitch_hill_climb" },
-        "perceptual": {
-            "tau_fast": 0.5,
-            "tau_slow": 4.0,
-            "w_boredom": 0.8,
-            "w_familiarity": 0.2,
-            "rho_self": 0.15,
-            "boredom_gamma": 0.5,
-            "self_smoothing_radius": 1
-        }
+        "body": { "amp": 0.25, "unknown": 1.0 }
     });
-    assert!(serde_json::from_value::<LifeConfig>(bad).is_err());
-
-    let missing = serde_json::json!({
-        "articulation": {
-            "core": "entrain",
-            "type": "decay",
-            "initial_energy": 1.0,
-            "half_life_sec": 0.25
-        },
-        "pitch": { "core": "pitch_hill_climb" },
-        "perceptual": {
-            "tau_fast": 0.5,
-            "tau_slow": 4.0,
-            "w_boredom": 0.8,
-            "w_familiarity": 0.2,
-            "rho_self": 0.15,
-            "boredom_gamma": 0.5,
-            "self_smoothing_radius": 1
-        }
-    });
-    let cfg_missing: LifeConfig =
-        serde_json::from_value(missing).expect("missing body should default");
-    assert!(matches!(cfg_missing.body, SoundBodyConfig::Sine { .. }));
+    let err = serde_json::from_value::<crate::life::control::AgentPatch>(bad)
+        .expect_err("unknown key should be rejected");
+    assert!(err.to_string().contains("unknown"));
 }
 
 #[test]
@@ -618,28 +453,136 @@ fn phonation_connect_rejects_unknown_keys() {
 }
 
 #[test]
-fn behavior_config_accepts_snake_case() {
-    let json = serde_json::json!({
-        "behavior": {
-            "voice": {
-                "on_spawn": "next_rhythm",
-                "control": "scripted"
-            },
-            "autonomy": {
-                "motion": "after_first_utterance"
-            }
-        }
-    });
-    let cfg: LifeConfig = serde_json::from_value(json).expect("behavior config parses");
-    assert!(matches!(
-        cfg.behavior.voice.on_spawn,
-        VoiceOnSpawn::NextRhythm
-    ));
-    assert!(matches!(cfg.behavior.voice.control, VoiceControl::Scripted));
-    assert!(matches!(
-        cfg.behavior.autonomy.motion,
-        MotionAutonomy::AfterFirstUtterance
-    ));
+fn agent_patch_clamps_and_coerces_numbers() {
+    let patch: crate::life::control::AgentPatch = serde_json::from_value(serde_json::json!({
+        "body": { "amp": 2 },
+        "pitch": { "range_oct": 99.0 },
+        "phonation": { "density": -1 }
+    }))
+    .expect("patch parses");
+    let body = patch.body.expect("body patch");
+    assert_eq!(body.amp, Some(1.0));
+    let pitch = patch.pitch.expect("pitch patch");
+    assert_eq!(pitch.range_oct, Some(6.0));
+    let phonation = patch.phonation.expect("phonation patch");
+    assert_eq!(phonation.density, Some(0.0));
+}
+
+#[test]
+fn unset_restores_base_control() {
+    let mut control = AgentControl::default();
+    control.body.amp = 0.3;
+    let cfg = IndividualConfig { control, tag: None };
+    let meta = AgentMetadata {
+        id: 1,
+        tag: None,
+        group_idx: 0,
+        member_idx: 0,
+    };
+    let mut agent = cfg.spawn(meta.id, 0, meta, 48_000.0, 0);
+    agent
+        .apply_control_patch(serde_json::json!({ "body": { "amp": 0.8 } }))
+        .expect("patch applies");
+    assert!((agent.effective_control.body.amp - 0.8).abs() < 1e-6);
+    agent.apply_unset_path("body.amp").expect("unset applies");
+    assert!((agent.effective_control.body.amp - 0.3).abs() < 1e-6);
+}
+
+#[test]
+fn constraint_mode_requires_freq() {
+    let cfg = IndividualConfig {
+        control: control_with_pitch(220.0),
+        tag: None,
+    };
+    let meta = AgentMetadata {
+        id: 2,
+        tag: None,
+        group_idx: 0,
+        member_idx: 0,
+    };
+    let mut agent = cfg.spawn(meta.id, 0, meta, 48_000.0, 0);
+    let err = agent.apply_control_patch(serde_json::json!({
+        "pitch": { "constraint": { "mode": "lock" } }
+    }));
+    assert!(err.is_err());
+}
+
+#[test]
+fn patch_rejects_type_switches() {
+    let cfg = IndividualConfig {
+        control: control_with_pitch(220.0),
+        tag: None,
+    };
+    let meta = AgentMetadata {
+        id: 3,
+        tag: None,
+        group_idx: 0,
+        member_idx: 0,
+    };
+    let mut agent = cfg.spawn(meta.id, 0, meta, 48_000.0, 0);
+    let err_body = agent.apply_control_patch(serde_json::json!({
+        "body": { "method": "harmonic" }
+    }));
+    assert!(err_body.is_err());
+    let err_phonation = agent.apply_control_patch(serde_json::json!({
+        "phonation": { "type": "drone" }
+    }));
+    assert!(err_phonation.is_err());
+}
+
+#[test]
+fn spawn_lock_constraint_sets_center_hz() {
+    let mut pop = Population::new(test_timebase());
+    let landscape = LandscapeFrame::default();
+    pop.apply_action(
+        Action::Spawn {
+            tag: "lock".to_string(),
+            count: 1,
+            patch: serde_json::json!({
+                "pitch": { "constraint": { "mode": "lock", "freq_hz": 440.0 } }
+            }),
+        },
+        &landscape,
+        None,
+    );
+    let agent = pop.individuals.first().expect("agent exists");
+    assert!((agent.effective_control.pitch.center_hz - 440.0).abs() < 1e-6);
+}
+
+#[test]
+fn remove_fade_reduces_gain_and_culls() {
+    let fs = test_timebase().fs;
+    let mut pop = Population::new(test_timebase());
+    let landscape = LandscapeFrame::default();
+    pop.apply_action(
+        Action::Spawn {
+            tag: "fade".to_string(),
+            count: 1,
+            patch: serde_json::json!({ "pitch": { "center_hz": 220.0 } }),
+        },
+        &landscape,
+        None,
+    );
+    pop.apply_action(
+        Action::Remove {
+            target: "fade".to_string(),
+        },
+        &landscape,
+        None,
+    );
+    let gain_before = pop.individuals[0].release_gain();
+    let dt = 0.01;
+    let samples_per_hop = (fs * dt) as usize;
+    let landscape_rt = make_test_landscape(fs);
+    pop.advance(samples_per_hop, fs, 0, dt, &landscape_rt);
+    let gain_after = pop.individuals[0].release_gain();
+    assert!(gain_after < gain_before);
+
+    let dt_finish = 0.1;
+    let samples_per_hop_finish = (fs * dt_finish) as usize;
+    pop.advance(samples_per_hop_finish, fs, 1, dt_finish, &landscape_rt);
+    pop.process_frame(1, &landscape_rt.space, dt_finish, false);
+    assert!(pop.individuals.is_empty());
 }
 
 #[test]
@@ -690,43 +633,13 @@ fn pitch_core_proposes_target_within_bounds() {
 
 #[test]
 fn deterministic_rng_produces_same_targets() {
-    let life = LifeConfig {
-        body: SoundBodyConfig::Sine { phase: None },
-        articulation: ArticulationCoreConfig::Entrain {
-            lifecycle: LifecycleConfig::Decay {
-                initial_energy: 1.0,
-                half_life_sec: 0.5,
-                attack_sec: 0.01,
-            },
-            rhythm_freq: Some(1.0),
-            rhythm_sensitivity: None,
-            breath_gain_init: None,
-        },
-        pitch: PitchCoreConfig::PitchHillClimb {
-            neighbor_step_cents: None,
-            tessitura_gravity: None,
-            improvement_threshold: None,
-            exploration: Some(0.2),
-            persistence: Some(0.5),
-        },
-        perceptual: PerceptualConfig {
-            tau_fast: Some(0.5),
-            tau_slow: Some(4.0),
-            w_boredom: Some(0.8),
-            w_familiarity: Some(0.2),
-            rho_self: Some(0.15),
-            boredom_gamma: Some(0.5),
-            self_smoothing_radius: Some(1),
-            silence_mass_epsilon: Some(1e-6),
-        },
-        ..Default::default()
-    };
-    let cfg = IndividualConfig {
-        freq: 220.0,
-        amp: 0.2,
-        life,
-        tag: None,
-    };
+    let mut control = control_with_pitch(220.0);
+    control.pitch.exploration = 0.2;
+    control.pitch.persistence = 0.5;
+    control.perceptual.adaptation = 0.5;
+    control.perceptual.novelty_bias = 0.8;
+    control.perceptual.self_focus = 0.15;
+    let cfg = IndividualConfig { control, tag: None };
     let meta = AgentMetadata {
         id: 10,
         tag: None,
@@ -759,21 +672,13 @@ fn deterministic_rng_produces_same_targets() {
 fn theta_wrap_triggers_pitch_update_with_large_dt() {
     let mut pop = Population::new(test_timebase());
     let landscape = make_test_landscape(48_000.0);
-    let life = LifecycleConfig::Decay {
-        initial_energy: 1.0,
-        half_life_sec: 1.0,
-        attack_sec: 0.01,
-    };
-    let agent_cfg = IndividualConfig {
-        freq: 440.0,
-        amp: 0.5,
-        life: life_with_lifecycle(life),
-        tag: None,
-    };
     pop.apply_action(
-        Action::AddAgent {
-            id: 1,
-            agent: agent_cfg,
+        Action::Spawn {
+            tag: "theta".to_string(),
+            count: 1,
+            patch: serde_json::json!({
+                "pitch": { "center_hz": 440.0 }
+            }),
         },
         &LandscapeFrame::default(),
         None,

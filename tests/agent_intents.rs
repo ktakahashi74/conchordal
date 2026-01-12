@@ -1,11 +1,10 @@
 use conchordal::core::landscape::Landscape;
 use conchordal::core::log2space::Log2Space;
 use conchordal::core::timebase::{Tick, Timebase};
+use conchordal::life::control::AgentControl;
 use conchordal::life::individual::AgentMetadata;
 use conchordal::life::population::Population;
-use conchordal::life::scenario::{
-    IndividualConfig, LifeConfig, PhonationIntervalConfig, VoiceControl, VoiceOnSpawn,
-};
+use conchordal::life::scenario::IndividualConfig;
 use conchordal::life::schedule_renderer::ScheduleRenderer;
 use conchordal::life::world_model::WorldModel;
 
@@ -18,19 +17,11 @@ fn agents_publish_intents_and_render_audio() {
     let space = Log2Space::new(55.0, 8000.0, 96);
     let mut world = WorldModel::new(tb, space.clone());
     let mut pop = Population::new(tb);
-    let mut life = LifeConfig::default();
-    life.phonation.interval = PhonationIntervalConfig::Accumulator {
-        rate: 1.0,
-        refractory: 0,
-    };
-    life.behavior.voice.control = VoiceControl::Autonomous;
-    life.behavior.voice.on_spawn = VoiceOnSpawn::Immediate;
-    let agent_cfg = IndividualConfig {
-        freq: 440.0,
-        amp: 0.4,
-        life,
-        tag: None,
-    };
+    let mut control = AgentControl::default();
+    control.pitch.center_hz = 440.0;
+    control.body.amp = 0.4;
+    control.phonation.density = 0.8;
+    let agent_cfg = IndividualConfig { control, tag: None };
     let metadata = AgentMetadata {
         id: 1,
         tag: None,
@@ -75,19 +66,11 @@ fn publish_intents_runs_when_gate_in_hop_window() {
     let space = Log2Space::new(55.0, 8000.0, 96);
     let mut world = WorldModel::new(tb, space.clone());
     let mut pop = Population::new(tb);
-    let mut life = LifeConfig::default();
-    life.phonation.interval = PhonationIntervalConfig::Accumulator {
-        rate: 1.0,
-        refractory: 0,
-    };
-    life.behavior.voice.control = VoiceControl::Autonomous;
-    life.behavior.voice.on_spawn = VoiceOnSpawn::Immediate;
-    let agent_cfg = IndividualConfig {
-        freq: 440.0,
-        amp: 0.4,
-        life,
-        tag: None,
-    };
+    let mut control = AgentControl::default();
+    control.pitch.center_hz = 440.0;
+    control.body.amp = 0.4;
+    control.phonation.density = 0.8;
+    let agent_cfg = IndividualConfig { control, tag: None };
     let metadata = AgentMetadata {
         id: 1,
         tag: None,

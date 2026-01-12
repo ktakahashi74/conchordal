@@ -1,5 +1,6 @@
+use super::control::{AgentControl, PitchConstraintMode, merge_json};
 use super::individual::{AgentMetadata, Individual, PhonationBatch, SoundBody};
-use super::scenario::{Action, IndividualConfig, SocialConfig, SpawnMethod, TargetRef};
+use super::scenario::{Action, IndividualConfig, SocialConfig, SpawnMethod};
 use crate::core::landscape::{LandscapeFrame, LandscapeUpdate};
 use crate::core::log2space::Log2Space;
 use crate::core::timebase::{Tick, Timebase};
@@ -19,17 +20,18 @@ pub struct Population {
     current_frame: u64,
     pub abort_requested: bool,
     buffers: WorkBuffers,
-    pub global_vitality: f32,
     pub global_coupling: f32,
     shutdown_gain: f32,
     pending_update: Option<LandscapeUpdate>,
     time: Timebase,
     seed: u64,
+    next_agent_id: u64,
+    spawn_counter: u64,
     social_trace: Option<SocialDensityTrace>,
 }
 
 impl Population {
-    const RELEASE_SEC_DEFAULT: f32 = 0.03;
+    const REMOVE_FADE_SEC_DEFAULT: f32 = 0.05;
     const CONTROL_STEP_SAMPLES: usize = 64;
     pub const BIRTH_ONCE_DURATION_SEC: f32 = 0.4;
     /// Returns true if `freq_hz` is within `min_dist_erb` (ERB scale) of any existing agent's base
@@ -59,12 +61,13 @@ impl Population {
             current_frame: 0,
             abort_requested: false,
             buffers: WorkBuffers::default(),
-            global_vitality: 1.0,
             global_coupling: 1.0,
             shutdown_gain: 1.0,
             pending_update: None,
             time,
             seed: rand::random::<u64>(),
+            next_agent_id: 1,
+            spawn_counter: 0,
             social_trace: None,
         }
     }
@@ -73,15 +76,13 @@ impl Population {
         self.seed = seed;
     }
 
-    fn spawn_seed(&self, tag: Option<&str>, group_id: u64, count: u32) -> u64 {
+    fn spawn_seed(&self, tag: &str, count: u32, seq: u64) -> u64 {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         self.seed.hash(&mut hasher);
         self.current_frame.hash(&mut hasher);
-        group_id.hash(&mut hasher);
+        seq.hash(&mut hasher);
         count.hash(&mut hasher);
-        if let Some(tag) = tag {
-            tag.hash(&mut hasher);
-        }
+        tag.hash(&mut hasher);
         hasher.finish() ^ 0x9E37_79B9_7F4A_7C15
     }
 
@@ -92,7 +93,7 @@ impl Population {
     pub fn add_individual(&mut self, individual: Individual) {
         let id = individual.id();
         if self.individuals.iter().any(|a| a.id() == id) {
-            warn!("AddAgent: id collision for {id}");
+            warn!("AddIndividual: id collision for {id}");
             return;
         }
         self.individuals.push(individual);
@@ -136,7 +137,7 @@ impl Population {
                 world.next_intent_id = world.next_intent_id.wrapping_add(1);
                 world.board.publish(intent);
             }
-            let social_coupling = agent.phonation.social.coupling;
+            let social_coupling = agent.phonation_social.coupling;
             if used == out.len() {
                 out.push(PhonationBatch::default());
             }
@@ -157,7 +158,7 @@ impl Population {
         }
         let active_batches = &out[..used];
         let social_enabled =
-            social_trace_enabled_from_configs(self.individuals.iter().map(|a| a.phonation.social));
+            social_trace_enabled_from_configs(self.individuals.iter().map(|a| a.phonation_social));
         if social_enabled {
             let (bin_ticks, smooth) = social_trace_params(&self.individuals, hop_tick);
             self.social_trace = Some(build_social_trace_from_batches(
@@ -174,41 +175,17 @@ impl Population {
         used
     }
 
-    fn resolve_target_ids(&self, target: &TargetRef) -> Vec<u64> {
-        match target {
-            TargetRef::AgentId { id } => {
-                if self.individuals.iter().any(|a| a.id() == *id) {
-                    vec![*id]
-                } else {
-                    Vec::new()
+    fn resolve_target_ids(&self, pattern: &str) -> Vec<u64> {
+        self.individuals
+            .iter()
+            .filter_map(|a| {
+                let meta = a.metadata();
+                match meta.tag.as_deref() {
+                    Some(tag) if matches_tag_pattern(pattern, tag) => Some(meta.id),
+                    _ => None,
                 }
-            }
-            TargetRef::Range { base_id, count } => {
-                let end = base_id.saturating_add(u64::from(*count));
-                self.individuals
-                    .iter()
-                    .filter_map(|a| {
-                        let id = a.id();
-                        if id >= *base_id && id < end {
-                            Some(id)
-                        } else {
-                            None
-                        }
-                    })
-                    .collect()
-            }
-            TargetRef::Tag { tag } => self
-                .individuals
-                .iter()
-                .filter_map(|a| {
-                    let meta = a.metadata();
-                    match meta.tag.as_deref() {
-                        Some(t) if t == tag => Some(meta.id),
-                        _ => None,
-                    }
-                })
-                .collect(),
-        }
+            })
+            .collect()
     }
 
     fn decide_frequency<R: Rng + ?Sized>(
@@ -433,143 +410,86 @@ impl Population {
         &mut self,
         action: Action,
         landscape: &LandscapeFrame,
-        landscape_rt: Option<&mut crate::core::stream::roughness::RoughnessStream>,
+        _landscape_rt: Option<&mut crate::core::stream::roughness::RoughnessStream>,
     ) {
         match action {
-            Action::AddAgent { id, agent } => {
-                let tag = agent.tag().cloned();
-                let metadata = AgentMetadata {
-                    id,
-                    tag,
-                    group_idx: 0,
-                    member_idx: 0,
-                };
-                let spawned =
-                    agent.spawn(id, self.current_frame, metadata, self.time.fs, self.seed);
-                self.add_individual(spawned);
-            }
             Action::Finish => {
                 self.abort_requested = true;
             }
-            Action::SpawnAgents {
-                group_id,
-                base_id,
-                method,
-                count,
-                amp,
-                life,
-                tag,
-            } => {
-                let seed = self.spawn_seed(tag.as_deref(), group_id, count);
+            Action::Spawn { tag, count, patch } => {
+                let spawn_seq = self.spawn_counter;
+                self.spawn_counter = self.spawn_counter.wrapping_add(1);
+                let seed = self.spawn_seed(&tag, count, spawn_seq);
                 let mut rng = SmallRng::seed_from_u64(seed);
-                let group_idx = usize::try_from(group_id).unwrap_or(usize::MAX);
+                let mut control = match AgentControl::from_json(merge_json(
+                    AgentControl::default().to_json().unwrap_or_default(),
+                    patch.clone(),
+                )) {
+                    Ok(control) => control,
+                    Err(err) => {
+                        warn!("Spawn: invalid patch for tag={}: {}", tag, err);
+                        return;
+                    }
+                };
+                let center_in_patch = patch_sets_center_hz(&patch);
+                if !center_in_patch {
+                    let freq = self.decide_frequency(&SpawnMethod::default(), landscape, &mut rng);
+                    control.pitch.center_hz = freq.max(1.0);
+                }
+                if matches!(control.pitch.constraint.mode, PitchConstraintMode::Lock) {
+                    if let Some(freq) = control.pitch.constraint.freq_hz {
+                        control.pitch.center_hz = freq.max(1.0);
+                    }
+                }
                 for i in 0..count {
-                    let freq = self.decide_frequency(&method, landscape, &mut rng);
-                    let id = base_id + u64::from(i);
-                    let cfg = IndividualConfig {
-                        freq,
-                        amp,
-                        life: life.clone(),
-                        tag: tag.clone(),
-                    };
+                    let id = self.next_agent_id;
+                    self.next_agent_id = self.next_agent_id.wrapping_add(1);
                     let metadata = AgentMetadata {
                         id,
-                        tag: tag.clone(),
-                        group_idx,
+                        tag: Some(tag.clone()),
+                        group_idx: 0,
                         member_idx: i as usize,
+                    };
+                    let cfg = IndividualConfig {
+                        control: control.clone(),
+                        tag: Some(tag.clone()),
                     };
                     let spawned =
                         cfg.spawn(id, self.current_frame, metadata, self.time.fs, self.seed);
                     self.add_individual(spawned);
                 }
             }
-            Action::RemoveAgent { target } => {
-                let ids = self.resolve_target_ids(&target);
-                for id in ids {
-                    self.remove_agent(id);
-                }
-            }
-            Action::ReleaseAgent {
-                target,
-                release_sec,
-            } => {
-                let ids = self.resolve_target_ids(&target);
-                let sec = if release_sec > 0.0 {
-                    release_sec
-                } else {
-                    Self::RELEASE_SEC_DEFAULT
-                };
-                for id in ids {
-                    if let Some(agent) = self.find_individual_mut(id) {
-                        agent.start_release(sec);
-                    }
-                }
-            }
-            Action::SetFreq { target, freq_hz } => {
-                let ids = self.resolve_target_ids(&target);
-                let log_freq = freq_hz.max(1.0).log2();
-                for id in ids {
-                    if let Some(a) = self.find_individual_mut(id) {
-                        a.force_set_pitch_log2(log_freq);
-                    } else {
-                        warn!("SetFreq: agent {id} not found");
-                    }
-                }
-            }
-            Action::SetAmp { target, amp } => {
-                let ids = self.resolve_target_ids(&target);
-                for id in ids {
-                    if let Some(a) = self.find_individual_mut(id) {
-                        a.body.set_amp(amp);
-                    } else {
-                        warn!("SetAmp: agent {id} not found");
-                    }
-                }
-            }
-            Action::SetRhythmVitality { value } => {
-                self.global_vitality = value;
-            }
-            Action::SetGlobalCoupling { value } => {
-                self.global_coupling = value;
-            }
-            Action::SetRoughnessTolerance { value } => {
-                let upd = LandscapeUpdate {
-                    roughness_k: Some(value),
-                    ..Default::default()
-                };
-                if let Some(roughness) = landscape_rt {
-                    roughness.apply_update(upd);
-                }
-                let mut pending = self.pending_update.unwrap_or_default();
-                pending.roughness_k = Some(value);
-                self.pending_update = Some(pending);
-            }
-            Action::SetHarmonicity { mirror, limit } => {
-                let mut pending = self.pending_update.unwrap_or_default();
-                pending.mirror = mirror.or(pending.mirror);
-                pending.limit = limit.or(pending.limit);
-                self.pending_update = Some(pending);
-            }
-            Action::SetPersistence { target, value } => {
+            Action::Set { target, patch } => {
                 let ids = self.resolve_target_ids(&target);
                 for id in ids {
                     if let Some(agent) = self.find_individual_mut(id) {
-                        let v = value.clamp(0.0, 1.0);
-                        agent.pitch_ctl.core_mut().set_persistence(v);
+                        if let Err(err) = agent.apply_control_patch(patch.clone()) {
+                            warn!("Set: agent {id} rejected patch: {}", err);
+                        }
                     } else {
-                        warn!("SetPersistence: agent {id} not found");
+                        warn!("Set: agent {id} not found");
                     }
                 }
             }
-            Action::SetExploration { target, value } => {
+            Action::Unset { target, path } => {
                 let ids = self.resolve_target_ids(&target);
                 for id in ids {
                     if let Some(agent) = self.find_individual_mut(id) {
-                        // Map exploration without coupling persistence.
-                        let v = value.abs().clamp(0.0, 1.0);
-                        agent.pitch_ctl.core_mut().set_exploration(v);
+                        if let Err(err) = agent.apply_unset_path(&path) {
+                            warn!("Unset: agent {id} rejected path {}: {}", path, err);
+                        }
                     } else {
-                        warn!("SetExploration: agent {id} not found");
+                        warn!("Unset: agent {id} not found");
+                    }
+                }
+            }
+            Action::Remove { target } => {
+                let ids = self.resolve_target_ids(&target);
+                for id in ids {
+                    if let Some(agent) = self.find_individual_mut(id) {
+                        agent.start_remove_fade(Self::REMOVE_FADE_SEC_DEFAULT);
+                    } else {
+                        warn!("Remove: agent {id} not found");
                     }
                 }
             }
@@ -724,12 +644,12 @@ fn build_social_trace_from_batches(
 fn social_trace_params(individuals: &[Individual], hop_tick: Tick) -> (u32, f32) {
     let base = individuals
         .iter()
-        .find(|agent| agent.phonation.social.bin_ticks != 0 || agent.phonation.social.smooth != 0.0)
-        .map(|agent| agent.phonation.social)
+        .find(|agent| agent.phonation_social.bin_ticks != 0 || agent.phonation_social.smooth != 0.0)
+        .map(|agent| agent.phonation_social)
         .unwrap_or_default();
     if individuals.iter().any(|agent| {
-        agent.phonation.social.bin_ticks != base.bin_ticks
-            || agent.phonation.social.smooth != base.smooth
+        agent.phonation_social.bin_ticks != base.bin_ticks
+            || agent.phonation_social.smooth != base.smooth
     }) {
         warn!("Population social trace params differ across agents; using first match settings");
     }
@@ -749,13 +669,86 @@ where
     configs.into_iter().any(|cfg| cfg.coupling != 0.0)
 }
 
+#[derive(Clone, Copy, Debug)]
+enum GlobToken {
+    AnySeq,
+    AnyChar,
+    Literal(char),
+}
+
+fn parse_glob_pattern(pattern: &str) -> Vec<GlobToken> {
+    let mut tokens = Vec::new();
+    let mut chars = pattern.chars().peekable();
+    while let Some(ch) = chars.next() {
+        match ch {
+            '\\' => {
+                if let Some(next) = chars.next() {
+                    tokens.push(GlobToken::Literal(next));
+                } else {
+                    tokens.push(GlobToken::Literal('\\'));
+                }
+            }
+            '*' => tokens.push(GlobToken::AnySeq),
+            '?' => tokens.push(GlobToken::AnyChar),
+            _ => tokens.push(GlobToken::Literal(ch)),
+        }
+    }
+    tokens
+}
+
+fn matches_tag_pattern(pattern: &str, text: &str) -> bool {
+    let tokens = parse_glob_pattern(pattern);
+    let chars: Vec<char> = text.chars().collect();
+    let mut dp = vec![vec![false; chars.len() + 1]; tokens.len() + 1];
+    dp[0][0] = true;
+    for (i, token) in tokens.iter().enumerate() {
+        match token {
+            GlobToken::AnySeq => {
+                for j in 0..=chars.len() {
+                    if dp[i][j] {
+                        dp[i + 1][j] = true;
+                        if j < chars.len() {
+                            dp[i][j + 1] = true;
+                        }
+                    }
+                }
+            }
+            GlobToken::AnyChar => {
+                for j in 0..chars.len() {
+                    if dp[i][j] {
+                        dp[i + 1][j + 1] = true;
+                    }
+                }
+            }
+            GlobToken::Literal(ch) => {
+                for j in 0..chars.len() {
+                    if dp[i][j] && chars[j] == *ch {
+                        dp[i + 1][j + 1] = true;
+                    }
+                }
+            }
+        }
+    }
+    dp[tokens.len()][chars.len()]
+}
+
+fn patch_sets_center_hz(patch: &serde_json::Value) -> bool {
+    let serde_json::Value::Object(map) = patch else {
+        return false;
+    };
+    let Some(serde_json::Value::Object(pitch)) = map.get("pitch") else {
+        return false;
+    };
+    pitch.contains_key("center_hz")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::life::individual::{AnyArticulationCore, ArticulationWrapper, DroneCore};
     use crate::life::intent::BodySnapshot;
     use crate::life::phonation_engine::{OnsetEvent, PhonationCmd, PhonationKick};
-    use crate::life::scenario::{LifeConfig, SocialConfig, VoiceControl, VoiceOnSpawn};
+    use crate::life::scenario::SocialConfig;
     use crate::life::world_model::WorldModel;
     use rand::SeedableRng;
 
@@ -884,20 +877,14 @@ mod tests {
         let landscape = LandscapeFrame::new(space.clone());
         let mut world = WorldModel::new(time, space);
         let mut pop = Population::new(time);
-
-        let mut life = LifeConfig::default();
-        life.behavior.voice.on_spawn = VoiceOnSpawn::Disabled;
-        life.behavior.voice.control = VoiceControl::Autonomous;
-        let agent_cfg = IndividualConfig {
-            freq: 440.0,
-            amp: 0.5,
-            life,
-            tag: None,
-        };
         pop.apply_action(
-            Action::AddAgent {
-                id: 1,
-                agent: agent_cfg,
+            Action::Spawn {
+                tag: "silent".to_string(),
+                count: 1,
+                patch: serde_json::json!({
+                    "pitch": { "center_hz": 440.0 },
+                    "phonation": { "type": "none" }
+                }),
             },
             &landscape,
             None,

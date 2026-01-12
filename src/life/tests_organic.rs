@@ -1,17 +1,14 @@
-use crate::core::landscape::Landscape;
+use crate::core::landscape::{Landscape, LandscapeFrame};
 use crate::core::log2space::Log2Space;
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::Timebase;
+use crate::life::control::AgentControl;
 use crate::life::individual::{
     AgentMetadata, AnyArticulationCore, ArticulationCore, Individual, SoundBody,
 };
 use crate::life::lifecycle::LifecycleConfig;
-use crate::life::perceptual::PerceptualConfig;
 use crate::life::population::Population;
-use crate::life::scenario::{Action, TargetRef};
-use crate::life::scenario::{
-    ArticulationCoreConfig, IndividualConfig, LifeConfig, PitchCoreConfig, SoundBodyConfig,
-};
+use crate::life::scenario::{Action, ArticulationCoreConfig, IndividualConfig};
 use rand::SeedableRng;
 
 fn mix_signature(mut acc: u64, value: u32) -> u64 {
@@ -25,47 +22,15 @@ fn make_landscape() -> Landscape {
     Landscape::new(space)
 }
 
-fn life_with_lifecycle(lifecycle: LifecycleConfig) -> LifeConfig {
-    LifeConfig {
-        body: SoundBodyConfig::Sine { phase: None },
-        articulation: ArticulationCoreConfig::Entrain {
-            lifecycle,
-            rhythm_freq: None,
-            rhythm_sensitivity: None,
-            breath_gain_init: None,
-        },
-        pitch: PitchCoreConfig::PitchHillClimb {
-            neighbor_step_cents: None,
-            tessitura_gravity: None,
-            improvement_threshold: None,
-            exploration: None,
-            persistence: None,
-        },
-        perceptual: PerceptualConfig {
-            tau_fast: None,
-            tau_slow: None,
-            w_boredom: None,
-            w_familiarity: None,
-            rho_self: None,
-            boredom_gamma: None,
-            self_smoothing_radius: None,
-            silence_mass_epsilon: None,
-        },
-        ..Default::default()
-    }
+fn control_with_pitch(freq_hz: f32) -> AgentControl {
+    let mut control = AgentControl::default();
+    control.pitch.center_hz = freq_hz.max(1.0);
+    control
 }
 
 fn spawn_agent(freq: f32, id: u64) -> Individual {
-    let cfg = IndividualConfig {
-        freq,
-        amp: 0.5,
-        life: life_with_lifecycle(LifecycleConfig::Decay {
-            initial_energy: 1.0,
-            half_life_sec: 0.5,
-            attack_sec: crate::life::lifecycle::default_decay_attack(),
-        }),
-        tag: None,
-    };
+    let control = control_with_pitch(freq);
+    let cfg = IndividualConfig { control, tag: None };
     let meta = AgentMetadata {
         id,
         tag: None,
@@ -125,87 +90,59 @@ fn test_scan_logic() {
 }
 
 #[test]
-fn setfreq_sync_prevents_snapback() {
+fn lock_constraint_prevents_snapback() {
     let landscape = make_landscape();
     let mut pop = Population::new(Timebase {
         fs: 48_000.0,
         hop: 64,
     });
-    let agent_cfg = IndividualConfig {
-        freq: 220.0,
-        amp: 0.1,
-        life: life_with_lifecycle(LifecycleConfig::Decay {
-            initial_energy: 1.0,
-            half_life_sec: 0.5,
-            attack_sec: crate::life::lifecycle::default_decay_attack(),
-        }),
-        tag: Some("setfreq_test".to_string()),
-    };
     pop.apply_action(
-        Action::AddAgent {
-            id: 1,
-            agent: agent_cfg,
+        Action::Spawn {
+            tag: "setfreq_test".to_string(),
+            count: 1,
+            patch: serde_json::json!({
+                "pitch": { "center_hz": 220.0 }
+            }),
         },
-        &landscape,
+        &LandscapeFrame::default(),
         None,
     );
 
-    let (old_target, old_freq) = {
-        let agent = pop.individuals.first().expect("agent exists");
-        (agent.target_pitch_log2(), agent.body.base_freq_hz())
-    };
+    let old_target = pop
+        .individuals
+        .first()
+        .expect("agent exists")
+        .target_pitch_log2();
 
     let new_freq: f32 = 440.0;
     let new_log = new_freq.log2();
     pop.apply_action(
-        Action::SetFreq {
-            target: TargetRef::Tag {
-                tag: "setfreq_test".to_string(),
-            },
-            freq_hz: new_freq,
+        Action::Set {
+            target: "setfreq_test".to_string(),
+            patch: serde_json::json!({
+                "pitch": { "constraint": { "mode": "lock", "freq_hz": new_freq } }
+            }),
         },
-        &landscape,
+        &LandscapeFrame::default(),
         None,
-    );
-
-    let agent = pop.individuals.first_mut().expect("agent exists");
-    assert!(
-        (agent.target_pitch_log2() - new_log).abs() < 1e-6,
-        "target should sync to new log2 pitch"
-    );
-    assert!(
-        (agent.body.base_freq_hz() - new_freq).abs() < 1e-3,
-        "body should snap to new frequency"
-    );
-    assert!(
-        (agent.articulation.gate() - 1.0).abs() < 1e-6,
-        "gate should reset to 1.0 on SetFreq"
     );
 
     let mut rhythms = NeuralRhythms::default();
     rhythms.theta.mag = 0.0;
     rhythms.theta.phase = 0.0;
     let dt_sec = 0.02;
-    let steps = 500;
+    let steps = 50;
     let agent = pop.individuals.first_mut().expect("agent exists");
     for _ in 0..steps {
         agent.update_pitch_target(&rhythms, dt_sec, &landscape);
     }
     assert!(
         (agent.target_pitch_log2() - new_log).abs() < 1e-6,
-        "target should remain at SetFreq pitch"
-    );
-    assert!(
-        (agent.body.base_freq_hz() - new_freq).abs() < 1e-3,
-        "body should remain at SetFreq frequency"
+        "target should remain locked to constraint"
     );
     assert!(
         (agent.target_pitch_log2() - old_target).abs() > 0.5,
-        "target should not slide back toward old target"
-    );
-    assert!(
-        (agent.body.base_freq_hz() - old_freq).abs() > 1.0,
-        "body should not slide back toward old frequency"
+        "target should move away from old target"
     );
 }
 

@@ -1,19 +1,17 @@
 use conchordal::core::landscape::Landscape;
 use conchordal::core::log2space::Log2Space;
 use conchordal::core::modulation::{NeuralRhythms, RhythmBand};
+use conchordal::life::control::AgentControl;
 use conchordal::life::individual::{
     AgentMetadata, AnyArticulationCore, ArticulationState, Individual,
 };
-use conchordal::life::scenario::{IndividualConfig, LifeConfig};
+use conchordal::life::scenario::IndividualConfig;
 
 fn build_agent() -> Individual {
-    let life = LifeConfig::default();
-    let cfg = IndividualConfig {
-        freq: 440.0,
-        amp: 0.3,
-        life,
-        tag: None,
-    };
+    let mut control = AgentControl::default();
+    control.pitch.center_hz = 440.0;
+    control.body.amp = 0.3;
+    let cfg = IndividualConfig { control, tag: None };
     let metadata = AgentMetadata {
         id: 1,
         tag: None,

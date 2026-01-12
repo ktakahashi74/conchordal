@@ -3,7 +3,8 @@ use std::error::Error;
 use std::fs;
 use std::path::Path;
 
-use conchordal::life::scenario::{LifeConfig, SpawnMethod, TimbreGenotype};
+use conchordal::life::control::AgentPatch;
+use conchordal::life::scenario::{SpawnMethod, TimbreGenotype};
 use schemars::{Schema, schema_for};
 use serde_json::{Map, Value};
 
@@ -11,7 +12,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let out_dir = Path::new("docs/schemas");
     fs::create_dir_all(out_dir)?;
 
-    write_schema_markdown("life_config", &schema_for!(LifeConfig), out_dir)?;
+    write_schema_markdown("agent_patch", &schema_for!(AgentPatch), out_dir)?;
     write_schema_markdown("spawn_method", &schema_for!(SpawnMethod), out_dir)?;
     write_schema_markdown("timbre_genotype", &schema_for!(TimbreGenotype), out_dir)?;
 

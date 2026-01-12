@@ -74,6 +74,14 @@ impl PitchHillClimbPitchCore {
     pub fn set_persistence(&mut self, value: f32) {
         self.persistence = value.clamp(0.0, 1.0);
     }
+
+    pub fn set_tessitura_center(&mut self, value: f32) {
+        self.tessitura_center = value;
+    }
+
+    pub fn set_tessitura_gravity(&mut self, value: f32) {
+        self.tessitura_gravity = value;
+    }
 }
 
 impl PitchCore for PitchHillClimbPitchCore {
@@ -324,6 +332,18 @@ impl AnyPitchCore {
     pub fn set_persistence(&mut self, value: f32) {
         match self {
             AnyPitchCore::PitchHillClimb(core) => core.set_persistence(value),
+        }
+    }
+
+    pub fn set_tessitura_center(&mut self, value: f32) {
+        match self {
+            AnyPitchCore::PitchHillClimb(core) => core.set_tessitura_center(value),
+        }
+    }
+
+    pub fn set_tessitura_gravity(&mut self, value: f32) {
+        match self {
+            AnyPitchCore::PitchHillClimb(core) => core.set_tessitura_gravity(value),
         }
     }
 }

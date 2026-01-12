@@ -28,7 +28,7 @@ use crate::core::timebase::Tick;
 use crate::life::conductor::Conductor;
 use crate::life::individual::{PhonationBatch, SoundBody};
 use crate::life::population::Population;
-use crate::life::scenario::{Action, Scenario, TargetRef};
+use crate::life::scenario::{Action, Scenario};
 use crate::life::schedule_renderer::ScheduleRenderer;
 use crate::life::scripting::ScriptHost;
 use crate::ui::viewdata::{
@@ -217,29 +217,13 @@ pub fn validate_scenario(scenario: &Scenario) -> Result<(), String> {
                 Action::Finish => {
                     has_finish = true;
                 }
-                Action::SpawnAgents { count, .. } => {
-                    if *count == 0 {
-                        return Err("SpawnAgents has count=0".to_string());
-                    }
+                Action::Spawn { .. } => {}
+                Action::Set { target, .. }
+                | Action::Unset { target, .. }
+                | Action::Remove { target } => {
+                    validate_target_pattern(target)?;
                 }
-                Action::AddAgent { id, .. } => {
-                    if *id == 0 {
-                        return Err("AddAgent has id=0".to_string());
-                    }
-                }
-                Action::RemoveAgent { target }
-                | Action::ReleaseAgent { target, .. }
-                | Action::SetFreq { target, .. }
-                | Action::SetAmp { target, .. }
-                | Action::SetPersistence { target, .. }
-                | Action::SetExploration { target, .. } => {
-                    validate_target(target)?;
-                }
-                Action::SetRhythmVitality { .. }
-                | Action::SetGlobalCoupling { .. }
-                | Action::SetRoughnessTolerance { .. }
-                | Action::SetHarmonicity { .. }
-                | Action::PostIntent { .. } => {}
+                Action::PostIntent { .. } => {}
             }
         }
     }
@@ -275,16 +259,11 @@ pub fn validate_scenario(scenario: &Scenario) -> Result<(), String> {
     Ok(())
 }
 
-fn validate_target(target: &TargetRef) -> Result<(), String> {
-    match target {
-        TargetRef::Range { count, .. } if *count == 0 => {
-            Err("TargetRef::Range has count=0".to_string())
-        }
-        TargetRef::Tag { tag } if tag.trim().is_empty() => {
-            Err("TargetRef::Tag has empty tag".to_string())
-        }
-        _ => Ok(()),
+fn validate_target_pattern(target: &str) -> Result<(), String> {
+    if target.trim().is_empty() {
+        return Err("target pattern is empty".to_string());
     }
+    Ok(())
 }
 
 pub fn run_compile_only(args: crate::cli::Args, config: AppConfig) {
@@ -1005,7 +984,17 @@ fn worker_loop(
                 0
             };
             let phonation_batches = &phonation_batches_buf[..phonation_count];
-            dorsal.set_vitality(pop.global_vitality);
+            let vitality = if pop.individuals.is_empty() {
+                0.0
+            } else {
+                let sum: f32 = pop
+                    .individuals
+                    .iter()
+                    .map(|agent| agent.last_signal.amplitude)
+                    .sum();
+                sum / pop.individuals.len() as f32
+            };
+            dorsal.set_vitality(vitality);
             if let Some(update) = pop.take_pending_update() {
                 apply_params_update(&mut lparams, &update);
                 current_landscape.recompute_consonance(&lparams);

@@ -1,6 +1,7 @@
 use super::pitch_core::{AnyPitchCore, PitchCore};
 use crate::core::landscape::Landscape;
 use crate::core::modulation::NeuralRhythms;
+use crate::life::control::{PitchConstraintMode, PitchControl};
 use crate::life::perceptual::{FeaturesNow, PerceptualContext};
 use rand::rngs::SmallRng;
 
@@ -15,6 +16,7 @@ pub struct PitchController {
     theta_phase_initialized: bool,
     last_target_salience: f32,
     rng: SmallRng,
+    perceptual_enabled: bool,
 }
 
 impl PitchController {
@@ -35,6 +37,7 @@ impl PitchController {
             theta_phase_initialized: false,
             last_target_salience: 0.0,
             rng,
+            perceptual_enabled: true,
         }
     }
 
@@ -54,6 +57,14 @@ impl PitchController {
         &mut self.core
     }
 
+    pub fn perceptual_mut(&mut self) -> &mut PerceptualContext {
+        &mut self.perceptual
+    }
+
+    pub fn set_perceptual_enabled(&mut self, enabled: bool) {
+        self.perceptual_enabled = enabled;
+    }
+
     pub fn force_set_target_pitch_log2(&mut self, log_freq: f32) {
         self.target_pitch_log2 = log_freq.max(0.0);
         self.accumulated_time = 0.0;
@@ -69,6 +80,7 @@ impl PitchController {
         rhythms: &NeuralRhythms,
         dt_sec: f32,
         landscape: &Landscape,
+        pitch: &PitchControl,
     ) {
         let dt_sec = dt_sec.max(0.0);
         let current_freq = current_freq_hz.max(1.0);
@@ -97,7 +109,10 @@ impl PitchController {
             0.0
         };
 
-        if theta_cross && self.accumulated_time >= self.integration_window {
+        if self.perceptual_enabled
+            && theta_cross
+            && self.accumulated_time >= self.integration_window
+        {
             let elapsed = self.accumulated_time;
             self.accumulated_time = 0.0;
             let features = FeaturesNow::from_subjective_intensity(&landscape.subjective_intensity);
@@ -120,8 +135,44 @@ impl PitchController {
             }
         }
 
+        if matches!(pitch.constraint.mode, PitchConstraintMode::Lock) {
+            if let Some(freq) = pitch.constraint.freq_hz {
+                if freq.is_finite() && freq > 0.0 {
+                    target_pitch_log2 = freq.log2();
+                }
+            }
+        } else if matches!(pitch.constraint.mode, PitchConstraintMode::Attractor) {
+            if let Some(freq) = pitch.constraint.freq_hz {
+                if freq.is_finite() && freq > 0.0 {
+                    let strength = pitch.constraint.strength.clamp(0.0, 1.0);
+                    let attractor_log2 = freq.log2();
+                    target_pitch_log2 =
+                        target_pitch_log2 + (attractor_log2 - target_pitch_log2) * strength;
+                }
+            }
+        }
+
         let (fmin, fmax) = landscape.freq_bounds_log2();
-        target_pitch_log2 = target_pitch_log2.clamp(fmin, fmax);
+        let center_log2 = if pitch.center_hz.is_finite() && pitch.center_hz > 0.0 {
+            pitch.center_hz.log2()
+        } else {
+            current_pitch_log2
+        };
+        let range_oct = pitch.range_oct.clamp(0.0, 6.0);
+        let (min_range, max_range) = if range_oct <= 0.0 {
+            (center_log2, center_log2)
+        } else {
+            let half = range_oct * 0.5;
+            (center_log2 - half, center_log2 + half)
+        };
+        let min = fmin.max(min_range);
+        let max = fmax.min(max_range);
+        let clamped = if min <= max {
+            target_pitch_log2.clamp(min, max)
+        } else {
+            target_pitch_log2.clamp(fmin, fmax)
+        };
+        target_pitch_log2 = clamped;
         self.target_pitch_log2 = target_pitch_log2;
     }
 }

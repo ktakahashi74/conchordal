@@ -1,9 +1,10 @@
 use conchordal::core::landscape::Landscape;
 use conchordal::core::log2space::Log2Space;
 use conchordal::core::timebase::{Tick, Timebase};
+use conchordal::life::control::AgentControl;
 use conchordal::life::individual::AgentMetadata;
 use conchordal::life::population::Population;
-use conchordal::life::scenario::{IndividualConfig, LifeConfig};
+use conchordal::life::scenario::IndividualConfig;
 use conchordal::life::schedule_renderer::ScheduleRenderer;
 use conchordal::life::sound_voice::default_release_ticks;
 use conchordal::life::world_model::WorldModel;
@@ -16,12 +17,10 @@ fn test_timebase() -> Timebase {
 }
 
 fn spawn_agent(freq: f32, amp: f32) -> IndividualConfig {
-    IndividualConfig {
-        freq,
-        amp,
-        life: LifeConfig::default(),
-        tag: None,
-    }
+    let mut control = AgentControl::default();
+    control.pitch.center_hz = freq;
+    control.body.amp = amp;
+    IndividualConfig { control, tag: None }
 }
 
 #[test]

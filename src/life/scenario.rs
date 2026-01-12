@@ -5,16 +5,10 @@ use serde::{
     ser::{SerializeMap, Serializer},
 };
 use std::fmt;
-use tracing::debug;
 
-use crate::life::individual::{
-    AgentMetadata, AnyArticulationCore, AnyPitchCore, ArticulationWrapper, Individual,
-    PitchController,
-};
+use crate::life::control::AgentControl;
+use crate::life::individual::{AgentMetadata, Individual};
 use crate::life::lifecycle::LifecycleConfig;
-use crate::life::perceptual::PerceptualConfig;
-use crate::life::phonation_engine::PhonationEngine;
-use rand::SeedableRng;
 use serde_json::Value;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -483,74 +477,12 @@ pub struct PhonationConfig {
     pub social: SocialConfig,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum VoiceOnSpawn {
-    Immediate,
-    #[default]
-    NextRhythm,
-    Disabled,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum VoiceControl {
-    Autonomous,
-    #[default]
-    Scripted,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum MotionAutonomy {
-    #[default]
-    Disabled,
-    Immediate,
-    AfterFirstUtterance,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct VoiceBehavior {
+pub struct IndividualConfig {
     #[serde(default)]
-    pub on_spawn: VoiceOnSpawn,
-    #[serde(default)]
-    pub control: VoiceControl,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
-#[serde(deny_unknown_fields)]
-pub struct AutonomyBehavior {
-    #[serde(default)]
-    pub motion: MotionAutonomy,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
-#[serde(deny_unknown_fields)]
-pub struct BehaviorConfig {
-    #[serde(default)]
-    pub voice: VoiceBehavior,
-    #[serde(default)]
-    pub autonomy: AutonomyBehavior,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
-#[serde(deny_unknown_fields)]
-pub struct LifeConfig {
-    #[serde(default)]
-    pub body: SoundBodyConfig,
-    #[serde(default)]
-    pub articulation: ArticulationCoreConfig,
-    #[serde(default)]
-    pub pitch: PitchCoreConfig,
-    #[serde(default)]
-    pub perceptual: PerceptualConfig,
-    #[serde(default)]
-    pub phonation: PhonationConfig,
-    #[serde(default)]
-    pub behavior: BehaviorConfig,
-    #[serde(default)]
-    pub birth_once_duration_sec: Option<f32>,
+    pub control: AgentControl,
+    pub tag: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -732,31 +664,7 @@ impl Default for PitchCoreConfig {
     }
 }
 
-impl fmt::Display for LifeConfig {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "life[body={:?}, articulation={:?}, pitch={:?}, perceptual={:?}, phonation={:?}, behavior={:?}]",
-            self.body,
-            self.articulation,
-            self.pitch,
-            self.perceptual,
-            self.phonation,
-            self.behavior
-        )
-    }
-}
-
 // Scenes are represented by SceneMarker and do not own events.
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct IndividualConfig {
-    pub freq: f32,
-    pub amp: f32,
-    pub life: LifeConfig,
-    pub tag: Option<String>,
-}
 
 impl IndividualConfig {
     pub fn id(&self) -> Option<u64> {
@@ -779,287 +687,42 @@ impl IndividualConfig {
         if metadata.tag.is_none() {
             metadata.tag = self.tag().cloned();
         }
-        let target_freq = self.freq.max(1.0);
-        let target_pitch_log2 = target_freq.log2();
-        let integration_window = 2.0 + 10.0 / target_freq;
-        let seed = seed_offset ^ assigned_id ^ start_frame.wrapping_mul(0x9E37_79B9_7F4A_7C15);
-        let mut rng = rand::rngs::SmallRng::seed_from_u64(seed);
-        let core =
-            AnyArticulationCore::from_config(&self.life.articulation, fs, assigned_id, &mut rng);
-        let phonation_engine = PhonationEngine::from_config(&self.life.phonation, seed);
-        let pitch = AnyPitchCore::from_config(&self.life.pitch, target_pitch_log2, &mut rng);
-        let perceptual =
-            crate::life::perceptual::PerceptualContext::from_config(&self.life.perceptual, 0);
-        let body = crate::life::individual::AnySoundBody::from_config(
-            &self.life.body,
-            self.freq,
-            self.amp,
-            &mut rng,
-        );
-        let pitch_ctl = PitchController::new(
-            pitch,
-            perceptual,
-            target_pitch_log2,
-            integration_window,
-            rng,
-        );
-        let behavior = self.life.behavior.clone();
-        let voice_runtime = crate::life::individual::VoiceRuntime::from_behavior(&behavior.voice);
-        let motion_runtime =
-            crate::life::individual::MotionRuntime::from_behavior(&behavior.autonomy);
-        let (articulation_core, lifecycle_label, default_by_articulation, breath_gain_init) =
-            match &self.life.articulation {
-                ArticulationCoreConfig::Entrain {
-                    lifecycle,
-                    breath_gain_init,
-                    ..
-                } => {
-                    let life_label = match lifecycle {
-                        LifecycleConfig::Decay { .. } => "decay",
-                        LifecycleConfig::Sustain { .. } => "sustain",
-                    };
-                    ("entrain", life_label, 1.0, *breath_gain_init)
-                }
-                ArticulationCoreConfig::Seq {
-                    breath_gain_init, ..
-                } => ("seq", "none", 1.0, *breath_gain_init),
-                ArticulationCoreConfig::Drone {
-                    breath_gain_init, ..
-                } => ("drone", "none", 0.0, *breath_gain_init),
-            };
-        let breath_gain = breath_gain_init
-            .unwrap_or(default_by_articulation)
-            .clamp(0.0, 1.0);
-        debug!(
-            target: "rhythm::spawn",
-            id = assigned_id,
-            tag = ?metadata.tag,
-            articulation = articulation_core,
-            lifecycle = lifecycle_label,
-            breath_gain_init,
-            breath_gain
-        );
-        Individual {
-            id: assigned_id,
+        Individual::spawn_from_control(
+            self.control.clone(),
+            assigned_id,
+            start_frame,
             metadata,
-            behavior,
-            voice_runtime,
-            motion_runtime,
-            articulation: ArticulationWrapper::new(core, breath_gain),
-            pitch_ctl,
-            phonation: self.life.phonation.clone(),
-            phonation_engine,
-            body,
-            last_signal: Default::default(),
-            release_gain: 1.0,
-            release_sec: 0.03,
-            release_pending: false,
-            birth_once_pending: true,
-            birth_frame: start_frame,
-            birth_once_duration_sec: self.life.birth_once_duration_sec,
-            phonation_scratch: Default::default(),
-        }
+            fs,
+            seed_offset,
+        )
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct CohortHandle {
-    pub tag: String,
-    pub group_id: u64,
-    pub base_id: u64,
-    pub count: u32,
-}
-
-impl CohortHandle {
-    pub fn len(&self) -> u32 {
-        self.count
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.count == 0
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct CohortIter {
-    next: u32,
-    base_id: u64,
-    count: u32,
-    tag: Option<String>,
-}
-
-impl Iterator for CohortIter {
-    type Item = AgentHandle;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.next >= self.count {
-            return None;
-        }
-        let id = self.base_id + u64::from(self.next);
-        self.next += 1;
-        Some(AgentHandle {
-            id,
-            tag: self.tag.clone(),
-        })
-    }
-}
-
-impl IntoIterator for CohortHandle {
-    type Item = AgentHandle;
-    type IntoIter = CohortIter;
-
-    fn into_iter(self) -> Self::IntoIter {
-        CohortIter {
-            next: 0,
-            base_id: self.base_id,
-            count: self.count,
-            tag: Some(self.tag),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct AgentHandle {
-    pub id: u64,
-    pub tag: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct TagSelector {
-    pub tag: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum TargetRef {
-    AgentId { id: u64 },
-    Range { base_id: u64, count: u32 },
-    Tag { tag: String },
 }
 
 impl fmt::Display for IndividualConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let tag_str = self.tag.as_deref().unwrap_or("-");
-        write!(
-            f,
-            "Agent(tag={}, freq={:.1} Hz, amp={:.3}, {})",
-            tag_str, self.freq, self.amp, self.life
-        )
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::life::individual::SoundBody;
-
-    #[test]
-    fn spawn_carries_life_config() {
-        let cfg = IndividualConfig {
-            freq: 220.0,
-            amp: 0.3,
-            life: LifeConfig {
-                body: SoundBodyConfig::Sine { phase: Some(0.25) },
-                articulation: ArticulationCoreConfig::Entrain {
-                    lifecycle: LifecycleConfig::Decay {
-                        initial_energy: 1.0,
-                        half_life_sec: 0.5,
-                        attack_sec: crate::life::lifecycle::default_decay_attack(),
-                    },
-                    rhythm_freq: None,
-                    rhythm_sensitivity: None,
-                    breath_gain_init: None,
-                },
-                pitch: PitchCoreConfig::PitchHillClimb {
-                    neighbor_step_cents: None,
-                    tessitura_gravity: None,
-                    improvement_threshold: None,
-                    exploration: None,
-                    persistence: None,
-                },
-                perceptual: PerceptualConfig {
-                    tau_fast: None,
-                    tau_slow: None,
-                    w_boredom: None,
-                    w_familiarity: None,
-                    rho_self: None,
-                    boredom_gamma: None,
-                    self_smoothing_radius: None,
-                    silence_mass_epsilon: None,
-                },
-                ..Default::default()
-            },
-            tag: Some("test".into()),
-        };
-
-        let agent = cfg.spawn(
-            7,
-            5,
-            AgentMetadata {
-                id: 7,
-                tag: Some("test".into()),
-                group_idx: 0,
-                member_idx: 0,
-            },
-            48_000.0,
-            0,
-        );
-        assert_eq!(agent.id, 7);
-        assert_eq!(agent.body.base_freq_hz(), 220.0);
+        write!(f, "Agent(tag={}, control={:?})", tag_str, self.control)
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Action {
-    AddAgent {
-        id: u64,
-        agent: IndividualConfig,
-    },
-    SpawnAgents {
-        group_id: u64,
-        base_id: u64,
+    Spawn {
+        tag: String,
         count: u32,
-        method: SpawnMethod,
-        amp: f32,
-        life: LifeConfig,
-        tag: Option<String>,
+        patch: Value,
     },
-    RemoveAgent {
-        target: TargetRef,
+    Set {
+        target: String,
+        patch: Value,
     },
-    ReleaseAgent {
-        target: TargetRef,
-        release_sec: f32,
+    Unset {
+        target: String,
+        path: String,
     },
-    SetFreq {
-        target: TargetRef,
-        freq_hz: f32,
-    },
-    SetAmp {
-        target: TargetRef,
-        amp: f32,
-    },
-    SetRhythmVitality {
-        value: f32,
-    },
-    SetGlobalCoupling {
-        value: f32,
-    },
-    SetRoughnessTolerance {
-        value: f32,
-    },
-    SetHarmonicity {
-        mirror: Option<f32>,
-        limit: Option<u32>,
-    },
-    SetPersistence {
-        target: TargetRef,
-        value: f32,
-    },
-    SetExploration {
-        target: TargetRef,
-        value: f32,
+    Remove {
+        target: String,
     },
     PostIntent {
         source_id: u64,
@@ -1073,71 +736,15 @@ pub enum Action {
     Finish,
 }
 
-impl fmt::Display for TargetRef {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            TargetRef::AgentId { id } => write!(f, "id={id}"),
-            TargetRef::Range { base_id, count } => {
-                write!(f, "range={base_id}..{}", base_id + u64::from(*count))
-            }
-            TargetRef::Tag { tag } => write!(f, "tag={tag}"),
-        }
-    }
-}
-
 impl fmt::Display for Action {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Action::AddAgent { id, agent } => write!(f, "AddAgent id={id} {agent}"),
-            Action::SpawnAgents {
-                method,
-                count,
-                amp,
-                life,
-                tag,
-                group_id,
-                base_id,
-            } => {
-                let tag_str = tag.as_deref().unwrap_or("-");
-                write!(
-                    f,
-                    "SpawnAgents tag={} group_id={} base_id={} count={} amp={:.3} {} {}",
-                    tag_str, group_id, base_id, count, amp, method, life
-                )
+            Action::Spawn { tag, count, .. } => write!(f, "Spawn tag={} count={}", tag, count),
+            Action::Set { target, .. } => write!(f, "Set target={}", target),
+            Action::Unset { target, path } => {
+                write!(f, "Unset target={} path={}", target, path)
             }
-            Action::RemoveAgent { target } => write!(f, "RemoveAgent target={}", target),
-            Action::ReleaseAgent {
-                target,
-                release_sec,
-            } => write!(f, "ReleaseAgent target={} sec={:.3}", target, release_sec),
-            Action::SetFreq { target, freq_hz } => {
-                write!(f, "SetFreq target={} freq={:.2} Hz", target, freq_hz)
-            }
-            Action::SetAmp { target, amp } => {
-                write!(f, "SetAmp target={} amp={:.3}", target, amp)
-            }
-            Action::SetRhythmVitality { value } => {
-                write!(f, "SetRhythmVitality value={:.3}", value)
-            }
-            Action::SetGlobalCoupling { value } => {
-                write!(f, "SetGlobalCoupling value={:.3}", value)
-            }
-            Action::SetRoughnessTolerance { value } => {
-                write!(f, "SetRoughnessTolerance value={:.3}", value)
-            }
-            Action::SetHarmonicity { mirror, limit } => {
-                let m = mirror
-                    .map(|v| format!("{:.3}", v))
-                    .unwrap_or_else(|| "-".into());
-                let l = limit.map(|v| v.to_string()).unwrap_or_else(|| "-".into());
-                write!(f, "SetHarmonicity mirror={} limit={}", m, l)
-            }
-            Action::SetPersistence { target, value } => {
-                write!(f, "SetPersistence target={} value={:.3}", target, value)
-            }
-            Action::SetExploration { target, value } => {
-                write!(f, "SetExploration target={} value={:.3}", target, value)
-            }
+            Action::Remove { target } => write!(f, "Remove target={}", target),
             Action::PostIntent {
                 source_id,
                 onset_sec,

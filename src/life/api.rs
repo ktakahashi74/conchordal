@@ -1,6 +1,5 @@
 use rhai::{EvalAltResult, FLOAT, Map, Position};
 
-use super::scenario::{AgentHandle, CohortHandle, TagSelector, TargetRef};
 use super::scripting::ScriptContext;
 
 pub fn push_time(ctx: &mut ScriptContext, position: Position) -> Result<(), Box<EvalAltResult>> {
@@ -19,25 +18,13 @@ pub fn set_time(
     ctx.set_time(sec as f32, position)
 }
 
-pub fn spawn_agents_at(
-    ctx: &mut ScriptContext,
-    tag: &str,
-    method_map: Map,
-    life_map: Map,
-    count: i64,
-    amp: FLOAT,
-    position: Position,
-) -> Result<CohortHandle, Box<EvalAltResult>> {
-    ctx.spawn(tag, method_map, life_map, count, amp as f32, position)
-}
-
 pub fn spawn_min_at(
     ctx: &mut ScriptContext,
     tag: &str,
     count: i64,
     position: Position,
-) -> Result<CohortHandle, Box<EvalAltResult>> {
-    ctx.spawn_opts(tag, count, Map::new(), position)
+) -> Result<i64, Box<EvalAltResult>> {
+    ctx.spawn_default(tag, count, position)
 }
 
 pub fn spawn_with_opts_at(
@@ -46,66 +33,6 @@ pub fn spawn_with_opts_at(
     count: i64,
     opts: Map,
     position: Position,
-) -> Result<CohortHandle, Box<EvalAltResult>> {
-    ctx.spawn_opts(tag, count, opts, position)
-}
-
-pub fn add_agent_at(
-    ctx: &mut ScriptContext,
-    tag: &str,
-    freq: FLOAT,
-    amp: FLOAT,
-    life_map: Map,
-    position: Position,
-) -> Result<AgentHandle, Box<EvalAltResult>> {
-    ctx.add_agent(tag, freq as f32, amp as f32, life_map, position)
-}
-
-pub fn set_agent_at(
-    ctx: &mut ScriptContext,
-    target: AgentHandle,
-    patch: Map,
-    position: Position,
-) -> Result<(), Box<EvalAltResult>> {
-    ctx.set_patch(TargetRef::AgentId { id: target.id }, patch, position)
-}
-
-pub fn set_cohort_at(
-    ctx: &mut ScriptContext,
-    target: CohortHandle,
-    patch: Map,
-    position: Position,
-) -> Result<(), Box<EvalAltResult>> {
-    ctx.set_patch(
-        TargetRef::Range {
-            base_id: target.base_id,
-            count: target.count,
-        },
-        patch,
-        position,
-    )
-}
-
-pub fn set_tag_at(
-    ctx: &mut ScriptContext,
-    target: TagSelector,
-    patch: Map,
-    position: Position,
-) -> Result<(), Box<EvalAltResult>> {
-    ctx.set_patch(TargetRef::Tag { tag: target.tag }, patch, position)
-}
-
-pub fn set_tag_str_at(
-    ctx: &mut ScriptContext,
-    tag: &str,
-    patch: Map,
-    position: Position,
-) -> Result<(), Box<EvalAltResult>> {
-    ctx.set_patch(
-        TargetRef::Tag {
-            tag: tag.to_string(),
-        },
-        patch,
-        position,
-    )
+) -> Result<i64, Box<EvalAltResult>> {
+    ctx.spawn_with_patch(tag, count, opts, position)
 }

@@ -22,6 +22,14 @@
 - `spawn` opts: `amp`, `method`, `life`
 - `set` patch: `amp`, `freq`, `drift`, `commitment`
 
+## Phonation types
+Use in patches via `phonation: #{ type: "hold", ... }`.
+- `none`: disable phonation events
+- `interval`: retriggering (interval/accumulator)
+- `clock`: retriggering (clock-gated)
+- `field`: retriggering (timing field)
+- `hold`: one-shot sustain tied to lifecycle; ignores density/sync/legato
+
 ## Minimal examples
 - `spawn("drones", 5); end_at(20);`
 - `wait(2); end();`

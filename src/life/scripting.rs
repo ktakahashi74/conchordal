@@ -1,14 +1,17 @@
 use std::fs;
 use std::sync::{Arc, Mutex};
 
+use crate::core::landscape::LandscapeUpdate;
 use rhai::{
     Dynamic, Engine, EvalAltResult, EvalContext, Expression, FLOAT, INT, Map, NativeCallContext,
     Position,
 };
 
-use super::api::{pop_time, push_time, set_time, spawn_min_at, spawn_with_opts_at};
+use super::api::{
+    pop_time, push_time, set_time, spawn_min_at, spawn_with_opts_and_patch_at, spawn_with_third_at,
+};
 use super::control::{AgentPatch, PitchConstraintMode, matches_tag_pattern};
-use super::scenario::{Action, Scenario, SceneMarker, TimedEvent};
+use super::scenario::{Action, Scenario, SceneMarker, SpawnMethod, SpawnOpts, TimedEvent};
 
 const SCRIPT_PRELUDE: &str = r#"
 __internal_debug_seed();
@@ -173,17 +176,37 @@ impl ScriptContext {
         });
     }
 
-    pub fn spawn_with_patch(
+    pub fn spawn_with_opts_and_patch(
         &mut self,
         tag: &str,
         count: i64,
-        patch: Map,
+        opts: Option<Map>,
+        patch: Option<Map>,
         position: Position,
     ) -> Result<i64, Box<EvalAltResult>> {
         self.ensure_not_ended(position)?;
         let c = count.max(0).min(u32::MAX as i64) as u32;
-        let (patch_out, patch_json) = Self::parse_agent_patch(patch, position)?;
-        if let Some(pitch) = patch_out.pitch.as_ref()
+
+        let opts_struct = if let Some(opts) = opts {
+            let debug_map = format!("{:?}", opts);
+            Some(Self::parse_spawn_opts(opts, &debug_map, position)?)
+        } else {
+            None
+        };
+
+        let (patch_struct, mut patch_json, life_val, legacy_method) = if let Some(patch) = patch {
+            let debug_map = format!("{:?}", patch);
+            Self::normalize_spawn_patch(patch, &debug_map, position)?
+        } else {
+            (
+                AgentPatch::default(),
+                serde_json::Value::Object(serde_json::Map::new()),
+                None,
+                None,
+            )
+        };
+
+        if let Some(pitch) = patch_struct.pitch.as_ref()
             && let Some(constraint) = pitch.constraint.as_ref()
         {
             let mode = constraint.mode.unwrap_or(PitchConstraintMode::Free);
@@ -198,14 +221,47 @@ impl ScriptContext {
                 )));
             }
         }
-        let patch_json = Self::apply_spawn_convenience(patch_out, patch_json, position)?;
+
+        if opts_struct.is_some() && legacy_method.is_some() {
+            return Err(Box::new(EvalAltResult::ErrorRuntime(
+                "spawn patch cannot include method when opts are provided".into(),
+                position,
+            )));
+        }
+
+        patch_json = Self::apply_spawn_convenience(patch_struct, patch_json, position)?;
+        if let Some(life_val) = life_val {
+            Self::merge_spawn_life(&mut patch_json, &life_val, position)?;
+        }
+
+        let opts_struct = opts_struct.or_else(|| {
+            legacy_method.map(|method| SpawnOpts {
+                method: Some(method),
+            })
+        });
+
         let action = Action::Spawn {
             tag: tag.to_string(),
             count: c,
+            opts: opts_struct,
             patch: patch_json,
         };
         self.push_event(self.cursor, vec![action]);
         Ok(c as i64)
+    }
+
+    pub fn spawn_with_third_map(
+        &mut self,
+        tag: &str,
+        count: i64,
+        third: Map,
+        position: Position,
+    ) -> Result<i64, Box<EvalAltResult>> {
+        if Self::spawn_opts_map_is_candidate(&third) {
+            self.spawn_with_opts_and_patch(tag, count, Some(third), None, position)
+        } else {
+            self.spawn_with_opts_and_patch(tag, count, None, Some(third), position)
+        }
     }
 
     pub fn spawn_default(
@@ -214,7 +270,7 @@ impl ScriptContext {
         count: i64,
         position: Position,
     ) -> Result<i64, Box<EvalAltResult>> {
-        self.spawn_with_patch(tag, count, Map::new(), position)
+        self.spawn_with_opts_and_patch(tag, count, None, None, position)
     }
 
     pub fn intent(
@@ -332,12 +388,135 @@ impl ScriptContext {
         Ok(self.estimate_match_count(target))
     }
 
+    pub fn set_harmonicity(
+        &mut self,
+        opts: Map,
+        position: Position,
+    ) -> Result<(), Box<EvalAltResult>> {
+        self.ensure_not_ended(position)?;
+
+        let mut unknown_keys = Vec::new();
+        for key in opts.keys() {
+            match key.as_str() {
+                "mirror" | "limit" => {}
+                _ => unknown_keys.push(key.to_string()),
+            }
+        }
+        if !unknown_keys.is_empty() {
+            unknown_keys.sort();
+            let msg = format!(
+                "set_harmonicity opts has unknown keys: [{}] (allowed: mirror, limit)",
+                unknown_keys.join(", ")
+            );
+            return Err(Box::new(EvalAltResult::ErrorRuntime(msg.into(), position)));
+        }
+
+        let mut update = LandscapeUpdate::default();
+        if let Some(value) = opts.get("mirror") {
+            let mirror = value
+                .as_float()
+                .ok()
+                .map(|v| v as f32)
+                .or_else(|| value.as_int().ok().map(|v| v as f32))
+                .ok_or_else(|| {
+                    Box::new(EvalAltResult::ErrorRuntime(
+                        "set_harmonicity mirror must be a number".into(),
+                        position,
+                    ))
+                })?;
+            update.mirror = Some(mirror);
+        }
+        if let Some(value) = opts.get("limit") {
+            let limit = value
+                .as_int()
+                .ok()
+                .or_else(|| value.as_float().ok().map(|v| v as i64))
+                .ok_or_else(|| {
+                    Box::new(EvalAltResult::ErrorRuntime(
+                        "set_harmonicity limit must be an integer".into(),
+                        position,
+                    ))
+                })?;
+            if limit < 0 {
+                return Err(Box::new(EvalAltResult::ErrorRuntime(
+                    "set_harmonicity limit must be non-negative".into(),
+                    position,
+                )));
+            }
+            update.limit = Some(limit as u32);
+        }
+        if update.mirror.is_none() && update.limit.is_none() {
+            return Err(Box::new(EvalAltResult::ErrorRuntime(
+                "set_harmonicity opts requires mirror or limit".into(),
+                position,
+            )));
+        }
+
+        self.push_event(self.cursor, vec![Action::SetHarmonicity { update }]);
+        Ok(())
+    }
+
+    pub fn set_global_coupling(
+        &mut self,
+        value: f32,
+        position: Position,
+    ) -> Result<(), Box<EvalAltResult>> {
+        self.ensure_not_ended(position)?;
+        if value < 0.0 {
+            return Err(Box::new(EvalAltResult::ErrorRuntime(
+                "set_global_coupling must be non-negative".into(),
+                position,
+            )));
+        }
+        self.push_event(self.cursor, vec![Action::SetGlobalCoupling { value }]);
+        Ok(())
+    }
+
+    pub fn set_roughness_tolerance(
+        &mut self,
+        value: f32,
+        position: Position,
+    ) -> Result<(), Box<EvalAltResult>> {
+        self.ensure_not_ended(position)?;
+        if value < 0.0 {
+            return Err(Box::new(EvalAltResult::ErrorRuntime(
+                "set_roughness_tolerance must be non-negative".into(),
+                position,
+            )));
+        }
+        self.push_event(self.cursor, vec![Action::SetRoughnessTolerance { value }]);
+        Ok(())
+    }
+
     pub fn remove(&mut self, target: &str, position: Position) -> Result<i64, Box<EvalAltResult>> {
         self.ensure_not_ended(position)?;
         self.push_event(
             self.cursor,
             vec![Action::Remove {
                 target: target.to_string(),
+            }],
+        );
+        Ok(self.estimate_match_count(target))
+    }
+
+    pub fn release(
+        &mut self,
+        target: &str,
+        fade_sec: f32,
+        position: Position,
+    ) -> Result<i64, Box<EvalAltResult>> {
+        self.ensure_not_ended(position)?;
+        if fade_sec < 0.0 {
+            return Err(Box::new(EvalAltResult::ErrorRuntime(
+                "release fade_sec must be non-negative".into(),
+                position,
+            )));
+        }
+        self.push_event(
+            self.cursor,
+            vec![Action::Release {
+                target: target.to_string(),
+                fade_sec,
             }],
         );
         Ok(self.estimate_match_count(target))
@@ -403,6 +582,232 @@ impl ScriptContext {
             ))
         })?;
         Ok((patch_struct, patch_json))
+    }
+
+    fn spawn_opts_map_is_candidate(map: &Map) -> bool {
+        map.keys().all(|key| key.as_str() == "method")
+    }
+
+    fn parse_spawn_opts(
+        opts: Map,
+        debug_map: &str,
+        position: Position,
+    ) -> Result<SpawnOpts, Box<EvalAltResult>> {
+        let raw_val = serde_json::to_value(&opts).map_err(|e| {
+            Box::new(EvalAltResult::ErrorRuntime(
+                format!("Error serializing SpawnOpts: {e}").into(),
+                position,
+            ))
+        })?;
+        let opts_struct: SpawnOpts = serde_json::from_value(raw_val).map_err(|e| {
+            Box::new(EvalAltResult::ErrorRuntime(
+                format!("Error parsing SpawnOpts: {e} (input: {debug_map})").into(),
+                position,
+            ))
+        })?;
+        Ok(opts_struct)
+    }
+
+    fn normalize_spawn_patch(
+        patch: Map,
+        debug_map: &str,
+        position: Position,
+    ) -> Result<
+        (
+            AgentPatch,
+            serde_json::Value,
+            Option<serde_json::Value>,
+            Option<SpawnMethod>,
+        ),
+        Box<EvalAltResult>,
+    > {
+        let raw_val = serde_json::to_value(&patch).map_err(|e| {
+            Box::new(EvalAltResult::ErrorRuntime(
+                format!("Error serializing AgentPatch: {e}").into(),
+                position,
+            ))
+        })?;
+        let serde_json::Value::Object(mut raw_map) = raw_val else {
+            return Err(Box::new(EvalAltResult::ErrorRuntime(
+                "spawn patch must be a map".into(),
+                position,
+            )));
+        };
+        let method_val = raw_map.remove("method");
+        let life_val = raw_map.remove("life");
+        let amp_val = raw_map.remove("amp");
+
+        if let Some(amp_val) = amp_val {
+            let amp = amp_val.as_f64().ok_or_else(|| {
+                Box::new(EvalAltResult::ErrorRuntime(
+                    "spawn amp must be a number".into(),
+                    position,
+                ))
+            })?;
+            let body_entry = raw_map
+                .entry("body".to_string())
+                .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
+            let serde_json::Value::Object(body_map) = body_entry else {
+                return Err(Box::new(EvalAltResult::ErrorRuntime(
+                    "spawn body must be a map".into(),
+                    position,
+                )));
+            };
+            body_map.insert("amp".to_string(), serde_json::Value::from(amp));
+        }
+
+        let legacy_method = if let Some(method_val) = method_val {
+            Some(
+                serde_json::from_value::<SpawnMethod>(method_val).map_err(|e| {
+                    Box::new(EvalAltResult::ErrorRuntime(
+                        format!("Error parsing spawn method: {e}").into(),
+                        position,
+                    ))
+                })?,
+            )
+        } else {
+            None
+        };
+
+        if let Some(life_val) = life_val.as_ref() {
+            if !matches!(life_val, serde_json::Value::Object(_)) {
+                return Err(Box::new(EvalAltResult::ErrorRuntime(
+                    "life must be a map".into(),
+                    position,
+                )));
+            }
+        }
+
+        let patch_val = serde_json::Value::Object(raw_map);
+        let (patch_struct, patch_json) =
+            Self::parse_agent_patch_value(patch_val, debug_map, position)?;
+        Ok((patch_struct, patch_json, life_val, legacy_method))
+    }
+
+    fn parse_agent_patch_value(
+        patch_val: serde_json::Value,
+        debug_map: &str,
+        position: Position,
+    ) -> Result<(AgentPatch, serde_json::Value), Box<EvalAltResult>> {
+        let patch_struct: AgentPatch = serde_json::from_value(patch_val).map_err(|e| {
+            Box::new(EvalAltResult::ErrorRuntime(
+                format!("Error parsing AgentPatch: {e} (input: {debug_map})").into(),
+                position,
+            ))
+        })?;
+        let patch_json = serde_json::to_value(&patch_struct).map_err(|e| {
+            Box::new(EvalAltResult::ErrorRuntime(
+                format!("Error serializing AgentPatch: {e}").into(),
+                position,
+            ))
+        })?;
+        Ok((patch_struct, patch_json))
+    }
+
+    fn merge_spawn_life(
+        patch_json: &mut serde_json::Value,
+        life_val: &serde_json::Value,
+        position: Position,
+    ) -> Result<(), Box<EvalAltResult>> {
+        let life_obj = match life_val.as_object() {
+            Some(obj) => obj,
+            None => {
+                return Err(Box::new(EvalAltResult::ErrorRuntime(
+                    "life must be a map".into(),
+                    position,
+                )));
+            }
+        };
+        let life_body = match life_obj.get("body") {
+            Some(serde_json::Value::Object(body)) => Some(body),
+            Some(_) => {
+                return Err(Box::new(EvalAltResult::ErrorRuntime(
+                    "life.body must be a map".into(),
+                    position,
+                )));
+            }
+            None => None,
+        };
+        let Some(life_body) = life_body else {
+            return Ok(());
+        };
+
+        let core = life_body.get("core").and_then(|v| v.as_str());
+        let method = match core {
+            Some("sine") => Some("sine"),
+            Some("harmonic") => Some("harmonic"),
+            _ => None,
+        };
+
+        let brightness = life_body.get("brightness").and_then(|v| v.as_f64());
+        let stiffness = life_body.get("stiffness").and_then(|v| v.as_f64());
+        let unison = life_body.get("unison").and_then(|v| v.as_f64());
+        let jitter = life_body.get("jitter").and_then(|v| v.as_f64());
+        let vibrato_depth = life_body.get("vibrato_depth").and_then(|v| v.as_f64());
+        let motion = jitter.or(vibrato_depth);
+
+        if method.is_none()
+            && brightness.is_none()
+            && stiffness.is_none()
+            && unison.is_none()
+            && motion.is_none()
+        {
+            return Ok(());
+        }
+
+        let serde_json::Value::Object(patch_map) = patch_json else {
+            return Err(Box::new(EvalAltResult::ErrorRuntime(
+                "spawn patch must be a map".into(),
+                position,
+            )));
+        };
+        let body_entry = patch_map
+            .entry("body".to_string())
+            .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
+        let serde_json::Value::Object(body_map) = body_entry else {
+            return Err(Box::new(EvalAltResult::ErrorRuntime(
+                "spawn body must be a map".into(),
+                position,
+            )));
+        };
+
+        if let Some(method) = method {
+            if !body_map.contains_key("method") {
+                body_map.insert("method".to_string(), serde_json::Value::from(method));
+            }
+        }
+
+        let mut timbre_updates = Vec::new();
+        if let Some(brightness) = brightness {
+            timbre_updates.push(("brightness", brightness));
+        }
+        if let Some(stiffness) = stiffness {
+            timbre_updates.push(("inharmonic", stiffness));
+        }
+        if let Some(unison) = unison {
+            timbre_updates.push(("width", unison));
+        }
+        if let Some(motion) = motion {
+            timbre_updates.push(("motion", motion));
+        }
+
+        if !timbre_updates.is_empty() {
+            let timbre_entry = body_map
+                .entry("timbre".to_string())
+                .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
+            let serde_json::Value::Object(timbre_map) = timbre_entry else {
+                return Err(Box::new(EvalAltResult::ErrorRuntime(
+                    "spawn timbre must be a map".into(),
+                    position,
+                )));
+            };
+            for (key, value) in timbre_updates {
+                if !timbre_map.contains_key(key) {
+                    timbre_map.insert(key.to_string(), serde_json::Value::from(value));
+                }
+            }
+        }
+        Ok(())
     }
 
     fn apply_spawn_convenience(
@@ -560,7 +965,22 @@ impl ScriptHost {
                         let last = symbols.last().map(|s| s.as_str()).unwrap_or("");
                         if last == ")" { None } else { Some("$expr$") }
                     }
-                    7 => Some(")"),
+                    7 => match look_ahead {
+                        "," => Some(","),
+                        ")" => Some(")"),
+                        _ => {
+                            return Err(rhai::LexError::ImproperSymbol(
+                                look_ahead.to_string(),
+                                "Expected ',' or ')' for spawn".to_string(),
+                            )
+                            .into_err(Position::NONE));
+                        }
+                    },
+                    8 => {
+                        let last = symbols.last().map(|s| s.as_str()).unwrap_or("");
+                        if last == ")" { None } else { Some("$expr$") }
+                    }
+                    9 => Some(")"),
                     _ => None,
                 };
                 Ok(next.map(Into::into))
@@ -569,7 +989,8 @@ impl ScriptHost {
             move |eval_ctx: &mut EvalContext, exprs: &[Expression], _state| {
                 let pos_tag = exprs[0].position();
                 let pos_count = exprs[1].position();
-                let pos_opts = exprs.get(2).map(|e| e.position()).unwrap_or(pos_tag);
+                let pos_third = exprs.get(2).map(|e| e.position()).unwrap_or(pos_tag);
+                let pos_fourth = exprs.get(3).map(|e| e.position()).unwrap_or(pos_tag);
                 let tag_dyn = eval_ctx.eval_expression_tree(&exprs[0])?;
                 let count_dyn = eval_ctx.eval_expression_tree(&exprs[1])?;
                 let tag = tag_dyn.try_cast::<String>().ok_or_else(|| {
@@ -591,15 +1012,31 @@ impl ScriptHost {
                     )));
                 }
                 let mut ctx = ctx_for_spawn_syntax.lock().expect("lock script context");
-                let spawned = if exprs.len() >= 3 {
+                let spawned = if exprs.len() >= 4 {
                     let opts_dyn = eval_ctx.eval_expression_tree(&exprs[2])?;
                     let opts = opts_dyn.try_cast::<Map>().ok_or_else(|| {
                         Box::new(EvalAltResult::ErrorRuntime(
-                            "spawn patch must be a map".into(),
-                            pos_opts,
+                            "spawn opts must be a map".into(),
+                            pos_third,
                         ))
                     })?;
-                    spawn_with_opts_at(&mut ctx, &tag, count, opts, pos_opts)?
+                    let patch_dyn = eval_ctx.eval_expression_tree(&exprs[3])?;
+                    let patch = patch_dyn.try_cast::<Map>().ok_or_else(|| {
+                        Box::new(EvalAltResult::ErrorRuntime(
+                            "spawn patch must be a map".into(),
+                            pos_fourth,
+                        ))
+                    })?;
+                    spawn_with_opts_and_patch_at(&mut ctx, &tag, count, opts, patch, pos_third)?
+                } else if exprs.len() >= 3 {
+                    let third_dyn = eval_ctx.eval_expression_tree(&exprs[2])?;
+                    let third = third_dyn.try_cast::<Map>().ok_or_else(|| {
+                        Box::new(EvalAltResult::ErrorRuntime(
+                            "spawn map must be a map".into(),
+                            pos_third,
+                        ))
+                    })?;
+                    spawn_with_third_at(&mut ctx, &tag, count, third, pos_third)?
                 } else {
                     spawn_min_at(&mut ctx, &tag, count, pos_tag)?
                 };
@@ -709,6 +1146,34 @@ impl ScriptHost {
                 ctx.set_patch(tag, patch, call_ctx.call_position())
             },
         );
+        let ctx_for_set_harmonicity = ctx.clone();
+        engine.register_fn(
+            "set_harmonicity",
+            move |call_ctx: NativeCallContext, opts: Map| {
+                let mut ctx = ctx_for_set_harmonicity.lock().expect("lock script context");
+                ctx.set_harmonicity(opts, call_ctx.call_position())
+            },
+        );
+        let ctx_for_set_global_coupling = ctx.clone();
+        engine.register_fn(
+            "set_global_coupling",
+            move |call_ctx: NativeCallContext, value: FLOAT| {
+                let mut ctx = ctx_for_set_global_coupling
+                    .lock()
+                    .expect("lock script context");
+                ctx.set_global_coupling(value as f32, call_ctx.call_position())
+            },
+        );
+        let ctx_for_set_roughness_tolerance = ctx.clone();
+        engine.register_fn(
+            "set_roughness_tolerance",
+            move |call_ctx: NativeCallContext, value: FLOAT| {
+                let mut ctx = ctx_for_set_roughness_tolerance
+                    .lock()
+                    .expect("lock script context");
+                ctx.set_roughness_tolerance(value as f32, call_ctx.call_position())
+            },
+        );
         let ctx_for_unset = ctx.clone();
         engine.register_fn(
             "unset",
@@ -732,6 +1197,22 @@ impl ScriptHost {
             let mut ctx = ctx_for_remove_tag_str.lock().expect("lock script context");
             ctx.remove(tag, call_ctx.call_position())
         });
+        let ctx_for_release_tag_str = ctx.clone();
+        engine.register_fn(
+            "release",
+            move |call_ctx: NativeCallContext, tag: &str, sec: FLOAT| {
+                let mut ctx = ctx_for_release_tag_str.lock().expect("lock script context");
+                ctx.release(tag, sec as f32, call_ctx.call_position())
+            },
+        );
+        let ctx_for_release_tag_int = ctx.clone();
+        engine.register_fn(
+            "release",
+            move |call_ctx: NativeCallContext, tag: &str, sec: i64| {
+                let mut ctx = ctx_for_release_tag_int.lock().expect("lock script context");
+                ctx.release(tag, sec as f32, call_ctx.call_position())
+            },
+        );
 
         let ctx_for_end = ctx.clone();
         engine.register_fn(
@@ -841,6 +1322,11 @@ impl std::error::Error for ScriptError {}
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::landscape::LandscapeFrame;
+    use crate::core::log2space::Log2Space;
+    use crate::core::timebase::Timebase;
+    use crate::life::control::PhonationType;
+    use crate::life::population::Population;
     use rhai::Position;
 
     fn run_script(src: &str) -> Scenario {
@@ -849,6 +1335,32 @@ mod tests {
         let script_src = ScriptHost::combined_script(src);
         engine.eval::<()>(&script_src).expect("script runs");
         ctx.lock().expect("lock ctx").scenario.clone()
+    }
+
+    fn test_timebase() -> Timebase {
+        Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        }
+    }
+
+    fn spawn_action_from_script(src: &str) -> Action {
+        let scenario = run_script(src);
+        scenario
+            .events
+            .iter()
+            .flat_map(|ev| ev.actions.iter())
+            .find_map(|action| match action {
+                Action::Spawn { .. } => Some(action.clone()),
+                _ => None,
+            })
+            .expect("spawn action exists")
+    }
+
+    fn apply_spawn_action(action: Action, landscape: &LandscapeFrame) -> Population {
+        let mut pop = Population::new(test_timebase());
+        pop.apply_action(action, landscape, None);
+        pop
     }
 
     fn eval_script_error_position(src: &str) -> Position {
@@ -1063,6 +1575,142 @@ mod tests {
             .any(|ev| ev.actions.iter().any(|a| matches!(a, Action::Finish)));
         assert!(has_spawn, "expected spawn event");
         assert!(has_finish, "expected finish event");
+    }
+
+    #[test]
+    fn spawn_two_args_creates_agent() {
+        let action = spawn_action_from_script(
+            r#"
+            spawn("unit", 1);
+            end();
+        "#,
+        );
+        let landscape = LandscapeFrame::new(Log2Space::new(100.0, 400.0, 12));
+        let pop = apply_spawn_action(action, &landscape);
+        assert_eq!(pop.individuals.len(), 1);
+    }
+
+    #[test]
+    fn spawn_three_args_patch_applies_amp() {
+        let action = spawn_action_from_script(
+            r#"
+            spawn("unit", 1, #{ body: #{ amp: 0.42 } });
+            end();
+        "#,
+        );
+        let landscape = LandscapeFrame::new(Log2Space::new(100.0, 400.0, 12));
+        let pop = apply_spawn_action(action, &landscape);
+        let amp = pop.individuals[0].effective_control.body.amp;
+        assert!((amp - 0.42).abs() <= 1e-6);
+    }
+
+    #[test]
+    fn spawn_three_args_opts_samples_freq_in_range() {
+        let space = Log2Space::new(100.0, 400.0, 12);
+        let min_freq = space.freq_of_index(2);
+        let max_freq = space.freq_of_index(6);
+        let src = format!(
+            r#"
+            spawn("unit", 1, #{{
+                method: #{{
+                    mode: "harmonicity",
+                    min_freq: {min_freq},
+                    max_freq: {max_freq}
+                }}
+            }});
+            end();
+        "#
+        );
+        let action = spawn_action_from_script(&src);
+        let landscape = LandscapeFrame::new(space.clone());
+        let pop = apply_spawn_action(action, &landscape);
+        let agent = pop.individuals.first().expect("agent exists");
+        let sampled = agent
+            .effective_control
+            .pitch
+            .constraint
+            .freq_hz
+            .expect("sampled freq");
+        let idx = space.index_of_freq(sampled).expect("sampled idx");
+        let center = space.freq_of_index(idx);
+        assert!(center >= min_freq && center <= max_freq);
+    }
+
+    #[test]
+    fn spawn_four_args_opts_and_patch_apply() {
+        let space = Log2Space::new(100.0, 400.0, 12);
+        let min_freq = space.freq_of_index(1);
+        let max_freq = space.freq_of_index(5);
+        let src = format!(
+            r#"
+            spawn("unit", 1,
+                #{{
+                    method: #{{
+                        mode: "harmonicity",
+                        min_freq: {min_freq},
+                        max_freq: {max_freq}
+                    }}
+                }},
+                #{{ phonation: #{{ type: "hold" }} }}
+            );
+            end();
+        "#
+        );
+        let action = spawn_action_from_script(&src);
+        let landscape = LandscapeFrame::new(space.clone());
+        let pop = apply_spawn_action(action, &landscape);
+        let agent = pop.individuals.first().expect("agent exists");
+        assert_eq!(
+            agent.effective_control.phonation.r#type,
+            PhonationType::Hold
+        );
+        let sampled = agent
+            .effective_control
+            .pitch
+            .constraint
+            .freq_hz
+            .expect("sampled freq");
+        let idx = space.index_of_freq(sampled).expect("sampled idx");
+        let center = space.freq_of_index(idx);
+        assert!(center >= min_freq && center <= max_freq);
+    }
+
+    #[test]
+    fn spawn_opts_unknown_key_errors() {
+        let err = eval_script_error(
+            r#"
+            spawn("unit", 1, #{ bad: 1 }, #{});
+            end();
+        "#,
+        );
+        let msg = err.to_string();
+        assert!(msg.contains("SpawnOpts") || msg.contains("unknown field"));
+    }
+
+    #[test]
+    fn spawn_three_args_empty_opts_is_noop() {
+        let scenario = run_script(
+            r#"
+            spawn("unit", 1, #{});
+            end();
+        "#,
+        );
+        let action = scenario
+            .events
+            .iter()
+            .flat_map(|ev| ev.actions.iter())
+            .find_map(|action| match action {
+                Action::Spawn { .. } => Some(action.clone()),
+                _ => None,
+            })
+            .expect("spawn action exists");
+        match action {
+            Action::Spawn { opts, patch, .. } => {
+                assert!(opts.is_some());
+                assert_eq!(patch, serde_json::json!({}));
+            }
+            _ => panic!("unexpected action"),
+        }
     }
 
     #[test]

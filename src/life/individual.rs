@@ -14,7 +14,7 @@ use crate::life::phonation_engine::{
 };
 use crate::life::scenario::{
     ArticulationCoreConfig, HarmonicMode, PhonationClockConfig, PhonationConfig,
-    PhonationConnectConfig, PhonationIntervalConfig, PitchCoreConfig, SocialConfig,
+    PhonationConnectConfig, PhonationIntervalConfig, PhonationMode, PitchCoreConfig, SocialConfig,
     SoundBodyConfig, SubThetaModConfig, TimbreGenotype,
 };
 use crate::life::social_density::SocialDensityTrace;
@@ -775,6 +775,22 @@ fn sound_body_config_from_control(body: &BodyControl) -> SoundBodyConfig {
 }
 
 fn phonation_config_from_control(control: &PhonationControl) -> PhonationConfig {
+    // Hold ignores density/sync/legato; it is purely lifecycle-driven.
+    if matches!(control.r#type, PhonationType::Hold) {
+        let social = SocialConfig {
+            coupling: control.sociality.clamp(0.0, 1.0),
+            bin_ticks: 0,
+            smooth: 0.0,
+        };
+        return PhonationConfig {
+            mode: PhonationMode::Hold,
+            interval: PhonationIntervalConfig::None,
+            connect: PhonationConnectConfig::FixedGate { length_gates: 1 },
+            clock: PhonationClockConfig::ThetaGate,
+            sub_theta_mod: SubThetaModConfig::None,
+            social,
+        };
+    }
     let density = control.density.clamp(0.0, 1.0);
     let rate = 0.5 + density * 3.5;
     let interval = match control.r#type {
@@ -794,7 +810,6 @@ fn phonation_config_from_control(control: &PhonationControl) -> PhonationConfig 
             curve_x0: 0.5,
             drop_gain: (1.0 - legato).clamp(0.0, 1.0),
         },
-        PhonationType::Drone => PhonationConnectConfig::FixedGate { length_gates: 32 },
         _ => PhonationConnectConfig::FixedGate { length_gates },
     };
     let sub_theta_mod = if control.sync > 0.0 {
@@ -812,6 +827,7 @@ fn phonation_config_from_control(control: &PhonationControl) -> PhonationConfig 
         smooth: 0.0,
     };
     PhonationConfig {
+        mode: PhonationMode::Gated,
         interval,
         connect,
         clock: PhonationClockConfig::ThetaGate,

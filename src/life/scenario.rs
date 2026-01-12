@@ -6,6 +6,7 @@ use serde::{
 };
 use std::fmt;
 
+use crate::core::landscape::LandscapeUpdate;
 use crate::life::control::AgentControl;
 use crate::life::individual::{AgentMetadata, Individual};
 use crate::life::lifecycle::LifecycleConfig;
@@ -462,9 +463,24 @@ impl Default for SocialConfig {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum PhonationMode {
+    Gated,
+    Hold,
+}
+
+impl Default for PhonationMode {
+    fn default() -> Self {
+        PhonationMode::Gated
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
 #[serde(deny_unknown_fields)]
 pub struct PhonationConfig {
+    #[serde(default)]
+    pub mode: PhonationMode,
     #[serde(default)]
     pub interval: PhonationIntervalConfig,
     #[serde(default)]
@@ -711,6 +727,8 @@ pub enum Action {
     Spawn {
         tag: String,
         count: u32,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        opts: Option<SpawnOpts>,
         patch: Value,
     },
     Set {
@@ -723,6 +741,19 @@ pub enum Action {
     },
     Remove {
         target: String,
+    },
+    Release {
+        target: String,
+        fade_sec: f32,
+    },
+    SetHarmonicity {
+        update: LandscapeUpdate,
+    },
+    SetGlobalCoupling {
+        value: f32,
+    },
+    SetRoughnessTolerance {
+        value: f32,
     },
     PostIntent {
         source_id: u64,
@@ -745,6 +776,20 @@ impl fmt::Display for Action {
                 write!(f, "Unset target={} path={}", target, path)
             }
             Action::Remove { target } => write!(f, "Remove target={}", target),
+            Action::Release { target, fade_sec } => {
+                write!(f, "Release target={} fade={:.3}", target, fade_sec)
+            }
+            Action::SetHarmonicity { update } => write!(
+                f,
+                "SetHarmonicity mirror={:?} limit={:?} roughness_k={:?}",
+                update.mirror, update.limit, update.roughness_k
+            ),
+            Action::SetGlobalCoupling { value } => {
+                write!(f, "SetGlobalCoupling value={:.3}", value)
+            }
+            Action::SetRoughnessTolerance { value } => {
+                write!(f, "SetRoughnessTolerance value={:.3}", value)
+            }
             Action::PostIntent {
                 source_id,
                 onset_sec,
@@ -815,6 +860,13 @@ pub enum SpawnMethod {
         /// Minimum ERB distance between newborn fundamentals at spawn time. Default: 1.0
         min_dist_erb: Option<f32>,
     },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
+#[serde(deny_unknown_fields)]
+pub struct SpawnOpts {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub method: Option<SpawnMethod>,
 }
 
 impl Default for SpawnMethod {

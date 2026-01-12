@@ -256,8 +256,9 @@ pub enum PhonationType {
     #[default]
     Interval,
     Clock,
-    Drone,
     Field,
+    /// Sustain once per lifecycle; ignores density/sync/legato.
+    Hold,
     None,
 }
 

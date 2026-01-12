@@ -416,11 +416,19 @@ impl Population {
             Action::Finish => {
                 self.abort_requested = true;
             }
-            Action::Spawn { tag, count, patch } => {
+            Action::Spawn {
+                tag,
+                count,
+                opts,
+                patch,
+            } => {
                 let spawn_seq = self.spawn_counter;
                 self.spawn_counter = self.spawn_counter.wrapping_add(1);
                 let seed = self.spawn_seed(&tag, count, spawn_seq);
                 let mut rng = SmallRng::seed_from_u64(seed);
+                let mut patch = patch;
+                let legacy_method = take_spawn_method(&mut patch, &tag);
+                let opts_method = opts.and_then(|opts| opts.method);
                 let mut control = match AgentControl::from_json(merge_json(
                     AgentControl::default().to_json().unwrap_or_default(),
                     patch.clone(),
@@ -432,8 +440,13 @@ impl Population {
                     }
                 };
                 let center_in_patch = patch_sets_center_hz(&patch);
-                if !center_in_patch {
-                    let freq = self.decide_frequency(&SpawnMethod::default(), landscape, &mut rng);
+                if let Some(method) = opts_method {
+                    let freq = self.decide_frequency(&method, landscape, &mut rng);
+                    control.pitch.constraint.mode = PitchConstraintMode::Lock;
+                    control.pitch.constraint.freq_hz = Some(freq.max(1.0));
+                } else if !center_in_patch {
+                    let method = legacy_method.unwrap_or_default();
+                    let freq = self.decide_frequency(&method, landscape, &mut rng);
                     control.pitch.center_hz = freq.max(1.0);
                 }
                 if matches!(control.pitch.constraint.mode, PitchConstraintMode::Lock)
@@ -493,8 +506,46 @@ impl Population {
                     }
                 }
             }
+            Action::Release { target, fade_sec } => {
+                let ids = self.resolve_target_ids(&target);
+                let fade_sec = fade_sec.max(0.0);
+                for id in ids {
+                    if let Some(agent) = self.find_individual_mut(id) {
+                        agent.start_remove_fade(fade_sec);
+                    } else {
+                        warn!("Release: agent {id} not found");
+                    }
+                }
+            }
+            Action::SetHarmonicity { update } => {
+                self.merge_landscape_update(update);
+            }
+            Action::SetGlobalCoupling { value } => {
+                self.global_coupling = value.max(0.0);
+            }
+            Action::SetRoughnessTolerance { value } => {
+                let update = LandscapeUpdate {
+                    roughness_k: Some(value),
+                    ..LandscapeUpdate::default()
+                };
+                self.merge_landscape_update(update);
+            }
             Action::PostIntent { .. } => {}
         }
+    }
+
+    fn merge_landscape_update(&mut self, update: LandscapeUpdate) {
+        let mut merged = self.pending_update.unwrap_or_default();
+        if update.mirror.is_some() {
+            merged.mirror = update.mirror;
+        }
+        if update.limit.is_some() {
+            merged.limit = update.limit;
+        }
+        if update.roughness_k.is_some() {
+            merged.roughness_k = update.roughness_k;
+        }
+        self.pending_update = Some(merged);
     }
 
     pub fn take_pending_update(&mut self) -> Option<LandscapeUpdate> {
@@ -679,6 +730,20 @@ fn patch_sets_center_hz(patch: &serde_json::Value) -> bool {
     pitch.contains_key("center_hz")
 }
 
+fn take_spawn_method(patch: &mut serde_json::Value, tag: &str) -> Option<SpawnMethod> {
+    let serde_json::Value::Object(map) = patch else {
+        return None;
+    };
+    let method_val = map.remove("method")?;
+    match serde_json::from_value(method_val) {
+        Ok(method) => Some(method),
+        Err(err) => {
+            warn!("Spawn: invalid method for tag={}: {}", tag, err);
+            None
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -830,6 +895,7 @@ mod tests {
                 Action::Spawn {
                     tag: tag.to_string(),
                     count: 1,
+                    opts: None,
                     patch: json!({}),
                 },
                 &landscape,
@@ -873,6 +939,7 @@ mod tests {
                 Action::Spawn {
                     tag: tag.to_string(),
                     count: 1,
+                    opts: None,
                     patch: json!({}),
                 },
                 &landscape,
@@ -906,6 +973,7 @@ mod tests {
             Action::Spawn {
                 tag: "unset".to_string(),
                 count: 1,
+                opts: None,
                 patch: json!({
                     "body": { "amp": 0.30 }
                 }),
@@ -956,6 +1024,7 @@ mod tests {
             Action::Spawn {
                 tag: "body_method".to_string(),
                 count: 1,
+                opts: None,
                 patch: json!({
                     "body": { "method": "harmonic" }
                 }),
@@ -988,6 +1057,7 @@ mod tests {
             Action::Spawn {
                 tag: "phonation_type".to_string(),
                 count: 1,
+                opts: None,
                 patch: json!({
                     "phonation": { "type": "interval" }
                 }),
@@ -999,7 +1069,7 @@ mod tests {
             Action::Set {
                 target: "phonation_type".to_string(),
                 patch: json!({
-                    "phonation": { "type": "drone" }
+                    "phonation": { "type": "hold" }
                 }),
             },
             &landscape,
@@ -1026,6 +1096,7 @@ mod tests {
             Action::Spawn {
                 tag: "silent".to_string(),
                 count: 1,
+                opts: None,
                 patch: serde_json::json!({
                     "pitch": { "center_hz": 440.0 },
                     "phonation": { "type": "none" }

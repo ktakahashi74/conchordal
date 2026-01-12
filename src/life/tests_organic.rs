@@ -100,6 +100,7 @@ fn lock_constraint_prevents_snapback() {
         Action::Spawn {
             tag: "setfreq_test".to_string(),
             count: 1,
+            opts: None,
             patch: serde_json::json!({
                 "pitch": { "center_hz": 220.0 }
             }),

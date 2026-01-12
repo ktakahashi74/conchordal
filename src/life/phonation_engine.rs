@@ -9,7 +9,7 @@ use crate::core::timebase::Tick;
 use crate::life::gate_clock::next_gate_tick;
 use crate::life::scenario::{
     PhonationClockConfig, PhonationConfig, PhonationConnectConfig, PhonationIntervalConfig,
-    SubThetaModConfig,
+    PhonationMode, SubThetaModConfig,
 };
 use crate::life::social_density::SocialDensityTrace;
 
@@ -797,11 +797,19 @@ impl PartialOrd for PendingOff {
     }
 }
 
+#[derive(Debug, Default)]
+struct HoldCore {
+    note_on_sent: bool,
+    note_id: Option<NoteId>,
+}
+
 pub struct PhonationEngine {
     pub clock: Box<dyn PhonationClock + Send>,
     pub interval: Box<dyn PhonationInterval + Send>,
     pub connect: Box<dyn PhonationConnect + Send>,
     pub sub_theta_mod: Box<dyn SubThetaMod + Send + Sync>,
+    pub mode: PhonationMode,
+    hold: HoldCore,
     pub next_note_id: NoteId,
     last_gate_index: Option<u64>,
     last_theta_pos: Option<f64>,
@@ -818,6 +826,7 @@ impl fmt::Debug for PhonationEngine {
             .field("next_note_id", &self.next_note_id)
             .field("last_gate_index", &self.last_gate_index)
             .field("active_notes", &self.active_notes)
+            .field("mode", &self.mode)
             .finish()
     }
 }
@@ -884,6 +893,8 @@ impl PhonationEngine {
             interval,
             connect,
             sub_theta_mod,
+            mode: config.mode,
+            hold: HoldCore::default(),
             next_note_id: 0,
             last_gate_index: None,
             last_theta_pos: None,
@@ -897,6 +908,49 @@ impl PhonationEngine {
 
     pub fn has_active_notes(&self) -> bool {
         self.active_notes > 0
+    }
+
+    fn tick_hold(
+        &mut self,
+        ctx: &CoreTickCtx,
+        state: &CoreState,
+        min_allowed_onset_tick: Option<Tick>,
+        out_cmds: &mut Vec<PhonationCmd>,
+        out_events: &mut Vec<PhonationNoteEvent>,
+        out_onsets: &mut Vec<OnsetEvent>,
+    ) {
+        let allow_onset = min_allowed_onset_tick
+            .map(|min_tick| ctx.now_tick >= min_tick)
+            .unwrap_or(true);
+        if allow_onset && state.is_alive && !self.hold.note_on_sent {
+            let note_id = self.next_note_id;
+            self.next_note_id = self.next_note_id.wrapping_add(1);
+            self.hold.note_on_sent = true;
+            self.hold.note_id = Some(note_id);
+            out_cmds.push(PhonationCmd::NoteOn {
+                note_id,
+                kick: PhonationKick::Planned { strength: 1.0 },
+            });
+            self.active_notes = self.active_notes.saturating_add(1);
+            out_events.push(PhonationNoteEvent {
+                note_id,
+                onset_tick: ctx.now_tick,
+            });
+            out_onsets.push(OnsetEvent {
+                gate: 0,
+                onset_tick: ctx.now_tick,
+                strength: 1.0,
+            });
+        }
+        if !state.is_alive {
+            if let Some(note_id) = self.hold.note_id.take() {
+                out_cmds.push(PhonationCmd::NoteOff {
+                    note_id,
+                    off_tick: ctx.now_tick,
+                });
+                self.active_notes = self.active_notes.saturating_sub(1);
+            }
+        }
     }
 
     fn schedule_note_off(&mut self, note_id: NoteId, off_tick: Tick) {
@@ -975,6 +1029,17 @@ impl PhonationEngine {
         out_events: &mut Vec<PhonationNoteEvent>,
         out_onsets: &mut Vec<OnsetEvent>,
     ) {
+        if matches!(self.mode, PhonationMode::Hold) {
+            self.tick_hold(
+                ctx,
+                state,
+                min_allowed_onset_tick,
+                out_cmds,
+                out_events,
+                out_onsets,
+            );
+            return;
+        }
         self.scratch_candidates.clear();
         self.clock
             .gather_candidates(ctx, &mut self.scratch_candidates);
@@ -1441,6 +1506,8 @@ mod tests {
             interval: Box::new(interval),
             connect: Box::new(FixedGateConnect::new(1)),
             sub_theta_mod: Box::<NoneMod>::default(),
+            mode: PhonationMode::Gated,
+            hold: HoldCore::default(),
             next_note_id: 0,
             last_gate_index: None,
             last_theta_pos: None,
@@ -1807,6 +1874,8 @@ mod tests {
             interval: Box::new(RecordingInterval { log: log.clone() }),
             connect: Box::new(FixedGateConnect::new(1)),
             sub_theta_mod: Box::<NoneMod>::default(),
+            mode: PhonationMode::Gated,
+            hold: HoldCore::default(),
             next_note_id: 0,
             last_gate_index: None,
             last_theta_pos: None,
@@ -1881,6 +1950,8 @@ mod tests {
             interval: Box::new(RecordingInterval { log: log.clone() }),
             connect: Box::new(FixedGateConnect::new(1)),
             sub_theta_mod: Box::<NoneMod>::default(),
+            mode: PhonationMode::Gated,
+            hold: HoldCore::default(),
             next_note_id: 0,
             last_gate_index: None,
             last_theta_pos: None,
@@ -1932,6 +2003,8 @@ mod tests {
             interval: Box::<NoneInterval>::default(),
             connect: Box::new(FixedGateConnect::new(1)),
             sub_theta_mod: Box::<NoneMod>::default(),
+            mode: PhonationMode::Gated,
+            hold: HoldCore::default(),
             next_note_id: 0,
             last_gate_index: None,
             last_theta_pos: Some(1.0),
@@ -2005,6 +2078,8 @@ mod tests {
             interval: Box::new(RecordingInterval { log: log.clone() }),
             connect: Box::new(FixedGateConnect::new(1)),
             sub_theta_mod: Box::<NoneMod>::default(),
+            mode: PhonationMode::Gated,
+            hold: HoldCore::default(),
             next_note_id: 0,
             last_gate_index: None,
             last_theta_pos: None,
@@ -2093,6 +2168,8 @@ mod tests {
                 depth: 1.0,
                 phase0: -std::f32::consts::PI,
             }),
+            mode: PhonationMode::Gated,
+            hold: HoldCore::default(),
             next_note_id: 0,
             last_gate_index: None,
             last_theta_pos: Some(0.0),
@@ -2137,6 +2214,8 @@ mod tests {
             interval: Box::new(interval),
             connect: Box::new(FixedGateConnect::new(0)),
             sub_theta_mod: Box::<NoneMod>::default(),
+            mode: PhonationMode::Gated,
+            hold: HoldCore::default(),
             next_note_id: 0,
             last_gate_index: None,
             last_theta_pos: None,
@@ -2196,6 +2275,8 @@ mod tests {
             interval: Box::new(interval),
             connect: Box::new(FixedGateConnect::new(1)),
             sub_theta_mod: Box::<NoneMod>::default(),
+            mode: PhonationMode::Gated,
+            hold: HoldCore::default(),
             next_note_id: 0,
             last_gate_index: None,
             last_theta_pos: None,
@@ -2254,6 +2335,8 @@ mod tests {
             interval: Box::<NoneInterval>::default(),
             connect: Box::new(FixedGateConnect::new(1)),
             sub_theta_mod: Box::<NoneMod>::default(),
+            mode: PhonationMode::Gated,
+            hold: HoldCore::default(),
             next_note_id: 0,
             last_gate_index: None,
             last_theta_pos: None,
@@ -2334,6 +2417,8 @@ mod tests {
             interval: Box::new(AlwaysInterval),
             connect: Box::new(NoopConnect),
             sub_theta_mod: Box::<NoneMod>::default(),
+            mode: PhonationMode::Gated,
+            hold: HoldCore::default(),
             next_note_id: 0,
             last_gate_index: None,
             last_theta_pos: None,
@@ -2384,6 +2469,8 @@ mod tests {
             interval: Box::<NoneInterval>::default(),
             connect: Box::new(FixedGateConnect::new(1)),
             sub_theta_mod: Box::<NoneMod>::default(),
+            mode: PhonationMode::Gated,
+            hold: HoldCore::default(),
             next_note_id: 0,
             last_gate_index: None,
             last_theta_pos: None,
@@ -2426,6 +2513,8 @@ mod tests {
             interval: Box::<NoneInterval>::default(),
             connect: Box::new(FixedGateConnect::new(1)),
             sub_theta_mod: Box::<NoneMod>::default(),
+            mode: PhonationMode::Gated,
+            hold: HoldCore::default(),
             next_note_id: 0,
             last_gate_index: None,
             last_theta_pos: None,
@@ -2573,6 +2662,8 @@ mod tests {
             interval: Box::new(interval),
             connect: Box::new(FixedGateConnect::new(1)),
             sub_theta_mod: Box::<NoneMod>::default(),
+            mode: PhonationMode::Gated,
+            hold: HoldCore::default(),
             next_note_id: 0,
             last_gate_index: None,
             last_theta_pos: None,
@@ -2716,6 +2807,8 @@ mod tests {
             interval: Box::new(TickInterval { tick: 0 }),
             connect: Box::new(FieldConnect::new(0.5, 0.5, 10.0, 0.5, 0.0)),
             sub_theta_mod: Box::<NoneMod>::default(),
+            mode: PhonationMode::Gated,
+            hold: HoldCore::default(),
             next_note_id: 0,
             last_gate_index: None,
             last_theta_pos: None,
@@ -2800,6 +2893,8 @@ mod tests {
             interval: Box::new(TickInterval { tick: 0 }),
             connect: Box::new(FieldConnect::new(0.5, 0.5, 10.0, 0.5, 0.0)),
             sub_theta_mod: Box::<NoneMod>::default(),
+            mode: PhonationMode::Gated,
+            hold: HoldCore::default(),
             next_note_id: 0,
             last_gate_index: None,
             last_theta_pos: None,
@@ -2864,6 +2959,8 @@ mod tests {
             interval: Box::new(TickInterval { tick: 0 }),
             connect: Box::new(FieldConnect::new(0.5, 0.5, 10.0, 0.5, 0.0)),
             sub_theta_mod: Box::<NoneMod>::default(),
+            mode: PhonationMode::Gated,
+            hold: HoldCore::default(),
             next_note_id: 0,
             last_gate_index: None,
             last_theta_pos: None,
@@ -2930,6 +3027,8 @@ mod tests {
             interval: Box::new(TickInterval { tick: 0 }),
             connect: Box::new(FieldConnect::new(1.0, 1.0, 10.0, 0.5, 0.0)),
             sub_theta_mod: Box::<NoneMod>::default(),
+            mode: PhonationMode::Gated,
+            hold: HoldCore::default(),
             next_note_id: 0,
             last_gate_index: None,
             last_theta_pos: None,
@@ -3071,6 +3170,8 @@ mod tests {
                 slopes: slopes_base.clone(),
             }),
             sub_theta_mod: Box::<NoneMod>::default(),
+            mode: PhonationMode::Gated,
+            hold: HoldCore::default(),
             next_note_id: 0,
             last_gate_index: None,
             last_theta_pos: None,
@@ -3130,6 +3231,8 @@ mod tests {
                 slopes: slopes_sub.clone(),
             }),
             sub_theta_mod: Box::<NoneMod>::default(),
+            mode: PhonationMode::Gated,
+            hold: HoldCore::default(),
             next_note_id: 0,
             last_gate_index: None,
             last_theta_pos: None,

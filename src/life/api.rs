@@ -27,12 +27,23 @@ pub fn spawn_min_at(
     ctx.spawn_default(tag, count, position)
 }
 
-pub fn spawn_with_opts_at(
+pub fn spawn_with_third_at(
+    ctx: &mut ScriptContext,
+    tag: &str,
+    count: i64,
+    third: Map,
+    position: Position,
+) -> Result<i64, Box<EvalAltResult>> {
+    ctx.spawn_with_third_map(tag, count, third, position)
+}
+
+pub fn spawn_with_opts_and_patch_at(
     ctx: &mut ScriptContext,
     tag: &str,
     count: i64,
     opts: Map,
+    patch: Map,
     position: Position,
 ) -> Result<i64, Box<EvalAltResult>> {
-    ctx.spawn_with_patch(tag, count, opts, position)
+    ctx.spawn_with_opts_and_patch(tag, count, Some(opts), Some(patch), position)
 }

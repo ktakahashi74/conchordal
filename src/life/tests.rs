@@ -39,6 +39,39 @@ fn test_timebase() -> Timebase {
     }
 }
 
+fn collect_hold_events(control: AgentControl, steps: usize) -> Vec<(usize, usize)> {
+    let cfg = IndividualConfig { control, tag: None };
+    let meta = AgentMetadata {
+        id: 1,
+        tag: None,
+        group_idx: 0,
+        member_idx: 0,
+    };
+    let mut agent = cfg.spawn(meta.id, 0, meta, 48_000.0, 0);
+    let tb = test_timebase();
+    let mut rhythms = NeuralRhythms::default();
+    let mut batch = PhonationBatch::default();
+    let mut now: Tick = 0;
+    let mut events = Vec::with_capacity(steps);
+    for _ in 0..steps {
+        agent.tick_phonation_into(&tb, now, &rhythms, None, 0.0, &mut batch);
+        let note_on = batch
+            .cmds
+            .iter()
+            .filter(|cmd| matches!(cmd, PhonationCmd::NoteOn { .. }))
+            .count();
+        let note_off = batch
+            .cmds
+            .iter()
+            .filter(|cmd| matches!(cmd, PhonationCmd::NoteOff { .. }))
+            .count();
+        events.push((note_on, note_off));
+        now = now.saturating_add(tb.hop as Tick);
+        rhythms.advance_in_place(tb.hop as f32 / tb.fs);
+    }
+    events
+}
+
 #[test]
 fn test_population_add_remove_agent() {
     // 1. Setup
@@ -52,6 +85,7 @@ fn test_population_add_remove_agent() {
         Action::Spawn {
             tag: "test_agent".to_string(),
             count: 1,
+            opts: None,
             patch: serde_json::json!({
                 "pitch": { "center_hz": 440.0 }
             }),
@@ -87,6 +121,7 @@ fn tag_selector_removes_matching_agents() {
         Action::Spawn {
             tag: "test_group".to_string(),
             count: 2,
+            opts: None,
             patch: serde_json::json!({
                 "pitch": { "center_hz": 330.0 }
             }),
@@ -190,6 +225,7 @@ fn test_agent_lifecycle_decay_death() {
         Action::Spawn {
             tag: "decay".to_string(),
             count: 1,
+            opts: None,
             patch: serde_json::json!({
                 "pitch": { "center_hz": 440.0 }
             }),
@@ -253,6 +289,7 @@ fn lock_constraint_still_advances_release_gain() {
         Action::Spawn {
             tag: "silent".to_string(),
             count: 1,
+            opts: None,
             patch: serde_json::json!({
                 "pitch": {
                     "center_hz": 440.0,
@@ -285,6 +322,7 @@ fn lock_constraint_keeps_pitch_and_target() {
         Action::Spawn {
             tag: "silent".to_string(),
             count: 1,
+            opts: None,
             patch: serde_json::json!({
                 "pitch": {
                     "center_hz": 440.0,
@@ -330,6 +368,7 @@ fn perceptual_disabled_still_applies_lock_constraint() {
         Action::Spawn {
             tag: "locked".to_string(),
             count: 1,
+            opts: None,
             patch: serde_json::json!({
                 "pitch": { "center_hz": 220.0 },
                 "perceptual": { "enabled": false }
@@ -419,6 +458,87 @@ fn remove_pending_still_emits_note_offs() {
 }
 
 #[test]
+fn hold_emits_single_note_on() {
+    let mut control = control_with_pitch(220.0);
+    control.phonation.r#type = PhonationType::Hold;
+    let events = collect_hold_events(control, 8);
+    let total_on: usize = events.iter().map(|(on, _)| *on).sum();
+    assert_eq!(total_on, 1);
+    assert_eq!(events[0].0, 1, "expected NoteOn on first tick");
+}
+
+#[test]
+fn hold_does_not_retrigger() {
+    let mut control = control_with_pitch(220.0);
+    control.phonation.r#type = PhonationType::Hold;
+    let events = collect_hold_events(control, 24);
+    let retriggers: usize = events.iter().skip(1).map(|(on, _)| *on).sum();
+    assert_eq!(retriggers, 0, "hold should not retrigger after onset");
+}
+
+#[test]
+fn hold_emits_note_off_on_remove() {
+    let mut control = control_with_pitch(220.0);
+    control.phonation.r#type = PhonationType::Hold;
+    let cfg = IndividualConfig { control, tag: None };
+    let meta = AgentMetadata {
+        id: 2,
+        tag: None,
+        group_idx: 0,
+        member_idx: 0,
+    };
+    let mut agent = cfg.spawn(meta.id, 0, meta, 48_000.0, 0);
+    let tb = test_timebase();
+    let mut rhythms = NeuralRhythms::default();
+    let mut batch = PhonationBatch::default();
+    let mut now: Tick = 0;
+    agent.tick_phonation_into(&tb, now, &rhythms, None, 0.0, &mut batch);
+    let note_on = batch
+        .cmds
+        .iter()
+        .filter(|cmd| matches!(cmd, PhonationCmd::NoteOn { .. }))
+        .count();
+    assert_eq!(note_on, 1, "expected NoteOn before remove");
+
+    agent.start_remove_fade(0.01);
+    let mut note_off_total = 0;
+    for _ in 0..10 {
+        now = now.saturating_add(tb.hop as Tick);
+        rhythms.advance_in_place(tb.hop as f32 / tb.fs);
+        agent.tick_phonation_into(&tb, now, &rhythms, None, 0.0, &mut batch);
+        note_off_total += batch
+            .cmds
+            .iter()
+            .filter(|cmd| matches!(cmd, PhonationCmd::NoteOff { .. }))
+            .count();
+    }
+    assert_eq!(note_off_total, 1, "expected single NoteOff on remove");
+}
+
+#[test]
+fn hold_ignores_density_legato() {
+    let mut low = control_with_pitch(220.0);
+    low.phonation.r#type = PhonationType::Hold;
+    low.phonation.density = 0.0;
+    low.phonation.legato = 0.0;
+    let mut high = control_with_pitch(220.0);
+    high.phonation.r#type = PhonationType::Hold;
+    high.phonation.density = 1.0;
+    high.phonation.legato = 1.0;
+    let low_events = collect_hold_events(low, 6);
+    let high_events = collect_hold_events(high, 6);
+    assert_eq!(low_events, high_events);
+}
+
+#[test]
+fn drone_is_rejected() {
+    let err = AgentControl::from_json(serde_json::json!({
+        "phonation": { "type": "drone" }
+    }));
+    assert!(err.is_err());
+}
+
+#[test]
 fn harmonic_render_spectrum_hits_expected_bins() {
     let mut control = control_with_pitch(55.0);
     control.body.method = BodyMethod::Harmonic;
@@ -471,6 +591,7 @@ fn lock_constraint_sets_target_pitch_log2() {
         Action::Spawn {
             tag: "test_agent".to_string(),
             count: 1,
+            opts: None,
             patch: serde_json::json!({
                 "pitch": { "center_hz": 220.0 }
             }),
@@ -507,6 +628,7 @@ fn population_spectrum_uses_log2_space() {
         Action::Spawn {
             tag: "spec".to_string(),
             count: 1,
+            opts: None,
             patch: serde_json::json!({
                 "pitch": { "center_hz": 55.0 }
             }),
@@ -630,7 +752,7 @@ fn patch_rejects_type_switches() {
     }));
     assert!(err_body.is_err());
     let err_phonation = agent.apply_control_patch(serde_json::json!({
-        "phonation": { "type": "drone" }
+        "phonation": { "type": "hold" }
     }));
     assert!(err_phonation.is_err());
 }
@@ -643,6 +765,7 @@ fn spawn_lock_constraint_sets_center_hz() {
         Action::Spawn {
             tag: "lock".to_string(),
             count: 1,
+            opts: None,
             patch: serde_json::json!({
                 "pitch": { "constraint": { "mode": "lock", "freq_hz": 440.0 } }
             }),
@@ -664,6 +787,7 @@ fn lock_constraint_ignores_range_clamp() {
         Action::Spawn {
             tag: "lock_range".to_string(),
             count: 1,
+            opts: None,
             patch: serde_json::json!({
                 "pitch": { "center_hz": 220.0, "range_oct": 0.0 }
             }),
@@ -700,6 +824,7 @@ fn remove_fade_reduces_gain_and_culls() {
         Action::Spawn {
             tag: "fade".to_string(),
             count: 1,
+            opts: None,
             patch: serde_json::json!({ "pitch": { "center_hz": 220.0 } }),
         },
         &landscape,
@@ -818,6 +943,7 @@ fn theta_wrap_triggers_pitch_update_with_large_dt() {
         Action::Spawn {
             tag: "theta".to_string(),
             count: 1,
+            opts: None,
             patch: serde_json::json!({
                 "pitch": { "center_hz": 440.0 }
             }),

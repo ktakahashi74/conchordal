@@ -220,9 +220,13 @@ pub fn validate_scenario(scenario: &Scenario) -> Result<(), String> {
                 Action::Spawn { .. } => {}
                 Action::Set { target, .. }
                 | Action::Unset { target, .. }
-                | Action::Remove { target } => {
+                | Action::Remove { target }
+                | Action::Release { target, .. } => {
                     validate_target_pattern(target)?;
                 }
+                Action::SetHarmonicity { .. }
+                | Action::SetGlobalCoupling { .. }
+                | Action::SetRoughnessTolerance { .. } => {}
                 Action::PostIntent { .. } => {}
             }
         }

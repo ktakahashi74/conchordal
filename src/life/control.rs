@@ -137,17 +137,12 @@ impl AgentControl {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum BodyMethod {
+    #[default]
     Sine,
     Harmonic,
-}
-
-impl Default for BodyMethod {
-    fn default() -> Self {
-        BodyMethod::Sine
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -195,18 +190,13 @@ impl Default for BodyControl {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum PitchConstraintMode {
+    #[default]
     Free,
     Attractor,
     Lock,
-}
-
-impl Default for PitchConstraintMode {
-    fn default() -> Self {
-        PitchConstraintMode::Free
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -260,20 +250,15 @@ impl Default for PitchControl {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum PhonationType {
+    #[default]
     Interval,
     Clock,
     Drone,
     Field,
     None,
-}
-
-impl Default for PhonationType {
-    fn default() -> Self {
-        PhonationType::Interval
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -330,13 +315,13 @@ impl Default for PerceptualControl {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
 #[serde(deny_unknown_fields)]
 pub struct AgentPatch {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub body: Option<BodyPatch>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pitch: Option<PitchPatch>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub phonation: Option<PhonationPatch>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub perceptual: Option<PerceptualPatch>,
 }
 
@@ -357,80 +342,156 @@ impl AgentPatch {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
 #[serde(deny_unknown_fields)]
 pub struct BodyPatch {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub method: Option<BodyMethod>,
-    #[serde(default, deserialize_with = "de_opt_f32_clamp_amp")]
+    #[serde(
+        default,
+        deserialize_with = "de_opt_f32_clamp_amp",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub amp: Option<f32>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timbre: Option<TimbrePatch>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
 #[serde(deny_unknown_fields)]
 pub struct TimbrePatch {
-    #[serde(default, deserialize_with = "de_opt_f32_clamp_timbre")]
+    #[serde(
+        default,
+        deserialize_with = "de_opt_f32_clamp_timbre",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub brightness: Option<f32>,
-    #[serde(default, deserialize_with = "de_opt_f32_clamp_timbre")]
+    #[serde(
+        default,
+        deserialize_with = "de_opt_f32_clamp_timbre",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub inharmonic: Option<f32>,
-    #[serde(default, deserialize_with = "de_opt_f32_clamp_timbre")]
+    #[serde(
+        default,
+        deserialize_with = "de_opt_f32_clamp_timbre",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub width: Option<f32>,
-    #[serde(default, deserialize_with = "de_opt_f32_clamp_timbre")]
+    #[serde(
+        default,
+        deserialize_with = "de_opt_f32_clamp_timbre",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub motion: Option<f32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
 #[serde(deny_unknown_fields)]
 pub struct PitchPatch {
-    #[serde(default, deserialize_with = "de_opt_f32_clamp_freq")]
+    #[serde(
+        default,
+        deserialize_with = "de_opt_f32_clamp_freq",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub center_hz: Option<f32>,
-    #[serde(default, deserialize_with = "de_opt_f32_clamp_range_oct")]
+    #[serde(
+        default,
+        deserialize_with = "de_opt_f32_clamp_range_oct",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub range_oct: Option<f32>,
-    #[serde(default, deserialize_with = "de_opt_f32_clamp_unit")]
+    #[serde(
+        default,
+        deserialize_with = "de_opt_f32_clamp_unit",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub gravity: Option<f32>,
-    #[serde(default, deserialize_with = "de_opt_f32_clamp_unit")]
+    #[serde(
+        default,
+        deserialize_with = "de_opt_f32_clamp_unit",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub exploration: Option<f32>,
-    #[serde(default, deserialize_with = "de_opt_f32_clamp_unit")]
+    #[serde(
+        default,
+        deserialize_with = "de_opt_f32_clamp_unit",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub persistence: Option<f32>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub constraint: Option<PitchConstraintPatch>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
 #[serde(deny_unknown_fields)]
 pub struct PitchConstraintPatch {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mode: Option<PitchConstraintMode>,
-    #[serde(default, deserialize_with = "de_opt_f32_clamp_freq")]
+    #[serde(
+        default,
+        deserialize_with = "de_opt_f32_clamp_freq",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub freq_hz: Option<f32>,
-    #[serde(default, deserialize_with = "de_opt_f32_clamp_unit")]
+    #[serde(
+        default,
+        deserialize_with = "de_opt_f32_clamp_unit",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub strength: Option<f32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
 #[serde(deny_unknown_fields)]
 pub struct PhonationPatch {
-    #[serde(default, rename = "type")]
+    #[serde(default, rename = "type", skip_serializing_if = "Option::is_none")]
     pub r#type: Option<PhonationType>,
-    #[serde(default, deserialize_with = "de_opt_f32_clamp_unit")]
+    #[serde(
+        default,
+        deserialize_with = "de_opt_f32_clamp_unit",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub density: Option<f32>,
-    #[serde(default, deserialize_with = "de_opt_f32_clamp_unit")]
+    #[serde(
+        default,
+        deserialize_with = "de_opt_f32_clamp_unit",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub sync: Option<f32>,
-    #[serde(default, deserialize_with = "de_opt_f32_clamp_unit")]
+    #[serde(
+        default,
+        deserialize_with = "de_opt_f32_clamp_unit",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub legato: Option<f32>,
-    #[serde(default, deserialize_with = "de_opt_f32_clamp_unit")]
+    #[serde(
+        default,
+        deserialize_with = "de_opt_f32_clamp_unit",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub sociality: Option<f32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
 #[serde(deny_unknown_fields)]
 pub struct PerceptualPatch {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub enabled: Option<bool>,
-    #[serde(default, deserialize_with = "de_opt_f32_clamp_unit")]
+    #[serde(
+        default,
+        deserialize_with = "de_opt_f32_clamp_unit",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub adaptation: Option<f32>,
-    #[serde(default, deserialize_with = "de_opt_f32_clamp_unit")]
+    #[serde(
+        default,
+        deserialize_with = "de_opt_f32_clamp_unit",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub novelty_bias: Option<f32>,
-    #[serde(default, deserialize_with = "de_opt_f32_clamp_unit")]
+    #[serde(
+        default,
+        deserialize_with = "de_opt_f32_clamp_unit",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub self_focus: Option<f32>,
 }
 
@@ -467,4 +528,67 @@ pub fn remove_json_path(value: &mut Value, path: &str) -> bool {
         }
     }
     false
+}
+
+#[derive(Clone, Copy, Debug)]
+enum GlobToken {
+    AnySeq,
+    AnyChar,
+    Literal(char),
+}
+
+fn parse_glob_pattern(pattern: &str) -> Vec<GlobToken> {
+    let mut tokens = Vec::new();
+    let mut chars = pattern.chars().peekable();
+    while let Some(ch) = chars.next() {
+        match ch {
+            '\\' => {
+                if let Some(next) = chars.next() {
+                    tokens.push(GlobToken::Literal(next));
+                } else {
+                    tokens.push(GlobToken::Literal('\\'));
+                }
+            }
+            '*' => tokens.push(GlobToken::AnySeq),
+            '?' => tokens.push(GlobToken::AnyChar),
+            _ => tokens.push(GlobToken::Literal(ch)),
+        }
+    }
+    tokens
+}
+
+pub(crate) fn matches_tag_pattern(pattern: &str, text: &str) -> bool {
+    let tokens = parse_glob_pattern(pattern);
+    let chars: Vec<char> = text.chars().collect();
+    let mut dp = vec![vec![false; chars.len() + 1]; tokens.len() + 1];
+    dp[0][0] = true;
+    for (i, token) in tokens.iter().enumerate() {
+        match token {
+            GlobToken::AnySeq => {
+                for j in 0..=chars.len() {
+                    if dp[i][j] {
+                        dp[i + 1][j] = true;
+                        if j < chars.len() {
+                            dp[i][j + 1] = true;
+                        }
+                    }
+                }
+            }
+            GlobToken::AnyChar => {
+                for j in 0..chars.len() {
+                    if dp[i][j] {
+                        dp[i + 1][j + 1] = true;
+                    }
+                }
+            }
+            GlobToken::Literal(ch) => {
+                for j in 0..chars.len() {
+                    if dp[i][j] && chars[j] == *ch {
+                        dp[i + 1][j + 1] = true;
+                    }
+                }
+            }
+        }
+    }
+    dp[tokens.len()][chars.len()]
 }

@@ -109,6 +109,7 @@ impl PitchController {
             0.0
         };
 
+        // Perceptual gating only affects proposal/learning, not constraints.
         if self.perceptual_enabled
             && theta_cross
             && self.accumulated_time >= self.integration_window
@@ -135,24 +136,36 @@ impl PitchController {
             }
         }
 
-        if matches!(pitch.constraint.mode, PitchConstraintMode::Lock) {
+        let lock_target = if matches!(pitch.constraint.mode, PitchConstraintMode::Lock) {
             if let Some(freq) = pitch.constraint.freq_hz {
                 if freq.is_finite() && freq > 0.0 {
-                    target_pitch_log2 = freq.log2();
+                    Some(freq.log2())
+                } else {
+                    None
                 }
+            } else {
+                None
             }
-        } else if matches!(pitch.constraint.mode, PitchConstraintMode::Attractor) {
-            if let Some(freq) = pitch.constraint.freq_hz {
-                if freq.is_finite() && freq > 0.0 {
-                    let strength = pitch.constraint.strength.clamp(0.0, 1.0);
-                    let attractor_log2 = freq.log2();
-                    target_pitch_log2 =
-                        target_pitch_log2 + (attractor_log2 - target_pitch_log2) * strength;
-                }
-            }
+        } else {
+            None
+        };
+        if let Some(lock_log2) = lock_target {
+            target_pitch_log2 = lock_log2;
+        } else if matches!(pitch.constraint.mode, PitchConstraintMode::Attractor)
+            && let Some(freq) = pitch.constraint.freq_hz
+            && freq.is_finite()
+            && freq > 0.0
+        {
+            let strength = pitch.constraint.strength.clamp(0.0, 1.0);
+            let attractor_log2 = freq.log2();
+            target_pitch_log2 = target_pitch_log2 + (attractor_log2 - target_pitch_log2) * strength;
         }
 
         let (fmin, fmax) = landscape.freq_bounds_log2();
+        if let Some(lock_log2) = lock_target {
+            self.target_pitch_log2 = lock_log2.clamp(fmin, fmax);
+            return;
+        }
         let center_log2 = if pitch.center_hz.is_finite() && pitch.center_hz > 0.0 {
             pitch.center_hz.log2()
         } else {

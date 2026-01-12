@@ -1,4 +1,4 @@
-use super::control::{AgentControl, PitchConstraintMode, merge_json};
+use super::control::{AgentControl, PitchConstraintMode, matches_tag_pattern, merge_json};
 use super::individual::{AgentMetadata, Individual, PhonationBatch, SoundBody};
 use super::scenario::{Action, IndividualConfig, SocialConfig, SpawnMethod};
 use crate::core::landscape::{LandscapeFrame, LandscapeUpdate};
@@ -436,10 +436,10 @@ impl Population {
                     let freq = self.decide_frequency(&SpawnMethod::default(), landscape, &mut rng);
                     control.pitch.center_hz = freq.max(1.0);
                 }
-                if matches!(control.pitch.constraint.mode, PitchConstraintMode::Lock) {
-                    if let Some(freq) = control.pitch.constraint.freq_hz {
-                        control.pitch.center_hz = freq.max(1.0);
-                    }
+                if matches!(control.pitch.constraint.mode, PitchConstraintMode::Lock)
+                    && let Some(freq) = control.pitch.constraint.freq_hz
+                {
+                    control.pitch.center_hz = freq.max(1.0);
                 }
                 for i in 0..count {
                     let id = self.next_agent_id;
@@ -669,69 +669,6 @@ where
     configs.into_iter().any(|cfg| cfg.coupling != 0.0)
 }
 
-#[derive(Clone, Copy, Debug)]
-enum GlobToken {
-    AnySeq,
-    AnyChar,
-    Literal(char),
-}
-
-fn parse_glob_pattern(pattern: &str) -> Vec<GlobToken> {
-    let mut tokens = Vec::new();
-    let mut chars = pattern.chars().peekable();
-    while let Some(ch) = chars.next() {
-        match ch {
-            '\\' => {
-                if let Some(next) = chars.next() {
-                    tokens.push(GlobToken::Literal(next));
-                } else {
-                    tokens.push(GlobToken::Literal('\\'));
-                }
-            }
-            '*' => tokens.push(GlobToken::AnySeq),
-            '?' => tokens.push(GlobToken::AnyChar),
-            _ => tokens.push(GlobToken::Literal(ch)),
-        }
-    }
-    tokens
-}
-
-fn matches_tag_pattern(pattern: &str, text: &str) -> bool {
-    let tokens = parse_glob_pattern(pattern);
-    let chars: Vec<char> = text.chars().collect();
-    let mut dp = vec![vec![false; chars.len() + 1]; tokens.len() + 1];
-    dp[0][0] = true;
-    for (i, token) in tokens.iter().enumerate() {
-        match token {
-            GlobToken::AnySeq => {
-                for j in 0..=chars.len() {
-                    if dp[i][j] {
-                        dp[i + 1][j] = true;
-                        if j < chars.len() {
-                            dp[i][j + 1] = true;
-                        }
-                    }
-                }
-            }
-            GlobToken::AnyChar => {
-                for j in 0..chars.len() {
-                    if dp[i][j] {
-                        dp[i + 1][j + 1] = true;
-                    }
-                }
-            }
-            GlobToken::Literal(ch) => {
-                for j in 0..chars.len() {
-                    if dp[i][j] && chars[j] == *ch {
-                        dp[i + 1][j + 1] = true;
-                    }
-                }
-            }
-        }
-    }
-    dp[tokens.len()][chars.len()]
-}
-
 fn patch_sets_center_hz(patch: &serde_json::Value) -> bool {
     let serde_json::Value::Object(map) = patch else {
         return false;
@@ -745,12 +682,15 @@ fn patch_sets_center_hz(patch: &serde_json::Value) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::landscape::Landscape;
+    use crate::life::control::{BodyMethod, PhonationType};
     use crate::life::individual::{AnyArticulationCore, ArticulationWrapper, DroneCore};
     use crate::life::intent::BodySnapshot;
     use crate::life::phonation_engine::{OnsetEvent, PhonationCmd, PhonationKick};
     use crate::life::scenario::SocialConfig;
     use crate::life::world_model::WorldModel;
     use rand::SeedableRng;
+    use serde_json::json;
 
     fn make_dummy_note_spec() -> crate::life::individual::PhonationNoteSpec {
         crate::life::individual::PhonationNoteSpec {
@@ -865,6 +805,211 @@ mod tests {
         };
         let configs = vec![base, other];
         assert!(social_trace_enabled_from_configs(configs));
+    }
+
+    #[test]
+    fn glob_matches_wildcards_and_escapes() {
+        assert!(matches_tag_pattern("a*", "a1"));
+        assert!(matches_tag_pattern("a*", "a2"));
+        assert!(!matches_tag_pattern("a*", "b1"));
+        assert!(matches_tag_pattern(r"a\*", "a*"));
+        assert!(!matches_tag_pattern(r"a\*", "a1"));
+        assert!(matches_tag_pattern("a?b", "acb"));
+        assert!(!matches_tag_pattern("a?b", "ab"));
+    }
+
+    #[test]
+    fn set_applies_to_matching_tags() {
+        let mut pop = Population::new(Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        });
+        let landscape = LandscapeFrame::default();
+        for tag in ["lead_1", "lead_2", "bass_1"] {
+            pop.apply_action(
+                Action::Spawn {
+                    tag: tag.to_string(),
+                    count: 1,
+                    patch: json!({}),
+                },
+                &landscape,
+                None,
+            );
+        }
+        pop.apply_action(
+            Action::Set {
+                target: "lead_*".to_string(),
+                patch: json!({
+                    "body": { "amp": 0.42 }
+                }),
+            },
+            &landscape,
+            None,
+        );
+        assert_eq!(pop.individuals.len(), 3);
+        for agent in &pop.individuals {
+            let tag = agent.metadata.tag.as_deref().unwrap_or_default();
+            let amp = agent.effective_control.body.amp;
+            if tag.starts_with("lead_") {
+                assert!((amp - 0.42).abs() <= 1e-6, "tag {tag} should match");
+            } else {
+                assert!(
+                    (amp - AgentControl::default().body.amp).abs() <= 1e-6,
+                    "tag {tag} should not match"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn remove_applies_to_matching_tags() {
+        let mut pop = Population::new(Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        });
+        let landscape = LandscapeFrame::default();
+        for tag in ["lead_1", "lead_2", "bass_1"] {
+            pop.apply_action(
+                Action::Spawn {
+                    tag: tag.to_string(),
+                    count: 1,
+                    patch: json!({}),
+                },
+                &landscape,
+                None,
+            );
+        }
+        pop.apply_action(
+            Action::Remove {
+                target: "lead_?".to_string(),
+            },
+            &landscape,
+            None,
+        );
+        let dt = 0.1;
+        let samples_per_hop = (pop.time.fs * dt) as usize;
+        let rt_landscape = Landscape::new(Log2Space::new(55.0, 4000.0, 64));
+        pop.advance(samples_per_hop, pop.time.fs, 0, dt, &rt_landscape);
+        pop.process_frame(0, &rt_landscape.space, dt, false);
+        assert_eq!(pop.individuals.len(), 1);
+        assert_eq!(pop.individuals[0].metadata.tag.as_deref(), Some("bass_1"));
+    }
+
+    #[test]
+    fn unset_reverts_to_base_control() {
+        let mut pop = Population::new(Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        });
+        let landscape = LandscapeFrame::default();
+        pop.apply_action(
+            Action::Spawn {
+                tag: "unset".to_string(),
+                count: 1,
+                patch: json!({
+                    "body": { "amp": 0.30 }
+                }),
+            },
+            &landscape,
+            None,
+        );
+        pop.apply_action(
+            Action::Set {
+                target: "unset".to_string(),
+                patch: json!({
+                    "body": { "amp": 0.80 }
+                }),
+            },
+            &landscape,
+            None,
+        );
+        pop.apply_action(
+            Action::Unset {
+                target: "unset".to_string(),
+                path: "body.amp".to_string(),
+            },
+            &landscape,
+            None,
+        );
+        let agent = pop.individuals.first().expect("agent exists");
+        assert!((agent.effective_control.body.amp - 0.30).abs() <= 1e-6);
+        pop.apply_action(
+            Action::Unset {
+                target: "unset".to_string(),
+                path: "body.missing".to_string(),
+            },
+            &landscape,
+            None,
+        );
+        let agent = pop.individuals.first().expect("agent exists");
+        assert!((agent.effective_control.body.amp - 0.30).abs() <= 1e-6);
+    }
+
+    #[test]
+    fn set_cannot_change_body_method() {
+        let mut pop = Population::new(Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        });
+        let landscape = LandscapeFrame::default();
+        pop.apply_action(
+            Action::Spawn {
+                tag: "body_method".to_string(),
+                count: 1,
+                patch: json!({
+                    "body": { "method": "harmonic" }
+                }),
+            },
+            &landscape,
+            None,
+        );
+        pop.apply_action(
+            Action::Set {
+                target: "body_method".to_string(),
+                patch: json!({
+                    "body": { "method": "sine" }
+                }),
+            },
+            &landscape,
+            None,
+        );
+        let agent = pop.individuals.first().expect("agent exists");
+        assert_eq!(agent.effective_control.body.method, BodyMethod::Harmonic);
+    }
+
+    #[test]
+    fn set_cannot_change_phonation_type() {
+        let mut pop = Population::new(Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        });
+        let landscape = LandscapeFrame::default();
+        pop.apply_action(
+            Action::Spawn {
+                tag: "phonation_type".to_string(),
+                count: 1,
+                patch: json!({
+                    "phonation": { "type": "interval" }
+                }),
+            },
+            &landscape,
+            None,
+        );
+        pop.apply_action(
+            Action::Set {
+                target: "phonation_type".to_string(),
+                patch: json!({
+                    "phonation": { "type": "drone" }
+                }),
+            },
+            &landscape,
+            None,
+        );
+        let agent = pop.individuals.first().expect("agent exists");
+        assert_eq!(
+            agent.effective_control.phonation.r#type,
+            PhonationType::Interval
+        );
     }
 
     #[test]

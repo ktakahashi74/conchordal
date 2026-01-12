@@ -1,7 +1,7 @@
 use super::conductor::Conductor;
 use super::individual::{
     AgentMetadata, ArticulationCore, ArticulationSignal, ArticulationState, KuramotoCore,
-    PinkNoise, PitchCore, Sensitivity, SequencedCore, SoundBody,
+    PhonationBatch, PinkNoise, PitchCore, Sensitivity, SequencedCore, SoundBody,
 };
 use super::population::Population;
 use super::scenario::{
@@ -12,10 +12,11 @@ use crate::core::landscape::Landscape;
 use crate::core::landscape::LandscapeFrame;
 use crate::core::log2space::Log2Space;
 use crate::core::modulation::{NeuralRhythms, RhythmBand};
-use crate::core::timebase::Timebase;
-use crate::life::control::{AgentControl, BodyMethod};
+use crate::core::timebase::{Tick, Timebase};
+use crate::life::control::{AgentControl, BodyMethod, PhonationType};
 use crate::life::lifecycle::LifecycleConfig;
 use crate::life::perceptual::{FeaturesNow, PerceptualConfig, PerceptualContext};
+use crate::life::phonation_engine::PhonationCmd;
 use rand::SeedableRng;
 use serde_json;
 
@@ -245,7 +246,7 @@ fn test_agent_lifecycle_decay_death() {
 }
 
 #[test]
-fn motion_disabled_still_advances_release_gain() {
+fn lock_constraint_still_advances_release_gain() {
     let fs = 48_000.0;
     let mut pop = Population::new(test_timebase());
     pop.apply_action(
@@ -253,8 +254,11 @@ fn motion_disabled_still_advances_release_gain() {
             tag: "silent".to_string(),
             count: 1,
             patch: serde_json::json!({
-                "pitch": { "center_hz": 440.0 },
-                "perceptual": { "enabled": false }
+                "pitch": {
+                    "center_hz": 440.0,
+                    "range_oct": 0.0,
+                    "constraint": { "mode": "lock", "freq_hz": 440.0 }
+                }
             }),
         },
         &LandscapeFrame::default(),
@@ -274,7 +278,7 @@ fn motion_disabled_still_advances_release_gain() {
 }
 
 #[test]
-fn motion_disabled_does_not_change_pitch_or_target() {
+fn lock_constraint_keeps_pitch_and_target() {
     let fs = 48_000.0;
     let mut pop = Population::new(test_timebase());
     pop.apply_action(
@@ -282,8 +286,11 @@ fn motion_disabled_does_not_change_pitch_or_target() {
             tag: "silent".to_string(),
             count: 1,
             patch: serde_json::json!({
-                "pitch": { "center_hz": 440.0 },
-                "perceptual": { "enabled": false }
+                "pitch": {
+                    "center_hz": 440.0,
+                    "range_oct": 0.0,
+                    "constraint": { "mode": "lock", "freq_hz": 440.0 }
+                }
             }),
         },
         &LandscapeFrame::default(),
@@ -305,12 +312,110 @@ fn motion_disabled_does_not_change_pitch_or_target() {
     let agent = pop.individuals.first().expect("agent exists");
     assert!(
         (agent.body.base_freq_hz() - freq_before).abs() <= 1e-6,
-        "motion disabled should keep base frequency stable"
+        "lock constraint should keep base frequency stable"
     );
     assert!(
         (agent.target_pitch_log2() - target_before).abs() <= 1e-6,
-        "motion disabled should keep target pitch stable"
+        "lock constraint should keep target pitch stable"
     );
+}
+
+#[test]
+fn perceptual_disabled_still_applies_lock_constraint() {
+    let fs = 48_000.0;
+    let dt = 0.01;
+    let samples_per_hop = (fs * dt) as usize;
+    let mut pop = Population::new(test_timebase());
+    pop.apply_action(
+        Action::Spawn {
+            tag: "locked".to_string(),
+            count: 1,
+            patch: serde_json::json!({
+                "pitch": { "center_hz": 220.0 },
+                "perceptual": { "enabled": false }
+            }),
+        },
+        &LandscapeFrame::default(),
+        None,
+    );
+    pop.apply_action(
+        Action::Set {
+            target: "locked".to_string(),
+            patch: serde_json::json!({
+                "pitch": { "constraint": { "mode": "lock", "freq_hz": 440.0 } }
+            }),
+        },
+        &LandscapeFrame::default(),
+        None,
+    );
+    let landscape = make_test_landscape(fs);
+    pop.advance(samples_per_hop, fs, 0, dt, &landscape);
+    let agent = pop.individuals.first().expect("agent exists");
+    let expected = 440.0_f32.log2();
+    assert!(
+        (agent.target_pitch_log2() - expected).abs() <= 1e-6,
+        "lock constraint should apply even when perceptual is disabled"
+    );
+}
+
+#[test]
+fn remove_pending_still_emits_note_offs() {
+    let mut control = AgentControl::default();
+    control.pitch.center_hz = 220.0;
+    control.phonation.r#type = PhonationType::Interval;
+    control.phonation.density = 1.0;
+    control.phonation.legato = 0.0;
+    let cfg = IndividualConfig { control, tag: None };
+    let meta = AgentMetadata {
+        id: 1,
+        tag: None,
+        group_idx: 0,
+        member_idx: 0,
+    };
+    let mut agent = cfg.spawn(meta.id, 0, meta, 48_000.0, 0);
+    let tb = Timebase {
+        fs: 48_000.0,
+        hop: 12_001,
+    };
+    let mut rhythms = NeuralRhythms::default();
+    rhythms.theta.freq_hz = 4.0;
+    rhythms.theta.phase = 0.0;
+    rhythms.env_open = 1.0;
+    rhythms.env_level = 1.0;
+    let mut batch = PhonationBatch::default();
+    let mut now: Tick = 0;
+    let mut saw_note_on = false;
+    for _ in 0..20 {
+        agent.tick_phonation_into(&tb, now, &rhythms, None, 0.0, &mut batch);
+        if batch
+            .cmds
+            .iter()
+            .any(|cmd| matches!(cmd, PhonationCmd::NoteOn { .. }))
+        {
+            saw_note_on = true;
+            break;
+        }
+        now = now.saturating_add(tb.hop as Tick);
+        rhythms.advance_in_place(tb.hop as f32 / tb.fs);
+    }
+    assert!(saw_note_on, "expected at least one note-on before remove");
+
+    agent.start_remove_fade(0.05);
+    let mut saw_note_off = false;
+    for _ in 0..40 {
+        agent.tick_phonation_into(&tb, now, &rhythms, None, 0.0, &mut batch);
+        if batch
+            .cmds
+            .iter()
+            .any(|cmd| matches!(cmd, PhonationCmd::NoteOff { .. }))
+        {
+            saw_note_off = true;
+            break;
+        }
+        now = now.saturating_add(tb.hop as Tick);
+        rhythms.advance_in_place(tb.hop as f32 / tb.fs);
+    }
+    assert!(saw_note_off, "expected note-off during remove fade");
 }
 
 #[test]
@@ -547,6 +652,43 @@ fn spawn_lock_constraint_sets_center_hz() {
     );
     let agent = pop.individuals.first().expect("agent exists");
     assert!((agent.effective_control.pitch.center_hz - 440.0).abs() < 1e-6);
+}
+
+#[test]
+fn lock_constraint_ignores_range_clamp() {
+    let fs = 48_000.0;
+    let dt = 0.01;
+    let samples_per_hop = (fs * dt) as usize;
+    let mut pop = Population::new(test_timebase());
+    pop.apply_action(
+        Action::Spawn {
+            tag: "lock_range".to_string(),
+            count: 1,
+            patch: serde_json::json!({
+                "pitch": { "center_hz": 220.0, "range_oct": 0.0 }
+            }),
+        },
+        &LandscapeFrame::default(),
+        None,
+    );
+    pop.apply_action(
+        Action::Set {
+            target: "lock_range".to_string(),
+            patch: serde_json::json!({
+                "pitch": { "constraint": { "mode": "lock", "freq_hz": 440.0 } }
+            }),
+        },
+        &LandscapeFrame::default(),
+        None,
+    );
+    let landscape = make_test_landscape(fs);
+    pop.advance(samples_per_hop, fs, 0, dt, &landscape);
+    let agent = pop.individuals.first().expect("agent exists");
+    let expected = 440.0_f32.log2();
+    assert!(
+        (agent.target_pitch_log2() - expected).abs() <= 1e-6,
+        "lock constraint should override range clamp"
+    );
 }
 
 #[test]

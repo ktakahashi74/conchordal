@@ -767,6 +767,7 @@ impl fmt::Display for Action {
 #[serde(tag = "mode", rename_all = "snake_case", deny_unknown_fields)]
 pub enum SpawnMethod {
     /// Deterministically search a frequency that maximizes H = C - R.
+    #[schemars(title = "harmonicity")]
     Harmonicity {
         min_freq: f32,
         max_freq: f32,
@@ -774,6 +775,7 @@ pub enum SpawnMethod {
         min_dist_erb: Option<f32>,
     },
     /// Deterministically search a frequency that minimizes H = C - R.
+    #[schemars(title = "low_harmonicity")]
     LowHarmonicity {
         min_freq: f32,
         max_freq: f32,
@@ -781,6 +783,7 @@ pub enum SpawnMethod {
         min_dist_erb: Option<f32>,
     },
     /// Stochastically sample using H as a density (temperature controls sharpness).
+    #[schemars(title = "harmonic_density")]
     HarmonicDensity {
         min_freq: f32,
         max_freq: f32,
@@ -789,6 +792,7 @@ pub enum SpawnMethod {
         min_dist_erb: Option<f32>,
     },
     /// Search for a region where H ≈ 0.5 (midpoint of normalized consonance).
+    #[schemars(title = "zero_crossing")]
     ZeroCrossing {
         min_freq: f32,
         max_freq: f32,
@@ -796,6 +800,7 @@ pub enum SpawnMethod {
         min_dist_erb: Option<f32>,
     },
     /// Search for an energy gap (a spectral valley).
+    #[schemars(title = "spectral_gap")]
     SpectralGap {
         min_freq: f32,
         max_freq: f32,
@@ -803,6 +808,7 @@ pub enum SpawnMethod {
         min_dist_erb: Option<f32>,
     },
     /// Random log-uniform sampling between `min_freq` and `max_freq`.
+    #[schemars(title = "random_log_uniform")]
     RandomLogUniform {
         min_freq: f32,
         max_freq: f32,

@@ -225,12 +225,18 @@ fn reference_name(reference: &str) -> String {
 
 fn variant_name(schema: &Value) -> Option<String> {
     let obj = schema.as_object()?;
+    if let Some(title) = obj.get("title").and_then(Value::as_str) {
+        return Some(title.to_string());
+    }
     let props = obj.get("properties")?.as_object()?;
     let prop = props
         .get("mode")
         .or_else(|| props.get("core"))
         .or_else(|| props.get("type"))?;
     let prop_obj = prop.as_object()?;
+    if let Some(value) = prop_obj.get("const").and_then(Value::as_str) {
+        return Some(value.to_string());
+    }
     let values = prop_obj.get("enum")?.as_array()?;
     values
         .first()

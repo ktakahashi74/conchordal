@@ -7,7 +7,7 @@ use rhai::{
 };
 
 use super::api::{pop_time, push_time, set_time, spawn_min_at, spawn_with_opts_at};
-use super::control::{AgentPatch, PitchConstraintMode};
+use super::control::{AgentPatch, PitchConstraintMode, matches_tag_pattern};
 use super::scenario::{Action, Scenario, SceneMarker, TimedEvent};
 
 const SCRIPT_PRELUDE: &str = r#"
@@ -183,19 +183,19 @@ impl ScriptContext {
         self.ensure_not_ended(position)?;
         let c = count.max(0).min(u32::MAX as i64) as u32;
         let (patch_out, patch_json) = Self::parse_agent_patch(patch, position)?;
-        if let Some(pitch) = patch_out.pitch.as_ref() {
-            if let Some(constraint) = pitch.constraint.as_ref() {
-                let mode = constraint.mode.unwrap_or(PitchConstraintMode::Free);
-                if matches!(
-                    mode,
-                    PitchConstraintMode::Lock | PitchConstraintMode::Attractor
-                ) && constraint.freq_hz.is_none()
-                {
-                    return Err(Box::new(EvalAltResult::ErrorRuntime(
-                        "pitch.constraint.freq_hz is required when mode != free".into(),
-                        position,
-                    )));
-                }
+        if let Some(pitch) = patch_out.pitch.as_ref()
+            && let Some(constraint) = pitch.constraint.as_ref()
+        {
+            let mode = constraint.mode.unwrap_or(PitchConstraintMode::Free);
+            if matches!(
+                mode,
+                PitchConstraintMode::Lock | PitchConstraintMode::Attractor
+            ) && constraint.freq_hz.is_none()
+            {
+                return Err(Box::new(EvalAltResult::ErrorRuntime(
+                    "pitch.constraint.freq_hz is required when mode != free".into(),
+                    position,
+                )));
             }
         }
         let patch_json = Self::apply_spawn_convenience(patch_out, patch_json, position)?;
@@ -475,69 +475,6 @@ impl ScriptContext {
             .try_into()
             .unwrap_or(0)
     }
-}
-
-#[derive(Clone, Copy, Debug)]
-enum GlobToken {
-    AnySeq,
-    AnyChar,
-    Literal(char),
-}
-
-fn parse_glob_pattern(pattern: &str) -> Vec<GlobToken> {
-    let mut tokens = Vec::new();
-    let mut chars = pattern.chars().peekable();
-    while let Some(ch) = chars.next() {
-        match ch {
-            '\\' => {
-                if let Some(next) = chars.next() {
-                    tokens.push(GlobToken::Literal(next));
-                } else {
-                    tokens.push(GlobToken::Literal('\\'));
-                }
-            }
-            '*' => tokens.push(GlobToken::AnySeq),
-            '?' => tokens.push(GlobToken::AnyChar),
-            _ => tokens.push(GlobToken::Literal(ch)),
-        }
-    }
-    tokens
-}
-
-fn matches_tag_pattern(pattern: &str, text: &str) -> bool {
-    let tokens = parse_glob_pattern(pattern);
-    let chars: Vec<char> = text.chars().collect();
-    let mut dp = vec![vec![false; chars.len() + 1]; tokens.len() + 1];
-    dp[0][0] = true;
-    for (i, token) in tokens.iter().enumerate() {
-        match token {
-            GlobToken::AnySeq => {
-                for j in 0..=chars.len() {
-                    if dp[i][j] {
-                        dp[i + 1][j] = true;
-                        if j < chars.len() {
-                            dp[i][j + 1] = true;
-                        }
-                    }
-                }
-            }
-            GlobToken::AnyChar => {
-                for j in 0..chars.len() {
-                    if dp[i][j] {
-                        dp[i + 1][j + 1] = true;
-                    }
-                }
-            }
-            GlobToken::Literal(ch) => {
-                for j in 0..chars.len() {
-                    if dp[i][j] && chars[j] == *ch {
-                        dp[i + 1][j + 1] = true;
-                    }
-                }
-            }
-        }
-    }
-    dp[tokens.len()][chars.len()]
 }
 
 pub struct ScriptHost;

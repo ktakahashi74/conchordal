@@ -145,6 +145,8 @@ cargo run --example generate_script_docs
 scripts/generate_rhai_docs.sh
 ```
 
+`cargo run --example gen_schemas` regenerates `docs/schemas/*` (including `agent_patch`).
+
 
 ### Running options
 

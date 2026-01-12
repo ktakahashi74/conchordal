@@ -142,10 +142,10 @@ impl Individual {
 
         let mut effective_control = control.clone();
         let constraint = &effective_control.pitch.constraint;
-        if matches!(constraint.mode, PitchConstraintMode::Lock) {
-            if let Some(freq) = constraint.freq_hz {
-                effective_control.pitch.center_hz = freq.max(1.0);
-            }
+        if matches!(constraint.mode, PitchConstraintMode::Lock)
+            && let Some(freq) = constraint.freq_hz
+        {
+            effective_control.pitch.center_hz = freq.max(1.0);
         }
 
         let target_freq = effective_control.pitch.center_hz.max(1.0);
@@ -422,10 +422,8 @@ impl Individual {
         landscape: &Landscape,
         global_coupling: f32,
     ) -> ArticulationSignal {
-        if self.effective_control.perceptual.enabled {
-            self.update_pitch_target(rhythms, dt_sec, landscape);
-            self.update_articulation_autonomous(dt_sec, rhythms);
-        }
+        self.update_pitch_target(rhythms, dt_sec, landscape);
+        self.update_articulation_autonomous(dt_sec, rhythms);
         self.tick_articulation_lifecycle(dt_sec, rhythms, landscape, global_coupling)
     }
 
@@ -501,9 +499,6 @@ impl Individual {
         out.source_id = self.id;
         out.clear();
         self.phonation_scratch.events.clear();
-        if self.remove_pending {
-            return;
-        }
         if matches!(self.effective_control.phonation.r#type, PhonationType::None) {
             return;
         }
@@ -516,7 +511,7 @@ impl Individual {
             rhythms: *rhythms,
         };
         let state = CoreState {
-            is_alive: self.is_alive(),
+            is_alive: self.is_alive() && !self.remove_pending,
         };
         self.phonation_engine.tick(
             &ctx,

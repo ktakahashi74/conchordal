@@ -1,12 +1,12 @@
 use conchordal::core::landscape::Landscape;
 use conchordal::core::log2space::Log2Space;
 use conchordal::core::timebase::{Tick, Timebase};
-use conchordal::life::audio::{AudioCommand, VoiceTarget};
 use conchordal::life::control::AgentControl;
 use conchordal::life::individual::AgentMetadata;
 use conchordal::life::population::Population;
 use conchordal::life::scenario::IndividualConfig;
 use conchordal::life::schedule_renderer::ScheduleRenderer;
+use conchordal::life::sound::{AudioCommand, VoiceTarget};
 use conchordal::life::world_model::WorldModel;
 
 fn test_timebase() -> Timebase {

@@ -1,7 +1,7 @@
 use crate::core::log2space::Log2Space;
-use crate::life::audio::control::VoiceControlBlock;
-use crate::life::audio::modal_engine::{ModalEngine, ModeShape};
 use crate::life::individual::ArticulationSignal;
+use crate::life::sound::control::VoiceControlBlock;
+use crate::life::sound::modal_engine::{ModalEngine, ModeShape};
 use crate::synth::SynthError;
 
 #[derive(Debug, Clone)]
@@ -42,7 +42,7 @@ impl AnyBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::life::audio::control::{ControlRamp, VoiceControlBlock};
+    use crate::life::sound::control::{ControlRamp, VoiceControlBlock};
 
     #[test]
     fn any_backend_delegates_render_block() {

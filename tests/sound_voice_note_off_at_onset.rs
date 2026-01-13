@@ -1,7 +1,7 @@
 use conchordal::core::modulation::NeuralRhythms;
 use conchordal::core::timebase::Timebase;
-use conchordal::life::audio::Voice;
 use conchordal::life::intent::Intent;
+use conchordal::life::sound::Voice;
 
 #[test]
 fn note_off_at_onset_still_releases() {

@@ -1,13 +1,13 @@
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
-use crate::life::audio::any_backend::AnyBackend;
-use crate::life::audio::control::{ControlRamp, VoiceControlBlock};
-use crate::life::audio::modal_engine::ModeShape;
 use crate::life::individual::{ArticulationSignal, ArticulationWrapper};
 use crate::life::intent::{BodySnapshot, Intent};
 use crate::life::lifecycle::default_decay_attack;
 use crate::life::phonation_engine::{PhonationKick, PhonationUpdate};
 use crate::life::scenario::TimbreGenotype;
+use crate::life::sound::any_backend::AnyBackend;
+use crate::life::sound::control::{ControlRamp, VoiceControlBlock};
+use crate::life::sound::modal_engine::ModeShape;
 use std::collections::VecDeque;
 
 #[derive(Debug, Clone, Copy)]

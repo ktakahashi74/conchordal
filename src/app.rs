@@ -25,13 +25,13 @@ use crate::core::stream::{
     dorsal::DorsalStream, harmonicity::HarmonicityStream, roughness::RoughnessStream,
 };
 use crate::core::timebase::Tick;
-use crate::life::audio::{AudioCommand, VoiceTarget};
 use crate::life::conductor::Conductor;
 use crate::life::individual::{PhonationBatch, SoundBody};
 use crate::life::population::Population;
 use crate::life::scenario::{Action, Scenario};
 use crate::life::schedule_renderer::ScheduleRenderer;
 use crate::life::scripting::ScriptHost;
+use crate::life::sound::{AudioCommand, VoiceTarget};
 use crate::ui::viewdata::{
     AgentStateInfo, DorsalFrame, PlaybackState, SimulationMeta, SpecFrame, UiFrame, WaveFrame,
 };

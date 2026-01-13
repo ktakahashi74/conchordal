@@ -1,9 +1,9 @@
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
-use crate::life::audio::{AudioCommand, Voice, VoiceTarget, default_release_ticks};
 use crate::life::individual::PhonationBatch;
 use crate::life::intent::{Intent, IntentBoard};
 use crate::life::phonation_engine::PhonationCmd;
+use crate::life::sound::{AudioCommand, Voice, VoiceTarget, default_release_ticks};
 use std::collections::{HashMap, HashSet};
 use tracing::debug;
 
@@ -31,6 +31,8 @@ pub struct ScheduleRenderer {
     cutoff_tick: Option<Tick>,
     agent_ids_scratch: HashSet<u64>,
 }
+
+pub type SoundRenderer = ScheduleRenderer;
 
 impl ScheduleRenderer {
     pub fn new(time: Timebase) -> Self {
@@ -348,12 +350,12 @@ fn max_phonation_hold_ticks(time: Timebase) -> Tick {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::life::audio::{AudioCommand, VoiceTarget, default_release_ticks};
     use crate::life::individual::{
         AnyArticulationCore, ArticulationWrapper, PhonationBatch, PhonationNoteSpec, SequencedCore,
     };
     use crate::life::intent::BodySnapshot;
     use crate::life::phonation_engine::{PhonationKick, PhonationUpdate};
+    use crate::life::sound::{AudioCommand, VoiceTarget, default_release_ticks};
 
     #[test]
     fn update_command_applies_to_voice() {

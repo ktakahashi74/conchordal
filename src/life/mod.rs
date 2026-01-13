@@ -16,7 +16,7 @@ pub mod scripting;
 pub mod social_density;
 pub mod world_model;
 
-pub mod audio;
+pub mod sound;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]

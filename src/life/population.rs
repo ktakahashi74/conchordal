@@ -4,7 +4,7 @@ use super::scenario::{Action, IndividualConfig, SocialConfig, SpawnMethod};
 use crate::core::landscape::{LandscapeFrame, LandscapeUpdate};
 use crate::core::log2space::Log2Space;
 use crate::core::timebase::{Tick, Timebase};
-use crate::life::audio::{AudioAgentState, LifeEvent};
+use crate::life::audio::{LifeEvent, VoiceTarget};
 use crate::life::social_density::SocialDensityTrace;
 use crate::life::world_model::WorldModel;
 use rand::{Rng, SeedableRng, distr::Distribution, distr::weighted::WeightedIndex, rngs::SmallRng};
@@ -110,7 +110,7 @@ impl Population {
         out.append(&mut self.life_events);
     }
 
-    pub fn fill_audio_states(&self, out: &mut Vec<AudioAgentState>) {
+    pub fn fill_voice_targets(&self, out: &mut Vec<VoiceTarget>) {
         out.clear();
         out.reserve(self.individuals.len());
         for agent in &self.individuals {
@@ -119,7 +119,7 @@ impl Population {
             }
             let pitch_hz = agent.body.base_freq_hz();
             let amp = agent.body.amp();
-            out.push(AudioAgentState {
+            out.push(VoiceTarget {
                 id: agent.id(),
                 pitch_hz,
                 amp,

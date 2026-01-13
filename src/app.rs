@@ -25,7 +25,7 @@ use crate::core::stream::{
     dorsal::DorsalStream, harmonicity::HarmonicityStream, roughness::RoughnessStream,
 };
 use crate::core::timebase::Tick;
-use crate::life::audio::{AudioAgentState, AudioCommand, LifeEvent, StimulusDirector};
+use crate::life::audio::{AudioCommand, LifeEvent, StimulusDirector, VoiceTarget};
 use crate::life::conductor::Conductor;
 use crate::life::individual::{PhonationBatch, SoundBody};
 use crate::life::population::Population;
@@ -780,7 +780,7 @@ fn worker_loop(
     let mut phonation_batches_buf: Vec<PhonationBatch> = Vec::new();
     let mut audio_cmds: Vec<AudioCommand> = Vec::new();
     let mut life_events_buf: Vec<LifeEvent> = Vec::new();
-    let mut agent_states: Vec<AudioAgentState> = Vec::new();
+    let mut voice_targets: Vec<VoiceTarget> = Vec::new();
 
     // Initial UI frame so metadata is visible before playback starts.
     let init_meta = SimulationMeta {
@@ -1040,7 +1040,7 @@ fn worker_loop(
                 )
                 .to_vec();
             let spectrum_body: Arc<[f32]> = Arc::from(spectrum_body);
-            pop.fill_audio_states(&mut agent_states);
+            pop.fill_voice_targets(&mut voice_targets);
 
             // [FIX] Audio is MONO. Treat it as such.
             // Previously incorrectly treated as stereo, leading to bad metering and destructive downsampling.
@@ -1050,7 +1050,7 @@ fn worker_loop(
                     phonation_batches,
                     now_tick,
                     &current_landscape.rhythm,
-                    &agent_states,
+                    &voice_targets,
                     &audio_cmds,
                 );
 

@@ -1,6 +1,6 @@
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
-use crate::life::audio::{AudioAgentState, AudioCommand, Voice, default_release_ticks};
+use crate::life::audio::{AudioCommand, Voice, VoiceTarget, default_release_ticks};
 use crate::life::individual::PhonationBatch;
 use crate::life::intent::{BodySnapshot, Intent, IntentBoard};
 use crate::life::phonation_engine::PhonationCmd;
@@ -60,7 +60,7 @@ impl ScheduleRenderer {
         phonation_batches: &[PhonationBatch],
         now: Tick,
         rhythms: &NeuralRhythms,
-        agent_states: &[AudioAgentState],
+        voice_targets: &[VoiceTarget],
         audio_cmds: &[AudioCommand],
     ) -> &[f32] {
         let hop = self.time.hop;
@@ -76,9 +76,9 @@ impl ScheduleRenderer {
 
         self.agent_ids_scratch.clear();
         self.agent_lookup_scratch.clear();
-        self.agent_ids_scratch.reserve(agent_states.len());
-        self.agent_lookup_scratch.reserve(agent_states.len());
-        for (idx, state) in agent_states.iter().enumerate() {
+        self.agent_ids_scratch.reserve(voice_targets.len());
+        self.agent_lookup_scratch.reserve(voice_targets.len());
+        for (idx, state) in voice_targets.iter().enumerate() {
             self.agent_ids_scratch.insert(state.id);
             self.agent_lookup_scratch.insert(state.id, idx);
         }
@@ -108,7 +108,7 @@ impl ScheduleRenderer {
             }
             self.add_voice_if_needed(intent, now);
         }
-        for state in agent_states {
+        for state in voice_targets {
             let key = VoiceKey {
                 source_id: state.id,
                 note_id: 0,
@@ -136,7 +136,7 @@ impl ScheduleRenderer {
                     let Some(state_idx) = self.agent_lookup_scratch.get(id) else {
                         continue;
                     };
-                    let state = &agent_states[*state_idx];
+                    let state = &voice_targets[*state_idx];
                     let key = VoiceKey {
                         source_id: *id,
                         note_id: 0,
@@ -370,9 +370,7 @@ fn max_phonation_hold_ticks(time: Timebase) -> Tick {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::life::audio::{
-        AudioAgentState, AudioCommand, AudioEvent, Voice, default_release_ticks,
-    };
+    use crate::life::audio::{AudioCommand, AudioEvent, Voice, VoiceTarget, default_release_ticks};
     use crate::life::individual::{
         AnyArticulationCore, ArticulationWrapper, PhonationBatch, PhonationNoteSpec, SequencedCore,
     };
@@ -535,7 +533,7 @@ mod tests {
             voice,
         );
 
-        let agent_states = [AudioAgentState {
+        let voice_targets = [VoiceTarget {
             id: 1,
             pitch_hz: 440.0,
             amp: 0.5,
@@ -556,7 +554,7 @@ mod tests {
             &[],
             done_tick,
             &rhythms,
-            &agent_states,
+            &voice_targets,
             &cmds,
         );
         assert!(out.iter().any(|s| s.abs() > 1e-6));
@@ -573,7 +571,7 @@ mod tests {
             brightness: 0.6,
             noise_mix: 0.2,
         };
-        let agent_states = [AudioAgentState {
+        let voice_targets = [VoiceTarget {
             id: 3,
             pitch_hz: 220.0,
             amp: 0.4,
@@ -588,7 +586,7 @@ mod tests {
             &[],
             0,
             &rhythms,
-            &agent_states,
+            &voice_targets,
             &cmds,
         );
         assert!(out.iter().any(|s| s.abs() > 1e-6));
@@ -610,7 +608,7 @@ mod tests {
             brightness: 0.9,
             noise_mix: 0.1,
         };
-        let agent_states = [AudioAgentState {
+        let voice_targets = [VoiceTarget {
             id: 7,
             pitch_hz: 330.0,
             amp: 0.3,
@@ -631,7 +629,7 @@ mod tests {
             &[],
             0,
             &rhythms,
-            &agent_states,
+            &voice_targets,
             &cmds,
         );
         assert!(out.iter().any(|s| s.abs() > 1e-6));

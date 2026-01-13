@@ -33,7 +33,7 @@ pub enum AudioCommand {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct AudioAgentState {
+pub struct VoiceTarget {
     pub id: IndividualId,
     pub pitch_hz: f32,
     pub amp: f32,

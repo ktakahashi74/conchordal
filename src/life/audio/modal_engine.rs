@@ -1,5 +1,4 @@
 use crate::core::log2space::Log2Space;
-use crate::life::audio::backend::Backend;
 use crate::life::audio::control::VoiceControlBlock;
 use crate::life::individual::ArticulationSignal;
 use crate::life::scenario::{HarmonicMode, TimbreGenotype};
@@ -81,6 +80,70 @@ impl ModalEngine {
             .set_modes_preserve_state(&self.scratch[..self.last_modes_len]);
         self.last_built_pitch_hz = pitch_hz;
     }
+    pub fn render_block(&mut self, drive: &[f32], ctrl: VoiceControlBlock, out: &mut [f32]) {
+        debug_assert_eq!(drive.len(), out.len());
+        if drive.is_empty() {
+            return;
+        }
+        let mut counter = self.counter;
+        let period = self.update_period_samples.max(1);
+        for (idx, (u, y)) in drive.iter().copied().zip(out.iter_mut()).enumerate() {
+            let pitch_hz = ctrl.pitch_hz.start + ctrl.pitch_hz.step * idx as f32;
+            let amp = ctrl.amp.start + ctrl.amp.step * idx as f32;
+            if counter == 0 {
+                self.rebuild_modes(pitch_hz.max(1.0));
+            }
+            let sample = self.bank.process_sample(u);
+            if amp.is_finite() {
+                *y += amp.max(0.0) * sample;
+            }
+            counter += 1;
+            if counter >= period {
+                counter = 0;
+            }
+        }
+        self.counter = counter;
+    }
+
+    pub fn project_spectral(
+        &mut self,
+        amps: &mut [f32],
+        space: &Log2Space,
+        signal: &ArticulationSignal,
+    ) {
+        debug_assert_eq!(amps.len(), space.n_bins());
+        if !signal.is_active || signal.amplitude <= 0.0 {
+            return;
+        }
+        let pitch_hz = self.last_built_pitch_hz;
+        if !pitch_hz.is_finite() || pitch_hz <= 0.0 {
+            return;
+        }
+        let amp_scale = signal.amplitude;
+        match &self.shape {
+            ModeShape::Sine { out_gain, .. } => {
+                add_log2_energy(amps, space, pitch_hz, amp_scale * out_gain.max(0.0));
+            }
+            ModeShape::Harmonic {
+                partials, genotype, ..
+            } => {
+                let partials = (*partials).max(1);
+                let energy = 1.0;
+                for k in 1..=partials {
+                    let ratio = harmonic_ratio(genotype, k);
+                    let freq_hz = pitch_hz * ratio;
+                    let gain = harmonic_gain(genotype, k, energy);
+                    add_log2_energy(amps, space, freq_hz, amp_scale * gain);
+                }
+            }
+            ModeShape::Modal { modes } => {
+                for mode in modes {
+                    let freq_hz = pitch_hz * mode.ratio;
+                    add_log2_energy(amps, space, freq_hz, amp_scale * mode.gain);
+                }
+            }
+        }
+    }
 }
 
 impl ModeShape {
@@ -149,73 +212,6 @@ impl ModeShape {
                         gain: mode.gain,
                         in_gain: mode.in_gain,
                     });
-                }
-            }
-        }
-    }
-}
-
-impl Backend for ModalEngine {
-    fn render_block(&mut self, drive: &[f32], ctrl: VoiceControlBlock, out: &mut [f32]) {
-        debug_assert_eq!(drive.len(), out.len());
-        if drive.is_empty() {
-            return;
-        }
-        let mut counter = self.counter;
-        let period = self.update_period_samples.max(1);
-        for (idx, (u, y)) in drive.iter().copied().zip(out.iter_mut()).enumerate() {
-            let pitch_hz = ctrl.pitch_hz.start + ctrl.pitch_hz.step * idx as f32;
-            let amp = ctrl.amp.start + ctrl.amp.step * idx as f32;
-            if counter == 0 || self.last_modes_len == 0 {
-                self.rebuild_modes(pitch_hz.max(1.0));
-            }
-            let sample = self.bank.process_sample(u);
-            if amp.is_finite() {
-                *y += amp.max(0.0) * sample;
-            }
-            counter += 1;
-            if counter >= period {
-                counter = 0;
-            }
-        }
-        self.counter = counter;
-    }
-
-    fn project_spectral(
-        &mut self,
-        amps: &mut [f32],
-        space: &Log2Space,
-        signal: &ArticulationSignal,
-    ) {
-        debug_assert_eq!(amps.len(), space.n_bins());
-        if !signal.is_active || signal.amplitude <= 0.0 {
-            return;
-        }
-        let pitch_hz = self.last_built_pitch_hz;
-        if !pitch_hz.is_finite() || pitch_hz <= 0.0 {
-            return;
-        }
-        let amp_scale = signal.amplitude;
-        match &self.shape {
-            ModeShape::Sine { out_gain, .. } => {
-                add_log2_energy(amps, space, pitch_hz, amp_scale * out_gain.max(0.0));
-            }
-            ModeShape::Harmonic {
-                partials, genotype, ..
-            } => {
-                let partials = (*partials).max(1);
-                let energy = 1.0;
-                for k in 1..=partials {
-                    let ratio = harmonic_ratio(genotype, k);
-                    let freq_hz = pitch_hz * ratio;
-                    let gain = harmonic_gain(genotype, k, energy);
-                    add_log2_energy(amps, space, freq_hz, amp_scale * gain);
-                }
-            }
-            ModeShape::Modal { modes } => {
-                for mode in modes {
-                    let freq_hz = pitch_hz * mode.ratio;
-                    add_log2_energy(amps, space, freq_hz, amp_scale * mode.gain);
                 }
             }
         }

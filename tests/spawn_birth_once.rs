@@ -1,7 +1,7 @@
 use conchordal::core::landscape::Landscape;
 use conchordal::core::log2space::Log2Space;
 use conchordal::core::timebase::{Tick, Timebase};
-use conchordal::life::audio::{AudioCommand, AudioEvent};
+use conchordal::life::audio::{AudioCommand, AudioEvent, VoiceTarget};
 use conchordal::life::control::AgentControl;
 use conchordal::life::individual::AgentMetadata;
 use conchordal::life::population::Population;
@@ -65,8 +65,8 @@ fn spawn_sounds_only_with_audio_trigger() {
     let landscape = Landscape::new(space);
     let now: Tick = 0;
     let _ = pop.publish_intents(&mut world, &landscape, now);
-    let mut agent_states = Vec::new();
-    pop.fill_audio_states(&mut agent_states);
+    let mut voice_targets: Vec<VoiceTarget> = Vec::new();
+    pop.fill_voice_targets(&mut voice_targets);
 
     let mut renderer = ScheduleRenderer::new(tb);
     let silent = renderer.render(
@@ -74,7 +74,7 @@ fn spawn_sounds_only_with_audio_trigger() {
         &[],
         now,
         &landscape.rhythm,
-        &agent_states,
+        &voice_targets,
         &[],
     );
     assert!(silent.iter().all(|s| s.abs() <= 1e-6));
@@ -89,7 +89,7 @@ fn spawn_sounds_only_with_audio_trigger() {
         &[],
         now,
         &landscape.rhythm,
-        &agent_states,
+        &voice_targets,
         &[cmd],
     );
     assert!(voiced.iter().any(|s| s.abs() > 1e-6));

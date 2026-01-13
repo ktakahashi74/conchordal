@@ -11,7 +11,6 @@ use tracing::debug;
 enum VoiceKind {
     Intent,
     Phonation,
-    Agent,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -25,12 +24,12 @@ pub struct ScheduleRenderer {
     time: Timebase,
     buf: Vec<f32>,
     voices: HashMap<VoiceKey, Voice>,
+    agent_voices: HashMap<u64, Voice>,
     add_future_ticks: Tick,
     add_past_ticks: Tick,
     did_full_resync: bool,
     cutoff_tick: Option<Tick>,
     agent_ids_scratch: HashSet<u64>,
-    agent_lookup_scratch: HashMap<u64, usize>,
 }
 
 impl ScheduleRenderer {
@@ -41,12 +40,12 @@ impl ScheduleRenderer {
             time,
             buf: vec![0.0; time.hop],
             voices: HashMap::new(),
+            agent_voices: HashMap::new(),
             add_future_ticks,
             add_past_ticks,
             did_full_resync: false,
             cutoff_tick: None,
             agent_ids_scratch: HashSet::new(),
-            agent_lookup_scratch: HashMap::new(),
         }
     }
 
@@ -71,19 +70,18 @@ impl ScheduleRenderer {
         }
 
         self.agent_ids_scratch.clear();
-        self.agent_lookup_scratch.clear();
         self.agent_ids_scratch.reserve(voice_targets.len());
-        self.agent_lookup_scratch.reserve(voice_targets.len());
-        for (idx, state) in voice_targets.iter().enumerate() {
+        for state in voice_targets {
             self.agent_ids_scratch.insert(state.id);
-            self.agent_lookup_scratch.insert(state.id, idx);
         }
-        self.voices.retain(|key, voice| match key.kind {
-            VoiceKind::Agent => {
-                self.agent_ids_scratch.contains(&key.source_id) && !voice.is_done(now)
+        for (id, voice) in self.agent_voices.iter_mut() {
+            if !self.agent_ids_scratch.contains(id) {
+                voice.note_off(now);
             }
-            _ => !voice.is_done(now),
-        });
+        }
+        self.agent_voices
+            .retain(|id, voice| self.agent_ids_scratch.contains(id) || !voice.is_done(now));
+        self.voices.retain(|_, voice| !voice.is_done(now));
 
         let past = if self.did_full_resync {
             board.retention_past.min(self.add_past_ticks)
@@ -102,49 +100,50 @@ impl ScheduleRenderer {
             }
             self.add_voice_if_needed(intent, now);
         }
+        for cmd in audio_cmds {
+            if let AudioCommand::EnsureVoice {
+                id,
+                body,
+                pitch_hz,
+                amp,
+            } = cmd
+            {
+                if !self.agent_ids_scratch.contains(id) {
+                    continue;
+                }
+                if self.agent_voices.contains_key(id) {
+                    continue;
+                }
+                let intent = Intent {
+                    source_id: *id,
+                    intent_id: 0,
+                    onset: now,
+                    duration: Tick::MAX,
+                    freq_hz: *pitch_hz,
+                    amp: *amp,
+                    tag: None,
+                    confidence: 1.0,
+                    body: Some(body.clone()),
+                    articulation: None,
+                };
+                if let Some(voice) = Voice::from_intent(self.time, intent) {
+                    self.agent_voices.insert(*id, voice);
+                }
+            }
+        }
         for state in voice_targets {
-            let key = VoiceKey {
-                source_id: state.id,
-                note_id: 0,
-                kind: VoiceKind::Agent,
-            };
-            if let Some(voice) = self.voices.get_mut(&key) {
+            if let Some(voice) = self.agent_voices.get_mut(&state.id) {
                 voice.set_target(state.pitch_hz, state.amp, 0.0);
             }
         }
-        for AudioCommand::Trigger { id, ev } in audio_cmds {
-            let Some(state_idx) = self.agent_lookup_scratch.get(id) else {
-                continue;
-            };
-            let state = &voice_targets[*state_idx];
-            let key = VoiceKey {
-                source_id: *id,
-                note_id: 0,
-                kind: VoiceKind::Agent,
-            };
-            let recreate = self
-                .voices
-                .get(&key)
-                .is_some_and(|voice| voice.is_done(now) || voice.body_spec() != state.body);
-            if recreate {
-                self.voices.remove(&key);
-            }
-            if let Some(voice) = self.voices.get_mut(&key) {
-                voice.trigger(*ev);
-                continue;
-            }
-            if let Some(mut voice) = Voice::from_body_spec(
-                self.time,
-                now,
-                Tick::MAX,
-                state.pitch_hz,
-                state.amp,
-                state.body,
-                None,
-            ) {
-                voice.note_on(now);
-                voice.trigger(*ev);
-                self.voices.insert(key, voice);
+        for cmd in audio_cmds {
+            if let AudioCommand::Impulse { id, energy } = cmd {
+                if !self.agent_ids_scratch.contains(id) {
+                    continue;
+                }
+                if let Some(voice) = self.agent_voices.get_mut(id) {
+                    voice.trigger_impulse(*energy);
+                }
             }
         }
 
@@ -161,6 +160,11 @@ impl ScheduleRenderer {
                 voice.kick_planned_if_due(tick, &rhythms, dt);
                 acc += voice.render_tick(tick, fs, dt, &rhythms);
             }
+            for voice in self.agent_voices.values_mut() {
+                voice.apply_updates_if_due(tick);
+                voice.kick_planned_if_due(tick, &rhythms, dt);
+                acc += voice.render_tick(tick, fs, dt, &rhythms);
+            }
             self.buf[idx] = acc;
             rhythms.advance_in_place(dt);
         }
@@ -170,7 +174,7 @@ impl ScheduleRenderer {
     }
 
     pub fn is_idle(&self) -> bool {
-        self.voices.is_empty()
+        self.voices.is_empty() && self.agent_voices.is_empty()
     }
 
     pub fn set_cutoff_tick(&mut self, cutoff: Option<Tick>) {
@@ -181,6 +185,10 @@ impl ScheduleRenderer {
         self.cutoff_tick = Some(tick);
         self.voices.retain(|_, voice| voice.onset() <= tick);
         for voice in self.voices.values_mut() {
+            voice.note_off(tick);
+        }
+        self.agent_voices.retain(|_, voice| voice.onset() <= tick);
+        for voice in self.agent_voices.values_mut() {
             voice.note_off(tick);
         }
     }
@@ -340,9 +348,7 @@ fn max_phonation_hold_ticks(time: Timebase) -> Tick {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::life::audio::{
-        AudioCommand, AudioEvent, BodyKind, BodySpec, Voice, VoiceTarget, default_release_ticks,
-    };
+    use crate::life::audio::{AudioCommand, VoiceTarget, default_release_ticks};
     use crate::life::individual::{
         AnyArticulationCore, ArticulationWrapper, PhonationBatch, PhonationNoteSpec, SequencedCore,
     };
@@ -478,119 +484,270 @@ mod tests {
     }
 
     #[test]
-    fn trigger_recreates_agent_voice_after_done() {
+    fn ensure_voice_without_impulse_is_silent() {
         let tb = Timebase { fs: 1000.0, hop: 8 };
         let mut renderer = ScheduleRenderer::new(tb);
-        let intent = Intent {
-            source_id: 1,
-            intent_id: 0,
-            onset: 0,
-            duration: 1,
-            freq_hz: 440.0,
-            amp: 0.5,
-            tag: None,
-            confidence: 1.0,
-            body: None,
-            articulation: None,
+        let rhythms = NeuralRhythms::default();
+        let body = BodySnapshot {
+            kind: "sine".to_string(),
+            amp_scale: 1.0,
+            brightness: 0.0,
+            noise_mix: 0.0,
         };
-        let mut voice = Voice::from_intent(tb, intent).expect("voice");
-        voice.note_on(0);
-        let done_tick = 1 + default_release_ticks(tb) + 1;
-        renderer.voices.insert(
-            VoiceKey {
-                source_id: 1,
-                note_id: 0,
-                kind: VoiceKind::Agent,
-            },
-            voice,
-        );
-
         let voice_targets = [VoiceTarget {
-            id: 1,
+            id: 11,
+            pitch_hz: 220.0,
+            amp: 0.4,
+        }];
+        let cmds = [AudioCommand::EnsureVoice {
+            id: 11,
+            body,
+            pitch_hz: 220.0,
+            amp: 0.4,
+        }];
+        let out = renderer.render(
+            &IntentBoard::new(0, 0),
+            &[],
+            0,
+            &rhythms,
+            &voice_targets,
+            &cmds,
+        );
+        assert!(out.iter().all(|s| s.abs() <= 1e-6));
+    }
+
+    #[test]
+    fn ensure_voice_then_impulse_emits_audio() {
+        let tb = Timebase { fs: 1000.0, hop: 8 };
+        let mut renderer = ScheduleRenderer::new(tb);
+        let rhythms = NeuralRhythms::default();
+        let body = BodySnapshot {
+            kind: "harmonic".to_string(),
+            amp_scale: 1.0,
+            brightness: 0.6,
+            noise_mix: 0.2,
+        };
+        let voice_targets = [VoiceTarget {
+            id: 12,
+            pitch_hz: 220.0,
+            amp: 0.4,
+        }];
+        let cmds = [
+            AudioCommand::EnsureVoice {
+                id: 12,
+                body,
+                pitch_hz: 220.0,
+                amp: 0.4,
+            },
+            AudioCommand::Impulse {
+                id: 12,
+                energy: 1.0,
+            },
+        ];
+        let out = renderer.render(
+            &IntentBoard::new(0, 0),
+            &[],
+            0,
+            &rhythms,
+            &voice_targets,
+            &cmds,
+        );
+        assert!(out.iter().any(|s| s.abs() > 1e-6));
+    }
+
+    #[test]
+    fn impulse_unknown_id_is_silent() {
+        let tb = Timebase { fs: 1000.0, hop: 8 };
+        let mut renderer = ScheduleRenderer::new(tb);
+        let rhythms = NeuralRhythms::default();
+        let cmds = [AudioCommand::Impulse {
+            id: 99,
+            energy: 1.0,
+        }];
+        let out = renderer.render(&IntentBoard::new(0, 0), &[], 0, &rhythms, &[], &cmds);
+        assert!(out.iter().all(|s| s.abs() <= 1e-6));
+    }
+
+    #[test]
+    fn ensure_voice_for_unknown_id_is_silent_and_not_created() {
+        let tb = Timebase { fs: 1000.0, hop: 8 };
+        let mut renderer = ScheduleRenderer::new(tb);
+        let rhythms = NeuralRhythms::default();
+        let body = BodySnapshot {
+            kind: "sine".to_string(),
+            amp_scale: 1.0,
+            brightness: 0.0,
+            noise_mix: 0.0,
+        };
+        let cmds = [
+            AudioCommand::EnsureVoice {
+                id: 21,
+                body,
+                pitch_hz: 220.0,
+                amp: 0.4,
+            },
+            AudioCommand::Impulse {
+                id: 21,
+                energy: 1.0,
+            },
+        ];
+        let out = renderer.render(&IntentBoard::new(0, 0), &[], 0, &rhythms, &[], &cmds);
+        assert!(out.iter().all(|s| s.abs() <= 1e-6));
+        assert!(renderer.agent_voices.is_empty());
+    }
+
+    #[test]
+    fn impulse_before_ensure_voice_still_emits_audio() {
+        let tb = Timebase { fs: 1000.0, hop: 8 };
+        let mut renderer = ScheduleRenderer::new(tb);
+        let rhythms = NeuralRhythms::default();
+        let body = BodySnapshot {
+            kind: "sine".to_string(),
+            amp_scale: 1.0,
+            brightness: 0.0,
+            noise_mix: 0.0,
+        };
+        let voice_targets = [VoiceTarget {
+            id: 13,
+            pitch_hz: 220.0,
+            amp: 0.4,
+        }];
+        let cmds = [
+            AudioCommand::Impulse {
+                id: 13,
+                energy: 1.0,
+            },
+            AudioCommand::EnsureVoice {
+                id: 13,
+                body,
+                pitch_hz: 220.0,
+                amp: 0.4,
+            },
+        ];
+        let out = renderer.render(
+            &IntentBoard::new(0, 0),
+            &[],
+            0,
+            &rhythms,
+            &voice_targets,
+            &cmds,
+        );
+        assert!(out.iter().any(|s| s.abs() > 1e-6));
+    }
+
+    #[test]
+    fn ensure_voice_is_idempotent() {
+        let tb = Timebase { fs: 1000.0, hop: 8 };
+        let mut renderer = ScheduleRenderer::new(tb);
+        let rhythms = NeuralRhythms::default();
+        let body = BodySnapshot {
+            kind: "harmonic".to_string(),
+            amp_scale: 1.0,
+            brightness: 0.7,
+            noise_mix: 0.2,
+        };
+        let voice_targets = [VoiceTarget {
+            id: 14,
+            pitch_hz: 220.0,
+            amp: 0.4,
+        }];
+        let cmds = [
+            AudioCommand::EnsureVoice {
+                id: 14,
+                body: body.clone(),
+                pitch_hz: 220.0,
+                amp: 0.4,
+            },
+            AudioCommand::EnsureVoice {
+                id: 14,
+                body,
+                pitch_hz: 220.0,
+                amp: 0.4,
+            },
+            AudioCommand::Impulse {
+                id: 14,
+                energy: 1.0,
+            },
+        ];
+        let out = renderer
+            .render(
+                &IntentBoard::new(0, 0),
+                &[],
+                0,
+                &rhythms,
+                &voice_targets,
+                &cmds,
+            )
+            .to_vec();
+        assert_eq!(renderer.agent_voices.len(), 1);
+        assert!(out.iter().any(|s| s.abs() > 1e-6));
+    }
+
+    #[test]
+    fn ensure_voice_created_in_same_render_receives_target_update() {
+        let tb = Timebase { fs: 1000.0, hop: 8 };
+        let mut renderer = ScheduleRenderer::new(tb);
+        let rhythms = NeuralRhythms::default();
+        let body = BodySnapshot {
+            kind: "sine".to_string(),
+            amp_scale: 1.0,
+            brightness: 0.0,
+            noise_mix: 0.0,
+        };
+        let voice_targets = [VoiceTarget {
+            id: 16,
             pitch_hz: 440.0,
-            amp: 0.5,
-            body: BodySpec {
-                kind: BodyKind::Sine,
-                amp_scale: 1.0,
-                brightness: 0.0,
-                noise_mix: 0.0,
-            },
+            amp: 0.8,
         }];
-        let cmds = [AudioCommand::Trigger {
-            id: 1,
-            ev: AudioEvent::Impulse { energy: 1.0 },
+        let cmds = [AudioCommand::EnsureVoice {
+            id: 16,
+            body,
+            pitch_hz: 110.0,
+            amp: 0.1,
         }];
-        let rhythms = NeuralRhythms::default();
-        let out = renderer.render(
-            &IntentBoard::new(0, 0),
-            &[],
-            done_tick,
-            &rhythms,
-            &voice_targets,
-            &cmds,
-        );
-        assert!(out.iter().any(|s| s.abs() > 1e-6));
+        let _ = renderer
+            .render(
+                &IntentBoard::new(0, 0),
+                &[],
+                0,
+                &rhythms,
+                &voice_targets,
+                &cmds,
+            )
+            .to_vec();
+        let voice = renderer.agent_voices.get(&16).expect("voice");
+        assert!((voice.debug_target_freq_hz() - 440.0).abs() < 1e-6);
+        assert!((voice.debug_target_amp() - 0.8).abs() < 1e-6);
     }
 
     #[test]
-    fn trigger_uses_voice_target_body_spec() {
+    fn shutdown_releases_agent_voice_and_becomes_idle() {
         let tb = Timebase { fs: 1000.0, hop: 8 };
         let mut renderer = ScheduleRenderer::new(tb);
         let rhythms = NeuralRhythms::default();
-        let voice_targets = [VoiceTarget {
-            id: 3,
-            pitch_hz: 220.0,
-            amp: 0.4,
-            body: BodySpec {
-                kind: BodyKind::Harmonic,
-                amp_scale: 1.0,
-                brightness: 0.6,
-                noise_mix: 0.2,
-            },
-        }];
-        let cmds = [AudioCommand::Trigger {
-            id: 3,
-            ev: AudioEvent::Impulse { energy: 1.0 },
-        }];
-        let out = renderer.render(
-            &IntentBoard::new(0, 0),
-            &[],
-            0,
-            &rhythms,
-            &voice_targets,
-            &cmds,
-        );
-        assert!(out.iter().any(|s| s.abs() > 1e-6));
-        let key = VoiceKey {
-            source_id: 3,
-            note_id: 0,
-            kind: VoiceKind::Agent,
+        let body = BodySnapshot {
+            kind: "sine".to_string(),
+            amp_scale: 1.0,
+            brightness: 0.0,
+            noise_mix: 0.0,
         };
-        let voice = renderer.voices.get(&key).expect("voice");
-        assert!(voice.debug_last_modes_len() > 1);
-    }
-
-    #[test]
-    fn agent_voice_recreates_when_body_spec_changes_on_trigger() {
-        let tb = Timebase { fs: 1000.0, hop: 8 };
-        let mut renderer = ScheduleRenderer::new(tb);
-        let rhythms = NeuralRhythms::default();
-        let cmds = [AudioCommand::Trigger {
-            id: 9,
-            ev: AudioEvent::Impulse { energy: 1.0 },
-        }];
-
         let voice_targets = [VoiceTarget {
-            id: 9,
+            id: 15,
             pitch_hz: 220.0,
             amp: 0.4,
-            body: BodySpec {
-                kind: BodyKind::Sine,
-                amp_scale: 1.0,
-                brightness: 0.0,
-                noise_mix: 0.0,
-            },
         }];
+        let cmds = [
+            AudioCommand::EnsureVoice {
+                id: 15,
+                body,
+                pitch_hz: 220.0,
+                amp: 0.4,
+            },
+            AudioCommand::Impulse {
+                id: 15,
+                energy: 1.0,
+            },
+        ];
         renderer.render(
             &IntentBoard::new(0, 0),
             &[],
@@ -599,34 +756,53 @@ mod tests {
             &voice_targets,
             &cmds,
         );
-        let key = VoiceKey {
-            source_id: 9,
-            note_id: 0,
-            kind: VoiceKind::Agent,
-        };
-        let voice = renderer.voices.get(&key).expect("voice");
-        assert_eq!(voice.debug_last_modes_len(), 1);
+        renderer.shutdown_at(0);
+        let now = default_release_ticks(tb) + 2;
+        renderer.render(&IntentBoard::new(0, 0), &[], now, &rhythms, &[], &[]);
+        assert!(renderer.is_idle());
+    }
 
+    #[test]
+    fn agent_voice_releases_after_agent_disappears() {
+        let tb = Timebase { fs: 1000.0, hop: 8 };
+        let mut renderer = ScheduleRenderer::new(tb);
+        let rhythms = NeuralRhythms::default();
+        let body = BodySnapshot {
+            kind: "sine".to_string(),
+            amp_scale: 1.0,
+            brightness: 0.0,
+            noise_mix: 0.0,
+        };
         let voice_targets = [VoiceTarget {
-            id: 9,
+            id: 22,
             pitch_hz: 220.0,
             amp: 0.4,
-            body: BodySpec {
-                kind: BodyKind::Harmonic,
-                amp_scale: 1.0,
-                brightness: 0.7,
-                noise_mix: 0.1,
-            },
         }];
+        let cmds = [
+            AudioCommand::EnsureVoice {
+                id: 22,
+                body,
+                pitch_hz: 220.0,
+                amp: 0.4,
+            },
+            AudioCommand::Impulse {
+                id: 22,
+                energy: 1.0,
+            },
+        ];
         renderer.render(
             &IntentBoard::new(0, 0),
             &[],
-            1,
+            0,
             &rhythms,
             &voice_targets,
             &cmds,
         );
-        let voice = renderer.voices.get(&key).expect("voice");
-        assert!(voice.debug_last_modes_len() > 1);
+        let now = tb.hop as Tick;
+        renderer.render(&IntentBoard::new(0, 0), &[], now, &rhythms, &[], &[]);
+        assert_eq!(renderer.agent_voices.len(), 1);
+        let done_at = now.saturating_add(default_release_ticks(tb) + 2);
+        renderer.render(&IntentBoard::new(0, 0), &[], done_at, &rhythms, &[], &[]);
+        assert!(renderer.is_idle());
     }
 }

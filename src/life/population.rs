@@ -4,7 +4,7 @@ use super::scenario::{Action, IndividualConfig, SocialConfig, SpawnMethod};
 use crate::core::landscape::{LandscapeFrame, LandscapeUpdate};
 use crate::core::log2space::Log2Space;
 use crate::core::timebase::{Tick, Timebase};
-use crate::life::audio::{LifeEvent, VoiceTarget};
+use crate::life::audio::{AudioCommand, VoiceTarget};
 use crate::life::social_density::SocialDensityTrace;
 use crate::life::world_model::WorldModel;
 use rand::{Rng, SeedableRng, distr::Distribution, distr::weighted::WeightedIndex, rngs::SmallRng};
@@ -22,6 +22,7 @@ pub struct Population {
     pub abort_requested: bool,
     buffers: WorkBuffers,
     pub global_coupling: f32,
+    birth_energy: f32,
     shutdown_gain: f32,
     pending_update: Option<LandscapeUpdate>,
     time: Timebase,
@@ -29,7 +30,7 @@ pub struct Population {
     next_agent_id: u64,
     spawn_counter: u64,
     social_trace: Option<SocialDensityTrace>,
-    life_events: Vec<LifeEvent>,
+    audio_cmds: Vec<AudioCommand>,
 }
 
 impl Population {
@@ -63,6 +64,7 @@ impl Population {
             abort_requested: false,
             buffers: WorkBuffers::default(),
             global_coupling: 1.0,
+            birth_energy: 1.0,
             shutdown_gain: 1.0,
             pending_update: None,
             time,
@@ -70,7 +72,7 @@ impl Population {
             next_agent_id: 1,
             spawn_counter: 0,
             social_trace: None,
-            life_events: Vec::new(),
+            audio_cmds: Vec::new(),
         }
     }
 
@@ -105,9 +107,9 @@ impl Population {
         self.current_frame = frame;
     }
 
-    pub fn drain_life_events(&mut self, out: &mut Vec<LifeEvent>) {
+    pub fn drain_audio_cmds(&mut self, out: &mut Vec<AudioCommand>) {
         out.clear();
-        out.append(&mut self.life_events);
+        out.append(&mut self.audio_cmds);
     }
 
     pub fn fill_voice_targets(&self, out: &mut Vec<VoiceTarget>) {
@@ -119,12 +121,10 @@ impl Population {
             }
             let pitch_hz = agent.body.base_freq_hz();
             let amp = agent.body.amp();
-            let body = agent.body.body_spec();
             out.push(VoiceTarget {
                 id: agent.id(),
                 pitch_hz,
                 amp,
-                body,
             });
         }
     }
@@ -486,8 +486,20 @@ impl Population {
                     };
                     let spawned =
                         cfg.spawn(id, self.current_frame, metadata, self.time.fs, self.seed);
+                    let body = spawned.body_snapshot();
+                    let pitch_hz = spawned.body.base_freq_hz();
+                    let amp = spawned.body.amp();
                     self.add_individual(spawned);
-                    self.life_events.push(LifeEvent::Spawned { id });
+                    self.audio_cmds.push(AudioCommand::EnsureVoice {
+                        id,
+                        body,
+                        pitch_hz,
+                        amp,
+                    });
+                    self.audio_cmds.push(AudioCommand::Impulse {
+                        id,
+                        energy: self.birth_energy,
+                    });
                 }
             }
             Action::Set { target, patch } => {

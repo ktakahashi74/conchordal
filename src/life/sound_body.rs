@@ -1,6 +1,5 @@
 use super::articulation_core::{ArticulationSignal, PinkNoise};
 use crate::core::log2space::Log2Space;
-use crate::life::audio::events::{BodyKind, BodySpec};
 use crate::life::scenario::{HarmonicMode, SoundBodyConfig, TimbreGenotype};
 use rand::Rng;
 use std::f32::consts::PI;
@@ -274,23 +273,6 @@ impl AnySoundBody {
                     jitter_gen: PinkNoise::new(rng.next_u64(), 0.001),
                 })
             }
-        }
-    }
-
-    pub fn body_spec(&self) -> BodySpec {
-        match self {
-            AnySoundBody::Sine(_body) => BodySpec {
-                kind: BodyKind::Sine,
-                amp_scale: 1.0,
-                brightness: 0.0,
-                noise_mix: 0.0,
-            },
-            AnySoundBody::Harmonic(body) => BodySpec {
-                kind: BodyKind::Harmonic,
-                amp_scale: 1.0,
-                brightness: body.genotype.brightness.clamp(0.0, 1.0),
-                noise_mix: body.genotype.jitter.clamp(0.0, 1.0),
-            },
         }
     }
 }

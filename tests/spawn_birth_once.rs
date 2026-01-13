@@ -1,7 +1,7 @@
 use conchordal::core::landscape::Landscape;
 use conchordal::core::log2space::Log2Space;
 use conchordal::core::timebase::{Tick, Timebase};
-use conchordal::life::audio::{AudioCommand, AudioEvent, VoiceTarget};
+use conchordal::life::audio::{AudioCommand, VoiceTarget};
 use conchordal::life::control::AgentControl;
 use conchordal::life::individual::AgentMetadata;
 use conchordal::life::population::Population;
@@ -79,17 +79,36 @@ fn spawn_sounds_only_with_audio_trigger() {
     );
     assert!(silent.iter().all(|s| s.abs() <= 1e-6));
 
-    let cmd = AudioCommand::Trigger {
-        id: 1,
-        ev: AudioEvent::Impulse { energy: 1.0 },
+    let body = conchordal::life::intent::BodySnapshot {
+        kind: "sine".to_string(),
+        amp_scale: 1.0,
+        brightness: 0.0,
+        noise_mix: 0.0,
     };
+    let ensure = AudioCommand::EnsureVoice {
+        id: 1,
+        body,
+        pitch_hz: 440.0,
+        amp: 0.4,
+    };
+    let ensured = renderer.render(
+        &world.board,
+        &[],
+        now,
+        &landscape.rhythm,
+        &voice_targets,
+        &[ensure],
+    );
+    assert!(ensured.iter().all(|s| s.abs() <= 1e-6));
+
+    let impulse = AudioCommand::Impulse { id: 1, energy: 1.0 };
     let voiced = renderer.render(
         &world.board,
         &[],
         now,
         &landscape.rhythm,
         &voice_targets,
-        &[cmd],
+        &[impulse],
     );
     assert!(voiced.iter().any(|s| s.abs() > 1e-6));
 }

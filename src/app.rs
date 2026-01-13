@@ -25,7 +25,7 @@ use crate::core::stream::{
     dorsal::DorsalStream, harmonicity::HarmonicityStream, roughness::RoughnessStream,
 };
 use crate::core::timebase::Tick;
-use crate::life::audio::{AudioCommand, LifeEvent, StimulusDirector, VoiceTarget};
+use crate::life::audio::{AudioCommand, VoiceTarget};
 use crate::life::conductor::Conductor;
 use crate::life::individual::{PhonationBatch, SoundBody};
 use crate::life::population::Population;
@@ -770,7 +770,6 @@ fn worker_loop(
     let mut world = crate::life::world_model::WorldModel::new(timebase, log_space.clone());
     world.set_pred_params(lparams.clone());
     let mut schedule_renderer = ScheduleRenderer::new(timebase);
-    let mut stimulus_director = StimulusDirector::new(1.0);
     let init_now_tick = timebase.frame_start_tick(frame_idx);
     world.advance_to(init_now_tick);
     let init_world_view = world.ui_view();
@@ -779,7 +778,6 @@ fn worker_loop(
     let mut scenario_end_tick: Option<Tick> = None;
     let mut phonation_batches_buf: Vec<PhonationBatch> = Vec::new();
     let mut audio_cmds: Vec<AudioCommand> = Vec::new();
-    let mut life_events_buf: Vec<LifeEvent> = Vec::new();
     let mut voice_targets: Vec<VoiceTarget> = Vec::new();
 
     // Initial UI frame so metadata is visible before playback starts.
@@ -974,11 +972,7 @@ fn worker_loop(
                 &mut pop,
                 &mut world,
             );
-            audio_cmds.clear();
-            pop.drain_life_events(&mut life_events_buf);
-            for ev in life_events_buf.drain(..) {
-                stimulus_director.emit(ev, &mut audio_cmds);
-            }
+            pop.drain_audio_cmds(&mut audio_cmds);
 
             let perc_frame = match (last_h_analysis_frame, last_r_analysis_frame) {
                 (Some(h), Some(r)) => h.min(r),

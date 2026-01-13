@@ -2,8 +2,6 @@ use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
 use crate::life::audio::any_backend::AnyBackend;
 use crate::life::audio::control::{ControlRamp, VoiceControlBlock};
-use crate::life::audio::events::{AudioEvent, BodyKind, BodySpec};
-use crate::life::audio::exciter::{Exciter, ImpulseExciter};
 use crate::life::audio::modal_engine::ModeShape;
 use crate::life::individual::{ArticulationSignal, ArticulationWrapper};
 use crate::life::intent::{BodySnapshot, Intent};
@@ -26,9 +24,8 @@ struct PendingTrigger {
 
 pub struct Voice {
     backend: AnyBackend,
-    exciter: ImpulseExciter,
     articulation: Option<ArticulationWrapper>,
-    body: BodySpec,
+    pending_impulse_energy: f32,
     onset: Tick,
     hold_end: Tick,
     release_end: Tick,
@@ -50,55 +47,34 @@ pub struct Voice {
 
 impl Voice {
     pub fn from_intent(time: Timebase, mut intent: Intent) -> Option<Self> {
-        let body_spec = intent
-            .body
-            .as_ref()
-            .map(body_spec_from_snapshot)
-            .unwrap_or_else(default_body_spec);
-        Self::from_body_spec(
-            time,
-            intent.onset,
-            intent.duration,
-            intent.freq_hz,
-            intent.amp,
-            body_spec,
-            intent.articulation.take(),
-        )
-    }
-
-    pub fn from_body_spec(
-        time: Timebase,
-        onset: Tick,
-        duration: Tick,
-        freq_hz: f32,
-        amp: f32,
-        body: BodySpec,
-        articulation: Option<ArticulationWrapper>,
-    ) -> Option<Self> {
-        if duration == 0 || freq_hz <= 0.0 {
+        if intent.duration == 0 || intent.freq_hz <= 0.0 {
             return None;
         }
-        if !freq_hz.is_finite() || !amp.is_finite() {
+        if !intent.freq_hz.is_finite() || !intent.amp.is_finite() {
             return None;
         }
-        if amp == 0.0 {
+        if intent.amp == 0.0 {
             return None;
         }
 
-        let shape = mode_shape_from_spec(&body);
-        let amp = amp * body.amp_scale.clamp(0.0, 1.0);
+        let (shape, amp_scale) = match intent.body.as_ref() {
+            Some(snapshot) => (mode_shape_from_snapshot(snapshot), snapshot.amp_scale),
+            None => (default_mode_shape(), 1.0),
+        };
+        let amp = intent.amp * amp_scale.clamp(0.0, 1.0);
         if !amp.is_finite() || amp <= 0.0 {
             return None;
         }
 
         let backend = AnyBackend::from_shape(time.fs, shape).ok()?;
+        let articulation = intent.articulation.take();
 
         let attack_ticks = default_attack_ticks(time);
         let release_ticks = default_release_ticks(time);
-        let (hold_end, release_end) = if duration == Tick::MAX {
+        let (hold_end, release_end) = if intent.duration == Tick::MAX {
             (Tick::MAX, Tick::MAX)
         } else {
-            let hold_end = onset.saturating_add(duration);
+            let hold_end = intent.onset.saturating_add(intent.duration);
             let release_end = hold_end.saturating_add(release_ticks);
             (hold_end, release_end)
         };
@@ -110,7 +86,7 @@ impl Voice {
         };
         let current_amp = amp.max(0.0);
         let target_amp = current_amp;
-        let current_pitch_hz = freq_hz;
+        let current_pitch_hz = intent.freq_hz;
         let target_pitch_hz = current_pitch_hz;
         let amp_tau_sec = 0.0;
         let pitch_tau_sec = 0.0;
@@ -119,10 +95,9 @@ impl Voice {
 
         Some(Self {
             backend,
-            exciter: ImpulseExciter::new(),
             articulation,
-            body,
-            onset,
+            pending_impulse_energy: 0.0,
+            onset: intent.onset,
             hold_end,
             release_end,
             attack_ticks,
@@ -169,8 +144,11 @@ impl Voice {
         });
     }
 
-    pub fn trigger(&mut self, ev: AudioEvent) {
-        self.exciter.trigger(ev);
+    pub fn trigger_impulse(&mut self, energy: f32) {
+        if !energy.is_finite() || energy <= 0.0 {
+            return;
+        }
+        self.pending_impulse_energy += energy;
     }
 
     pub fn set_target(&mut self, pitch_hz: f32, amp: f32, tau_sec: f32) {
@@ -245,9 +223,7 @@ impl Voice {
             && tick >= trigger.at_tick
         {
             self.pending_trigger = None;
-            self.trigger(AudioEvent::Impulse {
-                energy: trigger.energy,
-            });
+            self.trigger_impulse(trigger.energy);
         }
         self.advance_smoothing();
         let gain = self.gain_at(tick);
@@ -271,7 +247,8 @@ impl Voice {
         signal.amplitude *= gain;
         signal.is_active = signal.is_active && signal.amplitude > 0.0;
 
-        let drive = self.exciter.next_drive();
+        let drive = self.pending_impulse_energy;
+        self.pending_impulse_energy = 0.0;
         let ctrl = VoiceControlBlock {
             pitch_hz: ControlRamp {
                 start: self.current_pitch_hz.max(1.0),
@@ -352,10 +329,6 @@ impl Voice {
     #[cfg(test)]
     pub(crate) fn debug_last_modes_len(&self) -> usize {
         self.backend.debug_last_modes_len()
-    }
-
-    pub(crate) fn body_spec(&self) -> BodySpec {
-        self.body
     }
 
     pub fn end_tick(&self) -> Tick {
@@ -488,41 +461,19 @@ fn default_mode_shape() -> ModeShape {
     }
 }
 
-fn default_body_spec() -> BodySpec {
-    BodySpec {
-        kind: BodyKind::Sine,
-        amp_scale: 1.0,
-        brightness: 0.0,
-        noise_mix: 0.0,
-    }
-}
-
-fn body_spec_from_snapshot(snapshot: &BodySnapshot) -> BodySpec {
-    let kind = match snapshot.kind.as_str() {
-        "harmonic" => BodyKind::Harmonic,
-        _ => BodyKind::Sine,
-    };
-    BodySpec {
-        kind,
-        amp_scale: snapshot.amp_scale,
-        brightness: snapshot.brightness,
-        noise_mix: snapshot.noise_mix,
-    }
-}
-
-fn mode_shape_from_spec(spec: &BodySpec) -> ModeShape {
-    match spec.kind {
-        BodyKind::Harmonic => ModeShape::Harmonic {
+fn mode_shape_from_snapshot(snapshot: &BodySnapshot) -> ModeShape {
+    match snapshot.kind.as_str() {
+        "harmonic" => ModeShape::Harmonic {
             partials: 16,
             base_t60_s: 0.8,
             in_gain: 1.0,
             genotype: TimbreGenotype {
-                brightness: spec.brightness.clamp(0.0, 1.0),
-                jitter: spec.noise_mix.clamp(0.0, 1.0),
+                brightness: snapshot.brightness.clamp(0.0, 1.0),
+                jitter: snapshot.noise_mix.clamp(0.0, 1.0),
                 ..TimbreGenotype::default()
             },
         },
-        BodyKind::Sine => default_mode_shape(),
+        _ => default_mode_shape(),
     }
 }
 
@@ -555,7 +506,7 @@ mod tests {
         voice.render_block(0, tb.fs, 1.0 / tb.fs, &mut rhythms, &mut out);
         assert!(out.iter().all(|s| s.abs() <= 1e-6));
 
-        voice.trigger(AudioEvent::Impulse { energy: 1.0 });
+        voice.trigger_impulse(1.0);
         let mut rhythms = NeuralRhythms::default();
         let mut out = vec![0.0f32; tb.hop];
         voice.render_block(0, tb.fs, 1.0 / tb.fs, &mut rhythms, &mut out);

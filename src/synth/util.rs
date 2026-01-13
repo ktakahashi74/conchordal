@@ -1,4 +1,4 @@
-//! Denormal handling for audio-rate signals.
+//! Small DSP helpers (denorm flush for audio-rate values).
 
 const DENORM_THRESH: f32 = 1.0e-20;
 

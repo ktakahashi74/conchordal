@@ -119,10 +119,12 @@ impl Population {
             }
             let pitch_hz = agent.body.base_freq_hz();
             let amp = agent.body.amp();
+            let body = agent.body.body_spec();
             out.push(VoiceTarget {
                 id: agent.id(),
                 pitch_hz,
                 amp,
+                body,
             });
         }
     }
@@ -484,24 +486,16 @@ impl Population {
                     };
                     let spawned =
                         cfg.spawn(id, self.current_frame, metadata, self.time.fs, self.seed);
-                    let body = spawned.body_snapshot();
                     self.add_individual(spawned);
-                    self.life_events.push(LifeEvent::Spawned { id, body });
+                    self.life_events.push(LifeEvent::Spawned { id });
                 }
             }
             Action::Set { target, patch } => {
                 let ids = self.resolve_target_ids(&target);
                 for id in ids {
-                    let mut body_changed = None;
                     if let Some(agent) = self.find_individual_mut(id) {
-                        let before = agent.body_snapshot();
                         match agent.apply_control_patch(patch.clone()) {
-                            Ok(()) => {
-                                let after = agent.body_snapshot();
-                                if after != before {
-                                    body_changed = Some(after);
-                                }
-                            }
+                            Ok(()) => {}
                             Err(err) => {
                                 warn!("Set: agent {id} rejected patch: {}", err);
                                 continue;
@@ -511,26 +505,14 @@ impl Population {
                         warn!("Set: agent {id} not found");
                         continue;
                     }
-                    if let Some(body) = body_changed {
-                        self.life_events.push(LifeEvent::BodyChanged { id, body });
-                    }
                 }
             }
             Action::Unset { target, path } => {
                 let ids = self.resolve_target_ids(&target);
                 for id in ids {
-                    let mut body_changed = None;
                     if let Some(agent) = self.find_individual_mut(id) {
-                        let before = agent.body_snapshot();
                         match agent.apply_unset_path(&path) {
-                            Ok(removed) => {
-                                if removed {
-                                    let after = agent.body_snapshot();
-                                    if after != before {
-                                        body_changed = Some(after);
-                                    }
-                                }
-                            }
+                            Ok(_removed) => {}
                             Err(err) => {
                                 warn!("Unset: agent {id} rejected path {}: {}", path, err);
                                 continue;
@@ -539,9 +521,6 @@ impl Population {
                     } else {
                         warn!("Unset: agent {id} not found");
                         continue;
-                    }
-                    if let Some(body) = body_changed {
-                        self.life_events.push(LifeEvent::BodyChanged { id, body });
                     }
                 }
             }

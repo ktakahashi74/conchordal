@@ -30,6 +30,13 @@ impl AnyBackend {
             AnyBackend::Modal(engine) => engine.project_spectral(amps, space, signal),
         }
     }
+
+    #[cfg(test)]
+    pub(crate) fn debug_last_modes_len(&self) -> usize {
+        match self {
+            AnyBackend::Modal(engine) => engine.last_modes_len(),
+        }
+    }
 }
 
 #[cfg(test)]

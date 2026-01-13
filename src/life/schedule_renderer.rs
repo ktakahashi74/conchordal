@@ -2,7 +2,7 @@ use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
 use crate::life::audio::{AudioCommand, Voice, VoiceTarget, default_release_ticks};
 use crate::life::individual::PhonationBatch;
-use crate::life::intent::{BodySnapshot, Intent, IntentBoard};
+use crate::life::intent::{Intent, IntentBoard};
 use crate::life::phonation_engine::PhonationCmd;
 use std::collections::{HashMap, HashSet};
 use tracing::debug;
@@ -31,8 +31,6 @@ pub struct ScheduleRenderer {
     cutoff_tick: Option<Tick>,
     agent_ids_scratch: HashSet<u64>,
     agent_lookup_scratch: HashMap<u64, usize>,
-    agent_body_cache: HashMap<u64, BodySnapshot>,
-    body_dirty: HashSet<u64>,
 }
 
 impl ScheduleRenderer {
@@ -49,8 +47,6 @@ impl ScheduleRenderer {
             cutoff_tick: None,
             agent_ids_scratch: HashSet::new(),
             agent_lookup_scratch: HashMap::new(),
-            agent_body_cache: HashMap::new(),
-            body_dirty: HashSet::new(),
         }
     }
 
@@ -82,12 +78,10 @@ impl ScheduleRenderer {
             self.agent_ids_scratch.insert(state.id);
             self.agent_lookup_scratch.insert(state.id, idx);
         }
-        self.agent_body_cache
-            .retain(|id, _| self.agent_ids_scratch.contains(id));
-        self.body_dirty
-            .retain(|id| self.agent_ids_scratch.contains(id));
         self.voices.retain(|key, voice| match key.kind {
-            VoiceKind::Agent => self.agent_ids_scratch.contains(&key.source_id),
+            VoiceKind::Agent => {
+                self.agent_ids_scratch.contains(&key.source_id) && !voice.is_done(now)
+            }
             _ => !voice.is_done(now),
         });
 
@@ -118,63 +112,39 @@ impl ScheduleRenderer {
                 voice.set_target(state.pitch_hz, state.amp, 0.0);
             }
         }
-        for cmd in audio_cmds {
-            match cmd {
-                AudioCommand::SetBody { id, body } => {
-                    self.agent_body_cache.insert(*id, body.clone());
-                    self.body_dirty.insert(*id);
-                }
-                AudioCommand::Trigger { id, ev, body } => {
-                    let mut force_recreate = false;
-                    if let Some(snapshot) = body.as_ref() {
-                        self.agent_body_cache.insert(*id, snapshot.clone());
-                        force_recreate = true;
-                    }
-                    if self.body_dirty.remove(id) {
-                        force_recreate = true;
-                    }
-                    let Some(state_idx) = self.agent_lookup_scratch.get(id) else {
-                        continue;
-                    };
-                    let state = &voice_targets[*state_idx];
-                    let key = VoiceKey {
-                        source_id: *id,
-                        note_id: 0,
-                        kind: VoiceKind::Agent,
-                    };
-                    let is_done = self
-                        .voices
-                        .get(&key)
-                        .is_some_and(|voice| voice.is_done(now));
-                    if is_done || force_recreate {
-                        self.voices.remove(&key);
-                    }
-                    if let Some(voice) = self.voices.get_mut(&key) {
-                        voice.trigger(*ev);
-                        continue;
-                    }
-                    let body_snapshot = body
-                        .as_ref()
-                        .cloned()
-                        .or_else(|| self.agent_body_cache.get(id).cloned());
-                    let intent = Intent {
-                        source_id: *id,
-                        intent_id: 0,
-                        onset: now,
-                        duration: Tick::MAX,
-                        freq_hz: state.pitch_hz,
-                        amp: state.amp,
-                        tag: None,
-                        confidence: 1.0,
-                        body: body_snapshot,
-                        articulation: None,
-                    };
-                    if let Some(mut voice) = Voice::from_intent(self.time, intent) {
-                        voice.note_on(now);
-                        voice.trigger(*ev);
-                        self.voices.insert(key, voice);
-                    }
-                }
+        for AudioCommand::Trigger { id, ev } in audio_cmds {
+            let Some(state_idx) = self.agent_lookup_scratch.get(id) else {
+                continue;
+            };
+            let state = &voice_targets[*state_idx];
+            let key = VoiceKey {
+                source_id: *id,
+                note_id: 0,
+                kind: VoiceKind::Agent,
+            };
+            let recreate = self
+                .voices
+                .get(&key)
+                .is_some_and(|voice| voice.is_done(now) || voice.body_spec() != state.body);
+            if recreate {
+                self.voices.remove(&key);
+            }
+            if let Some(voice) = self.voices.get_mut(&key) {
+                voice.trigger(*ev);
+                continue;
+            }
+            if let Some(mut voice) = Voice::from_body_spec(
+                self.time,
+                now,
+                Tick::MAX,
+                state.pitch_hz,
+                state.amp,
+                state.body,
+                None,
+            ) {
+                voice.note_on(now);
+                voice.trigger(*ev);
+                self.voices.insert(key, voice);
             }
         }
 
@@ -370,7 +340,9 @@ fn max_phonation_hold_ticks(time: Timebase) -> Tick {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::life::audio::{AudioCommand, AudioEvent, Voice, VoiceTarget, default_release_ticks};
+    use crate::life::audio::{
+        AudioCommand, AudioEvent, BodyKind, BodySpec, Voice, VoiceTarget, default_release_ticks,
+    };
     use crate::life::individual::{
         AnyArticulationCore, ArticulationWrapper, PhonationBatch, PhonationNoteSpec, SequencedCore,
     };
@@ -537,16 +509,16 @@ mod tests {
             id: 1,
             pitch_hz: 440.0,
             amp: 0.5,
+            body: BodySpec {
+                kind: BodyKind::Sine,
+                amp_scale: 1.0,
+                brightness: 0.0,
+                noise_mix: 0.0,
+            },
         }];
         let cmds = [AudioCommand::Trigger {
             id: 1,
             ev: AudioEvent::Impulse { energy: 1.0 },
-            body: Some(BodySnapshot {
-                kind: "sine".to_string(),
-                amp_scale: 1.0,
-                brightness: 0.0,
-                noise_mix: 0.0,
-            }),
         }];
         let rhythms = NeuralRhythms::default();
         let out = renderer.render(
@@ -561,25 +533,24 @@ mod tests {
     }
 
     #[test]
-    fn trigger_uses_body_snapshot_when_state_has_none() {
+    fn trigger_uses_voice_target_body_spec() {
         let tb = Timebase { fs: 1000.0, hop: 8 };
         let mut renderer = ScheduleRenderer::new(tb);
         let rhythms = NeuralRhythms::default();
-        let body = BodySnapshot {
-            kind: "harmonic".to_string(),
-            amp_scale: 1.0,
-            brightness: 0.6,
-            noise_mix: 0.2,
-        };
         let voice_targets = [VoiceTarget {
             id: 3,
             pitch_hz: 220.0,
             amp: 0.4,
+            body: BodySpec {
+                kind: BodyKind::Harmonic,
+                amp_scale: 1.0,
+                brightness: 0.6,
+                noise_mix: 0.2,
+            },
         }];
         let cmds = [AudioCommand::Trigger {
             id: 3,
             ev: AudioEvent::Impulse { energy: 1.0 },
-            body: Some(body.clone()),
         }];
         let out = renderer.render(
             &IntentBoard::new(0, 0),
@@ -590,41 +561,37 @@ mod tests {
             &cmds,
         );
         assert!(out.iter().any(|s| s.abs() > 1e-6));
-        let cached = renderer.agent_body_cache.get(&3).expect("body cache");
-        assert_eq!(cached.kind, body.kind);
-        assert!((cached.amp_scale - body.amp_scale).abs() < 1e-6);
-        assert!((cached.brightness - body.brightness).abs() < 1e-6);
-        assert!((cached.noise_mix - body.noise_mix).abs() < 1e-6);
+        let key = VoiceKey {
+            source_id: 3,
+            note_id: 0,
+            kind: VoiceKind::Agent,
+        };
+        let voice = renderer.voices.get(&key).expect("voice");
+        assert!(voice.debug_last_modes_len() > 1);
     }
 
     #[test]
-    fn body_changed_updates_cache_for_followup_trigger() {
+    fn agent_voice_recreates_when_body_spec_changes_on_trigger() {
         let tb = Timebase { fs: 1000.0, hop: 8 };
         let mut renderer = ScheduleRenderer::new(tb);
         let rhythms = NeuralRhythms::default();
-        let body = BodySnapshot {
-            kind: "harmonic".to_string(),
-            amp_scale: 1.0,
-            brightness: 0.9,
-            noise_mix: 0.1,
-        };
-        let voice_targets = [VoiceTarget {
-            id: 7,
-            pitch_hz: 330.0,
-            amp: 0.3,
+        let cmds = [AudioCommand::Trigger {
+            id: 9,
+            ev: AudioEvent::Impulse { energy: 1.0 },
         }];
-        let cmds = [
-            AudioCommand::SetBody {
-                id: 7,
-                body: body.clone(),
+
+        let voice_targets = [VoiceTarget {
+            id: 9,
+            pitch_hz: 220.0,
+            amp: 0.4,
+            body: BodySpec {
+                kind: BodyKind::Sine,
+                amp_scale: 1.0,
+                brightness: 0.0,
+                noise_mix: 0.0,
             },
-            AudioCommand::Trigger {
-                id: 7,
-                ev: AudioEvent::Impulse { energy: 1.0 },
-                body: None,
-            },
-        ];
-        let out = renderer.render(
+        }];
+        renderer.render(
             &IntentBoard::new(0, 0),
             &[],
             0,
@@ -632,12 +599,34 @@ mod tests {
             &voice_targets,
             &cmds,
         );
-        assert!(out.iter().any(|s| s.abs() > 1e-6));
-        let cached = renderer.agent_body_cache.get(&7).expect("body cache");
-        assert_eq!(cached.kind, body.kind);
-        assert!((cached.amp_scale - body.amp_scale).abs() < 1e-6);
-        assert!((cached.brightness - body.brightness).abs() < 1e-6);
-        assert!((cached.noise_mix - body.noise_mix).abs() < 1e-6);
-        assert!(!renderer.body_dirty.contains(&7));
+        let key = VoiceKey {
+            source_id: 9,
+            note_id: 0,
+            kind: VoiceKind::Agent,
+        };
+        let voice = renderer.voices.get(&key).expect("voice");
+        assert_eq!(voice.debug_last_modes_len(), 1);
+
+        let voice_targets = [VoiceTarget {
+            id: 9,
+            pitch_hz: 220.0,
+            amp: 0.4,
+            body: BodySpec {
+                kind: BodyKind::Harmonic,
+                amp_scale: 1.0,
+                brightness: 0.7,
+                noise_mix: 0.1,
+            },
+        }];
+        renderer.render(
+            &IntentBoard::new(0, 0),
+            &[],
+            1,
+            &rhythms,
+            &voice_targets,
+            &cmds,
+        );
+        let voice = renderer.voices.get(&key).expect("voice");
+        assert!(voice.debug_last_modes_len() > 1);
     }
 }

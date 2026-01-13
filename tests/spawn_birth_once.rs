@@ -82,7 +82,6 @@ fn spawn_sounds_only_with_audio_trigger() {
     let cmd = AudioCommand::Trigger {
         id: 1,
         ev: AudioEvent::Impulse { energy: 1.0 },
-        body: None,
     };
     let voiced = renderer.render(
         &world.board,

@@ -12,17 +12,13 @@ impl StimulusDirector {
 
     pub fn emit(&mut self, ev: LifeEvent, out: &mut Vec<AudioCommand>) {
         match ev {
-            LifeEvent::Spawned { id, body } => {
+            LifeEvent::Spawned { id } => {
                 out.push(AudioCommand::Trigger {
                     id,
                     ev: AudioEvent::Impulse {
                         energy: self.birth_energy,
                     },
-                    body: Some(body),
                 });
-            }
-            LifeEvent::BodyChanged { id, body } => {
-                out.push(AudioCommand::SetBody { id, body });
             }
         }
     }

@@ -9,7 +9,9 @@ pub mod voice;
 pub use any_backend::AnyBackend;
 pub use control::{ControlRamp, VoiceControlBlock};
 pub use director::StimulusDirector;
-pub use events::{AudioCommand, AudioEvent, IndividualId, LifeEvent, VoiceTarget};
+pub use events::{
+    AudioCommand, AudioEvent, BodyKind, BodySpec, IndividualId, LifeEvent, VoiceTarget,
+};
 pub use exciter::{Exciter, ImpulseExciter};
 pub use modal_engine::{ModalEngine, ModalMode, ModeShape};
 pub use voice::{Voice, default_release_ticks};

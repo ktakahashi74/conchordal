@@ -3,9 +3,22 @@
 
 use crate::synth::SynthError;
 use crate::synth::modes::{ModeParams, compile_mode};
-use crate::synth::util::flush_denorm;
+use std::f32::consts::PI;
 #[cfg(feature = "simd-wide")]
-use wide::f32x8;
+use wide::{f32x4, f32x8};
+
+// Use fused mul-add only when the SIMD path can also fuse, to keep outputs aligned.
+#[cfg(any(target_feature = "fma", target_feature = "neon"))]
+#[inline(always)]
+fn mul_add_fast(a: f32, b: f32, c: f32) -> f32 {
+    a.mul_add(b, c)
+}
+
+#[cfg(not(any(target_feature = "fma", target_feature = "neon")))]
+#[inline(always)]
+fn mul_add_fast(a: f32, b: f32, c: f32) -> f32 {
+    a * b + c
+}
 
 /// Bank of resonators in a struct-of-arrays layout.
 #[derive(Debug, Clone)]
@@ -20,6 +33,7 @@ pub struct ResonatorBank {
     b1: Vec<f32>,
     b2: Vec<f32>,
     gain: Vec<f32>,
+    theta: Vec<f32>,
 }
 
 impl ResonatorBank {
@@ -43,6 +57,8 @@ impl ResonatorBank {
         b2.resize(max_modes, 0.0);
         let mut gain = Vec::with_capacity(max_modes);
         gain.resize(max_modes, 0.0);
+        let mut theta = Vec::with_capacity(max_modes);
+        theta.resize(max_modes, 0.0);
 
         Ok(Self {
             fs,
@@ -55,6 +71,7 @@ impl ResonatorBank {
             b1,
             b2,
             gain,
+            theta,
         })
     }
 
@@ -102,6 +119,7 @@ impl ResonatorBank {
             self.b1[i] = coeffs.b1;
             self.b2[i] = coeffs.b2;
             self.gain[i] = coeffs.gain;
+            self.theta[i] = 2.0 * PI * params.freq_hz / self.fs;
         }
 
         Ok(())
@@ -134,12 +152,41 @@ impl ResonatorBank {
             self.b1[i] = coeffs.b1;
             self.b2[i] = coeffs.b2;
             self.gain[i] = coeffs.gain;
+            self.theta[i] = 2.0 * PI * params.freq_hz / self.fs;
         }
 
         Ok(())
     }
 
-    /// Process a single sample with the damped MCF update (reference scalar).
+    /// Blog baseline: naive per-sample sin/cos rotation with damping.
+    #[allow(dead_code)]
+    fn process_sample_naive_sin(&mut self, u: f32) -> f32 {
+        let mut out = 0.0;
+        for i in 0..self.active_len {
+            let (s, c) = self.theta[i].sin_cos();
+            let r = self.r[i];
+            let b1 = self.b1[i];
+            let b2 = self.b2[i];
+            let gain = self.gain[i];
+
+            let x0 = self.x[i];
+            let y0 = self.y[i];
+
+            let rot_x = mul_add_fast(c, x0, -s * y0);
+            let rot_y = mul_add_fast(s, x0, c * y0);
+            let x1 = mul_add_fast(r, rot_x, b1 * u);
+            let y1 = mul_add_fast(r, rot_y, b2 * u);
+
+            self.x[i] = x1;
+            self.y[i] = y1;
+
+            out = mul_add_fast(gain, y1, out);
+        }
+
+        out
+    }
+
+    /// Reference scalar MCF update (no denormal flushing).
     #[allow(dead_code)]
     fn process_sample_ref(&mut self, u: f32) -> f32 {
         let mut out = 0.0;
@@ -153,11 +200,8 @@ impl ResonatorBank {
             let x0 = self.x[i];
             let y0 = self.y[i];
 
-            let mut x1 = r * (x0 - e * y0) + b1 * u;
-            x1 = flush_denorm(x1);
-
-            let mut y1 = r * (e * x1 + y0) + b2 * u;
-            y1 = flush_denorm(y1);
+            let x1 = r * (x0 - e * y0) + b1 * u;
+            let y1 = r * (e * x1 + y0) + b2 * u;
 
             self.x[i] = x1;
             self.y[i] = y1;
@@ -165,11 +209,12 @@ impl ResonatorBank {
             out += gain * y1;
         }
 
-        flush_denorm(out)
+        out
     }
 
+    /// Blog baseline: scalar MCF update with bounds-checked slices.
     #[allow(dead_code)]
-    fn process_sample_scalar(&mut self, u: f32) -> f32 {
+    fn process_sample_magic_scalar_basic(&mut self, u: f32) -> f32 {
         let n = self.active_len;
         let x = &mut self.x[..n];
         let y = &mut self.y[..n];
@@ -184,21 +229,62 @@ impl ResonatorBank {
             let x0 = x[i];
             let y0 = y[i];
 
-            let mut x1 = r[i] * (x0 - e[i] * y0) + b1[i] * u;
-            x1 = flush_denorm(x1);
-
-            let mut y1 = r[i] * (e[i] * x1 + y0) + b2[i] * u;
-            y1 = flush_denorm(y1);
+            let x1 = mul_add_fast(r[i], mul_add_fast(-e[i], y0, x0), b1[i] * u);
+            let y1 = mul_add_fast(r[i], mul_add_fast(e[i], x1, y0), b2[i] * u);
 
             x[i] = x1;
             y[i] = y1;
 
-            out += gain[i] * y1;
+            out = mul_add_fast(gain[i], y1, out);
         }
 
-        flush_denorm(out)
+        out
     }
 
+    #[allow(dead_code)]
+    fn process_sample_scalar(&mut self, u: f32) -> f32 {
+        self.process_sample_magic_scalar_basic(u)
+    }
+
+    /// Scalar MCF update with unchecked indexing to remove bounds checks.
+    #[allow(dead_code)]
+    fn process_sample_magic_scalar_unsafe(&mut self, u: f32) -> f32 {
+        let n = self.active_len;
+        let x_ptr = self.x.as_mut_ptr();
+        let y_ptr = self.y.as_mut_ptr();
+        let e_ptr = self.e.as_ptr();
+        let r_ptr = self.r.as_ptr();
+        let b1_ptr = self.b1.as_ptr();
+        let b2_ptr = self.b2.as_ptr();
+        let gain_ptr = self.gain.as_ptr();
+
+        let mut out = 0.0;
+
+        // Safety: all arrays have length >= active_len, and we only access 0..n.
+        unsafe {
+            for i in 0..n {
+                let x0 = *x_ptr.add(i);
+                let y0 = *y_ptr.add(i);
+                let e = *e_ptr.add(i);
+                let r = *r_ptr.add(i);
+                let b1 = *b1_ptr.add(i);
+                let b2 = *b2_ptr.add(i);
+                let gain = *gain_ptr.add(i);
+
+                let x1 = mul_add_fast(r, mul_add_fast(-e, y0, x0), b1 * u);
+                let y1 = mul_add_fast(r, mul_add_fast(e, x1, y0), b2 * u);
+
+                *x_ptr.add(i) = x1;
+                *y_ptr.add(i) = y1;
+
+                out = mul_add_fast(gain, y1, out);
+            }
+        }
+
+        out
+    }
+
+    /// Blog baseline: safe SIMD with f32x8 and slice copies.
     #[cfg(feature = "simd-wide")]
     fn process_sample_simd_wide8(&mut self, u: f32) -> f32 {
         let n = self.active_len;
@@ -229,24 +315,18 @@ impl ResonatorBank {
             let b1_vec = f32x8::from(b1_arr);
             let b2_vec = f32x8::from(b2_arr);
 
-            let x1_vec = r_vec * (x0 - e_vec * y0) + b1_vec * u_vec;
-            let mut x1_arr = x1_vec.to_array();
-            for lane in &mut x1_arr {
-                *lane = flush_denorm(*lane);
-            }
+            let rot = e_vec.mul_add(-y0, x0);
+            let x1_vec = r_vec.mul_add(rot, b1_vec * u_vec);
+            let y1_vec = r_vec.mul_add(e_vec.mul_add(x1_vec, y0), b2_vec * u_vec);
 
-            let x1_vec = f32x8::from(x1_arr);
-            let y1_vec = r_vec * (e_vec * x1_vec + y0) + b2_vec * u_vec;
-            let mut y1_arr = y1_vec.to_array();
-            for lane in &mut y1_arr {
-                *lane = flush_denorm(*lane);
-            }
+            let x1_arr = x1_vec.to_array();
+            let y1_arr = y1_vec.to_array();
 
             x[i..i + 8].copy_from_slice(&x1_arr);
             y[i..i + 8].copy_from_slice(&y1_arr);
 
             for k in 0..8 {
-                out += gain[i + k] * y1_arr[k];
+                out = mul_add_fast(gain[i + k], y1_arr[k], out);
             }
         }
 
@@ -254,49 +334,297 @@ impl ResonatorBank {
             let x0 = x[i];
             let y0 = y[i];
 
-            let mut x1 = r[i] * (x0 - e[i] * y0) + b1[i] * u;
-            x1 = flush_denorm(x1);
-
-            let mut y1 = r[i] * (e[i] * x1 + y0) + b2[i] * u;
-            y1 = flush_denorm(y1);
+            let x1 = mul_add_fast(r[i], mul_add_fast(-e[i], y0, x0), b1[i] * u);
+            let y1 = mul_add_fast(r[i], mul_add_fast(e[i], x1, y0), b2[i] * u);
 
             x[i] = x1;
             y[i] = y1;
 
-            out += gain[i] * y1;
+            out = mul_add_fast(gain[i], y1, out);
         }
 
-        flush_denorm(out)
+        out
+    }
+
+    /// SIMD with f32x8 plus a single f32x4 tail (safe slices).
+    #[cfg(feature = "simd-wide")]
+    fn process_sample_simd_wide8_tail4(&mut self, u: f32) -> f32 {
+        let n = self.active_len;
+        let n8 = n & !7;
+        let x = &mut self.x[..n];
+        let y = &mut self.y[..n];
+        let e = &self.e[..n];
+        let r = &self.r[..n];
+        let b1 = &self.b1[..n];
+        let b2 = &self.b2[..n];
+        let gain = &self.gain[..n];
+
+        let mut out = 0.0;
+        let u8 = f32x8::splat(u);
+        let u4 = f32x4::splat(u);
+
+        for i in (0..n8).step_by(8) {
+            let x0_arr: [f32; 8] = x[i..i + 8].try_into().unwrap();
+            let y0_arr: [f32; 8] = y[i..i + 8].try_into().unwrap();
+            let e_arr: [f32; 8] = e[i..i + 8].try_into().unwrap();
+            let r_arr: [f32; 8] = r[i..i + 8].try_into().unwrap();
+            let b1_arr: [f32; 8] = b1[i..i + 8].try_into().unwrap();
+            let b2_arr: [f32; 8] = b2[i..i + 8].try_into().unwrap();
+
+            let x0 = f32x8::from(x0_arr);
+            let y0 = f32x8::from(y0_arr);
+            let e_vec = f32x8::from(e_arr);
+            let r_vec = f32x8::from(r_arr);
+            let b1_vec = f32x8::from(b1_arr);
+            let b2_vec = f32x8::from(b2_arr);
+
+            let rot = e_vec.mul_add(-y0, x0);
+            let x1_vec = r_vec.mul_add(rot, b1_vec * u8);
+            let y1_vec = r_vec.mul_add(e_vec.mul_add(x1_vec, y0), b2_vec * u8);
+
+            let x1_arr = x1_vec.to_array();
+            let y1_arr = y1_vec.to_array();
+
+            x[i..i + 8].copy_from_slice(&x1_arr);
+            y[i..i + 8].copy_from_slice(&y1_arr);
+
+            for k in 0..8 {
+                out = mul_add_fast(gain[i + k], y1_arr[k], out);
+            }
+        }
+
+        let mut idx = n8;
+        if n - n8 >= 4 {
+            let x0_arr: [f32; 4] = x[idx..idx + 4].try_into().unwrap();
+            let y0_arr: [f32; 4] = y[idx..idx + 4].try_into().unwrap();
+            let e_arr: [f32; 4] = e[idx..idx + 4].try_into().unwrap();
+            let r_arr: [f32; 4] = r[idx..idx + 4].try_into().unwrap();
+            let b1_arr: [f32; 4] = b1[idx..idx + 4].try_into().unwrap();
+            let b2_arr: [f32; 4] = b2[idx..idx + 4].try_into().unwrap();
+
+            let x0 = f32x4::from(x0_arr);
+            let y0 = f32x4::from(y0_arr);
+            let e_vec = f32x4::from(e_arr);
+            let r_vec = f32x4::from(r_arr);
+            let b1_vec = f32x4::from(b1_arr);
+            let b2_vec = f32x4::from(b2_arr);
+
+            let rot = e_vec.mul_add(-y0, x0);
+            let x1_vec = r_vec.mul_add(rot, b1_vec * u4);
+            let y1_vec = r_vec.mul_add(e_vec.mul_add(x1_vec, y0), b2_vec * u4);
+
+            let x1_arr = x1_vec.to_array();
+            let y1_arr = y1_vec.to_array();
+
+            x[idx..idx + 4].copy_from_slice(&x1_arr);
+            y[idx..idx + 4].copy_from_slice(&y1_arr);
+
+            for k in 0..4 {
+                out = mul_add_fast(gain[idx + k], y1_arr[k], out);
+            }
+
+            idx += 4;
+        }
+
+        for i in idx..n {
+            let x0 = x[i];
+            let y0 = y[i];
+
+            let x1 = mul_add_fast(r[i], mul_add_fast(-e[i], y0, x0), b1[i] * u);
+            let y1 = mul_add_fast(r[i], mul_add_fast(e[i], x1, y0), b2[i] * u);
+
+            x[i] = x1;
+            y[i] = y1;
+
+            out = mul_add_fast(gain[i], y1, out);
+        }
+
+        out
+    }
+
+    /// SIMD fast path with unsafe pointer access to reduce bounds checks/copies.
+    #[cfg(feature = "simd-wide")]
+    fn process_sample_simd_wide_fast(&mut self, u: f32) -> f32 {
+        let n = self.active_len;
+        let n8 = n & !7;
+        let u8 = f32x8::splat(u);
+        let u4 = f32x4::splat(u);
+
+        let x_ptr = self.x.as_mut_ptr();
+        let y_ptr = self.y.as_mut_ptr();
+        let e_ptr = self.e.as_ptr();
+        let r_ptr = self.r.as_ptr();
+        let b1_ptr = self.b1.as_ptr();
+        let b2_ptr = self.b2.as_ptr();
+        let gain_ptr = self.gain.as_ptr();
+
+        let mut out = 0.0;
+
+        // Safety: all arrays have length >= active_len; loops only access valid lanes.
+        unsafe {
+            for i in (0..n8).step_by(8) {
+                let x0_arr = std::ptr::read_unaligned(x_ptr.add(i) as *const [f32; 8]);
+                let y0_arr = std::ptr::read_unaligned(y_ptr.add(i) as *const [f32; 8]);
+                let e_arr = std::ptr::read_unaligned(e_ptr.add(i) as *const [f32; 8]);
+                let r_arr = std::ptr::read_unaligned(r_ptr.add(i) as *const [f32; 8]);
+                let b1_arr = std::ptr::read_unaligned(b1_ptr.add(i) as *const [f32; 8]);
+                let b2_arr = std::ptr::read_unaligned(b2_ptr.add(i) as *const [f32; 8]);
+                let gain_arr = std::ptr::read_unaligned(gain_ptr.add(i) as *const [f32; 8]);
+
+                let x0 = f32x8::from(x0_arr);
+                let y0 = f32x8::from(y0_arr);
+                let e_vec = f32x8::from(e_arr);
+                let r_vec = f32x8::from(r_arr);
+                let b1_vec = f32x8::from(b1_arr);
+                let b2_vec = f32x8::from(b2_arr);
+
+                let rot = e_vec.mul_add(-y0, x0);
+                let x1_vec = r_vec.mul_add(rot, b1_vec * u8);
+                let y1_vec = r_vec.mul_add(e_vec.mul_add(x1_vec, y0), b2_vec * u8);
+
+                let x1_arr = x1_vec.to_array();
+                let y1_arr = y1_vec.to_array();
+
+                std::ptr::write_unaligned(x_ptr.add(i) as *mut [f32; 8], x1_arr);
+                std::ptr::write_unaligned(y_ptr.add(i) as *mut [f32; 8], y1_arr);
+
+                for k in 0..8 {
+                    out = mul_add_fast(gain_arr[k], y1_arr[k], out);
+                }
+            }
+
+            let mut idx = n8;
+            if n - n8 >= 4 {
+                let x0_arr = std::ptr::read_unaligned(x_ptr.add(idx) as *const [f32; 4]);
+                let y0_arr = std::ptr::read_unaligned(y_ptr.add(idx) as *const [f32; 4]);
+                let e_arr = std::ptr::read_unaligned(e_ptr.add(idx) as *const [f32; 4]);
+                let r_arr = std::ptr::read_unaligned(r_ptr.add(idx) as *const [f32; 4]);
+                let b1_arr = std::ptr::read_unaligned(b1_ptr.add(idx) as *const [f32; 4]);
+                let b2_arr = std::ptr::read_unaligned(b2_ptr.add(idx) as *const [f32; 4]);
+                let gain_arr = std::ptr::read_unaligned(gain_ptr.add(idx) as *const [f32; 4]);
+
+                let x0 = f32x4::from(x0_arr);
+                let y0 = f32x4::from(y0_arr);
+                let e_vec = f32x4::from(e_arr);
+                let r_vec = f32x4::from(r_arr);
+                let b1_vec = f32x4::from(b1_arr);
+                let b2_vec = f32x4::from(b2_arr);
+
+                let rot = e_vec.mul_add(-y0, x0);
+                let x1_vec = r_vec.mul_add(rot, b1_vec * u4);
+                let y1_vec = r_vec.mul_add(e_vec.mul_add(x1_vec, y0), b2_vec * u4);
+
+                let x1_arr = x1_vec.to_array();
+                let y1_arr = y1_vec.to_array();
+
+                std::ptr::write_unaligned(x_ptr.add(idx) as *mut [f32; 4], x1_arr);
+                std::ptr::write_unaligned(y_ptr.add(idx) as *mut [f32; 4], y1_arr);
+
+                for k in 0..4 {
+                    out = mul_add_fast(gain_arr[k], y1_arr[k], out);
+                }
+
+                idx += 4;
+            }
+
+            for i in idx..n {
+                let x0 = *x_ptr.add(i);
+                let y0 = *y_ptr.add(i);
+                let e = *e_ptr.add(i);
+                let r = *r_ptr.add(i);
+                let b1 = *b1_ptr.add(i);
+                let b2 = *b2_ptr.add(i);
+                let gain = *gain_ptr.add(i);
+
+                let x1 = mul_add_fast(r, mul_add_fast(-e, y0, x0), b1 * u);
+                let y1 = mul_add_fast(r, mul_add_fast(e, x1, y0), b2 * u);
+
+                *x_ptr.add(i) = x1;
+                *y_ptr.add(i) = y1;
+
+                out = mul_add_fast(gain, y1, out);
+            }
+        }
+
+        out
     }
 
     /// Process a single sample with the damped MCF update.
+    #[cfg(all(feature = "simd-wide", any(target_arch = "x86_64", target_arch = "aarch64")))]
     pub fn process_sample(&mut self, u: f32) -> f32 {
-        #[cfg(feature = "simd-wide")]
-        {
-            self.process_sample_simd_wide8(u)
+        self.process_sample_simd_wide_fast(u)
+    }
+
+    /// Process a single sample with the damped MCF update.
+    #[cfg(not(all(feature = "simd-wide", any(target_arch = "x86_64", target_arch = "aarch64"))))]
+    pub fn process_sample(&mut self, u: f32) -> f32 {
+        self.process_sample_magic_scalar_unsafe(u)
+    }
+
+    /// Bench hook: naive per-sample trig baseline.
+    #[cfg(any(test, feature = "bench-hooks"))]
+    pub fn process_block_mono_naive_sin(&mut self, input: &[f32], output: &mut [f32]) {
+        assert_eq!(input.len(), output.len());
+        for (u, y) in input.iter().copied().zip(output.iter_mut()) {
+            *y = self.process_sample_naive_sin(u);
         }
-        #[cfg(not(feature = "simd-wide"))]
-        {
-            self.process_sample_scalar(u)
+    }
+
+    /// Bench hook: magic-cycle scalar basic.
+    #[cfg(any(test, feature = "bench-hooks"))]
+    pub fn process_block_mono_magic_scalar_basic(&mut self, input: &[f32], output: &mut [f32]) {
+        assert_eq!(input.len(), output.len());
+        for (u, y) in input.iter().copied().zip(output.iter_mut()) {
+            *y = self.process_sample_magic_scalar_basic(u);
+        }
+    }
+
+    /// Bench hook: magic-cycle scalar unchecked.
+    #[cfg(any(test, feature = "bench-hooks"))]
+    pub fn process_block_mono_magic_scalar_unsafe(&mut self, input: &[f32], output: &mut [f32]) {
+        assert_eq!(input.len(), output.len());
+        for (u, y) in input.iter().copied().zip(output.iter_mut()) {
+            *y = self.process_sample_magic_scalar_unsafe(u);
+        }
+    }
+
+    /// Bench hook: SIMD safe f32x8 (initial version).
+    #[cfg(all(any(test, feature = "bench-hooks"), feature = "simd-wide"))]
+    pub fn process_block_mono_simd_safe8(&mut self, input: &[f32], output: &mut [f32]) {
+        assert_eq!(input.len(), output.len());
+        for (u, y) in input.iter().copied().zip(output.iter_mut()) {
+            *y = self.process_sample_simd_wide8(u);
+        }
+    }
+
+    /// Bench hook: SIMD f32x8 with a single f32x4 tail.
+    #[cfg(all(any(test, feature = "bench-hooks"), feature = "simd-wide"))]
+    pub fn process_block_mono_simd_tail4(&mut self, input: &[f32], output: &mut [f32]) {
+        assert_eq!(input.len(), output.len());
+        for (u, y) in input.iter().copied().zip(output.iter_mut()) {
+            *y = self.process_sample_simd_wide8_tail4(u);
+        }
+    }
+
+    /// Bench hook: SIMD fast unsafe path.
+    #[cfg(all(any(test, feature = "bench-hooks"), feature = "simd-wide"))]
+    pub fn process_block_mono_simd_fast(&mut self, input: &[f32], output: &mut [f32]) {
+        assert_eq!(input.len(), output.len());
+        for (u, y) in input.iter().copied().zip(output.iter_mut()) {
+            *y = self.process_sample_simd_wide_fast(u);
         }
     }
 
     /// Process a mono block with the scalar backend (bench hook).
     #[cfg(any(test, feature = "bench-hooks"))]
     pub fn process_block_mono_scalar(&mut self, input: &[f32], output: &mut [f32]) {
-        assert_eq!(input.len(), output.len());
-        for (u, y) in input.iter().copied().zip(output.iter_mut()) {
-            *y = self.process_sample_scalar(u);
-        }
+        self.process_block_mono_magic_scalar_basic(input, output);
     }
 
     /// Process a mono block with the SIMD backend (bench hook).
     #[cfg(all(any(test, feature = "bench-hooks"), feature = "simd-wide"))]
     pub fn process_block_mono_simd(&mut self, input: &[f32], output: &mut [f32]) {
-        assert_eq!(input.len(), output.len());
-        for (u, y) in input.iter().copied().zip(output.iter_mut()) {
-            *y = self.process_sample_simd_wide8(u);
-        }
+        self.process_block_mono_simd_safe8(input, output);
     }
 
     /// Process a mono block; input and output slices must be same length.
@@ -408,6 +736,7 @@ mod tests {
             bank.b1.as_ptr(),
             bank.b2.as_ptr(),
             bank.gain.as_ptr(),
+            bank.theta.as_ptr(),
         );
         let caps = (
             bank.x.capacity(),
@@ -417,6 +746,7 @@ mod tests {
             bank.b1.capacity(),
             bank.b2.capacity(),
             bank.gain.capacity(),
+            bank.theta.capacity(),
         );
 
         let modes_a = [
@@ -448,6 +778,7 @@ mod tests {
         assert_eq!(ptrs.4, bank.b1.as_ptr());
         assert_eq!(ptrs.5, bank.b2.as_ptr());
         assert_eq!(ptrs.6, bank.gain.as_ptr());
+        assert_eq!(ptrs.7, bank.theta.as_ptr());
         assert_eq!(caps.0, bank.x.capacity());
         assert_eq!(caps.1, bank.y.capacity());
         assert_eq!(caps.2, bank.e.capacity());
@@ -455,6 +786,7 @@ mod tests {
         assert_eq!(caps.4, bank.b1.capacity());
         assert_eq!(caps.5, bank.b2.capacity());
         assert_eq!(caps.6, bank.gain.capacity());
+        assert_eq!(caps.7, bank.theta.capacity());
 
         bank.set_modes(&modes_b).unwrap();
         assert_eq!(ptrs.0, bank.x.as_ptr());
@@ -464,6 +796,7 @@ mod tests {
         assert_eq!(ptrs.4, bank.b1.as_ptr());
         assert_eq!(ptrs.5, bank.b2.as_ptr());
         assert_eq!(ptrs.6, bank.gain.as_ptr());
+        assert_eq!(ptrs.7, bank.theta.as_ptr());
         assert_eq!(caps.0, bank.x.capacity());
         assert_eq!(caps.1, bank.y.capacity());
         assert_eq!(caps.2, bank.e.capacity());
@@ -471,6 +804,7 @@ mod tests {
         assert_eq!(caps.4, bank.b1.capacity());
         assert_eq!(caps.5, bank.b2.capacity());
         assert_eq!(caps.6, bank.gain.capacity());
+        assert_eq!(caps.7, bank.theta.capacity());
     }
 
     #[test]
@@ -586,7 +920,7 @@ mod tests {
     }
 
     #[test]
-    fn default_matches_reference_bit_exact() {
+    fn default_matches_reference_with_tolerance() {
         let mut bank = ResonatorBank::new(48_000.0, 16).unwrap();
         let mut modes = Vec::with_capacity(10);
         for i in 0..10 {
@@ -601,7 +935,6 @@ mod tests {
 
         let mut bank_ref = bank.clone();
         let mut bank_def = bank.clone();
-
         for i in 0..1024 {
             let mut u = (i as f32 * 0.01).sin();
             if i == 0 {
@@ -612,7 +945,12 @@ mod tests {
             }
             let y_ref = bank_ref.process_sample_ref(u);
             let y_def = bank_def.process_sample(u);
-            assert_eq!(y_ref, y_def);
+            if cfg!(any(target_feature = "fma", target_feature = "neon")) {
+                let err = (y_ref - y_def).abs();
+                assert!(err < 1.0e-5, "i={i} y_ref={y_ref} y_def={y_def}");
+            } else {
+                assert_eq!(y_ref, y_def);
+            }
         }
     }
 }

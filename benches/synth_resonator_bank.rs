@@ -26,7 +26,7 @@ const BLOCK_LENS_QUICK: [usize; 2] = [64, 256];
 #[cfg(feature = "bench-hooks")]
 const BLOCK_LENS_FULL: [usize; 3] = [64, 256, 1024];
 #[cfg(feature = "bench-hooks")]
-const MODES_LENS_QUICK: [usize; 3] = [1, 8, 32];
+const MODES_LENS_QUICK: [usize; 5] = [1, 2, 4, 8, 10];
 #[cfg(feature = "bench-hooks")]
 const MODES_LENS_FULL: [usize; 4] = [1, 8, 32, 128];
 
@@ -73,33 +73,20 @@ fn bench_config() -> (&'static [usize], &'static [usize], usize) {
 }
 
 #[cfg(feature = "bench-hooks")]
-fn rough_ns_per_sample_scalar(
+fn rough_ns_per_sample<F>(
     bank: &mut ResonatorBank,
     input: &[f32],
     output: &mut [f32],
     iters: usize,
-) -> f64 {
+    mut process: F,
+) -> f64
+where
+    F: FnMut(&mut ResonatorBank, &[f32], &mut [f32]),
+{
     let start = Instant::now();
     for _ in 0..iters {
         bank.reset_state();
-        bank.process_block_mono_scalar(black_box(input), black_box(&mut output[..]));
-        black_box(&output[..]);
-    }
-    let total_samples = input.len() * iters;
-    start.elapsed().as_secs_f64() * 1.0e9 / total_samples as f64
-}
-
-#[cfg(all(feature = "bench-hooks", feature = "simd-wide"))]
-fn rough_ns_per_sample_simd(
-    bank: &mut ResonatorBank,
-    input: &[f32],
-    output: &mut [f32],
-    iters: usize,
-) -> f64 {
-    let start = Instant::now();
-    for _ in 0..iters {
-        bank.reset_state();
-        bank.process_block_mono_simd(black_box(input), black_box(&mut output[..]));
+        process(bank, black_box(input), black_box(&mut output[..]));
         black_box(&output[..]);
     }
     let total_samples = input.len() * iters;
@@ -116,61 +103,128 @@ fn bench_block_sine(c: &mut Criterion) {
         let modes = build_modes(modes_len);
         for &block_len in block_lens {
             let input = make_sine(block_len, FS);
-            let mut output_scalar = vec![0.0; block_len];
             let mut bank = ResonatorBank::new(FS, modes_len).unwrap();
             bank.set_modes(&modes).unwrap();
-            let mut bank_scalar = bank.clone();
-
-            let scalar_id = BenchmarkId::new("case", format!("m{modes_len}_b{block_len}_scalar"));
-            group.bench_with_input(scalar_id, &input, |b, input| {
+            let mut bank_naive = bank.clone();
+            let mut output_naive = vec![0.0; block_len];
+            let naive_id = BenchmarkId::new("case", format!("m{modes_len}_b{block_len}_naive"));
+            group.bench_with_input(naive_id, &input, |b, input| {
                 b.iter(|| {
-                    bank_scalar.reset_state();
-                    bank_scalar.process_block_mono_scalar(
+                    bank_naive.reset_state();
+                    bank_naive.process_block_mono_naive_sin(
                         black_box(input),
-                        black_box(&mut output_scalar[..]),
+                        black_box(&mut output_naive[..]),
                     );
-                    black_box(&output_scalar[..]);
+                    black_box(&output_naive[..]);
+                });
+            });
+
+            let mut bank_basic = bank.clone();
+            let mut output_basic = vec![0.0; block_len];
+            let basic_id =
+                BenchmarkId::new("case", format!("m{modes_len}_b{block_len}_magic_basic"));
+            group.bench_with_input(basic_id, &input, |b, input| {
+                b.iter(|| {
+                    bank_basic.reset_state();
+                    bank_basic.process_block_mono_magic_scalar_basic(
+                        black_box(input),
+                        black_box(&mut output_basic[..]),
+                    );
+                    black_box(&output_basic[..]);
+                });
+            });
+
+            let mut bank_unsafe = bank.clone();
+            let mut output_unsafe = vec![0.0; block_len];
+            let unsafe_id =
+                BenchmarkId::new("case", format!("m{modes_len}_b{block_len}_magic_unsafe"));
+            group.bench_with_input(unsafe_id, &input, |b, input| {
+                b.iter(|| {
+                    bank_unsafe.reset_state();
+                    bank_unsafe.process_block_mono_magic_scalar_unsafe(
+                        black_box(input),
+                        black_box(&mut output_unsafe[..]),
+                    );
+                    black_box(&output_unsafe[..]);
                 });
             });
 
             #[cfg(feature = "simd-wide")]
             {
-                let mut output_simd = vec![0.0; block_len];
-                let mut bank_simd = bank.clone();
-                let simd_id = BenchmarkId::new("case", format!("m{modes_len}_b{block_len}_simd"));
-                group.bench_with_input(simd_id, &input, |b, input| {
+                let mut output_simd_safe = vec![0.0; block_len];
+                let mut bank_simd_safe = bank.clone();
+                let simd_safe_id =
+                    BenchmarkId::new("case", format!("m{modes_len}_b{block_len}_simd_safe8"));
+                group.bench_with_input(simd_safe_id, &input, |b, input| {
                     b.iter(|| {
-                        bank_simd.reset_state();
-                        bank_simd.process_block_mono_simd(
+                        bank_simd_safe.reset_state();
+                        bank_simd_safe.process_block_mono_simd_safe8(
                             black_box(input),
-                            black_box(&mut output_simd[..]),
+                            black_box(&mut output_simd_safe[..]),
                         );
-                        black_box(&output_simd[..]);
+                        black_box(&output_simd_safe[..]);
                     });
                 });
 
-                let mut bank_scalar_speed = bank.clone();
+                let mut output_simd_tail = vec![0.0; block_len];
+                let mut bank_simd_tail = bank.clone();
+                let simd_tail_id =
+                    BenchmarkId::new("case", format!("m{modes_len}_b{block_len}_simd_tail4"));
+                group.bench_with_input(simd_tail_id, &input, |b, input| {
+                    b.iter(|| {
+                        bank_simd_tail.reset_state();
+                        bank_simd_tail.process_block_mono_simd_tail4(
+                            black_box(input),
+                            black_box(&mut output_simd_tail[..]),
+                        );
+                        black_box(&output_simd_tail[..]);
+                    });
+                });
+
+                let mut output_simd_fast = vec![0.0; block_len];
+                let mut bank_simd_fast = bank.clone();
+                let simd_fast_id =
+                    BenchmarkId::new("case", format!("m{modes_len}_b{block_len}_simd_fast"));
+                group.bench_with_input(simd_fast_id, &input, |b, input| {
+                    b.iter(|| {
+                        bank_simd_fast.reset_state();
+                        bank_simd_fast.process_block_mono_simd_fast(
+                            black_box(input),
+                            black_box(&mut output_simd_fast[..]),
+                        );
+                        black_box(&output_simd_fast[..]);
+                    });
+                });
+
+                let mut bank_basic_speed = bank.clone();
                 let mut bank_simd_speed = bank.clone();
-                let mut output_scalar_speed = vec![0.0; block_len];
+                let mut output_basic_speed = vec![0.0; block_len];
                 let mut output_simd_speed = vec![0.0; block_len];
-                let ns_scalar = rough_ns_per_sample_scalar(
-                    &mut bank_scalar_speed,
+                let ns_basic = rough_ns_per_sample(
+                    &mut bank_basic_speed,
                     &input,
-                    &mut output_scalar_speed,
+                    &mut output_basic_speed,
                     50,
+                    |bank, input, output| {
+                        bank.process_block_mono_magic_scalar_basic(input, output);
+                    },
                 );
-                let ns_simd = rough_ns_per_sample_simd(
+                let ns_simd = rough_ns_per_sample(
                     &mut bank_simd_speed,
                     &input,
                     &mut output_simd_speed,
                     50,
+                    |bank, input, output| {
+                        bank.process_block_mono_simd_fast(input, output);
+                    },
                 );
-                let speedup = ns_scalar / ns_simd;
+                let speedup = ns_basic / ns_simd;
                 println!(
-                    "speedup bank_block_sine m{modes_len}_b{block_len}: scalar {:.2} ns/sample, simd {:.2} ns/sample, speedup {:.2}x",
-                    ns_scalar, ns_simd, speedup
+                    "speedup bank_block_sine m{modes_len}_b{block_len}: magic_basic {:.2} ns/sample, simd_fast {:.2} ns/sample, speedup {:.2}x",
+                    ns_basic, ns_simd, speedup
                 );
             }
+
         }
     }
 
@@ -187,61 +241,128 @@ fn bench_block_impulse(c: &mut Criterion) {
         let modes = build_modes(modes_len);
         for &block_len in block_lens {
             let input = make_impulse(block_len);
-            let mut output_scalar = vec![0.0; block_len];
             let mut bank = ResonatorBank::new(FS, modes_len).unwrap();
             bank.set_modes(&modes).unwrap();
-            let mut bank_scalar = bank.clone();
-
-            let scalar_id = BenchmarkId::new("case", format!("m{modes_len}_b{block_len}_scalar"));
-            group.bench_with_input(scalar_id, &input, |b, input| {
+            let mut bank_naive = bank.clone();
+            let mut output_naive = vec![0.0; block_len];
+            let naive_id = BenchmarkId::new("case", format!("m{modes_len}_b{block_len}_naive"));
+            group.bench_with_input(naive_id, &input, |b, input| {
                 b.iter(|| {
-                    bank_scalar.reset_state();
-                    bank_scalar.process_block_mono_scalar(
+                    bank_naive.reset_state();
+                    bank_naive.process_block_mono_naive_sin(
                         black_box(input),
-                        black_box(&mut output_scalar[..]),
+                        black_box(&mut output_naive[..]),
                     );
-                    black_box(&output_scalar[..]);
+                    black_box(&output_naive[..]);
+                });
+            });
+
+            let mut bank_basic = bank.clone();
+            let mut output_basic = vec![0.0; block_len];
+            let basic_id =
+                BenchmarkId::new("case", format!("m{modes_len}_b{block_len}_magic_basic"));
+            group.bench_with_input(basic_id, &input, |b, input| {
+                b.iter(|| {
+                    bank_basic.reset_state();
+                    bank_basic.process_block_mono_magic_scalar_basic(
+                        black_box(input),
+                        black_box(&mut output_basic[..]),
+                    );
+                    black_box(&output_basic[..]);
+                });
+            });
+
+            let mut bank_unsafe = bank.clone();
+            let mut output_unsafe = vec![0.0; block_len];
+            let unsafe_id =
+                BenchmarkId::new("case", format!("m{modes_len}_b{block_len}_magic_unsafe"));
+            group.bench_with_input(unsafe_id, &input, |b, input| {
+                b.iter(|| {
+                    bank_unsafe.reset_state();
+                    bank_unsafe.process_block_mono_magic_scalar_unsafe(
+                        black_box(input),
+                        black_box(&mut output_unsafe[..]),
+                    );
+                    black_box(&output_unsafe[..]);
                 });
             });
 
             #[cfg(feature = "simd-wide")]
             {
-                let mut output_simd = vec![0.0; block_len];
-                let mut bank_simd = bank.clone();
-                let simd_id = BenchmarkId::new("case", format!("m{modes_len}_b{block_len}_simd"));
-                group.bench_with_input(simd_id, &input, |b, input| {
+                let mut output_simd_safe = vec![0.0; block_len];
+                let mut bank_simd_safe = bank.clone();
+                let simd_safe_id =
+                    BenchmarkId::new("case", format!("m{modes_len}_b{block_len}_simd_safe8"));
+                group.bench_with_input(simd_safe_id, &input, |b, input| {
                     b.iter(|| {
-                        bank_simd.reset_state();
-                        bank_simd.process_block_mono_simd(
+                        bank_simd_safe.reset_state();
+                        bank_simd_safe.process_block_mono_simd_safe8(
                             black_box(input),
-                            black_box(&mut output_simd[..]),
+                            black_box(&mut output_simd_safe[..]),
                         );
-                        black_box(&output_simd[..]);
+                        black_box(&output_simd_safe[..]);
                     });
                 });
 
-                let mut bank_scalar_speed = bank.clone();
+                let mut output_simd_tail = vec![0.0; block_len];
+                let mut bank_simd_tail = bank.clone();
+                let simd_tail_id =
+                    BenchmarkId::new("case", format!("m{modes_len}_b{block_len}_simd_tail4"));
+                group.bench_with_input(simd_tail_id, &input, |b, input| {
+                    b.iter(|| {
+                        bank_simd_tail.reset_state();
+                        bank_simd_tail.process_block_mono_simd_tail4(
+                            black_box(input),
+                            black_box(&mut output_simd_tail[..]),
+                        );
+                        black_box(&output_simd_tail[..]);
+                    });
+                });
+
+                let mut output_simd_fast = vec![0.0; block_len];
+                let mut bank_simd_fast = bank.clone();
+                let simd_fast_id =
+                    BenchmarkId::new("case", format!("m{modes_len}_b{block_len}_simd_fast"));
+                group.bench_with_input(simd_fast_id, &input, |b, input| {
+                    b.iter(|| {
+                        bank_simd_fast.reset_state();
+                        bank_simd_fast.process_block_mono_simd_fast(
+                            black_box(input),
+                            black_box(&mut output_simd_fast[..]),
+                        );
+                        black_box(&output_simd_fast[..]);
+                    });
+                });
+
+                let mut bank_basic_speed = bank.clone();
                 let mut bank_simd_speed = bank.clone();
-                let mut output_scalar_speed = vec![0.0; block_len];
+                let mut output_basic_speed = vec![0.0; block_len];
                 let mut output_simd_speed = vec![0.0; block_len];
-                let ns_scalar = rough_ns_per_sample_scalar(
-                    &mut bank_scalar_speed,
+                let ns_basic = rough_ns_per_sample(
+                    &mut bank_basic_speed,
                     &input,
-                    &mut output_scalar_speed,
+                    &mut output_basic_speed,
                     50,
+                    |bank, input, output| {
+                        bank.process_block_mono_magic_scalar_basic(input, output);
+                    },
                 );
-                let ns_simd = rough_ns_per_sample_simd(
+                let ns_simd = rough_ns_per_sample(
                     &mut bank_simd_speed,
                     &input,
                     &mut output_simd_speed,
                     50,
+                    |bank, input, output| {
+                        bank.process_block_mono_simd_fast(input, output);
+                    },
                 );
-                let speedup = ns_scalar / ns_simd;
+                let speedup = ns_basic / ns_simd;
                 println!(
-                    "speedup bank_block_impulse m{modes_len}_b{block_len}: scalar {:.2} ns/sample, simd {:.2} ns/sample, speedup {:.2}x",
-                    ns_scalar, ns_simd, speedup
+                    "speedup bank_block_impulse m{modes_len}_b{block_len}: magic_basic {:.2} ns/sample, simd_fast {:.2} ns/sample, speedup {:.2}x",
+                    ns_basic, ns_simd, speedup
                 );
             }
+
         }
     }
 

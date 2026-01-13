@@ -107,6 +107,38 @@ impl ResonatorBank {
         Ok(())
     }
 
+    /// Set mode parameters and compile coefficients, preserving existing state where possible.
+    pub fn set_modes_preserve_state(&mut self, modes: &[ModeParams]) -> Result<(), SynthError> {
+        if modes.len() > self.capacity {
+            return Err(SynthError::TooManyModes {
+                requested: modes.len(),
+                capacity: self.capacity,
+            });
+        }
+
+        let old_len = self.active_len;
+        let new_len = modes.len();
+        self.active_len = new_len;
+
+        if new_len > old_len {
+            for i in old_len..new_len {
+                self.x[i] = 0.0;
+                self.y[i] = 0.0;
+            }
+        }
+
+        for (i, params) in modes.iter().enumerate() {
+            let coeffs = compile_mode(params, self.fs);
+            self.e[i] = coeffs.e;
+            self.r[i] = coeffs.r;
+            self.b1[i] = coeffs.b1;
+            self.b2[i] = coeffs.b2;
+            self.gain[i] = coeffs.gain;
+        }
+
+        Ok(())
+    }
+
     /// Process a single sample with the damped MCF update (reference scalar).
     #[allow(dead_code)]
     fn process_sample_ref(&mut self, u: f32) -> f32 {
@@ -439,6 +471,76 @@ mod tests {
         assert_eq!(caps.4, bank.b1.capacity());
         assert_eq!(caps.5, bank.b2.capacity());
         assert_eq!(caps.6, bank.gain.capacity());
+    }
+
+    #[test]
+    fn preserve_state_keeps_xy_for_overlapping_modes() {
+        let mut bank = ResonatorBank::new(48_000.0, 8).unwrap();
+        let modes_old: Vec<ModeParams> = (0..8)
+            .map(|i| ModeParams {
+                freq_hz: 110.0 + i as f32 * 10.0,
+                t60_s: 0.2,
+                gain: 1.0,
+                in_gain: 1.0,
+            })
+            .collect();
+        bank.set_modes(&modes_old).unwrap();
+        for i in 0..8 {
+            bank.x[i] = i as f32 + 0.5;
+            bank.y[i] = -(i as f32) - 0.25;
+        }
+
+        let modes_new: Vec<ModeParams> = (0..6)
+            .map(|i| ModeParams {
+                freq_hz: 220.0 + i as f32 * 20.0,
+                t60_s: 0.1,
+                gain: 0.5,
+                in_gain: 0.5,
+            })
+            .collect();
+        bank.set_modes_preserve_state(&modes_new).unwrap();
+
+        for i in 0..6 {
+            assert_eq!(bank.x[i], i as f32 + 0.5);
+            assert_eq!(bank.y[i], -(i as f32) - 0.25);
+        }
+    }
+
+    #[test]
+    fn preserve_state_initializes_new_modes() {
+        let mut bank = ResonatorBank::new(48_000.0, 8).unwrap();
+        let modes_old: Vec<ModeParams> = (0..4)
+            .map(|i| ModeParams {
+                freq_hz: 110.0 + i as f32 * 10.0,
+                t60_s: 0.2,
+                gain: 1.0,
+                in_gain: 1.0,
+            })
+            .collect();
+        bank.set_modes(&modes_old).unwrap();
+        for i in 0..4 {
+            bank.x[i] = (i + 1) as f32;
+            bank.y[i] = -((i + 1) as f32);
+        }
+
+        let modes_new: Vec<ModeParams> = (0..8)
+            .map(|i| ModeParams {
+                freq_hz: 220.0 + i as f32 * 20.0,
+                t60_s: 0.1,
+                gain: 0.5,
+                in_gain: 0.5,
+            })
+            .collect();
+        bank.set_modes_preserve_state(&modes_new).unwrap();
+
+        for i in 0..4 {
+            assert_eq!(bank.x[i], (i + 1) as f32);
+            assert_eq!(bank.y[i], -((i + 1) as f32));
+        }
+        for i in 4..8 {
+            assert_eq!(bank.x[i], 0.0);
+            assert_eq!(bank.y[i], 0.0);
+        }
     }
 
     #[test]

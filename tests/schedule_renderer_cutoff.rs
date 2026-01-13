@@ -25,12 +25,12 @@ fn cutoff_skips_future_intents() {
     let rhythms = NeuralRhythms::default();
 
     let mut renderer_on = ScheduleRenderer::new(tb);
-    let out_on = renderer_on.render(&board, &[], 0, &rhythms);
+    let out_on = renderer_on.render(&board, &[], 0, &rhythms, &[], &[]);
     assert!(out_on.iter().any(|s| s.abs() > 1e-6));
 
     let mut renderer_cut = ScheduleRenderer::new(tb);
     renderer_cut.set_cutoff_tick(Some(0));
-    let out_cut = renderer_cut.render(&board, &[], 0, &rhythms);
+    let out_cut = renderer_cut.render(&board, &[], 0, &rhythms, &[], &[]);
     assert!(out_cut.iter().all(|s| s.abs() <= 1e-6));
 }
 
@@ -56,13 +56,13 @@ fn shutdown_releases_active_voices() {
     let rhythms = NeuralRhythms::default();
 
     let mut renderer = ScheduleRenderer::new(tb);
-    let _ = renderer.render(&board, &[], 0, &rhythms);
+    let _ = renderer.render(&board, &[], 0, &rhythms, &[], &[]);
     assert!(!renderer.is_idle());
 
     renderer.shutdown_at(0);
     let mut now: u64 = 0;
     for _ in 0..16 {
-        let _ = renderer.render(&board, &[], now, &rhythms);
+        let _ = renderer.render(&board, &[], now, &rhythms, &[], &[]);
         now = now.saturating_add(tb.hop as u64);
     }
     assert!(renderer.is_idle());

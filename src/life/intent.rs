@@ -17,7 +17,7 @@ pub struct Intent {
     pub articulation: Option<crate::life::individual::ArticulationWrapper>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct BodySnapshot {
     pub kind: String,
     pub amp_scale: f32,

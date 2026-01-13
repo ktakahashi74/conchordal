@@ -6,7 +6,7 @@ use crate::life::control::{
     AgentControl, AgentPatch, BodyControl, BodyMethod, PerceptualControl, PhonationControl,
     PhonationType, PitchConstraintMode, PitchControl, merge_json, remove_json_path,
 };
-use crate::life::intent::{BodySnapshot, Intent};
+use crate::life::intent::BodySnapshot;
 use crate::life::lifecycle::LifecycleConfig;
 use crate::life::perceptual::PerceptualConfig;
 use crate::life::phonation_engine::{
@@ -64,9 +64,6 @@ pub struct Individual {
     pub(crate) release_sec: f32,
     pub(crate) release_pending: bool,
     pub(crate) remove_pending: bool,
-    pub(crate) birth_once_pending: bool,
-    pub(crate) birth_frame: u64,
-    pub(crate) birth_once_duration_sec: Option<f32>,
     pub(crate) phonation_scratch: PhonationScratch,
 }
 
@@ -232,9 +229,6 @@ impl Individual {
             release_sec: 0.03,
             release_pending: false,
             remove_pending: false,
-            birth_once_pending: true,
-            birth_frame: start_frame,
-            birth_once_duration_sec: None,
             phonation_scratch: Default::default(),
         };
         agent.apply_body_runtime();
@@ -324,10 +318,6 @@ impl Individual {
 
     pub fn release_gain(&self) -> f32 {
         self.release_gain
-    }
-
-    pub(crate) fn birth_once_duration_sec(&self) -> Option<f32> {
-        self.birth_once_duration_sec
     }
 
     pub fn apply_control_patch(&mut self, patch: serde_json::Value) -> Result<(), String> {
@@ -592,7 +582,7 @@ impl Individual {
         articulation
     }
 
-    fn body_snapshot(&self) -> BodySnapshot {
+    pub(crate) fn body_snapshot(&self) -> BodySnapshot {
         match &self.body {
             AnySoundBody::Sine(_body) => BodySnapshot {
                 kind: "sine".to_string(),
@@ -617,62 +607,6 @@ impl Individual {
             return;
         }
         self.body.project_spectral_body(amps, space, &signal);
-    }
-
-    pub(crate) fn take_birth_intent(
-        &mut self,
-        tb: &Timebase,
-        now: Tick,
-        intent_id: u64,
-        duration_sec: f32,
-    ) -> Option<Intent> {
-        if !self.birth_once_pending {
-            return None;
-        }
-        if self.remove_pending
-            || matches!(self.effective_control.phonation.r#type, PhonationType::None)
-        {
-            self.birth_once_pending = false;
-            return None;
-        }
-
-        let onset = tb.frame_start_tick(self.birth_frame);
-        if onset > now {
-            return None;
-        }
-        let mut duration = tb.sec_to_tick(duration_sec.max(0.0));
-        if duration == 0 && duration_sec > 0.0 {
-            duration = 1;
-        }
-        if duration == 0 {
-            self.birth_once_pending = false;
-            return None;
-        }
-
-        let amp = self.compute_target_amp();
-        if amp <= Self::AMP_EPS {
-            self.birth_once_pending = false;
-            return None;
-        }
-        let freq_hz = self.body.base_freq_hz();
-        if !freq_hz.is_finite() || freq_hz <= 0.0 {
-            self.birth_once_pending = false;
-            return None;
-        }
-
-        self.birth_once_pending = false;
-        Some(Intent {
-            source_id: self.id,
-            intent_id,
-            onset,
-            duration,
-            freq_hz,
-            amp,
-            tag: self.metadata.tag.clone(),
-            confidence: 1.0,
-            body: Some(self.body_snapshot()),
-            articulation: None,
-        })
     }
 
     pub fn is_alive(&self) -> bool {

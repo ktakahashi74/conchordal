@@ -53,7 +53,14 @@ fn agents_publish_intents_and_render_audio() {
     assert!(!phonation_batches.is_empty());
     let mut renderer = ScheduleRenderer::new(tb);
     let rhythms = landscape.rhythm;
-    let out = renderer.render(&world.board, &phonation_batches, render_now, &rhythms);
+    let out = renderer.render(
+        &world.board,
+        &phonation_batches,
+        render_now,
+        &rhythms,
+        &[],
+        &[],
+    );
     assert!(out.iter().any(|s| s.abs() > 1e-6));
 }
 

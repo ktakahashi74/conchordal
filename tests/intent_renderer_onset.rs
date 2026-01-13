@@ -31,8 +31,8 @@ fn onset_is_sample_accurate_across_hops() {
     let mut renderer = ScheduleRenderer::new(tb);
     let rhythms = NeuralRhythms::default();
     let mut out = Vec::new();
-    out.extend_from_slice(renderer.render(&board, &[], 0, &rhythms));
-    out.extend_from_slice(renderer.render(&board, &[], tb.hop as Tick, &rhythms));
+    out.extend_from_slice(renderer.render(&board, &[], 0, &rhythms, &[], &[]));
+    out.extend_from_slice(renderer.render(&board, &[], tb.hop as Tick, &rhythms, &[], &[]));
 
     let eps = 1e-6_f32;
     let first = out

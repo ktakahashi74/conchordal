@@ -14,9 +14,9 @@ pub mod scenario;
 pub mod schedule_renderer;
 pub mod scripting;
 pub mod social_density;
-pub mod sound_voice;
 pub mod world_model;
 
+pub mod audio;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]

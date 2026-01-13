@@ -4,6 +4,7 @@ use super::scenario::{Action, IndividualConfig, SocialConfig, SpawnMethod};
 use crate::core::landscape::{LandscapeFrame, LandscapeUpdate};
 use crate::core::log2space::Log2Space;
 use crate::core::timebase::{Tick, Timebase};
+use crate::life::audio::{AudioAgentState, LifeEvent};
 use crate::life::social_density::SocialDensityTrace;
 use crate::life::world_model::WorldModel;
 use rand::{Rng, SeedableRng, distr::Distribution, distr::weighted::WeightedIndex, rngs::SmallRng};
@@ -28,12 +29,12 @@ pub struct Population {
     next_agent_id: u64,
     spawn_counter: u64,
     social_trace: Option<SocialDensityTrace>,
+    life_events: Vec<LifeEvent>,
 }
 
 impl Population {
     const REMOVE_FADE_SEC_DEFAULT: f32 = 0.05;
     const CONTROL_STEP_SAMPLES: usize = 64;
-    pub const BIRTH_ONCE_DURATION_SEC: f32 = 0.4;
     /// Returns true if `freq_hz` is within `min_dist_erb` (ERB scale) of any existing agent's base
     /// frequency.
     pub fn is_range_occupied(&self, freq_hz: f32, min_dist_erb: f32) -> bool {
@@ -69,6 +70,7 @@ impl Population {
             next_agent_id: 1,
             spawn_counter: 0,
             social_trace: None,
+            life_events: Vec::new(),
         }
     }
 
@@ -103,6 +105,28 @@ impl Population {
         self.current_frame = frame;
     }
 
+    pub fn drain_life_events(&mut self, out: &mut Vec<LifeEvent>) {
+        out.clear();
+        out.extend(self.life_events.drain(..));
+    }
+
+    pub fn fill_audio_states(&self, out: &mut Vec<AudioAgentState>) {
+        out.clear();
+        out.reserve(self.individuals.len());
+        for agent in &self.individuals {
+            if !agent.is_alive() {
+                continue;
+            }
+            let pitch_hz = agent.body.base_freq_hz();
+            let amp = agent.body.amp();
+            out.push(AudioAgentState {
+                id: agent.id(),
+                pitch_hz,
+                amp,
+            });
+        }
+    }
+
     pub fn publish_intents(
         &mut self,
         world: &mut WorldModel,
@@ -128,15 +152,6 @@ impl Population {
         let mut used = 0usize;
         let social_trace = self.social_trace.as_ref();
         for agent in &mut self.individuals {
-            let birth_duration_sec = agent
-                .birth_once_duration_sec()
-                .unwrap_or(Self::BIRTH_ONCE_DURATION_SEC);
-            if let Some(intent) =
-                agent.take_birth_intent(tb, now, world.next_intent_id, birth_duration_sec)
-            {
-                world.next_intent_id = world.next_intent_id.wrapping_add(1);
-                world.board.publish(intent);
-            }
             let social_coupling = agent.phonation_social.coupling;
             if used == out.len() {
                 out.push(PhonationBatch::default());
@@ -469,30 +484,64 @@ impl Population {
                     };
                     let spawned =
                         cfg.spawn(id, self.current_frame, metadata, self.time.fs, self.seed);
+                    let body = spawned.body_snapshot();
                     self.add_individual(spawned);
+                    self.life_events.push(LifeEvent::Spawned { id, body });
                 }
             }
             Action::Set { target, patch } => {
                 let ids = self.resolve_target_ids(&target);
                 for id in ids {
+                    let mut body_changed = None;
                     if let Some(agent) = self.find_individual_mut(id) {
-                        if let Err(err) = agent.apply_control_patch(patch.clone()) {
-                            warn!("Set: agent {id} rejected patch: {}", err);
+                        let before = agent.body_snapshot();
+                        match agent.apply_control_patch(patch.clone()) {
+                            Ok(()) => {
+                                let after = agent.body_snapshot();
+                                if after != before {
+                                    body_changed = Some(after);
+                                }
+                            }
+                            Err(err) => {
+                                warn!("Set: agent {id} rejected patch: {}", err);
+                                continue;
+                            }
                         }
                     } else {
                         warn!("Set: agent {id} not found");
+                        continue;
+                    }
+                    if let Some(body) = body_changed {
+                        self.life_events.push(LifeEvent::BodyChanged { id, body });
                     }
                 }
             }
             Action::Unset { target, path } => {
                 let ids = self.resolve_target_ids(&target);
                 for id in ids {
+                    let mut body_changed = None;
                     if let Some(agent) = self.find_individual_mut(id) {
-                        if let Err(err) = agent.apply_unset_path(&path) {
-                            warn!("Unset: agent {id} rejected path {}: {}", path, err);
+                        let before = agent.body_snapshot();
+                        match agent.apply_unset_path(&path) {
+                            Ok(removed) => {
+                                if removed {
+                                    let after = agent.body_snapshot();
+                                    if after != before {
+                                        body_changed = Some(after);
+                                    }
+                                }
+                            }
+                            Err(err) => {
+                                warn!("Unset: agent {id} rejected path {}: {}", path, err);
+                                continue;
+                            }
                         }
                     } else {
                         warn!("Unset: agent {id} not found");
+                        continue;
+                    }
+                    if let Some(body) = body_changed {
+                        self.life_events.push(LifeEvent::BodyChanged { id, body });
                     }
                 }
             }

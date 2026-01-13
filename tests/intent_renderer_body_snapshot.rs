@@ -37,8 +37,8 @@ fn body_snapshot_changes_timbre_without_shifting_onset() {
     let mut renderer_a = ScheduleRenderer::new(tb);
     let mut renderer_b = ScheduleRenderer::new(tb);
     let rhythms = NeuralRhythms::default();
-    let out_a = renderer_a.render(&board_a, &[], 0, &rhythms);
-    let out_b = renderer_b.render(&board_b, &[], 0, &rhythms);
+    let out_a = renderer_a.render(&board_a, &[], 0, &rhythms, &[], &[]);
+    let out_b = renderer_b.render(&board_b, &[], 0, &rhythms, &[], &[]);
 
     let eps = 1e-6_f32;
     let first_a = out_a

@@ -11,6 +11,7 @@ mod cli;
 mod config;
 mod core;
 mod life;
+mod synth;
 mod ui;
 
 use clap::Parser;

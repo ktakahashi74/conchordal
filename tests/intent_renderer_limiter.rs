@@ -27,7 +27,7 @@ fn limiter_clamps_peak_and_stays_finite() {
 
     let mut renderer = ScheduleRenderer::new(tb);
     let rhythms = NeuralRhythms::default();
-    let out = renderer.render(&board, &[], 0, &rhythms);
+    let out = renderer.render(&board, &[], 0, &rhythms, &[], &[]);
     let mut peak = 0.0f32;
     for &s in out {
         assert!(s.is_finite());

@@ -34,7 +34,7 @@ fn short_intent_silence_after_end() {
     let mut renderer = ScheduleRenderer::new(tb);
     let rhythms = NeuralRhythms::default();
 
-    let out_start = renderer.render(&board, &[], onset, &rhythms);
+    let out_start = renderer.render(&board, &[], onset, &rhythms, &[], &[]);
     let mut max_start = 0.0f32;
     for &s in out_start {
         max_start = max_start.max(s.abs());
@@ -42,7 +42,7 @@ fn short_intent_silence_after_end() {
     assert!(max_start > 1e-6_f32);
 
     let now_tick = onset.saturating_add(tb.sec_to_tick(1.0));
-    let out_end = renderer.render(&board, &[], now_tick, &rhythms);
+    let out_end = renderer.render(&board, &[], now_tick, &rhythms, &[], &[]);
     let mut max_end = 0.0f32;
     for &s in out_end {
         max_end = max_end.max(s.abs());

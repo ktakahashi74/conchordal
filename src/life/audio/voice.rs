@@ -219,13 +219,13 @@ impl Voice {
     }
 
     pub fn render_tick(&mut self, tick: Tick, _fs: f32, dt: f32, rhythms: &NeuralRhythms) -> f32 {
-        if let Some(trigger) = self.pending_trigger {
-            if tick >= trigger.at_tick {
-                self.pending_trigger = None;
-                self.trigger(AudioEvent::Impulse {
-                    energy: trigger.energy,
-                });
-            }
+        if let Some(trigger) = self.pending_trigger
+            && tick >= trigger.at_tick
+        {
+            self.pending_trigger = None;
+            self.trigger(AudioEvent::Impulse {
+                energy: trigger.energy,
+            });
         }
         self.advance_smoothing();
         let gain = self.gain_at(tick);

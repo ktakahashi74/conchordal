@@ -107,7 +107,7 @@ impl Population {
 
     pub fn drain_life_events(&mut self, out: &mut Vec<LifeEvent>) {
         out.clear();
-        out.extend(self.life_events.drain(..));
+        out.append(&mut self.life_events);
     }
 
     pub fn fill_audio_states(&self, out: &mut Vec<AudioAgentState>) {

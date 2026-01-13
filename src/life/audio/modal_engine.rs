@@ -236,7 +236,7 @@ fn harmonic_gain(genotype: &TimbreGenotype, k: usize, energy: f32) -> f32 {
     let kf = k as f32;
     let slope = genotype.brightness.max(0.0);
     let mut amp = 1.0 / kf.powf(slope.max(1e-6));
-    if k % 2 == 0 {
+    if k.is_multiple_of(2) {
         amp *= 1.0 - genotype.comb.clamp(0.0, 1.0);
     }
     let damping = genotype.damping.max(0.0);

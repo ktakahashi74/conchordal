@@ -550,13 +550,19 @@ impl ResonatorBank {
     }
 
     /// Process a single sample with the damped MCF update.
-    #[cfg(all(feature = "simd-wide", any(target_arch = "x86_64", target_arch = "aarch64")))]
+    #[cfg(all(
+        feature = "simd-wide",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    ))]
     pub fn process_sample(&mut self, u: f32) -> f32 {
         self.process_sample_simd_wide_fast(u)
     }
 
     /// Process a single sample with the damped MCF update.
-    #[cfg(not(all(feature = "simd-wide", any(target_arch = "x86_64", target_arch = "aarch64"))))]
+    #[cfg(not(all(
+        feature = "simd-wide",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    )))]
     pub fn process_sample(&mut self, u: f32) -> f32 {
         self.process_sample_magic_scalar_unsafe(u)
     }

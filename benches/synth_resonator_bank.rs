@@ -224,7 +224,6 @@ fn bench_block_sine(c: &mut Criterion) {
                     ns_basic, ns_simd, speedup
                 );
             }
-
         }
     }
 
@@ -362,7 +361,6 @@ fn bench_block_impulse(c: &mut Criterion) {
                     ns_basic, ns_simd, speedup
                 );
             }
-
         }
     }
 

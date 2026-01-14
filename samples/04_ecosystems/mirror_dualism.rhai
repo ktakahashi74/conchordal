@@ -5,22 +5,11 @@ print(">>> Comparison: Major Gravity vs Mirror Dualism <<<");
 // ==========================================
 // Center on C4 (261.63Hz).
 // "C" persists in both phases, but the attraction landscape around it changes.
-let anchor_life = #{ 
-    body: #{ core: "sine" },
-    articulation: #{
-        core: "entrain",
-        type: "sustain", 
-        initial_energy: 10.0, 
-        metabolism_rate: 0.0, 
-        envelope: #{ attack_sec: 2.0, decay_sec: 0.5, sustain_level: 1.0 }
-    },
-    pitch: #{ core: "pitch_hill_climb" },
-    perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
-};
+let anchor_patch = #{ body: #{ amp: 0.4, method: "sine" }, phonation: #{ type: "hold" } };
 
 let anchor_method = #{ mode: "random_log_uniform", min_freq: 261.63, max_freq: 261.63 };
 let anchor_tag = "anchor";
-spawn(anchor_tag, 1, #{ amp: 0.4, method: anchor_method, life: anchor_life });
+spawn(anchor_tag, 1, #{ method: anchor_method }, anchor_patch);
 wait(2.0);
 
 // ==========================================
@@ -44,18 +33,13 @@ let method_major = #{
     temperature: 0.5,
     min_dist_erb: 1.0
 };
-let life_pulse = #{
-    body: #{ core: "sine" },
-    articulation: #{ core: "entrain", type: "decay", initial_energy: 1.0, half_life_sec: 0.8 },
-    pitch: #{ core: "pitch_hill_climb" },
-    perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
-};
+let voice_patch = #{ body: #{ amp: 0.2, method: "sine" }, phonation: #{ type: "hold" } };
 
 let voices_major = [];
 for i in 0..6 {
     // Probabilistically selects C, E, G (C Major Triad)
     let voice_tag = "voice_maj_" + i;
-    spawn(voice_tag, 1, #{ amp: 0.2, method: method_major, life: life_pulse });
+    spawn(voice_tag, 1, #{ method: method_major }, voice_patch);
     voices_major.push(voice_tag);
     wait(0.8);
 }
@@ -92,7 +76,7 @@ let method_mirror = #{
 
 for i in 0..6 {
     // Probabilistically selects F, Ab (F Minor / Ab Major context)
-    spawn("voice_min_" + i, 1, #{ amp: 0.2, method: method_mirror, life: life_pulse });
+    spawn("voice_min_" + i, 1, #{ method: method_mirror }, voice_patch);
     wait(0.8);
 }
 

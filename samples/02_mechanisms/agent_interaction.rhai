@@ -9,18 +9,12 @@ print("--- [1] Anchoring C2 (65.41Hz) ---");
 // Anchor (immobile)
 let anchor_method = #{ mode: "random_log_uniform", min_freq: 65.41, max_freq: 65.41 };
 let anchor_tag = "anchor";
-spawn(anchor_tag, 1, #{ amp: 0.6, method: anchor_method, life: #{
-    body: #{ core: "sine" },
-    articulation: #{
-        core: "entrain",
-        type: "sustain",
-        initial_energy: 10.0,
-        metabolism_rate: 0.0,
-        envelope: #{ attack_sec: 0.1, decay_sec: 0.1, sustain_level: 1.0 }
-    },
-    pitch: #{ core: "pitch_hill_climb" },
-    perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
-} });
+spawn(
+    anchor_tag,
+    1,
+    #{ method: anchor_method },
+    #{ body: #{ amp: 0.6, method: "sine" }, phonation: #{ type: "hold" } }
+);
 set(anchor_tag, #{ pitch: #{ persistence: 1.0 } });
 
 wait(1.0);
@@ -35,26 +29,23 @@ print("--- [2] Spawning Seekers at Dissonant Intervals ---");
 // F# (tritone): 92.5 Hz -> likely resolves to G (98.0) or F (87.3)
 // C# (minor 2nd): 69.3 Hz -> likely resolves to C (65.4) or D (73.4)
 
-let life_seeker = #{
-    body: #{ core: "sine" },
-    articulation: #{
-        core: "entrain",
-        type: "sustain",
-        initial_energy: 2.0,
-        metabolism_rate: 0.0,
-        envelope: #{ attack_sec: 1.0, decay_sec: 1.0, sustain_level: 0.5 }
-    },
-    pitch: #{ core: "pitch_hill_climb" },
-    perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
-};
-
 // Place them slightly off the comfy spots
 let seeker_tritone_method = #{ mode: "random_log_uniform", min_freq: 92.5, max_freq: 92.5 };
 let seeker_m2_method = #{ mode: "random_log_uniform", min_freq: 140.0, max_freq: 140.0 };
 let seeker_tritone_tag = "seeker_tritone";
-spawn(seeker_tritone_tag, 1, #{ amp: 0.4, method: seeker_tritone_method, life: life_seeker });
+spawn(
+    seeker_tritone_tag,
+    1,
+    #{ method: seeker_tritone_method },
+    #{ body: #{ amp: 0.4, method: "sine" }, phonation: #{ type: "hold" } }
+);
 let seeker_m2_tag = "seeker_m2";
-spawn(seeker_m2_tag, 1, #{ amp: 0.4, method: seeker_m2_method, life: life_seeker }); // near C3 (~130 Hz)
+spawn(
+    seeker_m2_tag,
+    1,
+    #{ method: seeker_m2_method },
+    #{ body: #{ amp: 0.4, method: "sine" }, phonation: #{ type: "hold" } }
+); // near C3 (~130 Hz)
 
 // Set persistence (higher = more stubborn)
 set(seeker_tritone_tag, #{ pitch: #{ persistence: 0.5 } });
@@ -71,7 +62,7 @@ print("--- [3] Moving Anchor to F2 (87.31Hz) ---");
 
 // Force-move the anchor; landscape flips.
 // Formerly comfy spots (C, G) may become dissonant relative to F.
-set(anchor_tag, #{ pitch: #{ center_hz: 87.31 } });
+set(anchor_tag, #{ pitch: #{ freq: 87.31 } });
 
 // Agents scan periodically; they should notice F overtones feel better and retarget.
 
@@ -87,7 +78,12 @@ print("--- [4] Spawning a swarm ---");
 let method = #{ mode: "harmonic_density", min_freq: 200.0, max_freq: 800.0 };
 for i in 0..4 {
     let swarm_tag = "swarm_" + i;
-    spawn(swarm_tag, 1, #{ amp: 0.15, method: method, life: life_seeker });
+    spawn(
+        swarm_tag,
+        1,
+        #{ method: method },
+        #{ body: #{ amp: 0.15, method: "sine" }, phonation: #{ type: "hold" } }
+    );
     set(swarm_tag, #{ pitch: #{ persistence: 0.56 } });
     wait(0.5);
 }

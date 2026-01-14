@@ -18,7 +18,7 @@ fn test_timebase() -> Timebase {
 
 fn spawn_agent(freq: f32, amp: f32) -> IndividualConfig {
     let mut control = AgentControl::default();
-    control.pitch.center_hz = freq;
+    control.pitch.freq = freq;
     control.body.amp = amp;
     IndividualConfig { control, tag: None }
 }

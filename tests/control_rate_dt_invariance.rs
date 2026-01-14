@@ -9,7 +9,7 @@ use conchordal::life::scenario::IndividualConfig;
 
 fn build_agent() -> Individual {
     let mut control = AgentControl::default();
-    control.pitch.center_hz = 440.0;
+    control.pitch.freq = 440.0;
     control.body.amp = 0.3;
     let cfg = IndividualConfig { control, tag: None };
     let metadata = AgentMetadata {

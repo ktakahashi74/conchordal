@@ -4,7 +4,7 @@ use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
 use crate::life::control::{
     AgentControl, AgentPatch, BodyControl, BodyMethod, PerceptualControl, PhonationControl,
-    PhonationType, PitchConstraintMode, PitchControl, merge_json, remove_json_path,
+    PhonationType, PitchControl, merge_json, remove_json_path,
 };
 use crate::life::intent::BodySnapshot;
 use crate::life::lifecycle::LifecycleConfig;
@@ -137,15 +137,8 @@ impl Individual {
         let seed = seed_offset ^ assigned_id ^ start_frame.wrapping_mul(0x9E37_79B9_7F4A_7C15);
         let mut rng = rand::rngs::SmallRng::seed_from_u64(seed);
 
-        let mut effective_control = control.clone();
-        let constraint = &effective_control.pitch.constraint;
-        if matches!(constraint.mode, PitchConstraintMode::Lock)
-            && let Some(freq) = constraint.freq_hz
-        {
-            effective_control.pitch.center_hz = freq.max(1.0);
-        }
-
-        let target_freq = effective_control.pitch.center_hz.max(1.0);
+        let effective_control = control.clone();
+        let target_freq = effective_control.pitch.freq.max(1.0);
         let target_pitch_log2 = target_freq.log2();
         let integration_window = 2.0 + 10.0 / target_freq.max(1.0);
 
@@ -268,7 +261,7 @@ impl Individual {
 
     fn apply_pitch_control(&mut self) {
         let pitch = &self.effective_control.pitch;
-        let center_log2 = pitch.center_hz.max(1.0).log2();
+        let center_log2 = pitch.freq.max(1.0).log2();
         let gravity = tessitura_gravity_from_control(pitch.gravity);
         let core = self.pitch_ctl.core_mut();
         core.set_tessitura_center(center_log2);

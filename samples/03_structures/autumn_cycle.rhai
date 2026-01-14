@@ -7,7 +7,7 @@ fn play_step(name, root, dur) {
     let bass_patch = #{
         body: #{ amp: 0.38, method: "sine" },
         phonation: #{ type: "hold" },
-        pitch: #{ constraint: #{ mode: "lock", freq_hz: root } }
+        pitch: #{ mode: "lock", freq: root }
     };
     let bass_tag = "bass_" + name;
     spawn(bass_tag, 1, bass_patch);
@@ -18,8 +18,9 @@ fn play_step(name, root, dur) {
     // Pad timbre is fixed; pitch is sampled via harmonicity.
     let pad_patch = #{
         body: #{ amp: 0.14, method: "sine", timbre: #{ brightness: 0.7, width: 0.2 } },
-        phonation: #{ type: "hold" }
-        // Leave pitch.center_hz unset (sampling decides it).
+        phonation: #{ type: "hold" },
+        pitch: #{ mode: "lock" }
+        // Leave pitch.freq unset (sampling decides it).
     };
 
     // Harmonicity sampling (band-limited around the root).

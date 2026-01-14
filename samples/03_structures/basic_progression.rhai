@@ -9,39 +9,17 @@ fn random_offset(base, amount) {
 
 fn play_step(name, root, dur) {
     // 1. Bass (Anchor): 動かない、重い、飽きない
-    let bass_life = #{ 
-        body: #{ core: "sine" },
-        articulation: #{
-            core: "entrain",
-            type: "sustain", 
-            initial_energy: 10.0, 
-            metabolism_rate: 0.0, 
-            envelope: #{ attack_sec: 0.1, decay_sec: 0.1, sustain_level: 0.5 }
-        },
-        pitch: #{ core: "pitch_hill_climb" },
-        perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
-    };
+    let bass_patch = #{ body: #{ amp: 0.6, method: "sine" }, phonation: #{ type: "hold" } };
 
     // 2. Pad (Seeker): 動きやすい、分散する
-    let pad_life = #{ 
-        body: #{ core: "sine" },
-        articulation: #{
-            core: "entrain",
-            type: "sustain", 
-            initial_energy: 5.0, 
-            metabolism_rate: 0.0, 
-            envelope: #{ attack_sec: 1.0, decay_sec: 0.5, sustain_level: 0.6 }
-        },
-        pitch: #{ core: "pitch_hill_climb" },
-        perceptual: #{ tau_fast: 0.5, tau_slow: 20.0, w_boredom: 1.0, w_familiarity: 0.2, rho_self: 0.15, boredom_gamma: 0.5, self_smoothing_radius: 1, silence_mass_epsilon: 0.000001 }
-    };
+    let pad_patch = #{ body: #{ amp: 0.3, method: "sine" }, phonation: #{ type: "hold" } };
 
     print("Playing: " + name);
 
     // ベース（アンカー）を配置
     let bass_method = #{ mode: "random_log_uniform", min_freq: root, max_freq: root };
     let bass_tag = "bass_" + name;
-    spawn(bass_tag, 1, #{ amp: 0.6, method: bass_method, life: bass_life });
+    spawn(bass_tag, 1, #{ method: bass_method }, bass_patch);
     
     // ランドスケープが形成されるのを少し待つ
     wait(0.2); 
@@ -54,9 +32,9 @@ fn play_step(name, root, dur) {
     let pad_1_tag = "pad_" + name + "_1";
     let pad_2_tag = "pad_" + name + "_2";
     let pad_3_tag = "pad_" + name + "_3";
-    spawn(pad_1_tag, 1, #{ amp: 0.3, method: pad_1_method, life: pad_life }); // 5th付近
-    spawn(pad_2_tag, 1, #{ amp: 0.3, method: pad_2_method, life: pad_life }); // Octave付近
-    spawn(pad_3_tag, 1, #{ amp: 0.3, method: pad_3_method, life: pad_life }); // 3rd付近 (Major/Minorは地形で決まる)
+    spawn(pad_1_tag, 1, #{ method: pad_1_method }, pad_patch); // 5th付近
+    spawn(pad_2_tag, 1, #{ method: pad_2_method }, pad_patch); // Octave付近
+    spawn(pad_3_tag, 1, #{ method: pad_3_method }, pad_patch); // 3rd付近 (Major/Minorは地形で決まる)
 
     wait(dur);
 

@@ -10,8 +10,8 @@ use rhai::{
 use super::api::{
     pop_time, push_time, set_time, spawn_min_at, spawn_with_opts_and_patch_at, spawn_with_third_at,
 };
-use super::control::{AgentPatch, PitchConstraintMode, matches_tag_pattern};
-use super::scenario::{Action, Scenario, SceneMarker, SpawnMethod, SpawnOpts, TimedEvent};
+use super::control::{AgentPatch, matches_tag_pattern};
+use super::scenario::{Action, Scenario, SceneMarker, SpawnOpts, TimedEvent};
 
 const SCRIPT_PRELUDE: &str = r#"
 __internal_debug_seed();
@@ -68,13 +68,6 @@ fn spawn_every(tag, count, interval) {
     spawn_every(tag, count, interval, #{});
 }
 "#;
-
-type NormalizedSpawnPatch = (
-    AgentPatch,
-    serde_json::Value,
-    Option<serde_json::Value>,
-    Option<SpawnMethod>,
-);
 
 #[derive(Debug, Clone)]
 pub struct ScriptContext {
@@ -201,51 +194,14 @@ impl ScriptContext {
             None
         };
 
-        let (patch_struct, mut patch_json, life_val, legacy_method) = if let Some(patch) = patch {
-            let debug_map = format!("{:?}", patch);
-            Self::normalize_spawn_patch(patch, &debug_map, position)?
+        let (_patch_struct, patch_json) = if let Some(patch) = patch {
+            Self::parse_agent_patch(patch, position)?
         } else {
             (
                 AgentPatch::default(),
                 serde_json::Value::Object(serde_json::Map::new()),
-                None,
-                None,
             )
         };
-
-        if let Some(pitch) = patch_struct.pitch.as_ref()
-            && let Some(constraint) = pitch.constraint.as_ref()
-        {
-            let mode = constraint.mode.unwrap_or(PitchConstraintMode::Free);
-            if matches!(
-                mode,
-                PitchConstraintMode::Lock | PitchConstraintMode::Attractor
-            ) && constraint.freq_hz.is_none()
-            {
-                return Err(Box::new(EvalAltResult::ErrorRuntime(
-                    "pitch.constraint.freq_hz is required when mode != free".into(),
-                    position,
-                )));
-            }
-        }
-
-        if opts_struct.is_some() && legacy_method.is_some() {
-            return Err(Box::new(EvalAltResult::ErrorRuntime(
-                "spawn patch cannot include method when opts are provided".into(),
-                position,
-            )));
-        }
-
-        patch_json = Self::apply_spawn_convenience(patch_struct, patch_json, position)?;
-        if let Some(life_val) = life_val {
-            Self::merge_spawn_life(&mut patch_json, &life_val, position)?;
-        }
-
-        let opts_struct = opts_struct.or_else(|| {
-            legacy_method.map(|method| SpawnOpts {
-                method: Some(method),
-            })
-        });
 
         let action = Action::Spawn {
             tag: tag.to_string(),
@@ -264,10 +220,13 @@ impl ScriptContext {
         third: Map,
         position: Position,
     ) -> Result<i64, Box<EvalAltResult>> {
-        if Self::spawn_opts_map_is_candidate(&third) {
-            self.spawn_with_opts_and_patch(tag, count, Some(third), None, position)
-        } else {
-            self.spawn_with_opts_and_patch(tag, count, None, Some(third), position)
+        let debug_map = format!("{:?}", third);
+        if Self::parse_spawn_opts(third.clone(), &debug_map, position).is_ok() {
+            return self.spawn_with_opts_and_patch(tag, count, Some(third), None, position);
+        }
+        match Self::parse_agent_patch(third.clone(), position) {
+            Ok(_) => self.spawn_with_opts_and_patch(tag, count, None, Some(third), position),
+            Err(err) => Err(err),
         }
     }
 
@@ -591,10 +550,6 @@ impl ScriptContext {
         Ok((patch_struct, patch_json))
     }
 
-    fn spawn_opts_map_is_candidate(map: &Map) -> bool {
-        map.keys().all(|key| key.as_str() == "method")
-    }
-
     fn parse_spawn_opts(
         opts: Map,
         debug_map: &str,
@@ -613,235 +568,6 @@ impl ScriptContext {
             ))
         })?;
         Ok(opts_struct)
-    }
-
-    fn normalize_spawn_patch(
-        patch: Map,
-        debug_map: &str,
-        position: Position,
-    ) -> Result<NormalizedSpawnPatch, Box<EvalAltResult>> {
-        let raw_val = serde_json::to_value(&patch).map_err(|e| {
-            Box::new(EvalAltResult::ErrorRuntime(
-                format!("Error serializing AgentPatch: {e}").into(),
-                position,
-            ))
-        })?;
-        let serde_json::Value::Object(mut raw_map) = raw_val else {
-            return Err(Box::new(EvalAltResult::ErrorRuntime(
-                "spawn patch must be a map".into(),
-                position,
-            )));
-        };
-        let method_val = raw_map.remove("method");
-        let life_val = raw_map.remove("life");
-        let amp_val = raw_map.remove("amp");
-
-        if let Some(amp_val) = amp_val {
-            let amp = amp_val.as_f64().ok_or_else(|| {
-                Box::new(EvalAltResult::ErrorRuntime(
-                    "spawn amp must be a number".into(),
-                    position,
-                ))
-            })?;
-            let body_entry = raw_map
-                .entry("body".to_string())
-                .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
-            let serde_json::Value::Object(body_map) = body_entry else {
-                return Err(Box::new(EvalAltResult::ErrorRuntime(
-                    "spawn body must be a map".into(),
-                    position,
-                )));
-            };
-            body_map.insert("amp".to_string(), serde_json::Value::from(amp));
-        }
-
-        let legacy_method = if let Some(method_val) = method_val {
-            Some(
-                serde_json::from_value::<SpawnMethod>(method_val).map_err(|e| {
-                    Box::new(EvalAltResult::ErrorRuntime(
-                        format!("Error parsing spawn method: {e}").into(),
-                        position,
-                    ))
-                })?,
-            )
-        } else {
-            None
-        };
-
-        if let Some(life_val) = life_val.as_ref()
-            && !matches!(life_val, serde_json::Value::Object(_))
-        {
-            return Err(Box::new(EvalAltResult::ErrorRuntime(
-                "life must be a map".into(),
-                position,
-            )));
-        }
-
-        let patch_val = serde_json::Value::Object(raw_map);
-        let (patch_struct, patch_json) =
-            Self::parse_agent_patch_value(patch_val, debug_map, position)?;
-        Ok((patch_struct, patch_json, life_val, legacy_method))
-    }
-
-    fn parse_agent_patch_value(
-        patch_val: serde_json::Value,
-        debug_map: &str,
-        position: Position,
-    ) -> Result<(AgentPatch, serde_json::Value), Box<EvalAltResult>> {
-        let patch_struct: AgentPatch = serde_json::from_value(patch_val).map_err(|e| {
-            Box::new(EvalAltResult::ErrorRuntime(
-                format!("Error parsing AgentPatch: {e} (input: {debug_map})").into(),
-                position,
-            ))
-        })?;
-        let patch_json = serde_json::to_value(&patch_struct).map_err(|e| {
-            Box::new(EvalAltResult::ErrorRuntime(
-                format!("Error serializing AgentPatch: {e}").into(),
-                position,
-            ))
-        })?;
-        Ok((patch_struct, patch_json))
-    }
-
-    fn merge_spawn_life(
-        patch_json: &mut serde_json::Value,
-        life_val: &serde_json::Value,
-        position: Position,
-    ) -> Result<(), Box<EvalAltResult>> {
-        let life_obj = match life_val.as_object() {
-            Some(obj) => obj,
-            None => {
-                return Err(Box::new(EvalAltResult::ErrorRuntime(
-                    "life must be a map".into(),
-                    position,
-                )));
-            }
-        };
-        let life_body = match life_obj.get("body") {
-            Some(serde_json::Value::Object(body)) => Some(body),
-            Some(_) => {
-                return Err(Box::new(EvalAltResult::ErrorRuntime(
-                    "life.body must be a map".into(),
-                    position,
-                )));
-            }
-            None => None,
-        };
-        let Some(life_body) = life_body else {
-            return Ok(());
-        };
-
-        let core = life_body.get("core").and_then(|v| v.as_str());
-        let method = match core {
-            Some("sine") => Some("sine"),
-            Some("harmonic") => Some("harmonic"),
-            _ => None,
-        };
-
-        let brightness = life_body.get("brightness").and_then(|v| v.as_f64());
-        let stiffness = life_body.get("stiffness").and_then(|v| v.as_f64());
-        let unison = life_body.get("unison").and_then(|v| v.as_f64());
-        let jitter = life_body.get("jitter").and_then(|v| v.as_f64());
-        let vibrato_depth = life_body.get("vibrato_depth").and_then(|v| v.as_f64());
-        let motion = jitter.or(vibrato_depth);
-
-        if method.is_none()
-            && brightness.is_none()
-            && stiffness.is_none()
-            && unison.is_none()
-            && motion.is_none()
-        {
-            return Ok(());
-        }
-
-        let serde_json::Value::Object(patch_map) = patch_json else {
-            return Err(Box::new(EvalAltResult::ErrorRuntime(
-                "spawn patch must be a map".into(),
-                position,
-            )));
-        };
-        let body_entry = patch_map
-            .entry("body".to_string())
-            .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
-        let serde_json::Value::Object(body_map) = body_entry else {
-            return Err(Box::new(EvalAltResult::ErrorRuntime(
-                "spawn body must be a map".into(),
-                position,
-            )));
-        };
-
-        if let Some(method) = method
-            && !body_map.contains_key("method")
-        {
-            body_map.insert("method".to_string(), serde_json::Value::from(method));
-        }
-
-        let mut timbre_updates = Vec::new();
-        if let Some(brightness) = brightness {
-            timbre_updates.push(("brightness", brightness));
-        }
-        if let Some(stiffness) = stiffness {
-            timbre_updates.push(("inharmonic", stiffness));
-        }
-        if let Some(unison) = unison {
-            timbre_updates.push(("width", unison));
-        }
-        if let Some(motion) = motion {
-            timbre_updates.push(("motion", motion));
-        }
-
-        if !timbre_updates.is_empty() {
-            let timbre_entry = body_map
-                .entry("timbre".to_string())
-                .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
-            let serde_json::Value::Object(timbre_map) = timbre_entry else {
-                return Err(Box::new(EvalAltResult::ErrorRuntime(
-                    "spawn timbre must be a map".into(),
-                    position,
-                )));
-            };
-            for (key, value) in timbre_updates {
-                if !timbre_map.contains_key(key) {
-                    timbre_map.insert(key.to_string(), serde_json::Value::from(value));
-                }
-            }
-        }
-        Ok(())
-    }
-
-    fn apply_spawn_convenience(
-        patch: AgentPatch,
-        patch_json: serde_json::Value,
-        position: Position,
-    ) -> Result<serde_json::Value, Box<EvalAltResult>> {
-        let Some(pitch) = patch.pitch else {
-            return Ok(patch_json);
-        };
-        let Some(constraint) = pitch.constraint else {
-            return Ok(patch_json);
-        };
-        let mode = constraint.mode.unwrap_or(PitchConstraintMode::Free);
-        if !matches!(mode, PitchConstraintMode::Lock) || pitch.center_hz.is_some() {
-            return Ok(patch_json);
-        }
-        let Some(freq_hz) = constraint.freq_hz else {
-            return Err(Box::new(EvalAltResult::ErrorRuntime(
-                "pitch.constraint.freq_hz is required when mode != free".into(),
-                position,
-            )));
-        };
-        let mut out = patch_json;
-        let serde_json::Value::Object(ref mut map) = out else {
-            return Ok(out);
-        };
-        let pitch_entry = map
-            .entry("pitch".to_string())
-            .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
-        let serde_json::Value::Object(pitch_map) = pitch_entry else {
-            return Ok(out);
-        };
-        pitch_map.insert("center_hz".to_string(), serde_json::Value::from(freq_hz));
-        Ok(out)
     }
 
     fn estimate_match_count(&self, target: &str) -> i64 {
@@ -1425,10 +1151,10 @@ mod tests {
         let scenario = run_script(
             r#"
             scene("intro");
-            spawn("lead", 1, #{ body: #{ amp: 0.2 }, pitch: #{ center_hz: 440.0 } });
+            spawn("lead", 1, #{ body: #{ amp: 0.2 }, pitch: #{ freq: 440.0 } });
             wait(1.0);
             scene("break");
-            spawn("hit", 1, #{ body: #{ amp: 0.1 }, pitch: #{ center_hz: 880.0 } });
+            spawn("hit", 1, #{ body: #{ amp: 0.1 }, pitch: #{ freq: 880.0 } });
             wait(0.5);
             end();
         "#,
@@ -1471,10 +1197,10 @@ mod tests {
             wait(0.1);
             parallel(|| {
                 wait(0.5);
-                spawn("pad", 1, #{ body: #{ amp: 0.1 }, pitch: #{ center_hz: 200.0 } });
+                spawn("pad", 1, #{ body: #{ amp: 0.1 }, pitch: #{ freq: 200.0 } });
             });
             wait(0.2);
-            spawn("after", 1, #{ body: #{ amp: 0.1 }, pitch: #{ center_hz: 300.0 } });
+            spawn("after", 1, #{ body: #{ amp: 0.1 }, pitch: #{ freq: 300.0 } });
             end();
         "#,
         );
@@ -1507,7 +1233,7 @@ mod tests {
             r#"
             scene("alpha");
             wait(1.2);
-            spawn("tag", 3, #{ body: #{ amp: 0.25 }, pitch: #{ center_hz: 150.0 } });
+            spawn("tag", 3, #{ body: #{ amp: 0.25 }, pitch: #{ freq: 150.0 } });
             end();
         "#,
         );
@@ -1536,7 +1262,7 @@ mod tests {
     fn scene_created_when_scene_absent() {
         let scenario = run_script(
             r#"
-            spawn("init", 1, #{ body: #{ amp: 0.2 }, pitch: #{ center_hz: 330.0 } });
+            spawn("init", 1, #{ body: #{ amp: 0.2 }, pitch: #{ freq: 330.0 } });
             wait(0.3);
             end();
         "#,
@@ -1624,12 +1350,7 @@ mod tests {
         let landscape = LandscapeFrame::new(space.clone());
         let pop = apply_spawn_action(action, &landscape);
         let agent = pop.individuals.first().expect("agent exists");
-        let sampled = agent
-            .effective_control
-            .pitch
-            .constraint
-            .freq_hz
-            .expect("sampled freq");
+        let sampled = agent.effective_control.pitch.freq;
         let idx = space.index_of_freq(sampled).expect("sampled idx");
         let center = space.freq_of_index(idx);
         assert!(center >= min_freq && center <= max_freq);
@@ -1663,12 +1384,7 @@ mod tests {
             agent.effective_control.phonation.r#type,
             PhonationType::Hold
         );
-        let sampled = agent
-            .effective_control
-            .pitch
-            .constraint
-            .freq_hz
-            .expect("sampled freq");
+        let sampled = agent.effective_control.pitch.freq;
         let idx = space.index_of_freq(sampled).expect("sampled idx");
         let center = space.freq_of_index(idx);
         assert!(center >= min_freq && center <= max_freq);
@@ -1716,7 +1432,7 @@ mod tests {
     fn end_at_sets_duration() {
         let scenario = run_script(
             r#"
-            spawn("d", 1, #{ body: #{ amp: 0.2 }, pitch: #{ center_hz: 200.0 } });
+            spawn("d", 1, #{ body: #{ amp: 0.2 }, pitch: #{ freq: 200.0 } });
             end_at(20);
         "#,
         );
@@ -1928,7 +1644,7 @@ mod tests {
                         .as_object()
                         .and_then(|m| m.get("pitch"))
                         .and_then(|p| p.as_object())
-                        .and_then(|m| m.get("center_hz"))
+                        .and_then(|m| m.get("freq"))
                         .and_then(|v| v.as_f64())
                         .map(|v| v as f32);
                     if let Some(freq) = freq {

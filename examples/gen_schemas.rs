@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::error::Error;
 use std::fs;
 use std::path::Path;
@@ -46,7 +46,7 @@ fn append_schema_section(output: &mut String, label: &str, schema: &Schema) {
                 output.push_str(&format!("{label}: any\n"));
                 return;
             };
-            if let Some(table) = schema_object_table(obj) {
+            if let Some(table) = schema_object_table(obj, Some(label)) {
                 output.push_str(&table);
                 return;
             }
@@ -61,7 +61,7 @@ fn append_schema_section(output: &mut String, label: &str, schema: &Schema) {
     }
 }
 
-fn schema_object_table(obj: &Map<String, Value>) -> Option<String> {
+fn schema_object_table(obj: &Map<String, Value>, label: Option<&str>) -> Option<String> {
     let properties = obj
         .get("properties")
         .and_then(Value::as_object)
@@ -71,8 +71,7 @@ fn schema_object_table(obj: &Map<String, Value>) -> Option<String> {
     out.push_str("| Field | Type | Description |\n");
     out.push_str("| --- | --- | --- |\n");
 
-    let mut keys: Vec<_> = properties.keys().collect();
-    keys.sort();
+    let keys = ordered_property_keys(properties, label);
 
     for key in keys {
         let schema = &properties[key];
@@ -99,12 +98,21 @@ fn append_variant_tables(output: &mut String, obj: &Map<String, Value>) -> bool 
         return false;
     };
 
+    if let Some((values, complete)) = union_string_values(variants) {
+        let joined = values.join(", ");
+        output.push_str(&format!("Enum values: {joined}\n\n"));
+        if !complete {
+            output.push_str("Schema details are complex; see JSON schema.\n\n");
+        }
+        return true;
+    }
+
     let mut emitted = false;
     for (idx, schema) in variants.iter().enumerate() {
         let name = variant_name(schema).unwrap_or_else(|| format!("Variant {idx}"));
         output.push_str(&format!("### {name}\n\n"));
         if let Some(obj) = schema.as_object() {
-            if let Some(table) = schema_object_table(obj) {
+            if let Some(table) = schema_object_table(obj, None) {
                 output.push_str(&table);
                 emitted = true;
                 continue;
@@ -117,6 +125,38 @@ fn append_variant_tables(output: &mut String, obj: &Map<String, Value>) -> bool 
     }
 
     emitted
+}
+
+fn union_string_values(variants: &[Value]) -> Option<(Vec<String>, bool)> {
+    let mut values = Vec::new();
+    let mut complete = true;
+    for variant in variants {
+        if let Some(mut next) = schema_enum_values(variant) {
+            values.append(&mut next);
+        } else {
+            complete = false;
+        }
+    }
+    if values.is_empty() {
+        return None;
+    }
+    values.sort();
+    values.dedup();
+    Some((values, complete))
+}
+
+fn schema_enum_values(schema: &Value) -> Option<Vec<String>> {
+    let obj = schema.as_object()?;
+    if let Some(value) = obj.get("const").and_then(Value::as_str) {
+        return Some(vec![value.to_string()]);
+    }
+    let values = obj.get("enum")?.as_array()?;
+    let mut out = Vec::new();
+    for value in values {
+        let value = value.as_str()?;
+        out.push(value.to_string());
+    }
+    if out.is_empty() { None } else { Some(out) }
 }
 
 fn schema_object_summary(obj: &Map<String, Value>) -> String {
@@ -144,6 +184,40 @@ fn schema_summary(schema: &Value) -> String {
         Value::Object(obj) => schema_object_summary(obj),
         _ => "Schema details are complex; see JSON schema.".to_string(),
     }
+}
+
+fn ordered_property_keys<'a>(
+    properties: &'a Map<String, Value>,
+    label: Option<&str>,
+) -> Vec<&'a String> {
+    let mut keys: Vec<_> = properties.keys().collect();
+    let pitch_order = [
+        "mode",
+        "freq",
+        "range_oct",
+        "gravity",
+        "exploration",
+        "persistence",
+    ];
+    if matches!(label, Some("PitchControl") | Some("PitchPatch")) {
+        let mut ordered = Vec::new();
+        let mut seen = HashSet::new();
+        for name in pitch_order {
+            if let Some(key) = keys.iter().find(|k| k.as_str() == name).copied() {
+                ordered.push(key);
+                seen.insert(key.as_str());
+            }
+        }
+        let mut rest: Vec<_> = keys
+            .into_iter()
+            .filter(|k| !seen.contains(k.as_str()))
+            .collect();
+        rest.sort();
+        ordered.extend(rest);
+        return ordered;
+    }
+    keys.sort();
+    keys
 }
 
 fn schema_type_name(schema: &Value) -> String {
@@ -225,6 +299,9 @@ fn reference_name(reference: &str) -> String {
 
 fn variant_name(schema: &Value) -> Option<String> {
     let obj = schema.as_object()?;
+    if let Some(reference) = obj.get("$ref").and_then(Value::as_str) {
+        return Some(reference_name(reference));
+    }
     if let Some(title) = obj.get("title").and_then(Value::as_str) {
         return Some(title.to_string());
     }

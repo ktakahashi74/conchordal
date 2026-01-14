@@ -118,9 +118,9 @@ pub struct AgentControl {
 
 impl AgentControl {
     pub fn validate(&self) -> Result<(), String> {
-        let constraint = &self.pitch.constraint;
-        if !matches!(constraint.mode, PitchConstraintMode::Free) && constraint.freq_hz.is_none() {
-            return Err("pitch.constraint.freq_hz is required when mode != free".to_string());
+        let freq = self.pitch.freq;
+        if !freq.is_finite() || freq <= 0.0 {
+            return Err("pitch.freq must be finite and > 0".to_string());
         }
         Ok(())
     }
@@ -190,41 +190,22 @@ impl Default for BodyControl {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum PitchConstraintMode {
+pub enum PitchMode {
     #[default]
     Free,
-    Attractor,
     Lock,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct PitchConstraint {
-    #[serde(default)]
-    pub mode: PitchConstraintMode,
-    #[serde(default, deserialize_with = "de_opt_f32_clamp_freq")]
-    pub freq_hz: Option<f32>,
-    #[serde(default, deserialize_with = "de_f32_clamp_unit")]
-    pub strength: f32,
-}
-
-impl Default for PitchConstraint {
-    fn default() -> Self {
-        Self {
-            mode: PitchConstraintMode::Free,
-            freq_hz: None,
-            strength: 0.5,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct PitchControl {
+    #[serde(default)]
+    pub mode: PitchMode,
+    /// Frequency in Hz: center for free mode, fixed output for lock.
     #[serde(default, deserialize_with = "de_f32_clamp_freq")]
-    pub center_hz: f32,
+    pub freq: f32,
     #[serde(default, deserialize_with = "de_f32_clamp_range_oct")]
     pub range_oct: f32,
     #[serde(default, deserialize_with = "de_f32_clamp_unit")]
@@ -233,19 +214,17 @@ pub struct PitchControl {
     pub exploration: f32,
     #[serde(default, deserialize_with = "de_f32_clamp_unit")]
     pub persistence: f32,
-    #[serde(default)]
-    pub constraint: PitchConstraint,
 }
 
 impl Default for PitchControl {
     fn default() -> Self {
         Self {
-            center_hz: 220.0,
+            mode: PitchMode::Free,
+            freq: 220.0,
             range_oct: RANGE_OCT_MAX,
             gravity: 0.5,
             exploration: 0.0,
             persistence: 0.5,
-            constraint: PitchConstraint::default(),
         }
     }
 }
@@ -387,12 +366,15 @@ pub struct TimbrePatch {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
 #[serde(deny_unknown_fields)]
 pub struct PitchPatch {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode: Option<PitchMode>,
+    /// Frequency in Hz: center for free mode, fixed output for lock.
     #[serde(
         default,
         deserialize_with = "de_opt_f32_clamp_freq",
         skip_serializing_if = "Option::is_none"
     )]
-    pub center_hz: Option<f32>,
+    pub freq: Option<f32>,
     #[serde(
         default,
         deserialize_with = "de_opt_f32_clamp_range_oct",
@@ -417,27 +399,6 @@ pub struct PitchPatch {
         skip_serializing_if = "Option::is_none"
     )]
     pub persistence: Option<f32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub constraint: Option<PitchConstraintPatch>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
-#[serde(deny_unknown_fields)]
-pub struct PitchConstraintPatch {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub mode: Option<PitchConstraintMode>,
-    #[serde(
-        default,
-        deserialize_with = "de_opt_f32_clamp_freq",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub freq_hz: Option<f32>,
-    #[serde(
-        default,
-        deserialize_with = "de_opt_f32_clamp_unit",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub strength: Option<f32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]

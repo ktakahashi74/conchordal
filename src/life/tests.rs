@@ -6,14 +6,14 @@ use super::individual::{
 use super::population::Population;
 use super::scenario::{
     Action, ArticulationCoreConfig, EnvelopeConfig, IndividualConfig, PhonationConnectConfig,
-    PitchCoreConfig, Scenario, SceneMarker, TimedEvent,
+    PitchCoreConfig, Scenario, SceneMarker, SpawnMethod, SpawnOpts, TimedEvent,
 };
 use crate::core::landscape::Landscape;
 use crate::core::landscape::LandscapeFrame;
 use crate::core::log2space::Log2Space;
 use crate::core::modulation::{NeuralRhythms, RhythmBand};
 use crate::core::timebase::{Tick, Timebase};
-use crate::life::control::{AgentControl, BodyMethod, PhonationType};
+use crate::life::control::{AgentControl, BodyMethod, PhonationType, PitchMode};
 use crate::life::lifecycle::LifecycleConfig;
 use crate::life::perceptual::{FeaturesNow, PerceptualConfig, PerceptualContext};
 use crate::life::phonation_engine::PhonationCmd;
@@ -26,9 +26,9 @@ fn mix_signature(mut acc: u64, value: u32) -> u64 {
     acc
 }
 
-fn control_with_pitch(freq_hz: f32) -> AgentControl {
+fn control_with_pitch(freq: f32) -> AgentControl {
     let mut control = AgentControl::default();
-    control.pitch.center_hz = freq_hz.max(1.0);
+    control.pitch.freq = freq.max(1.0);
     control
 }
 
@@ -87,7 +87,7 @@ fn test_population_add_remove_agent() {
             count: 1,
             opts: None,
             patch: serde_json::json!({
-                "pitch": { "center_hz": 440.0 }
+                "pitch": { "freq": 440.0 }
             }),
         },
         &landscape,
@@ -123,7 +123,7 @@ fn tag_selector_removes_matching_agents() {
             count: 2,
             opts: None,
             patch: serde_json::json!({
-                "pitch": { "center_hz": 330.0 }
+                "pitch": { "freq": 330.0 }
             }),
         },
         &landscape,
@@ -227,7 +227,7 @@ fn test_agent_lifecycle_decay_death() {
             count: 1,
             opts: None,
             patch: serde_json::json!({
-                "pitch": { "center_hz": 440.0 }
+                "pitch": { "freq": 440.0 }
             }),
         },
         &landscape,
@@ -282,7 +282,7 @@ fn test_agent_lifecycle_decay_death() {
 }
 
 #[test]
-fn lock_constraint_still_advances_release_gain() {
+fn lock_mode_still_advances_release_gain() {
     let fs = 48_000.0;
     let mut pop = Population::new(test_timebase());
     pop.apply_action(
@@ -292,9 +292,9 @@ fn lock_constraint_still_advances_release_gain() {
             opts: None,
             patch: serde_json::json!({
                 "pitch": {
-                    "center_hz": 440.0,
+                    "freq": 440.0,
                     "range_oct": 0.0,
-                    "constraint": { "mode": "lock", "freq_hz": 440.0 }
+                    "mode": "lock"
                 }
             }),
         },
@@ -315,7 +315,7 @@ fn lock_constraint_still_advances_release_gain() {
 }
 
 #[test]
-fn lock_constraint_keeps_pitch_and_target() {
+fn lock_mode_keeps_pitch_and_target() {
     let fs = 48_000.0;
     let mut pop = Population::new(test_timebase());
     pop.apply_action(
@@ -325,9 +325,9 @@ fn lock_constraint_keeps_pitch_and_target() {
             opts: None,
             patch: serde_json::json!({
                 "pitch": {
-                    "center_hz": 440.0,
+                    "freq": 440.0,
                     "range_oct": 0.0,
-                    "constraint": { "mode": "lock", "freq_hz": 440.0 }
+                    "mode": "lock"
                 }
             }),
         },
@@ -350,16 +350,16 @@ fn lock_constraint_keeps_pitch_and_target() {
     let agent = pop.individuals.first().expect("agent exists");
     assert!(
         (agent.body.base_freq_hz() - freq_before).abs() <= 1e-6,
-        "lock constraint should keep base frequency stable"
+        "lock mode should keep base frequency stable"
     );
     assert!(
         (agent.target_pitch_log2() - target_before).abs() <= 1e-6,
-        "lock constraint should keep target pitch stable"
+        "lock mode should keep target pitch stable"
     );
 }
 
 #[test]
-fn perceptual_disabled_still_applies_lock_constraint() {
+fn perceptual_disabled_still_applies_lock_mode() {
     let fs = 48_000.0;
     let dt = 0.01;
     let samples_per_hop = (fs * dt) as usize;
@@ -370,7 +370,7 @@ fn perceptual_disabled_still_applies_lock_constraint() {
             count: 1,
             opts: None,
             patch: serde_json::json!({
-                "pitch": { "center_hz": 220.0 },
+                "pitch": { "freq": 220.0 },
                 "perceptual": { "enabled": false }
             }),
         },
@@ -381,7 +381,7 @@ fn perceptual_disabled_still_applies_lock_constraint() {
         Action::Set {
             target: "locked".to_string(),
             patch: serde_json::json!({
-                "pitch": { "constraint": { "mode": "lock", "freq_hz": 440.0 } }
+                "pitch": { "mode": "lock", "freq": 440.0 }
             }),
         },
         &LandscapeFrame::default(),
@@ -393,14 +393,40 @@ fn perceptual_disabled_still_applies_lock_constraint() {
     let expected = 440.0_f32.log2();
     assert!(
         (agent.target_pitch_log2() - expected).abs() <= 1e-6,
-        "lock constraint should apply even when perceptual is disabled"
+        "lock mode should apply even when perceptual is disabled"
     );
+}
+
+#[test]
+fn free_mode_uses_freq_center_when_range_zero() {
+    let mut control = AgentControl::default();
+    control.pitch.mode = PitchMode::Free;
+    control.pitch.freq = 220.0;
+    control.pitch.range_oct = 0.0;
+    let cfg = IndividualConfig { control, tag: None };
+    let meta = AgentMetadata {
+        id: 4,
+        tag: None,
+        group_idx: 0,
+        member_idx: 0,
+    };
+    let mut agent = cfg.spawn(meta.id, 0, meta, 48_000.0, 0);
+    let mut rhythms = NeuralRhythms::default();
+    rhythms.theta.phase = 0.1;
+    rhythms.theta.mag = 1.0;
+    let integration_window = agent.integration_window();
+    agent.set_theta_phase_state_for_test(0.9, true);
+    agent.set_accumulated_time_for_test(integration_window);
+    let landscape = make_test_landscape(48_000.0);
+    agent.update_pitch_target(&rhythms, 0.01, &landscape);
+    let expected = 220.0_f32.log2();
+    assert!((agent.target_pitch_log2() - expected).abs() <= 1e-6);
 }
 
 #[test]
 fn remove_pending_still_emits_note_offs() {
     let mut control = AgentControl::default();
-    control.pitch.center_hz = 220.0;
+    control.pitch.freq = 220.0;
     control.phonation.r#type = PhonationType::Interval;
     control.phonation.density = 1.0;
     control.phonation.legato = 0.0;
@@ -583,7 +609,7 @@ fn harmonic_render_spectrum_hits_expected_bins() {
 }
 
 #[test]
-fn lock_constraint_sets_target_pitch_log2() {
+fn lock_mode_sets_target_pitch_log2() {
     let space = Log2Space::new(55.0, 880.0, 12);
     let landscape = LandscapeFrame::new(space.clone());
     let mut pop = Population::new(test_timebase());
@@ -593,7 +619,7 @@ fn lock_constraint_sets_target_pitch_log2() {
             count: 1,
             opts: None,
             patch: serde_json::json!({
-                "pitch": { "center_hz": 220.0 }
+                "pitch": { "freq": 220.0 }
             }),
         },
         &landscape,
@@ -605,7 +631,8 @@ fn lock_constraint_sets_target_pitch_log2() {
             target: "test_agent".to_string(),
             patch: serde_json::json!({
                 "pitch": {
-                    "constraint": { "mode": "lock", "freq_hz": 440.0 }
+                    "mode": "lock",
+                    "freq": 440.0
                 }
             }),
         },
@@ -630,7 +657,7 @@ fn population_spectrum_uses_log2_space() {
             count: 1,
             opts: None,
             patch: serde_json::json!({
-                "pitch": { "center_hz": 55.0 }
+                "pitch": { "freq": 55.0 }
             }),
         },
         &LandscapeFrame::new(space.clone()),
@@ -654,7 +681,7 @@ fn population_spectrum_uses_log2_space() {
 fn agent_patch_rejects_unknown_fields() {
     let good = serde_json::json!({
         "body": { "amp": 0.25 },
-        "pitch": { "center_hz": 220.0 },
+        "pitch": { "freq": 220.0 },
         "perceptual": { "enabled": true }
     });
     let patch: crate::life::control::AgentPatch =
@@ -716,7 +743,27 @@ fn unset_restores_base_control() {
 }
 
 #[test]
-fn constraint_mode_requires_freq() {
+fn unset_restores_base_pitch_freq() {
+    let mut control = AgentControl::default();
+    control.pitch.freq = 220.0;
+    let cfg = IndividualConfig { control, tag: None };
+    let meta = AgentMetadata {
+        id: 5,
+        tag: None,
+        group_idx: 0,
+        member_idx: 0,
+    };
+    let mut agent = cfg.spawn(meta.id, 0, meta, 48_000.0, 0);
+    agent
+        .apply_control_patch(serde_json::json!({ "pitch": { "freq": 440.0 } }))
+        .expect("patch applies");
+    assert!((agent.effective_control.pitch.freq - 440.0).abs() < 1e-6);
+    agent.apply_unset_path("pitch.freq").expect("unset applies");
+    assert!((agent.effective_control.pitch.freq - 220.0).abs() < 1e-6);
+}
+
+#[test]
+fn reject_legacy_pitch_keys() {
     let cfg = IndividualConfig {
         control: control_with_pitch(220.0),
         tag: None,
@@ -728,10 +775,47 @@ fn constraint_mode_requires_freq() {
         member_idx: 0,
     };
     let mut agent = cfg.spawn(meta.id, 0, meta, 48_000.0, 0);
-    let err = agent.apply_control_patch(serde_json::json!({
-        "pitch": { "constraint": { "mode": "lock" } }
-    }));
-    assert!(err.is_err());
+    let center_key = ["center", "_hz"].concat();
+    let mut pitch_map = serde_json::Map::new();
+    pitch_map.insert(center_key, serde_json::Value::from(123.0));
+    let mut patch_map = serde_json::Map::new();
+    patch_map.insert("pitch".to_string(), serde_json::Value::Object(pitch_map));
+    let err_center = agent.apply_control_patch(serde_json::Value::Object(patch_map));
+    assert!(err_center.is_err());
+    let legacy_key = ["freq", "_hz"].concat();
+    let mut pitch_map = serde_json::Map::new();
+    pitch_map.insert(legacy_key, serde_json::Value::from(123.0));
+    let mut patch_map = serde_json::Map::new();
+    patch_map.insert("pitch".to_string(), serde_json::Value::Object(pitch_map));
+    let err_legacy_freq = agent.apply_control_patch(serde_json::Value::Object(patch_map));
+    assert!(err_legacy_freq.is_err());
+    let legacy_home_key = ["home", "_hz"].concat();
+    let mut pitch_map = serde_json::Map::new();
+    pitch_map.insert(legacy_home_key, serde_json::Value::from(123.0));
+    let mut patch_map = serde_json::Map::new();
+    patch_map.insert("pitch".to_string(), serde_json::Value::Object(pitch_map));
+    let err_legacy_home = agent.apply_control_patch(serde_json::Value::Object(patch_map));
+    assert!(err_legacy_home.is_err());
+    let constraint_key = ["con", "straint"].concat();
+    let mut constraint_map = serde_json::Map::new();
+    constraint_map.insert("mode".to_string(), serde_json::Value::from("lock"));
+    constraint_map.insert("freq".to_string(), serde_json::Value::from(123.0));
+    let mut pitch_map = serde_json::Map::new();
+    pitch_map.insert(constraint_key, serde_json::Value::Object(constraint_map));
+    let mut patch_map = serde_json::Map::new();
+    patch_map.insert("pitch".to_string(), serde_json::Value::Object(pitch_map));
+    let err_constraint = agent.apply_control_patch(serde_json::Value::Object(patch_map));
+    assert!(err_constraint.is_err());
+    let legacy_mode_value = ["att", "ractor"].concat();
+    let mut pitch_map = serde_json::Map::new();
+    pitch_map.insert(
+        "mode".to_string(),
+        serde_json::Value::from(legacy_mode_value),
+    );
+    let mut patch_map = serde_json::Map::new();
+    patch_map.insert("pitch".to_string(), serde_json::Value::Object(pitch_map));
+    let err_legacy_mode = agent.apply_control_patch(serde_json::Value::Object(patch_map));
+    assert!(err_legacy_mode.is_err());
 }
 
 #[test]
@@ -758,7 +842,152 @@ fn patch_rejects_type_switches() {
 }
 
 #[test]
-fn spawn_lock_constraint_sets_center_hz() {
+fn spawn_opts_respects_patch_mode_free() {
+    let mut pop = Population::new(test_timebase());
+    let landscape = LandscapeFrame::default();
+    let opts = SpawnOpts {
+        method: Some(SpawnMethod::RandomLogUniform {
+            min_freq: 220.0,
+            max_freq: 220.0,
+            min_dist_erb: Some(0.0),
+        }),
+    };
+    pop.apply_action(
+        Action::Spawn {
+            tag: "free_mode".to_string(),
+            count: 1,
+            opts: Some(opts),
+            patch: serde_json::json!({
+                "pitch": { "mode": "free" }
+            }),
+        },
+        &landscape,
+        None,
+    );
+    let agent = pop.individuals.first().expect("agent exists");
+    assert_eq!(agent.effective_control.pitch.mode, PitchMode::Free);
+}
+
+#[test]
+fn spawn_opts_respects_patch_mode_lock() {
+    let mut pop = Population::new(test_timebase());
+    let landscape = LandscapeFrame::default();
+    let opts = SpawnOpts {
+        method: Some(SpawnMethod::RandomLogUniform {
+            min_freq: 440.0,
+            max_freq: 440.0,
+            min_dist_erb: Some(0.0),
+        }),
+    };
+    pop.apply_action(
+        Action::Spawn {
+            tag: "lock_mode".to_string(),
+            count: 1,
+            opts: Some(opts),
+            patch: serde_json::json!({
+                "pitch": { "mode": "lock" }
+            }),
+        },
+        &landscape,
+        None,
+    );
+    let agent = pop.individuals.first().expect("agent exists");
+    assert_eq!(agent.effective_control.pitch.mode, PitchMode::Lock);
+}
+
+#[test]
+fn spawn_opts_respects_patch_freq() {
+    let mut pop = Population::new(test_timebase());
+    let landscape = LandscapeFrame::default();
+    let opts = SpawnOpts {
+        method: Some(SpawnMethod::RandomLogUniform {
+            min_freq: 440.0,
+            max_freq: 440.0,
+            min_dist_erb: Some(0.0),
+        }),
+    };
+    pop.apply_action(
+        Action::Spawn {
+            tag: "freq_override".to_string(),
+            count: 1,
+            opts: Some(opts),
+            patch: serde_json::json!({
+                "pitch": { "freq": 330.0 }
+            }),
+        },
+        &landscape,
+        None,
+    );
+    let agent = pop.individuals.first().expect("agent exists");
+    assert!((agent.effective_control.pitch.freq - 330.0).abs() < 1e-6);
+}
+
+#[test]
+fn spawn_opts_samples_when_patch_freq_null() {
+    let mut pop = Population::new(test_timebase());
+    let landscape = LandscapeFrame::new(Log2Space::new(100.0, 1000.0, 12));
+    let opts = SpawnOpts {
+        method: Some(SpawnMethod::RandomLogUniform {
+            min_freq: 330.0,
+            max_freq: 330.0,
+            min_dist_erb: Some(0.0),
+        }),
+    };
+    pop.apply_action(
+        Action::Spawn {
+            tag: "freq_null".to_string(),
+            count: 1,
+            opts: Some(opts),
+            patch: serde_json::json!({
+                "pitch": { "mode": "lock", "freq": null }
+            }),
+        },
+        &landscape,
+        None,
+    );
+    let agent = pop.individuals.first().expect("agent exists");
+    assert_eq!(agent.effective_control.pitch.mode, PitchMode::Lock);
+    assert!((agent.effective_control.pitch.freq - 330.0).abs() < 1e-6);
+}
+
+#[test]
+fn spawn_lock_samples_freq_from_method() {
+    let mut pop = Population::new(test_timebase());
+    let space = Log2Space::new(200.0, 800.0, 12);
+    let mut landscape = LandscapeFrame::new(space.clone());
+    landscape.consonance01.fill(0.0);
+    let idx_high = space.index_of_freq(400.0).expect("idx");
+    landscape.consonance01[idx_high] = 1.0;
+    let opts = SpawnOpts {
+        method: Some(SpawnMethod::Harmonicity {
+            min_freq: 300.0,
+            max_freq: 500.0,
+            min_dist_erb: Some(0.0),
+        }),
+    };
+    pop.apply_action(
+        Action::Spawn {
+            tag: "lock_sampled".to_string(),
+            count: 1,
+            opts: Some(opts),
+            patch: serde_json::json!({
+                "pitch": { "mode": "lock" }
+            }),
+        },
+        &landscape,
+        None,
+    );
+    let agent = pop.individuals.first().expect("agent exists");
+    let freq = agent.effective_control.pitch.freq;
+    assert_eq!(agent.effective_control.pitch.mode, PitchMode::Lock);
+    assert!(freq >= 300.0 && freq <= 500.0);
+    let picked_idx = space.index_of_freq(freq).expect("picked idx");
+    assert_eq!(picked_idx, idx_high);
+    assert!((agent.target_pitch_log2() - freq.log2()).abs() <= 1e-6);
+}
+
+#[test]
+fn spawn_lock_sets_freq() {
     let mut pop = Population::new(test_timebase());
     let landscape = LandscapeFrame::default();
     pop.apply_action(
@@ -767,18 +996,21 @@ fn spawn_lock_constraint_sets_center_hz() {
             count: 1,
             opts: None,
             patch: serde_json::json!({
-                "pitch": { "constraint": { "mode": "lock", "freq_hz": 440.0 } }
+                "pitch": { "mode": "lock", "freq": 440.0 }
             }),
         },
         &landscape,
         None,
     );
     let agent = pop.individuals.first().expect("agent exists");
-    assert!((agent.effective_control.pitch.center_hz - 440.0).abs() < 1e-6);
+    assert_eq!(agent.effective_control.pitch.mode, PitchMode::Lock);
+    assert!((agent.effective_control.pitch.freq - 440.0).abs() < 1e-6);
+    let expected = 440.0_f32.log2();
+    assert!((agent.target_pitch_log2() - expected).abs() <= 1e-6);
 }
 
 #[test]
-fn lock_constraint_ignores_range_clamp() {
+fn lock_mode_ignores_range_clamp() {
     let fs = 48_000.0;
     let dt = 0.01;
     let samples_per_hop = (fs * dt) as usize;
@@ -789,7 +1021,7 @@ fn lock_constraint_ignores_range_clamp() {
             count: 1,
             opts: None,
             patch: serde_json::json!({
-                "pitch": { "center_hz": 220.0, "range_oct": 0.0 }
+                "pitch": { "freq": 220.0, "range_oct": 0.0 }
             }),
         },
         &LandscapeFrame::default(),
@@ -799,7 +1031,7 @@ fn lock_constraint_ignores_range_clamp() {
         Action::Set {
             target: "lock_range".to_string(),
             patch: serde_json::json!({
-                "pitch": { "constraint": { "mode": "lock", "freq_hz": 440.0 } }
+                "pitch": { "mode": "lock", "freq": 440.0 }
             }),
         },
         &LandscapeFrame::default(),
@@ -811,7 +1043,7 @@ fn lock_constraint_ignores_range_clamp() {
     let expected = 440.0_f32.log2();
     assert!(
         (agent.target_pitch_log2() - expected).abs() <= 1e-6,
-        "lock constraint should override range clamp"
+        "lock mode should override range clamp"
     );
 }
 
@@ -825,7 +1057,7 @@ fn remove_fade_reduces_gain_and_culls() {
             tag: "fade".to_string(),
             count: 1,
             opts: None,
-            patch: serde_json::json!({ "pitch": { "center_hz": 220.0 } }),
+            patch: serde_json::json!({ "pitch": { "freq": 220.0 } }),
         },
         &landscape,
         None,
@@ -945,7 +1177,7 @@ fn theta_wrap_triggers_pitch_update_with_large_dt() {
             count: 1,
             opts: None,
             patch: serde_json::json!({
-                "pitch": { "center_hz": 440.0 }
+                "pitch": { "freq": 440.0 }
             }),
         },
         &LandscapeFrame::default(),

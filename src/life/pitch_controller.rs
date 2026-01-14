@@ -1,7 +1,7 @@
 use super::pitch_core::{AnyPitchCore, PitchCore};
 use crate::core::landscape::Landscape;
 use crate::core::modulation::NeuralRhythms;
-use crate::life::control::{PitchConstraintMode, PitchControl};
+use crate::life::control::{PitchControl, PitchMode};
 use crate::life::perceptual::{FeaturesNow, PerceptualContext};
 use rand::rngs::SmallRng;
 
@@ -109,7 +109,7 @@ impl PitchController {
             0.0
         };
 
-        // Perceptual gating only affects proposal/learning, not constraints.
+        // Perceptual gating only affects proposal/learning, not lock overrides.
         if self.perceptual_enabled
             && theta_cross
             && self.accumulated_time >= self.integration_window
@@ -136,38 +136,19 @@ impl PitchController {
             }
         }
 
-        let lock_target = if matches!(pitch.constraint.mode, PitchConstraintMode::Lock) {
-            if let Some(freq) = pitch.constraint.freq_hz {
-                if freq.is_finite() && freq > 0.0 {
-                    Some(freq.log2())
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-        if let Some(lock_log2) = lock_target {
-            target_pitch_log2 = lock_log2;
-        } else if matches!(pitch.constraint.mode, PitchConstraintMode::Attractor)
-            && let Some(freq) = pitch.constraint.freq_hz
-            && freq.is_finite()
-            && freq > 0.0
-        {
-            let strength = pitch.constraint.strength.clamp(0.0, 1.0);
-            let attractor_log2 = freq.log2();
-            target_pitch_log2 = target_pitch_log2 + (attractor_log2 - target_pitch_log2) * strength;
-        }
-
         let (fmin, fmax) = landscape.freq_bounds_log2();
-        if let Some(lock_log2) = lock_target {
+        if matches!(pitch.mode, PitchMode::Lock) {
+            let freq = if pitch.freq.is_finite() && pitch.freq > 0.0 {
+                pitch.freq
+            } else {
+                current_freq
+            };
+            let lock_log2 = freq.log2();
             self.target_pitch_log2 = lock_log2.clamp(fmin, fmax);
             return;
         }
-        let center_log2 = if pitch.center_hz.is_finite() && pitch.center_hz > 0.0 {
-            pitch.center_hz.log2()
+        let center_log2 = if pitch.freq.is_finite() && pitch.freq > 0.0 {
+            pitch.freq.log2()
         } else {
             current_pitch_log2
         };

@@ -22,9 +22,9 @@ fn make_landscape() -> Landscape {
     Landscape::new(space)
 }
 
-fn control_with_pitch(freq_hz: f32) -> AgentControl {
+fn control_with_pitch(freq: f32) -> AgentControl {
     let mut control = AgentControl::default();
-    control.pitch.center_hz = freq_hz.max(1.0);
+    control.pitch.freq = freq.max(1.0);
     control
 }
 
@@ -90,7 +90,7 @@ fn test_scan_logic() {
 }
 
 #[test]
-fn lock_constraint_prevents_snapback() {
+fn lock_mode_prevents_snapback() {
     let landscape = make_landscape();
     let mut pop = Population::new(Timebase {
         fs: 48_000.0,
@@ -102,7 +102,7 @@ fn lock_constraint_prevents_snapback() {
             count: 1,
             opts: None,
             patch: serde_json::json!({
-                "pitch": { "center_hz": 220.0 }
+                "pitch": { "freq": 220.0 }
             }),
         },
         &LandscapeFrame::default(),
@@ -121,7 +121,7 @@ fn lock_constraint_prevents_snapback() {
         Action::Set {
             target: "setfreq_test".to_string(),
             patch: serde_json::json!({
-                "pitch": { "constraint": { "mode": "lock", "freq_hz": new_freq } }
+                "pitch": { "mode": "lock", "freq": new_freq }
             }),
         },
         &LandscapeFrame::default(),
@@ -139,7 +139,7 @@ fn lock_constraint_prevents_snapback() {
     }
     assert!(
         (agent.target_pitch_log2() - new_log).abs() < 1e-6,
-        "target should remain locked to constraint"
+        "target should remain locked to mode"
     );
     assert!(
         (agent.target_pitch_log2() - old_target).abs() > 0.5,

@@ -1,4 +1,4 @@
-use super::control::{AgentControl, PitchConstraintMode, matches_tag_pattern, merge_json};
+use super::control::{AgentControl, matches_tag_pattern, merge_json};
 use super::individual::{AgentMetadata, Individual, PhonationBatch, SoundBody};
 use super::scenario::{Action, IndividualConfig, SocialConfig, SpawnMethod};
 use crate::core::landscape::{LandscapeFrame, LandscapeUpdate};
@@ -444,7 +444,7 @@ impl Population {
                 let seed = self.spawn_seed(&tag, count, spawn_seq);
                 let mut rng = SmallRng::seed_from_u64(seed);
                 let mut patch = patch;
-                let legacy_method = take_spawn_method(&mut patch, &tag);
+                strip_null_pitch_freq(&mut patch);
                 let opts_method = opts.and_then(|opts| opts.method);
                 let mut control = match AgentControl::from_json(merge_json(
                     AgentControl::default().to_json().unwrap_or_default(),
@@ -456,20 +456,11 @@ impl Population {
                         return;
                     }
                 };
-                let center_in_patch = patch_sets_center_hz(&patch);
-                if let Some(method) = opts_method {
+                let freq_in_patch = patch_sets_freq(&patch);
+                if !freq_in_patch {
+                    let method = opts_method.unwrap_or_default();
                     let freq = self.decide_frequency(&method, landscape, &mut rng);
-                    control.pitch.constraint.mode = PitchConstraintMode::Lock;
-                    control.pitch.constraint.freq_hz = Some(freq.max(1.0));
-                } else if !center_in_patch {
-                    let method = legacy_method.unwrap_or_default();
-                    let freq = self.decide_frequency(&method, landscape, &mut rng);
-                    control.pitch.center_hz = freq.max(1.0);
-                }
-                if matches!(control.pitch.constraint.mode, PitchConstraintMode::Lock)
-                    && let Some(freq) = control.pitch.constraint.freq_hz
-                {
-                    control.pitch.center_hz = freq.max(1.0);
+                    control.pitch.freq = freq.max(1.0);
                 }
                 for i in 0..count {
                     let id = self.next_agent_id;
@@ -760,27 +751,25 @@ where
     configs.into_iter().any(|cfg| cfg.coupling != 0.0)
 }
 
-fn patch_sets_center_hz(patch: &serde_json::Value) -> bool {
+fn patch_sets_freq(patch: &serde_json::Value) -> bool {
     let serde_json::Value::Object(map) = patch else {
         return false;
     };
     let Some(serde_json::Value::Object(pitch)) = map.get("pitch") else {
         return false;
     };
-    pitch.contains_key("center_hz")
+    pitch.get("freq").and_then(|val| val.as_f64()).is_some()
 }
 
-fn take_spawn_method(patch: &mut serde_json::Value, tag: &str) -> Option<SpawnMethod> {
+fn strip_null_pitch_freq(patch: &mut serde_json::Value) {
     let serde_json::Value::Object(map) = patch else {
-        return None;
+        return;
     };
-    let method_val = map.remove("method")?;
-    match serde_json::from_value(method_val) {
-        Ok(method) => Some(method),
-        Err(err) => {
-            warn!("Spawn: invalid method for tag={}: {}", tag, err);
-            None
-        }
+    let Some(serde_json::Value::Object(pitch)) = map.get_mut("pitch") else {
+        return;
+    };
+    if matches!(pitch.get("freq"), Some(serde_json::Value::Null)) {
+        pitch.remove("freq");
     }
 }
 
@@ -1138,7 +1127,7 @@ mod tests {
                 count: 1,
                 opts: None,
                 patch: serde_json::json!({
-                    "pitch": { "center_hz": 440.0 },
+                    "pitch": { "freq": 440.0 },
                     "phonation": { "type": "none" }
                 }),
             },

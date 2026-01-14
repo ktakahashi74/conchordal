@@ -42,31 +42,23 @@ Enum values: sine, harmonic
 
 ## PhonationType
 
-Enum values: interval, clock, drone, field, none
+Enum values: clock, field, hold, interval, none
 
-## PitchConstraintMode
 
-Enum values: free, attractor, lock
+## PitchMode
 
-## PitchConstraintPatch
-
-| Field | Type | Description |
-| --- | --- | --- |
-| freq_hz | null or number |  |
-| mode | enum/union |  |
-| strength | null or number |  |
-
+Enum values: free, lock
 
 ## PitchPatch
 
 | Field | Type | Description |
 | --- | --- | --- |
-| center_hz | null or number |  |
-| constraint | enum/union |  |
-| exploration | null or number |  |
-| gravity | null or number |  |
-| persistence | null or number |  |
+| mode | enum/union |  |
+| freq | null or number | Frequency in Hz: center for free mode, fixed output for lock. |
 | range_oct | null or number |  |
+| gravity | null or number |  |
+| exploration | null or number |  |
+| persistence | null or number |  |
 
 
 ## TimbrePatch

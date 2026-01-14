@@ -18,7 +18,7 @@ fn agents_publish_intents_and_render_audio() {
     let mut world = WorldModel::new(tb, space.clone());
     let mut pop = Population::new(tb);
     let mut control = AgentControl::default();
-    control.pitch.center_hz = 440.0;
+    control.pitch.freq = 440.0;
     control.body.amp = 0.4;
     control.phonation.density = 0.8;
     let agent_cfg = IndividualConfig { control, tag: None };
@@ -74,7 +74,7 @@ fn publish_intents_runs_when_gate_in_hop_window() {
     let mut world = WorldModel::new(tb, space.clone());
     let mut pop = Population::new(tb);
     let mut control = AgentControl::default();
-    control.pitch.center_hz = 440.0;
+    control.pitch.freq = 440.0;
     control.body.amp = 0.4;
     control.phonation.density = 0.8;
     let agent_cfg = IndividualConfig { control, tag: None };

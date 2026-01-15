@@ -539,10 +539,16 @@ impl PhonationClock for CompositeClock {
 
 pub trait PhonationInterval: Send {
     fn on_candidate(&mut self, c: &IntervalInput, state: &CoreState) -> Option<PhonationKick>;
+    fn update_config(&mut self, _config: &PhonationIntervalConfig) -> bool {
+        false
+    }
 }
 
 pub trait SubThetaMod: Send + Sync {
     fn mod_at_phase(&self, phase_in_gate: f32) -> f32;
+    fn update_config(&mut self, _config: &SubThetaModConfig) -> bool {
+        false
+    }
 }
 
 #[derive(Debug, Default)]
@@ -551,6 +557,10 @@ pub struct NoneMod;
 impl SubThetaMod for NoneMod {
     fn mod_at_phase(&self, _phase_in_gate: f32) -> f32 {
         1.0
+    }
+
+    fn update_config(&mut self, config: &SubThetaModConfig) -> bool {
+        matches!(config, SubThetaModConfig::None)
     }
 }
 
@@ -567,6 +577,18 @@ impl SubThetaMod for CosineHarmonicMod {
         let phase = phase_in_gate.rem_euclid(1.0);
         1.0 + depth * (TAU * self.n as f32 * phase + self.phase0).cos()
     }
+
+    fn update_config(&mut self, config: &SubThetaModConfig) -> bool {
+        match config {
+            SubThetaModConfig::Cosine { n, depth, phase0 } => {
+                self.n = *n;
+                self.depth = *depth;
+                self.phase0 = *phase0;
+                true
+            }
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -575,6 +597,10 @@ pub struct NoneInterval;
 impl PhonationInterval for NoneInterval {
     fn on_candidate(&mut self, _c: &IntervalInput, _state: &CoreState) -> Option<PhonationKick> {
         None
+    }
+
+    fn update_config(&mut self, config: &PhonationIntervalConfig) -> bool {
+        matches!(config, PhonationIntervalConfig::None)
     }
 }
 
@@ -621,6 +647,17 @@ impl PhonationInterval for AccumulatorInterval {
         }
         None
     }
+
+    fn update_config(&mut self, config: &PhonationIntervalConfig) -> bool {
+        match config {
+            PhonationIntervalConfig::Accumulator { rate, refractory } => {
+                self.rate_hz = *rate;
+                self.refractory_gates = *refractory;
+                true
+            }
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -651,6 +688,9 @@ pub trait PhonationConnect: Send {
     /// its pending-off queue, and implementations must not emit a NoteOff for that note_id in poll.
     fn on_note_on(&mut self, onset: ConnectOnset) -> ConnectPlan;
     fn poll(&mut self, now: ConnectNow, out: &mut Vec<PhonationCmd>);
+    fn update_config(&mut self, _config: &PhonationConnectConfig) -> bool {
+        false
+    }
 }
 
 #[derive(Debug)]
@@ -688,6 +728,16 @@ impl PhonationConnect for FixedGateConnect {
             } else {
                 idx += 1;
             }
+        }
+    }
+
+    fn update_config(&mut self, config: &PhonationConnectConfig) -> bool {
+        match config {
+            PhonationConnectConfig::FixedGate { length_gates } => {
+                self.length_gates = *length_gates;
+                true
+            }
+            _ => false,
         }
     }
 }
@@ -761,6 +811,26 @@ impl PhonationConnect for FieldConnect {
     fn poll(&mut self, now: ConnectNow, out: &mut Vec<PhonationCmd>) {
         let _ = now;
         let _ = out;
+    }
+
+    fn update_config(&mut self, config: &PhonationConnectConfig) -> bool {
+        match config {
+            PhonationConnectConfig::Field {
+                hold_min_theta,
+                hold_max_theta,
+                curve_k,
+                curve_x0,
+                drop_gain,
+            } => {
+                self.hold_min_theta = *hold_min_theta;
+                self.hold_max_theta = *hold_max_theta;
+                self.curve_k = *curve_k;
+                self.curve_x0 = *curve_x0;
+                self.drop_gain = *drop_gain;
+                true
+            }
+            _ => false,
+        }
     }
 }
 
@@ -903,6 +973,24 @@ impl PhonationEngine {
             pending_off: BinaryHeap::new(),
             scratch_candidates: Vec::new(),
             scratch_merged: Vec::new(),
+        }
+    }
+
+    pub fn update_from_config(&mut self, config: &PhonationConfig) {
+        self.mode = config.mode;
+        let interval_ok = self.interval.update_config(&config.interval);
+        debug_assert!(interval_ok, "phonation interval config mismatch");
+        let connect_ok = self.connect.update_config(&config.connect);
+        debug_assert!(connect_ok, "phonation connect config mismatch");
+        if !self.sub_theta_mod.update_config(&config.sub_theta_mod) {
+            self.sub_theta_mod = match &config.sub_theta_mod {
+                SubThetaModConfig::None => Box::<NoneMod>::default(),
+                SubThetaModConfig::Cosine { n, depth, phase0 } => Box::new(CosineHarmonicMod {
+                    n: *n,
+                    depth: *depth,
+                    phase0: *phase0,
+                }),
+            };
         }
     }
 

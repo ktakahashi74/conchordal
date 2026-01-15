@@ -4,7 +4,7 @@ use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
 use crate::life::control::{
     AgentControl, AgentPatch, BodyControl, BodyMethod, PerceptualControl, PhonationControl,
-    PhonationType, PitchControl, merge_json, remove_json_path,
+    PhonationType, PitchControl, PitchMode, merge_json, remove_json_path,
 };
 use crate::life::intent::BodySnapshot;
 use crate::life::lifecycle::LifecycleConfig;
@@ -48,7 +48,6 @@ pub struct AgentMetadata {
 
 #[derive(Debug)]
 pub struct Individual {
-    pub(crate) seed: u64,
     pub id: u64,
     pub metadata: AgentMetadata,
     pub base_control: AgentControl,
@@ -119,6 +118,38 @@ impl BodyRuntime {
             width: timbre.width,
             motion: timbre.motion,
         }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct Dirty {
+    body: bool,
+    pitch: bool,
+    phonation: bool,
+    perceptual: bool,
+}
+
+impl Dirty {
+    fn from_patch(patch: &AgentPatch) -> Self {
+        Self {
+            body: patch.body.is_some(),
+            pitch: patch.pitch.is_some(),
+            phonation: patch.phonation.is_some(),
+            perceptual: patch.perceptual.is_some(),
+        }
+    }
+
+    fn from_unset_path(path: &str) -> Self {
+        let mut dirty = Self::default();
+        let prefix = path.split('.').find(|part| !part.is_empty());
+        match prefix {
+            Some("body") => dirty.body = true,
+            Some("pitch") => dirty.pitch = true,
+            Some("phonation") => dirty.phonation = true,
+            Some("perceptual") => dirty.perceptual = true,
+            _ => {}
+        }
+        dirty
     }
 }
 
@@ -206,7 +237,6 @@ impl Individual {
         );
 
         let mut agent = Individual {
-            seed,
             id: assigned_id,
             metadata,
             base_control: control,
@@ -272,16 +302,24 @@ impl Individual {
 
     fn apply_phonation_control(&mut self) {
         let config = phonation_config_from_control(&self.effective_control.phonation);
-        self.phonation_engine = PhonationEngine::from_config(&config, self.seed);
+        self.phonation_engine.update_from_config(&config);
         self.phonation_social = config.social;
     }
 
-    fn apply_effective_control(&mut self, control: AgentControl) {
+    fn apply_effective_control(&mut self, control: AgentControl, dirty: Dirty) {
         self.effective_control = control;
-        self.apply_body_runtime();
-        self.apply_perceptual_control();
-        self.apply_pitch_control();
-        self.apply_phonation_control();
+        if dirty.body {
+            self.apply_body_runtime();
+        }
+        if dirty.perceptual {
+            self.apply_perceptual_control();
+        }
+        if dirty.pitch {
+            self.apply_pitch_control();
+        }
+        if dirty.phonation {
+            self.apply_phonation_control();
+        }
     }
 
     pub fn should_retain(&self) -> bool {
@@ -322,12 +360,13 @@ impl Individual {
                     .to_string(),
             );
         }
+        let dirty = Dirty::from_patch(&patch_struct);
         let merged_override = merge_json(self.override_json.clone(), patch);
         let base_json = self.base_control.to_json()?;
         let effective_json = merge_json(base_json, merged_override.clone());
         let effective = AgentControl::from_json(effective_json)?;
         self.override_json = merged_override;
-        self.apply_effective_control(effective);
+        self.apply_effective_control(effective, dirty);
         Ok(())
     }
 
@@ -341,7 +380,8 @@ impl Individual {
         let effective_json = merge_json(base_json, override_json.clone());
         let effective = AgentControl::from_json(effective_json)?;
         self.override_json = override_json;
-        self.apply_effective_control(effective);
+        let dirty = Dirty::from_unset_path(path);
+        self.apply_effective_control(effective, dirty);
         Ok(true)
     }
 
@@ -393,7 +433,6 @@ impl Individual {
         landscape: &Landscape,
         global_coupling: f32,
     ) -> ArticulationSignal {
-        self.apply_body_runtime();
         self.update_articulation(dt_sec, rhythms, landscape, global_coupling)
     }
 
@@ -420,6 +459,11 @@ impl Individual {
             salience: self.pitch_ctl.last_target_salience(),
         };
         let apply_planned_pitch = self.articulation.update_gate(&planned, rhythms, dt_sec);
+        if matches!(self.effective_control.pitch.mode, PitchMode::Lock) {
+            self.articulation.set_gate(1.0);
+            self.body.set_pitch_log2(planned.target_pitch_log2);
+            return;
+        }
         if apply_planned_pitch {
             self.body.set_pitch_log2(planned.target_pitch_log2);
         }

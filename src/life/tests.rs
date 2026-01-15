@@ -557,6 +557,95 @@ fn hold_ignores_density_legato() {
 }
 
 #[test]
+fn hold_does_not_retrigger_on_pitch_set() {
+    let mut control = control_with_pitch(220.0);
+    control.phonation.r#type = PhonationType::Hold;
+    control.pitch.mode = PitchMode::Lock;
+    let cfg = IndividualConfig { control, tag: None };
+    let meta = AgentMetadata {
+        id: 3,
+        tag: None,
+        group_idx: 0,
+        member_idx: 0,
+    };
+    let mut agent = cfg.spawn(meta.id, 0, meta, 48_000.0, 0);
+    let tb = test_timebase();
+    let mut rhythms = NeuralRhythms::default();
+    let mut batch = PhonationBatch::default();
+    let mut now: Tick = 0;
+    let mut note_on_total = 0;
+    for _ in 0..4 {
+        agent.tick_phonation_into(&tb, now, &rhythms, None, 0.0, &mut batch);
+        note_on_total += batch
+            .cmds
+            .iter()
+            .filter(|cmd| matches!(cmd, PhonationCmd::NoteOn { .. }))
+            .count();
+        now = now.saturating_add(tb.hop as Tick);
+        rhythms.advance_in_place(tb.hop as f32 / tb.fs);
+    }
+    assert_eq!(note_on_total, 1, "expected single NoteOn before set");
+
+    agent
+        .apply_control_patch(serde_json::json!({ "pitch": { "freq": 440.0 } }))
+        .expect("pitch patch applies");
+    for _ in 0..8 {
+        agent.tick_phonation_into(&tb, now, &rhythms, None, 0.0, &mut batch);
+        note_on_total += batch
+            .cmds
+            .iter()
+            .filter(|cmd| matches!(cmd, PhonationCmd::NoteOn { .. }))
+            .count();
+        now = now.saturating_add(tb.hop as Tick);
+        rhythms.advance_in_place(tb.hop as f32 / tb.fs);
+    }
+    assert_eq!(note_on_total, 1, "hold should not retrigger on pitch set");
+}
+
+#[test]
+fn hold_emits_note_off_after_pitch_set_and_remove() {
+    let mut control = control_with_pitch(220.0);
+    control.phonation.r#type = PhonationType::Hold;
+    control.pitch.mode = PitchMode::Lock;
+    let cfg = IndividualConfig { control, tag: None };
+    let meta = AgentMetadata {
+        id: 4,
+        tag: None,
+        group_idx: 0,
+        member_idx: 0,
+    };
+    let mut agent = cfg.spawn(meta.id, 0, meta, 48_000.0, 0);
+    let tb = test_timebase();
+    let mut rhythms = NeuralRhythms::default();
+    let mut batch = PhonationBatch::default();
+    let mut now: Tick = 0;
+    agent.tick_phonation_into(&tb, now, &rhythms, None, 0.0, &mut batch);
+    let note_on = batch
+        .cmds
+        .iter()
+        .filter(|cmd| matches!(cmd, PhonationCmd::NoteOn { .. }))
+        .count();
+    assert_eq!(note_on, 1, "expected NoteOn before set/remove");
+
+    agent
+        .apply_control_patch(serde_json::json!({ "pitch": { "freq": 440.0 } }))
+        .expect("pitch patch applies");
+    agent.start_remove_fade(0.01);
+    let mut note_off_total = 0;
+    for _ in 0..10 {
+        now = now.saturating_add(tb.hop as Tick);
+        rhythms.advance_in_place(tb.hop as f32 / tb.fs);
+        agent.tick_phonation_into(&tb, now, &rhythms, None, 0.0, &mut batch);
+        note_off_total += batch
+            .cmds
+            .iter()
+            .filter(|cmd| matches!(cmd, PhonationCmd::NoteOff { .. }))
+            .count();
+    }
+    assert_eq!(note_off_total, 1, "expected single NoteOff after remove");
+}
+
+#[test]
 fn drone_is_rejected() {
     let err = AgentControl::from_json(serde_json::json!({
         "phonation": { "type": "drone" }
@@ -645,6 +734,47 @@ fn lock_mode_sets_target_pitch_log2() {
     let rhythms = NeuralRhythms::default();
     agent.update_pitch_target(&rhythms, 0.01, &Landscape::new(space));
     assert!((agent.target_pitch_log2() - log_target).abs() < 1e-6);
+}
+
+#[test]
+fn lock_mode_applies_to_body_pitch_after_set() {
+    let fs = 48_000.0;
+    let dt = 0.01;
+    let samples_per_hop = (fs * dt) as usize;
+    let landscape_rt = make_test_landscape(fs);
+    let mut pop = Population::new(test_timebase());
+    pop.apply_action(
+        Action::Spawn {
+            tag: "lock_apply".to_string(),
+            count: 1,
+            opts: None,
+            patch: serde_json::json!({
+                "pitch": { "freq": 220.0 }
+            }),
+        },
+        &LandscapeFrame::default(),
+        None,
+    );
+    pop.apply_action(
+        Action::Set {
+            target: "lock_apply".to_string(),
+            patch: serde_json::json!({
+                "pitch": { "mode": "lock", "freq": 440.0 }
+            }),
+        },
+        &LandscapeFrame::default(),
+        None,
+    );
+    pop.advance(samples_per_hop, fs, 0, dt, &landscape_rt);
+    let agent = pop.individuals.first().expect("agent exists");
+    assert!(
+        (agent.target_pitch_log2() - 440.0_f32.log2()).abs() < 1e-4,
+        "lock mode should set target pitch log2"
+    );
+    assert!(
+        (agent.body.base_freq_hz() - 440.0).abs() < 1e-3,
+        "lock mode should apply pitch to body"
+    );
 }
 
 #[test]

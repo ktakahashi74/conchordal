@@ -145,6 +145,7 @@ impl PitchController {
             };
             let lock_log2 = freq.log2();
             self.target_pitch_log2 = lock_log2.clamp(fmin, fmax);
+            self.last_target_salience = 1.0;
             return;
         }
         let center_log2 = if pitch.freq.is_finite() && pitch.freq > 0.0 {

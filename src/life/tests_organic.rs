@@ -28,16 +28,15 @@ fn control_with_pitch(freq: f32) -> AgentControl {
     control
 }
 
-fn spawn_agent(freq: f32, id: u64) -> Individual {
+fn spawn_agent(freq: f32, assigned_id: u64) -> Individual {
     let control = control_with_pitch(freq);
     let cfg = IndividualConfig { control, tag: None };
     let meta = AgentMetadata {
-        id,
         tag: None,
         group_idx: 0,
         member_idx: 0,
     };
-    cfg.spawn(id, 0, meta, 48_000.0, 0)
+    cfg.spawn(assigned_id, 0, meta, 48_000.0, 0)
 }
 
 #[test]

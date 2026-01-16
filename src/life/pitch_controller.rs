@@ -20,6 +20,10 @@ pub struct PitchController {
 }
 
 impl PitchController {
+    pub(crate) fn integration_window_for_freq(freq_hz: f32) -> f32 {
+        2.0 + 10.0 / freq_hz.max(1.0)
+    }
+
     pub fn new(
         core: AnyPitchCore,
         perceptual: PerceptualContext,
@@ -90,7 +94,7 @@ impl PitchController {
         } else {
             self.target_pitch_log2
         };
-        self.integration_window = 2.0 + 10.0 / current_freq.max(1.0);
+        self.integration_window = Self::integration_window_for_freq(current_freq);
         self.accumulated_time += dt_sec;
 
         // Detect theta wrap to avoid missing zero-crossings at control rate.

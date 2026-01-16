@@ -1,6 +1,6 @@
 use super::control::{AgentControl, matches_tag_pattern, merge_json};
 use super::individual::{AgentMetadata, Individual, PhonationBatch, SoundBody};
-use super::scenario::{Action, IndividualConfig, SocialConfig, SpawnMethod};
+use super::scenario::{Action, IndividualConfig, SpawnMethod};
 use crate::core::landscape::{LandscapeFrame, LandscapeUpdate};
 use crate::core::log2space::Log2Space;
 use crate::core::timebase::{Tick, Timebase};
@@ -154,7 +154,7 @@ impl Population {
         let mut used = 0usize;
         let social_trace = self.social_trace.as_ref();
         for agent in &mut self.individuals {
-            let social_coupling = agent.phonation_social.coupling;
+            let social_coupling = agent.phonation_coupling;
             if used == out.len() {
                 out.push(PhonationBatch::default());
             }
@@ -174,10 +174,11 @@ impl Population {
             }
         }
         let active_batches = &out[..used];
-        let social_enabled =
-            social_trace_enabled_from_configs(self.individuals.iter().map(|a| a.phonation_social));
+        let social_enabled = social_trace_enabled_from_couplings(
+            self.individuals.iter().map(|a| a.phonation_coupling),
+        );
         if social_enabled {
-            let (bin_ticks, smooth) = social_trace_params(&self.individuals, hop_tick);
+            let (bin_ticks, smooth) = social_trace_params(hop_tick);
             self.social_trace = Some(build_social_trace_from_batches(
                 active_batches,
                 frame_end,
@@ -198,7 +199,7 @@ impl Population {
             .filter_map(|a| {
                 let meta = a.metadata();
                 match meta.tag.as_deref() {
-                    Some(tag) if matches_tag_pattern(pattern, tag) => Some(meta.id),
+                    Some(tag) if matches_tag_pattern(pattern, tag) => Some(a.id()),
                     _ => None,
                 }
             })
@@ -466,7 +467,6 @@ impl Population {
                     let id = self.next_agent_id;
                     self.next_agent_id = self.next_agent_id.wrapping_add(1);
                     let metadata = AgentMetadata {
-                        id,
                         tag: Some(tag.clone()),
                         group_idx: 0,
                         member_idx: i as usize,
@@ -723,32 +723,17 @@ fn build_social_trace_from_batches(
     )
 }
 
-fn social_trace_params(individuals: &[Individual], hop_tick: Tick) -> (u32, f32) {
-    let base = individuals
-        .iter()
-        .find(|agent| agent.phonation_social.bin_ticks != 0 || agent.phonation_social.smooth != 0.0)
-        .map(|agent| agent.phonation_social)
-        .unwrap_or_default();
-    if individuals.iter().any(|agent| {
-        agent.phonation_social.bin_ticks != base.bin_ticks
-            || agent.phonation_social.smooth != base.smooth
-    }) {
-        warn!("Population social trace params differ across agents; using first match settings");
-    }
+fn social_trace_params(hop_tick: Tick) -> (u32, f32) {
     let auto_bin = (hop_tick / 64).max(1);
-    let bin_ticks = if base.bin_ticks == 0 {
-        auto_bin.min(u32::MAX as Tick) as u32
-    } else {
-        base.bin_ticks
-    };
-    (bin_ticks, base.smooth)
+    let bin_ticks = auto_bin.min(u32::MAX as Tick) as u32;
+    (bin_ticks, 0.0)
 }
 
-fn social_trace_enabled_from_configs<I>(configs: I) -> bool
+fn social_trace_enabled_from_couplings<I>(couplings: I) -> bool
 where
-    I: IntoIterator<Item = SocialConfig>,
+    I: IntoIterator<Item = f32>,
 {
-    configs.into_iter().any(|cfg| cfg.coupling != 0.0)
+    couplings.into_iter().any(|coupling| coupling != 0.0)
 }
 
 fn patch_sets_freq(patch: &serde_json::Value) -> bool {
@@ -781,7 +766,6 @@ mod tests {
     use crate::life::individual::{AnyArticulationCore, ArticulationWrapper, DroneCore};
     use crate::life::intent::BodySnapshot;
     use crate::life::phonation_engine::{OnsetEvent, PhonationCmd, PhonationKick};
-    use crate::life::scenario::SocialConfig;
     use crate::life::world_model::WorldModel;
     use rand::SeedableRng;
     use serde_json::json;
@@ -887,18 +871,8 @@ mod tests {
 
     #[test]
     fn social_trace_enabled_with_nonzero_coupling() {
-        let base = SocialConfig {
-            coupling: 0.0,
-            bin_ticks: 0,
-            smooth: 0.0,
-        };
-        let other = SocialConfig {
-            coupling: 1.0,
-            bin_ticks: 0,
-            smooth: 0.0,
-        };
-        let configs = vec![base, other];
-        assert!(social_trace_enabled_from_configs(configs));
+        let couplings = vec![0.0, 1.0];
+        assert!(social_trace_enabled_from_couplings(couplings));
     }
 
     #[test]

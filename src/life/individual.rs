@@ -3,20 +3,19 @@ use crate::core::log2space::Log2Space;
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
 use crate::life::control::{
-    AgentControl, AgentPatch, BodyControl, BodyMethod, PerceptualControl, PhonationControl,
-    PhonationType, PitchControl, PitchMode, merge_json, remove_json_path,
+    AgentControl, AgentPatch, BodyControl, BodyMethod, PhonationType, PitchMode, merge_json,
+    remove_json_path,
+};
+use crate::life::control_adapters::{
+    perceptual_config_from_control, perceptual_params_from_control, phonation_config_from_control,
+    pitch_core_config_from_control, sound_body_config_from_control, tessitura_gravity_from_control,
 };
 use crate::life::intent::BodySnapshot;
 use crate::life::lifecycle::LifecycleConfig;
-use crate::life::perceptual::PerceptualConfig;
 use crate::life::phonation_engine::{
     CoreState, CoreTickCtx, NoteId, OnsetEvent, PhonationCmd, PhonationEngine, PhonationNoteEvent,
 };
-use crate::life::scenario::{
-    ArticulationCoreConfig, HarmonicMode, PhonationClockConfig, PhonationConfig,
-    PhonationConnectConfig, PhonationIntervalConfig, PhonationMode, PitchCoreConfig, SocialConfig,
-    SoundBodyConfig, SubThetaModConfig, TimbreGenotype,
-};
+use crate::life::scenario::ArticulationCoreConfig;
 use crate::life::social_density::SocialDensityTrace;
 use rand::SeedableRng;
 
@@ -40,7 +39,6 @@ pub use sound_body::{AnySoundBody, HarmonicBody, SineBody, SoundBody};
 
 #[derive(Debug, Clone, Default)]
 pub struct AgentMetadata {
-    pub id: u64,
     pub tag: Option<String>,
     pub group_idx: usize,
     pub member_idx: usize,
@@ -50,13 +48,15 @@ pub struct AgentMetadata {
 pub struct Individual {
     pub id: u64,
     pub metadata: AgentMetadata,
+    fixed_body_method: BodyMethod,
+    fixed_phonation_type: PhonationType,
     pub base_control: AgentControl,
     pub override_json: serde_json::Value,
     pub effective_control: AgentControl,
     pub articulation: ArticulationWrapper,
     pub(crate) pitch_ctl: PitchController,
     pub phonation_engine: PhonationEngine,
-    pub phonation_social: SocialConfig,
+    pub(crate) phonation_coupling: f32,
     pub body: AnySoundBody,
     pub last_signal: ArticulationSignal,
     pub(crate) release_gain: f32,
@@ -140,6 +140,16 @@ impl Dirty {
     }
 
     fn from_unset_path(path: &str) -> Self {
+        let path = path.trim();
+        let path = path.trim_start_matches('.');
+        if path.is_empty() {
+            return Self {
+                body: true,
+                pitch: true,
+                phonation: true,
+                perceptual: true,
+            };
+        }
         let mut dirty = Self::default();
         let prefix = path.split('.').find(|part| !part.is_empty());
         match prefix {
@@ -160,18 +170,17 @@ impl Individual {
         control: AgentControl,
         assigned_id: u64,
         start_frame: u64,
-        mut metadata: AgentMetadata,
+        metadata: AgentMetadata,
         fs: f32,
         seed_offset: u64,
     ) -> Self {
-        metadata.id = assigned_id;
         let seed = seed_offset ^ assigned_id ^ start_frame.wrapping_mul(0x9E37_79B9_7F4A_7C15);
         let mut rng = rand::rngs::SmallRng::seed_from_u64(seed);
 
         let effective_control = control.clone();
         let target_freq = effective_control.pitch.freq.max(1.0);
         let target_pitch_log2 = target_freq.log2();
-        let integration_window = 2.0 + 10.0 / target_freq.max(1.0);
+        let integration_window = PitchController::integration_window_for_freq(target_freq);
 
         let articulation_config = ArticulationCoreConfig::default();
         let core =
@@ -179,7 +188,7 @@ impl Individual {
 
         let phonation_config = phonation_config_from_control(&effective_control.phonation);
         let phonation_engine = PhonationEngine::from_config(&phonation_config, seed);
-        let phonation_social = phonation_config.social;
+        let phonation_coupling = phonation_config.social.coupling;
 
         let pitch_config = pitch_core_config_from_control(&effective_control.pitch);
         let pitch = AnyPitchCore::from_config(&pitch_config, target_pitch_log2, &mut rng);
@@ -195,13 +204,14 @@ impl Individual {
             &mut rng,
         );
 
-        let pitch_ctl = PitchController::new(
+        let mut pitch_ctl = PitchController::new(
             pitch,
             perceptual,
             target_pitch_log2,
             integration_window,
             rng,
         );
+        pitch_ctl.set_perceptual_enabled(effective_control.perceptual.enabled);
 
         let (articulation_core, lifecycle_label, default_by_articulation, breath_gain_init) =
             match &articulation_config {
@@ -236,16 +246,18 @@ impl Individual {
             breath_gain
         );
 
-        let mut agent = Individual {
+        Individual {
             id: assigned_id,
             metadata,
+            fixed_body_method: effective_control.body.method,
+            fixed_phonation_type: effective_control.phonation.r#type,
             base_control: control,
             override_json: serde_json::Value::Object(serde_json::Map::new()),
             effective_control,
             articulation: ArticulationWrapper::new(core, breath_gain),
             pitch_ctl,
             phonation_engine,
-            phonation_social,
+            phonation_coupling,
             body,
             last_signal: Default::default(),
             release_gain: 1.0,
@@ -253,11 +265,7 @@ impl Individual {
             release_pending: false,
             remove_pending: false,
             phonation_scratch: Default::default(),
-        };
-        agent.apply_body_runtime();
-        agent.apply_perceptual_control();
-        agent.apply_pitch_control();
-        agent
+        }
     }
 
     fn apply_body_runtime(&mut self) {
@@ -303,7 +311,7 @@ impl Individual {
     fn apply_phonation_control(&mut self) {
         let config = phonation_config_from_control(&self.effective_control.phonation);
         self.phonation_engine.update_from_config(&config);
-        self.phonation_social = config.social;
+        self.phonation_coupling = config.social.coupling;
     }
 
     fn apply_effective_control(&mut self, control: AgentControl, dirty: Dirty) {
@@ -320,6 +328,15 @@ impl Individual {
         if dirty.phonation {
             self.apply_phonation_control();
         }
+    }
+
+    fn ensure_fixed_kinds(&self, control: &AgentControl) -> Result<(), String> {
+        if control.body.method != self.fixed_body_method
+            || control.phonation.r#type != self.fixed_phonation_type
+        {
+            return Err("set/unset cannot change body.method or phonation.type; use spawn() for type selection".to_string());
+        }
+        Ok(())
     }
 
     pub fn should_retain(&self) -> bool {
@@ -354,23 +371,20 @@ impl Individual {
     pub fn apply_control_patch(&mut self, patch: serde_json::Value) -> Result<(), String> {
         let patch_struct: AgentPatch =
             serde_json::from_value(patch.clone()).map_err(|e| format!("parse AgentPatch: {e}"))?;
-        if patch_struct.contains_type_switch() {
-            return Err(
-                "set() cannot change body.method or phonation.type; use spawn() for type selection"
-                    .to_string(),
-            );
-        }
         let dirty = Dirty::from_patch(&patch_struct);
         let merged_override = merge_json(self.override_json.clone(), patch);
         let base_json = self.base_control.to_json()?;
         let effective_json = merge_json(base_json, merged_override.clone());
         let effective = AgentControl::from_json(effective_json)?;
+        self.ensure_fixed_kinds(&effective)?;
         self.override_json = merged_override;
         self.apply_effective_control(effective, dirty);
         Ok(())
     }
 
     pub fn apply_unset_path(&mut self, path: &str) -> Result<bool, String> {
+        let path = path.trim();
+        let path = path.trim_start_matches('.');
         let mut override_json = self.override_json.clone();
         let removed = remove_json_path(&mut override_json, path);
         if !removed {
@@ -379,8 +393,9 @@ impl Individual {
         let base_json = self.base_control.to_json()?;
         let effective_json = merge_json(base_json, override_json.clone());
         let effective = AgentControl::from_json(effective_json)?;
-        self.override_json = override_json;
         let dirty = Dirty::from_unset_path(path);
+        self.ensure_fixed_kinds(&effective)?;
+        self.override_json = override_json;
         self.apply_effective_control(effective, dirty);
         Ok(true)
     }
@@ -651,158 +666,5 @@ impl Individual {
             return false;
         }
         self.articulation.is_alive() && self.release_gain > 0.0
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-struct PerceptualParams {
-    enabled: bool,
-    tau_fast: f32,
-    tau_slow: f32,
-    w_boredom: f32,
-    w_familiarity: f32,
-    rho_self: f32,
-    boredom_gamma: f32,
-    self_smoothing_radius: usize,
-    silence_mass_epsilon: f32,
-}
-
-fn perceptual_params_from_control(control: &PerceptualControl) -> PerceptualParams {
-    let adaptation = control.adaptation.clamp(0.0, 1.0);
-    let tau_fast = 0.1 + (1.0 - adaptation) * 0.8;
-    let tau_slow = 5.0 + (1.0 - adaptation) * 30.0;
-    let (w_boredom, w_familiarity, rho_self) = if control.enabled {
-        (
-            control.novelty_bias,
-            0.2,
-            control.self_focus.clamp(0.0, 1.0),
-        )
-    } else {
-        (0.0, 0.0, 0.0)
-    };
-    PerceptualParams {
-        enabled: control.enabled,
-        tau_fast,
-        tau_slow,
-        w_boredom,
-        w_familiarity,
-        rho_self,
-        boredom_gamma: 0.5,
-        self_smoothing_radius: 1,
-        silence_mass_epsilon: 1e-6,
-    }
-}
-
-fn tessitura_gravity_from_control(gravity: f32) -> f32 {
-    gravity.clamp(0.0, 1.0) * 0.2
-}
-
-fn pitch_core_config_from_control(pitch: &PitchControl) -> PitchCoreConfig {
-    PitchCoreConfig::PitchHillClimb {
-        neighbor_step_cents: None,
-        tessitura_gravity: Some(tessitura_gravity_from_control(pitch.gravity)),
-        improvement_threshold: None,
-        exploration: Some(pitch.exploration),
-        persistence: Some(pitch.persistence),
-    }
-}
-
-fn perceptual_config_from_control(control: &PerceptualControl) -> PerceptualConfig {
-    let params = perceptual_params_from_control(control);
-    PerceptualConfig {
-        tau_fast: Some(params.tau_fast),
-        tau_slow: Some(params.tau_slow),
-        w_boredom: Some(params.w_boredom),
-        w_familiarity: Some(params.w_familiarity),
-        rho_self: Some(params.rho_self),
-        boredom_gamma: Some(params.boredom_gamma),
-        self_smoothing_radius: Some(params.self_smoothing_radius),
-        silence_mass_epsilon: Some(params.silence_mass_epsilon),
-    }
-}
-
-fn sound_body_config_from_control(body: &BodyControl) -> SoundBodyConfig {
-    match body.method {
-        BodyMethod::Sine => SoundBodyConfig::Sine { phase: None },
-        BodyMethod::Harmonic => {
-            let timbre = &body.timbre;
-            let genotype = TimbreGenotype {
-                mode: HarmonicMode::Harmonic,
-                stiffness: timbre.inharmonic,
-                brightness: timbre.brightness,
-                comb: 0.0,
-                damping: 0.5,
-                vibrato_rate: 5.0,
-                vibrato_depth: timbre.motion * 0.02,
-                jitter: timbre.motion,
-                unison: timbre.width,
-            };
-            SoundBodyConfig::Harmonic {
-                genotype,
-                partials: None,
-            }
-        }
-    }
-}
-
-fn phonation_config_from_control(control: &PhonationControl) -> PhonationConfig {
-    // Hold ignores density/sync/legato; it is purely lifecycle-driven.
-    if matches!(control.r#type, PhonationType::Hold) {
-        let social = SocialConfig {
-            coupling: control.sociality.clamp(0.0, 1.0),
-            bin_ticks: 0,
-            smooth: 0.0,
-        };
-        return PhonationConfig {
-            mode: PhonationMode::Hold,
-            interval: PhonationIntervalConfig::None,
-            connect: PhonationConnectConfig::FixedGate { length_gates: 1 },
-            clock: PhonationClockConfig::ThetaGate,
-            sub_theta_mod: SubThetaModConfig::None,
-            social,
-        };
-    }
-    let density = control.density.clamp(0.0, 1.0);
-    let rate = 0.5 + density * 3.5;
-    let interval = match control.r#type {
-        PhonationType::None => PhonationIntervalConfig::None,
-        _ => PhonationIntervalConfig::Accumulator {
-            rate,
-            refractory: 1,
-        },
-    };
-    let legato = control.legato.clamp(0.0, 1.0);
-    let length_gates = (1.0 + legato * 8.0).round().max(1.0) as u32;
-    let connect = match control.r#type {
-        PhonationType::Field => PhonationConnectConfig::Field {
-            hold_min_theta: 0.1 + legato * 0.2,
-            hold_max_theta: 0.6 + legato * 0.4,
-            curve_k: 2.0,
-            curve_x0: 0.5,
-            drop_gain: (1.0 - legato).clamp(0.0, 1.0),
-        },
-        _ => PhonationConnectConfig::FixedGate { length_gates },
-    };
-    let sub_theta_mod = if control.sync > 0.0 {
-        SubThetaModConfig::Cosine {
-            n: 1,
-            depth: control.sync.clamp(0.0, 1.0),
-            phase0: 0.0,
-        }
-    } else {
-        SubThetaModConfig::None
-    };
-    let social = SocialConfig {
-        coupling: control.sociality.clamp(0.0, 1.0),
-        bin_ticks: 0,
-        smooth: 0.0,
-    };
-    PhonationConfig {
-        mode: PhonationMode::Gated,
-        interval,
-        connect,
-        clock: PhonationClockConfig::ThetaGate,
-        sub_theta_mod,
-        social,
     }
 }

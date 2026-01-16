@@ -338,14 +338,7 @@ impl ScriptContext {
         position: Position,
     ) -> Result<i64, Box<EvalAltResult>> {
         self.ensure_not_ended(position)?;
-        let (patch_struct, patch_json) = Self::parse_agent_patch(patch, position)?;
-        if patch_struct.contains_type_switch() {
-            return Err(Box::new(EvalAltResult::ErrorRuntime(
-                "set() cannot change body.method or phonation.type; use spawn() for type selection"
-                    .into(),
-                position,
-            )));
-        }
+        let (_patch_struct, patch_json) = Self::parse_agent_patch(patch, position)?;
         let action = Action::Set {
             target: target.to_string(),
             patch: patch_json,

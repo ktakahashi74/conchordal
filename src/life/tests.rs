@@ -13,7 +13,7 @@ use crate::core::landscape::LandscapeFrame;
 use crate::core::log2space::Log2Space;
 use crate::core::modulation::{NeuralRhythms, RhythmBand};
 use crate::core::timebase::{Tick, Timebase};
-use crate::life::control::{AgentControl, BodyMethod, PhonationType, PitchMode};
+use crate::life::control::{AgentControl, BodyMethod, PhonationType, PitchMode, merge_json};
 use crate::life::lifecycle::LifecycleConfig;
 use crate::life::perceptual::{FeaturesNow, PerceptualConfig, PerceptualContext};
 use crate::life::phonation_engine::PhonationCmd;
@@ -41,13 +41,13 @@ fn test_timebase() -> Timebase {
 
 fn collect_hold_events(control: AgentControl, steps: usize) -> Vec<(usize, usize)> {
     let cfg = IndividualConfig { control, tag: None };
+    let assigned_id = 1;
     let meta = AgentMetadata {
-        id: 1,
         tag: None,
         group_idx: 0,
         member_idx: 0,
     };
-    let mut agent = cfg.spawn(meta.id, 0, meta, 48_000.0, 0);
+    let mut agent = cfg.spawn(assigned_id, 0, meta, 48_000.0, 0);
     let tb = test_timebase();
     let mut rhythms = NeuralRhythms::default();
     let mut batch = PhonationBatch::default();
@@ -398,19 +398,54 @@ fn perceptual_disabled_still_applies_lock_mode() {
 }
 
 #[test]
+fn perceptual_disabled_does_not_propose_pitch() {
+    let mut control = control_with_pitch(220.0);
+    control.perceptual.enabled = false;
+    let cfg = IndividualConfig { control, tag: None };
+    let assigned_id = 6;
+    let meta = AgentMetadata {
+        tag: None,
+        group_idx: 0,
+        member_idx: 0,
+    };
+    let mut agent = cfg.spawn(assigned_id, 0, meta, 48_000.0, 0);
+
+    let integration_window = agent.integration_window();
+    agent.set_accumulated_time_for_test(integration_window);
+    agent.set_theta_phase_state_for_test(0.9, true);
+    let mut rhythms = NeuralRhythms::default();
+    rhythms.theta.phase = 0.1;
+    rhythms.theta.mag = 1.0;
+
+    let landscape = make_test_landscape(48_000.0);
+    let before_target = agent.target_pitch_log2();
+    let before_accum = agent.accumulated_time_for_test();
+    agent.update_pitch_target(&rhythms, 0.01, &landscape);
+
+    assert!(
+        (agent.target_pitch_log2() - before_target).abs() <= 1e-6,
+        "perceptual disabled should keep target pitch"
+    );
+    assert!(
+        agent.accumulated_time_for_test() > before_accum,
+        "perceptual disabled should not reset accumulated time"
+    );
+}
+
+#[test]
 fn free_mode_uses_freq_center_when_range_zero() {
     let mut control = AgentControl::default();
     control.pitch.mode = PitchMode::Free;
     control.pitch.freq = 220.0;
     control.pitch.range_oct = 0.0;
     let cfg = IndividualConfig { control, tag: None };
+    let assigned_id = 4;
     let meta = AgentMetadata {
-        id: 4,
         tag: None,
         group_idx: 0,
         member_idx: 0,
     };
-    let mut agent = cfg.spawn(meta.id, 0, meta, 48_000.0, 0);
+    let mut agent = cfg.spawn(assigned_id, 0, meta, 48_000.0, 0);
     let mut rhythms = NeuralRhythms::default();
     rhythms.theta.phase = 0.1;
     rhythms.theta.mag = 1.0;
@@ -431,13 +466,13 @@ fn remove_pending_still_emits_note_offs() {
     control.phonation.density = 1.0;
     control.phonation.legato = 0.0;
     let cfg = IndividualConfig { control, tag: None };
+    let assigned_id = 1;
     let meta = AgentMetadata {
-        id: 1,
         tag: None,
         group_idx: 0,
         member_idx: 0,
     };
-    let mut agent = cfg.spawn(meta.id, 0, meta, 48_000.0, 0);
+    let mut agent = cfg.spawn(assigned_id, 0, meta, 48_000.0, 0);
     let tb = Timebase {
         fs: 48_000.0,
         hop: 12_001,
@@ -507,13 +542,13 @@ fn hold_emits_note_off_on_remove() {
     let mut control = control_with_pitch(220.0);
     control.phonation.r#type = PhonationType::Hold;
     let cfg = IndividualConfig { control, tag: None };
+    let assigned_id = 2;
     let meta = AgentMetadata {
-        id: 2,
         tag: None,
         group_idx: 0,
         member_idx: 0,
     };
-    let mut agent = cfg.spawn(meta.id, 0, meta, 48_000.0, 0);
+    let mut agent = cfg.spawn(assigned_id, 0, meta, 48_000.0, 0);
     let tb = test_timebase();
     let mut rhythms = NeuralRhythms::default();
     let mut batch = PhonationBatch::default();
@@ -562,13 +597,13 @@ fn hold_does_not_retrigger_on_pitch_set() {
     control.phonation.r#type = PhonationType::Hold;
     control.pitch.mode = PitchMode::Lock;
     let cfg = IndividualConfig { control, tag: None };
+    let assigned_id = 3;
     let meta = AgentMetadata {
-        id: 3,
         tag: None,
         group_idx: 0,
         member_idx: 0,
     };
-    let mut agent = cfg.spawn(meta.id, 0, meta, 48_000.0, 0);
+    let mut agent = cfg.spawn(assigned_id, 0, meta, 48_000.0, 0);
     let tb = test_timebase();
     let mut rhythms = NeuralRhythms::default();
     let mut batch = PhonationBatch::default();
@@ -608,13 +643,13 @@ fn hold_emits_note_off_after_pitch_set_and_remove() {
     control.phonation.r#type = PhonationType::Hold;
     control.pitch.mode = PitchMode::Lock;
     let cfg = IndividualConfig { control, tag: None };
+    let assigned_id = 4;
     let meta = AgentMetadata {
-        id: 4,
         tag: None,
         group_idx: 0,
         member_idx: 0,
     };
-    let mut agent = cfg.spawn(meta.id, 0, meta, 48_000.0, 0);
+    let mut agent = cfg.spawn(assigned_id, 0, meta, 48_000.0, 0);
     let tb = test_timebase();
     let mut rhythms = NeuralRhythms::default();
     let mut batch = PhonationBatch::default();
@@ -663,13 +698,13 @@ fn harmonic_render_spectrum_hits_expected_bins() {
     control.body.timbre.width = 0.1;
     control.body.timbre.motion = 0.5;
     let cfg = IndividualConfig { control, tag: None };
+    let assigned_id = 99;
     let metadata = AgentMetadata {
-        id: 99,
         tag: None,
         group_idx: 0,
         member_idx: 0,
     };
-    let mut agent = cfg.spawn(metadata.id, 0, metadata, 48_000.0, 0);
+    let mut agent = cfg.spawn(assigned_id, 0, metadata, 48_000.0, 0);
     let space = Log2Space::new(55.0, 1760.0, 12);
     let mut amps = vec![0.0f32; space.n_bins()];
 
@@ -857,13 +892,13 @@ fn unset_restores_base_control() {
     let mut control = AgentControl::default();
     control.body.amp = 0.3;
     let cfg = IndividualConfig { control, tag: None };
+    let assigned_id = 1;
     let meta = AgentMetadata {
-        id: 1,
         tag: None,
         group_idx: 0,
         member_idx: 0,
     };
-    let mut agent = cfg.spawn(meta.id, 0, meta, 48_000.0, 0);
+    let mut agent = cfg.spawn(assigned_id, 0, meta, 48_000.0, 0);
     agent
         .apply_control_patch(serde_json::json!({ "body": { "amp": 0.8 } }))
         .expect("patch applies");
@@ -873,17 +908,48 @@ fn unset_restores_base_control() {
 }
 
 #[test]
-fn unset_restores_base_pitch_freq() {
+fn unset_path_accepts_leading_dot() {
     let mut control = AgentControl::default();
-    control.pitch.freq = 220.0;
+    control.body.amp = 0.3;
     let cfg = IndividualConfig { control, tag: None };
+    let assigned_id = 11;
     let meta = AgentMetadata {
-        id: 5,
         tag: None,
         group_idx: 0,
         member_idx: 0,
     };
-    let mut agent = cfg.spawn(meta.id, 0, meta, 48_000.0, 0);
+    let mut agent = cfg.spawn(assigned_id, 0, meta.clone(), 48_000.0, 0);
+    let mut agent_plain = cfg.spawn(assigned_id + 1, 0, meta, 48_000.0, 0);
+    agent
+        .apply_control_patch(serde_json::json!({ "body": { "amp": 0.8 } }))
+        .expect("patch applies");
+    agent_plain
+        .apply_control_patch(serde_json::json!({ "body": { "amp": 0.8 } }))
+        .expect("patch applies");
+    assert!((agent.effective_control.body.amp - 0.8).abs() < 1e-6);
+    let removed = agent.apply_unset_path(".body.amp").expect("unset applies");
+    let removed_plain = agent_plain
+        .apply_unset_path("body.amp")
+        .expect("unset applies");
+    assert!(removed);
+    assert!(removed_plain);
+    assert!((agent.effective_control.body.amp - 0.3).abs() < 1e-6);
+    assert!((agent_plain.effective_control.body.amp - 0.3).abs() < 1e-6);
+    assert_eq!(agent.override_json, agent_plain.override_json);
+}
+
+#[test]
+fn unset_restores_base_pitch_freq() {
+    let mut control = AgentControl::default();
+    control.pitch.freq = 220.0;
+    let cfg = IndividualConfig { control, tag: None };
+    let assigned_id = 5;
+    let meta = AgentMetadata {
+        tag: None,
+        group_idx: 0,
+        member_idx: 0,
+    };
+    let mut agent = cfg.spawn(assigned_id, 0, meta, 48_000.0, 0);
     agent
         .apply_control_patch(serde_json::json!({ "pitch": { "freq": 440.0 } }))
         .expect("patch applies");
@@ -898,13 +964,13 @@ fn reject_legacy_pitch_keys() {
         control: control_with_pitch(220.0),
         tag: None,
     };
+    let assigned_id = 2;
     let meta = AgentMetadata {
-        id: 2,
         tag: None,
         group_idx: 0,
         member_idx: 0,
     };
-    let mut agent = cfg.spawn(meta.id, 0, meta, 48_000.0, 0);
+    let mut agent = cfg.spawn(assigned_id, 0, meta, 48_000.0, 0);
     let center_key = ["center", "_hz"].concat();
     let mut pitch_map = serde_json::Map::new();
     pitch_map.insert(center_key, serde_json::Value::from(123.0));
@@ -954,13 +1020,13 @@ fn patch_rejects_type_switches() {
         control: control_with_pitch(220.0),
         tag: None,
     };
+    let assigned_id = 3;
     let meta = AgentMetadata {
-        id: 3,
         tag: None,
         group_idx: 0,
         member_idx: 0,
     };
-    let mut agent = cfg.spawn(meta.id, 0, meta, 48_000.0, 0);
+    let mut agent = cfg.spawn(assigned_id, 0, meta, 48_000.0, 0);
     let err_body = agent.apply_control_patch(serde_json::json!({
         "body": { "method": "harmonic" }
     }));
@@ -969,6 +1035,113 @@ fn patch_rejects_type_switches() {
         "phonation": { "type": "hold" }
     }));
     assert!(err_phonation.is_err());
+}
+
+#[test]
+fn patch_rejects_type_switches_without_mutation() {
+    let mut control = control_with_pitch(220.0);
+    control.body.method = BodyMethod::Sine;
+    control.phonation.r#type = PhonationType::Hold;
+    let cfg = IndividualConfig { control, tag: None };
+    let assigned_id = 7;
+    let meta = AgentMetadata {
+        tag: None,
+        group_idx: 0,
+        member_idx: 0,
+    };
+    let mut agent = cfg.spawn(assigned_id, 0, meta, 48_000.0, 0);
+    let before_override = agent.override_json.clone();
+    let before_effective = agent.effective_control.to_json().expect("effective json");
+
+    let err_body = agent.apply_control_patch(serde_json::json!({
+        "body": { "method": "harmonic" }
+    }));
+    assert!(err_body.is_err());
+    assert_eq!(agent.override_json, before_override);
+    assert_eq!(
+        agent.effective_control.to_json().expect("effective json"),
+        before_effective
+    );
+
+    let err_phonation = agent.apply_control_patch(serde_json::json!({
+        "phonation": { "type": "clock" }
+    }));
+    assert!(err_phonation.is_err());
+    assert_eq!(agent.override_json, before_override);
+    assert_eq!(
+        agent.effective_control.to_json().expect("effective json"),
+        before_effective
+    );
+}
+
+#[test]
+fn unset_rejects_type_switches_without_mutation() {
+    let mut control = control_with_pitch(220.0);
+    control.phonation.r#type = PhonationType::Hold;
+    let cfg = IndividualConfig { control, tag: None };
+    let assigned_id = 8;
+    let meta = AgentMetadata {
+        tag: None,
+        group_idx: 0,
+        member_idx: 0,
+    };
+    let mut agent = cfg.spawn(assigned_id, 0, meta, 48_000.0, 0);
+
+    let override_json = serde_json::json!({
+        "phonation": { "type": "clock", "density": 0.25 }
+    });
+    let base_json = agent.base_control.to_json().expect("base json");
+    let effective_json = merge_json(base_json, override_json.clone());
+    let effective = AgentControl::from_json(effective_json).expect("effective control");
+    agent.override_json = override_json.clone();
+    agent.effective_control = effective;
+
+    let before_override = agent.override_json.clone();
+    let before_effective = agent.effective_control.to_json().expect("effective json");
+    let err = agent
+        .apply_unset_path("phonation.density")
+        .expect_err("unset should reject type mismatch");
+    assert!(!err.is_empty());
+    assert_eq!(agent.override_json, before_override);
+    assert_eq!(
+        agent.effective_control.to_json().expect("effective json"),
+        before_effective
+    );
+}
+
+#[test]
+fn unset_rejects_body_type_switch_without_mutation() {
+    let mut control = control_with_pitch(220.0);
+    control.body.method = BodyMethod::Sine;
+    let cfg = IndividualConfig { control, tag: None };
+    let assigned_id = 9;
+    let meta = AgentMetadata {
+        tag: None,
+        group_idx: 0,
+        member_idx: 0,
+    };
+    let mut agent = cfg.spawn(assigned_id, 0, meta, 48_000.0, 0);
+
+    let override_json = serde_json::json!({
+        "body": { "method": "harmonic", "amp": 0.25 }
+    });
+    let base_json = agent.base_control.to_json().expect("base json");
+    let effective_json = merge_json(base_json, override_json.clone());
+    let effective = AgentControl::from_json(effective_json).expect("effective control");
+    agent.override_json = override_json.clone();
+    agent.effective_control = effective;
+
+    let before_override = agent.override_json.clone();
+    let before_effective = agent.effective_control.to_json().expect("effective json");
+    let err = agent
+        .apply_unset_path("body.amp")
+        .expect_err("unset should reject type mismatch");
+    assert!(!err.is_empty());
+    assert_eq!(agent.override_json, before_override);
+    assert_eq!(
+        agent.effective_control.to_json().expect("effective json"),
+        before_effective
+    );
 }
 
 #[test]
@@ -1269,14 +1442,14 @@ fn deterministic_rng_produces_same_targets() {
     control.perceptual.novelty_bias = 0.8;
     control.perceptual.self_focus = 0.15;
     let cfg = IndividualConfig { control, tag: None };
+    let assigned_id = 10;
     let meta = AgentMetadata {
-        id: 10,
         tag: None,
         group_idx: 0,
         member_idx: 0,
     };
-    let mut a = cfg.spawn(10, 4, meta.clone(), 48_000.0, 0);
-    let mut b = cfg.spawn(10, 4, meta, 48_000.0, 0);
+    let mut a = cfg.spawn(assigned_id, 4, meta.clone(), 48_000.0, 0);
+    let mut b = cfg.spawn(assigned_id, 4, meta, 48_000.0, 0);
     let landscape = make_test_landscape(48_000.0);
     let mut rhythms = crate::core::modulation::NeuralRhythms::default();
     let dt = 0.5;

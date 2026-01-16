@@ -22,13 +22,13 @@ fn agents_publish_intents_and_render_audio() {
     control.body.amp = 0.4;
     control.phonation.density = 0.8;
     let agent_cfg = IndividualConfig { control, tag: None };
+    let assigned_id = 1;
     let metadata = AgentMetadata {
-        id: 1,
         tag: None,
         group_idx: 0,
         member_idx: 0,
     };
-    let agent = agent_cfg.spawn(1, 0, metadata.clone(), tb.fs, 0);
+    let agent = agent_cfg.spawn(assigned_id, 0, metadata.clone(), tb.fs, 0);
     pop.add_individual(agent);
 
     let mut landscape = Landscape::new(space.clone());
@@ -78,13 +78,13 @@ fn publish_intents_runs_when_gate_in_hop_window() {
     control.body.amp = 0.4;
     control.phonation.density = 0.8;
     let agent_cfg = IndividualConfig { control, tag: None };
+    let assigned_id = 1;
     let metadata = AgentMetadata {
-        id: 1,
         tag: None,
         group_idx: 0,
         member_idx: 0,
     };
-    let agent = agent_cfg.spawn(1, 0, metadata.clone(), tb.fs, 0);
+    let agent = agent_cfg.spawn(assigned_id, 0, metadata.clone(), tb.fs, 0);
     pop.add_individual(agent);
 
     let space = Log2Space::new(20.0, 20_000.0, 24);
@@ -114,7 +114,7 @@ fn publish_intents_runs_when_gate_in_hop_window() {
     landscape_off.rhythm.env_level = 1.0;
     let mut world_off = WorldModel::new(tb, Log2Space::new(20.0, 20_000.0, 24));
     let mut pop_off = Population::new(tb);
-    let agent = agent_cfg.spawn(1, 0, metadata, tb.fs, 0);
+    let agent = agent_cfg.spawn(assigned_id, 0, metadata, tb.fs, 0);
     pop_off.add_individual(agent);
     let batches_off = pop_off.publish_intents(&mut world_off, &landscape_off, now);
     assert!(batches_off.is_empty());

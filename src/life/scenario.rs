@@ -694,7 +694,6 @@ impl IndividualConfig {
         fs: f32,
         seed_offset: u64,
     ) -> Individual {
-        metadata.id = assigned_id;
         if metadata.tag.is_none() {
             metadata.tag = self.tag().cloned();
         }

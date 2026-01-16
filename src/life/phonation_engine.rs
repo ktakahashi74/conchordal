@@ -12,6 +12,7 @@ use crate::life::scenario::{
     PhonationMode, SubThetaModConfig,
 };
 use crate::life::social_density::SocialDensityTrace;
+use tracing::{debug, warn};
 
 pub type NoteId = u64;
 
@@ -880,6 +881,7 @@ pub struct PhonationEngine {
     pub sub_theta_mod: Box<dyn SubThetaMod + Send + Sync>,
     pub mode: PhonationMode,
     hold: HoldCore,
+    initial_seed: u64,
     pub next_note_id: NoteId,
     last_gate_index: Option<u64>,
     last_theta_pos: Option<f64>,
@@ -902,25 +904,24 @@ impl fmt::Debug for PhonationEngine {
 }
 
 impl PhonationEngine {
-    pub fn from_config(config: &PhonationConfig, seed: u64) -> Self {
-        let interval: Box<dyn PhonationInterval + Send> = match config.interval {
+    fn make_interval_from_config(
+        config: &PhonationIntervalConfig,
+        seed: u64,
+    ) -> Box<dyn PhonationInterval + Send> {
+        match config {
             PhonationIntervalConfig::None => Box::<NoneInterval>::default(),
-            PhonationIntervalConfig::Accumulator {
-                rate: rate_hz,
-                refractory,
-            } => Box::new(AccumulatorInterval::new(rate_hz, refractory, seed)),
-        };
-        let sub_theta_mod: Box<dyn SubThetaMod + Send + Sync> = match &config.sub_theta_mod {
-            SubThetaModConfig::None => Box::<NoneMod>::default(),
-            SubThetaModConfig::Cosine { n, depth, phase0 } => Box::new(CosineHarmonicMod {
-                n: *n,
-                depth: *depth,
-                phase0: *phase0,
-            }),
-        };
-        let connect: Box<dyn PhonationConnect + Send> = match config.connect {
+            PhonationIntervalConfig::Accumulator { rate, refractory } => {
+                Box::new(AccumulatorInterval::new(*rate, *refractory, seed))
+            }
+        }
+    }
+
+    fn make_connect_from_config(
+        config: &PhonationConnectConfig,
+    ) -> Box<dyn PhonationConnect + Send> {
+        match config {
             PhonationConnectConfig::FixedGate { length_gates } => {
-                Box::new(FixedGateConnect::new(length_gates))
+                Box::new(FixedGateConnect::new(*length_gates))
             }
             PhonationConnectConfig::Field {
                 hold_min_theta,
@@ -929,13 +930,26 @@ impl PhonationEngine {
                 curve_x0,
                 drop_gain,
             } => Box::new(FieldConnect::new(
-                hold_min_theta,
-                hold_max_theta,
-                curve_k,
-                curve_x0,
-                drop_gain,
+                *hold_min_theta,
+                *hold_max_theta,
+                *curve_k,
+                *curve_x0,
+                *drop_gain,
             )),
+        }
+    }
+
+    pub fn from_config(config: &PhonationConfig, seed: u64) -> Self {
+        let interval = Self::make_interval_from_config(&config.interval, seed);
+        let sub_theta_mod: Box<dyn SubThetaMod + Send + Sync> = match &config.sub_theta_mod {
+            SubThetaModConfig::None => Box::<NoneMod>::default(),
+            SubThetaModConfig::Cosine { n, depth, phase0 } => Box::new(CosineHarmonicMod {
+                n: *n,
+                depth: *depth,
+                phase0: *phase0,
+            }),
         };
+        let connect = Self::make_connect_from_config(&config.connect);
         let (subdivision, internal_phase) = match &config.clock {
             PhonationClockConfig::ThetaGate => (None, None),
             PhonationClockConfig::Composite {
@@ -965,6 +979,7 @@ impl PhonationEngine {
             sub_theta_mod,
             mode: config.mode,
             hold: HoldCore::default(),
+            initial_seed: seed,
             next_note_id: 0,
             last_gate_index: None,
             last_theta_pos: None,
@@ -978,11 +993,17 @@ impl PhonationEngine {
 
     pub fn update_from_config(&mut self, config: &PhonationConfig) {
         self.mode = config.mode;
-        let interval_ok = self.interval.update_config(&config.interval);
-        debug_assert!(interval_ok, "phonation interval config mismatch");
-        let connect_ok = self.connect.update_config(&config.connect);
-        debug_assert!(connect_ok, "phonation connect config mismatch");
+        if !self.interval.update_config(&config.interval) {
+            warn!("phonation interval config mismatch; rebuilding interval to match config");
+            let seed = self.initial_seed ^ 0xA5A5_5A5A_5A5A_A5A5;
+            self.interval = Self::make_interval_from_config(&config.interval, seed);
+        }
+        if !self.connect.update_config(&config.connect) {
+            warn!("phonation connect config mismatch; rebuilding connect to match config");
+            self.connect = Self::make_connect_from_config(&config.connect);
+        }
         if !self.sub_theta_mod.update_config(&config.sub_theta_mod) {
+            debug!("phonation sub-theta config mismatch; rebuilding modulation to match config");
             self.sub_theta_mod = match &config.sub_theta_mod {
                 SubThetaModConfig::None => Box::<NoneMod>::default(),
                 SubThetaModConfig::Cosine { n, depth, phase0 } => Box::new(CosineHarmonicMod {
@@ -1329,6 +1350,7 @@ impl PhonationEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::life::scenario::SocialConfig;
     use std::collections::BinaryHeap;
     use std::sync::{Arc, Mutex};
 
@@ -1596,6 +1618,7 @@ mod tests {
             sub_theta_mod: Box::<NoneMod>::default(),
             mode: PhonationMode::Gated,
             hold: HoldCore::default(),
+            initial_seed: 0,
             next_note_id: 0,
             last_gate_index: None,
             last_theta_pos: None,
@@ -1964,6 +1987,7 @@ mod tests {
             sub_theta_mod: Box::<NoneMod>::default(),
             mode: PhonationMode::Gated,
             hold: HoldCore::default(),
+            initial_seed: 0,
             next_note_id: 0,
             last_gate_index: None,
             last_theta_pos: None,
@@ -2040,6 +2064,7 @@ mod tests {
             sub_theta_mod: Box::<NoneMod>::default(),
             mode: PhonationMode::Gated,
             hold: HoldCore::default(),
+            initial_seed: 0,
             next_note_id: 0,
             last_gate_index: None,
             last_theta_pos: None,
@@ -2093,6 +2118,7 @@ mod tests {
             sub_theta_mod: Box::<NoneMod>::default(),
             mode: PhonationMode::Gated,
             hold: HoldCore::default(),
+            initial_seed: 0,
             next_note_id: 0,
             last_gate_index: None,
             last_theta_pos: Some(1.0),
@@ -2168,6 +2194,7 @@ mod tests {
             sub_theta_mod: Box::<NoneMod>::default(),
             mode: PhonationMode::Gated,
             hold: HoldCore::default(),
+            initial_seed: 0,
             next_note_id: 0,
             last_gate_index: None,
             last_theta_pos: None,
@@ -2258,6 +2285,7 @@ mod tests {
             }),
             mode: PhonationMode::Gated,
             hold: HoldCore::default(),
+            initial_seed: 0,
             next_note_id: 0,
             last_gate_index: None,
             last_theta_pos: Some(0.0),
@@ -2304,6 +2332,7 @@ mod tests {
             sub_theta_mod: Box::<NoneMod>::default(),
             mode: PhonationMode::Gated,
             hold: HoldCore::default(),
+            initial_seed: 0,
             next_note_id: 0,
             last_gate_index: None,
             last_theta_pos: None,
@@ -2365,6 +2394,7 @@ mod tests {
             sub_theta_mod: Box::<NoneMod>::default(),
             mode: PhonationMode::Gated,
             hold: HoldCore::default(),
+            initial_seed: 0,
             next_note_id: 0,
             last_gate_index: None,
             last_theta_pos: None,
@@ -2425,6 +2455,7 @@ mod tests {
             sub_theta_mod: Box::<NoneMod>::default(),
             mode: PhonationMode::Gated,
             hold: HoldCore::default(),
+            initial_seed: 0,
             next_note_id: 0,
             last_gate_index: None,
             last_theta_pos: None,
@@ -2507,6 +2538,7 @@ mod tests {
             sub_theta_mod: Box::<NoneMod>::default(),
             mode: PhonationMode::Gated,
             hold: HoldCore::default(),
+            initial_seed: 0,
             next_note_id: 0,
             last_gate_index: None,
             last_theta_pos: None,
@@ -2559,6 +2591,7 @@ mod tests {
             sub_theta_mod: Box::<NoneMod>::default(),
             mode: PhonationMode::Gated,
             hold: HoldCore::default(),
+            initial_seed: 0,
             next_note_id: 0,
             last_gate_index: None,
             last_theta_pos: None,
@@ -2603,6 +2636,7 @@ mod tests {
             sub_theta_mod: Box::<NoneMod>::default(),
             mode: PhonationMode::Gated,
             hold: HoldCore::default(),
+            initial_seed: 0,
             next_note_id: 0,
             last_gate_index: None,
             last_theta_pos: None,
@@ -2673,6 +2707,58 @@ mod tests {
         let merged = PhonationEngine::merge_candidates(candidates);
         assert_eq!(merged.len(), 2);
         assert_ne!(merged[0].gate, merged[1].gate);
+    }
+
+    #[test]
+    fn update_from_config_falls_back_on_mismatch() {
+        let base = PhonationConfig {
+            mode: PhonationMode::Gated,
+            interval: PhonationIntervalConfig::None,
+            connect: PhonationConnectConfig::FixedGate { length_gates: 1 },
+            clock: PhonationClockConfig::ThetaGate,
+            sub_theta_mod: SubThetaModConfig::None,
+            social: SocialConfig::default(),
+        };
+        let mut engine = PhonationEngine::from_config(&base, 7);
+        let changed = PhonationConfig {
+            interval: PhonationIntervalConfig::Accumulator {
+                rate: 2.0,
+                refractory: 2,
+            },
+            connect: PhonationConnectConfig::Field {
+                hold_min_theta: 0.2,
+                hold_max_theta: 0.5,
+                curve_k: 2.0,
+                curve_x0: 0.4,
+                drop_gain: 0.1,
+            },
+            ..base
+        };
+        engine.update_from_config(&changed);
+        let state = CoreState { is_alive: true };
+        let kick = engine.interval.on_candidate(
+            &IntervalInput {
+                gate: 0,
+                tick: 0,
+                dt_theta: 1.0,
+                dt_sec: 1.0,
+                weight: 1.0,
+            },
+            &state,
+        );
+        assert!(kick.is_some(), "expected accumulator interval to be active");
+        let plan = engine.connect.on_note_on(ConnectOnset {
+            note_id: 1,
+            tick: 0,
+            gate: 0,
+            theta_pos: 0.0,
+            exc_gate: 0.2,
+            exc_slope: 0.1,
+        });
+        assert!(
+            matches!(plan, ConnectPlan::HoldTheta(_)),
+            "expected field connect plan"
+        );
     }
 
     #[test]
@@ -2752,6 +2838,7 @@ mod tests {
             sub_theta_mod: Box::<NoneMod>::default(),
             mode: PhonationMode::Gated,
             hold: HoldCore::default(),
+            initial_seed: 0,
             next_note_id: 0,
             last_gate_index: None,
             last_theta_pos: None,
@@ -2897,6 +2984,7 @@ mod tests {
             sub_theta_mod: Box::<NoneMod>::default(),
             mode: PhonationMode::Gated,
             hold: HoldCore::default(),
+            initial_seed: 0,
             next_note_id: 0,
             last_gate_index: None,
             last_theta_pos: None,
@@ -2983,6 +3071,7 @@ mod tests {
             sub_theta_mod: Box::<NoneMod>::default(),
             mode: PhonationMode::Gated,
             hold: HoldCore::default(),
+            initial_seed: 0,
             next_note_id: 0,
             last_gate_index: None,
             last_theta_pos: None,
@@ -3049,6 +3138,7 @@ mod tests {
             sub_theta_mod: Box::<NoneMod>::default(),
             mode: PhonationMode::Gated,
             hold: HoldCore::default(),
+            initial_seed: 0,
             next_note_id: 0,
             last_gate_index: None,
             last_theta_pos: None,
@@ -3117,6 +3207,7 @@ mod tests {
             sub_theta_mod: Box::<NoneMod>::default(),
             mode: PhonationMode::Gated,
             hold: HoldCore::default(),
+            initial_seed: 0,
             next_note_id: 0,
             last_gate_index: None,
             last_theta_pos: None,
@@ -3260,6 +3351,7 @@ mod tests {
             sub_theta_mod: Box::<NoneMod>::default(),
             mode: PhonationMode::Gated,
             hold: HoldCore::default(),
+            initial_seed: 0,
             next_note_id: 0,
             last_gate_index: None,
             last_theta_pos: None,
@@ -3321,6 +3413,7 @@ mod tests {
             sub_theta_mod: Box::<NoneMod>::default(),
             mode: PhonationMode::Gated,
             hold: HoldCore::default(),
+            initial_seed: 0,
             next_note_id: 0,
             last_gate_index: None,
             last_theta_pos: None,

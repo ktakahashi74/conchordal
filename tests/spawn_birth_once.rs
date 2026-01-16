@@ -31,13 +31,13 @@ fn spawn_does_not_publish_birth_intent() {
     let mut pop = Population::new(tb);
 
     let cfg = spawn_agent(440.0, 0.4);
+    let assigned_id = 1;
     let meta = AgentMetadata {
-        id: 1,
         tag: None,
         group_idx: 0,
         member_idx: 0,
     };
-    pop.add_individual(cfg.spawn(1, 0, meta, tb.fs, 0));
+    pop.add_individual(cfg.spawn(assigned_id, 0, meta, tb.fs, 0));
 
     let landscape = Landscape::new(space);
     let now: Tick = 0;
@@ -54,13 +54,13 @@ fn spawn_sounds_only_with_audio_trigger() {
     let mut pop = Population::new(tb);
 
     let cfg = spawn_agent(440.0, 0.4);
+    let assigned_id = 1;
     let meta = AgentMetadata {
-        id: 1,
         tag: None,
         group_idx: 0,
         member_idx: 0,
     };
-    pop.add_individual(cfg.spawn(1, 0, meta, tb.fs, 0));
+    pop.add_individual(cfg.spawn(assigned_id, 0, meta, tb.fs, 0));
 
     let landscape = Landscape::new(space);
     let now: Tick = 0;
@@ -86,7 +86,7 @@ fn spawn_sounds_only_with_audio_trigger() {
         noise_mix: 0.0,
     };
     let ensure = AudioCommand::EnsureVoice {
-        id: 1,
+        id: assigned_id,
         body,
         pitch_hz: 440.0,
         amp: 0.4,
@@ -101,7 +101,10 @@ fn spawn_sounds_only_with_audio_trigger() {
     );
     assert!(ensured.iter().all(|s| s.abs() <= 1e-6));
 
-    let impulse = AudioCommand::Impulse { id: 1, energy: 1.0 };
+    let impulse = AudioCommand::Impulse {
+        id: assigned_id,
+        energy: 1.0,
+    };
     let voiced = renderer.render(
         &world.board,
         &[],

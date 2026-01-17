@@ -632,27 +632,25 @@ impl ScriptHost {
             "create",
             move |call_ctx: NativeCallContext, species: SpeciesHandle, count: INT| {
                 let mut ctx = ctx_for_create.lock().expect("lock script context");
-                ctx.create_group(species, count as i64, call_ctx.call_position())
+                ctx.create_group(species, count, call_ctx.call_position())
             },
         );
 
         let ctx_for_wait = ctx.clone();
         engine.register_fn(
             "wait",
-            move |call_ctx: NativeCallContext, sec: FLOAT| -> Result<(), Box<EvalAltResult>> {
+            move |_call_ctx: NativeCallContext, sec: FLOAT| -> Result<(), Box<EvalAltResult>> {
                 let mut ctx = ctx_for_wait.lock().expect("lock script context");
                 ctx.wait(sec as f32);
-                drop(call_ctx);
                 Ok(())
             },
         );
         let ctx_for_wait_int = ctx.clone();
         engine.register_fn(
             "wait",
-            move |call_ctx: NativeCallContext, sec: INT| -> Result<(), Box<EvalAltResult>> {
+            move |_call_ctx: NativeCallContext, sec: INT| -> Result<(), Box<EvalAltResult>> {
                 let mut ctx = ctx_for_wait_int.lock().expect("lock script context");
                 ctx.wait(sec as f32);
-                drop(call_ctx);
                 Ok(())
             },
         );
@@ -804,7 +802,7 @@ impl ScriptHost {
                     let end_time = ctx.cursor;
                     ctx.pop_scope();
                     max_end = max_end.max(end_time);
-                    let _ = result.map_err(|err| err)?;
+                    let _ = result?;
                 }
                 let mut ctx = ctx_for_parallel.lock().expect("lock script context");
                 ctx.cursor = max_end;
@@ -1102,7 +1100,7 @@ impl ScriptHost {
         let ctx_for_intent = ctx.clone();
         engine.register_fn(
             "intent",
-            move |call_ctx: NativeCallContext,
+            move |_call_ctx: NativeCallContext,
                   freq_hz: FLOAT,
                   dt: FLOAT,
                   dur: FLOAT,
@@ -1124,14 +1122,13 @@ impl ScriptHost {
                         confidence: 1.0,
                     }],
                 );
-                drop(call_ctx);
                 Ok(())
             },
         );
         let ctx_for_intent_tag = ctx.clone();
         engine.register_fn(
             "intent",
-            move |call_ctx: NativeCallContext,
+            move |_call_ctx: NativeCallContext,
                   freq_hz: FLOAT,
                   dt: FLOAT,
                   dur: FLOAT,
@@ -1154,7 +1151,6 @@ impl ScriptHost {
                         confidence: 1.0,
                     }],
                 );
-                drop(call_ctx);
                 Ok(())
             },
         );
@@ -1162,7 +1158,7 @@ impl ScriptHost {
         let ctx_for_set_harmonicity = ctx.clone();
         engine.register_fn(
             "set_harmonicity",
-            move |call_ctx: NativeCallContext, mirror: FLOAT| {
+            move |_call_ctx: NativeCallContext, mirror: FLOAT| {
                 let mut ctx = ctx_for_set_harmonicity.lock().expect("lock script context");
                 let update = crate::core::landscape::LandscapeUpdate {
                     mirror: Some(mirror as f32),
@@ -1170,14 +1166,13 @@ impl ScriptHost {
                 };
                 let cursor = ctx.cursor;
                 ctx.push_event(cursor, vec![Action::SetHarmonicity { update }]);
-                drop(call_ctx);
             },
         );
 
         let ctx_for_set_global_coupling = ctx.clone();
         engine.register_fn(
             "set_global_coupling",
-            move |call_ctx: NativeCallContext, value: FLOAT| {
+            move |_call_ctx: NativeCallContext, value: FLOAT| {
                 let mut ctx = ctx_for_set_global_coupling
                     .lock()
                     .expect("lock script context");
@@ -1188,14 +1183,13 @@ impl ScriptHost {
                         value: value as f32,
                     }],
                 );
-                drop(call_ctx);
             },
         );
 
         let ctx_for_set_roughness_tolerance = ctx.clone();
         engine.register_fn(
             "set_roughness_tolerance",
-            move |call_ctx: NativeCallContext, value: FLOAT| {
+            move |_call_ctx: NativeCallContext, value: FLOAT| {
                 let mut ctx = ctx_for_set_roughness_tolerance
                     .lock()
                     .expect("lock script context");
@@ -1206,7 +1200,6 @@ impl ScriptHost {
                         value: value as f32,
                     }],
                 );
-                drop(call_ctx);
             },
         );
 

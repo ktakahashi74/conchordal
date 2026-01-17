@@ -1425,6 +1425,28 @@ mod tests {
     }
 
     #[test]
+    fn flush_events_have_increasing_order_at_same_time() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            create(sine, 1);
+            flush();
+            create(sine, 1);
+            flush();
+        "#,
+        );
+        let mut orders = Vec::new();
+        for event in &scenario.events {
+            if (event.time - 0.0).abs() <= f32::EPSILON {
+                orders.push(event.order);
+            }
+        }
+        assert!(orders.len() >= 2);
+        for pair in orders.windows(2) {
+            assert!(pair[0] < pair[1]);
+        }
+    }
+
+    #[test]
     fn place_then_freq_clears_strategy() {
         let (scenario, _warnings) = run_script(
             r#"

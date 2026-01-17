@@ -1,4 +1,6 @@
 print("TEST_OK: agent_intent_smoke");
-spawn("agents", 3, #{ body: #{ amp: 0.3 } });
-wait(4.0);
-end();
+let agents = create(sine, 3).amp(0.3);
+flush();
+wait(1.0);
+release(agents);
+wait(0.2);

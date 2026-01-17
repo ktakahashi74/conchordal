@@ -1,14 +1,6 @@
 print("TEST_OK: agent_intent_body_smoke");
-
-spawn("agent_sine", 1, #{
-    body: #{ method: "sine", amp: 0.3 }
-});
-spawn("agent_bright", 1, #{
-    body: #{
-        method: "harmonic",
-        amp: 0.3,
-        timbre: #{ brightness: 0.9, motion: 0.2 }
-    }
-});
-wait(3.0);
-end();
+let bright = derive(harmonic).amp(0.3).timbre(0.9, 0.2);
+create(sine, 1).amp(0.3);
+create(bright, 1);
+flush();
+wait(1.0);

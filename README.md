@@ -92,11 +92,12 @@ On Linux, you need `libasound2-dev` installed (ALSA headers required by `cpal`).
 Define the ecosystem's initial conditions using Rhai scripts as follows and save it as `sample.rhai`.
 
 ```rust
+let soft = derive(sine).amp(0.2).phonation("hold");
+
 for i in 0..5 {
-    spawn("a", 1);
+    create(soft, 1);
     wait(0.5);
 }
-end_at(5)
 ```
 
 then run the script with
@@ -105,15 +106,19 @@ then run the script with
 cargo run -- sample.rhai
 ```
 
-Core scenario API (v2):
-- `spawn(tag, count[, opts])`
-- `wait(dt)`, `scene(name)`, `end()`, `end_at(t_abs)`
-- `set(target, patch)`, `release(target, duration)`, `remove(target)`
-- Prelude helpers: `after`, `at`, `parallel`, `repeat`, `every`, `spawn_every`
-
-Strict keys:
-- `spawn` opts: `amp`, `method`, `life`
-- `set` patch: `amp`, `freq`, `exploration`, `persistence`
+Core scenario API (DSL):
+- `derive(parent)` -> `SpeciesHandle`
+- `create(species, count)` -> `GroupHandle`
+- `wait(dt)`, `flush()`, `scene(name, || { ... })`, `play(fn, args...)`, `parallel([..])`
+- For more than 3 `play` args, pass an array: `play(fn, [a, b, c, d])`
+- `release(group)`, `seed(value)`, `intent(freq, onset, dur, amp[, tag])`
+- Builder methods on Species/Group: `amp`, `freq`, `brain`, `phonation`, `timbre`, `metabolism`, `adsr`
+- Placement: `place(strategy)`
+- Strategies: `harmonicity(root).range(min, max).min_dist(erb)`, `harmonic_density(min, max)`, `random_log(min, max)`, `linear(start, end)`
+- Global species presets: `sine`, `saw`, `square`, `noise`, `harmonic`
+ 
+Script end behavior:
+- The end of a script implicitly flushes any pending live updates/releases, and the scenario duration extends to cover release fades.
 
 
 ### Testing and other commands
@@ -137,19 +142,10 @@ The following command generates plot images under `target/` for visual kernel ch
 cargo test -- --ignored
 ```
 
-If you want the docs to be up to date after changes, run:
-
-```bash
-cargo run --example gen_schemas
-cargo run --example generate_script_docs
-scripts/generate_rhai_docs.sh
-```
-
-`cargo run --example gen_schemas` regenerates `docs/schemas/*` (including `agent_patch`).
-
 
 ### Running options
 
+Config file path: `--config config.toml`
 
 Headless execution (no GUI): `--nogui`
 

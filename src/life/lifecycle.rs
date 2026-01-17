@@ -1,28 +1,18 @@
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
-
 use super::scenario::EnvelopeConfig;
 use std::fmt;
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+#[derive(Debug, Clone)]
 pub enum LifecycleConfig {
     Decay {
-        #[serde(default = "default_initial_energy")]
         initial_energy: f32,
         half_life_sec: f32,
-        #[serde(default = "default_decay_attack")]
         attack_sec: f32,
     },
     Sustain {
-        #[serde(default = "default_initial_energy")]
         initial_energy: f32,
         metabolism_rate: f32,
-        #[serde(default)]
         recharge_rate: Option<f32>,
-        #[serde(default)]
         action_cost: Option<f32>,
-        #[serde(default)]
         envelope: EnvelopeConfig,
     },
 }
@@ -104,10 +94,6 @@ pub trait Lifecycle: Send + Sync + std::fmt::Debug {
 
 pub fn default_decay_attack() -> f32 {
     0.01
-}
-
-fn default_initial_energy() -> f32 {
-    1.0
 }
 
 #[derive(Debug)]

@@ -4,7 +4,7 @@ use conchordal::core::timebase::{Tick, Timebase};
 use conchordal::life::control::AgentControl;
 use conchordal::life::individual::AgentMetadata;
 use conchordal::life::population::Population;
-use conchordal::life::scenario::IndividualConfig;
+use conchordal::life::scenario::{ArticulationCoreConfig, IndividualConfig};
 use conchordal::life::schedule_renderer::ScheduleRenderer;
 use conchordal::life::world_model::WorldModel;
 
@@ -21,11 +21,13 @@ fn agents_publish_intents_and_render_audio() {
     control.pitch.freq = 440.0;
     control.body.amp = 0.4;
     control.phonation.density = 0.8;
-    let agent_cfg = IndividualConfig { control, tag: None };
+    let agent_cfg = IndividualConfig {
+        control,
+        articulation: ArticulationCoreConfig::default(),
+    };
     let assigned_id = 1;
     let metadata = AgentMetadata {
-        tag: None,
-        group_idx: 0,
+        group_id: 0,
         member_idx: 0,
     };
     let agent = agent_cfg.spawn(assigned_id, 0, metadata.clone(), tb.fs, 0);
@@ -77,11 +79,13 @@ fn publish_intents_runs_when_gate_in_hop_window() {
     control.pitch.freq = 440.0;
     control.body.amp = 0.4;
     control.phonation.density = 0.8;
-    let agent_cfg = IndividualConfig { control, tag: None };
+    let agent_cfg = IndividualConfig {
+        control,
+        articulation: ArticulationCoreConfig::default(),
+    };
     let assigned_id = 1;
     let metadata = AgentMetadata {
-        tag: None,
-        group_idx: 0,
+        group_id: 0,
         member_idx: 0,
     };
     let agent = agent_cfg.spawn(assigned_id, 0, metadata.clone(), tb.fs, 0);

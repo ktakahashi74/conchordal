@@ -1,8 +1,4 @@
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, Default)]
 pub struct PerceptualConfig {
     pub tau_fast: Option<f32>,
     pub tau_slow: Option<f32>,

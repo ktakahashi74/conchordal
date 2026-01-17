@@ -4,7 +4,7 @@ use conchordal::core::timebase::{Tick, Timebase};
 use conchordal::life::control::AgentControl;
 use conchordal::life::individual::AgentMetadata;
 use conchordal::life::population::Population;
-use conchordal::life::scenario::IndividualConfig;
+use conchordal::life::scenario::{ArticulationCoreConfig, IndividualConfig};
 use conchordal::life::schedule_renderer::ScheduleRenderer;
 use conchordal::life::sound::{AudioCommand, VoiceTarget};
 use conchordal::life::world_model::WorldModel;
@@ -20,7 +20,10 @@ fn spawn_agent(freq: f32, amp: f32) -> IndividualConfig {
     let mut control = AgentControl::default();
     control.pitch.freq = freq;
     control.body.amp = amp;
-    IndividualConfig { control, tag: None }
+    IndividualConfig {
+        control,
+        articulation: ArticulationCoreConfig::default(),
+    }
 }
 
 #[test]
@@ -33,8 +36,7 @@ fn spawn_does_not_publish_birth_intent() {
     let cfg = spawn_agent(440.0, 0.4);
     let assigned_id = 1;
     let meta = AgentMetadata {
-        tag: None,
-        group_idx: 0,
+        group_id: 0,
         member_idx: 0,
     };
     pop.add_individual(cfg.spawn(assigned_id, 0, meta, tb.fs, 0));
@@ -56,8 +58,7 @@ fn spawn_sounds_only_with_audio_trigger() {
     let cfg = spawn_agent(440.0, 0.4);
     let assigned_id = 1;
     let meta = AgentMetadata {
-        tag: None,
-        group_idx: 0,
+        group_id: 0,
         member_idx: 0,
     };
     pop.add_individual(cfg.spawn(assigned_id, 0, meta, tb.fs, 0));

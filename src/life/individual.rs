@@ -3,8 +3,7 @@ use crate::core::log2space::Log2Space;
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
 use crate::life::control::{
-    AgentControl, AgentPatch, BodyControl, BodyMethod, PhonationType, PitchMode, merge_json,
-    remove_json_path,
+    AgentControl, BodyControl, BodyMethod, ControlUpdate, PhonationType, PitchMode,
 };
 use crate::life::control_adapters::{
     perceptual_config_from_control, perceptual_params_from_control, phonation_config_from_control,
@@ -39,8 +38,7 @@ pub use sound_body::{AnySoundBody, HarmonicBody, SineBody, SoundBody};
 
 #[derive(Debug, Clone, Default)]
 pub struct AgentMetadata {
-    pub tag: Option<String>,
-    pub group_idx: usize,
+    pub group_id: u64,
     pub member_idx: usize,
 }
 
@@ -51,7 +49,6 @@ pub struct Individual {
     fixed_body_method: BodyMethod,
     fixed_phonation_type: PhonationType,
     pub base_control: AgentControl,
-    pub override_json: serde_json::Value,
     pub effective_control: AgentControl,
     pub articulation: ArticulationWrapper,
     pub(crate) pitch_ctl: PitchController,
@@ -130,36 +127,19 @@ struct Dirty {
 }
 
 impl Dirty {
-    fn from_patch(patch: &AgentPatch) -> Self {
+    fn from_update(update: &ControlUpdate) -> Self {
+        let body = update.amp.is_some()
+            || update.timbre_brightness.is_some()
+            || update.timbre_inharmonic.is_some()
+            || update.timbre_width.is_some()
+            || update.timbre_motion.is_some();
+        let pitch = update.freq.is_some();
         Self {
-            body: patch.body.is_some(),
-            pitch: patch.pitch.is_some(),
-            phonation: patch.phonation.is_some(),
-            perceptual: patch.perceptual.is_some(),
+            body,
+            pitch,
+            phonation: false,
+            perceptual: false,
         }
-    }
-
-    fn from_unset_path(path: &str) -> Self {
-        let path = path.trim();
-        let path = path.trim_start_matches('.');
-        if path.is_empty() {
-            return Self {
-                body: true,
-                pitch: true,
-                phonation: true,
-                perceptual: true,
-            };
-        }
-        let mut dirty = Self::default();
-        let prefix = path.split('.').find(|part| !part.is_empty());
-        match prefix {
-            Some("body") => dirty.body = true,
-            Some("pitch") => dirty.pitch = true,
-            Some("phonation") => dirty.phonation = true,
-            Some("perceptual") => dirty.perceptual = true,
-            _ => {}
-        }
-        dirty
     }
 }
 
@@ -168,6 +148,7 @@ impl Individual {
 
     pub fn spawn_from_control(
         control: AgentControl,
+        articulation_config: ArticulationCoreConfig,
         assigned_id: u64,
         start_frame: u64,
         metadata: AgentMetadata,
@@ -182,7 +163,6 @@ impl Individual {
         let target_pitch_log2 = target_freq.log2();
         let integration_window = PitchController::integration_window_for_freq(target_freq);
 
-        let articulation_config = ArticulationCoreConfig::default();
         let core =
             AnyArticulationCore::from_config(&articulation_config, fs, assigned_id, &mut rng);
 
@@ -239,7 +219,8 @@ impl Individual {
         tracing::debug!(
             target: "rhythm::spawn",
             id = assigned_id,
-            tag = ?metadata.tag,
+            group_id = metadata.group_id,
+            member_idx = metadata.member_idx,
             articulation = articulation_core,
             lifecycle = lifecycle_label,
             breath_gain_init,
@@ -252,7 +233,6 @@ impl Individual {
             fixed_body_method: effective_control.body.method,
             fixed_phonation_type: effective_control.phonation.r#type,
             base_control: control,
-            override_json: serde_json::Value::Object(serde_json::Map::new()),
             effective_control,
             articulation: ArticulationWrapper::new(core, breath_gain),
             pitch_ctl,
@@ -334,7 +314,10 @@ impl Individual {
         if control.body.method != self.fixed_body_method
             || control.phonation.r#type != self.fixed_phonation_type
         {
-            return Err("set/unset cannot change body.method or phonation.type; use spawn() for type selection".to_string());
+            return Err(
+                "update cannot change body.method or phonation.type; use spawn() for type selection"
+                    .to_string(),
+            );
         }
         Ok(())
     }
@@ -368,36 +351,35 @@ impl Individual {
         self.release_gain
     }
 
-    pub fn apply_control_patch(&mut self, patch: serde_json::Value) -> Result<(), String> {
-        let patch_struct: AgentPatch =
-            serde_json::from_value(patch.clone()).map_err(|e| format!("parse AgentPatch: {e}"))?;
-        let dirty = Dirty::from_patch(&patch_struct);
-        let merged_override = merge_json(self.override_json.clone(), patch);
-        let base_json = self.base_control.to_json()?;
-        let effective_json = merge_json(base_json, merged_override.clone());
-        let effective = AgentControl::from_json(effective_json)?;
-        self.ensure_fixed_kinds(&effective)?;
-        self.override_json = merged_override;
-        self.apply_effective_control(effective, dirty);
-        Ok(())
-    }
-
-    pub fn apply_unset_path(&mut self, path: &str) -> Result<bool, String> {
-        let path = path.trim();
-        let path = path.trim_start_matches('.');
-        let mut override_json = self.override_json.clone();
-        let removed = remove_json_path(&mut override_json, path);
-        if !removed {
-            return Ok(false);
+    pub fn apply_update(&mut self, update: &ControlUpdate) -> Result<(), String> {
+        if update.is_empty() {
+            return Ok(());
         }
-        let base_json = self.base_control.to_json()?;
-        let effective_json = merge_json(base_json, override_json.clone());
-        let effective = AgentControl::from_json(effective_json)?;
-        let dirty = Dirty::from_unset_path(path);
-        self.ensure_fixed_kinds(&effective)?;
-        self.override_json = override_json;
-        self.apply_effective_control(effective, dirty);
-        Ok(true)
+        let mut control = self.effective_control.clone();
+        if let Some(amp) = update.amp {
+            control.body.amp = amp.clamp(0.0, 1.0);
+        }
+        if let Some(freq) = update.freq {
+            control.pitch.freq = freq.clamp(1.0, 20_000.0);
+            control.pitch.mode = PitchMode::Lock;
+        }
+        if let Some(brightness) = update.timbre_brightness {
+            control.body.timbre.brightness = brightness.clamp(0.0, 1.0);
+        }
+        if let Some(inharmonic) = update.timbre_inharmonic {
+            control.body.timbre.inharmonic = inharmonic.clamp(0.0, 1.0);
+        }
+        if let Some(width) = update.timbre_width {
+            control.body.timbre.width = width.clamp(0.0, 1.0);
+        }
+        if let Some(motion) = update.timbre_motion {
+            control.body.timbre.motion = motion.clamp(0.0, 1.0);
+        }
+        self.ensure_fixed_kinds(&control)?;
+        let dirty = Dirty::from_update(update);
+        self.base_control = control.clone();
+        self.apply_effective_control(control, dirty);
+        Ok(())
     }
 
     #[cfg(test)]

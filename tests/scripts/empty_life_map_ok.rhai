@@ -1,3 +1,6 @@
 print("TEST_OK: empty_life_map_ok");
-spawn("lead", 1, #{});
-end_at(1);
+let lead = create(sine, 1);
+flush();
+wait(0.2);
+release(lead);
+wait(0.2);

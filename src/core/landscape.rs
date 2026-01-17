@@ -5,7 +5,6 @@
 
 use crate::core::log2space::Log2Space;
 use crate::core::modulation::NeuralRhythms;
-use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug)]
 pub struct LandscapeParams {
@@ -43,7 +42,7 @@ pub struct LandscapeParams {
     pub roughness_ref_eps: f32,
 }
 
-#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct LandscapeUpdate {
     pub mirror: Option<f32>,
     pub limit: Option<u32>,

@@ -1,11 +1,11 @@
 print("TEST_OK: agent_articulation_sync_smoke");
-
-spawn("agents", 3, #{ body: #{ amp: 0.3 } });
-
-for i in 0..6 {
-    intent(440.0, 1.0, 0.08, 0.4, #{ tag: "ghost" });
-    wait(1.0);
+let ghost = derive(sine)
+    .amp(0.3)
+    .phonation("decay")
+    .adsr(0.01, 0.1, 0.0, 0.2);
+create(ghost, 3);
+flush();
+for i in 0..4 {
+    intent(440.0, 1.0, 0.08, 0.4, "ghost");
+    wait(0.5);
 }
-
-wait(1.0);
-end();

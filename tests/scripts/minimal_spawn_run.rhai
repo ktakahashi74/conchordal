@@ -1,3 +1,4 @@
 print("TEST_OK: minimal_spawn_run");
-spawn("drones", 5);
-end_at(10);
+create(sine, 5);
+flush();
+wait(1.0);

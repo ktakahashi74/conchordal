@@ -1,4 +1,3 @@
-pub mod api;
 pub mod conductor;
 pub mod control;
 mod control_adapters;

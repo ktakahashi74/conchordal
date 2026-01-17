@@ -218,13 +218,7 @@ pub fn validate_scenario(scenario: &Scenario) -> Result<(), String> {
                 Action::Finish => {
                     has_finish = true;
                 }
-                Action::Spawn { .. } => {}
-                Action::Set { target, .. }
-                | Action::Unset { target, .. }
-                | Action::Remove { target }
-                | Action::Release { target, .. } => {
-                    validate_target_pattern(target)?;
-                }
+                Action::Spawn { .. } | Action::Update { .. } | Action::Release { .. } => {}
                 Action::SetHarmonicity { .. }
                 | Action::SetGlobalCoupling { .. }
                 | Action::SetRoughnessTolerance { .. } => {}
@@ -261,13 +255,6 @@ pub fn validate_scenario(scenario: &Scenario) -> Result<(), String> {
         prev_order = Some(order);
     }
 
-    Ok(())
-}
-
-fn validate_target_pattern(target: &str) -> Result<(), String> {
-    if target.trim().is_empty() {
-        return Err("target pattern is empty".to_string());
-    }
     Ok(())
 }
 

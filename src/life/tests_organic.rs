@@ -2,13 +2,13 @@ use crate::core::landscape::{Landscape, LandscapeFrame};
 use crate::core::log2space::Log2Space;
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::Timebase;
-use crate::life::control::AgentControl;
+use crate::life::control::{AgentControl, ControlUpdate};
 use crate::life::individual::{
     AgentMetadata, AnyArticulationCore, ArticulationCore, Individual, SoundBody,
 };
 use crate::life::lifecycle::LifecycleConfig;
 use crate::life::population::Population;
-use crate::life::scenario::{Action, ArticulationCoreConfig, IndividualConfig};
+use crate::life::scenario::{Action, ArticulationCoreConfig, IndividualConfig, SpawnSpec};
 use rand::SeedableRng;
 
 fn mix_signature(mut acc: u64, value: u32) -> u64 {
@@ -30,10 +30,12 @@ fn control_with_pitch(freq: f32) -> AgentControl {
 
 fn spawn_agent(freq: f32, assigned_id: u64) -> Individual {
     let control = control_with_pitch(freq);
-    let cfg = IndividualConfig { control, tag: None };
+    let cfg = IndividualConfig {
+        control,
+        articulation: ArticulationCoreConfig::default(),
+    };
     let meta = AgentMetadata {
-        tag: None,
-        group_idx: 0,
+        group_id: 0,
         member_idx: 0,
     };
     cfg.spawn(assigned_id, 0, meta, 48_000.0, 0)
@@ -95,14 +97,17 @@ fn lock_mode_prevents_snapback() {
         fs: 48_000.0,
         hop: 64,
     });
+    let mut control = AgentControl::default();
+    control.pitch.freq = 220.0;
     pop.apply_action(
         Action::Spawn {
-            tag: "setfreq_test".to_string(),
-            count: 1,
-            opts: None,
-            patch: serde_json::json!({
-                "pitch": { "freq": 220.0 }
-            }),
+            group_id: 1,
+            ids: vec![1],
+            spec: SpawnSpec {
+                control,
+                articulation: ArticulationCoreConfig::default(),
+            },
+            strategy: None,
         },
         &LandscapeFrame::default(),
         None,
@@ -117,11 +122,13 @@ fn lock_mode_prevents_snapback() {
     let new_freq: f32 = 440.0;
     let new_log = new_freq.log2();
     pop.apply_action(
-        Action::Set {
-            target: "setfreq_test".to_string(),
-            patch: serde_json::json!({
-                "pitch": { "mode": "lock", "freq": new_freq }
-            }),
+        Action::Update {
+            group_id: 1,
+            ids: vec![1],
+            update: ControlUpdate {
+                freq: Some(new_freq),
+                ..ControlUpdate::default()
+            },
         },
         &LandscapeFrame::default(),
         None,

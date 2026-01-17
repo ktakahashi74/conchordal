@@ -5,17 +5,19 @@ use conchordal::life::control::AgentControl;
 use conchordal::life::individual::{
     AgentMetadata, AnyArticulationCore, ArticulationState, Individual,
 };
-use conchordal::life::scenario::IndividualConfig;
+use conchordal::life::scenario::{ArticulationCoreConfig, IndividualConfig};
 
 fn build_agent() -> Individual {
     let mut control = AgentControl::default();
     control.pitch.freq = 440.0;
     control.body.amp = 0.3;
-    let cfg = IndividualConfig { control, tag: None };
+    let cfg = IndividualConfig {
+        control,
+        articulation: ArticulationCoreConfig::default(),
+    };
     let assigned_id = 1;
     let metadata = AgentMetadata {
-        tag: None,
-        group_idx: 0,
+        group_id: 0,
         member_idx: 0,
     };
     cfg.spawn(assigned_id, 0, metadata, 48_000.0, 0)

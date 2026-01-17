@@ -1,90 +1,245 @@
+use std::collections::BTreeMap;
 use std::fs;
 use std::sync::{Arc, Mutex};
 
-use crate::core::landscape::LandscapeUpdate;
-use rhai::{
-    Dynamic, Engine, EvalAltResult, EvalContext, Expression, FLOAT, INT, Map, NativeCallContext,
-    Position,
+use rand::random;
+use rhai::{Array, Dynamic, Engine, EvalAltResult, FLOAT, FnPtr, INT, NativeCallContext, Position};
+use tracing::warn;
+
+use super::control::{AgentControl, BodyMethod, ControlUpdate, PhonationType, PitchMode};
+use super::lifecycle::LifecycleConfig;
+use super::scenario::{
+    Action, ArticulationCoreConfig, EnvelopeConfig, Scenario, SceneMarker, SpawnSpec,
+    SpawnStrategy, TimedEvent,
 };
 
-use super::api::{
-    pop_time, push_time, set_time, spawn_min_at, spawn_with_opts_and_patch_at, spawn_with_third_at,
-};
-use super::control::{AgentPatch, matches_tag_pattern};
-use super::scenario::{Action, Scenario, SceneMarker, SpawnOpts, TimedEvent};
+const DEFAULT_RELEASE_SEC: f32 = 0.05;
+const DEFAULT_SEQ_DURATION_SEC: f32 = 1.0;
 
-const SCRIPT_PRELUDE: &str = r#"
-__internal_debug_seed();
-
-fn parallel(callback) {
-    after(0.0, callback);
+#[derive(Clone, Copy, Debug)]
+enum BrainKind {
+    Entrain,
+    Seq,
+    Drone,
 }
 
-fn after(dt, callback) {
-    __internal_push_time();
-    wait(dt);
-    callback.call();
-    __internal_pop_time();
+#[derive(Clone, Copy, Debug)]
+enum PhonationKind {
+    Hold,
+    Decay,
+    Grain,
 }
 
-fn at(t, callback) {
-    __internal_push_time();
-    __internal_set_time(t);
-    callback.call();
-    __internal_pop_time();
+#[derive(Clone, Copy, Debug)]
+struct AdsrSpec {
+    attack_sec: f32,
+    decay_sec: f32,
+    sustain_level: f32,
+    release_sec: f32,
 }
 
-fn repeat(n, callback) {
-    let i = 0;
-    while i < n {
-        callback.call(i);
-        i += 1;
+#[derive(Clone, Debug)]
+struct SpeciesSpec {
+    control: AgentControl,
+    brain: BrainKind,
+    phonation: Option<PhonationKind>,
+    metabolism_rate: Option<f32>,
+    adsr: Option<AdsrSpec>,
+}
+
+impl SpeciesSpec {
+    fn preset(body: BodyMethod) -> Self {
+        let mut control = AgentControl::default();
+        control.body.method = body;
+        Self {
+            control,
+            brain: BrainKind::Entrain,
+            phonation: None,
+            metabolism_rate: None,
+            adsr: None,
+        }
+    }
+
+    fn release_sec(&self) -> f32 {
+        self.adsr
+            .map(|adsr| adsr.release_sec)
+            .unwrap_or(DEFAULT_RELEASE_SEC)
+            .max(0.0)
+    }
+
+    fn envelope_from_adsr(&self) -> EnvelopeConfig {
+        if let Some(adsr) = self.adsr {
+            EnvelopeConfig {
+                attack_sec: adsr.attack_sec.max(0.0),
+                decay_sec: adsr.decay_sec.max(0.0),
+                sustain_level: adsr.sustain_level.clamp(0.0, 1.0),
+            }
+        } else {
+            EnvelopeConfig::default()
+        }
+    }
+
+    fn lifecycle_config(&self) -> LifecycleConfig {
+        if self.metabolism_rate.is_some() || self.adsr.is_some() {
+            let metabolism_rate = self.metabolism_rate.unwrap_or(0.5).max(1e-6);
+            LifecycleConfig::Sustain {
+                initial_energy: 1.0,
+                metabolism_rate,
+                recharge_rate: None,
+                action_cost: None,
+                envelope: self.envelope_from_adsr(),
+            }
+        } else {
+            LifecycleConfig::default()
+        }
+    }
+
+    fn articulation_config(&self) -> ArticulationCoreConfig {
+        match self.brain {
+            BrainKind::Entrain => ArticulationCoreConfig::Entrain {
+                lifecycle: self.lifecycle_config(),
+                rhythm_freq: None,
+                rhythm_sensitivity: None,
+                breath_gain_init: None,
+            },
+            BrainKind::Seq => ArticulationCoreConfig::Seq {
+                duration: DEFAULT_SEQ_DURATION_SEC,
+                breath_gain_init: None,
+            },
+            BrainKind::Drone => ArticulationCoreConfig::Drone {
+                sway: None,
+                breath_gain_init: None,
+            },
+        }
+    }
+
+    fn spawn_spec(&self) -> SpawnSpec {
+        let mut control = self.control.clone();
+        if let Some(phonation) = self.phonation {
+            control.phonation.r#type = match phonation {
+                PhonationKind::Hold => PhonationType::Hold,
+                PhonationKind::Decay => PhonationType::Interval,
+                PhonationKind::Grain => PhonationType::Field,
+            };
+        }
+        SpawnSpec {
+            control,
+            articulation: self.articulation_config(),
+        }
+    }
+
+    fn set_amp(&mut self, amp: f32) {
+        self.control.body.amp = amp.clamp(0.0, 1.0);
+    }
+
+    fn set_freq(&mut self, freq: f32) {
+        self.control.pitch.freq = freq.clamp(1.0, 20_000.0);
+        self.control.pitch.mode = PitchMode::Lock;
+    }
+
+    fn set_timbre(&mut self, brightness: f32, width: f32) {
+        self.control.body.timbre.brightness = brightness.clamp(0.0, 1.0);
+        self.control.body.timbre.width = width.clamp(0.0, 1.0);
+    }
+
+    fn set_brain(&mut self, name: &str) {
+        let lowered = name.trim().to_ascii_lowercase();
+        self.brain = match lowered.as_str() {
+            "drone" => BrainKind::Drone,
+            "seq" => BrainKind::Seq,
+            "entrain" => BrainKind::Entrain,
+            other => {
+                warn!("brain '{}' not supported yet", other);
+                self.brain
+            }
+        };
+    }
+
+    fn set_phonation(&mut self, name: &str) {
+        let lowered = name.trim().to_ascii_lowercase();
+        self.phonation = match lowered.as_str() {
+            "hold" => Some(PhonationKind::Hold),
+            "decay" => Some(PhonationKind::Decay),
+            "grain" => Some(PhonationKind::Grain),
+            other => {
+                warn!("phonation '{}' not supported yet", other);
+                self.phonation
+            }
+        };
+    }
+
+    fn set_metabolism(&mut self, rate: f32) {
+        self.metabolism_rate = Some(rate.max(0.0));
+    }
+
+    fn set_adsr(&mut self, a: f32, d: f32, s: f32, r: f32) {
+        self.adsr = Some(AdsrSpec {
+            attack_sec: a.max(0.0),
+            decay_sec: d.max(0.0),
+            sustain_level: s.clamp(0.0, 1.0),
+            release_sec: r.max(0.0),
+        });
     }
 }
 
-fn every(interval, count, callback) {
-    let i = 0;
-    while i < count {
-        __internal_push_time();
-        wait(i * interval);
-        callback.call(i);
-        __internal_pop_time();
-        i += 1;
-    }
+#[derive(Clone, Debug)]
+pub struct SpeciesHandle {
+    spec: SpeciesSpec,
 }
 
-fn spawn_every(tag, count, interval, opts) {
-    let i = 0;
-    while i < count {
-        __internal_push_time();
-        wait(i * interval);
-        spawn(tag, 1, opts);
-        __internal_pop_time();
-        i += 1;
-    }
+#[derive(Clone, Debug)]
+pub struct GroupHandle {
+    id: u64,
 }
 
-fn spawn_every(tag, count, interval) {
-    spawn_every(tag, count, interval, #{});
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum GroupStatus {
+    Draft,
+    Live,
+    Released,
+    Dropped,
 }
-"#;
+
+#[derive(Clone, Debug)]
+struct GroupState {
+    id: u64,
+    count: usize,
+    spec: SpeciesSpec,
+    strategy: Option<SpawnStrategy>,
+    status: GroupStatus,
+    live_ids: Vec<u64>,
+    pending_update: ControlUpdate,
+    pending_release: bool,
+}
+
+#[derive(Clone, Debug, Default)]
+struct ScriptWarnings {
+    draft_dropped: u32,
+}
+
+#[derive(Debug, Clone)]
+struct ScopeFrame {
+    created_groups: Vec<u64>,
+}
 
 #[derive(Debug, Clone)]
 pub struct ScriptContext {
     pub cursor: f32,
-    pub time_stack: Vec<f32>,
     pub scenario: Scenario,
     pub seed: u64,
     pub next_event_order: u64,
-    pub ended: bool,
+    next_group_id: u64,
+    next_agent_id: u64,
+    groups: BTreeMap<u64, GroupState>,
+    scopes: Vec<ScopeFrame>,
+    warnings: ScriptWarnings,
 }
 
 impl Default for ScriptContext {
     fn default() -> Self {
-        let seed = rand::random::<u64>();
+        let seed = random::<u64>();
         Self {
             cursor: 0.0,
-            time_stack: Vec::new(),
             scenario: Scenario {
                 seed,
                 scene_markers: Vec::new(),
@@ -93,80 +248,20 @@ impl Default for ScriptContext {
             },
             seed,
             next_event_order: 1,
-            ended: false,
+            next_group_id: 1,
+            next_agent_id: 1,
+            groups: BTreeMap::new(),
+            scopes: Vec::new(),
+            warnings: ScriptWarnings::default(),
         }
     }
 }
 
 impl ScriptContext {
-    fn ensure_not_ended(&self, position: Position) -> Result<(), Box<EvalAltResult>> {
-        if self.ended {
-            return Err(Box::new(EvalAltResult::ErrorRuntime(
-                "script already ended".into(),
-                position,
-            )));
-        }
-        Ok(())
-    }
-
-    pub fn scene(&mut self, name: &str, position: Position) -> Result<(), Box<EvalAltResult>> {
-        self.ensure_not_ended(position)?;
-        let order = self.next_event_order;
-        self.next_event_order += 1;
-        self.scenario.scene_markers.push(SceneMarker {
-            name: name.to_string(),
-            time: self.cursor,
-            order,
-        });
-        Ok(())
-    }
-
-    pub fn wait(&mut self, sec: f32, position: Position) -> Result<(), Box<EvalAltResult>> {
-        self.ensure_not_ended(position)?;
-        self.cursor += sec.max(0.0);
-        Ok(())
-    }
-
-    pub fn set_time(
-        &mut self,
-        time_sec: f32,
-        position: Position,
-    ) -> Result<(), Box<EvalAltResult>> {
-        self.ensure_not_ended(position)?;
-        self.cursor = time_sec.max(0.0);
-        Ok(())
-    }
-
-    pub fn set_seed(&mut self, seed: i64, position: Position) -> Result<(), Box<EvalAltResult>> {
-        self.ensure_not_ended(position)?;
-        if seed < 0 {
-            return Err(Box::new(EvalAltResult::ErrorRuntime(
-                "seed must be >= 0".into(),
-                position,
-            )));
-        }
-        let seed = seed as u64;
-        self.seed = seed;
-        self.scenario.seed = seed;
-        println!("[rhai][debug] seed={seed}");
-        Ok(())
-    }
-
-    pub fn push_time(&mut self, position: Position) -> Result<(), Box<EvalAltResult>> {
-        self.ensure_not_ended(position)?;
-        self.time_stack.push(self.cursor);
-        Ok(())
-    }
-
-    pub fn pop_time(&mut self, position: Position) -> Result<(), Box<EvalAltResult>> {
-        self.ensure_not_ended(position)?;
-        if let Some(t) = self.time_stack.pop() {
-            self.cursor = t;
-        }
-        Ok(())
-    }
-
     fn push_event(&mut self, time_sec: f32, actions: Vec<Action>) {
+        if actions.is_empty() {
+            return;
+        }
         let order = self.next_event_order;
         self.next_event_order += 1;
         self.scenario.events.push(TimedEvent {
@@ -176,589 +271,831 @@ impl ScriptContext {
         });
     }
 
-    pub fn spawn_with_opts_and_patch(
-        &mut self,
-        tag: &str,
-        count: i64,
-        opts: Option<Map>,
-        patch: Option<Map>,
-        position: Position,
-    ) -> Result<i64, Box<EvalAltResult>> {
-        self.ensure_not_ended(position)?;
-        let c = count.max(0).min(u32::MAX as i64) as u32;
-
-        let opts_struct = if let Some(opts) = opts {
-            let debug_map = format!("{:?}", opts);
-            Some(Self::parse_spawn_opts(opts, &debug_map, position)?)
-        } else {
-            None
-        };
-
-        let (_patch_struct, patch_json) = if let Some(patch) = patch {
-            Self::parse_agent_patch(patch, position)?
-        } else {
-            (
-                AgentPatch::default(),
-                serde_json::Value::Object(serde_json::Map::new()),
-            )
-        };
-
-        let action = Action::Spawn {
-            tag: tag.to_string(),
-            count: c,
-            opts: opts_struct,
-            patch: patch_json,
-        };
-        self.push_event(self.cursor, vec![action]);
-        Ok(c as i64)
-    }
-
-    pub fn spawn_with_third_map(
-        &mut self,
-        tag: &str,
-        count: i64,
-        third: Map,
-        position: Position,
-    ) -> Result<i64, Box<EvalAltResult>> {
-        let debug_map = format!("{:?}", third);
-        if Self::parse_spawn_opts(third.clone(), &debug_map, position).is_ok() {
-            return self.spawn_with_opts_and_patch(tag, count, Some(third), None, position);
-        }
-        match Self::parse_agent_patch(third.clone(), position) {
-            Ok(_) => self.spawn_with_opts_and_patch(tag, count, None, Some(third), position),
-            Err(err) => Err(err),
-        }
-    }
-
-    pub fn spawn_default(
-        &mut self,
-        tag: &str,
-        count: i64,
-        position: Position,
-    ) -> Result<i64, Box<EvalAltResult>> {
-        self.spawn_with_opts_and_patch(tag, count, None, None, position)
-    }
-
-    pub fn intent(
-        &mut self,
-        freq_hz: f32,
-        dt: f32,
-        duration_sec: f32,
-        amp: f32,
-        opts: Option<Map>,
-        position: Position,
-    ) -> Result<(), Box<EvalAltResult>> {
-        self.ensure_not_ended(position)?;
-
-        let mut source_id: u64 = 0;
-        let mut tag: Option<String> = None;
-        let mut confidence: f32 = 1.0;
-
-        if let Some(opts) = opts {
-            let mut unknown_keys = Vec::new();
-            for key in opts.keys() {
-                match key.as_str() {
-                    "source_id" | "tag" | "confidence" => {}
-                    _ => unknown_keys.push(key.to_string()),
-                }
-            }
-            if !unknown_keys.is_empty() {
-                unknown_keys.sort();
-                let msg = format!(
-                    "intent opts has unknown keys: [{}] (allowed: source_id, tag, confidence)",
-                    unknown_keys.join(", ")
-                );
-                return Err(Box::new(EvalAltResult::ErrorRuntime(msg.into(), position)));
-            }
-
-            if let Some(value) = opts.get("source_id") {
-                let id = value
-                    .as_int()
-                    .ok()
-                    .or_else(|| value.as_float().ok().map(|v| v as i64))
-                    .ok_or_else(|| {
-                        Box::new(EvalAltResult::ErrorRuntime(
-                            "intent opts source_id must be an integer".into(),
-                            position,
-                        ))
-                    })?;
-                if id < 0 {
-                    return Err(Box::new(EvalAltResult::ErrorRuntime(
-                        "intent opts source_id must be non-negative".into(),
-                        position,
-                    )));
-                }
-                source_id = id as u64;
-            }
-
-            if let Some(value) = opts.get("tag") {
-                let tag_value = value.clone().try_cast::<String>().ok_or_else(|| {
-                    Box::new(EvalAltResult::ErrorRuntime(
-                        "intent opts tag must be a string".into(),
-                        position,
-                    ))
-                })?;
-                tag = Some(tag_value);
-            }
-
-            if let Some(value) = opts.get("confidence") {
-                confidence = value
-                    .as_float()
-                    .ok()
-                    .map(|v| v as f32)
-                    .or_else(|| value.as_int().ok().map(|v| v as f32))
-                    .ok_or_else(|| {
-                        Box::new(EvalAltResult::ErrorRuntime(
-                            "intent opts confidence must be a number".into(),
-                            position,
-                        ))
-                    })?;
-            }
-        }
-
-        let onset_sec = (self.cursor + dt).max(0.0);
-        let duration_sec = duration_sec.max(0.0);
-        let action = Action::PostIntent {
-            source_id,
-            onset_sec,
-            duration_sec,
-            freq_hz,
-            amp,
-            tag,
-            confidence,
-        };
-        self.push_event(self.cursor, vec![action]);
-        Ok(())
-    }
-
-    pub fn set_patch(
-        &mut self,
-        target: &str,
-        patch: Map,
-        position: Position,
-    ) -> Result<i64, Box<EvalAltResult>> {
-        self.ensure_not_ended(position)?;
-        let (_patch_struct, patch_json) = Self::parse_agent_patch(patch, position)?;
-        let action = Action::Set {
-            target: target.to_string(),
-            patch: patch_json,
-        };
-        self.push_event(self.cursor, vec![action]);
-        Ok(self.estimate_match_count(target))
-    }
-
-    pub fn set_harmonicity(
-        &mut self,
-        opts: Map,
-        position: Position,
-    ) -> Result<(), Box<EvalAltResult>> {
-        self.ensure_not_ended(position)?;
-
-        let mut unknown_keys = Vec::new();
-        for key in opts.keys() {
-            match key.as_str() {
-                "mirror" | "limit" => {}
-                _ => unknown_keys.push(key.to_string()),
-            }
-        }
-        if !unknown_keys.is_empty() {
-            unknown_keys.sort();
-            let msg = format!(
-                "set_harmonicity opts has unknown keys: [{}] (allowed: mirror, limit)",
-                unknown_keys.join(", ")
-            );
-            return Err(Box::new(EvalAltResult::ErrorRuntime(msg.into(), position)));
-        }
-
-        let mut update = LandscapeUpdate::default();
-        if let Some(value) = opts.get("mirror") {
-            let mirror = value
-                .as_float()
-                .ok()
-                .map(|v| v as f32)
-                .or_else(|| value.as_int().ok().map(|v| v as f32))
-                .ok_or_else(|| {
-                    Box::new(EvalAltResult::ErrorRuntime(
-                        "set_harmonicity mirror must be a number".into(),
-                        position,
-                    ))
-                })?;
-            update.mirror = Some(mirror);
-        }
-        if let Some(value) = opts.get("limit") {
-            let limit = value
-                .as_int()
-                .ok()
-                .or_else(|| value.as_float().ok().map(|v| v as i64))
-                .ok_or_else(|| {
-                    Box::new(EvalAltResult::ErrorRuntime(
-                        "set_harmonicity limit must be an integer".into(),
-                        position,
-                    ))
-                })?;
-            if limit < 0 {
-                return Err(Box::new(EvalAltResult::ErrorRuntime(
-                    "set_harmonicity limit must be non-negative".into(),
-                    position,
-                )));
-            }
-            update.limit = Some(limit as u32);
-        }
-        if update.mirror.is_none() && update.limit.is_none() {
-            return Err(Box::new(EvalAltResult::ErrorRuntime(
-                "set_harmonicity opts requires mirror or limit".into(),
-                position,
-            )));
-        }
-
-        self.push_event(self.cursor, vec![Action::SetHarmonicity { update }]);
-        Ok(())
-    }
-
-    pub fn set_global_coupling(
-        &mut self,
-        value: f32,
-        position: Position,
-    ) -> Result<(), Box<EvalAltResult>> {
-        self.ensure_not_ended(position)?;
-        if value < 0.0 {
-            return Err(Box::new(EvalAltResult::ErrorRuntime(
-                "set_global_coupling must be non-negative".into(),
-                position,
-            )));
-        }
-        self.push_event(self.cursor, vec![Action::SetGlobalCoupling { value }]);
-        Ok(())
-    }
-
-    pub fn set_roughness_tolerance(
-        &mut self,
-        value: f32,
-        position: Position,
-    ) -> Result<(), Box<EvalAltResult>> {
-        self.ensure_not_ended(position)?;
-        if value < 0.0 {
-            return Err(Box::new(EvalAltResult::ErrorRuntime(
-                "set_roughness_tolerance must be non-negative".into(),
-                position,
-            )));
-        }
-        self.push_event(self.cursor, vec![Action::SetRoughnessTolerance { value }]);
-        Ok(())
-    }
-
-    pub fn remove(&mut self, target: &str, position: Position) -> Result<i64, Box<EvalAltResult>> {
-        self.ensure_not_ended(position)?;
-        self.push_event(
-            self.cursor,
-            vec![Action::Remove {
-                target: target.to_string(),
-            }],
-        );
-        Ok(self.estimate_match_count(target))
-    }
-
-    pub fn release(
-        &mut self,
-        target: &str,
-        fade_sec: f32,
-        position: Position,
-    ) -> Result<i64, Box<EvalAltResult>> {
-        self.ensure_not_ended(position)?;
-        if fade_sec < 0.0 {
-            return Err(Box::new(EvalAltResult::ErrorRuntime(
-                "release fade_sec must be non-negative".into(),
-                position,
-            )));
-        }
-        self.push_event(
-            self.cursor,
-            vec![Action::Release {
-                target: target.to_string(),
-                fade_sec,
-            }],
-        );
-        Ok(self.estimate_match_count(target))
-    }
-
-    pub fn unset(
-        &mut self,
-        target: &str,
-        path: &str,
-        position: Position,
-    ) -> Result<i64, Box<EvalAltResult>> {
-        self.ensure_not_ended(position)?;
-        self.push_event(
-            self.cursor,
-            vec![Action::Unset {
-                target: target.to_string(),
-                path: path.to_string(),
-            }],
-        );
-        Ok(self.estimate_match_count(target))
-    }
-
-    pub fn end(&mut self, position: Position) -> Result<(), Box<EvalAltResult>> {
-        self.end_at(self.cursor, position)
-    }
-
-    pub fn end_at(&mut self, t_abs: f32, position: Position) -> Result<(), Box<EvalAltResult>> {
-        if t_abs < 0.0 {
-            return Err(Box::new(EvalAltResult::ErrorRuntime(
-                "end_at time must be non-negative".into(),
-                position,
-            )));
-        }
-        self.ensure_not_ended(position)?;
-        let end = t_abs.max(0.0);
-        self.scenario.duration_sec = self.scenario.duration_sec.max(end);
-        self.push_event(end, vec![Action::Finish]);
-        self.ended = true;
-        Ok(())
-    }
-
-    fn parse_agent_patch(
-        patch: Map,
-        position: Position,
-    ) -> Result<(AgentPatch, serde_json::Value), Box<EvalAltResult>> {
-        let raw_val = serde_json::to_value(&patch).map_err(|e| {
-            Box::new(EvalAltResult::ErrorRuntime(
-                format!("Error serializing AgentPatch: {e}").into(),
-                position,
-            ))
-        })?;
-        let patch_struct: AgentPatch = serde_json::from_value(raw_val).map_err(|e| {
-            let debug_map = format!("{:?}", patch);
-            Box::new(EvalAltResult::ErrorRuntime(
-                format!("Error parsing AgentPatch: {e} (input: {debug_map})").into(),
-                position,
-            ))
-        })?;
-        let patch_json = serde_json::to_value(&patch_struct).map_err(|e| {
-            Box::new(EvalAltResult::ErrorRuntime(
-                format!("Error serializing AgentPatch: {e}").into(),
-                position,
-            ))
-        })?;
-        Ok((patch_struct, patch_json))
-    }
-
-    fn parse_spawn_opts(
-        opts: Map,
-        debug_map: &str,
-        position: Position,
-    ) -> Result<SpawnOpts, Box<EvalAltResult>> {
-        let raw_val = serde_json::to_value(&opts).map_err(|e| {
-            Box::new(EvalAltResult::ErrorRuntime(
-                format!("Error serializing SpawnOpts: {e}").into(),
-                position,
-            ))
-        })?;
-        let opts_struct: SpawnOpts = serde_json::from_value(raw_val).map_err(|e| {
-            Box::new(EvalAltResult::ErrorRuntime(
-                format!("Error parsing SpawnOpts: {e} (input: {debug_map})").into(),
-                position,
-            ))
-        })?;
-        Ok(opts_struct)
-    }
-
-    fn estimate_match_count(&self, target: &str) -> i64 {
-        let mut events: Vec<&TimedEvent> = self
-            .scenario
-            .events
-            .iter()
-            .filter(|ev| ev.time <= self.cursor + f32::EPSILON)
-            .collect();
-        events.sort_by(|a, b| {
-            a.time
-                .partial_cmp(&b.time)
-                .unwrap_or(std::cmp::Ordering::Equal)
-                .then_with(|| a.order.cmp(&b.order))
+    fn push_scene_marker(&mut self, name: &str) {
+        let order = self.next_event_order;
+        self.next_event_order += 1;
+        self.scenario.scene_markers.push(SceneMarker {
+            name: name.to_string(),
+            time: self.cursor,
+            order,
         });
-        let mut tags: Vec<String> = Vec::new();
-        for ev in events {
-            for action in &ev.actions {
-                match action {
-                    Action::Spawn { tag, count, .. } => {
-                        for _ in 0..*count {
-                            tags.push(tag.clone());
-                        }
+    }
+
+    fn push_scope(&mut self) {
+        self.scopes.push(ScopeFrame {
+            created_groups: Vec::new(),
+        });
+    }
+
+    fn pop_scope(&mut self) {
+        let Some(scope) = self.scopes.pop() else {
+            return;
+        };
+        let mut releases = Vec::new();
+        for group_id in scope.created_groups {
+            let Some(group) = self.groups.get_mut(&group_id) else {
+                continue;
+            };
+            match group.status {
+                GroupStatus::Draft => {
+                    warn!("scope ended with draft group {group_id} (spawn skipped)");
+                    self.warnings.draft_dropped += 1;
+                    group.status = GroupStatus::Dropped;
+                }
+                GroupStatus::Live => {
+                    let ids = group.live_ids.clone();
+                    if !ids.is_empty() {
+                        releases.push(Action::Release {
+                            group_id,
+                            ids,
+                            fade_sec: group.spec.release_sec(),
+                        });
                     }
-                    Action::Remove { target } => {
-                        tags.retain(|t| !matches_tag_pattern(target, t));
-                    }
-                    _ => {}
+                    group.pending_update = ControlUpdate::default();
+                    group.pending_release = false;
+                    group.status = GroupStatus::Released;
+                }
+                GroupStatus::Released | GroupStatus::Dropped => {}
+            }
+        }
+        if !releases.is_empty() {
+            self.push_event(self.cursor, releases);
+        }
+    }
+
+    fn drop_remaining_drafts(&mut self) {
+        for (group_id, group) in self.groups.iter_mut() {
+            if matches!(group.status, GroupStatus::Draft) {
+                warn!("script ended with draft group {group_id} (spawn skipped)");
+                self.warnings.draft_dropped += 1;
+                group.status = GroupStatus::Dropped;
+            }
+        }
+    }
+
+    fn finalize_duration(&mut self) -> f32 {
+        let mut duration = self.cursor.max(0.0);
+        if duration <= 0.0 {
+            duration = 0.01;
+            self.cursor = duration;
+        }
+        self.scenario.duration_sec = duration;
+        duration
+    }
+
+    fn max_release_tail(&self) -> f32 {
+        let mut max_end: f32 = 0.0;
+        for event in &self.scenario.events {
+            for action in &event.actions {
+                if let Action::Release { fade_sec, .. } = action {
+                    let fade = fade_sec.max(0.0);
+                    max_end = max_end.max(event.time + fade);
                 }
             }
         }
-        tags.into_iter()
-            .filter(|t| matches_tag_pattern(target, t))
-            .count()
-            .try_into()
-            .unwrap_or(0)
+        max_end
+    }
+
+    fn commit(&mut self, include_drafts: bool) {
+        let mut spawn_actions = Vec::new();
+        if include_drafts {
+            for group in self.groups.values_mut() {
+                if !matches!(group.status, GroupStatus::Draft) {
+                    continue;
+                }
+                let mut ids = Vec::with_capacity(group.count);
+                for _ in 0..group.count {
+                    let id = self.next_agent_id;
+                    self.next_agent_id = self.next_agent_id.wrapping_add(1);
+                    ids.push(id);
+                }
+                group.live_ids = ids.clone();
+                group.status = GroupStatus::Live;
+                if !ids.is_empty() {
+                    spawn_actions.push(Action::Spawn {
+                        group_id: group.id,
+                        ids,
+                        spec: group.spec.spawn_spec(),
+                        strategy: group.strategy.clone(),
+                    });
+                }
+            }
+        }
+
+        let mut update_actions = Vec::new();
+        for group in self.groups.values_mut() {
+            if !matches!(group.status, GroupStatus::Live) {
+                continue;
+            }
+            if !group.pending_update.is_empty() {
+                if !group.live_ids.is_empty() {
+                    update_actions.push(Action::Update {
+                        group_id: group.id,
+                        ids: group.live_ids.clone(),
+                        update: group.pending_update.clone(),
+                    });
+                }
+                group.pending_update = ControlUpdate::default();
+            }
+        }
+
+        let mut release_actions = Vec::new();
+        for group in self.groups.values_mut() {
+            if !matches!(group.status, GroupStatus::Live) {
+                continue;
+            }
+            if group.pending_release {
+                if !group.live_ids.is_empty() {
+                    release_actions.push(Action::Release {
+                        group_id: group.id,
+                        ids: group.live_ids.clone(),
+                        fade_sec: group.spec.release_sec(),
+                    });
+                }
+                group.pending_release = false;
+                group.status = GroupStatus::Released;
+            }
+        }
+
+        if !spawn_actions.is_empty() || !update_actions.is_empty() || !release_actions.is_empty() {
+            let mut actions = Vec::with_capacity(
+                spawn_actions.len() + update_actions.len() + release_actions.len(),
+            );
+            actions.extend(spawn_actions);
+            actions.extend(update_actions);
+            actions.extend(release_actions);
+            self.push_event(self.cursor, actions);
+        }
+    }
+
+    fn finish(&mut self) {
+        self.commit(false);
+        self.drop_remaining_drafts();
+        let mut end_time = self.finalize_duration();
+        let release_tail = self.max_release_tail();
+        if release_tail > end_time {
+            end_time = release_tail;
+            self.scenario.duration_sec = end_time;
+            self.cursor = end_time;
+        }
+        self.push_event(end_time, vec![Action::Finish]);
+    }
+
+    fn create_group(
+        &mut self,
+        species: SpeciesHandle,
+        count: i64,
+        position: Position,
+    ) -> Result<GroupHandle, Box<EvalAltResult>> {
+        if count < 0 {
+            return Err(Box::new(EvalAltResult::ErrorRuntime(
+                "create count must be non-negative".into(),
+                position,
+            )));
+        }
+        let count = count as usize;
+        let id = self.next_group_id;
+        self.next_group_id = self.next_group_id.wrapping_add(1);
+        let group = GroupState {
+            id,
+            count,
+            spec: species.spec,
+            strategy: None,
+            status: GroupStatus::Draft,
+            live_ids: Vec::new(),
+            pending_update: ControlUpdate::default(),
+            pending_release: false,
+        };
+        self.groups.insert(id, group);
+        if let Some(scope) = self.scopes.last_mut() {
+            scope.created_groups.push(id);
+        }
+        Ok(GroupHandle { id })
+    }
+
+    fn set_seed(&mut self, seed: i64, position: Position) -> Result<(), Box<EvalAltResult>> {
+        if seed < 0 {
+            return Err(Box::new(EvalAltResult::ErrorRuntime(
+                "seed must be >= 0".into(),
+                position,
+            )));
+        }
+        let seed = seed as u64;
+        self.seed = seed;
+        self.scenario.seed = seed;
+        Ok(())
+    }
+
+    fn wait(&mut self, sec: f32) {
+        self.commit(true);
+        self.cursor += sec.max(0.0);
+    }
+
+    fn flush(&mut self) {
+        self.commit(true);
+    }
+
+    fn release_group(&mut self, group_id: u64) {
+        let Some(group) = self.groups.get_mut(&group_id) else {
+            warn!("release on unknown group {group_id}");
+            return;
+        };
+        match group.status {
+            GroupStatus::Draft => {
+                warn!("release on draft group {group_id} (spawn skipped)");
+                self.warnings.draft_dropped += 1;
+                group.status = GroupStatus::Dropped;
+            }
+            GroupStatus::Live => {
+                group.pending_release = true;
+            }
+            GroupStatus::Released | GroupStatus::Dropped => {
+                warn!("release ignored for inactive group {group_id}");
+            }
+        }
+    }
+
+    fn warn_live_builder(&self, group_id: u64, label: &str) {
+        warn!("{label} ignored for live group {group_id}");
     }
 }
 
 pub struct ScriptHost;
 
 impl ScriptHost {
-    fn last_non_empty_line(full: &str) -> u16 {
-        let mut last_non_empty = None;
-        let mut count = 0usize;
-        for (idx, line) in full.lines().enumerate() {
-            count = idx + 1;
-            if !line.trim().is_empty() {
-                last_non_empty = Some(idx + 1);
-            }
-        }
-        let line = last_non_empty.unwrap_or(count.max(1));
-        line as u16
-    }
-
-    fn combined_script(src: &str) -> String {
-        format!("{SCRIPT_PRELUDE}\n\n{src}")
-    }
-
     fn create_engine(ctx: Arc<Mutex<ScriptContext>>) -> Engine {
         let mut engine = Engine::new();
         engine.on_print(|msg| println!("[rhai] {msg}"));
-        engine.register_fn("__internal_debug", |msg: &str| {
-            println!("[rhai][debug] {msg}");
-        });
-        let ctx_for_seed = ctx.clone();
-        engine.register_fn("__internal_debug_seed", move || {
-            let ctx = ctx_for_seed.lock().expect("lock script context");
-            println!("[rhai][debug] seed={}", ctx.seed);
-        });
-        engine.register_custom_syntax_with_state_raw(
-            "debug",
-            |symbols, _look_ahead, _state| {
-                let next = match symbols.len() {
-                    0 => Some("debug"),
-                    1 => Some("("),
-                    2 => Some("$expr$"),
-                    3 => Some(")"),
-                    _ => None,
-                };
-                Ok(next.map(Into::into))
+
+        engine.register_type_with_name::<SpeciesHandle>("SpeciesHandle");
+        engine.register_type_with_name::<GroupHandle>("GroupHandle");
+        engine.register_type_with_name::<SpawnStrategy>("SpawnStrategy");
+
+        let mut presets = rhai::Module::new();
+        presets.set_var(
+            "sine",
+            SpeciesHandle {
+                spec: SpeciesSpec::preset(BodyMethod::Sine),
             },
-            false,
-            move |eval_ctx: &mut EvalContext, exprs: &[Expression], _state| {
-                let pos = exprs[0].position();
-                let msg_dyn = eval_ctx.eval_expression_tree(&exprs[0])?;
-                let msg = msg_dyn.try_cast::<String>().ok_or_else(|| {
-                    Box::new(EvalAltResult::ErrorRuntime(
-                        "debug msg must be a string".into(),
-                        pos,
-                    ))
-                })?;
-                println!("[rhai][debug] {msg}");
-                Ok(Dynamic::UNIT)
+        );
+        presets.set_var(
+            "harmonic",
+            SpeciesHandle {
+                spec: SpeciesSpec::preset(BodyMethod::Harmonic),
+            },
+        );
+        presets.set_var(
+            "saw",
+            SpeciesHandle {
+                spec: {
+                    let mut spec = SpeciesSpec::preset(BodyMethod::Harmonic);
+                    spec.control.body.timbre.brightness = 0.85;
+                    spec.control.body.timbre.width = 0.2;
+                    spec
+                },
+            },
+        );
+        presets.set_var(
+            "square",
+            SpeciesHandle {
+                spec: {
+                    let mut spec = SpeciesSpec::preset(BodyMethod::Harmonic);
+                    spec.control.body.timbre.brightness = 0.65;
+                    spec.control.body.timbre.width = 0.1;
+                    spec
+                },
+            },
+        );
+        presets.set_var(
+            "noise",
+            SpeciesHandle {
+                spec: {
+                    let mut spec = SpeciesSpec::preset(BodyMethod::Harmonic);
+                    spec.control.body.timbre.brightness = 1.0;
+                    spec.control.body.timbre.motion = 1.0;
+                    spec.control.body.timbre.width = 0.35;
+                    spec
+                },
+            },
+        );
+        engine.register_global_module(presets.into());
+
+        engine.register_fn("derive", |parent: SpeciesHandle| parent);
+
+        engine.register_fn("amp", |mut species: SpeciesHandle, value: FLOAT| {
+            species.spec.set_amp(value as f32);
+            species
+        });
+        engine.register_fn("amp", |mut species: SpeciesHandle, value: INT| {
+            species.spec.set_amp(value as f32);
+            species
+        });
+        engine.register_fn("freq", |mut species: SpeciesHandle, value: FLOAT| {
+            species.spec.set_freq(value as f32);
+            species
+        });
+        engine.register_fn("freq", |mut species: SpeciesHandle, value: INT| {
+            species.spec.set_freq(value as f32);
+            species
+        });
+        engine.register_fn("brain", |mut species: SpeciesHandle, name: &str| {
+            species.spec.set_brain(name);
+            species
+        });
+        engine.register_fn("phonation", |mut species: SpeciesHandle, name: &str| {
+            species.spec.set_phonation(name);
+            species
+        });
+        engine.register_fn(
+            "timbre",
+            |mut species: SpeciesHandle, brightness: FLOAT, width: FLOAT| {
+                species.spec.set_timbre(brightness as f32, width as f32);
+                species
+            },
+        );
+        engine.register_fn("metabolism", |mut species: SpeciesHandle, rate: FLOAT| {
+            species.spec.set_metabolism(rate as f32);
+            species
+        });
+        engine.register_fn(
+            "adsr",
+            |mut species: SpeciesHandle, a: FLOAT, d: FLOAT, s: FLOAT, r: FLOAT| {
+                species
+                    .spec
+                    .set_adsr(a as f32, d as f32, s as f32, r as f32);
+                species
             },
         );
 
-        let ctx_for_spawn_syntax = ctx.clone();
-        engine.register_custom_syntax_with_state_raw(
-            "spawn",
-            |symbols, look_ahead, _state| {
-                let next = match symbols.len() {
-                    0 => Some("spawn"),
-                    1 => Some("("),
-                    2 => Some("$expr$"),
-                    3 => Some(","),
-                    4 => Some("$expr$"),
-                    5 => match look_ahead {
-                        "," => Some(","),
-                        ")" => Some(")"),
-                        _ => {
-                            return Err(rhai::LexError::ImproperSymbol(
-                                look_ahead.to_string(),
-                                "Expected ',' or ')' for spawn".to_string(),
-                            )
-                            .into_err(Position::NONE));
-                        }
-                    },
-                    6 => {
-                        let last = symbols.last().map(|s| s.as_str()).unwrap_or("");
-                        if last == ")" { None } else { Some("$expr$") }
-                    }
-                    7 => match look_ahead {
-                        "," => Some(","),
-                        ")" => Some(")"),
-                        _ => {
-                            return Err(rhai::LexError::ImproperSymbol(
-                                look_ahead.to_string(),
-                                "Expected ',' or ')' for spawn".to_string(),
-                            )
-                            .into_err(Position::NONE));
-                        }
-                    },
-                    8 => {
-                        let last = symbols.last().map(|s| s.as_str()).unwrap_or("");
-                        if last == ")" { None } else { Some("$expr$") }
-                    }
-                    9 => Some(")"),
-                    _ => None,
-                };
-                Ok(next.map(Into::into))
+        let ctx_for_create = ctx.clone();
+        engine.register_fn(
+            "create",
+            move |call_ctx: NativeCallContext, species: SpeciesHandle, count: INT| {
+                let mut ctx = ctx_for_create.lock().expect("lock script context");
+                ctx.create_group(species, count as i64, call_ctx.call_position())
             },
-            false,
-            move |eval_ctx: &mut EvalContext, exprs: &[Expression], _state| {
-                let pos_tag = exprs[0].position();
-                let pos_count = exprs[1].position();
-                let pos_third = exprs.get(2).map(|e| e.position()).unwrap_or(pos_tag);
-                let pos_fourth = exprs.get(3).map(|e| e.position()).unwrap_or(pos_tag);
-                let tag_dyn = eval_ctx.eval_expression_tree(&exprs[0])?;
-                let count_dyn = eval_ctx.eval_expression_tree(&exprs[1])?;
-                let tag = tag_dyn.try_cast::<String>().ok_or_else(|| {
-                    Box::new(EvalAltResult::ErrorRuntime(
-                        "spawn tag must be a string".into(),
-                        pos_tag,
-                    ))
-                })?;
-                let count = count_dyn.try_cast::<i64>().ok_or_else(|| {
-                    Box::new(EvalAltResult::ErrorRuntime(
-                        "spawn count must be an integer".into(),
-                        pos_count,
-                    ))
-                })?;
-                if count < 0 {
-                    return Err(Box::new(EvalAltResult::ErrorRuntime(
-                        "spawn count must be non-negative".into(),
-                        pos_count,
-                    )));
+        );
+
+        let ctx_for_wait = ctx.clone();
+        engine.register_fn(
+            "wait",
+            move |call_ctx: NativeCallContext, sec: FLOAT| -> Result<(), Box<EvalAltResult>> {
+                let mut ctx = ctx_for_wait.lock().expect("lock script context");
+                ctx.wait(sec as f32);
+                drop(call_ctx);
+                Ok(())
+            },
+        );
+        let ctx_for_wait_int = ctx.clone();
+        engine.register_fn(
+            "wait",
+            move |call_ctx: NativeCallContext, sec: INT| -> Result<(), Box<EvalAltResult>> {
+                let mut ctx = ctx_for_wait_int.lock().expect("lock script context");
+                ctx.wait(sec as f32);
+                drop(call_ctx);
+                Ok(())
+            },
+        );
+
+        let ctx_for_flush = ctx.clone();
+        engine.register_fn(
+            "flush",
+            move |_call_ctx: NativeCallContext| -> Result<(), Box<EvalAltResult>> {
+                let mut ctx = ctx_for_flush.lock().expect("lock script context");
+                ctx.flush();
+                Ok(())
+            },
+        );
+
+        let ctx_for_seed = ctx.clone();
+        engine.register_fn(
+            "seed",
+            move |call_ctx: NativeCallContext, seed: INT| -> Result<(), Box<EvalAltResult>> {
+                let mut ctx = ctx_for_seed.lock().expect("lock script context");
+                ctx.set_seed(seed, call_ctx.call_position())
+            },
+        );
+
+        let ctx_for_release = ctx.clone();
+        engine.register_fn(
+            "release",
+            move |_call_ctx: NativeCallContext, handle: GroupHandle| {
+                let mut ctx = ctx_for_release.lock().expect("lock script context");
+                ctx.release_group(handle.id);
+            },
+        );
+
+        let ctx_for_scene = ctx.clone();
+        engine.register_fn(
+            "scene",
+            move |call_ctx: NativeCallContext, name: &str, callback: FnPtr| {
+                {
+                    let mut ctx = ctx_for_scene.lock().expect("lock script context");
+                    ctx.push_scene_marker(name);
+                    ctx.push_scope();
                 }
-                let mut ctx = ctx_for_spawn_syntax.lock().expect("lock script context");
-                let spawned = if exprs.len() >= 4 {
-                    let opts_dyn = eval_ctx.eval_expression_tree(&exprs[2])?;
-                    let opts = opts_dyn.try_cast::<Map>().ok_or_else(|| {
-                        Box::new(EvalAltResult::ErrorRuntime(
-                            "spawn opts must be a map".into(),
-                            pos_third,
-                        ))
-                    })?;
-                    let patch_dyn = eval_ctx.eval_expression_tree(&exprs[3])?;
-                    let patch = patch_dyn.try_cast::<Map>().ok_or_else(|| {
-                        Box::new(EvalAltResult::ErrorRuntime(
-                            "spawn patch must be a map".into(),
-                            pos_fourth,
-                        ))
-                    })?;
-                    spawn_with_opts_and_patch_at(&mut ctx, &tag, count, opts, patch, pos_third)?
-                } else if exprs.len() >= 3 {
-                    let third_dyn = eval_ctx.eval_expression_tree(&exprs[2])?;
-                    let third = third_dyn.try_cast::<Map>().ok_or_else(|| {
-                        Box::new(EvalAltResult::ErrorRuntime(
-                            "spawn map must be a map".into(),
-                            pos_third,
-                        ))
-                    })?;
-                    spawn_with_third_at(&mut ctx, &tag, count, third, pos_third)?
-                } else {
-                    spawn_min_at(&mut ctx, &tag, count, pos_tag)?
+                let result = callback.call_within_context::<Dynamic>(&call_ctx, ());
+                let mut ctx = ctx_for_scene.lock().expect("lock script context");
+                ctx.pop_scope();
+                result.map(|_| ())
+            },
+        );
+
+        let ctx_for_play = ctx.clone();
+        engine.register_fn(
+            "play",
+            move |call_ctx: NativeCallContext, callback: FnPtr| {
+                {
+                    let mut ctx = ctx_for_play.lock().expect("lock script context");
+                    ctx.push_scope();
+                }
+                let result = callback.call_within_context::<Dynamic>(&call_ctx, ());
+                let mut ctx = ctx_for_play.lock().expect("lock script context");
+                ctx.pop_scope();
+                result.map(|_| ())
+            },
+        );
+        let ctx_for_play1 = ctx.clone();
+        engine.register_fn(
+            "play",
+            move |call_ctx: NativeCallContext, callback: FnPtr, arg1: Dynamic| {
+                {
+                    let mut ctx = ctx_for_play1.lock().expect("lock script context");
+                    ctx.push_scope();
+                }
+                let result = callback.call_within_context::<Dynamic>(&call_ctx, (arg1,));
+                let mut ctx = ctx_for_play1.lock().expect("lock script context");
+                ctx.pop_scope();
+                result.map(|_| ())
+            },
+        );
+        let ctx_for_play2 = ctx.clone();
+        engine.register_fn(
+            "play",
+            move |call_ctx: NativeCallContext, callback: FnPtr, arg1: Dynamic, arg2: Dynamic| {
+                {
+                    let mut ctx = ctx_for_play2.lock().expect("lock script context");
+                    ctx.push_scope();
+                }
+                let result = callback.call_within_context::<Dynamic>(&call_ctx, (arg1, arg2));
+                let mut ctx = ctx_for_play2.lock().expect("lock script context");
+                ctx.pop_scope();
+                result.map(|_| ())
+            },
+        );
+        let ctx_for_play3 = ctx.clone();
+        engine.register_fn(
+            "play",
+            move |call_ctx: NativeCallContext,
+                  callback: FnPtr,
+                  arg1: Dynamic,
+                  arg2: Dynamic,
+                  arg3: Dynamic| {
+                {
+                    let mut ctx = ctx_for_play3.lock().expect("lock script context");
+                    ctx.push_scope();
+                }
+                let result = callback.call_within_context::<Dynamic>(&call_ctx, (arg1, arg2, arg3));
+                let mut ctx = ctx_for_play3.lock().expect("lock script context");
+                ctx.pop_scope();
+                result.map(|_| ())
+            },
+        );
+        let ctx_for_play_args = ctx.clone();
+        engine.register_fn(
+            "play",
+            move |call_ctx: NativeCallContext, callback: FnPtr, args: Array| {
+                {
+                    let mut ctx = ctx_for_play_args.lock().expect("lock script context");
+                    ctx.push_scope();
+                }
+                let result = callback.call_within_context::<Dynamic>(&call_ctx, args);
+                let mut ctx = ctx_for_play_args.lock().expect("lock script context");
+                ctx.pop_scope();
+                result.map(|_| ())
+            },
+        );
+
+        let ctx_for_parallel = ctx.clone();
+        engine.register_fn(
+            "parallel",
+            move |call_ctx: NativeCallContext,
+                  callbacks: Array|
+                  -> Result<(), Box<EvalAltResult>> {
+                let start_time = {
+                    let ctx = ctx_for_parallel.lock().expect("lock script context");
+                    ctx.cursor
                 };
-                Ok(Dynamic::from(spawned))
+                let mut max_end = start_time;
+                for (idx, callback) in callbacks.into_iter().enumerate() {
+                    let Some(fn_ptr) = callback.try_cast::<FnPtr>() else {
+                        return Err(Box::new(EvalAltResult::ErrorRuntime(
+                            format!("parallel expects closures (index {idx})").into(),
+                            call_ctx.call_position(),
+                        )));
+                    };
+                    {
+                        let mut ctx = ctx_for_parallel.lock().expect("lock script context");
+                        ctx.cursor = start_time;
+                        ctx.push_scope();
+                    }
+                    let result = fn_ptr.call_within_context::<Dynamic>(&call_ctx, ());
+                    let mut ctx = ctx_for_parallel.lock().expect("lock script context");
+                    let end_time = ctx.cursor;
+                    ctx.pop_scope();
+                    max_end = max_end.max(end_time);
+                    let _ = result.map_err(|err| err)?;
+                }
+                let mut ctx = ctx_for_parallel.lock().expect("lock script context");
+                ctx.cursor = max_end;
+                Ok(())
+            },
+        );
+
+        engine.register_fn("harmonicity", |root_freq: FLOAT| {
+            SpawnStrategy::Harmonicity {
+                root_freq: root_freq as f32,
+                min_mul: 1.0,
+                max_mul: 4.0,
+                min_dist_erb: 1.0,
+            }
+        });
+        engine.register_fn(
+            "range",
+            |strategy: SpawnStrategy, min_mul: FLOAT, max_mul: FLOAT| match strategy {
+                SpawnStrategy::Harmonicity {
+                    root_freq,
+                    min_dist_erb,
+                    ..
+                } => SpawnStrategy::Harmonicity {
+                    root_freq,
+                    min_mul: min_mul as f32,
+                    max_mul: max_mul as f32,
+                    min_dist_erb,
+                },
+                other => {
+                    warn!("range() ignored for non-harmonicity strategy");
+                    other
+                }
+            },
+        );
+        engine.register_fn(
+            "min_dist",
+            |strategy: SpawnStrategy, min_dist: FLOAT| match strategy {
+                SpawnStrategy::Harmonicity {
+                    root_freq,
+                    min_mul,
+                    max_mul,
+                    ..
+                } => SpawnStrategy::Harmonicity {
+                    root_freq,
+                    min_mul,
+                    max_mul,
+                    min_dist_erb: min_dist as f32,
+                },
+                other => {
+                    warn!("min_dist() ignored for non-harmonicity strategy");
+                    other
+                }
+            },
+        );
+        engine.register_fn("harmonic_density", |min_freq: FLOAT, max_freq: FLOAT| {
+            SpawnStrategy::HarmonicDensity {
+                min_freq: min_freq as f32,
+                max_freq: max_freq as f32,
+                min_dist_erb: 1.0,
+            }
+        });
+        engine.register_fn("random_log", |min_freq: FLOAT, max_freq: FLOAT| {
+            SpawnStrategy::RandomLog {
+                min_freq: min_freq as f32,
+                max_freq: max_freq as f32,
+            }
+        });
+        engine.register_fn("linear", |start: FLOAT, end: FLOAT| SpawnStrategy::Linear {
+            start_freq: start as f32,
+            end_freq: end as f32,
+        });
+
+        let ctx_for_group_amp = ctx.clone();
+        engine.register_fn(
+            "amp",
+            move |handle: GroupHandle, value: FLOAT| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_amp.lock().expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("amp ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                let value = value as f32;
+                match group.status {
+                    GroupStatus::Draft => {
+                        group.spec.set_amp(value);
+                    }
+                    GroupStatus::Live => {
+                        group.spec.set_amp(value);
+                        group.pending_update.amp = Some(value);
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "amp"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_amp_int = ctx.clone();
+        engine.register_fn(
+            "amp",
+            move |handle: GroupHandle, value: INT| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_amp_int.lock().expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("amp ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                let value = value as f32;
+                match group.status {
+                    GroupStatus::Draft => {
+                        group.spec.set_amp(value);
+                    }
+                    GroupStatus::Live => {
+                        group.spec.set_amp(value);
+                        group.pending_update.amp = Some(value);
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "amp"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_freq = ctx.clone();
+        engine.register_fn(
+            "freq",
+            move |handle: GroupHandle, value: FLOAT| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_freq.lock().expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("freq ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                let value = value as f32;
+                match group.status {
+                    GroupStatus::Draft => {
+                        group.strategy = None;
+                        group.spec.set_freq(value);
+                    }
+                    GroupStatus::Live => {
+                        group.spec.set_freq(value);
+                        group.pending_update.freq = Some(value);
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "freq"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_freq_int = ctx.clone();
+        engine.register_fn(
+            "freq",
+            move |handle: GroupHandle, value: INT| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_freq_int.lock().expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("freq ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                let value = value as f32;
+                match group.status {
+                    GroupStatus::Draft => {
+                        group.strategy = None;
+                        group.spec.set_freq(value);
+                    }
+                    GroupStatus::Live => {
+                        group.spec.set_freq(value);
+                        group.pending_update.freq = Some(value);
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "freq"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_brain = ctx.clone();
+        engine.register_fn(
+            "brain",
+            move |handle: GroupHandle, name: &str| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_brain.lock().expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("brain ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                match group.status {
+                    GroupStatus::Draft => group.spec.set_brain(name),
+                    GroupStatus::Live => ctx.warn_live_builder(handle.id, "brain"),
+                    _ => ctx.warn_live_builder(handle.id, "brain"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_phonation = ctx.clone();
+        engine.register_fn(
+            "phonation",
+            move |handle: GroupHandle, name: &str| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_phonation.lock().expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("phonation ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                match group.status {
+                    GroupStatus::Draft => group.spec.set_phonation(name),
+                    GroupStatus::Live => ctx.warn_live_builder(handle.id, "phonation"),
+                    _ => ctx.warn_live_builder(handle.id, "phonation"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_timbre = ctx.clone();
+        engine.register_fn(
+            "timbre",
+            move |handle: GroupHandle,
+                  brightness: FLOAT,
+                  width: FLOAT|
+                  -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_timbre.lock().expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("timbre ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                let brightness = brightness as f32;
+                let width = width as f32;
+                match group.status {
+                    GroupStatus::Draft => {
+                        group.spec.set_timbre(brightness, width);
+                    }
+                    GroupStatus::Live => {
+                        group.spec.set_timbre(brightness, width);
+                        group.pending_update.timbre_brightness = Some(brightness);
+                        group.pending_update.timbre_width = Some(width);
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "timbre"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_metabolism = ctx.clone();
+        engine.register_fn(
+            "metabolism",
+            move |handle: GroupHandle, rate: FLOAT| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_metabolism
+                    .lock()
+                    .expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("metabolism ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                match group.status {
+                    GroupStatus::Draft => group.spec.set_metabolism(rate as f32),
+                    GroupStatus::Live => ctx.warn_live_builder(handle.id, "metabolism"),
+                    _ => ctx.warn_live_builder(handle.id, "metabolism"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_adsr = ctx.clone();
+        engine.register_fn(
+            "adsr",
+            move |handle: GroupHandle,
+                  a: FLOAT,
+                  d: FLOAT,
+                  s: FLOAT,
+                  r: FLOAT|
+                  -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_adsr.lock().expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("adsr ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                match group.status {
+                    GroupStatus::Draft => {
+                        group.spec.set_adsr(a as f32, d as f32, s as f32, r as f32);
+                    }
+                    GroupStatus::Live => ctx.warn_live_builder(handle.id, "adsr"),
+                    _ => ctx.warn_live_builder(handle.id, "adsr"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_place = ctx.clone();
+        engine.register_fn(
+            "place",
+            move |handle: GroupHandle,
+                  strategy: SpawnStrategy|
+                  -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_place.lock().expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("place ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                match group.status {
+                    GroupStatus::Draft => {
+                        group.spec.control.pitch.mode = PitchMode::Lock;
+                        group.strategy = Some(strategy);
+                    }
+                    GroupStatus::Live => ctx.warn_live_builder(handle.id, "place"),
+                    _ => ctx.warn_live_builder(handle.id, "place"),
+                }
+                Ok(handle)
             },
         );
 
@@ -772,17 +1109,26 @@ impl ScriptHost {
                   amp: FLOAT|
                   -> Result<(), Box<EvalAltResult>> {
                 let mut ctx = ctx_for_intent.lock().expect("lock script context");
-                ctx.intent(
-                    freq_hz as f32,
-                    dt as f32,
-                    dur as f32,
-                    amp as f32,
-                    None,
-                    call_ctx.call_position(),
-                )
+                let cursor = ctx.cursor;
+                let onset_sec = (cursor + dt as f32).max(0.0);
+                let duration_sec = (dur as f32).max(0.0);
+                ctx.push_event(
+                    cursor,
+                    vec![Action::PostIntent {
+                        source_id: 0,
+                        onset_sec,
+                        duration_sec,
+                        freq_hz: freq_hz as f32,
+                        amp: amp as f32,
+                        tag: None,
+                        confidence: 1.0,
+                    }],
+                );
+                drop(call_ctx);
+                Ok(())
             },
         );
-        let ctx_for_intent_opts = ctx.clone();
+        let ctx_for_intent_tag = ctx.clone();
         engine.register_fn(
             "intent",
             move |call_ctx: NativeCallContext,
@@ -790,88 +1136,44 @@ impl ScriptHost {
                   dt: FLOAT,
                   dur: FLOAT,
                   amp: FLOAT,
-                  opts: Map|
+                  tag: &str|
                   -> Result<(), Box<EvalAltResult>> {
-                let mut ctx = ctx_for_intent_opts.lock().expect("lock script context");
-                ctx.intent(
-                    freq_hz as f32,
-                    dt as f32,
-                    dur as f32,
-                    amp as f32,
-                    Some(opts),
-                    call_ctx.call_position(),
-                )
+                let mut ctx = ctx_for_intent_tag.lock().expect("lock script context");
+                let cursor = ctx.cursor;
+                let onset_sec = (cursor + dt as f32).max(0.0);
+                let duration_sec = (dur as f32).max(0.0);
+                ctx.push_event(
+                    cursor,
+                    vec![Action::PostIntent {
+                        source_id: 0,
+                        onset_sec,
+                        duration_sec,
+                        freq_hz: freq_hz as f32,
+                        amp: amp as f32,
+                        tag: Some(tag.to_string()),
+                        confidence: 1.0,
+                    }],
+                );
+                drop(call_ctx);
+                Ok(())
             },
         );
 
-        let ctx_for_scene = ctx.clone();
-        engine.register_fn(
-            "scene",
-            move |call_ctx: NativeCallContext, name: &str| -> Result<(), Box<EvalAltResult>> {
-                let mut ctx = ctx_for_scene.lock().expect("lock script context");
-                ctx.scene(name, call_ctx.call_position())
-            },
-        );
-
-        let ctx_for_wait = ctx.clone();
-        engine.register_fn(
-            "wait",
-            move |call_ctx: NativeCallContext, sec: FLOAT| -> Result<(), Box<EvalAltResult>> {
-                let mut ctx = ctx_for_wait.lock().expect("lock script context");
-                ctx.wait(sec as f32, call_ctx.call_position())
-            },
-        );
-        let ctx_for_wait_int = ctx.clone();
-        engine.register_fn(
-            "wait",
-            move |call_ctx: NativeCallContext, sec: i64| -> Result<(), Box<EvalAltResult>> {
-                let mut ctx = ctx_for_wait_int.lock().expect("lock script context");
-                ctx.wait(sec as f32, call_ctx.call_position())
-            },
-        );
-
-        let ctx_for_push_time = ctx.clone();
-        engine.register_fn(
-            "__internal_push_time",
-            move |call_ctx: NativeCallContext| -> Result<(), Box<EvalAltResult>> {
-                let mut ctx = ctx_for_push_time.lock().expect("lock script context");
-                push_time(&mut ctx, call_ctx.call_position())
-            },
-        );
-
-        let ctx_for_pop_time = ctx.clone();
-        engine.register_fn(
-            "__internal_pop_time",
-            move |call_ctx: NativeCallContext| -> Result<(), Box<EvalAltResult>> {
-                let mut ctx = ctx_for_pop_time.lock().expect("lock script context");
-                pop_time(&mut ctx, call_ctx.call_position())
-            },
-        );
-        let ctx_for_set_time = ctx.clone();
-        engine.register_fn(
-            "__internal_set_time",
-            move |call_ctx: NativeCallContext, sec: FLOAT| -> Result<(), Box<EvalAltResult>> {
-                let mut ctx = ctx_for_set_time.lock().expect("lock script context");
-                set_time(&mut ctx, sec, call_ctx.call_position())
-            },
-        );
-
-        let ctx_for_set_tag_str = ctx.clone();
-        engine.register_fn(
-            "set",
-            move |call_ctx: NativeCallContext, tag: &str, patch: Map| {
-                let mut ctx = ctx_for_set_tag_str.lock().expect("lock script context");
-                ctx.set_patch(tag, patch, call_ctx.call_position())
-            },
-        );
         let ctx_for_set_harmonicity = ctx.clone();
         engine.register_fn(
             "set_harmonicity",
-            move |call_ctx: NativeCallContext, opts: Map| {
+            move |call_ctx: NativeCallContext, mirror: FLOAT| {
                 let mut ctx = ctx_for_set_harmonicity.lock().expect("lock script context");
-                ctx.set_harmonicity(opts, call_ctx.call_position())
+                let update = crate::core::landscape::LandscapeUpdate {
+                    mirror: Some(mirror as f32),
+                    ..crate::core::landscape::LandscapeUpdate::default()
+                };
+                let cursor = ctx.cursor;
+                ctx.push_event(cursor, vec![Action::SetHarmonicity { update }]);
+                drop(call_ctx);
             },
         );
+
         let ctx_for_set_global_coupling = ctx.clone();
         engine.register_fn(
             "set_global_coupling",
@@ -879,9 +1181,17 @@ impl ScriptHost {
                 let mut ctx = ctx_for_set_global_coupling
                     .lock()
                     .expect("lock script context");
-                ctx.set_global_coupling(value as f32, call_ctx.call_position())
+                let cursor = ctx.cursor;
+                ctx.push_event(
+                    cursor,
+                    vec![Action::SetGlobalCoupling {
+                        value: value as f32,
+                    }],
+                );
+                drop(call_ctx);
             },
         );
+
         let ctx_for_set_roughness_tolerance = ctx.clone();
         engine.register_fn(
             "set_roughness_tolerance",
@@ -889,71 +1199,14 @@ impl ScriptHost {
                 let mut ctx = ctx_for_set_roughness_tolerance
                     .lock()
                     .expect("lock script context");
-                ctx.set_roughness_tolerance(value as f32, call_ctx.call_position())
-            },
-        );
-        let ctx_for_unset = ctx.clone();
-        engine.register_fn(
-            "unset",
-            move |call_ctx: NativeCallContext, tag: &str, path: &str| {
-                let mut ctx = ctx_for_unset.lock().expect("lock script context");
-                ctx.unset(tag, path, call_ctx.call_position())
-            },
-        );
-
-        let ctx_for_set_seed = ctx.clone();
-        engine.register_fn(
-            "set_seed",
-            move |call_ctx: NativeCallContext, seed: INT| -> Result<(), Box<EvalAltResult>> {
-                let mut ctx = ctx_for_set_seed.lock().expect("lock script context");
-                ctx.set_seed(seed, call_ctx.call_position())
-            },
-        );
-
-        let ctx_for_remove_tag_str = ctx.clone();
-        engine.register_fn("remove", move |call_ctx: NativeCallContext, tag: &str| {
-            let mut ctx = ctx_for_remove_tag_str.lock().expect("lock script context");
-            ctx.remove(tag, call_ctx.call_position())
-        });
-        let ctx_for_release_tag_str = ctx.clone();
-        engine.register_fn(
-            "release",
-            move |call_ctx: NativeCallContext, tag: &str, sec: FLOAT| {
-                let mut ctx = ctx_for_release_tag_str.lock().expect("lock script context");
-                ctx.release(tag, sec as f32, call_ctx.call_position())
-            },
-        );
-        let ctx_for_release_tag_int = ctx.clone();
-        engine.register_fn(
-            "release",
-            move |call_ctx: NativeCallContext, tag: &str, sec: i64| {
-                let mut ctx = ctx_for_release_tag_int.lock().expect("lock script context");
-                ctx.release(tag, sec as f32, call_ctx.call_position())
-            },
-        );
-
-        let ctx_for_end = ctx.clone();
-        engine.register_fn(
-            "end",
-            move |call_ctx: NativeCallContext| -> Result<(), Box<EvalAltResult>> {
-                let mut ctx = ctx_for_end.lock().expect("lock script context");
-                ctx.end(call_ctx.call_position())
-            },
-        );
-        let ctx_for_end_at = ctx.clone();
-        engine.register_fn(
-            "end_at",
-            move |call_ctx: NativeCallContext, sec: FLOAT| -> Result<(), Box<EvalAltResult>> {
-                let mut ctx = ctx_for_end_at.lock().expect("lock script context");
-                ctx.end_at(sec as f32, call_ctx.call_position())
-            },
-        );
-        let ctx_for_end_at_int = ctx.clone();
-        engine.register_fn(
-            "end_at",
-            move |call_ctx: NativeCallContext, sec: i64| -> Result<(), Box<EvalAltResult>> {
-                let mut ctx = ctx_for_end_at_int.lock().expect("lock script context");
-                ctx.end_at(sec as f32, call_ctx.call_position())
+                let cursor = ctx.cursor;
+                ctx.push_event(
+                    cursor,
+                    vec![Action::SetRoughnessTolerance {
+                        value: value as f32,
+                    }],
+                );
+                drop(call_ctx);
             },
         );
 
@@ -965,10 +1218,8 @@ impl ScriptHost {
             .map_err(|err| ScriptError::new(format!("read script {path}: {err}"), None))?;
         let ctx = Arc::new(Mutex::new(ScriptContext::default()));
         let engine = ScriptHost::create_engine(ctx.clone());
-        let script_src = ScriptHost::combined_script(&src);
 
-        if let Err(e) = engine.eval::<()>(&script_src) {
-            // Print structured error to help diagnose script issues (e.g., type mismatches).
+        if let Err(e) = engine.eval::<()>(&src) {
             println!("Debug script error: {:?}", e);
             return Err(ScriptError::from_eval(
                 e,
@@ -976,15 +1227,8 @@ impl ScriptHost {
             ));
         }
 
-        let ctx_out = ctx.lock().expect("lock script context");
-        if !ctx_out.ended {
-            let line = ScriptHost::last_non_empty_line(&script_src);
-            let pos = Position::new(line, 1);
-            let msg = "script must call end() or end_at(t) to specify duration";
-            return Err(
-                ScriptError::new(msg, Some(pos)).with_context(format!("execute script {path}"))
-            );
-        }
+        let mut ctx_out = ctx.lock().expect("lock script context");
+        ctx_out.finish();
         Ok(ctx_out.scenario.clone())
     }
 }
@@ -1040,639 +1284,183 @@ impl std::error::Error for ScriptError {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::landscape::LandscapeFrame;
-    use crate::core::log2space::Log2Space;
-    use crate::core::timebase::Timebase;
-    use crate::life::control::PhonationType;
-    use crate::life::population::Population;
-    use rhai::Position;
 
-    fn run_script(src: &str) -> Scenario {
+    fn run_script(src: &str) -> (Scenario, ScriptWarnings) {
         let ctx = Arc::new(Mutex::new(ScriptContext::default()));
         let engine = ScriptHost::create_engine(ctx.clone());
-        let script_src = ScriptHost::combined_script(src);
-        engine.eval::<()>(&script_src).expect("script runs");
-        ctx.lock().expect("lock ctx").scenario.clone()
+        let _ = engine.eval::<Dynamic>(&src).expect("script runs");
+        let mut ctx_out = ctx.lock().expect("lock script context");
+        ctx_out.finish();
+        (ctx_out.scenario.clone(), ctx_out.warnings.clone())
     }
 
-    fn test_timebase() -> Timebase {
-        Timebase {
-            fs: 48_000.0,
-            hop: 64,
-        }
-    }
-
-    fn spawn_action_from_script(src: &str) -> Action {
-        let scenario = run_script(src);
-        scenario
-            .events
-            .iter()
-            .flat_map(|ev| ev.actions.iter())
-            .find_map(|action| match action {
-                Action::Spawn { .. } => Some(action.clone()),
-                _ => None,
-            })
-            .expect("spawn action exists")
-    }
-
-    fn apply_spawn_action(action: Action, landscape: &LandscapeFrame) -> Population {
-        let mut pop = Population::new(test_timebase());
-        pop.apply_action(action, landscape, None);
-        pop
-    }
-
-    fn eval_script_error_position(src: &str) -> Position {
-        let ctx = Arc::new(Mutex::new(ScriptContext::default()));
-        let engine = ScriptHost::create_engine(ctx.clone());
-        let script_src = ScriptHost::combined_script(src);
-        match engine.eval::<()>(&script_src) {
-            Ok(_) => {
-                if !ctx.lock().expect("lock ctx").ended {
-                    let line = ScriptHost::last_non_empty_line(&script_src);
-                    Position::new(line, 1)
-                } else {
-                    panic!("script should error");
-                }
+    fn action_times<'a>(scenario: &'a Scenario) -> Vec<(f32, &'a Action)> {
+        let mut out = Vec::new();
+        for ev in &scenario.events {
+            for action in &ev.actions {
+                out.push((ev.time, action));
             }
-            Err(err) => err.position(),
         }
-    }
-
-    fn eval_script_error(src: &str) -> Box<EvalAltResult> {
-        let ctx = Arc::new(Mutex::new(ScriptContext::default()));
-        let engine = ScriptHost::create_engine(ctx.clone());
-        let script_src = ScriptHost::combined_script(src);
-        match engine.eval::<Dynamic>(&script_src) {
-            Ok(_) => {
-                if !ctx.lock().expect("lock ctx").ended {
-                    let line = ScriptHost::last_non_empty_line(&script_src);
-                    Box::new(EvalAltResult::ErrorRuntime(
-                        "script must call end() or end_at(t) to specify duration".into(),
-                        Position::new(line, 1),
-                    ))
-                } else {
-                    panic!("script should error");
-                }
-            }
-            Err(err) => err,
-        }
-    }
-
-    fn expected_line(full: &str, needle: &str) -> usize {
-        full.lines()
-            .enumerate()
-            .find_map(|(idx, line)| {
-                if line.contains(needle) {
-                    Some(idx + 1)
-                } else {
-                    None
-                }
-            })
-            .unwrap_or_else(|| panic!("expected marker not found: {}", needle))
-    }
-
-    fn assert_time_close(actual: f32, expected: f32) {
-        let diff = (actual - expected).abs();
-        assert!(
-            diff < 1e-5,
-            "time mismatch: expected {expected}, got {actual}"
-        );
+        out
     }
 
     #[test]
-    fn scene_sets_start_and_relative_times() {
-        let scenario = run_script(
+    fn draft_group_without_commit_is_dropped() {
+        let (scenario, warnings) = run_script(
             r#"
-            scene("intro");
-            spawn("lead", 1, #{ body: #{ amp: 0.2 }, pitch: #{ freq: 440.0 } });
+            create(sine, 1);
+        "#,
+        );
+        let has_spawn = scenario
+            .events
+            .iter()
+            .any(|ev| ev.actions.iter().any(|a| matches!(a, Action::Spawn { .. })));
+        assert!(!has_spawn, "draft should not spawn without wait/flush");
+        assert_eq!(warnings.draft_dropped, 1);
+    }
+
+    #[test]
+    fn flush_spawns_without_advancing_time() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            create(sine, 1);
+            flush();
             wait(1.0);
-            scene("break");
-            spawn("hit", 1, #{ body: #{ amp: 0.1 }, pitch: #{ freq: 880.0 } });
-            wait(0.5);
-            end();
         "#,
         );
-
-        assert_eq!(scenario.scene_markers.len(), 2);
-        assert_eq!(scenario.scene_markers[0].name, "intro");
-        assert_time_close(scenario.scene_markers[0].time, 0.0);
-        assert_eq!(scenario.scene_markers[1].name, "break");
-        assert_time_close(scenario.scene_markers[1].time, 1.0);
-
-        let mut has_hit = false;
-        let mut has_finish = false;
-        for ev in &scenario.events {
-            for action in &ev.actions {
-                match action {
-                    Action::Spawn { tag, .. } => {
-                        if tag == "hit" {
-                            assert_time_close(ev.time, 1.0);
-                            has_hit = true;
-                        }
-                    }
-                    Action::Finish => {
-                        assert_time_close(ev.time, 1.5);
-                        has_finish = true;
-                    }
-                    _ => {}
-                }
-            }
-        }
-        assert!(has_hit, "expected spawn event for hit");
-        assert!(has_finish, "expected finish event");
-    }
-
-    #[test]
-    fn parallel_restores_time_after_block() {
-        let scenario = run_script(
-            r#"
-            scene("intro");
-            wait(0.1);
-            parallel(|| {
-                wait(0.5);
-                spawn("pad", 1, #{ body: #{ amp: 0.1 }, pitch: #{ freq: 200.0 } });
-            });
-            wait(0.2);
-            spawn("after", 1, #{ body: #{ amp: 0.1 }, pitch: #{ freq: 300.0 } });
-            end();
-        "#,
-        );
-
-        let mut pad_time = None;
-        let mut after_time = None;
+        let mut spawn_time = None;
         let mut finish_time = None;
-        for ev in &scenario.events {
-            for action in &ev.actions {
-                match action {
-                    Action::Spawn { tag, .. } => match tag.as_str() {
-                        "pad" => pad_time = Some(ev.time),
-                        "after" => after_time = Some(ev.time),
-                        _ => {}
-                    },
-                    Action::Finish => finish_time = Some(ev.time),
-                    _ => {}
+        for (time, action) in action_times(&scenario) {
+            match action {
+                Action::Spawn { .. } => spawn_time = Some(time),
+                Action::Finish => finish_time = Some(time),
+                _ => {}
+            }
+        }
+        assert_eq!(spawn_time, Some(0.0));
+        assert_eq!(finish_time, Some(1.0));
+    }
+
+    #[test]
+    fn scene_scope_releases_live_groups() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            scene("alpha", || {
+                let g = create(sine, 1);
+                flush();
+                wait(0.5);
+            });
+        "#,
+        );
+        let mut release_time = None;
+        for (time, action) in action_times(&scenario) {
+            if matches!(action, Action::Release { .. }) {
+                release_time = Some(time);
+            }
+        }
+        assert_eq!(release_time, Some(0.5));
+    }
+
+    #[test]
+    fn parallel_advances_to_max_child_end() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            parallel([
+                || { create(sine, 1); wait(0.5); },
+                || { create(sine, 1); wait(1.0); }
+            ]);
+        "#,
+        );
+        let finish_time = scenario
+            .events
+            .iter()
+            .find(|ev| ev.actions.iter().any(|a| matches!(a, Action::Finish)))
+            .map(|ev| ev.time);
+        let mut release_tail: f32 = 0.0;
+        for event in &scenario.events {
+            for action in &event.actions {
+                if let Action::Release { fade_sec, .. } = action {
+                    release_tail = release_tail.max(event.time + fade_sec);
                 }
             }
         }
-
-        assert_time_close(pad_time.expect("pad time"), 0.6);
-        assert_time_close(after_time.expect("after time"), 0.3);
-        assert_time_close(finish_time.expect("finish time"), 0.3);
+        let expected = release_tail.max(1.0);
+        assert!(matches!(finish_time, Some(t) if (t - expected).abs() <= 1e-6));
     }
 
     #[test]
-    fn spawn_uses_relative_scene_time() {
-        let scenario = run_script(
+    fn scope_drop_warns_on_draft() {
+        let (_scenario, warnings) = run_script(
             r#"
-            scene("alpha");
-            wait(1.2);
-            spawn("tag", 3, #{ body: #{ amp: 0.25 }, pitch: #{ freq: 150.0 } });
-            end();
+            scene("alpha", || { create(sine, 1); });
         "#,
         );
-
-        assert_eq!(scenario.scene_markers.len(), 1);
-        assert_eq!(scenario.scene_markers[0].name, "alpha");
-        assert_time_close(scenario.scene_markers[0].time, 0.0);
-
-        let ev = scenario
-            .events
-            .iter()
-            .find(|ev| ev.actions.iter().any(|a| matches!(a, Action::Spawn { .. })))
-            .expect("spawn event");
-        assert_time_close(ev.time, 1.2);
-        assert_eq!(ev.actions.len(), 1);
-        match &ev.actions[0] {
-            Action::Spawn { count, tag, .. } => {
-                assert_eq!(*count, 3);
-                assert_eq!(tag, "tag");
-            }
-            other => panic!("unexpected action: {:?}", other),
-        }
+        assert_eq!(warnings.draft_dropped, 1);
     }
 
     #[test]
-    fn scene_created_when_scene_absent() {
-        let scenario = run_script(
+    fn spawn_order_is_group_id_order() {
+        let (scenario, _warnings) = run_script(
             r#"
-            spawn("init", 1, #{ body: #{ amp: 0.2 }, pitch: #{ freq: 330.0 } });
-            wait(0.3);
-            end();
+            let a = create(sine, 1);
+            let b = create(sine, 1);
+            flush();
         "#,
         );
-
-        assert!(scenario.scene_markers.is_empty());
-        assert_eq!(scenario.events.len(), 2);
-        assert_time_close(scenario.events[0].time, 0.0);
-        assert_time_close(scenario.events[1].time, 0.3);
-    }
-
-    #[test]
-    fn sample_script_file_executes() {
-        let scenario = ScriptHost::load_script("samples/01_fundamentals/spawn_basics.rhai")
-            .expect("sample script should run");
-        assert!(!scenario.events.is_empty());
-    }
-
-    #[test]
-    fn minimal_spawn_run_executes() {
-        let scenario = ScriptHost::load_script("tests/scripts/minimal_spawn_run.rhai")
-            .expect("minimal script should run");
-        let mut has_spawn = false;
-        for ev in &scenario.events {
-            for action in &ev.actions {
-                if let Action::Spawn { count, .. } = action {
-                    assert!(*count > 0);
-                    has_spawn = true;
+        let mut spawns = Vec::new();
+        for event in &scenario.events {
+            for action in &event.actions {
+                if let Action::Spawn { group_id, ids, .. } = action {
+                    spawns.push((event.time, *group_id, ids.clone()));
                 }
             }
         }
-        let has_finish = scenario
+        assert_eq!(spawns.len(), 2);
+        assert_eq!(spawns[0].0, 0.0);
+        assert_eq!(spawns[0].1, 1);
+        assert_eq!(spawns[0].2, vec![1]);
+        assert_eq!(spawns[1].0, 0.0);
+        assert_eq!(spawns[1].1, 2);
+        assert_eq!(spawns[1].2, vec![2]);
+    }
+
+    #[test]
+    fn place_then_freq_clears_strategy() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            create(sine, 4).place(harmonicity(220.0)).freq(330.0);
+            flush();
+        "#,
+        );
+        let strategy = scenario
             .events
             .iter()
-            .any(|ev| ev.actions.iter().any(|a| matches!(a, Action::Finish)));
-        assert!(has_spawn, "expected spawn event");
-        assert!(has_finish, "expected finish event");
-    }
-
-    #[test]
-    fn spawn_two_args_creates_agent() {
-        let action = spawn_action_from_script(
-            r#"
-            spawn("unit", 1);
-            end();
-        "#,
-        );
-        let landscape = LandscapeFrame::new(Log2Space::new(100.0, 400.0, 12));
-        let pop = apply_spawn_action(action, &landscape);
-        assert_eq!(pop.individuals.len(), 1);
-    }
-
-    #[test]
-    fn spawn_three_args_patch_applies_amp() {
-        let action = spawn_action_from_script(
-            r#"
-            spawn("unit", 1, #{ body: #{ amp: 0.42 } });
-            end();
-        "#,
-        );
-        let landscape = LandscapeFrame::new(Log2Space::new(100.0, 400.0, 12));
-        let pop = apply_spawn_action(action, &landscape);
-        let amp = pop.individuals[0].effective_control.body.amp;
-        assert!((amp - 0.42).abs() <= 1e-6);
-    }
-
-    #[test]
-    fn spawn_three_args_opts_samples_freq_in_range() {
-        let space = Log2Space::new(100.0, 400.0, 12);
-        let min_freq = space.freq_of_index(2);
-        let max_freq = space.freq_of_index(6);
-        let src = format!(
-            r#"
-            spawn("unit", 1, #{{
-                method: #{{
-                    mode: "harmonicity",
-                    min_freq: {min_freq},
-                    max_freq: {max_freq}
-                }}
-            }});
-            end();
-        "#
-        );
-        let action = spawn_action_from_script(&src);
-        let landscape = LandscapeFrame::new(space.clone());
-        let pop = apply_spawn_action(action, &landscape);
-        let agent = pop.individuals.first().expect("agent exists");
-        let sampled = agent.effective_control.pitch.freq;
-        let idx = space.index_of_freq(sampled).expect("sampled idx");
-        let center = space.freq_of_index(idx);
-        assert!(center >= min_freq && center <= max_freq);
-    }
-
-    #[test]
-    fn spawn_four_args_opts_and_patch_apply() {
-        let space = Log2Space::new(100.0, 400.0, 12);
-        let min_freq = space.freq_of_index(1);
-        let max_freq = space.freq_of_index(5);
-        let src = format!(
-            r#"
-            spawn("unit", 1,
-                #{{
-                    method: #{{
-                        mode: "harmonicity",
-                        min_freq: {min_freq},
-                        max_freq: {max_freq}
-                    }}
-                }},
-                #{{ phonation: #{{ type: "hold" }} }}
-            );
-            end();
-        "#
-        );
-        let action = spawn_action_from_script(&src);
-        let landscape = LandscapeFrame::new(space.clone());
-        let pop = apply_spawn_action(action, &landscape);
-        let agent = pop.individuals.first().expect("agent exists");
-        assert_eq!(
-            agent.effective_control.phonation.r#type,
-            PhonationType::Hold
-        );
-        let sampled = agent.effective_control.pitch.freq;
-        let idx = space.index_of_freq(sampled).expect("sampled idx");
-        let center = space.freq_of_index(idx);
-        assert!(center >= min_freq && center <= max_freq);
-    }
-
-    #[test]
-    fn spawn_opts_unknown_key_errors() {
-        let err = eval_script_error(
-            r#"
-            spawn("unit", 1, #{ bad: 1 }, #{});
-            end();
-        "#,
-        );
-        let msg = err.to_string();
-        assert!(msg.contains("SpawnOpts") || msg.contains("unknown field"));
-    }
-
-    #[test]
-    fn spawn_three_args_empty_opts_is_noop() {
-        let scenario = run_script(
-            r#"
-            spawn("unit", 1, #{});
-            end();
-        "#,
-        );
-        let action = scenario
-            .events
-            .iter()
-            .flat_map(|ev| ev.actions.iter())
+            .flat_map(|event| &event.actions)
             .find_map(|action| match action {
-                Action::Spawn { .. } => Some(action.clone()),
+                Action::Spawn { strategy, .. } => Some(strategy.clone()),
                 _ => None,
             })
-            .expect("spawn action exists");
-        match action {
-            Action::Spawn { opts, patch, .. } => {
-                assert!(opts.is_some());
-                assert_eq!(patch, serde_json::json!({}));
-            }
-            _ => panic!("unexpected action"),
-        }
+            .expect("spawn action");
+        assert!(strategy.is_none());
     }
 
     #[test]
-    fn end_at_sets_duration() {
-        let scenario = run_script(
+    fn freq_then_place_sets_strategy() {
+        let (scenario, _warnings) = run_script(
             r#"
-            spawn("d", 1, #{ body: #{ amp: 0.2 }, pitch: #{ freq: 200.0 } });
-            end_at(20);
+            create(sine, 4).freq(330.0).place(harmonicity(220.0));
+            flush();
         "#,
         );
-        assert_time_close(scenario.duration_sec, 20.0);
-        let has_finish = scenario
+        let strategy = scenario
             .events
             .iter()
-            .any(|ev| ev.time == 20.0 && ev.actions.iter().any(|a| matches!(a, Action::Finish)));
-        assert!(has_finish, "expected finish at end_at time");
-    }
-
-    #[test]
-    fn end_sets_duration_from_cursor() {
-        let scenario = run_script(
-            r#"
-            wait(2);
-            end();
-        "#,
-        );
-        assert_time_close(scenario.duration_sec, 2.0);
-    }
-
-    #[test]
-    fn end_at_negative_has_position() {
-        let src = r#"
-            end_at(-1);
-        "#;
-        let full = ScriptHost::combined_script(src);
-        let pos = eval_script_error_position(src);
-        let expected_line = expected_line(&full, "end_at(-1");
-        assert_eq!(pos.line().unwrap(), expected_line);
-    }
-
-    #[test]
-    fn end_is_terminal() {
-        let src = r#"
-            end_at(1);
-            spawn("AFTER_END_123", 1);
-        "#;
-        let full = ScriptHost::combined_script(src);
-        let pos = eval_script_error_position(src);
-        let expected_line = expected_line(&full, "AFTER_END_123");
-        assert_eq!(pos.line().unwrap(), expected_line);
-    }
-
-    #[test]
-    fn end_is_required() {
-        let src = r#"
-            spawn("d", 1);
-        "#;
-        let err = eval_script_error(src);
-        let msg = err.to_string();
-        assert!(
-            msg.contains("end()") || msg.contains("end_at"),
-            "message: {msg}"
-        );
-        let pos = err.position();
-        assert_ne!(pos, Position::NONE);
-    }
-
-    #[test]
-    fn spawn_opts_unknown_key_has_position() {
-        let pos = eval_script_error_position(
-            r#"
-            spawn("d", 1, #{ body: #{ ampp: 0.1 } });
-        "#,
-        );
-        assert_ne!(pos, Position::NONE);
-    }
-
-    #[test]
-    fn spawn_opts_bad_type_has_position() {
-        let pos = eval_script_error_position(
-            r#"
-            spawn("d", 1, #{ body: #{ amp: "0.1" } });
-        "#,
-        );
-        assert_ne!(pos, Position::NONE);
-    }
-
-    #[test]
-    fn set_patch_unknown_key_has_position() {
-        let pos = eval_script_error_position(
-            r#"
-            spawn("d", 1);
-            set("d", #{ body: #{ amp: 0.1, ampp: 0.2 } });
-        "#,
-        );
-        assert_ne!(pos, Position::NONE);
-    }
-
-    #[test]
-    fn set_patch_bad_type_has_position() {
-        let pos = eval_script_error_position(
-            r#"
-            spawn("d", 1);
-            set("d", #{ body: #{ amp: "x" } });
-        "#,
-        );
-        assert_ne!(pos, Position::NONE);
-    }
-
-    #[test]
-    fn spawn_count_error_points_to_count_arg() {
-        let src = r#"
-            spawn(
-                "d",
-                "BAD_COUNT_123",
-                #{}
-            );
-        "#;
-        let full = ScriptHost::combined_script(src);
-        let pos = eval_script_error_position(src);
-        let expected_line = expected_line(&full, "BAD_COUNT_123");
-        assert_eq!(pos.line().unwrap(), expected_line);
-    }
-
-    #[test]
-    fn spawn_opts_error_points_to_opts_arg() {
-        let src = r#"
-            spawn(
-                "d",
-                1,
-                "BAD_OPTS_123"
-            );
-        "#;
-        let full = ScriptHost::combined_script(src);
-        let pos = eval_script_error_position(src);
-        let expected_line = expected_line(&full, "BAD_OPTS_123");
-        assert_eq!(pos.line().unwrap(), expected_line);
-    }
-
-    #[test]
-    fn spawn_opts_unknown_key_points_to_opts_arg() {
-        let src = r#"
-            spawn(
-                "d",
-                1,
-                #{ body: #{ amm_BADKEY_123: 0.1 } }
-            );
-        "#;
-        let full = ScriptHost::combined_script(src);
-        let pos = eval_script_error_position(src);
-        let expected_line = expected_line(&full, "amm_BADKEY_123");
-        assert_eq!(pos.line().unwrap(), expected_line);
-    }
-
-    #[test]
-    fn spawn_count_negative_points_to_count_arg() {
-        let src = r#"
-            spawn(
-                "d",
-                -123
-            );
-        "#;
-        let full = ScriptHost::combined_script(src);
-        let pos = eval_script_error_position(src);
-        let expected_line = expected_line(&full, "-123");
-        assert_eq!(pos.line().unwrap(), expected_line);
-    }
-
-    #[test]
-    fn empty_life_map_executes() {
-        let scenario = ScriptHost::load_script("tests/scripts/empty_life_map_ok.rhai")
-            .expect("empty life map should run");
-        let mut has_add = false;
-        for ev in &scenario.events {
-            for action in &ev.actions {
-                if let Action::Spawn { count, .. } = action {
-                    assert!(*count > 0);
-                    has_add = true;
-                }
-            }
-        }
-        let has_finish = scenario
-            .events
-            .iter()
-            .any(|ev| ev.actions.iter().any(|a| matches!(a, Action::Finish)));
-        assert!(has_add, "expected spawn event");
-        assert!(has_finish, "expected finish event");
-    }
-
-    #[test]
-    fn handle_index_and_iter_executes() {
-        let scenario = ScriptHost::load_script("tests/scripts/handle_index_and_iter.rhai")
-            .expect("handle iteration script should run");
-        assert!(!scenario.events.is_empty());
-    }
-
-    #[test]
-    fn tag_selector_ops_executes() {
-        let scenario = ScriptHost::load_script("tests/scripts/tag_selector_ops.rhai")
-            .expect("tag selector script should run");
-        assert!(!scenario.events.is_empty());
-    }
-
-    #[test]
-    fn stable_order_same_time_is_monotonic() {
-        let scenario = ScriptHost::load_script("tests/scripts/stable_order_same_time.rhai")
-            .expect("stable order script should run");
-        let mut last_order = 0;
-        let mut freqs = Vec::new();
-        for ev in &scenario.events {
-            assert!(ev.order > last_order);
-            last_order = ev.order;
-            for action in &ev.actions {
-                if let Action::Set { patch, .. } = action {
-                    let freq = patch
-                        .as_object()
-                        .and_then(|m| m.get("pitch"))
-                        .and_then(|p| p.as_object())
-                        .and_then(|m| m.get("freq"))
-                        .and_then(|v| v.as_f64())
-                        .map(|v| v as f32);
-                    if let Some(freq) = freq {
-                        freqs.push(freq);
-                    }
-                }
-            }
-        }
-        assert_eq!(freqs, vec![200.0, 300.0]);
-    }
-
-    #[test]
-    fn all_sample_scripts_parse() {
-        let mut stack = vec![std::path::PathBuf::from("samples")];
-        while let Some(dir) = stack.pop() {
-            for entry in std::fs::read_dir(&dir).expect("samples dir exists") {
-                let path = entry.expect("dir entry").path();
-                let name = path
-                    .file_name()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or_default()
-                    .to_string();
-                if name.starts_with('#') || name.starts_with('.') || name.ends_with('~') {
-                    continue;
-                }
-                if path.is_dir() {
-                    stack.push(path);
-                    continue;
-                }
-                if path.extension().and_then(|s| s.to_str()) != Some("rhai") {
-                    continue;
-                }
-                ScriptHost::load_script(path.to_str().expect("path str"))
-                    .unwrap_or_else(|e| panic!("script {name} should parse: {e}"));
-            }
-        }
+            .flat_map(|event| &event.actions)
+            .find_map(|action| match action {
+                Action::Spawn { strategy, .. } => Some(strategy.clone()),
+                _ => None,
+            })
+            .expect("spawn action");
+        assert!(matches!(strategy, Some(SpawnStrategy::Harmonicity { .. })));
     }
 }

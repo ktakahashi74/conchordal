@@ -1,6 +1,6 @@
-use super::control::{AgentControl, matches_tag_pattern, merge_json};
+use super::control::PitchMode;
 use super::individual::{AgentMetadata, Individual, PhonationBatch, SoundBody};
-use super::scenario::{Action, IndividualConfig, SpawnMethod};
+use super::scenario::{Action, IndividualConfig, SpawnStrategy};
 use crate::core::landscape::{LandscapeFrame, LandscapeUpdate};
 use crate::core::log2space::Log2Space;
 use crate::core::timebase::{Tick, Timebase};
@@ -27,18 +27,20 @@ pub struct Population {
     pending_update: Option<LandscapeUpdate>,
     time: Timebase,
     seed: u64,
-    next_agent_id: u64,
     spawn_counter: u64,
     social_trace: Option<SocialDensityTrace>,
     audio_cmds: Vec<AudioCommand>,
 }
 
 impl Population {
-    const REMOVE_FADE_SEC_DEFAULT: f32 = 0.05;
     const CONTROL_STEP_SAMPLES: usize = 64;
     /// Returns true if `freq_hz` is within `min_dist_erb` (ERB scale) of any existing agent's base
     /// frequency.
     pub fn is_range_occupied(&self, freq_hz: f32, min_dist_erb: f32) -> bool {
+        self.is_range_occupied_with(freq_hz, min_dist_erb, &[])
+    }
+
+    fn is_range_occupied_with(&self, freq_hz: f32, min_dist_erb: f32, reserved: &[f32]) -> bool {
         if !freq_hz.is_finite() || min_dist_erb <= 0.0 {
             return false;
         }
@@ -49,6 +51,15 @@ impl Population {
                 continue;
             }
             let d_erb = (crate::core::erb::hz_to_erb(base_hz.max(1e-6)) - target_erb).abs();
+            if d_erb < min_dist_erb {
+                return true;
+            }
+        }
+        for &freq in reserved {
+            if !freq.is_finite() {
+                continue;
+            }
+            let d_erb = (crate::core::erb::hz_to_erb(freq.max(1e-6)) - target_erb).abs();
             if d_erb < min_dist_erb {
                 return true;
             }
@@ -69,7 +80,6 @@ impl Population {
             pending_update: None,
             time,
             seed: rand::random::<u64>(),
-            next_agent_id: 1,
             spawn_counter: 0,
             social_trace: None,
             audio_cmds: Vec::new(),
@@ -80,13 +90,13 @@ impl Population {
         self.seed = seed;
     }
 
-    fn spawn_seed(&self, tag: &str, count: u32, seq: u64) -> u64 {
+    fn spawn_seed(&self, group_id: u64, count: usize, seq: u64) -> u64 {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         self.seed.hash(&mut hasher);
         self.current_frame.hash(&mut hasher);
         seq.hash(&mut hasher);
         count.hash(&mut hasher);
-        tag.hash(&mut hasher);
+        group_id.hash(&mut hasher);
         hasher.finish() ^ 0x9E37_79B9_7F4A_7C15
     }
 
@@ -193,24 +203,12 @@ impl Population {
         used
     }
 
-    fn resolve_target_ids(&self, pattern: &str) -> Vec<u64> {
-        self.individuals
-            .iter()
-            .filter_map(|a| {
-                let meta = a.metadata();
-                match meta.tag.as_deref() {
-                    Some(tag) if matches_tag_pattern(pattern, tag) => Some(a.id()),
-                    _ => None,
-                }
-            })
-            .collect()
-    }
-
     fn decide_frequency<R: Rng + ?Sized>(
         &self,
-        method: &SpawnMethod,
+        strategy: &SpawnStrategy,
         landscape: &LandscapeFrame,
         rng: &mut R,
+        reserved: &[f32],
     ) -> f32 {
         let space = &landscape.space;
         let n_bins = space.n_bins();
@@ -218,7 +216,7 @@ impl Population {
             return 440.0;
         }
 
-        let (min_freq, max_freq) = method.freq_range_hz();
+        let (min_freq, max_freq) = strategy.freq_range_hz();
 
         let mut idx_min = space.index_of_freq(min_freq).unwrap_or(0);
         let mut idx_max = space
@@ -232,7 +230,7 @@ impl Population {
             return space.freq_of_index(n_bins / 2);
         }
 
-        let min_dist_erb = method.min_dist_erb_or_default();
+        let min_dist_erb = strategy.min_dist_erb();
 
         let jitter_bin = |idx: usize, rng: &mut R| -> f32 {
             let idx = idx.min(n_bins - 1);
@@ -249,21 +247,21 @@ impl Population {
             // Try a few times to jitter within the bin while avoiding occupied bands.
             for _ in 0..16 {
                 let f = jitter_bin(idx, rng);
-                if !self.is_range_occupied(f, min_dist_erb) {
+                if !self.is_range_occupied_with(f, min_dist_erb, reserved) {
                     return f;
                 }
             }
             center
         };
 
-        let pick_idx = match method {
-            SpawnMethod::Harmonicity { .. } => {
+        let pick_idx = match strategy {
+            SpawnStrategy::Harmonicity { .. } => {
                 let mut best = idx_min;
                 let mut best_val = f32::MIN;
                 let mut found = false;
                 for i in idx_min..=idx_max {
                     let f = space.freq_of_index(i);
-                    if self.is_range_occupied(f, min_dist_erb) {
+                    if self.is_range_occupied_with(f, min_dist_erb, reserved) {
                         continue;
                     }
                     if let Some(&c_val) = landscape.consonance01.get(i)
@@ -291,100 +289,17 @@ impl Population {
                     best
                 }
             }
-            SpawnMethod::LowHarmonicity { .. } => {
-                let mut best = idx_min;
-                let mut best_val = f32::MAX;
-                let mut found = false;
-                for i in idx_min..=idx_max {
-                    let f = space.freq_of_index(i);
-                    if self.is_range_occupied(f, min_dist_erb) {
-                        continue;
-                    }
-                    if let Some(&v) = landscape.consonance01.get(i)
-                        && v < best_val
-                    {
-                        found = true;
-                        best_val = v;
-                        best = i;
-                    }
-                }
-                if found { best } else { idx_min }
-            }
-            SpawnMethod::ZeroCrossing { .. } => {
-                let mut best = idx_min;
-                let mut best_val = f32::MAX;
-                let mut found = false;
-                for i in idx_min..=idx_max {
-                    let f = space.freq_of_index(i);
-                    if self.is_range_occupied(f, min_dist_erb) {
-                        continue;
-                    }
-                    if let Some(&v) = landscape.consonance01.get(i) {
-                        let d = (v - 0.5).abs();
-                        if d < best_val {
-                            found = true;
-                            best_val = d;
-                            best = i;
-                        }
-                    }
-                }
-                if found { best } else { idx_min }
-            }
-            SpawnMethod::SpectralGap { .. } => {
+            SpawnStrategy::HarmonicDensity { .. } => {
                 let weights: Vec<f32> = (idx_min..=idx_max)
-                    .map(|i| {
-                        let f = space.freq_of_index(i);
-                        if self.is_range_occupied(f, min_dist_erb) {
-                            return 0.0;
-                        }
-                        let amp = landscape
-                            .subjective_intensity
-                            .get(i)
-                            .copied()
-                            .unwrap_or(0.0)
-                            .max(1e-6);
-                        (1.0f32 / amp).max(0.0)
-                    })
-                    .collect();
-                if let Ok(dist) = WeightedIndex::new(&weights) {
-                    idx_min + dist.sample(rng)
-                } else {
-                    // Fallback to the quietest bin.
-                    let mut best = idx_min;
-                    let mut best_val = f32::MAX;
-                    for i in idx_min..=idx_max {
-                        let f = space.freq_of_index(i);
-                        if self.is_range_occupied(f, min_dist_erb) {
-                            continue;
-                        }
-                        if let Some(&v) = landscape.subjective_intensity.get(i)
-                            && v < best_val
-                        {
-                            best_val = v;
-                            best = i;
-                        }
-                    }
-                    best
-                }
-            }
-            SpawnMethod::HarmonicDensity { temperature, .. } => {
-                let mut weights: Vec<f32> = (idx_min..=idx_max)
                     .enumerate()
                     .map(|(local_idx, i)| {
                         let f = space.freq_of_index(i);
-                        let occupied = self.is_range_occupied(f, min_dist_erb);
+                        let occupied = self.is_range_occupied_with(f, min_dist_erb, reserved);
                         let _ = local_idx;
                         let c01 = landscape.consonance01.get(i).copied().unwrap_or(0.0);
                         harmonic_density_weight(c01, occupied)
                     })
                     .collect();
-                if let Some(temp) = temperature
-                    && *temp > 0.0
-                {
-                    for w in &mut weights {
-                        *w = w.powf(1.0 / temp);
-                    }
-                }
                 if let Ok(dist) = WeightedIndex::new(&weights) {
                     idx_min + dist.sample(rng)
                 } else {
@@ -404,7 +319,7 @@ impl Population {
                     return 2.0f32.powf(rng.random_range(min_l..max_l));
                 }
             }
-            SpawnMethod::RandomLogUniform { .. } => {
+            SpawnStrategy::RandomLog { .. } => {
                 let min_l = min_freq.log2();
                 let max_l = max_freq.log2();
                 if !min_l.is_finite() || !max_l.is_finite() || min_l >= max_l {
@@ -413,12 +328,13 @@ impl Population {
                 for _ in 0..32 {
                     let r = rng.random_range(min_l..max_l);
                     let f = 2.0f32.powf(r);
-                    if !self.is_range_occupied(f, min_dist_erb) {
+                    if !self.is_range_occupied_with(f, min_dist_erb, reserved) {
                         return f;
                     }
                 }
                 return 2.0f32.powf(rng.random_range(min_l..max_l));
             }
+            SpawnStrategy::Linear { .. } => idx_min,
         };
 
         jitter_free_bin(pick_idx, rng)
@@ -435,52 +351,55 @@ impl Population {
                 self.abort_requested = true;
             }
             Action::Spawn {
-                tag,
-                count,
-                opts,
-                patch,
+                group_id,
+                ids,
+                spec,
+                strategy,
             } => {
                 let spawn_seq = self.spawn_counter;
                 self.spawn_counter = self.spawn_counter.wrapping_add(1);
-                let seed = self.spawn_seed(&tag, count, spawn_seq);
+                let seed = self.spawn_seed(group_id, ids.len(), spawn_seq);
                 let mut rng = SmallRng::seed_from_u64(seed);
-                let mut patch = patch;
-                strip_null_pitch_freq(&mut patch);
-                let opts_method = opts.and_then(|opts| opts.method);
-                let mut control = match AgentControl::from_json(merge_json(
-                    AgentControl::default().to_json().unwrap_or_default(),
-                    patch.clone(),
-                )) {
-                    Ok(control) => control,
-                    Err(err) => {
-                        warn!("Spawn: invalid patch for tag={}: {}", tag, err);
-                        return;
+                let mut reserved = Vec::with_capacity(ids.len());
+                let total = ids.len().max(1);
+                for (member_idx, id) in ids.into_iter().enumerate() {
+                    if self.individuals.iter().any(|agent| agent.id() == id) {
+                        warn!("Spawn: id collision for {id} in group {group_id}");
+                        continue;
                     }
-                };
-                let freq_in_patch = patch_sets_freq(&patch);
-                if !freq_in_patch {
-                    let method = opts_method.unwrap_or_default();
-                    let freq = self.decide_frequency(&method, landscape, &mut rng);
-                    control.pitch.freq = freq.max(1.0);
-                }
-                for i in 0..count {
-                    let id = self.next_agent_id;
-                    self.next_agent_id = self.next_agent_id.wrapping_add(1);
+                    let mut control = spec.control.clone();
+                    if let Some(ref strat) = strategy {
+                        let freq = match strat {
+                            SpawnStrategy::Linear {
+                                start_freq,
+                                end_freq,
+                            } => {
+                                if total <= 1 {
+                                    *start_freq
+                                } else {
+                                    let t = member_idx as f32 / (total - 1) as f32;
+                                    start_freq + (end_freq - start_freq) * t
+                                }
+                            }
+                            _ => self.decide_frequency(strat, landscape, &mut rng, &reserved),
+                        };
+                        control.pitch.freq = freq.max(1.0);
+                        control.pitch.mode = PitchMode::Lock;
+                    }
                     let metadata = AgentMetadata {
-                        tag: Some(tag.clone()),
-                        group_idx: 0,
-                        member_idx: i as usize,
+                        group_id,
+                        member_idx,
                     };
                     let cfg = IndividualConfig {
                         control: control.clone(),
-                        tag: Some(tag.clone()),
+                        articulation: spec.articulation.clone(),
                     };
                     let spawned =
                         cfg.spawn(id, self.current_frame, metadata, self.time.fs, self.seed);
                     let body = spawned.body_snapshot();
                     let pitch_hz = spawned.body.base_freq_hz();
                     let amp = spawned.body.amp();
-                    self.add_individual(spawned);
+                    self.individuals.push(spawned);
                     self.audio_cmds.push(AudioCommand::EnsureVoice {
                         id,
                         body,
@@ -491,60 +410,35 @@ impl Population {
                         id,
                         energy: self.birth_energy,
                     });
+                    reserved.push(control.pitch.freq);
                 }
             }
-            Action::Set { target, patch } => {
-                let ids = self.resolve_target_ids(&target);
+            Action::Update {
+                group_id,
+                ids,
+                update,
+            } => {
                 for id in ids {
                     if let Some(agent) = self.find_individual_mut(id) {
-                        match agent.apply_control_patch(patch.clone()) {
-                            Ok(()) => {}
-                            Err(err) => {
-                                warn!("Set: agent {id} rejected patch: {}", err);
-                                continue;
-                            }
+                        if let Err(err) = agent.apply_update(&update) {
+                            warn!("Update: agent {id} (group {group_id}) rejected update: {err}");
                         }
                     } else {
-                        warn!("Set: agent {id} not found");
-                        continue;
+                        warn!("Update: agent {id} not found for group {group_id}");
                     }
                 }
             }
-            Action::Unset { target, path } => {
-                let ids = self.resolve_target_ids(&target);
-                for id in ids {
-                    if let Some(agent) = self.find_individual_mut(id) {
-                        match agent.apply_unset_path(&path) {
-                            Ok(_removed) => {}
-                            Err(err) => {
-                                warn!("Unset: agent {id} rejected path {}: {}", path, err);
-                                continue;
-                            }
-                        }
-                    } else {
-                        warn!("Unset: agent {id} not found");
-                        continue;
-                    }
-                }
-            }
-            Action::Remove { target } => {
-                let ids = self.resolve_target_ids(&target);
-                for id in ids {
-                    if let Some(agent) = self.find_individual_mut(id) {
-                        agent.start_remove_fade(Self::REMOVE_FADE_SEC_DEFAULT);
-                    } else {
-                        warn!("Remove: agent {id} not found");
-                    }
-                }
-            }
-            Action::Release { target, fade_sec } => {
-                let ids = self.resolve_target_ids(&target);
+            Action::Release {
+                group_id,
+                ids,
+                fade_sec,
+            } => {
                 let fade_sec = fade_sec.max(0.0);
                 for id in ids {
                     if let Some(agent) = self.find_individual_mut(id) {
                         agent.start_remove_fade(fade_sec);
                     } else {
-                        warn!("Release: agent {id} not found");
+                        warn!("Release: agent {id} not found for group {group_id}");
                     }
                 }
             }
@@ -736,39 +630,19 @@ where
     couplings.into_iter().any(|coupling| coupling != 0.0)
 }
 
-fn patch_sets_freq(patch: &serde_json::Value) -> bool {
-    let serde_json::Value::Object(map) = patch else {
-        return false;
-    };
-    let Some(serde_json::Value::Object(pitch)) = map.get("pitch") else {
-        return false;
-    };
-    pitch.get("freq").and_then(|val| val.as_f64()).is_some()
-}
-
-fn strip_null_pitch_freq(patch: &mut serde_json::Value) {
-    let serde_json::Value::Object(map) = patch else {
-        return;
-    };
-    let Some(serde_json::Value::Object(pitch)) = map.get_mut("pitch") else {
-        return;
-    };
-    if matches!(pitch.get("freq"), Some(serde_json::Value::Null)) {
-        pitch.remove("freq");
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::landscape::Landscape;
-    use crate::life::control::{BodyMethod, PhonationType};
+    use crate::core::landscape::{Landscape, LandscapeFrame};
+    use crate::core::log2space::Log2Space;
+    use crate::core::timebase::Timebase;
+    use crate::life::control::{AgentControl, ControlUpdate, PhonationType};
     use crate::life::individual::{AnyArticulationCore, ArticulationWrapper, DroneCore};
     use crate::life::intent::BodySnapshot;
     use crate::life::phonation_engine::{OnsetEvent, PhonationCmd, PhonationKick};
+    use crate::life::scenario::{ArticulationCoreConfig, SpawnSpec, SpawnStrategy};
     use crate::life::world_model::WorldModel;
     use rand::SeedableRng;
-    use serde_json::json;
 
     fn make_dummy_note_spec() -> crate::life::individual::PhonationNoteSpec {
         crate::life::individual::PhonationNoteSpec {
@@ -794,6 +668,15 @@ mod tests {
         }
     }
 
+    fn spawn_spec_with_freq(freq: f32) -> SpawnSpec {
+        let mut control = AgentControl::default();
+        control.pitch.freq = freq;
+        SpawnSpec {
+            control,
+            articulation: ArticulationCoreConfig::default(),
+        }
+    }
+
     #[test]
     fn decide_frequency_uses_consonance01() {
         let space = Log2Space::new(100.0, 400.0, 12);
@@ -810,13 +693,14 @@ mod tests {
             fs: 48_000.0,
             hop: 64,
         });
-        let method = SpawnMethod::Harmonicity {
-            min_freq: 100.0,
-            max_freq: 400.0,
-            min_dist_erb: Some(0.0),
+        let strategy = SpawnStrategy::Harmonicity {
+            root_freq: 100.0,
+            min_mul: 1.0,
+            max_mul: 4.0,
+            min_dist_erb: 0.0,
         };
         let mut rng = rand::rngs::StdRng::seed_from_u64(7);
-        let freq = pop.decide_frequency(&method, &landscape, &mut rng);
+        let freq = pop.decide_frequency(&strategy, &landscape, &mut rng, &[]);
         let picked_idx = space.index_of_freq(freq).expect("picked idx");
         assert_eq!(picked_idx, idx_high);
     }
@@ -876,97 +760,42 @@ mod tests {
     }
 
     #[test]
-    fn glob_matches_wildcards_and_escapes() {
-        assert!(matches_tag_pattern("a*", "a1"));
-        assert!(matches_tag_pattern("a*", "a2"));
-        assert!(!matches_tag_pattern("a*", "b1"));
-        assert!(matches_tag_pattern(r"a\*", "a*"));
-        assert!(!matches_tag_pattern(r"a\*", "a1"));
-        assert!(matches_tag_pattern("a?b", "acb"));
-        assert!(!matches_tag_pattern("a?b", "ab"));
-    }
-
-    #[test]
-    fn set_applies_to_matching_tags() {
+    fn update_applies_to_ids() {
         let mut pop = Population::new(Timebase {
             fs: 48_000.0,
             hop: 64,
         });
         let landscape = LandscapeFrame::default();
-        for tag in ["lead_1", "lead_2", "bass_1"] {
-            pop.apply_action(
-                Action::Spawn {
-                    tag: tag.to_string(),
-                    count: 1,
-                    opts: None,
-                    patch: json!({}),
-                },
-                &landscape,
-                None,
-            );
-        }
         pop.apply_action(
-            Action::Set {
-                target: "lead_*".to_string(),
-                patch: json!({
-                    "body": { "amp": 0.42 }
-                }),
+            Action::Spawn {
+                group_id: 1,
+                ids: vec![10, 11],
+                spec: spawn_spec_with_freq(220.0),
+                strategy: None,
             },
             &landscape,
             None,
         );
-        assert_eq!(pop.individuals.len(), 3);
+        let update = ControlUpdate {
+            amp: Some(0.42),
+            ..ControlUpdate::default()
+        };
+        pop.apply_action(
+            Action::Update {
+                group_id: 1,
+                ids: vec![10, 11],
+                update,
+            },
+            &landscape,
+            None,
+        );
         for agent in &pop.individuals {
-            let tag = agent.metadata.tag.as_deref().unwrap_or_default();
-            let amp = agent.effective_control.body.amp;
-            if tag.starts_with("lead_") {
-                assert!((amp - 0.42).abs() <= 1e-6, "tag {tag} should match");
-            } else {
-                assert!(
-                    (amp - AgentControl::default().body.amp).abs() <= 1e-6,
-                    "tag {tag} should not match"
-                );
-            }
+            assert!((agent.effective_control.body.amp - 0.42).abs() <= 1e-6);
         }
     }
 
     #[test]
-    fn remove_applies_to_matching_tags() {
-        let mut pop = Population::new(Timebase {
-            fs: 48_000.0,
-            hop: 64,
-        });
-        let landscape = LandscapeFrame::default();
-        for tag in ["lead_1", "lead_2", "bass_1"] {
-            pop.apply_action(
-                Action::Spawn {
-                    tag: tag.to_string(),
-                    count: 1,
-                    opts: None,
-                    patch: json!({}),
-                },
-                &landscape,
-                None,
-            );
-        }
-        pop.apply_action(
-            Action::Remove {
-                target: "lead_?".to_string(),
-            },
-            &landscape,
-            None,
-        );
-        let dt = 0.1;
-        let samples_per_hop = (pop.time.fs * dt) as usize;
-        let rt_landscape = Landscape::new(Log2Space::new(55.0, 4000.0, 64));
-        pop.advance(samples_per_hop, pop.time.fs, 0, dt, &rt_landscape);
-        pop.process_frame(0, &rt_landscape.space, dt, false);
-        assert_eq!(pop.individuals.len(), 1);
-        assert_eq!(pop.individuals[0].metadata.tag.as_deref(), Some("bass_1"));
-    }
-
-    #[test]
-    fn unset_reverts_to_base_control() {
+    fn release_marks_targeted_ids() {
         let mut pop = Population::new(Timebase {
             fs: 48_000.0,
             hop: 64,
@@ -974,115 +803,30 @@ mod tests {
         let landscape = LandscapeFrame::default();
         pop.apply_action(
             Action::Spawn {
-                tag: "unset".to_string(),
-                count: 1,
-                opts: None,
-                patch: json!({
-                    "body": { "amp": 0.30 }
-                }),
+                group_id: 1,
+                ids: vec![21, 22],
+                spec: spawn_spec_with_freq(220.0),
+                strategy: None,
             },
             &landscape,
             None,
         );
         pop.apply_action(
-            Action::Set {
-                target: "unset".to_string(),
-                patch: json!({
-                    "body": { "amp": 0.80 }
-                }),
+            Action::Release {
+                group_id: 1,
+                ids: vec![21],
+                fade_sec: 0.05,
             },
             &landscape,
             None,
         );
-        pop.apply_action(
-            Action::Unset {
-                target: "unset".to_string(),
-                path: "body.amp".to_string(),
-            },
-            &landscape,
-            None,
-        );
-        let agent = pop.individuals.first().expect("agent exists");
-        assert!((agent.effective_control.body.amp - 0.30).abs() <= 1e-6);
-        pop.apply_action(
-            Action::Unset {
-                target: "unset".to_string(),
-                path: "body.missing".to_string(),
-            },
-            &landscape,
-            None,
-        );
-        let agent = pop.individuals.first().expect("agent exists");
-        assert!((agent.effective_control.body.amp - 0.30).abs() <= 1e-6);
-    }
-
-    #[test]
-    fn set_cannot_change_body_method() {
-        let mut pop = Population::new(Timebase {
-            fs: 48_000.0,
-            hop: 64,
-        });
-        let landscape = LandscapeFrame::default();
-        pop.apply_action(
-            Action::Spawn {
-                tag: "body_method".to_string(),
-                count: 1,
-                opts: None,
-                patch: json!({
-                    "body": { "method": "harmonic" }
-                }),
-            },
-            &landscape,
-            None,
-        );
-        pop.apply_action(
-            Action::Set {
-                target: "body_method".to_string(),
-                patch: json!({
-                    "body": { "method": "sine" }
-                }),
-            },
-            &landscape,
-            None,
-        );
-        let agent = pop.individuals.first().expect("agent exists");
-        assert_eq!(agent.effective_control.body.method, BodyMethod::Harmonic);
-    }
-
-    #[test]
-    fn set_cannot_change_phonation_type() {
-        let mut pop = Population::new(Timebase {
-            fs: 48_000.0,
-            hop: 64,
-        });
-        let landscape = LandscapeFrame::default();
-        pop.apply_action(
-            Action::Spawn {
-                tag: "phonation_type".to_string(),
-                count: 1,
-                opts: None,
-                patch: json!({
-                    "phonation": { "type": "interval" }
-                }),
-            },
-            &landscape,
-            None,
-        );
-        pop.apply_action(
-            Action::Set {
-                target: "phonation_type".to_string(),
-                patch: json!({
-                    "phonation": { "type": "hold" }
-                }),
-            },
-            &landscape,
-            None,
-        );
-        let agent = pop.individuals.first().expect("agent exists");
-        assert_eq!(
-            agent.effective_control.phonation.r#type,
-            PhonationType::Interval
-        );
+        let released: Vec<u64> = pop
+            .individuals
+            .iter()
+            .filter(|agent| agent.remove_pending)
+            .map(|agent| agent.id())
+            .collect();
+        assert_eq!(released, vec![21]);
     }
 
     #[test]
@@ -1095,15 +839,14 @@ mod tests {
         let landscape = LandscapeFrame::new(space.clone());
         let mut world = WorldModel::new(time, space);
         let mut pop = Population::new(time);
+        let mut silent_spec = spawn_spec_with_freq(440.0);
+        silent_spec.control.phonation.r#type = PhonationType::None;
         pop.apply_action(
             Action::Spawn {
-                tag: "silent".to_string(),
-                count: 1,
-                opts: None,
-                patch: serde_json::json!({
-                    "pitch": { "freq": 440.0 },
-                    "phonation": { "type": "none" }
-                }),
+                group_id: 2,
+                ids: vec![77],
+                spec: silent_spec,
+                strategy: None,
             },
             &landscape,
             None,

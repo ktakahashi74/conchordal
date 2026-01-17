@@ -27,7 +27,7 @@ fn spawn_agent(freq: f32, amp: f32) -> IndividualConfig {
 }
 
 #[test]
-fn spawn_does_not_publish_birth_intent() {
+fn spawn_does_not_publish_birth_note() {
     let tb = test_timebase();
     let space = Log2Space::new(55.0, 8000.0, 96);
     let mut world = WorldModel::new(tb, space.clone());
@@ -43,7 +43,7 @@ fn spawn_does_not_publish_birth_intent() {
 
     let landscape = Landscape::new(space);
     let now: Tick = 0;
-    let batches = pop.publish_intents(&mut world, &landscape, now);
+    let batches = pop.collect_phonation_batches(&mut world, &landscape, now);
     assert!(batches.is_empty());
     assert!(world.board.is_empty());
 }
@@ -65,7 +65,7 @@ fn spawn_sounds_only_with_audio_trigger() {
 
     let landscape = Landscape::new(space);
     let now: Tick = 0;
-    let _ = pop.publish_intents(&mut world, &landscape, now);
+    let _ = pop.collect_phonation_batches(&mut world, &landscape, now);
     let mut voice_targets: Vec<VoiceTarget> = Vec::new();
     pop.fill_voice_targets(&mut voice_targets);
 
@@ -80,7 +80,7 @@ fn spawn_sounds_only_with_audio_trigger() {
     );
     assert!(silent.iter().all(|s| s.abs() <= 1e-6));
 
-    let body = conchordal::life::intent::BodySnapshot {
+    let body = conchordal::life::note_event::BodySnapshot {
         kind: "sine".to_string(),
         amp_scale: 1.0,
         brightness: 0.0,

@@ -1097,22 +1097,22 @@ impl ScriptHost {
             },
         );
 
-        let ctx_for_intent = ctx.clone();
+        let ctx_for_note = ctx.clone();
         engine.register_fn(
-            "intent",
+            "note",
             move |_call_ctx: NativeCallContext,
                   freq_hz: FLOAT,
                   dt: FLOAT,
                   dur: FLOAT,
                   amp: FLOAT|
                   -> Result<(), Box<EvalAltResult>> {
-                let mut ctx = ctx_for_intent.lock().expect("lock script context");
+                let mut ctx = ctx_for_note.lock().expect("lock script context");
                 let cursor = ctx.cursor;
                 let onset_sec = (cursor + dt as f32).max(0.0);
                 let duration_sec = (dur as f32).max(0.0);
                 ctx.push_event(
                     cursor,
-                    vec![Action::PostIntent {
+                    vec![Action::PostNote {
                         source_id: 0,
                         onset_sec,
                         duration_sec,
@@ -1125,9 +1125,9 @@ impl ScriptHost {
                 Ok(())
             },
         );
-        let ctx_for_intent_tag = ctx.clone();
+        let ctx_for_note_tag = ctx.clone();
         engine.register_fn(
-            "intent",
+            "note",
             move |_call_ctx: NativeCallContext,
                   freq_hz: FLOAT,
                   dt: FLOAT,
@@ -1135,13 +1135,13 @@ impl ScriptHost {
                   amp: FLOAT,
                   tag: &str|
                   -> Result<(), Box<EvalAltResult>> {
-                let mut ctx = ctx_for_intent_tag.lock().expect("lock script context");
+                let mut ctx = ctx_for_note_tag.lock().expect("lock script context");
                 let cursor = ctx.cursor;
                 let onset_sec = (cursor + dt as f32).max(0.0);
                 let duration_sec = (dur as f32).max(0.0);
                 ctx.push_event(
                     cursor,
-                    vec![Action::PostIntent {
+                    vec![Action::PostNote {
                         source_id: 0,
                         onset_sec,
                         duration_sec,

@@ -9,8 +9,8 @@ use crate::life::control_adapters::{
     perceptual_config_from_control, perceptual_params_from_control, phonation_config_from_control,
     pitch_core_config_from_control, sound_body_config_from_control, tessitura_gravity_from_control,
 };
-use crate::life::intent::BodySnapshot;
 use crate::life::lifecycle::LifecycleConfig;
+use crate::life::note_event::BodySnapshot;
 use crate::life::phonation_engine::{
     CoreState, CoreTickCtx, NoteId, OnsetEvent, PhonationCmd, PhonationEngine, PhonationNoteEvent,
 };
@@ -505,12 +505,22 @@ impl Individual {
         rhythms: &NeuralRhythms,
         social: Option<&SocialDensityTrace>,
         social_coupling: f32,
+        extra_gate_gain: f32,
     ) -> PhonationBatch {
         let mut batch = PhonationBatch::default();
-        self.tick_phonation_into(tb, now, rhythms, social, social_coupling, &mut batch);
+        self.tick_phonation_into(
+            tb,
+            now,
+            rhythms,
+            social,
+            social_coupling,
+            extra_gate_gain,
+            &mut batch,
+        );
         batch
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn tick_phonation_into(
         &mut self,
         tb: &Timebase,
@@ -518,6 +528,7 @@ impl Individual {
         rhythms: &NeuralRhythms,
         social: Option<&SocialDensityTrace>,
         social_coupling: f32,
+        extra_gate_gain: f32,
         out: &mut PhonationBatch,
     ) {
         out.source_id = self.id;
@@ -542,6 +553,7 @@ impl Individual {
             &state,
             social,
             social_coupling,
+            extra_gate_gain,
             None,
             &mut out.cmds,
             &mut self.phonation_scratch.events,

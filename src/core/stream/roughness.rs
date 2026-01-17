@@ -8,7 +8,7 @@ use crate::core::psycho_state::{
 use crate::core::roughness_kernel::erb_grid;
 
 /// Roughness Stream (formerly Ventral).
-/// Handles slow spectral analysis focused on roughness.
+/// Handles slow spectral analysis for roughness and harmonicity.
 pub struct RoughnessStream {
     nsgt_rt: RtNsgtKernelLog2,
     params: LandscapeParams,
@@ -16,7 +16,7 @@ pub struct RoughnessStream {
     roughness_ref_total: f32,
     roughness_ref_peak: f32,
 
-    // Last computed state (roughness-side of the landscape)
+    // Last computed state (roughness/harmonicity side of the landscape)
     last_landscape: Landscape,
 }
 
@@ -75,6 +75,10 @@ impl RoughnessStream {
         let (_erb, du) = erb_grid(space);
         let eps = self.params.roughness_ref_eps.max(1e-12);
         let roughness_k = self.params.roughness_k.max(1e-6);
+        let (h_pot_scan, _) = self
+            .params
+            .harmonicity_kernel
+            .potential_h_from_log2_spectrum(density, space);
 
         // Roughness strength (level-dependent).
         let (r_strength, r_total) = self
@@ -111,6 +115,7 @@ impl RoughnessStream {
         self.last_landscape.roughness = r_strength;
         self.last_landscape.roughness_shape_raw = r_shape_raw;
         self.last_landscape.roughness01 = r01;
+        self.last_landscape.harmonicity = h_pot_scan;
         self.last_landscape.roughness_total = r_total;
         self.last_landscape.roughness_max = r_max;
         self.last_landscape.roughness_p95 = r_p95;
@@ -128,6 +133,20 @@ impl RoughnessStream {
     }
 
     pub fn apply_update(&mut self, upd: LandscapeUpdate) {
+        if upd.mirror.is_some() || upd.limit.is_some() {
+            let mut params = self.params.harmonicity_kernel.params;
+            if let Some(m) = upd.mirror {
+                params.mirror_weight = m;
+            }
+            if let Some(l) = upd.limit {
+                params.param_limit = l;
+            }
+            self.params.harmonicity_kernel =
+                crate::core::harmonicity_kernel::HarmonicityKernel::new(
+                    self.nsgt_rt.space(),
+                    params,
+                );
+        }
         if let Some(k) = upd.roughness_k {
             self.params.roughness_k = k.max(1e-6);
         }

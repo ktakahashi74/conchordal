@@ -9,7 +9,7 @@ use conchordal::life::schedule_renderer::ScheduleRenderer;
 use conchordal::life::world_model::WorldModel;
 
 #[test]
-fn agents_publish_intents_and_render_audio() {
+fn agents_publish_notes_and_render_audio() {
     let tb = Timebase {
         fs: 48_000.0,
         hop: 64,
@@ -44,7 +44,7 @@ fn agents_publish_intents_and_render_audio() {
     let mut render_now: Tick = 0;
     let mut now: Tick = 0;
     for _ in 0..300 {
-        let batches = pop.publish_intents(&mut world, &landscape, now);
+        let batches = pop.collect_phonation_batches(&mut world, &landscape, now);
         if !batches.is_empty() {
             phonation_batches = batches;
             render_now = now;
@@ -67,7 +67,7 @@ fn agents_publish_intents_and_render_audio() {
 }
 
 #[test]
-fn publish_intents_runs_when_gate_in_hop_window() {
+fn publish_notes_runs_when_gate_in_hop_window() {
     let tb = Timebase {
         fs: 48_000.0,
         hop: 64,
@@ -102,7 +102,7 @@ fn publish_intents_runs_when_gate_in_hop_window() {
     let mut now: Tick = 0;
     let mut batches = Vec::new();
     for _ in 0..300 {
-        let next = pop.publish_intents(&mut world, &landscape, now);
+        let next = pop.collect_phonation_batches(&mut world, &landscape, now);
         if !next.is_empty() {
             batches = next;
             break;
@@ -120,6 +120,6 @@ fn publish_intents_runs_when_gate_in_hop_window() {
     let mut pop_off = Population::new(tb);
     let agent = agent_cfg.spawn(assigned_id, 0, metadata, tb.fs, 0);
     pop_off.add_individual(agent);
-    let batches_off = pop_off.publish_intents(&mut world_off, &landscape_off, now);
+    let batches_off = pop_off.collect_phonation_batches(&mut world_off, &landscape_off, now);
     assert!(batches_off.is_empty());
 }

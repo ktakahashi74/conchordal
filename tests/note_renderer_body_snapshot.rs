@@ -1,12 +1,12 @@
 use conchordal::core::modulation::NeuralRhythms;
 use conchordal::core::timebase::Timebase;
-use conchordal::life::intent::{BodySnapshot, Intent, IntentBoard};
+use conchordal::life::note_event::{BodySnapshot, NoteBoard, NoteEvent};
 use conchordal::life::schedule_renderer::ScheduleRenderer;
 
-fn make_intent(kind: &str, brightness: f32) -> Intent {
-    Intent {
+fn make_note(kind: &str, brightness: f32) -> NoteEvent {
+    NoteEvent {
         source_id: 0,
-        intent_id: 1,
+        note_id: 1,
         onset: 5,
         duration: 20,
         freq_hz: 440.0,
@@ -29,10 +29,10 @@ fn body_snapshot_changes_timbre_without_shifting_onset() {
         fs: 48_000.0,
         hop: 64,
     };
-    let mut board_a = IntentBoard::new(tb.sec_to_tick(1.0), tb.sec_to_tick(1.0));
-    let mut board_b = IntentBoard::new(tb.sec_to_tick(1.0), tb.sec_to_tick(1.0));
-    board_a.publish(make_intent("sine", 0.0));
-    board_b.publish(make_intent("harmonic", 0.8));
+    let mut board_a = NoteBoard::new(tb.sec_to_tick(1.0), tb.sec_to_tick(1.0));
+    let mut board_b = NoteBoard::new(tb.sec_to_tick(1.0), tb.sec_to_tick(1.0));
+    board_a.publish(make_note("sine", 0.0));
+    board_b.publish(make_note("harmonic", 0.8));
 
     let mut renderer_a = ScheduleRenderer::new(tb);
     let mut renderer_b = ScheduleRenderer::new(tb);

@@ -5,7 +5,6 @@ pub mod erb;
 pub mod fft;
 pub mod harmonic_ratios;
 pub mod harmonicity_kernel;
-pub mod harmonicity_worker;
 pub mod landscape;
 pub mod landscape_spectral;
 pub mod log2space;

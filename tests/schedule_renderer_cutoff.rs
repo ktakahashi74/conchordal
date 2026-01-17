@@ -1,18 +1,18 @@
 use conchordal::core::modulation::NeuralRhythms;
 use conchordal::core::timebase::Timebase;
-use conchordal::life::intent::{Intent, IntentBoard};
+use conchordal::life::note_event::{NoteBoard, NoteEvent};
 use conchordal::life::schedule_renderer::ScheduleRenderer;
 
 #[test]
-fn cutoff_skips_future_intents() {
+fn cutoff_skips_future_notes() {
     let tb = Timebase {
         fs: 48_000.0,
         hop: 64,
     };
-    let mut board = IntentBoard::new(tb.sec_to_tick(1.0), tb.sec_to_tick(1.0));
-    board.publish(Intent {
+    let mut board = NoteBoard::new(tb.sec_to_tick(1.0), tb.sec_to_tick(1.0));
+    board.publish(NoteEvent {
         source_id: 0,
-        intent_id: 1,
+        note_id: 1,
         onset: 0,
         duration: 20,
         freq_hz: 440.0,
@@ -40,10 +40,10 @@ fn shutdown_releases_active_voices() {
         fs: 48_000.0,
         hop: 64,
     };
-    let mut board = IntentBoard::new(tb.sec_to_tick(2.0), tb.sec_to_tick(2.0));
-    board.publish(Intent {
+    let mut board = NoteBoard::new(tb.sec_to_tick(2.0), tb.sec_to_tick(2.0));
+    board.publish(NoteEvent {
         source_id: 0,
-        intent_id: 1,
+        note_id: 1,
         onset: 0,
         duration: tb.sec_to_tick(1.0),
         freq_hz: 440.0,

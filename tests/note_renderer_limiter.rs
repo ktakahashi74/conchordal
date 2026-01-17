@@ -1,6 +1,6 @@
 use conchordal::core::modulation::NeuralRhythms;
 use conchordal::core::timebase::Timebase;
-use conchordal::life::intent::{Intent, IntentBoard};
+use conchordal::life::note_event::{NoteBoard, NoteEvent};
 use conchordal::life::schedule_renderer::ScheduleRenderer;
 
 #[test]
@@ -9,11 +9,11 @@ fn limiter_clamps_peak_and_stays_finite() {
         fs: 48_000.0,
         hop: 128,
     };
-    let mut board = IntentBoard::new(tb.sec_to_tick(1.0), tb.sec_to_tick(1.0));
+    let mut board = NoteBoard::new(tb.sec_to_tick(1.0), tb.sec_to_tick(1.0));
     for i in 0..10u64 {
-        board.publish(Intent {
+        board.publish(NoteEvent {
             source_id: 0,
-            intent_id: i,
+            note_id: i,
             onset: 0,
             duration: 64,
             freq_hz: 440.0 + (i as f32 * 2.0),

@@ -377,7 +377,7 @@ pub enum Action {
     SetRoughnessTolerance {
         value: f32,
     },
-    PostIntent {
+    PostNote {
         source_id: u64,
         onset_sec: f32,
         duration_sec: f32,
@@ -410,7 +410,7 @@ impl fmt::Display for Action {
             Action::SetRoughnessTolerance { value } => {
                 write!(f, "SetRoughnessTolerance value={:.3}", value)
             }
-            Action::PostIntent {
+            Action::PostNote {
                 source_id,
                 onset_sec,
                 duration_sec,
@@ -420,7 +420,7 @@ impl fmt::Display for Action {
                 confidence,
             } => write!(
                 f,
-                "PostIntent src={} onset={:.3} dur={:.3} freq={:.1} amp={:.3} tag={:?} conf={:.2}",
+                "PostNote src={} onset={:.3} dur={:.3} freq={:.1} amp={:.3} tag={:?} conf={:.2}",
                 source_id, onset_sec, duration_sec, freq_hz, amp, tag, confidence
             ),
             Action::Finish => write!(f, "Finish"),

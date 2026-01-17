@@ -6,6 +6,6 @@ let ghost = derive(sine)
 create(ghost, 3);
 flush();
 for i in 0..4 {
-    intent(440.0, 1.0, 0.08, 0.4, "ghost");
+    note(440.0, 1.0, 0.08, 0.4, "ghost");
     wait(0.5);
 }

@@ -59,7 +59,7 @@ Using **Rhai** scripts, the creator acts not as a composer of notes, but as a **
 * **Interventions:** Injecting new populations or altering environmental constants (e.g., changing the system's "temperature" or consonance sensitivity).
 * **Constraints:** Setting boundaries within which the system evolves.
 
-This allows for the creation of structured "works" where the overall form is intentional, but the momentary details are emergent.
+This allows for the creation of structured "works" where the overall form is deliberate, but the momentary details are emergent.
 
 ## Technical Stack
 
@@ -111,7 +111,7 @@ Core scenario API (DSL):
 - `create(species, count)` -> `GroupHandle`
 - `wait(dt)`, `flush()`, `scene(name, || { ... })`, `play(fn, args...)`, `parallel([..])`
 - For more than 3 `play` args, pass an array: `play(fn, [a, b, c, d])`
-- `release(group)`, `seed(value)`, `intent(freq, onset, dur, amp[, tag])`
+- `release(group)`, `seed(value)`, `note(freq, onset, dur, amp[, tag])`
 - Builder methods on Species/Group: `amp`, `freq`, `brain`, `phonation`, `timbre`, `metabolism`, `adsr`
 - Placement: `place(strategy)`
 - Strategies: `harmonicity(root).range(min, max).min_dist(erb)`, `harmonic_density(min, max)`, `random_log(min, max)`, `linear(start, end)`

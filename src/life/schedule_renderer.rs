@@ -1,7 +1,7 @@
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
 use crate::life::individual::PhonationBatch;
-use crate::life::intent::{Intent, IntentBoard};
+use crate::life::note_event::{NoteBoard, NoteEvent};
 use crate::life::phonation_engine::PhonationCmd;
 use crate::life::sound::{AudioCommand, Voice, VoiceTarget, default_release_ticks};
 use std::collections::{HashMap, HashSet};
@@ -9,7 +9,7 @@ use tracing::debug;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum VoiceKind {
-    Intent,
+    Score,
     Phonation,
 }
 
@@ -53,7 +53,7 @@ impl ScheduleRenderer {
 
     pub fn render(
         &mut self,
-        board: &IntentBoard,
+        board: &NoteBoard,
         phonation_batches: &[PhonationBatch],
         now: Tick,
         rhythms: &NeuralRhythms,
@@ -92,15 +92,15 @@ impl ScheduleRenderer {
             board.retention_past
         };
         let future = board.horizon_future.min(self.add_future_ticks);
-        // Order is intentional: enqueue new voices first, then kick+render for this tick.
+        // Order matters: enqueue new voices first, then kick+render for this tick.
         // This assumes add_voice_if_needed accepts onset<=now so same-tick onsets are available.
-        for intent in board.snapshot(now, past, future) {
+        for note in board.snapshot(now, past, future) {
             if let Some(cutoff) = self.cutoff_tick
-                && intent.onset >= cutoff
+                && note.onset >= cutoff
             {
                 continue;
             }
-            self.add_voice_if_needed(intent, now);
+            self.add_voice_if_needed(note, now);
         }
         for cmd in audio_cmds {
             if let AudioCommand::EnsureVoice {
@@ -116,9 +116,9 @@ impl ScheduleRenderer {
                 if self.agent_voices.contains_key(id) {
                     continue;
                 }
-                let intent = Intent {
+                let note = NoteEvent {
                     source_id: *id,
-                    intent_id: 0,
+                    note_id: 0,
                     onset: now,
                     duration: Tick::MAX,
                     freq_hz: *pitch_hz,
@@ -128,7 +128,7 @@ impl ScheduleRenderer {
                     body: Some(body.clone()),
                     articulation: None,
                 };
-                if let Some(voice) = Voice::from_intent(self.time, intent) {
+                if let Some(voice) = Voice::from_note_event(self.time, note) {
                     self.agent_voices.insert(*id, voice);
                 }
             }
@@ -195,30 +195,30 @@ impl ScheduleRenderer {
         }
     }
 
-    fn add_voice_if_needed(&mut self, intent: Intent, now: Tick) {
-        if intent.duration == 0 || intent.freq_hz <= 0.0 {
+    fn add_voice_if_needed(&mut self, note: NoteEvent, now: Tick) {
+        if note.duration == 0 || note.freq_hz <= 0.0 {
             return;
         }
-        if intent.amp == 0.0 {
+        if note.amp == 0.0 {
             return;
         }
-        let end_tick = intent
+        let end_tick = note
             .onset
-            .saturating_add(intent.duration)
+            .saturating_add(note.duration)
             .saturating_add(default_release_ticks(self.time));
         if end_tick <= now {
             return;
         }
         let key = VoiceKey {
-            source_id: intent.source_id,
-            note_id: intent.intent_id,
-            kind: VoiceKind::Intent,
+            source_id: note.source_id,
+            note_id: note.note_id,
+            kind: VoiceKind::Score,
         };
         if self.voices.contains_key(&key) {
             return;
         }
-        let onset = intent.onset;
-        if let Some(mut voice) = Voice::from_intent(self.time, intent) {
+        let onset = note.onset;
+        if let Some(mut voice) = Voice::from_note_event(self.time, note) {
             voice.note_on(onset);
             voice.arm_onset_trigger(1.0);
             self.voices.insert(key, voice);
@@ -253,9 +253,9 @@ impl ScheduleRenderer {
                             continue;
                         }
                         let hold_ticks = spec.hold_ticks.unwrap_or(default_hold_ticks);
-                        let intent = Intent {
+                        let note = NoteEvent {
                             source_id: batch.source_id,
-                            intent_id: note_id,
+                            note_id,
                             onset: spec.onset,
                             duration: hold_ticks,
                             freq_hz: spec.freq_hz,
@@ -265,7 +265,7 @@ impl ScheduleRenderer {
                             body: Some(spec.body.clone()),
                             articulation: Some(spec.articulation.clone()),
                         };
-                        if let Some(mut voice) = Voice::from_intent(self.time, intent) {
+                        if let Some(mut voice) = Voice::from_note_event(self.time, note) {
                             voice.set_smoothing_tau_sec(spec.smoothing_tau_sec);
                             voice.note_on(spec.onset);
                             voice.schedule_planned_kick(kick);
@@ -353,7 +353,7 @@ mod tests {
     use crate::life::individual::{
         AnyArticulationCore, ArticulationWrapper, PhonationBatch, PhonationNoteSpec, SequencedCore,
     };
-    use crate::life::intent::BodySnapshot;
+    use crate::life::note_event::BodySnapshot;
     use crate::life::phonation_engine::{PhonationKick, PhonationUpdate};
     use crate::life::sound::{AudioCommand, VoiceTarget, default_release_ticks};
 
@@ -362,7 +362,7 @@ mod tests {
         let tb = Timebase { fs: 1000.0, hop: 4 };
         let mut renderer = ScheduleRenderer::new(tb);
         let rhythms = NeuralRhythms::default();
-        let board = IntentBoard::new(1, 1);
+        let board = NoteBoard::new(1, 1);
         let articulation = ArticulationWrapper::new(
             AnyArticulationCore::Seq(SequencedCore {
                 timer: 0.0,
@@ -422,7 +422,7 @@ mod tests {
         let tb = Timebase { fs: 1000.0, hop: 4 };
         let mut renderer = ScheduleRenderer::new(tb);
         let rhythms = NeuralRhythms::default();
-        let board = IntentBoard::new(1, 1);
+        let board = NoteBoard::new(1, 1);
         let articulation = ArticulationWrapper::new(
             AnyArticulationCore::Seq(SequencedCore {
                 timer: 0.0,
@@ -508,7 +508,7 @@ mod tests {
             amp: 0.4,
         }];
         let out = renderer.render(
-            &IntentBoard::new(0, 0),
+            &NoteBoard::new(0, 0),
             &[],
             0,
             &rhythms,
@@ -547,7 +547,7 @@ mod tests {
             },
         ];
         let out = renderer.render(
-            &IntentBoard::new(0, 0),
+            &NoteBoard::new(0, 0),
             &[],
             0,
             &rhythms,
@@ -566,7 +566,7 @@ mod tests {
             id: 99,
             energy: 1.0,
         }];
-        let out = renderer.render(&IntentBoard::new(0, 0), &[], 0, &rhythms, &[], &cmds);
+        let out = renderer.render(&NoteBoard::new(0, 0), &[], 0, &rhythms, &[], &cmds);
         assert!(out.iter().all(|s| s.abs() <= 1e-6));
     }
 
@@ -593,7 +593,7 @@ mod tests {
                 energy: 1.0,
             },
         ];
-        let out = renderer.render(&IntentBoard::new(0, 0), &[], 0, &rhythms, &[], &cmds);
+        let out = renderer.render(&NoteBoard::new(0, 0), &[], 0, &rhythms, &[], &cmds);
         assert!(out.iter().all(|s| s.abs() <= 1e-6));
         assert!(renderer.agent_voices.is_empty());
     }
@@ -627,7 +627,7 @@ mod tests {
             },
         ];
         let out = renderer.render(
-            &IntentBoard::new(0, 0),
+            &NoteBoard::new(0, 0),
             &[],
             0,
             &rhythms,
@@ -673,7 +673,7 @@ mod tests {
         ];
         let out = renderer
             .render(
-                &IntentBoard::new(0, 0),
+                &NoteBoard::new(0, 0),
                 &[],
                 0,
                 &rhythms,
@@ -709,7 +709,7 @@ mod tests {
         }];
         let _ = renderer
             .render(
-                &IntentBoard::new(0, 0),
+                &NoteBoard::new(0, 0),
                 &[],
                 0,
                 &rhythms,
@@ -751,7 +751,7 @@ mod tests {
             },
         ];
         renderer.render(
-            &IntentBoard::new(0, 0),
+            &NoteBoard::new(0, 0),
             &[],
             0,
             &rhythms,
@@ -760,7 +760,7 @@ mod tests {
         );
         renderer.shutdown_at(0);
         let now = default_release_ticks(tb) + 2;
-        renderer.render(&IntentBoard::new(0, 0), &[], now, &rhythms, &[], &[]);
+        renderer.render(&NoteBoard::new(0, 0), &[], now, &rhythms, &[], &[]);
         assert!(renderer.is_idle());
     }
 
@@ -793,7 +793,7 @@ mod tests {
             },
         ];
         renderer.render(
-            &IntentBoard::new(0, 0),
+            &NoteBoard::new(0, 0),
             &[],
             0,
             &rhythms,
@@ -801,10 +801,10 @@ mod tests {
             &cmds,
         );
         let now = tb.hop as Tick;
-        renderer.render(&IntentBoard::new(0, 0), &[], now, &rhythms, &[], &[]);
+        renderer.render(&NoteBoard::new(0, 0), &[], now, &rhythms, &[], &[]);
         assert_eq!(renderer.agent_voices.len(), 1);
         let done_at = now.saturating_add(default_release_ticks(tb) + 2);
-        renderer.render(&IntentBoard::new(0, 0), &[], done_at, &rhythms, &[], &[]);
+        renderer.render(&NoteBoard::new(0, 0), &[], done_at, &rhythms, &[], &[]);
         assert!(renderer.is_idle());
     }
 }

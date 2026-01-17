@@ -112,10 +112,10 @@ fn split_widths(ui: &egui::Ui, ratio: f32, min_left: f32, min_right: f32) -> (f3
     (left_width, right_width)
 }
 
-const INTENT_PLOT_HEIGHT: f32 = 120.0;
-const INTENT_LIST_HEIGHT: f32 = 18.0;
-const INTENT_HEADER_HEIGHT: f32 = 40.0;
-const INTENT_BOARD_HEIGHT: f32 = INTENT_PLOT_HEIGHT + INTENT_LIST_HEIGHT + INTENT_HEADER_HEIGHT;
+const NOTE_PLOT_HEIGHT: f32 = 120.0;
+const NOTE_LIST_HEIGHT: f32 = 18.0;
+const NOTE_HEADER_HEIGHT: f32 = 40.0;
+const NOTE_BOARD_HEIGHT: f32 = NOTE_PLOT_HEIGHT + NOTE_LIST_HEIGHT + NOTE_HEADER_HEIGHT;
 
 /// === Main window ===
 #[allow(clippy::too_many_arguments)]
@@ -342,7 +342,7 @@ pub fn main_window(
             ui.allocate_ui_with_layout(
                 Vec2::new(
                     right_width,
-                    attention_height + neural_time_height + INTENT_BOARD_HEIGHT,
+                    attention_height + neural_time_height + NOTE_BOARD_HEIGHT,
                 ),
                 egui::Layout::top_down(egui::Align::LEFT),
                 |ui| {
@@ -381,7 +381,7 @@ pub fn main_window(
         });
 
         ui.separator();
-        draw_intent_board(ui, frame);
+        draw_note_board(ui, frame);
         ui.separator();
         ui.horizontal(|ui| {
             ui.heading("Population Dynamics");
@@ -490,8 +490,8 @@ pub fn main_window(
     });
 }
 
-fn draw_intent_board(ui: &mut egui::Ui, frame: &UiFrame) {
-    ui.heading("Intent Board");
+fn draw_note_board(ui: &mut egui::Ui, frame: &UiFrame) {
+    ui.heading("Note Board");
     let fs = frame.world.fs;
     let now_tick = frame.world.now_tick;
     let now_sec = if fs > 0.0 { now_tick as f32 / fs } else { 0.0 };
@@ -525,7 +525,7 @@ fn draw_intent_board(ui: &mut egui::Ui, frame: &UiFrame) {
         ui.separator();
         ui.label(format!("now_sec={now_sec:.3}"));
         ui.separator();
-        ui.label(format!("intents={}", frame.world.intents.len()));
+        ui.label(format!("notes={}", frame.world.notes.len()));
         ui.separator();
         ui.label(format!("past={} ({past_sec:.2}s)", past_ticks));
         ui.separator();
@@ -543,14 +543,14 @@ fn draw_intent_board(ui: &mut egui::Ui, frame: &UiFrame) {
 
     let series: PlotPoints = frame
         .world
-        .intents
+        .notes
         .iter()
-        .filter_map(|intent| {
-            if intent.freq_hz <= 0.0 || fs <= 0.0 {
+        .filter_map(|note| {
+            if note.freq_hz <= 0.0 || fs <= 0.0 {
                 return None;
             }
-            let x = (intent.freq_hz as f64).max(1.0).log2();
-            let y = intent.onset_tick as f64 / fs as f64;
+            let x = (note.freq_hz as f64).max(1.0).log2();
+            let y = note.onset_tick as f64 / fs as f64;
             Some([x, y])
         })
         .collect();
@@ -582,13 +582,13 @@ fn draw_intent_board(ui: &mut egui::Ui, frame: &UiFrame) {
             Some([x, y])
         })
         .collect();
-    let points = Points::new("intents", series)
+    let points = Points::new("notes", series)
         .radius(3.0)
         .color(Color32::from_rgb(240, 120, 120));
-    let planned_points = Points::new("planned_intents_live", planned_live_series)
+    let planned_points = Points::new("planned_notes_live", planned_live_series)
         .radius(4.0)
         .color(Color32::from_rgb(120, 220, 160));
-    let planned_last_points = Points::new("planned_intents_last", planned_last_series)
+    let planned_last_points = Points::new("planned_notes_last", planned_last_series)
         .radius(4.0)
         .color(Color32::from_rgb(120, 160, 240));
     let x_min_log2 = (20.0f64).log2();
@@ -597,8 +597,8 @@ fn draw_intent_board(ui: &mut egui::Ui, frame: &UiFrame) {
     let y_max = (now_sec + future_sec) as f64;
     let y_max_fixed = if y_max <= y_min { y_min + 1.0 } else { y_max };
 
-    Plot::new("intent_board_plot")
-        .height(INTENT_PLOT_HEIGHT)
+    Plot::new("note_board_plot")
+        .height(NOTE_PLOT_HEIGHT)
         .allow_drag(false)
         .allow_scroll(false)
         .include_x(x_min_log2)
@@ -627,25 +627,25 @@ fn draw_intent_board(ui: &mut egui::Ui, frame: &UiFrame) {
         });
 
     let mut list_text = String::new();
-    for (idx, intent) in frame.world.intents.iter().enumerate() {
+    for (idx, note) in frame.world.notes.iter().enumerate() {
         if idx > 0 {
             list_text.push_str(" | ");
         }
         let onset_sec = if fs > 0.0 {
-            intent.onset_tick as f32 / fs
+            note.onset_tick as f32 / fs
         } else {
             0.0
         };
-        let tag = intent.tag.as_deref().unwrap_or("-");
+        let tag = note.tag.as_deref().unwrap_or("-");
         list_text.push_str(&format!(
             "t={onset_sec:.3}s f={:.1}Hz amp={:.3} src={} tag={}",
-            intent.freq_hz, intent.amp, intent.source_id, tag
+            note.freq_hz, note.amp, note.source_id, tag
         ));
     }
     let line_height = ui.text_style_height(&egui::TextStyle::Body);
     egui::ScrollArea::horizontal()
-        .id_salt("intent_list_scroll")
-        .max_height(line_height.max(INTENT_LIST_HEIGHT))
+        .id_salt("note_list_scroll")
+        .max_height(line_height.max(NOTE_LIST_HEIGHT))
         .show(ui, |ui| {
             ui.add(egui::Label::new(list_text).extend());
         });
@@ -674,13 +674,13 @@ fn draw_intent_board(ui: &mut egui::Ui, frame: &UiFrame) {
     }
     egui::ScrollArea::horizontal()
         .id_salt("planned_list_scroll")
-        .max_height(line_height.max(INTENT_LIST_HEIGHT))
+        .max_height(line_height.max(NOTE_LIST_HEIGHT))
         .show(ui, |ui| {
             ui.add(egui::Label::new(planned_text).extend());
         });
     egui::ScrollArea::horizontal()
         .id_salt("planned_last_list_scroll")
-        .max_height(line_height.max(INTENT_LIST_HEIGHT))
+        .max_height(line_height.max(NOTE_LIST_HEIGHT))
         .show(ui, |ui| {
             ui.add(egui::Label::new(planned_last_text).extend());
         });

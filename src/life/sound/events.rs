@@ -1,6 +1,6 @@
 pub type IndividualId = u64;
 
-use crate::life::intent::BodySnapshot;
+use crate::life::note_event::BodySnapshot;
 
 #[derive(Debug, Clone)]
 pub enum AudioCommand {

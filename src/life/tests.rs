@@ -66,7 +66,7 @@ fn population_spawn_and_release_removes_agent() {
     let samples_per_hop = (fs * dt) as usize;
     let landscape_rt = make_test_landscape(fs);
     pop.advance(samples_per_hop, fs, 0, dt, &landscape_rt);
-    pop.process_frame(0, &landscape_rt.space, dt, false);
+    pop.cleanup_dead(0, dt, false);
     assert!(pop.individuals.is_empty());
 }
 
@@ -269,7 +269,7 @@ fn remove_pending_still_emits_note_offs() {
     let mut now: Tick = 0;
     let mut saw_note_on = false;
     for _ in 0..20 {
-        agent.tick_phonation_into(&tb, now, &rhythms, None, 0.0, &mut batch);
+        agent.tick_phonation_into(&tb, now, &rhythms, None, 0.0, 1.0, &mut batch);
         if batch
             .cmds
             .iter()
@@ -286,7 +286,7 @@ fn remove_pending_still_emits_note_offs() {
     agent.start_remove_fade(0.05);
     let mut saw_note_off = false;
     for _ in 0..40 {
-        agent.tick_phonation_into(&tb, now, &rhythms, None, 0.0, &mut batch);
+        agent.tick_phonation_into(&tb, now, &rhythms, None, 0.0, 1.0, &mut batch);
         if batch
             .cmds
             .iter()
@@ -342,7 +342,7 @@ fn agent_lifecycle_decay_death() {
 
     for i in 0..100 {
         pop.advance(samples_per_hop, fs, i, dt, &landscape_rt);
-        pop.process_frame(i, &landscape_rt.space, dt, false);
+        pop.cleanup_dead(i, dt, false);
     }
 
     assert!(pop.individuals.is_empty());

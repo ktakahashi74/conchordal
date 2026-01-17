@@ -1,7 +1,7 @@
 //! core/landscape.rs — Data container for the psychoacoustic map (The Map).
 //!
 //! This module now holds only the data structures and lightweight helpers.
-//! Processing lives in the Dorsal (rhythm), Roughness, and Harmonicity streams.
+//! Processing lives in the Dorsal (rhythm) and Roughness (R/H) streams.
 
 use crate::core::log2space::Log2Space;
 use crate::core::modulation::NeuralRhythms;

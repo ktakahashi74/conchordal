@@ -1,6 +1,6 @@
 use conchordal::core::modulation::NeuralRhythms;
 use conchordal::core::timebase::Timebase;
-use conchordal::life::intent::Intent;
+use conchordal::life::note_event::NoteEvent;
 use conchordal::life::sound::Voice;
 
 #[test]
@@ -9,9 +9,9 @@ fn note_off_at_onset_still_releases() {
         fs: 48_000.0,
         hop: 64,
     };
-    let intent = Intent {
+    let note = NoteEvent {
         source_id: 1,
-        intent_id: 42,
+        note_id: 42,
         onset: 0,
         duration: tb.sec_to_tick(0.5),
         freq_hz: 440.0,
@@ -22,7 +22,7 @@ fn note_off_at_onset_still_releases() {
         articulation: None,
     };
 
-    let mut voice = Voice::from_intent(tb, intent).expect("voice");
+    let mut voice = Voice::from_note_event(tb, note).expect("voice");
     voice.note_off(0);
     voice.arm_onset_trigger(1.0);
 

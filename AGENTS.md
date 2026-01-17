@@ -84,7 +84,7 @@ echo "cargo test exit=$? @ $(date -Iseconds)" > test_status.txt
 We use two orthogonal axes. Do not mix them.
 
 ### Axis A: WorldModel layer (origin)
-- **predictive** (`pred_*`): hypothesis derived from IntentBoard / internal model (zero-latency).
+- **predictive** (`pred_*`): hypothesis derived from NoteBoard / internal model (zero-latency).
 - **perceptual** (`perc_*`): evidence derived from actual audio analysis (NSGT/filterbank; delayed).
 - **error** (`err_*`): `err_* = perc_* - pred_*`.
 
@@ -119,7 +119,7 @@ We represent frequency-direction terrains as **Log2Space-aligned scans**.
 - **F2**: Any function that accepts/returns a `_scan` MUST assert the invariant at boundaries
   (debug_assert is acceptable; tests must cover it).
 - **F3**: Hz / ERB (or other psychoacoustic coordinates) are allowed as internal representations
-  (e.g. oscillators, intents, intermediate grids), but any exposed terrain field is converted to
+  (e.g. oscillators, note events, intermediate grids), but any exposed terrain field is converted to
   Log2Space bins.
 - **F4**: Candidate evaluation against terrains MUST use log2->bin mapping (interpolation allowed).
   Never index `_scan` with linear-Hz indices.

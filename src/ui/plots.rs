@@ -418,7 +418,7 @@ pub fn neural_activity_plot(
     });
 }
 
-/// Show current vs target frequency for each agent with intent arrows.
+/// Show current vs target frequency for each agent with target arrows.
 pub fn plot_population_dynamics(
     ui: &mut egui::Ui,
     agents: &[AgentStateInfo],
@@ -465,7 +465,7 @@ pub fn plot_population_dynamics(
             let xt = agent.target_freq.max(1.0).log2() as f64;
             if (x - xt).abs() > f64::EPSILON {
                 plot_ui.line(
-                    Line::new(format!("intent-{}", agent.id), vec![[x, y], [xt, y]])
+                    Line::new(format!("target-{}", agent.id), vec![[x, y], [xt, y]])
                         .color(Color32::from_rgb(80, 140, 255))
                         .style(LineStyle::Dashed { length: 4.0 }),
                 );

@@ -232,6 +232,7 @@ impl TimingField {
         ctx: &CoreTickCtx,
         grid: &ThetaGrid,
         social: Option<(&SocialDensityTrace, f32)>,
+        extra_gate_gain: f32,
     ) -> Self {
         const MAX_GATES_PER_HOP: u64 = 4096;
         if grid.boundaries.is_empty() {
@@ -274,6 +275,15 @@ impl TimingField {
                     }
                 }
                 _ => {}
+            }
+            let extra_gain = if extra_gate_gain.is_finite() {
+                extra_gate_gain.max(0.0)
+            } else {
+                1.0
+            };
+            weight *= extra_gain;
+            if !weight.is_finite() {
+                weight = 0.0;
             }
             if boundary.gate > expected_gate {
                 let fill_weight = last_weight.unwrap_or(1.0);
@@ -1133,6 +1143,7 @@ impl PhonationEngine {
         state: &CoreState,
         social: Option<&SocialDensityTrace>,
         social_coupling: f32,
+        extra_gate_gain: f32,
         min_allowed_onset_tick: Option<Tick>,
         out_cmds: &mut Vec<PhonationCmd>,
         out_events: &mut Vec<PhonationNoteEvent>,
@@ -1159,6 +1170,7 @@ impl PhonationEngine {
             ctx,
             &timing_grid,
             social.map(|trace| (trace, social_coupling)),
+            extra_gate_gain,
         );
         self.process_candidates(
             ctx,
@@ -1670,7 +1682,7 @@ mod tests {
         let grid = ThetaGrid {
             boundaries: vec![GateBoundary { gate: 0, tick: 0 }],
         };
-        let timing_field = TimingField::build_from(&ctx, &grid, None);
+        let timing_field = TimingField::build_from(&ctx, &grid, None, 1.0);
         assert_eq!(timing_field.e(0), 0.0);
     }
 
@@ -1795,7 +1807,7 @@ mod tests {
                 GateBoundary { gate: 2, tick: 0 },
             ],
         };
-        let timing_field = TimingField::build_from(&ctx, &grid, None);
+        let timing_field = TimingField::build_from(&ctx, &grid, None, 1.0);
         assert_eq!(timing_field.e(0), 0.5);
         assert_eq!(timing_field.e(1), 0.5);
         assert_eq!(timing_field.e(2), 0.5);
@@ -2857,6 +2869,7 @@ mod tests {
             &state,
             None,
             0.0,
+            1.0,
             None,
             &mut cmds,
             &mut events,
@@ -2896,7 +2909,7 @@ mod tests {
             bin_ticks: 10,
             bins: vec![1.0, 0.0],
         };
-        let timing_field = TimingField::build_from(&ctx, &grid, Some((&trace, -1.0)));
+        let timing_field = TimingField::build_from(&ctx, &grid, Some((&trace, -1.0)), 1.0);
         assert!(timing_field.e(0) < 0.5);
         assert!((timing_field.e(1) - 1.0).abs() < 1e-6);
     }
@@ -3498,7 +3511,7 @@ mod tests {
             bin_ticks: 1,
             bins: vec![1000.0],
         };
-        let timing_field = TimingField::build_from(&ctx, &grid, Some((&trace, 1000.0)));
+        let timing_field = TimingField::build_from(&ctx, &grid, Some((&trace, 1000.0)), 1.0);
         assert!(timing_field.e(0).is_finite());
     }
 }

@@ -2,7 +2,6 @@ use super::control::PitchMode;
 use super::individual::{AgentMetadata, Individual, PhonationBatch, SoundBody};
 use super::scenario::{Action, IndividualConfig, SpawnStrategy};
 use crate::core::landscape::{LandscapeFrame, LandscapeUpdate};
-use crate::core::log2space::Log2Space;
 use crate::core::timebase::{Tick, Timebase};
 use crate::life::social_density::SocialDensityTrace;
 use crate::life::sound::{AudioCommand, VoiceTarget};
@@ -11,16 +10,10 @@ use rand::{Rng, SeedableRng, distr::Distribution, distr::weighted::WeightedIndex
 use std::hash::{Hash, Hasher};
 use tracing::{debug, info, warn};
 
-#[derive(Default)]
-struct WorkBuffers {
-    amps: Vec<f32>,
-}
-
 pub struct Population {
     pub individuals: Vec<Individual>,
     current_frame: u64,
     pub abort_requested: bool,
-    buffers: WorkBuffers,
     pub global_coupling: f32,
     birth_energy: f32,
     shutdown_gain: f32,
@@ -73,7 +66,6 @@ impl Population {
             individuals: Vec::new(),
             current_frame: 0,
             abort_requested: false,
-            buffers: WorkBuffers::default(),
             global_coupling: 1.0,
             birth_energy: 1.0,
             shutdown_gain: 1.0,
@@ -139,28 +131,37 @@ impl Population {
         }
     }
 
-    pub fn publish_intents(
+    pub fn collect_phonation_batches(
         &mut self,
         world: &mut WorldModel,
         landscape: &LandscapeFrame,
         now: Tick,
     ) -> Vec<PhonationBatch> {
         let mut batches = Vec::new();
-        let count = self.publish_intents_into(world, landscape, now, &mut batches);
+        let count = self.collect_phonation_batches_into(world, landscape, now, &mut batches);
         batches.truncate(count);
         batches
     }
 
-    pub(crate) fn publish_intents_into(
+    pub(crate) fn collect_phonation_batches_into(
         &mut self,
         world: &mut WorldModel,
         landscape: &LandscapeFrame,
         now: Tick,
         out: &mut Vec<PhonationBatch>,
     ) -> usize {
-        let hop_tick = (world.time.hop as Tick).max(1);
-        let tb = &world.time;
+        let tb = world.time;
+        let hop_tick = (tb.hop as Tick).max(1);
         let frame_end = now.saturating_add(hop_tick);
+        let pred_scan = world
+            .predict_consonance01_next_gate()
+            .and_then(|(gate_tick, scan)| {
+                if gate_tick >= now && gate_tick < frame_end {
+                    Some(scan)
+                } else {
+                    None
+                }
+            });
         let mut used = 0usize;
         let social_trace = self.social_trace.as_ref();
         for agent in &mut self.individuals {
@@ -169,12 +170,20 @@ impl Population {
                 out.push(PhonationBatch::default());
             }
             let batch = &mut out[used];
+            let extra_gate_gain = pred_scan
+                .as_ref()
+                .map(|scan| {
+                    let gain_raw = world.sample_scan01(scan, agent.body.base_freq_hz());
+                    0.25 + 0.75 * gain_raw.powf(2.0)
+                })
+                .unwrap_or(1.0);
             agent.tick_phonation_into(
-                tb,
+                &tb,
                 now,
                 &landscape.rhythm,
                 social_trace,
                 social_coupling,
+                extra_gate_gain,
                 batch,
             );
             let has_output =
@@ -455,7 +464,7 @@ impl Population {
                 };
                 self.merge_landscape_update(update);
             }
-            Action::PostIntent { .. } => {}
+            Action::PostNote { .. } => {}
         }
     }
 
@@ -529,22 +538,8 @@ impl Population {
         }
     }
 
-    /// Render spectral bodies on the provided log2 axis (explicit for external DSP handoff).
-    pub fn process_frame(
-        &mut self,
-        current_frame: u64,
-        space: &Log2Space,
-        dt_sec: f32,
-        scenario_finished: bool,
-    ) -> &[f32] {
+    pub fn cleanup_dead(&mut self, current_frame: u64, dt_sec: f32, scenario_finished: bool) {
         self.current_frame = current_frame;
-        self.buffers.amps.resize(space.n_bins(), 0.0);
-        self.buffers.amps.fill(0.0);
-        for agent in self.individuals.iter_mut() {
-            if agent.is_alive() {
-                agent.render_spectrum(&mut self.buffers.amps, space);
-            }
-        }
         let before_count = self.individuals.len();
         let mut next = Vec::with_capacity(self.individuals.len());
         for agent in self.individuals.drain(..) {
@@ -580,7 +575,6 @@ impl Population {
                 );
             }
         }
-        &self.buffers.amps
     }
 }
 
@@ -638,7 +632,7 @@ mod tests {
     use crate::core::timebase::Timebase;
     use crate::life::control::{AgentControl, ControlUpdate, PhonationType};
     use crate::life::individual::{AnyArticulationCore, ArticulationWrapper, DroneCore};
-    use crate::life::intent::BodySnapshot;
+    use crate::life::note_event::BodySnapshot;
     use crate::life::phonation_engine::{OnsetEvent, PhonationCmd, PhonationKick};
     use crate::life::scenario::{ArticulationCoreConfig, SpawnSpec, SpawnStrategy};
     use crate::life::world_model::WorldModel;
@@ -830,7 +824,7 @@ mod tests {
     }
 
     #[test]
-    fn publish_intents_into_clears_unused_batch() {
+    fn collect_phonation_batches_into_clears_unused_batch() {
         let time = Timebase {
             fs: 48_000.0,
             hop: 64,
@@ -866,7 +860,7 @@ mod tests {
             }],
         }];
 
-        let used = pop.publish_intents_into(&mut world, &landscape, 0, &mut batches);
+        let used = pop.collect_phonation_batches_into(&mut world, &landscape, 0, &mut batches);
         assert_eq!(used, 0);
         assert!(batches[0].cmds.is_empty());
         assert!(batches[0].notes.is_empty());

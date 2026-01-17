@@ -111,7 +111,7 @@ impl Conductor {
             info!("[t={:.3}] Event: {}", ev.time, action_descs.join(" | "));
             for action in ev.actions {
                 match action {
-                    crate::life::scenario::Action::PostIntent { .. } => {
+                    crate::life::scenario::Action::PostNote { .. } => {
                         world.apply_action(&action);
                     }
                     _ => {

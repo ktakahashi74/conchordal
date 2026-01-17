@@ -1,12 +1,12 @@
 use conchordal::core::modulation::NeuralRhythms;
 use conchordal::core::timebase::{Tick, Timebase};
-use conchordal::life::intent::{Intent, IntentBoard};
+use conchordal::life::note_event::{NoteBoard, NoteEvent};
 use conchordal::life::schedule_renderer::ScheduleRenderer;
 
-fn make_intent(intent_id: u64, onset: Tick, duration: Tick, freq: f32, amp: f32) -> Intent {
-    Intent {
+fn make_note(note_id: u64, onset: Tick, duration: Tick, freq: f32, amp: f32) -> NoteEvent {
+    NoteEvent {
         source_id: 0,
-        intent_id,
+        note_id,
         onset,
         duration,
         freq_hz: freq,
@@ -19,17 +19,17 @@ fn make_intent(intent_id: u64, onset: Tick, duration: Tick, freq: f32, amp: f32)
 }
 
 #[test]
-fn short_intent_silence_after_end() {
+fn short_note_silence_after_end() {
     let tb = Timebase {
         fs: 1000.0,
         hop: 16,
     };
     let retention = tb.sec_to_tick(2.0);
     let future = tb.sec_to_tick(2.0);
-    let mut board = IntentBoard::new(retention, future);
+    let mut board = NoteBoard::new(retention, future);
     let onset: Tick = 0;
     let duration: Tick = (tb.hop as Tick).min(4).max(1);
-    board.publish(make_intent(1, onset, duration, 440.0, 0.5));
+    board.publish(make_note(1, onset, duration, 440.0, 0.5));
 
     let mut renderer = ScheduleRenderer::new(tb);
     let rhythms = NeuralRhythms::default();

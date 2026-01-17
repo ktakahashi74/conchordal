@@ -14,16 +14,13 @@ use ringbuf::traits::Observer;
 #[cfg(debug_assertions)]
 use crate::audio::writer::WavOutput;
 use crate::core::harmonicity_kernel::HarmonicityKernel;
-use crate::core::harmonicity_worker;
 use crate::core::landscape::{Landscape, LandscapeFrame, LandscapeParams, LandscapeUpdate};
 use crate::core::log2space::Log2Space;
 use crate::core::nsgt_kernel::{NsgtKernelLog2, NsgtLog2Config, PowerMode};
 use crate::core::nsgt_rt::{RtConfig, RtNsgtKernelLog2};
 use crate::core::roughness_kernel::{KernelParams, RoughnessKernel};
 use crate::core::roughness_worker;
-use crate::core::stream::{
-    dorsal::DorsalStream, harmonicity::HarmonicityStream, roughness::RoughnessStream,
-};
+use crate::core::stream::{dorsal::DorsalStream, roughness::RoughnessStream};
 use crate::core::timebase::Tick;
 use crate::life::conductor::Conductor;
 use crate::life::individual::{PhonationBatch, SoundBody};
@@ -72,7 +69,6 @@ impl AudioMonitor {
         buffer_occupancy: usize,
         chunk_peak: f32,
         chunk_elapsed: Duration,
-        harmonicity_lag: Option<u64>,
         roughness_lag: Option<u64>,
         conductor_done: bool,
     ) -> f32 {
@@ -112,18 +108,14 @@ impl AudioMonitor {
             );
         }
 
-        let should_warn = harmonicity_lag.is_some_and(|lag| lag >= 2)
-            || roughness_lag.is_some_and(|lag| lag >= 2);
+        let should_warn = roughness_lag.is_some_and(|lag| lag >= 2);
         if should_warn && self.last_lag_warn.elapsed() > Duration::from_secs(1) {
-            let h = harmonicity_lag
-                .map(|v| v.to_string())
-                .unwrap_or_else(|| "-".into());
             let r = roughness_lag
                 .map(|v| v.to_string())
                 .unwrap_or_else(|| "-".into());
             warn!(
-                "[t={:.3}] Analysis lag (frames): H={} R={} (Audio(gen)={})",
-                current_time, h, r, frame_idx
+                "[t={:.3}] Analysis lag (frames): R={} (Audio(gen)={})",
+                current_time, r, frame_idx
             );
             self.last_lag_warn = Instant::now();
         }
@@ -222,7 +214,7 @@ pub fn validate_scenario(scenario: &Scenario) -> Result<(), String> {
                 Action::SetHarmonicity { .. }
                 | Action::SetGlobalCoupling { .. }
                 | Action::SetRoughnessTolerance { .. } => {}
-                Action::PostIntent { .. } => {}
+                Action::PostNote { .. } => {}
             }
         }
     }
@@ -524,37 +516,17 @@ fn init_runtime(
     // Channels
     let (ui_frame_tx, ui_frame_rx) = bounded::<UiFrame>(ui_channel_capacity);
     let (ctrl_tx, _ctrl_rx) = bounded::<()>(1);
-    let (harmonicity_tx, harmonicity_rx) = bounded::<LandscapeUpdate>(8);
     let (roughness_tx, roughness_rx) = bounded::<LandscapeUpdate>(8);
 
     let base_space = nsgt.space().clone();
     let roughness_stream = RoughnessStream::new(lparams.clone(), nsgt.clone());
-    let harmonicity_stream =
-        HarmonicityStream::new(base_space.clone(), lparams.harmonicity_kernel.clone());
     let landscape = Landscape::new(base_space.clone());
     let dorsal = DorsalStream::new(fs);
     let lparams_runtime = lparams.clone();
 
     // Analysis pipeline channels
-    let (spectrum_to_harmonicity_tx, spectrum_to_harmonicity_rx) = bounded::<(u64, Arc<[f32]>)>(64);
-    let (harmonicity_result_tx, harmonicity_result_rx) = bounded::<(u64, Vec<f32>, Vec<f32>)>(4);
     let (audio_to_roughness_tx, audio_to_roughness_rx) = bounded::<(u64, Arc<[f32]>)>(64);
     let (roughness_from_analysis_tx, roughness_from_analysis_rx) = bounded::<(u64, Landscape)>(4);
-
-    // Spawn harmonicity thread
-    {
-        std::thread::Builder::new()
-            .name("harmonicity".into())
-            .spawn(move || {
-                harmonicity_worker::run(
-                    harmonicity_stream,
-                    spectrum_to_harmonicity_rx,
-                    harmonicity_result_tx,
-                    harmonicity_rx,
-                );
-            })
-            .expect("spawn analysis worker");
-    }
 
     // Spawn roughness thread (NSGT-RT based audio analysis).
     {
@@ -613,9 +585,6 @@ fn init_runtime(
                     audio_prod,
                     wav_tx_for_worker,
                     stop_flag_worker,
-                    spectrum_to_harmonicity_tx,
-                    harmonicity_result_rx,
-                    harmonicity_tx,
                     audio_to_roughness_tx,
                     roughness_from_analysis_rx,
                     roughness_tx,
@@ -724,9 +693,6 @@ fn worker_loop(
     mut audio_prod: Option<ringbuf::HeapProd<f32>>,
     mut wav_tx: Option<Sender<Arc<[f32]>>>,
     exiting: Arc<AtomicBool>,
-    spectrum_to_harmonicity_tx: Sender<(u64, Arc<[f32]>)>,
-    harmonicity_result_rx: Receiver<(u64, Vec<f32>, Vec<f32>)>,
-    harmonicity_tx: Sender<LandscapeUpdate>,
     audio_to_roughness_tx: Sender<(u64, Arc<[f32]>)>,
     roughness_from_analysis_rx: Receiver<(u64, Landscape)>,
     roughness_tx: Sender<LandscapeUpdate>,
@@ -742,7 +708,6 @@ fn worker_loop(
     };
     let mut finish_logged = false;
     let mut finished = false;
-    let mut latest_spec_amps: Vec<f32> = vec![0.0; current_landscape.space.n_bins()];
     let mut log_space = current_landscape.space.clone();
 
     let mut current_time: f32 = 0.0;
@@ -750,12 +715,9 @@ fn worker_loop(
     let mut monitor = AudioMonitor::new();
     let mut last_ui_update = Instant::now();
     let ui_min_interval = Duration::from_millis(33);
-    let mut last_h_analysis_frame: Option<u64> = None;
     let mut last_r_analysis_frame: Option<u64> = None;
-    let mut latest_h_scan: Option<Vec<f32>> = None;
     let timebase = crate::core::timebase::Timebase { fs, hop };
     let mut world = crate::life::world_model::WorldModel::new(timebase, log_space.clone());
-    world.set_pred_params(lparams.clone());
     let mut schedule_renderer = ScheduleRenderer::new(timebase);
     let init_now_tick = timebase.frame_start_tick(frame_idx);
     world.advance_to(init_now_tick);
@@ -853,23 +815,13 @@ fn worker_loop(
             let required_prev = frame_idx.saturating_sub(1);
             loop {
                 // Merge analysis results (latest-only) into the landscape.
-                let mut latest_body: Option<(u64, Vec<f32>, Vec<f32>)> = None;
-                while let Ok((analyzed_id, h_scan, body_log)) = harmonicity_result_rx.try_recv() {
-                    last_h_analysis_frame = Some(analyzed_id);
-                    latest_body = Some((analyzed_id, h_scan, body_log));
-                }
-                if let Some((_, h_scan, _body_log)) = latest_body {
-                    latest_h_scan = Some(h_scan);
-                }
-
                 let mut latest_audio: Option<(u64, Landscape)> = None;
                 while let Ok((analyzed_id, frame)) = roughness_from_analysis_rx.try_recv() {
                     last_r_analysis_frame = Some(analyzed_id);
                     latest_audio = Some((analyzed_id, frame));
                 }
-                let mut roughness_updated = false;
-                let mut harmonicity_updated = false;
-                if let Some((_, frame)) = latest_audio {
+                let mut analysis_updated = false;
+                if let Some((analysis_id, frame)) = latest_audio {
                     let space_changed = current_landscape.space.n_bins() != frame.space.n_bins()
                         || current_landscape.space.fmin != frame.space.fmin
                         || current_landscape.space.fmax != frame.space.fmax
@@ -880,7 +832,9 @@ fn worker_loop(
                         world.set_space(log_space.clone());
                     }
                     current_landscape.roughness = frame.roughness;
+                    current_landscape.roughness_shape_raw = frame.roughness_shape_raw;
                     current_landscape.roughness01 = frame.roughness01;
+                    current_landscape.harmonicity = frame.harmonicity;
                     current_landscape.roughness_total = frame.roughness_total;
                     current_landscape.roughness_max = frame.roughness_max;
                     current_landscape.roughness_p95 = frame.roughness_p95;
@@ -890,58 +844,51 @@ fn worker_loop(
                     current_landscape.loudness_mass = frame.loudness_mass;
                     current_landscape.subjective_intensity = frame.subjective_intensity;
                     current_landscape.nsgt_power = frame.nsgt_power;
-                    roughness_updated = true;
-                }
-
-                if let Some(h_scan) = &latest_h_scan {
-                    debug_assert_eq!(h_scan.len(), current_landscape.space.n_bins());
-                    if h_scan.len() == current_landscape.harmonicity.len() {
-                        current_landscape.harmonicity.clone_from(h_scan);
-                        harmonicity_updated = true;
-                    }
-                }
-
-                if roughness_updated || harmonicity_updated {
                     current_landscape.recompute_consonance(&lparams);
-                    if cfg!(debug_assertions) && frame_idx.is_multiple_of(30) {
-                        let mut max_r = 0.0f32;
-                        let mut max_i = 0usize;
-                        for (i, &r) in current_landscape.roughness01.iter().enumerate() {
-                            if r.is_finite() && r > max_r {
-                                max_r = r;
-                                max_i = i;
-                            }
+                    let obs_tick = timebase.frame_start_tick(analysis_id);
+                    world.observe_consonance01(
+                        obs_tick,
+                        Arc::from(current_landscape.consonance01.clone()),
+                    );
+                    analysis_updated = true;
+                }
+                if analysis_updated && cfg!(debug_assertions) && frame_idx.is_multiple_of(30) {
+                    let mut max_r = 0.0f32;
+                    let mut max_i = 0usize;
+                    for (i, &r) in current_landscape.roughness01.iter().enumerate() {
+                        if r.is_finite() && r > max_r {
+                            max_r = r;
+                            max_i = i;
                         }
-                        let h = current_landscape
-                            .harmonicity01
-                            .get(max_i)
-                            .copied()
-                            .unwrap_or(0.0);
-                        let r = current_landscape
-                            .roughness01
-                            .get(max_i)
-                            .copied()
-                            .unwrap_or(0.0);
-                        let c = current_landscape
-                            .consonance
-                            .get(max_i)
-                            .copied()
-                            .unwrap_or(0.0);
-                        let c_pred = (h - lparams.consonance_roughness_weight * r).clamp(-1.0, 1.0);
-                        debug!(
-                            "c_signed_check bin={} h={:.4} r={:.4} c={:.4} c_pred={:.4}",
-                            max_i, h, r, c, c_pred
-                        );
                     }
+                    let h = current_landscape
+                        .harmonicity01
+                        .get(max_i)
+                        .copied()
+                        .unwrap_or(0.0);
+                    let r = current_landscape
+                        .roughness01
+                        .get(max_i)
+                        .copied()
+                        .unwrap_or(0.0);
+                    let c = current_landscape
+                        .consonance
+                        .get(max_i)
+                        .copied()
+                        .unwrap_or(0.0);
+                    let c_pred = (h - lparams.consonance_roughness_weight * r).clamp(-1.0, 1.0);
+                    debug!(
+                        "c_signed_check bin={} h={:.4} r={:.4} c={:.4} c_pred={:.4}",
+                        max_i, h, r, c, c_pred
+                    );
                 }
 
                 // For frame 0 there is no previous frame to wait for.
                 if frame_idx == 0 {
                     break;
                 }
-                let h_ok = last_h_analysis_frame.is_some_and(|id| id >= required_prev);
                 let r_ok = last_r_analysis_frame.is_some_and(|id| id >= required_prev);
-                if h_ok && r_ok {
+                if r_ok {
                     break;
                 }
                 if exiting.load(Ordering::SeqCst) {
@@ -961,15 +908,8 @@ fn worker_loop(
             );
             pop.drain_audio_cmds(&mut audio_cmds);
 
-            let perc_frame = match (last_h_analysis_frame, last_r_analysis_frame) {
-                (Some(h), Some(r)) => h.min(r),
-                (Some(h), None) => h,
-                (None, Some(r)) => r,
-                (None, None) => frame_idx,
-            };
-            let _perc_tick = timebase.frame_start_tick(perc_frame);
             let phonation_count = if scenario_end_tick.is_none() {
-                pop.publish_intents_into(
+                pop.collect_phonation_batches_into(
                     &mut world,
                     &current_landscape,
                     now_tick,
@@ -993,8 +933,6 @@ fn worker_loop(
             if let Some(update) = pop.take_pending_update() {
                 apply_params_update(&mut lparams, &update);
                 current_landscape.recompute_consonance(&lparams);
-                world.set_pred_params(lparams.clone());
-                let _ = harmonicity_tx.try_send(update);
                 let _ = roughness_tx.try_send(update);
             }
 
@@ -1012,15 +950,7 @@ fn worker_loop(
                 hop_duration.as_secs_f32(),
                 &current_landscape,
             );
-            let spectrum_body = pop
-                .process_frame(
-                    frame_idx,
-                    &current_landscape.space,
-                    hop_duration.as_secs_f32(),
-                    conductor.is_done(),
-                )
-                .to_vec();
-            let spectrum_body: Arc<[f32]> = Arc::from(spectrum_body);
+            pop.cleanup_dead(frame_idx, hop_duration.as_secs_f32(), conductor.is_done());
             pop.fill_voice_targets(&mut voice_targets);
 
             // [FIX] Audio is MONO. Treat it as such.
@@ -1066,15 +996,11 @@ fn worker_loop(
             }
             let dorsal_metrics = dorsal.last_metrics();
 
-            // Build log2 spectrum for analysis and UI (aligned with landscape space).
-            latest_spec_amps.clear();
-            latest_spec_amps.extend_from_slice(spectrum_body.as_ref());
-            let _ = spectrum_to_harmonicity_tx.try_send((frame_idx, Arc::clone(&spectrum_body)));
+            // Feed audio analysis (NSGT + peak extraction + R/H).
             let _ = audio_to_roughness_tx.try_send((frame_idx, Arc::clone(&mono_chunk)));
 
             // Lag is measured against generated frames, because population dynamics depend on
             // the landscape evolution in the generated timebase (not wall-clock playback).
-            let harmonicity_lag = last_h_analysis_frame.map(|id| frame_idx.saturating_sub(id));
             let roughness_lag = last_r_analysis_frame.map(|id| frame_idx.saturating_sub(id));
 
             let finished_now = if pop.abort_requested {
@@ -1104,7 +1030,11 @@ fn worker_loop(
                 });
                 spec_frame = Some(SpecFrame {
                     spec_hz: log_space.centers_hz.clone(),
-                    amps: latest_spec_amps.iter().map(|&x| x.sqrt()).collect(),
+                    amps: current_landscape
+                        .nsgt_power
+                        .iter()
+                        .map(|&x| x.sqrt())
+                        .collect(),
                 });
                 ui_landscape = Some(current_landscape.clone());
             }
@@ -1119,7 +1049,6 @@ fn worker_loop(
                 occupancy,
                 max_abs,
                 elapsed,
-                harmonicity_lag,
                 roughness_lag,
                 conductor.is_done(),
             );

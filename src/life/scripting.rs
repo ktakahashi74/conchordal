@@ -1097,11 +1097,13 @@ impl ScriptHost {
             },
         );
 
-        let ctx_for_set_harmonicity = ctx.clone();
+        let ctx_for_set_harmonicity_mirror_weight = ctx.clone();
         engine.register_fn(
-            "set_harmonicity",
+            "set_harmonicity_mirror_weight",
             move |_call_ctx: NativeCallContext, mirror: FLOAT| {
-                let mut ctx = ctx_for_set_harmonicity.lock().expect("lock script context");
+                let mut ctx = ctx_for_set_harmonicity_mirror_weight
+                    .lock()
+                    .expect("lock script context");
                 let update = crate::core::landscape::LandscapeUpdate {
                     mirror: Some(mirror as f32),
                     ..crate::core::landscape::LandscapeUpdate::default()
@@ -1128,13 +1130,11 @@ impl ScriptHost {
             },
         );
 
-        let ctx_for_set_roughness_tolerance = ctx.clone();
+        let ctx_for_set_roughness_k = ctx.clone();
         engine.register_fn(
-            "set_roughness_tolerance",
+            "set_roughness_k",
             move |_call_ctx: NativeCallContext, value: FLOAT| {
-                let mut ctx = ctx_for_set_roughness_tolerance
-                    .lock()
-                    .expect("lock script context");
+                let mut ctx = ctx_for_set_roughness_k.lock().expect("lock script context");
                 let cursor = ctx.cursor;
                 ctx.push_event(
                     cursor,

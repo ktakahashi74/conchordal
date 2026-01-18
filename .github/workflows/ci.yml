@@ -30,9 +30,11 @@ jobs:
         uses: swatinem/rust-cache@v2
 
       - name: Generate schemas (informational)
+        if: ${{ hashFiles('examples/gen_schemas.rs') != '' }}
         run: cargo run --example gen_schemas
 
       - name: Check schemas up to date (non-blocking)
+        if: ${{ hashFiles('examples/gen_schemas.rs') != '' }}
         run: git diff --exit-code docs/schemas || true
 
       - name: Check format

@@ -1,4 +1,3 @@
-seed(14);
 let pad = derive(harmonic)
     .amp(0.2)
     .phonation("hold")

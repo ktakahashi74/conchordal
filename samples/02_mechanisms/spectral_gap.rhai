@@ -1,4 +1,3 @@
-seed(4);
 let grain = derive(sine)
     .amp(0.18)
     .phonation("decay")

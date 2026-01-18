@@ -1,4 +1,3 @@
-seed(24);
 let anchor = derive(sine).amp(0.6).phonation("hold");
 let slider = derive(sine).amp(0.4).phonation("hold");
 let swarm = derive(sine).amp(0.15).phonation("hold");

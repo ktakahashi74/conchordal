@@ -1,4 +1,3 @@
-seed(2);
 let base = derive(harmonic).amp(0.2).phonation("hold");
 
 create(base, 4)

@@ -1,4 +1,3 @@
-seed(3);
 scene("Psychoacoustic", || {
     let seed_voice = derive(sine).amp(0.24).phonation("hold");
     create(seed_voice, 1).freq(330.0);

@@ -1,4 +1,3 @@
-seed(15);
 let sustain = derive(harmonic)
     .amp(0.2)
     .phonation("hold")

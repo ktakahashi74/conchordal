@@ -1,4 +1,3 @@
-seed(21);
 let click = derive(sine)
     .amp(0.4)
     .phonation("decay")

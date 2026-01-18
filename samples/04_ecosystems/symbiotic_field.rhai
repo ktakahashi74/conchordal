@@ -1,4 +1,3 @@
-seed(21);
 let kick = derive(sine).amp(0.6).phonation("decay").adsr(0.01, 0.1, 0.0, 0.2);
 let drone = derive(harmonic).amp(0.2).phonation("hold").timbre(0.5, 0.05);
 let bugs = derive(sine).amp(0.2).phonation("decay");

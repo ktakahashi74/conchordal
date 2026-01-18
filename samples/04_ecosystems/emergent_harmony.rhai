@@ -1,4 +1,3 @@
-seed(22);
 let anchor = derive(sine).amp(0.12).phonation("hold");
 let seeker = derive(sine).amp(0.08).phonation("hold");
 

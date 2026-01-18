@@ -1097,64 +1097,6 @@ impl ScriptHost {
             },
         );
 
-        let ctx_for_note = ctx.clone();
-        engine.register_fn(
-            "note",
-            move |_call_ctx: NativeCallContext,
-                  freq_hz: FLOAT,
-                  dt: FLOAT,
-                  dur: FLOAT,
-                  amp: FLOAT|
-                  -> Result<(), Box<EvalAltResult>> {
-                let mut ctx = ctx_for_note.lock().expect("lock script context");
-                let cursor = ctx.cursor;
-                let onset_sec = (cursor + dt as f32).max(0.0);
-                let duration_sec = (dur as f32).max(0.0);
-                ctx.push_event(
-                    cursor,
-                    vec![Action::PostNote {
-                        source_id: 0,
-                        onset_sec,
-                        duration_sec,
-                        freq_hz: freq_hz as f32,
-                        amp: amp as f32,
-                        tag: None,
-                        confidence: 1.0,
-                    }],
-                );
-                Ok(())
-            },
-        );
-        let ctx_for_note_tag = ctx.clone();
-        engine.register_fn(
-            "note",
-            move |_call_ctx: NativeCallContext,
-                  freq_hz: FLOAT,
-                  dt: FLOAT,
-                  dur: FLOAT,
-                  amp: FLOAT,
-                  tag: &str|
-                  -> Result<(), Box<EvalAltResult>> {
-                let mut ctx = ctx_for_note_tag.lock().expect("lock script context");
-                let cursor = ctx.cursor;
-                let onset_sec = (cursor + dt as f32).max(0.0);
-                let duration_sec = (dur as f32).max(0.0);
-                ctx.push_event(
-                    cursor,
-                    vec![Action::PostNote {
-                        source_id: 0,
-                        onset_sec,
-                        duration_sec,
-                        freq_hz: freq_hz as f32,
-                        amp: amp as f32,
-                        tag: Some(tag.to_string()),
-                        confidence: 1.0,
-                    }],
-                );
-                Ok(())
-            },
-        );
-
         let ctx_for_set_harmonicity = ctx.clone();
         engine.register_fn(
             "set_harmonicity",

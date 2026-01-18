@@ -99,7 +99,6 @@ impl Conductor {
         landscape: &LandscapeFrame,
         mut analysis_rt: Option<&mut crate::core::stream::analysis::AnalysisStream>,
         population: &mut Population,
-        world: &mut crate::life::world_model::WorldModel,
     ) {
         while let Some(ev) = self.event_queue.front() {
             if ev.time > time_sec {
@@ -110,14 +109,7 @@ impl Conductor {
             let action_descs: Vec<String> = ev.actions.iter().map(ToString::to_string).collect();
             info!("[t={:.3}] Event: {}", ev.time, action_descs.join(" | "));
             for action in ev.actions {
-                match action {
-                    a @ crate::life::scenario::Action::PostNote { .. } => {
-                        world.apply_action(&a);
-                    }
-                    other => {
-                        population.apply_action(other, landscape, analysis_rt.as_deref_mut());
-                    }
-                }
+                population.apply_action(action, landscape, analysis_rt.as_deref_mut());
             }
         }
     }

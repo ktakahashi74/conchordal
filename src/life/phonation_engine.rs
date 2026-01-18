@@ -846,7 +846,7 @@ impl PhonationConnect for FieldConnect {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct PhonationNoteEvent {
+pub struct PhonationNoteOn {
     pub note_id: NoteId,
     pub onset_tick: Tick,
 }
@@ -1035,7 +1035,7 @@ impl PhonationEngine {
         state: &CoreState,
         min_allowed_onset_tick: Option<Tick>,
         out_cmds: &mut Vec<PhonationCmd>,
-        out_events: &mut Vec<PhonationNoteEvent>,
+        out_events: &mut Vec<PhonationNoteOn>,
         out_onsets: &mut Vec<OnsetEvent>,
     ) {
         let allow_onset = min_allowed_onset_tick
@@ -1051,7 +1051,7 @@ impl PhonationEngine {
                 kick: PhonationKick::Planned { strength: 1.0 },
             });
             self.active_notes = self.active_notes.saturating_add(1);
-            out_events.push(PhonationNoteEvent {
+            out_events.push(PhonationNoteOn {
                 note_id,
                 onset_tick: ctx.now_tick,
             });
@@ -1146,7 +1146,7 @@ impl PhonationEngine {
         extra_gate_gain: f32,
         min_allowed_onset_tick: Option<Tick>,
         out_cmds: &mut Vec<PhonationCmd>,
-        out_events: &mut Vec<PhonationNoteEvent>,
+        out_events: &mut Vec<PhonationNoteOn>,
         out_onsets: &mut Vec<OnsetEvent>,
     ) {
         if matches!(self.mode, PhonationMode::Hold) {
@@ -1196,7 +1196,7 @@ impl PhonationEngine {
         state: &CoreState,
         min_allowed_onset_tick: Option<Tick>,
         out_cmds: &mut Vec<PhonationCmd>,
-        out_events: &mut Vec<PhonationNoteEvent>,
+        out_events: &mut Vec<PhonationNoteOn>,
         out_onsets: &mut Vec<OnsetEvent>,
     ) {
         let mut prev_gate_exc: Option<f32> = None;
@@ -1280,7 +1280,7 @@ impl PhonationEngine {
                 self.next_note_id = self.next_note_id.wrapping_add(1);
                 out_cmds.push(PhonationCmd::NoteOn { note_id, kick });
                 self.active_notes = self.active_notes.saturating_add(1);
-                out_events.push(PhonationNoteEvent {
+                out_events.push(PhonationNoteOn {
                     note_id,
                     onset_tick: c.tick,
                 });

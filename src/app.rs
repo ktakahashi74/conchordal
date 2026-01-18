@@ -214,7 +214,6 @@ pub fn validate_scenario(scenario: &Scenario) -> Result<(), String> {
                 Action::SetHarmonicity { .. }
                 | Action::SetGlobalCoupling { .. }
                 | Action::SetRoughnessTolerance { .. } => {}
-                Action::PostNote { .. } => {}
             }
         }
     }
@@ -333,12 +332,12 @@ impl App {
         cc.egui_ctx
             .send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::Vec2 {
                 x: 1200.0,
-                y: 1020.0,
+                y: 900.0,
             }));
         cc.egui_ctx
             .send_viewport_cmd(egui::ViewportCommand::MinInnerSize(egui::Vec2 {
                 x: 1200.0,
-                y: 1020.0,
+                y: 900.0,
             }));
 
         Self {
@@ -721,7 +720,6 @@ fn worker_loop(
     let mut schedule_renderer = ScheduleRenderer::new(timebase);
     let init_now_tick = timebase.frame_start_tick(frame_idx);
     world.advance_to(init_now_tick);
-    let init_world_view = world.ui_view();
     let mut last_tick_log = Instant::now();
     let idle_silence = vec![0.0f32; hop];
     let mut scenario_end_tick: Option<Tick> = None;
@@ -755,8 +753,24 @@ fn worker_loop(
         landscape: current_landscape.clone(),
         time_sec: current_time,
         meta: init_meta,
+        next_gate_tick_est: None,
+        theta_hz: None,
+        delta_hz: None,
+        pred_n_theta_per_delta: None,
+        pred_tau_tick: None,
+        pred_horizon_tick: None,
+        pred_c01_next_gate: None,
+        pred_gain_raw_mean: None,
+        pred_gain_raw_min: None,
+        pred_gain_raw_max: None,
+        pred_gain_mixed_mean: None,
+        pred_gain_mixed_min: None,
+        pred_gain_mixed_max: None,
+        pred_sync_mean: None,
+        gate_boundary_in_hop: None,
+        pred_available_in_hop: None,
+        phonation_onsets_in_hop: None,
         agents: Vec::new(),
-        world: init_world_view,
     };
     let _ = ui_tx.try_send(init_frame);
 
@@ -906,7 +920,6 @@ fn worker_loop(
                 &current_landscape,
                 None::<&mut crate::core::stream::analysis::AnalysisStream>,
                 &mut pop,
-                &mut world,
             );
             pop.drain_audio_cmds(&mut audio_cmds);
 
@@ -941,7 +954,6 @@ fn worker_loop(
             if scenario_end_tick.is_none() && conductor.is_done() {
                 scenario_end_tick = Some(now_tick);
                 pop.individuals.clear();
-                world.board.remove_onset_from(now_tick);
                 schedule_renderer.shutdown_at(now_tick);
             }
 
@@ -959,7 +971,6 @@ fn worker_loop(
             // Previously incorrectly treated as stereo, leading to bad metering and destructive downsampling.
             let (mono_chunk, max_abs, channel_peak) = {
                 let time_chunk = schedule_renderer.render(
-                    &world.board,
                     phonation_batches,
                     now_tick,
                     &current_landscape.rhythm,
@@ -1058,7 +1069,6 @@ fn worker_loop(
             if let (Some(wave_frame), Some(spec_frame), Some(ui_landscape)) =
                 (wave_frame, spec_frame, ui_landscape)
             {
-                let world_view = world.ui_view();
                 let agent_states: Vec<AgentStateInfo> = pop
                     .individuals
                     .iter()
@@ -1074,6 +1084,27 @@ fn worker_loop(
                         }
                     })
                     .collect();
+                let pred_stats = pop.last_pred_gate_stats();
+                let theta_hz = {
+                    let hz = current_landscape.rhythm.theta.freq_hz;
+                    if hz.is_finite() && hz > 0.0 {
+                        Some(hz)
+                    } else {
+                        None
+                    }
+                };
+                let delta_hz = {
+                    let hz = current_landscape.rhythm.delta.freq_hz;
+                    if hz.is_finite() && hz > 0.0 {
+                        Some(hz)
+                    } else {
+                        None
+                    }
+                };
+                let (pred_tau_tick, pred_horizon_tick) =
+                    world.predictor_tau_horizon_ticks(&current_landscape.rhythm);
+                let pred_c01_next_gate = world.last_pred_next_gate().map(|(_, scan)| scan);
+                let pred_available_in_hop = pred_c01_next_gate.is_some();
                 let ui_frame = UiFrame {
                     wave: wave_frame,
                     spec: spec_frame,
@@ -1097,8 +1128,26 @@ fn worker_loop(
                         channel_peak,
                         window_peak: channel_peak,
                     },
+                    next_gate_tick_est: world.next_gate_tick_est,
+                    theta_hz,
+                    delta_hz,
+                    pred_n_theta_per_delta: Some(
+                        world.predictor_n_theta_per_delta(&current_landscape.rhythm),
+                    ),
+                    pred_tau_tick: Some(pred_tau_tick),
+                    pred_horizon_tick: Some(pred_horizon_tick),
+                    pred_c01_next_gate,
+                    pred_gain_raw_mean: pred_stats.map(|stats| stats.raw_mean),
+                    pred_gain_raw_min: pred_stats.map(|stats| stats.raw_min),
+                    pred_gain_raw_max: pred_stats.map(|stats| stats.raw_max),
+                    pred_gain_mixed_mean: pred_stats.map(|stats| stats.mixed_mean),
+                    pred_gain_mixed_min: pred_stats.map(|stats| stats.mixed_min),
+                    pred_gain_mixed_max: pred_stats.map(|stats| stats.mixed_max),
+                    pred_sync_mean: pred_stats.map(|stats| stats.sync_mean),
+                    gate_boundary_in_hop: pop.last_gate_boundary_in_hop(),
+                    pred_available_in_hop: Some(pred_available_in_hop),
+                    phonation_onsets_in_hop: pop.last_phonation_onsets_in_hop(),
                     agents: agent_states,
-                    world: world_view,
                 };
                 let _ = ui_tx.try_send(ui_frame);
                 last_ui_update = Instant::now();

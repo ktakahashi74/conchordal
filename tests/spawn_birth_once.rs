@@ -45,7 +45,6 @@ fn spawn_does_not_publish_birth_note() {
     let now: Tick = 0;
     let batches = pop.collect_phonation_batches(&mut world, &landscape, now);
     assert!(batches.is_empty());
-    assert!(world.board.is_empty());
 }
 
 #[test]
@@ -70,17 +69,10 @@ fn spawn_sounds_only_with_audio_trigger() {
     pop.fill_voice_targets(&mut voice_targets);
 
     let mut renderer = ScheduleRenderer::new(tb);
-    let silent = renderer.render(
-        &world.board,
-        &[],
-        now,
-        &landscape.rhythm,
-        &voice_targets,
-        &[],
-    );
+    let silent = renderer.render(&[], now, &landscape.rhythm, &voice_targets, &[]);
     assert!(silent.iter().all(|s| s.abs() <= 1e-6));
 
-    let body = conchordal::life::note_event::BodySnapshot {
+    let body = conchordal::life::sound::BodySnapshot {
         kind: "sine".to_string(),
         amp_scale: 1.0,
         brightness: 0.0,
@@ -92,27 +84,13 @@ fn spawn_sounds_only_with_audio_trigger() {
         pitch_hz: 440.0,
         amp: 0.4,
     };
-    let ensured = renderer.render(
-        &world.board,
-        &[],
-        now,
-        &landscape.rhythm,
-        &voice_targets,
-        &[ensure],
-    );
+    let ensured = renderer.render(&[], now, &landscape.rhythm, &voice_targets, &[ensure]);
     assert!(ensured.iter().all(|s| s.abs() <= 1e-6));
 
     let impulse = AudioCommand::Impulse {
         id: assigned_id,
         energy: 1.0,
     };
-    let voiced = renderer.render(
-        &world.board,
-        &[],
-        now,
-        &landscape.rhythm,
-        &voice_targets,
-        &[impulse],
-    );
+    let voiced = renderer.render(&[], now, &landscape.rhythm, &voice_targets, &[impulse]);
     assert!(voiced.iter().any(|s| s.abs() > 1e-6));
 }

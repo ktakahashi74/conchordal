@@ -1,6 +1,12 @@
 pub type IndividualId = u64;
 
-use crate::life::note_event::BodySnapshot;
+#[derive(Clone, Debug, PartialEq)]
+pub struct BodySnapshot {
+    pub kind: String,
+    pub amp_scale: f32,
+    pub brightness: f32,
+    pub noise_mix: f32,
+}
 
 #[derive(Debug, Clone)]
 pub enum AudioCommand {

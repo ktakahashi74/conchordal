@@ -377,15 +377,6 @@ pub enum Action {
     SetRoughnessTolerance {
         value: f32,
     },
-    PostNote {
-        source_id: u64,
-        onset_sec: f32,
-        duration_sec: f32,
-        freq_hz: f32,
-        amp: f32,
-        tag: Option<String>,
-        confidence: f32,
-    },
     Finish,
 }
 
@@ -410,19 +401,6 @@ impl fmt::Display for Action {
             Action::SetRoughnessTolerance { value } => {
                 write!(f, "SetRoughnessTolerance value={:.3}", value)
             }
-            Action::PostNote {
-                source_id,
-                onset_sec,
-                duration_sec,
-                freq_hz,
-                amp,
-                tag,
-                confidence,
-            } => write!(
-                f,
-                "PostNote src={} onset={:.3} dur={:.3} freq={:.1} amp={:.3} tag={:?} conf={:.2}",
-                source_id, onset_sec, duration_sec, freq_hz, amp, tag, confidence
-            ),
             Action::Finish => write!(f, "Finish"),
         }
     }

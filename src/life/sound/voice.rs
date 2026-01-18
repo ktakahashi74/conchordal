@@ -2,9 +2,9 @@ use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
 use crate::life::individual::{ArticulationSignal, ArticulationWrapper};
 use crate::life::lifecycle::default_decay_attack;
-use crate::life::note_event::{BodySnapshot, NoteEvent};
 use crate::life::phonation_engine::{PhonationKick, PhonationUpdate};
 use crate::life::scenario::TimbreGenotype;
+use crate::life::sound::BodySnapshot;
 use crate::life::sound::any_backend::AnyBackend;
 use crate::life::sound::control::{ControlRamp, VoiceControlBlock};
 use crate::life::sound::modal_engine::ModeShape;
@@ -46,35 +46,42 @@ pub struct Voice {
 }
 
 impl Voice {
-    pub fn from_note_event(time: Timebase, mut note: NoteEvent) -> Option<Self> {
-        if note.duration == 0 || note.freq_hz <= 0.0 {
+    pub fn from_parts(
+        time: Timebase,
+        onset: Tick,
+        duration: Tick,
+        freq_hz: f32,
+        amp: f32,
+        body: Option<BodySnapshot>,
+        articulation: Option<ArticulationWrapper>,
+    ) -> Option<Self> {
+        if duration == 0 || freq_hz <= 0.0 {
             return None;
         }
-        if !note.freq_hz.is_finite() || !note.amp.is_finite() {
+        if !freq_hz.is_finite() || !amp.is_finite() {
             return None;
         }
-        if note.amp == 0.0 {
+        if amp == 0.0 {
             return None;
         }
 
-        let (shape, amp_scale) = match note.body.as_ref() {
+        let (shape, amp_scale) = match body.as_ref() {
             Some(snapshot) => (mode_shape_from_snapshot(snapshot), snapshot.amp_scale),
             None => (default_mode_shape(), 1.0),
         };
-        let amp = note.amp * amp_scale.clamp(0.0, 1.0);
+        let amp = amp * amp_scale.clamp(0.0, 1.0);
         if !amp.is_finite() || amp <= 0.0 {
             return None;
         }
 
         let backend = AnyBackend::from_shape(time.fs, shape).ok()?;
-        let articulation = note.articulation.take();
 
         let attack_ticks = default_attack_ticks(time);
         let release_ticks = default_release_ticks(time);
-        let (hold_end, release_end) = if note.duration == Tick::MAX {
+        let (hold_end, release_end) = if duration == Tick::MAX {
             (Tick::MAX, Tick::MAX)
         } else {
-            let hold_end = note.onset.saturating_add(note.duration);
+            let hold_end = onset.saturating_add(duration);
             let release_end = hold_end.saturating_add(release_ticks);
             (hold_end, release_end)
         };
@@ -86,7 +93,7 @@ impl Voice {
         };
         let current_amp = amp.max(0.0);
         let target_amp = current_amp;
-        let current_pitch_hz = note.freq_hz;
+        let current_pitch_hz = freq_hz;
         let target_pitch_hz = current_pitch_hz;
         let amp_tau_sec = 0.0;
         let pitch_tau_sec = 0.0;
@@ -97,7 +104,7 @@ impl Voice {
             backend,
             articulation,
             pending_impulse_energy: 0.0,
-            onset: note.onset,
+            onset,
             hold_end,
             release_end,
             attack_ticks,
@@ -487,19 +494,7 @@ mod tests {
             fs: 48_000.0,
             hop: 64,
         };
-        let note = NoteEvent {
-            source_id: 1,
-            note_id: 0,
-            onset: 0,
-            duration: Tick::MAX,
-            freq_hz: 440.0,
-            amp: 0.5,
-            tag: None,
-            confidence: 1.0,
-            body: None,
-            articulation: None,
-        };
-        let mut voice = Voice::from_note_event(tb, note).expect("voice");
+        let mut voice = Voice::from_parts(tb, 0, Tick::MAX, 440.0, 0.5, None, None).expect("voice");
 
         let mut rhythms = NeuralRhythms::default();
         let mut out = vec![0.0f32; tb.hop];

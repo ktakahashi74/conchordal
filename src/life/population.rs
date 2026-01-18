@@ -10,6 +10,18 @@ use rand::{Rng, SeedableRng, distr::Distribution, distr::weighted::WeightedIndex
 use std::hash::{Hash, Hasher};
 use tracing::{debug, info, warn};
 
+#[derive(Clone, Copy, Debug, Default)]
+pub struct PredGateStats {
+    pub raw_min: f32,
+    pub raw_max: f32,
+    pub raw_mean: f32,
+    pub mixed_min: f32,
+    pub mixed_max: f32,
+    pub mixed_mean: f32,
+    pub sync_mean: f32,
+    pub count: u32,
+}
+
 pub struct Population {
     pub individuals: Vec<Individual>,
     current_frame: u64,
@@ -23,6 +35,9 @@ pub struct Population {
     spawn_counter: u64,
     social_trace: Option<SocialDensityTrace>,
     audio_cmds: Vec<AudioCommand>,
+    last_pred_gate_stats: Option<PredGateStats>,
+    last_gate_boundary_in_hop: Option<bool>,
+    last_phonation_onsets_in_hop: Option<u32>,
 }
 
 impl Population {
@@ -75,6 +90,9 @@ impl Population {
             spawn_counter: 0,
             social_trace: None,
             audio_cmds: Vec::new(),
+            last_pred_gate_stats: None,
+            last_gate_boundary_in_hop: None,
+            last_phonation_onsets_in_hop: None,
         }
     }
 
@@ -107,6 +125,18 @@ impl Population {
 
     pub fn set_current_frame(&mut self, frame: u64) {
         self.current_frame = frame;
+    }
+
+    pub fn last_pred_gate_stats(&self) -> Option<PredGateStats> {
+        self.last_pred_gate_stats
+    }
+
+    pub fn last_gate_boundary_in_hop(&self) -> Option<bool> {
+        self.last_gate_boundary_in_hop
+    }
+
+    pub fn last_phonation_onsets_in_hop(&self) -> Option<u32> {
+        self.last_phonation_onsets_in_hop
     }
 
     pub fn drain_audio_cmds(&mut self, out: &mut Vec<AudioCommand>) {
@@ -153,6 +183,9 @@ impl Population {
         let tb = world.time;
         let hop_tick = (tb.hop as Tick).max(1);
         let frame_end = now.saturating_add(hop_tick);
+        let gate_boundary_in_hop = world
+            .next_gate_tick_est
+            .is_some_and(|gate_tick| gate_tick > now && gate_tick <= frame_end);
         let pred_scan = world
             .predict_consonance01_next_gate()
             .and_then(|(gate_tick, scan)| {
@@ -162,6 +195,15 @@ impl Population {
                     None
                 }
             });
+        let mut pred_count = 0u32;
+        let mut pred_raw_sum = 0.0f32;
+        let mut pred_raw_min = f32::INFINITY;
+        let mut pred_raw_max = f32::NEG_INFINITY;
+        let mut pred_mixed_sum = 0.0f32;
+        let mut pred_mixed_min = f32::INFINITY;
+        let mut pred_mixed_max = f32::NEG_INFINITY;
+        let mut pred_sync_sum = 0.0f32;
+        let mut phonation_onsets_in_hop = 0u32;
         let mut used = 0usize;
         let social_trace = self.social_trace.as_ref();
         for agent in &mut self.individuals {
@@ -170,14 +212,32 @@ impl Population {
                 out.push(PhonationBatch::default());
             }
             let batch = &mut out[used];
-            let extra_gate_gain = pred_scan
-                .as_ref()
-                .map(|scan| {
-                    let gain_raw = world.sample_scan01(scan, agent.body.base_freq_hz());
-                    let sync = agent.effective_control.phonation.sync;
-                    mix_pred_gate_gain(sync, gain_raw)
-                })
-                .unwrap_or(1.0);
+            let mut extra_gate_gain = 1.0;
+            if let Some(scan) = pred_scan.as_ref() {
+                let mut gain_raw = world.sample_scan01(scan, agent.body.base_freq_hz());
+                if !gain_raw.is_finite() {
+                    gain_raw = 0.0;
+                }
+                gain_raw = gain_raw.clamp(0.0, 1.0);
+                let mut sync = agent.effective_control.phonation.sync;
+                if !sync.is_finite() {
+                    sync = 0.0;
+                }
+                sync = sync.clamp(0.0, 1.0);
+                let mut mixed = mix_pred_gate_gain(sync, gain_raw);
+                if !mixed.is_finite() {
+                    mixed = 1.0;
+                }
+                pred_count = pred_count.saturating_add(1);
+                pred_raw_sum += gain_raw;
+                pred_raw_min = pred_raw_min.min(gain_raw);
+                pred_raw_max = pred_raw_max.max(gain_raw);
+                pred_mixed_sum += mixed;
+                pred_mixed_min = pred_mixed_min.min(mixed);
+                pred_mixed_max = pred_mixed_max.max(mixed);
+                pred_sync_sum += sync;
+                extra_gate_gain = mixed;
+            }
             agent.tick_phonation_into(
                 &tb,
                 now,
@@ -187,6 +247,8 @@ impl Population {
                 extra_gate_gain,
                 batch,
             );
+            phonation_onsets_in_hop = phonation_onsets_in_hop
+                .saturating_add(batch.onsets.len().min(u32::MAX as usize) as u32);
             let has_output =
                 !(batch.cmds.is_empty() && batch.notes.is_empty() && batch.onsets.is_empty());
             if has_output {
@@ -210,6 +272,23 @@ impl Population {
         } else {
             self.social_trace = None;
         }
+        self.last_gate_boundary_in_hop = Some(gate_boundary_in_hop);
+        self.last_phonation_onsets_in_hop = Some(phonation_onsets_in_hop);
+        self.last_pred_gate_stats = if pred_count > 0 {
+            let inv = 1.0 / pred_count as f32;
+            Some(PredGateStats {
+                raw_min: pred_raw_min,
+                raw_max: pred_raw_max,
+                raw_mean: pred_raw_sum * inv,
+                mixed_min: pred_mixed_min,
+                mixed_max: pred_mixed_max,
+                mixed_mean: pred_mixed_sum * inv,
+                sync_mean: pred_sync_sum * inv,
+                count: pred_count,
+            })
+        } else {
+            None
+        };
         used
     }
 
@@ -465,7 +544,6 @@ impl Population {
                 };
                 self.merge_landscape_update(update);
             }
-            Action::PostNote { .. } => {}
         }
     }
 
@@ -640,9 +718,9 @@ mod tests {
     use crate::core::timebase::Timebase;
     use crate::life::control::{AgentControl, ControlUpdate, PhonationType};
     use crate::life::individual::{AnyArticulationCore, ArticulationWrapper, DroneCore};
-    use crate::life::note_event::BodySnapshot;
     use crate::life::phonation_engine::{OnsetEvent, PhonationCmd, PhonationKick};
     use crate::life::scenario::{ArticulationCoreConfig, SpawnSpec, SpawnStrategy};
+    use crate::life::sound::BodySnapshot;
     use crate::life::world_model::WorldModel;
     use rand::SeedableRng;
 

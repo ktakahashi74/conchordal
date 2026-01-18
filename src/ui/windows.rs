@@ -5,7 +5,6 @@ use crate::ui::plots::{
 };
 use crate::ui::viewdata::{PlaybackState, UiFrame};
 use egui::{CentralPanel, Color32, TopBottomPanel, Vec2};
-use egui_plot::{Plot, PlotPoints, Points};
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -111,11 +110,6 @@ fn split_widths(ui: &egui::Ui, ratio: f32, min_left: f32, min_right: f32) -> (f3
     let right_width = (available - left_width - sep).max(0.0);
     (left_width, right_width)
 }
-
-const NOTE_PLOT_HEIGHT: f32 = 120.0;
-const NOTE_LIST_HEIGHT: f32 = 18.0;
-const NOTE_HEADER_HEIGHT: f32 = 40.0;
-const NOTE_BOARD_HEIGHT: f32 = NOTE_PLOT_HEIGHT + NOTE_LIST_HEIGHT + NOTE_HEADER_HEIGHT;
 
 /// === Main window ===
 #[allow(clippy::too_many_arguments)]
@@ -340,10 +334,7 @@ pub fn main_window(
             ui.separator();
             let right_width = ui.available_width().max(0.0);
             ui.allocate_ui_with_layout(
-                Vec2::new(
-                    right_width,
-                    attention_height + neural_time_height + NOTE_BOARD_HEIGHT,
-                ),
+                Vec2::new(right_width, attention_height + neural_time_height),
                 egui::Layout::top_down(egui::Align::LEFT),
                 |ui| {
                     let old_spacing = ui.spacing().item_spacing;
@@ -380,8 +371,6 @@ pub fn main_window(
             );
         });
 
-        ui.separator();
-        draw_note_board(ui, frame);
         ui.separator();
         ui.horizontal(|ui| {
             ui.heading("Population Dynamics");
@@ -487,201 +476,161 @@ pub fn main_window(
                 Some("landscape_group"),
             );
         });
+
+        ui.separator();
+        egui::CollapsingHeader::new("Prediction")
+            .default_open(false)
+            .show(ui, |ui| {
+                let fs = frame.wave.fs;
+                let next_gate_tick = frame
+                    .next_gate_tick_est
+                    .map(|tick| tick.to_string())
+                    .unwrap_or_else(|| "None".to_string());
+                let next_gate_sec = frame.next_gate_tick_est.and_then(|tick| {
+                    if fs > 0.0 {
+                        Some(tick as f32 / fs)
+                    } else {
+                        None
+                    }
+                });
+                let next_gate_sec = next_gate_sec
+                    .map(|sec| format!("{sec:.3}"))
+                    .unwrap_or_else(|| "None".to_string());
+                let theta_hz = frame
+                    .theta_hz
+                    .map(|hz| format!("{hz:.3}"))
+                    .unwrap_or_else(|| "None".to_string());
+                let delta_hz = frame
+                    .delta_hz
+                    .map(|hz| format!("{hz:.3}"))
+                    .unwrap_or_else(|| "None".to_string());
+                let n_theta_per_delta = frame
+                    .pred_n_theta_per_delta
+                    .map(|n| n.to_string())
+                    .unwrap_or_else(|| "None".to_string());
+                let pred_tau_tick = frame.pred_tau_tick;
+                let pred_horizon_tick = frame.pred_horizon_tick;
+                let pred_tau = if let Some(tick) = pred_tau_tick {
+                    if fs > 0.0 {
+                        format!("{tick} ({:.1} ms)", tick as f32 / fs * 1000.0)
+                    } else {
+                        tick.to_string()
+                    }
+                } else {
+                    "None".to_string()
+                };
+                let pred_horizon = if let Some(tick) = pred_horizon_tick {
+                    if fs > 0.0 {
+                        format!("{tick} ({:.1} ms)", tick as f32 / fs * 1000.0)
+                    } else {
+                        tick.to_string()
+                    }
+                } else {
+                    "None".to_string()
+                };
+
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(format!("next_gate_tick={next_gate_tick}"));
+                    ui.separator();
+                    ui.label(format!("next_gate_sec={next_gate_sec}"));
+                    ui.separator();
+                    ui.label(format!("theta_hz={theta_hz}"));
+                    ui.separator();
+                    ui.label(format!("delta_hz={delta_hz}"));
+                    ui.separator();
+                    ui.label(format!("n_theta_per_delta={n_theta_per_delta}"));
+                    ui.separator();
+                    ui.label(format!("pred_tau={pred_tau}"));
+                    ui.separator();
+                    ui.label(format!("pred_horizon={pred_horizon}"));
+                });
+
+                let pred_overlay = frame.pred_c01_next_gate.as_ref().map(|scan| {
+                    (
+                        scan.as_ref(),
+                        "Predicted C01",
+                        Color32::from_rgb(230, 170, 90),
+                    )
+                });
+                log2_plot_hz(
+                    ui,
+                    "Consonance01 (Observed/Predicted)",
+                    &frame.landscape.space.centers_hz,
+                    &frame.landscape.consonance01,
+                    "C01",
+                    0.0,
+                    1.0,
+                    102.0,
+                    Some("landscape_group"),
+                    None,
+                    pred_overlay,
+                );
+                if let Some(scan) = frame.pred_c01_next_gate.as_ref() {
+                    let mut sum = 0.0f32;
+                    let mut max = 0.0f32;
+                    for &v in scan.iter() {
+                        sum += v;
+                        if v > max {
+                            max = v;
+                        }
+                    }
+                    let mean = sum / (scan.len().max(1) as f32);
+                    ui.label(format!("pred_c01_next_gate mean={mean:.3} max={max:.3}"));
+                } else {
+                    ui.label("pred_c01_next_gate=None");
+                }
+            });
+
+        ui.separator();
+        egui::CollapsingHeader::new("Phonation")
+            .default_open(false)
+            .show(ui, |ui| {
+                let gate_boundary = frame
+                    .gate_boundary_in_hop
+                    .map(|val| val.to_string())
+                    .unwrap_or_else(|| "None".to_string());
+                let pred_available = frame
+                    .pred_available_in_hop
+                    .map(|val| val.to_string())
+                    .unwrap_or_else(|| "None".to_string());
+                let phonation_onsets = frame
+                    .phonation_onsets_in_hop
+                    .map(|val| val.to_string())
+                    .unwrap_or_else(|| "None".to_string());
+                ui.horizontal(|ui| {
+                    ui.label(format!("gate_boundary_in_hop={gate_boundary}"));
+                    ui.separator();
+                    ui.label(format!("pred_available_in_hop={pred_available}"));
+                    ui.separator();
+                    ui.label(format!("phonation_onsets_in_hop={phonation_onsets}"));
+                });
+                if let (Some(min), Some(mean), Some(max)) = (
+                    frame.pred_gain_raw_min,
+                    frame.pred_gain_raw_mean,
+                    frame.pred_gain_raw_max,
+                ) {
+                    ui.label(format!(
+                        "pred_gain_raw min/mean/max={min:.3}/{mean:.3}/{max:.3}"
+                    ));
+                } else {
+                    ui.label("pred_gain_raw=None");
+                }
+                if let (Some(min), Some(mean), Some(max)) = (
+                    frame.pred_gain_mixed_min,
+                    frame.pred_gain_mixed_mean,
+                    frame.pred_gain_mixed_max,
+                ) {
+                    ui.label(format!(
+                        "pred_gain_mixed min/mean/max={min:.3}/{mean:.3}/{max:.3}"
+                    ));
+                } else {
+                    ui.label("pred_gain_mixed=None");
+                }
+                let pred_sync = frame
+                    .pred_sync_mean
+                    .map(|val| format!("{val:.3}"))
+                    .unwrap_or_else(|| "None".to_string());
+                ui.label(format!("pred_sync_mean={pred_sync}"));
+            });
     });
-}
-
-fn draw_note_board(ui: &mut egui::Ui, frame: &UiFrame) {
-    ui.heading("Note Board");
-    let fs = frame.world.fs;
-    let now_tick = frame.world.now_tick;
-    let now_sec = if fs > 0.0 { now_tick as f32 / fs } else { 0.0 };
-    let past_ticks = frame.world.past_ticks;
-    let future_ticks = frame.world.future_ticks;
-    let past_sec = if fs > 0.0 {
-        past_ticks as f32 / fs
-    } else {
-        0.0
-    };
-    let future_sec = if fs > 0.0 {
-        future_ticks as f32 / fs
-    } else {
-        0.0
-    };
-    let next_gate_tick = frame
-        .world
-        .next_gate_tick_est
-        .map(|tick| tick.to_string())
-        .unwrap_or_else(|| "None".to_string());
-    let next_gate_sec = frame
-        .world
-        .next_gate_sec_est
-        .map(|sec| format!("{sec:.3}"))
-        .unwrap_or_else(|| "None".to_string());
-    let planned_live_count = frame.world.planned_next_live.len();
-    let planned_last_count = frame.world.planned_last_committed.len();
-
-    ui.horizontal(|ui| {
-        ui.label(format!("now_tick={now_tick}"));
-        ui.separator();
-        ui.label(format!("now_sec={now_sec:.3}"));
-        ui.separator();
-        ui.label(format!("notes={}", frame.world.notes.len()));
-        ui.separator();
-        ui.label(format!("past={} ({past_sec:.2}s)", past_ticks));
-        ui.separator();
-        ui.label(format!("future={} ({future_sec:.2}s)", future_ticks));
-        ui.separator();
-        ui.label(format!("next_gate_tick={next_gate_tick}"));
-        ui.separator();
-        ui.label(format!("next_gate_sec={next_gate_sec}"));
-        ui.separator();
-        ui.label(format!(
-            "planned_live={} planned_last={}",
-            planned_live_count, planned_last_count
-        ));
-    });
-
-    let series: PlotPoints = frame
-        .world
-        .notes
-        .iter()
-        .filter_map(|note| {
-            if note.freq_hz <= 0.0 || fs <= 0.0 {
-                return None;
-            }
-            let x = (note.freq_hz as f64).max(1.0).log2();
-            let y = note.onset_tick as f64 / fs as f64;
-            Some([x, y])
-        })
-        .collect();
-    let planned_live_series: PlotPoints = frame
-        .world
-        .planned_next_live
-        .iter()
-        .filter_map(|planned| {
-            let gate_sec = frame.world.next_gate_sec_est?;
-            if planned.freq_hz <= 0.0 {
-                return None;
-            }
-            let x = (planned.freq_hz as f64).max(1.0).log2();
-            let y = gate_sec;
-            Some([x, y])
-        })
-        .collect();
-    let planned_last_series: PlotPoints = frame
-        .world
-        .planned_last_committed
-        .iter()
-        .filter_map(|planned| {
-            let gate_tick = frame.world.planned_last_gate_tick?;
-            if planned.freq_hz <= 0.0 || fs <= 0.0 {
-                return None;
-            }
-            let x = (planned.freq_hz as f64).max(1.0).log2();
-            let y = gate_tick as f64 / fs as f64;
-            Some([x, y])
-        })
-        .collect();
-    let points = Points::new("notes", series)
-        .radius(3.0)
-        .color(Color32::from_rgb(240, 120, 120));
-    let planned_points = Points::new("planned_notes_live", planned_live_series)
-        .radius(4.0)
-        .color(Color32::from_rgb(120, 220, 160));
-    let planned_last_points = Points::new("planned_notes_last", planned_last_series)
-        .radius(4.0)
-        .color(Color32::from_rgb(120, 160, 240));
-    let x_min_log2 = (20.0f64).log2();
-    let x_max_log2 = (20_000.0f64).log2();
-    let y_min = (now_sec - past_sec) as f64;
-    let y_max = (now_sec + future_sec) as f64;
-    let y_max_fixed = if y_max <= y_min { y_min + 1.0 } else { y_max };
-
-    Plot::new("note_board_plot")
-        .height(NOTE_PLOT_HEIGHT)
-        .allow_drag(false)
-        .allow_scroll(false)
-        .include_x(x_min_log2)
-        .include_x(x_max_log2)
-        .default_x_bounds(x_min_log2, x_max_log2)
-        .include_y(y_min)
-        .include_y(y_max_fixed)
-        .default_y_bounds(y_min, y_max_fixed)
-        .x_axis_formatter(|mark, _range| {
-            let hz = 2f64.powf(mark.value);
-            if hz < 1000.0 {
-                format!("{:.0} Hz", hz)
-            } else {
-                format!("{:.1} kHz", hz / 1000.0)
-            }
-        })
-        .y_axis_formatter(|mark, _| format!("{:.2}s", mark.value))
-        .show(ui, |plot_ui| {
-            plot_ui.points(points);
-            if planned_live_count > 0 && frame.world.next_gate_sec_est.is_some() {
-                plot_ui.points(planned_points);
-            }
-            if planned_last_count > 0 && frame.world.planned_last_gate_tick.is_some() {
-                plot_ui.points(planned_last_points);
-            }
-        });
-
-    let mut list_text = String::new();
-    for (idx, note) in frame.world.notes.iter().enumerate() {
-        if idx > 0 {
-            list_text.push_str(" | ");
-        }
-        let onset_sec = if fs > 0.0 {
-            note.onset_tick as f32 / fs
-        } else {
-            0.0
-        };
-        let tag = note.tag.as_deref().unwrap_or("-");
-        list_text.push_str(&format!(
-            "t={onset_sec:.3}s f={:.1}Hz amp={:.3} src={} tag={}",
-            note.freq_hz, note.amp, note.source_id, tag
-        ));
-    }
-    let line_height = ui.text_style_height(&egui::TextStyle::Body);
-    egui::ScrollArea::horizontal()
-        .id_salt("note_list_scroll")
-        .max_height(line_height.max(NOTE_LIST_HEIGHT))
-        .show(ui, |ui| {
-            ui.add(egui::Label::new(list_text).extend());
-        });
-
-    let mut planned_text = String::new();
-    for (idx, planned) in frame.world.planned_next_live.iter().enumerate() {
-        if idx > 0 {
-            planned_text.push_str(" | ");
-        }
-        let tag = planned.tag.as_deref().unwrap_or("-");
-        planned_text.push_str(&format!(
-            "f={:.1}Hz amp={:.3} conf={:.2} src={} tag={}",
-            planned.freq_hz, planned.amp, planned.confidence, planned.source_id, tag
-        ));
-    }
-    let mut planned_last_text = String::new();
-    for (idx, planned) in frame.world.planned_last_committed.iter().enumerate() {
-        if idx > 0 {
-            planned_last_text.push_str(" | ");
-        }
-        let tag = planned.tag.as_deref().unwrap_or("-");
-        planned_last_text.push_str(&format!(
-            "f={:.1}Hz amp={:.3} conf={:.2} src={} tag={}",
-            planned.freq_hz, planned.amp, planned.confidence, planned.source_id, tag
-        ));
-    }
-    egui::ScrollArea::horizontal()
-        .id_salt("planned_list_scroll")
-        .max_height(line_height.max(NOTE_LIST_HEIGHT))
-        .show(ui, |ui| {
-            ui.add(egui::Label::new(planned_text).extend());
-        });
-    egui::ScrollArea::horizontal()
-        .id_salt("planned_last_list_scroll")
-        .max_height(line_height.max(NOTE_LIST_HEIGHT))
-        .show(ui, |ui| {
-            ui.add(egui::Label::new(planned_last_text).extend());
-        });
 }

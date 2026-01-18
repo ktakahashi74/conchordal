@@ -82,7 +82,7 @@ fn main() -> eframe::Result<()> {
     }
 
     let native_options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_inner_size([1200.0, 1020.0]),
+        viewport: egui::ViewportBuilder::default().with_inner_size([1200.0, 900.0]),
         ..Default::default()
     };
 

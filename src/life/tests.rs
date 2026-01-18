@@ -87,22 +87,12 @@ fn conductor_dispatches_finish_on_time() {
     let mut conductor = Conductor::from_scenario(scenario);
     let mut pop = Population::new(test_timebase());
     let landscape = LandscapeFrame::default();
-    let space = Log2Space::new(1.0, 2.0, 1);
-    let mut world = crate::life::world_model::WorldModel::new(
-        Timebase {
-            fs: 48_000.0,
-            hop: 512,
-        },
-        space,
-    );
-
     conductor.dispatch_until(
         0.5,
         0,
         &landscape,
         None::<&mut crate::core::stream::analysis::AnalysisStream>,
         &mut pop,
-        &mut world,
     );
     assert!(!pop.abort_requested);
 
@@ -112,7 +102,6 @@ fn conductor_dispatches_finish_on_time() {
         &landscape,
         None::<&mut crate::core::stream::analysis::AnalysisStream>,
         &mut pop,
-        &mut world,
     );
     assert!(pop.abort_requested);
 }

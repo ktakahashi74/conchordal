@@ -10,12 +10,12 @@ use crate::life::control_adapters::{
     pitch_core_config_from_control, sound_body_config_from_control, tessitura_gravity_from_control,
 };
 use crate::life::lifecycle::LifecycleConfig;
-use crate::life::note_event::BodySnapshot;
 use crate::life::phonation_engine::{
-    CoreState, CoreTickCtx, NoteId, OnsetEvent, PhonationCmd, PhonationEngine, PhonationNoteEvent,
+    CoreState, CoreTickCtx, NoteId, OnsetEvent, PhonationCmd, PhonationEngine, PhonationNoteOn,
 };
 use crate::life::scenario::ArticulationCoreConfig;
 use crate::life::social_density::SocialDensityTrace;
+use crate::life::sound::BodySnapshot;
 use rand::SeedableRng;
 
 #[path = "articulation_core.rs"]
@@ -77,7 +77,7 @@ pub struct PhonationNoteSpec {
 
 #[derive(Debug, Default)]
 pub(crate) struct PhonationScratch {
-    events: Vec<PhonationNoteEvent>,
+    events: Vec<PhonationNoteOn>,
 }
 
 #[derive(Clone, Debug, Default)]

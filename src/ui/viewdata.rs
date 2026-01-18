@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::core::landscape::LandscapeFrame;
-use crate::life::world_model::WorldView;
+use crate::core::timebase::Tick;
 
 #[derive(Clone, Debug)]
 pub struct WaveFrame {
@@ -63,8 +63,24 @@ pub struct UiFrame {
     pub landscape: LandscapeFrame,
     pub time_sec: f32,
     pub meta: SimulationMeta,
+    pub next_gate_tick_est: Option<Tick>,
+    pub theta_hz: Option<f32>,
+    pub delta_hz: Option<f32>,
+    pub pred_n_theta_per_delta: Option<u32>,
+    pub pred_tau_tick: Option<Tick>,
+    pub pred_horizon_tick: Option<Tick>,
+    pub pred_c01_next_gate: Option<Arc<[f32]>>,
+    pub pred_gain_raw_mean: Option<f32>,
+    pub pred_gain_raw_min: Option<f32>,
+    pub pred_gain_raw_max: Option<f32>,
+    pub pred_gain_mixed_mean: Option<f32>,
+    pub pred_gain_mixed_min: Option<f32>,
+    pub pred_gain_mixed_max: Option<f32>,
+    pub pred_sync_mean: Option<f32>,
+    pub gate_boundary_in_hop: Option<bool>,
+    pub pred_available_in_hop: Option<bool>,
+    pub phonation_onsets_in_hop: Option<u32>,
     pub agents: Vec<AgentStateInfo>,
-    pub world: WorldView,
 }
 
 impl Default for WaveFrame {

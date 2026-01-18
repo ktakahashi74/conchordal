@@ -5,7 +5,6 @@ pub mod gate_clock;
 pub mod individual;
 pub mod lifecycle;
 pub mod meta;
-pub mod note_event;
 pub mod perceptual;
 pub mod phonation_engine;
 pub mod population;

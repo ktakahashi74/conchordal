@@ -135,7 +135,7 @@ impl WorldModel {
 
     pub fn update_gate_from_rhythm(&mut self, now_tick: Tick, rhythm: &NeuralRhythms) {
         self.next_gate_tick_est = next_gate_tick(now_tick, self.time.fs, rhythm.theta, 0.0);
-        self.last_rhythm = rhythm.clone();
+        self.last_rhythm = *rhythm;
         self.last_pred_next_gate = None;
         if self.next_gate_tick_est.is_none() && cfg!(debug_assertions) {
             debug!(

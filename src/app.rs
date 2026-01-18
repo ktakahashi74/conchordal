@@ -13,14 +13,14 @@ use ringbuf::traits::Observer;
 
 #[cfg(debug_assertions)]
 use crate::audio::writer::WavOutput;
+use crate::core::analysis_worker;
 use crate::core::harmonicity_kernel::HarmonicityKernel;
 use crate::core::landscape::{Landscape, LandscapeFrame, LandscapeParams, LandscapeUpdate};
 use crate::core::log2space::Log2Space;
 use crate::core::nsgt_kernel::{NsgtKernelLog2, NsgtLog2Config, PowerMode};
 use crate::core::nsgt_rt::{RtConfig, RtNsgtKernelLog2};
 use crate::core::roughness_kernel::{KernelParams, RoughnessKernel};
-use crate::core::roughness_worker;
-use crate::core::stream::{dorsal::DorsalStream, roughness::RoughnessStream};
+use crate::core::stream::{analysis::AnalysisStream, dorsal::DorsalStream};
 use crate::core::timebase::Tick;
 use crate::life::conductor::Conductor;
 use crate::life::individual::{PhonationBatch, SoundBody};
@@ -69,7 +69,7 @@ impl AudioMonitor {
         buffer_occupancy: usize,
         chunk_peak: f32,
         chunk_elapsed: Duration,
-        roughness_lag: Option<u64>,
+        analysis_lag: Option<u64>,
         conductor_done: bool,
     ) -> f32 {
         self.min_occupancy = Some(
@@ -108,14 +108,14 @@ impl AudioMonitor {
             );
         }
 
-        let should_warn = roughness_lag.is_some_and(|lag| lag >= 2);
+        let should_warn = analysis_lag.is_some_and(|lag| lag >= 2);
         if should_warn && self.last_lag_warn.elapsed() > Duration::from_secs(1) {
-            let r = roughness_lag
+            let lag = analysis_lag
                 .map(|v| v.to_string())
                 .unwrap_or_else(|| "-".into());
             warn!(
-                "[t={:.3}] Analysis lag (frames): R={} (Audio(gen)={})",
-                current_time, r, frame_idx
+                "[t={:.3}] Analysis lag (frames): A={} (Audio(gen)={})",
+                current_time, lag, frame_idx
             );
             self.last_lag_warn = Instant::now();
         }
@@ -516,31 +516,31 @@ fn init_runtime(
     // Channels
     let (ui_frame_tx, ui_frame_rx) = bounded::<UiFrame>(ui_channel_capacity);
     let (ctrl_tx, _ctrl_rx) = bounded::<()>(1);
-    let (roughness_tx, roughness_rx) = bounded::<LandscapeUpdate>(8);
+    let (analysis_update_tx, analysis_update_rx) = bounded::<LandscapeUpdate>(8);
 
     let base_space = nsgt.space().clone();
-    let roughness_stream = RoughnessStream::new(lparams.clone(), nsgt.clone());
+    let analysis_stream = AnalysisStream::new(lparams.clone(), nsgt.clone());
     let landscape = Landscape::new(base_space.clone());
     let dorsal = DorsalStream::new(fs);
     let lparams_runtime = lparams.clone();
 
     // Analysis pipeline channels
-    let (audio_to_roughness_tx, audio_to_roughness_rx) = bounded::<(u64, Arc<[f32]>)>(64);
-    let (roughness_from_analysis_tx, roughness_from_analysis_rx) = bounded::<(u64, Landscape)>(4);
+    let (audio_to_analysis_tx, audio_to_analysis_rx) = bounded::<(u64, Arc<[f32]>)>(64);
+    let (analysis_result_tx, analysis_result_rx) = bounded::<(u64, Landscape)>(4);
 
-    // Spawn roughness thread (NSGT-RT based audio analysis).
+    // Spawn analysis thread (NSGT-RT based audio analysis).
     {
         std::thread::Builder::new()
-            .name("roughness".into())
+            .name("analysis".into())
             .spawn(move || {
-                roughness_worker::run(
-                    roughness_stream,
-                    audio_to_roughness_rx,
-                    roughness_from_analysis_tx,
-                    roughness_rx,
+                analysis_worker::run(
+                    analysis_stream,
+                    audio_to_analysis_rx,
+                    analysis_result_tx,
+                    analysis_update_rx,
                 )
             })
-            .expect("spawn roughness worker");
+            .expect("spawn analysis worker");
     }
 
     let path = Path::new(&args.scenario_path);
@@ -585,9 +585,9 @@ fn init_runtime(
                     audio_prod,
                     wav_tx_for_worker,
                     stop_flag_worker,
-                    audio_to_roughness_tx,
-                    roughness_from_analysis_rx,
-                    roughness_tx,
+                    audio_to_analysis_tx,
+                    analysis_result_rx,
+                    analysis_update_tx,
                     hop,
                     hop_duration,
                     fs,
@@ -693,9 +693,9 @@ fn worker_loop(
     mut audio_prod: Option<ringbuf::HeapProd<f32>>,
     mut wav_tx: Option<Sender<Arc<[f32]>>>,
     exiting: Arc<AtomicBool>,
-    audio_to_roughness_tx: Sender<(u64, Arc<[f32]>)>,
-    roughness_from_analysis_rx: Receiver<(u64, Landscape)>,
-    roughness_tx: Sender<LandscapeUpdate>,
+    audio_to_analysis_tx: Sender<(u64, Arc<[f32]>)>,
+    analysis_result_rx: Receiver<(u64, Landscape)>,
+    analysis_update_tx: Sender<LandscapeUpdate>,
     hop: usize,
     hop_duration: Duration,
     fs: f32,
@@ -715,7 +715,7 @@ fn worker_loop(
     let mut monitor = AudioMonitor::new();
     let mut last_ui_update = Instant::now();
     let ui_min_interval = Duration::from_millis(33);
-    let mut last_r_analysis_frame: Option<u64> = None;
+    let mut last_analysis_frame: Option<u64> = None;
     let timebase = crate::core::timebase::Timebase { fs, hop };
     let mut world = crate::life::world_model::WorldModel::new(timebase, log_space.clone());
     let mut schedule_renderer = ScheduleRenderer::new(timebase);
@@ -816,8 +816,8 @@ fn worker_loop(
             loop {
                 // Merge analysis results (latest-only) into the landscape.
                 let mut latest_audio: Option<(u64, Landscape)> = None;
-                while let Ok((analyzed_id, frame)) = roughness_from_analysis_rx.try_recv() {
-                    last_r_analysis_frame = Some(analyzed_id);
+                while let Ok((analyzed_id, frame)) = analysis_result_rx.try_recv() {
+                    last_analysis_frame = Some(analyzed_id);
                     latest_audio = Some((analyzed_id, frame));
                 }
                 let mut analysis_updated = false;
@@ -845,7 +845,7 @@ fn worker_loop(
                     current_landscape.subjective_intensity = frame.subjective_intensity;
                     current_landscape.nsgt_power = frame.nsgt_power;
                     current_landscape.recompute_consonance(&lparams);
-                    // analysis_id is the analysis frame index from roughness_result_rx.
+                    // analysis_id is the analysis frame index from analysis_result_rx.
                     // NSGT is right-aligned; analysis represents sound up to the frame end.
                     let obs_tick = timebase.frame_end_tick(analysis_id);
                     world.observe_consonance01(
@@ -889,8 +889,8 @@ fn worker_loop(
                 if frame_idx == 0 {
                     break;
                 }
-                let r_ok = last_r_analysis_frame.is_some_and(|id| id >= required_prev);
-                if r_ok {
+                let analysis_ok = last_analysis_frame.is_some_and(|id| id >= required_prev);
+                if analysis_ok {
                     break;
                 }
                 if exiting.load(Ordering::SeqCst) {
@@ -904,7 +904,7 @@ fn worker_loop(
                 current_time,
                 frame_idx,
                 &current_landscape,
-                None::<&mut crate::core::stream::roughness::RoughnessStream>,
+                None::<&mut crate::core::stream::analysis::AnalysisStream>,
                 &mut pop,
                 &mut world,
             );
@@ -935,7 +935,7 @@ fn worker_loop(
             if let Some(update) = pop.take_pending_update() {
                 apply_params_update(&mut lparams, &update);
                 current_landscape.recompute_consonance(&lparams);
-                let _ = roughness_tx.try_send(update);
+                let _ = analysis_update_tx.try_send(update);
             }
 
             if scenario_end_tick.is_none() && conductor.is_done() {
@@ -999,11 +999,11 @@ fn worker_loop(
             let dorsal_metrics = dorsal.last_metrics();
 
             // Feed audio analysis (NSGT + peak extraction + R/H).
-            let _ = audio_to_roughness_tx.try_send((frame_idx, Arc::clone(&mono_chunk)));
+            let _ = audio_to_analysis_tx.try_send((frame_idx, Arc::clone(&mono_chunk)));
 
             // Lag is measured against generated frames, because population dynamics depend on
             // the landscape evolution in the generated timebase (not wall-clock playback).
-            let roughness_lag = last_r_analysis_frame.map(|id| frame_idx.saturating_sub(id));
+            let analysis_lag = last_analysis_frame.map(|id| frame_idx.saturating_sub(id));
 
             let finished_now = if pop.abort_requested {
                 true
@@ -1051,7 +1051,7 @@ fn worker_loop(
                 occupancy,
                 max_abs,
                 elapsed,
-                roughness_lag,
+                analysis_lag,
                 conductor.is_done(),
             );
 

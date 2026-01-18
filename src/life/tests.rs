@@ -100,7 +100,7 @@ fn conductor_dispatches_finish_on_time() {
         0.5,
         0,
         &landscape,
-        None::<&mut crate::core::stream::roughness::RoughnessStream>,
+        None::<&mut crate::core::stream::analysis::AnalysisStream>,
         &mut pop,
         &mut world,
     );
@@ -110,7 +110,7 @@ fn conductor_dispatches_finish_on_time() {
         1.1,
         100,
         &landscape,
-        None::<&mut crate::core::stream::roughness::RoughnessStream>,
+        None::<&mut crate::core::stream::analysis::AnalysisStream>,
         &mut pop,
         &mut world,
     );

@@ -7,9 +7,9 @@ use crate::core::psycho_state::{
 };
 use crate::core::roughness_kernel::erb_grid;
 
-/// Roughness Stream (formerly Ventral).
+/// Analysis Stream (formerly Roughness Stream).
 /// Handles slow spectral analysis for roughness and harmonicity.
-pub struct RoughnessStream {
+pub struct AnalysisStream {
     nsgt_rt: RtNsgtKernelLog2,
     params: LandscapeParams,
     spectral_frontend: SpectralFrontEnd,
@@ -20,7 +20,7 @@ pub struct RoughnessStream {
     last_landscape: Landscape,
 }
 
-impl RoughnessStream {
+impl AnalysisStream {
     pub fn new(params: LandscapeParams, nsgt_rt: RtNsgtKernelLog2) -> Self {
         let spectral_frontend = SpectralFrontEnd::new(nsgt_rt.space().clone(), &params);
         let ref_vals = compute_roughness_reference(&params, nsgt_rt.space());
@@ -43,7 +43,7 @@ impl RoughnessStream {
     }
 
     /// Process audio chunk asynchronously.
-    /// Returns the updated Landscape (roughness only).
+    /// Returns the updated Landscape.
     pub fn process(&mut self, audio: &[f32]) -> Landscape {
         if audio.is_empty() {
             return self.last_landscape.clone();

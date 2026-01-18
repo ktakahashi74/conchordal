@@ -174,7 +174,8 @@ impl Population {
                 .as_ref()
                 .map(|scan| {
                     let gain_raw = world.sample_scan01(scan, agent.body.base_freq_hz());
-                    0.25 + 0.75 * gain_raw.powf(2.0)
+                    let sync = agent.effective_control.phonation.sync;
+                    mix_pred_gate_gain(sync, gain_raw)
                 })
                 .unwrap_or(1.0);
             agent.tick_phonation_into(
@@ -353,7 +354,7 @@ impl Population {
         &mut self,
         action: Action,
         landscape: &LandscapeFrame,
-        _landscape_rt: Option<&mut crate::core::stream::roughness::RoughnessStream>,
+        _analysis_rt: Option<&mut crate::core::stream::analysis::AnalysisStream>,
     ) {
         match action {
             Action::Finish => {
@@ -578,6 +579,13 @@ impl Population {
     }
 }
 
+fn mix_pred_gate_gain(sync: f32, gain_raw: f32) -> f32 {
+    let sync = sync.clamp(0.0, 1.0);
+    let gain01 = 0.2 + 0.8 * gain_raw.powf(2.0);
+    let gain = 1.0 + (gain01 - 1.0) * sync;
+    if gain.is_finite() { gain.max(0.0) } else { 1.0 }
+}
+
 fn harmonic_density_weight(c01: f32, occupied: bool) -> f32 {
     if occupied {
         return 0.0;
@@ -709,6 +717,12 @@ mod tests {
     fn harmonic_density_weight_occupied_is_zero() {
         let w = harmonic_density_weight(1.0, true);
         assert_eq!(w, 0.0);
+    }
+
+    #[test]
+    fn pred_gate_gain_sync_zero_is_unity() {
+        let gain = mix_pred_gate_gain(0.0, 0.3);
+        assert_eq!(gain, 1.0);
     }
 
     #[test]

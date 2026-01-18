@@ -3,18 +3,18 @@ use std::sync::Arc;
 use crossbeam_channel::{Receiver, Sender};
 
 use crate::core::landscape::{Landscape, LandscapeUpdate};
-use crate::core::stream::roughness::RoughnessStream;
+use crate::core::stream::analysis::AnalysisStream;
 
-/// Result payload from the roughness worker:
+/// Result payload from the analysis worker:
 /// `(frame_id, landscape_snapshot)`.
-pub type RoughnessResult = (u64, Landscape);
+pub type AnalysisResult = (u64, Landscape);
 
-/// Roughness worker: receives time-domain hops, runs NSGT-based audio analysis,
+/// Analysis worker: receives time-domain hops, runs NSGT-based audio analysis,
 /// and publishes the latest analysis for the main thread to merge.
 pub fn run(
-    mut stream: RoughnessStream,
+    mut stream: AnalysisStream,
     hop_rx: Receiver<(u64, Arc<[f32]>)>,
-    result_tx: Sender<RoughnessResult>,
+    result_tx: Sender<AnalysisResult>,
     update_rx: Receiver<LandscapeUpdate>,
 ) {
     while let Ok((mut frame_id, audio_hop)) = hop_rx.recv() {
@@ -28,7 +28,7 @@ pub fn run(
             hops.push(latest_hop);
         }
 
-        // Apply parameter updates (roughness params primarily; others are harmless here).
+        // Apply parameter updates (landscape params primarily; others are harmless here).
         for upd in update_rx.try_iter() {
             stream.apply_update(upd);
         }

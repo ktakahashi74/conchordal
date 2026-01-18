@@ -38,7 +38,7 @@ fn conductor_routes_post_note_to_world() {
         event_time - eps,
         0,
         &landscape,
-        None::<&mut conchordal::core::stream::roughness::RoughnessStream>,
+        None::<&mut conchordal::core::stream::analysis::AnalysisStream>,
         &mut pop,
         &mut world,
     );
@@ -48,7 +48,7 @@ fn conductor_routes_post_note_to_world() {
         event_time,
         0,
         &landscape,
-        None::<&mut conchordal::core::stream::roughness::RoughnessStream>,
+        None::<&mut conchordal::core::stream::analysis::AnalysisStream>,
         &mut pop,
         &mut world,
     );

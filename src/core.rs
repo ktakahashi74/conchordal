@@ -1,4 +1,5 @@
 pub mod a_weighting;
+pub mod analysis_worker;
 pub mod db;
 pub mod density;
 pub mod erb;
@@ -16,7 +17,6 @@ pub mod peak_extraction;
 pub mod phase;
 pub mod psycho_state;
 pub mod roughness_kernel;
-pub mod roughness_worker;
 pub mod stream;
 pub mod timebase;
 pub mod utils;

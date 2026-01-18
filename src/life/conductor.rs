@@ -97,7 +97,7 @@ impl Conductor {
         time_sec: f32,
         _current_frame: u64,
         landscape: &LandscapeFrame,
-        mut roughness_rt: Option<&mut crate::core::stream::roughness::RoughnessStream>,
+        mut analysis_rt: Option<&mut crate::core::stream::analysis::AnalysisStream>,
         population: &mut Population,
         world: &mut crate::life::world_model::WorldModel,
     ) {
@@ -115,7 +115,7 @@ impl Conductor {
                         world.apply_action(&a);
                     }
                     other => {
-                        population.apply_action(other, landscape, roughness_rt.as_deref_mut());
+                        population.apply_action(other, landscape, analysis_rt.as_deref_mut());
                     }
                 }
             }

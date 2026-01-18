@@ -845,7 +845,9 @@ fn worker_loop(
                     current_landscape.subjective_intensity = frame.subjective_intensity;
                     current_landscape.nsgt_power = frame.nsgt_power;
                     current_landscape.recompute_consonance(&lparams);
-                    let obs_tick = timebase.frame_start_tick(analysis_id);
+                    // analysis_id is the analysis frame index from roughness_result_rx.
+                    // NSGT is right-aligned; analysis represents sound up to the frame end.
+                    let obs_tick = timebase.frame_end_tick(analysis_id);
                     world.observe_consonance01(
                         obs_tick,
                         Arc::from(current_landscape.consonance01.clone()),

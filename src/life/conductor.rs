@@ -111,11 +111,11 @@ impl Conductor {
             info!("[t={:.3}] Event: {}", ev.time, action_descs.join(" | "));
             for action in ev.actions {
                 match action {
-                    crate::life::scenario::Action::PostNote { .. } => {
-                        world.apply_action(&action);
+                    a @ crate::life::scenario::Action::PostNote { .. } => {
+                        world.apply_action(&a);
                     }
-                    _ => {
-                        population.apply_action(action, landscape, roughness_rt.as_deref_mut());
+                    other => {
+                        population.apply_action(other, landscape, roughness_rt.as_deref_mut());
                     }
                 }
             }

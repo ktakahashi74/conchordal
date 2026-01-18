@@ -207,6 +207,7 @@ impl WorldModel {
     }
 
     pub fn observe_consonance01(&mut self, tick: Tick, scan: Arc<[f32]>) {
+        // NSGT is right-aligned, so observations are stamped at frame_end_tick.
         self.terrain_predictor
             .observe_consonance01(tick, scan, &self.space);
     }

@@ -81,12 +81,16 @@
                         {% if lang == "ja" %}
                             {% if page %}
                                 <a href="{{ page.permalink | replace(from='/ja/', to='/') | replace(from='/ja', to='/') }}" class="lang-link">EN</a>
+                            {% elif section %}
+                                <a href="{{ section.permalink | replace(from='/ja/', to='/') | replace(from='/ja', to='/') }}" class="lang-link">EN</a>
                             {% else %}
                                 <a href="/" class="lang-link">EN</a>
                             {% endif %}
                         {% else %}
                             {% if page %}
                                 <a href="/ja{{ page.permalink | replace(from=config.base_url, to='') }}" class="lang-link">日本語</a>
+                            {% elif section %}
+                                <a href="/ja{{ section.permalink | replace(from=config.base_url, to='') }}" class="lang-link">日本語</a>
                             {% else %}
                                 <a href="/ja" class="lang-link">日本語</a>
                             {% endif %}

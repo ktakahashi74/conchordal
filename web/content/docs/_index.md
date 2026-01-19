@@ -4,8 +4,6 @@ description = "Comprehensive documentation for Conchordal bio-acoustic instrumen
 sort_by = "weight"
 +++
 
-# Conchordal Documentation
+# Documentation
 
-Resources:
-
-- [Rhai Reference](/docs/rhai/)
+- [Scenario Scripting Reference](/docs/rhai/)

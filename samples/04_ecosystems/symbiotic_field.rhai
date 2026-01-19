@@ -18,7 +18,7 @@ parallel([
     },
     || {
         for i in 0..6 {
-            let strat = harmonicity(400.0).range(1.0, 2.0).min_dist(1.0);
+            let strat = consonance(400.0).range(1.0, 2.0).min_dist(1.0);
             create(bugs, 2).place(strat);
             wait(0.75);
         }

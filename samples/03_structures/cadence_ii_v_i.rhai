@@ -6,7 +6,7 @@ let bass = derive(sine).amp(0.36).phonation("hold");
 
 let chord = |root| {
     create(bass, 1).freq(root);
-    let strat = harmonicity(root).range(2.0, 5.0).min_dist(1.0);
+    let strat = consonance(root).range(2.0, 5.0).min_dist(1.0);
     create(pad, 3).place(strat);
     wait(1.5);
 };

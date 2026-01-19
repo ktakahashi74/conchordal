@@ -300,13 +300,13 @@ pub struct SpawnSpec {
 
 #[derive(Debug, Clone)]
 pub enum SpawnStrategy {
-    Harmonicity {
+    Consonance {
         root_freq: f32,
         min_mul: f32,
         max_mul: f32,
         min_dist_erb: f32,
     },
-    HarmonicDensity {
+    ConsonanceDensity {
         min_freq: f32,
         max_freq: f32,
         min_dist_erb: f32,
@@ -324,13 +324,13 @@ pub enum SpawnStrategy {
 impl SpawnStrategy {
     pub fn freq_range_hz(&self) -> (f32, f32) {
         match self {
-            SpawnStrategy::Harmonicity {
+            SpawnStrategy::Consonance {
                 root_freq,
                 min_mul,
                 max_mul,
                 ..
             } => (root_freq * min_mul, root_freq * max_mul),
-            SpawnStrategy::HarmonicDensity {
+            SpawnStrategy::ConsonanceDensity {
                 min_freq, max_freq, ..
             }
             | SpawnStrategy::RandomLog { min_freq, max_freq }
@@ -343,8 +343,8 @@ impl SpawnStrategy {
 
     pub fn min_dist_erb(&self) -> f32 {
         match self {
-            SpawnStrategy::Harmonicity { min_dist_erb, .. }
-            | SpawnStrategy::HarmonicDensity { min_dist_erb, .. } => *min_dist_erb,
+            SpawnStrategy::Consonance { min_dist_erb, .. }
+            | SpawnStrategy::ConsonanceDensity { min_dist_erb, .. } => *min_dist_erb,
             _ => 0.0,
         }
     }
@@ -368,7 +368,7 @@ pub enum Action {
         ids: Vec<u64>,
         fade_sec: f32,
     },
-    SetHarmonicity {
+    SetHarmonicityParams {
         update: LandscapeUpdate,
     },
     SetGlobalCoupling {
@@ -390,9 +390,9 @@ impl fmt::Display for Action {
             Action::Release {
                 group_id, fade_sec, ..
             } => write!(f, "Release group={} fade={:.3}", group_id, fade_sec),
-            Action::SetHarmonicity { update } => write!(
+            Action::SetHarmonicityParams { update } => write!(
                 f,
-                "SetHarmonicity mirror={:?} limit={:?} roughness_k={:?}",
+                "SetHarmonicityParams mirror={:?} limit={:?} roughness_k={:?}",
                 update.mirror, update.limit, update.roughness_k
             ),
             Action::SetGlobalCoupling { value } => {

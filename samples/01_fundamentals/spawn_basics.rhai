@@ -1,10 +1,10 @@
 let base = derive(harmonic).amp(0.2).phonation("hold");
 
 create(base, 4)
-    .place(harmonicity(220.0).range(1.0, 4.0).min_dist(1.0));
+    .place(consonance(220.0).range(1.0, 4.0).min_dist(1.0));
 wait(2.0);
 
-create(base, 4).place(harmonic_density(110.0, 880.0));
+create(base, 4).place(consonance_density(110.0, 880.0));
 wait(2.0);
 
 create(base, 4).place(random_log(110.0, 880.0));

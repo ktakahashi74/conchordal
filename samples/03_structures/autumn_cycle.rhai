@@ -3,7 +3,7 @@ let pad = derive(harmonic).amp(0.14).phonation("hold").timbre(0.7, 0.2);
 
 let step = |root, dur| {
     create(bass, 1).freq(root);
-    let strat = harmonicity(root).range(2.0, 5.0).min_dist(1.0);
+    let strat = consonance(root).range(2.0, 5.0).min_dist(1.0);
     create(pad, 3).place(strat);
     wait(dur);
 };

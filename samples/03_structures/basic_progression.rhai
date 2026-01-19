@@ -4,7 +4,7 @@ let pad = derive(harmonic)
     .adsr(0.2, 0.3, 0.8, 1.0);
 
 let chord = |root, dur| {
-    let strat = harmonicity(root).range(1.0, 3.0).min_dist(1.0);
+    let strat = consonance(root).range(1.0, 3.0).min_dist(1.0);
     create(pad, 4).place(strat);
     wait(dur);
 };

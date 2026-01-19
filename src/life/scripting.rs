@@ -810,29 +810,27 @@ impl ScriptHost {
             },
         );
 
-        engine.register_fn("harmonicity", |root_freq: FLOAT| {
-            SpawnStrategy::Harmonicity {
-                root_freq: root_freq as f32,
-                min_mul: 1.0,
-                max_mul: 4.0,
-                min_dist_erb: 1.0,
-            }
+        engine.register_fn("consonance", |root_freq: FLOAT| SpawnStrategy::Consonance {
+            root_freq: root_freq as f32,
+            min_mul: 1.0,
+            max_mul: 4.0,
+            min_dist_erb: 1.0,
         });
         engine.register_fn(
             "range",
             |strategy: SpawnStrategy, min_mul: FLOAT, max_mul: FLOAT| match strategy {
-                SpawnStrategy::Harmonicity {
+                SpawnStrategy::Consonance {
                     root_freq,
                     min_dist_erb,
                     ..
-                } => SpawnStrategy::Harmonicity {
+                } => SpawnStrategy::Consonance {
                     root_freq,
                     min_mul: min_mul as f32,
                     max_mul: max_mul as f32,
                     min_dist_erb,
                 },
                 other => {
-                    warn!("range() ignored for non-harmonicity strategy");
+                    warn!("range() ignored for non-consonance strategy");
                     other
                 }
             },
@@ -840,25 +838,25 @@ impl ScriptHost {
         engine.register_fn(
             "min_dist",
             |strategy: SpawnStrategy, min_dist: FLOAT| match strategy {
-                SpawnStrategy::Harmonicity {
+                SpawnStrategy::Consonance {
                     root_freq,
                     min_mul,
                     max_mul,
                     ..
-                } => SpawnStrategy::Harmonicity {
+                } => SpawnStrategy::Consonance {
                     root_freq,
                     min_mul,
                     max_mul,
                     min_dist_erb: min_dist as f32,
                 },
                 other => {
-                    warn!("min_dist() ignored for non-harmonicity strategy");
+                    warn!("min_dist() ignored for non-consonance strategy");
                     other
                 }
             },
         );
-        engine.register_fn("harmonic_density", |min_freq: FLOAT, max_freq: FLOAT| {
-            SpawnStrategy::HarmonicDensity {
+        engine.register_fn("consonance_density", |min_freq: FLOAT, max_freq: FLOAT| {
+            SpawnStrategy::ConsonanceDensity {
                 min_freq: min_freq as f32,
                 max_freq: max_freq as f32,
                 min_dist_erb: 1.0,
@@ -1109,7 +1107,7 @@ impl ScriptHost {
                     ..crate::core::landscape::LandscapeUpdate::default()
                 };
                 let cursor = ctx.cursor;
-                ctx.push_event(cursor, vec![Action::SetHarmonicity { update }]);
+                ctx.push_event(cursor, vec![Action::SetHarmonicityParams { update }]);
             },
         );
 
@@ -1385,7 +1383,7 @@ mod tests {
     fn place_then_freq_clears_strategy() {
         let (scenario, _warnings) = run_script(
             r#"
-            create(sine, 4).place(harmonicity(220.0)).freq(330.0);
+            create(sine, 4).place(consonance(220.0)).freq(330.0);
             flush();
         "#,
         );
@@ -1405,7 +1403,7 @@ mod tests {
     fn freq_then_place_sets_strategy() {
         let (scenario, _warnings) = run_script(
             r#"
-            create(sine, 4).freq(330.0).place(harmonicity(220.0));
+            create(sine, 4).freq(330.0).place(consonance(220.0));
             flush();
         "#,
         );
@@ -1418,6 +1416,6 @@ mod tests {
                 _ => None,
             })
             .expect("spawn action");
-        assert!(matches!(strategy, Some(SpawnStrategy::Harmonicity { .. })));
+        assert!(matches!(strategy, Some(SpawnStrategy::Consonance { .. })));
     }
 }

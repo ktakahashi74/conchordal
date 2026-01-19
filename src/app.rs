@@ -211,7 +211,7 @@ pub fn validate_scenario(scenario: &Scenario) -> Result<(), String> {
                     has_finish = true;
                 }
                 Action::Spawn { .. } | Action::Update { .. } | Action::Release { .. } => {}
-                Action::SetHarmonicity { .. }
+                Action::SetHarmonicityParams { .. }
                 | Action::SetGlobalCoupling { .. }
                 | Action::SetRoughnessTolerance { .. } => {}
             }

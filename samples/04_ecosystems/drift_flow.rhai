@@ -16,7 +16,7 @@ scene("Drift Flow", || {
     wait(0.5);
 
     for i in 0..5 {
-        let strat = harmonicity(130.0).range(1.0, 4.0).min_dist(1.0);
+        let strat = consonance(130.0).range(1.0, 4.0).min_dist(1.0);
         create(swarm, 1).place(strat);
         wait(0.6);
     }

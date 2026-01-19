@@ -344,7 +344,7 @@ impl Population {
         };
 
         let pick_idx = match strategy {
-            SpawnStrategy::Harmonicity { .. } => {
+            SpawnStrategy::Consonance { .. } => {
                 let mut best = idx_min;
                 let mut best_val = f32::MIN;
                 let mut found = false;
@@ -378,7 +378,7 @@ impl Population {
                     best
                 }
             }
-            SpawnStrategy::HarmonicDensity { .. } => {
+            SpawnStrategy::ConsonanceDensity { .. } => {
                 let weights: Vec<f32> = (idx_min..=idx_max)
                     .enumerate()
                     .map(|(local_idx, i)| {
@@ -386,7 +386,7 @@ impl Population {
                         let occupied = self.is_range_occupied_with(f, min_dist_erb, reserved);
                         let _ = local_idx;
                         let c01 = landscape.consonance01.get(i).copied().unwrap_or(0.0);
-                        harmonic_density_weight(c01, occupied)
+                        consonance_density_weight(c01, occupied)
                     })
                     .collect();
                 if let Ok(dist) = WeightedIndex::new(&weights) {
@@ -531,7 +531,7 @@ impl Population {
                     }
                 }
             }
-            Action::SetHarmonicity { update } => {
+            Action::SetHarmonicityParams { update } => {
                 self.merge_landscape_update(update);
             }
             Action::SetGlobalCoupling { value } => {
@@ -664,7 +664,7 @@ fn mix_pred_gate_gain(sync: f32, gain_raw: f32) -> f32 {
     if gain.is_finite() { gain.max(0.0) } else { 1.0 }
 }
 
-fn harmonic_density_weight(c01: f32, occupied: bool) -> f32 {
+fn consonance_density_weight(c01: f32, occupied: bool) -> f32 {
     if occupied {
         return 0.0;
     }
@@ -773,7 +773,7 @@ mod tests {
             fs: 48_000.0,
             hop: 64,
         });
-        let strategy = SpawnStrategy::Harmonicity {
+        let strategy = SpawnStrategy::Consonance {
             root_freq: 100.0,
             min_mul: 1.0,
             max_mul: 4.0,
@@ -786,14 +786,14 @@ mod tests {
     }
 
     #[test]
-    fn harmonic_density_weight_eps_floor() {
-        let w = harmonic_density_weight(0.0, false);
+    fn consonance_density_weight_eps_floor() {
+        let w = consonance_density_weight(0.0, false);
         assert!(w > 0.0);
     }
 
     #[test]
-    fn harmonic_density_weight_occupied_is_zero() {
-        let w = harmonic_density_weight(1.0, true);
+    fn consonance_density_weight_occupied_is_zero() {
+        let w = consonance_density_weight(1.0, true);
         assert_eq!(w, 0.0);
     }
 
@@ -804,19 +804,19 @@ mod tests {
     }
 
     #[test]
-    fn harmonic_density_weighted_index_accepts_zero_c01() {
+    fn consonance_density_weighted_index_accepts_zero_c01() {
         let weights = vec![
-            harmonic_density_weight(0.0, false),
-            harmonic_density_weight(0.0, false),
+            consonance_density_weight(0.0, false),
+            consonance_density_weight(0.0, false),
         ];
         assert!(WeightedIndex::new(&weights).is_ok());
     }
 
     #[test]
-    fn harmonic_density_weighted_index_fails_when_all_occupied() {
+    fn consonance_density_weighted_index_fails_when_all_occupied() {
         let weights = vec![
-            harmonic_density_weight(1.0, true),
-            harmonic_density_weight(0.2, true),
+            consonance_density_weight(1.0, true),
+            consonance_density_weight(0.2, true),
         ];
         assert!(WeightedIndex::new(&weights).is_err());
     }

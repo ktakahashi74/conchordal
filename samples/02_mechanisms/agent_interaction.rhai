@@ -6,7 +6,7 @@ scene("Interaction", || {
     flush();
     wait(1.0);
 
-    let seekers = create(seeker, 2).place(harmonic_density(90.0, 180.0));
+    let seekers = create(seeker, 2).place(consonance_density(90.0, 180.0));
     wait(2.0);
     release(seekers);
     wait(0.5);

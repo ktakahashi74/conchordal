@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Rhai Script Reference</title>
+        <title>Conchordal Script Reference</title>
         <meta name="robots" content="noindex">
 
 
@@ -36,10 +36,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-9b39541e.js";
+            window.path_to_searchindex_js = "searchindex-47a378f7.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-b3d33c99.js"></script>
+        <script src="toc-dd2a5500.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -138,7 +138,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">Rhai Script Reference</h1>
+                    <h1 class="menu-title">Conchordal Script Reference</h1>
 
                     <div class="right-buttons">
                         <a href="print.html" title="Print this book" aria-label="Print this book">
@@ -175,544 +175,421 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="life"><a class="header" href="#life">life</a></h1>
-<p><code>Namespace: global/life</code></p>
-<div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
-    
-<h2 class="func-name"> <code>fn</code> finish </h2>
-
-<pre><code class="language-rust ignore">fn finish(ctx: ScriptContext)</code></pre>
-<div>
-<div class="tab">
-<button group="finish" id="link-finish-Description" class="tablinks active" onclick="openTab(event, &#39;finish&#39;, &#39;Description&#39;)">
-Description
-</button>
-</div>
-
-<div group="finish" id="finish-Description" class="tabcontent" style="display: block;">
-Finish the scenario and stop playback.
-</div>
-
-</div>
-
-</div>
-
-<br />
-<div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
-    
-<h2 class="func-name"> <code>fn</code> harmonic_density </h2>
-
-<pre><code class="language-rust ignore">fn harmonic_density(min_freq: float, max_freq: float) -&gt; Map
-fn harmonic_density(min_freq: float, max_freq: float, opts: Map) -&gt; Map</code></pre>
-<div>
-<div class="tab">
-<button group="harmonic_density" id="link-harmonic_density-Description" class="tablinks active" onclick="openTab(event, &#39;harmonic_density&#39;, &#39;Description&#39;)">
-Description
-</button>
-</div>
-
-<div group="harmonic_density" id="harmonic_density-Description" class="tabcontent" style="display: block;">
-Harmonic density spawn method.
-</div>
-
-</div>
-
-</div>
-
-<br />
-<div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
-    
-<h2 class="func-name"> <code>fn</code> harmonicity </h2>
-
-<pre><code class="language-rust ignore">fn harmonicity(min_freq: float, max_freq: float) -&gt; Map
-fn harmonicity(min_freq: float, max_freq: float, opts: Map) -&gt; Map</code></pre>
-<div>
-<div class="tab">
-<button group="harmonicity" id="link-harmonicity-Description" class="tablinks active" onclick="openTab(event, &#39;harmonicity&#39;, &#39;Description&#39;)">
-Description
-</button>
-</div>
-
-<div group="harmonicity" id="harmonicity-Description" class="tabcontent" style="display: block;">
-Harmonicity spawn method.
-</div>
-
-</div>
-
-</div>
-
-<br />
-<div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
-    
-<h2 class="func-name"> <code>fn</code> life </h2>
-
-<pre><code class="language-rust ignore">fn life(patch: Map) -&gt; Map</code></pre>
-<div>
-<div class="tab">
-<button group="life" id="link-life-Description" class="tablinks active" onclick="openTab(event, &#39;life&#39;, &#39;Description&#39;)">
-Description
-</button>
-</div>
-
-<div group="life" id="life-Description" class="tabcontent" style="display: block;">
-Life config patch helper (returns the patch map).
-</div>
-
-</div>
-
-</div>
-
-<br />
-<div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
-    
-<h2 class="func-name"> <code>fn</code> pop_time </h2>
-
-<pre><code class="language-rust ignore">fn pop_time(ctx: ScriptContext)</code></pre>
-<div>
-<div class="tab">
-<button group="pop_time" id="link-pop_time-Description" class="tablinks active" onclick="openTab(event, &#39;pop_time&#39;, &#39;Description&#39;)">
-Description
-</button>
-</div>
-
-<div group="pop_time" id="pop_time-Description" class="tabcontent" style="display: block;">
-Restore the most recently pushed cursor time.
-</div>
-
-</div>
-
-</div>
-
-<br />
-<div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
-    
-<h2 class="func-name"> <code>fn</code> push_time </h2>
-
-<pre><code class="language-rust ignore">fn push_time(ctx: ScriptContext)</code></pre>
-<div>
-<div class="tab">
-<button group="push_time" id="link-push_time-Description" class="tablinks active" onclick="openTab(event, &#39;push_time&#39;, &#39;Description&#39;)">
-Description
-</button>
-</div>
-
-<div group="push_time" id="push_time-Description" class="tabcontent" style="display: block;">
-Save the current cursor time onto the time stack.
-</div>
-
-</div>
-
-</div>
-
-<br />
-<div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
-    
-<h2 class="func-name"> <code>fn</code> random </h2>
-
-<pre><code class="language-rust ignore">fn random(min_freq: float, max_freq: float) -&gt; Map
-fn random(min_freq: float, max_freq: float, opts: Map) -&gt; Map</code></pre>
-<div>
-<div class="tab">
-<button group="random" id="link-random-Description" class="tablinks active" onclick="openTab(event, &#39;random&#39;, &#39;Description&#39;)">
-Description
-</button>
-</div>
-
-<div group="random" id="random-Description" class="tabcontent" style="display: block;">
-Random log-uniform spawn method.
-</div>
-
-</div>
-
-</div>
-
-<br />
-<div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
-    
-<h2 class="func-name"> <code>fn</code> release </h2>
-
-<pre><code class="language-rust ignore">fn release(ctx: ScriptContext, tag: String, sec: float)</code></pre>
-<div>
-<div class="tab">
-<button group="release" id="link-release-Description" class="tablinks active" onclick="openTab(event, &#39;release&#39;, &#39;Description&#39;)">
-Description
-</button>
-</div>
-
-<div group="release" id="release-Description" class="tabcontent" style="display: block;">
-Release agents by tag over `sec` seconds.
-</div>
-
-</div>
-
-</div>
-
-<br />
-<div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
-    
-<h2 class="func-name"> <code>fn</code> release_agent </h2>
-
-<pre><code class="language-rust ignore">fn release_agent(ctx: ScriptContext, target: AgentHandle, sec: float)</code></pre>
-<div>
-<div class="tab">
-<button group="release_agent" id="link-release_agent-Description" class="tablinks active" onclick="openTab(event, &#39;release_agent&#39;, &#39;Description&#39;)">
-Description
-</button>
-</div>
-
-<div group="release_agent" id="release_agent-Description" class="tabcontent" style="display: block;">
-Release agents over `sec` seconds.
-</div>
-
-</div>
-
-</div>
-
-<br />
-<div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
-    
-<h2 class="func-name"> <code>fn</code> release_cohort </h2>
-
-<pre><code class="language-rust ignore">fn release_cohort(ctx: ScriptContext, target: CohortHandle, sec: float)</code></pre>
-<div>
-<div class="tab">
-<button group="release_cohort" id="link-release_cohort-Description" class="tablinks active" onclick="openTab(event, &#39;release_cohort&#39;, &#39;Description&#39;)">
-Description
-</button>
-</div>
-
-<div group="release_cohort" id="release_cohort-Description" class="tabcontent" style="display: block;">
-Release a cohort over `sec` seconds.
-</div>
-
-</div>
-
-</div>
-
-<br />
-<div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
-    
-<h2 class="func-name"> <code>fn</code> release_tag </h2>
-
-<pre><code class="language-rust ignore">fn release_tag(ctx: ScriptContext, target: TagSelector, sec: float)</code></pre>
-<div>
-<div class="tab">
-<button group="release_tag" id="link-release_tag-Description" class="tablinks active" onclick="openTab(event, &#39;release_tag&#39;, &#39;Description&#39;)">
-Description
-</button>
-</div>
-
-<div group="release_tag" id="release_tag-Description" class="tabcontent" style="display: block;">
-Release a tag selector over `sec` seconds.
-</div>
-
-</div>
-
-</div>
-
-<br />
-<div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
-    
-<h2 class="func-name"> <code>fn</code> remove </h2>
-
-<pre><code class="language-rust ignore">fn remove(ctx: ScriptContext, tag: String)</code></pre>
-<div>
-<div class="tab">
-<button group="remove" id="link-remove-Description" class="tablinks active" onclick="openTab(event, &#39;remove&#39;, &#39;Description&#39;)">
-Description
-</button>
-</div>
-
-<div group="remove" id="remove-Description" class="tabcontent" style="display: block;">
-Remove agents by tag.
-</div>
-
-</div>
-
-</div>
-
-<br />
-<div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
-    
-<h2 class="func-name"> <code>fn</code> remove_agent </h2>
-
-<pre><code class="language-rust ignore">fn remove_agent(ctx: ScriptContext, target: AgentHandle)</code></pre>
-<div>
-<div class="tab">
-<button group="remove_agent" id="link-remove_agent-Description" class="tablinks active" onclick="openTab(event, &#39;remove_agent&#39;, &#39;Description&#39;)">
-Description
-</button>
-</div>
-
-<div group="remove_agent" id="remove_agent-Description" class="tabcontent" style="display: block;">
-Remove agents immediately.
-</div>
-
-</div>
-
-</div>
-
-<br />
-<div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
-    
-<h2 class="func-name"> <code>fn</code> remove_cohort </h2>
-
-<pre><code class="language-rust ignore">fn remove_cohort(ctx: ScriptContext, target: CohortHandle)</code></pre>
-<div>
-<div class="tab">
-<button group="remove_cohort" id="link-remove_cohort-Description" class="tablinks active" onclick="openTab(event, &#39;remove_cohort&#39;, &#39;Description&#39;)">
-Description
-</button>
-</div>
-
-<div group="remove_cohort" id="remove_cohort-Description" class="tabcontent" style="display: block;">
-Remove a cohort immediately.
-</div>
-
-</div>
-
-</div>
-
-<br />
-<div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
-    
-<h2 class="func-name"> <code>fn</code> remove_tag </h2>
-
-<pre><code class="language-rust ignore">fn remove_tag(ctx: ScriptContext, target: TagSelector)</code></pre>
-<div>
-<div class="tab">
-<button group="remove_tag" id="link-remove_tag-Description" class="tablinks active" onclick="openTab(event, &#39;remove_tag&#39;, &#39;Description&#39;)">
-Description
-</button>
-</div>
-
-<div group="remove_tag" id="remove_tag-Description" class="tabcontent" style="display: block;">
-Remove a tag selector immediately.
-</div>
-
-</div>
-
-</div>
-
-<br />
-<div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
-    
-<h2 class="func-name"> <code>fn</code> run </h2>
-
-<pre><code class="language-rust ignore">fn run(ctx: ScriptContext, sec: int)
-fn run(ctx: ScriptContext, sec: float)</code></pre>
-<div>
-<div class="tab">
-<button group="run" id="link-run-Description" class="tablinks active" onclick="openTab(event, &#39;run&#39;, &#39;Description&#39;)">
-Description
-</button>
-</div>
-
-<div group="run" id="run-Description" class="tabcontent" style="display: block;">
-Run for `sec` seconds and finish the scenario.
-</div>
-
-</div>
-
-</div>
-
-<br />
-<div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
-    
-<h2 class="func-name"> <code>fn</code> scene </h2>
-
-<pre><code class="language-rust ignore">fn scene(ctx: ScriptContext, name: String)</code></pre>
-<div>
-<div class="tab">
-<button group="scene" id="link-scene-Description" class="tablinks active" onclick="openTab(event, &#39;scene&#39;, &#39;Description&#39;)">
-Description
-</button>
-</div>
-
-<div group="scene" id="scene-Description" class="tabcontent" style="display: block;">
-Add a named scene marker at the current cursor time.
-</div>
-
-</div>
-
-</div>
-
-<br />
-<div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
-    
-<h2 class="func-name"> <code>fn</code> set_global_coupling </h2>
-
-<pre><code class="language-rust ignore">fn set_global_coupling(ctx: ScriptContext, value: float)</code></pre>
-<div>
-<div class="tab">
-<button group="set_global_coupling" id="link-set_global_coupling-Description" class="tablinks active" onclick="openTab(event, &#39;set_global_coupling&#39;, &#39;Description&#39;)">
-Description
-</button>
-</div>
-
-<div group="set_global_coupling" id="set_global_coupling-Description" class="tabcontent" style="display: block;">
-Set the global coupling strength across agents.
-</div>
-
-</div>
-
-</div>
-
-<br />
-<div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
-    
-<h2 class="func-name"> <code>fn</code> set_harmonicity </h2>
-
-<pre><code class="language-rust ignore">fn set_harmonicity(ctx: ScriptContext, map: Map)</code></pre>
-<div>
-<div class="tab">
-<button group="set_harmonicity" id="link-set_harmonicity-Description" class="tablinks active" onclick="openTab(event, &#39;set_harmonicity&#39;, &#39;Description&#39;)">
-Description
-</button>
-</div>
-
-<div group="set_harmonicity" id="set_harmonicity-Description" class="tabcontent" style="display: block;">
-Configure harmonicity calculation parameters.
-<p><code>map</code> schema:</p>
+                        <h1 id="quick-start-guide"><a class="header" href="#quick-start-guide">Quick Start Guide</a></h1>
+<p>This page provides a quick introduction to Conchordal’s scripting API. For the complete API reference, see <a href="#conchordal-scripting-api-reference">Reference</a>.</p>
+<h2 id="basic-concepts"><a class="header" href="#basic-concepts">Basic Concepts</a></h2>
 <ul>
-<li><code>mirror</code>: f32 (optional, mirror weighting)</li>
-<li><code>limit</code>: i64 (optional, partials limit)</li>
+<li><strong>Species</strong>: Templates for creating agents (defined with <code>derive()</code>)</li>
+<li><strong>Groups</strong>: Collections of agents created from a species (created with <code>create()</code>)</li>
+<li><strong>Timeline</strong>: Sequential and parallel execution controlled by <code>wait()</code>, <code>flush()</code>, and <code>parallel()</code></li>
+<li><strong>Strategies</strong>: Methods for placing multiple agents in frequency space</li>
 </ul>
+<h2 id="minimal-example"><a class="header" href="#minimal-example">Minimal Example</a></h2>
+<pre><code class="language-ts">// Create a single sine wave at 440 Hz
+create(sine, 1).freq(440.0);
+wait(2.0);  // Play for 2 seconds
+</code></pre>
+<h2 id="common-patterns"><a class="header" href="#common-patterns">Common Patterns</a></h2>
+<h3 id="define-a-custom-species"><a class="header" href="#define-a-custom-species">Define a Custom Species</a></h3>
+<pre><code class="language-ts">let voice = derive(harmonic)
+    .amp(0.5)
+    .phonation("hold")
+    .timbre(0.7, 0.2);
+</code></pre>
+<h3 id="create-multiple-agents-with-consonance-strategy"><a class="header" href="#create-multiple-agents-with-consonance-strategy">Create Multiple Agents with Consonance Strategy</a></h3>
+<pre><code class="language-ts">let strat = consonance(220.0).range(1.0, 4.0);
+create(sine, 4).place(strat);
+flush();  // Spawn immediately
+</code></pre>
+<h3 id="scene-with-automatic-cleanup"><a class="header" href="#scene-with-automatic-cleanup">Scene with Automatic Cleanup</a></h3>
+<pre><code class="language-ts">scene("Introduction", || {
+    let drone = derive(sine).amp(0.6).phonation("hold");
+    create(drone, 1).freq(110.0);
+    wait(3.0);
+    // All groups auto-released when scene ends
+});
+</code></pre>
+<h3 id="parallel-timelines"><a class="header" href="#parallel-timelines">Parallel Timelines</a></h3>
+<pre><code class="language-ts">parallel([
+    || {
+        // Bass line
+        create(sine, 1).freq(110.0);
+        wait(2.0);
+    },
+    || {
+        // Melody
+        create(harmonic, 1).freq(440.0);
+        wait(1.0);
+        create(harmonic, 1).freq(550.0);
+        wait(1.0);
+    }
+]);
+</code></pre>
+<h3 id="live-parameter-updates"><a class="header" href="#live-parameter-updates">Live Parameter Updates</a></h3>
+<pre><code class="language-ts">let g = create(sine, 1).freq(220.0);
+flush();
+wait(1.0);
+
+g.freq(440.0);  // Slide to new frequency
+flush();
+wait(1.0);
+</code></pre>
+<h3 id="modulate-global-parameters"><a class="header" href="#modulate-global-parameters">Modulate Global Parameters</a></h3>
+<pre><code class="language-ts">// Start with overtone series (major)
+set_harmonicity_mirror_weight(0.0);
+let strat = consonance(261.63).range(1.0, 3.0);
+create(sine, 4).place(strat);
+wait(2.0);
+
+// Switch to undertone series (minor)
+set_harmonicity_mirror_weight(1.0);
+wait(2.0);
+</code></pre>
+<h2 id="preset-species"><a class="header" href="#preset-species">Preset Species</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Preset</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>sine</code></td><td>Pure sine wave</td></tr>
+<tr><td><code>harmonic</code></td><td>Harmonic series</td></tr>
+<tr><td><code>saw</code></td><td>Sawtooth-like timbre</td></tr>
+<tr><td><code>square</code></td><td>Square-like timbre</td></tr>
+<tr><td><code>noise</code></td><td>Noise-like timbre</td></tr>
+</tbody>
+</table>
 </div>
-
+<h2 id="brain-types"><a class="header" href="#brain-types">Brain Types</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Type</th><th>Behavior</th></tr>
+</thead>
+<tbody>
+<tr><td><code>"entrain"</code></td><td>Responds to rhythm field (default)</td></tr>
+<tr><td><code>"seq"</code></td><td>Fixed-duration notes</td></tr>
+<tr><td><code>"drone"</code></td><td>Sustained with sway</td></tr>
+</tbody>
+</table>
 </div>
-
+<h2 id="phonation-types"><a class="header" href="#phonation-types">Phonation Types</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Type</th><th>Behavior</th></tr>
+</thead>
+<tbody>
+<tr><td><code>"hold"</code></td><td>Sustain tied to lifecycle</td></tr>
+<tr><td><code>"decay"</code></td><td>Interval retriggering</td></tr>
+<tr><td><code>"grain"</code></td><td>Field-based granular</td></tr>
+</tbody>
+</table>
 </div>
-
-<br />
-<div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
-    
-<h2 class="func-name"> <code>fn</code> set_rhythm_vitality </h2>
-
-<pre><code class="language-rust ignore">fn set_rhythm_vitality(ctx: ScriptContext, value: float)</code></pre>
-<div>
-<div class="tab">
-<button group="set_rhythm_vitality" id="link-set_rhythm_vitality-Description" class="tablinks active" onclick="openTab(event, &#39;set_rhythm_vitality&#39;, &#39;Description&#39;)">
-Description
-</button>
+<h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
+<p>See the <a href="#conchordal-scripting-api-reference">complete API reference</a> for detailed documentation of all functions, types, and parameters.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="conchordal-scripting-api-reference"><a class="header" href="#conchordal-scripting-api-reference">Conchordal Scripting API Reference</a></h1>
+<p>This document describes the Rhai scripting API for Conchordal’s Life Engine.</p>
+<h2 id="overview"><a class="header" href="#overview">Overview</a></h2>
+<p>The scripting API allows you to compose scenarios by:</p>
+<ul>
+<li>Defining <strong>species</strong> (agent templates with body method, timbre, brain type)</li>
+<li>Creating <strong>groups</strong> of agents from species</li>
+<li>Controlling <strong>timeline</strong> (waiting, flushing, parallel execution)</li>
+<li>Managing <strong>placement</strong> strategies (consonance-based, random, linear)</li>
+<li>Adjusting <strong>global parameters</strong> (harmonicity mirror weight, coupling, roughness)</li>
+</ul>
+<h2 id="types"><a class="header" href="#types">Types</a></h2>
+<h3 id="specieshandle"><a class="header" href="#specieshandle">SpeciesHandle</a></h3>
+<p>Represents a species template for creating agents. Created by deriving from presets or other species.</p>
+<h3 id="grouphandle"><a class="header" href="#grouphandle">GroupHandle</a></h3>
+<p>A handle to a group of agents. Returned by <code>create()</code>. Used to control live agents or configure draft groups before spawning.</p>
+<h3 id="spawnstrategy"><a class="header" href="#spawnstrategy">SpawnStrategy</a></h3>
+<p>Defines how frequencies are assigned when creating multiple agents. Created by strategy constructors like <code>consonance()</code>, <code>consonance_density()</code>, etc.</p>
+<h2 id="preset-species-1"><a class="header" href="#preset-species-1">Preset Species</a></h2>
+<p>Global variables for common body methods:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Preset</th><th>Body Method</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>sine</code></td><td>Sine</td><td>Pure sine wave</td></tr>
+<tr><td><code>harmonic</code></td><td>Harmonic</td><td>Harmonic series synthesis</td></tr>
+<tr><td><code>saw</code></td><td>Harmonic</td><td>Sawtooth-like (brightness=0.85, width=0.2)</td></tr>
+<tr><td><code>square</code></td><td>Harmonic</td><td>Square-like (brightness=0.65, width=0.1)</td></tr>
+<tr><td><code>noise</code></td><td>Harmonic</td><td>Noise-like (brightness=1.0, motion=1.0, width=0.35)</td></tr>
+</tbody>
+</table>
 </div>
+<h2 id="species-definition"><a class="header" href="#species-definition">Species Definition</a></h2>
+<h3 id="deriveparent-specieshandle--specieshandle"><a class="header" href="#deriveparent-specieshandle--specieshandle">derive(parent: SpeciesHandle) → SpeciesHandle</a></h3>
+<p>Clone a species to create a new template.</p>
+<pre><code class="language-ts">let my_species = derive(sine).amp(0.5).phonation("hold");
+</code></pre>
+<h3 id="species-methods-chainable"><a class="header" href="#species-methods-chainable">Species Methods (Chainable)</a></h3>
+<p>These methods modify a <code>SpeciesHandle</code> and return it for chaining.</p>
+<h4 id="ampvalue-float--specieshandle"><a class="header" href="#ampvalue-float--specieshandle">amp(value: float) → SpeciesHandle</a></h4>
+<h4 id="ampvalue-int--specieshandle"><a class="header" href="#ampvalue-int--specieshandle">amp(value: int) → SpeciesHandle</a></h4>
+<p>Set amplitude (0.0–1.0).</p>
+<pre><code class="language-ts">let loud = derive(sine).amp(0.8);
+</code></pre>
+<h4 id="freqvalue-float--specieshandle"><a class="header" href="#freqvalue-float--specieshandle">freq(value: float) → SpeciesHandle</a></h4>
+<h4 id="freqvalue-int--specieshandle"><a class="header" href="#freqvalue-int--specieshandle">freq(value: int) → SpeciesHandle</a></h4>
+<p>Set default frequency in Hz.</p>
+<pre><code class="language-ts">let a440 = derive(sine).freq(440.0);
+</code></pre>
+<h4 id="brainname-string--specieshandle"><a class="header" href="#brainname-string--specieshandle">brain(name: string) → SpeciesHandle</a></h4>
+<p>Set brain type. Valid values:</p>
+<ul>
+<li><code>"entrain"</code> - Entrainment brain (default): responds to rhythm field</li>
+<li><code>"seq"</code> - Sequencer brain: fixed duration notes</li>
+<li><code>"drone"</code> - Drone brain: sustained with sway modulation</li>
+</ul>
+<pre><code class="language-ts">let drone = derive(sine).brain("drone");
+</code></pre>
+<h4 id="phonationname-string--specieshandle"><a class="header" href="#phonationname-string--specieshandle">phonation(name: string) → SpeciesHandle</a></h4>
+<p>Set phonation type. Valid values:</p>
+<ul>
+<li><code>"hold"</code> - One-shot sustain tied to lifecycle</li>
+<li><code>"decay"</code> - Interval-based retriggering</li>
+<li><code>"grain"</code> - Field-based retriggering</li>
+</ul>
+<pre><code class="language-ts">let voice = derive(harmonic).phonation("hold");
+</code></pre>
+<h4 id="timbrebrightness-float-width-float--specieshandle"><a class="header" href="#timbrebrightness-float-width-float--specieshandle">timbre(brightness: float, width: float) → SpeciesHandle</a></h4>
+<p>Set timbre parameters (0.0–1.0 each).</p>
+<ul>
+<li><code>brightness</code>: Spectral brightness (higher = brighter)</li>
+<li><code>width</code>: Spectral width (higher = wider)</li>
+</ul>
+<pre><code class="language-ts">let bright = derive(harmonic).timbre(0.9, 0.3);
+</code></pre>
+<h4 id="metabolismrate-float--specieshandle"><a class="header" href="#metabolismrate-float--specieshandle">metabolism(rate: float) → SpeciesHandle</a></h4>
+<p>Set metabolism rate (energy consumption/recovery rate).</p>
+<pre><code class="language-ts">let slow = derive(sine).metabolism(0.3);
+</code></pre>
+<h4 id="adsrattack-float-decay-float-sustain-float-release-float--specieshandle"><a class="header" href="#adsrattack-float-decay-float-sustain-float-release-float--specieshandle">adsr(attack: float, decay: float, sustain: float, release: float) → SpeciesHandle</a></h4>
+<p>Set ADSR envelope parameters (time in seconds for A/D/R, level 0.0–1.0 for S).</p>
+<pre><code class="language-ts">let pluck = derive(harmonic).adsr(0.01, 0.1, 0.3, 0.2);
+</code></pre>
+<h2 id="group-creation"><a class="header" href="#group-creation">Group Creation</a></h2>
+<h3 id="createspecies-specieshandle-count-int--grouphandle"><a class="header" href="#createspecies-specieshandle-count-int--grouphandle">create(species: SpeciesHandle, count: int) → GroupHandle</a></h3>
+<p>Create a draft group of <code>count</code> agents from the given species. Returns a handle for further configuration. The group is spawned when <code>flush()</code> or <code>wait()</code> is called.</p>
+<pre><code class="language-ts">let g = create(sine, 4).freq(220.0).amp(0.5);
+</code></pre>
+<h2 id="timeline-control"><a class="header" href="#timeline-control">Timeline Control</a></h2>
+<h3 id="waitseconds-float"><a class="header" href="#waitseconds-float">wait(seconds: float)</a></h3>
+<h3 id="waitseconds-int"><a class="header" href="#waitseconds-int">wait(seconds: int)</a></h3>
+<p>Flush pending groups, advance the timeline cursor by the given duration, and commit all scheduled events.</p>
+<pre><code class="language-ts">wait(2.0);  // Wait 2 seconds
+</code></pre>
+<h3 id="flush"><a class="header" href="#flush">flush()</a></h3>
+<p>Flush pending draft groups immediately without advancing time. Commits all scheduled events at the current cursor position.</p>
+<pre><code class="language-ts">create(sine, 1).freq(440.0);
+flush();  // Spawn immediately
+</code></pre>
+<h3 id="seedvalue-int"><a class="header" href="#seedvalue-int">seed(value: int)</a></h3>
+<p>Set the random seed for reproducible placement strategies.</p>
+<pre><code class="language-ts">seed(12345);
+</code></pre>
+<h2 id="group-control"><a class="header" href="#group-control">Group Control</a></h2>
+<h3 id="grouphandle-methods-chainable"><a class="header" href="#grouphandle-methods-chainable">GroupHandle Methods (Chainable)</a></h3>
+<p>These methods can be used in two contexts:</p>
+<ol>
+<li><strong>Draft mode</strong> (before <code>flush()</code>/<code>wait()</code>): Configure the group before spawning</li>
+<li><strong>Live mode</strong> (after spawning): Update parameters of live agents</li>
+</ol>
+<h4 id="ampvalue-float--grouphandle"><a class="header" href="#ampvalue-float--grouphandle">amp(value: float) → GroupHandle</a></h4>
+<h4 id="ampvalue-int--grouphandle"><a class="header" href="#ampvalue-int--grouphandle">amp(value: int) → GroupHandle</a></h4>
+<p>Set or update amplitude.</p>
+<pre><code class="language-ts">let g = create(sine, 1).amp(0.5);  // Draft
+flush();
+g.amp(0.8);  // Live update
+</code></pre>
+<h4 id="freqvalue-float--grouphandle"><a class="header" href="#freqvalue-float--grouphandle">freq(value: float) → GroupHandle</a></h4>
+<h4 id="freqvalue-int--grouphandle"><a class="header" href="#freqvalue-int--grouphandle">freq(value: int) → GroupHandle</a></h4>
+<p>Set or update frequency. In draft mode, overrides any placement strategy.</p>
+<pre><code class="language-ts">let g = create(sine, 1).freq(220.0);  // Draft
+flush();
+g.freq(440.0);  // Live update (pitch slides)
+</code></pre>
+<h4 id="brainname-string--grouphandle"><a class="header" href="#brainname-string--grouphandle">brain(name: string) → GroupHandle</a></h4>
+<p>Set brain type (draft only). See species <code>brain()</code> for valid values.</p>
+<pre><code class="language-ts">create(sine, 1).brain("drone");
+</code></pre>
+<h4 id="phonationname-string--grouphandle"><a class="header" href="#phonationname-string--grouphandle">phonation(name: string) → GroupHandle</a></h4>
+<p>Set phonation type (draft only). See species <code>phonation()</code> for valid values.</p>
+<pre><code class="language-ts">create(harmonic, 1).phonation("decay");
+</code></pre>
+<h4 id="timbrebrightness-float-width-float--grouphandle"><a class="header" href="#timbrebrightness-float-width-float--grouphandle">timbre(brightness: float, width: float) → GroupHandle</a></h4>
+<p>Set or update timbre.</p>
+<pre><code class="language-ts">let g = create(harmonic, 1).timbre(0.8, 0.2);
+flush();
+g.timbre(0.5, 0.3);  // Live update
+</code></pre>
+<h4 id="metabolismrate-float--grouphandle"><a class="header" href="#metabolismrate-float--grouphandle">metabolism(rate: float) → GroupHandle</a></h4>
+<p>Set metabolism rate (draft only).</p>
+<pre><code class="language-ts">create(sine, 1).metabolism(0.5);
+</code></pre>
+<h4 id="adsrattack-float-decay-float-sustain-float-release-float--grouphandle"><a class="header" href="#adsrattack-float-decay-float-sustain-float-release-float--grouphandle">adsr(attack: float, decay: float, sustain: float, release: float) → GroupHandle</a></h4>
+<p>Set ADSR envelope (draft only).</p>
+<pre><code class="language-ts">create(harmonic, 1).adsr(0.05, 0.1, 0.7, 0.2);
+</code></pre>
+<h4 id="placestrategy-spawnstrategy--grouphandle"><a class="header" href="#placestrategy-spawnstrategy--grouphandle">place(strategy: SpawnStrategy) → GroupHandle</a></h4>
+<p>Set placement strategy (draft only). Assigns frequencies to agents in the group based on the strategy.</p>
+<pre><code class="language-ts">let strat = consonance(220.0).range(1.0, 4.0);
+create(sine, 4).place(strat);
+</code></pre>
+<h3 id="releasehandle-grouphandle"><a class="header" href="#releasehandle-grouphandle">release(handle: GroupHandle)</a></h3>
+<p>Release a group of agents. Agents enter their release phase and fade out.</p>
+<pre><code class="language-ts">let g = create(sine, 1).freq(440.0);
+flush();
+wait(2.0);
+release(g);  // Begin release
+</code></pre>
+<h2 id="spawn-strategies"><a class="header" href="#spawn-strategies">Spawn Strategies</a></h2>
+<p>Strategies define how frequencies are assigned when spawning multiple agents.</p>
+<h3 id="consonanceroot_freq-float--spawnstrategy"><a class="header" href="#consonanceroot_freq-float--spawnstrategy">consonance(root_freq: float) → SpawnStrategy</a></h3>
+<p>Pick highest consonance positions within the multiplier range of the root frequency.</p>
+<p><strong>Default range:</strong> <code>[1.0, 4.0]</code> (root to 2 octaves above)
+<strong>Default min_dist:</strong> <code>1.0</code> ERB</p>
+<pre><code class="language-ts">let strat = consonance(220.0);
+create(sine, 4).place(strat);
+</code></pre>
+<h3 id="consonance_densitymin_freq-float-max_freq-float--spawnstrategy"><a class="header" href="#consonance_densitymin_freq-float-max_freq-float--spawnstrategy">consonance_density(min_freq: float, max_freq: float) → SpawnStrategy</a></h3>
+<p>Weighted-random placement based on consonance density in the frequency range.</p>
+<p><strong>Default min_dist:</strong> <code>1.0</code> ERB</p>
+<pre><code class="language-ts">let strat = consonance_density(100.0, 800.0);
+create(sine, 8).place(strat);
+</code></pre>
+<h3 id="random_logmin_freq-float-max_freq-float--spawnstrategy"><a class="header" href="#random_logmin_freq-float-max_freq-float--spawnstrategy">random_log(min_freq: float, max_freq: float) → SpawnStrategy</a></h3>
+<p>Uniform distribution in logarithmic frequency space (equal probability per octave).</p>
+<pre><code class="language-ts">let strat = random_log(100.0, 1000.0);
+create(sine, 6).place(strat);
+</code></pre>
+<h3 id="linearstart_freq-float-end_freq-float--spawnstrategy"><a class="header" href="#linearstart_freq-float-end_freq-float--spawnstrategy">linear(start_freq: float, end_freq: float) → SpawnStrategy</a></h3>
+<p>Linear interpolation between start and end frequencies.</p>
+<pre><code class="language-ts">let strat = linear(200.0, 800.0);
+create(sine, 5).place(strat);  // Evenly spaced
+</code></pre>
+<h2 id="strategy-modifiers"><a class="header" href="#strategy-modifiers">Strategy Modifiers</a></h2>
+<h3 id="rangestrategy-spawnstrategy-min_mul-float-max_mul-float--spawnstrategy"><a class="header" href="#rangestrategy-spawnstrategy-min_mul-float-max_mul-float--spawnstrategy">range(strategy: SpawnStrategy, min_mul: float, max_mul: float) → SpawnStrategy</a></h3>
+<p>Set multiplier range for <code>consonance()</code> strategy. Ignored for other strategies.</p>
+<pre><code class="language-ts">let strat = consonance(220.0).range(1.0, 3.0);  // 220 to 660 Hz
+</code></pre>
+<h3 id="min_diststrategy-spawnstrategy-distance-float--spawnstrategy"><a class="header" href="#min_diststrategy-spawnstrategy-distance-float--spawnstrategy">min_dist(strategy: SpawnStrategy, distance: float) → SpawnStrategy</a></h3>
+<p>Set minimum distance between agents in ERB units (critical band spacing). Applies to <code>consonance()</code> and <code>consonance_density()</code>.</p>
+<pre><code class="language-ts">let strat = consonance(220.0).min_dist(1.5);  // Wider spacing
+</code></pre>
+<h2 id="scope-management"><a class="header" href="#scope-management">Scope Management</a></h2>
+<h3 id="scenename-string-callback-closure"><a class="header" href="#scenename-string-callback-closure">scene(name: string, callback: closure)</a></h3>
+<p>Create a named scene marker. All groups created within the callback are automatically released when the scene ends (scoped cleanup).</p>
+<pre><code class="language-ts">scene("Intro", || {
+    create(sine, 2).freq(220.0);
+    wait(2.0);
+    // Groups auto-released here
+});
+</code></pre>
+<h3 id="playcallback-closure"><a class="header" href="#playcallback-closure">play(callback: closure)</a></h3>
+<h3 id="playcallback-closure-arg1"><a class="header" href="#playcallback-closure-arg1">play(callback: closure, arg1)</a></h3>
+<h3 id="playcallback-closure-arg1-arg2"><a class="header" href="#playcallback-closure-arg1-arg2">play(callback: closure, arg1, arg2)</a></h3>
+<h3 id="playcallback-closure-arg1-arg2-arg3"><a class="header" href="#playcallback-closure-arg1-arg2-arg3">play(callback: closure, arg1, arg2, arg3)</a></h3>
+<h3 id="playcallback-closure-args-array"><a class="header" href="#playcallback-closure-args-array">play(callback: closure, args: array)</a></h3>
+<p>Execute a closure with optional arguments. Creates a new scope for groups (scoped cleanup).</p>
+<pre><code class="language-ts">let make_chord = |root| {
+    create(sine, 1).freq(root);
+    create(sine, 1).freq(root * 1.25);
+    create(sine, 1).freq(root * 1.5);
+    flush();
+};
 
-<div group="set_rhythm_vitality" id="set_rhythm_vitality-Description" class="tabcontent" style="display: block;">
-Set the global rhythm vitality (affects oscillatory dynamics).
+play(make_chord, 220.0);
+wait(2.0);
+// Groups auto-released
+</code></pre>
+<h3 id="parallelcallbacks-array"><a class="header" href="#parallelcallbacks-array">parallel(callbacks: array)</a></h3>
+<p>Execute multiple closures in parallel timelines. Each closure starts at the current cursor position. The cursor advances to the maximum end time of all branches.</p>
+<pre><code class="language-ts">parallel([
+    || {
+        create(sine, 1).freq(220.0);
+        wait(1.0);
+    },
+    || {
+        create(sine, 1).freq(330.0);
+        wait(2.0);  // This branch takes longer
+    }
+]);
+// Cursor now at 2.0 seconds
+</code></pre>
+<h2 id="global-parameters"><a class="header" href="#global-parameters">Global Parameters</a></h2>
+<h3 id="set_harmonicity_mirror_weightvalue-float"><a class="header" href="#set_harmonicity_mirror_weightvalue-float">set_harmonicity_mirror_weight(value: float)</a></h3>
+<p>Set the overtone/undertone balance (0.0–1.0).</p>
+<ul>
+<li><code>0.0</code> = Pure overtone series (major/bright)</li>
+<li><code>1.0</code> = Pure undertone series (minor/dark)</li>
+<li><code>0.5</code> = Balanced</li>
+</ul>
+<pre><code class="language-ts">set_harmonicity_mirror_weight(0.0);  // Major mode
+wait(2.0);
+set_harmonicity_mirror_weight(1.0);  // Minor mode
+</code></pre>
+<h3 id="set_global_couplingvalue-float"><a class="header" href="#set_global_couplingvalue-float">set_global_coupling(value: float)</a></h3>
+<p>Set global agent-agent interaction strength (0.0–1.0). Higher values increase mutual influence between agents.</p>
+<pre><code class="language-ts">set_global_coupling(0.5);
+</code></pre>
+<h3 id="set_roughness_kvalue-float"><a class="header" href="#set_roughness_kvalue-float">set_roughness_k(value: float)</a></h3>
+<p>Set roughness tolerance parameter. Controls how strongly agents avoid dissonant (rough) regions.</p>
+<pre><code class="language-ts">set_roughness_k(0.8);
+</code></pre>
+<h2 id="example-complete-scenario"><a class="header" href="#example-complete-scenario">Example: Complete Scenario</a></h2>
+<pre><code class="language-ts">// Define species
+let drone = derive(sine).amp(0.6).phonation("hold");
+let voice = derive(harmonic).amp(0.3).phonation("hold");
+
+scene("Opening", || {
+    // Create anchor drone
+    let anchor = create(drone, 1).freq(220.0);
+    flush();
+    wait(1.0);
+
+    // Spawn consonant voices
+    let strat = consonance(220.0).range(1.0, 3.0).min_dist(0.9);
+    create(voice, 4).place(strat);
+    wait(2.0);
+
+    // Modulate harmonicity
+    set_harmonicity_mirror_weight(1.0);
+    wait(2.0);
+});
+</code></pre>
+<h2 id="brain-types-reference"><a class="header" href="#brain-types-reference">Brain Types Reference</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Brain</th><th>Behavior</th></tr>
+</thead>
+<tbody>
+<tr><td><code>entrain</code></td><td>Synchronizes with detected rhythms in the field (default)</td></tr>
+<tr><td><code>seq</code></td><td>Fixed-duration note sequencing</td></tr>
+<tr><td><code>drone</code></td><td>Sustained tone with slow frequency sway</td></tr>
+</tbody>
+</table>
 </div>
-
+<h2 id="phonation-types-reference"><a class="header" href="#phonation-types-reference">Phonation Types Reference</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Phonation</th><th>Behavior</th></tr>
+</thead>
+<tbody>
+<tr><td><code>hold</code></td><td>One-shot sustain tied to agent lifecycle</td></tr>
+<tr><td><code>decay</code></td><td>Interval-based retriggering</td></tr>
+<tr><td><code>grain</code></td><td>Field-based granular retriggering</td></tr>
+</tbody>
+</table>
 </div>
-
-</div>
-
-<br />
-<div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
-    
-<h2 class="func-name"> <code>fn</code> set_roughness_tolerance </h2>
-
-<pre><code class="language-rust ignore">fn set_roughness_tolerance(ctx: ScriptContext, value: float)</code></pre>
-<div>
-<div class="tab">
-<button group="set_roughness_tolerance" id="link-set_roughness_tolerance-Description" class="tablinks active" onclick="openTab(event, &#39;set_roughness_tolerance&#39;, &#39;Description&#39;)">
-Description
-</button>
-</div>
-
-<div group="set_roughness_tolerance" id="set_roughness_tolerance-Description" class="tabcontent" style="display: block;">
-Set the global roughness tolerance.
-</div>
-
-</div>
-
-</div>
-
-<br />
-<div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
-    
-<h2 class="func-name"> <code>fn</code> set_time </h2>
-
-<pre><code class="language-rust ignore">fn set_time(ctx: ScriptContext, sec: float)</code></pre>
-<div>
-<div class="tab">
-<button group="set_time" id="link-set_time-Description" class="tablinks active" onclick="openTab(event, &#39;set_time&#39;, &#39;Description&#39;)">
-Description
-</button>
-</div>
-
-<div group="set_time" id="set_time-Description" class="tabcontent" style="display: block;">
-Set the cursor to an absolute time (seconds).
-</div>
-
-</div>
-
-</div>
-
-<br />
-<div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
-    
-<h2 class="func-name"> <code>fn</code> spectral_gap </h2>
-
-<pre><code class="language-rust ignore">fn spectral_gap(min_freq: float, max_freq: float) -&gt; Map
-fn spectral_gap(min_freq: float, max_freq: float, opts: Map) -&gt; Map</code></pre>
-<div>
-<div class="tab">
-<button group="spectral_gap" id="link-spectral_gap-Description" class="tablinks active" onclick="openTab(event, &#39;spectral_gap&#39;, &#39;Description&#39;)">
-Description
-</button>
-</div>
-
-<div group="spectral_gap" id="spectral_gap-Description" class="tabcontent" style="display: block;">
-Spectral gap spawn method.
-</div>
-
-</div>
-
-</div>
-
-<br />
-<div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
-    
-<h2 class="func-name"> <code>fn</code> tag </h2>
-
-<pre><code class="language-rust ignore">fn tag(_ctx: ScriptContext, name: String) -&gt; TagSelector</code></pre>
-<div>
-<div class="tab">
-<button group="tag" id="link-tag-Description" class="tablinks active" onclick="openTab(event, &#39;tag&#39;, &#39;Description&#39;)">
-Description
-</button>
-</div>
-
-<div group="tag" id="tag-Description" class="tabcontent" style="display: block;">
-Create a dynamic selector for a tag.
-</div>
-
-</div>
-
-</div>
-
-<br />
-<div style="box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; border: 1px solid var(--theme-hover)">
-    
-<h2 class="func-name"> <code>fn</code> wait </h2>
-
-<pre><code class="language-rust ignore">fn wait(ctx: ScriptContext, sec: float)
-fn wait(ctx: ScriptContext, sec: int)</code></pre>
-<div>
-<div class="tab">
-<button group="wait" id="link-wait-Description" class="tablinks active" onclick="openTab(event, &#39;wait&#39;, &#39;Description&#39;)">
-Description
-</button>
-</div>
-
-<div group="wait" id="wait-Description" class="tabcontent" style="display: block;">
-Advance the global time cursor by `sec` seconds.
-</div>
-
-</div>
-
-</div>
-
-<br />
 
                     </main>
 

@@ -1,5 +1,5 @@
 [book]
-title = "Rhai Script Reference"
+title = "Conchordal Script Reference"
 src = "src"
 
 [build]

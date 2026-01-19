@@ -1,4 +1,4 @@
 # Summary
 
-- [Reference](reference/life.md)
-- [Scripting API](scripting_api.md)
+- [Quick Start](scripting_api.md)
+- [API Reference](reference/life.md)

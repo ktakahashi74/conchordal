@@ -827,19 +827,20 @@ Strategies determine how frequencies are assigned when spawning multiple agents:
 
 | Strategy | Constructor | Description |
 |----------|-------------|-------------|
-| Harmonicity | `harmonicity(root_freq)` | Place on harmonic series of root |
-| Harmonic Density | `harmonic_density(min, max)` | Weighted-random based on consonance |
+| Harmonicity | `harmonicity(root_freq)` | Pick highest consonance within multiplier range of root |
+| Harmonic Density | `harmonic_density(min, max)` | Weighted-random based on consonance in freq range |
 | Random Log | `random_log(min, max)` | Uniform distribution in log-frequency |
 | Linear | `linear(start, end)` | Linear interpolation across agents |
 
 **Harmonicity Strategy Modifiers**:
-- `.range(min_mul, max_mul)`: Set harmonic multiplier range (default: 1–4)
+- `.range(min_mul, max_mul)`: Set multiplier range (default: 1–4); spawn freq = root × [min_mul, max_mul]
 - `.min_dist(erb)`: Set minimum separation in ERB (default: 1.0)
 
 ### 6.3.5 Timeline Control
 
 | Function | Description |
 |----------|-------------|
+| `create(species, count)` | Create a new group of `count` agents from `species`; returns `GroupHandle` in Draft state |
 | `wait(sec)` | Commits drafts, advances cursor by `sec` seconds |
 | `flush()` | Commits drafts without advancing time |
 | `release(group)` | Marks group for removal with fade |

@@ -827,19 +827,20 @@ Dropped ◄───────────────────────
 
 | 戦略 | コンストラクタ | 説明 |
 |----------|-------------|-------------|
-| Harmonicity | `harmonicity(root_freq)` | rootの倍音列上に配置 |
-| Harmonic Density | `harmonic_density(min, max)` | 協和度に基づく重み付けランダム |
+| Harmonicity | `harmonicity(root_freq)` | root倍率範囲内で最高協和度の位置を選択 |
+| Harmonic Density | `harmonic_density(min, max)` | 周波数範囲内で協和度に基づく重み付けランダム |
 | Random Log | `random_log(min, max)` | 対数周波数の一様分布 |
 | Linear | `linear(start, end)` | エージェント間の線形補間 |
 
 **Harmonicity戦略修飾子**：
-- `.range(min_mul, max_mul)`：倍音乗数範囲を設定（デフォルト：1–4）
+- `.range(min_mul, max_mul)`：倍率範囲を設定（デフォルト：1–4）; spawn freq = root × [min_mul, max_mul]
 - `.min_dist(erb)`：ERB単位の最小間隔を設定（デフォルト：1.0）
 
 ### 6.3.5 タイムライン制御
 
 | 関数 | 説明 |
 |----------|-------------|
+| `create(species, count)` | `species`から`count`個のエージェントの新規グループを作成；Draft状態の`GroupHandle`を返す |
 | `wait(sec)` | ドラフトをコミットし、カーソルを `sec` 秒進める |
 | `flush()` | 時間を進めずにドラフトをコミット |
 | `release(group)` | フェードでグループを削除マーク |

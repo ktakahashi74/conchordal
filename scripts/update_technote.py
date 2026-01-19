@@ -16,10 +16,12 @@ Usage:
   python scripts/update_technote.py --model sonnet     # Use different model
   python scripts/update_technote.py --skip-ja          # English only
   python scripts/update_technote.py --ja-only          # Japanese only (from existing English)
-  python scripts/update_technote.py --dry-run          # Preview only
+  python scripts/update_technote.py --dry-run          # Preview only (shows diff)
+  python scripts/update_technote.py --sections 4 6.3   # Update only specific sections
 """
 
 import argparse
+import difflib
 import os
 import re
 import subprocess
@@ -38,7 +40,23 @@ CONTEXT_FILE = REPO_ROOT / "repomix-output.xml"
 
 # === Defaults ===
 DEFAULT_MODEL = "opus"  # CLI alias for latest opus
-MAX_TOKENS = 16384
+MAX_TOKENS = 32768
+
+# === Model ID Mapping ===
+# Maps CLI aliases to full model IDs for accurate metadata recording
+MODEL_IDS = {
+    "opus": "claude-opus-4-5-20251101",
+    "sonnet": "claude-sonnet-4-20250514",
+}
+
+# Maps CLI aliases to API model names
+MODEL_API_NAMES = {
+    "opus": "claude-opus-4-5-20251101",
+    "sonnet": "claude-sonnet-4-20250514",
+}
+
+# Required sections for validation
+REQUIRED_SECTIONS = ["# 1.", "# 2.", "# 3.", "# 4.", "# 5.", "# 6.", "# 7.", "# 8."]
 
 
 # =============================================================================
@@ -126,7 +144,10 @@ def inject_metadata(content: str, model_name: str) -> str:
         content = update_frontmatter_field(content, "source_snapshot", commit_date)
 
     content = update_frontmatter_field(content, "last_updated", now)
-    content = update_frontmatter_field(content, "generated_by", model_name)
+
+    # Use full model ID instead of alias
+    resolved_model_id = MODEL_IDS.get(model_name, model_name)
+    content = update_frontmatter_field(content, "generated_by", resolved_model_id)
 
     return content
 
@@ -139,6 +160,36 @@ def read_file(path: Path) -> str:
 def write_file(path: Path, content: str) -> None:
     with open(path, "w", encoding="utf-8") as f:
         f.write(content)
+
+
+def show_diff(old_content: str, new_content: str, filename: str = "technote.md") -> None:
+    """Display unified diff between old and new content."""
+    old_lines = old_content.splitlines(keepends=True)
+    new_lines = new_content.splitlines(keepends=True)
+
+    diff = difflib.unified_diff(
+        old_lines, new_lines,
+        fromfile=f"a/{filename}",
+        tofile=f"b/{filename}",
+    )
+
+    diff_text = ''.join(diff)
+    if diff_text:
+        print("\n" + "=" * 60)
+        print(f"DIFF ({filename}):")
+        print("=" * 60)
+        # Colorize diff output if terminal supports it
+        for line in diff_text.splitlines():
+            if line.startswith('+') and not line.startswith('+++'):
+                print(f"\033[32m{line}\033[0m")  # Green for additions
+            elif line.startswith('-') and not line.startswith('---'):
+                print(f"\033[31m{line}\033[0m")  # Red for deletions
+            elif line.startswith('@@'):
+                print(f"\033[36m{line}\033[0m")  # Cyan for line numbers
+            else:
+                print(line)
+    else:
+        print(f"\nNo changes in {filename}")
 
 
 # =============================================================================
@@ -160,6 +211,18 @@ def run_repomix(output_file: Path) -> None:
     except FileNotFoundError:
         print("Error: npx not found. Install Node.js.", file=sys.stderr)
         sys.exit(1)
+
+    # Check file size and warn if too large
+    if output_file.exists():
+        size_mb = output_file.stat().st_size / (1024 * 1024)
+        print(f">> Context file size: {size_mb:.1f} MB")
+        if size_mb > 5:
+            print(f"Warning: Context file is {size_mb:.1f}MB, may exceed token limits",
+                  file=sys.stderr)
+        if size_mb > 10:
+            print("Error: Context file too large (>10MB). Consider filtering with repomix config.",
+                  file=sys.stderr)
+            sys.exit(1)
 
 
 def call_llm_cli(model: str, system_prompt: str, user_message: str) -> str:
@@ -216,11 +279,7 @@ def call_llm_api(model: str, system_prompt: str, user_message: str) -> str:
         sys.exit(1)
 
     # Resolve CLI aliases to full model names for API
-    model_aliases = {
-        "opus": "claude-opus-4-20250514",
-        "sonnet": "claude-sonnet-4-20250514",
-    }
-    resolved_model = model_aliases.get(model, model)
+    resolved_model = MODEL_API_NAMES.get(model, model)
 
     print(f">> Calling API ({resolved_model})...")
     client = anthropic.Anthropic(api_key=api_key)
@@ -235,15 +294,126 @@ def call_llm_api(model: str, system_prompt: str, user_message: str) -> str:
     return response.content[0].text
 
 
-def validate_output(content: str) -> bool:
-    """Basic validation of generated markdown."""
+def validate_output(content: str, check_sections: bool = True) -> bool:
+    """Validate generated markdown structure."""
+    is_valid = True
+
+    # Check frontmatter
     if not re.match(r"^\+\+\+\n.*?\n\+\+\+\n", content, re.DOTALL):
         print("Warning: Missing TOML frontmatter", file=sys.stderr)
-        return False
+        is_valid = False
+
+    # Check minimum length
     if len(content) < 1000:
         print("Warning: Output too short", file=sys.stderr)
-        return False
-    return True
+        is_valid = False
+
+    # Check required sections
+    if check_sections:
+        for sec in REQUIRED_SECTIONS:
+            if sec not in content:
+                print(f"Warning: Missing section {sec}", file=sys.stderr)
+                is_valid = False
+
+    # Check for common LLM artifacts
+    artifacts = [
+        "I'll help you",
+        "Here's the updated",
+        "```markdown",
+        "Let me ",
+        "I've updated",
+    ]
+    for artifact in artifacts:
+        if artifact.lower() in content[:500].lower():
+            print(f"Warning: Possible LLM preamble detected: '{artifact}'", file=sys.stderr)
+            is_valid = False
+
+    return is_valid
+
+
+def clean_llm_output(content: str) -> str:
+    """Clean LLM output to extract pure markdown."""
+    content = content.strip()
+
+    # Find frontmatter start and discard preamble
+    if "+++" in content:
+        start = content.find("+++")
+        content = content[start:]
+
+    # Remove wrapping code fences
+    if content.startswith("```"):
+        lines = content.split("\n")
+        if lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        content = "\n".join(lines)
+
+    # Remove trailing code fence if present
+    content = re.sub(r'\n```\s*$', '', content)
+
+    return content
+
+
+# =============================================================================
+# Section-based Update
+# =============================================================================
+
+def extract_sections(content: str) -> dict[str, str]:
+    """Extract sections from markdown by heading."""
+    sections = {}
+    current_section = None
+    current_lines = []
+
+    # Skip frontmatter
+    fm_match = re.match(r"^\+\+\+\n.*?\n\+\+\+\n", content, re.DOTALL)
+    if fm_match:
+        sections["_frontmatter"] = fm_match.group(0)
+        content = content[fm_match.end():]
+
+    for line in content.split("\n"):
+        heading_match = re.match(r"^(#{1,2})\s+(\d+(?:\.\d+)?)\.", line)
+        if heading_match:
+            # Save previous section
+            if current_section:
+                sections[current_section] = "\n".join(current_lines)
+            current_section = heading_match.group(2)
+            current_lines = [line]
+        else:
+            current_lines.append(line)
+
+    # Save last section
+    if current_section:
+        sections[current_section] = "\n".join(current_lines)
+
+    return sections
+
+
+def merge_sections(old_content: str, new_sections: dict[str, str],
+                   sections_to_update: list[str]) -> str:
+    """Merge specific new sections into old content."""
+    old_sections = extract_sections(old_content)
+
+    for sec_num in sections_to_update:
+        if sec_num in new_sections:
+            old_sections[sec_num] = new_sections[sec_num]
+            print(f">> Updated section {sec_num}")
+        else:
+            print(f"Warning: Section {sec_num} not found in new content", file=sys.stderr)
+
+    # Reconstruct document
+    result = old_sections.get("_frontmatter", "")
+
+    # Sort sections by number
+    section_nums = sorted(
+        [k for k in old_sections.keys() if k != "_frontmatter"],
+        key=lambda x: [int(n) for n in x.split(".")]
+    )
+
+    for sec_num in section_nums:
+        result += old_sections[sec_num] + "\n"
+
+    return result
 
 
 # =============================================================================
@@ -252,12 +422,13 @@ def validate_output(content: str) -> bool:
 
 def main():
     parser = argparse.ArgumentParser(description="Update technote.md via LLM")
-    parser.add_argument("--model", default=DEFAULT_MODEL, help="Model name")
+    parser.add_argument("--model", default=DEFAULT_MODEL, help="Model name (opus, sonnet, or full ID)")
     parser.add_argument("--use-api", action="store_true", help="Use API instead of CLI")
-    parser.add_argument("--dry-run", action="store_true", help="Preview only")
+    parser.add_argument("--dry-run", action="store_true", help="Preview changes with diff")
     parser.add_argument("--skip-repomix", action="store_true", help="Skip repomix")
     parser.add_argument("--skip-ja", action="store_true", help="Skip Japanese translation")
     parser.add_argument("--ja-only", action="store_true", help="Only generate Japanese (from existing English)")
+    parser.add_argument("--sections", nargs="+", help="Update only specific sections (e.g., --sections 4 6.3)")
     parser.add_argument("--context", type=Path, default=CONTEXT_FILE, help="Context file")
     parser.add_argument("--technote", type=Path, default=TECHNOTE_PATH, help="Source technote.md path")
     args = parser.parse_args()
@@ -272,11 +443,14 @@ def main():
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     GENERATED_DIR.mkdir(parents=True, exist_ok=True)
 
+    # Store original content for diff
+    original_content = read_file(args.technote)
+
     # === English Version ===
     if args.ja_only:
         # Skip English generation, use existing file
         print(">> Using existing English version...")
-        updated_content = read_file(args.technote)
+        updated_content = original_content
     else:
         # 1. Pack codebase
         if not args.skip_repomix:
@@ -289,8 +463,24 @@ def main():
         print(">> Loading system prompt...")
         system_prompt = read_file(PROMPT_PATH)
 
-        # 3. Build prompt (reference files by path, let Claude read them)
-        user_message = f"""Update technote.md with minimal changes.
+        # 3. Build prompt
+        if args.sections:
+            section_list = ", ".join(args.sections)
+            user_message = f"""Update ONLY sections {section_list} of technote.md.
+
+Source files:
+1. Codebase context: {args.context.resolve()}
+2. Current technote to update: {args.technote.resolve()}
+
+Read both files, then output the COMPLETE updated technote.md.
+Only modify sections {section_list}, keep all other sections unchanged.
+
+CRITICAL: Your response must start EXACTLY with "+++" (the TOML frontmatter delimiter).
+Do NOT include any explanation, thinking, or preamble before the frontmatter.
+Output ONLY the raw markdown file content.
+"""
+        else:
+            user_message = f"""Update technote.md with minimal changes.
 
 Source files:
 1. Codebase context: {args.context.resolve()}
@@ -328,38 +518,25 @@ Output the fully updated technote.md. ONLY markdown with TOML frontmatter, no fi
             print(f"Error: {e}", file=sys.stderr)
             sys.exit(1)
 
-        # 5. Clean output - strip everything before frontmatter
-        updated_content = updated_content.strip()
-    
-        # Find frontmatter start and discard preamble
-        if "+++" in updated_content:
-            start = updated_content.find("+++")
-            updated_content = updated_content[start:]
-        
-        # Remove trailing code fences
-        if updated_content.startswith("```"):
-            lines = updated_content.split("\n")
-            if lines[0].startswith("```"):
-                lines = lines[1:]
-            if lines and lines[-1].strip() == "```":
-                lines = lines[:-1]
-            updated_content = "\n".join(lines)
+        # 5. Clean output
+        updated_content = clean_llm_output(updated_content)
 
-        # 6. Validate
-        if not validate_output(updated_content):
+        # 6. Handle section-specific updates
+        if args.sections:
+            new_sections = extract_sections(updated_content)
+            updated_content = merge_sections(original_content, new_sections, args.sections)
+
+        # 7. Validate
+        if not validate_output(updated_content, check_sections=not args.sections):
             print("Warning: Validation failed. Review carefully.", file=sys.stderr)
 
-        # 7. Inject metadata
+        # 8. Inject metadata
         updated_content = inject_metadata(updated_content, args.model)
 
-        # 8. Write English version
+        # 9. Write English version
         if args.dry_run:
-            print("\n" + "=" * 60)
-            print("DRY RUN OUTPUT (English):")
-            print("=" * 60)
-            print(updated_content[:2000])
-            if len(updated_content) > 2000:
-                print(f"\n... ({len(updated_content)} chars)")
+            show_diff(original_content, updated_content, "technote.md")
+            print(f"\n>> Would write {len(updated_content)} chars to {TECHNOTE_PATH}")
         else:
             generated_path = GENERATED_DIR / f"technote.{timestamp}.md"
             write_file(generated_path, updated_content)
@@ -383,7 +560,7 @@ Rules:
 
 Document to translate:
 """
-        
+
         try:
             if args.use_api:
                 ja_content = call_llm_api(args.model, ja_prompt, updated_content)
@@ -394,25 +571,22 @@ Document to translate:
             sys.exit(1)
 
         # Clean Japanese output
-        ja_content = ja_content.strip()
-        if "+++" in ja_content:
-            start = ja_content.find("+++")
-            ja_content = ja_content[start:]
+        ja_content = clean_llm_output(ja_content)
 
         # Validate Japanese output
-        if not validate_output(ja_content):
+        if not validate_output(ja_content, check_sections=False):
             print("Warning: Japanese validation failed.", file=sys.stderr)
 
         # Write Japanese version
         ja_technote_path = TECHNOTE_PATH.with_suffix(".ja.md")
-        
+        ja_original = read_file(ja_technote_path) if ja_technote_path.exists() else ""
+
         if args.dry_run:
-            print("\n" + "=" * 60)
-            print("DRY RUN OUTPUT (Japanese):")
-            print("=" * 60)
-            print(ja_content[:2000])
-            if len(ja_content) > 2000:
-                print(f"\n... ({len(ja_content)} chars)")
+            if ja_original:
+                show_diff(ja_original, ja_content, "technote.ja.md")
+            else:
+                print(f"\n>> Would create new file: {ja_technote_path}")
+                print(f">> Content length: {len(ja_content)} chars")
         else:
             ja_generated_path = GENERATED_DIR / f"technote.ja.{timestamp}.md"
             write_file(ja_generated_path, ja_content)
@@ -421,7 +595,12 @@ Document to translate:
             write_file(ja_technote_path, ja_content)
             print(f">> Updated: {ja_technote_path}")
 
-    print(">> Review with: git diff")
+    if not args.dry_run:
+        print(">> Review with: git diff")
+
+    # Print model info
+    resolved_id = MODEL_IDS.get(args.model, args.model)
+    print(f">> Model used: {resolved_id}")
 
 
 if __name__ == "__main__":

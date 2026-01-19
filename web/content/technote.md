@@ -827,12 +827,12 @@ Strategies determine how frequencies are assigned when spawning multiple agents:
 
 | Strategy | Constructor | Description |
 |----------|-------------|-------------|
-| Harmonicity | `harmonicity(root_freq)` | Pick highest consonance within multiplier range of root |
-| Harmonic Density | `harmonic_density(min, max)` | Weighted-random based on consonance in freq range |
+| Consonance | `consonance(root_freq)` | Pick highest consonance within multiplier range of root |
+| Consonance Density | `consonance_density(min, max)` | Weighted-random based on consonance in freq range |
 | Random Log | `random_log(min, max)` | Uniform distribution in log-frequency |
 | Linear | `linear(start, end)` | Linear interpolation across agents |
 
-**Harmonicity Strategy Modifiers**:
+**Consonance Strategy Modifiers**:
 - `.range(min_mul, max_mul)`: Set multiplier range (default: 1–4); spawn freq = root × [min_mul, max_mul]
 - `.min_dist(erb)`: Set minimum separation in ERB (default: 1.0)
 
@@ -898,7 +898,7 @@ scene("exposition", || {
     wait(1.0);
 
     // Spawn voices on harmonic series
-    let strat = harmonicity(220.0).range(1.0, 4.0).min_dist(0.8);
+    let strat = consonance(220.0).range(1.0, 4.0).min_dist(0.8);
     for i in 0..4 {
         create(voice, 1).place(strat);
         wait(0.5);
@@ -962,14 +962,14 @@ scene("Mirror Dualism", || {
 
     set_harmonicity_mirror_weight(0.0);
     for i in 0..4 {
-        let strat = harmonicity(261.63).range(1.0, 3.0).min_dist(0.9);
+        let strat = consonance(261.63).range(1.0, 3.0).min_dist(0.9);
         create(voice, 1).place(strat);
     }
     wait(1.5);
 
     set_harmonicity_mirror_weight(1.0);
     for i in 0..4 {
-        let strat = harmonicity(261.63).range(0.8, 2.5).min_dist(0.9);
+        let strat = consonance(261.63).range(0.8, 2.5).min_dist(0.9);
         create(voice, 1).place(strat);
     }
     wait(1.5);
@@ -978,7 +978,7 @@ scene("Mirror Dualism", || {
 
 **Analysis**:
 1. **Setup**: An anchor drone at C4 (261.63 Hz) with `phonation("hold")` for sustained tone.
-2. **State A (Overtone/Major)**: `set_harmonicity_mirror_weight(0.0)`. Voices spawn on the harmonic series using `harmonicity()` strategy. The system favors overtone relationships—agents cluster around E4 and G4, forming a C Major triad.
+2. **State A (Overtone/Major)**: `set_harmonicity_mirror_weight(0.0)`. Voices spawn on the harmonic series using `consonance()` strategy. The system favors overtone relationships—agents cluster around E4 and G4, forming a C Major triad.
 3. **State B (Undertone/Minor)**: `set_harmonicity_mirror_weight(1.0)`. The landscape inverts to undertone projection. Agents find stability at different intervals, creating a Phrygian/Minor texture.
 4. **Scoped Cleanup**: The `scene()` automatically releases all groups when it exits.
 
@@ -1005,7 +1005,7 @@ scene("Drift Flow", || {
     wait(0.5);
 
     for i in 0..5 {
-        let strat = harmonicity(130.0).range(1.0, 4.0).min_dist(1.0);
+        let strat = consonance(130.0).range(1.0, 4.0).min_dist(1.0);
         create(swarm, 1).place(strat);
         wait(0.6);
     }

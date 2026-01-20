@@ -6,7 +6,7 @@ template = "page.html"
 source_commit = "272f31a"
 author = "Koichi Takahashi"
 last_updated = "2026-01-19"
-source_version = "0.1.0"
+source_version = "0.2.0"
 source_snapshot = "2026-01-19T00:00:00+09:00"
 generated_by = "claude-opus-4-5-20251101"
 +++

@@ -162,6 +162,17 @@ impl AppConfig {
         (x * 1_000_000.0).round() / 1_000_000.0
     }
 
+    fn format_f32_compact(x: f32) -> String {
+        let mut s = format!("{:.6}", x);
+        while s.contains('.') && s.ends_with('0') {
+            s.pop();
+        }
+        if s.ends_with('.') {
+            s.pop();
+        }
+        if s.is_empty() { "0".to_string() } else { s }
+    }
+
     fn rounded(mut self) -> Self {
         self.audio.latency_ms = Self::round_f32(self.audio.latency_ms);
         self.analysis.tau_ms = Self::round_f32(self.analysis.tau_ms);
@@ -201,8 +212,26 @@ impl AppConfig {
                     commented.push_str(line);
                     commented.push('\n');
                 } else {
+                    let mut out_line = line.to_string();
+                    if let Some((lhs, rhs)) = line.split_once('=') {
+                        let rhs_trim = rhs.trim();
+                        let has_decimal = rhs_trim.contains('.');
+                        if (has_decimal || rhs_trim.contains('e') || rhs_trim.contains('E'))
+                            && !rhs_trim.contains('"')
+                            && rhs_trim != "true"
+                            && rhs_trim != "false"
+                        {
+                            if let Ok(val) = rhs_trim.parse::<f32>() {
+                                let mut formatted = Self::format_f32_compact(val);
+                                if has_decimal && !formatted.contains('.') {
+                                    formatted.push_str(".0");
+                                }
+                                out_line = format!("{} = {}", lhs.trim(), formatted);
+                            }
+                        }
+                    }
                     commented.push_str("# ");
-                    commented.push_str(line);
+                    commented.push_str(&out_line);
                     commented.push('\n');
                 }
             }
@@ -257,7 +286,7 @@ mod tests {
             "should write commented loudness_exp"
         );
         assert!(
-            contents.contains("# roughness_k = 0.42857"),
+            contents.contains("# roughness_k = 0.428571"),
             "should write commented roughness_k"
         );
         assert!(

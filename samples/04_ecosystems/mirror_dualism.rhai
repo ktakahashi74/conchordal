@@ -1,5 +1,5 @@
-let anchor = derive(sine).amp(0.4).phonation("hold");
-let voice = derive(sine).amp(0.2).phonation("hold");
+let anchor = derive(sine).amp(0.2).phonation("hold");
+let voice = derive(sine).amp(0.1).phonation("hold");
 
 scene("Mirror Dualism", || {
     create(anchor, 1).freq(261.63);

@@ -133,7 +133,6 @@ impl ScheduleRenderer {
             rhythms.advance_in_place(dt);
         }
 
-        self.apply_limiter();
         &self.buf
     }
 
@@ -242,23 +241,7 @@ impl ScheduleRenderer {
         }
     }
 
-    fn apply_limiter(&mut self) {
-        let mut peak = 0.0f32;
-        for &s in &self.buf {
-            if s.is_finite() {
-                peak = peak.max(s.abs());
-            }
-        }
-        let target = 0.98f32;
-        if peak > target && peak > 0.0 {
-            let g = target / peak;
-            if g.is_finite() {
-                for s in &mut self.buf {
-                    *s *= g;
-                }
-            }
-        }
-    }
+    // Output guard handles final safety; keep renderer transparent.
 }
 
 fn max_phonation_hold_ticks(time: Timebase) -> Tick {

@@ -2,8 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use conchordal::config::{
-    AnalysisConfig, AppConfig, AudioConfig, OutputGuardSetting, PlaybackConfig,
-    PsychoAcousticsConfig,
+    AnalysisConfig, AppConfig, AudioConfig, LimiterSetting, PlaybackConfig, PsychoAcousticsConfig,
 };
 use conchordal::core::nsgt_kernel::KernelAlign;
 
@@ -32,7 +31,7 @@ fn assert_config_eq(actual: &AppConfig, expected: &AppConfig) {
         "audio.latency_ms",
     );
     assert_eq!(actual.audio.sample_rate, expected.audio.sample_rate);
-    assert_eq!(actual.audio.output_guard, expected.audio.output_guard);
+    assert_eq!(actual.audio.limiter, expected.audio.limiter);
     assert_eq!(actual.analysis.nfft, expected.analysis.nfft);
     assert_eq!(actual.analysis.hop_size, expected.analysis.hop_size);
     assert_close(
@@ -86,7 +85,7 @@ fn config_load_custom_values() {
         audio: AudioConfig {
             latency_ms: 75.0,
             sample_rate: 44_100,
-            output_guard: OutputGuardSetting::SoftClip,
+            limiter: LimiterSetting::SoftClip,
         },
         analysis: AnalysisConfig {
             nfft: 8192,

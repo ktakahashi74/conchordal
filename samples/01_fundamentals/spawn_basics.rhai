@@ -1,4 +1,4 @@
-let base = derive(harmonic).amp(0.2).phonation("hold");
+let base = derive(harmonic).amp(0.1).phonation("hold");
 
 create(base, 4)
     .place(consonance(220.0).range(1.0, 4.0).min_dist(1.0));

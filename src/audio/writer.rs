@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crossbeam_channel::Receiver;
 use hound::{SampleFormat, WavSpec, WavWriter};
 
-use crate::audio::output_guard::{OutputGuard, OutputGuardMeter, OutputGuardMode};
+use crate::audio::limiter::{Limiter, LimiterMeter, LimiterMode};
 
 pub struct WavOutput {
     // Writer is kept alive in the thread
@@ -14,11 +14,11 @@ impl WavOutput {
         rx: Receiver<Arc<[f32]>>,
         path: String,
         sample_rate: u32,
-        guard_mode: OutputGuardMode,
-        guard_meter: Option<Arc<OutputGuardMeter>>,
+        guard_mode: LimiterMode,
+        guard_meter: Option<Arc<LimiterMeter>>,
     ) -> std::thread::JoinHandle<()> {
         std::thread::spawn(move || {
-            let mut guard = OutputGuard::new(guard_mode, sample_rate, 1);
+            let mut guard = Limiter::new(guard_mode, sample_rate, 1);
             if let Some(meter) = guard_meter {
                 guard = guard.with_meter(meter);
             }

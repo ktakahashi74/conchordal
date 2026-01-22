@@ -1,4 +1,4 @@
-let drones = create(sine, 3).amp(0.15).phonation("hold");
+let drones = create(sine, 3).amp(0.08).phonation("hold");
 drones.freq(220.0);
 flush();
 wait(2.0);

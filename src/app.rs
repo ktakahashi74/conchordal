@@ -11,7 +11,7 @@ use tracing::*;
 use crossbeam_channel::{Receiver, Sender, bounded};
 use ringbuf::traits::Observer;
 
-use crate::audio::output_guard::{OutputGuard, OutputGuardMeter, OutputGuardMode};
+use crate::audio::limiter::{Limiter, LimiterMeter, LimiterMode};
 #[cfg(debug_assertions)]
 use crate::audio::writer::WavOutput;
 use crate::core::analysis_worker;
@@ -423,18 +423,18 @@ fn init_runtime(
     let wav_enabled = args.wav.is_some();
     #[cfg(not(debug_assertions))]
     let wav_enabled = false;
-    let guard_mode = match config.audio.output_guard {
-        crate::config::OutputGuardSetting::None => OutputGuardMode::None,
-        crate::config::OutputGuardSetting::SoftClip => {
-            OutputGuardMode::SoftClip(crate::audio::output_guard::SoftClipParams::default())
+    let guard_mode = match config.audio.limiter {
+        crate::config::LimiterSetting::None => LimiterMode::None,
+        crate::config::LimiterSetting::SoftClip => {
+            LimiterMode::SoftClip(crate::audio::limiter::SoftClipParams::default())
         }
-        crate::config::OutputGuardSetting::PeakLimiter => {
-            OutputGuardMode::PeakLimiter(crate::audio::output_guard::PeakLimiterParams::default())
+        crate::config::LimiterSetting::PeakLimiter => {
+            LimiterMode::PeakLimiter(crate::audio::limiter::PeakLimiterParams::default())
         }
     };
-    let guard_mode = OutputGuard::from_env_or(guard_mode);
+    let guard_mode = Limiter::from_env_or(guard_mode);
     let guard_meter = if args.play || wav_enabled {
-        Some(Arc::new(OutputGuardMeter::default()))
+        Some(Arc::new(LimiterMeter::default()))
     } else {
         None
     };
@@ -718,7 +718,7 @@ fn worker_loop(
     mut dorsal: DorsalStream,
     mut audio_prod: Option<ringbuf::HeapProd<f32>>,
     mut wav_tx: Option<Sender<Arc<[f32]>>>,
-    guard_meter: Option<Arc<OutputGuardMeter>>,
+    guard_meter: Option<Arc<LimiterMeter>>,
     exiting: Arc<AtomicBool>,
     audio_to_analysis_tx: Sender<(u64, Arc<[f32]>)>,
     analysis_result_rx: Receiver<(u64, Landscape)>,
@@ -1099,7 +1099,7 @@ fn worker_loop(
                 if last_guard_log.elapsed() >= Duration::from_millis(200) {
                     if let Some(stats) = meter.take_snapshot() {
                         warn!(
-                            "[t={:.6}] OutputGuard engaged: over={} max_red_db={:.2} in={:.3} out={:.3}",
+                            "[t={:.6}] Limiter: over={} max_red_db={:.2} in={:.3} out={:.3}",
                             current_time,
                             stats.num_over,
                             stats.max_reduction_db,

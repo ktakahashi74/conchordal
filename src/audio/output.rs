@@ -1,7 +1,7 @@
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use std::sync::Arc;
 
-use crate::audio::output_guard::{OutputGuard, OutputGuardMeter, OutputGuardMode};
+use crate::audio::limiter::{Limiter, LimiterMeter, LimiterMode};
 
 use anyhow::Context;
 use ringbuf::traits::*;
@@ -18,8 +18,8 @@ impl AudioOutput {
     /// Start AudioOutput and return a Producer for the worker loop.
     pub fn new(
         latency_ms: f32,
-        guard_mode: OutputGuardMode,
-        guard_meter: Option<Arc<OutputGuardMeter>>,
+        guard_mode: LimiterMode,
+        guard_meter: Option<Arc<LimiterMeter>>,
     ) -> anyhow::Result<(Self, HeapProd<f32>)> {
         let host = cpal::default_host();
         let device = host
@@ -60,7 +60,7 @@ impl AudioOutput {
         let rb = HeapRb::<f32>::new(capacity_frames);
         let (prod, mut cons): (HeapProd<f32>, HeapCons<f32>) = rb.split();
 
-        let mut guard = OutputGuard::new(guard_mode, sample_rate, channels as usize);
+        let mut guard = Limiter::new(guard_mode, sample_rate, channels as usize);
         if let Some(meter) = guard_meter {
             guard = guard.with_meter(meter);
         }

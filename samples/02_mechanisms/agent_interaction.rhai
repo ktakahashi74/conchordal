@@ -1,5 +1,5 @@
-let anchor = derive(sine).amp(0.6).phonation("hold");
-let seeker = derive(sine).amp(0.4).phonation("hold");
+let anchor = derive(sine).amp(0.3).phonation("hold");
+let seeker = derive(sine).amp(0.2).phonation("hold");
 
 scene("Interaction", || {
     let anchor_group = create(anchor, 1).freq(65.41);

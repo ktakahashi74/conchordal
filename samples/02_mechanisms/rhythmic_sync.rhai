@@ -1,5 +1,5 @@
 let click = derive(sine)
-    .amp(0.4)
+    .amp(0.2)
     .phonation("decay")
     .adsr(0.01, 0.1, 0.0, 0.2);
 

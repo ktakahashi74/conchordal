@@ -1,5 +1,5 @@
-let bass = derive(sine).amp(0.35).phonation("hold");
-let pad = derive(harmonic).amp(0.14).phonation("hold").timbre(0.7, 0.2);
+let bass = derive(sine).amp(0.1).phonation("hold");
+let pad = derive(harmonic).amp(0.05).phonation("hold").timbre(0.7, 0.2);
 
 let step = |root, dur| {
     create(bass, 1).freq(root);

@@ -1,5 +1,5 @@
-let anchor = derive(sine).amp(0.12).phonation("hold");
-let seeker = derive(sine).amp(0.08).phonation("hold");
+let anchor = derive(sine).amp(0.06).phonation("hold");
+let seeker = derive(sine).amp(0.04).phonation("hold");
 
 scene("Emergent Harmony", || {
     let base = create(anchor, 1).freq(65.406);

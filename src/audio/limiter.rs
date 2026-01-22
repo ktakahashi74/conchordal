@@ -37,20 +37,20 @@ impl Default for PeakLimiterParams {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub enum OutputGuardMode {
+pub enum LimiterMode {
     None,
     SoftClip(SoftClipParams),
     PeakLimiter(PeakLimiterParams),
 }
 
-impl Default for OutputGuardMode {
+impl Default for LimiterMode {
     fn default() -> Self {
         Self::PeakLimiter(PeakLimiterParams::default())
     }
 }
 
 #[derive(Clone, Copy, Debug, Default)]
-pub struct OutputGuardStats {
+pub struct LimiterStats {
     pub max_abs_in: f32,
     pub max_abs_out: f32,
     pub max_reduction_db: f32,
@@ -58,7 +58,7 @@ pub struct OutputGuardStats {
 }
 
 #[derive(Debug, Default)]
-pub struct OutputGuardMeter {
+pub struct LimiterMeter {
     engaged_count: AtomicU64,
     over_count: AtomicU64,
     max_reduction_bits: AtomicU32,
@@ -66,8 +66,8 @@ pub struct OutputGuardMeter {
     max_abs_out_bits: AtomicU32,
 }
 
-impl OutputGuardMeter {
-    pub fn record(&self, stats: &OutputGuardStats) {
+impl LimiterMeter {
+    pub fn record(&self, stats: &LimiterStats) {
         if stats.num_over == 0 && stats.max_reduction_db <= 0.0 {
             return;
         }
@@ -83,7 +83,7 @@ impl OutputGuardMeter {
             .store(stats.max_abs_out.to_bits(), Ordering::Relaxed);
     }
 
-    pub fn take_snapshot(&self) -> Option<OutputGuardStats> {
+    pub fn take_snapshot(&self) -> Option<LimiterStats> {
         let engaged = self.engaged_count.swap(0, Ordering::Relaxed);
         if engaged == 0 {
             return None;
@@ -92,7 +92,7 @@ impl OutputGuardMeter {
         let max_reduction_db = f32::from_bits(self.max_reduction_bits.swap(0, Ordering::Relaxed));
         let max_abs_in = f32::from_bits(self.max_abs_in_bits.swap(0, Ordering::Relaxed));
         let max_abs_out = f32::from_bits(self.max_abs_out_bits.swap(0, Ordering::Relaxed));
-        Some(OutputGuardStats {
+        Some(LimiterStats {
             max_abs_in,
             max_abs_out,
             max_reduction_db,
@@ -110,20 +110,20 @@ struct PeakLimiterState {
 }
 
 #[derive(Debug)]
-pub struct OutputGuard {
-    mode: OutputGuardMode,
+pub struct Limiter {
+    mode: LimiterMode,
     channels: usize,
     limiter_state: Option<PeakLimiterState>,
-    stats: OutputGuardStats,
-    meter: Option<Arc<OutputGuardMeter>>,
+    stats: LimiterStats,
+    meter: Option<Arc<LimiterMeter>>,
 }
 
-impl OutputGuard {
-    pub fn new(mode: OutputGuardMode, sample_rate: u32, channels: usize) -> Self {
+impl Limiter {
+    pub fn new(mode: LimiterMode, sample_rate: u32, channels: usize) -> Self {
         let sample_rate = (sample_rate as f32).max(1.0);
         let channels = channels.max(1);
         let limiter_state = match mode {
-            OutputGuardMode::PeakLimiter(params) => {
+            LimiterMode::PeakLimiter(params) => {
                 let attack_coeff = time_to_coeff(params.attack_ms, sample_rate);
                 let release_coeff = time_to_coeff(params.release_ms, sample_rate);
                 let gains = if params.link_channels {
@@ -144,12 +144,12 @@ impl OutputGuard {
             mode,
             channels,
             limiter_state,
-            stats: OutputGuardStats::default(),
+            stats: LimiterStats::default(),
             meter: None,
         }
     }
 
-    pub fn with_meter(mut self, meter: Arc<OutputGuardMeter>) -> Self {
+    pub fn with_meter(mut self, meter: Arc<LimiterMeter>) -> Self {
         self.meter = Some(meter);
         self
     }
@@ -159,10 +159,10 @@ impl OutputGuard {
             return;
         }
         debug_assert_eq!(channels, self.channels);
-        self.stats = OutputGuardStats::default();
+        self.stats = LimiterStats::default();
         match self.mode {
-            OutputGuardMode::None => {}
-            OutputGuardMode::SoftClip(params) => {
+            LimiterMode::None => {}
+            LimiterMode::SoftClip(params) => {
                 let ceiling = params.ceiling.abs().max(1e-6);
                 let drive = params.drive.max(0.0);
                 for s in frames.iter_mut() {
@@ -183,7 +183,7 @@ impl OutputGuard {
                     *s = y;
                 }
             }
-            OutputGuardMode::PeakLimiter(params) => {
+            LimiterMode::PeakLimiter(params) => {
                 let ceiling = params.ceiling.abs().max(1e-6);
                 let n_frames = frames.len() / channels;
                 let state = self.limiter_state.as_mut().expect("limiter state");
@@ -285,11 +285,11 @@ impl OutputGuard {
         }
     }
 
-    pub fn stats(&self) -> OutputGuardStats {
+    pub fn stats(&self) -> LimiterStats {
         self.stats
     }
 
-    pub fn from_env_or(config_mode: OutputGuardMode) -> OutputGuardMode {
+    pub fn from_env_or(config_mode: LimiterMode) -> LimiterMode {
         mode_from_env().unwrap_or(config_mode)
     }
 }
@@ -311,7 +311,7 @@ fn smooth_gain(current: f32, target: f32, attack_coeff: f32, release_coeff: f32)
     }
 }
 
-fn update_reduction(stats: &mut OutputGuardStats, abs_in: f32, abs_out: f32) {
+fn update_reduction(stats: &mut LimiterStats, abs_in: f32, abs_out: f32) {
     if abs_in <= 1e-12 || abs_out <= 0.0 {
         return;
     }
@@ -328,14 +328,14 @@ fn update_reduction(stats: &mut OutputGuardStats, abs_in: f32, abs_out: f32) {
     }
 }
 
-fn mode_from_env() -> Option<OutputGuardMode> {
-    let value = env::var("CONCHORDAL_OUTPUT_GUARD").ok()?;
+fn mode_from_env() -> Option<LimiterMode> {
+    let value = env::var("CONCHORDAL_LIMITER").ok()?;
     let norm = value.trim().to_ascii_lowercase();
     match norm.as_str() {
-        "none" | "off" | "0" => Some(OutputGuardMode::None),
-        "soft" | "softclip" => Some(OutputGuardMode::SoftClip(SoftClipParams::default())),
+        "none" | "off" | "0" => Some(LimiterMode::None),
+        "soft" | "softclip" => Some(LimiterMode::SoftClip(SoftClipParams::default())),
         "limiter" | "peak" | "peaklimiter" => {
-            Some(OutputGuardMode::PeakLimiter(PeakLimiterParams::default()))
+            Some(LimiterMode::PeakLimiter(PeakLimiterParams::default()))
         }
         _ => None,
     }
@@ -347,11 +347,7 @@ mod tests {
 
     #[test]
     fn safety_softclip() {
-        let mut guard = OutputGuard::new(
-            OutputGuardMode::SoftClip(SoftClipParams::default()),
-            48_000,
-            1,
-        );
+        let mut guard = Limiter::new(LimiterMode::SoftClip(SoftClipParams::default()), 48_000, 1);
         let mut buf = [0.0f32, 1.5, -1.5, 0.5];
         guard.process_interleaved(&mut buf, 1);
         let ceiling = SoftClipParams::default().ceiling + 1e-6;
@@ -362,8 +358,8 @@ mod tests {
 
     #[test]
     fn safety_limiter() {
-        let mut guard = OutputGuard::new(
-            OutputGuardMode::PeakLimiter(PeakLimiterParams::default()),
+        let mut guard = Limiter::new(
+            LimiterMode::PeakLimiter(PeakLimiterParams::default()),
             48_000,
             1,
         );
@@ -377,7 +373,7 @@ mod tests {
 
     #[test]
     fn transparency_none() {
-        let mut guard = OutputGuard::new(OutputGuardMode::None, 48_000, 1);
+        let mut guard = Limiter::new(LimiterMode::None, 48_000, 1);
         let mut buf = [0.25f32, -0.5, 0.1, 0.0];
         let original = buf;
         guard.process_interleaved(&mut buf, 1);
@@ -386,8 +382,8 @@ mod tests {
 
     #[test]
     fn transparency_limiter() {
-        let mut guard = OutputGuard::new(
-            OutputGuardMode::PeakLimiter(PeakLimiterParams::default()),
+        let mut guard = Limiter::new(
+            LimiterMode::PeakLimiter(PeakLimiterParams::default()),
             48_000,
             1,
         );

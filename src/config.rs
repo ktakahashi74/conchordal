@@ -9,6 +9,8 @@ pub struct AudioConfig {
     pub latency_ms: f32,
     #[serde(default = "AudioConfig::default_sample_rate")]
     pub sample_rate: u32,
+    #[serde(default)]
+    pub output_guard: OutputGuardSetting,
 }
 
 impl AudioConfig {
@@ -25,7 +27,22 @@ impl Default for AudioConfig {
         Self {
             latency_ms: Self::default_latency_ms(),
             sample_rate: Self::default_sample_rate(),
+            output_guard: OutputGuardSetting::default(),
         }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum OutputGuardSetting {
+    None,
+    SoftClip,
+    PeakLimiter,
+}
+
+impl Default for OutputGuardSetting {
+    fn default() -> Self {
+        Self::PeakLimiter
     }
 }
 
@@ -228,6 +245,7 @@ mod tests {
         assert!(path.exists(), "config file should be created");
         assert_eq!(cfg.audio.latency_ms, 50.0);
         assert_eq!(cfg.audio.sample_rate, 48_000);
+        assert_eq!(cfg.audio.output_guard, OutputGuardSetting::PeakLimiter);
         assert_eq!(cfg.psychoacoustics.loudness_exp, 0.23);
         assert!((cfg.psychoacoustics.roughness_k - 0.428571).abs() < 1e-6);
         assert_eq!(cfg.psychoacoustics.roughness_weight, 1.0);
@@ -262,6 +280,7 @@ mod tests {
             audio: AudioConfig {
                 latency_ms: 75.0,
                 sample_rate: 44_100,
+                output_guard: OutputGuardSetting::SoftClip,
             },
             analysis: AnalysisConfig {
                 nfft: 8192,
@@ -286,6 +305,7 @@ mod tests {
         let cfg = AppConfig::load_or_default(&path_str);
         assert_eq!(cfg.audio.latency_ms, 75.0);
         assert_eq!(cfg.audio.sample_rate, 44_100);
+        assert_eq!(cfg.audio.output_guard, OutputGuardSetting::SoftClip);
         assert_eq!(cfg.analysis.nfft, 8192);
         assert_eq!(cfg.analysis.hop_size, 256);
         assert_eq!(cfg.analysis.tau_ms, 60.0);

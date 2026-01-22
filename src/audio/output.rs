@@ -1,4 +1,7 @@
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use std::sync::Arc;
+
+use crate::audio::output_guard::{OutputGuard, OutputGuardMeter, OutputGuardMode};
 
 use anyhow::Context;
 use ringbuf::traits::*;
@@ -13,7 +16,11 @@ pub struct AudioOutput {
 
 impl AudioOutput {
     /// Start AudioOutput and return a Producer for the worker loop.
-    pub fn new(latency_ms: f32) -> anyhow::Result<(Self, HeapProd<f32>)> {
+    pub fn new(
+        latency_ms: f32,
+        guard_mode: OutputGuardMode,
+        guard_meter: Option<Arc<OutputGuardMeter>>,
+    ) -> anyhow::Result<(Self, HeapProd<f32>)> {
         let host = cpal::default_host();
         let device = host
             .default_output_device()
@@ -53,6 +60,11 @@ impl AudioOutput {
         let rb = HeapRb::<f32>::new(capacity_frames);
         let (prod, mut cons): (HeapProd<f32>, HeapCons<f32>) = rb.split();
 
+        let mut guard = OutputGuard::new(guard_mode, sample_rate, channels as usize);
+        if let Some(meter) = guard_meter {
+            guard = guard.with_meter(meter);
+        }
+
         let stream = device
             .build_output_stream(
                 &config,
@@ -68,6 +80,8 @@ impl AudioOutput {
                             data[frame * channels as usize + ch as usize] = s;
                         }
                     }
+
+                    guard.process_interleaved(data, channels as usize);
                 },
                 |err| eprintln!("Stream error: {:?}", err),
                 None,

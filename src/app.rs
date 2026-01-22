@@ -11,6 +11,7 @@ use tracing::*;
 use crossbeam_channel::{Receiver, Sender, bounded};
 use ringbuf::traits::Observer;
 
+use crate::audio::output_guard::{OutputGuard, OutputGuardMeter, OutputGuardMode};
 #[cfg(debug_assertions)]
 use crate::audio::writer::WavOutput;
 use crate::core::analysis_worker;
@@ -418,10 +419,29 @@ fn init_runtime(
     stop_flag: Arc<AtomicBool>,
 ) -> RuntimeInit {
     let latency_ms = config.audio.latency_ms;
+    #[cfg(debug_assertions)]
+    let wav_enabled = args.wav.is_some();
+    #[cfg(not(debug_assertions))]
+    let wav_enabled = false;
+    let guard_mode = match config.audio.output_guard {
+        crate::config::OutputGuardSetting::None => OutputGuardMode::None,
+        crate::config::OutputGuardSetting::SoftClip => {
+            OutputGuardMode::SoftClip(crate::audio::output_guard::SoftClipParams::default())
+        }
+        crate::config::OutputGuardSetting::PeakLimiter => {
+            OutputGuardMode::PeakLimiter(crate::audio::output_guard::PeakLimiterParams::default())
+        }
+    };
+    let guard_mode = OutputGuard::from_env_or(guard_mode);
+    let guard_meter = if args.play || wav_enabled {
+        Some(Arc::new(OutputGuardMeter::default()))
+    } else {
+        None
+    };
 
     // Audio
     let (audio_out, audio_prod, audio_init_error) = if args.play {
-        match AudioOutput::new(latency_ms) {
+        match AudioOutput::new(latency_ms, guard_mode, guard_meter.clone()) {
             Ok((out, prod)) => (Some(out), Some(prod), None),
             Err(e) => {
                 let msg = e.to_string();
@@ -454,7 +474,13 @@ fn init_runtime(
     #[cfg(debug_assertions)]
     let (wav_tx, wav_handle) = if let Some(path) = args.wav.clone() {
         let (wav_tx, wav_rx) = bounded::<Arc<[f32]>>(16);
-        let wav_handle = WavOutput::run(wav_rx, path, runtime_sample_rate);
+        let wav_handle = WavOutput::run(
+            wav_rx,
+            path,
+            runtime_sample_rate,
+            guard_mode,
+            guard_meter.clone(),
+        );
         (Some(wav_tx), Some(wav_handle))
     } else {
         (None, None)
@@ -583,6 +609,7 @@ fn init_runtime(
                     dorsal,
                     audio_prod,
                     wav_tx_for_worker,
+                    guard_meter.clone(),
                     stop_flag_worker,
                     audio_to_analysis_tx,
                     analysis_result_rx,
@@ -691,6 +718,7 @@ fn worker_loop(
     mut dorsal: DorsalStream,
     mut audio_prod: Option<ringbuf::HeapProd<f32>>,
     mut wav_tx: Option<Sender<Arc<[f32]>>>,
+    guard_meter: Option<Arc<OutputGuardMeter>>,
     exiting: Arc<AtomicBool>,
     audio_to_analysis_tx: Sender<(u64, Arc<[f32]>)>,
     analysis_result_rx: Receiver<(u64, Landscape)>,
@@ -712,6 +740,7 @@ fn worker_loop(
     let mut current_time: f32 = 0.0;
     let mut frame_idx: u64 = 0;
     let mut monitor = AudioMonitor::new();
+    let mut last_guard_log = Instant::now() - Duration::from_millis(200);
     let mut last_ui_update = Instant::now();
     let ui_min_interval = Duration::from_millis(33);
     let mut last_analysis_frame: Option<u64> = None;
@@ -1065,6 +1094,22 @@ fn worker_loop(
                 analysis_lag,
                 conductor.is_done(),
             );
+
+            if let Some(meter) = guard_meter.as_ref() {
+                if last_guard_log.elapsed() >= Duration::from_millis(200) {
+                    if let Some(stats) = meter.take_snapshot() {
+                        warn!(
+                            "[t={:.6}] OutputGuard engaged: over={} max_red_db={:.2} in={:.3} out={:.3}",
+                            current_time,
+                            stats.num_over,
+                            stats.max_reduction_db,
+                            stats.max_abs_in,
+                            stats.max_abs_out
+                        );
+                        last_guard_log = Instant::now();
+                    }
+                }
+            }
 
             if let (Some(wave_frame), Some(spec_frame), Some(ui_landscape)) =
                 (wave_frame, spec_frame, ui_landscape)

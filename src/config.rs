@@ -32,18 +32,13 @@ impl Default for AudioConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "kebab-case")]
 pub enum LimiterSetting {
     None,
     SoftClip,
+    #[default]
     PeakLimiter,
-}
-
-impl Default for LimiterSetting {
-    fn default() -> Self {
-        Self::PeakLimiter
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -220,14 +215,13 @@ impl AppConfig {
                             && !rhs_trim.contains('"')
                             && rhs_trim != "true"
                             && rhs_trim != "false"
+                            && let Ok(val) = rhs_trim.parse::<f32>()
                         {
-                            if let Ok(val) = rhs_trim.parse::<f32>() {
-                                let mut formatted = Self::format_f32_compact(val);
-                                if has_decimal && !formatted.contains('.') {
-                                    formatted.push_str(".0");
-                                }
-                                out_line = format!("{} = {}", lhs.trim(), formatted);
+                            let mut formatted = Self::format_f32_compact(val);
+                            if has_decimal && !formatted.contains('.') {
+                                formatted.push_str(".0");
                             }
+                            out_line = format!("{} = {}", lhs.trim(), formatted);
                         }
                     }
                     commented.push_str("# ");

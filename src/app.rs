@@ -1095,20 +1095,19 @@ fn worker_loop(
                 conductor.is_done(),
             );
 
-            if let Some(meter) = guard_meter.as_ref() {
-                if last_guard_log.elapsed() >= Duration::from_millis(200) {
-                    if let Some(stats) = meter.take_snapshot() {
-                        warn!(
-                            "[t={:.6}] Limiter: over={} max_red_db={:.2} in={:.3} out={:.3}",
-                            current_time,
-                            stats.num_over,
-                            stats.max_reduction_db,
-                            stats.max_abs_in,
-                            stats.max_abs_out
-                        );
-                        last_guard_log = Instant::now();
-                    }
-                }
+            if let Some(meter) = guard_meter.as_ref()
+                && last_guard_log.elapsed() >= Duration::from_millis(200)
+                && let Some(stats) = meter.take_snapshot()
+            {
+                warn!(
+                    "[t={:.6}] Limiter: over={} max_red_db={:.2} in={:.3} out={:.3}",
+                    current_time,
+                    stats.num_over,
+                    stats.max_reduction_db,
+                    stats.max_abs_in,
+                    stats.max_abs_out
+                );
+                last_guard_log = Instant::now();
             }
 
             if let (Some(wave_frame), Some(spec_frame), Some(ui_landscape)) =

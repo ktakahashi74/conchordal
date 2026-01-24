@@ -1,4 +1,3 @@
-use super::control::PitchMode;
 use super::individual::{AgentMetadata, Individual, PhonationBatch, SoundBody};
 use super::scenario::{Action, IndividualConfig, SpawnStrategy};
 use crate::core::landscape::{LandscapeFrame, LandscapeUpdate};
@@ -473,7 +472,6 @@ impl Population {
                             _ => self.decide_frequency(strat, landscape, &mut rng, &reserved),
                         };
                         control.pitch.freq = freq.max(1.0);
-                        control.pitch.mode = PitchMode::Lock;
                     }
                     let metadata = AgentMetadata {
                         group_id,
@@ -716,7 +714,7 @@ mod tests {
     use crate::core::landscape::{Landscape, LandscapeFrame};
     use crate::core::log2space::Log2Space;
     use crate::core::timebase::Timebase;
-    use crate::life::control::{AgentControl, ControlUpdate, PhonationType};
+    use crate::life::control::{AgentControl, ControlUpdate, PhonationType, PitchMode};
     use crate::life::individual::{AnyArticulationCore, ArticulationWrapper, DroneCore};
     use crate::life::phonation_engine::{OnsetEvent, PhonationCmd, PhonationKick};
     use crate::life::scenario::{ArticulationCoreConfig, SpawnSpec, SpawnStrategy};
@@ -913,6 +911,33 @@ mod tests {
             .map(|agent| agent.id())
             .collect();
         assert_eq!(released, vec![21]);
+    }
+
+    #[test]
+    fn spawn_strategy_respects_free_pitch_mode() {
+        let mut pop = Population::new(Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        });
+        let landscape = LandscapeFrame::default();
+        let mut spec = spawn_spec_with_freq(110.0);
+        spec.control.pitch.mode = PitchMode::Free;
+        pop.apply_action(
+            Action::Spawn {
+                group_id: 1,
+                ids: vec![1],
+                spec,
+                strategy: Some(SpawnStrategy::Linear {
+                    start_freq: 220.0,
+                    end_freq: 220.0,
+                }),
+            },
+            &landscape,
+            None,
+        );
+        let agent = pop.individuals.first().expect("spawned");
+        assert_eq!(agent.effective_control.pitch.mode, PitchMode::Free);
+        assert!((agent.effective_control.pitch.freq - 220.0).abs() <= 1e-6);
     }
 
     #[test]

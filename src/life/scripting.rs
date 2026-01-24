@@ -137,6 +137,18 @@ impl SpeciesSpec {
         self.control.pitch.mode = PitchMode::Lock;
     }
 
+    fn set_pitch_mode(&mut self, name: &str) {
+        let lowered = name.trim().to_ascii_lowercase();
+        self.control.pitch.mode = match lowered.as_str() {
+            "free" => PitchMode::Free,
+            "lock" => PitchMode::Lock,
+            other => {
+                warn!("pitch_mode() expects 'free' or 'lock', got '{}'", other);
+                self.control.pitch.mode
+            }
+        };
+    }
+
     fn set_timbre(&mut self, brightness: f32, width: f32) {
         self.control.body.timbre.brightness = brightness.clamp(0.0, 1.0);
         self.control.body.timbre.width = width.clamp(0.0, 1.0);
@@ -598,6 +610,10 @@ impl ScriptHost {
             species.spec.set_freq(value as f32);
             species
         });
+        engine.register_fn("pitch_mode", |mut species: SpeciesHandle, name: &str| {
+            species.spec.set_pitch_mode(name);
+            species
+        });
         engine.register_fn("brain", |mut species: SpeciesHandle, name: &str| {
             species.spec.set_brain(name);
             species
@@ -980,6 +996,25 @@ impl ScriptHost {
                     GroupStatus::Draft => group.spec.set_brain(name),
                     GroupStatus::Live => ctx.warn_live_builder(handle.id, "brain"),
                     _ => ctx.warn_live_builder(handle.id, "brain"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_pitch_mode = ctx.clone();
+        engine.register_fn(
+            "pitch_mode",
+            move |handle: GroupHandle, name: &str| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_pitch_mode
+                    .lock()
+                    .expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("pitch_mode ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                match group.status {
+                    GroupStatus::Draft => group.spec.set_pitch_mode(name),
+                    GroupStatus::Live => ctx.warn_live_builder(handle.id, "pitch_mode"),
+                    _ => ctx.warn_live_builder(handle.id, "pitch_mode"),
                 }
                 Ok(handle)
             },
@@ -1417,5 +1452,88 @@ mod tests {
             })
             .expect("spawn action");
         assert!(matches!(strategy, Some(SpawnStrategy::Consonance { .. })));
+    }
+
+    #[test]
+    fn place_then_pitch_mode_free_overrides_lock() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            create(sine, 4).place(consonance(220.0)).pitch_mode("free");
+            flush();
+        "#,
+        );
+        let (strategy, mode) = scenario
+            .events
+            .iter()
+            .flat_map(|event| &event.actions)
+            .find_map(|action| match action {
+                Action::Spawn { strategy, spec, .. } => {
+                    Some((strategy.clone(), spec.control.pitch.mode))
+                }
+                _ => None,
+            })
+            .expect("spawn action");
+        assert!(matches!(strategy, Some(SpawnStrategy::Consonance { .. })));
+        assert_eq!(mode, PitchMode::Free);
+    }
+
+    #[test]
+    fn place_defaults_to_lock_mode() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            create(sine, 4).place(consonance(220.0));
+            flush();
+        "#,
+        );
+        let mode = scenario
+            .events
+            .iter()
+            .flat_map(|event| &event.actions)
+            .find_map(|action| match action {
+                Action::Spawn { spec, .. } => Some(spec.control.pitch.mode),
+                _ => None,
+            })
+            .expect("spawn action");
+        assert_eq!(mode, PitchMode::Lock);
+    }
+
+    #[test]
+    fn pitch_mode_free_then_place_restores_lock() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            create(sine, 4).pitch_mode("free").place(consonance(220.0));
+            flush();
+        "#,
+        );
+        let mode = scenario
+            .events
+            .iter()
+            .flat_map(|event| &event.actions)
+            .find_map(|action| match action {
+                Action::Spawn { spec, .. } => Some(spec.control.pitch.mode),
+                _ => None,
+            })
+            .expect("spawn action");
+        assert_eq!(mode, PitchMode::Lock);
+    }
+
+    #[test]
+    fn species_pitch_mode_sets_spawn_mode() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            create(sine.pitch_mode("lock"), 1);
+            flush();
+        "#,
+        );
+        let mode = scenario
+            .events
+            .iter()
+            .flat_map(|event| &event.actions)
+            .find_map(|action| match action {
+                Action::Spawn { spec, .. } => Some(spec.control.pitch.mode),
+                _ => None,
+            })
+            .expect("spawn action");
+        assert_eq!(mode, PitchMode::Lock);
     }
 }

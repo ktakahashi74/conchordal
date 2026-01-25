@@ -350,6 +350,10 @@ mod tests {
 
     const ERB_STEP: f32 = 0.005;
 
+    fn ensure_plots_dir() -> std::io::Result<()> {
+        std::fs::create_dir_all("target/plots")
+    }
+
     fn make_kernel() -> RoughnessKernel {
         let p = KernelParams::default();
         RoughnessKernel::new(p, ERB_STEP)
@@ -712,6 +716,7 @@ mod tests {
     #[test]
     #[ignore]
     fn plot_kernel_shape_png() {
+        ensure_plots_dir().expect("create target/plots");
         let k = make_kernel();
         let params = k.params;
         let erb_step = 0.02;
@@ -719,7 +724,7 @@ mod tests {
         let hw = (params.half_width_erb / erb_step).ceil() as i32;
         let d_erb: Vec<f32> = (-hw..=hw).map(|i| i as f32 * erb_step).collect();
 
-        let out_path = Path::new("target/test_kernel_shape.png");
+        let out_path = Path::new("target/plots/it_roughness_kernel_shape.png");
         let root = BitMapBackend::new(out_path, (1600, 1000)).into_drawing_area();
         root.fill(&WHITE).unwrap();
         let mut chart = ChartBuilder::on(&root)
@@ -750,6 +755,7 @@ mod tests {
     #[test]
     #[ignore]
     fn compare_build_kernel_and_eval_kernel_shape() -> Result<(), Box<dyn std::error::Error>> {
+        ensure_plots_dir()?;
         let params = KernelParams::default();
         let erb_step = 0.005;
         let k = RoughnessKernel::new(params, erb_step);
@@ -775,7 +781,7 @@ mod tests {
             / g1.len() as f32;
         assert!(mae < 1e-3, "MAE={}", mae);
 
-        let out_path = "target/test_kernel_build_vs_eval.png";
+        let out_path = "target/plots/it_roughness_kernel_build_vs_eval.png";
         let root = BitMapBackend::new(out_path, (1600, 1000)).into_drawing_area();
         root.fill(&WHITE)?;
         let mut chart = ChartBuilder::on(&root)
@@ -817,6 +823,7 @@ mod tests {
     #[test]
     #[ignore]
     fn plot_potential_r_from_signal_direct_erb() {
+        ensure_plots_dir().expect("create target/plots");
         let fs = 48000.0;
         let k = RoughnessKernel::new(KernelParams::default(), 0.005);
         let base = 440.0;
@@ -844,7 +851,7 @@ mod tests {
             .map(|i| hz_to_erb(i as f32 * df) - f0_erb)
             .collect();
 
-        let out_path = "target/test_potential_r_signal_direct_erb.png";
+        let out_path = "target/plots/it_roughness_potential_r_signal_direct_erb.png";
         let root = BitMapBackend::new(out_path, (1600, 1000)).into_drawing_area();
         root.fill(&WHITE).unwrap();
         let mut chart = ChartBuilder::on(&root)
@@ -892,6 +899,7 @@ mod tests {
         use crate::core::log2space::Log2Space;
         use plotters::prelude::*;
 
+        ensure_plots_dir()?;
         let k = RoughnessKernel::new(KernelParams::default(), 0.005);
         let space = Log2Space::new(20.0, 8000.0, 144);
 
@@ -923,7 +931,7 @@ mod tests {
             .map(|&v| v / g_ref.iter().cloned().fold(0.0, f32::max))
             .collect();
 
-        let out_path = "target/test_potential_r_from_log2_spectrum_delta.png";
+        let out_path = "target/plots/it_roughness_potential_r_from_log2_spectrum_delta.png";
         let root = BitMapBackend::new(out_path, (1500, 1000)).into_drawing_area();
         root.fill(&WHITE)?;
 
@@ -976,6 +984,7 @@ mod tests {
         use crate::core::log2space::Log2Space;
         use rustfft::{FftPlanner, num_complex::Complex32};
 
+        ensure_plots_dir()?;
         let fs = 48_000.0;
         let params = KernelParams::default();
         let k = RoughnessKernel::new(params, 0.005);

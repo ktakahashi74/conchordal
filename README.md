@@ -121,10 +121,16 @@ cargo fmt --all
 cargo clippy -- -D warnings
 ```
 
-The following command generates plot images under `target/` for visual kernel checks.
+The following command generates plot images under `target/plots/` for visual kernel checks.
 
 ```bash
 cargo test -- --ignored
+```
+
+The following command generates paper plots under `target/plots/paper/`.
+
+```bash
+cargo run --bin paper_plots
 ```
 
 

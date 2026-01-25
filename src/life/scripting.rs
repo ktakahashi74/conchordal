@@ -614,6 +614,10 @@ impl ScriptHost {
             species.spec.set_pitch_mode(name);
             species
         });
+        engine.register_fn("mode", |mut species: SpeciesHandle, name: &str| {
+            species.spec.set_pitch_mode(name);
+            species
+        });
         engine.register_fn("brain", |mut species: SpeciesHandle, name: &str| {
             species.spec.set_brain(name);
             species
@@ -1019,6 +1023,29 @@ impl ScriptHost {
                 Ok(handle)
             },
         );
+        let ctx_for_group_mode = ctx.clone();
+        engine.register_fn(
+            "mode",
+            move |handle: GroupHandle, name: &str| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_mode.lock().map_err(|err| {
+                    let msg = format!("script context lock poisoned: {err}");
+                    Box::new(EvalAltResult::ErrorSystem(
+                        msg.clone(),
+                        Box::new(std::io::Error::other(msg)),
+                    ))
+                })?;
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("mode ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                match group.status {
+                    GroupStatus::Draft => group.spec.set_pitch_mode(name),
+                    GroupStatus::Live => ctx.warn_live_builder(handle.id, "mode"),
+                    _ => ctx.warn_live_builder(handle.id, "mode"),
+                }
+                Ok(handle)
+            },
+        );
         let ctx_for_group_phonation = ctx.clone();
         engine.register_fn(
             "phonation",
@@ -1252,6 +1279,9 @@ impl std::error::Error for ScriptError {}
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::landscape::LandscapeFrame;
+    use crate::core::timebase::Timebase;
+    use crate::life::population::Population;
 
     fn run_script(src: &str) -> (Scenario, ScriptWarnings) {
         let ctx = Arc::new(Mutex::new(ScriptContext::default()));
@@ -1475,6 +1505,36 @@ mod tests {
             .expect("spawn action");
         assert!(matches!(strategy, Some(SpawnStrategy::Consonance { .. })));
         assert_eq!(mode, PitchMode::Free);
+    }
+
+    #[test]
+    fn place_then_mode_free_survives_spawn() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            create(sine, 2).place(consonance(220.0)).mode("free");
+            flush();
+        "#,
+        );
+        let spawn_action = scenario
+            .events
+            .iter()
+            .flat_map(|event| &event.actions)
+            .find_map(|action| match action {
+                Action::Spawn { .. } => Some(action.clone()),
+                _ => None,
+            })
+            .expect("spawn action");
+
+        let mut pop = Population::new(Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        });
+        let landscape = LandscapeFrame::default();
+        pop.apply_action(spawn_action, &landscape, None);
+
+        let agent = pop.individuals.first().expect("spawned");
+        assert_eq!(agent.base_control.pitch.mode, PitchMode::Free);
+        assert_eq!(agent.effective_control.pitch.mode, PitchMode::Free);
     }
 
     #[test]

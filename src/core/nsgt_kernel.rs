@@ -457,6 +457,10 @@ mod tests {
     use crate::core::utils::{brown_noise, pink_noise, white_noise};
     use approx::assert_relative_eq;
 
+    fn ensure_plots_dir() -> std::io::Result<()> {
+        std::fs::create_dir_all("target/plots")
+    }
+
     fn mk_sine(fs: f32, f: f32, secs: f32) -> Vec<f32> {
         let n = (fs * secs).round() as usize;
         (0..n)
@@ -1234,6 +1238,7 @@ mod tests {
     fn plot_nsgt_spectrum_kernel() {
         use plotters::prelude::*;
 
+        ensure_plots_dir().expect("create target/plots");
         let fs = 48_000.0;
         let nsgt = NsgtKernelLog2::new_coherent(
             NsgtLog2Config {
@@ -1257,8 +1262,8 @@ mod tests {
             })
             .collect();
 
-        let root =
-            BitMapBackend::new("target/nsgt_kernel_spectrum.png", (1500, 1000)).into_drawing_area();
+        let root = BitMapBackend::new("target/plots/it_nsgt_kernel_spectrum.png", (1500, 1000))
+            .into_drawing_area();
         root.fill(&WHITE).unwrap();
         let y_max = points.iter().map(|(_, p)| *p).fold(0.0f32, f32::max) * 1.1;
 
@@ -1290,6 +1295,7 @@ mod tests {
     fn plot_nsgt_log2_noise_response_kernel() {
         use plotters::prelude::*;
 
+        ensure_plots_dir().expect("create target/plots");
         let fs = 48_000.0;
         let secs = 40.0;
         let n = (fs * secs) as usize;
@@ -1325,7 +1331,7 @@ mod tests {
         let log2x = nsgt.space().centers_log2.clone();
 
         // Plot.
-        let root = BitMapBackend::new("target/nsgt_kernel_noise_psd_db.png", (1500, 1000))
+        let root = BitMapBackend::new("target/plots/it_nsgt_kernel_noise_psd_db.png", (1500, 1000))
             .into_drawing_area();
         root.fill(&WHITE).unwrap();
 

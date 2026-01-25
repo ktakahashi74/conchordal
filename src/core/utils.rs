@@ -76,6 +76,10 @@ mod tests {
     use super::*;
     use crate::core::db;
 
+    fn ensure_plots_dir() -> std::io::Result<()> {
+        std::fs::create_dir_all("target/plots")
+    }
+
     #[test]
     fn test_a_weighting_reference_values() {
         let cases = [
@@ -104,7 +108,8 @@ mod tests {
         use plotters::prelude::*;
         use std::path::Path;
 
-        let path = Path::new("target/a_weighting_curve.png");
+        ensure_plots_dir()?;
+        let path = Path::new("target/plots/it_a_weighting_curve.png");
         let root = BitMapBackend::new(path, (1024, 768)).into_drawing_area();
         root.fill(&WHITE)?;
 

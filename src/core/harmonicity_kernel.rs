@@ -295,6 +295,10 @@ mod tests {
     use std::fs::File;
     use std::path::Path;
 
+    fn ensure_plots_dir() -> std::io::Result<()> {
+        std::fs::create_dir_all("target/plots")
+    }
+
     #[test]
     fn test_minor_triad_lcm_reach() {
         let space = Log2Space::new(80.0, 2000.0, 180);
@@ -443,6 +447,7 @@ mod tests {
     #[test]
     #[ignore]
     fn plot_sibling_landscape_png() {
+        ensure_plots_dir().expect("create target/plots");
         let space = Log2Space::new(20.0, 8000.0, 200);
 
         let p = HarmonicityParams::default();
@@ -459,7 +464,7 @@ mod tests {
             .map(|i| space.freq_of_index(i))
             .collect();
 
-        let out_path = Path::new("target/test_sibling_landscape.png");
+        let out_path = Path::new("target/plots/it_harmonicity_sibling_landscape.png");
         let root = BitMapBackend::new(out_path, (1200, 600)).into_drawing_area();
         root.fill(&WHITE).unwrap();
 

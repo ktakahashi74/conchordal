@@ -443,7 +443,11 @@ mod tests {
     //         .collect();
 
     //     // === 4. Output target ===
-    //     let root = BitMapBackend::new("target/nsgt_spectrum.png", (1500, 1000)).into_drawing_area();
+    //     let root = BitMapBackend::new(
+    //         "target/plots/it_nsgt_spectrum.png",
+    //         (1500, 1000),
+    //     )
+    //     .into_drawing_area();
     //     root.fill(&WHITE).unwrap();
     //     let mut chart = ChartBuilder::on(&root)
     //         .caption("NSGT Spectrum (pure 440Hz)", ("sans-serif", 18))
@@ -477,7 +481,7 @@ mod tests {
     //         .unwrap();
     //     root.present().unwrap();
 
-    //     println!("Saved plot to target/nsgt_spectrum.png");
+    //     println!("Saved plot to target/plots/it_nsgt_spectrum.png");
     // }
 
     // #[test]
@@ -545,8 +549,11 @@ mod tests {
     //     let log2x = nsgt.space().centers_log2.clone();
 
     //     // === 6. Output ===
-    //     let root =
-    //         BitMapBackend::new("target/nsgt_noise_psd_db.png", (1500, 1000)).into_drawing_area();
+    //     let root = BitMapBackend::new(
+    //         "target/plots/it_nsgt_noise_psd_db.png",
+    //         (1500, 1000),
+    //     )
+    //     .into_drawing_area();
     //     root.fill(&WHITE).unwrap();
 
     //     let y_min = white_db
@@ -617,6 +624,6 @@ mod tests {
     //         .unwrap();
 
     //     root.present().unwrap();
-    //     println!("Saved plot to target/nsgt_noise_psd_db.png");
+    //     println!("Saved plot to target/plots/it_nsgt_noise_psd_db.png");
     // }
 }

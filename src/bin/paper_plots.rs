@@ -7,19 +7,20 @@ use plotters::prelude::*;
 use conchordal::core::erb::hz_to_erb;
 use conchordal::core::harmonicity_kernel::{HarmonicityKernel, HarmonicityParams};
 use conchordal::core::landscape::{LandscapeParams, RoughnessScalarMode};
-use conchordal::core::log2space::{Log2Space, sample_scan_linear_log2};
+use conchordal::core::log2space::Log2Space;
 use conchordal::core::psycho_state;
 use conchordal::core::roughness_kernel::{KernelParams, RoughnessKernel};
+use conchordal::paper::sim::{E4_ANCHOR_HZ, E4_WINDOW_CENTS, interval_metrics, run_e4_condition};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let out_dir = Path::new("target/plots/paper");
     create_dir_all(out_dir)?;
 
-    let anchor_hz = 220.0;
+    let anchor_hz = E4_ANCHOR_HZ;
     let space = Log2Space::new(20.0, 8000.0, 200);
 
     plot_e1_landscape_scan(out_dir, &space, anchor_hz)?;
-    plot_e4_mirror_sweep(out_dir, &space, anchor_hz)?;
+    plot_e4_mirror_sweep(out_dir, anchor_hz)?;
 
     println!("Saved paper plots to {}", out_dir.display());
     Ok(())
@@ -246,142 +247,80 @@ fn render_e1_plot(
     Ok(())
 }
 
-fn plot_e4_mirror_sweep(
-    out_dir: &Path,
-    space: &Log2Space,
-    anchor_hz: f32,
-) -> Result<(), Box<dyn Error>> {
-    let bins_per_oct = (space.bins_per_oct * 2).max(192);
-    let space = Log2Space::new(space.fmin, space.fmax, bins_per_oct);
-    let anchor_idx = nearest_bin(&space, anchor_hz);
-    let anchor_log2 = anchor_hz.log2();
-    let mut anchor_env_scan = vec![0.0f32; space.n_bins()];
-    anchor_env_scan[anchor_idx] = 1.0;
-
-    space.assert_scan_len_named(&anchor_env_scan, "anchor_env_scan");
-
-    let mut rows: Vec<(f32, f32, f32, f32, f32, f32, f32)> = Vec::new();
-    let mut h_scan_m0: Option<Vec<f32>> = None;
-    let mut h_scan_m1: Option<Vec<f32>> = None;
+fn plot_e4_mirror_sweep(out_dir: &Path, anchor_hz: f32) -> Result<(), Box<dyn Error>> {
+    let seed = 7;
+    let mut rows: Vec<(f32, f32, f32, f32, usize)> = Vec::new();
     for i in 0..=10 {
         let mirror_weight = i as f32 / 10.0;
-        let params = HarmonicityParams {
-            mirror_weight,
-            ..Default::default()
-        };
-        let hk = HarmonicityKernel::new(&space, params);
-        let (h_scan, _) = hk.potential_h_from_log2_spectrum(&anchor_env_scan, &space);
-        if mirror_weight == 0.0 {
-            h_scan_m0 = Some(h_scan.clone());
-        }
-        if mirror_weight == 1.0 {
-            h_scan_m1 = Some(h_scan.clone());
-        }
-
-        let h_oct_down = sample_h(&space, &h_scan, anchor_hz * 0.5);
-        let h_oct_up = sample_h(&space, &h_scan, anchor_hz * 2.0);
-        let h_maj3 = sample_h(&space, &h_scan, anchor_hz * 5.0 / 4.0);
-        let h_min3 = sample_h(&space, &h_scan, anchor_hz * 6.0 / 5.0);
-        let i_maj_min = h_maj3 - h_min3;
-
-        let peak_ex_oct_log2_ratio =
-            peak_excluding_octaves(&space, &h_scan, anchor_log2).unwrap_or(f32::NAN);
-
+        let voice_freqs = run_e4_condition(mirror_weight, seed);
+        let metrics = interval_metrics(anchor_hz, &voice_freqs, E4_WINDOW_CENTS);
         rows.push((
             mirror_weight,
-            h_oct_down,
-            h_oct_up,
-            h_maj3,
-            h_min3,
-            i_maj_min,
-            peak_ex_oct_log2_ratio,
+            metrics.mass_maj3,
+            metrics.mass_min3,
+            metrics.mass_p5,
+            metrics.n_voices,
         ));
     }
 
-    if let (Some(m0), Some(m1)) = (h_scan_m0, h_scan_m1) {
-        let max_abs_diff = m0
-            .iter()
-            .zip(m1.iter())
-            .map(|(a, b)| (a - b).abs())
-            .fold(0.0f32, f32::max);
-        println!("E4 mirror sweep: max_abs_diff(mirror=0 vs 1) = {max_abs_diff}");
-    }
-
-    let mut csv = String::from(
-        "mirror_weight,h_oct_down,h_oct_up,h_maj3,h_min3,i_maj_min,peak_ex_oct_log2_ratio\n",
-    );
-    for (w, h_oct_down, h_oct_up, h_maj3, h_min3, i_maj_min, peak_log2_ratio) in &rows {
+    let mut csv = String::from("mirror_weight,mass_M3,mass_m3,mass_P5,n_voices,window_cents\n");
+    for (w, mass_maj3, mass_min3, mass_p5, n_voices) in &rows {
         csv.push_str(&format!(
-            "{w:.3},{h_oct_down:.6},{h_oct_up:.6},{h_maj3:.6},{h_min3:.6},{i_maj_min:.6},{peak_log2_ratio:.6}\n"
+            "{w:.3},{mass_maj3:.3},{mass_min3:.3},{mass_p5:.3},{n_voices},{}\n",
+            E4_WINDOW_CENTS
         ));
     }
 
-    let csv_path = out_dir.join("paper_e4_mirror_sweep.csv");
+    let csv_path = out_dir.join("paper_e4_mirror_sweep_metrics.csv");
     write(&csv_path, csv)?;
 
-    let y_min = rows
+    let mut y_max = rows
         .iter()
-        .map(|(_, _, _, _, _, y, _)| *y)
-        .fold(f32::INFINITY, f32::min);
-    let y_max = rows
-        .iter()
-        .map(|(_, _, _, _, _, y, _)| *y)
-        .fold(f32::NEG_INFINITY, f32::max);
-    let mut y_lo = y_min.min(y_max);
-    let mut y_hi = y_max.max(y_min);
-    if (y_hi - y_lo).abs() < 1e-6 {
-        y_lo -= 0.5;
-        y_hi += 0.5;
-    } else {
-        let pad = (y_hi - y_lo) * 0.1;
-        y_lo -= pad;
-        y_hi += pad;
+        .map(|(_, m3, m3min, _p5, _)| (*m3).max(*m3min))
+        .fold(0.0f32, f32::max);
+    if y_max <= 0.0 {
+        y_max = 1.0;
     }
+    let y_hi = y_max * 1.1;
 
     let plot_path = out_dir.join("paper_e4_mirror_sweep.png");
     let root = BitMapBackend::new(&plot_path, (1200, 700)).into_drawing_area();
     root.fill(&WHITE)?;
 
     let mut chart = ChartBuilder::on(&root)
-        .caption("E4 Mirror Weight Sweep (I_maj_min)", ("sans-serif", 20))
+        .caption("E4 Mirror Weight Sweep (Interval Mass)", ("sans-serif", 20))
         .margin(10)
         .x_label_area_size(40)
         .y_label_area_size(60)
-        .build_cartesian_2d(0.0f32..1.0f32, y_lo..y_hi)?;
+        .build_cartesian_2d(0.0f32..1.0f32, 0.0f32..y_hi)?;
 
     chart
         .configure_mesh()
         .x_desc("mirror_weight")
-        .y_desc("I_maj_min")
+        .y_desc("interval mass (count)")
         .draw()?;
 
-    let line_points: Vec<(f32, f32)> = rows.iter().map(|(w, _, _, _, _, y, _)| (*w, *y)).collect();
-    chart.draw_series(LineSeries::new(line_points, &BLUE))?;
+    let maj_points: Vec<(f32, f32)> = rows.iter().map(|(w, m3, _, _, _)| (*w, *m3)).collect();
+    let min_points: Vec<(f32, f32)> = rows.iter().map(|(w, _, m3, _, _)| (*w, *m3)).collect();
+
+    chart
+        .draw_series(LineSeries::new(maj_points, &BLUE))?
+        .label("mass_M3")
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], &BLUE));
+
+    chart
+        .draw_series(LineSeries::new(min_points, &RED))?
+        .label("mass_m3")
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], &RED));
+
+    chart
+        .configure_series_labels()
+        .background_style(&WHITE.mix(0.8))
+        .border_style(&BLACK)
+        .draw()?;
 
     root.present()?;
     Ok(())
-}
-
-fn sample_h(space: &Log2Space, h_scan: &[f32], freq_hz: f32) -> f32 {
-    let val = sample_scan_linear_log2(space, h_scan, freq_hz);
-    if val.is_finite() { val } else { 0.0 }
-}
-
-fn peak_excluding_octaves(space: &Log2Space, h_scan: &[f32], anchor_log2: f32) -> Option<f32> {
-    let mut peak_val = f32::NEG_INFINITY;
-    let mut peak_log2_ratio = None;
-    for (idx, &val) in h_scan.iter().enumerate() {
-        let log2_ratio = space.centers_log2[idx] - anchor_log2;
-        let abs_ratio = log2_ratio.abs();
-        if !(0.05..=0.95).contains(&abs_ratio) {
-            continue;
-        }
-        if val > peak_val {
-            peak_val = val;
-            peak_log2_ratio = Some(log2_ratio);
-        }
-    }
-    peak_log2_ratio
 }
 
 fn erb_grid_for_space(space: &Log2Space) -> (Vec<f32>, Vec<f32>) {

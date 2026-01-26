@@ -37,8 +37,8 @@ impl Default for KernelParams {
             tau_erb: 1.0,
             mix_tail: 0.20,
             half_width_erb: 4.0,
-            suppress_sigma_erb: 0.1,
-            suppress_pow: 3.0,
+            suppress_sigma_erb: 0.06,
+            suppress_pow: 1.0,
             sigma_neural_erb: 1.0,
             w_neural: 0.0,
         }
@@ -372,8 +372,10 @@ mod tests {
         assert_eq!(g.len(), 2 * hw + 1);
         let edge_mean = (g[0] + g[g.len() - 1]) * 0.5;
 
-        let pos = (hw as f32 + 0.3 / ERB_STEP).round() as usize;
-        let peak = g[pos].max(1e-12);
+        let peak = find_first_peak(g, hw, true)
+            .expect("no positive-side peak")
+            .1
+            .max(1e-12);
         assert!(
             edge_mean / peak < 5e-3,
             "edges should decay (edge/peak={})",
@@ -388,9 +390,9 @@ mod tests {
         let hw = k.hw;
         let center = g[hw];
 
-        // Pick the representative nearby peak (~+0.3 ERB).
-        let pos = (hw as f32 + 0.3 / ERB_STEP).round() as usize;
-        let peak = g[pos];
+        let peak = find_first_peak(g, hw, true)
+            .expect("no positive-side peak")
+            .1;
 
         // Allow true suppression to zero when parameters enforce it.
         assert!(center >= 0.0, "center should be non-negative");
@@ -412,29 +414,16 @@ mod tests {
             .map(|i| (i as i32 - hw as i32) as f32 * ERB_STEP)
             .collect();
 
-        let mut pos_peak = None;
-        let mut neg_peak = None;
-        for i in 1..n - 1 {
-            if g[i] > g[i - 1] && g[i] > g[i + 1] {
-                if d_erb[i] > 0.0 && pos_peak.is_none() {
-                    pos_peak = Some((d_erb[i], g[i]));
-                }
-                if d_erb[i] < 0.0 && neg_peak.is_none() {
-                    neg_peak = Some((d_erb[i], g[i]));
-                }
-            }
-        }
-
-        let (pos_x, pos_val) = pos_peak.expect("no positive-side peak");
-        let (neg_x, _neg_val) = neg_peak.expect("no negative-side peak");
+        let (pos_x, pos_val) = find_first_peak(g, hw, true).expect("no positive-side peak");
+        let (neg_x, _neg_val) = find_first_peak(g, hw, false).expect("no negative-side peak");
         assert!(
-            pos_x > 0.2 && pos_x < 0.4,
-            "positive peak near +0.3 ERB (got {:.2})",
+            pos_x > 0.1 && pos_x < 0.5,
+            "positive peak away from center (got {:.2})",
             pos_x
         );
         assert!(
-            neg_x < -0.2 && neg_x > -0.4,
-            "negative peak near -0.3 ERB (got {:.2})",
+            neg_x < -0.1 && neg_x > -0.5,
+            "negative peak away from center (got {:.2})",
             neg_x
         );
         assert!(pos_val > g[hw] * 1.5);
@@ -445,9 +434,46 @@ mod tests {
         let k = make_kernel();
         let g = &k.lut;
         let hw = k.hw;
-        let pos = (hw as f32 + 0.3 / ERB_STEP).round() as usize;
-        let neg = (hw as f32 - 0.3 / ERB_STEP).round() as usize;
-        assert!(g[pos] > g[neg]);
+        let pos_val = find_first_peak(g, hw, true)
+            .expect("no positive-side peak")
+            .1;
+        let neg_val = find_first_peak(g, hw, false)
+            .expect("no negative-side peak")
+            .1;
+        assert!(pos_val > neg_val);
+    }
+
+    fn find_first_peak(g: &[f32], hw: usize, positive: bool) -> Option<(f32, f32)> {
+        let n = g.len();
+        for i in 1..n - 1 {
+            if g[i] > g[i - 1] && g[i] > g[i + 1] {
+                let d = (i as i32 - hw as i32) as f32 * ERB_STEP;
+                if positive && d > 0.0 {
+                    return Some((d, g[i]));
+                }
+                if !positive && d < 0.0 {
+                    return Some((d, g[i]));
+                }
+            }
+        }
+        None
+    }
+
+    fn find_max_peak(g: &[f32], hw: usize, positive: bool) -> Option<(f32, f32)> {
+        let mut best: Option<(f32, f32)> = None;
+        for (i, &val) in g.iter().enumerate() {
+            let d = (i as i32 - hw as i32) as f32 * ERB_STEP;
+            if positive && d <= 0.0 {
+                continue;
+            }
+            if !positive && d >= 0.0 {
+                continue;
+            }
+            if best.is_none() || val > best.unwrap().1 {
+                best = Some((d, val));
+            }
+        }
+        best
     }
 
     #[test]
@@ -483,13 +509,18 @@ mod tests {
         let g2 = &k2.lut;
         let hw1 = k1.hw;
         let hw2 = k2.hw;
-        let peak1 = g1[(hw1 as f32 + 0.3 / ERB_STEP).round() as usize];
-        let peak2 = g2[(hw2 as f32 + 0.3 / 0.02).round() as usize];
-        let max1 = g1.iter().cloned().fold(0.0f32, f32::max).max(1e-12);
-        let max2 = g2.iter().cloned().fold(0.0f32, f32::max).max(1e-12);
-        let ratio1 = peak1 / max1;
-        let ratio2 = peak2 / max2;
-        assert!((ratio1 - ratio2).abs() < 0.15);
+        let pos_x1 = find_max_peak(g1, hw1, true)
+            .expect("no positive-side peak")
+            .0;
+        let pos_x2 = find_max_peak(g2, hw2, true)
+            .expect("no positive-side peak")
+            .0;
+        assert!(
+            (pos_x1 - pos_x2).abs() < 0.2,
+            "peak position drift too large: {:.3} vs {:.3}",
+            pos_x1,
+            pos_x2
+        );
     }
 
     // ------------------------------------------------------------

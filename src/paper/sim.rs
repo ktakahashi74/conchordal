@@ -215,6 +215,8 @@ fn make_landscape_params(space: &Log2Space, fs: f32) -> LandscapeParams {
         harmonicity_kernel: HarmonicityKernel::new(space, HarmonicityParams::default()),
         roughness_scalar_mode: RoughnessScalarMode::Total,
         roughness_half: 0.1,
+        consonance_harmonicity_deficit_weight: 1.0,
+        consonance_roughness_weight_floor: 0.35,
         consonance_roughness_weight: 0.5,
         loudness_exp: 1.0,
         ref_power: 1.0,

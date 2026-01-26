@@ -51,6 +51,16 @@ fn assert_config_eq(actual: &AppConfig, expected: &AppConfig) {
         "psychoacoustics.roughness_k",
     );
     assert_close(
+        actual.psychoacoustics.harmonicity_deficit_weight,
+        expected.psychoacoustics.harmonicity_deficit_weight,
+        "psychoacoustics.harmonicity_deficit_weight",
+    );
+    assert_close(
+        actual.psychoacoustics.roughness_weight_floor,
+        expected.psychoacoustics.roughness_weight_floor,
+        "psychoacoustics.roughness_weight_floor",
+    );
+    assert_close(
         actual.psychoacoustics.roughness_weight,
         expected.psychoacoustics.roughness_weight,
         "psychoacoustics.roughness_weight",
@@ -96,6 +106,8 @@ fn config_load_custom_values() {
         psychoacoustics: PsychoAcousticsConfig {
             loudness_exp: 0.3,
             roughness_k: 0.2,
+            harmonicity_deficit_weight: 1.2,
+            roughness_weight_floor: 0.4,
             roughness_weight: 0.8,
             use_incoherent_power: false,
         },

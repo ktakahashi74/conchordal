@@ -17,7 +17,11 @@ pub struct LandscapeParams {
     pub roughness_scalar_mode: RoughnessScalarMode,
     /// Half-saturation point for roughness range compression (legacy).
     pub roughness_half: f32,
-    /// Weight for perc_potential_R when computing consonance01 (H - w*R).
+    /// Weight for harmonicity deficit (1 - H01) when computing dissonance D (alpha).
+    pub consonance_harmonicity_deficit_weight: f32,
+    /// Floor weight for roughness when computing consonance (w0).
+    pub consonance_roughness_weight_floor: f32,
+    /// Slope for roughness weight vs (1 - H01) when computing consonance (w1).
     pub consonance_roughness_weight: f32,
 
     /// Exponent for subjective intensity (≈ specific loudness). Typical: 0.23
@@ -71,9 +75,9 @@ pub struct Landscape {
     pub harmonicity: Vec<f32>,
     /// Normalized perc_potential_H [0, 1].
     pub harmonicity01: Vec<f32>,
-    /// Combined perc_potential_H - w*perc_potential_R.
+    /// Combined signed consonance (Cpm1), derived from H01 and R01.
     pub consonance: Vec<f32>,
-    /// Normalized combined consonance [0, 1].
+    /// Normalized combined consonance [0, 1] (C01).
     pub consonance01: Vec<f32>,
     pub subjective_intensity: Vec<f32>,
     pub nsgt_power: Vec<f32>,
@@ -195,7 +199,9 @@ impl Landscape {
 
     pub fn recompute_consonance(&mut self, params: &LandscapeParams) {
         self.assert_scan_lengths();
-        let w_r = params.consonance_roughness_weight.max(0.0);
+        let alpha = params.consonance_harmonicity_deficit_weight.max(0.0);
+        let w0 = params.consonance_roughness_weight_floor.max(0.0);
+        let w1 = params.consonance_roughness_weight.max(0.0);
         if self.harmonicity01.len() != self.harmonicity.len() {
             self.harmonicity01 = vec![0.0; self.harmonicity.len()];
         }
@@ -221,7 +227,7 @@ impl Landscape {
             .zip(self.harmonicity01.iter().zip(perc_r_state01_scan.iter()))
         {
             let (c_signed_val, c01_val) =
-                crate::core::psycho_state::compose_c_statepm1(*h01, *r01, w_r);
+                crate::core::psycho_state::compose_c_statepm1(*h01, *r01, alpha, w0, w1);
             *c_signed = c_signed_val;
             *c01 = c01_val.clamp(0.0, 1.0);
         }
@@ -278,6 +284,8 @@ mod tests {
             harmonicity_kernel: HarmonicityKernel::new(space, HarmonicityParams::default()),
             roughness_scalar_mode: RoughnessScalarMode::Total,
             roughness_half: 0.1,
+            consonance_harmonicity_deficit_weight: 1.0,
+            consonance_roughness_weight_floor: 0.35,
             consonance_roughness_weight: 0.5,
             loudness_exp: 1.0,
             ref_power: 1.0,
@@ -318,10 +326,13 @@ mod tests {
     fn c01_stays_in_range() {
         let h01 = [0.0f32, 0.5, 1.0];
         let r01 = [0.0f32, 0.4, 1.0];
+        let alpha = 1.0;
+        let w0 = 0.35;
+        let w1 = 0.75;
         for &h in &h01 {
             for &r in &r01 {
-                let c_signed = (h - r).clamp(-1.0, 1.0);
-                let c = ((c_signed + 1.0) * 0.5).clamp(0.0, 1.0);
+                let (_c_signed, c) =
+                    crate::core::psycho_state::compose_c_statepm1(h, r, alpha, w0, w1);
                 assert!(c >= 0.0 && c <= 1.0);
             }
         }
@@ -355,12 +366,16 @@ mod tests {
         landscape.roughness01 = vec![0.4; n];
         landscape.recompute_consonance(&params);
 
-        let w_r = params.consonance_roughness_weight;
+        let alpha = params.consonance_harmonicity_deficit_weight;
+        let w0 = params.consonance_roughness_weight_floor;
+        let w1 = params.consonance_roughness_weight;
         for i in 0..n {
-            let h = landscape.harmonicity[i].clamp(0.0, 1.0);
+            let h = landscape.harmonicity01[i].clamp(0.0, 1.0);
             let r = landscape.roughness01[i].clamp(0.0, 1.0);
-            let c_signed = (h - w_r * r).clamp(-1.0, 1.0);
-            let c_pred = ((c_signed + 1.0) * 0.5).clamp(0.0, 1.0);
+            let dh = 1.0 - h;
+            let w = w0 + w1 * dh;
+            let d = alpha * dh + w * r;
+            let c_pred = (1.0 / (1.0 + d.max(0.0))).clamp(0.0, 1.0);
             let c = landscape.consonance01[i];
             assert!((c - c_pred).abs() < 1e-6, "i={i} c={c} c_pred={c_pred}");
         }
@@ -389,9 +404,11 @@ mod tests {
     }
 
     #[test]
-    fn consonance01_decreases_linearly_with_roughness() {
+    fn consonance01_decreases_with_roughness() {
         let space = Log2Space::new(100.0, 400.0, 12);
         let mut params = build_params(&space);
+        params.consonance_harmonicity_deficit_weight = 1.0;
+        params.consonance_roughness_weight_floor = 0.35;
         params.consonance_roughness_weight = 1.0;
 
         let mut landscape = Landscape::new(space);
@@ -401,15 +418,20 @@ mod tests {
 
         landscape.roughness01 = vec![0.0; n];
         landscape.recompute_consonance(&params);
-        assert!((landscape.consonance01[0] - 1.0).abs() < 1e-6);
+        let c0 = landscape.consonance01[0];
 
         landscape.roughness01 = vec![0.5; n];
         landscape.recompute_consonance(&params);
-        assert!((landscape.consonance01[0] - 0.75).abs() < 1e-6);
+        let c1 = landscape.consonance01[0];
 
         landscape.roughness01 = vec![1.0; n];
         landscape.recompute_consonance(&params);
-        assert!((landscape.consonance01[0] - 0.5).abs() < 1e-6);
+        let c2 = landscape.consonance01[0];
+
+        assert!(
+            c0 > c1 && c1 > c2,
+            "expected monotonic decrease: {c0} > {c1} > {c2}"
+        );
     }
 
     #[test]

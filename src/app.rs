@@ -499,6 +499,8 @@ fn init_runtime(
         harmonicity_kernel: HarmonicityKernel::new(&space, HarmonicityParams::default()),
         roughness_scalar_mode: crate::core::landscape::RoughnessScalarMode::Total,
         roughness_half: 0.1,
+        consonance_harmonicity_deficit_weight: config.psychoacoustics.harmonicity_deficit_weight,
+        consonance_roughness_weight_floor: config.psychoacoustics.roughness_weight_floor,
         consonance_roughness_weight: config.psychoacoustics.roughness_weight,
         loudness_exp: config.psychoacoustics.loudness_exp, // Zwicker
         tau_ms: config.analysis.tau_ms,
@@ -921,7 +923,13 @@ fn worker_loop(
                         .get(max_i)
                         .copied()
                         .unwrap_or(0.0);
-                    let c_pred = (h - lparams.consonance_roughness_weight * r).clamp(-1.0, 1.0);
+                    let (c_pred, _c01_pred) = crate::core::psycho_state::compose_c_statepm1(
+                        h,
+                        r,
+                        lparams.consonance_harmonicity_deficit_weight,
+                        lparams.consonance_roughness_weight_floor,
+                        lparams.consonance_roughness_weight,
+                    );
                     debug!(
                         "c_signed_check bin={} h={:.4} r={:.4} c={:.4} c_pred={:.4}",
                         max_i, h, r, c, c_pred

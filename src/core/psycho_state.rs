@@ -86,20 +86,60 @@ pub fn h_pot_scan_to_h_state01_scan(h_pot_scan: &[f32], h_ref_max: f32, out: &mu
     }
 }
 
-pub fn compose_c_statepm1(h_state01: f32, r_state01: f32, w_r: f32) -> (f32, f32) {
-    let h01 = clamp01(h_state01);
-    let r01 = clamp01(r_state01);
-    let c_signed = clamp_pm1(h01 - w_r * r01);
-    let c01 = clamp01((c_signed + 1.0) * 0.5);
+fn sanitize01(x: f32) -> f32 {
+    if x.is_finite() {
+        x.clamp(0.0, 1.0)
+    } else if x.is_infinite() {
+        if x.is_sign_positive() { 1.0 } else { 0.0 }
+    } else {
+        0.0
+    }
+}
+
+fn sanitize_nonneg(x: f32) -> f32 {
+    if x.is_finite() { x.max(0.0) } else { 0.0 }
+}
+
+pub fn compose_c_statepm1(
+    h_state01: f32,
+    r_state01: f32,
+    alpha: f32,
+    w0: f32,
+    w1: f32,
+) -> (f32, f32) {
+    let h01 = sanitize01(h_state01);
+    let r01 = sanitize01(r_state01);
+    let alpha = sanitize_nonneg(alpha);
+    let w0 = sanitize_nonneg(w0);
+    let w1 = sanitize_nonneg(w1);
+    let dh = 1.0 - h01;
+    let w = w0 + w1 * dh;
+    let d = alpha * dh + w * r01;
+    let c01 = if d.is_finite() {
+        let denom = 1.0 + d.max(0.0);
+        if denom <= 0.0 { 1.0 } else { 1.0 / denom }
+    } else if d.is_sign_negative() {
+        1.0
+    } else {
+        0.0
+    };
+    let c_signed = clamp_pm1(2.0 * c01 - 1.0);
     (c_signed, c01)
 }
 
-pub fn compose_c_statepm1_scan(h_state01: &[f32], r_state01: &[f32], w_r: f32, out: &mut [f32]) {
+pub fn compose_c_statepm1_scan(
+    h_state01: &[f32],
+    r_state01: &[f32],
+    alpha: f32,
+    w0: f32,
+    w1: f32,
+    out: &mut [f32],
+) {
     debug_assert_eq!(h_state01.len(), r_state01.len());
     debug_assert_eq!(out.len(), h_state01.len());
     let len = out.len().min(h_state01.len()).min(r_state01.len());
     for i in 0..len {
-        let (c_signed, _) = compose_c_statepm1(h_state01[i], r_state01[i], w_r);
+        let (c_signed, _) = compose_c_statepm1(h_state01[i], r_state01[i], alpha, w0, w1);
         out[i] = c_signed;
     }
 }
@@ -199,6 +239,8 @@ mod tests {
             harmonicity_kernel: HarmonicityKernel::new(space, HarmonicityParams::default()),
             roughness_scalar_mode: RoughnessScalarMode::Total,
             roughness_half: 0.1,
+            consonance_harmonicity_deficit_weight: 1.0,
+            consonance_roughness_weight_floor: 0.35,
             consonance_roughness_weight: 0.5,
             loudness_exp: 1.0,
             ref_power: 1.0,
@@ -263,15 +305,59 @@ mod tests {
 
     #[test]
     fn compose_c_statepm1_scan_matches_scalar() {
-        let h = vec![0.2, 0.8];
-        let r = vec![0.1, 0.5];
-        let mut out = vec![0.0; 2];
-        compose_c_statepm1_scan(&h, &r, 0.5, &mut out);
-        for i in 0..2 {
-            let legacy = (h[i] - 0.5 * r[i]).clamp(-1.0, 1.0);
-            let (c, _) = compose_c_statepm1(h[i], r[i], 0.5);
-            assert!((out[i] - c).abs() < 1e-6);
-            assert!((c - legacy).abs() < 1e-6);
+        let h = vec![0.0, 0.2, 0.8, 1.0];
+        let r = vec![0.0, 0.1, 0.5, 1.0];
+        let mut out = vec![0.0; h.len()];
+        let w0 = 0.35;
+        let w1 = 0.75;
+        for &alpha in &[1.0, 2.0] {
+            compose_c_statepm1_scan(&h, &r, alpha, w0, w1, &mut out);
+            for i in 0..h.len() {
+                let h01 = h[i].clamp(0.0, 1.0);
+                let r01 = r[i].clamp(0.0, 1.0);
+                let dh = 1.0 - h01;
+                let w = w0 + w1 * dh;
+                let d = alpha * dh + w * r01;
+                let c01_expected = 1.0 / (1.0 + d.max(0.0));
+                let cpm1_expected = (2.0 * c01_expected - 1.0).clamp(-1.0, 1.0);
+
+                let (cpm1, c01) = compose_c_statepm1(h[i], r[i], alpha, w0, w1);
+                assert!(
+                    (c01 - c01_expected).abs() < 1e-6,
+                    "alpha={alpha} i={i} c01={c01} expected={c01_expected}"
+                );
+                assert!(
+                    (cpm1 - cpm1_expected).abs() < 1e-6,
+                    "alpha={alpha} i={i} cpm1={cpm1} expected={cpm1_expected}"
+                );
+                assert!(
+                    (out[i] - cpm1_expected).abs() < 1e-6,
+                    "alpha={alpha} i={i} scan={scan} expected={cpm1_expected}",
+                    scan = out[i]
+                );
+            }
         }
+    }
+
+    #[test]
+    fn alpha_increases_penalty_when_h_low() {
+        let h = 0.2;
+        let r = 0.2;
+        let w0 = 0.35;
+        let w1 = 0.75;
+        let (_cpm1_low, c01_low) = compose_c_statepm1(h, r, 0.5, w0, w1);
+        let (_cpm1_high, c01_high) = compose_c_statepm1(h, r, 2.0, w0, w1);
+        assert!(c01_high < c01_low, "expected higher alpha to reduce C01");
+    }
+
+    #[test]
+    fn w0_floor_preserves_roughness_penalty_at_h1() {
+        let h = 1.0;
+        let r = 0.4;
+        let alpha = 1.0;
+        let w0 = 0.35;
+        let w1 = 0.75;
+        let (_cpm1, c01) = compose_c_statepm1(h, r, alpha, w0, w1);
+        assert!(c01 < 1.0, "expected w0 to reduce C01 when h=1 and r>0");
     }
 }

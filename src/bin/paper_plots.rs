@@ -63,6 +63,8 @@ fn plot_e1_landscape_scan(
         harmonicity_kernel: harmonicity_kernel.clone(),
         roughness_scalar_mode: RoughnessScalarMode::Total,
         roughness_half: 0.1,
+        consonance_harmonicity_deficit_weight: 1.0,
+        consonance_roughness_weight_floor: 0.35,
         consonance_roughness_weight: 0.5,
         loudness_exp: 1.0,
         ref_power: 1.0,
@@ -95,14 +97,15 @@ fn plot_e1_landscape_scan(
         &mut perc_h_state01_scan,
     );
 
-    let mut perc_c_state01_scan = vec![0.0f32; space.n_bins()];
+    let mut perc_c_raw_scan = vec![0.0f32; space.n_bins()];
     for i in 0..space.n_bins() {
-        let (_c_signed, c01) = psycho_state::compose_c_statepm1(
-            perc_h_state01_scan[i],
-            perc_r_state01_scan[i],
-            params.consonance_roughness_weight,
-        );
-        perc_c_state01_scan[i] = c01;
+        let h01 = perc_h_state01_scan[i];
+        let r01 = perc_r_state01_scan[i];
+        let dh = 1.0 - h01;
+        let w = params.consonance_roughness_weight_floor + params.consonance_roughness_weight * dh;
+        let d = params.consonance_harmonicity_deficit_weight * dh + w * r01;
+        let c_raw = 1.0 / (1.0 + d);
+        perc_c_raw_scan[i] = if c_raw.is_finite() { c_raw } else { 0.0 };
     }
 
     let anchor_log2 = anchor_hz.log2();
@@ -114,7 +117,7 @@ fn plot_e1_landscape_scan(
 
     space.assert_scan_len_named(&perc_r_state01_scan, "perc_r_state01_scan");
     space.assert_scan_len_named(&perc_h_state01_scan, "perc_h_state01_scan");
-    space.assert_scan_len_named(&perc_c_state01_scan, "perc_c_state01_scan");
+    space.assert_scan_len_named(&perc_c_raw_scan, "perc_c_raw_scan");
     space.assert_scan_len_named(&log2_ratio_scan, "log2_ratio_scan");
 
     let out_path = out_dir.join("paper_e1_landscape_scan_anchor220.png");
@@ -124,7 +127,7 @@ fn plot_e1_landscape_scan(
         &log2_ratio_scan,
         &perc_h_pot_scan,
         &perc_r_state01_scan,
-        &perc_c_state01_scan,
+        &perc_c_raw_scan,
     )?;
 
     Ok(())
@@ -136,7 +139,7 @@ fn render_e1_plot(
     log2_ratio_scan: &[f32],
     perc_h_pot_scan: &[f32],
     perc_r_state01_scan: &[f32],
-    perc_c_state01_scan: &[f32],
+    perc_c_raw_scan: &[f32],
 ) -> Result<(), Box<dyn Error>> {
     let x_min = -1.0f32;
     let x_max = 1.0f32;
@@ -151,7 +154,7 @@ fn render_e1_plot(
         }
         h_points.push((x, perc_h_pot_scan[i]));
         r_points.push((x, perc_r_state01_scan[i]));
-        c_points.push((x, perc_c_state01_scan[i]));
+        c_points.push((x, perc_c_raw_scan[i]));
     }
 
     let h_max = h_points
@@ -219,29 +222,43 @@ fn render_e1_plot(
 
     chart_r.draw_series(LineSeries::new(r_points, &RED))?;
 
+    let mut c_min = f32::INFINITY;
+    let mut c_max = f32::NEG_INFINITY;
+    for &(_, y) in &c_points {
+        if y.is_finite() {
+            c_min = c_min.min(y);
+            c_max = c_max.max(y);
+        }
+    }
+    if !c_min.is_finite() || !c_max.is_finite() || (c_max - c_min).abs() < 1e-6 {
+        c_min = -1.0;
+        c_max = 1.0;
+    }
+    let pad = 0.05f32;
+
     let mut chart_c = ChartBuilder::on(&panels[2])
-        .caption("E1 Consonance State C01(f)", ("sans-serif", 20))
+        .caption("E1 Consonance Raw C(f)", ("sans-serif", 20))
         .margin(10)
         .x_label_area_size(40)
         .y_label_area_size(60)
-        .build_cartesian_2d(x_min..x_max, 0.0f32..1.05f32)?;
+        .build_cartesian_2d(x_min..x_max, (c_min - pad)..(c_max + pad))?;
 
     chart_c
         .configure_mesh()
         .x_desc("log2(f / f_anchor)")
-        .y_desc("C01")
+        .y_desc("C_raw")
         .draw()?;
 
     for &x in &ratio_guides_log2 {
         if x >= x_min && x <= x_max {
             chart_c.draw_series(std::iter::once(PathElement::new(
-                vec![(x, 0.0), (x, 1.05)],
+                vec![(x, c_min - pad), (x, c_max + pad)],
                 BLACK.mix(0.15),
             )))?;
         }
     }
 
-    chart_c.draw_series(LineSeries::new(c_points, &GREEN))?;
+    chart_c.draw_series(LineSeries::new(c_points, &BLACK))?;
 
     root.present()?;
     Ok(())
@@ -306,17 +323,17 @@ fn plot_e4_mirror_sweep(out_dir: &Path, anchor_hz: f32) -> Result<(), Box<dyn Er
     chart
         .draw_series(LineSeries::new(maj_points, &BLUE))?
         .label("mass_M3")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], &BLUE));
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], BLUE));
 
     chart
         .draw_series(LineSeries::new(min_points, &RED))?
         .label("mass_m3")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], &RED));
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], RED));
 
     chart
         .configure_series_labels()
-        .background_style(&WHITE.mix(0.8))
-        .border_style(&BLACK)
+        .background_style(WHITE.mix(0.8))
+        .border_style(BLACK)
         .draw()?;
 
     root.present()?;

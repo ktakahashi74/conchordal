@@ -82,6 +82,10 @@ pub struct PsychoAcousticsConfig {
     pub loudness_exp: f32,
     #[serde(default = "PsychoAcousticsConfig::default_roughness_k")]
     pub roughness_k: f32,
+    #[serde(default = "PsychoAcousticsConfig::default_harmonicity_deficit_weight")]
+    pub harmonicity_deficit_weight: f32,
+    #[serde(default = "PsychoAcousticsConfig::default_roughness_weight_floor")]
+    pub roughness_weight_floor: f32,
     #[serde(default = "PsychoAcousticsConfig::default_roughness_weight")]
     pub roughness_weight: f32,
     #[serde(default = "PsychoAcousticsConfig::default_use_incoherent_power")]
@@ -94,6 +98,12 @@ impl PsychoAcousticsConfig {
     }
     fn default_roughness_k() -> f32 {
         0.428571
+    }
+    fn default_harmonicity_deficit_weight() -> f32 {
+        1.0
+    }
+    fn default_roughness_weight_floor() -> f32 {
+        0.35
     }
     fn default_roughness_weight() -> f32 {
         1.0
@@ -108,6 +118,8 @@ impl Default for PsychoAcousticsConfig {
         Self {
             loudness_exp: Self::default_loudness_exp(),
             roughness_k: Self::default_roughness_k(),
+            harmonicity_deficit_weight: Self::default_harmonicity_deficit_weight(),
+            roughness_weight_floor: Self::default_roughness_weight_floor(),
             roughness_weight: Self::default_roughness_weight(),
             use_incoherent_power: Self::default_use_incoherent_power(),
         }
@@ -173,6 +185,10 @@ impl AppConfig {
         self.analysis.tau_ms = Self::round_f32(self.analysis.tau_ms);
         self.psychoacoustics.loudness_exp = Self::round_f32(self.psychoacoustics.loudness_exp);
         self.psychoacoustics.roughness_k = Self::round_f32(self.psychoacoustics.roughness_k);
+        self.psychoacoustics.harmonicity_deficit_weight =
+            Self::round_f32(self.psychoacoustics.harmonicity_deficit_weight);
+        self.psychoacoustics.roughness_weight_floor =
+            Self::round_f32(self.psychoacoustics.roughness_weight_floor);
         self.psychoacoustics.roughness_weight =
             Self::round_f32(self.psychoacoustics.roughness_weight);
         self
@@ -271,6 +287,8 @@ mod tests {
         assert_eq!(cfg.audio.limiter, LimiterSetting::PeakLimiter);
         assert_eq!(cfg.psychoacoustics.loudness_exp, 0.23);
         assert!((cfg.psychoacoustics.roughness_k - 0.428571).abs() < 1e-6);
+        assert_eq!(cfg.psychoacoustics.harmonicity_deficit_weight, 1.0);
+        assert!((cfg.psychoacoustics.roughness_weight_floor - 0.35).abs() < 1e-6);
         assert_eq!(cfg.psychoacoustics.roughness_weight, 1.0);
         assert!(!cfg.psychoacoustics.use_incoherent_power);
 
@@ -282,6 +300,14 @@ mod tests {
         assert!(
             contents.contains("# roughness_k = 0.428571"),
             "should write commented roughness_k"
+        );
+        assert!(
+            contents.contains("# harmonicity_deficit_weight = 1.0"),
+            "should write commented harmonicity_deficit_weight"
+        );
+        assert!(
+            contents.contains("# roughness_weight_floor = 0.35"),
+            "should write commented roughness_weight_floor"
         );
         assert!(
             contents.contains("# roughness_weight = 1.0"),
@@ -314,6 +340,8 @@ mod tests {
             psychoacoustics: PsychoAcousticsConfig {
                 loudness_exp: 0.3,
                 roughness_k: 0.2,
+                harmonicity_deficit_weight: 1.2,
+                roughness_weight_floor: 0.4,
                 roughness_weight: 0.8,
                 use_incoherent_power: false,
             },
@@ -334,6 +362,8 @@ mod tests {
         assert_eq!(cfg.analysis.tau_ms, 60.0);
         assert_eq!(cfg.psychoacoustics.loudness_exp, 0.3);
         assert_eq!(cfg.psychoacoustics.roughness_k, 0.2);
+        assert_eq!(cfg.psychoacoustics.harmonicity_deficit_weight, 1.2);
+        assert_eq!(cfg.psychoacoustics.roughness_weight_floor, 0.4);
         assert_eq!(cfg.psychoacoustics.roughness_weight, 0.8);
         assert!(!cfg.psychoacoustics.use_incoherent_power);
         assert!(!cfg.playback.wait_user_exit);

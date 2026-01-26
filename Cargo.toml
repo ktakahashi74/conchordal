@@ -2,6 +2,7 @@
 name = "conchordal"
 version = "0.2.0"
 edition = "2024"
+default-run = "conchordal"
 license = "MIT OR Apache-2.0"
 description = "A bio-acoustic instrument for generative composition"
 repository = "https://github.com/ktakahashi74/conchordal"

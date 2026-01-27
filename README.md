@@ -25,7 +25,7 @@ The environment represents the structure of human hearing in both frequency and 
 * **Spectral Potential (Pitch):** Using a Non-Stationary Gabor Transform (NSGT) on a Log2 axis—simulating the **Cochlear Tonotopic Map**—it calculates potentials corresponding to physiological mechanisms:
     * **Roughness (R):** Simulates **Basilar Membrane Interference** (Critical Bands).
     * **Harmonicity (H):** Simulates **Neural Phase-Locking** (Temporal Periodicity detection).
-    * **Consonance (C):** Simulates **Cognitive Integration** via $D=\alpha(1-H)+w(H)R$, $w(H)=w0+w1(1-H)$, and $C=1/(1+D)$. Alpha separates the relative weighting between harmonicity deficit and roughness.
+    * **Consonance (C):** Simulates **Cognitive Integration** calculated from roughness (R) and harmonicity (H).
 
 * **Neural Rhythms (Time):** Instead of a grid, rhythm emerges from entrainment to simulated **Neural Oscillations (Brainwaves)**:
 

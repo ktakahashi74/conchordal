@@ -923,13 +923,7 @@ fn worker_loop(
                         .get(max_i)
                         .copied()
                         .unwrap_or(0.0);
-                    let (c_pred, _c01_pred) = crate::core::psycho_state::compose_c_statepm1(
-                        h,
-                        r,
-                        lparams.consonance_harmonicity_deficit_weight,
-                        lparams.consonance_roughness_weight_floor,
-                        lparams.consonance_roughness_weight,
-                    );
+                    let (c_pred, _c01_pred) = compose_c_statepm1_with_params(h, r, &lparams);
                     debug!(
                         "c_signed_check bin={} h={:.4} r={:.4} c={:.4} c_pred={:.4}",
                         max_i, h, r, c, c_pred
@@ -1256,4 +1250,18 @@ fn apply_params_update(params: &mut LandscapeParams, upd: &LandscapeUpdate) {
     if let Some(k) = upd.roughness_k {
         params.roughness_k = k.max(1e-6);
     }
+}
+
+fn compose_c_statepm1_with_params(
+    h_state01: f32,
+    r_state01: f32,
+    params: &LandscapeParams,
+) -> (f32, f32) {
+    crate::core::psycho_state::compose_c_statepm1(
+        h_state01,
+        r_state01,
+        params.consonance_harmonicity_deficit_weight,
+        params.consonance_roughness_weight_floor,
+        params.consonance_roughness_weight,
+    )
 }

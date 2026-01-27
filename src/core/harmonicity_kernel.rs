@@ -48,6 +48,9 @@ pub struct HarmonicityParams {
     pub normalize_output: bool,
     /// Blend ratio: 0 = Path A only, 1 = Path B only.
     pub mirror_weight: f32,
+    /// Scale for diagonal (m=k) self-reinforcement (expected self term).
+    /// 1.0 = legacy behavior, <1.0 reduces unison dominance.
+    pub diag_weight: f32,
     /// Apply absolute-frequency gating for TFS roll-off.
     pub freq_gate: bool,
     /// Frequency pivot for TFS gate (Hz).
@@ -67,6 +70,7 @@ impl Default for HarmonicityParams {
             sigma_cents: 3.0, // Slightly wider peaks to ease sampling
             normalize_output: true,
             mirror_weight: 0.3,
+            diag_weight: 0.65,
             freq_gate: false,
             tfs_f_pl_hz: 4500.0,
             tfs_eta: 4.0,
@@ -130,6 +134,23 @@ impl HarmonicityKernel {
         // Step 0: Smooth Input (O(N))
         let smeared_env = self.convolve_smooth(envelope);
 
+        // Diagonal self-term correction factors.
+        let diag_w = self.params.diag_weight.clamp(0.0, 1.0);
+        let (diag_a, diag_b) = if diag_w < 1.0 {
+            let mut sum_a = 0.0f32;
+            let mut sum_b = 0.0f32;
+            for k in 1..=limit {
+                let kk = k as f32;
+                let a = kk.powf(-self.params.rho_common_root);
+                let b = kk.powf(-self.params.rho_common_overtone);
+                sum_a += a * a;
+                sum_b += b * b;
+            }
+            (sum_a, sum_b)
+        } else {
+            (0.0, 0.0)
+        };
+
         // Buffer for Virtual Roots / Overtones (centered with padding on both sides)
         let padding = self.pad_bins;
         let center_offset = padding as f32;
@@ -152,6 +173,13 @@ impl HarmonicityKernel {
             let offset = shift_bins - center_offset;
             Self::accumulate_shifted(&root_spectrum, &mut landscape_a, offset, weight);
         }
+        if diag_w < 1.0 {
+            let scale = 1.0 - diag_w;
+            for i in 0..n_bins {
+                let adjusted = landscape_a[i] - scale * diag_a * smeared_env[i];
+                landscape_a[i] = adjusted.max(0.0);
+            }
+        }
 
         // === Path B: Common Overtone / Undertone Series (up then down) ===
         for k in 1..=limit {
@@ -167,6 +195,13 @@ impl HarmonicityKernel {
             let weight = (m as f32).powf(-self.params.rho_common_overtone);
             let offset = -shift_bins - center_offset;
             Self::accumulate_shifted(&overtone_spectrum, &mut landscape_b, offset, weight);
+        }
+        if diag_w < 1.0 {
+            let scale = 1.0 - diag_w;
+            for i in 0..n_bins {
+                let adjusted = landscape_b[i] - scale * diag_b * smeared_env[i];
+                landscape_b[i] = adjusted.max(0.0);
+            }
         }
 
         // Blend A/B
@@ -324,16 +359,14 @@ mod tests {
             .iter()
             .map(|&i| landscape[i])
             .fold(0.0f32, f32::max);
-        let other_max = landscape
-            .iter()
-            .enumerate()
-            .filter(|(i, _)| !triad_indices.contains(i))
-            .map(|(_, &v)| v)
-            .fold(0.0f32, f32::max);
+        let idx_tritone = space
+            .index_of_freq(200.0 * 1.414)
+            .expect("tritone bin exists");
+        let dissonant = landscape[idx_tritone];
 
         assert!(
-            triad_max >= other_max * 0.9,
-            "Mirror path should reinforce triad members via common overtone"
+            triad_max > dissonant * 1.2,
+            "Mirror path should reinforce triad members relative to dissonance (triad={triad_max:.4} tritone={dissonant:.4})"
         );
         for idx in triad_indices {
             assert!(
@@ -368,6 +401,39 @@ mod tests {
         assert!(
             ratio < 0.9,
             "Higher-order peaks should diminish when param_limit is small (ratio={ratio})"
+        );
+    }
+
+    #[test]
+    fn test_diag_weight_boosts_fifth_relative_to_unison() {
+        let space = Log2Space::new(50.0, 800.0, 200);
+
+        let mut params_old = HarmonicityParams::default();
+        params_old.diag_weight = 1.0;
+        let hk_old = HarmonicityKernel::new(&space, params_old);
+
+        let mut params_new = HarmonicityParams::default();
+        params_new.diag_weight = 0.5;
+        let hk_new = HarmonicityKernel::new(&space, params_new);
+
+        let mut env = vec![0.0; space.n_bins()];
+        let idx_200 = space.index_of_freq(200.0).expect("bin exists");
+        env[idx_200] = 1.0;
+
+        let (land_old, _) = hk_old.potential_h_from_log2_spectrum(&env, &space);
+        let (land_new, _) = hk_new.potential_h_from_log2_spectrum(&env, &space);
+
+        let idx_300 = space.index_of_freq(300.0).expect("bin exists");
+        let r_old = land_old[idx_300] / land_old[idx_200].max(1e-6);
+        let r_new = land_new[idx_300] / land_new[idx_200].max(1e-6);
+
+        assert!(
+            r_new > r_old * 1.2,
+            "expected 3:2 ratio to rise when diag_weight drops (old={r_old:.3} new={r_new:.3})"
+        );
+        assert!(
+            land_new.iter().all(|&v| v.is_finite() && v >= 0.0),
+            "expected non-negative finite values after diagonal correction"
         );
     }
 

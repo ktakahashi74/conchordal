@@ -89,13 +89,63 @@ The Landscape is updated every audio frame (or block) by the Analysis Workers. I
 *   **Roughness ($R$)**: The sensory dissonance caused by rapid beating between proximal partials.
 *   **Harmonicity ($H$)**: The measure of virtual pitch strength and spectral periodicity.
 
-Both metrics are normalized to the $[0, 1]$ range before combination. The net Consonance ($C$) is computed as a signed difference, then rescaled:
+Both metrics are normalized to the $[0, 1]$ range before combination.
 
-$$ C_{signed} = \text{clip}(H_{01} - w_r \cdot R_{01},\; -1,\; 1) $$
+### 3.0 Consonance (C): Cognitive Integration of Harmonicity and Roughness
 
-$$ C_{01} = \frac{C_{signed} + 1}{2} $$
+In conchordal, consonance ($C$) is not defined as a simple linear difference between harmonicity and roughness. Instead, it is modeled as the inverse of a composite dissonance measure, reflecting how auditory dissonance is integrated in human perceptual physiology.
 
-where $w_r$ is the `roughness_weight` parameter (default 1.0). Individual agents maintain their own perceptual context (`PerceptualContext`) which tracks per-agent boredom and familiarity, providing additional score adjustments during pitch selection.
+**Dissonance formulation**
+
+We define an intermediate quantity, dissonance $D$, as the additive contribution of two independent perceptual costs:
+
+$$ D = \alpha(1 - H) + w(H)R $$
+
+where:
+
+*   $H \in [0,1]$ is harmonicity, representing neural phase-locking / periodicity coherence.
+*   $R \in [0,1]$ is roughness, representing basilar-membrane interference within critical bands.
+*   $(1 - H)$ captures the perceptual cost of lack of periodic structure.
+*   $\alpha \geq 0$ scales the harmonicity-deficit contribution relative to roughness.
+*   $w(H)$ is a harmonicity-dependent weight applied to roughness.
+
+The roughness weight is defined as a linear function of harmonicity:
+
+$$ w(H) = w_0 + w_1(1 - H) $$
+
+with the following interpretation:
+
+*   $w_0 > 0$: a floor ensuring that roughness is never fully ignored, even at high harmonicity.
+*   $w_1 \geq 0$: additional roughness penalty applied when harmonicity is low.
+
+This formulation reflects two physiological principles:
+
+*   Independent accumulation of dissonant factors. Roughness and lack of harmonic structure contribute additively to sensory dissonance rather than canceling each other.
+*   Context-dependent tolerance of roughness. When harmonicity is high, auditory components are more likely to fuse perceptually, reducing - but not eliminating - the impact of roughness.
+
+**Consonance mapping**
+
+Consonance is then defined as a bounded, monotonically decreasing function of dissonance:
+
+$$ C_{01} = \frac{1}{1 + D} $$
+
+For visualization and downstream processing, a signed form is also used:
+
+$$ C_{signed} = 2C_{01} - 1 $$
+
+yielding a range of $[-1, 1]$ after clipping.
+
+**Rationale for dissonance-based integration**
+
+Although a linear form such as $C = H - w(H)R$ is simpler, the dissonance-based formulation is preferred because:
+
+*   It prevents cancellation between independent perceptual costs.
+*   It mirrors common psychophysical models where multiple sources of sensory load are accumulated before nonlinear readout.
+*   It cleanly separates sensory integration ($D$) from perceptual evaluation ($C$).
+
+This design choice ensures that consonance in conchordal remains grounded in auditory physiology rather than being an algebraic convenience.
+
+Individual agents maintain their own perceptual context (`PerceptualContext`) which tracks per-agent boredom and familiarity, providing additional score adjustments during pitch selection.
 
 ## 3.1 Non-Stationary Gabor Transform (NSGT)
 
@@ -1151,9 +1201,11 @@ Internal timbre representation used by `HarmonicBody`:
 
 **Consonance Fitness Function:**
 
-$$ C_{signed} = \text{clip}(H_{01} - w_r \cdot R_{01},\; -1,\; 1) $$
+$$ D = \alpha(1 - H_{01}) + (w_0 + w_1(1 - H_{01}))R_{01} $$
 
-$$ C_{01} = \frac{C_{signed} + 1}{2} $$
+$$ C_{01} = \frac{1}{1 + D} $$
+
+$$ C_{signed} = \text{clip}(2C_{01} - 1,\; -1,\; 1) $$
 
 **Roughness Saturation Mapping** (from reference-normalized ratio $x$ to $R_{01} \in [0,1]$):
 

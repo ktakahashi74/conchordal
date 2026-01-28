@@ -14,12 +14,39 @@ use conchordal::core::roughness_kernel::{KernelParams, RoughnessKernel};
 use conchordal::paper::sim::{E4_ANCHOR_HZ, E4_WINDOW_CENTS, interval_metrics, run_e4_condition};
 use rand::{Rng, SeedableRng, rngs::StdRng};
 
+const SPACE_BINS_PER_OCT: u32 = 400;
+
+const E2_STEPS: usize = 400;
+const E2_BURN_IN: usize = 100;
+const E2_ANCHOR_SHIFT_STEP: usize = 200;
+const E2_ANCHOR_SHIFT_RATIO: f32 = 0.5;
+const E2_STEP_SEMITONES: f32 = 0.5;
+const E2_ANCHOR_BIN_ST: f32 = 0.5;
+const E2_PAIRWISE_BIN_ST: f32 = 0.25;
+
+const E4_INTERVAL_BIN_ST: f32 = 0.5;
+
+const E3_STEP_SEMITONES: f32 = 0.5;
+
+const E5_GROUP_A_OMEGA: f32 = 2.0 * PI * 2.0;
+const E5_GROUP_B_OMEGA: f32 = 2.0 * PI * 1.8;
+const E5_JITTER: f32 = 0.02;
+const E5_K_IN: f32 = 1.2;
+const E5_K_CROSS: f32 = 1.6;
+const E5_GROUP_N: usize = 16;
+const E5_DT: f32 = 0.02;
+const E5_STEPS: usize = 2000;
+const E5_BURN_IN_STEPS: usize = 500;
+const E5_SAMPLE_WINDOW_STEPS: usize = 250;
+const E5_TIME_PLV_WINDOW_STEPS: usize = 200;
+const E5_SEED: u64 = 0xC0FFEE_u64 + 2;
+
 fn main() -> Result<(), Box<dyn Error>> {
     let out_dir = Path::new("target/plots/paper");
     create_dir_all(out_dir)?;
 
     let anchor_hz = E4_ANCHOR_HZ;
-    let space = Log2Space::new(20.0, 8000.0, 200);
+    let space = Log2Space::new(20.0, 8000.0, SPACE_BINS_PER_OCT);
 
     plot_e1_landscape_scan(out_dir, &space, anchor_hz)?;
     plot_e2_emergent_harmony(out_dir, &space, anchor_hz)?;
@@ -144,9 +171,10 @@ fn plot_e2_emergent_harmony(
     anchor_hz: f32,
 ) -> Result<(), Box<dyn Error>> {
     let mut rng = seeded_rng(0xC0FFEE);
-    let anchor_idx = nearest_bin(space, anchor_hz);
-    let log2_ratio_scan = build_log2_ratio_scan(space, anchor_hz);
-    let (min_idx, max_idx) = log2_ratio_bounds(&log2_ratio_scan, -1.0, 1.0);
+    let mut anchor_hz_current = anchor_hz;
+    let mut anchor_idx = nearest_bin(space, anchor_hz_current);
+    let mut log2_ratio_scan = build_log2_ratio_scan(space, anchor_hz_current);
+    let (mut min_idx, mut max_idx) = log2_ratio_bounds(&log2_ratio_scan, -1.0, 1.0);
     let allowed_indices: Vec<usize> = (min_idx..=max_idx).collect();
     let n_agents = 24;
 
@@ -160,27 +188,61 @@ fn plot_e2_emergent_harmony(
     let (_erb_scan, du_scan) = erb_grid_for_space(space);
     let workspace = build_c01_workspace(space);
 
-    let steps = 400;
-    let burn_in = 100usize;
+    let steps = E2_STEPS;
+    let burn_in = E2_BURN_IN;
     let mut semitone_samples: Vec<f32> = Vec::new();
     let mut mean_c01_series: Vec<(f32, f32)> = Vec::with_capacity(steps);
+    let mut mean_score_series: Vec<(f32, f32)> = Vec::with_capacity(steps);
+    let mut mean_repulsion_series: Vec<(f32, f32)> = Vec::with_capacity(steps);
+    let mut trajectory_csv = String::from("step,agent_id,semitones,c01\n");
+    let mut trajectories: Vec<Vec<f32>> = vec![Vec::with_capacity(steps); n_agents];
+    let mut anchor_shift_csv = String::from("step,count_min_idx,count_max_idx,respawned\n");
+    let k_bins = k_from_semitones(E2_STEP_SEMITONES);
 
     for step in 0..steps {
+        if step == E2_ANCHOR_SHIFT_STEP {
+            anchor_hz_current = anchor_hz_current * E2_ANCHOR_SHIFT_RATIO;
+            anchor_idx = nearest_bin(space, anchor_hz_current);
+            log2_ratio_scan = build_log2_ratio_scan(space, anchor_hz_current);
+            let bounds = log2_ratio_bounds(&log2_ratio_scan, -1.0, 1.0);
+            min_idx = bounds.0;
+            max_idx = bounds.1;
+            let (count_min, count_max, respawned) = shift_indices_by_ratio(
+                space,
+                &mut agent_indices,
+                E2_ANCHOR_SHIFT_RATIO,
+                min_idx,
+                max_idx,
+                &mut rng,
+            );
+            anchor_shift_csv.push_str(&format!("{step},{count_min},{count_max},{respawned}\n"));
+            semitone_samples.clear();
+        }
+
         let (env_scan, density_scan) = build_env_scans(space, anchor_idx, &agent_indices, &du_scan);
         let c01_scan = compute_c01_scan(space, &workspace, &env_scan, &density_scan);
         let mean_c01 = mean_at_indices(&c01_scan, &agent_indices);
         mean_c01_series.push((step as f32, mean_c01));
 
-        update_agent_indices(
+        for (agent_id, &idx) in agent_indices.iter().enumerate() {
+            let semitone = 12.0 * log2_ratio_scan[idx];
+            let c01 = c01_scan[idx];
+            trajectories[agent_id].push(semitone);
+            trajectory_csv.push_str(&format!("{step},{agent_id},{semitone:.6},{c01:.6}\n"));
+        }
+
+        let stats = update_agent_indices_scored_stats(
             &mut agent_indices,
             &c01_scan,
             &log2_ratio_scan,
             min_idx,
             max_idx,
-            2,
+            k_bins,
             0.15,
             0.06,
         );
+        mean_score_series.push((step as f32, stats.mean_score));
+        mean_repulsion_series.push((step as f32, stats.mean_repulsion));
 
         if step >= burn_in {
             semitone_samples.extend(agent_indices.iter().map(|&idx| 12.0 * log2_ratio_scan[idx]));
@@ -192,6 +254,14 @@ fn plot_e2_emergent_harmony(
         csv_ts.push_str(&format!("{t:.0},{mean:.6}\n"));
     }
     write(out_dir.join("paper_e2_timeseries.csv"), csv_ts)?;
+    write(
+        out_dir.join("paper_e2_agent_trajectories.csv"),
+        trajectory_csv,
+    )?;
+    write(
+        out_dir.join("paper_e2_anchor_shift_stats.csv"),
+        anchor_shift_csv,
+    )?;
 
     let mut csv_agents = String::from("agent_id,freq_hz,log2_ratio,semitones\n");
     for (id, &idx) in agent_indices.iter().enumerate() {
@@ -205,7 +275,46 @@ fn plot_e2_emergent_harmony(
     write(out_dir.join("paper_e2_final_agents.csv"), csv_agents)?;
 
     let mean_plot_path = out_dir.join("paper_e2_mean_consonance_over_time.png");
-    render_mean_consonance_plot(&mean_plot_path, &mean_c01_series)?;
+    render_series_plot(
+        &mean_plot_path,
+        "E2 Mean Consonance Over Time",
+        "mean C01",
+        &mean_c01_series,
+    )?;
+
+    let mut csv_score = String::from("t,mean_score\n");
+    for (t, mean) in &mean_score_series {
+        csv_score.push_str(&format!("{t:.0},{mean:.6}\n"));
+    }
+    write(out_dir.join("paper_e2_score_timeseries.csv"), csv_score)?;
+
+    let mean_score_path = out_dir.join("paper_e2_mean_score_over_time.png");
+    render_series_plot(
+        &mean_score_path,
+        "E2 Mean Score Over Time",
+        "mean score (c01 - λ·repulsion)",
+        &mean_score_series,
+    )?;
+
+    let mut csv_repulsion = String::from("t,mean_repulsion\n");
+    for (t, mean) in &mean_repulsion_series {
+        csv_repulsion.push_str(&format!("{t:.0},{mean:.6}\n"));
+    }
+    write(
+        out_dir.join("paper_e2_repulsion_timeseries.csv"),
+        csv_repulsion,
+    )?;
+
+    let mean_repulsion_path = out_dir.join("paper_e2_mean_repulsion_over_time.png");
+    render_series_plot(
+        &mean_repulsion_path,
+        "E2 Mean Repulsion Over Time",
+        "mean repulsion",
+        &mean_repulsion_series,
+    )?;
+
+    let trajectory_path = out_dir.join("paper_e2_agent_trajectories.png");
+    render_agent_trajectories_plot(&trajectory_path, &trajectories)?;
 
     let hist_path = out_dir.join("paper_e2_interval_histogram.png");
     render_interval_histogram(
@@ -214,7 +323,31 @@ fn plot_e2_emergent_harmony(
         &semitone_samples,
         -12.0,
         12.0,
-        0.5,
+        E2_ANCHOR_BIN_ST,
+    )?;
+
+    let final_semitones: Vec<f32> = agent_indices
+        .iter()
+        .map(|&idx| 12.0 * log2_ratio_scan[idx])
+        .collect();
+    let pairwise_intervals = pairwise_interval_samples(&final_semitones);
+    let mut csv_pairwise = String::from("interval_semitones\n");
+    for interval in &pairwise_intervals {
+        csv_pairwise.push_str(&format!("{interval:.6}\n"));
+    }
+    write(
+        out_dir.join("paper_e2_pairwise_intervals.csv"),
+        csv_pairwise,
+    )?;
+
+    let pairwise_hist_path = out_dir.join("paper_e2_pairwise_interval_histogram.png");
+    render_interval_histogram(
+        &pairwise_hist_path,
+        "E2 Pairwise Interval Histogram (Semitones, 12=octave)",
+        &pairwise_intervals,
+        0.0,
+        12.0,
+        E2_PAIRWISE_BIN_ST,
     )?;
 
     Ok(())
@@ -251,6 +384,7 @@ fn plot_e3_metabolic_selection(
     let decay = 0.04f32;
     let mut deaths: Vec<(usize, u32, f32)> = Vec::new();
     let mut death_id: usize = 0;
+    let k_bins = k_from_semitones(E3_STEP_SEMITONES);
 
     let min_deaths = 200usize;
     let base_steps = 2000usize;
@@ -292,7 +426,7 @@ fn plot_e3_metabolic_selection(
             &log2_ratio_scan,
             min_idx,
             max_idx,
-            2,
+            k_bins,
             0.15,
             0.06,
         );
@@ -315,93 +449,194 @@ fn plot_e3_metabolic_selection(
     let survival_path = out_dir.join("paper_e3_survival_curve.png");
     render_survival_curve(&survival_path, &deaths)?;
 
+    let survival_by_c01_path = out_dir.join("paper_e3_survival_by_c01.png");
+    render_survival_by_c01(&survival_by_c01_path, &deaths)?;
+
     Ok(())
 }
 
 fn plot_e5_rhythmic_entrainment(out_dir: &Path) -> Result<(), Box<dyn Error>> {
-    let mut rng = seeded_rng(0xC0FFEE_u64 + 2);
-    let n = 32usize;
-    let dt = 0.02f32;
-    let steps = 2000usize;
-    let omega0 = 2.0 * PI * 2.0;
-    let jitter = 0.02f32;
-    let k_global = 1.2f32;
-    let k_kick = 0.8f32;
+    let sim = simulate_e5(E5_SEED, E5_STEPS);
 
-    let mut thetas: Vec<f32> = (0..n)
+    let mut csv = String::from("t,r_a,r_b,delta_phi,plv_ab_paired\n");
+    let mut delta_phi_min = f32::INFINITY;
+    let mut delta_phi_max = f32::NEG_INFINITY;
+    for (t, r_a, r_b, delta_phi, plv_ab) in &sim.series {
+        delta_phi_min = delta_phi_min.min(*delta_phi);
+        delta_phi_max = delta_phi_max.max(*delta_phi);
+        csv.push_str(&format!(
+            "{t:.4},{r_a:.6},{r_b:.6},{delta_phi:.6},{plv_ab:.6}\n"
+        ));
+    }
+    if !delta_phi_min.is_finite() || !delta_phi_max.is_finite() {
+        delta_phi_min = 0.0;
+        delta_phi_max = 0.0;
+    }
+    write(out_dir.join("paper_e5_order_offset.csv"), csv)?;
+
+    let order_path = out_dir.join("paper_e5_order_over_time.png");
+    render_order_offset_plot(&order_path, &sim.series)?;
+
+    let delta_path = out_dir.join("paper_e5_delta_phi_over_time.png");
+    render_delta_phi_plot(&delta_path, &sim.series)?;
+
+    let plv_path = out_dir.join("paper_e5_plv_ab_over_time.png");
+    render_plv_ab_plot(&plv_path, &sim.series)?;
+
+    let bins = phase_hist_bins(sim.phase_hist_samples.len());
+    let phase_path = out_dir.join("paper_e5_phase_diff_histogram.png");
+    render_phase_histogram(&phase_path, &sim.phase_hist_samples, bins)?;
+
+    let mut summary = String::from("delta_phi_min,delta_phi_max,plv_time\n");
+    summary.push_str(&format!(
+        "{delta_phi_min:.6},{delta_phi_max:.6},{:.6}\n",
+        sim.plv_time
+    ));
+    write(out_dir.join("paper_e5_order_offset_summary.csv"), summary)?;
+
+    Ok(())
+}
+
+#[allow(dead_code)]
+struct E5SimResult {
+    series: Vec<(f32, f32, f32, f32, f32)>,
+    phase_hist_samples: Vec<f32>,
+    thetas_last_a: Vec<f32>,
+    thetas_last_b: Vec<f32>,
+    final_t: f32,
+    sample_window_steps: usize,
+    n_a: usize,
+    plv_time: f32,
+}
+
+fn simulate_e5(seed: u64, steps: usize) -> E5SimResult {
+    let mut rng = seeded_rng(seed);
+    let mut thetas_a: Vec<f32> = (0..E5_GROUP_N)
         .map(|_| rng.random_range(0.0f32..(2.0 * PI)))
         .collect();
-    let omegas: Vec<f32> = (0..n)
+    let mut thetas_b: Vec<f32> = (0..E5_GROUP_N)
+        .map(|_| rng.random_range(0.0f32..(2.0 * PI)))
+        .collect();
+    let omegas_a: Vec<f32> = (0..E5_GROUP_N)
         .map(|_| {
-            let jitter_scale = rng.random_range(-jitter..jitter);
-            omega0 * (1.0 + jitter_scale)
+            let jitter_scale = rng.random_range(-E5_JITTER..E5_JITTER);
+            E5_GROUP_A_OMEGA * (1.0 + jitter_scale)
+        })
+        .collect();
+    let omegas_b: Vec<f32> = (0..E5_GROUP_N)
+        .map(|_| {
+            let jitter_scale = rng.random_range(-E5_JITTER..E5_JITTER);
+            E5_GROUP_B_OMEGA * (1.0 + jitter_scale)
         })
         .collect();
 
-    let mut series: Vec<(f32, f32, f32)> = Vec::with_capacity(steps);
-    let mut thetas_last: Option<Vec<f32>> = None;
+    let mut series: Vec<(f32, f32, f32, f32, f32)> = Vec::with_capacity(steps);
+    let mut thetas_last_a: Vec<f32> = Vec::new();
+    let mut thetas_last_b: Vec<f32> = Vec::new();
+    let mut phase_hist_samples: Vec<f32> = Vec::new();
+    let sample_start = steps
+        .saturating_sub(E5_SAMPLE_WINDOW_STEPS)
+        .max(E5_BURN_IN_STEPS);
+
     for step in 0..steps {
-        let t = step as f32 * dt;
-        let theta_kick = omega0 * t;
-
-        let (mut mean_cos, mut mean_sin) = (0.0f32, 0.0f32);
-        let (mut mean_dcos, mut mean_dsin) = (0.0f32, 0.0f32);
-        for &theta in &thetas {
-            mean_cos += theta.cos();
-            mean_sin += theta.sin();
-
-            let d = theta - theta_kick;
-            mean_dcos += d.cos();
-            mean_dsin += d.sin();
+        let t = step as f32 * E5_DT;
+        let (mut mean_cos_a, mut mean_sin_a) = (0.0f32, 0.0f32);
+        let (mut mean_cos_b, mut mean_sin_b) = (0.0f32, 0.0f32);
+        for &theta in &thetas_a {
+            mean_cos_a += theta.cos();
+            mean_sin_a += theta.sin();
         }
-        let inv_n = 1.0 / n as f32;
-        mean_cos *= inv_n;
-        mean_sin *= inv_n;
-        mean_dcos *= inv_n;
-        mean_dsin *= inv_n;
+        for &theta in &thetas_b {
+            mean_cos_b += theta.cos();
+            mean_sin_b += theta.sin();
+        }
+        let inv_a = 1.0 / E5_GROUP_N as f32;
+        let inv_b = 1.0 / E5_GROUP_N as f32;
+        mean_cos_a *= inv_a;
+        mean_sin_a *= inv_a;
+        mean_cos_b *= inv_b;
+        mean_sin_b *= inv_b;
 
-        let r = (mean_cos * mean_cos + mean_sin * mean_sin).sqrt();
-        let plv = (mean_dcos * mean_dcos + mean_dsin * mean_dsin).sqrt();
-        series.push((t, r, plv));
+        let r_a = (mean_cos_a * mean_cos_a + mean_sin_a * mean_sin_a).sqrt();
+        let r_b = (mean_cos_b * mean_cos_b + mean_sin_b * mean_sin_b).sqrt();
+        let phi_a = mean_sin_a.atan2(mean_cos_a);
+        let phi_b = mean_sin_b.atan2(mean_cos_b);
+        let delta_phi = wrap_to_pi(phi_a - phi_b);
+
+        let pairs = E5_GROUP_N.min(E5_GROUP_N);
+        let mut pair_cos = 0.0f32;
+        let mut pair_sin = 0.0f32;
+        for i in 0..pairs {
+            let d = wrap_to_pi(thetas_a[i] - thetas_b[i]);
+            pair_cos += d.cos();
+            pair_sin += d.sin();
+        }
+        let inv_pairs = 1.0 / pairs as f32;
+        pair_cos *= inv_pairs;
+        pair_sin *= inv_pairs;
+        let plv_ab = (pair_cos * pair_cos + pair_sin * pair_sin).sqrt();
+
+        series.push((t, r_a, r_b, delta_phi, plv_ab));
 
         if step + 1 == steps {
-            thetas_last = Some(thetas.clone());
+            thetas_last_a = thetas_a.clone();
+            thetas_last_b = thetas_b.clone();
         }
 
-        let mut next = vec![0.0f32; n];
-        for i in 0..n {
-            let theta_i = thetas[i];
-            let mut coupling = 0.0f32;
-            for &theta_j in &thetas {
-                coupling += (theta_j - theta_i).sin();
+        if step >= sample_start {
+            for i in 0..E5_GROUP_N {
+                phase_hist_samples.push(wrap_to_pi(thetas_a[i] - thetas_b[i]));
             }
-            let dtheta =
-                omegas[i] + (k_global * inv_n) * coupling + k_kick * (theta_kick - theta_i).sin();
-            next[i] = theta_i + dtheta * dt;
         }
-        thetas = next;
+
+        let mut next_a = vec![0.0f32; E5_GROUP_N];
+        let mut next_b = vec![0.0f32; E5_GROUP_N];
+        for i in 0..E5_GROUP_N {
+            let theta_i = thetas_a[i];
+            let mut coupling_in = 0.0f32;
+            let mut coupling_cross = 0.0f32;
+            for &theta_j in &thetas_a {
+                coupling_in += (theta_j - theta_i).sin();
+            }
+            for &theta_j in &thetas_b {
+                coupling_cross += (theta_j - theta_i).sin();
+            }
+            let dtheta = omegas_a[i]
+                + (E5_K_IN * inv_a) * coupling_in
+                + (E5_K_CROSS * inv_b) * coupling_cross;
+            next_a[i] = theta_i + dtheta * E5_DT;
+        }
+        for i in 0..E5_GROUP_N {
+            let theta_i = thetas_b[i];
+            let mut coupling_in = 0.0f32;
+            let mut coupling_cross = 0.0f32;
+            for &theta_j in &thetas_b {
+                coupling_in += (theta_j - theta_i).sin();
+            }
+            for &theta_j in &thetas_a {
+                coupling_cross += (theta_j - theta_i).sin();
+            }
+            let dtheta = omegas_b[i]
+                + (E5_K_IN * inv_b) * coupling_in
+                + (E5_K_CROSS * inv_a) * coupling_cross;
+            next_b[i] = theta_i + dtheta * E5_DT;
+        }
+        thetas_a = next_a;
+        thetas_b = next_b;
     }
 
-    let mut csv = String::from("t,r,plv\n");
-    for (t, r, plv) in &series {
-        csv.push_str(&format!("{t:.4},{r:.6},{plv:.6}\n"));
+    let final_t = series.last().map(|(t, _, _, _, _)| *t).unwrap_or(0.0);
+    let plv_time = plv_time_from_series(&series, E5_TIME_PLV_WINDOW_STEPS);
+    E5SimResult {
+        series,
+        phase_hist_samples,
+        thetas_last_a,
+        thetas_last_b,
+        final_t,
+        sample_window_steps: steps.saturating_sub(sample_start),
+        n_a: E5_GROUP_N,
+        plv_time,
     }
-    write(out_dir.join("paper_e5_order_plv.csv"), csv)?;
-
-    let order_path = out_dir.join("paper_e5_order_plv_over_time.png");
-    render_order_plv_plot(&order_path, &series)?;
-
-    let final_t = (steps.saturating_sub(1)) as f32 * dt;
-    let theta_kick_final = omega0 * final_t;
-    let phase_source = thetas_last.as_deref().unwrap_or(&thetas);
-    let phase_diffs: Vec<f32> = phase_source
-        .iter()
-        .map(|&theta| wrap_to_pi(theta - theta_kick_final))
-        .collect();
-    let phase_path = out_dir.join("paper_e5_phase_histogram.png");
-    render_phase_histogram(&phase_path, &phase_diffs, 48)?;
-
-    Ok(())
 }
 
 fn render_e1_plot(
@@ -629,7 +864,7 @@ fn plot_e4_mirror_sweep(out_dir: &Path, anchor_hz: f32) -> Result<(), Box<dyn Er
         &semitones_m0,
         0.0,
         12.0,
-        0.5,
+        E4_INTERVAL_BIN_ST,
     )?;
     let hist_m1_path = out_dir.join("paper_e4_interval_histogram_m1.png");
     render_interval_histogram(
@@ -638,7 +873,7 @@ fn plot_e4_mirror_sweep(out_dir: &Path, anchor_hz: f32) -> Result<(), Box<dyn Er
         &semitones_m1,
         0.0,
         12.0,
-        0.5,
+        E4_INTERVAL_BIN_ST,
     )?;
     Ok(())
 }
@@ -800,18 +1035,144 @@ fn update_agent_indices(
     lambda: f32,
     sigma: f32,
 ) {
+    let _ = update_agent_indices_scored(
+        indices,
+        c01_scan,
+        log2_ratio_scan,
+        min_idx,
+        max_idx,
+        k,
+        lambda,
+        sigma,
+    );
+}
+
+struct UpdateStats {
+    mean_score: f32,
+    mean_repulsion: f32,
+}
+
+fn k_from_semitones(step_semitones: f32) -> i32 {
+    let bins_per_semitone = SPACE_BINS_PER_OCT as f32 / 12.0;
+    let k = (bins_per_semitone * step_semitones).round() as i32;
+    k.max(1)
+}
+
+fn shift_indices_by_ratio(
+    space: &Log2Space,
+    indices: &mut [usize],
+    ratio: f32,
+    min_idx: usize,
+    max_idx: usize,
+    rng: &mut StdRng,
+) -> (usize, usize, usize) {
+    let mut count_min = 0usize;
+    let mut count_max = 0usize;
+    let mut respawned = 0usize;
+    for idx in indices.iter_mut() {
+        let target_hz = space.centers_hz[*idx] * ratio;
+        let mut new_idx = nearest_bin(space, target_hz);
+        if new_idx < min_idx || new_idx > max_idx {
+            let pick = rng.random_range(min_idx..(max_idx + 1));
+            new_idx = pick;
+            respawned += 1;
+        }
+        if new_idx == min_idx {
+            count_min += 1;
+        }
+        if new_idx == max_idx {
+            count_max += 1;
+        }
+        *idx = new_idx;
+    }
+    (count_min, count_max, respawned)
+}
+
+fn update_agent_indices_scored(
+    indices: &mut [usize],
+    c01_scan: &[f32],
+    log2_ratio_scan: &[f32],
+    min_idx: usize,
+    max_idx: usize,
+    k: i32,
+    lambda: f32,
+    sigma: f32,
+) -> f32 {
+    update_agent_indices_scored_stats(
+        indices,
+        c01_scan,
+        log2_ratio_scan,
+        min_idx,
+        max_idx,
+        k,
+        lambda,
+        sigma,
+    )
+    .mean_score
+}
+
+fn update_agent_indices_scored_stats(
+    indices: &mut [usize],
+    c01_scan: &[f32],
+    log2_ratio_scan: &[f32],
+    min_idx: usize,
+    max_idx: usize,
+    k: i32,
+    lambda: f32,
+    sigma: f32,
+) -> UpdateStats {
+    let order: Vec<usize> = (0..indices.len()).collect();
+    update_agent_indices_scored_stats_with_order(
+        indices,
+        c01_scan,
+        log2_ratio_scan,
+        min_idx,
+        max_idx,
+        k,
+        lambda,
+        sigma,
+        &order,
+    )
+}
+
+fn update_agent_indices_scored_stats_with_order(
+    indices: &mut [usize],
+    c01_scan: &[f32],
+    log2_ratio_scan: &[f32],
+    min_idx: usize,
+    max_idx: usize,
+    k: i32,
+    lambda: f32,
+    sigma: f32,
+    order: &[usize],
+) -> UpdateStats {
     if indices.is_empty() {
-        return;
+        return UpdateStats {
+            mean_score: 0.0,
+            mean_repulsion: 0.0,
+        };
     }
     let sigma = sigma.max(1e-6);
-    let prev = indices.to_vec();
-    let prev_log2: Vec<f32> = prev.iter().map(|&idx| log2_ratio_scan[idx]).collect();
+    let prev_indices = indices.to_vec();
+    let prev_log2: Vec<f32> = prev_indices
+        .iter()
+        .map(|&idx| log2_ratio_scan[idx])
+        .collect();
+    let mut next_indices = prev_indices.clone();
+    let mut score_sum = 0.0f32;
+    let mut repulsion_sum = 0.0f32;
+    let mut count = 0usize;
 
-    for (agent_i, current_idx) in prev.iter().copied().enumerate() {
+    for &agent_i in order {
+        if agent_i >= prev_indices.len() {
+            continue;
+        }
+        let current_idx = prev_indices[agent_i];
         let start = (current_idx as isize - k as isize).max(min_idx as isize) as usize;
         let end = (current_idx as isize + k as isize).min(max_idx as isize) as usize;
         let mut best_idx = current_idx;
         let mut best_score = f32::NEG_INFINITY;
+        let mut best_repulsion = 0.0f32;
         for cand in start..=end {
             let cand_log2 = log2_ratio_scan[cand];
             let mut repulsion = 0.0f32;
@@ -822,13 +1183,35 @@ fn update_agent_indices(
                 let dist = (cand_log2 - other_log2).abs();
                 repulsion += (-dist / sigma).exp();
             }
-            let score = c01_scan[cand] - lambda * repulsion;
+            let c01 = c01_scan[cand];
+            let score = c01 - lambda * repulsion;
             if score > best_score {
                 best_score = score;
                 best_idx = cand;
+                best_repulsion = repulsion;
             }
         }
-        indices[agent_i] = best_idx;
+        next_indices[agent_i] = best_idx;
+        if best_score.is_finite() {
+            score_sum += best_score;
+        }
+        if best_repulsion.is_finite() {
+            repulsion_sum += best_repulsion;
+        }
+        count += 1;
+    }
+
+    indices.copy_from_slice(&next_indices);
+    if count == 0 {
+        return UpdateStats {
+            mean_score: 0.0,
+            mean_repulsion: 0.0,
+        };
+    }
+    let inv = 1.0 / count as f32;
+    UpdateStats {
+        mean_score: score_sum * inv,
+        mean_repulsion: repulsion_sum * inv,
     }
 }
 
@@ -840,28 +1223,120 @@ fn mean_at_indices(values: &[f32], indices: &[usize]) -> f32 {
     sum / indices.len() as f32
 }
 
-fn render_mean_consonance_plot(
+fn render_series_plot(
     out_path: &Path,
+    caption: &str,
+    y_desc: &str,
     series: &[(f32, f32)],
 ) -> Result<(), Box<dyn Error>> {
     let x_max = series.last().map(|(x, _)| *x).unwrap_or(0.0);
     let root = BitMapBackend::new(out_path, (1200, 700)).into_drawing_area();
     root.fill(&WHITE)?;
 
+    let mut y_min = f32::INFINITY;
+    let mut y_max = f32::NEG_INFINITY;
+    for &(_, y) in series {
+        if y.is_finite() {
+            y_min = y_min.min(y);
+            y_max = y_max.max(y);
+        }
+    }
+    if !y_min.is_finite() || !y_max.is_finite() {
+        y_min = 0.0;
+        y_max = 1.0;
+    }
+    let range = (y_max - y_min).abs();
+    let pad = if range > 1e-6 {
+        0.1 * range
+    } else {
+        0.1 * y_max.abs().max(1.0)
+    };
+    let y_lo = y_min - pad;
+    let y_hi = y_max + pad;
+
     let mut chart = ChartBuilder::on(&root)
-        .caption("E2 Mean Consonance Over Time", ("sans-serif", 20))
+        .caption(caption, ("sans-serif", 20))
         .margin(10)
         .x_label_area_size(40)
         .y_label_area_size(60)
-        .build_cartesian_2d(0.0f32..x_max.max(1.0), 0.0f32..1.05f32)?;
+        .build_cartesian_2d(0.0f32..x_max.max(1.0), y_lo..y_hi)?;
 
     chart
         .configure_mesh()
         .x_desc("step")
-        .y_desc("mean C01")
+        .y_desc(y_desc)
         .draw()?;
 
     chart.draw_series(LineSeries::new(series.iter().copied(), &BLUE))?;
+    root.present()?;
+    Ok(())
+}
+
+fn render_agent_trajectories_plot(
+    out_path: &Path,
+    trajectories: &[Vec<f32>],
+) -> Result<(), Box<dyn Error>> {
+    if trajectories.is_empty() {
+        return Ok(());
+    }
+    let steps = trajectories
+        .iter()
+        .map(|trace| trace.len())
+        .max()
+        .unwrap_or(0);
+    if steps == 0 {
+        return Ok(());
+    }
+
+    let mut y_min = f32::INFINITY;
+    let mut y_max = f32::NEG_INFINITY;
+    for trace in trajectories {
+        for &val in trace {
+            if val.is_finite() {
+                y_min = y_min.min(val);
+                y_max = y_max.max(val);
+            }
+        }
+    }
+    if !y_min.is_finite() || !y_max.is_finite() {
+        y_min = -12.0;
+        y_max = 12.0;
+    }
+    let range = (y_max - y_min).abs();
+    let pad = if range > 1e-6 { 0.1 * range } else { 1.0 };
+    let y_lo = y_min - pad;
+    let y_hi = y_max + pad;
+
+    let root = BitMapBackend::new(out_path, (1200, 700)).into_drawing_area();
+    root.fill(&WHITE)?;
+    let mut chart = ChartBuilder::on(&root)
+        .caption("E2 Agent Trajectories (Semitones)", ("sans-serif", 20))
+        .margin(10)
+        .x_label_area_size(40)
+        .y_label_area_size(60)
+        .build_cartesian_2d(
+            0.0f32..(steps.saturating_sub(1) as f32).max(1.0),
+            y_lo..y_hi,
+        )?;
+
+    chart
+        .configure_mesh()
+        .x_desc("step")
+        .y_desc("semitones")
+        .draw()?;
+
+    for (agent_id, trace) in trajectories.iter().enumerate() {
+        if trace.is_empty() {
+            continue;
+        }
+        let series = trace
+            .iter()
+            .enumerate()
+            .map(|(step, &val)| (step as f32, val));
+        let color = Palette99::pick(agent_id).mix(0.5);
+        chart.draw_series(LineSeries::new(series, &color))?;
+    }
+
     root.present()?;
     Ok(())
 }
@@ -952,22 +1427,9 @@ fn render_survival_curve(
     if deaths.is_empty() {
         return Ok(());
     }
-    let mut lifetimes: Vec<u32> = deaths.iter().map(|(_, lifetime, _)| *lifetime).collect();
-    lifetimes.sort_unstable();
-    let total = lifetimes.len() as f32;
-    let max_t = *lifetimes.last().unwrap_or(&0) as usize;
-
-    let mut series: Vec<(f32, f32)> = Vec::with_capacity(max_t + 1);
-    let mut idx = 0usize;
-    let total_usize = lifetimes.len();
-    for t in 0..=max_t {
-        let t_u32 = t as u32;
-        while idx < total_usize && lifetimes[idx] < t_u32 {
-            idx += 1;
-        }
-        let survivors = (total_usize - idx) as f32;
-        series.push((t as f32, survivors / total));
-    }
+    let lifetimes: Vec<u32> = deaths.iter().map(|(_, lifetime, _)| *lifetime).collect();
+    let max_t = lifetimes.iter().copied().max().unwrap_or(0) as usize;
+    let series = build_survival_series(&lifetimes, max_t);
 
     let root = BitMapBackend::new(out_path, (1200, 700)).into_drawing_area();
     root.fill(&WHITE)?;
@@ -989,16 +1451,164 @@ fn render_survival_curve(
     Ok(())
 }
 
-fn render_order_plv_plot(
+fn render_survival_by_c01(
     out_path: &Path,
-    series: &[(f32, f32, f32)],
+    deaths: &[(usize, u32, f32)],
 ) -> Result<(), Box<dyn Error>> {
-    let x_max = series.last().map(|(x, _, _)| *x).unwrap_or(0.0);
+    if deaths.is_empty() {
+        return Ok(());
+    }
+    let mut c01_values: Vec<f32> = deaths.iter().map(|(_, _, c01)| *c01).collect();
+    c01_values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let median = if c01_values.len() % 2 == 0 {
+        let hi = c01_values.len() / 2;
+        let lo = hi.saturating_sub(1);
+        0.5 * (c01_values[lo] + c01_values[hi])
+    } else {
+        c01_values[c01_values.len() / 2]
+    };
+
+    let mut high: Vec<u32> = Vec::new();
+    let mut low: Vec<u32> = Vec::new();
+    for (_, lifetime, c01) in deaths {
+        if *c01 >= median {
+            high.push(*lifetime);
+        } else {
+            low.push(*lifetime);
+        }
+    }
+
+    let max_t = deaths
+        .iter()
+        .map(|(_, lifetime, _)| *lifetime)
+        .max()
+        .unwrap_or(0) as usize;
+
+    let high_series = build_survival_series(&high, max_t);
+    let low_series = build_survival_series(&low, max_t);
+
+    let root = BitMapBackend::new(out_path, (1200, 700)).into_drawing_area();
+    root.fill(&WHITE)?;
+    let mut chart = ChartBuilder::on(&root)
+        .caption("E3 Survival by C01 (Median Split)", ("sans-serif", 20))
+        .margin(10)
+        .x_label_area_size(40)
+        .y_label_area_size(60)
+        .build_cartesian_2d(0.0f32..(max_t as f32), 0.0f32..1.05f32)?;
+
+    chart
+        .configure_mesh()
+        .x_desc("time (steps)")
+        .y_desc("survival S(t)")
+        .draw()?;
+
+    if !high_series.is_empty() {
+        chart
+            .draw_series(LineSeries::new(high_series, &BLUE))?
+            .label("avg C01 >= median")
+            .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], BLUE));
+    }
+    if !low_series.is_empty() {
+        chart
+            .draw_series(LineSeries::new(low_series, &RED))?
+            .label("avg C01 < median")
+            .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], RED));
+    }
+
+    chart
+        .configure_series_labels()
+        .background_style(WHITE.mix(0.8))
+        .border_style(BLACK)
+        .draw()?;
+
+    root.present()?;
+    Ok(())
+}
+
+fn render_order_offset_plot(
+    out_path: &Path,
+    series: &[(f32, f32, f32, f32, f32)],
+) -> Result<(), Box<dyn Error>> {
+    let x_max = series.last().map(|(x, _, _, _, _)| *x).unwrap_or(0.0);
     let root = BitMapBackend::new(out_path, (1200, 700)).into_drawing_area();
     root.fill(&WHITE)?;
 
     let mut chart = ChartBuilder::on(&root)
-        .caption("E5 Order Parameter and PLV", ("sans-serif", 20))
+        .caption("E5 Order Parameters", ("sans-serif", 20))
+        .margin(10)
+        .x_label_area_size(40)
+        .y_label_area_size(60)
+        .build_cartesian_2d(0.0f32..x_max.max(1.0), 0.0f32..1.05f32)?;
+
+    chart
+        .configure_mesh()
+        .x_desc("time (s)")
+        .y_desc("order r")
+        .draw()?;
+
+    let r_a_points = series.iter().map(|(t, r_a, _, _, _)| (*t, *r_a));
+    let r_b_points = series.iter().map(|(t, _, r_b, _, _)| (*t, *r_b));
+
+    chart
+        .draw_series(LineSeries::new(r_a_points, &BLUE))?
+        .label("r_a(t)")
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], BLUE));
+
+    chart
+        .draw_series(LineSeries::new(r_b_points, &GREEN))?
+        .label("r_b(t)")
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], GREEN));
+
+    chart
+        .configure_series_labels()
+        .background_style(WHITE.mix(0.8))
+        .border_style(BLACK)
+        .draw()?;
+
+    root.present()?;
+    Ok(())
+}
+
+fn render_delta_phi_plot(
+    out_path: &Path,
+    series: &[(f32, f32, f32, f32, f32)],
+) -> Result<(), Box<dyn Error>> {
+    let x_max = series.last().map(|(x, _, _, _, _)| *x).unwrap_or(0.0);
+    let root = BitMapBackend::new(out_path, (1200, 700)).into_drawing_area();
+    root.fill(&WHITE)?;
+
+    let mut chart = ChartBuilder::on(&root)
+        .caption("E5 Mean Phase Offset Δφ", ("sans-serif", 20))
+        .margin(10)
+        .x_label_area_size(40)
+        .y_label_area_size(60)
+        .build_cartesian_2d(0.0f32..x_max.max(1.0), -PI..PI)?;
+
+    chart
+        .configure_mesh()
+        .x_desc("time (s)")
+        .y_desc("Δφ (rad)")
+        .draw()?;
+
+    let offset_points = series
+        .iter()
+        .map(|(t, _, _, delta_phi, _)| (*t, *delta_phi));
+    chart.draw_series(LineSeries::new(offset_points, &RED))?;
+
+    root.present()?;
+    Ok(())
+}
+
+fn render_plv_ab_plot(
+    out_path: &Path,
+    series: &[(f32, f32, f32, f32, f32)],
+) -> Result<(), Box<dyn Error>> {
+    let x_max = series.last().map(|(x, _, _, _, _)| *x).unwrap_or(0.0);
+    let root = BitMapBackend::new(out_path, (1200, 700)).into_drawing_area();
+    root.fill(&WHITE)?;
+
+    let mut chart = ChartBuilder::on(&root)
+        .caption("E5 Paired PLV_ab Over Time", ("sans-serif", 20))
         .margin(10)
         .x_label_area_size(40)
         .y_label_area_size(60)
@@ -1010,18 +1620,24 @@ fn render_order_plv_plot(
         .y_desc("value")
         .draw()?;
 
-    let r_points = series.iter().map(|(t, r, _)| (*t, *r));
-    let plv_points = series.iter().map(|(t, _, plv)| (*t, *plv));
-
-    chart
-        .draw_series(LineSeries::new(r_points, &BLUE))?
-        .label("r(t)")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], BLUE));
+    let plv_points = series.iter().map(|(t, _, _, _, plv)| (*t, *plv));
+    let r_a_points = series.iter().map(|(t, r_a, _, _, _)| (*t, *r_a));
+    let r_b_points = series.iter().map(|(t, _, r_b, _, _)| (*t, *r_b));
 
     chart
         .draw_series(LineSeries::new(plv_points, &RED))?
-        .label("plv(t)")
+        .label("plv_ab_paired(t)")
         .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], RED));
+
+    chart
+        .draw_series(LineSeries::new(r_a_points, &BLUE.mix(0.6)))?
+        .label("r_a(t)")
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], BLUE.mix(0.6)));
+
+    chart
+        .draw_series(LineSeries::new(r_b_points, &GREEN.mix(0.6)))?
+        .label("r_b(t)")
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], GREEN.mix(0.6)));
 
     chart
         .configure_series_labels()
@@ -1103,6 +1719,32 @@ fn histogram_counts(values: &[f32], min: f32, max: f32, bin_width: f32) -> Vec<(
         .collect()
 }
 
+fn phase_hist_bins(sample_count: usize) -> usize {
+    if sample_count == 0 {
+        return 12;
+    }
+    let bins = ((sample_count as f32).sqrt() * 2.0).round() as usize;
+    bins.clamp(12, 96)
+}
+
+fn plv_time_from_series(series: &[(f32, f32, f32, f32, f32)], window: usize) -> f32 {
+    if series.is_empty() {
+        return 0.0;
+    }
+    let window = window.clamp(1, series.len());
+    let start = series.len().saturating_sub(window);
+    let mut mean_cos = 0.0f32;
+    let mut mean_sin = 0.0f32;
+    for (_, _, _, delta_phi, _) in series.iter().skip(start) {
+        mean_cos += delta_phi.cos();
+        mean_sin += delta_phi.sin();
+    }
+    let inv = 1.0 / window as f32;
+    mean_cos *= inv;
+    mean_sin *= inv;
+    (mean_cos * mean_cos + mean_sin * mean_sin).sqrt()
+}
+
 fn wrap_to_pi(theta: f32) -> f32 {
     let two_pi = 2.0 * PI;
     let mut x = theta.rem_euclid(two_pi);
@@ -1110,6 +1752,240 @@ fn wrap_to_pi(theta: f32) -> f32 {
         x -= two_pi;
     }
     x
+}
+
+fn pairwise_interval_samples(semitones: &[f32]) -> Vec<f32> {
+    let mut out = Vec::new();
+    let eps = 1e-6f32;
+    for i in 0..semitones.len() {
+        for j in (i + 1)..semitones.len() {
+            let diff = (semitones[i] - semitones[j]).abs();
+            let mut folded = diff.rem_euclid(12.0);
+            if folded < eps && diff > eps {
+                folded = 12.0;
+            }
+            out.push(folded);
+        }
+    }
+    out
+}
+
+fn build_survival_series(lifetimes: &[u32], max_t: usize) -> Vec<(f32, f32)> {
+    if lifetimes.is_empty() {
+        return Vec::new();
+    }
+    let mut sorted = lifetimes.to_vec();
+    sorted.sort_unstable();
+    let total = sorted.len() as f32;
+    let mut idx = 0usize;
+    let mut series = Vec::with_capacity(max_t + 1);
+    for t in 0..=max_t {
+        let t_u32 = t as u32;
+        while idx < sorted.len() && sorted[idx] < t_u32 {
+            idx += 1;
+        }
+        let survivors = (sorted.len() - idx) as f32;
+        series.push((t as f32, survivors / total));
+    }
+    series
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wrap_to_pi_clamps_range() {
+        let samples = [
+            -10.0 * PI,
+            -3.5 * PI,
+            -PI,
+            -0.5 * PI,
+            0.0,
+            0.5 * PI,
+            PI,
+            3.0 * PI,
+            9.0 * PI,
+        ];
+        for &theta in &samples {
+            let wrapped = wrap_to_pi(theta);
+            assert!(
+                wrapped >= -PI - 1e-6 && wrapped <= PI + 1e-6,
+                "wrapped={wrapped} out of range for theta={theta}"
+            );
+        }
+    }
+
+    #[test]
+    fn histogram_counts_include_endpoints() {
+        let values = [0.0f32, 1.0f32];
+        let counts = histogram_counts(&values, 0.0, 1.0, 0.5);
+        assert_eq!(counts.len(), 2);
+        assert_eq!(counts[0].1, 1);
+        assert_eq!(counts[1].1, 1);
+    }
+
+    #[test]
+    fn histogram_counts_sum_matches_in_range() {
+        let values = [0.0f32, 0.25, 0.5, 1.0, 1.5, -0.2];
+        let counts = histogram_counts(&values, 0.0, 1.0, 0.5);
+        let sum: usize = counts.iter().map(|(_, c)| *c).sum();
+        assert_eq!(sum, 4);
+    }
+
+    #[test]
+    fn pairwise_intervals_have_expected_count_and_range() {
+        let semitones = [0.0f32, 3.0, 4.0, 7.0];
+        let pairs = pairwise_interval_samples(&semitones);
+        assert_eq!(pairs.len(), 6);
+        for &v in &pairs {
+            assert!(v >= 0.0 && v <= 12.0 + 1e-6, "value out of range: {v}");
+        }
+    }
+
+    #[test]
+    fn pairwise_interval_fold_maps_octave_to_12() {
+        let semitones = [0.0f32, 12.0];
+        let pairs = pairwise_interval_samples(&semitones);
+        assert_eq!(pairs.len(), 1);
+        assert!(
+            (pairs[0] - 12.0).abs() < 1e-6,
+            "expected 12, got {}",
+            pairs[0]
+        );
+    }
+
+    #[test]
+    fn update_agent_indices_stays_in_bounds() {
+        let mut indices = vec![1usize, 2, 3];
+        let c01_scan = vec![0.1f32, 0.2, 0.3, 0.4, 0.5];
+        let log2_ratio_scan = vec![0.0f32, 0.1, 0.2, 0.3, 0.4];
+        update_agent_indices(
+            &mut indices,
+            &c01_scan,
+            &log2_ratio_scan,
+            1,
+            3,
+            1,
+            0.05,
+            0.1,
+        );
+        assert!(indices.iter().all(|&idx| idx >= 1 && idx <= 3));
+    }
+
+    #[test]
+    fn update_agent_indices_is_order_independent() {
+        let c01_scan = vec![0.1f32, 0.4, 0.3, 0.8, 0.6, 0.2];
+        let log2_ratio_scan = vec![0.0f32, 0.1, 0.2, 0.3, 0.4, 0.5];
+        let mut indices_fwd = vec![1usize, 3, 4];
+        let mut indices_rev = indices_fwd.clone();
+        let order_fwd: Vec<usize> = (0..indices_fwd.len()).collect();
+        let order_rev: Vec<usize> = (0..indices_fwd.len()).rev().collect();
+        let stats_fwd = update_agent_indices_scored_stats_with_order(
+            &mut indices_fwd,
+            &c01_scan,
+            &log2_ratio_scan,
+            0,
+            5,
+            1,
+            0.2,
+            0.1,
+            &order_fwd,
+        );
+        let stats_rev = update_agent_indices_scored_stats_with_order(
+            &mut indices_rev,
+            &c01_scan,
+            &log2_ratio_scan,
+            0,
+            5,
+            1,
+            0.2,
+            0.1,
+            &order_rev,
+        );
+        assert_eq!(indices_fwd, indices_rev);
+        assert!((stats_fwd.mean_score - stats_rev.mean_score).abs() < 1e-6);
+    }
+
+    #[test]
+    fn e5_sim_outputs_have_expected_shapes() {
+        let sim = simulate_e5(E5_SEED, 120);
+        assert_eq!(sim.series.len(), 120);
+        assert_eq!(sim.thetas_last_a.len(), E5_GROUP_N);
+        assert_eq!(sim.thetas_last_b.len(), E5_GROUP_N);
+        assert!(
+            (sim.final_t - sim.series.last().unwrap().0).abs() < 1e-6,
+            "final_t mismatch"
+        );
+    }
+
+    #[test]
+    fn e5_histogram_sample_count_matches_window() {
+        let steps = E5_BURN_IN_STEPS + E5_SAMPLE_WINDOW_STEPS + 10;
+        let sim = simulate_e5(E5_SEED, steps);
+        let expected = sim.n_a * sim.sample_window_steps;
+        assert_eq!(sim.phase_hist_samples.len(), expected);
+    }
+
+    #[test]
+    fn e5_plv_ab_within_unit_range() {
+        let sim = simulate_e5(E5_SEED, 200);
+        for (_, _, _, _, plv_ab) in &sim.series {
+            assert!(
+                *plv_ab >= -1e-6 && *plv_ab <= 1.0 + 1e-6,
+                "plv_ab out of range: {plv_ab}"
+            );
+        }
+    }
+
+    #[test]
+    fn e5_plv_ab_improves_after_burn_in() {
+        let sim = simulate_e5(E5_SEED, 600);
+        let early = sim
+            .series
+            .iter()
+            .take(100)
+            .map(|(_, _, _, _, plv)| *plv)
+            .sum::<f32>()
+            / 100.0;
+        let late = sim
+            .series
+            .iter()
+            .rev()
+            .take(100)
+            .map(|(_, _, _, _, plv)| *plv)
+            .sum::<f32>()
+            / 100.0;
+        assert!(
+            late > early + 0.2,
+            "expected PLV_ab to improve (early={early:.3}, late={late:.3})"
+        );
+    }
+
+    #[test]
+    fn e5_plv_time_is_high_in_late_window() {
+        let sim = simulate_e5(E5_SEED, 600);
+        assert!(
+            sim.plv_time > 0.8,
+            "expected PLV_time > 0.8, got {:.3}",
+            sim.plv_time
+        );
+    }
+
+    #[test]
+    fn shift_indices_by_ratio_respawns_and_clamps() {
+        let space = Log2Space::new(100.0, 400.0, 12);
+        let n = space.n_bins();
+        assert!(n > 6);
+        let mut rng = seeded_rng(42);
+        let min_idx = 2usize;
+        let max_idx = 5usize;
+        let mut indices = vec![0usize, 1, n - 2, n - 1];
+        let (_count_min, _count_max, respawned) =
+            shift_indices_by_ratio(&space, &mut indices, 10.0, min_idx, max_idx, &mut rng);
+        assert!(respawned > 0);
+        assert!(indices.iter().all(|&idx| idx >= min_idx && idx <= max_idx));
+    }
 }
 
 fn erb_grid_for_space(space: &Log2Space) -> (Vec<f32>, Vec<f32>) {

@@ -120,6 +120,26 @@ pub fn run_e4_condition(mirror_weight: f32, seed: u64) -> Vec<f32> {
     run_e4_condition_with_config(mirror_weight, seed, &E4SimConfig::paper_defaults())
 }
 
+#[derive(Clone, Debug)]
+pub struct E4TailSamples {
+    pub steps_total: u32,
+    pub tail_window: u32,
+    pub freqs_by_step: Vec<Vec<f32>>,
+}
+
+pub fn run_e4_condition_tail_samples(
+    mirror_weight: f32,
+    seed: u64,
+    tail_window: u32,
+) -> E4TailSamples {
+    run_e4_condition_tail_samples_with_config(
+        mirror_weight,
+        seed,
+        &E4SimConfig::paper_defaults(),
+        tail_window,
+    )
+}
+
 fn run_e4_condition_with_config(mirror_weight: f32, seed: u64, cfg: &E4SimConfig) -> Vec<f32> {
     let space = Log2Space::new(cfg.fmin, cfg.fmax, cfg.bins_per_oct);
     let mut params = make_landscape_params(&space, cfg.fs);
@@ -194,6 +214,113 @@ fn run_e4_condition_with_config(mirror_weight: f32, seed: u64, cfg: &E4SimConfig
     }
 
     let mut freqs = Vec::with_capacity(cfg.voice_count);
+    for agent in &pop.individuals {
+        if agent.metadata.group_id != E4_GROUP_VOICES {
+            continue;
+        }
+        let freq = agent.body.base_freq_hz();
+        if freq.is_finite() && freq > 0.0 {
+            freqs.push(freq);
+        }
+    }
+    freqs
+}
+
+fn run_e4_condition_tail_samples_with_config(
+    mirror_weight: f32,
+    seed: u64,
+    cfg: &E4SimConfig,
+    tail_window: u32,
+) -> E4TailSamples {
+    let space = Log2Space::new(cfg.fmin, cfg.fmax, cfg.bins_per_oct);
+    let mut params = make_landscape_params(&space, cfg.fs);
+    let mut landscape = Landscape::new(space.clone());
+
+    let mut pop = Population::new(Timebase {
+        fs: cfg.fs,
+        hop: cfg.hop,
+    });
+    pop.set_seed(seed);
+
+    let update = LandscapeUpdate {
+        mirror: Some(mirror_weight),
+        ..LandscapeUpdate::default()
+    };
+    pop.apply_action(Action::SetHarmonicityParams { update }, &landscape, None);
+    if let Some(update) = pop.take_pending_update() {
+        apply_params_update(&mut params, &update);
+    }
+
+    landscape = build_anchor_landscape(&space, &params, cfg.anchor_hz);
+    landscape.rhythm = init_rhythms(cfg.theta_freq_hz);
+
+    let anchor_spec = SpawnSpec {
+        control: anchor_control(cfg.anchor_hz),
+        articulation: ArticulationCoreConfig::Drone {
+            sway: None,
+            breath_gain_init: Some(1.0),
+        },
+    };
+    pop.apply_action(
+        Action::Spawn {
+            group_id: E4_GROUP_ANCHOR,
+            ids: vec![0],
+            spec: anchor_spec,
+            strategy: None,
+        },
+        &landscape,
+        None,
+    );
+
+    let (min_freq, max_freq) = cfg.range_bounds_hz();
+    let voice_spec = SpawnSpec {
+        control: voice_control(cfg),
+        articulation: ArticulationCoreConfig::Drone {
+            sway: None,
+            breath_gain_init: Some(1.0),
+        },
+    };
+    let ids: Vec<u64> = (1..=cfg.voice_count as u64).collect();
+    let strategy = SpawnStrategy::ConsonanceDensity {
+        min_freq,
+        max_freq,
+        min_dist_erb: cfg.min_dist_erb,
+    };
+    pop.apply_action(
+        Action::Spawn {
+            group_id: E4_GROUP_VOICES,
+            ids,
+            spec: voice_spec,
+            strategy: Some(strategy),
+        },
+        &landscape,
+        None,
+    );
+
+    let tail_window = tail_window.min(cfg.steps).max(1);
+    let start_step = cfg.steps.saturating_sub(tail_window);
+    let dt = cfg.hop as f32 / cfg.fs;
+    let mut freqs_by_step: Vec<Vec<f32>> = Vec::with_capacity(tail_window as usize);
+
+    for step in 0..cfg.steps {
+        pop.advance(cfg.hop, cfg.fs, step as u64, dt, &landscape);
+        pop.cleanup_dead(step as u64, dt, false);
+        landscape.rhythm.advance_in_place(dt);
+
+        if step >= start_step {
+            freqs_by_step.push(collect_voice_freqs(&pop));
+        }
+    }
+
+    E4TailSamples {
+        steps_total: cfg.steps,
+        tail_window,
+        freqs_by_step,
+    }
+}
+
+fn collect_voice_freqs(pop: &Population) -> Vec<f32> {
+    let mut freqs = Vec::new();
     for agent in &pop.individuals {
         if agent.metadata.group_id != E4_GROUP_VOICES {
             continue;

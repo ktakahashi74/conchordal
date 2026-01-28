@@ -37,6 +37,8 @@ use crate::{
     audio::output::AudioOutput, config::AppConfig, core::harmonicity_kernel::HarmonicityParams,
 };
 
+const MAX_LANDSCAPE_LAG_FRAMES: u64 = 1;
+
 struct AudioMonitor {
     min_occupancy: Option<usize>,
     max_peak: f32,
@@ -136,6 +138,16 @@ impl AudioMonitor {
         }
 
         peak_level
+    }
+}
+
+fn analysis_ok(frame_idx: u64, last_analysis: Option<u64>, max_lag: u64) -> bool {
+    if frame_idx == 0 {
+        return true;
+    }
+    match last_analysis {
+        Some(id) => frame_idx.saturating_sub(id) <= max_lag,
+        None => false,
     }
 }
 
@@ -855,9 +867,7 @@ fn worker_loop(
             }
             pop.set_current_frame(frame_idx);
 
-            // Keep analysis aligned to generated frames: allow 1-frame delay, but do not advance
-            // more than that. This keeps perc_* (R/H) coherent for population dynamics.
-            let required_prev = frame_idx.saturating_sub(1);
+            // Spec: landscape may lag analysis by <= MAX_LANDSCAPE_LAG_FRAMES.
             loop {
                 // Merge analysis results (latest-only) into the landscape.
                 let mut latest_audio: Option<(u64, Landscape)> = None;
@@ -930,12 +940,7 @@ fn worker_loop(
                     );
                 }
 
-                // For frame 0 there is no previous frame to wait for.
-                if frame_idx == 0 {
-                    break;
-                }
-                let analysis_ok = last_analysis_frame.is_some_and(|id| id >= required_prev);
-                if analysis_ok {
+                if analysis_ok(frame_idx, last_analysis_frame, MAX_LANDSCAPE_LAG_FRAMES) {
                     break;
                 }
                 if exiting.load(Ordering::SeqCst) {
@@ -1045,6 +1050,7 @@ fn worker_loop(
 
             // Lag is measured against generated frames, because population dynamics depend on
             // the landscape evolution in the generated timebase (not wall-clock playback).
+            // landscape_age in frames (spec: <= MAX_LANDSCAPE_LAG_FRAMES after warmup).
             let analysis_lag = last_analysis_frame.map(|id| frame_idx.saturating_sub(id));
 
             let finished_now = if pop.abort_requested {
@@ -1264,4 +1270,18 @@ fn compose_c_statepm1_with_params(
         params.consonance_roughness_weight_floor,
         params.consonance_roughness_weight,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn analysis_ok_truth_table() {
+        assert!(analysis_ok(0, None, MAX_LANDSCAPE_LAG_FRAMES));
+        assert!(analysis_ok(1, Some(0), MAX_LANDSCAPE_LAG_FRAMES));
+        assert!(analysis_ok(10, Some(9), MAX_LANDSCAPE_LAG_FRAMES));
+        assert!(!analysis_ok(10, Some(8), MAX_LANDSCAPE_LAG_FRAMES));
+        assert!(!analysis_ok(10, None, MAX_LANDSCAPE_LAG_FRAMES));
+    }
 }

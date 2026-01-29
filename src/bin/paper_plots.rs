@@ -24,9 +24,9 @@ use rand::{Rng, SeedableRng, rngs::StdRng};
 
 const SPACE_BINS_PER_OCT: u32 = 400;
 
-const E2_STEPS: usize = 400;
-const E2_BURN_IN: usize = 100;
-const E2_ANCHOR_SHIFT_STEP: usize = 200;
+const E2_STEPS: usize = 50;
+const E2_BURN_IN: usize = 10;
+const E2_ANCHOR_SHIFT_STEP: usize = usize::MAX;
 const E2_ANCHOR_SHIFT_RATIO: f32 = 0.5;
 const E2_STEP_SEMITONES: f32 = 0.5;
 const E2_ANCHOR_BIN_ST: f32 = 0.5;
@@ -34,6 +34,8 @@ const E2_PAIRWISE_BIN_ST: f32 = 0.25;
 const E2_N_AGENTS: usize = 24;
 const E2_LAMBDA: f32 = 0.15;
 const E2_SIGMA: f32 = 0.06;
+const E2_INIT_CONSONANT_EXCLUSION_ST: f32 = 0.35;
+const E2_INIT_MAX_TRIES: usize = 5000;
 const E2_SEEDS: [u64; 5] = [
     0xC0FFEE_u64,
     0xC0FFEE_u64 + 1,
@@ -41,6 +43,25 @@ const E2_SEEDS: [u64; 5] = [
     0xC0FFEE_u64 + 3,
     0xC0FFEE_u64 + 4,
 ];
+
+#[derive(Clone, Copy, Debug)]
+#[allow(dead_code)]
+enum E2InitMode {
+    Uniform,
+    RejectConsonant,
+}
+
+impl E2InitMode {
+    fn label(self) -> &'static str {
+        match self {
+            E2InitMode::Uniform => "uniform",
+            E2InitMode::RejectConsonant => "reject_consonant",
+        }
+    }
+}
+
+const E2_INIT_MODE: E2InitMode = E2InitMode::RejectConsonant;
+const E2_CONSONANT_STEPS: [f32; 8] = [0.0, 3.0, 4.0, 5.0, 7.0, 8.0, 9.0, 12.0];
 
 const E4_TAIL_WINDOW_STEPS: u32 = 200;
 const E4_DELTA_TAU: f32 = 0.02;
@@ -200,8 +221,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         println!("{}", usage());
         return Ok(());
     }
-    let experiments = parse_experiments(&args)
-        .map_err(|msg| io::Error::other(msg))?;
+    let experiments = parse_experiments(&args).map_err(io::Error::other)?;
     let experiments = if experiments.is_empty() {
         Experiment::all()
     } else {
@@ -398,6 +418,9 @@ fn plot_e2_emergent_harmony(
     let rep_index = pick_representative_run_index(&baseline_runs);
     let baseline_run = &baseline_runs[rep_index];
     let marker_steps = e2_marker_steps();
+    let caption_suffix = e2_caption_suffix();
+    let post_label = e2_post_label();
+    let post_label_title = e2_post_label_title();
 
     write(
         out_dir.join("paper_e2_representative_seed.txt"),
@@ -411,47 +434,51 @@ fn plot_e2_emergent_harmony(
 
     write(
         out_dir.join("paper_e2_timeseries.csv"),
-        series_csv("t,mean_c01", &baseline_run.mean_c01_series),
+        series_csv("step,mean_c01", &baseline_run.mean_c01_series),
     )?;
     write(
         out_dir.join("paper_e2_score_timeseries.csv"),
-        series_csv("t,mean_score", &baseline_run.mean_score_series),
+        series_csv("step,mean_score", &baseline_run.mean_score_series),
     )?;
     write(
         out_dir.join("paper_e2_repulsion_timeseries.csv"),
-        series_csv("t,mean_repulsion", &baseline_run.mean_repulsion_series),
+        series_csv("step,mean_repulsion", &baseline_run.mean_repulsion_series),
     )?;
     write(
         out_dir.join("paper_e2_moved_frac_timeseries.csv"),
-        series_csv("t,moved_frac", &baseline_run.moved_frac_series),
+        series_csv("step,moved_frac", &baseline_run.moved_frac_series),
     )?;
 
     write(
         out_dir.join("paper_e2_agent_trajectories.csv"),
         trajectories_csv(baseline_run),
     )?;
-    write(
-        out_dir.join("paper_e2_anchor_shift_stats.csv"),
-        anchor_shift_csv(baseline_run),
-    )?;
+    if e2_anchor_shift_enabled() {
+        write(
+            out_dir.join("paper_e2_anchor_shift_stats.csv"),
+            anchor_shift_csv(baseline_run),
+        )?;
+    }
     write(
         out_dir.join("paper_e2_final_agents.csv"),
         final_agents_csv(baseline_run),
     )?;
 
     let mean_plot_path = out_dir.join("paper_e2_mean_consonance_over_time.png");
-    render_series_plot_with_markers(
+    render_series_plot_fixed_y(
         &mean_plot_path,
-        "E2 Mean Consonance Over Time (burn-in=100, shift@200)",
+        &format!("E2 Mean Consonance Over Time ({caption_suffix})"),
         "mean C01",
         &series_pairs(&baseline_run.mean_c01_series),
         &marker_steps,
+        0.0,
+        1.0,
     )?;
 
     let mean_score_path = out_dir.join("paper_e2_mean_score_over_time.png");
     render_series_plot_with_markers(
         &mean_score_path,
-        "E2 Mean Score Over Time (burn-in=100, shift@200)",
+        &format!("E2 Mean Score Over Time ({caption_suffix})"),
         "mean score (c01 - λ·repulsion)",
         &series_pairs(&baseline_run.mean_score_series),
         &marker_steps,
@@ -460,7 +487,7 @@ fn plot_e2_emergent_harmony(
     let mean_repulsion_path = out_dir.join("paper_e2_mean_repulsion_over_time.png");
     render_series_plot_with_markers(
         &mean_repulsion_path,
-        "E2 Mean Repulsion Over Time (burn-in=100, shift@200)",
+        &format!("E2 Mean Repulsion Over Time ({caption_suffix})"),
         "mean repulsion",
         &series_pairs(&baseline_run.mean_repulsion_series),
         &marker_steps,
@@ -469,7 +496,7 @@ fn plot_e2_emergent_harmony(
     let moved_frac_path = out_dir.join("paper_e2_moved_frac_over_time.png");
     render_series_plot_with_markers(
         &moved_frac_path,
-        "E2 Moved Fraction Over Time (burn-in=100, shift@200)",
+        &format!("E2 Moved Fraction Over Time ({caption_suffix})"),
         "moved fraction",
         &series_pairs(&baseline_run.moved_frac_series),
         &marker_steps,
@@ -498,13 +525,19 @@ fn plot_e2_emergent_harmony(
     )?;
 
     let hist_path = out_dir.join("paper_e2_interval_histogram.png");
+    let hist_caption = format!("E2 Interval Histogram ({post_label}, bin=0.50st)");
     render_interval_histogram(
         &hist_path,
-        "E2 Interval Histogram (post, bin=0.50st)",
+        &hist_caption,
         &baseline_run.semitone_samples_post,
         -12.0,
         12.0,
         E2_ANCHOR_BIN_ST,
+    )?;
+
+    write(
+        out_dir.join("paper_e2_summary.csv"),
+        e2_summary_csv(&baseline_runs),
     )?;
 
     render_e2_histogram_sweep(out_dir, baseline_run)?;
@@ -602,7 +635,7 @@ fn plot_e2_emergent_harmony(
     let hist_plot_05 = out_dir.join("paper_e2_interval_hist_post_seed_sweep_bw0p50.png");
     render_hist_mean_std(
         &hist_plot_05,
-        "E2 Post Interval Histogram (seed sweep, bin=0.50st)",
+        &format!("E2 {post_label_title} Interval Histogram (seed sweep, bin=0.50st)"),
         &hist_stats_05.centers,
         &hist_stats_05.mean_count,
         &hist_stats_05.std_count,
@@ -617,7 +650,7 @@ fn plot_e2_emergent_harmony(
     let hist_plot_025 = out_dir.join("paper_e2_interval_hist_post_seed_sweep_bw0p25.png");
     render_hist_mean_std(
         &hist_plot_025,
-        "E2 Post Interval Histogram (seed sweep, bin=0.25st)",
+        &format!("E2 {post_label_title} Interval Histogram (seed sweep, bin=0.25st)"),
         &hist_stats_025.centers,
         &hist_stats_025.mean_count,
         &hist_stats_025.std_count,
@@ -655,7 +688,7 @@ fn plot_e2_emergent_harmony(
         out_dir.join("paper_e2_interval_hist_post_controls_seed_sweep_bw0p50.png");
     render_hist_controls_fraction(
         &control_hist_plot,
-        "E2 Post Interval Histogram (controls, mean frac, bin=0.50st)",
+        &format!("E2 {post_label_title} Interval Histogram (controls, mean frac, bin=0.50st)"),
         &hist_stats_05.centers,
         &[
             ("baseline", &hist_stats_05.mean_frac, BLUE),
@@ -720,15 +753,92 @@ fn plot_e2_emergent_harmony(
     Ok(())
 }
 
+fn e2_anchor_shift_enabled() -> bool {
+    E2_ANCHOR_SHIFT_STEP != usize::MAX
+}
+
+fn e2_caption_suffix() -> String {
+    if e2_anchor_shift_enabled() {
+        format!("burn-in={E2_BURN_IN}, shift@{E2_ANCHOR_SHIFT_STEP}")
+    } else {
+        format!("burn-in={E2_BURN_IN}, shift=off")
+    }
+}
+
+fn e2_post_label() -> &'static str {
+    if e2_anchor_shift_enabled() {
+        "post"
+    } else {
+        "post-burn-in"
+    }
+}
+
+fn e2_post_label_title() -> &'static str {
+    if e2_anchor_shift_enabled() {
+        "Post"
+    } else {
+        "Post-burn-in"
+    }
+}
+
+fn is_consonant_near(semitone_abs: f32) -> bool {
+    for target in E2_CONSONANT_STEPS {
+        if (semitone_abs - target).abs() <= E2_INIT_CONSONANT_EXCLUSION_ST {
+            return true;
+        }
+    }
+    false
+}
+
+fn init_e2_agent_indices_uniform<R: Rng + ?Sized>(
+    rng: &mut R,
+    min_idx: usize,
+    max_idx: usize,
+) -> Vec<usize> {
+    (0..E2_N_AGENTS)
+        .map(|_| rng.random_range(min_idx..=max_idx))
+        .collect()
+}
+
+fn init_e2_agent_indices_reject_consonant<R: Rng + ?Sized>(
+    rng: &mut R,
+    min_idx: usize,
+    max_idx: usize,
+    log2_ratio_scan: &[f32],
+) -> Vec<usize> {
+    let mut indices = Vec::with_capacity(E2_N_AGENTS);
+    for _ in 0..E2_N_AGENTS {
+        let mut last = min_idx;
+        let mut chosen = None;
+        for _ in 0..E2_INIT_MAX_TRIES {
+            let idx = rng.random_range(min_idx..=max_idx);
+            last = idx;
+            let semitone_abs = (12.0 * log2_ratio_scan[idx]).abs();
+            if !is_consonant_near(semitone_abs) {
+                chosen = Some(idx);
+                break;
+            }
+        }
+        indices.push(chosen.unwrap_or(last));
+    }
+    indices
+}
+
 fn run_e2_once(space: &Log2Space, anchor_hz: f32, seed: u64, condition: E2Condition) -> E2Run {
     let mut rng = seeded_rng(seed);
     let mut anchor_hz_current = anchor_hz;
     let mut log2_ratio_scan = build_log2_ratio_scan(space, anchor_hz_current);
     let (mut min_idx, mut max_idx) = log2_ratio_bounds(&log2_ratio_scan, -1.0, 1.0);
 
-    let mut agent_indices: Vec<usize> = (0..E2_N_AGENTS)
-        .map(|_| rng.random_range(min_idx..=max_idx))
-        .collect();
+    let mut agent_indices = match E2_INIT_MODE {
+        E2InitMode::Uniform => init_e2_agent_indices_uniform(&mut rng, min_idx, max_idx),
+        E2InitMode::RejectConsonant => init_e2_agent_indices_reject_consonant(
+            &mut rng,
+            min_idx,
+            max_idx,
+            &log2_ratio_scan,
+        ),
+    };
 
     let (_erb_scan, du_scan) = erb_grid_for_space(space);
     let workspace = build_c01_workspace(space);
@@ -757,6 +867,7 @@ fn run_e2_once(space: &Log2Space, anchor_hz: f32, seed: u64, condition: E2Condit
         respawned: 0,
     };
 
+    let anchor_shift_enabled = e2_anchor_shift_enabled();
     for step in 0..E2_STEPS {
         if step == E2_ANCHOR_SHIFT_STEP {
             let before = anchor_hz_current;
@@ -797,7 +908,7 @@ fn run_e2_once(space: &Log2Space, anchor_hz: f32, seed: u64, condition: E2Condit
         }
 
         if step >= E2_BURN_IN {
-            let target = if step < E2_ANCHOR_SHIFT_STEP {
+            let target = if anchor_shift_enabled && step < E2_ANCHOR_SHIFT_STEP {
                 &mut semitone_samples_pre
             } else {
                 &mut semitone_samples_post
@@ -2873,6 +2984,28 @@ fn anchor_shift_csv(run: &E2Run) -> String {
     out
 }
 
+fn e2_summary_csv(runs: &[E2Run]) -> String {
+    let mut out = String::from(
+        "seed,init_mode,steps,burn_in,mean_c01_step0,mean_c01_step_end,delta_c01\n",
+    );
+    for run in runs {
+        let start = run.mean_c01_series.first().copied().unwrap_or(0.0);
+        let end = run.mean_c01_series.last().copied().unwrap_or(start);
+        let delta = end - start;
+        out.push_str(&format!(
+            "{},{},{},{},{:.6},{:.6},{:.6}\n",
+            run.seed,
+            E2_INIT_MODE.label(),
+            E2_STEPS,
+            E2_BURN_IN,
+            start,
+            end,
+            delta
+        ));
+    }
+    out
+}
+
 fn final_agents_csv(run: &E2Run) -> String {
     let mut out = String::from("agent_id,freq_hz,log2_ratio,semitones\n");
     let len = run
@@ -2896,6 +3029,10 @@ fn e2_meta_text(n_agents: usize, k_bins: i32) -> String {
     out.push_str(&format!("E2_BURN_IN={}\n", E2_BURN_IN));
     out.push_str(&format!("E2_ANCHOR_SHIFT_STEP={}\n", E2_ANCHOR_SHIFT_STEP));
     out.push_str(&format!(
+        "E2_ANCHOR_SHIFT_ENABLED={}\n",
+        e2_anchor_shift_enabled()
+    ));
+    out.push_str(&format!(
         "E2_ANCHOR_SHIFT_RATIO={:.3}\n",
         E2_ANCHOR_SHIFT_RATIO
     ));
@@ -2904,6 +3041,12 @@ fn e2_meta_text(n_agents: usize, k_bins: i32) -> String {
     out.push_str(&format!("E2_K_BINS={}\n", k_bins));
     out.push_str(&format!("E2_LAMBDA={:.3}\n", E2_LAMBDA));
     out.push_str(&format!("E2_SIGMA={:.3}\n", E2_SIGMA));
+    out.push_str(&format!("E2_INIT_MODE={}\n", E2_INIT_MODE.label()));
+    out.push_str(&format!(
+        "E2_INIT_CONSONANT_EXCLUSION_ST={:.3}\n",
+        E2_INIT_CONSONANT_EXCLUSION_ST
+    ));
+    out.push_str(&format!("E2_INIT_MAX_TRIES={}\n", E2_INIT_MAX_TRIES));
     out.push_str(&format!("E2_ANCHOR_BIN_ST={:.3}\n", E2_ANCHOR_BIN_ST));
     out.push_str(&format!("E2_PAIRWISE_BIN_ST={:.3}\n", E2_PAIRWISE_BIN_ST));
     out.push_str(&format!("E2_SEEDS={:?}\n", E2_SEEDS));
@@ -2911,7 +3054,10 @@ fn e2_meta_text(n_agents: usize, k_bins: i32) -> String {
 }
 
 fn e2_marker_steps() -> Vec<f32> {
-    let mut steps = vec![E2_BURN_IN as f32, E2_ANCHOR_SHIFT_STEP as f32];
+    let mut steps = vec![E2_BURN_IN as f32];
+    if e2_anchor_shift_enabled() {
+        steps.push(E2_ANCHOR_SHIFT_STEP as f32);
+    }
     steps.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     steps.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
     steps
@@ -3231,6 +3377,49 @@ fn mean_std_scalar(values: &[f32]) -> (f32, f32) {
     (mean, var.max(0.0).sqrt())
 }
 
+fn render_series_plot_fixed_y(
+    out_path: &Path,
+    caption: &str,
+    y_desc: &str,
+    series: &[(f32, f32)],
+    markers: &[f32],
+    mut y_lo: f32,
+    mut y_hi: f32,
+) -> Result<(), Box<dyn Error>> {
+    if series.is_empty() {
+        return Ok(());
+    }
+    if !matches!(y_lo.partial_cmp(&y_hi), Some(std::cmp::Ordering::Less)) {
+        y_lo = 0.0;
+        y_hi = 1.0;
+    }
+    let x_max = series
+        .last()
+        .map(|(x, _)| *x)
+        .unwrap_or(0.0)
+        .max(1.0);
+
+    let root = BitMapBackend::new(out_path, (1200, 700)).into_drawing_area();
+    root.fill(&WHITE)?;
+    let mut chart = ChartBuilder::on(&root)
+        .caption(caption, ("sans-serif", 20))
+        .margin(10)
+        .x_label_area_size(40)
+        .y_label_area_size(60)
+        .build_cartesian_2d(0.0f32..x_max, y_lo..y_hi)?;
+
+    chart
+        .configure_mesh()
+        .x_desc("step")
+        .y_desc(y_desc)
+        .draw()?;
+
+    draw_vertical_guides(&mut chart, markers, y_lo, y_hi)?;
+    chart.draw_series(LineSeries::new(series.iter().copied(), &BLUE))?;
+    root.present()?;
+    Ok(())
+}
+
 fn render_series_plot_with_markers(
     out_path: &Path,
     caption: &str,
@@ -3547,14 +3736,20 @@ fn render_interval_histogram(
 }
 
 fn render_e2_histogram_sweep(out_dir: &Path, run: &E2Run) -> Result<(), Box<dyn Error>> {
-    let pre_start = E2_BURN_IN;
-    let pre_end = E2_ANCHOR_SHIFT_STEP.saturating_sub(1);
-    let post_start = E2_ANCHOR_SHIFT_STEP;
+    let post_start = E2_BURN_IN;
     let post_end = E2_STEPS.saturating_sub(1);
-    let ranges = [
-        ("pre", pre_start, pre_end, &run.semitone_samples_pre),
-        ("post", post_start, post_end, &run.semitone_samples_post),
-    ];
+    let ranges: Vec<(&str, usize, usize, &Vec<f32>)> = if e2_anchor_shift_enabled() {
+        let pre_start = E2_BURN_IN;
+        let pre_end = E2_ANCHOR_SHIFT_STEP.saturating_sub(1);
+        let post_start = E2_ANCHOR_SHIFT_STEP;
+        let post_end = E2_STEPS.saturating_sub(1);
+        vec![
+            ("pre", pre_start, pre_end, &run.semitone_samples_pre),
+            ("post", post_start, post_end, &run.semitone_samples_post),
+        ]
+    } else {
+        vec![("post", post_start, post_end, &run.semitone_samples_post)]
+    };
     let bins = [0.5f32, 0.25f32];
     for (label, start, end, values) in ranges {
         for &bin_width in &bins {
@@ -3563,8 +3758,13 @@ fn render_e2_histogram_sweep(out_dir: &Path, run: &E2Run) -> Result<(), Box<dyn 
                 label,
                 format_float_token(bin_width)
             );
+            let phase_label = if label == "post" {
+                e2_post_label()
+            } else {
+                label
+            };
             let caption = format!(
-                "E2 Interval Histogram ({label}, steps {start}-{end}, bin={bin_width:.2}st)"
+                "E2 Interval Histogram ({phase_label}, steps {start}-{end}, bin={bin_width:.2}st)"
             );
             let out_path = out_dir.join(fname);
             render_interval_histogram(&out_path, &caption, values, -12.0, 12.0, bin_width)?;
@@ -3597,9 +3797,10 @@ fn render_e2_control_histograms(
     let out_path = out_dir.join("paper_e2_interval_histogram_post_controls_bw0p50.png");
     let root = BitMapBackend::new(&out_path, (1200, 700)).into_drawing_area();
     root.fill(&WHITE)?;
+    let post_label = e2_post_label();
     let mut chart = ChartBuilder::on(&root)
         .caption(
-            "E2 Interval Histogram (post, controls, bin=0.50st)",
+            format!("E2 Interval Histogram ({post_label}, controls, bin=0.50st)"),
             ("sans-serif", 20),
         )
         .margin(10)
@@ -5022,6 +5223,20 @@ mod tests {
                 wrapped >= -PI - 1e-6 && wrapped <= PI + 1e-6,
                 "wrapped={wrapped} out of range for theta={theta}"
             );
+        }
+    }
+
+    #[test]
+    fn consonant_exclusion_flags_targets() {
+        for &st in &[0.0, 3.0, 4.0, 7.0, 12.0] {
+            assert!(is_consonant_near(st), "expected consonant near {st}");
+        }
+    }
+
+    #[test]
+    fn consonant_exclusion_rejects_clear_outside() {
+        for &st in &[1.0, 2.0, 6.0, 11.0] {
+            assert!(!is_consonant_near(st), "expected non-consonant near {st}");
         }
     }
 

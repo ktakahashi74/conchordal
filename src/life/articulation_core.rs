@@ -4,7 +4,9 @@ use crate::core::utils::pink_noise_tick;
 use crate::life::lifecycle::LifecycleConfig;
 use crate::life::phonation_engine::PhonationKick;
 use crate::life::scenario::ArticulationCoreConfig;
-use crate::life::metabolism_policy::MetabolismPolicy;
+use crate::life::metabolism_policy::{
+    MetabolismPolicy, DEFAULT_RECHARGE_THRESHOLD,
+};
 use rand::{Rng, SeedableRng, rngs::SmallRng};
 use std::f32::consts::{PI, TAU};
 use tracing::debug;
@@ -87,6 +89,10 @@ impl ArticulationWrapper {
 
     pub fn set_gate(&mut self, gate: f32) {
         self.planned_gate.gate = gate.clamp(0.0, 1.0);
+    }
+
+    pub fn last_attack_telemetry(&self) -> (u32, f32) {
+        self.core.last_attack_telemetry()
     }
 
     pub fn kick_planned(&mut self, kick: PhonationKick, rhythms: &NeuralRhythms, dt: f32) {
@@ -196,6 +202,8 @@ pub struct KuramotoCore {
     pub dbg_last_theta_alpha: f32,
     pub dbg_last_theta_beta: f32,
     pub dbg_last_k_eff: f32,
+    pub last_attack_count: u32,
+    pub last_attack_consonance: f32,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -253,7 +261,7 @@ fn normalized_vitality(energy: f32, energy_cap: f32, vitality_exponent: f32) -> 
 
 impl KuramotoCore {
     // Recharge only when consonance exceeds the neutral midpoint (C01 > 0.5).
-    const RECHARGE_THRESHOLD: f32 = 0.5;
+    const RECHARGE_THRESHOLD: f32 = DEFAULT_RECHARGE_THRESHOLD;
 
     #[inline]
     fn metabolism_policy(&self) -> MetabolismPolicy {
@@ -263,6 +271,11 @@ impl KuramotoCore {
             recharge_per_attack: self.recharge_rate,
             recharge_threshold: Self::RECHARGE_THRESHOLD,
         }
+    }
+
+    #[inline]
+    fn last_attack_telemetry(&self) -> (u32, f32) {
+        (self.last_attack_count, self.last_attack_consonance)
     }
 
     #[inline]
@@ -480,6 +493,8 @@ impl ArticulationCore for KuramotoCore {
         dt: f32,
         global_coupling: f32,
     ) -> ArticulationSignal {
+        self.last_attack_count = 0;
+        self.last_attack_consonance = 0.0;
         let policy = self.metabolism_policy();
         let (energy_after_basal, _telemetry) = policy.step(self.energy, dt, false, consonance);
         self.energy = energy_after_basal;
@@ -511,9 +526,13 @@ impl ArticulationCore for KuramotoCore {
                 bootstrap_active,
                 step.k_eff,
             );
+            if attacked {
+                self.last_attack_count = self.last_attack_count.saturating_add(1);
+            }
             attacked_this_sample = attacked_this_sample || attacked;
         }
         if attacked_this_sample {
+            self.last_attack_consonance = consonance;
             let (energy_after_attack, _telemetry) = policy.step(self.energy, 0.0, true, consonance);
             self.energy = energy_after_attack;
             self.handle_energy_depletion();
@@ -794,6 +813,8 @@ impl AnyArticulationCore {
                     dbg_last_theta_alpha: 0.0,
                     dbg_last_theta_beta: 0.0,
                     dbg_last_k_eff: 0.0,
+                    last_attack_count: 0,
+                    last_attack_consonance: 0.0,
                 })
             }
             ArticulationCoreConfig::Seq { duration, .. } => {
@@ -822,14 +843,25 @@ impl AnyArticulationCore {
             AnyArticulationCore::Drone(core) => core.kick_planned(strength),
         }
     }
+
+    pub fn last_attack_telemetry(&self) -> (u32, f32) {
+        match self {
+            AnyArticulationCore::Entrain(c) => c.last_attack_telemetry(),
+            AnyArticulationCore::Seq(_) => (0, 0.0),
+            AnyArticulationCore::Drone(_) => (0, 0.0),
+        }
+    }
 }
 
 impl KuramotoCore {
     fn kick_planned(&mut self, strength: f32) {
         let strength = strength.clamp(0.0, 1.0);
         self.state = ArticulationState::Attack;
-        if self.energy.is_finite() && self.energy >= self.action_cost {
-            self.energy -= self.action_cost * strength;
+        let policy = self.metabolism_policy();
+        if self.energy.is_finite() && self.energy >= policy.action_cost_per_attack {
+            let (energy_after, _telemetry) = policy.step(self.energy, 0.0, true, 0.0);
+            let delta = energy_after - self.energy;
+            self.energy += delta * strength;
         }
     }
 }
@@ -858,6 +890,7 @@ fn envelope_from_lifecycle(
     bool,
     f32,
 ) {
+    let policy = MetabolismPolicy::from_lifecycle(lifecycle);
     match lifecycle {
         LifecycleConfig::Decay {
             initial_energy,
@@ -868,25 +901,22 @@ fn envelope_from_lifecycle(
             let attack_step = 1.0 / atk;
             let decay_sec = half_life_sec.max(0.01);
             let decay_rate = 1.0 / decay_sec;
-            let basal = 0.0;
             (
                 *initial_energy,
-                basal,
-                0.0,
+                policy.basal_cost_per_sec,
+                policy.recharge_per_attack,
                 attack_step,
                 decay_rate,
                 ArticulationState::Attack,
                 Sensitivity::default(),
                 false,
-                0.02,
+                policy.action_cost_per_attack,
             )
         }
         LifecycleConfig::Sustain {
             initial_energy,
-            metabolism_rate,
-            recharge_rate,
-            action_cost,
             envelope,
+            ..
         } => {
             let atk = envelope.attack_sec.max(0.0005);
             let attack_step = 1.0 / atk;
@@ -894,8 +924,8 @@ fn envelope_from_lifecycle(
             let decay_rate = 1.0 / decay_sec;
             (
                 *initial_energy,
-                *metabolism_rate,
-                recharge_rate.unwrap_or(0.5),
+                policy.basal_cost_per_sec,
+                policy.recharge_per_attack,
                 attack_step,
                 decay_rate,
                 ArticulationState::Idle,
@@ -906,7 +936,7 @@ fn envelope_from_lifecycle(
                     beta: 0.5,
                 },
                 true,
-                action_cost.unwrap_or(0.02),
+                policy.action_cost_per_attack,
             )
         }
     }
@@ -971,6 +1001,8 @@ mod tests {
             dbg_last_theta_alpha: 0.0,
             dbg_last_theta_beta: 0.0,
             dbg_last_k_eff: 0.0,
+            last_attack_count: 0,
+            last_attack_consonance: 0.0,
         }
     }
 

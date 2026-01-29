@@ -57,6 +57,8 @@ pub struct Individual {
     pub body: AnySoundBody,
     pub last_signal: ArticulationSignal,
     last_consonance01: f32,
+    attack_count_accum: u32,
+    attack_consonance_sum: f32,
     pub(crate) release_gain: f32,
     pub(crate) release_sec: f32,
     pub(crate) release_pending: bool,
@@ -242,6 +244,8 @@ impl Individual {
             body,
             last_signal: Default::default(),
             last_consonance01: 0.0,
+            attack_count_accum: 0,
+            attack_consonance_sum: 0.0,
             release_gain: 1.0,
             release_sec: 0.03,
             release_pending: false,
@@ -480,6 +484,11 @@ impl Individual {
         let mut signal = self
             .articulation
             .process(consonance, rhythms, dt_sec, global_coupling);
+        let (attack_count, attack_consonance) = self.articulation.last_attack_telemetry();
+        if attack_count > 0 {
+            self.attack_count_accum = self.attack_count_accum.saturating_add(attack_count);
+            self.attack_consonance_sum += attack_consonance * attack_count as f32;
+        }
         signal.amplitude *= self.articulation.gate();
         if self.release_pending {
             let step = dt_sec / self.release_sec.max(1e-6);
@@ -660,6 +669,14 @@ impl Individual {
 
     pub fn last_consonance01(&self) -> f32 {
         self.last_consonance01
+    }
+
+    pub fn take_attack_telemetry(&mut self) -> (u32, f32) {
+        let count = self.attack_count_accum;
+        let sum = self.attack_consonance_sum;
+        self.attack_count_accum = 0;
+        self.attack_consonance_sum = 0.0;
+        (count, sum)
     }
 
     pub fn is_alive(&self) -> bool {

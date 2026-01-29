@@ -1,3 +1,9 @@
+use crate::life::lifecycle::LifecycleConfig;
+
+pub const DEFAULT_ACTION_COST_PER_ATTACK: f32 = 0.02;
+pub const DEFAULT_RECHARGE_PER_ATTACK: f32 = 0.5;
+pub const DEFAULT_RECHARGE_THRESHOLD: f32 = 0.5;
+
 #[derive(Clone, Copy, Debug)]
 pub struct MetabolismPolicy {
     pub basal_cost_per_sec: f32,
@@ -18,6 +24,28 @@ pub struct EnergyTelemetry {
 }
 
 impl MetabolismPolicy {
+    pub fn from_lifecycle(lifecycle: &LifecycleConfig) -> Self {
+        match lifecycle {
+            LifecycleConfig::Decay { .. } => MetabolismPolicy {
+                basal_cost_per_sec: 0.0,
+                action_cost_per_attack: DEFAULT_ACTION_COST_PER_ATTACK,
+                recharge_per_attack: 0.0,
+                recharge_threshold: DEFAULT_RECHARGE_THRESHOLD,
+            },
+            LifecycleConfig::Sustain {
+                metabolism_rate,
+                recharge_rate,
+                action_cost,
+                ..
+            } => MetabolismPolicy {
+                basal_cost_per_sec: *metabolism_rate,
+                action_cost_per_attack: action_cost.unwrap_or(DEFAULT_ACTION_COST_PER_ATTACK),
+                recharge_per_attack: recharge_rate.unwrap_or(DEFAULT_RECHARGE_PER_ATTACK),
+                recharge_threshold: DEFAULT_RECHARGE_THRESHOLD,
+            },
+        }
+    }
+
     /// Energy update rule used by articulation cores.
     ///
     /// E' = E - basal_cost_per_sec * dt

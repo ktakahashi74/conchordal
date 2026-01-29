@@ -6,6 +6,7 @@ use std::io;
 use std::path::Path;
 
 use plotters::coord::types::RangedCoordf32;
+use plotters::coord::{CoordTranslate, Shift};
 use plotters::prelude::*;
 
 use conchordal::core::erb::hz_to_erb;
@@ -15,7 +16,7 @@ use conchordal::core::log2space::Log2Space;
 use conchordal::core::psycho_state;
 use conchordal::core::roughness_kernel::{KernelParams, RoughnessKernel};
 use conchordal::paper::sim::{
-    E3Condition, E3DeathRecord, E3RunConfig, E4_ANCHOR_HZ, E4TailSamples,
+    e3_policy_params, E3Condition, E3DeathRecord, E3RunConfig, E4_ANCHOR_HZ, E4TailSamples,
     run_e3_collect_deaths, run_e4_condition_tail_samples,
 };
 use rand::seq::SliceRandom;
@@ -930,8 +931,26 @@ fn plot_e3_metabolic_selection(
         "condition,seed,life_id,agent_id,birth_step,death_step,lifetime_steps,c01_birth,c01_firstk,avg_c01_tick,avg_c01_attack,attack_count\n",
     );
     let mut summary_csv = String::from(
-        "condition,seed,n_deaths,pearson_r,pearson_p,spearman_rho,spearman_p,median_high,median_low,logrank_p,logrank_p_q25q75,pearson_r_firstk,pearson_p_firstk,spearman_rho_firstk,spearman_p_firstk,logrank_p_firstk\n",
+        "condition,seed,n_deaths,pearson_r_firstk,pearson_p_firstk,spearman_rho_firstk,spearman_p_firstk,logrank_p_firstk,logrank_p_firstk_q25q75,median_high_firstk,median_low_firstk,pearson_r_birth,pearson_p_birth,spearman_rho_birth,spearman_p_birth,pearson_r_attack,pearson_p_attack,spearman_rho_attack,spearman_p_attack,n_attack\n",
     );
+    let mut policy_csv = String::from(
+        "condition,dt_sec,basal_cost_per_sec,action_cost_per_attack,recharge_per_attack,recharge_threshold\n",
+    );
+    for condition in conditions {
+        let params = e3_policy_params(condition);
+        policy_csv.push_str(&format!(
+            "{},{:.6},{:.6},{:.6},{:.6},{:.6}\n",
+            params.condition,
+            params.dt_sec,
+            params.basal_cost_per_sec,
+            params.action_cost_per_attack,
+            params.recharge_per_attack,
+            params.recharge_threshold
+        ));
+    }
+    write(out_dir.join("paper_e3_policy_params.csv"), policy_csv)?;
+
+    let mut seed_outputs: Vec<E3SeedOutput> = Vec::new();
 
     for condition in conditions {
         let cond_label = condition.label();
@@ -972,21 +991,8 @@ fn plot_e3_metabolic_selection(
 
             let arrays = e3_extract_arrays(&deaths);
 
-            let scatter_path = out_dir.join(format!(
-                "paper_e3_consonance_vs_lifetime_seed{}_{}.png",
-                seed, cond_label
-            ));
-            let corr_stats = render_e3_scatter_with_stats(
-                &scatter_path,
-                "E3 Consonance vs Lifetime",
-                "avg C01 (tick)",
-                &arrays.avg_tick,
-                &arrays.lifetimes,
-                seed ^ 0xE300_u64,
-            )?;
-
             let scatter_firstk_path = out_dir.join(format!(
-                "paper_e3_consonance_firstk_vs_lifetime_seed{}_{}.png",
+                "paper_e3_firstk_vs_lifetime_seed{}_{}.png",
                 seed, cond_label
             ));
             let corr_stats_firstk = render_e3_scatter_with_stats(
@@ -998,54 +1004,85 @@ fn plot_e3_metabolic_selection(
                 seed ^ 0xE301_u64,
             )?;
 
-            let survival_path = out_dir.join(format!(
-                "paper_e3_survival_by_c01_seed{}_{}.png",
+            let scatter_birth_path = out_dir.join(format!(
+                "paper_e3_birth_vs_lifetime_seed{}_{}.png",
                 seed, cond_label
             ));
-            let surv_stats = render_survival_split_plot(
-                &survival_path,
-                "E3 Survival by C01 (median split)",
+            let corr_stats_birth = render_e3_scatter_with_stats(
+                &scatter_birth_path,
+                "E3 C01_birth vs Lifetime",
+                "C01_birth",
+                &arrays.c01_birth,
                 &arrays.lifetimes,
-                &arrays.avg_tick,
+                seed ^ 0xE302_u64,
+            )?;
+
+            let survival_path = out_dir.join(format!(
+                "paper_e3_survival_by_firstk_seed{}_{}.png",
+                seed, cond_label
+            ));
+            let surv_firstk_stats = render_survival_split_plot(
+                &survival_path,
+                "E3 Survival by C01_firstK (median split)",
+                &arrays.lifetimes,
+                &arrays.c01_firstk,
                 SplitKind::Median,
                 seed ^ 0xE310_u64,
             )?;
 
             let survival_q_path = out_dir.join(format!(
-                "paper_e3_survival_by_c01_q25q75_seed{}_{}.png",
+                "paper_e3_survival_by_firstk_q25q75_seed{}_{}.png",
                 seed, cond_label
             ));
-            let surv_q_stats = render_survival_split_plot(
+            let surv_firstk_q_stats = render_survival_split_plot(
                 &survival_q_path,
-                "E3 Survival by C01 (q25 vs q75)",
+                "E3 Survival by C01_firstK (q25 vs q75)",
                 &arrays.lifetimes,
-                &arrays.avg_tick,
+                &arrays.c01_firstk,
                 SplitKind::Quartiles,
                 seed ^ 0xE311_u64,
             )?;
 
-            let survival_firstk_path = out_dir.join(format!(
-                "paper_e3_survival_by_c01_firstk_seed{}_{}.png",
-                seed, cond_label
-            ));
-            let surv_firstk_stats = render_survival_split_plot(
-                &survival_firstk_path,
-                "E3 Survival by C01_firstK (median split)",
-                &arrays.lifetimes,
-                &arrays.c01_firstk,
-                SplitKind::Median,
-                seed ^ 0xE312_u64,
-            )?;
+            let (attack_lifetimes, attack_vals) = e3_attack_subset(&arrays);
+            let attack_n = attack_vals.len();
+            let mut corr_stats_attack = None;
+            if attack_n >= 10 {
+                let attack_scatter_path = out_dir.join(format!(
+                    "paper_e3_attack_vs_lifetime_seed{}_{}.png",
+                    seed, cond_label
+                ));
+                corr_stats_attack = Some(render_e3_scatter_with_stats(
+                    &attack_scatter_path,
+                    "E3 C01_attack vs Lifetime",
+                    "C01_attack",
+                    &attack_vals,
+                    &attack_lifetimes,
+                    seed ^ 0xE303_u64,
+                )?);
+
+                let attack_survival_path = out_dir.join(format!(
+                    "paper_e3_survival_by_attack_seed{}_{}.png",
+                    seed, cond_label
+                ));
+                let _ = render_survival_split_plot(
+                    &attack_survival_path,
+                    "E3 Survival by C01_attack (median split)",
+                    &attack_lifetimes,
+                    &attack_vals,
+                    SplitKind::Median,
+                    seed ^ 0xE313_u64,
+                )?;
+            }
 
             if cond_label == "baseline" && seed == E3_SEEDS[0] {
-                let mut legacy_csv = String::from("life_id,lifetime_steps,avg_c01_tick\n");
+                let mut legacy_csv = String::from("life_id,lifetime_steps,c01_firstk\n");
                 let mut legacy_deaths = Vec::with_capacity(deaths.len());
                 for d in &deaths {
                     legacy_csv.push_str(&format!(
                         "{},{},{:.6}\n",
-                        d.life_id, d.lifetime_steps, d.avg_c01_tick
+                        d.life_id, d.lifetime_steps, d.c01_firstk
                     ));
-                    legacy_deaths.push((d.life_id as usize, d.lifetime_steps, d.avg_c01_tick));
+                    legacy_deaths.push((d.life_id as usize, d.lifetime_steps, d.c01_firstk));
                 }
                 write(out_dir.join("paper_e3_lifetimes.csv"), legacy_csv)?;
                 let legacy_scatter = out_dir.join("paper_e3_consonance_vs_lifetime.png");
@@ -1057,26 +1094,135 @@ fn plot_e3_metabolic_selection(
             }
 
             summary_csv.push_str(&format!(
-                "{},{},{},{:.6},{:.6},{:.6},{:.6},{:.3},{:.3},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6}\n",
+                "{},{},{},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.3},{:.3},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{}\n",
                 cond_label,
                 seed,
                 arrays.lifetimes.len(),
-                corr_stats.pearson_r,
-                corr_stats.pearson_p,
-                corr_stats.spearman_rho,
-                corr_stats.spearman_p,
-                surv_stats.median_high,
-                surv_stats.median_low,
-                surv_stats.logrank_p,
-                surv_q_stats.logrank_p,
                 corr_stats_firstk.pearson_r,
                 corr_stats_firstk.pearson_p,
                 corr_stats_firstk.spearman_rho,
                 corr_stats_firstk.spearman_p,
-                surv_firstk_stats.logrank_p
+                surv_firstk_stats.logrank_p,
+                surv_firstk_q_stats.logrank_p,
+                surv_firstk_stats.median_high,
+                surv_firstk_stats.median_low,
+                corr_stats_birth.pearson_r,
+                corr_stats_birth.pearson_p,
+                corr_stats_birth.spearman_rho,
+                corr_stats_birth.spearman_p,
+                corr_stats_attack
+                    .as_ref()
+                    .map(|s| s.pearson_r)
+                    .unwrap_or(f32::NAN),
+                corr_stats_attack
+                    .as_ref()
+                    .map(|s| s.pearson_p)
+                    .unwrap_or(f32::NAN),
+                corr_stats_attack
+                    .as_ref()
+                    .map(|s| s.spearman_rho)
+                    .unwrap_or(f32::NAN),
+                corr_stats_attack
+                    .as_ref()
+                    .map(|s| s.spearman_p)
+                    .unwrap_or(f32::NAN),
+                attack_n
             ));
 
-            let _ = &arrays.c01_birth;
+            seed_outputs.push(E3SeedOutput {
+                condition,
+                seed,
+                arrays,
+                corr_firstk: corr_stats_firstk,
+            });
+        }
+    }
+
+    if let Some(rep_seed) = pick_e3_representative_seed(&seed_outputs) {
+        let mut rep_note = String::from("Representative seed selection (baseline firstK Pearson r):\n");
+        let mut baseline_stats: Vec<(u64, f32)> = seed_outputs
+            .iter()
+            .filter(|o| o.condition == E3Condition::Baseline)
+            .map(|o| (o.seed, o.corr_firstk.pearson_r))
+            .collect();
+        baseline_stats.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+        for (seed, r) in &baseline_stats {
+            rep_note.push_str(&format!("{seed},{r:.6}\n"));
+        }
+        rep_note.push_str(&format!("chosen_seed={rep_seed}\n"));
+        write(out_dir.join("paper_e3_representative_seed.txt"), rep_note)?;
+
+        let base = seed_outputs
+            .iter()
+            .find(|o| o.condition == E3Condition::Baseline && o.seed == rep_seed);
+        let norecharge = seed_outputs
+            .iter()
+            .find(|o| o.condition == E3Condition::NoRecharge && o.seed == rep_seed);
+        if let (Some(base), Some(norecharge)) = (base, norecharge) {
+            let base_scatter = build_scatter_data(
+                &base.arrays.c01_firstk,
+                &base.arrays.lifetimes,
+                rep_seed ^ 0xE301_u64,
+            );
+            let norecharge_scatter = build_scatter_data(
+                &norecharge.arrays.c01_firstk,
+                &norecharge.arrays.lifetimes,
+                rep_seed ^ 0xE301_u64,
+            );
+            let compare_scatter = out_dir.join("paper_e3_firstk_scatter_compare.png");
+            render_scatter_compare(
+                &compare_scatter,
+                "E3 C01_firstK vs Lifetime",
+                "C01_firstK",
+                "Baseline",
+                &base_scatter,
+                "NoRecharge",
+                &norecharge_scatter,
+            )?;
+
+            let base_surv = build_survival_data(
+                &base.arrays.lifetimes,
+                &base.arrays.c01_firstk,
+                SplitKind::Median,
+                rep_seed ^ 0xE310_u64,
+            );
+            let norecharge_surv = build_survival_data(
+                &norecharge.arrays.lifetimes,
+                &norecharge.arrays.c01_firstk,
+                SplitKind::Median,
+                rep_seed ^ 0xE310_u64,
+            );
+            let compare_surv = out_dir.join("paper_e3_firstk_survival_compare.png");
+            render_survival_compare(
+                &compare_surv,
+                "E3 Survival by C01_firstK (median split)",
+                "Baseline",
+                &base_surv,
+                "NoRecharge",
+                &norecharge_surv,
+            )?;
+
+            let base_surv_q = build_survival_data(
+                &base.arrays.lifetimes,
+                &base.arrays.c01_firstk,
+                SplitKind::Quartiles,
+                rep_seed ^ 0xE311_u64,
+            );
+            let norecharge_surv_q = build_survival_data(
+                &norecharge.arrays.lifetimes,
+                &norecharge.arrays.c01_firstk,
+                SplitKind::Quartiles,
+                rep_seed ^ 0xE311_u64,
+            );
+            let compare_surv_q = out_dir.join("paper_e3_firstk_survival_compare_q25q75.png");
+            render_survival_compare(
+                &compare_surv_q,
+                "E3 Survival by C01_firstK (q25 vs q75)",
+                "Baseline",
+                &base_surv_q,
+                "NoRecharge",
+                &norecharge_surv_q,
+            )?;
         }
     }
 
@@ -1088,20 +1234,23 @@ fn plot_e3_metabolic_selection(
 
 fn e3_extract_arrays(deaths: &[E3DeathRecord]) -> E3Arrays {
     let mut lifetimes = Vec::with_capacity(deaths.len());
-    let mut avg_tick = Vec::with_capacity(deaths.len());
     let mut c01_birth = Vec::with_capacity(deaths.len());
     let mut c01_firstk = Vec::with_capacity(deaths.len());
+    let mut avg_attack = Vec::with_capacity(deaths.len());
+    let mut attack_count = Vec::with_capacity(deaths.len());
     for d in deaths {
         lifetimes.push(d.lifetime_steps);
-        avg_tick.push(d.avg_c01_tick);
         c01_birth.push(d.c01_birth);
         c01_firstk.push(d.c01_firstk);
+        avg_attack.push(d.avg_c01_attack);
+        attack_count.push(d.attack_count);
     }
     E3Arrays {
         lifetimes,
-        avg_tick,
         c01_birth,
         c01_firstk,
+        avg_attack,
+        attack_count,
     }
 }
 
@@ -1125,6 +1274,36 @@ fn e3_lifetimes_csv(deaths: &[E3DeathRecord]) -> String {
         ));
     }
     out
+}
+
+fn e3_attack_subset(arrays: &E3Arrays) -> (Vec<u32>, Vec<f32>) {
+    let mut lifetimes = Vec::new();
+    let mut avg_attack = Vec::new();
+    for ((&lt, &avg), &count) in arrays
+        .lifetimes
+        .iter()
+        .zip(arrays.avg_attack.iter())
+        .zip(arrays.attack_count.iter())
+    {
+        if count > 0 && avg.is_finite() {
+            lifetimes.push(lt);
+            avg_attack.push(avg);
+        }
+    }
+    (lifetimes, avg_attack)
+}
+
+fn pick_e3_representative_seed(outputs: &[E3SeedOutput]) -> Option<u64> {
+    let mut baseline: Vec<(u64, f32)> = outputs
+        .iter()
+        .filter(|o| o.condition == E3Condition::Baseline)
+        .map(|o| (o.seed, o.corr_firstk.pearson_r))
+        .collect();
+    if baseline.is_empty() {
+        return None;
+    }
+    baseline.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+    Some(baseline[baseline.len() / 2].0)
 }
 
 fn plot_e5_rhythmic_entrainment(out_dir: &Path) -> Result<(), Box<dyn Error>> {
@@ -1520,9 +1699,17 @@ struct E2SweepStats {
 
 struct E3Arrays {
     lifetimes: Vec<u32>,
-    avg_tick: Vec<f32>,
     c01_birth: Vec<f32>,
     c01_firstk: Vec<f32>,
+    avg_attack: Vec<f32>,
+    attack_count: Vec<u32>,
+}
+
+struct E3SeedOutput {
+    condition: E3Condition,
+    seed: u64,
+    arrays: E3Arrays,
+    corr_firstk: CorrStats,
 }
 
 struct HistSweepStats {
@@ -3581,6 +3768,120 @@ fn corr_stats(x_raw: &[f32], y_raw: &[u32], seed: u64) -> CorrStats {
     }
 }
 
+struct ScatterData {
+    points: Vec<(f32, f32)>,
+    x_min: f32,
+    x_max: f32,
+    y_max: f32,
+    stats: CorrStats,
+}
+
+fn build_scatter_data(x_values: &[f32], lifetimes: &[u32], seed: u64) -> ScatterData {
+    let stats = corr_stats(x_values, lifetimes, seed);
+    let mut points = Vec::new();
+    for (x, y) in x_values.iter().zip(lifetimes.iter()) {
+        if x.is_finite() {
+            points.push((*x, *y as f32));
+        }
+    }
+    let mut x_min = 0.0f32;
+    let mut x_max = 1.0f32;
+    let mut y_max = 1.0f32;
+    if !points.is_empty() {
+        x_min = f32::INFINITY;
+        x_max = f32::NEG_INFINITY;
+        y_max = f32::NEG_INFINITY;
+        for &(x, y) in &points {
+            x_min = x_min.min(x);
+            x_max = x_max.max(x);
+            y_max = y_max.max(y);
+        }
+        if !x_min.is_finite() || !x_max.is_finite() {
+            x_min = 0.0;
+            x_max = 1.0;
+        }
+        if (x_max - x_min).abs() < 1e-6 {
+            x_min -= 0.05;
+            x_max += 0.05;
+        }
+        y_max = y_max.max(1.0);
+    }
+    ScatterData {
+        points,
+        x_min,
+        x_max,
+        y_max,
+        stats,
+    }
+}
+
+fn draw_note_lines<DB: DrawingBackend, CT: CoordTranslate>(
+    area: &DrawingArea<DB, CT>,
+    lines: &[String],
+    x_frac: f32,
+    y_frac: f32,
+    line_height_px: i32,
+) -> Result<(), Box<dyn Error>>
+where
+    DB::ErrorType: 'static,
+{
+    let screen = area.strip_coord_spec();
+    let (w, h) = screen.dim_in_pixel();
+    let x = (w as f32 * x_frac).round() as i32;
+    let mut y = (h as f32 * y_frac).round() as i32;
+    for line in lines {
+        screen.draw(&Text::new(
+            line.clone(),
+            (x, y),
+            ("sans-serif", 14).into_font(),
+        ))?;
+        y += line_height_px;
+    }
+    Ok(())
+}
+
+fn render_scatter_on_area(
+    area: &DrawingArea<BitMapBackend, Shift>,
+    caption: &str,
+    x_desc: &str,
+    data: &ScatterData,
+) -> Result<(), Box<dyn Error>> {
+    let mut chart = ChartBuilder::on(area)
+        .caption(caption, ("sans-serif", 18))
+        .margin(10)
+        .x_label_area_size(35)
+        .y_label_area_size(50)
+        .build_cartesian_2d(data.x_min..data.x_max, 0.0f32..(data.y_max * 1.05))?;
+
+    chart
+        .configure_mesh()
+        .x_desc(x_desc)
+        .y_desc("lifetime (steps)")
+        .draw()?;
+
+    if !data.points.is_empty() {
+        chart.draw_series(
+            data.points
+                .iter()
+                .map(|(x, y)| Circle::new((*x, *y), 3, BLUE.mix(0.5).filled())),
+        )?;
+    }
+
+    let lines = vec![
+        format!("N={}", data.stats.n),
+        format!(
+            "Pearson r={:.3} (p={:.3})",
+            data.stats.pearson_r, data.stats.pearson_p
+        ),
+        format!(
+            "Spearman ρ={:.3} (p={:.3})",
+            data.stats.spearman_rho, data.stats.spearman_p
+        ),
+    ];
+    draw_note_lines(chart.plotting_area(), &lines, 0.02, 0.05, 16)?;
+    Ok(())
+}
+
 fn render_e3_scatter_with_stats(
     out_path: &Path,
     caption: &str,
@@ -3589,68 +3890,12 @@ fn render_e3_scatter_with_stats(
     lifetimes: &[u32],
     seed: u64,
 ) -> Result<CorrStats, Box<dyn Error>> {
-    let stats = corr_stats(x_values, lifetimes, seed);
-    let mut points = Vec::new();
-    for (x, y) in x_values.iter().zip(lifetimes.iter()) {
-        if x.is_finite() {
-            points.push((*x, *y as f32));
-        }
-    }
-    if points.is_empty() {
-        return Ok(stats);
-    }
-    let mut x_min = f32::INFINITY;
-    let mut x_max = f32::NEG_INFINITY;
-    let mut y_max = f32::NEG_INFINITY;
-    for &(x, y) in &points {
-        x_min = x_min.min(x);
-        x_max = x_max.max(x);
-        y_max = y_max.max(y);
-    }
-    if !x_min.is_finite() || !x_max.is_finite() {
-        x_min = 0.0;
-        x_max = 1.0;
-    }
-    if (x_max - x_min).abs() < 1e-6 {
-        x_min -= 0.1;
-        x_max += 0.1;
-    }
-    let y_max = y_max.max(1.0);
-
     let root = BitMapBackend::new(out_path, (1200, 700)).into_drawing_area();
     root.fill(&WHITE)?;
-    let mut chart = ChartBuilder::on(&root)
-        .caption(caption, ("sans-serif", 20))
-        .margin(10)
-        .x_label_area_size(40)
-        .y_label_area_size(60)
-        .build_cartesian_2d(x_min..x_max, 0.0f32..(y_max * 1.05))?;
-
-    chart
-        .configure_mesh()
-        .x_desc(x_desc)
-        .y_desc("lifetime (steps)")
-        .draw()?;
-
-    chart.draw_series(
-        points
-            .iter()
-            .map(|(x, y)| Circle::new((*x, *y), 3, BLUE.mix(0.5).filled())),
-    )?;
-
-    let text = format!(
-        "N={} | Pearson r={:.3} (p={:.3}) | Spearman ρ={:.3} (p={:.3})",
-        stats.n, stats.pearson_r, stats.pearson_p, stats.spearman_rho, stats.spearman_p
-    );
-    let x_note = x_min + 0.02 * (x_max - x_min);
-    chart.draw_series(std::iter::once(Text::new(
-        text,
-        (x_note, y_max * 0.95),
-        ("sans-serif", 14).into_font(),
-    )))?;
-
+    let data = build_scatter_data(x_values, lifetimes, seed);
+    render_scatter_on_area(&root, caption, x_desc, &data)?;
     root.present()?;
-    Ok(stats)
+    Ok(data.stats)
 }
 
 enum SplitKind {
@@ -3662,6 +3907,15 @@ struct SurvivalStats {
     median_high: f32,
     median_low: f32,
     logrank_p: f32,
+}
+
+struct SurvivalData {
+    series_high: Vec<(f32, f32)>,
+    series_low: Vec<(f32, f32)>,
+    x_max: f32,
+    stats: SurvivalStats,
+    n_high: usize,
+    n_low: usize,
 }
 
 fn median_u32(values: &[u32]) -> f32 {
@@ -3772,14 +4026,12 @@ fn logrank_pvalue(high: &[u32], low: &[u32], n_perm: usize, seed: u64) -> f32 {
     (count as f32 + 1.0) / (n_perm as f32 + 1.0)
 }
 
-fn render_survival_split_plot(
-    out_path: &Path,
-    caption: &str,
+fn build_survival_data(
     lifetimes: &[u32],
     values: &[f32],
     split: SplitKind,
     seed: u64,
-) -> Result<SurvivalStats, Box<dyn Error>> {
+) -> SurvivalData {
     let mut filtered_lifetimes = Vec::new();
     let mut filtered_values = Vec::new();
     for (&lt, &val) in lifetimes.iter().zip(values.iter()) {
@@ -3811,14 +4063,34 @@ fn render_survival_split_plot(
     let series_low = build_survival_series(&low, max_t);
     let x_max = max_t.max(1) as f32;
 
-    let root = BitMapBackend::new(out_path, (1200, 700)).into_drawing_area();
-    root.fill(&WHITE)?;
-    let mut chart = ChartBuilder::on(&root)
-        .caption(caption, ("sans-serif", 20))
+    let median_high = median_u32(&high);
+    let median_low = median_u32(&low);
+    let logrank_p = logrank_pvalue(&high, &low, 1000, seed ^ 0xE3AA_u64);
+    SurvivalData {
+        series_high,
+        series_low,
+        x_max,
+        stats: SurvivalStats {
+            median_high,
+            median_low,
+            logrank_p,
+        },
+        n_high: high.len(),
+        n_low: low.len(),
+    }
+}
+
+fn render_survival_on_area(
+    area: &DrawingArea<BitMapBackend, Shift>,
+    caption: &str,
+    data: &SurvivalData,
+) -> Result<(), Box<dyn Error>> {
+    let mut chart = ChartBuilder::on(area)
+        .caption(caption, ("sans-serif", 18))
         .margin(10)
-        .x_label_area_size(40)
-        .y_label_area_size(60)
-        .build_cartesian_2d(0.0f32..x_max, 0.0f32..1.05f32)?;
+        .x_label_area_size(35)
+        .y_label_area_size(50)
+        .build_cartesian_2d(0.0f32..data.x_max, 0.0f32..1.05f32)?;
 
     chart
         .configure_mesh()
@@ -3827,30 +4099,23 @@ fn render_survival_split_plot(
         .draw()?;
 
     chart
-        .draw_series(LineSeries::new(series_high.clone(), &BLUE))?
+        .draw_series(LineSeries::new(data.series_high.clone(), &BLUE))?
         .label("high")
         .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], BLUE));
     chart
-        .draw_series(LineSeries::new(series_low.clone(), &RED))?
+        .draw_series(LineSeries::new(data.series_low.clone(), &RED))?
         .label("low")
         .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], RED));
 
-    let median_high = median_u32(&high);
-    let median_low = median_u32(&low);
-    let logrank_p = logrank_pvalue(&high, &low, 1000, seed ^ 0xE3AA_u64);
-    let note = format!(
-        "n_high={}, n_low={} | median_high={:.1}, median_low={:.1} | logrank p={:.3}",
-        high.len(),
-        low.len(),
-        median_high,
-        median_low,
-        logrank_p
-    );
-    chart.draw_series(std::iter::once(Text::new(
-        note,
-        (x_max * 0.02, 1.0),
-        ("sans-serif", 14).into_font(),
-    )))?;
+    let lines = vec![
+        format!("n_high={}, n_low={}", data.n_high, data.n_low),
+        format!(
+            "median_high={:.1}, median_low={:.1}",
+            data.stats.median_high, data.stats.median_low
+        ),
+        format!("logrank p={:.3}", data.stats.logrank_p),
+    ];
+    draw_note_lines(chart.plotting_area(), &lines, 0.02, 0.05, 16)?;
 
     chart
         .configure_series_labels()
@@ -3858,12 +4123,76 @@ fn render_survival_split_plot(
         .border_style(BLACK)
         .draw()?;
 
+    Ok(())
+}
+
+fn render_survival_split_plot(
+    out_path: &Path,
+    caption: &str,
+    lifetimes: &[u32],
+    values: &[f32],
+    split: SplitKind,
+    seed: u64,
+) -> Result<SurvivalStats, Box<dyn Error>> {
+    let root = BitMapBackend::new(out_path, (1200, 700)).into_drawing_area();
+    root.fill(&WHITE)?;
+    let data = build_survival_data(lifetimes, values, split, seed);
+    render_survival_on_area(&root, caption, &data)?;
     root.present()?;
-    Ok(SurvivalStats {
-        median_high,
-        median_low,
-        logrank_p,
-    })
+    Ok(data.stats)
+}
+
+fn render_scatter_compare(
+    out_path: &Path,
+    caption: &str,
+    x_desc: &str,
+    left_label: &str,
+    left_data: &ScatterData,
+    right_label: &str,
+    right_data: &ScatterData,
+) -> Result<(), Box<dyn Error>> {
+    let root = BitMapBackend::new(out_path, (1400, 700)).into_drawing_area();
+    root.fill(&WHITE)?;
+    let areas = root.split_evenly((1, 2));
+    render_scatter_on_area(
+        &areas[0],
+        &format!("{caption} — {left_label}"),
+        x_desc,
+        left_data,
+    )?;
+    render_scatter_on_area(
+        &areas[1],
+        &format!("{caption} — {right_label}"),
+        x_desc,
+        right_data,
+    )?;
+    root.present()?;
+    Ok(())
+}
+
+fn render_survival_compare(
+    out_path: &Path,
+    caption: &str,
+    left_label: &str,
+    left_data: &SurvivalData,
+    right_label: &str,
+    right_data: &SurvivalData,
+) -> Result<(), Box<dyn Error>> {
+    let root = BitMapBackend::new(out_path, (1400, 700)).into_drawing_area();
+    root.fill(&WHITE)?;
+    let areas = root.split_evenly((1, 2));
+    render_survival_on_area(
+        &areas[0],
+        &format!("{caption} — {left_label}"),
+        left_data,
+    )?;
+    render_survival_on_area(
+        &areas[1],
+        &format!("{caption} — {right_label}"),
+        right_data,
+    )?;
+    root.present()?;
+    Ok(())
 }
 
 fn render_consonance_lifetime_scatter(

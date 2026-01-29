@@ -7,6 +7,7 @@ use crate::core::timebase::Timebase;
 use crate::life::control::{AgentControl, PhonationType, PitchMode};
 use crate::life::individual::SoundBody;
 use crate::life::lifecycle::LifecycleConfig;
+use crate::life::metabolism_policy::MetabolismPolicy;
 use crate::life::population::Population;
 use crate::life::scenario::{Action, ArticulationCoreConfig, EnvelopeConfig, SpawnSpec, SpawnStrategy};
 
@@ -26,7 +27,7 @@ const E3_RANGE_OCT: f32 = 2.0; // +/- 1 octave around anchor
 const E3_THETA_FREQ_HZ: f32 = 1.0;
 const E3_METABOLISM_RATE: f32 = 0.5;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum E3Condition {
     Baseline,
     NoRecharge,
@@ -65,6 +66,16 @@ pub struct E3DeathRecord {
     pub avg_c01_tick: f32,
     pub avg_c01_attack: f32,
     pub attack_count: u32,
+}
+
+#[derive(Clone, Debug)]
+pub struct E3PolicyParams {
+    pub condition: String,
+    pub dt_sec: f32,
+    pub basal_cost_per_sec: f32,
+    pub action_cost_per_attack: f32,
+    pub recharge_per_attack: f32,
+    pub recharge_threshold: f32,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -264,13 +275,18 @@ pub fn run_e3_collect_deaths(cfg: &E3RunConfig) -> Vec<E3DeathRecord> {
         pop.advance(E3_HOP, E3_FS, step as u64, dt, &landscape);
 
         let mut respawn_ids: Vec<u64> = Vec::new();
-        for agent in &pop.individuals {
+        for agent in pop.individuals.iter_mut() {
             let id = agent.id();
             let idx = id as usize;
             if idx >= states.len() {
                 continue;
             }
             let state = &mut states[idx];
+            let (attack_count, attack_sum) = agent.take_attack_telemetry();
+            if attack_count > 0 {
+                state.attack_count = state.attack_count.saturating_add(attack_count);
+                state.sum_c01_attack += attack_sum;
+            }
             let alive = agent.is_alive();
 
             if alive {
@@ -303,7 +319,7 @@ pub fn run_e3_collect_deaths(cfg: &E3RunConfig) -> Vec<E3DeathRecord> {
                 let avg_c01_attack = if state.attack_count > 0 {
                     state.sum_c01_attack / state.attack_count as f32
                 } else {
-                    0.0
+                    f32::NAN
                 };
 
                 deaths.push(E3DeathRecord {
@@ -656,20 +672,7 @@ fn e3_spawn_spec(condition: E3Condition, anchor_hz: f32) -> SpawnSpec {
     control.pitch.mode = PitchMode::Lock;
     control.pitch.freq = anchor_hz.max(1.0);
     control.phonation.r#type = PhonationType::Hold;
-
-    let recharge_rate = match condition {
-        E3Condition::Baseline => None,
-        E3Condition::NoRecharge => Some(0.0),
-    };
-
-    let lifecycle = LifecycleConfig::Sustain {
-        initial_energy: 1.0,
-        metabolism_rate: E3_METABOLISM_RATE,
-        recharge_rate,
-        action_cost: None,
-        envelope: EnvelopeConfig::default(),
-    };
-
+    let lifecycle = e3_lifecycle(condition);
     let articulation = ArticulationCoreConfig::Entrain {
         lifecycle,
         rhythm_freq: Some(E3_THETA_FREQ_HZ),
@@ -692,6 +695,33 @@ fn e3_spawn_strategy(anchor_hz: f32, space: &Log2Space) -> SpawnStrategy {
     SpawnStrategy::RandomLog {
         min_freq: min_freq.min(max_freq),
         max_freq: max_freq.max(min_freq),
+    }
+}
+
+fn e3_lifecycle(condition: E3Condition) -> LifecycleConfig {
+    let recharge_rate = match condition {
+        E3Condition::Baseline => None,
+        E3Condition::NoRecharge => Some(0.0),
+    };
+    LifecycleConfig::Sustain {
+        initial_energy: 1.0,
+        metabolism_rate: E3_METABOLISM_RATE,
+        recharge_rate,
+        action_cost: None,
+        envelope: EnvelopeConfig::default(),
+    }
+}
+
+pub fn e3_policy_params(condition: E3Condition) -> E3PolicyParams {
+    let lifecycle = e3_lifecycle(condition);
+    let policy = MetabolismPolicy::from_lifecycle(&lifecycle);
+    E3PolicyParams {
+        condition: condition.label().to_string(),
+        dt_sec: E3_HOP as f32 / E3_FS,
+        basal_cost_per_sec: policy.basal_cost_per_sec,
+        action_cost_per_attack: policy.action_cost_per_attack,
+        recharge_per_attack: policy.recharge_per_attack,
+        recharge_threshold: policy.recharge_threshold,
     }
 }
 

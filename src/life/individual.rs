@@ -57,7 +57,7 @@ pub struct Individual {
     pub body: AnySoundBody,
     pub last_signal: ArticulationSignal,
     last_consonance01: f32,
-    attack_count_accum: u32,
+    attack_tick_count_accum: u32,
     attack_consonance_sum: f32,
     pub(crate) release_gain: f32,
     pub(crate) release_sec: f32,
@@ -244,7 +244,7 @@ impl Individual {
             body,
             last_signal: Default::default(),
             last_consonance01: 0.0,
-            attack_count_accum: 0,
+            attack_tick_count_accum: 0,
             attack_consonance_sum: 0.0,
             release_gain: 1.0,
             release_sec: 0.03,
@@ -484,10 +484,12 @@ impl Individual {
         let mut signal = self
             .articulation
             .process(consonance, rhythms, dt_sec, global_coupling);
-        let (attack_count, attack_consonance) = self.articulation.last_attack_telemetry();
-        if attack_count > 0 {
-            self.attack_count_accum = self.attack_count_accum.saturating_add(attack_count);
-            self.attack_consonance_sum += attack_consonance * attack_count as f32;
+        let (attack_tick_count, attack_consonance) = self.articulation.last_attack_telemetry();
+        if attack_tick_count > 0 {
+            self.attack_tick_count_accum = self
+                .attack_tick_count_accum
+                .saturating_add(attack_tick_count);
+            self.attack_consonance_sum += attack_consonance * attack_tick_count as f32;
         }
         signal.amplitude *= self.articulation.gate();
         if self.release_pending {
@@ -671,10 +673,11 @@ impl Individual {
         self.last_consonance01
     }
 
+    /// Returns (attack_tick_count, sum_c01_attack) and resets the accumulated telemetry.
     pub fn take_attack_telemetry(&mut self) -> (u32, f32) {
-        let count = self.attack_count_accum;
+        let count = self.attack_tick_count_accum;
         let sum = self.attack_consonance_sum;
-        self.attack_count_accum = 0;
+        self.attack_tick_count_accum = 0;
         self.attack_consonance_sum = 0.0;
         (count, sum)
     }
@@ -684,5 +687,34 @@ impl Individual {
             return false;
         }
         self.articulation.is_alive() && self.release_gain > 0.0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn take_attack_telemetry_resets_after_read() {
+        let control = AgentControl::default();
+        let mut individual = Individual::spawn_from_control(
+            control,
+            ArticulationCoreConfig::default(),
+            1,
+            0,
+            AgentMetadata::default(),
+            48_000.0,
+            0,
+        );
+        individual.attack_tick_count_accum = 2;
+        individual.attack_consonance_sum = 1.25;
+
+        let (count, sum) = individual.take_attack_telemetry();
+        assert_eq!(count, 2);
+        assert!((sum - 1.25).abs() < 1e-6);
+
+        let (count2, sum2) = individual.take_attack_telemetry();
+        assert_eq!(count2, 0);
+        assert_eq!(sum2, 0.0);
     }
 }

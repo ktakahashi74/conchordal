@@ -65,7 +65,7 @@ pub struct E3DeathRecord {
     pub c01_firstk: f32,
     pub avg_c01_tick: f32,
     pub avg_c01_attack: f32,
-    pub attack_count: u32,
+    pub attack_tick_count: u32,
 }
 
 #[derive(Clone, Debug)]
@@ -90,7 +90,7 @@ struct E3LifeState {
     pending_birth: bool,
     was_alive: bool,
     sum_c01_attack: f32,
-    attack_count: u32,
+    attack_tick_count: u32,
 }
 
 impl E3LifeState {
@@ -106,7 +106,7 @@ impl E3LifeState {
             pending_birth: true,
             was_alive: true,
             sum_c01_attack: 0.0,
-            attack_count: 0,
+            attack_tick_count: 0,
         }
     }
 
@@ -121,7 +121,7 @@ impl E3LifeState {
         self.pending_birth = true;
         self.was_alive = false;
         self.sum_c01_attack = 0.0;
-        self.attack_count = 0;
+        self.attack_tick_count = 0;
     }
 }
 
@@ -282,9 +282,9 @@ pub fn run_e3_collect_deaths(cfg: &E3RunConfig) -> Vec<E3DeathRecord> {
                 continue;
             }
             let state = &mut states[idx];
-            let (attack_count, attack_sum) = agent.take_attack_telemetry();
-            if attack_count > 0 {
-                state.attack_count = state.attack_count.saturating_add(attack_count);
+            let (attack_tick_count, attack_sum) = agent.take_attack_telemetry();
+            if attack_tick_count > 0 {
+                state.attack_tick_count = state.attack_tick_count.saturating_add(attack_tick_count);
                 state.sum_c01_attack += attack_sum;
             }
             let alive = agent.is_alive();
@@ -316,8 +316,8 @@ pub fn run_e3_collect_deaths(cfg: &E3RunConfig) -> Vec<E3DeathRecord> {
                 } else {
                     0.0
                 };
-                let avg_c01_attack = if state.attack_count > 0 {
-                    state.sum_c01_attack / state.attack_count as f32
+                let avg_c01_attack = if state.attack_tick_count > 0 {
+                    state.sum_c01_attack / state.attack_tick_count as f32
                 } else {
                     f32::NAN
                 };
@@ -334,7 +334,7 @@ pub fn run_e3_collect_deaths(cfg: &E3RunConfig) -> Vec<E3DeathRecord> {
                     c01_firstk,
                     avg_c01_tick,
                     avg_c01_attack,
-                    attack_count: state.attack_count,
+                    attack_tick_count: state.attack_tick_count,
                 });
 
                 respawn_ids.push(id);

@@ -493,6 +493,7 @@ impl ArticulationCore for KuramotoCore {
         dt: f32,
         global_coupling: f32,
     ) -> ArticulationSignal {
+        // Attack telemetry is counted in the same tick units as the energy update (did_attack).
         self.last_attack_count = 0;
         self.last_attack_consonance = 0.0;
         let policy = self.metabolism_policy();
@@ -526,12 +527,10 @@ impl ArticulationCore for KuramotoCore {
                 bootstrap_active,
                 step.k_eff,
             );
-            if attacked {
-                self.last_attack_count = self.last_attack_count.saturating_add(1);
-            }
             attacked_this_sample = attacked_this_sample || attacked;
         }
         if attacked_this_sample {
+            self.last_attack_count = 1;
             self.last_attack_consonance = consonance;
             let (energy_after_attack, _telemetry) = policy.step(self.energy, 0.0, true, consonance);
             self.energy = energy_after_attack;

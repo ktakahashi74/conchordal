@@ -90,6 +90,7 @@ impl MetabolismPolicy {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::life::scenario::EnvelopeConfig;
 
     fn approx_eq(a: f32, b: f32) {
         assert!((a - b).abs() < 1e-6, "expected {b}, got {a}");
@@ -150,5 +151,31 @@ mod tests {
         let (b, _) = policy.step(1.0, 0.0, true, 0.9);
         approx_eq(a, b);
         approx_eq(a, 0.8);
+    }
+
+    #[test]
+    fn from_lifecycle_sustain_defaults_recharge_rate() {
+        let lifecycle = LifecycleConfig::Sustain {
+            initial_energy: 1.0,
+            metabolism_rate: 0.1,
+            recharge_rate: None,
+            action_cost: None,
+            envelope: EnvelopeConfig::default(),
+        };
+        let policy = MetabolismPolicy::from_lifecycle(&lifecycle);
+        approx_eq(policy.recharge_per_attack, DEFAULT_RECHARGE_PER_ATTACK);
+    }
+
+    #[test]
+    fn from_lifecycle_sustain_zero_recharge_rate() {
+        let lifecycle = LifecycleConfig::Sustain {
+            initial_energy: 1.0,
+            metabolism_rate: 0.1,
+            recharge_rate: Some(0.0),
+            action_cost: None,
+            envelope: EnvelopeConfig::default(),
+        };
+        let policy = MetabolismPolicy::from_lifecycle(&lifecycle);
+        approx_eq(policy.recharge_per_attack, 0.0);
     }
 }

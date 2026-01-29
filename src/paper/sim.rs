@@ -6,14 +6,113 @@ use crate::core::roughness_kernel::{KernelParams, RoughnessKernel};
 use crate::core::timebase::Timebase;
 use crate::life::control::{AgentControl, PhonationType, PitchMode};
 use crate::life::individual::SoundBody;
+use crate::life::lifecycle::LifecycleConfig;
 use crate::life::population::Population;
-use crate::life::scenario::{Action, ArticulationCoreConfig, SpawnSpec, SpawnStrategy};
+use crate::life::scenario::{Action, ArticulationCoreConfig, EnvelopeConfig, SpawnSpec, SpawnStrategy};
 
 pub const E4_ANCHOR_HZ: f32 = 220.0;
 pub const E4_WINDOW_CENTS: f32 = 50.0;
 
 const E4_GROUP_ANCHOR: u64 = 0;
 const E4_GROUP_VOICES: u64 = 1;
+
+const E3_GROUP_AGENTS: u64 = 2;
+const E3_FS: f32 = 48_000.0;
+const E3_HOP: usize = 512;
+const E3_BINS_PER_OCT: u32 = 96;
+const E3_FMIN: f32 = 80.0;
+const E3_FMAX: f32 = 2000.0;
+const E3_RANGE_OCT: f32 = 2.0; // +/- 1 octave around anchor
+const E3_THETA_FREQ_HZ: f32 = 1.0;
+const E3_METABOLISM_RATE: f32 = 0.5;
+
+#[derive(Clone, Copy, Debug)]
+pub enum E3Condition {
+    Baseline,
+    NoRecharge,
+}
+
+impl E3Condition {
+    pub fn label(self) -> &'static str {
+        match self {
+            E3Condition::Baseline => "baseline",
+            E3Condition::NoRecharge => "norecharge",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct E3RunConfig {
+    pub seed: u64,
+    pub steps_cap: usize,
+    pub min_deaths: usize,
+    pub pop_size: usize,
+    pub first_k: usize,
+    pub condition: E3Condition,
+}
+
+#[derive(Clone, Debug)]
+pub struct E3DeathRecord {
+    pub condition: String,
+    pub seed: u64,
+    pub life_id: u64,
+    pub agent_id: usize,
+    pub birth_step: u32,
+    pub death_step: u32,
+    pub lifetime_steps: u32,
+    pub c01_birth: f32,
+    pub c01_firstk: f32,
+    pub avg_c01_tick: f32,
+    pub avg_c01_attack: f32,
+    pub attack_count: u32,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct E3LifeState {
+    life_id: u64,
+    birth_step: u32,
+    ticks: u32,
+    sum_c01_tick: f32,
+    sum_c01_firstk: f32,
+    firstk_count: u32,
+    c01_birth: f32,
+    pending_birth: bool,
+    was_alive: bool,
+    sum_c01_attack: f32,
+    attack_count: u32,
+}
+
+impl E3LifeState {
+    fn new(life_id: u64) -> Self {
+        Self {
+            life_id,
+            birth_step: 0,
+            ticks: 0,
+            sum_c01_tick: 0.0,
+            sum_c01_firstk: 0.0,
+            firstk_count: 0,
+            c01_birth: 0.0,
+            pending_birth: true,
+            was_alive: true,
+            sum_c01_attack: 0.0,
+            attack_count: 0,
+        }
+    }
+
+    fn reset_for_new_life(&mut self, life_id: u64) {
+        self.life_id = life_id;
+        self.birth_step = 0;
+        self.ticks = 0;
+        self.sum_c01_tick = 0.0;
+        self.sum_c01_firstk = 0.0;
+        self.firstk_count = 0;
+        self.c01_birth = 0.0;
+        self.pending_birth = true;
+        self.was_alive = false;
+        self.sum_c01_attack = 0.0;
+        self.attack_count = 0;
+    }
+}
 
 #[derive(Clone, Copy, Debug)]
 struct E4SimConfig {
@@ -114,6 +213,144 @@ pub fn interval_metrics(anchor_hz: f32, freqs_hz: &[f32], window_cents: f32) -> 
         }
     }
     metrics
+}
+
+pub fn run_e3_collect_deaths(cfg: &E3RunConfig) -> Vec<E3DeathRecord> {
+    let mut deaths = Vec::new();
+    if cfg.pop_size == 0 || cfg.steps_cap == 0 {
+        return deaths;
+    }
+
+    let anchor_hz = E4_ANCHOR_HZ;
+    let space = Log2Space::new(E3_FMIN, E3_FMAX, E3_BINS_PER_OCT);
+    let params = make_landscape_params(&space, E3_FS);
+    let mut landscape = build_anchor_landscape(&space, &params, anchor_hz);
+    landscape.rhythm = init_rhythms(E3_THETA_FREQ_HZ);
+
+    let mut pop = Population::new(Timebase {
+        fs: E3_FS,
+        hop: E3_HOP,
+    });
+    pop.set_seed(cfg.seed);
+    pop.set_current_frame(0);
+
+    let spec = e3_spawn_spec(cfg.condition, anchor_hz);
+    let strategy = e3_spawn_strategy(anchor_hz, &space);
+    let ids: Vec<u64> = (0..cfg.pop_size as u64).collect();
+    pop.apply_action(
+        Action::Spawn {
+            group_id: E3_GROUP_AGENTS,
+            ids,
+            spec: spec.clone(),
+            strategy: Some(strategy.clone()),
+        },
+        &landscape,
+        None,
+    );
+
+    let mut next_life_id = 0u64;
+    let mut states: Vec<E3LifeState> = (0..cfg.pop_size)
+        .map(|_| {
+            let life_id = next_life_id;
+            next_life_id += 1;
+            E3LifeState::new(life_id)
+        })
+        .collect();
+
+    let dt = E3_HOP as f32 / E3_FS;
+    let first_k = cfg.first_k as u32;
+
+    for step in 0..cfg.steps_cap {
+        pop.advance(E3_HOP, E3_FS, step as u64, dt, &landscape);
+
+        let mut respawn_ids: Vec<u64> = Vec::new();
+        for agent in &pop.individuals {
+            let id = agent.id();
+            let idx = id as usize;
+            if idx >= states.len() {
+                continue;
+            }
+            let state = &mut states[idx];
+            let alive = agent.is_alive();
+
+            if alive {
+                let c01 = agent.last_consonance01();
+                if state.pending_birth {
+                    state.birth_step = step as u32;
+                    state.c01_birth = c01;
+                    state.pending_birth = false;
+                }
+                state.ticks = state.ticks.saturating_add(1);
+                state.sum_c01_tick += c01;
+                if state.firstk_count < first_k {
+                    state.sum_c01_firstk += c01;
+                    state.firstk_count += 1;
+                }
+            }
+
+            if state.was_alive && !alive {
+                let ticks = state.ticks.max(1);
+                let avg_c01_tick = if state.ticks > 0 {
+                    state.sum_c01_tick / state.ticks as f32
+                } else {
+                    0.0
+                };
+                let c01_firstk = if state.firstk_count > 0 {
+                    state.sum_c01_firstk / state.firstk_count as f32
+                } else {
+                    0.0
+                };
+                let avg_c01_attack = if state.attack_count > 0 {
+                    state.sum_c01_attack / state.attack_count as f32
+                } else {
+                    0.0
+                };
+
+                deaths.push(E3DeathRecord {
+                    condition: cfg.condition.label().to_string(),
+                    seed: cfg.seed,
+                    life_id: state.life_id,
+                    agent_id: idx,
+                    birth_step: state.birth_step,
+                    death_step: step as u32,
+                    lifetime_steps: ticks,
+                    c01_birth: state.c01_birth,
+                    c01_firstk,
+                    avg_c01_tick,
+                    avg_c01_attack,
+                    attack_count: state.attack_count,
+                });
+
+                respawn_ids.push(id);
+                state.reset_for_new_life(next_life_id);
+                next_life_id += 1;
+            } else {
+                state.was_alive = alive;
+            }
+        }
+
+        for id in respawn_ids {
+            pop.remove_agent(id);
+            pop.apply_action(
+                Action::Spawn {
+                    group_id: E3_GROUP_AGENTS,
+                    ids: vec![id],
+                    spec: spec.clone(),
+                    strategy: Some(strategy.clone()),
+                },
+                &landscape,
+                None,
+            );
+        }
+
+        landscape.rhythm.advance_in_place(dt);
+
+        if deaths.len() >= cfg.min_deaths {
+            break;
+        }
+    }
+
+    deaths
 }
 
 pub fn run_e4_condition(mirror_weight: f32, seed: u64) -> Vec<f32> {
@@ -411,6 +648,50 @@ fn init_rhythms(theta_freq_hz: f32) -> NeuralRhythms {
         },
         env_open: 1.0,
         env_level: 1.0,
+    }
+}
+
+fn e3_spawn_spec(condition: E3Condition, anchor_hz: f32) -> SpawnSpec {
+    let mut control = AgentControl::default();
+    control.pitch.mode = PitchMode::Lock;
+    control.pitch.freq = anchor_hz.max(1.0);
+    control.phonation.r#type = PhonationType::Hold;
+
+    let recharge_rate = match condition {
+        E3Condition::Baseline => None,
+        E3Condition::NoRecharge => Some(0.0),
+    };
+
+    let lifecycle = LifecycleConfig::Sustain {
+        initial_energy: 1.0,
+        metabolism_rate: E3_METABOLISM_RATE,
+        recharge_rate,
+        action_cost: None,
+        envelope: EnvelopeConfig::default(),
+    };
+
+    let articulation = ArticulationCoreConfig::Entrain {
+        lifecycle,
+        rhythm_freq: Some(E3_THETA_FREQ_HZ),
+        rhythm_sensitivity: None,
+        breath_gain_init: None,
+    };
+
+    SpawnSpec {
+        control,
+        articulation,
+    }
+}
+
+fn e3_spawn_strategy(anchor_hz: f32, space: &Log2Space) -> SpawnStrategy {
+    let half = 0.5 * E3_RANGE_OCT;
+    let min_freq = anchor_hz * 2.0f32.powf(-half);
+    let max_freq = anchor_hz * 2.0f32.powf(half);
+    let min_freq = min_freq.clamp(space.fmin, space.fmax);
+    let max_freq = max_freq.clamp(space.fmin, space.fmax);
+    SpawnStrategy::RandomLog {
+        min_freq: min_freq.min(max_freq),
+        max_freq: max_freq.max(min_freq),
     }
 }
 

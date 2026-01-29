@@ -1,3 +1,4 @@
+use std::env;
 use std::error::Error;
 use std::f32::consts::PI;
 use std::fs::{create_dir_all, write};
@@ -13,7 +14,10 @@ use conchordal::core::landscape::{LandscapeParams, RoughnessScalarMode};
 use conchordal::core::log2space::Log2Space;
 use conchordal::core::psycho_state;
 use conchordal::core::roughness_kernel::{KernelParams, RoughnessKernel};
-use conchordal::paper::sim::{E4_ANCHOR_HZ, E4TailSamples, run_e4_condition_tail_samples};
+use conchordal::paper::sim::{
+    E3Condition, E3DeathRecord, E3RunConfig, E4_ANCHOR_HZ, E4TailSamples,
+    run_e3_collect_deaths, run_e4_condition_tail_samples,
+};
 use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng, rngs::StdRng};
 
@@ -51,9 +55,10 @@ const E4_SEEDS: [u64; 5] = [
 ];
 const E4_REP_WEIGHTS: [f32; 5] = [0.0, 0.25, 0.5, 0.75, 1.0];
 
-const E3_STEP_SEMITONES: f32 = 0.5;
-const E3_CONST_C: f32 = 0.5;
-const E3_FIRST_K: u32 = 20;
+const E3_FIRST_K: usize = 20;
+const E3_POP_SIZE: usize = 32;
+const E3_MIN_DEATHS: usize = 200;
+const E3_STEPS_CAP: usize = 6000;
 const E3_SEEDS: [u64; 5] = [
     0xC0FFEE_u64 + 30,
     0xC0FFEE_u64 + 31,
@@ -76,7 +81,132 @@ const E5_MIN_R_FOR_GROUP_PHASE: f32 = 0.2;
 const E5_KICK_ON_STEP: Option<usize> = Some(800);
 const E5_SEED: u64 = 0xC0FFEE_u64 + 2;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Experiment {
+    E1,
+    E2,
+    E3,
+    E4,
+    E5,
+}
+
+impl Experiment {
+    fn label(self) -> &'static str {
+        match self {
+            Experiment::E1 => "E1",
+            Experiment::E2 => "E2",
+            Experiment::E3 => "E3",
+            Experiment::E4 => "E4",
+            Experiment::E5 => "E5",
+        }
+    }
+
+    fn all() -> Vec<Experiment> {
+        vec![
+            Experiment::E1,
+            Experiment::E2,
+            Experiment::E3,
+            Experiment::E4,
+            Experiment::E5,
+        ]
+    }
+}
+
+fn usage() -> String {
+    [
+        "Usage: paper_plots [--exp E1,E2,...]",
+        "Examples:",
+        "  paper_plots --exp 2",
+        "  paper_plots 1 3 5",
+        "  paper_plots --exp e2,e4",
+        "If no experiment is specified, all (E1-E5) run.",
+    ]
+    .join("\n")
+}
+
+fn parse_experiments(args: &[String]) -> Result<Vec<Experiment>, String> {
+    let mut values: Vec<String> = Vec::new();
+    let mut i = 0;
+    while i < args.len() {
+        let arg = args[i].as_str();
+        if arg == "-e" || arg == "--exp" || arg == "--experiment" {
+            if i + 1 >= args.len() {
+                return Err(format!("Missing value after {arg}\n{}", usage()));
+            }
+            values.push(args[i + 1].clone());
+            i += 2;
+            continue;
+        }
+        if let Some(rest) = arg.strip_prefix("--exp=") {
+            values.push(rest.to_string());
+            i += 1;
+            continue;
+        }
+        if let Some(rest) = arg.strip_prefix("--experiment=") {
+            values.push(rest.to_string());
+            i += 1;
+            continue;
+        }
+        values.push(arg.to_string());
+        i += 1;
+    }
+
+    if values.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut experiments: Vec<Experiment> = Vec::new();
+    let mut saw_all = false;
+    for value in values {
+        for token in value.split(',') {
+            let token = token.trim();
+            if token.is_empty() {
+                continue;
+            }
+            if token.eq_ignore_ascii_case("all") {
+                saw_all = true;
+                continue;
+            }
+            let exp = match token {
+                "1" | "e1" | "E1" => Experiment::E1,
+                "2" | "e2" | "E2" => Experiment::E2,
+                "3" | "e3" | "E3" => Experiment::E3,
+                "4" | "e4" | "E4" => Experiment::E4,
+                "5" | "e5" | "E5" => Experiment::E5,
+                _ => {
+                    return Err(format!(
+                        "Unknown experiment '{token}'.\n{}",
+                        usage()
+                    ));
+                }
+            };
+            if !experiments.contains(&exp) {
+                experiments.push(exp);
+            }
+        }
+    }
+
+    if saw_all {
+        return Ok(Experiment::all());
+    }
+
+    Ok(experiments)
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
+    let args: Vec<String> = env::args().skip(1).collect();
+    if args.iter().any(|arg| arg == "-h" || arg == "--help") {
+        println!("{}", usage());
+        return Ok(());
+    }
+    let experiments = parse_experiments(&args)
+        .map_err(|msg| io::Error::other(msg))?;
+    let experiments = if experiments.is_empty() {
+        Experiment::all()
+    } else {
+        experiments
+    };
+
     let out_dir = Path::new("target/plots/paper");
     create_dir_all(out_dir)?;
 
@@ -84,27 +214,47 @@ fn main() -> Result<(), Box<dyn Error>> {
     let space = Log2Space::new(20.0, 8000.0, SPACE_BINS_PER_OCT);
 
     std::thread::scope(|s| -> Result<(), Box<dyn Error>> {
-        let h1 = s.spawn(|| {
-            plot_e1_landscape_scan(out_dir, &space, anchor_hz)
-                .map_err(|err| io::Error::other(err.to_string()))
-        });
-        let h2 = s.spawn(|| {
-            plot_e2_emergent_harmony(out_dir, &space, anchor_hz)
-                .map_err(|err| io::Error::other(err.to_string()))
-        });
-        let h3 = s.spawn(|| {
-            plot_e3_metabolic_selection(out_dir, &space, anchor_hz)
-                .map_err(|err| io::Error::other(err.to_string()))
-        });
-        let h4 = s.spawn(|| {
-            plot_e4_mirror_sweep(out_dir, anchor_hz)
-                .map_err(|err| io::Error::other(err.to_string()))
-        });
-        let h5 = s.spawn(|| {
-            plot_e5_rhythmic_entrainment(out_dir).map_err(|err| io::Error::other(err.to_string()))
-        });
+        let mut handles = Vec::new();
+        for exp in experiments {
+            match exp {
+                Experiment::E1 => {
+                    let h = s.spawn(|| {
+                        plot_e1_landscape_scan(out_dir, &space, anchor_hz)
+                            .map_err(|err| io::Error::other(err.to_string()))
+                    });
+                    handles.push((exp.label(), h));
+                }
+                Experiment::E2 => {
+                    let h = s.spawn(|| {
+                        plot_e2_emergent_harmony(out_dir, &space, anchor_hz)
+                            .map_err(|err| io::Error::other(err.to_string()))
+                    });
+                    handles.push((exp.label(), h));
+                }
+                Experiment::E3 => {
+                    let h = s.spawn(|| {
+                        plot_e3_metabolic_selection(out_dir, &space, anchor_hz)
+                            .map_err(|err| io::Error::other(err.to_string()))
+                    });
+                    handles.push((exp.label(), h));
+                }
+                Experiment::E4 => {
+                    let h = s.spawn(|| {
+                        plot_e4_mirror_sweep(out_dir, anchor_hz)
+                            .map_err(|err| io::Error::other(err.to_string()))
+                    });
+                    handles.push((exp.label(), h));
+                }
+                Experiment::E5 => {
+                    let h = s.spawn(|| {
+                        plot_e5_rhythmic_entrainment(out_dir)
+                            .map_err(|err| io::Error::other(err.to_string()))
+                    });
+                    handles.push((exp.label(), h));
+                }
+            }
+        }
 
-        let handles = [("E1", h1), ("E2", h2), ("E3", h3), ("E4", h4), ("E5", h5)];
         let mut first_err: Option<io::Error> = None;
         for (label, handle) in handles {
             match handle.join() {
@@ -771,49 +921,54 @@ fn e2_seed_sweep(
 
 fn plot_e3_metabolic_selection(
     out_dir: &Path,
-    space: &Log2Space,
-    anchor_hz: f32,
+    _space: &Log2Space,
+    _anchor_hz: f32,
 ) -> Result<(), Box<dyn Error>> {
-    let modes = vec![
-        E3EnergyMode::CDependent,
-        E3EnergyMode::ConstantC(E3_CONST_C),
-        E3EnergyMode::ShuffleCPerStep,
-    ];
+    let conditions = [E3Condition::Baseline, E3Condition::NoRecharge];
 
     let mut long_csv = String::from(
-        "condition,seed,death_id,agent_id,birth_step,lifetime_steps,avg_c01_true,avg_c01_energy,c01_birth_true,c01_firstk_true\n",
+        "condition,seed,life_id,agent_id,birth_step,death_step,lifetime_steps,c01_birth,c01_firstk,avg_c01_tick,avg_c01_attack,attack_count\n",
     );
     let mut summary_csv = String::from(
         "condition,seed,n_deaths,pearson_r,pearson_p,spearman_rho,spearman_p,median_high,median_low,logrank_p,logrank_p_q25q75,pearson_r_firstk,pearson_p_firstk,spearman_rho_firstk,spearman_p_firstk,logrank_p_firstk\n",
     );
 
-    for mode in modes {
-        let cond_label = mode.label();
+    for condition in conditions {
+        let cond_label = condition.label();
         for &seed in &E3_SEEDS {
-            let deaths = run_e3_once(space, anchor_hz, seed, mode);
+            let cfg = E3RunConfig {
+                seed,
+                steps_cap: E3_STEPS_CAP,
+                min_deaths: E3_MIN_DEATHS,
+                pop_size: E3_POP_SIZE,
+                first_k: E3_FIRST_K,
+                condition,
+            };
+            let deaths = run_e3_collect_deaths(&cfg);
 
             for rec in &deaths {
                 long_csv.push_str(&format!(
-                    "{},{},{},{},{},{},{:.6},{:.6},{:.6},{:.6}\n",
+                    "{},{},{},{},{},{},{},{:.6},{:.6},{:.6},{:.6},{}\n",
                     rec.condition,
                     rec.seed,
-                    rec.death_id,
+                    rec.life_id,
                     rec.agent_id,
                     rec.birth_step,
+                    rec.death_step,
                     rec.lifetime_steps,
-                    rec.avg_c01_true,
-                    rec.avg_c01_energy,
-                    rec.c01_birth_true,
-                    rec.c01_firstk_true
+                    rec.c01_birth,
+                    rec.c01_firstk,
+                    rec.avg_c01_tick,
+                    rec.avg_c01_attack,
+                    rec.attack_count
                 ));
             }
 
-            let lifetimes_csv = e3_lifetimes_csv(&deaths);
             let lifetimes_path = out_dir.join(format!(
                 "paper_e3_lifetimes_seed{}_{}.csv",
                 seed, cond_label
             ));
-            write(lifetimes_path, lifetimes_csv)?;
+            write(lifetimes_path, e3_lifetimes_csv(&deaths))?;
 
             let arrays = e3_extract_arrays(&deaths);
 
@@ -824,8 +979,8 @@ fn plot_e3_metabolic_selection(
             let corr_stats = render_e3_scatter_with_stats(
                 &scatter_path,
                 "E3 Consonance vs Lifetime",
-                "avg C01 (true)",
-                &arrays.avg_true,
+                "avg C01 (tick)",
+                &arrays.avg_tick,
                 &arrays.lifetimes,
                 seed ^ 0xE300_u64,
             )?;
@@ -837,7 +992,7 @@ fn plot_e3_metabolic_selection(
             let corr_stats_firstk = render_e3_scatter_with_stats(
                 &scatter_firstk_path,
                 "E3 C01_firstK vs Lifetime",
-                "C01_firstK (true)",
+                "C01_firstK",
                 &arrays.c01_firstk,
                 &arrays.lifetimes,
                 seed ^ 0xE301_u64,
@@ -851,7 +1006,7 @@ fn plot_e3_metabolic_selection(
                 &survival_path,
                 "E3 Survival by C01 (median split)",
                 &arrays.lifetimes,
-                &arrays.avg_true,
+                &arrays.avg_tick,
                 SplitKind::Median,
                 seed ^ 0xE310_u64,
             )?;
@@ -864,7 +1019,7 @@ fn plot_e3_metabolic_selection(
                 &survival_q_path,
                 "E3 Survival by C01 (q25 vs q75)",
                 &arrays.lifetimes,
-                &arrays.avg_true,
+                &arrays.avg_tick,
                 SplitKind::Quartiles,
                 seed ^ 0xE311_u64,
             )?;
@@ -882,15 +1037,15 @@ fn plot_e3_metabolic_selection(
                 seed ^ 0xE312_u64,
             )?;
 
-            if cond_label == "cdep" && seed == E3_SEEDS[0] {
-                let mut legacy_csv = String::from("death_id,lifetime_steps,avg_c01\n");
+            if cond_label == "baseline" && seed == E3_SEEDS[0] {
+                let mut legacy_csv = String::from("life_id,lifetime_steps,avg_c01_tick\n");
                 let mut legacy_deaths = Vec::with_capacity(deaths.len());
                 for d in &deaths {
                     legacy_csv.push_str(&format!(
                         "{},{},{:.6}\n",
-                        d.death_id, d.lifetime_steps, d.avg_c01_true
+                        d.life_id, d.lifetime_steps, d.avg_c01_tick
                     ));
-                    legacy_deaths.push((d.death_id, d.lifetime_steps, d.avg_c01_true));
+                    legacy_deaths.push((d.life_id as usize, d.lifetime_steps, d.avg_c01_tick));
                 }
                 write(out_dir.join("paper_e3_lifetimes.csv"), legacy_csv)?;
                 let legacy_scatter = out_dir.join("paper_e3_consonance_vs_lifetime.png");
@@ -921,7 +1076,7 @@ fn plot_e3_metabolic_selection(
                 surv_firstk_stats.logrank_p
             ));
 
-            let _ = (&arrays.avg_energy, &arrays.c01_birth);
+            let _ = &arrays.c01_birth;
         }
     }
 
@@ -931,172 +1086,20 @@ fn plot_e3_metabolic_selection(
     Ok(())
 }
 
-fn run_e3_once(
-    space: &Log2Space,
-    anchor_hz: f32,
-    seed: u64,
-    mode: E3EnergyMode,
-) -> Vec<E3DeathRecord> {
-    let mut rng = seeded_rng(seed);
-    let anchor_idx = nearest_bin(space, anchor_hz);
-    let log2_ratio_scan = build_log2_ratio_scan(space, anchor_hz);
-    let (min_idx, max_idx) = log2_ratio_bounds(&log2_ratio_scan, -1.0, 1.0);
-    let allowed_indices: Vec<usize> = (min_idx..=max_idx).collect();
-
-    let n_agents = 32;
-    let mut agents: Vec<MetabolicAgent> = (0..n_agents)
-        .map(|_| {
-            let pick = rng.random_range(0..allowed_indices.len());
-            MetabolicAgent {
-                idx: allowed_indices[pick],
-                energy: 1.0,
-                age_steps: 0,
-                sum_c01_true: 0.0,
-                sum_c01_energy: 0.0,
-                sum_c01_firstk_true: 0.0,
-                firstk_count: 0,
-                birth_step: 0,
-                c01_birth_true: 0.0,
-                pending_birth: true,
-            }
-        })
-        .collect();
-
-    let (_erb_scan, du_scan) = erb_grid_for_space(space);
-    let workspace = build_c01_workspace(space);
-
-    let gain = 0.06f32;
-    let decay = 0.04f32;
-    if let E3EnergyMode::ConstantC(value) = mode {
-        assert!(
-            value < decay / gain,
-            "ConstantC must satisfy value < decay/gain"
-        );
-    }
-    let mut deaths: Vec<E3DeathRecord> = Vec::new();
-    let mut death_id: usize = 0;
-    let k_bins = k_from_semitones(E3_STEP_SEMITONES);
-
-    let min_deaths = 200usize;
-    let base_steps = 2000usize;
-    let hard_cap = 6000usize;
-    let mut step = 0usize;
-    let cond_label = mode.label();
-
-    while step < hard_cap && (step < base_steps || deaths.len() < min_deaths) {
-        let agent_indices: Vec<usize> = agents.iter().map(|a| a.idx).collect();
-        let (env_scan, density_scan) = build_env_scans(space, anchor_idx, &agent_indices, &du_scan);
-        let c01_scan = compute_c01_scan(space, &workspace, &env_scan, &density_scan);
-
-        let c_true: Vec<f32> = agents.iter().map(|a| c01_scan[a.idx]).collect();
-        let mut c_energy = c_true.clone();
-        match mode {
-            E3EnergyMode::CDependent => {}
-            E3EnergyMode::ConstantC(value) => {
-                for v in c_energy.iter_mut() {
-                    *v = value;
-                }
-            }
-            E3EnergyMode::ShuffleCPerStep => {
-                c_energy.shuffle(&mut rng);
-            }
-        }
-
-        for (agent_id, agent) in agents.iter_mut().enumerate() {
-            let c_true_val = c_true[agent_id];
-            let c_energy_val = c_energy[agent_id];
-            if agent.pending_birth {
-                agent.birth_step = step as u32;
-                agent.c01_birth_true = c_true_val;
-                agent.sum_c01_firstk_true = 0.0;
-                agent.firstk_count = 0;
-                agent.pending_birth = false;
-            }
-
-            agent.energy += gain * c_energy_val - decay;
-            agent.age_steps += 1;
-            agent.sum_c01_true += c_true_val;
-            agent.sum_c01_energy += c_energy_val;
-            if agent.firstk_count < E3_FIRST_K {
-                agent.sum_c01_firstk_true += c_true_val;
-                agent.firstk_count += 1;
-            }
-
-            if agent.energy <= 0.0 {
-                let age = agent.age_steps.max(1) as f32;
-                let avg_c01_true = agent.sum_c01_true / age;
-                let avg_c01_energy = agent.sum_c01_energy / age;
-                let c01_firstk = if agent.firstk_count > 0 {
-                    agent.sum_c01_firstk_true / agent.firstk_count as f32
-                } else {
-                    0.0
-                };
-                deaths.push(E3DeathRecord {
-                    condition: cond_label.clone(),
-                    seed,
-                    death_id,
-                    agent_id,
-                    birth_step: agent.birth_step,
-                    lifetime_steps: agent.age_steps,
-                    avg_c01_true,
-                    avg_c01_energy,
-                    c01_birth_true: agent.c01_birth_true,
-                    c01_firstk_true: c01_firstk,
-                });
-                death_id += 1;
-
-                let pick = rng.random_range(0..allowed_indices.len());
-                agent.idx = allowed_indices[pick];
-                agent.energy = 1.0;
-                agent.age_steps = 0;
-                agent.sum_c01_true = 0.0;
-                agent.sum_c01_energy = 0.0;
-                agent.sum_c01_firstk_true = 0.0;
-                agent.firstk_count = 0;
-                agent.pending_birth = true;
-                agent.birth_step = step as u32 + 1;
-                agent.c01_birth_true = 0.0;
-            }
-        }
-
-        let mut updated_indices: Vec<usize> = agents.iter().map(|a| a.idx).collect();
-        update_agent_indices(
-            &mut updated_indices,
-            &c01_scan,
-            &log2_ratio_scan,
-            min_idx,
-            max_idx,
-            k_bins,
-            0.15,
-            0.06,
-        );
-        for (agent, idx) in agents.iter_mut().zip(updated_indices.into_iter()) {
-            agent.idx = idx;
-        }
-
-        step += 1;
-    }
-
-    deaths
-}
-
 fn e3_extract_arrays(deaths: &[E3DeathRecord]) -> E3Arrays {
     let mut lifetimes = Vec::with_capacity(deaths.len());
-    let mut avg_true = Vec::with_capacity(deaths.len());
-    let mut avg_energy = Vec::with_capacity(deaths.len());
+    let mut avg_tick = Vec::with_capacity(deaths.len());
     let mut c01_birth = Vec::with_capacity(deaths.len());
     let mut c01_firstk = Vec::with_capacity(deaths.len());
     for d in deaths {
         lifetimes.push(d.lifetime_steps);
-        avg_true.push(d.avg_c01_true);
-        avg_energy.push(d.avg_c01_energy);
-        c01_birth.push(d.c01_birth_true);
-        c01_firstk.push(d.c01_firstk_true);
+        avg_tick.push(d.avg_c01_tick);
+        c01_birth.push(d.c01_birth);
+        c01_firstk.push(d.c01_firstk);
     }
     E3Arrays {
         lifetimes,
-        avg_true,
-        avg_energy,
+        avg_tick,
         c01_birth,
         c01_firstk,
     }
@@ -1104,19 +1107,21 @@ fn e3_extract_arrays(deaths: &[E3DeathRecord]) -> E3Arrays {
 
 fn e3_lifetimes_csv(deaths: &[E3DeathRecord]) -> String {
     let mut out = String::from(
-        "death_id,agent_id,birth_step,lifetime_steps,avg_c01_true,avg_c01_energy,c01_birth_true,c01_firstk_true\n",
+        "life_id,agent_id,birth_step,death_step,lifetime_steps,c01_birth,c01_firstk,avg_c01_tick,avg_c01_attack,attack_count\n",
     );
     for d in deaths {
         out.push_str(&format!(
-            "{},{},{},{},{:.6},{:.6},{:.6},{:.6}\n",
-            d.death_id,
+            "{},{},{},{},{},{:.6},{:.6},{:.6},{:.6},{}\n",
+            d.life_id,
             d.agent_id,
             d.birth_step,
+            d.death_step,
             d.lifetime_steps,
-            d.avg_c01_true,
-            d.avg_c01_energy,
-            d.c01_birth_true,
-            d.c01_firstk_true
+            d.c01_birth,
+            d.c01_firstk,
+            d.avg_c01_tick,
+            d.avg_c01_attack,
+            d.attack_count
         ));
     }
     out
@@ -1470,43 +1475,10 @@ struct C01Workspace {
 }
 
 #[derive(Clone, Copy)]
-struct MetabolicAgent {
-    idx: usize,
-    energy: f32,
-    age_steps: u32,
-    sum_c01_true: f32,
-    sum_c01_energy: f32,
-    sum_c01_firstk_true: f32,
-    firstk_count: u32,
-    birth_step: u32,
-    c01_birth_true: f32,
-    pending_birth: bool,
-}
-
-#[derive(Clone, Copy)]
 enum E2Condition {
     Baseline,
     NoHillClimb,
     NoRepulsion,
-}
-
-#[derive(Clone, Copy)]
-enum E3EnergyMode {
-    CDependent,
-    ConstantC(f32),
-    ShuffleCPerStep,
-}
-
-impl E3EnergyMode {
-    fn label(&self) -> String {
-        match self {
-            E3EnergyMode::CDependent => "cdep".to_string(),
-            E3EnergyMode::ConstantC(value) => {
-                format!("const{}", format_float_token(*value))
-            }
-            E3EnergyMode::ShuffleCPerStep => "shuffle".to_string(),
-        }
-    }
 }
 
 struct E2AnchorShiftStats {
@@ -1546,23 +1518,9 @@ struct E2SweepStats {
     n: usize,
 }
 
-struct E3DeathRecord {
-    condition: String,
-    seed: u64,
-    death_id: usize,
-    agent_id: usize,
-    birth_step: u32,
-    lifetime_steps: u32,
-    avg_c01_true: f32,
-    avg_c01_energy: f32,
-    c01_birth_true: f32,
-    c01_firstk_true: f32,
-}
-
 struct E3Arrays {
     lifetimes: Vec<u32>,
-    avg_true: Vec<f32>,
-    avg_energy: Vec<f32>,
+    avg_tick: Vec<f32>,
     c01_birth: Vec<f32>,
     c01_firstk: Vec<f32>,
 }
@@ -2371,6 +2329,7 @@ fn compute_c01_scan(
     c01_scan
 }
 
+#[cfg(test)]
 #[allow(clippy::too_many_arguments)]
 fn update_agent_indices(
     indices: &mut [usize],
@@ -2436,6 +2395,7 @@ fn shift_indices_by_ratio(
     (count_min, count_max, respawned)
 }
 
+#[cfg(test)]
 #[allow(clippy::too_many_arguments)]
 fn update_agent_indices_scored(
     indices: &mut [usize],

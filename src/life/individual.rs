@@ -56,6 +56,7 @@ pub struct Individual {
     pub(crate) phonation_coupling: f32,
     pub body: AnySoundBody,
     pub last_signal: ArticulationSignal,
+    last_consonance01: f32,
     pub(crate) release_gain: f32,
     pub(crate) release_sec: f32,
     pub(crate) release_pending: bool,
@@ -240,6 +241,7 @@ impl Individual {
             phonation_coupling,
             body,
             last_signal: Default::default(),
+            last_consonance01: 0.0,
             release_gain: 1.0,
             release_sec: 0.03,
             release_pending: false,
@@ -474,6 +476,7 @@ impl Individual {
         global_coupling: f32,
     ) -> ArticulationSignal {
         let consonance = landscape.evaluate_pitch01(self.body.base_freq_hz());
+        self.last_consonance01 = consonance;
         let mut signal = self
             .articulation
             .process(consonance, rhythms, dt_sec, global_coupling);
@@ -653,6 +656,10 @@ impl Individual {
             return;
         }
         self.body.project_spectral_body(amps, space, &signal);
+    }
+
+    pub fn last_consonance01(&self) -> f32 {
+        self.last_consonance01
     }
 
     pub fn is_alive(&self) -> bool {

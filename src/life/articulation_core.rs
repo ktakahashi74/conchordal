@@ -4,6 +4,7 @@ use crate::core::utils::pink_noise_tick;
 use crate::life::lifecycle::LifecycleConfig;
 use crate::life::phonation_engine::PhonationKick;
 use crate::life::scenario::ArticulationCoreConfig;
+use crate::life::metabolism_policy::MetabolismPolicy;
 use rand::{Rng, SeedableRng, rngs::SmallRng};
 use std::f32::consts::{PI, TAU};
 use tracing::debug;
@@ -251,6 +252,19 @@ fn normalized_vitality(energy: f32, energy_cap: f32, vitality_exponent: f32) -> 
 }
 
 impl KuramotoCore {
+    // Recharge only when consonance exceeds the neutral midpoint (C01 > 0.5).
+    const RECHARGE_THRESHOLD: f32 = 0.5;
+
+    #[inline]
+    fn metabolism_policy(&self) -> MetabolismPolicy {
+        MetabolismPolicy {
+            basal_cost_per_sec: self.basal_cost,
+            action_cost_per_attack: self.action_cost,
+            recharge_per_attack: self.recharge_rate,
+            recharge_threshold: Self::RECHARGE_THRESHOLD,
+        }
+    }
+
     #[inline]
     fn compute_gate_status(&mut self, rhythms: &NeuralRhythms, theta: &ThetaView) -> GateStatus {
         self.dbg_last_env_open = rhythms.env_open;
@@ -343,7 +357,6 @@ impl KuramotoCore {
         gate: &GateStatus,
         rhythms: &NeuralRhythms,
         theta: &ThetaView,
-        consonance: f32,
         bootstrap_active: bool,
         k_eff: f32,
     ) -> bool {
@@ -369,10 +382,6 @@ impl KuramotoCore {
         if attack {
             self.env_level = 0.0;
             self.state = ArticulationState::Attack;
-            self.energy -= self.action_cost;
-            if consonance > 0.5 {
-                self.energy += self.recharge_rate * consonance;
-            }
             self.dbg_attacks += 1;
             if boot_attack {
                 self.dbg_boot_attacks += 1;
@@ -440,6 +449,7 @@ impl KuramotoCore {
             self.energy = 0.0;
         }
         if self.energy <= 0.0 {
+            // Energy depletion disables retrigger and lets the envelope decay to idle before death.
             self.energy = 0.0;
             self.retrigger = false;
             if self.state != ArticulationState::Idle {
@@ -470,7 +480,9 @@ impl ArticulationCore for KuramotoCore {
         dt: f32,
         global_coupling: f32,
     ) -> ArticulationSignal {
-        self.energy -= self.basal_cost * dt;
+        let policy = self.metabolism_policy();
+        let (energy_after_basal, _telemetry) = policy.step(self.energy, dt, false, consonance);
+        self.energy = energy_after_basal;
         self.handle_energy_depletion();
 
         let theta = ThetaView {
@@ -496,13 +508,14 @@ impl ArticulationCore for KuramotoCore {
                 &gate,
                 rhythms,
                 &theta,
-                consonance,
                 bootstrap_active,
                 step.k_eff,
             );
             attacked_this_sample = attacked_this_sample || attacked;
         }
         if attacked_this_sample {
+            let (energy_after_attack, _telemetry) = policy.step(self.energy, 0.0, true, consonance);
+            self.energy = energy_after_attack;
             self.handle_energy_depletion();
         }
         self.update_envelope(dt);
@@ -1016,6 +1029,7 @@ mod tests {
 
         assert_eq!(core.state, ArticulationState::Idle);
         assert_eq!(core.env_level, 0.0);
+        assert!(!core.is_alive());
     }
 
     #[test]

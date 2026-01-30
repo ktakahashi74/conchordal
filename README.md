@@ -130,7 +130,7 @@ cargo test -- --ignored
 The following command generates paper plots under `target/plots/paper/`.
 
 ```bash
-cargo run --bin paper_plots
+cargo run --example paper
 ```
 
 

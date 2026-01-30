@@ -15,9 +15,9 @@ use conchordal::core::landscape::{LandscapeParams, RoughnessScalarMode};
 use conchordal::core::log2space::Log2Space;
 use conchordal::core::psycho_state;
 use conchordal::core::roughness_kernel::{KernelParams, RoughnessKernel};
-use conchordal::paper::sim::{
-    E3Condition, E3DeathRecord, E3RunConfig, E4_ANCHOR_HZ, E4TailSamples, e3_policy_params,
-    run_e3_collect_deaths, run_e4_condition_tail_samples,
+use crate::sim::{
+    e3_policy_params, run_e3_collect_deaths, run_e4_condition_tail_samples, E3Condition,
+    E3DeathRecord, E3RunConfig, E4_ANCHOR_HZ, E4TailSamples,
 };
 use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng, rngs::StdRng};
@@ -136,11 +136,11 @@ impl Experiment {
 
 fn usage() -> String {
     [
-        "Usage: paper_plots [--exp E1,E2,...]",
+        "Usage: paper [--exp E1,E2,...]",
         "Examples:",
-        "  paper_plots --exp 2",
-        "  paper_plots 1 3 5",
-        "  paper_plots --exp e2,e4",
+        "  paper --exp 2",
+        "  paper 1 3 5",
+        "  paper --exp e2,e4",
         "If no experiment is specified, all (E1-E5) run.",
     ]
     .join("\n")
@@ -212,7 +212,7 @@ fn parse_experiments(args: &[String]) -> Result<Vec<Experiment>, String> {
     Ok(experiments)
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
+pub(crate) fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = env::args().skip(1).collect();
     if args.iter().any(|arg| arg == "-h" || arg == "--help") {
         println!("{}", usage());

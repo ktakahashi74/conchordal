@@ -1,15 +1,15 @@
-use crate::core::harmonicity_kernel::{HarmonicityKernel, HarmonicityParams};
-use crate::core::landscape::{Landscape, LandscapeParams, LandscapeUpdate, RoughnessScalarMode};
-use crate::core::log2space::Log2Space;
-use crate::core::modulation::{NeuralRhythms, RhythmBand};
-use crate::core::roughness_kernel::{KernelParams, RoughnessKernel};
-use crate::core::timebase::Timebase;
-use crate::life::control::{AgentControl, PhonationType, PitchMode};
-use crate::life::individual::SoundBody;
-use crate::life::lifecycle::LifecycleConfig;
-use crate::life::metabolism_policy::MetabolismPolicy;
-use crate::life::population::Population;
-use crate::life::scenario::{
+use conchordal::core::harmonicity_kernel::{HarmonicityKernel, HarmonicityParams};
+use conchordal::core::landscape::{Landscape, LandscapeParams, LandscapeUpdate, RoughnessScalarMode};
+use conchordal::core::log2space::Log2Space;
+use conchordal::core::modulation::{NeuralRhythms, RhythmBand};
+use conchordal::core::roughness_kernel::{KernelParams, RoughnessKernel};
+use conchordal::core::timebase::Timebase;
+use conchordal::life::control::{AgentControl, PhonationType, PitchMode};
+use conchordal::life::individual::SoundBody;
+use conchordal::life::lifecycle::LifecycleConfig;
+use conchordal::life::metabolism_policy::MetabolismPolicy;
+use conchordal::life::population::Population;
+use conchordal::life::scenario::{
     Action, ArticulationCoreConfig, EnvelopeConfig, SpawnSpec, SpawnStrategy,
 };
 

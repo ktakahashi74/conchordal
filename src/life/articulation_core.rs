@@ -258,7 +258,7 @@ fn normalized_vitality(energy: f32, energy_cap: f32, vitality_exponent: f32) -> 
 }
 
 impl KuramotoCore {
-    // Recharge only when consonance exceeds the neutral midpoint (C01 > 0.5).
+    // Recharge only when consonance exceeds the neutral midpoint (C_state > 0.5).
     const RECHARGE_THRESHOLD: f32 = DEFAULT_RECHARGE_THRESHOLD;
 
     #[inline]

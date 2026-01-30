@@ -93,12 +93,15 @@ We use two orthogonal axes. Do not mix them.
 ### Axis B: representation (kernel output vs normalized state)
 - **potential** (`*_pot_*`): raw kernel output / physical-ish quantity (unnormalized; references not applied yet).
 - **state** (`*_state_*`): normalized / referenced / composed quantities used for decision making or logging
-  (e.g. 0..1, and `C = clamp(H01 - wR*R01, -1..1)`).
+  (e.g. 0..1, and `C_state01 = sigmoid(beta * (C_score - theta))`).
+
+`C_score = alpha * H01 - w(H) * R01` and `w(H) = w0 + w1 * (1 - H01)`.
 
 Potential/state is orthogonal to pred/perc:
 - `pred_h_pot_scan`, `pred_h_state01_scan`
-- `perc_r_pot_scan`, `perc_c_state_scan`
-- `err_c_state_scan = perc_c_state_scan - pred_c_state_scan`
+- `perc_r_pot_scan`, `perc_r_state01_scan`
+- `perc_c_score_scan`, `perc_c_state01_scan`
+- `err_c_state01_scan = perc_c_state01_scan - pred_c_state01_scan`
 
 ### Suffix convention (avoid ambiguity)
 Use explicit suffixes when needed:
@@ -107,7 +110,8 @@ Use explicit suffixes when needed:
 
 Example:
 - `perc_r_state01_scalar`
-- `pred_c_state_scan`
+- `pred_c_state01_scan`
+- `perc_c_score_scan`
 
 ## Frequency Space: Log2Space invariants
 

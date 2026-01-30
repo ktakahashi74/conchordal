@@ -511,9 +511,11 @@ fn init_runtime(
         harmonicity_kernel: HarmonicityKernel::new(&space, HarmonicityParams::default()),
         roughness_scalar_mode: crate::core::landscape::RoughnessScalarMode::Total,
         roughness_half: 0.1,
-        consonance_harmonicity_deficit_weight: config.psychoacoustics.harmonicity_deficit_weight,
+        consonance_harmonicity_weight: config.psychoacoustics.harmonicity_weight,
         consonance_roughness_weight_floor: config.psychoacoustics.roughness_weight_floor,
         consonance_roughness_weight: config.psychoacoustics.roughness_weight,
+        c_state_beta: config.psychoacoustics.c_state_beta,
+        c_state_theta: config.psychoacoustics.c_state_theta,
         loudness_exp: config.psychoacoustics.loudness_exp, // Zwicker
         tau_ms: config.analysis.tau_ms,
         ref_power: 1e-4,
@@ -802,7 +804,7 @@ fn worker_loop(
         pred_n_theta_per_delta: None,
         pred_tau_tick: None,
         pred_horizon_tick: None,
-        pred_c01_next_gate: None,
+        pred_c_state01_next_gate: None,
         pred_gain_raw_mean: None,
         pred_gain_raw_min: None,
         pred_gain_raw_max: None,
@@ -903,9 +905,9 @@ fn worker_loop(
                     // analysis_id is the analysis frame index from analysis_result_rx.
                     // NSGT is right-aligned; analysis represents sound up to the frame end.
                     let obs_tick = timebase.frame_end_tick(analysis_id);
-                    world.observe_consonance01(
+                    world.observe_consonance_state01(
                         obs_tick,
-                        Arc::from(current_landscape.consonance01.clone()),
+                        Arc::from(current_landscape.consonance_state01.clone()),
                     );
                     analysis_updated = true;
                 }
@@ -928,15 +930,21 @@ fn worker_loop(
                         .get(max_i)
                         .copied()
                         .unwrap_or(0.0);
-                    let c = current_landscape
-                        .consonance
+                    let c_score = current_landscape
+                        .consonance_score
                         .get(max_i)
                         .copied()
                         .unwrap_or(0.0);
-                    let (c_pred, _c01_pred) = compose_c_statepm1_with_params(h, r, &lparams);
+                    let c_state = current_landscape
+                        .consonance_state01
+                        .get(max_i)
+                        .copied()
+                        .unwrap_or(0.0);
+                    let (c_score_pred, c_state_pred) =
+                        compose_c_score_state_with_params(h, r, &lparams);
                     debug!(
-                        "c_signed_check bin={} h={:.4} r={:.4} c={:.4} c_pred={:.4}",
-                        max_i, h, r, c, c_pred
+                        "c_score_check bin={} h={:.4} r={:.4} c_score={:.4} c_score_pred={:.4} c_state={:.4} c_state_pred={:.4}",
+                        max_i, h, r, c_score, c_score_pred, c_state, c_state_pred
                     );
                 }
 
@@ -1132,7 +1140,7 @@ fn worker_loop(
                             target_freq: 2.0f32.powf(agent.target_pitch_log2()),
                             integration_window: agent.integration_window(),
                             breath_gain: agent.articulation.gate(),
-                            consonance: current_landscape.evaluate_pitch01(f),
+                            consonance: current_landscape.evaluate_pitch_state01(f),
                         }
                     })
                     .collect();
@@ -1155,8 +1163,8 @@ fn worker_loop(
                 };
                 let (pred_tau_tick, pred_horizon_tick) =
                     world.predictor_tau_horizon_ticks(&current_landscape.rhythm);
-                let pred_c01_next_gate = world.last_pred_next_gate().map(|(_, scan)| scan);
-                let pred_available_in_hop = pred_c01_next_gate.is_some();
+                let pred_c_state01_next_gate = world.last_pred_next_gate().map(|(_, scan)| scan);
+                let pred_available_in_hop = pred_c_state01_next_gate.is_some();
                 let ui_frame = UiFrame {
                     wave: wave_frame,
                     spec: spec_frame,
@@ -1188,7 +1196,7 @@ fn worker_loop(
                     ),
                     pred_tau_tick: Some(pred_tau_tick),
                     pred_horizon_tick: Some(pred_horizon_tick),
-                    pred_c01_next_gate,
+                    pred_c_state01_next_gate,
                     pred_gain_raw_mean: pred_stats.map(|stats| stats.raw_mean),
                     pred_gain_raw_min: pred_stats.map(|stats| stats.raw_min),
                     pred_gain_raw_max: pred_stats.map(|stats| stats.raw_max),
@@ -1258,18 +1266,24 @@ fn apply_params_update(params: &mut LandscapeParams, upd: &LandscapeUpdate) {
     }
 }
 
-fn compose_c_statepm1_with_params(
+fn compose_c_score_state_with_params(
     h_state01: f32,
     r_state01: f32,
     params: &LandscapeParams,
 ) -> (f32, f32) {
-    crate::core::psycho_state::compose_c_statepm1(
-        h_state01,
-        r_state01,
-        params.consonance_harmonicity_deficit_weight,
+    let c_score = crate::core::psycho_state::compose_c_score(
+        params.consonance_harmonicity_weight,
         params.consonance_roughness_weight_floor,
         params.consonance_roughness_weight,
-    )
+        h_state01,
+        r_state01,
+    );
+    let c_state = crate::core::psycho_state::compose_c_state(
+        params.c_state_beta,
+        params.c_state_theta,
+        c_score,
+    );
+    (c_score, c_state)
 }
 
 #[cfg(test)]

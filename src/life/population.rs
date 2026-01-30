@@ -185,15 +185,16 @@ impl Population {
         let gate_boundary_in_hop = world
             .next_gate_tick_est
             .is_some_and(|gate_tick| gate_tick > now && gate_tick <= frame_end);
-        let pred_scan = world
-            .predict_consonance01_next_gate()
-            .and_then(|(gate_tick, scan)| {
-                if gate_tick >= now && gate_tick < frame_end {
-                    Some(scan)
-                } else {
-                    None
-                }
-            });
+        let pred_scan =
+            world
+                .predict_consonance_state01_next_gate()
+                .and_then(|(gate_tick, scan)| {
+                    if gate_tick >= now && gate_tick < frame_end {
+                        Some(scan)
+                    } else {
+                        None
+                    }
+                });
         let mut pred_count = 0u32;
         let mut pred_raw_sum = 0.0f32;
         let mut pred_raw_min = f32::INFINITY;
@@ -213,7 +214,7 @@ impl Population {
             let batch = &mut out[used];
             let mut extra_gate_gain = 1.0;
             if let Some(scan) = pred_scan.as_ref() {
-                let mut gain_raw = world.sample_scan01(scan, agent.body.base_freq_hz());
+                let mut gain_raw = world.sample_scan_state01(scan, agent.body.base_freq_hz());
                 if !gain_raw.is_finite() {
                     gain_raw = 0.0;
                 }
@@ -352,7 +353,7 @@ impl Population {
                     if self.is_range_occupied_with(f, min_dist_erb, reserved) {
                         continue;
                     }
-                    if let Some(&c_val) = landscape.consonance01.get(i)
+                    if let Some(&c_val) = landscape.consonance_state01.get(i)
                         && c_val > best_val
                     {
                         found = true;
@@ -367,7 +368,7 @@ impl Population {
                     let mut best = idx_min;
                     let mut best_val = f32::MIN;
                     for i in idx_min..=idx_max {
-                        if let Some(&c_val) = landscape.consonance01.get(i)
+                        if let Some(&c_val) = landscape.consonance_state01.get(i)
                             && c_val > best_val
                         {
                             best_val = c_val;
@@ -384,8 +385,8 @@ impl Population {
                         let f = space.freq_of_index(i);
                         let occupied = self.is_range_occupied_with(f, min_dist_erb, reserved);
                         let _ = local_idx;
-                        let c01 = landscape.consonance01.get(i).copied().unwrap_or(0.0);
-                        consonance_density_weight(c01, occupied)
+                        let c_state = landscape.consonance_state01.get(i).copied().unwrap_or(0.0);
+                        consonance_density_weight(c_state, occupied)
                     })
                     .collect();
                 if let Ok(dist) = WeightedIndex::new(&weights) {
@@ -662,11 +663,11 @@ fn mix_pred_gate_gain(sync: f32, gain_raw: f32) -> f32 {
     if gain.is_finite() { gain.max(0.0) } else { 1.0 }
 }
 
-fn consonance_density_weight(c01: f32, occupied: bool) -> f32 {
+fn consonance_density_weight(c_state01: f32, occupied: bool) -> f32 {
     if occupied {
         return 0.0;
     }
-    let c = c01.clamp(0.0, 1.0);
+    let c = c_state01.clamp(0.0, 1.0);
     let eps = 1e-6f32;
     eps + (1.0 - eps) * c
 }
@@ -756,16 +757,16 @@ mod tests {
     }
 
     #[test]
-    fn decide_frequency_uses_consonance01() {
+    fn decide_frequency_uses_consonance_state01() {
         let space = Log2Space::new(100.0, 400.0, 12);
         let mut landscape = LandscapeFrame::new(space.clone());
-        landscape.consonance.fill(-10.0);
-        landscape.consonance01.fill(0.0);
+        landscape.consonance_score.fill(-10.0);
+        landscape.consonance_state01.fill(0.0);
 
         let idx_high = space.index_of_freq(200.0).expect("idx");
         let idx_raw = space.index_of_freq(300.0).expect("idx");
-        landscape.consonance01[idx_high] = 1.0;
-        landscape.consonance[idx_raw] = 10.0;
+        landscape.consonance_state01[idx_high] = 1.0;
+        landscape.consonance_score[idx_raw] = 10.0;
 
         let pop = Population::new(Timebase {
             fs: 48_000.0,
@@ -802,7 +803,7 @@ mod tests {
     }
 
     #[test]
-    fn consonance_density_weighted_index_accepts_zero_c01() {
+    fn consonance_density_weighted_index_accepts_zero_c_state01() {
         let weights = vec![
             consonance_density_weight(0.0, false),
             consonance_density_weight(0.0, false),

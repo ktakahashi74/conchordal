@@ -1,7 +1,7 @@
 use std::env;
 use std::error::Error;
 use std::f32::consts::PI;
-use std::fs::{create_dir_all, write};
+use std::fs::{create_dir_all, read_dir, remove_file, write};
 use std::io;
 use std::path::Path;
 
@@ -36,6 +36,9 @@ const E2_LAMBDA: f32 = 0.15;
 const E2_SIGMA: f32 = 0.06;
 const E2_INIT_CONSONANT_EXCLUSION_ST: f32 = 0.35;
 const E2_INIT_MAX_TRIES: usize = 5000;
+const E2_C_STATE_BETA: f32 = 2.0;
+const E2_C_STATE_THETA: f32 = 0.0;
+const E2_DENSITY_NORM_EPS: f32 = 1e-12;
 const E2_SEEDS: [u64; 5] = [
     0xC0FFEE_u64,
     0xC0FFEE_u64 + 1,
@@ -142,6 +145,7 @@ fn usage() -> String {
         "  paper 1 3 5",
         "  paper --exp e2,e4",
         "If no experiment is specified, all (E1-E5) run.",
+        "Outputs are written to target/plots/paper; existing paper_e*_ files there are removed first.",
     ]
     .join("\n")
 }
@@ -212,6 +216,40 @@ fn parse_experiments(args: &[String]) -> Result<Vec<Experiment>, String> {
     Ok(experiments)
 }
 
+fn clean_paper_outputs(out_dir: &Path, experiments: &[Experiment]) -> io::Result<()> {
+    if experiments.is_empty() {
+        return Ok(());
+    }
+    let mut prefixes = Vec::new();
+    for exp in experiments {
+        match exp {
+            Experiment::E1 => prefixes.push("paper_e1_"),
+            Experiment::E2 => prefixes.push("paper_e2_"),
+            Experiment::E3 => prefixes.push("paper_e3_"),
+            Experiment::E4 => prefixes.push("paper_e4_"),
+            Experiment::E5 => prefixes.push("paper_e5_"),
+        }
+    }
+    prefixes.sort();
+    prefixes.dedup();
+
+    for entry in read_dir(out_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let name = match path.file_name().and_then(|s| s.to_str()) {
+            Some(name) => name,
+            None => continue,
+        };
+        if prefixes.iter().any(|prefix| name.starts_with(prefix)) {
+            let _ = remove_file(path);
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = env::args().skip(1).collect();
     if args.iter().any(|arg| arg == "-h" || arg == "--help") {
@@ -227,6 +265,7 @@ pub(crate) fn main() -> Result<(), Box<dyn Error>> {
 
     let out_dir = Path::new("target/plots/paper");
     create_dir_all(out_dir)?;
+    clean_paper_outputs(out_dir, &experiments)?;
 
     let anchor_hz = E4_ANCHOR_HZ;
     let space = Log2Space::new(20.0, 8000.0, SPACE_BINS_PER_OCT);
@@ -336,9 +375,11 @@ fn plot_e1_landscape_scan(
         harmonicity_kernel: harmonicity_kernel.clone(),
         roughness_scalar_mode: RoughnessScalarMode::Total,
         roughness_half: 0.1,
-        consonance_harmonicity_deficit_weight: 1.0,
+        consonance_harmonicity_weight: 1.0,
         consonance_roughness_weight_floor: 0.35,
         consonance_roughness_weight: 0.5,
+        c_state_beta: E2_C_STATE_BETA,
+        c_state_theta: E2_C_STATE_THETA,
         loudness_exp: 1.0,
         ref_power: 1.0,
         tau_ms: 1.0,
@@ -370,15 +411,15 @@ fn plot_e1_landscape_scan(
         &mut perc_h_state01_scan,
     );
 
-    let mut perc_c_raw_scan = vec![0.0f32; space.n_bins()];
+    let alpha_h = params.consonance_harmonicity_weight;
+    let w0 = params.consonance_roughness_weight_floor;
+    let w1 = params.consonance_roughness_weight;
+    let mut perc_c_score_scan = vec![0.0f32; space.n_bins()];
     for i in 0..space.n_bins() {
         let h01 = perc_h_state01_scan[i];
         let r01 = perc_r_state01_scan[i];
-        let dh = 1.0 - h01;
-        let w = params.consonance_roughness_weight_floor + params.consonance_roughness_weight * dh;
-        let d = params.consonance_harmonicity_deficit_weight * dh + w * r01;
-        let c_raw = 1.0 / (1.0 + d);
-        perc_c_raw_scan[i] = if c_raw.is_finite() { c_raw } else { 0.0 };
+        let c_score = psycho_state::compose_c_score(alpha_h, w0, w1, h01, r01);
+        perc_c_score_scan[i] = if c_score.is_finite() { c_score } else { 0.0 };
     }
 
     let anchor_log2 = anchor_hz.log2();
@@ -390,7 +431,7 @@ fn plot_e1_landscape_scan(
 
     space.assert_scan_len_named(&perc_r_state01_scan, "perc_r_state01_scan");
     space.assert_scan_len_named(&perc_h_state01_scan, "perc_h_state01_scan");
-    space.assert_scan_len_named(&perc_c_raw_scan, "perc_c_raw_scan");
+    space.assert_scan_len_named(&perc_c_score_scan, "perc_c_score_scan");
     space.assert_scan_len_named(&log2_ratio_scan, "log2_ratio_scan");
 
     let out_path = out_dir.join("paper_e1_landscape_scan_anchor220.png");
@@ -400,7 +441,7 @@ fn plot_e1_landscape_scan(
         &log2_ratio_scan,
         &perc_h_pot_scan,
         &perc_r_state01_scan,
-        &perc_c_raw_scan,
+        &perc_c_score_scan,
     )?;
 
     Ok(())
@@ -426,12 +467,20 @@ fn plot_e2_emergent_harmony(
 
     write(
         out_dir.join("paper_e2_meta.txt"),
-        e2_meta_text(baseline_run.n_agents, baseline_run.k_bins),
+        e2_meta_text(
+            baseline_run.n_agents,
+            baseline_run.k_bins,
+            baseline_run.density_mass_mean,
+            baseline_run.density_mass_min,
+            baseline_run.density_mass_max,
+        ),
     )?;
 
+    let c_score_csv = series_csv("step,mean_c_score", &baseline_run.mean_c_series);
+    write(out_dir.join("paper_e2_c_score_timeseries.csv"), c_score_csv)?;
     write(
-        out_dir.join("paper_e2_timeseries.csv"),
-        series_csv("step,mean_c01", &baseline_run.mean_c01_series),
+        out_dir.join("paper_e2_c_state_timeseries.csv"),
+        series_csv("step,mean_c_state", &baseline_run.mean_c_state_series),
     )?;
     write(
         out_dir.join("paper_e2_score_timeseries.csv"),
@@ -461,22 +510,31 @@ fn plot_e2_emergent_harmony(
         final_agents_csv(baseline_run),
     )?;
 
-    let mean_plot_path = out_dir.join("paper_e2_mean_consonance_over_time.png");
+    let mean_plot_path = out_dir.join("paper_e2_mean_c_state_over_time.png");
     render_series_plot_fixed_y(
         &mean_plot_path,
-        &format!("E2 Mean Consonance Over Time ({caption_suffix})"),
-        "mean C01",
-        &series_pairs(&baseline_run.mean_c01_series),
+        &format!("E2 Mean C_state Over Time ({caption_suffix})"),
+        "mean C_state",
+        &series_pairs(&baseline_run.mean_c_state_series),
         &marker_steps,
         0.0,
         1.0,
+    )?;
+
+    let mean_c_score_path = out_dir.join("paper_e2_mean_c_score_over_time.png");
+    render_series_plot_with_markers(
+        &mean_c_score_path,
+        &format!("E2 Mean C Score Over Time ({caption_suffix})"),
+        "mean C score",
+        &series_pairs(&baseline_run.mean_c_series),
+        &marker_steps,
     )?;
 
     let mean_score_path = out_dir.join("paper_e2_mean_score_over_time.png");
     render_series_plot_with_markers(
         &mean_score_path,
         &format!("E2 Mean Score Over Time ({caption_suffix})"),
-        "mean score (c01 - λ·repulsion)",
+        "mean score (C - λ·repulsion)",
         &series_pairs(&baseline_run.mean_score_series),
         &marker_steps,
     )?;
@@ -543,11 +601,20 @@ fn plot_e2_emergent_harmony(
     let (norep_runs, norep_stats) = e2_seed_sweep(space, anchor_hz, E2Condition::NoRepulsion);
 
     write(
-        out_dir.join("paper_e2_seed_sweep_mean_c01.csv"),
+        out_dir.join("paper_e2_seed_sweep_mean_c.csv"),
         sweep_csv(
             "step,mean,std,n",
-            &baseline_stats.mean_c01,
-            &baseline_stats.std_c01,
+            &baseline_stats.mean_c,
+            &baseline_stats.std_c,
+            baseline_stats.n,
+        ),
+    )?;
+    write(
+        out_dir.join("paper_e2_seed_sweep_mean_c_state.csv"),
+        sweep_csv(
+            "step,mean,std,n",
+            &baseline_stats.mean_c_state,
+            &baseline_stats.std_c_state,
             baseline_stats.n,
         ),
     )?;
@@ -570,13 +637,13 @@ fn plot_e2_emergent_harmony(
         ),
     )?;
 
-    let sweep_mean_path = out_dir.join("paper_e2_mean_consonance_over_time_seeds.png");
+    let sweep_mean_path = out_dir.join("paper_e2_mean_c_state_over_time_seeds.png");
     render_series_plot_with_band(
         &sweep_mean_path,
-        "E2 Mean Consonance (seed sweep)",
-        "mean C01",
-        &baseline_stats.mean_c01,
-        &baseline_stats.std_c01,
+        "E2 Mean C_state (seed sweep)",
+        "mean C_state",
+        &baseline_stats.mean_c_state,
+        &baseline_stats.std_c_state,
         &marker_steps,
     )?;
 
@@ -601,19 +668,23 @@ fn plot_e2_emergent_harmony(
     )?;
 
     write(
-        out_dir.join("paper_e2_control_mean_c01.csv"),
-        e2_controls_csv(&baseline_stats, &nohill_stats, &norep_stats),
+        out_dir.join("paper_e2_control_mean_c.csv"),
+        e2_controls_csv_c(&baseline_stats, &nohill_stats, &norep_stats),
+    )?;
+    write(
+        out_dir.join("paper_e2_control_mean_c_state.csv"),
+        e2_controls_csv_c_state(&baseline_stats, &nohill_stats, &norep_stats),
     )?;
 
-    let control_plot_path = out_dir.join("paper_e2_mean_consonance_over_time_controls.png");
+    let control_plot_path = out_dir.join("paper_e2_mean_c_state_over_time_controls.png");
     render_series_plot_multi(
         &control_plot_path,
-        "E2 Mean Consonance (controls)",
-        "mean C01",
+        "E2 Mean C_state (controls)",
+        "mean C_state",
         &[
-            ("baseline", &baseline_stats.mean_c01, BLUE),
-            ("no hill-climb", &nohill_stats.mean_c01, RED),
-            ("no repulsion", &norep_stats.mean_c01, GREEN),
+            ("baseline", &baseline_stats.mean_c_state, BLUE),
+            ("no hill-climb", &nohill_stats.mean_c_state, RED),
+            ("no repulsion", &norep_stats.mean_c_state, GREEN),
         ],
         &marker_steps,
     )?;
@@ -694,10 +765,21 @@ fn plot_e2_emergent_harmony(
         ],
     )?;
 
-    let mut delta_csv = String::from("seed,cond,c01_init,c01_pre,c01_post,delta_pre,delta_post\n");
-    let mut delta_summary = String::from(
-        "cond,mean_init,std_init,mean_pre,std_pre,mean_post,std_post,mean_delta_pre,std_delta_pre,mean_delta_post,std_delta_post\n",
+    let pre_label = e2_pre_label();
+    let post_label = e2_post_label();
+    let pre_step = e2_pre_step();
+    let pre_meta = format!(
+        "# pre_step={pre_step} pre_label={pre_label} shift_enabled={}\n",
+        e2_anchor_shift_enabled()
     );
+    let mut delta_csv = pre_meta.clone();
+    delta_csv.push_str(&format!(
+        "seed,cond,c_init,c_{pre_label},c_{post_label},delta_{pre_label},delta_{post_label}\n"
+    ));
+    let mut delta_summary = pre_meta;
+    delta_summary.push_str(&format!(
+        "cond,mean_init,std_init,mean_{pre_label},std_{pre_label},mean_{post_label},std_{post_label},mean_delta_{pre_label},std_delta_{pre_label},mean_delta_{post_label},std_delta_{post_label}\n"
+    ));
     for (label, runs) in [
         ("baseline", &baseline_runs),
         ("nohill", &nohill_runs),
@@ -709,7 +791,7 @@ fn plot_e2_emergent_harmony(
         let mut delta_pre_vals = Vec::new();
         let mut delta_post_vals = Vec::new();
         for run in runs.iter() {
-            let (init, pre, post) = e2_c01_snapshot(run);
+            let (init, pre, post) = e2_c_snapshot(run);
             let delta_pre = pre - init;
             let delta_post = post - init;
             init_vals.push(init);
@@ -741,17 +823,30 @@ fn plot_e2_emergent_harmony(
             std_dpost
         ));
     }
-    write(out_dir.join("paper_e2_delta_c01_by_seed.csv"), delta_csv)?;
-    write(
-        out_dir.join("paper_e2_delta_c01_summary.csv"),
-        delta_summary,
-    )?;
+    write(out_dir.join("paper_e2_delta_c_by_seed.csv"), delta_csv)?;
+    write(out_dir.join("paper_e2_delta_c_summary.csv"), delta_summary)?;
 
     Ok(())
 }
 
 fn e2_anchor_shift_enabled() -> bool {
     E2_ANCHOR_SHIFT_STEP != usize::MAX
+}
+
+fn e2_pre_step_for(anchor_shift_enabled: bool, anchor_shift_step: usize, burn_in: usize) -> usize {
+    if anchor_shift_enabled {
+        anchor_shift_step.saturating_sub(1)
+    } else {
+        burn_in.saturating_sub(1)
+    }
+}
+
+fn e2_pre_step() -> usize {
+    e2_pre_step_for(e2_anchor_shift_enabled(), E2_ANCHOR_SHIFT_STEP, E2_BURN_IN)
+}
+
+fn e2_post_step_for(steps: usize) -> usize {
+    steps.saturating_sub(1)
 }
 
 fn e2_caption_suffix() -> String {
@@ -762,11 +857,19 @@ fn e2_caption_suffix() -> String {
     }
 }
 
+fn e2_pre_label() -> &'static str {
+    if e2_anchor_shift_enabled() {
+        "pre"
+    } else {
+        "burnin_end"
+    }
+}
+
 fn e2_post_label() -> &'static str {
     if e2_anchor_shift_enabled() {
         "post"
     } else {
-        "post-burn-in"
+        "final"
     }
 }
 
@@ -774,7 +877,7 @@ fn e2_post_label_title() -> &'static str {
     if e2_anchor_shift_enabled() {
         "Post"
     } else {
-        "Post-burn-in"
+        "Final"
     }
 }
 
@@ -835,20 +938,25 @@ fn run_e2_once(space: &Log2Space, anchor_hz: f32, seed: u64, condition: E2Condit
     };
 
     let (_erb_scan, du_scan) = erb_grid_for_space(space);
-    let workspace = build_c01_workspace(space);
+    let workspace = build_consonance_workspace(space);
     let k_bins = k_from_semitones(E2_STEP_SEMITONES);
 
-    let mut mean_c01_series = Vec::with_capacity(E2_STEPS);
+    let mut mean_c_series = Vec::with_capacity(E2_STEPS);
+    let mut mean_c_state_series = Vec::with_capacity(E2_STEPS);
     let mut mean_score_series = Vec::with_capacity(E2_STEPS);
     let mut mean_repulsion_series = Vec::with_capacity(E2_STEPS);
     let mut moved_frac_series = Vec::with_capacity(E2_STEPS);
     let mut semitone_samples_pre = Vec::new();
     let mut semitone_samples_post = Vec::new();
+    let mut density_mass_sum = 0.0f32;
+    let mut density_mass_min = f32::INFINITY;
+    let mut density_mass_max = 0.0f32;
+    let mut density_mass_count = 0u32;
 
     let mut trajectory_semitones = (0..E2_N_AGENTS)
         .map(|_| Vec::with_capacity(E2_STEPS))
         .collect::<Vec<_>>();
-    let mut trajectory_c01 = (0..E2_N_AGENTS)
+    let mut trajectory_c_state = (0..E2_N_AGENTS)
         .map(|_| Vec::with_capacity(E2_STEPS))
         .collect::<Vec<_>>();
 
@@ -890,15 +998,24 @@ fn run_e2_once(space: &Log2Space, anchor_hz: f32, seed: u64, condition: E2Condit
 
         let anchor_idx = nearest_bin(space, anchor_hz_current);
         let (env_scan, density_scan) = build_env_scans(space, anchor_idx, &agent_indices, &du_scan);
-        let c01_scan = compute_c01_scan(space, &workspace, &env_scan, &density_scan);
+        let (c_score_scan, c_state_scan, density_mass) =
+            compute_c_score_state_scans(space, &workspace, &env_scan, &density_scan, &du_scan);
+        if density_mass.is_finite() {
+            density_mass_sum += density_mass;
+            density_mass_min = density_mass_min.min(density_mass);
+            density_mass_max = density_mass_max.max(density_mass);
+            density_mass_count += 1;
+        }
 
-        let mean_c01 = mean_at_indices(&c01_scan, &agent_indices);
-        mean_c01_series.push(mean_c01);
+        let mean_c = mean_at_indices(&c_score_scan, &agent_indices);
+        let mean_c_state = mean_at_indices(&c_state_scan, &agent_indices);
+        mean_c_series.push(mean_c);
+        mean_c_state_series.push(mean_c_state);
 
         for (agent_id, &idx) in agent_indices.iter().enumerate() {
             let semitone = 12.0 * log2_ratio_scan[idx];
             trajectory_semitones[agent_id].push(semitone);
-            trajectory_c01[agent_id].push(c01_scan[idx]);
+            trajectory_c_state[agent_id].push(c_state_scan[idx]);
         }
 
         if step >= E2_BURN_IN {
@@ -913,7 +1030,7 @@ fn run_e2_once(space: &Log2Space, anchor_hz: f32, seed: u64, condition: E2Condit
         let stats = match condition {
             E2Condition::Baseline => update_agent_indices_scored_stats(
                 &mut agent_indices,
-                &c01_scan,
+                &c_score_scan,
                 &log2_ratio_scan,
                 min_idx,
                 max_idx,
@@ -923,7 +1040,7 @@ fn run_e2_once(space: &Log2Space, anchor_hz: f32, seed: u64, condition: E2Condit
             ),
             E2Condition::NoRepulsion => update_agent_indices_scored_stats(
                 &mut agent_indices,
-                &c01_scan,
+                &c_score_scan,
                 &log2_ratio_scan,
                 min_idx,
                 max_idx,
@@ -943,7 +1060,7 @@ fn run_e2_once(space: &Log2Space, anchor_hz: f32, seed: u64, condition: E2Condit
                 }
                 let mut stats = score_stats_at_indices(
                     &agent_indices,
-                    &c01_scan,
+                    &c_score_scan,
                     &log2_ratio_scan,
                     E2_LAMBDA,
                     E2_SIGMA,
@@ -969,9 +1086,26 @@ fn run_e2_once(space: &Log2Space, anchor_hz: f32, seed: u64, condition: E2Condit
         final_freqs_hz.push(space.centers_hz[idx]);
     }
 
+    let density_mass_mean = if density_mass_count > 0 {
+        density_mass_sum / density_mass_count as f32
+    } else {
+        0.0
+    };
+    let density_mass_min = if density_mass_min.is_finite() {
+        density_mass_min
+    } else {
+        0.0
+    };
+    let density_mass_max = if density_mass_max.is_finite() {
+        density_mass_max
+    } else {
+        0.0
+    };
+
     E2Run {
         seed,
-        mean_c01_series,
+        mean_c_series,
+        mean_c_state_series,
         mean_score_series,
         mean_repulsion_series,
         moved_frac_series,
@@ -981,8 +1115,11 @@ fn run_e2_once(space: &Log2Space, anchor_hz: f32, seed: u64, condition: E2Condit
         final_freqs_hz,
         final_log2_ratios,
         trajectory_semitones,
-        trajectory_c01,
+        trajectory_c_state,
         anchor_shift,
+        density_mass_mean,
+        density_mass_min,
+        density_mass_max,
         n_agents: E2_N_AGENTS,
         k_bins,
     }
@@ -999,7 +1136,12 @@ fn e2_seed_sweep(
     }
 
     let n = runs.len();
-    let mean_c01 = mean_std_series(runs.iter().map(|r| &r.mean_c01_series).collect::<Vec<_>>());
+    let mean_c = mean_std_series(runs.iter().map(|r| &r.mean_c_series).collect::<Vec<_>>());
+    let mean_c_state = mean_std_series(
+        runs.iter()
+            .map(|r| &r.mean_c_state_series)
+            .collect::<Vec<_>>(),
+    );
     let mean_score = mean_std_series(
         runs.iter()
             .map(|r| &r.mean_score_series)
@@ -1014,8 +1156,10 @@ fn e2_seed_sweep(
     (
         runs,
         E2SweepStats {
-            mean_c01: mean_c01.0,
-            std_c01: mean_c01.1,
+            mean_c: mean_c.0,
+            std_c: mean_c.1,
+            mean_c_state: mean_c_state.0,
+            std_c_state: mean_c_state.1,
             mean_score: mean_score.0,
             std_score: mean_score.1,
             mean_repulsion: mean_repulsion.0,
@@ -1033,7 +1177,7 @@ fn plot_e3_metabolic_selection(
     let conditions = [E3Condition::Baseline, E3Condition::NoRecharge];
 
     let mut long_csv = String::from(
-        "condition,seed,life_id,agent_id,birth_step,death_step,lifetime_steps,c01_birth,c01_firstk,avg_c01_tick,avg_c01_attack,attack_tick_count\n",
+        "condition,seed,life_id,agent_id,birth_step,death_step,lifetime_steps,c_state_birth,c_state_firstk,avg_c_state_tick,avg_c_state_attack,attack_tick_count\n",
     );
     let mut summary_csv = String::from(
         "condition,seed,n_deaths,pearson_r_firstk,pearson_p_firstk,spearman_rho_firstk,spearman_p_firstk,logrank_p_firstk,logrank_p_firstk_q25q75,median_high_firstk,median_low_firstk,pearson_r_birth,pearson_p_birth,spearman_rho_birth,spearman_p_birth,pearson_r_attack,pearson_p_attack,spearman_rho_attack,spearman_p_attack,n_attack_lives\n",
@@ -1080,10 +1224,10 @@ fn plot_e3_metabolic_selection(
                     rec.birth_step,
                     rec.death_step,
                     rec.lifetime_steps,
-                    rec.c01_birth,
-                    rec.c01_firstk,
-                    rec.avg_c01_tick,
-                    rec.avg_c01_attack,
+                    rec.c_state_birth,
+                    rec.c_state_firstk,
+                    rec.avg_c_state_tick,
+                    rec.avg_c_state_attack,
                     rec.attack_tick_count
                 ));
             }
@@ -1102,9 +1246,9 @@ fn plot_e3_metabolic_selection(
             ));
             let corr_stats_firstk = render_e3_scatter_with_stats(
                 &scatter_firstk_path,
-                "E3 C01_firstK vs Lifetime",
-                "C01_firstK",
-                &arrays.c01_firstk,
+                "E3 C_state_firstK vs Lifetime",
+                "C_state_firstK",
+                &arrays.c_state_firstk,
                 &arrays.lifetimes,
                 seed ^ 0xE301_u64,
             )?;
@@ -1115,9 +1259,9 @@ fn plot_e3_metabolic_selection(
             ));
             let corr_stats_birth = render_e3_scatter_with_stats(
                 &scatter_birth_path,
-                "E3 C01_birth vs Lifetime",
-                "C01_birth",
-                &arrays.c01_birth,
+                "E3 C_state_birth vs Lifetime",
+                "C_state_birth",
+                &arrays.c_state_birth,
                 &arrays.lifetimes,
                 seed ^ 0xE302_u64,
             )?;
@@ -1128,9 +1272,9 @@ fn plot_e3_metabolic_selection(
             ));
             let surv_firstk_stats = render_survival_split_plot(
                 &survival_path,
-                "E3 Survival by C01_firstK (median split)",
+                "E3 Survival by C_state_firstK (median split)",
                 &arrays.lifetimes,
-                &arrays.c01_firstk,
+                &arrays.c_state_firstk,
                 SplitKind::Median,
                 seed ^ 0xE310_u64,
             )?;
@@ -1141,9 +1285,9 @@ fn plot_e3_metabolic_selection(
             ));
             let surv_firstk_q_stats = render_survival_split_plot(
                 &survival_q_path,
-                "E3 Survival by C01_firstK (q25 vs q75)",
+                "E3 Survival by C_state_firstK (q25 vs q75)",
                 &arrays.lifetimes,
-                &arrays.c01_firstk,
+                &arrays.c_state_firstk,
                 SplitKind::Quartiles,
                 seed ^ 0xE311_u64,
             )?;
@@ -1158,8 +1302,8 @@ fn plot_e3_metabolic_selection(
                 ));
                 corr_stats_attack = Some(render_e3_scatter_with_stats(
                     &attack_scatter_path,
-                    "E3 C01_attack vs Lifetime",
-                    "C01_attack",
+                    "E3 C_state_attack vs Lifetime",
+                    "C_state_attack",
                     &attack_vals,
                     &attack_lifetimes,
                     seed ^ 0xE303_u64,
@@ -1171,7 +1315,7 @@ fn plot_e3_metabolic_selection(
                 ));
                 let _ = render_survival_split_plot(
                     &attack_survival_path,
-                    "E3 Survival by C01_attack (median split)",
+                    "E3 Survival by C_state_attack (median split)",
                     &attack_lifetimes,
                     &attack_vals,
                     SplitKind::Median,
@@ -1180,14 +1324,14 @@ fn plot_e3_metabolic_selection(
             }
 
             if cond_label == "baseline" && seed == E3_SEEDS[0] {
-                let mut legacy_csv = String::from("life_id,lifetime_steps,c01_firstk\n");
+                let mut legacy_csv = String::from("life_id,lifetime_steps,c_state_firstk\n");
                 let mut legacy_deaths = Vec::with_capacity(deaths.len());
                 for d in &deaths {
                     legacy_csv.push_str(&format!(
                         "{},{},{:.6}\n",
-                        d.life_id, d.lifetime_steps, d.c01_firstk
+                        d.life_id, d.lifetime_steps, d.c_state_firstk
                     ));
-                    legacy_deaths.push((d.life_id as usize, d.lifetime_steps, d.c01_firstk));
+                    legacy_deaths.push((d.life_id as usize, d.lifetime_steps, d.c_state_firstk));
                 }
                 write(out_dir.join("paper_e3_lifetimes.csv"), legacy_csv)?;
                 let legacy_scatter = out_dir.join("paper_e3_firstk_vs_lifetime.png");
@@ -1196,8 +1340,8 @@ fn plot_e3_metabolic_selection(
                 std::fs::copy(&legacy_scatter, &legacy_scatter_alias)?;
                 let legacy_survival = out_dir.join("paper_e3_survival_curve.png");
                 render_survival_curve(&legacy_survival, &legacy_deaths)?;
-                let legacy_survival_c01 = out_dir.join("paper_e3_survival_by_c01.png");
-                render_survival_by_c01(&legacy_survival_c01, &legacy_deaths)?;
+                let legacy_survival_c_state = out_dir.join("paper_e3_survival_by_c_state.png");
+                render_survival_by_c_state(&legacy_survival_c_state, &legacy_deaths)?;
             }
 
             summary_csv.push_str(&format!(
@@ -1269,20 +1413,20 @@ fn plot_e3_metabolic_selection(
             .find(|o| o.condition == E3Condition::NoRecharge && o.seed == rep_seed);
         if let (Some(base), Some(norecharge)) = (base, norecharge) {
             let base_scatter = build_scatter_data(
-                &base.arrays.c01_firstk,
+                &base.arrays.c_state_firstk,
                 &base.arrays.lifetimes,
                 rep_seed ^ 0xE301_u64,
             );
             let norecharge_scatter = build_scatter_data(
-                &norecharge.arrays.c01_firstk,
+                &norecharge.arrays.c_state_firstk,
                 &norecharge.arrays.lifetimes,
                 rep_seed ^ 0xE301_u64,
             );
             let compare_scatter = out_dir.join("paper_e3_firstk_scatter_compare.png");
             render_scatter_compare(
                 &compare_scatter,
-                "E3 C01_firstK vs Lifetime",
-                "C01_firstK",
+                "E3 C_state_firstK vs Lifetime",
+                "C_state_firstK",
                 "Baseline",
                 &base_scatter,
                 "NoRecharge",
@@ -1291,20 +1435,20 @@ fn plot_e3_metabolic_selection(
 
             let base_surv = build_survival_data(
                 &base.arrays.lifetimes,
-                &base.arrays.c01_firstk,
+                &base.arrays.c_state_firstk,
                 SplitKind::Median,
                 rep_seed ^ 0xE310_u64,
             );
             let norecharge_surv = build_survival_data(
                 &norecharge.arrays.lifetimes,
-                &norecharge.arrays.c01_firstk,
+                &norecharge.arrays.c_state_firstk,
                 SplitKind::Median,
                 rep_seed ^ 0xE310_u64,
             );
             let compare_surv = out_dir.join("paper_e3_firstk_survival_compare.png");
             render_survival_compare(
                 &compare_surv,
-                "E3 Survival by C01_firstK (median split)",
+                "E3 Survival by C_state_firstK (median split)",
                 "Baseline",
                 &base_surv,
                 "NoRecharge",
@@ -1313,20 +1457,20 @@ fn plot_e3_metabolic_selection(
 
             let base_surv_q = build_survival_data(
                 &base.arrays.lifetimes,
-                &base.arrays.c01_firstk,
+                &base.arrays.c_state_firstk,
                 SplitKind::Quartiles,
                 rep_seed ^ 0xE311_u64,
             );
             let norecharge_surv_q = build_survival_data(
                 &norecharge.arrays.lifetimes,
-                &norecharge.arrays.c01_firstk,
+                &norecharge.arrays.c_state_firstk,
                 SplitKind::Quartiles,
                 rep_seed ^ 0xE311_u64,
             );
             let compare_surv_q = out_dir.join("paper_e3_firstk_survival_compare_q25q75.png");
             render_survival_compare(
                 &compare_surv_q,
-                "E3 Survival by C01_firstK (q25 vs q75)",
+                "E3 Survival by C_state_firstK (q25 vs q75)",
                 "Baseline",
                 &base_surv_q,
                 "NoRecharge",
@@ -1343,21 +1487,21 @@ fn plot_e3_metabolic_selection(
 
 fn e3_extract_arrays(deaths: &[E3DeathRecord]) -> E3Arrays {
     let mut lifetimes = Vec::with_capacity(deaths.len());
-    let mut c01_birth = Vec::with_capacity(deaths.len());
-    let mut c01_firstk = Vec::with_capacity(deaths.len());
+    let mut c_state_birth = Vec::with_capacity(deaths.len());
+    let mut c_state_firstk = Vec::with_capacity(deaths.len());
     let mut avg_attack = Vec::with_capacity(deaths.len());
     let mut attack_tick_count = Vec::with_capacity(deaths.len());
     for d in deaths {
         lifetimes.push(d.lifetime_steps);
-        c01_birth.push(d.c01_birth);
-        c01_firstk.push(d.c01_firstk);
-        avg_attack.push(d.avg_c01_attack);
+        c_state_birth.push(d.c_state_birth);
+        c_state_firstk.push(d.c_state_firstk);
+        avg_attack.push(d.avg_c_state_attack);
         attack_tick_count.push(d.attack_tick_count);
     }
     E3Arrays {
         lifetimes,
-        c01_birth,
-        c01_firstk,
+        c_state_birth,
+        c_state_firstk,
         avg_attack,
         attack_tick_count,
     }
@@ -1365,7 +1509,7 @@ fn e3_extract_arrays(deaths: &[E3DeathRecord]) -> E3Arrays {
 
 fn e3_lifetimes_csv(deaths: &[E3DeathRecord]) -> String {
     let mut out = String::from(
-        "life_id,agent_id,birth_step,death_step,lifetime_steps,c01_birth,c01_firstk,avg_c01_tick,avg_c01_attack,attack_tick_count\n",
+        "life_id,agent_id,birth_step,death_step,lifetime_steps,c_state_birth,c_state_firstk,avg_c_state_tick,avg_c_state_attack,attack_tick_count\n",
     );
     for d in deaths {
         out.push_str(&format!(
@@ -1375,10 +1519,10 @@ fn e3_lifetimes_csv(deaths: &[E3DeathRecord]) -> String {
             d.birth_step,
             d.death_step,
             d.lifetime_steps,
-            d.c01_birth,
-            d.c01_firstk,
-            d.avg_c01_tick,
-            d.avg_c01_attack,
+            d.c_state_birth,
+            d.c_state_firstk,
+            d.avg_c_state_tick,
+            d.avg_c_state_attack,
             d.attack_tick_count
         ));
     }
@@ -1564,7 +1708,7 @@ fn render_e1_plot(
     log2_ratio_scan: &[f32],
     perc_h_pot_scan: &[f32],
     perc_r_state01_scan: &[f32],
-    perc_c_raw_scan: &[f32],
+    perc_c_score_scan: &[f32],
 ) -> Result<(), Box<dyn Error>> {
     let x_min = -1.0f32;
     let x_max = 1.0f32;
@@ -1579,7 +1723,7 @@ fn render_e1_plot(
         }
         h_points.push((x, perc_h_pot_scan[i]));
         r_points.push((x, perc_r_state01_scan[i]));
-        c_points.push((x, perc_c_raw_scan[i]));
+        c_points.push((x, perc_c_score_scan[i]));
     }
 
     let h_max = h_points
@@ -1662,7 +1806,7 @@ fn render_e1_plot(
     let pad = 0.05f32;
 
     let mut chart_c = ChartBuilder::on(&panels[2])
-        .caption("E1 Consonance Raw C(f)", ("sans-serif", 20))
+        .caption("E1 Consonance Score C(f)", ("sans-serif", 20))
         .margin(10)
         .x_label_area_size(40)
         .y_label_area_size(60)
@@ -1671,7 +1815,7 @@ fn render_e1_plot(
     chart_c
         .configure_mesh()
         .x_desc("log2(f / f_anchor)")
-        .y_desc("C_raw")
+        .y_desc("C_score")
         .draw()?;
 
     for &x in &ratio_guides_log2 {
@@ -1757,7 +1901,7 @@ fn plot_e4_mirror_sweep(out_dir: &Path, anchor_hz: f32) -> Result<(), Box<dyn Er
     Ok(())
 }
 
-struct C01Workspace {
+struct ConsonanceWorkspace {
     params: LandscapeParams,
     r_ref_peak: f32,
 }
@@ -1780,7 +1924,8 @@ struct E2AnchorShiftStats {
 
 struct E2Run {
     seed: u64,
-    mean_c01_series: Vec<f32>,
+    mean_c_series: Vec<f32>,
+    mean_c_state_series: Vec<f32>,
     mean_score_series: Vec<f32>,
     mean_repulsion_series: Vec<f32>,
     moved_frac_series: Vec<f32>,
@@ -1790,15 +1935,20 @@ struct E2Run {
     final_freqs_hz: Vec<f32>,
     final_log2_ratios: Vec<f32>,
     trajectory_semitones: Vec<Vec<f32>>,
-    trajectory_c01: Vec<Vec<f32>>,
+    trajectory_c_state: Vec<Vec<f32>>,
     anchor_shift: E2AnchorShiftStats,
+    density_mass_mean: f32,
+    density_mass_min: f32,
+    density_mass_max: f32,
     n_agents: usize,
     k_bins: i32,
 }
 
 struct E2SweepStats {
-    mean_c01: Vec<f32>,
-    std_c01: Vec<f32>,
+    mean_c: Vec<f32>,
+    std_c: Vec<f32>,
+    mean_c_state: Vec<f32>,
+    std_c_state: Vec<f32>,
     mean_score: Vec<f32>,
     std_score: Vec<f32>,
     mean_repulsion: Vec<f32>,
@@ -1808,8 +1958,8 @@ struct E2SweepStats {
 
 struct E3Arrays {
     lifetimes: Vec<u32>,
-    c01_birth: Vec<f32>,
-    c01_firstk: Vec<f32>,
+    c_state_birth: Vec<f32>,
+    c_state_firstk: Vec<f32>,
     avg_attack: Vec<f32>,
     attack_tick_count: Vec<u32>,
 }
@@ -2546,7 +2696,7 @@ fn build_env_scans(
     (env_scan, density_scan)
 }
 
-fn build_c01_workspace(space: &Log2Space) -> C01Workspace {
+fn build_consonance_workspace(space: &Log2Space) -> ConsonanceWorkspace {
     let roughness_kernel = RoughnessKernel::new(KernelParams::default(), 0.005);
     let harmonicity_kernel = HarmonicityKernel::new(space, HarmonicityParams::default());
     let params = LandscapeParams {
@@ -2557,9 +2707,11 @@ fn build_c01_workspace(space: &Log2Space) -> C01Workspace {
         harmonicity_kernel,
         roughness_scalar_mode: RoughnessScalarMode::Total,
         roughness_half: 0.1,
-        consonance_harmonicity_deficit_weight: 1.0,
+        consonance_harmonicity_weight: 1.0,
         consonance_roughness_weight_floor: 0.35,
         consonance_roughness_weight: 0.5,
+        c_state_beta: E2_C_STATE_BETA,
+        c_state_theta: E2_C_STATE_THETA,
         loudness_exp: 1.0,
         ref_power: 1.0,
         tau_ms: 1.0,
@@ -2570,18 +2722,22 @@ fn build_c01_workspace(space: &Log2Space) -> C01Workspace {
         roughness_ref_eps: 1e-12,
     };
     let r_ref = psycho_state::compute_roughness_reference(&params, space);
-    C01Workspace {
+    ConsonanceWorkspace {
         params,
         r_ref_peak: r_ref.peak,
     }
 }
 
-fn compute_c01_scan(
+fn compute_c_score_state_scans(
     space: &Log2Space,
-    workspace: &C01Workspace,
+    workspace: &ConsonanceWorkspace,
     env_scan: &[f32],
     density_scan: &[f32],
-) -> Vec<f32> {
+    du_scan: &[f32],
+) -> (Vec<f32>, Vec<f32>, f32) {
+    space.assert_scan_len_named(du_scan, "du_scan");
+    let (density_norm, density_mass) =
+        psycho_state::normalize_density(density_scan, du_scan, E2_DENSITY_NORM_EPS);
     let (perc_h_pot_scan, _) = workspace
         .params
         .harmonicity_kernel
@@ -2589,7 +2745,7 @@ fn compute_c01_scan(
     let (perc_r_pot_scan, _) = workspace
         .params
         .roughness_kernel
-        .potential_r_from_log2_spectrum_density(density_scan, space);
+        .potential_r_from_log2_spectrum_density(&density_norm, space);
 
     let mut perc_r_state01_scan = vec![0.0f32; space.n_bins()];
     psycho_state::r_pot_scan_to_r_state01_scan(
@@ -2611,25 +2767,35 @@ fn compute_c01_scan(
         &mut perc_h_state01_scan,
     );
 
-    let mut c01_scan = vec![0.0f32; space.n_bins()];
+    let mut c_score_scan = vec![0.0f32; space.n_bins()];
+    let mut c_state_scan = vec![0.0f32; space.n_bins()];
+    let alpha_h = workspace.params.consonance_harmonicity_weight;
+    let w0 = workspace.params.consonance_roughness_weight_floor;
+    let w1 = workspace.params.consonance_roughness_weight;
     for i in 0..space.n_bins() {
-        let (_c_signed, c01) = psycho_state::compose_c_statepm1(
+        let c_score = psycho_state::compose_c_score(
+            alpha_h,
+            w0,
+            w1,
             perc_h_state01_scan[i],
             perc_r_state01_scan[i],
-            workspace.params.consonance_harmonicity_deficit_weight,
-            workspace.params.consonance_roughness_weight_floor,
-            workspace.params.consonance_roughness_weight,
         );
-        c01_scan[i] = c01.clamp(0.0, 1.0);
+        let c_state = psycho_state::compose_c_state(
+            workspace.params.c_state_beta,
+            workspace.params.c_state_theta,
+            c_score,
+        );
+        c_score_scan[i] = c_score;
+        c_state_scan[i] = c_state.clamp(0.0, 1.0);
     }
-    c01_scan
+    (c_score_scan, c_state_scan, density_mass)
 }
 
 #[cfg(test)]
 #[allow(clippy::too_many_arguments)]
 fn update_agent_indices(
     indices: &mut [usize],
-    c01_scan: &[f32],
+    c_score_scan: &[f32],
     log2_ratio_scan: &[f32],
     min_idx: usize,
     max_idx: usize,
@@ -2639,7 +2805,7 @@ fn update_agent_indices(
 ) {
     let _ = update_agent_indices_scored(
         indices,
-        c01_scan,
+        c_score_scan,
         log2_ratio_scan,
         min_idx,
         max_idx,
@@ -2695,7 +2861,7 @@ fn shift_indices_by_ratio(
 #[allow(clippy::too_many_arguments)]
 fn update_agent_indices_scored(
     indices: &mut [usize],
-    c01_scan: &[f32],
+    c_score_scan: &[f32],
     log2_ratio_scan: &[f32],
     min_idx: usize,
     max_idx: usize,
@@ -2705,7 +2871,7 @@ fn update_agent_indices_scored(
 ) -> f32 {
     update_agent_indices_scored_stats(
         indices,
-        c01_scan,
+        c_score_scan,
         log2_ratio_scan,
         min_idx,
         max_idx,
@@ -2719,7 +2885,7 @@ fn update_agent_indices_scored(
 #[allow(clippy::too_many_arguments)]
 fn update_agent_indices_scored_stats(
     indices: &mut [usize],
-    c01_scan: &[f32],
+    c_score_scan: &[f32],
     log2_ratio_scan: &[f32],
     min_idx: usize,
     max_idx: usize,
@@ -2730,7 +2896,7 @@ fn update_agent_indices_scored_stats(
     let order: Vec<usize> = (0..indices.len()).collect();
     update_agent_indices_scored_stats_with_order(
         indices,
-        c01_scan,
+        c_score_scan,
         log2_ratio_scan,
         min_idx,
         max_idx,
@@ -2744,7 +2910,7 @@ fn update_agent_indices_scored_stats(
 #[allow(clippy::too_many_arguments)]
 fn update_agent_indices_scored_stats_with_order(
     indices: &mut [usize],
-    c01_scan: &[f32],
+    c_score_scan: &[f32],
     log2_ratio_scan: &[f32],
     min_idx: usize,
     max_idx: usize,
@@ -2792,8 +2958,8 @@ fn update_agent_indices_scored_stats_with_order(
                 let dist = (cand_log2 - other_log2).abs();
                 repulsion += (-dist / sigma).exp();
             }
-            let c01 = c01_scan[cand];
-            let score = c01 - lambda * repulsion;
+            let c_score = c_score_scan[cand];
+            let score = c_score - lambda * repulsion;
             if score > best_score {
                 best_score = score;
                 best_idx = cand;
@@ -2831,7 +2997,7 @@ fn update_agent_indices_scored_stats_with_order(
 
 fn score_stats_at_indices(
     indices: &[usize],
-    c01_scan: &[f32],
+    c_score_scan: &[f32],
     log2_ratio_scan: &[f32],
     lambda: f32,
     sigma: f32,
@@ -2857,7 +3023,7 @@ fn score_stats_at_indices(
             let dist = (cand_log2 - other_log2).abs();
             repulsion += (-dist / sigma).exp();
         }
-        let score = c01_scan[idx] - lambda * repulsion;
+        let score = c_score_scan[idx] - lambda * repulsion;
         if score.is_finite() {
             score_sum += score;
         }
@@ -2933,38 +3099,69 @@ fn sweep_csv(header: &str, mean: &[f32], std: &[f32], n: usize) -> String {
     out
 }
 
-fn e2_controls_csv(baseline: &E2SweepStats, nohill: &E2SweepStats, norep: &E2SweepStats) -> String {
+fn e2_controls_csv_c_state(
+    baseline: &E2SweepStats,
+    nohill: &E2SweepStats,
+    norep: &E2SweepStats,
+) -> String {
     let mut out = String::from(
         "step,baseline_mean,baseline_std,nohill_mean,nohill_std,norep_mean,norep_std\n",
     );
     let len = baseline
-        .mean_c01
+        .mean_c_state
         .len()
-        .min(nohill.mean_c01.len())
-        .min(norep.mean_c01.len());
+        .min(nohill.mean_c_state.len())
+        .min(norep.mean_c_state.len());
     for i in 0..len {
         out.push_str(&format!(
             "{i},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6}\n",
-            baseline.mean_c01[i],
-            baseline.std_c01[i],
-            nohill.mean_c01[i],
-            nohill.std_c01[i],
-            norep.mean_c01[i],
-            norep.std_c01[i]
+            baseline.mean_c_state[i],
+            baseline.std_c_state[i],
+            nohill.mean_c_state[i],
+            nohill.std_c_state[i],
+            norep.mean_c_state[i],
+            norep.std_c_state[i]
+        ));
+    }
+    out
+}
+
+fn e2_controls_csv_c(
+    baseline: &E2SweepStats,
+    nohill: &E2SweepStats,
+    norep: &E2SweepStats,
+) -> String {
+    let mut out = String::from(
+        "step,baseline_mean,baseline_std,nohill_mean,nohill_std,norep_mean,norep_std\n",
+    );
+    let len = baseline
+        .mean_c
+        .len()
+        .min(nohill.mean_c.len())
+        .min(norep.mean_c.len());
+    for i in 0..len {
+        out.push_str(&format!(
+            "{i},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6}\n",
+            baseline.mean_c[i],
+            baseline.std_c[i],
+            nohill.mean_c[i],
+            nohill.std_c[i],
+            norep.mean_c[i],
+            norep.std_c[i]
         ));
     }
     out
 }
 
 fn trajectories_csv(run: &E2Run) -> String {
-    let mut out = String::from("step,agent_id,semitones,c01\n");
+    let mut out = String::from("step,agent_id,semitones,c_state\n");
     for (agent_id, semis) in run.trajectory_semitones.iter().enumerate() {
-        let c01 = &run.trajectory_c01[agent_id];
-        let len = semis.len().min(c01.len());
+        let c_state = &run.trajectory_c_state[agent_id];
+        let len = semis.len().min(c_state.len());
         for step in 0..len {
             out.push_str(&format!(
                 "{step},{agent_id},{:.6},{:.6}\n",
-                semis[step], c01[step]
+                semis[step], c_state[step]
             ));
         }
     }
@@ -2983,21 +3180,32 @@ fn anchor_shift_csv(run: &E2Run) -> String {
 }
 
 fn e2_summary_csv(runs: &[E2Run]) -> String {
-    let mut out =
-        String::from("seed,init_mode,steps,burn_in,mean_c01_step0,mean_c01_step_end,delta_c01\n");
+    let mut out = String::from(
+        "seed,init_mode,steps,burn_in,mean_c_step0,mean_c_step_end,delta_c,mean_c_state_step0,mean_c_state_step_end,delta_c_state\n",
+    );
     for run in runs {
-        let start = run.mean_c01_series.first().copied().unwrap_or(0.0);
-        let end = run.mean_c01_series.last().copied().unwrap_or(start);
+        let start = run.mean_c_series.first().copied().unwrap_or(0.0);
+        let end = run.mean_c_series.last().copied().unwrap_or(start);
         let delta = end - start;
+        let start_state = run.mean_c_state_series.first().copied().unwrap_or(0.0);
+        let end_state = run
+            .mean_c_state_series
+            .last()
+            .copied()
+            .unwrap_or(start_state);
+        let delta_state = end_state - start_state;
         out.push_str(&format!(
-            "{},{},{},{},{:.6},{:.6},{:.6}\n",
+            "{},{},{},{},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6}\n",
             run.seed,
             E2_INIT_MODE.label(),
             E2_STEPS,
             E2_BURN_IN,
             start,
             end,
-            delta
+            delta,
+            start_state,
+            end_state,
+            delta_state
         ));
     }
     out
@@ -3019,7 +3227,13 @@ fn final_agents_csv(run: &E2Run) -> String {
     out
 }
 
-fn e2_meta_text(n_agents: usize, k_bins: i32) -> String {
+fn e2_meta_text(
+    n_agents: usize,
+    k_bins: i32,
+    density_mass_mean: f32,
+    density_mass_min: f32,
+    density_mass_max: f32,
+) -> String {
     let mut out = String::new();
     out.push_str(&format!("SPACE_BINS_PER_OCT={}\n", SPACE_BINS_PER_OCT));
     out.push_str(&format!("E2_STEPS={}\n", E2_STEPS));
@@ -3038,6 +3252,15 @@ fn e2_meta_text(n_agents: usize, k_bins: i32) -> String {
     out.push_str(&format!("E2_K_BINS={}\n", k_bins));
     out.push_str(&format!("E2_LAMBDA={:.3}\n", E2_LAMBDA));
     out.push_str(&format!("E2_SIGMA={:.3}\n", E2_SIGMA));
+    out.push_str(&format!("C_STATE_BETA={:.3}\n", E2_C_STATE_BETA));
+    out.push_str(&format!("C_STATE_THETA={:.3}\n", E2_C_STATE_THETA));
+    out.push_str(&format!(
+        "E2_DENSITY_NORM_EPS={:.3e}\n",
+        E2_DENSITY_NORM_EPS
+    ));
+    out.push_str(&format!("E2_DENSITY_MASS_MEAN={:.6}\n", density_mass_mean));
+    out.push_str(&format!("E2_DENSITY_MASS_MIN={:.6}\n", density_mass_min));
+    out.push_str(&format!("E2_DENSITY_MASS_MAX={:.6}\n", density_mass_max));
     out.push_str(&format!("E2_INIT_MODE={}\n", E2_INIT_MODE.label()));
     out.push_str(&format!(
         "E2_INIT_CONSONANT_EXCLUSION_ST={:.3}\n",
@@ -3067,7 +3290,7 @@ fn pick_representative_run_index(runs: &[E2Run]) -> usize {
     let mut scored: Vec<(usize, f32)> = runs
         .iter()
         .enumerate()
-        .map(|(i, r)| (i, r.mean_c01_series.last().copied().unwrap_or(0.0)))
+        .map(|(i, r)| (i, r.mean_c_state_series.last().copied().unwrap_or(0.0)))
         .collect();
     scored.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
     scored[scored.len() / 2].0
@@ -3077,26 +3300,25 @@ fn representative_seed_text(runs: &[E2Run], rep_index: usize) -> String {
     let mut scored: Vec<(usize, f32)> = runs
         .iter()
         .enumerate()
-        .map(|(i, r)| (i, r.mean_c01_series.last().copied().unwrap_or(0.0)))
+        .map(|(i, r)| (i, r.mean_c_state_series.last().copied().unwrap_or(0.0)))
         .collect();
     scored.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
 
-    let mut out = String::from("metric=post_mean_c01\n");
+    let metric_label = e2_post_label();
+    let pre_label = e2_pre_label();
+    let pre_step = e2_pre_step();
+    let mut out = format!("metric={metric_label}_mean_c_state\n");
     out.push_str("rank,seed,metric\n");
     for (rank, (idx, metric)) in scored.iter().enumerate() {
         out.push_str(&format!("{rank},{},{}\n", runs[*idx].seed, metric));
     }
     let rep_metric = runs
         .get(rep_index)
-        .and_then(|r| r.mean_c01_series.last().copied())
+        .and_then(|r| r.mean_c_state_series.last().copied())
         .unwrap_or(0.0);
     let rep_pre = runs
         .get(rep_index)
-        .and_then(|r| {
-            r.mean_c01_series
-                .get(E2_ANCHOR_SHIFT_STEP.saturating_sub(1))
-                .copied()
-        })
+        .and_then(|r| r.mean_c_state_series.get(pre_step).copied())
         .unwrap_or(0.0);
     let rep_seed = runs.get(rep_index).map(|r| r.seed).unwrap_or(0);
     let rep_rank = scored
@@ -3104,7 +3326,7 @@ fn representative_seed_text(runs: &[E2Run], rep_index: usize) -> String {
         .position(|(idx, _)| *idx == rep_index)
         .unwrap_or(0);
     out.push_str(&format!(
-        "representative_seed={rep_seed}\nrepresentative_rank={rep_rank}\nrepresentative_metric={rep_metric}\nrepresentative_pre={rep_pre}\n"
+        "representative_seed={rep_seed}\nrepresentative_rank={rep_rank}\nrepresentative_metric={rep_metric}\nrepresentative_{pre_label}={rep_pre}\n"
     ));
     out
 }
@@ -3349,15 +3571,32 @@ fn render_hist_controls_fraction(
     Ok(())
 }
 
-fn e2_c01_snapshot(run: &E2Run) -> (f32, f32, f32) {
-    let init = run.mean_c01_series.first().copied().unwrap_or(0.0);
-    let pre = run
-        .mean_c01_series
-        .get(E2_ANCHOR_SHIFT_STEP.saturating_sub(1))
+fn e2_c_snapshot(run: &E2Run) -> (f32, f32, f32) {
+    let pre_idx = e2_pre_step();
+    let post_idx = e2_post_step_for(E2_STEPS);
+    e2_c_snapshot_at(&run.mean_c_series, pre_idx, post_idx)
+}
+
+fn e2_c_snapshot_at(series: &[f32], pre_idx: usize, post_idx: usize) -> (f32, f32, f32) {
+    let init = series.first().copied().unwrap_or(0.0);
+    let pre = series.get(pre_idx).copied().unwrap_or(init);
+    let post = series
+        .get(post_idx.min(series.len().saturating_sub(1)))
         .copied()
-        .unwrap_or(init);
-    let post = run.mean_c01_series.last().copied().unwrap_or(pre);
+        .unwrap_or(pre);
     (init, pre, post)
+}
+
+fn e2_c_snapshot_series(
+    series: &[f32],
+    anchor_shift_enabled: bool,
+    anchor_shift_step: usize,
+    burn_in: usize,
+    steps: usize,
+) -> (f32, f32, f32) {
+    let pre_idx = e2_pre_step_for(anchor_shift_enabled, anchor_shift_step, burn_in);
+    let post_idx = e2_post_step_for(steps);
+    e2_c_snapshot_at(series, pre_idx, post_idx)
 }
 
 fn mean_std_scalar(values: &[f32]) -> (f32, f32) {
@@ -4450,13 +4689,13 @@ fn render_consonance_lifetime_scatter(
 
     chart
         .configure_mesh()
-        .x_desc("avg C01")
+        .x_desc("avg C_state")
         .y_desc("lifetime (steps)")
         .draw()?;
 
     let points = deaths
         .iter()
-        .map(|(_, lifetime, avg_c01)| (*avg_c01, *lifetime as f32));
+        .map(|(_, lifetime, avg_c_state)| (*avg_c_state, *lifetime as f32));
     chart.draw_series(points.map(|(x, y)| Circle::new((x, y), 3, RED.filled())))?;
 
     root.present()?;
@@ -4494,27 +4733,27 @@ fn render_survival_curve(
     Ok(())
 }
 
-fn render_survival_by_c01(
+fn render_survival_by_c_state(
     out_path: &Path,
     deaths: &[(usize, u32, f32)],
 ) -> Result<(), Box<dyn Error>> {
     if deaths.is_empty() {
         return Ok(());
     }
-    let mut c01_values: Vec<f32> = deaths.iter().map(|(_, _, c01)| *c01).collect();
-    c01_values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    let median = if c01_values.len().is_multiple_of(2) {
-        let hi = c01_values.len() / 2;
+    let mut c_state_values: Vec<f32> = deaths.iter().map(|(_, _, c_state)| *c_state).collect();
+    c_state_values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let median = if c_state_values.len().is_multiple_of(2) {
+        let hi = c_state_values.len() / 2;
         let lo = hi.saturating_sub(1);
-        0.5 * (c01_values[lo] + c01_values[hi])
+        0.5 * (c_state_values[lo] + c_state_values[hi])
     } else {
-        c01_values[c01_values.len() / 2]
+        c_state_values[c_state_values.len() / 2]
     };
 
     let mut high: Vec<u32> = Vec::new();
     let mut low: Vec<u32> = Vec::new();
-    for (_, lifetime, c01) in deaths {
-        if *c01 >= median {
+    for (_, lifetime, c_state) in deaths {
+        if *c_state >= median {
             high.push(*lifetime);
         } else {
             low.push(*lifetime);
@@ -4533,7 +4772,7 @@ fn render_survival_by_c01(
     let root = BitMapBackend::new(out_path, (1200, 700)).into_drawing_area();
     root.fill(&WHITE)?;
     let mut chart = ChartBuilder::on(&root)
-        .caption("E3 Survival by C01 (Median Split)", ("sans-serif", 20))
+        .caption("E3 Survival by C_state (Median Split)", ("sans-serif", 20))
         .margin(10)
         .x_label_area_size(40)
         .y_label_area_size(60)
@@ -4548,13 +4787,13 @@ fn render_survival_by_c01(
     if !high_series.is_empty() {
         chart
             .draw_series(LineSeries::new(high_series, &BLUE))?
-            .label("avg C01 >= median")
+            .label("avg C_state >= median")
             .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], BLUE));
     }
     if !low_series.is_empty() {
         chart
             .draw_series(LineSeries::new(low_series, &RED))?
-            .label("avg C01 < median")
+            .label("avg C_state < median")
             .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], RED));
     }
 
@@ -5212,7 +5451,8 @@ mod tests {
     fn test_e2_run(metric: f32, seed: u64) -> E2Run {
         E2Run {
             seed,
-            mean_c01_series: vec![metric],
+            mean_c_series: vec![metric],
+            mean_c_state_series: vec![metric],
             mean_score_series: vec![0.0],
             mean_repulsion_series: vec![0.0],
             moved_frac_series: vec![0.0],
@@ -5222,7 +5462,7 @@ mod tests {
             final_freqs_hz: Vec::new(),
             final_log2_ratios: Vec::new(),
             trajectory_semitones: Vec::new(),
-            trajectory_c01: Vec::new(),
+            trajectory_c_state: Vec::new(),
             anchor_shift: E2AnchorShiftStats {
                 step: 0,
                 anchor_hz_before: 0.0,
@@ -5231,8 +5471,57 @@ mod tests {
                 count_max: 0,
                 respawned: 0,
             },
+            density_mass_mean: 0.0,
+            density_mass_min: 0.0,
+            density_mass_max: 0.0,
             n_agents: 0,
             k_bins: 0,
+        }
+    }
+
+    #[test]
+    fn e2_c_snapshot_uses_anchor_shift_pre_when_enabled() {
+        let series: Vec<f32> = (0..10).map(|i| i as f32).collect();
+        let (init, pre, post) = e2_c_snapshot_series(&series, true, 6, 3, series.len());
+        assert!((init - 0.0).abs() < 1e-6);
+        assert!((pre - 5.0).abs() < 1e-6);
+        assert!((post - 9.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn e2_c_snapshot_uses_burnin_end_when_shift_disabled() {
+        let series: Vec<f32> = (0..10).map(|i| i as f32).collect();
+        let (init, pre, post) = e2_c_snapshot_series(&series, false, 6, 3, series.len());
+        assert!((init - 0.0).abs() < 1e-6);
+        assert!((pre - 2.0).abs() < 1e-6);
+        assert!((post - 9.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn e2_density_normalization_invariant_to_scale() {
+        let space = Log2Space::new(200.0, 400.0, 12);
+        let workspace = build_consonance_workspace(&space);
+        let (_erb_scan, du_scan) = erb_grid_for_space(&space);
+        let anchor_idx = space.n_bins() / 2;
+        let (env_scan, mut density_scan) = build_env_scans(&space, anchor_idx, &[], &du_scan);
+
+        let (_, c_state_a, _) =
+            compute_c_score_state_scans(&space, &workspace, &env_scan, &density_scan, &du_scan);
+
+        for v in density_scan.iter_mut() {
+            *v *= 4.0;
+        }
+        let (_, c_state_b, _) =
+            compute_c_score_state_scans(&space, &workspace, &env_scan, &density_scan, &du_scan);
+
+        assert_eq!(c_state_a.len(), c_state_b.len());
+        for i in 0..c_state_a.len() {
+            assert!(
+                (c_state_a[i] - c_state_b[i]).abs() < 1e-5,
+                "i={i} a={} b={}",
+                c_state_a[i],
+                c_state_b[i]
+            );
         }
     }
 
@@ -5314,11 +5603,11 @@ mod tests {
     #[test]
     fn update_agent_indices_stays_in_bounds() {
         let mut indices = vec![1usize, 2, 3];
-        let c01_scan = vec![0.1f32, 0.2, 0.3, 0.4, 0.5];
+        let c_score_scan = vec![0.1f32, 0.2, 0.3, 0.4, 0.5];
         let log2_ratio_scan = vec![0.0f32, 0.1, 0.2, 0.3, 0.4];
         update_agent_indices(
             &mut indices,
-            &c01_scan,
+            &c_score_scan,
             &log2_ratio_scan,
             1,
             3,
@@ -5331,7 +5620,7 @@ mod tests {
 
     #[test]
     fn update_agent_indices_is_order_independent() {
-        let c01_scan = vec![0.1f32, 0.4, 0.3, 0.8, 0.6, 0.2];
+        let c_score_scan = vec![0.1f32, 0.4, 0.3, 0.8, 0.6, 0.2];
         let log2_ratio_scan = vec![0.0f32, 0.1, 0.2, 0.3, 0.4, 0.5];
         let mut indices_fwd = vec![1usize, 3, 4];
         let mut indices_rev = indices_fwd.clone();
@@ -5339,7 +5628,7 @@ mod tests {
         let order_rev: Vec<usize> = (0..indices_fwd.len()).rev().collect();
         let stats_fwd = update_agent_indices_scored_stats_with_order(
             &mut indices_fwd,
-            &c01_scan,
+            &c_score_scan,
             &log2_ratio_scan,
             0,
             5,
@@ -5350,7 +5639,7 @@ mod tests {
         );
         let stats_rev = update_agent_indices_scored_stats_with_order(
             &mut indices_rev,
-            &c01_scan,
+            &c_score_scan,
             &log2_ratio_scan,
             0,
             5,

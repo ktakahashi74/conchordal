@@ -82,12 +82,19 @@ pub struct PsychoAcousticsConfig {
     pub loudness_exp: f32,
     #[serde(default = "PsychoAcousticsConfig::default_roughness_k")]
     pub roughness_k: f32,
-    #[serde(default = "PsychoAcousticsConfig::default_harmonicity_deficit_weight")]
-    pub harmonicity_deficit_weight: f32,
+    #[serde(
+        default = "PsychoAcousticsConfig::default_harmonicity_weight",
+        alias = "harmonicity_deficit_weight"
+    )]
+    pub harmonicity_weight: f32,
     #[serde(default = "PsychoAcousticsConfig::default_roughness_weight_floor")]
     pub roughness_weight_floor: f32,
     #[serde(default = "PsychoAcousticsConfig::default_roughness_weight")]
     pub roughness_weight: f32,
+    #[serde(default = "PsychoAcousticsConfig::default_c_state_beta")]
+    pub c_state_beta: f32,
+    #[serde(default = "PsychoAcousticsConfig::default_c_state_theta")]
+    pub c_state_theta: f32,
     #[serde(default = "PsychoAcousticsConfig::default_use_incoherent_power")]
     pub use_incoherent_power: bool,
 }
@@ -99,7 +106,7 @@ impl PsychoAcousticsConfig {
     fn default_roughness_k() -> f32 {
         0.428571
     }
-    fn default_harmonicity_deficit_weight() -> f32 {
+    fn default_harmonicity_weight() -> f32 {
         1.0
     }
     fn default_roughness_weight_floor() -> f32 {
@@ -107,6 +114,12 @@ impl PsychoAcousticsConfig {
     }
     fn default_roughness_weight() -> f32 {
         1.0
+    }
+    fn default_c_state_beta() -> f32 {
+        2.0
+    }
+    fn default_c_state_theta() -> f32 {
+        0.0
     }
     fn default_use_incoherent_power() -> bool {
         false
@@ -118,9 +131,11 @@ impl Default for PsychoAcousticsConfig {
         Self {
             loudness_exp: Self::default_loudness_exp(),
             roughness_k: Self::default_roughness_k(),
-            harmonicity_deficit_weight: Self::default_harmonicity_deficit_weight(),
+            harmonicity_weight: Self::default_harmonicity_weight(),
             roughness_weight_floor: Self::default_roughness_weight_floor(),
             roughness_weight: Self::default_roughness_weight(),
+            c_state_beta: Self::default_c_state_beta(),
+            c_state_theta: Self::default_c_state_theta(),
             use_incoherent_power: Self::default_use_incoherent_power(),
         }
     }
@@ -185,12 +200,14 @@ impl AppConfig {
         self.analysis.tau_ms = Self::round_f32(self.analysis.tau_ms);
         self.psychoacoustics.loudness_exp = Self::round_f32(self.psychoacoustics.loudness_exp);
         self.psychoacoustics.roughness_k = Self::round_f32(self.psychoacoustics.roughness_k);
-        self.psychoacoustics.harmonicity_deficit_weight =
-            Self::round_f32(self.psychoacoustics.harmonicity_deficit_weight);
+        self.psychoacoustics.harmonicity_weight =
+            Self::round_f32(self.psychoacoustics.harmonicity_weight);
         self.psychoacoustics.roughness_weight_floor =
             Self::round_f32(self.psychoacoustics.roughness_weight_floor);
         self.psychoacoustics.roughness_weight =
             Self::round_f32(self.psychoacoustics.roughness_weight);
+        self.psychoacoustics.c_state_beta = Self::round_f32(self.psychoacoustics.c_state_beta);
+        self.psychoacoustics.c_state_theta = Self::round_f32(self.psychoacoustics.c_state_theta);
         self
     }
 
@@ -287,9 +304,11 @@ mod tests {
         assert_eq!(cfg.audio.limiter, LimiterSetting::PeakLimiter);
         assert_eq!(cfg.psychoacoustics.loudness_exp, 0.23);
         assert!((cfg.psychoacoustics.roughness_k - 0.428571).abs() < 1e-6);
-        assert_eq!(cfg.psychoacoustics.harmonicity_deficit_weight, 1.0);
+        assert_eq!(cfg.psychoacoustics.harmonicity_weight, 1.0);
         assert!((cfg.psychoacoustics.roughness_weight_floor - 0.35).abs() < 1e-6);
         assert_eq!(cfg.psychoacoustics.roughness_weight, 1.0);
+        assert_eq!(cfg.psychoacoustics.c_state_beta, 2.0);
+        assert_eq!(cfg.psychoacoustics.c_state_theta, 0.0);
         assert!(!cfg.psychoacoustics.use_incoherent_power);
 
         let contents = fs::read_to_string(&path).expect("read written config");
@@ -302,8 +321,8 @@ mod tests {
             "should write commented roughness_k"
         );
         assert!(
-            contents.contains("# harmonicity_deficit_weight = 1.0"),
-            "should write commented harmonicity_deficit_weight"
+            contents.contains("# harmonicity_weight = 1.0"),
+            "should write commented harmonicity_weight"
         );
         assert!(
             contents.contains("# roughness_weight_floor = 0.35"),
@@ -312,6 +331,14 @@ mod tests {
         assert!(
             contents.contains("# roughness_weight = 1.0"),
             "should write commented roughness_weight"
+        );
+        assert!(
+            contents.contains("# c_state_beta = 2.0"),
+            "should write commented c_state_beta"
+        );
+        assert!(
+            contents.contains("# c_state_theta = 0.0"),
+            "should write commented c_state_theta"
         );
         assert!(
             contents.contains("# use_incoherent_power = false"),
@@ -340,9 +367,11 @@ mod tests {
             psychoacoustics: PsychoAcousticsConfig {
                 loudness_exp: 0.3,
                 roughness_k: 0.2,
-                harmonicity_deficit_weight: 1.2,
+                harmonicity_weight: 1.2,
                 roughness_weight_floor: 0.4,
                 roughness_weight: 0.8,
+                c_state_beta: 1.5,
+                c_state_theta: -0.1,
                 use_incoherent_power: false,
             },
             playback: PlaybackConfig {
@@ -362,9 +391,11 @@ mod tests {
         assert_eq!(cfg.analysis.tau_ms, 60.0);
         assert_eq!(cfg.psychoacoustics.loudness_exp, 0.3);
         assert_eq!(cfg.psychoacoustics.roughness_k, 0.2);
-        assert_eq!(cfg.psychoacoustics.harmonicity_deficit_weight, 1.2);
+        assert_eq!(cfg.psychoacoustics.harmonicity_weight, 1.2);
         assert_eq!(cfg.psychoacoustics.roughness_weight_floor, 0.4);
         assert_eq!(cfg.psychoacoustics.roughness_weight, 0.8);
+        assert_eq!(cfg.psychoacoustics.c_state_beta, 1.5);
+        assert_eq!(cfg.psychoacoustics.c_state_theta, -0.1);
         assert!(!cfg.psychoacoustics.use_incoherent_power);
         assert!(!cfg.playback.wait_user_exit);
         assert!(cfg.playback.wait_user_start);

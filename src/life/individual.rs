@@ -56,7 +56,7 @@ pub struct Individual {
     pub(crate) phonation_coupling: f32,
     pub body: AnySoundBody,
     pub last_signal: ArticulationSignal,
-    last_consonance01: f32,
+    last_consonance_state01: f32,
     attack_tick_count_accum: u32,
     attack_consonance_sum: f32,
     pub(crate) release_gain: f32,
@@ -243,7 +243,7 @@ impl Individual {
             phonation_coupling,
             body,
             last_signal: Default::default(),
-            last_consonance01: 0.0,
+            last_consonance_state01: 0.0,
             attack_tick_count_accum: 0,
             attack_consonance_sum: 0.0,
             release_gain: 1.0,
@@ -479,8 +479,8 @@ impl Individual {
         landscape: &Landscape,
         global_coupling: f32,
     ) -> ArticulationSignal {
-        let consonance = landscape.evaluate_pitch01(self.body.base_freq_hz());
-        self.last_consonance01 = consonance;
+        let consonance = landscape.evaluate_pitch_state01(self.body.base_freq_hz());
+        self.last_consonance_state01 = consonance;
         let mut signal = self
             .articulation
             .process(consonance, rhythms, dt_sec, global_coupling);
@@ -669,11 +669,11 @@ impl Individual {
         self.body.project_spectral_body(amps, space, &signal);
     }
 
-    pub fn last_consonance01(&self) -> f32 {
-        self.last_consonance01
+    pub fn last_consonance_state01(&self) -> f32 {
+        self.last_consonance_state01
     }
 
-    /// Returns (attack_tick_count, sum_c01_attack) and resets the accumulated telemetry.
+    /// Returns (attack_tick_count, sum_c_state_attack) and resets the accumulated telemetry.
     pub fn take_attack_telemetry(&mut self) -> (u32, f32) {
         let count = self.attack_tick_count_accum;
         let sum = self.attack_consonance_sum;

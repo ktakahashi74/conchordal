@@ -19,11 +19,6 @@ pub fn clamp01(x: f32) -> f32 {
     x.clamp(0.0, 1.0)
 }
 
-#[inline]
-pub fn clamp_pm1(x: f32) -> f32 {
-    x.clamp(-1.0, 1.0)
-}
-
 /// Normalize a density curve for potential scans, returning (normalized, mass).
 pub fn normalize_density(density_vals: &[f32], du: &[f32], eps: f32) -> (Vec<f32>, f32) {
     let mass = density::density_to_mass(density_vals, du);
@@ -100,47 +95,54 @@ fn sanitize_nonneg(x: f32) -> f32 {
     if x.is_finite() { x.max(0.0) } else { 0.0 }
 }
 
-pub fn compose_c_statepm1(
-    h_state01: f32,
-    r_state01: f32,
-    alpha: f32,
-    w0: f32,
-    w1: f32,
-) -> (f32, f32) {
-    let h01 = sanitize01(h_state01);
-    let r01 = sanitize01(r_state01);
-    let alpha = sanitize_nonneg(alpha);
+pub fn w_of_h(w0: f32, w1: f32, h01: f32) -> f32 {
+    let h01 = sanitize01(h01);
     let w0 = sanitize_nonneg(w0);
     let w1 = sanitize_nonneg(w1);
     let dh = 1.0 - h01;
-    let w = w0 + w1 * dh;
-    let d = alpha * dh + w * r01;
-    let c01 = if d.is_finite() {
-        let denom = 1.0 + d.max(0.0);
-        if denom <= 0.0 { 1.0 } else { 1.0 / denom }
-    } else if d.is_sign_negative() {
-        1.0
-    } else {
-        0.0
-    };
-    let c_signed = clamp_pm1(2.0 * c01 - 1.0);
-    (c_signed, c01)
+    w0 + w1 * dh
 }
 
-pub fn compose_c_statepm1_scan(
+pub fn compose_c_score(alpha: f32, w0: f32, w1: f32, h01: f32, r01: f32) -> f32 {
+    let h01 = sanitize01(h01);
+    let r01 = sanitize01(r01);
+    let alpha = sanitize_nonneg(alpha);
+    let w = w_of_h(w0, w1, h01);
+    let c_score = alpha * h01 - w * r01;
+    if c_score.is_finite() { c_score } else { 0.0 }
+}
+
+pub fn sigmoid01(x: f32) -> f32 {
+    if x.is_nan() {
+        return 0.0;
+    }
+    let x = x.clamp(-80.0, 80.0);
+    1.0 / (1.0 + (-x).exp())
+}
+
+pub fn compose_c_state(beta: f32, theta: f32, c_score: f32) -> f32 {
+    let beta = sanitize_nonneg(beta);
+    let theta = if theta.is_finite() { theta } else { 0.0 };
+    let c_score = if c_score.is_finite() { c_score } else { 0.0 };
+    sigmoid01(beta * (c_score - theta))
+}
+
+pub fn compose_c_state01_scan(
     h_state01: &[f32],
     r_state01: &[f32],
     alpha: f32,
     w0: f32,
     w1: f32,
+    beta: f32,
+    theta: f32,
     out: &mut [f32],
 ) {
     debug_assert_eq!(h_state01.len(), r_state01.len());
     debug_assert_eq!(out.len(), h_state01.len());
     let len = out.len().min(h_state01.len()).min(r_state01.len());
     for i in 0..len {
-        let (c_signed, _) = compose_c_statepm1(h_state01[i], r_state01[i], alpha, w0, w1);
-        out[i] = c_signed;
+        let c_score = compose_c_score(alpha, w0, w1, h_state01[i], r_state01[i]);
+        out[i] = compose_c_state(beta, theta, c_score);
     }
 }
 
@@ -239,9 +241,11 @@ mod tests {
             harmonicity_kernel: HarmonicityKernel::new(space, HarmonicityParams::default()),
             roughness_scalar_mode: RoughnessScalarMode::Total,
             roughness_half: 0.1,
-            consonance_harmonicity_deficit_weight: 1.0,
+            consonance_harmonicity_weight: 1.0,
             consonance_roughness_weight_floor: 0.35,
             consonance_roughness_weight: 0.5,
+            c_state_beta: 2.0,
+            c_state_theta: 0.0,
             loudness_exp: 1.0,
             ref_power: 1.0,
             tau_ms: 1.0,
@@ -304,60 +308,77 @@ mod tests {
     }
 
     #[test]
-    fn compose_c_statepm1_scan_matches_scalar() {
+    fn compose_c_state01_scan_matches_scalar() {
         let h = vec![0.0, 0.2, 0.8, 1.0];
         let r = vec![0.0, 0.1, 0.5, 1.0];
         let mut out = vec![0.0; h.len()];
         let w0 = 0.35;
         let w1 = 0.75;
-        for &alpha in &[1.0, 2.0] {
-            compose_c_statepm1_scan(&h, &r, alpha, w0, w1, &mut out);
+        let beta = 2.0;
+        let theta = 0.1;
+        for &alpha in &[0.8, 1.6] {
+            compose_c_state01_scan(&h, &r, alpha, w0, w1, beta, theta, &mut out);
             for i in 0..h.len() {
-                let h01 = h[i].clamp(0.0, 1.0);
-                let r01 = r[i].clamp(0.0, 1.0);
-                let dh = 1.0 - h01;
-                let w = w0 + w1 * dh;
-                let d = alpha * dh + w * r01;
-                let c01_expected = 1.0 / (1.0 + d.max(0.0));
-                let cpm1_expected = (2.0 * c01_expected - 1.0).clamp(-1.0, 1.0);
-
-                let (cpm1, c01) = compose_c_statepm1(h[i], r[i], alpha, w0, w1);
+                let c_score = compose_c_score(alpha, w0, w1, h[i], r[i]);
+                let c_state = compose_c_state(beta, theta, c_score);
                 assert!(
-                    (c01 - c01_expected).abs() < 1e-6,
-                    "alpha={alpha} i={i} c01={c01} expected={c01_expected}"
-                );
-                assert!(
-                    (cpm1 - cpm1_expected).abs() < 1e-6,
-                    "alpha={alpha} i={i} cpm1={cpm1} expected={cpm1_expected}"
-                );
-                assert!(
-                    (out[i] - cpm1_expected).abs() < 1e-6,
-                    "alpha={alpha} i={i} scan={scan} expected={cpm1_expected}",
-                    scan = out[i]
+                    (out[i] - c_state).abs() < 1e-6,
+                    "alpha={alpha} i={i} out={out_val} expected={c_state}",
+                    out_val = out[i]
                 );
             }
         }
     }
 
     #[test]
-    fn alpha_increases_penalty_when_h_low() {
-        let h = 0.2;
-        let r = 0.2;
+    fn compose_c_score_matches_extremes() {
+        let alpha = 1.5;
         let w0 = 0.35;
-        let w1 = 0.75;
-        let (_cpm1_low, c01_low) = compose_c_statepm1(h, r, 0.5, w0, w1);
-        let (_cpm1_high, c01_high) = compose_c_statepm1(h, r, 2.0, w0, w1);
-        assert!(c01_high < c01_low, "expected higher alpha to reduce C01");
+        let w1 = 0.65;
+        let c_hi = compose_c_score(alpha, w0, w1, 1.0, 0.0);
+        let c_lo = compose_c_score(alpha, w0, w1, 0.0, 1.0);
+        assert!((c_hi - alpha).abs() < 1e-6, "c_hi={c_hi} alpha={alpha}");
+        assert!(
+            (c_lo + (w0 + w1)).abs() < 1e-6,
+            "c_lo={c_lo} expected={}",
+            -(w0 + w1)
+        );
     }
 
     #[test]
-    fn w0_floor_preserves_roughness_penalty_at_h1() {
-        let h = 1.0;
-        let r = 0.4;
-        let alpha = 1.0;
-        let w0 = 0.35;
-        let w1 = 0.75;
-        let (_cpm1, c01) = compose_c_statepm1(h, r, alpha, w0, w1);
-        assert!(c01 < 1.0, "expected w0 to reduce C01 when h=1 and r>0");
+    fn compose_c_state_midpoint_and_extremes() {
+        let beta = 2.0;
+        let theta = 0.25;
+        let mid = compose_c_state(beta, theta, theta);
+        assert!((mid - 0.5).abs() < 1e-6, "mid={mid}");
+
+        let hi = compose_c_state(beta, theta, theta + 10.0);
+        let lo = compose_c_state(beta, theta, theta - 10.0);
+        assert!(hi > 0.999, "hi={hi}");
+        assert!(lo < 0.001, "lo={lo}");
+
+        let a = compose_c_state(beta, theta, theta - 0.5);
+        let b = compose_c_state(beta, theta, theta);
+        let c = compose_c_state(beta, theta, theta + 0.5);
+        assert!(a < b && b < c, "monotonicity failed: {a} {b} {c}");
+    }
+
+    #[test]
+    fn compose_c_state_sanitizes_negative_beta() {
+        let beta = -3.0;
+        let theta = 0.1;
+        let low = compose_c_state(beta, theta, -1.0);
+        let high = compose_c_state(beta, theta, 1.0);
+        assert!((low - 0.5).abs() < 1e-6, "low={low}");
+        assert!((high - 0.5).abs() < 1e-6, "high={high}");
+        assert!(high >= low - 1e-6, "monotonicity failed: {low} {high}");
+    }
+
+    #[test]
+    fn sigmoid01_saturates_extremes() {
+        let hi = sigmoid01(1000.0);
+        let lo = sigmoid01(-1000.0);
+        assert!(hi > 0.999, "hi={hi}");
+        assert!(lo < 0.001, "lo={lo}");
     }
 }

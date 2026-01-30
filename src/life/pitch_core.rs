@@ -111,7 +111,7 @@ impl PitchCore for PitchHillClimbPitchCore {
 
         let adjusted_score = |pitch_log2: f32| -> f32 {
             let clamped = pitch_log2.clamp(fmin, fmax);
-            let score = landscape.evaluate_pitch01_log2(clamped);
+            let score = landscape.evaluate_pitch_score_log2(clamped);
             let distance_oct = (clamped - current_pitch_log2).abs();
             let penalty = distance_oct * integration_window * 0.5;
             let dist = clamped - self.tessitura_center;

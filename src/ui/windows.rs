@@ -444,21 +444,43 @@ pub fn main_window(
 
         ui.separator();
 
-        let consonance = &frame.landscape.consonance;
+        let consonance_score = &frame.landscape.consonance_score;
+        let (mut c_min, mut c_max) = (f32::INFINITY, f32::NEG_INFINITY);
+        for &v in consonance_score.iter() {
+            if v.is_finite() {
+                if v < c_min {
+                    c_min = v;
+                }
+                if v > c_max {
+                    c_max = v;
+                }
+            }
+        }
+        if !c_min.is_finite() || !c_max.is_finite() {
+            c_min = -1.0;
+            c_max = 1.0;
+        }
+        if (c_max - c_min).abs() < 1e-6 {
+            c_min -= 0.5;
+            c_max += 0.5;
+        }
+        let pad = (c_max - c_min).abs() * 0.1;
+        let y_min = (c_min - pad) as f64;
+        let y_max = (c_max + pad) as f64;
 
         ui.columns(1, |cols| {
             let ui = &mut cols[0];
 
             ui.heading("Consonance Landscape");
-            // Combined Consonance C
+            // Combined Consonance Score C
             log2_plot_hz(
                 ui,
-                "Consonance Landscape",
+                "Consonance Score Landscape",
                 &frame.landscape.space.centers_hz,
-                consonance,
-                "C",
-                -1.0,
-                1.0,
+                consonance_score,
+                "C score",
+                y_min,
+                y_max,
                 102.0,
                 Some("landscape_group"),
                 None,
@@ -545,19 +567,19 @@ pub fn main_window(
                     ui.label(format!("pred_horizon={pred_horizon}"));
                 });
 
-                let pred_overlay = frame.pred_c01_next_gate.as_ref().map(|scan| {
+                let pred_overlay = frame.pred_c_state01_next_gate.as_ref().map(|scan| {
                     (
                         scan.as_ref(),
-                        "Predicted C01",
+                        "Predicted C_state",
                         Color32::from_rgb(230, 170, 90),
                     )
                 });
                 log2_plot_hz(
                     ui,
-                    "Consonance01 (Observed/Predicted)",
+                    "Consonance State (Observed/Predicted)",
                     &frame.landscape.space.centers_hz,
-                    &frame.landscape.consonance01,
-                    "C01",
+                    &frame.landscape.consonance_state01,
+                    "C_state",
                     0.0,
                     1.0,
                     102.0,
@@ -565,7 +587,7 @@ pub fn main_window(
                     None,
                     pred_overlay,
                 );
-                if let Some(scan) = frame.pred_c01_next_gate.as_ref() {
+                if let Some(scan) = frame.pred_c_state01_next_gate.as_ref() {
                     let mut sum = 0.0f32;
                     let mut max = 0.0f32;
                     for &v in scan.iter() {
@@ -575,9 +597,11 @@ pub fn main_window(
                         }
                     }
                     let mean = sum / (scan.len().max(1) as f32);
-                    ui.label(format!("pred_c01_next_gate mean={mean:.3} max={max:.3}"));
+                    ui.label(format!(
+                        "pred_c_state01_next_gate mean={mean:.3} max={max:.3}"
+                    ));
                 } else {
-                    ui.label("pred_c01_next_gate=None");
+                    ui.label("pred_c_state01_next_gate=None");
                 }
             });
 

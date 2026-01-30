@@ -63,10 +63,10 @@ pub struct E3DeathRecord {
     pub birth_step: u32,
     pub death_step: u32,
     pub lifetime_steps: u32,
-    pub c01_birth: f32,
-    pub c01_firstk: f32,
-    pub avg_c01_tick: f32,
-    pub avg_c01_attack: f32,
+    pub c_state_birth: f32,
+    pub c_state_firstk: f32,
+    pub avg_c_state_tick: f32,
+    pub avg_c_state_attack: f32,
     pub attack_tick_count: u32,
 }
 
@@ -85,13 +85,13 @@ struct E3LifeState {
     life_id: u64,
     birth_step: u32,
     ticks: u32,
-    sum_c01_tick: f32,
-    sum_c01_firstk: f32,
+    sum_c_state_tick: f32,
+    sum_c_state_firstk: f32,
     firstk_count: u32,
-    c01_birth: f32,
+    c_state_birth: f32,
     pending_birth: bool,
     was_alive: bool,
-    sum_c01_attack: f32,
+    sum_c_state_attack: f32,
     attack_tick_count: u32,
 }
 
@@ -101,13 +101,13 @@ impl E3LifeState {
             life_id,
             birth_step: 0,
             ticks: 0,
-            sum_c01_tick: 0.0,
-            sum_c01_firstk: 0.0,
+            sum_c_state_tick: 0.0,
+            sum_c_state_firstk: 0.0,
             firstk_count: 0,
-            c01_birth: 0.0,
+            c_state_birth: 0.0,
             pending_birth: true,
             was_alive: true,
-            sum_c01_attack: 0.0,
+            sum_c_state_attack: 0.0,
             attack_tick_count: 0,
         }
     }
@@ -116,13 +116,13 @@ impl E3LifeState {
         self.life_id = life_id;
         self.birth_step = 0;
         self.ticks = 0;
-        self.sum_c01_tick = 0.0;
-        self.sum_c01_firstk = 0.0;
+        self.sum_c_state_tick = 0.0;
+        self.sum_c_state_firstk = 0.0;
         self.firstk_count = 0;
-        self.c01_birth = 0.0;
+        self.c_state_birth = 0.0;
         self.pending_birth = true;
         self.was_alive = false;
-        self.sum_c01_attack = 0.0;
+        self.sum_c_state_attack = 0.0;
         self.attack_tick_count = 0;
     }
 }
@@ -287,39 +287,39 @@ pub fn run_e3_collect_deaths(cfg: &E3RunConfig) -> Vec<E3DeathRecord> {
             let (attack_tick_count, attack_sum) = agent.take_attack_telemetry();
             if attack_tick_count > 0 {
                 state.attack_tick_count = state.attack_tick_count.saturating_add(attack_tick_count);
-                state.sum_c01_attack += attack_sum;
+                state.sum_c_state_attack += attack_sum;
             }
             let alive = agent.is_alive();
 
             if alive {
-                let c01 = agent.last_consonance01();
+                let c_state = agent.last_consonance_state01();
                 if state.pending_birth {
                     state.birth_step = step as u32;
-                    state.c01_birth = c01;
+                    state.c_state_birth = c_state;
                     state.pending_birth = false;
                 }
                 state.ticks = state.ticks.saturating_add(1);
-                state.sum_c01_tick += c01;
+                state.sum_c_state_tick += c_state;
                 if state.firstk_count < first_k {
-                    state.sum_c01_firstk += c01;
+                    state.sum_c_state_firstk += c_state;
                     state.firstk_count += 1;
                 }
             }
 
             if state.was_alive && !alive {
                 let ticks = state.ticks.max(1);
-                let avg_c01_tick = if state.ticks > 0 {
-                    state.sum_c01_tick / state.ticks as f32
+                let avg_c_state_tick = if state.ticks > 0 {
+                    state.sum_c_state_tick / state.ticks as f32
                 } else {
                     0.0
                 };
-                let c01_firstk = if state.firstk_count > 0 {
-                    state.sum_c01_firstk / state.firstk_count as f32
+                let c_state_firstk = if state.firstk_count > 0 {
+                    state.sum_c_state_firstk / state.firstk_count as f32
                 } else {
                     0.0
                 };
-                let avg_c01_attack = if state.attack_tick_count > 0 {
-                    state.sum_c01_attack / state.attack_tick_count as f32
+                let avg_c_state_attack = if state.attack_tick_count > 0 {
+                    state.sum_c_state_attack / state.attack_tick_count as f32
                 } else {
                     f32::NAN
                 };
@@ -332,10 +332,10 @@ pub fn run_e3_collect_deaths(cfg: &E3RunConfig) -> Vec<E3DeathRecord> {
                     birth_step: state.birth_step,
                     death_step: step as u32,
                     lifetime_steps: ticks,
-                    c01_birth: state.c01_birth,
-                    c01_firstk,
-                    avg_c01_tick,
-                    avg_c01_attack,
+                    c_state_birth: state.c_state_birth,
+                    c_state_firstk,
+                    avg_c_state_tick,
+                    avg_c_state_attack,
                     attack_tick_count: state.attack_tick_count,
                 });
 
@@ -597,9 +597,11 @@ fn make_landscape_params(space: &Log2Space, fs: f32) -> LandscapeParams {
         harmonicity_kernel: HarmonicityKernel::new(space, HarmonicityParams::default()),
         roughness_scalar_mode: RoughnessScalarMode::Total,
         roughness_half: 0.1,
-        consonance_harmonicity_deficit_weight: 1.0,
+        consonance_harmonicity_weight: 1.0,
         consonance_roughness_weight_floor: 0.35,
         consonance_roughness_weight: 0.5,
+        c_state_beta: 2.0,
+        c_state_theta: 0.0,
         loudness_exp: 1.0,
         ref_power: 1.0,
         tau_ms: 1.0,

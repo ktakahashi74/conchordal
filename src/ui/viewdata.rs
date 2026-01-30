@@ -69,7 +69,7 @@ pub struct UiFrame {
     pub pred_n_theta_per_delta: Option<u32>,
     pub pred_tau_tick: Option<Tick>,
     pub pred_horizon_tick: Option<Tick>,
-    pub pred_c01_next_gate: Option<Arc<[f32]>>,
+    pub pred_c_state01_next_gate: Option<Arc<[f32]>>,
     pub pred_gain_raw_mean: Option<f32>,
     pub pred_gain_raw_min: Option<f32>,
     pub pred_gain_raw_max: Option<f32>,

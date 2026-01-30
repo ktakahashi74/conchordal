@@ -109,13 +109,17 @@ fn prediction_decay_reduces_far_extrapolation() {
     let last_scan = vec![0.4; n_bins];
     let prev_tick = 0;
     let last_tick = tau_tick;
-    world.observe_consonance01(prev_tick, Arc::from(prev_scan));
-    world.observe_consonance01(last_tick, Arc::from(last_scan));
+    world.observe_consonance_state01(prev_tick, Arc::from(prev_scan));
+    world.observe_consonance_state01(last_tick, Arc::from(last_scan));
 
     let near_tick = last_tick.saturating_add(tau_tick);
     let far_tick = last_tick.saturating_add(tau_tick.saturating_mul(2));
-    let pred_near = world.predict_consonance01_at(near_tick).expect("pred near");
-    let pred_far = world.predict_consonance01_at(far_tick).expect("pred far");
+    let pred_near = world
+        .predict_consonance_state01_at(near_tick)
+        .expect("pred near");
+    let pred_far = world
+        .predict_consonance_state01_at(far_tick)
+        .expect("pred far");
     let delta_near = (pred_near[0] - 0.4).abs();
     let delta_far = (pred_far[0] - 0.4).abs();
     assert!(delta_far < delta_near);

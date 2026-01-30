@@ -9,7 +9,9 @@ use crate::life::individual::SoundBody;
 use crate::life::lifecycle::LifecycleConfig;
 use crate::life::metabolism_policy::MetabolismPolicy;
 use crate::life::population::Population;
-use crate::life::scenario::{Action, ArticulationCoreConfig, EnvelopeConfig, SpawnSpec, SpawnStrategy};
+use crate::life::scenario::{
+    Action, ArticulationCoreConfig, EnvelopeConfig, SpawnSpec, SpawnStrategy,
+};
 
 pub const E4_ANCHOR_HZ: f32 = 220.0;
 pub const E4_WINDOW_CENTS: f32 = 50.0;

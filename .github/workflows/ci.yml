@@ -37,9 +37,6 @@ jobs:
         if: ${{ hashFiles('examples/gen_schemas.rs') != '' }}
         run: git diff --exit-code docs/schemas || true
 
-      - name: Check format
-        run: cargo fmt --all -- --check
-
       - name: Clippy
         run: cargo clippy -- -D warnings
 

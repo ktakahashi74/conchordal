@@ -2,11 +2,9 @@ use crate::core::modulation::NeuralRhythms;
 use crate::core::phase::{angle_diff_pm_pi, wrap_0_tau};
 use crate::core::utils::pink_noise_tick;
 use crate::life::lifecycle::LifecycleConfig;
+use crate::life::metabolism_policy::{DEFAULT_RECHARGE_THRESHOLD, MetabolismPolicy};
 use crate::life::phonation_engine::PhonationKick;
 use crate::life::scenario::ArticulationCoreConfig;
-use crate::life::metabolism_policy::{
-    MetabolismPolicy, DEFAULT_RECHARGE_THRESHOLD,
-};
 use rand::{Rng, SeedableRng, rngs::SmallRng};
 use std::f32::consts::{PI, TAU};
 use tracing::debug;
@@ -520,13 +518,8 @@ impl ArticulationCore for KuramotoCore {
         while self.rhythm_phase >= 2.0 * PI {
             self.rhythm_phase -= 2.0 * PI;
             self.dbg_wraps += 1;
-            let attacked = self.maybe_trigger_attack(
-                &gate,
-                rhythms,
-                &theta,
-                bootstrap_active,
-                step.k_eff,
-            );
+            let attacked =
+                self.maybe_trigger_attack(&gate, rhythms, &theta, bootstrap_active, step.k_eff);
             attacked_this_sample = attacked_this_sample || attacked;
         }
         if attacked_this_sample {

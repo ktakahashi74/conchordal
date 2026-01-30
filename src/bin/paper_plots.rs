@@ -16,7 +16,7 @@ use conchordal::core::log2space::Log2Space;
 use conchordal::core::psycho_state;
 use conchordal::core::roughness_kernel::{KernelParams, RoughnessKernel};
 use conchordal::paper::sim::{
-    e3_policy_params, E3Condition, E3DeathRecord, E3RunConfig, E4_ANCHOR_HZ, E4TailSamples,
+    E3Condition, E3DeathRecord, E3RunConfig, E4_ANCHOR_HZ, E4TailSamples, e3_policy_params,
     run_e3_collect_deaths, run_e4_condition_tail_samples,
 };
 use rand::seq::SliceRandom;
@@ -196,10 +196,7 @@ fn parse_experiments(args: &[String]) -> Result<Vec<Experiment>, String> {
                 "4" | "e4" | "E4" => Experiment::E4,
                 "5" | "e5" | "E5" => Experiment::E5,
                 _ => {
-                    return Err(format!(
-                        "Unknown experiment '{token}'.\n{}",
-                        usage()
-                    ));
+                    return Err(format!("Unknown experiment '{token}'.\n{}", usage()));
                 }
             };
             if !experiments.contains(&exp) {
@@ -832,12 +829,9 @@ fn run_e2_once(space: &Log2Space, anchor_hz: f32, seed: u64, condition: E2Condit
 
     let mut agent_indices = match E2_INIT_MODE {
         E2InitMode::Uniform => init_e2_agent_indices_uniform(&mut rng, min_idx, max_idx),
-        E2InitMode::RejectConsonant => init_e2_agent_indices_reject_consonant(
-            &mut rng,
-            min_idx,
-            max_idx,
-            &log2_ratio_scan,
-        ),
+        E2InitMode::RejectConsonant => {
+            init_e2_agent_indices_reject_consonant(&mut rng, min_idx, max_idx, &log2_ratio_scan)
+        }
     };
 
     let (_erb_scan, du_scan) = erb_grid_for_space(space);
@@ -1252,7 +1246,8 @@ fn plot_e3_metabolic_selection(
     }
 
     if let Some(rep_seed) = pick_e3_representative_seed(&seed_outputs) {
-        let mut rep_note = String::from("Representative seed selection (baseline firstK Pearson r):\n");
+        let mut rep_note =
+            String::from("Representative seed selection (baseline firstK Pearson r):\n");
         let mut baseline_stats: Vec<(u64, f32)> = seed_outputs
             .iter()
             .filter(|o| o.condition == E3Condition::Baseline)
@@ -2988,9 +2983,8 @@ fn anchor_shift_csv(run: &E2Run) -> String {
 }
 
 fn e2_summary_csv(runs: &[E2Run]) -> String {
-    let mut out = String::from(
-        "seed,init_mode,steps,burn_in,mean_c01_step0,mean_c01_step_end,delta_c01\n",
-    );
+    let mut out =
+        String::from("seed,init_mode,steps,burn_in,mean_c01_step0,mean_c01_step_end,delta_c01\n");
     for run in runs {
         let start = run.mean_c01_series.first().copied().unwrap_or(0.0);
         let end = run.mean_c01_series.last().copied().unwrap_or(start);
@@ -3396,11 +3390,7 @@ fn render_series_plot_fixed_y(
         y_lo = 0.0;
         y_hi = 1.0;
     }
-    let x_max = series
-        .last()
-        .map(|(x, _)| *x)
-        .unwrap_or(0.0)
-        .max(1.0);
+    let x_max = series.last().map(|(x, _)| *x).unwrap_or(0.0).max(1.0);
 
     let root = BitMapBackend::new(out_path, (1200, 700)).into_drawing_area();
     root.fill(&WHITE)?;

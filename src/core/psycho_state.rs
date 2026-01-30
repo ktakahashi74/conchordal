@@ -127,6 +127,7 @@ pub fn compose_c_state(beta: f32, theta: f32, c_score: f32) -> f32 {
     sigmoid01(beta * (c_score - theta))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn compose_c_state01_scan(
     h_state01: &[f32],
     r_state01: &[f32],

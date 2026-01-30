@@ -9,16 +9,16 @@ use plotters::coord::types::RangedCoordf32;
 use plotters::coord::{CoordTranslate, Shift};
 use plotters::prelude::*;
 
+use crate::sim::{
+    E3Condition, E3DeathRecord, E3RunConfig, E4_ANCHOR_HZ, E4TailSamples, e3_policy_params,
+    run_e3_collect_deaths, run_e4_condition_tail_samples,
+};
 use conchordal::core::erb::hz_to_erb;
 use conchordal::core::harmonicity_kernel::{HarmonicityKernel, HarmonicityParams};
 use conchordal::core::landscape::{LandscapeParams, RoughnessScalarMode};
 use conchordal::core::log2space::Log2Space;
 use conchordal::core::psycho_state;
 use conchordal::core::roughness_kernel::{KernelParams, RoughnessKernel};
-use crate::sim::{
-    e3_policy_params, run_e3_collect_deaths, run_e4_condition_tail_samples, E3Condition,
-    E3DeathRecord, E3RunConfig, E4_ANCHOR_HZ, E4TailSamples,
-};
 use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng, rngs::StdRng};
 

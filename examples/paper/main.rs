@@ -1,5 +1,5 @@
-mod sim;
 mod paper_plots;
+mod sim;
 
 fn main() {
     if let Err(err) = paper_plots::main() {

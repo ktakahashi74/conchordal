@@ -1,5 +1,7 @@
 use conchordal::core::harmonicity_kernel::{HarmonicityKernel, HarmonicityParams};
-use conchordal::core::landscape::{Landscape, LandscapeParams, LandscapeUpdate, RoughnessScalarMode};
+use conchordal::core::landscape::{
+    Landscape, LandscapeParams, LandscapeUpdate, RoughnessScalarMode,
+};
 use conchordal::core::log2space::Log2Space;
 use conchordal::core::modulation::{NeuralRhythms, RhythmBand};
 use conchordal::core::roughness_kernel::{KernelParams, RoughnessKernel};

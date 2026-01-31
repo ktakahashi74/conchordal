@@ -1,9 +1,9 @@
 use std::env;
 use std::error::Error;
 use std::f32::consts::PI;
-use std::fs::{create_dir_all, read_dir, remove_file, write};
+use std::fs::{create_dir_all, remove_dir_all, write};
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use plotters::coord::types::RangedCoordf32;
 use plotters::coord::{CoordTranslate, Shift};
@@ -38,7 +38,12 @@ const E2_INIT_CONSONANT_EXCLUSION_ST: f32 = 0.35;
 const E2_INIT_MAX_TRIES: usize = 5000;
 const E2_C_STATE_BETA: f32 = 2.0;
 const E2_C_STATE_THETA: f32 = 0.0;
-const E2_DENSITY_NORM_EPS: f32 = 1e-12;
+const E2_ACCEPT_ENABLED: bool = true;
+const E2_ACCEPT_T0: f32 = 0.05;
+const E2_ACCEPT_TAU_STEPS: f32 = 15.0;
+const E2_PHASE_SWITCH_STEP: usize = E2_STEPS / 2;
+const E2_DIVERSITY_BIN_ST: f32 = 0.25;
+const E2_STEP_SEMITONES_SWEEP: [f32; 3] = [0.25, 0.5, 1.0];
 const E2_SEEDS: [u64; 5] = [
     0xC0FFEE_u64,
     0xC0FFEE_u64 + 1,
@@ -115,6 +120,41 @@ enum Experiment {
     E5,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum E2PhaseMode {
+    Normal,
+    DissonanceThenConsonance,
+}
+
+impl E2PhaseMode {
+    fn label(self) -> &'static str {
+        match self {
+            E2PhaseMode::Normal => "normal",
+            E2PhaseMode::DissonanceThenConsonance => "dissonance_then_consonance",
+        }
+    }
+
+    fn score_sign(self, step: usize) -> f32 {
+        match self {
+            E2PhaseMode::Normal => 1.0,
+            E2PhaseMode::DissonanceThenConsonance => {
+                if step < E2_PHASE_SWITCH_STEP {
+                    -1.0
+                } else {
+                    1.0
+                }
+            }
+        }
+    }
+
+    fn switch_step(self) -> Option<usize> {
+        match self {
+            E2PhaseMode::Normal => None,
+            E2PhaseMode::DissonanceThenConsonance => Some(E2_PHASE_SWITCH_STEP),
+        }
+    }
+}
+
 impl Experiment {
     fn label(self) -> &'static str {
         match self {
@@ -123,6 +163,16 @@ impl Experiment {
             Experiment::E3 => "E3",
             Experiment::E4 => "E4",
             Experiment::E5 => "E5",
+        }
+    }
+
+    fn dir_name(self) -> &'static str {
+        match self {
+            Experiment::E1 => "e1",
+            Experiment::E2 => "e2",
+            Experiment::E3 => "e3",
+            Experiment::E4 => "e4",
+            Experiment::E5 => "e5",
         }
     }
 
@@ -139,13 +189,19 @@ impl Experiment {
 
 fn usage() -> String {
     [
-        "Usage: paper [--exp E1,E2,...]",
+        "Usage: paper [--exp E1,E2,...] [--e4-hist on|off] [--e2-phase mode]",
         "Examples:",
         "  paper --exp 2",
+        "  paper --exp all",
         "  paper 1 3 5",
         "  paper --exp e2,e4",
+        "  paper --exp e4 --e4-hist on",
+        "  paper --exp e2 --e2-phase dissonance_then_consonance",
         "If no experiment is specified, all (E1-E5) run.",
-        "Outputs are written to target/plots/paper; existing paper_e*_ files there are removed first.",
+        "E4 histogram dumps default to off (use --e4-hist on to enable).",
+        "E2 phase modes: normal | dissonance_then_consonance (default)",
+        "Outputs are written to target/plots/paper/<exp>/ (e.g. target/plots/paper/e2).",
+        "target/plots/paper is cleared on each run.",
     ]
     .join("\n")
 }
@@ -155,6 +211,28 @@ fn parse_experiments(args: &[String]) -> Result<Vec<Experiment>, String> {
     let mut i = 0;
     while i < args.len() {
         let arg = args[i].as_str();
+        if arg == "--e4-hist" {
+            if i + 1 >= args.len() {
+                return Err(format!("Missing value after {arg}\n{}", usage()));
+            }
+            i += 2;
+            continue;
+        }
+        if arg.starts_with("--e4-hist=") {
+            i += 1;
+            continue;
+        }
+        if arg == "--e2-phase" {
+            if i + 1 >= args.len() {
+                return Err(format!("Missing value after {arg}\n{}", usage()));
+            }
+            i += 2;
+            continue;
+        }
+        if arg.starts_with("--e2-phase=") {
+            i += 1;
+            continue;
+        }
         if arg == "-e" || arg == "--exp" || arg == "--experiment" {
             if i + 1 >= args.len() {
                 return Err(format!("Missing value after {arg}\n{}", usage()));
@@ -216,38 +294,90 @@ fn parse_experiments(args: &[String]) -> Result<Vec<Experiment>, String> {
     Ok(experiments)
 }
 
-fn clean_paper_outputs(out_dir: &Path, experiments: &[Experiment]) -> io::Result<()> {
-    if experiments.is_empty() {
-        return Ok(());
-    }
-    let mut prefixes = Vec::new();
-    for exp in experiments {
-        match exp {
-            Experiment::E1 => prefixes.push("paper_e1_"),
-            Experiment::E2 => prefixes.push("paper_e2_"),
-            Experiment::E3 => prefixes.push("paper_e3_"),
-            Experiment::E4 => prefixes.push("paper_e4_"),
-            Experiment::E5 => prefixes.push("paper_e5_"),
-        }
-    }
-    prefixes.sort();
-    prefixes.dedup();
-
-    for entry in read_dir(out_dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        if !path.is_file() {
+fn parse_e4_hist(args: &[String]) -> Result<bool, String> {
+    let mut value: Option<String> = None;
+    let mut i = 0;
+    while i < args.len() {
+        let arg = args[i].as_str();
+        if arg == "--e4-hist" {
+            if i + 1 >= args.len() {
+                return Err(format!("Missing value after {arg}\n{}", usage()));
+            }
+            value = Some(args[i + 1].clone());
+            i += 2;
             continue;
         }
-        let name = match path.file_name().and_then(|s| s.to_str()) {
-            Some(name) => name,
-            None => continue,
-        };
-        if prefixes.iter().any(|prefix| name.starts_with(prefix)) {
-            let _ = remove_file(path);
+        if let Some(rest) = arg.strip_prefix("--e4-hist=") {
+            value = Some(rest.to_string());
+            i += 1;
+            continue;
         }
+        i += 1;
     }
-    Ok(())
+
+    let Some(value) = value else {
+        return Ok(false);
+    };
+    let normalized = value.to_ascii_lowercase();
+    match normalized.as_str() {
+        "on" | "true" | "1" | "yes" => Ok(true),
+        "off" | "false" | "0" | "no" => Ok(false),
+        _ => Err(format!(
+            "Invalid --e4-hist value '{value}'. Use on/off.\n{}",
+            usage()
+        )),
+    }
+}
+
+fn parse_e2_phase(args: &[String]) -> Result<E2PhaseMode, String> {
+    let mut value: Option<String> = None;
+    let mut i = 0;
+    while i < args.len() {
+        let arg = args[i].as_str();
+        if arg == "--e2-phase" {
+            if i + 1 >= args.len() {
+                return Err(format!("Missing value after {arg}\n{}", usage()));
+            }
+            value = Some(args[i + 1].clone());
+            i += 2;
+            continue;
+        }
+        if let Some(rest) = arg.strip_prefix("--e2-phase=") {
+            value = Some(rest.to_string());
+            i += 1;
+            continue;
+        }
+        i += 1;
+    }
+
+    let Some(value) = value else {
+        return Ok(E2PhaseMode::DissonanceThenConsonance);
+    };
+    let normalized = value.to_ascii_lowercase();
+    match normalized.as_str() {
+        "normal" => Ok(E2PhaseMode::Normal),
+        "dissonance_then_consonance" | "dtc" => Ok(E2PhaseMode::DissonanceThenConsonance),
+        _ => Err(format!(
+            "Invalid --e2-phase value '{value}'. Use normal or dissonance_then_consonance.\n{}",
+            usage()
+        )),
+    }
+}
+
+fn prepare_paper_output_dirs(
+    base_dir: &Path,
+    experiments: &[Experiment],
+) -> io::Result<Vec<(Experiment, PathBuf)>> {
+    if experiments.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut out = Vec::with_capacity(experiments.len());
+    for &exp in experiments {
+        let dir = base_dir.join(exp.dir_name());
+        create_dir_all(&dir)?;
+        out.push((exp, dir));
+    }
+    Ok(out)
 }
 
 pub(crate) fn main() -> Result<(), Box<dyn Error>> {
@@ -256,6 +386,8 @@ pub(crate) fn main() -> Result<(), Box<dyn Error>> {
         println!("{}", usage());
         return Ok(());
     }
+    let e4_hist_enabled = parse_e4_hist(&args).map_err(io::Error::other)?;
+    let e2_phase_mode = parse_e2_phase(&args).map_err(io::Error::other)?;
     let experiments = parse_experiments(&args).map_err(io::Error::other)?;
     let experiments = if experiments.is_empty() {
         Experiment::all()
@@ -263,41 +395,47 @@ pub(crate) fn main() -> Result<(), Box<dyn Error>> {
         experiments
     };
 
-    let out_dir = Path::new("target/plots/paper");
-    create_dir_all(out_dir)?;
-    clean_paper_outputs(out_dir, &experiments)?;
+    let base_dir = Path::new("target/plots/paper");
+    if base_dir.exists() {
+        remove_dir_all(base_dir)?;
+    }
+    create_dir_all(base_dir)?;
+    let experiment_dirs = prepare_paper_output_dirs(base_dir, &experiments)?;
 
     let anchor_hz = E4_ANCHOR_HZ;
     let space = Log2Space::new(20.0, 8000.0, SPACE_BINS_PER_OCT);
 
+    let space_ref = &space;
     std::thread::scope(|s| -> Result<(), Box<dyn Error>> {
         let mut handles = Vec::new();
-        for exp in experiments {
+        for (exp, out_dir) in &experiment_dirs {
+            let exp = *exp;
+            let out_dir = out_dir.as_path();
             match exp {
                 Experiment::E1 => {
                     let h = s.spawn(|| {
-                        plot_e1_landscape_scan(out_dir, &space, anchor_hz)
+                        plot_e1_landscape_scan(out_dir, space_ref, anchor_hz)
                             .map_err(|err| io::Error::other(err.to_string()))
                     });
                     handles.push((exp.label(), h));
                 }
                 Experiment::E2 => {
                     let h = s.spawn(|| {
-                        plot_e2_emergent_harmony(out_dir, &space, anchor_hz)
+                        plot_e2_emergent_harmony(out_dir, space_ref, anchor_hz, e2_phase_mode)
                             .map_err(|err| io::Error::other(err.to_string()))
                     });
                     handles.push((exp.label(), h));
                 }
                 Experiment::E3 => {
                     let h = s.spawn(|| {
-                        plot_e3_metabolic_selection(out_dir, &space, anchor_hz)
+                        plot_e3_metabolic_selection(out_dir, space_ref, anchor_hz)
                             .map_err(|err| io::Error::other(err.to_string()))
                     });
                     handles.push((exp.label(), h));
                 }
                 Experiment::E4 => {
                     let h = s.spawn(|| {
-                        plot_e4_mirror_sweep(out_dir, anchor_hz)
+                        plot_e4_mirror_sweep(out_dir, anchor_hz, e4_hist_enabled)
                             .map_err(|err| io::Error::other(err.to_string()))
                     });
                     handles.push((exp.label(), h));
@@ -334,7 +472,7 @@ pub(crate) fn main() -> Result<(), Box<dyn Error>> {
         Ok(())
     })?;
 
-    println!("Saved paper plots to {}", out_dir.display());
+    println!("Saved paper plots to {}", base_dir.display());
     Ok(())
 }
 
@@ -451,18 +589,25 @@ fn plot_e2_emergent_harmony(
     out_dir: &Path,
     space: &Log2Space,
     anchor_hz: f32,
+    phase_mode: E2PhaseMode,
 ) -> Result<(), Box<dyn Error>> {
-    let (baseline_runs, baseline_stats) = e2_seed_sweep(space, anchor_hz, E2Condition::Baseline);
+    let (baseline_runs, baseline_stats) = e2_seed_sweep(
+        space,
+        anchor_hz,
+        E2Condition::Baseline,
+        E2_STEP_SEMITONES,
+        phase_mode,
+    );
     let rep_index = pick_representative_run_index(&baseline_runs);
     let baseline_run = &baseline_runs[rep_index];
-    let marker_steps = e2_marker_steps();
-    let caption_suffix = e2_caption_suffix();
+    let marker_steps = e2_marker_steps(phase_mode);
+    let caption_suffix = e2_caption_suffix(phase_mode);
     let post_label = e2_post_label();
     let post_label_title = e2_post_label_title();
 
     write(
         out_dir.join("paper_e2_representative_seed.txt"),
-        representative_seed_text(&baseline_runs, rep_index),
+        representative_seed_text(&baseline_runs, rep_index, phase_mode),
     )?;
 
     write(
@@ -473,6 +618,13 @@ fn plot_e2_emergent_harmony(
             baseline_run.density_mass_mean,
             baseline_run.density_mass_min,
             baseline_run.density_mass_max,
+            baseline_run.r_ref_peak,
+            baseline_run.roughness_k,
+            baseline_run.roughness_ref_eps,
+            baseline_run.r_state01_min,
+            baseline_run.r_state01_mean,
+            baseline_run.r_state01_max,
+            phase_mode,
         ),
     )?;
 
@@ -481,6 +633,13 @@ fn plot_e2_emergent_harmony(
     write(
         out_dir.join("paper_e2_c_state_timeseries.csv"),
         series_csv("step,mean_c_state", &baseline_run.mean_c_state_series),
+    )?;
+    write(
+        out_dir.join("paper_e2_mean_c_score_loo_over_time.csv"),
+        series_csv(
+            "step,mean_c_score_loo",
+            &baseline_run.mean_c_score_loo_series,
+        ),
     )?;
     write(
         out_dir.join("paper_e2_score_timeseries.csv"),
@@ -493,6 +652,13 @@ fn plot_e2_emergent_harmony(
     write(
         out_dir.join("paper_e2_moved_frac_timeseries.csv"),
         series_csv("step,moved_frac", &baseline_run.moved_frac_series),
+    )?;
+    write(
+        out_dir.join("paper_e2_accepted_worse_frac_timeseries.csv"),
+        series_csv(
+            "step,accepted_worse_frac",
+            &baseline_run.accepted_worse_frac_series,
+        ),
     )?;
 
     write(
@@ -528,6 +694,26 @@ fn plot_e2_emergent_harmony(
         "mean C score",
         &series_pairs(&baseline_run.mean_c_series),
         &marker_steps,
+    )?;
+
+    let mean_c_score_loo_path = out_dir.join("paper_e2_mean_c_score_loo_over_time.png");
+    render_series_plot_with_markers(
+        &mean_c_score_loo_path,
+        &format!("E2 Mean C Score (LOO Current) Over Time ({caption_suffix})"),
+        "mean C score (LOO current)",
+        &series_pairs(&baseline_run.mean_c_score_loo_series),
+        &marker_steps,
+    )?;
+
+    let accept_worse_path = out_dir.join("paper_e2_accepted_worse_frac_over_time.png");
+    render_series_plot_fixed_y(
+        &accept_worse_path,
+        &format!("E2 Accepted Worse Fraction ({caption_suffix})"),
+        "accepted worse frac",
+        &series_pairs(&baseline_run.accepted_worse_frac_series),
+        &marker_steps,
+        0.0,
+        1.0,
     )?;
 
     let mean_score_path = out_dir.join("paper_e2_mean_score_over_time.png");
@@ -597,8 +783,20 @@ fn plot_e2_emergent_harmony(
 
     render_e2_histogram_sweep(out_dir, baseline_run)?;
 
-    let (nohill_runs, nohill_stats) = e2_seed_sweep(space, anchor_hz, E2Condition::NoHillClimb);
-    let (norep_runs, norep_stats) = e2_seed_sweep(space, anchor_hz, E2Condition::NoRepulsion);
+    let (nohill_runs, nohill_stats) = e2_seed_sweep(
+        space,
+        anchor_hz,
+        E2Condition::NoHillClimb,
+        E2_STEP_SEMITONES,
+        phase_mode,
+    );
+    let (norep_runs, norep_stats) = e2_seed_sweep(
+        space,
+        anchor_hz,
+        E2Condition::NoRepulsion,
+        E2_STEP_SEMITONES,
+        phase_mode,
+    );
 
     write(
         out_dir.join("paper_e2_seed_sweep_mean_c.csv"),
@@ -636,6 +834,19 @@ fn plot_e2_emergent_harmony(
             baseline_stats.n,
         ),
     )?;
+    write(
+        out_dir.join("paper_e2_seed_sweep_mean_c_score_loo.csv"),
+        sweep_csv(
+            "step,mean,std,n",
+            &baseline_stats.mean_c_score_loo,
+            &baseline_stats.std_c_score_loo,
+            baseline_stats.n,
+        ),
+    )?;
+    write(
+        out_dir.join("paper_e2_kbins_sweep_summary.csv"),
+        e2_kbins_sweep_csv(space, anchor_hz, phase_mode),
+    )?;
 
     let sweep_mean_path = out_dir.join("paper_e2_mean_c_state_over_time_seeds.png");
     render_series_plot_with_band(
@@ -654,6 +865,16 @@ fn plot_e2_emergent_harmony(
         "mean score",
         &baseline_stats.mean_score,
         &baseline_stats.std_score,
+        &marker_steps,
+    )?;
+
+    let sweep_c_score_loo_path = out_dir.join("paper_e2_mean_c_score_loo_over_time_seeds.png");
+    render_series_plot_with_band(
+        &sweep_c_score_loo_path,
+        "E2 Mean C Score (LOO current, seed sweep)",
+        "mean C score (LOO current)",
+        &baseline_stats.mean_c_score_loo,
+        &baseline_stats.std_c_score_loo,
         &marker_steps,
     )?;
 
@@ -688,6 +909,36 @@ fn plot_e2_emergent_harmony(
         ],
         &marker_steps,
     )?;
+
+    let mut diversity_rows_vec = Vec::new();
+    diversity_rows_vec.extend(diversity_rows("baseline", &baseline_runs));
+    diversity_rows_vec.extend(diversity_rows("nohill", &nohill_runs));
+    diversity_rows_vec.extend(diversity_rows("norep", &norep_runs));
+    write(
+        out_dir.join("paper_e2_diversity_by_seed.csv"),
+        diversity_by_seed_csv(&diversity_rows_vec),
+    )?;
+    write(
+        out_dir.join("paper_e2_diversity_summary.csv"),
+        diversity_summary_csv(&diversity_rows_vec),
+    )?;
+    let diversity_plot_path = out_dir.join("paper_e2_diversity_summary.png");
+    render_diversity_summary_plot(&diversity_plot_path, &diversity_rows_vec)?;
+
+    let mut hist_rows = Vec::new();
+    hist_rows.extend(hist_structure_rows("baseline", &baseline_runs));
+    hist_rows.extend(hist_structure_rows("nohill", &nohill_runs));
+    hist_rows.extend(hist_structure_rows("norep", &norep_runs));
+    write(
+        out_dir.join("paper_e2_hist_structure_by_seed.csv"),
+        hist_structure_by_seed_csv(&hist_rows),
+    )?;
+    write(
+        out_dir.join("paper_e2_hist_structure_summary.csv"),
+        hist_structure_summary_csv(&hist_rows),
+    )?;
+    let hist_plot_path = out_dir.join("paper_e2_hist_structure_summary.png");
+    render_hist_structure_summary_plot(&hist_plot_path, &hist_rows)?;
 
     let nohill_rep = &nohill_runs[pick_representative_run_index(&nohill_runs)];
     let norep_rep = &norep_runs[pick_representative_run_index(&norep_runs)];
@@ -849,11 +1100,16 @@ fn e2_post_step_for(steps: usize) -> usize {
     steps.saturating_sub(1)
 }
 
-fn e2_caption_suffix() -> String {
-    if e2_anchor_shift_enabled() {
+fn e2_caption_suffix(phase_mode: E2PhaseMode) -> String {
+    let base = if e2_anchor_shift_enabled() {
         format!("burn-in={E2_BURN_IN}, shift@{E2_ANCHOR_SHIFT_STEP}")
     } else {
         format!("burn-in={E2_BURN_IN}, shift=off")
+    };
+    if let Some(step) = phase_mode.switch_step() {
+        format!("{base}, phase_switch@{step}")
+    } else {
+        base
     }
 }
 
@@ -879,6 +1135,16 @@ fn e2_post_label_title() -> &'static str {
     } else {
         "Final"
     }
+}
+
+fn e2_accept_temperature(step: usize) -> f32 {
+    if !E2_ACCEPT_ENABLED {
+        return 0.0;
+    }
+    if E2_ACCEPT_TAU_STEPS <= 0.0 {
+        return E2_ACCEPT_T0.max(0.0);
+    }
+    E2_ACCEPT_T0.max(0.0) * (-(step as f32) / E2_ACCEPT_TAU_STEPS).exp()
 }
 
 fn is_consonant_near(semitone_abs: f32) -> bool {
@@ -924,7 +1190,14 @@ fn init_e2_agent_indices_reject_consonant<R: Rng + ?Sized>(
     indices
 }
 
-fn run_e2_once(space: &Log2Space, anchor_hz: f32, seed: u64, condition: E2Condition) -> E2Run {
+fn run_e2_once(
+    space: &Log2Space,
+    anchor_hz: f32,
+    seed: u64,
+    condition: E2Condition,
+    step_semitones: f32,
+    phase_mode: E2PhaseMode,
+) -> E2Run {
     let mut rng = seeded_rng(seed);
     let mut anchor_hz_current = anchor_hz;
     let mut log2_ratio_scan = build_log2_ratio_scan(space, anchor_hz_current);
@@ -939,19 +1212,25 @@ fn run_e2_once(space: &Log2Space, anchor_hz: f32, seed: u64, condition: E2Condit
 
     let (_erb_scan, du_scan) = erb_grid_for_space(space);
     let workspace = build_consonance_workspace(space);
-    let k_bins = k_from_semitones(E2_STEP_SEMITONES);
+    let k_bins = k_from_semitones(step_semitones);
 
     let mut mean_c_series = Vec::with_capacity(E2_STEPS);
     let mut mean_c_state_series = Vec::with_capacity(E2_STEPS);
+    let mut mean_c_score_loo_series = Vec::with_capacity(E2_STEPS);
     let mut mean_score_series = Vec::with_capacity(E2_STEPS);
     let mut mean_repulsion_series = Vec::with_capacity(E2_STEPS);
     let mut moved_frac_series = Vec::with_capacity(E2_STEPS);
+    let mut accepted_worse_frac_series = Vec::with_capacity(E2_STEPS);
     let mut semitone_samples_pre = Vec::new();
     let mut semitone_samples_post = Vec::new();
     let mut density_mass_sum = 0.0f32;
     let mut density_mass_min = f32::INFINITY;
     let mut density_mass_max = 0.0f32;
     let mut density_mass_count = 0u32;
+    let mut r_state01_min = f32::INFINITY;
+    let mut r_state01_max = f32::NEG_INFINITY;
+    let mut r_state01_mean_sum = 0.0f32;
+    let mut r_state01_mean_count = 0u32;
 
     let mut trajectory_semitones = (0..E2_N_AGENTS)
         .map(|_| Vec::with_capacity(E2_STEPS))
@@ -998,7 +1277,7 @@ fn run_e2_once(space: &Log2Space, anchor_hz: f32, seed: u64, condition: E2Condit
 
         let anchor_idx = nearest_bin(space, anchor_hz_current);
         let (env_scan, density_scan) = build_env_scans(space, anchor_idx, &agent_indices, &du_scan);
-        let (c_score_scan, c_state_scan, density_mass) =
+        let (c_score_scan, c_state_scan, density_mass, r_state_stats) =
             compute_c_score_state_scans(space, &workspace, &env_scan, &density_scan, &du_scan);
         if density_mass.is_finite() {
             density_mass_sum += density_mass;
@@ -1006,9 +1285,28 @@ fn run_e2_once(space: &Log2Space, anchor_hz: f32, seed: u64, condition: E2Condit
             density_mass_max = density_mass_max.max(density_mass);
             density_mass_count += 1;
         }
+        if r_state_stats.mean.is_finite() {
+            r_state01_min = r_state01_min.min(r_state_stats.min);
+            r_state01_max = r_state01_max.max(r_state_stats.max);
+            r_state01_mean_sum += r_state_stats.mean;
+            r_state01_mean_count += 1;
+        }
 
         let mean_c = mean_at_indices(&c_score_scan, &agent_indices);
         let mean_c_state = mean_at_indices(&c_state_scan, &agent_indices);
+        let mean_c_score_loo_current = if matches!(condition, E2Condition::NoHillClimb) {
+            mean_c_score_loo_at_indices(
+                space,
+                &workspace,
+                &env_scan,
+                &density_scan,
+                &du_scan,
+                &agent_indices,
+                &log2_ratio_scan,
+            )
+        } else {
+            f32::NAN
+        };
         mean_c_series.push(mean_c);
         mean_c_state_series.push(mean_c_state);
 
@@ -1027,26 +1325,42 @@ fn run_e2_once(space: &Log2Space, anchor_hz: f32, seed: u64, condition: E2Condit
             target.extend(agent_indices.iter().map(|&idx| 12.0 * log2_ratio_scan[idx]));
         }
 
-        let stats = match condition {
-            E2Condition::Baseline => update_agent_indices_scored_stats(
+        let temperature = e2_accept_temperature(step);
+        let score_sign = phase_mode.score_sign(step);
+        let mut stats = match condition {
+            E2Condition::Baseline => update_agent_indices_scored_stats_loo(
                 &mut agent_indices,
-                &c_score_scan,
+                space,
+                &workspace,
+                &env_scan,
+                &density_scan,
+                &du_scan,
                 &log2_ratio_scan,
                 min_idx,
                 max_idx,
                 k_bins,
+                score_sign,
                 E2_LAMBDA,
                 E2_SIGMA,
+                temperature,
+                &mut rng,
             ),
-            E2Condition::NoRepulsion => update_agent_indices_scored_stats(
+            E2Condition::NoRepulsion => update_agent_indices_scored_stats_loo(
                 &mut agent_indices,
-                &c_score_scan,
+                space,
+                &workspace,
+                &env_scan,
+                &density_scan,
+                &du_scan,
                 &log2_ratio_scan,
                 min_idx,
                 max_idx,
                 k_bins,
+                score_sign,
                 0.0,
                 E2_SIGMA,
+                temperature,
+                &mut rng,
             ),
             E2Condition::NoHillClimb => {
                 let mut moved = 0usize;
@@ -1062,6 +1376,7 @@ fn run_e2_once(space: &Log2Space, anchor_hz: f32, seed: u64, condition: E2Condit
                     &agent_indices,
                     &c_score_scan,
                     &log2_ratio_scan,
+                    score_sign,
                     E2_LAMBDA,
                     E2_SIGMA,
                 );
@@ -1072,9 +1387,14 @@ fn run_e2_once(space: &Log2Space, anchor_hz: f32, seed: u64, condition: E2Condit
             }
         };
 
+        if matches!(condition, E2Condition::NoHillClimb) {
+            stats.mean_c_score_current_loo = mean_c_score_loo_current;
+        }
+        mean_c_score_loo_series.push(stats.mean_c_score_current_loo);
         mean_score_series.push(stats.mean_score);
         mean_repulsion_series.push(stats.mean_repulsion);
         moved_frac_series.push(stats.moved_frac);
+        accepted_worse_frac_series.push(stats.accepted_worse_frac);
     }
 
     let mut final_semitones = Vec::with_capacity(E2_N_AGENTS);
@@ -1101,14 +1421,31 @@ fn run_e2_once(space: &Log2Space, anchor_hz: f32, seed: u64, condition: E2Condit
     } else {
         0.0
     };
+    let r_state01_mean = if r_state01_mean_count > 0 {
+        r_state01_mean_sum / r_state01_mean_count as f32
+    } else {
+        0.0
+    };
+    let r_state01_min = if r_state01_min.is_finite() {
+        r_state01_min
+    } else {
+        0.0
+    };
+    let r_state01_max = if r_state01_max.is_finite() {
+        r_state01_max
+    } else {
+        0.0
+    };
 
     E2Run {
         seed,
         mean_c_series,
         mean_c_state_series,
+        mean_c_score_loo_series,
         mean_score_series,
         mean_repulsion_series,
         moved_frac_series,
+        accepted_worse_frac_series,
         semitone_samples_pre,
         semitone_samples_post,
         final_semitones,
@@ -1120,6 +1457,12 @@ fn run_e2_once(space: &Log2Space, anchor_hz: f32, seed: u64, condition: E2Condit
         density_mass_mean,
         density_mass_min,
         density_mass_max,
+        r_state01_min,
+        r_state01_mean,
+        r_state01_max,
+        r_ref_peak: workspace.r_ref_peak,
+        roughness_k: workspace.params.roughness_k,
+        roughness_ref_eps: workspace.params.roughness_ref_eps,
         n_agents: E2_N_AGENTS,
         k_bins,
     }
@@ -1129,10 +1472,19 @@ fn e2_seed_sweep(
     space: &Log2Space,
     anchor_hz: f32,
     condition: E2Condition,
+    step_semitones: f32,
+    phase_mode: E2PhaseMode,
 ) -> (Vec<E2Run>, E2SweepStats) {
     let mut runs: Vec<E2Run> = Vec::new();
     for &seed in &E2_SEEDS {
-        runs.push(run_e2_once(space, anchor_hz, seed, condition));
+        runs.push(run_e2_once(
+            space,
+            anchor_hz,
+            seed,
+            condition,
+            step_semitones,
+            phase_mode,
+        ));
     }
 
     let n = runs.len();
@@ -1140,6 +1492,11 @@ fn e2_seed_sweep(
     let mean_c_state = mean_std_series(
         runs.iter()
             .map(|r| &r.mean_c_state_series)
+            .collect::<Vec<_>>(),
+    );
+    let mean_c_score_loo = mean_std_series(
+        runs.iter()
+            .map(|r| &r.mean_c_score_loo_series)
             .collect::<Vec<_>>(),
     );
     let mean_score = mean_std_series(
@@ -1160,6 +1517,8 @@ fn e2_seed_sweep(
             std_c: mean_c.1,
             mean_c_state: mean_c_state.0,
             std_c_state: mean_c_state.1,
+            mean_c_score_loo: mean_c_score_loo.0,
+            std_c_score_loo: mean_c_score_loo.1,
             mean_score: mean_score.0,
             std_score: mean_score.1,
             mean_repulsion: mean_repulsion.0,
@@ -1167,6 +1526,55 @@ fn e2_seed_sweep(
             n,
         },
     )
+}
+
+fn e2_kbins_sweep_csv(space: &Log2Space, anchor_hz: f32, phase_mode: E2PhaseMode) -> String {
+    let mut out = String::from(
+        "step_semitones,k_bins,mean_delta_c,mean_delta_c_state,mean_delta_c_score_loo\n",
+    );
+    for &step_semitones in &E2_STEP_SEMITONES_SWEEP {
+        let (runs, _) = e2_seed_sweep(
+            space,
+            anchor_hz,
+            E2Condition::Baseline,
+            step_semitones,
+            phase_mode,
+        );
+        let mut delta_c = Vec::with_capacity(runs.len());
+        let mut delta_c_state = Vec::with_capacity(runs.len());
+        let mut delta_c_score_loo = Vec::with_capacity(runs.len());
+        for run in &runs {
+            let start = run.mean_c_series.first().copied().unwrap_or(0.0);
+            let end = run.mean_c_series.last().copied().unwrap_or(start);
+            delta_c.push(end - start);
+            let start_state = run.mean_c_state_series.first().copied().unwrap_or(0.0);
+            let end_state = run
+                .mean_c_state_series
+                .last()
+                .copied()
+                .unwrap_or(start_state);
+            delta_c_state.push(end_state - start_state);
+            let start_loo = run.mean_c_score_loo_series.first().copied().unwrap_or(0.0);
+            let end_loo = run
+                .mean_c_score_loo_series
+                .last()
+                .copied()
+                .unwrap_or(start_loo);
+            delta_c_score_loo.push(end_loo - start_loo);
+        }
+        let (mean_delta_c, _) = mean_std_scalar(&delta_c);
+        let (mean_delta_c_state, _) = mean_std_scalar(&delta_c_state);
+        let (mean_delta_c_score_loo, _) = mean_std_scalar(&delta_c_score_loo);
+        out.push_str(&format!(
+            "{:.3},{},{:.6},{:.6},{:.6}\n",
+            step_semitones,
+            k_from_semitones(step_semitones),
+            mean_delta_c,
+            mean_delta_c_state,
+            mean_delta_c_score_loo
+        ));
+    }
+    out
 }
 
 fn plot_e3_metabolic_selection(
@@ -1833,11 +2241,21 @@ fn render_e1_plot(
     Ok(())
 }
 
-fn plot_e4_mirror_sweep(out_dir: &Path, anchor_hz: f32) -> Result<(), Box<dyn Error>> {
+fn plot_e4_mirror_sweep(
+    out_dir: &Path,
+    anchor_hz: f32,
+    emit_hist_files: bool,
+) -> Result<(), Box<dyn Error>> {
     let coarse_weights = build_weight_grid(E4_WEIGHT_COARSE_STEP);
     let primary_bin = E4_BIN_WIDTHS[0];
-    let (mut run_records, mut hist_records) =
-        run_e4_sweep_for_weights(out_dir, anchor_hz, &coarse_weights, &E4_SEEDS, primary_bin)?;
+    let (mut run_records, mut hist_records) = run_e4_sweep_for_weights(
+        out_dir,
+        anchor_hz,
+        &coarse_weights,
+        &E4_SEEDS,
+        primary_bin,
+        emit_hist_files,
+    )?;
 
     let mut weights = coarse_weights.clone();
     let fine_weights = refine_weights_from_sign_change(&run_records, primary_bin);
@@ -1855,15 +2273,27 @@ fn plot_e4_mirror_sweep(out_dir: &Path, anchor_hz: f32) -> Result<(), Box<dyn Er
         .collect();
 
     if !fine_only.is_empty() {
-        let (more_runs, more_hists) =
-            run_e4_sweep_for_weights(out_dir, anchor_hz, &fine_only, &E4_SEEDS, primary_bin)?;
+        let (more_runs, more_hists) = run_e4_sweep_for_weights(
+            out_dir,
+            anchor_hz,
+            &fine_only,
+            &E4_SEEDS,
+            primary_bin,
+            emit_hist_files,
+        )?;
         run_records.extend(more_runs);
         hist_records.extend(more_hists);
     }
 
     for &bin_width in E4_BIN_WIDTHS.iter().skip(1) {
-        let (more_runs, more_hists) =
-            run_e4_sweep_for_weights(out_dir, anchor_hz, &weights, &E4_SEEDS, bin_width)?;
+        let (more_runs, more_hists) = run_e4_sweep_for_weights(
+            out_dir,
+            anchor_hz,
+            &weights,
+            &E4_SEEDS,
+            bin_width,
+            emit_hist_files,
+        )?;
         run_records.extend(more_runs);
         hist_records.extend(more_hists);
     }
@@ -1926,9 +2356,11 @@ struct E2Run {
     seed: u64,
     mean_c_series: Vec<f32>,
     mean_c_state_series: Vec<f32>,
+    mean_c_score_loo_series: Vec<f32>,
     mean_score_series: Vec<f32>,
     mean_repulsion_series: Vec<f32>,
     moved_frac_series: Vec<f32>,
+    accepted_worse_frac_series: Vec<f32>,
     semitone_samples_pre: Vec<f32>,
     semitone_samples_post: Vec<f32>,
     final_semitones: Vec<f32>,
@@ -1940,6 +2372,12 @@ struct E2Run {
     density_mass_mean: f32,
     density_mass_min: f32,
     density_mass_max: f32,
+    r_state01_min: f32,
+    r_state01_mean: f32,
+    r_state01_max: f32,
+    r_ref_peak: f32,
+    roughness_k: f32,
+    roughness_ref_eps: f32,
     n_agents: usize,
     k_bins: i32,
 }
@@ -1949,6 +2387,8 @@ struct E2SweepStats {
     std_c: Vec<f32>,
     mean_c_state: Vec<f32>,
     std_c_state: Vec<f32>,
+    mean_c_score_loo: Vec<f32>,
+    std_c_score_loo: Vec<f32>,
     mean_score: Vec<f32>,
     std_score: Vec<f32>,
     mean_repulsion: Vec<f32>,
@@ -1978,6 +2418,35 @@ struct HistSweepStats {
     mean_frac: Vec<f32>,
     std_frac: Vec<f32>,
     n: usize,
+}
+
+#[derive(Clone, Copy)]
+struct HistStructureMetrics {
+    entropy: f32,
+    gini: f32,
+    peakiness: f32,
+    kl_uniform: f32,
+}
+
+struct HistStructureRow {
+    condition: &'static str,
+    seed: u64,
+    metrics: HistStructureMetrics,
+}
+
+#[derive(Clone, Copy)]
+struct DiversityMetrics {
+    unique_bins: usize,
+    nn_mean: f32,
+    nn_std: f32,
+    semitone_var: f32,
+    semitone_mad: f32,
+}
+
+struct DiversityRow {
+    condition: &'static str,
+    seed: u64,
+    metrics: DiversityMetrics,
 }
 
 struct E4RunRecord {
@@ -2178,6 +2647,7 @@ fn run_e4_sweep_for_weights(
     weights: &[f32],
     seeds: &[u64],
     bin_width: f32,
+    emit_hist_files: bool,
 ) -> Result<(Vec<E4RunRecord>, Vec<E4HistRecord>), Box<dyn Error>> {
     let mut runs = Vec::new();
     let mut hists = Vec::new();
@@ -2215,36 +2685,39 @@ fn run_e4_sweep_for_weights(
                 histogram,
             });
 
-            let w_token = format_float_token(weight);
-            let bw_token = format_float_token(bin_width);
-            let hist_csv_path =
-                out_dir.join(format!("e4_hist_w{w_token}_seed{seed}_bw{bw_token}.csv"));
-            write(
-                &hist_csv_path,
-                e4_hist_csv(
-                    weight,
-                    seed,
-                    bin_width,
-                    samples.steps_total,
-                    burn_in,
-                    samples.tail_window,
-                    "tail_mean",
-                    &hists.last().unwrap().histogram,
-                ),
-            )?;
+            if emit_hist_files {
+                let w_token = format_float_token(weight);
+                let bw_token = format_float_token(bin_width);
+                let hist_csv_path =
+                    out_dir.join(format!("e4_hist_w{w_token}_seed{seed}_bw{bw_token}.csv"));
+                write(
+                    &hist_csv_path,
+                    e4_hist_csv(
+                        weight,
+                        seed,
+                        bin_width,
+                        samples.steps_total,
+                        burn_in,
+                        samples.tail_window,
+                        "tail_mean",
+                        &hists.last().unwrap().histogram,
+                    ),
+                )?;
 
-            let hist_png_path =
-                out_dir.join(format!("e4_hist_w{w_token}_seed{seed}_bw{bw_token}.png"));
-            let caption =
-                format!("E4 Interval Histogram (w={weight:.2}, seed={seed}, bw={bin_width:.2})");
-            render_interval_histogram(
-                &hist_png_path,
-                &caption,
-                &semitone_samples,
-                0.0,
-                12.0,
-                bin_width,
-            )?;
+                let hist_png_path =
+                    out_dir.join(format!("e4_hist_w{w_token}_seed{seed}_bw{bw_token}.png"));
+                let caption = format!(
+                    "E4 Interval Histogram (w={weight:.2}, seed={seed}, bw={bin_width:.2})"
+                );
+                render_interval_histogram(
+                    &hist_png_path,
+                    &caption,
+                    &semitone_samples,
+                    0.0,
+                    12.0,
+                    bin_width,
+                )?;
+            }
         }
     }
     Ok((runs, hists))
@@ -2728,16 +3201,51 @@ fn build_consonance_workspace(space: &Log2Space) -> ConsonanceWorkspace {
     }
 }
 
+fn r_state01_stats(scan: &[f32]) -> RState01Stats {
+    if scan.is_empty() {
+        return RState01Stats {
+            min: 0.0,
+            mean: 0.0,
+            max: 0.0,
+        };
+    }
+    let mut min = f32::INFINITY;
+    let mut max = f32::NEG_INFINITY;
+    let mut sum = 0.0f32;
+    let mut count = 0u32;
+    for &value in scan {
+        if !value.is_finite() {
+            continue;
+        }
+        min = min.min(value);
+        max = max.max(value);
+        sum += value;
+        count += 1;
+    }
+    if count == 0 {
+        return RState01Stats {
+            min: 0.0,
+            mean: 0.0,
+            max: 0.0,
+        };
+    }
+    RState01Stats {
+        min: min.max(0.0),
+        mean: sum / count as f32,
+        max: max.max(0.0),
+    }
+}
+
 fn compute_c_score_state_scans(
     space: &Log2Space,
     workspace: &ConsonanceWorkspace,
     env_scan: &[f32],
     density_scan: &[f32],
     du_scan: &[f32],
-) -> (Vec<f32>, Vec<f32>, f32) {
+) -> (Vec<f32>, Vec<f32>, f32, RState01Stats) {
     space.assert_scan_len_named(du_scan, "du_scan");
     let (density_norm, density_mass) =
-        psycho_state::normalize_density(density_scan, du_scan, E2_DENSITY_NORM_EPS);
+        psycho_state::normalize_density(density_scan, du_scan, workspace.params.roughness_ref_eps);
     let (perc_h_pot_scan, _) = workspace
         .params
         .harmonicity_kernel
@@ -2754,6 +3262,7 @@ fn compute_c_score_state_scans(
         workspace.params.roughness_k,
         &mut perc_r_state01_scan,
     );
+    let r_state_stats = r_state01_stats(&perc_r_state01_scan);
 
     let h_ref_max = perc_h_pot_scan
         .iter()
@@ -2788,7 +3297,7 @@ fn compute_c_score_state_scans(
         c_score_scan[i] = c_score;
         c_state_scan[i] = c_state.clamp(0.0, 1.0);
     }
-    (c_score_scan, c_state_scan, density_mass)
+    (c_score_scan, c_state_scan, density_mass, r_state_stats)
 }
 
 #[cfg(test)]
@@ -2816,9 +3325,18 @@ fn update_agent_indices(
 }
 
 struct UpdateStats {
+    mean_c_score_current_loo: f32,
     mean_score: f32,
     mean_repulsion: f32,
     moved_frac: f32,
+    accepted_worse_frac: f32,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct RState01Stats {
+    min: f32,
+    mean: f32,
+    max: f32,
 }
 
 fn k_from_semitones(step_semitones: f32) -> i32 {
@@ -2921,12 +3439,15 @@ fn update_agent_indices_scored_stats_with_order(
 ) -> UpdateStats {
     if indices.is_empty() {
         return UpdateStats {
+            mean_c_score_current_loo: 0.0,
             mean_score: 0.0,
             mean_repulsion: 0.0,
             moved_frac: 0.0,
+            accepted_worse_frac: 0.0,
         };
     }
     let sigma = sigma.max(1e-6);
+    let skip_repulsion = lambda <= 0.0;
     let prev_indices = indices.to_vec();
     let prev_log2: Vec<f32> = prev_indices
         .iter()
@@ -2951,12 +3472,14 @@ fn update_agent_indices_scored_stats_with_order(
         for cand in start..=end {
             let cand_log2 = log2_ratio_scan[cand];
             let mut repulsion = 0.0f32;
-            for (j, &other_log2) in prev_log2.iter().enumerate() {
-                if j == agent_i {
-                    continue;
+            if !skip_repulsion {
+                for (j, &other_log2) in prev_log2.iter().enumerate() {
+                    if j == agent_i {
+                        continue;
+                    }
+                    let dist = (cand_log2 - other_log2).abs();
+                    repulsion += (-dist / sigma).exp();
                 }
-                let dist = (cand_log2 - other_log2).abs();
-                repulsion += (-dist / sigma).exp();
             }
             let c_score = c_score_scan[cand];
             let score = c_score - lambda * repulsion;
@@ -2982,16 +3505,237 @@ fn update_agent_indices_scored_stats_with_order(
     indices.copy_from_slice(&next_indices);
     if count == 0 {
         return UpdateStats {
+            mean_c_score_current_loo: 0.0,
             mean_score: 0.0,
             mean_repulsion: 0.0,
             moved_frac: 0.0,
+            accepted_worse_frac: 0.0,
         };
     }
     let inv = 1.0 / count as f32;
     UpdateStats {
+        mean_c_score_current_loo: mean_at_indices(c_score_scan, &next_indices),
         mean_score: score_sum * inv,
         mean_repulsion: repulsion_sum * inv,
         moved_frac: moved_count as f32 * inv,
+        accepted_worse_frac: 0.0,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn update_agent_indices_scored_stats_loo(
+    indices: &mut [usize],
+    space: &Log2Space,
+    workspace: &ConsonanceWorkspace,
+    env_total: &[f32],
+    density_total: &[f32],
+    du_scan: &[f32],
+    log2_ratio_scan: &[f32],
+    min_idx: usize,
+    max_idx: usize,
+    k: i32,
+    score_sign: f32,
+    lambda: f32,
+    sigma: f32,
+    temperature: f32,
+    rng: &mut StdRng,
+) -> UpdateStats {
+    let order: Vec<usize> = (0..indices.len()).collect();
+    update_agent_indices_scored_stats_with_order_loo(
+        indices,
+        space,
+        workspace,
+        env_total,
+        density_total,
+        du_scan,
+        log2_ratio_scan,
+        min_idx,
+        max_idx,
+        k,
+        score_sign,
+        lambda,
+        sigma,
+        temperature,
+        rng,
+        &order,
+    )
+}
+
+fn metropolis_accept(delta: f32, temperature: f32, u01: f32) -> (bool, bool) {
+    if !delta.is_finite() {
+        return (false, false);
+    }
+    if delta >= 0.0 {
+        return (true, false);
+    }
+    if temperature <= 0.0 {
+        return (false, false);
+    }
+    let prob = (delta / temperature).exp();
+    if u01 < prob {
+        (true, true)
+    } else {
+        (false, false)
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn update_agent_indices_scored_stats_with_order_loo(
+    indices: &mut [usize],
+    space: &Log2Space,
+    workspace: &ConsonanceWorkspace,
+    env_total: &[f32],
+    density_total: &[f32],
+    du_scan: &[f32],
+    log2_ratio_scan: &[f32],
+    min_idx: usize,
+    max_idx: usize,
+    k: i32,
+    score_sign: f32,
+    lambda: f32,
+    sigma: f32,
+    temperature: f32,
+    rng: &mut StdRng,
+    order: &[usize],
+) -> UpdateStats {
+    if indices.is_empty() {
+        return UpdateStats {
+            mean_c_score_current_loo: 0.0,
+            mean_score: 0.0,
+            mean_repulsion: 0.0,
+            moved_frac: 0.0,
+            accepted_worse_frac: 0.0,
+        };
+    }
+    space.assert_scan_len_named(env_total, "env_total");
+    space.assert_scan_len_named(density_total, "density_total");
+    space.assert_scan_len_named(du_scan, "du_scan");
+    let sigma = sigma.max(1e-6);
+    let skip_repulsion = lambda <= 0.0;
+    let prev_indices = indices.to_vec();
+    let prev_log2: Vec<f32> = prev_indices
+        .iter()
+        .map(|&idx| log2_ratio_scan[idx])
+        .collect();
+    let u01_by_agent: Vec<f32> = (0..prev_indices.len())
+        .map(|_| rng.random::<f32>())
+        .collect();
+    let mut env_loo = vec![0.0f32; env_total.len()];
+    let mut density_loo = vec![0.0f32; density_total.len()];
+    let mut next_indices = prev_indices.clone();
+    let mut c_score_current_sum = 0.0f32;
+    let mut score_sum = 0.0f32;
+    let mut repulsion_sum = 0.0f32;
+    let mut moved_count = 0usize;
+    let mut accepted_worse_count = 0usize;
+    let mut count = 0usize;
+
+    for &agent_i in order {
+        if agent_i >= prev_indices.len() {
+            continue;
+        }
+        let agent_idx = prev_indices[agent_i];
+        env_loo.copy_from_slice(env_total);
+        density_loo.copy_from_slice(density_total);
+        env_loo[agent_idx] = (env_loo[agent_idx] - 1.0).max(0.0);
+        let denom = du_scan[agent_idx].max(1e-12);
+        density_loo[agent_idx] = (density_loo[agent_idx] - 1.0 / denom).max(0.0);
+        let (c_score_scan, _, _, _) =
+            compute_c_score_state_scans(space, workspace, &env_loo, &density_loo, du_scan);
+
+        let current_idx = prev_indices[agent_i];
+        let current_log2 = log2_ratio_scan[current_idx];
+        let mut current_repulsion = 0.0f32;
+        if !skip_repulsion {
+            for (j, &other_log2) in prev_log2.iter().enumerate() {
+                if j == agent_i {
+                    continue;
+                }
+                let dist = (current_log2 - other_log2).abs();
+                current_repulsion += (-dist / sigma).exp();
+            }
+        }
+        let c_score_current = c_score_scan[current_idx];
+        if c_score_current.is_finite() {
+            c_score_current_sum += c_score_current;
+        }
+        let start = (current_idx as isize - k as isize).max(min_idx as isize) as usize;
+        let end = (current_idx as isize + k as isize).min(max_idx as isize) as usize;
+        let mut best_idx = current_idx;
+        let mut best_score = f32::NEG_INFINITY;
+        let mut best_repulsion = 0.0f32;
+        let mut found_candidate = false;
+        for cand in start..=end {
+            if cand == current_idx {
+                continue;
+            }
+            let cand_log2 = log2_ratio_scan[cand];
+            let mut repulsion = 0.0f32;
+            if !skip_repulsion {
+                for (j, &other_log2) in prev_log2.iter().enumerate() {
+                    if j == agent_i {
+                        continue;
+                    }
+                    let dist = (cand_log2 - other_log2).abs();
+                    repulsion += (-dist / sigma).exp();
+                }
+            }
+            let c_score = c_score_scan[cand];
+            let score = score_sign * c_score - lambda * repulsion;
+            if score > best_score {
+                best_score = score;
+                best_idx = cand;
+                best_repulsion = repulsion;
+                found_candidate = true;
+            }
+        }
+        let current_score = score_sign * c_score_current - lambda * current_repulsion;
+        let (chosen_idx, chosen_score, chosen_repulsion, accepted_worse) = if found_candidate {
+            let delta = best_score - current_score;
+            let u01 = u01_by_agent[agent_i];
+            let (accept, accepted_worse) = metropolis_accept(delta, temperature, u01);
+            if accept {
+                (best_idx, best_score, best_repulsion, accepted_worse)
+            } else {
+                (current_idx, current_score, current_repulsion, false)
+            }
+        } else {
+            (current_idx, current_score, current_repulsion, false)
+        };
+
+        next_indices[agent_i] = chosen_idx;
+        if chosen_idx != current_idx {
+            moved_count += 1;
+        }
+        if chosen_score.is_finite() {
+            score_sum += chosen_score;
+        }
+        if chosen_repulsion.is_finite() {
+            repulsion_sum += chosen_repulsion;
+        }
+        if accepted_worse {
+            accepted_worse_count += 1;
+        }
+        count += 1;
+    }
+
+    indices.copy_from_slice(&next_indices);
+    if count == 0 {
+        return UpdateStats {
+            mean_c_score_current_loo: 0.0,
+            mean_score: 0.0,
+            mean_repulsion: 0.0,
+            moved_frac: 0.0,
+            accepted_worse_frac: 0.0,
+        };
+    }
+    let inv = 1.0 / count as f32;
+    UpdateStats {
+        mean_c_score_current_loo: c_score_current_sum * inv,
+        mean_score: score_sum * inv,
+        mean_repulsion: repulsion_sum * inv,
+        moved_frac: moved_count as f32 * inv,
+        accepted_worse_frac: accepted_worse_count as f32 * inv,
     }
 }
 
@@ -2999,14 +3743,17 @@ fn score_stats_at_indices(
     indices: &[usize],
     c_score_scan: &[f32],
     log2_ratio_scan: &[f32],
+    score_sign: f32,
     lambda: f32,
     sigma: f32,
 ) -> UpdateStats {
     if indices.is_empty() {
         return UpdateStats {
+            mean_c_score_current_loo: 0.0,
             mean_score: 0.0,
             mean_repulsion: 0.0,
             moved_frac: 0.0,
+            accepted_worse_frac: 0.0,
         };
     }
     let sigma = sigma.max(1e-6);
@@ -3023,7 +3770,7 @@ fn score_stats_at_indices(
             let dist = (cand_log2 - other_log2).abs();
             repulsion += (-dist / sigma).exp();
         }
-        let score = c_score_scan[idx] - lambda * repulsion;
+        let score = score_sign * c_score_scan[idx] - lambda * repulsion;
         if score.is_finite() {
             score_sum += score;
         }
@@ -3033,9 +3780,11 @@ fn score_stats_at_indices(
     }
     let inv = 1.0 / indices.len() as f32;
     UpdateStats {
+        mean_c_score_current_loo: mean_at_indices(c_score_scan, indices),
         mean_score: score_sum * inv,
         mean_repulsion: repulsion_sum * inv,
         moved_frac: 0.0,
+        accepted_worse_frac: 0.0,
     }
 }
 
@@ -3045,6 +3794,43 @@ fn mean_at_indices(values: &[f32], indices: &[usize]) -> f32 {
     }
     let sum: f32 = indices.iter().map(|&idx| values[idx]).sum();
     sum / indices.len() as f32
+}
+
+fn mean_c_score_loo_at_indices(
+    space: &Log2Space,
+    workspace: &ConsonanceWorkspace,
+    env_total: &[f32],
+    density_total: &[f32],
+    du_scan: &[f32],
+    indices: &[usize],
+    _log2_ratio_scan: &[f32],
+) -> f32 {
+    if indices.is_empty() {
+        return 0.0;
+    }
+    space.assert_scan_len_named(env_total, "env_total");
+    space.assert_scan_len_named(density_total, "density_total");
+    space.assert_scan_len_named(du_scan, "du_scan");
+
+    let mut env_loo = vec![0.0f32; env_total.len()];
+    let mut density_loo = vec![0.0f32; density_total.len()];
+    let mut sum = 0.0f32;
+    let mut count = 0u32;
+    for &idx in indices {
+        env_loo.copy_from_slice(env_total);
+        density_loo.copy_from_slice(density_total);
+        env_loo[idx] = (env_loo[idx] - 1.0).max(0.0);
+        let denom = du_scan[idx].max(1e-12);
+        density_loo[idx] = (density_loo[idx] - 1.0 / denom).max(0.0);
+        let (c_score_scan, _, _, _) =
+            compute_c_score_state_scans(space, workspace, &env_loo, &density_loo, du_scan);
+        let value = c_score_scan[idx];
+        if value.is_finite() {
+            sum += value;
+            count += 1;
+        }
+    }
+    if count == 0 { 0.0 } else { sum / count as f32 }
 }
 
 fn mean_std_series(series_list: Vec<&Vec<f32>>) -> (Vec<f32>, Vec<f32>) {
@@ -3181,7 +3967,7 @@ fn anchor_shift_csv(run: &E2Run) -> String {
 
 fn e2_summary_csv(runs: &[E2Run]) -> String {
     let mut out = String::from(
-        "seed,init_mode,steps,burn_in,mean_c_step0,mean_c_step_end,delta_c,mean_c_state_step0,mean_c_state_step_end,delta_c_state\n",
+        "seed,init_mode,steps,burn_in,mean_c_step0,mean_c_step_end,delta_c,mean_c_state_step0,mean_c_state_step_end,delta_c_state,mean_c_score_loo_step0,mean_c_score_loo_step_end,delta_c_score_loo\n",
     );
     for run in runs {
         let start = run.mean_c_series.first().copied().unwrap_or(0.0);
@@ -3194,8 +3980,15 @@ fn e2_summary_csv(runs: &[E2Run]) -> String {
             .copied()
             .unwrap_or(start_state);
         let delta_state = end_state - start_state;
+        let start_loo = run.mean_c_score_loo_series.first().copied().unwrap_or(0.0);
+        let end_loo = run
+            .mean_c_score_loo_series
+            .last()
+            .copied()
+            .unwrap_or(start_loo);
+        let delta_loo = end_loo - start_loo;
         out.push_str(&format!(
-            "{},{},{},{},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6}\n",
+            "{},{},{},{},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6}\n",
             run.seed,
             E2_INIT_MODE.label(),
             E2_STEPS,
@@ -3205,7 +3998,10 @@ fn e2_summary_csv(runs: &[E2Run]) -> String {
             delta,
             start_state,
             end_state,
-            delta_state
+            delta_state,
+            start_loo,
+            end_loo,
+            delta_loo
         ));
     }
     out
@@ -3233,6 +4029,13 @@ fn e2_meta_text(
     density_mass_mean: f32,
     density_mass_min: f32,
     density_mass_max: f32,
+    r_ref_peak: f32,
+    roughness_k: f32,
+    roughness_ref_eps: f32,
+    r_state01_min: f32,
+    r_state01_mean: f32,
+    r_state01_max: f32,
+    phase_mode: E2PhaseMode,
 ) -> String {
     let mut out = String::new();
     out.push_str(&format!("SPACE_BINS_PER_OCT={}\n", SPACE_BINS_PER_OCT));
@@ -3252,12 +4055,17 @@ fn e2_meta_text(
     out.push_str(&format!("E2_K_BINS={}\n", k_bins));
     out.push_str(&format!("E2_LAMBDA={:.3}\n", E2_LAMBDA));
     out.push_str(&format!("E2_SIGMA={:.3}\n", E2_SIGMA));
+    out.push_str(&format!("E2_ACCEPT_ENABLED={}\n", E2_ACCEPT_ENABLED));
+    out.push_str(&format!("E2_ACCEPT_T0={:.3}\n", E2_ACCEPT_T0));
+    out.push_str(&format!("E2_ACCEPT_TAU_STEPS={:.3}\n", E2_ACCEPT_TAU_STEPS));
     out.push_str(&format!("C_STATE_BETA={:.3}\n", E2_C_STATE_BETA));
     out.push_str(&format!("C_STATE_THETA={:.3}\n", E2_C_STATE_THETA));
-    out.push_str(&format!(
-        "E2_DENSITY_NORM_EPS={:.3e}\n",
-        E2_DENSITY_NORM_EPS
-    ));
+    out.push_str(&format!("ROUGHNESS_REF_EPS={:.3e}\n", roughness_ref_eps));
+    out.push_str(&format!("ROUGHNESS_K={:.3}\n", roughness_k));
+    out.push_str(&format!("R_REF_PEAK={:.6}\n", r_ref_peak));
+    out.push_str(&format!("R_STATE01_MIN={:.6}\n", r_state01_min));
+    out.push_str(&format!("R_STATE01_MEAN={:.6}\n", r_state01_mean));
+    out.push_str(&format!("R_STATE01_MAX={:.6}\n", r_state01_max));
     out.push_str(&format!("E2_DENSITY_MASS_MEAN={:.6}\n", density_mass_mean));
     out.push_str(&format!("E2_DENSITY_MASS_MIN={:.6}\n", density_mass_min));
     out.push_str(&format!("E2_DENSITY_MASS_MAX={:.6}\n", density_mass_max));
@@ -3269,14 +4077,23 @@ fn e2_meta_text(
     out.push_str(&format!("E2_INIT_MAX_TRIES={}\n", E2_INIT_MAX_TRIES));
     out.push_str(&format!("E2_ANCHOR_BIN_ST={:.3}\n", E2_ANCHOR_BIN_ST));
     out.push_str(&format!("E2_PAIRWISE_BIN_ST={:.3}\n", E2_PAIRWISE_BIN_ST));
+    out.push_str(&format!("E2_DIVERSITY_BIN_ST={:.3}\n", E2_DIVERSITY_BIN_ST));
     out.push_str(&format!("E2_SEEDS={:?}\n", E2_SEEDS));
+    out.push_str(&format!("E2_PHASE_MODE={}\n", phase_mode.label()));
+    if let Some(step) = phase_mode.switch_step() {
+        out.push_str(&format!("E2_PHASE_SWITCH_STEP={step}\n"));
+    }
+    out.push_str("E2_MEAN_C_SCORE_LOO_DESC=mean C score at current positions using LOO env\n");
     out
 }
 
-fn e2_marker_steps() -> Vec<f32> {
+fn e2_marker_steps(phase_mode: E2PhaseMode) -> Vec<f32> {
     let mut steps = vec![E2_BURN_IN as f32];
     if e2_anchor_shift_enabled() {
         steps.push(E2_ANCHOR_SHIFT_STEP as f32);
+    }
+    if let Some(step) = phase_mode.switch_step() {
+        steps.push(step as f32);
     }
     steps.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     steps.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
@@ -3296,7 +4113,7 @@ fn pick_representative_run_index(runs: &[E2Run]) -> usize {
     scored[scored.len() / 2].0
 }
 
-fn representative_seed_text(runs: &[E2Run], rep_index: usize) -> String {
+fn representative_seed_text(runs: &[E2Run], rep_index: usize, phase_mode: E2PhaseMode) -> String {
     let mut scored: Vec<(usize, f32)> = runs
         .iter()
         .enumerate()
@@ -3308,6 +4125,10 @@ fn representative_seed_text(runs: &[E2Run], rep_index: usize) -> String {
     let pre_label = e2_pre_label();
     let pre_step = e2_pre_step();
     let mut out = format!("metric={metric_label}_mean_c_state\n");
+    out.push_str(&format!("phase_mode={}\n", phase_mode.label()));
+    if let Some(step) = phase_mode.switch_step() {
+        out.push_str(&format!("phase_switch_step={step}\n"));
+    }
     out.push_str("rank,seed,metric\n");
     for (rank, (idx, metric)) in scored.iter().enumerate() {
         out.push_str(&format!("{rank},{},{}\n", runs[*idx].seed, metric));
@@ -3355,6 +4176,514 @@ fn histogram_counts_fixed(values: &[f32], min: f32, max: f32, bin_width: f32) ->
     (0..bins)
         .map(|i| (min + (i as f32 + 0.5) * bin_width, counts[i]))
         .collect()
+}
+
+fn histogram_probabilities_fixed(values: &[f32], min: f32, max: f32, bin_width: f32) -> Vec<f32> {
+    let counts = histogram_counts_fixed(values, min, max, bin_width);
+    let total: f32 = counts.iter().map(|(_, c)| *c).sum();
+    if total <= 0.0 {
+        return vec![0.0; counts.len()];
+    }
+    counts.into_iter().map(|(_, c)| c / total).collect()
+}
+
+fn hist_structure_metrics_from_probs(probs: &[f32]) -> HistStructureMetrics {
+    if probs.is_empty() {
+        return HistStructureMetrics {
+            entropy: 0.0,
+            gini: 0.0,
+            peakiness: 0.0,
+            kl_uniform: 0.0,
+        };
+    }
+    let sum: f32 = probs.iter().copied().sum();
+    if sum <= 0.0 {
+        return HistStructureMetrics {
+            entropy: 0.0,
+            gini: 0.0,
+            peakiness: 0.0,
+            kl_uniform: 0.0,
+        };
+    }
+    let inv_sum = 1.0 / sum;
+    let mut norm: Vec<f32> = probs.iter().map(|p| (p * inv_sum).max(0.0)).collect();
+
+    let mut entropy = 0.0f32;
+    let mut kl_uniform = 0.0f32;
+    let n = norm.len() as f32;
+    let uniform = 1.0 / n;
+    for p in &norm {
+        if *p > 0.0 {
+            entropy -= *p * p.ln();
+            kl_uniform += *p * (p / uniform).ln();
+        }
+    }
+
+    norm.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let mut weighted = 0.0f32;
+    for (i, p) in norm.iter().enumerate() {
+        weighted += (i as f32 + 1.0) * p;
+    }
+    let gini = ((2.0 * weighted) / (n * 1.0) - (n + 1.0) / n).clamp(0.0, 1.0);
+    let peakiness = norm.iter().copied().fold(0.0f32, f32::max);
+
+    HistStructureMetrics {
+        entropy,
+        gini,
+        peakiness,
+        kl_uniform,
+    }
+}
+
+fn hist_structure_metrics_for_run(run: &E2Run) -> HistStructureMetrics {
+    let samples = pairwise_interval_samples(&run.final_semitones);
+    let probs = histogram_probabilities_fixed(&samples, 0.0, 12.0, E2_PAIRWISE_BIN_ST);
+    hist_structure_metrics_from_probs(&probs)
+}
+
+fn hist_structure_rows(condition: &'static str, runs: &[E2Run]) -> Vec<HistStructureRow> {
+    runs.iter()
+        .map(|run| HistStructureRow {
+            condition,
+            seed: run.seed,
+            metrics: hist_structure_metrics_for_run(run),
+        })
+        .collect()
+}
+
+fn hist_structure_by_seed_csv(rows: &[HistStructureRow]) -> String {
+    let mut out = String::new();
+    out.push_str(&format!(
+        "# source=pairwise_intervals bin_width={:.3}\n",
+        E2_PAIRWISE_BIN_ST
+    ));
+    out.push_str("seed,cond,entropy,gini,peakiness,kl_uniform\n");
+    for row in rows {
+        out.push_str(&format!(
+            "{},{},{:.6},{:.6},{:.6},{:.6}\n",
+            row.seed,
+            row.condition,
+            row.metrics.entropy,
+            row.metrics.gini,
+            row.metrics.peakiness,
+            row.metrics.kl_uniform
+        ));
+    }
+    out
+}
+
+fn hist_structure_summary_csv(rows: &[HistStructureRow]) -> String {
+    let mut by_cond: std::collections::HashMap<&'static str, Vec<&HistStructureRow>> =
+        std::collections::HashMap::new();
+    for row in rows {
+        by_cond.entry(row.condition).or_default().push(row);
+    }
+    let mut out = String::new();
+    out.push_str(&format!(
+        "# source=pairwise_intervals bin_width={:.3}\n",
+        E2_PAIRWISE_BIN_ST
+    ));
+    out.push_str(
+        "cond,mean_entropy,std_entropy,mean_gini,std_gini,mean_peakiness,std_peakiness,mean_kl_uniform,std_kl_uniform,n\n",
+    );
+    for cond in ["baseline", "nohill", "norep"] {
+        let rows = by_cond.get(cond).cloned().unwrap_or_default();
+        let entropy: Vec<f32> = rows.iter().map(|r| r.metrics.entropy).collect();
+        let gini: Vec<f32> = rows.iter().map(|r| r.metrics.gini).collect();
+        let peakiness: Vec<f32> = rows.iter().map(|r| r.metrics.peakiness).collect();
+        let kl: Vec<f32> = rows.iter().map(|r| r.metrics.kl_uniform).collect();
+        let (mean_entropy, std_entropy) = mean_std_scalar(&entropy);
+        let (mean_gini, std_gini) = mean_std_scalar(&gini);
+        let (mean_peak, std_peak) = mean_std_scalar(&peakiness);
+        let (mean_kl, std_kl) = mean_std_scalar(&kl);
+        out.push_str(&format!(
+            "{cond},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{}\n",
+            mean_entropy,
+            std_entropy,
+            mean_gini,
+            std_gini,
+            mean_peak,
+            std_peak,
+            mean_kl,
+            std_kl,
+            rows.len()
+        ));
+    }
+    out
+}
+
+fn render_hist_structure_summary_plot(
+    out_path: &Path,
+    rows: &[HistStructureRow],
+) -> Result<(), Box<dyn Error>> {
+    let mut by_cond: std::collections::HashMap<&'static str, Vec<&HistStructureRow>> =
+        std::collections::HashMap::new();
+    for row in rows {
+        by_cond.entry(row.condition).or_default().push(row);
+    }
+    let conds = ["baseline", "nohill", "norep"];
+    let colors = [&BLUE, &RED, &GREEN];
+
+    let mut means_entropy = [0.0f32; 3];
+    let mut means_gini = [0.0f32; 3];
+    let mut means_peak = [0.0f32; 3];
+    let mut means_kl = [0.0f32; 3];
+    for (i, cond) in conds.iter().enumerate() {
+        let rows = by_cond.get(cond).cloned().unwrap_or_default();
+        let entropy: Vec<f32> = rows.iter().map(|r| r.metrics.entropy).collect();
+        let gini: Vec<f32> = rows.iter().map(|r| r.metrics.gini).collect();
+        let peakiness: Vec<f32> = rows.iter().map(|r| r.metrics.peakiness).collect();
+        let kl: Vec<f32> = rows.iter().map(|r| r.metrics.kl_uniform).collect();
+        means_entropy[i] = mean_std_scalar(&entropy).0;
+        means_gini[i] = mean_std_scalar(&gini).0;
+        means_peak[i] = mean_std_scalar(&peakiness).0;
+        means_kl[i] = mean_std_scalar(&kl).0;
+    }
+
+    let root = BitMapBackend::new(out_path, (1200, 900)).into_drawing_area();
+    root.fill(&WHITE)?;
+    let panels = root.split_evenly((2, 2));
+
+    draw_hist_structure_panel(
+        &panels[0],
+        "E2 Histogram Structure: Entropy",
+        "entropy",
+        &means_entropy,
+        &conds,
+        &colors,
+    )?;
+    draw_hist_structure_panel(
+        &panels[1],
+        "E2 Histogram Structure: Gini",
+        "gini",
+        &means_gini,
+        &conds,
+        &colors,
+    )?;
+    draw_hist_structure_panel(
+        &panels[2],
+        "E2 Histogram Structure: Peakiness",
+        "peakiness",
+        &means_peak,
+        &conds,
+        &colors,
+    )?;
+    draw_hist_structure_panel(
+        &panels[3],
+        "E2 Histogram Structure: KL vs Uniform",
+        "KL",
+        &means_kl,
+        &conds,
+        &colors,
+    )?;
+
+    root.present()?;
+    Ok(())
+}
+
+fn draw_hist_structure_panel(
+    area: &DrawingArea<BitMapBackend, Shift>,
+    caption: &str,
+    y_desc: &str,
+    values: &[f32; 3],
+    labels: &[&str; 3],
+    colors: &[&RGBColor; 3],
+) -> Result<(), Box<dyn Error>> {
+    let mut y_max = values.iter().copied().fold(0.0f32, f32::max).max(1e-6);
+    y_max *= 1.1;
+
+    let mut chart = ChartBuilder::on(area)
+        .caption(caption, ("sans-serif", 18))
+        .margin(10)
+        .x_label_area_size(30)
+        .y_label_area_size(50)
+        .build_cartesian_2d(0i32..3i32, 0f32..y_max)?;
+
+    chart
+        .configure_mesh()
+        .disable_mesh()
+        .x_desc("condition")
+        .y_desc(y_desc)
+        .x_labels(3)
+        .x_label_formatter(&|x| {
+            let idx = *x as isize;
+            if (0..=2).contains(&idx) {
+                labels[idx as usize].to_string()
+            } else {
+                String::new()
+            }
+        })
+        .draw()?;
+
+    for (i, value) in values.iter().enumerate() {
+        let x0 = i as i32;
+        let x1 = i as i32 + 1;
+        chart.draw_series(std::iter::once(Rectangle::new(
+            [(x0, 0.0), (x1, *value)],
+            colors[i].filled(),
+        )))?;
+    }
+    Ok(())
+}
+
+fn diversity_metrics_for_run(run: &E2Run) -> DiversityMetrics {
+    let mut values: Vec<f32> = run
+        .final_semitones
+        .iter()
+        .copied()
+        .filter(|v| v.is_finite())
+        .collect();
+    if values.is_empty() {
+        return DiversityMetrics {
+            unique_bins: 0,
+            nn_mean: 0.0,
+            nn_std: 0.0,
+            semitone_var: 0.0,
+            semitone_mad: 0.0,
+        };
+    }
+
+    let mut unique_bins = std::collections::HashSet::new();
+    for &v in &values {
+        let bin = (v / E2_DIVERSITY_BIN_ST).round() as i32;
+        unique_bins.insert(bin);
+    }
+
+    let mut nn_dists = Vec::with_capacity(values.len());
+    for (i, &v) in values.iter().enumerate() {
+        let mut best = f32::INFINITY;
+        for (j, &u) in values.iter().enumerate() {
+            if i == j {
+                continue;
+            }
+            let dist = (v - u).abs();
+            if dist < best {
+                best = dist;
+            }
+        }
+        if best.is_finite() {
+            nn_dists.push(best);
+        }
+    }
+
+    let (nn_mean, nn_std) = if nn_dists.is_empty() {
+        (0.0, 0.0)
+    } else {
+        let (mean, std) = mean_std_scalar(&nn_dists);
+        (mean, std)
+    };
+
+    let mean = values.iter().copied().sum::<f32>() / values.len() as f32;
+    let var = values
+        .iter()
+        .map(|v| (*v - mean) * (*v - mean))
+        .sum::<f32>()
+        / values.len() as f32;
+
+    let median = median_of_values(&mut values);
+    let mut abs_dev: Vec<f32> = values.iter().map(|v| (v - median).abs()).collect();
+    let mad = median_of_values(&mut abs_dev);
+
+    DiversityMetrics {
+        unique_bins: unique_bins.len(),
+        nn_mean,
+        nn_std,
+        semitone_var: var,
+        semitone_mad: mad,
+    }
+}
+
+fn diversity_rows(condition: &'static str, runs: &[E2Run]) -> Vec<DiversityRow> {
+    runs.iter()
+        .map(|run| DiversityRow {
+            condition,
+            seed: run.seed,
+            metrics: diversity_metrics_for_run(run),
+        })
+        .collect()
+}
+
+fn diversity_by_seed_csv(rows: &[DiversityRow]) -> String {
+    let mut out = String::new();
+    out.push_str(&format!("# bin_width={:.3}\n", E2_DIVERSITY_BIN_ST));
+    out.push_str("seed,cond,unique_bins,nn_mean,nn_std,semitone_var,semitone_mad\n");
+    for row in rows {
+        out.push_str(&format!(
+            "{},{},{},{:.6},{:.6},{:.6},{:.6}\n",
+            row.seed,
+            row.condition,
+            row.metrics.unique_bins,
+            row.metrics.nn_mean,
+            row.metrics.nn_std,
+            row.metrics.semitone_var,
+            row.metrics.semitone_mad
+        ));
+    }
+    out
+}
+
+fn diversity_summary_csv(rows: &[DiversityRow]) -> String {
+    let mut by_cond: std::collections::HashMap<&'static str, Vec<&DiversityRow>> =
+        std::collections::HashMap::new();
+    for row in rows {
+        by_cond.entry(row.condition).or_default().push(row);
+    }
+    let mut out = String::new();
+    out.push_str(&format!("# bin_width={:.3}\n", E2_DIVERSITY_BIN_ST));
+    out.push_str(
+        "cond,mean_unique_bins,std_unique_bins,mean_nn,stdev_nn,mean_semitone_var,std_semitone_var,mean_semitone_mad,std_semitone_mad,n\n",
+    );
+    for cond in ["baseline", "nohill", "norep"] {
+        let rows = by_cond.get(cond).cloned().unwrap_or_default();
+        let unique_bins: Vec<f32> = rows.iter().map(|r| r.metrics.unique_bins as f32).collect();
+        let nn_mean: Vec<f32> = rows.iter().map(|r| r.metrics.nn_mean).collect();
+        let semitone_var: Vec<f32> = rows.iter().map(|r| r.metrics.semitone_var).collect();
+        let semitone_mad: Vec<f32> = rows.iter().map(|r| r.metrics.semitone_mad).collect();
+        let (mean_bins, std_bins) = mean_std_scalar(&unique_bins);
+        let (mean_nn, std_nn) = mean_std_scalar(&nn_mean);
+        let (mean_var, std_var) = mean_std_scalar(&semitone_var);
+        let (mean_mad, std_mad) = mean_std_scalar(&semitone_mad);
+        out.push_str(&format!(
+            "{cond},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{}\n",
+            mean_bins,
+            std_bins,
+            mean_nn,
+            std_nn,
+            mean_var,
+            std_var,
+            mean_mad,
+            std_mad,
+            rows.len()
+        ));
+    }
+    out
+}
+
+fn render_diversity_summary_plot(
+    out_path: &Path,
+    rows: &[DiversityRow],
+) -> Result<(), Box<dyn Error>> {
+    let mut by_cond: std::collections::HashMap<&'static str, Vec<&DiversityRow>> =
+        std::collections::HashMap::new();
+    for row in rows {
+        by_cond.entry(row.condition).or_default().push(row);
+    }
+    let conds = ["baseline", "nohill", "norep"];
+    let colors = [&BLUE, &RED, &GREEN];
+
+    let mut mean_bins = [0.0f32; 3];
+    let mut mean_nn = [0.0f32; 3];
+    let mut mean_var = [0.0f32; 3];
+    let mut mean_mad = [0.0f32; 3];
+    for (i, cond) in conds.iter().enumerate() {
+        let rows = by_cond.get(cond).cloned().unwrap_or_default();
+        let unique_bins: Vec<f32> = rows.iter().map(|r| r.metrics.unique_bins as f32).collect();
+        let nn_mean: Vec<f32> = rows.iter().map(|r| r.metrics.nn_mean).collect();
+        let semitone_var: Vec<f32> = rows.iter().map(|r| r.metrics.semitone_var).collect();
+        let semitone_mad: Vec<f32> = rows.iter().map(|r| r.metrics.semitone_mad).collect();
+        mean_bins[i] = mean_std_scalar(&unique_bins).0;
+        mean_nn[i] = mean_std_scalar(&nn_mean).0;
+        mean_var[i] = mean_std_scalar(&semitone_var).0;
+        mean_mad[i] = mean_std_scalar(&semitone_mad).0;
+    }
+
+    let root = BitMapBackend::new(out_path, (1200, 900)).into_drawing_area();
+    root.fill(&WHITE)?;
+    let panels = root.split_evenly((2, 2));
+
+    draw_diversity_panel(
+        &panels[0],
+        "E2 Diversity: Unique Bins",
+        "unique bins",
+        &mean_bins,
+        &conds,
+        &colors,
+    )?;
+    draw_diversity_panel(
+        &panels[1],
+        "E2 Diversity: NN Distance",
+        "nn mean (st)",
+        &mean_nn,
+        &conds,
+        &colors,
+    )?;
+    draw_diversity_panel(
+        &panels[2],
+        "E2 Diversity: Variance",
+        "var (st^2)",
+        &mean_var,
+        &conds,
+        &colors,
+    )?;
+    draw_diversity_panel(
+        &panels[3],
+        "E2 Diversity: MAD",
+        "MAD (st)",
+        &mean_mad,
+        &conds,
+        &colors,
+    )?;
+
+    root.present()?;
+    Ok(())
+}
+
+fn draw_diversity_panel(
+    area: &DrawingArea<BitMapBackend, Shift>,
+    caption: &str,
+    y_desc: &str,
+    values: &[f32; 3],
+    labels: &[&str; 3],
+    colors: &[&RGBColor; 3],
+) -> Result<(), Box<dyn Error>> {
+    let mut y_max = values.iter().copied().fold(0.0f32, f32::max).max(1e-6);
+    y_max *= 1.1;
+
+    let mut chart = ChartBuilder::on(area)
+        .caption(caption, ("sans-serif", 18))
+        .margin(10)
+        .x_label_area_size(30)
+        .y_label_area_size(50)
+        .build_cartesian_2d(0i32..3i32, 0f32..y_max)?;
+
+    chart
+        .configure_mesh()
+        .disable_mesh()
+        .x_desc("condition")
+        .y_desc(y_desc)
+        .x_labels(3)
+        .x_label_formatter(&|x| {
+            let idx = *x as isize;
+            if (0..=2).contains(&idx) {
+                labels[idx as usize].to_string()
+            } else {
+                String::new()
+            }
+        })
+        .draw()?;
+
+    for (i, value) in values.iter().enumerate() {
+        let x0 = i as i32;
+        let x1 = i as i32 + 1;
+        chart.draw_series(std::iter::once(Rectangle::new(
+            [(x0, 0.0), (x1, *value)],
+            colors[i].filled(),
+        )))?;
+    }
+    Ok(())
+}
+
+fn median_of_values(values: &mut [f32]) -> f32 {
+    if values.is_empty() {
+        return 0.0;
+    }
+    values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let mid = values.len() / 2;
+    if values.len() % 2 == 0 {
+        (values[mid - 1] + values[mid]) * 0.5
+    } else {
+        values[mid]
+    }
 }
 
 fn mean_std_values(values: &[Vec<f32>]) -> (Vec<f32>, Vec<f32>) {
@@ -5453,9 +6782,11 @@ mod tests {
             seed,
             mean_c_series: vec![metric],
             mean_c_state_series: vec![metric],
+            mean_c_score_loo_series: vec![metric],
             mean_score_series: vec![0.0],
             mean_repulsion_series: vec![0.0],
             moved_frac_series: vec![0.0],
+            accepted_worse_frac_series: vec![0.0],
             semitone_samples_pre: Vec::new(),
             semitone_samples_post: Vec::new(),
             final_semitones: Vec::new(),
@@ -5474,6 +6805,12 @@ mod tests {
             density_mass_mean: 0.0,
             density_mass_min: 0.0,
             density_mass_max: 0.0,
+            r_state01_min: 0.0,
+            r_state01_mean: 0.0,
+            r_state01_max: 0.0,
+            r_ref_peak: 0.0,
+            roughness_k: 0.0,
+            roughness_ref_eps: 0.0,
             n_agents: 0,
             k_bins: 0,
         }
@@ -5505,13 +6842,13 @@ mod tests {
         let anchor_idx = space.n_bins() / 2;
         let (env_scan, mut density_scan) = build_env_scans(&space, anchor_idx, &[], &du_scan);
 
-        let (_, c_state_a, _) =
+        let (_, c_state_a, _, _) =
             compute_c_score_state_scans(&space, &workspace, &env_scan, &density_scan, &du_scan);
 
         for v in density_scan.iter_mut() {
             *v *= 4.0;
         }
-        let (_, c_state_b, _) =
+        let (_, c_state_b, _, _) =
             compute_c_score_state_scans(&space, &workspace, &env_scan, &density_scan, &du_scan);
 
         assert_eq!(c_state_a.len(), c_state_b.len());
@@ -5620,36 +6957,174 @@ mod tests {
 
     #[test]
     fn update_agent_indices_is_order_independent() {
-        let c_score_scan = vec![0.1f32, 0.4, 0.3, 0.8, 0.6, 0.2];
-        let log2_ratio_scan = vec![0.0f32, 0.1, 0.2, 0.3, 0.4, 0.5];
+        let space = Log2Space::new(200.0, 400.0, 12);
+        let workspace = build_consonance_workspace(&space);
+        let (_erb_scan, du_scan) = erb_grid_for_space(&space);
+        let anchor_idx = space.n_bins() / 2;
+        let anchor_hz = space.centers_hz[anchor_idx];
+        let log2_ratio_scan = build_log2_ratio_scan(&space, anchor_hz);
         let mut indices_fwd = vec![1usize, 3, 4];
         let mut indices_rev = indices_fwd.clone();
+        let (env_scan, density_scan) = build_env_scans(&space, anchor_idx, &indices_fwd, &du_scan);
         let order_fwd: Vec<usize> = (0..indices_fwd.len()).collect();
         let order_rev: Vec<usize> = (0..indices_fwd.len()).rev().collect();
-        let stats_fwd = update_agent_indices_scored_stats_with_order(
+        let mut rng_fwd = StdRng::seed_from_u64(0);
+        let mut rng_rev = StdRng::seed_from_u64(0);
+        let stats_fwd = update_agent_indices_scored_stats_with_order_loo(
             &mut indices_fwd,
-            &c_score_scan,
+            &space,
+            &workspace,
+            &env_scan,
+            &density_scan,
+            &du_scan,
             &log2_ratio_scan,
             0,
-            5,
+            space.n_bins() - 1,
             1,
+            1.0,
             0.2,
             0.1,
+            0.05,
+            &mut rng_fwd,
             &order_fwd,
         );
-        let stats_rev = update_agent_indices_scored_stats_with_order(
+        let stats_rev = update_agent_indices_scored_stats_with_order_loo(
             &mut indices_rev,
-            &c_score_scan,
+            &space,
+            &workspace,
+            &env_scan,
+            &density_scan,
+            &du_scan,
             &log2_ratio_scan,
             0,
-            5,
+            space.n_bins() - 1,
             1,
+            1.0,
             0.2,
             0.1,
+            0.05,
+            &mut rng_rev,
             &order_rev,
         );
         assert_eq!(indices_fwd, indices_rev);
         assert!((stats_fwd.mean_score - stats_rev.mean_score).abs() < 1e-6);
+    }
+
+    #[test]
+    fn metropolis_accept_behaves_as_expected() {
+        let (accept, worse) = metropolis_accept(0.1, 0.0, 0.9);
+        assert!(accept);
+        assert!(!worse);
+
+        let (accept, worse) = metropolis_accept(-0.1, 0.0, 0.1);
+        assert!(!accept);
+        assert!(!worse);
+
+        let (accept, worse) = metropolis_accept(-0.1, 0.1, 0.1);
+        assert!(accept);
+        assert!(worse);
+
+        let (accept, worse) = metropolis_accept(-0.1, 0.1, 0.99);
+        assert!(!accept);
+        assert!(!worse);
+    }
+
+    #[test]
+    fn histogram_probabilities_sum_to_one() {
+        let values = [0.0f32, 0.25, 0.5, 0.75, 1.0];
+        let probs = histogram_probabilities_fixed(&values, 0.0, 1.0, 0.5);
+        let sum: f32 = probs.iter().copied().sum();
+        assert!((sum - 1.0).abs() < 1e-6, "sum={sum}");
+    }
+
+    #[test]
+    fn hist_structure_metrics_uniform_and_point_mass() {
+        let n = 8usize;
+        let uniform = vec![1.0f32; n];
+        let metrics = hist_structure_metrics_from_probs(&uniform);
+        let expected_entropy = (n as f32).ln();
+        assert!((metrics.entropy - expected_entropy).abs() < 1e-4);
+        assert!(metrics.gini.abs() < 1e-6);
+        assert!(metrics.kl_uniform.abs() < 1e-6);
+        assert!((metrics.peakiness - 1.0 / n as f32).abs() < 1e-6);
+
+        let mut point = vec![0.0f32; n];
+        point[0] = 1.0;
+        let metrics = hist_structure_metrics_from_probs(&point);
+        assert!(metrics.peakiness > 0.9);
+        assert!(metrics.gini > 1.0 - 2.0 / n as f32);
+        assert!(metrics.kl_uniform > 0.1);
+    }
+
+    #[test]
+    fn e2_accept_temperature_monotone() {
+        let t0 = e2_accept_temperature(0);
+        let t1 = e2_accept_temperature(1);
+        let t5 = e2_accept_temperature(5);
+        assert!((t0 - E2_ACCEPT_T0).abs() < 1e-6);
+        assert!(t1 <= t0 + 1e-6);
+        assert!(t5 <= t1 + 1e-6);
+    }
+
+    #[test]
+    fn update_agent_indices_accepts_worse_when_excluding_current() {
+        let space = Log2Space::new(200.0, 400.0, 12);
+        assert!(space.n_bins() >= 3);
+        let mut workspace = build_consonance_workspace(&space);
+        workspace.params.consonance_roughness_weight_floor = 0.0;
+        workspace.params.consonance_roughness_weight = 0.0;
+
+        let (_erb_scan, du_scan) = erb_grid_for_space(&space);
+        let anchor_idx = space.n_bins() / 2;
+        let anchor_hz = space.centers_hz[anchor_idx];
+        let log2_ratio_scan = build_log2_ratio_scan(&space, anchor_hz);
+        let mut indices = vec![anchor_idx];
+        let (env_scan, density_scan) = build_env_scans(&space, anchor_idx, &indices, &du_scan);
+        let order = vec![0usize];
+        let mut rng = StdRng::seed_from_u64(0);
+        let stats = update_agent_indices_scored_stats_with_order_loo(
+            &mut indices,
+            &space,
+            &workspace,
+            &env_scan,
+            &density_scan,
+            &du_scan,
+            &log2_ratio_scan,
+            0,
+            space.n_bins() - 1,
+            1,
+            1.0,
+            0.0,
+            0.1,
+            f32::INFINITY,
+            &mut rng,
+            &order,
+        );
+        assert!(
+            stats.accepted_worse_frac > 0.0,
+            "expected accepted_worse_frac > 0, got {}",
+            stats.accepted_worse_frac
+        );
+    }
+
+    #[test]
+    fn nohill_mean_c_score_loo_series_is_finite() {
+        let space = Log2Space::new(200.0, 400.0, 12);
+        let anchor_idx = space.n_bins() / 2;
+        let anchor_hz = space.centers_hz[anchor_idx];
+        let run = run_e2_once(
+            &space,
+            anchor_hz,
+            0xC0FFEE_u64,
+            E2Condition::NoHillClimb,
+            E2_STEP_SEMITONES,
+            E2PhaseMode::Normal,
+        );
+        assert_eq!(run.mean_c_score_loo_series.len(), E2_STEPS);
+        assert!(
+            run.mean_c_score_loo_series.iter().all(|v| v.is_finite()),
+            "mean_c_score_loo_series contains non-finite values"
+        );
     }
 
     #[test]

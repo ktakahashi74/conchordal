@@ -1,17 +1,27 @@
 # Paper experiments
 
-論文用プロット生成の例です。
+Example runner for generating plots used in the paper.
 
-## 実行
+## Run
 
 ```bash
 cargo run --example paper
 ```
 
-## オプション例
+## Build check
+
+```bash
+cargo check --example paper
+```
+
+## Options
 
 ```bash
 cargo run --example paper -- --exp e3
 ```
 
-出力は `target/plots/paper/` に保存されます。
+```bash
+cargo run --example paper -- --exp e4 --e4-hist on
+```
+
+Outputs are written to `target/plots/paper/<exp>/` (for example, `target/plots/paper/e2/`).

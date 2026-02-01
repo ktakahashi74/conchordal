@@ -68,6 +68,7 @@ pub struct E3DeathRecord {
     pub c_state_birth: f32,
     pub c_state_firstk: f32,
     pub avg_c_state_tick: f32,
+    pub c_state_std_over_life: f32,
     pub avg_c_state_attack: f32,
     pub attack_tick_count: u32,
 }
@@ -88,6 +89,7 @@ struct E3LifeState {
     birth_step: u32,
     ticks: u32,
     sum_c_state_tick: f32,
+    sum_c_state_tick_sq: f32,
     sum_c_state_firstk: f32,
     firstk_count: u32,
     c_state_birth: f32,
@@ -104,6 +106,7 @@ impl E3LifeState {
             birth_step: 0,
             ticks: 0,
             sum_c_state_tick: 0.0,
+            sum_c_state_tick_sq: 0.0,
             sum_c_state_firstk: 0.0,
             firstk_count: 0,
             c_state_birth: 0.0,
@@ -119,6 +122,7 @@ impl E3LifeState {
         self.birth_step = 0;
         self.ticks = 0;
         self.sum_c_state_tick = 0.0;
+        self.sum_c_state_tick_sq = 0.0;
         self.sum_c_state_firstk = 0.0;
         self.firstk_count = 0;
         self.c_state_birth = 0.0;
@@ -302,6 +306,7 @@ pub fn run_e3_collect_deaths(cfg: &E3RunConfig) -> Vec<E3DeathRecord> {
                 }
                 state.ticks = state.ticks.saturating_add(1);
                 state.sum_c_state_tick += c_state;
+                state.sum_c_state_tick_sq += c_state * c_state;
                 if state.firstk_count < first_k {
                     state.sum_c_state_firstk += c_state;
                     state.firstk_count += 1;
@@ -312,6 +317,13 @@ pub fn run_e3_collect_deaths(cfg: &E3RunConfig) -> Vec<E3DeathRecord> {
                 let ticks = state.ticks.max(1);
                 let avg_c_state_tick = if state.ticks > 0 {
                     state.sum_c_state_tick / state.ticks as f32
+                } else {
+                    0.0
+                };
+                let c_state_std_over_life = if state.ticks > 0 {
+                    let mean_sq = state.sum_c_state_tick_sq / state.ticks as f32;
+                    let var = (mean_sq - avg_c_state_tick * avg_c_state_tick).max(0.0);
+                    var.sqrt()
                 } else {
                     0.0
                 };
@@ -337,6 +349,7 @@ pub fn run_e3_collect_deaths(cfg: &E3RunConfig) -> Vec<E3DeathRecord> {
                     c_state_birth: state.c_state_birth,
                     c_state_firstk,
                     avg_c_state_tick,
+                    c_state_std_over_life,
                     avg_c_state_attack,
                     attack_tick_count: state.attack_tick_count,
                 });

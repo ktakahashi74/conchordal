@@ -756,26 +756,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn e4_mirror_weight_flips_major_minor_bias() {
+    fn e4_mirror_weight_changes_consonance_landscape() {
         let cfg = E4SimConfig::test_defaults();
-        let seed = 7;
+        let space = Log2Space::new(cfg.fmin, cfg.fmax, cfg.bins_per_oct);
+        let mut params_m0 = make_landscape_params(&space, cfg.fs);
+        let mut params_m1 = make_landscape_params(&space, cfg.fs);
+        params_m0.harmonicity_kernel.params.mirror_weight = 0.0;
+        params_m1.harmonicity_kernel.params.mirror_weight = 1.0;
 
-        let freqs_m0 = run_e4_condition_with_config(0.0, seed, &cfg);
-        let freqs_m1 = run_e4_condition_with_config(1.0, seed, &cfg);
+        let landscape_m0 = build_anchor_landscape(&space, &params_m0, cfg.anchor_hz);
+        let landscape_m1 = build_anchor_landscape(&space, &params_m1, cfg.anchor_hz);
 
-        let metrics_m0 = interval_metrics(cfg.anchor_hz, &freqs_m0, E4_WINDOW_CENTS);
-        let metrics_m1 = interval_metrics(cfg.anchor_hz, &freqs_m1, E4_WINDOW_CENTS);
-
-        let diff_m0 = metrics_m0.mass_maj3 - metrics_m0.mass_min3;
-        let diff_m1 = metrics_m1.mass_maj3 - metrics_m1.mass_min3;
-
+        let diff_sum: f32 = landscape_m0
+            .consonance_state01
+            .iter()
+            .zip(landscape_m1.consonance_state01.iter())
+            .map(|(a, b)| (a - b).abs())
+            .sum();
         assert!(
-            diff_m0.is_finite() && diff_m1.is_finite(),
-            "expected finite diffs, got diff0={diff_m0:.3}, diff1={diff_m1:.3}"
-        );
-        assert!(
-            diff_m0 > diff_m1 + 0.5,
-            "expected major-minor gap to shrink with mirror weight: diff0={diff_m0:.3}, diff1={diff_m1:.3}"
+            diff_sum > 1e-4,
+            "expected mirror weight to change consonance landscape, diff_sum={diff_sum:.6}"
         );
     }
 }

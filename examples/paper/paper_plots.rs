@@ -396,6 +396,11 @@ pub(crate) fn main() -> Result<(), Box<dyn Error>> {
     };
 
     let base_dir = Path::new("target/plots/paper");
+    debug_assert!(
+        base_dir.ends_with(Path::new("target/plots/paper")),
+        "refusing to clear unexpected path: {}",
+        base_dir.display()
+    );
     if base_dir.exists() {
         remove_dir_all(base_dir)?;
     }
@@ -1390,6 +1395,16 @@ fn run_e2_once(
         if matches!(condition, E2Condition::NoHillClimb) {
             stats.mean_c_score_current_loo = mean_c_score_loo_current;
         }
+        let condition_label = match condition {
+            E2Condition::Baseline => "baseline",
+            E2Condition::NoRepulsion => "norep",
+            E2Condition::NoHillClimb => "nohill",
+        };
+        debug_assert!(
+            stats.mean_c_score_current_loo.is_finite(),
+            "mean_c_score_current_loo not finite (cond={condition_label}, step={step}, value={})",
+            stats.mean_c_score_current_loo
+        );
         mean_c_score_loo_series.push(stats.mean_c_score_current_loo);
         mean_score_series.push(stats.mean_score);
         mean_repulsion_series.push(stats.mean_repulsion);
@@ -3229,10 +3244,11 @@ fn r_state01_stats(scan: &[f32]) -> RState01Stats {
             max: 0.0,
         };
     }
+    let mean = sum / count as f32;
     RState01Stats {
-        min: min.max(0.0),
-        mean: sum / count as f32,
-        max: max.max(0.0),
+        min: min.clamp(0.0, 1.0),
+        mean: mean.clamp(0.0, 1.0),
+        max: max.clamp(0.0, 1.0),
     }
 }
 
@@ -3244,6 +3260,7 @@ fn compute_c_score_state_scans(
     du_scan: &[f32],
 ) -> (Vec<f32>, Vec<f32>, f32, RState01Stats) {
     space.assert_scan_len_named(du_scan, "du_scan");
+    // Use the same epsilon as the roughness reference normalization so density scaling stays aligned.
     let (density_norm, density_mass) =
         psycho_state::normalize_density(density_scan, du_scan, workspace.params.roughness_ref_eps);
     let (perc_h_pot_scan, _) = workspace
@@ -3455,7 +3472,9 @@ fn update_agent_indices_scored_stats_with_order(
         .collect();
     let mut next_indices = prev_indices.clone();
     let mut score_sum = 0.0f32;
+    let mut score_count = 0u32;
     let mut repulsion_sum = 0.0f32;
+    let mut repulsion_count = 0u32;
     let mut moved_count = 0usize;
     let mut count = 0usize;
 
@@ -3495,9 +3514,11 @@ fn update_agent_indices_scored_stats_with_order(
         }
         if best_score.is_finite() {
             score_sum += best_score;
+            score_count += 1;
         }
         if best_repulsion.is_finite() {
             repulsion_sum += best_repulsion;
+            repulsion_count += 1;
         }
         count += 1;
     }
@@ -3512,11 +3533,21 @@ fn update_agent_indices_scored_stats_with_order(
             accepted_worse_frac: 0.0,
         };
     }
+    let mean_score = if score_count > 0 {
+        score_sum / score_count as f32
+    } else {
+        0.0
+    };
+    let mean_repulsion = if repulsion_count > 0 {
+        repulsion_sum / repulsion_count as f32
+    } else {
+        0.0
+    };
     let inv = 1.0 / count as f32;
     UpdateStats {
-        mean_c_score_current_loo: mean_at_indices(c_score_scan, &next_indices),
-        mean_score: score_sum * inv,
-        mean_repulsion: repulsion_sum * inv,
+        mean_c_score_current_loo: f32::NAN,
+        mean_score,
+        mean_repulsion,
         moved_frac: moved_count as f32 * inv,
         accepted_worse_frac: 0.0,
     }
@@ -3624,8 +3655,11 @@ fn update_agent_indices_scored_stats_with_order_loo(
     let mut density_loo = vec![0.0f32; density_total.len()];
     let mut next_indices = prev_indices.clone();
     let mut c_score_current_sum = 0.0f32;
+    let mut c_score_current_count = 0u32;
     let mut score_sum = 0.0f32;
+    let mut score_count = 0u32;
     let mut repulsion_sum = 0.0f32;
+    let mut repulsion_count = 0u32;
     let mut moved_count = 0usize;
     let mut accepted_worse_count = 0usize;
     let mut count = 0usize;
@@ -3658,6 +3692,7 @@ fn update_agent_indices_scored_stats_with_order_loo(
         let c_score_current = c_score_scan[current_idx];
         if c_score_current.is_finite() {
             c_score_current_sum += c_score_current;
+            c_score_current_count += 1;
         }
         let start = (current_idx as isize - k as isize).max(min_idx as isize) as usize;
         let end = (current_idx as isize + k as isize).min(max_idx as isize) as usize;
@@ -3709,9 +3744,11 @@ fn update_agent_indices_scored_stats_with_order_loo(
         }
         if chosen_score.is_finite() {
             score_sum += chosen_score;
+            score_count += 1;
         }
         if chosen_repulsion.is_finite() {
             repulsion_sum += chosen_repulsion;
+            repulsion_count += 1;
         }
         if accepted_worse {
             accepted_worse_count += 1;
@@ -3729,11 +3766,26 @@ fn update_agent_indices_scored_stats_with_order_loo(
             accepted_worse_frac: 0.0,
         };
     }
+    let mean_c_score_current_loo = if c_score_current_count > 0 {
+        c_score_current_sum / c_score_current_count as f32
+    } else {
+        0.0
+    };
+    let mean_score = if score_count > 0 {
+        score_sum / score_count as f32
+    } else {
+        0.0
+    };
+    let mean_repulsion = if repulsion_count > 0 {
+        repulsion_sum / repulsion_count as f32
+    } else {
+        0.0
+    };
     let inv = 1.0 / count as f32;
     UpdateStats {
-        mean_c_score_current_loo: c_score_current_sum * inv,
-        mean_score: score_sum * inv,
-        mean_repulsion: repulsion_sum * inv,
+        mean_c_score_current_loo,
+        mean_score,
+        mean_repulsion,
         moved_frac: moved_count as f32 * inv,
         accepted_worse_frac: accepted_worse_count as f32 * inv,
     }
@@ -3759,7 +3811,9 @@ fn score_stats_at_indices(
     let sigma = sigma.max(1e-6);
     let log2_vals: Vec<f32> = indices.iter().map(|&idx| log2_ratio_scan[idx]).collect();
     let mut score_sum = 0.0f32;
+    let mut score_count = 0u32;
     let mut repulsion_sum = 0.0f32;
+    let mut repulsion_count = 0u32;
     for (i, &idx) in indices.iter().enumerate() {
         let cand_log2 = log2_ratio_scan[idx];
         let mut repulsion = 0.0f32;
@@ -3773,16 +3827,27 @@ fn score_stats_at_indices(
         let score = score_sign * c_score_scan[idx] - lambda * repulsion;
         if score.is_finite() {
             score_sum += score;
+            score_count += 1;
         }
         if repulsion.is_finite() {
             repulsion_sum += repulsion;
+            repulsion_count += 1;
         }
     }
-    let inv = 1.0 / indices.len() as f32;
+    let mean_score = if score_count > 0 {
+        score_sum / score_count as f32
+    } else {
+        0.0
+    };
+    let mean_repulsion = if repulsion_count > 0 {
+        repulsion_sum / repulsion_count as f32
+    } else {
+        0.0
+    };
     UpdateStats {
-        mean_c_score_current_loo: mean_at_indices(c_score_scan, indices),
-        mean_score: score_sum * inv,
-        mean_repulsion: repulsion_sum * inv,
+        mean_c_score_current_loo: f32::NAN,
+        mean_score,
+        mean_repulsion,
         moved_frac: 0.0,
         accepted_worse_frac: 0.0,
     }
@@ -4397,7 +4462,7 @@ fn draw_hist_structure_panel(
         .margin(10)
         .x_label_area_size(30)
         .y_label_area_size(50)
-        .build_cartesian_2d(0i32..3i32, 0f32..y_max)?;
+        .build_cartesian_2d(-0.5f32..2.5f32, 0f32..y_max)?;
 
     chart
         .configure_mesh()
@@ -4406,7 +4471,7 @@ fn draw_hist_structure_panel(
         .y_desc(y_desc)
         .x_labels(3)
         .x_label_formatter(&|x| {
-            let idx = *x as isize;
+            let idx = x.round() as isize;
             if (0..=2).contains(&idx) {
                 labels[idx as usize].to_string()
             } else {
@@ -4416,8 +4481,9 @@ fn draw_hist_structure_panel(
         .draw()?;
 
     for (i, value) in values.iter().enumerate() {
-        let x0 = i as i32;
-        let x1 = i as i32 + 1;
+        let center = i as f32;
+        let x0 = center - 0.3;
+        let x1 = center + 0.3;
         chart.draw_series(std::iter::once(Rectangle::new(
             [(x0, 0.0), (x1, *value)],
             colors[i].filled(),
@@ -4644,7 +4710,7 @@ fn draw_diversity_panel(
         .margin(10)
         .x_label_area_size(30)
         .y_label_area_size(50)
-        .build_cartesian_2d(0i32..3i32, 0f32..y_max)?;
+        .build_cartesian_2d(-0.5f32..2.5f32, 0f32..y_max)?;
 
     chart
         .configure_mesh()
@@ -4653,7 +4719,7 @@ fn draw_diversity_panel(
         .y_desc(y_desc)
         .x_labels(3)
         .x_label_formatter(&|x| {
-            let idx = *x as isize;
+            let idx = x.round() as isize;
             if (0..=2).contains(&idx) {
                 labels[idx as usize].to_string()
             } else {
@@ -4663,8 +4729,9 @@ fn draw_diversity_panel(
         .draw()?;
 
     for (i, value) in values.iter().enumerate() {
-        let x0 = i as i32;
-        let x1 = i as i32 + 1;
+        let center = i as f32;
+        let x0 = center - 0.3;
+        let x1 = center + 0.3;
         chart.draw_series(std::iter::once(Rectangle::new(
             [(x0, 0.0), (x1, *value)],
             colors[i].filled(),
@@ -6816,6 +6883,35 @@ mod tests {
         }
     }
 
+    fn assert_mean_c_score_loo_series_finite(
+        condition: E2Condition,
+        phase_mode: E2PhaseMode,
+        step_semitones: f32,
+        seed: u64,
+    ) {
+        let space = Log2Space::new(200.0, 400.0, 12);
+        let anchor_idx = space.n_bins() / 2;
+        let anchor_hz = space.centers_hz[anchor_idx];
+        let run = run_e2_once(
+            &space,
+            anchor_hz,
+            seed,
+            condition,
+            step_semitones,
+            phase_mode,
+        );
+        assert_eq!(run.mean_c_score_loo_series.len(), E2_STEPS);
+        let label = match condition {
+            E2Condition::Baseline => "baseline",
+            E2Condition::NoHillClimb => "nohill",
+            E2Condition::NoRepulsion => "norep",
+        };
+        assert!(
+            run.mean_c_score_loo_series.iter().all(|v| v.is_finite()),
+            "mean_c_score_loo_series contains non-finite values (cond={label}, phase={phase_mode:?}, step={step_semitones})"
+        );
+    }
+
     #[test]
     fn e2_c_snapshot_uses_anchor_shift_pre_when_enabled() {
         let series: Vec<f32> = (0..10).map(|i| i as f32).collect();
@@ -6860,6 +6956,15 @@ mod tests {
                 c_state_b[i]
             );
         }
+    }
+
+    #[test]
+    fn r_state01_stats_clamp_range() {
+        let scan = [-0.5f32, 0.2, 1.2];
+        let stats = r_state01_stats(&scan);
+        assert!(stats.min >= 0.0 && stats.min <= 1.0);
+        assert!(stats.mean >= 0.0 && stats.mean <= 1.0);
+        assert!(stats.max >= 0.0 && stats.max <= 1.0);
     }
 
     #[test]
@@ -7109,22 +7214,165 @@ mod tests {
 
     #[test]
     fn nohill_mean_c_score_loo_series_is_finite() {
-        let space = Log2Space::new(200.0, 400.0, 12);
-        let anchor_idx = space.n_bins() / 2;
-        let anchor_hz = space.centers_hz[anchor_idx];
-        let run = run_e2_once(
-            &space,
-            anchor_hz,
-            0xC0FFEE_u64,
+        assert_mean_c_score_loo_series_finite(
             E2Condition::NoHillClimb,
-            E2_STEP_SEMITONES,
             E2PhaseMode::Normal,
+            E2_STEP_SEMITONES,
+            0xC0FFEE_u64,
         );
-        assert_eq!(run.mean_c_score_loo_series.len(), E2_STEPS);
+    }
+
+    #[test]
+    fn parse_e2_phase_defaults_to_dtc() {
+        let args: Vec<String> = Vec::new();
+        let phase = parse_e2_phase(&args).expect("parse_e2_phase failed");
+        assert_eq!(phase, E2PhaseMode::DissonanceThenConsonance);
+    }
+
+    #[test]
+    fn parse_e2_phase_accepts_expected_values() {
+        let cases: &[(&[&str], E2PhaseMode)] = &[
+            (&["--e2-phase", "normal"], E2PhaseMode::Normal),
+            (&["--e2-phase=normal"], E2PhaseMode::Normal),
+            (
+                &["--e2-phase", "dtc"],
+                E2PhaseMode::DissonanceThenConsonance,
+            ),
+            (
+                &["--e2-phase=dissonance_then_consonance"],
+                E2PhaseMode::DissonanceThenConsonance,
+            ),
+        ];
+        for (args, expected) in cases {
+            let args = args.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+            let phase = parse_e2_phase(&args).expect("parse_e2_phase failed");
+            assert_eq!(phase, *expected);
+        }
+    }
+
+    #[test]
+    fn parse_e2_phase_rejects_invalid_values() {
+        let args = vec!["--e2-phase".to_string(), "foo".to_string()];
+        let err = parse_e2_phase(&args).expect_err("expected parse_e2_phase to fail");
         assert!(
-            run.mean_c_score_loo_series.iter().all(|v| v.is_finite()),
-            "mean_c_score_loo_series contains non-finite values"
+            err.contains("Usage: paper"),
+            "expected usage in error, got: {err}"
         );
+    }
+
+    #[test]
+    fn parse_e4_hist_defaults_off() {
+        let args: Vec<String> = Vec::new();
+        let enabled = parse_e4_hist(&args).expect("parse_e4_hist failed");
+        assert!(!enabled);
+    }
+
+    #[test]
+    fn parse_e4_hist_accepts_expected_values() {
+        let cases: &[(&[&str], bool)] = &[
+            (&["--e4-hist", "on"], true),
+            (&["--e4-hist=on"], true),
+            (&["--e4-hist", "off"], false),
+            (&["--e4-hist=off"], false),
+            (&["--e4-hist", "true"], true),
+            (&["--e4-hist=false"], false),
+            (&["--e4-hist", "1"], true),
+            (&["--e4-hist=0"], false),
+        ];
+        for (args, expected) in cases {
+            let args = args.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+            let enabled = parse_e4_hist(&args).expect("parse_e4_hist failed");
+            assert_eq!(enabled, *expected);
+        }
+    }
+
+    #[test]
+    fn parse_e4_hist_rejects_invalid_values() {
+        let args = vec!["--e4-hist".to_string(), "maybe".to_string()];
+        let err = parse_e4_hist(&args).expect_err("expected parse_e4_hist to fail");
+        assert!(
+            err.contains("Usage: paper"),
+            "expected usage in error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn parse_experiments_ignores_other_flags() {
+        let args = vec![
+            "--e4-hist".to_string(),
+            "on".to_string(),
+            "--e2-phase".to_string(),
+            "normal".to_string(),
+            "--exp".to_string(),
+            "e2,e4".to_string(),
+        ];
+        let experiments = parse_experiments(&args).expect("parse_experiments failed");
+        assert_eq!(experiments, vec![Experiment::E2, Experiment::E4]);
+    }
+
+    #[test]
+    fn e2_marker_steps_includes_phase_switch_when_dtc() {
+        let steps = e2_marker_steps(E2PhaseMode::DissonanceThenConsonance);
+        assert!(
+            steps
+                .iter()
+                .any(|&s| (s - E2_PHASE_SWITCH_STEP as f32).abs() < 1e-6),
+            "phase switch step not found in marker steps"
+        );
+    }
+
+    #[test]
+    fn baseline_mean_c_score_loo_series_is_finite() {
+        assert_mean_c_score_loo_series_finite(
+            E2Condition::Baseline,
+            E2PhaseMode::Normal,
+            E2_STEP_SEMITONES,
+            0xC0FFEE_u64 + 1,
+        );
+    }
+
+    #[test]
+    fn norep_mean_c_score_loo_series_is_finite() {
+        assert_mean_c_score_loo_series_finite(
+            E2Condition::NoRepulsion,
+            E2PhaseMode::Normal,
+            E2_STEP_SEMITONES,
+            0xC0FFEE_u64 + 2,
+        );
+    }
+
+    #[test]
+    fn dtc_mean_c_score_loo_series_is_finite_across_conditions() {
+        for (idx, condition) in [
+            E2Condition::Baseline,
+            E2Condition::NoHillClimb,
+            E2Condition::NoRepulsion,
+        ]
+        .iter()
+        .enumerate()
+        {
+            assert_mean_c_score_loo_series_finite(
+                *condition,
+                E2PhaseMode::DissonanceThenConsonance,
+                E2_STEP_SEMITONES,
+                0xC0FFEE_u64 + 10 + idx as u64,
+            );
+        }
+    }
+
+    #[test]
+    fn mean_c_score_loo_series_is_finite_for_kbins_sweep() {
+        for (idx, step) in E2_STEP_SEMITONES_SWEEP.iter().enumerate() {
+            if (*step - E2_STEP_SEMITONES).abs() < 1e-6 {
+                continue;
+            }
+            assert_mean_c_score_loo_series_finite(
+                E2Condition::Baseline,
+                E2PhaseMode::DissonanceThenConsonance,
+                *step,
+                0xC0FFEE_u64 + 20 + idx as u64,
+            );
+        }
     }
 
     #[test]

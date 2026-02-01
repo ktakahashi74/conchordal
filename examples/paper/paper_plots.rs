@@ -41,9 +41,16 @@ const E2_C_STATE_THETA: f32 = 0.0;
 const E2_ACCEPT_ENABLED: bool = true;
 const E2_ACCEPT_T0: f32 = 0.05;
 const E2_ACCEPT_TAU_STEPS: f32 = 15.0;
+const E2_ACCEPT_RESET_ON_PHASE: bool = true;
+const E2_SCORE_IMPROVE_EPS: f32 = 1e-4;
+const E2_ANTI_BACKTRACK_ENABLED: bool = true;
+const E2_ANTI_BACKTRACK_PRE_SWITCH_ONLY: bool = false;
+const E2_BACKTRACK_ALLOW_EPS: f32 = 1e-4;
 const E2_PHASE_SWITCH_STEP: usize = E2_STEPS / 2;
 const E2_DIVERSITY_BIN_ST: f32 = 0.25;
 const E2_STEP_SEMITONES_SWEEP: [f32; 3] = [0.25, 0.5, 1.0];
+const E2_LAZY_MOVE_PROB: f32 = 0.65;
+const E2_SEMITONE_EPS: f32 = 1e-6;
 const E2_SEEDS: [u64; 5] = [
     0xC0FFEE_u64,
     0xC0FFEE_u64 + 1,
@@ -70,6 +77,14 @@ impl E2InitMode {
 
 const E2_INIT_MODE: E2InitMode = E2InitMode::RejectConsonant;
 const E2_CONSONANT_STEPS: [f32; 8] = [0.0, 3.0, 4.0, 5.0, 7.0, 8.0, 9.0, 12.0];
+
+#[derive(Clone, Copy, Debug)]
+enum E2UpdateSchedule {
+    Checkerboard,
+    Lazy,
+}
+
+const E2_UPDATE_SCHEDULE: E2UpdateSchedule = E2UpdateSchedule::Checkerboard;
 
 const E4_TAIL_WINDOW_STEPS: u32 = 200;
 const E4_DELTA_TAU: f32 = 0.02;
@@ -647,6 +662,13 @@ fn plot_e2_emergent_harmony(
         ),
     )?;
     write(
+        out_dir.join("paper_e2_mean_c_score_chosen_loo_over_time.csv"),
+        series_csv(
+            "step,mean_c_score_chosen_loo",
+            &baseline_run.mean_c_score_chosen_loo_series,
+        ),
+    )?;
+    write(
         out_dir.join("paper_e2_score_timeseries.csv"),
         series_csv("step,mean_score", &baseline_run.mean_score_series),
     )?;
@@ -663,6 +685,34 @@ fn plot_e2_emergent_harmony(
         series_csv(
             "step,accepted_worse_frac",
             &baseline_run.accepted_worse_frac_series,
+        ),
+    )?;
+    write(
+        out_dir.join("paper_e2_attempted_update_frac_timeseries.csv"),
+        series_csv(
+            "step,attempted_update_frac",
+            &baseline_run.attempted_update_frac_series,
+        ),
+    )?;
+    write(
+        out_dir.join("paper_e2_moved_given_attempt_frac_timeseries.csv"),
+        series_csv(
+            "step,moved_given_attempt_frac",
+            &baseline_run.moved_given_attempt_frac_series,
+        ),
+    )?;
+    write(
+        out_dir.join("paper_e2_mean_abs_delta_semitones_over_time.csv"),
+        series_csv(
+            "step,mean_abs_delta_semitones",
+            &baseline_run.mean_abs_delta_semitones_series,
+        ),
+    )?;
+    write(
+        out_dir.join("paper_e2_mean_abs_delta_semitones_moved_over_time.csv"),
+        series_csv(
+            "step,mean_abs_delta_semitones_moved",
+            &baseline_run.mean_abs_delta_semitones_moved_series,
         ),
     )?;
 
@@ -710,6 +760,16 @@ fn plot_e2_emergent_harmony(
         &marker_steps,
     )?;
 
+    let mean_c_score_chosen_loo_path =
+        out_dir.join("paper_e2_mean_c_score_chosen_loo_over_time.png");
+    render_series_plot_with_markers(
+        &mean_c_score_chosen_loo_path,
+        &format!("E2 Mean C Score (LOO Chosen) Over Time ({caption_suffix})"),
+        "mean C score (LOO chosen)",
+        &series_pairs(&baseline_run.mean_c_score_chosen_loo_series),
+        &marker_steps,
+    )?;
+
     let accept_worse_path = out_dir.join("paper_e2_accepted_worse_frac_over_time.png");
     render_series_plot_fixed_y(
         &accept_worse_path,
@@ -745,6 +805,47 @@ fn plot_e2_emergent_harmony(
         &format!("E2 Moved Fraction Over Time ({caption_suffix})"),
         "moved fraction",
         &series_pairs(&baseline_run.moved_frac_series),
+        &marker_steps,
+    )?;
+
+    let attempted_update_path = out_dir.join("paper_e2_attempted_update_frac_over_time.png");
+    render_series_plot_fixed_y(
+        &attempted_update_path,
+        &format!("E2 Attempted Update Fraction ({caption_suffix})"),
+        "attempted update frac",
+        &series_pairs(&baseline_run.attempted_update_frac_series),
+        &marker_steps,
+        0.0,
+        1.0,
+    )?;
+
+    let moved_given_attempt_path = out_dir.join("paper_e2_moved_given_attempt_frac_over_time.png");
+    render_series_plot_fixed_y(
+        &moved_given_attempt_path,
+        &format!("E2 Moved Given Attempt ({caption_suffix})"),
+        "moved given attempt frac",
+        &series_pairs(&baseline_run.moved_given_attempt_frac_series),
+        &marker_steps,
+        0.0,
+        1.0,
+    )?;
+
+    let abs_delta_path = out_dir.join("paper_e2_mean_abs_delta_semitones_over_time.png");
+    render_series_plot_with_markers(
+        &abs_delta_path,
+        &format!("E2 Mean |Δ| Semitones Over Time ({caption_suffix})"),
+        "mean |Δ| semitones",
+        &series_pairs(&baseline_run.mean_abs_delta_semitones_series),
+        &marker_steps,
+    )?;
+
+    let abs_delta_moved_path =
+        out_dir.join("paper_e2_mean_abs_delta_semitones_moved_over_time.png");
+    render_series_plot_with_markers(
+        &abs_delta_moved_path,
+        &format!("E2 Mean |Δ| Semitones (Moved) Over Time ({caption_suffix})"),
+        "mean |Δ| semitones (moved only)",
+        &series_pairs(&baseline_run.mean_abs_delta_semitones_moved_series),
         &marker_steps,
     )?;
 
@@ -786,6 +887,28 @@ fn plot_e2_emergent_harmony(
         e2_summary_csv(&baseline_runs),
     )?;
 
+    let flutter_segments = e2_flutter_segments(phase_mode);
+    let mut flutter_csv = String::from(
+        "segment,start_step,end_step,pingpong_rate_moves,reversal_rate_moves,move_rate_stepwise,mean_abs_delta_moved,step_count,moved_step_count,move_count,pingpong_count_moves,reversal_count_moves\n",
+    );
+    for (label, start, end) in &flutter_segments {
+        let metrics =
+            flutter_metrics_for_trajectories(&baseline_run.trajectory_semitones, *start, *end);
+        flutter_csv.push_str(&format!(
+            "{label},{start},{end},{:.6},{:.6},{:.6},{:.6},{},{},{},{},{}\n",
+            metrics.pingpong_rate_moves,
+            metrics.reversal_rate_moves,
+            metrics.move_rate_stepwise,
+            metrics.mean_abs_delta_moved,
+            metrics.step_count,
+            metrics.moved_step_count,
+            metrics.move_count,
+            metrics.pingpong_count_moves,
+            metrics.reversal_count_moves
+        ));
+    }
+    write(out_dir.join("paper_e2_flutter_metrics.csv"), flutter_csv)?;
+
     render_e2_histogram_sweep(out_dir, baseline_run)?;
 
     let (nohill_runs, nohill_stats) = e2_seed_sweep(
@@ -802,6 +925,34 @@ fn plot_e2_emergent_harmony(
         E2_STEP_SEMITONES,
         phase_mode,
     );
+
+    let mut flutter_rows = Vec::new();
+    for (cond, runs) in [
+        ("baseline", &baseline_runs),
+        ("nohill", &nohill_runs),
+        ("norep", &norep_runs),
+    ] {
+        for run in runs.iter() {
+            for (segment, start, end) in &flutter_segments {
+                let metrics =
+                    flutter_metrics_for_trajectories(&run.trajectory_semitones, *start, *end);
+                flutter_rows.push(FlutterRow {
+                    condition: cond,
+                    seed: run.seed,
+                    segment,
+                    metrics,
+                });
+            }
+        }
+    }
+    write(
+        out_dir.join("paper_e2_flutter_by_seed.csv"),
+        flutter_by_seed_csv(&flutter_rows),
+    )?;
+    write(
+        out_dir.join("paper_e2_flutter_summary.csv"),
+        flutter_summary_csv(&flutter_rows, &flutter_segments),
+    )?;
 
     write(
         out_dir.join("paper_e2_seed_sweep_mean_c.csv"),
@@ -1142,14 +1293,55 @@ fn e2_post_label_title() -> &'static str {
     }
 }
 
-fn e2_accept_temperature(step: usize) -> f32 {
+fn e2_accept_temperature(step: usize, phase_mode: E2PhaseMode) -> f32 {
     if !E2_ACCEPT_ENABLED {
         return 0.0;
     }
     if E2_ACCEPT_TAU_STEPS <= 0.0 {
         return E2_ACCEPT_T0.max(0.0);
     }
-    E2_ACCEPT_T0.max(0.0) * (-(step as f32) / E2_ACCEPT_TAU_STEPS).exp()
+    let mut phase_step = step;
+    if E2_ACCEPT_RESET_ON_PHASE {
+        if let Some(switch_step) = phase_mode.switch_step() {
+            if step >= switch_step {
+                phase_step = step - switch_step;
+            }
+        }
+    }
+    E2_ACCEPT_T0.max(0.0) * (-(phase_step as f32) / E2_ACCEPT_TAU_STEPS).exp()
+}
+
+fn e2_should_attempt_update(agent_id: usize, step: usize, u_move: f32) -> bool {
+    match E2_UPDATE_SCHEDULE {
+        E2UpdateSchedule::Checkerboard => (agent_id + step) % 2 == 0,
+        E2UpdateSchedule::Lazy => u_move < E2_LAZY_MOVE_PROB.clamp(0.0, 1.0),
+    }
+}
+
+fn e2_should_block_backtrack(phase_mode: E2PhaseMode, step: usize) -> bool {
+    if !E2_ANTI_BACKTRACK_ENABLED {
+        return false;
+    }
+    if E2_ANTI_BACKTRACK_PRE_SWITCH_ONLY {
+        if let Some(switch_step) = phase_mode.switch_step() {
+            return step < switch_step;
+        }
+    }
+    true
+}
+
+fn e2_update_backtrack_targets(targets: &mut [usize], before: &[usize], after: &[usize]) {
+    debug_assert_eq!(
+        targets.len(),
+        before.len(),
+        "backtrack_targets len mismatch"
+    );
+    debug_assert_eq!(before.len(), after.len(), "backtrack_targets len mismatch");
+    for i in 0..targets.len() {
+        if after[i] != before[i] {
+            targets[i] = before[i];
+        }
+    }
 }
 
 fn is_consonant_near(semitone_abs: f32) -> bool {
@@ -1222,10 +1414,15 @@ fn run_e2_once(
     let mut mean_c_series = Vec::with_capacity(E2_STEPS);
     let mut mean_c_state_series = Vec::with_capacity(E2_STEPS);
     let mut mean_c_score_loo_series = Vec::with_capacity(E2_STEPS);
+    let mut mean_c_score_chosen_loo_series = Vec::with_capacity(E2_STEPS);
     let mut mean_score_series = Vec::with_capacity(E2_STEPS);
     let mut mean_repulsion_series = Vec::with_capacity(E2_STEPS);
     let mut moved_frac_series = Vec::with_capacity(E2_STEPS);
     let mut accepted_worse_frac_series = Vec::with_capacity(E2_STEPS);
+    let mut attempted_update_frac_series = Vec::with_capacity(E2_STEPS);
+    let mut moved_given_attempt_frac_series = Vec::with_capacity(E2_STEPS);
+    let mut mean_abs_delta_semitones_series = Vec::with_capacity(E2_STEPS);
+    let mut mean_abs_delta_semitones_moved_series = Vec::with_capacity(E2_STEPS);
     let mut semitone_samples_pre = Vec::new();
     let mut semitone_samples_post = Vec::new();
     let mut density_mass_sum = 0.0f32;
@@ -1243,6 +1440,7 @@ fn run_e2_once(
     let mut trajectory_c_state = (0..E2_N_AGENTS)
         .map(|_| Vec::with_capacity(E2_STEPS))
         .collect::<Vec<_>>();
+    let mut backtrack_targets = agent_indices.clone();
 
     let mut anchor_shift = E2AnchorShiftStats {
         step: E2_ANCHOR_SHIFT_STEP,
@@ -1254,6 +1452,7 @@ fn run_e2_once(
     };
 
     let anchor_shift_enabled = e2_anchor_shift_enabled();
+    let phase_switch_step = phase_mode.switch_step();
     for step in 0..E2_STEPS {
         if step == E2_ANCHOR_SHIFT_STEP {
             let before = anchor_hz_current;
@@ -1278,6 +1477,11 @@ fn run_e2_once(
             };
             min_idx = new_min;
             max_idx = new_max;
+        }
+        if let Some(switch_step) = phase_switch_step {
+            if step == switch_step {
+                backtrack_targets.clone_from_slice(&agent_indices);
+            }
         }
 
         let anchor_idx = nearest_bin(space, anchor_hz_current);
@@ -1312,6 +1516,7 @@ fn run_e2_once(
         } else {
             f32::NAN
         };
+        let mut mean_c_score_loo_chosen = f32::NAN;
         mean_c_series.push(mean_c);
         mean_c_state_series.push(mean_c_state);
 
@@ -1330,8 +1535,10 @@ fn run_e2_once(
             target.extend(agent_indices.iter().map(|&idx| 12.0 * log2_ratio_scan[idx]));
         }
 
-        let temperature = e2_accept_temperature(step);
+        let temperature = e2_accept_temperature(step, phase_mode);
         let score_sign = phase_mode.score_sign(step);
+        let block_backtrack = e2_should_block_backtrack(phase_mode, step);
+        let positions_before_update = agent_indices.clone();
         let mut stats = match condition {
             E2Condition::Baseline => update_agent_indices_scored_stats_loo(
                 &mut agent_indices,
@@ -1348,6 +1555,13 @@ fn run_e2_once(
                 E2_LAMBDA,
                 E2_SIGMA,
                 temperature,
+                step,
+                block_backtrack,
+                if block_backtrack {
+                    Some(backtrack_targets.as_slice())
+                } else {
+                    None
+                },
                 &mut rng,
             ),
             E2Condition::NoRepulsion => update_agent_indices_scored_stats_loo(
@@ -1365,15 +1579,34 @@ fn run_e2_once(
                 0.0,
                 E2_SIGMA,
                 temperature,
+                step,
+                block_backtrack,
+                if block_backtrack {
+                    Some(backtrack_targets.as_slice())
+                } else {
+                    None
+                },
                 &mut rng,
             ),
             E2Condition::NoHillClimb => {
+                let prev_indices = agent_indices.clone();
                 let mut moved = 0usize;
-                for idx in agent_indices.iter_mut() {
+                let mut abs_delta_sum = 0.0f32;
+                let mut abs_delta_moved_sum = 0.0f32;
+                for (i, idx) in agent_indices.iter_mut().enumerate() {
                     let step = rng.random_range(-k_bins..=k_bins);
                     let next = (*idx as i32 + step).clamp(min_idx as i32, max_idx as i32);
                     if next as usize != *idx {
                         moved += 1;
+                    }
+                    let delta_semitones =
+                        12.0 * (log2_ratio_scan[next as usize] - log2_ratio_scan[*idx]);
+                    let abs_delta = delta_semitones.abs();
+                    if abs_delta.is_finite() {
+                        abs_delta_sum += abs_delta;
+                        if next as usize != prev_indices[i] {
+                            abs_delta_moved_sum += abs_delta;
+                        }
                     }
                     *idx = next as usize;
                 }
@@ -1387,13 +1620,34 @@ fn run_e2_once(
                 );
                 if !agent_indices.is_empty() {
                     stats.moved_frac = moved as f32 / agent_indices.len() as f32;
+                    stats.mean_abs_delta_semitones = abs_delta_sum / agent_indices.len() as f32;
+                    stats.attempted_update_frac = 1.0;
+                    stats.moved_given_attempt_frac = stats.moved_frac;
                 }
+                if moved > 0 {
+                    stats.mean_abs_delta_semitones_moved = abs_delta_moved_sum / moved as f32;
+                }
+                mean_c_score_loo_chosen = mean_c_score_loo_at_indices_with_prev(
+                    space,
+                    &workspace,
+                    &env_scan,
+                    &density_scan,
+                    &du_scan,
+                    &prev_indices,
+                    &agent_indices,
+                );
                 stats
             }
         };
+        e2_update_backtrack_targets(
+            &mut backtrack_targets,
+            &positions_before_update,
+            &agent_indices,
+        );
 
         if matches!(condition, E2Condition::NoHillClimb) {
             stats.mean_c_score_current_loo = mean_c_score_loo_current;
+            stats.mean_c_score_chosen_loo = mean_c_score_loo_chosen;
         }
         let condition_label = match condition {
             E2Condition::Baseline => "baseline",
@@ -1405,11 +1659,21 @@ fn run_e2_once(
             "mean_c_score_current_loo not finite (cond={condition_label}, step={step}, value={})",
             stats.mean_c_score_current_loo
         );
+        debug_assert!(
+            stats.mean_c_score_chosen_loo.is_finite(),
+            "mean_c_score_chosen_loo not finite (cond={condition_label}, step={step}, value={})",
+            stats.mean_c_score_chosen_loo
+        );
         mean_c_score_loo_series.push(stats.mean_c_score_current_loo);
+        mean_c_score_chosen_loo_series.push(stats.mean_c_score_chosen_loo);
         mean_score_series.push(stats.mean_score);
         mean_repulsion_series.push(stats.mean_repulsion);
         moved_frac_series.push(stats.moved_frac);
         accepted_worse_frac_series.push(stats.accepted_worse_frac);
+        attempted_update_frac_series.push(stats.attempted_update_frac);
+        moved_given_attempt_frac_series.push(stats.moved_given_attempt_frac);
+        mean_abs_delta_semitones_series.push(stats.mean_abs_delta_semitones);
+        mean_abs_delta_semitones_moved_series.push(stats.mean_abs_delta_semitones_moved);
     }
 
     let mut final_semitones = Vec::with_capacity(E2_N_AGENTS);
@@ -1457,10 +1721,15 @@ fn run_e2_once(
         mean_c_series,
         mean_c_state_series,
         mean_c_score_loo_series,
+        mean_c_score_chosen_loo_series,
         mean_score_series,
         mean_repulsion_series,
         moved_frac_series,
         accepted_worse_frac_series,
+        attempted_update_frac_series,
+        moved_given_attempt_frac_series,
+        mean_abs_delta_semitones_series,
+        mean_abs_delta_semitones_moved_series,
         semitone_samples_pre,
         semitone_samples_post,
         final_semitones,
@@ -2372,10 +2641,15 @@ struct E2Run {
     mean_c_series: Vec<f32>,
     mean_c_state_series: Vec<f32>,
     mean_c_score_loo_series: Vec<f32>,
+    mean_c_score_chosen_loo_series: Vec<f32>,
     mean_score_series: Vec<f32>,
     mean_repulsion_series: Vec<f32>,
     moved_frac_series: Vec<f32>,
     accepted_worse_frac_series: Vec<f32>,
+    attempted_update_frac_series: Vec<f32>,
+    moved_given_attempt_frac_series: Vec<f32>,
+    mean_abs_delta_semitones_series: Vec<f32>,
+    mean_abs_delta_semitones_moved_series: Vec<f32>,
     semitone_samples_pre: Vec<f32>,
     semitone_samples_post: Vec<f32>,
     final_semitones: Vec<f32>,
@@ -3343,10 +3617,15 @@ fn update_agent_indices(
 
 struct UpdateStats {
     mean_c_score_current_loo: f32,
+    mean_c_score_chosen_loo: f32,
     mean_score: f32,
     mean_repulsion: f32,
     moved_frac: f32,
     accepted_worse_frac: f32,
+    attempted_update_frac: f32,
+    moved_given_attempt_frac: f32,
+    mean_abs_delta_semitones: f32,
+    mean_abs_delta_semitones_moved: f32,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -3457,10 +3736,15 @@ fn update_agent_indices_scored_stats_with_order(
     if indices.is_empty() {
         return UpdateStats {
             mean_c_score_current_loo: 0.0,
+            mean_c_score_chosen_loo: 0.0,
             mean_score: 0.0,
             mean_repulsion: 0.0,
             moved_frac: 0.0,
             accepted_worse_frac: 0.0,
+            attempted_update_frac: 0.0,
+            moved_given_attempt_frac: 0.0,
+            mean_abs_delta_semitones: 0.0,
+            mean_abs_delta_semitones_moved: 0.0,
         };
     }
     let sigma = sigma.max(1e-6);
@@ -3527,10 +3811,15 @@ fn update_agent_indices_scored_stats_with_order(
     if count == 0 {
         return UpdateStats {
             mean_c_score_current_loo: 0.0,
+            mean_c_score_chosen_loo: 0.0,
             mean_score: 0.0,
             mean_repulsion: 0.0,
             moved_frac: 0.0,
             accepted_worse_frac: 0.0,
+            attempted_update_frac: 0.0,
+            moved_given_attempt_frac: 0.0,
+            mean_abs_delta_semitones: 0.0,
+            mean_abs_delta_semitones_moved: 0.0,
         };
     }
     let mean_score = if score_count > 0 {
@@ -3546,10 +3835,15 @@ fn update_agent_indices_scored_stats_with_order(
     let inv = 1.0 / count as f32;
     UpdateStats {
         mean_c_score_current_loo: f32::NAN,
+        mean_c_score_chosen_loo: f32::NAN,
         mean_score,
         mean_repulsion,
         moved_frac: moved_count as f32 * inv,
         accepted_worse_frac: 0.0,
+        attempted_update_frac: 1.0,
+        moved_given_attempt_frac: moved_count as f32 * inv,
+        mean_abs_delta_semitones: 0.0,
+        mean_abs_delta_semitones_moved: 0.0,
     }
 }
 
@@ -3569,6 +3863,9 @@ fn update_agent_indices_scored_stats_loo(
     lambda: f32,
     sigma: f32,
     temperature: f32,
+    step: usize,
+    block_backtrack: bool,
+    prev_positions: Option<&[usize]>,
     rng: &mut StdRng,
 ) -> UpdateStats {
     let order: Vec<usize> = (0..indices.len()).collect();
@@ -3587,6 +3884,9 @@ fn update_agent_indices_scored_stats_loo(
         lambda,
         sigma,
         temperature,
+        step,
+        block_backtrack,
+        prev_positions,
         rng,
         &order,
     )
@@ -3626,16 +3926,24 @@ fn update_agent_indices_scored_stats_with_order_loo(
     lambda: f32,
     sigma: f32,
     temperature: f32,
+    step: usize,
+    block_backtrack: bool,
+    prev_positions: Option<&[usize]>,
     rng: &mut StdRng,
     order: &[usize],
 ) -> UpdateStats {
     if indices.is_empty() {
         return UpdateStats {
             mean_c_score_current_loo: 0.0,
+            mean_c_score_chosen_loo: 0.0,
             mean_score: 0.0,
             mean_repulsion: 0.0,
             moved_frac: 0.0,
             accepted_worse_frac: 0.0,
+            attempted_update_frac: 0.0,
+            moved_given_attempt_frac: 0.0,
+            mean_abs_delta_semitones: 0.0,
+            mean_abs_delta_semitones_moved: 0.0,
         };
     }
     space.assert_scan_len_named(env_total, "env_total");
@@ -3651,15 +3959,27 @@ fn update_agent_indices_scored_stats_with_order_loo(
     let u01_by_agent: Vec<f32> = (0..prev_indices.len())
         .map(|_| rng.random::<f32>())
         .collect();
+    let u_move_by_agent: Vec<f32> = if matches!(E2_UPDATE_SCHEDULE, E2UpdateSchedule::Lazy) {
+        (0..prev_indices.len())
+            .map(|_| rng.random::<f32>())
+            .collect()
+    } else {
+        vec![0.0; prev_indices.len()]
+    };
     let mut env_loo = vec![0.0f32; env_total.len()];
     let mut density_loo = vec![0.0f32; density_total.len()];
     let mut next_indices = prev_indices.clone();
     let mut c_score_current_sum = 0.0f32;
     let mut c_score_current_count = 0u32;
+    let mut c_score_chosen_sum = 0.0f32;
+    let mut c_score_chosen_count = 0u32;
     let mut score_sum = 0.0f32;
     let mut score_count = 0u32;
     let mut repulsion_sum = 0.0f32;
     let mut repulsion_count = 0u32;
+    let mut abs_delta_sum = 0.0f32;
+    let mut abs_delta_moved_sum = 0.0f32;
+    let mut attempt_count = 0usize;
     let mut moved_count = 0usize;
     let mut accepted_worse_count = 0usize;
     let mut count = 0usize;
@@ -3694,43 +4014,67 @@ fn update_agent_indices_scored_stats_with_order_loo(
             c_score_current_sum += c_score_current;
             c_score_current_count += 1;
         }
-        let start = (current_idx as isize - k as isize).max(min_idx as isize) as usize;
-        let end = (current_idx as isize + k as isize).min(max_idx as isize) as usize;
-        let mut best_idx = current_idx;
-        let mut best_score = f32::NEG_INFINITY;
-        let mut best_repulsion = 0.0f32;
-        let mut found_candidate = false;
-        for cand in start..=end {
-            if cand == current_idx {
-                continue;
-            }
-            let cand_log2 = log2_ratio_scan[cand];
-            let mut repulsion = 0.0f32;
-            if !skip_repulsion {
-                for (j, &other_log2) in prev_log2.iter().enumerate() {
-                    if j == agent_i {
+        let current_score = score_sign * c_score_current - lambda * current_repulsion;
+        let update_allowed = e2_should_attempt_update(agent_i, step, u_move_by_agent[agent_i]);
+        if update_allowed {
+            attempt_count += 1;
+        }
+        let backtrack_target = if block_backtrack {
+            prev_positions.and_then(|prev| prev.get(agent_i).copied())
+        } else {
+            None
+        };
+        let (chosen_idx, chosen_score, chosen_repulsion, accepted_worse) = if update_allowed {
+            let start = (current_idx as isize - k as isize).max(min_idx as isize) as usize;
+            let end = (current_idx as isize + k as isize).min(max_idx as isize) as usize;
+            let mut best_idx = current_idx;
+            let mut best_score = f32::NEG_INFINITY;
+            let mut best_repulsion = 0.0f32;
+            let mut found_candidate = false;
+            for cand in start..=end {
+                if cand == current_idx {
+                    continue;
+                }
+                let cand_log2 = log2_ratio_scan[cand];
+                let mut repulsion = 0.0f32;
+                if !skip_repulsion {
+                    for (j, &other_log2) in prev_log2.iter().enumerate() {
+                        if j == agent_i {
+                            continue;
+                        }
+                        let dist = (cand_log2 - other_log2).abs();
+                        repulsion += (-dist / sigma).exp();
+                    }
+                }
+                let c_score = c_score_scan[cand];
+                let score = score_sign * c_score - lambda * repulsion;
+                if let Some(prev_idx) = backtrack_target {
+                    if cand == prev_idx && (score - current_score) <= E2_BACKTRACK_ALLOW_EPS {
                         continue;
                     }
-                    let dist = (cand_log2 - other_log2).abs();
-                    repulsion += (-dist / sigma).exp();
+                }
+                if score > best_score {
+                    best_score = score;
+                    best_idx = cand;
+                    best_repulsion = repulsion;
+                    found_candidate = true;
                 }
             }
-            let c_score = c_score_scan[cand];
-            let score = score_sign * c_score - lambda * repulsion;
-            if score > best_score {
-                best_score = score;
-                best_idx = cand;
-                best_repulsion = repulsion;
-                found_candidate = true;
-            }
-        }
-        let current_score = score_sign * c_score_current - lambda * current_repulsion;
-        let (chosen_idx, chosen_score, chosen_repulsion, accepted_worse) = if found_candidate {
-            let delta = best_score - current_score;
-            let u01 = u01_by_agent[agent_i];
-            let (accept, accepted_worse) = metropolis_accept(delta, temperature, u01);
-            if accept {
-                (best_idx, best_score, best_repulsion, accepted_worse)
+            if found_candidate {
+                let delta = best_score - current_score;
+                if delta > E2_SCORE_IMPROVE_EPS {
+                    (best_idx, best_score, best_repulsion, false)
+                } else if delta < 0.0 {
+                    let u01 = u01_by_agent[agent_i];
+                    let (accept, accepted_worse) = metropolis_accept(delta, temperature, u01);
+                    if accept {
+                        (best_idx, best_score, best_repulsion, accepted_worse)
+                    } else {
+                        (current_idx, current_score, current_repulsion, false)
+                    }
+                } else {
+                    (current_idx, current_score, current_repulsion, false)
+                }
             } else {
                 (current_idx, current_score, current_repulsion, false)
             }
@@ -3742,6 +4086,14 @@ fn update_agent_indices_scored_stats_with_order_loo(
         if chosen_idx != current_idx {
             moved_count += 1;
         }
+        let delta_semitones = 12.0 * (log2_ratio_scan[chosen_idx] - log2_ratio_scan[current_idx]);
+        let abs_delta = delta_semitones.abs();
+        if abs_delta.is_finite() {
+            abs_delta_sum += abs_delta;
+            if chosen_idx != current_idx {
+                abs_delta_moved_sum += abs_delta;
+            }
+        }
         if chosen_score.is_finite() {
             score_sum += chosen_score;
             score_count += 1;
@@ -3749,6 +4101,11 @@ fn update_agent_indices_scored_stats_with_order_loo(
         if chosen_repulsion.is_finite() {
             repulsion_sum += chosen_repulsion;
             repulsion_count += 1;
+        }
+        let c_score_chosen = c_score_scan[chosen_idx];
+        if c_score_chosen.is_finite() {
+            c_score_chosen_sum += c_score_chosen;
+            c_score_chosen_count += 1;
         }
         if accepted_worse {
             accepted_worse_count += 1;
@@ -3760,14 +4117,24 @@ fn update_agent_indices_scored_stats_with_order_loo(
     if count == 0 {
         return UpdateStats {
             mean_c_score_current_loo: 0.0,
+            mean_c_score_chosen_loo: 0.0,
             mean_score: 0.0,
             mean_repulsion: 0.0,
             moved_frac: 0.0,
             accepted_worse_frac: 0.0,
+            attempted_update_frac: 0.0,
+            moved_given_attempt_frac: 0.0,
+            mean_abs_delta_semitones: 0.0,
+            mean_abs_delta_semitones_moved: 0.0,
         };
     }
     let mean_c_score_current_loo = if c_score_current_count > 0 {
         c_score_current_sum / c_score_current_count as f32
+    } else {
+        0.0
+    };
+    let mean_c_score_chosen_loo = if c_score_chosen_count > 0 {
+        c_score_chosen_sum / c_score_chosen_count as f32
     } else {
         0.0
     };
@@ -3782,12 +4149,27 @@ fn update_agent_indices_scored_stats_with_order_loo(
         0.0
     };
     let inv = 1.0 / count as f32;
+    let mean_abs_delta_semitones = abs_delta_sum * inv;
+    let mean_abs_delta_semitones_moved = if moved_count > 0 {
+        abs_delta_moved_sum / moved_count as f32
+    } else {
+        0.0
+    };
     UpdateStats {
         mean_c_score_current_loo,
+        mean_c_score_chosen_loo,
         mean_score,
         mean_repulsion,
         moved_frac: moved_count as f32 * inv,
         accepted_worse_frac: accepted_worse_count as f32 * inv,
+        attempted_update_frac: attempt_count as f32 * inv,
+        moved_given_attempt_frac: if attempt_count > 0 {
+            moved_count as f32 / attempt_count as f32
+        } else {
+            0.0
+        },
+        mean_abs_delta_semitones,
+        mean_abs_delta_semitones_moved,
     }
 }
 
@@ -3802,10 +4184,15 @@ fn score_stats_at_indices(
     if indices.is_empty() {
         return UpdateStats {
             mean_c_score_current_loo: 0.0,
+            mean_c_score_chosen_loo: 0.0,
             mean_score: 0.0,
             mean_repulsion: 0.0,
             moved_frac: 0.0,
             accepted_worse_frac: 0.0,
+            attempted_update_frac: 0.0,
+            moved_given_attempt_frac: 0.0,
+            mean_abs_delta_semitones: 0.0,
+            mean_abs_delta_semitones_moved: 0.0,
         };
     }
     let sigma = sigma.max(1e-6);
@@ -3846,10 +4233,15 @@ fn score_stats_at_indices(
     };
     UpdateStats {
         mean_c_score_current_loo: f32::NAN,
+        mean_c_score_chosen_loo: f32::NAN,
         mean_score,
         mean_repulsion,
         moved_frac: 0.0,
         accepted_worse_frac: 0.0,
+        attempted_update_frac: 0.0,
+        moved_given_attempt_frac: 0.0,
+        mean_abs_delta_semitones: 0.0,
+        mean_abs_delta_semitones_moved: 0.0,
     }
 }
 
@@ -3861,6 +4253,48 @@ fn mean_at_indices(values: &[f32], indices: &[usize]) -> f32 {
     sum / indices.len() as f32
 }
 
+fn mean_c_score_loo_at_indices_with_prev(
+    space: &Log2Space,
+    workspace: &ConsonanceWorkspace,
+    env_total: &[f32],
+    density_total: &[f32],
+    du_scan: &[f32],
+    prev_indices: &[usize],
+    eval_indices: &[usize],
+) -> f32 {
+    if prev_indices.is_empty() || eval_indices.is_empty() {
+        return 0.0;
+    }
+    debug_assert_eq!(
+        prev_indices.len(),
+        eval_indices.len(),
+        "prev_indices/eval_indices length mismatch"
+    );
+    space.assert_scan_len_named(env_total, "env_total");
+    space.assert_scan_len_named(density_total, "density_total");
+    space.assert_scan_len_named(du_scan, "du_scan");
+
+    let mut env_loo = vec![0.0f32; env_total.len()];
+    let mut density_loo = vec![0.0f32; density_total.len()];
+    let mut sum = 0.0f32;
+    let mut count = 0u32;
+    for (&prev_idx, &eval_idx) in prev_indices.iter().zip(eval_indices.iter()) {
+        env_loo.copy_from_slice(env_total);
+        density_loo.copy_from_slice(density_total);
+        env_loo[prev_idx] = (env_loo[prev_idx] - 1.0).max(0.0);
+        let denom = du_scan[prev_idx].max(1e-12);
+        density_loo[prev_idx] = (density_loo[prev_idx] - 1.0 / denom).max(0.0);
+        let (c_score_scan, _, _, _) =
+            compute_c_score_state_scans(space, workspace, &env_loo, &density_loo, du_scan);
+        let value = c_score_scan[eval_idx];
+        if value.is_finite() {
+            sum += value;
+            count += 1;
+        }
+    }
+    if count == 0 { 0.0 } else { sum / count as f32 }
+}
+
 fn mean_c_score_loo_at_indices(
     space: &Log2Space,
     workspace: &ConsonanceWorkspace,
@@ -3870,32 +4304,15 @@ fn mean_c_score_loo_at_indices(
     indices: &[usize],
     _log2_ratio_scan: &[f32],
 ) -> f32 {
-    if indices.is_empty() {
-        return 0.0;
-    }
-    space.assert_scan_len_named(env_total, "env_total");
-    space.assert_scan_len_named(density_total, "density_total");
-    space.assert_scan_len_named(du_scan, "du_scan");
-
-    let mut env_loo = vec![0.0f32; env_total.len()];
-    let mut density_loo = vec![0.0f32; density_total.len()];
-    let mut sum = 0.0f32;
-    let mut count = 0u32;
-    for &idx in indices {
-        env_loo.copy_from_slice(env_total);
-        density_loo.copy_from_slice(density_total);
-        env_loo[idx] = (env_loo[idx] - 1.0).max(0.0);
-        let denom = du_scan[idx].max(1e-12);
-        density_loo[idx] = (density_loo[idx] - 1.0 / denom).max(0.0);
-        let (c_score_scan, _, _, _) =
-            compute_c_score_state_scans(space, workspace, &env_loo, &density_loo, du_scan);
-        let value = c_score_scan[idx];
-        if value.is_finite() {
-            sum += value;
-            count += 1;
-        }
-    }
-    if count == 0 { 0.0 } else { sum / count as f32 }
+    mean_c_score_loo_at_indices_with_prev(
+        space,
+        workspace,
+        env_total,
+        density_total,
+        du_scan,
+        indices,
+        indices,
+    )
 }
 
 fn mean_std_series(series_list: Vec<&Vec<f32>>) -> (Vec<f32>, Vec<f32>) {
@@ -4072,6 +4489,201 @@ fn e2_summary_csv(runs: &[E2Run]) -> String {
     out
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+struct FlutterMetrics {
+    pingpong_rate_moves: f32,
+    reversal_rate_moves: f32,
+    move_rate_stepwise: f32,
+    mean_abs_delta_moved: f32,
+    step_count: usize,
+    moved_step_count: usize,
+    move_count: usize,
+    pingpong_count_moves: usize,
+    reversal_count_moves: usize,
+}
+
+fn flutter_metrics_for_trajectories(
+    trajectories: &[Vec<f32>],
+    start_step: usize,
+    end_step: usize,
+) -> FlutterMetrics {
+    if trajectories.is_empty() || start_step >= end_step {
+        return FlutterMetrics::default();
+    }
+    let mut step_count = 0usize;
+    let mut moved_step_count = 0usize;
+    let mut move_count = 0usize;
+    let mut pingpong_count_moves = 0usize;
+    let mut reversal_count_moves = 0usize;
+    let mut pingpong_den_moves = 0usize;
+    let mut reversal_den_moves = 0usize;
+    let mut abs_delta_sum = 0.0f32;
+
+    for traj in trajectories {
+        if traj.len() <= start_step + 1 {
+            continue;
+        }
+        let end = end_step.min(traj.len().saturating_sub(1));
+        for t in (start_step + 1)..=end {
+            let delta = traj[t] - traj[t - 1];
+            let moved = delta.abs() > E2_SEMITONE_EPS;
+            step_count += 1;
+            if moved {
+                moved_step_count += 1;
+            }
+        }
+
+        let mut compressed: Vec<f32> = Vec::new();
+        for t in start_step..=end {
+            let v = traj[t];
+            if compressed
+                .last()
+                .is_some_and(|last| (v - last).abs() <= E2_SEMITONE_EPS)
+            {
+                continue;
+            }
+            compressed.push(v);
+        }
+        let comp_len = compressed.len();
+        if comp_len >= 2 {
+            move_count += comp_len - 1;
+            for i in 1..comp_len {
+                abs_delta_sum += (compressed[i] - compressed[i - 1]).abs();
+            }
+        }
+        if comp_len >= 3 {
+            pingpong_den_moves += comp_len - 2;
+            reversal_den_moves += comp_len - 2;
+            for i in 2..comp_len {
+                if (compressed[i] - compressed[i - 2]).abs() <= E2_SEMITONE_EPS {
+                    pingpong_count_moves += 1;
+                }
+                let delta = compressed[i] - compressed[i - 1];
+                let prev_delta = compressed[i - 1] - compressed[i - 2];
+                if delta * prev_delta < 0.0 {
+                    reversal_count_moves += 1;
+                }
+            }
+        }
+    }
+
+    let move_rate_stepwise = if step_count > 0 {
+        moved_step_count as f32 / step_count as f32
+    } else {
+        0.0
+    };
+    let pingpong_rate_moves = if pingpong_den_moves > 0 {
+        pingpong_count_moves as f32 / pingpong_den_moves as f32
+    } else {
+        0.0
+    };
+    let reversal_rate_moves = if reversal_den_moves > 0 {
+        reversal_count_moves as f32 / reversal_den_moves as f32
+    } else {
+        0.0
+    };
+    let mean_abs_delta_moved = if move_count > 0 {
+        abs_delta_sum / move_count as f32
+    } else {
+        0.0
+    };
+
+    FlutterMetrics {
+        pingpong_rate_moves,
+        reversal_rate_moves,
+        move_rate_stepwise,
+        mean_abs_delta_moved,
+        step_count,
+        moved_step_count,
+        move_count,
+        pingpong_count_moves,
+        reversal_count_moves,
+    }
+}
+
+fn e2_flutter_segments(phase_mode: E2PhaseMode) -> Vec<(&'static str, usize, usize)> {
+    if let Some(switch_step) = phase_mode.switch_step() {
+        let pre_end = switch_step.saturating_sub(1);
+        let post_start = switch_step;
+        let mut segments = Vec::new();
+        if pre_end >= E2_BURN_IN {
+            segments.push(("pre", E2_BURN_IN, pre_end));
+        }
+        if post_start < E2_STEPS {
+            segments.push(("post", post_start, E2_STEPS.saturating_sub(1)));
+        }
+        segments
+    } else {
+        vec![("all", E2_BURN_IN, E2_STEPS.saturating_sub(1))]
+    }
+}
+
+#[derive(Clone)]
+struct FlutterRow {
+    condition: &'static str,
+    seed: u64,
+    segment: &'static str,
+    metrics: FlutterMetrics,
+}
+
+fn flutter_by_seed_csv(rows: &[FlutterRow]) -> String {
+    let mut out = String::from(
+        "cond,seed,segment,pingpong_rate_moves,reversal_rate_moves,move_rate_stepwise,mean_abs_delta_moved,step_count,moved_step_count,move_count,pingpong_count_moves,reversal_count_moves\n",
+    );
+    for row in rows {
+        let m = row.metrics;
+        out.push_str(&format!(
+            "{},{},{},{:.6},{:.6},{:.6},{:.6},{},{},{},{},{}\n",
+            row.condition,
+            row.seed,
+            row.segment,
+            m.pingpong_rate_moves,
+            m.reversal_rate_moves,
+            m.move_rate_stepwise,
+            m.mean_abs_delta_moved,
+            m.step_count,
+            m.moved_step_count,
+            m.move_count,
+            m.pingpong_count_moves,
+            m.reversal_count_moves
+        ));
+    }
+    out
+}
+
+fn flutter_summary_csv(rows: &[FlutterRow], segments: &[(&'static str, usize, usize)]) -> String {
+    let mut out = String::from(
+        "cond,segment,mean_pingpong_rate_moves,std_pingpong_rate_moves,mean_reversal_rate_moves,std_reversal_rate_moves,mean_move_rate_stepwise,std_move_rate_stepwise,mean_abs_delta_moved,std_abs_delta_moved,n\n",
+    );
+    for &cond in ["baseline", "nohill", "norep"].iter() {
+        for (segment, _, _) in segments {
+            let mut pingpong_vals = Vec::new();
+            let mut reversal_vals = Vec::new();
+            let mut move_vals = Vec::new();
+            let mut abs_delta_vals = Vec::new();
+            for row in rows
+                .iter()
+                .filter(|r| r.condition == cond && r.segment == *segment)
+            {
+                pingpong_vals.push(row.metrics.pingpong_rate_moves);
+                reversal_vals.push(row.metrics.reversal_rate_moves);
+                move_vals.push(row.metrics.move_rate_stepwise);
+                abs_delta_vals.push(row.metrics.mean_abs_delta_moved);
+            }
+            let n = pingpong_vals.len();
+            let (mean_ping, std_ping) = mean_std_scalar(&pingpong_vals);
+            let (mean_rev, std_rev) = mean_std_scalar(&reversal_vals);
+            let (mean_move, std_move) = mean_std_scalar(&move_vals);
+            let (mean_abs, std_abs) = mean_std_scalar(&abs_delta_vals);
+            out.push_str(&format!(
+                "{cond},{segment},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{}\n",
+                mean_ping, std_ping, mean_rev, std_rev, mean_move, std_move, mean_abs, std_abs, n
+            ));
+        }
+    }
+    out
+}
+
 fn final_agents_csv(run: &E2Run) -> String {
     let mut out = String::from("agent_id,freq_hz,log2_ratio,semitones\n");
     let len = run
@@ -4123,6 +4735,33 @@ fn e2_meta_text(
     out.push_str(&format!("E2_ACCEPT_ENABLED={}\n", E2_ACCEPT_ENABLED));
     out.push_str(&format!("E2_ACCEPT_T0={:.3}\n", E2_ACCEPT_T0));
     out.push_str(&format!("E2_ACCEPT_TAU_STEPS={:.3}\n", E2_ACCEPT_TAU_STEPS));
+    out.push_str(&format!(
+        "E2_ACCEPT_RESET_ON_PHASE={}\n",
+        E2_ACCEPT_RESET_ON_PHASE
+    ));
+    out.push_str(&format!(
+        "E2_SCORE_IMPROVE_EPS={:.6}\n",
+        E2_SCORE_IMPROVE_EPS
+    ));
+    let update_schedule = match E2_UPDATE_SCHEDULE {
+        E2UpdateSchedule::Checkerboard => "checkerboard",
+        E2UpdateSchedule::Lazy => "lazy",
+    };
+    out.push_str(&format!("E2_UPDATE_SCHEDULE={}\n", update_schedule));
+    out.push_str(&format!("E2_LAZY_MOVE_PROB={:.3}\n", E2_LAZY_MOVE_PROB));
+    out.push_str(&format!(
+        "E2_ANTI_BACKTRACK_ENABLED={}\n",
+        E2_ANTI_BACKTRACK_ENABLED
+    ));
+    out.push_str(&format!(
+        "E2_ANTI_BACKTRACK_PRE_SWITCH_ONLY={}\n",
+        E2_ANTI_BACKTRACK_PRE_SWITCH_ONLY
+    ));
+    out.push_str(&format!(
+        "E2_BACKTRACK_ALLOW_EPS={:.6}\n",
+        E2_BACKTRACK_ALLOW_EPS
+    ));
+    out.push_str(&format!("E2_SEMITONE_EPS={:.6}\n", E2_SEMITONE_EPS));
     out.push_str(&format!("C_STATE_BETA={:.3}\n", E2_C_STATE_BETA));
     out.push_str(&format!("C_STATE_THETA={:.3}\n", E2_C_STATE_THETA));
     out.push_str(&format!("ROUGHNESS_REF_EPS={:.3e}\n", roughness_ref_eps));
@@ -4148,7 +4787,23 @@ fn e2_meta_text(
     if let Some(step) = phase_mode.switch_step() {
         out.push_str(&format!("E2_PHASE_SWITCH_STEP={step}\n"));
     }
-    out.push_str("E2_MEAN_C_SCORE_LOO_DESC=mean C score at current positions using LOO env\n");
+    out.push_str(
+        "E2_MEAN_C_SCORE_CURRENT_LOO_DESC=mean C score at current positions using LOO env (env_total-1 at current bin, density_total-1/du)\n",
+    );
+    out.push_str(
+        "E2_MEAN_C_SCORE_CHOSEN_LOO_DESC=mean C score at chosen positions using LOO env (removal at current bin)\n",
+    );
+    out.push_str("E2_MEAN_ABS_DELTA_SEMITONES_DESC=mean |Δ| over all agents\n");
+    out.push_str("E2_MEAN_ABS_DELTA_SEMITONES_MOVED_DESC=mean |Δ| over moved agents\n");
+    out.push_str("E2_ATTEMPTED_UPDATE_FRAC_DESC=attempted update / agents\n");
+    out.push_str("E2_MOVED_GIVEN_ATTEMPT_FRAC_DESC=moved / attempted update\n");
+    out.push_str(
+        "E2_PINGPONG_RATE_DESC=move-compressed pingpong rate (count / max(0, compressed_len-2))\n",
+    );
+    out.push_str(
+        "E2_REVERSAL_RATE_DESC=move-compressed reversal rate (count / max(0, move_count-1))\n",
+    );
+    out.push_str("E2_MOVE_RATE_STEPWISE_DESC=stepwise moved / steps\n");
     out
 }
 
@@ -6850,10 +7505,15 @@ mod tests {
             mean_c_series: vec![metric],
             mean_c_state_series: vec![metric],
             mean_c_score_loo_series: vec![metric],
+            mean_c_score_chosen_loo_series: vec![metric],
             mean_score_series: vec![0.0],
             mean_repulsion_series: vec![0.0],
             moved_frac_series: vec![0.0],
             accepted_worse_frac_series: vec![0.0],
+            attempted_update_frac_series: vec![0.0],
+            moved_given_attempt_frac_series: vec![0.0],
+            mean_abs_delta_semitones_series: vec![0.0],
+            mean_abs_delta_semitones_moved_series: vec![0.0],
             semitone_samples_pre: Vec::new(),
             semitone_samples_post: Vec::new(),
             final_semitones: Vec::new(),
@@ -7090,6 +7750,9 @@ mod tests {
             0.2,
             0.1,
             0.05,
+            3,
+            false,
+            None,
             &mut rng_fwd,
             &order_fwd,
         );
@@ -7108,11 +7771,34 @@ mod tests {
             0.2,
             0.1,
             0.05,
+            3,
+            false,
+            None,
             &mut rng_rev,
             &order_rev,
         );
         assert_eq!(indices_fwd, indices_rev);
         assert!((stats_fwd.mean_score - stats_rev.mean_score).abs() < 1e-6);
+    }
+
+    #[test]
+    fn e2_update_schedule_checkerboard_updates_half_each_step() {
+        if !matches!(E2_UPDATE_SCHEDULE, E2UpdateSchedule::Checkerboard) {
+            return;
+        }
+        let n = 7usize;
+        let step0 = (0..n)
+            .filter(|&i| e2_should_attempt_update(i, 0, 0.0))
+            .count();
+        let step1 = (0..n)
+            .filter(|&i| e2_should_attempt_update(i, 1, 0.0))
+            .count();
+        let diff = (step0 as isize - step1 as isize).abs();
+        assert_eq!(step0 + step1, n);
+        assert!(
+            diff <= 1,
+            "expected near-half updates, step0={step0}, step1={step1}"
+        );
     }
 
     #[test]
@@ -7163,12 +7849,21 @@ mod tests {
 
     #[test]
     fn e2_accept_temperature_monotone() {
-        let t0 = e2_accept_temperature(0);
-        let t1 = e2_accept_temperature(1);
-        let t5 = e2_accept_temperature(5);
+        let phase = E2PhaseMode::DissonanceThenConsonance;
+        let t0 = e2_accept_temperature(0, phase);
+        let t1 = e2_accept_temperature(1, phase);
+        let t5 = e2_accept_temperature(5, phase);
         assert!((t0 - E2_ACCEPT_T0).abs() < 1e-6);
         assert!(t1 <= t0 + 1e-6);
         assert!(t5 <= t1 + 1e-6);
+        if E2_ACCEPT_RESET_ON_PHASE {
+            if let Some(switch_step) = phase.switch_step() {
+                let t_switch = e2_accept_temperature(switch_step, phase);
+                let t_after = e2_accept_temperature(switch_step + 1, phase);
+                assert!((t_switch - E2_ACCEPT_T0).abs() < 1e-6);
+                assert!(t_after <= t_switch + 1e-6);
+            }
+        }
     }
 
     #[test]
@@ -7202,6 +7897,9 @@ mod tests {
             0.0,
             0.1,
             f32::INFINITY,
+            0,
+            false,
+            None,
             &mut rng,
             &order,
         );
@@ -7209,6 +7907,183 @@ mod tests {
             stats.accepted_worse_frac > 0.0,
             "expected accepted_worse_frac > 0, got {}",
             stats.accepted_worse_frac
+        );
+    }
+
+    #[test]
+    fn anti_backtrack_blocks_backtrack_candidate() {
+        let space = Log2Space::new(200.0, 400.0, 12);
+        let workspace = build_consonance_workspace(&space);
+        let (_erb_scan, du_scan) = erb_grid_for_space(&space);
+        let anchor_idx = space.n_bins() / 2;
+        let anchor_hz = space.centers_hz[anchor_idx];
+        let log2_ratio_scan = build_log2_ratio_scan(&space, anchor_hz);
+
+        let (env_anchor, density_anchor) = build_env_scans(&space, anchor_idx, &[], &du_scan);
+        let (c_score_scan, _, _, _) =
+            compute_c_score_state_scans(&space, &workspace, &env_anchor, &density_anchor, &du_scan);
+
+        let mut max_idx = 0usize;
+        let mut max_val = f32::NEG_INFINITY;
+        let mut min_idx = 0usize;
+        let mut min_val = f32::INFINITY;
+        for (i, &value) in c_score_scan.iter().enumerate() {
+            if !value.is_finite() {
+                continue;
+            }
+            if value > max_val {
+                max_val = value;
+                max_idx = i;
+            }
+            if value < min_val {
+                min_val = value;
+                min_idx = i;
+            }
+        }
+        assert_ne!(max_idx, min_idx, "expected distinct max/min indices");
+        assert!(
+            max_val > min_val + 1e-6,
+            "expected score spread (max={max_val}, min={min_val})"
+        );
+
+        let current_idx = max_idx;
+        let backtrack_idx = min_idx;
+        let k = (backtrack_idx as i32 - current_idx as i32).abs();
+        let order = vec![0usize];
+        let (env_total, density_total) =
+            build_env_scans(&space, anchor_idx, &[current_idx], &du_scan);
+
+        let mut indices_no_block = vec![current_idx];
+        let mut rng_no_block = StdRng::seed_from_u64(0);
+        let _stats_no_block = update_agent_indices_scored_stats_with_order_loo(
+            &mut indices_no_block,
+            &space,
+            &workspace,
+            &env_total,
+            &density_total,
+            &du_scan,
+            &log2_ratio_scan,
+            backtrack_idx,
+            backtrack_idx,
+            k,
+            1.0,
+            0.0,
+            0.1,
+            f32::INFINITY,
+            0,
+            false,
+            None,
+            &mut rng_no_block,
+            &order,
+        );
+        assert_eq!(
+            indices_no_block[0], backtrack_idx,
+            "expected backtrack candidate to be chosen when unblocked"
+        );
+
+        let mut indices_block = vec![current_idx];
+        let mut rng_block = StdRng::seed_from_u64(0);
+        let prev_positions = vec![backtrack_idx];
+        let _stats_block = update_agent_indices_scored_stats_with_order_loo(
+            &mut indices_block,
+            &space,
+            &workspace,
+            &env_total,
+            &density_total,
+            &du_scan,
+            &log2_ratio_scan,
+            backtrack_idx,
+            backtrack_idx,
+            k,
+            1.0,
+            0.0,
+            0.1,
+            f32::INFINITY,
+            0,
+            true,
+            Some(&prev_positions),
+            &mut rng_block,
+            &order,
+        );
+        assert_eq!(
+            indices_block[0], current_idx,
+            "expected backtrack candidate to be blocked"
+        );
+    }
+
+    #[test]
+    fn e2_flutter_regression_moved_frac_not_always_one() {
+        let space = Log2Space::new(200.0, 400.0, 12);
+        let anchor_idx = space.n_bins() / 2;
+        let anchor_hz = space.centers_hz[anchor_idx];
+        let run = run_e2_once(
+            &space,
+            anchor_hz,
+            0xC0FFEE_u64 + 11,
+            E2Condition::Baseline,
+            E2_STEP_SEMITONES,
+            E2PhaseMode::DissonanceThenConsonance,
+        );
+        let after_burn: Vec<f32> = run
+            .moved_frac_series
+            .iter()
+            .skip(E2_BURN_IN)
+            .copied()
+            .collect();
+        let all_one = after_burn.iter().all(|v| (*v - 1.0).abs() < 1e-6);
+        assert!(
+            !all_one,
+            "moved_frac stuck at 1.0 after burn-in (len={})",
+            run.moved_frac_series.len()
+        );
+    }
+
+    #[test]
+    fn update_stats_identity_relations_hold() {
+        let space = Log2Space::new(200.0, 400.0, 12);
+        let workspace = build_consonance_workspace(&space);
+        let (_erb_scan, du_scan) = erb_grid_for_space(&space);
+        let anchor_idx = space.n_bins() / 2;
+        let anchor_hz = space.centers_hz[anchor_idx];
+        let log2_ratio_scan = build_log2_ratio_scan(&space, anchor_hz);
+        let mut indices = vec![1usize, 3, 4];
+        let (env_scan, density_scan) = build_env_scans(&space, anchor_idx, &indices, &du_scan);
+        let order: Vec<usize> = (0..indices.len()).collect();
+        let mut rng = StdRng::seed_from_u64(0);
+        let stats = update_agent_indices_scored_stats_with_order_loo(
+            &mut indices,
+            &space,
+            &workspace,
+            &env_scan,
+            &density_scan,
+            &du_scan,
+            &log2_ratio_scan,
+            0,
+            space.n_bins() - 1,
+            1,
+            1.0,
+            0.2,
+            0.1,
+            0.05,
+            0,
+            false,
+            None,
+            &mut rng,
+            &order,
+        );
+        let expected_moved = stats.attempted_update_frac * stats.moved_given_attempt_frac;
+        assert!(
+            (stats.moved_frac - expected_moved).abs() < 1e-6,
+            "moved_frac identity mismatch (moved_frac={}, attempted*given={})",
+            stats.moved_frac,
+            expected_moved
+        );
+        let expected_abs = stats.moved_frac * stats.mean_abs_delta_semitones_moved;
+        assert!(
+            (stats.mean_abs_delta_semitones - expected_abs).abs() < 1e-6,
+            "mean_abs_delta identity mismatch (mean_abs_delta={}, moved_frac*mean_abs_delta_moved={})",
+            stats.mean_abs_delta_semitones,
+            expected_abs
         );
     }
 
@@ -7332,6 +8207,56 @@ mod tests {
     }
 
     #[test]
+    fn baseline_mean_c_score_chosen_loo_series_is_finite() {
+        let space = Log2Space::new(200.0, 400.0, 12);
+        let anchor_idx = space.n_bins() / 2;
+        let anchor_hz = space.centers_hz[anchor_idx];
+        let run = run_e2_once(
+            &space,
+            anchor_hz,
+            0xC0FFEE_u64 + 12,
+            E2Condition::Baseline,
+            E2_STEP_SEMITONES,
+            E2PhaseMode::Normal,
+        );
+        assert_eq!(run.mean_c_score_chosen_loo_series.len(), E2_STEPS);
+        assert!(
+            run.mean_c_score_chosen_loo_series
+                .iter()
+                .all(|v| v.is_finite()),
+            "baseline mean_c_score_chosen_loo_series contains non-finite values"
+        );
+    }
+
+    #[test]
+    fn baseline_mean_abs_delta_series_is_finite_and_nonnegative() {
+        let space = Log2Space::new(200.0, 400.0, 12);
+        let anchor_idx = space.n_bins() / 2;
+        let anchor_hz = space.centers_hz[anchor_idx];
+        let run = run_e2_once(
+            &space,
+            anchor_hz,
+            0xC0FFEE_u64 + 13,
+            E2Condition::Baseline,
+            E2_STEP_SEMITONES,
+            E2PhaseMode::Normal,
+        );
+        assert_eq!(run.mean_abs_delta_semitones_series.len(), E2_STEPS);
+        assert!(
+            run.mean_abs_delta_semitones_series
+                .iter()
+                .all(|v| v.is_finite() && *v >= 0.0),
+            "mean_abs_delta_semitones_series has non-finite or negative values"
+        );
+        assert!(
+            run.mean_abs_delta_semitones_moved_series
+                .iter()
+                .all(|v| v.is_finite() && *v >= 0.0),
+            "mean_abs_delta_semitones_moved_series has non-finite or negative values"
+        );
+    }
+
+    #[test]
     fn norep_mean_c_score_loo_series_is_finite() {
         assert_mean_c_score_loo_series_finite(
             E2Condition::NoRepulsion,
@@ -7373,6 +8298,37 @@ mod tests {
                 0xC0FFEE_u64 + 20 + idx as u64,
             );
         }
+    }
+
+    #[test]
+    fn flutter_metrics_move_compressed_detects_pingpong_and_reversal() {
+        let traj = vec![0.0f32, 1.0, 1.0, 0.0];
+        let metrics = flutter_metrics_for_trajectories(&[traj], 0, 3);
+        assert!((metrics.pingpong_rate_moves - 1.0).abs() < 1e-6);
+        assert!((metrics.reversal_rate_moves - 1.0).abs() < 1e-6);
+        assert!((metrics.move_rate_stepwise - (2.0 / 3.0)).abs() < 1e-6);
+        assert!((metrics.mean_abs_delta_moved - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn flutter_metrics_move_compressed_no_pingpong_no_reversal() {
+        let traj = vec![0.0f32, 1.0, 2.0, 3.0];
+        let metrics = flutter_metrics_for_trajectories(&[traj], 0, 3);
+        assert!(metrics.pingpong_rate_moves.abs() < 1e-6);
+        assert!(metrics.reversal_rate_moves.abs() < 1e-6);
+        assert!((metrics.move_rate_stepwise - 1.0).abs() < 1e-6);
+        assert!((metrics.mean_abs_delta_moved - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn e2_backtrack_targets_update_retains_last_distinct() {
+        let mut targets = vec![0usize];
+        e2_update_backtrack_targets(&mut targets, &[0], &[1]);
+        assert_eq!(targets[0], 0);
+        e2_update_backtrack_targets(&mut targets, &[1], &[1]);
+        assert_eq!(targets[0], 0);
+        e2_update_backtrack_targets(&mut targets, &[1], &[2]);
+        assert_eq!(targets[0], 1);
     }
 
     #[test]

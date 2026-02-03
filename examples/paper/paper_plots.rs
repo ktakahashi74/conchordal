@@ -125,6 +125,13 @@ const E5_TIME_PLV_WINDOW_STEPS: usize = 200;
 const E5_MIN_R_FOR_GROUP_PHASE: f32 = 0.2;
 const E5_KICK_ON_STEP: Option<usize> = Some(800);
 const E5_SEED: u64 = 0xC0FFEE_u64 + 2;
+const E5_SEEDS: [u64; 5] = [
+    0xC0FFEE_u64 + 0,
+    0xC0FFEE_u64 + 1,
+    0xC0FFEE_u64 + 2,
+    0xC0FFEE_u64 + 3,
+    0xC0FFEE_u64 + 4,
+];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Experiment {
@@ -2567,6 +2574,12 @@ fn plot_e5_rhythmic_entrainment(out_dir: &Path) -> Result<(), Box<dyn Error>> {
 
     let plv_path = out_dir.join("paper_e5_plv_over_time.png");
     render_e5_plv_plot(&plv_path, &sim_main.series, &sim_ctrl.series)?;
+
+    let seed_rows = e5_seed_sweep_rows(E5_STEPS);
+    let seed_csv_path = out_dir.join("paper_e5_seed_sweep.csv");
+    write(&seed_csv_path, e5_seed_sweep_csv(&seed_rows))?;
+    let seed_plot_path = out_dir.join("paper_e5_seed_sweep.png");
+    render_e5_seed_sweep_plot(&seed_plot_path, &seed_rows)?;
 
     let bins = phase_hist_bins(
         sim_main
@@ -7726,11 +7739,15 @@ fn render_e5_order_plot(
         .last()
         .map(|(x, _, _, _, _, _)| *x)
         .unwrap_or(0.0);
+    let eval_start = e5_sample_start_step(main_series.len()) as f32 * E5_DT;
     let root = BitMapBackend::new(out_path, (1200, 700)).into_drawing_area();
     root.fill(&WHITE)?;
 
     let mut chart = ChartBuilder::on(&root)
-        .caption("E5 Order Parameter r(t)", ("sans-serif", 20))
+        .caption(
+            "E5 Order Parameter r(t) — pre-kick k_eff=0 so main/control overlap",
+            ("sans-serif", 20),
+        )
         .margin(10)
         .x_label_area_size(40)
         .y_label_area_size(60)
@@ -7745,14 +7762,25 @@ fn render_e5_order_plot(
     let r_main = main_series.iter().map(|(t, r, _, _, _, _)| (*t, *r));
     let r_ctrl = ctrl_series.iter().map(|(t, r, _, _, _, _)| (*t, *r));
 
+    chart.draw_series(std::iter::once(Rectangle::new(
+        [(eval_start, 0.0f32), (x_max.max(1.0), 1.05f32)],
+        RGBColor(160, 160, 160).mix(0.15).filled(),
+    )))?;
+
     chart
-        .draw_series(LineSeries::new(r_main, &BLUE))?
+        .draw_series(LineSeries::new(
+            r_ctrl,
+            ShapeStyle::from(&RED.mix(0.4)).stroke_width(2),
+        ))?
+        .label("control r(t)")
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], RED.mix(0.4)));
+    chart
+        .draw_series(LineSeries::new(
+            r_main,
+            ShapeStyle::from(&BLUE).stroke_width(3),
+        ))?
         .label("main r(t)")
         .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], BLUE));
-    chart
-        .draw_series(LineSeries::new(r_ctrl, &RED))?
-        .label("control r(t)")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], RED));
 
     let markers = e5_marker_specs(E5_STEPS);
     draw_vertical_guides_labeled(&mut chart, &markers, 0.0, 1.05)?;
@@ -7776,11 +7804,15 @@ fn render_e5_delta_phi_plot(
         .last()
         .map(|(x, _, _, _, _, _)| *x)
         .unwrap_or(0.0);
+    let eval_start = e5_sample_start_step(main_series.len()) as f32 * E5_DT;
     let root = BitMapBackend::new(out_path, (1200, 700)).into_drawing_area();
     root.fill(&WHITE)?;
 
     let mut chart = ChartBuilder::on(&root)
-        .caption("E5 Group Phase Offset Δφ(t)", ("sans-serif", 20))
+        .caption(
+            "E5 Group Phase Offset Δφ(t) — pre-kick k_eff=0 so main/control overlap",
+            ("sans-serif", 20),
+        )
         .margin(10)
         .x_label_area_size(40)
         .y_label_area_size(60)
@@ -7799,14 +7831,25 @@ fn render_e5_delta_phi_plot(
         .iter()
         .map(|(t, _, delta_phi, _, _, _)| (*t, *delta_phi));
 
+    chart.draw_series(std::iter::once(Rectangle::new(
+        [(eval_start, -PI), (x_max.max(1.0), PI)],
+        RGBColor(160, 160, 160).mix(0.15).filled(),
+    )))?;
+
     chart
-        .draw_series(LineSeries::new(main_points, &BLUE))?
+        .draw_series(LineSeries::new(
+            ctrl_points,
+            ShapeStyle::from(&RED.mix(0.4)).stroke_width(2),
+        ))?
+        .label("control Δφ(t)")
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], RED.mix(0.4)));
+    chart
+        .draw_series(LineSeries::new(
+            main_points,
+            ShapeStyle::from(&BLUE).stroke_width(3),
+        ))?
         .label("main Δφ(t)")
         .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], BLUE));
-    chart
-        .draw_series(LineSeries::new(ctrl_points, &RED))?
-        .label("control Δφ(t)")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], RED));
 
     let markers = e5_marker_specs(E5_STEPS);
     draw_vertical_guides_labeled(&mut chart, &markers, -PI, PI)?;
@@ -7830,11 +7873,15 @@ fn render_e5_plv_plot(
         .last()
         .map(|(x, _, _, _, _, _)| *x)
         .unwrap_or(0.0);
+    let eval_start = e5_sample_start_step(main_series.len()) as f32 * E5_DT;
     let root = BitMapBackend::new(out_path, (1200, 700)).into_drawing_area();
     root.fill(&WHITE)?;
 
     let mut chart = ChartBuilder::on(&root)
-        .caption("E5 PLV (Agent-Kick + Group Δφ)", ("sans-serif", 20))
+        .caption(
+            "E5 PLV_agent_kick — pre-kick k_eff=0 so main/control overlap",
+            ("sans-serif", 20),
+        )
         .margin(10)
         .x_label_area_size(40)
         .y_label_area_size(60)
@@ -7854,32 +7901,25 @@ fn render_e5_plv_plot(
         .iter()
         .filter_map(|(t, _, _, plv, _, _)| plv.is_finite().then_some((*t, *plv)))
         .collect();
-    let group_main: Vec<(f32, f32)> = main_series
-        .iter()
-        .filter_map(|(t, _, _, _, plv, _)| plv.is_finite().then_some((*t, *plv)))
-        .collect();
-    let group_ctrl: Vec<(f32, f32)> = ctrl_series
-        .iter()
-        .filter_map(|(t, _, _, _, plv, _)| plv.is_finite().then_some((*t, *plv)))
-        .collect();
+    chart.draw_series(std::iter::once(Rectangle::new(
+        [(eval_start, 0.0f32), (x_max.max(1.0), 1.05f32)],
+        RGBColor(160, 160, 160).mix(0.15).filled(),
+    )))?;
 
     chart
-        .draw_series(LineSeries::new(plv_main, &BLUE))?
+        .draw_series(LineSeries::new(
+            plv_ctrl,
+            ShapeStyle::from(&RED.mix(0.4)).stroke_width(2),
+        ))?
+        .label("control PLV_agent_kick")
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], RED.mix(0.4)));
+    chart
+        .draw_series(LineSeries::new(
+            plv_main,
+            ShapeStyle::from(&BLUE).stroke_width(3),
+        ))?
         .label("main PLV_agent_kick")
         .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], BLUE));
-    chart
-        .draw_series(LineSeries::new(plv_ctrl, &RED))?
-        .label("control PLV_agent_kick")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], RED));
-
-    chart
-        .draw_series(LineSeries::new(group_main, &BLUE.mix(0.4)))?
-        .label("main PLV_group_Δφ")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], BLUE.mix(0.4)));
-    chart
-        .draw_series(LineSeries::new(group_ctrl, &RED.mix(0.4)))?
-        .label("control PLV_group_Δφ")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], RED.mix(0.4)));
 
     let markers = e5_marker_specs(E5_STEPS);
     draw_vertical_guides_labeled(&mut chart, &markers, 0.0, 1.05)?;
@@ -8098,20 +8138,25 @@ fn e5_mean_group_range(
     (mean, var.sqrt(), values.len())
 }
 
-fn e5_kick_summary_csv(main: &E5KickSimResult, ctrl: &E5KickSimResult) -> String {
-    let mut out = String::from(
-        "condition,plv_pre_mean,plv_pre_std,plv_post_mean,plv_post_std,delta_phi_post_plv,plv_time\n",
-    );
+fn e5_plv_ranges(steps: usize) -> (f32, f32, f32, f32) {
     let burn_end_t = E5_BURN_IN_STEPS as f32 * E5_DT;
     let kick_on_t = E5_KICK_ON_STEP
         .map(|s| s as f32 * E5_DT)
         .unwrap_or(burn_end_t);
     let window_t = E5_TIME_PLV_WINDOW_STEPS as f32 * E5_DT;
-    let sample_start_t = e5_sample_start_step(E5_STEPS) as f32 * E5_DT;
+    let sample_start_t = e5_sample_start_step(steps) as f32 * E5_DT;
     let pre_start = burn_end_t;
     let pre_end = kick_on_t;
     let post_start = (kick_on_t + window_t).max(burn_end_t);
     let post_end = sample_start_t;
+    (pre_start, pre_end, post_start, post_end)
+}
+
+fn e5_kick_summary_csv(main: &E5KickSimResult, ctrl: &E5KickSimResult) -> String {
+    let mut out = String::from(
+        "condition,plv_pre_mean,plv_pre_std,plv_post_mean,plv_post_std,delta_phi_post_plv,plv_time\n",
+    );
+    let (pre_start, pre_end, post_start, post_end) = e5_plv_ranges(E5_STEPS);
 
     let (pre_main, pre_main_std, _) = e5_mean_plv_range(&main.series, pre_start, pre_end);
     let (post_main, post_main_std, _) = e5_mean_plv_range(&main.series, post_start, post_end);
@@ -8130,6 +8175,123 @@ fn e5_kick_summary_csv(main: &E5KickSimResult, ctrl: &E5KickSimResult) -> String
         pre_ctrl, pre_ctrl_std, post_ctrl, post_ctrl_std, post_group_ctrl, ctrl.plv_time
     ));
     out
+}
+
+struct E5SeedRow {
+    condition: &'static str,
+    seed: u64,
+    plv_post_mean: f32,
+}
+
+fn e5_seed_sweep_rows(steps: usize) -> Vec<E5SeedRow> {
+    let mut rows = Vec::new();
+    let (_, _, post_start, post_end) = e5_plv_ranges(steps);
+    for &seed in &E5_SEEDS {
+        let sim_main = simulate_e5_kick(seed, steps, E5_K_KICK, E5_KICK_ON_STEP);
+        let sim_ctrl = simulate_e5_kick(seed, steps, 0.0, E5_KICK_ON_STEP);
+        let (post_main, _, _) = e5_mean_plv_range(&sim_main.series, post_start, post_end);
+        let (post_ctrl, _, _) = e5_mean_plv_range(&sim_ctrl.series, post_start, post_end);
+        rows.push(E5SeedRow {
+            condition: "main",
+            seed,
+            plv_post_mean: post_main,
+        });
+        rows.push(E5SeedRow {
+            condition: "control",
+            seed,
+            plv_post_mean: post_ctrl,
+        });
+    }
+    rows
+}
+
+fn e5_seed_sweep_csv(rows: &[E5SeedRow]) -> String {
+    let mut out = String::from("condition,seed,plv_post_mean\n");
+    for row in rows {
+        out.push_str(&format!(
+            "{},{},{:.6}\n",
+            row.condition, row.seed, row.plv_post_mean
+        ));
+    }
+    out
+}
+
+fn render_e5_seed_sweep_plot(out_path: &Path, rows: &[E5SeedRow]) -> Result<(), Box<dyn Error>> {
+    let mut main_vals = Vec::new();
+    let mut ctrl_vals = Vec::new();
+    for row in rows {
+        if !row.plv_post_mean.is_finite() {
+            continue;
+        }
+        match row.condition {
+            "main" => main_vals.push(row.plv_post_mean),
+            "control" => ctrl_vals.push(row.plv_post_mean),
+            _ => {}
+        }
+    }
+    let (main_mean, main_std) = mean_std_scalar(&main_vals);
+    let (ctrl_mean, ctrl_std) = mean_std_scalar(&ctrl_vals);
+
+    let mut y_max = (main_mean + main_std).max(ctrl_mean + ctrl_std);
+    if !y_max.is_finite() || y_max <= 0.0 {
+        y_max = 1.0;
+    }
+    let root = BitMapBackend::new(out_path, (900, 600)).into_drawing_area();
+    root.fill(&WHITE)?;
+    let mut chart = ChartBuilder::on(&root)
+        .caption(
+            "E5 Seed Sweep: PLV_post_mean (Agent-Kick)",
+            ("sans-serif", 20),
+        )
+        .margin(10)
+        .x_label_area_size(40)
+        .y_label_area_size(60)
+        .build_cartesian_2d(-0.5f32..1.5f32, 0.0f32..(y_max * 1.1))?;
+
+    chart
+        .configure_mesh()
+        .disable_mesh()
+        .x_desc("condition")
+        .y_desc("PLV_post_mean")
+        .x_labels(2)
+        .x_label_formatter(&|x| {
+            let idx = x.round() as isize;
+            match idx {
+                0 => "main".to_string(),
+                1 => "control".to_string(),
+                _ => String::new(),
+            }
+        })
+        .draw()?;
+
+    let values = [(main_mean, main_std, BLUE), (ctrl_mean, ctrl_std, RED)];
+    let cap = 0.05f32;
+    for (i, (mean, std, color)) in values.iter().enumerate() {
+        let center = i as f32;
+        let x0 = center - 0.25;
+        let x1 = center + 0.25;
+        chart.draw_series(std::iter::once(Rectangle::new(
+            [(x0, 0.0), (x1, *mean)],
+            color.filled(),
+        )))?;
+        let y0 = (mean - std).max(0.0);
+        let y1 = mean + std;
+        chart.draw_series(std::iter::once(PathElement::new(
+            vec![(center, y0), (center, y1)],
+            color.mix(0.8),
+        )))?;
+        chart.draw_series(std::iter::once(PathElement::new(
+            vec![(center - cap, y0), (center + cap, y0)],
+            color.mix(0.8),
+        )))?;
+        chart.draw_series(std::iter::once(PathElement::new(
+            vec![(center - cap, y1), (center + cap, y1)],
+            color.mix(0.8),
+        )))?;
+    }
+
+    root.present()?;
+    Ok(())
 }
 
 fn e5_meta_text(steps: usize) -> String {

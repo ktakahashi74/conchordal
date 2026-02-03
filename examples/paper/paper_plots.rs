@@ -1066,6 +1066,63 @@ fn plot_e2_emergent_harmony(
         &marker_steps,
     )?;
 
+    let control_c_path = out_dir.join("paper_e2_mean_c_over_time_controls_seeds.png");
+    render_series_plot_multi_with_band(
+        &control_c_path,
+        "E2 Mean C score (controls, seed sweep)",
+        "mean C score",
+        &[
+            (
+                "baseline",
+                &baseline_stats.mean_c,
+                &baseline_stats.std_c,
+                BLUE,
+            ),
+            (
+                "no hill-climb",
+                &nohill_stats.mean_c,
+                &nohill_stats.std_c,
+                RED,
+            ),
+            (
+                "no repulsion",
+                &norep_stats.mean_c,
+                &norep_stats.std_c,
+                GREEN,
+            ),
+        ],
+        &marker_steps,
+    )?;
+
+    let control_c_score_loo_path =
+        out_dir.join("paper_e2_mean_c_score_loo_over_time_controls_seeds.png");
+    render_series_plot_multi_with_band(
+        &control_c_score_loo_path,
+        "E2 Mean C score (LOO current, controls, seed sweep)",
+        "mean C score (LOO current)",
+        &[
+            (
+                "baseline",
+                &baseline_stats.mean_c_score_loo,
+                &baseline_stats.std_c_score_loo,
+                BLUE,
+            ),
+            (
+                "no hill-climb",
+                &nohill_stats.mean_c_score_loo,
+                &nohill_stats.std_c_score_loo,
+                RED,
+            ),
+            (
+                "no repulsion",
+                &norep_stats.mean_c_score_loo,
+                &norep_stats.std_c_score_loo,
+                GREEN,
+            ),
+        ],
+        &marker_steps,
+    )?;
+
     let mut diversity_rows_vec = Vec::new();
     diversity_rows_vec.extend(diversity_rows("baseline", &baseline_runs));
     diversity_rows_vec.extend(diversity_rows("nohill", &nohill_runs));
@@ -1110,11 +1167,12 @@ fn plot_e2_emergent_harmony(
     let hist_plot_05 = out_dir.join("paper_e2_interval_hist_post_seed_sweep_bw0p50.png");
     render_hist_mean_std(
         &hist_plot_05,
-        &format!("E2 {post_label_title} Interval Histogram (seed sweep, bin=0.50st)"),
+        &format!("E2 {post_label_title} Interval Histogram (seed sweep, mean frac, bin=0.50st)"),
         &hist_stats_05.centers,
-        &hist_stats_05.mean_count,
-        &hist_stats_05.std_count,
+        &hist_stats_05.mean_frac,
+        &hist_stats_05.std_frac,
         0.5,
+        "mean fraction",
     )?;
 
     let hist_stats_025 = e2_hist_seed_sweep(&baseline_runs, 0.25, hist_min, hist_max);
@@ -1125,11 +1183,32 @@ fn plot_e2_emergent_harmony(
     let hist_plot_025 = out_dir.join("paper_e2_interval_hist_post_seed_sweep_bw0p25.png");
     render_hist_mean_std(
         &hist_plot_025,
-        &format!("E2 {post_label_title} Interval Histogram (seed sweep, bin=0.25st)"),
+        &format!("E2 {post_label_title} Interval Histogram (seed sweep, mean frac, bin=0.25st)"),
         &hist_stats_025.centers,
-        &hist_stats_025.mean_count,
-        &hist_stats_025.std_count,
+        &hist_stats_025.mean_frac,
+        &hist_stats_025.std_frac,
         0.25,
+        "mean fraction",
+    )?;
+
+    let (pairwise_hist_stats, pairwise_n_pairs) =
+        e2_pairwise_hist_seed_sweep(&baseline_runs, E2_PAIRWISE_BIN_ST, 0.0, 12.0);
+    write(
+        out_dir.join("paper_e2_pairwise_interval_histogram_seeds.csv"),
+        e2_pairwise_hist_seed_sweep_csv(&pairwise_hist_stats, pairwise_n_pairs),
+    )?;
+    let pairwise_hist_plot = out_dir.join("paper_e2_pairwise_interval_histogram_seeds.png");
+    render_hist_mean_std(
+        &pairwise_hist_plot,
+        &format!(
+            "E2 Pairwise Interval Histogram (final snapshot, seed sweep, mean frac, bin={:.2}st)",
+            E2_PAIRWISE_BIN_ST
+        ),
+        &pairwise_hist_stats.centers,
+        &pairwise_hist_stats.mean_frac,
+        &pairwise_hist_stats.std_frac,
+        E2_PAIRWISE_BIN_ST,
+        "mean fraction",
     )?;
 
     let nohill_hist_05 = e2_hist_seed_sweep(&nohill_runs, 0.5, hist_min, hist_max);
@@ -1278,19 +1357,23 @@ fn e2_pre_label() -> &'static str {
 }
 
 fn e2_post_label() -> &'static str {
-    if e2_anchor_shift_enabled() {
-        "post"
-    } else {
-        "final"
-    }
+    "post"
 }
 
 fn e2_post_label_title() -> &'static str {
+    "Post"
+}
+
+fn e2_post_window_start_step() -> usize {
     if e2_anchor_shift_enabled() {
-        "Post"
+        E2_ANCHOR_SHIFT_STEP
     } else {
-        "Final"
+        E2_BURN_IN
     }
+}
+
+fn e2_post_window_end_step() -> usize {
+    E2_STEPS.saturating_sub(1)
 }
 
 fn e2_accept_temperature(step: usize, phase_mode: E2PhaseMode) -> f32 {
@@ -2178,7 +2261,7 @@ fn plot_e3_metabolic_selection(
 
     let pooled_baseline = e3_pooled_arrays(&seed_outputs, E3Condition::Baseline);
     let pooled_norecharge = e3_pooled_arrays(&seed_outputs, E3Condition::NoRecharge);
-    let pooled_scatter_path = out_dir.join("paper_e3_firstk_scatter_pooled.png");
+    let pooled_scatter_path = out_dir.join("paper_e3_firstk_scatter_compare_pooled.png");
     let pooled_base_scatter = build_scatter_data(
         &pooled_baseline.c_state_firstk,
         &pooled_baseline.lifetimes,
@@ -2211,7 +2294,7 @@ fn plot_e3_metabolic_selection(
         SplitKind::Median,
         0xE3B3_u64,
     );
-    let pooled_surv_path = out_dir.join("paper_e3_firstk_survival_pooled.png");
+    let pooled_surv_path = out_dir.join("paper_e3_firstk_survival_compare_pooled.png");
     render_survival_compare(
         &pooled_surv_path,
         "E3 Survival by C_state01_firstK (median split, pooled)",
@@ -2233,7 +2316,7 @@ fn plot_e3_metabolic_selection(
         SplitKind::Quartiles,
         0xE3B5_u64,
     );
-    let pooled_surv_q_path = out_dir.join("paper_e3_firstk_survival_pooled_q25q75.png");
+    let pooled_surv_q_path = out_dir.join("paper_e3_firstk_survival_compare_pooled_q25q75.png");
     render_survival_compare(
         &pooled_surv_q_path,
         "E3 Survival by C_state01_firstK (q25 vs q75, pooled)",
@@ -2276,6 +2359,15 @@ fn plot_e3_metabolic_selection(
     write(
         out_dir.join("paper_e3_summary_pooled.csv"),
         pooled_summary_csv,
+    )?;
+
+    let pooled_hist_path = out_dir.join("paper_e3_firstk_hist.png");
+    render_e3_firstk_histogram(
+        &pooled_hist_path,
+        &pooled_baseline.c_state_firstk,
+        &pooled_norecharge.c_state_firstk,
+        0.02,
+        0.5,
     )?;
 
     write(out_dir.join("paper_e3_lifetimes_long.csv"), long_csv)?;
@@ -2326,6 +2418,80 @@ fn e3_pooled_arrays(outputs: &[E3SeedOutput], condition: E3Condition) -> E3Array
         avg_attack,
         attack_tick_count,
     }
+}
+
+fn fractions_from_counts(counts: &[(f32, f32)]) -> Vec<f32> {
+    let total: f32 = counts.iter().map(|(_, v)| *v).sum();
+    let inv = if total > 0.0 { 1.0 / total } else { 0.0 };
+    counts.iter().map(|(_, v)| v * inv).collect()
+}
+
+fn render_e3_firstk_histogram(
+    out_path: &Path,
+    baseline: &[f32],
+    norecharge: &[f32],
+    bin_width: f32,
+    threshold: f32,
+) -> Result<(), Box<dyn Error>> {
+    let min = 0.0f32;
+    let max = 1.0f32;
+    let counts_base = histogram_counts_fixed(baseline, min, max, bin_width);
+    let counts_nore = histogram_counts_fixed(norecharge, min, max, bin_width);
+    let len = counts_base.len().min(counts_nore.len());
+    if len == 0 {
+        return Ok(());
+    }
+    let centers: Vec<f32> = counts_base.iter().take(len).map(|(c, _)| *c).collect();
+    let base_frac = fractions_from_counts(&counts_base[..len]);
+    let nore_frac = fractions_from_counts(&counts_nore[..len]);
+
+    let mut y_max = 0.0f32;
+    for &v in base_frac.iter().chain(nore_frac.iter()) {
+        y_max = y_max.max(v);
+    }
+    y_max = y_max.max(1e-3);
+
+    let root = BitMapBackend::new(out_path, (1200, 700)).into_drawing_area();
+    root.fill(&WHITE)?;
+    let mut chart = ChartBuilder::on(&root)
+        .caption("E3 C_state01_firstK Histogram (pooled)", ("sans-serif", 20))
+        .margin(10)
+        .x_label_area_size(40)
+        .y_label_area_size(60)
+        .build_cartesian_2d(min..max, 0.0f32..(y_max * 1.1))?;
+
+    chart
+        .configure_mesh()
+        .x_desc("C_state01_firstK")
+        .y_desc("fraction")
+        .x_labels(10)
+        .draw()?;
+
+    let base_line = centers.iter().copied().zip(base_frac.iter().copied());
+    chart
+        .draw_series(LineSeries::new(base_line, BLUE))?
+        .label("baseline")
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], BLUE));
+    let nore_line = centers.iter().copied().zip(nore_frac.iter().copied());
+    chart
+        .draw_series(LineSeries::new(nore_line, RED))?
+        .label("no recharge")
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], RED));
+
+    let thresh = threshold.clamp(min, max);
+    chart.draw_series(std::iter::once(PathElement::new(
+        vec![(thresh, 0.0), (thresh, y_max * 1.05)],
+        BLACK.mix(0.6),
+    )))?;
+
+    chart
+        .configure_series_labels()
+        .background_style(WHITE.mix(0.8))
+        .border_style(BLACK)
+        .draw()?;
+
+    root.present()?;
+    Ok(())
 }
 
 fn e3_lifetimes_csv(deaths: &[E3DeathRecord]) -> String {
@@ -4917,6 +5083,25 @@ fn e2_meta_text(
     if let Some(step) = phase_mode.switch_step() {
         out.push_str(&format!("E2_PHASE_SWITCH_STEP={step}\n"));
     }
+    out.push_str("E2_DISTRIBUTION_MODE=window_aggregated\n");
+    out.push_str(&format!(
+        "E2_POST_WINDOW_START_STEP={}\n",
+        e2_post_window_start_step()
+    ));
+    out.push_str(&format!(
+        "E2_POST_WINDOW_END_STEP={}\n",
+        e2_post_window_end_step()
+    ));
+    let pairwise_n_pairs = if n_agents < 2 {
+        0usize
+    } else {
+        n_agents * (n_agents - 1) / 2
+    };
+    out.push_str("E2_PAIRWISE_INTERVAL_SOURCE=final_snapshot\n");
+    out.push_str(&format!(
+        "E2_PAIRWISE_INTERVAL_N_PAIRS={}\n",
+        pairwise_n_pairs
+    ));
     out.push_str(
         "E2_MEAN_C_SCORE_CURRENT_LOO_DESC=mean C score at current positions using LOO env (env_total-1 at current bin, density_total-1/du)\n",
     );
@@ -4954,16 +5139,19 @@ fn e3_metric_definition_text() -> String {
     let mut out = String::new();
     out.push_str("E3 metric definitions\n");
     out.push_str(
-        "C_state01 is agent.last_consonance_state01() sampled per tick from Landscape.consonance_state01.\n",
+        "C is the 0-1 score passed into ArticulationCore::process as `consonance` (agent.last_consonance_state01()).\n",
+    );
+    out.push_str("C_firstK definition: mean over first K=20 ticks after birth (0..1).\n");
+    out.push_str("Metabolism update (conceptual):\n");
+    out.push_str("  E <- E - basal_cost_per_sec * dt\n");
+    out.push_str(
+        "  Attack tick: E <- E - action_cost + I[C > recharge_threshold] * recharge_per_attack * C\n",
     );
     out.push_str(
-        "Landscape C_state01 is computed as sigmoid(beta*(C_score-theta)), with C_score=alpha*H01-w(H01)*R01.\n",
+        "NoRecharge sets recharge_per_attack=0, so the C-dependent recharge term is removed.\n",
     );
     out.push_str(
-        "MetabolismPolicy.step receives consonance=C_state01 (same value used for recharge and attack telemetry).\n",
-    );
-    out.push_str(
-        "Recharge applies only on attack ticks when consonance > recharge_threshold (default 0.5): recharge_delta=recharge_per_attack*consonance.\n",
+        "Representative seed is chosen by the median Pearson r of baseline C_firstK vs lifetime; pooled plots concatenate all seeds.\n",
     );
     out.push_str(
         "c_state01_birth=first tick value; c_state01_firstk=mean of first K ticks; avg_c_state01_tick=mean over life; c_state01_std_over_life=std over life; avg_c_state01_attack=mean over attack ticks.\n",
@@ -5626,6 +5814,10 @@ fn e2_hist_seed_sweep(runs: &[E2Run], bin_width: f32, min: f32, max: f32) -> His
     }
     let (centers, mean_count, std_count) = mean_std_histograms(&hists);
     let (mean_frac, std_frac) = mean_std_histogram_fractions(&hists);
+    if !mean_frac.is_empty() {
+        let sum: f32 = mean_frac.iter().copied().sum();
+        debug_assert!((sum - 1.0).abs() < 1e-3, "mean_frac sum not ~1 (sum={sum})");
+    }
     HistSweepStats {
         centers,
         mean_count,
@@ -5637,7 +5829,7 @@ fn e2_hist_seed_sweep(runs: &[E2Run], bin_width: f32, min: f32, max: f32) -> His
 }
 
 fn e2_hist_seed_sweep_csv(stats: &HistSweepStats) -> String {
-    let mut out = String::from("bin_center,mean_count,std_count,n_seeds,mean_frac,std_frac\n");
+    let mut out = String::from("bin_center,mean_frac,std_frac,n_seeds,mean_count,std_count\n");
     let len = stats
         .centers
         .len()
@@ -5649,11 +5841,83 @@ fn e2_hist_seed_sweep_csv(stats: &HistSweepStats) -> String {
         out.push_str(&format!(
             "{:.4},{:.6},{:.6},{},{:.6},{:.6}\n",
             stats.centers[i],
-            stats.mean_count[i],
-            stats.std_count[i],
-            stats.n,
             stats.mean_frac[i],
-            stats.std_frac[i]
+            stats.std_frac[i],
+            stats.n,
+            stats.mean_count[i],
+            stats.std_count[i]
+        ));
+    }
+    out
+}
+
+fn e2_pairwise_hist_seed_sweep(
+    runs: &[E2Run],
+    bin_width: f32,
+    min: f32,
+    max: f32,
+) -> (HistSweepStats, usize) {
+    let mut hists = Vec::with_capacity(runs.len());
+    let mut n_pairs = 0usize;
+    for run in runs {
+        let samples = pairwise_interval_samples(&run.final_semitones);
+        let expected = if run.final_semitones.len() < 2 {
+            0usize
+        } else {
+            run.final_semitones.len() * (run.final_semitones.len() - 1) / 2
+        };
+        debug_assert_eq!(samples.len(), expected, "pairwise interval count mismatch");
+        for &value in &samples {
+            debug_assert!(
+                value >= min - 1e-6 && value <= max + 1e-6,
+                "pairwise interval out of range: {value}"
+            );
+        }
+        n_pairs = expected;
+        hists.push(histogram_counts_fixed(&samples, min, max, bin_width));
+    }
+    let (centers, mean_count, std_count) = mean_std_histograms(&hists);
+    let (mean_frac, std_frac) = mean_std_histogram_fractions(&hists);
+    if !mean_frac.is_empty() {
+        let sum: f32 = mean_frac.iter().copied().sum();
+        debug_assert!(
+            (sum - 1.0).abs() < 1e-3,
+            "pairwise mean_frac sum not ~1 (sum={sum})"
+        );
+    }
+    (
+        HistSweepStats {
+            centers,
+            mean_count,
+            std_count,
+            mean_frac,
+            std_frac,
+            n: hists.len(),
+        },
+        n_pairs,
+    )
+}
+
+fn e2_pairwise_hist_seed_sweep_csv(stats: &HistSweepStats, n_pairs: usize) -> String {
+    let mut out =
+        String::from("bin_center,mean_frac,std_frac,n_seeds,n_pairs,mean_count,std_count\n");
+    let len = stats
+        .centers
+        .len()
+        .min(stats.mean_count.len())
+        .min(stats.std_count.len())
+        .min(stats.mean_frac.len())
+        .min(stats.std_frac.len());
+    for i in 0..len {
+        out.push_str(&format!(
+            "{:.4},{:.6},{:.6},{},{},{:.6},{:.6}\n",
+            stats.centers[i],
+            stats.mean_frac[i],
+            stats.std_frac[i],
+            stats.n,
+            n_pairs,
+            stats.mean_count[i],
+            stats.std_count[i]
         ));
     }
     out
@@ -5666,6 +5930,7 @@ fn render_hist_mean_std(
     mean: &[f32],
     std: &[f32],
     bin_width: f32,
+    y_desc: &str,
 ) -> Result<(), Box<dyn Error>> {
     if centers.is_empty() {
         return Ok(());
@@ -5690,7 +5955,7 @@ fn render_hist_mean_std(
     chart
         .configure_mesh()
         .x_desc("semitones")
-        .y_desc("mean count")
+        .y_desc(y_desc)
         .x_labels(25)
         .draw()?;
 
@@ -6040,6 +6305,97 @@ fn render_series_plot_multi(
             continue;
         }
         let line = series.iter().enumerate().map(|(i, &y)| (i as f32, y));
+        chart
+            .draw_series(LineSeries::new(line, color))?
+            .label(label)
+            .legend(move |(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], color));
+    }
+
+    chart
+        .configure_series_labels()
+        .background_style(WHITE.mix(0.8))
+        .border_style(BLACK)
+        .draw()?;
+
+    root.present()?;
+    Ok(())
+}
+
+fn render_series_plot_multi_with_band(
+    out_path: &Path,
+    caption: &str,
+    y_desc: &str,
+    series_list: &[(&str, &[f32], &[f32], RGBColor)],
+    markers: &[f32],
+) -> Result<(), Box<dyn Error>> {
+    if series_list.is_empty() {
+        return Ok(());
+    }
+    let mut x_max = 1.0f32;
+    let mut y_min = f32::INFINITY;
+    let mut y_max = f32::NEG_INFINITY;
+    for (_, mean, std, _) in series_list {
+        let len = mean.len().min(std.len());
+        if len == 0 {
+            continue;
+        }
+        x_max = x_max.max(len.saturating_sub(1) as f32);
+        for i in 0..len {
+            let lo = mean[i] - std[i];
+            let hi = mean[i] + std[i];
+            if lo.is_finite() && hi.is_finite() {
+                y_min = y_min.min(lo);
+                y_max = y_max.max(hi);
+            }
+        }
+    }
+    if !y_min.is_finite() || !y_max.is_finite() {
+        y_min = 0.0;
+        y_max = 1.0;
+    }
+    let range = (y_max - y_min).abs();
+    let pad = if range > 1e-6 {
+        0.1 * range
+    } else {
+        0.1 * y_max.abs().max(1.0)
+    };
+    let y_lo = y_min - pad;
+    let y_hi = y_max + pad;
+
+    let root = BitMapBackend::new(out_path, (1200, 700)).into_drawing_area();
+    root.fill(&WHITE)?;
+    let mut chart = ChartBuilder::on(&root)
+        .caption(caption, ("sans-serif", 20))
+        .margin(10)
+        .x_label_area_size(40)
+        .y_label_area_size(60)
+        .build_cartesian_2d(0.0f32..x_max.max(1.0), y_lo..y_hi)?;
+
+    chart
+        .configure_mesh()
+        .x_desc("step")
+        .y_desc(y_desc)
+        .draw()?;
+
+    draw_vertical_guides(&mut chart, markers, y_lo, y_hi)?;
+
+    for &(label, mean, std, color) in series_list {
+        let len = mean.len().min(std.len());
+        if len == 0 {
+            continue;
+        }
+        let mut band_points: Vec<(f32, f32)> = Vec::with_capacity(len * 2);
+        for i in 0..len {
+            band_points.push((i as f32, mean[i] + std[i]));
+        }
+        for i in (0..len).rev() {
+            band_points.push((i as f32, mean[i] - std[i]));
+        }
+        chart.draw_series(std::iter::once(Polygon::new(
+            band_points,
+            color.mix(0.2).filled(),
+        )))?;
+        let line = mean.iter().enumerate().map(|(i, &y)| (i as f32, y));
         chart
             .draw_series(LineSeries::new(line, color))?
             .label(label)
@@ -6477,6 +6833,14 @@ fn scatter_with_ranges(data: &ScatterData, x_min: f32, x_max: f32, y_max: f32) -
     }
 }
 
+fn force_scatter_x_range(data: &mut ScatterData, x_min: f32, x_max: f32) {
+    data.x_min = x_min;
+    data.x_max = x_max;
+    if (data.x_max - data.x_min).abs() < 1e-6 {
+        data.x_max = data.x_min + 1.0;
+    }
+}
+
 fn draw_note_lines<DB: DrawingBackend, CT: CoordTranslate>(
     area: &DrawingArea<DB, CT>,
     lines: &[String],
@@ -6528,6 +6892,13 @@ fn render_scatter_on_area(
                 .map(|(x, y)| Circle::new((*x, *y), 3, BLUE.mix(0.5).filled())),
         )?;
     }
+    if data.x_min <= 0.5 && data.x_max >= 0.5 {
+        let y_top = data.y_max * 1.05;
+        chart.draw_series(std::iter::once(PathElement::new(
+            vec![(0.5, 0.0), (0.5, y_top)],
+            BLACK.mix(0.3),
+        )))?;
+    }
 
     let pearson_p = format_p_value(data.stats.pearson_p);
     let spearman_p = format_p_value(data.stats.spearman_p);
@@ -6550,7 +6921,8 @@ fn render_e3_scatter_with_stats(
 ) -> Result<CorrStats, Box<dyn Error>> {
     let root = BitMapBackend::new(out_path, (1200, 700)).into_drawing_area();
     root.fill(&WHITE)?;
-    let data = build_scatter_data(x_values, lifetimes, seed);
+    let mut data = build_scatter_data(x_values, lifetimes, seed);
+    force_scatter_x_range(&mut data, 0.0, 1.0);
     render_scatter_on_area(&root, caption, x_desc, &data)?;
     root.present()?;
     Ok(data.stats)
@@ -6828,8 +7200,8 @@ fn render_scatter_compare(
     let root = BitMapBackend::new(out_path, (1400, 700)).into_drawing_area();
     root.fill(&WHITE)?;
     let areas = root.split_evenly((1, 2));
-    let x_min = left_data.x_min.min(right_data.x_min);
-    let x_max = left_data.x_max.max(right_data.x_max);
+    let x_min = 0.0;
+    let x_max = 1.0;
     let y_max = left_data.y_max.max(right_data.y_max);
     let left_common = scatter_with_ranges(left_data, x_min, x_max, y_max);
     let right_common = scatter_with_ranges(right_data, x_min, x_max, y_max);
@@ -7987,6 +8359,15 @@ mod tests {
         let values = [0.0f32, 0.25, 0.5, 0.75, 1.0];
         let probs = histogram_probabilities_fixed(&values, 0.0, 1.0, 0.5);
         let sum: f32 = probs.iter().copied().sum();
+        assert!((sum - 1.0).abs() < 1e-6, "sum={sum}");
+    }
+
+    #[test]
+    fn mean_std_histogram_fractions_sum_to_one() {
+        let h1 = vec![(0.25, 1.0f32), (0.75, 1.0)];
+        let h2 = vec![(0.25, 2.0f32), (0.75, 0.0)];
+        let (mean, _std) = mean_std_histogram_fractions(&[h1, h2]);
+        let sum: f32 = mean.iter().copied().sum();
         assert!((sum - 1.0).abs() < 1e-6, "sum={sum}");
     }
 

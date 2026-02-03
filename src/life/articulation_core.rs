@@ -528,6 +528,9 @@ impl ArticulationCore for KuramotoCore {
             let (energy_after_attack, _telemetry) = policy.step(self.energy, 0.0, true, consonance);
             self.energy = energy_after_attack;
             self.handle_energy_depletion();
+        } else {
+            self.last_attack_count = 0;
+            self.last_attack_consonance = 0.0;
         }
         self.update_envelope(dt);
 

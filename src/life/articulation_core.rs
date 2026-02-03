@@ -2,7 +2,7 @@ use crate::core::modulation::NeuralRhythms;
 use crate::core::phase::{angle_diff_pm_pi, wrap_0_tau};
 use crate::core::utils::pink_noise_tick;
 use crate::life::lifecycle::LifecycleConfig;
-use crate::life::metabolism_policy::{DEFAULT_RECHARGE_THRESHOLD, MetabolismPolicy};
+use crate::life::metabolism_policy::MetabolismPolicy;
 use crate::life::phonation_engine::PhonationKick;
 use crate::life::scenario::ArticulationCoreConfig;
 use rand::{Rng, SeedableRng, rngs::SmallRng};
@@ -258,16 +258,12 @@ fn normalized_vitality(energy: f32, energy_cap: f32, vitality_exponent: f32) -> 
 }
 
 impl KuramotoCore {
-    // Recharge only when consonance exceeds the neutral midpoint (C_state > 0.5).
-    const RECHARGE_THRESHOLD: f32 = DEFAULT_RECHARGE_THRESHOLD;
-
     #[inline]
     fn metabolism_policy(&self) -> MetabolismPolicy {
         MetabolismPolicy {
             basal_cost_per_sec: self.basal_cost,
             action_cost_per_attack: self.action_cost,
             recharge_per_attack: self.recharge_rate,
-            recharge_threshold: Self::RECHARGE_THRESHOLD,
         }
     }
 

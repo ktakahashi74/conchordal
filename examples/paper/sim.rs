@@ -14,6 +14,10 @@ use conchordal::life::population::Population;
 use conchordal::life::scenario::{
     Action, ArticulationCoreConfig, EnvelopeConfig, SpawnSpec, SpawnStrategy,
 };
+use rand::distr::Distribution;
+use rand::distr::weighted::WeightedIndex;
+use rand::rngs::SmallRng;
+use rand::{Rng, SeedableRng};
 
 pub const E4_ANCHOR_HZ: f32 = 220.0;
 pub const E4_WINDOW_CENTS: f32 = 50.0;
@@ -80,7 +84,6 @@ pub struct E3PolicyParams {
     pub basal_cost_per_sec: f32,
     pub action_cost_per_attack: f32,
     pub recharge_per_attack: f32,
-    pub recharge_threshold: f32,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -149,6 +152,7 @@ struct E4SimConfig {
     exploration: f32,
     persistence: f32,
     theta_freq_hz: f32,
+    neighbor_step_cents: f32,
 }
 
 impl E4SimConfig {
@@ -168,6 +172,7 @@ impl E4SimConfig {
             exploration: 0.8,
             persistence: 0.2,
             theta_freq_hz: 6.0,
+            neighbor_step_cents: 50.0,
         }
     }
 
@@ -414,6 +419,7 @@ fn run_e4_condition_with_config(mirror_weight: f32, seed: u64, cfg: &E4SimConfig
     let space = Log2Space::new(cfg.fmin, cfg.fmax, cfg.bins_per_oct);
     let mut params = make_landscape_params(&space, cfg.fs);
     let mut landscape = Landscape::new(space.clone());
+    let mut rhythms = init_e4_rhythms(cfg);
 
     let mut pop = Population::new(Timebase {
         fs: cfg.fs,
@@ -431,7 +437,6 @@ fn run_e4_condition_with_config(mirror_weight: f32, seed: u64, cfg: &E4SimConfig
     }
 
     landscape = build_anchor_landscape(&space, &params, cfg.anchor_hz);
-    landscape.rhythm = init_rhythms(cfg.theta_freq_hz);
 
     let anchor_spec = SpawnSpec {
         control: anchor_control(cfg.anchor_hz),
@@ -460,27 +465,25 @@ fn run_e4_condition_with_config(mirror_weight: f32, seed: u64, cfg: &E4SimConfig
         },
     };
     let ids: Vec<u64> = (1..=cfg.voice_count as u64).collect();
-    let strategy = SpawnStrategy::ConsonanceDensity {
-        min_freq,
-        max_freq,
-        min_dist_erb: cfg.min_dist_erb,
-    };
     pop.apply_action(
         Action::Spawn {
             group_id: E4_GROUP_VOICES,
             ids,
             spec: voice_spec,
-            strategy: Some(strategy),
+            strategy: None,
         },
         &landscape,
         None,
     );
+    apply_e4_initial_pitches(&mut pop, &space, &landscape, cfg, seed, min_freq, max_freq);
 
     let dt = cfg.hop as f32 / cfg.fs;
     for step in 0..cfg.steps {
+        update_e4_landscape_from_population(&space, &params, &pop, &mut landscape);
+        landscape.rhythm = rhythms;
         pop.advance(cfg.hop, cfg.fs, step as u64, dt, &landscape);
         pop.cleanup_dead(step as u64, dt, false);
-        landscape.rhythm.advance_in_place(dt);
+        rhythms.advance_in_place(dt);
     }
 
     let mut freqs = Vec::with_capacity(cfg.voice_count);
@@ -505,6 +508,7 @@ fn run_e4_condition_tail_samples_with_config(
     let space = Log2Space::new(cfg.fmin, cfg.fmax, cfg.bins_per_oct);
     let mut params = make_landscape_params(&space, cfg.fs);
     let mut landscape = Landscape::new(space.clone());
+    let mut rhythms = init_e4_rhythms(cfg);
 
     let mut pop = Population::new(Timebase {
         fs: cfg.fs,
@@ -522,7 +526,6 @@ fn run_e4_condition_tail_samples_with_config(
     }
 
     landscape = build_anchor_landscape(&space, &params, cfg.anchor_hz);
-    landscape.rhythm = init_rhythms(cfg.theta_freq_hz);
 
     let anchor_spec = SpawnSpec {
         control: anchor_control(cfg.anchor_hz),
@@ -551,21 +554,17 @@ fn run_e4_condition_tail_samples_with_config(
         },
     };
     let ids: Vec<u64> = (1..=cfg.voice_count as u64).collect();
-    let strategy = SpawnStrategy::ConsonanceDensity {
-        min_freq,
-        max_freq,
-        min_dist_erb: cfg.min_dist_erb,
-    };
     pop.apply_action(
         Action::Spawn {
             group_id: E4_GROUP_VOICES,
             ids,
             spec: voice_spec,
-            strategy: Some(strategy),
+            strategy: None,
         },
         &landscape,
         None,
     );
+    apply_e4_initial_pitches(&mut pop, &space, &landscape, cfg, seed, min_freq, max_freq);
 
     let tail_window = tail_window.min(cfg.steps).max(1);
     let start_step = cfg.steps.saturating_sub(tail_window);
@@ -573,9 +572,11 @@ fn run_e4_condition_tail_samples_with_config(
     let mut freqs_by_step: Vec<Vec<f32>> = Vec::with_capacity(tail_window as usize);
 
     for step in 0..cfg.steps {
+        update_e4_landscape_from_population(&space, &params, &pop, &mut landscape);
+        landscape.rhythm = rhythms;
         pop.advance(cfg.hop, cfg.fs, step as u64, dt, &landscape);
         pop.cleanup_dead(step as u64, dt, false);
-        landscape.rhythm.advance_in_place(dt);
+        rhythms.advance_in_place(dt);
 
         if step >= start_step {
             freqs_by_step.push(collect_voice_freqs(&pop));
@@ -665,6 +666,110 @@ fn build_anchor_landscape(
     landscape
 }
 
+fn init_e4_rhythms(cfg: &E4SimConfig) -> NeuralRhythms {
+    let mut rhythms = NeuralRhythms::default();
+    rhythms.theta.freq_hz = cfg.theta_freq_hz.max(0.1);
+    rhythms.theta.mag = 1.0;
+    rhythms.theta.alpha = 1.0;
+    rhythms.delta.freq_hz = 1.0;
+    rhythms.delta.mag = 1.0;
+    rhythms.delta.alpha = 1.0;
+    rhythms.env_open = 1.0;
+    rhythms.env_level = 1.0;
+    rhythms
+}
+
+fn apply_e4_initial_pitches(
+    pop: &mut Population,
+    space: &Log2Space,
+    landscape: &Landscape,
+    cfg: &E4SimConfig,
+    seed: u64,
+    min_freq: f32,
+    max_freq: f32,
+) {
+    let mut rng = SmallRng::seed_from_u64(seed ^ 0xE4E4_5EED);
+    let min_freq = min_freq.clamp(space.fmin, space.fmax);
+    let max_freq = max_freq.clamp(space.fmin, space.fmax);
+    for agent in pop.individuals.iter_mut() {
+        if agent.metadata.group_id != E4_GROUP_VOICES {
+            continue;
+        }
+        let log2_freq =
+            sample_e4_initial_pitch_log2(&mut rng, space, landscape, min_freq, max_freq);
+        agent.force_set_pitch_log2(log2_freq);
+        agent.set_neighbor_step_cents(cfg.neighbor_step_cents);
+    }
+}
+
+fn sample_e4_initial_pitch_log2(
+    rng: &mut impl Rng,
+    space: &Log2Space,
+    landscape: &Landscape,
+    min_freq: f32,
+    max_freq: f32,
+) -> f32 {
+    let min_idx = space.index_of_freq(min_freq).unwrap_or(0);
+    let max_idx = space
+        .index_of_freq(max_freq)
+        .unwrap_or(space.n_bins().saturating_sub(1));
+    let (min_idx, max_idx) = if min_idx <= max_idx {
+        (min_idx, max_idx)
+    } else {
+        (max_idx, min_idx)
+    };
+    let mut weights = Vec::with_capacity(max_idx - min_idx + 1);
+    for i in min_idx..=max_idx {
+        let w = landscape
+            .consonance_state01
+            .get(i)
+            .copied()
+            .unwrap_or(0.0)
+            .max(0.0);
+        weights.push(w);
+    }
+    if let Ok(dist) = WeightedIndex::new(&weights) {
+        let idx = min_idx + dist.sample(rng);
+        return space.freq_of_index(idx).log2();
+    }
+    let min_l = min_freq.log2();
+    let max_l = max_freq.log2();
+    if min_l.is_finite() && max_l.is_finite() && min_l < max_l {
+        let r = rng.random_range(min_l..max_l);
+        return r;
+    }
+    min_freq.max(1.0).log2()
+}
+
+fn update_e4_landscape_from_population(
+    space: &Log2Space,
+    params: &LandscapeParams,
+    pop: &Population,
+    landscape: &mut Landscape,
+) {
+    let mut env_scan = vec![0.0f32; space.n_bins()];
+    for agent in &pop.individuals {
+        let freq = agent.body.base_freq_hz();
+        if !freq.is_finite() || freq <= 0.0 {
+            continue;
+        }
+        if let Some(idx) = space.index_of_freq(freq) {
+            env_scan[idx] += 1.0;
+        }
+    }
+    space.assert_scan_len_named(&env_scan, "e4_env_scan");
+    let (h_pot_scan, _) = params
+        .harmonicity_kernel
+        .potential_h_from_log2_spectrum(&env_scan, space);
+    landscape.subjective_intensity = env_scan.clone();
+    landscape.nsgt_power = env_scan;
+    landscape.harmonicity = h_pot_scan;
+    landscape.roughness.fill(0.0);
+    landscape.roughness_shape_raw.fill(0.0);
+    landscape.roughness01.fill(0.0);
+    landscape.recompute_consonance(params);
+}
+
 fn init_rhythms(theta_freq_hz: f32) -> NeuralRhythms {
     NeuralRhythms {
         theta: RhythmBand {
@@ -740,7 +845,6 @@ pub fn e3_policy_params(condition: E3Condition) -> E3PolicyParams {
         basal_cost_per_sec: policy.basal_cost_per_sec,
         action_cost_per_attack: policy.action_cost_per_attack,
         recharge_per_attack: policy.recharge_per_attack,
-        recharge_threshold: policy.recharge_threshold,
     }
 }
 

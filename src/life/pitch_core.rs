@@ -75,6 +75,15 @@ impl PitchHillClimbPitchCore {
         self.persistence = value.clamp(0.0, 1.0);
     }
 
+    pub fn set_neighbor_step_cents(&mut self, value: f32) {
+        let cents = if value.is_finite() {
+            value.max(0.0)
+        } else {
+            0.0
+        };
+        self.neighbor_step_log2 = cents / 1200.0;
+    }
+
     pub fn set_tessitura_center(&mut self, value: f32) {
         self.tessitura_center = value;
     }
@@ -100,10 +109,25 @@ impl PitchCore for PitchHillClimbPitchCore {
         let current_target_log2 = current_target_log2.clamp(fmin, fmax);
         let perfect_fifth = 1.5f32.log2();
         let imperfect_fifth = 0.66f32.log2();
+        let half_step = 50.0 / 1200.0;
+        let full_step = 100.0 / 1200.0;
+        let third_min = 3.0 / 12.0;
+        let third_maj = 4.0 / 12.0;
+        let fifth = 7.0 / 12.0;
         let mut candidates = vec![
             current_target_log2,
             current_target_log2 + self.neighbor_step_log2,
             current_target_log2 - self.neighbor_step_log2,
+            current_target_log2 + half_step,
+            current_target_log2 - half_step,
+            current_target_log2 + full_step,
+            current_target_log2 - full_step,
+            current_target_log2 + third_min,
+            current_target_log2 - third_min,
+            current_target_log2 + third_maj,
+            current_target_log2 - third_maj,
+            current_target_log2 + fifth,
+            current_target_log2 - fifth,
             current_target_log2 + perfect_fifth,
             current_target_log2 + imperfect_fifth,
         ];
@@ -326,6 +350,12 @@ impl AnyPitchCore {
     pub fn set_exploration(&mut self, value: f32) {
         match self {
             AnyPitchCore::PitchHillClimb(core) => core.set_exploration(value),
+        }
+    }
+
+    pub fn set_neighbor_step_cents(&mut self, value: f32) {
+        match self {
+            AnyPitchCore::PitchHillClimb(core) => core.set_neighbor_step_cents(value),
         }
     }
 

@@ -1958,18 +1958,17 @@ fn plot_e3_metabolic_selection(
         "condition,seed,n_deaths,pearson_r_firstk,pearson_p_firstk,spearman_rho_firstk,spearman_p_firstk,logrank_p_firstk,logrank_p_firstk_q25q75,median_high_firstk,median_low_firstk,pearson_r_birth,pearson_p_birth,spearman_rho_birth,spearman_p_birth,pearson_r_attack,pearson_p_attack,spearman_rho_attack,spearman_p_attack,n_attack_lives\n",
     );
     let mut policy_csv = String::from(
-        "condition,dt_sec,basal_cost_per_sec,action_cost_per_attack,recharge_per_attack,recharge_threshold\n",
+        "condition,dt_sec,basal_cost_per_sec,action_cost_per_attack,recharge_per_attack\n",
     );
     for condition in conditions {
         let params = e3_policy_params(condition);
         policy_csv.push_str(&format!(
-            "{},{:.6},{:.6},{:.6},{:.6},{:.6}\n",
+            "{},{:.6},{:.6},{:.6},{:.6}\n",
             params.condition,
             params.dt_sec,
             params.basal_cost_per_sec,
             params.action_cost_per_attack,
-            params.recharge_per_attack,
-            params.recharge_threshold
+            params.recharge_per_attack
         ));
     }
     write(out_dir.join("paper_e3_policy_params.csv"), policy_csv)?;
@@ -2828,7 +2827,7 @@ fn plot_e4_mirror_sweep(
 ) -> Result<(), Box<dyn Error>> {
     let coarse_weights = build_weight_grid(E4_WEIGHT_COARSE_STEP);
     let primary_bin = E4_BIN_WIDTHS[0];
-    let (mut run_records, mut hist_records) = run_e4_sweep_for_weights(
+    let (mut run_records, mut hist_records, mut tail_rows) = run_e4_sweep_for_weights(
         out_dir,
         anchor_hz,
         &coarse_weights,
@@ -2853,7 +2852,7 @@ fn plot_e4_mirror_sweep(
         .collect();
 
     if !fine_only.is_empty() {
-        let (more_runs, more_hists) = run_e4_sweep_for_weights(
+        let (more_runs, more_hists, more_tail) = run_e4_sweep_for_weights(
             out_dir,
             anchor_hz,
             &fine_only,
@@ -2863,10 +2862,11 @@ fn plot_e4_mirror_sweep(
         )?;
         run_records.extend(more_runs);
         hist_records.extend(more_hists);
+        tail_rows.extend(more_tail);
     }
 
     for &bin_width in E4_BIN_WIDTHS.iter().skip(1) {
-        let (more_runs, more_hists) = run_e4_sweep_for_weights(
+        let (more_runs, more_hists, more_tail) = run_e4_sweep_for_weights(
             out_dir,
             anchor_hz,
             &weights,
@@ -2876,10 +2876,13 @@ fn plot_e4_mirror_sweep(
         )?;
         run_records.extend(more_runs);
         hist_records.extend(more_hists);
+        tail_rows.extend(more_tail);
     }
 
     let runs_csv_path = out_dir.join("e4_mirror_sweep_runs.csv");
     write(&runs_csv_path, e4_runs_csv(&run_records))?;
+    let tail_csv_path = out_dir.join("paper_e4_tail_interval_timeseries.csv");
+    write(&tail_csv_path, e4_tail_interval_csv(&tail_rows))?;
 
     let summaries = summarize_e4_runs(&run_records);
     let summary_csv_path = out_dir.join("e4_mirror_sweep_summary.csv");
@@ -2903,6 +2906,18 @@ fn plot_e4_mirror_sweep(
             format_float_token(bin_width)
         ));
         render_e4_major_minor_plot(&major_minor_path, &summaries, bin_width)?;
+
+        let third_mass_path = out_dir.join(format!(
+            "paper_e4_third_mass_vs_weight_bw{}.png",
+            format_float_token(bin_width)
+        ));
+        render_e4_third_mass_plot(&third_mass_path, &summaries, bin_width)?;
+
+        let rate_path = out_dir.join(format!(
+            "paper_e4_major_minor_rate_vs_weight_bw{}.png",
+            format_float_token(bin_width)
+        ));
+        render_e4_major_minor_rate_plot(&rate_path, &summaries, bin_width)?;
     }
 
     let legacy_path = out_dir.join("paper_e4_mirror_sweep.png");
@@ -3043,6 +3058,10 @@ struct E4RunRecord {
     minor_score: f32,
     delta: f32,
     major_frac: f32,
+    mass_min3: f32,
+    mass_maj3: f32,
+    mass_p4: f32,
+    mass_p5: f32,
     steps_total: u32,
     burn_in: u32,
     tail_window: u32,
@@ -3059,6 +3078,14 @@ struct E4SummaryRecord {
     std_minor: f32,
     mean_delta: f32,
     std_delta: f32,
+    mean_min3: f32,
+    std_min3: f32,
+    mean_maj3: f32,
+    std_maj3: f32,
+    mean_p4: f32,
+    std_p4: f32,
+    mean_p5: f32,
+    std_p5: f32,
     major_rate: f32,
     minor_rate: f32,
     ambiguous_rate: f32,
@@ -3074,6 +3101,19 @@ struct E4HistRecord {
     mirror_weight: f32,
     bin_width: f32,
     histogram: Histogram,
+}
+
+struct E4TailIntervalRow {
+    mirror_weight: f32,
+    seed: u64,
+    bin_width: f32,
+    eps: f32,
+    step: u32,
+    mass_min3: f32,
+    mass_maj3: f32,
+    mass_p4: f32,
+    mass_p5: f32,
+    delta: f32,
 }
 
 fn seeded_rng(seed: u64) -> StdRng {
@@ -3226,6 +3266,70 @@ fn mass_around(hist: &Histogram, center: f32, eps: f32) -> f32 {
     sum
 }
 
+#[derive(Clone, Copy)]
+struct IntervalMasses {
+    min3: f32,
+    maj3: f32,
+    p4: f32,
+    p5: f32,
+}
+
+fn interval_masses_from_freqs(anchor_hz: f32, freqs: &[f32], eps_st: f32) -> IntervalMasses {
+    if !anchor_hz.is_finite() || anchor_hz <= 0.0 || freqs.is_empty() {
+        return IntervalMasses {
+            min3: 0.0,
+            maj3: 0.0,
+            p4: 0.0,
+            p5: 0.0,
+        };
+    }
+    let eps = eps_st.max(1e-6);
+    let mut count_min3 = 0u32;
+    let mut count_maj3 = 0u32;
+    let mut count_p4 = 0u32;
+    let mut count_p5 = 0u32;
+    let mut total = 0u32;
+    for &freq in freqs {
+        if !freq.is_finite() || freq <= 0.0 {
+            continue;
+        }
+        let ratio = freq / anchor_hz;
+        if !ratio.is_finite() || ratio <= 0.0 {
+            continue;
+        }
+        let semitones = 12.0 * ratio.log2();
+        let folded = semitone_fold_to_octave(semitones);
+        total += 1;
+        if (folded - 3.0).abs() <= eps {
+            count_min3 += 1;
+        }
+        if (folded - 4.0).abs() <= eps {
+            count_maj3 += 1;
+        }
+        if (folded - 5.0).abs() <= eps {
+            count_p4 += 1;
+        }
+        if (folded - 7.0).abs() <= eps {
+            count_p5 += 1;
+        }
+    }
+    if total == 0 {
+        return IntervalMasses {
+            min3: 0.0,
+            maj3: 0.0,
+            p4: 0.0,
+            p5: 0.0,
+        };
+    }
+    let inv = 1.0 / total as f32;
+    IntervalMasses {
+        min3: count_min3 as f32 * inv,
+        maj3: count_maj3 as f32 * inv,
+        p4: count_p4 as f32 * inv,
+        p5: count_p5 as f32 * inv,
+    }
+}
+
 fn run_e4_sweep_for_weights(
     out_dir: &Path,
     anchor_hz: f32,
@@ -3233,9 +3337,10 @@ fn run_e4_sweep_for_weights(
     seeds: &[u64],
     bin_width: f32,
     emit_hist_files: bool,
-) -> Result<(Vec<E4RunRecord>, Vec<E4HistRecord>), Box<dyn Error>> {
+) -> Result<(Vec<E4RunRecord>, Vec<E4HistRecord>, Vec<E4TailIntervalRow>), Box<dyn Error>> {
     let mut runs = Vec::new();
     let mut hists = Vec::new();
+    let mut tail_rows = Vec::new();
     let eps = bin_width.max(1e-6);
     for &weight in weights {
         for &seed in seeds {
@@ -3243,8 +3348,12 @@ fn run_e4_sweep_for_weights(
             let semitone_samples = collect_e4_semitone_samples(&samples, anchor_hz);
             let histogram = histogram_from_samples(&semitone_samples, 0.0, 12.0, bin_width);
 
-            let major_score = mass_around(&histogram, 4.0, eps) + mass_around(&histogram, 7.0, eps);
-            let minor_score = mass_around(&histogram, 3.0, eps) + mass_around(&histogram, 7.0, eps);
+            let mass_min3 = mass_around(&histogram, 3.0, eps);
+            let mass_maj3 = mass_around(&histogram, 4.0, eps);
+            let mass_p4 = mass_around(&histogram, 5.0, eps);
+            let mass_p5 = mass_around(&histogram, 7.0, eps);
+            let major_score = mass_maj3 + mass_p5;
+            let minor_score = mass_min3 + mass_p5;
             let delta = major_score - minor_score;
             let major_frac = major_score / (major_score + minor_score + 1e-12);
 
@@ -3258,6 +3367,10 @@ fn run_e4_sweep_for_weights(
                 minor_score,
                 delta,
                 major_frac,
+                mass_min3,
+                mass_maj3,
+                mass_p4,
+                mass_p5,
                 steps_total: samples.steps_total,
                 burn_in,
                 tail_window: samples.tail_window,
@@ -3269,6 +3382,23 @@ fn run_e4_sweep_for_weights(
                 bin_width,
                 histogram,
             });
+
+            for (i, freqs) in samples.freqs_by_step.iter().enumerate() {
+                let masses = interval_masses_from_freqs(anchor_hz, freqs, eps);
+                let step = samples.steps_total.saturating_sub(samples.tail_window) + i as u32;
+                tail_rows.push(E4TailIntervalRow {
+                    mirror_weight: weight,
+                    seed,
+                    bin_width,
+                    eps,
+                    step,
+                    mass_min3: masses.min3,
+                    mass_maj3: masses.maj3,
+                    mass_p4: masses.p4,
+                    mass_p5: masses.p5,
+                    delta: masses.maj3 - masses.min3,
+                });
+            }
 
             if emit_hist_files {
                 let w_token = format_float_token(weight);
@@ -3305,16 +3435,16 @@ fn run_e4_sweep_for_weights(
             }
         }
     }
-    Ok((runs, hists))
+    Ok((runs, hists, tail_rows))
 }
 
 fn e4_runs_csv(records: &[E4RunRecord]) -> String {
     let mut out = String::from(
-        "mirror_weight,seed,bin_width,eps,major_score,minor_score,delta,major_frac,steps_total,burn_in,tail_window,histogram_source\n",
+        "mirror_weight,seed,bin_width,eps,major_score,minor_score,delta,major_frac,mass_m3,mass_M3,mass_P4,mass_P5,steps_total,burn_in,tail_window,histogram_source\n",
     );
     for record in records {
         out.push_str(&format!(
-            "{:.3},{},{:.3},{:.3},{:.6},{:.6},{:.6},{:.6},{},{},{},{}\n",
+            "{:.3},{},{:.3},{:.3},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{},{},{},{}\n",
             record.mirror_weight,
             record.seed,
             record.bin_width,
@@ -3323,6 +3453,10 @@ fn e4_runs_csv(records: &[E4RunRecord]) -> String {
             record.minor_score,
             record.delta,
             record.major_frac,
+            record.mass_min3,
+            record.mass_maj3,
+            record.mass_p4,
+            record.mass_p5,
             record.steps_total,
             record.burn_in,
             record.tail_window,
@@ -3332,13 +3466,35 @@ fn e4_runs_csv(records: &[E4RunRecord]) -> String {
     out
 }
 
+fn e4_tail_interval_csv(rows: &[E4TailIntervalRow]) -> String {
+    let mut out = String::from(
+        "mirror_weight,seed,bin_width,eps,step,mass_m3,mass_M3,mass_P4,mass_P5,delta\n",
+    );
+    for row in rows {
+        out.push_str(&format!(
+            "{:.3},{},{:.3},{:.3},{},{:.6},{:.6},{:.6},{:.6},{:.6}\n",
+            row.mirror_weight,
+            row.seed,
+            row.bin_width,
+            row.eps,
+            row.step,
+            row.mass_min3,
+            row.mass_maj3,
+            row.mass_p4,
+            row.mass_p5,
+            row.delta
+        ));
+    }
+    out
+}
+
 fn e4_summary_csv(records: &[E4SummaryRecord]) -> String {
     let mut out = String::from(
-        "mirror_weight,bin_width,eps,mean_major,std_major,mean_minor,std_minor,mean_delta,std_delta,major_rate,minor_rate,ambiguous_rate,n_runs\n",
+        "mirror_weight,bin_width,eps,mean_major,std_major,mean_minor,std_minor,mean_delta,std_delta,mean_m3,std_m3,mean_M3,std_M3,mean_P4,std_P4,mean_P5,std_P5,major_rate,minor_rate,ambiguous_rate,n_runs\n",
     );
     for record in records {
         out.push_str(&format!(
-            "{:.3},{:.3},{:.3},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.3},{:.3},{:.3},{}\n",
+            "{:.3},{:.3},{:.3},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.3},{:.3},{:.3},{}\n",
             record.mirror_weight,
             record.bin_width,
             record.eps,
@@ -3348,6 +3504,14 @@ fn e4_summary_csv(records: &[E4SummaryRecord]) -> String {
             record.std_minor,
             record.mean_delta,
             record.std_delta,
+            record.mean_min3,
+            record.std_min3,
+            record.mean_maj3,
+            record.std_maj3,
+            record.mean_p4,
+            record.std_p4,
+            record.mean_p5,
+            record.std_p5,
             record.major_rate,
             record.minor_rate,
             record.ambiguous_rate,
@@ -3406,9 +3570,17 @@ fn summarize_e4_runs(records: &[E4RunRecord]) -> Vec<E4SummaryRecord> {
         let major_values: Vec<f32> = runs.iter().map(|r| r.major_score).collect();
         let minor_values: Vec<f32> = runs.iter().map(|r| r.minor_score).collect();
         let delta_values: Vec<f32> = runs.iter().map(|r| r.delta).collect();
+        let min3_values: Vec<f32> = runs.iter().map(|r| r.mass_min3).collect();
+        let maj3_values: Vec<f32> = runs.iter().map(|r| r.mass_maj3).collect();
+        let p4_values: Vec<f32> = runs.iter().map(|r| r.mass_p4).collect();
+        let p5_values: Vec<f32> = runs.iter().map(|r| r.mass_p5).collect();
         let (mean_major, std_major) = mean_std(&major_values);
         let (mean_minor, std_minor) = mean_std(&minor_values);
         let (mean_delta, std_delta) = mean_std(&delta_values);
+        let (mean_min3, std_min3) = mean_std(&min3_values);
+        let (mean_maj3, std_maj3) = mean_std(&maj3_values);
+        let (mean_p4, std_p4) = mean_std(&p4_values);
+        let (mean_p5, std_p5) = mean_std(&p5_values);
         let mut major_count = 0usize;
         let mut minor_count = 0usize;
         let mut ambiguous_count = 0usize;
@@ -3433,6 +3605,14 @@ fn summarize_e4_runs(records: &[E4RunRecord]) -> Vec<E4SummaryRecord> {
             std_minor,
             mean_delta,
             std_delta,
+            mean_min3,
+            std_min3,
+            mean_maj3,
+            std_maj3,
+            mean_p4,
+            std_p4,
+            mean_p5,
+            std_p5,
             major_rate: major_count as f32 * inv,
             minor_rate: minor_count as f32 * inv,
             ambiguous_rate: ambiguous_count as f32 * inv,
@@ -3731,6 +3911,150 @@ fn render_e4_major_minor_plot(
     Ok(())
 }
 
+fn render_e4_third_mass_plot(
+    out_path: &Path,
+    summaries: &[E4SummaryRecord],
+    bin_width: f32,
+) -> Result<(), Box<dyn Error>> {
+    let mut series: Vec<(f32, f32, f32, f32, f32)> = summaries
+        .iter()
+        .filter(|s| (s.bin_width - bin_width).abs() < 1e-6)
+        .map(|s| {
+            (
+                s.mirror_weight,
+                s.mean_maj3,
+                s.std_maj3,
+                s.mean_min3,
+                s.std_min3,
+            )
+        })
+        .collect();
+    if series.is_empty() {
+        return Ok(());
+    }
+    series.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+
+    let mut y_max = series
+        .iter()
+        .map(|(_, m_maj, s_maj, m_min, s_min)| (m_maj + s_maj).max(m_min + s_min))
+        .fold(0.0f32, f32::max);
+    if y_max <= 0.0 {
+        y_max = 1.0;
+    }
+    let root = BitMapBackend::new(out_path, (1200, 700)).into_drawing_area();
+    root.fill(&WHITE)?;
+    let mut chart = ChartBuilder::on(&root)
+        .caption(
+            format!("E4 Third Mass vs Mirror Weight (bw={bin_width:.2})"),
+            ("sans-serif", 20),
+        )
+        .margin(10)
+        .x_label_area_size(40)
+        .y_label_area_size(60)
+        .build_cartesian_2d(0.0f32..1.0f32, 0.0f32..(y_max * 1.1))?;
+
+    chart
+        .configure_mesh()
+        .x_desc("mirror weight")
+        .y_desc("mass")
+        .draw()?;
+
+    let cap = 0.01f32;
+    for (w, mean_maj, std_maj, mean_min, std_min) in &series {
+        let y0 = mean_maj - std_maj;
+        let y1 = mean_maj + std_maj;
+        chart.draw_series(std::iter::once(PathElement::new(
+            vec![(*w, y0), (*w, y1)],
+            BLUE.mix(0.8),
+        )))?;
+        chart.draw_series(std::iter::once(PathElement::new(
+            vec![(*w - cap, y0), (*w + cap, y0)],
+            BLUE.mix(0.8),
+        )))?;
+        chart.draw_series(std::iter::once(PathElement::new(
+            vec![(*w - cap, y1), (*w + cap, y1)],
+            BLUE.mix(0.8),
+        )))?;
+        chart.draw_series(std::iter::once(Circle::new(
+            (*w, *mean_maj),
+            3,
+            BLUE.filled(),
+        )))?;
+
+        let y0 = mean_min - std_min;
+        let y1 = mean_min + std_min;
+        chart.draw_series(std::iter::once(PathElement::new(
+            vec![(*w, y0), (*w, y1)],
+            RED.mix(0.8),
+        )))?;
+        chart.draw_series(std::iter::once(PathElement::new(
+            vec![(*w - cap, y0), (*w + cap, y0)],
+            RED.mix(0.8),
+        )))?;
+        chart.draw_series(std::iter::once(PathElement::new(
+            vec![(*w - cap, y1), (*w + cap, y1)],
+            RED.mix(0.8),
+        )))?;
+        chart.draw_series(std::iter::once(Circle::new(
+            (*w, *mean_min),
+            3,
+            RED.filled(),
+        )))?;
+    }
+
+    root.present()?;
+    Ok(())
+}
+
+fn render_e4_major_minor_rate_plot(
+    out_path: &Path,
+    summaries: &[E4SummaryRecord],
+    bin_width: f32,
+) -> Result<(), Box<dyn Error>> {
+    let mut series: Vec<(f32, f32, f32)> = summaries
+        .iter()
+        .filter(|s| (s.bin_width - bin_width).abs() < 1e-6)
+        .map(|s| (s.mirror_weight, s.major_rate, s.minor_rate))
+        .collect();
+    if series.is_empty() {
+        return Ok(());
+    }
+    series.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+
+    let root = BitMapBackend::new(out_path, (1200, 700)).into_drawing_area();
+    root.fill(&WHITE)?;
+    let mut chart = ChartBuilder::on(&root)
+        .caption(
+            format!("E4 Major/Minor Rate vs Mirror Weight (bw={bin_width:.2})"),
+            ("sans-serif", 20),
+        )
+        .margin(10)
+        .x_label_area_size(40)
+        .y_label_area_size(60)
+        .build_cartesian_2d(0.0f32..1.0f32, 0.0f32..1.0f32)?;
+
+    chart
+        .configure_mesh()
+        .x_desc("mirror weight")
+        .y_desc("rate (Δ thresholded)")
+        .draw()?;
+
+    for (w, major_rate, minor_rate) in &series {
+        chart.draw_series(std::iter::once(Circle::new(
+            (*w, *major_rate),
+            3,
+            BLUE.filled(),
+        )))?;
+        chart.draw_series(std::iter::once(Circle::new(
+            (*w, *minor_rate),
+            3,
+            RED.filled(),
+        )))?;
+    }
+
+    root.present()?;
+    Ok(())
+}
 fn build_env_scans(
     space: &Log2Space,
     anchor_idx: usize,
@@ -5144,8 +5468,9 @@ fn e3_metric_definition_text() -> String {
     out.push_str("C_firstK definition: mean over first K=20 ticks after birth (0..1).\n");
     out.push_str("Metabolism update (conceptual):\n");
     out.push_str("  E <- E - basal_cost_per_sec * dt\n");
+    out.push_str("  Attack tick: E <- E - action_cost + recharge_per_attack * C\n");
     out.push_str(
-        "  Attack tick: E <- E - action_cost + I[C > recharge_threshold] * recharge_per_attack * C\n",
+        "C is clamped to [0,1] in the metabolism step (defensive), so recharge is continuous.\n",
     );
     out.push_str(
         "NoRecharge sets recharge_per_attack=0, so the C-dependent recharge term is removed.\n",

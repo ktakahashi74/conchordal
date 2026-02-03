@@ -411,6 +411,10 @@ impl Individual {
         self.pitch_ctl.force_set_target_pitch_log2(log_freq);
     }
 
+    pub fn set_neighbor_step_cents(&mut self, value: f32) {
+        self.pitch_ctl.core_mut().set_neighbor_step_cents(value);
+    }
+
     /// Update pitch targets at control rate (hop-sized steps).
     pub fn update_pitch_target(
         &mut self,

@@ -259,6 +259,12 @@ fn normalized_vitality(energy: f32, energy_cap: f32, vitality_exponent: f32) -> 
 
 impl KuramotoCore {
     #[inline]
+    fn apply_energy_delta(&mut self, delta: f32) {
+        self.energy += delta;
+        self.handle_energy_depletion();
+    }
+
+    #[inline]
     fn metabolism_policy(&self) -> MetabolismPolicy {
         MetabolismPolicy {
             basal_cost_per_sec: self.basal_cost,
@@ -491,9 +497,7 @@ impl ArticulationCore for KuramotoCore {
         self.last_attack_count = 0;
         self.last_attack_consonance = 0.0;
         let policy = self.metabolism_policy();
-        let (energy_after_basal, _telemetry) = policy.apply_basal(self.energy, dt);
-        self.energy = energy_after_basal;
-        self.handle_energy_depletion();
+        self.apply_energy_delta(policy.basal_delta(dt));
 
         let theta = ThetaView {
             phase: rhythms.theta.phase,
@@ -521,10 +525,7 @@ impl ArticulationCore for KuramotoCore {
         if attacked_this_sample {
             self.last_attack_count = 1;
             self.last_attack_consonance = consonance;
-            let (energy_after_attack, _telemetry) =
-                policy.apply_attack_with_recharge(self.energy, consonance);
-            self.energy = energy_after_attack;
-            self.handle_energy_depletion();
+            self.apply_energy_delta(policy.attack_delta_with_recharge(consonance));
         } else {
             self.last_attack_count = 0;
             self.last_attack_consonance = 0.0;
@@ -720,7 +721,7 @@ impl ArticulationCore for AnyArticulationCore {
 impl AnyArticulationCore {
     pub fn from_config<R: Rng + ?Sized>(
         config: &ArticulationCoreConfig,
-        fs: f32,
+        _fs: f32,
         noise_seed: u64,
         rng: &mut R,
     ) -> Self {
@@ -731,17 +732,16 @@ impl AnyArticulationCore {
                 rhythm_sensitivity,
                 ..
             } => {
-                let (
-                    energy,
-                    basal_cost,
-                    recharge_rate,
-                    attack_step,
-                    decay_rate,
-                    state,
-                    sensitivity,
-                    retrigger,
-                    action_cost,
-                ) = envelope_from_lifecycle(lifecycle, fs);
+                let derived = envelope_from_lifecycle(lifecycle);
+                let energy = derived.initial_energy;
+                let basal_cost = derived.policy.basal_cost_per_sec;
+                let recharge_rate = derived.policy.recharge_per_attack;
+                let action_cost = derived.policy.action_cost_per_attack;
+                let attack_step = derived.attack_step;
+                let decay_rate = derived.decay_rate;
+                let state = derived.state;
+                let sensitivity = derived.sensitivity;
+                let retrigger = derived.retrigger;
                 let energy_cap = energy.max(0.0);
                 let vitality_exponent = 0.5;
                 let vitality_level = normalized_vitality(energy, energy_cap, vitality_exponent);
@@ -851,9 +851,8 @@ impl KuramotoCore {
         self.state = ArticulationState::Attack;
         let policy = self.metabolism_policy();
         if self.energy.is_finite() && self.energy >= policy.action_cost_per_attack {
-            let (energy_after, _telemetry) = policy.apply_attack_cost_only(self.energy);
-            let delta = energy_after - self.energy;
-            self.energy += delta * strength;
+            let delta = policy.attack_delta_cost_only();
+            self.apply_energy_delta(delta * strength);
         }
     }
 }
@@ -868,20 +867,17 @@ impl DroneCore {
     fn kick_planned(&mut self, _strength: f32) {}
 }
 
-fn envelope_from_lifecycle(
-    lifecycle: &LifecycleConfig,
-    _fs: f32,
-) -> (
-    f32,
-    f32,
-    f32,
-    f32,
-    f32,
-    ArticulationState,
-    Sensitivity,
-    bool,
-    f32,
-) {
+struct LifecycleDerived {
+    initial_energy: f32,
+    attack_step: f32,
+    decay_rate: f32,
+    state: ArticulationState,
+    sensitivity: Sensitivity,
+    retrigger: bool,
+    policy: MetabolismPolicy,
+}
+
+fn envelope_from_lifecycle(lifecycle: &LifecycleConfig) -> LifecycleDerived {
     let policy = MetabolismPolicy::from_lifecycle(lifecycle);
     match lifecycle {
         LifecycleConfig::Decay {
@@ -892,18 +888,16 @@ fn envelope_from_lifecycle(
             let atk = attack_sec.max(0.0005);
             let attack_step = 1.0 / atk;
             let decay_sec = half_life_sec.max(0.01);
-            let decay_rate = 1.0 / decay_sec;
-            (
-                *initial_energy,
-                policy.basal_cost_per_sec,
-                policy.recharge_per_attack,
+            let decay_rate = std::f32::consts::LN_2 / decay_sec;
+            LifecycleDerived {
+                initial_energy: *initial_energy,
                 attack_step,
                 decay_rate,
-                ArticulationState::Attack,
-                Sensitivity::default(),
-                false,
-                policy.action_cost_per_attack,
-            )
+                state: ArticulationState::Attack,
+                sensitivity: Sensitivity::default(),
+                retrigger: false,
+                policy,
+            }
         }
         LifecycleConfig::Sustain {
             initial_energy,
@@ -914,22 +908,20 @@ fn envelope_from_lifecycle(
             let attack_step = 1.0 / atk;
             let decay_sec = envelope.decay_sec.max(0.01);
             let decay_rate = 1.0 / decay_sec;
-            (
-                *initial_energy,
-                policy.basal_cost_per_sec,
-                policy.recharge_per_attack,
+            LifecycleDerived {
+                initial_energy: *initial_energy,
                 attack_step,
                 decay_rate,
-                ArticulationState::Idle,
-                Sensitivity {
+                state: ArticulationState::Idle,
+                sensitivity: Sensitivity {
                     delta: 1.0,
                     theta: 1.0,
                     alpha: 0.5,
                     beta: 0.5,
                 },
-                true,
-                policy.action_cost_per_attack,
-            )
+                retrigger: true,
+                policy,
+            }
         }
     }
 }

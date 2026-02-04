@@ -1,4 +1,5 @@
 use super::scenario::EnvelopeConfig;
+use crate::life::metabolism_policy::{DEFAULT_ACTION_COST_PER_ATTACK, DEFAULT_RECHARGE_PER_ATTACK};
 use std::fmt;
 
 #[derive(Debug, Clone)]
@@ -76,8 +77,8 @@ impl fmt::Display for LifecycleConfig {
                 "lifecycle=sustain(init={:.2}, metab={:.3}/s, recharge={:.3}, action_cost={:.3}, env=[atk={:.3}s, dec={:.3}s, sus={:.2}])",
                 initial_energy,
                 metabolism_rate,
-                recharge_rate.unwrap_or(0.5),
-                action_cost.unwrap_or(0.02),
+                recharge_rate.unwrap_or(DEFAULT_RECHARGE_PER_ATTACK),
+                action_cost.unwrap_or(DEFAULT_ACTION_COST_PER_ATTACK),
                 envelope.attack_sec,
                 envelope.decay_sec,
                 envelope.sustain_level

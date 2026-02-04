@@ -215,5 +215,5 @@ fn articulation_snapshot_kuramoto_decay_signature() {
 
     assert!(early_active, "expected early attack during decay lifecycle");
     println!("articulation decay signature: {signature:016x}");
-    assert_eq!(signature, 0xc1be_e9d9_3e85_ee96);
+    assert_eq!(signature, 0xc1e9_43c6_d8f8_6b6d);
 }

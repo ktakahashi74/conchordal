@@ -21,7 +21,7 @@ pub struct EnergyTelemetry {
     pub consonance_used: f32,
 }
 
-fn sanitize_and_clamp01(x: f32) -> f32 {
+fn clamp01_finite(x: f32) -> f32 {
     if x.is_finite() {
         x.clamp(0.0, 1.0)
     } else {
@@ -50,8 +50,20 @@ impl MetabolismPolicy {
         }
     }
 
+    pub fn basal_delta(&self, dt: f32) -> f32 {
+        -self.basal_cost_per_sec * dt.max(0.0)
+    }
+
+    pub fn attack_delta_with_recharge(&self, consonance: f32) -> f32 {
+        -self.action_cost_per_attack + self.recharge_per_attack * clamp01_finite(consonance)
+    }
+
+    pub fn attack_delta_cost_only(&self) -> f32 {
+        -self.action_cost_per_attack
+    }
+
     pub fn apply_basal(&self, energy: f32, dt_sec: f32) -> (f32, EnergyTelemetry) {
-        let basal_delta = -self.basal_cost_per_sec * dt_sec;
+        let basal_delta = self.basal_delta(dt_sec);
         let next = energy + basal_delta;
         let telemetry = EnergyTelemetry {
             energy_before: energy,
@@ -70,8 +82,8 @@ impl MetabolismPolicy {
         energy: f32,
         consonance: f32,
     ) -> (f32, EnergyTelemetry) {
-        let c = sanitize_and_clamp01(consonance);
-        let action_delta = -self.action_cost_per_attack;
+        let c = clamp01_finite(consonance);
+        let action_delta = self.attack_delta_cost_only();
         let recharge_delta = self.recharge_per_attack * c;
         let next = energy + action_delta + recharge_delta;
         let telemetry = EnergyTelemetry {
@@ -87,7 +99,7 @@ impl MetabolismPolicy {
     }
 
     pub fn apply_attack_cost_only(&self, energy: f32) -> (f32, EnergyTelemetry) {
-        let action_delta = -self.action_cost_per_attack;
+        let action_delta = self.attack_delta_cost_only();
         let next = energy + action_delta;
         let telemetry = EnergyTelemetry {
             energy_before: energy,
@@ -113,22 +125,33 @@ impl MetabolismPolicy {
         did_attack: bool,
         consonance: f32,
     ) -> (f32, EnergyTelemetry) {
-        let (after_basal, basal_tel) = self.apply_basal(energy, dt);
+        let basal_delta = self.basal_delta(dt);
+        let after_basal = energy + basal_delta;
         if did_attack {
-            let (after_attack, attack_tel) =
-                self.apply_attack_with_recharge(after_basal, consonance);
+            let attack_delta = self.attack_delta_with_recharge(consonance);
+            let c = clamp01_finite(consonance);
+            let after_attack = after_basal + attack_delta;
             let telemetry = EnergyTelemetry {
                 energy_before: energy,
-                basal_delta: basal_tel.basal_delta,
-                action_delta: attack_tel.action_delta,
-                recharge_delta: attack_tel.recharge_delta,
+                basal_delta,
+                action_delta: -self.action_cost_per_attack,
+                recharge_delta: self.recharge_per_attack * c,
                 energy_after: after_attack,
                 did_attack: true,
-                consonance_used: attack_tel.consonance_used,
+                consonance_used: c,
             };
             (after_attack, telemetry)
         } else {
-            (after_basal, basal_tel)
+            let telemetry = EnergyTelemetry {
+                energy_before: energy,
+                basal_delta,
+                action_delta: 0.0,
+                recharge_delta: 0.0,
+                energy_after: after_basal,
+                did_attack: false,
+                consonance_used: 0.0,
+            };
+            (after_basal, telemetry)
         }
     }
 }

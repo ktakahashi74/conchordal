@@ -491,7 +491,7 @@ impl ArticulationCore for KuramotoCore {
         self.last_attack_count = 0;
         self.last_attack_consonance = 0.0;
         let policy = self.metabolism_policy();
-        let (energy_after_basal, _telemetry) = policy.step(self.energy, dt, false, consonance);
+        let (energy_after_basal, _telemetry) = policy.apply_basal(self.energy, dt);
         self.energy = energy_after_basal;
         self.handle_energy_depletion();
 
@@ -521,7 +521,8 @@ impl ArticulationCore for KuramotoCore {
         if attacked_this_sample {
             self.last_attack_count = 1;
             self.last_attack_consonance = consonance;
-            let (energy_after_attack, _telemetry) = policy.step(self.energy, 0.0, true, consonance);
+            let (energy_after_attack, _telemetry) =
+                policy.apply_attack_with_recharge(self.energy, consonance);
             self.energy = energy_after_attack;
             self.handle_energy_depletion();
         } else {
@@ -850,7 +851,7 @@ impl KuramotoCore {
         self.state = ArticulationState::Attack;
         let policy = self.metabolism_policy();
         if self.energy.is_finite() && self.energy >= policy.action_cost_per_attack {
-            let (energy_after, _telemetry) = policy.step(self.energy, 0.0, true, 0.0);
+            let (energy_after, _telemetry) = policy.apply_attack_cost_only(self.energy);
             let delta = energy_after - self.energy;
             self.energy += delta * strength;
         }

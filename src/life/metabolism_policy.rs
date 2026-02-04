@@ -21,6 +21,14 @@ pub struct EnergyTelemetry {
     pub consonance_used: f32,
 }
 
+fn sanitize_and_clamp01(x: f32) -> f32 {
+    if x.is_finite() {
+        x.clamp(0.0, 1.0)
+    } else {
+        0.0
+    }
+}
+
 impl MetabolismPolicy {
     pub fn from_lifecycle(lifecycle: &LifecycleConfig) -> Self {
         match lifecycle {
@@ -42,6 +50,57 @@ impl MetabolismPolicy {
         }
     }
 
+    pub fn apply_basal(&self, energy: f32, dt_sec: f32) -> (f32, EnergyTelemetry) {
+        let basal_delta = -self.basal_cost_per_sec * dt_sec;
+        let next = energy + basal_delta;
+        let telemetry = EnergyTelemetry {
+            energy_before: energy,
+            basal_delta,
+            action_delta: 0.0,
+            recharge_delta: 0.0,
+            energy_after: next,
+            did_attack: false,
+            consonance_used: 0.0,
+        };
+        (next, telemetry)
+    }
+
+    pub fn apply_attack_with_recharge(
+        &self,
+        energy: f32,
+        consonance: f32,
+    ) -> (f32, EnergyTelemetry) {
+        let c = sanitize_and_clamp01(consonance);
+        let action_delta = -self.action_cost_per_attack;
+        let recharge_delta = self.recharge_per_attack * c;
+        let next = energy + action_delta + recharge_delta;
+        let telemetry = EnergyTelemetry {
+            energy_before: energy,
+            basal_delta: 0.0,
+            action_delta,
+            recharge_delta,
+            energy_after: next,
+            did_attack: true,
+            consonance_used: c,
+        };
+        (next, telemetry)
+    }
+
+    pub fn apply_attack_cost_only(&self, energy: f32) -> (f32, EnergyTelemetry) {
+        let action_delta = -self.action_cost_per_attack;
+        let next = energy + action_delta;
+        let telemetry = EnergyTelemetry {
+            energy_before: energy,
+            basal_delta: 0.0,
+            action_delta,
+            recharge_delta: 0.0,
+            energy_after: next,
+            did_attack: true,
+            consonance_used: 0.0,
+        };
+        (next, telemetry)
+    }
+
     /// Energy update rule used by articulation cores.
     ///
     /// E' = E - basal_cost_per_sec * dt
@@ -54,29 +113,23 @@ impl MetabolismPolicy {
         did_attack: bool,
         consonance: f32,
     ) -> (f32, EnergyTelemetry) {
-        let consonance_clamped = consonance.clamp(0.0, 1.0);
-        let mut telemetry = EnergyTelemetry {
-            energy_before: energy,
-            did_attack,
-            consonance_used: consonance_clamped,
-            ..EnergyTelemetry::default()
-        };
-
-        let mut next = energy;
-        let basal_delta = -self.basal_cost_per_sec * dt;
-        next += basal_delta;
-        telemetry.basal_delta = basal_delta;
-
+        let (after_basal, basal_tel) = self.apply_basal(energy, dt);
         if did_attack {
-            let action_delta = -self.action_cost_per_attack;
-            let recharge_delta = self.recharge_per_attack * consonance_clamped;
-            next += action_delta + recharge_delta;
-            telemetry.action_delta = action_delta;
-            telemetry.recharge_delta = recharge_delta;
+            let (after_attack, attack_tel) =
+                self.apply_attack_with_recharge(after_basal, consonance);
+            let telemetry = EnergyTelemetry {
+                energy_before: energy,
+                basal_delta: basal_tel.basal_delta,
+                action_delta: attack_tel.action_delta,
+                recharge_delta: attack_tel.recharge_delta,
+                energy_after: after_attack,
+                did_attack: true,
+                consonance_used: attack_tel.consonance_used,
+            };
+            (after_attack, telemetry)
+        } else {
+            (after_basal, basal_tel)
         }
-
-        telemetry.energy_after = next;
-        (next, telemetry)
     }
 }
 
@@ -147,6 +200,74 @@ mod tests {
         let (b, _) = policy.step(1.0, 0.0, true, 0.9);
         approx_eq(a, b);
         approx_eq(a, 0.8);
+    }
+
+    #[test]
+    fn apply_basal_matches_step_when_no_attack() {
+        let policy = MetabolismPolicy {
+            basal_cost_per_sec: 1.5,
+            action_cost_per_attack: 0.3,
+            recharge_per_attack: 0.2,
+        };
+        let (step_energy, step_tel) = policy.step(2.0, 0.5, false, 0.9);
+        let (basal_energy, basal_tel) = policy.apply_basal(2.0, 0.5);
+        approx_eq(step_energy, basal_energy);
+        approx_eq(step_tel.basal_delta, basal_tel.basal_delta);
+        approx_eq(step_tel.action_delta, 0.0);
+        approx_eq(step_tel.recharge_delta, 0.0);
+    }
+
+    #[test]
+    fn apply_attack_with_recharge_matches_step_dt0_attack() {
+        let policy = MetabolismPolicy {
+            basal_cost_per_sec: 0.0,
+            action_cost_per_attack: 0.4,
+            recharge_per_attack: 0.25,
+        };
+        let (step_energy, step_tel) = policy.step(1.0, 0.0, true, 0.6);
+        let (attack_energy, attack_tel) = policy.apply_attack_with_recharge(1.0, 0.6);
+        approx_eq(step_energy, attack_energy);
+        approx_eq(step_tel.action_delta, attack_tel.action_delta);
+        approx_eq(step_tel.recharge_delta, attack_tel.recharge_delta);
+    }
+
+    #[test]
+    fn apply_attack_cost_only_is_consonance_independent() {
+        let policy = MetabolismPolicy {
+            basal_cost_per_sec: 0.0,
+            action_cost_per_attack: 0.4,
+            recharge_per_attack: 0.0,
+        };
+        let (cost_energy, _) = policy.apply_attack_cost_only(1.0);
+        let (attack_low, _) = policy.apply_attack_with_recharge(1.0, 0.2);
+        let (attack_high, _) = policy.apply_attack_with_recharge(1.0, 0.9);
+        approx_eq(cost_energy, attack_low);
+        approx_eq(cost_energy, attack_high);
+    }
+
+    #[test]
+    fn attack_with_recharge_clamps_out_of_range() {
+        let policy = MetabolismPolicy {
+            basal_cost_per_sec: 0.0,
+            action_cost_per_attack: 0.2,
+            recharge_per_attack: 0.5,
+        };
+        let (_, tel_low) = policy.apply_attack_with_recharge(1.0, -1.0);
+        let (_, tel_high) = policy.apply_attack_with_recharge(1.0, 2.0);
+        approx_eq(tel_low.recharge_delta, 0.0);
+        approx_eq(tel_high.recharge_delta, 0.5);
+    }
+
+    #[test]
+    fn attack_with_recharge_handles_nan() {
+        let policy = MetabolismPolicy {
+            basal_cost_per_sec: 0.0,
+            action_cost_per_attack: 0.2,
+            recharge_per_attack: 0.5,
+        };
+        let (next, tel) = policy.apply_attack_with_recharge(1.0, f32::NAN);
+        assert!(next.is_finite());
+        approx_eq(tel.recharge_delta, 0.0);
     }
 
     #[test]

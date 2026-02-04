@@ -24,11 +24,11 @@ use rand::{Rng, SeedableRng, rngs::StdRng};
 
 const SPACE_BINS_PER_OCT: u32 = 400;
 
-const E2_STEPS: usize = 50;
+const E2_STEPS: usize = 100;
 const E2_BURN_IN: usize = 10;
 const E2_ANCHOR_SHIFT_STEP: usize = usize::MAX;
 const E2_ANCHOR_SHIFT_RATIO: f32 = 0.5;
-const E2_STEP_SEMITONES: f32 = 0.5;
+const E2_STEP_SEMITONES: f32 = 0.25;
 const E2_ANCHOR_BIN_ST: f32 = 0.5;
 const E2_PAIRWISE_BIN_ST: f32 = 0.25;
 const E2_N_AGENTS: usize = 24;
@@ -40,7 +40,7 @@ const E2_C_STATE_BETA: f32 = 2.0;
 const E2_C_STATE_THETA: f32 = 0.0;
 const E2_ACCEPT_ENABLED: bool = true;
 const E2_ACCEPT_T0: f32 = 0.05;
-const E2_ACCEPT_TAU_STEPS: f32 = 15.0;
+const E2_ACCEPT_TAU_STEPS: f32 = 30.0;
 const E2_ACCEPT_RESET_ON_PHASE: bool = true;
 const E2_SCORE_IMPROVE_EPS: f32 = 1e-4;
 const E2_ANTI_BACKTRACK_ENABLED: bool = true;
@@ -48,7 +48,7 @@ const E2_ANTI_BACKTRACK_PRE_SWITCH_ONLY: bool = false;
 const E2_BACKTRACK_ALLOW_EPS: f32 = 1e-4;
 const E2_PHASE_SWITCH_STEP: usize = E2_STEPS / 2;
 const E2_DIVERSITY_BIN_ST: f32 = 0.25;
-const E2_STEP_SEMITONES_SWEEP: [f32; 3] = [0.25, 0.5, 1.0];
+const E2_STEP_SEMITONES_SWEEP: [f32; 4] = [0.125, 0.25, 0.5, 1.0];
 const E2_LAZY_MOVE_PROB: f32 = 0.65;
 const E2_SEMITONE_EPS: f32 = 1e-6;
 const E2_SEEDS: [u64; 5] = [
@@ -9328,6 +9328,14 @@ mod tests {
                 0xC0FFEE_u64 + 20 + idx as u64,
             );
         }
+    }
+
+    #[test]
+    fn k_from_semitones_rounds_as_expected() {
+        let k_half = k_from_semitones(0.5);
+        let k_quarter = k_from_semitones(0.25);
+        assert!((k_half - 17).abs() <= 1);
+        assert!((k_quarter - 8).abs() <= 1);
     }
 
     #[test]

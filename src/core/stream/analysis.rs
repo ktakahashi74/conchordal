@@ -133,13 +133,10 @@ impl AnalysisStream {
     }
 
     pub fn apply_update(&mut self, upd: LandscapeUpdate) {
-        if upd.mirror.is_some() || upd.limit.is_some() {
+        if upd.mirror.is_some() {
             let mut params = self.params.harmonicity_kernel.params;
             if let Some(m) = upd.mirror {
                 params.mirror_weight = m;
-            }
-            if let Some(l) = upd.limit {
-                params.param_limit = l;
             }
             self.params.harmonicity_kernel =
                 crate::core::harmonicity_kernel::HarmonicityKernel::new(

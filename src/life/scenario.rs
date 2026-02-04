@@ -392,8 +392,8 @@ impl fmt::Display for Action {
             } => write!(f, "Release group={} fade={:.3}", group_id, fade_sec),
             Action::SetHarmonicityParams { update } => write!(
                 f,
-                "SetHarmonicityParams mirror={:?} limit={:?} roughness_k={:?}",
-                update.mirror, update.limit, update.roughness_k
+                "SetHarmonicityParams mirror={:?} roughness_k={:?}",
+                update.mirror, update.roughness_k
             ),
             Action::SetGlobalCoupling { value } => {
                 write!(f, "SetGlobalCoupling value={:.3}", value)

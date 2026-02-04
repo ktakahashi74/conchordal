@@ -551,9 +551,6 @@ impl Population {
         if update.mirror.is_some() {
             merged.mirror = update.mirror;
         }
-        if update.limit.is_some() {
-            merged.limit = update.limit;
-        }
         if update.roughness_k.is_some() {
             merged.roughness_k = update.roughness_k;
         }

@@ -24,7 +24,7 @@ use rand::{Rng, SeedableRng, rngs::StdRng};
 
 const SPACE_BINS_PER_OCT: u32 = 400;
 
-const E2_STEPS: usize = 100;
+const E2_SWEEPS: usize = 100;
 const E2_BURN_IN: usize = 10;
 const E2_ANCHOR_SHIFT_STEP: usize = usize::MAX;
 const E2_ANCHOR_SHIFT_RATIO: f32 = 0.5;
@@ -46,7 +46,7 @@ const E2_SCORE_IMPROVE_EPS: f32 = 1e-4;
 const E2_ANTI_BACKTRACK_ENABLED: bool = true;
 const E2_ANTI_BACKTRACK_PRE_SWITCH_ONLY: bool = false;
 const E2_BACKTRACK_ALLOW_EPS: f32 = 1e-4;
-const E2_PHASE_SWITCH_STEP: usize = E2_STEPS / 2;
+const E2_PHASE_SWITCH_STEP: usize = E2_SWEEPS / 2;
 const E2_DIVERSITY_BIN_ST: f32 = 0.25;
 const E2_STEP_SEMITONES_SWEEP: [f32; 4] = [0.125, 0.25, 0.5, 1.0];
 const E2_LAZY_MOVE_PROB: f32 = 0.65;
@@ -79,9 +79,11 @@ const E2_INIT_MODE: E2InitMode = E2InitMode::RejectConsonant;
 const E2_CONSONANT_STEPS: [f32; 8] = [0.0, 3.0, 4.0, 5.0, 7.0, 8.0, 9.0, 12.0];
 
 #[derive(Clone, Copy, Debug)]
+#[allow(dead_code)]
 enum E2UpdateSchedule {
     Checkerboard,
     Lazy,
+    RandomSingle,
 }
 
 const E2_UPDATE_SCHEDULE: E2UpdateSchedule = E2UpdateSchedule::Checkerboard;
@@ -1380,7 +1382,7 @@ fn e2_post_window_start_step() -> usize {
 }
 
 fn e2_post_window_end_step() -> usize {
-    E2_STEPS.saturating_sub(1)
+    E2_SWEEPS.saturating_sub(1)
 }
 
 fn e2_accept_temperature(step: usize, phase_mode: E2PhaseMode) -> f32 {
@@ -1405,6 +1407,7 @@ fn e2_should_attempt_update(agent_id: usize, step: usize, u_move: f32) -> bool {
     match E2_UPDATE_SCHEDULE {
         E2UpdateSchedule::Checkerboard => (agent_id + step) % 2 == 0,
         E2UpdateSchedule::Lazy => u_move < E2_LAZY_MOVE_PROB.clamp(0.0, 1.0),
+        E2UpdateSchedule::RandomSingle => true,
     }
 }
 
@@ -1501,18 +1504,18 @@ fn run_e2_once(
     let workspace = build_consonance_workspace(space);
     let k_bins = k_from_semitones(step_semitones);
 
-    let mut mean_c_series = Vec::with_capacity(E2_STEPS);
-    let mut mean_c_state_series = Vec::with_capacity(E2_STEPS);
-    let mut mean_c_score_loo_series = Vec::with_capacity(E2_STEPS);
-    let mut mean_c_score_chosen_loo_series = Vec::with_capacity(E2_STEPS);
-    let mut mean_score_series = Vec::with_capacity(E2_STEPS);
-    let mut mean_repulsion_series = Vec::with_capacity(E2_STEPS);
-    let mut moved_frac_series = Vec::with_capacity(E2_STEPS);
-    let mut accepted_worse_frac_series = Vec::with_capacity(E2_STEPS);
-    let mut attempted_update_frac_series = Vec::with_capacity(E2_STEPS);
-    let mut moved_given_attempt_frac_series = Vec::with_capacity(E2_STEPS);
-    let mut mean_abs_delta_semitones_series = Vec::with_capacity(E2_STEPS);
-    let mut mean_abs_delta_semitones_moved_series = Vec::with_capacity(E2_STEPS);
+    let mut mean_c_series = Vec::with_capacity(E2_SWEEPS);
+    let mut mean_c_state_series = Vec::with_capacity(E2_SWEEPS);
+    let mut mean_c_score_loo_series = Vec::with_capacity(E2_SWEEPS);
+    let mut mean_c_score_chosen_loo_series = Vec::with_capacity(E2_SWEEPS);
+    let mut mean_score_series = Vec::with_capacity(E2_SWEEPS);
+    let mut mean_repulsion_series = Vec::with_capacity(E2_SWEEPS);
+    let mut moved_frac_series = Vec::with_capacity(E2_SWEEPS);
+    let mut accepted_worse_frac_series = Vec::with_capacity(E2_SWEEPS);
+    let mut attempted_update_frac_series = Vec::with_capacity(E2_SWEEPS);
+    let mut moved_given_attempt_frac_series = Vec::with_capacity(E2_SWEEPS);
+    let mut mean_abs_delta_semitones_series = Vec::with_capacity(E2_SWEEPS);
+    let mut mean_abs_delta_semitones_moved_series = Vec::with_capacity(E2_SWEEPS);
     let mut semitone_samples_pre = Vec::new();
     let mut semitone_samples_post = Vec::new();
     let mut density_mass_sum = 0.0f32;
@@ -1525,10 +1528,10 @@ fn run_e2_once(
     let mut r_state01_mean_count = 0u32;
 
     let mut trajectory_semitones = (0..E2_N_AGENTS)
-        .map(|_| Vec::with_capacity(E2_STEPS))
+        .map(|_| Vec::with_capacity(E2_SWEEPS))
         .collect::<Vec<_>>();
     let mut trajectory_c_state = (0..E2_N_AGENTS)
-        .map(|_| Vec::with_capacity(E2_STEPS))
+        .map(|_| Vec::with_capacity(E2_SWEEPS))
         .collect::<Vec<_>>();
     let mut backtrack_targets = agent_indices.clone();
 
@@ -1543,8 +1546,8 @@ fn run_e2_once(
 
     let anchor_shift_enabled = e2_anchor_shift_enabled();
     let phase_switch_step = phase_mode.switch_step();
-    for step in 0..E2_STEPS {
-        if step == E2_ANCHOR_SHIFT_STEP {
+    for sweep in 0..E2_SWEEPS {
+        if sweep == E2_ANCHOR_SHIFT_STEP {
             let before = anchor_hz_current;
             anchor_hz_current *= E2_ANCHOR_SHIFT_RATIO;
             log2_ratio_scan = build_log2_ratio_scan(space, anchor_hz_current);
@@ -1558,7 +1561,7 @@ fn run_e2_once(
                 &mut rng,
             );
             anchor_shift = E2AnchorShiftStats {
-                step,
+                step: sweep,
                 anchor_hz_before: before,
                 anchor_hz_after: anchor_hz_current,
                 count_min,
@@ -1569,7 +1572,7 @@ fn run_e2_once(
             max_idx = new_max;
         }
         if let Some(switch_step) = phase_switch_step {
-            if step == switch_step {
+            if sweep == switch_step {
                 backtrack_targets.clone_from_slice(&agent_indices);
             }
         }
@@ -1593,20 +1596,15 @@ fn run_e2_once(
 
         let mean_c = mean_at_indices(&c_score_scan, &agent_indices);
         let mean_c_state = mean_at_indices(&c_state_scan, &agent_indices);
-        let mean_c_score_loo_current = if matches!(condition, E2Condition::NoHillClimb) {
-            mean_c_score_loo_at_indices(
-                space,
-                &workspace,
-                &env_scan,
-                &density_scan,
-                &du_scan,
-                &agent_indices,
-                &log2_ratio_scan,
-            )
-        } else {
-            f32::NAN
-        };
-        let mut mean_c_score_loo_chosen = f32::NAN;
+        let mean_c_score_loo_current = mean_c_score_loo_at_indices_with_prev(
+            space,
+            &workspace,
+            &env_scan,
+            &density_scan,
+            &du_scan,
+            &agent_indices,
+            &agent_indices,
+        );
         mean_c_series.push(mean_c);
         mean_c_state_series.push(mean_c_state);
 
@@ -1616,8 +1614,8 @@ fn run_e2_once(
             trajectory_c_state[agent_id].push(c_state_scan[idx]);
         }
 
-        if step >= E2_BURN_IN {
-            let target = if anchor_shift_enabled && step < E2_ANCHOR_SHIFT_STEP {
+        if sweep >= E2_BURN_IN {
+            let target = if anchor_shift_enabled && sweep < E2_ANCHOR_SHIFT_STEP {
                 &mut semitone_samples_pre
             } else {
                 &mut semitone_samples_post
@@ -1625,13 +1623,15 @@ fn run_e2_once(
             target.extend(agent_indices.iter().map(|&idx| 12.0 * log2_ratio_scan[idx]));
         }
 
-        let temperature = e2_accept_temperature(step, phase_mode);
-        let score_sign = phase_mode.score_sign(step);
-        let block_backtrack = e2_should_block_backtrack(phase_mode, step);
+        let temperature = e2_accept_temperature(sweep, phase_mode);
+        let score_sign = phase_mode.score_sign(sweep);
+        let block_backtrack = e2_should_block_backtrack(phase_mode, sweep);
         let positions_before_update = agent_indices.clone();
         let mut stats = match condition {
-            E2Condition::Baseline => update_agent_indices_scored_stats_loo(
+            E2Condition::Baseline => update_e2_sweep_scored_loo(
+                E2_UPDATE_SCHEDULE,
                 &mut agent_indices,
+                &positions_before_update,
                 space,
                 &workspace,
                 &env_scan,
@@ -1645,7 +1645,7 @@ fn run_e2_once(
                 E2_LAMBDA,
                 E2_SIGMA,
                 temperature,
-                step,
+                sweep,
                 block_backtrack,
                 if block_backtrack {
                     Some(backtrack_targets.as_slice())
@@ -1654,8 +1654,10 @@ fn run_e2_once(
                 },
                 &mut rng,
             ),
-            E2Condition::NoRepulsion => update_agent_indices_scored_stats_loo(
+            E2Condition::NoRepulsion => update_e2_sweep_scored_loo(
+                E2_UPDATE_SCHEDULE,
                 &mut agent_indices,
+                &positions_before_update,
                 space,
                 &workspace,
                 &env_scan,
@@ -1669,7 +1671,7 @@ fn run_e2_once(
                 0.0,
                 E2_SIGMA,
                 temperature,
-                step,
+                sweep,
                 block_backtrack,
                 if block_backtrack {
                     Some(backtrack_targets.as_slice())
@@ -1679,27 +1681,17 @@ fn run_e2_once(
                 &mut rng,
             ),
             E2Condition::NoHillClimb => {
-                let prev_indices = agent_indices.clone();
-                let mut moved = 0usize;
-                let mut abs_delta_sum = 0.0f32;
-                let mut abs_delta_moved_sum = 0.0f32;
-                for (i, idx) in agent_indices.iter_mut().enumerate() {
-                    let step = rng.random_range(-k_bins..=k_bins);
-                    let next = (*idx as i32 + step).clamp(min_idx as i32, max_idx as i32);
-                    if next as usize != *idx {
-                        moved += 1;
-                    }
-                    let delta_semitones =
-                        12.0 * (log2_ratio_scan[next as usize] - log2_ratio_scan[*idx]);
-                    let abs_delta = delta_semitones.abs();
-                    if abs_delta.is_finite() {
-                        abs_delta_sum += abs_delta;
-                        if next as usize != prev_indices[i] {
-                            abs_delta_moved_sum += abs_delta;
-                        }
-                    }
-                    *idx = next as usize;
-                }
+                let (moved, attempts, abs_delta_sum, abs_delta_moved_sum) = update_e2_sweep_nohill(
+                    E2_UPDATE_SCHEDULE,
+                    &mut agent_indices,
+                    &positions_before_update,
+                    &log2_ratio_scan,
+                    min_idx,
+                    max_idx,
+                    k_bins,
+                    sweep,
+                    &mut rng,
+                );
                 let mut stats = score_stats_at_indices(
                     &agent_indices,
                     &c_score_scan,
@@ -1711,21 +1703,16 @@ fn run_e2_once(
                 if !agent_indices.is_empty() {
                     stats.moved_frac = moved as f32 / agent_indices.len() as f32;
                     stats.mean_abs_delta_semitones = abs_delta_sum / agent_indices.len() as f32;
-                    stats.attempted_update_frac = 1.0;
-                    stats.moved_given_attempt_frac = stats.moved_frac;
+                    stats.attempted_update_frac = attempts as f32 / agent_indices.len() as f32;
+                    stats.moved_given_attempt_frac = if attempts > 0 {
+                        moved as f32 / attempts as f32
+                    } else {
+                        0.0
+                    };
                 }
                 if moved > 0 {
                     stats.mean_abs_delta_semitones_moved = abs_delta_moved_sum / moved as f32;
                 }
-                mean_c_score_loo_chosen = mean_c_score_loo_at_indices_with_prev(
-                    space,
-                    &workspace,
-                    &env_scan,
-                    &density_scan,
-                    &du_scan,
-                    &prev_indices,
-                    &agent_indices,
-                );
                 stats
             }
         };
@@ -1735,10 +1722,17 @@ fn run_e2_once(
             &agent_indices,
         );
 
-        if matches!(condition, E2Condition::NoHillClimb) {
-            stats.mean_c_score_current_loo = mean_c_score_loo_current;
-            stats.mean_c_score_chosen_loo = mean_c_score_loo_chosen;
-        }
+        let mean_c_score_loo_chosen = mean_c_score_loo_at_indices_with_prev(
+            space,
+            &workspace,
+            &env_scan,
+            &density_scan,
+            &du_scan,
+            &positions_before_update,
+            &agent_indices,
+        );
+        stats.mean_c_score_current_loo = mean_c_score_loo_current;
+        stats.mean_c_score_chosen_loo = mean_c_score_loo_chosen;
         let condition_label = match condition {
             E2Condition::Baseline => "baseline",
             E2Condition::NoRepulsion => "norep",
@@ -1746,12 +1740,12 @@ fn run_e2_once(
         };
         debug_assert!(
             stats.mean_c_score_current_loo.is_finite(),
-            "mean_c_score_current_loo not finite (cond={condition_label}, step={step}, value={})",
+            "mean_c_score_current_loo not finite (cond={condition_label}, sweep={sweep}, value={})",
             stats.mean_c_score_current_loo
         );
         debug_assert!(
             stats.mean_c_score_chosen_loo.is_finite(),
-            "mean_c_score_chosen_loo not finite (cond={condition_label}, step={step}, value={})",
+            "mean_c_score_chosen_loo not finite (cond={condition_label}, sweep={sweep}, value={})",
             stats.mean_c_score_chosen_loo
         );
         mean_c_score_loo_series.push(stats.mean_c_score_current_loo);
@@ -4261,6 +4255,17 @@ struct UpdateStats {
     mean_abs_delta_semitones_moved: f32,
 }
 
+struct OneUpdateStats {
+    moved: bool,
+    accepted_worse: bool,
+    abs_delta_semitones: f32,
+    abs_delta_semitones_moved: f32,
+    c_score_current: f32,
+    c_score_chosen: f32,
+    chosen_score: f32,
+    chosen_repulsion: f32,
+}
+
 #[derive(Clone, Copy, Debug)]
 struct RState01Stats {
     min: f32,
@@ -4330,6 +4335,7 @@ fn update_agent_indices_scored(
 }
 
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
 fn update_agent_indices_scored_stats(
     indices: &mut [usize],
     c_score_scan: &[f32],
@@ -4355,6 +4361,7 @@ fn update_agent_indices_scored_stats(
 }
 
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
 fn update_agent_indices_scored_stats_with_order(
     indices: &mut [usize],
     c_score_scan: &[f32],
@@ -4481,6 +4488,7 @@ fn update_agent_indices_scored_stats_with_order(
 }
 
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
 fn update_agent_indices_scored_stats_loo(
     indices: &mut [usize],
     space: &Log2Space,
@@ -4541,6 +4549,379 @@ fn metropolis_accept(delta: f32, temperature: f32, u01: f32) -> (bool, bool) {
     } else {
         (false, false)
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn update_one_agent_scored_loo(
+    agent_i: usize,
+    indices: &mut [usize],
+    prev_indices: &[usize],
+    prev_log2: &[f32],
+    space: &Log2Space,
+    workspace: &ConsonanceWorkspace,
+    env_total: &[f32],
+    density_total: &[f32],
+    du_scan: &[f32],
+    log2_ratio_scan: &[f32],
+    min_idx: usize,
+    max_idx: usize,
+    k: i32,
+    score_sign: f32,
+    lambda: f32,
+    sigma: f32,
+    temperature: f32,
+    update_allowed: bool,
+    block_backtrack: bool,
+    backtrack_targets: Option<&[usize]>,
+    u01: f32,
+    env_loo: &mut [f32],
+    density_loo: &mut [f32],
+) -> OneUpdateStats {
+    let agent_idx = prev_indices[agent_i];
+    env_loo.copy_from_slice(env_total);
+    density_loo.copy_from_slice(density_total);
+    env_loo[agent_idx] = (env_loo[agent_idx] - 1.0).max(0.0);
+    let denom = du_scan[agent_idx].max(1e-12);
+    density_loo[agent_idx] = (density_loo[agent_idx] - 1.0 / denom).max(0.0);
+    let (c_score_scan, _, _, _) =
+        compute_c_score_state_scans(space, workspace, env_loo, density_loo, du_scan);
+
+    let current_log2 = log2_ratio_scan[agent_idx];
+    let skip_repulsion = lambda <= 0.0;
+    let mut current_repulsion = 0.0f32;
+    if !skip_repulsion {
+        for (j, &other_log2) in prev_log2.iter().enumerate() {
+            if j == agent_i {
+                continue;
+            }
+            let dist = (current_log2 - other_log2).abs();
+            current_repulsion += (-dist / sigma).exp();
+        }
+    }
+    let c_score_current = c_score_scan[agent_idx];
+    let current_score = score_sign * c_score_current - lambda * current_repulsion;
+
+    let backtrack_target = if block_backtrack {
+        backtrack_targets.and_then(|prev| prev.get(agent_i).copied())
+    } else {
+        None
+    };
+
+    let (chosen_idx, chosen_score, chosen_repulsion, accepted_worse) = if update_allowed {
+        let start = (agent_idx as isize - k as isize).max(min_idx as isize) as usize;
+        let end = (agent_idx as isize + k as isize).min(max_idx as isize) as usize;
+        let mut best_idx = agent_idx;
+        let mut best_score = f32::NEG_INFINITY;
+        let mut best_repulsion = 0.0f32;
+        let mut found_candidate = false;
+        for cand in start..=end {
+            if cand == agent_idx {
+                continue;
+            }
+            let cand_log2 = log2_ratio_scan[cand];
+            let mut repulsion = 0.0f32;
+            if !skip_repulsion {
+                for (j, &other_log2) in prev_log2.iter().enumerate() {
+                    if j == agent_i {
+                        continue;
+                    }
+                    let dist = (cand_log2 - other_log2).abs();
+                    repulsion += (-dist / sigma).exp();
+                }
+            }
+            let c_score = c_score_scan[cand];
+            let score = score_sign * c_score - lambda * repulsion;
+            if let Some(prev_idx) = backtrack_target {
+                if cand == prev_idx && (score - current_score) <= E2_BACKTRACK_ALLOW_EPS {
+                    continue;
+                }
+            }
+            if score > best_score {
+                best_score = score;
+                best_idx = cand;
+                best_repulsion = repulsion;
+                found_candidate = true;
+            }
+        }
+        if found_candidate {
+            let delta = best_score - current_score;
+            if delta > E2_SCORE_IMPROVE_EPS {
+                (best_idx, best_score, best_repulsion, false)
+            } else if delta < 0.0 {
+                let (accept, accepted_worse) = metropolis_accept(delta, temperature, u01);
+                if accept {
+                    (best_idx, best_score, best_repulsion, accepted_worse)
+                } else {
+                    (agent_idx, current_score, current_repulsion, false)
+                }
+            } else {
+                (agent_idx, current_score, current_repulsion, false)
+            }
+        } else {
+            (agent_idx, current_score, current_repulsion, false)
+        }
+    } else {
+        (agent_idx, current_score, current_repulsion, false)
+    };
+
+    indices[agent_i] = chosen_idx;
+    let moved = chosen_idx != agent_idx;
+    let delta_semitones = 12.0 * (log2_ratio_scan[chosen_idx] - log2_ratio_scan[agent_idx]);
+    let abs_delta = delta_semitones.abs();
+    let abs_delta_moved = if moved { abs_delta } else { 0.0 };
+    let c_score_chosen = c_score_scan[chosen_idx];
+
+    OneUpdateStats {
+        moved,
+        accepted_worse,
+        abs_delta_semitones: abs_delta,
+        abs_delta_semitones_moved: abs_delta_moved,
+        c_score_current,
+        c_score_chosen,
+        chosen_score,
+        chosen_repulsion,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn update_e2_sweep_scored_loo(
+    schedule: E2UpdateSchedule,
+    indices: &mut [usize],
+    prev_indices: &[usize],
+    space: &Log2Space,
+    workspace: &ConsonanceWorkspace,
+    env_total: &[f32],
+    density_total: &[f32],
+    du_scan: &[f32],
+    log2_ratio_scan: &[f32],
+    min_idx: usize,
+    max_idx: usize,
+    k: i32,
+    score_sign: f32,
+    lambda: f32,
+    sigma: f32,
+    temperature: f32,
+    sweep: usize,
+    block_backtrack: bool,
+    backtrack_targets: Option<&[usize]>,
+    rng: &mut StdRng,
+) -> UpdateStats {
+    if indices.is_empty() {
+        return UpdateStats {
+            mean_c_score_current_loo: 0.0,
+            mean_c_score_chosen_loo: 0.0,
+            mean_score: 0.0,
+            mean_repulsion: 0.0,
+            moved_frac: 0.0,
+            accepted_worse_frac: 0.0,
+            attempted_update_frac: 0.0,
+            moved_given_attempt_frac: 0.0,
+            mean_abs_delta_semitones: 0.0,
+            mean_abs_delta_semitones_moved: 0.0,
+        };
+    }
+    space.assert_scan_len_named(env_total, "env_total");
+    space.assert_scan_len_named(density_total, "density_total");
+    space.assert_scan_len_named(du_scan, "du_scan");
+    let sigma = sigma.max(1e-6);
+    let mut order: Vec<usize> = (0..indices.len()).collect();
+    if matches!(schedule, E2UpdateSchedule::RandomSingle) {
+        order.shuffle(rng);
+    }
+    let u01_by_agent: Vec<f32> = (0..indices.len()).map(|_| rng.random::<f32>()).collect();
+    let u_move_by_agent: Vec<f32> = if matches!(schedule, E2UpdateSchedule::Lazy) {
+        (0..indices.len()).map(|_| rng.random::<f32>()).collect()
+    } else {
+        vec![0.0; indices.len()]
+    };
+    let prev_log2: Vec<f32> = prev_indices
+        .iter()
+        .map(|&idx| log2_ratio_scan[idx])
+        .collect();
+    let mut env_loo = vec![0.0f32; env_total.len()];
+    let mut density_loo = vec![0.0f32; density_total.len()];
+    let mut c_score_current_sum = 0.0f32;
+    let mut c_score_current_count = 0u32;
+    let mut c_score_chosen_sum = 0.0f32;
+    let mut c_score_chosen_count = 0u32;
+    let mut score_sum = 0.0f32;
+    let mut score_count = 0u32;
+    let mut repulsion_sum = 0.0f32;
+    let mut repulsion_count = 0u32;
+    let mut abs_delta_sum = 0.0f32;
+    let mut abs_delta_moved_sum = 0.0f32;
+    let mut attempt_count = 0usize;
+    let mut moved_count = 0usize;
+    let mut accepted_worse_count = 0usize;
+
+    for &agent_i in &order {
+        let update_allowed = match schedule {
+            E2UpdateSchedule::Checkerboard => (agent_i + sweep) % 2 == 0,
+            E2UpdateSchedule::Lazy => u_move_by_agent[agent_i] < E2_LAZY_MOVE_PROB.clamp(0.0, 1.0),
+            E2UpdateSchedule::RandomSingle => true,
+        };
+        if update_allowed {
+            attempt_count += 1;
+        }
+        let stats = update_one_agent_scored_loo(
+            agent_i,
+            indices,
+            prev_indices,
+            &prev_log2,
+            space,
+            workspace,
+            env_total,
+            density_total,
+            du_scan,
+            log2_ratio_scan,
+            min_idx,
+            max_idx,
+            k,
+            score_sign,
+            lambda,
+            sigma,
+            temperature,
+            update_allowed,
+            block_backtrack,
+            backtrack_targets,
+            u01_by_agent[agent_i],
+            &mut env_loo,
+            &mut density_loo,
+        );
+        if stats.moved {
+            moved_count += 1;
+        }
+        if stats.accepted_worse {
+            accepted_worse_count += 1;
+        }
+        if stats.abs_delta_semitones.is_finite() {
+            abs_delta_sum += stats.abs_delta_semitones;
+            abs_delta_moved_sum += stats.abs_delta_semitones_moved;
+        }
+        if stats.c_score_current.is_finite() {
+            c_score_current_sum += stats.c_score_current;
+            c_score_current_count += 1;
+        }
+        if stats.c_score_chosen.is_finite() {
+            c_score_chosen_sum += stats.c_score_chosen;
+            c_score_chosen_count += 1;
+        }
+        if stats.chosen_score.is_finite() {
+            score_sum += stats.chosen_score;
+            score_count += 1;
+        }
+        if stats.chosen_repulsion.is_finite() {
+            repulsion_sum += stats.chosen_repulsion;
+            repulsion_count += 1;
+        }
+    }
+
+    let n = indices.len() as f32;
+    let mean_c_score_current_loo = if c_score_current_count > 0 {
+        c_score_current_sum / c_score_current_count as f32
+    } else {
+        0.0
+    };
+    let mean_c_score_chosen_loo = if c_score_chosen_count > 0 {
+        c_score_chosen_sum / c_score_chosen_count as f32
+    } else {
+        0.0
+    };
+    let mean_score = if score_count > 0 {
+        score_sum / score_count as f32
+    } else {
+        0.0
+    };
+    let mean_repulsion = if repulsion_count > 0 {
+        repulsion_sum / repulsion_count as f32
+    } else {
+        0.0
+    };
+    let mean_abs_delta_semitones = abs_delta_sum / n;
+    let mean_abs_delta_semitones_moved = if moved_count > 0 {
+        abs_delta_moved_sum / moved_count as f32
+    } else {
+        0.0
+    };
+    UpdateStats {
+        mean_c_score_current_loo,
+        mean_c_score_chosen_loo,
+        mean_score,
+        mean_repulsion,
+        moved_frac: moved_count as f32 / n,
+        accepted_worse_frac: accepted_worse_count as f32 / n,
+        attempted_update_frac: attempt_count as f32 / n,
+        moved_given_attempt_frac: if attempt_count > 0 {
+            moved_count as f32 / attempt_count as f32
+        } else {
+            0.0
+        },
+        mean_abs_delta_semitones,
+        mean_abs_delta_semitones_moved,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn update_e2_sweep_nohill(
+    schedule: E2UpdateSchedule,
+    indices: &mut [usize],
+    prev_indices: &[usize],
+    log2_ratio_scan: &[f32],
+    min_idx: usize,
+    max_idx: usize,
+    k: i32,
+    sweep: usize,
+    rng: &mut StdRng,
+) -> (usize, usize, f32, f32) {
+    if indices.is_empty() {
+        return (0, 0, 0.0, 0.0);
+    }
+    let mut order: Vec<usize> = (0..indices.len()).collect();
+    if matches!(schedule, E2UpdateSchedule::RandomSingle) {
+        order.shuffle(rng);
+    }
+    let u_move_by_agent: Vec<f32> = if matches!(schedule, E2UpdateSchedule::Lazy) {
+        (0..indices.len()).map(|_| rng.random::<f32>()).collect()
+    } else {
+        vec![0.0; indices.len()]
+    };
+    let mut attempt_count = 0usize;
+    let mut moved_count = 0usize;
+    let mut abs_delta_sum = 0.0f32;
+    let mut abs_delta_moved_sum = 0.0f32;
+    for &agent_i in &order {
+        let update_allowed = match schedule {
+            E2UpdateSchedule::Checkerboard => (agent_i + sweep) % 2 == 0,
+            E2UpdateSchedule::Lazy => u_move_by_agent[agent_i] < E2_LAZY_MOVE_PROB.clamp(0.0, 1.0),
+            E2UpdateSchedule::RandomSingle => true,
+        };
+        let current_idx = prev_indices[agent_i];
+        let next_idx = if update_allowed {
+            attempt_count += 1;
+            let step = rng.random_range(-k..=k);
+            (current_idx as i32 + step).clamp(min_idx as i32, max_idx as i32) as usize
+        } else {
+            current_idx
+        };
+        indices[agent_i] = next_idx;
+        if next_idx != current_idx {
+            moved_count += 1;
+        }
+        let delta_semitones = 12.0 * (log2_ratio_scan[next_idx] - log2_ratio_scan[current_idx]);
+        let abs_delta = delta_semitones.abs();
+        if abs_delta.is_finite() {
+            abs_delta_sum += abs_delta;
+            if next_idx != current_idx {
+                abs_delta_moved_sum += abs_delta;
+            }
+        }
+    }
+    (
+        moved_count,
+        attempt_count,
+        abs_delta_sum,
+        abs_delta_moved_sum,
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -4928,6 +5309,7 @@ fn mean_c_score_loo_at_indices_with_prev(
     if count == 0 { 0.0 } else { sum / count as f32 }
 }
 
+#[allow(dead_code)]
 fn mean_c_score_loo_at_indices(
     space: &Log2Space,
     workspace: &ConsonanceWorkspace,
@@ -5106,7 +5488,7 @@ fn e2_summary_csv(runs: &[E2Run]) -> String {
             "{},{},{},{},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6}\n",
             run.seed,
             E2_INIT_MODE.label(),
-            E2_STEPS,
+            E2_SWEEPS,
             E2_BURN_IN,
             start,
             end,
@@ -5242,12 +5624,12 @@ fn e2_flutter_segments(phase_mode: E2PhaseMode) -> Vec<(&'static str, usize, usi
         if pre_end >= E2_BURN_IN {
             segments.push(("pre", E2_BURN_IN, pre_end));
         }
-        if post_start < E2_STEPS {
-            segments.push(("post", post_start, E2_STEPS.saturating_sub(1)));
+        if post_start < E2_SWEEPS {
+            segments.push(("post", post_start, E2_SWEEPS.saturating_sub(1)));
         }
         segments
     } else {
-        vec![("all", E2_BURN_IN, E2_STEPS.saturating_sub(1))]
+        vec![("all", E2_BURN_IN, E2_SWEEPS.saturating_sub(1))]
     }
 }
 
@@ -5349,7 +5731,7 @@ fn e2_meta_text(
 ) -> String {
     let mut out = String::new();
     out.push_str(&format!("SPACE_BINS_PER_OCT={}\n", SPACE_BINS_PER_OCT));
-    out.push_str(&format!("E2_STEPS={}\n", E2_STEPS));
+    out.push_str(&format!("E2_SWEEPS={}\n", E2_SWEEPS));
     out.push_str(&format!("E2_BURN_IN={}\n", E2_BURN_IN));
     out.push_str(&format!("E2_ANCHOR_SHIFT_STEP={}\n", E2_ANCHOR_SHIFT_STEP));
     out.push_str(&format!(
@@ -5379,6 +5761,7 @@ fn e2_meta_text(
     let update_schedule = match E2_UPDATE_SCHEDULE {
         E2UpdateSchedule::Checkerboard => "checkerboard",
         E2UpdateSchedule::Lazy => "lazy",
+        E2UpdateSchedule::RandomSingle => "random_single",
     };
     out.push_str(&format!("E2_UPDATE_SCHEDULE={}\n", update_schedule));
     out.push_str(&format!("E2_LAZY_MOVE_PROB={:.3}\n", E2_LAZY_MOVE_PROB));
@@ -6378,7 +6761,7 @@ fn render_hist_controls_fraction(
 
 fn e2_c_snapshot(run: &E2Run) -> (f32, f32, f32) {
     let pre_idx = e2_pre_step();
-    let post_idx = e2_post_step_for(E2_STEPS);
+    let post_idx = e2_post_step_for(E2_SWEEPS);
     e2_c_snapshot_at(&run.mean_c_series, pre_idx, post_idx)
 }
 
@@ -6392,6 +6775,7 @@ fn e2_c_snapshot_at(series: &[f32], pre_idx: usize, post_idx: usize) -> (f32, f3
     (init, pre, post)
 }
 
+#[allow(dead_code)]
 fn e2_c_snapshot_series(
     series: &[f32],
     anchor_shift_enabled: bool,
@@ -6865,12 +7249,12 @@ fn render_interval_histogram(
 
 fn render_e2_histogram_sweep(out_dir: &Path, run: &E2Run) -> Result<(), Box<dyn Error>> {
     let post_start = E2_BURN_IN;
-    let post_end = E2_STEPS.saturating_sub(1);
+    let post_end = E2_SWEEPS.saturating_sub(1);
     let ranges: Vec<(&str, usize, usize, &Vec<f32>)> = if e2_anchor_shift_enabled() {
         let pre_start = E2_BURN_IN;
         let pre_end = E2_ANCHOR_SHIFT_STEP.saturating_sub(1);
         let post_start = E2_ANCHOR_SHIFT_STEP;
-        let post_end = E2_STEPS.saturating_sub(1);
+        let post_end = E2_SWEEPS.saturating_sub(1);
         vec![
             ("pre", pre_start, pre_end, &run.semitone_samples_pre),
             ("post", post_start, post_end, &run.semitone_samples_post),
@@ -8581,7 +8965,7 @@ mod tests {
             step_semitones,
             phase_mode,
         );
-        assert_eq!(run.mean_c_score_loo_series.len(), E2_STEPS);
+        assert_eq!(run.mean_c_score_loo_series.len(), E2_SWEEPS);
         let label = match condition {
             E2Condition::Baseline => "baseline",
             E2Condition::NoHillClimb => "nohill",
@@ -9078,10 +9462,12 @@ mod tests {
         let log2_ratio_scan = build_log2_ratio_scan(&space, anchor_hz);
         let mut indices = vec![1usize, 3, 4];
         let (env_scan, density_scan) = build_env_scans(&space, anchor_idx, &indices, &du_scan);
-        let order: Vec<usize> = (0..indices.len()).collect();
+        let prev_indices = indices.clone();
         let mut rng = StdRng::seed_from_u64(0);
-        let stats = update_agent_indices_scored_stats_with_order_loo(
+        let stats = update_e2_sweep_scored_loo(
+            E2UpdateSchedule::RandomSingle,
             &mut indices,
+            &prev_indices,
             &space,
             &workspace,
             &env_scan,
@@ -9099,7 +9485,6 @@ mod tests {
             false,
             None,
             &mut rng,
-            &order,
         );
         let expected_moved = stats.attempted_update_frac * stats.moved_given_attempt_frac;
         assert!(
@@ -9114,6 +9499,47 @@ mod tests {
             "mean_abs_delta identity mismatch (mean_abs_delta={}, moved_frac*mean_abs_delta_moved={})",
             stats.mean_abs_delta_semitones,
             expected_abs
+        );
+    }
+
+    #[test]
+    fn e2_update_schedule_random_single_attempts_all_agents() {
+        let space = Log2Space::new(200.0, 400.0, 12);
+        let workspace = build_consonance_workspace(&space);
+        let (_erb_scan, du_scan) = erb_grid_for_space(&space);
+        let anchor_idx = space.n_bins() / 2;
+        let anchor_hz = space.centers_hz[anchor_idx];
+        let log2_ratio_scan = build_log2_ratio_scan(&space, anchor_hz);
+        let mut indices = vec![1usize, 3, 4];
+        let prev_indices = indices.clone();
+        let (env_scan, density_scan) = build_env_scans(&space, anchor_idx, &indices, &du_scan);
+        let mut rng = StdRng::seed_from_u64(1);
+        let stats = update_e2_sweep_scored_loo(
+            E2UpdateSchedule::RandomSingle,
+            &mut indices,
+            &prev_indices,
+            &space,
+            &workspace,
+            &env_scan,
+            &density_scan,
+            &du_scan,
+            &log2_ratio_scan,
+            0,
+            space.n_bins() - 1,
+            1,
+            1.0,
+            0.2,
+            0.1,
+            0.05,
+            0,
+            false,
+            None,
+            &mut rng,
+        );
+        assert!(
+            (stats.attempted_update_frac - 1.0).abs() < 1e-6,
+            "expected attempted_update_frac=1.0, got {}",
+            stats.attempted_update_frac
         );
     }
 
@@ -9249,7 +9675,7 @@ mod tests {
             E2_STEP_SEMITONES,
             E2PhaseMode::Normal,
         );
-        assert_eq!(run.mean_c_score_chosen_loo_series.len(), E2_STEPS);
+        assert_eq!(run.mean_c_score_chosen_loo_series.len(), E2_SWEEPS);
         assert!(
             run.mean_c_score_chosen_loo_series
                 .iter()
@@ -9271,7 +9697,7 @@ mod tests {
             E2_STEP_SEMITONES,
             E2PhaseMode::Normal,
         );
-        assert_eq!(run.mean_abs_delta_semitones_series.len(), E2_STEPS);
+        assert_eq!(run.mean_abs_delta_semitones_series.len(), E2_SWEEPS);
         assert!(
             run.mean_abs_delta_semitones_series
                 .iter()

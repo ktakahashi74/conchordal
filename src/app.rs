@@ -1258,9 +1258,6 @@ fn apply_params_update(params: &mut LandscapeParams, upd: &LandscapeUpdate) {
     if let Some(m) = upd.mirror {
         params.harmonicity_kernel.params.mirror_weight = m;
     }
-    if let Some(l) = upd.limit {
-        params.harmonicity_kernel.params.param_limit = l;
-    }
     if let Some(k) = upd.roughness_k {
         params.roughness_k = k.max(1e-6);
     }

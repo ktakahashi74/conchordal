@@ -36,8 +36,6 @@ pub struct HarmonicityParams {
     pub num_subharmonics: u32,
     /// Upward projections for harmonic candidates.
     pub num_harmonics: u32,
-    /// Global cap on iteration count (overrides per-path counts if smaller).
-    pub param_limit: u32,
     /// Decay exponent for Path A (common root path).
     pub rho_common_root: f32,
     /// Decay exponent for Path B (common overtone/undertone path).
@@ -48,6 +46,12 @@ pub struct HarmonicityParams {
     pub normalize_output: bool,
     /// Blend ratio: 0 = Path A only, 1 = Path B only.
     pub mirror_weight: f32,
+    /// Nonlinear emphasis for root spectrum coincidence (1.0 = linear).
+    pub gamma_root: f32,
+    /// Nonlinear emphasis for overtone spectrum coincidence (1.0 = linear).
+    pub gamma_overtone: f32,
+    /// Normalize A/B paths to peak 1.0 before blending.
+    pub normalize_paths_before_blend: bool,
     /// Scale for diagonal (m=k) self-reinforcement (expected self term).
     /// 1.0 = legacy behavior, <1.0 reduces unison dominance.
     pub diag_weight: f32,
@@ -62,14 +66,16 @@ pub struct HarmonicityParams {
 impl Default for HarmonicityParams {
     fn default() -> Self {
         Self {
-            num_subharmonics: 10,
-            num_harmonics: 8,
-            param_limit: 16,
+            num_subharmonics: 16,
+            num_harmonics: 16,
             rho_common_root: 0.4,
             rho_common_overtone: 0.2,
             sigma_cents: 3.0, // Slightly wider peaks to ease sampling
             normalize_output: true,
             mirror_weight: 0.3,
+            gamma_root: 1.0,
+            gamma_overtone: 1.0,
+            normalize_paths_before_blend: false,
             diag_weight: 0.65,
             freq_gate: false,
             tfs_f_pl_hz: 4500.0,
@@ -84,31 +90,39 @@ pub struct HarmonicityKernel {
     pub params: HarmonicityParams,
     smooth_kernel: Vec<f32>,
     pad_bins: usize, // Internal padding size
-    limit: u32,
+    sub_limit: u32,
+    harm_limit: u32,
+    #[allow(dead_code)]
+    max_limit: u32,
 }
 
 impl HarmonicityKernel {
     pub fn new(space: &Log2Space, params: HarmonicityParams) -> Self {
-        let limit = Self::effective_limit(&params);
+        let (sub_limit, harm_limit, max_limit) = Self::effective_limits(&params);
 
         // 1. Pre-calculate smoothing kernel
         let sigma_bins = params.sigma_cents / 1200.0 * space.bins_per_oct as f32;
-        let half_width = (2.5 * sigma_bins).ceil() as usize;
-        let width = 2 * half_width + 1;
-        let mut k = vec![0.0f32; width];
-        let mut sum = 0.0;
-        for (i, kv) in k.iter_mut().enumerate().take(width) {
-            let x = (i as isize - half_width as isize) as f32;
-            *kv = (-0.5 * (x / sigma_bins).powi(2)).exp();
-            sum += *kv;
-        }
-        for v in &mut k {
-            *v /= sum;
-        }
+        let k = if sigma_bins <= 1e-6 {
+            vec![1.0]
+        } else {
+            let half_width = (2.5 * sigma_bins).ceil() as usize;
+            let width = 2 * half_width + 1;
+            let mut k = vec![0.0f32; width];
+            let mut sum = 0.0;
+            for (i, kv) in k.iter_mut().enumerate().take(width) {
+                let x = (i as isize - half_width as isize) as f32;
+                *kv = (-0.5 * (x / sigma_bins).powi(2)).exp();
+                sum += *kv;
+            }
+            for v in &mut k {
+                *v /= sum;
+            }
+            k
+        };
 
         // 2. Pre-calculate necessary padding
         // pad_bins must allow shifting both down (roots) and up (overtone mirror path).
-        let max_oct = (limit as f32).max(1.0).log2();
+        let max_oct = (max_limit as f32).max(1.0).log2();
         let pad_bins = (max_oct * space.bins_per_oct as f32).ceil() as usize;
 
         Self {
@@ -116,7 +130,9 @@ impl HarmonicityKernel {
             params,
             smooth_kernel: k,
             pad_bins,
-            limit,
+            sub_limit,
+            harm_limit,
+            max_limit,
         }
     }
 
@@ -126,10 +142,24 @@ impl HarmonicityKernel {
         envelope: &[f32],
         space: &Log2Space,
     ) -> (Vec<f32>, f32) {
+        debug_assert_eq!(
+            space.bins_per_oct, self.bins_per_oct,
+            "Log2Space bins_per_oct mismatch (space={}, kernel={})",
+            space.bins_per_oct, self.bins_per_oct
+        );
+        debug_assert_eq!(
+            envelope.len(),
+            space.n_bins(),
+            "envelope length mismatch (env={}, space={})",
+            envelope.len(),
+            space.n_bins()
+        );
         let n_bins = envelope.len();
         let bins_per_oct = self.bins_per_oct as f32;
         let mirror = self.params.mirror_weight.clamp(0.0, 1.0);
-        let limit = self.limit.max(1);
+        let sub_limit = self.sub_limit.max(1);
+        let harm_limit = self.harm_limit.max(1);
+        let k_diag = sub_limit.min(harm_limit).max(1);
 
         // Step 0: Smooth Input (O(N))
         let smeared_env = self.convolve_smooth(envelope);
@@ -139,7 +169,7 @@ impl HarmonicityKernel {
         let (diag_a, diag_b) = if diag_w < 1.0 {
             let mut sum_a = 0.0f32;
             let mut sum_b = 0.0f32;
-            for k in 1..=limit {
+            for k in 1..=k_diag {
                 let kk = k as f32;
                 let a = kk.powf(-self.params.rho_common_root);
                 let b = kk.powf(-self.params.rho_common_overtone);
@@ -159,15 +189,21 @@ impl HarmonicityKernel {
         let mut overtone_spectrum = vec![0.0f32; buf_len];
 
         // === Path A: Common Root / Overtone Series (down then up) ===
-        for k in 1..=limit {
+        for k in 1..=sub_limit {
             let shift_bins = (k as f32).log2() * bins_per_oct;
             let weight = (k as f32).powf(-self.params.rho_common_root);
             let offset = center_offset - shift_bins;
             Self::accumulate_shifted(&smeared_env, &mut root_spectrum, offset, weight);
         }
+        let gamma_root = self.params.gamma_root.max(1e-3);
+        if (gamma_root - 1.0).abs() > 1e-6 {
+            for v in &mut root_spectrum {
+                *v = v.max(0.0).powf(gamma_root);
+            }
+        }
 
         let mut landscape_a = vec![0.0f32; n_bins];
-        for m in 1..=limit {
+        for m in 1..=harm_limit {
             let shift_bins = (m as f32).log2() * bins_per_oct;
             let weight = (m as f32).powf(-self.params.rho_common_root);
             let offset = shift_bins - center_offset;
@@ -182,15 +218,21 @@ impl HarmonicityKernel {
         }
 
         // === Path B: Common Overtone / Undertone Series (up then down) ===
-        for k in 1..=limit {
+        for k in 1..=harm_limit {
             let shift_bins = (k as f32).log2() * bins_per_oct;
             let weight = (k as f32).powf(-self.params.rho_common_overtone);
             let offset = center_offset + shift_bins;
             Self::accumulate_shifted(&smeared_env, &mut overtone_spectrum, offset, weight);
         }
+        let gamma_overtone = self.params.gamma_overtone.max(1e-3);
+        if (gamma_overtone - 1.0).abs() > 1e-6 {
+            for v in &mut overtone_spectrum {
+                *v = v.max(0.0).powf(gamma_overtone);
+            }
+        }
 
         let mut landscape_b = vec![0.0f32; n_bins];
-        for m in 1..=limit {
+        for m in 1..=sub_limit {
             let shift_bins = (m as f32).log2() * bins_per_oct;
             let weight = (m as f32).powf(-self.params.rho_common_overtone);
             let offset = -shift_bins - center_offset;
@@ -201,6 +243,31 @@ impl HarmonicityKernel {
             for i in 0..n_bins {
                 let adjusted = landscape_b[i] - scale * diag_b * smeared_env[i];
                 landscape_b[i] = adjusted.max(0.0);
+            }
+        }
+
+        if self.params.normalize_paths_before_blend {
+            let mut max_a = 0.0f32;
+            let mut max_b = 0.0f32;
+            for i in 0..n_bins {
+                if landscape_a[i] > max_a {
+                    max_a = landscape_a[i];
+                }
+                if landscape_b[i] > max_b {
+                    max_b = landscape_b[i];
+                }
+            }
+            if max_a > 0.0 {
+                let inv = 1.0 / max_a;
+                for v in &mut landscape_a {
+                    *v *= inv;
+                }
+            }
+            if max_b > 0.0 {
+                let inv = 1.0 / max_b;
+                for v in &mut landscape_b {
+                    *v *= inv;
+                }
             }
         }
 
@@ -235,14 +302,11 @@ impl HarmonicityKernel {
 
         (landscape, max_val)
     }
-    fn effective_limit(params: &HarmonicityParams) -> u32 {
-        let fallback = params.num_subharmonics.max(params.num_harmonics).max(1);
-        let limit = if params.param_limit == 0 {
-            fallback
-        } else {
-            params.param_limit
-        };
-        limit.max(1)
+    fn effective_limits(params: &HarmonicityParams) -> (u32, u32, u32) {
+        let sub = params.num_subharmonics.max(1);
+        let harm = params.num_harmonics.max(1);
+        let max_limit = sub.max(harm);
+        (sub, harm, max_limit)
     }
     /// Optimized Shift-and-Add with safe bounds checking.
     /// dst[i + offset] += src[i] * weight
@@ -290,6 +354,9 @@ impl HarmonicityKernel {
     fn convolve_smooth(&self, input: &[f32]) -> Vec<f32> {
         // Convolution is heavy, but here kernel is small.
         // Optimization: Use separate loop for the main part to avoid boundary checks.
+        if self.smooth_kernel.len() == 1 {
+            return input.to_vec();
+        }
         let n = input.len();
         let mut output = vec![0.0; n];
         let k_len = self.smooth_kernel.len();
@@ -338,6 +405,7 @@ mod tests {
     fn test_minor_triad_lcm_reach() {
         let space = Log2Space::new(80.0, 2000.0, 180);
         let mut params = HarmonicityParams::default();
+        params.num_harmonics = 8;
         params.mirror_weight = 1.0;
         let hk = HarmonicityKernel::new(&space, params);
 
@@ -377,30 +445,74 @@ mod tests {
     }
 
     #[test]
-    fn test_param_limit_caps_iterations() {
+    fn test_num_harmonics_affects_peak_strength() {
         let space = Log2Space::new(50.0, 800.0, 160);
-        let mut params_full = HarmonicityParams::default();
-        params_full.normalize_output = false;
-        params_full.param_limit = 6;
-        let hk_full = HarmonicityKernel::new(&space, params_full);
+        let mut params_low = HarmonicityParams::default();
+        params_low.normalize_output = false;
+        params_low.num_harmonics = 1;
+        let hk_low = HarmonicityKernel::new(&space, params_low);
 
-        let mut params_limited = params_full;
-        params_limited.param_limit = 1;
-        let hk_limited = HarmonicityKernel::new(&space, params_limited);
+        let mut params_high = params_low;
+        params_high.num_harmonics = 8;
+        let hk_high = HarmonicityKernel::new(&space, params_high);
 
         let mut env = vec![0.0; space.n_bins()];
         if let Some(idx) = space.index_of_freq(200.0) {
             env[idx] = 1.0;
         }
 
-        let (land_full, _) = hk_full.potential_h_from_log2_spectrum(&env, &space);
-        let (land_limited, _) = hk_limited.potential_h_from_log2_spectrum(&env, &space);
-
+        let (land_low, _) = hk_low.potential_h_from_log2_spectrum(&env, &space);
+        let (land_high, _) = hk_high.potential_h_from_log2_spectrum(&env, &space);
         let idx_300 = space.index_of_freq(300.0).expect("bin exists");
-        let ratio = land_limited[idx_300] / land_full[idx_300].max(1e-6);
+        let ratio = land_high[idx_300] / land_low[idx_300].max(1e-6);
         assert!(
-            ratio < 0.9,
-            "Higher-order peaks should diminish when param_limit is small (ratio={ratio})"
+            ratio > 1.1,
+            "expected stronger 3:2 peak with more harmonics (ratio={ratio})"
+        );
+    }
+
+    #[test]
+    fn test_num_subharmonics_affects_root_related_peaks() {
+        let space = Log2Space::new(50.0, 800.0, 160);
+        let mut params_low = HarmonicityParams::default();
+        params_low.normalize_output = false;
+        params_low.num_subharmonics = 1;
+        let hk_low = HarmonicityKernel::new(&space, params_low);
+
+        let mut params_high = params_low;
+        params_high.num_subharmonics = 10;
+        let hk_high = HarmonicityKernel::new(&space, params_high);
+
+        let mut env = vec![0.0; space.n_bins()];
+        if let Some(idx) = space.index_of_freq(200.0) {
+            env[idx] = 1.0;
+        }
+
+        let (land_low, _) = hk_low.potential_h_from_log2_spectrum(&env, &space);
+        let (land_high, _) = hk_high.potential_h_from_log2_spectrum(&env, &space);
+        let idx_100 = space.index_of_freq(100.0).expect("bin exists");
+        let ratio = land_high[idx_100] / land_low[idx_100].max(1e-6);
+        assert!(
+            ratio > 1.1,
+            "expected stronger subharmonic peak with more subharmonics (ratio={ratio})"
+        );
+    }
+
+    #[test]
+    fn test_sigma_zero_is_finite() {
+        let space = Log2Space::new(50.0, 800.0, 160);
+        let mut params = HarmonicityParams::default();
+        params.sigma_cents = 0.0;
+        let hk = HarmonicityKernel::new(&space, params);
+
+        let mut env = vec![0.0; space.n_bins()];
+        if let Some(idx) = space.index_of_freq(200.0) {
+            env[idx] = 1.0;
+        }
+        let (land, _) = hk.potential_h_from_log2_spectrum(&env, &space);
+        assert!(
+            land.iter().all(|&v| v.is_finite() && v >= 0.0),
+            "expected finite non-negative landscape for sigma=0"
         );
     }
 
@@ -409,10 +521,12 @@ mod tests {
         let space = Log2Space::new(50.0, 800.0, 200);
 
         let mut params_old = HarmonicityParams::default();
+        params_old.num_harmonics = 8;
         params_old.diag_weight = 1.0;
         let hk_old = HarmonicityKernel::new(&space, params_old);
 
         let mut params_new = HarmonicityParams::default();
+        params_new.num_harmonics = 8;
         params_new.diag_weight = 0.5;
         let hk_new = HarmonicityKernel::new(&space, params_new);
 
@@ -446,7 +560,8 @@ mod tests {
         // - 300Hz (Perfect 5th via 100Hz root)
 
         let space = Log2Space::new(50.0, 800.0, 200);
-        let params = HarmonicityParams::default();
+        let mut params = HarmonicityParams::default();
+        params.num_harmonics = 8;
 
         let hk = HarmonicityKernel::new(&space, params);
 
@@ -477,7 +592,8 @@ mod tests {
         // Test: Can we detect 7:4 (Harmonic 7th) and 6:5 (Minor 3rd)?
 
         let space = Log2Space::new(20.0, 1600.0, 100);
-        let params = HarmonicityParams::default();
+        let mut params = HarmonicityParams::default();
+        params.num_harmonics = 8;
 
         let hk = HarmonicityKernel::new(&space, params);
 

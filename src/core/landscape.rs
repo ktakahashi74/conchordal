@@ -53,7 +53,6 @@ pub struct LandscapeParams {
 #[derive(Clone, Copy, Debug, Default)]
 pub struct LandscapeUpdate {
     pub mirror: Option<f32>,
-    pub limit: Option<u32>,
     pub roughness_k: Option<f32>,
 }
 

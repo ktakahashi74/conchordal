@@ -3925,6 +3925,7 @@ fn t_crit_975(df: usize) -> f32 {
         28 => 2.048,
         29 => 2.045,
         30 => 2.042,
+        // df > 30: normal approximation
         _ => 1.96,
     }
 }
@@ -11191,6 +11192,8 @@ mod tests {
     fn fmt_eps_formats_fractional_values() {
         assert_eq!(fmt_eps(25.0), "25c");
         assert_eq!(fmt_eps(12.5), "12.5c");
+        assert_eq!(fmt_eps(12.0), "12c");
+        assert_eq!(fmt_eps(12.49), "12.5c");
     }
 
     #[test]
@@ -11206,12 +11209,14 @@ mod tests {
 
     #[test]
     fn float_key_roundtrip_is_stable() {
-        let value = 0.25f32;
-        let key = float_key(value);
-        let expected = (value * FLOAT_KEY_SCALE).round() as i32;
-        assert_eq!(key, expected);
-        let roundtrip = float_from_key(key);
-        assert!((roundtrip - value).abs() < 1e-6);
+        let values = [0.02f32, 0.25, 0.98, 1.0];
+        for value in values {
+            let key = float_key(value);
+            let expected = (value * FLOAT_KEY_SCALE).round() as i32;
+            assert_eq!(key, expected);
+            let roundtrip = float_from_key(key);
+            assert!((roundtrip - value).abs() < 1e-6);
+        }
     }
 
     #[test]

@@ -16,7 +16,7 @@ use crate::sim::{
 use conchordal::core::erb::hz_to_erb;
 use conchordal::core::harmonicity_kernel::{HarmonicityKernel, HarmonicityParams};
 use conchordal::core::landscape::{LandscapeParams, RoughnessScalarMode};
-use conchordal::core::log2space::Log2Space;
+use conchordal::core::log2space::{Log2Space, sample_scan_linear_log2};
 use conchordal::core::psycho_state;
 use conchordal::core::roughness_kernel::{KernelParams, RoughnessKernel};
 use rand::seq::SliceRandom;
@@ -93,6 +93,7 @@ const E4_DELTA_TAU: f32 = 0.02;
 const E4_WEIGHT_COARSE_STEP: f32 = 0.1;
 const E4_WEIGHT_FINE_STEP: f32 = 0.05;
 const E4_BIN_WIDTHS: [f32; 2] = [0.25, 0.5];
+const E4_EPS_CENTS: [f32; 2] = [25.0, 50.0];
 const E4_SEEDS: [u64; 5] = [
     0xC0FFEE_u64 + 10,
     0xC0FFEE_u64 + 11,
@@ -2834,17 +2835,19 @@ fn plot_e4_mirror_sweep(
 ) -> Result<(), Box<dyn Error>> {
     let coarse_weights = build_weight_grid(E4_WEIGHT_COARSE_STEP);
     let primary_bin = E4_BIN_WIDTHS[0];
+    let primary_eps = E4_EPS_CENTS[0];
     let (mut run_records, mut hist_records, mut tail_rows) = run_e4_sweep_for_weights(
         out_dir,
         anchor_hz,
         &coarse_weights,
         &E4_SEEDS,
         primary_bin,
+        &E4_EPS_CENTS,
         emit_hist_files,
     )?;
 
     let mut weights = coarse_weights.clone();
-    let fine_weights = refine_weights_from_sign_change(&run_records, primary_bin);
+    let fine_weights = refine_weights_from_sign_change(&run_records, primary_bin, primary_eps);
     for w in fine_weights {
         if !weights.iter().any(|&x| (x - w).abs() < 1e-6) {
             weights.push(w);
@@ -2865,6 +2868,7 @@ fn plot_e4_mirror_sweep(
             &fine_only,
             &E4_SEEDS,
             primary_bin,
+            &E4_EPS_CENTS,
             emit_hist_files,
         )?;
         run_records.extend(more_runs);
@@ -2879,6 +2883,7 @@ fn plot_e4_mirror_sweep(
             &weights,
             &E4_SEEDS,
             bin_width,
+            &E4_EPS_CENTS,
             emit_hist_files,
         )?;
         run_records.extend(more_runs);
@@ -2895,6 +2900,18 @@ fn plot_e4_mirror_sweep(
     let summary_csv_path = out_dir.join("e4_mirror_sweep_summary.csv");
     write(&summary_csv_path, e4_summary_csv(&summaries))?;
 
+    let delta_effects = e4_delta_effects_from_summary(&summaries);
+    let delta_effects_path = out_dir.join("e4_delta_effects.csv");
+    write(&delta_effects_path, e4_delta_effects_csv(&delta_effects))?;
+
+    let regression_rows = e4_regression_rows(&summaries);
+    let regression_path = out_dir.join("e4_regression.csv");
+    write(&regression_path, e4_regression_csv(&regression_rows))?;
+
+    let endpoint_rows = e4_endpoint_effect_rows(&run_records);
+    let endpoint_path = out_dir.join("e4_endpoint_effect.csv");
+    write(&endpoint_path, e4_endpoint_effect_csv(&endpoint_rows))?;
+
     let overlay_path = out_dir.join(format!(
         "paper_e4_hist_overlay_bw{}.png",
         format_float_token(primary_bin)
@@ -2902,33 +2919,39 @@ fn plot_e4_mirror_sweep(
     render_e4_hist_overlay(&overlay_path, &hist_records, primary_bin, &E4_REP_WEIGHTS)?;
 
     for &bin_width in &E4_BIN_WIDTHS {
-        let delta_path = out_dir.join(format!(
-            "paper_e4_delta_vs_weight_bw{}.png",
-            format_float_token(bin_width)
-        ));
-        render_e4_delta_plot(&delta_path, &summaries, bin_width)?;
+        let bw_token = format_float_token(bin_width);
+        for &eps_cents in &E4_EPS_CENTS {
+            let eps_token = format_float_token(eps_cents);
+            let delta_path = out_dir.join(format!(
+                "paper_e4_delta_vs_weight_bw{bw_token}_eps{eps_token}.png"
+            ));
+            render_e4_delta_plot(&delta_path, &summaries, bin_width, eps_cents)?;
 
-        let major_minor_path = out_dir.join(format!(
-            "paper_e4_major_minor_vs_weight_bw{}.png",
-            format_float_token(bin_width)
-        ));
-        render_e4_major_minor_plot(&major_minor_path, &summaries, bin_width)?;
+            let major_minor_path = out_dir.join(format!(
+                "paper_e4_major_minor_vs_weight_bw{bw_token}_eps{eps_token}.png"
+            ));
+            render_e4_major_minor_plot(&major_minor_path, &summaries, bin_width, eps_cents)?;
 
-        let third_mass_path = out_dir.join(format!(
-            "paper_e4_third_mass_vs_weight_bw{}.png",
-            format_float_token(bin_width)
-        ));
-        render_e4_third_mass_plot(&third_mass_path, &summaries, bin_width)?;
+            let third_mass_path = out_dir.join(format!(
+                "paper_e4_third_mass_vs_weight_bw{bw_token}_eps{eps_token}.png"
+            ));
+            render_e4_third_mass_plot(&third_mass_path, &summaries, bin_width, eps_cents)?;
 
-        let rate_path = out_dir.join(format!(
-            "paper_e4_major_minor_rate_vs_weight_bw{}.png",
-            format_float_token(bin_width)
-        ));
-        render_e4_major_minor_rate_plot(&rate_path, &summaries, bin_width)?;
+            let rate_path = out_dir.join(format!(
+                "paper_e4_major_minor_rate_vs_weight_bw{bw_token}_eps{eps_token}.png"
+            ));
+            render_e4_major_minor_rate_plot(&rate_path, &summaries, bin_width, eps_cents)?;
+        }
+
+        let heatmap_path = out_dir.join(format!("paper_e4_interval_heatmap_bw{bw_token}.png"));
+        render_e4_interval_heatmap(&heatmap_path, &hist_records, bin_width)?;
     }
 
     let legacy_path = out_dir.join("paper_e4_mirror_sweep.png");
-    render_e4_major_minor_plot(&legacy_path, &summaries, primary_bin)?;
+    render_e4_major_minor_plot(&legacy_path, &summaries, primary_bin, primary_eps)?;
+
+    let kernel_gate_path = out_dir.join("paper_e4_kernel_gate.png");
+    render_e4_kernel_gate(&kernel_gate_path, anchor_hz)?;
 
     Ok(())
 }
@@ -3060,7 +3083,7 @@ struct E4RunRecord {
     mirror_weight: f32,
     seed: u64,
     bin_width: f32,
-    eps: f32,
+    eps_cents: f32,
     major_score: f32,
     minor_score: f32,
     delta: f32,
@@ -3078,7 +3101,7 @@ struct E4RunRecord {
 struct E4SummaryRecord {
     mirror_weight: f32,
     bin_width: f32,
-    eps: f32,
+    eps_cents: f32,
     mean_major: f32,
     std_major: f32,
     mean_minor: f32,
@@ -3099,6 +3122,45 @@ struct E4SummaryRecord {
     n_runs: usize,
 }
 
+struct E4DeltaEffectRow {
+    mirror_weight: f32,
+    bin_width: f32,
+    eps_cents: f32,
+    mean_delta: f32,
+    sd_delta: f32,
+    se_delta: f32,
+    n_seeds: usize,
+    mean_mass_min3: f32,
+    sd_mass_min3: f32,
+    mean_mass_maj3: f32,
+    sd_mass_maj3: f32,
+    mean_mass_p5: f32,
+    sd_mass_p5: f32,
+}
+
+struct E4RegressionRow {
+    bin_width: f32,
+    eps_cents: f32,
+    slope: f32,
+    slope_ci_lo: f32,
+    slope_ci_hi: f32,
+    r2: f32,
+    spearman_rho: f32,
+    spearman_p: f32,
+    n_weights: usize,
+}
+
+struct E4EndpointEffectRow {
+    bin_width: f32,
+    eps_cents: f32,
+    delta_end: f32,
+    ci_lo: f32,
+    ci_hi: f32,
+    cohen_d: f32,
+    n0: usize,
+    n1: usize,
+}
+
 struct Histogram {
     bin_centers: Vec<f32>,
     masses: Vec<f32>,
@@ -3114,7 +3176,7 @@ struct E4TailIntervalRow {
     mirror_weight: f32,
     seed: u64,
     bin_width: f32,
-    eps: f32,
+    eps_cents: f32,
     step: u32,
     mass_min3: f32,
     mass_maj3: f32,
@@ -3172,11 +3234,18 @@ fn build_weight_grid(step: f32) -> Vec<f32> {
     weights
 }
 
-fn refine_weights_from_sign_change(run_records: &[E4RunRecord], bin_width: f32) -> Vec<f32> {
+fn refine_weights_from_sign_change(
+    run_records: &[E4RunRecord],
+    bin_width: f32,
+    eps_cents: f32,
+) -> Vec<f32> {
     let mut weight_means: Vec<(f32, f32)> = Vec::new();
     let mut map: std::collections::HashMap<i32, Vec<f32>> = std::collections::HashMap::new();
     for record in run_records {
         if (record.bin_width - bin_width).abs() > 1e-6 {
+            continue;
+        }
+        if (record.eps_cents - eps_cents).abs() > 1e-6 {
             continue;
         }
         let key = float_key(record.mirror_weight);
@@ -3343,69 +3412,73 @@ fn run_e4_sweep_for_weights(
     weights: &[f32],
     seeds: &[u64],
     bin_width: f32,
+    eps_cents_list: &[f32],
     emit_hist_files: bool,
 ) -> Result<(Vec<E4RunRecord>, Vec<E4HistRecord>, Vec<E4TailIntervalRow>), Box<dyn Error>> {
     let mut runs = Vec::new();
     let mut hists = Vec::new();
     let mut tail_rows = Vec::new();
-    let eps = bin_width.max(1e-6);
     for &weight in weights {
         for &seed in seeds {
             let samples = run_e4_condition_tail_samples(weight, seed, E4_TAIL_WINDOW_STEPS);
             let semitone_samples = collect_e4_semitone_samples(&samples, anchor_hz);
             let histogram = histogram_from_samples(&semitone_samples, 0.0, 12.0, bin_width);
 
-            let mass_min3 = mass_around(&histogram, 3.0, eps);
-            let mass_maj3 = mass_around(&histogram, 4.0, eps);
-            let mass_p4 = mass_around(&histogram, 5.0, eps);
-            let mass_p5 = mass_around(&histogram, 7.0, eps);
-            let major_score = mass_maj3 + mass_p5;
-            let minor_score = mass_min3 + mass_p5;
-            let delta = major_score - minor_score;
-            let major_frac = major_score / (major_score + minor_score + 1e-12);
-
             let burn_in = samples.steps_total.saturating_sub(samples.tail_window);
-            let record = E4RunRecord {
-                mirror_weight: weight,
-                seed,
-                bin_width,
-                eps,
-                major_score,
-                minor_score,
-                delta,
-                major_frac,
-                mass_min3,
-                mass_maj3,
-                mass_p4,
-                mass_p5,
-                steps_total: samples.steps_total,
-                burn_in,
-                tail_window: samples.tail_window,
-                histogram_source: "tail_mean",
-            };
-            runs.push(record);
+            for &eps_cents in eps_cents_list {
+                let eps_st = (eps_cents / 100.0).max(1e-6);
+                let mass_min3 = mass_around(&histogram, 3.0, eps_st);
+                let mass_maj3 = mass_around(&histogram, 4.0, eps_st);
+                let mass_p4 = mass_around(&histogram, 5.0, eps_st);
+                let mass_p5 = mass_around(&histogram, 7.0, eps_st);
+                let major_score = mass_maj3 + mass_p5;
+                let minor_score = mass_min3 + mass_p5;
+                let delta = major_score - minor_score;
+                let major_frac = major_score / (major_score + minor_score + 1e-12);
+
+                let record = E4RunRecord {
+                    mirror_weight: weight,
+                    seed,
+                    bin_width,
+                    eps_cents,
+                    major_score,
+                    minor_score,
+                    delta,
+                    major_frac,
+                    mass_min3,
+                    mass_maj3,
+                    mass_p4,
+                    mass_p5,
+                    steps_total: samples.steps_total,
+                    burn_in,
+                    tail_window: samples.tail_window,
+                    histogram_source: "tail_mean",
+                };
+                runs.push(record);
+
+                for (i, freqs) in samples.freqs_by_step.iter().enumerate() {
+                    let masses = interval_masses_from_freqs(anchor_hz, freqs, eps_st);
+                    let step = samples.steps_total.saturating_sub(samples.tail_window) + i as u32;
+                    tail_rows.push(E4TailIntervalRow {
+                        mirror_weight: weight,
+                        seed,
+                        bin_width,
+                        eps_cents,
+                        step,
+                        mass_min3: masses.min3,
+                        mass_maj3: masses.maj3,
+                        mass_p4: masses.p4,
+                        mass_p5: masses.p5,
+                        delta: masses.maj3 - masses.min3,
+                    });
+                }
+            }
+
             hists.push(E4HistRecord {
                 mirror_weight: weight,
                 bin_width,
                 histogram,
             });
-
-            for (i, freqs) in samples.freqs_by_step.iter().enumerate() {
-                let masses = interval_masses_from_freqs(anchor_hz, freqs, eps);
-                let step = samples.steps_total.saturating_sub(samples.tail_window) + i as u32;
-                tail_rows.push(E4TailIntervalRow {
-                    mirror_weight: weight,
-                    seed,
-                    bin_width,
-                    eps,
-                    step,
-                    mass_min3: masses.min3,
-                    mass_maj3: masses.maj3,
-                    mass_p4: masses.p4,
-                    mass_p5: masses.p5,
-                    delta: masses.maj3 - masses.min3,
-                });
-            }
 
             if emit_hist_files {
                 let w_token = format_float_token(weight);
@@ -3447,7 +3520,7 @@ fn run_e4_sweep_for_weights(
 
 fn e4_runs_csv(records: &[E4RunRecord]) -> String {
     let mut out = String::from(
-        "mirror_weight,seed,bin_width,eps,major_score,minor_score,delta,major_frac,mass_m3,mass_M3,mass_P4,mass_P5,steps_total,burn_in,tail_window,histogram_source\n",
+        "mirror_weight,seed,bin_width,eps_cents,major_score,minor_score,delta,major_frac,mass_m3,mass_M3,mass_P4,mass_P5,steps_total,burn_in,tail_window,histogram_source\n",
     );
     for record in records {
         out.push_str(&format!(
@@ -3455,7 +3528,7 @@ fn e4_runs_csv(records: &[E4RunRecord]) -> String {
             record.mirror_weight,
             record.seed,
             record.bin_width,
-            record.eps,
+            record.eps_cents,
             record.major_score,
             record.minor_score,
             record.delta,
@@ -3475,7 +3548,7 @@ fn e4_runs_csv(records: &[E4RunRecord]) -> String {
 
 fn e4_tail_interval_csv(rows: &[E4TailIntervalRow]) -> String {
     let mut out = String::from(
-        "mirror_weight,seed,bin_width,eps,step,mass_m3,mass_M3,mass_P4,mass_P5,delta\n",
+        "mirror_weight,seed,bin_width,eps_cents,step,mass_m3,mass_M3,mass_P4,mass_P5,delta\n",
     );
     for row in rows {
         out.push_str(&format!(
@@ -3483,7 +3556,7 @@ fn e4_tail_interval_csv(rows: &[E4TailIntervalRow]) -> String {
             row.mirror_weight,
             row.seed,
             row.bin_width,
-            row.eps,
+            row.eps_cents,
             row.step,
             row.mass_min3,
             row.mass_maj3,
@@ -3497,14 +3570,14 @@ fn e4_tail_interval_csv(rows: &[E4TailIntervalRow]) -> String {
 
 fn e4_summary_csv(records: &[E4SummaryRecord]) -> String {
     let mut out = String::from(
-        "mirror_weight,bin_width,eps,mean_major,std_major,mean_minor,std_minor,mean_delta,std_delta,mean_m3,std_m3,mean_M3,std_M3,mean_P4,std_P4,mean_P5,std_P5,major_rate,minor_rate,ambiguous_rate,n_runs\n",
+        "mirror_weight,bin_width,eps_cents,mean_major,std_major,mean_minor,std_minor,mean_delta,std_delta,mean_m3,std_m3,mean_M3,std_M3,mean_P4,std_P4,mean_P5,std_P5,major_rate,minor_rate,ambiguous_rate,n_runs\n",
     );
     for record in records {
         out.push_str(&format!(
             "{:.3},{:.3},{:.3},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.3},{:.3},{:.3},{}\n",
             record.mirror_weight,
             record.bin_width,
-            record.eps,
+            record.eps_cents,
             record.mean_major,
             record.std_major,
             record.mean_minor,
@@ -3560,20 +3633,24 @@ fn e4_hist_csv(
 }
 
 fn summarize_e4_runs(records: &[E4RunRecord]) -> Vec<E4SummaryRecord> {
-    let mut map: std::collections::HashMap<(i32, i32), Vec<&E4RunRecord>> =
+    let mut map: std::collections::HashMap<(i32, i32, i32), Vec<&E4RunRecord>> =
         std::collections::HashMap::new();
     for record in records {
-        let key = (float_key(record.mirror_weight), float_key(record.bin_width));
+        let key = (
+            float_key(record.mirror_weight),
+            float_key(record.bin_width),
+            float_key(record.eps_cents),
+        );
         map.entry(key).or_default().push(record);
     }
     let mut summaries = Vec::new();
-    for ((_w_key, _bw_key), runs) in map {
+    for ((_w_key, _bw_key, _eps_key), runs) in map {
         if runs.is_empty() {
             continue;
         }
         let mirror_weight = runs[0].mirror_weight;
         let bin_width = runs[0].bin_width;
-        let eps = runs[0].eps;
+        let eps_cents = runs[0].eps_cents;
         let major_values: Vec<f32> = runs.iter().map(|r| r.major_score).collect();
         let minor_values: Vec<f32> = runs.iter().map(|r| r.minor_score).collect();
         let delta_values: Vec<f32> = runs.iter().map(|r| r.delta).collect();
@@ -3605,7 +3682,7 @@ fn summarize_e4_runs(records: &[E4RunRecord]) -> Vec<E4SummaryRecord> {
         summaries.push(E4SummaryRecord {
             mirror_weight,
             bin_width,
-            eps,
+            eps_cents,
             mean_major,
             std_major,
             mean_minor,
@@ -3631,6 +3708,11 @@ fn summarize_e4_runs(records: &[E4RunRecord]) -> Vec<E4SummaryRecord> {
             .partial_cmp(&b.bin_width)
             .unwrap_or(std::cmp::Ordering::Equal)
             .then_with(|| {
+                a.eps_cents
+                    .partial_cmp(&b.eps_cents)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .then_with(|| {
                 a.mirror_weight
                     .partial_cmp(&b.mirror_weight)
                     .unwrap_or(std::cmp::Ordering::Equal)
@@ -3646,6 +3728,301 @@ fn mean_std(values: &[f32]) -> (f32, f32) {
     let mean = values.iter().copied().sum::<f32>() / values.len() as f32;
     let var = values.iter().map(|v| (*v - mean).powi(2)).sum::<f32>() / values.len() as f32;
     (mean, var.sqrt())
+}
+
+fn mean_std_sample(values: &[f32]) -> (f32, f32) {
+    if values.is_empty() {
+        return (0.0, 0.0);
+    }
+    let mean = values.iter().copied().sum::<f32>() / values.len() as f32;
+    if values.len() < 2 {
+        return (mean, 0.0);
+    }
+    let var = values.iter().map(|v| (*v - mean).powi(2)).sum::<f32>() / (values.len() - 1) as f32;
+    (mean, var.sqrt())
+}
+
+fn std_to_se(std: f32, n: usize) -> f32 {
+    if n == 0 { 0.0 } else { std / (n as f32).sqrt() }
+}
+
+struct LinearFit {
+    slope: f32,
+    intercept: f32,
+    r2: f32,
+    se_slope: f32,
+}
+
+fn linear_regression(x: &[f32], y: &[f32]) -> Option<LinearFit> {
+    if x.len() != y.len() || x.len() < 2 {
+        return None;
+    }
+    let n = x.len() as f32;
+    let mean_x = x.iter().copied().sum::<f32>() / n;
+    let mean_y = y.iter().copied().sum::<f32>() / n;
+    let mut sxx = 0.0f32;
+    let mut sxy = 0.0f32;
+    let mut sst = 0.0f32;
+    for (&xi, &yi) in x.iter().zip(y.iter()) {
+        let dx = xi - mean_x;
+        let dy = yi - mean_y;
+        sxx += dx * dx;
+        sxy += dx * dy;
+        sst += dy * dy;
+    }
+    if sxx <= 0.0 {
+        return None;
+    }
+    let slope = sxy / sxx;
+    let intercept = mean_y - slope * mean_x;
+    let mut sse = 0.0f32;
+    for (&xi, &yi) in x.iter().zip(y.iter()) {
+        let resid = yi - (intercept + slope * xi);
+        sse += resid * resid;
+    }
+    let r2 = if sst > 0.0 { 1.0 - sse / sst } else { 0.0 };
+    let se_slope = if x.len() > 2 {
+        let mse = sse / (x.len() as f32 - 2.0);
+        (mse / sxx).sqrt()
+    } else {
+        0.0
+    };
+    Some(LinearFit {
+        slope,
+        intercept,
+        r2,
+        se_slope,
+    })
+}
+
+fn e4_delta_effects_from_summary(summaries: &[E4SummaryRecord]) -> Vec<E4DeltaEffectRow> {
+    let mut rows = Vec::new();
+    for summary in summaries {
+        let se_delta = std_to_se(summary.std_delta, summary.n_runs);
+        rows.push(E4DeltaEffectRow {
+            mirror_weight: summary.mirror_weight,
+            bin_width: summary.bin_width,
+            eps_cents: summary.eps_cents,
+            mean_delta: summary.mean_delta,
+            sd_delta: summary.std_delta,
+            se_delta,
+            n_seeds: summary.n_runs,
+            mean_mass_min3: summary.mean_min3,
+            sd_mass_min3: summary.std_min3,
+            mean_mass_maj3: summary.mean_maj3,
+            sd_mass_maj3: summary.std_maj3,
+            mean_mass_p5: summary.mean_p5,
+            sd_mass_p5: summary.std_p5,
+        });
+    }
+    rows.sort_by(|a, b| {
+        a.bin_width
+            .partial_cmp(&b.bin_width)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| {
+                a.eps_cents
+                    .partial_cmp(&b.eps_cents)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .then_with(|| {
+                a.mirror_weight
+                    .partial_cmp(&b.mirror_weight)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+    });
+    rows
+}
+
+fn e4_delta_effects_csv(rows: &[E4DeltaEffectRow]) -> String {
+    let mut out = String::from(
+        "mirror_weight,bin_width,eps_cents,mean_delta,sd_delta,se_delta,n_seeds,mean_mass_m3,sd_mass_m3,mean_mass_M3,sd_mass_M3,mean_mass_P5,sd_mass_P5\n",
+    );
+    for row in rows {
+        out.push_str(&format!(
+            "{:.3},{:.3},{:.1},{:.6},{:.6},{:.6},{},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6}\n",
+            row.mirror_weight,
+            row.bin_width,
+            row.eps_cents,
+            row.mean_delta,
+            row.sd_delta,
+            row.se_delta,
+            row.n_seeds,
+            row.mean_mass_min3,
+            row.sd_mass_min3,
+            row.mean_mass_maj3,
+            row.sd_mass_maj3,
+            row.mean_mass_p5,
+            row.sd_mass_p5
+        ));
+    }
+    out
+}
+
+fn e4_regression_rows(summaries: &[E4SummaryRecord]) -> Vec<E4RegressionRow> {
+    let mut map: std::collections::HashMap<(i32, i32), Vec<&E4SummaryRecord>> =
+        std::collections::HashMap::new();
+    for summary in summaries {
+        let key = (float_key(summary.bin_width), float_key(summary.eps_cents));
+        map.entry(key).or_default().push(summary);
+    }
+    let mut rows = Vec::new();
+    for ((_bw_key, _eps_key), group) in map {
+        let bin_width = group[0].bin_width;
+        let eps_cents = group[0].eps_cents;
+        let mut points: Vec<(f32, f32)> = group
+            .iter()
+            .map(|s| (s.mirror_weight, s.mean_delta))
+            .collect();
+        points.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+        let xs: Vec<f32> = points.iter().map(|(x, _)| *x).collect();
+        let ys: Vec<f32> = points.iter().map(|(_, y)| *y).collect();
+        if let Some(fit) = linear_regression(&xs, &ys) {
+            let ci_half = 1.96 * fit.se_slope;
+            let seed =
+                0xE4E4_0000_u64 ^ (float_key(bin_width) as u64) ^ (float_key(eps_cents) as u64);
+            let spearman = spearman_rho(&xs, &ys);
+            let spearman_p = perm_pvalue(&xs, &ys, 1000, seed, spearman_rho);
+            rows.push(E4RegressionRow {
+                bin_width,
+                eps_cents,
+                slope: fit.slope,
+                slope_ci_lo: fit.slope - ci_half,
+                slope_ci_hi: fit.slope + ci_half,
+                r2: fit.r2,
+                spearman_rho: spearman,
+                spearman_p,
+                n_weights: xs.len(),
+            });
+        }
+    }
+    rows.sort_by(|a, b| {
+        a.bin_width
+            .partial_cmp(&b.bin_width)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| {
+                a.eps_cents
+                    .partial_cmp(&b.eps_cents)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+    });
+    rows
+}
+
+fn e4_regression_csv(rows: &[E4RegressionRow]) -> String {
+    let mut out = String::from(
+        "bin_width,eps_cents,slope,slope_ci_lo,slope_ci_hi,r2,spearman_rho,spearman_p,n_weights\n",
+    );
+    for row in rows {
+        out.push_str(&format!(
+            "{:.3},{:.1},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{}\n",
+            row.bin_width,
+            row.eps_cents,
+            row.slope,
+            row.slope_ci_lo,
+            row.slope_ci_hi,
+            row.r2,
+            row.spearman_rho,
+            row.spearman_p,
+            row.n_weights
+        ));
+    }
+    out
+}
+
+fn e4_endpoint_effect_rows(records: &[E4RunRecord]) -> Vec<E4EndpointEffectRow> {
+    #[derive(Default)]
+    struct EndpointAccum {
+        bin_width: f32,
+        eps_cents: f32,
+        delta0: Vec<f32>,
+        delta1: Vec<f32>,
+    }
+
+    let mut map: std::collections::HashMap<(i32, i32), EndpointAccum> =
+        std::collections::HashMap::new();
+    for record in records {
+        if (record.mirror_weight - 0.0).abs() > 1e-6 && (record.mirror_weight - 1.0).abs() > 1e-6 {
+            continue;
+        }
+        let key = (float_key(record.bin_width), float_key(record.eps_cents));
+        let entry = map.entry(key).or_insert_with(|| EndpointAccum {
+            bin_width: record.bin_width,
+            eps_cents: record.eps_cents,
+            ..EndpointAccum::default()
+        });
+        if (record.mirror_weight - 0.0).abs() < 1e-6 {
+            entry.delta0.push(record.delta);
+        } else {
+            entry.delta1.push(record.delta);
+        }
+    }
+
+    let mut rows = Vec::new();
+    for (_, entry) in map {
+        let n0 = entry.delta0.len();
+        let n1 = entry.delta1.len();
+        if n0 == 0 || n1 == 0 {
+            continue;
+        }
+        let (mean0, sd0) = mean_std_sample(&entry.delta0);
+        let (mean1, sd1) = mean_std_sample(&entry.delta1);
+        let delta_end = mean1 - mean0;
+        let se = (sd0.powi(2) / n0 as f32 + sd1.powi(2) / n1 as f32).sqrt();
+        let ci_half = 1.96 * se;
+        let df = (n0 + n1).saturating_sub(2) as f32;
+        let pooled_sd = if df > 0.0 {
+            (((n0.saturating_sub(1)) as f32 * sd0.powi(2)
+                + (n1.saturating_sub(1)) as f32 * sd1.powi(2))
+                / df)
+                .sqrt()
+        } else {
+            0.0
+        };
+        let cohen_d = if pooled_sd > 0.0 {
+            delta_end / pooled_sd
+        } else {
+            0.0
+        };
+        rows.push(E4EndpointEffectRow {
+            bin_width: entry.bin_width,
+            eps_cents: entry.eps_cents,
+            delta_end,
+            ci_lo: delta_end - ci_half,
+            ci_hi: delta_end + ci_half,
+            cohen_d,
+            n0,
+            n1,
+        });
+    }
+    rows.sort_by(|a, b| {
+        a.bin_width
+            .partial_cmp(&b.bin_width)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| {
+                a.eps_cents
+                    .partial_cmp(&b.eps_cents)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+    });
+    rows
+}
+
+fn e4_endpoint_effect_csv(rows: &[E4EndpointEffectRow]) -> String {
+    let mut out = String::from("bin_width,eps_cents,delta_end,ci_lo,ci_hi,cohen_d,n0,n1\n");
+    for row in rows {
+        out.push_str(&format!(
+            "{:.3},{:.1},{:.6},{:.6},{:.6},{:.6},{},{}\n",
+            row.bin_width,
+            row.eps_cents,
+            row.delta_end,
+            row.ci_lo,
+            row.ci_hi,
+            row.cohen_d,
+            row.n0,
+            row.n1
+        ));
+    }
+    out
 }
 
 fn mean_histogram_for_weight(
@@ -3755,10 +4132,13 @@ fn render_e4_delta_plot(
     out_path: &Path,
     summaries: &[E4SummaryRecord],
     bin_width: f32,
+    eps_cents: f32,
 ) -> Result<(), Box<dyn Error>> {
     let mut series: Vec<(f32, f32, f32)> = summaries
         .iter()
-        .filter(|s| (s.bin_width - bin_width).abs() < 1e-6)
+        .filter(|s| {
+            (s.bin_width - bin_width).abs() < 1e-6 && (s.eps_cents - eps_cents).abs() < 1e-6
+        })
         .map(|s| (s.mirror_weight, s.mean_delta, s.std_delta))
         .collect();
     if series.is_empty() {
@@ -3781,7 +4161,7 @@ fn render_e4_delta_plot(
     root.fill(&WHITE)?;
     let mut chart = ChartBuilder::on(&root)
         .caption(
-            format!("E4 Δ (Major-Minor) vs Mirror Weight (bw={bin_width:.2})"),
+            format!("E4 Δ (Major-Minor) vs Mirror Weight (bw={bin_width:.2}, eps={eps_cents:.0}c)"),
             ("sans-serif", 20),
         )
         .margin(10)
@@ -3819,6 +4199,17 @@ fn render_e4_delta_plot(
         chart.draw_series(std::iter::once(Circle::new((*w, *mean), 3, BLUE.filled())))?;
     }
 
+    let xs: Vec<f32> = series.iter().map(|(w, _, _)| *w).collect();
+    let ys: Vec<f32> = series.iter().map(|(_, mean, _)| *mean).collect();
+    if let Some(fit) = linear_regression(&xs, &ys) {
+        let y0 = fit.intercept + fit.slope * 0.0;
+        let y1 = fit.intercept + fit.slope * 1.0;
+        chart.draw_series(std::iter::once(PathElement::new(
+            vec![(0.0, y0), (1.0, y1)],
+            BLACK.mix(0.6),
+        )))?;
+    }
+
     root.present()?;
     Ok(())
 }
@@ -3827,10 +4218,13 @@ fn render_e4_major_minor_plot(
     out_path: &Path,
     summaries: &[E4SummaryRecord],
     bin_width: f32,
+    eps_cents: f32,
 ) -> Result<(), Box<dyn Error>> {
     let mut series: Vec<(f32, f32, f32, f32, f32)> = summaries
         .iter()
-        .filter(|s| (s.bin_width - bin_width).abs() < 1e-6)
+        .filter(|s| {
+            (s.bin_width - bin_width).abs() < 1e-6 && (s.eps_cents - eps_cents).abs() < 1e-6
+        })
         .map(|s| {
             (
                 s.mirror_weight,
@@ -3857,7 +4251,9 @@ fn render_e4_major_minor_plot(
     root.fill(&WHITE)?;
     let mut chart = ChartBuilder::on(&root)
         .caption(
-            format!("E4 Major/Minor Scores vs Mirror Weight (bw={bin_width:.2})"),
+            format!(
+                "E4 Major/Minor Scores vs Mirror Weight (bw={bin_width:.2}, eps={eps_cents:.0}c)"
+            ),
             ("sans-serif", 20),
         )
         .margin(10)
@@ -3922,10 +4318,13 @@ fn render_e4_third_mass_plot(
     out_path: &Path,
     summaries: &[E4SummaryRecord],
     bin_width: f32,
+    eps_cents: f32,
 ) -> Result<(), Box<dyn Error>> {
     let mut series: Vec<(f32, f32, f32, f32, f32)> = summaries
         .iter()
-        .filter(|s| (s.bin_width - bin_width).abs() < 1e-6)
+        .filter(|s| {
+            (s.bin_width - bin_width).abs() < 1e-6 && (s.eps_cents - eps_cents).abs() < 1e-6
+        })
         .map(|s| {
             (
                 s.mirror_weight,
@@ -3952,7 +4351,7 @@ fn render_e4_third_mass_plot(
     root.fill(&WHITE)?;
     let mut chart = ChartBuilder::on(&root)
         .caption(
-            format!("E4 Third Mass vs Mirror Weight (bw={bin_width:.2})"),
+            format!("E4 Third Mass vs Mirror Weight (bw={bin_width:.2}, eps={eps_cents:.0}c)"),
             ("sans-serif", 20),
         )
         .margin(10)
@@ -4017,10 +4416,13 @@ fn render_e4_major_minor_rate_plot(
     out_path: &Path,
     summaries: &[E4SummaryRecord],
     bin_width: f32,
+    eps_cents: f32,
 ) -> Result<(), Box<dyn Error>> {
     let mut series: Vec<(f32, f32, f32)> = summaries
         .iter()
-        .filter(|s| (s.bin_width - bin_width).abs() < 1e-6)
+        .filter(|s| {
+            (s.bin_width - bin_width).abs() < 1e-6 && (s.eps_cents - eps_cents).abs() < 1e-6
+        })
         .map(|s| (s.mirror_weight, s.major_rate, s.minor_rate))
         .collect();
     if series.is_empty() {
@@ -4032,7 +4434,9 @@ fn render_e4_major_minor_rate_plot(
     root.fill(&WHITE)?;
     let mut chart = ChartBuilder::on(&root)
         .caption(
-            format!("E4 Major/Minor Rate vs Mirror Weight (bw={bin_width:.2})"),
+            format!(
+                "E4 Major/Minor Rate vs Mirror Weight (bw={bin_width:.2}, eps={eps_cents:.0}c)"
+            ),
             ("sans-serif", 20),
         )
         .margin(10)
@@ -4059,6 +4463,160 @@ fn render_e4_major_minor_rate_plot(
         )))?;
     }
 
+    root.present()?;
+    Ok(())
+}
+
+fn render_e4_interval_heatmap(
+    out_path: &Path,
+    hist_records: &[E4HistRecord],
+    bin_width: f32,
+) -> Result<(), Box<dyn Error>> {
+    let mut weights: Vec<f32> = hist_records
+        .iter()
+        .filter(|r| (r.bin_width - bin_width).abs() < 1e-6)
+        .map(|r| r.mirror_weight)
+        .collect();
+    weights.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    weights.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
+    if weights.is_empty() {
+        return Ok(());
+    }
+
+    let mut series: Vec<(f32, Histogram)> = Vec::new();
+    for &weight in &weights {
+        if let Some(hist) = mean_histogram_for_weight(hist_records, weight, bin_width) {
+            series.push((weight, hist));
+        }
+    }
+    if series.is_empty() {
+        return Ok(());
+    }
+    let series_weights: Vec<f32> = series.iter().map(|(w, _)| *w).collect();
+
+    let mut max_mass = 0.0f32;
+    for (_, hist) in &series {
+        for &mass in &hist.masses {
+            max_mass = max_mass.max(mass);
+        }
+    }
+    max_mass = max_mass.max(1e-6);
+
+    let root = BitMapBackend::new(out_path, (1400, 800)).into_drawing_area();
+    root.fill(&WHITE)?;
+    let mut chart = ChartBuilder::on(&root)
+        .caption(
+            format!("E4 Interval Heatmap (bw={bin_width:.2})"),
+            ("sans-serif", 22),
+        )
+        .margin(10)
+        .x_label_area_size(40)
+        .y_label_area_size(60)
+        .build_cartesian_2d(0.0f32..1.0f32, 0.0f32..12.0f32)?;
+
+    chart
+        .configure_mesh()
+        .x_desc("mirror weight")
+        .y_desc("interval (semitones mod 12)")
+        .x_labels(6)
+        .y_labels(13)
+        .draw()?;
+
+    let default_half = E4_WEIGHT_COARSE_STEP.max(0.05) * 0.5;
+    for (idx, (weight, hist)) in series.iter().enumerate() {
+        let left = if idx == 0 {
+            if series_weights.len() > 1 {
+                weight - 0.5 * (series_weights[1] - *weight)
+            } else {
+                weight - default_half
+            }
+        } else {
+            0.5 * (series_weights[idx - 1] + *weight)
+        };
+        let right = if idx + 1 < series_weights.len() {
+            0.5 * (*weight + series_weights[idx + 1])
+        } else if series_weights.len() > 1 {
+            *weight + 0.5 * (*weight - series_weights[idx - 1])
+        } else {
+            *weight + default_half
+        };
+        let x0 = left.clamp(0.0, 1.0);
+        let x1 = right.clamp(0.0, 1.0);
+        for (center, mass) in hist.bin_centers.iter().zip(hist.masses.iter()) {
+            let y0 = center - 0.5 * bin_width;
+            let y1 = center + 0.5 * bin_width;
+            let t = (mass / max_mass).clamp(0.0, 1.0);
+            let inv = 1.0 - t;
+            let color = RGBColor(255, (255.0 * inv) as u8, (255.0 * inv) as u8);
+            chart.draw_series(std::iter::once(Rectangle::new(
+                [(x0, y0), (x1, y1)],
+                color.filled(),
+            )))?;
+        }
+    }
+
+    root.present()?;
+    Ok(())
+}
+
+fn render_e4_kernel_gate(out_path: &Path, anchor_hz: f32) -> Result<(), Box<dyn Error>> {
+    let space = Log2Space::new(80.0, 2000.0, 96);
+    let root_hz = anchor_hz;
+    let fifth_hz = root_hz * 1.5;
+    let mut env_scan = vec![0.0f32; space.n_bins()];
+    env_scan[nearest_bin(&space, root_hz)] += 1.0;
+    env_scan[nearest_bin(&space, fifth_hz)] += 1.0;
+
+    let mut points: Vec<(f32, f32)> = Vec::new();
+    for weight in build_weight_grid(E4_WEIGHT_FINE_STEP) {
+        let mut params = HarmonicityParams::default();
+        params.mirror_weight = weight;
+        let kernel = HarmonicityKernel::new(&space, params);
+        let (h_scan, _) = kernel.potential_h_from_log2_spectrum(&env_scan, &space);
+        let freq_m3 = root_hz * 2.0f32.powf(3.0 / 12.0);
+        let freq_maj3 = root_hz * 2.0f32.powf(4.0 / 12.0);
+        let h3 = sample_scan_linear_log2(&space, &h_scan, freq_m3);
+        let h4 = sample_scan_linear_log2(&space, &h_scan, freq_maj3);
+        points.push((weight, h4 - h3));
+    }
+    if points.is_empty() {
+        return Ok(());
+    }
+    let mut y_min = f32::INFINITY;
+    let mut y_max = f32::NEG_INFINITY;
+    for (_, y) in &points {
+        y_min = y_min.min(*y);
+        y_max = y_max.max(*y);
+    }
+    if !y_min.is_finite() || !y_max.is_finite() || (y_max - y_min).abs() < 1e-6 {
+        y_min = -0.1;
+        y_max = 0.1;
+    }
+    let pad = 0.1 * (y_max - y_min);
+    let root = BitMapBackend::new(out_path, (1200, 700)).into_drawing_area();
+    root.fill(&WHITE)?;
+    let mut chart = ChartBuilder::on(&root)
+        .caption(
+            "E4 Kernel Gate: H(+4)-H(+3) vs Mirror Weight",
+            ("sans-serif", 20),
+        )
+        .margin(10)
+        .x_label_area_size(40)
+        .y_label_area_size(60)
+        .build_cartesian_2d(0.0f32..1.0f32, (y_min - pad)..(y_max + pad))?;
+
+    chart
+        .configure_mesh()
+        .x_desc("mirror weight")
+        .y_desc("H(+4) - H(+3)")
+        .draw()?;
+
+    chart.draw_series(std::iter::once(PathElement::new(
+        vec![(0.0, 0.0), (1.0, 0.0)],
+        BLACK.mix(0.3),
+    )))?;
+
+    chart.draw_series(LineSeries::new(points, &BLUE))?;
     root.present()?;
     Ok(())
 }

@@ -24,6 +24,11 @@ CLIP_WARN := `bash -c 'if [ "{{OS}}" != "Linux" ]; then echo "0"; elif command -
 default:
 	@just --list
 
+paper-check:
+	@cargo check --examples
+	@cargo check --all-targets
+	@cargo test --examples
+
 session url="":
 	@if [ -n "{{url}}" ]; then \
 		echo "{{url}}" > "{{SESSION_FILE}}"; \

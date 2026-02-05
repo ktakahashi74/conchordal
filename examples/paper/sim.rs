@@ -161,7 +161,7 @@ impl E4SimConfig {
             anchor_hz: E4_ANCHOR_HZ,
             center_cents: 350.0,
             range_oct: 0.5,
-            voice_count: 24,
+            voice_count: 32,
             fs: 48_000.0,
             hop: 512,
             steps: 1200,

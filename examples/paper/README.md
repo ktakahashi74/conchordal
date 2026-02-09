@@ -8,6 +8,21 @@ Example runner for generating plots used in the paper.
 cargo run --example paper
 ```
 
+## Just recipes
+
+```bash
+just --justfile examples/paper/justfile paper --exp e2
+```
+
+```bash
+just --justfile examples/paper/justfile paper-pdf --exp e2
+```
+
+`paper-pdf` runs the plot generator and converts all emitted SVG files in
+`target/plots/paper/` to PDF. Conversion uses `rsvg-convert` or `inkscape`.
+`paper` rejects concurrent runs with a lock at `target/plots/.paper_plots.lock`.
+If a previous run crashed, remove that lock directory and retry.
+
 ## Build check
 
 ```bash
@@ -43,6 +58,7 @@ cargo run --example paper -- --exp e2 --e2-phase normal
 Default E2 phase is `dissonance_then_consonance` when `--e2-phase` is omitted.
 
 Outputs are written to `target/plots/paper/<exp>/` (for example, `target/plots/paper/e2/`).
+Plot images are emitted as `.svg` files (vector output).
 `target/plots/paper` is cleared on each run.
 
 ## Manual verification

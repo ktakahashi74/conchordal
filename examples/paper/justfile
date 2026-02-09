@@ -1,0 +1,41 @@
+set shell := ["bash", "-euo", "pipefail", "-c"]
+set working-directory := "../.."
+
+default:
+	@just --justfile examples/paper/justfile --list
+
+paper *args:
+	cargo run --example paper -- {{args}}
+
+paper-check:
+	cargo check --examples
+	cargo check --all-targets
+	cargo test --examples
+
+svg2pdf dir="target/plots/paper":
+	@if command -v rsvg-convert >/dev/null 2>&1; then \
+		find "{{dir}}" -type f -name '*.svg' -print0 | \
+		while IFS= read -r -d '' svg; do \
+			pdf="${svg%.svg}.pdf"; \
+			rsvg-convert -f pdf -o "$pdf" "$svg"; \
+			echo "write $pdf"; \
+		done; \
+	elif command -v inkscape >/dev/null 2>&1; then \
+		find "{{dir}}" -type f -name '*.svg' -print0 | \
+		while IFS= read -r -d '' svg; do \
+			pdf="${svg%.svg}.pdf"; \
+			inkscape "$svg" --export-type=pdf --export-filename="$pdf" >/dev/null; \
+			echo "write $pdf"; \
+		done; \
+	else \
+		echo "error: install inkscape or rsvg-convert for vector SVG->PDF conversion"; \
+		exit 1; \
+	fi
+
+paper-pdf *args:
+	cargo run --example paper -- {{args}}
+	just --justfile examples/paper/justfile svg2pdf
+
+clean:
+	rm -rf target/plots/paper
+	rm -rf target/plots/.paper_plots.lock

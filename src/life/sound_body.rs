@@ -1,6 +1,7 @@
 use super::articulation_core::{ArticulationSignal, PinkNoise};
 use crate::core::log2space::Log2Space;
-use crate::life::scenario::{HarmonicMode, SoundBodyConfig, TimbreGenotype};
+use crate::life::scenario::{SoundBodyConfig, TimbreGenotype};
+use crate::life::sound::spectral::{add_log2_energy, harmonic_gain, harmonic_ratio};
 use rand::Rng;
 use std::f32::consts::PI;
 
@@ -17,32 +18,6 @@ pub trait SoundBody {
         space: &Log2Space,
         signal: &ArticulationSignal,
     );
-}
-
-fn add_log2_energy(amps: &mut [f32], space: &Log2Space, freq_hz: f32, energy: f32) {
-    if !freq_hz.is_finite() || energy == 0.0 {
-        return;
-    }
-    if freq_hz < space.fmin || freq_hz > space.fmax {
-        return;
-    }
-    let log_f = freq_hz.log2();
-    let base = space.centers_log2[0];
-    let step = space.step();
-    let pos = (log_f - base) / step;
-    let idx_base = pos.floor();
-    let idx = idx_base as isize;
-    if idx < 0 {
-        return;
-    }
-    let idx = idx as usize;
-    let frac = pos - idx_base;
-    if idx + 1 < amps.len() {
-        amps[idx] += energy * (1.0 - frac);
-        amps[idx + 1] += energy * frac;
-    } else if idx < amps.len() {
-        amps[idx] += energy;
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -114,28 +89,11 @@ pub struct HarmonicBody {
 
 impl HarmonicBody {
     fn partial_ratio(&self, idx: usize) -> f32 {
-        let k = (idx + 1) as f32;
-        let base = match self.genotype.mode {
-            HarmonicMode::Harmonic => k,
-            HarmonicMode::Metallic => k.powf(1.4),
-        };
-        let stretch = 1.0 + self.genotype.stiffness * k * k;
-        (base * stretch).max(0.1)
+        harmonic_ratio(&self.genotype, idx.saturating_add(1))
     }
 
     fn compute_partial_amp(&self, idx: usize, current_energy: f32) -> f32 {
-        let k = (idx + 1) as f32;
-        let slope = self.genotype.brightness.max(0.0);
-        let mut amp = 1.0 / k.powf(slope.max(1e-6));
-        if (idx + 1).is_multiple_of(2) {
-            amp *= 1.0 - self.genotype.comb.clamp(0.0, 1.0);
-        }
-        let damping = self.genotype.damping.max(0.0);
-        if damping > 0.0 {
-            let energy = current_energy.clamp(0.0, 1.0);
-            amp *= energy.powf(damping * k);
-        }
-        amp
+        harmonic_gain(&self.genotype, idx.saturating_add(1), current_energy)
     }
 
     fn partial_count(&self) -> usize {

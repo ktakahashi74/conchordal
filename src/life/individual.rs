@@ -15,7 +15,7 @@ use crate::life::phonation_engine::{
 };
 use crate::life::scenario::ArticulationCoreConfig;
 use crate::life::social_density::SocialDensityTrace;
-use crate::life::sound::BodySnapshot;
+use crate::life::sound::{BodyKind, BodySnapshot};
 use rand::SeedableRng;
 
 #[path = "articulation_core.rs"]
@@ -362,25 +362,7 @@ impl Individual {
             return Ok(());
         }
         let mut control = self.effective_control.clone();
-        if let Some(amp) = update.amp {
-            control.body.amp = amp.clamp(0.0, 1.0);
-        }
-        if let Some(freq) = update.freq {
-            control.pitch.freq = freq.clamp(1.0, 20_000.0);
-            control.pitch.mode = PitchMode::Lock;
-        }
-        if let Some(brightness) = update.timbre_brightness {
-            control.body.timbre.brightness = brightness.clamp(0.0, 1.0);
-        }
-        if let Some(inharmonic) = update.timbre_inharmonic {
-            control.body.timbre.inharmonic = inharmonic.clamp(0.0, 1.0);
-        }
-        if let Some(width) = update.timbre_width {
-            control.body.timbre.width = width.clamp(0.0, 1.0);
-        }
-        if let Some(motion) = update.timbre_motion {
-            control.body.timbre.motion = motion.clamp(0.0, 1.0);
-        }
+        control.apply_update(update);
         self.ensure_fixed_kinds(&control)?;
         let dirty = Dirty::from_update(update);
         self.base_control = control.clone();
@@ -649,14 +631,14 @@ impl Individual {
     pub(crate) fn body_snapshot(&self) -> BodySnapshot {
         match &self.body {
             AnySoundBody::Sine(_body) => BodySnapshot {
-                kind: "sine".to_string(),
+                kind: BodyKind::Sine,
                 // Target amp already includes body gain; keep snapshot scale neutral.
                 amp_scale: 1.0,
                 brightness: 0.0,
                 noise_mix: 0.0,
             },
             AnySoundBody::Harmonic(body) => BodySnapshot {
-                kind: "harmonic".to_string(),
+                kind: BodyKind::Harmonic,
                 // Target amp already includes body gain; keep snapshot scale neutral.
                 amp_scale: 1.0,
                 brightness: body.genotype.brightness.clamp(0.0, 1.0),

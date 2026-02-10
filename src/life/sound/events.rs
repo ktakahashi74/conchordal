@@ -1,8 +1,14 @@
 pub type IndividualId = u64;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BodyKind {
+    Sine,
+    Harmonic,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct BodySnapshot {
-    pub kind: String,
+    pub kind: BodyKind,
     pub amp_scale: f32,
     pub brightness: f32,
     pub noise_mix: f32,

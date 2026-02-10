@@ -4,10 +4,10 @@ use crate::life::individual::{ArticulationSignal, ArticulationWrapper};
 use crate::life::lifecycle::default_decay_attack;
 use crate::life::phonation_engine::{PhonationKick, PhonationUpdate};
 use crate::life::scenario::TimbreGenotype;
-use crate::life::sound::BodySnapshot;
 use crate::life::sound::any_backend::AnyBackend;
 use crate::life::sound::control::{ControlRamp, VoiceControlBlock};
 use crate::life::sound::modal_engine::ModeShape;
+use crate::life::sound::{BodyKind, BodySnapshot};
 use std::collections::VecDeque;
 
 #[derive(Debug, Clone, Copy)]
@@ -469,8 +469,8 @@ fn default_mode_shape() -> ModeShape {
 }
 
 fn mode_shape_from_snapshot(snapshot: &BodySnapshot) -> ModeShape {
-    match snapshot.kind.as_str() {
-        "harmonic" => ModeShape::Harmonic {
+    match snapshot.kind {
+        BodyKind::Harmonic => ModeShape::Harmonic {
             partials: 16,
             base_t60_s: 0.8,
             in_gain: 1.0,
@@ -480,13 +480,62 @@ fn mode_shape_from_snapshot(snapshot: &BodySnapshot) -> ModeShape {
                 ..TimbreGenotype::default()
             },
         },
-        _ => default_mode_shape(),
+        BodyKind::Sine => default_mode_shape(),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mode_shape_from_snapshot_maps_sine_to_default() {
+        let snapshot = BodySnapshot {
+            kind: BodyKind::Sine,
+            amp_scale: 1.0,
+            brightness: 0.8,
+            noise_mix: 0.6,
+        };
+        let shape = mode_shape_from_snapshot(&snapshot);
+        match shape {
+            ModeShape::Sine {
+                t60_s,
+                out_gain,
+                in_gain,
+            } => {
+                assert!((t60_s - 0.8).abs() <= 1e-6);
+                assert!((out_gain - 1.0).abs() <= 1e-6);
+                assert!((in_gain - 1.0).abs() <= 1e-6);
+            }
+            other => panic!("unexpected shape: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn mode_shape_from_snapshot_maps_harmonic_fields() {
+        let snapshot = BodySnapshot {
+            kind: BodyKind::Harmonic,
+            amp_scale: 1.0,
+            brightness: 0.42,
+            noise_mix: 0.73,
+        };
+        let shape = mode_shape_from_snapshot(&snapshot);
+        match shape {
+            ModeShape::Harmonic {
+                partials,
+                base_t60_s,
+                in_gain,
+                genotype,
+            } => {
+                assert_eq!(partials, 16);
+                assert!((base_t60_s - 0.8).abs() <= 1e-6);
+                assert!((in_gain - 1.0).abs() <= 1e-6);
+                assert!((genotype.brightness - 0.42).abs() <= 1e-6);
+                assert!((genotype.jitter - 0.73).abs() <= 1e-6);
+            }
+            other => panic!("unexpected shape: {other:?}"),
+        }
+    }
 
     #[test]
     fn spawn_does_not_sound_until_triggered() {

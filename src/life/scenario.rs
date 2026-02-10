@@ -189,10 +189,13 @@ pub struct PhonationConfig {
 }
 
 #[derive(Debug, Clone)]
-pub struct IndividualConfig {
+pub struct AgentSpec {
     pub control: AgentControl,
     pub articulation: ArticulationCoreConfig,
 }
+
+pub type IndividualConfig = AgentSpec;
+pub type SpawnSpec = AgentSpec;
 
 #[derive(Debug, Clone)]
 pub enum SoundBodyConfig {
@@ -265,7 +268,7 @@ impl Default for PitchCoreConfig {
 
 // Scenes are represented by SceneMarker and do not own events.
 
-impl IndividualConfig {
+impl AgentSpec {
     pub fn spawn(
         &self,
         assigned_id: u64,
@@ -286,16 +289,10 @@ impl IndividualConfig {
     }
 }
 
-impl fmt::Display for IndividualConfig {
+impl fmt::Display for AgentSpec {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Agent(control={:?})", self.control)
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct SpawnSpec {
-    pub control: AgentControl,
-    pub articulation: ArticulationCoreConfig,
 }
 
 #[derive(Debug, Clone)]
@@ -355,7 +352,7 @@ pub enum Action {
     Spawn {
         group_id: u64,
         ids: Vec<u64>,
-        spec: SpawnSpec,
+        spec: AgentSpec,
         strategy: Option<SpawnStrategy>,
     },
     Update {
@@ -403,5 +400,30 @@ impl fmt::Display for Action {
             }
             Action::Finish => write!(f, "Finish"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::life::individual::{AgentMetadata, SoundBody};
+
+    #[test]
+    fn agent_spec_aliases_behave_identically() {
+        let mut control = AgentControl::default();
+        control.pitch.freq = 330.0;
+        let base = AgentSpec {
+            control,
+            articulation: ArticulationCoreConfig::default(),
+        };
+
+        let as_individual: IndividualConfig = base.clone();
+        let as_spawn: SpawnSpec = base.clone();
+        assert_eq!(format!("{as_individual}"), format!("{as_spawn}"));
+
+        let a = as_individual.spawn(10, 0, AgentMetadata::default(), 48_000.0, 99);
+        let b = as_spawn.spawn(10, 0, AgentMetadata::default(), 48_000.0, 99);
+        assert_eq!(a.id(), b.id());
+        assert!((a.body.base_freq_hz() - b.body.base_freq_hz()).abs() <= 1e-6);
     }
 }

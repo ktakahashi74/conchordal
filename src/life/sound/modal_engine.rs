@@ -1,7 +1,8 @@
 use crate::core::log2space::Log2Space;
 use crate::life::individual::ArticulationSignal;
-use crate::life::scenario::{HarmonicMode, TimbreGenotype};
+use crate::life::scenario::TimbreGenotype;
 use crate::life::sound::control::VoiceControlBlock;
+use crate::life::sound::spectral::{add_log2_energy, harmonic_gain, harmonic_ratio};
 use crate::synth::SynthError;
 use crate::synth::modes::ModeParams;
 use crate::synth::resonator::ResonatorBank;
@@ -215,56 +216,5 @@ impl ModeShape {
                 }
             }
         }
-    }
-}
-
-fn harmonic_ratio(genotype: &TimbreGenotype, k: usize) -> f32 {
-    let kf = k as f32;
-    let base = match genotype.mode {
-        HarmonicMode::Harmonic => kf,
-        HarmonicMode::Metallic => kf.powf(1.4),
-    };
-    let stretch = 1.0 + genotype.stiffness * kf * kf;
-    (base * stretch).max(0.1)
-}
-
-fn harmonic_gain(genotype: &TimbreGenotype, k: usize, energy: f32) -> f32 {
-    let kf = k as f32;
-    let slope = genotype.brightness.max(0.0);
-    let mut amp = 1.0 / kf.powf(slope.max(1e-6));
-    if k.is_multiple_of(2) {
-        amp *= 1.0 - genotype.comb.clamp(0.0, 1.0);
-    }
-    let damping = genotype.damping.max(0.0);
-    if damping > 0.0 {
-        let energy = energy.clamp(0.0, 1.0);
-        amp *= energy.powf(damping * kf);
-    }
-    amp
-}
-
-fn add_log2_energy(amps: &mut [f32], space: &Log2Space, freq_hz: f32, energy: f32) {
-    if !freq_hz.is_finite() || energy == 0.0 {
-        return;
-    }
-    if freq_hz < space.fmin || freq_hz > space.fmax {
-        return;
-    }
-    let log_f = freq_hz.log2();
-    let base = space.centers_log2[0];
-    let step = space.step();
-    let pos = (log_f - base) / step;
-    let idx_base = pos.floor();
-    let idx = idx_base as isize;
-    if idx < 0 {
-        return;
-    }
-    let idx = idx as usize;
-    let frac = pos - idx_base;
-    if idx + 1 < amps.len() {
-        amps[idx] += energy * (1.0 - frac);
-        amps[idx + 1] += energy * frac;
-    } else if idx < amps.len() {
-        amps[idx] += energy;
     }
 }

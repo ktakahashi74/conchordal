@@ -1,4 +1,6 @@
 const RANGE_OCT_MAX: f32 = 6.0;
+pub const MIN_FREQ_HZ: f32 = 1.0;
+pub const MAX_FREQ_HZ: f32 = 20_000.0;
 
 #[derive(Debug, Clone, Default)]
 pub struct WorldControl {}
@@ -14,10 +16,41 @@ pub struct AgentControl {
 impl AgentControl {
     pub fn validate(&self) -> Result<(), String> {
         let freq = self.pitch.freq;
-        if !freq.is_finite() || freq <= 0.0 {
+        if !freq.is_finite() || freq < MIN_FREQ_HZ {
             return Err("pitch.freq must be finite and > 0".to_string());
         }
         Ok(())
+    }
+
+    #[inline]
+    pub fn set_amp_clamped(&mut self, amp: f32) {
+        self.body.amp = amp.clamp(0.0, 1.0);
+    }
+
+    #[inline]
+    pub fn set_freq_lock_clamped(&mut self, freq: f32) {
+        self.pitch.freq = freq.clamp(MIN_FREQ_HZ, MAX_FREQ_HZ);
+        self.pitch.mode = PitchMode::Lock;
+    }
+
+    #[inline]
+    pub fn set_timbre_brightness_clamped(&mut self, brightness: f32) {
+        self.body.timbre.brightness = brightness.clamp(0.0, 1.0);
+    }
+
+    #[inline]
+    pub fn set_timbre_inharmonic_clamped(&mut self, inharmonic: f32) {
+        self.body.timbre.inharmonic = inharmonic.clamp(0.0, 1.0);
+    }
+
+    #[inline]
+    pub fn set_timbre_width_clamped(&mut self, width: f32) {
+        self.body.timbre.width = width.clamp(0.0, 1.0);
+    }
+
+    #[inline]
+    pub fn set_timbre_motion_clamped(&mut self, motion: f32) {
+        self.body.timbre.motion = motion.clamp(0.0, 1.0);
     }
 }
 
@@ -164,5 +197,64 @@ impl ControlUpdate {
             && self.timbre_inharmonic.is_none()
             && self.timbre_width.is_none()
             && self.timbre_motion.is_none()
+    }
+}
+
+impl AgentControl {
+    pub fn apply_update(&mut self, update: &ControlUpdate) {
+        if let Some(amp) = update.amp {
+            self.set_amp_clamped(amp);
+        }
+        if let Some(freq) = update.freq {
+            self.set_freq_lock_clamped(freq);
+        }
+        if let Some(brightness) = update.timbre_brightness {
+            self.set_timbre_brightness_clamped(brightness);
+        }
+        if let Some(inharmonic) = update.timbre_inharmonic {
+            self.set_timbre_inharmonic_clamped(inharmonic);
+        }
+        if let Some(width) = update.timbre_width {
+            self.set_timbre_width_clamped(width);
+        }
+        if let Some(motion) = update.timbre_motion {
+            self.set_timbre_motion_clamped(motion);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn apply_update_clamps_and_locks_freq() {
+        let mut control = AgentControl::default();
+        control.pitch.mode = PitchMode::Free;
+        let update = ControlUpdate {
+            amp: Some(1.2),
+            freq: Some(99_999.0),
+            timbre_brightness: Some(-0.1),
+            timbre_inharmonic: Some(2.0),
+            timbre_width: Some(0.25),
+            timbre_motion: Some(0.5),
+        };
+        control.apply_update(&update);
+
+        assert!((control.body.amp - 1.0).abs() <= 1e-6);
+        assert_eq!(control.pitch.mode, PitchMode::Lock);
+        assert!((control.pitch.freq - MAX_FREQ_HZ).abs() <= 1e-6);
+        assert!((control.body.timbre.brightness - 0.0).abs() <= 1e-6);
+        assert!((control.body.timbre.inharmonic - 1.0).abs() <= 1e-6);
+        assert!((control.body.timbre.width - 0.25).abs() <= 1e-6);
+        assert!((control.body.timbre.motion - 0.5).abs() <= 1e-6);
+    }
+
+    #[test]
+    fn set_freq_lock_uses_min_bound() {
+        let mut control = AgentControl::default();
+        control.set_freq_lock_clamped(-10.0);
+        assert_eq!(control.pitch.mode, PitchMode::Lock);
+        assert!((control.pitch.freq - MIN_FREQ_HZ).abs() <= 1e-6);
     }
 }

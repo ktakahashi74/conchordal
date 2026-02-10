@@ -129,12 +129,11 @@ impl SpeciesSpec {
     }
 
     fn set_amp(&mut self, amp: f32) {
-        self.control.body.amp = amp.clamp(0.0, 1.0);
+        self.control.set_amp_clamped(amp);
     }
 
     fn set_freq(&mut self, freq: f32) {
-        self.control.pitch.freq = freq.clamp(1.0, 20_000.0);
-        self.control.pitch.mode = PitchMode::Lock;
+        self.control.set_freq_lock_clamped(freq);
     }
 
     fn set_pitch_mode(&mut self, name: &str) {
@@ -150,8 +149,8 @@ impl SpeciesSpec {
     }
 
     fn set_timbre(&mut self, brightness: f32, width: f32) {
-        self.control.body.timbre.brightness = brightness.clamp(0.0, 1.0);
-        self.control.body.timbre.width = width.clamp(0.0, 1.0);
+        self.control.set_timbre_brightness_clamped(brightness);
+        self.control.set_timbre_width_clamped(width);
     }
 
     fn set_brain(&mut self, name: &str) {
@@ -1595,5 +1594,35 @@ mod tests {
             })
             .expect("spawn action");
         assert_eq!(mode, PitchMode::Lock);
+    }
+
+    #[test]
+    fn spawn_payload_preserves_species_control_fields() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            create(harmonic, 1)
+                .amp(0.33)
+                .freq(330.0)
+                .timbre(0.7, 0.2);
+            flush();
+        "#,
+        );
+        let control = scenario
+            .events
+            .iter()
+            .flat_map(|event| &event.actions)
+            .find_map(|action| match action {
+                Action::Spawn { spec, strategy, .. } => {
+                    assert!(strategy.is_none());
+                    Some(spec.control.clone())
+                }
+                _ => None,
+            })
+            .expect("spawn action");
+        assert!((control.body.amp - 0.33).abs() <= 1e-6);
+        assert!((control.pitch.freq - 330.0).abs() <= 1e-6);
+        assert_eq!(control.pitch.mode, PitchMode::Lock);
+        assert!((control.body.timbre.brightness - 0.7).abs() <= 1e-6);
+        assert!((control.body.timbre.width - 0.2).abs() <= 1e-6);
     }
 }

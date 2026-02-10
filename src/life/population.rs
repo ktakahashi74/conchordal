@@ -716,7 +716,7 @@ mod tests {
     use crate::life::individual::{AnyArticulationCore, ArticulationWrapper, DroneCore};
     use crate::life::phonation_engine::{OnsetEvent, PhonationCmd, PhonationKick};
     use crate::life::scenario::{ArticulationCoreConfig, SpawnSpec, SpawnStrategy};
-    use crate::life::sound::BodySnapshot;
+    use crate::life::sound::{BodyKind, BodySnapshot};
     use crate::life::world_model::WorldModel;
     use rand::SeedableRng;
 
@@ -729,7 +729,7 @@ mod tests {
             amp: 0.5,
             smoothing_tau_sec: 0.0,
             body: BodySnapshot {
-                kind: "sine".to_string(),
+                kind: BodyKind::Sine,
                 amp_scale: 1.0,
                 brightness: 0.0,
                 noise_mix: 0.0,

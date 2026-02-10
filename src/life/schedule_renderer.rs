@@ -257,7 +257,9 @@ mod tests {
         AnyArticulationCore, ArticulationWrapper, PhonationBatch, PhonationNoteSpec, SequencedCore,
     };
     use crate::life::phonation_engine::{PhonationKick, PhonationUpdate};
-    use crate::life::sound::{AudioCommand, BodySnapshot, VoiceTarget, default_release_ticks};
+    use crate::life::sound::{
+        AudioCommand, BodyKind, BodySnapshot, VoiceTarget, default_release_ticks,
+    };
 
     #[test]
     fn update_command_applies_to_voice() {
@@ -297,7 +299,7 @@ mod tests {
                 amp: 0.5,
                 smoothing_tau_sec: 0.0,
                 body: BodySnapshot {
-                    kind: "sine".to_string(),
+                    kind: BodyKind::Sine,
                     amp_scale: 1.0,
                     brightness: 0.0,
                     noise_mix: 0.0,
@@ -364,7 +366,7 @@ mod tests {
                 amp: 0.5,
                 smoothing_tau_sec: 0.0,
                 body: BodySnapshot {
-                    kind: "sine".to_string(),
+                    kind: BodyKind::Sine,
                     amp_scale: 1.0,
                     brightness: 0.0,
                     noise_mix: 0.0,
@@ -389,7 +391,7 @@ mod tests {
         let mut renderer = ScheduleRenderer::new(tb);
         let rhythms = NeuralRhythms::default();
         let body = BodySnapshot {
-            kind: "sine".to_string(),
+            kind: BodyKind::Sine,
             amp_scale: 1.0,
             brightness: 0.0,
             noise_mix: 0.0,
@@ -415,7 +417,7 @@ mod tests {
         let mut renderer = ScheduleRenderer::new(tb);
         let rhythms = NeuralRhythms::default();
         let body = BodySnapshot {
-            kind: "harmonic".to_string(),
+            kind: BodyKind::Harmonic,
             amp_scale: 1.0,
             brightness: 0.6,
             noise_mix: 0.2,
@@ -460,7 +462,7 @@ mod tests {
         let mut renderer = ScheduleRenderer::new(tb);
         let rhythms = NeuralRhythms::default();
         let body = BodySnapshot {
-            kind: "sine".to_string(),
+            kind: BodyKind::Sine,
             amp_scale: 1.0,
             brightness: 0.0,
             noise_mix: 0.0,
@@ -488,7 +490,7 @@ mod tests {
         let mut renderer = ScheduleRenderer::new(tb);
         let rhythms = NeuralRhythms::default();
         let body = BodySnapshot {
-            kind: "sine".to_string(),
+            kind: BodyKind::Sine,
             amp_scale: 1.0,
             brightness: 0.0,
             noise_mix: 0.0,
@@ -520,7 +522,7 @@ mod tests {
         let mut renderer = ScheduleRenderer::new(tb);
         let rhythms = NeuralRhythms::default();
         let body = BodySnapshot {
-            kind: "harmonic".to_string(),
+            kind: BodyKind::Harmonic,
             amp_scale: 1.0,
             brightness: 0.7,
             noise_mix: 0.2,
@@ -561,7 +563,7 @@ mod tests {
         let mut renderer = ScheduleRenderer::new(tb);
         let rhythms = NeuralRhythms::default();
         let body = BodySnapshot {
-            kind: "sine".to_string(),
+            kind: BodyKind::Sine,
             amp_scale: 1.0,
             brightness: 0.0,
             noise_mix: 0.0,
@@ -591,7 +593,7 @@ mod tests {
         let mut renderer = ScheduleRenderer::new(tb);
         let rhythms = NeuralRhythms::default();
         let body = BodySnapshot {
-            kind: "sine".to_string(),
+            kind: BodyKind::Sine,
             amp_scale: 1.0,
             brightness: 0.0,
             noise_mix: 0.0,
@@ -626,7 +628,7 @@ mod tests {
         let mut renderer = ScheduleRenderer::new(tb);
         let rhythms = NeuralRhythms::default();
         let body = BodySnapshot {
-            kind: "sine".to_string(),
+            kind: BodyKind::Sine,
             amp_scale: 1.0,
             brightness: 0.0,
             noise_mix: 0.0,

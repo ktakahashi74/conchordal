@@ -6,7 +6,7 @@ use conchordal::life::individual::AgentMetadata;
 use conchordal::life::population::Population;
 use conchordal::life::scenario::{ArticulationCoreConfig, IndividualConfig};
 use conchordal::life::schedule_renderer::ScheduleRenderer;
-use conchordal::life::sound::{AudioCommand, VoiceTarget};
+use conchordal::life::sound::{AudioCommand, BodyKind, VoiceTarget};
 use conchordal::life::world_model::WorldModel;
 
 fn test_timebase() -> Timebase {
@@ -73,7 +73,7 @@ fn spawn_sounds_only_with_audio_trigger() {
     assert!(silent.iter().all(|s| s.abs() <= 1e-6));
 
     let body = conchordal::life::sound::BodySnapshot {
-        kind: "sine".to_string(),
+        kind: BodyKind::Sine,
         amp_scale: 1.0,
         brightness: 0.0,
         noise_mix: 0.0,

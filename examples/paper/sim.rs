@@ -402,6 +402,26 @@ pub struct E4TailSamples {
     pub freqs_by_step: Vec<Vec<f32>>,
 }
 
+#[derive(Clone, Debug)]
+pub struct E4MirrorScheduleSamples {
+    pub freqs_by_step: Vec<Vec<f32>>,
+    pub mirror_weight_by_step: Vec<f32>,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct E4PaperMeta {
+    pub anchor_hz: f32,
+    pub voice_count: usize,
+}
+
+pub fn e4_paper_meta() -> E4PaperMeta {
+    let cfg = E4SimConfig::paper_defaults();
+    E4PaperMeta {
+        anchor_hz: cfg.anchor_hz,
+        voice_count: cfg.voice_count,
+    }
+}
+
 pub fn run_e4_condition_tail_samples(
     mirror_weight: f32,
     seed: u64,
@@ -412,6 +432,19 @@ pub fn run_e4_condition_tail_samples(
         seed,
         &E4SimConfig::paper_defaults(),
         tail_window,
+    )
+}
+
+pub fn run_e4_mirror_schedule_samples(
+    seed: u64,
+    steps_total: u32,
+    schedule: &[(u32, f32)],
+) -> E4MirrorScheduleSamples {
+    run_e4_mirror_schedule_samples_with_config(
+        seed,
+        steps_total,
+        schedule,
+        &E4SimConfig::paper_defaults(),
     )
 }
 
@@ -587,6 +620,133 @@ fn run_e4_condition_tail_samples_with_config(
         steps_total: cfg.steps,
         tail_window,
         freqs_by_step,
+    }
+}
+
+fn run_e4_mirror_schedule_samples_with_config(
+    seed: u64,
+    steps_total: u32,
+    schedule: &[(u32, f32)],
+    cfg: &E4SimConfig,
+) -> E4MirrorScheduleSamples {
+    if steps_total == 0 {
+        return E4MirrorScheduleSamples {
+            freqs_by_step: Vec::new(),
+            mirror_weight_by_step: Vec::new(),
+        };
+    }
+    let schedule = normalize_mirror_schedule(schedule, 0.0);
+    let mut sched_idx = 0usize;
+    let mut current_weight = schedule[0].1;
+
+    let space = Log2Space::new(cfg.fmin, cfg.fmax, cfg.bins_per_oct);
+    let mut params = make_landscape_params(&space, cfg.fs);
+    let mut landscape = Landscape::new(space.clone());
+    let mut rhythms = init_e4_rhythms(cfg);
+
+    let mut pop = Population::new(Timebase {
+        fs: cfg.fs,
+        hop: cfg.hop,
+    });
+    pop.set_seed(seed);
+    apply_mirror_weight(&mut pop, &landscape, &mut params, current_weight);
+
+    landscape = build_anchor_landscape(&space, &params, cfg.anchor_hz);
+
+    let anchor_spec = SpawnSpec {
+        control: anchor_control(cfg.anchor_hz),
+        articulation: ArticulationCoreConfig::Drone {
+            sway: None,
+            breath_gain_init: Some(1.0),
+        },
+    };
+    pop.apply_action(
+        Action::Spawn {
+            group_id: E4_GROUP_ANCHOR,
+            ids: vec![0],
+            spec: anchor_spec,
+            strategy: None,
+        },
+        &landscape,
+        None,
+    );
+
+    let (min_freq, max_freq) = cfg.range_bounds_hz();
+    let voice_spec = SpawnSpec {
+        control: voice_control(cfg),
+        articulation: ArticulationCoreConfig::Drone {
+            sway: None,
+            breath_gain_init: Some(1.0),
+        },
+    };
+    let ids: Vec<u64> = (1..=cfg.voice_count as u64).collect();
+    pop.apply_action(
+        Action::Spawn {
+            group_id: E4_GROUP_VOICES,
+            ids,
+            spec: voice_spec,
+            strategy: None,
+        },
+        &landscape,
+        None,
+    );
+    apply_e4_initial_pitches(&mut pop, &space, &landscape, cfg, seed, min_freq, max_freq);
+
+    let dt = cfg.hop as f32 / cfg.fs;
+    let mut freqs_by_step = Vec::with_capacity(steps_total as usize);
+    let mut mirror_weight_by_step = Vec::with_capacity(steps_total as usize);
+
+    for step in 0..steps_total {
+        while sched_idx + 1 < schedule.len() && step >= schedule[sched_idx + 1].0 {
+            sched_idx += 1;
+            current_weight = schedule[sched_idx].1;
+            apply_mirror_weight(&mut pop, &landscape, &mut params, current_weight);
+        }
+
+        update_e4_landscape_from_population(&space, &params, &pop, &mut landscape);
+        landscape.rhythm = rhythms;
+        pop.advance(cfg.hop, cfg.fs, step as u64, dt, &landscape);
+        pop.cleanup_dead(step as u64, dt, false);
+        rhythms.advance_in_place(dt);
+
+        mirror_weight_by_step.push(current_weight);
+        freqs_by_step.push(collect_voice_freqs(&pop));
+    }
+
+    E4MirrorScheduleSamples {
+        freqs_by_step,
+        mirror_weight_by_step,
+    }
+}
+
+fn normalize_mirror_schedule(schedule: &[(u32, f32)], default_weight: f32) -> Vec<(u32, f32)> {
+    let mut points: Vec<(u32, f32)> = schedule
+        .iter()
+        .map(|(step, w)| (*step, w.clamp(0.0, 1.0)))
+        .collect();
+    points.sort_by_key(|(step, _)| *step);
+    points.dedup_by(|a, b| a.0 == b.0);
+    if points.is_empty() {
+        points.push((0, default_weight.clamp(0.0, 1.0)));
+    } else if points[0].0 != 0 {
+        points.insert(0, (0, points[0].1));
+    }
+    points
+}
+
+fn apply_mirror_weight(
+    pop: &mut Population,
+    landscape: &Landscape,
+    params: &mut LandscapeParams,
+    mirror_weight: f32,
+) {
+    let update = LandscapeUpdate {
+        mirror: Some(mirror_weight.clamp(0.0, 1.0)),
+        ..LandscapeUpdate::default()
+    };
+    pop.apply_action(Action::SetHarmonicityParams { update }, landscape, None);
+    if let Some(update) = pop.take_pending_update() {
+        apply_params_update(params, &update);
     }
 }
 

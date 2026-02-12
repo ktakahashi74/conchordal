@@ -13,7 +13,8 @@ use plotters::prelude::*;
 
 use crate::sim::{
     E3Condition, E3DeathRecord, E3RunConfig, E4_ANCHOR_HZ, E4TailSamples, e3_policy_params,
-    run_e3_collect_deaths, run_e4_condition_tail_samples,
+    e4_paper_meta, run_e3_collect_deaths, run_e4_condition_tail_samples,
+    run_e4_mirror_schedule_samples,
 };
 use conchordal::core::erb::hz_to_erb;
 use conchordal::core::harmonicity_kernel::{HarmonicityKernel, HarmonicityParams};
@@ -53,12 +54,27 @@ const E2_DIVERSITY_BIN_ST: f32 = 0.25;
 const E2_STEP_SEMITONES_SWEEP: [f32; 4] = [0.125, 0.25, 0.5, 1.0];
 const E2_LAZY_MOVE_PROB: f32 = 0.65;
 const E2_SEMITONE_EPS: f32 = 1e-6;
-const E2_SEEDS: [u64; 5] = [
+const E2_SEEDS: [u64; 20] = [
     0xC0FFEE_u64,
-    0xC0FFEE_u64 + 1,
-    0xC0FFEE_u64 + 2,
-    0xC0FFEE_u64 + 3,
-    0xC0FFEE_u64 + 4,
+    0xA5A5A5A5_u64,
+    0x1BADB002_u64,
+    0xDEADBEEF_u64,
+    0xFACEFEED_u64,
+    0x1234ABCD_u64,
+    0x31415926_u64,
+    0x27182818_u64,
+    0xCAFEBABE_u64,
+    0x9E3779B9_u64,
+    0x0F0F0F0F_u64,
+    0x55AA55AA_u64,
+    0x87654321_u64,
+    0xABCDEF01_u64,
+    0x0C0FFEE0_u64,
+    0x13579BDF_u64,
+    0x2468ACE0_u64,
+    0xBADC0FFE_u64,
+    0x10203040_u64,
+    0x55667788_u64,
 ];
 
 #[derive(Clone, Copy, Debug)]
@@ -79,6 +95,12 @@ impl E2InitMode {
 
 const E2_INIT_MODE: E2InitMode = E2InitMode::RejectConsonant;
 const E2_CONSONANT_STEPS: [f32; 8] = [0.0, 3.0, 4.0, 5.0, 7.0, 8.0, 9.0, 12.0];
+const E2_CONSONANT_TARGETS_CORE: [f32; 3] = [3.0, 4.0, 7.0];
+const E2_CONSONANT_TARGETS_EXTENDED: [f32; 7] = [0.0, 3.0, 4.0, 5.0, 7.0, 8.0, 9.0];
+const E2_CONSONANT_WINDOW_ST: f32 = 0.25;
+const E2_PERM_MAX_EXACT_COMBOS: u64 = 500_000;
+const E2_PERM_MC_ITERS: usize = 50_000;
+const E2_PERM_MC_SEED: u64 = 0xC0FFEE_u64 + 0xE2;
 
 #[derive(Clone, Copy, Debug)]
 #[allow(dead_code)]
@@ -91,11 +113,24 @@ enum E2UpdateSchedule {
 const E2_UPDATE_SCHEDULE: E2UpdateSchedule = E2UpdateSchedule::Checkerboard;
 
 const E4_TAIL_WINDOW_STEPS: u32 = 400;
-const E4_DELTA_TAU: f32 = 0.02;
+const E4_DELTA_TAU: f32 = 0.05;
 const E4_WEIGHT_COARSE_STEP: f32 = 0.1;
 const E4_WEIGHT_FINE_STEP: f32 = 0.02;
 const E4_BIN_WIDTHS: [f32; 2] = [0.25, 0.5];
 const E4_EPS_CENTS: [f32; 3] = [25.0, 50.0, 12.5];
+const E4_SOFT_SIGMA_SCALE: f32 = 0.5;
+const E4_BOOTSTRAP_ITERS: usize = 4000;
+const E4_BOOTSTRAP_SEED: u64 = 0xE4_600D_u64;
+const E4_PAPER_HIST_BIN_CENTS: f32 = 25.0;
+const E4_CENTS_MIN3: f32 = 316.0;
+const E4_CENTS_MAJ3: f32 = 386.0;
+const E4_CENTS_P4: f32 = 498.0;
+const E4_CENTS_P5: f32 = 702.0;
+const E4_STEP_BURN_IN_STEPS: u32 = 600;
+const E4_STEP_POST_STEPS: u32 = 600;
+const E4_HYSTERESIS_SETTLE_STEPS: u32 = 180;
+const E4_HYSTERESIS_EVAL_WINDOW: u32 = 80;
+const E4_PROTOCOL_SEED: u64 = 0xC0FFEE_u64 + 10;
 const FLOAT_KEY_SCALE: f32 = 1000.0;
 const E4_SEEDS: [u64; 10] = [
     0xC0FFEE_u64 + 10,
@@ -785,6 +820,9 @@ fn plot_e2_emergent_harmony(
     let caption_suffix = e2_caption_suffix(phase_mode);
     let post_label = e2_post_label();
     let post_label_title = e2_post_label_title();
+    let baseline_ci95_c_state = std_series_to_ci95(&baseline_stats.std_c_state, baseline_stats.n);
+    let nohill_ci95_c_state = std_series_to_ci95(&nohill_stats.std_c_state, nohill_stats.n);
+    let norep_ci95_c_state = std_series_to_ci95(&norep_stats.std_c_state, norep_stats.n);
 
     write_with_log(
         out_dir.join("paper_e2_representative_seed.txt"),
@@ -1014,14 +1052,13 @@ fn plot_e2_emergent_harmony(
     render_agent_trajectories_plot(&trajectory_path, &baseline_run.trajectory_semitones)?;
 
     let pairwise_intervals = pairwise_interval_samples(&baseline_run.final_semitones);
-    let mut csv_pairwise = String::from("interval_semitones\n");
-    for interval in &pairwise_intervals {
-        csv_pairwise.push_str(&format!("{interval:.6}\n"));
-    }
     write_with_log(
         out_dir.join("paper_e2_pairwise_intervals.csv"),
-        csv_pairwise,
+        pairwise_intervals_csv(&pairwise_intervals),
     )?;
+    emit_pairwise_interval_dumps_for_condition(out_dir, "baseline", &baseline_runs)?;
+    emit_pairwise_interval_dumps_for_condition(out_dir, "nohill", &nohill_runs)?;
+    emit_pairwise_interval_dumps_for_condition(out_dir, "norep", &norep_runs)?;
     let pairwise_hist_path = out_dir.join("paper_e2_pairwise_interval_histogram.svg");
     render_interval_histogram(
         &pairwise_hist_path,
@@ -1110,9 +1147,27 @@ fn plot_e2_emergent_harmony(
         ),
     )?;
     write_with_log(
+        out_dir.join("paper_e2_seed_sweep_mean_c_ci95.csv"),
+        sweep_csv_with_ci95(
+            "step,mean,std,ci95,n\n",
+            &baseline_stats.mean_c,
+            &baseline_stats.std_c,
+            baseline_stats.n,
+        ),
+    )?;
+    write_with_log(
         out_dir.join("paper_e2_seed_sweep_mean_c_state.csv"),
         sweep_csv(
             "step,mean,std,n",
+            &baseline_stats.mean_c_state,
+            &baseline_stats.std_c_state,
+            baseline_stats.n,
+        ),
+    )?;
+    write_with_log(
+        out_dir.join("paper_e2_seed_sweep_mean_c_state_ci95.csv"),
+        sweep_csv_with_ci95(
+            "step,mean,std,ci95,n\n",
             &baseline_stats.mean_c_state,
             &baseline_stats.std_c_state,
             baseline_stats.n,
@@ -1157,6 +1212,15 @@ fn plot_e2_emergent_harmony(
         "mean C_state",
         &baseline_stats.mean_c_state,
         &baseline_stats.std_c_state,
+        &marker_steps,
+    )?;
+    let sweep_mean_ci_path = out_dir.join("paper_e2_mean_c_state_over_time_seeds_ci95.svg");
+    render_series_plot_with_band(
+        &sweep_mean_ci_path,
+        "E2 Mean C_state (seed sweep, 95% CI)",
+        "mean C_state",
+        &baseline_stats.mean_c_state,
+        &baseline_ci95_c_state,
         &marker_steps,
     )?;
 
@@ -1269,6 +1333,19 @@ fn plot_e2_emergent_harmony(
         &marker_steps,
     )?;
 
+    let annotated_mean_path = out_dir.join("paper_e2_mean_c_state_over_time_seeds_annotated.svg");
+    render_e2_mean_c_state_annotated(
+        &annotated_mean_path,
+        &baseline_stats.mean_c_state,
+        &baseline_ci95_c_state,
+        &nohill_stats.mean_c_state,
+        &nohill_ci95_c_state,
+        &norep_stats.mean_c_state,
+        &norep_ci95_c_state,
+        E2_BURN_IN,
+        phase_mode.switch_step(),
+    )?;
+
     let mut diversity_rows_vec = Vec::new();
     diversity_rows_vec.extend(diversity_rows("baseline", &baseline_runs));
     diversity_rows_vec.extend(diversity_rows("nohill", &nohill_runs));
@@ -1281,8 +1358,27 @@ fn plot_e2_emergent_harmony(
         out_dir.join("paper_e2_diversity_summary.csv"),
         diversity_summary_csv(&diversity_rows_vec),
     )?;
+    write_with_log(
+        out_dir.join("paper_e2_diversity_summary_ci95.csv"),
+        diversity_summary_ci95_csv(&diversity_rows_vec),
+    )?;
     let diversity_plot_path = out_dir.join("paper_e2_diversity_summary.svg");
     render_diversity_summary_plot(&diversity_plot_path, &diversity_rows_vec)?;
+    let diversity_ci95_plot_path = out_dir.join("paper_e2_diversity_summary_ci95.svg");
+    render_diversity_summary_ci95_plot(&diversity_ci95_plot_path, &diversity_rows_vec)?;
+    let figure1_path = out_dir.join("paper_e2_figure_e2_1.svg");
+    render_e2_figure1(
+        &figure1_path,
+        &baseline_stats,
+        &nohill_stats,
+        &norep_stats,
+        &baseline_ci95_c_state,
+        &nohill_ci95_c_state,
+        &norep_ci95_c_state,
+        &diversity_rows_vec,
+        &baseline_run.trajectory_semitones,
+        phase_mode,
+    )?;
 
     let mut hist_rows = Vec::new();
     hist_rows.extend(hist_structure_rows("baseline", &baseline_runs));
@@ -1336,12 +1432,56 @@ fn plot_e2_emergent_harmony(
         0.25,
         "mean fraction",
     )?;
+    let hist_plot_025_paper =
+        out_dir.join("paper_e2_interval_hist_post_seed_sweep_bw0p25_paper.svg");
+    render_hist_mean_std_fraction_auto_y(
+        &hist_plot_025_paper,
+        &format!("E2 {post_label_title} Interval Histogram (paper, bin=0.25st)"),
+        &hist_stats_025.centers,
+        &hist_stats_025.mean_frac,
+        &hist_stats_025.std_frac,
+        0.25,
+        "semitones",
+        &[-7.0, -4.0, -3.0, 3.0, 4.0, 7.0],
+    )?;
+    let (folded_centers, folded_mean, folded_std) = fold_hist_abs_semitones(
+        &hist_stats_025.centers,
+        &hist_stats_025.mean_frac,
+        &hist_stats_025.std_frac,
+        0.25,
+    );
+    write_with_log(
+        out_dir.join("paper_e2_anchor_interval_hist_post_folded.csv"),
+        folded_hist_csv(&folded_centers, &folded_mean, &folded_std, hist_stats_025.n),
+    )?;
+    let folded_hist_plot = out_dir.join("paper_e2_anchor_interval_hist_post_folded.svg");
+    render_anchor_hist_post_folded(
+        &folded_hist_plot,
+        &hist_stats_025.centers,
+        &hist_stats_025.mean_frac,
+        &hist_stats_025.std_frac,
+        &folded_centers,
+        &folded_mean,
+        &folded_std,
+        0.25,
+    )?;
 
     let (pairwise_hist_stats, pairwise_n_pairs) =
         e2_pairwise_hist_seed_sweep(&baseline_runs, E2_PAIRWISE_BIN_ST, 0.0, 12.0);
+    let (pairwise_hist_nohill, pairwise_n_pairs_nohill) =
+        e2_pairwise_hist_seed_sweep(&nohill_runs, E2_PAIRWISE_BIN_ST, 0.0, 12.0);
+    let (pairwise_hist_norep, pairwise_n_pairs_norep) =
+        e2_pairwise_hist_seed_sweep(&norep_runs, E2_PAIRWISE_BIN_ST, 0.0, 12.0);
+    let pairwise_n_pairs_controls = pairwise_n_pairs
+        .min(pairwise_n_pairs_nohill)
+        .min(pairwise_n_pairs_norep);
     write_with_log(
         out_dir.join("paper_e2_pairwise_interval_histogram_seeds.csv"),
         e2_pairwise_hist_seed_sweep_csv(&pairwise_hist_stats, pairwise_n_pairs),
+    )?;
+    write_with_log(
+        out_dir.join("paper_e2_pairwise_interval_histogram_seeds_ci95.csv"),
+        e2_pairwise_hist_seed_sweep_ci95_csv(&pairwise_hist_stats, pairwise_n_pairs),
     )?;
     let pairwise_hist_plot = out_dir.join("paper_e2_pairwise_interval_histogram_seeds.svg");
     render_hist_mean_std(
@@ -1355,6 +1495,79 @@ fn plot_e2_emergent_harmony(
         &pairwise_hist_stats.std_frac,
         E2_PAIRWISE_BIN_ST,
         "mean fraction",
+    )?;
+    let pairwise_ci95_frac =
+        std_series_to_ci95(&pairwise_hist_stats.std_frac, pairwise_hist_stats.n);
+    let pairwise_hist_plot_paper =
+        out_dir.join("paper_e2_pairwise_interval_histogram_seeds_paper.svg");
+    render_pairwise_histogram_paper(
+        &pairwise_hist_plot_paper,
+        "E2 Pairwise Interval Histogram (paper style, 95% CI)",
+        &pairwise_hist_stats.centers,
+        &pairwise_hist_stats.mean_frac,
+        &pairwise_ci95_frac,
+        E2_PAIRWISE_BIN_ST,
+    )?;
+    write_with_log(
+        out_dir.join("paper_e2_pairwise_interval_histogram_controls_seeds.csv"),
+        e2_pairwise_hist_controls_seed_sweep_csv(
+            &pairwise_hist_stats,
+            &pairwise_hist_nohill,
+            &pairwise_hist_norep,
+            pairwise_n_pairs_controls,
+        ),
+    )?;
+    write_with_log(
+        out_dir.join("paper_e2_pairwise_interval_histogram_controls_seeds_ci95.csv"),
+        e2_pairwise_hist_controls_seed_sweep_ci95_csv(
+            &pairwise_hist_stats,
+            &pairwise_hist_nohill,
+            &pairwise_hist_norep,
+            pairwise_n_pairs_controls,
+        ),
+    )?;
+    let pairwise_controls_plot =
+        out_dir.join("paper_e2_pairwise_interval_histogram_controls_seeds.svg");
+    render_pairwise_histogram_controls_overlay(
+        &pairwise_controls_plot,
+        "E2 Pairwise Interval Histogram (controls overlay)",
+        &pairwise_hist_stats.centers,
+        &pairwise_hist_stats.mean_frac,
+        &pairwise_hist_nohill.mean_frac,
+        &pairwise_hist_norep.mean_frac,
+    )?;
+
+    let mut consonant_rows = Vec::new();
+    consonant_rows.extend(consonant_mass_rows_for_condition(
+        "baseline",
+        &baseline_runs,
+    ));
+    consonant_rows.extend(consonant_mass_rows_for_condition("nohill", &nohill_runs));
+    consonant_rows.extend(consonant_mass_rows_for_condition("norep", &norep_runs));
+    write_with_log(
+        out_dir.join("paper_e2_consonant_mass_by_seed.csv"),
+        consonant_mass_by_seed_csv(&consonant_rows),
+    )?;
+    write_with_log(
+        out_dir.join("paper_e2_consonant_mass_summary.csv"),
+        consonant_mass_summary_csv(&consonant_rows),
+    )?;
+    write_with_log(
+        out_dir.join("paper_e2_consonant_mass_stats.csv"),
+        consonant_mass_stats_csv(&consonant_rows),
+    )?;
+    let consonant_mass_plot = out_dir.join("paper_e2_consonant_mass_summary.svg");
+    render_consonant_mass_summary_plot(&consonant_mass_plot, &consonant_rows)?;
+
+    let figure2_path = out_dir.join("paper_e2_figure_e2_2.svg");
+    render_e2_figure2(
+        &figure2_path,
+        &pairwise_hist_stats.centers,
+        &pairwise_hist_stats.mean_frac,
+        &pairwise_ci95_frac,
+        &pairwise_hist_nohill.mean_frac,
+        &pairwise_hist_norep.mean_frac,
+        &consonant_rows,
     )?;
 
     let nohill_hist_05 = e2_hist_seed_sweep(&nohill_runs, 0.5, hist_min, hist_max);
@@ -3079,6 +3292,16 @@ fn plot_e4_mirror_sweep(
     let summaries = summarize_e4_runs(&run_records);
     let summary_csv_path = out_dir.join("e4_mirror_sweep_summary.csv");
     write_with_log(&summary_csv_path, e4_summary_csv(&summaries))?;
+    let meta_diff_path = out_dir.join("paper_e4_protocol_meta_diff.csv");
+    write_with_log(
+        &meta_diff_path,
+        e4_protocol_meta_diff_csv(anchor_hz, primary_bin, primary_eps),
+    )?;
+    let fixed_check_path = out_dir.join("paper_e4_fixed_except_mirror_check.csv");
+    write_with_log(
+        &fixed_check_path,
+        e4_fixed_except_mirror_check_csv(&run_records),
+    )?;
 
     let delta_effects = e4_delta_effects_from_summary(&summaries);
     let delta_effects_path = out_dir.join("e4_delta_effects.csv");
@@ -3119,6 +3342,28 @@ fn plot_e4_mirror_sweep(
         format_float_token(primary_bin)
     ));
     render_e4_hist_overlay(&overlay_path, &hist_records, primary_bin, &E4_REP_WEIGHTS)?;
+    let fig1_soft_path = out_dir.join("paper_e4_figure1_mirror_vs_delta_t_soft.svg");
+    render_e4_figure1_mirror_vs_delta_t(
+        &fig1_soft_path,
+        &run_records,
+        primary_bin,
+        primary_eps,
+        "soft",
+        "main",
+    )?;
+    let fig1_hard_path = out_dir.join("paper_e4_figure1_mirror_vs_delta_t_hard_appendix.svg");
+    render_e4_figure1_mirror_vs_delta_t(
+        &fig1_hard_path,
+        &run_records,
+        primary_bin,
+        primary_eps,
+        "hard",
+        "appendix",
+    )?;
+    let fig2_path = out_dir.join("paper_e4_figure2_interval_hist_cents_triptych.svg");
+    render_e4_figure2_interval_hist_triptych(&fig2_path, &hist_records, primary_bin)?;
+    let fig3_path = out_dir.join("paper_e4_figure3_interval_cents_heatmap.svg");
+    render_e4_interval_heatmap(&fig3_path, &hist_records, primary_bin)?;
 
     for &bin_width in &E4_BIN_WIDTHS {
         let bw_token = format_float_token(bin_width);
@@ -3162,6 +3407,7 @@ fn plot_e4_mirror_sweep(
 
     let legacy_path = out_dir.join("paper_e4_mirror_sweep.svg");
     render_e4_major_minor_plot(&legacy_path, &summaries, primary_bin, primary_eps)?;
+    run_e4_step_and_hysteresis_protocol(out_dir, anchor_hz, primary_eps)?;
 
     if emit_kernel_gate {
         let kernel_gate_path = out_dir.join("paper_e4_kernel_gate.svg");
@@ -3294,7 +3540,16 @@ struct DiversityRow {
     metrics: DiversityMetrics,
 }
 
+#[derive(Clone, Copy)]
+struct ConsonantMassRow {
+    condition: &'static str,
+    seed: u64,
+    mass_core: f32,
+    mass_extended: f32,
+}
+
 struct E4RunRecord {
+    count_mode: &'static str,
     mirror_weight: f32,
     seed: u64,
     bin_width: f32,
@@ -3302,11 +3557,15 @@ struct E4RunRecord {
     major_score: f32,
     minor_score: f32,
     delta: f32,
+    triad_major: f32,
+    triad_minor: f32,
+    delta_t: f32,
     major_frac: f32,
     mass_min3: f32,
     mass_maj3: f32,
     mass_p4: f32,
     mass_p5: f32,
+    mass_p5_class: f32,
     steps_total: u32,
     burn_in: u32,
     tail_window: u32,
@@ -3314,6 +3573,7 @@ struct E4RunRecord {
 }
 
 struct E4SummaryRecord {
+    count_mode: &'static str,
     mirror_weight: f32,
     bin_width: f32,
     eps_cents: f32,
@@ -3331,6 +3591,8 @@ struct E4SummaryRecord {
     std_p4: f32,
     mean_p5: f32,
     std_p5: f32,
+    mean_p5_class: f32,
+    std_p5_class: f32,
     major_rate: f32,
     minor_rate: f32,
     ambiguous_rate: f32,
@@ -3338,6 +3600,7 @@ struct E4SummaryRecord {
 }
 
 struct E4DeltaEffectRow {
+    count_mode: &'static str,
     mirror_weight: f32,
     bin_width: f32,
     eps_cents: f32,
@@ -3353,9 +3616,12 @@ struct E4DeltaEffectRow {
     sd_mass_maj3: f32,
     mean_mass_p5: f32,
     sd_mass_p5: f32,
+    mean_mass_p5_class: f32,
+    sd_mass_p5_class: f32,
 }
 
 struct E4RegressionRow {
+    count_mode: &'static str,
     bin_width: f32,
     eps_cents: f32,
     slope: f32,
@@ -3368,6 +3634,7 @@ struct E4RegressionRow {
 }
 
 struct E4EndpointEffectRow {
+    count_mode: &'static str,
     bin_width: f32,
     eps_cents: f32,
     delta_end: f32,
@@ -3379,6 +3646,7 @@ struct E4EndpointEffectRow {
 }
 
 struct E4SeedSlopeRow {
+    count_mode: &'static str,
     seed: u64,
     bin_width: f32,
     eps_cents: f32,
@@ -3388,6 +3656,7 @@ struct E4SeedSlopeRow {
 }
 
 struct E4RunLevelRegressionRow {
+    count_mode: &'static str,
     bin_width: f32,
     eps_cents: f32,
     slope: f32,
@@ -3398,6 +3667,7 @@ struct E4RunLevelRegressionRow {
 }
 
 struct E4SeedSlopeMetaRow {
+    count_mode: &'static str,
     bin_width: f32,
     eps_cents: f32,
     mean_slope: f32,
@@ -3410,6 +3680,7 @@ struct E4SeedSlopeMetaRow {
 }
 
 struct E4ThirdMassRow {
+    count_mode: &'static str,
     mirror_weight: f32,
     bin_width: f32,
     eps_cents: f32,
@@ -3430,6 +3701,7 @@ struct E4HistRecord {
 }
 
 struct E4TailIntervalRow {
+    count_mode: &'static str,
     mirror_weight: f32,
     seed: u64,
     bin_width: f32,
@@ -3439,7 +3711,8 @@ struct E4TailIntervalRow {
     mass_maj3: f32,
     mass_p4: f32,
     mass_p5: f32,
-    delta: f32,
+    mass_p5_class: f32,
+    delta_t: f32,
 }
 
 fn seeded_rng(seed: u64) -> StdRng {
@@ -3499,6 +3772,9 @@ fn refine_weights_from_sign_change(
     let mut weight_means: Vec<(f32, f32)> = Vec::new();
     let mut map: std::collections::HashMap<i32, Vec<f32>> = std::collections::HashMap::new();
     for record in run_records {
+        if record.count_mode != "soft" {
+            continue;
+        }
         if (record.bin_width - bin_width).abs() > 1e-6 {
             continue;
         }
@@ -3560,31 +3836,53 @@ fn fmt_eps_token(eps_cents: f32) -> String {
     fmt_eps(eps_cents).trim_end_matches('c').replace('.', "p")
 }
 
-fn semitone_fold_to_octave(semitones: f32) -> f32 {
-    let eps = 1e-6f32;
-    let mut folded = semitones.rem_euclid(12.0);
-    if folded < eps && semitones.abs() > eps {
-        folded = 12.0;
-    }
-    folded
+#[derive(Clone, Copy)]
+enum E4CountMode {
+    Soft,
+    Hard,
 }
 
-fn collect_e4_semitone_samples(samples: &E4TailSamples, anchor_hz: f32) -> Vec<f32> {
+impl E4CountMode {
+    fn label(self) -> &'static str {
+        match self {
+            E4CountMode::Soft => "soft",
+            E4CountMode::Hard => "hard",
+        }
+    }
+}
+
+fn cents_class_from_ratio(ratio: f32) -> Option<f32> {
+    if !ratio.is_finite() || ratio <= 0.0 {
+        return None;
+    }
+    let mut cents = 1200.0 * ratio.log2();
+    if !cents.is_finite() {
+        return None;
+    }
+    cents = cents.rem_euclid(1200.0);
+    if cents >= 1200.0 - 1e-6 {
+        cents = 0.0;
+    }
+    Some(cents.clamp(0.0, 1200.0))
+}
+
+fn freq_to_cents_class(anchor_hz: f32, freq_hz: f32) -> Option<f32> {
+    if !anchor_hz.is_finite() || anchor_hz <= 0.0 || !freq_hz.is_finite() || freq_hz <= 0.0 {
+        return None;
+    }
+    cents_class_from_ratio(freq_hz / anchor_hz)
+}
+
+fn collect_e4_interval_cents_samples(samples: &E4TailSamples, anchor_hz: f32) -> Vec<f32> {
     let mut out = Vec::new();
     if !anchor_hz.is_finite() || anchor_hz <= 0.0 {
         return out;
     }
     for freqs in &samples.freqs_by_step {
         for &freq in freqs {
-            if !freq.is_finite() || freq <= 0.0 {
-                continue;
+            if let Some(cents_class) = freq_to_cents_class(anchor_hz, freq) {
+                out.push(cents_class);
             }
-            let ratio = freq / anchor_hz;
-            if !ratio.is_finite() || ratio <= 0.0 {
-                continue;
-            }
-            let semitones = 12.0 * ratio.log2();
-            out.push(semitone_fold_to_octave(semitones));
         }
     }
     out
@@ -3606,12 +3904,63 @@ fn histogram_from_samples(samples: &[f32], min: f32, max: f32, bin_width: f32) -
     }
 }
 
-fn mass_around(hist: &Histogram, center: f32, eps: f32) -> f32 {
-    let mut sum = 0.0f32;
-    for (bin_center, mass) in hist.bin_centers.iter().zip(hist.masses.iter()) {
-        if (*bin_center - center).abs() <= eps {
-            sum += *mass;
+fn circular_cents_distance(value_cents: f32, target_cents: f32) -> f32 {
+    let raw = (value_cents - target_cents).abs().rem_euclid(1200.0);
+    raw.min(1200.0 - raw)
+}
+
+fn p5_class_distance_cents(value_cents: f32) -> f32 {
+    let d_p5 = circular_cents_distance(value_cents, E4_CENTS_P5);
+    let d_p4 = circular_cents_distance(value_cents, E4_CENTS_P4);
+    d_p5.min(d_p4)
+}
+
+fn mass_weight(
+    distance_cents: f32,
+    eps_cents: f32,
+    sigma_cents: f32,
+    count_mode: E4CountMode,
+) -> f32 {
+    match count_mode {
+        E4CountMode::Hard => {
+            if distance_cents <= eps_cents {
+                1.0
+            } else {
+                0.0
+            }
         }
+        E4CountMode::Soft => {
+            let sigma = sigma_cents.max(1e-6);
+            (-0.5 * (distance_cents / sigma).powi(2)).exp()
+        }
+    }
+}
+
+fn mass_around(
+    hist: &Histogram,
+    center_cents: f32,
+    eps_cents: f32,
+    sigma_cents: f32,
+    count_mode: E4CountMode,
+) -> f32 {
+    let mut sum = 0.0f32;
+    for (&bin_center, &mass) in hist.bin_centers.iter().zip(hist.masses.iter()) {
+        let d = circular_cents_distance(bin_center, center_cents);
+        sum += mass * mass_weight(d, eps_cents, sigma_cents, count_mode);
+    }
+    sum
+}
+
+fn mass_p5_class(
+    hist: &Histogram,
+    eps_cents: f32,
+    sigma_cents: f32,
+    count_mode: E4CountMode,
+) -> f32 {
+    let mut sum = 0.0f32;
+    for (&bin_center, &mass) in hist.bin_centers.iter().zip(hist.masses.iter()) {
+        let d = p5_class_distance_cents(bin_center);
+        sum += mass * mass_weight(d, eps_cents, sigma_cents, count_mode);
     }
     sum
 }
@@ -3622,46 +3971,77 @@ struct IntervalMasses {
     maj3: f32,
     p4: f32,
     p5: f32,
+    p5_class: f32,
 }
 
-fn interval_masses_from_freqs(anchor_hz: f32, freqs: &[f32], eps_st: f32) -> IntervalMasses {
+fn interval_masses_from_histogram(
+    hist: &Histogram,
+    eps_cents: f32,
+    count_mode: E4CountMode,
+) -> IntervalMasses {
+    let sigma_cents = (eps_cents * E4_SOFT_SIGMA_SCALE).max(1e-6);
+    IntervalMasses {
+        min3: mass_around(hist, E4_CENTS_MIN3, eps_cents, sigma_cents, count_mode),
+        maj3: mass_around(hist, E4_CENTS_MAJ3, eps_cents, sigma_cents, count_mode),
+        p4: mass_around(hist, E4_CENTS_P4, eps_cents, sigma_cents, count_mode),
+        p5: mass_around(hist, E4_CENTS_P5, eps_cents, sigma_cents, count_mode),
+        p5_class: mass_p5_class(hist, eps_cents, sigma_cents, count_mode),
+    }
+}
+
+fn interval_masses_from_freqs(
+    anchor_hz: f32,
+    freqs: &[f32],
+    eps_cents: f32,
+    count_mode: E4CountMode,
+) -> IntervalMasses {
     if !anchor_hz.is_finite() || anchor_hz <= 0.0 || freqs.is_empty() {
         return IntervalMasses {
             min3: 0.0,
             maj3: 0.0,
             p4: 0.0,
             p5: 0.0,
+            p5_class: 0.0,
         };
     }
-    let eps = eps_st.max(1e-6);
-    let mut count_min3 = 0u32;
-    let mut count_maj3 = 0u32;
-    let mut count_p4 = 0u32;
-    let mut count_p5 = 0u32;
+    let eps = eps_cents.max(1e-6);
+    let sigma = (eps * E4_SOFT_SIGMA_SCALE).max(1e-6);
+    let mut sum_min3 = 0.0f32;
+    let mut sum_maj3 = 0.0f32;
+    let mut sum_p4 = 0.0f32;
+    let mut sum_p5 = 0.0f32;
+    let mut sum_p5_class = 0.0f32;
     let mut total = 0u32;
     for &freq in freqs {
-        if !freq.is_finite() || freq <= 0.0 {
+        let Some(cents_class) = freq_to_cents_class(anchor_hz, freq) else {
             continue;
-        }
-        let ratio = freq / anchor_hz;
-        if !ratio.is_finite() || ratio <= 0.0 {
-            continue;
-        }
-        let semitones = 12.0 * ratio.log2();
-        let folded = semitone_fold_to_octave(semitones);
+        };
         total += 1;
-        if (folded - 3.0).abs() <= eps {
-            count_min3 += 1;
-        }
-        if (folded - 4.0).abs() <= eps {
-            count_maj3 += 1;
-        }
-        if (folded - 5.0).abs() <= eps {
-            count_p4 += 1;
-        }
-        if (folded - 7.0).abs() <= eps {
-            count_p5 += 1;
-        }
+        sum_min3 += mass_weight(
+            circular_cents_distance(cents_class, E4_CENTS_MIN3),
+            eps,
+            sigma,
+            count_mode,
+        );
+        sum_maj3 += mass_weight(
+            circular_cents_distance(cents_class, E4_CENTS_MAJ3),
+            eps,
+            sigma,
+            count_mode,
+        );
+        sum_p4 += mass_weight(
+            circular_cents_distance(cents_class, E4_CENTS_P4),
+            eps,
+            sigma,
+            count_mode,
+        );
+        sum_p5 += mass_weight(
+            circular_cents_distance(cents_class, E4_CENTS_P5),
+            eps,
+            sigma,
+            count_mode,
+        );
+        sum_p5_class += mass_weight(p5_class_distance_cents(cents_class), eps, sigma, count_mode);
     }
     if total == 0 {
         return IntervalMasses {
@@ -3669,15 +4049,26 @@ fn interval_masses_from_freqs(anchor_hz: f32, freqs: &[f32], eps_st: f32) -> Int
             maj3: 0.0,
             p4: 0.0,
             p5: 0.0,
+            p5_class: 0.0,
         };
     }
     let inv = 1.0 / total as f32;
     IntervalMasses {
-        min3: count_min3 as f32 * inv,
-        maj3: count_maj3 as f32 * inv,
-        p4: count_p4 as f32 * inv,
-        p5: count_p5 as f32 * inv,
+        min3: sum_min3 * inv,
+        maj3: sum_maj3 * inv,
+        p4: sum_p4 * inv,
+        p5: sum_p5 * inv,
+        p5_class: sum_p5_class * inv,
     }
+}
+
+fn triad_scores(masses: IntervalMasses) -> (f32, f32, f32, f32) {
+    let triad_major = masses.maj3 * masses.p5_class;
+    let triad_minor = masses.min3 * masses.p5_class;
+    let denom = triad_major + triad_minor + 1e-6;
+    let delta_t = (triad_major - triad_minor) / denom;
+    let major_frac = triad_major / (triad_major + triad_minor + 1e-12);
+    (triad_major, triad_minor, delta_t, major_frac)
 }
 
 fn run_e4_sweep_for_weights(
@@ -3695,56 +4086,63 @@ fn run_e4_sweep_for_weights(
     for &weight in weights {
         for &seed in seeds {
             let samples = run_e4_condition_tail_samples(weight, seed, E4_TAIL_WINDOW_STEPS);
-            let semitone_samples = collect_e4_semitone_samples(&samples, anchor_hz);
-            let histogram = histogram_from_samples(&semitone_samples, 0.0, 12.0, bin_width);
+            let interval_cents_samples = collect_e4_interval_cents_samples(&samples, anchor_hz);
+            let bin_width_cents = (bin_width * 100.0).max(1.0);
+            let histogram =
+                histogram_from_samples(&interval_cents_samples, 0.0, 1200.0, bin_width_cents);
 
             let burn_in = samples.steps_total.saturating_sub(samples.tail_window);
             for &eps_cents in eps_cents_list {
-                let eps_st = (eps_cents / 100.0).max(1e-6);
-                let mass_min3 = mass_around(&histogram, 3.0, eps_st);
-                let mass_maj3 = mass_around(&histogram, 4.0, eps_st);
-                let mass_p4 = mass_around(&histogram, 5.0, eps_st);
-                let mass_p5 = mass_around(&histogram, 7.0, eps_st);
-                let major_score = mass_maj3 + mass_p5;
-                let minor_score = mass_min3 + mass_p5;
-                let delta = major_score - minor_score;
-                let major_frac = major_score / (major_score + minor_score + 1e-12);
+                for count_mode in [E4CountMode::Soft, E4CountMode::Hard] {
+                    let mode_label = count_mode.label();
+                    let masses = interval_masses_from_histogram(&histogram, eps_cents, count_mode);
+                    let (triad_major, triad_minor, delta_t, major_frac) = triad_scores(masses);
 
-                let record = E4RunRecord {
-                    mirror_weight: weight,
-                    seed,
-                    bin_width,
-                    eps_cents,
-                    major_score,
-                    minor_score,
-                    delta,
-                    major_frac,
-                    mass_min3,
-                    mass_maj3,
-                    mass_p4,
-                    mass_p5,
-                    steps_total: samples.steps_total,
-                    burn_in,
-                    tail_window: samples.tail_window,
-                    histogram_source: "tail_mean",
-                };
-                runs.push(record);
-
-                for (i, freqs) in samples.freqs_by_step.iter().enumerate() {
-                    let masses = interval_masses_from_freqs(anchor_hz, freqs, eps_st);
-                    let step = samples.steps_total.saturating_sub(samples.tail_window) + i as u32;
-                    tail_rows.push(E4TailIntervalRow {
+                    runs.push(E4RunRecord {
+                        count_mode: mode_label,
                         mirror_weight: weight,
                         seed,
                         bin_width,
                         eps_cents,
-                        step,
+                        major_score: triad_major,
+                        minor_score: triad_minor,
+                        delta: delta_t,
+                        triad_major,
+                        triad_minor,
+                        delta_t,
+                        major_frac,
                         mass_min3: masses.min3,
                         mass_maj3: masses.maj3,
                         mass_p4: masses.p4,
                         mass_p5: masses.p5,
-                        delta: masses.maj3 - masses.min3,
+                        mass_p5_class: masses.p5_class,
+                        steps_total: samples.steps_total,
+                        burn_in,
+                        tail_window: samples.tail_window,
+                        histogram_source: "tail_mean",
                     });
+
+                    for (i, freqs) in samples.freqs_by_step.iter().enumerate() {
+                        let masses =
+                            interval_masses_from_freqs(anchor_hz, freqs, eps_cents, count_mode);
+                        let (_, _, delta_t, _) = triad_scores(masses);
+                        let step =
+                            samples.steps_total.saturating_sub(samples.tail_window) + i as u32;
+                        tail_rows.push(E4TailIntervalRow {
+                            count_mode: mode_label,
+                            mirror_weight: weight,
+                            seed,
+                            bin_width,
+                            eps_cents,
+                            step,
+                            mass_min3: masses.min3,
+                            mass_maj3: masses.maj3,
+                            mass_p4: masses.p4,
+                            mass_p5: masses.p5,
+                            mass_p5_class: masses.p5_class,
+                            delta_t,
+                        });
+                    }
                 }
             }
 
@@ -3776,15 +4174,15 @@ fn run_e4_sweep_for_weights(
                 let hist_png_path =
                     out_dir.join(format!("e4_hist_w{w_token}_seed{seed}_bw{bw_token}.svg"));
                 let caption = format!(
-                    "E4 Interval Histogram (w={weight:.2}, seed={seed}, bw={bin_width:.2})"
+                    "E4 Interval Histogram (cents PC, w={weight:.2}, seed={seed}, bw={bin_width_cents:.1}c)"
                 );
                 render_interval_histogram(
                     &hist_png_path,
                     &caption,
-                    &semitone_samples,
+                    &interval_cents_samples,
                     0.0,
-                    12.0,
-                    bin_width,
+                    1200.0,
+                    bin_width_cents,
                 )?;
             }
         }
@@ -3794,23 +4192,25 @@ fn run_e4_sweep_for_weights(
 
 fn e4_runs_csv(records: &[E4RunRecord]) -> String {
     let mut out = String::from(
-        "mirror_weight,seed,bin_width,eps_cents,major_score,minor_score,delta,major_frac,mass_m3,mass_M3,mass_P4,mass_P5,steps_total,burn_in,tail_window,histogram_source\n",
+        "count_mode,mirror_weight,seed,bin_width,eps_cents,triad_major,triad_minor,delta_t,major_frac,mass_m3,mass_M3,mass_P4,mass_P5,mass_P5class,steps_total,burn_in,tail_window,histogram_source\n",
     );
     for record in records {
         out.push_str(&format!(
-            "{:.3},{},{:.3},{:.3},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{},{},{},{}\n",
+            "{},{:.3},{},{:.3},{:.3},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{},{},{},{}\n",
+            record.count_mode,
             record.mirror_weight,
             record.seed,
             record.bin_width,
             record.eps_cents,
-            record.major_score,
-            record.minor_score,
-            record.delta,
+            record.triad_major,
+            record.triad_minor,
+            record.delta_t,
             record.major_frac,
             record.mass_min3,
             record.mass_maj3,
             record.mass_p4,
             record.mass_p5,
+            record.mass_p5_class,
             record.steps_total,
             record.burn_in,
             record.tail_window,
@@ -3822,11 +4222,12 @@ fn e4_runs_csv(records: &[E4RunRecord]) -> String {
 
 fn e4_tail_interval_csv(rows: &[E4TailIntervalRow]) -> String {
     let mut out = String::from(
-        "mirror_weight,seed,bin_width,eps_cents,step,mass_m3,mass_M3,mass_P4,mass_P5,delta\n",
+        "count_mode,mirror_weight,seed,bin_width,eps_cents,step,mass_m3,mass_M3,mass_P4,mass_P5,mass_P5class,delta_t\n",
     );
     for row in rows {
         out.push_str(&format!(
-            "{:.3},{},{:.3},{:.3},{},{:.6},{:.6},{:.6},{:.6},{:.6}\n",
+            "{},{:.3},{},{:.3},{:.3},{},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6}\n",
+            row.count_mode,
             row.mirror_weight,
             row.seed,
             row.bin_width,
@@ -3836,7 +4237,8 @@ fn e4_tail_interval_csv(rows: &[E4TailIntervalRow]) -> String {
             row.mass_maj3,
             row.mass_p4,
             row.mass_p5,
-            row.delta
+            row.mass_p5_class,
+            row.delta_t
         ));
     }
     out
@@ -3844,11 +4246,12 @@ fn e4_tail_interval_csv(rows: &[E4TailIntervalRow]) -> String {
 
 fn e4_summary_csv(records: &[E4SummaryRecord]) -> String {
     let mut out = String::from(
-        "mirror_weight,bin_width,eps_cents,mean_major,std_major,mean_minor,std_minor,mean_delta,std_delta,mean_m3,std_m3,mean_M3,std_M3,mean_P4,std_P4,mean_P5,std_P5,major_rate,minor_rate,ambiguous_rate,n_runs\n",
+        "count_mode,mirror_weight,bin_width,eps_cents,mean_major,std_major,mean_minor,std_minor,mean_delta_t,std_delta_t,mean_m3,std_m3,mean_M3,std_M3,mean_P4,std_P4,mean_P5,std_P5,mean_P5class,std_P5class,major_rate,minor_rate,ambiguous_rate,n_runs\n",
     );
     for record in records {
         out.push_str(&format!(
-            "{:.3},{:.3},{:.3},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.3},{:.3},{:.3},{}\n",
+            "{},{:.3},{:.3},{:.3},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.3},{:.3},{:.3},{}\n",
+            record.count_mode,
             record.mirror_weight,
             record.bin_width,
             record.eps_cents,
@@ -3866,6 +4269,8 @@ fn e4_summary_csv(records: &[E4SummaryRecord]) -> String {
             record.std_p4,
             record.mean_p5,
             record.std_p5,
+            record.mean_p5_class,
+            record.std_p5_class,
             record.major_rate,
             record.minor_rate,
             record.ambiguous_rate,
@@ -3886,15 +4291,17 @@ fn e4_hist_csv(
     histogram_source: &str,
     hist: &Histogram,
 ) -> String {
+    let bin_width_cents = (bin_width * 100.0).max(1.0);
     let mut out = String::from(
-        "mirror_weight,seed,bin_width,steps_total,burn_in,tail_window,histogram_source,bin_center,mass\n",
+        "mirror_weight,seed,bin_width_st,bin_width_cents,steps_total,burn_in,tail_window,histogram_source,bin_center_cents,mass\n",
     );
     for (center, mass) in hist.bin_centers.iter().zip(hist.masses.iter()) {
         out.push_str(&format!(
-            "{:.3},{},{:.3},{},{},{},{},{:.3},{:.6}\n",
+            "{:.3},{},{:.3},{:.3},{},{},{},{},{:.3},{:.6}\n",
             weight,
             seed,
             bin_width,
+            bin_width_cents,
             steps_total,
             burn_in,
             tail_window,
@@ -3907,10 +4314,11 @@ fn e4_hist_csv(
 }
 
 fn summarize_e4_runs(records: &[E4RunRecord]) -> Vec<E4SummaryRecord> {
-    let mut map: std::collections::HashMap<(i32, i32, i32), Vec<&E4RunRecord>> =
+    let mut map: std::collections::HashMap<(&'static str, i32, i32, i32), Vec<&E4RunRecord>> =
         std::collections::HashMap::new();
     for record in records {
         let key = (
+            record.count_mode,
             float_key(record.mirror_weight),
             float_key(record.bin_width),
             float_key(record.eps_cents),
@@ -3918,10 +4326,11 @@ fn summarize_e4_runs(records: &[E4RunRecord]) -> Vec<E4SummaryRecord> {
         map.entry(key).or_default().push(record);
     }
     let mut summaries = Vec::new();
-    for ((_w_key, _bw_key, _eps_key), runs) in map {
+    for ((_mode_key, _w_key, _bw_key, _eps_key), runs) in map {
         if runs.is_empty() {
             continue;
         }
+        let count_mode = runs[0].count_mode;
         let mirror_weight = runs[0].mirror_weight;
         let bin_width = runs[0].bin_width;
         let eps_cents = runs[0].eps_cents;
@@ -3932,6 +4341,7 @@ fn summarize_e4_runs(records: &[E4RunRecord]) -> Vec<E4SummaryRecord> {
         let maj3_values: Vec<f32> = runs.iter().map(|r| r.mass_maj3).collect();
         let p4_values: Vec<f32> = runs.iter().map(|r| r.mass_p4).collect();
         let p5_values: Vec<f32> = runs.iter().map(|r| r.mass_p5).collect();
+        let p5_class_values: Vec<f32> = runs.iter().map(|r| r.mass_p5_class).collect();
         let (mean_major, std_major) = mean_std(&major_values);
         let (mean_minor, std_minor) = mean_std(&minor_values);
         let (mean_delta, std_delta) = mean_std(&delta_values);
@@ -3939,6 +4349,7 @@ fn summarize_e4_runs(records: &[E4RunRecord]) -> Vec<E4SummaryRecord> {
         let (mean_maj3, std_maj3) = mean_std(&maj3_values);
         let (mean_p4, std_p4) = mean_std(&p4_values);
         let (mean_p5, std_p5) = mean_std(&p5_values);
+        let (mean_p5_class, std_p5_class) = mean_std(&p5_class_values);
         let mut major_count = 0usize;
         let mut minor_count = 0usize;
         let mut ambiguous_count = 0usize;
@@ -3954,6 +4365,7 @@ fn summarize_e4_runs(records: &[E4RunRecord]) -> Vec<E4SummaryRecord> {
         let n_runs = runs.len();
         let inv = 1.0 / n_runs as f32;
         summaries.push(E4SummaryRecord {
+            count_mode,
             mirror_weight,
             bin_width,
             eps_cents,
@@ -3971,6 +4383,8 @@ fn summarize_e4_runs(records: &[E4RunRecord]) -> Vec<E4SummaryRecord> {
             std_p4,
             mean_p5,
             std_p5,
+            mean_p5_class,
+            std_p5_class,
             major_rate: major_count as f32 * inv,
             minor_rate: minor_count as f32 * inv,
             ambiguous_rate: ambiguous_count as f32 * inv,
@@ -3991,6 +4405,7 @@ fn summarize_e4_runs(records: &[E4RunRecord]) -> Vec<E4SummaryRecord> {
                     .partial_cmp(&b.mirror_weight)
                     .unwrap_or(std::cmp::Ordering::Equal)
             })
+            .then_with(|| a.count_mode.cmp(b.count_mode))
     });
     summaries
 }
@@ -4144,6 +4559,7 @@ fn e4_delta_effects_from_summary(summaries: &[E4SummaryRecord]) -> Vec<E4DeltaEf
             t_crit * se_delta
         };
         rows.push(E4DeltaEffectRow {
+            count_mode: summary.count_mode,
             mirror_weight: summary.mirror_weight,
             bin_width: summary.bin_width,
             eps_cents: summary.eps_cents,
@@ -4159,6 +4575,8 @@ fn e4_delta_effects_from_summary(summaries: &[E4SummaryRecord]) -> Vec<E4DeltaEf
             sd_mass_maj3: summary.std_maj3,
             mean_mass_p5: summary.mean_p5,
             sd_mass_p5: summary.std_p5,
+            mean_mass_p5_class: summary.mean_p5_class,
+            sd_mass_p5_class: summary.std_p5_class,
         });
     }
     rows.sort_by(|a, b| {
@@ -4175,17 +4593,19 @@ fn e4_delta_effects_from_summary(summaries: &[E4SummaryRecord]) -> Vec<E4DeltaEf
                     .partial_cmp(&b.mirror_weight)
                     .unwrap_or(std::cmp::Ordering::Equal)
             })
+            .then_with(|| a.count_mode.cmp(b.count_mode))
     });
     rows
 }
 
 fn e4_delta_effects_csv(rows: &[E4DeltaEffectRow]) -> String {
     let mut out = String::from(
-        "mirror_weight,bin_width,eps_cents,mean_delta,sd_delta,se_delta,ci_lo,ci_hi,n_seeds,mean_mass_m3,sd_mass_m3,mean_mass_M3,sd_mass_M3,mean_mass_P5,sd_mass_P5\n",
+        "count_mode,mirror_weight,bin_width,eps_cents,mean_delta,sd_delta,se_delta,ci_lo,ci_hi,n_seeds,mean_mass_m3,sd_mass_m3,mean_mass_M3,sd_mass_M3,mean_mass_P5,sd_mass_P5,mean_mass_P5class,sd_mass_P5class\n",
     );
     for row in rows {
         out.push_str(&format!(
-            "{:.3},{:.3},{:.1},{:.6},{:.6},{:.6},{:.6},{:.6},{},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6}\n",
+            "{},{:.3},{:.3},{:.1},{:.6},{:.6},{:.6},{:.6},{:.6},{},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6}\n",
+            row.count_mode,
             row.mirror_weight,
             row.bin_width,
             row.eps_cents,
@@ -4200,21 +4620,28 @@ fn e4_delta_effects_csv(rows: &[E4DeltaEffectRow]) -> String {
             row.mean_mass_maj3,
             row.sd_mass_maj3,
             row.mean_mass_p5,
-            row.sd_mass_p5
+            row.sd_mass_p5,
+            row.mean_mass_p5_class,
+            row.sd_mass_p5_class
         ));
     }
     out
 }
 
 fn e4_regression_rows(summaries: &[E4SummaryRecord]) -> Vec<E4RegressionRow> {
-    let mut map: std::collections::HashMap<(i32, i32), Vec<&E4SummaryRecord>> =
+    let mut map: std::collections::HashMap<(&'static str, i32, i32), Vec<&E4SummaryRecord>> =
         std::collections::HashMap::new();
     for summary in summaries {
-        let key = (float_key(summary.bin_width), float_key(summary.eps_cents));
+        let key = (
+            summary.count_mode,
+            float_key(summary.bin_width),
+            float_key(summary.eps_cents),
+        );
         map.entry(key).or_default().push(summary);
     }
     let mut rows = Vec::new();
-    for ((_bw_key, _eps_key), group) in map {
+    for ((_mode_key, _bw_key, _eps_key), group) in map {
+        let count_mode = group[0].count_mode;
         let bin_width = group[0].bin_width;
         let eps_cents = group[0].eps_cents;
         let mut points: Vec<(f32, f32)> = group
@@ -4237,6 +4664,7 @@ fn e4_regression_rows(summaries: &[E4SummaryRecord]) -> Vec<E4RegressionRow> {
             let spearman = spearman_rho(&xs, &ys);
             let spearman_p = perm_pvalue(&xs, &ys, 1000, seed, spearman_rho);
             rows.push(E4RegressionRow {
+                count_mode,
                 bin_width,
                 eps_cents,
                 slope: fit.slope,
@@ -4258,17 +4686,19 @@ fn e4_regression_rows(summaries: &[E4SummaryRecord]) -> Vec<E4RegressionRow> {
                     .partial_cmp(&b.eps_cents)
                     .unwrap_or(std::cmp::Ordering::Equal)
             })
+            .then_with(|| a.count_mode.cmp(b.count_mode))
     });
     rows
 }
 
 fn e4_regression_csv(rows: &[E4RegressionRow]) -> String {
     let mut out = String::from(
-        "bin_width,eps_cents,slope,slope_ci_lo,slope_ci_hi,r2,spearman_rho,spearman_p,n_weights\n",
+        "count_mode,bin_width,eps_cents,slope,slope_ci_lo,slope_ci_hi,r2,spearman_rho,spearman_p,n_weights\n",
     );
     for row in rows {
         out.push_str(&format!(
-            "{:.3},{:.1},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{}\n",
+            "{},{:.3},{:.1},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{}\n",
+            row.count_mode,
             row.bin_width,
             row.eps_cents,
             row.slope,
@@ -4286,20 +4716,26 @@ fn e4_regression_csv(rows: &[E4RegressionRow]) -> String {
 fn e4_endpoint_effect_rows(records: &[E4RunRecord]) -> Vec<E4EndpointEffectRow> {
     #[derive(Default)]
     struct EndpointAccum {
+        count_mode: &'static str,
         bin_width: f32,
         eps_cents: f32,
         delta0: Vec<f32>,
         delta1: Vec<f32>,
     }
 
-    let mut map: std::collections::HashMap<(i32, i32), EndpointAccum> =
+    let mut map: std::collections::HashMap<(&'static str, i32, i32), EndpointAccum> =
         std::collections::HashMap::new();
     for record in records {
         if (record.mirror_weight - 0.0).abs() > 1e-6 && (record.mirror_weight - 1.0).abs() > 1e-6 {
             continue;
         }
-        let key = (float_key(record.bin_width), float_key(record.eps_cents));
+        let key = (
+            record.count_mode,
+            float_key(record.bin_width),
+            float_key(record.eps_cents),
+        );
         let entry = map.entry(key).or_insert_with(|| EndpointAccum {
+            count_mode: record.count_mode,
             bin_width: record.bin_width,
             eps_cents: record.eps_cents,
             ..EndpointAccum::default()
@@ -4338,6 +4774,7 @@ fn e4_endpoint_effect_rows(records: &[E4RunRecord]) -> Vec<E4EndpointEffectRow> 
             0.0
         };
         rows.push(E4EndpointEffectRow {
+            count_mode: entry.count_mode,
             bin_width: entry.bin_width,
             eps_cents: entry.eps_cents,
             delta_end,
@@ -4357,15 +4794,18 @@ fn e4_endpoint_effect_rows(records: &[E4RunRecord]) -> Vec<E4EndpointEffectRow> 
                     .partial_cmp(&b.eps_cents)
                     .unwrap_or(std::cmp::Ordering::Equal)
             })
+            .then_with(|| a.count_mode.cmp(b.count_mode))
     });
     rows
 }
 
 fn e4_endpoint_effect_csv(rows: &[E4EndpointEffectRow]) -> String {
-    let mut out = String::from("bin_width,eps_cents,delta_end,ci_lo,ci_hi,cohen_d,n0,n1\n");
+    let mut out =
+        String::from("count_mode,bin_width,eps_cents,delta_end,ci_lo,ci_hi,cohen_d,n0,n1\n");
     for row in rows {
         out.push_str(&format!(
-            "{:.3},{:.1},{:.6},{:.6},{:.6},{:.6},{},{}\n",
+            "{},{:.3},{:.1},{:.6},{:.6},{:.6},{:.6},{},{}\n",
+            row.count_mode,
             row.bin_width,
             row.eps_cents,
             row.delta_end,
@@ -4380,10 +4820,11 @@ fn e4_endpoint_effect_csv(rows: &[E4EndpointEffectRow]) -> String {
 }
 
 fn e4_seed_slopes_rows(records: &[E4RunRecord]) -> Vec<E4SeedSlopeRow> {
-    let mut map: std::collections::HashMap<(u64, i32, i32), Vec<(f32, f32)>> =
+    let mut map: std::collections::HashMap<(&'static str, u64, i32, i32), Vec<(f32, f32)>> =
         std::collections::HashMap::new();
     for record in records {
         let key = (
+            record.count_mode,
             record.seed,
             float_key(record.bin_width),
             float_key(record.eps_cents),
@@ -4393,12 +4834,13 @@ fn e4_seed_slopes_rows(records: &[E4RunRecord]) -> Vec<E4SeedSlopeRow> {
             .push((record.mirror_weight, record.delta));
     }
     let mut rows = Vec::new();
-    for ((seed, bw_key, eps_key), mut points) in map {
+    for ((count_mode, seed, bw_key, eps_key), mut points) in map {
         points.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
         let xs: Vec<f32> = points.iter().map(|(x, _)| *x).collect();
         let ys: Vec<f32> = points.iter().map(|(_, y)| *y).collect();
         if let Some(fit) = linear_regression(&xs, &ys) {
             rows.push(E4SeedSlopeRow {
+                count_mode,
                 seed,
                 bin_width: float_from_key(bw_key),
                 eps_cents: float_from_key(eps_key),
@@ -4417,33 +4859,45 @@ fn e4_seed_slopes_rows(records: &[E4RunRecord]) -> Vec<E4SeedSlopeRow> {
                     .partial_cmp(&b.eps_cents)
                     .unwrap_or(std::cmp::Ordering::Equal)
             })
+            .then_with(|| a.count_mode.cmp(b.count_mode))
             .then_with(|| a.seed.cmp(&b.seed))
     });
     rows
 }
 
 fn e4_seed_slopes_csv(rows: &[E4SeedSlopeRow]) -> String {
-    let mut out = String::from("seed,bin_width,eps_cents,slope_seed,r2_seed,n_weights\n");
+    let mut out =
+        String::from("count_mode,seed,bin_width,eps_cents,slope_seed,r2_seed,n_weights\n");
     for row in rows {
         out.push_str(&format!(
-            "{},{:.3},{:.1},{:.6},{:.6},{}\n",
-            row.seed, row.bin_width, row.eps_cents, row.slope_seed, row.r2_seed, row.n_weights
+            "{},{},{:.3},{:.1},{:.6},{:.6},{}\n",
+            row.count_mode,
+            row.seed,
+            row.bin_width,
+            row.eps_cents,
+            row.slope_seed,
+            row.r2_seed,
+            row.n_weights
         ));
     }
     out
 }
 
 fn e4_run_level_regression_rows(records: &[E4RunRecord]) -> Vec<E4RunLevelRegressionRow> {
-    let mut map: std::collections::HashMap<(i32, i32), Vec<(f32, f32)>> =
+    let mut map: std::collections::HashMap<(&'static str, i32, i32), Vec<(f32, f32)>> =
         std::collections::HashMap::new();
     for record in records {
-        let key = (float_key(record.bin_width), float_key(record.eps_cents));
+        let key = (
+            record.count_mode,
+            float_key(record.bin_width),
+            float_key(record.eps_cents),
+        );
         map.entry(key)
             .or_default()
             .push((record.mirror_weight, record.delta));
     }
     let mut rows = Vec::new();
-    for ((bw_key, eps_key), mut points) in map {
+    for ((count_mode, bw_key, eps_key), mut points) in map {
         points.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
         let xs: Vec<f32> = points.iter().map(|(x, _)| *x).collect();
         let ys: Vec<f32> = points.iter().map(|(_, y)| *y).collect();
@@ -4456,6 +4910,7 @@ fn e4_run_level_regression_rows(records: &[E4RunRecord]) -> Vec<E4RunLevelRegres
                 t_crit * fit.se_slope
             };
             rows.push(E4RunLevelRegressionRow {
+                count_mode,
                 bin_width: float_from_key(bw_key),
                 eps_cents: float_from_key(eps_key),
                 slope: fit.slope,
@@ -4475,15 +4930,18 @@ fn e4_run_level_regression_rows(records: &[E4RunRecord]) -> Vec<E4RunLevelRegres
                     .partial_cmp(&b.eps_cents)
                     .unwrap_or(std::cmp::Ordering::Equal)
             })
+            .then_with(|| a.count_mode.cmp(b.count_mode))
     });
     rows
 }
 
 fn e4_run_level_regression_csv(rows: &[E4RunLevelRegressionRow]) -> String {
-    let mut out = String::from("bin_width,eps_cents,slope,slope_ci_lo,slope_ci_hi,r2,n_runs\n");
+    let mut out =
+        String::from("count_mode,bin_width,eps_cents,slope,slope_ci_lo,slope_ci_hi,r2,n_runs\n");
     for row in rows {
         out.push_str(&format!(
-            "{:.3},{:.1},{:.6},{:.6},{:.6},{:.6},{}\n",
+            "{},{:.3},{:.1},{:.6},{:.6},{:.6},{:.6},{}\n",
+            row.count_mode,
             row.bin_width,
             row.eps_cents,
             row.slope,
@@ -4497,14 +4955,18 @@ fn e4_run_level_regression_csv(rows: &[E4RunLevelRegressionRow]) -> String {
 }
 
 fn e4_seed_slope_meta_rows(seed_rows: &[E4SeedSlopeRow]) -> Vec<E4SeedSlopeMetaRow> {
-    let mut map: std::collections::HashMap<(i32, i32), Vec<&E4SeedSlopeRow>> =
+    let mut map: std::collections::HashMap<(&'static str, i32, i32), Vec<&E4SeedSlopeRow>> =
         std::collections::HashMap::new();
     for row in seed_rows {
-        let key = (float_key(row.bin_width), float_key(row.eps_cents));
+        let key = (
+            row.count_mode,
+            float_key(row.bin_width),
+            float_key(row.eps_cents),
+        );
         map.entry(key).or_default().push(row);
     }
     let mut rows = Vec::new();
-    for ((bw_key, eps_key), group) in map {
+    for ((count_mode, bw_key, eps_key), group) in map {
         let mut slopes = Vec::new();
         let mut r2s = Vec::new();
         let mut n_pos = 0usize;
@@ -4534,6 +4996,7 @@ fn e4_seed_slope_meta_rows(seed_rows: &[E4SeedSlopeRow]) -> Vec<E4SeedSlopeMetaR
         };
         let (mean_r2, _) = mean_std(&r2s);
         rows.push(E4SeedSlopeMetaRow {
+            count_mode,
             bin_width: float_from_key(bw_key),
             eps_cents: float_from_key(eps_key),
             mean_slope,
@@ -4554,17 +5017,19 @@ fn e4_seed_slope_meta_rows(seed_rows: &[E4SeedSlopeRow]) -> Vec<E4SeedSlopeMetaR
                     .partial_cmp(&b.eps_cents)
                     .unwrap_or(std::cmp::Ordering::Equal)
             })
+            .then_with(|| a.count_mode.cmp(b.count_mode))
     });
     rows
 }
 
 fn e4_seed_slope_meta_csv(rows: &[E4SeedSlopeMetaRow]) -> String {
     let mut out = String::from(
-        "bin_width,eps_cents,mean_slope,ci_lo,ci_hi,sign_p,var_slope_across_seeds,mean_r2,n_seeds\n",
+        "count_mode,bin_width,eps_cents,mean_slope,ci_lo,ci_hi,sign_p,var_slope_across_seeds,mean_r2,n_seeds\n",
     );
     for row in rows {
         out.push_str(&format!(
-            "{:.3},{:.1},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{}\n",
+            "{},{:.3},{:.1},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{}\n",
+            row.count_mode,
             row.bin_width,
             row.eps_cents,
             row.mean_slope,
@@ -4580,10 +5045,11 @@ fn e4_seed_slope_meta_csv(rows: &[E4SeedSlopeMetaRow]) -> String {
 }
 
 fn e4_total_third_mass_rows(records: &[E4RunRecord]) -> Vec<E4ThirdMassRow> {
-    let mut map: std::collections::HashMap<(i32, i32, i32), Vec<f32>> =
+    let mut map: std::collections::HashMap<(&'static str, i32, i32, i32), Vec<f32>> =
         std::collections::HashMap::new();
     for record in records {
         let key = (
+            record.count_mode,
             float_key(record.mirror_weight),
             float_key(record.bin_width),
             float_key(record.eps_cents),
@@ -4592,9 +5058,10 @@ fn e4_total_third_mass_rows(records: &[E4RunRecord]) -> Vec<E4ThirdMassRow> {
         map.entry(key).or_default().push(third_mass);
     }
     let mut rows = Vec::new();
-    for ((w_key, bw_key, eps_key), values) in map {
+    for ((count_mode, w_key, bw_key, eps_key), values) in map {
         let (mean_third_mass, std_third_mass) = mean_std(&values);
         rows.push(E4ThirdMassRow {
+            count_mode,
             mirror_weight: float_from_key(w_key),
             bin_width: float_from_key(bw_key),
             eps_cents: float_from_key(eps_key),
@@ -4617,16 +5084,19 @@ fn e4_total_third_mass_rows(records: &[E4RunRecord]) -> Vec<E4ThirdMassRow> {
                     .partial_cmp(&b.mirror_weight)
                     .unwrap_or(std::cmp::Ordering::Equal)
             })
+            .then_with(|| a.count_mode.cmp(b.count_mode))
     });
     rows
 }
 
 fn e4_total_third_mass_csv(rows: &[E4ThirdMassRow]) -> String {
-    let mut out =
-        String::from("mirror_weight,bin_width,eps_cents,mean_third_mass,std_third_mass,n_runs\n");
+    let mut out = String::from(
+        "count_mode,mirror_weight,bin_width,eps_cents,mean_third_mass,std_third_mass,n_runs\n",
+    );
     for row in rows {
         out.push_str(&format!(
-            "{:.3},{:.3},{:.1},{:.6},{:.6},{}\n",
+            "{},{:.3},{:.3},{:.1},{:.6},{:.6},{}\n",
+            row.count_mode,
             row.mirror_weight,
             row.bin_width,
             row.eps_cents,
@@ -4671,6 +5141,660 @@ fn mean_histogram_for_weight(
     })
 }
 
+fn bootstrap_mean_ci95(values: &[f32], iters: usize, seed: u64) -> (f32, f32, f32) {
+    if values.is_empty() {
+        return (0.0, 0.0, 0.0);
+    }
+    let mean = values.iter().copied().sum::<f32>() / values.len() as f32;
+    if values.len() < 2 || iters == 0 {
+        return (mean, mean, mean);
+    }
+    let mut rng = StdRng::seed_from_u64(seed);
+    let mut samples = Vec::with_capacity(iters);
+    for _ in 0..iters {
+        let mut acc = 0.0f32;
+        for _ in 0..values.len() {
+            let idx = rng.random_range(0..values.len());
+            acc += values[idx];
+        }
+        samples.push(acc / values.len() as f32);
+    }
+    samples.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let lo_idx = ((iters as f32 * 0.025).floor() as usize).min(iters - 1);
+    let hi_idx = ((iters as f32 * 0.975).floor() as usize).min(iters - 1);
+    (mean, samples[lo_idx], samples[hi_idx])
+}
+
+fn estimate_piecewise_changepoint(points: &[(f32, f32)]) -> Option<f32> {
+    if points.len() < 4 {
+        return None;
+    }
+    let mut best_sse = f32::INFINITY;
+    let mut best_w = 0.5f32;
+    for split in 1..(points.len() - 1) {
+        let left = &points[..=split];
+        let right = &points[split..];
+        if left.len() < 2 || right.len() < 2 {
+            continue;
+        }
+        let (lx, ly): (Vec<f32>, Vec<f32>) = left.iter().copied().unzip();
+        let (rx, ry): (Vec<f32>, Vec<f32>) = right.iter().copied().unzip();
+        let Some(lfit) = linear_regression(&lx, &ly) else {
+            continue;
+        };
+        let Some(rfit) = linear_regression(&rx, &ry) else {
+            continue;
+        };
+        let sse_left: f32 = left
+            .iter()
+            .map(|(x, y)| {
+                let pred = lfit.intercept + lfit.slope * *x;
+                (y - pred).powi(2)
+            })
+            .sum();
+        let sse_right: f32 = right
+            .iter()
+            .map(|(x, y)| {
+                let pred = rfit.intercept + rfit.slope * *x;
+                (y - pred).powi(2)
+            })
+            .sum();
+        let sse = sse_left + sse_right;
+        if sse < best_sse {
+            best_sse = sse;
+            best_w = points[split].0;
+        }
+    }
+    if best_sse.is_finite() {
+        Some(best_w)
+    } else {
+        None
+    }
+}
+
+fn render_e4_figure1_mirror_vs_delta_t(
+    out_path: &Path,
+    run_records: &[E4RunRecord],
+    bin_width: f32,
+    eps_cents: f32,
+    count_mode: &'static str,
+    panel_label: &str,
+) -> Result<(), Box<dyn Error>> {
+    let mut grouped: std::collections::HashMap<i32, Vec<f32>> = std::collections::HashMap::new();
+    for record in run_records {
+        if record.count_mode != count_mode {
+            continue;
+        }
+        if (record.bin_width - bin_width).abs() > 1e-6
+            || (record.eps_cents - eps_cents).abs() > 1e-6
+        {
+            continue;
+        }
+        grouped
+            .entry(float_key(record.mirror_weight))
+            .or_default()
+            .push(record.delta_t);
+    }
+    if grouped.is_empty() {
+        return Ok(());
+    }
+    let mut rows: Vec<(f32, f32, f32, f32, usize)> = Vec::new();
+    for (w_key, deltas) in grouped {
+        let w = float_from_key(w_key);
+        let seed = E4_BOOTSTRAP_SEED ^ (w_key as u64) ^ (float_key(eps_cents) as u64);
+        let (mean, lo, hi) = bootstrap_mean_ci95(&deltas, E4_BOOTSTRAP_ITERS, seed);
+        rows.push((w, mean, lo, hi, deltas.len()));
+    }
+    rows.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+    if rows.is_empty() {
+        return Ok(());
+    }
+
+    let mut y_min = 0.0f32;
+    let mut y_max = 0.0f32;
+    for (_, mean, lo, hi, _) in &rows {
+        y_min = y_min.min(*lo).min(*mean);
+        y_max = y_max.max(*hi).max(*mean);
+    }
+    if (y_max - y_min).abs() < 1e-6 {
+        y_min -= 0.1;
+        y_max += 0.1;
+    }
+    let pad = 0.15 * (y_max - y_min);
+
+    let root = bitmap_root(out_path, (1200, 700)).into_drawing_area();
+    root.fill(&WHITE)?;
+    let mut chart = ChartBuilder::on(&root)
+        .caption(
+            format!(
+                "E4 Figure 1 ({panel_label}): Mirror Weight vs ΔT ({count_mode}, bw={:.1}c, eps={})",
+                bin_width * 100.0,
+                fmt_eps(eps_cents)
+            ),
+            ("sans-serif", 20),
+        )
+        .margin(10)
+        .x_label_area_size(40)
+        .y_label_area_size(60)
+        .build_cartesian_2d(0.0f32..1.0f32, (y_min - pad)..(y_max + pad))?;
+
+    chart
+        .configure_mesh()
+        .x_desc("mirror weight")
+        .y_desc("ΔT")
+        .draw()?;
+
+    chart.draw_series(std::iter::once(PathElement::new(
+        vec![(0.0, 0.0), (1.0, 0.0)],
+        BLACK.mix(0.85).stroke_width(3),
+    )))?;
+
+    if rows.len() >= 2 {
+        let mut band: Vec<(f32, f32)> = rows.iter().map(|(w, _, _, hi, _)| (*w, *hi)).collect();
+        band.extend(rows.iter().rev().map(|(w, _, lo, _, _)| (*w, *lo)));
+        chart.draw_series(std::iter::once(Polygon::new(band, BLUE.mix(0.18).filled())))?;
+    }
+
+    chart.draw_series(LineSeries::new(
+        rows.iter().map(|(w, mean, _, _, _)| (*w, *mean)),
+        BLUE.mix(0.85).stroke_width(2),
+    ))?;
+    chart.draw_series(
+        rows.iter()
+            .map(|(w, mean, _, _, _)| Circle::new((*w, *mean), 4, BLUE.filled())),
+    )?;
+
+    let points: Vec<(f32, f32)> = rows.iter().map(|(w, mean, _, _, _)| (*w, *mean)).collect();
+    if let Some(w_c) = estimate_piecewise_changepoint(&points) {
+        chart.draw_series(std::iter::once(PathElement::new(
+            vec![(w_c, y_min - pad), (w_c, y_max + pad)],
+            BLACK.mix(0.5).stroke_width(2),
+        )))?;
+        chart.draw_series(std::iter::once(Text::new(
+            format!("w_c≈{w_c:.2}"),
+            (
+                (w_c + 0.015).clamp(0.03, 0.92),
+                y_max + 0.08 * (y_max - y_min + 1e-6),
+            ),
+            ("sans-serif", 14).into_font().color(&BLACK.mix(0.7)),
+        )))?;
+    }
+
+    root.present()?;
+    Ok(())
+}
+
+fn render_e4_figure2_interval_hist_triptych(
+    out_path: &Path,
+    hist_records: &[E4HistRecord],
+    bin_width: f32,
+) -> Result<(), Box<dyn Error>> {
+    let targets = [0.0f32, 0.5f32, 1.0f32];
+    let mut panels: Vec<(f32, Histogram)> = Vec::new();
+    for &w in &targets {
+        if let Some(hist) = mean_histogram_for_weight(hist_records, w, bin_width) {
+            panels.push((w, hist));
+        }
+    }
+    if panels.is_empty() {
+        return Ok(());
+    }
+    let bin_width_cents = (bin_width * 100.0).max(1.0);
+    let mut y_max = 0.0f32;
+    for (_, hist) in &panels {
+        y_max = y_max.max(hist.masses.iter().copied().fold(0.0f32, f32::max));
+    }
+    y_max = (y_max * 1.2).max(1e-4);
+
+    let root = bitmap_root(out_path, (1500, 520)).into_drawing_area();
+    root.fill(&WHITE)?;
+    let areas = root.split_evenly((1, panels.len()));
+    for (i, area) in areas.iter().enumerate() {
+        let (weight, hist) = &panels[i];
+        let mut chart = ChartBuilder::on(area)
+            .caption(
+                format!("E4 Figure 2: w={weight:.2} (bin={bin_width_cents:.1}c)"),
+                ("sans-serif", 16),
+            )
+            .margin(10)
+            .x_label_area_size(40)
+            .y_label_area_size(52)
+            .build_cartesian_2d(0.0f32..1200.0f32, 0.0f32..y_max)?;
+        chart
+            .configure_mesh()
+            .x_desc("interval cents (pitch class)")
+            .y_desc("probability density (sum=1)")
+            .x_labels(7)
+            .draw()?;
+        for &x in &[E4_CENTS_MIN3, E4_CENTS_MAJ3, E4_CENTS_P4, E4_CENTS_P5] {
+            chart.draw_series(std::iter::once(PathElement::new(
+                vec![(x, 0.0), (x, y_max)],
+                BLACK.mix(0.2),
+            )))?;
+        }
+        chart.draw_series(
+            hist.bin_centers
+                .iter()
+                .zip(hist.masses.iter())
+                .map(|(x, y)| {
+                    let x0 = (*x - 0.5 * bin_width_cents).max(0.0);
+                    let x1 = (*x + 0.5 * bin_width_cents).min(1200.0);
+                    Rectangle::new([(x0, 0.0), (x1, *y)], BLUE.mix(0.55).filled())
+                }),
+        )?;
+    }
+    root.present()?;
+    Ok(())
+}
+
+fn delta_t_from_freqs(anchor_hz: f32, freqs: &[f32], eps_cents: f32, mode: E4CountMode) -> f32 {
+    let masses = interval_masses_from_freqs(anchor_hz, freqs, eps_cents, mode);
+    let (_, _, delta_t, _) = triad_scores(masses);
+    delta_t
+}
+
+fn render_e4_step_response_delta_plot(
+    out_path: &Path,
+    step_rows: &[(u32, f32, f32, f32)],
+    switch_step: u32,
+) -> Result<(), Box<dyn Error>> {
+    if step_rows.is_empty() {
+        return Ok(());
+    }
+    let mut y_min = f32::INFINITY;
+    let mut y_max = f32::NEG_INFINITY;
+    for (_, _, d_soft, d_hard) in step_rows {
+        y_min = y_min.min(*d_soft).min(*d_hard).min(0.0);
+        y_max = y_max.max(*d_soft).max(*d_hard).max(0.0);
+    }
+    if !y_min.is_finite() || !y_max.is_finite() || (y_max - y_min).abs() < 1e-6 {
+        y_min = -0.1;
+        y_max = 0.1;
+    }
+    let pad = 0.12 * (y_max - y_min);
+    let x_end = step_rows
+        .last()
+        .map(|(s, _, _, _)| *s as f32)
+        .unwrap_or(1.0f32);
+
+    let root = bitmap_root(out_path, (1300, 700)).into_drawing_area();
+    root.fill(&WHITE)?;
+    let mut chart = ChartBuilder::on(&root)
+        .caption("E4 Step Response: ΔT(t)", ("sans-serif", 20))
+        .margin(10)
+        .x_label_area_size(42)
+        .y_label_area_size(60)
+        .build_cartesian_2d(0.0f32..x_end.max(1.0), (y_min - pad)..(y_max + pad))?;
+    chart.configure_mesh().x_desc("step").y_desc("ΔT").draw()?;
+    chart.draw_series(std::iter::once(PathElement::new(
+        vec![(0.0, 0.0), (x_end.max(1.0), 0.0)],
+        BLACK.mix(0.8).stroke_width(3),
+    )))?;
+    chart.draw_series(std::iter::once(PathElement::new(
+        vec![
+            (switch_step as f32, y_min - pad),
+            (switch_step as f32, y_max + pad),
+        ],
+        BLACK.mix(0.45).stroke_width(2),
+    )))?;
+    chart.draw_series(std::iter::once(Text::new(
+        "phase switch",
+        (
+            (switch_step as f32 + 5.0).min(x_end * 0.95),
+            y_max + 0.03 * (y_max - y_min + 1e-6),
+        ),
+        ("sans-serif", 14).into_font().color(&BLACK.mix(0.7)),
+    )))?;
+    chart.draw_series(LineSeries::new(
+        step_rows
+            .iter()
+            .map(|(step, _, delta_soft, _)| (*step as f32, *delta_soft)),
+        BLUE.mix(0.9).stroke_width(2),
+    ))?;
+    chart.draw_series(LineSeries::new(
+        step_rows
+            .iter()
+            .map(|(step, _, _, delta_hard)| (*step as f32, *delta_hard)),
+        RED.mix(0.75).stroke_width(2),
+    ))?;
+    root.present()?;
+    Ok(())
+}
+
+fn stage_means_from_trace(
+    weights: &[f32],
+    delta_series: &[f32],
+    settle_steps: u32,
+    eval_window: u32,
+) -> Vec<(f32, f32)> {
+    if settle_steps == 0 {
+        return Vec::new();
+    }
+    let window = eval_window.max(1).min(settle_steps) as usize;
+    let mut out = Vec::new();
+    for (idx, &weight) in weights.iter().enumerate() {
+        let start = idx * settle_steps as usize;
+        let end = ((idx + 1) * settle_steps as usize).min(delta_series.len());
+        if end <= start {
+            continue;
+        }
+        let begin = end.saturating_sub(window).max(start);
+        let slice = &delta_series[begin..end];
+        if slice.is_empty() {
+            continue;
+        }
+        let mean = slice.iter().copied().sum::<f32>() / slice.len() as f32;
+        out.push((weight, mean));
+    }
+    out
+}
+
+fn render_e4_hysteresis_plot(
+    out_path: &Path,
+    up_curve: &[(f32, f32)],
+    down_curve: &[(f32, f32)],
+) -> Result<(), Box<dyn Error>> {
+    if up_curve.is_empty() || down_curve.is_empty() {
+        return Ok(());
+    }
+    let mut y_min = 0.0f32;
+    let mut y_max = 0.0f32;
+    for (_, y) in up_curve.iter().chain(down_curve.iter()) {
+        y_min = y_min.min(*y);
+        y_max = y_max.max(*y);
+    }
+    if (y_max - y_min).abs() < 1e-6 {
+        y_min -= 0.1;
+        y_max += 0.1;
+    }
+    let pad = 0.12 * (y_max - y_min);
+    let root = bitmap_root(out_path, (1100, 700)).into_drawing_area();
+    root.fill(&WHITE)?;
+    let mut chart = ChartBuilder::on(&root)
+        .caption("E4 Hysteresis: ΔT vs Mirror Weight", ("sans-serif", 20))
+        .margin(10)
+        .x_label_area_size(40)
+        .y_label_area_size(60)
+        .build_cartesian_2d(0.0f32..1.0f32, (y_min - pad)..(y_max + pad))?;
+    chart
+        .configure_mesh()
+        .x_desc("mirror weight")
+        .y_desc("ΔT (soft)")
+        .draw()?;
+    chart.draw_series(std::iter::once(PathElement::new(
+        vec![(0.0, 0.0), (1.0, 0.0)],
+        BLACK.mix(0.8).stroke_width(2),
+    )))?;
+    chart.draw_series(LineSeries::new(
+        up_curve.iter().copied(),
+        BLUE.mix(0.9).stroke_width(2),
+    ))?;
+    chart.draw_series(LineSeries::new(
+        down_curve.iter().copied(),
+        RED.mix(0.85).stroke_width(2),
+    ))?;
+    chart.draw_series(
+        up_curve
+            .iter()
+            .map(|(x, y)| Circle::new((*x, *y), 4, BLUE.filled())),
+    )?;
+    chart.draw_series(
+        down_curve
+            .iter()
+            .map(|(x, y)| TriangleMarker::new((*x, *y), 6, RED.filled())),
+    )?;
+    root.present()?;
+    Ok(())
+}
+
+fn run_e4_step_and_hysteresis_protocol(
+    out_dir: &Path,
+    anchor_hz: f32,
+    eps_cents: f32,
+) -> Result<(), Box<dyn Error>> {
+    let step_schedule = vec![(0u32, 0.0f32), (E4_STEP_BURN_IN_STEPS, 1.0f32)];
+    let step_total = E4_STEP_BURN_IN_STEPS + E4_STEP_POST_STEPS;
+    let step_samples = run_e4_mirror_schedule_samples(E4_PROTOCOL_SEED, step_total, &step_schedule);
+    let mut step_rows: Vec<(u32, f32, f32, f32)> =
+        Vec::with_capacity(step_samples.freqs_by_step.len());
+    let mut step_csv = String::from("seed,step,mirror_weight,delta_t_soft,delta_t_hard\n");
+    let mut step_hist_csv =
+        String::from("seed,step,mirror_weight,bin_width_cents,bin_center_cents,mass\n");
+    for (step, freqs) in step_samples.freqs_by_step.iter().enumerate() {
+        let mirror_weight = step_samples
+            .mirror_weight_by_step
+            .get(step)
+            .copied()
+            .unwrap_or(0.0);
+        let delta_soft = delta_t_from_freqs(anchor_hz, freqs, eps_cents, E4CountMode::Soft);
+        let delta_hard = delta_t_from_freqs(anchor_hz, freqs, eps_cents, E4CountMode::Hard);
+        step_rows.push((step as u32, mirror_weight, delta_soft, delta_hard));
+        step_csv.push_str(&format!(
+            "{},{},{:.3},{:.6},{:.6}\n",
+            E4_PROTOCOL_SEED, step, mirror_weight, delta_soft, delta_hard
+        ));
+        let cents_values: Vec<f32> = freqs
+            .iter()
+            .filter_map(|&f| freq_to_cents_class(anchor_hz, f))
+            .collect();
+        let hist = histogram_from_samples(&cents_values, 0.0, 1200.0, E4_PAPER_HIST_BIN_CENTS);
+        for (center, mass) in hist.bin_centers.iter().zip(hist.masses.iter()) {
+            step_hist_csv.push_str(&format!(
+                "{},{},{:.3},{:.1},{:.3},{:.6}\n",
+                E4_PROTOCOL_SEED, step, mirror_weight, E4_PAPER_HIST_BIN_CENTS, center, mass
+            ));
+        }
+    }
+    write_with_log(out_dir.join("paper_e4_step_response_delta_t.csv"), step_csv)?;
+    write_with_log(
+        out_dir.join("paper_e4_step_response_interval_hist_timeseries.csv"),
+        step_hist_csv,
+    )?;
+    render_e4_step_response_delta_plot(
+        &out_dir.join("paper_e4_step_response_delta_t.svg"),
+        &step_rows,
+        E4_STEP_BURN_IN_STEPS,
+    )?;
+
+    let weights_up = build_weight_grid(E4_WEIGHT_COARSE_STEP);
+    if weights_up.is_empty() {
+        return Ok(());
+    }
+    let weights_down: Vec<f32> = weights_up.iter().copied().rev().collect();
+    let up_schedule: Vec<(u32, f32)> = weights_up
+        .iter()
+        .enumerate()
+        .map(|(i, &w)| (i as u32 * E4_HYSTERESIS_SETTLE_STEPS, w))
+        .collect();
+    let down_schedule: Vec<(u32, f32)> = weights_down
+        .iter()
+        .enumerate()
+        .map(|(i, &w)| (i as u32 * E4_HYSTERESIS_SETTLE_STEPS, w))
+        .collect();
+    let h_steps = E4_HYSTERESIS_SETTLE_STEPS * weights_up.len() as u32;
+    let up_samples = run_e4_mirror_schedule_samples(E4_PROTOCOL_SEED, h_steps, &up_schedule);
+    let down_samples = run_e4_mirror_schedule_samples(E4_PROTOCOL_SEED, h_steps, &down_schedule);
+
+    let up_delta: Vec<f32> = up_samples
+        .freqs_by_step
+        .iter()
+        .map(|freqs| delta_t_from_freqs(anchor_hz, freqs, eps_cents, E4CountMode::Soft))
+        .collect();
+    let down_delta: Vec<f32> = down_samples
+        .freqs_by_step
+        .iter()
+        .map(|freqs| delta_t_from_freqs(anchor_hz, freqs, eps_cents, E4CountMode::Soft))
+        .collect();
+
+    let up_curve = stage_means_from_trace(
+        &weights_up,
+        &up_delta,
+        E4_HYSTERESIS_SETTLE_STEPS,
+        E4_HYSTERESIS_EVAL_WINDOW,
+    );
+    let down_curve_desc = stage_means_from_trace(
+        &weights_down,
+        &down_delta,
+        E4_HYSTERESIS_SETTLE_STEPS,
+        E4_HYSTERESIS_EVAL_WINDOW,
+    );
+    let mut down_map = std::collections::HashMap::new();
+    for (w, d) in &down_curve_desc {
+        down_map.insert(float_key(*w), *d);
+    }
+    let mut down_curve = Vec::new();
+    for &w in &weights_up {
+        if let Some(v) = down_map.get(&float_key(w)).copied() {
+            down_curve.push((w, v));
+        }
+    }
+
+    let mut hysteresis_curve_csv = String::from("direction,seed,weight,delta_t_soft\n");
+    for (w, d) in &up_curve {
+        hysteresis_curve_csv.push_str(&format!("up,{},{:.3},{:.6}\n", E4_PROTOCOL_SEED, w, d));
+    }
+    for (w, d) in &down_curve {
+        hysteresis_curve_csv.push_str(&format!("down,{},{:.3},{:.6}\n", E4_PROTOCOL_SEED, w, d));
+    }
+    write_with_log(
+        out_dir.join("paper_e4_hysteresis_curve.csv"),
+        hysteresis_curve_csv,
+    )?;
+
+    let mut hysteresis_diff_csv =
+        String::from("weight,delta_t_up,delta_t_down,diff_up_minus_down\n");
+    for (w, up) in &up_curve {
+        let down = down_map.get(&float_key(*w)).copied().unwrap_or(0.0);
+        hysteresis_diff_csv.push_str(&format!(
+            "{:.3},{:.6},{:.6},{:.6}\n",
+            w,
+            up,
+            down,
+            up - down
+        ));
+    }
+    write_with_log(
+        out_dir.join("paper_e4_hysteresis_diff.csv"),
+        hysteresis_diff_csv,
+    )?;
+    render_e4_hysteresis_plot(
+        &out_dir.join("paper_e4_hysteresis_curve.svg"),
+        &up_curve,
+        &down_curve,
+    )?;
+    Ok(())
+}
+
+fn e4_protocol_meta_diff_csv(
+    anchor_hz: f32,
+    primary_bin_st: f32,
+    primary_eps_cents: f32,
+) -> String {
+    let e4 = e4_paper_meta();
+    let mut out = String::from("field,e2_ref,e4_value,match\n");
+    let e2_obs_window = E2_SWEEPS.saturating_sub(E2_BURN_IN);
+    let rows = vec![
+        (
+            "anchor_hz",
+            format!("{anchor_hz:.3}"),
+            format!("{:.3}", e4.anchor_hz),
+            (anchor_hz - e4.anchor_hz).abs() < 1e-6,
+        ),
+        (
+            "n_agents",
+            E2_N_AGENTS.to_string(),
+            e4.voice_count.to_string(),
+            E2_N_AGENTS == e4.voice_count,
+        ),
+        (
+            "observation_window_steps",
+            e2_obs_window.to_string(),
+            E4_TAIL_WINDOW_STEPS.to_string(),
+            e2_obs_window == E4_TAIL_WINDOW_STEPS as usize,
+        ),
+        (
+            "primary_hist_bin_cents",
+            format!("{:.1}", primary_bin_st * 100.0),
+            format!("{:.1}", E4_PAPER_HIST_BIN_CENTS),
+            (primary_bin_st * 100.0 - E4_PAPER_HIST_BIN_CENTS).abs() < 1e-6,
+        ),
+        (
+            "primary_eps_cents",
+            format!("{primary_eps_cents:.1}"),
+            format!("{primary_eps_cents:.1}"),
+            true,
+        ),
+        (
+            "init_mode_label",
+            E2_INIT_MODE.label().to_string(),
+            "weighted_landscape_sample".to_string(),
+            false,
+        ),
+        (
+            "mirror_only_protocol_seed",
+            E4_PROTOCOL_SEED.to_string(),
+            E4_PROTOCOL_SEED.to_string(),
+            true,
+        ),
+    ];
+    for (field, e2_ref, e4_value, matched) in rows {
+        out.push_str(&format!("{field},{e2_ref},{e4_value},{}\n", matched as u8));
+    }
+    out
+}
+
+fn e4_fixed_except_mirror_check_csv(records: &[E4RunRecord]) -> String {
+    #[derive(Default)]
+    struct Accum {
+        mirrors: std::collections::BTreeSet<i32>,
+        settings: std::collections::BTreeSet<(u32, u32, u32, &'static str)>,
+    }
+    let mut map: std::collections::HashMap<(&'static str, u64, i32, i32), Accum> =
+        std::collections::HashMap::new();
+    for record in records {
+        let key = (
+            record.count_mode,
+            record.seed,
+            float_key(record.bin_width),
+            float_key(record.eps_cents),
+        );
+        let entry = map.entry(key).or_default();
+        entry.mirrors.insert(float_key(record.mirror_weight));
+        entry.settings.insert((
+            record.steps_total,
+            record.burn_in,
+            record.tail_window,
+            record.histogram_source,
+        ));
+    }
+    let mut keys: Vec<_> = map.keys().copied().collect();
+    keys.sort_by(|a, b| {
+        a.0.cmp(b.0)
+            .then_with(|| a.1.cmp(&b.1))
+            .then_with(|| a.2.cmp(&b.2))
+            .then_with(|| a.3.cmp(&b.3))
+    });
+    let mut out = String::from(
+        "count_mode,seed,bin_width,eps_cents,n_mirror_values,n_setting_variants,pass_fixed_except_mirror\n",
+    );
+    for key in keys {
+        let Some(acc) = map.get(&key) else {
+            continue;
+        };
+        out.push_str(&format!(
+            "{},{},{:.3},{:.3},{},{},{}\n",
+            key.0,
+            key.1,
+            float_from_key(key.2),
+            float_from_key(key.3),
+            acc.mirrors.len(),
+            acc.settings.len(),
+            (acc.settings.len() == 1) as u8
+        ));
+    }
+    out
+}
+
 fn render_e4_hist_overlay(
     out_path: &Path,
     hist_records: &[E4HistRecord],
@@ -4697,20 +5821,23 @@ fn render_e4_hist_overlay(
     let root = bitmap_root(out_path, (1400, 800)).into_drawing_area();
     root.fill(&WHITE)?;
     let mut chart = ChartBuilder::on(&root)
-        .caption("E4 Interval Histograms (Overlay)", ("sans-serif", 22))
+        .caption(
+            "E4 Interval Histograms (Overlay, cents PC)",
+            ("sans-serif", 22),
+        )
         .margin(10)
         .x_label_area_size(40)
         .y_label_area_size(60)
-        .build_cartesian_2d(0.0f32..12.0f32, 0.0f32..(y_max * 1.1))?;
+        .build_cartesian_2d(0.0f32..1200.0f32, 0.0f32..(y_max * 1.1))?;
 
     chart
         .configure_mesh()
-        .x_desc("semitones (mod 12)")
-        .y_desc("mass")
-        .x_labels(13)
+        .x_desc("interval cents (pitch class)")
+        .y_desc("probability mass")
+        .x_labels(7)
         .draw()?;
 
-    for &x in &[3.0f32, 4.0, 7.0] {
+    for &x in &[E4_CENTS_MIN3, E4_CENTS_MAJ3, E4_CENTS_P4, E4_CENTS_P5] {
         chart.draw_series(std::iter::once(PathElement::new(
             vec![(x, 0.0), (x, y_max * 1.1)],
             BLACK.mix(0.15),
@@ -4750,7 +5877,9 @@ fn render_e4_delta_plot(
     let mut series: Vec<(f32, f32, f32, usize)> = summaries
         .iter()
         .filter(|s| {
-            (s.bin_width - bin_width).abs() < 1e-6 && (s.eps_cents - eps_cents).abs() < 1e-6
+            s.count_mode == "soft"
+                && (s.bin_width - bin_width).abs() < 1e-6
+                && (s.eps_cents - eps_cents).abs() < 1e-6
         })
         .map(|s| (s.mirror_weight, s.mean_delta, s.std_delta, s.n_runs))
         .collect();
@@ -4775,7 +5904,7 @@ fn render_e4_delta_plot(
     let eps_label = fmt_eps(eps_cents);
     let mut chart = ChartBuilder::on(&root)
         .caption(
-            format!("E4 Δ (Major-Minor) vs Mirror Weight (bw={bin_width:.2}, eps={eps_label})"),
+            format!("E4 ΔT vs Mirror Weight (bw={bin_width:.2}, eps={eps_label})"),
             ("sans-serif", 20),
         )
         .margin(10)
@@ -4786,7 +5915,7 @@ fn render_e4_delta_plot(
     chart
         .configure_mesh()
         .x_desc("mirror weight")
-        .y_desc("Δ (major - minor)")
+        .y_desc("ΔT")
         .draw()?;
 
     chart.draw_series(std::iter::once(PathElement::new(
@@ -4860,6 +5989,9 @@ fn render_e4_delta_spaghetti(
     let mut by_seed: std::collections::HashMap<u64, Vec<(f32, f32)>> =
         std::collections::HashMap::new();
     for record in run_records {
+        if record.count_mode != "soft" {
+            continue;
+        }
         if (record.bin_width - bin_width).abs() > 1e-6 {
             continue;
         }
@@ -4878,7 +6010,9 @@ fn render_e4_delta_spaghetti(
     let mut mean_series: Vec<(f32, f32)> = summaries
         .iter()
         .filter(|s| {
-            (s.bin_width - bin_width).abs() < 1e-6 && (s.eps_cents - eps_cents).abs() < 1e-6
+            s.count_mode == "soft"
+                && (s.bin_width - bin_width).abs() < 1e-6
+                && (s.eps_cents - eps_cents).abs() < 1e-6
         })
         .map(|s| (s.mirror_weight, s.mean_delta))
         .collect();
@@ -4907,7 +6041,7 @@ fn render_e4_delta_spaghetti(
     let eps_label = fmt_eps(eps_cents);
     let mut chart = ChartBuilder::on(&root)
         .caption(
-            format!("E4 Δ Spaghetti (bw={bin_width:.2}, eps={eps_label})"),
+            format!("E4 ΔT Spaghetti (bw={bin_width:.2}, eps={eps_label})"),
             ("sans-serif", 20),
         )
         .margin(10)
@@ -4918,7 +6052,7 @@ fn render_e4_delta_spaghetti(
     chart
         .configure_mesh()
         .x_desc("mirror weight")
-        .y_desc("Δ (major - minor)")
+        .y_desc("ΔT")
         .draw()?;
 
     chart.draw_series(std::iter::once(PathElement::new(
@@ -4951,7 +6085,9 @@ fn render_e4_major_minor_plot(
     let mut series: Vec<(f32, f32, f32, f32, f32, usize)> = summaries
         .iter()
         .filter(|s| {
-            (s.bin_width - bin_width).abs() < 1e-6 && (s.eps_cents - eps_cents).abs() < 1e-6
+            s.count_mode == "soft"
+                && (s.bin_width - bin_width).abs() < 1e-6
+                && (s.eps_cents - eps_cents).abs() < 1e-6
         })
         .map(|s| {
             (
@@ -4983,7 +6119,7 @@ fn render_e4_major_minor_plot(
     let eps_label = fmt_eps(eps_cents);
     let mut chart = ChartBuilder::on(&root)
         .caption(
-            format!("E4 Major/Minor Scores vs Mirror Weight (bw={bin_width:.2}, eps={eps_label})"),
+            format!("E4 Triad Scores vs Mirror Weight (bw={bin_width:.2}, eps={eps_label})"),
             ("sans-serif", 20),
         )
         .margin(10)
@@ -4994,7 +6130,7 @@ fn render_e4_major_minor_plot(
     chart
         .configure_mesh()
         .x_desc("mirror weight")
-        .y_desc("score")
+        .y_desc("triad score")
         .draw()?;
 
     let cap = 0.01f32;
@@ -5097,7 +6233,9 @@ fn render_e4_third_mass_plot(
     let mut series: Vec<(f32, f32, f32, f32, f32, usize)> = summaries
         .iter()
         .filter(|s| {
-            (s.bin_width - bin_width).abs() < 1e-6 && (s.eps_cents - eps_cents).abs() < 1e-6
+            s.count_mode == "soft"
+                && (s.bin_width - bin_width).abs() < 1e-6
+                && (s.eps_cents - eps_cents).abs() < 1e-6
         })
         .map(|s| {
             (
@@ -5241,7 +6379,9 @@ fn render_e4_major_minor_rate_plot(
     let mut series: Vec<(f32, f32, f32)> = summaries
         .iter()
         .filter(|s| {
-            (s.bin_width - bin_width).abs() < 1e-6 && (s.eps_cents - eps_cents).abs() < 1e-6
+            s.count_mode == "soft"
+                && (s.bin_width - bin_width).abs() < 1e-6
+                && (s.eps_cents - eps_cents).abs() < 1e-6
         })
         .map(|s| (s.mirror_weight, s.major_rate, s.minor_rate))
         .collect();
@@ -5255,7 +6395,7 @@ fn render_e4_major_minor_rate_plot(
     let eps_label = fmt_eps(eps_cents);
     let mut chart = ChartBuilder::on(&root)
         .caption(
-            format!("E4 Major/Minor Rate vs Mirror Weight (bw={bin_width:.2}, eps={eps_label})"),
+            format!("E4 Major/Minor Rate vs Mirror Weight (bw={bin_width:.2}, eps={eps_label}, tau={E4_DELTA_TAU:.2})"),
             ("sans-serif", 20),
         )
         .margin(10)
@@ -5266,7 +6406,7 @@ fn render_e4_major_minor_rate_plot(
     chart
         .configure_mesh()
         .x_desc("mirror weight")
-        .y_desc("rate (Δ thresholded)")
+        .y_desc("rate (ΔT thresholded)")
         .draw()?;
 
     for (w, major_rate, minor_rate) in &series {
@@ -5291,6 +6431,7 @@ fn render_e4_interval_heatmap(
     hist_records: &[E4HistRecord],
     bin_width: f32,
 ) -> Result<(), Box<dyn Error>> {
+    let bin_width_cents = (bin_width * 100.0).max(1.0);
     let mut weights: Vec<f32> = hist_records
         .iter()
         .filter(|r| (r.bin_width - bin_width).abs() < 1e-6)
@@ -5321,24 +6462,25 @@ fn render_e4_interval_heatmap(
     }
     max_mass = max_mass.max(1e-6);
 
-    let root = bitmap_root(out_path, (1400, 800)).into_drawing_area();
+    let root = bitmap_root(out_path, (1500, 820)).into_drawing_area();
     root.fill(&WHITE)?;
-    let mut chart = ChartBuilder::on(&root)
+    let (heat_area, colorbar_area) = root.split_horizontally(1260);
+    let mut chart = ChartBuilder::on(&heat_area)
         .caption(
-            format!("E4 Interval Heatmap (bw={bin_width:.2})"),
+            format!("E4 Interval Heatmap (bw={bin_width_cents:.1}c)"),
             ("sans-serif", 22),
         )
         .margin(10)
         .x_label_area_size(40)
         .y_label_area_size(60)
-        .build_cartesian_2d(0.0f32..1.0f32, 0.0f32..12.0f32)?;
+        .build_cartesian_2d(0.0f32..1.0f32, 0.0f32..1200.0f32)?;
 
     chart
         .configure_mesh()
         .x_desc("mirror weight")
-        .y_desc("interval (semitones mod 12)")
+        .y_desc("interval cents (pitch class)")
         .x_labels(6)
-        .y_labels(13)
+        .y_labels(7)
         .draw()?;
 
     let default_half = E4_WEIGHT_COARSE_STEP.max(0.05) * 0.5;
@@ -5362,8 +6504,8 @@ fn render_e4_interval_heatmap(
         let x0 = left.clamp(0.0, 1.0);
         let x1 = right.clamp(0.0, 1.0);
         for (center, mass) in hist.bin_centers.iter().zip(hist.masses.iter()) {
-            let y0 = center - 0.5 * bin_width;
-            let y1 = center + 0.5 * bin_width;
+            let y0 = center - 0.5 * bin_width_cents;
+            let y1 = center + 0.5 * bin_width_cents;
             let t = (mass / max_mass).clamp(0.0, 1.0);
             let inv = 1.0 - t;
             let color = RGBColor(255, (255.0 * inv) as u8, (255.0 * inv) as u8);
@@ -5372,6 +6514,51 @@ fn render_e4_interval_heatmap(
                 color.filled(),
             )))?;
         }
+    }
+
+    for (cents, label) in [
+        (E4_CENTS_MIN3, "m3"),
+        (E4_CENTS_MAJ3, "M3"),
+        (E4_CENTS_P4, "P4"),
+        (E4_CENTS_P5, "P5"),
+    ] {
+        chart.draw_series(std::iter::once(PathElement::new(
+            vec![(0.0, cents), (1.0, cents)],
+            BLACK.mix(0.2),
+        )))?;
+        chart.draw_series(std::iter::once(Text::new(
+            label,
+            (0.01, cents + 8.0),
+            ("sans-serif", 12).into_font().color(&BLACK.mix(0.7)),
+        )))?;
+    }
+
+    let mut bar_chart = ChartBuilder::on(&colorbar_area)
+        .margin_top(60)
+        .margin_bottom(60)
+        .margin_left(20)
+        .margin_right(20)
+        .x_label_area_size(0)
+        .y_label_area_size(56)
+        .build_cartesian_2d(0.0f32..1.0f32, 0.0f32..max_mass)?;
+    bar_chart
+        .configure_mesh()
+        .x_labels(0)
+        .disable_x_mesh()
+        .disable_y_mesh()
+        .y_desc("mass")
+        .draw()?;
+    let n_grad = 240usize;
+    for i in 0..n_grad {
+        let y0 = max_mass * i as f32 / n_grad as f32;
+        let y1 = max_mass * (i + 1) as f32 / n_grad as f32;
+        let t = (y1 / max_mass).clamp(0.0, 1.0);
+        let inv = 1.0 - t;
+        let color = RGBColor(255, (255.0 * inv) as u8, (255.0 * inv) as u8);
+        bar_chart.draw_series(std::iter::once(Rectangle::new(
+            [(0.0, y0), (1.0, y1)],
+            color.filled(),
+        )))?;
     }
 
     root.present()?;
@@ -7786,6 +8973,45 @@ fn render_diversity_summary_plot(
     Ok(())
 }
 
+fn render_diversity_summary_ci95_plot(
+    out_path: &Path,
+    rows: &[DiversityRow],
+) -> Result<(), Box<dyn Error>> {
+    let root = bitmap_root(out_path, (1200, 900)).into_drawing_area();
+    root.fill(&WHITE)?;
+    let panels = root.split_evenly((2, 2));
+    draw_diversity_metric_panel(
+        &panels[0],
+        "E2 Diversity (95% CI): Unique Bins",
+        "unique bins",
+        rows,
+        |metrics| metrics.unique_bins as f32,
+    )?;
+    draw_diversity_metric_panel(
+        &panels[1],
+        "E2 Diversity (95% CI): NN Distance",
+        "nn mean (st)",
+        rows,
+        |metrics| metrics.nn_mean,
+    )?;
+    draw_diversity_metric_panel(
+        &panels[2],
+        "E2 Diversity (95% CI): Variance",
+        "var (st^2)",
+        rows,
+        |metrics| metrics.semitone_var,
+    )?;
+    draw_diversity_metric_panel(
+        &panels[3],
+        "E2 Diversity (95% CI): MAD",
+        "MAD (st)",
+        rows,
+        |metrics| metrics.semitone_mad,
+    )?;
+    root.present()?;
+    Ok(())
+}
+
 fn draw_diversity_panel(
     area: &DrawingArea<SVGBackend, Shift>,
     caption: &str,
@@ -8021,6 +9247,568 @@ fn e2_pairwise_hist_seed_sweep_csv(stats: &HistSweepStats, n_pairs: usize) -> St
     out
 }
 
+fn pairwise_intervals_csv(intervals: &[f32]) -> String {
+    let mut out = String::from("interval_semitones\n");
+    for &interval in intervals {
+        out.push_str(&format!("{interval:.6}\n"));
+    }
+    out
+}
+
+fn pairwise_interval_histogram_csv(
+    hist: &[(f32, f32)],
+    intervals_total: usize,
+    bin_width: f32,
+) -> String {
+    let total = intervals_total as f32;
+    let inv_total = if total > 0.0 { 1.0 / total } else { 0.0 };
+    let mut out =
+        format!("# source=pairwise_intervals bin_width={bin_width:.3} n_pairs={intervals_total}\n");
+    out.push_str("bin_center,count,frac\n");
+    for &(center, count) in hist {
+        let frac = count * inv_total;
+        out.push_str(&format!("{center:.4},{count:.6},{frac:.6}\n"));
+    }
+    out
+}
+
+fn emit_pairwise_interval_dumps_for_condition(
+    out_dir: &Path,
+    condition: &str,
+    runs: &[E2Run],
+) -> Result<(), Box<dyn Error>> {
+    for run in runs {
+        let intervals = pairwise_interval_samples(&run.final_semitones);
+        let raw_path = out_dir.join(format!(
+            "pairwise_intervals_{condition}_seed{}.csv",
+            run.seed
+        ));
+        write_with_log(raw_path, pairwise_intervals_csv(&intervals))?;
+
+        let hist = histogram_counts_fixed(&intervals, 0.0, 12.0, E2_PAIRWISE_BIN_ST);
+        let hist_path = out_dir.join(format!(
+            "pairwise_interval_hist_{condition}_seed{}.csv",
+            run.seed
+        ));
+        write_with_log(
+            hist_path,
+            pairwise_interval_histogram_csv(&hist, intervals.len(), E2_PAIRWISE_BIN_ST),
+        )?;
+    }
+    Ok(())
+}
+
+fn e2_pairwise_hist_controls_seed_sweep_csv(
+    baseline: &HistSweepStats,
+    nohill: &HistSweepStats,
+    norep: &HistSweepStats,
+    n_pairs: usize,
+) -> String {
+    let mut out = String::from(
+        "bin_center,baseline_mean,baseline_std,nohill_mean,nohill_std,norep_mean,norep_std,n_seeds,n_pairs\n",
+    );
+    let len = baseline
+        .centers
+        .len()
+        .min(baseline.mean_frac.len())
+        .min(baseline.std_frac.len())
+        .min(nohill.mean_frac.len())
+        .min(nohill.std_frac.len())
+        .min(norep.mean_frac.len())
+        .min(norep.std_frac.len());
+    for i in 0..len {
+        out.push_str(&format!(
+            "{:.4},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{},{}\n",
+            baseline.centers[i],
+            baseline.mean_frac[i],
+            baseline.std_frac[i],
+            nohill.mean_frac[i],
+            nohill.std_frac[i],
+            norep.mean_frac[i],
+            norep.std_frac[i],
+            baseline.n,
+            n_pairs
+        ));
+    }
+    out
+}
+
+fn e2_pairwise_hist_controls_seed_sweep_ci95_csv(
+    baseline: &HistSweepStats,
+    nohill: &HistSweepStats,
+    norep: &HistSweepStats,
+    n_pairs: usize,
+) -> String {
+    let mut out = String::from(
+        "bin_center,baseline_mean,baseline_ci95,nohill_mean,nohill_ci95,norep_mean,norep_ci95,n_seeds,n_pairs\n",
+    );
+    let len = baseline
+        .centers
+        .len()
+        .min(baseline.mean_frac.len())
+        .min(baseline.std_frac.len())
+        .min(nohill.mean_frac.len())
+        .min(nohill.std_frac.len())
+        .min(norep.mean_frac.len())
+        .min(norep.std_frac.len());
+    for i in 0..len {
+        out.push_str(&format!(
+            "{:.4},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{},{}\n",
+            baseline.centers[i],
+            baseline.mean_frac[i],
+            ci95_from_std(baseline.std_frac[i], baseline.n),
+            nohill.mean_frac[i],
+            ci95_from_std(nohill.std_frac[i], nohill.n),
+            norep.mean_frac[i],
+            ci95_from_std(norep.std_frac[i], norep.n),
+            baseline.n,
+            n_pairs
+        ));
+    }
+    out
+}
+
+fn ci95_half_width(values: &[f32]) -> f32 {
+    if values.is_empty() {
+        return 0.0;
+    }
+    let std = mean_std_scalar(values).1;
+    1.96 * std / (values.len() as f32).sqrt()
+}
+
+fn ci95_from_std(std: f32, n: usize) -> f32 {
+    if n == 0 {
+        return 0.0;
+    }
+    1.96 * std / (n as f32).sqrt()
+}
+
+fn std_series_to_ci95(std: &[f32], n: usize) -> Vec<f32> {
+    std.iter().map(|&s| ci95_from_std(s, n)).collect()
+}
+
+fn sweep_csv_with_ci95(header: &str, mean: &[f32], std: &[f32], n: usize) -> String {
+    let mut out = String::from(header);
+    let len = mean.len().min(std.len());
+    for i in 0..len {
+        out.push_str(&format!(
+            "{i},{:.6},{:.6},{:.6},{}\n",
+            mean[i],
+            std[i],
+            ci95_from_std(std[i], n),
+            n
+        ));
+    }
+    out
+}
+
+fn e2_pairwise_hist_seed_sweep_ci95_csv(stats: &HistSweepStats, n_pairs: usize) -> String {
+    let mut out = String::from(
+        "bin_center,mean_frac,std_frac,ci95_frac,n_seeds,n_pairs,mean_count,std_count\n",
+    );
+    let len = stats
+        .centers
+        .len()
+        .min(stats.mean_count.len())
+        .min(stats.std_count.len())
+        .min(stats.mean_frac.len())
+        .min(stats.std_frac.len());
+    for i in 0..len {
+        out.push_str(&format!(
+            "{:.4},{:.6},{:.6},{:.6},{},{},{:.6},{:.6}\n",
+            stats.centers[i],
+            stats.mean_frac[i],
+            stats.std_frac[i],
+            ci95_from_std(stats.std_frac[i], stats.n),
+            stats.n,
+            n_pairs,
+            stats.mean_count[i],
+            stats.std_count[i]
+        ));
+    }
+    out
+}
+
+fn diversity_summary_ci95_csv(rows: &[DiversityRow]) -> String {
+    let mut by_cond: std::collections::HashMap<&'static str, Vec<&DiversityRow>> =
+        std::collections::HashMap::new();
+    for row in rows {
+        by_cond.entry(row.condition).or_default().push(row);
+    }
+    let mut out = String::from("cond,metric,mean,std,ci95,n\n");
+    for cond in ["baseline", "nohill", "norep"] {
+        let rows = by_cond.get(cond).cloned().unwrap_or_default();
+        let unique_bins: Vec<f32> = rows.iter().map(|r| r.metrics.unique_bins as f32).collect();
+        let nn_mean: Vec<f32> = rows.iter().map(|r| r.metrics.nn_mean).collect();
+        let semitone_var: Vec<f32> = rows.iter().map(|r| r.metrics.semitone_var).collect();
+        let semitone_mad: Vec<f32> = rows.iter().map(|r| r.metrics.semitone_mad).collect();
+        for (metric, values) in [
+            ("unique_bins", &unique_bins),
+            ("nn_mean", &nn_mean),
+            ("semitone_var", &semitone_var),
+            ("semitone_mad", &semitone_mad),
+        ] {
+            let (mean, std) = mean_std_scalar(values);
+            out.push_str(&format!(
+                "{cond},{metric},{mean:.6},{std:.6},{:.6},{}\n",
+                ci95_half_width(values),
+                values.len()
+            ));
+        }
+    }
+    out
+}
+
+fn interval_distance_mod_12(value: f32, target: f32) -> f32 {
+    (value - target)
+        .abs()
+        .min((value - (target + 12.0)).abs())
+        .min((value - (target - 12.0)).abs())
+}
+
+fn consonant_mass_for_intervals(intervals: &[f32], targets: &[f32], window_st: f32) -> f32 {
+    if intervals.is_empty() {
+        return 0.0;
+    }
+    let hits = intervals
+        .iter()
+        .filter(|&&interval| {
+            targets
+                .iter()
+                .any(|&target| interval_distance_mod_12(interval, target) <= window_st + 1e-6)
+        })
+        .count();
+    hits as f32 / intervals.len() as f32
+}
+
+fn consonant_mass_rows_for_condition(
+    condition: &'static str,
+    runs: &[E2Run],
+) -> Vec<ConsonantMassRow> {
+    runs.iter()
+        .map(|run| {
+            let intervals = pairwise_interval_samples(&run.final_semitones);
+            ConsonantMassRow {
+                condition,
+                seed: run.seed,
+                mass_core: consonant_mass_for_intervals(
+                    &intervals,
+                    &E2_CONSONANT_TARGETS_CORE,
+                    E2_CONSONANT_WINDOW_ST,
+                ),
+                mass_extended: consonant_mass_for_intervals(
+                    &intervals,
+                    &E2_CONSONANT_TARGETS_EXTENDED,
+                    E2_CONSONANT_WINDOW_ST,
+                ),
+            }
+        })
+        .collect()
+}
+
+fn consonant_mass_values(
+    rows: &[ConsonantMassRow],
+    condition: &str,
+    select: fn(&ConsonantMassRow) -> f32,
+) -> Vec<f32> {
+    rows.iter()
+        .filter(|row| row.condition == condition)
+        .map(select)
+        .collect()
+}
+
+fn consonant_mass_core(row: &ConsonantMassRow) -> f32 {
+    row.mass_core
+}
+
+fn consonant_mass_extended(row: &ConsonantMassRow) -> f32 {
+    row.mass_extended
+}
+
+fn n_choose_k_capped(n: usize, k: usize, cap: u64) -> u64 {
+    if k > n {
+        return 0;
+    }
+    let k = k.min(n - k);
+    if k == 0 {
+        return 1;
+    }
+    let cap_u128 = cap as u128;
+    let capped = cap.saturating_add(1);
+    let mut value = 1u128;
+    for i in 1..=k {
+        value = value * (n - k + i) as u128 / i as u128;
+        if value > cap_u128 {
+            return capped;
+        }
+    }
+    value as u64
+}
+
+fn exact_permutation_pvalue_mean_diff(a: &[f32], b: &[f32]) -> f32 {
+    if a.is_empty() || b.is_empty() {
+        return 1.0;
+    }
+    let mean_a = a.iter().copied().sum::<f32>() / a.len() as f32;
+    let mean_b = b.iter().copied().sum::<f32>() / b.len() as f32;
+    let obs_abs = (mean_a - mean_b).abs();
+    let mut pooled = Vec::with_capacity(a.len() + b.len());
+    pooled.extend_from_slice(a);
+    pooled.extend_from_slice(b);
+    let n_total = pooled.len();
+    let n_a = a.len();
+    if n_a == 0 || n_a >= n_total {
+        return 1.0;
+    }
+    let pooled_sum = pooled.iter().copied().sum::<f32>();
+    fn recurse(
+        values: &[f32],
+        n_a: usize,
+        start: usize,
+        picked: usize,
+        sum_a: f32,
+        pooled_sum: f32,
+        obs_abs: f32,
+        extreme: &mut usize,
+        total: &mut usize,
+    ) {
+        if picked == n_a {
+            let n_b = values.len() - n_a;
+            if n_b == 0 {
+                return;
+            }
+            let mean_a = sum_a / n_a as f32;
+            let mean_b = (pooled_sum - sum_a) / n_b as f32;
+            if (mean_a - mean_b).abs() + 1e-8 >= obs_abs {
+                *extreme += 1;
+            }
+            *total += 1;
+            return;
+        }
+        let remaining_needed = n_a - picked;
+        let upper = values.len().saturating_sub(remaining_needed);
+        for i in start..=upper {
+            recurse(
+                values,
+                n_a,
+                i + 1,
+                picked + 1,
+                sum_a + values[i],
+                pooled_sum,
+                obs_abs,
+                extreme,
+                total,
+            );
+        }
+    }
+    let mut extreme = 0usize;
+    let mut total = 0usize;
+    recurse(
+        &pooled,
+        n_a,
+        0,
+        0,
+        0.0,
+        pooled_sum,
+        obs_abs,
+        &mut extreme,
+        &mut total,
+    );
+    if total == 0 {
+        1.0
+    } else {
+        (extreme as f32 + 1.0) / (total as f32 + 1.0)
+    }
+}
+
+fn permutation_pvalue_mean_diff(
+    a: &[f32],
+    b: &[f32],
+    max_exact: u64,
+    mc_iters: usize,
+    rng_seed: u64,
+) -> (f32, &'static str, u64) {
+    if a.is_empty() || b.is_empty() {
+        return (1.0, "exact", 0);
+    }
+    let n_total = a.len() + b.len();
+    let n_a = a.len();
+    let n_b = b.len();
+    if n_a == 0 || n_b == 0 {
+        return (1.0, "exact", 0);
+    }
+
+    let n_combos = n_choose_k_capped(n_total, n_a.min(n_b), max_exact);
+    if n_combos <= max_exact {
+        return (exact_permutation_pvalue_mean_diff(a, b), "exact", n_combos);
+    }
+
+    let mean_a = a.iter().copied().sum::<f32>() / n_a as f32;
+    let mean_b = b.iter().copied().sum::<f32>() / n_b as f32;
+    let obs_abs = (mean_a - mean_b).abs();
+    let mut pooled = Vec::with_capacity(n_total);
+    pooled.extend_from_slice(a);
+    pooled.extend_from_slice(b);
+    let pooled_sum = pooled.iter().copied().sum::<f32>();
+
+    let iters = mc_iters.max(1) as u64;
+    let mut rng = StdRng::seed_from_u64(rng_seed);
+    let mut picks: Vec<usize> = (0..n_total).collect();
+    let mut extreme = 0u64;
+    for _ in 0..iters {
+        picks.shuffle(&mut rng);
+        let sum_a: f32 = picks[..n_a].iter().map(|&idx| pooled[idx]).sum();
+        let perm_mean_a = sum_a / n_a as f32;
+        let perm_mean_b = (pooled_sum - sum_a) / n_b as f32;
+        if (perm_mean_a - perm_mean_b).abs() + 1e-8 >= obs_abs {
+            extreme += 1;
+        }
+    }
+    let p = (extreme as f32 + 1.0) / (iters as f32 + 1.0);
+    (p, "mc", iters)
+}
+
+fn cliffs_delta(a: &[f32], b: &[f32]) -> f32 {
+    if a.is_empty() || b.is_empty() {
+        return 0.0;
+    }
+    let mut greater = 0usize;
+    let mut less = 0usize;
+    for &x in a {
+        for &y in b {
+            if x > y + 1e-8 {
+                greater += 1;
+            } else if x + 1e-8 < y {
+                less += 1;
+            }
+        }
+    }
+    (greater as f32 - less as f32) / (a.len() * b.len()) as f32
+}
+
+fn consonant_mass_by_seed_csv(rows: &[ConsonantMassRow]) -> String {
+    let mut out = format!(
+        "# window_st={:.3} targets_core=3|4|7 targets_extended=0|3|4|5|7|8|9\n",
+        E2_CONSONANT_WINDOW_ST
+    );
+    out.push_str("seed,cond,mass_core_347,mass_extended_0345789\n");
+    for row in rows {
+        out.push_str(&format!(
+            "{},{},{:.6},{:.6}\n",
+            row.seed, row.condition, row.mass_core, row.mass_extended
+        ));
+    }
+    out
+}
+
+fn consonant_mass_summary_csv(rows: &[ConsonantMassRow]) -> String {
+    let mut out = String::from("metric,cond,mean,std,ci95,n\n");
+    for (metric, select) in [
+        (
+            "core_347",
+            consonant_mass_core as fn(&ConsonantMassRow) -> f32,
+        ),
+        (
+            "extended_0345789",
+            consonant_mass_extended as fn(&ConsonantMassRow) -> f32,
+        ),
+    ] {
+        for cond in ["baseline", "nohill", "norep"] {
+            let values = consonant_mass_values(rows, cond, select);
+            let (mean, std) = mean_std_scalar(&values);
+            out.push_str(&format!(
+                "{metric},{cond},{mean:.6},{std:.6},{:.6},{}\n",
+                ci95_half_width(&values),
+                values.len()
+            ));
+        }
+    }
+    out
+}
+
+fn consonant_mass_stats_csv(rows: &[ConsonantMassRow]) -> String {
+    let mut out = String::from(
+        "metric,comparison,mean_diff,p_perm,method,n_perm,cliffs_delta,n_baseline,n_control\n",
+    );
+    for (metric_idx, (metric, select)) in [
+        (
+            "core_347",
+            consonant_mass_core as fn(&ConsonantMassRow) -> f32,
+        ),
+        (
+            "extended_0345789",
+            consonant_mass_extended as fn(&ConsonantMassRow) -> f32,
+        ),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let baseline = consonant_mass_values(rows, "baseline", select);
+        for (comp_idx, (comp_label, comp_cond)) in [
+            ("baseline_vs_nohill", "nohill"),
+            ("baseline_vs_norep", "norep"),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let control = consonant_mass_values(rows, comp_cond, select);
+            let mean_diff = mean_std_scalar(&baseline).0 - mean_std_scalar(&control).0;
+            let rng_seed = E2_PERM_MC_SEED ^ ((metric_idx as u64) << 32) ^ comp_idx as u64;
+            let (p_perm, method, n_perm) = permutation_pvalue_mean_diff(
+                &baseline,
+                &control,
+                E2_PERM_MAX_EXACT_COMBOS,
+                E2_PERM_MC_ITERS,
+                rng_seed,
+            );
+            let delta = cliffs_delta(&baseline, &control);
+            out.push_str(&format!(
+                "{metric},{comp_label},{mean_diff:.6},{p_perm:.6},{method},{n_perm},{delta:.6},{},{}\n",
+                baseline.len(),
+                control.len()
+            ));
+        }
+    }
+    out
+}
+
+fn fold_hist_abs_semitones(
+    centers: &[f32],
+    mean_frac: &[f32],
+    std_frac: &[f32],
+    bin_width: f32,
+) -> (Vec<f32>, Vec<f32>, Vec<f32>) {
+    let len = centers.len().min(mean_frac.len()).min(std_frac.len());
+    let mut by_abs: std::collections::BTreeMap<i32, (f32, f32)> = std::collections::BTreeMap::new();
+    for i in 0..len {
+        let key = (centers[i].abs() / bin_width).round() as i32;
+        let entry = by_abs.entry(key).or_insert((0.0, 0.0));
+        entry.0 += mean_frac[i];
+        entry.1 += std_frac[i] * std_frac[i];
+    }
+    let mut out_centers = Vec::with_capacity(by_abs.len());
+    let mut out_mean = Vec::with_capacity(by_abs.len());
+    let mut out_std = Vec::with_capacity(by_abs.len());
+    for (key, (mean_sum, std_sq_sum)) in by_abs {
+        out_centers.push(key as f32 * bin_width);
+        out_mean.push(mean_sum);
+        out_std.push(std_sq_sum.max(0.0).sqrt());
+    }
+    (out_centers, out_mean, out_std)
+}
+
+fn folded_hist_csv(centers: &[f32], mean: &[f32], std: &[f32], n_seeds: usize) -> String {
+    let mut out = String::from("abs_semitones,mean_frac,std_frac,n_seeds\n");
+    let len = centers.len().min(mean.len()).min(std.len());
+    for i in 0..len {
+        out.push_str(&format!(
+            "{:.4},{:.6},{:.6},{}\n",
+            centers[i], mean[i], std[i], n_seeds
+        ));
+    }
+    out
+}
+
 fn render_hist_mean_std(
     out_path: &Path,
     caption: &str,
@@ -8078,6 +9866,260 @@ fn render_hist_mean_std(
     Ok(())
 }
 
+fn e2_condition_display(condition: &str) -> &'static str {
+    match condition {
+        "baseline" => "baseline",
+        "nohill" => "no hill-climb",
+        "norep" => "no repulsion",
+        _ => "unknown",
+    }
+}
+
+fn e2_condition_color(condition: &str) -> RGBColor {
+    match condition {
+        "baseline" => BLUE,
+        "nohill" => RED,
+        "norep" => GREEN,
+        _ => BLACK,
+    }
+}
+
+fn draw_e2_interval_guides_with_windows<DB: DrawingBackend>(
+    chart: &mut ChartContext<DB, Cartesian2d<RangedCoordf32, RangedCoordf32>>,
+    y_max: f32,
+) -> Result<(), Box<dyn Error>>
+where
+    DB::ErrorType: 'static,
+{
+    for &target in &E2_CONSONANT_TARGETS_CORE {
+        chart.draw_series(std::iter::once(Rectangle::new(
+            [
+                (target - E2_CONSONANT_WINDOW_ST, 0.0),
+                (target + E2_CONSONANT_WINDOW_ST, y_max),
+            ],
+            RGBColor(240, 170, 60).mix(0.12).filled(),
+        )))?;
+    }
+    for &x in &E2_CONSONANT_STEPS {
+        let is_core = E2_CONSONANT_TARGETS_CORE
+            .iter()
+            .any(|&core| (core - x).abs() < 1e-6);
+        let style = if is_core {
+            ShapeStyle::from(&BLACK.mix(0.6)).stroke_width(2)
+        } else {
+            ShapeStyle::from(&BLACK.mix(0.3)).stroke_width(1)
+        };
+        chart.draw_series(std::iter::once(PathElement::new(
+            vec![(x, 0.0), (x, y_max)],
+            style,
+        )))?;
+    }
+    Ok(())
+}
+
+fn y_max_from_mean_err(mean: &[f32], err: &[f32]) -> f32 {
+    let len = mean.len().min(err.len());
+    let mut y_peak = 0.0f32;
+    for i in 0..len {
+        y_peak = y_peak.max(mean[i] + err[i].max(0.0));
+    }
+    (1.15 * y_peak.max(1e-4)).max(1e-4)
+}
+
+fn render_pairwise_histogram_paper(
+    out_path: &Path,
+    caption: &str,
+    centers: &[f32],
+    mean_frac: &[f32],
+    std_frac: &[f32],
+    bin_width: f32,
+) -> Result<(), Box<dyn Error>> {
+    if centers.is_empty() {
+        return Ok(());
+    }
+    let len = centers.len().min(mean_frac.len()).min(std_frac.len());
+    if len == 0 {
+        return Ok(());
+    }
+    let x_min = centers.first().copied().unwrap_or(0.0) - 0.5 * bin_width;
+    let x_max = centers.get(len - 1).copied().unwrap_or(12.0) + 0.5 * bin_width;
+    let y_max = y_max_from_mean_err(&mean_frac[..len], &std_frac[..len]);
+
+    let root = bitmap_root(out_path, (1200, 700)).into_drawing_area();
+    root.fill(&WHITE)?;
+    let mut chart = ChartBuilder::on(&root)
+        .caption(caption, ("sans-serif", 20))
+        .margin(10)
+        .x_label_area_size(40)
+        .y_label_area_size(60)
+        .build_cartesian_2d(x_min..x_max, 0.0f32..y_max)?;
+    chart
+        .configure_mesh()
+        .x_desc("semitones")
+        .y_desc("mean fraction")
+        .x_labels(25)
+        .draw()?;
+
+    draw_e2_interval_guides_with_windows(&mut chart, y_max)?;
+
+    let half = bin_width * 0.45;
+    for i in 0..len {
+        let x = centers[i];
+        let m = mean_frac[i];
+        let s = std_frac[i];
+        chart.draw_series(std::iter::once(Rectangle::new(
+            [(x - half, 0.0), (x + half, m)],
+            BLUE.mix(0.65).filled(),
+        )))?;
+        let y0 = (m - s).max(0.0);
+        let y1 = (m + s).min(y_max);
+        chart.draw_series(std::iter::once(PathElement::new(
+            vec![(x, y0), (x, y1)],
+            BLACK.mix(0.6),
+        )))?;
+    }
+
+    root.present()?;
+    Ok(())
+}
+
+fn render_pairwise_histogram_controls_overlay(
+    out_path: &Path,
+    caption: &str,
+    centers: &[f32],
+    baseline: &[f32],
+    nohill: &[f32],
+    norep: &[f32],
+) -> Result<(), Box<dyn Error>> {
+    if centers.is_empty() {
+        return Ok(());
+    }
+    let len = centers
+        .len()
+        .min(baseline.len())
+        .min(nohill.len())
+        .min(norep.len());
+    if len == 0 {
+        return Ok(());
+    }
+    let bin_width = if len > 1 {
+        (centers[1] - centers[0]).abs().max(1e-6)
+    } else {
+        E2_PAIRWISE_BIN_ST
+    };
+    let x_min = centers[0] - 0.5 * bin_width;
+    let x_max = centers[len - 1] + 0.5 * bin_width;
+    let mut y_peak = 0.0f32;
+    for i in 0..len {
+        y_peak = y_peak.max(baseline[i]).max(nohill[i]).max(norep[i]);
+    }
+    let y_max = (1.15 * y_peak.max(1e-4)).max(1e-4);
+
+    let root = bitmap_root(out_path, (1200, 700)).into_drawing_area();
+    root.fill(&WHITE)?;
+    let mut chart = ChartBuilder::on(&root)
+        .caption(caption, ("sans-serif", 20))
+        .margin(10)
+        .x_label_area_size(40)
+        .y_label_area_size(60)
+        .build_cartesian_2d(x_min..x_max, 0.0f32..y_max)?;
+    chart
+        .configure_mesh()
+        .x_desc("semitones")
+        .y_desc("mean fraction")
+        .x_labels(25)
+        .draw()?;
+
+    draw_e2_interval_guides_with_windows(&mut chart, y_max)?;
+
+    for (label, values, color) in [
+        ("baseline", baseline, BLUE),
+        ("no hill-climb", nohill, RED),
+        ("no repulsion", norep, GREEN),
+    ] {
+        let line = centers
+            .iter()
+            .take(len)
+            .copied()
+            .zip(values.iter().take(len).copied());
+        chart
+            .draw_series(LineSeries::new(line, color))?
+            .label(label)
+            .legend(move |(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], color));
+    }
+    chart
+        .configure_series_labels()
+        .background_style(WHITE.mix(0.8))
+        .border_style(BLACK)
+        .draw()?;
+
+    root.present()?;
+    Ok(())
+}
+
+fn render_hist_mean_std_fraction_auto_y(
+    out_path: &Path,
+    caption: &str,
+    centers: &[f32],
+    mean: &[f32],
+    std: &[f32],
+    bin_width: f32,
+    x_desc: &str,
+    guide_lines: &[f32],
+) -> Result<(), Box<dyn Error>> {
+    if centers.is_empty() {
+        return Ok(());
+    }
+    let len = centers.len().min(mean.len()).min(std.len());
+    if len == 0 {
+        return Ok(());
+    }
+    let x_min = centers[0] - 0.5 * bin_width;
+    let x_max = centers[len - 1] + 0.5 * bin_width;
+    let y_max = y_max_from_mean_err(&mean[..len], &std[..len]);
+
+    let root = bitmap_root(out_path, (1200, 700)).into_drawing_area();
+    root.fill(&WHITE)?;
+    let mut chart = ChartBuilder::on(&root)
+        .caption(caption, ("sans-serif", 20))
+        .margin(10)
+        .x_label_area_size(40)
+        .y_label_area_size(60)
+        .build_cartesian_2d(x_min..x_max, 0.0f32..y_max)?;
+    chart
+        .configure_mesh()
+        .x_desc(x_desc)
+        .y_desc("mean fraction")
+        .x_labels(25)
+        .draw()?;
+
+    for &x in guide_lines {
+        chart.draw_series(std::iter::once(PathElement::new(
+            vec![(x, 0.0), (x, y_max)],
+            BLACK.mix(0.25),
+        )))?;
+    }
+
+    let half = bin_width * 0.45;
+    for i in 0..len {
+        let x = centers[i];
+        let m = mean[i];
+        let s = std[i];
+        chart.draw_series(std::iter::once(Rectangle::new(
+            [(x - half, 0.0), (x + half, m)],
+            BLUE.mix(0.65).filled(),
+        )))?;
+        let y0 = (m - s).max(0.0);
+        let y1 = (m + s).min(y_max);
+        chart.draw_series(std::iter::once(PathElement::new(
+            vec![(x, y0), (x, y1)],
+            BLACK.mix(0.6),
+        )))?;
+    }
+    root.present()?;
+    Ok(())
+}
+
 fn render_hist_controls_fraction(
     out_path: &Path,
     caption: &str,
@@ -8131,6 +10173,708 @@ fn render_hist_controls_fraction(
         .background_style(WHITE.mix(0.8))
         .border_style(BLACK)
         .draw()?;
+
+    root.present()?;
+    Ok(())
+}
+
+fn diversity_values_for_condition(
+    rows: &[DiversityRow],
+    condition: &str,
+    select: fn(&DiversityMetrics) -> f32,
+) -> Vec<f32> {
+    rows.iter()
+        .filter(|row| row.condition == condition)
+        .map(|row| select(&row.metrics))
+        .collect()
+}
+
+fn draw_diversity_metric_panel(
+    area: &DrawingArea<SVGBackend, Shift>,
+    caption: &str,
+    y_desc: &str,
+    rows: &[DiversityRow],
+    select: fn(&DiversityMetrics) -> f32,
+) -> Result<(), Box<dyn Error>> {
+    let conditions = ["baseline", "nohill", "norep"];
+    let mut means = [0.0f32; 3];
+    let mut ci95 = [0.0f32; 3];
+    for (i, cond) in conditions.iter().enumerate() {
+        let values = diversity_values_for_condition(rows, cond, select);
+        means[i] = mean_std_scalar(&values).0;
+        ci95[i] = ci95_half_width(&values);
+    }
+    let mut y_max = 0.0f32;
+    for i in 0..3 {
+        y_max = y_max.max(means[i] + ci95[i]);
+    }
+    y_max = (1.15 * y_max.max(1e-4)).max(1e-4);
+
+    let mut chart = ChartBuilder::on(area)
+        .caption(caption, ("sans-serif", 18))
+        .margin(10)
+        .x_label_area_size(30)
+        .y_label_area_size(50)
+        .build_cartesian_2d(-0.5f32..2.5f32, 0.0f32..y_max)?;
+    chart
+        .configure_mesh()
+        .disable_mesh()
+        .x_desc("condition")
+        .y_desc(y_desc)
+        .x_labels(3)
+        .x_label_formatter(&|x| {
+            let idx = x.round() as isize;
+            if (0..=2).contains(&idx) {
+                e2_condition_display(conditions[idx as usize]).to_string()
+            } else {
+                String::new()
+            }
+        })
+        .draw()?;
+
+    for (i, cond) in conditions.iter().enumerate() {
+        let center = i as f32;
+        let x0 = center - 0.3;
+        let x1 = center + 0.3;
+        let color = e2_condition_color(cond);
+        chart.draw_series(std::iter::once(Rectangle::new(
+            [(x0, 0.0), (x1, means[i])],
+            color.mix(0.7).filled(),
+        )))?;
+        let y0 = (means[i] - ci95[i]).max(0.0);
+        let y1 = (means[i] + ci95[i]).min(y_max);
+        chart.draw_series(std::iter::once(PathElement::new(
+            vec![(center, y0), (center, y1)],
+            BLACK.mix(0.7),
+        )))?;
+    }
+    Ok(())
+}
+
+fn draw_e2_timeseries_controls_panel(
+    area: &DrawingArea<SVGBackend, Shift>,
+    caption: &str,
+    baseline_mean: &[f32],
+    baseline_std: &[f32],
+    nohill_mean: &[f32],
+    nohill_std: &[f32],
+    norep_mean: &[f32],
+    norep_std: &[f32],
+    burn_in: usize,
+    phase_switch_step: Option<usize>,
+    x_min: usize,
+    x_max: usize,
+    draw_legend: bool,
+) -> Result<(), Box<dyn Error>> {
+    let x_hi = x_max.max(x_min + 1);
+    let mut y_min = f32::INFINITY;
+    let mut y_max = f32::NEG_INFINITY;
+    for (mean, std) in [
+        (baseline_mean, baseline_std),
+        (nohill_mean, nohill_std),
+        (norep_mean, norep_std),
+    ] {
+        let len = mean.len().min(std.len());
+        for i in x_min..len.min(x_hi + 1) {
+            let lo = mean[i] - std[i];
+            let hi = mean[i] + std[i];
+            if lo.is_finite() && hi.is_finite() {
+                y_min = y_min.min(lo);
+                y_max = y_max.max(hi);
+            }
+        }
+    }
+    if !y_min.is_finite() || !y_max.is_finite() {
+        y_min = 0.0;
+        y_max = 1.0;
+    }
+    let pad = ((y_max - y_min).abs() * 0.1).max(1e-3);
+    y_min = (y_min - pad).max(0.0);
+    y_max += pad;
+
+    let mut chart = ChartBuilder::on(area)
+        .caption(caption, ("sans-serif", 18))
+        .margin(10)
+        .x_label_area_size(40)
+        .y_label_area_size(55)
+        .build_cartesian_2d(x_min as f32..x_hi as f32, y_min..y_max)?;
+    chart
+        .configure_mesh()
+        .x_desc("step")
+        .y_desc("mean C_state")
+        .draw()?;
+
+    if burn_in > x_min {
+        let burn_x1 = burn_in.min(x_hi) as f32;
+        if burn_x1 > x_min as f32 {
+            chart.draw_series(std::iter::once(Rectangle::new(
+                [(x_min as f32, y_min), (burn_x1, y_max)],
+                RGBColor(180, 180, 180).mix(0.15).filled(),
+            )))?;
+        }
+    }
+    if let Some(step) = phase_switch_step {
+        if step >= x_min && step <= x_hi {
+            chart.draw_series(std::iter::once(PathElement::new(
+                vec![(step as f32, y_min), (step as f32, y_max)],
+                ShapeStyle::from(&BLACK.mix(0.55)).stroke_width(2),
+            )))?;
+            let y_text = y_max - 0.05 * (y_max - y_min);
+            chart.draw_series(std::iter::once(Text::new(
+                "phase switch".to_string(),
+                (step as f32, y_text),
+                ("sans-serif", 13).into_font().color(&BLACK),
+            )))?;
+        }
+    }
+
+    for (label, mean, std, color) in [
+        (
+            "baseline",
+            baseline_mean,
+            baseline_std,
+            e2_condition_color("baseline"),
+        ),
+        (
+            "no hill-climb",
+            nohill_mean,
+            nohill_std,
+            e2_condition_color("nohill"),
+        ),
+        (
+            "no repulsion",
+            norep_mean,
+            norep_std,
+            e2_condition_color("norep"),
+        ),
+    ] {
+        let len = mean.len().min(std.len());
+        if len <= x_min {
+            continue;
+        }
+        let end = len.min(x_hi + 1);
+        let mut band: Vec<(f32, f32)> = Vec::with_capacity((end - x_min) * 2);
+        for i in x_min..end {
+            band.push((i as f32, mean[i] + std[i]));
+        }
+        for i in (x_min..end).rev() {
+            band.push((i as f32, mean[i] - std[i]));
+        }
+        chart.draw_series(std::iter::once(Polygon::new(
+            band,
+            color.mix(0.15).filled(),
+        )))?;
+        let line = (x_min..end).map(|i| (i as f32, mean[i]));
+        chart
+            .draw_series(LineSeries::new(line, color))?
+            .label(label)
+            .legend(move |(x, y)| PathElement::new(vec![(x, y), (x + 18, y)], color));
+    }
+    if draw_legend {
+        chart
+            .configure_series_labels()
+            .background_style(WHITE.mix(0.8))
+            .border_style(BLACK)
+            .draw()?;
+    }
+    Ok(())
+}
+
+fn draw_trajectory_panel(
+    area: &DrawingArea<SVGBackend, Shift>,
+    caption: &str,
+    trajectories: &[Vec<f32>],
+) -> Result<(), Box<dyn Error>> {
+    if trajectories.is_empty() {
+        return Ok(());
+    }
+    let steps = trajectories.iter().map(|tr| tr.len()).max().unwrap_or(0);
+    if steps == 0 {
+        return Ok(());
+    }
+    let mut y_min = f32::INFINITY;
+    let mut y_max = f32::NEG_INFINITY;
+    for trace in trajectories {
+        for &v in trace {
+            if v.is_finite() {
+                y_min = y_min.min(v);
+                y_max = y_max.max(v);
+            }
+        }
+    }
+    if !y_min.is_finite() || !y_max.is_finite() {
+        y_min = -12.0;
+        y_max = 12.0;
+    }
+    let pad = ((y_max - y_min).abs() * 0.1).max(1e-3);
+    let mut chart = ChartBuilder::on(area)
+        .caption(caption, ("sans-serif", 18))
+        .margin(10)
+        .x_label_area_size(40)
+        .y_label_area_size(55)
+        .build_cartesian_2d(
+            0.0f32..(steps.saturating_sub(1) as f32).max(1.0),
+            (y_min - pad)..(y_max + pad),
+        )?;
+    chart
+        .configure_mesh()
+        .x_desc("step")
+        .y_desc("semitones")
+        .draw()?;
+    for (i, trace) in trajectories.iter().enumerate() {
+        if trace.is_empty() {
+            continue;
+        }
+        let color = Palette99::pick(i).mix(0.5);
+        let line = trace.iter().enumerate().map(|(step, &v)| (step as f32, v));
+        chart.draw_series(LineSeries::new(line, color))?;
+    }
+    Ok(())
+}
+
+fn render_e2_mean_c_state_annotated(
+    out_path: &Path,
+    baseline_mean: &[f32],
+    baseline_std: &[f32],
+    nohill_mean: &[f32],
+    nohill_std: &[f32],
+    norep_mean: &[f32],
+    norep_std: &[f32],
+    burn_in: usize,
+    phase_switch_step: Option<usize>,
+) -> Result<(), Box<dyn Error>> {
+    let len = baseline_mean
+        .len()
+        .min(baseline_std.len())
+        .min(nohill_mean.len())
+        .min(nohill_std.len())
+        .min(norep_mean.len())
+        .min(norep_std.len());
+    if len == 0 {
+        return Ok(());
+    }
+    let root = bitmap_root(out_path, (1200, 1000)).into_drawing_area();
+    root.fill(&WHITE)?;
+    let panels = root.split_evenly((2, 1));
+    draw_e2_timeseries_controls_panel(
+        &panels[0],
+        "E2 Mean C_state (annotated controls, 95% CI)",
+        baseline_mean,
+        baseline_std,
+        nohill_mean,
+        nohill_std,
+        norep_mean,
+        norep_std,
+        burn_in,
+        phase_switch_step,
+        0,
+        len.saturating_sub(1),
+        true,
+    )?;
+    let zoom_start = phase_switch_step
+        .unwrap_or(burn_in)
+        .min(len.saturating_sub(1));
+    draw_e2_timeseries_controls_panel(
+        &panels[1],
+        "Post-switch zoom (95% CI)",
+        baseline_mean,
+        baseline_std,
+        nohill_mean,
+        nohill_std,
+        norep_mean,
+        norep_std,
+        burn_in,
+        phase_switch_step,
+        zoom_start,
+        len.saturating_sub(1),
+        false,
+    )?;
+    root.present()?;
+    Ok(())
+}
+
+fn draw_consonant_mass_panel(
+    area: &DrawingArea<SVGBackend, Shift>,
+    caption: &str,
+    rows: &[ConsonantMassRow],
+    select: fn(&ConsonantMassRow) -> f32,
+) -> Result<(), Box<dyn Error>> {
+    let conditions = ["baseline", "nohill", "norep"];
+    let mut means = [0.0f32; 3];
+    let mut ci95 = [0.0f32; 3];
+    for (i, cond) in conditions.iter().enumerate() {
+        let values = consonant_mass_values(rows, cond, select);
+        means[i] = mean_std_scalar(&values).0;
+        ci95[i] = ci95_half_width(&values);
+    }
+    let mut y_max = 0.0f32;
+    for i in 0..3 {
+        y_max = y_max.max(means[i] + ci95[i]);
+    }
+    y_max = (1.15 * y_max.max(1e-4)).max(1e-4);
+
+    let mut chart = ChartBuilder::on(area)
+        .caption(caption, ("sans-serif", 18))
+        .margin(10)
+        .x_label_area_size(30)
+        .y_label_area_size(50)
+        .build_cartesian_2d(-0.5f32..2.5f32, 0.0f32..y_max)?;
+    chart
+        .configure_mesh()
+        .disable_mesh()
+        .x_desc("condition")
+        .y_desc("consonant mass")
+        .x_labels(3)
+        .x_label_formatter(&|x| {
+            let idx = x.round() as isize;
+            if (0..=2).contains(&idx) {
+                e2_condition_display(conditions[idx as usize]).to_string()
+            } else {
+                String::new()
+            }
+        })
+        .draw()?;
+
+    for (i, cond) in conditions.iter().enumerate() {
+        let center = i as f32;
+        let x0 = center - 0.3;
+        let x1 = center + 0.3;
+        let color = e2_condition_color(cond);
+        chart.draw_series(std::iter::once(Rectangle::new(
+            [(x0, 0.0), (x1, means[i])],
+            color.mix(0.7).filled(),
+        )))?;
+        let y0 = (means[i] - ci95[i]).max(0.0);
+        let y1 = (means[i] + ci95[i]).min(y_max);
+        chart.draw_series(std::iter::once(PathElement::new(
+            vec![(center, y0), (center, y1)],
+            BLACK.mix(0.7),
+        )))?;
+    }
+    Ok(())
+}
+
+fn render_consonant_mass_summary_plot(
+    out_path: &Path,
+    rows: &[ConsonantMassRow],
+) -> Result<(), Box<dyn Error>> {
+    if rows.is_empty() {
+        return Ok(());
+    }
+    let root = bitmap_root(out_path, (1200, 900)).into_drawing_area();
+    root.fill(&WHITE)?;
+    let panels = root.split_evenly((2, 1));
+    draw_consonant_mass_panel(
+        &panels[0],
+        "Consonant interval mass T={3,4,7} (95% CI)",
+        rows,
+        |row| row.mass_core,
+    )?;
+    draw_consonant_mass_panel(
+        &panels[1],
+        "Consonant interval mass T={0,3,4,5,7,8,9} (95% CI)",
+        rows,
+        |row| row.mass_extended,
+    )?;
+    root.present()?;
+    Ok(())
+}
+
+fn render_anchor_hist_post_folded(
+    out_path: &Path,
+    centers: &[f32],
+    mean: &[f32],
+    std: &[f32],
+    folded_centers: &[f32],
+    folded_mean: &[f32],
+    folded_std: &[f32],
+    bin_width: f32,
+) -> Result<(), Box<dyn Error>> {
+    if centers.is_empty() || folded_centers.is_empty() {
+        return Ok(());
+    }
+    let root = bitmap_root(out_path, (1400, 700)).into_drawing_area();
+    root.fill(&WHITE)?;
+    let panels = root.split_evenly((1, 2));
+
+    {
+        let len = centers.len().min(mean.len()).min(std.len());
+        let x_min = centers[0] - 0.5 * bin_width;
+        let x_max = centers[len - 1] + 0.5 * bin_width;
+        let mut y_peak = 0.0f32;
+        for &v in &mean[..len] {
+            y_peak = y_peak.max(v);
+        }
+        let y_max = (1.15 * y_peak.max(1e-4)).max(1e-4);
+
+        let mut chart = ChartBuilder::on(&panels[0])
+            .caption("Anchor intervals (post, mean frac)", ("sans-serif", 16))
+            .margin(10)
+            .x_label_area_size(35)
+            .y_label_area_size(45)
+            .build_cartesian_2d(x_min..x_max, 0.0f32..y_max)?;
+        chart
+            .configure_mesh()
+            .x_desc("semitones")
+            .y_desc("mean fraction")
+            .draw()?;
+
+        for &x in &[-7.0f32, -4.0, -3.0, 3.0, 4.0, 7.0] {
+            chart.draw_series(std::iter::once(PathElement::new(
+                vec![(x, 0.0), (x, y_max)],
+                BLACK.mix(0.25),
+            )))?;
+        }
+        let half = bin_width * 0.45;
+        for i in 0..len {
+            chart.draw_series(std::iter::once(Rectangle::new(
+                [(centers[i] - half, 0.0), (centers[i] + half, mean[i])],
+                BLUE.mix(0.65).filled(),
+            )))?;
+            let y0 = (mean[i] - std[i]).max(0.0);
+            let y1 = (mean[i] + std[i]).min(y_max);
+            chart.draw_series(std::iter::once(PathElement::new(
+                vec![(centers[i], y0), (centers[i], y1)],
+                BLACK.mix(0.6),
+            )))?;
+        }
+    }
+
+    {
+        let len = folded_centers
+            .len()
+            .min(folded_mean.len())
+            .min(folded_std.len());
+        let x_min = folded_centers[0] - 0.5 * bin_width;
+        let x_max = folded_centers[len - 1] + 0.5 * bin_width;
+        let mut y_peak = 0.0f32;
+        for &v in &folded_mean[..len] {
+            y_peak = y_peak.max(v);
+        }
+        let y_max = (1.15 * y_peak.max(1e-4)).max(1e-4);
+
+        let mut chart = ChartBuilder::on(&panels[1])
+            .caption("|Anchor intervals| folded to [0,12]", ("sans-serif", 16))
+            .margin(10)
+            .x_label_area_size(35)
+            .y_label_area_size(45)
+            .build_cartesian_2d(x_min..x_max, 0.0f32..y_max)?;
+        chart
+            .configure_mesh()
+            .x_desc("|semitones|")
+            .y_desc("mean fraction")
+            .draw()?;
+        for &x in &[3.0f32, 4.0, 7.0] {
+            chart.draw_series(std::iter::once(PathElement::new(
+                vec![(x, 0.0), (x, y_max)],
+                BLACK.mix(0.25),
+            )))?;
+        }
+        let half = bin_width * 0.45;
+        for i in 0..len {
+            chart.draw_series(std::iter::once(Rectangle::new(
+                [
+                    (folded_centers[i] - half, 0.0),
+                    (folded_centers[i] + half, folded_mean[i]),
+                ],
+                BLUE.mix(0.65).filled(),
+            )))?;
+            let y0 = (folded_mean[i] - folded_std[i]).max(0.0);
+            let y1 = (folded_mean[i] + folded_std[i]).min(y_max);
+            chart.draw_series(std::iter::once(PathElement::new(
+                vec![(folded_centers[i], y0), (folded_centers[i], y1)],
+                BLACK.mix(0.6),
+            )))?;
+        }
+    }
+    root.present()?;
+    Ok(())
+}
+
+fn render_e2_figure1(
+    out_path: &Path,
+    baseline_stats: &E2SweepStats,
+    nohill_stats: &E2SweepStats,
+    norep_stats: &E2SweepStats,
+    baseline_ci95_c_state: &[f32],
+    nohill_ci95_c_state: &[f32],
+    norep_ci95_c_state: &[f32],
+    diversity_rows: &[DiversityRow],
+    trajectories: &[Vec<f32>],
+    phase_mode: E2PhaseMode,
+) -> Result<(), Box<dyn Error>> {
+    let root = bitmap_root(out_path, (1400, 1000)).into_drawing_area();
+    root.fill(&WHITE)?;
+    let panels = root.split_evenly((2, 2));
+
+    let len = baseline_stats
+        .mean_c_state
+        .len()
+        .min(baseline_stats.std_c_state.len())
+        .min(nohill_stats.mean_c_state.len())
+        .min(nohill_stats.std_c_state.len())
+        .min(norep_stats.mean_c_state.len())
+        .min(norep_stats.std_c_state.len());
+    draw_e2_timeseries_controls_panel(
+        &panels[0],
+        "E2-1(a) Mean consonance over time (95% CI)",
+        &baseline_stats.mean_c_state,
+        baseline_ci95_c_state,
+        &nohill_stats.mean_c_state,
+        nohill_ci95_c_state,
+        &norep_stats.mean_c_state,
+        norep_ci95_c_state,
+        E2_BURN_IN,
+        phase_mode.switch_step(),
+        0,
+        len.saturating_sub(1),
+        true,
+    )?;
+    draw_diversity_metric_panel(
+        &panels[1],
+        "E2-1(b) Non-collapse: unique bins (95% CI)",
+        "unique bins",
+        diversity_rows,
+        |metrics| metrics.unique_bins as f32,
+    )?;
+    draw_trajectory_panel(
+        &panels[2],
+        "E2-1(c) Representative seed trajectories",
+        trajectories,
+    )?;
+    draw_diversity_metric_panel(
+        &panels[3],
+        "E2-1(b-alt) Non-collapse: NN distance (95% CI)",
+        "NN distance (st)",
+        diversity_rows,
+        |metrics| metrics.nn_mean,
+    )?;
+    root.present()?;
+    Ok(())
+}
+
+fn render_e2_figure2(
+    out_path: &Path,
+    pairwise_centers: &[f32],
+    pairwise_baseline_mean: &[f32],
+    pairwise_baseline_std: &[f32],
+    pairwise_nohill_mean: &[f32],
+    pairwise_norep_mean: &[f32],
+    consonant_rows: &[ConsonantMassRow],
+) -> Result<(), Box<dyn Error>> {
+    if pairwise_centers.is_empty() {
+        return Ok(());
+    }
+    let len = pairwise_centers
+        .len()
+        .min(pairwise_baseline_mean.len())
+        .min(pairwise_baseline_std.len())
+        .min(pairwise_nohill_mean.len())
+        .min(pairwise_norep_mean.len());
+    if len == 0 {
+        return Ok(());
+    }
+    let root = bitmap_root(out_path, (1400, 1000)).into_drawing_area();
+    root.fill(&WHITE)?;
+    let panels = root.split_evenly((2, 2));
+
+    {
+        let x_min = pairwise_centers[0] - 0.5 * E2_PAIRWISE_BIN_ST;
+        let x_max = pairwise_centers[len - 1] + 0.5 * E2_PAIRWISE_BIN_ST;
+        let y_max = y_max_from_mean_err(
+            &pairwise_baseline_mean[..len],
+            &pairwise_baseline_std[..len],
+        );
+        let mut chart = ChartBuilder::on(&panels[0])
+            .caption(
+                "E2-2(a) Pairwise interval histogram (baseline, 95% CI)",
+                ("sans-serif", 18),
+            )
+            .margin(10)
+            .x_label_area_size(35)
+            .y_label_area_size(50)
+            .build_cartesian_2d(x_min..x_max, 0.0f32..y_max)?;
+        chart
+            .configure_mesh()
+            .x_desc("semitones")
+            .y_desc("mean fraction")
+            .draw()?;
+        draw_e2_interval_guides_with_windows(&mut chart, y_max)?;
+        let half = E2_PAIRWISE_BIN_ST * 0.45;
+        for i in 0..len {
+            chart.draw_series(std::iter::once(Rectangle::new(
+                [
+                    (pairwise_centers[i] - half, 0.0),
+                    (pairwise_centers[i] + half, pairwise_baseline_mean[i]),
+                ],
+                BLUE.mix(0.65).filled(),
+            )))?;
+            let y0 = (pairwise_baseline_mean[i] - pairwise_baseline_std[i]).max(0.0);
+            let y1 = (pairwise_baseline_mean[i] + pairwise_baseline_std[i]).min(y_max);
+            chart.draw_series(std::iter::once(PathElement::new(
+                vec![(pairwise_centers[i], y0), (pairwise_centers[i], y1)],
+                BLACK.mix(0.6),
+            )))?;
+        }
+    }
+
+    {
+        let x_min = pairwise_centers[0] - 0.5 * E2_PAIRWISE_BIN_ST;
+        let x_max = pairwise_centers[len - 1] + 0.5 * E2_PAIRWISE_BIN_ST;
+        let mut y_peak = 0.0f32;
+        for i in 0..len {
+            y_peak = y_peak
+                .max(pairwise_baseline_mean[i])
+                .max(pairwise_nohill_mean[i])
+                .max(pairwise_norep_mean[i]);
+        }
+        let y_max = (1.15 * y_peak.max(1e-4)).max(1e-4);
+        let mut chart = ChartBuilder::on(&panels[1])
+            .caption("E2-2(b) Pairwise controls overlay", ("sans-serif", 18))
+            .margin(10)
+            .x_label_area_size(35)
+            .y_label_area_size(50)
+            .build_cartesian_2d(x_min..x_max, 0.0f32..y_max)?;
+        chart
+            .configure_mesh()
+            .x_desc("semitones")
+            .y_desc("mean fraction")
+            .draw()?;
+        draw_e2_interval_guides_with_windows(&mut chart, y_max)?;
+        for (label, values, color) in [
+            ("baseline", pairwise_baseline_mean, BLUE),
+            ("no hill-climb", pairwise_nohill_mean, RED),
+            ("no repulsion", pairwise_norep_mean, GREEN),
+        ] {
+            let line = pairwise_centers
+                .iter()
+                .take(len)
+                .copied()
+                .zip(values.iter().take(len).copied());
+            chart
+                .draw_series(LineSeries::new(line, color))?
+                .label(label)
+                .legend(move |(x, y)| PathElement::new(vec![(x, y), (x + 18, y)], color));
+        }
+        chart
+            .configure_series_labels()
+            .background_style(WHITE.mix(0.8))
+            .border_style(BLACK)
+            .draw()?;
+    }
+
+    draw_consonant_mass_panel(
+        &panels[2],
+        "E2-2(c) Consonant mass T={3,4,7} (95% CI)",
+        consonant_rows,
+        |row| row.mass_core,
+    )?;
+    draw_consonant_mass_panel(
+        &panels[3],
+        "E2-2(c-alt) Consonant mass T={0,3,4,5,7,8,9} (95% CI)",
+        consonant_rows,
+        |row| row.mass_extended,
+    )?;
 
     root.present()?;
     Ok(())
@@ -10213,8 +12957,8 @@ fn pairwise_interval_samples(semitones: &[f32]) -> Vec<f32> {
         for j in (i + 1)..semitones.len() {
             let diff = (semitones[i] - semitones[j]).abs();
             let mut folded = diff.rem_euclid(12.0);
-            if folded < eps && diff > eps {
-                folded = 12.0;
+            if folded >= 12.0 - eps {
+                folded = 0.0;
             }
             out.push(folded);
         }
@@ -10473,15 +13217,217 @@ mod tests {
     }
 
     #[test]
-    fn pairwise_interval_fold_maps_octave_to_12() {
+    fn pairwise_interval_fold_maps_octave_to_zero() {
         let semitones = [0.0f32, 12.0];
         let pairs = pairwise_interval_samples(&semitones);
         assert_eq!(pairs.len(), 1);
+        assert!(pairs[0].abs() < 1e-6, "expected 0, got {}", pairs[0]);
+    }
+
+    #[test]
+    fn pairwise_interval_octave_hits_zero_hist_bin() {
+        let semitones = [0.0f32, 12.0];
+        let pairs = pairwise_interval_samples(&semitones);
+        let hist = histogram_counts_fixed(&pairs, 0.0, 12.0, E2_PAIRWISE_BIN_ST);
+        assert_eq!(pairs.len(), 1);
+        assert!(pairs[0].abs() < 1e-6);
         assert!(
-            (pairs[0] - 12.0).abs() < 1e-6,
-            "expected 12, got {}",
-            pairs[0]
+            !hist.is_empty() && hist[0].1 > 0.5,
+            "expected first bin to receive octave sample"
         );
+        let tail = hist.last().map(|(_, c)| *c).unwrap_or(0.0);
+        assert!(tail < 0.5, "expected last bin not to receive octave sample");
+    }
+
+    #[test]
+    fn interval_distance_mod_12_maps_octave_equivalence() {
+        let d = interval_distance_mod_12(12.0, 0.0);
+        assert!(
+            d.abs() < 1e-6,
+            "expected octave equivalence distance 0, got {d}"
+        );
+        let d = interval_distance_mod_12(11.9, 0.0);
+        assert!(
+            (d - 0.1).abs() < 1e-4,
+            "expected wrap-around distance 0.1, got {d}"
+        );
+    }
+
+    #[test]
+    fn consonant_mass_for_intervals_counts_target_windows() {
+        let intervals = [3.05f32, 4.1, 6.0, 7.2, 11.9, 0.1, 12.0];
+        let core_mass = consonant_mass_for_intervals(&intervals, &E2_CONSONANT_TARGETS_CORE, 0.25);
+        assert!(
+            (core_mass - 3.0 / 7.0).abs() < 1e-6,
+            "core_mass={core_mass}"
+        );
+
+        let octave_mass = consonant_mass_for_intervals(&intervals, &[0.0], 0.25);
+        assert!(
+            (octave_mass - 3.0 / 7.0).abs() < 1e-6,
+            "octave_mass={octave_mass}"
+        );
+    }
+
+    #[test]
+    fn fold_hist_abs_semitones_merges_sign_pairs() {
+        let centers = [-1.0f32, 0.0, 1.0];
+        let mean = [0.2f32, 0.1, 0.3];
+        let std = [0.01f32, 0.02, 0.03];
+        let (fold_c, fold_m, fold_s) = fold_hist_abs_semitones(&centers, &mean, &std, 1.0);
+        assert_eq!(fold_c, vec![0.0, 1.0]);
+        assert!((fold_m[0] - 0.1).abs() < 1e-6);
+        assert!((fold_m[1] - 0.5).abs() < 1e-6);
+        let expected_std = (0.01f32 * 0.01 + 0.03 * 0.03).sqrt();
+        assert!((fold_s[0] - 0.02).abs() < 1e-6);
+        assert!((fold_s[1] - expected_std).abs() < 1e-6);
+    }
+
+    #[test]
+    fn exact_permutation_pvalue_mean_diff_small_sample() {
+        let a = [1.0f32, 1.0, 1.0];
+        let b = [0.0f32, 0.0, 0.0];
+        let p = exact_permutation_pvalue_mean_diff(&a, &b);
+        assert!((p - (3.0 / 21.0)).abs() < 1e-6, "unexpected exact p={p}");
+    }
+
+    #[test]
+    fn permutation_pvalue_mean_diff_small_sample_uses_exact() {
+        let a = [1.0f32, 1.0, 1.0];
+        let b = [0.0f32, 0.0, 0.0];
+        let p_exact = exact_permutation_pvalue_mean_diff(&a, &b);
+        let (p, method, n_perm) = permutation_pvalue_mean_diff(&a, &b, 1_000, 2_000, 1234);
+        assert_eq!(method, "exact");
+        assert_eq!(n_perm, 20);
+        assert!(
+            (p - p_exact).abs() < 1e-6,
+            "auto exact p={p} differed from exact p={p_exact}"
+        );
+    }
+
+    #[test]
+    fn permutation_pvalue_mean_diff_falls_back_to_mc_and_is_deterministic() {
+        let a = [0.1f32, 0.2, 0.3, 0.4, 0.5, 0.6];
+        let b = [0.2f32, 0.3, 0.4, 0.5, 0.6, 0.7];
+        let (p1, method1, n_perm1) = permutation_pvalue_mean_diff(&a, &b, 10, 1_234, 0xBEEF);
+        let (p2, method2, n_perm2) = permutation_pvalue_mean_diff(&a, &b, 10, 1_234, 0xBEEF);
+        assert_eq!(method1, "mc");
+        assert_eq!(method2, "mc");
+        assert_eq!(n_perm1, 1_234);
+        assert_eq!(n_perm2, 1_234);
+        assert!((0.0..=1.0).contains(&p1), "p1 out of range: {p1}");
+        assert!((0.0..=1.0).contains(&p2), "p2 out of range: {p2}");
+        assert_eq!(
+            p1.to_bits(),
+            p2.to_bits(),
+            "mc p-value must be deterministic"
+        );
+    }
+
+    #[test]
+    fn n_choose_k_capped_returns_cap_plus_one_on_overflow_path() {
+        assert_eq!(n_choose_k_capped(6, 3, 100), 20);
+        assert_eq!(n_choose_k_capped(40, 20, 1_000), 1_001);
+    }
+
+    #[test]
+    fn y_max_from_mean_err_uses_error_upper_bound() {
+        let mean = [0.1f32];
+        let err = [0.2f32];
+        let y_max = y_max_from_mean_err(&mean, &err);
+        assert!(y_max >= 0.3, "y_max={y_max}");
+    }
+
+    #[test]
+    fn p5_class_distance_treats_p4_and_p5_as_same_class() {
+        assert!(p5_class_distance_cents(E4_CENTS_P5) < 1e-6);
+        assert!(p5_class_distance_cents(E4_CENTS_P4) < 1e-6);
+        let d = p5_class_distance_cents(E4_CENTS_P5 + 10.0);
+        assert!((d - 10.0).abs() < 1e-4, "unexpected distance: {d}");
+    }
+
+    #[test]
+    fn triad_scores_use_product_and_normalized_delta_t() {
+        let masses = IntervalMasses {
+            min3: 0.2,
+            maj3: 0.4,
+            p4: 0.1,
+            p5: 0.1,
+            p5_class: 0.5,
+        };
+        let (t_maj, t_min, delta_t, major_frac) = triad_scores(masses);
+        assert!((t_maj - 0.2).abs() < 1e-6);
+        assert!((t_min - 0.1).abs() < 1e-6);
+        let expected = (0.2 - 0.1) / (0.2 + 0.1 + 1e-6);
+        assert!((delta_t - expected).abs() < 1e-6, "delta_t={delta_t}");
+        assert!(
+            (major_frac - (2.0 / 3.0)).abs() < 1e-6,
+            "major_frac={major_frac}"
+        );
+    }
+
+    #[test]
+    fn soft_counting_gives_nonzero_weight_outside_hard_window() {
+        let hist = Histogram {
+            bin_centers: vec![E4_CENTS_MAJ3 + 20.0],
+            masses: vec![1.0],
+        };
+        let hard = interval_masses_from_histogram(&hist, 12.5, E4CountMode::Hard);
+        let soft = interval_masses_from_histogram(&hist, 12.5, E4CountMode::Soft);
+        assert!(hard.maj3 <= 1e-9, "hard.maj3={}", hard.maj3);
+        assert!(soft.maj3 > 0.0, "soft.maj3 should be > 0");
+    }
+
+    #[test]
+    fn fixed_except_mirror_check_passes_for_constant_settings() {
+        let r1 = E4RunRecord {
+            count_mode: "soft",
+            mirror_weight: 0.0,
+            seed: 1,
+            bin_width: 0.25,
+            eps_cents: 25.0,
+            major_score: 0.1,
+            minor_score: 0.05,
+            delta: 0.1,
+            triad_major: 0.1,
+            triad_minor: 0.05,
+            delta_t: 0.1,
+            major_frac: 0.6666667,
+            mass_min3: 0.2,
+            mass_maj3: 0.3,
+            mass_p4: 0.1,
+            mass_p5: 0.2,
+            mass_p5_class: 0.25,
+            steps_total: 1200,
+            burn_in: 800,
+            tail_window: 400,
+            histogram_source: "tail_mean",
+        };
+        let r2 = E4RunRecord {
+            mirror_weight: 1.0,
+            ..r1
+        };
+        let csv = e4_fixed_except_mirror_check_csv(&[r1, r2]);
+        let line = csv
+            .lines()
+            .nth(1)
+            .expect("expected one data row in fixed-check csv");
+        assert!(
+            line.ends_with(",1"),
+            "expected pass_fixed_except_mirror=1, got: {line}"
+        );
+    }
+
+    #[test]
+    fn ci95_from_std_matches_closed_form() {
+        let ci = ci95_from_std(0.5, 20);
+        let expected = 1.96 * 0.5 / (20.0f32).sqrt();
+        assert!((ci - expected).abs() < 1e-7, "ci={ci} expected={expected}");
+    }
+
+    #[test]
+    fn e2_seed_count_is_20() {
+        assert_eq!(E2_SEEDS.len(), 20);
     }
 
     #[test]

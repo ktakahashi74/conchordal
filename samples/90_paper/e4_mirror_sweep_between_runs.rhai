@@ -1,6 +1,9 @@
 // E4 demo: between-run sweep with population reset per mirror weight.
 let anchor = derive(sine).amp(0.1).phonation("hold");
-let probe = derive(sine).amp(0.04).phonation("hold");
+let probe = derive(sine)
+    .amp(0.04)
+    .phonation("hold")
+    .pitch_core("peak_sampler");
 
 scene("E4 Mirror Sweep Between Runs", || {
     let n_probes = 8;

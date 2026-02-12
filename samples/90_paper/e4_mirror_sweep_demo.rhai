@@ -1,6 +1,9 @@
 // E4 demo: fixed-population step response for mirror-weight sweep.
 let anchor = derive(sine).amp(0.1).phonation("hold");
-let probe = derive(sine).amp(0.04).phonation("hold");
+let probe = derive(sine)
+    .amp(0.04)
+    .phonation("hold")
+    .pitch_core("peak_sampler");
 
 scene("E4 Mirror Sweep Demo", || {
     let base = create(anchor, 1).freq(196.0);

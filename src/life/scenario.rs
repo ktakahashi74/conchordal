@@ -252,6 +252,17 @@ pub enum PitchCoreConfig {
         exploration: Option<f32>,
         persistence: Option<f32>,
     },
+    PitchPeakSampler {
+        neighbor_step_cents: Option<f32>,
+        window_cents: Option<f32>,
+        top_k: Option<usize>,
+        temperature: Option<f32>,
+        sigma_cents: Option<f32>,
+        random_candidates: Option<usize>,
+        tessitura_gravity: Option<f32>,
+        exploration: Option<f32>,
+        persistence: Option<f32>,
+    },
 }
 
 impl Default for PitchCoreConfig {

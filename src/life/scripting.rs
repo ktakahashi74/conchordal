@@ -6,7 +6,9 @@ use rand::random;
 use rhai::{Array, Dynamic, Engine, EvalAltResult, FLOAT, FnPtr, INT, NativeCallContext, Position};
 use tracing::warn;
 
-use super::control::{AgentControl, BodyMethod, ControlUpdate, PhonationType, PitchMode};
+use super::control::{
+    AgentControl, BodyMethod, ControlUpdate, PhonationType, PitchCoreKind, PitchMode,
+};
 use super::lifecycle::LifecycleConfig;
 use super::scenario::{
     Action, ArticulationCoreConfig, EnvelopeConfig, Scenario, SceneMarker, SpawnSpec,
@@ -144,6 +146,21 @@ impl SpeciesSpec {
             other => {
                 warn!("pitch_mode() expects 'free' or 'lock', got '{}'", other);
                 self.control.pitch.mode
+            }
+        };
+    }
+
+    fn set_pitch_core(&mut self, name: &str) {
+        let lowered = name.trim().to_ascii_lowercase();
+        self.control.pitch.core_kind = match lowered.as_str() {
+            "hill_climb" | "hillclimb" | "hill" => PitchCoreKind::HillClimb,
+            "peak_sampler" | "peaksampler" | "peak" => PitchCoreKind::PeakSampler,
+            other => {
+                warn!(
+                    "pitch_core() expects 'hill_climb' or 'peak_sampler', got '{}'",
+                    other
+                );
+                self.control.pitch.core_kind
             }
         };
     }
@@ -617,6 +634,10 @@ impl ScriptHost {
             species.spec.set_pitch_mode(name);
             species
         });
+        engine.register_fn("pitch_core", |mut species: SpeciesHandle, name: &str| {
+            species.spec.set_pitch_core(name);
+            species
+        });
         engine.register_fn("brain", |mut species: SpeciesHandle, name: &str| {
             species.spec.set_brain(name);
             species
@@ -1045,6 +1066,25 @@ impl ScriptHost {
                 Ok(handle)
             },
         );
+        let ctx_for_group_pitch_core = ctx.clone();
+        engine.register_fn(
+            "pitch_core",
+            move |handle: GroupHandle, name: &str| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_pitch_core
+                    .lock()
+                    .expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("pitch_core ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                match group.status {
+                    GroupStatus::Draft => group.spec.set_pitch_core(name),
+                    GroupStatus::Live => ctx.warn_live_builder(handle.id, "pitch_core"),
+                    _ => ctx.warn_live_builder(handle.id, "pitch_core"),
+                }
+                Ok(handle)
+            },
+        );
         let ctx_for_group_phonation = ctx.clone();
         engine.register_fn(
             "phonation",
@@ -1281,6 +1321,7 @@ mod tests {
     use crate::core::landscape::LandscapeFrame;
     use crate::core::timebase::Timebase;
     use crate::life::population::Population;
+    use std::collections::HashMap;
 
     fn run_script(src: &str) -> (Scenario, ScriptWarnings) {
         let ctx = Arc::new(Mutex::new(ScriptContext::default()));
@@ -1597,6 +1638,26 @@ mod tests {
     }
 
     #[test]
+    fn species_pitch_core_sets_spawn_core_kind() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            create(sine.pitch_core("peak_sampler"), 1);
+            flush();
+        "#,
+        );
+        let core_kind = scenario
+            .events
+            .iter()
+            .flat_map(|event| &event.actions)
+            .find_map(|action| match action {
+                Action::Spawn { spec, .. } => Some(spec.control.pitch.core_kind),
+                _ => None,
+            })
+            .expect("spawn action");
+        assert_eq!(core_kind, PitchCoreKind::PeakSampler);
+    }
+
+    #[test]
     fn spawn_payload_preserves_species_control_fields() {
         let (scenario, _warnings) = run_script(
             r#"
@@ -1624,5 +1685,72 @@ mod tests {
         assert_eq!(control.pitch.mode, PitchMode::Lock);
         assert!((control.body.timbre.brightness - 0.7).abs() <= 1e-6);
         assert!((control.body.timbre.width - 0.2).abs() <= 1e-6);
+    }
+
+    #[test]
+    fn e4_step_response_script_has_fixed_population_spawns() {
+        let script = include_str!("../../samples/90_paper/e4_mirror_sweep_demo.rhai");
+        let (scenario, _warnings) = run_script(script);
+
+        let mut spawn_actions = 0usize;
+        let mut spawned_agents = 0usize;
+        let mut mirror_updates = 0usize;
+        for action in scenario.events.iter().flat_map(|ev| ev.actions.iter()) {
+            match action {
+                Action::Spawn { ids, .. } => {
+                    spawn_actions += 1;
+                    spawned_agents += ids.len();
+                }
+                Action::SetHarmonicityParams { update } => {
+                    if update.mirror.is_some() {
+                        mirror_updates += 1;
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        // One anchor group + one probe group should spawn once each.
+        assert_eq!(spawn_actions, 2);
+        assert_eq!(spawned_agents, 9);
+        assert!(spawn_actions < mirror_updates);
+    }
+
+    #[test]
+    fn e4_between_runs_script_pairs_spawns_and_releases_per_weight() {
+        let script = include_str!("../../samples/90_paper/e4_mirror_sweep_between_runs.rhai");
+        let (scenario, _warnings) = run_script(script);
+
+        let mut mirror_updates = 0usize;
+        let mut spawn_by_group: HashMap<u64, usize> = HashMap::new();
+        let mut release_by_group: HashMap<u64, usize> = HashMap::new();
+
+        for action in scenario.events.iter().flat_map(|ev| ev.actions.iter()) {
+            match action {
+                Action::SetHarmonicityParams { update } => {
+                    if update.mirror.is_some() {
+                        mirror_updates += 1;
+                    }
+                }
+                Action::Spawn { group_id, .. } => {
+                    *spawn_by_group.entry(*group_id).or_insert(0) += 1;
+                }
+                Action::Release { group_id, .. } => {
+                    *release_by_group.entry(*group_id).or_insert(0) += 1;
+                }
+                _ => {}
+            }
+        }
+
+        assert_eq!(spawn_by_group.len(), mirror_updates * 2);
+        assert_eq!(release_by_group.len(), mirror_updates * 2);
+        for (group_id, spawn_count) in &spawn_by_group {
+            assert_eq!(*spawn_count, 1, "group {group_id} spawned more than once");
+            assert_eq!(
+                release_by_group.get(group_id).copied().unwrap_or(0),
+                1,
+                "group {group_id} does not have exactly one matching release"
+            );
+        }
     }
 }

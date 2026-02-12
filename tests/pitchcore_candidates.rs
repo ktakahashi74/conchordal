@@ -10,7 +10,7 @@ fn neighbors_produce_ratio_candidates() {
 }
 
 #[test]
-fn fallback_generates_semitone_candidates() {
+fn fallback_generates_min_candidates_without_tet_steps() {
     let mut core = PitchHillClimbPitchCore::new(200.0, 440.0, 0.1, 0.1, 0.0, 0.5);
     let candidates = core.propose_freqs_hz_with_neighbors(440.0, &[], 12, 8, 12.0);
     assert!(candidates.len() >= 8);

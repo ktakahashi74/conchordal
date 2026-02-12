@@ -1,5 +1,6 @@
 use crate::life::control::{
     BodyControl, BodyMethod, PerceptualControl, PhonationControl, PhonationType, PitchControl,
+    PitchCoreKind,
 };
 use crate::life::perceptual::PerceptualConfig;
 use crate::life::scenario::{
@@ -52,12 +53,25 @@ pub(crate) fn tessitura_gravity_from_control(gravity: f32) -> f32 {
 }
 
 pub(crate) fn pitch_core_config_from_control(pitch: &PitchControl) -> PitchCoreConfig {
-    PitchCoreConfig::PitchHillClimb {
-        neighbor_step_cents: None,
-        tessitura_gravity: Some(tessitura_gravity_from_control(pitch.gravity)),
-        improvement_threshold: None,
-        exploration: Some(pitch.exploration),
-        persistence: Some(pitch.persistence),
+    match pitch.core_kind {
+        PitchCoreKind::HillClimb => PitchCoreConfig::PitchHillClimb {
+            neighbor_step_cents: None,
+            tessitura_gravity: Some(tessitura_gravity_from_control(pitch.gravity)),
+            improvement_threshold: None,
+            exploration: Some(pitch.exploration),
+            persistence: Some(pitch.persistence),
+        },
+        PitchCoreKind::PeakSampler => PitchCoreConfig::PitchPeakSampler {
+            neighbor_step_cents: None,
+            window_cents: None,
+            top_k: None,
+            temperature: None,
+            sigma_cents: None,
+            random_candidates: None,
+            tessitura_gravity: Some(tessitura_gravity_from_control(pitch.gravity)),
+            exploration: Some(pitch.exploration),
+            persistence: Some(pitch.persistence),
+        },
     }
 }
 

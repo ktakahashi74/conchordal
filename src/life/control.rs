@@ -104,9 +104,17 @@ pub enum PitchMode {
     Lock,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PitchCoreKind {
+    #[default]
+    HillClimb,
+    PeakSampler,
+}
+
 #[derive(Debug, Clone)]
 pub struct PitchControl {
     pub mode: PitchMode,
+    pub core_kind: PitchCoreKind,
     /// Frequency in Hz: center for free mode, fixed output for lock.
     pub freq: f32,
     pub range_oct: f32,
@@ -119,6 +127,7 @@ impl Default for PitchControl {
     fn default() -> Self {
         Self {
             mode: PitchMode::Free,
+            core_kind: PitchCoreKind::HillClimb,
             freq: 220.0,
             range_oct: RANGE_OCT_MAX,
             gravity: 0.5,

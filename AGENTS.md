@@ -152,4 +152,5 @@ Scenarios should be approachable for newcomers while remaining expressive for ad
 
 ## Git Operation Policy
 - Never create a commit unless the user explicitly asks for a commit in that turn.
+- Before creating any commit, always run `cargo clippy -- -D warnings` and confirm it passes.
 - If a commit is requested, commit only the files relevant to the requested task.

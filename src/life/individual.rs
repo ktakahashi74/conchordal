@@ -33,7 +33,9 @@ pub use articulation_core::{
     Sensitivity, SequencedCore,
 };
 pub use pitch_controller::PitchController;
-pub use pitch_core::{AnyPitchCore, PitchCore, PitchHillClimbPitchCore, TargetProposal};
+pub use pitch_core::{
+    AnyPitchCore, PitchCore, PitchHillClimbPitchCore, PitchPeakSamplerCore, TargetProposal,
+};
 pub use sound_body::{AnySoundBody, HarmonicBody, SineBody, SoundBody};
 
 #[derive(Debug, Clone, Default)]

@@ -10,6 +10,11 @@ Output CSVs:
     mirror_weight,seed,step,n_agents,root_fit,ceiling_fit,delta_bind
   e4_bind_summary.csv:
     mirror_weight,mean_root_fit,root_ci_lo,root_ci_hi,mean_ceiling_fit,ceiling_ci_lo,ceiling_ci_hi,mean_delta_bind,delta_bind_ci_lo,delta_bind_ci_hi,n_seeds
+
+Optional plots (requires matplotlib):
+  paper_e4_bind_vs_weight_py.svg
+  paper_e4_root_ceiling_fit_vs_weight_py.svg
+  paper_e4_interval_fingerprint_heatmap_py.svg
 """
 
 from __future__ import annotations
@@ -172,6 +177,21 @@ def load_tail_agents(path: Path) -> list[dict[str, str]]:
         return list(csv.DictReader(f))
 
 
+def freq_to_cents_class(anchor_hz: float, freq_hz: float) -> float | None:
+    if (
+        not math.isfinite(anchor_hz)
+        or not math.isfinite(freq_hz)
+        or anchor_hz <= 0.0
+        or freq_hz <= 0.0
+    ):
+        return None
+    cents = 1200.0 * math.log2(freq_hz / anchor_hz)
+    cents = cents % 1200.0
+    if cents >= 1200.0 - 1e-6:
+        cents = 0.0
+    return max(0.0, min(1200.0, cents))
+
+
 def build_metrics_rows(
     tail_rows: list[dict[str, str]],
     sigma_cents: float,
@@ -257,6 +277,173 @@ def build_summary_rows(
     return out
 
 
+def build_interval_heatmap_rows(
+    tail_rows: list[dict[str, str]], anchor_hz: float, bin_width_cents: float
+) -> tuple[list[float], list[float], list[list[float]]]:
+    bin_width = max(1.0, float(bin_width_cents))
+    n_bins = max(1, int(math.ceil(1200.0 / bin_width)))
+
+    by_weight_counts: dict[float, list[int]] = {}
+    for row in tail_rows:
+        w = round(float(row["mirror_weight"]), 6)
+        freq_hz = float(row["freq_hz"])
+        cents = freq_to_cents_class(anchor_hz, freq_hz)
+        if cents is None:
+            continue
+        counts = by_weight_counts.setdefault(w, [0] * n_bins)
+        idx = int(cents // bin_width)
+        if idx >= n_bins:
+            idx = n_bins - 1
+        counts[idx] += 1
+
+    weights = sorted(by_weight_counts.keys())
+    if not weights:
+        centers = [(i + 0.5) * bin_width for i in range(n_bins)]
+        return [], centers, []
+
+    centers = [(i + 0.5) * bin_width for i in range(n_bins)]
+    matrix: list[list[float]] = []
+    for w in weights:
+        counts = by_weight_counts[w]
+        total = float(sum(counts))
+        if total <= 0.0:
+            matrix.append([0.0] * n_bins)
+        else:
+            matrix.append([c / total for c in counts])
+    return weights, centers, matrix
+
+
+def try_import_matplotlib():
+    try:
+        import matplotlib.pyplot as plt  # type: ignore
+    except Exception:
+        return None
+    return plt
+
+
+def render_bind_vs_weight_plot(path: Path, summary_rows: list[dict[str, float | int]]) -> bool:
+    plt = try_import_matplotlib()
+    if plt is None or not summary_rows:
+        return False
+    rows = sorted(summary_rows, key=lambda r: float(r["mirror_weight"]))
+    x = [float(r["mirror_weight"]) for r in rows]
+    y = [float(r["mean_delta_bind"]) for r in rows]
+    lo = [float(r["delta_bind_ci_lo"]) for r in rows]
+    hi = [float(r["delta_bind_ci_hi"]) for r in rows]
+
+    fig, ax = plt.subplots(figsize=(8.4, 4.8))
+    ax.axhline(0.0, color="black", linewidth=2.2, alpha=0.85)
+    ax.fill_between(x, lo, hi, color="#4c78a8", alpha=0.2, linewidth=0.0)
+    ax.plot(x, y, color="#2f5597", linewidth=2.0, marker="o", markersize=3.5)
+    ax.set_xlim(0.0, 1.0)
+    ax.set_xlabel("mirror_weight")
+    ax.set_ylabel("DeltaBind")
+    ax.set_title("E4 DeltaBind vs mirror_weight (mean ± 95% CI)")
+    ax.grid(alpha=0.2, linewidth=0.6)
+    fig.tight_layout()
+    fig.savefig(path)
+    plt.close(fig)
+    return True
+
+
+def render_root_ceiling_plot(path: Path, summary_rows: list[dict[str, float | int]]) -> bool:
+    plt = try_import_matplotlib()
+    if plt is None or not summary_rows:
+        return False
+    rows = sorted(summary_rows, key=lambda r: float(r["mirror_weight"]))
+    x = [float(r["mirror_weight"]) for r in rows]
+    root_m = [float(r["mean_root_fit"]) for r in rows]
+    root_lo = [float(r["root_ci_lo"]) for r in rows]
+    root_hi = [float(r["root_ci_hi"]) for r in rows]
+    ceil_m = [float(r["mean_ceiling_fit"]) for r in rows]
+    ceil_lo = [float(r["ceiling_ci_lo"]) for r in rows]
+    ceil_hi = [float(r["ceiling_ci_hi"]) for r in rows]
+
+    fig, ax = plt.subplots(figsize=(8.4, 4.8))
+    ax.fill_between(x, root_lo, root_hi, color="#4c78a8", alpha=0.17, linewidth=0.0)
+    ax.plot(x, root_m, color="#2f5597", linewidth=2.0, marker="o", markersize=3.0, label="RootFit")
+    ax.fill_between(x, ceil_lo, ceil_hi, color="#e45756", alpha=0.15, linewidth=0.0)
+    ax.plot(
+        x,
+        ceil_m,
+        color="#b22222",
+        linewidth=2.0,
+        marker="^",
+        markersize=3.2,
+        label="CeilingFit",
+    )
+    ax.set_xlim(0.0, 1.0)
+    ax.set_xlabel("mirror_weight")
+    ax.set_ylabel("fit")
+    ax.set_title("E4 RootFit / CeilingFit vs mirror_weight")
+    ax.grid(alpha=0.2, linewidth=0.6)
+    ax.legend(loc="best")
+    fig.tight_layout()
+    fig.savefig(path)
+    plt.close(fig)
+    return True
+
+
+def render_interval_heatmap_plot(
+    path: Path,
+    weights: list[float],
+    centers: list[float],
+    matrix: list[list[float]],
+) -> bool:
+    plt = try_import_matplotlib()
+    if plt is None or not weights or not centers or not matrix:
+        return False
+    n_weights = len(weights)
+    n_bins = len(centers)
+    matrix_t: list[list[float]] = [[matrix[x][y] for x in range(n_weights)] for y in range(n_bins)]
+    bin_width = centers[1] - centers[0] if len(centers) > 1 else 25.0
+
+    if n_weights == 1:
+        x_min = max(0.0, weights[0] - 0.05)
+        x_max = min(1.0, weights[0] + 0.05)
+    else:
+        x_min = max(0.0, weights[0] - 0.5 * (weights[1] - weights[0]))
+        x_max = min(1.0, weights[-1] + 0.5 * (weights[-1] - weights[-2]))
+    y_min = max(0.0, centers[0] - 0.5 * bin_width)
+    y_max = min(1200.0, centers[-1] + 0.5 * bin_width)
+
+    fig, ax = plt.subplots(figsize=(9.0, 5.2))
+    image = ax.imshow(
+        matrix_t,
+        aspect="auto",
+        origin="lower",
+        extent=[x_min, x_max, y_min, y_max],
+        cmap="magma",
+    )
+    cbar = fig.colorbar(image, ax=ax)
+    cbar.set_label("density")
+    for cents, label in [
+        (112.0, "b2"),
+        (316.0, "m3"),
+        (386.0, "M3"),
+        (498.0, "P4"),
+        (702.0, "P5"),
+    ]:
+        ax.axhline(cents, color="white", linewidth=0.8, alpha=0.45)
+        ax.text(
+            x_min + 0.012 * (x_max - x_min + 1e-6),
+            cents + 8.0,
+            label,
+            color="white",
+            alpha=0.85,
+            fontsize=8,
+        )
+    ax.set_xlim(0.0, 1.0)
+    ax.set_ylim(0.0, 1200.0)
+    ax.set_xlabel("mirror_weight")
+    ax.set_ylabel("interval cents (pitch class)")
+    ax.set_title("E4 Interval Fingerprint Heatmap")
+    fig.tight_layout()
+    fig.savefig(path)
+    plt.close(fig)
+    return True
+
+
 def write_metrics_csv(path: Path, rows: list[dict[str, float | int]]) -> None:
     fields = [
         "mirror_weight",
@@ -321,6 +508,39 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--top-k", type=int, default=512)
     parser.add_argument("--bootstrap-iters", type=int, default=4000)
     parser.add_argument("--bootstrap-seed", type=int, default=0xE4600D)
+    parser.add_argument("--anchor-hz", type=float, default=196.0)
+    parser.add_argument("--heatmap-bin-cents", type=float, default=25.0)
+    parser.add_argument(
+        "--plot",
+        dest="plot",
+        action="store_true",
+        help="Render DeltaBind/fit/heatmap figures (requires matplotlib).",
+    )
+    parser.add_argument(
+        "--no-plot",
+        dest="plot",
+        action="store_false",
+        help="Skip figure rendering and only write CSV.",
+    )
+    parser.set_defaults(plot=True)
+    parser.add_argument(
+        "--bind-plot-out",
+        type=Path,
+        default=None,
+        help="Output DeltaBind-vs-weight plot path (svg/pdf).",
+    )
+    parser.add_argument(
+        "--fit-plot-out",
+        type=Path,
+        default=None,
+        help="Output RootFit/CeilingFit plot path (svg/pdf).",
+    )
+    parser.add_argument(
+        "--heatmap-plot-out",
+        type=Path,
+        default=None,
+        help="Output interval heatmap path (svg/pdf).",
+    )
     return parser.parse_args()
 
 
@@ -332,6 +552,13 @@ def main() -> int:
 
     metrics_out = args.metrics_out or input_path.with_name("e4_bind_metrics.csv")
     summary_out = args.summary_out or input_path.with_name("e4_bind_summary.csv")
+    bind_plot_out = args.bind_plot_out or input_path.with_name("paper_e4_bind_vs_weight_py.svg")
+    fit_plot_out = args.fit_plot_out or input_path.with_name(
+        "paper_e4_root_ceiling_fit_vs_weight_py.svg"
+    )
+    heatmap_plot_out = args.heatmap_plot_out or input_path.with_name(
+        "paper_e4_interval_fingerprint_heatmap_py.svg"
+    )
     metrics_out.parent.mkdir(parents=True, exist_ok=True)
     summary_out.parent.mkdir(parents=True, exist_ok=True)
 
@@ -350,6 +577,29 @@ def main() -> int:
     )
     write_metrics_csv(metrics_out, metric_rows)
     write_summary_csv(summary_out, summary_rows)
+
+    plotted = False
+    if args.plot:
+        bind_plot_out.parent.mkdir(parents=True, exist_ok=True)
+        fit_plot_out.parent.mkdir(parents=True, exist_ok=True)
+        heatmap_plot_out.parent.mkdir(parents=True, exist_ok=True)
+        wrote_bind = render_bind_vs_weight_plot(bind_plot_out, summary_rows)
+        wrote_fit = render_root_ceiling_plot(fit_plot_out, summary_rows)
+        weights, centers, matrix = build_interval_heatmap_rows(
+            tail_rows,
+            anchor_hz=float(args.anchor_hz),
+            bin_width_cents=float(args.heatmap_bin_cents),
+        )
+        wrote_heat = render_interval_heatmap_plot(heatmap_plot_out, weights, centers, matrix)
+        plotted = wrote_bind or wrote_fit or wrote_heat
+        if wrote_bind:
+            print(f"write {bind_plot_out}")
+        if wrote_fit:
+            print(f"write {fit_plot_out}")
+        if wrote_heat:
+            print(f"write {heatmap_plot_out}")
+        if not plotted:
+            print("note: plotting skipped (matplotlib unavailable or no data)")
 
     print(f"write {metrics_out}")
     print(f"write {summary_out}")

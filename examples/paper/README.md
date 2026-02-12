@@ -19,8 +19,8 @@ just --justfile examples/paper/justfile paper-pdf --exp e2
 ```
 
 `paper-pdf` runs the plot generator and converts all emitted SVG files in
-`target/plots/paper/` to PDF. Conversion uses `rsvg-convert` or `inkscape`.
-`paper` rejects concurrent runs with a lock at `target/plots/.paper_plots.lock`.
+`examples/paper/plots/` to PDF. Conversion uses `rsvg-convert` or `inkscape`.
+`paper` rejects concurrent runs with a lock at `examples/paper/.paper_plots.lock`.
 If a previous run crashed, remove that lock directory and retry.
 
 ## Build check
@@ -57,9 +57,9 @@ cargo run --example paper -- --exp e2 --e2-phase normal
 
 Default E2 phase is `dissonance_then_consonance` when `--e2-phase` is omitted.
 
-Outputs are written to `target/plots/paper/<exp>/` (for example, `target/plots/paper/e2/`).
+Outputs are written to `examples/paper/plots/<exp>/` (for example, `examples/paper/plots/e2/`).
 Plot images are emitted as `.svg` files (vector output).
-`target/plots/paper` is cleared on each run.
+`examples/paper/plots` is cleared on each run.
 
 ## Manual verification
 
@@ -81,4 +81,4 @@ Notes:
 - `e4_seed_slope_meta.csv` is a seed-level slope sign test with mean CI (not a mixed-effects model).
 - `e4_run_level_regression.csv` is descriptive only; use the seed-level summary for primary claims.
 
-Run twice to confirm `target/plots/paper` is cleared each time (no stale outputs remain).
+Run twice to confirm `examples/paper/plots` is cleared each time (no stale outputs remain).

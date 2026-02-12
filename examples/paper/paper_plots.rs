@@ -183,6 +183,8 @@ const E5_SEEDS: [u64; 5] = [
     0xC0FFEE_u64 + 3,
     0xC0FFEE_u64 + 4,
 ];
+const PAPER_PLOTS_LOCK_DIR: &str = "examples/paper/.paper_plots.lock";
+const PAPER_PLOTS_BASE_DIR: &str = "examples/paper/plots";
 
 fn log_output_path(path: &Path) {
     println!("write {}", path.display());
@@ -318,8 +320,8 @@ fn usage() -> String {
         "E4 histogram dumps default to off (use --e4-hist on to enable).",
         "E4 kernel gate plot default to off (use --e4-kernel-gate on to enable).",
         "E2 phase modes: normal | dissonance_then_consonance (default)",
-        "Outputs are written to target/plots/paper/<exp>/ (e.g. target/plots/paper/e2).",
-        "target/plots/paper is cleared on each run.",
+        "Outputs are written to examples/paper/plots/<exp>/ (e.g. examples/paper/plots/e2).",
+        "examples/paper/plots is cleared on each run.",
     ]
     .join("\n")
 }
@@ -560,15 +562,15 @@ pub(crate) fn main() -> Result<(), Box<dyn Error>> {
         experiments
     };
 
-    let lock_dir = Path::new("target/plots/.paper_plots.lock");
+    let lock_dir = Path::new(PAPER_PLOTS_LOCK_DIR);
     if let Some(parent) = lock_dir.parent() {
         create_dir_all(parent)?;
     }
     let _run_lock = PaperRunLock::acquire(lock_dir)?;
 
-    let base_dir = Path::new("target/plots/paper");
+    let base_dir = Path::new(PAPER_PLOTS_BASE_DIR);
     debug_assert!(
-        base_dir.ends_with(Path::new("target/plots/paper")),
+        base_dir.ends_with(Path::new("examples/paper/plots")),
         "refusing to clear unexpected path: {}",
         base_dir.display()
     );

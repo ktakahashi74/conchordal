@@ -127,7 +127,7 @@ The following command generates plot images under `target/plots/` for visual ker
 cargo test -- --ignored
 ```
 
-The following command generates paper plots under `target/plots/paper/`.
+The following command generates paper plots under `examples/paper/plots/`.
 
 ```bash
 cargo run --example paper

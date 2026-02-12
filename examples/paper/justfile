@@ -12,7 +12,7 @@ paper-check:
 	cargo check --all-targets
 	cargo test --examples
 
-svg2pdf dir="target/plots/paper":
+svg2pdf dir="examples/paper/plots":
 	@if command -v rsvg-convert >/dev/null 2>&1; then \
 		find "{{dir}}" -type f -name '*.svg' -print0 | \
 		while IFS= read -r -d '' svg; do \
@@ -36,6 +36,14 @@ paper-pdf *args:
 	cargo run --example paper -- {{args}}
 	just --justfile examples/paper/justfile svg2pdf
 
+tar out="examples/paper/plots.tar" dir="examples/paper/plots":
+	@if [ ! -d "{{dir}}" ]; then \
+		echo "error: directory not found: {{dir}}"; \
+		exit 1; \
+	fi
+	tar -cf "{{out}}" -C "{{dir}}" .
+	@echo "write {{out}}"
+
 clean:
-	rm -rf target/plots/paper
-	rm -rf target/plots/.paper_plots.lock
+	rm -rf examples/paper/plots
+	rm -rf examples/paper/.paper_plots.lock

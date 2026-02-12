@@ -57,6 +57,8 @@ pub(crate) fn pitch_core_config_from_control(pitch: &PitchControl) -> PitchCoreC
         PitchCoreKind::HillClimb => PitchCoreConfig::PitchHillClimb {
             neighbor_step_cents: None,
             tessitura_gravity: Some(tessitura_gravity_from_control(pitch.gravity)),
+            move_cost_coeff: None,
+            move_cost_exp: None,
             improvement_threshold: None,
             exploration: Some(pitch.exploration),
             persistence: Some(pitch.persistence),

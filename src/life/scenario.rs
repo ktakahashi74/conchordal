@@ -248,6 +248,8 @@ pub enum PitchCoreConfig {
     PitchHillClimb {
         neighbor_step_cents: Option<f32>,
         tessitura_gravity: Option<f32>,
+        move_cost_coeff: Option<f32>,
+        move_cost_exp: Option<u8>,
         improvement_threshold: Option<f32>,
         exploration: Option<f32>,
         persistence: Option<f32>,
@@ -270,6 +272,8 @@ impl Default for PitchCoreConfig {
         PitchCoreConfig::PitchHillClimb {
             neighbor_step_cents: None,
             tessitura_gravity: None,
+            move_cost_coeff: None,
+            move_cost_exp: None,
             improvement_threshold: None,
             exploration: None,
             persistence: None,

@@ -10,6 +10,8 @@ const DEFAULT_LOCAL_TOP_K: usize = 10;
 const DEFAULT_RANDOM_CANDIDATES: usize = 3;
 const DEFAULT_RANDOM_SIGMA_CENTS: f32 = 30.0;
 const DEFAULT_FALLBACK_RATIO_ORDER: u16 = 12;
+const DEFAULT_MOVE_COST_COEFF: f32 = 0.5;
+const DEFAULT_MOVE_COST_EXP: u8 = 1;
 static FALLBACK_REDUCED_RATIOS: OnceLock<Vec<(u16, u16)>> = OnceLock::new();
 
 #[derive(Debug, Clone, Copy)]
@@ -51,6 +53,8 @@ pub struct PitchHillClimbPitchCore {
     neighbor_step_log2: f32,
     tessitura_center: f32,
     tessitura_gravity: f32,
+    move_cost_coeff: f32,
+    move_cost_exp: u8,
     improvement_threshold: f32,
     exploration: f32,
     persistence: f32,
@@ -74,6 +78,8 @@ impl PitchHillClimbPitchCore {
             neighbor_step_log2: cents_to_log2(neighbor_step_cents),
             tessitura_center,
             tessitura_gravity,
+            move_cost_coeff: DEFAULT_MOVE_COST_COEFF,
+            move_cost_exp: DEFAULT_MOVE_COST_EXP,
             improvement_threshold,
             exploration: exploration.clamp(0.0, 1.0),
             persistence: persistence.clamp(0.0, 1.0),
@@ -103,6 +109,19 @@ impl PitchHillClimbPitchCore {
 
     pub fn set_tessitura_gravity(&mut self, value: f32) {
         self.tessitura_gravity = value;
+    }
+
+    pub fn set_move_cost_coeff(&mut self, value: f32) {
+        let coeff = if value.is_finite() {
+            value.max(0.0)
+        } else {
+            0.0
+        };
+        self.move_cost_coeff = coeff;
+    }
+
+    pub fn set_move_cost_exp(&mut self, value: u8) {
+        self.move_cost_exp = if value == 2 { 2 } else { 1 };
     }
 }
 
@@ -138,6 +157,8 @@ impl PitchCore for PitchHillClimbPitchCore {
             integration_window,
             self.tessitura_center,
             self.tessitura_gravity,
+            self.move_cost_coeff,
+            self.move_cost_exp,
             perceptual,
         ));
         push_gaussian_candidates(
@@ -158,6 +179,8 @@ impl PitchCore for PitchHillClimbPitchCore {
                 integration_window,
                 self.tessitura_center,
                 self.tessitura_gravity,
+                self.move_cost_coeff,
+                self.move_cost_exp,
                 landscape,
                 perceptual,
             )
@@ -313,6 +336,8 @@ impl PitchCore for PitchPeakSamplerCore {
             integration_window,
             self.tessitura_center,
             self.tessitura_gravity,
+            DEFAULT_MOVE_COST_COEFF,
+            DEFAULT_MOVE_COST_EXP,
             perceptual,
         ));
         push_gaussian_candidates(
@@ -334,6 +359,8 @@ impl PitchCore for PitchPeakSamplerCore {
                 integration_window,
                 self.tessitura_center,
                 self.tessitura_gravity,
+                DEFAULT_MOVE_COST_COEFF,
+                DEFAULT_MOVE_COST_EXP,
                 landscape,
                 perceptual,
             );
@@ -354,6 +381,8 @@ impl PitchCore for PitchPeakSamplerCore {
             integration_window,
             self.tessitura_center,
             self.tessitura_gravity,
+            DEFAULT_MOVE_COST_COEFF,
+            DEFAULT_MOVE_COST_EXP,
             landscape,
             perceptual,
         );
@@ -537,6 +566,8 @@ fn adjusted_pitch_score(
     integration_window: f32,
     tessitura_center: f32,
     tessitura_gravity: f32,
+    move_cost_coeff: f32,
+    move_cost_exp: u8,
     landscape: &Landscape,
     perceptual: &PerceptualContext,
 ) -> f32 {
@@ -544,7 +575,12 @@ fn adjusted_pitch_score(
     let clamped = pitch_log2.clamp(fmin, fmax);
     let score = landscape.evaluate_pitch_score_log2(clamped);
     let distance_oct = (clamped - current_pitch_log2).abs();
-    let penalty = distance_oct * integration_window * 0.5;
+    let dist_cost = if move_cost_exp == 2 {
+        distance_oct * distance_oct
+    } else {
+        distance_oct
+    };
+    let penalty = dist_cost * integration_window * move_cost_coeff.max(0.0);
     let dist = clamped - tessitura_center;
     let gravity_penalty = dist * dist * tessitura_gravity;
     let base = score - penalty - gravity_penalty;
@@ -562,6 +598,8 @@ fn top_local_candidates(
     integration_window: f32,
     tessitura_center: f32,
     tessitura_gravity: f32,
+    move_cost_coeff: f32,
+    move_cost_exp: u8,
     perceptual: &PerceptualContext,
 ) -> Vec<f32> {
     let (fmin, fmax) = landscape.freq_bounds_log2();
@@ -583,6 +621,8 @@ fn top_local_candidates(
             integration_window,
             tessitura_center,
             tessitura_gravity,
+            move_cost_coeff,
+            move_cost_exp,
             landscape,
             perceptual,
         );
@@ -791,23 +831,30 @@ impl AnyPitchCore {
             PitchCoreConfig::PitchHillClimb {
                 neighbor_step_cents,
                 tessitura_gravity,
+                move_cost_coeff,
+                move_cost_exp,
                 improvement_threshold,
                 exploration,
                 persistence,
             } => {
                 let neighbor_step_cents = neighbor_step_cents.unwrap_or(200.0);
                 let tessitura_gravity = tessitura_gravity.unwrap_or(0.1);
+                let move_cost_coeff = move_cost_coeff.unwrap_or(DEFAULT_MOVE_COST_COEFF);
+                let move_cost_exp = move_cost_exp.unwrap_or(DEFAULT_MOVE_COST_EXP);
                 let improvement_threshold = improvement_threshold.unwrap_or(0.1);
                 let exploration = exploration.unwrap_or(0.0);
                 let persistence = persistence.unwrap_or(0.5);
-                AnyPitchCore::PitchHillClimb(PitchHillClimbPitchCore::new(
+                let mut core = PitchHillClimbPitchCore::new(
                     neighbor_step_cents,
                     initial_pitch_log2,
                     tessitura_gravity,
                     improvement_threshold,
                     exploration,
                     persistence,
-                ))
+                );
+                core.set_move_cost_coeff(move_cost_coeff);
+                core.set_move_cost_exp(move_cost_exp);
+                AnyPitchCore::PitchHillClimb(core)
             }
             PitchCoreConfig::PitchPeakSampler {
                 neighbor_step_cents,

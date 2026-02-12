@@ -400,26 +400,60 @@ pub struct E4TailSamples {
     pub steps_total: u32,
     pub tail_window: u32,
     pub freqs_by_step: Vec<Vec<f32>>,
+    pub agent_freqs_by_step: Vec<Vec<E4AgentFreq>>,
 }
 
 #[derive(Clone, Debug)]
 pub struct E4MirrorScheduleSamples {
     pub freqs_by_step: Vec<Vec<f32>>,
     pub mirror_weight_by_step: Vec<f32>,
+    pub agent_freqs_by_step: Vec<Vec<E4AgentFreq>>,
 }
 
 #[derive(Clone, Copy, Debug)]
 pub struct E4PaperMeta {
     pub anchor_hz: f32,
+    pub center_cents: f32,
+    pub range_oct: f32,
     pub voice_count: usize,
+    pub fs: f32,
+    pub hop: usize,
+    pub steps: u32,
+    pub bins_per_oct: u32,
+    pub fmin: f32,
+    pub fmax: f32,
+    pub min_dist_erb: f32,
+    pub exploration: f32,
+    pub persistence: f32,
+    pub theta_freq_hz: f32,
+    pub neighbor_step_cents: f32,
 }
 
 pub fn e4_paper_meta() -> E4PaperMeta {
     let cfg = E4SimConfig::paper_defaults();
     E4PaperMeta {
         anchor_hz: cfg.anchor_hz,
+        center_cents: cfg.center_cents,
+        range_oct: cfg.range_oct,
         voice_count: cfg.voice_count,
+        fs: cfg.fs,
+        hop: cfg.hop,
+        steps: cfg.steps,
+        bins_per_oct: cfg.bins_per_oct,
+        fmin: cfg.fmin,
+        fmax: cfg.fmax,
+        min_dist_erb: cfg.min_dist_erb,
+        exploration: cfg.exploration,
+        persistence: cfg.persistence,
+        theta_freq_hz: cfg.theta_freq_hz,
+        neighbor_step_cents: cfg.neighbor_step_cents,
     }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct E4AgentFreq {
+    pub agent_id: u64,
+    pub freq_hz: f32,
 }
 
 pub fn run_e4_condition_tail_samples(
@@ -603,6 +637,7 @@ fn run_e4_condition_tail_samples_with_config(
     let start_step = cfg.steps.saturating_sub(tail_window);
     let dt = cfg.hop as f32 / cfg.fs;
     let mut freqs_by_step: Vec<Vec<f32>> = Vec::with_capacity(tail_window as usize);
+    let mut agent_freqs_by_step: Vec<Vec<E4AgentFreq>> = Vec::with_capacity(tail_window as usize);
 
     for step in 0..cfg.steps {
         update_e4_landscape_from_population(&space, &params, &pop, &mut landscape);
@@ -612,7 +647,16 @@ fn run_e4_condition_tail_samples_with_config(
         rhythms.advance_in_place(dt);
 
         if step >= start_step {
-            freqs_by_step.push(collect_voice_freqs(&pop));
+            let agent_freqs = collect_voice_freqs_with_ids(&pop);
+            if agent_freqs.len() != cfg.voice_count {
+                panic!(
+                    "E4 protocol violation: seed={seed} step={step} voices={} expected={}",
+                    agent_freqs.len(),
+                    cfg.voice_count
+                );
+            }
+            freqs_by_step.push(agent_freqs.iter().map(|row| row.freq_hz).collect());
+            agent_freqs_by_step.push(agent_freqs);
         }
     }
 
@@ -620,6 +664,7 @@ fn run_e4_condition_tail_samples_with_config(
         steps_total: cfg.steps,
         tail_window,
         freqs_by_step,
+        agent_freqs_by_step,
     }
 }
 
@@ -633,6 +678,7 @@ fn run_e4_mirror_schedule_samples_with_config(
         return E4MirrorScheduleSamples {
             freqs_by_step: Vec::new(),
             mirror_weight_by_step: Vec::new(),
+            agent_freqs_by_step: Vec::new(),
         };
     }
     let schedule = normalize_mirror_schedule(schedule, 0.0);
@@ -695,6 +741,7 @@ fn run_e4_mirror_schedule_samples_with_config(
     let dt = cfg.hop as f32 / cfg.fs;
     let mut freqs_by_step = Vec::with_capacity(steps_total as usize);
     let mut mirror_weight_by_step = Vec::with_capacity(steps_total as usize);
+    let mut agent_freqs_by_step = Vec::with_capacity(steps_total as usize);
 
     for step in 0..steps_total {
         while sched_idx + 1 < schedule.len() && step >= schedule[sched_idx + 1].0 {
@@ -709,13 +756,23 @@ fn run_e4_mirror_schedule_samples_with_config(
         pop.cleanup_dead(step as u64, dt, false);
         rhythms.advance_in_place(dt);
 
+        let agent_freqs = collect_voice_freqs_with_ids(&pop);
+        if agent_freqs.len() != cfg.voice_count {
+            panic!(
+                "E4 schedule protocol violation: seed={seed} step={step} voices={} expected={}",
+                agent_freqs.len(),
+                cfg.voice_count
+            );
+        }
         mirror_weight_by_step.push(current_weight);
-        freqs_by_step.push(collect_voice_freqs(&pop));
+        freqs_by_step.push(agent_freqs.iter().map(|row| row.freq_hz).collect());
+        agent_freqs_by_step.push(agent_freqs);
     }
 
     E4MirrorScheduleSamples {
         freqs_by_step,
         mirror_weight_by_step,
+        agent_freqs_by_step,
     }
 }
 
@@ -751,6 +808,13 @@ fn apply_mirror_weight(
 }
 
 fn collect_voice_freqs(pop: &Population) -> Vec<f32> {
+    collect_voice_freqs_with_ids(pop)
+        .into_iter()
+        .map(|row| row.freq_hz)
+        .collect()
+}
+
+fn collect_voice_freqs_with_ids(pop: &Population) -> Vec<E4AgentFreq> {
     let mut freqs = Vec::new();
     for agent in &pop.individuals {
         if agent.metadata.group_id != E4_GROUP_VOICES {
@@ -758,9 +822,13 @@ fn collect_voice_freqs(pop: &Population) -> Vec<f32> {
         }
         let freq = agent.body.base_freq_hz();
         if freq.is_finite() && freq > 0.0 {
-            freqs.push(freq);
+            freqs.push(E4AgentFreq {
+                agent_id: agent.id as u64,
+                freq_hz: freq,
+            });
         }
     }
+    freqs.sort_by_key(|row| row.agent_id);
     freqs
 }
 

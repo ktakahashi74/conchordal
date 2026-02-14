@@ -49,6 +49,8 @@ impl Default for KernelParams {
 // Core kernel evaluation
 // ======================================================================
 
+/// Evaluate kernel at `d_erb = erb_probe - erb_masker`.
+/// `d_erb >= 0` means the probe is above the masker (upward direction).
 #[inline]
 pub fn eval_kernel_delta_erb(params: &KernelParams, d_erb: f32) -> f32 {
     let sigma = params.sigma_erb.max(1e-6);
@@ -155,6 +157,7 @@ impl RoughnessKernel {
 
     // ------------------------------------------------------------------
     // Potential R from amplitude spectrum (linear frequency axis)
+    // d = erb_probe - erb_masker
     // ------------------------------------------------------------------
 
     pub fn potential_r_from_spectrum(&self, amps_hz: &[f32], fs: f32) -> (Vec<f32>, f32) {
@@ -182,7 +185,7 @@ impl RoughnessKernel {
                 if j == i {
                     continue;
                 }
-                let d = erb[j] - fi_erb;
+                let d = fi_erb - erb[j];
                 if d.abs() > half_width {
                     continue;
                 }
@@ -235,6 +238,7 @@ impl RoughnessKernel {
     }
 
     /// Compute perc_potential_R roughness from log2-domain amplitude spectrum (NSGT).
+    /// Uses `d = erb_probe - erb_masker`.
     /// Input values are ERB power densities (mass per ERB), so the internal
     /// accumulation performs a du-weighted integral. This models the potential
     /// roughness increase from adding a unit pure tone.
@@ -276,7 +280,7 @@ impl RoughnessKernel {
                 if j == i {
                     continue;
                 }
-                let d = erb[j] - fi_erb;
+                let d = fi_erb - erb[j];
                 let w = lut_interp(&self.lut, self.erb_step, self.hw, d);
                 sum += amps_density[j] * w * du[j];
             }
@@ -299,6 +303,7 @@ impl RoughnessKernel {
     }
 
     /// Compute perc_potential_R roughness from delta peaks (pure-tone interactions).
+    /// Uses `d = erb_probe - erb_masker`.
     /// Each peak mass is the ERB-integrated area (sum of density * du).
     pub fn potential_r_from_peaks(&self, peaks: &[Peak], space: &Log2Space) -> Vec<f32> {
         if peaks.is_empty() || space.centers_hz.is_empty() {
@@ -321,7 +326,7 @@ impl RoughnessKernel {
                 if peak.bin_idx == i {
                     continue;
                 }
-                let d = peak.u_erb - u_i;
+                let d = u_i - peak.u_erb;
                 if d.abs() > half_width_erb {
                     continue;
                 }
@@ -474,6 +479,19 @@ mod tests {
             }
         }
         best
+    }
+
+    fn nearest_erb_index(erb: &[f32], target: f32) -> usize {
+        let mut best_idx = 0usize;
+        let mut best_err = f32::INFINITY;
+        for (i, &u) in erb.iter().enumerate() {
+            let err = (u - target).abs();
+            if err < best_err {
+                best_err = err;
+                best_idx = i;
+            }
+        }
+        best_idx
     }
 
     #[test]
@@ -647,6 +665,56 @@ mod tests {
         }
         let mae = total_err / (count as f32).max(1.0);
         assert!(mae < 1e-3, "MAE too large: {:.4}", mae);
+    }
+
+    #[test]
+    fn delta_input_follows_kernel_asymmetry_direction() {
+        let k = make_kernel();
+        let space = Log2Space::new(20.0, 8000.0, 500);
+
+        let mut amps = vec![0.0f32; space.centers_hz.len()];
+        let mid = amps.len() / 2;
+        amps[mid] = 1.0;
+
+        let (r_vec, _) = k.potential_r_from_log2_spectrum(&amps, &space);
+        let (erb, _du) = erb_grid(&space);
+        let u0 = erb[mid];
+        let d = 0.3f32;
+
+        let idx_pos = nearest_erb_index(&erb, u0 + d);
+        let idx_neg = nearest_erb_index(&erb, u0 - d);
+
+        let r_pos = r_vec[idx_pos];
+        let r_neg = r_vec[idx_neg];
+        assert!(
+            r_pos > r_neg,
+            "expected R(u0 + {:.2}) > R(u0 - {:.2}), got {} <= {}",
+            d,
+            d,
+            r_pos,
+            r_neg
+        );
+
+        let w_pos = lut_interp(&k.lut, k.erb_step, k.hw, d);
+        let w_neg = lut_interp(&k.lut, k.erb_step, k.hw, -d);
+        assert!(
+            w_pos > w_neg,
+            "kernel asymmetry must hold at ±{:.2} ERB, got {} <= {}",
+            d,
+            w_pos,
+            w_neg
+        );
+
+        let r_ratio = r_pos.max(1e-12) / r_neg.max(1e-12);
+        let w_ratio = w_pos.max(1e-12) / w_neg.max(1e-12);
+        let rel_err = ((r_ratio - w_ratio) / w_ratio.max(1e-12)).abs();
+        assert!(
+            rel_err < 0.3,
+            "R/kernel ratio mismatch too large: r_ratio={}, w_ratio={}, rel_err={}",
+            r_ratio,
+            w_ratio,
+            rel_err
+        );
     }
 
     #[test]
@@ -994,10 +1062,10 @@ mod tests {
                 d_erb_kernel
                     .iter()
                     .zip(g_norm.iter())
-                    .map(|(&x, &y)| (-x, y)),
+                    .map(|(&x, &y)| (x, y)),
                 &GREEN,
             ))?
-            .label("Kernel g(ΔERB), flipped")
+            .label("Kernel g(ΔERB)")
             .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], &GREEN));
         chart
             .configure_series_labels()

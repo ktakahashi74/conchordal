@@ -175,6 +175,7 @@ const E4_DYNAMICS_BASE_LAMBDA: f32 = E2_LAMBDA;
 const E4_DYNAMICS_REPULSION_SIGMA: f32 = E2_SIGMA;
 const E4_DYNAMICS_STEP_SEMITONES: f32 = E2_STEP_SEMITONES;
 const E4_DYNAMICS_PEAK_TOP_N: usize = 64;
+const E4_ABCD_TRACE_STEPS: u32 = E4_DYNAMICS_PROBE_STEPS;
 const E4_EMIT_LEGACY_OUTPUTS: bool = false;
 
 const E3_FIRST_K: usize = 20;
@@ -4142,6 +4143,26 @@ struct E4WrDynamicsProbeSummaryRow {
     pitch_diversity_st_mean: f32,
 }
 
+#[derive(Clone)]
+struct E4AbcdTraceRow {
+    run_id: String,
+    wr: f32,
+    mirror_weight: f32,
+    seed: u64,
+    timing_mode: &'static str,
+    step: u32,
+    a: f32,
+    b: f32,
+    c: f32,
+    d: f32,
+    agent_idx: usize,
+    oracle_idx: usize,
+    agent_c01: f32,
+    oracle_c01: f32,
+    agent_log2: f32,
+    oracle_log2: f32,
+}
+
 fn seeded_rng(seed: u64) -> StdRng {
     StdRng::seed_from_u64(seed)
 }
@@ -7186,6 +7207,255 @@ fn e4_wr_dynamics_probe_summary_csv(rows: &[E4WrDynamicsProbeSummaryRow]) -> Str
     out
 }
 
+fn e4_freqs_from_indices(anchor_hz: f32, log2_ratio_scan: &[f32], indices: &[usize]) -> Vec<f32> {
+    let mut freqs = Vec::with_capacity(indices.len());
+    for &idx in indices {
+        let Some(&l2) = log2_ratio_scan.get(idx) else {
+            continue;
+        };
+        let freq = anchor_hz * 2.0f32.powf(l2);
+        if freq.is_finite() && freq > 0.0 {
+            freqs.push(freq);
+        }
+    }
+    freqs
+}
+
+fn mean_alignment_ratio(indices: &[usize], oracle_indices: &[usize]) -> f32 {
+    let n = indices.len().min(oracle_indices.len());
+    if n == 0 {
+        return 0.0;
+    }
+    let matches = indices
+        .iter()
+        .zip(oracle_indices.iter())
+        .take(n)
+        .filter(|(a, b)| a == b)
+        .count();
+    matches as f32 / n as f32
+}
+
+fn mean_abs_st_distance_at_indices(
+    semitones_scan: &[f32],
+    indices: &[usize],
+    oracle_indices: &[usize],
+) -> f32 {
+    let n = indices.len().min(oracle_indices.len());
+    if n == 0 {
+        return 0.0;
+    }
+    let mut sum = 0.0f32;
+    let mut count = 0usize;
+    for (&idx, &oracle_idx) in indices.iter().zip(oracle_indices.iter()).take(n) {
+        let Some(&a) = semitones_scan.get(idx) else {
+            continue;
+        };
+        let Some(&b) = semitones_scan.get(oracle_idx) else {
+            continue;
+        };
+        if a.is_finite() && b.is_finite() {
+            sum += (a - b).abs();
+            count += 1;
+        }
+    }
+    if count == 0 { 0.0 } else { sum / count as f32 }
+}
+
+fn mean_c_gain_at_indices(c_scan: &[f32], indices: &[usize], oracle_indices: &[usize]) -> f32 {
+    let n = indices.len().min(oracle_indices.len());
+    if n == 0 {
+        return 0.0;
+    }
+    let mut sum = 0.0f32;
+    let mut count = 0usize;
+    for (&idx, &oracle_idx) in indices.iter().zip(oracle_indices.iter()).take(n) {
+        let Some(&a) = c_scan.get(idx) else {
+            continue;
+        };
+        let Some(&b) = c_scan.get(oracle_idx) else {
+            continue;
+        };
+        if a.is_finite() && b.is_finite() {
+            sum += b - a;
+            count += 1;
+        }
+    }
+    if count == 0 { 0.0 } else { sum / count as f32 }
+}
+
+fn e4_abcd_trace_rows(
+    grouped_freqs: &std::collections::HashMap<(i32, i32, u64), Vec<f32>>,
+    space: &Log2Space,
+    anchor_hz: f32,
+    du_scan: &[f32],
+    steps: u32,
+) -> Vec<E4AbcdTraceRow> {
+    let meta = e4_paper_meta();
+    let center_log2 = meta.center_cents / 1200.0;
+    let half_range = 0.5 * meta.range_oct.max(0.0);
+    let k = k_from_semitones(E4_DYNAMICS_STEP_SEMITONES.max(1e-3));
+    let sigma = E4_DYNAMICS_REPULSION_SIGMA.max(1e-6);
+    let lambda = E4_DYNAMICS_BASE_LAMBDA.max(0.0);
+
+    let mut rows = Vec::new();
+    let mut keys: Vec<(i32, i32, u64)> = grouped_freqs.keys().copied().collect();
+    keys.sort_by(|a, b| {
+        a.0.cmp(&b.0)
+            .then_with(|| a.1.cmp(&b.1))
+            .then_with(|| a.2.cmp(&b.2))
+    });
+
+    for (wr_key, mirror_key, seed) in keys {
+        let Some(freqs) = grouped_freqs.get(&(wr_key, mirror_key, seed)) else {
+            continue;
+        };
+        let wr = float_from_key(wr_key);
+        let mirror_weight = float_from_key(mirror_key);
+        let run_id = format!(
+            "wr{}_mw{}_seed{}",
+            format_float_token(wr),
+            format_float_token(mirror_weight),
+            seed
+        );
+
+        let init_scan =
+            compute_e4_landscape_scans(space, anchor_hz, wr, mirror_weight, freqs, du_scan);
+        let (min_idx, max_idx) = log2_ratio_bounds(
+            &init_scan.log2_ratio,
+            center_log2 - half_range,
+            center_log2 + half_range,
+        );
+
+        let mut indices = Vec::new();
+        for &freq in freqs {
+            let idx = space
+                .index_of_freq(freq)
+                .unwrap_or_else(|| nearest_bin(space, freq))
+                .clamp(min_idx, max_idx);
+            indices.push(idx);
+        }
+        if indices.is_empty() {
+            continue;
+        }
+
+        for step in 0..=steps {
+            let freqs_step = e4_freqs_from_indices(anchor_hz, &init_scan.log2_ratio, &indices);
+            let scan = compute_e4_landscape_scans(
+                space,
+                anchor_hz,
+                wr,
+                mirror_weight,
+                &freqs_step,
+                du_scan,
+            );
+            let mut oracle_indices = indices.clone();
+            for agent_i in 0..oracle_indices.len() {
+                oracle_indices[agent_i] = e4_wr_probe_best_index(
+                    agent_i,
+                    &indices,
+                    &scan.c,
+                    &scan.log2_ratio,
+                    min_idx,
+                    max_idx,
+                    k,
+                    lambda,
+                    sigma,
+                    None,
+                );
+            }
+
+            let a = mean_alignment_ratio(&indices, &oracle_indices);
+            let b = mean_abs_st_distance_at_indices(&scan.semitones, &indices, &oracle_indices);
+            let c = mean_c_gain_at_indices(&scan.c, &indices, &oracle_indices);
+            let eval_agent = bind_eval_from_indices(anchor_hz, &scan.log2_ratio, &indices);
+            let eval_oracle = bind_eval_from_indices(anchor_hz, &scan.log2_ratio, &oracle_indices);
+            let d = (eval_oracle.delta_bind - eval_agent.delta_bind).clamp(-2.0, 2.0);
+
+            let agent_idx = indices[0];
+            let oracle_idx = oracle_indices[0];
+            let agent_c01 = scan.c.get(agent_idx).copied().unwrap_or(0.0);
+            let oracle_c01 = scan.c.get(oracle_idx).copied().unwrap_or(0.0);
+            let agent_log2 = scan.log2_ratio.get(agent_idx).copied().unwrap_or(0.0);
+            let oracle_log2 = scan.log2_ratio.get(oracle_idx).copied().unwrap_or(0.0);
+            rows.push(E4AbcdTraceRow {
+                run_id: run_id.clone(),
+                wr,
+                mirror_weight,
+                seed,
+                timing_mode: "baseline_seq",
+                step,
+                a,
+                b,
+                c,
+                d,
+                agent_idx,
+                oracle_idx,
+                agent_c01,
+                oracle_c01,
+                agent_log2,
+                oracle_log2,
+            });
+
+            if step == steps {
+                break;
+            }
+            e4_wr_probe_update_indices(
+                &mut indices,
+                &scan.c,
+                &scan.log2_ratio,
+                min_idx,
+                max_idx,
+                k,
+                lambda,
+                sigma,
+                None,
+                false,
+            );
+        }
+    }
+
+    rows.sort_by(|a, b| {
+        a.wr.partial_cmp(&b.wr)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| {
+                a.mirror_weight
+                    .partial_cmp(&b.mirror_weight)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .then_with(|| a.seed.cmp(&b.seed))
+            .then_with(|| a.step.cmp(&b.step))
+    });
+    rows
+}
+
+fn e4_abcd_trace_csv(rows: &[E4AbcdTraceRow]) -> String {
+    let mut out = String::from(
+        "run_id,seed,wr,mirror_weight,timing_mode,step,A,B,C,D,agent_idx,oracle_idx,agent_c01,oracle_c01,agent_log2,oracle_log2\n",
+    );
+    for row in rows {
+        out.push_str(&format!(
+            "{},{},{:.3},{:.3},{},{},{:.6},{:.6},{:.6},{:.6},{},{},{:.6},{:.6},{:.6},{:.6}\n",
+            row.run_id,
+            row.seed,
+            row.wr,
+            row.mirror_weight,
+            row.timing_mode,
+            row.step,
+            row.a,
+            row.b,
+            row.c,
+            row.d,
+            row.agent_idx,
+            row.oracle_idx,
+            row.agent_c01,
+            row.oracle_c01,
+            row.agent_log2,
+            row.oracle_log2
+        ));
+    }
+    out
+}
+
 fn render_e4_landscape_components_overlay(
     out_path: &Path,
     scans: &[E4LandscapeScans],
@@ -7574,6 +7844,11 @@ fn e4_validation_markdown() -> String {
         "- Model-side issue: inspect H_lower/H_upper blending and C = H - w_r R scaling.",
         "- Search-side issue: inspect peaklist diversity and peak sampler candidate policy.",
         "- Metric-side issue: prioritize set-estimated binding metric for regime claims.",
+        "",
+        "## Timing diagnosis (ABCD trace)",
+        "- Generate trace: `cargo run --example paper -- --exp e4 --e4-wr on`",
+        "- Analyze lag: `cargo run --bin e4_abcd_analyze -- --input examples/paper/plots/e4/paper_e4_abcd_trace.csv --outdir examples/paper/plots/e4`",
+        "- Inspect: `e4_abcd_summary_by_mirror.csv`, `e4_abcd_summary_overall.md` and 3 PNG files.",
     ]
     .join("\n")
 }
@@ -7590,12 +7865,6 @@ fn plot_e4_mirror_sweep_wr_cut(out_dir: &Path, anchor_hz: f32) -> Result<(), Box
         e4_wr_tail_agents_csv(&tail_rows),
     )?;
     write_with_log(out_dir.join("VALIDATION.md"), e4_validation_markdown())?;
-    let validation_target_dir = Path::new("target/plots/paper/e4");
-    create_dir_all(validation_target_dir)?;
-    write_with_log(
-        validation_target_dir.join("VALIDATION.md"),
-        e4_validation_markdown(),
-    )?;
 
     let bind_runs = e4_wr_bind_runs_from_tail_agents(&tail_rows, anchor_hz);
     write_with_log(
@@ -7674,6 +7943,16 @@ fn plot_e4_mirror_sweep_wr_cut(out_dir: &Path, anchor_hz: f32) -> Result<(), Box
     )?;
 
     let grouped_freqs_seed = grouped_freqs_by_wr_mw_seed(&tail_rows);
+    let abcd_trace_rows = e4_abcd_trace_rows(
+        &grouped_freqs_seed,
+        &space,
+        anchor_hz,
+        &du_scan,
+        E4_ABCD_TRACE_STEPS,
+    );
+    let abcd_trace_csv = e4_abcd_trace_csv(&abcd_trace_rows);
+    write_with_log(out_dir.join("paper_e4_abcd_trace.csv"), &abcd_trace_csv)?;
+
     let oracle_run_rows = e4_wr_oracle_run_rows(
         &bind_runs,
         &grouped_freqs_seed,
@@ -17950,6 +18229,58 @@ mod tests {
         );
         assert_eq!(n_seeds, 2);
         assert_eq!(error_kind, "bootstrap_pctl95");
+    }
+
+    #[test]
+    fn e4_abcd_trace_has_required_columns_and_finite_metrics() {
+        let meta = e4_paper_meta();
+        let space = Log2Space::new(meta.fmin, meta.fmax, meta.bins_per_oct);
+        let (_erb_scan, du_scan) = erb_grid_for_space(&space);
+        let mut grouped = HashMap::new();
+        grouped.insert(
+            (float_key(1.0), float_key(0.5), 42_u64),
+            vec![
+                meta.anchor_hz,
+                meta.anchor_hz * (5.0 / 4.0),
+                meta.anchor_hz * (3.0 / 2.0),
+            ],
+        );
+
+        let rows = e4_abcd_trace_rows(&grouped, &space, meta.anchor_hz, &du_scan, 20);
+        assert!(!rows.is_empty(), "trace rows must not be empty");
+        assert!(rows.iter().all(|r| {
+            r.a.is_finite()
+                && r.b.is_finite()
+                && r.c.is_finite()
+                && r.d.is_finite()
+                && r.agent_c01.is_finite()
+                && r.oracle_c01.is_finite()
+                && r.agent_log2.is_finite()
+                && r.oracle_log2.is_finite()
+        }));
+        for pair in rows.windows(2) {
+            assert!(pair[1].step > pair[0].step, "step must be monotonic");
+        }
+
+        let csv = e4_abcd_trace_csv(&rows);
+        let header = csv.lines().next().unwrap_or_default();
+        for required in [
+            "run_id",
+            "seed",
+            "mirror_weight",
+            "step",
+            "A",
+            "B",
+            "C",
+            "D",
+            "agent_idx",
+            "oracle_idx",
+        ] {
+            assert!(
+                header.split(',').any(|col| col == required),
+                "missing required column: {required}"
+            );
+        }
     }
 
     #[test]

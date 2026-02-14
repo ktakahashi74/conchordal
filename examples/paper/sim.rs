@@ -157,6 +157,7 @@ struct E4SimConfig {
     neighbor_step_cents: f32,
     baseline_mirror_weight: f32,
     burn_in_steps: u32,
+    roughness_weight_scale: f32,
 }
 
 impl E4SimConfig {
@@ -179,6 +180,7 @@ impl E4SimConfig {
             neighbor_step_cents: 50.0,
             baseline_mirror_weight: 0.5,
             burn_in_steps: 600,
+            roughness_weight_scale: 1.0,
         }
     }
 
@@ -256,7 +258,7 @@ pub fn run_e3_collect_deaths(cfg: &E3RunConfig) -> Vec<E3DeathRecord> {
 
     let anchor_hz = E4_ANCHOR_HZ;
     let space = Log2Space::new(E3_FMIN, E3_FMAX, E3_BINS_PER_OCT);
-    let params = make_landscape_params(&space, E3_FS);
+    let params = make_landscape_params(&space, E3_FS, 1.0);
     let mut landscape = build_anchor_landscape(&space, &params, anchor_hz);
     landscape.rhythm = init_rhythms(E3_THETA_FREQ_HZ);
 
@@ -440,6 +442,7 @@ struct E4TailSamplesCacheKey {
     neighbor_step_cents_bits: u32,
     baseline_mirror_weight_bits: u32,
     burn_in_steps: u32,
+    roughness_weight_scale_bits: u32,
 }
 
 type E4TailSamplesCache = std::collections::HashMap<E4TailSamplesCacheKey, Arc<E4TailSamples>>;
@@ -476,6 +479,7 @@ fn e4_tail_samples_cache_key(
         neighbor_step_cents_bits: cfg.neighbor_step_cents.to_bits(),
         baseline_mirror_weight_bits: cfg.baseline_mirror_weight.to_bits(),
         burn_in_steps: cfg.burn_in_steps,
+        roughness_weight_scale_bits: cfg.roughness_weight_scale.to_bits(),
     }
 }
 
@@ -507,6 +511,7 @@ pub struct E4PaperMeta {
     pub neighbor_step_cents: f32,
     pub baseline_mirror_weight: f32,
     pub burn_in_steps: u32,
+    pub roughness_weight_scale: f32,
 }
 
 #[allow(dead_code)]
@@ -530,6 +535,7 @@ pub fn e4_paper_meta() -> E4PaperMeta {
         neighbor_step_cents: cfg.neighbor_step_cents,
         baseline_mirror_weight: cfg.baseline_mirror_weight,
         burn_in_steps: cfg.burn_in_steps,
+        roughness_weight_scale: cfg.roughness_weight_scale,
     }
 }
 
@@ -552,6 +558,17 @@ pub fn run_e4_condition_tail_samples(
     )
 }
 
+pub fn run_e4_condition_tail_samples_with_wr(
+    mirror_weight: f32,
+    seed: u64,
+    tail_window: u32,
+    roughness_weight_scale: f32,
+) -> Arc<E4TailSamples> {
+    let mut cfg = E4SimConfig::paper_defaults();
+    cfg.roughness_weight_scale = sanitize_roughness_weight_scale(roughness_weight_scale);
+    run_e4_condition_tail_samples_with_config(mirror_weight, seed, &cfg, tail_window)
+}
+
 pub fn run_e4_mirror_schedule_samples(
     seed: u64,
     steps_total: u32,
@@ -568,7 +585,7 @@ pub fn run_e4_mirror_schedule_samples(
 #[allow(dead_code)]
 fn run_e4_condition_with_config(mirror_weight: f32, seed: u64, cfg: &E4SimConfig) -> Vec<f32> {
     let space = Log2Space::new(cfg.fmin, cfg.fmax, cfg.bins_per_oct);
-    let mut params = make_landscape_params(&space, cfg.fs);
+    let mut params = make_landscape_params(&space, cfg.fs, cfg.roughness_weight_scale);
     let mut landscape = Landscape::new(space.clone());
     let mut rhythms = init_e4_rhythms(cfg);
 
@@ -694,7 +711,7 @@ fn run_e4_condition_tail_samples_with_config_uncached(
     tail_window: u32,
 ) -> E4TailSamples {
     let space = Log2Space::new(cfg.fmin, cfg.fmax, cfg.bins_per_oct);
-    let mut params = make_landscape_params(&space, cfg.fs);
+    let mut params = make_landscape_params(&space, cfg.fs, cfg.roughness_weight_scale);
     let mut landscape = Landscape::new(space.clone());
     let mut rhythms = init_e4_rhythms(cfg);
 
@@ -818,7 +835,7 @@ fn run_e4_mirror_schedule_samples_with_config(
     let mut current_weight = schedule[0].1;
 
     let space = Log2Space::new(cfg.fmin, cfg.fmax, cfg.bins_per_oct);
-    let mut params = make_landscape_params(&space, cfg.fs);
+    let mut params = make_landscape_params(&space, cfg.fs, cfg.roughness_weight_scale);
     let mut landscape = Landscape::new(space.clone());
     let mut rhythms = init_e4_rhythms(cfg);
 
@@ -965,7 +982,23 @@ fn collect_voice_freqs_with_ids(pop: &Population) -> Vec<E4AgentFreq> {
     freqs
 }
 
-fn make_landscape_params(space: &Log2Space, fs: f32) -> LandscapeParams {
+fn sanitize_roughness_weight_scale(scale: f32) -> f32 {
+    // Keep E4 wr-sweep robust against NaN/negative inputs.
+    if scale.is_finite() {
+        scale.clamp(0.0, 1.0)
+    } else {
+        0.0
+    }
+}
+
+fn make_landscape_params(
+    space: &Log2Space,
+    fs: f32,
+    roughness_weight_scale: f32,
+) -> LandscapeParams {
+    const BASE_ROUGHNESS_FLOOR: f32 = 0.35;
+    const BASE_ROUGHNESS_WEIGHT: f32 = 0.5;
+    let wr = sanitize_roughness_weight_scale(roughness_weight_scale);
     LandscapeParams {
         fs,
         max_hist_cols: 1,
@@ -975,8 +1008,8 @@ fn make_landscape_params(space: &Log2Space, fs: f32) -> LandscapeParams {
         roughness_scalar_mode: RoughnessScalarMode::Total,
         roughness_half: 0.1,
         consonance_harmonicity_weight: 1.0,
-        consonance_roughness_weight_floor: 0.35,
-        consonance_roughness_weight: 0.5,
+        consonance_roughness_weight_floor: BASE_ROUGHNESS_FLOOR * wr,
+        consonance_roughness_weight: BASE_ROUGHNESS_WEIGHT * wr,
         c_state_beta: 2.0,
         c_state_theta: 0.0,
         loudness_exp: 1.0,
@@ -1235,8 +1268,8 @@ mod tests {
     fn e4_mirror_weight_changes_consonance_landscape() {
         let cfg = E4SimConfig::test_defaults();
         let space = Log2Space::new(cfg.fmin, cfg.fmax, cfg.bins_per_oct);
-        let mut params_m0 = make_landscape_params(&space, cfg.fs);
-        let mut params_m1 = make_landscape_params(&space, cfg.fs);
+        let mut params_m0 = make_landscape_params(&space, cfg.fs, 1.0);
+        let mut params_m1 = make_landscape_params(&space, cfg.fs, 1.0);
         params_m0.harmonicity_kernel.params.mirror_weight = 0.0;
         params_m1.harmonicity_kernel.params.mirror_weight = 1.0;
 

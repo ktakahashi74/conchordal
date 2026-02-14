@@ -127,6 +127,28 @@ pub fn compose_c_state(beta: f32, theta: f32, c_score: f32) -> f32 {
     sigmoid01(beta * (c_score - theta))
 }
 
+pub fn compute_c01_from_hr(h01: f32, r01: f32, wr: f32) -> f32 {
+    compute_c01_from_hr_params(h01, r01, wr, 1.0, 0.35, 0.5, 2.0, 0.0)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn compute_c01_from_hr_params(
+    h01: f32,
+    r01: f32,
+    wr: f32,
+    alpha: f32,
+    base_w0: f32,
+    base_w1: f32,
+    beta: f32,
+    theta: f32,
+) -> f32 {
+    let wr = sanitize01(wr);
+    let w0 = sanitize_nonneg(base_w0) * wr;
+    let w1 = sanitize_nonneg(base_w1) * wr;
+    let c_score = compose_c_score(alpha, w0, w1, h01, r01);
+    compose_c_state(beta, theta, c_score)
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn compose_c_state01_scan(
     h_state01: &[f32],
@@ -381,5 +403,29 @@ mod tests {
         let lo = sigmoid01(-1000.0);
         assert!(hi > 0.999, "hi={hi}");
         assert!(lo < 0.001, "lo={lo}");
+    }
+
+    #[test]
+    fn compute_c01_from_hr_is_monotonic_in_wr() {
+        let h01 = 0.62;
+        let r01 = 0.88;
+        let c1 = compute_c01_from_hr(h01, r01, 1.0);
+        let c05 = compute_c01_from_hr(h01, r01, 0.5);
+        let c0 = compute_c01_from_hr(h01, r01, 0.0);
+        assert!(
+            c0 >= c05 && c05 >= c1,
+            "expected c01(wr=0)>=c01(wr=0.5)>=c01(wr=1), got {c0}, {c05}, {c1}"
+        );
+    }
+
+    #[test]
+    fn compute_c01_from_hr_wr_zero_disables_roughness_term() {
+        let h01 = 0.41;
+        let c_r0 = compute_c01_from_hr(h01, 0.0, 0.0);
+        let c_r1 = compute_c01_from_hr(h01, 1.0, 0.0);
+        assert!(
+            (c_r0 - c_r1).abs() < 1e-6,
+            "wr=0 should remove roughness effect: c_r0={c_r0}, c_r1={c_r1}"
+        );
     }
 }

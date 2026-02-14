@@ -957,6 +957,13 @@ fn worker_loop(
                 thread::sleep(Duration::from_micros(200));
             }
 
+            apply_pending_landscape_update(
+                &mut pop,
+                &mut lparams,
+                &mut current_landscape,
+                &analysis_update_tx,
+            );
+
             let t_start = Instant::now();
             conductor.dispatch_until(
                 current_time,
@@ -989,11 +996,6 @@ fn worker_loop(
                 sum / pop.individuals.len() as f32
             };
             dorsal.set_vitality(vitality);
-            if let Some(update) = pop.take_pending_update() {
-                apply_params_update(&mut lparams, &update);
-                current_landscape.recompute_consonance(&lparams);
-                let _ = analysis_update_tx.try_send(update);
-            }
 
             if scenario_end_tick.is_none() && conductor.is_done() {
                 scenario_end_tick = Some(now_tick);
@@ -1254,13 +1256,68 @@ fn worker_loop(
     }
 }
 
-fn apply_params_update(params: &mut LandscapeParams, upd: &LandscapeUpdate) {
+#[derive(Clone, Copy, Debug, Default)]
+struct ParamsUpdateEffect {
+    harmonicity_changed: bool,
+    roughness_changed: bool,
+}
+
+fn apply_pending_landscape_update(
+    pop: &mut Population,
+    params: &mut LandscapeParams,
+    current_landscape: &mut LandscapeFrame,
+    analysis_update_tx: &Sender<LandscapeUpdate>,
+) {
+    if let Some(update) = pop.take_pending_update() {
+        let effect = apply_params_update(params, &update);
+        if effect.harmonicity_changed {
+            let _ = recompute_harmonicity_from_nsgt_power(current_landscape, params);
+        }
+        if effect.harmonicity_changed || effect.roughness_changed {
+            current_landscape.recompute_consonance(params);
+        }
+        let _ = analysis_update_tx.try_send(update);
+    }
+}
+
+fn recompute_harmonicity_from_nsgt_power(
+    current_landscape: &mut LandscapeFrame,
+    params: &LandscapeParams,
+) -> bool {
+    if current_landscape.nsgt_power.len() != current_landscape.space.n_bins()
+        || current_landscape.harmonicity.len() != current_landscape.space.n_bins()
+    {
+        return false;
+    }
+    let (harmonicity, _peak) = params
+        .harmonicity_kernel
+        .potential_h_from_log2_spectrum(&current_landscape.nsgt_power, &current_landscape.space);
+    if harmonicity.len() != current_landscape.harmonicity.len() {
+        return false;
+    }
+    current_landscape.harmonicity = harmonicity;
+    true
+}
+
+fn apply_params_update(params: &mut LandscapeParams, upd: &LandscapeUpdate) -> ParamsUpdateEffect {
+    let mut effect = ParamsUpdateEffect::default();
     if let Some(m) = upd.mirror {
-        params.harmonicity_kernel.params.mirror_weight = m;
+        let mirror = if m.is_finite() {
+            m.clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        let prev = params.harmonicity_kernel.params.mirror_weight;
+        params.harmonicity_kernel.params.mirror_weight = mirror;
+        effect.harmonicity_changed = (prev - mirror).abs() > f32::EPSILON;
     }
     if let Some(k) = upd.roughness_k {
-        params.roughness_k = k.max(1e-6);
+        let roughness_k = if k.is_finite() { k.max(1e-6) } else { 1e-6 };
+        let prev = params.roughness_k;
+        params.roughness_k = roughness_k;
+        effect.roughness_changed = (prev - roughness_k).abs() > f32::EPSILON;
     }
+    effect
 }
 
 fn compose_c_score_state_with_params(
@@ -1286,6 +1343,10 @@ fn compose_c_score_state_with_params(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::harmonicity_kernel::{HarmonicityKernel, HarmonicityParams};
+    use crate::core::landscape::RoughnessScalarMode;
+    use crate::core::roughness_kernel::{KernelParams, RoughnessKernel};
+    use crate::core::timebase::Timebase;
 
     #[test]
     fn analysis_ok_truth_table() {
@@ -1294,5 +1355,123 @@ mod tests {
         assert!(analysis_ok(10, Some(9), MAX_LANDSCAPE_LAG_FRAMES));
         assert!(!analysis_ok(10, Some(8), MAX_LANDSCAPE_LAG_FRAMES));
         assert!(!analysis_ok(10, None, MAX_LANDSCAPE_LAG_FRAMES));
+    }
+
+    fn build_test_params(space: &Log2Space) -> LandscapeParams {
+        LandscapeParams {
+            fs: 48_000.0,
+            max_hist_cols: 1,
+            alpha: 0.0,
+            roughness_kernel: RoughnessKernel::new(KernelParams::default(), 0.005),
+            harmonicity_kernel: HarmonicityKernel::new(space, HarmonicityParams::default()),
+            roughness_scalar_mode: RoughnessScalarMode::Total,
+            roughness_half: 0.1,
+            consonance_harmonicity_weight: 1.0,
+            consonance_roughness_weight_floor: 0.35,
+            consonance_roughness_weight: 0.5,
+            c_state_beta: 2.0,
+            c_state_theta: 0.0,
+            loudness_exp: 1.0,
+            ref_power: 1.0,
+            tau_ms: 1.0,
+            roughness_k: 1.0,
+            roughness_ref_f0_hz: 1000.0,
+            roughness_ref_sep_erb: 0.25,
+            roughness_ref_mass_split: 0.5,
+            roughness_ref_eps: 1e-12,
+        }
+    }
+
+    fn synthetic_nsgt_power(space: &Log2Space) -> Vec<f32> {
+        let mut spectrum = vec![0.0f32; space.n_bins()];
+        for (hz, amp) in [
+            (196.0f32, 1.0f32),
+            (347.0, 0.8),
+            (523.25, 0.6),
+            (739.99, 0.45),
+        ] {
+            if let Some(idx) = space.index_of_freq(hz) {
+                spectrum[idx] = amp;
+            }
+        }
+        spectrum
+    }
+
+    fn l2_norm_diff(a: &[f32], b: &[f32]) -> f32 {
+        a.iter()
+            .zip(b.iter())
+            .map(|(x, y)| {
+                let d = x - y;
+                d * d
+            })
+            .sum::<f32>()
+            .sqrt()
+    }
+
+    #[test]
+    fn pending_mirror_update_changes_current_landscape_before_dispatch() {
+        let space = Log2Space::new(80.0, 2_000.0, 96);
+        let mut params = build_test_params(&space);
+        params.harmonicity_kernel.params.mirror_weight = 0.0;
+
+        let mut landscape = Landscape::new(space.clone());
+        landscape.nsgt_power = synthetic_nsgt_power(&space);
+        landscape.roughness01.fill(0.2);
+        let (h0, _) = params
+            .harmonicity_kernel
+            .potential_h_from_log2_spectrum(&landscape.nsgt_power, &landscape.space);
+        landscape.harmonicity = h0;
+        landscape.recompute_consonance(&params);
+        let before = landscape.harmonicity.clone();
+
+        let mut pop = Population::new(Timebase {
+            fs: 48_000.0,
+            hop: 256,
+        });
+        pop.apply_action(
+            Action::SetHarmonicityParams {
+                update: LandscapeUpdate {
+                    mirror: Some(1.0),
+                    roughness_k: None,
+                },
+            },
+            &landscape,
+            None::<&mut crate::core::stream::analysis::AnalysisStream>,
+        );
+
+        let (analysis_update_tx, analysis_update_rx) = bounded::<LandscapeUpdate>(1);
+        apply_pending_landscape_update(&mut pop, &mut params, &mut landscape, &analysis_update_tx);
+
+        let sent = analysis_update_rx
+            .try_recv()
+            .expect("pending update should be forwarded to analysis");
+        assert_eq!(sent.mirror, Some(1.0));
+        let delta = l2_norm_diff(&before, &landscape.harmonicity);
+        assert!(
+            delta > 1e-3,
+            "mirror update should affect current harmonicity before dispatch, delta={delta}"
+        );
+    }
+
+    #[test]
+    fn mirror_extremes_produce_distinct_harmonicity_potentials() {
+        let space = Log2Space::new(80.0, 2_000.0, 96);
+        let spectrum = synthetic_nsgt_power(&space);
+
+        let mut root_params = HarmonicityParams::default();
+        root_params.mirror_weight = 0.0;
+        let mut ceil_params = root_params;
+        ceil_params.mirror_weight = 1.0;
+
+        let root_kernel = HarmonicityKernel::new(&space, root_params);
+        let ceil_kernel = HarmonicityKernel::new(&space, ceil_params);
+        let (h_root, _) = root_kernel.potential_h_from_log2_spectrum(&spectrum, &space);
+        let (h_ceil, _) = ceil_kernel.potential_h_from_log2_spectrum(&spectrum, &space);
+
+        let delta = l2_norm_diff(&h_root, &h_ceil);
+        assert!(
+            delta > 1e-3,
+            "mirror=0 and mirror=1 should differ for fixed spectrum, delta={delta}"
+        );
     }
 }

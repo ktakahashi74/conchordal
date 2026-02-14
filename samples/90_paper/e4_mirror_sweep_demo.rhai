@@ -6,6 +6,9 @@ let probe = derive(sine)
     .pitch_core("peak_sampler");
 
 scene("E4 Mirror Sweep Demo", || {
+    let mirror_warmup_sec = 0.2;
+    let sample_sec = 1.3;
+
     let base = create(anchor, 1).freq(196.0);
     flush();
     wait(0.6);
@@ -20,7 +23,8 @@ scene("E4 Mirror Sweep Demo", || {
     for w in [0.0, 0.25, 0.5, 0.75, 1.0] {
         set_harmonicity_mirror_weight(w);
         flush();
-        wait(1.5);
+        wait(mirror_warmup_sec);
+        wait(sample_sec);
     }
 
     release(probes);

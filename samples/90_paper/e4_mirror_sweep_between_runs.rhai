@@ -7,6 +7,7 @@ let probe = derive(sine)
 
 scene("E4 Mirror Sweep Between Runs", || {
     let n_probes = 8;
+    let mirror_warmup_sec = 0.2;
     let settle_sec = 1.8;
     let gap_sec = 0.6;
     let weights = [0.0, 0.25, 0.5, 0.75, 1.0];
@@ -14,6 +15,7 @@ scene("E4 Mirror Sweep Between Runs", || {
     for w in weights {
         set_harmonicity_mirror_weight(w);
         flush();
+        wait(mirror_warmup_sec);
 
         let base = create(anchor, 1).freq(196.0);
         let probes = create(probe, n_probes)

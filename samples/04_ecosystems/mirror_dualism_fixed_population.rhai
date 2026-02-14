@@ -3,6 +3,9 @@ let anchor = derive(sine).amp(0.2).phonation("hold");
 let voice = derive(sine).amp(0.1).phonation("hold");
 
 scene("Mirror Dualism (Fixed Population)", || {
+    let mirror_warmup_sec = 0.2;
+    let sample_sec = 1.3;
+
     let base = create(anchor, 1).freq(261.63);
     flush();
     wait(0.8);
@@ -16,7 +19,8 @@ scene("Mirror Dualism (Fixed Population)", || {
     for w in [0.0, 1.0] {
         set_harmonicity_mirror_weight(w);
         flush();
-        wait(1.5);
+        wait(mirror_warmup_sec);
+        wait(sample_sec);
     }
 
     release(probes);

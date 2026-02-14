@@ -4,7 +4,8 @@ use std::f32::consts::PI;
 use std::fs::{create_dir, create_dir_all, remove_dir, remove_dir_all};
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex, OnceLock};
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use plotters::coord::types::RangedCoordf32;
@@ -3771,6 +3772,155 @@ fn seeded_rng(seed: u64) -> StdRng {
     StdRng::seed_from_u64(seed)
 }
 
+#[derive(Clone, Copy, Hash, Eq, PartialEq)]
+struct E4IntervalCentsCacheKey {
+    mirror_weight_bits: u32,
+    seed: u64,
+    tail_window: u32,
+    anchor_hz_bits: u32,
+}
+
+#[derive(Clone, Copy)]
+struct E4TailIntervalMasses {
+    min3: f32,
+    maj3: f32,
+    p4: f32,
+    p5: f32,
+    p5_class: f32,
+    delta_t: f32,
+}
+
+#[derive(Clone, Copy, Hash, Eq, PartialEq)]
+struct E4TailMassCacheKey {
+    mirror_weight_bits: u32,
+    seed: u64,
+    tail_window: u32,
+    anchor_hz_bits: u32,
+    eps_cents_bits: u32,
+    count_mode_soft: bool,
+}
+
+type E4IntervalCentsCache = HashMap<E4IntervalCentsCacheKey, Arc<Vec<f32>>>;
+type E4TailMassCache = HashMap<E4TailMassCacheKey, Arc<Vec<E4TailIntervalMasses>>>;
+
+static E4_INTERVAL_CENTS_CACHE: OnceLock<Mutex<E4IntervalCentsCache>> = OnceLock::new();
+static E4_TAIL_MASS_CACHE: OnceLock<Mutex<E4TailMassCache>> = OnceLock::new();
+
+fn e4_interval_cents_cache() -> &'static Mutex<E4IntervalCentsCache> {
+    E4_INTERVAL_CENTS_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn e4_tail_mass_cache() -> &'static Mutex<E4TailMassCache> {
+    E4_TAIL_MASS_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn e4_interval_cents_cache_key(
+    mirror_weight: f32,
+    seed: u64,
+    anchor_hz: f32,
+    tail_window: u32,
+) -> E4IntervalCentsCacheKey {
+    E4IntervalCentsCacheKey {
+        mirror_weight_bits: mirror_weight.to_bits(),
+        seed,
+        tail_window,
+        anchor_hz_bits: anchor_hz.to_bits(),
+    }
+}
+
+fn e4_tail_mass_cache_key(
+    mirror_weight: f32,
+    seed: u64,
+    anchor_hz: f32,
+    tail_window: u32,
+    eps_cents: f32,
+    count_mode: E4CountMode,
+) -> E4TailMassCacheKey {
+    E4TailMassCacheKey {
+        mirror_weight_bits: mirror_weight.to_bits(),
+        seed,
+        tail_window,
+        anchor_hz_bits: anchor_hz.to_bits(),
+        eps_cents_bits: eps_cents.to_bits(),
+        count_mode_soft: matches!(count_mode, E4CountMode::Soft),
+    }
+}
+
+fn collect_e4_interval_cents_samples_cached(
+    samples: &E4TailSamples,
+    anchor_hz: f32,
+    mirror_weight: f32,
+    seed: u64,
+) -> Arc<Vec<f32>> {
+    if !anchor_hz.is_finite() || anchor_hz <= 0.0 {
+        return Arc::new(Vec::new());
+    }
+
+    let key = e4_interval_cents_cache_key(mirror_weight, seed, anchor_hz, samples.tail_window);
+    {
+        let cache = e4_interval_cents_cache().lock().expect("interval cents cache poisoned");
+        if let Some(cents) = cache.get(&key) {
+            return Arc::clone(cents);
+        }
+    }
+
+    let mut cents = Vec::new();
+    for freqs in &samples.freqs_by_step {
+        for &freq in freqs {
+            if let Some(cents_class) = freq_to_cents_class(anchor_hz, freq) {
+                cents.push(cents_class);
+            }
+        }
+    }
+
+    let arc = Arc::new(cents);
+    let mut cache = e4_interval_cents_cache().lock().expect("interval cents cache poisoned");
+    if let Some(cached) = cache.get(&key) {
+        return Arc::clone(cached);
+    }
+    cache.insert(key, Arc::clone(&arc));
+    arc
+}
+
+fn collect_e4_interval_mass_series_cached(
+    samples: &E4TailSamples,
+    anchor_hz: f32,
+    mirror_weight: f32,
+    seed: u64,
+    eps_cents: f32,
+    count_mode: E4CountMode,
+) -> Arc<Vec<E4TailIntervalMasses>> {
+    let key = e4_tail_mass_cache_key(mirror_weight, seed, anchor_hz, samples.tail_window, eps_cents, count_mode);
+    {
+        let cache = e4_tail_mass_cache().lock().expect("tail mass cache poisoned");
+        if let Some(masses) = cache.get(&key) {
+            return Arc::clone(masses);
+        }
+    }
+
+    let mut out = Vec::with_capacity(samples.freqs_by_step.len());
+    for freqs in &samples.freqs_by_step {
+        let masses = interval_masses_from_freqs(anchor_hz, freqs, eps_cents, count_mode);
+        let (_, _, delta_t, _) = triad_scores(masses);
+        out.push(E4TailIntervalMasses {
+            min3: masses.min3,
+            maj3: masses.maj3,
+            p4: masses.p4,
+            p5: masses.p5,
+            p5_class: masses.p5_class,
+            delta_t,
+        });
+    }
+
+    let arc = Arc::new(out);
+    let mut cache = e4_tail_mass_cache().lock().expect("tail mass cache poisoned");
+    if let Some(cached) = cache.get(&key) {
+        return Arc::clone(cached);
+    }
+    cache.insert(key, Arc::clone(&arc));
+    arc
+}
+
 fn build_log2_ratio_scan(space: &Log2Space, anchor_hz: f32) -> Vec<f32> {
     let anchor_log2 = anchor_hz.log2();
     space
@@ -3923,21 +4073,6 @@ fn freq_to_cents_class(anchor_hz: f32, freq_hz: f32) -> Option<f32> {
         return None;
     }
     cents_class_from_ratio(freq_hz / anchor_hz)
-}
-
-fn collect_e4_interval_cents_samples(samples: &E4TailSamples, anchor_hz: f32) -> Vec<f32> {
-    let mut out = Vec::new();
-    if !anchor_hz.is_finite() || anchor_hz <= 0.0 {
-        return out;
-    }
-    for freqs in &samples.freqs_by_step {
-        for &freq in freqs {
-            if let Some(cents_class) = freq_to_cents_class(anchor_hz, freq) {
-                out.push(cents_class);
-            }
-        }
-    }
-    out
 }
 
 fn histogram_from_samples(samples: &[f32], min: f32, max: f32, bin_width: f32) -> Histogram {
@@ -4149,10 +4284,11 @@ fn run_e4_sweep_for_weights(
     for &weight in weights {
         for &seed in seeds {
             let samples = run_e4_condition_tail_samples(weight, seed, E4_TAIL_WINDOW_STEPS);
-            let interval_cents_samples = collect_e4_interval_cents_samples(&samples, anchor_hz);
+            let interval_cents_samples =
+                collect_e4_interval_cents_samples_cached(&samples, anchor_hz, weight, seed);
             let bin_width_cents = (bin_width * 100.0).max(1.0);
             let histogram =
-                histogram_from_samples(&interval_cents_samples, 0.0, 1200.0, bin_width_cents);
+                histogram_from_samples(interval_cents_samples.as_ref(), 0.0, 1200.0, bin_width_cents);
 
             let burn_in = samples.steps_total.saturating_sub(samples.tail_window);
             for &eps_cents in eps_cents_list {
@@ -4185,12 +4321,16 @@ fn run_e4_sweep_for_weights(
                         histogram_source: "tail_mean",
                     });
 
-                    for (i, freqs) in samples.freqs_by_step.iter().enumerate() {
-                        let masses =
-                            interval_masses_from_freqs(anchor_hz, freqs, eps_cents, count_mode);
-                        let (_, _, delta_t, _) = triad_scores(masses);
-                        let step =
-                            samples.steps_total.saturating_sub(samples.tail_window) + i as u32;
+                    let tail_mass_series = collect_e4_interval_mass_series_cached(
+                        &samples,
+                        anchor_hz,
+                        weight,
+                        seed,
+                        eps_cents,
+                        count_mode,
+                    );
+                    for (i, masses) in tail_mass_series.iter().enumerate() {
+                        let step = burn_in + i as u32;
                         tail_rows.push(E4TailIntervalRow {
                             count_mode: mode_label,
                             mirror_weight: weight,
@@ -4203,7 +4343,7 @@ fn run_e4_sweep_for_weights(
                             mass_p4: masses.p4,
                             mass_p5: masses.p5,
                             mass_p5_class: masses.p5_class,
-                            delta_t,
+                            delta_t: masses.delta_t,
                         });
                     }
                 }
@@ -4263,7 +4403,7 @@ fn run_e4_sweep_for_weights(
                 render_interval_histogram(
                     &hist_png_path,
                     &caption,
-                    &interval_cents_samples,
+                    interval_cents_samples.as_ref(),
                     0.0,
                     1200.0,
                     bin_width_cents,

@@ -1,12 +1,12 @@
+use std::collections::HashMap;
 use std::env;
 use std::error::Error;
 use std::f32::consts::PI;
 use std::fs::{create_dir, create_dir_all, remove_dir, remove_dir_all};
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, OnceLock};
-use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use plotters::coord::types::RangedCoordf32;
 use plotters::coord::{CoordTranslate, Shift};
@@ -1751,7 +1751,10 @@ fn e2_accept_temperature(step: usize, phase_mode: E2PhaseMode) -> f32 {
         return E2_ACCEPT_T0.max(0.0);
     }
     let mut phase_step = step;
-    if E2_ACCEPT_RESET_ON_PHASE && let Some(switch_step) = phase_mode.switch_step() && step >= switch_step {
+    if E2_ACCEPT_RESET_ON_PHASE
+        && let Some(switch_step) = phase_mode.switch_step()
+        && step >= switch_step
+    {
         phase_step = step - switch_step;
     }
     E2_ACCEPT_T0.max(0.0) * (-(phase_step as f32) / E2_ACCEPT_TAU_STEPS).exp()
@@ -1924,7 +1927,9 @@ fn run_e2_once(
             min_idx = new_min;
             max_idx = new_max;
         }
-        if let Some(switch_step) = phase_switch_step && sweep == switch_step {
+        if let Some(switch_step) = phase_switch_step
+            && sweep == switch_step
+        {
             backtrack_targets.clone_from_slice(&agent_indices);
         }
 
@@ -3886,7 +3891,9 @@ fn collect_e4_interval_cents_samples_cached(
 
     let key = e4_interval_cents_cache_key(mirror_weight, seed, anchor_hz, samples.tail_window);
     {
-        let cache = e4_interval_cents_cache().lock().expect("interval cents cache poisoned");
+        let cache = e4_interval_cents_cache()
+            .lock()
+            .expect("interval cents cache poisoned");
         if let Some(cents) = cache.get(&key) {
             return Arc::clone(cents);
         }
@@ -3902,7 +3909,9 @@ fn collect_e4_interval_cents_samples_cached(
     }
 
     let arc = Arc::new(cents);
-    let mut cache = e4_interval_cents_cache().lock().expect("interval cents cache poisoned");
+    let mut cache = e4_interval_cents_cache()
+        .lock()
+        .expect("interval cents cache poisoned");
     if let Some(cached) = cache.get(&key) {
         return Arc::clone(cached);
     }
@@ -3918,9 +3927,18 @@ fn collect_e4_interval_mass_series_cached(
     eps_cents: f32,
     count_mode: E4CountMode,
 ) -> Arc<Vec<E4TailIntervalMasses>> {
-    let key = e4_tail_mass_cache_key(mirror_weight, seed, anchor_hz, samples.tail_window, eps_cents, count_mode);
+    let key = e4_tail_mass_cache_key(
+        mirror_weight,
+        seed,
+        anchor_hz,
+        samples.tail_window,
+        eps_cents,
+        count_mode,
+    );
     {
-        let cache = e4_tail_mass_cache().lock().expect("tail mass cache poisoned");
+        let cache = e4_tail_mass_cache()
+            .lock()
+            .expect("tail mass cache poisoned");
         if let Some(masses) = cache.get(&key) {
             return Arc::clone(masses);
         }
@@ -3941,7 +3959,9 @@ fn collect_e4_interval_mass_series_cached(
     }
 
     let arc = Arc::new(out);
-    let mut cache = e4_tail_mass_cache().lock().expect("tail mass cache poisoned");
+    let mut cache = e4_tail_mass_cache()
+        .lock()
+        .expect("tail mass cache poisoned");
     if let Some(cached) = cache.get(&key) {
         return Arc::clone(cached);
     }
@@ -4315,8 +4335,12 @@ fn run_e4_sweep_for_weights(
             let interval_cents_samples =
                 collect_e4_interval_cents_samples_cached(&samples, anchor_hz, weight, seed);
             let bin_width_cents = (bin_width * 100.0).max(1.0);
-            let histogram =
-                histogram_from_samples(interval_cents_samples.as_ref(), 0.0, 1200.0, bin_width_cents);
+            let histogram = histogram_from_samples(
+                interval_cents_samples.as_ref(),
+                0.0,
+                1200.0,
+                bin_width_cents,
+            );
 
             let burn_in = samples.steps_total.saturating_sub(samples.tail_window);
             for &eps_cents in eps_cents_list {
@@ -4350,12 +4374,7 @@ fn run_e4_sweep_for_weights(
                     });
 
                     let tail_mass_series = collect_e4_interval_mass_series_cached(
-                        &samples,
-                        anchor_hz,
-                        weight,
-                        seed,
-                        eps_cents,
-                        count_mode,
+                        &samples, anchor_hz, weight, seed, eps_cents, count_mode,
                     );
                     for (i, masses) in tail_mass_series.iter().enumerate() {
                         let step = burn_in + i as u32;
@@ -7564,10 +7583,10 @@ fn render_e4_kernel_gate(out_path: &Path, anchor_hz: f32) -> Result<(), Box<dyn 
 
     let mut points: Vec<(f32, f32)> = Vec::new();
     for weight in build_weight_grid(E4_WEIGHT_FINE_STEP) {
-    let params = HarmonicityParams {
-        mirror_weight: weight,
-        ..HarmonicityParams::default()
-    };
+        let params = HarmonicityParams {
+            mirror_weight: weight,
+            ..HarmonicityParams::default()
+        };
         let kernel = HarmonicityKernel::new(&space, params);
         let (h_scan, _) = kernel.potential_h_from_log2_spectrum(&env_scan, &space);
         let freq_m3 = root_hz * 2.0f32.powf(3.0 / 12.0);
@@ -9029,15 +9048,15 @@ fn flutter_metrics_for_trajectories(
             continue;
         }
         let end = end_step.min(traj.len().saturating_sub(1));
-    let trimmed = &traj[(start_step + 1)..=end];
-    for pair in trimmed.windows(2) {
-        let delta = pair[1] - pair[0];
-        let moved = delta.abs() > E2_SEMITONE_EPS;
-        step_count += 1;
-        if moved {
-            moved_step_count += 1;
+        let trimmed = &traj[(start_step + 1)..=end];
+        for pair in trimmed.windows(2) {
+            let delta = pair[1] - pair[0];
+            let moved = delta.abs() > E2_SEMITONE_EPS;
+            step_count += 1;
+            if moved {
+                moved_step_count += 1;
+            }
         }
-    }
 
         let mut compressed: Vec<f32> = Vec::new();
         for &v in &traj[start_step..=end] {
@@ -11243,7 +11262,10 @@ fn draw_e2_timeseries_controls_panel(
             )))?;
         }
     }
-    if let Some(step) = phase_switch_step && step >= x_min && step <= x_hi {
+    if let Some(step) = phase_switch_step
+        && step >= x_min
+        && step <= x_hi
+    {
         chart.draw_series(std::iter::once(PathElement::new(
             vec![(step as f32, y_min), (step as f32, y_max)],
             ShapeStyle::from(&BLACK.mix(0.55)).stroke_width(2),

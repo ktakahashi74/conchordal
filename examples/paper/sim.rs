@@ -642,19 +642,19 @@ fn run_e4_condition_tail_samples_with_config(
 ) -> Arc<E4TailSamples> {
     let key = e4_tail_samples_cache_key(cfg, mirror_weight, seed, tail_window);
     {
-        let cache = e4_tail_samples_cache().lock().expect("tail samples cache poisoned");
+        let cache = e4_tail_samples_cache()
+            .lock()
+            .expect("tail samples cache poisoned");
         if let Some(samples) = cache.get(&key) {
             return Arc::clone(samples);
         }
     }
 
-    let samples = run_e4_condition_tail_samples_with_config_uncached(
-        mirror_weight,
-        seed,
-        cfg,
-        tail_window,
-    );
-    let mut cache = e4_tail_samples_cache().lock().expect("tail samples cache poisoned");
+    let samples =
+        run_e4_condition_tail_samples_with_config_uncached(mirror_weight, seed, cfg, tail_window);
+    let mut cache = e4_tail_samples_cache()
+        .lock()
+        .expect("tail samples cache poisoned");
     if let Some(samples) = cache.get(&key) {
         return Arc::clone(samples);
     }

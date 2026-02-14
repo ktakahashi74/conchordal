@@ -130,8 +130,9 @@ const E4_CENTS_P5: f32 = 702.0;
 const E4_CENTS_B2: f32 = 112.0;
 const E4_BIND_SIGMA_CENTS: f32 = 15.0;
 const E4_BIND_RHO: f32 = 0.4;
-const E4_BIND_MAX_HARMONIC: u32 = 16;
+const E4_BIND_MAX_HARMONIC: u32 = 32;
 const E4_BIND_TOP_CANDIDATES: usize = 512;
+const E4_FINGERPRINT_TOL_CENTS: f32 = 25.0;
 const E4_STEP_BURN_IN_STEPS: u32 = 600;
 const E4_STEP_POST_STEPS: u32 = 600;
 const E4_HYSTERESIS_SETTLE_STEPS: u32 = 180;
@@ -151,6 +152,7 @@ const E4_SEEDS: [u64; 10] = [
     0xC0FFEE_u64 + 19,
 ];
 const E4_REP_WEIGHTS: [f32; 5] = [0.0, 0.25, 0.5, 0.75, 1.0];
+const E4_EMIT_LEGACY_OUTPUTS: bool = false;
 
 const E3_FIRST_K: usize = 20;
 const E3_POP_SIZE: usize = 32;
@@ -3257,6 +3259,64 @@ fn plot_e4_mirror_sweep(
     emit_hist_files: bool,
     emit_kernel_gate: bool,
 ) -> Result<(), Box<dyn Error>> {
+    if !E4_EMIT_LEGACY_OUTPUTS {
+        let weights = build_weight_grid(E4_WEIGHT_COARSE_STEP);
+        let (_run_records, _hist_records, _tail_rows, tail_agent_rows) = run_e4_sweep_for_weights(
+            out_dir,
+            anchor_hz,
+            &weights,
+            &E4_SEEDS,
+            E4_BIN_WIDTHS[0],
+            &E4_EPS_CENTS,
+            false,
+            true,
+        )?;
+
+        let tail_agents_csv_path = out_dir.join("e4_tail_agents.csv");
+        write_with_log(&tail_agents_csv_path, e4_tail_agents_csv(&tail_agent_rows))?;
+
+        let bind_metrics = e4_bind_metrics_from_tail_agents(&tail_agent_rows);
+        let bind_summary = e4_bind_summary_rows(&bind_metrics);
+        let binding_metrics_raw_path = out_dir.join("paper_e4_binding_metrics_raw.csv");
+        write_with_log(
+            &binding_metrics_raw_path,
+            e4_binding_metrics_raw_csv(&bind_metrics),
+        )?;
+        let binding_metrics_summary_path = out_dir.join("paper_e4_binding_metrics_summary.csv");
+        write_with_log(
+            &binding_metrics_summary_path,
+            e4_binding_metrics_summary_csv(&bind_summary),
+        )?;
+
+        let fingerprint_rows = e4_fingerprint_rows_from_tail_agents(&tail_agent_rows);
+        let fingerprint_summary = e4_fingerprint_summary_rows(&fingerprint_rows);
+        let fingerprint_raw_path = out_dir.join("paper_e4_fingerprint_raw.csv");
+        write_with_log(
+            &fingerprint_raw_path,
+            e4_fingerprint_raw_csv(&fingerprint_rows),
+        )?;
+        let fingerprint_summary_path = out_dir.join("paper_e4_fingerprint_summary.csv");
+        write_with_log(
+            &fingerprint_summary_path,
+            e4_fingerprint_summary_csv(&fingerprint_summary),
+        )?;
+
+        let binding_phase_png_path = out_dir.join("paper_e4_binding_phase_diagram.png");
+        render_e4_binding_phase_diagram_png(&binding_phase_png_path, &bind_summary)?;
+        let delta_bind_png_path = out_dir.join("paper_e4_delta_bind.png");
+        render_e4_delta_bind_png(&delta_bind_png_path, &bind_summary)?;
+        let fingerprint_heatmap_png_path = out_dir.join("paper_e4_fingerprint_heatmap.png");
+        render_e4_fingerprint_heatmap_png(&fingerprint_heatmap_png_path, &fingerprint_summary)?;
+
+        if emit_kernel_gate {
+            let kernel_gate_path = out_dir.join("paper_e4_kernel_gate.svg");
+            render_e4_kernel_gate(&kernel_gate_path, anchor_hz)?;
+        }
+
+        let _ = emit_hist_files;
+        return Ok(());
+    }
+
     let coarse_weights = build_weight_grid(E4_WEIGHT_COARSE_STEP);
     let primary_bin = E4_BIN_WIDTHS[0];
     let primary_eps = E4_EPS_CENTS[0];
@@ -3347,6 +3407,28 @@ fn plot_e4_mirror_sweep(
     let bind_summary = e4_bind_summary_rows(&bind_metrics);
     let bind_summary_path = out_dir.join("e4_bind_summary.csv");
     write_with_log(&bind_summary_path, e4_bind_summary_csv(&bind_summary))?;
+    let binding_metrics_raw_path = out_dir.join("paper_e4_binding_metrics_raw.csv");
+    write_with_log(
+        &binding_metrics_raw_path,
+        e4_binding_metrics_raw_csv(&bind_metrics),
+    )?;
+    let binding_metrics_summary_path = out_dir.join("paper_e4_binding_metrics_summary.csv");
+    write_with_log(
+        &binding_metrics_summary_path,
+        e4_binding_metrics_summary_csv(&bind_summary),
+    )?;
+    let fingerprint_rows = e4_fingerprint_rows_from_tail_agents(&tail_agent_rows);
+    let fingerprint_raw_path = out_dir.join("paper_e4_fingerprint_raw.csv");
+    write_with_log(
+        &fingerprint_raw_path,
+        e4_fingerprint_raw_csv(&fingerprint_rows),
+    )?;
+    let fingerprint_summary = e4_fingerprint_summary_rows(&fingerprint_rows);
+    let fingerprint_summary_path = out_dir.join("paper_e4_fingerprint_summary.csv");
+    write_with_log(
+        &fingerprint_summary_path,
+        e4_fingerprint_summary_csv(&fingerprint_summary),
+    )?;
 
     let delta_effects = e4_delta_effects_from_summary(&summaries);
     let delta_effects_path = out_dir.join("e4_delta_effects.csv");
@@ -3415,6 +3497,12 @@ fn plot_e4_mirror_sweep(
     render_e4_root_ceiling_fit_vs_weight(&bind_fit_path, &bind_summary)?;
     let fingerprint_path = out_dir.join("paper_e4_interval_fingerprint_heatmap.svg");
     render_e4_interval_heatmap(&fingerprint_path, &hist_records, primary_bin)?;
+    let binding_phase_png_path = out_dir.join("paper_e4_binding_phase_diagram.png");
+    render_e4_binding_phase_diagram_png(&binding_phase_png_path, &bind_summary)?;
+    let delta_bind_png_path = out_dir.join("paper_e4_delta_bind.png");
+    render_e4_delta_bind_png(&delta_bind_png_path, &bind_summary)?;
+    let fingerprint_heatmap_png_path = out_dir.join("paper_e4_fingerprint_heatmap.png");
+    render_e4_fingerprint_heatmap_png(&fingerprint_heatmap_png_path, &fingerprint_summary)?;
 
     for &bin_width in &E4_BIN_WIDTHS {
         let bw_token = format_float_token(bin_width);
@@ -3798,6 +3886,24 @@ struct E4BindSummaryRow {
     mean_delta_bind: f32,
     delta_bind_ci_lo: f32,
     delta_bind_ci_hi: f32,
+    n_seeds: usize,
+}
+
+#[derive(Clone, Copy)]
+struct E4FingerprintRow {
+    mirror_weight: f32,
+    seed: u64,
+    category: &'static str,
+    prob: f32,
+}
+
+#[derive(Clone, Copy)]
+struct E4FingerprintSummaryRow {
+    mirror_weight: f32,
+    category: &'static str,
+    mean_prob: f32,
+    prob_ci_lo: f32,
+    prob_ci_hi: f32,
     n_seeds: usize,
 }
 
@@ -4526,129 +4632,156 @@ fn e4_tail_agents_csv(rows: &[E4TailAgentRow]) -> String {
     out
 }
 
-fn cents_distance_abs(a_hz: f32, b_hz: f32) -> f32 {
-    if !a_hz.is_finite() || !b_hz.is_finite() || a_hz <= 0.0 || b_hz <= 0.0 {
-        return f32::INFINITY;
+fn normalize_freq_ratios(freqs: &[f32]) -> Vec<f32> {
+    let mut clean: Vec<f32> = freqs
+        .iter()
+        .copied()
+        .filter(|f| f.is_finite() && *f > 0.0)
+        .collect();
+    if clean.is_empty() {
+        return Vec::new();
     }
-    (1200.0 * (a_hz / b_hz).log2()).abs()
+    clean.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let mid = clean.len() / 2;
+    let median = if clean.len() % 2 == 0 {
+        0.5 * (clean[mid - 1] + clean[mid])
+    } else {
+        clean[mid]
+    };
+    if !median.is_finite() || median <= 0.0 {
+        return Vec::new();
+    }
+    clean
+        .into_iter()
+        .map(|f| f / median)
+        .filter(|r| r.is_finite() && *r > 0.0)
+        .collect()
 }
 
-fn harmonic_fit_score(distance_cents: f32, harmonic_index: u32, sigma_cents: f32, rho: f32) -> f32 {
-    let sigma = sigma_cents.max(1e-6);
-    let n = harmonic_index.max(1) as f32;
-    let decay = n.powf(-rho);
-    (-0.5 * (distance_cents / sigma).powi(2)).exp() * decay
+fn harmonic_index_penalty(n: u32) -> f32 {
+    let n = n.max(1) as f32;
+    let beta = E4_BIND_RHO.max(0.0);
+    (-(beta * (n - 1.0))).exp()
 }
 
-fn root_candidate_score(freqs: &[f32], candidate_root_hz: f32) -> f32 {
-    if !candidate_root_hz.is_finite() || candidate_root_hz <= 0.0 {
+fn root_candidate_score(ratios: &[f32], candidate_root: f32) -> f32 {
+    if !candidate_root.is_finite() || candidate_root <= 0.0 {
         return 0.0;
     }
+    let sigma = E4_BIND_SIGMA_CENTS.max(1e-6);
+    let n_max = E4_BIND_MAX_HARMONIC.max(1) as i32;
     let mut total = 0.0f32;
-    for &freq in freqs {
-        if !freq.is_finite() || freq <= 0.0 {
+    let mut count = 0usize;
+    for &ratio in ratios {
+        if !ratio.is_finite() || ratio <= 0.0 {
             continue;
         }
-        let mut best = 0.0f32;
-        for n in 1..=E4_BIND_MAX_HARMONIC {
-            let target = candidate_root_hz * n as f32;
-            if !target.is_finite() || target <= 0.0 {
-                continue;
-            }
-            let distance = cents_distance_abs(freq, target);
-            let score = harmonic_fit_score(distance, n, E4_BIND_SIGMA_CENTS, E4_BIND_RHO);
-            best = best.max(score);
+        let mut n = (ratio / candidate_root).round() as i32;
+        n = n.clamp(1, n_max);
+        let target = candidate_root * n as f32;
+        if !target.is_finite() || target <= 0.0 {
+            continue;
         }
-        total += best;
+        let err_cents = 1200.0 * (ratio / target).log2();
+        let score = (-0.5 * (err_cents / sigma).powi(2)).exp() * harmonic_index_penalty(n as u32);
+        total += score;
+        count += 1;
     }
-    total
+    if count == 0 {
+        0.0
+    } else {
+        total / count as f32
+    }
 }
 
-fn ceiling_candidate_score(freqs: &[f32], candidate_ceiling_hz: f32) -> f32 {
-    if !candidate_ceiling_hz.is_finite() || candidate_ceiling_hz <= 0.0 {
+fn ceiling_candidate_score(ratios: &[f32], candidate_ceiling: f32) -> f32 {
+    if !candidate_ceiling.is_finite() || candidate_ceiling <= 0.0 {
         return 0.0;
     }
+    let sigma = E4_BIND_SIGMA_CENTS.max(1e-6);
+    let n_max = E4_BIND_MAX_HARMONIC.max(1) as i32;
     let mut total = 0.0f32;
-    for &freq in freqs {
-        if !freq.is_finite() || freq <= 0.0 {
+    let mut count = 0usize;
+    for &ratio in ratios {
+        if !ratio.is_finite() || ratio <= 0.0 {
             continue;
         }
-        let mut best = 0.0f32;
-        for n in 1..=E4_BIND_MAX_HARMONIC {
-            let target = candidate_ceiling_hz / n as f32;
-            if !target.is_finite() || target <= 0.0 {
-                continue;
-            }
-            let distance = cents_distance_abs(freq, target);
-            let score = harmonic_fit_score(distance, n, E4_BIND_SIGMA_CENTS, E4_BIND_RHO);
-            best = best.max(score);
+        let mut n = (candidate_ceiling / ratio).round() as i32;
+        n = n.clamp(1, n_max);
+        let target = candidate_ceiling / n as f32;
+        if !target.is_finite() || target <= 0.0 {
+            continue;
         }
-        total += best;
+        let err_cents = 1200.0 * (ratio / target).log2();
+        let score = (-0.5 * (err_cents / sigma).powi(2)).exp() * harmonic_index_penalty(n as u32);
+        total += score;
+        count += 1;
     }
-    total
+    if count == 0 {
+        0.0
+    } else {
+        total / count as f32
+    }
 }
 
 fn unique_candidates(mut raw: Vec<f32>) -> Vec<f32> {
     raw.retain(|f| f.is_finite() && *f > 0.0);
+    for f in &mut raw {
+        *f = (*f * 10_000.0).round() / 10_000.0;
+    }
     raw.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    raw.dedup_by(|a, b| (*a - *b).abs() < 1e-4);
+    raw.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
     raw
 }
 
 fn root_fit_from_freqs(freqs: &[f32]) -> f32 {
-    let mut candidates = Vec::with_capacity(freqs.len() * E4_BIND_MAX_HARMONIC as usize);
-    for &freq in freqs {
-        if !freq.is_finite() || freq <= 0.0 {
-            continue;
-        }
+    let ratios = normalize_freq_ratios(freqs);
+    if ratios.is_empty() {
+        return 0.0;
+    }
+    let mut candidates = Vec::with_capacity(ratios.len() * E4_BIND_MAX_HARMONIC as usize);
+    for &ratio in &ratios {
         for n in 1..=E4_BIND_MAX_HARMONIC {
-            candidates.push(freq / n as f32);
+            candidates.push(ratio / n as f32);
         }
     }
-    let candidates = unique_candidates(candidates);
+    let mut candidates = unique_candidates(candidates);
+    candidates.retain(|c| *c <= 1.0 + 1e-4);
     if candidates.is_empty() {
         return 0.0;
     }
-    let mut scored: Vec<(f32, f32)> = candidates
-        .into_iter()
-        .map(|candidate| (candidate, root_candidate_score(freqs, candidate)))
-        .collect();
-    scored.sort_by(|a, b| {
-        b.1.partial_cmp(&a.1)
-            .unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal))
-    });
-    let top_k = E4_BIND_TOP_CANDIDATES.max(1).min(scored.len());
-    scored.truncate(top_k);
-    scored.first().map(|(_, score)| *score).unwrap_or(0.0)
+    candidates.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let top_k = E4_BIND_TOP_CANDIDATES.max(1).min(candidates.len());
+    let mut best = 0.0f32;
+    for &candidate in candidates.iter().take(top_k) {
+        best = best.max(root_candidate_score(&ratios, candidate));
+    }
+    best
 }
 
 fn ceiling_fit_from_freqs(freqs: &[f32]) -> f32 {
-    let mut candidates = Vec::with_capacity(freqs.len() * E4_BIND_MAX_HARMONIC as usize);
-    for &freq in freqs {
-        if !freq.is_finite() || freq <= 0.0 {
-            continue;
-        }
+    let ratios = normalize_freq_ratios(freqs);
+    if ratios.is_empty() {
+        return 0.0;
+    }
+    let mut candidates = Vec::with_capacity(ratios.len() * E4_BIND_MAX_HARMONIC as usize);
+    for &ratio in &ratios {
         for n in 1..=E4_BIND_MAX_HARMONIC {
-            candidates.push(freq * n as f32);
+            candidates.push(ratio * n as f32);
         }
     }
-    let candidates = unique_candidates(candidates);
+    let mut candidates = unique_candidates(candidates);
+    candidates.retain(|c| *c >= 1.0 - 1e-4);
     if candidates.is_empty() {
         return 0.0;
     }
-    let mut scored: Vec<(f32, f32)> = candidates
-        .into_iter()
-        .map(|candidate| (candidate, ceiling_candidate_score(freqs, candidate)))
-        .collect();
-    scored.sort_by(|a, b| {
-        b.1.partial_cmp(&a.1)
-            .unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal))
-    });
-    let top_k = E4_BIND_TOP_CANDIDATES.max(1).min(scored.len());
-    scored.truncate(top_k);
-    scored.first().map(|(_, score)| *score).unwrap_or(0.0)
+    candidates.sort_by(|a, b| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
+    let top_k = E4_BIND_TOP_CANDIDATES.max(1).min(candidates.len());
+    let mut best = 0.0f32;
+    for &candidate in candidates.iter().take(top_k) {
+        best = best.max(ceiling_candidate_score(&ratios, candidate));
+    }
+    best
 }
 
 fn bind_scores_from_freqs(freqs: &[f32]) -> (f32, f32, f32) {
@@ -4660,6 +4793,7 @@ fn bind_scores_from_freqs(freqs: &[f32]) -> (f32, f32, f32) {
     if clean_freqs.is_empty() {
         return (0.0, 0.0, 0.0);
     }
+    // Voices only (anchor excluded): this keeps the regime metric tied to population structure.
     let root_fit = root_fit_from_freqs(&clean_freqs);
     let ceiling_fit = ceiling_fit_from_freqs(&clean_freqs);
     let denom = root_fit + ceiling_fit + 1e-6;
@@ -4795,6 +4929,238 @@ fn e4_bind_summary_csv(rows: &[E4BindSummaryRow]) -> String {
             row.mean_delta_bind,
             row.delta_bind_ci_lo,
             row.delta_bind_ci_hi,
+            row.n_seeds
+        ));
+    }
+    out
+}
+
+fn e4_binding_metrics_raw_csv(rows: &[E4BindMetricRow]) -> String {
+    let mut out = String::from("mirror_weight,seed,root_fit,ceiling_fit,delta_bind\n");
+    for row in rows {
+        out.push_str(&format!(
+            "{:.3},{},{:.6},{:.6},{:.6}\n",
+            row.mirror_weight, row.seed, row.root_fit, row.ceiling_fit, row.delta_bind
+        ));
+    }
+    out
+}
+
+fn e4_binding_metrics_summary_csv(rows: &[E4BindSummaryRow]) -> String {
+    let mut out = String::from(
+        "mirror_weight,root_fit_mean,root_fit_ci_lo,root_fit_ci_hi,ceiling_fit_mean,ceiling_fit_ci_lo,ceiling_fit_ci_hi,delta_bind_mean,delta_bind_ci_lo,delta_bind_ci_hi,n_seeds\n",
+    );
+    for row in rows {
+        out.push_str(&format!(
+            "{:.3},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{}\n",
+            row.mirror_weight,
+            row.mean_root_fit,
+            row.root_ci_lo,
+            row.root_ci_hi,
+            row.mean_ceiling_fit,
+            row.ceiling_ci_lo,
+            row.ceiling_ci_hi,
+            row.mean_delta_bind,
+            row.delta_bind_ci_lo,
+            row.delta_bind_ci_hi,
+            row.n_seeds
+        ));
+    }
+    out
+}
+
+const E4_FINGERPRINT_LABELS: [&str; 13] = [
+    "b2", "M2", "m3", "M3", "P4", "TT", "P5", "m6", "M6", "m7", "M7", "8ve", "other",
+];
+
+fn e4_fingerprint_label_index(label: &str) -> usize {
+    E4_FINGERPRINT_LABELS
+        .iter()
+        .position(|&v| v == label)
+        .unwrap_or(E4_FINGERPRINT_LABELS.len().saturating_sub(1))
+}
+
+fn e4_fingerprint_category_distance(cents_mod: f32, category_idx: usize) -> f32 {
+    match category_idx {
+        0 => circular_cents_distance(cents_mod, 111.731_285), // 16/15
+        1 => circular_cents_distance(cents_mod, 203.910_004), // 9/8
+        2 => circular_cents_distance(cents_mod, 315.641_296), // 6/5
+        3 => circular_cents_distance(cents_mod, 386.313_721), // 5/4
+        4 => circular_cents_distance(cents_mod, 498.044_983), // 4/3
+        5 => {
+            let d0 = circular_cents_distance(cents_mod, 582.512_207); // 7/5
+            let d1 = circular_cents_distance(cents_mod, 590.223_694); // 45/32
+            d0.min(d1)
+        }
+        6 => circular_cents_distance(cents_mod, 701.955_017), // 3/2
+        7 => circular_cents_distance(cents_mod, 813.686_279), // 8/5
+        8 => circular_cents_distance(cents_mod, 884.358_704), // 5/3
+        9 => circular_cents_distance(cents_mod, 1_017.596_313), // 9/5
+        10 => circular_cents_distance(cents_mod, 1_088.268_677), // 15/8
+        11 => circular_cents_distance(cents_mod, 0.0),        // octave class (0/1200)
+        _ => f32::INFINITY,
+    }
+}
+
+fn e4_interval_fingerprint_probs(freqs: &[f32], tol_cents: f32) -> [f32; 13] {
+    let mut probs = [0.0f32; 13];
+    let clean: Vec<f32> = freqs
+        .iter()
+        .copied()
+        .filter(|f| f.is_finite() && *f > 0.0)
+        .collect();
+    if clean.len() < 2 {
+        probs[12] = 1.0;
+        return probs;
+    }
+
+    let tol = tol_cents.max(0.0);
+    let mut total = 0usize;
+    for i in 0..clean.len() {
+        for j in (i + 1)..clean.len() {
+            let cents = (1200.0 * (clean[i] / clean[j]).log2())
+                .abs()
+                .rem_euclid(1200.0);
+            if !cents.is_finite() {
+                continue;
+            }
+            let mut best_idx = 12usize;
+            let mut best_dist = f32::INFINITY;
+            for idx in 0..12usize {
+                let d = e4_fingerprint_category_distance(cents, idx);
+                if d < best_dist {
+                    best_dist = d;
+                    best_idx = idx;
+                }
+            }
+            if best_dist <= tol {
+                probs[best_idx] += 1.0;
+            } else {
+                probs[12] += 1.0;
+            }
+            total += 1;
+        }
+    }
+
+    if total == 0 {
+        probs[12] = 1.0;
+        return probs;
+    }
+    let inv = 1.0 / total as f32;
+    for p in &mut probs {
+        *p *= inv;
+    }
+    probs
+}
+
+fn e4_fingerprint_rows_from_tail_agents(rows: &[E4TailAgentRow]) -> Vec<E4FingerprintRow> {
+    let mut latest_step: std::collections::HashMap<(i32, u64), u32> =
+        std::collections::HashMap::new();
+    for row in rows {
+        let key = (float_key(row.mirror_weight), row.seed);
+        latest_step
+            .entry(key)
+            .and_modify(|step| *step = (*step).max(row.step))
+            .or_insert(row.step);
+    }
+    let mut final_freqs: std::collections::HashMap<(i32, u64), Vec<(u64, f32)>> =
+        std::collections::HashMap::new();
+    for row in rows {
+        let key = (float_key(row.mirror_weight), row.seed);
+        if latest_step.get(&key).copied() != Some(row.step) {
+            continue;
+        }
+        final_freqs
+            .entry(key)
+            .or_default()
+            .push((row.agent_id, row.freq_hz));
+    }
+
+    let mut out = Vec::new();
+    for ((weight_key, seed), mut agent_rows) in final_freqs {
+        agent_rows.sort_by_key(|(agent_id, _)| *agent_id);
+        let freqs: Vec<f32> = agent_rows.iter().map(|(_, freq)| *freq).collect();
+        let probs = e4_interval_fingerprint_probs(&freqs, E4_FINGERPRINT_TOL_CENTS);
+        let mirror_weight = float_from_key(weight_key);
+        for (idx, category) in E4_FINGERPRINT_LABELS.iter().enumerate() {
+            out.push(E4FingerprintRow {
+                mirror_weight,
+                seed,
+                category,
+                prob: probs[idx],
+            });
+        }
+    }
+    out.sort_by(|a, b| {
+        a.mirror_weight
+            .partial_cmp(&b.mirror_weight)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.seed.cmp(&b.seed))
+            .then_with(|| {
+                e4_fingerprint_label_index(a.category).cmp(&e4_fingerprint_label_index(b.category))
+            })
+    });
+    out
+}
+
+fn e4_fingerprint_raw_csv(rows: &[E4FingerprintRow]) -> String {
+    let mut out = String::from("mirror_weight,seed,category,prob\n");
+    for row in rows {
+        out.push_str(&format!(
+            "{:.3},{},{},{}\n",
+            row.mirror_weight, row.seed, row.category, row.prob
+        ));
+    }
+    out
+}
+
+fn e4_fingerprint_summary_rows(rows: &[E4FingerprintRow]) -> Vec<E4FingerprintSummaryRow> {
+    let mut grouped: std::collections::HashMap<(i32, &'static str), Vec<f32>> =
+        std::collections::HashMap::new();
+    for row in rows {
+        grouped
+            .entry((float_key(row.mirror_weight), row.category))
+            .or_default()
+            .push(row.prob);
+    }
+
+    let mut out = Vec::new();
+    for ((weight_key, category), values) in grouped {
+        let seed = E4_BOOTSTRAP_SEED
+            ^ (weight_key as i64 as u64).wrapping_mul(0x9E37_79B9)
+            ^ (e4_fingerprint_label_index(category) as u64).wrapping_mul(0x85EB_CA6B);
+        let (mean_prob, prob_ci_lo, prob_ci_hi) =
+            bootstrap_mean_ci95(&values, E4_BOOTSTRAP_ITERS, seed);
+        out.push(E4FingerprintSummaryRow {
+            mirror_weight: float_from_key(weight_key),
+            category,
+            mean_prob,
+            prob_ci_lo,
+            prob_ci_hi,
+            n_seeds: values.len(),
+        });
+    }
+    out.sort_by(|a, b| {
+        a.mirror_weight
+            .partial_cmp(&b.mirror_weight)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| {
+                e4_fingerprint_label_index(a.category).cmp(&e4_fingerprint_label_index(b.category))
+            })
+    });
+    out
+}
+
+fn e4_fingerprint_summary_csv(rows: &[E4FingerprintSummaryRow]) -> String {
+    let mut out = String::from("mirror_weight,category,prob_mean,prob_ci_lo,prob_ci_hi,n_seeds\n");
+    for row in rows {
+        out.push_str(&format!(
+            "{:.3},{},{:.6},{:.6},{:.6},{}\n",
+            row.mirror_weight,
+            row.category,
+            row.mean_prob,
+            row.prob_ci_lo,
+            row.prob_ci_hi,
             row.n_seeds
         ));
     }
@@ -6069,6 +6435,285 @@ fn render_e4_root_ceiling_fit_vs_weight(
         .border_style(BLACK.mix(0.4))
         .background_style(WHITE.mix(0.8))
         .draw()?;
+
+    root.present()?;
+    Ok(())
+}
+
+fn render_e4_delta_bind_png(
+    out_path: &Path,
+    summary_rows: &[E4BindSummaryRow],
+) -> Result<(), Box<dyn Error>> {
+    if summary_rows.is_empty() {
+        return Ok(());
+    }
+    let mut rows = summary_rows.to_vec();
+    rows.sort_by(|a, b| {
+        a.mirror_weight
+            .partial_cmp(&b.mirror_weight)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    let mut y_min = 0.0f32;
+    let mut y_max = 0.0f32;
+    for row in &rows {
+        y_min = y_min.min(row.delta_bind_ci_lo).min(row.mean_delta_bind);
+        y_max = y_max.max(row.delta_bind_ci_hi).max(row.mean_delta_bind);
+    }
+    if (y_max - y_min).abs() < 1e-6 {
+        y_min -= 0.1;
+        y_max += 0.1;
+    }
+    let pad = 0.15 * (y_max - y_min);
+
+    log_output_path(out_path);
+    let root = BitMapBackend::new(out_path, (1400, 850)).into_drawing_area();
+    root.fill(&WHITE)?;
+    let mut chart = ChartBuilder::on(&root)
+        .caption(
+            "E4 DeltaBind vs mirror_weight (mean ± 95% CI)",
+            ("sans-serif", 24),
+        )
+        .margin(12)
+        .x_label_area_size(46)
+        .y_label_area_size(68)
+        .build_cartesian_2d(0.0f32..1.0f32, (y_min - pad)..(y_max + pad))?;
+
+    chart
+        .configure_mesh()
+        .x_desc("mirror_weight")
+        .y_desc("DeltaBind")
+        .draw()?;
+
+    chart.draw_series(std::iter::once(PathElement::new(
+        vec![(0.0, 0.0), (1.0, 0.0)],
+        BLACK.mix(0.85).stroke_width(2),
+    )))?;
+
+    if rows.len() >= 2 {
+        let mut band: Vec<(f32, f32)> = rows
+            .iter()
+            .map(|row| (row.mirror_weight, row.delta_bind_ci_hi))
+            .collect();
+        band.extend(
+            rows.iter()
+                .rev()
+                .map(|row| (row.mirror_weight, row.delta_bind_ci_lo)),
+        );
+        chart.draw_series(std::iter::once(Polygon::new(band, BLUE.mix(0.20).filled())))?;
+    }
+
+    chart.draw_series(LineSeries::new(
+        rows.iter()
+            .map(|row| (row.mirror_weight, row.mean_delta_bind)),
+        BLUE.mix(0.95).stroke_width(3),
+    ))?;
+    chart.draw_series(rows.iter().map(|row| {
+        Circle::new(
+            (row.mirror_weight, row.mean_delta_bind),
+            5,
+            BLUE.mix(0.95).filled(),
+        )
+    }))?;
+
+    root.present()?;
+    Ok(())
+}
+
+fn render_e4_binding_phase_diagram_png(
+    out_path: &Path,
+    summary_rows: &[E4BindSummaryRow],
+) -> Result<(), Box<dyn Error>> {
+    if summary_rows.is_empty() {
+        return Ok(());
+    }
+    let mut rows = summary_rows.to_vec();
+    rows.sort_by(|a, b| {
+        a.mirror_weight
+            .partial_cmp(&b.mirror_weight)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    let mut y_max = 0.0f32;
+    for row in &rows {
+        y_max = y_max.max(row.root_ci_hi).max(row.ceiling_ci_hi);
+    }
+    y_max = (y_max * 1.15).max(1e-4);
+
+    log_output_path(out_path);
+    let root = BitMapBackend::new(out_path, (1400, 850)).into_drawing_area();
+    root.fill(&WHITE)?;
+    let mut chart = ChartBuilder::on(&root)
+        .caption(
+            "E4 Binding Phase Diagram: RootFit / CeilingFit (mean ± 95% CI)",
+            ("sans-serif", 24),
+        )
+        .margin(12)
+        .x_label_area_size(46)
+        .y_label_area_size(68)
+        .build_cartesian_2d(0.0f32..1.0f32, 0.0f32..y_max)?;
+
+    chart
+        .configure_mesh()
+        .x_desc("mirror_weight")
+        .y_desc("fit")
+        .draw()?;
+
+    if rows.len() >= 2 {
+        let mut root_band: Vec<(f32, f32)> = rows
+            .iter()
+            .map(|row| (row.mirror_weight, row.root_ci_hi))
+            .collect();
+        root_band.extend(
+            rows.iter()
+                .rev()
+                .map(|row| (row.mirror_weight, row.root_ci_lo)),
+        );
+        chart.draw_series(std::iter::once(Polygon::new(
+            root_band,
+            BLUE.mix(0.14).filled(),
+        )))?;
+
+        let mut ceiling_band: Vec<(f32, f32)> = rows
+            .iter()
+            .map(|row| (row.mirror_weight, row.ceiling_ci_hi))
+            .collect();
+        ceiling_band.extend(
+            rows.iter()
+                .rev()
+                .map(|row| (row.mirror_weight, row.ceiling_ci_lo)),
+        );
+        chart.draw_series(std::iter::once(Polygon::new(
+            ceiling_band,
+            RED.mix(0.12).filled(),
+        )))?;
+    }
+
+    chart
+        .draw_series(LineSeries::new(
+            rows.iter()
+                .map(|row| (row.mirror_weight, row.mean_root_fit)),
+            BLUE.mix(0.95).stroke_width(3),
+        ))?
+        .label("RootFit")
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 24, y)], BLUE.stroke_width(3)));
+    chart.draw_series(rows.iter().map(|row| {
+        Circle::new(
+            (row.mirror_weight, row.mean_root_fit),
+            5,
+            BLUE.mix(0.95).filled(),
+        )
+    }))?;
+
+    chart
+        .draw_series(LineSeries::new(
+            rows.iter()
+                .map(|row| (row.mirror_weight, row.mean_ceiling_fit)),
+            RED.mix(0.92).stroke_width(3),
+        ))?
+        .label("CeilingFit")
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 24, y)], RED.stroke_width(3)));
+    chart.draw_series(rows.iter().map(|row| {
+        TriangleMarker::new(
+            (row.mirror_weight, row.mean_ceiling_fit),
+            7,
+            RED.mix(0.92).filled(),
+        )
+    }))?;
+
+    chart
+        .configure_series_labels()
+        .border_style(BLACK.mix(0.4))
+        .background_style(WHITE.mix(0.8))
+        .draw()?;
+
+    root.present()?;
+    Ok(())
+}
+
+fn render_e4_fingerprint_heatmap_png(
+    out_path: &Path,
+    summary_rows: &[E4FingerprintSummaryRow],
+) -> Result<(), Box<dyn Error>> {
+    if summary_rows.is_empty() {
+        return Ok(());
+    }
+    let mut weight_keys: Vec<i32> = summary_rows
+        .iter()
+        .map(|row| float_key(row.mirror_weight))
+        .collect();
+    weight_keys.sort();
+    weight_keys.dedup();
+    if weight_keys.is_empty() {
+        return Ok(());
+    }
+    let weights: Vec<f32> = weight_keys.iter().map(|key| float_from_key(*key)).collect();
+
+    let mut mean_map: std::collections::HashMap<(i32, &'static str), f32> =
+        std::collections::HashMap::new();
+    let mut max_prob = 0.0f32;
+    for row in summary_rows {
+        mean_map.insert((float_key(row.mirror_weight), row.category), row.mean_prob);
+        max_prob = max_prob.max(row.mean_prob);
+    }
+    let labels = E4_FINGERPRINT_LABELS;
+
+    log_output_path(out_path);
+    let root = BitMapBackend::new(out_path, (1500, 900)).into_drawing_area();
+    root.fill(&WHITE)?;
+    let mut chart = ChartBuilder::on(&root)
+        .caption(
+            "E4 Interval Fingerprint Heatmap (JI categories)",
+            ("sans-serif", 24),
+        )
+        .margin(14)
+        .x_label_area_size(46)
+        .y_label_area_size(90)
+        .build_cartesian_2d(0i32..weights.len() as i32, 0i32..labels.len() as i32)?;
+
+    chart
+        .configure_mesh()
+        .disable_mesh()
+        .x_desc("mirror_weight")
+        .y_desc("interval category")
+        .x_labels(weights.len())
+        .y_labels(labels.len())
+        .x_label_formatter(&|x| {
+            let idx = (*x).clamp(0, weights.len().saturating_sub(1) as i32) as usize;
+            format!("{:.2}", weights[idx])
+        })
+        .y_label_formatter(&|y| {
+            let idx = (*y).clamp(0, labels.len().saturating_sub(1) as i32) as usize;
+            labels[idx].to_string()
+        })
+        .draw()?;
+
+    for (x_idx, weight_key) in weight_keys.iter().enumerate() {
+        for (y_idx, category) in labels.iter().enumerate() {
+            let prob = mean_map
+                .get(&(*weight_key, *category))
+                .copied()
+                .unwrap_or(0.0)
+                .clamp(0.0, 1.0);
+            let t = if max_prob > 1e-9 {
+                (prob / max_prob).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            let color = RGBColor(
+                (255.0 * t) as u8,
+                (30.0 + 170.0 * (1.0 - t)) as u8,
+                (255.0 * (1.0 - t)) as u8,
+            );
+            chart.draw_series(std::iter::once(Rectangle::new(
+                [
+                    (x_idx as i32, y_idx as i32),
+                    ((x_idx + 1) as i32, (y_idx + 1) as i32),
+                ],
+                color.filled(),
+            )))?;
+        }
+    }
 
     root.present()?;
     Ok(())
@@ -14466,6 +15111,41 @@ mod tests {
         assert_eq!(m1[0].root_fit.to_bits(), m2[0].root_fit.to_bits());
         assert_eq!(m1[0].ceiling_fit.to_bits(), m2[0].ceiling_fit.to_bits());
         assert_eq!(m1[0].delta_bind.to_bits(), m2[0].delta_bind.to_bits());
+    }
+
+    #[test]
+    fn bind_scores_are_scale_invariant() {
+        let freqs = [220.0f32, 330.0, 440.0, 550.0];
+        let scaled = [374.0f32, 561.0, 748.0, 935.0];
+        let (r0, c0, d0) = bind_scores_from_freqs(&freqs);
+        let (r1, c1, d1) = bind_scores_from_freqs(&scaled);
+        assert!((r0 - r1).abs() < 1e-5, "root fit changed by scaling");
+        assert!((c0 - c1).abs() < 1e-5, "ceiling fit changed by scaling");
+        assert!((d0 - d1).abs() < 1e-5, "delta bind changed by scaling");
+    }
+
+    #[test]
+    fn bind_scores_swap_sign_between_root_and_ceiling_regimes() {
+        let harmonic_series = [1.0f32, 2.0, 3.0, 4.0];
+        let ceiling_series = [1.0f32, 0.5, 1.0 / 3.0, 0.25];
+        let (r_h, c_h, d_h) = bind_scores_from_freqs(&harmonic_series);
+        let (r_c, c_c, d_c) = bind_scores_from_freqs(&ceiling_series);
+        assert!(r_h > c_h, "harmonic series should favor RootFit");
+        assert!(c_c > r_c, "reciprocal series should favor CeilingFit");
+        assert!(d_h > 0.0, "delta bind should be positive for root regime");
+        assert!(
+            d_c < 0.0,
+            "delta bind should be negative for ceiling regime"
+        );
+    }
+
+    #[test]
+    fn fingerprint_maps_octave_to_8ve_bin() {
+        let probs = e4_interval_fingerprint_probs(&[220.0, 440.0], E4_FINGERPRINT_TOL_CENTS);
+        let idx_oct = e4_fingerprint_label_index("8ve");
+        let idx_other = e4_fingerprint_label_index("other");
+        assert!(probs[idx_oct] > 0.99, "octave bin was not selected");
+        assert!(probs[idx_other] < 1e-6, "octave should not map to other");
     }
 
     #[test]

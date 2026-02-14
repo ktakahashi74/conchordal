@@ -6,7 +6,7 @@ use conchordal::core::log2space::Log2Space;
 use conchordal::core::modulation::{NeuralRhythms, RhythmBand};
 use conchordal::core::roughness_kernel::{KernelParams, RoughnessKernel};
 use conchordal::core::timebase::Timebase;
-use conchordal::life::control::{AgentControl, PhonationType, PitchMode};
+use conchordal::life::control::{AgentControl, PhonationType, PitchCoreKind, PitchMode};
 use conchordal::life::individual::SoundBody;
 use conchordal::life::lifecycle::LifecycleConfig;
 use conchordal::life::metabolism_policy::MetabolismPolicy;
@@ -155,6 +155,8 @@ struct E4SimConfig {
     persistence: f32,
     theta_freq_hz: f32,
     neighbor_step_cents: f32,
+    baseline_mirror_weight: f32,
+    burn_in_steps: u32,
 }
 
 impl E4SimConfig {
@@ -175,6 +177,8 @@ impl E4SimConfig {
             persistence: 0.2,
             theta_freq_hz: 6.0,
             neighbor_step_cents: 50.0,
+            baseline_mirror_weight: 0.5,
+            burn_in_steps: 600,
         }
     }
 
@@ -183,6 +187,7 @@ impl E4SimConfig {
         Self {
             voice_count: 6,
             steps: 420,
+            burn_in_steps: 180,
             ..Self::paper_defaults()
         }
     }
@@ -403,6 +408,10 @@ pub fn run_e4_condition(mirror_weight: f32, seed: u64) -> Vec<f32> {
 #[derive(Clone, Debug)]
 #[allow(dead_code)]
 pub struct E4TailSamples {
+    pub mirror_weight: f32,
+    pub seed: u64,
+    pub anchor_hz: f32,
+    pub burn_in_steps: u32,
     pub steps_total: u32,
     pub tail_window: u32,
     pub freqs_by_step: Vec<Vec<f32>>,
@@ -429,6 +438,8 @@ struct E4TailSamplesCacheKey {
     persistence_bits: u32,
     theta_freq_hz_bits: u32,
     neighbor_step_cents_bits: u32,
+    baseline_mirror_weight_bits: u32,
+    burn_in_steps: u32,
 }
 
 type E4TailSamplesCache = std::collections::HashMap<E4TailSamplesCacheKey, Arc<E4TailSamples>>;
@@ -463,6 +474,8 @@ fn e4_tail_samples_cache_key(
         persistence_bits: cfg.persistence.to_bits(),
         theta_freq_hz_bits: cfg.theta_freq_hz.to_bits(),
         neighbor_step_cents_bits: cfg.neighbor_step_cents.to_bits(),
+        baseline_mirror_weight_bits: cfg.baseline_mirror_weight.to_bits(),
+        burn_in_steps: cfg.burn_in_steps,
     }
 }
 
@@ -492,6 +505,8 @@ pub struct E4PaperMeta {
     pub persistence: f32,
     pub theta_freq_hz: f32,
     pub neighbor_step_cents: f32,
+    pub baseline_mirror_weight: f32,
+    pub burn_in_steps: u32,
 }
 
 #[allow(dead_code)]
@@ -513,6 +528,8 @@ pub fn e4_paper_meta() -> E4PaperMeta {
         persistence: cfg.persistence,
         theta_freq_hz: cfg.theta_freq_hz,
         neighbor_step_cents: cfg.neighbor_step_cents,
+        baseline_mirror_weight: cfg.baseline_mirror_weight,
+        burn_in_steps: cfg.burn_in_steps,
     }
 }
 
@@ -561,14 +578,16 @@ fn run_e4_condition_with_config(mirror_weight: f32, seed: u64, cfg: &E4SimConfig
     });
     pop.set_seed(seed);
 
-    let update = LandscapeUpdate {
-        mirror: Some(mirror_weight),
-        ..LandscapeUpdate::default()
+    let baseline_mirror = cfg.baseline_mirror_weight.clamp(0.0, 1.0);
+    let target_mirror = mirror_weight.clamp(0.0, 1.0);
+    let burn_in_steps = cfg.burn_in_steps.min(cfg.steps);
+    let mut target_applied = burn_in_steps == 0;
+    let initial_mirror = if target_applied {
+        target_mirror
+    } else {
+        baseline_mirror
     };
-    pop.apply_action(Action::SetHarmonicityParams { update }, &landscape, None);
-    if let Some(update) = pop.take_pending_update() {
-        apply_params_update(&mut params, &update);
-    }
+    apply_mirror_weight(&mut pop, &landscape, &mut params, initial_mirror);
 
     landscape = build_anchor_landscape(&space, &params, cfg.anchor_hz);
 
@@ -613,6 +632,10 @@ fn run_e4_condition_with_config(mirror_weight: f32, seed: u64, cfg: &E4SimConfig
 
     let dt = cfg.hop as f32 / cfg.fs;
     for step in 0..cfg.steps {
+        if !target_applied && step >= burn_in_steps {
+            apply_mirror_weight(&mut pop, &landscape, &mut params, target_mirror);
+            target_applied = true;
+        }
         update_e4_landscape_from_population(&space, &params, &pop, &mut landscape);
         landscape.rhythm = rhythms;
         pop.advance(cfg.hop, cfg.fs, step as u64, dt, &landscape);
@@ -681,14 +704,16 @@ fn run_e4_condition_tail_samples_with_config_uncached(
     });
     pop.set_seed(seed);
 
-    let update = LandscapeUpdate {
-        mirror: Some(mirror_weight),
-        ..LandscapeUpdate::default()
+    let baseline_mirror = cfg.baseline_mirror_weight.clamp(0.0, 1.0);
+    let target_mirror = mirror_weight.clamp(0.0, 1.0);
+    let burn_in_steps = cfg.burn_in_steps.min(cfg.steps);
+    let mut target_applied = burn_in_steps == 0;
+    let initial_mirror = if target_applied {
+        target_mirror
+    } else {
+        baseline_mirror
     };
-    pop.apply_action(Action::SetHarmonicityParams { update }, &landscape, None);
-    if let Some(update) = pop.take_pending_update() {
-        apply_params_update(&mut params, &update);
-    }
+    apply_mirror_weight(&mut pop, &landscape, &mut params, initial_mirror);
 
     landscape = build_anchor_landscape(&space, &params, cfg.anchor_hz);
 
@@ -731,13 +756,18 @@ fn run_e4_condition_tail_samples_with_config_uncached(
     );
     apply_e4_initial_pitches(&mut pop, &space, &landscape, cfg, seed, min_freq, max_freq);
 
-    let tail_window = tail_window.min(cfg.steps).max(1);
+    let response_steps = cfg.steps.saturating_sub(burn_in_steps).max(1);
+    let tail_window = tail_window.min(response_steps).max(1);
     let start_step = cfg.steps.saturating_sub(tail_window);
     let dt = cfg.hop as f32 / cfg.fs;
     let mut freqs_by_step: Vec<Vec<f32>> = Vec::with_capacity(tail_window as usize);
     let mut agent_freqs_by_step: Vec<Vec<E4AgentFreq>> = Vec::with_capacity(tail_window as usize);
 
     for step in 0..cfg.steps {
+        if !target_applied && step >= burn_in_steps {
+            apply_mirror_weight(&mut pop, &landscape, &mut params, target_mirror);
+            target_applied = true;
+        }
         update_e4_landscape_from_population(&space, &params, &pop, &mut landscape);
         landscape.rhythm = rhythms;
         pop.advance(cfg.hop, cfg.fs, step as u64, dt, &landscape);
@@ -759,6 +789,10 @@ fn run_e4_condition_tail_samples_with_config_uncached(
     }
 
     E4TailSamples {
+        mirror_weight: target_mirror,
+        seed,
+        anchor_hz: cfg.anchor_hz,
+        burn_in_steps,
         steps_total: cfg.steps,
         tail_window,
         freqs_by_step,
@@ -1183,6 +1217,7 @@ fn anchor_control(anchor_hz: f32) -> AgentControl {
 fn voice_control(cfg: &E4SimConfig) -> AgentControl {
     let mut control = AgentControl::default();
     control.pitch.mode = PitchMode::Free;
+    control.pitch.core_kind = PitchCoreKind::PeakSampler;
     control.pitch.freq = cfg.center_hz().max(1.0);
     control.pitch.range_oct = cfg.range_oct;
     control.pitch.gravity = 0.0;

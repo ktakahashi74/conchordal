@@ -18,6 +18,7 @@ use rand::distr::Distribution;
 use rand::distr::weighted::WeightedIndex;
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
+use std::sync::{Arc, Mutex, OnceLock};
 
 pub const E4_ANCHOR_HZ: f32 = 220.0;
 #[allow(dead_code)]
@@ -408,6 +409,63 @@ pub struct E4TailSamples {
     pub agent_freqs_by_step: Vec<Vec<E4AgentFreq>>,
 }
 
+#[derive(Hash, Eq, PartialEq)]
+struct E4TailSamplesCacheKey {
+    mirror_weight_bits: u32,
+    seed: u64,
+    tail_window: u32,
+    steps: u32,
+    fmin_bits: u32,
+    fmax_bits: u32,
+    anchor_hz_bits: u32,
+    center_cents_bits: u32,
+    range_oct_bits: u32,
+    fs_bits: u32,
+    hop: u32,
+    bins_per_oct: u32,
+    voice_count: u32,
+    min_dist_erb_bits: u32,
+    exploration_bits: u32,
+    persistence_bits: u32,
+    theta_freq_hz_bits: u32,
+    neighbor_step_cents_bits: u32,
+}
+
+type E4TailSamplesCache = std::collections::HashMap<E4TailSamplesCacheKey, Arc<E4TailSamples>>;
+static E4_TAIL_SAMPLES_CACHE: OnceLock<Mutex<E4TailSamplesCache>> = OnceLock::new();
+
+fn e4_tail_samples_cache() -> &'static Mutex<E4TailSamplesCache> {
+    E4_TAIL_SAMPLES_CACHE.get_or_init(|| Mutex::new(std::collections::HashMap::new()))
+}
+
+fn e4_tail_samples_cache_key(
+    cfg: &E4SimConfig,
+    mirror_weight: f32,
+    seed: u64,
+    tail_window: u32,
+) -> E4TailSamplesCacheKey {
+    E4TailSamplesCacheKey {
+        mirror_weight_bits: mirror_weight.to_bits(),
+        seed,
+        tail_window,
+        steps: cfg.steps,
+        fmin_bits: cfg.fmin.to_bits(),
+        fmax_bits: cfg.fmax.to_bits(),
+        anchor_hz_bits: cfg.anchor_hz.to_bits(),
+        center_cents_bits: cfg.center_cents.to_bits(),
+        range_oct_bits: cfg.range_oct.to_bits(),
+        fs_bits: cfg.fs.to_bits(),
+        hop: cfg.hop as u32,
+        bins_per_oct: cfg.bins_per_oct,
+        voice_count: cfg.voice_count as u32,
+        min_dist_erb_bits: cfg.min_dist_erb.to_bits(),
+        exploration_bits: cfg.exploration.to_bits(),
+        persistence_bits: cfg.persistence.to_bits(),
+        theta_freq_hz_bits: cfg.theta_freq_hz.to_bits(),
+        neighbor_step_cents_bits: cfg.neighbor_step_cents.to_bits(),
+    }
+}
+
 #[derive(Clone, Debug)]
 #[allow(dead_code)]
 pub struct E4MirrorScheduleSamples {
@@ -468,7 +526,7 @@ pub fn run_e4_condition_tail_samples(
     mirror_weight: f32,
     seed: u64,
     tail_window: u32,
-) -> E4TailSamples {
+) -> Arc<E4TailSamples> {
     run_e4_condition_tail_samples_with_config(
         mirror_weight,
         seed,
@@ -577,6 +635,36 @@ fn run_e4_condition_with_config(mirror_weight: f32, seed: u64, cfg: &E4SimConfig
 
 #[allow(dead_code)]
 fn run_e4_condition_tail_samples_with_config(
+    mirror_weight: f32,
+    seed: u64,
+    cfg: &E4SimConfig,
+    tail_window: u32,
+) -> Arc<E4TailSamples> {
+    let key = e4_tail_samples_cache_key(cfg, mirror_weight, seed, tail_window);
+    {
+        let cache = e4_tail_samples_cache().lock().expect("tail samples cache poisoned");
+        if let Some(samples) = cache.get(&key) {
+            return Arc::clone(samples);
+        }
+    }
+
+    let samples = run_e4_condition_tail_samples_with_config_uncached(
+        mirror_weight,
+        seed,
+        cfg,
+        tail_window,
+    );
+    let mut cache = e4_tail_samples_cache().lock().expect("tail samples cache poisoned");
+    if let Some(samples) = cache.get(&key) {
+        return Arc::clone(samples);
+    }
+    let arc = Arc::new(samples);
+    cache.insert(key, Arc::clone(&arc));
+    arc
+}
+
+#[allow(dead_code)]
+fn run_e4_condition_tail_samples_with_config_uncached(
     mirror_weight: f32,
     seed: u64,
     cfg: &E4SimConfig,

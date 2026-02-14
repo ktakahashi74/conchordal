@@ -7847,7 +7847,7 @@ fn e4_validation_markdown() -> String {
         "",
         "## Timing diagnosis (ABCD trace)",
         "- Generate trace: `cargo run --example paper -- --exp e4 --e4-wr on`",
-        "- Analyze lag: `cargo run --bin e4_abcd_analyze -- --input examples/paper/plots/e4/paper_e4_abcd_trace.csv --outdir examples/paper/plots/e4`",
+        "- Analyze lag: `cargo run --example paper -- --e4-abcd-analyze --input examples/paper/plots/e4/paper_e4_abcd_trace.csv --outdir examples/paper/plots/e4`",
         "- Inspect: `e4_abcd_summary_by_mirror.csv`, `e4_abcd_summary_overall.md` and 3 PNG files.",
     ]
     .join("\n")
@@ -18281,6 +18281,68 @@ mod tests {
                 "missing required column: {required}"
             );
         }
+    }
+
+    #[test]
+    fn e4_abcd_lag_estimator_recovers_positive_three_in_examples_paper() {
+        fn best_lag_from_indices(
+            agent: &[i32],
+            oracle: &[i32],
+            burn_in: usize,
+            max_lag: i32,
+        ) -> i32 {
+            let n = agent.len().min(oracle.len());
+            let mut best_lag = 0i32;
+            let mut best_score = f32::NEG_INFINITY;
+            for lag in -max_lag..=max_lag {
+                let mut sum = 0.0f32;
+                let mut count = 0usize;
+                for t in burn_in..n {
+                    let t2 = t as i32 + lag;
+                    if t2 < 0 || t2 as usize >= n {
+                        continue;
+                    }
+                    let score = if agent[t] == oracle[t2 as usize] {
+                        1.0
+                    } else {
+                        0.0
+                    };
+                    sum += score;
+                    count += 1;
+                }
+                if count == 0 {
+                    continue;
+                }
+                let mean = sum / count as f32;
+                let better = mean > best_score + 1e-9;
+                let tie = (mean - best_score).abs() <= 1e-9;
+                if better
+                    || (tie && lag.abs() < best_lag.abs())
+                    || (tie && lag.abs() == best_lag.abs() && lag < best_lag)
+                {
+                    best_score = mean;
+                    best_lag = lag;
+                }
+            }
+            best_lag
+        }
+
+        let shift = 3i32;
+        let n = 40usize;
+        let burn_in = (n as f32 * 0.25).floor() as usize;
+        let agent: Vec<i32> = (0..n).map(|t| (t % 7) as i32).collect();
+        let oracle: Vec<i32> = (0..n)
+            .map(|t| {
+                let src = t as i32 - shift;
+                if src >= 0 {
+                    (src as usize % 7) as i32
+                } else {
+                    -1
+                }
+            })
+            .collect();
+        let best = best_lag_from_indices(&agent, &oracle, burn_in, 8);
+        assert_eq!(best, 3);
     }
 
     #[test]

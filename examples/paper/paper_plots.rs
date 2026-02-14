@@ -176,6 +176,7 @@ const E4_DYNAMICS_REPULSION_SIGMA: f32 = E2_SIGMA;
 const E4_DYNAMICS_STEP_SEMITONES: f32 = E2_STEP_SEMITONES;
 const E4_DYNAMICS_PEAK_TOP_N: usize = 64;
 const E4_ABCD_TRACE_STEPS: u32 = E4_DYNAMICS_PROBE_STEPS;
+const E4_DIAG_PEAK_TOP_K: usize = 8;
 const E4_EMIT_LEGACY_OUTPUTS: bool = false;
 
 const E3_FIRST_K: usize = 20;
@@ -3384,6 +3385,51 @@ fn plot_e4_mirror_sweep(
         render_e4_delta_bind_png(&delta_bind_png_path, &bind_summary)?;
         let fingerprint_heatmap_png_path = out_dir.join("paper_e4_fingerprint_heatmap.png");
         render_e4_fingerprint_heatmap_png(&fingerprint_heatmap_png_path, &fingerprint_summary)?;
+
+        let meta = e4_paper_meta();
+        let space = Log2Space::new(meta.fmin, meta.fmax, meta.bins_per_oct);
+        let (_erb_scan, du_scan) = erb_grid_for_space(&space);
+        let final_freqs = e4_final_freqs_by_mw_seed(&tail_agent_rows);
+        let k = k_from_semitones(E4_DYNAMICS_STEP_SEMITONES.max(1e-3));
+        let (diag_rows, diag_peak_rows) = e4_diag_rows_from_final_freqs(
+            &final_freqs,
+            &space,
+            anchor_hz,
+            &du_scan,
+            E4_ABCD_TRACE_STEPS,
+            E4_DYNAMICS_BASE_LAMBDA.max(0.0),
+            E4_DYNAMICS_REPULSION_SIGMA.max(1e-6),
+            k,
+        );
+        write_with_log(
+            out_dir.join("e4_oracle_step_trace.csv"),
+            e4_diag_step_rows_csv(&diag_rows),
+        )?;
+        write_with_log(
+            out_dir.join("e4_peaks_by_mw.csv"),
+            e4_peaks_by_mw_csv(&diag_peak_rows),
+        )?;
+        let landscape_delta_rows = e4_landscape_delta_rows(&weights, &space, anchor_hz, &du_scan);
+        write_with_log(
+            out_dir.join("e4_landscape_delta_by_mw.csv"),
+            e4_landscape_delta_by_mw_csv(&landscape_delta_rows),
+        )?;
+        render_e4_gap_over_time(
+            &out_dir.join("e4_gap_global_over_time.svg"),
+            &diag_rows,
+            true,
+        )?;
+        render_e4_gap_over_time(
+            &out_dir.join("e4_gap_reach_over_time.svg"),
+            &diag_rows,
+            false,
+        )?;
+        render_e4_gap_global_by_mw(&out_dir.join("e4_gap_global_by_mw.svg"), &diag_rows)?;
+        render_e4_peak_positions_vs_mw(
+            &out_dir.join("e4_peak_positions_vs_mw.svg"),
+            &diag_peak_rows,
+            E4_DIAG_PEAK_TOP_K,
+        )?;
         if emit_wr_probe {
             plot_e4_mirror_sweep_wr_cut(out_dir, anchor_hz)?;
         }
@@ -4141,6 +4187,45 @@ struct E4WrDynamicsProbeSummaryRow {
     delta_bind_ci_lo: f32,
     delta_bind_ci_hi: f32,
     pitch_diversity_st_mean: f32,
+}
+
+#[derive(Clone, Copy)]
+struct E4DiagStepRow {
+    step: u32,
+    mirror_weight: f32,
+    seed: u64,
+    agent_id: usize,
+    agent_idx: usize,
+    oracle_global_idx: usize,
+    oracle_reachable_idx: usize,
+    agent_score: f32,
+    oracle_global_score: f32,
+    oracle_reachable_score: f32,
+    gap_global: f32,
+    gap_reach: f32,
+    idx_err_global: f32,
+    idx_err_reach: f32,
+    idx_err_global_st: f32,
+    idx_err_reach_st: f32,
+}
+
+#[derive(Clone, Copy)]
+struct E4DiagPeakRow {
+    mirror_weight: f32,
+    seed: u64,
+    peak_rank: usize,
+    peak_idx: usize,
+    peak_log2: f32,
+    peak_semitones: f32,
+    peak_value: f32,
+}
+
+#[derive(Clone, Copy)]
+struct E4LandscapeDeltaRow {
+    mirror_weight: f32,
+    cosine_similarity: f32,
+    l1_distance: f32,
+    topk_peak_shift_st: f32,
 }
 
 #[derive(Clone)]
@@ -7207,6 +7292,82 @@ fn e4_wr_dynamics_probe_summary_csv(rows: &[E4WrDynamicsProbeSummaryRow]) -> Str
     out
 }
 
+fn e4_diag_candidate_score(
+    agent_i: usize,
+    current_indices: &[usize],
+    cand_idx: usize,
+    c_scan: &[f32],
+    log2_ratio_scan: &[f32],
+    lambda: f32,
+    sigma: f32,
+) -> Option<f32> {
+    if cand_idx >= c_scan.len() {
+        return None;
+    }
+    let cand_log2 = *log2_ratio_scan.get(cand_idx)?;
+    let mut repulsion = 0.0f32;
+    if lambda > 0.0 {
+        let sigma = sigma.max(1e-6);
+        for (j, &other_idx) in current_indices.iter().enumerate() {
+            if j == agent_i {
+                continue;
+            }
+            let Some(&other_log2) = log2_ratio_scan.get(other_idx) else {
+                continue;
+            };
+            repulsion += (-(cand_log2 - other_log2).abs() / sigma).exp();
+        }
+    }
+    Some(c_scan[cand_idx] - lambda * repulsion)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn e4_diag_best_index_and_score(
+    agent_i: usize,
+    current_indices: &[usize],
+    c_scan: &[f32],
+    log2_ratio_scan: &[f32],
+    min_idx: usize,
+    max_idx: usize,
+    k: i32,
+    lambda: f32,
+    sigma: f32,
+    global: bool,
+) -> (usize, f32) {
+    let current_idx = current_indices[agent_i].clamp(min_idx, max_idx);
+    let (start, end) = if global {
+        (min_idx, max_idx)
+    } else {
+        (
+            (current_idx as isize - k as isize).max(min_idx as isize) as usize,
+            (current_idx as isize + k as isize).min(max_idx as isize) as usize,
+        )
+    };
+    let mut best_idx = current_idx;
+    let mut best_score = f32::NEG_INFINITY;
+    for cand_idx in start..=end {
+        let Some(score) = e4_diag_candidate_score(
+            agent_i,
+            current_indices,
+            cand_idx,
+            c_scan,
+            log2_ratio_scan,
+            lambda,
+            sigma,
+        ) else {
+            continue;
+        };
+        if score > best_score {
+            best_score = score;
+            best_idx = cand_idx;
+        }
+    }
+    if !best_score.is_finite() {
+        best_score = 0.0;
+    }
+    (best_idx, best_score)
+}
+
 fn e4_freqs_from_indices(anchor_hz: f32, log2_ratio_scan: &[f32], indices: &[usize]) -> Vec<f32> {
     let mut freqs = Vec::with_capacity(indices.len());
     for &idx in indices {
@@ -7454,6 +7615,644 @@ fn e4_abcd_trace_csv(rows: &[E4AbcdTraceRow]) -> String {
         ));
     }
     out
+}
+
+fn e4_final_freqs_by_mw_seed(
+    rows: &[E4TailAgentRow],
+) -> std::collections::HashMap<(i32, u64), Vec<f32>> {
+    let mut latest_step: std::collections::HashMap<(i32, u64), u32> =
+        std::collections::HashMap::new();
+    for row in rows {
+        let key = (float_key(row.mirror_weight), row.seed);
+        latest_step
+            .entry(key)
+            .and_modify(|step| *step = (*step).max(row.step))
+            .or_insert(row.step);
+    }
+    let mut grouped: std::collections::HashMap<(i32, u64), Vec<(u64, f32)>> =
+        std::collections::HashMap::new();
+    for row in rows {
+        let key = (float_key(row.mirror_weight), row.seed);
+        if latest_step.get(&key).copied() != Some(row.step) {
+            continue;
+        }
+        grouped
+            .entry(key)
+            .or_default()
+            .push((row.agent_id, row.freq_hz));
+    }
+    let mut out = std::collections::HashMap::new();
+    for (key, mut vals) in grouped {
+        vals.sort_by_key(|(agent_id, _)| *agent_id);
+        let freqs: Vec<f32> = vals
+            .into_iter()
+            .map(|(_, freq)| freq)
+            .filter(|freq| freq.is_finite() && *freq > 0.0)
+            .collect();
+        if !freqs.is_empty() {
+            out.insert(key, freqs);
+        }
+    }
+    out
+}
+
+#[allow(clippy::too_many_arguments)]
+fn e4_diag_rows_from_final_freqs(
+    final_freqs: &std::collections::HashMap<(i32, u64), Vec<f32>>,
+    space: &Log2Space,
+    anchor_hz: f32,
+    du_scan: &[f32],
+    steps: u32,
+    lambda: f32,
+    sigma: f32,
+    k: i32,
+) -> (Vec<E4DiagStepRow>, Vec<E4DiagPeakRow>) {
+    let meta = e4_paper_meta();
+    let center_log2 = meta.center_cents / 1200.0;
+    let half_range = 0.5 * meta.range_oct.max(0.0);
+    let mut step_rows = Vec::new();
+    let mut peak_rows = Vec::new();
+    let mut keys: Vec<(i32, u64)> = final_freqs.keys().copied().collect();
+    keys.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+
+    for (mw_key, seed) in keys {
+        let Some(freqs) = final_freqs.get(&(mw_key, seed)) else {
+            continue;
+        };
+        let mirror_weight = float_from_key(mw_key);
+        let init_scan =
+            compute_e4_landscape_scans(space, anchor_hz, 1.0, mirror_weight, freqs, du_scan);
+        let peaks = extract_peak_rows_from_c_scan(
+            space,
+            anchor_hz,
+            &init_scan,
+            E4_DYNAMICS_PEAK_TOP_N.max(1),
+        );
+        for peak in peaks {
+            peak_rows.push(E4DiagPeakRow {
+                mirror_weight,
+                seed,
+                peak_rank: peak.rank,
+                peak_idx: peak.bin_idx,
+                peak_log2: peak.log2_ratio,
+                peak_semitones: peak.semitones,
+                peak_value: peak.c_value,
+            });
+        }
+        let (min_idx, max_idx) = log2_ratio_bounds(
+            &init_scan.log2_ratio,
+            center_log2 - half_range,
+            center_log2 + half_range,
+        );
+        let mut indices = Vec::new();
+        for &freq in freqs {
+            let idx = space
+                .index_of_freq(freq)
+                .unwrap_or_else(|| nearest_bin(space, freq))
+                .clamp(min_idx, max_idx);
+            indices.push(idx);
+        }
+        if indices.is_empty() {
+            continue;
+        }
+
+        for step in 0..=steps {
+            let freqs_step = e4_freqs_from_indices(anchor_hz, &init_scan.log2_ratio, &indices);
+            let scan = compute_e4_landscape_scans(
+                space,
+                anchor_hz,
+                1.0,
+                mirror_weight,
+                &freqs_step,
+                du_scan,
+            );
+            for agent_i in 0..indices.len() {
+                let agent_idx = indices[agent_i].clamp(min_idx, max_idx);
+                let agent_score = e4_diag_candidate_score(
+                    agent_i,
+                    &indices,
+                    agent_idx,
+                    &scan.c,
+                    &scan.log2_ratio,
+                    lambda,
+                    sigma,
+                )
+                .unwrap_or(0.0);
+                let (oracle_global_idx, oracle_global_score) = e4_diag_best_index_and_score(
+                    agent_i,
+                    &indices,
+                    &scan.c,
+                    &scan.log2_ratio,
+                    min_idx,
+                    max_idx,
+                    k,
+                    lambda,
+                    sigma,
+                    true,
+                );
+                let (oracle_reachable_idx, oracle_reachable_score) = e4_diag_best_index_and_score(
+                    agent_i,
+                    &indices,
+                    &scan.c,
+                    &scan.log2_ratio,
+                    min_idx,
+                    max_idx,
+                    k,
+                    lambda,
+                    sigma,
+                    false,
+                );
+                let agent_st = scan.semitones.get(agent_idx).copied().unwrap_or(0.0);
+                let oracle_global_st = scan
+                    .semitones
+                    .get(oracle_global_idx)
+                    .copied()
+                    .unwrap_or(agent_st);
+                let oracle_reach_st = scan
+                    .semitones
+                    .get(oracle_reachable_idx)
+                    .copied()
+                    .unwrap_or(agent_st);
+                step_rows.push(E4DiagStepRow {
+                    step,
+                    mirror_weight,
+                    seed,
+                    agent_id: agent_i,
+                    agent_idx,
+                    oracle_global_idx,
+                    oracle_reachable_idx,
+                    agent_score,
+                    oracle_global_score,
+                    oracle_reachable_score,
+                    gap_global: oracle_global_score - agent_score,
+                    gap_reach: oracle_reachable_score - agent_score,
+                    idx_err_global: oracle_global_idx.abs_diff(agent_idx) as f32,
+                    idx_err_reach: oracle_reachable_idx.abs_diff(agent_idx) as f32,
+                    idx_err_global_st: (oracle_global_st - agent_st).abs(),
+                    idx_err_reach_st: (oracle_reach_st - agent_st).abs(),
+                });
+            }
+            if step == steps {
+                break;
+            }
+            e4_wr_probe_update_indices(
+                &mut indices,
+                &scan.c,
+                &scan.log2_ratio,
+                min_idx,
+                max_idx,
+                k,
+                lambda,
+                sigma,
+                None,
+                false,
+            );
+        }
+    }
+
+    step_rows.sort_by(|a, b| {
+        a.mirror_weight
+            .partial_cmp(&b.mirror_weight)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.seed.cmp(&b.seed))
+            .then_with(|| a.step.cmp(&b.step))
+            .then_with(|| a.agent_id.cmp(&b.agent_id))
+    });
+    peak_rows.sort_by(|a, b| {
+        a.mirror_weight
+            .partial_cmp(&b.mirror_weight)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.seed.cmp(&b.seed))
+            .then_with(|| a.peak_rank.cmp(&b.peak_rank))
+    });
+    (step_rows, peak_rows)
+}
+
+fn e4_diag_step_rows_csv(rows: &[E4DiagStepRow]) -> String {
+    let mut out = String::from(
+        "step,mw,seed,agent_id,agent_idx,oracle_global_idx,oracle_reachable_idx,agent_score,oracle_global_score,oracle_reachable_score,gap_global,gap_reach,idx_err_global,idx_err_reach,idx_err_global_st,idx_err_reach_st\n",
+    );
+    for row in rows {
+        out.push_str(&format!(
+            "{},{:.3},{},{},{},{},{},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6}\n",
+            row.step,
+            row.mirror_weight,
+            row.seed,
+            row.agent_id,
+            row.agent_idx,
+            row.oracle_global_idx,
+            row.oracle_reachable_idx,
+            row.agent_score,
+            row.oracle_global_score,
+            row.oracle_reachable_score,
+            row.gap_global,
+            row.gap_reach,
+            row.idx_err_global,
+            row.idx_err_reach,
+            row.idx_err_global_st,
+            row.idx_err_reach_st
+        ));
+    }
+    out
+}
+
+fn e4_peaks_by_mw_csv(rows: &[E4DiagPeakRow]) -> String {
+    let mut out = String::from("mw,seed,peak_rank,peak_idx,peak_log2,peak_semitones,peak_value\n");
+    for row in rows {
+        out.push_str(&format!(
+            "{:.3},{},{},{},{:.6},{:.6},{:.6}\n",
+            row.mirror_weight,
+            row.seed,
+            row.peak_rank,
+            row.peak_idx,
+            row.peak_log2,
+            row.peak_semitones,
+            row.peak_value
+        ));
+    }
+    out
+}
+
+fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
+    let n = a.len().min(b.len());
+    if n == 0 {
+        return 0.0;
+    }
+    let mut dot = 0.0f32;
+    let mut na = 0.0f32;
+    let mut nb = 0.0f32;
+    for i in 0..n {
+        let x = a[i];
+        let y = b[i];
+        if !x.is_finite() || !y.is_finite() {
+            continue;
+        }
+        dot += x * y;
+        na += x * x;
+        nb += y * y;
+    }
+    if na <= 1e-12 || nb <= 1e-12 {
+        0.0
+    } else {
+        (dot / (na.sqrt() * nb.sqrt())).clamp(-1.0, 1.0)
+    }
+}
+
+fn l1_mean_distance(a: &[f32], b: &[f32]) -> f32 {
+    let n = a.len().min(b.len());
+    if n == 0 {
+        return 0.0;
+    }
+    let mut sum = 0.0f32;
+    let mut count = 0usize;
+    for i in 0..n {
+        if a[i].is_finite() && b[i].is_finite() {
+            sum += (a[i] - b[i]).abs();
+            count += 1;
+        }
+    }
+    if count == 0 { 0.0 } else { sum / count as f32 }
+}
+
+fn e4_landscape_delta_rows(
+    weights: &[f32],
+    space: &Log2Space,
+    anchor_hz: f32,
+    du_scan: &[f32],
+) -> Vec<E4LandscapeDeltaRow> {
+    let fixed_freqs = [anchor_hz];
+    let scan0 = compute_e4_landscape_scans(space, anchor_hz, 1.0, 0.0, &fixed_freqs, du_scan);
+    let peaks0 = extract_peak_rows_from_c_scan(space, anchor_hz, &scan0, E4_DIAG_PEAK_TOP_K.max(1));
+    let mut out = Vec::new();
+    for &mw in weights {
+        let mirror_weight = mw.clamp(0.0, 1.0);
+        let scan =
+            compute_e4_landscape_scans(space, anchor_hz, 1.0, mirror_weight, &fixed_freqs, du_scan);
+        let peaks =
+            extract_peak_rows_from_c_scan(space, anchor_hz, &scan, E4_DIAG_PEAK_TOP_K.max(1));
+        let n = peaks0.len().min(peaks.len()).min(E4_DIAG_PEAK_TOP_K);
+        let mut shift_sum = 0.0f32;
+        for i in 0..n {
+            shift_sum += (peaks0[i].semitones - peaks[i].semitones).abs();
+        }
+        let shift = if n == 0 { 0.0 } else { shift_sum / n as f32 };
+        out.push(E4LandscapeDeltaRow {
+            mirror_weight,
+            cosine_similarity: cosine_similarity(&scan0.c, &scan.c),
+            l1_distance: l1_mean_distance(&scan0.c, &scan.c),
+            topk_peak_shift_st: shift,
+        });
+    }
+    out.sort_by(|a, b| {
+        a.mirror_weight
+            .partial_cmp(&b.mirror_weight)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    out
+}
+
+fn e4_landscape_delta_by_mw_csv(rows: &[E4LandscapeDeltaRow]) -> String {
+    let mut out = String::from("mw,cosine_similarity,l1_distance,topk_peak_shift_st,environment\n");
+    for row in rows {
+        out.push_str(&format!(
+            "{:.3},{:.6},{:.6},{:.6},anchor_only\n",
+            row.mirror_weight, row.cosine_similarity, row.l1_distance, row.topk_peak_shift_st
+        ));
+    }
+    out
+}
+
+fn e4_quantile_points_by_step(
+    rows: &[E4DiagStepRow],
+    use_global: bool,
+) -> std::collections::HashMap<(i32, u32), (f32, f32, f32)> {
+    let mut grouped: std::collections::HashMap<(i32, u32), Vec<f32>> =
+        std::collections::HashMap::new();
+    for row in rows {
+        let v = if use_global {
+            row.gap_global
+        } else {
+            row.gap_reach
+        };
+        grouped
+            .entry((float_key(row.mirror_weight), row.step))
+            .or_default()
+            .push(v);
+    }
+    let mut out = std::collections::HashMap::new();
+    for (key, mut vals) in grouped {
+        if vals.is_empty() {
+            continue;
+        }
+        vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let n = vals.len();
+        let q = |p: f32| -> f32 {
+            let idx = (p * (n.saturating_sub(1) as f32)).round() as usize;
+            vals[idx.min(n - 1)]
+        };
+        out.insert(key, (q(0.25), q(0.50), q(0.75)));
+    }
+    out
+}
+
+fn render_e4_gap_over_time(
+    out_path: &Path,
+    rows: &[E4DiagStepRow],
+    use_global: bool,
+) -> Result<(), Box<dyn Error>> {
+    if rows.is_empty() {
+        return Ok(());
+    }
+    let quant = e4_quantile_points_by_step(rows, use_global);
+    if quant.is_empty() {
+        return Ok(());
+    }
+    let mut mw_keys: Vec<i32> = rows.iter().map(|r| float_key(r.mirror_weight)).collect();
+    mw_keys.sort();
+    mw_keys.dedup();
+    let max_step = rows.iter().map(|r| r.step).max().unwrap_or(0);
+    let mut y_min = f32::INFINITY;
+    let mut y_max = f32::NEG_INFINITY;
+    for &(q25, _q50, q75) in quant.values() {
+        y_min = y_min.min(q25);
+        y_max = y_max.max(q75);
+    }
+    if !y_min.is_finite() || !y_max.is_finite() || (y_max - y_min).abs() < 1e-9 {
+        y_min = -0.1;
+        y_max = 0.1;
+    }
+    let pad = 0.12 * (y_max - y_min).max(1e-3);
+    let root = bitmap_root(out_path, (1500, 900)).into_drawing_area();
+    root.fill(&WHITE)?;
+    let mut chart = ChartBuilder::on(&root)
+        .caption(
+            if use_global {
+                "E4 gap_global over time (median + IQR)"
+            } else {
+                "E4 gap_reach over time (median + IQR)"
+            },
+            ("sans-serif", 24),
+        )
+        .margin(16)
+        .x_label_area_size(42)
+        .y_label_area_size(60)
+        .build_cartesian_2d(0.0f32..max_step as f32, (y_min - pad)..(y_max + pad))?;
+    chart
+        .configure_mesh()
+        .x_desc("step")
+        .y_desc(if use_global {
+            "gap_global"
+        } else {
+            "gap_reach"
+        })
+        .draw()?;
+    for (i, mw_key) in mw_keys.iter().enumerate() {
+        let mut pts: Vec<(u32, f32, f32, f32)> = quant
+            .iter()
+            .filter(|((k, _), _)| *k == *mw_key)
+            .map(|((_, step), (q25, q50, q75))| (*step, *q25, *q50, *q75))
+            .collect();
+        pts.sort_by_key(|(step, _, _, _)| *step);
+        if pts.is_empty() {
+            continue;
+        }
+        let color = Palette99::pick(i);
+        let upper: Vec<(f32, f32)> = pts.iter().map(|(s, _, _, q75)| (*s as f32, *q75)).collect();
+        let lower: Vec<(f32, f32)> = pts.iter().map(|(s, q25, _, _)| (*s as f32, *q25)).collect();
+        let mut band = upper.clone();
+        for p in lower.iter().rev() {
+            band.push(*p);
+        }
+        chart.draw_series(std::iter::once(Polygon::new(
+            band,
+            color.mix(0.12).filled(),
+        )))?;
+        chart
+            .draw_series(LineSeries::new(
+                pts.iter().map(|(s, _, q50, _)| (*s as f32, *q50)),
+                color.stroke_width(2),
+            ))?
+            .label(format!("mw={:.2}", float_from_key(*mw_key)))
+            .legend(move |(x, y)| {
+                PathElement::new(vec![(x, y), (x + 20, y)], color.stroke_width(2))
+            });
+    }
+    chart
+        .configure_series_labels()
+        .background_style(WHITE.mix(0.85))
+        .border_style(BLACK.mix(0.4))
+        .draw()?;
+    root.present()?;
+    Ok(())
+}
+
+fn render_e4_gap_global_by_mw(
+    out_path: &Path,
+    rows: &[E4DiagStepRow],
+) -> Result<(), Box<dyn Error>> {
+    if rows.is_empty() {
+        return Ok(());
+    }
+    let max_step = rows.iter().map(|r| r.step).max().unwrap_or(0);
+    let tail_start = max_step.saturating_sub((max_step / 5).max(5));
+    let mut run_vals: std::collections::HashMap<(i32, u64), Vec<f32>> =
+        std::collections::HashMap::new();
+    for row in rows {
+        if row.step < tail_start {
+            continue;
+        }
+        run_vals
+            .entry((float_key(row.mirror_weight), row.seed))
+            .or_default()
+            .push(row.gap_global);
+    }
+    let mut by_mw: std::collections::HashMap<i32, Vec<f32>> = std::collections::HashMap::new();
+    for ((mw_key, _seed), vals) in run_vals {
+        if vals.is_empty() {
+            continue;
+        }
+        let mean = vals.iter().sum::<f32>() / vals.len() as f32;
+        by_mw.entry(mw_key).or_default().push(mean);
+    }
+    if by_mw.is_empty() {
+        return Ok(());
+    }
+    let mut points: Vec<(f32, f32, f32, f32)> = Vec::new();
+    for (mw_key, vals) in by_mw {
+        let seed = E4_BOOTSTRAP_SEED ^ (mw_key as i64 as u64).wrapping_mul(0x9E37_79B9);
+        let (mean, lo, hi) = bootstrap_mean_ci95(&vals, E4_BOOTSTRAP_ITERS, seed);
+        points.push((float_from_key(mw_key), mean, lo, hi));
+    }
+    points.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+    let mut y_min = points.iter().map(|p| p.2).fold(f32::INFINITY, f32::min);
+    let mut y_max = points.iter().map(|p| p.3).fold(f32::NEG_INFINITY, f32::max);
+    if !y_min.is_finite() || !y_max.is_finite() || (y_max - y_min).abs() < 1e-9 {
+        y_min = -0.1;
+        y_max = 0.1;
+    }
+    let pad = 0.15 * (y_max - y_min).max(1e-3);
+    let root = bitmap_root(out_path, (1200, 800)).into_drawing_area();
+    root.fill(&WHITE)?;
+    let mut chart = ChartBuilder::on(&root)
+        .caption(
+            "E4 gap_global by mirror_weight (tail mean +/- CI)",
+            ("sans-serif", 24),
+        )
+        .margin(16)
+        .x_label_area_size(42)
+        .y_label_area_size(60)
+        .build_cartesian_2d(0.0f32..1.0f32, (y_min - pad)..(y_max + pad))?;
+    chart
+        .configure_mesh()
+        .x_desc("mirror_weight")
+        .y_desc("gap_global")
+        .draw()?;
+    chart.draw_series(LineSeries::new(
+        points.iter().map(|(mw, mean, _lo, _hi)| (*mw, *mean)),
+        BLUE.stroke_width(2),
+    ))?;
+    chart.draw_series(points.iter().map(|(mw, _mean, lo, hi)| {
+        PathElement::new(vec![(*mw, *lo), (*mw, *hi)], BLUE.mix(0.6).stroke_width(1))
+    }))?;
+    chart.draw_series(
+        points
+            .iter()
+            .map(|(mw, mean, _lo, _hi)| Circle::new((*mw, *mean), 3, BLUE.filled())),
+    )?;
+    root.present()?;
+    Ok(())
+}
+
+fn render_e4_peak_positions_vs_mw(
+    out_path: &Path,
+    rows: &[E4DiagPeakRow],
+    top_k: usize,
+) -> Result<(), Box<dyn Error>> {
+    if rows.is_empty() || top_k == 0 {
+        return Ok(());
+    }
+    let mut grouped: std::collections::HashMap<(i32, usize), Vec<f32>> =
+        std::collections::HashMap::new();
+    for row in rows {
+        if row.peak_rank == 0 || row.peak_rank > top_k {
+            continue;
+        }
+        grouped
+            .entry((float_key(row.mirror_weight), row.peak_rank))
+            .or_default()
+            .push(row.peak_semitones);
+    }
+    if grouped.is_empty() {
+        return Ok(());
+    }
+    let mut mw_keys: Vec<i32> = grouped.keys().map(|(mw_key, _)| *mw_key).collect();
+    mw_keys.sort();
+    mw_keys.dedup();
+    let mut rank_series: std::collections::HashMap<usize, Vec<(f32, f32)>> =
+        std::collections::HashMap::new();
+    let mut y_min = f32::INFINITY;
+    let mut y_max = f32::NEG_INFINITY;
+    for rank in 1..=top_k {
+        let mut pts = Vec::new();
+        for mw_key in &mw_keys {
+            let Some(vals) = grouped.get(&(*mw_key, rank)) else {
+                continue;
+            };
+            let mut vals = vals.clone();
+            vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            let med = vals[vals.len() / 2];
+            pts.push((float_from_key(*mw_key), med));
+            y_min = y_min.min(med);
+            y_max = y_max.max(med);
+        }
+        if !pts.is_empty() {
+            pts.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+            rank_series.insert(rank, pts);
+        }
+    }
+    if rank_series.is_empty() {
+        return Ok(());
+    }
+    if !y_min.is_finite() || !y_max.is_finite() || (y_max - y_min).abs() < 1e-6 {
+        y_min = -12.0;
+        y_max = 12.0;
+    }
+    let pad = 0.10 * (y_max - y_min).max(1e-3);
+    let root = bitmap_root(out_path, (1400, 900)).into_drawing_area();
+    root.fill(&WHITE)?;
+    let mut chart = ChartBuilder::on(&root)
+        .caption(
+            "E4 peak positions vs mirror_weight (median across seeds)",
+            ("sans-serif", 24),
+        )
+        .margin(16)
+        .x_label_area_size(42)
+        .y_label_area_size(60)
+        .build_cartesian_2d(0.0f32..1.0f32, (y_min - pad)..(y_max + pad))?;
+    chart
+        .configure_mesh()
+        .x_desc("mirror_weight")
+        .y_desc("peak position (semitones)")
+        .draw()?;
+    for rank in 1..=top_k {
+        let Some(pts) = rank_series.get(&rank) else {
+            continue;
+        };
+        let color = Palette99::pick(rank - 1);
+        chart
+            .draw_series(LineSeries::new(pts.iter().copied(), color.stroke_width(2)))?
+            .label(format!("rank {rank}"))
+            .legend(move |(x, y)| {
+                PathElement::new(vec![(x, y), (x + 20, y)], color.stroke_width(2))
+            });
+    }
+    chart
+        .configure_series_labels()
+        .background_style(WHITE.mix(0.85))
+        .border_style(BLACK.mix(0.4))
+        .draw()?;
+    root.present()?;
+    Ok(())
 }
 
 fn render_e4_landscape_components_overlay(
@@ -7844,6 +8643,10 @@ fn e4_validation_markdown() -> String {
         "- Model-side issue: inspect H_lower/H_upper blending and C = H - w_r R scaling.",
         "- Search-side issue: inspect peaklist diversity and peak sampler candidate policy.",
         "- Metric-side issue: prioritize set-estimated binding metric for regime claims.",
+        "",
+        "## Metric semantics",
+        "- A/B/C/D are alignment diagnostics (agent-vs-oracle consistency), not harmonic regime indicators.",
+        "- E4 regime claims should rely on RootFit/CeilingFit/DeltaBind and interval fingerprint summaries with CI.",
         "",
         "## Timing diagnosis (ABCD trace)",
         "- Generate trace: `cargo run --example paper -- --exp e4 --e4-wr on`",
@@ -18343,6 +19146,81 @@ mod tests {
             .collect();
         let best = best_lag_from_indices(&agent, &oracle, burn_in, 8);
         assert_eq!(best, 3);
+    }
+
+    #[test]
+    fn e4_diag_landscape_changes_with_mirror_weight() {
+        let meta = e4_paper_meta();
+        let space = Log2Space::new(meta.fmin, meta.fmax, meta.bins_per_oct);
+        let (_erb_scan, du_scan) = erb_grid_for_space(&space);
+        let freqs = [
+            meta.anchor_hz,
+            meta.anchor_hz * (5.0 / 4.0),
+            meta.anchor_hz * (3.0 / 2.0),
+        ];
+        let scan0 = compute_e4_landscape_scans(&space, meta.anchor_hz, 1.0, 0.0, &freqs, &du_scan);
+        let scan1 = compute_e4_landscape_scans(&space, meta.anchor_hz, 1.0, 1.0, &freqs, &du_scan);
+        let delta = l1_mean_distance(&scan0.c, &scan1.c);
+        assert!(delta > 1e-5, "landscape delta too small: {delta}");
+    }
+
+    #[test]
+    fn oracle_global_score_is_not_lower_than_reachable() {
+        let c_scan = vec![0.1f32, 0.3, 0.9, 0.2, 0.4];
+        let log2_ratio_scan = vec![0.0f32, 0.1, 0.2, 0.3, 0.4];
+        let indices = vec![1usize, 3usize];
+        let (global_idx, global_score) = e4_diag_best_index_and_score(
+            0,
+            &indices,
+            &c_scan,
+            &log2_ratio_scan,
+            0,
+            c_scan.len() - 1,
+            1,
+            0.2,
+            0.1,
+            true,
+        );
+        let (reachable_idx, reachable_score) = e4_diag_best_index_and_score(
+            0,
+            &indices,
+            &c_scan,
+            &log2_ratio_scan,
+            0,
+            c_scan.len() - 1,
+            1,
+            0.2,
+            0.1,
+            false,
+        );
+        assert!(global_score + 1e-6 >= reachable_score);
+        assert!(global_idx < c_scan.len());
+        assert!(reachable_idx < c_scan.len());
+    }
+
+    #[test]
+    fn gap_reach_is_zero_when_agent_matches_reachable_oracle() {
+        let c_scan = vec![0.1f32, 0.2, 0.95, 0.4, 0.1];
+        let log2_ratio_scan = vec![0.0f32, 0.1, 0.2, 0.3, 0.4];
+        let indices = vec![2usize, 4usize];
+        let (oracle_reach_idx, oracle_reach_score) = e4_diag_best_index_and_score(
+            0,
+            &indices,
+            &c_scan,
+            &log2_ratio_scan,
+            0,
+            c_scan.len() - 1,
+            1,
+            0.0,
+            0.1,
+            false,
+        );
+        let agent_score =
+            e4_diag_candidate_score(0, &indices, indices[0], &c_scan, &log2_ratio_scan, 0.0, 0.1)
+                .unwrap_or(0.0);
+        if oracle_reach_idx == indices[0] {
+            assert!((oracle_reach_score - agent_score).abs() < 1e-6);
+        }
     }
 
     #[test]

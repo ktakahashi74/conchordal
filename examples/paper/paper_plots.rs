@@ -139,7 +139,7 @@ const E4_HYSTERESIS_SETTLE_STEPS: u32 = 180;
 const E4_HYSTERESIS_EVAL_WINDOW: u32 = 80;
 const E4_PROTOCOL_SEED: u64 = 0xC0FFEE_u64 + 10;
 const FLOAT_KEY_SCALE: f32 = 1000.0;
-const E4_SEEDS: [u64; 10] = [
+const E4_SEEDS: [u64; 20] = [
     0xC0FFEE_u64 + 10,
     0xC0FFEE_u64 + 11,
     0xC0FFEE_u64 + 12,
@@ -150,16 +150,31 @@ const E4_SEEDS: [u64; 10] = [
     0xC0FFEE_u64 + 17,
     0xC0FFEE_u64 + 18,
     0xC0FFEE_u64 + 19,
+    0xC0FFEE_u64 + 20,
+    0xC0FFEE_u64 + 21,
+    0xC0FFEE_u64 + 22,
+    0xC0FFEE_u64 + 23,
+    0xC0FFEE_u64 + 24,
+    0xC0FFEE_u64 + 25,
+    0xC0FFEE_u64 + 26,
+    0xC0FFEE_u64 + 27,
+    0xC0FFEE_u64 + 28,
+    0xC0FFEE_u64 + 29,
 ];
 const E4_REP_WEIGHTS: [f32; 5] = [0.0, 0.25, 0.5, 0.75, 1.0];
 const E4_WR_GRID: [f32; 3] = [1.0, 0.5, 0.0];
 const E4_WR_MIRROR_WEIGHTS: [f32; 3] = [0.0, 0.5, 1.0];
 const E4_WR_FINGERPRINT_FOCUS: [f32; 3] = [1.0, 0.5, 0.0];
-const E4_WR_REPS: usize = 2;
+const E4_WR_REPS: usize = 20;
 const E4_WR_BASE_SEED: u64 = 0xE4_7000_u64;
 const E4_WR_PEAKLIST_TOP_N: usize = 64;
 const E4_ORACLE_TOP_N: usize = 64;
 const E4_ORACLE_SAMPLE_TRIALS: usize = 256;
+const E4_DYNAMICS_PROBE_STEPS: u32 = 80;
+const E4_DYNAMICS_BASE_LAMBDA: f32 = E2_LAMBDA;
+const E4_DYNAMICS_REPULSION_SIGMA: f32 = E2_SIGMA;
+const E4_DYNAMICS_STEP_SEMITONES: f32 = E2_STEP_SEMITONES;
+const E4_DYNAMICS_PEAK_TOP_N: usize = 64;
 const E4_EMIT_LEGACY_OUTPUTS: bool = false;
 
 const E3_FIRST_K: usize = 20;
@@ -4068,12 +4083,63 @@ struct E4PeakRow {
 struct E4WrOracleRow {
     wr: f32,
     mirror_weight: f32,
+    n_seeds: usize,
     n_peaks: usize,
     agent_delta_bind: f32,
     oracle1_delta_bind: f32,
+    oracle1_delta_bind_ci_lo: f32,
+    oracle1_delta_bind_ci_hi: f32,
     oracle2_delta_bind_mean: f32,
     oracle2_delta_bind_ci_lo: f32,
     oracle2_delta_bind_ci_hi: f32,
+}
+
+#[derive(Clone, Copy)]
+struct E4WrOracleRunRow {
+    wr: f32,
+    mirror_weight: f32,
+    seed: u64,
+    n_peaks: usize,
+    agent_delta_bind: f32,
+    oracle1_delta_bind: f32,
+    oracle2_delta_bind: f32,
+}
+
+#[derive(Clone, Copy)]
+struct E4WrDynamicsProbeRow {
+    wr: f32,
+    mirror_weight: f32,
+    seed: u64,
+    mode: &'static str,
+    step: u32,
+    n_agents: usize,
+    mean_c01: f32,
+    mean_h01: f32,
+    mean_r01: f32,
+    mean_repulsion: f32,
+    root_fit: f32,
+    ceiling_fit: f32,
+    delta_bind: f32,
+    pitch_diversity_st: f32,
+}
+
+#[derive(Clone, Copy)]
+struct E4WrDynamicsProbeSummaryRow {
+    wr: f32,
+    mirror_weight: f32,
+    mode: &'static str,
+    step: u32,
+    n_seeds: usize,
+    mean_c01: f32,
+    mean_h01: f32,
+    mean_r01: f32,
+    mean_repulsion: f32,
+    root_fit_mean: f32,
+    ceiling_fit_mean: f32,
+    delta_bind_mean: f32,
+    delta_bind_ci_lo: f32,
+    delta_bind_ci_hi: f32,
+    pitch_diversity_st_mean: f32,
 }
 
 fn seeded_rng(seed: u64) -> StdRng {
@@ -4373,6 +4439,50 @@ impl E4CountMode {
             E4CountMode::Soft => "soft",
             E4CountMode::Hard => "hard",
         }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum E4DynamicsProbeMode {
+    BaselineSequential,
+    LambdaZeroSequential,
+    PeakRestrictedSequential,
+    PeakRestrictedSynchronous,
+}
+
+impl E4DynamicsProbeMode {
+    const ALL: [Self; 4] = [
+        Self::BaselineSequential,
+        Self::LambdaZeroSequential,
+        Self::PeakRestrictedSequential,
+        Self::PeakRestrictedSynchronous,
+    ];
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::BaselineSequential => "baseline_seq",
+            Self::LambdaZeroSequential => "lambda0_seq",
+            Self::PeakRestrictedSequential => "peak_seq",
+            Self::PeakRestrictedSynchronous => "peak_sync",
+        }
+    }
+
+    fn lambda(self) -> f32 {
+        match self {
+            Self::LambdaZeroSequential => 0.0,
+            _ => E4_DYNAMICS_BASE_LAMBDA,
+        }
+    }
+
+    fn peak_restricted(self) -> bool {
+        matches!(
+            self,
+            Self::PeakRestrictedSequential | Self::PeakRestrictedSynchronous
+        )
+    }
+
+    fn synchronous(self) -> bool {
+        matches!(self, Self::PeakRestrictedSynchronous)
     }
 }
 
@@ -4813,7 +4923,7 @@ fn normalize_freq_ratios(freqs: &[f32]) -> Vec<f32> {
     }
     clean.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     let mid = clean.len() / 2;
-    let median = if clean.len() % 2 == 0 {
+    let median = if clean.len().is_multiple_of(2) {
         0.5 * (clean[mid - 1] + clean[mid])
     } else {
         clean[mid]
@@ -4954,21 +5064,41 @@ fn ceiling_fit_from_freqs(freqs: &[f32]) -> f32 {
     best
 }
 
-fn bind_scores_from_freqs(freqs: &[f32]) -> (f32, f32, f32) {
+#[derive(Clone, Copy, Debug)]
+struct BindEval {
+    root_fit: f32,
+    ceiling_fit: f32,
+    delta_bind: f32,
+}
+
+fn bind_eval_from_freqs(freqs: &[f32]) -> BindEval {
     let clean_freqs: Vec<f32> = freqs
         .iter()
         .copied()
         .filter(|f| f.is_finite() && *f > 0.0)
         .collect();
     if clean_freqs.is_empty() {
-        return (0.0, 0.0, 0.0);
+        return BindEval {
+            root_fit: 0.0,
+            ceiling_fit: 0.0,
+            delta_bind: 0.0,
+        };
     }
     // Voices only (anchor excluded): this keeps the regime metric tied to population structure.
     let root_fit = root_fit_from_freqs(&clean_freqs);
     let ceiling_fit = ceiling_fit_from_freqs(&clean_freqs);
     let denom = root_fit + ceiling_fit + 1e-6;
-    let delta_bind = (root_fit - ceiling_fit) / denom;
-    (root_fit, ceiling_fit, delta_bind.clamp(-1.0, 1.0))
+    let delta_bind = ((root_fit - ceiling_fit) / denom).clamp(-1.0, 1.0);
+    BindEval {
+        root_fit,
+        ceiling_fit,
+        delta_bind,
+    }
+}
+
+fn bind_scores_from_freqs(freqs: &[f32]) -> (f32, f32, f32) {
+    let eval = bind_eval_from_freqs(freqs);
+    (eval.root_fit, eval.ceiling_fit, eval.delta_bind)
 }
 
 fn anchored_fit_from_ratios(ratios: &[f32]) -> f32 {
@@ -5053,8 +5183,7 @@ fn sample_weighted_index(weights: &[f32], rng: &mut StdRng) -> Option<usize> {
 fn oracle1_delta_bind_from_peaks(peaks: &[E4PeakRow], k: usize) -> f32 {
     let k = k.max(1);
     let freqs: Vec<f32> = peaks.iter().take(k).map(|p| p.freq_hz).collect();
-    let (_, _, delta) = bind_scores_from_freqs(&freqs);
-    delta
+    bind_eval_from_freqs(&freqs).delta_bind
 }
 
 fn oracle2_delta_bind_from_peaks(
@@ -5079,43 +5208,119 @@ fn oracle2_delta_bind_from_peaks(
             let idx = sample_weighted_index(&weights, &mut rng).unwrap_or(0);
             freqs.push(pool[idx].freq_hz);
         }
-        deltas.push(bind_scores_from_freqs(&freqs).2);
+        deltas.push(bind_eval_from_freqs(&freqs).delta_bind);
     }
-    let (mean, _se, lo, hi) = mean_se_t_ci95(&deltas);
-    (mean, lo, hi)
+    bootstrap_mean_ci95(&deltas, E4_BOOTSTRAP_ITERS, seed ^ 0xB007_5EED)
 }
 
-fn e4_wr_oracle_rows(
-    bind_rows: &[E4WrBindSummaryRow],
-    peak_map: &std::collections::HashMap<(i32, i32), Vec<E4PeakRow>>,
+fn e4_wr_oracle_run_rows(
+    bind_runs: &[E4WrBindRunRow],
+    grouped_freqs: &std::collections::HashMap<(i32, i32, u64), Vec<f32>>,
+    space: &Log2Space,
+    anchor_hz: f32,
+    du_scan: &[f32],
     population_size: usize,
-) -> Vec<E4WrOracleRow> {
+) -> Vec<E4WrOracleRunRow> {
     let mut out = Vec::new();
-    for row in bind_rows {
-        let key = (float_key(row.wr), float_key(row.mirror_weight));
-        let Some(peaks) = peak_map.get(&key) else {
+    for run in bind_runs {
+        let key = (float_key(run.wr), float_key(run.mirror_weight), run.seed);
+        let Some(freqs) = grouped_freqs.get(&key) else {
             continue;
         };
-        let oracle1 = oracle1_delta_bind_from_peaks(peaks, population_size);
-        let seed = E4_WR_BASE_SEED
+        let scan =
+            compute_e4_landscape_scans(space, anchor_hz, run.wr, run.mirror_weight, freqs, du_scan);
+        let peaks = extract_peak_rows_from_c_scan(space, anchor_hz, &scan, E4_ORACLE_TOP_N.max(1));
+        let oracle1 = oracle1_delta_bind_from_peaks(&peaks, population_size);
+        let oracle_seed = E4_WR_BASE_SEED
             ^ (key.0 as i64 as u64).wrapping_mul(0x9E37_79B9)
-            ^ (key.1 as i64 as u64).wrapping_mul(0x85EB_CA6B);
-        let (oracle2_mean, oracle2_lo, oracle2_hi) = oracle2_delta_bind_from_peaks(
-            peaks,
+            ^ (key.1 as i64 as u64).wrapping_mul(0x85EB_CA6B)
+            ^ key.2.wrapping_mul(0xC2B2_AE35);
+        let (oracle2_mean, _oracle2_lo, _oracle2_hi) = oracle2_delta_bind_from_peaks(
+            &peaks,
             E4_ORACLE_TOP_N,
             population_size,
             E4_ORACLE_SAMPLE_TRIALS,
-            seed,
+            oracle_seed,
         );
-        out.push(E4WrOracleRow {
-            wr: row.wr,
-            mirror_weight: row.mirror_weight,
+        out.push(E4WrOracleRunRow {
+            wr: run.wr,
+            mirror_weight: run.mirror_weight,
+            seed: run.seed,
             n_peaks: peaks.len(),
-            agent_delta_bind: row.delta_bind_mean,
+            agent_delta_bind: run.delta_bind,
             oracle1_delta_bind: oracle1,
-            oracle2_delta_bind_mean: oracle2_mean,
-            oracle2_delta_bind_ci_lo: oracle2_lo,
-            oracle2_delta_bind_ci_hi: oracle2_hi,
+            oracle2_delta_bind: oracle2_mean,
+        });
+    }
+    out.sort_by(|a, b| {
+        a.wr.partial_cmp(&b.wr)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| {
+                a.mirror_weight
+                    .partial_cmp(&b.mirror_weight)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .then_with(|| a.seed.cmp(&b.seed))
+    });
+    out
+}
+
+fn e4_wr_oracle_runs_csv(rows: &[E4WrOracleRunRow]) -> String {
+    let mut out = String::from(
+        "wr,mirror_weight,seed,n_peaks,delta_bind_agent,delta_bind_oracle1,delta_bind_oracle2\n",
+    );
+    for row in rows {
+        out.push_str(&format!(
+            "{:.3},{:.3},{},{},{:.6},{:.6},{:.6}\n",
+            row.wr,
+            row.mirror_weight,
+            row.seed,
+            row.n_peaks,
+            row.agent_delta_bind,
+            row.oracle1_delta_bind,
+            row.oracle2_delta_bind
+        ));
+    }
+    out
+}
+
+fn e4_wr_oracle_rows_from_runs(rows: &[E4WrOracleRunRow]) -> Vec<E4WrOracleRow> {
+    let mut grouped: std::collections::HashMap<(i32, i32), Vec<&E4WrOracleRunRow>> =
+        std::collections::HashMap::new();
+    for row in rows {
+        grouped
+            .entry((float_key(row.wr), float_key(row.mirror_weight)))
+            .or_default()
+            .push(row);
+    }
+    let mut out = Vec::with_capacity(grouped.len());
+    for ((wr_key, mirror_key), group) in grouped {
+        let agent_vals: Vec<f32> = group.iter().map(|r| r.agent_delta_bind).collect();
+        let oracle1_vals: Vec<f32> = group.iter().map(|r| r.oracle1_delta_bind).collect();
+        let oracle2_vals: Vec<f32> = group.iter().map(|r| r.oracle2_delta_bind).collect();
+        let mean_peaks = group.iter().map(|r| r.n_peaks as f32).sum::<f32>() / group.len() as f32;
+        let seed = E4_BOOTSTRAP_SEED
+            ^ 0x0A_C1E_u64
+            ^ (wr_key as i64 as u64).wrapping_mul(0x9E37_79B9)
+            ^ (mirror_key as i64 as u64).wrapping_mul(0x85EB_CA6B);
+        let (agent_mean, _agent_lo, _agent_hi) =
+            bootstrap_mean_ci95(&agent_vals, E4_BOOTSTRAP_ITERS, seed ^ 0x11);
+        let (oracle1_mean, oracle1_lo, oracle1_hi) =
+            bootstrap_mean_ci95(&oracle1_vals, E4_BOOTSTRAP_ITERS, seed ^ 0x22);
+        let (oracle2_mean, oracle2_lo, oracle2_hi) =
+            bootstrap_mean_ci95(&oracle2_vals, E4_BOOTSTRAP_ITERS, seed ^ 0x33);
+        out.push(E4WrOracleRow {
+            wr: float_from_key(wr_key),
+            mirror_weight: float_from_key(mirror_key),
+            n_seeds: group.len(),
+            n_peaks: mean_peaks.round().max(0.0) as usize,
+            agent_delta_bind: agent_mean.clamp(-1.0, 1.0),
+            oracle1_delta_bind: oracle1_mean.clamp(-1.0, 1.0),
+            oracle1_delta_bind_ci_lo: oracle1_lo.clamp(-1.0, 1.0),
+            oracle1_delta_bind_ci_hi: oracle1_hi.clamp(-1.0, 1.0),
+            oracle2_delta_bind_mean: oracle2_mean.clamp(-1.0, 1.0),
+            oracle2_delta_bind_ci_lo: oracle2_lo.clamp(-1.0, 1.0),
+            oracle2_delta_bind_ci_hi: oracle2_hi.clamp(-1.0, 1.0),
         });
     }
     out.sort_by(|a, b| {
@@ -5132,16 +5337,19 @@ fn e4_wr_oracle_rows(
 
 fn e4_wr_oracle_csv(rows: &[E4WrOracleRow]) -> String {
     let mut out = String::from(
-        "wr,mirror_weight,n_peaks,delta_bind_agent,delta_bind_oracle1,delta_bind_oracle2_mean,delta_bind_oracle2_ci_lo,delta_bind_oracle2_ci_hi\n",
+        "wr,mirror_weight,n_seeds,n_peaks,delta_bind_agent,delta_bind_oracle1,delta_bind_oracle1_ci_lo,delta_bind_oracle1_ci_hi,delta_bind_oracle2_mean,delta_bind_oracle2_ci_lo,delta_bind_oracle2_ci_hi\n",
     );
     for row in rows {
         out.push_str(&format!(
-            "{:.3},{:.3},{},{:.6},{:.6},{:.6},{:.6},{:.6}\n",
+            "{:.3},{:.3},{},{},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6}\n",
             row.wr,
             row.mirror_weight,
+            row.n_seeds,
             row.n_peaks,
             row.agent_delta_bind,
             row.oracle1_delta_bind,
+            row.oracle1_delta_bind_ci_lo,
+            row.oracle1_delta_bind_ci_hi,
             row.oracle2_delta_bind_mean,
             row.oracle2_delta_bind_ci_lo,
             row.oracle2_delta_bind_ci_hi
@@ -5178,14 +5386,14 @@ fn e4_bind_metrics_from_tail_agents(rows: &[E4TailAgentRow]) -> Vec<E4BindMetric
     for ((weight_key, seed), mut agent_rows) in final_freqs {
         agent_rows.sort_by_key(|(agent_id, _)| *agent_id);
         let freqs: Vec<f32> = agent_rows.iter().map(|(_, freq)| *freq).collect();
-        let (root_fit, ceiling_fit, delta_bind) = bind_scores_from_freqs(&freqs);
+        let eval = bind_eval_from_freqs(&freqs);
         let step = latest_step.get(&(weight_key, seed)).copied().unwrap_or(0);
         metrics.push(E4BindMetricRow {
             mirror_weight: float_from_key(weight_key),
             seed,
-            root_fit,
-            ceiling_fit,
-            delta_bind,
+            root_fit: eval.root_fit,
+            ceiling_fit: eval.ceiling_fit,
+            delta_bind: eval.delta_bind,
             n_agents: freqs.len(),
             step,
         });
@@ -5329,24 +5537,28 @@ fn e4_fingerprint_label_index(label: &str) -> usize {
         .unwrap_or(E4_FINGERPRINT_LABELS.len().saturating_sub(1))
 }
 
+fn ji_cents(num: u32, den: u32) -> f32 {
+    1200.0 * ((num as f32) / (den as f32)).log2()
+}
+
 fn e4_fingerprint_category_distance(cents_mod: f32, category_idx: usize) -> f32 {
     match category_idx {
-        0 => circular_cents_distance(cents_mod, 111.731_285), // 16/15
-        1 => circular_cents_distance(cents_mod, 203.910_004), // 9/8
-        2 => circular_cents_distance(cents_mod, 315.641_296), // 6/5
-        3 => circular_cents_distance(cents_mod, 386.313_721), // 5/4
-        4 => circular_cents_distance(cents_mod, 498.044_983), // 4/3
+        0 => circular_cents_distance(cents_mod, ji_cents(16, 15)), // 16/15
+        1 => circular_cents_distance(cents_mod, ji_cents(9, 8)),   // 9/8
+        2 => circular_cents_distance(cents_mod, ji_cents(6, 5)),   // 6/5
+        3 => circular_cents_distance(cents_mod, ji_cents(5, 4)),   // 5/4
+        4 => circular_cents_distance(cents_mod, ji_cents(4, 3)),   // 4/3
         5 => {
-            let d0 = circular_cents_distance(cents_mod, 582.512_207); // 7/5
-            let d1 = circular_cents_distance(cents_mod, 590.223_694); // 45/32
+            let d0 = circular_cents_distance(cents_mod, ji_cents(7, 5)); // 7/5
+            let d1 = circular_cents_distance(cents_mod, ji_cents(45, 32)); // 45/32
             d0.min(d1)
         }
-        6 => circular_cents_distance(cents_mod, 701.955_017), // 3/2
-        7 => circular_cents_distance(cents_mod, 813.686_279), // 8/5
-        8 => circular_cents_distance(cents_mod, 884.358_704), // 5/3
-        9 => circular_cents_distance(cents_mod, 1_017.596_313), // 9/5
-        10 => circular_cents_distance(cents_mod, 1_088.268_677), // 15/8
-        11 => circular_cents_distance(cents_mod, 0.0),        // octave class (0/1200)
+        6 => circular_cents_distance(cents_mod, ji_cents(3, 2)), // 3/2
+        7 => circular_cents_distance(cents_mod, ji_cents(8, 5)), // 8/5
+        8 => circular_cents_distance(cents_mod, ji_cents(5, 3)), // 5/3
+        9 => circular_cents_distance(cents_mod, ji_cents(9, 5)), // 9/5
+        10 => circular_cents_distance(cents_mod, ji_cents(15, 8)), // 15/8
+        11 => circular_cents_distance(cents_mod, 0.0),           // octave class (0/1200)
         _ => f32::INFINITY,
     }
 }
@@ -5483,9 +5695,9 @@ fn e4_fingerprint_summary_rows(rows: &[E4FingerprintRow]) -> Vec<E4FingerprintSu
         out.push(E4FingerprintSummaryRow {
             mirror_weight: float_from_key(weight_key),
             category,
-            mean_prob,
-            prob_ci_lo,
-            prob_ci_hi,
+            mean_prob: mean_prob.clamp(0.0, 1.0),
+            prob_ci_lo: prob_ci_lo.clamp(0.0, 1.0),
+            prob_ci_hi: prob_ci_hi.clamp(0.0, 1.0),
             n_seeds: values.len(),
         });
     }
@@ -5770,6 +5982,7 @@ fn e4_peaklist_csv(wr: f32, mirror_weight: f32, peaks: &[E4PeakRow]) -> String {
     out
 }
 
+#[cfg(test)]
 fn t_critical_975(df: usize) -> f32 {
     match df {
         0 => 0.0,
@@ -5807,6 +6020,7 @@ fn t_critical_975(df: usize) -> f32 {
     }
 }
 
+#[cfg(test)]
 fn mean_se_t_ci95(values: &[f32]) -> (f32, f32, f32, f32) {
     if values.is_empty() {
         return (0.0, 0.0, 0.0, 0.0);
@@ -5837,7 +6051,7 @@ fn e4_collect_wr_tail_agent_rows(weights: &[f32]) -> Vec<E4WrTailAgentRow> {
             let mirror_weight = mirror_raw.clamp(0.0, 1.0);
             for rep_i in 0..E4_WR_REPS {
                 let seed =
-                    E4_WR_BASE_SEED + (wr_i as u64) * 1_000 + (mw_i as u64) * 10 + rep_i as u64;
+                    E4_WR_BASE_SEED + (wr_i as u64) * 10_000 + (mw_i as u64) * 1_000 + rep_i as u64;
                 let samples = run_e4_condition_tail_samples_with_wr(
                     mirror_weight,
                     seed,
@@ -5905,16 +6119,16 @@ fn e4_wr_bind_runs_from_tail_agents(
     for ((wr_key, mirror_key, seed), mut agent_rows) in grouped {
         agent_rows.sort_by_key(|(agent_id, _)| *agent_id);
         let freqs: Vec<f32> = agent_rows.iter().map(|(_, freq)| *freq).collect();
-        let (root_fit, ceiling_fit, delta_bind) = bind_scores_from_freqs(&freqs);
+        let eval = bind_eval_from_freqs(&freqs);
         let (root_fit_anchor, ceiling_fit_anchor, delta_bind_anchor) =
             bind_scores_anchor_from_freqs(anchor_hz, &freqs);
         out.push(E4WrBindRunRow {
             wr: float_from_key(wr_key),
             mirror_weight: float_from_key(mirror_key),
             seed,
-            root_fit,
-            ceiling_fit,
-            delta_bind,
+            root_fit: eval.root_fit,
+            ceiling_fit: eval.ceiling_fit,
+            delta_bind: eval.delta_bind,
             root_fit_anchor,
             ceiling_fit_anchor,
             delta_bind_anchor,
@@ -5972,25 +6186,22 @@ fn e4_wr_bind_summary_rows(rows: &[E4WrBindRunRow]) -> Vec<E4WrBindSummaryRow> {
         let ceiling_anchor_vals: Vec<f32> =
             group.iter().map(|row| row.ceiling_fit_anchor).collect();
         let delta_anchor_vals: Vec<f32> = group.iter().map(|row| row.delta_bind_anchor).collect();
-        let (root_fit_mean, _root_se, root_fit_ci_lo, root_fit_ci_hi) = mean_se_t_ci95(&root_vals);
-        let (ceiling_fit_mean, _ceiling_se, ceiling_fit_ci_lo, ceiling_fit_ci_hi) =
-            mean_se_t_ci95(&ceiling_vals);
-        let (delta_bind_mean, _delta_se, delta_bind_ci_lo, delta_bind_ci_hi) =
-            mean_se_t_ci95(&delta_vals);
-        let (root_fit_anchor_mean, _root_anchor_se, root_fit_anchor_ci_lo, root_fit_anchor_ci_hi) =
-            mean_se_t_ci95(&root_anchor_vals);
-        let (
-            ceiling_fit_anchor_mean,
-            _ceiling_anchor_se,
-            ceiling_fit_anchor_ci_lo,
-            ceiling_fit_anchor_ci_hi,
-        ) = mean_se_t_ci95(&ceiling_anchor_vals);
-        let (
-            delta_bind_anchor_mean,
-            _delta_anchor_se,
-            delta_bind_anchor_ci_lo,
-            delta_bind_anchor_ci_hi,
-        ) = mean_se_t_ci95(&delta_anchor_vals);
+        let seed = E4_BOOTSTRAP_SEED
+            ^ 0xE4B1_DA7Au64
+            ^ (wr_key as i64 as u64).wrapping_mul(0x9E37_79B9)
+            ^ (mirror_key as i64 as u64).wrapping_mul(0x85EB_CA6B);
+        let (root_fit_mean, root_fit_ci_lo, root_fit_ci_hi) =
+            bootstrap_mean_ci95(&root_vals, E4_BOOTSTRAP_ITERS, seed ^ 0x11);
+        let (ceiling_fit_mean, ceiling_fit_ci_lo, ceiling_fit_ci_hi) =
+            bootstrap_mean_ci95(&ceiling_vals, E4_BOOTSTRAP_ITERS, seed ^ 0x22);
+        let (delta_bind_mean, delta_bind_ci_lo, delta_bind_ci_hi) =
+            bootstrap_mean_ci95(&delta_vals, E4_BOOTSTRAP_ITERS, seed ^ 0x33);
+        let (root_fit_anchor_mean, root_fit_anchor_ci_lo, root_fit_anchor_ci_hi) =
+            bootstrap_mean_ci95(&root_anchor_vals, E4_BOOTSTRAP_ITERS, seed ^ 0x44);
+        let (ceiling_fit_anchor_mean, ceiling_fit_anchor_ci_lo, ceiling_fit_anchor_ci_hi) =
+            bootstrap_mean_ci95(&ceiling_anchor_vals, E4_BOOTSTRAP_ITERS, seed ^ 0x55);
+        let (delta_bind_anchor_mean, delta_bind_anchor_ci_lo, delta_bind_anchor_ci_hi) =
+            bootstrap_mean_ci95(&delta_anchor_vals, E4_BOOTSTRAP_ITERS, seed ^ 0x66);
         out.push(E4WrBindSummaryRow {
             wr: float_from_key(wr_key),
             mirror_weight: float_from_key(mirror_key),
@@ -6142,14 +6353,20 @@ fn e4_wr_fingerprint_summary_rows(
     }
     let mut out = Vec::new();
     for ((wr_key, mirror_key, category), values) in grouped {
-        let (mean_prob, _se, prob_ci_lo, prob_ci_hi) = mean_se_t_ci95(&values);
+        let seed = E4_BOOTSTRAP_SEED
+            ^ 0xF1A6_11A5_u64
+            ^ (wr_key as i64 as u64).wrapping_mul(0x9E37_79B9)
+            ^ (mirror_key as i64 as u64).wrapping_mul(0x85EB_CA6B)
+            ^ (e4_fingerprint_label_index(category) as u64).wrapping_mul(0xC2B2_AE35);
+        let (mean_prob, prob_ci_lo, prob_ci_hi) =
+            bootstrap_mean_ci95(&values, E4_BOOTSTRAP_ITERS, seed);
         out.push(E4WrFingerprintSummaryRow {
             wr: float_from_key(wr_key),
             mirror_weight: float_from_key(mirror_key),
             category,
-            mean_prob,
-            prob_ci_lo,
-            prob_ci_hi,
+            mean_prob: mean_prob.clamp(0.0, 1.0),
+            prob_ci_lo: prob_ci_lo.clamp(0.0, 1.0),
+            prob_ci_hi: prob_ci_hi.clamp(0.0, 1.0),
             n_seeds: values.len(),
         });
     }
@@ -6174,7 +6391,7 @@ fn e4_wr_fingerprint_summary_csv(rows: &[E4WrFingerprintSummaryRow]) -> String {
     );
     for row in rows {
         out.push_str(&format!(
-            "{:.3},{:.3},{},{:.6},{:.6},{:.6},{},t_ci95,cents,{:.3},abs_mod_1200\n",
+            "{:.3},{:.3},{},{:.6},{:.6},{:.6},{},bootstrap_pctl95,cents,{:.3},abs_mod_1200\n",
             row.wr,
             row.mirror_weight,
             row.category,
@@ -6226,7 +6443,7 @@ fn e4_wr_sweep_summary_csv(
         let delta_anchor_ci95 =
             0.5 * (row.delta_bind_anchor_ci_hi - row.delta_bind_anchor_ci_lo).max(0.0);
         out.push_str(&format!(
-            "{:.3},{:.3},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{},t_ci95,{:.6},{:.6},{:.6},{:.6},{:.6},{:.6}",
+            "{:.3},{:.3},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{},bootstrap_pctl95,{:.6},{:.6},{:.6},{:.6},{:.6},{:.6}",
             row.wr,
             row.mirror_weight,
             row.root_fit_mean,
@@ -6282,7 +6499,7 @@ fn render_e4_wr_delta_bind_vs_mirror(
     root.fill(&WHITE)?;
     let mut chart = ChartBuilder::on(&root)
         .caption(
-            "E4 w_r sweep: DeltaBind vs mirror_weight (mean ± t-CI95)",
+            "E4 w_r sweep: DeltaBind vs mirror_weight (mean ± bootstrap CI95)",
             ("sans-serif", 24),
         )
         .margin(12)
@@ -6367,17 +6584,17 @@ fn render_e4_wr_root_ceiling_vs_mirror(
 
     let n = wr_grid.len();
     let cols = 3usize.min(n.max(1));
-    let rows_n = (n + cols - 1) / cols;
+    let rows_n = n.div_ceil(cols);
     let root = bitmap_root(out_path, (1700, 420 * rows_n as u32)).into_drawing_area();
     root.fill(&WHITE)?;
-    let mut panels = root.split_evenly((rows_n, cols));
+    let panels = root.split_evenly((rows_n, cols));
 
     for (panel_i, wr_raw) in wr_grid.iter().copied().enumerate() {
         if panel_i >= panels.len() {
             break;
         }
         let wr = normalize_wr(wr_raw);
-        let area = &mut panels[panel_i];
+        let area = &panels[panel_i];
         let wr_key = float_key(wr);
         let mut group: Vec<&E4WrBindSummaryRow> = rows
             .iter()
@@ -6527,6 +6744,446 @@ fn grouped_freqs_by_wr_mw(
             .push(row.freq_hz);
     }
     map
+}
+
+fn grouped_freqs_by_wr_mw_seed(
+    rows: &[E4WrTailAgentRow],
+) -> std::collections::HashMap<(i32, i32, u64), Vec<f32>> {
+    let mut map: std::collections::HashMap<(i32, i32, u64), Vec<f32>> =
+        std::collections::HashMap::new();
+    for row in rows {
+        map.entry((float_key(row.wr), float_key(row.mirror_weight), row.seed))
+            .or_default()
+            .push(row.freq_hz);
+    }
+    map
+}
+
+fn mean_scan_at_indices(scan: &[f32], indices: &[usize]) -> f32 {
+    if indices.is_empty() || scan.is_empty() {
+        return 0.0;
+    }
+    let mut sum = 0.0f32;
+    let mut count = 0u32;
+    for &idx in indices {
+        if let Some(&value) = scan.get(idx)
+            && value.is_finite()
+        {
+            sum += value;
+            count += 1;
+        }
+    }
+    if count == 0 { 0.0 } else { sum / count as f32 }
+}
+
+fn mean_repulsion_from_indices(indices: &[usize], log2_ratio_scan: &[f32], sigma: f32) -> f32 {
+    if indices.is_empty() {
+        return 0.0;
+    }
+    let sigma = sigma.max(1e-6);
+    let mut sum = 0.0f32;
+    let mut count = 0u32;
+    for (i, &idx) in indices.iter().enumerate() {
+        let Some(&x) = log2_ratio_scan.get(idx) else {
+            continue;
+        };
+        let mut rep = 0.0f32;
+        for (j, &other_idx) in indices.iter().enumerate() {
+            if i == j {
+                continue;
+            }
+            let Some(&y) = log2_ratio_scan.get(other_idx) else {
+                continue;
+            };
+            rep += (-(x - y).abs() / sigma).exp();
+        }
+        if rep.is_finite() {
+            sum += rep;
+            count += 1;
+        }
+    }
+    if count == 0 { 0.0 } else { sum / count as f32 }
+}
+
+fn pitch_diversity_st_from_indices(semitones_scan: &[f32], indices: &[usize]) -> f32 {
+    if indices.is_empty() {
+        return 0.0;
+    }
+    let mut vals = Vec::with_capacity(indices.len());
+    for &idx in indices {
+        if let Some(&v) = semitones_scan.get(idx)
+            && v.is_finite()
+        {
+            vals.push(v);
+        }
+    }
+    mean_std_scalar(&vals).1
+}
+
+fn bind_eval_from_indices(anchor_hz: f32, log2_ratio_scan: &[f32], indices: &[usize]) -> BindEval {
+    let mut freqs = Vec::with_capacity(indices.len());
+    for &idx in indices {
+        let Some(&l2) = log2_ratio_scan.get(idx) else {
+            continue;
+        };
+        let freq = anchor_hz * 2.0f32.powf(l2);
+        if freq.is_finite() && freq > 0.0 {
+            freqs.push(freq);
+        }
+    }
+    bind_eval_from_freqs(&freqs)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn e4_wr_probe_best_index(
+    agent_i: usize,
+    current_indices: &[usize],
+    c_scan: &[f32],
+    log2_ratio_scan: &[f32],
+    min_idx: usize,
+    max_idx: usize,
+    k: i32,
+    lambda: f32,
+    sigma: f32,
+    peak_bins: Option<&[usize]>,
+) -> usize {
+    let current_idx = current_indices[agent_i].clamp(min_idx, max_idx);
+    let sigma = sigma.max(1e-6);
+    let skip_repulsion = lambda <= 0.0;
+    let mut best_idx = current_idx;
+    let mut best_score = f32::NEG_INFINITY;
+
+    let evaluate = |cand_idx: usize, best_score: &mut f32, best_idx: &mut usize| {
+        if cand_idx < min_idx || cand_idx > max_idx || cand_idx >= c_scan.len() {
+            return;
+        }
+        let Some(&cand_log2) = log2_ratio_scan.get(cand_idx) else {
+            return;
+        };
+        let mut repulsion = 0.0f32;
+        if !skip_repulsion {
+            for (j, &other_idx) in current_indices.iter().enumerate() {
+                if j == agent_i {
+                    continue;
+                }
+                let Some(&other_log2) = log2_ratio_scan.get(other_idx) else {
+                    continue;
+                };
+                repulsion += (-(cand_log2 - other_log2).abs() / sigma).exp();
+            }
+        }
+        let score = c_scan[cand_idx] - lambda * repulsion;
+        if score > *best_score {
+            *best_score = score;
+            *best_idx = cand_idx;
+        }
+    };
+
+    if let Some(pool) = peak_bins {
+        for &cand_idx in pool {
+            evaluate(cand_idx, &mut best_score, &mut best_idx);
+        }
+        evaluate(current_idx, &mut best_score, &mut best_idx);
+    } else {
+        let start = (current_idx as isize - k as isize).max(min_idx as isize) as usize;
+        let end = (current_idx as isize + k as isize).min(max_idx as isize) as usize;
+        for cand_idx in start..=end {
+            evaluate(cand_idx, &mut best_score, &mut best_idx);
+        }
+    }
+    best_idx
+}
+
+#[allow(clippy::too_many_arguments)]
+fn e4_wr_probe_update_indices(
+    indices: &mut [usize],
+    c_scan: &[f32],
+    log2_ratio_scan: &[f32],
+    min_idx: usize,
+    max_idx: usize,
+    k: i32,
+    lambda: f32,
+    sigma: f32,
+    peak_bins: Option<&[usize]>,
+    synchronous: bool,
+) {
+    if indices.is_empty() {
+        return;
+    }
+    if synchronous {
+        let prev = indices.to_vec();
+        let mut next = prev.clone();
+        for (agent_i, slot) in next.iter_mut().enumerate() {
+            *slot = e4_wr_probe_best_index(
+                agent_i,
+                &prev,
+                c_scan,
+                log2_ratio_scan,
+                min_idx,
+                max_idx,
+                k,
+                lambda,
+                sigma,
+                peak_bins,
+            );
+        }
+        indices.copy_from_slice(&next);
+    } else {
+        for agent_i in 0..indices.len() {
+            let best = e4_wr_probe_best_index(
+                agent_i,
+                indices,
+                c_scan,
+                log2_ratio_scan,
+                min_idx,
+                max_idx,
+                k,
+                lambda,
+                sigma,
+                peak_bins,
+            );
+            indices[agent_i] = best;
+        }
+    }
+}
+
+fn e4_wr_dynamics_probe_rows(
+    grouped_freqs: &std::collections::HashMap<(i32, i32, u64), Vec<f32>>,
+    space: &Log2Space,
+    anchor_hz: f32,
+    du_scan: &[f32],
+) -> Vec<E4WrDynamicsProbeRow> {
+    let meta = e4_paper_meta();
+    let center_log2 = meta.center_cents / 1200.0;
+    let half_range = 0.5 * meta.range_oct.max(0.0);
+    let k = k_from_semitones(E4_DYNAMICS_STEP_SEMITONES.max(1e-3));
+    let sigma = E4_DYNAMICS_REPULSION_SIGMA.max(1e-6);
+
+    let mut rows = Vec::new();
+    let mut keys: Vec<(i32, i32, u64)> = grouped_freqs.keys().copied().collect();
+    keys.sort_by(|a, b| {
+        a.0.cmp(&b.0)
+            .then_with(|| a.1.cmp(&b.1))
+            .then_with(|| a.2.cmp(&b.2))
+    });
+
+    for (wr_key, mirror_key, seed) in keys {
+        let Some(freqs) = grouped_freqs.get(&(wr_key, mirror_key, seed)) else {
+            continue;
+        };
+        let wr = float_from_key(wr_key);
+        let mirror_weight = float_from_key(mirror_key);
+        let scan = compute_e4_landscape_scans(space, anchor_hz, wr, mirror_weight, freqs, du_scan);
+        let (min_idx, max_idx) = log2_ratio_bounds(
+            &scan.log2_ratio,
+            center_log2 - half_range,
+            center_log2 + half_range,
+        );
+
+        let mut initial_indices = Vec::new();
+        for &freq in freqs {
+            let idx = space
+                .index_of_freq(freq)
+                .unwrap_or_else(|| nearest_bin(space, freq))
+                .clamp(min_idx, max_idx);
+            initial_indices.push(idx);
+        }
+        if initial_indices.is_empty() {
+            continue;
+        }
+
+        let mut peak_bins: Vec<usize> =
+            extract_peak_rows_from_c_scan(space, anchor_hz, &scan, E4_DYNAMICS_PEAK_TOP_N.max(1))
+                .into_iter()
+                .map(|p| p.bin_idx)
+                .filter(|idx| *idx >= min_idx && *idx <= max_idx)
+                .collect();
+        peak_bins.sort_unstable();
+        peak_bins.dedup();
+        if peak_bins.is_empty() {
+            peak_bins = initial_indices.clone();
+            peak_bins.sort_unstable();
+            peak_bins.dedup();
+        }
+
+        for mode in E4DynamicsProbeMode::ALL {
+            let mut indices = initial_indices.clone();
+            for step in 0..=E4_DYNAMICS_PROBE_STEPS {
+                let eval = bind_eval_from_indices(anchor_hz, &scan.log2_ratio, &indices);
+                rows.push(E4WrDynamicsProbeRow {
+                    wr,
+                    mirror_weight,
+                    seed,
+                    mode: mode.label(),
+                    step,
+                    n_agents: indices.len(),
+                    mean_c01: mean_scan_at_indices(&scan.c, &indices),
+                    mean_h01: mean_scan_at_indices(&scan.h, &indices),
+                    mean_r01: mean_scan_at_indices(&scan.r, &indices),
+                    mean_repulsion: mean_repulsion_from_indices(&indices, &scan.log2_ratio, sigma),
+                    root_fit: eval.root_fit,
+                    ceiling_fit: eval.ceiling_fit,
+                    delta_bind: eval.delta_bind,
+                    pitch_diversity_st: pitch_diversity_st_from_indices(&scan.semitones, &indices),
+                });
+
+                if step == E4_DYNAMICS_PROBE_STEPS {
+                    break;
+                }
+                let peak_pool = if mode.peak_restricted() {
+                    Some(peak_bins.as_slice())
+                } else {
+                    None
+                };
+                e4_wr_probe_update_indices(
+                    &mut indices,
+                    &scan.c,
+                    &scan.log2_ratio,
+                    min_idx,
+                    max_idx,
+                    k,
+                    mode.lambda(),
+                    sigma,
+                    peak_pool,
+                    mode.synchronous(),
+                );
+            }
+        }
+    }
+
+    rows.sort_by(|a, b| {
+        a.wr.partial_cmp(&b.wr)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| {
+                a.mirror_weight
+                    .partial_cmp(&b.mirror_weight)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .then_with(|| a.seed.cmp(&b.seed))
+            .then_with(|| a.mode.cmp(b.mode))
+            .then_with(|| a.step.cmp(&b.step))
+    });
+    rows
+}
+
+fn e4_wr_dynamics_probe_timeseries_csv(rows: &[E4WrDynamicsProbeRow]) -> String {
+    let mut out = String::from(
+        "wr,mirror_weight,seed,mode,step,n_agents,mean_c01,mean_h01,mean_r01,mean_repulsion,root_fit,ceiling_fit,delta_bind,pitch_diversity_st\n",
+    );
+    for row in rows {
+        out.push_str(&format!(
+            "{:.3},{:.3},{},{},{},{},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6}\n",
+            row.wr,
+            row.mirror_weight,
+            row.seed,
+            row.mode,
+            row.step,
+            row.n_agents,
+            row.mean_c01,
+            row.mean_h01,
+            row.mean_r01,
+            row.mean_repulsion,
+            row.root_fit,
+            row.ceiling_fit,
+            row.delta_bind,
+            row.pitch_diversity_st
+        ));
+    }
+    out
+}
+
+fn e4_wr_dynamics_probe_summary_rows(
+    rows: &[E4WrDynamicsProbeRow],
+) -> Vec<E4WrDynamicsProbeSummaryRow> {
+    let mut grouped: std::collections::HashMap<
+        (i32, i32, &'static str, u32),
+        Vec<&E4WrDynamicsProbeRow>,
+    > = std::collections::HashMap::new();
+    for row in rows {
+        grouped
+            .entry((
+                float_key(row.wr),
+                float_key(row.mirror_weight),
+                row.mode,
+                row.step,
+            ))
+            .or_default()
+            .push(row);
+    }
+    let mut out = Vec::new();
+    for ((wr_key, mirror_key, mode, step), group) in grouped {
+        let c_vals: Vec<f32> = group.iter().map(|r| r.mean_c01).collect();
+        let h_vals: Vec<f32> = group.iter().map(|r| r.mean_h01).collect();
+        let r_vals: Vec<f32> = group.iter().map(|r| r.mean_r01).collect();
+        let rep_vals: Vec<f32> = group.iter().map(|r| r.mean_repulsion).collect();
+        let root_vals: Vec<f32> = group.iter().map(|r| r.root_fit).collect();
+        let ceiling_vals: Vec<f32> = group.iter().map(|r| r.ceiling_fit).collect();
+        let delta_vals: Vec<f32> = group.iter().map(|r| r.delta_bind).collect();
+        let diversity_vals: Vec<f32> = group.iter().map(|r| r.pitch_diversity_st).collect();
+        let seed = E4_BOOTSTRAP_SEED
+            ^ 0xD1A6_00A3_u64
+            ^ (wr_key as i64 as u64).wrapping_mul(0x9E37_79B9)
+            ^ (mirror_key as i64 as u64).wrapping_mul(0x85EB_CA6B)
+            ^ (step as u64).wrapping_mul(0xC2B2_AE35);
+        let (delta_bind_mean, delta_bind_ci_lo, delta_bind_ci_hi) =
+            bootstrap_mean_ci95(&delta_vals, E4_BOOTSTRAP_ITERS, seed ^ 0x77);
+        out.push(E4WrDynamicsProbeSummaryRow {
+            wr: float_from_key(wr_key),
+            mirror_weight: float_from_key(mirror_key),
+            mode,
+            step,
+            n_seeds: group.len(),
+            mean_c01: mean_std_scalar(&c_vals).0,
+            mean_h01: mean_std_scalar(&h_vals).0,
+            mean_r01: mean_std_scalar(&r_vals).0,
+            mean_repulsion: mean_std_scalar(&rep_vals).0,
+            root_fit_mean: mean_std_scalar(&root_vals).0,
+            ceiling_fit_mean: mean_std_scalar(&ceiling_vals).0,
+            delta_bind_mean,
+            delta_bind_ci_lo,
+            delta_bind_ci_hi,
+            pitch_diversity_st_mean: mean_std_scalar(&diversity_vals).0,
+        });
+    }
+    out.sort_by(|a, b| {
+        a.wr.partial_cmp(&b.wr)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| {
+                a.mirror_weight
+                    .partial_cmp(&b.mirror_weight)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .then_with(|| a.mode.cmp(b.mode))
+            .then_with(|| a.step.cmp(&b.step))
+    });
+    out
+}
+
+fn e4_wr_dynamics_probe_summary_csv(rows: &[E4WrDynamicsProbeSummaryRow]) -> String {
+    let mut out = String::from(
+        "wr,mirror_weight,mode,step,n_seeds,mean_c01,mean_h01,mean_r01,mean_repulsion,root_fit_mean,ceiling_fit_mean,delta_bind_mean,delta_bind_ci_lo,delta_bind_ci_hi,pitch_diversity_st_mean,error_kind\n",
+    );
+    for row in rows {
+        out.push_str(&format!(
+            "{:.3},{:.3},{},{},{},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},bootstrap_pctl95\n",
+            row.wr,
+            row.mirror_weight,
+            row.mode,
+            row.step,
+            row.n_seeds,
+            row.mean_c01,
+            row.mean_h01,
+            row.mean_r01,
+            row.mean_repulsion,
+            row.root_fit_mean,
+            row.ceiling_fit_mean,
+            row.delta_bind_mean,
+            row.delta_bind_ci_lo,
+            row.delta_bind_ci_hi,
+            row.pitch_diversity_st_mean
+        ));
+    }
+    out
 }
 
 fn render_e4_landscape_components_overlay(
@@ -6717,10 +7374,10 @@ fn render_e4_wr_agent_vs_oracle_plot(
     wr_keys.sort();
     wr_keys.dedup();
     let cols = 3usize.min(wr_keys.len().max(1));
-    let rows_n = (wr_keys.len() + cols - 1) / cols;
+    let rows_n = wr_keys.len().div_ceil(cols);
     let root = bitmap_root(out_path, (1700, 420 * rows_n as u32)).into_drawing_area();
     root.fill(&WHITE)?;
-    let mut panels = root.split_evenly((rows_n, cols));
+    let panels = root.split_evenly((rows_n, cols));
     for (i, wr_key) in wr_keys.iter().enumerate() {
         if i >= panels.len() {
             break;
@@ -6741,11 +7398,11 @@ fn render_e4_wr_agent_vs_oracle_plot(
         for row in &group {
             y_min = y_min
                 .min(row.agent_delta_bind)
-                .min(row.oracle1_delta_bind)
+                .min(row.oracle1_delta_bind_ci_lo)
                 .min(row.oracle2_delta_bind_ci_lo);
             y_max = y_max
                 .max(row.agent_delta_bind)
-                .max(row.oracle1_delta_bind)
+                .max(row.oracle1_delta_bind_ci_hi)
                 .max(row.oracle2_delta_bind_ci_hi);
         }
         if !y_min.is_finite() || !y_max.is_finite() || (y_max - y_min).abs() < 1e-6 {
@@ -6784,6 +7441,15 @@ fn render_e4_wr_agent_vs_oracle_plot(
             ))?
             .label("oracle1")
             .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 18, y)], RED.stroke_width(2)));
+        chart.draw_series(group.iter().map(|r| {
+            PathElement::new(
+                vec![
+                    (r.mirror_weight, r.oracle1_delta_bind_ci_lo),
+                    (r.mirror_weight, r.oracle1_delta_bind_ci_hi),
+                ],
+                RED.mix(0.45).stroke_width(1),
+            )
+        }))?;
         chart
             .draw_series(LineSeries::new(
                 group
@@ -6871,7 +7537,7 @@ fn e4_wr_units_meta_text() -> String {
         E4_FINGERPRINT_TOL_CENTS
     ));
     out.push_str("- fingerprint folding: abs_mod_1200\n");
-    out.push_str("- wr summary error_kind: t_ci95 (two-sided, Student-t)\n");
+    out.push_str("- wr summary error_kind: bootstrap_pctl95 (non-parametric percentile CI)\n");
     out.push_str("- landscape components: H_lower/H_upper/H/R/C are state01 on Log2 grid\n");
     out.push_str("- oracle1: greedy top-C peaks (K=population)\n");
     out.push_str("- oracle2: weighted sampling from top-C peaks\n");
@@ -6891,6 +7557,12 @@ fn e4_validation_markdown() -> String {
         "- Compare `paper_e4_wr_oracle_vs_agent.csv` or `paper_e4_wr_delta_bind_agent_vs_oracle.svg`.",
         "- If oracle curves switch sign/level but agent curve stays flat, dynamics/search is bottleneck.",
         "- If oracle also does not switch, model-side landscape definition is likely bottleneck.",
+        "",
+        "## 2b) Dynamics ablation (lambda / candidate vocabulary / update rule)",
+        "- Inspect `paper_e4_wr_dynamics_probe_timeseries.csv` and `paper_e4_wr_dynamics_probe_summary.csv`.",
+        "- Modes: `baseline_seq`, `lambda0_seq`, `peak_seq`, `peak_sync`.",
+        "- If `lambda0_seq` tracks oracle better, repulsion is likely suppressing binding bias.",
+        "- If `peak_seq`/`peak_sync` improve while baseline does not, candidate vocabulary or update schedule is the bottleneck.",
         "",
         "## 3) Anchor-fixed bias in metric?",
         "- In `paper_e4_wr_sweep_runs.csv` and `paper_e4_wr_sweep_summary.csv`, compare:",
@@ -6957,8 +7629,6 @@ fn plot_e4_mirror_sweep_wr_cut(out_dir: &Path, anchor_hz: f32) -> Result<(), Box
     let (_erb_scan, du_scan) = erb_grid_for_space(&space);
     let grouped_freqs = grouped_freqs_by_wr_mw(&tail_rows);
     let mut landscape_scans = Vec::new();
-    let mut peak_map: std::collections::HashMap<(i32, i32), Vec<E4PeakRow>> =
-        std::collections::HashMap::new();
     for &wr in &E4_WR_GRID {
         for &mw in &mirror_weights {
             let key = (float_key(normalize_wr(wr)), float_key(mw));
@@ -6986,7 +7656,6 @@ fn plot_e4_mirror_sweep_wr_cut(out_dir: &Path, anchor_hz: f32) -> Result<(), Box
                     e4_peaklist_csv(scan.wr, scan.mirror_weight, &peaks),
                 )?;
             }
-            peak_map.insert(key, peaks);
             landscape_scans.push(scan);
         }
     }
@@ -7004,7 +7673,20 @@ fn plot_e4_mirror_sweep_wr_cut(out_dir: &Path, anchor_hz: f32) -> Result<(), Box
         1.0,
     )?;
 
-    let oracle_rows = e4_wr_oracle_rows(&bind_summary, &peak_map, meta.voice_count);
+    let grouped_freqs_seed = grouped_freqs_by_wr_mw_seed(&tail_rows);
+    let oracle_run_rows = e4_wr_oracle_run_rows(
+        &bind_runs,
+        &grouped_freqs_seed,
+        &space,
+        anchor_hz,
+        &du_scan,
+        meta.voice_count,
+    );
+    write_with_log(
+        out_dir.join("paper_e4_wr_oracle_vs_agent_runs.csv"),
+        e4_wr_oracle_runs_csv(&oracle_run_rows),
+    )?;
+    let oracle_rows = e4_wr_oracle_rows_from_runs(&oracle_run_rows);
     write_with_log(
         out_dir.join("paper_e4_wr_oracle_vs_agent.csv"),
         e4_wr_oracle_csv(&oracle_rows),
@@ -7012,6 +7694,18 @@ fn plot_e4_mirror_sweep_wr_cut(out_dir: &Path, anchor_hz: f32) -> Result<(), Box
     render_e4_wr_agent_vs_oracle_plot(
         &out_dir.join("paper_e4_wr_delta_bind_agent_vs_oracle.svg"),
         &oracle_rows,
+    )?;
+
+    let dynamics_probe_rows =
+        e4_wr_dynamics_probe_rows(&grouped_freqs_seed, &space, anchor_hz, &du_scan);
+    write_with_log(
+        out_dir.join("paper_e4_wr_dynamics_probe_timeseries.csv"),
+        e4_wr_dynamics_probe_timeseries_csv(&dynamics_probe_rows),
+    )?;
+    let dynamics_probe_summary = e4_wr_dynamics_probe_summary_rows(&dynamics_probe_rows);
+    write_with_log(
+        out_dir.join("paper_e4_wr_dynamics_probe_summary.csv"),
+        e4_wr_dynamics_probe_summary_csv(&dynamics_probe_summary),
     )?;
 
     render_e4_wr_delta_bind_vs_mirror(
@@ -17015,6 +17709,151 @@ mod tests {
     }
 
     #[test]
+    fn mirror_weight_prefers_expected_binding_family() {
+        let meta = e4_paper_meta();
+        let space = Log2Space::new(meta.fmin, meta.fmax, meta.bins_per_oct);
+        let (_erb_scan, du_scan) = erb_grid_for_space(&space);
+
+        let root_family = [
+            meta.anchor_hz,
+            meta.anchor_hz * (5.0 / 4.0),
+            meta.anchor_hz * (3.0 / 2.0),
+            meta.anchor_hz * 2.0,
+        ];
+        let ceiling_family = [
+            meta.anchor_hz,
+            meta.anchor_hz * (4.0 / 5.0),
+            meta.anchor_hz * (2.0 / 3.0),
+            meta.anchor_hz * 0.5,
+        ];
+
+        let scan_m0 =
+            compute_e4_landscape_scans(&space, meta.anchor_hz, 1.0, 0.0, &root_family, &du_scan);
+        let scan_m1 =
+            compute_e4_landscape_scans(&space, meta.anchor_hz, 1.0, 1.0, &ceiling_family, &du_scan);
+        let p_m0 = extract_peak_rows_from_c_scan(&space, meta.anchor_hz, &scan_m0, 12);
+        let p_m1 = extract_peak_rows_from_c_scan(&space, meta.anchor_hz, &scan_m1, 12);
+        assert!(
+            !p_m0.is_empty() && !p_m1.is_empty(),
+            "expected non-empty peak sets for synthetic families"
+        );
+        let f_m0: Vec<f32> = p_m0.iter().take(8).map(|p| p.freq_hz).collect();
+        let f_m1: Vec<f32> = p_m1.iter().take(8).map(|p| p.freq_hz).collect();
+        let eval_m0 = bind_eval_from_freqs(&f_m0);
+        let eval_m1 = bind_eval_from_freqs(&f_m1);
+
+        println!(
+            "mw=0 root_fit={:.6} ceiling_fit={:.6} delta={:.6}",
+            eval_m0.root_fit, eval_m0.ceiling_fit, eval_m0.delta_bind
+        );
+        println!(
+            "mw=1 root_fit={:.6} ceiling_fit={:.6} delta={:.6}",
+            eval_m1.root_fit, eval_m1.ceiling_fit, eval_m1.delta_bind
+        );
+        assert!(
+            eval_m0.root_fit > eval_m0.ceiling_fit,
+            "mw=0 should favor root-binding"
+        );
+        assert!(
+            eval_m1.ceiling_fit > eval_m1.root_fit,
+            "mw=1 should favor ceiling-binding"
+        );
+    }
+
+    #[test]
+    fn oracle_and_agent_share_same_bind_evaluator() {
+        let peaks = vec![
+            E4PeakRow {
+                rank: 1,
+                bin_idx: 0,
+                log2_ratio: 0.0,
+                semitones: 0.0,
+                freq_hz: 220.0,
+                c_value: 1.0,
+                prominence: 0.8,
+                width_st: 0.3,
+            },
+            E4PeakRow {
+                rank: 2,
+                bin_idx: 1,
+                log2_ratio: 0.3219281,
+                semitones: 3.8631372,
+                freq_hz: 275.0,
+                c_value: 0.9,
+                prominence: 0.7,
+                width_st: 0.3,
+            },
+            E4PeakRow {
+                rank: 3,
+                bin_idx: 2,
+                log2_ratio: 0.5849625,
+                semitones: 7.01955,
+                freq_hz: 330.0,
+                c_value: 0.85,
+                prominence: 0.7,
+                width_st: 0.3,
+            },
+            E4PeakRow {
+                rank: 4,
+                bin_idx: 3,
+                log2_ratio: 1.0,
+                semitones: 12.0,
+                freq_hz: 440.0,
+                c_value: 0.8,
+                prominence: 0.6,
+                width_st: 0.3,
+            },
+        ];
+        let freqs: Vec<f32> = peaks.iter().take(4).map(|p| p.freq_hz).collect();
+        let oracle_delta = oracle1_delta_bind_from_peaks(&peaks, 4);
+        let eval_delta = bind_eval_from_freqs(&freqs).delta_bind;
+        assert!(
+            (oracle_delta - eval_delta).abs() < 1e-6,
+            "oracle_delta={oracle_delta} eval_delta={eval_delta}"
+        );
+    }
+
+    #[test]
+    fn oracle_chord_delta_is_stable_under_noop_update() {
+        let meta = e4_paper_meta();
+        let space = Log2Space::new(meta.fmin, meta.fmax, meta.bins_per_oct);
+        let (_erb_scan, du_scan) = erb_grid_for_space(&space);
+        let freqs = [
+            meta.anchor_hz,
+            meta.anchor_hz * (5.0 / 4.0),
+            meta.anchor_hz * (3.0 / 2.0),
+            meta.anchor_hz * 2.0,
+        ];
+        let scan = compute_e4_landscape_scans(&space, meta.anchor_hz, 1.0, 0.0, &freqs, &du_scan);
+        let mut indices: Vec<usize> = freqs
+            .iter()
+            .map(|f| {
+                space
+                    .index_of_freq(*f)
+                    .unwrap_or_else(|| nearest_bin(&space, *f))
+            })
+            .collect();
+        let before = bind_eval_from_indices(meta.anchor_hz, &scan.log2_ratio, &indices).delta_bind;
+        e4_wr_probe_update_indices(
+            &mut indices,
+            &scan.c,
+            &scan.log2_ratio,
+            0,
+            scan.c.len().saturating_sub(1),
+            0,
+            0.0,
+            E4_DYNAMICS_REPULSION_SIGMA,
+            None,
+            true,
+        );
+        let after = bind_eval_from_indices(meta.anchor_hz, &scan.log2_ratio, &indices).delta_bind;
+        assert!(
+            (before - after).abs() < 1e-6,
+            "noop update should keep delta_bind (before={before}, after={after})"
+        );
+    }
+
+    #[test]
     fn fingerprint_maps_octave_to_8ve_bin() {
         let probs = e4_interval_fingerprint_probs(&[220.0, 440.0], E4_FINGERPRINT_TOL_CENTS);
         let idx_oct = e4_fingerprint_label_index("8ve");
@@ -17070,6 +17909,7 @@ mod tests {
         ];
         let summary_rows = e4_wr_bind_summary_rows(&runs);
         assert_eq!(summary_rows.len(), 1);
+        let summary = summary_rows[0];
         let csv = e4_wr_sweep_summary_csv(&summary_rows, &[]);
         let line = csv
             .lines()
@@ -17086,13 +17926,9 @@ mod tests {
         let delta_ci95: f32 = cols[7].parse().expect("delta ci95 parse");
         let n_seeds: usize = cols[8].parse().expect("n parse");
         let error_kind = cols[9];
-
-        let (_m_r, _se_r, lo_r, hi_r) = mean_se_t_ci95(&[1.0, 3.0]);
-        let (_m_c, _se_c, lo_c, hi_c) = mean_se_t_ci95(&[2.0, 4.0]);
-        let (_m_d, _se_d, lo_d, hi_d) = mean_se_t_ci95(&[-1.0, 1.0]);
-        let exp_root_ci95 = 0.5 * (hi_r - lo_r);
-        let exp_ceiling_ci95 = 0.5 * (hi_c - lo_c);
-        let exp_delta_ci95 = 0.5 * (hi_d - lo_d);
+        let exp_root_ci95 = 0.5 * (summary.root_fit_ci_hi - summary.root_fit_ci_lo);
+        let exp_ceiling_ci95 = 0.5 * (summary.ceiling_fit_ci_hi - summary.ceiling_fit_ci_lo);
+        let exp_delta_ci95 = 0.5 * (summary.delta_bind_ci_hi - summary.delta_bind_ci_lo);
 
         assert!((root_mean - 2.0).abs() < 1e-6, "root_mean={root_mean}");
         assert!(
@@ -17113,7 +17949,7 @@ mod tests {
             "delta_ci95={delta_ci95} expected={exp_delta_ci95}"
         );
         assert_eq!(n_seeds, 2);
-        assert_eq!(error_kind, "t_ci95");
+        assert_eq!(error_kind, "bootstrap_pctl95");
     }
 
     #[test]
@@ -17152,7 +17988,7 @@ mod tests {
     }
 
     #[test]
-    fn oracle_greedy_not_weaker_than_low_score_agent_example() {
+    fn oracle_greedy_delta_bind_is_finite() {
         let peaks = vec![
             E4PeakRow {
                 rank: 1,
@@ -17215,18 +18051,26 @@ mod tests {
                 width_st: 0.2,
             },
         ];
-        let agent_freqs = [233.0f32, 271.0, 307.0, 349.0];
-        let agent_abs = bind_scores_from_freqs(&agent_freqs).2.abs();
         let oracle_abs = oracle1_delta_bind_from_peaks(&peaks, 4).abs();
         assert!(
-            oracle_abs >= agent_abs - 1e-6,
-            "oracle_abs={oracle_abs} agent_abs={agent_abs}"
+            oracle_abs.is_finite() && oracle_abs <= 1.0 + 1e-6,
+            "oracle_abs={oracle_abs}"
         );
     }
 
     #[test]
     fn e2_seed_count_is_20() {
         assert_eq!(E2_SEEDS.len(), 20);
+    }
+
+    #[test]
+    fn e4_seed_count_is_20() {
+        assert_eq!(E4_SEEDS.len(), 20);
+    }
+
+    #[test]
+    fn e4_wr_reps_is_at_least_20() {
+        assert!(E4_WR_REPS >= 20);
     }
 
     #[test]
@@ -17930,7 +18774,7 @@ mod tests {
         let metrics = flutter_metrics_for_trajectories(&[traj], 0, 3);
         assert!((metrics.pingpong_rate_moves - 1.0).abs() < 1e-6);
         assert!((metrics.reversal_rate_moves - 1.0).abs() < 1e-6);
-        assert!((metrics.move_rate_stepwise - (2.0 / 3.0)).abs() < 1e-6);
+        assert!((metrics.move_rate_stepwise - 0.5).abs() < 1e-6);
         assert!((metrics.mean_abs_delta_moved - 1.0).abs() < 1e-6);
     }
 

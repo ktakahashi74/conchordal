@@ -1947,15 +1947,32 @@ fn run_e2_once(
 
         let mean_c = mean_at_indices(&c_score_scan, &agent_indices);
         let mean_c_state = mean_at_indices(&c_state_scan, &agent_indices);
-        let mean_c_score_loo_current = mean_c_score_loo_at_indices_with_prev(
-            space,
-            &workspace,
-            &env_scan,
-            &density_scan,
-            &du_scan,
-            &agent_indices,
-            &agent_indices,
-        );
+        let use_nohill = matches!(condition, E2Condition::NoHillClimb);
+        let mut env_loo = if use_nohill {
+            vec![0.0f32; env_scan.len()]
+        } else {
+            Vec::new()
+        };
+        let mut density_loo = if use_nohill {
+            vec![0.0f32; density_scan.len()]
+        } else {
+            Vec::new()
+        };
+        let mean_c_score_loo_current = if use_nohill {
+            mean_c_score_loo_at_indices_with_prev_reused(
+                space,
+                &workspace,
+                &env_scan,
+                &density_scan,
+                &du_scan,
+                &agent_indices,
+                &agent_indices,
+                &mut env_loo,
+                &mut density_loo,
+            )
+        } else {
+            f32::NAN
+        };
         mean_c_series.push(mean_c);
         mean_c_state_series.push(mean_c_state);
 
@@ -2073,16 +2090,26 @@ fn run_e2_once(
             &agent_indices,
         );
 
-        let mean_c_score_loo_chosen = mean_c_score_loo_at_indices_with_prev(
-            space,
-            &workspace,
-            &env_scan,
-            &density_scan,
-            &du_scan,
-            &positions_before_update,
-            &agent_indices,
-        );
-        stats.mean_c_score_current_loo = mean_c_score_loo_current;
+        let mean_c_score_loo_chosen = if use_nohill {
+            mean_c_score_loo_at_indices_with_prev_reused(
+                space,
+                &workspace,
+                &env_scan,
+                &density_scan,
+                &du_scan,
+                &positions_before_update,
+                &agent_indices,
+                &mut env_loo,
+                &mut density_loo,
+            )
+        } else {
+            stats.mean_c_score_chosen_loo
+        };
+        stats.mean_c_score_current_loo = if use_nohill {
+            mean_c_score_loo_current
+        } else {
+            stats.mean_c_score_current_loo
+        };
         stats.mean_c_score_chosen_loo = mean_c_score_loo_chosen;
         let condition_label = match condition {
             E2Condition::Baseline => "baseline",
@@ -2198,7 +2225,8 @@ fn e2_seed_sweep(
     let max_threads = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(1);
-    let worker_count = max_threads.min(seeds.len()).max(1);
+    let per_condition_max_threads = (max_threads / 3).max(1);
+    let worker_count = per_condition_max_threads.min(seeds.len()).max(1);
     let runs = if worker_count <= 1 || seeds.len() <= 1 {
         let mut runs = Vec::with_capacity(seeds.len());
         for &seed in seeds {
@@ -8701,6 +8729,7 @@ fn mean_at_indices(values: &[f32], indices: &[usize]) -> f32 {
     sum / indices.len() as f32
 }
 
+#[allow(dead_code)]
 fn mean_c_score_loo_at_indices_with_prev(
     space: &Log2Space,
     workspace: &ConsonanceWorkspace,
@@ -8709,6 +8738,33 @@ fn mean_c_score_loo_at_indices_with_prev(
     du_scan: &[f32],
     prev_indices: &[usize],
     eval_indices: &[usize],
+) -> f32 {
+    let mut env_loo = Vec::new();
+    let mut density_loo = Vec::new();
+    mean_c_score_loo_at_indices_with_prev_reused(
+        space,
+        workspace,
+        env_total,
+        density_total,
+        du_scan,
+        prev_indices,
+        eval_indices,
+        &mut env_loo,
+        &mut density_loo,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn mean_c_score_loo_at_indices_with_prev_reused(
+    space: &Log2Space,
+    workspace: &ConsonanceWorkspace,
+    env_total: &[f32],
+    density_total: &[f32],
+    du_scan: &[f32],
+    prev_indices: &[usize],
+    eval_indices: &[usize],
+    env_loo: &mut Vec<f32>,
+    density_loo: &mut Vec<f32>,
 ) -> f32 {
     if prev_indices.is_empty() || eval_indices.is_empty() {
         return 0.0;
@@ -8722,8 +8778,8 @@ fn mean_c_score_loo_at_indices_with_prev(
     space.assert_scan_len_named(density_total, "density_total");
     space.assert_scan_len_named(du_scan, "du_scan");
 
-    let mut env_loo = vec![0.0f32; env_total.len()];
-    let mut density_loo = vec![0.0f32; density_total.len()];
+    env_loo.resize(env_total.len(), 0.0);
+    density_loo.resize(density_total.len(), 0.0);
     let mut sum = 0.0f32;
     let mut count = 0u32;
     for (&prev_idx, &eval_idx) in prev_indices.iter().zip(eval_indices.iter()) {
@@ -8733,7 +8789,7 @@ fn mean_c_score_loo_at_indices_with_prev(
         let denom = du_scan[prev_idx].max(1e-12);
         density_loo[prev_idx] = (density_loo[prev_idx] - 1.0 / denom).max(0.0);
         let (c_score_scan, _, _, _) =
-            compute_c_score_state_scans(space, workspace, &env_loo, &density_loo, du_scan);
+            compute_c_score_state_scans(space, workspace, env_loo, density_loo, du_scan);
         let value = c_score_scan[eval_idx];
         if value.is_finite() {
             sum += value;

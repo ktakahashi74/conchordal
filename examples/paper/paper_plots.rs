@@ -177,7 +177,7 @@ const E5_MIN_R_FOR_GROUP_PHASE: f32 = 0.2;
 const E5_KICK_ON_STEP: Option<usize> = Some(800);
 const E5_SEED: u64 = 0xC0FFEE_u64 + 2;
 const E5_SEEDS: [u64; 5] = [
-    0xC0FFEE_u64 + 0,
+    0xC0FFEE_u64,
     0xC0FFEE_u64 + 1,
     0xC0FFEE_u64 + 2,
     0xC0FFEE_u64 + 3,
@@ -1750,19 +1750,16 @@ fn e2_accept_temperature(step: usize, phase_mode: E2PhaseMode) -> f32 {
         return E2_ACCEPT_T0.max(0.0);
     }
     let mut phase_step = step;
-    if E2_ACCEPT_RESET_ON_PHASE {
-        if let Some(switch_step) = phase_mode.switch_step() {
-            if step >= switch_step {
-                phase_step = step - switch_step;
-            }
-        }
+    if E2_ACCEPT_RESET_ON_PHASE && let Some(switch_step) = phase_mode.switch_step() && step >= switch_step {
+        phase_step = step - switch_step;
     }
     E2_ACCEPT_T0.max(0.0) * (-(phase_step as f32) / E2_ACCEPT_TAU_STEPS).exp()
 }
 
+#[cfg(test)]
 fn e2_should_attempt_update(agent_id: usize, step: usize, u_move: f32) -> bool {
     match E2_UPDATE_SCHEDULE {
-        E2UpdateSchedule::Checkerboard => (agent_id + step) % 2 == 0,
+        E2UpdateSchedule::Checkerboard => (agent_id + step).is_multiple_of(2),
         E2UpdateSchedule::Lazy => u_move < E2_LAZY_MOVE_PROB.clamp(0.0, 1.0),
         E2UpdateSchedule::RandomSingle => true,
     }
@@ -1772,10 +1769,8 @@ fn e2_should_block_backtrack(phase_mode: E2PhaseMode, step: usize) -> bool {
     if !E2_ANTI_BACKTRACK_ENABLED {
         return false;
     }
-    if E2_ANTI_BACKTRACK_PRE_SWITCH_ONLY {
-        if let Some(switch_step) = phase_mode.switch_step() {
-            return step < switch_step;
-        }
+    if E2_ANTI_BACKTRACK_PRE_SWITCH_ONLY && let Some(switch_step) = phase_mode.switch_step() {
+        return step < switch_step;
     }
     true
 }
@@ -1928,10 +1923,8 @@ fn run_e2_once(
             min_idx = new_min;
             max_idx = new_max;
         }
-        if let Some(switch_step) = phase_switch_step {
-            if sweep == switch_step {
-                backtrack_targets.clone_from_slice(&agent_indices);
-            }
+        if let Some(switch_step) = phase_switch_step && sweep == switch_step {
+            backtrack_targets.clone_from_slice(&agent_indices);
         }
 
         let anchor_idx = nearest_bin(space, anchor_hz_current);
@@ -2516,8 +2509,6 @@ fn plot_e3_metabolic_selection(
                 write_with_log(out_dir.join("paper_e3_lifetimes.csv"), legacy_csv)?;
                 let legacy_scatter = out_dir.join("paper_e3_firstk_vs_lifetime.svg");
                 render_consonance_lifetime_scatter(&legacy_scatter, &legacy_deaths)?;
-                let legacy_scatter_alias = out_dir.join("paper_e3_consonance_vs_lifetime.svg");
-                std::fs::copy(&legacy_scatter, &legacy_scatter_alias)?;
                 let legacy_survival = out_dir.join("paper_e3_survival_curve.svg");
                 render_survival_curve(&legacy_survival, &legacy_deaths)?;
                 let legacy_survival_c_state = out_dir.join("paper_e3_survival_by_c_state.svg");
@@ -2582,7 +2573,6 @@ fn plot_e3_metabolic_selection(
             rep_note.push_str(&format!("{seed},{r:.6}\n"));
         }
         rep_note.push_str(&format!("chosen_seed={rep_seed}\n"));
-        rep_note.push_str("note=paper_e3_firstk_vs_lifetime.svg is canonical; paper_e3_consonance_vs_lifetime.svg is a legacy alias\n");
         write_with_log(out_dir.join("paper_e3_representative_seed.txt"), rep_note)?;
 
         let base = seed_outputs
@@ -4133,6 +4123,7 @@ fn triad_scores(masses: IntervalMasses) -> (f32, f32, f32, f32) {
     (triad_major, triad_minor, delta_t, major_frac)
 }
 
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn run_e4_sweep_for_weights(
     out_dir: &Path,
     anchor_hz: f32,
@@ -5199,7 +5190,9 @@ fn e4_endpoint_effect_csv(rows: &[E4EndpointEffectRow]) -> String {
 }
 
 fn e4_seed_slopes_rows(records: &[E4RunRecord]) -> Vec<E4SeedSlopeRow> {
-    let mut map: std::collections::HashMap<(&'static str, u64, i32, i32), Vec<(f32, f32)>> =
+    type SeedSlopeKey = (&'static str, u64, i32, i32);
+    type SeedSlopePoint = (f32, f32);
+    let mut map: std::collections::HashMap<SeedSlopeKey, Vec<SeedSlopePoint>> =
         std::collections::HashMap::new();
     for record in records {
         let key = (
@@ -5263,7 +5256,9 @@ fn e4_seed_slopes_csv(rows: &[E4SeedSlopeRow]) -> String {
 }
 
 fn e4_run_level_regression_rows(records: &[E4RunRecord]) -> Vec<E4RunLevelRegressionRow> {
-    let mut map: std::collections::HashMap<(&'static str, i32, i32), Vec<(f32, f32)>> =
+    type RunLevelKey = (&'static str, i32, i32);
+    type RunLevelPoint = (f32, f32);
+    let mut map: std::collections::HashMap<RunLevelKey, Vec<RunLevelPoint>> =
         std::collections::HashMap::new();
     for record in records {
         let key = (
@@ -7401,8 +7396,10 @@ fn render_e4_kernel_gate(out_path: &Path, anchor_hz: f32) -> Result<(), Box<dyn 
 
     let mut points: Vec<(f32, f32)> = Vec::new();
     for weight in build_weight_grid(E4_WEIGHT_FINE_STEP) {
-        let mut params = HarmonicityParams::default();
-        params.mirror_weight = weight;
+    let params = HarmonicityParams {
+        mirror_weight: weight,
+        ..HarmonicityParams::default()
+    };
         let kernel = HarmonicityKernel::new(&space, params);
         let (h_scan, _) = kernel.potential_h_from_log2_spectrum(&env_scan, &space);
         let freq_m3 = root_hz * 2.0f32.powf(3.0 / 12.0);
@@ -7608,30 +7605,6 @@ fn compute_c_score_state_scans(
     (c_score_scan, c_state_scan, density_mass, r_state_stats)
 }
 
-#[cfg(test)]
-#[allow(clippy::too_many_arguments)]
-fn update_agent_indices(
-    indices: &mut [usize],
-    c_score_scan: &[f32],
-    log2_ratio_scan: &[f32],
-    min_idx: usize,
-    max_idx: usize,
-    k: i32,
-    lambda: f32,
-    sigma: f32,
-) {
-    let _ = update_agent_indices_scored(
-        indices,
-        c_score_scan,
-        log2_ratio_scan,
-        min_idx,
-        max_idx,
-        k,
-        lambda,
-        sigma,
-    );
-}
-
 struct UpdateStats {
     mean_c_score_current_loo: f32,
     mean_c_score_chosen_loo: f32,
@@ -7699,33 +7672,8 @@ fn shift_indices_by_ratio(
     (count_min, count_max, respawned)
 }
 
+#[allow(clippy::too_many_arguments)]
 #[cfg(test)]
-#[allow(clippy::too_many_arguments)]
-fn update_agent_indices_scored(
-    indices: &mut [usize],
-    c_score_scan: &[f32],
-    log2_ratio_scan: &[f32],
-    min_idx: usize,
-    max_idx: usize,
-    k: i32,
-    lambda: f32,
-    sigma: f32,
-) -> f32 {
-    update_agent_indices_scored_stats(
-        indices,
-        c_score_scan,
-        log2_ratio_scan,
-        min_idx,
-        max_idx,
-        k,
-        lambda,
-        sigma,
-    )
-    .mean_score
-}
-
-#[allow(clippy::too_many_arguments)]
-#[allow(dead_code)]
 fn update_agent_indices_scored_stats(
     indices: &mut [usize],
     c_score_scan: &[f32],
@@ -7751,7 +7699,7 @@ fn update_agent_indices_scored_stats(
 }
 
 #[allow(clippy::too_many_arguments)]
-#[allow(dead_code)]
+#[cfg(test)]
 fn update_agent_indices_scored_stats_with_order(
     indices: &mut [usize],
     c_score_scan: &[f32],
@@ -7877,52 +7825,6 @@ fn update_agent_indices_scored_stats_with_order(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-#[allow(dead_code)]
-fn update_agent_indices_scored_stats_loo(
-    indices: &mut [usize],
-    space: &Log2Space,
-    workspace: &ConsonanceWorkspace,
-    env_total: &[f32],
-    density_total: &[f32],
-    du_scan: &[f32],
-    log2_ratio_scan: &[f32],
-    min_idx: usize,
-    max_idx: usize,
-    k: i32,
-    score_sign: f32,
-    lambda: f32,
-    sigma: f32,
-    temperature: f32,
-    step: usize,
-    block_backtrack: bool,
-    prev_positions: Option<&[usize]>,
-    rng: &mut StdRng,
-) -> UpdateStats {
-    let order: Vec<usize> = (0..indices.len()).collect();
-    update_agent_indices_scored_stats_with_order_loo(
-        indices,
-        space,
-        workspace,
-        env_total,
-        density_total,
-        du_scan,
-        log2_ratio_scan,
-        min_idx,
-        max_idx,
-        k,
-        score_sign,
-        lambda,
-        sigma,
-        temperature,
-        step,
-        block_backtrack,
-        prev_positions,
-        rng,
-        &order,
-    )
-}
-
 fn metropolis_accept(delta: f32, temperature: f32, u01: f32) -> (bool, bool) {
     if !delta.is_finite() {
         return (false, false);
@@ -8021,10 +7923,11 @@ fn update_one_agent_scored_loo(
             }
             let c_score = c_score_scan[cand];
             let score = score_sign * c_score - lambda * repulsion;
-            if let Some(prev_idx) = backtrack_target {
-                if cand == prev_idx && (score - current_score) <= E2_BACKTRACK_ALLOW_EPS {
-                    continue;
-                }
+            if let Some(prev_idx) = backtrack_target
+                && cand == prev_idx
+                && (score - current_score) <= E2_BACKTRACK_ALLOW_EPS
+            {
+                continue;
             }
             if score > best_score {
                 best_score = score;
@@ -8146,7 +8049,7 @@ fn update_e2_sweep_scored_loo(
 
     for &agent_i in &order {
         let update_allowed = match schedule {
-            E2UpdateSchedule::Checkerboard => (agent_i + sweep) % 2 == 0,
+            E2UpdateSchedule::Checkerboard => (agent_i + sweep).is_multiple_of(2),
             E2UpdateSchedule::Lazy => u_move_by_agent[agent_i] < E2_LAZY_MOVE_PROB.clamp(0.0, 1.0),
             E2UpdateSchedule::RandomSingle => true,
         };
@@ -8281,7 +8184,7 @@ fn update_e2_sweep_nohill(
     let mut abs_delta_moved_sum = 0.0f32;
     for &agent_i in &order {
         let update_allowed = match schedule {
-            E2UpdateSchedule::Checkerboard => (agent_i + sweep) % 2 == 0,
+            E2UpdateSchedule::Checkerboard => (agent_i + sweep).is_multiple_of(2),
             E2UpdateSchedule::Lazy => u_move_by_agent[agent_i] < E2_LAZY_MOVE_PROB.clamp(0.0, 1.0),
             E2UpdateSchedule::RandomSingle => true,
         };
@@ -8315,6 +8218,7 @@ fn update_e2_sweep_nohill(
 }
 
 #[allow(clippy::too_many_arguments)]
+#[cfg(test)]
 fn update_agent_indices_scored_stats_with_order_loo(
     indices: &mut [usize],
     space: &Log2Space,
@@ -8699,7 +8603,7 @@ fn mean_c_score_loo_at_indices_with_prev(
     if count == 0 { 0.0 } else { sum / count as f32 }
 }
 
-#[allow(dead_code)]
+#[cfg(test)]
 fn mean_c_score_loo_at_indices(
     space: &Log2Space,
     workspace: &ConsonanceWorkspace,
@@ -8929,18 +8833,18 @@ fn flutter_metrics_for_trajectories(
             continue;
         }
         let end = end_step.min(traj.len().saturating_sub(1));
-        for t in (start_step + 1)..=end {
-            let delta = traj[t] - traj[t - 1];
-            let moved = delta.abs() > E2_SEMITONE_EPS;
-            step_count += 1;
-            if moved {
-                moved_step_count += 1;
-            }
+    let trimmed = &traj[(start_step + 1)..=end];
+    for pair in trimmed.windows(2) {
+        let delta = pair[1] - pair[0];
+        let moved = delta.abs() > E2_SEMITONE_EPS;
+        step_count += 1;
+        if moved {
+            moved_step_count += 1;
         }
+    }
 
         let mut compressed: Vec<f32> = Vec::new();
-        for t in start_step..=end {
-            let v = traj[t];
+        for &v in &traj[start_step..=end] {
             if compressed
                 .last()
                 .is_some_and(|last| (v - last).abs() <= E2_SEMITONE_EPS)
@@ -9105,6 +9009,7 @@ fn final_agents_csv(run: &E2Run) -> String {
     out
 }
 
+#[allow(clippy::too_many_arguments)]
 fn e2_meta_text(
     n_agents: usize,
     k_bins: i32,
@@ -9890,7 +9795,7 @@ fn median_of_values(values: &mut [f32]) -> f32 {
     }
     values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     let mid = values.len() / 2;
-    if values.len() % 2 == 0 {
+    if values.len().is_multiple_of(2) {
         (values[mid - 1] + values[mid]) * 0.5
     } else {
         values[mid]
@@ -10387,6 +10292,7 @@ fn exact_permutation_pvalue_mean_diff(a: &[f32], b: &[f32]) -> f32 {
         return 1.0;
     }
     let pooled_sum = pooled.iter().copied().sum::<f32>();
+    #[allow(clippy::too_many_arguments)]
     fn recurse(
         values: &[f32],
         n_a: usize,
@@ -10883,6 +10789,7 @@ fn render_pairwise_histogram_controls_overlay(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_hist_mean_std_fraction_auto_y(
     out_path: &Path,
     caption: &str,
@@ -11077,6 +10984,7 @@ fn draw_diversity_metric_panel(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_e2_timeseries_controls_panel(
     area: &DrawingArea<SVGBackend, Shift>,
     caption: &str,
@@ -11139,19 +11047,17 @@ fn draw_e2_timeseries_controls_panel(
             )))?;
         }
     }
-    if let Some(step) = phase_switch_step {
-        if step >= x_min && step <= x_hi {
-            chart.draw_series(std::iter::once(PathElement::new(
-                vec![(step as f32, y_min), (step as f32, y_max)],
-                ShapeStyle::from(&BLACK.mix(0.55)).stroke_width(2),
-            )))?;
-            let y_text = y_max - 0.05 * (y_max - y_min);
-            chart.draw_series(std::iter::once(Text::new(
-                "phase switch".to_string(),
-                (step as f32, y_text),
-                ("sans-serif", 13).into_font().color(&BLACK),
-            )))?;
-        }
+    if let Some(step) = phase_switch_step && step >= x_min && step <= x_hi {
+        chart.draw_series(std::iter::once(PathElement::new(
+            vec![(step as f32, y_min), (step as f32, y_max)],
+            ShapeStyle::from(&BLACK.mix(0.55)).stroke_width(2),
+        )))?;
+        let y_text = y_max - 0.05 * (y_max - y_min);
+        chart.draw_series(std::iter::once(Text::new(
+            "phase switch".to_string(),
+            (step as f32, y_text),
+            ("sans-serif", 13).into_font().color(&BLACK),
+        )))?;
     }
 
     for (label, mean, std, color) in [
@@ -11258,6 +11164,7 @@ fn draw_trajectory_panel(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_e2_mean_c_state_annotated(
     out_path: &Path,
     baseline_mean: &[f32],
@@ -11406,6 +11313,7 @@ fn render_consonant_mass_summary_plot(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_anchor_hist_post_folded(
     out_path: &Path,
     centers: &[f32],
@@ -11517,6 +11425,7 @@ fn render_anchor_hist_post_folded(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_e2_figure1(
     out_path: &Path,
     baseline_stats: &E2SweepStats,
@@ -11722,7 +11631,7 @@ fn e2_c_snapshot_at(series: &[f32], pre_idx: usize, post_idx: usize) -> (f32, f3
     (init, pre, post)
 }
 
-#[allow(dead_code)]
+#[cfg(test)]
 fn e2_c_snapshot_series(
     series: &[f32],
     anchor_shift_enabled: bool,
@@ -14358,7 +14267,7 @@ mod tests {
         let mut indices = vec![1usize, 2, 3];
         let c_score_scan = vec![0.1f32, 0.2, 0.3, 0.4, 0.5];
         let log2_ratio_scan = vec![0.0f32, 0.1, 0.2, 0.3, 0.4];
-        update_agent_indices(
+        let _ = update_agent_indices_scored_stats(
             &mut indices,
             &c_score_scan,
             &log2_ratio_scan,

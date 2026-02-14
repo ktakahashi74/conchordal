@@ -20,6 +20,7 @@ use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 
 pub const E4_ANCHOR_HZ: f32 = 220.0;
+#[allow(dead_code)]
 pub const E4_WINDOW_CENTS: f32 = 50.0;
 
 const E4_GROUP_ANCHOR: u64 = 0;
@@ -200,6 +201,7 @@ impl E4SimConfig {
 }
 
 #[derive(Clone, Copy, Debug, Default)]
+#[allow(dead_code)]
 pub struct IntervalMetrics {
     pub mass_maj3: f32,
     pub mass_min3: f32,
@@ -207,6 +209,7 @@ pub struct IntervalMetrics {
     pub n_voices: usize,
 }
 
+#[allow(dead_code)]
 pub fn interval_metrics(anchor_hz: f32, freqs_hz: &[f32], window_cents: f32) -> IntervalMetrics {
     let mut metrics = IntervalMetrics {
         n_voices: freqs_hz.len(),
@@ -391,11 +394,13 @@ pub fn run_e3_collect_deaths(cfg: &E3RunConfig) -> Vec<E3DeathRecord> {
     deaths
 }
 
+#[allow(dead_code)]
 pub fn run_e4_condition(mirror_weight: f32, seed: u64) -> Vec<f32> {
     run_e4_condition_with_config(mirror_weight, seed, &E4SimConfig::paper_defaults())
 }
 
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub struct E4TailSamples {
     pub steps_total: u32,
     pub tail_window: u32,
@@ -404,6 +409,7 @@ pub struct E4TailSamples {
 }
 
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub struct E4MirrorScheduleSamples {
     pub freqs_by_step: Vec<Vec<f32>>,
     pub mirror_weight_by_step: Vec<f32>,
@@ -411,6 +417,7 @@ pub struct E4MirrorScheduleSamples {
 }
 
 #[derive(Clone, Copy, Debug)]
+#[allow(dead_code)]
 pub struct E4PaperMeta {
     pub anchor_hz: f32,
     pub center_cents: f32,
@@ -429,6 +436,7 @@ pub struct E4PaperMeta {
     pub neighbor_step_cents: f32,
 }
 
+#[allow(dead_code)]
 pub fn e4_paper_meta() -> E4PaperMeta {
     let cfg = E4SimConfig::paper_defaults();
     E4PaperMeta {
@@ -482,6 +490,7 @@ pub fn run_e4_mirror_schedule_samples(
     )
 }
 
+#[allow(dead_code)]
 fn run_e4_condition_with_config(mirror_weight: f32, seed: u64, cfg: &E4SimConfig) -> Vec<f32> {
     let space = Log2Space::new(cfg.fmin, cfg.fmax, cfg.bins_per_oct);
     let mut params = make_landscape_params(&space, cfg.fs);
@@ -566,6 +575,7 @@ fn run_e4_condition_with_config(mirror_weight: f32, seed: u64, cfg: &E4SimConfig
     freqs
 }
 
+#[allow(dead_code)]
 fn run_e4_condition_tail_samples_with_config(
     mirror_weight: f32,
     seed: u64,
@@ -807,6 +817,7 @@ fn apply_mirror_weight(
     }
 }
 
+#[allow(dead_code)]
 fn collect_voice_freqs(pop: &Population) -> Vec<f32> {
     collect_voice_freqs_with_ids(pop)
         .into_iter()
@@ -823,7 +834,7 @@ fn collect_voice_freqs_with_ids(pop: &Population) -> Vec<E4AgentFreq> {
         let freq = agent.body.base_freq_hz();
         if freq.is_finite() && freq > 0.0 {
             freqs.push(E4AgentFreq {
-                agent_id: agent.id as u64,
+                agent_id: agent.id,
                 freq_hz: freq,
             });
         }

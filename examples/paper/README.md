@@ -2,6 +2,8 @@
 
 Example runner for generating plots used in the paper.
 
+Paper scenarios used for headless behavioral checks are under `examples/paper/scenarios/`.
+
 ## Run
 
 ```bash
@@ -82,3 +84,17 @@ Notes:
 - `e4_run_level_regression.csv` is descriptive only; use the seed-level summary for primary claims.
 
 Run twice to confirm `examples/paper/plots` is cleared each time (no stale outputs remain).
+
+## Paper scenarios (headless demos)
+
+```bash
+cargo run -- --nogui examples/paper/scenarios/e1_landscape_scan_demo.rhai
+```
+
+Files:
+- `e1_landscape_scan_demo.rhai`
+- `e2_emergent_harmony_demo.rhai`
+- `e3_metabolic_selection_demo.rhai`
+- `e4_mirror_sweep_demo.rhai`
+- `e4_mirror_sweep_between_runs.rhai`
+- `e5_rhythmic_entrainment_demo.rhai`

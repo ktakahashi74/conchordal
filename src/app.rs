@@ -892,6 +892,8 @@ fn worker_loop(
                     current_landscape.roughness_shape_raw = frame.roughness_shape_raw;
                     current_landscape.roughness01 = frame.roughness01;
                     current_landscape.harmonicity = frame.harmonicity;
+                    current_landscape.harmonicity_path_a = frame.harmonicity_path_a;
+                    current_landscape.harmonicity_path_b = frame.harmonicity_path_b;
                     current_landscape.roughness_total = frame.roughness_total;
                     current_landscape.roughness_max = frame.roughness_max;
                     current_landscape.roughness_p95 = frame.roughness_p95;
@@ -899,6 +901,11 @@ fn worker_loop(
                     current_landscape.roughness_norm = frame.roughness_norm;
                     current_landscape.roughness01_scalar = frame.roughness01_scalar;
                     current_landscape.loudness_mass = frame.loudness_mass;
+                    current_landscape.root_affinity = frame.root_affinity;
+                    current_landscape.overtone_affinity = frame.overtone_affinity;
+                    current_landscape.binding_strength = frame.binding_strength;
+                    current_landscape.harmonic_tilt = frame.harmonic_tilt;
+                    current_landscape.harmonicity_mirror_weight = frame.harmonicity_mirror_weight;
                     current_landscape.subjective_intensity = frame.subjective_intensity;
                     current_landscape.nsgt_power = frame.nsgt_power;
                     current_landscape.recompute_consonance(&lparams);
@@ -1289,13 +1296,31 @@ fn recompute_harmonicity_from_nsgt_power(
     {
         return false;
     }
-    let (harmonicity, _peak) = params
+    let dual = params
         .harmonicity_kernel
-        .potential_h_from_log2_spectrum(&current_landscape.nsgt_power, &current_landscape.space);
-    if harmonicity.len() != current_landscape.harmonicity.len() {
+        .potential_h_dual_from_log2_spectrum(
+            &current_landscape.nsgt_power,
+            &current_landscape.space,
+        );
+    if dual.blended.len() != current_landscape.harmonicity.len()
+        || dual.path_a.len() != current_landscape.harmonicity.len()
+        || dual.path_b.len() != current_landscape.harmonicity.len()
+    {
         return false;
     }
-    current_landscape.harmonicity = harmonicity;
+    current_landscape.harmonicity = dual.blended;
+    current_landscape.harmonicity_path_a = dual.path_a;
+    current_landscape.harmonicity_path_b = dual.path_b;
+    current_landscape.root_affinity = dual.metrics.root_affinity;
+    current_landscape.overtone_affinity = dual.metrics.overtone_affinity;
+    current_landscape.binding_strength = dual.metrics.binding_strength;
+    current_landscape.harmonic_tilt = dual.metrics.harmonic_tilt;
+    let mirror = params.harmonicity_kernel.params.mirror_weight;
+    current_landscape.harmonicity_mirror_weight = if mirror.is_finite() {
+        mirror.clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
     true
 }
 

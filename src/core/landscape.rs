@@ -76,6 +76,10 @@ pub struct Landscape {
     pub roughness01: Vec<f32>,
     /// perc_potential_H over log2 frequency.
     pub harmonicity: Vec<f32>,
+    /// Root-binding path (Path A) before blend.
+    pub harmonicity_path_a: Vec<f32>,
+    /// Overtone/Ceiling-binding path (Path B) before blend.
+    pub harmonicity_path_b: Vec<f32>,
     /// Normalized perc_potential_H [0, 1].
     pub harmonicity01: Vec<f32>,
     /// Linear consonance score (C), derived from H01 and R01.
@@ -92,6 +96,11 @@ pub struct Landscape {
     pub roughness_norm: f32,
     pub roughness01_scalar: f32,
     pub loudness_mass: f32,
+    pub root_affinity: f32,
+    pub overtone_affinity: f32,
+    pub binding_strength: f32,
+    pub harmonic_tilt: f32,
+    pub harmonicity_mirror_weight: f32,
     pub rhythm: NeuralRhythms,
 }
 
@@ -107,6 +116,8 @@ impl Landscape {
             roughness_shape_raw: vec![0.0; n],
             roughness01: vec![0.0; n],
             harmonicity: vec![0.0; n],
+            harmonicity_path_a: vec![0.0; n],
+            harmonicity_path_b: vec![0.0; n],
             harmonicity01: vec![0.0; n],
             consonance_score: vec![0.0; n],
             consonance_state01: vec![0.0; n],
@@ -119,6 +130,11 @@ impl Landscape {
             roughness_norm: 0.0,
             roughness01_scalar: 0.0,
             loudness_mass: 0.0,
+            root_affinity: 0.0,
+            overtone_affinity: 0.0,
+            binding_strength: 0.0,
+            harmonic_tilt: 0.0,
+            harmonicity_mirror_weight: 0.0,
             rhythm: NeuralRhythms::default(),
         }
     }
@@ -130,6 +146,8 @@ impl Landscape {
         self.roughness_shape_raw.resize(n, 0.0);
         self.roughness01.resize(n, 0.0);
         self.harmonicity.resize(n, 0.0);
+        self.harmonicity_path_a.resize(n, 0.0);
+        self.harmonicity_path_b.resize(n, 0.0);
         self.harmonicity01.resize(n, 0.0);
         self.consonance_score.resize(n, 0.0);
         self.consonance_state01.resize(n, 0.0);
@@ -146,6 +164,10 @@ impl Landscape {
             .assert_scan_len_named(&self.roughness01, "roughness01");
         self.space
             .assert_scan_len_named(&self.harmonicity, "harmonicity");
+        self.space
+            .assert_scan_len_named(&self.harmonicity_path_a, "harmonicity_path_a");
+        self.space
+            .assert_scan_len_named(&self.harmonicity_path_b, "harmonicity_path_b");
         self.space
             .assert_scan_len_named(&self.harmonicity01, "harmonicity01");
         self.space

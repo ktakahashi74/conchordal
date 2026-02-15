@@ -335,12 +335,13 @@ impl Drop for PaperRunLock {
 
 fn usage() -> String {
     [
-        "Usage: paper [--exp E1,E2,...] [--e4-hist on|off] [--e4-kernel-gate on|off] [--e4-wr on|off] [--e2-phase mode]",
+        "Usage: paper [--exp E1,E2,...] [--clean[=on|off]] [--e4-hist on|off] [--e4-kernel-gate on|off] [--e4-wr on|off] [--e2-phase mode]",
         "Examples:",
         "  paper --exp 2",
         "  paper --exp all",
         "  paper 1 3 5",
         "  paper --exp e2,e4",
+        "  paper --clean --exp e4",
         "  paper --exp e4 --e4-hist on",
         "  paper --exp e4 --e4-kernel-gate on",
         "  paper --exp e4 --e4-wr on",
@@ -351,7 +352,8 @@ fn usage() -> String {
         "E4 wr probe default to off (use --e4-wr on to enable).",
         "E2 phase modes: normal | dissonance_then_consonance (default)",
         "Outputs are written to examples/paper/plots/<exp>/ (e.g. examples/paper/plots/e2).",
-        "examples/paper/plots is cleared on each run.",
+        "By default only selected experiment dirs are overwritten.",
+        "Use --clean to clear examples/paper/plots before running.",
     ]
     .join("\n")
 }
@@ -402,6 +404,21 @@ fn parse_experiments(args: &[String]) -> Result<Vec<Experiment>, String> {
             continue;
         }
         if arg.starts_with("--e2-phase=") {
+            i += 1;
+            continue;
+        }
+        if arg == "--clean" {
+            if i + 1 < args.len() {
+                let next = args[i + 1].as_str();
+                if !next.starts_with('-') {
+                    i += 2;
+                    continue;
+                }
+            }
+            i += 1;
+            continue;
+        }
+        if arg.starts_with("--clean=") {
             i += 1;
             continue;
         }
@@ -606,9 +623,51 @@ fn parse_e2_phase(args: &[String]) -> Result<E2PhaseMode, String> {
     }
 }
 
+fn parse_clean(args: &[String]) -> Result<bool, String> {
+    let mut clean_flag = false;
+    let mut clean_value: Option<String> = None;
+    let mut i = 0;
+    while i < args.len() {
+        let arg = args[i].as_str();
+        if arg == "--clean" {
+            clean_flag = true;
+            if i + 1 < args.len() {
+                let next = args[i + 1].as_str();
+                if !next.starts_with('-') {
+                    clean_value = Some(next.to_string());
+                    i += 2;
+                    continue;
+                }
+            }
+            i += 1;
+            continue;
+        }
+        if let Some(rest) = arg.strip_prefix("--clean=") {
+            clean_value = Some(rest.to_string());
+            i += 1;
+            continue;
+        }
+        i += 1;
+    }
+
+    let Some(value) = clean_value else {
+        return Ok(clean_flag);
+    };
+    let normalized = value.to_ascii_lowercase();
+    match normalized.as_str() {
+        "on" | "true" | "1" | "yes" => Ok(true),
+        "off" | "false" | "0" | "no" => Ok(false),
+        _ => Err(format!(
+            "Invalid --clean value '{value}'. Use on/off.\n{}",
+            usage()
+        )),
+    }
+}
+
 fn prepare_paper_output_dirs(
     base_dir: &Path,
     experiments: &[Experiment],
+    clear_existing_selected: bool,
 ) -> io::Result<Vec<(Experiment, PathBuf)>> {
     if experiments.is_empty() {
         return Ok(Vec::new());
@@ -616,6 +675,9 @@ fn prepare_paper_output_dirs(
     let mut out = Vec::with_capacity(experiments.len());
     for &exp in experiments {
         let dir = base_dir.join(exp.dir_name());
+        if clear_existing_selected && dir.exists() {
+            remove_dir_all(&dir)?;
+        }
         create_dir_all(&dir)?;
         out.push((exp, dir));
     }
@@ -632,6 +694,7 @@ pub(crate) fn main() -> Result<(), Box<dyn Error>> {
     let e4_kernel_gate_enabled = parse_e4_kernel_gate(&args).map_err(io::Error::other)?;
     let e4_wr_enabled = parse_e4_wr(&args).map_err(io::Error::other)?;
     let e2_phase_mode = parse_e2_phase(&args).map_err(io::Error::other)?;
+    let clean_all = parse_clean(&args).map_err(io::Error::other)?;
     let experiments = parse_experiments(&args).map_err(io::Error::other)?;
     let experiments = if experiments.is_empty() {
         Experiment::all()
@@ -651,11 +714,11 @@ pub(crate) fn main() -> Result<(), Box<dyn Error>> {
         "refusing to clear unexpected path: {}",
         base_dir.display()
     );
-    if base_dir.exists() {
+    if clean_all && base_dir.exists() {
         remove_dir_all(base_dir)?;
     }
     create_dir_all(base_dir)?;
-    let experiment_dirs = prepare_paper_output_dirs(base_dir, &experiments)?;
+    let experiment_dirs = prepare_paper_output_dirs(base_dir, &experiments, !clean_all)?;
 
     let anchor_hz = E4_ANCHOR_HZ;
     let space = Log2Space::new(20.0, 8000.0, SPACE_BINS_PER_OCT);
@@ -756,14 +819,36 @@ fn plot_e1_landscape_scan(
     space.assert_scan_len_named(&anchor_env_scan, "anchor_env_scan");
 
     let roughness_kernel = RoughnessKernel::new(KernelParams::default(), 0.005);
-    let harmonicity_kernel = HarmonicityKernel::new(space, HarmonicityParams::default());
+    let mut h_params_base = HarmonicityParams::default();
+    h_params_base.rho_common_overtone = h_params_base.rho_common_root;
+    h_params_base.gamma_root = 1.0;
+    h_params_base.gamma_overtone = 1.0;
+    let harmonicity_kernel = HarmonicityKernel::new(space, h_params_base);
+    let mut h_params_m0 = h_params_base;
+    h_params_m0.mirror_weight = 0.0;
+    let mut h_params_m05 = h_params_base;
+    h_params_m05.mirror_weight = 0.5;
+    let mut h_params_m1 = h_params_base;
+    h_params_m1.mirror_weight = 1.0;
+    let harmonicity_kernel_m0 = HarmonicityKernel::new(space, h_params_m0);
+    let harmonicity_kernel_m05 = HarmonicityKernel::new(space, h_params_m05);
+    let harmonicity_kernel_m1 = HarmonicityKernel::new(space, h_params_m1);
 
     let (perc_h_pot_scan, _) =
         harmonicity_kernel.potential_h_from_log2_spectrum(&anchor_env_scan, space);
+    let (perc_h_pot_scan_m0, _) =
+        harmonicity_kernel_m0.potential_h_from_log2_spectrum(&anchor_env_scan, space);
+    let (perc_h_pot_scan_m05, _) =
+        harmonicity_kernel_m05.potential_h_from_log2_spectrum(&anchor_env_scan, space);
+    let (perc_h_pot_scan_m1, _) =
+        harmonicity_kernel_m1.potential_h_from_log2_spectrum(&anchor_env_scan, space);
     let (perc_r_pot_scan, _) =
         roughness_kernel.potential_r_from_log2_spectrum_density(&anchor_density_scan, space);
 
     space.assert_scan_len_named(&perc_h_pot_scan, "perc_h_pot_scan");
+    space.assert_scan_len_named(&perc_h_pot_scan_m0, "perc_h_pot_scan_m0");
+    space.assert_scan_len_named(&perc_h_pot_scan_m05, "perc_h_pot_scan_m05");
+    space.assert_scan_len_named(&perc_h_pot_scan_m1, "perc_h_pot_scan_m1");
     space.assert_scan_len_named(&perc_r_pot_scan, "perc_r_pot_scan");
 
     let params = LandscapeParams {
@@ -841,6 +926,23 @@ fn plot_e1_landscape_scan(
         &perc_h_pot_scan,
         &perc_r_state01_scan,
         &perc_c_score_scan,
+    )?;
+    let h_triplet_path = out_dir.join("paper_e1_h_mirror_m0_m05_m1.svg");
+    render_e1_h_mirror_triplet_plot(
+        &h_triplet_path,
+        anchor_hz,
+        &log2_ratio_scan,
+        &perc_h_pot_scan_m0,
+        &perc_h_pot_scan_m05,
+        &perc_h_pot_scan_m1,
+    )?;
+    let h_diff_path = out_dir.join("paper_e1_h_mirror_m0_minus_m1.svg");
+    render_e1_h_mirror_diff_plot(
+        &h_diff_path,
+        anchor_hz,
+        &log2_ratio_scan,
+        &perc_h_pot_scan_m0,
+        &perc_h_pot_scan_m1,
     )?;
 
     Ok(())
@@ -3325,6 +3427,177 @@ fn render_e1_plot(
     }
 
     chart_c.draw_series(LineSeries::new(c_points, &BLACK))?;
+
+    root.present()?;
+    Ok(())
+}
+
+fn render_e1_h_mirror_triplet_plot(
+    out_path: &Path,
+    anchor_hz: f32,
+    log2_ratio_scan: &[f32],
+    h_m0: &[f32],
+    h_m05: &[f32],
+    h_m1: &[f32],
+) -> Result<(), Box<dyn Error>> {
+    let x_min = -3.0f32;
+    let x_max = 3.0f32;
+    let n = log2_ratio_scan
+        .len()
+        .min(h_m0.len())
+        .min(h_m05.len())
+        .min(h_m1.len());
+
+    let mut p_m0 = Vec::new();
+    let mut p_m05 = Vec::new();
+    let mut p_m1 = Vec::new();
+    for i in 0..n {
+        let x = log2_ratio_scan[i];
+        if x < x_min || x > x_max {
+            continue;
+        }
+        p_m0.push((x, h_m0[i]));
+        p_m05.push((x, h_m05[i]));
+        p_m1.push((x, h_m1[i]));
+    }
+
+    let y_max = h_m0
+        .iter()
+        .chain(h_m05.iter())
+        .chain(h_m1.iter())
+        .copied()
+        .fold(0.0f32, f32::max)
+        .max(1e-6)
+        * 1.1;
+
+    let root = bitmap_root(out_path, (1600, 900)).into_drawing_area();
+    root.fill(&WHITE)?;
+
+    let ratio_guides = [0.5f32, 6.0 / 5.0, 1.25, 4.0 / 3.0, 1.5, 5.0 / 3.0, 2.0];
+    let ratio_guides_log2: Vec<f32> = ratio_guides.iter().map(|r| r.log2()).collect();
+
+    let mut chart = ChartBuilder::on(&root)
+        .caption(
+            format!(
+                "E1 Harmonicity H(f) by mirror_weight | anchor {} Hz",
+                anchor_hz
+            ),
+            ("sans-serif", 24),
+        )
+        .margin(12)
+        .x_label_area_size(42)
+        .y_label_area_size(64)
+        .build_cartesian_2d(x_min..x_max, 0.0f32..y_max)?;
+
+    chart
+        .configure_mesh()
+        .x_desc("log2(f / f_anchor)")
+        .y_desc("H potential")
+        .draw()?;
+
+    for &x in &ratio_guides_log2 {
+        if x >= x_min && x <= x_max {
+            chart.draw_series(std::iter::once(PathElement::new(
+                vec![(x, 0.0), (x, y_max)],
+                BLACK.mix(0.15),
+            )))?;
+        }
+    }
+
+    chart
+        .draw_series(LineSeries::new(p_m0, &BLUE))?
+        .label("m0 (mirror_weight=0.0)")
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 18, y)], BLUE));
+    chart
+        .draw_series(LineSeries::new(p_m05, &GREEN))?
+        .label("m05 (mirror_weight=0.5)")
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 18, y)], GREEN));
+    chart
+        .draw_series(LineSeries::new(p_m1, &RED))?
+        .label("m1 (mirror_weight=1.0)")
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 18, y)], RED));
+    chart
+        .configure_series_labels()
+        .position(SeriesLabelPosition::UpperRight)
+        .background_style(WHITE.mix(0.85))
+        .border_style(BLACK.mix(0.25))
+        .draw()?;
+
+    root.present()?;
+    Ok(())
+}
+
+fn render_e1_h_mirror_diff_plot(
+    out_path: &Path,
+    anchor_hz: f32,
+    log2_ratio_scan: &[f32],
+    h_m0: &[f32],
+    h_m1: &[f32],
+) -> Result<(), Box<dyn Error>> {
+    let x_min = -3.0f32;
+    let x_max = 3.0f32;
+    let n = log2_ratio_scan.len().min(h_m0.len()).min(h_m1.len());
+    let mut diff_points = Vec::new();
+    let mut y_min = f32::INFINITY;
+    let mut y_max = f32::NEG_INFINITY;
+    for i in 0..n {
+        let x = log2_ratio_scan[i];
+        if x < x_min || x > x_max {
+            continue;
+        }
+        let d = h_m0[i] - h_m1[i];
+        diff_points.push((x, d));
+        if d.is_finite() {
+            y_min = y_min.min(d);
+            y_max = y_max.max(d);
+        }
+    }
+    if !y_min.is_finite() || !y_max.is_finite() {
+        y_min = -1.0;
+        y_max = 1.0;
+    }
+    let pad = ((y_max - y_min).abs() * 0.1).max(1e-4);
+    let y_lo = (y_min - pad).min(0.0);
+    let y_hi = (y_max + pad).max(0.0);
+
+    let root = bitmap_root(out_path, (1600, 700)).into_drawing_area();
+    root.fill(&WHITE)?;
+
+    let ratio_guides = [0.5f32, 6.0 / 5.0, 1.25, 4.0 / 3.0, 1.5, 5.0 / 3.0, 2.0];
+    let ratio_guides_log2: Vec<f32> = ratio_guides.iter().map(|r| r.log2()).collect();
+
+    let mut chart = ChartBuilder::on(&root)
+        .caption(
+            format!(
+                "E1 Harmonicity Difference H_m0(f) - H_m1(f) | anchor {} Hz",
+                anchor_hz
+            ),
+            ("sans-serif", 24),
+        )
+        .margin(12)
+        .x_label_area_size(42)
+        .y_label_area_size(70)
+        .build_cartesian_2d(x_min..x_max, y_lo..y_hi)?;
+
+    chart
+        .configure_mesh()
+        .x_desc("log2(f / f_anchor)")
+        .y_desc("H(m0) - H(m1)")
+        .draw()?;
+
+    for &x in &ratio_guides_log2 {
+        if x >= x_min && x <= x_max {
+            chart.draw_series(std::iter::once(PathElement::new(
+                vec![(x, y_lo), (x, y_hi)],
+                BLACK.mix(0.12),
+            )))?;
+        }
+    }
+    chart.draw_series(std::iter::once(PathElement::new(
+        vec![(x_min, 0.0), (x_max, 0.0)],
+        BLACK.mix(0.35),
+    )))?;
+    chart.draw_series(LineSeries::new(diff_points, &BLACK))?;
 
     root.present()?;
     Ok(())

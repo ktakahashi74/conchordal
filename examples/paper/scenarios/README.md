@@ -1,4 +1,4 @@
-# 90_paper Scenarios
+# Paper Scenarios
 
 These scripts are lightweight, headless-friendly demos that mirror the paper figure concepts.
 They are intended for quick visual and behavioral checks, not for generating plots.
@@ -7,7 +7,8 @@ For E4, prefer fixed-population scripts to avoid density/history confounds.
 ## Run
 
 ```bash
-cargo run -- --nogui samples/90_paper/e1_landscape_scan_demo.rhai
+cargo run -- --nogui examples/paper/scenarios/e1_landscape_scan_demo.rhai
+cargo run -- --nogui examples/paper/scenarios/e1_landscape_scan_demo.rhai
 ```
 
 ## Scenarios

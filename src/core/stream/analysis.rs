@@ -75,10 +75,10 @@ impl AnalysisStream {
         let (_erb, du) = erb_grid(space);
         let eps = self.params.roughness_ref_eps.max(1e-12);
         let roughness_k = self.params.roughness_k.max(1e-6);
-        let (h_pot_scan, _) = self
+        let h_dual = self
             .params
             .harmonicity_kernel
-            .potential_h_from_log2_spectrum(density, space);
+            .potential_h_dual_from_log2_spectrum(density, space);
 
         // Roughness strength (level-dependent).
         let (r_strength, r_total) = self
@@ -115,7 +115,19 @@ impl AnalysisStream {
         self.last_landscape.roughness = r_strength;
         self.last_landscape.roughness_shape_raw = r_shape_raw;
         self.last_landscape.roughness01 = r01;
-        self.last_landscape.harmonicity = h_pot_scan;
+        self.last_landscape.harmonicity = h_dual.blended;
+        self.last_landscape.harmonicity_path_a = h_dual.path_a;
+        self.last_landscape.harmonicity_path_b = h_dual.path_b;
+        self.last_landscape.root_affinity = h_dual.metrics.root_affinity;
+        self.last_landscape.overtone_affinity = h_dual.metrics.overtone_affinity;
+        self.last_landscape.binding_strength = h_dual.metrics.binding_strength;
+        self.last_landscape.harmonic_tilt = h_dual.metrics.harmonic_tilt;
+        let mirror = self.params.harmonicity_kernel.params.mirror_weight;
+        self.last_landscape.harmonicity_mirror_weight = if mirror.is_finite() {
+            mirror.clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
         self.last_landscape.roughness_total = r_total;
         self.last_landscape.roughness_max = r_max;
         self.last_landscape.roughness_p95 = r_p95;

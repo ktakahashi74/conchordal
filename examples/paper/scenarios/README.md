@@ -22,5 +22,6 @@ cargo run -- --nogui examples/paper/scenarios/e1_landscape_scan_demo.rhai
 
 ## E4 Notes
 
-- Main analysis metric should be `DeltaBind` from RootFit/CeilingFit, not major/minor labels.
+- Main analysis metrics should be `Root Affinity (R_A)`, `Overtone Affinity (O_A)`,
+  `Binding Strength (S)`, and `Harmonic Tilt (τ)`.
 - Keep interval heatmaps as secondary figures with guide lines (112/316/386/498/702 cents).

@@ -177,7 +177,7 @@ const E4_DYNAMICS_STEP_SEMITONES: f32 = E2_STEP_SEMITONES;
 const E4_DYNAMICS_PEAK_TOP_N: usize = 64;
 const E4_ABCD_TRACE_STEPS: u32 = E4_DYNAMICS_PROBE_STEPS;
 const E4_DIAG_PEAK_TOP_K: usize = 8;
-const E4_EMIT_LEGACY_OUTPUTS: bool = false;
+const E4_LEGACY_DEFAULT: bool = false;
 
 const E3_FIRST_K: usize = 20;
 const E3_POP_SIZE: usize = 32;
@@ -222,6 +222,54 @@ fn write_with_log<P: AsRef<Path>, C: AsRef<[u8]>>(path: P, contents: C) -> io::R
     let path = path.as_ref();
     log_output_path(path);
     std::fs::write(path, contents)
+}
+
+fn purge_e4_legacy_outputs(out_dir: &Path) -> io::Result<()> {
+    if !out_dir.exists() {
+        return Ok(());
+    }
+    let legacy_exact = [
+        "paper_e4_delta_bind.png",
+        "paper_e4_wr_delta_bind_vs_mirror.svg",
+        "paper_e4_wr_delta_bind_agent_vs_oracle.svg",
+        "paper_e4_step_response_delta_bind.csv",
+        "paper_e4_step_response_delta_bind.svg",
+        "e4_fit_metrics.csv",
+        "e4_fit_summary.csv",
+        "paper_e4_fit_metrics_raw.csv",
+        "paper_e4_fit_metrics_summary.csv",
+        "e4_bind_metrics.csv",
+        "e4_bind_summary.csv",
+    ];
+    for name in legacy_exact {
+        let path = out_dir.join(name);
+        if path.exists() {
+            std::fs::remove_file(path)?;
+        }
+    }
+
+    for entry in std::fs::read_dir(out_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let Some(name) = path.file_name().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        let lower = name.to_ascii_lowercase();
+        let should_remove = lower.contains("delta_bind")
+            || lower.contains("root_fit")
+            || lower.contains("ceiling_fit")
+            || lower.starts_with("e4_bind_")
+            || lower.starts_with("paper_e4_bind_")
+            || lower.starts_with("e4_fit_")
+            || lower.starts_with("paper_e4_fit_");
+        if should_remove {
+            std::fs::remove_file(path)?;
+        }
+    }
+    Ok(())
 }
 
 fn bitmap_root<'a>(out_path: &'a Path, size: (u32, u32)) -> SVGBackend<'a> {
@@ -335,7 +383,7 @@ impl Drop for PaperRunLock {
 
 fn usage() -> String {
     [
-        "Usage: paper [--exp E1,E2,...] [--clean[=on|off]] [--e4-hist on|off] [--e4-kernel-gate on|off] [--e4-wr on|off] [--e2-phase mode]",
+        "Usage: paper [--exp E1,E2,...] [--clean[=on|off]] [--e4-hist on|off] [--e4-kernel-gate on|off] [--e4-wr on|off] [--e4-legacy on|off] [--e2-phase mode]",
         "Examples:",
         "  paper --exp 2",
         "  paper --exp all",
@@ -345,11 +393,13 @@ fn usage() -> String {
         "  paper --exp e4 --e4-hist on",
         "  paper --exp e4 --e4-kernel-gate on",
         "  paper --exp e4 --e4-wr on",
+        "  paper --exp e4 --e4-legacy on",
         "  paper --exp e2 --e2-phase dissonance_then_consonance",
         "If no experiment is specified, all (E1-E5) run.",
         "E4 histogram dumps default to off (use --e4-hist on to enable).",
         "E4 kernel gate plot default to off (use --e4-kernel-gate on to enable).",
         "E4 wr probe default to off (use --e4-wr on to enable).",
+        "E4 legacy outputs default to off (use --e4-legacy on to enable old plots).",
         "E2 phase modes: normal | dissonance_then_consonance (default)",
         "Outputs are written to examples/paper/plots/<exp>/ (e.g. examples/paper/plots/e2).",
         "By default only selected experiment dirs are overwritten.",
@@ -404,6 +454,17 @@ fn parse_experiments(args: &[String]) -> Result<Vec<Experiment>, String> {
             continue;
         }
         if arg.starts_with("--e2-phase=") {
+            i += 1;
+            continue;
+        }
+        if arg == "--e4-legacy" {
+            if i + 1 >= args.len() {
+                return Err(format!("Missing value after {arg}\n{}", usage()));
+            }
+            i += 2;
+            continue;
+        }
+        if arg.starts_with("--e4-legacy=") {
             i += 1;
             continue;
         }
@@ -588,6 +649,41 @@ fn parse_e4_wr(args: &[String]) -> Result<bool, String> {
     }
 }
 
+fn parse_e4_legacy(args: &[String]) -> Result<bool, String> {
+    let mut value: Option<String> = None;
+    let mut i = 0;
+    while i < args.len() {
+        let arg = args[i].as_str();
+        if arg == "--e4-legacy" {
+            if i + 1 >= args.len() {
+                return Err(format!("Missing value after {arg}\n{}", usage()));
+            }
+            value = Some(args[i + 1].clone());
+            i += 2;
+            continue;
+        }
+        if let Some(rest) = arg.strip_prefix("--e4-legacy=") {
+            value = Some(rest.to_string());
+            i += 1;
+            continue;
+        }
+        i += 1;
+    }
+
+    let Some(value) = value else {
+        return Ok(E4_LEGACY_DEFAULT);
+    };
+    let normalized = value.to_ascii_lowercase();
+    match normalized.as_str() {
+        "on" | "true" | "1" | "yes" => Ok(true),
+        "off" | "false" | "0" | "no" => Ok(false),
+        _ => Err(format!(
+            "Invalid --e4-legacy value '{value}'. Use on/off.\n{}",
+            usage()
+        )),
+    }
+}
+
 fn parse_e2_phase(args: &[String]) -> Result<E2PhaseMode, String> {
     let mut value: Option<String> = None;
     let mut i = 0;
@@ -693,6 +789,7 @@ pub(crate) fn main() -> Result<(), Box<dyn Error>> {
     let e4_hist_enabled = parse_e4_hist(&args).map_err(io::Error::other)?;
     let e4_kernel_gate_enabled = parse_e4_kernel_gate(&args).map_err(io::Error::other)?;
     let e4_wr_enabled = parse_e4_wr(&args).map_err(io::Error::other)?;
+    let e4_legacy_enabled = parse_e4_legacy(&args).map_err(io::Error::other)?;
     let e2_phase_mode = parse_e2_phase(&args).map_err(io::Error::other)?;
     let clean_all = parse_clean(&args).map_err(io::Error::other)?;
     let experiments = parse_experiments(&args).map_err(io::Error::other)?;
@@ -759,6 +856,7 @@ pub(crate) fn main() -> Result<(), Box<dyn Error>> {
                             e4_hist_enabled,
                             e4_kernel_gate_enabled,
                             e4_wr_enabled,
+                            e4_legacy_enabled,
                         )
                         .map_err(|err| io::Error::other(err.to_string()))
                     });
@@ -3609,25 +3707,35 @@ fn plot_e4_mirror_sweep(
     emit_hist_files: bool,
     emit_kernel_gate: bool,
     emit_wr_probe: bool,
+    emit_legacy_outputs: bool,
 ) -> Result<(), Box<dyn Error>> {
-    if !E4_EMIT_LEGACY_OUTPUTS {
+    if !emit_legacy_outputs {
+        purge_e4_legacy_outputs(out_dir)?;
         let weights = build_weight_grid(E4_WEIGHT_COARSE_STEP);
-        let (_run_records, _hist_records, _tail_rows, tail_agent_rows) = run_e4_sweep_for_weights(
-            out_dir,
-            anchor_hz,
-            &weights,
-            &E4_SEEDS,
-            E4_BIN_WIDTHS[0],
-            &E4_EPS_CENTS,
-            false,
-            true,
+        let (_run_records, _hist_records, _tail_rows, _tail_agent_rows, tail_landscape_rows) =
+            run_e4_sweep_for_weights(
+                out_dir,
+                anchor_hz,
+                &weights,
+                &E4_SEEDS,
+                E4_BIN_WIDTHS[0],
+                &E4_EPS_CENTS,
+                false,
+                true,
+            )?;
+
+        let tail_landscape_csv_path = out_dir.join("e4_tail_landscape.csv");
+        write_with_log(
+            &tail_landscape_csv_path,
+            e4_tail_landscape_csv(&tail_landscape_rows),
         )?;
 
-        let tail_agents_csv_path = out_dir.join("e4_tail_agents.csv");
-        write_with_log(&tail_agents_csv_path, e4_tail_agents_csv(&tail_agent_rows))?;
-
-        let bind_metrics = e4_bind_metrics_from_tail_agents(&tail_agent_rows);
-        let bind_summary = e4_bind_summary_rows(&bind_metrics);
+        let bind_metrics = e4_binding_metrics_from_tail_landscape(&tail_landscape_rows);
+        let bind_summary = e4_binding_summary_rows(&bind_metrics);
+        let binding_metrics_path = out_dir.join("e4_binding_metrics.csv");
+        write_with_log(&binding_metrics_path, e4_binding_metrics_csv(&bind_metrics))?;
+        let binding_summary_path = out_dir.join("e4_binding_summary.csv");
+        write_with_log(&binding_summary_path, e4_binding_summary_csv(&bind_summary))?;
         let binding_metrics_raw_path = out_dir.join("paper_e4_binding_metrics_raw.csv");
         write_with_log(
             &binding_metrics_raw_path,
@@ -3639,70 +3747,14 @@ fn plot_e4_mirror_sweep(
             e4_binding_metrics_summary_csv(&bind_summary),
         )?;
 
-        let fingerprint_rows = e4_fingerprint_rows_from_tail_agents(&tail_agent_rows);
-        let fingerprint_summary = e4_fingerprint_summary_rows(&fingerprint_rows);
-        let fingerprint_raw_path = out_dir.join("paper_e4_fingerprint_raw.csv");
-        write_with_log(
-            &fingerprint_raw_path,
-            e4_fingerprint_raw_csv(&fingerprint_rows),
-        )?;
-        let fingerprint_summary_path = out_dir.join("paper_e4_fingerprint_summary.csv");
-        write_with_log(
-            &fingerprint_summary_path,
-            e4_fingerprint_summary_csv(&fingerprint_summary),
-        )?;
-
         let binding_phase_png_path = out_dir.join("paper_e4_binding_phase_diagram.png");
         render_e4_binding_phase_diagram_png(&binding_phase_png_path, &bind_summary)?;
-        let delta_bind_png_path = out_dir.join("paper_e4_delta_bind.png");
-        render_e4_delta_bind_png(&delta_bind_png_path, &bind_summary)?;
-        let fingerprint_heatmap_png_path = out_dir.join("paper_e4_fingerprint_heatmap.png");
-        render_e4_fingerprint_heatmap_png(&fingerprint_heatmap_png_path, &fingerprint_summary)?;
-
-        let meta = e4_paper_meta();
-        let space = Log2Space::new(meta.fmin, meta.fmax, meta.bins_per_oct);
-        let (_erb_scan, du_scan) = erb_grid_for_space(&space);
-        let final_freqs = e4_final_freqs_by_mw_seed(&tail_agent_rows);
-        let k = k_from_semitones(E4_DYNAMICS_STEP_SEMITONES.max(1e-3));
-        let (diag_rows, diag_peak_rows) = e4_diag_rows_from_final_freqs(
-            &final_freqs,
-            &space,
-            anchor_hz,
-            &du_scan,
-            E4_ABCD_TRACE_STEPS,
-            E4_DYNAMICS_BASE_LAMBDA.max(0.0),
-            E4_DYNAMICS_REPULSION_SIGMA.max(1e-6),
-            k,
-        );
-        write_with_log(
-            out_dir.join("e4_oracle_step_trace.csv"),
-            e4_diag_step_rows_csv(&diag_rows),
-        )?;
-        write_with_log(
-            out_dir.join("e4_peaks_by_mw.csv"),
-            e4_peaks_by_mw_csv(&diag_peak_rows),
-        )?;
-        let landscape_delta_rows = e4_landscape_delta_rows(&weights, &space, anchor_hz, &du_scan);
-        write_with_log(
-            out_dir.join("e4_landscape_delta_by_mw.csv"),
-            e4_landscape_delta_by_mw_csv(&landscape_delta_rows),
-        )?;
-        render_e4_gap_over_time(
-            &out_dir.join("e4_gap_global_over_time.svg"),
-            &diag_rows,
-            true,
-        )?;
-        render_e4_gap_over_time(
-            &out_dir.join("e4_gap_reach_over_time.svg"),
-            &diag_rows,
-            false,
-        )?;
-        render_e4_gap_global_by_mw(&out_dir.join("e4_gap_global_by_mw.svg"), &diag_rows)?;
-        render_e4_peak_positions_vs_mw(
-            &out_dir.join("e4_peak_positions_vs_mw.svg"),
-            &diag_peak_rows,
-            E4_DIAG_PEAK_TOP_K,
-        )?;
+        let harmonic_tilt_png_path = out_dir.join("paper_e4_harmonic_tilt.png");
+        render_e4_harmonic_tilt_png(&harmonic_tilt_png_path, &bind_summary)?;
+        let harmonic_tilt_scatter_path = out_dir.join("paper_e4_harmonic_tilt_scatter.png");
+        render_e4_harmonic_tilt_scatter_png(&harmonic_tilt_scatter_path, &bind_metrics)?;
+        let overtone_rate_path = out_dir.join("paper_e4_overtone_regime_rate.png");
+        render_e4_overtone_regime_rate_png(&overtone_rate_path, &bind_metrics)?;
         if emit_wr_probe {
             plot_e4_mirror_sweep_wr_cut(out_dir, anchor_hz)?;
         }
@@ -3719,17 +3771,22 @@ fn plot_e4_mirror_sweep(
     let coarse_weights = build_weight_grid(E4_WEIGHT_COARSE_STEP);
     let primary_bin = E4_BIN_WIDTHS[0];
     let primary_eps = E4_EPS_CENTS[0];
-    let (mut run_records, mut hist_records, mut tail_rows, mut tail_agent_rows) =
-        run_e4_sweep_for_weights(
-            out_dir,
-            anchor_hz,
-            &coarse_weights,
-            &E4_SEEDS,
-            primary_bin,
-            &E4_EPS_CENTS,
-            emit_hist_files,
-            true,
-        )?;
+    let (
+        mut run_records,
+        mut hist_records,
+        mut tail_rows,
+        mut tail_agent_rows,
+        mut tail_landscape_rows,
+    ) = run_e4_sweep_for_weights(
+        out_dir,
+        anchor_hz,
+        &coarse_weights,
+        &E4_SEEDS,
+        primary_bin,
+        &E4_EPS_CENTS,
+        emit_hist_files,
+        true,
+    )?;
 
     let mut weights = coarse_weights.clone();
     let fine_weights = refine_weights_from_sign_change(&run_records, primary_bin, primary_eps);
@@ -3747,33 +3804,36 @@ fn plot_e4_mirror_sweep(
         .collect();
 
     if !fine_only.is_empty() {
-        let (more_runs, more_hists, more_tail, more_tail_agents) = run_e4_sweep_for_weights(
-            out_dir,
-            anchor_hz,
-            &fine_only,
-            &E4_SEEDS,
-            primary_bin,
-            &E4_EPS_CENTS,
-            emit_hist_files,
-            true,
-        )?;
+        let (more_runs, more_hists, more_tail, more_tail_agents, more_tail_landscape) =
+            run_e4_sweep_for_weights(
+                out_dir,
+                anchor_hz,
+                &fine_only,
+                &E4_SEEDS,
+                primary_bin,
+                &E4_EPS_CENTS,
+                emit_hist_files,
+                true,
+            )?;
         run_records.extend(more_runs);
         hist_records.extend(more_hists);
         tail_rows.extend(more_tail);
         tail_agent_rows.extend(more_tail_agents);
+        tail_landscape_rows.extend(more_tail_landscape);
     }
 
     for &bin_width in E4_BIN_WIDTHS.iter().skip(1) {
-        let (more_runs, more_hists, more_tail, _more_tail_agents) = run_e4_sweep_for_weights(
-            out_dir,
-            anchor_hz,
-            &weights,
-            &E4_SEEDS,
-            bin_width,
-            &E4_EPS_CENTS,
-            emit_hist_files,
-            false,
-        )?;
+        let (more_runs, more_hists, more_tail, _more_tail_agents, _more_tail_landscape) =
+            run_e4_sweep_for_weights(
+                out_dir,
+                anchor_hz,
+                &weights,
+                &E4_SEEDS,
+                bin_width,
+                &E4_EPS_CENTS,
+                emit_hist_files,
+                false,
+            )?;
         run_records.extend(more_runs);
         hist_records.extend(more_hists);
         tail_rows.extend(more_tail);
@@ -3785,6 +3845,11 @@ fn plot_e4_mirror_sweep(
     write_with_log(&tail_csv_path, e4_tail_interval_csv(&tail_rows))?;
     let tail_agents_csv_path = out_dir.join("e4_tail_agents.csv");
     write_with_log(&tail_agents_csv_path, e4_tail_agents_csv(&tail_agent_rows))?;
+    let tail_landscape_csv_path = out_dir.join("e4_tail_landscape.csv");
+    write_with_log(
+        &tail_landscape_csv_path,
+        e4_tail_landscape_csv(&tail_landscape_rows),
+    )?;
 
     let summaries = summarize_e4_runs(&run_records);
     let summary_csv_path = out_dir.join("e4_mirror_sweep_summary.csv");
@@ -3800,12 +3865,12 @@ fn plot_e4_mirror_sweep(
         e4_fixed_except_mirror_check_csv(&run_records, &tail_agent_rows),
     )?;
 
-    let bind_metrics = e4_bind_metrics_from_tail_agents(&tail_agent_rows);
-    let bind_metrics_path = out_dir.join("e4_bind_metrics.csv");
-    write_with_log(&bind_metrics_path, e4_bind_metrics_csv(&bind_metrics))?;
-    let bind_summary = e4_bind_summary_rows(&bind_metrics);
-    let bind_summary_path = out_dir.join("e4_bind_summary.csv");
-    write_with_log(&bind_summary_path, e4_bind_summary_csv(&bind_summary))?;
+    let bind_metrics = e4_binding_metrics_from_tail_landscape(&tail_landscape_rows);
+    let bind_summary = e4_binding_summary_rows(&bind_metrics);
+    let binding_metrics_path = out_dir.join("e4_binding_metrics.csv");
+    write_with_log(&binding_metrics_path, e4_binding_metrics_csv(&bind_metrics))?;
+    let binding_summary_path = out_dir.join("e4_binding_summary.csv");
+    write_with_log(&binding_summary_path, e4_binding_summary_csv(&bind_summary))?;
     let binding_metrics_raw_path = out_dir.join("paper_e4_binding_metrics_raw.csv");
     write_with_log(
         &binding_metrics_raw_path,
@@ -3892,14 +3957,18 @@ fn plot_e4_mirror_sweep(
     render_e4_interval_heatmap(&fig3_path, &hist_records, primary_bin)?;
     let bind_main_path = out_dir.join("paper_e4_bind_vs_weight.svg");
     render_e4_bind_vs_weight(&bind_main_path, &bind_summary)?;
-    let bind_fit_path = out_dir.join("paper_e4_root_ceiling_fit_vs_weight.svg");
-    render_e4_root_ceiling_fit_vs_weight(&bind_fit_path, &bind_summary)?;
+    let binding_components_path = out_dir.join("paper_e4_binding_components_vs_weight.svg");
+    render_e4_binding_components_vs_weight(&binding_components_path, &bind_summary)?;
     let fingerprint_path = out_dir.join("paper_e4_interval_fingerprint_heatmap.svg");
     render_e4_interval_heatmap(&fingerprint_path, &hist_records, primary_bin)?;
     let binding_phase_png_path = out_dir.join("paper_e4_binding_phase_diagram.png");
     render_e4_binding_phase_diagram_png(&binding_phase_png_path, &bind_summary)?;
-    let delta_bind_png_path = out_dir.join("paper_e4_delta_bind.png");
-    render_e4_delta_bind_png(&delta_bind_png_path, &bind_summary)?;
+    let harmonic_tilt_png_path = out_dir.join("paper_e4_harmonic_tilt.png");
+    render_e4_harmonic_tilt_png(&harmonic_tilt_png_path, &bind_summary)?;
+    let harmonic_tilt_scatter_path = out_dir.join("paper_e4_harmonic_tilt_scatter.png");
+    render_e4_harmonic_tilt_scatter_png(&harmonic_tilt_scatter_path, &bind_metrics)?;
+    let overtone_rate_path = out_dir.join("paper_e4_overtone_regime_rate.png");
+    render_e4_overtone_regime_rate_png(&overtone_rate_path, &bind_metrics)?;
     let fingerprint_heatmap_png_path = out_dir.join("paper_e4_fingerprint_heatmap.png");
     render_e4_fingerprint_heatmap_png(&fingerprint_heatmap_png_path, &fingerprint_summary)?;
 
@@ -4263,28 +4332,43 @@ struct E4TailAgentRow {
 }
 
 #[derive(Clone, Copy)]
-struct E4BindMetricRow {
+struct E4TailLandscapeRow {
     mirror_weight: f32,
     seed: u64,
-    root_fit: f32,
-    ceiling_fit: f32,
-    delta_bind: f32,
-    n_agents: usize,
+    step: u32,
+    root_affinity: f32,
+    overtone_affinity: f32,
+    binding_strength: f32,
+    harmonic_tilt: f32,
+}
+
+#[derive(Clone, Copy)]
+struct E4BindingMetricRow {
+    mirror_weight: f32,
+    seed: u64,
+    root_affinity: f32,
+    overtone_affinity: f32,
+    binding_strength: f32,
+    harmonic_tilt: f32,
+    n_steps: usize,
     step: u32,
 }
 
 #[derive(Clone, Copy)]
-struct E4BindSummaryRow {
+struct E4BindingSummaryRow {
     mirror_weight: f32,
-    mean_root_fit: f32,
-    root_ci_lo: f32,
-    root_ci_hi: f32,
-    mean_ceiling_fit: f32,
-    ceiling_ci_lo: f32,
-    ceiling_ci_hi: f32,
-    mean_delta_bind: f32,
-    delta_bind_ci_lo: f32,
-    delta_bind_ci_hi: f32,
+    root_affinity_mean: f32,
+    root_affinity_ci_lo: f32,
+    root_affinity_ci_hi: f32,
+    overtone_affinity_mean: f32,
+    overtone_affinity_ci_lo: f32,
+    overtone_affinity_ci_hi: f32,
+    binding_strength_mean: f32,
+    binding_strength_ci_lo: f32,
+    binding_strength_ci_hi: f32,
+    harmonic_tilt_mean: f32,
+    harmonic_tilt_ci_lo: f32,
+    harmonic_tilt_ci_hi: f32,
     n_seeds: usize,
 }
 
@@ -4321,36 +4405,36 @@ struct E4WrBindRunRow {
     wr: f32,
     mirror_weight: f32,
     seed: u64,
-    root_fit: f32,
-    ceiling_fit: f32,
-    delta_bind: f32,
-    root_fit_anchor: f32,
-    ceiling_fit_anchor: f32,
-    delta_bind_anchor: f32,
+    root_affinity: f32,
+    overtone_affinity: f32,
+    harmonic_tilt: f32,
+    root_affinity_anchor: f32,
+    overtone_affinity_anchor: f32,
+    harmonic_tilt_anchor: f32,
 }
 
 #[derive(Clone, Copy)]
 struct E4WrBindSummaryRow {
     wr: f32,
     mirror_weight: f32,
-    root_fit_mean: f32,
-    root_fit_ci_lo: f32,
-    root_fit_ci_hi: f32,
-    ceiling_fit_mean: f32,
-    ceiling_fit_ci_lo: f32,
-    ceiling_fit_ci_hi: f32,
-    delta_bind_mean: f32,
-    delta_bind_ci_lo: f32,
-    delta_bind_ci_hi: f32,
-    root_fit_anchor_mean: f32,
-    root_fit_anchor_ci_lo: f32,
-    root_fit_anchor_ci_hi: f32,
-    ceiling_fit_anchor_mean: f32,
-    ceiling_fit_anchor_ci_lo: f32,
-    ceiling_fit_anchor_ci_hi: f32,
-    delta_bind_anchor_mean: f32,
-    delta_bind_anchor_ci_lo: f32,
-    delta_bind_anchor_ci_hi: f32,
+    root_affinity_mean: f32,
+    root_affinity_ci_lo: f32,
+    root_affinity_ci_hi: f32,
+    overtone_affinity_mean: f32,
+    overtone_affinity_ci_lo: f32,
+    overtone_affinity_ci_hi: f32,
+    harmonic_tilt_mean: f32,
+    harmonic_tilt_ci_lo: f32,
+    harmonic_tilt_ci_hi: f32,
+    root_affinity_anchor_mean: f32,
+    root_affinity_anchor_ci_lo: f32,
+    root_affinity_anchor_ci_hi: f32,
+    overtone_affinity_anchor_mean: f32,
+    overtone_affinity_anchor_ci_lo: f32,
+    overtone_affinity_anchor_ci_hi: f32,
+    harmonic_tilt_anchor_mean: f32,
+    harmonic_tilt_anchor_ci_lo: f32,
+    harmonic_tilt_anchor_ci_hi: f32,
     n_seeds: usize,
 }
 
@@ -4405,13 +4489,13 @@ struct E4WrOracleRow {
     mirror_weight: f32,
     n_seeds: usize,
     n_peaks: usize,
-    agent_delta_bind: f32,
-    oracle1_delta_bind: f32,
-    oracle1_delta_bind_ci_lo: f32,
-    oracle1_delta_bind_ci_hi: f32,
-    oracle2_delta_bind_mean: f32,
-    oracle2_delta_bind_ci_lo: f32,
-    oracle2_delta_bind_ci_hi: f32,
+    agent_harmonic_tilt: f32,
+    oracle1_harmonic_tilt: f32,
+    oracle1_harmonic_tilt_ci_lo: f32,
+    oracle1_harmonic_tilt_ci_hi: f32,
+    oracle2_harmonic_tilt_mean: f32,
+    oracle2_harmonic_tilt_ci_lo: f32,
+    oracle2_harmonic_tilt_ci_hi: f32,
 }
 
 #[derive(Clone, Copy)]
@@ -4420,9 +4504,9 @@ struct E4WrOracleRunRow {
     mirror_weight: f32,
     seed: u64,
     n_peaks: usize,
-    agent_delta_bind: f32,
-    oracle1_delta_bind: f32,
-    oracle2_delta_bind: f32,
+    agent_harmonic_tilt: f32,
+    oracle1_harmonic_tilt: f32,
+    oracle2_harmonic_tilt: f32,
 }
 
 #[derive(Clone, Copy)]
@@ -4437,9 +4521,9 @@ struct E4WrDynamicsProbeRow {
     mean_h01: f32,
     mean_r01: f32,
     mean_repulsion: f32,
-    root_fit: f32,
-    ceiling_fit: f32,
-    delta_bind: f32,
+    root_affinity: f32,
+    overtone_affinity: f32,
+    harmonic_tilt: f32,
     pitch_diversity_st: f32,
 }
 
@@ -4454,11 +4538,11 @@ struct E4WrDynamicsProbeSummaryRow {
     mean_h01: f32,
     mean_r01: f32,
     mean_repulsion: f32,
-    root_fit_mean: f32,
-    ceiling_fit_mean: f32,
-    delta_bind_mean: f32,
-    delta_bind_ci_lo: f32,
-    delta_bind_ci_hi: f32,
+    root_affinity_mean: f32,
+    overtone_affinity_mean: f32,
+    harmonic_tilt_mean: f32,
+    harmonic_tilt_ci_lo: f32,
+    harmonic_tilt_ci_hi: f32,
     pitch_diversity_st_mean: f32,
 }
 
@@ -5086,6 +5170,7 @@ fn run_e4_sweep_for_weights(
         Vec<E4HistRecord>,
         Vec<E4TailIntervalRow>,
         Vec<E4TailAgentRow>,
+        Vec<E4TailLandscapeRow>,
     ),
     Box<dyn Error>,
 > {
@@ -5093,6 +5178,7 @@ fn run_e4_sweep_for_weights(
     let mut hists = Vec::new();
     let mut tail_rows = Vec::new();
     let mut tail_agent_rows = Vec::new();
+    let mut tail_landscape_rows = Vec::new();
     for &weight in weights {
         for &seed in seeds {
             let samples = run_e4_condition_tail_samples(weight, seed, E4_TAIL_WINDOW_STEPS);
@@ -5160,6 +5246,25 @@ fn run_e4_sweep_for_weights(
                 }
             }
             if emit_tail_agents {
+                if samples.landscape_metrics_by_step.len() != samples.agent_freqs_by_step.len() {
+                    panic!(
+                        "E4 protocol violation: seed={seed} weight={weight:.3} landscape_tail={} agent_tail={}",
+                        samples.landscape_metrics_by_step.len(),
+                        samples.agent_freqs_by_step.len()
+                    );
+                }
+                for (i, m) in samples.landscape_metrics_by_step.iter().enumerate() {
+                    let step = burn_in + i as u32;
+                    tail_landscape_rows.push(E4TailLandscapeRow {
+                        mirror_weight: weight,
+                        seed,
+                        step,
+                        root_affinity: m.root_affinity,
+                        overtone_affinity: m.overtone_affinity,
+                        binding_strength: m.binding_strength,
+                        harmonic_tilt: m.harmonic_tilt,
+                    });
+                }
                 for (i, agent_rows) in samples.agent_freqs_by_step.iter().enumerate() {
                     let keep = (i % 10) == 0 || i + 1 == samples.agent_freqs_by_step.len();
                     if !keep {
@@ -5223,7 +5328,7 @@ fn run_e4_sweep_for_weights(
             }
         }
     }
-    Ok((runs, hists, tail_rows, tail_agent_rows))
+    Ok((runs, hists, tail_rows, tail_agent_rows, tail_landscape_rows))
 }
 
 fn e4_runs_csv(records: &[E4RunRecord]) -> String {
@@ -5286,6 +5391,25 @@ fn e4_tail_agents_csv(rows: &[E4TailAgentRow]) -> String {
         out.push_str(&format!(
             "{:.3},{},{},{},{:.6}\n",
             row.mirror_weight, row.seed, row.step, row.agent_id, row.freq_hz
+        ));
+    }
+    out
+}
+
+fn e4_tail_landscape_csv(rows: &[E4TailLandscapeRow]) -> String {
+    let mut out = String::from(
+        "mirror_weight,seed,step,root_affinity,overtone_affinity,binding_strength,harmonic_tilt\n",
+    );
+    for row in rows {
+        out.push_str(&format!(
+            "{:.3},{},{},{:.6},{:.6},{:.6},{:.6}\n",
+            row.mirror_weight,
+            row.seed,
+            row.step,
+            row.root_affinity,
+            row.overtone_affinity,
+            row.binding_strength,
+            row.harmonic_tilt
         ));
     }
     out
@@ -5393,7 +5517,7 @@ fn unique_candidates(mut raw: Vec<f32>) -> Vec<f32> {
     raw
 }
 
-fn root_fit_from_freqs(freqs: &[f32]) -> f32 {
+fn root_affinity_from_freqs(freqs: &[f32]) -> f32 {
     let ratios = normalize_freq_ratios(freqs);
     if ratios.is_empty() {
         return 0.0;
@@ -5418,7 +5542,7 @@ fn root_fit_from_freqs(freqs: &[f32]) -> f32 {
     best
 }
 
-fn ceiling_fit_from_freqs(freqs: &[f32]) -> f32 {
+fn overtone_affinity_from_freqs(freqs: &[f32]) -> f32 {
     let ratios = normalize_freq_ratios(freqs);
     if ratios.is_empty() {
         return 0.0;
@@ -5445,9 +5569,10 @@ fn ceiling_fit_from_freqs(freqs: &[f32]) -> f32 {
 
 #[derive(Clone, Copy, Debug)]
 struct BindEval {
-    root_fit: f32,
-    ceiling_fit: f32,
-    delta_bind: f32,
+    root_affinity: f32,
+    overtone_affinity: f32,
+    binding_strength: f32,
+    harmonic_tilt: f32,
 }
 
 fn bind_eval_from_freqs(freqs: &[f32]) -> BindEval {
@@ -5458,26 +5583,33 @@ fn bind_eval_from_freqs(freqs: &[f32]) -> BindEval {
         .collect();
     if clean_freqs.is_empty() {
         return BindEval {
-            root_fit: 0.0,
-            ceiling_fit: 0.0,
-            delta_bind: 0.0,
+            root_affinity: 0.0,
+            overtone_affinity: 0.0,
+            binding_strength: 0.0,
+            harmonic_tilt: 0.0,
         };
     }
     // Voices only (anchor excluded): this keeps the regime metric tied to population structure.
-    let root_fit = root_fit_from_freqs(&clean_freqs);
-    let ceiling_fit = ceiling_fit_from_freqs(&clean_freqs);
-    let denom = root_fit + ceiling_fit + 1e-6;
-    let delta_bind = ((root_fit - ceiling_fit) / denom).clamp(-1.0, 1.0);
+    let root_affinity = root_affinity_from_freqs(&clean_freqs);
+    let overtone_affinity = overtone_affinity_from_freqs(&clean_freqs);
+    let binding_strength = root_affinity + overtone_affinity;
+    let denom = binding_strength + 1e-6;
+    let harmonic_tilt = ((root_affinity - overtone_affinity) / denom).clamp(-1.0, 1.0);
     BindEval {
-        root_fit,
-        ceiling_fit,
-        delta_bind,
+        root_affinity,
+        overtone_affinity,
+        binding_strength,
+        harmonic_tilt,
     }
 }
 
 fn bind_scores_from_freqs(freqs: &[f32]) -> (f32, f32, f32) {
     let eval = bind_eval_from_freqs(freqs);
-    (eval.root_fit, eval.ceiling_fit, eval.delta_bind)
+    (
+        eval.root_affinity,
+        eval.overtone_affinity,
+        eval.harmonic_tilt,
+    )
 }
 
 fn anchored_fit_from_ratios(ratios: &[f32]) -> f32 {
@@ -5518,20 +5650,20 @@ fn bind_scores_anchor_from_freqs(anchor_hz: f32, freqs: &[f32]) -> (f32, f32, f3
     if ratios.is_empty() {
         return (0.0, 0.0, 0.0);
     }
-    let root_fit_anchor = anchored_fit_from_ratios(&ratios);
+    let root_affinity_anchor = anchored_fit_from_ratios(&ratios);
     let inv_ratios: Vec<f32> = ratios
         .iter()
         .copied()
         .filter(|r| *r > 0.0)
         .map(|r| 1.0 / r)
         .collect();
-    let ceiling_fit_anchor = anchored_fit_from_ratios(&inv_ratios);
-    let denom = root_fit_anchor + ceiling_fit_anchor + 1e-6;
-    let delta_bind_anchor = (root_fit_anchor - ceiling_fit_anchor) / denom;
+    let overtone_affinity_anchor = anchored_fit_from_ratios(&inv_ratios);
+    let denom = root_affinity_anchor + overtone_affinity_anchor + 1e-6;
+    let harmonic_tilt_anchor = (root_affinity_anchor - overtone_affinity_anchor) / denom;
     (
-        root_fit_anchor,
-        ceiling_fit_anchor,
-        delta_bind_anchor.clamp(-1.0, 1.0),
+        root_affinity_anchor,
+        overtone_affinity_anchor,
+        harmonic_tilt_anchor.clamp(-1.0, 1.0),
     )
 }
 
@@ -5559,13 +5691,13 @@ fn sample_weighted_index(weights: &[f32], rng: &mut StdRng) -> Option<usize> {
     Some(weights.len().saturating_sub(1))
 }
 
-fn oracle1_delta_bind_from_peaks(peaks: &[E4PeakRow], k: usize) -> f32 {
+fn oracle1_harmonic_tilt_from_peaks(peaks: &[E4PeakRow], k: usize) -> f32 {
     let k = k.max(1);
     let freqs: Vec<f32> = peaks.iter().take(k).map(|p| p.freq_hz).collect();
-    bind_eval_from_freqs(&freqs).delta_bind
+    bind_eval_from_freqs(&freqs).harmonic_tilt
 }
 
-fn oracle2_delta_bind_from_peaks(
+fn oracle2_harmonic_tilt_from_peaks(
     peaks: &[E4PeakRow],
     top_n: usize,
     k: usize,
@@ -5587,7 +5719,7 @@ fn oracle2_delta_bind_from_peaks(
             let idx = sample_weighted_index(&weights, &mut rng).unwrap_or(0);
             freqs.push(pool[idx].freq_hz);
         }
-        deltas.push(bind_eval_from_freqs(&freqs).delta_bind);
+        deltas.push(bind_eval_from_freqs(&freqs).harmonic_tilt);
     }
     bootstrap_mean_ci95(&deltas, E4_BOOTSTRAP_ITERS, seed ^ 0xB007_5EED)
 }
@@ -5609,12 +5741,12 @@ fn e4_wr_oracle_run_rows(
         let scan =
             compute_e4_landscape_scans(space, anchor_hz, run.wr, run.mirror_weight, freqs, du_scan);
         let peaks = extract_peak_rows_from_c_scan(space, anchor_hz, &scan, E4_ORACLE_TOP_N.max(1));
-        let oracle1 = oracle1_delta_bind_from_peaks(&peaks, population_size);
+        let oracle1 = oracle1_harmonic_tilt_from_peaks(&peaks, population_size);
         let oracle_seed = E4_WR_BASE_SEED
             ^ (key.0 as i64 as u64).wrapping_mul(0x9E37_79B9)
             ^ (key.1 as i64 as u64).wrapping_mul(0x85EB_CA6B)
             ^ key.2.wrapping_mul(0xC2B2_AE35);
-        let (oracle2_mean, _oracle2_lo, _oracle2_hi) = oracle2_delta_bind_from_peaks(
+        let (oracle2_mean, _oracle2_lo, _oracle2_hi) = oracle2_harmonic_tilt_from_peaks(
             &peaks,
             E4_ORACLE_TOP_N,
             population_size,
@@ -5626,9 +5758,9 @@ fn e4_wr_oracle_run_rows(
             mirror_weight: run.mirror_weight,
             seed: run.seed,
             n_peaks: peaks.len(),
-            agent_delta_bind: run.delta_bind,
-            oracle1_delta_bind: oracle1,
-            oracle2_delta_bind: oracle2_mean,
+            agent_harmonic_tilt: run.harmonic_tilt,
+            oracle1_harmonic_tilt: oracle1,
+            oracle2_harmonic_tilt: oracle2_mean,
         });
     }
     out.sort_by(|a, b| {
@@ -5646,7 +5778,7 @@ fn e4_wr_oracle_run_rows(
 
 fn e4_wr_oracle_runs_csv(rows: &[E4WrOracleRunRow]) -> String {
     let mut out = String::from(
-        "wr,mirror_weight,seed,n_peaks,delta_bind_agent,delta_bind_oracle1,delta_bind_oracle2\n",
+        "wr,mirror_weight,seed,n_peaks,harmonic_tilt_agent,harmonic_tilt_oracle1,harmonic_tilt_oracle2\n",
     );
     for row in rows {
         out.push_str(&format!(
@@ -5655,9 +5787,9 @@ fn e4_wr_oracle_runs_csv(rows: &[E4WrOracleRunRow]) -> String {
             row.mirror_weight,
             row.seed,
             row.n_peaks,
-            row.agent_delta_bind,
-            row.oracle1_delta_bind,
-            row.oracle2_delta_bind
+            row.agent_harmonic_tilt,
+            row.oracle1_harmonic_tilt,
+            row.oracle2_harmonic_tilt
         ));
     }
     out
@@ -5674,9 +5806,9 @@ fn e4_wr_oracle_rows_from_runs(rows: &[E4WrOracleRunRow]) -> Vec<E4WrOracleRow> 
     }
     let mut out = Vec::with_capacity(grouped.len());
     for ((wr_key, mirror_key), group) in grouped {
-        let agent_vals: Vec<f32> = group.iter().map(|r| r.agent_delta_bind).collect();
-        let oracle1_vals: Vec<f32> = group.iter().map(|r| r.oracle1_delta_bind).collect();
-        let oracle2_vals: Vec<f32> = group.iter().map(|r| r.oracle2_delta_bind).collect();
+        let agent_vals: Vec<f32> = group.iter().map(|r| r.agent_harmonic_tilt).collect();
+        let oracle1_vals: Vec<f32> = group.iter().map(|r| r.oracle1_harmonic_tilt).collect();
+        let oracle2_vals: Vec<f32> = group.iter().map(|r| r.oracle2_harmonic_tilt).collect();
         let mean_peaks = group.iter().map(|r| r.n_peaks as f32).sum::<f32>() / group.len() as f32;
         let seed = E4_BOOTSTRAP_SEED
             ^ 0x0A_C1E_u64
@@ -5693,13 +5825,13 @@ fn e4_wr_oracle_rows_from_runs(rows: &[E4WrOracleRunRow]) -> Vec<E4WrOracleRow> 
             mirror_weight: float_from_key(mirror_key),
             n_seeds: group.len(),
             n_peaks: mean_peaks.round().max(0.0) as usize,
-            agent_delta_bind: agent_mean.clamp(-1.0, 1.0),
-            oracle1_delta_bind: oracle1_mean.clamp(-1.0, 1.0),
-            oracle1_delta_bind_ci_lo: oracle1_lo.clamp(-1.0, 1.0),
-            oracle1_delta_bind_ci_hi: oracle1_hi.clamp(-1.0, 1.0),
-            oracle2_delta_bind_mean: oracle2_mean.clamp(-1.0, 1.0),
-            oracle2_delta_bind_ci_lo: oracle2_lo.clamp(-1.0, 1.0),
-            oracle2_delta_bind_ci_hi: oracle2_hi.clamp(-1.0, 1.0),
+            agent_harmonic_tilt: agent_mean.clamp(-1.0, 1.0),
+            oracle1_harmonic_tilt: oracle1_mean.clamp(-1.0, 1.0),
+            oracle1_harmonic_tilt_ci_lo: oracle1_lo.clamp(-1.0, 1.0),
+            oracle1_harmonic_tilt_ci_hi: oracle1_hi.clamp(-1.0, 1.0),
+            oracle2_harmonic_tilt_mean: oracle2_mean.clamp(-1.0, 1.0),
+            oracle2_harmonic_tilt_ci_lo: oracle2_lo.clamp(-1.0, 1.0),
+            oracle2_harmonic_tilt_ci_hi: oracle2_hi.clamp(-1.0, 1.0),
         });
     }
     out.sort_by(|a, b| {
@@ -5716,7 +5848,7 @@ fn e4_wr_oracle_rows_from_runs(rows: &[E4WrOracleRunRow]) -> Vec<E4WrOracleRow> 
 
 fn e4_wr_oracle_csv(rows: &[E4WrOracleRow]) -> String {
     let mut out = String::from(
-        "wr,mirror_weight,n_seeds,n_peaks,delta_bind_agent,delta_bind_oracle1,delta_bind_oracle1_ci_lo,delta_bind_oracle1_ci_hi,delta_bind_oracle2_mean,delta_bind_oracle2_ci_lo,delta_bind_oracle2_ci_hi\n",
+        "wr,mirror_weight,n_seeds,n_peaks,harmonic_tilt_agent,harmonic_tilt_oracle1,harmonic_tilt_oracle1_ci_lo,harmonic_tilt_oracle1_ci_hi,harmonic_tilt_oracle2_mean,harmonic_tilt_oracle2_ci_lo,harmonic_tilt_oracle2_ci_hi\n",
     );
     for row in rows {
         out.push_str(&format!(
@@ -5725,56 +5857,69 @@ fn e4_wr_oracle_csv(rows: &[E4WrOracleRow]) -> String {
             row.mirror_weight,
             row.n_seeds,
             row.n_peaks,
-            row.agent_delta_bind,
-            row.oracle1_delta_bind,
-            row.oracle1_delta_bind_ci_lo,
-            row.oracle1_delta_bind_ci_hi,
-            row.oracle2_delta_bind_mean,
-            row.oracle2_delta_bind_ci_lo,
-            row.oracle2_delta_bind_ci_hi
+            row.agent_harmonic_tilt,
+            row.oracle1_harmonic_tilt,
+            row.oracle1_harmonic_tilt_ci_lo,
+            row.oracle1_harmonic_tilt_ci_hi,
+            row.oracle2_harmonic_tilt_mean,
+            row.oracle2_harmonic_tilt_ci_lo,
+            row.oracle2_harmonic_tilt_ci_hi
         ));
     }
     out
 }
 
-fn e4_bind_metrics_from_tail_agents(rows: &[E4TailAgentRow]) -> Vec<E4BindMetricRow> {
-    let mut latest_step: std::collections::HashMap<(i32, u64), u32> =
-        std::collections::HashMap::new();
-    for row in rows {
-        let key = (float_key(row.mirror_weight), row.seed);
-        latest_step
-            .entry(key)
-            .and_modify(|step| *step = (*step).max(row.step))
-            .or_insert(row.step);
+fn harmonic_tilt_from_affinities(root_affinity: f32, overtone_affinity: f32) -> f32 {
+    let denom = root_affinity + overtone_affinity + 1e-6;
+    if !denom.is_finite() || denom <= 0.0 {
+        return 0.0;
+    }
+    let tilt = (root_affinity - overtone_affinity) / denom;
+    if tilt.is_finite() {
+        tilt.clamp(-1.0, 1.0)
+    } else {
+        0.0
+    }
+}
+
+fn e4_binding_metrics_from_tail_landscape(rows: &[E4TailLandscapeRow]) -> Vec<E4BindingMetricRow> {
+    #[derive(Default)]
+    struct Acc {
+        step_max: u32,
+        n_steps: usize,
+        sum_root_affinity: f32,
+        sum_overtone_affinity: f32,
     }
 
-    let mut final_freqs: std::collections::HashMap<(i32, u64), Vec<(u64, f32)>> =
-        std::collections::HashMap::new();
+    let mut by_run: std::collections::HashMap<(i32, u64), Acc> = std::collections::HashMap::new();
     for row in rows {
         let key = (float_key(row.mirror_weight), row.seed);
-        if latest_step.get(&key).copied() != Some(row.step) {
-            continue;
-        }
-        final_freqs
-            .entry(key)
-            .or_default()
-            .push((row.agent_id, row.freq_hz));
+        let acc = by_run.entry(key).or_default();
+        acc.step_max = acc.step_max.max(row.step);
+        acc.n_steps += 1;
+        acc.sum_root_affinity += row.root_affinity;
+        acc.sum_overtone_affinity += row.overtone_affinity;
     }
 
     let mut metrics = Vec::new();
-    for ((weight_key, seed), mut agent_rows) in final_freqs {
-        agent_rows.sort_by_key(|(agent_id, _)| *agent_id);
-        let freqs: Vec<f32> = agent_rows.iter().map(|(_, freq)| *freq).collect();
-        let eval = bind_eval_from_freqs(&freqs);
-        let step = latest_step.get(&(weight_key, seed)).copied().unwrap_or(0);
-        metrics.push(E4BindMetricRow {
+    for ((weight_key, seed), acc) in by_run {
+        if acc.n_steps == 0 {
+            continue;
+        }
+        let inv_n = 1.0 / acc.n_steps as f32;
+        let root_affinity = acc.sum_root_affinity * inv_n;
+        let overtone_affinity = acc.sum_overtone_affinity * inv_n;
+        let binding_strength = root_affinity + overtone_affinity;
+        let harmonic_tilt = harmonic_tilt_from_affinities(root_affinity, overtone_affinity);
+        metrics.push(E4BindingMetricRow {
             mirror_weight: float_from_key(weight_key),
             seed,
-            root_fit: eval.root_fit,
-            ceiling_fit: eval.ceiling_fit,
-            delta_bind: eval.delta_bind,
-            n_agents: freqs.len(),
-            step,
+            root_affinity,
+            overtone_affinity,
+            binding_strength,
+            harmonic_tilt,
+            n_steps: acc.n_steps,
+            step: acc.step_max,
         });
     }
     metrics.sort_by(|a, b| {
@@ -5786,26 +5931,28 @@ fn e4_bind_metrics_from_tail_agents(rows: &[E4TailAgentRow]) -> Vec<E4BindMetric
     metrics
 }
 
-fn e4_bind_metrics_csv(rows: &[E4BindMetricRow]) -> String {
-    let mut out =
-        String::from("mirror_weight,seed,step,n_agents,root_fit,ceiling_fit,delta_bind\n");
+fn e4_binding_metrics_csv(rows: &[E4BindingMetricRow]) -> String {
+    let mut out = String::from(
+        "mirror_weight,seed,step,n_steps,root_affinity,overtone_affinity,binding_strength,harmonic_tilt\n",
+    );
     for row in rows {
         out.push_str(&format!(
-            "{:.3},{},{},{},{:.6},{:.6},{:.6}\n",
+            "{:.3},{},{},{},{:.6},{:.6},{:.6},{:.6}\n",
             row.mirror_weight,
             row.seed,
             row.step,
-            row.n_agents,
-            row.root_fit,
-            row.ceiling_fit,
-            row.delta_bind
+            row.n_steps,
+            row.root_affinity,
+            row.overtone_affinity,
+            row.binding_strength,
+            row.harmonic_tilt
         ));
     }
     out
 }
 
-fn e4_bind_summary_rows(rows: &[E4BindMetricRow]) -> Vec<E4BindSummaryRow> {
-    let mut by_weight: std::collections::HashMap<i32, Vec<&E4BindMetricRow>> =
+fn e4_binding_summary_rows(rows: &[E4BindingMetricRow]) -> Vec<E4BindingSummaryRow> {
+    let mut by_weight: std::collections::HashMap<i32, Vec<&E4BindingMetricRow>> =
         std::collections::HashMap::new();
     for row in rows {
         by_weight
@@ -5815,28 +5962,44 @@ fn e4_bind_summary_rows(rows: &[E4BindMetricRow]) -> Vec<E4BindSummaryRow> {
     }
     let mut out = Vec::new();
     for (weight_key, group) in by_weight {
-        let root_vals: Vec<f32> = group.iter().map(|r| r.root_fit).collect();
-        let ceiling_vals: Vec<f32> = group.iter().map(|r| r.ceiling_fit).collect();
-        let delta_vals: Vec<f32> = group.iter().map(|r| r.delta_bind).collect();
+        let root_vals: Vec<f32> = group.iter().map(|r| r.root_affinity).collect();
+        let overtone_vals: Vec<f32> = group.iter().map(|r| r.overtone_affinity).collect();
+        let binding_vals: Vec<f32> = root_vals
+            .iter()
+            .zip(overtone_vals.iter())
+            .map(|(r, o)| *r + *o)
+            .collect();
+        let tilt_vals: Vec<f32> = root_vals
+            .iter()
+            .zip(overtone_vals.iter())
+            .map(|(r, o)| harmonic_tilt_from_affinities(*r, *o))
+            .collect();
         let seed =
             E4_BOOTSTRAP_SEED ^ 0xE4B1D_u64 ^ (weight_key as i64 as u64).wrapping_mul(0x9E37_79B9);
-        let (mean_root_fit, root_ci_lo, root_ci_hi) =
+        let (root_mean, root_ci_lo, root_ci_hi) =
             bootstrap_mean_ci95(&root_vals, E4_BOOTSTRAP_ITERS, seed ^ 0x11);
-        let (mean_ceiling_fit, ceiling_ci_lo, ceiling_ci_hi) =
-            bootstrap_mean_ci95(&ceiling_vals, E4_BOOTSTRAP_ITERS, seed ^ 0x22);
-        let (mean_delta_bind, delta_bind_ci_lo, delta_bind_ci_hi) =
-            bootstrap_mean_ci95(&delta_vals, E4_BOOTSTRAP_ITERS, seed ^ 0x33);
-        out.push(E4BindSummaryRow {
+        let (overtone_mean, overtone_ci_lo, overtone_ci_hi) =
+            bootstrap_mean_ci95(&overtone_vals, E4_BOOTSTRAP_ITERS, seed ^ 0x22);
+        let (_binding_mean, binding_ci_lo, binding_ci_hi) =
+            bootstrap_mean_ci95(&binding_vals, E4_BOOTSTRAP_ITERS, seed ^ 0x2B);
+        let (_tilt_mean, tilt_ci_lo, tilt_ci_hi) =
+            bootstrap_mean_ci95(&tilt_vals, E4_BOOTSTRAP_ITERS, seed ^ 0x33);
+        let binding_mean = root_mean + overtone_mean;
+        let tilt_mean = harmonic_tilt_from_affinities(root_mean, overtone_mean);
+        out.push(E4BindingSummaryRow {
             mirror_weight: float_from_key(weight_key),
-            mean_root_fit,
-            root_ci_lo,
-            root_ci_hi,
-            mean_ceiling_fit,
-            ceiling_ci_lo,
-            ceiling_ci_hi,
-            mean_delta_bind,
-            delta_bind_ci_lo,
-            delta_bind_ci_hi,
+            root_affinity_mean: root_mean,
+            root_affinity_ci_lo: root_ci_lo,
+            root_affinity_ci_hi: root_ci_hi,
+            overtone_affinity_mean: overtone_mean,
+            overtone_affinity_ci_lo: overtone_ci_lo,
+            overtone_affinity_ci_hi: overtone_ci_hi,
+            binding_strength_mean: binding_mean,
+            binding_strength_ci_lo: binding_ci_lo,
+            binding_strength_ci_hi: binding_ci_hi,
+            harmonic_tilt_mean: tilt_mean,
+            harmonic_tilt_ci_lo: tilt_ci_lo,
+            harmonic_tilt_ci_hi: tilt_ci_hi,
             n_seeds: group.len(),
         });
     }
@@ -5848,57 +6011,70 @@ fn e4_bind_summary_rows(rows: &[E4BindMetricRow]) -> Vec<E4BindSummaryRow> {
     out
 }
 
-fn e4_bind_summary_csv(rows: &[E4BindSummaryRow]) -> String {
+fn e4_binding_metrics_raw_csv(rows: &[E4BindingMetricRow]) -> String {
     let mut out = String::from(
-        "mirror_weight,mean_root_fit,root_ci_lo,root_ci_hi,mean_ceiling_fit,ceiling_ci_lo,ceiling_ci_hi,mean_delta_bind,delta_bind_ci_lo,delta_bind_ci_hi,n_seeds\n",
+        "mirror_weight,seed,root_affinity,overtone_affinity,binding_strength,harmonic_tilt\n",
     );
     for row in rows {
         out.push_str(&format!(
-            "{:.3},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{}\n",
+            "{:.3},{},{:.6},{:.6},{:.6},{:.6}\n",
             row.mirror_weight,
-            row.mean_root_fit,
-            row.root_ci_lo,
-            row.root_ci_hi,
-            row.mean_ceiling_fit,
-            row.ceiling_ci_lo,
-            row.ceiling_ci_hi,
-            row.mean_delta_bind,
-            row.delta_bind_ci_lo,
-            row.delta_bind_ci_hi,
+            row.seed,
+            row.root_affinity,
+            row.overtone_affinity,
+            row.binding_strength,
+            row.harmonic_tilt
+        ));
+    }
+    out
+}
+
+fn e4_binding_metrics_summary_csv(rows: &[E4BindingSummaryRow]) -> String {
+    let mut out = String::from(
+        "mirror_weight,root_affinity_mean,root_affinity_ci_lo,root_affinity_ci_hi,overtone_affinity_mean,overtone_affinity_ci_lo,overtone_affinity_ci_hi,binding_strength_mean,binding_strength_ci_lo,binding_strength_ci_hi,harmonic_tilt_mean,harmonic_tilt_ci_lo,harmonic_tilt_ci_hi,n_seeds\n",
+    );
+    for row in rows {
+        out.push_str(&format!(
+            "{:.3},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{}\n",
+            row.mirror_weight,
+            row.root_affinity_mean,
+            row.root_affinity_ci_lo,
+            row.root_affinity_ci_hi,
+            row.overtone_affinity_mean,
+            row.overtone_affinity_ci_lo,
+            row.overtone_affinity_ci_hi,
+            row.binding_strength_mean,
+            row.binding_strength_ci_lo,
+            row.binding_strength_ci_hi,
+            row.harmonic_tilt_mean,
+            row.harmonic_tilt_ci_lo,
+            row.harmonic_tilt_ci_hi,
             row.n_seeds
         ));
     }
     out
 }
 
-fn e4_binding_metrics_raw_csv(rows: &[E4BindMetricRow]) -> String {
-    let mut out = String::from("mirror_weight,seed,root_fit,ceiling_fit,delta_bind\n");
-    for row in rows {
-        out.push_str(&format!(
-            "{:.3},{},{:.6},{:.6},{:.6}\n",
-            row.mirror_weight, row.seed, row.root_fit, row.ceiling_fit, row.delta_bind
-        ));
-    }
-    out
-}
-
-fn e4_binding_metrics_summary_csv(rows: &[E4BindSummaryRow]) -> String {
+fn e4_binding_summary_csv(rows: &[E4BindingSummaryRow]) -> String {
     let mut out = String::from(
-        "mirror_weight,root_fit_mean,root_fit_ci_lo,root_fit_ci_hi,ceiling_fit_mean,ceiling_fit_ci_lo,ceiling_fit_ci_hi,delta_bind_mean,delta_bind_ci_lo,delta_bind_ci_hi,n_seeds\n",
+        "mirror_weight,root_affinity_mean,root_affinity_ci_lo,root_affinity_ci_hi,overtone_affinity_mean,overtone_affinity_ci_lo,overtone_affinity_ci_hi,binding_strength_mean,binding_strength_ci_lo,binding_strength_ci_hi,harmonic_tilt_mean,harmonic_tilt_ci_lo,harmonic_tilt_ci_hi,n_seeds\n",
     );
     for row in rows {
         out.push_str(&format!(
-            "{:.3},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{}\n",
+            "{:.3},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{}\n",
             row.mirror_weight,
-            row.mean_root_fit,
-            row.root_ci_lo,
-            row.root_ci_hi,
-            row.mean_ceiling_fit,
-            row.ceiling_ci_lo,
-            row.ceiling_ci_hi,
-            row.mean_delta_bind,
-            row.delta_bind_ci_lo,
-            row.delta_bind_ci_hi,
+            row.root_affinity_mean,
+            row.root_affinity_ci_lo,
+            row.root_affinity_ci_hi,
+            row.overtone_affinity_mean,
+            row.overtone_affinity_ci_lo,
+            row.overtone_affinity_ci_hi,
+            row.binding_strength_mean,
+            row.binding_strength_ci_lo,
+            row.binding_strength_ci_hi,
+            row.harmonic_tilt_mean,
+            row.harmonic_tilt_ci_lo,
+            row.harmonic_tilt_ci_hi,
             row.n_seeds
         ));
     }
@@ -6499,18 +6675,18 @@ fn e4_wr_bind_runs_from_tail_agents(
         agent_rows.sort_by_key(|(agent_id, _)| *agent_id);
         let freqs: Vec<f32> = agent_rows.iter().map(|(_, freq)| *freq).collect();
         let eval = bind_eval_from_freqs(&freqs);
-        let (root_fit_anchor, ceiling_fit_anchor, delta_bind_anchor) =
+        let (root_affinity_anchor, overtone_affinity_anchor, harmonic_tilt_anchor) =
             bind_scores_anchor_from_freqs(anchor_hz, &freqs);
         out.push(E4WrBindRunRow {
             wr: float_from_key(wr_key),
             mirror_weight: float_from_key(mirror_key),
             seed,
-            root_fit: eval.root_fit,
-            ceiling_fit: eval.ceiling_fit,
-            delta_bind: eval.delta_bind,
-            root_fit_anchor,
-            ceiling_fit_anchor,
-            delta_bind_anchor,
+            root_affinity: eval.root_affinity,
+            overtone_affinity: eval.overtone_affinity,
+            harmonic_tilt: eval.harmonic_tilt,
+            root_affinity_anchor,
+            overtone_affinity_anchor,
+            harmonic_tilt_anchor,
         });
     }
     out.sort_by(|a, b| {
@@ -6528,7 +6704,7 @@ fn e4_wr_bind_runs_from_tail_agents(
 
 fn e4_wr_bind_runs_csv(rows: &[E4WrBindRunRow]) -> String {
     let mut out = String::from(
-        "wr,mirror_weight,seed,root_fit,ceiling_fit,delta_bind,root_fit_anchor,ceiling_fit_anchor,delta_bind_anchor\n",
+        "wr,mirror_weight,seed,root_affinity,overtone_affinity,harmonic_tilt,root_affinity_anchor,overtone_affinity_anchor,harmonic_tilt_anchor\n",
     );
     for row in rows {
         out.push_str(&format!(
@@ -6536,12 +6712,12 @@ fn e4_wr_bind_runs_csv(rows: &[E4WrBindRunRow]) -> String {
             row.wr,
             row.mirror_weight,
             row.seed,
-            row.root_fit,
-            row.ceiling_fit,
-            row.delta_bind,
-            row.root_fit_anchor,
-            row.ceiling_fit_anchor,
-            row.delta_bind_anchor
+            row.root_affinity,
+            row.overtone_affinity,
+            row.harmonic_tilt,
+            row.root_affinity_anchor,
+            row.overtone_affinity_anchor,
+            row.harmonic_tilt_anchor
         ));
     }
     out
@@ -6558,50 +6734,56 @@ fn e4_wr_bind_summary_rows(rows: &[E4WrBindRunRow]) -> Vec<E4WrBindSummaryRow> {
     }
     let mut out = Vec::new();
     for ((wr_key, mirror_key), group) in grouped {
-        let root_vals: Vec<f32> = group.iter().map(|row| row.root_fit).collect();
-        let ceiling_vals: Vec<f32> = group.iter().map(|row| row.ceiling_fit).collect();
-        let delta_vals: Vec<f32> = group.iter().map(|row| row.delta_bind).collect();
-        let root_anchor_vals: Vec<f32> = group.iter().map(|row| row.root_fit_anchor).collect();
-        let ceiling_anchor_vals: Vec<f32> =
-            group.iter().map(|row| row.ceiling_fit_anchor).collect();
-        let delta_anchor_vals: Vec<f32> = group.iter().map(|row| row.delta_bind_anchor).collect();
+        let root_vals: Vec<f32> = group.iter().map(|row| row.root_affinity).collect();
+        let ceiling_vals: Vec<f32> = group.iter().map(|row| row.overtone_affinity).collect();
+        let delta_vals: Vec<f32> = group.iter().map(|row| row.harmonic_tilt).collect();
+        let root_anchor_vals: Vec<f32> = group.iter().map(|row| row.root_affinity_anchor).collect();
+        let ceiling_anchor_vals: Vec<f32> = group
+            .iter()
+            .map(|row| row.overtone_affinity_anchor)
+            .collect();
+        let delta_anchor_vals: Vec<f32> =
+            group.iter().map(|row| row.harmonic_tilt_anchor).collect();
         let seed = E4_BOOTSTRAP_SEED
             ^ 0xE4B1_DA7Au64
             ^ (wr_key as i64 as u64).wrapping_mul(0x9E37_79B9)
             ^ (mirror_key as i64 as u64).wrapping_mul(0x85EB_CA6B);
-        let (root_fit_mean, root_fit_ci_lo, root_fit_ci_hi) =
+        let (root_affinity_mean, root_affinity_ci_lo, root_affinity_ci_hi) =
             bootstrap_mean_ci95(&root_vals, E4_BOOTSTRAP_ITERS, seed ^ 0x11);
-        let (ceiling_fit_mean, ceiling_fit_ci_lo, ceiling_fit_ci_hi) =
+        let (overtone_affinity_mean, overtone_affinity_ci_lo, overtone_affinity_ci_hi) =
             bootstrap_mean_ci95(&ceiling_vals, E4_BOOTSTRAP_ITERS, seed ^ 0x22);
-        let (delta_bind_mean, delta_bind_ci_lo, delta_bind_ci_hi) =
+        let (harmonic_tilt_mean, harmonic_tilt_ci_lo, harmonic_tilt_ci_hi) =
             bootstrap_mean_ci95(&delta_vals, E4_BOOTSTRAP_ITERS, seed ^ 0x33);
-        let (root_fit_anchor_mean, root_fit_anchor_ci_lo, root_fit_anchor_ci_hi) =
+        let (root_affinity_anchor_mean, root_affinity_anchor_ci_lo, root_affinity_anchor_ci_hi) =
             bootstrap_mean_ci95(&root_anchor_vals, E4_BOOTSTRAP_ITERS, seed ^ 0x44);
-        let (ceiling_fit_anchor_mean, ceiling_fit_anchor_ci_lo, ceiling_fit_anchor_ci_hi) =
-            bootstrap_mean_ci95(&ceiling_anchor_vals, E4_BOOTSTRAP_ITERS, seed ^ 0x55);
-        let (delta_bind_anchor_mean, delta_bind_anchor_ci_lo, delta_bind_anchor_ci_hi) =
+        let (
+            overtone_affinity_anchor_mean,
+            overtone_affinity_anchor_ci_lo,
+            overtone_affinity_anchor_ci_hi,
+        ) = bootstrap_mean_ci95(&ceiling_anchor_vals, E4_BOOTSTRAP_ITERS, seed ^ 0x55);
+        let (harmonic_tilt_anchor_mean, harmonic_tilt_anchor_ci_lo, harmonic_tilt_anchor_ci_hi) =
             bootstrap_mean_ci95(&delta_anchor_vals, E4_BOOTSTRAP_ITERS, seed ^ 0x66);
         out.push(E4WrBindSummaryRow {
             wr: float_from_key(wr_key),
             mirror_weight: float_from_key(mirror_key),
-            root_fit_mean,
-            root_fit_ci_lo,
-            root_fit_ci_hi,
-            ceiling_fit_mean,
-            ceiling_fit_ci_lo,
-            ceiling_fit_ci_hi,
-            delta_bind_mean,
-            delta_bind_ci_lo,
-            delta_bind_ci_hi,
-            root_fit_anchor_mean,
-            root_fit_anchor_ci_lo,
-            root_fit_anchor_ci_hi,
-            ceiling_fit_anchor_mean,
-            ceiling_fit_anchor_ci_lo,
-            ceiling_fit_anchor_ci_hi,
-            delta_bind_anchor_mean,
-            delta_bind_anchor_ci_lo,
-            delta_bind_anchor_ci_hi,
+            root_affinity_mean,
+            root_affinity_ci_lo,
+            root_affinity_ci_hi,
+            overtone_affinity_mean,
+            overtone_affinity_ci_lo,
+            overtone_affinity_ci_hi,
+            harmonic_tilt_mean,
+            harmonic_tilt_ci_lo,
+            harmonic_tilt_ci_hi,
+            root_affinity_anchor_mean,
+            root_affinity_anchor_ci_lo,
+            root_affinity_anchor_ci_hi,
+            overtone_affinity_anchor_mean,
+            overtone_affinity_anchor_ci_lo,
+            overtone_affinity_anchor_ci_hi,
+            harmonic_tilt_anchor_mean,
+            harmonic_tilt_anchor_ci_lo,
+            harmonic_tilt_anchor_ci_hi,
             n_seeds: group.len(),
         });
     }
@@ -6802,7 +6984,7 @@ fn e4_wr_sweep_summary_csv(
     }
 
     let mut out = String::from(
-        "wr,mirror_weight,root_fit_mean,root_fit_ci95,ceiling_fit_mean,ceiling_fit_ci95,delta_bind_mean,delta_bind_ci95,n_seeds,error_kind,root_fit_anchor_mean,root_fit_anchor_ci95,ceiling_fit_anchor_mean,ceiling_fit_anchor_ci95,delta_bind_anchor_mean,delta_bind_anchor_ci95",
+        "wr,mirror_weight,root_affinity_mean,root_affinity_ci95,overtone_affinity_mean,overtone_affinity_ci95,harmonic_tilt_mean,harmonic_tilt_ci95,n_seeds,error_kind,root_affinity_anchor_mean,root_affinity_anchor_ci95,overtone_affinity_anchor_mean,overtone_affinity_anchor_ci95,harmonic_tilt_anchor_mean,harmonic_tilt_anchor_ci95",
     );
     for category in &E4_FINGERPRINT_LABELS {
         out.push_str(&format!(",p_{category}"));
@@ -6812,31 +6994,32 @@ fn e4_wr_sweep_summary_csv(
     for row in bind_rows {
         let wr_key = float_key(row.wr);
         let mirror_key = float_key(row.mirror_weight);
-        let root_ci95 = 0.5 * (row.root_fit_ci_hi - row.root_fit_ci_lo).max(0.0);
-        let ceiling_ci95 = 0.5 * (row.ceiling_fit_ci_hi - row.ceiling_fit_ci_lo).max(0.0);
-        let delta_ci95 = 0.5 * (row.delta_bind_ci_hi - row.delta_bind_ci_lo).max(0.0);
+        let root_ci95 = 0.5 * (row.root_affinity_ci_hi - row.root_affinity_ci_lo).max(0.0);
+        let ceiling_ci95 =
+            0.5 * (row.overtone_affinity_ci_hi - row.overtone_affinity_ci_lo).max(0.0);
+        let delta_ci95 = 0.5 * (row.harmonic_tilt_ci_hi - row.harmonic_tilt_ci_lo).max(0.0);
         let root_anchor_ci95 =
-            0.5 * (row.root_fit_anchor_ci_hi - row.root_fit_anchor_ci_lo).max(0.0);
-        let ceiling_anchor_ci95 =
-            0.5 * (row.ceiling_fit_anchor_ci_hi - row.ceiling_fit_anchor_ci_lo).max(0.0);
+            0.5 * (row.root_affinity_anchor_ci_hi - row.root_affinity_anchor_ci_lo).max(0.0);
+        let ceiling_anchor_ci95 = 0.5
+            * (row.overtone_affinity_anchor_ci_hi - row.overtone_affinity_anchor_ci_lo).max(0.0);
         let delta_anchor_ci95 =
-            0.5 * (row.delta_bind_anchor_ci_hi - row.delta_bind_anchor_ci_lo).max(0.0);
+            0.5 * (row.harmonic_tilt_anchor_ci_hi - row.harmonic_tilt_anchor_ci_lo).max(0.0);
         out.push_str(&format!(
             "{:.3},{:.3},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{},bootstrap_pctl95,{:.6},{:.6},{:.6},{:.6},{:.6},{:.6}",
             row.wr,
             row.mirror_weight,
-            row.root_fit_mean,
+            row.root_affinity_mean,
             root_ci95,
-            row.ceiling_fit_mean,
+            row.overtone_affinity_mean,
             ceiling_ci95,
-            row.delta_bind_mean,
+            row.harmonic_tilt_mean,
             delta_ci95,
             row.n_seeds,
-            row.root_fit_anchor_mean,
+            row.root_affinity_anchor_mean,
             root_anchor_ci95,
-            row.ceiling_fit_anchor_mean,
+            row.overtone_affinity_anchor_mean,
             ceiling_anchor_ci95,
-            row.delta_bind_anchor_mean,
+            row.harmonic_tilt_anchor_mean,
             delta_anchor_ci95
         ));
         for category in &E4_FINGERPRINT_LABELS {
@@ -6851,7 +7034,7 @@ fn e4_wr_sweep_summary_csv(
     out
 }
 
-fn render_e4_wr_delta_bind_vs_mirror(
+fn render_e4_wr_harmonic_tilt_vs_mirror(
     out_path: &Path,
     rows: &[E4WrBindSummaryRow],
 ) -> Result<(), Box<dyn Error>> {
@@ -6861,8 +7044,12 @@ fn render_e4_wr_delta_bind_vs_mirror(
     let mut y_min = 0.0f32;
     let mut y_max = 0.0f32;
     for row in rows {
-        y_min = y_min.min(row.delta_bind_ci_lo).min(row.delta_bind_mean);
-        y_max = y_max.max(row.delta_bind_ci_hi).max(row.delta_bind_mean);
+        y_min = y_min
+            .min(row.harmonic_tilt_ci_lo)
+            .min(row.harmonic_tilt_mean);
+        y_max = y_max
+            .max(row.harmonic_tilt_ci_hi)
+            .max(row.harmonic_tilt_mean);
     }
     if (y_max - y_min).abs() < 1e-6 {
         y_min -= 0.1;
@@ -6878,7 +7065,7 @@ fn render_e4_wr_delta_bind_vs_mirror(
     root.fill(&WHITE)?;
     let mut chart = ChartBuilder::on(&root)
         .caption(
-            "E4 w_r sweep: DeltaBind vs mirror_weight (mean ± bootstrap CI95)",
+            "E4 w_r sweep: Harmonic Tilt (τ) vs mirror_weight (mean ± bootstrap CI95)",
             ("sans-serif", 24),
         )
         .margin(12)
@@ -6889,7 +7076,7 @@ fn render_e4_wr_delta_bind_vs_mirror(
     chart
         .configure_mesh()
         .x_desc("mirror_weight")
-        .y_desc("DeltaBind")
+        .y_desc("Harmonic Tilt (τ)")
         .draw()?;
     chart.draw_series(std::iter::once(PathElement::new(
         vec![(0.0, 0.0), (1.0, 0.0)],
@@ -6914,7 +7101,7 @@ fn render_e4_wr_delta_bind_vs_mirror(
             .draw_series(LineSeries::new(
                 group
                     .iter()
-                    .map(|row| (row.mirror_weight, row.delta_bind_mean)),
+                    .map(|row| (row.mirror_weight, row.harmonic_tilt_mean)),
                 color.stroke_width(2),
             ))?
             .label(format!("w_r={:.2}", float_from_key(*wr_key)))
@@ -6925,17 +7112,19 @@ fn render_e4_wr_delta_bind_vs_mirror(
         chart.draw_series(group.iter().map(|row| {
             PathElement::new(
                 vec![
-                    (row.mirror_weight, row.delta_bind_ci_lo),
-                    (row.mirror_weight, row.delta_bind_ci_hi),
+                    (row.mirror_weight, row.harmonic_tilt_ci_lo),
+                    (row.mirror_weight, row.harmonic_tilt_ci_hi),
                 ],
                 color.mix(0.65).stroke_width(1),
             )
         }))?;
-        chart.draw_series(
-            group.iter().map(|row| {
-                Circle::new((row.mirror_weight, row.delta_bind_mean), 4, color.filled())
-            }),
-        )?;
+        chart.draw_series(group.iter().map(|row| {
+            Circle::new(
+                (row.mirror_weight, row.harmonic_tilt_mean),
+                4,
+                color.filled(),
+            )
+        }))?;
     }
 
     chart
@@ -6957,7 +7146,9 @@ fn render_e4_wr_root_ceiling_vs_mirror(
     }
     let mut y_max = 0.0f32;
     for row in rows {
-        y_max = y_max.max(row.root_fit_ci_hi).max(row.ceiling_fit_ci_hi);
+        y_max = y_max
+            .max(row.root_affinity_ci_hi)
+            .max(row.overtone_affinity_ci_hi);
     }
     y_max = (y_max * 1.15).max(1e-4);
 
@@ -7002,12 +7193,12 @@ fn render_e4_wr_root_ceiling_vs_mirror(
         chart.draw_series(LineSeries::new(
             group
                 .iter()
-                .map(|row| (row.mirror_weight, row.root_fit_mean)),
+                .map(|row| (row.mirror_weight, row.root_affinity_mean)),
             BLUE.mix(0.95).stroke_width(2),
         ))?;
         chart.draw_series(group.iter().map(|row| {
             Circle::new(
-                (row.mirror_weight, row.root_fit_mean),
+                (row.mirror_weight, row.root_affinity_mean),
                 3,
                 BLUE.mix(0.95).filled(),
             )
@@ -7015,12 +7206,12 @@ fn render_e4_wr_root_ceiling_vs_mirror(
         chart.draw_series(LineSeries::new(
             group
                 .iter()
-                .map(|row| (row.mirror_weight, row.ceiling_fit_mean)),
+                .map(|row| (row.mirror_weight, row.overtone_affinity_mean)),
             RED.mix(0.90).stroke_width(2),
         ))?;
         chart.draw_series(group.iter().map(|row| {
             TriangleMarker::new(
-                (row.mirror_weight, row.ceiling_fit_mean),
+                (row.mirror_weight, row.overtone_affinity_mean),
                 5,
                 RED.mix(0.90).filled(),
             )
@@ -7400,9 +7591,9 @@ fn e4_wr_dynamics_probe_rows(
                     mean_h01: mean_scan_at_indices(&scan.h, &indices),
                     mean_r01: mean_scan_at_indices(&scan.r, &indices),
                     mean_repulsion: mean_repulsion_from_indices(&indices, &scan.log2_ratio, sigma),
-                    root_fit: eval.root_fit,
-                    ceiling_fit: eval.ceiling_fit,
-                    delta_bind: eval.delta_bind,
+                    root_affinity: eval.root_affinity,
+                    overtone_affinity: eval.overtone_affinity,
+                    harmonic_tilt: eval.harmonic_tilt,
                     pitch_diversity_st: pitch_diversity_st_from_indices(&scan.semitones, &indices),
                 });
 
@@ -7447,7 +7638,7 @@ fn e4_wr_dynamics_probe_rows(
 
 fn e4_wr_dynamics_probe_timeseries_csv(rows: &[E4WrDynamicsProbeRow]) -> String {
     let mut out = String::from(
-        "wr,mirror_weight,seed,mode,step,n_agents,mean_c01,mean_h01,mean_r01,mean_repulsion,root_fit,ceiling_fit,delta_bind,pitch_diversity_st\n",
+        "wr,mirror_weight,seed,mode,step,n_agents,mean_c01,mean_h01,mean_r01,mean_repulsion,root_affinity,overtone_affinity,harmonic_tilt,pitch_diversity_st\n",
     );
     for row in rows {
         out.push_str(&format!(
@@ -7462,9 +7653,9 @@ fn e4_wr_dynamics_probe_timeseries_csv(rows: &[E4WrDynamicsProbeRow]) -> String 
             row.mean_h01,
             row.mean_r01,
             row.mean_repulsion,
-            row.root_fit,
-            row.ceiling_fit,
-            row.delta_bind,
+            row.root_affinity,
+            row.overtone_affinity,
+            row.harmonic_tilt,
             row.pitch_diversity_st
         ));
     }
@@ -7495,16 +7686,16 @@ fn e4_wr_dynamics_probe_summary_rows(
         let h_vals: Vec<f32> = group.iter().map(|r| r.mean_h01).collect();
         let r_vals: Vec<f32> = group.iter().map(|r| r.mean_r01).collect();
         let rep_vals: Vec<f32> = group.iter().map(|r| r.mean_repulsion).collect();
-        let root_vals: Vec<f32> = group.iter().map(|r| r.root_fit).collect();
-        let ceiling_vals: Vec<f32> = group.iter().map(|r| r.ceiling_fit).collect();
-        let delta_vals: Vec<f32> = group.iter().map(|r| r.delta_bind).collect();
+        let root_vals: Vec<f32> = group.iter().map(|r| r.root_affinity).collect();
+        let ceiling_vals: Vec<f32> = group.iter().map(|r| r.overtone_affinity).collect();
+        let delta_vals: Vec<f32> = group.iter().map(|r| r.harmonic_tilt).collect();
         let diversity_vals: Vec<f32> = group.iter().map(|r| r.pitch_diversity_st).collect();
         let seed = E4_BOOTSTRAP_SEED
             ^ 0xD1A6_00A3_u64
             ^ (wr_key as i64 as u64).wrapping_mul(0x9E37_79B9)
             ^ (mirror_key as i64 as u64).wrapping_mul(0x85EB_CA6B)
             ^ (step as u64).wrapping_mul(0xC2B2_AE35);
-        let (delta_bind_mean, delta_bind_ci_lo, delta_bind_ci_hi) =
+        let (harmonic_tilt_mean, harmonic_tilt_ci_lo, harmonic_tilt_ci_hi) =
             bootstrap_mean_ci95(&delta_vals, E4_BOOTSTRAP_ITERS, seed ^ 0x77);
         out.push(E4WrDynamicsProbeSummaryRow {
             wr: float_from_key(wr_key),
@@ -7516,11 +7707,11 @@ fn e4_wr_dynamics_probe_summary_rows(
             mean_h01: mean_std_scalar(&h_vals).0,
             mean_r01: mean_std_scalar(&r_vals).0,
             mean_repulsion: mean_std_scalar(&rep_vals).0,
-            root_fit_mean: mean_std_scalar(&root_vals).0,
-            ceiling_fit_mean: mean_std_scalar(&ceiling_vals).0,
-            delta_bind_mean,
-            delta_bind_ci_lo,
-            delta_bind_ci_hi,
+            root_affinity_mean: mean_std_scalar(&root_vals).0,
+            overtone_affinity_mean: mean_std_scalar(&ceiling_vals).0,
+            harmonic_tilt_mean,
+            harmonic_tilt_ci_lo,
+            harmonic_tilt_ci_hi,
             pitch_diversity_st_mean: mean_std_scalar(&diversity_vals).0,
         });
     }
@@ -7540,7 +7731,7 @@ fn e4_wr_dynamics_probe_summary_rows(
 
 fn e4_wr_dynamics_probe_summary_csv(rows: &[E4WrDynamicsProbeSummaryRow]) -> String {
     let mut out = String::from(
-        "wr,mirror_weight,mode,step,n_seeds,mean_c01,mean_h01,mean_r01,mean_repulsion,root_fit_mean,ceiling_fit_mean,delta_bind_mean,delta_bind_ci_lo,delta_bind_ci_hi,pitch_diversity_st_mean,error_kind\n",
+        "wr,mirror_weight,mode,step,n_seeds,mean_c01,mean_h01,mean_r01,mean_repulsion,root_affinity_mean,overtone_affinity_mean,harmonic_tilt_mean,harmonic_tilt_ci_lo,harmonic_tilt_ci_hi,pitch_diversity_st_mean,error_kind\n",
     );
     for row in rows {
         out.push_str(&format!(
@@ -7554,11 +7745,11 @@ fn e4_wr_dynamics_probe_summary_csv(rows: &[E4WrDynamicsProbeSummaryRow]) -> Str
             row.mean_h01,
             row.mean_r01,
             row.mean_repulsion,
-            row.root_fit_mean,
-            row.ceiling_fit_mean,
-            row.delta_bind_mean,
-            row.delta_bind_ci_lo,
-            row.delta_bind_ci_hi,
+            row.root_affinity_mean,
+            row.overtone_affinity_mean,
+            row.harmonic_tilt_mean,
+            row.harmonic_tilt_ci_lo,
+            row.harmonic_tilt_ci_hi,
             row.pitch_diversity_st_mean
         ));
     }
@@ -7803,7 +7994,7 @@ fn e4_abcd_trace_rows(
             let c = mean_c_gain_at_indices(&scan.c, &indices, &oracle_indices);
             let eval_agent = bind_eval_from_indices(anchor_hz, &scan.log2_ratio, &indices);
             let eval_oracle = bind_eval_from_indices(anchor_hz, &scan.log2_ratio, &oracle_indices);
-            let d = (eval_oracle.delta_bind - eval_agent.delta_bind).clamp(-2.0, 2.0);
+            let d = (eval_oracle.harmonic_tilt - eval_agent.harmonic_tilt).clamp(-2.0, 2.0);
 
             let agent_idx = indices[0];
             let oracle_idx = oracle_indices[0];
@@ -8739,13 +8930,13 @@ fn render_e4_wr_agent_vs_oracle_plot(
         let mut y_max = f32::NEG_INFINITY;
         for row in &group {
             y_min = y_min
-                .min(row.agent_delta_bind)
-                .min(row.oracle1_delta_bind_ci_lo)
-                .min(row.oracle2_delta_bind_ci_lo);
+                .min(row.agent_harmonic_tilt)
+                .min(row.oracle1_harmonic_tilt_ci_lo)
+                .min(row.oracle2_harmonic_tilt_ci_lo);
             y_max = y_max
-                .max(row.agent_delta_bind)
-                .max(row.oracle1_delta_bind_ci_hi)
-                .max(row.oracle2_delta_bind_ci_hi);
+                .max(row.agent_harmonic_tilt)
+                .max(row.oracle1_harmonic_tilt_ci_hi)
+                .max(row.oracle2_harmonic_tilt_ci_hi);
         }
         if !y_min.is_finite() || !y_max.is_finite() || (y_max - y_min).abs() < 1e-6 {
             y_min = -1.0;
@@ -8761,7 +8952,7 @@ fn render_e4_wr_agent_vs_oracle_plot(
         chart
             .configure_mesh()
             .x_desc("mirror_weight")
-            .y_desc("DeltaBind")
+            .y_desc("Harmonic Tilt (τ)")
             .draw()?;
         chart.draw_series(std::iter::once(PathElement::new(
             vec![(0.0, 0.0), (1.0, 0.0)],
@@ -8769,7 +8960,9 @@ fn render_e4_wr_agent_vs_oracle_plot(
         )))?;
         chart
             .draw_series(LineSeries::new(
-                group.iter().map(|r| (r.mirror_weight, r.agent_delta_bind)),
+                group
+                    .iter()
+                    .map(|r| (r.mirror_weight, r.agent_harmonic_tilt)),
                 BLUE.mix(0.95).stroke_width(2),
             ))?
             .label("agent")
@@ -8778,7 +8971,7 @@ fn render_e4_wr_agent_vs_oracle_plot(
             .draw_series(LineSeries::new(
                 group
                     .iter()
-                    .map(|r| (r.mirror_weight, r.oracle1_delta_bind)),
+                    .map(|r| (r.mirror_weight, r.oracle1_harmonic_tilt)),
                 RED.mix(0.90).stroke_width(2),
             ))?
             .label("oracle1")
@@ -8786,8 +8979,8 @@ fn render_e4_wr_agent_vs_oracle_plot(
         chart.draw_series(group.iter().map(|r| {
             PathElement::new(
                 vec![
-                    (r.mirror_weight, r.oracle1_delta_bind_ci_lo),
-                    (r.mirror_weight, r.oracle1_delta_bind_ci_hi),
+                    (r.mirror_weight, r.oracle1_harmonic_tilt_ci_lo),
+                    (r.mirror_weight, r.oracle1_harmonic_tilt_ci_hi),
                 ],
                 RED.mix(0.45).stroke_width(1),
             )
@@ -8796,7 +8989,7 @@ fn render_e4_wr_agent_vs_oracle_plot(
             .draw_series(LineSeries::new(
                 group
                     .iter()
-                    .map(|r| (r.mirror_weight, r.oracle2_delta_bind_mean)),
+                    .map(|r| (r.mirror_weight, r.oracle2_harmonic_tilt_mean)),
                 GREEN.mix(0.85).stroke_width(2),
             ))?
             .label("oracle2")
@@ -8804,8 +8997,8 @@ fn render_e4_wr_agent_vs_oracle_plot(
         chart.draw_series(group.iter().map(|r| {
             PathElement::new(
                 vec![
-                    (r.mirror_weight, r.oracle2_delta_bind_ci_lo),
-                    (r.mirror_weight, r.oracle2_delta_bind_ci_hi),
+                    (r.mirror_weight, r.oracle2_harmonic_tilt_ci_lo),
+                    (r.mirror_weight, r.oracle2_harmonic_tilt_ci_hi),
                 ],
                 GREEN.mix(0.5).stroke_width(1),
             )
@@ -8896,7 +9089,7 @@ fn e4_validation_markdown() -> String {
         "- Check `H_upper` magnitude at high `mirror_weight` for scale collapse.",
         "",
         "## 2) Oracle switches but agent does not?",
-        "- Compare `paper_e4_wr_oracle_vs_agent.csv` or `paper_e4_wr_delta_bind_agent_vs_oracle.svg`.",
+        "- Compare `paper_e4_wr_oracle_vs_agent.csv` or `paper_e4_wr_harmonic_tilt_agent_vs_oracle.svg`.",
         "- If oracle curves switch sign/level but agent curve stays flat, dynamics/search is bottleneck.",
         "- If oracle also does not switch, model-side landscape definition is likely bottleneck.",
         "",
@@ -8908,8 +9101,8 @@ fn e4_validation_markdown() -> String {
         "",
         "## 3) Anchor-fixed bias in metric?",
         "- In `paper_e4_wr_sweep_runs.csv` and `paper_e4_wr_sweep_summary.csv`, compare:",
-        "  - set-estimated: `root_fit, ceiling_fit, delta_bind`",
-        "  - anchor-fixed: `root_fit_anchor, ceiling_fit_anchor, delta_bind_anchor`",
+        "  - set-estimated: `root_affinity, overtone_affinity, harmonic_tilt`",
+        "  - anchor-fixed: `root_affinity_anchor, overtone_affinity_anchor, harmonic_tilt_anchor`",
         "- If only anchor-fixed is weak/flat, metric bias is likely.",
         "",
         "## Next actions",
@@ -8919,7 +9112,7 @@ fn e4_validation_markdown() -> String {
         "",
         "## Metric semantics",
         "- A/B/C/D are alignment diagnostics (agent-vs-oracle consistency), not harmonic regime indicators.",
-        "- E4 regime claims should rely on RootFit/CeilingFit/DeltaBind and interval fingerprint summaries with CI.",
+        "- E4 regime claims should rely on Root Affinity / Overtone Affinity / Harmonic Tilt and interval fingerprint summaries with CI.",
         "",
         "## Timing diagnosis (ABCD trace)",
         "- Generate trace: `cargo run --example paper -- --exp e4 --e4-wr on`",
@@ -9047,7 +9240,7 @@ fn plot_e4_mirror_sweep_wr_cut(out_dir: &Path, anchor_hz: f32) -> Result<(), Box
         e4_wr_oracle_csv(&oracle_rows),
     )?;
     render_e4_wr_agent_vs_oracle_plot(
-        &out_dir.join("paper_e4_wr_delta_bind_agent_vs_oracle.svg"),
+        &out_dir.join("paper_e4_wr_harmonic_tilt_agent_vs_oracle.svg"),
         &oracle_rows,
     )?;
 
@@ -9063,8 +9256,8 @@ fn plot_e4_mirror_sweep_wr_cut(out_dir: &Path, anchor_hz: f32) -> Result<(), Box
         e4_wr_dynamics_probe_summary_csv(&dynamics_probe_summary),
     )?;
 
-    render_e4_wr_delta_bind_vs_mirror(
-        &out_dir.join("paper_e4_wr_delta_bind_vs_mirror.svg"),
+    render_e4_wr_harmonic_tilt_vs_mirror(
+        &out_dir.join("paper_e4_wr_harmonic_tilt_vs_mirror.svg"),
         &bind_summary,
     )?;
     render_e4_wr_root_ceiling_vs_mirror(
@@ -10168,7 +10361,7 @@ fn render_e4_figure1_mirror_vs_delta_t(
 
 fn render_e4_bind_vs_weight(
     out_path: &Path,
-    summary_rows: &[E4BindSummaryRow],
+    summary_rows: &[E4BindingSummaryRow],
 ) -> Result<(), Box<dyn Error>> {
     if summary_rows.is_empty() {
         return Ok(());
@@ -10183,8 +10376,12 @@ fn render_e4_bind_vs_weight(
     let mut y_min = 0.0f32;
     let mut y_max = 0.0f32;
     for row in &rows {
-        y_min = y_min.min(row.delta_bind_ci_lo).min(row.mean_delta_bind);
-        y_max = y_max.max(row.delta_bind_ci_hi).max(row.mean_delta_bind);
+        y_min = y_min
+            .min(row.harmonic_tilt_ci_lo)
+            .min(row.harmonic_tilt_mean);
+        y_max = y_max
+            .max(row.harmonic_tilt_ci_hi)
+            .max(row.harmonic_tilt_mean);
     }
     if (y_max - y_min).abs() < 1e-6 {
         y_min -= 0.1;
@@ -10196,7 +10393,7 @@ fn render_e4_bind_vs_weight(
     root.fill(&WHITE)?;
     let mut chart = ChartBuilder::on(&root)
         .caption(
-            "E4 Root/Ceiling Regime Shift: Δbind vs mirror weight",
+            "E4 Regime Shift: Harmonic Tilt (τ) vs mirror_weight",
             ("sans-serif", 20),
         )
         .margin(10)
@@ -10207,7 +10404,7 @@ fn render_e4_bind_vs_weight(
     chart
         .configure_mesh()
         .x_desc("mirror weight")
-        .y_desc("Δbind = (RootFit - CeilingFit) / (RootFit + CeilingFit)")
+        .y_desc("Harmonic Tilt (τ) = (R_A - O_A) / (R_A + O_A)")
         .draw()?;
 
     chart.draw_series(std::iter::once(PathElement::new(
@@ -10218,24 +10415,24 @@ fn render_e4_bind_vs_weight(
     if rows.len() >= 2 {
         let mut band: Vec<(f32, f32)> = rows
             .iter()
-            .map(|row| (row.mirror_weight, row.delta_bind_ci_hi))
+            .map(|row| (row.mirror_weight, row.harmonic_tilt_ci_hi))
             .collect();
         band.extend(
             rows.iter()
                 .rev()
-                .map(|row| (row.mirror_weight, row.delta_bind_ci_lo)),
+                .map(|row| (row.mirror_weight, row.harmonic_tilt_ci_lo)),
         );
         chart.draw_series(std::iter::once(Polygon::new(band, BLUE.mix(0.20).filled())))?;
     }
 
     chart.draw_series(LineSeries::new(
         rows.iter()
-            .map(|row| (row.mirror_weight, row.mean_delta_bind)),
+            .map(|row| (row.mirror_weight, row.harmonic_tilt_mean)),
         BLUE.mix(0.90).stroke_width(2),
     ))?;
     chart.draw_series(rows.iter().map(|row| {
         Circle::new(
-            (row.mirror_weight, row.mean_delta_bind),
+            (row.mirror_weight, row.harmonic_tilt_mean),
             4,
             BLUE.mix(0.95).filled(),
         )
@@ -10245,9 +10442,9 @@ fn render_e4_bind_vs_weight(
     Ok(())
 }
 
-fn render_e4_root_ceiling_fit_vs_weight(
+fn render_e4_binding_components_vs_weight(
     out_path: &Path,
-    summary_rows: &[E4BindSummaryRow],
+    summary_rows: &[E4BindingSummaryRow],
 ) -> Result<(), Box<dyn Error>> {
     if summary_rows.is_empty() {
         return Ok(());
@@ -10261,7 +10458,10 @@ fn render_e4_root_ceiling_fit_vs_weight(
 
     let mut y_max = 0.0f32;
     for row in &rows {
-        y_max = y_max.max(row.root_ci_hi).max(row.ceiling_ci_hi);
+        y_max = y_max
+            .max(row.root_affinity_ci_hi)
+            .max(row.overtone_affinity_ci_hi)
+            .max(row.binding_strength_ci_hi);
     }
     y_max = (y_max * 1.15).max(1e-4);
 
@@ -10269,7 +10469,7 @@ fn render_e4_root_ceiling_fit_vs_weight(
     root.fill(&WHITE)?;
     let mut chart = ChartBuilder::on(&root)
         .caption(
-            "E4 RootFit / CeilingFit vs mirror weight (mean ± 95% CI)",
+            "E4 Root Affinity (R_A) / Overtone Affinity (O_A) / Binding Strength (S)",
             ("sans-serif", 20),
         )
         .margin(10)
@@ -10279,19 +10479,19 @@ fn render_e4_root_ceiling_fit_vs_weight(
 
     chart
         .configure_mesh()
-        .x_desc("mirror weight")
-        .y_desc("fit score")
+        .x_desc("mirror_weight")
+        .y_desc("affinity / strength")
         .draw()?;
 
     if rows.len() >= 2 {
         let mut root_band: Vec<(f32, f32)> = rows
             .iter()
-            .map(|row| (row.mirror_weight, row.root_ci_hi))
+            .map(|row| (row.mirror_weight, row.root_affinity_ci_hi))
             .collect();
         root_band.extend(
             rows.iter()
                 .rev()
-                .map(|row| (row.mirror_weight, row.root_ci_lo)),
+                .map(|row| (row.mirror_weight, row.root_affinity_ci_lo)),
         );
         chart.draw_series(std::iter::once(Polygon::new(
             root_band,
@@ -10300,30 +10500,44 @@ fn render_e4_root_ceiling_fit_vs_weight(
 
         let mut ceiling_band: Vec<(f32, f32)> = rows
             .iter()
-            .map(|row| (row.mirror_weight, row.ceiling_ci_hi))
+            .map(|row| (row.mirror_weight, row.overtone_affinity_ci_hi))
             .collect();
         ceiling_band.extend(
             rows.iter()
                 .rev()
-                .map(|row| (row.mirror_weight, row.ceiling_ci_lo)),
+                .map(|row| (row.mirror_weight, row.overtone_affinity_ci_lo)),
         );
         chart.draw_series(std::iter::once(Polygon::new(
             ceiling_band,
             RED.mix(0.12).filled(),
+        )))?;
+
+        let mut binding_band: Vec<(f32, f32)> = rows
+            .iter()
+            .map(|row| (row.mirror_weight, row.binding_strength_ci_hi))
+            .collect();
+        binding_band.extend(
+            rows.iter()
+                .rev()
+                .map(|row| (row.mirror_weight, row.binding_strength_ci_lo)),
+        );
+        chart.draw_series(std::iter::once(Polygon::new(
+            binding_band,
+            GREEN.mix(0.10).filled(),
         )))?;
     }
 
     chart
         .draw_series(LineSeries::new(
             rows.iter()
-                .map(|row| (row.mirror_weight, row.mean_root_fit)),
+                .map(|row| (row.mirror_weight, row.root_affinity_mean)),
             BLUE.mix(0.95).stroke_width(2),
         ))?
-        .label("RootFit")
+        .label("Root Affinity (R_A)")
         .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 24, y)], BLUE.stroke_width(2)));
     chart.draw_series(rows.iter().map(|row| {
         Circle::new(
-            (row.mirror_weight, row.mean_root_fit),
+            (row.mirror_weight, row.root_affinity_mean),
             4,
             BLUE.mix(0.95).filled(),
         )
@@ -10332,16 +10546,32 @@ fn render_e4_root_ceiling_fit_vs_weight(
     chart
         .draw_series(LineSeries::new(
             rows.iter()
-                .map(|row| (row.mirror_weight, row.mean_ceiling_fit)),
+                .map(|row| (row.mirror_weight, row.overtone_affinity_mean)),
             RED.mix(0.90).stroke_width(2),
         ))?
-        .label("CeilingFit")
+        .label("Overtone Affinity (O_A)")
         .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 24, y)], RED.stroke_width(2)));
     chart.draw_series(rows.iter().map(|row| {
         TriangleMarker::new(
-            (row.mirror_weight, row.mean_ceiling_fit),
+            (row.mirror_weight, row.overtone_affinity_mean),
             6,
             RED.mix(0.90).filled(),
+        )
+    }))?;
+
+    chart
+        .draw_series(LineSeries::new(
+            rows.iter()
+                .map(|row| (row.mirror_weight, row.binding_strength_mean)),
+            GREEN.mix(0.90).stroke_width(2),
+        ))?
+        .label("Binding Strength (S)")
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 24, y)], GREEN.stroke_width(2)));
+    chart.draw_series(rows.iter().map(|row| {
+        Cross::new(
+            (row.mirror_weight, row.binding_strength_mean),
+            6,
+            GREEN.mix(0.90).stroke_width(2),
         )
     }))?;
 
@@ -10355,9 +10585,9 @@ fn render_e4_root_ceiling_fit_vs_weight(
     Ok(())
 }
 
-fn render_e4_delta_bind_png(
+fn render_e4_harmonic_tilt_png(
     out_path: &Path,
-    summary_rows: &[E4BindSummaryRow],
+    summary_rows: &[E4BindingSummaryRow],
 ) -> Result<(), Box<dyn Error>> {
     if summary_rows.is_empty() {
         return Ok(());
@@ -10372,8 +10602,86 @@ fn render_e4_delta_bind_png(
     let mut y_min = 0.0f32;
     let mut y_max = 0.0f32;
     for row in &rows {
-        y_min = y_min.min(row.delta_bind_ci_lo).min(row.mean_delta_bind);
-        y_max = y_max.max(row.delta_bind_ci_hi).max(row.mean_delta_bind);
+        y_min = y_min
+            .min(row.harmonic_tilt_ci_lo)
+            .min(row.harmonic_tilt_mean);
+        y_max = y_max
+            .max(row.harmonic_tilt_ci_hi)
+            .max(row.harmonic_tilt_mean);
+    }
+    if (y_max - y_min).abs() < 1e-6 {
+        y_min -= 0.1;
+        y_max += 0.1;
+    }
+    let pad = 0.15 * (y_max - y_min);
+
+    log_output_path(out_path);
+    let root = BitMapBackend::new(out_path, (1400, 850)).into_drawing_area();
+    root.fill(&WHITE)?;
+    let mut chart = ChartBuilder::on(&root)
+        .caption("E4 Harmonic Tilt (τ) vs mirror_weight", ("sans-serif", 24))
+        .margin(12)
+        .x_label_area_size(46)
+        .y_label_area_size(68)
+        .build_cartesian_2d(0.0f32..1.0f32, (y_min - pad)..(y_max + pad))?;
+
+    chart
+        .configure_mesh()
+        .x_desc("mirror_weight")
+        .y_desc("Harmonic Tilt (τ)")
+        .draw()?;
+
+    chart.draw_series(std::iter::once(PathElement::new(
+        vec![(0.0, 0.0), (1.0, 0.0)],
+        BLACK.mix(0.85).stroke_width(2),
+    )))?;
+
+    if rows.len() >= 2 {
+        let mut band: Vec<(f32, f32)> = rows
+            .iter()
+            .map(|row| (row.mirror_weight, row.harmonic_tilt_ci_hi))
+            .collect();
+        band.extend(
+            rows.iter()
+                .rev()
+                .map(|row| (row.mirror_weight, row.harmonic_tilt_ci_lo)),
+        );
+        chart.draw_series(std::iter::once(Polygon::new(band, BLUE.mix(0.20).filled())))?;
+    }
+
+    chart.draw_series(LineSeries::new(
+        rows.iter()
+            .map(|row| (row.mirror_weight, row.harmonic_tilt_mean)),
+        BLUE.mix(0.95).stroke_width(3),
+    ))?;
+    chart.draw_series(rows.iter().map(|row| {
+        Circle::new(
+            (row.mirror_weight, row.harmonic_tilt_mean),
+            5,
+            BLUE.mix(0.95).filled(),
+        )
+    }))?;
+
+    root.present()?;
+    Ok(())
+}
+
+fn render_e4_harmonic_tilt_scatter_png(
+    out_path: &Path,
+    rows: &[E4BindingMetricRow],
+) -> Result<(), Box<dyn Error>> {
+    if rows.is_empty() {
+        return Ok(());
+    }
+    let mut y_min = f32::INFINITY;
+    let mut y_max = f32::NEG_INFINITY;
+    for row in rows {
+        y_min = y_min.min(row.harmonic_tilt);
+        y_max = y_max.max(row.harmonic_tilt);
+    }
+    if !y_min.is_finite() || !y_max.is_finite() {
+        y_min = -0.1;
+        y_max = 0.1;
     }
     if (y_max - y_min).abs() < 1e-6 {
         y_min -= 0.1;
@@ -10386,7 +10694,7 @@ fn render_e4_delta_bind_png(
     root.fill(&WHITE)?;
     let mut chart = ChartBuilder::on(&root)
         .caption(
-            "E4 DeltaBind vs mirror_weight (mean ± 95% CI)",
+            "E4 Harmonic Tilt (τ) by seed and mirror_weight",
             ("sans-serif", 24),
         )
         .margin(12)
@@ -10397,38 +10705,99 @@ fn render_e4_delta_bind_png(
     chart
         .configure_mesh()
         .x_desc("mirror_weight")
-        .y_desc("DeltaBind")
+        .y_desc("Harmonic Tilt (τ)")
         .draw()?;
 
     chart.draw_series(std::iter::once(PathElement::new(
         vec![(0.0, 0.0), (1.0, 0.0)],
-        BLACK.mix(0.85).stroke_width(2),
+        BLACK.mix(0.8).stroke_width(2),
     )))?;
 
-    if rows.len() >= 2 {
-        let mut band: Vec<(f32, f32)> = rows
-            .iter()
-            .map(|row| (row.mirror_weight, row.delta_bind_ci_hi))
-            .collect();
-        band.extend(
-            rows.iter()
-                .rev()
-                .map(|row| (row.mirror_weight, row.delta_bind_ci_lo)),
-        );
-        chart.draw_series(std::iter::once(Polygon::new(band, BLUE.mix(0.20).filled())))?;
+    chart.draw_series(rows.iter().map(|row| {
+        let jitter = ((row.seed.wrapping_mul(0x9E37_79B9) % 1000) as f32 / 1000.0 - 0.5) * 0.02;
+        let x = (row.mirror_weight + jitter).clamp(0.0, 1.0);
+        let color = if row.harmonic_tilt < 0.0 {
+            RED.mix(0.85)
+        } else {
+            BLUE.mix(0.85)
+        };
+        Circle::new((x, row.harmonic_tilt), 3, color.filled())
+    }))?;
+
+    root.present()?;
+    Ok(())
+}
+
+fn wilson_ci95(successes: usize, n: usize) -> (f32, f32) {
+    if n == 0 {
+        return (0.0, 0.0);
     }
+    let z = 1.96f32;
+    let nf = n as f32;
+    let phat = successes as f32 / nf;
+    let denom = 1.0 + z * z / nf;
+    let center = (phat + z * z / (2.0 * nf)) / denom;
+    let half = (z / denom) * ((phat * (1.0 - phat) / nf + z * z / (4.0 * nf * nf)).sqrt());
+    ((center - half).max(0.0), (center + half).min(1.0))
+}
+
+fn render_e4_overtone_regime_rate_png(
+    out_path: &Path,
+    rows: &[E4BindingMetricRow],
+) -> Result<(), Box<dyn Error>> {
+    if rows.is_empty() {
+        return Ok(());
+    }
+    let mut grouped: std::collections::HashMap<i32, Vec<&E4BindingMetricRow>> =
+        std::collections::HashMap::new();
+    for row in rows {
+        grouped
+            .entry(float_key(row.mirror_weight))
+            .or_default()
+            .push(row);
+    }
+    let mut series: Vec<(f32, f32, f32, f32)> = grouped
+        .into_iter()
+        .map(|(key, vals)| {
+            let n = vals.len();
+            let k = vals.iter().filter(|r| r.harmonic_tilt < 0.0).count();
+            let p = if n > 0 { k as f32 / n as f32 } else { 0.0 };
+            let (lo, hi) = wilson_ci95(k, n);
+            (float_from_key(key), p, lo, hi)
+        })
+        .collect();
+    series.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+
+    log_output_path(out_path);
+    let root = BitMapBackend::new(out_path, (1400, 850)).into_drawing_area();
+    root.fill(&WHITE)?;
+    let mut chart = ChartBuilder::on(&root)
+        .caption(
+            "E4 Overtone regime rate: P(τ < 0) vs mirror_weight",
+            ("sans-serif", 24),
+        )
+        .margin(12)
+        .x_label_area_size(46)
+        .y_label_area_size(68)
+        .build_cartesian_2d(0.0f32..1.0f32, 0.0f32..1.0f32)?;
+
+    chart
+        .configure_mesh()
+        .x_desc("mirror_weight")
+        .y_desc("P(τ < 0)")
+        .draw()?;
 
     chart.draw_series(LineSeries::new(
-        rows.iter()
-            .map(|row| (row.mirror_weight, row.mean_delta_bind)),
-        BLUE.mix(0.95).stroke_width(3),
+        series.iter().map(|(w, p, _, _)| (*w, *p)),
+        RED.mix(0.9).stroke_width(3),
     ))?;
-    chart.draw_series(rows.iter().map(|row| {
-        Circle::new(
-            (row.mirror_weight, row.mean_delta_bind),
-            5,
-            BLUE.mix(0.95).filled(),
-        )
+    chart.draw_series(
+        series
+            .iter()
+            .map(|(w, p, _, _)| Circle::new((*w, *p), 5, RED.mix(0.9).filled())),
+    )?;
+    chart.draw_series(series.iter().map(|(w, _, lo, hi)| {
+        PathElement::new(vec![(*w, *lo), (*w, *hi)], RED.mix(0.7).stroke_width(2))
     }))?;
 
     root.present()?;
@@ -10437,7 +10806,7 @@ fn render_e4_delta_bind_png(
 
 fn render_e4_binding_phase_diagram_png(
     out_path: &Path,
-    summary_rows: &[E4BindSummaryRow],
+    summary_rows: &[E4BindingSummaryRow],
 ) -> Result<(), Box<dyn Error>> {
     if summary_rows.is_empty() {
         return Ok(());
@@ -10451,7 +10820,10 @@ fn render_e4_binding_phase_diagram_png(
 
     let mut y_max = 0.0f32;
     for row in &rows {
-        y_max = y_max.max(row.root_ci_hi).max(row.ceiling_ci_hi);
+        y_max = y_max
+            .max(row.root_affinity_ci_hi)
+            .max(row.overtone_affinity_ci_hi)
+            .max(row.binding_strength_ci_hi);
     }
     y_max = (y_max * 1.15).max(1e-4);
 
@@ -10460,7 +10832,7 @@ fn render_e4_binding_phase_diagram_png(
     root.fill(&WHITE)?;
     let mut chart = ChartBuilder::on(&root)
         .caption(
-            "E4 Binding Phase Diagram: RootFit / CeilingFit (mean ± 95% CI)",
+            "E4 Binding Phase Diagram: R_A / O_A / S (mean ± 95% CI)",
             ("sans-serif", 24),
         )
         .margin(12)
@@ -10471,18 +10843,18 @@ fn render_e4_binding_phase_diagram_png(
     chart
         .configure_mesh()
         .x_desc("mirror_weight")
-        .y_desc("fit")
+        .y_desc("affinity / strength")
         .draw()?;
 
     if rows.len() >= 2 {
         let mut root_band: Vec<(f32, f32)> = rows
             .iter()
-            .map(|row| (row.mirror_weight, row.root_ci_hi))
+            .map(|row| (row.mirror_weight, row.root_affinity_ci_hi))
             .collect();
         root_band.extend(
             rows.iter()
                 .rev()
-                .map(|row| (row.mirror_weight, row.root_ci_lo)),
+                .map(|row| (row.mirror_weight, row.root_affinity_ci_lo)),
         );
         chart.draw_series(std::iter::once(Polygon::new(
             root_band,
@@ -10491,30 +10863,44 @@ fn render_e4_binding_phase_diagram_png(
 
         let mut ceiling_band: Vec<(f32, f32)> = rows
             .iter()
-            .map(|row| (row.mirror_weight, row.ceiling_ci_hi))
+            .map(|row| (row.mirror_weight, row.overtone_affinity_ci_hi))
             .collect();
         ceiling_band.extend(
             rows.iter()
                 .rev()
-                .map(|row| (row.mirror_weight, row.ceiling_ci_lo)),
+                .map(|row| (row.mirror_weight, row.overtone_affinity_ci_lo)),
         );
         chart.draw_series(std::iter::once(Polygon::new(
             ceiling_band,
             RED.mix(0.12).filled(),
+        )))?;
+
+        let mut binding_band: Vec<(f32, f32)> = rows
+            .iter()
+            .map(|row| (row.mirror_weight, row.binding_strength_ci_hi))
+            .collect();
+        binding_band.extend(
+            rows.iter()
+                .rev()
+                .map(|row| (row.mirror_weight, row.binding_strength_ci_lo)),
+        );
+        chart.draw_series(std::iter::once(Polygon::new(
+            binding_band,
+            GREEN.mix(0.10).filled(),
         )))?;
     }
 
     chart
         .draw_series(LineSeries::new(
             rows.iter()
-                .map(|row| (row.mirror_weight, row.mean_root_fit)),
+                .map(|row| (row.mirror_weight, row.root_affinity_mean)),
             BLUE.mix(0.95).stroke_width(3),
         ))?
-        .label("RootFit")
+        .label("Root Affinity (R_A)")
         .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 24, y)], BLUE.stroke_width(3)));
     chart.draw_series(rows.iter().map(|row| {
         Circle::new(
-            (row.mirror_weight, row.mean_root_fit),
+            (row.mirror_weight, row.root_affinity_mean),
             5,
             BLUE.mix(0.95).filled(),
         )
@@ -10523,16 +10909,32 @@ fn render_e4_binding_phase_diagram_png(
     chart
         .draw_series(LineSeries::new(
             rows.iter()
-                .map(|row| (row.mirror_weight, row.mean_ceiling_fit)),
+                .map(|row| (row.mirror_weight, row.overtone_affinity_mean)),
             RED.mix(0.92).stroke_width(3),
         ))?
-        .label("CeilingFit")
+        .label("Overtone Affinity (O_A)")
         .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 24, y)], RED.stroke_width(3)));
     chart.draw_series(rows.iter().map(|row| {
         TriangleMarker::new(
-            (row.mirror_weight, row.mean_ceiling_fit),
+            (row.mirror_weight, row.overtone_affinity_mean),
             7,
             RED.mix(0.92).filled(),
+        )
+    }))?;
+
+    chart
+        .draw_series(LineSeries::new(
+            rows.iter()
+                .map(|row| (row.mirror_weight, row.binding_strength_mean)),
+            GREEN.mix(0.90).stroke_width(3),
+        ))?
+        .label("Binding Strength (S)")
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 24, y)], GREEN.stroke_width(3)));
+    chart.draw_series(rows.iter().map(|row| {
+        Cross::new(
+            (row.mirror_weight, row.binding_strength_mean),
+            7,
+            GREEN.mix(0.90).stroke_width(2),
         )
     }))?;
 
@@ -10703,11 +11105,6 @@ fn delta_t_from_freqs(anchor_hz: f32, freqs: &[f32], eps_cents: f32, mode: E4Cou
     delta_t
 }
 
-fn delta_bind_from_freqs(freqs: &[f32]) -> f32 {
-    let (_, _, delta_bind) = bind_scores_from_freqs(freqs);
-    delta_bind
-}
-
 fn render_e4_step_response_delta_plot(
     out_path: &Path,
     step_rows: &[(u32, f32, f32, f32)],
@@ -10776,7 +11173,7 @@ fn render_e4_step_response_delta_plot(
     Ok(())
 }
 
-fn render_e4_step_response_delta_bind_plot(
+fn render_e4_step_response_harmonic_tilt_plot(
     out_path: &Path,
     step_rows: &[(u32, f32, f32)],
     switch_step: u32,
@@ -10786,9 +11183,9 @@ fn render_e4_step_response_delta_bind_plot(
     }
     let mut y_min = 0.0f32;
     let mut y_max = 0.0f32;
-    for (_, _, delta_bind) in step_rows {
-        y_min = y_min.min(*delta_bind).min(0.0);
-        y_max = y_max.max(*delta_bind).max(0.0);
+    for (_, _, harmonic_tilt) in step_rows {
+        y_min = y_min.min(*harmonic_tilt).min(0.0);
+        y_max = y_max.max(*harmonic_tilt).max(0.0);
     }
     if !y_min.is_finite() || !y_max.is_finite() || (y_max - y_min).abs() < 1e-6 {
         y_min = -0.1;
@@ -10803,7 +11200,7 @@ fn render_e4_step_response_delta_bind_plot(
     let root = bitmap_root(out_path, (1300, 700)).into_drawing_area();
     root.fill(&WHITE)?;
     let mut chart = ChartBuilder::on(&root)
-        .caption("E4 Step Response: Δbind(t)", ("sans-serif", 20))
+        .caption("E4 Step Response: Harmonic Tilt (τ)(t)", ("sans-serif", 20))
         .margin(10)
         .x_label_area_size(42)
         .y_label_area_size(60)
@@ -10811,7 +11208,7 @@ fn render_e4_step_response_delta_bind_plot(
     chart
         .configure_mesh()
         .x_desc("step")
-        .y_desc("Δbind")
+        .y_desc("Harmonic Tilt (τ)")
         .draw()?;
     chart.draw_series(std::iter::once(PathElement::new(
         vec![(0.0, 0.0), (x_end.max(1.0), 0.0)],
@@ -10835,11 +11232,11 @@ fn render_e4_step_response_delta_bind_plot(
     chart.draw_series(LineSeries::new(
         step_rows
             .iter()
-            .map(|(step, _, delta_bind)| (*step as f32, *delta_bind)),
+            .map(|(step, _, harmonic_tilt)| (*step as f32, *harmonic_tilt)),
         BLUE.mix(0.90).stroke_width(2),
     ))?;
-    chart.draw_series(step_rows.iter().map(|(step, _, delta_bind)| {
-        Circle::new((*step as f32, *delta_bind), 3, BLUE.mix(0.95).filled())
+    chart.draw_series(step_rows.iter().map(|(step, _, harmonic_tilt)| {
+        Circle::new((*step as f32, *harmonic_tilt), 3, BLUE.mix(0.95).filled())
     }))?;
     root.present()?;
     Ok(())
@@ -10931,7 +11328,7 @@ fn render_e4_hysteresis_plot(
     Ok(())
 }
 
-fn render_e4_hysteresis_bind_plot(
+fn render_e4_hysteresis_harmonic_tilt_plot(
     out_path: &Path,
     up_curve: &[(f32, f32)],
     down_curve: &[(f32, f32)],
@@ -10953,7 +11350,10 @@ fn render_e4_hysteresis_bind_plot(
     let root = bitmap_root(out_path, (1100, 700)).into_drawing_area();
     root.fill(&WHITE)?;
     let mut chart = ChartBuilder::on(&root)
-        .caption("E4 Hysteresis: Δbind vs Mirror Weight", ("sans-serif", 20))
+        .caption(
+            "E4 Hysteresis: Harmonic Tilt (τ) vs mirror_weight",
+            ("sans-serif", 20),
+        )
         .margin(10)
         .x_label_area_size(40)
         .y_label_area_size(60)
@@ -10961,7 +11361,7 @@ fn render_e4_hysteresis_bind_plot(
     chart
         .configure_mesh()
         .x_desc("mirror weight")
-        .y_desc("Δbind")
+        .y_desc("Harmonic Tilt (τ)")
         .draw()?;
     chart.draw_series(std::iter::once(PathElement::new(
         vec![(0.0, 0.0), (1.0, 0.0)],
@@ -11002,7 +11402,7 @@ fn run_e4_step_and_hysteresis_protocol(
     let mut step_bind_rows: Vec<(u32, f32, f32)> =
         Vec::with_capacity(step_samples.freqs_by_step.len());
     let mut step_csv = String::from("seed,step,mirror_weight,delta_t_soft,delta_t_hard\n");
-    let mut step_bind_csv = String::from("seed,step,mirror_weight,delta_bind\n");
+    let mut step_bind_csv = String::from("seed,step,mirror_weight,harmonic_tilt\n");
     let mut step_hist_csv =
         String::from("seed,step,mirror_weight,bin_width_cents,bin_center_cents,mass\n");
     for (step, freqs) in step_samples.freqs_by_step.iter().enumerate() {
@@ -11013,16 +11413,20 @@ fn run_e4_step_and_hysteresis_protocol(
             .unwrap_or(0.0);
         let delta_soft = delta_t_from_freqs(anchor_hz, freqs, eps_cents, E4CountMode::Soft);
         let delta_hard = delta_t_from_freqs(anchor_hz, freqs, eps_cents, E4CountMode::Hard);
-        let delta_bind = delta_bind_from_freqs(freqs);
+        let harmonic_tilt = step_samples
+            .landscape_metrics_by_step
+            .get(step)
+            .map(|m| m.harmonic_tilt)
+            .unwrap_or(0.0);
         step_rows.push((step as u32, mirror_weight, delta_soft, delta_hard));
-        step_bind_rows.push((step as u32, mirror_weight, delta_bind));
+        step_bind_rows.push((step as u32, mirror_weight, harmonic_tilt));
         step_csv.push_str(&format!(
             "{},{},{:.3},{:.6},{:.6}\n",
             E4_PROTOCOL_SEED, step, mirror_weight, delta_soft, delta_hard
         ));
         step_bind_csv.push_str(&format!(
             "{},{},{:.3},{:.6}\n",
-            E4_PROTOCOL_SEED, step, mirror_weight, delta_bind
+            E4_PROTOCOL_SEED, step, mirror_weight, harmonic_tilt
         ));
         let cents_values: Vec<f32> = freqs
             .iter()
@@ -11038,7 +11442,7 @@ fn run_e4_step_and_hysteresis_protocol(
     }
     write_with_log(out_dir.join("paper_e4_step_response_delta_t.csv"), step_csv)?;
     write_with_log(
-        out_dir.join("paper_e4_step_response_delta_bind.csv"),
+        out_dir.join("paper_e4_step_response_harmonic_tilt.csv"),
         step_bind_csv,
     )?;
     write_with_log(
@@ -11050,8 +11454,8 @@ fn run_e4_step_and_hysteresis_protocol(
         &step_rows,
         E4_STEP_BURN_IN_STEPS,
     )?;
-    render_e4_step_response_delta_bind_plot(
-        &out_dir.join("paper_e4_step_response_delta_bind.svg"),
+    render_e4_step_response_harmonic_tilt_plot(
+        &out_dir.join("paper_e4_step_response_harmonic_tilt.svg"),
         &step_bind_rows,
         E4_STEP_BURN_IN_STEPS,
     )?;
@@ -11080,20 +11484,20 @@ fn run_e4_step_and_hysteresis_protocol(
         .iter()
         .map(|freqs| delta_t_from_freqs(anchor_hz, freqs, eps_cents, E4CountMode::Soft))
         .collect();
-    let up_delta_bind: Vec<f32> = up_samples
-        .freqs_by_step
+    let up_harmonic_tilt: Vec<f32> = up_samples
+        .landscape_metrics_by_step
         .iter()
-        .map(|freqs| delta_bind_from_freqs(freqs))
+        .map(|m| m.harmonic_tilt)
         .collect();
     let down_delta: Vec<f32> = down_samples
         .freqs_by_step
         .iter()
         .map(|freqs| delta_t_from_freqs(anchor_hz, freqs, eps_cents, E4CountMode::Soft))
         .collect();
-    let down_delta_bind: Vec<f32> = down_samples
-        .freqs_by_step
+    let down_harmonic_tilt: Vec<f32> = down_samples
+        .landscape_metrics_by_step
         .iter()
-        .map(|freqs| delta_bind_from_freqs(freqs))
+        .map(|m| m.harmonic_tilt)
         .collect();
 
     let up_curve = stage_means_from_trace(
@@ -11108,15 +11512,15 @@ fn run_e4_step_and_hysteresis_protocol(
         E4_HYSTERESIS_SETTLE_STEPS,
         E4_HYSTERESIS_EVAL_WINDOW,
     );
-    let up_curve_bind = stage_means_from_trace(
+    let up_curve_harmonic_tilt = stage_means_from_trace(
         &weights_up,
-        &up_delta_bind,
+        &up_harmonic_tilt,
         E4_HYSTERESIS_SETTLE_STEPS,
         E4_HYSTERESIS_EVAL_WINDOW,
     );
-    let down_curve_bind_desc = stage_means_from_trace(
+    let down_curve_harmonic_tilt_desc = stage_means_from_trace(
         &weights_down,
-        &down_delta_bind,
+        &down_harmonic_tilt,
         E4_HYSTERESIS_SETTLE_STEPS,
         E4_HYSTERESIS_EVAL_WINDOW,
     );
@@ -11124,9 +11528,9 @@ fn run_e4_step_and_hysteresis_protocol(
     for (w, d) in &down_curve_desc {
         down_map.insert(float_key(*w), *d);
     }
-    let mut down_bind_map = std::collections::HashMap::new();
-    for (w, d) in &down_curve_bind_desc {
-        down_bind_map.insert(float_key(*w), *d);
+    let mut down_harmonic_tilt_map = std::collections::HashMap::new();
+    for (w, d) in &down_curve_harmonic_tilt_desc {
+        down_harmonic_tilt_map.insert(float_key(*w), *d);
     }
     let mut down_curve = Vec::new();
     for &w in &weights_up {
@@ -11134,10 +11538,10 @@ fn run_e4_step_and_hysteresis_protocol(
             down_curve.push((w, v));
         }
     }
-    let mut down_curve_bind = Vec::new();
+    let mut down_curve_harmonic_tilt = Vec::new();
     for &w in &weights_up {
-        if let Some(v) = down_bind_map.get(&float_key(w)).copied() {
-            down_curve_bind.push((w, v));
+        if let Some(v) = down_harmonic_tilt_map.get(&float_key(w)).copied() {
+            down_curve_harmonic_tilt.push((w, v));
         }
     }
 
@@ -11169,22 +11573,25 @@ fn run_e4_step_and_hysteresis_protocol(
         out_dir.join("paper_e4_hysteresis_diff.csv"),
         hysteresis_diff_csv,
     )?;
-    let mut hysteresis_bind_curve_csv = String::from("direction,seed,weight,delta_bind\n");
-    for (w, d) in &up_curve_bind {
+    let mut hysteresis_bind_curve_csv = String::from("direction,seed,weight,harmonic_tilt\n");
+    for (w, d) in &up_curve_harmonic_tilt {
         hysteresis_bind_curve_csv.push_str(&format!("up,{},{:.3},{:.6}\n", E4_PROTOCOL_SEED, w, d));
     }
-    for (w, d) in &down_curve_bind {
+    for (w, d) in &down_curve_harmonic_tilt {
         hysteresis_bind_curve_csv
             .push_str(&format!("down,{},{:.3},{:.6}\n", E4_PROTOCOL_SEED, w, d));
     }
     write_with_log(
-        out_dir.join("paper_e4_hysteresis_bind_curve.csv"),
+        out_dir.join("paper_e4_hysteresis_harmonic_tilt_curve.csv"),
         hysteresis_bind_curve_csv,
     )?;
     let mut hysteresis_bind_diff_csv =
-        String::from("weight,delta_bind_up,delta_bind_down,diff_up_minus_down\n");
-    for (w, up) in &up_curve_bind {
-        let down = down_bind_map.get(&float_key(*w)).copied().unwrap_or(0.0);
+        String::from("weight,harmonic_tilt_up,harmonic_tilt_down,diff_up_minus_down\n");
+    for (w, up) in &up_curve_harmonic_tilt {
+        let down = down_harmonic_tilt_map
+            .get(&float_key(*w))
+            .copied()
+            .unwrap_or(0.0);
         hysteresis_bind_diff_csv.push_str(&format!(
             "{:.3},{:.6},{:.6},{:.6}\n",
             w,
@@ -11194,7 +11601,7 @@ fn run_e4_step_and_hysteresis_protocol(
         ));
     }
     write_with_log(
-        out_dir.join("paper_e4_hysteresis_bind_diff.csv"),
+        out_dir.join("paper_e4_hysteresis_harmonic_tilt_diff.csv"),
         hysteresis_bind_diff_csv,
     )?;
     render_e4_hysteresis_plot(
@@ -11202,10 +11609,10 @@ fn run_e4_step_and_hysteresis_protocol(
         &up_curve,
         &down_curve,
     )?;
-    render_e4_hysteresis_bind_plot(
-        &out_dir.join("paper_e4_hysteresis_bind_curve.svg"),
-        &up_curve_bind,
-        &down_curve_bind,
+    render_e4_hysteresis_harmonic_tilt_plot(
+        &out_dir.join("paper_e4_hysteresis_harmonic_tilt_curve.svg"),
+        &up_curve_harmonic_tilt,
+        &down_curve_harmonic_tilt,
     )?;
     Ok(())
 }
@@ -18987,54 +19394,202 @@ mod tests {
     #[test]
     fn bind_metrics_use_latest_step_and_are_deterministic() {
         let rows = vec![
-            E4TailAgentRow {
+            E4TailLandscapeRow {
                 mirror_weight: 0.5,
                 seed: 7,
                 step: 10,
-                agent_id: 1,
-                freq_hz: 220.0,
+                root_affinity: 0.60,
+                overtone_affinity: 0.55,
+                binding_strength: 1.15,
+                harmonic_tilt: 0.04347826,
             },
-            E4TailAgentRow {
+            E4TailLandscapeRow {
                 mirror_weight: 0.5,
                 seed: 7,
                 step: 10,
-                agent_id: 2,
-                freq_hz: 330.0,
+                root_affinity: 0.61,
+                overtone_affinity: 0.56,
+                binding_strength: 1.17,
+                harmonic_tilt: 0.04273504,
             },
-            E4TailAgentRow {
+            E4TailLandscapeRow {
                 mirror_weight: 0.5,
                 seed: 7,
                 step: 20,
-                agent_id: 1,
-                freq_hz: 220.0,
+                root_affinity: 0.62,
+                overtone_affinity: 0.57,
+                binding_strength: 1.19,
+                harmonic_tilt: 0.04201681,
             },
-            E4TailAgentRow {
+            E4TailLandscapeRow {
                 mirror_weight: 0.5,
                 seed: 7,
                 step: 20,
-                agent_id: 2,
-                freq_hz: 330.0,
-            },
-            E4TailAgentRow {
-                mirror_weight: 0.5,
-                seed: 7,
-                step: 20,
-                agent_id: 3,
-                freq_hz: 440.0,
+                root_affinity: 0.64,
+                overtone_affinity: 0.58,
+                binding_strength: 1.22,
+                harmonic_tilt: 0.04918033,
             },
         ];
-        let m1 = e4_bind_metrics_from_tail_agents(&rows);
-        let m2 = e4_bind_metrics_from_tail_agents(&rows);
+        let m1 = e4_binding_metrics_from_tail_landscape(&rows);
+        let m2 = e4_binding_metrics_from_tail_landscape(&rows);
         assert_eq!(m1.len(), 1);
         assert_eq!(m2.len(), 1);
         assert_eq!(m1[0].step, 20);
-        assert_eq!(m1[0].n_agents, 3);
-        assert!((0.0..=3.0).contains(&m1[0].root_fit));
-        assert!((0.0..=3.0).contains(&m1[0].ceiling_fit));
-        assert!((-1.0..=1.0).contains(&m1[0].delta_bind));
-        assert_eq!(m1[0].root_fit.to_bits(), m2[0].root_fit.to_bits());
-        assert_eq!(m1[0].ceiling_fit.to_bits(), m2[0].ceiling_fit.to_bits());
-        assert_eq!(m1[0].delta_bind.to_bits(), m2[0].delta_bind.to_bits());
+        assert_eq!(m1[0].n_steps, 4);
+        assert!((0.0..=2.0).contains(&m1[0].root_affinity));
+        assert!((0.0..=2.0).contains(&m1[0].overtone_affinity));
+        assert!((-1.0..=1.0).contains(&m1[0].harmonic_tilt));
+        assert_eq!(m1[0].root_affinity.to_bits(), m2[0].root_affinity.to_bits());
+        assert_eq!(
+            m1[0].overtone_affinity.to_bits(),
+            m2[0].overtone_affinity.to_bits()
+        );
+        assert_eq!(m1[0].harmonic_tilt.to_bits(), m2[0].harmonic_tilt.to_bits());
+    }
+
+    #[test]
+    fn e4_binding_csv_headers_use_affinity_metrics_only() {
+        let metric_rows = vec![E4BindingMetricRow {
+            mirror_weight: 0.5,
+            seed: 42,
+            root_affinity: 0.61,
+            overtone_affinity: 0.57,
+            binding_strength: 1.18,
+            harmonic_tilt: 0.0339,
+            n_steps: 8,
+            step: 7,
+        }];
+        let summary_rows = vec![E4BindingSummaryRow {
+            mirror_weight: 0.5,
+            root_affinity_mean: 0.61,
+            root_affinity_ci_lo: 0.58,
+            root_affinity_ci_hi: 0.64,
+            overtone_affinity_mean: 0.57,
+            overtone_affinity_ci_lo: 0.54,
+            overtone_affinity_ci_hi: 0.60,
+            binding_strength_mean: 1.18,
+            binding_strength_ci_lo: 1.12,
+            binding_strength_ci_hi: 1.24,
+            harmonic_tilt_mean: 0.0339,
+            harmonic_tilt_ci_lo: 0.01,
+            harmonic_tilt_ci_hi: 0.05,
+            n_seeds: 1,
+        }];
+
+        let headers = [
+            e4_binding_metrics_csv(&metric_rows)
+                .lines()
+                .next()
+                .unwrap_or_default()
+                .to_string(),
+            e4_binding_summary_csv(&summary_rows)
+                .lines()
+                .next()
+                .unwrap_or_default()
+                .to_string(),
+            e4_binding_metrics_raw_csv(&metric_rows)
+                .lines()
+                .next()
+                .unwrap_or_default()
+                .to_string(),
+            e4_binding_metrics_summary_csv(&summary_rows)
+                .lines()
+                .next()
+                .unwrap_or_default()
+                .to_string(),
+        ];
+
+        for header in &headers {
+            assert!(header.contains("root_affinity"));
+            assert!(header.contains("overtone_affinity"));
+            assert!(header.contains("binding_strength"));
+            assert!(header.contains("harmonic_tilt"));
+            assert!(!header.contains("root_fit"));
+            assert!(!header.contains("ceiling_fit"));
+            assert!(!header.contains("delta_bind"));
+        }
+    }
+
+    #[test]
+    fn binding_metric_rows_are_self_consistent() {
+        let rows = vec![
+            E4TailLandscapeRow {
+                mirror_weight: 0.25,
+                seed: 11,
+                step: 1,
+                root_affinity: 0.4,
+                overtone_affinity: 0.2,
+                binding_strength: 0.6,
+                harmonic_tilt: 0.33333334,
+            },
+            E4TailLandscapeRow {
+                mirror_weight: 0.25,
+                seed: 11,
+                step: 2,
+                root_affinity: 0.5,
+                overtone_affinity: 0.1,
+                binding_strength: 0.6,
+                harmonic_tilt: 0.6666667,
+            },
+        ];
+        let metrics = e4_binding_metrics_from_tail_landscape(&rows);
+        assert_eq!(metrics.len(), 1);
+        let row = metrics[0];
+        let expected_binding = row.root_affinity + row.overtone_affinity;
+        let expected_tilt = harmonic_tilt_from_affinities(row.root_affinity, row.overtone_affinity);
+        assert!(
+            (row.binding_strength - expected_binding).abs() < 1e-6,
+            "binding_strength={} expected={expected_binding}",
+            row.binding_strength
+        );
+        assert!(
+            (row.harmonic_tilt - expected_tilt).abs() < 1e-6,
+            "harmonic_tilt={} expected={expected_tilt}",
+            row.harmonic_tilt
+        );
+    }
+
+    #[test]
+    fn binding_summary_rows_are_self_consistent() {
+        let rows = vec![
+            E4BindingMetricRow {
+                mirror_weight: 0.0,
+                seed: 1,
+                root_affinity: 0.7,
+                overtone_affinity: 0.2,
+                binding_strength: 0.9,
+                harmonic_tilt: harmonic_tilt_from_affinities(0.7, 0.2),
+                n_steps: 1,
+                step: 1,
+            },
+            E4BindingMetricRow {
+                mirror_weight: 0.0,
+                seed: 2,
+                root_affinity: 0.6,
+                overtone_affinity: 0.3,
+                binding_strength: 0.9,
+                harmonic_tilt: harmonic_tilt_from_affinities(0.6, 0.3),
+                n_steps: 1,
+                step: 1,
+            },
+        ];
+        let summary = e4_binding_summary_rows(&rows);
+        assert_eq!(summary.len(), 1);
+        let row = summary[0];
+        let expected_binding = row.root_affinity_mean + row.overtone_affinity_mean;
+        let expected_tilt =
+            harmonic_tilt_from_affinities(row.root_affinity_mean, row.overtone_affinity_mean);
+        assert!(
+            (row.binding_strength_mean - expected_binding).abs() < 1e-6,
+            "binding_strength_mean={} expected={expected_binding}",
+            row.binding_strength_mean
+        );
+        assert!(
+            (row.harmonic_tilt_mean - expected_tilt).abs() < 1e-6,
+            "harmonic_tilt_mean={} expected={expected_tilt}",
+            row.harmonic_tilt_mean
+        );
     }
 
     #[test]
@@ -19054,8 +19609,11 @@ mod tests {
         let ceiling_series = [1.0f32, 0.5, 1.0 / 3.0, 0.25];
         let (r_h, c_h, d_h) = bind_scores_from_freqs(&harmonic_series);
         let (r_c, c_c, d_c) = bind_scores_from_freqs(&ceiling_series);
-        assert!(r_h > c_h, "harmonic series should favor RootFit");
-        assert!(c_c > r_c, "reciprocal series should favor CeilingFit");
+        assert!(r_h > c_h, "harmonic series should favor Root Affinity");
+        assert!(
+            c_c > r_c,
+            "reciprocal series should favor Overtone Affinity"
+        );
         assert!(d_h > 0.0, "delta bind should be positive for root regime");
         assert!(
             d_c < 0.0,
@@ -19098,19 +19656,19 @@ mod tests {
         let eval_m1 = bind_eval_from_freqs(&f_m1);
 
         println!(
-            "mw=0 root_fit={:.6} ceiling_fit={:.6} delta={:.6}",
-            eval_m0.root_fit, eval_m0.ceiling_fit, eval_m0.delta_bind
+            "mw=0 root_affinity={:.6} overtone_affinity={:.6} delta={:.6}",
+            eval_m0.root_affinity, eval_m0.overtone_affinity, eval_m0.harmonic_tilt
         );
         println!(
-            "mw=1 root_fit={:.6} ceiling_fit={:.6} delta={:.6}",
-            eval_m1.root_fit, eval_m1.ceiling_fit, eval_m1.delta_bind
+            "mw=1 root_affinity={:.6} overtone_affinity={:.6} delta={:.6}",
+            eval_m1.root_affinity, eval_m1.overtone_affinity, eval_m1.harmonic_tilt
         );
         assert!(
-            eval_m0.root_fit > eval_m0.ceiling_fit,
+            eval_m0.root_affinity > eval_m0.overtone_affinity,
             "mw=0 should favor root-binding"
         );
         assert!(
-            eval_m1.ceiling_fit > eval_m1.root_fit,
+            eval_m1.overtone_affinity > eval_m1.root_affinity,
             "mw=1 should favor ceiling-binding"
         );
     }
@@ -19160,8 +19718,8 @@ mod tests {
             },
         ];
         let freqs: Vec<f32> = peaks.iter().take(4).map(|p| p.freq_hz).collect();
-        let oracle_delta = oracle1_delta_bind_from_peaks(&peaks, 4);
-        let eval_delta = bind_eval_from_freqs(&freqs).delta_bind;
+        let oracle_delta = oracle1_harmonic_tilt_from_peaks(&peaks, 4);
+        let eval_delta = bind_eval_from_freqs(&freqs).harmonic_tilt;
         assert!(
             (oracle_delta - eval_delta).abs() < 1e-6,
             "oracle_delta={oracle_delta} eval_delta={eval_delta}"
@@ -19188,7 +19746,8 @@ mod tests {
                     .unwrap_or_else(|| nearest_bin(&space, *f))
             })
             .collect();
-        let before = bind_eval_from_indices(meta.anchor_hz, &scan.log2_ratio, &indices).delta_bind;
+        let before =
+            bind_eval_from_indices(meta.anchor_hz, &scan.log2_ratio, &indices).harmonic_tilt;
         e4_wr_probe_update_indices(
             &mut indices,
             &scan.c,
@@ -19201,10 +19760,11 @@ mod tests {
             None,
             true,
         );
-        let after = bind_eval_from_indices(meta.anchor_hz, &scan.log2_ratio, &indices).delta_bind;
+        let after =
+            bind_eval_from_indices(meta.anchor_hz, &scan.log2_ratio, &indices).harmonic_tilt;
         assert!(
             (before - after).abs() < 1e-6,
-            "noop update should keep delta_bind (before={before}, after={after})"
+            "noop update should keep harmonic_tilt (before={before}, after={after})"
         );
     }
 
@@ -19243,23 +19803,23 @@ mod tests {
                 wr: 0.5,
                 mirror_weight: 0.5,
                 seed: 1,
-                root_fit: 1.0,
-                ceiling_fit: 2.0,
-                delta_bind: -1.0,
-                root_fit_anchor: 0.5,
-                ceiling_fit_anchor: 1.0,
-                delta_bind_anchor: -0.33333334,
+                root_affinity: 1.0,
+                overtone_affinity: 2.0,
+                harmonic_tilt: -1.0,
+                root_affinity_anchor: 0.5,
+                overtone_affinity_anchor: 1.0,
+                harmonic_tilt_anchor: -0.33333334,
             },
             E4WrBindRunRow {
                 wr: 0.5,
                 mirror_weight: 0.5,
                 seed: 2,
-                root_fit: 3.0,
-                ceiling_fit: 4.0,
-                delta_bind: 1.0,
-                root_fit_anchor: 1.5,
-                ceiling_fit_anchor: 2.0,
-                delta_bind_anchor: -0.14285715,
+                root_affinity: 3.0,
+                overtone_affinity: 4.0,
+                harmonic_tilt: 1.0,
+                root_affinity_anchor: 1.5,
+                overtone_affinity_anchor: 2.0,
+                harmonic_tilt_anchor: -0.14285715,
             },
         ];
         let summary_rows = e4_wr_bind_summary_rows(&runs);
@@ -19281,9 +19841,10 @@ mod tests {
         let delta_ci95: f32 = cols[7].parse().expect("delta ci95 parse");
         let n_seeds: usize = cols[8].parse().expect("n parse");
         let error_kind = cols[9];
-        let exp_root_ci95 = 0.5 * (summary.root_fit_ci_hi - summary.root_fit_ci_lo);
-        let exp_ceiling_ci95 = 0.5 * (summary.ceiling_fit_ci_hi - summary.ceiling_fit_ci_lo);
-        let exp_delta_ci95 = 0.5 * (summary.delta_bind_ci_hi - summary.delta_bind_ci_lo);
+        let exp_root_ci95 = 0.5 * (summary.root_affinity_ci_hi - summary.root_affinity_ci_lo);
+        let exp_ceiling_ci95 =
+            0.5 * (summary.overtone_affinity_ci_hi - summary.overtone_affinity_ci_lo);
+        let exp_delta_ci95 = 0.5 * (summary.harmonic_tilt_ci_hi - summary.harmonic_tilt_ci_lo);
 
         assert!((root_mean - 2.0).abs() < 1e-6, "root_mean={root_mean}");
         assert!(
@@ -19532,7 +20093,7 @@ mod tests {
     }
 
     #[test]
-    fn oracle_greedy_delta_bind_is_finite() {
+    fn oracle_greedy_harmonic_tilt_is_finite() {
         let peaks = vec![
             E4PeakRow {
                 rank: 1,
@@ -19595,7 +20156,7 @@ mod tests {
                 width_st: 0.2,
             },
         ];
-        let oracle_abs = oracle1_delta_bind_from_peaks(&peaks, 4).abs();
+        let oracle_abs = oracle1_harmonic_tilt_from_peaks(&peaks, 4).abs();
         assert!(
             oracle_abs.is_finite() && oracle_abs <= 1.0 + 1e-6,
             "oracle_abs={oracle_abs}"
@@ -20174,11 +20735,49 @@ mod tests {
     }
 
     #[test]
+    fn parse_e4_legacy_defaults_off() {
+        let args: Vec<String> = Vec::new();
+        let enabled = parse_e4_legacy(&args).expect("parse_e4_legacy failed");
+        assert!(!enabled);
+    }
+
+    #[test]
+    fn parse_e4_legacy_accepts_expected_values() {
+        let cases: &[(&[&str], bool)] = &[
+            (&["--e4-legacy", "on"], true),
+            (&["--e4-legacy=on"], true),
+            (&["--e4-legacy", "off"], false),
+            (&["--e4-legacy=off"], false),
+            (&["--e4-legacy", "true"], true),
+            (&["--e4-legacy=false"], false),
+            (&["--e4-legacy", "1"], true),
+            (&["--e4-legacy=0"], false),
+        ];
+        for (args, expected) in cases {
+            let args = args.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+            let enabled = parse_e4_legacy(&args).expect("parse_e4_legacy failed");
+            assert_eq!(enabled, *expected);
+        }
+    }
+
+    #[test]
+    fn parse_e4_legacy_rejects_invalid_values() {
+        let args = vec!["--e4-legacy".to_string(), "maybe".to_string()];
+        let err = parse_e4_legacy(&args).expect_err("expected parse_e4_legacy to fail");
+        assert!(
+            err.contains("Usage: paper"),
+            "expected usage in error, got: {err}"
+        );
+    }
+
+    #[test]
     fn parse_experiments_ignores_other_flags() {
         let args = vec![
             "--e4-hist".to_string(),
             "on".to_string(),
             "--e4-kernel-gate".to_string(),
+            "off".to_string(),
+            "--e4-legacy".to_string(),
             "off".to_string(),
             "--e2-phase".to_string(),
             "normal".to_string(),

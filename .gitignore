@@ -1,6 +1,7 @@
 /target
 /examples/paper/plots
 /examples/paper/.paper_plots.lock
+/examples/paper/*.tar.gz
 /debug
 /web/public
 /docs/rhai_book/src/reference

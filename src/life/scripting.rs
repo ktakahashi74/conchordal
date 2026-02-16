@@ -1686,4 +1686,90 @@ mod tests {
         assert!((control.body.timbre.brightness - 0.7).abs() <= 1e-6);
         assert!((control.body.timbre.width - 0.2).abs() <= 1e-6);
     }
+
+    #[test]
+    fn e4_step_response_script_has_fixed_population_spawns() {
+        let script = include_str!("../../examples/paper/scenarios/e4_mirror_sweep_demo.rhai");
+        assert!(
+            script.contains("let anchor = derive(harmonic)")
+                && script.contains("let probe = derive(harmonic)"),
+            "E4 step response must use harmonic bodies"
+        );
+        assert!(
+            script.contains(".pitch_mode(\"lock\")"),
+            "E4 step response anchor must lock pitch mode"
+        );
+        let (scenario, _warnings) = run_script(script);
+
+        let mut spawn_actions = 0usize;
+        let mut spawned_agents = 0usize;
+        let mut mirror_updates = 0usize;
+        for action in scenario.events.iter().flat_map(|ev| ev.actions.iter()) {
+            match action {
+                Action::Spawn { ids, .. } => {
+                    spawn_actions += 1;
+                    spawned_agents += ids.len();
+                }
+                Action::SetHarmonicityParams { update } => {
+                    if update.mirror.is_some() {
+                        mirror_updates += 1;
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        // One anchor group + one probe group should spawn once each.
+        assert_eq!(spawn_actions, 2);
+        assert_eq!(spawned_agents, 13);
+        assert!(spawn_actions < mirror_updates);
+    }
+
+    #[test]
+    fn e4_between_runs_script_pairs_spawns_and_releases_per_weight() {
+        let script =
+            include_str!("../../examples/paper/scenarios/e4_mirror_sweep_between_runs.rhai");
+        assert!(
+            script.contains("let anchor = derive(harmonic)")
+                && script.contains("let probe = derive(harmonic)"),
+            "E4 between-runs must use harmonic bodies"
+        );
+        assert!(
+            script.contains(".pitch_mode(\"lock\")"),
+            "E4 between-runs anchor must lock pitch mode"
+        );
+        let (scenario, _warnings) = run_script(script);
+
+        let mut mirror_updates = 0usize;
+        let mut spawn_by_group: HashMap<u64, usize> = HashMap::new();
+        let mut release_by_group: HashMap<u64, usize> = HashMap::new();
+
+        for action in scenario.events.iter().flat_map(|ev| ev.actions.iter()) {
+            match action {
+                Action::SetHarmonicityParams { update } => {
+                    if update.mirror.is_some() {
+                        mirror_updates += 1;
+                    }
+                }
+                Action::Spawn { group_id, .. } => {
+                    *spawn_by_group.entry(*group_id).or_insert(0) += 1;
+                }
+                Action::Release { group_id, .. } => {
+                    *release_by_group.entry(*group_id).or_insert(0) += 1;
+                }
+                _ => {}
+            }
+        }
+
+        assert_eq!(spawn_by_group.len(), mirror_updates * 2);
+        assert_eq!(release_by_group.len(), mirror_updates * 2);
+        for (group_id, spawn_count) in &spawn_by_group {
+            assert_eq!(*spawn_count, 1, "group {group_id} spawned more than once");
+            assert_eq!(
+                release_by_group.get(group_id).copied().unwrap_or(0),
+                1,
+                "group {group_id} does not have exactly one matching release"
+            );
+        }
+    }
 }

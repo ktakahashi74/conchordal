@@ -26,6 +26,8 @@ pub const E4_WINDOW_CENTS: f32 = 50.0;
 
 const E4_GROUP_ANCHOR: u64 = 0;
 const E4_GROUP_VOICES: u64 = 1;
+const E4_ENV_PARTIALS: u32 = 6;
+const E4_ENV_PARTIAL_DECAY: f32 = 1.0;
 
 const E3_GROUP_AGENTS: u64 = 2;
 const E3_FS: f32 = 48_000.0;
@@ -418,6 +420,7 @@ pub struct E4TailSamples {
     pub tail_window: u32,
     pub freqs_by_step: Vec<Vec<f32>>,
     pub agent_freqs_by_step: Vec<Vec<E4AgentFreq>>,
+    pub landscape_metrics_by_step: Vec<E4LandscapeMetrics>,
 }
 
 #[derive(Hash, Eq, PartialEq)]
@@ -489,6 +492,7 @@ pub struct E4MirrorScheduleSamples {
     pub freqs_by_step: Vec<Vec<f32>>,
     pub mirror_weight_by_step: Vec<f32>,
     pub agent_freqs_by_step: Vec<Vec<E4AgentFreq>>,
+    pub landscape_metrics_by_step: Vec<E4LandscapeMetrics>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -543,6 +547,14 @@ pub fn e4_paper_meta() -> E4PaperMeta {
 pub struct E4AgentFreq {
     pub agent_id: u64,
     pub freq_hz: f32,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct E4LandscapeMetrics {
+    pub root_affinity: f32,
+    pub overtone_affinity: f32,
+    pub binding_strength: f32,
+    pub harmonic_tilt: f32,
 }
 
 pub fn run_e4_condition_tail_samples(
@@ -779,6 +791,8 @@ fn run_e4_condition_tail_samples_with_config_uncached(
     let dt = cfg.hop as f32 / cfg.fs;
     let mut freqs_by_step: Vec<Vec<f32>> = Vec::with_capacity(tail_window as usize);
     let mut agent_freqs_by_step: Vec<Vec<E4AgentFreq>> = Vec::with_capacity(tail_window as usize);
+    let mut landscape_metrics_by_step: Vec<E4LandscapeMetrics> =
+        Vec::with_capacity(tail_window as usize);
 
     for step in 0..cfg.steps {
         if !target_applied && step >= burn_in_steps {
@@ -792,6 +806,14 @@ fn run_e4_condition_tail_samples_with_config_uncached(
         rhythms.advance_in_place(dt);
 
         if step >= start_step {
+            update_e4_landscape_from_population(&space, &params, &pop, &mut landscape);
+            landscape.rhythm = rhythms;
+            landscape_metrics_by_step.push(E4LandscapeMetrics {
+                root_affinity: landscape.root_affinity,
+                overtone_affinity: landscape.overtone_affinity,
+                binding_strength: landscape.binding_strength,
+                harmonic_tilt: landscape.harmonic_tilt,
+            });
             let agent_freqs = collect_voice_freqs_with_ids(&pop);
             if agent_freqs.len() != cfg.voice_count {
                 panic!(
@@ -814,6 +836,7 @@ fn run_e4_condition_tail_samples_with_config_uncached(
         tail_window,
         freqs_by_step,
         agent_freqs_by_step,
+        landscape_metrics_by_step,
     }
 }
 
@@ -828,6 +851,7 @@ fn run_e4_mirror_schedule_samples_with_config(
             freqs_by_step: Vec::new(),
             mirror_weight_by_step: Vec::new(),
             agent_freqs_by_step: Vec::new(),
+            landscape_metrics_by_step: Vec::new(),
         };
     }
     let schedule = normalize_mirror_schedule(schedule, 0.0);
@@ -891,6 +915,7 @@ fn run_e4_mirror_schedule_samples_with_config(
     let mut freqs_by_step = Vec::with_capacity(steps_total as usize);
     let mut mirror_weight_by_step = Vec::with_capacity(steps_total as usize);
     let mut agent_freqs_by_step = Vec::with_capacity(steps_total as usize);
+    let mut landscape_metrics_by_step = Vec::with_capacity(steps_total as usize);
 
     for step in 0..steps_total {
         while sched_idx + 1 < schedule.len() && step >= schedule[sched_idx + 1].0 {
@@ -904,6 +929,14 @@ fn run_e4_mirror_schedule_samples_with_config(
         pop.advance(cfg.hop, cfg.fs, step as u64, dt, &landscape);
         pop.cleanup_dead(step as u64, dt, false);
         rhythms.advance_in_place(dt);
+        update_e4_landscape_from_population(&space, &params, &pop, &mut landscape);
+        landscape.rhythm = rhythms;
+        landscape_metrics_by_step.push(E4LandscapeMetrics {
+            root_affinity: landscape.root_affinity,
+            overtone_affinity: landscape.overtone_affinity,
+            binding_strength: landscape.binding_strength,
+            harmonic_tilt: landscape.harmonic_tilt,
+        });
 
         let agent_freqs = collect_voice_freqs_with_ids(&pop);
         if agent_freqs.len() != cfg.voice_count {
@@ -922,6 +955,7 @@ fn run_e4_mirror_schedule_samples_with_config(
         freqs_by_step,
         mirror_weight_by_step,
         agent_freqs_by_step,
+        landscape_metrics_by_step,
     }
 }
 
@@ -1032,6 +1066,31 @@ fn apply_params_update(params: &mut LandscapeParams, upd: &LandscapeUpdate) {
     }
 }
 
+fn add_harmonic_partials_to_env(
+    space: &Log2Space,
+    env_scan: &mut [f32],
+    f0_hz: f32,
+    base_gain: f32,
+) {
+    if !f0_hz.is_finite() || f0_hz <= 0.0 || !base_gain.is_finite() || base_gain <= 0.0 {
+        return;
+    }
+    let decay = E4_ENV_PARTIAL_DECAY.max(0.0);
+    for k in 1..=E4_ENV_PARTIALS.max(1) {
+        let freq = f0_hz * k as f32;
+        if !freq.is_finite() || freq <= 0.0 {
+            continue;
+        }
+        let Some(idx) = space.index_of_freq(freq) else {
+            continue;
+        };
+        let weight = base_gain / (k as f32).powf(decay);
+        if weight.is_finite() && weight > 0.0 {
+            env_scan[idx] += weight;
+        }
+    }
+}
+
 fn build_anchor_landscape(
     space: &Log2Space,
     params: &LandscapeParams,
@@ -1039,18 +1098,26 @@ fn build_anchor_landscape(
 ) -> Landscape {
     let mut landscape = Landscape::new(space.clone());
     let mut anchor_env_scan = vec![0.0f32; space.n_bins()];
-    let anchor_idx = space.index_of_freq(anchor_hz).unwrap_or(space.n_bins() / 2);
-    anchor_env_scan[anchor_idx] = 1.0;
+    add_harmonic_partials_to_env(space, &mut anchor_env_scan, anchor_hz, 1.0);
     space.assert_scan_len_named(&anchor_env_scan, "anchor_env_scan");
 
-    let (h_pot_scan, _) = params
+    let h_dual = params
         .harmonicity_kernel
-        .potential_h_from_log2_spectrum(&anchor_env_scan, space);
-    space.assert_scan_len_named(&h_pot_scan, "perc_h_pot_scan");
+        .potential_h_dual_from_log2_spectrum(&anchor_env_scan, space);
+    space.assert_scan_len_named(&h_dual.blended, "perc_h_pot_scan");
+    space.assert_scan_len_named(&h_dual.path_a, "perc_h_path_a_scan");
+    space.assert_scan_len_named(&h_dual.path_b, "perc_h_path_b_scan");
 
     landscape.subjective_intensity = anchor_env_scan.clone();
     landscape.nsgt_power = anchor_env_scan;
-    landscape.harmonicity = h_pot_scan;
+    landscape.harmonicity = h_dual.blended;
+    landscape.harmonicity_path_a = h_dual.path_a;
+    landscape.harmonicity_path_b = h_dual.path_b;
+    landscape.root_affinity = h_dual.metrics.root_affinity;
+    landscape.overtone_affinity = h_dual.metrics.overtone_affinity;
+    landscape.binding_strength = h_dual.metrics.binding_strength;
+    landscape.harmonic_tilt = h_dual.metrics.harmonic_tilt;
+    landscape.harmonicity_mirror_weight = params.harmonicity_kernel.params.mirror_weight;
     landscape.roughness.fill(0.0);
     landscape.roughness01.fill(0.0);
     landscape.recompute_consonance(params);
@@ -1144,17 +1211,22 @@ fn update_e4_landscape_from_population(
         if !freq.is_finite() || freq <= 0.0 {
             continue;
         }
-        if let Some(idx) = space.index_of_freq(freq) {
-            env_scan[idx] += 1.0;
-        }
+        add_harmonic_partials_to_env(space, &mut env_scan, freq, 1.0);
     }
     space.assert_scan_len_named(&env_scan, "e4_env_scan");
-    let (h_pot_scan, _) = params
+    let h_dual = params
         .harmonicity_kernel
-        .potential_h_from_log2_spectrum(&env_scan, space);
+        .potential_h_dual_from_log2_spectrum(&env_scan, space);
     landscape.subjective_intensity = env_scan.clone();
     landscape.nsgt_power = env_scan;
-    landscape.harmonicity = h_pot_scan;
+    landscape.harmonicity = h_dual.blended;
+    landscape.harmonicity_path_a = h_dual.path_a;
+    landscape.harmonicity_path_b = h_dual.path_b;
+    landscape.root_affinity = h_dual.metrics.root_affinity;
+    landscape.overtone_affinity = h_dual.metrics.overtone_affinity;
+    landscape.binding_strength = h_dual.metrics.binding_strength;
+    landscape.harmonic_tilt = h_dual.metrics.harmonic_tilt;
+    landscape.harmonicity_mirror_weight = params.harmonicity_kernel.params.mirror_weight;
     landscape.roughness.fill(0.0);
     landscape.roughness_shape_raw.fill(0.0);
     landscape.roughness01.fill(0.0);
@@ -1285,6 +1357,122 @@ mod tests {
         assert!(
             diff_sum > 1e-4,
             "expected mirror weight to change consonance landscape, diff_sum={diff_sum:.6}"
+        );
+    }
+
+    #[test]
+    fn e4_asymmetric_env_mirror_changes_harmonicity_shape() {
+        let cfg = E4SimConfig::test_defaults();
+        let space = Log2Space::new(cfg.fmin, cfg.fmax, cfg.bins_per_oct);
+        let mut params_m0 = make_landscape_params(&space, cfg.fs, 1.0);
+        let mut params_m1 = make_landscape_params(&space, cfg.fs, 1.0);
+        params_m0.harmonicity_kernel.params.mirror_weight = 0.0;
+        params_m1.harmonicity_kernel.params.mirror_weight = 1.0;
+
+        let mut env_scan = vec![0.0f32; space.n_bins()];
+        add_harmonic_partials_to_env(&space, &mut env_scan, cfg.anchor_hz, 1.0);
+        add_harmonic_partials_to_env(&space, &mut env_scan, cfg.anchor_hz * 1.5, 0.7);
+
+        let h_m0 = params_m0
+            .harmonicity_kernel
+            .potential_h_dual_from_log2_spectrum(&env_scan, &space)
+            .blended;
+        let h_m1 = params_m1
+            .harmonicity_kernel
+            .potential_h_dual_from_log2_spectrum(&env_scan, &space)
+            .blended;
+
+        let dot = h_m0
+            .iter()
+            .zip(h_m1.iter())
+            .map(|(a, b)| *a * *b)
+            .sum::<f32>();
+        let n0 = h_m0.iter().map(|x| x * x).sum::<f32>().sqrt();
+        let n1 = h_m1.iter().map(|x| x * x).sum::<f32>().sqrt();
+        let cosine = dot / (n0 * n1 + 1e-9);
+
+        assert!(
+            cosine.is_finite(),
+            "cosine similarity must be finite: {cosine}"
+        );
+        assert!(
+            cosine < 0.99999,
+            "mirror_weight regression: harmonicity shapes are too similar (cos={cosine})"
+        );
+    }
+
+    #[test]
+    fn e4_tail_samples_landscape_metrics_are_aligned_and_finite() {
+        let tail_window = 16u32;
+        let samples = run_e4_condition_tail_samples(0.5, 0xE4AA_55CC, tail_window);
+        assert_eq!(samples.tail_window, tail_window);
+        assert_eq!(
+            samples.landscape_metrics_by_step.len(),
+            samples.agent_freqs_by_step.len(),
+            "landscape/agent tail lengths must match"
+        );
+        assert_eq!(
+            samples.landscape_metrics_by_step.len(),
+            tail_window as usize,
+            "tail landscape length must equal tail_window"
+        );
+        for (i, m) in samples.landscape_metrics_by_step.iter().enumerate() {
+            assert!(
+                m.root_affinity.is_finite(),
+                "root_affinity not finite at tail index {i}"
+            );
+            assert!(
+                m.overtone_affinity.is_finite(),
+                "overtone_affinity not finite at tail index {i}"
+            );
+            assert!(
+                m.binding_strength.is_finite(),
+                "binding_strength not finite at tail index {i}"
+            );
+            assert!(
+                m.harmonic_tilt.is_finite(),
+                "harmonic_tilt not finite at tail index {i}"
+            );
+        }
+    }
+
+    #[test]
+    fn harmonic_env_produces_positive_tilt_vs_pure_tone() {
+        let cfg = E4SimConfig::test_defaults();
+        let space = Log2Space::new(cfg.fmin, cfg.fmax, cfg.bins_per_oct);
+        let params = make_landscape_params(&space, cfg.fs, 1.0);
+
+        let mut pure_env = vec![0.0f32; space.n_bins()];
+        let pure_idx = space
+            .index_of_freq(cfg.anchor_hz)
+            .unwrap_or(space.n_bins() / 2);
+        pure_env[pure_idx] = 1.0;
+
+        let mut harmonic_env = vec![0.0f32; space.n_bins()];
+        add_harmonic_partials_to_env(&space, &mut harmonic_env, cfg.anchor_hz, 1.0);
+
+        let pure_tilt = params
+            .harmonicity_kernel
+            .potential_h_dual_from_log2_spectrum(&pure_env, &space)
+            .metrics
+            .harmonic_tilt;
+        let harmonic_tilt = params
+            .harmonicity_kernel
+            .potential_h_dual_from_log2_spectrum(&harmonic_env, &space)
+            .metrics
+            .harmonic_tilt;
+
+        assert!(
+            pure_tilt.is_finite() && harmonic_tilt.is_finite(),
+            "tilt must stay finite (pure={pure_tilt}, harmonic={harmonic_tilt})"
+        );
+        assert!(
+            pure_tilt.abs() < 0.05,
+            "pure-tone tilt should stay near zero, got {pure_tilt}"
+        );
+        assert!(
+            harmonic_tilt > 0.02,
+            "harmonic env should show positive tilt, got {harmonic_tilt}"
         );
     }
 }

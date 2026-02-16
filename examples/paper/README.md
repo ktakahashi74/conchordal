@@ -54,14 +54,20 @@ cargo run --example paper -- --exp e4 --e4-hist on
 ```
 
 ```bash
+cargo run --example paper -- --exp e4 --e4-legacy on
+```
+
+```bash
 cargo run --example paper -- --exp e2 --e2-phase normal
 ```
 
 Default E2 phase is `dissonance_then_consonance` when `--e2-phase` is omitted.
+E4 legacy outputs are disabled by default and are emitted only with `--e4-legacy on`.
 
 Outputs are written to `examples/paper/plots/<exp>/` (for example, `examples/paper/plots/e2/`).
 Plot images are emitted as `.svg` files (vector output).
-`examples/paper/plots` is cleared on each run.
+Default behavior: only selected experiment directories are cleared and regenerated.
+Use `--clean` to clear `examples/paper/plots` entirely before generation.
 
 ## Manual verification
 
@@ -70,20 +76,20 @@ cargo check --example paper
 cargo check --examples
 cargo check --all-targets
 cargo test --examples
-cargo run --example paper -- --exp e2
-cargo run --example paper -- --exp e2 --e2-phase normal
-cargo run --example paper -- --exp e4
-cargo run --example paper -- --exp e4 --e4-hist on
+cargo run --example paper -- --clean --exp e4
+find examples/paper/plots/e4 -maxdepth 1 -type f | rg 'delta_bind|root_fit|ceiling_fit|e4_fit_metrics|paper_e4_fit_metrics|e4_bind_metrics|e4_bind_summary' || true
 ```
 
-Verify `e4_seed_slopes.csv`, `e4_run_level_regression.csv`, `e4_seed_slope_meta.csv`, and
-`e4_total_third_mass.csv` are non-empty, and that eps labels show `12.5c` when enabled.
+Primary E4 outputs to verify:
+- `paper_e4_binding_metrics_raw.csv`
+- `paper_e4_binding_metrics_summary.csv`
+- `paper_e4_harmonic_tilt.png`
+- `paper_e4_binding_phase_diagram.png`
 
-Notes:
-- `e4_seed_slope_meta.csv` is a seed-level slope sign test with mean CI (not a mixed-effects model).
-- `e4_run_level_regression.csv` is descriptive only; use the seed-level summary for primary claims.
+Secondary output:
+- `paper_e4_fingerprint_heatmap.png` (fingerprint view)
 
-Run twice to confirm `examples/paper/plots` is cleared each time (no stale outputs remain).
+Use `--clean` when you need strict reproducibility from a fully fresh `plots` tree.
 
 ## Paper scenarios (headless demos)
 

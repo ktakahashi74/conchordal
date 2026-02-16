@@ -103,7 +103,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
+    #[cfg(feature = "plotcheck")]
     fn plot_a_weighting_curve() -> Result<(), Box<dyn std::error::Error>> {
         use plotters::prelude::*;
         use std::path::Path;

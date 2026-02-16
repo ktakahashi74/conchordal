@@ -4821,6 +4821,7 @@ struct E4WrDynamicsProbeSummaryRow {
 }
 
 #[derive(Clone, Copy)]
+#[allow(dead_code)]
 struct E4DiagStepRow {
     step: u32,
     mirror_weight: f32,
@@ -4841,6 +4842,7 @@ struct E4DiagStepRow {
 }
 
 #[derive(Clone, Copy)]
+#[allow(dead_code)]
 struct E4DiagPeakRow {
     mirror_weight: f32,
     seed: u64,
@@ -5934,6 +5936,7 @@ fn bind_eval_from_freqs(freqs: &[f32]) -> BindEval {
     }
 }
 
+#[allow(dead_code)]
 fn bind_scores_from_freqs(freqs: &[f32]) -> (f32, f32, f32) {
     let eval = bind_eval_from_freqs(freqs);
     (
@@ -8534,6 +8537,7 @@ fn e4_wr_dynamics_probe_summary_csv(rows: &[E4WrDynamicsProbeSummaryRow]) -> Str
     out
 }
 
+#[allow(dead_code)]
 fn e4_diag_candidate_score(
     agent_i: usize,
     current_indices: &[usize],
@@ -8564,6 +8568,7 @@ fn e4_diag_candidate_score(
 }
 
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
 fn e4_diag_best_index_and_score(
     agent_i: usize,
     current_indices: &[usize],
@@ -8899,6 +8904,7 @@ fn e4_final_freqs_by_mw_seed(
 }
 
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
 fn e4_diag_rows_from_final_freqs(
     final_freqs: &std::collections::HashMap<(i32, u64), Vec<f32>>,
     space: &Log2Space,
@@ -9070,6 +9076,7 @@ fn e4_diag_rows_from_final_freqs(
     (step_rows, peak_rows)
 }
 
+#[allow(dead_code)]
 fn e4_diag_step_rows_csv(rows: &[E4DiagStepRow]) -> String {
     let mut out = String::from(
         "step,mw,seed,agent_id,agent_idx,oracle_global_idx,oracle_reachable_idx,agent_score,oracle_global_score,oracle_reachable_score,gap_global,gap_reach,idx_err_global,idx_err_reach,idx_err_global_st,idx_err_reach_st\n",
@@ -9098,6 +9105,7 @@ fn e4_diag_step_rows_csv(rows: &[E4DiagStepRow]) -> String {
     out
 }
 
+#[allow(dead_code)]
 fn e4_peaks_by_mw_csv(rows: &[E4DiagPeakRow]) -> String {
     let mut out = String::from("mw,seed,peak_rank,peak_idx,peak_log2,peak_semitones,peak_value\n");
     for row in rows {
@@ -9227,6 +9235,7 @@ fn e4_landscape_delta_by_mw_csv(rows: &[E4LandscapeDeltaRow]) -> String {
     out
 }
 
+#[allow(dead_code)]
 fn e4_quantile_points_by_step(
     rows: &[E4DiagStepRow],
     use_global: bool,
@@ -9260,6 +9269,7 @@ fn e4_quantile_points_by_step(
     out
 }
 
+#[allow(dead_code)]
 fn render_e4_gap_over_time(
     out_path: &Path,
     rows: &[E4DiagStepRow],
@@ -9351,6 +9361,7 @@ fn render_e4_gap_over_time(
     Ok(())
 }
 
+#[allow(dead_code)]
 fn render_e4_gap_global_by_mw(
     out_path: &Path,
     rows: &[E4DiagStepRow],
@@ -9428,6 +9439,7 @@ fn render_e4_gap_global_by_mw(
     Ok(())
 }
 
+#[allow(dead_code)]
 fn render_e4_peak_positions_vs_mw(
     out_path: &Path,
     rows: &[E4DiagPeakRow],

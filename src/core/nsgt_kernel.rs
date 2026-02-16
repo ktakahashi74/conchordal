@@ -1230,11 +1230,11 @@ mod tests {
     }
 
     // ==============================
-    // Visualization (plotting): cargo test -- --ignored
+    // Visualization (plotting): cargo test --features plotcheck
     // ==============================
 
     #[test]
-    #[ignore]
+    #[cfg(feature = "plotcheck")]
     fn plot_nsgt_spectrum_kernel() {
         use plotters::prelude::*;
 
@@ -1291,7 +1291,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
+    #[cfg(feature = "plotcheck")]
     fn plot_nsgt_log2_noise_response_kernel() {
         use plotters::prelude::*;
 

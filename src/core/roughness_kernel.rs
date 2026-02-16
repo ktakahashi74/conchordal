@@ -809,11 +809,11 @@ mod tests {
     }
 
     // ------------------------------------------------------------
-    // Plot tests (unchanged, ignore for normal runs)
+    // Plot tests (enabled with `--features plotcheck`)
     // ------------------------------------------------------------
 
     #[test]
-    #[ignore]
+    #[cfg(feature = "plotcheck")]
     fn plot_kernel_shape_png() {
         ensure_plots_dir().expect("create target/plots");
         let k = make_kernel();
@@ -852,7 +852,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
+    #[cfg(feature = "plotcheck")]
     fn compare_build_kernel_and_eval_kernel_shape() -> Result<(), Box<dyn std::error::Error>> {
         ensure_plots_dir()?;
         let params = KernelParams::default();
@@ -920,7 +920,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
+    #[cfg(feature = "plotcheck")]
     fn plot_potential_r_from_signal_direct_erb() {
         ensure_plots_dir().expect("create target/plots");
         let fs = 48000.0;
@@ -992,7 +992,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
+    #[cfg(feature = "plotcheck")]
     fn plot_potential_r_from_log2_spectrum_delta_input() -> Result<(), Box<dyn std::error::Error>> {
         use crate::core::erb::hz_to_erb;
         use crate::core::log2space::Log2Space;
@@ -1077,7 +1077,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
+    #[cfg(feature = "plotcheck")]
     fn plot_potential_r_delta_input_all_methods() -> Result<(), Box<dyn std::error::Error>> {
         use crate::core::fft::hilbert;
         use crate::core::log2space::Log2Space;

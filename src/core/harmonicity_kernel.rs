@@ -711,7 +711,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
+    #[cfg(feature = "plotcheck")]
     fn plot_sibling_landscape_png() {
         ensure_plots_dir().expect("create target/plots");
         let space = Log2Space::new(20.0, 8000.0, 200);

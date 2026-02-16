@@ -124,7 +124,7 @@ cargo clippy -- -D warnings
 The following command generates plot images under `target/plots/` for visual kernel checks.
 
 ```bash
-cargo test -- --ignored
+cargo test --features plotcheck
 ```
 
 

@@ -69,6 +69,7 @@ eframe = { version = "0.33", default-features = false, features = ["default_font
 default = ["bench-hooks", "simd-wide"]
 simd-wide = ["dep:wide"]
 bench-hooks = []
+plotcheck = []
 
 [dev-dependencies]
 approx = "0.5"

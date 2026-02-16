@@ -26,8 +26,8 @@ pub const E4_WINDOW_CENTS: f32 = 50.0;
 
 const E4_GROUP_ANCHOR: u64 = 0;
 const E4_GROUP_VOICES: u64 = 1;
-const E4_ENV_PARTIALS: u32 = 6;
-const E4_ENV_PARTIAL_DECAY: f32 = 1.0;
+const E4_ENV_PARTIALS_DEFAULT: u32 = 6;
+const E4_ENV_PARTIAL_DECAY_DEFAULT: f32 = 1.0;
 
 const E3_GROUP_AGENTS: u64 = 2;
 const E3_FS: f32 = 48_000.0;
@@ -38,6 +38,34 @@ const E3_FMAX: f32 = 2000.0;
 const E3_RANGE_OCT: f32 = 2.0; // +/- 1 octave around anchor
 const E3_THETA_FREQ_HZ: f32 = 1.0;
 const E3_METABOLISM_RATE: f32 = 0.5;
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct E4RuntimeOverrides {
+    pub env_partials: Option<u32>,
+    pub env_partial_decay: Option<f32>,
+    pub exploration: Option<f32>,
+    pub persistence: Option<f32>,
+    pub neighbor_step_cents: Option<f32>,
+}
+
+static E4_RUNTIME_OVERRIDES: OnceLock<Mutex<E4RuntimeOverrides>> = OnceLock::new();
+
+fn e4_runtime_overrides_store() -> &'static Mutex<E4RuntimeOverrides> {
+    E4_RUNTIME_OVERRIDES.get_or_init(|| Mutex::new(E4RuntimeOverrides::default()))
+}
+
+pub fn set_e4_runtime_overrides(overrides: E4RuntimeOverrides) {
+    let mut guard = e4_runtime_overrides_store()
+        .lock()
+        .expect("e4 runtime overrides lock poisoned");
+    *guard = overrides;
+}
+
+fn get_e4_runtime_overrides() -> E4RuntimeOverrides {
+    *e4_runtime_overrides_store()
+        .lock()
+        .expect("e4 runtime overrides lock poisoned")
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum E3Condition {
@@ -160,11 +188,13 @@ struct E4SimConfig {
     baseline_mirror_weight: f32,
     burn_in_steps: u32,
     roughness_weight_scale: f32,
+    env_partials: u32,
+    env_partial_decay: f32,
 }
 
 impl E4SimConfig {
     fn paper_defaults() -> Self {
-        Self {
+        let mut cfg = Self {
             anchor_hz: E4_ANCHOR_HZ,
             center_cents: 350.0,
             range_oct: 0.5,
@@ -183,7 +213,30 @@ impl E4SimConfig {
             baseline_mirror_weight: 0.5,
             burn_in_steps: 600,
             roughness_weight_scale: 1.0,
+            env_partials: E4_ENV_PARTIALS_DEFAULT,
+            env_partial_decay: E4_ENV_PARTIAL_DECAY_DEFAULT,
+        };
+        let overrides = get_e4_runtime_overrides();
+        if let Some(partials) = overrides.env_partials {
+            cfg.env_partials = sanitize_env_partials(partials);
         }
+        if let Some(decay) = overrides.env_partial_decay {
+            cfg.env_partial_decay = sanitize_env_partial_decay(decay);
+        }
+        if let Some(exploration) = overrides.exploration {
+            if exploration.is_finite() {
+                cfg.exploration = exploration.clamp(0.0, 1.0);
+            }
+        }
+        if let Some(persistence) = overrides.persistence {
+            if persistence.is_finite() {
+                cfg.persistence = persistence.clamp(0.0, 1.0);
+            }
+        }
+        if let Some(step) = overrides.neighbor_step_cents {
+            cfg.neighbor_step_cents = sanitize_neighbor_step_cents(step);
+        }
+        cfg
     }
 
     #[cfg(test)]
@@ -261,7 +314,13 @@ pub fn run_e3_collect_deaths(cfg: &E3RunConfig) -> Vec<E3DeathRecord> {
     let anchor_hz = E4_ANCHOR_HZ;
     let space = Log2Space::new(E3_FMIN, E3_FMAX, E3_BINS_PER_OCT);
     let params = make_landscape_params(&space, E3_FS, 1.0);
-    let mut landscape = build_anchor_landscape(&space, &params, anchor_hz);
+    let mut landscape = build_anchor_landscape(
+        &space,
+        &params,
+        anchor_hz,
+        E4_ENV_PARTIALS_DEFAULT,
+        E4_ENV_PARTIAL_DECAY_DEFAULT,
+    );
     landscape.rhythm = init_rhythms(E3_THETA_FREQ_HZ);
 
     let mut pop = Population::new(Timebase {
@@ -446,6 +505,8 @@ struct E4TailSamplesCacheKey {
     baseline_mirror_weight_bits: u32,
     burn_in_steps: u32,
     roughness_weight_scale_bits: u32,
+    env_partials: u32,
+    env_partial_decay_bits: u32,
 }
 
 type E4TailSamplesCache = std::collections::HashMap<E4TailSamplesCacheKey, Arc<E4TailSamples>>;
@@ -483,6 +544,8 @@ fn e4_tail_samples_cache_key(
         baseline_mirror_weight_bits: cfg.baseline_mirror_weight.to_bits(),
         burn_in_steps: cfg.burn_in_steps,
         roughness_weight_scale_bits: cfg.roughness_weight_scale.to_bits(),
+        env_partials: cfg.env_partials,
+        env_partial_decay_bits: cfg.env_partial_decay.to_bits(),
     }
 }
 
@@ -516,6 +579,8 @@ pub struct E4PaperMeta {
     pub baseline_mirror_weight: f32,
     pub burn_in_steps: u32,
     pub roughness_weight_scale: f32,
+    pub env_partials: u32,
+    pub env_partial_decay: f32,
 }
 
 #[allow(dead_code)]
@@ -540,6 +605,8 @@ pub fn e4_paper_meta() -> E4PaperMeta {
         baseline_mirror_weight: cfg.baseline_mirror_weight,
         burn_in_steps: cfg.burn_in_steps,
         roughness_weight_scale: cfg.roughness_weight_scale,
+        env_partials: cfg.env_partials,
+        env_partial_decay: cfg.env_partial_decay,
     }
 }
 
@@ -618,7 +685,13 @@ fn run_e4_condition_with_config(mirror_weight: f32, seed: u64, cfg: &E4SimConfig
     };
     apply_mirror_weight(&mut pop, &landscape, &mut params, initial_mirror);
 
-    landscape = build_anchor_landscape(&space, &params, cfg.anchor_hz);
+    landscape = build_anchor_landscape(
+        &space,
+        &params,
+        cfg.anchor_hz,
+        cfg.env_partials,
+        cfg.env_partial_decay,
+    );
 
     let anchor_spec = SpawnSpec {
         control: anchor_control(cfg.anchor_hz),
@@ -665,7 +738,14 @@ fn run_e4_condition_with_config(mirror_weight: f32, seed: u64, cfg: &E4SimConfig
             apply_mirror_weight(&mut pop, &landscape, &mut params, target_mirror);
             target_applied = true;
         }
-        update_e4_landscape_from_population(&space, &params, &pop, &mut landscape);
+        update_e4_landscape_from_population(
+            &space,
+            &params,
+            &pop,
+            &mut landscape,
+            cfg.env_partials,
+            cfg.env_partial_decay,
+        );
         landscape.rhythm = rhythms;
         pop.advance(cfg.hop, cfg.fs, step as u64, dt, &landscape);
         pop.cleanup_dead(step as u64, dt, false);
@@ -744,7 +824,13 @@ fn run_e4_condition_tail_samples_with_config_uncached(
     };
     apply_mirror_weight(&mut pop, &landscape, &mut params, initial_mirror);
 
-    landscape = build_anchor_landscape(&space, &params, cfg.anchor_hz);
+    landscape = build_anchor_landscape(
+        &space,
+        &params,
+        cfg.anchor_hz,
+        cfg.env_partials,
+        cfg.env_partial_decay,
+    );
 
     let anchor_spec = SpawnSpec {
         control: anchor_control(cfg.anchor_hz),
@@ -799,14 +885,28 @@ fn run_e4_condition_tail_samples_with_config_uncached(
             apply_mirror_weight(&mut pop, &landscape, &mut params, target_mirror);
             target_applied = true;
         }
-        update_e4_landscape_from_population(&space, &params, &pop, &mut landscape);
+        update_e4_landscape_from_population(
+            &space,
+            &params,
+            &pop,
+            &mut landscape,
+            cfg.env_partials,
+            cfg.env_partial_decay,
+        );
         landscape.rhythm = rhythms;
         pop.advance(cfg.hop, cfg.fs, step as u64, dt, &landscape);
         pop.cleanup_dead(step as u64, dt, false);
         rhythms.advance_in_place(dt);
 
         if step >= start_step {
-            update_e4_landscape_from_population(&space, &params, &pop, &mut landscape);
+            update_e4_landscape_from_population(
+                &space,
+                &params,
+                &pop,
+                &mut landscape,
+                cfg.env_partials,
+                cfg.env_partial_decay,
+            );
             landscape.rhythm = rhythms;
             landscape_metrics_by_step.push(E4LandscapeMetrics {
                 root_affinity: landscape.root_affinity,
@@ -870,7 +970,13 @@ fn run_e4_mirror_schedule_samples_with_config(
     pop.set_seed(seed);
     apply_mirror_weight(&mut pop, &landscape, &mut params, current_weight);
 
-    landscape = build_anchor_landscape(&space, &params, cfg.anchor_hz);
+    landscape = build_anchor_landscape(
+        &space,
+        &params,
+        cfg.anchor_hz,
+        cfg.env_partials,
+        cfg.env_partial_decay,
+    );
 
     let anchor_spec = SpawnSpec {
         control: anchor_control(cfg.anchor_hz),
@@ -924,12 +1030,26 @@ fn run_e4_mirror_schedule_samples_with_config(
             apply_mirror_weight(&mut pop, &landscape, &mut params, current_weight);
         }
 
-        update_e4_landscape_from_population(&space, &params, &pop, &mut landscape);
+        update_e4_landscape_from_population(
+            &space,
+            &params,
+            &pop,
+            &mut landscape,
+            cfg.env_partials,
+            cfg.env_partial_decay,
+        );
         landscape.rhythm = rhythms;
         pop.advance(cfg.hop, cfg.fs, step as u64, dt, &landscape);
         pop.cleanup_dead(step as u64, dt, false);
         rhythms.advance_in_place(dt);
-        update_e4_landscape_from_population(&space, &params, &pop, &mut landscape);
+        update_e4_landscape_from_population(
+            &space,
+            &params,
+            &pop,
+            &mut landscape,
+            cfg.env_partials,
+            cfg.env_partial_decay,
+        );
         landscape.rhythm = rhythms;
         landscape_metrics_by_step.push(E4LandscapeMetrics {
             root_affinity: landscape.root_affinity,
@@ -1025,6 +1145,22 @@ fn sanitize_roughness_weight_scale(scale: f32) -> f32 {
     }
 }
 
+fn sanitize_env_partials(partials: u32) -> u32 {
+    partials.clamp(1, 32)
+}
+
+fn sanitize_env_partial_decay(decay: f32) -> f32 {
+    if decay.is_finite() {
+        decay.clamp(0.0, 4.0)
+    } else {
+        E4_ENV_PARTIAL_DECAY_DEFAULT
+    }
+}
+
+fn sanitize_neighbor_step_cents(step: f32) -> f32 {
+    if step.is_finite() { step.max(0.0) } else { 0.0 }
+}
+
 fn make_landscape_params(
     space: &Log2Space,
     fs: f32,
@@ -1071,12 +1207,15 @@ fn add_harmonic_partials_to_env(
     env_scan: &mut [f32],
     f0_hz: f32,
     base_gain: f32,
+    partials: u32,
+    partial_decay: f32,
 ) {
     if !f0_hz.is_finite() || f0_hz <= 0.0 || !base_gain.is_finite() || base_gain <= 0.0 {
         return;
     }
-    let decay = E4_ENV_PARTIAL_DECAY.max(0.0);
-    for k in 1..=E4_ENV_PARTIALS.max(1) {
+    let decay = sanitize_env_partial_decay(partial_decay);
+    let partials = sanitize_env_partials(partials);
+    for k in 1..=partials {
         let freq = f0_hz * k as f32;
         if !freq.is_finite() || freq <= 0.0 {
             continue;
@@ -1095,10 +1234,19 @@ fn build_anchor_landscape(
     space: &Log2Space,
     params: &LandscapeParams,
     anchor_hz: f32,
+    env_partials: u32,
+    env_partial_decay: f32,
 ) -> Landscape {
     let mut landscape = Landscape::new(space.clone());
     let mut anchor_env_scan = vec![0.0f32; space.n_bins()];
-    add_harmonic_partials_to_env(space, &mut anchor_env_scan, anchor_hz, 1.0);
+    add_harmonic_partials_to_env(
+        space,
+        &mut anchor_env_scan,
+        anchor_hz,
+        1.0,
+        env_partials,
+        env_partial_decay,
+    );
     space.assert_scan_len_named(&anchor_env_scan, "anchor_env_scan");
 
     let h_dual = params
@@ -1204,6 +1352,8 @@ fn update_e4_landscape_from_population(
     params: &LandscapeParams,
     pop: &Population,
     landscape: &mut Landscape,
+    env_partials: u32,
+    env_partial_decay: f32,
 ) {
     let mut env_scan = vec![0.0f32; space.n_bins()];
     for agent in &pop.individuals {
@@ -1211,7 +1361,14 @@ fn update_e4_landscape_from_population(
         if !freq.is_finite() || freq <= 0.0 {
             continue;
         }
-        add_harmonic_partials_to_env(space, &mut env_scan, freq, 1.0);
+        add_harmonic_partials_to_env(
+            space,
+            &mut env_scan,
+            freq,
+            1.0,
+            env_partials,
+            env_partial_decay,
+        );
     }
     space.assert_scan_len_named(&env_scan, "e4_env_scan");
     let h_dual = params
@@ -1345,8 +1502,20 @@ mod tests {
         params_m0.harmonicity_kernel.params.mirror_weight = 0.0;
         params_m1.harmonicity_kernel.params.mirror_weight = 1.0;
 
-        let landscape_m0 = build_anchor_landscape(&space, &params_m0, cfg.anchor_hz);
-        let landscape_m1 = build_anchor_landscape(&space, &params_m1, cfg.anchor_hz);
+        let landscape_m0 = build_anchor_landscape(
+            &space,
+            &params_m0,
+            cfg.anchor_hz,
+            cfg.env_partials,
+            cfg.env_partial_decay,
+        );
+        let landscape_m1 = build_anchor_landscape(
+            &space,
+            &params_m1,
+            cfg.anchor_hz,
+            cfg.env_partials,
+            cfg.env_partial_decay,
+        );
 
         let diff_sum: f32 = landscape_m0
             .consonance_state01
@@ -1370,8 +1539,22 @@ mod tests {
         params_m1.harmonicity_kernel.params.mirror_weight = 1.0;
 
         let mut env_scan = vec![0.0f32; space.n_bins()];
-        add_harmonic_partials_to_env(&space, &mut env_scan, cfg.anchor_hz, 1.0);
-        add_harmonic_partials_to_env(&space, &mut env_scan, cfg.anchor_hz * 1.5, 0.7);
+        add_harmonic_partials_to_env(
+            &space,
+            &mut env_scan,
+            cfg.anchor_hz,
+            1.0,
+            cfg.env_partials,
+            cfg.env_partial_decay,
+        );
+        add_harmonic_partials_to_env(
+            &space,
+            &mut env_scan,
+            cfg.anchor_hz * 1.5,
+            0.7,
+            cfg.env_partials,
+            cfg.env_partial_decay,
+        );
 
         let h_m0 = params_m0
             .harmonicity_kernel
@@ -1449,7 +1632,14 @@ mod tests {
         pure_env[pure_idx] = 1.0;
 
         let mut harmonic_env = vec![0.0f32; space.n_bins()];
-        add_harmonic_partials_to_env(&space, &mut harmonic_env, cfg.anchor_hz, 1.0);
+        add_harmonic_partials_to_env(
+            &space,
+            &mut harmonic_env,
+            cfg.anchor_hz,
+            1.0,
+            cfg.env_partials,
+            cfg.env_partial_decay,
+        );
 
         let pure_tilt = params
             .harmonicity_kernel

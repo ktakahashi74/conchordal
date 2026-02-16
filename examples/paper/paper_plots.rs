@@ -13,9 +13,10 @@ use plotters::coord::{CoordTranslate, Shift};
 use plotters::prelude::*;
 
 use crate::sim::{
-    E3Condition, E3DeathRecord, E3RunConfig, E4_ANCHOR_HZ, E4TailSamples, e3_policy_params,
-    e4_paper_meta, run_e3_collect_deaths, run_e4_condition_tail_samples,
+    E3Condition, E3DeathRecord, E3RunConfig, E4_ANCHOR_HZ, E4RuntimeOverrides, E4TailSamples,
+    e3_policy_params, e4_paper_meta, run_e3_collect_deaths, run_e4_condition_tail_samples,
     run_e4_condition_tail_samples_with_wr, run_e4_mirror_schedule_samples,
+    set_e4_runtime_overrides,
 };
 use conchordal::core::erb::hz_to_erb;
 use conchordal::core::harmonicity_kernel::{HarmonicityKernel, HarmonicityParams};
@@ -178,6 +179,9 @@ const E4_DYNAMICS_PEAK_TOP_N: usize = 64;
 const E4_ABCD_TRACE_STEPS: u32 = E4_DYNAMICS_PROBE_STEPS;
 const E4_DIAG_PEAK_TOP_K: usize = 8;
 const E4_LEGACY_DEFAULT: bool = false;
+const E4_DEBUG_FIT_METRICS_DEFAULT: bool = false;
+const E4_PARTIALS_SWEEP: [u32; 3] = [3, 6, 9];
+const E4_DECAY_SWEEP: [f32; 3] = [0.6, 1.0, 1.4];
 
 const E3_FIRST_K: usize = 20;
 const E3_POP_SIZE: usize = 32;
@@ -266,6 +270,24 @@ fn purge_e4_legacy_outputs(out_dir: &Path) -> io::Result<()> {
             || lower.starts_with("e4_fit_")
             || lower.starts_with("paper_e4_fit_");
         if should_remove {
+            std::fs::remove_file(path)?;
+        }
+    }
+    Ok(())
+}
+
+fn purge_e4_fit_debug_outputs(out_dir: &Path) -> io::Result<()> {
+    if !out_dir.exists() {
+        return Ok(());
+    }
+    for name in [
+        "e4_fit_metrics.csv",
+        "e4_fit_summary.csv",
+        "paper_e4_fit_metrics_raw.csv",
+        "paper_e4_fit_metrics_summary.csv",
+    ] {
+        let path = out_dir.join(name);
+        if path.exists() {
             std::fs::remove_file(path)?;
         }
     }
@@ -383,7 +405,7 @@ impl Drop for PaperRunLock {
 
 fn usage() -> String {
     [
-        "Usage: paper [--exp E1,E2,...] [--clean[=on|off]] [--e4-hist on|off] [--e4-kernel-gate on|off] [--e4-wr on|off] [--e4-legacy on|off] [--e2-phase mode]",
+        "Usage: paper [--exp E1,E2,...] [--clean[=on|off]] [--e4-hist on|off] [--e4-kernel-gate on|off] [--e4-wr on|off] [--e4-legacy on|off] [--e4-debug-fit-metrics on|off] [--e4-env-partials N] [--e4-env-decay X] [--e4-dyn-exploration X] [--e4-dyn-persistence X] [--e4-dyn-step-cents X] [--e2-phase mode]",
         "Examples:",
         "  paper --exp 2",
         "  paper --exp all",
@@ -394,12 +416,17 @@ fn usage() -> String {
         "  paper --exp e4 --e4-kernel-gate on",
         "  paper --exp e4 --e4-wr on",
         "  paper --exp e4 --e4-legacy on",
+        "  paper --exp e4 --e4-debug-fit-metrics on",
+        "  paper --exp e4 --e4-env-partials 9 --e4-env-decay 0.8",
+        "  paper --exp e4 --e4-dyn-exploration 0.9 --e4-dyn-persistence 0.1",
+        "  paper --exp e4 --e4-dyn-step-cents 75",
         "  paper --exp e2 --e2-phase dissonance_then_consonance",
         "If no experiment is specified, all (E1-E5) run.",
         "E4 histogram dumps default to off (use --e4-hist on to enable).",
         "E4 kernel gate plot default to off (use --e4-kernel-gate on to enable).",
         "E4 wr probe default to off (use --e4-wr on to enable).",
         "E4 legacy outputs default to off (use --e4-legacy on to enable old plots).",
+        "E4 fit debug CSV default to off (use --e4-debug-fit-metrics on to enable).",
         "E2 phase modes: normal | dissonance_then_consonance (default)",
         "Outputs are written to examples/paper/plots/<exp>/ (e.g. examples/paper/plots/e2).",
         "By default only selected experiment dirs are overwritten.",
@@ -465,6 +492,72 @@ fn parse_experiments(args: &[String]) -> Result<Vec<Experiment>, String> {
             continue;
         }
         if arg.starts_with("--e4-legacy=") {
+            i += 1;
+            continue;
+        }
+        if arg == "--e4-debug-fit-metrics" {
+            if i + 1 >= args.len() {
+                return Err(format!("Missing value after {arg}\n{}", usage()));
+            }
+            i += 2;
+            continue;
+        }
+        if arg.starts_with("--e4-debug-fit-metrics=") {
+            i += 1;
+            continue;
+        }
+        if arg == "--e4-env-partials" {
+            if i + 1 >= args.len() {
+                return Err(format!("Missing value after {arg}\n{}", usage()));
+            }
+            i += 2;
+            continue;
+        }
+        if arg.starts_with("--e4-env-partials=") {
+            i += 1;
+            continue;
+        }
+        if arg == "--e4-env-decay" {
+            if i + 1 >= args.len() {
+                return Err(format!("Missing value after {arg}\n{}", usage()));
+            }
+            i += 2;
+            continue;
+        }
+        if arg.starts_with("--e4-env-decay=") {
+            i += 1;
+            continue;
+        }
+        if arg == "--e4-dyn-exploration" {
+            if i + 1 >= args.len() {
+                return Err(format!("Missing value after {arg}\n{}", usage()));
+            }
+            i += 2;
+            continue;
+        }
+        if arg.starts_with("--e4-dyn-exploration=") {
+            i += 1;
+            continue;
+        }
+        if arg == "--e4-dyn-persistence" {
+            if i + 1 >= args.len() {
+                return Err(format!("Missing value after {arg}\n{}", usage()));
+            }
+            i += 2;
+            continue;
+        }
+        if arg.starts_with("--e4-dyn-persistence=") {
+            i += 1;
+            continue;
+        }
+        if arg == "--e4-dyn-step-cents" {
+            if i + 1 >= args.len() {
+                return Err(format!("Missing value after {arg}\n{}", usage()));
+            }
+            i += 2;
+            continue;
+        }
+        if arg.starts_with("--e4-dyn-step-cents=") {
             i += 1;
             continue;
         }
@@ -684,6 +777,124 @@ fn parse_e4_legacy(args: &[String]) -> Result<bool, String> {
     }
 }
 
+fn parse_e4_debug_fit_metrics(args: &[String]) -> Result<bool, String> {
+    let mut value: Option<String> = None;
+    let mut i = 0;
+    while i < args.len() {
+        let arg = args[i].as_str();
+        if arg == "--e4-debug-fit-metrics" {
+            if i + 1 >= args.len() {
+                return Err(format!("Missing value after {arg}\n{}", usage()));
+            }
+            value = Some(args[i + 1].clone());
+            i += 2;
+            continue;
+        }
+        if let Some(rest) = arg.strip_prefix("--e4-debug-fit-metrics=") {
+            value = Some(rest.to_string());
+            i += 1;
+            continue;
+        }
+        i += 1;
+    }
+
+    let Some(value) = value else {
+        return Ok(E4_DEBUG_FIT_METRICS_DEFAULT);
+    };
+    let normalized = value.to_ascii_lowercase();
+    match normalized.as_str() {
+        "on" | "true" | "1" | "yes" => Ok(true),
+        "off" | "false" | "0" | "no" => Ok(false),
+        _ => Err(format!(
+            "Invalid --e4-debug-fit-metrics value '{value}'. Use on/off.\n{}",
+            usage()
+        )),
+    }
+}
+
+fn parse_u32_cli_opt(args: &[String], key: &str) -> Result<Option<u32>, String> {
+    let mut value: Option<String> = None;
+    let key_eq = format!("{key}=");
+    let mut i = 0;
+    while i < args.len() {
+        let arg = args[i].as_str();
+        if arg == key {
+            if i + 1 >= args.len() {
+                return Err(format!("Missing value after {arg}\n{}", usage()));
+            }
+            value = Some(args[i + 1].clone());
+            i += 2;
+            continue;
+        }
+        if let Some(rest) = arg.strip_prefix(&key_eq) {
+            value = Some(rest.to_string());
+            i += 1;
+            continue;
+        }
+        i += 1;
+    }
+    let Some(raw) = value else {
+        return Ok(None);
+    };
+    let parsed = raw
+        .parse::<u32>()
+        .map_err(|_| format!("Invalid value for {key}: '{raw}'\n{}", usage()))?;
+    Ok(Some(parsed))
+}
+
+fn parse_f32_cli_opt(args: &[String], key: &str) -> Result<Option<f32>, String> {
+    let mut value: Option<String> = None;
+    let key_eq = format!("{key}=");
+    let mut i = 0;
+    while i < args.len() {
+        let arg = args[i].as_str();
+        if arg == key {
+            if i + 1 >= args.len() {
+                return Err(format!("Missing value after {arg}\n{}", usage()));
+            }
+            value = Some(args[i + 1].clone());
+            i += 2;
+            continue;
+        }
+        if let Some(rest) = arg.strip_prefix(&key_eq) {
+            value = Some(rest.to_string());
+            i += 1;
+            continue;
+        }
+        i += 1;
+    }
+    let Some(raw) = value else {
+        return Ok(None);
+    };
+    let parsed = raw
+        .parse::<f32>()
+        .map_err(|_| format!("Invalid value for {key}: '{raw}'\n{}", usage()))?;
+    if !parsed.is_finite() {
+        return Err(format!("Invalid value for {key}: '{raw}'\n{}", usage()));
+    }
+    Ok(Some(parsed))
+}
+
+fn parse_e4_env_partials(args: &[String]) -> Result<Option<u32>, String> {
+    parse_u32_cli_opt(args, "--e4-env-partials")
+}
+
+fn parse_e4_env_decay(args: &[String]) -> Result<Option<f32>, String> {
+    parse_f32_cli_opt(args, "--e4-env-decay")
+}
+
+fn parse_e4_dyn_exploration(args: &[String]) -> Result<Option<f32>, String> {
+    parse_f32_cli_opt(args, "--e4-dyn-exploration")
+}
+
+fn parse_e4_dyn_persistence(args: &[String]) -> Result<Option<f32>, String> {
+    parse_f32_cli_opt(args, "--e4-dyn-persistence")
+}
+
+fn parse_e4_dyn_step_cents(args: &[String]) -> Result<Option<f32>, String> {
+    parse_f32_cli_opt(args, "--e4-dyn-step-cents")
+}
+
 fn parse_e2_phase(args: &[String]) -> Result<E2PhaseMode, String> {
     let mut value: Option<String> = None;
     let mut i = 0;
@@ -790,6 +1001,12 @@ pub(crate) fn main() -> Result<(), Box<dyn Error>> {
     let e4_kernel_gate_enabled = parse_e4_kernel_gate(&args).map_err(io::Error::other)?;
     let e4_wr_enabled = parse_e4_wr(&args).map_err(io::Error::other)?;
     let e4_legacy_enabled = parse_e4_legacy(&args).map_err(io::Error::other)?;
+    let e4_debug_fit_enabled = parse_e4_debug_fit_metrics(&args).map_err(io::Error::other)?;
+    let e4_env_partials = parse_e4_env_partials(&args).map_err(io::Error::other)?;
+    let e4_env_decay = parse_e4_env_decay(&args).map_err(io::Error::other)?;
+    let e4_dyn_exploration = parse_e4_dyn_exploration(&args).map_err(io::Error::other)?;
+    let e4_dyn_persistence = parse_e4_dyn_persistence(&args).map_err(io::Error::other)?;
+    let e4_dyn_step_cents = parse_e4_dyn_step_cents(&args).map_err(io::Error::other)?;
     let e2_phase_mode = parse_e2_phase(&args).map_err(io::Error::other)?;
     let clean_all = parse_clean(&args).map_err(io::Error::other)?;
     let experiments = parse_experiments(&args).map_err(io::Error::other)?;
@@ -816,6 +1033,14 @@ pub(crate) fn main() -> Result<(), Box<dyn Error>> {
     }
     create_dir_all(base_dir)?;
     let experiment_dirs = prepare_paper_output_dirs(base_dir, &experiments, !clean_all)?;
+
+    set_e4_runtime_overrides(E4RuntimeOverrides {
+        env_partials: e4_env_partials,
+        env_partial_decay: e4_env_decay,
+        exploration: e4_dyn_exploration,
+        persistence: e4_dyn_persistence,
+        neighbor_step_cents: e4_dyn_step_cents,
+    });
 
     let anchor_hz = E4_ANCHOR_HZ;
     let space = Log2Space::new(20.0, 8000.0, SPACE_BINS_PER_OCT);
@@ -857,6 +1082,7 @@ pub(crate) fn main() -> Result<(), Box<dyn Error>> {
                             e4_kernel_gate_enabled,
                             e4_wr_enabled,
                             e4_legacy_enabled,
+                            e4_debug_fit_enabled,
                         )
                         .map_err(|err| io::Error::other(err.to_string()))
                     });
@@ -3708,11 +3934,15 @@ fn plot_e4_mirror_sweep(
     emit_kernel_gate: bool,
     emit_wr_probe: bool,
     emit_legacy_outputs: bool,
+    emit_debug_fit_metrics: bool,
 ) -> Result<(), Box<dyn Error>> {
+    if !emit_debug_fit_metrics {
+        purge_e4_fit_debug_outputs(out_dir)?;
+    }
     if !emit_legacy_outputs {
         purge_e4_legacy_outputs(out_dir)?;
         let weights = build_weight_grid(E4_WEIGHT_COARSE_STEP);
-        let (_run_records, _hist_records, _tail_rows, _tail_agent_rows, tail_landscape_rows) =
+        let (_run_records, _hist_records, _tail_rows, tail_agent_rows, tail_landscape_rows) =
             run_e4_sweep_for_weights(
                 out_dir,
                 anchor_hz,
@@ -3755,6 +3985,10 @@ fn plot_e4_mirror_sweep(
         render_e4_harmonic_tilt_scatter_png(&harmonic_tilt_scatter_path, &bind_metrics)?;
         let overtone_rate_path = out_dir.join("paper_e4_overtone_regime_rate.png");
         render_e4_overtone_regime_rate_png(&overtone_rate_path, &bind_metrics)?;
+        write_e4_env_2d_sweep_outputs(out_dir, &tail_agent_rows, anchor_hz)?;
+        if emit_debug_fit_metrics {
+            write_e4_debug_fit_outputs(out_dir, &tail_agent_rows)?;
+        }
         if emit_wr_probe {
             plot_e4_mirror_sweep_wr_cut(out_dir, anchor_hz)?;
         }
@@ -3971,6 +4205,10 @@ fn plot_e4_mirror_sweep(
     render_e4_overtone_regime_rate_png(&overtone_rate_path, &bind_metrics)?;
     let fingerprint_heatmap_png_path = out_dir.join("paper_e4_fingerprint_heatmap.png");
     render_e4_fingerprint_heatmap_png(&fingerprint_heatmap_png_path, &fingerprint_summary)?;
+    write_e4_env_2d_sweep_outputs(out_dir, &tail_agent_rows, anchor_hz)?;
+    if emit_debug_fit_metrics {
+        write_e4_debug_fit_outputs(out_dir, &tail_agent_rows)?;
+    }
 
     for &bin_width in &E4_BIN_WIDTHS {
         let bw_token = format_float_token(bin_width);
@@ -4355,6 +4593,36 @@ struct E4BindingMetricRow {
 }
 
 #[derive(Clone, Copy)]
+struct E4FitMetricRow {
+    mirror_weight: f32,
+    seed: u64,
+    step: u32,
+    n_agents: usize,
+    root_fit: f32,
+    ceiling_fit: f32,
+    binding_strength: f32,
+    harmonic_tilt: f32,
+}
+
+#[derive(Clone, Copy)]
+struct E4FitSummaryRow {
+    mirror_weight: f32,
+    root_fit_mean: f32,
+    root_fit_ci_lo: f32,
+    root_fit_ci_hi: f32,
+    ceiling_fit_mean: f32,
+    ceiling_fit_ci_lo: f32,
+    ceiling_fit_ci_hi: f32,
+    binding_strength_mean: f32,
+    binding_strength_ci_lo: f32,
+    binding_strength_ci_hi: f32,
+    harmonic_tilt_mean: f32,
+    harmonic_tilt_ci_lo: f32,
+    harmonic_tilt_ci_hi: f32,
+    n_seeds: usize,
+}
+
+#[derive(Clone, Copy)]
 struct E4BindingSummaryRow {
     mirror_weight: f32,
     root_affinity_mean: f32,
@@ -4469,6 +4737,12 @@ struct E4LandscapeScans {
     h: Vec<f32>,
     r: Vec<f32>,
     c: Vec<f32>,
+    root_affinity: f32,
+    overtone_affinity: f32,
+    binding_strength: f32,
+    harmonic_tilt: f32,
+    path_similarity: f32,
+    path_l1: f32,
 }
 
 #[derive(Clone, Copy)]
@@ -4579,10 +4853,34 @@ struct E4DiagPeakRow {
 
 #[derive(Clone, Copy)]
 struct E4LandscapeDeltaRow {
+    wr: f32,
     mirror_weight: f32,
+    environment: &'static str,
     cosine_similarity: f32,
     l1_distance: f32,
+    path_similarity: f32,
+    path_l1: f32,
     topk_peak_shift_st: f32,
+}
+
+#[derive(Clone, Copy)]
+struct E4EnvSweepRow {
+    env_partials: u32,
+    env_partial_decay: f32,
+    mirror_weight: f32,
+    seed: u64,
+    harmonic_tilt: f32,
+}
+
+#[derive(Clone, Copy)]
+struct E4EnvSweepSummaryRow {
+    env_partials: u32,
+    env_partial_decay: f32,
+    mirror_weight: f32,
+    harmonic_tilt_mean: f32,
+    harmonic_tilt_ci_lo: f32,
+    harmonic_tilt_ci_hi: f32,
+    n_seeds: usize,
 }
 
 #[derive(Clone)]
@@ -4861,6 +5159,39 @@ fn refine_weights_from_sign_change(
             refined.push(w1);
         }
     }
+    refined
+}
+
+fn refine_weights_from_tilt_sign_change(
+    summary_rows: &[E4EnvSweepSummaryRow],
+    env_partials: u32,
+    env_partial_decay: f32,
+) -> Vec<f32> {
+    let decay_key = float_key(env_partial_decay);
+    let mut points: Vec<(f32, f32)> = summary_rows
+        .iter()
+        .filter(|row| {
+            row.env_partials == env_partials && float_key(row.env_partial_decay) == decay_key
+        })
+        .map(|row| (row.mirror_weight, row.harmonic_tilt_mean))
+        .collect();
+    points.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+    let mut refined = Vec::new();
+    for pair in points.windows(2) {
+        let (w0, t0) = pair[0];
+        let (w1, t1) = pair[1];
+        if t0 == 0.0 || t1 == 0.0 || t0.signum() != t1.signum() {
+            let mut w = w0;
+            while w < w1 - 1e-6 {
+                let rounded = (w * FLOAT_KEY_SCALE).round() / FLOAT_KEY_SCALE;
+                refined.push(rounded.clamp(0.0, 1.0));
+                w += E4_WEIGHT_FINE_STEP;
+            }
+            refined.push(w1.clamp(0.0, 1.0));
+        }
+    }
+    refined.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    refined.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
     refined
 }
 
@@ -5882,6 +6213,254 @@ fn harmonic_tilt_from_affinities(root_affinity: f32, overtone_affinity: f32) -> 
     }
 }
 
+fn e4_fit_metrics_from_tail_agents(rows: &[E4TailAgentRow]) -> Vec<E4FitMetricRow> {
+    let mut latest_step: std::collections::HashMap<(i32, u64), u32> =
+        std::collections::HashMap::new();
+    for row in rows {
+        latest_step
+            .entry((float_key(row.mirror_weight), row.seed))
+            .and_modify(|step| *step = (*step).max(row.step))
+            .or_insert(row.step);
+    }
+
+    let mut grouped: std::collections::HashMap<(i32, u64), Vec<f32>> =
+        std::collections::HashMap::new();
+    for row in rows {
+        if !row.freq_hz.is_finite() || row.freq_hz <= 0.0 {
+            continue;
+        }
+        let key = (float_key(row.mirror_weight), row.seed);
+        let Some(step) = latest_step.get(&key).copied() else {
+            continue;
+        };
+        if row.step != step {
+            continue;
+        }
+        grouped.entry(key).or_default().push(row.freq_hz);
+    }
+
+    let mut out = Vec::new();
+    for ((mw_key, seed), freqs) in grouped {
+        if freqs.is_empty() {
+            continue;
+        }
+        let eval = bind_eval_from_freqs(&freqs);
+        let step = latest_step.get(&(mw_key, seed)).copied().unwrap_or(0);
+        out.push(E4FitMetricRow {
+            mirror_weight: float_from_key(mw_key),
+            seed,
+            step,
+            n_agents: freqs.len(),
+            root_fit: eval.root_affinity,
+            ceiling_fit: eval.overtone_affinity,
+            binding_strength: eval.binding_strength,
+            harmonic_tilt: eval.harmonic_tilt,
+        });
+    }
+    out.sort_by(|a, b| {
+        a.mirror_weight
+            .partial_cmp(&b.mirror_weight)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.seed.cmp(&b.seed))
+    });
+    out
+}
+
+fn e4_fit_summary_rows(rows: &[E4FitMetricRow]) -> Vec<E4FitSummaryRow> {
+    let mut by_weight: std::collections::HashMap<i32, Vec<&E4FitMetricRow>> =
+        std::collections::HashMap::new();
+    for row in rows {
+        by_weight
+            .entry(float_key(row.mirror_weight))
+            .or_default()
+            .push(row);
+    }
+    let mut out = Vec::new();
+    for (weight_key, group) in by_weight {
+        let root_vals: Vec<f32> = group.iter().map(|r| r.root_fit).collect();
+        let ceiling_vals: Vec<f32> = group.iter().map(|r| r.ceiling_fit).collect();
+        let binding_vals: Vec<f32> = root_vals
+            .iter()
+            .zip(ceiling_vals.iter())
+            .map(|(r, c)| *r + *c)
+            .collect();
+        let tilt_vals: Vec<f32> = root_vals
+            .iter()
+            .zip(ceiling_vals.iter())
+            .map(|(r, c)| harmonic_tilt_from_affinities(*r, *c))
+            .collect();
+        let seed =
+            E4_BOOTSTRAP_SEED ^ 0xF17E_u64 ^ (weight_key as i64 as u64).wrapping_mul(0x9E37_79B9);
+        let (root_mean, root_ci_lo, root_ci_hi) =
+            bootstrap_mean_ci95(&root_vals, E4_BOOTSTRAP_ITERS, seed ^ 0x11);
+        let (ceiling_mean, ceiling_ci_lo, ceiling_ci_hi) =
+            bootstrap_mean_ci95(&ceiling_vals, E4_BOOTSTRAP_ITERS, seed ^ 0x22);
+        let (_binding_mean, binding_ci_lo, binding_ci_hi) =
+            bootstrap_mean_ci95(&binding_vals, E4_BOOTSTRAP_ITERS, seed ^ 0x2B);
+        let (_tilt_mean, tilt_ci_lo, tilt_ci_hi) =
+            bootstrap_mean_ci95(&tilt_vals, E4_BOOTSTRAP_ITERS, seed ^ 0x33);
+        let binding_mean = root_mean + ceiling_mean;
+        let tilt_mean = harmonic_tilt_from_affinities(root_mean, ceiling_mean);
+        out.push(E4FitSummaryRow {
+            mirror_weight: float_from_key(weight_key),
+            root_fit_mean: root_mean,
+            root_fit_ci_lo: root_ci_lo,
+            root_fit_ci_hi: root_ci_hi,
+            ceiling_fit_mean: ceiling_mean,
+            ceiling_fit_ci_lo: ceiling_ci_lo,
+            ceiling_fit_ci_hi: ceiling_ci_hi,
+            binding_strength_mean: binding_mean,
+            binding_strength_ci_lo: binding_ci_lo,
+            binding_strength_ci_hi: binding_ci_hi,
+            harmonic_tilt_mean: tilt_mean,
+            harmonic_tilt_ci_lo: tilt_ci_lo,
+            harmonic_tilt_ci_hi: tilt_ci_hi,
+            n_seeds: group.len(),
+        });
+    }
+    out.sort_by(|a, b| {
+        a.mirror_weight
+            .partial_cmp(&b.mirror_weight)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    out
+}
+
+fn e4_fit_metrics_csv(rows: &[E4FitMetricRow]) -> String {
+    let mut out = String::from(
+        "mirror_weight,seed,step,n_agents,root_fit,ceiling_fit,binding_strength,harmonic_tilt\n",
+    );
+    for row in rows {
+        out.push_str(&format!(
+            "{:.3},{},{},{},{:.6},{:.6},{:.6},{:.6}\n",
+            row.mirror_weight,
+            row.seed,
+            row.step,
+            row.n_agents,
+            row.root_fit,
+            row.ceiling_fit,
+            row.binding_strength,
+            row.harmonic_tilt
+        ));
+    }
+    out
+}
+
+fn e4_fit_summary_csv(rows: &[E4FitSummaryRow]) -> String {
+    let mut out = String::from(
+        "mirror_weight,root_fit_mean,root_fit_ci_lo,root_fit_ci_hi,ceiling_fit_mean,ceiling_fit_ci_lo,ceiling_fit_ci_hi,binding_strength_mean,binding_strength_ci_lo,binding_strength_ci_hi,harmonic_tilt_mean,harmonic_tilt_ci_lo,harmonic_tilt_ci_hi,n_seeds\n",
+    );
+    for row in rows {
+        out.push_str(&format!(
+            "{:.3},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{}\n",
+            row.mirror_weight,
+            row.root_fit_mean,
+            row.root_fit_ci_lo,
+            row.root_fit_ci_hi,
+            row.ceiling_fit_mean,
+            row.ceiling_fit_ci_lo,
+            row.ceiling_fit_ci_hi,
+            row.binding_strength_mean,
+            row.binding_strength_ci_lo,
+            row.binding_strength_ci_hi,
+            row.harmonic_tilt_mean,
+            row.harmonic_tilt_ci_lo,
+            row.harmonic_tilt_ci_hi,
+            row.n_seeds
+        ));
+    }
+    out
+}
+
+fn write_e4_debug_fit_outputs(
+    out_dir: &Path,
+    tail_agent_rows: &[E4TailAgentRow],
+) -> io::Result<()> {
+    let fit_metrics = e4_fit_metrics_from_tail_agents(tail_agent_rows);
+    let fit_summary = e4_fit_summary_rows(&fit_metrics);
+    write_with_log(
+        out_dir.join("e4_fit_metrics.csv"),
+        e4_fit_metrics_csv(&fit_metrics),
+    )?;
+    write_with_log(
+        out_dir.join("e4_fit_summary.csv"),
+        e4_fit_summary_csv(&fit_summary),
+    )?;
+    write_with_log(
+        out_dir.join("paper_e4_fit_metrics_raw.csv"),
+        e4_fit_metrics_csv(&fit_metrics),
+    )?;
+    write_with_log(
+        out_dir.join("paper_e4_fit_metrics_summary.csv"),
+        e4_fit_summary_csv(&fit_summary),
+    )?;
+    Ok(())
+}
+
+fn write_e4_env_2d_sweep_outputs(
+    out_dir: &Path,
+    tail_agent_rows: &[E4TailAgentRow],
+    anchor_hz: f32,
+) -> io::Result<()> {
+    let meta = e4_paper_meta();
+    let space = Log2Space::new(meta.fmin, meta.fmax, meta.bins_per_oct);
+    let (_erb_scan, du_scan) = erb_grid_for_space(&space);
+    let final_freqs = e4_final_freqs_by_mw_seed(tail_agent_rows);
+    if final_freqs.is_empty() {
+        write_with_log(
+            out_dir.join("paper_e4_env2d_tilt_runs.csv"),
+            "env_partials,env_partial_decay,mirror_weight,seed,harmonic_tilt\n",
+        )?;
+        write_with_log(
+            out_dir.join("paper_e4_env2d_tilt_summary.csv"),
+            "env_partials,env_partial_decay,mirror_weight,harmonic_tilt_mean,harmonic_tilt_ci_lo,harmonic_tilt_ci_hi,n_seeds\n",
+        )?;
+        return Ok(());
+    }
+
+    let coarse_weights = build_weight_grid(E4_WEIGHT_COARSE_STEP);
+    let mut all_runs = Vec::new();
+    for &env_partials in &E4_PARTIALS_SWEEP {
+        for &env_partial_decay in &E4_DECAY_SWEEP {
+            let mut runs = e4_env_sweep_rows(
+                &final_freqs,
+                &space,
+                anchor_hz,
+                &du_scan,
+                &coarse_weights,
+                env_partials,
+                env_partial_decay,
+            );
+            let summary = e4_env_sweep_summary_rows(&runs);
+            let mut fine_weights =
+                refine_weights_from_tilt_sign_change(&summary, env_partials, env_partial_decay);
+            fine_weights.retain(|w| !coarse_weights.iter().any(|x| (*x - *w).abs() < 1e-6));
+            if !fine_weights.is_empty() {
+                runs.extend(e4_env_sweep_rows(
+                    &final_freqs,
+                    &space,
+                    anchor_hz,
+                    &du_scan,
+                    &fine_weights,
+                    env_partials,
+                    env_partial_decay,
+                ));
+            }
+            all_runs.extend(runs);
+        }
+    }
+    let summary = e4_env_sweep_summary_rows(&all_runs);
+    write_with_log(
+        out_dir.join("paper_e4_env2d_tilt_runs.csv"),
+        e4_env_sweep_runs_csv(&all_runs),
+    )?;
+    write_with_log(
+        out_dir.join("paper_e4_env2d_tilt_summary.csv"),
+        e4_env_sweep_summary_csv(&summary),
+    )?;
+    Ok(())
+}
+
 fn e4_binding_metrics_from_tail_landscape(rows: &[E4TailLandscapeRow]) -> Vec<E4BindingMetricRow> {
     #[derive(Default)]
     struct Acc {
@@ -6030,12 +6609,13 @@ fn e4_binding_metrics_raw_csv(rows: &[E4BindingMetricRow]) -> String {
 }
 
 fn e4_binding_metrics_summary_csv(rows: &[E4BindingSummaryRow]) -> String {
+    let meta = e4_paper_meta();
     let mut out = String::from(
-        "mirror_weight,root_affinity_mean,root_affinity_ci_lo,root_affinity_ci_hi,overtone_affinity_mean,overtone_affinity_ci_lo,overtone_affinity_ci_hi,binding_strength_mean,binding_strength_ci_lo,binding_strength_ci_hi,harmonic_tilt_mean,harmonic_tilt_ci_lo,harmonic_tilt_ci_hi,n_seeds\n",
+        "mirror_weight,root_affinity_mean,root_affinity_ci_lo,root_affinity_ci_hi,overtone_affinity_mean,overtone_affinity_ci_lo,overtone_affinity_ci_hi,binding_strength_mean,binding_strength_ci_lo,binding_strength_ci_hi,harmonic_tilt_mean,harmonic_tilt_ci_lo,harmonic_tilt_ci_hi,n_seeds,env_partials,env_partial_decay\n",
     );
     for row in rows {
         out.push_str(&format!(
-            "{:.3},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{}\n",
+            "{:.3},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{},{},{:.6}\n",
             row.mirror_weight,
             row.root_affinity_mean,
             row.root_affinity_ci_lo,
@@ -6049,19 +6629,22 @@ fn e4_binding_metrics_summary_csv(rows: &[E4BindingSummaryRow]) -> String {
             row.harmonic_tilt_mean,
             row.harmonic_tilt_ci_lo,
             row.harmonic_tilt_ci_hi,
-            row.n_seeds
+            row.n_seeds,
+            meta.env_partials,
+            meta.env_partial_decay
         ));
     }
     out
 }
 
 fn e4_binding_summary_csv(rows: &[E4BindingSummaryRow]) -> String {
+    let meta = e4_paper_meta();
     let mut out = String::from(
-        "mirror_weight,root_affinity_mean,root_affinity_ci_lo,root_affinity_ci_hi,overtone_affinity_mean,overtone_affinity_ci_lo,overtone_affinity_ci_hi,binding_strength_mean,binding_strength_ci_lo,binding_strength_ci_hi,harmonic_tilt_mean,harmonic_tilt_ci_lo,harmonic_tilt_ci_hi,n_seeds\n",
+        "mirror_weight,root_affinity_mean,root_affinity_ci_lo,root_affinity_ci_hi,overtone_affinity_mean,overtone_affinity_ci_lo,overtone_affinity_ci_hi,binding_strength_mean,binding_strength_ci_lo,binding_strength_ci_hi,harmonic_tilt_mean,harmonic_tilt_ci_lo,harmonic_tilt_ci_hi,n_seeds,env_partials,env_partial_decay\n",
     );
     for row in rows {
         out.push_str(&format!(
-            "{:.3},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{}\n",
+            "{:.3},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{},{},{:.6}\n",
             row.mirror_weight,
             row.root_affinity_mean,
             row.root_affinity_ci_lo,
@@ -6072,6 +6655,143 @@ fn e4_binding_summary_csv(rows: &[E4BindingSummaryRow]) -> String {
             row.binding_strength_mean,
             row.binding_strength_ci_lo,
             row.binding_strength_ci_hi,
+            row.harmonic_tilt_mean,
+            row.harmonic_tilt_ci_lo,
+            row.harmonic_tilt_ci_hi,
+            row.n_seeds,
+            meta.env_partials,
+            meta.env_partial_decay
+        ));
+    }
+    out
+}
+
+fn e4_env_sweep_rows(
+    final_freqs: &std::collections::HashMap<(i32, u64), Vec<f32>>,
+    space: &Log2Space,
+    anchor_hz: f32,
+    du_scan: &[f32],
+    weights: &[f32],
+    env_partials: u32,
+    env_partial_decay: f32,
+) -> Vec<E4EnvSweepRow> {
+    let mut rows = Vec::new();
+    for &mw in weights {
+        let mw = mw.clamp(0.0, 1.0);
+        let mw_key = float_key(mw);
+        for &seed in &E4_SEEDS {
+            let Some(freqs) = final_freqs.get(&(mw_key, seed)) else {
+                continue;
+            };
+            if freqs.is_empty() {
+                continue;
+            }
+            let scan = compute_e4_landscape_scans_with_env_params(
+                space,
+                anchor_hz,
+                1.0,
+                mw,
+                freqs,
+                du_scan,
+                env_partials,
+                env_partial_decay,
+            );
+            rows.push(E4EnvSweepRow {
+                env_partials,
+                env_partial_decay,
+                mirror_weight: mw,
+                seed,
+                harmonic_tilt: scan.harmonic_tilt,
+            });
+        }
+    }
+    rows.sort_by(|a, b| {
+        a.env_partials
+            .cmp(&b.env_partials)
+            .then_with(|| {
+                a.env_partial_decay
+                    .partial_cmp(&b.env_partial_decay)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .then_with(|| {
+                a.mirror_weight
+                    .partial_cmp(&b.mirror_weight)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .then_with(|| a.seed.cmp(&b.seed))
+    });
+    rows
+}
+
+fn e4_env_sweep_summary_rows(rows: &[E4EnvSweepRow]) -> Vec<E4EnvSweepSummaryRow> {
+    let mut grouped: std::collections::HashMap<(u32, i32, i32), Vec<&E4EnvSweepRow>> =
+        std::collections::HashMap::new();
+    for row in rows {
+        grouped
+            .entry((
+                row.env_partials,
+                float_key(row.env_partial_decay),
+                float_key(row.mirror_weight),
+            ))
+            .or_default()
+            .push(row);
+    }
+    let mut out = Vec::with_capacity(grouped.len());
+    for ((env_partials, decay_key, mw_key), group) in grouped {
+        let vals: Vec<f32> = group.iter().map(|r| r.harmonic_tilt).collect();
+        let seed = E4_BOOTSTRAP_SEED
+            ^ (env_partials as u64).wrapping_mul(0x9E37_79B9)
+            ^ (decay_key as i64 as u64).wrapping_mul(0x85EB_CA6B)
+            ^ (mw_key as i64 as u64).wrapping_mul(0xC2B2_AE35);
+        let (mean, ci_lo, ci_hi) = bootstrap_mean_ci95(&vals, E4_BOOTSTRAP_ITERS, seed);
+        out.push(E4EnvSweepSummaryRow {
+            env_partials,
+            env_partial_decay: float_from_key(decay_key),
+            mirror_weight: float_from_key(mw_key),
+            harmonic_tilt_mean: mean,
+            harmonic_tilt_ci_lo: ci_lo,
+            harmonic_tilt_ci_hi: ci_hi,
+            n_seeds: group.len(),
+        });
+    }
+    out.sort_by(|a, b| {
+        a.env_partials
+            .cmp(&b.env_partials)
+            .then_with(|| {
+                a.env_partial_decay
+                    .partial_cmp(&b.env_partial_decay)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .then_with(|| {
+                a.mirror_weight
+                    .partial_cmp(&b.mirror_weight)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+    });
+    out
+}
+
+fn e4_env_sweep_runs_csv(rows: &[E4EnvSweepRow]) -> String {
+    let mut out = String::from("env_partials,env_partial_decay,mirror_weight,seed,harmonic_tilt\n");
+    for row in rows {
+        out.push_str(&format!(
+            "{},{:.6},{:.3},{},{:.6}\n",
+            row.env_partials, row.env_partial_decay, row.mirror_weight, row.seed, row.harmonic_tilt
+        ));
+    }
+    out
+}
+
+fn e4_env_sweep_summary_csv(rows: &[E4EnvSweepSummaryRow]) -> String {
+    let mut out = String::from(
+        "env_partials,env_partial_decay,mirror_weight,harmonic_tilt_mean,harmonic_tilt_ci_lo,harmonic_tilt_ci_hi,n_seeds\n",
+    );
+    for row in rows {
+        out.push_str(&format!(
+            "{},{:.6},{:.3},{:.6},{:.6},{:.6},{}\n",
+            row.env_partials,
+            row.env_partial_decay,
+            row.mirror_weight,
             row.harmonic_tilt_mean,
             row.harmonic_tilt_ci_lo,
             row.harmonic_tilt_ci_hi,
@@ -6310,16 +7030,35 @@ fn build_env_density_from_freqs(
     space: &Log2Space,
     freqs_hz: &[f32],
     du_scan: &[f32],
+    env_partials: u32,
+    env_partial_decay: f32,
 ) -> (Vec<f32>, Vec<f32>) {
     let mut env_scan = vec![0.0f32; space.n_bins()];
     let mut density_scan = vec![0.0f32; space.n_bins()];
+    let partials = env_partials.clamp(1, 32);
+    let decay = if env_partial_decay.is_finite() {
+        env_partial_decay.clamp(0.0, 4.0)
+    } else {
+        1.0
+    };
     for &freq in freqs_hz {
         if !freq.is_finite() || freq <= 0.0 {
             continue;
         }
-        if let Some(idx) = space.index_of_freq(freq) {
-            env_scan[idx] += 1.0;
-            density_scan[idx] += 1.0 / du_scan[idx].max(1e-12);
+        for k in 1..=partials {
+            let partial_freq = freq * k as f32;
+            if !partial_freq.is_finite() || partial_freq <= 0.0 {
+                continue;
+            }
+            let Some(idx) = space.index_of_freq(partial_freq) else {
+                continue;
+            };
+            let gain = 1.0 / (k as f32).powf(decay);
+            if !gain.is_finite() || gain <= 0.0 {
+                continue;
+            }
+            env_scan[idx] += gain;
+            density_scan[idx] += gain / du_scan[idx].max(1e-12);
         }
     }
     (env_scan, density_scan)
@@ -6333,9 +7072,33 @@ fn compute_e4_landscape_scans(
     freqs_hz: &[f32],
     du_scan: &[f32],
 ) -> E4LandscapeScans {
+    let meta = e4_paper_meta();
+    compute_e4_landscape_scans_with_env_params(
+        space,
+        anchor_hz,
+        wr,
+        mirror_weight,
+        freqs_hz,
+        du_scan,
+        meta.env_partials,
+        meta.env_partial_decay,
+    )
+}
+
+fn compute_e4_landscape_scans_with_env_params(
+    space: &Log2Space,
+    anchor_hz: f32,
+    wr: f32,
+    mirror_weight: f32,
+    freqs_hz: &[f32],
+    du_scan: &[f32],
+    env_partials: u32,
+    env_partial_decay: f32,
+) -> E4LandscapeScans {
     let mut workspace = build_consonance_workspace_with_wr(space, wr);
     workspace.params.harmonicity_kernel.params.mirror_weight = mirror_weight.clamp(0.0, 1.0);
-    let (env_scan, density_scan) = build_env_density_from_freqs(space, freqs_hz, du_scan);
+    let (env_scan, density_scan) =
+        build_env_density_from_freqs(space, freqs_hz, du_scan, env_partials, env_partial_decay);
     let (density_norm, _) =
         psycho_state::normalize_density(&density_scan, du_scan, workspace.params.roughness_ref_eps);
 
@@ -6351,11 +7114,11 @@ fn compute_e4_landscape_scans(
     let (h_upper_pot, _) = hk_upper.potential_h_from_log2_spectrum(&env_scan, space);
     let h_upper = scan_to_state01(&h_upper_pot);
 
-    let (h_pot, _) = workspace
+    let h_dual = workspace
         .params
         .harmonicity_kernel
-        .potential_h_from_log2_spectrum(&env_scan, space);
-    let h = scan_to_state01(&h_pot);
+        .potential_h_dual_from_log2_spectrum(&env_scan, space);
+    let h = scan_to_state01(&h_dual.blended);
 
     let (r_pot, _) = workspace
         .params
@@ -6389,6 +7152,8 @@ fn compute_e4_landscape_scans(
         .map(|l| *l - anchor_log2)
         .collect();
     let semitones: Vec<f32> = log2_ratio.iter().map(|v| *v * 12.0).collect();
+    let path_similarity = cosine_similarity(&h_lower, &h_upper);
+    let path_l1 = l1_mean_distance(&h_lower, &h_upper);
 
     E4LandscapeScans {
         wr: normalize_wr(wr),
@@ -6400,15 +7165,22 @@ fn compute_e4_landscape_scans(
         h,
         r,
         c,
+        root_affinity: h_dual.metrics.root_affinity,
+        overtone_affinity: h_dual.metrics.overtone_affinity,
+        binding_strength: h_dual.metrics.binding_strength,
+        harmonic_tilt: h_dual.metrics.harmonic_tilt,
+        path_similarity,
+        path_l1,
     }
 }
 
 fn e4_landscape_components_csv(scan: &E4LandscapeScans) -> String {
-    let mut out =
-        String::from("wr,mirror_weight,interval_unit,log2_ratio,semitones,H_lower,H_upper,H,R,C\n");
+    let mut out = String::from(
+        "wr,mirror_weight,interval_unit,log2_ratio,semitones,H_lower,H_upper,H,R,C,root_affinity,overtone_affinity,binding_strength,harmonic_tilt,path_similarity,path_l1\n",
+    );
     for i in 0..scan.log2_ratio.len() {
         out.push_str(&format!(
-            "{:.3},{:.3},cents,{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6}\n",
+            "{:.3},{:.3},cents,{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6}\n",
             scan.wr,
             scan.mirror_weight,
             scan.log2_ratio[i],
@@ -6417,7 +7189,13 @@ fn e4_landscape_components_csv(scan: &E4LandscapeScans) -> String {
             scan.h_upper[i],
             scan.h[i],
             scan.r[i],
-            scan.c[i]
+            scan.c[i],
+            scan.root_affinity,
+            scan.overtone_affinity,
+            scan.binding_strength,
+            scan.harmonic_tilt,
+            scan.path_similarity,
+            scan.path_l1
         ));
     }
     out
@@ -8383,15 +9161,25 @@ fn e4_landscape_delta_rows(
     space: &Log2Space,
     anchor_hz: f32,
     du_scan: &[f32],
+    wr: f32,
+    environment: &'static str,
+    freqs_by_mw: Option<&std::collections::HashMap<i32, Vec<f32>>>,
 ) -> Vec<E4LandscapeDeltaRow> {
-    let fixed_freqs = [anchor_hz];
-    let scan0 = compute_e4_landscape_scans(space, anchor_hz, 1.0, 0.0, &fixed_freqs, du_scan);
+    let baseline_key = float_key(0.0);
+    let baseline_vec = freqs_by_mw
+        .and_then(|map| map.get(&baseline_key))
+        .cloned()
+        .unwrap_or_else(|| vec![anchor_hz]);
+    let scan0 = compute_e4_landscape_scans(space, anchor_hz, wr, 0.0, &baseline_vec, du_scan);
     let peaks0 = extract_peak_rows_from_c_scan(space, anchor_hz, &scan0, E4_DIAG_PEAK_TOP_K.max(1));
     let mut out = Vec::new();
     for &mw in weights {
         let mirror_weight = mw.clamp(0.0, 1.0);
-        let scan =
-            compute_e4_landscape_scans(space, anchor_hz, 1.0, mirror_weight, &fixed_freqs, du_scan);
+        let freqs = freqs_by_mw
+            .and_then(|map| map.get(&float_key(mirror_weight)))
+            .cloned()
+            .unwrap_or_else(|| vec![anchor_hz]);
+        let scan = compute_e4_landscape_scans(space, anchor_hz, wr, mirror_weight, &freqs, du_scan);
         let peaks =
             extract_peak_rows_from_c_scan(space, anchor_hz, &scan, E4_DIAG_PEAK_TOP_K.max(1));
         let n = peaks0.len().min(peaks.len()).min(E4_DIAG_PEAK_TOP_K);
@@ -8401,9 +9189,13 @@ fn e4_landscape_delta_rows(
         }
         let shift = if n == 0 { 0.0 } else { shift_sum / n as f32 };
         out.push(E4LandscapeDeltaRow {
+            wr,
             mirror_weight,
+            environment,
             cosine_similarity: cosine_similarity(&scan0.c, &scan.c),
             l1_distance: l1_mean_distance(&scan0.c, &scan.c),
+            path_similarity: scan.path_similarity,
+            path_l1: scan.path_l1,
             topk_peak_shift_st: shift,
         });
     }
@@ -8416,11 +9208,20 @@ fn e4_landscape_delta_rows(
 }
 
 fn e4_landscape_delta_by_mw_csv(rows: &[E4LandscapeDeltaRow]) -> String {
-    let mut out = String::from("mw,cosine_similarity,l1_distance,topk_peak_shift_st,environment\n");
+    let mut out = String::from(
+        "wr,mw,environment,cosine_similarity,l1_distance,path_similarity,path_l1,topk_peak_shift_st\n",
+    );
     for row in rows {
         out.push_str(&format!(
-            "{:.3},{:.6},{:.6},{:.6},anchor_only\n",
-            row.mirror_weight, row.cosine_similarity, row.l1_distance, row.topk_peak_shift_st
+            "{:.3},{:.3},{},{:.6},{:.6},{:.6},{:.6},{:.6}\n",
+            row.wr,
+            row.mirror_weight,
+            row.environment,
+            row.cosine_similarity,
+            row.l1_distance,
+            row.path_similarity,
+            row.path_l1,
+            row.topk_peak_shift_st
         ));
     }
     out
@@ -9166,6 +9967,39 @@ fn plot_e4_mirror_sweep_wr_cut(out_dir: &Path, anchor_hz: f32) -> Result<(), Box
     let space = Log2Space::new(meta.fmin, meta.fmax, meta.bins_per_oct);
     let (_erb_scan, du_scan) = erb_grid_for_space(&space);
     let grouped_freqs = grouped_freqs_by_wr_mw(&tail_rows);
+    let mut landscape_delta_rows = Vec::new();
+    for &wr_raw in &E4_WR_GRID {
+        let wr = normalize_wr(wr_raw);
+        let wr_key = float_key(wr);
+        let mut by_mw: std::collections::HashMap<i32, Vec<f32>> = std::collections::HashMap::new();
+        for &mw in &mirror_weights {
+            if let Some(freqs) = grouped_freqs.get(&(wr_key, float_key(mw))) {
+                by_mw.insert(float_key(mw), freqs.clone());
+            }
+        }
+        landscape_delta_rows.extend(e4_landscape_delta_rows(
+            &mirror_weights,
+            &space,
+            anchor_hz,
+            &du_scan,
+            wr,
+            "anchor_only",
+            None,
+        ));
+        landscape_delta_rows.extend(e4_landscape_delta_rows(
+            &mirror_weights,
+            &space,
+            anchor_hz,
+            &du_scan,
+            wr,
+            "population_tail",
+            Some(&by_mw),
+        ));
+    }
+    write_with_log(
+        out_dir.join("paper_e4_landscape_delta_by_mw.csv"),
+        e4_landscape_delta_by_mw_csv(&landscape_delta_rows),
+    )?;
     let mut landscape_scans = Vec::new();
     for &wr in &E4_WR_GRID {
         for &mw in &mirror_weights {
@@ -11666,6 +12500,18 @@ fn e4_protocol_meta_diff_csv(
             "mirror_only_protocol_seed",
             E4_PROTOCOL_SEED.to_string(),
             E4_PROTOCOL_SEED.to_string(),
+            true,
+        ),
+        (
+            "env_partials",
+            "n/a".to_string(),
+            e4.env_partials.to_string(),
+            true,
+        ),
+        (
+            "env_partial_decay",
+            "n/a".to_string(),
+            format!("{:.3}", e4.env_partial_decay),
             true,
         ),
     ];
@@ -20771,6 +21617,42 @@ mod tests {
     }
 
     #[test]
+    fn parse_e4_debug_fit_defaults_off() {
+        let args: Vec<String> = Vec::new();
+        let enabled = parse_e4_debug_fit_metrics(&args).expect("parse_e4_debug_fit_metrics failed");
+        assert!(!enabled);
+    }
+
+    #[test]
+    fn parse_e4_debug_fit_accepts_expected_values() {
+        let cases: &[(&[&str], bool)] = &[
+            (&["--e4-debug-fit-metrics", "on"], true),
+            (&["--e4-debug-fit-metrics=on"], true),
+            (&["--e4-debug-fit-metrics", "off"], false),
+            (&["--e4-debug-fit-metrics=off"], false),
+            (&["--e4-debug-fit-metrics", "true"], true),
+            (&["--e4-debug-fit-metrics=false"], false),
+        ];
+        for (args, expected) in cases {
+            let args = args.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+            let enabled =
+                parse_e4_debug_fit_metrics(&args).expect("parse_e4_debug_fit_metrics failed");
+            assert_eq!(enabled, *expected);
+        }
+    }
+
+    #[test]
+    fn parse_e4_debug_fit_rejects_invalid_values() {
+        let args = vec!["--e4-debug-fit-metrics".to_string(), "maybe".to_string()];
+        let err = parse_e4_debug_fit_metrics(&args)
+            .expect_err("expected parse_e4_debug_fit_metrics to fail");
+        assert!(
+            err.contains("Usage: paper"),
+            "expected usage in error, got: {err}"
+        );
+    }
+
+    #[test]
     fn parse_experiments_ignores_other_flags() {
         let args = vec![
             "--e4-hist".to_string(),
@@ -20779,6 +21661,18 @@ mod tests {
             "off".to_string(),
             "--e4-legacy".to_string(),
             "off".to_string(),
+            "--e4-debug-fit-metrics".to_string(),
+            "off".to_string(),
+            "--e4-env-partials".to_string(),
+            "8".to_string(),
+            "--e4-env-decay".to_string(),
+            "0.9".to_string(),
+            "--e4-dyn-exploration".to_string(),
+            "0.7".to_string(),
+            "--e4-dyn-persistence".to_string(),
+            "0.3".to_string(),
+            "--e4-dyn-step-cents".to_string(),
+            "60".to_string(),
             "--e2-phase".to_string(),
             "normal".to_string(),
             "--exp".to_string(),

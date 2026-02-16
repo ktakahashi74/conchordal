@@ -58,11 +58,24 @@ cargo run --example paper -- --exp e4 --e4-legacy on
 ```
 
 ```bash
+cargo run --example paper -- --exp e4 --e4-debug-fit-metrics on
+```
+
+```bash
+cargo run --example paper -- --exp e4 --e4-env-partials 9 --e4-env-decay 0.8
+```
+
+```bash
+cargo run --example paper -- --exp e4 --e4-dyn-exploration 0.9 --e4-dyn-persistence 0.1 --e4-dyn-step-cents 75
+```
+
+```bash
 cargo run --example paper -- --exp e2 --e2-phase normal
 ```
 
 Default E2 phase is `dissonance_then_consonance` when `--e2-phase` is omitted.
 E4 legacy outputs are disabled by default and are emitted only with `--e4-legacy on`.
+E4 fit debug CSV outputs are disabled by default and emitted only with `--e4-debug-fit-metrics on`.
 
 Outputs are written to `examples/paper/plots/<exp>/` (for example, `examples/paper/plots/e2/`).
 Plot images are emitted as `.svg` files (vector output).

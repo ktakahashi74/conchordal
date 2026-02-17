@@ -57,6 +57,7 @@ MODEL_API_NAMES = {
 
 # Required sections for validation
 REQUIRED_SECTIONS = ["# 1.", "# 2.", "# 3.", "# 4.", "# 5.", "# 6.", "# 7.", "# 8."]
+FRONTMATTER_PATTERN = re.compile(r"^\+\+\+\n.*?\n\+\+\+\n", re.DOTALL)
 
 
 # =============================================================================
@@ -294,25 +295,28 @@ def call_llm_api(model: str, system_prompt: str, user_message: str) -> str:
     return response.content[0].text
 
 
-def validate_output(content: str, check_sections: bool = True) -> bool:
+def validate_output(content: str, check_sections: bool = True, verbose: bool = True) -> bool:
     """Validate generated markdown structure."""
     is_valid = True
 
     # Check frontmatter
-    if not re.match(r"^\+\+\+\n.*?\n\+\+\+\n", content, re.DOTALL):
-        print("Warning: Missing TOML frontmatter", file=sys.stderr)
+    if not FRONTMATTER_PATTERN.match(content):
+        if verbose:
+            print("Warning: Missing TOML frontmatter", file=sys.stderr)
         is_valid = False
 
     # Check minimum length
     if len(content) < 1000:
-        print("Warning: Output too short", file=sys.stderr)
+        if verbose:
+            print("Warning: Output too short", file=sys.stderr)
         is_valid = False
 
     # Check required sections
     if check_sections:
         for sec in REQUIRED_SECTIONS:
             if sec not in content:
-                print(f"Warning: Missing section {sec}", file=sys.stderr)
+                if verbose:
+                    print(f"Warning: Missing section {sec}", file=sys.stderr)
                 is_valid = False
 
     # Check for common LLM artifacts
@@ -325,7 +329,8 @@ def validate_output(content: str, check_sections: bool = True) -> bool:
     ]
     for artifact in artifacts:
         if artifact.lower() in content[:500].lower():
-            print(f"Warning: Possible LLM preamble detected: '{artifact}'", file=sys.stderr)
+            if verbose:
+                print(f"Warning: Possible LLM preamble detected: '{artifact}'", file=sys.stderr)
             is_valid = False
 
     return is_valid
@@ -335,10 +340,10 @@ def clean_llm_output(content: str) -> str:
     """Clean LLM output to extract pure markdown."""
     content = content.strip()
 
-    # Find frontmatter start and discard preamble
-    if "+++" in content:
-        start = content.find("+++")
-        content = content[start:]
+    # Find strict frontmatter start and discard preamble
+    fm_match = re.search(r"(?m)^\+\+\+\s*$", content)
+    if fm_match:
+        content = content[fm_match.start():]
 
     # Remove wrapping code fences
     if content.startswith("```"):
@@ -353,6 +358,21 @@ def clean_llm_output(content: str) -> str:
     content = re.sub(r'\n```\s*$', '', content)
 
     return content
+
+
+def find_latest_valid_generated_english() -> tuple[Path, str] | None:
+    """Find latest valid English technote snapshot under docs/generated."""
+    if not GENERATED_DIR.exists():
+        return None
+
+    candidates = sorted(GENERATED_DIR.glob("technote.*.md"), key=lambda p: p.name, reverse=True)
+    for path in candidates:
+        if not re.match(r"^technote\.\d{8}_\d{6}\.md$", path.name):
+            continue
+        text = read_file(path)
+        if validate_output(text, check_sections=True, verbose=False):
+            return path, text
+    return None
 
 
 # =============================================================================
@@ -443,14 +463,31 @@ def main():
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     GENERATED_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Store original content for diff
+    # Store original content for diff / validation
     original_content = read_file(args.technote)
+    source_content = original_content
+
+    # Validate current source technote before using it as translation base.
+    if args.ja_only and not validate_output(source_content, check_sections=True):
+        fallback = find_latest_valid_generated_english()
+        if fallback is None:
+            print(
+                "Error: current technote.md is invalid and no valid generated snapshot was found.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        fallback_path, fallback_content = fallback
+        print(
+            f">> Current technote.md is invalid. Using fallback snapshot: {fallback_path}",
+            file=sys.stderr,
+        )
+        source_content = fallback_content
 
     # === English Version ===
     if args.ja_only:
         # Skip English generation, use existing file
         print(">> Using existing English version...")
-        updated_content = original_content
+        updated_content = source_content
     else:
         # 1. Pack codebase
         if not args.skip_repomix:
@@ -528,7 +565,8 @@ Output the fully updated technote.md. ONLY markdown with TOML frontmatter, no fi
 
         # 7. Validate
         if not validate_output(updated_content, check_sections=not args.sections):
-            print("Warning: Validation failed. Review carefully.", file=sys.stderr)
+            print("Error: Validation failed. Aborting write.", file=sys.stderr)
+            sys.exit(1)
 
         # 8. Inject metadata
         updated_content = inject_metadata(updated_content, args.model)
@@ -575,7 +613,8 @@ Document to translate:
 
         # Validate Japanese output
         if not validate_output(ja_content, check_sections=False):
-            print("Warning: Japanese validation failed.", file=sys.stderr)
+            print("Error: Japanese validation failed. Aborting write.", file=sys.stderr)
+            sys.exit(1)
 
         # Write Japanese version
         ja_technote_path = TECHNOTE_PATH.with_suffix(".ja.md")

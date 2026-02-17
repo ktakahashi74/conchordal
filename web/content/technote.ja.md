@@ -6,7 +6,7 @@ template = "page.html"
 source_commit = "272f31a"
 author = "Koichi Takahashi"
 last_updated = "2026-01-19"
-source_version = "0.2.0"
+source_version = "0.1.0"
 source_snapshot = "2026-01-19T00:00:00+09:00"
 generated_by = "claude-opus-4-5-20251101"
 +++
@@ -827,20 +827,19 @@ Dropped ◄───────────────────────
 
 | 戦略 | コンストラクタ | 説明 |
 |----------|-------------|-------------|
-| Consonance | `consonance(root_freq)` | root倍率範囲内で最高協和度の位置を選択 |
-| Consonance Density | `consonance_density(min, max)` | 周波数範囲内で協和度に基づく重み付けランダム |
+| Harmonicity | `harmonicity(root_freq)` | rootの倍音列上に配置 |
+| Harmonic Density | `harmonic_density(min, max)` | 協和度に基づく重み付けランダム |
 | Random Log | `random_log(min, max)` | 対数周波数の一様分布 |
 | Linear | `linear(start, end)` | エージェント間の線形補間 |
 
-**Consonance戦略修飾子**：
-- `.range(min_mul, max_mul)`：倍率範囲を設定（デフォルト：1–4）; spawn freq = root × [min_mul, max_mul]
+**Harmonicity戦略修飾子**：
+- `.range(min_mul, max_mul)`：倍音乗数範囲を設定（デフォルト：1–4）
 - `.min_dist(erb)`：ERB単位の最小間隔を設定（デフォルト：1.0）
 
 ### 6.3.5 タイムライン制御
 
 | 関数 | 説明 |
 |----------|-------------|
-| `create(species, count)` | `species`から`count`個のエージェントの新規グループを作成；Draft状態の`GroupHandle`を返す |
 | `wait(sec)` | ドラフトをコミットし、カーソルを `sec` 秒進める |
 | `flush()` | 時間を進めずにドラフトをコミット |
 | `release(group)` | フェードでグループを削除マーク |
@@ -898,7 +897,7 @@ scene("exposition", || {
     wait(1.0);
 
     // 倍音列上にボイスをスポーン
-    let strat = consonance(220.0).range(1.0, 4.0).min_dist(0.8);
+    let strat = harmonicity(220.0).range(1.0, 4.0).min_dist(0.8);
     for i in 0..4 {
         create(voice, 1).place(strat);
         wait(0.5);
@@ -962,14 +961,14 @@ scene("Mirror Dualism", || {
 
     set_harmonicity_mirror_weight(0.0);
     for i in 0..4 {
-        let strat = consonance(261.63).range(1.0, 3.0).min_dist(0.9);
+        let strat = harmonicity(261.63).range(1.0, 3.0).min_dist(0.9);
         create(voice, 1).place(strat);
     }
     wait(1.5);
 
     set_harmonicity_mirror_weight(1.0);
     for i in 0..4 {
-        let strat = consonance(261.63).range(0.8, 2.5).min_dist(0.9);
+        let strat = harmonicity(261.63).range(0.8, 2.5).min_dist(0.9);
         create(voice, 1).place(strat);
     }
     wait(1.5);
@@ -978,7 +977,7 @@ scene("Mirror Dualism", || {
 
 **分析**：
 1. **セットアップ**：C4（261.63 Hz）のアンカードローンで `phonation("hold")` により持続音。
-2. **状態A（上倍音/長調）**：`set_harmonicity_mirror_weight(0.0)`。ボイスは `consonance()` 戦略を使用して倍音列上にスポーン。システムは上倍音関係を好む—エージェントはE4とG4周辺にクラスタリングし、ハ長調三和音を形成。
+2. **状態A（上倍音/長調）**：`set_harmonicity_mirror_weight(0.0)`。ボイスは `harmonicity()` 戦略を使用して倍音列上にスポーン。システムは上倍音関係を好む—エージェントはE4とG4周辺にクラスタリングし、ハ長調三和音を形成。
 3. **状態B（下倍音/短調）**：`set_harmonicity_mirror_weight(1.0)`。ランドスケープが下倍音投影に反転。エージェントは異なる音程で安定性を見つけ、フリギア/短調のテクスチャを作り出す。
 4. **スコープクリーンアップ**：`scene()` は終了時にすべてのグループを自動的にリリース。
 
@@ -1005,7 +1004,7 @@ scene("Drift Flow", || {
     wait(0.5);
 
     for i in 0..5 {
-        let strat = consonance(130.0).range(1.0, 4.0).min_dist(1.0);
+        let strat = harmonicity(130.0).range(1.0, 4.0).min_dist(1.0);
         create(swarm, 1).place(strat);
         wait(0.6);
     }

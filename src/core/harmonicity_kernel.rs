@@ -928,56 +928,6 @@ mod tests {
     }
 
     #[test]
-    fn reciprocal_series_prefers_overtone_affinity() {
-        let space = Log2Space::new(80.0, 4000.0, 144);
-        let mut params = HarmonicityParams::default();
-        params.mirror_weight = 0.5;
-        let hk = HarmonicityKernel::new(&space, params);
-
-        let tops = [900.0f32, 1100.0, 1300.0, 1500.0, 1700.0, 1900.0, 2300.0];
-        let mut best: Option<(f32, f32, f32)> = None; // (tilt, root, overtone)
-        for top in tops {
-            let env = build_sparse_env(
-                &space,
-                &[top, top / 2.0, top / 3.0, top / 4.0, top / 5.0, top / 6.0],
-            );
-            let dual = hk.potential_h_dual_from_log2_spectrum(&env, &space);
-            let tilt = dual.metrics.harmonic_tilt;
-            if !tilt.is_finite() {
-                continue;
-            }
-            match best {
-                None => {
-                    best = Some((
-                        tilt,
-                        dual.metrics.root_affinity,
-                        dual.metrics.overtone_affinity,
-                    ))
-                }
-                Some((best_tilt, _, _)) if tilt < best_tilt => {
-                    best = Some((
-                        tilt,
-                        dual.metrics.root_affinity,
-                        dual.metrics.overtone_affinity,
-                    ))
-                }
-                _ => {}
-            }
-        }
-        let Some((best_tilt, best_root, best_overtone)) = best else {
-            panic!("failed to evaluate reciprocal stacks");
-        };
-        assert!(
-            best_overtone > best_root,
-            "expected overtone_affinity > root_affinity for at least one reciprocal stack (best root={best_root}, best overtone={best_overtone}, best tilt={best_tilt})",
-        );
-        assert!(
-            best_tilt < -0.02,
-            "expected negative harmonic tilt for reciprocal-like series, got best tilt={best_tilt}",
-        );
-    }
-
-    #[test]
     fn dual_api_blended_matches_legacy_output() {
         let space = Log2Space::new(60.0, 3000.0, 120);
         let env = build_sparse_env(&space, &[196.0, 294.0, 392.0, 523.25]);

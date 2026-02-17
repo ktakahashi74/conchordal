@@ -4,6 +4,8 @@
 /examples/paper/*.tar.gz
 /debug
 /web/public
+/docs/generated/*
+!/docs/generated/.gitkeep
 /docs/rhai_book/src/reference
 
 *~
@@ -40,3 +42,7 @@ Thumbs.db
 .idea/
 
 /main.tex
+
+# Python cache
+__pycache__/
+*.py[cod]

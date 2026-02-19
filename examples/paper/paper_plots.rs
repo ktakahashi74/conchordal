@@ -3666,17 +3666,19 @@ fn render_e1_plot(
     let mut chart_h = ChartBuilder::on(&panels[0])
         .caption(
             format!("E1 Harmonicity Potential H(f) | anchor {} Hz", anchor_hz),
-            ("sans-serif", 20),
+            ("sans-serif", 32),
         )
         .margin(10)
-        .x_label_area_size(30)
-        .y_label_area_size(60)
+        .x_label_area_size(50)
+        .y_label_area_size(80)
         .build_cartesian_2d(x_min..x_max, 0.0f32..h_max)?;
 
     chart_h
         .configure_mesh()
         .x_desc("log2(f / f_anchor)")
         .y_desc("H potential")
+        .label_style(("sans-serif", 20).into_font())
+        .axis_desc_style(("sans-serif", 24).into_font())
         .draw()?;
 
     for &x in &ratio_guides_log2 {
@@ -3691,16 +3693,18 @@ fn render_e1_plot(
     chart_h.draw_series(LineSeries::new(h_points, &BLUE))?;
 
     let mut chart_r = ChartBuilder::on(&panels[1])
-        .caption("E1 Roughness State R01(f)", ("sans-serif", 20))
+        .caption("E1 Roughness State R01(f)", ("sans-serif", 32))
         .margin(10)
-        .x_label_area_size(30)
-        .y_label_area_size(60)
+        .x_label_area_size(50)
+        .y_label_area_size(80)
         .build_cartesian_2d(x_min..x_max, 0.0f32..1.05f32)?;
 
     chart_r
         .configure_mesh()
         .x_desc("log2(f / f_anchor)")
         .y_desc("R01")
+        .label_style(("sans-serif", 20).into_font())
+        .axis_desc_style(("sans-serif", 24).into_font())
         .draw()?;
 
     for &x in &ratio_guides_log2 {
@@ -3729,16 +3733,18 @@ fn render_e1_plot(
     let pad = 0.05f32;
 
     let mut chart_c = ChartBuilder::on(&panels[2])
-        .caption("E1 Consonance Score C(f)", ("sans-serif", 20))
+        .caption("E1 Consonance Score C(f)", ("sans-serif", 32))
         .margin(10)
-        .x_label_area_size(40)
-        .y_label_area_size(60)
+        .x_label_area_size(60)
+        .y_label_area_size(80)
         .build_cartesian_2d(x_min..x_max, (c_min - pad)..(c_max + pad))?;
 
     chart_c
         .configure_mesh()
         .x_desc("log2(f / f_anchor)")
         .y_desc("C_score")
+        .label_style(("sans-serif", 20).into_font())
+        .axis_desc_style(("sans-serif", 24).into_font())
         .draw()?;
 
     for &x in &ratio_guides_log2 {
@@ -15748,7 +15754,7 @@ fn render_diversity_summary_ci95_plot(
     out_path: &Path,
     rows: &[DiversityRow],
 ) -> Result<(), Box<dyn Error>> {
-    let root = bitmap_root(out_path, (1200, 900)).into_drawing_area();
+    let root = bitmap_root(out_path, (1400, 1050)).into_drawing_area();
     root.fill(&WHITE)?;
     let panels = root.split_evenly((2, 2));
     draw_diversity_metric_panel(
@@ -16984,10 +16990,10 @@ fn draw_diversity_metric_panel(
     y_max = (1.15 * y_max.max(1e-4)).max(1e-4);
 
     let mut chart = ChartBuilder::on(area)
-        .caption(caption, ("sans-serif", 18))
+        .caption(caption, ("sans-serif", 32))
         .margin(10)
-        .x_label_area_size(30)
-        .y_label_area_size(50)
+        .x_label_area_size(50)
+        .y_label_area_size(70)
         .build_cartesian_2d(-0.5f32..2.5f32, 0.0f32..y_max)?;
     chart
         .configure_mesh()
@@ -17003,6 +17009,8 @@ fn draw_diversity_metric_panel(
                 String::new()
             }
         })
+        .label_style(("sans-serif", 20).into_font())
+        .axis_desc_style(("sans-serif", 24).into_font())
         .draw()?;
 
     for (i, cond) in conditions.iter().enumerate() {
@@ -17067,15 +17075,17 @@ fn draw_e2_timeseries_controls_panel(
     y_max += pad;
 
     let mut chart = ChartBuilder::on(area)
-        .caption(caption, ("sans-serif", 18))
+        .caption(caption, ("sans-serif", 32))
         .margin(10)
-        .x_label_area_size(40)
-        .y_label_area_size(55)
+        .x_label_area_size(60)
+        .y_label_area_size(75)
         .build_cartesian_2d(x_min as f32..x_hi as f32, y_min..y_max)?;
     chart
         .configure_mesh()
         .x_desc("step")
         .y_desc("mean C_state")
+        .label_style(("sans-serif", 20).into_font())
+        .axis_desc_style(("sans-serif", 24).into_font())
         .draw()?;
 
     if burn_in > x_min {
@@ -17099,7 +17109,7 @@ fn draw_e2_timeseries_controls_panel(
         chart.draw_series(std::iter::once(Text::new(
             "phase switch".to_string(),
             (step as f32, y_text),
-            ("sans-serif", 13).into_font().color(&BLACK),
+            ("sans-serif", 22).into_font().color(&BLACK),
         )))?;
     }
 
@@ -17290,10 +17300,10 @@ fn draw_consonant_mass_panel(
     y_max = (1.15 * y_max.max(1e-4)).max(1e-4);
 
     let mut chart = ChartBuilder::on(area)
-        .caption(caption, ("sans-serif", 18))
+        .caption(caption, ("sans-serif", 32))
         .margin(10)
-        .x_label_area_size(30)
-        .y_label_area_size(50)
+        .x_label_area_size(50)
+        .y_label_area_size(70)
         .build_cartesian_2d(-0.5f32..2.5f32, 0.0f32..y_max)?;
     chart
         .configure_mesh()
@@ -17309,6 +17319,8 @@ fn draw_consonant_mass_panel(
                 String::new()
             }
         })
+        .label_style(("sans-serif", 20).into_font())
+        .axis_desc_style(("sans-serif", 24).into_font())
         .draw()?;
 
     for (i, cond) in conditions.iter().enumerate() {
@@ -17337,7 +17349,7 @@ fn render_consonant_mass_summary_plot(
     if rows.is_empty() {
         return Ok(());
     }
-    let root = bitmap_root(out_path, (1200, 900)).into_drawing_area();
+    let root = bitmap_root(out_path, (1400, 1050)).into_drawing_area();
     root.fill(&WHITE)?;
     let panels = root.split_evenly((2, 1));
     draw_consonant_mass_panel(
@@ -17566,16 +17578,18 @@ fn render_e2_figure2(
         let mut chart = ChartBuilder::on(&panels[0])
             .caption(
                 "E2-2(a) Pairwise interval histogram (baseline, 95% CI)",
-                ("sans-serif", 18),
+                ("sans-serif", 32),
             )
             .margin(10)
-            .x_label_area_size(35)
-            .y_label_area_size(50)
+            .x_label_area_size(55)
+            .y_label_area_size(70)
             .build_cartesian_2d(x_min..x_max, 0.0f32..y_max)?;
         chart
             .configure_mesh()
             .x_desc("semitones")
             .y_desc("mean fraction")
+            .label_style(("sans-serif", 20).into_font())
+            .axis_desc_style(("sans-serif", 24).into_font())
             .draw()?;
         draw_e2_interval_guides_with_windows(&mut chart, y_max)?;
         let half = E2_PAIRWISE_BIN_ST * 0.45;
@@ -17608,15 +17622,17 @@ fn render_e2_figure2(
         }
         let y_max = (1.15 * y_peak.max(1e-4)).max(1e-4);
         let mut chart = ChartBuilder::on(&panels[1])
-            .caption("E2-2(b) Pairwise controls overlay", ("sans-serif", 18))
+            .caption("E2-2(b) Pairwise controls overlay", ("sans-serif", 32))
             .margin(10)
-            .x_label_area_size(35)
-            .y_label_area_size(50)
+            .x_label_area_size(55)
+            .y_label_area_size(70)
             .build_cartesian_2d(x_min..x_max, 0.0f32..y_max)?;
         chart
             .configure_mesh()
             .x_desc("semitones")
             .y_desc("mean fraction")
+            .label_style(("sans-serif", 20).into_font())
+            .axis_desc_style(("sans-serif", 24).into_font())
             .draw()?;
         draw_e2_interval_guides_with_windows(&mut chart, y_max)?;
         for (label, values, color) in [
@@ -18761,16 +18777,18 @@ fn render_survival_on_area(
     data: &SurvivalData,
 ) -> Result<(), Box<dyn Error>> {
     let mut chart = ChartBuilder::on(area)
-        .caption(caption, ("sans-serif", 18))
+        .caption(caption, ("sans-serif", 32))
         .margin(10)
-        .x_label_area_size(35)
-        .y_label_area_size(50)
+        .x_label_area_size(55)
+        .y_label_area_size(70)
         .build_cartesian_2d(0.0f32..data.x_max, 0.0f32..1.05f32)?;
 
     chart
         .configure_mesh()
         .x_desc("time (steps)")
         .y_desc("survival")
+        .label_style(("sans-serif", 20).into_font())
+        .axis_desc_style(("sans-serif", 24).into_font())
         .draw()?;
 
     chart
@@ -18791,7 +18809,7 @@ fn render_survival_on_area(
         ),
         format!("logrank {}", logrank_p),
     ];
-    draw_note_lines(chart.plotting_area(), &lines, 0.02, 0.05, 16)?;
+    draw_note_lines(chart.plotting_area(), &lines, 0.02, 0.05, 26)?;
 
     chart
         .configure_series_labels()
@@ -19038,17 +19056,19 @@ fn render_e5_order_plot(
     let mut chart = ChartBuilder::on(&root)
         .caption(
             "E5 Order Parameter r(t) — pre-kick k_eff=0 so main/control overlap",
-            ("sans-serif", 20),
+            ("sans-serif", 32),
         )
         .margin(10)
-        .x_label_area_size(40)
-        .y_label_area_size(60)
+        .x_label_area_size(60)
+        .y_label_area_size(80)
         .build_cartesian_2d(0.0f32..x_max.max(1.0), 0.0f32..1.05f32)?;
 
     chart
         .configure_mesh()
         .x_desc("time (s)")
         .y_desc("r")
+        .label_style(("sans-serif", 20).into_font())
+        .axis_desc_style(("sans-serif", 24).into_font())
         .draw()?;
 
     let r_main = main_series.iter().map(|(t, r, _, _, _, _)| (*t, *r));
@@ -19172,17 +19192,19 @@ fn render_e5_plv_plot(
     let mut chart = ChartBuilder::on(&root)
         .caption(
             "E5 PLV_agent_kick — pre-kick k_eff=0 so main/control overlap",
-            ("sans-serif", 20),
+            ("sans-serif", 32),
         )
         .margin(10)
-        .x_label_area_size(40)
-        .y_label_area_size(60)
+        .x_label_area_size(60)
+        .y_label_area_size(80)
         .build_cartesian_2d(0.0f32..x_max.max(1.0), 0.0f32..1.05f32)?;
 
     chart
         .configure_mesh()
         .x_desc("time (s)")
         .y_desc("PLV")
+        .label_style(("sans-serif", 20).into_font())
+        .axis_desc_style(("sans-serif", 24).into_font())
         .draw()?;
 
     let plv_main: Vec<(f32, f32)> = main_series
@@ -19528,16 +19550,16 @@ fn render_e5_seed_sweep_plot(out_path: &Path, rows: &[E5SeedRow]) -> Result<(), 
     if !y_max.is_finite() || y_max <= 0.0 {
         y_max = 1.0;
     }
-    let root = bitmap_root(out_path, (900, 600)).into_drawing_area();
+    let root = bitmap_root(out_path, (1200, 800)).into_drawing_area();
     root.fill(&WHITE)?;
     let mut chart = ChartBuilder::on(&root)
         .caption(
             "E5 Seed Sweep: PLV_post_mean (Agent-Kick)",
-            ("sans-serif", 20),
+            ("sans-serif", 32),
         )
         .margin(10)
-        .x_label_area_size(40)
-        .y_label_area_size(60)
+        .x_label_area_size(60)
+        .y_label_area_size(80)
         .build_cartesian_2d(-0.5f32..1.5f32, 0.0f32..(y_max * 1.1))?;
 
     chart
@@ -19554,6 +19576,8 @@ fn render_e5_seed_sweep_plot(out_path: &Path, rows: &[E5SeedRow]) -> Result<(), 
                 _ => String::new(),
             }
         })
+        .label_style(("sans-serif", 20).into_font())
+        .axis_desc_style(("sans-serif", 24).into_font())
         .draw()?;
 
     let values = [(main_mean, main_std, BLUE), (ctrl_mean, ctrl_std, RED)];

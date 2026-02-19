@@ -1334,6 +1334,9 @@ fn plot_e2_emergent_harmony(
     let baseline_ci95_c_state = std_series_to_ci95(&baseline_stats.std_c_state, baseline_stats.n);
     let nohill_ci95_c_state = std_series_to_ci95(&nohill_stats.std_c_state, nohill_stats.n);
     let norep_ci95_c_state = std_series_to_ci95(&norep_stats.std_c_state, norep_stats.n);
+    let baseline_ci95_c = std_series_to_ci95(&baseline_stats.std_c, baseline_stats.n);
+    let nohill_ci95_c = std_series_to_ci95(&nohill_stats.std_c, nohill_stats.n);
+    let norep_ci95_c = std_series_to_ci95(&norep_stats.std_c, norep_stats.n);
 
     write_with_log(
         out_dir.join("paper_e2_representative_seed.txt"),
@@ -1885,9 +1888,9 @@ fn plot_e2_emergent_harmony(
         &baseline_stats,
         &nohill_stats,
         &norep_stats,
-        &baseline_ci95_c_state,
-        &nohill_ci95_c_state,
-        &norep_ci95_c_state,
+        &baseline_ci95_c,
+        &nohill_ci95_c,
+        &norep_ci95_c,
         &diversity_rows_vec,
         &baseline_run.trajectory_semitones,
         phase_mode,
@@ -17470,9 +17473,9 @@ fn render_e2_figure1(
     baseline_stats: &E2SweepStats,
     nohill_stats: &E2SweepStats,
     norep_stats: &E2SweepStats,
-    baseline_ci95_c_state: &[f32],
-    nohill_ci95_c_state: &[f32],
-    norep_ci95_c_state: &[f32],
+    baseline_ci95_c: &[f32],
+    nohill_ci95_c: &[f32],
+    norep_ci95_c: &[f32],
     diversity_rows: &[DiversityRow],
     trajectories: &[Vec<f32>],
     phase_mode: E2PhaseMode,
@@ -17482,22 +17485,22 @@ fn render_e2_figure1(
     let panels = root.split_evenly((2, 2));
 
     let len = baseline_stats
-        .mean_c_state
+        .mean_c
         .len()
-        .min(baseline_stats.std_c_state.len())
-        .min(nohill_stats.mean_c_state.len())
-        .min(nohill_stats.std_c_state.len())
-        .min(norep_stats.mean_c_state.len())
-        .min(norep_stats.std_c_state.len());
+        .min(baseline_stats.std_c.len())
+        .min(nohill_stats.mean_c.len())
+        .min(nohill_stats.std_c.len())
+        .min(norep_stats.mean_c.len())
+        .min(norep_stats.std_c.len());
     draw_e2_timeseries_controls_panel(
         &panels[0],
-        "E2-1(a) Mean consonance over time (95% CI)",
-        &baseline_stats.mean_c_state,
-        baseline_ci95_c_state,
-        &nohill_stats.mean_c_state,
-        nohill_ci95_c_state,
-        &norep_stats.mean_c_state,
-        norep_ci95_c_state,
+        "E2-1(a) Mean C_score over time (95% CI)",
+        &baseline_stats.mean_c,
+        baseline_ci95_c,
+        &nohill_stats.mean_c,
+        nohill_ci95_c,
+        &norep_stats.mean_c,
+        norep_ci95_c,
         E2_BURN_IN,
         phase_mode.switch_step(),
         0,

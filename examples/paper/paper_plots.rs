@@ -1334,9 +1334,9 @@ fn plot_e2_emergent_harmony(
     let baseline_ci95_c_state = std_series_to_ci95(&baseline_stats.std_c_state, baseline_stats.n);
     let nohill_ci95_c_state = std_series_to_ci95(&nohill_stats.std_c_state, nohill_stats.n);
     let norep_ci95_c_state = std_series_to_ci95(&norep_stats.std_c_state, norep_stats.n);
-    let baseline_ci95_c = std_series_to_ci95(&baseline_stats.std_c, baseline_stats.n);
-    let nohill_ci95_c = std_series_to_ci95(&nohill_stats.std_c, nohill_stats.n);
-    let norep_ci95_c = std_series_to_ci95(&norep_stats.std_c, norep_stats.n);
+    let baseline_ci95_c = std_series_to_ci95(&baseline_stats.std_c_score_loo, baseline_stats.n);
+    let nohill_ci95_c = std_series_to_ci95(&nohill_stats.std_c_score_loo, nohill_stats.n);
+    let norep_ci95_c = std_series_to_ci95(&norep_stats.std_c_score_loo, norep_stats.n);
 
     write_with_log(
         out_dir.join("paper_e2_representative_seed.txt"),
@@ -17068,9 +17068,9 @@ fn draw_e2_timeseries_controls_panel(
     chart
         .configure_mesh()
         .x_desc("step")
-        .y_desc("mean C_state")
-        .label_style(("sans-serif", 20).into_font())
-        .axis_desc_style(("sans-serif", 24).into_font())
+        .y_desc("mean LOO C_score")
+        .label_style(("sans-serif", 28).into_font())
+        .axis_desc_style(("sans-serif", 28).into_font())
         .draw()?;
 
     if burn_in > x_min {
@@ -17485,21 +17485,21 @@ fn render_e2_figure1(
     let panels = root.split_evenly((2, 2));
 
     let len = baseline_stats
-        .mean_c
+        .mean_c_score_loo
         .len()
-        .min(baseline_stats.std_c.len())
-        .min(nohill_stats.mean_c.len())
-        .min(nohill_stats.std_c.len())
-        .min(norep_stats.mean_c.len())
-        .min(norep_stats.std_c.len());
+        .min(baseline_stats.std_c_score_loo.len())
+        .min(nohill_stats.mean_c_score_loo.len())
+        .min(nohill_stats.std_c_score_loo.len())
+        .min(norep_stats.mean_c_score_loo.len())
+        .min(norep_stats.std_c_score_loo.len());
     draw_e2_timeseries_controls_panel(
         &panels[0],
-        "E2-1(a) Mean C_score over time (95% CI)",
-        &baseline_stats.mean_c,
+        "E2-1(a) Mean LOO C_score over time (95% CI)",
+        &baseline_stats.mean_c_score_loo,
         baseline_ci95_c,
-        &nohill_stats.mean_c,
+        &nohill_stats.mean_c_score_loo,
         nohill_ci95_c,
-        &norep_stats.mean_c,
+        &norep_stats.mean_c_score_loo,
         norep_ci95_c,
         E2_BURN_IN,
         phase_mode.switch_step(),

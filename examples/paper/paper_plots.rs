@@ -15754,36 +15754,18 @@ fn render_diversity_summary_ci95_plot(
     out_path: &Path,
     rows: &[DiversityRow],
 ) -> Result<(), Box<dyn Error>> {
-    let root = bitmap_root(out_path, (1400, 1050)).into_drawing_area();
+    let root = bitmap_root(out_path, (500, 280)).into_drawing_area();
     root.fill(&WHITE)?;
-    let panels = root.split_evenly((2, 2));
-    draw_diversity_metric_panel(
-        &panels[0],
-        "E2 Diversity (95% CI): Unique Bins",
-        "unique bins",
-        rows,
-        |metrics| metrics.unique_bins as f32,
-    )?;
+    let panels = root.split_evenly((1, 2));
+    draw_diversity_metric_panel(&panels[0], "Unique Bins", "unique bins", rows, |metrics| {
+        metrics.unique_bins as f32
+    })?;
     draw_diversity_metric_panel(
         &panels[1],
-        "E2 Diversity (95% CI): NN Distance",
+        "NN Distance (st)",
         "nn mean (st)",
         rows,
         |metrics| metrics.nn_mean,
-    )?;
-    draw_diversity_metric_panel(
-        &panels[2],
-        "E2 Diversity (95% CI): Variance",
-        "var (st^2)",
-        rows,
-        |metrics| metrics.semitone_var,
-    )?;
-    draw_diversity_metric_panel(
-        &panels[3],
-        "E2 Diversity (95% CI): MAD",
-        "MAD (st)",
-        rows,
-        |metrics| metrics.semitone_mad,
     )?;
     root.present()?;
     Ok(())
@@ -16990,10 +16972,10 @@ fn draw_diversity_metric_panel(
     y_max = (1.15 * y_max.max(1e-4)).max(1e-4);
 
     let mut chart = ChartBuilder::on(area)
-        .caption(caption, ("sans-serif", 32))
-        .margin(10)
-        .x_label_area_size(50)
-        .y_label_area_size(70)
+        .caption(caption, ("sans-serif", 22))
+        .margin(8)
+        .x_label_area_size(40)
+        .y_label_area_size(55)
         .build_cartesian_2d(-0.5f32..2.5f32, 0.0f32..y_max)?;
     chart
         .configure_mesh()
@@ -17009,8 +16991,8 @@ fn draw_diversity_metric_panel(
                 String::new()
             }
         })
-        .label_style(("sans-serif", 20).into_font())
-        .axis_desc_style(("sans-serif", 24).into_font())
+        .label_style(("sans-serif", 26).into_font())
+        .axis_desc_style(("sans-serif", 22).into_font())
         .draw()?;
 
     for (i, cond) in conditions.iter().enumerate() {
@@ -17193,10 +17175,10 @@ fn draw_trajectory_panel(
     }
     let pad = ((y_max - y_min).abs() * 0.1).max(1e-3);
     let mut chart = ChartBuilder::on(area)
-        .caption(caption, ("sans-serif", 18))
+        .caption(caption, ("sans-serif", 32))
         .margin(10)
-        .x_label_area_size(40)
-        .y_label_area_size(55)
+        .x_label_area_size(50)
+        .y_label_area_size(65)
         .build_cartesian_2d(
             0.0f32..(steps.saturating_sub(1) as f32).max(1.0),
             (y_min - pad)..(y_max + pad),
@@ -17205,6 +17187,8 @@ fn draw_trajectory_panel(
         .configure_mesh()
         .x_desc("step")
         .y_desc("semitones")
+        .label_style(("sans-serif", 28).into_font())
+        .axis_desc_style(("sans-serif", 24).into_font())
         .draw()?;
     for (i, trace) in trajectories.iter().enumerate() {
         if trace.is_empty() {
@@ -17300,10 +17284,10 @@ fn draw_consonant_mass_panel(
     y_max = (1.15 * y_max.max(1e-4)).max(1e-4);
 
     let mut chart = ChartBuilder::on(area)
-        .caption(caption, ("sans-serif", 32))
-        .margin(10)
-        .x_label_area_size(50)
-        .y_label_area_size(70)
+        .caption(caption, ("sans-serif", 22))
+        .margin(8)
+        .x_label_area_size(40)
+        .y_label_area_size(55)
         .build_cartesian_2d(-0.5f32..2.5f32, 0.0f32..y_max)?;
     chart
         .configure_mesh()
@@ -17319,8 +17303,8 @@ fn draw_consonant_mass_panel(
                 String::new()
             }
         })
-        .label_style(("sans-serif", 20).into_font())
-        .axis_desc_style(("sans-serif", 24).into_font())
+        .label_style(("sans-serif", 26).into_font())
+        .axis_desc_style(("sans-serif", 22).into_font())
         .draw()?;
 
     for (i, cond) in conditions.iter().enumerate() {
@@ -17349,7 +17333,7 @@ fn render_consonant_mass_summary_plot(
     if rows.is_empty() {
         return Ok(());
     }
-    let root = bitmap_root(out_path, (1400, 1050)).into_drawing_area();
+    let root = bitmap_root(out_path, (500, 560)).into_drawing_area();
     root.fill(&WHITE)?;
     let panels = root.split_evenly((2, 1));
     draw_consonant_mass_panel(
@@ -19550,23 +19534,20 @@ fn render_e5_seed_sweep_plot(out_path: &Path, rows: &[E5SeedRow]) -> Result<(), 
     if !y_max.is_finite() || y_max <= 0.0 {
         y_max = 1.0;
     }
-    let root = bitmap_root(out_path, (1200, 800)).into_drawing_area();
+    let root = bitmap_root(out_path, (400, 280)).into_drawing_area();
     root.fill(&WHITE)?;
     let mut chart = ChartBuilder::on(&root)
-        .caption(
-            "E5 Seed Sweep: PLV_post_mean (Agent-Kick)",
-            ("sans-serif", 32),
-        )
-        .margin(10)
-        .x_label_area_size(60)
-        .y_label_area_size(80)
+        .caption("PLV post-kick (seed sweep)", ("sans-serif", 22))
+        .margin(8)
+        .x_label_area_size(40)
+        .y_label_area_size(55)
         .build_cartesian_2d(-0.5f32..1.5f32, 0.0f32..(y_max * 1.1))?;
 
     chart
         .configure_mesh()
         .disable_mesh()
         .x_desc("condition")
-        .y_desc("PLV_post_mean")
+        .y_desc("PLV post-kick")
         .x_labels(2)
         .x_label_formatter(&|x| {
             let idx = x.round() as isize;
@@ -19576,8 +19557,8 @@ fn render_e5_seed_sweep_plot(out_path: &Path, rows: &[E5SeedRow]) -> Result<(), 
                 _ => String::new(),
             }
         })
-        .label_style(("sans-serif", 20).into_font())
-        .axis_desc_style(("sans-serif", 24).into_font())
+        .label_style(("sans-serif", 26).into_font())
+        .axis_desc_style(("sans-serif", 22).into_font())
         .draw()?;
 
     let values = [(main_mean, main_std, BLUE), (ctrl_mean, ctrl_std, RED)];

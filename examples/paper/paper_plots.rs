@@ -16628,9 +16628,9 @@ fn render_hist_mean_std(
 
 fn e2_condition_display(condition: &str) -> &'static str {
     match condition {
-        "baseline" => "baseline",
-        "nohill" => "no hill-climb",
-        "norep" => "no repulsion",
+        "baseline" => "base",
+        "nohill" => "no-hill",
+        "norep" => "no-rep",
         _ => "unknown",
     }
 }
@@ -16991,8 +16991,8 @@ fn draw_diversity_metric_panel(
                 String::new()
             }
         })
-        .label_style(("sans-serif", 26).into_font())
-        .axis_desc_style(("sans-serif", 22).into_font())
+        .label_style(("sans-serif", 16).into_font())
+        .axis_desc_style(("sans-serif", 18).into_font())
         .draw()?;
 
     for (i, cond) in conditions.iter().enumerate() {
@@ -17303,8 +17303,8 @@ fn draw_consonant_mass_panel(
                 String::new()
             }
         })
-        .label_style(("sans-serif", 26).into_font())
-        .axis_desc_style(("sans-serif", 22).into_font())
+        .label_style(("sans-serif", 16).into_font())
+        .axis_desc_style(("sans-serif", 18).into_font())
         .draw()?;
 
     for (i, cond) in conditions.iter().enumerate() {

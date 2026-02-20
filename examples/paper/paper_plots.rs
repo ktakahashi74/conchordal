@@ -3229,7 +3229,7 @@ fn plot_e3_metabolic_selection(
     let pooled_surv_path = out_dir.join("paper_e3_firstk_survival_compare_pooled.svg");
     render_survival_compare(
         &pooled_surv_path,
-        "E3 Survival by C_state01_firstK (median split, pooled)",
+        "Survival by Early Consonance",
         "Baseline",
         &pooled_surv_base,
         "NoRecharge",
@@ -18864,9 +18864,9 @@ fn render_survival_compare(
     right_label: &str,
     right_data: &SurvivalData,
 ) -> Result<(), Box<dyn Error>> {
-    let root = bitmap_root(out_path, (1400, 700)).into_drawing_area();
+    let root = bitmap_root(out_path, (700, 700)).into_drawing_area();
     root.fill(&WHITE)?;
-    let areas = root.split_evenly((1, 2));
+    let areas = root.split_evenly((2, 1));
     let x_max = left_data.x_max.max(right_data.x_max);
     let left_common = survival_with_x_max(left_data, x_max);
     let right_common = survival_with_x_max(right_data, x_max);

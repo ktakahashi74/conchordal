@@ -1342,6 +1342,55 @@ mod tests {
         out
     }
 
+    const E4_STEP_RESPONSE_SCRIPT: &str = r#"
+        let anchor = derive(harmonic).pitch_mode("lock");
+        let probe = derive(harmonic).pitch_mode("free").pitch_core("peak_sampler");
+
+        scene("E4 Step Response Test", || {
+            let base = create(anchor, 1).freq(196.0);
+            flush();
+
+            let probes = create(probe, 12)
+                .place(consonance(196.0).range(0.8, 2.5).min_dist(0.9))
+                .mode("free");
+            flush();
+
+            set_harmonicity_mirror_weight(0.0);
+            flush();
+            set_harmonicity_mirror_weight(0.5);
+            flush();
+            set_harmonicity_mirror_weight(1.0);
+            flush();
+
+            release(probes);
+            release(base);
+            flush();
+        });
+    "#;
+
+    const E4_BETWEEN_RUNS_SCRIPT: &str = r#"
+        let anchor = derive(harmonic).pitch_mode("lock");
+        let probe = derive(harmonic).pitch_mode("free").pitch_core("peak_sampler");
+
+        scene("E4 Between Runs Test", || {
+            let weights = [0.0, 0.5, 1.0];
+            for w in weights {
+                set_harmonicity_mirror_weight(w);
+                flush();
+
+                let base = create(anchor, 1).freq(196.0);
+                let probes = create(probe, 8)
+                    .place(consonance(196.0).range(0.8, 2.5).min_dist(0.9))
+                    .mode("free");
+                flush();
+
+                release(probes);
+                release(base);
+                flush();
+            }
+        });
+    "#;
+
     #[test]
     fn draft_group_without_commit_is_dropped() {
         let (scenario, warnings) = run_script(
@@ -1689,7 +1738,7 @@ mod tests {
 
     #[test]
     fn e4_step_response_script_has_fixed_population_spawns() {
-        let script = include_str!("../../examples/paper/scenarios/e4_mirror_sweep_demo.rhai");
+        let script = E4_STEP_RESPONSE_SCRIPT;
         assert!(
             script.contains("let anchor = derive(harmonic)")
                 && script.contains("let probe = derive(harmonic)"),
@@ -1727,8 +1776,7 @@ mod tests {
 
     #[test]
     fn e4_between_runs_script_pairs_spawns_and_releases_per_weight() {
-        let script =
-            include_str!("../../examples/paper/scenarios/e4_mirror_sweep_between_runs.rhai");
+        let script = E4_BETWEEN_RUNS_SCRIPT;
         assert!(
             script.contains("let anchor = derive(harmonic)")
                 && script.contains("let probe = derive(harmonic)"),

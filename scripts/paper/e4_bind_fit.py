@@ -487,7 +487,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--input",
         type=Path,
-        default=Path("examples/paper/plots/e4/e4_tail_agents.csv"),
+        default=Path("plots/e4/e4_tail_agents.csv"),
         help="Input e4_tail_agents.csv",
     )
     parser.add_argument(

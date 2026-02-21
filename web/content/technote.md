@@ -89,23 +89,25 @@ The Landscape is updated every audio frame (or block) by the Analysis Worker. It
 *   **Roughness ($R$)**: The sensory dissonance caused by rapid beating between proximal partials.
 *   **Harmonicity ($H$)**: The measure of virtual pitch strength and spectral periodicity.
 
-Both metrics are normalized to the $[0, 1]$ range. The net Consonance is computed in two stages: a linear score followed by sigmoid normalization.
+Both metrics are normalized to the $[0, 1]$ range. Consonance is then derived in two layers: a **Consonance Kernel** that fuses the observables into a single fitness score, and a set of **Representation transforms** that reshape that score for different downstream consumers.
 
-**Linear Consonance Score:**
+**Layer 1 — Consonance Kernel (bilinear family):**
 
-$$ C_{score} = \alpha_h \cdot H_{01} - w(H_{01}) \cdot R_{01} $$
+$$ C_{score} = a \cdot H_{01} + b \cdot R_{01} + c \cdot H_{01} R_{01} + d $$
 
-where $\alpha_h$ is the harmonicity weight and $w(H_{01})$ is a harmonicity-dependent roughness weight:
+Default coefficients: $a = 1.0$, $b = -1.35$, $c = 1.0$, $d = 0.0$. Because $b < 0$, roughness acts as a penalty; because $c > 0$, high harmonicity attenuates that penalty (the interaction term $c \cdot H_{01} R_{01}$ partially cancels $b \cdot R_{01}$ when $H_{01}$ is large). The bilinear family subsumes the earlier $\alpha H - wR$ formulation as the special case $c = 0$.
 
-$$ w(H_{01}) = w_0 + w_1 \cdot (1 - H_{01}) $$
+**Layer 2 — Representations:**
 
-This means roughness penalizes more heavily when harmonicity is low—in regions lacking harmonic structure, even moderate roughness is costly, while strongly harmonic regions tolerate more roughness.
+| Name | Formula | Range | Meaning |
+| :--- | :--- | :--- | :--- |
+| $C_{score}$ | $aH + bR + cHR + d$ | $(-\infty,+\infty)$ | raw fitness from the kernel |
+| $C_{level01}$ | $\sigma(\beta(C_{score} - \theta))$ | $[0,1]$ | metabolism gate (sigmoid) |
+| $C_{weight}$ | $\exp(C_{score}/T) + \varepsilon$ | $[0,+\infty)$ | Boltzmann weight for sampling |
+| $C_{density}$ | $\text{normalize}(C_{weight})$ | $[0,1],\;\Sigma=1$ | pitch-selection PMF |
+| $C_{energy}$ | $-C_{score}$ | $(-\infty,+\infty)$ | energy for minimization |
 
-**Sigmoid State Mapping:**
-
-$$ C_{state} = \sigma(\beta \cdot (C_{score} - \theta)) $$
-
-where $\sigma(x) = 1/(1+e^{-x})$ is the standard sigmoid, $\beta$ controls the gain (steepness), and $\theta$ is the threshold (center point). The resulting $C_{state} \in [0, 1]$ is the final consonance value used by agents for pitch selection and metabolism.
+where $\sigma(x) = 1/(1+e^{-x})$, $\beta$ controls sigmoid steepness (default 2.0), and $\theta$ is the sigmoid threshold (default 0.0).
 
 Individual agents maintain their own perceptual context (`PerceptualContext`) which tracks per-agent boredom and familiarity, providing additional score adjustments during pitch selection.
 
@@ -296,8 +298,8 @@ Agents in Conchordal are governed by energy dynamics modeled on biological metab
 
 *   **Decay**: The agent is born with a fixed `initial_energy` pool. It expends this energy over time (half-life) and dies when it reaches zero. This models transient sounds like plucks or percussion.
 *   **Sustain**: The agent has a `metabolism_rate` (energy loss per second) and can gain energy via consonance-dependent recharge.
-    *   **Recharge**: This is the critical feedback loop. The energy gained per phonation attack is scaled by the agent's current consonance via the `MetabolismPolicy`.
-    *   **Survival**: An agent in a dissonant (low $C$) region "starves"—its energy depletes, its amplitude fades, and it eventually dies. An agent in a consonant (high $C$) region "feeds"—it maintains or gains energy, allowing it to sing louder and live longer.
+    *   **Recharge**: This is the critical feedback loop. The energy gained per phonation attack is scaled by the agent's $C_{level01}$ (the sigmoid-mapped consonance) via the `MetabolismPolicy`.
+    *   **Survival**: An agent in a dissonant (low $C_{level01}$) region "starves"—its energy depletes, its amplitude fades, and it eventually dies. An agent in a consonant (high $C_{level01}$) region "feeds"—it maintains or gains energy, allowing it to sing louder and live longer.
 
 This mechanic creates a Darwinian pressure: **Survival of the Consonant**. The musical structure emerges because only the agents that find harmonic relationships survive to be heard.
 
@@ -461,23 +463,24 @@ Future development of Conchordal will focus on spatialization (extending the lan
 | `sigma_cents` | `HarmonicityParams` | Cents | Width of harmonic peaks. Lower = stricter intonation. |
 | `mirror_weight` | `HarmonicityParams` | 0.0-1.0 | Balance between Overtone (Major) and Undertone (Minor) gravity. |
 | `roughness_k` | `LandscapeParams` | Float | Saturation parameter for roughness mapping. Default: $(1/0.7) - 1 \approx 0.4286$ (so $x=1$ maps to $\approx 0.7$). |
-| `consonance_harmonicity_weight` | `LandscapeParams` | Float | Weight of harmonicity ($\alpha_h$) in consonance score. |
-| `consonance_roughness_weight_floor` | `LandscapeParams` | Float | Floor weight ($w_0$) for roughness penalty. |
-| `consonance_roughness_weight` | `LandscapeParams` | Float | Slope ($w_1$) for harmonicity-dependent roughness weight. |
-| `c_state_beta` | `LandscapeParams` | Float | Sigmoid gain for consonance state mapping. |
-| `c_state_theta` | `LandscapeParams` | Float | Sigmoid threshold for consonance state mapping. |
+| `kernel.a` | `ConsonanceKernel` | Float | Harmonicity coefficient (default 1.0). |
+| `kernel.b` | `ConsonanceKernel` | Float | Roughness coefficient (default −1.35; negative penalizes roughness). |
+| `kernel.c` | `ConsonanceKernel` | Float | Interaction coefficient (default 1.0; positive attenuates roughness penalty at high harmonicity). |
+| `kernel.d` | `ConsonanceKernel` | Float | Bias term (default 0.0). |
+| `beta` | `ConsonanceRepresentationParams` | Float | Sigmoid steepness for $C_{level01}$ (default 2.0). |
+| `theta` | `ConsonanceRepresentationParams` | Float | Sigmoid threshold for $C_{level01}$ (default 0.0). |
 | `vitality` | `DorsalStream` | 0.0-1.0 | Self-oscillation energy of the rhythm section. |
 | `persistence` | `PitchHillClimbPitchCore` | 0.0-1.0 | Resistance to movement/change of an agent (policy bias within pitch selection). |
 
 # Appendix B: Mathematical Summary
 
-**Consonance Fitness Function (Linear Score):**
+**Consonance Kernel (bilinear):**
 
-$$ C_{score} = \alpha_h \cdot H_{01} - (w_0 + w_1 \cdot (1 - H_{01})) \cdot R_{01} $$
+$$ C_{score} = a \cdot H_{01} + b \cdot R_{01} + c \cdot H_{01} R_{01} + d $$
 
-**Consonance State (Sigmoid Normalization):**
+**Consonance Level (sigmoid representation):**
 
-$$ C_{state} = \frac{1}{1 + e^{-\beta(C_{score} - \theta)}} $$
+$$ C_{level01} = \frac{1}{1 + e^{-\beta(C_{score} - \theta)}} $$
 
 **Roughness Saturation Mapping** (from reference-normalized ratio $x$ to $R_{01} \in [0,1]$):
 

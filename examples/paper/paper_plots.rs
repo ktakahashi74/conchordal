@@ -237,8 +237,6 @@ fn purge_e4_legacy_outputs(out_dir: &Path) -> io::Result<()> {
         "paper_e4_delta_bind.png",
         "paper_e4_wr_delta_bind_vs_mirror.svg",
         "paper_e4_wr_delta_bind_agent_vs_oracle.svg",
-        "paper_e4_step_response_delta_bind.csv",
-        "paper_e4_step_response_delta_bind.svg",
         "e4_fit_metrics.csv",
         "e4_fit_summary.csv",
         "paper_e4_fit_metrics_raw.csv",
@@ -263,11 +261,9 @@ fn purge_e4_legacy_outputs(out_dir: &Path) -> io::Result<()> {
             continue;
         };
         let lower = name.to_ascii_lowercase();
-        let should_remove = lower.contains("delta_bind")
-            || lower.contains("root_fit")
+        let should_remove = lower.contains("root_fit")
             || lower.contains("ceiling_fit")
             || lower.starts_with("e4_bind_")
-            || lower.starts_with("paper_e4_bind_")
             || lower.starts_with("e4_fit_")
             || lower.starts_with("paper_e4_fit_");
         if should_remove {
@@ -426,7 +422,7 @@ fn usage() -> String {
         "E4 histogram dumps default to off (use --e4-hist on to enable).",
         "E4 kernel gate plot default to off (use --e4-kernel-gate on to enable).",
         "E4 wr probe default to off (use --e4-wr on to enable).",
-        "E4 legacy outputs default to off (use --e4-legacy on to enable old plots).",
+        "E4 legacy outputs default to off (main manuscript panels remain available; use --e4-legacy on to enable old supplemental plots).",
         "E4 fit debug CSV default to off (use --e4-debug-fit-metrics on to enable).",
         "E2 phase modes: normal | dissonance_then_consonance (default)",
         "Outputs are written to examples/paper/plots/<exp>/ (e.g. examples/paper/plots/e2).",
@@ -3949,21 +3945,24 @@ fn plot_e4_mirror_sweep(
     emit_legacy_outputs: bool,
     emit_debug_fit_metrics: bool,
 ) -> Result<(), Box<dyn Error>> {
+    let primary_bin = E4_BIN_WIDTHS[0];
+    let primary_eps = E4_EPS_CENTS[0];
+
     if !emit_debug_fit_metrics {
         purge_e4_fit_debug_outputs(out_dir)?;
     }
     if !emit_legacy_outputs {
         purge_e4_legacy_outputs(out_dir)?;
         let weights = build_weight_grid(E4_WEIGHT_COARSE_STEP);
-        let (_run_records, _hist_records, _tail_rows, tail_agent_rows, tail_landscape_rows) =
+        let (_run_records, hist_records, _tail_rows, tail_agent_rows, tail_landscape_rows) =
             run_e4_sweep_for_weights(
                 out_dir,
                 anchor_hz,
                 &weights,
                 &E4_SEEDS,
-                E4_BIN_WIDTHS[0],
+                primary_bin,
                 &E4_EPS_CENTS,
-                false,
+                emit_hist_files,
                 true,
             )?;
 
@@ -3998,6 +3997,11 @@ fn plot_e4_mirror_sweep(
         render_e4_harmonic_tilt_scatter_png(&harmonic_tilt_scatter_path, &bind_metrics)?;
         let overtone_rate_path = out_dir.join("paper_e4_overtone_regime_rate.png");
         render_e4_overtone_regime_rate_png(&overtone_rate_path, &bind_metrics)?;
+        let bind_main_path = out_dir.join("paper_e4_bind_vs_weight.svg");
+        render_e4_bind_vs_weight(&bind_main_path, &bind_summary)?;
+        let fingerprint_path = out_dir.join("paper_e4_interval_fingerprint_heatmap.svg");
+        render_e4_interval_heatmap(&fingerprint_path, &hist_records, primary_bin)?;
+        run_e4_step_and_hysteresis_protocol(out_dir, anchor_hz, primary_eps)?;
         write_e4_env_2d_sweep_outputs(out_dir, &tail_agent_rows, anchor_hz)?;
         if emit_debug_fit_metrics {
             write_e4_debug_fit_outputs(out_dir, &tail_agent_rows)?;
@@ -4011,13 +4015,10 @@ fn plot_e4_mirror_sweep(
             render_e4_kernel_gate(&kernel_gate_path, anchor_hz)?;
         }
 
-        let _ = emit_hist_files;
         return Ok(());
     }
 
     let coarse_weights = build_weight_grid(E4_WEIGHT_COARSE_STEP);
-    let primary_bin = E4_BIN_WIDTHS[0];
-    let primary_eps = E4_EPS_CENTS[0];
     let (
         mut run_records,
         mut hist_records,
@@ -12294,7 +12295,10 @@ fn run_e4_step_and_hysteresis_protocol(
             ));
         }
     }
-    write_with_log(out_dir.join("paper_e4_step_response_delta_t.csv"), step_csv)?;
+    write_with_log(
+        out_dir.join("paper_e4_step_response_delta_bind.csv"),
+        step_csv,
+    )?;
     write_with_log(
         out_dir.join("paper_e4_step_response_harmonic_tilt.csv"),
         step_bind_csv,
@@ -12304,7 +12308,7 @@ fn run_e4_step_and_hysteresis_protocol(
         step_hist_csv,
     )?;
     render_e4_step_response_delta_plot(
-        &out_dir.join("paper_e4_step_response_delta_t.svg"),
+        &out_dir.join("paper_e4_step_response_delta_bind.svg"),
         &step_rows,
         E4_STEP_BURN_IN_STEPS,
     )?;

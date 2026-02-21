@@ -35,6 +35,9 @@
 - Verify all targets: `cargo check --all-targets`
 - Test all targets: `cargo test --all-targets`
 - Check examples explicitly: `cargo check --examples`
+- Paper figures/manuscript flow:
+  - Generate plots + convert SVG to PDF: `just --justfile examples/paper/justfile paper-pdf --exp all`
+  - `main.tex` references PDF files under `examples/paper/plots/*/*.pdf`.
 
 
 ## Mandatory End-of-Task Procedure

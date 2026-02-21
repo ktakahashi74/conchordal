@@ -187,7 +187,7 @@ impl Population {
             .is_some_and(|gate_tick| gate_tick > now && gate_tick <= frame_end);
         let pred_scan =
             world
-                .predict_consonance_state01_next_gate()
+                .predict_consonance_level01_next_gate()
                 .and_then(|(gate_tick, scan)| {
                     if gate_tick >= now && gate_tick < frame_end {
                         Some(scan)
@@ -214,7 +214,7 @@ impl Population {
             let batch = &mut out[used];
             let mut extra_gate_gain = 1.0;
             if let Some(scan) = pred_scan.as_ref() {
-                let mut gain_raw = world.sample_scan_state01(scan, agent.body.base_freq_hz());
+                let mut gain_raw = world.sample_scan_level01(scan, agent.body.base_freq_hz());
                 if !gain_raw.is_finite() {
                     gain_raw = 0.0;
                 }
@@ -353,7 +353,7 @@ impl Population {
                     if self.is_range_occupied_with(f, min_dist_erb, reserved) {
                         continue;
                     }
-                    if let Some(&c_val) = landscape.consonance_state01.get(i)
+                    if let Some(&c_val) = landscape.consonance_level01.get(i)
                         && c_val > best_val
                     {
                         found = true;
@@ -368,7 +368,7 @@ impl Population {
                     let mut best = idx_min;
                     let mut best_val = f32::MIN;
                     for i in idx_min..=idx_max {
-                        if let Some(&c_val) = landscape.consonance_state01.get(i)
+                        if let Some(&c_val) = landscape.consonance_level01.get(i)
                             && c_val > best_val
                         {
                             best_val = c_val;
@@ -385,8 +385,9 @@ impl Population {
                         let f = space.freq_of_index(i);
                         let occupied = self.is_range_occupied_with(f, min_dist_erb, reserved);
                         let _ = local_idx;
-                        let c_state = landscape.consonance_state01.get(i).copied().unwrap_or(0.0);
-                        consonance_density_weight(c_state, occupied)
+                        let base_weight =
+                            landscape.consonance_weight.get(i).copied().unwrap_or(0.0);
+                        consonance_weight(base_weight, occupied)
                     })
                     .collect();
                 if let Ok(dist) = WeightedIndex::new(&weights) {
@@ -660,13 +661,17 @@ fn mix_pred_gate_gain(sync: f32, gain_raw: f32) -> f32 {
     if gain.is_finite() { gain.max(0.0) } else { 1.0 }
 }
 
-fn consonance_density_weight(c_state01: f32, occupied: bool) -> f32 {
+fn consonance_weight(base_weight: f32, occupied: bool) -> f32 {
     if occupied {
         return 0.0;
     }
-    let c = c_state01.clamp(0.0, 1.0);
-    let eps = 1e-6f32;
-    eps + (1.0 - eps) * c
+    // Policy A: avoid an extra hard-coded post-mask floor and rely on representation epsilon.
+    // If all weights become zero after occupancy masking, caller fallback handles selection.
+    if base_weight.is_finite() {
+        base_weight.max(0.0)
+    } else {
+        0.0
+    }
 }
 
 fn build_social_trace_from_batches(
@@ -754,15 +759,15 @@ mod tests {
     }
 
     #[test]
-    fn decide_frequency_uses_consonance_state01() {
+    fn decide_frequency_uses_consonance_level01() {
         let space = Log2Space::new(100.0, 400.0, 12);
         let mut landscape = LandscapeFrame::new(space.clone());
         landscape.consonance_score.fill(-10.0);
-        landscape.consonance_state01.fill(0.0);
+        landscape.consonance_level01.fill(0.0);
 
         let idx_high = space.index_of_freq(200.0).expect("idx");
         let idx_raw = space.index_of_freq(300.0).expect("idx");
-        landscape.consonance_state01[idx_high] = 1.0;
+        landscape.consonance_level01[idx_high] = 1.0;
         landscape.consonance_score[idx_raw] = 10.0;
 
         let pop = Population::new(Timebase {
@@ -782,14 +787,14 @@ mod tests {
     }
 
     #[test]
-    fn consonance_density_weight_eps_floor() {
-        let w = consonance_density_weight(0.0, false);
-        assert!(w > 0.0);
+    fn consonance_weight_zero_base_is_zero() {
+        let w = consonance_weight(0.0, false);
+        assert_eq!(w, 0.0);
     }
 
     #[test]
-    fn consonance_density_weight_occupied_is_zero() {
-        let w = consonance_density_weight(1.0, true);
+    fn consonance_weight_occupied_is_zero() {
+        let w = consonance_weight(1.0, true);
         assert_eq!(w, 0.0);
     }
 
@@ -800,20 +805,17 @@ mod tests {
     }
 
     #[test]
-    fn consonance_density_weighted_index_accepts_zero_c_state01() {
+    fn consonance_weighted_index_accepts_positive_landscape_weights() {
         let weights = vec![
-            consonance_density_weight(0.0, false),
-            consonance_density_weight(0.0, false),
+            consonance_weight(1e-6, false),
+            consonance_weight(1e-6, false),
         ];
         assert!(WeightedIndex::new(&weights).is_ok());
     }
 
     #[test]
-    fn consonance_density_weighted_index_fails_when_all_occupied() {
-        let weights = vec![
-            consonance_density_weight(1.0, true),
-            consonance_density_weight(0.2, true),
-        ];
+    fn consonance_weighted_index_fails_when_all_occupied() {
+        let weights = vec![consonance_weight(1.0, true), consonance_weight(0.2, true)];
         assert!(WeightedIndex::new(&weights).is_err());
     }
 

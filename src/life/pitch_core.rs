@@ -947,7 +947,7 @@ mod tests {
                 score += gain * g;
             }
             landscape.consonance_score[idx] = score;
-            landscape.consonance_state01[idx] = score.clamp(0.0, 1.0);
+            landscape.consonance_level01[idx] = score.clamp(0.0, 1.0);
         }
         landscape
     }

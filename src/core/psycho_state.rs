@@ -81,94 +81,6 @@ pub fn h_pot_scan_to_h_state01_scan(h_pot_scan: &[f32], h_ref_max: f32, out: &mu
     }
 }
 
-fn sanitize01(x: f32) -> f32 {
-    if x.is_finite() {
-        x.clamp(0.0, 1.0)
-    } else if x.is_infinite() {
-        if x.is_sign_positive() { 1.0 } else { 0.0 }
-    } else {
-        0.0
-    }
-}
-
-fn sanitize_nonneg(x: f32) -> f32 {
-    if x.is_finite() { x.max(0.0) } else { 0.0 }
-}
-
-pub fn w_of_h(w0: f32, w1: f32, h01: f32) -> f32 {
-    let h01 = sanitize01(h01);
-    let w0 = sanitize_nonneg(w0);
-    let w1 = sanitize_nonneg(w1);
-    let dh = 1.0 - h01;
-    w0 + w1 * dh
-}
-
-pub fn compose_c_score(alpha: f32, w0: f32, w1: f32, h01: f32, r01: f32) -> f32 {
-    let h01 = sanitize01(h01);
-    let r01 = sanitize01(r01);
-    let alpha = sanitize_nonneg(alpha);
-    let w = w_of_h(w0, w1, h01);
-    let c_score = alpha * h01 - w * r01;
-    if c_score.is_finite() { c_score } else { 0.0 }
-}
-
-pub fn sigmoid01(x: f32) -> f32 {
-    if x.is_nan() {
-        return 0.0;
-    }
-    let x = x.clamp(-80.0, 80.0);
-    1.0 / (1.0 + (-x).exp())
-}
-
-pub fn compose_c_state(beta: f32, theta: f32, c_score: f32) -> f32 {
-    let beta = sanitize_nonneg(beta);
-    let theta = if theta.is_finite() { theta } else { 0.0 };
-    let c_score = if c_score.is_finite() { c_score } else { 0.0 };
-    sigmoid01(beta * (c_score - theta))
-}
-
-pub fn compute_c01_from_hr(h01: f32, r01: f32, wr: f32) -> f32 {
-    compute_c01_from_hr_params(h01, r01, wr, 1.0, 0.35, 0.5, 2.0, 0.0)
-}
-
-#[allow(clippy::too_many_arguments)]
-pub fn compute_c01_from_hr_params(
-    h01: f32,
-    r01: f32,
-    wr: f32,
-    alpha: f32,
-    base_w0: f32,
-    base_w1: f32,
-    beta: f32,
-    theta: f32,
-) -> f32 {
-    let wr = sanitize01(wr);
-    let w0 = sanitize_nonneg(base_w0) * wr;
-    let w1 = sanitize_nonneg(base_w1) * wr;
-    let c_score = compose_c_score(alpha, w0, w1, h01, r01);
-    compose_c_state(beta, theta, c_score)
-}
-
-#[allow(clippy::too_many_arguments)]
-pub fn compose_c_state01_scan(
-    h_state01: &[f32],
-    r_state01: &[f32],
-    alpha: f32,
-    w0: f32,
-    w1: f32,
-    beta: f32,
-    theta: f32,
-    out: &mut [f32],
-) {
-    debug_assert_eq!(h_state01.len(), r_state01.len());
-    debug_assert_eq!(out.len(), h_state01.len());
-    let len = out.len().min(h_state01.len()).min(r_state01.len());
-    for i in 0..len {
-        let c_score = compose_c_score(alpha, w0, w1, h_state01[i], r_state01[i]);
-        out[i] = compose_c_state(beta, theta, c_score);
-    }
-}
-
 pub fn roughness_ref_from_r_pot_scan(r_pot_scan: &[f32], du: &[f32]) -> RoughnessRef {
     debug_assert_eq!(r_pot_scan.len(), du.len());
     let peak = r_pot_scan.iter().copied().fold(0.0f32, f32::max);
@@ -250,25 +162,21 @@ fn nearest_bin_by_erb(erb: &[f32], target: f32) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::consonance_kernel::{ConsonanceKernel, ConsonanceRepresentationParams};
     use crate::core::harmonicity_kernel::{HarmonicityKernel, HarmonicityParams};
     use crate::core::landscape::RoughnessScalarMode;
-    use crate::core::log2space::Log2Space;
     use crate::core::roughness_kernel::{KernelParams, RoughnessKernel};
 
     fn build_params(space: &Log2Space) -> LandscapeParams {
         LandscapeParams {
             fs: 48_000.0,
             max_hist_cols: 1,
-            alpha: 0.0,
             roughness_kernel: RoughnessKernel::new(KernelParams::default(), 0.005),
             harmonicity_kernel: HarmonicityKernel::new(space, HarmonicityParams::default()),
+            consonance_kernel: ConsonanceKernel::default(),
+            consonance_representation: ConsonanceRepresentationParams::default(),
             roughness_scalar_mode: RoughnessScalarMode::Total,
             roughness_half: 0.1,
-            consonance_harmonicity_weight: 1.0,
-            consonance_roughness_weight_floor: 0.35,
-            consonance_roughness_weight: 0.5,
-            c_state_beta: 2.0,
-            c_state_theta: 0.0,
             loudness_exp: 1.0,
             ref_power: 1.0,
             tau_ms: 1.0,
@@ -328,104 +236,5 @@ mod tests {
             let old_val = legacy(ratio);
             assert!((new_val - old_val).abs() < 1e-6);
         }
-    }
-
-    #[test]
-    fn compose_c_state01_scan_matches_scalar() {
-        let h = vec![0.0, 0.2, 0.8, 1.0];
-        let r = vec![0.0, 0.1, 0.5, 1.0];
-        let mut out = vec![0.0; h.len()];
-        let w0 = 0.35;
-        let w1 = 0.75;
-        let beta = 2.0;
-        let theta = 0.1;
-        for &alpha in &[0.8, 1.6] {
-            compose_c_state01_scan(&h, &r, alpha, w0, w1, beta, theta, &mut out);
-            for i in 0..h.len() {
-                let c_score = compose_c_score(alpha, w0, w1, h[i], r[i]);
-                let c_state = compose_c_state(beta, theta, c_score);
-                assert!(
-                    (out[i] - c_state).abs() < 1e-6,
-                    "alpha={alpha} i={i} out={out_val} expected={c_state}",
-                    out_val = out[i]
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn compose_c_score_matches_extremes() {
-        let alpha = 1.5;
-        let w0 = 0.35;
-        let w1 = 0.65;
-        let c_hi = compose_c_score(alpha, w0, w1, 1.0, 0.0);
-        let c_lo = compose_c_score(alpha, w0, w1, 0.0, 1.0);
-        assert!((c_hi - alpha).abs() < 1e-6, "c_hi={c_hi} alpha={alpha}");
-        assert!(
-            (c_lo + (w0 + w1)).abs() < 1e-6,
-            "c_lo={c_lo} expected={}",
-            -(w0 + w1)
-        );
-    }
-
-    #[test]
-    fn compose_c_state_midpoint_and_extremes() {
-        let beta = 2.0;
-        let theta = 0.25;
-        let mid = compose_c_state(beta, theta, theta);
-        assert!((mid - 0.5).abs() < 1e-6, "mid={mid}");
-
-        let hi = compose_c_state(beta, theta, theta + 10.0);
-        let lo = compose_c_state(beta, theta, theta - 10.0);
-        assert!(hi > 0.999, "hi={hi}");
-        assert!(lo < 0.001, "lo={lo}");
-
-        let a = compose_c_state(beta, theta, theta - 0.5);
-        let b = compose_c_state(beta, theta, theta);
-        let c = compose_c_state(beta, theta, theta + 0.5);
-        assert!(a < b && b < c, "monotonicity failed: {a} {b} {c}");
-    }
-
-    #[test]
-    fn compose_c_state_sanitizes_negative_beta() {
-        let beta = -3.0;
-        let theta = 0.1;
-        let low = compose_c_state(beta, theta, -1.0);
-        let high = compose_c_state(beta, theta, 1.0);
-        assert!((low - 0.5).abs() < 1e-6, "low={low}");
-        assert!((high - 0.5).abs() < 1e-6, "high={high}");
-        assert!(high >= low - 1e-6, "monotonicity failed: {low} {high}");
-    }
-
-    #[test]
-    fn sigmoid01_saturates_extremes() {
-        let hi = sigmoid01(1000.0);
-        let lo = sigmoid01(-1000.0);
-        assert!(hi > 0.999, "hi={hi}");
-        assert!(lo < 0.001, "lo={lo}");
-    }
-
-    #[test]
-    fn compute_c01_from_hr_is_monotonic_in_wr() {
-        let h01 = 0.62;
-        let r01 = 0.88;
-        let c1 = compute_c01_from_hr(h01, r01, 1.0);
-        let c05 = compute_c01_from_hr(h01, r01, 0.5);
-        let c0 = compute_c01_from_hr(h01, r01, 0.0);
-        assert!(
-            c0 >= c05 && c05 >= c1,
-            "expected c01(wr=0)>=c01(wr=0.5)>=c01(wr=1), got {c0}, {c05}, {c1}"
-        );
-    }
-
-    #[test]
-    fn compute_c01_from_hr_wr_zero_disables_roughness_term() {
-        let h01 = 0.41;
-        let c_r0 = compute_c01_from_hr(h01, 0.0, 0.0);
-        let c_r1 = compute_c01_from_hr(h01, 1.0, 0.0);
-        assert!(
-            (c_r0 - c_r1).abs() < 1e-6,
-            "wr=0 should remove roughness effect: c_r0={c_r0}, c_r1={c_r1}"
-        );
     }
 }

@@ -177,6 +177,7 @@ fn percentile_95(vals: &[f32]) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::consonance_kernel::{ConsonanceKernel, ConsonanceRepresentationParams};
     use crate::core::harmonicity_kernel::{HarmonicityKernel, HarmonicityParams};
     use crate::core::landscape::{LandscapeParams, RoughnessScalarMode};
     use crate::core::log2space::Log2Space;
@@ -187,16 +188,12 @@ mod tests {
         LandscapeParams {
             fs: 48_000.0,
             max_hist_cols: 1,
-            alpha: 0.0,
             roughness_kernel: RoughnessKernel::new(KernelParams::default(), 0.005),
             harmonicity_kernel: HarmonicityKernel::new(space, HarmonicityParams::default()),
+            consonance_kernel: ConsonanceKernel::default(),
+            consonance_representation: ConsonanceRepresentationParams::default(),
             roughness_scalar_mode: RoughnessScalarMode::Total,
             roughness_half: 0.1,
-            consonance_harmonicity_weight: 1.0,
-            consonance_roughness_weight_floor: 0.35,
-            consonance_roughness_weight: 0.5,
-            c_state_beta: 2.0,
-            c_state_theta: 0.0,
             loudness_exp: 1.0,
             ref_power: 1.0,
             tau_ms: 1.0,

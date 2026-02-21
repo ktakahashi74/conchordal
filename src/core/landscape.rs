@@ -1,8 +1,9 @@
 //! core/landscape.rs — Data container for the psychoacoustic map (The Map).
 //!
 //! This module now holds only the data structures and lightweight helpers.
-//! Processing lives in the Dorsal (rhythm) and Roughness (R/H) streams.
+//! Processing lives in the Dorsal (rhythm) and Roughness/Harmonicity streams.
 
+use crate::core::consonance_kernel::{ConsonanceKernel, ConsonanceRepresentationParams};
 use crate::core::log2space::Log2Space;
 use crate::core::modulation::NeuralRhythms;
 
@@ -10,23 +11,15 @@ use crate::core::modulation::NeuralRhythms;
 pub struct LandscapeParams {
     pub fs: f32,
     pub max_hist_cols: usize,
-    pub alpha: f32,
     pub roughness_kernel: crate::core::roughness_kernel::RoughnessKernel,
     pub harmonicity_kernel: crate::core::harmonicity_kernel::HarmonicityKernel,
+    pub consonance_kernel: ConsonanceKernel,
+    pub consonance_representation: ConsonanceRepresentationParams,
+
     /// Scalar roughness summary used for normalization and diagnostics.
     pub roughness_scalar_mode: RoughnessScalarMode,
-    /// Half-saturation point for roughness range compression (legacy).
+    /// Half-saturation point for roughness range compression (legacy helper).
     pub roughness_half: f32,
-    /// Weight for harmonicity when computing consonance (alpha_h).
-    pub consonance_harmonicity_weight: f32,
-    /// Floor weight for roughness when computing consonance (w0).
-    pub consonance_roughness_weight_floor: f32,
-    /// Slope for roughness weight vs (1 - H01) when computing consonance (w1).
-    pub consonance_roughness_weight: f32,
-    /// Sigmoid gain for consonance state (C_state).
-    pub c_state_beta: f32,
-    /// Sigmoid threshold for consonance state (C_state).
-    pub c_state_theta: f32,
 
     /// Exponent for subjective intensity (≈ specific loudness). Typical: 0.23
     pub loudness_exp: f32,
@@ -64,7 +57,7 @@ pub enum RoughnessScalarMode {
 }
 
 /// Pure data snapshot for UI and agent evaluation.
-/// Values here are perceptual (perc_*) unless stated otherwise.
+/// Values here are perceptual (`perc_*`) unless stated otherwise.
 #[derive(Clone, Debug)]
 pub struct Landscape {
     pub space: Log2Space,
@@ -82,10 +75,16 @@ pub struct Landscape {
     pub harmonicity_path_b: Vec<f32>,
     /// Normalized perc_potential_H [0, 1].
     pub harmonicity01: Vec<f32>,
-    /// Linear consonance score (C), derived from H01 and R01.
+    /// Layer 1: kernel output (unbounded).
     pub consonance_score: Vec<f32>,
-    /// Sigmoid-normalized consonance state [0, 1] (C_state).
-    pub consonance_state01: Vec<f32>,
+    /// Layer 2: normalized level in [0, 1].
+    pub consonance_level01: Vec<f32>,
+    /// Layer 2: non-negative pre-normalized weight.
+    pub consonance_weight: Vec<f32>,
+    /// Layer 2: normalized density (PMF).
+    pub consonance_density: Vec<f32>,
+    /// Layer 2: minimization energy.
+    pub consonance_energy: Vec<f32>,
     pub subjective_intensity: Vec<f32>,
     pub nsgt_power: Vec<f32>,
     /// perc_state_R (summary statistics).
@@ -120,7 +119,10 @@ impl Landscape {
             harmonicity_path_b: vec![0.0; n],
             harmonicity01: vec![0.0; n],
             consonance_score: vec![0.0; n],
-            consonance_state01: vec![0.0; n],
+            consonance_level01: vec![0.0; n],
+            consonance_weight: vec![0.0; n],
+            consonance_density: vec![0.0; n],
+            consonance_energy: vec![0.0; n],
             subjective_intensity: vec![0.0; n],
             nsgt_power: vec![0.0; n],
             roughness_total: 0.0,
@@ -150,7 +152,10 @@ impl Landscape {
         self.harmonicity_path_b.resize(n, 0.0);
         self.harmonicity01.resize(n, 0.0);
         self.consonance_score.resize(n, 0.0);
-        self.consonance_state01.resize(n, 0.0);
+        self.consonance_level01.resize(n, 0.0);
+        self.consonance_weight.resize(n, 0.0);
+        self.consonance_density.resize(n, 0.0);
+        self.consonance_energy.resize(n, 0.0);
         self.subjective_intensity.resize(n, 0.0);
         self.nsgt_power.resize(n, 0.0);
     }
@@ -173,34 +178,40 @@ impl Landscape {
         self.space
             .assert_scan_len_named(&self.consonance_score, "consonance_score");
         self.space
-            .assert_scan_len_named(&self.consonance_state01, "consonance_state01");
+            .assert_scan_len_named(&self.consonance_level01, "consonance_level01");
+        self.space
+            .assert_scan_len_named(&self.consonance_weight, "consonance_weight");
+        self.space
+            .assert_scan_len_named(&self.consonance_density, "consonance_density");
+        self.space
+            .assert_scan_len_named(&self.consonance_energy, "consonance_energy");
         self.space
             .assert_scan_len_named(&self.subjective_intensity, "subjective_intensity");
         self.space
             .assert_scan_len_named(&self.nsgt_power, "nsgt_power");
     }
 
-    /// Linear consonance score C. Prefer `evaluate_pitch_state01` for normalized usage.
+    /// Layer 1 score. Prefer `evaluate_pitch_level01` for normalized usage.
     pub fn evaluate_pitch_score(&self, freq_hz: f32) -> f32 {
         self.assert_scan_lengths();
         self.sample_linear(&self.consonance_score, freq_hz)
     }
 
-    /// Linear consonance score C. Prefer `evaluate_pitch_state01_log2` for normalized usage.
+    /// Layer 1 score. Prefer `evaluate_pitch_level01_log2` for normalized usage.
     pub fn evaluate_pitch_score_log2(&self, log_freq: f32) -> f32 {
         self.assert_scan_lengths();
         self.sample_linear_log2(&self.consonance_score, log_freq)
     }
 
-    pub fn evaluate_pitch_state01(&self, freq_hz: f32) -> f32 {
+    pub fn evaluate_pitch_level01(&self, freq_hz: f32) -> f32 {
         self.assert_scan_lengths();
-        self.sample_linear(&self.consonance_state01, freq_hz)
+        self.sample_linear(&self.consonance_level01, freq_hz)
             .clamp(0.0, 1.0)
     }
 
-    pub fn evaluate_pitch_state01_log2(&self, log_freq: f32) -> f32 {
+    pub fn evaluate_pitch_level01_log2(&self, log_freq: f32) -> f32 {
         self.assert_scan_lengths();
-        self.sample_linear_log2(&self.consonance_state01, log_freq)
+        self.sample_linear_log2(&self.consonance_level01, log_freq)
             .clamp(0.0, 1.0)
     }
 
@@ -209,9 +220,9 @@ impl Landscape {
         self.evaluate_pitch_score(freq_hz)
     }
 
-    pub fn consonance_state01_at(&self, freq_hz: f32) -> f32 {
+    pub fn consonance_level01_at(&self, freq_hz: f32) -> f32 {
         self.assert_scan_lengths();
-        self.evaluate_pitch_state01(freq_hz)
+        self.evaluate_pitch_level01(freq_hz)
     }
 
     pub fn freq_bounds(&self) -> (f32, f32) {
@@ -224,41 +235,50 @@ impl Landscape {
 
     pub fn recompute_consonance(&mut self, params: &LandscapeParams) {
         self.assert_scan_lengths();
-        let alpha_h = params.consonance_harmonicity_weight.max(0.0);
-        let w0 = params.consonance_roughness_weight_floor.max(0.0);
-        let w1 = params.consonance_roughness_weight.max(0.0);
-        let beta = params.c_state_beta;
-        let theta = params.c_state_theta;
+
         if self.harmonicity01.len() != self.harmonicity.len() {
             self.harmonicity01 = vec![0.0; self.harmonicity.len()];
-        }
-        if self.consonance_state01.len() != self.consonance_score.len() {
-            self.consonance_state01 = vec![0.0; self.consonance_score.len()];
         }
         if self.roughness01.len() != self.roughness.len() {
             self.roughness01 = vec![0.0; self.roughness.len()];
         }
+
+        let n = self.consonance_score.len();
+        if self.consonance_level01.len() != n {
+            self.consonance_level01 = vec![0.0; n];
+        }
+        if self.consonance_weight.len() != n {
+            self.consonance_weight = vec![0.0; n];
+        }
+        if self.consonance_density.len() != n {
+            self.consonance_density = vec![0.0; n];
+        }
+        if self.consonance_energy.len() != n {
+            self.consonance_energy = vec![0.0; n];
+        }
+
         let perc_h_pot_scan = &self.harmonicity;
-        let perc_r_state01_scan = &self.roughness01;
         crate::core::psycho_state::h_pot_scan_to_h_state01_scan(
             perc_h_pot_scan,
             1.0,
             &mut self.harmonicity01,
         );
-        debug_assert_eq!(self.harmonicity01.len(), self.consonance_score.len());
-        debug_assert_eq!(perc_r_state01_scan.len(), self.consonance_score.len());
-        for ((c_score, c_state), (h01, r01)) in self
-            .consonance_score
-            .iter_mut()
-            .zip(self.consonance_state01.iter_mut())
-            .zip(self.harmonicity01.iter().zip(perc_r_state01_scan.iter()))
-        {
-            let c_score_val =
-                crate::core::psycho_state::compose_c_score(alpha_h, w0, w1, *h01, *r01);
-            let c_state_val = crate::core::psycho_state::compose_c_state(beta, theta, c_score_val);
-            *c_score = c_score_val;
-            *c_state = c_state_val.clamp(0.0, 1.0);
+
+        debug_assert_eq!(self.harmonicity01.len(), n);
+        debug_assert_eq!(self.roughness01.len(), n);
+
+        for i in 0..n {
+            let h01 = self.harmonicity01[i].clamp(0.0, 1.0);
+            let r01 = self.roughness01[i].clamp(0.0, 1.0);
+            let score = params.consonance_kernel.score(h01, r01);
+            self.consonance_score[i] = score;
+            self.consonance_level01[i] = params.consonance_representation.level01(score);
+            self.consonance_weight[i] = params.consonance_representation.weight(score).max(0.0);
+            self.consonance_energy[i] = params.consonance_representation.energy(score);
         }
+        params
+            .consonance_representation
+            .normalize_density(&self.consonance_weight, &mut self.consonance_density);
     }
 
     fn sample_linear(&self, data: &[f32], freq_hz: f32) -> f32 {
@@ -300,6 +320,7 @@ pub fn map_roughness01(r_norm: f32, r_half: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::consonance_kernel::{ConsonanceKernel, ConsonanceRepresentationParams};
     use crate::core::harmonicity_kernel::{HarmonicityKernel, HarmonicityParams};
     use crate::core::roughness_kernel::{KernelParams, RoughnessKernel};
 
@@ -307,16 +328,12 @@ mod tests {
         LandscapeParams {
             fs: 48_000.0,
             max_hist_cols: 1,
-            alpha: 0.0,
             roughness_kernel: RoughnessKernel::new(KernelParams::default(), 0.005),
             harmonicity_kernel: HarmonicityKernel::new(space, HarmonicityParams::default()),
+            consonance_kernel: ConsonanceKernel::default(),
+            consonance_representation: ConsonanceRepresentationParams::default(),
             roughness_scalar_mode: RoughnessScalarMode::Total,
             roughness_half: 0.1,
-            consonance_harmonicity_weight: 1.0,
-            consonance_roughness_weight_floor: 0.35,
-            consonance_roughness_weight: 0.5,
-            c_state_beta: 2.0,
-            c_state_theta: 0.0,
             loudness_exp: 1.0,
             ref_power: 1.0,
             tau_ms: 1.0,
@@ -334,9 +351,9 @@ mod tests {
         let r0 = map_roughness01(0.0, r_half);
         let r_half_out = map_roughness01(r_half, r_half);
         let r_big = map_roughness01(10.0, r_half);
-        assert!(r0 >= 0.0 && r0 <= 1.0);
+        assert!((0.0..=1.0).contains(&r0));
         assert!((r_half_out - 0.5).abs() < 1e-6);
-        assert!(r_big >= 0.0 && r_big <= 1.0);
+        assert!((0.0..=1.0).contains(&r_big));
     }
 
     #[test]
@@ -353,42 +370,38 @@ mod tests {
     }
 
     #[test]
-    fn c_state01_stays_in_range() {
+    fn consonance_level01_stays_in_range() {
+        let params = build_params(&Log2Space::new(100.0, 400.0, 12));
         let h01 = [0.0f32, 0.5, 1.0];
         let r01 = [0.0f32, 0.4, 1.0];
-        let alpha = 1.0;
-        let w0 = 0.35;
-        let w1 = 0.75;
-        let beta = 2.0;
-        let theta = 0.0;
         for &h in &h01 {
             for &r in &r01 {
-                let c_score = crate::core::psycho_state::compose_c_score(alpha, w0, w1, h, r);
-                let c_state = crate::core::psycho_state::compose_c_state(beta, theta, c_score);
-                assert!(c_state >= 0.0 && c_state <= 1.0);
+                let score = params.consonance_kernel.score(h, r);
+                let level = params.consonance_representation.level01(score);
+                assert!((0.0..=1.0).contains(&level));
             }
         }
     }
 
     #[test]
-    fn evaluate_pitch_state01_uses_consonance_state01() {
+    fn evaluate_pitch_level01_uses_consonance_level01() {
         let mut landscape = Landscape::new(Log2Space::new(100.0, 400.0, 12));
         landscape.consonance_score.fill(10.0);
-        landscape.consonance_state01.fill(0.3);
-        let val = landscape.evaluate_pitch_state01(200.0);
+        landscape.consonance_level01.fill(0.3);
+        let val = landscape.evaluate_pitch_level01(200.0);
         assert!((val - 0.3).abs() < 1e-6, "val={val}");
     }
 
     #[test]
-    fn evaluate_pitch_state01_is_clamped() {
+    fn evaluate_pitch_level01_is_clamped() {
         let mut landscape = Landscape::new(Log2Space::new(100.0, 400.0, 12));
-        landscape.consonance_state01.fill(1.2);
-        let val = landscape.evaluate_pitch_state01(200.0);
+        landscape.consonance_level01.fill(1.2);
+        let val = landscape.evaluate_pitch_level01(200.0);
         assert!((val - 1.0).abs() < 1e-6, "val={val}");
     }
 
     #[test]
-    fn consonance_state_matches_formula_after_updates() {
+    fn consonance_level_matches_kernel_and_representation() {
         let space = Log2Space::new(100.0, 400.0, 12);
         let params = build_params(&space);
         let mut landscape = Landscape::new(space);
@@ -398,23 +411,21 @@ mod tests {
         landscape.roughness01 = vec![0.4; n];
         landscape.recompute_consonance(&params);
 
-        let alpha_h = params.consonance_harmonicity_weight;
-        let w0 = params.consonance_roughness_weight_floor;
-        let w1 = params.consonance_roughness_weight;
-        let beta = params.c_state_beta;
-        let theta = params.c_state_theta;
         for i in 0..n {
             let h = landscape.harmonicity01[i].clamp(0.0, 1.0);
             let r = landscape.roughness01[i].clamp(0.0, 1.0);
-            let c_score = crate::core::psycho_state::compose_c_score(alpha_h, w0, w1, h, r);
-            let c_state = crate::core::psycho_state::compose_c_state(beta, theta, c_score);
-            let c = landscape.consonance_state01[i];
-            assert!((c - c_state).abs() < 1e-6, "i={i} c={c} c_state={c_state}");
+            let score = params.consonance_kernel.score(h, r);
+            let expected = params.consonance_representation.level01(score);
+            let got = landscape.consonance_level01[i];
+            assert!(
+                (got - expected).abs() < 1e-6,
+                "i={i} got={got} expected={expected}"
+            );
         }
     }
 
     #[test]
-    fn consonance_state01_independent_of_update_order() {
+    fn consonance_level01_independent_of_update_order() {
         let space = Log2Space::new(100.0, 400.0, 12);
         let params = build_params(&space);
         let mut a = Landscape::new(space.clone());
@@ -422,16 +433,14 @@ mod tests {
         a.harmonicity = vec![0.75; n];
         a.roughness01 = vec![0.35; n];
         a.recompute_consonance(&params);
-        let c_a = a.consonance_state01.clone();
+        let c_a = a.consonance_level01.clone();
 
         let mut b = Landscape::new(space);
         b.roughness01 = vec![0.35; n];
         b.harmonicity = vec![0.75; n];
         b.recompute_consonance(&params);
         for i in 0..n {
-            let da = c_a[i];
-            let db = b.consonance_state01[i];
-            assert!((da - db).abs() < 1e-6, "i={i} da={da} db={db}");
+            assert!((c_a[i] - b.consonance_level01[i]).abs() < 1e-6);
         }
     }
 
@@ -439,9 +448,12 @@ mod tests {
     fn consonance_score_decreases_with_roughness() {
         let space = Log2Space::new(100.0, 400.0, 12);
         let mut params = build_params(&space);
-        params.consonance_harmonicity_weight = 1.0;
-        params.consonance_roughness_weight_floor = 0.35;
-        params.consonance_roughness_weight = 1.0;
+        params.consonance_kernel = ConsonanceKernel {
+            a: 1.0,
+            b: -1.0,
+            c: 0.0,
+            d: 0.0,
+        };
 
         let mut landscape = Landscape::new(space);
         let n = landscape.roughness01.len();
@@ -467,6 +479,70 @@ mod tests {
     }
 
     #[test]
+    fn consonance_weight_non_negative_and_density_normalized() {
+        let space = Log2Space::new(100.0, 400.0, 12);
+        let params = build_params(&space);
+        let mut landscape = Landscape::new(space);
+        let n = landscape.roughness01.len();
+        landscape.harmonicity = vec![0.5; n];
+        landscape.roughness01 = vec![0.2; n];
+        landscape.recompute_consonance(&params);
+
+        for &w in &landscape.consonance_weight {
+            assert!(w >= 0.0, "weight should be non-negative: {w}");
+        }
+        let sum: f32 = landscape.consonance_density.iter().sum();
+        assert!((sum - 1.0).abs() < 1e-5, "density sum={sum}");
+    }
+
+    #[test]
+    fn recompute_consonance_sets_energy_and_density_consistently() {
+        let space = Log2Space::new(100.0, 400.0, 12);
+        let params = build_params(&space);
+        let mut landscape = Landscape::new(space);
+        let n = landscape.roughness01.len();
+        landscape.harmonicity01 = vec![0.7; n];
+        landscape.roughness01 = vec![0.3; n];
+        landscape.recompute_consonance(&params);
+
+        for i in 0..n {
+            let score = landscape.consonance_score[i];
+            let energy = landscape.consonance_energy[i];
+            assert!(
+                (energy + score).abs() < 1e-6,
+                "energy must be -score at i={i}: score={score} energy={energy}"
+            );
+        }
+        let density_sum: f32 = landscape.consonance_density.iter().sum();
+        assert!(
+            (density_sum - 1.0).abs() < 1e-5,
+            "consonance_density must sum to 1, got {density_sum}"
+        );
+    }
+
+    #[test]
+    fn recompute_consonance_keeps_level01_finite_and_bounded() {
+        let space = Log2Space::new(100.0, 400.0, 12);
+        let params = build_params(&space);
+        let mut landscape = Landscape::new(space);
+        let n = landscape.roughness01.len();
+        landscape.harmonicity01 = vec![0.7; n];
+        landscape.roughness01 = vec![0.3; n];
+        landscape.recompute_consonance(&params);
+
+        for (i, &level) in landscape.consonance_level01.iter().enumerate() {
+            assert!(
+                level.is_finite(),
+                "level01 must be finite at i={i}: {level}"
+            );
+            assert!(
+                (0.0..=1.0).contains(&level),
+                "level01 must be within [0,1] at i={i}: {level}"
+            );
+        }
+    }
+
+    #[test]
     fn resize_to_space_keeps_lengths_and_allows_recompute() {
         let space_a = Log2Space::new(100.0, 400.0, 12);
         let space_b = Log2Space::new(80.0, 800.0, 24);
@@ -481,7 +557,10 @@ mod tests {
         assert_eq!(landscape.harmonicity.len(), n);
         assert_eq!(landscape.harmonicity01.len(), n);
         assert_eq!(landscape.consonance_score.len(), n);
-        assert_eq!(landscape.consonance_state01.len(), n);
+        assert_eq!(landscape.consonance_level01.len(), n);
+        assert_eq!(landscape.consonance_weight.len(), n);
+        assert_eq!(landscape.consonance_density.len(), n);
+        assert_eq!(landscape.consonance_energy.len(), n);
         assert_eq!(landscape.subjective_intensity.len(), n);
         assert_eq!(landscape.nsgt_power.len(), n);
 

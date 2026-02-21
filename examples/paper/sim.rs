@@ -1,3 +1,4 @@
+use conchordal::core::consonance_kernel::{ConsonanceKernel, ConsonanceRepresentationParams};
 use conchordal::core::harmonicity_kernel::{HarmonicityKernel, HarmonicityParams};
 use conchordal::core::landscape::{
     Landscape, LandscapeParams, LandscapeUpdate, RoughnessScalarMode,
@@ -101,11 +102,11 @@ pub struct E3DeathRecord {
     pub birth_step: u32,
     pub death_step: u32,
     pub lifetime_steps: u32,
-    pub c_state_birth: f32,
-    pub c_state_firstk: f32,
-    pub avg_c_state_tick: f32,
-    pub c_state_std_over_life: f32,
-    pub avg_c_state_attack: f32,
+    pub c_level_birth: f32,
+    pub c_level_firstk: f32,
+    pub avg_c_level_tick: f32,
+    pub c_level_std_over_life: f32,
+    pub avg_c_level_attack: f32,
     pub attack_tick_count: u32,
 }
 
@@ -123,14 +124,14 @@ struct E3LifeState {
     life_id: u64,
     birth_step: u32,
     ticks: u32,
-    sum_c_state_tick: f32,
-    sum_c_state_tick_sq: f32,
-    sum_c_state_firstk: f32,
+    sum_c_level_tick: f32,
+    sum_c_level_tick_sq: f32,
+    sum_c_level_firstk: f32,
     firstk_count: u32,
-    c_state_birth: f32,
+    c_level_birth: f32,
     pending_birth: bool,
     was_alive: bool,
-    sum_c_state_attack: f32,
+    sum_c_level_attack: f32,
     attack_tick_count: u32,
 }
 
@@ -140,14 +141,14 @@ impl E3LifeState {
             life_id,
             birth_step: 0,
             ticks: 0,
-            sum_c_state_tick: 0.0,
-            sum_c_state_tick_sq: 0.0,
-            sum_c_state_firstk: 0.0,
+            sum_c_level_tick: 0.0,
+            sum_c_level_tick_sq: 0.0,
+            sum_c_level_firstk: 0.0,
             firstk_count: 0,
-            c_state_birth: 0.0,
+            c_level_birth: 0.0,
             pending_birth: true,
             was_alive: true,
-            sum_c_state_attack: 0.0,
+            sum_c_level_attack: 0.0,
             attack_tick_count: 0,
         }
     }
@@ -156,14 +157,14 @@ impl E3LifeState {
         self.life_id = life_id;
         self.birth_step = 0;
         self.ticks = 0;
-        self.sum_c_state_tick = 0.0;
-        self.sum_c_state_tick_sq = 0.0;
-        self.sum_c_state_firstk = 0.0;
+        self.sum_c_level_tick = 0.0;
+        self.sum_c_level_tick_sq = 0.0;
+        self.sum_c_level_firstk = 0.0;
         self.firstk_count = 0;
-        self.c_state_birth = 0.0;
+        self.c_level_birth = 0.0;
         self.pending_birth = true;
         self.was_alive = false;
-        self.sum_c_state_attack = 0.0;
+        self.sum_c_level_attack = 0.0;
         self.attack_tick_count = 0;
     }
 }
@@ -370,47 +371,47 @@ pub fn run_e3_collect_deaths(cfg: &E3RunConfig) -> Vec<E3DeathRecord> {
             let (attack_tick_count, attack_sum) = agent.take_attack_telemetry();
             if attack_tick_count > 0 {
                 state.attack_tick_count = state.attack_tick_count.saturating_add(attack_tick_count);
-                state.sum_c_state_attack += attack_sum;
+                state.sum_c_level_attack += attack_sum;
             }
             let alive = agent.is_alive();
 
             if alive {
-                let c_state = agent.last_consonance_state01();
+                let c_level = agent.last_consonance_level01();
                 if state.pending_birth {
                     state.birth_step = step as u32;
-                    state.c_state_birth = c_state;
+                    state.c_level_birth = c_level;
                     state.pending_birth = false;
                 }
                 state.ticks = state.ticks.saturating_add(1);
-                state.sum_c_state_tick += c_state;
-                state.sum_c_state_tick_sq += c_state * c_state;
+                state.sum_c_level_tick += c_level;
+                state.sum_c_level_tick_sq += c_level * c_level;
                 if state.firstk_count < first_k {
-                    state.sum_c_state_firstk += c_state;
+                    state.sum_c_level_firstk += c_level;
                     state.firstk_count += 1;
                 }
             }
 
             if state.was_alive && !alive {
                 let ticks = state.ticks.max(1);
-                let avg_c_state_tick = if state.ticks > 0 {
-                    state.sum_c_state_tick / state.ticks as f32
+                let avg_c_level_tick = if state.ticks > 0 {
+                    state.sum_c_level_tick / state.ticks as f32
                 } else {
                     0.0
                 };
-                let c_state_std_over_life = if state.ticks > 0 {
-                    let mean_sq = state.sum_c_state_tick_sq / state.ticks as f32;
-                    let var = (mean_sq - avg_c_state_tick * avg_c_state_tick).max(0.0);
+                let c_level_std_over_life = if state.ticks > 0 {
+                    let mean_sq = state.sum_c_level_tick_sq / state.ticks as f32;
+                    let var = (mean_sq - avg_c_level_tick * avg_c_level_tick).max(0.0);
                     var.sqrt()
                 } else {
                     0.0
                 };
-                let c_state_firstk = if state.firstk_count > 0 {
-                    state.sum_c_state_firstk / state.firstk_count as f32
+                let c_level_firstk = if state.firstk_count > 0 {
+                    state.sum_c_level_firstk / state.firstk_count as f32
                 } else {
                     0.0
                 };
-                let avg_c_state_attack = if state.attack_tick_count > 0 {
-                    state.sum_c_state_attack / state.attack_tick_count as f32
+                let avg_c_level_attack = if state.attack_tick_count > 0 {
+                    state.sum_c_level_attack / state.attack_tick_count as f32
                 } else {
                     f32::NAN
                 };
@@ -423,11 +424,11 @@ pub fn run_e3_collect_deaths(cfg: &E3RunConfig) -> Vec<E3DeathRecord> {
                     birth_step: state.birth_step,
                     death_step: step as u32,
                     lifetime_steps: ticks,
-                    c_state_birth: state.c_state_birth,
-                    c_state_firstk,
-                    avg_c_state_tick,
-                    c_state_std_over_life,
-                    avg_c_state_attack,
+                    c_level_birth: state.c_level_birth,
+                    c_level_firstk,
+                    avg_c_level_tick,
+                    c_level_std_over_life,
+                    avg_c_level_attack,
                     attack_tick_count: state.attack_tick_count,
                 });
 
@@ -1169,19 +1170,27 @@ fn make_landscape_params(
     const BASE_ROUGHNESS_FLOOR: f32 = 0.35;
     const BASE_ROUGHNESS_WEIGHT: f32 = 0.5;
     let wr = sanitize_roughness_weight_scale(roughness_weight_scale);
+    let w0 = BASE_ROUGHNESS_FLOOR * wr;
+    let w1 = BASE_ROUGHNESS_WEIGHT * wr;
     LandscapeParams {
         fs,
         max_hist_cols: 1,
-        alpha: 0.0,
         roughness_kernel: RoughnessKernel::new(KernelParams::default(), 0.005),
         harmonicity_kernel: HarmonicityKernel::new(space, HarmonicityParams::default()),
+        consonance_kernel: ConsonanceKernel {
+            a: 1.0,
+            b: -(w0 + w1),
+            c: w1,
+            d: 0.0,
+        },
+        consonance_representation: ConsonanceRepresentationParams {
+            beta: 2.0,
+            theta: 0.0,
+            temperature: 1.0,
+            epsilon: 1e-6,
+        },
         roughness_scalar_mode: RoughnessScalarMode::Total,
         roughness_half: 0.1,
-        consonance_harmonicity_weight: 1.0,
-        consonance_roughness_weight_floor: BASE_ROUGHNESS_FLOOR * wr,
-        consonance_roughness_weight: BASE_ROUGHNESS_WEIGHT * wr,
-        c_state_beta: 2.0,
-        c_state_theta: 0.0,
         loudness_exp: 1.0,
         ref_power: 1.0,
         tau_ms: 1.0,
@@ -1327,7 +1336,7 @@ fn sample_e4_initial_pitch_log2(
     let mut weights = Vec::with_capacity(max_idx - min_idx + 1);
     for i in min_idx..=max_idx {
         let w = landscape
-            .consonance_state01
+            .consonance_level01
             .get(i)
             .copied()
             .unwrap_or(0.0)
@@ -1518,9 +1527,9 @@ mod tests {
         );
 
         let diff_sum: f32 = landscape_m0
-            .consonance_state01
+            .consonance_level01
             .iter()
-            .zip(landscape_m1.consonance_state01.iter())
+            .zip(landscape_m1.consonance_level01.iter())
             .map(|(a, b)| (a - b).abs())
             .sum();
         assert!(

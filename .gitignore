@@ -34,6 +34,8 @@ sync_report-*.md
 chat_request.md
 test_report.txt
 test_status.txt
+test_report_release.txt
+test_status_release.txt
 
 # System/editor cruft
 .DS_Store

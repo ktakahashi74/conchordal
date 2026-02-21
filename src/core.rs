@@ -1,5 +1,6 @@
 pub mod a_weighting;
 pub mod analysis_worker;
+pub mod consonance_kernel;
 pub mod db;
 pub mod density;
 pub mod erb;

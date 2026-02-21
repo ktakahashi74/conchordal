@@ -18,6 +18,7 @@ use crate::sim::{
     run_e4_condition_tail_samples_with_wr, run_e4_mirror_schedule_samples,
     set_e4_runtime_overrides,
 };
+use conchordal::core::consonance_kernel::{ConsonanceKernel, ConsonanceRepresentationParams};
 use conchordal::core::erb::hz_to_erb;
 use conchordal::core::harmonicity_kernel::{HarmonicityKernel, HarmonicityParams};
 use conchordal::core::landscape::{LandscapeParams, RoughnessScalarMode};
@@ -41,8 +42,8 @@ const E2_LAMBDA: f32 = 0.15;
 const E2_SIGMA: f32 = 0.06;
 const E2_INIT_CONSONANT_EXCLUSION_ST: f32 = 0.35;
 const E2_INIT_MAX_TRIES: usize = 5000;
-const E2_C_STATE_BETA: f32 = 2.0;
-const E2_C_STATE_THETA: f32 = 0.0;
+const E2_C_LEVEL_BETA: f32 = 2.0;
+const E2_C_LEVEL_THETA: f32 = 0.0;
 const E2_ACCEPT_ENABLED: bool = true;
 const E2_ACCEPT_T0: f32 = 0.05;
 const E2_ACCEPT_TAU_STEPS: f32 = 30.0;
@@ -1178,16 +1179,22 @@ fn plot_e1_landscape_scan(
     let params = LandscapeParams {
         fs: 48_000.0,
         max_hist_cols: 1,
-        alpha: 0.0,
         roughness_kernel: roughness_kernel.clone(),
         harmonicity_kernel: harmonicity_kernel.clone(),
+        consonance_kernel: ConsonanceKernel {
+            a: 1.0,
+            b: -0.85,
+            c: 0.5,
+            d: 0.0,
+        },
+        consonance_representation: ConsonanceRepresentationParams {
+            beta: E2_C_LEVEL_BETA,
+            theta: E2_C_LEVEL_THETA,
+            temperature: 1.0,
+            epsilon: 1e-6,
+        },
         roughness_scalar_mode: RoughnessScalarMode::Total,
         roughness_half: 0.1,
-        consonance_harmonicity_weight: 1.0,
-        consonance_roughness_weight_floor: 0.35,
-        consonance_roughness_weight: 0.5,
-        c_state_beta: E2_C_STATE_BETA,
-        c_state_theta: E2_C_STATE_THETA,
         loudness_exp: 1.0,
         ref_power: 1.0,
         tau_ms: 1.0,
@@ -1219,14 +1226,11 @@ fn plot_e1_landscape_scan(
         &mut perc_h_state01_scan,
     );
 
-    let alpha_h = params.consonance_harmonicity_weight;
-    let w0 = params.consonance_roughness_weight_floor;
-    let w1 = params.consonance_roughness_weight;
     let mut perc_c_score_scan = vec![0.0f32; space.n_bins()];
     for i in 0..space.n_bins() {
         let h01 = perc_h_state01_scan[i];
         let r01 = perc_r_state01_scan[i];
-        let c_score = psycho_state::compose_c_score(alpha_h, w0, w1, h01, r01);
+        let c_score = params.consonance_kernel.score(h01, r01);
         perc_c_score_scan[i] = if c_score.is_finite() { c_score } else { 0.0 };
     }
 
@@ -1331,9 +1335,9 @@ fn plot_e2_emergent_harmony(
     let caption_suffix = e2_caption_suffix(phase_mode);
     let post_label = e2_post_label();
     let post_label_title = e2_post_label_title();
-    let baseline_ci95_c_state = std_series_to_ci95(&baseline_stats.std_c_state, baseline_stats.n);
-    let nohill_ci95_c_state = std_series_to_ci95(&nohill_stats.std_c_state, nohill_stats.n);
-    let norep_ci95_c_state = std_series_to_ci95(&norep_stats.std_c_state, norep_stats.n);
+    let baseline_ci95_c_level = std_series_to_ci95(&baseline_stats.std_c_level, baseline_stats.n);
+    let nohill_ci95_c_level = std_series_to_ci95(&nohill_stats.std_c_level, nohill_stats.n);
+    let norep_ci95_c_level = std_series_to_ci95(&norep_stats.std_c_level, norep_stats.n);
     let baseline_ci95_c = std_series_to_ci95(&baseline_stats.std_c_score_loo, baseline_stats.n);
     let nohill_ci95_c = std_series_to_ci95(&nohill_stats.std_c_score_loo, nohill_stats.n);
     let norep_ci95_c = std_series_to_ci95(&norep_stats.std_c_score_loo, norep_stats.n);
@@ -1364,8 +1368,8 @@ fn plot_e2_emergent_harmony(
     let c_score_csv = series_csv("step,mean_c_score", &baseline_run.mean_c_series);
     write_with_log(out_dir.join("paper_e2_c_score_timeseries.csv"), c_score_csv)?;
     write_with_log(
-        out_dir.join("paper_e2_c_state_timeseries.csv"),
-        series_csv("step,mean_c_state", &baseline_run.mean_c_state_series),
+        out_dir.join("paper_e2_c_level_timeseries.csv"),
+        series_csv("step,mean_c_level", &baseline_run.mean_c_level_series),
     )?;
     write_with_log(
         out_dir.join("paper_e2_mean_c_score_loo_over_time.csv"),
@@ -1444,12 +1448,12 @@ fn plot_e2_emergent_harmony(
         final_agents_csv(baseline_run),
     )?;
 
-    let mean_plot_path = out_dir.join("paper_e2_mean_c_state_over_time.svg");
+    let mean_plot_path = out_dir.join("paper_e2_mean_c_level_over_time.svg");
     render_series_plot_fixed_y(
         &mean_plot_path,
-        &format!("E2 Mean C_state Over Time ({caption_suffix})"),
-        "mean C_state",
-        &series_pairs(&baseline_run.mean_c_state_series),
+        &format!("E2 Mean C_level01 Over Time ({caption_suffix})"),
+        "mean C_level01",
+        &series_pairs(&baseline_run.mean_c_level_series),
         &marker_steps,
         0.0,
         1.0,
@@ -1672,20 +1676,20 @@ fn plot_e2_emergent_harmony(
         ),
     )?;
     write_with_log(
-        out_dir.join("paper_e2_seed_sweep_mean_c_state.csv"),
+        out_dir.join("paper_e2_seed_sweep_mean_c_level.csv"),
         sweep_csv(
             "step,mean,std,n",
-            &baseline_stats.mean_c_state,
-            &baseline_stats.std_c_state,
+            &baseline_stats.mean_c_level,
+            &baseline_stats.std_c_level,
             baseline_stats.n,
         ),
     )?;
     write_with_log(
-        out_dir.join("paper_e2_seed_sweep_mean_c_state_ci95.csv"),
+        out_dir.join("paper_e2_seed_sweep_mean_c_level_ci95.csv"),
         sweep_csv_with_ci95(
             "step,mean,std,ci95,n\n",
-            &baseline_stats.mean_c_state,
-            &baseline_stats.std_c_state,
+            &baseline_stats.mean_c_level,
+            &baseline_stats.std_c_level,
             baseline_stats.n,
         ),
     )?;
@@ -1721,22 +1725,22 @@ fn plot_e2_emergent_harmony(
         e2_kbins_sweep_csv(space, anchor_hz, phase_mode),
     )?;
 
-    let sweep_mean_path = out_dir.join("paper_e2_mean_c_state_over_time_seeds.svg");
+    let sweep_mean_path = out_dir.join("paper_e2_mean_c_level_over_time_seeds.svg");
     render_series_plot_with_band(
         &sweep_mean_path,
-        "E2 Mean C_state (seed sweep)",
-        "mean C_state",
-        &baseline_stats.mean_c_state,
-        &baseline_stats.std_c_state,
+        "E2 Mean C_level01 (seed sweep)",
+        "mean C_level01",
+        &baseline_stats.mean_c_level,
+        &baseline_stats.std_c_level,
         &marker_steps,
     )?;
-    let sweep_mean_ci_path = out_dir.join("paper_e2_mean_c_state_over_time_seeds_ci95.svg");
+    let sweep_mean_ci_path = out_dir.join("paper_e2_mean_c_level_over_time_seeds_ci95.svg");
     render_series_plot_with_band(
         &sweep_mean_ci_path,
-        "E2 Mean C_state (seed sweep, 95% CI)",
-        "mean C_state",
-        &baseline_stats.mean_c_state,
-        &baseline_ci95_c_state,
+        "E2 Mean C_level01 (seed sweep, 95% CI)",
+        "mean C_level01",
+        &baseline_stats.mean_c_level,
+        &baseline_ci95_c_level,
         &marker_steps,
     )?;
 
@@ -1775,19 +1779,19 @@ fn plot_e2_emergent_harmony(
         e2_controls_csv_c(&baseline_stats, &nohill_stats, &norep_stats),
     )?;
     write_with_log(
-        out_dir.join("paper_e2_control_mean_c_state.csv"),
-        e2_controls_csv_c_state(&baseline_stats, &nohill_stats, &norep_stats),
+        out_dir.join("paper_e2_control_mean_c_level.csv"),
+        e2_controls_csv_c_level(&baseline_stats, &nohill_stats, &norep_stats),
     )?;
 
-    let control_plot_path = out_dir.join("paper_e2_mean_c_state_over_time_controls.svg");
+    let control_plot_path = out_dir.join("paper_e2_mean_c_level_over_time_controls.svg");
     render_series_plot_multi(
         &control_plot_path,
-        "E2 Mean C_state (controls)",
-        "mean C_state",
+        "E2 Mean C_level01 (controls)",
+        "mean C_level01",
         &[
-            ("baseline", &baseline_stats.mean_c_state, BLUE),
-            ("no hill-climb", &nohill_stats.mean_c_state, RED),
-            ("no repulsion", &norep_stats.mean_c_state, GREEN),
+            ("baseline", &baseline_stats.mean_c_level, BLUE),
+            ("no hill-climb", &nohill_stats.mean_c_level, RED),
+            ("no repulsion", &norep_stats.mean_c_level, GREEN),
         ],
         &marker_steps,
     )?;
@@ -1849,15 +1853,15 @@ fn plot_e2_emergent_harmony(
         &marker_steps,
     )?;
 
-    let annotated_mean_path = out_dir.join("paper_e2_mean_c_state_over_time_seeds_annotated.svg");
-    render_e2_mean_c_state_annotated(
+    let annotated_mean_path = out_dir.join("paper_e2_mean_c_level_over_time_seeds_annotated.svg");
+    render_e2_mean_c_level_annotated(
         &annotated_mean_path,
-        &baseline_stats.mean_c_state,
-        &baseline_ci95_c_state,
-        &nohill_stats.mean_c_state,
-        &nohill_ci95_c_state,
-        &norep_stats.mean_c_state,
-        &norep_ci95_c_state,
+        &baseline_stats.mean_c_level,
+        &baseline_ci95_c_level,
+        &nohill_stats.mean_c_level,
+        &nohill_ci95_c_level,
+        &norep_stats.mean_c_level,
+        &norep_ci95_c_level,
         E2_BURN_IN,
         phase_mode.switch_step(),
     )?;
@@ -2369,7 +2373,7 @@ fn run_e2_once(
     let k_bins = k_from_semitones(step_semitones);
 
     let mut mean_c_series = Vec::with_capacity(E2_SWEEPS);
-    let mut mean_c_state_series = Vec::with_capacity(E2_SWEEPS);
+    let mut mean_c_level_series = Vec::with_capacity(E2_SWEEPS);
     let mut mean_c_score_loo_series = Vec::with_capacity(E2_SWEEPS);
     let mut mean_c_score_chosen_loo_series = Vec::with_capacity(E2_SWEEPS);
     let mut mean_score_series = Vec::with_capacity(E2_SWEEPS);
@@ -2394,7 +2398,7 @@ fn run_e2_once(
     let mut trajectory_semitones = (0..E2_N_AGENTS)
         .map(|_| Vec::with_capacity(E2_SWEEPS))
         .collect::<Vec<_>>();
-    let mut trajectory_c_state = (0..E2_N_AGENTS)
+    let mut trajectory_c_level = (0..E2_N_AGENTS)
         .map(|_| Vec::with_capacity(E2_SWEEPS))
         .collect::<Vec<_>>();
     let mut backtrack_targets = agent_indices.clone();
@@ -2443,8 +2447,8 @@ fn run_e2_once(
 
         let anchor_idx = nearest_bin(space, anchor_hz_current);
         let (env_scan, density_scan) = build_env_scans(space, anchor_idx, &agent_indices, &du_scan);
-        let (c_score_scan, c_state_scan, density_mass, r_state_stats) =
-            compute_c_score_state_scans(space, &workspace, &env_scan, &density_scan, &du_scan);
+        let (c_score_scan, c_level_scan, density_mass, r_state_stats) =
+            compute_c_score_level_scans(space, &workspace, &env_scan, &density_scan, &du_scan);
         if density_mass.is_finite() {
             density_mass_sum += density_mass;
             density_mass_min = density_mass_min.min(density_mass);
@@ -2459,7 +2463,7 @@ fn run_e2_once(
         }
 
         let mean_c = mean_at_indices(&c_score_scan, &agent_indices);
-        let mean_c_state = mean_at_indices(&c_state_scan, &agent_indices);
+        let mean_c_level = mean_at_indices(&c_level_scan, &agent_indices);
         let use_nohill = matches!(condition, E2Condition::NoHillClimb);
         let mut env_loo = if use_nohill {
             vec![0.0f32; env_scan.len()]
@@ -2487,12 +2491,12 @@ fn run_e2_once(
             f32::NAN
         };
         mean_c_series.push(mean_c);
-        mean_c_state_series.push(mean_c_state);
+        mean_c_level_series.push(mean_c_level);
 
         for (agent_id, &idx) in agent_indices.iter().enumerate() {
             let semitone = 12.0 * log2_ratio_scan[idx];
             trajectory_semitones[agent_id].push(semitone);
-            trajectory_c_state[agent_id].push(c_state_scan[idx]);
+            trajectory_c_level[agent_id].push(c_level_scan[idx]);
         }
 
         if sweep >= E2_BURN_IN {
@@ -2694,7 +2698,7 @@ fn run_e2_once(
     E2Run {
         seed,
         mean_c_series,
-        mean_c_state_series,
+        mean_c_level_series,
         mean_c_score_loo_series,
         mean_c_score_chosen_loo_series,
         mean_score_series,
@@ -2711,7 +2715,7 @@ fn run_e2_once(
         final_freqs_hz,
         final_log2_ratios,
         trajectory_semitones,
-        trajectory_c_state,
+        trajectory_c_level,
         anchor_shift,
         density_mass_mean,
         density_mass_min,
@@ -2792,9 +2796,9 @@ fn e2_seed_sweep(
 
     let n = runs.len();
     let mean_c = mean_std_series(runs.iter().map(|r| &r.mean_c_series).collect::<Vec<_>>());
-    let mean_c_state = mean_std_series(
+    let mean_c_level = mean_std_series(
         runs.iter()
-            .map(|r| &r.mean_c_state_series)
+            .map(|r| &r.mean_c_level_series)
             .collect::<Vec<_>>(),
     );
     let mean_c_score_loo = mean_std_series(
@@ -2818,8 +2822,8 @@ fn e2_seed_sweep(
         E2SweepStats {
             mean_c: mean_c.0,
             std_c: mean_c.1,
-            mean_c_state: mean_c_state.0,
-            std_c_state: mean_c_state.1,
+            mean_c_level: mean_c_level.0,
+            std_c_level: mean_c_level.1,
             mean_c_score_loo: mean_c_score_loo.0,
             std_c_score_loo: mean_c_score_loo.1,
             mean_score: mean_score.0,
@@ -2833,7 +2837,7 @@ fn e2_seed_sweep(
 
 fn e2_kbins_sweep_csv(space: &Log2Space, anchor_hz: f32, phase_mode: E2PhaseMode) -> String {
     let mut out = String::from(
-        "step_semitones,k_bins,mean_delta_c,mean_delta_c_state,mean_delta_c_score_loo\n",
+        "step_semitones,k_bins,mean_delta_c,mean_delta_c_level,mean_delta_c_score_loo\n",
     );
     for &step_semitones in &E2_STEP_SEMITONES_SWEEP {
         let (runs, _) = e2_seed_sweep(
@@ -2844,19 +2848,19 @@ fn e2_kbins_sweep_csv(space: &Log2Space, anchor_hz: f32, phase_mode: E2PhaseMode
             phase_mode,
         );
         let mut delta_c = Vec::with_capacity(runs.len());
-        let mut delta_c_state = Vec::with_capacity(runs.len());
+        let mut delta_c_level = Vec::with_capacity(runs.len());
         let mut delta_c_score_loo = Vec::with_capacity(runs.len());
         for run in &runs {
             let start = run.mean_c_series.first().copied().unwrap_or(0.0);
             let end = run.mean_c_series.last().copied().unwrap_or(start);
             delta_c.push(end - start);
-            let start_state = run.mean_c_state_series.first().copied().unwrap_or(0.0);
-            let end_state = run
-                .mean_c_state_series
+            let start_level = run.mean_c_level_series.first().copied().unwrap_or(0.0);
+            let end_level = run
+                .mean_c_level_series
                 .last()
                 .copied()
-                .unwrap_or(start_state);
-            delta_c_state.push(end_state - start_state);
+                .unwrap_or(start_level);
+            delta_c_level.push(end_level - start_level);
             let start_loo = run.mean_c_score_loo_series.first().copied().unwrap_or(0.0);
             let end_loo = run
                 .mean_c_score_loo_series
@@ -2866,14 +2870,14 @@ fn e2_kbins_sweep_csv(space: &Log2Space, anchor_hz: f32, phase_mode: E2PhaseMode
             delta_c_score_loo.push(end_loo - start_loo);
         }
         let (mean_delta_c, _) = mean_std_scalar(&delta_c);
-        let (mean_delta_c_state, _) = mean_std_scalar(&delta_c_state);
+        let (mean_delta_c_level, _) = mean_std_scalar(&delta_c_level);
         let (mean_delta_c_score_loo, _) = mean_std_scalar(&delta_c_score_loo);
         out.push_str(&format!(
             "{:.3},{},{:.6},{:.6},{:.6}\n",
             step_semitones,
             k_from_semitones(step_semitones),
             mean_delta_c,
-            mean_delta_c_state,
+            mean_delta_c_level,
             mean_delta_c_score_loo
         ));
     }
@@ -2888,7 +2892,7 @@ fn plot_e3_metabolic_selection(
     let conditions = [E3Condition::Baseline, E3Condition::NoRecharge];
 
     let mut long_csv = String::from(
-        "condition,seed,life_id,agent_id,birth_step,death_step,lifetime_steps,c_state01_birth,c_state01_firstk,avg_c_state01_tick,c_state01_std_over_life,avg_c_state01_attack,attack_tick_count\n",
+        "condition,seed,life_id,agent_id,birth_step,death_step,lifetime_steps,c_level01_birth,c_level01_firstk,avg_c_level01_tick,c_level01_std_over_life,avg_c_level01_attack,attack_tick_count\n",
     );
     let mut summary_csv = String::from(
         "condition,seed,n_deaths,pearson_r_firstk,pearson_p_firstk,spearman_rho_firstk,spearman_p_firstk,logrank_p_firstk,logrank_p_firstk_q25q75,median_high_firstk,median_low_firstk,pearson_r_birth,pearson_p_birth,spearman_rho_birth,spearman_p_birth,pearson_r_attack,pearson_p_attack,spearman_rho_attack,spearman_p_attack,n_attack_lives\n",
@@ -2938,11 +2942,11 @@ fn plot_e3_metabolic_selection(
                     rec.birth_step,
                     rec.death_step,
                     rec.lifetime_steps,
-                    rec.c_state_birth,
-                    rec.c_state_firstk,
-                    rec.avg_c_state_tick,
-                    rec.c_state_std_over_life,
-                    rec.avg_c_state_attack,
+                    rec.c_level_birth,
+                    rec.c_level_firstk,
+                    rec.avg_c_level_tick,
+                    rec.c_level_std_over_life,
+                    rec.avg_c_level_attack,
                     rec.attack_tick_count
                 ));
             }
@@ -2961,9 +2965,9 @@ fn plot_e3_metabolic_selection(
             ));
             let corr_stats_firstk = render_e3_scatter_with_stats(
                 &scatter_firstk_path,
-                "E3 C_state01_firstK vs Lifetime",
-                "C_state01_firstK",
-                &arrays.c_state_firstk,
+                "E3 C_level01_firstK vs Lifetime",
+                "C_level01_firstK",
+                &arrays.c_level_firstk,
                 &arrays.lifetimes,
                 seed ^ 0xE301_u64,
             )?;
@@ -2974,9 +2978,9 @@ fn plot_e3_metabolic_selection(
             ));
             let corr_stats_birth = render_e3_scatter_with_stats(
                 &scatter_birth_path,
-                "E3 C_state01_birth vs Lifetime",
-                "C_state01_birth",
-                &arrays.c_state_birth,
+                "E3 C_level01_birth vs Lifetime",
+                "C_level01_birth",
+                &arrays.c_level_birth,
                 &arrays.lifetimes,
                 seed ^ 0xE302_u64,
             )?;
@@ -2987,9 +2991,9 @@ fn plot_e3_metabolic_selection(
             ));
             let surv_firstk_stats = render_survival_split_plot(
                 &survival_path,
-                "E3 Survival by C_state01_firstK (median split)",
+                "E3 Survival by C_level01_firstK (median split)",
                 &arrays.lifetimes,
-                &arrays.c_state_firstk,
+                &arrays.c_level_firstk,
                 SplitKind::Median,
                 seed ^ 0xE310_u64,
             )?;
@@ -3000,9 +3004,9 @@ fn plot_e3_metabolic_selection(
             ));
             let surv_firstk_q_stats = render_survival_split_plot(
                 &survival_q_path,
-                "E3 Survival by C_state01_firstK (q25 vs q75)",
+                "E3 Survival by C_level01_firstK (q25 vs q75)",
                 &arrays.lifetimes,
-                &arrays.c_state_firstk,
+                &arrays.c_level_firstk,
                 SplitKind::Quartiles,
                 seed ^ 0xE311_u64,
             )?;
@@ -3017,8 +3021,8 @@ fn plot_e3_metabolic_selection(
                 ));
                 corr_stats_attack = Some(render_e3_scatter_with_stats(
                     &attack_scatter_path,
-                    "E3 C_state01_attack vs Lifetime",
-                    "C_state01_attack",
+                    "E3 C_level01_attack vs Lifetime",
+                    "C_level01_attack",
                     &attack_vals,
                     &attack_lifetimes,
                     seed ^ 0xE303_u64,
@@ -3030,7 +3034,7 @@ fn plot_e3_metabolic_selection(
                 ));
                 let _ = render_survival_split_plot(
                     &attack_survival_path,
-                    "E3 Survival by C_state01_attack (median split)",
+                    "E3 Survival by C_level01_attack (median split)",
                     &attack_lifetimes,
                     &attack_vals,
                     SplitKind::Median,
@@ -3039,22 +3043,22 @@ fn plot_e3_metabolic_selection(
             }
 
             if cond_label == "baseline" && seed == E3_SEEDS[0] {
-                let mut legacy_csv = String::from("life_id,lifetime_steps,c_state01_firstk\n");
+                let mut legacy_csv = String::from("life_id,lifetime_steps,c_level01_firstk\n");
                 let mut legacy_deaths = Vec::with_capacity(deaths.len());
                 for d in &deaths {
                     legacy_csv.push_str(&format!(
                         "{},{},{:.6}\n",
-                        d.life_id, d.lifetime_steps, d.c_state_firstk
+                        d.life_id, d.lifetime_steps, d.c_level_firstk
                     ));
-                    legacy_deaths.push((d.life_id as usize, d.lifetime_steps, d.c_state_firstk));
+                    legacy_deaths.push((d.life_id as usize, d.lifetime_steps, d.c_level_firstk));
                 }
                 write_with_log(out_dir.join("paper_e3_lifetimes.csv"), legacy_csv)?;
                 let legacy_scatter = out_dir.join("paper_e3_firstk_vs_lifetime.svg");
                 render_consonance_lifetime_scatter(&legacy_scatter, &legacy_deaths)?;
                 let legacy_survival = out_dir.join("paper_e3_survival_curve.svg");
                 render_survival_curve(&legacy_survival, &legacy_deaths)?;
-                let legacy_survival_c_state = out_dir.join("paper_e3_survival_by_c_state.svg");
-                render_survival_by_c_state(&legacy_survival_c_state, &legacy_deaths)?;
+                let legacy_survival_c_level = out_dir.join("paper_e3_survival_by_c_level.svg");
+                render_survival_by_c_level(&legacy_survival_c_level, &legacy_deaths)?;
             }
 
             summary_csv.push_str(&format!(
@@ -3125,20 +3129,20 @@ fn plot_e3_metabolic_selection(
             .find(|o| o.condition == E3Condition::NoRecharge && o.seed == rep_seed);
         if let (Some(base), Some(norecharge)) = (base, norecharge) {
             let base_scatter = build_scatter_data(
-                &base.arrays.c_state_firstk,
+                &base.arrays.c_level_firstk,
                 &base.arrays.lifetimes,
                 rep_seed ^ 0xE301_u64,
             );
             let norecharge_scatter = build_scatter_data(
-                &norecharge.arrays.c_state_firstk,
+                &norecharge.arrays.c_level_firstk,
                 &norecharge.arrays.lifetimes,
                 rep_seed ^ 0xE301_u64,
             );
             let compare_scatter = out_dir.join("paper_e3_firstk_scatter_compare.svg");
             render_scatter_compare(
                 &compare_scatter,
-                "E3 C_state01_firstK vs Lifetime",
-                "C_state01_firstK",
+                "E3 C_level01_firstK vs Lifetime",
+                "C_level01_firstK",
                 "Baseline",
                 &base_scatter,
                 "NoRecharge",
@@ -3147,20 +3151,20 @@ fn plot_e3_metabolic_selection(
 
             let base_surv = build_survival_data(
                 &base.arrays.lifetimes,
-                &base.arrays.c_state_firstk,
+                &base.arrays.c_level_firstk,
                 SplitKind::Median,
                 rep_seed ^ 0xE310_u64,
             );
             let norecharge_surv = build_survival_data(
                 &norecharge.arrays.lifetimes,
-                &norecharge.arrays.c_state_firstk,
+                &norecharge.arrays.c_level_firstk,
                 SplitKind::Median,
                 rep_seed ^ 0xE310_u64,
             );
             let compare_surv = out_dir.join("paper_e3_firstk_survival_compare.svg");
             render_survival_compare(
                 &compare_surv,
-                "E3 Survival by C_state01_firstK (median split)",
+                "E3 Survival by C_level01_firstK (median split)",
                 "Baseline",
                 &base_surv,
                 "NoRecharge",
@@ -3169,20 +3173,20 @@ fn plot_e3_metabolic_selection(
 
             let base_surv_q = build_survival_data(
                 &base.arrays.lifetimes,
-                &base.arrays.c_state_firstk,
+                &base.arrays.c_level_firstk,
                 SplitKind::Quartiles,
                 rep_seed ^ 0xE311_u64,
             );
             let norecharge_surv_q = build_survival_data(
                 &norecharge.arrays.lifetimes,
-                &norecharge.arrays.c_state_firstk,
+                &norecharge.arrays.c_level_firstk,
                 SplitKind::Quartiles,
                 rep_seed ^ 0xE311_u64,
             );
             let compare_surv_q = out_dir.join("paper_e3_firstk_survival_compare_q25q75.svg");
             render_survival_compare(
                 &compare_surv_q,
-                "E3 Survival by C_state01_firstK (q25 vs q75)",
+                "E3 Survival by C_level01_firstK (q25 vs q75)",
                 "Baseline",
                 &base_surv_q,
                 "NoRecharge",
@@ -3195,19 +3199,19 @@ fn plot_e3_metabolic_selection(
     let pooled_norecharge = e3_pooled_arrays(&seed_outputs, E3Condition::NoRecharge);
     let pooled_scatter_path = out_dir.join("paper_e3_firstk_scatter_compare_pooled.svg");
     let pooled_base_scatter = build_scatter_data(
-        &pooled_baseline.c_state_firstk,
+        &pooled_baseline.c_level_firstk,
         &pooled_baseline.lifetimes,
         0xE3B0_u64,
     );
     let pooled_nore_scatter = build_scatter_data(
-        &pooled_norecharge.c_state_firstk,
+        &pooled_norecharge.c_level_firstk,
         &pooled_norecharge.lifetimes,
         0xE3B1_u64,
     );
     render_scatter_compare(
         &pooled_scatter_path,
-        "E3 C_state01_firstK vs Lifetime (pooled)",
-        "C_state01_firstK",
+        "E3 C_level01_firstK vs Lifetime (pooled)",
+        "C_level01_firstK",
         "Baseline",
         &pooled_base_scatter,
         "NoRecharge",
@@ -3216,13 +3220,13 @@ fn plot_e3_metabolic_selection(
 
     let pooled_surv_base = build_survival_data(
         &pooled_baseline.lifetimes,
-        &pooled_baseline.c_state_firstk,
+        &pooled_baseline.c_level_firstk,
         SplitKind::Median,
         0xE3B2_u64,
     );
     let pooled_surv_nore = build_survival_data(
         &pooled_norecharge.lifetimes,
-        &pooled_norecharge.c_state_firstk,
+        &pooled_norecharge.c_level_firstk,
         SplitKind::Median,
         0xE3B3_u64,
     );
@@ -3238,20 +3242,20 @@ fn plot_e3_metabolic_selection(
 
     let pooled_surv_base_q = build_survival_data(
         &pooled_baseline.lifetimes,
-        &pooled_baseline.c_state_firstk,
+        &pooled_baseline.c_level_firstk,
         SplitKind::Quartiles,
         0xE3B4_u64,
     );
     let pooled_surv_nore_q = build_survival_data(
         &pooled_norecharge.lifetimes,
-        &pooled_norecharge.c_state_firstk,
+        &pooled_norecharge.c_level_firstk,
         SplitKind::Quartiles,
         0xE3B5_u64,
     );
     let pooled_surv_q_path = out_dir.join("paper_e3_firstk_survival_compare_pooled_q25q75.svg");
     render_survival_compare(
         &pooled_surv_q_path,
-        "E3 Survival by C_state01_firstK (q25 vs q75, pooled)",
+        "E3 Survival by C_level01_firstK (q25 vs q75, pooled)",
         "Baseline",
         &pooled_surv_base_q,
         "NoRecharge",
@@ -3296,8 +3300,8 @@ fn plot_e3_metabolic_selection(
     let pooled_hist_path = out_dir.join("paper_e3_firstk_hist.svg");
     render_e3_firstk_histogram(
         &pooled_hist_path,
-        &pooled_baseline.c_state_firstk,
-        &pooled_norecharge.c_state_firstk,
+        &pooled_baseline.c_level_firstk,
+        &pooled_norecharge.c_level_firstk,
         0.02,
         0.5,
     )?;
@@ -3310,21 +3314,21 @@ fn plot_e3_metabolic_selection(
 
 fn e3_extract_arrays(deaths: &[E3DeathRecord]) -> E3Arrays {
     let mut lifetimes = Vec::with_capacity(deaths.len());
-    let mut c_state_birth = Vec::with_capacity(deaths.len());
-    let mut c_state_firstk = Vec::with_capacity(deaths.len());
+    let mut c_level_birth = Vec::with_capacity(deaths.len());
+    let mut c_level_firstk = Vec::with_capacity(deaths.len());
     let mut avg_attack = Vec::with_capacity(deaths.len());
     let mut attack_tick_count = Vec::with_capacity(deaths.len());
     for d in deaths {
         lifetimes.push(d.lifetime_steps);
-        c_state_birth.push(d.c_state_birth);
-        c_state_firstk.push(d.c_state_firstk);
-        avg_attack.push(d.avg_c_state_attack);
+        c_level_birth.push(d.c_level_birth);
+        c_level_firstk.push(d.c_level_firstk);
+        avg_attack.push(d.avg_c_level_attack);
         attack_tick_count.push(d.attack_tick_count);
     }
     E3Arrays {
         lifetimes,
-        c_state_birth,
-        c_state_firstk,
+        c_level_birth,
+        c_level_firstk,
         avg_attack,
         attack_tick_count,
     }
@@ -3332,21 +3336,21 @@ fn e3_extract_arrays(deaths: &[E3DeathRecord]) -> E3Arrays {
 
 fn e3_pooled_arrays(outputs: &[E3SeedOutput], condition: E3Condition) -> E3Arrays {
     let mut lifetimes = Vec::new();
-    let mut c_state_birth = Vec::new();
-    let mut c_state_firstk = Vec::new();
+    let mut c_level_birth = Vec::new();
+    let mut c_level_firstk = Vec::new();
     let mut avg_attack = Vec::new();
     let mut attack_tick_count = Vec::new();
     for output in outputs.iter().filter(|o| o.condition == condition) {
         lifetimes.extend(output.arrays.lifetimes.iter().copied());
-        c_state_birth.extend(output.arrays.c_state_birth.iter().copied());
-        c_state_firstk.extend(output.arrays.c_state_firstk.iter().copied());
+        c_level_birth.extend(output.arrays.c_level_birth.iter().copied());
+        c_level_firstk.extend(output.arrays.c_level_firstk.iter().copied());
         avg_attack.extend(output.arrays.avg_attack.iter().copied());
         attack_tick_count.extend(output.arrays.attack_tick_count.iter().copied());
     }
     E3Arrays {
         lifetimes,
-        c_state_birth,
-        c_state_firstk,
+        c_level_birth,
+        c_level_firstk,
         avg_attack,
         attack_tick_count,
     }
@@ -3386,7 +3390,7 @@ fn render_e3_firstk_histogram(
     let root = bitmap_root(out_path, (1200, 700)).into_drawing_area();
     root.fill(&WHITE)?;
     let mut chart = ChartBuilder::on(&root)
-        .caption("E3 C_state01_firstK Histogram (pooled)", ("sans-serif", 20))
+        .caption("E3 C_level01_firstK Histogram (pooled)", ("sans-serif", 20))
         .margin(10)
         .x_label_area_size(40)
         .y_label_area_size(60)
@@ -3394,7 +3398,7 @@ fn render_e3_firstk_histogram(
 
     chart
         .configure_mesh()
-        .x_desc("C_state01_firstK")
+        .x_desc("C_level01_firstK")
         .y_desc("fraction")
         .x_labels(10)
         .draw()?;
@@ -3428,7 +3432,7 @@ fn render_e3_firstk_histogram(
 
 fn e3_lifetimes_csv(deaths: &[E3DeathRecord]) -> String {
     let mut out = String::from(
-        "life_id,agent_id,birth_step,death_step,lifetime_steps,c_state01_birth,c_state01_firstk,avg_c_state01_tick,c_state01_std_over_life,avg_c_state01_attack,attack_tick_count\n",
+        "life_id,agent_id,birth_step,death_step,lifetime_steps,c_level01_birth,c_level01_firstk,avg_c_level01_tick,c_level01_std_over_life,avg_c_level01_attack,attack_tick_count\n",
     );
     for d in deaths {
         out.push_str(&format!(
@@ -3438,11 +3442,11 @@ fn e3_lifetimes_csv(deaths: &[E3DeathRecord]) -> String {
             d.birth_step,
             d.death_step,
             d.lifetime_steps,
-            d.c_state_birth,
-            d.c_state_firstk,
-            d.avg_c_state_tick,
-            d.c_state_std_over_life,
-            d.avg_c_state_attack,
+            d.c_level_birth,
+            d.c_level_firstk,
+            d.avg_c_level_tick,
+            d.c_level_std_over_life,
+            d.avg_c_level_attack,
             d.attack_tick_count
         ));
     }
@@ -4295,7 +4299,7 @@ struct E2AnchorShiftStats {
 struct E2Run {
     seed: u64,
     mean_c_series: Vec<f32>,
-    mean_c_state_series: Vec<f32>,
+    mean_c_level_series: Vec<f32>,
     mean_c_score_loo_series: Vec<f32>,
     mean_c_score_chosen_loo_series: Vec<f32>,
     mean_score_series: Vec<f32>,
@@ -4312,7 +4316,7 @@ struct E2Run {
     final_freqs_hz: Vec<f32>,
     final_log2_ratios: Vec<f32>,
     trajectory_semitones: Vec<Vec<f32>>,
-    trajectory_c_state: Vec<Vec<f32>>,
+    trajectory_c_level: Vec<Vec<f32>>,
     anchor_shift: E2AnchorShiftStats,
     density_mass_mean: f32,
     density_mass_min: f32,
@@ -4330,8 +4334,8 @@ struct E2Run {
 struct E2SweepStats {
     mean_c: Vec<f32>,
     std_c: Vec<f32>,
-    mean_c_state: Vec<f32>,
-    std_c_state: Vec<f32>,
+    mean_c_level: Vec<f32>,
+    std_c_level: Vec<f32>,
     mean_c_score_loo: Vec<f32>,
     std_c_score_loo: Vec<f32>,
     mean_score: Vec<f32>,
@@ -4343,8 +4347,8 @@ struct E2SweepStats {
 
 struct E3Arrays {
     lifetimes: Vec<u32>,
-    c_state_birth: Vec<f32>,
-    c_state_firstk: Vec<f32>,
+    c_level_birth: Vec<f32>,
+    c_level_firstk: Vec<f32>,
     avg_attack: Vec<f32>,
     attack_tick_count: Vec<u32>,
 }
@@ -7026,8 +7030,8 @@ fn normalize_wr(wr: f32) -> f32 {
 fn build_consonance_workspace_with_wr(space: &Log2Space, wr: f32) -> ConsonanceWorkspace {
     let wr = normalize_wr(wr);
     let mut ws = build_consonance_workspace(space);
-    ws.params.consonance_roughness_weight_floor *= wr;
-    ws.params.consonance_roughness_weight *= wr;
+    ws.params.consonance_kernel.b *= wr;
+    ws.params.consonance_kernel.c *= wr;
     ws
 }
 
@@ -7144,17 +7148,10 @@ fn compute_e4_landscape_scans_with_env_params(
         &mut r,
     );
 
-    let alpha_h = workspace.params.consonance_harmonicity_weight;
-    let w0 = workspace.params.consonance_roughness_weight_floor;
-    let w1 = workspace.params.consonance_roughness_weight;
     let mut c = vec![0.0f32; space.n_bins()];
     for i in 0..space.n_bins() {
-        let score = psycho_state::compose_c_score(alpha_h, w0, w1, h[i], r[i]);
-        c[i] = psycho_state::compose_c_state(
-            workspace.params.c_state_beta,
-            workspace.params.c_state_theta,
-            score,
-        );
+        let score = workspace.params.consonance_kernel.score(h[i], r[i]);
+        c[i] = workspace.params.consonance_representation.level01(score);
     }
 
     let anchor_log2 = anchor_hz.max(1.0).log2();
@@ -9694,7 +9691,7 @@ fn render_e4_landscape_components_overlay(
     chart_c
         .configure_mesh()
         .x_desc("semitones")
-        .y_desc("C (state01)")
+        .y_desc("C_level01")
         .draw()?;
     for (i, row) in rows.iter().enumerate() {
         let color = Palette99::pick(i).mix(0.90);
@@ -9895,7 +9892,9 @@ fn e4_wr_units_meta_text() -> String {
     ));
     out.push_str("- fingerprint folding: abs_mod_1200\n");
     out.push_str("- wr summary error_kind: bootstrap_pctl95 (non-parametric percentile CI)\n");
-    out.push_str("- landscape components: H_lower/H_upper/H/R/C are state01 on Log2 grid\n");
+    out.push_str(
+        "- landscape components: H_lower/H_upper/H/R are state01 and C is level01 on Log2 grid\n",
+    );
     out.push_str("- oracle1: greedy top-C peaks (K=population)\n");
     out.push_str("- oracle2: weighted sampling from top-C peaks\n");
     out
@@ -13499,16 +13498,22 @@ fn build_consonance_workspace(space: &Log2Space) -> ConsonanceWorkspace {
     let params = LandscapeParams {
         fs: 48_000.0,
         max_hist_cols: 1,
-        alpha: 0.0,
         roughness_kernel,
         harmonicity_kernel,
+        consonance_kernel: ConsonanceKernel {
+            a: 1.0,
+            b: -0.85,
+            c: 0.5,
+            d: 0.0,
+        },
+        consonance_representation: ConsonanceRepresentationParams {
+            beta: E2_C_LEVEL_BETA,
+            theta: E2_C_LEVEL_THETA,
+            temperature: 1.0,
+            epsilon: 1e-6,
+        },
         roughness_scalar_mode: RoughnessScalarMode::Total,
         roughness_half: 0.1,
-        consonance_harmonicity_weight: 1.0,
-        consonance_roughness_weight_floor: 0.35,
-        consonance_roughness_weight: 0.5,
-        c_state_beta: E2_C_STATE_BETA,
-        c_state_theta: E2_C_STATE_THETA,
         loudness_exp: 1.0,
         ref_power: 1.0,
         tau_ms: 1.0,
@@ -13561,7 +13566,7 @@ fn r_state01_stats(scan: &[f32]) -> RState01Stats {
     }
 }
 
-fn compute_c_score_state_scans(
+fn compute_c_score_level_scans(
     space: &Log2Space,
     workspace: &ConsonanceWorkspace,
     env_scan: &[f32],
@@ -13603,27 +13608,17 @@ fn compute_c_score_state_scans(
     );
 
     let mut c_score_scan = vec![0.0f32; space.n_bins()];
-    let mut c_state_scan = vec![0.0f32; space.n_bins()];
-    let alpha_h = workspace.params.consonance_harmonicity_weight;
-    let w0 = workspace.params.consonance_roughness_weight_floor;
-    let w1 = workspace.params.consonance_roughness_weight;
+    let mut c_level_scan = vec![0.0f32; space.n_bins()];
     for i in 0..space.n_bins() {
-        let c_score = psycho_state::compose_c_score(
-            alpha_h,
-            w0,
-            w1,
-            perc_h_state01_scan[i],
-            perc_r_state01_scan[i],
-        );
-        let c_state = psycho_state::compose_c_state(
-            workspace.params.c_state_beta,
-            workspace.params.c_state_theta,
-            c_score,
-        );
+        let c_score = workspace
+            .params
+            .consonance_kernel
+            .score(perc_h_state01_scan[i], perc_r_state01_scan[i]);
+        let c_level = workspace.params.consonance_representation.level01(c_score);
         c_score_scan[i] = c_score;
-        c_state_scan[i] = c_state.clamp(0.0, 1.0);
+        c_level_scan[i] = c_level.clamp(0.0, 1.0);
     }
-    (c_score_scan, c_state_scan, density_mass, r_state_stats)
+    (c_score_scan, c_level_scan, density_mass, r_state_stats)
 }
 
 struct UpdateStats {
@@ -13897,7 +13892,7 @@ fn update_one_agent_scored_loo(
     let denom = du_scan[agent_idx].max(1e-12);
     density_loo[agent_idx] = (density_loo[agent_idx] - 1.0 / denom).max(0.0);
     let (c_score_scan, _, _, _) =
-        compute_c_score_state_scans(space, workspace, env_loo, density_loo, du_scan);
+        compute_c_score_level_scans(space, workspace, env_loo, density_loo, du_scan);
 
     let current_log2 = log2_ratio_scan[agent_idx];
     let skip_repulsion = lambda <= 0.0;
@@ -14324,7 +14319,7 @@ fn update_agent_indices_scored_stats_with_order_loo(
         let denom = du_scan[agent_idx].max(1e-12);
         density_loo[agent_idx] = (density_loo[agent_idx] - 1.0 / denom).max(0.0);
         let (c_score_scan, _, _, _) =
-            compute_c_score_state_scans(space, workspace, &env_loo, &density_loo, du_scan);
+            compute_c_score_level_scans(space, workspace, &env_loo, &density_loo, du_scan);
 
         let current_idx = prev_indices[agent_i];
         let current_log2 = log2_ratio_scan[current_idx];
@@ -14642,7 +14637,7 @@ fn mean_c_score_loo_at_indices_with_prev_reused(
         let denom = du_scan[prev_idx].max(1e-12);
         density_loo[prev_idx] = (density_loo[prev_idx] - 1.0 / denom).max(0.0);
         let (c_score_scan, _, _, _) =
-            compute_c_score_state_scans(space, workspace, env_loo, density_loo, du_scan);
+            compute_c_score_level_scans(space, workspace, env_loo, density_loo, du_scan);
         let value = c_score_scan[eval_idx];
         if value.is_finite() {
             sum += value;
@@ -14725,7 +14720,7 @@ fn sweep_csv(header: &str, mean: &[f32], std: &[f32], n: usize) -> String {
     out
 }
 
-fn e2_controls_csv_c_state(
+fn e2_controls_csv_c_level(
     baseline: &E2SweepStats,
     nohill: &E2SweepStats,
     norep: &E2SweepStats,
@@ -14734,19 +14729,19 @@ fn e2_controls_csv_c_state(
         "step,baseline_mean,baseline_std,nohill_mean,nohill_std,norep_mean,norep_std\n",
     );
     let len = baseline
-        .mean_c_state
+        .mean_c_level
         .len()
-        .min(nohill.mean_c_state.len())
-        .min(norep.mean_c_state.len());
+        .min(nohill.mean_c_level.len())
+        .min(norep.mean_c_level.len());
     for i in 0..len {
         out.push_str(&format!(
             "{i},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6}\n",
-            baseline.mean_c_state[i],
-            baseline.std_c_state[i],
-            nohill.mean_c_state[i],
-            nohill.std_c_state[i],
-            norep.mean_c_state[i],
-            norep.std_c_state[i]
+            baseline.mean_c_level[i],
+            baseline.std_c_level[i],
+            nohill.mean_c_level[i],
+            nohill.std_c_level[i],
+            norep.mean_c_level[i],
+            norep.std_c_level[i]
         ));
     }
     out
@@ -14780,14 +14775,14 @@ fn e2_controls_csv_c(
 }
 
 fn trajectories_csv(run: &E2Run) -> String {
-    let mut out = String::from("step,agent_id,semitones,c_state\n");
+    let mut out = String::from("step,agent_id,semitones,c_level\n");
     for (agent_id, semis) in run.trajectory_semitones.iter().enumerate() {
-        let c_state = &run.trajectory_c_state[agent_id];
-        let len = semis.len().min(c_state.len());
+        let c_level = &run.trajectory_c_level[agent_id];
+        let len = semis.len().min(c_level.len());
         for step in 0..len {
             out.push_str(&format!(
                 "{step},{agent_id},{:.6},{:.6}\n",
-                semis[step], c_state[step]
+                semis[step], c_level[step]
             ));
         }
     }
@@ -14807,19 +14802,19 @@ fn anchor_shift_csv(run: &E2Run) -> String {
 
 fn e2_summary_csv(runs: &[E2Run]) -> String {
     let mut out = String::from(
-        "seed,init_mode,steps,burn_in,mean_c_step0,mean_c_step_end,delta_c,mean_c_state_step0,mean_c_state_step_end,delta_c_state,mean_c_score_loo_step0,mean_c_score_loo_step_end,delta_c_score_loo\n",
+        "seed,init_mode,steps,burn_in,mean_c_step0,mean_c_step_end,delta_c,mean_c_level_step0,mean_c_level_step_end,delta_c_level,mean_c_score_loo_step0,mean_c_score_loo_step_end,delta_c_score_loo\n",
     );
     for run in runs {
         let start = run.mean_c_series.first().copied().unwrap_or(0.0);
         let end = run.mean_c_series.last().copied().unwrap_or(start);
         let delta = end - start;
-        let start_state = run.mean_c_state_series.first().copied().unwrap_or(0.0);
-        let end_state = run
-            .mean_c_state_series
+        let start_level = run.mean_c_level_series.first().copied().unwrap_or(0.0);
+        let end_level = run
+            .mean_c_level_series
             .last()
             .copied()
-            .unwrap_or(start_state);
-        let delta_state = end_state - start_state;
+            .unwrap_or(start_level);
+        let delta_level = end_level - start_level;
         let start_loo = run.mean_c_score_loo_series.first().copied().unwrap_or(0.0);
         let end_loo = run
             .mean_c_score_loo_series
@@ -14836,9 +14831,9 @@ fn e2_summary_csv(runs: &[E2Run]) -> String {
             start,
             end,
             delta,
-            start_state,
-            end_state,
-            delta_state,
+            start_level,
+            end_level,
+            delta_level,
             start_loo,
             end_loo,
             delta_loo
@@ -15122,8 +15117,8 @@ fn e2_meta_text(
         E2_BACKTRACK_ALLOW_EPS
     ));
     out.push_str(&format!("E2_SEMITONE_EPS={:.6}\n", E2_SEMITONE_EPS));
-    out.push_str(&format!("C_STATE_BETA={:.3}\n", E2_C_STATE_BETA));
-    out.push_str(&format!("C_STATE_THETA={:.3}\n", E2_C_STATE_THETA));
+    out.push_str(&format!("C_LEVEL_BETA={:.3}\n", E2_C_LEVEL_BETA));
+    out.push_str(&format!("C_LEVEL_THETA={:.3}\n", E2_C_LEVEL_THETA));
     out.push_str(&format!("ROUGHNESS_REF_EPS={:.3e}\n", roughness_ref_eps));
     out.push_str(&format!("ROUGHNESS_K={:.3}\n", roughness_k));
     out.push_str(&format!("R_REF_PEAK={:.6}\n", r_ref_peak));
@@ -15203,7 +15198,7 @@ fn e3_metric_definition_text() -> String {
     let mut out = String::new();
     out.push_str("E3 metric definitions\n");
     out.push_str(
-        "C is the 0-1 score passed into ArticulationCore::process as `consonance` (agent.last_consonance_state01()).\n",
+        "C is the 0-1 score passed into ArticulationCore::process as `consonance` (agent.last_consonance_level01()).\n",
     );
     out.push_str("C_firstK definition: mean over first K=20 ticks after birth (0..1).\n");
     out.push_str("Metabolism update (conceptual):\n");
@@ -15219,7 +15214,7 @@ fn e3_metric_definition_text() -> String {
         "Representative seed is chosen by the median Pearson r of baseline C_firstK vs lifetime; pooled plots concatenate all seeds.\n",
     );
     out.push_str(
-        "c_state01_birth=first tick value; c_state01_firstk=mean of first K ticks; avg_c_state01_tick=mean over life; c_state01_std_over_life=std over life; avg_c_state01_attack=mean over attack ticks.\n",
+        "c_level01_birth=first tick value; c_level01_firstk=mean of first K ticks; avg_c_level01_tick=mean over life; c_level01_std_over_life=std over life; avg_c_level01_attack=mean over attack ticks.\n",
     );
     out
 }
@@ -15231,7 +15226,7 @@ fn pick_representative_run_index(runs: &[E2Run]) -> usize {
     let mut scored: Vec<(usize, f32)> = runs
         .iter()
         .enumerate()
-        .map(|(i, r)| (i, r.mean_c_state_series.last().copied().unwrap_or(0.0)))
+        .map(|(i, r)| (i, r.mean_c_level_series.last().copied().unwrap_or(0.0)))
         .collect();
     scored.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
     scored[scored.len() / 2].0
@@ -15241,14 +15236,14 @@ fn representative_seed_text(runs: &[E2Run], rep_index: usize, phase_mode: E2Phas
     let mut scored: Vec<(usize, f32)> = runs
         .iter()
         .enumerate()
-        .map(|(i, r)| (i, r.mean_c_state_series.last().copied().unwrap_or(0.0)))
+        .map(|(i, r)| (i, r.mean_c_level_series.last().copied().unwrap_or(0.0)))
         .collect();
     scored.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
 
     let metric_label = e2_post_label();
     let pre_label = e2_pre_label();
     let pre_step = e2_pre_step();
-    let mut out = format!("metric={metric_label}_mean_c_state\n");
+    let mut out = format!("metric={metric_label}_mean_c_level\n");
     out.push_str(&format!("phase_mode={}\n", phase_mode.label()));
     if let Some(step) = phase_mode.switch_step() {
         out.push_str(&format!("phase_switch_step={step}\n"));
@@ -15259,11 +15254,11 @@ fn representative_seed_text(runs: &[E2Run], rep_index: usize, phase_mode: E2Phas
     }
     let rep_metric = runs
         .get(rep_index)
-        .and_then(|r| r.mean_c_state_series.last().copied())
+        .and_then(|r| r.mean_c_level_series.last().copied())
         .unwrap_or(0.0);
     let rep_pre = runs
         .get(rep_index)
-        .and_then(|r| r.mean_c_state_series.get(pre_step).copied())
+        .and_then(|r| r.mean_c_level_series.get(pre_step).copied())
         .unwrap_or(0.0);
     let rep_seed = runs.get(rep_index).map(|r| r.seed).unwrap_or(0);
     let rep_rank = scored
@@ -17205,7 +17200,7 @@ fn draw_trajectory_panel(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn render_e2_mean_c_state_annotated(
+fn render_e2_mean_c_level_annotated(
     out_path: &Path,
     baseline_mean: &[f32],
     baseline_std: &[f32],
@@ -17231,7 +17226,7 @@ fn render_e2_mean_c_state_annotated(
     let panels = root.split_evenly((2, 1));
     draw_e2_timeseries_controls_panel(
         &panels[0],
-        "E2 Mean C_state (annotated controls, 95% CI)",
+        "E2 Mean C_level01 (annotated controls, 95% CI)",
         baseline_mean,
         baseline_std,
         nohill_mean,
@@ -18898,7 +18893,7 @@ fn render_consonance_lifetime_scatter(
     root.fill(&WHITE)?;
 
     let mut chart = ChartBuilder::on(&root)
-        .caption("E3 C_state01 vs Lifetime", ("sans-serif", 20))
+        .caption("E3 C_level01 vs Lifetime", ("sans-serif", 20))
         .margin(10)
         .x_label_area_size(40)
         .y_label_area_size(60)
@@ -18906,13 +18901,13 @@ fn render_consonance_lifetime_scatter(
 
     chart
         .configure_mesh()
-        .x_desc("avg C_state01")
+        .x_desc("avg C_level01")
         .y_desc("lifetime (steps)")
         .draw()?;
 
     let points = deaths
         .iter()
-        .map(|(_, lifetime, avg_c_state)| (*avg_c_state, *lifetime as f32));
+        .map(|(_, lifetime, avg_c_level)| (*avg_c_level, *lifetime as f32));
     chart.draw_series(points.map(|(x, y)| Circle::new((x, y), 3, RED.filled())))?;
 
     root.present()?;
@@ -18950,27 +18945,27 @@ fn render_survival_curve(
     Ok(())
 }
 
-fn render_survival_by_c_state(
+fn render_survival_by_c_level(
     out_path: &Path,
     deaths: &[(usize, u32, f32)],
 ) -> Result<(), Box<dyn Error>> {
     if deaths.is_empty() {
         return Ok(());
     }
-    let mut c_state_values: Vec<f32> = deaths.iter().map(|(_, _, c_state)| *c_state).collect();
-    c_state_values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    let median = if c_state_values.len().is_multiple_of(2) {
-        let hi = c_state_values.len() / 2;
+    let mut c_level_values: Vec<f32> = deaths.iter().map(|(_, _, c_level)| *c_level).collect();
+    c_level_values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let median = if c_level_values.len().is_multiple_of(2) {
+        let hi = c_level_values.len() / 2;
         let lo = hi.saturating_sub(1);
-        0.5 * (c_state_values[lo] + c_state_values[hi])
+        0.5 * (c_level_values[lo] + c_level_values[hi])
     } else {
-        c_state_values[c_state_values.len() / 2]
+        c_level_values[c_level_values.len() / 2]
     };
 
     let mut high: Vec<u32> = Vec::new();
     let mut low: Vec<u32> = Vec::new();
-    for (_, lifetime, c_state) in deaths {
-        if *c_state >= median {
+    for (_, lifetime, c_level) in deaths {
+        if *c_level >= median {
             high.push(*lifetime);
         } else {
             low.push(*lifetime);
@@ -18990,7 +18985,7 @@ fn render_survival_by_c_state(
     root.fill(&WHITE)?;
     let mut chart = ChartBuilder::on(&root)
         .caption(
-            "E3 Survival by C_state01 (Median Split)",
+            "E3 Survival by C_level01 (Median Split)",
             ("sans-serif", 20),
         )
         .margin(10)
@@ -19007,13 +19002,13 @@ fn render_survival_by_c_state(
     if !high_series.is_empty() {
         chart
             .draw_series(LineSeries::new(high_series, &BLUE))?
-            .label("avg C_state01 >= median")
+            .label("avg C_level01 >= median")
             .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], BLUE));
     }
     if !low_series.is_empty() {
         chart
             .draw_series(LineSeries::new(low_series, &RED))?
-            .label("avg C_state01 < median")
+            .label("avg C_level01 < median")
             .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], RED));
     }
 
@@ -19824,7 +19819,7 @@ mod tests {
         E2Run {
             seed,
             mean_c_series: vec![metric],
-            mean_c_state_series: vec![metric],
+            mean_c_level_series: vec![metric],
             mean_c_score_loo_series: vec![metric],
             mean_c_score_chosen_loo_series: vec![metric],
             mean_score_series: vec![0.0],
@@ -19841,7 +19836,7 @@ mod tests {
             final_freqs_hz: Vec::new(),
             final_log2_ratios: Vec::new(),
             trajectory_semitones: Vec::new(),
-            trajectory_c_state: Vec::new(),
+            trajectory_c_level: Vec::new(),
             anchor_shift: E2AnchorShiftStats {
                 step: 0,
                 anchor_hz_before: 0.0,
@@ -19919,22 +19914,22 @@ mod tests {
         let anchor_idx = space.n_bins() / 2;
         let (env_scan, mut density_scan) = build_env_scans(&space, anchor_idx, &[], &du_scan);
 
-        let (_, c_state_a, _, _) =
-            compute_c_score_state_scans(&space, &workspace, &env_scan, &density_scan, &du_scan);
+        let (_, c_level_a, _, _) =
+            compute_c_score_level_scans(&space, &workspace, &env_scan, &density_scan, &du_scan);
 
         for v in density_scan.iter_mut() {
             *v *= 4.0;
         }
-        let (_, c_state_b, _, _) =
-            compute_c_score_state_scans(&space, &workspace, &env_scan, &density_scan, &du_scan);
+        let (_, c_level_b, _, _) =
+            compute_c_score_level_scans(&space, &workspace, &env_scan, &density_scan, &du_scan);
 
-        assert_eq!(c_state_a.len(), c_state_b.len());
-        for i in 0..c_state_a.len() {
+        assert_eq!(c_level_a.len(), c_level_b.len());
+        for i in 0..c_level_a.len() {
             assert!(
-                (c_state_a[i] - c_state_b[i]).abs() < 1e-5,
+                (c_level_a[i] - c_level_b[i]).abs() < 1e-5,
                 "i={i} a={} b={}",
-                c_state_a[i],
-                c_state_b[i]
+                c_level_a[i],
+                c_level_b[i]
             );
         }
     }
@@ -21222,8 +21217,8 @@ mod tests {
         let space = Log2Space::new(200.0, 400.0, 12);
         assert!(space.n_bins() >= 3);
         let mut workspace = build_consonance_workspace(&space);
-        workspace.params.consonance_roughness_weight_floor = 0.0;
-        workspace.params.consonance_roughness_weight = 0.0;
+        workspace.params.consonance_kernel.b = 0.0;
+        workspace.params.consonance_kernel.c = 0.0;
 
         let (_erb_scan, du_scan) = erb_grid_for_space(&space);
         let anchor_idx = space.n_bins() / 2;
@@ -21272,7 +21267,7 @@ mod tests {
 
         let (env_anchor, density_anchor) = build_env_scans(&space, anchor_idx, &[], &du_scan);
         let (c_score_scan, _, _, _) =
-            compute_c_score_state_scans(&space, &workspace, &env_anchor, &density_anchor, &du_scan);
+            compute_c_score_level_scans(&space, &workspace, &env_anchor, &density_anchor, &du_scan);
 
         let mut max_idx = 0usize;
         let mut max_val = f32::NEG_INFINITY;

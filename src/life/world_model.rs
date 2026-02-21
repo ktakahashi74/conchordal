@@ -52,14 +52,14 @@ impl TerrainPredictor {
         (tau_tick, horizon_tick)
     }
 
-    fn observe_consonance_state01(&mut self, tick: Tick, scan: Arc<[f32]>, space: &Log2Space) {
-        space.assert_scan_len_named(&scan, "perc_c_state01_scan");
+    fn observe_consonance_level01(&mut self, tick: Tick, scan: Arc<[f32]>, space: &Log2Space) {
+        space.assert_scan_len_named(&scan, "perc_c_level01_scan");
         self.prev_obs = self.last_obs.take();
         self.last_obs = Some((tick, scan));
         self.cache_pred_next_gate = None;
     }
 
-    fn predict_consonance_state01_at(
+    fn predict_consonance_level01_at(
         &self,
         tick: Tick,
         time: &Timebase,
@@ -67,9 +67,9 @@ impl TerrainPredictor {
         space: &Log2Space,
     ) -> Option<Arc<[f32]>> {
         let (last_tick, last_scan) = self.last_obs.as_ref()?;
-        space.assert_scan_len_named(last_scan, "pred_c_state01_scan");
+        space.assert_scan_len_named(last_scan, "pred_c_level01_scan");
         if let Some((prev_tick, prev_scan)) = self.prev_obs.as_ref() {
-            space.assert_scan_len_named(prev_scan, "pred_c_state01_scan_prev");
+            space.assert_scan_len_named(prev_scan, "pred_c_level01_scan_prev");
             if prev_scan.len() != last_scan.len() {
                 return Some(Arc::clone(last_scan));
             }
@@ -149,15 +149,15 @@ impl WorldModel {
         }
     }
 
-    pub fn observe_consonance_state01(&mut self, tick: Tick, scan: Arc<[f32]>) {
+    pub fn observe_consonance_level01(&mut self, tick: Tick, scan: Arc<[f32]>) {
         // NSGT is right-aligned, so observations are stamped at frame_end_tick.
         self.terrain_predictor
-            .observe_consonance_state01(tick, scan, &self.space);
+            .observe_consonance_level01(tick, scan, &self.space);
         self.last_pred_next_gate = None;
     }
 
-    pub fn predict_consonance_state01_at(&self, tick: Tick) -> Option<Arc<[f32]>> {
-        self.terrain_predictor.predict_consonance_state01_at(
+    pub fn predict_consonance_level01_at(&self, tick: Tick) -> Option<Arc<[f32]>> {
+        self.terrain_predictor.predict_consonance_level01_at(
             tick,
             &self.time,
             &self.last_rhythm,
@@ -173,7 +173,7 @@ impl WorldModel {
         TerrainPredictor::n_theta_per_delta(rhythm)
     }
 
-    pub fn predict_consonance_state01_next_gate(&mut self) -> Option<(Tick, Arc<[f32]>)> {
+    pub fn predict_consonance_level01_next_gate(&mut self) -> Option<(Tick, Arc<[f32]>)> {
         let eval_tick = self.next_gate_tick_est?;
         if let Some((_, cached_scan)) = self
             .terrain_predictor
@@ -185,7 +185,7 @@ impl WorldModel {
             self.last_pred_next_gate = Some((eval_tick, Arc::clone(cached_scan)));
             return Some(out);
         }
-        let scan = self.predict_consonance_state01_at(eval_tick)?;
+        let scan = self.predict_consonance_level01_at(eval_tick)?;
         self.terrain_predictor.cache_pred_next_gate = Some((eval_tick, Arc::clone(&scan)));
         self.last_pred_next_gate = Some((eval_tick, Arc::clone(&scan)));
         Some((eval_tick, scan))
@@ -197,9 +197,9 @@ impl WorldModel {
             .map(|(tick, scan)| (*tick, Arc::clone(scan)))
     }
 
-    pub fn sample_scan_state01(&self, scan: &[f32], freq_hz: f32) -> f32 {
+    pub fn sample_scan_level01(&self, scan: &[f32], freq_hz: f32) -> f32 {
         self.space
-            .assert_scan_len_named(scan, "pred_c_state01_scan");
+            .assert_scan_len_named(scan, "pred_c_level01_scan");
         let raw = sample_scan_linear_log2(&self.space, scan, freq_hz);
         if raw.is_finite() {
             raw.clamp(0.0, 1.0)

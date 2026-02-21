@@ -28,6 +28,12 @@ use conchordal::core::roughness_kernel::{KernelParams, RoughnessKernel};
 use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng, rngs::StdRng};
 
+// ── Nocturnal palette ──────────────────────────────────────────────
+const PAL_H: RGBColor = RGBColor(107, 157, 175); // #6B9DAF steel blue
+const PAL_R: RGBColor = RGBColor(139, 34, 82); // #8B2252 dark rose
+const PAL_C: RGBColor = RGBColor(93, 87, 107); // #5D576B purple grey
+const PAL_CD: RGBColor = RGBColor(155, 137, 179); // #9B89B3 lavender
+
 const SPACE_BINS_PER_OCT: u32 = 400;
 
 const E2_SWEEPS: usize = 100;
@@ -1223,12 +1229,17 @@ fn plot_e1_landscape_scan(
     );
 
     let mut perc_c_score_scan = vec![0.0f32; space.n_bins()];
+    let mut perc_c_weight_scan = vec![0.0f32; space.n_bins()];
     for i in 0..space.n_bins() {
         let h01 = perc_h_state01_scan[i];
         let r01 = perc_r_state01_scan[i];
         let c_score = params.consonance_kernel.score(h01, r01);
         perc_c_score_scan[i] = if c_score.is_finite() { c_score } else { 0.0 };
+        perc_c_weight_scan[i] = params.consonance_representation.weight(c_score);
     }
+    let perc_c_density_scan = params
+        .consonance_representation
+        .density(&perc_c_weight_scan);
 
     let anchor_log2 = anchor_hz.log2();
     let log2_ratio_scan: Vec<f32> = space
@@ -1240,6 +1251,7 @@ fn plot_e1_landscape_scan(
     space.assert_scan_len_named(&perc_r_state01_scan, "perc_r_state01_scan");
     space.assert_scan_len_named(&perc_h_state01_scan, "perc_h_state01_scan");
     space.assert_scan_len_named(&perc_c_score_scan, "perc_c_score_scan");
+    space.assert_scan_len_named(&perc_c_density_scan, "perc_c_density_scan");
     space.assert_scan_len_named(&log2_ratio_scan, "log2_ratio_scan");
 
     let out_path = out_dir.join("paper_e1_landscape_scan_anchor220.svg");
@@ -1250,6 +1262,7 @@ fn plot_e1_landscape_scan(
         &perc_h_pot_scan,
         &perc_r_state01_scan,
         &perc_c_score_scan,
+        &perc_c_density_scan,
     )?;
     let h_triplet_path = out_dir.join("paper_e1_h_mirror_m0_m05_m1.svg");
     render_e1_h_mirror_triplet_plot(
@@ -1785,9 +1798,9 @@ fn plot_e2_emergent_harmony(
         "E2 Mean C_level01 (controls)",
         "mean C_level01",
         &[
-            ("baseline", &baseline_stats.mean_c_level, BLUE),
-            ("no hill-climb", &nohill_stats.mean_c_level, RED),
-            ("no repulsion", &norep_stats.mean_c_level, GREEN),
+            ("baseline", &baseline_stats.mean_c_level, PAL_H),
+            ("no hill-climb", &nohill_stats.mean_c_level, PAL_R),
+            ("no repulsion", &norep_stats.mean_c_level, PAL_CD),
         ],
         &marker_steps,
     )?;
@@ -1802,19 +1815,19 @@ fn plot_e2_emergent_harmony(
                 "baseline",
                 &baseline_stats.mean_c,
                 &baseline_stats.std_c,
-                BLUE,
+                PAL_H,
             ),
             (
                 "no hill-climb",
                 &nohill_stats.mean_c,
                 &nohill_stats.std_c,
-                RED,
+                PAL_R,
             ),
             (
                 "no repulsion",
                 &norep_stats.mean_c,
                 &norep_stats.std_c,
-                GREEN,
+                PAL_CD,
             ),
         ],
         &marker_steps,
@@ -1831,19 +1844,19 @@ fn plot_e2_emergent_harmony(
                 "baseline",
                 &baseline_stats.mean_c_score_loo,
                 &baseline_stats.std_c_score_loo,
-                BLUE,
+                PAL_H,
             ),
             (
                 "no hill-climb",
                 &nohill_stats.mean_c_score_loo,
                 &nohill_stats.std_c_score_loo,
-                RED,
+                PAL_R,
             ),
             (
                 "no repulsion",
                 &norep_stats.mean_c_score_loo,
                 &norep_stats.std_c_score_loo,
-                GREEN,
+                PAL_CD,
             ),
         ],
         &marker_steps,
@@ -2120,9 +2133,9 @@ fn plot_e2_emergent_harmony(
         &format!("E2 {post_label_title} Interval Histogram (controls, mean frac, bin=0.50st)"),
         &hist_stats_05.centers,
         &[
-            ("baseline", &hist_stats_05.mean_frac, BLUE),
-            ("no hill-climb", &nohill_hist_05.mean_frac, RED),
-            ("no repulsion", &norep_hist_05.mean_frac, GREEN),
+            ("baseline", &hist_stats_05.mean_frac, PAL_H),
+            ("no hill-climb", &nohill_hist_05.mean_frac, PAL_R),
+            ("no repulsion", &norep_hist_05.mean_frac, PAL_CD),
         ],
     )?;
 
@@ -3401,14 +3414,14 @@ fn render_e3_firstk_histogram(
 
     let base_line = centers.iter().copied().zip(base_frac.iter().copied());
     chart
-        .draw_series(LineSeries::new(base_line, BLUE))?
+        .draw_series(LineSeries::new(base_line, PAL_H))?
         .label("baseline")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], BLUE));
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], PAL_H));
     let nore_line = centers.iter().copied().zip(nore_frac.iter().copied());
     chart
-        .draw_series(LineSeries::new(nore_line, RED))?
+        .draw_series(LineSeries::new(nore_line, PAL_R))?
         .label("no recharge")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], RED));
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], PAL_R));
 
     let thresh = threshold.clamp(min, max);
     chart.draw_series(std::iter::once(PathElement::new(
@@ -3635,6 +3648,7 @@ fn render_e1_plot(
     perc_h_pot_scan: &[f32],
     perc_r_state01_scan: &[f32],
     perc_c_score_scan: &[f32],
+    perc_c_density_scan: &[f32],
 ) -> Result<(), Box<dyn Error>> {
     let x_min = -1.0f32;
     let x_max = 1.0f32;
@@ -3642,6 +3656,7 @@ fn render_e1_plot(
     let mut h_points = Vec::new();
     let mut r_points = Vec::new();
     let mut c_points = Vec::new();
+    let mut d_points = Vec::new();
     for i in 0..log2_ratio_scan.len() {
         let x = log2_ratio_scan[i];
         if x < x_min || x > x_max {
@@ -3650,6 +3665,7 @@ fn render_e1_plot(
         h_points.push((x, perc_h_pot_scan[i]));
         r_points.push((x, perc_r_state01_scan[i]));
         c_points.push((x, perc_c_score_scan[i]));
+        d_points.push((x, perc_c_density_scan[i]));
     }
 
     let h_max = h_points
@@ -3659,9 +3675,9 @@ fn render_e1_plot(
         .max(1e-6)
         * 1.1;
 
-    let root = bitmap_root(out_path, (1600, 1200)).into_drawing_area();
+    let root = bitmap_root(out_path, (1600, 1600)).into_drawing_area();
     root.fill(&WHITE)?;
-    let panels = root.split_evenly((3, 1));
+    let panels = root.split_evenly((4, 1));
 
     let ratio_guides = [0.5f32, 6.0 / 5.0, 1.25, 4.0 / 3.0, 1.5, 5.0 / 3.0, 2.0];
     let ratio_guides_log2: Vec<f32> = ratio_guides.iter().map(|r| r.log2()).collect();
@@ -3693,7 +3709,7 @@ fn render_e1_plot(
         }
     }
 
-    chart_h.draw_series(LineSeries::new(h_points, &BLUE))?;
+    chart_h.draw_series(LineSeries::new(h_points, &PAL_H))?;
 
     let mut chart_r = ChartBuilder::on(&panels[1])
         .caption("E1 Roughness State R01(f)", ("sans-serif", 32))
@@ -3719,7 +3735,7 @@ fn render_e1_plot(
         }
     }
 
-    chart_r.draw_series(LineSeries::new(r_points, &RED))?;
+    chart_r.draw_series(LineSeries::new(r_points, &PAL_R))?;
 
     let mut c_min = f32::INFINITY;
     let mut c_max = f32::NEG_INFINITY;
@@ -3736,7 +3752,7 @@ fn render_e1_plot(
     let pad = 0.05f32;
 
     let mut chart_c = ChartBuilder::on(&panels[2])
-        .caption("E1 Consonance Score C(f)", ("sans-serif", 32))
+        .caption("E1 Consonance Score C_score(f)", ("sans-serif", 32))
         .margin(10)
         .x_label_area_size(60)
         .y_label_area_size(80)
@@ -3759,7 +3775,41 @@ fn render_e1_plot(
         }
     }
 
-    chart_c.draw_series(LineSeries::new(c_points, &BLACK))?;
+    chart_c.draw_series(LineSeries::new(c_points, &PAL_C))?;
+
+    // Panel 4: C_density — Boltzmann-softmax pitch-selection PMF
+    let d_max = d_points
+        .iter()
+        .map(|(_, y)| *y)
+        .fold(0.0f32, f32::max)
+        .max(1e-12)
+        * 1.1;
+
+    let mut chart_d = ChartBuilder::on(&panels[3])
+        .caption("E1 Consonance Density C_density(f)", ("sans-serif", 32))
+        .margin(10)
+        .x_label_area_size(60)
+        .y_label_area_size(80)
+        .build_cartesian_2d(x_min..x_max, 0.0f32..d_max)?;
+
+    chart_d
+        .configure_mesh()
+        .x_desc("log2(f / f_anchor)")
+        .y_desc("C_density")
+        .label_style(("sans-serif", 20).into_font())
+        .axis_desc_style(("sans-serif", 24).into_font())
+        .draw()?;
+
+    for &x in &ratio_guides_log2 {
+        if x >= x_min && x <= x_max {
+            chart_d.draw_series(std::iter::once(PathElement::new(
+                vec![(x, 0.0), (x, d_max)],
+                BLACK.mix(0.15),
+            )))?;
+        }
+    }
+
+    chart_d.draw_series(LineSeries::new(d_points, &PAL_CD))?;
 
     root.present()?;
     Ok(())
@@ -3838,17 +3888,17 @@ fn render_e1_h_mirror_triplet_plot(
     }
 
     chart
-        .draw_series(LineSeries::new(p_m0, &BLUE))?
+        .draw_series(LineSeries::new(p_m0, &PAL_H))?
         .label("m0 (mirror_weight=0.0)")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 18, y)], BLUE));
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 18, y)], PAL_H));
     chart
-        .draw_series(LineSeries::new(p_m05, &GREEN))?
+        .draw_series(LineSeries::new(p_m05, &PAL_C))?
         .label("m05 (mirror_weight=0.5)")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 18, y)], GREEN));
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 18, y)], PAL_C));
     chart
-        .draw_series(LineSeries::new(p_m1, &RED))?
+        .draw_series(LineSeries::new(p_m1, &PAL_R))?
         .label("m1 (mirror_weight=1.0)")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 18, y)], RED));
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 18, y)], PAL_R));
     chart
         .configure_series_labels()
         .position(SeriesLabelPosition::UpperRight)
@@ -3930,7 +3980,7 @@ fn render_e1_h_mirror_diff_plot(
         vec![(x_min, 0.0), (x_max, 0.0)],
         BLACK.mix(0.35),
     )))?;
-    chart.draw_series(LineSeries::new(diff_points, &BLACK))?;
+    chart.draw_series(LineSeries::new(diff_points, &PAL_C))?;
 
     root.present()?;
     Ok(())
@@ -7982,26 +8032,26 @@ fn render_e4_wr_root_ceiling_vs_mirror(
             group
                 .iter()
                 .map(|row| (row.mirror_weight, row.root_affinity_mean)),
-            BLUE.mix(0.95).stroke_width(2),
+            PAL_H.mix(0.95).stroke_width(2),
         ))?;
         chart.draw_series(group.iter().map(|row| {
             Circle::new(
                 (row.mirror_weight, row.root_affinity_mean),
                 3,
-                BLUE.mix(0.95).filled(),
+                PAL_H.mix(0.95).filled(),
             )
         }))?;
         chart.draw_series(LineSeries::new(
             group
                 .iter()
                 .map(|row| (row.mirror_weight, row.overtone_affinity_mean)),
-            RED.mix(0.90).stroke_width(2),
+            PAL_R.mix(0.90).stroke_width(2),
         ))?;
         chart.draw_series(group.iter().map(|row| {
             TriangleMarker::new(
                 (row.mirror_weight, row.overtone_affinity_mean),
                 5,
-                RED.mix(0.90).filled(),
+                PAL_R.mix(0.90).filled(),
             )
         }))?;
     }
@@ -9432,15 +9482,15 @@ fn render_e4_gap_global_by_mw(
         .draw()?;
     chart.draw_series(LineSeries::new(
         points.iter().map(|(mw, mean, _lo, _hi)| (*mw, *mean)),
-        BLUE.stroke_width(2),
+        PAL_H.stroke_width(2),
     ))?;
     chart.draw_series(points.iter().map(|(mw, _mean, lo, hi)| {
-        PathElement::new(vec![(*mw, *lo), (*mw, *hi)], BLUE.mix(0.6).stroke_width(1))
+        PathElement::new(vec![(*mw, *lo), (*mw, *hi)], PAL_H.mix(0.6).stroke_width(1))
     }))?;
     chart.draw_series(
         points
             .iter()
-            .map(|(mw, mean, _lo, _hi)| Circle::new((*mw, *mean), 3, BLUE.filled())),
+            .map(|(mw, mean, _lo, _hi)| Circle::new((*mw, *mean), 3, PAL_H.filled())),
     )?;
     root.present()?;
     Ok(())
@@ -9783,26 +9833,26 @@ fn render_e4_wr_agent_vs_oracle_plot(
                 group
                     .iter()
                     .map(|r| (r.mirror_weight, r.agent_harmonic_tilt)),
-                BLUE.mix(0.95).stroke_width(2),
+                PAL_H.mix(0.95).stroke_width(2),
             ))?
             .label("agent")
-            .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 18, y)], BLUE.stroke_width(2)));
+            .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 18, y)], PAL_H.stroke_width(2)));
         chart
             .draw_series(LineSeries::new(
                 group
                     .iter()
                     .map(|r| (r.mirror_weight, r.oracle1_harmonic_tilt)),
-                RED.mix(0.90).stroke_width(2),
+                PAL_R.mix(0.90).stroke_width(2),
             ))?
             .label("oracle1")
-            .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 18, y)], RED.stroke_width(2)));
+            .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 18, y)], PAL_R.stroke_width(2)));
         chart.draw_series(group.iter().map(|r| {
             PathElement::new(
                 vec![
                     (r.mirror_weight, r.oracle1_harmonic_tilt_ci_lo),
                     (r.mirror_weight, r.oracle1_harmonic_tilt_ci_hi),
                 ],
-                RED.mix(0.45).stroke_width(1),
+                PAL_R.mix(0.45).stroke_width(1),
             )
         }))?;
         chart
@@ -9810,17 +9860,17 @@ fn render_e4_wr_agent_vs_oracle_plot(
                 group
                     .iter()
                     .map(|r| (r.mirror_weight, r.oracle2_harmonic_tilt_mean)),
-                GREEN.mix(0.85).stroke_width(2),
+                PAL_CD.mix(0.85).stroke_width(2),
             ))?
             .label("oracle2")
-            .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 18, y)], GREEN.stroke_width(2)));
+            .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 18, y)], PAL_CD.stroke_width(2)));
         chart.draw_series(group.iter().map(|r| {
             PathElement::new(
                 vec![
                     (r.mirror_weight, r.oracle2_harmonic_tilt_ci_lo),
                     (r.mirror_weight, r.oracle2_harmonic_tilt_ci_hi),
                 ],
-                GREEN.mix(0.5).stroke_width(1),
+                PAL_CD.mix(0.5).stroke_width(1),
             )
         }))?;
         chart
@@ -11182,16 +11232,19 @@ fn render_e4_figure1_mirror_vs_delta_t(
     if rows.len() >= 2 {
         let mut band: Vec<(f32, f32)> = rows.iter().map(|(w, _, _, hi, _)| (*w, *hi)).collect();
         band.extend(rows.iter().rev().map(|(w, _, lo, _, _)| (*w, *lo)));
-        chart.draw_series(std::iter::once(Polygon::new(band, BLUE.mix(0.18).filled())))?;
+        chart.draw_series(std::iter::once(Polygon::new(
+            band,
+            PAL_H.mix(0.18).filled(),
+        )))?;
     }
 
     chart.draw_series(LineSeries::new(
         rows.iter().map(|(w, mean, _, _, _)| (*w, *mean)),
-        BLUE.mix(0.85).stroke_width(2),
+        PAL_H.mix(0.85).stroke_width(2),
     ))?;
     chart.draw_series(
         rows.iter()
-            .map(|(w, mean, _, _, _)| Circle::new((*w, *mean), 4, BLUE.filled())),
+            .map(|(w, mean, _, _, _)| Circle::new((*w, *mean), 4, PAL_H.filled())),
     )?;
 
     let points: Vec<(f32, f32)> = rows.iter().map(|(w, mean, _, _, _)| (*w, *mean)).collect();
@@ -11277,19 +11330,22 @@ fn render_e4_bind_vs_weight(
                 .rev()
                 .map(|row| (row.mirror_weight, row.harmonic_tilt_ci_lo)),
         );
-        chart.draw_series(std::iter::once(Polygon::new(band, BLUE.mix(0.20).filled())))?;
+        chart.draw_series(std::iter::once(Polygon::new(
+            band,
+            PAL_H.mix(0.20).filled(),
+        )))?;
     }
 
     chart.draw_series(LineSeries::new(
         rows.iter()
             .map(|row| (row.mirror_weight, row.harmonic_tilt_mean)),
-        BLUE.mix(0.90).stroke_width(2),
+        PAL_H.mix(0.90).stroke_width(2),
     ))?;
     chart.draw_series(rows.iter().map(|row| {
         Circle::new(
             (row.mirror_weight, row.harmonic_tilt_mean),
             4,
-            BLUE.mix(0.95).filled(),
+            PAL_H.mix(0.95).filled(),
         )
     }))?;
 
@@ -11350,7 +11406,7 @@ fn render_e4_binding_components_vs_weight(
         );
         chart.draw_series(std::iter::once(Polygon::new(
             root_band,
-            BLUE.mix(0.15).filled(),
+            PAL_H.mix(0.15).filled(),
         )))?;
 
         let mut ceiling_band: Vec<(f32, f32)> = rows
@@ -11364,7 +11420,7 @@ fn render_e4_binding_components_vs_weight(
         );
         chart.draw_series(std::iter::once(Polygon::new(
             ceiling_band,
-            RED.mix(0.12).filled(),
+            PAL_R.mix(0.12).filled(),
         )))?;
 
         let mut binding_band: Vec<(f32, f32)> = rows
@@ -11378,7 +11434,7 @@ fn render_e4_binding_components_vs_weight(
         );
         chart.draw_series(std::iter::once(Polygon::new(
             binding_band,
-            GREEN.mix(0.10).filled(),
+            PAL_CD.mix(0.10).filled(),
         )))?;
     }
 
@@ -11386,15 +11442,15 @@ fn render_e4_binding_components_vs_weight(
         .draw_series(LineSeries::new(
             rows.iter()
                 .map(|row| (row.mirror_weight, row.root_affinity_mean)),
-            BLUE.mix(0.95).stroke_width(2),
+            PAL_H.mix(0.95).stroke_width(2),
         ))?
         .label("Root Affinity (R_A)")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 24, y)], BLUE.stroke_width(2)));
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 24, y)], PAL_H.stroke_width(2)));
     chart.draw_series(rows.iter().map(|row| {
         Circle::new(
             (row.mirror_weight, row.root_affinity_mean),
             4,
-            BLUE.mix(0.95).filled(),
+            PAL_H.mix(0.95).filled(),
         )
     }))?;
 
@@ -11402,15 +11458,15 @@ fn render_e4_binding_components_vs_weight(
         .draw_series(LineSeries::new(
             rows.iter()
                 .map(|row| (row.mirror_weight, row.overtone_affinity_mean)),
-            RED.mix(0.90).stroke_width(2),
+            PAL_R.mix(0.90).stroke_width(2),
         ))?
         .label("Overtone Affinity (O_A)")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 24, y)], RED.stroke_width(2)));
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 24, y)], PAL_R.stroke_width(2)));
     chart.draw_series(rows.iter().map(|row| {
         TriangleMarker::new(
             (row.mirror_weight, row.overtone_affinity_mean),
             6,
-            RED.mix(0.90).filled(),
+            PAL_R.mix(0.90).filled(),
         )
     }))?;
 
@@ -11418,15 +11474,15 @@ fn render_e4_binding_components_vs_weight(
         .draw_series(LineSeries::new(
             rows.iter()
                 .map(|row| (row.mirror_weight, row.binding_strength_mean)),
-            GREEN.mix(0.90).stroke_width(2),
+            PAL_CD.mix(0.90).stroke_width(2),
         ))?
         .label("Binding Strength (S)")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 24, y)], GREEN.stroke_width(2)));
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 24, y)], PAL_CD.stroke_width(2)));
     chart.draw_series(rows.iter().map(|row| {
         Cross::new(
             (row.mirror_weight, row.binding_strength_mean),
             6,
-            GREEN.mix(0.90).stroke_width(2),
+            PAL_CD.mix(0.90).stroke_width(2),
         )
     }))?;
 
@@ -11501,19 +11557,22 @@ fn render_e4_harmonic_tilt_png(
                 .rev()
                 .map(|row| (row.mirror_weight, row.harmonic_tilt_ci_lo)),
         );
-        chart.draw_series(std::iter::once(Polygon::new(band, BLUE.mix(0.20).filled())))?;
+        chart.draw_series(std::iter::once(Polygon::new(
+            band,
+            PAL_H.mix(0.20).filled(),
+        )))?;
     }
 
     chart.draw_series(LineSeries::new(
         rows.iter()
             .map(|row| (row.mirror_weight, row.harmonic_tilt_mean)),
-        BLUE.mix(0.95).stroke_width(3),
+        PAL_H.mix(0.95).stroke_width(3),
     ))?;
     chart.draw_series(rows.iter().map(|row| {
         Circle::new(
             (row.mirror_weight, row.harmonic_tilt_mean),
             5,
-            BLUE.mix(0.95).filled(),
+            PAL_H.mix(0.95).filled(),
         )
     }))?;
 
@@ -11572,9 +11631,9 @@ fn render_e4_harmonic_tilt_scatter_png(
         let jitter = ((row.seed.wrapping_mul(0x9E37_79B9) % 1000) as f32 / 1000.0 - 0.5) * 0.02;
         let x = (row.mirror_weight + jitter).clamp(0.0, 1.0);
         let color = if row.harmonic_tilt < 0.0 {
-            RED.mix(0.85)
+            PAL_R.mix(0.85)
         } else {
-            BLUE.mix(0.85)
+            PAL_H.mix(0.85)
         };
         Circle::new((x, row.harmonic_tilt), 3, color.filled())
     }))?;
@@ -11644,15 +11703,15 @@ fn render_e4_overtone_regime_rate_png(
 
     chart.draw_series(LineSeries::new(
         series.iter().map(|(w, p, _, _)| (*w, *p)),
-        RED.mix(0.9).stroke_width(3),
+        PAL_R.mix(0.9).stroke_width(3),
     ))?;
     chart.draw_series(
         series
             .iter()
-            .map(|(w, p, _, _)| Circle::new((*w, *p), 5, RED.mix(0.9).filled())),
+            .map(|(w, p, _, _)| Circle::new((*w, *p), 5, PAL_R.mix(0.9).filled())),
     )?;
     chart.draw_series(series.iter().map(|(w, _, lo, hi)| {
-        PathElement::new(vec![(*w, *lo), (*w, *hi)], RED.mix(0.7).stroke_width(2))
+        PathElement::new(vec![(*w, *lo), (*w, *hi)], PAL_R.mix(0.7).stroke_width(2))
     }))?;
 
     root.present()?;
@@ -11713,7 +11772,7 @@ fn render_e4_binding_phase_diagram_png(
         );
         chart.draw_series(std::iter::once(Polygon::new(
             root_band,
-            BLUE.mix(0.14).filled(),
+            PAL_H.mix(0.14).filled(),
         )))?;
 
         let mut ceiling_band: Vec<(f32, f32)> = rows
@@ -11727,7 +11786,7 @@ fn render_e4_binding_phase_diagram_png(
         );
         chart.draw_series(std::iter::once(Polygon::new(
             ceiling_band,
-            RED.mix(0.12).filled(),
+            PAL_R.mix(0.12).filled(),
         )))?;
 
         let mut binding_band: Vec<(f32, f32)> = rows
@@ -11741,7 +11800,7 @@ fn render_e4_binding_phase_diagram_png(
         );
         chart.draw_series(std::iter::once(Polygon::new(
             binding_band,
-            GREEN.mix(0.10).filled(),
+            PAL_CD.mix(0.10).filled(),
         )))?;
     }
 
@@ -11749,15 +11808,15 @@ fn render_e4_binding_phase_diagram_png(
         .draw_series(LineSeries::new(
             rows.iter()
                 .map(|row| (row.mirror_weight, row.root_affinity_mean)),
-            BLUE.mix(0.95).stroke_width(3),
+            PAL_H.mix(0.95).stroke_width(3),
         ))?
         .label("Root Affinity (R_A)")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 24, y)], BLUE.stroke_width(3)));
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 24, y)], PAL_H.stroke_width(3)));
     chart.draw_series(rows.iter().map(|row| {
         Circle::new(
             (row.mirror_weight, row.root_affinity_mean),
             5,
-            BLUE.mix(0.95).filled(),
+            PAL_H.mix(0.95).filled(),
         )
     }))?;
 
@@ -11765,15 +11824,15 @@ fn render_e4_binding_phase_diagram_png(
         .draw_series(LineSeries::new(
             rows.iter()
                 .map(|row| (row.mirror_weight, row.overtone_affinity_mean)),
-            RED.mix(0.92).stroke_width(3),
+            PAL_R.mix(0.92).stroke_width(3),
         ))?
         .label("Overtone Affinity (O_A)")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 24, y)], RED.stroke_width(3)));
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 24, y)], PAL_R.stroke_width(3)));
     chart.draw_series(rows.iter().map(|row| {
         TriangleMarker::new(
             (row.mirror_weight, row.overtone_affinity_mean),
             7,
-            RED.mix(0.92).filled(),
+            PAL_R.mix(0.92).filled(),
         )
     }))?;
 
@@ -11781,15 +11840,15 @@ fn render_e4_binding_phase_diagram_png(
         .draw_series(LineSeries::new(
             rows.iter()
                 .map(|row| (row.mirror_weight, row.binding_strength_mean)),
-            GREEN.mix(0.90).stroke_width(3),
+            PAL_CD.mix(0.90).stroke_width(3),
         ))?
         .label("Binding Strength (S)")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 24, y)], GREEN.stroke_width(3)));
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 24, y)], PAL_CD.stroke_width(3)));
     chart.draw_series(rows.iter().map(|row| {
         Cross::new(
             (row.mirror_weight, row.binding_strength_mean),
             7,
-            GREEN.mix(0.90).stroke_width(2),
+            PAL_CD.mix(0.90).stroke_width(2),
         )
     }))?;
 
@@ -11946,7 +12005,7 @@ fn render_e4_figure2_interval_hist_triptych(
                 .map(|(x, y)| {
                     let x0 = (*x - 0.5 * bin_width_cents).max(0.0);
                     let x1 = (*x + 0.5 * bin_width_cents).min(1200.0);
-                    Rectangle::new([(x0, 0.0), (x1, *y)], BLUE.mix(0.55).filled())
+                    Rectangle::new([(x0, 0.0), (x1, *y)], PAL_H.mix(0.55).filled())
                 }),
         )?;
     }
@@ -12016,13 +12075,13 @@ fn render_e4_step_response_delta_plot(
         step_rows
             .iter()
             .map(|(step, _, delta_soft, _)| (*step as f32, *delta_soft)),
-        BLUE.mix(0.9).stroke_width(2),
+        PAL_H.mix(0.9).stroke_width(2),
     ))?;
     chart.draw_series(LineSeries::new(
         step_rows
             .iter()
             .map(|(step, _, _, delta_hard)| (*step as f32, *delta_hard)),
-        RED.mix(0.75).stroke_width(2),
+        PAL_R.mix(0.75).stroke_width(2),
     ))?;
     root.present()?;
     Ok(())
@@ -12088,10 +12147,10 @@ fn render_e4_step_response_harmonic_tilt_plot(
         step_rows
             .iter()
             .map(|(step, _, harmonic_tilt)| (*step as f32, *harmonic_tilt)),
-        BLUE.mix(0.90).stroke_width(2),
+        PAL_H.mix(0.90).stroke_width(2),
     ))?;
     chart.draw_series(step_rows.iter().map(|(step, _, harmonic_tilt)| {
-        Circle::new((*step as f32, *harmonic_tilt), 3, BLUE.mix(0.95).filled())
+        Circle::new((*step as f32, *harmonic_tilt), 3, PAL_H.mix(0.95).filled())
     }))?;
     root.present()?;
     Ok(())
@@ -12163,21 +12222,21 @@ fn render_e4_hysteresis_plot(
     )))?;
     chart.draw_series(LineSeries::new(
         up_curve.iter().copied(),
-        BLUE.mix(0.9).stroke_width(2),
+        PAL_H.mix(0.9).stroke_width(2),
     ))?;
     chart.draw_series(LineSeries::new(
         down_curve.iter().copied(),
-        RED.mix(0.85).stroke_width(2),
+        PAL_R.mix(0.85).stroke_width(2),
     ))?;
     chart.draw_series(
         up_curve
             .iter()
-            .map(|(x, y)| Circle::new((*x, *y), 4, BLUE.filled())),
+            .map(|(x, y)| Circle::new((*x, *y), 4, PAL_H.filled())),
     )?;
     chart.draw_series(
         down_curve
             .iter()
-            .map(|(x, y)| TriangleMarker::new((*x, *y), 6, RED.filled())),
+            .map(|(x, y)| TriangleMarker::new((*x, *y), 6, PAL_R.filled())),
     )?;
     root.present()?;
     Ok(())
@@ -12224,21 +12283,21 @@ fn render_e4_hysteresis_harmonic_tilt_plot(
     )))?;
     chart.draw_series(LineSeries::new(
         up_curve.iter().copied(),
-        BLUE.mix(0.9).stroke_width(2),
+        PAL_H.mix(0.9).stroke_width(2),
     ))?;
     chart.draw_series(LineSeries::new(
         down_curve.iter().copied(),
-        RED.mix(0.85).stroke_width(2),
+        PAL_R.mix(0.85).stroke_width(2),
     ))?;
     chart.draw_series(
         up_curve
             .iter()
-            .map(|(x, y)| Circle::new((*x, *y), 4, BLUE.filled())),
+            .map(|(x, y)| Circle::new((*x, *y), 4, PAL_H.filled())),
     )?;
     chart.draw_series(
         down_curve
             .iter()
-            .map(|(x, y)| TriangleMarker::new((*x, *y), 6, RED.filled())),
+            .map(|(x, y)| TriangleMarker::new((*x, *y), 6, PAL_R.filled())),
     )?;
     root.present()?;
     Ok(())
@@ -12795,17 +12854,17 @@ fn render_e4_delta_plot(
         let y1 = mean + ci;
         chart.draw_series(std::iter::once(PathElement::new(
             vec![(*w, y0), (*w, y1)],
-            BLUE.mix(0.8),
+            PAL_H.mix(0.8),
         )))?;
         chart.draw_series(std::iter::once(PathElement::new(
             vec![(*w - cap, y0), (*w + cap, y0)],
-            BLUE.mix(0.8),
+            PAL_H.mix(0.8),
         )))?;
         chart.draw_series(std::iter::once(PathElement::new(
             vec![(*w - cap, y1), (*w + cap, y1)],
-            BLUE.mix(0.8),
+            PAL_H.mix(0.8),
         )))?;
-        chart.draw_series(std::iter::once(Circle::new((*w, *mean), 3, BLUE.filled())))?;
+        chart.draw_series(std::iter::once(Circle::new((*w, *mean), 3, PAL_H.filled())))?;
     }
 
     let xs: Vec<f32> = series.iter().map(|(w, _, _, _)| *w).collect();
@@ -12983,15 +13042,15 @@ fn render_e4_major_minor_plot(
         let sd1 = mean_major + std_major;
         chart.draw_series(std::iter::once(PathElement::new(
             vec![(*w, sd0), (*w, sd1)],
-            BLUE.mix(0.2),
+            PAL_H.mix(0.2),
         )))?;
         chart.draw_series(std::iter::once(PathElement::new(
             vec![(*w - cap, sd0), (*w + cap, sd0)],
-            BLUE.mix(0.2),
+            PAL_H.mix(0.2),
         )))?;
         chart.draw_series(std::iter::once(PathElement::new(
             vec![(*w - cap, sd1), (*w + cap, sd1)],
-            BLUE.mix(0.2),
+            PAL_H.mix(0.2),
         )))?;
 
         let se = if *n_runs > 1 {
@@ -13005,35 +13064,35 @@ fn render_e4_major_minor_plot(
         let y1 = mean_major + ci;
         chart.draw_series(std::iter::once(PathElement::new(
             vec![(*w, y0), (*w, y1)],
-            BLUE.mix(0.8),
+            PAL_H.mix(0.8),
         )))?;
         chart.draw_series(std::iter::once(PathElement::new(
             vec![(*w - cap, y0), (*w + cap, y0)],
-            BLUE.mix(0.8),
+            PAL_H.mix(0.8),
         )))?;
         chart.draw_series(std::iter::once(PathElement::new(
             vec![(*w - cap, y1), (*w + cap, y1)],
-            BLUE.mix(0.8),
+            PAL_H.mix(0.8),
         )))?;
         chart.draw_series(std::iter::once(Circle::new(
             (*w, *mean_major),
             3,
-            BLUE.filled(),
+            PAL_H.filled(),
         )))?;
 
         let sd0 = mean_minor - std_minor;
         let sd1 = mean_minor + std_minor;
         chart.draw_series(std::iter::once(PathElement::new(
             vec![(*w, sd0), (*w, sd1)],
-            RED.mix(0.2),
+            PAL_R.mix(0.2),
         )))?;
         chart.draw_series(std::iter::once(PathElement::new(
             vec![(*w - cap, sd0), (*w + cap, sd0)],
-            RED.mix(0.2),
+            PAL_R.mix(0.2),
         )))?;
         chart.draw_series(std::iter::once(PathElement::new(
             vec![(*w - cap, sd1), (*w + cap, sd1)],
-            RED.mix(0.2),
+            PAL_R.mix(0.2),
         )))?;
 
         let se = if *n_runs > 1 {
@@ -13047,20 +13106,20 @@ fn render_e4_major_minor_plot(
         let y1 = mean_minor + ci;
         chart.draw_series(std::iter::once(PathElement::new(
             vec![(*w, y0), (*w, y1)],
-            RED.mix(0.8),
+            PAL_R.mix(0.8),
         )))?;
         chart.draw_series(std::iter::once(PathElement::new(
             vec![(*w - cap, y0), (*w + cap, y0)],
-            RED.mix(0.8),
+            PAL_R.mix(0.8),
         )))?;
         chart.draw_series(std::iter::once(PathElement::new(
             vec![(*w - cap, y1), (*w + cap, y1)],
-            RED.mix(0.8),
+            PAL_R.mix(0.8),
         )))?;
         chart.draw_series(std::iter::once(Circle::new(
             (*w, *mean_minor),
             3,
-            RED.filled(),
+            PAL_R.filled(),
         )))?;
     }
 
@@ -13129,15 +13188,15 @@ fn render_e4_third_mass_plot(
         let sd1 = mean_maj + std_maj;
         chart.draw_series(std::iter::once(PathElement::new(
             vec![(*w, sd0), (*w, sd1)],
-            BLUE.mix(0.2),
+            PAL_H.mix(0.2),
         )))?;
         chart.draw_series(std::iter::once(PathElement::new(
             vec![(*w - cap, sd0), (*w + cap, sd0)],
-            BLUE.mix(0.2),
+            PAL_H.mix(0.2),
         )))?;
         chart.draw_series(std::iter::once(PathElement::new(
             vec![(*w - cap, sd1), (*w + cap, sd1)],
-            BLUE.mix(0.2),
+            PAL_H.mix(0.2),
         )))?;
 
         let se = if *n_runs > 1 {
@@ -13151,35 +13210,35 @@ fn render_e4_third_mass_plot(
         let y1 = mean_maj + ci;
         chart.draw_series(std::iter::once(PathElement::new(
             vec![(*w, y0), (*w, y1)],
-            BLUE.mix(0.8),
+            PAL_H.mix(0.8),
         )))?;
         chart.draw_series(std::iter::once(PathElement::new(
             vec![(*w - cap, y0), (*w + cap, y0)],
-            BLUE.mix(0.8),
+            PAL_H.mix(0.8),
         )))?;
         chart.draw_series(std::iter::once(PathElement::new(
             vec![(*w - cap, y1), (*w + cap, y1)],
-            BLUE.mix(0.8),
+            PAL_H.mix(0.8),
         )))?;
         chart.draw_series(std::iter::once(Circle::new(
             (*w, *mean_maj),
             3,
-            BLUE.filled(),
+            PAL_H.filled(),
         )))?;
 
         let sd0 = mean_min - std_min;
         let sd1 = mean_min + std_min;
         chart.draw_series(std::iter::once(PathElement::new(
             vec![(*w, sd0), (*w, sd1)],
-            RED.mix(0.2),
+            PAL_R.mix(0.2),
         )))?;
         chart.draw_series(std::iter::once(PathElement::new(
             vec![(*w - cap, sd0), (*w + cap, sd0)],
-            RED.mix(0.2),
+            PAL_R.mix(0.2),
         )))?;
         chart.draw_series(std::iter::once(PathElement::new(
             vec![(*w - cap, sd1), (*w + cap, sd1)],
-            RED.mix(0.2),
+            PAL_R.mix(0.2),
         )))?;
 
         let se = if *n_runs > 1 {
@@ -13193,20 +13252,20 @@ fn render_e4_third_mass_plot(
         let y1 = mean_min + ci;
         chart.draw_series(std::iter::once(PathElement::new(
             vec![(*w, y0), (*w, y1)],
-            RED.mix(0.8),
+            PAL_R.mix(0.8),
         )))?;
         chart.draw_series(std::iter::once(PathElement::new(
             vec![(*w - cap, y0), (*w + cap, y0)],
-            RED.mix(0.8),
+            PAL_R.mix(0.8),
         )))?;
         chart.draw_series(std::iter::once(PathElement::new(
             vec![(*w - cap, y1), (*w + cap, y1)],
-            RED.mix(0.8),
+            PAL_R.mix(0.8),
         )))?;
         chart.draw_series(std::iter::once(Circle::new(
             (*w, *mean_min),
             3,
-            RED.filled(),
+            PAL_R.filled(),
         )))?;
     }
 
@@ -13257,12 +13316,12 @@ fn render_e4_major_minor_rate_plot(
         chart.draw_series(std::iter::once(Circle::new(
             (*w, *major_rate),
             3,
-            BLUE.filled(),
+            PAL_H.filled(),
         )))?;
         chart.draw_series(std::iter::once(Circle::new(
             (*w, *minor_rate),
             3,
-            RED.filled(),
+            PAL_R.filled(),
         )))?;
     }
 
@@ -13469,7 +13528,7 @@ fn render_e4_kernel_gate(out_path: &Path, anchor_hz: f32) -> Result<(), Box<dyn 
         BLACK.mix(0.3),
     )))?;
 
-    chart.draw_series(LineSeries::new(points, &BLUE))?;
+    chart.draw_series(LineSeries::new(points, &PAL_H))?;
     root.present()?;
     Ok(())
 }
@@ -15445,7 +15504,7 @@ fn render_hist_structure_summary_plot(
         by_cond.entry(row.condition).or_default().push(row);
     }
     let conds = ["baseline", "nohill", "norep"];
-    let colors = [&BLUE, &RED, &GREEN];
+    let colors = [&PAL_H, &PAL_R, &PAL_CD];
 
     let mut means_entropy = [0.0f32; 3];
     let mut means_gini = [0.0f32; 3];
@@ -15693,7 +15752,7 @@ fn render_diversity_summary_plot(
         by_cond.entry(row.condition).or_default().push(row);
     }
     let conds = ["baseline", "nohill", "norep"];
-    let colors = [&BLUE, &RED, &GREEN];
+    let colors = [&PAL_H, &PAL_R, &PAL_CD];
 
     let mut mean_bins = [0.0f32; 3];
     let mut mean_nn = [0.0f32; 3];
@@ -16614,7 +16673,7 @@ fn render_hist_mean_std(
         let std_val = std[i];
         chart.draw_series(std::iter::once(Rectangle::new(
             [(center - half, 0.0), (center + half, mean_val)],
-            BLUE.mix(0.6).filled(),
+            PAL_H.mix(0.6).filled(),
         )))?;
         let y0 = (mean_val - std_val).max(0.0);
         let y1 = mean_val + std_val;
@@ -16639,10 +16698,10 @@ fn e2_condition_display(condition: &str) -> &'static str {
 
 fn e2_condition_color(condition: &str) -> RGBColor {
     match condition {
-        "baseline" => BLUE,
-        "nohill" => RED,
-        "norep" => GREEN,
-        _ => BLACK,
+        "baseline" => PAL_H,
+        "nohill" => PAL_R,
+        "norep" => PAL_CD,
+        _ => PAL_C,
     }
 }
 
@@ -16731,7 +16790,7 @@ fn render_pairwise_histogram_paper(
         let s = std_frac[i];
         chart.draw_series(std::iter::once(Rectangle::new(
             [(x - half, 0.0), (x + half, m)],
-            BLUE.mix(0.65).filled(),
+            PAL_H.mix(0.65).filled(),
         )))?;
         let y0 = (m - s).max(0.0);
         let y1 = (m + s).min(y_max);
@@ -16795,9 +16854,9 @@ fn render_pairwise_histogram_controls_overlay(
     draw_e2_interval_guides_with_windows(&mut chart, y_max)?;
 
     for (label, values, color) in [
-        ("baseline", baseline, BLUE),
-        ("no hill-climb", nohill, RED),
-        ("no repulsion", norep, GREEN),
+        ("baseline", baseline, PAL_H),
+        ("no hill-climb", nohill, PAL_R),
+        ("no repulsion", norep, PAL_CD),
     ] {
         let line = centers
             .iter()
@@ -16870,7 +16929,7 @@ fn render_hist_mean_std_fraction_auto_y(
         let s = std[i];
         chart.draw_series(std::iter::once(Rectangle::new(
             [(x - half, 0.0), (x + half, m)],
-            BLUE.mix(0.65).filled(),
+            PAL_H.mix(0.65).filled(),
         )))?;
         let y0 = (m - s).max(0.0);
         let y1 = (m + s).min(y_max);
@@ -17404,7 +17463,7 @@ fn render_anchor_hist_post_folded(
         for i in 0..len {
             chart.draw_series(std::iter::once(Rectangle::new(
                 [(centers[i] - half, 0.0), (centers[i] + half, mean[i])],
-                BLUE.mix(0.65).filled(),
+                PAL_H.mix(0.65).filled(),
             )))?;
             let y0 = (mean[i] - std[i]).max(0.0);
             let y1 = (mean[i] + std[i]).min(y_max);
@@ -17452,7 +17511,7 @@ fn render_anchor_hist_post_folded(
                     (folded_centers[i] - half, 0.0),
                     (folded_centers[i] + half, folded_mean[i]),
                 ],
-                BLUE.mix(0.65).filled(),
+                PAL_H.mix(0.65).filled(),
             )))?;
             let y0 = (folded_mean[i] - folded_std[i]).max(0.0);
             let y1 = (folded_mean[i] + folded_std[i]).min(y_max);
@@ -17585,7 +17644,7 @@ fn render_e2_figure2(
                     (pairwise_centers[i] - half, 0.0),
                     (pairwise_centers[i] + half, pairwise_baseline_mean[i]),
                 ],
-                BLUE.mix(0.65).filled(),
+                PAL_H.mix(0.65).filled(),
             )))?;
             let y0 = (pairwise_baseline_mean[i] - pairwise_baseline_std[i]).max(0.0);
             let y1 = (pairwise_baseline_mean[i] + pairwise_baseline_std[i]).min(y_max);
@@ -17622,9 +17681,9 @@ fn render_e2_figure2(
             .draw()?;
         draw_e2_interval_guides_with_windows(&mut chart, y_max)?;
         for (label, values, color) in [
-            ("baseline", pairwise_baseline_mean, BLUE),
-            ("no hill-climb", pairwise_nohill_mean, RED),
-            ("no repulsion", pairwise_norep_mean, GREEN),
+            ("baseline", pairwise_baseline_mean, PAL_H),
+            ("no hill-climb", pairwise_nohill_mean, PAL_R),
+            ("no repulsion", pairwise_norep_mean, PAL_CD),
         ] {
             let line = pairwise_centers
                 .iter()
@@ -17737,7 +17796,7 @@ fn render_series_plot_fixed_y(
         .draw()?;
 
     draw_vertical_guides(&mut chart, markers, y_lo, y_hi)?;
-    chart.draw_series(LineSeries::new(series.iter().copied(), &BLUE))?;
+    chart.draw_series(LineSeries::new(series.iter().copied(), &PAL_H))?;
     root.present()?;
     Ok(())
 }
@@ -17790,7 +17849,7 @@ fn render_series_plot_with_markers(
         .draw()?;
 
     draw_vertical_guides(&mut chart, markers, y_lo, y_hi)?;
-    chart.draw_series(LineSeries::new(series.iter().copied(), &BLUE))?;
+    chart.draw_series(LineSeries::new(series.iter().copied(), &PAL_H))?;
     root.present()?;
     Ok(())
 }
@@ -17858,12 +17917,12 @@ fn render_series_plot_with_band(
     }
     chart.draw_series(std::iter::once(Polygon::new(
         band_points,
-        BLUE.mix(0.2).filled(),
+        PAL_H.mix(0.2).filled(),
     )))?;
 
     draw_vertical_guides(&mut chart, markers, y_lo, y_hi)?;
     let line = mean.iter().enumerate().map(|(i, &y)| (i as f32, y));
-    chart.draw_series(LineSeries::new(line, &BLUE))?;
+    chart.draw_series(LineSeries::new(line, &PAL_H))?;
     root.present()?;
     Ok(())
 }
@@ -18141,7 +18200,7 @@ fn render_interval_histogram(
         let x1 = bin_start + bin_width;
         chart.draw_series(std::iter::once(Rectangle::new(
             [(x0, 0.0), (x1, count as f32)],
-            BLUE.mix(0.6).filled(),
+            PAL_H.mix(0.6).filled(),
         )))?;
     }
 
@@ -18238,7 +18297,7 @@ fn render_e2_control_histograms(
         .draw()?;
 
     let counts = [&counts_base, &counts_nohill, &counts_norep];
-    let colors = [BLUE.mix(0.6), RED.mix(0.6), GREEN.mix(0.6)];
+    let colors = [PAL_H.mix(0.6), PAL_R.mix(0.6), PAL_CD.mix(0.6)];
     let sub_width = bin_width / 3.0;
     for bin_idx in 0..counts_base.len() {
         let bin_start = counts_base[bin_idx].0;
@@ -18256,24 +18315,24 @@ fn render_e2_control_histograms(
     chart
         .draw_series(std::iter::once(PathElement::new(
             vec![(min, y_max * 1.05), (min + 0.3, y_max * 1.05)],
-            BLUE,
+            PAL_H,
         )))?
         .label("baseline")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], BLUE));
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], PAL_H));
     chart
         .draw_series(std::iter::once(PathElement::new(
             vec![(min, y_max * 1.02), (min + 0.3, y_max * 1.02)],
-            RED,
+            PAL_R,
         )))?
         .label("no hill-climb")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], RED));
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], PAL_R));
     chart
         .draw_series(std::iter::once(PathElement::new(
             vec![(min, y_max * 0.99), (min + 0.3, y_max * 0.99)],
-            GREEN,
+            PAL_CD,
         )))?
         .label("no repulsion")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], GREEN));
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], PAL_CD));
 
     chart
         .configure_series_labels()
@@ -18521,7 +18580,7 @@ fn render_scatter_on_area(
         chart.draw_series(
             data.points
                 .iter()
-                .map(|(x, y)| Circle::new((*x, *y), 3, BLUE.mix(0.5).filled())),
+                .map(|(x, y)| Circle::new((*x, *y), 3, PAL_H.mix(0.5).filled())),
         )?;
     }
     if data.x_min <= 0.5 && data.x_max >= 0.5 {
@@ -18778,13 +18837,13 @@ fn render_survival_on_area(
         .draw()?;
 
     chart
-        .draw_series(LineSeries::new(data.series_high.clone(), &BLUE))?
+        .draw_series(LineSeries::new(data.series_high.clone(), &PAL_H))?
         .label("high")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], BLUE));
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], PAL_H));
     chart
-        .draw_series(LineSeries::new(data.series_low.clone(), &RED))?
+        .draw_series(LineSeries::new(data.series_low.clone(), &PAL_R))?
         .label("low")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], RED));
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], PAL_R));
 
     let logrank_p = format_p_value(data.stats.logrank_p);
     let lines = vec![
@@ -18912,7 +18971,7 @@ fn render_consonance_lifetime_scatter(
     let points = deaths
         .iter()
         .map(|(_, lifetime, avg_c_level)| (*avg_c_level, *lifetime as f32));
-    chart.draw_series(points.map(|(x, y)| Circle::new((x, y), 3, RED.filled())))?;
+    chart.draw_series(points.map(|(x, y)| Circle::new((x, y), 3, PAL_R.filled())))?;
 
     root.present()?;
     Ok(())
@@ -19005,15 +19064,15 @@ fn render_survival_by_c_level(
 
     if !high_series.is_empty() {
         chart
-            .draw_series(LineSeries::new(high_series, &BLUE))?
+            .draw_series(LineSeries::new(high_series, &PAL_H))?
             .label("avg C_level01 >= median")
-            .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], BLUE));
+            .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], PAL_H));
     }
     if !low_series.is_empty() {
         chart
-            .draw_series(LineSeries::new(low_series, &RED))?
+            .draw_series(LineSeries::new(low_series, &PAL_R))?
             .label("avg C_level01 < median")
-            .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], RED));
+            .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], PAL_R));
     }
 
     chart
@@ -19068,17 +19127,17 @@ fn render_e5_order_plot(
     chart
         .draw_series(LineSeries::new(
             r_ctrl,
-            ShapeStyle::from(&RED.mix(0.4)).stroke_width(2),
+            ShapeStyle::from(&PAL_R.mix(0.4)).stroke_width(2),
         ))?
         .label("control r(t)")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], RED.mix(0.4)));
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], PAL_R.mix(0.4)));
     chart
         .draw_series(LineSeries::new(
             r_main,
-            ShapeStyle::from(&BLUE).stroke_width(3),
+            ShapeStyle::from(&PAL_H).stroke_width(3),
         ))?
         .label("main r(t)")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], BLUE));
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], PAL_H));
 
     let markers = e5_marker_specs(E5_STEPS);
     draw_vertical_guides_labeled(&mut chart, &markers, 0.0, 1.05)?;
@@ -19137,17 +19196,17 @@ fn render_e5_delta_phi_plot(
     chart
         .draw_series(LineSeries::new(
             ctrl_points,
-            ShapeStyle::from(&RED.mix(0.4)).stroke_width(2),
+            ShapeStyle::from(&PAL_R.mix(0.4)).stroke_width(2),
         ))?
         .label("control Δφ(t)")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], RED.mix(0.4)));
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], PAL_R.mix(0.4)));
     chart
         .draw_series(LineSeries::new(
             main_points,
-            ShapeStyle::from(&BLUE).stroke_width(3),
+            ShapeStyle::from(&PAL_H).stroke_width(3),
         ))?
         .label("main Δφ(t)")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], BLUE));
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], PAL_H));
 
     let markers = e5_marker_specs(E5_STEPS);
     draw_vertical_guides_labeled(&mut chart, &markers, -PI, PI)?;
@@ -19209,17 +19268,17 @@ fn render_e5_plv_plot(
     chart
         .draw_series(LineSeries::new(
             plv_ctrl,
-            ShapeStyle::from(&RED.mix(0.4)).stroke_width(2),
+            ShapeStyle::from(&PAL_R.mix(0.4)).stroke_width(2),
         ))?
         .label("control PLV_agent_kick")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], RED.mix(0.4)));
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], PAL_R.mix(0.4)));
     chart
         .draw_series(LineSeries::new(
             plv_main,
-            ShapeStyle::from(&BLUE).stroke_width(3),
+            ShapeStyle::from(&PAL_H).stroke_width(3),
         ))?
         .label("main PLV_agent_kick")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], BLUE));
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], PAL_H));
 
     let markers = e5_marker_specs(E5_STEPS);
     draw_vertical_guides_labeled(&mut chart, &markers, 0.0, 1.05)?;
@@ -19281,29 +19340,29 @@ fn render_phase_histogram_compare(
         let mid = 0.5 * (x0 + x1);
         chart.draw_series(std::iter::once(Rectangle::new(
             [(mid - half, 0.0), (mid, *count_main as f32)],
-            BLUE.mix(0.6).filled(),
+            PAL_H.mix(0.6).filled(),
         )))?;
         chart.draw_series(std::iter::once(Rectangle::new(
             [(mid, 0.0), (mid + half, *count_ctrl as f32)],
-            RED.mix(0.6).filled(),
+            PAL_R.mix(0.6).filled(),
         )))?;
     }
 
     chart
         .draw_series(std::iter::once(PathElement::new(
             vec![(0.0, y_max * 1.05), (0.1, y_max * 1.05)],
-            BLUE,
+            PAL_H,
         )))?
         .label("main")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], BLUE));
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], PAL_H));
 
     chart
         .draw_series(std::iter::once(PathElement::new(
             vec![(0.0, y_max * 1.02), (0.1, y_max * 1.02)],
-            RED,
+            PAL_R,
         )))?
         .label("control")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], RED));
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], PAL_R));
 
     chart
         .configure_series_labels()
@@ -19563,7 +19622,7 @@ fn render_e5_seed_sweep_plot(out_path: &Path, rows: &[E5SeedRow]) -> Result<(), 
         .axis_desc_style(("sans-serif", 22).into_font())
         .draw()?;
 
-    let values = [(main_mean, main_std, BLUE), (ctrl_mean, ctrl_std, RED)];
+    let values = [(main_mean, main_std, PAL_H), (ctrl_mean, ctrl_std, PAL_R)];
     let cap = 0.05f32;
     for (i, (mean, std, color)) in values.iter().enumerate() {
         let center = i as f32;

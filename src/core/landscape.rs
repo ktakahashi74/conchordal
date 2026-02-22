@@ -567,6 +567,307 @@ mod tests {
         let params = build_params(&space_b);
         landscape.recompute_consonance(&params);
     }
+
+    #[test]
+    #[cfg(feature = "plotcheck")]
+    fn plot_consonance_variants_scan_png() -> Result<(), Box<dyn std::error::Error>> {
+        use plotters::prelude::*;
+
+        std::fs::create_dir_all("target/plots")?;
+
+        let space = Log2Space::new(20.0, 8000.0, 96);
+        let mut params = build_params(&space);
+        // Keep the E1 scan style kernel coefficients used in the paper tooling.
+        params.consonance_kernel = ConsonanceKernel {
+            a: 1.0,
+            b: -0.85,
+            c: 0.5,
+            d: 0.0,
+        };
+        params.consonance_representation = ConsonanceRepresentationParams {
+            beta: 2.0,
+            theta: 0.0,
+            temperature: 1.0,
+            epsilon: 1e-6,
+        };
+
+        let n = space.n_bins();
+        let anchor_hz = 440.0f32;
+        let anchor_idx = space.index_of_freq(anchor_hz).unwrap_or(n / 2);
+        let (_erb, du) = crate::core::roughness_kernel::erb_grid(&space);
+
+        let mut env_scan = vec![0.0f32; n];
+        env_scan[anchor_idx] = 1.0;
+        let mut density_scan = vec![0.0f32; n];
+        density_scan[anchor_idx] = 1.0 / du[anchor_idx].max(1e-12);
+
+        let (h_pot_scan, _) = params
+            .harmonicity_kernel
+            .potential_h_from_log2_spectrum(&env_scan, &space);
+        let (r_pot_scan, _) = params
+            .roughness_kernel
+            .potential_r_from_log2_spectrum_density(&density_scan, &space);
+
+        let h_ref_max = h_pot_scan.iter().copied().fold(0.0f32, f32::max).max(1e-12);
+        let mut h01_scan = vec![0.0f32; n];
+        crate::core::psycho_state::h_pot_scan_to_h_state01_scan(
+            &h_pot_scan,
+            h_ref_max,
+            &mut h01_scan,
+        );
+
+        let r_ref = crate::core::psycho_state::compute_roughness_reference(&params, &space);
+        let mut r01_scan = vec![0.0f32; n];
+        crate::core::psycho_state::r_pot_scan_to_r_state01_scan(
+            &r_pot_scan,
+            r_ref.peak,
+            params.roughness_k,
+            &mut r01_scan,
+        );
+
+        let mut c_score_scan = vec![0.0f32; n];
+        let mut c_level_scan = vec![0.0f32; n];
+        let mut c_weight_scan = vec![0.0f32; n];
+        let mut c_energy_scan = vec![0.0f32; n];
+        for i in 0..n {
+            let score = params.consonance_kernel.score(h01_scan[i], r01_scan[i]);
+            c_score_scan[i] = score;
+            c_level_scan[i] = params.consonance_representation.level01(score);
+            c_weight_scan[i] = params.consonance_representation.weight(score);
+            c_energy_scan[i] = params.consonance_representation.energy(score);
+        }
+        let mut c_density_scan = vec![0.0f32; n];
+        params
+            .consonance_representation
+            .normalize_density(&c_weight_scan, &mut c_density_scan);
+
+        let density_sum: f32 = c_density_scan.iter().sum();
+        assert!(
+            (density_sum - 1.0).abs() < 1e-5,
+            "density sum={density_sum}"
+        );
+
+        for i in 0..n {
+            let score = c_score_scan[i];
+            let level = c_level_scan[i];
+            let weight = c_weight_scan[i];
+            let density = c_density_scan[i];
+            let energy = c_energy_scan[i];
+            assert!(score.is_finite(), "score not finite at {i}");
+            assert!(level.is_finite(), "level01 not finite at {i}");
+            assert!(weight.is_finite(), "weight not finite at {i}");
+            assert!(density.is_finite(), "density not finite at {i}");
+            assert!(energy.is_finite(), "energy not finite at {i}");
+            assert!(
+                (energy + score).abs() < 1e-6,
+                "energy must be -score at i={i}: score={score} energy={energy}"
+            );
+            assert!((0.0..=1.0).contains(&level), "level01 out of range at {i}");
+            assert!(weight >= 0.0, "weight negative at {i}");
+            assert!(density >= 0.0, "density negative at {i}");
+        }
+
+        let csv_path = "target/plots/it_consonance_e1_stack.csv";
+        let mut csv =
+            String::from("freq_hz,h01,r01,c_score,c_level01,c_weight,c_density,c_energy\n");
+        for i in 0..n {
+            csv.push_str(&format!(
+                "{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6}\n",
+                space.centers_hz[i],
+                h01_scan[i],
+                r01_scan[i],
+                c_score_scan[i],
+                c_level_scan[i],
+                c_weight_scan[i],
+                c_density_scan[i],
+                c_energy_scan[i],
+            ));
+        }
+        std::fs::write(csv_path, csv)?;
+
+        let png_path = "target/plots/it_consonance_e1_stack.png";
+        let root = BitMapBackend::new(png_path, (1600, 2100)).into_drawing_area();
+        root.fill(&WHITE)?;
+        let areas = root.split_evenly((7, 1));
+
+        let x_min_hz = 20.0f32;
+        let x_max_hz = 8000.0f32;
+        let x_min = x_min_hz.log2();
+        let x_max = x_max_hz.log2();
+        let x_log2_scan: Vec<f32> = space
+            .centers_hz
+            .iter()
+            .copied()
+            .map(|hz| hz.clamp(x_min_hz, x_max_hz).log2())
+            .collect();
+
+        let mut chart_h = ChartBuilder::on(&areas[0])
+            .caption("E1-like Stack: H01", ("sans-serif", 20))
+            .margin(10)
+            .x_label_area_size(35)
+            .y_label_area_size(75)
+            .build_cartesian_2d(x_min..x_max, 0.0f32..1.0f32)?;
+        chart_h
+            .configure_mesh()
+            .x_desc("frequency (Hz, log2 axis)")
+            .x_label_formatter(&|x| format!("{:.0}", 2.0f32.powf(*x)))
+            .y_desc("H01")
+            .draw()?;
+        chart_h.draw_series(LineSeries::new(
+            x_log2_scan.iter().copied().zip(h01_scan.iter().copied()),
+            &GREEN,
+        ))?;
+
+        let mut chart_r = ChartBuilder::on(&areas[1])
+            .caption("E1-like Stack: R01", ("sans-serif", 20))
+            .margin(10)
+            .x_label_area_size(35)
+            .y_label_area_size(75)
+            .build_cartesian_2d(x_min..x_max, 0.0f32..1.0f32)?;
+        chart_r
+            .configure_mesh()
+            .x_desc("frequency (Hz, log2 axis)")
+            .x_label_formatter(&|x| format!("{:.0}", 2.0f32.powf(*x)))
+            .y_desc("R01")
+            .draw()?;
+        chart_r.draw_series(LineSeries::new(
+            x_log2_scan.iter().copied().zip(r01_scan.iter().copied()),
+            &RED,
+        ))?;
+
+        let c_score_min = c_score_scan.iter().copied().fold(f32::INFINITY, f32::min);
+        let c_score_max = c_score_scan
+            .iter()
+            .copied()
+            .fold(f32::NEG_INFINITY, f32::max);
+        let c_score_pad = ((c_score_max - c_score_min).abs() * 0.1).max(1e-3);
+        let mut chart_score = ChartBuilder::on(&areas[2])
+            .caption("E1-like Stack: C_score", ("sans-serif", 20))
+            .margin(10)
+            .x_label_area_size(35)
+            .y_label_area_size(75)
+            .build_cartesian_2d(
+                x_min..x_max,
+                (c_score_min - c_score_pad)..(c_score_max + c_score_pad),
+            )?;
+        chart_score
+            .configure_mesh()
+            .x_desc("frequency (Hz, log2 axis)")
+            .x_label_formatter(&|x| format!("{:.0}", 2.0f32.powf(*x)))
+            .y_desc("score")
+            .draw()?;
+        chart_score.draw_series(LineSeries::new(
+            x_log2_scan
+                .iter()
+                .copied()
+                .zip(c_score_scan.iter().copied()),
+            &BLUE,
+        ))?;
+
+        let mut chart_level = ChartBuilder::on(&areas[3])
+            .caption("E1-like Stack: C_level01", ("sans-serif", 20))
+            .margin(10)
+            .x_label_area_size(35)
+            .y_label_area_size(75)
+            .build_cartesian_2d(x_min..x_max, 0.0f32..1.0f32)?;
+        chart_level
+            .configure_mesh()
+            .x_desc("frequency (Hz, log2 axis)")
+            .x_label_formatter(&|x| format!("{:.0}", 2.0f32.powf(*x)))
+            .y_desc("level01")
+            .draw()?;
+        chart_level.draw_series(LineSeries::new(
+            x_log2_scan
+                .iter()
+                .copied()
+                .zip(c_level_scan.iter().copied()),
+            &MAGENTA,
+        ))?;
+
+        let c_weight_max = c_weight_scan
+            .iter()
+            .copied()
+            .fold(0.0f32, f32::max)
+            .max(1e-12);
+        let mut chart_weight = ChartBuilder::on(&areas[4])
+            .caption("E1-like Stack: C_weight", ("sans-serif", 20))
+            .margin(10)
+            .x_label_area_size(35)
+            .y_label_area_size(75)
+            .build_cartesian_2d(x_min..x_max, 0.0f32..(c_weight_max * 1.05))?;
+        chart_weight
+            .configure_mesh()
+            .x_desc("frequency (Hz, log2 axis)")
+            .x_label_formatter(&|x| format!("{:.0}", 2.0f32.powf(*x)))
+            .y_desc("weight")
+            .draw()?;
+        chart_weight.draw_series(LineSeries::new(
+            x_log2_scan
+                .iter()
+                .copied()
+                .zip(c_weight_scan.iter().copied()),
+            &CYAN,
+        ))?;
+
+        let c_density_max = c_density_scan
+            .iter()
+            .copied()
+            .fold(0.0f32, f32::max)
+            .max(1e-12);
+        let mut chart_density = ChartBuilder::on(&areas[5])
+            .caption("E1-like Stack: C_density", ("sans-serif", 20))
+            .margin(10)
+            .x_label_area_size(35)
+            .y_label_area_size(75)
+            .build_cartesian_2d(x_min..x_max, 0.0f32..(c_density_max * 1.05))?;
+        chart_density
+            .configure_mesh()
+            .x_desc("frequency (Hz, log2 axis)")
+            .x_label_formatter(&|x| format!("{:.0}", 2.0f32.powf(*x)))
+            .y_desc("density")
+            .draw()?;
+        chart_density.draw_series(LineSeries::new(
+            x_log2_scan
+                .iter()
+                .copied()
+                .zip(c_density_scan.iter().copied()),
+            &BLACK,
+        ))?;
+
+        let c_energy_min = c_energy_scan.iter().copied().fold(f32::INFINITY, f32::min);
+        let c_energy_max = c_energy_scan
+            .iter()
+            .copied()
+            .fold(f32::NEG_INFINITY, f32::max);
+        let c_energy_pad = ((c_energy_max - c_energy_min).abs() * 0.1).max(1e-3);
+        let mut chart_energy = ChartBuilder::on(&areas[6])
+            .caption("E1-like Stack: C_energy", ("sans-serif", 20))
+            .margin(10)
+            .x_label_area_size(35)
+            .y_label_area_size(75)
+            .build_cartesian_2d(
+                x_min..x_max,
+                (c_energy_min - c_energy_pad)..(c_energy_max + c_energy_pad),
+            )?;
+        chart_energy
+            .configure_mesh()
+            .x_desc("frequency (Hz, log2 axis)")
+            .x_label_formatter(&|x| format!("{:.0}", 2.0f32.powf(*x)))
+            .y_desc("energy")
+            .draw()?;
+        chart_energy.draw_series(LineSeries::new(
+            x_log2_scan
+                .iter()
+                .copied()
+                .zip(c_energy_scan.iter().copied()),
+            &BLUE,
+        ))?;
+
+        root.present()?;
+        assert!(std::path::Path::new(png_path).exists());
+        assert!(std::path::Path::new(csv_path).exists());
+        Ok(())
+    }
 }
 
 impl Default for Landscape {

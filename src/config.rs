@@ -140,30 +140,18 @@ impl Default for ConsonanceLevelConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ConsonanceWeightConfig {
-    #[serde(default = "ConsonanceWeightConfig::default_temperature")]
-    pub temperature: f32,
-    #[serde(default = "ConsonanceWeightConfig::default_epsilon")]
-    pub epsilon: f32,
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ConsonanceFieldConfig {
+    #[serde(default)]
+    pub kernel: ConsonanceKernelConfig,
+    #[serde(default)]
+    pub level: ConsonanceLevelConfig,
 }
 
-impl ConsonanceWeightConfig {
-    fn default_temperature() -> f32 {
-        1.0
-    }
-    fn default_epsilon() -> f32 {
-        1e-6
-    }
-}
-
-impl Default for ConsonanceWeightConfig {
-    fn default() -> Self {
-        Self {
-            temperature: Self::default_temperature(),
-            epsilon: Self::default_epsilon(),
-        }
-    }
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ConsonanceConfig {
+    #[serde(default)]
+    pub field: ConsonanceFieldConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -173,11 +161,7 @@ pub struct PsychoAcousticsConfig {
     #[serde(default = "PsychoAcousticsConfig::default_roughness_k")]
     pub roughness_k: f32,
     #[serde(default)]
-    pub consonance_kernel: ConsonanceKernelConfig,
-    #[serde(default)]
-    pub consonance_level: ConsonanceLevelConfig,
-    #[serde(default)]
-    pub consonance_weight: ConsonanceWeightConfig,
+    pub consonance: ConsonanceConfig,
     #[serde(default = "PsychoAcousticsConfig::default_use_incoherent_power")]
     pub use_incoherent_power: bool,
 }
@@ -199,9 +183,7 @@ impl Default for PsychoAcousticsConfig {
         Self {
             loudness_exp: Self::default_loudness_exp(),
             roughness_k: Self::default_roughness_k(),
-            consonance_kernel: ConsonanceKernelConfig::default(),
-            consonance_level: ConsonanceLevelConfig::default(),
-            consonance_weight: ConsonanceWeightConfig::default(),
+            consonance: ConsonanceConfig::default(),
             use_incoherent_power: Self::default_use_incoherent_power(),
         }
     }
@@ -267,19 +249,15 @@ impl AppConfig {
         self.psychoacoustics.loudness_exp = Self::round_f32(self.psychoacoustics.loudness_exp);
         self.psychoacoustics.roughness_k = Self::round_f32(self.psychoacoustics.roughness_k);
 
-        let kernel = &mut self.psychoacoustics.consonance_kernel;
+        let kernel = &mut self.psychoacoustics.consonance.field.kernel;
         kernel.a = Self::round_f32(kernel.a);
         kernel.b = Self::round_f32(kernel.b);
         kernel.c = Self::round_f32(kernel.c);
         kernel.d = Self::round_f32(kernel.d);
 
-        let level = &mut self.psychoacoustics.consonance_level;
+        let level = &mut self.psychoacoustics.consonance.field.level;
         level.beta = Self::round_f32(level.beta);
         level.theta = Self::round_f32(level.theta);
-
-        let weight = &mut self.psychoacoustics.consonance_weight;
-        weight.temperature = Self::round_f32(weight.temperature);
-        weight.epsilon = Self::round_f32(weight.epsilon);
         self
     }
 
@@ -376,14 +354,12 @@ mod tests {
         assert_eq!(cfg.audio.limiter, LimiterSetting::PeakLimiter);
         assert_eq!(cfg.psychoacoustics.loudness_exp, 0.23);
         assert!((cfg.psychoacoustics.roughness_k - 0.428571).abs() < 1e-6);
-        assert_eq!(cfg.psychoacoustics.consonance_kernel.a, 1.0);
-        assert!((cfg.psychoacoustics.consonance_kernel.b + 1.35).abs() < 1e-6);
-        assert_eq!(cfg.psychoacoustics.consonance_kernel.c, 1.0);
-        assert_eq!(cfg.psychoacoustics.consonance_kernel.d, 0.0);
-        assert_eq!(cfg.psychoacoustics.consonance_level.beta, 2.0);
-        assert_eq!(cfg.psychoacoustics.consonance_level.theta, 0.0);
-        assert_eq!(cfg.psychoacoustics.consonance_weight.temperature, 1.0);
-        assert!((cfg.psychoacoustics.consonance_weight.epsilon - 1e-6).abs() < 1e-9);
+        assert_eq!(cfg.psychoacoustics.consonance.field.kernel.a, 1.0);
+        assert!((cfg.psychoacoustics.consonance.field.kernel.b + 1.35).abs() < 1e-6);
+        assert_eq!(cfg.psychoacoustics.consonance.field.kernel.c, 1.0);
+        assert_eq!(cfg.psychoacoustics.consonance.field.kernel.d, 0.0);
+        assert_eq!(cfg.psychoacoustics.consonance.field.level.beta, 2.0);
+        assert_eq!(cfg.psychoacoustics.consonance.field.level.theta, 0.0);
         assert!(!cfg.psychoacoustics.use_incoherent_power);
 
         let contents = fs::read_to_string(&path).expect("read written config");
@@ -397,19 +373,11 @@ mod tests {
         );
         assert!(
             contents.contains("# a = 1.0"),
-            "should write commented consonance_kernel.a"
+            "should write commented consonance.field.kernel.a"
         );
         assert!(
             contents.contains("# beta = 2.0"),
-            "should write commented consonance_level.beta"
-        );
-        assert!(
-            contents.contains("# temperature = 1.0"),
-            "should write commented consonance_weight.temperature"
-        );
-        assert!(
-            contents.contains("# epsilon = 0.000001"),
-            "should write commented consonance_weight.epsilon"
+            "should write commented consonance.field.level.beta"
         );
         assert!(
             contents.contains("# use_incoherent_power = false"),
@@ -438,19 +406,19 @@ mod tests {
             psychoacoustics: PsychoAcousticsConfig {
                 loudness_exp: 0.3,
                 roughness_k: 0.2,
-                consonance_kernel: ConsonanceKernelConfig {
-                    a: 0.9,
-                    b: -0.7,
-                    c: 0.4,
-                    d: 0.2,
-                },
-                consonance_level: ConsonanceLevelConfig {
-                    beta: 3.25,
-                    theta: -0.15,
-                },
-                consonance_weight: ConsonanceWeightConfig {
-                    temperature: 0.4,
-                    epsilon: 1e-5,
+                consonance: ConsonanceConfig {
+                    field: ConsonanceFieldConfig {
+                        kernel: ConsonanceKernelConfig {
+                            a: 0.9,
+                            b: -0.7,
+                            c: 0.4,
+                            d: 0.2,
+                        },
+                        level: ConsonanceLevelConfig {
+                            beta: 3.25,
+                            theta: -0.15,
+                        },
+                    },
                 },
                 use_incoherent_power: false,
             },
@@ -471,14 +439,12 @@ mod tests {
         assert_eq!(cfg.analysis.tau_ms, 60.0);
         assert_eq!(cfg.psychoacoustics.loudness_exp, 0.3);
         assert_eq!(cfg.psychoacoustics.roughness_k, 0.2);
-        assert_eq!(cfg.psychoacoustics.consonance_kernel.a, 0.9);
-        assert_eq!(cfg.psychoacoustics.consonance_kernel.b, -0.7);
-        assert_eq!(cfg.psychoacoustics.consonance_kernel.c, 0.4);
-        assert_eq!(cfg.psychoacoustics.consonance_kernel.d, 0.2);
-        assert_eq!(cfg.psychoacoustics.consonance_level.beta, 3.25);
-        assert_eq!(cfg.psychoacoustics.consonance_level.theta, -0.15);
-        assert_eq!(cfg.psychoacoustics.consonance_weight.temperature, 0.4);
-        assert_eq!(cfg.psychoacoustics.consonance_weight.epsilon, 1e-5);
+        assert_eq!(cfg.psychoacoustics.consonance.field.kernel.a, 0.9);
+        assert_eq!(cfg.psychoacoustics.consonance.field.kernel.b, -0.7);
+        assert_eq!(cfg.psychoacoustics.consonance.field.kernel.c, 0.4);
+        assert_eq!(cfg.psychoacoustics.consonance.field.kernel.d, 0.2);
+        assert_eq!(cfg.psychoacoustics.consonance.field.level.beta, 3.25);
+        assert_eq!(cfg.psychoacoustics.consonance.field.level.theta, -0.15);
         assert!(!cfg.psychoacoustics.use_incoherent_power);
         assert!(!cfg.playback.wait_user_exit);
         assert!(cfg.playback.wait_user_start);

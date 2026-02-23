@@ -187,7 +187,7 @@ impl Population {
             .is_some_and(|gate_tick| gate_tick > now && gate_tick <= frame_end);
         let pred_scan =
             world
-                .predict_consonance_level01_next_gate()
+                .predict_consonance_field_level01_next_gate()
                 .and_then(|(gate_tick, scan)| {
                     if gate_tick >= now && gate_tick < frame_end {
                         Some(scan)
@@ -214,7 +214,7 @@ impl Population {
             let batch = &mut out[used];
             let mut extra_gate_gain = 1.0;
             if let Some(scan) = pred_scan.as_ref() {
-                let mut gain_raw = world.sample_scan_level01(scan, agent.body.base_freq_hz());
+                let mut gain_raw = world.sample_scan_field_level01(scan, agent.body.base_freq_hz());
                 if !gain_raw.is_finite() {
                     gain_raw = 0.0;
                 }
@@ -353,7 +353,7 @@ impl Population {
                     if self.is_range_occupied_with(f, min_dist_erb, reserved) {
                         continue;
                     }
-                    if let Some(&c_val) = landscape.consonance_level01.get(i)
+                    if let Some(&c_val) = landscape.consonance_field_level01.get(i)
                         && c_val > best_val
                     {
                         found = true;
@@ -368,7 +368,7 @@ impl Population {
                     let mut best = idx_min;
                     let mut best_val = f32::MIN;
                     for i in idx_min..=idx_max {
-                        if let Some(&c_val) = landscape.consonance_level01.get(i)
+                        if let Some(&c_val) = landscape.consonance_field_level01.get(i)
                             && c_val > best_val
                         {
                             best_val = c_val;
@@ -379,34 +379,24 @@ impl Population {
                 }
             }
             SpawnStrategy::ConsonanceDensity { .. } => {
-                let weights: Vec<f32> = (idx_min..=idx_max)
+                let mut occupied = vec![false; n_bins];
+                for (i, slot) in occupied
+                    .iter_mut()
                     .enumerate()
-                    .map(|(local_idx, i)| {
-                        let f = space.freq_of_index(i);
-                        let occupied = self.is_range_occupied_with(f, min_dist_erb, reserved);
-                        let _ = local_idx;
-                        let base_weight =
-                            landscape.consonance_weight.get(i).copied().unwrap_or(0.0);
-                        consonance_weight(base_weight, occupied)
-                    })
-                    .collect();
-                if let Ok(dist) = WeightedIndex::new(&weights) {
+                    .take(idx_max + 1)
+                    .skip(idx_min)
+                {
+                    let f = space.freq_of_index(i);
+                    *slot = self.is_range_occupied_with(f, min_dist_erb, reserved);
+                }
+                let mut pmf_full = vec![0.0f32; n_bins];
+                landscape.build_consonance_density_pmf(&occupied, &mut pmf_full);
+                let pmf_slice = &pmf_full[idx_min..=idx_max];
+
+                if let Ok(dist) = WeightedIndex::new(pmf_slice) {
                     idx_min + dist.sample(rng)
                 } else {
-                    // fallback to random log-uniform
-                    let min_l = min_freq.log2();
-                    let max_l = max_freq.log2();
-                    if !min_l.is_finite() || !max_l.is_finite() || min_l >= max_l {
-                        return min_freq.max(1e-6);
-                    }
-                    for _ in 0..32 {
-                        let r = rng.random_range(min_l..max_l);
-                        let f = 2.0f32.powf(r);
-                        if !self.is_range_occupied(f, min_dist_erb) {
-                            return f;
-                        }
-                    }
-                    return 2.0f32.powf(rng.random_range(min_l..max_l));
+                    idx_min
                 }
             }
             SpawnStrategy::RandomLog { .. } => {
@@ -661,19 +651,6 @@ fn mix_pred_gate_gain(sync: f32, gain_raw: f32) -> f32 {
     if gain.is_finite() { gain.max(0.0) } else { 1.0 }
 }
 
-fn consonance_weight(base_weight: f32, occupied: bool) -> f32 {
-    if occupied {
-        return 0.0;
-    }
-    // Policy A: avoid an extra hard-coded post-mask floor and rely on representation epsilon.
-    // If all weights become zero after occupancy masking, caller fallback handles selection.
-    if base_weight.is_finite() {
-        base_weight.max(0.0)
-    } else {
-        0.0
-    }
-}
-
 fn build_social_trace_from_batches(
     phonation_batches: &[PhonationBatch],
     frame_end: Tick,
@@ -759,16 +736,16 @@ mod tests {
     }
 
     #[test]
-    fn decide_frequency_uses_consonance_level01() {
+    fn decide_frequency_uses_consonance_field_level01() {
         let space = Log2Space::new(100.0, 400.0, 12);
         let mut landscape = LandscapeFrame::new(space.clone());
-        landscape.consonance_score.fill(-10.0);
-        landscape.consonance_level01.fill(0.0);
+        landscape.consonance_field_score.fill(-10.0);
+        landscape.consonance_field_level01.fill(0.0);
 
         let idx_high = space.index_of_freq(200.0).expect("idx");
         let idx_raw = space.index_of_freq(300.0).expect("idx");
-        landscape.consonance_level01[idx_high] = 1.0;
-        landscape.consonance_score[idx_raw] = 10.0;
+        landscape.consonance_field_level01[idx_high] = 1.0;
+        landscape.consonance_field_score[idx_raw] = 10.0;
 
         let pop = Population::new(Timebase {
             fs: 48_000.0,
@@ -787,36 +764,35 @@ mod tests {
     }
 
     #[test]
-    fn consonance_weight_zero_base_is_zero() {
-        let w = consonance_weight(0.0, false);
-        assert_eq!(w, 0.0);
-    }
-
-    #[test]
-    fn consonance_weight_occupied_is_zero() {
-        let w = consonance_weight(1.0, true);
-        assert_eq!(w, 0.0);
-    }
-
-    #[test]
     fn pred_gate_gain_sync_zero_is_unity() {
         let gain = mix_pred_gate_gain(0.0, 0.3);
         assert_eq!(gain, 1.0);
     }
 
     #[test]
-    fn consonance_weighted_index_accepts_positive_landscape_weights() {
-        let weights = vec![
-            consonance_weight(1e-6, false),
-            consonance_weight(1e-6, false),
-        ];
-        assert!(WeightedIndex::new(&weights).is_ok());
-    }
+    fn consonance_density_sampling_uses_density_pmf() {
+        let space = Log2Space::new(100.0, 400.0, 24);
+        let mut landscape = LandscapeFrame::new(space.clone());
+        landscape.consonance_density_weight_raw.fill(0.0);
+        let idx_target = space.index_of_freq(220.0).expect("idx target");
+        landscape.consonance_density_weight_raw[idx_target] = 1.0;
 
-    #[test]
-    fn consonance_weighted_index_fails_when_all_occupied() {
-        let weights = vec![consonance_weight(1.0, true), consonance_weight(0.2, true)];
-        assert!(WeightedIndex::new(&weights).is_err());
+        let pop = Population::new(Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        });
+        let strategy = SpawnStrategy::ConsonanceDensity {
+            min_freq: space.fmin,
+            max_freq: space.fmax,
+            min_dist_erb: 0.0,
+        };
+        let mut rng = rand::rngs::StdRng::seed_from_u64(1234);
+
+        for _ in 0..64 {
+            let freq = pop.decide_frequency(&strategy, &landscape, &mut rng, &[]);
+            let picked_idx = space.index_of_freq(freq).expect("picked idx");
+            assert_eq!(picked_idx, idx_target);
+        }
     }
 
     #[test]

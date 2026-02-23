@@ -2,8 +2,9 @@ use std::fs;
 use std::path::PathBuf;
 
 use conchordal::config::{
-    AnalysisConfig, AppConfig, AudioConfig, ConsonanceKernelConfig, ConsonanceLevelConfig,
-    ConsonanceWeightConfig, LimiterSetting, PlaybackConfig, PsychoAcousticsConfig,
+    AnalysisConfig, AppConfig, AudioConfig, ConsonanceConfig, ConsonanceFieldConfig,
+    ConsonanceKernelConfig, ConsonanceLevelConfig, LimiterSetting, PlaybackConfig,
+    PsychoAcousticsConfig,
 };
 use conchordal::core::nsgt_kernel::KernelAlign;
 
@@ -52,44 +53,34 @@ fn assert_config_eq(actual: &AppConfig, expected: &AppConfig) {
         "psychoacoustics.roughness_k",
     );
     assert_close(
-        actual.psychoacoustics.consonance_kernel.a,
-        expected.psychoacoustics.consonance_kernel.a,
-        "psychoacoustics.consonance_kernel.a",
+        actual.psychoacoustics.consonance.field.kernel.a,
+        expected.psychoacoustics.consonance.field.kernel.a,
+        "psychoacoustics.consonance.field.kernel.a",
     );
     assert_close(
-        actual.psychoacoustics.consonance_kernel.b,
-        expected.psychoacoustics.consonance_kernel.b,
-        "psychoacoustics.consonance_kernel.b",
+        actual.psychoacoustics.consonance.field.kernel.b,
+        expected.psychoacoustics.consonance.field.kernel.b,
+        "psychoacoustics.consonance.field.kernel.b",
     );
     assert_close(
-        actual.psychoacoustics.consonance_kernel.c,
-        expected.psychoacoustics.consonance_kernel.c,
-        "psychoacoustics.consonance_kernel.c",
+        actual.psychoacoustics.consonance.field.kernel.c,
+        expected.psychoacoustics.consonance.field.kernel.c,
+        "psychoacoustics.consonance.field.kernel.c",
     );
     assert_close(
-        actual.psychoacoustics.consonance_kernel.d,
-        expected.psychoacoustics.consonance_kernel.d,
-        "psychoacoustics.consonance_kernel.d",
+        actual.psychoacoustics.consonance.field.kernel.d,
+        expected.psychoacoustics.consonance.field.kernel.d,
+        "psychoacoustics.consonance.field.kernel.d",
     );
     assert_close(
-        actual.psychoacoustics.consonance_level.beta,
-        expected.psychoacoustics.consonance_level.beta,
-        "psychoacoustics.consonance_level.beta",
+        actual.psychoacoustics.consonance.field.level.beta,
+        expected.psychoacoustics.consonance.field.level.beta,
+        "psychoacoustics.consonance.field.level.beta",
     );
     assert_close(
-        actual.psychoacoustics.consonance_level.theta,
-        expected.psychoacoustics.consonance_level.theta,
-        "psychoacoustics.consonance_level.theta",
-    );
-    assert_close(
-        actual.psychoacoustics.consonance_weight.temperature,
-        expected.psychoacoustics.consonance_weight.temperature,
-        "psychoacoustics.consonance_weight.temperature",
-    );
-    assert_close(
-        actual.psychoacoustics.consonance_weight.epsilon,
-        expected.psychoacoustics.consonance_weight.epsilon,
-        "psychoacoustics.consonance_weight.epsilon",
+        actual.psychoacoustics.consonance.field.level.theta,
+        expected.psychoacoustics.consonance.field.level.theta,
+        "psychoacoustics.consonance.field.level.theta",
     );
     assert_eq!(
         actual.psychoacoustics.use_incoherent_power,
@@ -132,19 +123,19 @@ fn config_load_custom_values() {
         psychoacoustics: PsychoAcousticsConfig {
             loudness_exp: 0.3,
             roughness_k: 0.2,
-            consonance_kernel: ConsonanceKernelConfig {
-                a: 1.2,
-                b: -0.8,
-                c: 0.6,
-                d: -0.1,
-            },
-            consonance_level: ConsonanceLevelConfig {
-                beta: 3.25,
-                theta: -0.15,
-            },
-            consonance_weight: ConsonanceWeightConfig {
-                temperature: 0.25,
-                epsilon: 1e-5,
+            consonance: ConsonanceConfig {
+                field: ConsonanceFieldConfig {
+                    kernel: ConsonanceKernelConfig {
+                        a: 1.2,
+                        b: -0.8,
+                        c: 0.6,
+                        d: -0.1,
+                    },
+                    level: ConsonanceLevelConfig {
+                        beta: 3.25,
+                        theta: -0.15,
+                    },
+                },
             },
             use_incoherent_power: false,
         },
@@ -179,34 +170,25 @@ fn config_missing_file_fallback() {
 #[test]
 fn config_parse_nested_consonance_keys() {
     let text = r#"
-[psychoacoustics.consonance_kernel]
+[psychoacoustics.consonance.field.kernel]
 a = 1.75
 b = -0.5
 c = 0.33
 d = 0.1
 
-[psychoacoustics.consonance_level]
+[psychoacoustics.consonance.field.level]
 beta = 4.0
 theta = -0.2
-
-[psychoacoustics.consonance_weight]
-temperature = 0.5
-epsilon = 0.00001
 "#;
     let parsed: AppConfig = toml::from_str(text).expect("parse nested consonance keys");
     assert_close(
-        parsed.psychoacoustics.consonance_kernel.a,
+        parsed.psychoacoustics.consonance.field.kernel.a,
         1.75,
-        "psychoacoustics.consonance_kernel.a",
+        "psychoacoustics.consonance.field.kernel.a",
     );
     assert_close(
-        parsed.psychoacoustics.consonance_level.beta,
+        parsed.psychoacoustics.consonance.field.level.beta,
         4.0,
-        "psychoacoustics.consonance_level.beta",
-    );
-    assert_close(
-        parsed.psychoacoustics.consonance_weight.temperature,
-        0.5,
-        "psychoacoustics.consonance_weight.temperature",
+        "psychoacoustics.consonance.field.level.beta",
     );
 }

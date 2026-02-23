@@ -444,9 +444,9 @@ pub fn main_window(
 
         ui.separator();
 
-        let consonance_score = &frame.landscape.consonance_score;
+        let consonance_field_score = &frame.landscape.consonance_field_score;
         let (mut c_min, mut c_max) = (f32::INFINITY, f32::NEG_INFINITY);
-        for &v in consonance_score.iter() {
+        for &v in consonance_field_score.iter() {
             if v.is_finite() {
                 if v < c_min {
                     c_min = v;
@@ -475,10 +475,10 @@ pub fn main_window(
             // Combined Consonance Score C
             log2_plot_hz(
                 ui,
-                "Consonance Score Landscape",
+                "Consonance Field Score",
                 &frame.landscape.space.centers_hz,
-                consonance_score,
-                "C score",
+                consonance_field_score,
+                "C_field_score",
                 y_min,
                 y_max,
                 102.0,
@@ -567,19 +567,19 @@ pub fn main_window(
                     ui.label(format!("pred_horizon={pred_horizon}"));
                 });
 
-                let pred_overlay = frame.pred_c_level01_next_gate.as_ref().map(|scan| {
+                let pred_overlay = frame.pred_c_field_level01_next_gate.as_ref().map(|scan| {
                     (
                         scan.as_ref(),
-                        "Predicted C_level01",
+                        "Predicted C_field_level01",
                         Color32::from_rgb(230, 170, 90),
                     )
                 });
                 log2_plot_hz(
                     ui,
-                    "Consonance Level (Observed/Predicted)",
+                    "Consonance Field Level (Observed/Predicted)",
                     &frame.landscape.space.centers_hz,
-                    &frame.landscape.consonance_level01,
-                    "C_level01",
+                    &frame.landscape.consonance_field_level01,
+                    "C_field_level01",
                     0.0,
                     1.0,
                     102.0,
@@ -587,7 +587,7 @@ pub fn main_window(
                     None,
                     pred_overlay,
                 );
-                if let Some(scan) = frame.pred_c_level01_next_gate.as_ref() {
+                if let Some(scan) = frame.pred_c_field_level01_next_gate.as_ref() {
                     let mut sum = 0.0f32;
                     let mut max = 0.0f32;
                     for &v in scan.iter() {
@@ -598,10 +598,10 @@ pub fn main_window(
                     }
                     let mean = sum / (scan.len().max(1) as f32);
                     ui.label(format!(
-                        "pred_c_level01_next_gate mean={mean:.3} max={max:.3}"
+                        "pred_c_field_level01_next_gate mean={mean:.3} max={max:.3}"
                     ));
                 } else {
-                    ui.label("pred_c_level01_next_gate=None");
+                    ui.label("pred_c_field_level01_next_gate=None");
                 }
             });
 

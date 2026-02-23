@@ -895,13 +895,14 @@ impl ScriptHost {
                 }
             },
         );
-        engine.register_fn("consonance_density", |min_freq: FLOAT, max_freq: FLOAT| {
-            SpawnStrategy::ConsonanceDensity {
+        engine.register_fn(
+            "consonance_density_pmf",
+            |min_freq: FLOAT, max_freq: FLOAT| SpawnStrategy::ConsonanceDensity {
                 min_freq: min_freq as f32,
                 max_freq: max_freq as f32,
                 min_dist_erb: 1.0,
-            }
-        });
+            },
+        );
         engine.register_fn("random_log", |min_freq: FLOAT, max_freq: FLOAT| {
             SpawnStrategy::RandomLog {
                 min_freq: min_freq as f32,

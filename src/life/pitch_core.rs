@@ -946,8 +946,8 @@ mod tests {
                 let g = (-(d_cents * d_cents) / (2.0 * width_cents * width_cents)).exp();
                 score += gain * g;
             }
-            landscape.consonance_score[idx] = score;
-            landscape.consonance_level01[idx] = score.clamp(0.0, 1.0);
+            landscape.consonance_field_score[idx] = score;
+            landscape.consonance_field_level01[idx] = score.clamp(0.0, 1.0);
         }
         landscape
     }

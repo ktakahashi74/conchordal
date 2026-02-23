@@ -35,8 +35,6 @@ impl ConsonanceKernel {
 pub struct ConsonanceRepresentationParams {
     pub beta: f32,
     pub theta: f32,
-    pub temperature: f32,
-    pub epsilon: f32,
 }
 
 impl Default for ConsonanceRepresentationParams {
@@ -44,8 +42,6 @@ impl Default for ConsonanceRepresentationParams {
         Self {
             beta: 2.0,
             theta: 0.0,
-            temperature: 1.0,
-            epsilon: 1e-6,
         }
     }
 }
@@ -64,63 +60,12 @@ impl ConsonanceRepresentationParams {
     }
 
     #[inline]
-    pub fn weight(&self, score: f32) -> f32 {
-        let score = sanitize_finite(score);
-        let temperature = if self.temperature.is_finite() {
-            self.temperature.max(1e-6)
-        } else {
-            1e-6
-        };
-        let epsilon = if self.epsilon.is_finite() {
-            self.epsilon.max(0.0)
-        } else {
-            0.0
-        };
-        let exp_arg = (score / temperature).clamp(-80.0, 80.0);
-        let v = exp_arg.exp() + epsilon;
-        if v.is_finite() { v.max(0.0) } else { epsilon }
-    }
-
-    #[inline]
     pub fn energy(&self, score: f32) -> f32 {
         -sanitize_finite(score)
     }
-
-    pub fn density(&self, weights: &[f32]) -> Vec<f32> {
-        let mut out = vec![0.0; weights.len()];
-        self.normalize_density(weights, &mut out);
-        out
-    }
-
-    pub fn normalize_density(&self, weights: &[f32], out: &mut [f32]) {
-        debug_assert_eq!(weights.len(), out.len());
-        if weights.is_empty() || out.is_empty() {
-            return;
-        }
-        let len = weights.len().min(out.len());
-        let mut total = 0.0f32;
-        for i in 0..len {
-            let w = weights[i];
-            let sanitized = if w.is_finite() { w.max(0.0) } else { 0.0 };
-            out[i] = sanitized;
-            total += sanitized;
-        }
-
-        if total > 0.0 && total.is_finite() {
-            let inv = 1.0 / total;
-            for v in out.iter_mut().take(len) {
-                *v *= inv;
-            }
-        } else {
-            let uniform = 1.0 / len as f32;
-            for v in out.iter_mut().take(len) {
-                *v = uniform;
-            }
-        }
-    }
 }
 
-pub fn compose_consonance_level01_scan(
+pub fn compose_consonance_field_level01_scan(
     h01_scan: &[f32],
     r01_scan: &[f32],
     kernel: &ConsonanceKernel,
@@ -177,11 +122,7 @@ mod tests {
         let r = 0.2;
         let expected = 0.8 * h - 0.4 * r + 1.25 * h * r + 0.1;
         let got = kernel.score(h, r);
-        assert_eq!(
-            got.to_bits(),
-            expected.to_bits(),
-            "got={got} expected={expected}"
-        );
+        assert_eq!(got.to_bits(), expected.to_bits());
     }
 
     #[test]
@@ -189,8 +130,6 @@ mod tests {
         let repr = ConsonanceRepresentationParams {
             beta: 3.0,
             theta: -0.2,
-            temperature: 1.0,
-            epsilon: 1e-6,
         };
         let xs = [-2.0, -0.5, 0.0, 0.5, 2.0];
         let ys = xs.map(|x| repr.level01(x));
@@ -220,77 +159,11 @@ mod tests {
     }
 
     #[test]
-    fn weight_is_nonnegative_and_finite_for_extremes() {
-        let repr_tiny = ConsonanceRepresentationParams {
-            beta: 2.0,
-            theta: 0.0,
-            temperature: 1e-9,
-            epsilon: 5e-4,
-        };
-        let repr_huge = ConsonanceRepresentationParams {
-            beta: 2.0,
-            theta: 0.0,
-            temperature: 1e9,
-            epsilon: 1e-6,
-        };
-        let repr_zero = ConsonanceRepresentationParams {
-            beta: 2.0,
-            theta: 0.0,
-            temperature: 0.0,
-            epsilon: 1e-6,
-        };
-        let repr_negative = ConsonanceRepresentationParams {
-            beta: 2.0,
-            theta: 0.0,
-            temperature: -7.0,
-            epsilon: 1e-6,
-        };
-        for repr in [repr_tiny, repr_huge, repr_zero, repr_negative] {
-            for score in [-1e6f32, -10.0, 0.0, 10.0, 1e6, f32::NAN, f32::INFINITY] {
-                let w = repr.weight(score);
-                assert!(w >= 0.0, "weight<0 for score={score}");
-                assert!(
-                    w.is_finite(),
-                    "weight should be finite for score={score}: {w}"
-                );
-            }
-        }
-        assert!(
-            repr_tiny.weight(-1e6) >= repr_tiny.epsilon,
-            "epsilon should be an effective floor for very negative scores"
-        );
-    }
-
-    #[test]
-    fn normalize_density_sums_to_one_and_fallbacks() {
-        let repr = ConsonanceRepresentationParams::default();
-
-        let density = repr.density(&[1.0, 2.0, 3.0]);
-        let sum: f32 = density.iter().sum();
-        assert!((sum - 1.0).abs() < 1e-6, "sum={sum}");
-
-        let zeros = repr.density(&[0.0, 0.0, 0.0, 0.0]);
-        for &v in &zeros {
-            assert!((v - 0.25).abs() < 1e-6, "fallback not uniform: {v}");
-        }
-
-        let nan_inf = repr.density(&[f32::NAN, f32::INFINITY, f32::NEG_INFINITY]);
-        let sum: f32 = nan_inf.iter().sum();
-        assert!((sum - 1.0).abs() < 1e-6, "sum={sum}");
-        for &v in &nan_inf {
-            assert!((v - (1.0 / 3.0)).abs() < 1e-6, "fallback not uniform: {v}");
-        }
-    }
-
-    #[test]
     fn energy_is_negative_score() {
         let repr = ConsonanceRepresentationParams::default();
         let score = 0.37;
         let energy = repr.energy(score);
-        assert!(
-            (energy + score).abs() < 1e-6,
-            "energy={energy} score={score}"
-        );
+        assert!((energy + score).abs() < 1e-6);
     }
 
     #[test]

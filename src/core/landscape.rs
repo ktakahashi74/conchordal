@@ -76,15 +76,15 @@ pub struct Landscape {
     /// Normalized perc_potential_H [0, 1].
     pub harmonicity01: Vec<f32>,
     /// Layer 1: kernel output (unbounded).
-    pub consonance_score: Vec<f32>,
+    pub consonance_field_score: Vec<f32>,
     /// Layer 2: normalized level in [0, 1].
-    pub consonance_level01: Vec<f32>,
-    /// Layer 2: non-negative pre-normalized weight.
-    pub consonance_weight: Vec<f32>,
-    /// Layer 2: normalized density (PMF).
-    pub consonance_density: Vec<f32>,
+    pub consonance_field_level01: Vec<f32>,
+    /// Density axis: raw spawn weight before occupancy/mask.
+    pub consonance_density_weight_raw: Vec<f32>,
+    /// Density axis: normalized PMF for no-mask/default view.
+    pub consonance_density_pmf: Vec<f32>,
     /// Layer 2: minimization energy.
-    pub consonance_energy: Vec<f32>,
+    pub consonance_field_energy: Vec<f32>,
     pub subjective_intensity: Vec<f32>,
     pub nsgt_power: Vec<f32>,
     /// perc_state_R (summary statistics).
@@ -118,11 +118,11 @@ impl Landscape {
             harmonicity_path_a: vec![0.0; n],
             harmonicity_path_b: vec![0.0; n],
             harmonicity01: vec![0.0; n],
-            consonance_score: vec![0.0; n],
-            consonance_level01: vec![0.0; n],
-            consonance_weight: vec![0.0; n],
-            consonance_density: vec![0.0; n],
-            consonance_energy: vec![0.0; n],
+            consonance_field_score: vec![0.0; n],
+            consonance_field_level01: vec![0.0; n],
+            consonance_density_weight_raw: vec![0.0; n],
+            consonance_density_pmf: vec![0.0; n],
+            consonance_field_energy: vec![0.0; n],
             subjective_intensity: vec![0.0; n],
             nsgt_power: vec![0.0; n],
             roughness_total: 0.0,
@@ -151,11 +151,11 @@ impl Landscape {
         self.harmonicity_path_a.resize(n, 0.0);
         self.harmonicity_path_b.resize(n, 0.0);
         self.harmonicity01.resize(n, 0.0);
-        self.consonance_score.resize(n, 0.0);
-        self.consonance_level01.resize(n, 0.0);
-        self.consonance_weight.resize(n, 0.0);
-        self.consonance_density.resize(n, 0.0);
-        self.consonance_energy.resize(n, 0.0);
+        self.consonance_field_score.resize(n, 0.0);
+        self.consonance_field_level01.resize(n, 0.0);
+        self.consonance_density_weight_raw.resize(n, 0.0);
+        self.consonance_density_pmf.resize(n, 0.0);
+        self.consonance_field_energy.resize(n, 0.0);
         self.subjective_intensity.resize(n, 0.0);
         self.nsgt_power.resize(n, 0.0);
     }
@@ -176,15 +176,17 @@ impl Landscape {
         self.space
             .assert_scan_len_named(&self.harmonicity01, "harmonicity01");
         self.space
-            .assert_scan_len_named(&self.consonance_score, "consonance_score");
+            .assert_scan_len_named(&self.consonance_field_score, "consonance_field_score");
         self.space
-            .assert_scan_len_named(&self.consonance_level01, "consonance_level01");
+            .assert_scan_len_named(&self.consonance_field_level01, "consonance_field_level01");
+        self.space.assert_scan_len_named(
+            &self.consonance_density_weight_raw,
+            "consonance_density_weight_raw",
+        );
         self.space
-            .assert_scan_len_named(&self.consonance_weight, "consonance_weight");
+            .assert_scan_len_named(&self.consonance_density_pmf, "consonance_density_pmf");
         self.space
-            .assert_scan_len_named(&self.consonance_density, "consonance_density");
-        self.space
-            .assert_scan_len_named(&self.consonance_energy, "consonance_energy");
+            .assert_scan_len_named(&self.consonance_field_energy, "consonance_field_energy");
         self.space
             .assert_scan_len_named(&self.subjective_intensity, "subjective_intensity");
         self.space
@@ -194,33 +196,33 @@ impl Landscape {
     /// Layer 1 score. Prefer `evaluate_pitch_level01` for normalized usage.
     pub fn evaluate_pitch_score(&self, freq_hz: f32) -> f32 {
         self.assert_scan_lengths();
-        self.sample_linear(&self.consonance_score, freq_hz)
+        self.sample_linear(&self.consonance_field_score, freq_hz)
     }
 
     /// Layer 1 score. Prefer `evaluate_pitch_level01_log2` for normalized usage.
     pub fn evaluate_pitch_score_log2(&self, log_freq: f32) -> f32 {
         self.assert_scan_lengths();
-        self.sample_linear_log2(&self.consonance_score, log_freq)
+        self.sample_linear_log2(&self.consonance_field_score, log_freq)
     }
 
     pub fn evaluate_pitch_level01(&self, freq_hz: f32) -> f32 {
         self.assert_scan_lengths();
-        self.sample_linear(&self.consonance_level01, freq_hz)
+        self.sample_linear(&self.consonance_field_level01, freq_hz)
             .clamp(0.0, 1.0)
     }
 
     pub fn evaluate_pitch_level01_log2(&self, log_freq: f32) -> f32 {
         self.assert_scan_lengths();
-        self.sample_linear_log2(&self.consonance_level01, log_freq)
+        self.sample_linear_log2(&self.consonance_field_level01, log_freq)
             .clamp(0.0, 1.0)
     }
 
-    pub fn consonance_score_at(&self, freq_hz: f32) -> f32 {
+    pub fn consonance_field_score_at(&self, freq_hz: f32) -> f32 {
         self.assert_scan_lengths();
         self.evaluate_pitch_score(freq_hz)
     }
 
-    pub fn consonance_level01_at(&self, freq_hz: f32) -> f32 {
+    pub fn consonance_field_level01_at(&self, freq_hz: f32) -> f32 {
         self.assert_scan_lengths();
         self.evaluate_pitch_level01(freq_hz)
     }
@@ -243,18 +245,18 @@ impl Landscape {
             self.roughness01 = vec![0.0; self.roughness.len()];
         }
 
-        let n = self.consonance_score.len();
-        if self.consonance_level01.len() != n {
-            self.consonance_level01 = vec![0.0; n];
+        let n = self.consonance_field_score.len();
+        if self.consonance_field_level01.len() != n {
+            self.consonance_field_level01 = vec![0.0; n];
         }
-        if self.consonance_weight.len() != n {
-            self.consonance_weight = vec![0.0; n];
+        if self.consonance_density_weight_raw.len() != n {
+            self.consonance_density_weight_raw = vec![0.0; n];
         }
-        if self.consonance_density.len() != n {
-            self.consonance_density = vec![0.0; n];
+        if self.consonance_density_pmf.len() != n {
+            self.consonance_density_pmf = vec![0.0; n];
         }
-        if self.consonance_energy.len() != n {
-            self.consonance_energy = vec![0.0; n];
+        if self.consonance_field_energy.len() != n {
+            self.consonance_field_energy = vec![0.0; n];
         }
 
         let perc_h_pot_scan = &self.harmonicity;
@@ -267,18 +269,86 @@ impl Landscape {
         debug_assert_eq!(self.harmonicity01.len(), n);
         debug_assert_eq!(self.roughness01.len(), n);
 
+        self.recompute_consonance_field(params);
+        self.recompute_consonance_density_raw();
+        let occupied = vec![false; n];
+        let mut pmf = vec![0.0f32; n];
+        self.build_consonance_density_pmf(&occupied, &mut pmf);
+        self.consonance_density_pmf = pmf;
+    }
+
+    pub fn recompute_consonance_field(&mut self, params: &LandscapeParams) {
+        self.assert_scan_lengths();
+        let n = self.consonance_field_score.len();
         for i in 0..n {
-            let h01 = self.harmonicity01[i].clamp(0.0, 1.0);
-            let r01 = self.roughness01[i].clamp(0.0, 1.0);
+            let h01 = sanitize01(self.harmonicity01[i]);
+            let r01 = sanitize01(self.roughness01[i]);
             let score = params.consonance_kernel.score(h01, r01);
-            self.consonance_score[i] = score;
-            self.consonance_level01[i] = params.consonance_representation.level01(score);
-            self.consonance_weight[i] = params.consonance_representation.weight(score).max(0.0);
-            self.consonance_energy[i] = params.consonance_representation.energy(score);
+            self.consonance_field_score[i] = score;
+            self.consonance_field_level01[i] = params.consonance_representation.level01(score);
+            self.consonance_field_energy[i] = params.consonance_representation.energy(score);
         }
-        params
-            .consonance_representation
-            .normalize_density(&self.consonance_weight, &mut self.consonance_density);
+    }
+
+    pub fn recompute_consonance_density_raw(&mut self) {
+        self.assert_scan_lengths();
+        let n = self.consonance_density_weight_raw.len();
+        for i in 0..n {
+            let h01 = sanitize01(self.harmonicity01[i]);
+            let r01 = sanitize01(self.roughness01[i]);
+            let raw = (h01 * (1.0 - r01)).clamp(0.0, 1.0);
+            self.consonance_density_weight_raw[i] = if raw.is_finite() { raw } else { 0.0 };
+        }
+    }
+
+    pub fn build_consonance_density_pmf(&self, occupied: &[bool], out: &mut [f32]) {
+        self.assert_scan_lengths();
+        debug_assert_eq!(occupied.len(), self.consonance_density_weight_raw.len());
+        debug_assert_eq!(out.len(), self.consonance_density_weight_raw.len());
+        if out.is_empty() {
+            return;
+        }
+        let n = out
+            .len()
+            .min(self.consonance_density_weight_raw.len())
+            .min(occupied.len());
+
+        let mut sum = 0.0f32;
+        let mut unoccupied_count = 0usize;
+        for i in 0..n {
+            let is_occupied = occupied[i];
+            if !is_occupied {
+                unoccupied_count += 1;
+            }
+            let w = if is_occupied {
+                0.0
+            } else {
+                let raw = self.consonance_density_weight_raw[i];
+                if raw.is_finite() { raw.max(0.0) } else { 0.0 }
+            };
+            out[i] = w;
+            sum += w;
+        }
+
+        if sum > 0.0 && sum.is_finite() {
+            let inv = 1.0 / sum;
+            for v in out.iter_mut().take(n) {
+                *v *= inv;
+            }
+            return;
+        }
+
+        if unoccupied_count > 0 {
+            let uniform = 1.0 / unoccupied_count as f32;
+            for i in 0..n {
+                out[i] = if occupied[i] { 0.0 } else { uniform };
+            }
+        } else {
+            let uniform = 1.0 / n as f32;
+            for v in out.iter_mut().take(n) {
+                *v = uniform;
+            }
+        }
     }
 
     fn sample_linear(&self, data: &[f32], freq_hz: f32) -> f32 {
@@ -314,6 +384,17 @@ pub fn map_roughness01(r_norm: f32, r_half: f32) -> f32 {
         0.0
     } else {
         (r_norm / denom).clamp(0.0, 1.0)
+    }
+}
+
+#[inline]
+fn sanitize01(x: f32) -> f32 {
+    if x.is_finite() {
+        x.clamp(0.0, 1.0)
+    } else if x.is_infinite() {
+        if x.is_sign_positive() { 1.0 } else { 0.0 }
+    } else {
+        0.0
     }
 }
 
@@ -370,7 +451,7 @@ mod tests {
     }
 
     #[test]
-    fn consonance_level01_stays_in_range() {
+    fn consonance_field_level01_stays_in_range() {
         let params = build_params(&Log2Space::new(100.0, 400.0, 12));
         let h01 = [0.0f32, 0.5, 1.0];
         let r01 = [0.0f32, 0.4, 1.0];
@@ -384,10 +465,10 @@ mod tests {
     }
 
     #[test]
-    fn evaluate_pitch_level01_uses_consonance_level01() {
+    fn evaluate_pitch_level01_uses_consonance_field_level01() {
         let mut landscape = Landscape::new(Log2Space::new(100.0, 400.0, 12));
-        landscape.consonance_score.fill(10.0);
-        landscape.consonance_level01.fill(0.3);
+        landscape.consonance_field_score.fill(10.0);
+        landscape.consonance_field_level01.fill(0.3);
         let val = landscape.evaluate_pitch_level01(200.0);
         assert!((val - 0.3).abs() < 1e-6, "val={val}");
     }
@@ -395,7 +476,7 @@ mod tests {
     #[test]
     fn evaluate_pitch_level01_is_clamped() {
         let mut landscape = Landscape::new(Log2Space::new(100.0, 400.0, 12));
-        landscape.consonance_level01.fill(1.2);
+        landscape.consonance_field_level01.fill(1.2);
         let val = landscape.evaluate_pitch_level01(200.0);
         assert!((val - 1.0).abs() < 1e-6, "val={val}");
     }
@@ -416,7 +497,7 @@ mod tests {
             let r = landscape.roughness01[i].clamp(0.0, 1.0);
             let score = params.consonance_kernel.score(h, r);
             let expected = params.consonance_representation.level01(score);
-            let got = landscape.consonance_level01[i];
+            let got = landscape.consonance_field_level01[i];
             assert!(
                 (got - expected).abs() < 1e-6,
                 "i={i} got={got} expected={expected}"
@@ -425,7 +506,7 @@ mod tests {
     }
 
     #[test]
-    fn consonance_level01_independent_of_update_order() {
+    fn consonance_field_level01_independent_of_update_order() {
         let space = Log2Space::new(100.0, 400.0, 12);
         let params = build_params(&space);
         let mut a = Landscape::new(space.clone());
@@ -433,19 +514,19 @@ mod tests {
         a.harmonicity = vec![0.75; n];
         a.roughness01 = vec![0.35; n];
         a.recompute_consonance(&params);
-        let c_a = a.consonance_level01.clone();
+        let c_a = a.consonance_field_level01.clone();
 
         let mut b = Landscape::new(space);
         b.roughness01 = vec![0.35; n];
         b.harmonicity = vec![0.75; n];
         b.recompute_consonance(&params);
         for i in 0..n {
-            assert!((c_a[i] - b.consonance_level01[i]).abs() < 1e-6);
+            assert!((c_a[i] - b.consonance_field_level01[i]).abs() < 1e-6);
         }
     }
 
     #[test]
-    fn consonance_score_decreases_with_roughness() {
+    fn consonance_field_score_decreases_with_roughness() {
         let space = Log2Space::new(100.0, 400.0, 12);
         let mut params = build_params(&space);
         params.consonance_kernel = ConsonanceKernel {
@@ -462,15 +543,15 @@ mod tests {
 
         landscape.roughness01 = vec![0.0; n];
         landscape.recompute_consonance(&params);
-        let c0 = landscape.consonance_score[0];
+        let c0 = landscape.consonance_field_score[0];
 
         landscape.roughness01 = vec![0.5; n];
         landscape.recompute_consonance(&params);
-        let c1 = landscape.consonance_score[0];
+        let c1 = landscape.consonance_field_score[0];
 
         landscape.roughness01 = vec![1.0; n];
         landscape.recompute_consonance(&params);
-        let c2 = landscape.consonance_score[0];
+        let c2 = landscape.consonance_field_score[0];
 
         assert!(
             c0 > c1 && c1 > c2,
@@ -479,7 +560,7 @@ mod tests {
     }
 
     #[test]
-    fn consonance_weight_non_negative_and_density_normalized() {
+    fn density_definition_fixed_h_times_one_minus_r() {
         let space = Log2Space::new(100.0, 400.0, 12);
         let params = build_params(&space);
         let mut landscape = Landscape::new(space);
@@ -488,15 +569,95 @@ mod tests {
         landscape.roughness01 = vec![0.2; n];
         landscape.recompute_consonance(&params);
 
-        for &w in &landscape.consonance_weight {
-            assert!(w >= 0.0, "weight should be non-negative: {w}");
+        for i in 0..n {
+            let h = landscape.harmonicity01[i].clamp(0.0, 1.0);
+            let r = landscape.roughness01[i].clamp(0.0, 1.0);
+            let expected = (h * (1.0 - r)).clamp(0.0, 1.0);
+            let got = landscape.consonance_density_weight_raw[i];
+            assert!(
+                (got - expected).abs() < 1e-6,
+                "density raw mismatch at i={i}: got={got} expected={expected}"
+            );
+            assert!(got.is_finite(), "density raw must be finite");
+            assert!(
+                (0.0..=1.0).contains(&got),
+                "density raw out of [0,1]: {got}"
+            );
         }
-        let sum: f32 = landscape.consonance_density.iter().sum();
-        assert!((sum - 1.0).abs() < 1e-5, "density sum={sum}");
     }
 
     #[test]
-    fn recompute_consonance_sets_energy_and_density_consistently() {
+    fn density_raw_edge_cases_match_definition() {
+        let space = Log2Space::new(100.0, 400.0, 3);
+        let params = build_params(&space);
+        let mut landscape = Landscape::new(space);
+        let n = landscape.roughness01.len();
+        landscape.harmonicity = vec![0.0; n];
+        landscape.roughness01 = vec![0.4; n];
+        landscape.harmonicity[1] = 1.0;
+        landscape.roughness01[1] = 1.0;
+        landscape.harmonicity[2] = 1.0;
+        landscape.roughness01[2] = 0.0;
+        landscape.recompute_consonance(&params);
+        assert_eq!(landscape.consonance_density_weight_raw[0], 0.0); // H=0
+        assert_eq!(landscape.consonance_density_weight_raw[1], 0.0); // R=1
+        assert_eq!(landscape.consonance_density_weight_raw[2], 1.0); // H=1,R=0
+    }
+
+    #[test]
+    fn density_normalization_and_fallbacks_work() {
+        let space = Log2Space::new(100.0, 400.0, 12);
+        let params = build_params(&space);
+        let mut landscape = Landscape::new(space);
+        let n = landscape.roughness01.len();
+        landscape.harmonicity01 = vec![0.8; n];
+        landscape.roughness01 = vec![0.25; n];
+        landscape.recompute_consonance(&params);
+
+        let mut pmf = vec![0.0f32; n];
+        let occupied_none = vec![false; n];
+        landscape.build_consonance_density_pmf(&occupied_none, &mut pmf);
+        let density_sum: f32 = pmf.iter().sum();
+        assert!(
+            (density_sum - 1.0).abs() < 1e-5,
+            "consonance_density_pmf must sum to 1, got {density_sum}"
+        );
+
+        let mut occupied_some = vec![false; n];
+        for i in (0..n).step_by(2) {
+            occupied_some[i] = true;
+        }
+        landscape.build_consonance_density_pmf(&occupied_some, &mut pmf);
+        let density_sum: f32 = pmf.iter().sum();
+        assert!(
+            (density_sum - 1.0).abs() < 1e-5,
+            "sum with mask={density_sum}"
+        );
+        for i in 0..n {
+            if occupied_some[i] {
+                assert_eq!(pmf[i], 0.0, "occupied bin must be zero");
+            }
+        }
+
+        landscape.consonance_density_weight_raw.fill(0.0);
+        landscape.build_consonance_density_pmf(&occupied_none, &mut pmf);
+        let density_sum: f32 = pmf.iter().sum();
+        assert!(
+            (density_sum - 1.0).abs() < 1e-5,
+            "zero-raw fallback sum={density_sum}"
+        );
+
+        let occupied_all = vec![true; n];
+        landscape.build_consonance_density_pmf(&occupied_all, &mut pmf);
+        let density_sum: f32 = pmf.iter().sum();
+        assert!(
+            (density_sum - 1.0).abs() < 1e-5,
+            "all-occupied fallback sum={density_sum}"
+        );
+    }
+
+    #[test]
+    fn recompute_consonance_sets_field_energy_consistently() {
         let space = Log2Space::new(100.0, 400.0, 12);
         let params = build_params(&space);
         let mut landscape = Landscape::new(space);
@@ -504,20 +665,14 @@ mod tests {
         landscape.harmonicity01 = vec![0.7; n];
         landscape.roughness01 = vec![0.3; n];
         landscape.recompute_consonance(&params);
-
         for i in 0..n {
-            let score = landscape.consonance_score[i];
-            let energy = landscape.consonance_energy[i];
+            let score = landscape.consonance_field_score[i];
+            let energy = landscape.consonance_field_energy[i];
             assert!(
                 (energy + score).abs() < 1e-6,
                 "energy must be -score at i={i}: score={score} energy={energy}"
             );
         }
-        let density_sum: f32 = landscape.consonance_density.iter().sum();
-        assert!(
-            (density_sum - 1.0).abs() < 1e-5,
-            "consonance_density must sum to 1, got {density_sum}"
-        );
     }
 
     #[test]
@@ -530,7 +685,7 @@ mod tests {
         landscape.roughness01 = vec![0.3; n];
         landscape.recompute_consonance(&params);
 
-        for (i, &level) in landscape.consonance_level01.iter().enumerate() {
+        for (i, &level) in landscape.consonance_field_level01.iter().enumerate() {
             assert!(
                 level.is_finite(),
                 "level01 must be finite at i={i}: {level}"
@@ -556,11 +711,11 @@ mod tests {
         assert_eq!(landscape.roughness01.len(), n);
         assert_eq!(landscape.harmonicity.len(), n);
         assert_eq!(landscape.harmonicity01.len(), n);
-        assert_eq!(landscape.consonance_score.len(), n);
-        assert_eq!(landscape.consonance_level01.len(), n);
-        assert_eq!(landscape.consonance_weight.len(), n);
-        assert_eq!(landscape.consonance_density.len(), n);
-        assert_eq!(landscape.consonance_energy.len(), n);
+        assert_eq!(landscape.consonance_field_score.len(), n);
+        assert_eq!(landscape.consonance_field_level01.len(), n);
+        assert_eq!(landscape.consonance_density_weight_raw.len(), n);
+        assert_eq!(landscape.consonance_density_pmf.len(), n);
+        assert_eq!(landscape.consonance_field_energy.len(), n);
         assert_eq!(landscape.subjective_intensity.len(), n);
         assert_eq!(landscape.nsgt_power.len(), n);
 
@@ -587,8 +742,6 @@ mod tests {
         params.consonance_representation = ConsonanceRepresentationParams {
             beta: 2.0,
             theta: 0.0,
-            temperature: 1.0,
-            epsilon: 1e-6,
         };
 
         let n = space.n_bins();
@@ -627,19 +780,27 @@ mod tests {
 
         let mut c_score_scan = vec![0.0f32; n];
         let mut c_level_scan = vec![0.0f32; n];
-        let mut c_weight_scan = vec![0.0f32; n];
+        let mut c_density_weight_raw_scan = vec![0.0f32; n];
         let mut c_energy_scan = vec![0.0f32; n];
         for i in 0..n {
+            let h = h01_scan[i].clamp(0.0, 1.0);
+            let r = r01_scan[i].clamp(0.0, 1.0);
             let score = params.consonance_kernel.score(h01_scan[i], r01_scan[i]);
             c_score_scan[i] = score;
             c_level_scan[i] = params.consonance_representation.level01(score);
-            c_weight_scan[i] = params.consonance_representation.weight(score);
+            c_density_weight_raw_scan[i] = (h * (1.0 - r)).clamp(0.0, 1.0);
             c_energy_scan[i] = params.consonance_representation.energy(score);
         }
+        let sum_raw: f32 = c_density_weight_raw_scan.iter().sum();
         let mut c_density_scan = vec![0.0f32; n];
-        params
-            .consonance_representation
-            .normalize_density(&c_weight_scan, &mut c_density_scan);
+        if sum_raw > 0.0 && sum_raw.is_finite() {
+            for i in 0..n {
+                c_density_scan[i] = c_density_weight_raw_scan[i] / sum_raw;
+            }
+        } else {
+            let uniform = 1.0 / n as f32;
+            c_density_scan.fill(uniform);
+        }
 
         let density_sum: f32 = c_density_scan.iter().sum();
         assert!(
@@ -650,12 +811,12 @@ mod tests {
         for i in 0..n {
             let score = c_score_scan[i];
             let level = c_level_scan[i];
-            let weight = c_weight_scan[i];
+            let density_raw = c_density_weight_raw_scan[i];
             let density = c_density_scan[i];
             let energy = c_energy_scan[i];
             assert!(score.is_finite(), "score not finite at {i}");
             assert!(level.is_finite(), "level01 not finite at {i}");
-            assert!(weight.is_finite(), "weight not finite at {i}");
+            assert!(density_raw.is_finite(), "density raw not finite at {i}");
             assert!(density.is_finite(), "density not finite at {i}");
             assert!(energy.is_finite(), "energy not finite at {i}");
             assert!(
@@ -663,13 +824,14 @@ mod tests {
                 "energy must be -score at i={i}: score={score} energy={energy}"
             );
             assert!((0.0..=1.0).contains(&level), "level01 out of range at {i}");
-            assert!(weight >= 0.0, "weight negative at {i}");
+            assert!(density_raw >= 0.0, "density raw negative at {i}");
             assert!(density >= 0.0, "density negative at {i}");
         }
 
         let csv_path = "target/plots/it_consonance_e1_stack.csv";
-        let mut csv =
-            String::from("freq_hz,h01,r01,c_score,c_level01,c_weight,c_density,c_energy\n");
+        let mut csv = String::from(
+            "freq_hz,h01,r01,c_field_score,c_field_level01,c_density_weight_raw,c_density_pmf,c_field_energy\n",
+        );
         for i in 0..n {
             csv.push_str(&format!(
                 "{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6}\n",
@@ -678,7 +840,7 @@ mod tests {
                 r01_scan[i],
                 c_score_scan[i],
                 c_level_scan[i],
-                c_weight_scan[i],
+                c_density_weight_raw_scan[i],
                 c_density_scan[i],
                 c_energy_scan[i],
             ));
@@ -742,7 +904,7 @@ mod tests {
             .fold(f32::NEG_INFINITY, f32::max);
         let c_score_pad = ((c_score_max - c_score_min).abs() * 0.1).max(1e-3);
         let mut chart_score = ChartBuilder::on(&areas[2])
-            .caption("E1-like Stack: C_score", ("sans-serif", 20))
+            .caption("E1-like Stack: C_field_score", ("sans-serif", 20))
             .margin(10)
             .x_label_area_size(35)
             .y_label_area_size(75)
@@ -765,7 +927,7 @@ mod tests {
         ))?;
 
         let mut chart_level = ChartBuilder::on(&areas[3])
-            .caption("E1-like Stack: C_level01", ("sans-serif", 20))
+            .caption("E1-like Stack: C_field_level01", ("sans-serif", 20))
             .margin(10)
             .x_label_area_size(35)
             .y_label_area_size(75)
@@ -784,13 +946,13 @@ mod tests {
             &MAGENTA,
         ))?;
 
-        let c_weight_max = c_weight_scan
+        let c_weight_max = c_density_weight_raw_scan
             .iter()
             .copied()
             .fold(0.0f32, f32::max)
             .max(1e-12);
         let mut chart_weight = ChartBuilder::on(&areas[4])
-            .caption("E1-like Stack: C_weight", ("sans-serif", 20))
+            .caption("E1-like Stack: C_density_weight_raw", ("sans-serif", 20))
             .margin(10)
             .x_label_area_size(35)
             .y_label_area_size(75)
@@ -799,13 +961,13 @@ mod tests {
             .configure_mesh()
             .x_desc("frequency (Hz, log2 axis)")
             .x_label_formatter(&|x| format!("{:.0}", 2.0f32.powf(*x)))
-            .y_desc("weight")
+            .y_desc("density weight raw")
             .draw()?;
         chart_weight.draw_series(LineSeries::new(
             x_log2_scan
                 .iter()
                 .copied()
-                .zip(c_weight_scan.iter().copied()),
+                .zip(c_density_weight_raw_scan.iter().copied()),
             &CYAN,
         ))?;
 
@@ -815,7 +977,7 @@ mod tests {
             .fold(0.0f32, f32::max)
             .max(1e-12);
         let mut chart_density = ChartBuilder::on(&areas[5])
-            .caption("E1-like Stack: C_density", ("sans-serif", 20))
+            .caption("E1-like Stack: C_density_pmf", ("sans-serif", 20))
             .margin(10)
             .x_label_area_size(35)
             .y_label_area_size(75)
@@ -824,7 +986,7 @@ mod tests {
             .configure_mesh()
             .x_desc("frequency (Hz, log2 axis)")
             .x_label_formatter(&|x| format!("{:.0}", 2.0f32.powf(*x)))
-            .y_desc("density")
+            .y_desc("density pmf")
             .draw()?;
         chart_density.draw_series(LineSeries::new(
             x_log2_scan
@@ -841,7 +1003,7 @@ mod tests {
             .fold(f32::NEG_INFINITY, f32::max);
         let c_energy_pad = ((c_energy_max - c_energy_min).abs() * 0.1).max(1e-3);
         let mut chart_energy = ChartBuilder::on(&areas[6])
-            .caption("E1-like Stack: C_energy", ("sans-serif", 20))
+            .caption("E1-like Stack: C_field_energy", ("sans-serif", 20))
             .margin(10)
             .x_label_area_size(35)
             .y_label_area_size(75)

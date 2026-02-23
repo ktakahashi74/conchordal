@@ -3,12 +3,12 @@ title = "Technical Note: The Physics of Conchordal"
 description = "A deep dive into the psychoacoustic algorithms, logarithmic signal processing, and artificial life strategies powering the Conchordal ecosystem."
 template = "page.html"
 [extra]
-source_commit = "57a163c"
+source_commit = "50e5ba4"
 author = "Koichi Takahashi"
-last_updated = "2026-02-17"
+last_updated = "2026-02-23"
 source_version = "0.2.0"
-source_snapshot = "2026-02-17T23:09:53+09:00"
-generated_by = "claude-opus-4-5-20251101"
+source_snapshot = "2026-02-23T16:35:20+09:00"
+generated_by = "claude-opus-4-6"
 +++
 
 # 1. Introduction: The Bio-Acoustic Paradigm
@@ -103,11 +103,11 @@ Default coefficients: $a = 1.0$, $b = -1.35$, $c = 1.0$, $d = 0.0$. Because $b <
 | :--- | :--- | :--- | :--- |
 | $C_{score}$ | $aH + bR + cHR + d$ | $(-\infty,+\infty)$ | raw fitness from the kernel |
 | $C_{level01}$ | $\sigma(\beta(C_{score} - \theta))$ | $[0,1]$ | metabolism gate (sigmoid) |
-| $C_{weight}$ | $\exp(C_{score}/T) + \varepsilon$ | $[0,+\infty)$ | Boltzmann weight for sampling |
-| $C_{density}$ | $\text{normalize}(C_{weight})$ | $[0,1],\;\Sigma=1$ | pitch-selection PMF |
+| $C_{density\_mass}$ | $\max(0,\;H_{01}(1 - \rho R_{01}))$ | $[0,+\infty)$ | raw density mass ($\rho$-kernel) |
+| $C_{density\_pmf}$ | $\text{normalize}(C_{density\_mass})$ | $[0,1],\;\Sigma=1$ | pitch-selection PMF |
 | $C_{energy}$ | $-C_{score}$ | $(-\infty,+\infty)$ | energy for minimization |
 
-where $\sigma(x) = 1/(1+e^{-x})$, $\beta$ controls sigmoid steepness (default 2.0), and $\theta$ is the sigmoid threshold (default 0.0).
+where $\sigma(x) = 1/(1+e^{-x})$, $\beta$ controls sigmoid steepness (default 2.0), and $\theta$ is the sigmoid threshold (default 0.0). The density mass uses a separate $\rho$-kernel with coefficients $a{=}1, b{=}0, c{=}{-}\rho, d{=}0$, so that $C_{density\_mass} = H_{01}(1 - \rho R_{01})$ clamped to $\geq 0$; the parameter $\rho$ (`consonance_density_roughness_gain`, default 1.0) controls how strongly roughness suppresses spawn probability.
 
 Individual agents maintain their own perceptual context (`PerceptualContext`) which tracks per-agent boredom and familiarity, providing additional score adjustments during pitch selection.
 
@@ -405,7 +405,7 @@ The `ScriptHost` struct maps internal Rust functions to Rhai commands:
 
 *   `derive(species)`: Creates a new species handle from a preset (`sine`, `harmonic`, `saw`, `square`, `noise`), allowing method-chaining to configure `amp`, `freq`, `brain`, `phonation`, `timbre`, `metabolism`, `adsr`, `pitch_mode`, and `pitch_core`.
 *   `create(species, count)`: Creates a group of agents from a species handle. Returns a `GroupHandle` for further configuration.
-*   `.place(strategy)`: Assigns a spawn strategy to a group. Strategies include `consonance(root_freq)`, `consonance_density(min, max)`, `random_log(min, max)`, and `linear(start, end)`.
+*   `.place(strategy)`: Assigns a spawn strategy to a group. Strategies include `consonance(root_freq)`, `consonance_density_pmf(min, max)`, `random_log(min, max)`, and `linear(start, end)`.
 *   `wait(seconds)`: Commits pending groups, then advances the timeline cursor. This is the primary mechanism for shaping temporal structure.
 *   `flush()`: Commits pending groups without advancing the timeline.
 *   `release(group)`: Marks a group for fade-out release.
@@ -469,6 +469,7 @@ Future development of Conchordal will focus on spatialization (extending the lan
 | `kernel.d` | `ConsonanceKernel` | Float | Bias term (default 0.0). |
 | `beta` | `ConsonanceRepresentationParams` | Float | Sigmoid steepness for $C_{level01}$ (default 2.0). |
 | `theta` | `ConsonanceRepresentationParams` | Float | Sigmoid threshold for $C_{level01}$ (default 0.0). |
+| `consonance_density_roughness_gain` | `LandscapeParams` | Float | $\rho$ in density kernel $H(1-\rho R)$ (default 1.0). |
 | `vitality` | `DorsalStream` | 0.0-1.0 | Self-oscillation energy of the rhythm section. |
 | `persistence` | `PitchHillClimbPitchCore` | 0.0-1.0 | Resistance to movement/change of an agent (policy bias within pitch selection). |
 
@@ -481,6 +482,10 @@ $$ C_{score} = a \cdot H_{01} + b \cdot R_{01} + c \cdot H_{01} R_{01} + d $$
 **Consonance Level (sigmoid representation):**
 
 $$ C_{level01} = \frac{1}{1 + e^{-\beta(C_{score} - \theta)}} $$
+
+**Consonance Density Mass ($\rho$-kernel):**
+
+$$ C_{density\_mass} = \max(0,\; H_{01}(1 - \rho R_{01})) $$
 
 **Roughness Saturation Mapping** (from reference-normalized ratio $x$ to $R_{01} \in [0,1]$):
 

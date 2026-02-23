@@ -26,6 +26,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -39,20 +40,22 @@ PROMPT_PATH = REPO_ROOT / "docs" / "maintenance" / "update_technote_prompt.md"
 CONTEXT_FILE = REPO_ROOT / "repomix-output.xml"
 
 # === Defaults ===
-DEFAULT_MODEL = "opus"  # CLI alias for latest opus
+DEFAULT_MODEL = "opus"  # CLI alias for latest opus 4.6
 MAX_TOKENS = 32768
+CLI_MAX_RETRIES = 2
+CLI_RETRY_BASE_SEC = 2.0
 
 # === Model ID Mapping ===
 # Maps CLI aliases to full model IDs for accurate metadata recording
 MODEL_IDS = {
-    "opus": "claude-opus-4-5-20251101",
-    "sonnet": "claude-sonnet-4-20250514",
+    "opus": "claude-opus-4-6",
+    "sonnet": "claude-sonnet-4-6",
 }
 
 # Maps CLI aliases to API model names
 MODEL_API_NAMES = {
-    "opus": "claude-opus-4-5-20251101",
-    "sonnet": "claude-sonnet-4-20250514",
+    "opus": "claude-opus-4-6",
+    "sonnet": "claude-sonnet-4-6",
 }
 
 # Required sections for validation
@@ -237,33 +240,49 @@ def call_llm_cli(model: str, system_prompt: str, user_message: str) -> str:
 
 {user_message}"""
 
-    try:
-        result = subprocess.run(
-            [
-                "claude",
-                "--print",
-                "--model", model,
-                "--tools", "Read",  # Enable file reading
-            ],
-            input=full_prompt,
-            capture_output=True,
-            text=True,
-            cwd=REPO_ROOT,
-            check=True,
-        )
-        return result.stdout
-    except subprocess.CalledProcessError as e:
-        print(f"Error: CLI failed (exit code {e.returncode})", file=sys.stderr)
-        if e.stderr:
-            print(f"stderr: {e.stderr}", file=sys.stderr)
-        if e.stdout:
-            print(f"stdout: {e.stdout[:500]}", file=sys.stderr)
-        sys.exit(1)
-    except FileNotFoundError:
-        print("Error: 'claude' not found.", file=sys.stderr)
-        print("  npm install -g @anthropic-ai/claude-code", file=sys.stderr)
-        print("  claude auth login", file=sys.stderr)
-        sys.exit(1)
+    for attempt in range(1, CLI_MAX_RETRIES + 1):
+        try:
+            result = subprocess.run(
+                [
+                    "claude",
+                    "--print",
+                    "--model",
+                    model,
+                    "--tools",
+                    "Read",  # Enable file reading
+                ],
+                input=full_prompt,
+                capture_output=True,
+                text=True,
+                cwd=REPO_ROOT,
+                check=True,
+            )
+            return result.stdout
+        except subprocess.CalledProcessError as e:
+            stderr = e.stderr or ""
+            stdout = e.stdout or ""
+            error_blob = f"{stderr}\n{stdout}"
+            is_overloaded = ("529" in error_blob) or ("Overloaded" in error_blob)
+            if is_overloaded and attempt < CLI_MAX_RETRIES:
+                delay = CLI_RETRY_BASE_SEC * (2 ** (attempt - 1))
+                print(
+                    f">> Claude overloaded (attempt {attempt}/{CLI_MAX_RETRIES}); retrying in {delay:.1f}s...",
+                    file=sys.stderr,
+                )
+                time.sleep(delay)
+                continue
+
+            print(f"Error: CLI failed (exit code {e.returncode})", file=sys.stderr)
+            if e.stderr:
+                print(f"stderr: {e.stderr}", file=sys.stderr)
+            if e.stdout:
+                print(f"stdout: {e.stdout[:500]}", file=sys.stderr)
+            sys.exit(1)
+        except FileNotFoundError:
+            print("Error: 'claude' not found.", file=sys.stderr)
+            print("  npm install -g @anthropic-ai/claude-code", file=sys.stderr)
+            print("  claude auth login", file=sys.stderr)
+            sys.exit(1)
 
 
 def call_llm_api(model: str, system_prompt: str, user_message: str) -> str:

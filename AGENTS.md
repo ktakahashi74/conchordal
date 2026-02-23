@@ -95,22 +95,67 @@ We use two orthogonal axes. Do not mix them.
 `perceptual` is reserved for this axis only.
 
 ### Axis B: representation (kernel output vs transformed views)
-- **potential** (`*_pot_*`): raw kernel output / physical-ish quantity (unnormalized; references not applied yet).
+- **potential** (`*_pot_*`): raw kernel output / physical-ish quantity (unnormalized).
 - **score** (`*_score_*`): kernel score (unbounded real value).
-- **level01** (`*_level01_*`): bounded level in `[0,1]`, e.g. `level01 = sigmoid(beta * (score - theta))`.
-- **weight** (`*_weight_*`): non-negative pre-normalization weight, e.g. `weight = exp(score / temperature) + epsilon`.
-- **density** (`*_density_*`): normalized PMF/PDF derived from weight.
+- **level** (`*_level_*`): bounded level in `[0,1]`, `level = sigmoid(beta * (score - theta))`.
+- **mass** (`*_mass_*`): non-negative, pre-normalization mass used before PMF normalization.
+- **density** (`*_density_*`): normalized PMF/PDF.
 - **energy** (`*_energy_*`): minimization form, `energy = -score`.
 
-Consonance kernel (bilinear):
-`C_score = a*H01 + b*R01 + c*H01*R01 + d`.
-
 Potential/representation is orthogonal to pred/perc:
-- `pred_h_pot_scan`, `pred_h_state01_scan`
-- `perc_r_pot_scan`, `perc_r_state01_scan`
-- `perc_c_score_scan`, `perc_c_level01_scan`
-- `perc_c_weight_scan`, `perc_c_density_scan`, `perc_c_energy_scan`
-- `err_c_level01_scan = perc_c_level01_scan - pred_c_level01_scan`
+- `pred_h_pot_scan`, `pred_h_state_scan`
+- `perc_r_pot_scan`, `perc_r_state_scan`
+- `perc_c_field_score_scan`, `perc_c_field_level_scan`
+- `perc_c_density_scan`, `perc_c_field_energy_scan`
+- `err_c_field_level_scan = perc_c_field_level_scan - pred_c_field_level_scan`
+
+## Consonance: Field / Density
+- Inputs are `H01` and `R01`, sanitized into `[0,1]`.
+- Field is a bilinear evaluation terrain for behavior, hill-climb, prediction, and UI:
+  `field_score = a*H01 + b*R01 + c*H01*R01 + d`.
+- Density is a spawn distribution derived from non-negative mass then normalized to PMF.
+- Density uses a minimal family to absorb roughness-scale arbitrariness:
+  `K_density(H,R; rho) = max(0, H01 * (1 - rho*R01))`.
+- Implementation is unified through `ConsonanceKernel::density_with_rho(rho)` (bilinear special case with coefficients `(1,0,-rho,0)`), while density freedom is limited to `rho` only.
+
+## Consonance Variants (Current)
+1. `consonance_field_score`
+- Definition: `a*H01 + b*R01 + c*H01*R01 + d`.
+- Implementation: `ConsonanceKernel` in core + `src/core/landscape.rs`.
+- Usage: hill-climb evaluation in `src/life/pitch_core.rs`.
+2. `consonance_field_level`
+- Definition: `sigmoid(beta*(score-theta))`.
+- Usage: individual behavior, world model, UI in `src/life/population.rs`, `src/life/world_model.rs`, `src/ui/windows.rs`.
+3. `consonance_field_energy`
+- Definition: `-score`.
+- Usage: retained for minimization view and consistency checks.
+4. `consonance_density_mass`
+- Definition: `max(0, H01*(1-rho*R01))`.
+- Implementation: `ConsonanceKernel::density_with_rho(rho)` + `src/core/landscape.rs`.
+- Usage: range-local spawn mass in `src/life/population.rs`.
+5. `consonance_density_pmf`
+- Definition: normalized PMF from density mass; uniform fallback on all-zero totals.
+- Implementation: global PMF cache in `src/core/landscape.rs`.
+- Usage: `SpawnStrategy::ConsonanceDensity` and Rhai spawn API.
+
+## Config Keys
+- `[psychoacoustics.consonance.field.kernel]`
+- `a, b, c, d` (defaults: `1.0, -1.35, 1.0, 0.0`)
+- `[psychoacoustics.consonance.field.level]`
+- `beta, theta` (defaults: `2.0, 0.0`)
+- `[psychoacoustics.consonance.density]`
+- `roughness_gain` (`rho`, default: `1.0`)
+- `rho` is density roughness sensitivity; negative values clamp to `0`, non-finite values sanitize to `1`.
+
+## Rhai Spawn API
+- `consonance_density_pmf(min_freq, max_freq)` builds `SpawnStrategy::ConsonanceDensity`.
+- Spawn sampling is range-local in `Population`: it builds local masses with occupancy masks and normalizes in-range.
+- If range-local total mass is zero, fallback stays in-range and remains well-defined (unoccupied-uniform first, then full-range uniform if all occupied).
+
+## Naming Note
+- `field_level` is a 0..1 gate/strength used by behavior and prediction.
+- `density_mass` is pre-normalization non-negative mass before PMF conversion.
+- For prose, "level" and "mass" are preferred names.
 
 ### Suffix convention (avoid ambiguity)
 Use explicit suffixes when needed:
@@ -118,9 +163,9 @@ Use explicit suffixes when needed:
 - `_scalar`: summary values (total/max/p95 etc.)
 
 Example:
-- `perc_r_state01_scalar`
-- `pred_c_level01_scan`
-- `perc_c_score_scan`
+- `perc_r_state_scalar`
+- `pred_c_field_level_scan`
+- `perc_c_field_score_scan`
 
 ## Frequency Space: Log2Space invariants
 

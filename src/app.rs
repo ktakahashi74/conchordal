@@ -519,6 +519,7 @@ fn init_runtime(
             beta: config.psychoacoustics.consonance.field.level.beta,
             theta: config.psychoacoustics.consonance.field.level.theta,
         },
+        consonance_density_roughness_gain: config.psychoacoustics.consonance.density.roughness_gain,
         roughness_scalar_mode: crate::core::landscape::RoughnessScalarMode::Total,
         roughness_half: 0.1,
         loudness_exp: config.psychoacoustics.loudness_exp, // Zwicker
@@ -1386,6 +1387,7 @@ mod tests {
             harmonicity_kernel: HarmonicityKernel::new(space, HarmonicityParams::default()),
             consonance_kernel: ConsonanceKernel::default(),
             consonance_representation: ConsonanceRepresentationParams::default(),
+            consonance_density_roughness_gain: 1.0,
             roughness_scalar_mode: RoughnessScalarMode::Total,
             roughness_half: 0.1,
             loudness_exp: 1.0,

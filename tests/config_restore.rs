@@ -2,9 +2,9 @@ use std::fs;
 use std::path::PathBuf;
 
 use conchordal::config::{
-    AnalysisConfig, AppConfig, AudioConfig, ConsonanceConfig, ConsonanceFieldConfig,
-    ConsonanceKernelConfig, ConsonanceLevelConfig, LimiterSetting, PlaybackConfig,
-    PsychoAcousticsConfig,
+    AnalysisConfig, AppConfig, AudioConfig, ConsonanceConfig, ConsonanceDensityConfig,
+    ConsonanceFieldConfig, ConsonanceKernelConfig, ConsonanceLevelConfig, LimiterSetting,
+    PlaybackConfig, PsychoAcousticsConfig,
 };
 use conchordal::core::nsgt_kernel::KernelAlign;
 
@@ -82,6 +82,11 @@ fn assert_config_eq(actual: &AppConfig, expected: &AppConfig) {
         expected.psychoacoustics.consonance.field.level.theta,
         "psychoacoustics.consonance.field.level.theta",
     );
+    assert_close(
+        actual.psychoacoustics.consonance.density.roughness_gain,
+        expected.psychoacoustics.consonance.density.roughness_gain,
+        "psychoacoustics.consonance.density.roughness_gain",
+    );
     assert_eq!(
         actual.psychoacoustics.use_incoherent_power,
         expected.psychoacoustics.use_incoherent_power
@@ -136,6 +141,9 @@ fn config_load_custom_values() {
                         theta: -0.15,
                     },
                 },
+                density: ConsonanceDensityConfig {
+                    roughness_gain: 0.5,
+                },
             },
             use_incoherent_power: false,
         },
@@ -179,6 +187,9 @@ d = 0.1
 [psychoacoustics.consonance.field.level]
 beta = 4.0
 theta = -0.2
+
+[psychoacoustics.consonance.density]
+roughness_gain = 0.5
 "#;
     let parsed: AppConfig = toml::from_str(text).expect("parse nested consonance keys");
     assert_close(
@@ -190,5 +201,10 @@ theta = -0.2
         parsed.psychoacoustics.consonance.field.level.beta,
         4.0,
         "psychoacoustics.consonance.field.level.beta",
+    );
+    assert_close(
+        parsed.psychoacoustics.consonance.density.roughness_gain,
+        0.5,
+        "psychoacoustics.consonance.density.roughness_gain",
     );
 }

@@ -15,6 +15,7 @@ pub struct LandscapeParams {
     pub harmonicity_kernel: crate::core::harmonicity_kernel::HarmonicityKernel,
     pub consonance_kernel: ConsonanceKernel,
     pub consonance_representation: ConsonanceRepresentationParams,
+    pub consonance_density_roughness_gain: f32,
 
     /// Scalar roughness summary used for normalization and diagnostics.
     pub roughness_scalar_mode: RoughnessScalarMode,
@@ -80,6 +81,7 @@ pub struct Landscape {
     /// Layer 2: normalized level in [0, 1].
     pub consonance_field_level01: Vec<f32>,
     /// Density axis: raw spawn weight before occupancy/mask.
+    /// Computed as max(0, H01 * (1 - rho * R01)) via ConsonanceKernel::density_with_rho.
     pub consonance_density_weight_raw: Vec<f32>,
     /// Density axis: normalized PMF for no-mask/default view.
     pub consonance_density_pmf: Vec<f32>,
@@ -270,7 +272,7 @@ impl Landscape {
         debug_assert_eq!(self.roughness01.len(), n);
 
         self.recompute_consonance_field(params);
-        self.recompute_consonance_density_raw();
+        self.recompute_consonance_density_raw(params);
         let mut sum_raw = 0.0f32;
         for i in 0..n {
             let raw = self.consonance_density_weight_raw[i];
@@ -303,13 +305,15 @@ impl Landscape {
         }
     }
 
-    pub fn recompute_consonance_density_raw(&mut self) {
+    pub fn recompute_consonance_density_raw(&mut self, params: &LandscapeParams) {
         self.assert_scan_lengths();
+        let density_kernel =
+            ConsonanceKernel::density_with_rho(params.consonance_density_roughness_gain);
         let n = self.consonance_density_weight_raw.len();
         for i in 0..n {
             let h01 = sanitize01(self.harmonicity01[i]);
             let r01 = sanitize01(self.roughness01[i]);
-            let raw = (h01 * (1.0 - r01)).clamp(0.0, 1.0);
+            let raw = density_kernel.score(h01, r01).max(0.0);
             self.consonance_density_weight_raw[i] = if raw.is_finite() { raw } else { 0.0 };
         }
     }
@@ -426,6 +430,7 @@ mod tests {
             harmonicity_kernel: HarmonicityKernel::new(space, HarmonicityParams::default()),
             consonance_kernel: ConsonanceKernel::default(),
             consonance_representation: ConsonanceRepresentationParams::default(),
+            consonance_density_roughness_gain: 1.0,
             roughness_scalar_mode: RoughnessScalarMode::Total,
             roughness_half: 0.1,
             loudness_exp: 1.0,
@@ -573,7 +578,7 @@ mod tests {
     }
 
     #[test]
-    fn density_definition_fixed_h_times_one_minus_r() {
+    fn density_definition_matches_rho_one_kernel() {
         let space = Log2Space::new(100.0, 400.0, 12);
         let params = build_params(&space);
         let mut landscape = Landscape::new(space);
@@ -585,7 +590,7 @@ mod tests {
         for i in 0..n {
             let h = landscape.harmonicity01[i].clamp(0.0, 1.0);
             let r = landscape.roughness01[i].clamp(0.0, 1.0);
-            let expected = (h * (1.0 - r)).clamp(0.0, 1.0);
+            let expected = ConsonanceKernel::density_with_rho(1.0).score(h, r).max(0.0);
             let got = landscape.consonance_density_weight_raw[i];
             assert!(
                 (got - expected).abs() < 1e-6,
@@ -615,6 +620,76 @@ mod tests {
         assert_eq!(landscape.consonance_density_weight_raw[0], 0.0); // H=0
         assert_eq!(landscape.consonance_density_weight_raw[1], 0.0); // R=1
         assert_eq!(landscape.consonance_density_weight_raw[2], 1.0); // H=1,R=0
+    }
+
+    #[test]
+    fn density_raw_respects_rho_zero() {
+        let space = Log2Space::new(100.0, 400.0, 12);
+        let mut params = build_params(&space);
+        params.consonance_density_roughness_gain = 0.0;
+        let mut landscape = Landscape::new(space);
+        let n = landscape.roughness01.len();
+        landscape.harmonicity01 = vec![0.7; n];
+        landscape.roughness01 = vec![0.6; n];
+        landscape.recompute_consonance(&params);
+
+        for i in 0..n {
+            let expected = landscape.harmonicity01[i].clamp(0.0, 1.0);
+            let got = landscape.consonance_density_weight_raw[i];
+            assert!(
+                (got - expected).abs() < 1e-6,
+                "i={i} got={got} expected={expected}"
+            );
+        }
+    }
+
+    #[test]
+    fn density_raw_respects_rho_two_with_clamp() {
+        let space = Log2Space::new(100.0, 400.0, 12);
+        let mut params = build_params(&space);
+        params.consonance_density_roughness_gain = 2.0;
+        let mut landscape = Landscape::new(space);
+        let n = landscape.roughness01.len();
+        landscape.harmonicity01 = vec![1.0; n];
+        landscape.roughness01 = vec![0.6; n];
+        landscape.recompute_consonance(&params);
+
+        for i in 0..n {
+            let expected = (1.0 - 2.0 * 0.6f32).max(0.0);
+            let got = landscape.consonance_density_weight_raw[i];
+            assert!(
+                (got - expected).abs() < 1e-6,
+                "i={i} got={got} expected={expected}"
+            );
+        }
+    }
+
+    #[test]
+    fn density_raw_sanitizes_non_finite_and_negative_rho() {
+        let space = Log2Space::new(100.0, 400.0, 12);
+        let mut params = build_params(&space);
+        let mut landscape = Landscape::new(space);
+        let n = landscape.roughness01.len();
+        landscape.harmonicity01 = vec![0.8; n];
+        landscape.roughness01 = vec![0.25; n];
+
+        params.consonance_density_roughness_gain = f32::NAN;
+        landscape.recompute_consonance(&params);
+        for &raw in &landscape.consonance_density_weight_raw {
+            assert!(raw.is_finite());
+            assert!(raw >= 0.0);
+        }
+
+        params.consonance_density_roughness_gain = -1.0;
+        landscape.recompute_consonance(&params);
+        for i in 0..n {
+            let expected = landscape.harmonicity01[i].clamp(0.0, 1.0);
+            let got = landscape.consonance_density_weight_raw[i];
+            assert!(
+                (got - expected).abs() < 1e-6,
+                "i={i} got={got} expected={expected}"
+            );
+        }
     }
 
     #[test]
@@ -841,13 +916,15 @@ mod tests {
         let mut c_level_scan = vec![0.0f32; n];
         let mut c_density_weight_raw_scan = vec![0.0f32; n];
         let mut c_energy_scan = vec![0.0f32; n];
+        let density_kernel =
+            ConsonanceKernel::density_with_rho(params.consonance_density_roughness_gain);
         for i in 0..n {
             let h = h01_scan[i].clamp(0.0, 1.0);
             let r = r01_scan[i].clamp(0.0, 1.0);
             let score = params.consonance_kernel.score(h01_scan[i], r01_scan[i]);
             c_score_scan[i] = score;
             c_level_scan[i] = params.consonance_representation.level01(score);
-            c_density_weight_raw_scan[i] = (h * (1.0 - r)).clamp(0.0, 1.0);
+            c_density_weight_raw_scan[i] = density_kernel.score(h, r).max(0.0);
             c_energy_scan[i] = params.consonance_representation.energy(score);
         }
         let sum_raw: f32 = c_density_weight_raw_scan.iter().sum();

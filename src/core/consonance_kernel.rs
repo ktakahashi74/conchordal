@@ -29,6 +29,18 @@ impl ConsonanceKernel {
         let score = a * h01 + b * r01 + c * h01 * r01 + d;
         sanitize_finite(score)
     }
+
+    /// Density preset kernel: H * (1 - rho * R) = 1*H + 0*R + (-rho)*(H*R) + 0.
+    #[inline]
+    pub fn density_with_rho(rho: f32) -> Self {
+        let rho = if rho.is_finite() { rho.max(0.0) } else { 1.0 };
+        Self {
+            a: 1.0,
+            b: 0.0,
+            c: -rho,
+            d: 0.0,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -172,5 +184,35 @@ mod tests {
         assert_eq!(repr.energy(f32::NAN), 0.0);
         assert_eq!(repr.energy(f32::INFINITY), 0.0);
         assert_eq!(repr.energy(f32::NEG_INFINITY), 0.0);
+    }
+
+    #[test]
+    fn density_with_rho_builds_expected_coefficients() {
+        let k1 = ConsonanceKernel::density_with_rho(1.0);
+        assert_eq!(k1.a, 1.0);
+        assert_eq!(k1.b, 0.0);
+        assert_eq!(k1.c, -1.0);
+        assert_eq!(k1.d, 0.0);
+
+        let k0 = ConsonanceKernel::density_with_rho(0.0);
+        assert_eq!(k0.a, 1.0);
+        assert_eq!(k0.b, 0.0);
+        assert_eq!(k0.c, 0.0);
+        assert_eq!(k0.d, 0.0);
+
+        let k2 = ConsonanceKernel::density_with_rho(2.0);
+        assert_eq!(k2.c, -2.0);
+    }
+
+    #[test]
+    fn density_with_rho_sanitizes_negative_and_non_finite() {
+        let k_neg = ConsonanceKernel::density_with_rho(-1.0);
+        assert_eq!(k_neg.c, 0.0, "negative rho must clamp to 0");
+
+        let k_nan = ConsonanceKernel::density_with_rho(f32::NAN);
+        assert_eq!(k_nan.c, -1.0, "non-finite rho must fall back to 1.0");
+
+        let k_inf = ConsonanceKernel::density_with_rho(f32::INFINITY);
+        assert_eq!(k_inf.c, -1.0, "non-finite rho must fall back to 1.0");
     }
 }

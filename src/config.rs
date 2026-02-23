@@ -148,10 +148,33 @@ pub struct ConsonanceFieldConfig {
     pub level: ConsonanceLevelConfig,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConsonanceDensityConfig {
+    /// rho in density kernel H * (1 - rho * R). Used to absorb roughness scale arbitrariness.
+    #[serde(default = "ConsonanceDensityConfig::default_roughness_gain")]
+    pub roughness_gain: f32,
+}
+
+impl ConsonanceDensityConfig {
+    fn default_roughness_gain() -> f32 {
+        1.0
+    }
+}
+
+impl Default for ConsonanceDensityConfig {
+    fn default() -> Self {
+        Self {
+            roughness_gain: Self::default_roughness_gain(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ConsonanceConfig {
     #[serde(default)]
     pub field: ConsonanceFieldConfig,
+    #[serde(default)]
+    pub density: ConsonanceDensityConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -258,6 +281,9 @@ impl AppConfig {
         let level = &mut self.psychoacoustics.consonance.field.level;
         level.beta = Self::round_f32(level.beta);
         level.theta = Self::round_f32(level.theta);
+
+        let density = &mut self.psychoacoustics.consonance.density;
+        density.roughness_gain = Self::round_f32(density.roughness_gain);
         self
     }
 
@@ -360,6 +386,7 @@ mod tests {
         assert_eq!(cfg.psychoacoustics.consonance.field.kernel.d, 0.0);
         assert_eq!(cfg.psychoacoustics.consonance.field.level.beta, 2.0);
         assert_eq!(cfg.psychoacoustics.consonance.field.level.theta, 0.0);
+        assert_eq!(cfg.psychoacoustics.consonance.density.roughness_gain, 1.0);
         assert!(!cfg.psychoacoustics.use_incoherent_power);
 
         let contents = fs::read_to_string(&path).expect("read written config");
@@ -419,6 +446,9 @@ mod tests {
                             theta: -0.15,
                         },
                     },
+                    density: ConsonanceDensityConfig {
+                        roughness_gain: 0.5,
+                    },
                 },
                 use_incoherent_power: false,
             },
@@ -445,10 +475,24 @@ mod tests {
         assert_eq!(cfg.psychoacoustics.consonance.field.kernel.d, 0.2);
         assert_eq!(cfg.psychoacoustics.consonance.field.level.beta, 3.25);
         assert_eq!(cfg.psychoacoustics.consonance.field.level.theta, -0.15);
+        assert_eq!(cfg.psychoacoustics.consonance.density.roughness_gain, 0.5);
         assert!(!cfg.psychoacoustics.use_incoherent_power);
         assert!(!cfg.playback.wait_user_exit);
         assert!(cfg.playback.wait_user_start);
 
         let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn parse_nested_consonance_density_keys() {
+        let text = r#"
+[psychoacoustics.consonance.density]
+roughness_gain = 0.5
+"#;
+        let parsed: AppConfig = toml::from_str(text).expect("parse consonance density keys");
+        assert_eq!(
+            parsed.psychoacoustics.consonance.density.roughness_gain,
+            0.5
+        );
     }
 }

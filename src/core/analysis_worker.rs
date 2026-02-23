@@ -65,6 +65,7 @@ mod tests {
             harmonicity_kernel: HarmonicityKernel::new(space, HarmonicityParams::default()),
             consonance_kernel: ConsonanceKernel::default(),
             consonance_representation: ConsonanceRepresentationParams::default(),
+            consonance_density_roughness_gain: 1.0,
             roughness_scalar_mode: RoughnessScalarMode::Total,
             roughness_half: 0.1,
             loudness_exp: 1.0,

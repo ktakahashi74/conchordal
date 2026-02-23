@@ -271,10 +271,23 @@ impl Landscape {
 
         self.recompute_consonance_field(params);
         self.recompute_consonance_density_raw();
-        let occupied = vec![false; n];
-        let mut pmf = vec![0.0f32; n];
-        self.build_consonance_density_pmf(&occupied, &mut pmf);
-        self.consonance_density_pmf = pmf;
+        let mut sum_raw = 0.0f32;
+        for i in 0..n {
+            let raw = self.consonance_density_weight_raw[i];
+            let w = if raw.is_finite() { raw.max(0.0) } else { 0.0 };
+            self.consonance_density_pmf[i] = w;
+            sum_raw += w;
+        }
+
+        if sum_raw > 0.0 && sum_raw.is_finite() {
+            let inv = 1.0 / sum_raw;
+            for p in &mut self.consonance_density_pmf {
+                *p *= inv;
+            }
+        } else if n > 0 {
+            let uniform = 1.0 / n as f32;
+            self.consonance_density_pmf.fill(uniform);
+        }
     }
 
     pub fn recompute_consonance_field(&mut self, params: &LandscapeParams) {
@@ -672,6 +685,52 @@ mod tests {
                 (energy + score).abs() < 1e-6,
                 "energy must be -score at i={i}: score={score} energy={energy}"
             );
+        }
+    }
+
+    #[test]
+    fn recompute_consonance_normalizes_density_pmf_from_raw() {
+        let space = Log2Space::new(100.0, 400.0, 12);
+        let params = build_params(&space);
+        let mut landscape = Landscape::new(space);
+        let n = landscape.roughness01.len();
+        landscape.harmonicity = (0..n).map(|i| (i as f32 + 1.0) / n as f32).collect();
+        landscape.roughness01 = vec![0.25; n];
+        landscape.recompute_consonance(&params);
+
+        let sum_raw: f32 = landscape
+            .consonance_density_weight_raw
+            .iter()
+            .map(|v| if v.is_finite() { v.max(0.0) } else { 0.0 })
+            .sum();
+        assert!(sum_raw > 0.0 && sum_raw.is_finite());
+
+        for i in 0..n {
+            let expected = landscape.consonance_density_weight_raw[i].max(0.0) / sum_raw;
+            let got = landscape.consonance_density_pmf[i];
+            assert!(
+                (got - expected).abs() < 1e-6,
+                "density pmf mismatch at i={i}: got={got} expected={expected}"
+            );
+        }
+
+        let pmf_sum: f32 = landscape.consonance_density_pmf.iter().sum();
+        assert!((pmf_sum - 1.0).abs() < 1e-6, "pmf sum={pmf_sum}");
+    }
+
+    #[test]
+    fn recompute_consonance_density_pmf_falls_back_to_uniform_on_all_zero_raw() {
+        let space = Log2Space::new(100.0, 400.0, 12);
+        let params = build_params(&space);
+        let mut landscape = Landscape::new(space);
+        let n = landscape.roughness01.len();
+        landscape.harmonicity.fill(0.0);
+        landscape.roughness01.fill(1.0);
+        landscape.recompute_consonance(&params);
+
+        let uniform = 1.0 / n as f32;
+        for (i, &p) in landscape.consonance_density_pmf.iter().enumerate() {
+            assert!((p - uniform).abs() < 1e-6, "i={i} p={p} uniform={uniform}");
         }
     }
 

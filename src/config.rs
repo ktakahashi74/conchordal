@@ -266,7 +266,7 @@ impl AppConfig {
         if s.is_empty() { "0".to_string() } else { s }
     }
 
-    fn rounded(mut self) -> Self {
+    pub fn round_f32_inplace(&mut self) {
         self.audio.latency_ms = Self::round_f32(self.audio.latency_ms);
         self.analysis.tau_ms = Self::round_f32(self.analysis.tau_ms);
         self.psychoacoustics.loudness_exp = Self::round_f32(self.psychoacoustics.loudness_exp);
@@ -284,6 +284,15 @@ impl AppConfig {
 
         let density = &mut self.psychoacoustics.consonance.density;
         density.roughness_gain = Self::round_f32(density.roughness_gain);
+        density.roughness_gain = if density.roughness_gain.is_finite() {
+            density.roughness_gain.max(0.0)
+        } else {
+            1.0
+        };
+    }
+
+    fn rounded(mut self) -> Self {
+        self.round_f32_inplace();
         self
     }
 
@@ -291,8 +300,11 @@ impl AppConfig {
         let path_obj = Path::new(path);
         if path_obj.exists() {
             match fs::read_to_string(path_obj) {
-                Ok(contents) => match toml::from_str(&contents) {
-                    Ok(cfg) => return cfg,
+                Ok(contents) => match toml::from_str::<Self>(&contents) {
+                    Ok(mut cfg) => {
+                        cfg.round_f32_inplace();
+                        return cfg;
+                    }
                     Err(err) => {
                         eprintln!("Failed to parse config {path}: {err}. Using defaults.");
                     }
@@ -494,5 +506,28 @@ roughness_gain = 0.5
             parsed.psychoacoustics.consonance.density.roughness_gain,
             0.5
         );
+    }
+
+    #[test]
+    fn round_f32_inplace_clamps_negative_density_roughness_gain_to_zero() {
+        let text = r#"
+[psychoacoustics.consonance.density]
+roughness_gain = -1.0
+"#;
+        let mut parsed: AppConfig =
+            toml::from_str(text).expect("parse consonance density negative roughness gain");
+        parsed.round_f32_inplace();
+        assert_eq!(
+            parsed.psychoacoustics.consonance.density.roughness_gain,
+            0.0
+        );
+    }
+
+    #[test]
+    fn round_f32_inplace_maps_nan_density_roughness_gain_to_one() {
+        let mut cfg = AppConfig::default();
+        cfg.psychoacoustics.consonance.density.roughness_gain = f32::NAN;
+        cfg.round_f32_inplace();
+        assert_eq!(cfg.psychoacoustics.consonance.density.roughness_gain, 1.0);
     }
 }

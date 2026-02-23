@@ -33,7 +33,12 @@ impl ConsonanceKernel {
     /// Density preset kernel: H * (1 - rho * R) = 1*H + 0*R + (-rho)*(H*R) + 0.
     #[inline]
     pub fn density_with_rho(rho: f32) -> Self {
-        let rho = if rho.is_finite() { rho.max(0.0) } else { 1.0 };
+        const RHO_MAX: f32 = 1_000_000.0;
+        let rho = if rho.is_finite() {
+            rho.clamp(0.0, RHO_MAX)
+        } else {
+            1.0
+        };
         Self {
             a: 1.0,
             b: 0.0,
@@ -60,7 +65,7 @@ impl Default for ConsonanceRepresentationParams {
 
 impl ConsonanceRepresentationParams {
     #[inline]
-    pub fn level01(&self, score: f32) -> f32 {
+    pub fn level(&self, score: f32) -> f32 {
         let beta = if self.beta.is_finite() {
             self.beta.max(0.0)
         } else {
@@ -77,7 +82,7 @@ impl ConsonanceRepresentationParams {
     }
 }
 
-pub fn compose_consonance_field_level01_scan(
+pub fn compose_consonance_field_level_scan(
     h01_scan: &[f32],
     r01_scan: &[f32],
     kernel: &ConsonanceKernel,
@@ -89,7 +94,7 @@ pub fn compose_consonance_field_level01_scan(
     let len = out.len().min(h01_scan.len()).min(r01_scan.len());
     for i in 0..len {
         let score = kernel.score(h01_scan[i], r01_scan[i]);
-        out[i] = repr.level01(score);
+        out[i] = repr.level(score);
     }
 }
 
@@ -138,15 +143,15 @@ mod tests {
     }
 
     #[test]
-    fn level01_is_bounded_and_monotonic() {
+    fn level_is_bounded_and_monotonic() {
         let repr = ConsonanceRepresentationParams {
             beta: 3.0,
             theta: -0.2,
         };
         let xs = [-2.0, -0.5, 0.0, 0.5, 2.0];
-        let ys = xs.map(|x| repr.level01(x));
+        let ys = xs.map(|x| repr.level(x));
         for y in ys {
-            assert!((0.0..=1.0).contains(&y), "level01 out of range: {y}");
+            assert!((0.0..=1.0).contains(&y), "level out of range: {y}");
         }
         for i in 1..xs.len() {
             assert!(
@@ -159,14 +164,14 @@ mod tests {
     }
 
     #[test]
-    fn level01_handles_nan_and_inf_inputs() {
+    fn level_handles_nan_and_inf_inputs() {
         let repr = ConsonanceRepresentationParams::default();
-        let y_nan = repr.level01(f32::NAN);
-        let y_pos = repr.level01(f32::INFINITY);
-        let y_neg = repr.level01(f32::NEG_INFINITY);
+        let y_nan = repr.level(f32::NAN);
+        let y_pos = repr.level(f32::INFINITY);
+        let y_neg = repr.level(f32::NEG_INFINITY);
         for y in [y_nan, y_pos, y_neg] {
-            assert!(y.is_finite(), "level01 should be finite: {y}");
-            assert!((0.0..=1.0).contains(&y), "level01 out of range: {y}");
+            assert!(y.is_finite(), "level should be finite: {y}");
+            assert!((0.0..=1.0).contains(&y), "level out of range: {y}");
         }
     }
 
@@ -214,5 +219,11 @@ mod tests {
 
         let k_inf = ConsonanceKernel::density_with_rho(f32::INFINITY);
         assert_eq!(k_inf.c, -1.0, "non-finite rho must fall back to 1.0");
+    }
+
+    #[test]
+    fn density_with_rho_clamps_extreme_positive_values() {
+        let k = ConsonanceKernel::density_with_rho(1e30);
+        assert_eq!(k.c, -1_000_000.0);
     }
 }

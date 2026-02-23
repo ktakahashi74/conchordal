@@ -187,7 +187,7 @@ impl Population {
             .is_some_and(|gate_tick| gate_tick > now && gate_tick <= frame_end);
         let pred_scan =
             world
-                .predict_consonance_field_level01_next_gate()
+                .predict_consonance_field_level_next_gate()
                 .and_then(|(gate_tick, scan)| {
                     if gate_tick >= now && gate_tick < frame_end {
                         Some(scan)
@@ -214,7 +214,7 @@ impl Population {
             let batch = &mut out[used];
             let mut extra_gate_gain = 1.0;
             if let Some(scan) = pred_scan.as_ref() {
-                let mut gain_raw = world.sample_scan_field_level01(scan, agent.body.base_freq_hz());
+                let mut gain_raw = world.sample_scan_field_level(scan, agent.body.base_freq_hz());
                 if !gain_raw.is_finite() {
                     gain_raw = 0.0;
                 }
@@ -353,7 +353,7 @@ impl Population {
                     if self.is_range_occupied_with(f, min_dist_erb, reserved) {
                         continue;
                     }
-                    if let Some(&c_val) = landscape.consonance_field_level01.get(i)
+                    if let Some(&c_val) = landscape.consonance_field_level.get(i)
                         && c_val > best_val
                     {
                         found = true;
@@ -368,7 +368,7 @@ impl Population {
                     let mut best = idx_min;
                     let mut best_val = f32::MIN;
                     for i in idx_min..=idx_max {
-                        if let Some(&c_val) = landscape.consonance_field_level01.get(i)
+                        if let Some(&c_val) = landscape.consonance_field_level.get(i)
                             && c_val > best_val
                         {
                             best_val = c_val;
@@ -400,7 +400,7 @@ impl Population {
                         unoccupied_count += 1;
                     }
                     let raw = landscape
-                        .consonance_density_weight_raw
+                        .consonance_density_mass
                         .get(i)
                         .copied()
                         .unwrap_or(0.0);
@@ -768,15 +768,15 @@ mod tests {
     }
 
     #[test]
-    fn decide_frequency_uses_consonance_field_level01() {
+    fn decide_frequency_uses_consonance_field_level() {
         let space = Log2Space::new(100.0, 400.0, 12);
         let mut landscape = LandscapeFrame::new(space.clone());
         landscape.consonance_field_score.fill(-10.0);
-        landscape.consonance_field_level01.fill(0.0);
+        landscape.consonance_field_level.fill(0.0);
 
         let idx_high = space.index_of_freq(200.0).expect("idx");
         let idx_raw = space.index_of_freq(300.0).expect("idx");
-        landscape.consonance_field_level01[idx_high] = 1.0;
+        landscape.consonance_field_level[idx_high] = 1.0;
         landscape.consonance_field_score[idx_raw] = 10.0;
 
         let pop = Population::new(Timebase {
@@ -805,9 +805,9 @@ mod tests {
     fn consonance_density_sampling_uses_density_pmf() {
         let space = Log2Space::new(100.0, 400.0, 24);
         let mut landscape = LandscapeFrame::new(space.clone());
-        landscape.consonance_density_weight_raw.fill(0.0);
+        landscape.consonance_density_mass.fill(0.0);
         let idx_target = space.index_of_freq(220.0).expect("idx target");
-        landscape.consonance_density_weight_raw[idx_target] = 1.0;
+        landscape.consonance_density_mass[idx_target] = 1.0;
 
         let pop = Population::new(Timebase {
             fs: 48_000.0,
@@ -831,12 +831,12 @@ mod tests {
     fn consonance_density_range_zero_weights_fallback_is_range_uniform() {
         let space = Log2Space::new(100.0, 400.0, 24);
         let mut landscape = LandscapeFrame::new(space.clone());
-        landscape.consonance_density_weight_raw.fill(1.0);
+        landscape.consonance_density_mass.fill(1.0);
 
         let idx_min = 6usize;
         let idx_max = 12usize;
         for i in idx_min..=idx_max {
-            landscape.consonance_density_weight_raw[i] = 0.0;
+            landscape.consonance_density_mass[i] = 0.0;
         }
 
         let pop = Population::new(Timebase {
@@ -871,7 +871,7 @@ mod tests {
     fn consonance_density_range_all_occupied_fallback_does_not_panic() {
         let space = Log2Space::new(100.0, 400.0, 24);
         let mut landscape = LandscapeFrame::new(space.clone());
-        landscape.consonance_density_weight_raw.fill(1.0);
+        landscape.consonance_density_mass.fill(1.0);
 
         let idx_min = 8usize;
         let idx_max = 14usize;
@@ -904,7 +904,7 @@ mod tests {
     fn consonance_density_avoids_occupied_when_unoccupied_exists() {
         let space = Log2Space::new(100.0, 400.0, 24);
         let mut landscape = LandscapeFrame::new(space.clone());
-        landscape.consonance_density_weight_raw.fill(1.0);
+        landscape.consonance_density_mass.fill(1.0);
 
         let idx_min = 5usize;
         let idx_max = 11usize;
@@ -940,12 +940,12 @@ mod tests {
     fn consonance_density_zero_sum_fallback_still_avoids_occupied() {
         let space = Log2Space::new(100.0, 400.0, 24);
         let mut landscape = LandscapeFrame::new(space.clone());
-        landscape.consonance_density_weight_raw.fill(1.0);
+        landscape.consonance_density_mass.fill(1.0);
 
         let idx_min = 5usize;
         let idx_max = 11usize;
         for i in idx_min..=idx_max {
-            landscape.consonance_density_weight_raw[i] = 0.0;
+            landscape.consonance_density_mass[i] = 0.0;
         }
         let idx_occupied = 8usize;
         let reserved = vec![space.freq_of_index(idx_occupied)];
@@ -979,12 +979,12 @@ mod tests {
     fn consonance_density_reversed_range_is_handled_safely() {
         let space = Log2Space::new(100.0, 400.0, 24);
         let mut landscape = LandscapeFrame::new(space.clone());
-        landscape.consonance_density_weight_raw.fill(0.0);
+        landscape.consonance_density_mass.fill(0.0);
 
         let idx_low = 6usize;
         let idx_high = 12usize;
         let idx_target = 9usize;
-        landscape.consonance_density_weight_raw[idx_target] = 1.0;
+        landscape.consonance_density_mass[idx_target] = 1.0;
 
         let pop = Population::new(Timebase {
             fs: 48_000.0,

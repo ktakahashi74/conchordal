@@ -567,10 +567,10 @@ pub fn main_window(
                     ui.label(format!("pred_horizon={pred_horizon}"));
                 });
 
-                let pred_overlay = frame.pred_c_field_level01_next_gate.as_ref().map(|scan| {
+                let pred_overlay = frame.pred_c_field_level_next_gate.as_ref().map(|scan| {
                     (
                         scan.as_ref(),
-                        "Predicted C_field_level01",
+                        "Predicted C_field_level",
                         Color32::from_rgb(230, 170, 90),
                     )
                 });
@@ -578,8 +578,8 @@ pub fn main_window(
                     ui,
                     "Consonance Field Level (Observed/Predicted)",
                     &frame.landscape.space.centers_hz,
-                    &frame.landscape.consonance_field_level01,
-                    "C_field_level01",
+                    &frame.landscape.consonance_field_level,
+                    "C_field_level",
                     0.0,
                     1.0,
                     102.0,
@@ -587,7 +587,7 @@ pub fn main_window(
                     None,
                     pred_overlay,
                 );
-                if let Some(scan) = frame.pred_c_field_level01_next_gate.as_ref() {
+                if let Some(scan) = frame.pred_c_field_level_next_gate.as_ref() {
                     let mut sum = 0.0f32;
                     let mut max = 0.0f32;
                     for &v in scan.iter() {
@@ -598,10 +598,10 @@ pub fn main_window(
                     }
                     let mean = sum / (scan.len().max(1) as f32);
                     ui.label(format!(
-                        "pred_c_field_level01_next_gate mean={mean:.3} max={max:.3}"
+                        "pred_c_field_level_next_gate mean={mean:.3} max={max:.3}"
                     ));
                 } else {
-                    ui.label("pred_c_field_level01_next_gate=None");
+                    ui.label("pred_c_field_level_next_gate=None");
                 }
             });
 

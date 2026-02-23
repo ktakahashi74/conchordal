@@ -1,5 +1,5 @@
 use conchordal::core::consonance_kernel::{
-    ConsonanceKernel, ConsonanceRepresentationParams, compose_consonance_field_level01_scan,
+    ConsonanceKernel, ConsonanceRepresentationParams, compose_consonance_field_level_scan,
 };
 use conchordal::core::landscape::Landscape;
 use conchordal::core::log2space::Log2Space;
@@ -16,8 +16,8 @@ fn landscape_scans_match_space_bins() {
     space.assert_scan_len(&landscape.harmonicity);
     space.assert_scan_len(&landscape.harmonicity01);
     space.assert_scan_len(&landscape.consonance_field_score);
-    space.assert_scan_len(&landscape.consonance_field_level01);
-    space.assert_scan_len(&landscape.consonance_density_weight_raw);
+    space.assert_scan_len(&landscape.consonance_field_level);
+    space.assert_scan_len(&landscape.consonance_density_mass);
     space.assert_scan_len(&landscape.consonance_density_pmf);
     space.assert_scan_len(&landscape.consonance_field_energy);
     space.assert_scan_len(&landscape.subjective_intensity);
@@ -40,10 +40,10 @@ fn pot_state_scan_len_invariants_hold() {
     let mut c_level = vec![0.0f32; n];
     let kernel = ConsonanceKernel::default();
     let repr = ConsonanceRepresentationParams::default();
-    compose_consonance_field_level01_scan(&h_state, &r_state, &kernel, &repr, &mut c_level);
+    compose_consonance_field_level_scan(&h_state, &r_state, &kernel, &repr, &mut c_level);
 }
 
-// compose_consonance_field_level01_scan uses debug_assert for length checks in debug builds.
+// compose_consonance_field_level_scan uses debug_assert for length checks in debug builds.
 #[cfg(debug_assertions)]
 #[test]
 #[should_panic]
@@ -53,5 +53,5 @@ fn compose_panics_on_len_mismatch() {
     let mut c_level = vec![0.0f32; 4];
     let kernel = ConsonanceKernel::default();
     let repr = ConsonanceRepresentationParams::default();
-    compose_consonance_field_level01_scan(&h_state, &r_state, &kernel, &repr, &mut c_level);
+    compose_consonance_field_level_scan(&h_state, &r_state, &kernel, &repr, &mut c_level);
 }

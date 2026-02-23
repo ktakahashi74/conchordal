@@ -379,13 +379,20 @@ impl Population {
                 }
             }
             SpawnStrategy::ConsonanceDensity { .. } => {
-                let range_len = idx_max - idx_min + 1;
+                let mut range_min = idx_min;
+                let mut range_max = idx_max;
+                if range_max < range_min {
+                    std::mem::swap(&mut range_min, &mut range_max);
+                }
+                debug_assert!(range_min <= range_max);
+
+                let range_len = range_max - range_min + 1;
                 let mut occupied_flags = vec![false; range_len];
                 let mut weights = vec![0.0f32; range_len];
                 let mut sum = 0.0f32;
                 let mut unoccupied_count = 0usize;
 
-                for (offset, i) in (idx_min..=idx_max).enumerate() {
+                for (offset, i) in (range_min..=range_max).enumerate() {
                     let f = space.freq_of_index(i);
                     let occupied_i = self.is_range_occupied_with(f, min_dist_erb, reserved);
                     occupied_flags[offset] = occupied_i;
@@ -416,11 +423,11 @@ impl Population {
                 }
 
                 if let Ok(dist) = WeightedIndex::new(&weights) {
-                    idx_min + dist.sample(rng)
+                    range_min + dist.sample(rng)
                 } else {
                     // Defensive fallback; this path should be unreachable after range-local
                     // fallback weights, but keep behavior safe and unbiased in-range.
-                    idx_min + rng.random_range(0..range_len)
+                    range_min + rng.random_range(0..range_len)
                 }
             }
             SpawnStrategy::RandomLog { .. } => {
@@ -926,6 +933,79 @@ mod tests {
                 picked_idx, idx_occupied,
                 "occupied index should not be chosen when unoccupied bins exist"
             );
+        }
+    }
+
+    #[test]
+    fn consonance_density_zero_sum_fallback_still_avoids_occupied() {
+        let space = Log2Space::new(100.0, 400.0, 24);
+        let mut landscape = LandscapeFrame::new(space.clone());
+        landscape.consonance_density_weight_raw.fill(1.0);
+
+        let idx_min = 5usize;
+        let idx_max = 11usize;
+        for i in idx_min..=idx_max {
+            landscape.consonance_density_weight_raw[i] = 0.0;
+        }
+        let idx_occupied = 8usize;
+        let reserved = vec![space.freq_of_index(idx_occupied)];
+
+        let pop = Population::new(Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        });
+        let strategy = SpawnStrategy::ConsonanceDensity {
+            min_freq: space.freq_of_index(idx_min),
+            max_freq: space.freq_of_index(idx_max),
+            min_dist_erb: 1e-4,
+        };
+        let mut rng = rand::rngs::StdRng::seed_from_u64(14);
+
+        for _ in 0..100 {
+            let freq = pop.decide_frequency(&strategy, &landscape, &mut rng, &reserved);
+            let picked_idx = space.index_of_freq(freq).expect("picked idx");
+            assert!(
+                (idx_min..=idx_max).contains(&picked_idx),
+                "picked_idx={picked_idx}, expected in [{idx_min},{idx_max}]"
+            );
+            assert_ne!(
+                picked_idx, idx_occupied,
+                "occupied index should not be chosen in zero-sum fallback"
+            );
+        }
+    }
+
+    #[test]
+    fn consonance_density_reversed_range_is_handled_safely() {
+        let space = Log2Space::new(100.0, 400.0, 24);
+        let mut landscape = LandscapeFrame::new(space.clone());
+        landscape.consonance_density_weight_raw.fill(0.0);
+
+        let idx_low = 6usize;
+        let idx_high = 12usize;
+        let idx_target = 9usize;
+        landscape.consonance_density_weight_raw[idx_target] = 1.0;
+
+        let pop = Population::new(Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        });
+        let strategy = SpawnStrategy::ConsonanceDensity {
+            // Intentionally reversed order to emulate Rhai-side input mistakes.
+            min_freq: space.freq_of_index(idx_high),
+            max_freq: space.freq_of_index(idx_low),
+            min_dist_erb: 0.0,
+        };
+        let mut rng = rand::rngs::StdRng::seed_from_u64(15);
+
+        for _ in 0..64 {
+            let freq = pop.decide_frequency(&strategy, &landscape, &mut rng, &[]);
+            let picked_idx = space.index_of_freq(freq).expect("picked idx");
+            assert!(
+                (idx_low..=idx_high).contains(&picked_idx),
+                "picked_idx={picked_idx}, expected in [{idx_low},{idx_high}]"
+            );
+            assert_eq!(picked_idx, idx_target);
         }
     }
 

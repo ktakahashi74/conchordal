@@ -8,6 +8,61 @@ use ringbuf::traits::*;
 use ringbuf::{HeapCons, HeapProd, HeapRb};
 use tracing::{debug, info};
 
+const PREFERRED_OUTPUT_SAMPLE_RATE: u32 = 48_000;
+
+fn select_output_config(device: &cpal::Device) -> anyhow::Result<cpal::SupportedStreamConfig> {
+    let default_config = device
+        .default_output_config()
+        .context("No default config")?;
+    if default_config.sample_rate() == PREFERRED_OUTPUT_SAMPLE_RATE {
+        return Ok(default_config);
+    }
+
+    let default_format = default_config.sample_format();
+    let default_channels = default_config.channels();
+
+    let preferred = match device.supported_output_configs() {
+        Ok(configs) => configs
+            .filter(|range| range.sample_format() == default_format)
+            .filter(|range| {
+                let min = range.min_sample_rate();
+                let max = range.max_sample_rate();
+                min <= PREFERRED_OUTPUT_SAMPLE_RATE && PREFERRED_OUTPUT_SAMPLE_RATE <= max
+            })
+            .max_by_key(|range| {
+                (
+                    u8::from(range.channels() == default_channels),
+                    range.channels(),
+                )
+            })
+            .map(|range| range.with_sample_rate(PREFERRED_OUTPUT_SAMPLE_RATE)),
+        Err(err) => {
+            debug!("Could not enumerate supported output configs: {err}");
+            None
+        }
+    };
+
+    if let Some(config) = preferred {
+        info!(
+            "Audio output config: preferring {} Hz over default {} Hz (ch={} fmt={:?})",
+            PREFERRED_OUTPUT_SAMPLE_RATE,
+            default_config.sample_rate(),
+            config.channels(),
+            config.sample_format()
+        );
+        return Ok(config);
+    }
+
+    info!(
+        "Audio output config: preferred {} Hz unavailable; using default {} Hz (ch={} fmt={:?})",
+        PREFERRED_OUTPUT_SAMPLE_RATE,
+        default_config.sample_rate(),
+        default_channels,
+        default_format
+    );
+    Ok(default_config)
+}
+
 /// Module for connecting to the output device.
 pub struct AudioOutput {
     stream: Option<cpal::Stream>,
@@ -26,9 +81,7 @@ impl AudioOutput {
             .default_output_device()
             .context("No default output device")?;
 
-        let supported_config = device
-            .default_output_config()
-            .context("No default config")?;
+        let supported_config = select_output_config(&device)?;
         let sample_rate = supported_config.sample_rate();
         let channels = supported_config.channels();
 

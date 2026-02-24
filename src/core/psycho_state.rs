@@ -19,6 +19,17 @@ pub fn clamp01(x: f32) -> f32 {
     x.clamp(0.0, 1.0)
 }
 
+#[inline]
+pub fn sanitize01(x: f32) -> f32 {
+    if x.is_finite() {
+        x.clamp(0.0, 1.0)
+    } else if x.is_infinite() {
+        if x.is_sign_positive() { 1.0 } else { 0.0 }
+    } else {
+        0.0
+    }
+}
+
 /// Normalize a density curve for potential scans, returning (normalized, mass).
 pub fn normalize_density(density_vals: &[f32], du: &[f32], eps: f32) -> (Vec<f32>, f32) {
     let mass = density::density_to_mass(density_vals, du);

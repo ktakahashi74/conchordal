@@ -1,3 +1,5 @@
+use crate::core::psycho_state::sanitize01;
+
 #[derive(Clone, Copy, Debug)]
 pub struct ConsonanceKernel {
     pub a: f32,
@@ -105,17 +107,6 @@ pub fn sigmoid01_stable(x: f32) -> f32 {
     }
     let x = x.clamp(-80.0, 80.0);
     1.0 / (1.0 + (-x).exp())
-}
-
-#[inline]
-fn sanitize01(x: f32) -> f32 {
-    if x.is_finite() {
-        x.clamp(0.0, 1.0)
-    } else if x.is_infinite() {
-        if x.is_sign_positive() { 1.0 } else { 0.0 }
-    } else {
-        0.0
-    }
 }
 
 #[inline]

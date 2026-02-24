@@ -2,7 +2,6 @@
 
 pub mod modes;
 pub mod resonator;
-pub mod util;
 
 /// Errors returned by synth primitives.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

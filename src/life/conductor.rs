@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::collections::VecDeque;
 
 use tracing::info;
@@ -34,12 +35,7 @@ impl Conductor {
             .into_iter()
             .map(|SceneMarker { name, time, order }| SceneInfo { name, time, order })
             .collect();
-        scenes.sort_by(|a, b| {
-            a.time
-                .partial_cmp(&b.time)
-                .unwrap_or(std::cmp::Ordering::Equal)
-                .then_with(|| a.order.cmp(&b.order))
-        });
+        scenes.sort_by(|a, b| cmp_time_order(a.time, a.order, b.time, b.order));
 
         let mut events: Vec<QueuedEvent> = s
             .events
@@ -57,12 +53,7 @@ impl Conductor {
             )
             .collect();
 
-        events.sort_by(|a, b| {
-            a.time
-                .partial_cmp(&b.time)
-                .unwrap_or(std::cmp::Ordering::Equal)
-                .then_with(|| a.order.cmp(&b.order))
-        });
+        events.sort_by(|a, b| cmp_time_order(a.time, a.order, b.time, b.order));
 
         let total_duration = s.duration_sec;
         Self {
@@ -74,12 +65,7 @@ impl Conductor {
 
     pub fn from_events(events: Vec<QueuedEvent>) -> Self {
         let mut events = events;
-        events.sort_by(|a, b| {
-            a.time
-                .partial_cmp(&b.time)
-                .unwrap_or(std::cmp::Ordering::Equal)
-                .then_with(|| a.order.cmp(&b.order))
-        });
+        events.sort_by(|a, b| cmp_time_order(a.time, a.order, b.time, b.order));
         let total_duration = events.last().map(|ev| ev.time).unwrap_or(0.0);
         Self {
             event_queue: events.into(),
@@ -137,4 +123,12 @@ impl Conductor {
         }
         current
     }
+}
+
+#[inline]
+fn cmp_time_order(a_time: f32, a_order: u64, b_time: f32, b_order: u64) -> Ordering {
+    a_time
+        .partial_cmp(&b_time)
+        .unwrap_or(Ordering::Equal)
+        .then_with(|| a_order.cmp(&b_order))
 }

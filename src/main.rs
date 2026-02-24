@@ -45,13 +45,8 @@ fn main() -> eframe::Result<()> {
         config.playback.wait_user_start = val;
     }
 
-    let ext = Path::new(&args.scenario_path)
-        .extension()
-        .and_then(|s| s.to_str())
-        .unwrap_or("")
-        .to_ascii_lowercase();
-    if ext != "rhai" {
-        eprintln!("Scenario must be a .rhai script: {}", args.scenario_path);
+    if let Err(e) = app::validate_scenario_script_extension(Path::new(&args.scenario_path)) {
+        eprintln!("{e}");
         std::process::exit(1);
     }
 

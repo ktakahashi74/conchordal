@@ -6,6 +6,7 @@
 use crate::core::consonance_kernel::{ConsonanceKernel, ConsonanceRepresentationParams};
 use crate::core::log2space::Log2Space;
 use crate::core::modulation::NeuralRhythms;
+use crate::core::psycho_state::sanitize01;
 
 #[derive(Clone, Debug)]
 pub struct LandscapeParams {
@@ -399,17 +400,6 @@ pub fn map_roughness01(r_norm: f32, r_half: f32) -> f32 {
         0.0
     } else {
         (r_norm / denom).clamp(0.0, 1.0)
-    }
-}
-
-#[inline]
-fn sanitize01(x: f32) -> f32 {
-    if x.is_finite() {
-        x.clamp(0.0, 1.0)
-    } else if x.is_infinite() {
-        if x.is_sign_positive() { 1.0 } else { 0.0 }
-    } else {
-        0.0
     }
 }
 

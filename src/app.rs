@@ -182,11 +182,15 @@ struct RuntimeInit {
     visual_delay_frames: usize,
 }
 
-pub fn compile_scenario_from_script(
-    script_path: &Path,
-    _args: &crate::cli::Args,
-    _config: &AppConfig,
-) -> Result<Scenario, String> {
+#[inline]
+fn cmp_time_order(a_time: f32, a_order: u64, b_time: f32, b_order: u64) -> std::cmp::Ordering {
+    a_time
+        .partial_cmp(&b_time)
+        .unwrap_or(std::cmp::Ordering::Equal)
+        .then_with(|| a_order.cmp(&b_order))
+}
+
+pub fn validate_scenario_script_extension(script_path: &Path) -> Result<(), String> {
     let ext = script_path
         .extension()
         .and_then(|s| s.to_str())
@@ -198,6 +202,15 @@ pub fn compile_scenario_from_script(
             script_path.display()
         ));
     }
+    Ok(())
+}
+
+pub fn compile_scenario_from_script(
+    script_path: &Path,
+    _args: &crate::cli::Args,
+    _config: &AppConfig,
+) -> Result<Scenario, String> {
+    validate_scenario_script_extension(script_path)?;
     let path_str = script_path.to_string_lossy();
     ScriptHost::load_script(&path_str).map_err(|e| {
         let pos = e
@@ -274,12 +287,7 @@ pub fn run_compile_only(args: crate::cli::Args, config: AppConfig) {
         std::process::exit(1);
     }
     let mut markers = scenario.scene_markers.clone();
-    markers.sort_by(|a, b| {
-        a.time
-            .partial_cmp(&b.time)
-            .unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| a.order.cmp(&b.order))
-    });
+    markers.sort_by(|a, b| cmp_time_order(a.time, a.order, b.time, b.order));
     for marker in &markers {
         eprintln!(
             "scene t={:.3} order={} name={}",
@@ -287,12 +295,7 @@ pub fn run_compile_only(args: crate::cli::Args, config: AppConfig) {
         );
     }
     let mut events = scenario.events.clone();
-    events.sort_by(|a, b| {
-        a.time
-            .partial_cmp(&b.time)
-            .unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| a.order.cmp(&b.order))
-    });
+    events.sort_by(|a, b| cmp_time_order(a.time, a.order, b.time, b.order));
     for event in &events {
         let action_descs: Vec<String> = event.actions.iter().map(ToString::to_string).collect();
         eprintln!(
@@ -302,13 +305,13 @@ pub fn run_compile_only(args: crate::cli::Args, config: AppConfig) {
             action_descs.join(" | ")
         );
     }
-    let mut event_count = 0usize;
-    let mut action_count = 0usize;
+    let event_count = scenario.events.len();
+    let action_count: usize = scenario
+        .events
+        .iter()
+        .map(|event| event.actions.len())
+        .sum();
     let marker_count = scenario.scene_markers.len();
-    event_count += scenario.events.len();
-    for event in &scenario.events {
-        action_count += event.actions.len();
-    }
     eprintln!(
         "OK compile-only: {} (events={}, actions={}, markers={})",
         path.display(),

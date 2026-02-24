@@ -100,6 +100,19 @@ impl ResonatorBank {
         }
     }
 
+    #[inline]
+    fn compile_mode_coefficients(&mut self, modes: &[ModeParams]) {
+        for (i, params) in modes.iter().enumerate() {
+            let coeffs = compile_mode(params, self.fs);
+            self.e[i] = coeffs.e;
+            self.r[i] = coeffs.r;
+            self.b1[i] = coeffs.b1;
+            self.b2[i] = coeffs.b2;
+            self.gain[i] = coeffs.gain;
+            self.theta[i] = 2.0 * PI * params.freq_hz / self.fs;
+        }
+    }
+
     /// Set mode parameters and compile coefficients, resetting state to zero.
     pub fn set_modes(&mut self, modes: &[ModeParams]) -> Result<(), SynthError> {
         if modes.len() > self.capacity {
@@ -111,16 +124,7 @@ impl ResonatorBank {
 
         self.active_len = modes.len();
         self.reset_state();
-
-        for (i, params) in modes.iter().enumerate() {
-            let coeffs = compile_mode(params, self.fs);
-            self.e[i] = coeffs.e;
-            self.r[i] = coeffs.r;
-            self.b1[i] = coeffs.b1;
-            self.b2[i] = coeffs.b2;
-            self.gain[i] = coeffs.gain;
-            self.theta[i] = 2.0 * PI * params.freq_hz / self.fs;
-        }
+        self.compile_mode_coefficients(modes);
 
         Ok(())
     }
@@ -144,16 +148,7 @@ impl ResonatorBank {
                 self.y[i] = 0.0;
             }
         }
-
-        for (i, params) in modes.iter().enumerate() {
-            let coeffs = compile_mode(params, self.fs);
-            self.e[i] = coeffs.e;
-            self.r[i] = coeffs.r;
-            self.b1[i] = coeffs.b1;
-            self.b2[i] = coeffs.b2;
-            self.gain[i] = coeffs.gain;
-            self.theta[i] = 2.0 * PI * params.freq_hz / self.fs;
-        }
+        self.compile_mode_coefficients(modes);
 
         Ok(())
     }

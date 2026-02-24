@@ -585,13 +585,7 @@ impl Population {
 
     /// Assumes `set_current_frame` has been called for the current hop.
     pub fn remove_agent(&mut self, id: u64) {
-        let mut next = Vec::with_capacity(self.individuals.len());
-        for agent in self.individuals.drain(..) {
-            if agent.id() != id {
-                next.push(agent);
-            }
-        }
-        self.individuals = next;
+        self.individuals.retain(|agent| agent.id() != id);
     }
 
     /// Advance agent state without emitting audio (ScheduleRenderer is output authority).
@@ -638,13 +632,7 @@ impl Population {
     pub fn cleanup_dead(&mut self, current_frame: u64, dt_sec: f32, scenario_finished: bool) {
         self.current_frame = current_frame;
         let before_count = self.individuals.len();
-        let mut next = Vec::with_capacity(self.individuals.len());
-        for agent in self.individuals.drain(..) {
-            if agent.should_retain() {
-                next.push(agent);
-            }
-        }
-        self.individuals = next;
+        self.individuals.retain(|agent| agent.should_retain());
         let removed_count = before_count - self.individuals.len();
 
         if removed_count > 0 {

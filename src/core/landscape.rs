@@ -4,7 +4,7 @@
 //! Processing lives in the Dorsal (rhythm) and Roughness/Harmonicity streams.
 
 use crate::core::consonance_kernel::{ConsonanceKernel, ConsonanceRepresentationParams};
-use crate::core::log2space::Log2Space;
+use crate::core::log2space::{Log2Space, sample_scan_linear_at_pos};
 use crate::core::modulation::NeuralRhythms;
 use crate::core::psycho_state::sanitize01;
 
@@ -239,26 +239,14 @@ impl Landscape {
     pub fn recompute_consonance(&mut self, params: &LandscapeParams) {
         self.assert_scan_lengths();
 
-        if self.harmonicity01.len() != self.harmonicity.len() {
-            self.harmonicity01 = vec![0.0; self.harmonicity.len()];
-        }
-        if self.roughness01.len() != self.roughness.len() {
-            self.roughness01 = vec![0.0; self.roughness.len()];
-        }
+        reset_if_len_mismatch(&mut self.harmonicity01, self.harmonicity.len());
+        reset_if_len_mismatch(&mut self.roughness01, self.roughness.len());
 
         let n = self.consonance_field_score.len();
-        if self.consonance_field_level.len() != n {
-            self.consonance_field_level = vec![0.0; n];
-        }
-        if self.consonance_density_mass.len() != n {
-            self.consonance_density_mass = vec![0.0; n];
-        }
-        if self.consonance_density_pmf.len() != n {
-            self.consonance_density_pmf = vec![0.0; n];
-        }
-        if self.consonance_field_energy.len() != n {
-            self.consonance_field_energy = vec![0.0; n];
-        }
+        reset_if_len_mismatch(&mut self.consonance_field_level, n);
+        reset_if_len_mismatch(&mut self.consonance_density_mass, n);
+        reset_if_len_mismatch(&mut self.consonance_density_pmf, n);
+        reset_if_len_mismatch(&mut self.consonance_field_energy, n);
 
         let perc_h_pot_scan = &self.harmonicity;
         crate::core::psycho_state::h_pot_scan_to_h_state01_scan(
@@ -272,23 +260,10 @@ impl Landscape {
 
         self.recompute_consonance_field(params);
         self.recompute_consonance_density_raw(params);
-        let mut sum_raw = 0.0f32;
         for i in 0..n {
-            let raw = self.consonance_density_mass[i];
-            let w = if raw.is_finite() { raw.max(0.0) } else { 0.0 };
-            self.consonance_density_pmf[i] = w;
-            sum_raw += w;
+            self.consonance_density_pmf[i] = self.consonance_density_mass[i];
         }
-
-        if sum_raw > 0.0 && sum_raw.is_finite() {
-            let inv = 1.0 / sum_raw;
-            for p in &mut self.consonance_density_pmf {
-                *p *= inv;
-            }
-        } else if n > 0 {
-            let uniform = 1.0 / n as f32;
-            self.consonance_density_pmf.fill(uniform);
-        }
+        normalize_or_uniform(&mut self.consonance_density_pmf[..n]);
     }
 
     pub fn recompute_consonance_field(&mut self, params: &LandscapeParams) {
@@ -329,42 +304,21 @@ impl Landscape {
             .min(self.consonance_density_mass.len())
             .min(occupied.len());
 
-        let mut sum = 0.0f32;
+        let occupied_n = &occupied[..n];
+        let out_n = &mut out[..n];
         let mut unoccupied_count = 0usize;
         for i in 0..n {
-            let is_occupied = occupied[i];
+            let is_occupied = occupied_n[i];
             if !is_occupied {
                 unoccupied_count += 1;
             }
-            let w = if is_occupied {
+            out_n[i] = if is_occupied {
                 0.0
             } else {
-                let raw = self.consonance_density_mass[i];
-                if raw.is_finite() { raw.max(0.0) } else { 0.0 }
+                self.consonance_density_mass[i]
             };
-            out[i] = w;
-            sum += w;
         }
-
-        if sum > 0.0 && sum.is_finite() {
-            let inv = 1.0 / sum;
-            for v in out.iter_mut().take(n) {
-                *v *= inv;
-            }
-            return;
-        }
-
-        if unoccupied_count > 0 {
-            let uniform = 1.0 / unoccupied_count as f32;
-            for i in 0..n {
-                out[i] = if occupied[i] { 0.0 } else { uniform };
-            }
-        } else {
-            let uniform = 1.0 / n as f32;
-            for v in out.iter_mut().take(n) {
-                *v = uniform;
-            }
-        }
+        normalize_or_uniform_masked(out_n, occupied_n, unoccupied_count);
     }
 
     fn sample_linear(&self, data: &[f32], freq_hz: f32) -> f32 {
@@ -382,13 +336,60 @@ impl Landscape {
         let step = self.space.step();
         let base = self.space.centers_log2[0];
         let pos = (log_freq - base) / step;
-        let idx = pos.floor() as usize;
-        let frac = pos - pos.floor();
-        let idx0 = idx.min(data.len().saturating_sub(1));
-        let idx1 = (idx0 + 1).min(data.len().saturating_sub(1));
-        let v0 = data.get(idx0).copied().unwrap_or(0.0);
-        let v1 = data.get(idx1).copied().unwrap_or(v0);
-        v0 + (v1 - v0) * frac
+        sample_scan_linear_at_pos(data, pos)
+    }
+}
+
+#[inline]
+fn reset_if_len_mismatch(scan: &mut Vec<f32>, expected_len: usize) {
+    if scan.len() != expected_len {
+        *scan = vec![0.0; expected_len];
+    }
+}
+
+#[inline]
+fn sanitize_nonnegative_finite(x: f32) -> f32 {
+    if x.is_finite() { x.max(0.0) } else { 0.0 }
+}
+
+fn normalize_or_uniform(out: &mut [f32]) {
+    let mut sum = 0.0f32;
+    for v in out.iter_mut() {
+        *v = sanitize_nonnegative_finite(*v);
+        sum += *v;
+    }
+    if sum > 0.0 && sum.is_finite() {
+        let inv = 1.0 / sum;
+        for v in out.iter_mut() {
+            *v *= inv;
+        }
+    } else if !out.is_empty() {
+        out.fill(1.0 / out.len() as f32);
+    }
+}
+
+fn normalize_or_uniform_masked(out: &mut [f32], occupied: &[bool], unoccupied_count: usize) {
+    debug_assert_eq!(out.len(), occupied.len());
+    let mut sum = 0.0f32;
+    for v in out.iter_mut() {
+        *v = sanitize_nonnegative_finite(*v);
+        sum += *v;
+    }
+    if sum > 0.0 && sum.is_finite() {
+        let inv = 1.0 / sum;
+        for v in out.iter_mut() {
+            *v *= inv;
+        }
+        return;
+    }
+
+    if unoccupied_count > 0 {
+        let uniform = 1.0 / unoccupied_count as f32;
+        for (i, v) in out.iter_mut().enumerate() {
+            *v = if occupied[i] { 0.0 } else { uniform };
+        }
+    } else if !out.is_empty() {
+        out.fill(1.0 / out.len() as f32);
     }
 }
 
@@ -485,6 +486,21 @@ mod tests {
         landscape.consonance_field_level.fill(1.2);
         let val = landscape.evaluate_pitch_level(200.0);
         assert!((val - 1.0).abs() < 1e-6, "val={val}");
+    }
+
+    #[test]
+    fn evaluate_pitch_score_log2_outside_space_uses_edge_bins() {
+        let mut landscape = Landscape::new(Log2Space::new(100.0, 400.0, 12));
+        let n = landscape.consonance_field_score.len();
+        landscape.consonance_field_score.fill(0.0);
+        landscape.consonance_field_score[0] = 0.25;
+        landscape.consonance_field_score[n - 1] = 0.75;
+
+        let lo = landscape.evaluate_pitch_score_log2(landscape.space.fmin.log2() - 10.0);
+        let hi = landscape.evaluate_pitch_score_log2(landscape.space.fmax.log2() + 10.0);
+
+        assert!((lo - 0.25).abs() < 1e-6, "lo={lo}");
+        assert!((hi - 0.75).abs() < 1e-6, "hi={hi}");
     }
 
     #[test]

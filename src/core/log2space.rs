@@ -152,6 +152,23 @@ impl Log2Space {
     }
 }
 
+/// Linear interpolation on a scan using a continuous bin position.
+///
+/// This keeps the legacy edge behavior used by `Landscape` sampling:
+/// `pos` values outside [0, n-1] are saturated by index clamping.
+#[inline]
+pub(crate) fn sample_scan_linear_at_pos(scan: &[f32], pos: f32) -> f32 {
+    debug_assert!(!scan.is_empty());
+    let idx_base = pos.floor();
+    let idx = idx_base as usize;
+    let frac = pos - idx_base;
+    let idx0 = idx.min(scan.len().saturating_sub(1));
+    let idx1 = (idx0 + 1).min(scan.len().saturating_sub(1));
+    let v0 = scan.get(idx0).copied().unwrap_or(0.0);
+    let v1 = scan.get(idx1).copied().unwrap_or(v0);
+    v0 + (v1 - v0) * frac
+}
+
 /// Sample a Log2Space-aligned scan by linear interpolation in log2-frequency.
 pub fn sample_scan_linear_log2(space: &Log2Space, scan: &[f32], freq_hz: f32) -> f32 {
     if scan.is_empty() || scan.len() != space.n_bins() {
@@ -167,29 +184,9 @@ pub fn sample_scan_linear_log2(space: &Log2Space, scan: &[f32], freq_hz: f32) ->
         Some(pos) => pos,
         None => return f32::NEG_INFINITY,
     };
-    let idx_base = pos.floor();
-    let idx = idx_base as isize;
-    if idx < 0 {
-        return f32::NEG_INFINITY;
-    }
-    let idx = idx as usize;
-    let frac = pos - idx_base;
-    if idx + 1 < scan.len() {
-        let v0 = scan[idx];
-        let v1 = scan[idx + 1];
-        let out = (v0 * (1.0 - frac)) + (v1 * frac);
-        if out.is_finite() {
-            out
-        } else {
-            f32::NEG_INFINITY
-        }
-    } else if idx < scan.len() {
-        let out = scan[idx];
-        if out.is_finite() {
-            out
-        } else {
-            f32::NEG_INFINITY
-        }
+    let out = sample_scan_linear_at_pos(scan, pos);
+    if out.is_finite() {
+        out
     } else {
         f32::NEG_INFINITY
     }
@@ -256,5 +253,42 @@ mod tests {
         let ratio24 = bw4 / bw2;
         assert!((ratio12 - 2.0).abs() < 0.05);
         assert!((ratio24 - 2.0).abs() < 0.05);
+    }
+
+    #[test]
+    fn sample_scan_linear_log2_out_of_range_and_invalid_returns_neg_inf() {
+        let space = Log2Space::new(100.0, 6400.0, 24);
+        let scan = vec![0.5f32; space.n_bins()];
+        assert_eq!(
+            sample_scan_linear_log2(&space, &scan, 80.0),
+            f32::NEG_INFINITY
+        );
+        assert_eq!(
+            sample_scan_linear_log2(&space, &scan, 9000.0),
+            f32::NEG_INFINITY
+        );
+        assert_eq!(
+            sample_scan_linear_log2(&space, &scan, f32::NAN),
+            f32::NEG_INFINITY
+        );
+        assert_eq!(
+            sample_scan_linear_log2(&space, &scan, f32::INFINITY),
+            f32::NEG_INFINITY
+        );
+    }
+
+    #[test]
+    fn sample_scan_linear_log2_interpolates_between_neighbor_bins() {
+        let space = Log2Space::new(100.0, 6400.0, 24);
+        let n = space.n_bins();
+        let i = n / 3;
+        let mut scan = vec![0.0f32; n];
+        scan[i] = 0.0;
+        scan[i + 1] = 1.0;
+
+        // Midpoint in log-frequency between neighboring centers.
+        let f_mid = (space.centers_hz[i] * space.centers_hz[i + 1]).sqrt();
+        let got = sample_scan_linear_log2(&space, &scan, f_mid);
+        assert!((got - 0.5).abs() < 5e-5, "got={got}");
     }
 }

@@ -168,12 +168,7 @@ fn for_each_candidate_weight(
         if idx < 0 || idx >= n_bins as isize {
             continue;
         }
-        let dist = offset.unsigned_abs();
-        let weight = if radius == 1 {
-            if offset == 0 { 0.5 } else { 0.25 }
-        } else {
-            1.0 - (dist as f32 / (radius as f32 + 1.0))
-        };
+        let weight = candidate_weight(offset, radius);
         if weight > 0.0 {
             sum += weight;
         }
@@ -188,15 +183,20 @@ fn for_each_candidate_weight(
         if idx < 0 || idx >= n_bins as isize {
             continue;
         }
-        let dist = offset.unsigned_abs();
-        let weight = if radius == 1 {
-            if offset == 0 { 0.5 } else { 0.25 }
-        } else {
-            1.0 - (dist as f32 / (radius as f32 + 1.0))
-        };
+        let weight = candidate_weight(offset, radius);
         if weight > 0.0 {
             f(idx as usize, weight * inv_sum);
         }
+    }
+}
+
+#[inline]
+fn candidate_weight(offset: isize, radius: usize) -> f32 {
+    if radius == 1 {
+        if offset == 0 { 0.5 } else { 0.25 }
+    } else {
+        let dist = offset.unsigned_abs();
+        1.0 - (dist as f32 / (radius as f32 + 1.0))
     }
 }
 

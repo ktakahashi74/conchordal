@@ -6,6 +6,26 @@ use egui_plot::{
 };
 use std::collections::VecDeque;
 
+const LOG2_HZ_MIN: f64 = 20.0;
+const LOG2_HZ_MAX: f64 = 20_000.0;
+
+#[inline]
+fn log2_plot_x_bounds() -> (f64, f64) {
+    (LOG2_HZ_MIN.log2(), LOG2_HZ_MAX.log2())
+}
+
+#[inline]
+fn log2_bar_center_width(f_left_hz: f32, f_hz: f32, f_right_hz: f32) -> (f64, f64) {
+    let f_left = f_left_hz.max(1.0);
+    let f = f_hz.max(1.0);
+    let f_right = f_right_hz.max(1.0);
+    let center = f.log2();
+    let left = (f_left.log2() + center) * 0.5;
+    let right = (f_right.log2() + center) * 0.5;
+    let width = (right - left).abs().max(0.001);
+    (center as f64, width as f64)
+}
+
 /// Histogram on a log2 frequency axis (auto bin width).
 #[allow(clippy::too_many_arguments)]
 pub fn log2_hist_hz(
@@ -30,22 +50,14 @@ pub fn log2_hist_hz(
     // Choose a bar width per bin based on neighbor spacing in log2 frequency.
     let mut bars: Vec<Bar> = Vec::with_capacity(xs_hz.len());
     for i in 0..xs_hz.len() {
-        let f = xs_hz[i].max(1.0); // Avoid log2(0).
-        let f_left = if i > 0 { xs_hz[i - 1].max(1.0) } else { f };
-        let f_right = if i + 1 < xs_hz.len() {
-            xs_hz[i + 1].max(1.0)
-        } else {
-            f
-        };
-
-        // Estimate bar width in log2 space from neighbor centers.
-        let left = (f_left.log2() + f.log2()) * 0.5;
-        let right = (f_right.log2() + f.log2()) * 0.5;
-        let width = (right - left).abs().max(0.001);
+        let f = xs_hz[i];
+        let f_left = if i > 0 { xs_hz[i - 1] } else { f };
+        let f_right = if i + 1 < xs_hz.len() { xs_hz[i + 1] } else { f };
+        let (center, width) = log2_bar_center_width(f_left, f, f_right);
 
         bars.push(
-            Bar::new(f.log2() as f64, ys[i] as f64)
-                .width(width as f64)
+            Bar::new(center, ys[i] as f64)
+                .width(width)
                 .fill(Color32::from_rgb(240, 120, 120)) // match Roughness accent
                 .stroke(egui::Stroke::NONE),
         );
@@ -56,15 +68,16 @@ pub fn log2_hist_hz(
     let y_max_fixed = if y_max <= y_min { y_min + 1.0 } else { y_max };
 
     let tick_marks_log2_for_grid = tick_marks_log2.clone();
+    let (x_min, x_max) = log2_plot_x_bounds();
     Plot::new(title)
         .height(height)
         .allow_scroll(false)
         .allow_drag(false)
         .include_y(y_min)
         .include_y(y_max_fixed)
-        .include_x((20.0f64).log2())
-        .include_x((20_000.0f64).log2())
-        .default_x_bounds((20.0f64).log2(), (20_000.0f64).log2())
+        .include_x(x_min)
+        .include_x(x_max)
+        .default_x_bounds(x_min, x_max)
         .default_y_bounds(y_min, y_max_fixed)
         .x_grid_spacer(move |_input: GridInput| {
             tick_marks_log2_for_grid
@@ -155,8 +168,7 @@ pub fn log2_plot_hz(
     });
 
     // === Convert X range (20-20 kHz) to log2 ===
-    let x_min = (20.0f64).log2();
-    let x_max = (20_000.0f64).log2();
+    let (x_min, x_max) = log2_plot_x_bounds();
 
     // === Render ===
     let mut plot = Plot::new(title)
@@ -230,12 +242,13 @@ pub fn draw_roughness_harmonicity(
         })
         .collect();
 
+    let (x_min, x_max) = log2_plot_x_bounds();
     let mut plot = Plot::new(title)
         .height(height)
         .allow_scroll(false)
         .allow_drag(false)
-        .include_x((20.0f64).log2())
-        .include_x((20_000.0f64).log2())
+        .include_x(x_min)
+        .include_x(x_max)
         .include_y(-1.0)
         .include_y(1.0)
         .default_y_bounds(-1.0, 1.0)
@@ -426,8 +439,7 @@ pub fn plot_population_dynamics(
     spec_amps: &[f32],
     height: f32,
 ) {
-    let x_min = (20.0f64).log2();
-    let x_max = (20_000.0f64).log2();
+    let (x_min, x_max) = log2_plot_x_bounds();
     let plot = Plot::new("population_dynamics")
         .height(height)
         .allow_scroll(true)
@@ -444,17 +456,15 @@ pub fn plot_population_dynamics(
         if spec_hz.len() > 1 && spec_amps.len() > 1 {
             let mut bars: Vec<Bar> = Vec::with_capacity(spec_hz.len().saturating_sub(1));
             for i in 1..spec_hz.len().min(spec_amps.len()) {
-                let f = spec_hz[i].max(1.0);
-                let f_left = if i > 1 { spec_hz[i - 1].max(1.0) } else { f };
+                let f = spec_hz[i];
+                let f_left = if i > 1 { spec_hz[i - 1] } else { f };
                 let f_right = if i + 1 < spec_hz.len() {
-                    spec_hz[i + 1].max(1.0)
+                    spec_hz[i + 1]
                 } else {
                     f
                 };
-                let left = (f_left.log2() + f.log2()) * 0.5;
-                let right = (f_right.log2() + f.log2()) * 0.5;
-                let width = (right - left).abs().max(0.001);
-                bars.push(Bar::new(f.log2() as f64, spec_amps[i] as f64).width(width as f64));
+                let (center, width) = log2_bar_center_width(f_left, f, f_right);
+                bars.push(Bar::new(center, spec_amps[i] as f64).width(width));
             }
             plot_ui.bar_chart(BarChart::new("Sound bodies", bars));
         }

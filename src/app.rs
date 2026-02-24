@@ -1095,24 +1095,8 @@ fn worker_loop(
             let must_send_ui = conductor.is_done() || pop.abort_requested;
             let should_send_ui = must_send_ui || last_ui_update.elapsed() >= ui_min_interval;
 
-            let mut wave_frame: Option<WaveFrame> = None;
-            let mut spec_frame: Option<SpecFrame> = None;
-            let mut ui_landscape: Option<LandscapeFrame> = None;
             if should_send_ui {
                 world.dorsal_metrics = Some(dorsal_metrics);
-                wave_frame = Some(WaveFrame {
-                    fs,
-                    samples: Arc::clone(&mono_chunk),
-                });
-                spec_frame = Some(SpecFrame {
-                    spec_hz: log_space.centers_hz.clone(),
-                    amps: current_landscape
-                        .nsgt_power
-                        .iter()
-                        .map(|&x| x.sqrt())
-                        .collect(),
-                });
-                ui_landscape = Some(current_landscape.clone());
             }
 
             let elapsed = t_start.elapsed();
@@ -1144,9 +1128,20 @@ fn worker_loop(
                 last_guard_log = Instant::now();
             }
 
-            if let (Some(wave_frame), Some(spec_frame), Some(ui_landscape)) =
-                (wave_frame, spec_frame, ui_landscape)
-            {
+            if should_send_ui {
+                let wave_frame = WaveFrame {
+                    fs,
+                    samples: Arc::clone(&mono_chunk),
+                };
+                let spec_frame = SpecFrame {
+                    spec_hz: log_space.centers_hz.clone(),
+                    amps: current_landscape
+                        .nsgt_power
+                        .iter()
+                        .map(|&x| x.sqrt())
+                        .collect(),
+                };
+                let ui_landscape: LandscapeFrame = current_landscape.clone();
                 let agent_states: Vec<AgentStateInfo> = pop
                     .individuals
                     .iter()

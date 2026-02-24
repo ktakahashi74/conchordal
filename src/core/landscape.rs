@@ -85,7 +85,7 @@ pub struct Landscape {
     pub consonance_density_mass: Vec<f32>,
     /// Density axis: normalized PMF for no-mask/default view.
     pub consonance_density_pmf: Vec<f32>,
-    /// Layer 2: minimization energy.
+    /// Field energy cache (`-score`) kept for diagnostics/tests/plots.
     pub consonance_field_energy: Vec<f32>,
     pub subjective_intensity: Vec<f32>,
     pub nsgt_power: Vec<f32>,

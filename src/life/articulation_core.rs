@@ -89,10 +89,6 @@ impl ArticulationWrapper {
         self.planned_gate.gate = gate.clamp(0.0, 1.0);
     }
 
-    pub fn last_attack_telemetry(&self) -> (u32, f32) {
-        self.core.last_attack_telemetry()
-    }
-
     pub fn kick_planned(&mut self, kick: PhonationKick, rhythms: &NeuralRhythms, dt: f32) {
         self.core.kick_planned(kick, rhythms, dt);
     }
@@ -200,8 +196,6 @@ pub struct KuramotoCore {
     pub dbg_last_theta_alpha: f32,
     pub dbg_last_theta_beta: f32,
     pub dbg_last_k_eff: f32,
-    pub last_attack_count: u32,
-    pub last_attack_consonance: f32,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -271,11 +265,6 @@ impl KuramotoCore {
             action_cost_per_attack: self.action_cost,
             recharge_per_attack: self.recharge_rate,
         }
-    }
-
-    #[inline]
-    fn last_attack_telemetry(&self) -> (u32, f32) {
-        (self.last_attack_count, self.last_attack_consonance)
     }
 
     #[inline]
@@ -493,9 +482,6 @@ impl ArticulationCore for KuramotoCore {
         dt: f32,
         global_coupling: f32,
     ) -> ArticulationSignal {
-        // Attack telemetry is counted in the same tick units as the energy update (did_attack).
-        self.last_attack_count = 0;
-        self.last_attack_consonance = 0.0;
         let policy = self.metabolism_policy();
         self.apply_energy_delta(policy.basal_delta(dt));
 
@@ -523,12 +509,7 @@ impl ArticulationCore for KuramotoCore {
             attacked_this_sample = attacked_this_sample || attacked;
         }
         if attacked_this_sample {
-            self.last_attack_count = 1;
-            self.last_attack_consonance = consonance;
             self.apply_energy_delta(policy.attack_delta_with_recharge(consonance));
-        } else {
-            self.last_attack_count = 0;
-            self.last_attack_consonance = 0.0;
         }
         self.update_envelope(dt);
 
@@ -805,8 +786,6 @@ impl AnyArticulationCore {
                     dbg_last_theta_alpha: 0.0,
                     dbg_last_theta_beta: 0.0,
                     dbg_last_k_eff: 0.0,
-                    last_attack_count: 0,
-                    last_attack_consonance: 0.0,
                 })
             }
             ArticulationCoreConfig::Seq { duration, .. } => {
@@ -833,14 +812,6 @@ impl AnyArticulationCore {
             AnyArticulationCore::Entrain(core) => core.kick_planned(strength),
             AnyArticulationCore::Seq(core) => core.kick_planned(strength),
             AnyArticulationCore::Drone(core) => core.kick_planned(strength),
-        }
-    }
-
-    pub fn last_attack_telemetry(&self) -> (u32, f32) {
-        match self {
-            AnyArticulationCore::Entrain(c) => c.last_attack_telemetry(),
-            AnyArticulationCore::Seq(_) => (0, 0.0),
-            AnyArticulationCore::Drone(_) => (0, 0.0),
         }
     }
 }
@@ -985,8 +956,6 @@ mod tests {
             dbg_last_theta_alpha: 0.0,
             dbg_last_theta_beta: 0.0,
             dbg_last_k_eff: 0.0,
-            last_attack_count: 0,
-            last_attack_consonance: 0.0,
         }
     }
 

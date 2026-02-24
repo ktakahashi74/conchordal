@@ -62,6 +62,8 @@ impl MetabolismPolicy {
         -self.action_cost_per_attack
     }
 
+    // Explicit transition helpers are kept for deterministic tests and offline analysis.
+    // Runtime control uses basal_delta/attack_delta_* directly inside articulation_core.
     pub fn apply_basal(&self, energy: f32, dt_sec: f32) -> (f32, EnergyTelemetry) {
         let basal_delta = self.basal_delta(dt_sec);
         let next = energy + basal_delta;
@@ -113,7 +115,7 @@ impl MetabolismPolicy {
         (next, telemetry)
     }
 
-    /// Energy update rule used by articulation cores.
+    /// Energy update rule used as a single-step oracle for tests/analysis.
     ///
     /// E' = E - basal_cost_per_sec * dt
     ///      - action_cost_per_attack * I_attack

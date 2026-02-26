@@ -11,7 +11,6 @@ parallel([
     },
     || {
         let pad = create(drone, 1).freq(110.0);
-        flush();
         wait(4.0);
         release(pad);
         wait(0.5);

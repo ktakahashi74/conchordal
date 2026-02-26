@@ -114,92 +114,65 @@ let landscape_peaks = derive(modal)
 
 scene("ModalBody Timbres Showcase", || {
     let g1 = create(table_uniform_aluminum_bar, 1);
-    flush();
     wait(1.4);
     release(g1);
-    flush();
 
     let g2 = create(table_uniform_wooden_bar, 1);
-    flush();
     wait(1.4);
     release(g2);
-    flush();
 
     let g3 = create(table_xylophone, 1);
-    flush();
     wait(1.4);
     release(g3);
-    flush();
 
     let g4 = create(table_vibraphone_1, 1);
-    flush();
     wait(1.4);
     release(g4);
-    flush();
 
     let g5 = create(table_vibraphone_2, 1);
-    flush();
     wait(1.4);
     release(g5);
-    flush();
 
     let g6 = create(table_wine_glass, 1);
-    flush();
     wait(1.4);
     release(g6);
-    flush();
 
     let g7 = create(gen_harmonic, 1);
-    flush();
     wait(1.4);
     release(g7);
-    flush();
 
     let g8 = create(gen_odd, 1);
-    flush();
     wait(1.4);
     release(g8);
-    flush();
 
     let g9 = create(gen_power, 1);
-    flush();
     wait(1.4);
     release(g9);
-    flush();
 
     let g10 = create(gen_stiff_string, 1);
-    flush();
     wait(1.4);
     release(g10);
-    flush();
 
     let g11 = create(gen_custom, 1);
-    flush();
     wait(1.4);
     release(g11);
-    flush();
 
     let bed = create(landscape_seed, 8)
         .place(consonance_density_pmf(110.0, 880.0))
         .mode("free");
-    flush();
     wait(2.0);
 
     let g12 = create(landscape_density, 3)
         .place(consonance_density_pmf(110.0, 880.0))
         .mode("free");
-    flush();
     wait(1.8);
     release(g12);
-    flush();
 
     let g13 = create(landscape_peaks, 3)
         .place(consonance_density_pmf(110.0, 880.0))
         .mode("free");
-    flush();
     wait(1.8);
 
     release(g13);
     release(bed);
-    flush();
 });

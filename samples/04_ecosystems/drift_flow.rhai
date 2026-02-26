@@ -5,11 +5,9 @@ let swarm = derive(sine).amp(0.08).phonation("hold");
 scene("Drift Flow", || {
     let a = create(anchor, 1).freq(65.41);
     let s = create(slider, 1).freq(138.59);
-    flush();
     wait(1.0);
 
     s.freq(220.0);
-    flush();
     wait(1.5);
 
     release(s);
@@ -22,6 +20,5 @@ scene("Drift Flow", || {
     }
 
     a.freq(87.31);
-    flush();
     wait(1.0);
 });

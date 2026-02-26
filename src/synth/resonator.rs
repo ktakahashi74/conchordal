@@ -20,6 +20,22 @@ fn mul_add_fast(a: f32, b: f32, c: f32) -> f32 {
     a * b + c
 }
 
+#[inline]
+fn splitmix64_next(state: &mut u64) -> u64 {
+    *state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
+    let mut z = *state;
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    z ^ (z >> 31)
+}
+
+#[inline]
+fn splitmix64_unit_f32(state: &mut u64) -> f32 {
+    const SCALE: f64 = 1.0 / ((1u64 << 53) as f64);
+    let bits = splitmix64_next(state) >> 11;
+    (bits as f64 * SCALE) as f32
+}
+
 /// Bank of resonators in a struct-of-arrays layout.
 #[derive(Debug, Clone)]
 pub struct ResonatorBank {
@@ -151,6 +167,21 @@ impl ResonatorBank {
         self.compile_mode_coefficients(modes);
 
         Ok(())
+    }
+
+    /// Rotate per-mode input coupling phase deterministically from a seed.
+    /// Magnitude `sqrt(b1^2 + b2^2)` is preserved for each active mode.
+    pub fn randomize_input_phase_from_seed(&mut self, seed: u64) {
+        let mut state = seed ^ ((self.active_len as u64).wrapping_mul(0xD6E8_FEB8_6659_FD93));
+        for i in 0..self.active_len {
+            let mag = (self.b1[i] * self.b1[i] + self.b2[i] * self.b2[i]).sqrt();
+            if !mag.is_finite() || mag <= 0.0 {
+                continue;
+            }
+            let phase = splitmix64_unit_f32(&mut state) * (2.0 * PI);
+            self.b1[i] = mag * phase.cos();
+            self.b2[i] = mag * phase.sin();
+        }
     }
 
     /// Blog baseline: naive per-sample sin/cos rotation with damping.
@@ -806,6 +837,46 @@ mod tests {
         assert_eq!(caps.5, bank.b2.capacity());
         assert_eq!(caps.6, bank.gain.capacity());
         assert_eq!(caps.7, bank.theta.capacity());
+    }
+
+    #[test]
+    fn randomize_input_phase_preserves_coupling_magnitude_and_is_deterministic() {
+        let fs = 48_000.0;
+        let modes = vec![
+            ModeParams {
+                freq_hz: 220.0,
+                t60_s: 0.8,
+                gain: 1.0,
+                in_gain: 0.7,
+            },
+            ModeParams {
+                freq_hz: 330.0,
+                t60_s: 0.6,
+                gain: 0.8,
+                in_gain: 0.4,
+            },
+        ];
+
+        let mut a = ResonatorBank::new(fs, 4).expect("bank a");
+        let mut b = ResonatorBank::new(fs, 4).expect("bank b");
+        a.set_modes(&modes).expect("modes a");
+        b.set_modes(&modes).expect("modes b");
+
+        let mag_before: Vec<f32> = (0..a.active_len())
+            .map(|i| (a.b1[i] * a.b1[i] + a.b2[i] * a.b2[i]).sqrt())
+            .collect();
+
+        a.randomize_input_phase_from_seed(12345);
+        b.randomize_input_phase_from_seed(12345);
+
+        for (i, &mag0) in mag_before.iter().enumerate() {
+            let maga = (a.b1[i] * a.b1[i] + a.b2[i] * a.b2[i]).sqrt();
+            let magb = (b.b1[i] * b.b1[i] + b.b2[i] * b.b2[i]).sqrt();
+            assert!((maga - mag0).abs() <= 1.0e-6);
+            assert!((magb - mag0).abs() <= 1.0e-6);
+            assert!((a.b1[i] - b.b1[i]).abs() <= 1.0e-6);
+            assert!((a.b2[i] - b.b2[i]).abs() <= 1.0e-6);
+        }
     }
 
     #[test]

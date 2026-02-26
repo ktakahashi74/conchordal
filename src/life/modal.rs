@@ -84,6 +84,10 @@ impl ModalBody {
             self.engine = engine;
         }
     }
+
+    fn seed_modal_phases(&mut self, seed: u64) {
+        self.engine.seed_modal_phases(seed);
+    }
 }
 
 impl SoundBody for ModalBody {
@@ -200,6 +204,8 @@ impl SoundBodyFactory for ModalBodyFactory {
             timbre.brightness,
             timbre.width,
         );
+        let mut body = body;
+        body.seed_modal_phases(rand::RngCore::next_u64(rng));
         AnySoundBody::from_dyn(Box::new(body))
     }
 }

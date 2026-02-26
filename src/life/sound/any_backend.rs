@@ -14,6 +14,12 @@ impl AnyBackend {
         Ok(Self::Modal(ModalEngine::new(fs, shape)?))
     }
 
+    pub fn seed_modal_phases(&mut self, seed: u64) {
+        match self {
+            AnyBackend::Modal(engine) => engine.seed_modal_phases(seed),
+        }
+    }
+
     pub fn render_block(&mut self, drive: &[f32], ctrl: VoiceControlBlock, out: &mut [f32]) {
         match self {
             AnyBackend::Modal(engine) => engine.render_block(drive, ctrl, out),

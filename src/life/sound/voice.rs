@@ -125,6 +125,10 @@ impl Voice {
         })
     }
 
+    pub fn seed_modal_phases(&mut self, seed: u64) {
+        self.backend.seed_modal_phases(seed);
+    }
+
     pub fn note_off(&mut self, tick: Tick) {
         if tick < self.hold_end {
             self.hold_end = tick;

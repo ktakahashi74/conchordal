@@ -91,6 +91,8 @@ impl ScheduleRenderer {
                     Some(body.clone()),
                     None,
                 ) {
+                    let mut voice = voice;
+                    voice.seed_modal_phases(modal_phase_seed(*id, now, 0));
                     self.agent_voices.insert(*id, voice);
                 }
             }
@@ -192,6 +194,11 @@ impl ScheduleRenderer {
                             Some(spec.body.clone()),
                             Some(spec.articulation.clone()),
                         ) {
+                            voice.seed_modal_phases(modal_phase_seed(
+                                batch.source_id,
+                                spec.onset,
+                                note_id,
+                            ));
                             voice.set_smoothing_tau_sec(spec.smoothing_tau_sec);
                             voice.note_on(spec.onset);
                             voice.schedule_planned_kick(kick);
@@ -248,6 +255,15 @@ fn max_phonation_hold_ticks(time: Timebase) -> Tick {
     let max_sec = 60.0;
     let ticks = time.sec_to_tick(max_sec);
     ticks.max(1)
+}
+
+fn modal_phase_seed(a: u64, b: u64, c: u64) -> u64 {
+    let mut x = a ^ b.rotate_left(21) ^ c.rotate_left(42) ^ 0x9E37_79B9_7F4A_7C15;
+    x ^= x >> 30;
+    x = x.wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    x ^= x >> 27;
+    x = x.wrapping_mul(0x94D0_49BB_1331_11EB);
+    x ^ (x >> 31)
 }
 
 #[cfg(test)]

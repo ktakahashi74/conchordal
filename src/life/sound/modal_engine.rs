@@ -44,6 +44,7 @@ pub struct ModalEngine {
     update_period_samples: usize,
     counter: usize,
     last_modes_len: usize,
+    pending_modal_phase_seed: Option<u64>,
 }
 
 impl ModalEngine {
@@ -59,11 +60,16 @@ impl ModalEngine {
             update_period_samples: DEFAULT_UPDATE_PERIOD_SAMPLES.max(1),
             counter: 0,
             last_modes_len: 0,
+            pending_modal_phase_seed: None,
         })
     }
 
     pub fn last_modes_len(&self) -> usize {
         self.last_modes_len
+    }
+
+    pub fn seed_modal_phases(&mut self, seed: u64) {
+        self.pending_modal_phase_seed = Some(seed);
     }
 
     fn rebuild_modes(&mut self, pitch_hz: f32) {
@@ -79,6 +85,11 @@ impl ModalEngine {
         let _ = self
             .bank
             .set_modes_preserve_state(&self.scratch[..self.last_modes_len]);
+        if matches!(self.shape, ModeShape::Modal { .. })
+            && let Some(seed) = self.pending_modal_phase_seed.take()
+        {
+            self.bank.randomize_input_phase_from_seed(seed);
+        }
         self.last_built_pitch_hz = pitch_hz;
     }
     pub fn render_block(&mut self, drive: &[f32], ctrl: VoiceControlBlock, out: &mut [f32]) {

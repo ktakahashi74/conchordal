@@ -979,6 +979,13 @@ impl ScriptHost {
                     max_mul,
                     min_dist_erb: min_dist as f32,
                 },
+                SpawnStrategy::ConsonanceDensity {
+                    min_freq, max_freq, ..
+                } => SpawnStrategy::ConsonanceDensity {
+                    min_freq,
+                    max_freq,
+                    min_dist_erb: min_dist as f32,
+                },
                 other => {
                     warn!("min_dist() ignored for non-consonance strategy");
                     other

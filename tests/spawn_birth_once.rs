@@ -76,7 +76,9 @@ fn spawn_sounds_only_with_audio_trigger() {
         kind: BodyKind::Sine,
         amp_scale: 1.0,
         brightness: 0.0,
+        width: 0.0,
         noise_mix: 0.0,
+        ratios: None,
     };
     let ensure = AudioCommand::EnsureVoice {
         id: assigned_id,

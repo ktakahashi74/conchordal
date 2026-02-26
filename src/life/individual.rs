@@ -1,4 +1,4 @@
-use crate::core::landscape::Landscape;
+use crate::core::landscape::{Landscape, LandscapeFrame};
 use crate::core::log2space::Log2Space;
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
@@ -7,7 +7,7 @@ use crate::life::control::{
 };
 use crate::life::control_adapters::{
     perceptual_config_from_control, perceptual_params_from_control, phonation_config_from_control,
-    pitch_core_config_from_control, sound_body_config_from_control, tessitura_gravity_from_control,
+    pitch_core_config_from_control, tessitura_gravity_from_control,
 };
 use crate::life::lifecycle::LifecycleConfig;
 use crate::life::phonation_engine::{
@@ -15,7 +15,7 @@ use crate::life::phonation_engine::{
 };
 use crate::life::scenario::ArticulationCoreConfig;
 use crate::life::social_density::SocialDensityTrace;
-use crate::life::sound::{BodyKind, BodySnapshot};
+use crate::life::sound::BodySnapshot;
 use rand::SeedableRng;
 
 #[path = "articulation_core.rs"]
@@ -148,6 +148,7 @@ impl Dirty {
 impl Individual {
     const AMP_EPS: f32 = 1e-6;
 
+    #[allow(clippy::too_many_arguments)]
     pub fn spawn_from_control(
         control: AgentControl,
         articulation_config: ArticulationCoreConfig,
@@ -155,6 +156,7 @@ impl Individual {
         start_frame: u64,
         metadata: AgentMetadata,
         fs: f32,
+        landscape: Option<&LandscapeFrame>,
         seed_offset: u64,
     ) -> Self {
         let seed = seed_offset ^ assigned_id ^ start_frame.wrapping_mul(0x9E37_79B9_7F4A_7C15);
@@ -178,11 +180,11 @@ impl Individual {
         let perceptual =
             crate::life::perceptual::PerceptualContext::from_config(&perceptual_config, 0);
 
-        let body_config = sound_body_config_from_control(&effective_control.body);
-        let body = AnySoundBody::from_config(
-            &body_config,
+        let body = sound_body::build_sound_body_from_control(
+            &effective_control,
             target_freq,
-            effective_control.body.amp,
+            fs,
+            landscape,
             &mut rng,
         );
 
@@ -253,16 +255,12 @@ impl Individual {
     fn apply_body_runtime(&mut self) {
         let runtime = BodyRuntime::from_control(&self.effective_control.body);
         self.body.set_amp(runtime.amp);
-        match &mut self.body {
-            AnySoundBody::Sine(_body) => {}
-            AnySoundBody::Harmonic(body) => {
-                body.genotype.brightness = runtime.brightness;
-                body.genotype.stiffness = runtime.inharmonic;
-                body.genotype.unison = runtime.width;
-                body.genotype.jitter = runtime.motion;
-                body.genotype.vibrato_depth = runtime.motion * 0.02;
-            }
-        }
+        self.body.apply_timbre_controls(
+            runtime.brightness,
+            runtime.inharmonic,
+            runtime.width,
+            runtime.motion,
+        );
     }
 
     fn apply_perceptual_control(&mut self) {
@@ -617,22 +615,7 @@ impl Individual {
     }
 
     pub(crate) fn body_snapshot(&self) -> BodySnapshot {
-        match &self.body {
-            AnySoundBody::Sine(_body) => BodySnapshot {
-                kind: BodyKind::Sine,
-                // Target amp already includes body gain; keep snapshot scale neutral.
-                amp_scale: 1.0,
-                brightness: 0.0,
-                noise_mix: 0.0,
-            },
-            AnySoundBody::Harmonic(body) => BodySnapshot {
-                kind: BodyKind::Harmonic,
-                // Target amp already includes body gain; keep snapshot scale neutral.
-                amp_scale: 1.0,
-                brightness: body.genotype.brightness.clamp(0.0, 1.0),
-                noise_mix: body.genotype.jitter.clamp(0.0, 1.0),
-            },
-        }
+        self.body.snapshot()
     }
 
     pub fn render_spectrum(&mut self, amps: &mut [f32], space: &Log2Space) {

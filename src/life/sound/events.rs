@@ -1,9 +1,12 @@
+use std::sync::Arc;
+
 pub type IndividualId = u64;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BodyKind {
     Sine,
     Harmonic,
+    Modal,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -11,7 +14,9 @@ pub struct BodySnapshot {
     pub kind: BodyKind,
     pub amp_scale: f32,
     pub brightness: f32,
+    pub width: f32,
     pub noise_mix: f32,
+    pub ratios: Option<Arc<[f32]>>,
 }
 
 #[derive(Debug, Clone)]

@@ -6,6 +6,8 @@ use rand::random;
 use rhai::{Array, Dynamic, Engine, EvalAltResult, FLOAT, FnPtr, INT, NativeCallContext, Position};
 use tracing::warn;
 
+use crate::core::mode_pattern::ModePattern;
+
 use super::control::{
     AgentControl, BodyMethod, ControlUpdate, PhonationType, PitchCoreKind, PitchMode,
 };
@@ -17,6 +19,22 @@ use super::scenario::{
 
 const DEFAULT_RELEASE_SEC: f32 = 0.05;
 const DEFAULT_SEQ_DURATION_SEC: f32 = 1.0;
+
+fn rhai_array_to_f32(values: Array, label: &str) -> Vec<f32> {
+    let mut out = Vec::with_capacity(values.len());
+    for value in values {
+        if let Some(v) = value.clone().try_cast::<FLOAT>() {
+            out.push(v as f32);
+            continue;
+        }
+        if let Some(v) = value.try_cast::<INT>() {
+            out.push(v as f32);
+            continue;
+        }
+        warn!("{label} expects numeric array elements");
+    }
+    out
+}
 
 #[derive(Clone, Copy, Debug)]
 enum BrainKind {
@@ -168,6 +186,10 @@ impl SpeciesSpec {
     fn set_timbre(&mut self, brightness: f32, width: f32) {
         self.control.set_timbre_brightness_clamped(brightness);
         self.control.set_timbre_width_clamped(width);
+    }
+
+    fn set_modes(&mut self, pattern: ModePattern) {
+        self.control.body.modes = Some(pattern);
     }
 
     fn set_brain(&mut self, name: &str) {
@@ -558,6 +580,7 @@ impl ScriptHost {
         engine.register_type_with_name::<SpeciesHandle>("SpeciesHandle");
         engine.register_type_with_name::<GroupHandle>("GroupHandle");
         engine.register_type_with_name::<SpawnStrategy>("SpawnStrategy");
+        engine.register_type_with_name::<ModePattern>("ModePattern");
 
         let mut presets = rhai::Module::new();
         presets.set_var(
@@ -606,6 +629,12 @@ impl ScriptHost {
                 },
             },
         );
+        presets.set_var(
+            "modal",
+            SpeciesHandle {
+                spec: SpeciesSpec::preset(BodyMethod::Modal),
+            },
+        );
         engine.register_global_module(presets.into());
 
         engine.register_fn("derive", |parent: SpeciesHandle| parent);
@@ -650,6 +679,13 @@ impl ScriptHost {
             "timbre",
             |mut species: SpeciesHandle, brightness: FLOAT, width: FLOAT| {
                 species.spec.set_timbre(brightness as f32, width as f32);
+                species
+            },
+        );
+        engine.register_fn(
+            "modes",
+            |mut species: SpeciesHandle, pattern: ModePattern| {
+                species.spec.set_modes(pattern);
                 species
             },
         );
@@ -849,6 +885,60 @@ impl ScriptHost {
                 Ok(())
             },
         );
+
+        engine.register_fn("harmonic_modes", ModePattern::harmonic_modes);
+        engine.register_fn("odd_modes", ModePattern::odd_modes);
+        engine.register_fn("power_modes", |beta: FLOAT| {
+            ModePattern::power_modes(beta as f32)
+        });
+        engine.register_fn("stiff_string_modes", |stiffness: FLOAT| {
+            ModePattern::stiff_string_modes(stiffness as f32)
+        });
+        engine.register_fn("custom_modes", |ratios: Array| {
+            ModePattern::custom_modes(rhai_array_to_f32(ratios, "custom_modes"))
+        });
+        engine.register_fn("modal_table", |name: &str| {
+            if let Some(pattern) = ModePattern::modal_table(name) {
+                pattern
+            } else {
+                warn!(
+                    "modal_table('{}') not found; falling back to harmonic_modes()",
+                    name
+                );
+                ModePattern::harmonic_modes()
+            }
+        });
+        engine.register_fn(
+            "landscape_density_modes",
+            ModePattern::landscape_density_modes,
+        );
+        engine.register_fn("landscape_peaks_modes", ModePattern::landscape_peaks_modes);
+        engine.register_fn("count", |pattern: ModePattern, n: INT| {
+            pattern.with_count((n as usize).max(1))
+        });
+        engine.register_fn(
+            "range",
+            |pattern: ModePattern, min_mul: FLOAT, max_mul: FLOAT| {
+                pattern.with_range(min_mul as f32, max_mul as f32)
+            },
+        );
+        engine.register_fn("min_dist", |pattern: ModePattern, min_dist: FLOAT| {
+            pattern.with_min_dist_erb(min_dist as f32)
+        });
+        engine.register_fn("gamma", |pattern: ModePattern, gamma: FLOAT| {
+            pattern.with_gamma(gamma as f32)
+        });
+        engine.register_fn("jitter", |pattern: ModePattern, cents: FLOAT| {
+            pattern.with_jitter_cents(cents as f32)
+        });
+        engine.register_fn("seed", |pattern: ModePattern, seed: INT| {
+            if seed < 0 {
+                warn!("seed() expects >= 0");
+                pattern
+            } else {
+                pattern.with_seed(seed as u64)
+            }
+        });
 
         engine.register_fn("consonance", |root_freq: FLOAT| SpawnStrategy::Consonance {
             root_freq: root_freq as f32,
@@ -1127,6 +1217,25 @@ impl ScriptHost {
                         group.pending_update.timbre_width = Some(width);
                     }
                     _ => ctx.warn_live_builder(handle.id, "timbre"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_modes = ctx.clone();
+        engine.register_fn(
+            "modes",
+            move |handle: GroupHandle,
+                  pattern: ModePattern|
+                  -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_modes.lock().expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("modes ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                match group.status {
+                    GroupStatus::Draft => group.spec.set_modes(pattern),
+                    GroupStatus::Live => ctx.warn_live_builder(handle.id, "modes"),
+                    _ => ctx.warn_live_builder(handle.id, "modes"),
                 }
                 Ok(handle)
             },

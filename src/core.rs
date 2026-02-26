@@ -10,6 +10,7 @@ pub mod harmonicity_kernel;
 pub mod landscape;
 pub mod landscape_spectral;
 pub mod log2space;
+pub mod mode_pattern;
 pub mod modulation;
 pub mod nsgt;
 pub mod nsgt_kernel;

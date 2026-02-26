@@ -2,6 +2,8 @@ const RANGE_OCT_MAX: f32 = 6.0;
 pub const MIN_FREQ_HZ: f32 = 1.0;
 pub const MAX_FREQ_HZ: f32 = 20_000.0;
 
+use crate::core::mode_pattern::ModePattern;
+
 #[derive(Debug, Clone, Default)]
 pub struct WorldControl {}
 
@@ -59,6 +61,7 @@ pub enum BodyMethod {
     #[default]
     Sine,
     Harmonic,
+    Modal,
 }
 
 #[derive(Debug, Clone)]
@@ -85,6 +88,7 @@ pub struct BodyControl {
     pub method: BodyMethod,
     pub amp: f32,
     pub timbre: TimbreControl,
+    pub modes: Option<ModePattern>,
 }
 
 impl Default for BodyControl {
@@ -93,6 +97,7 @@ impl Default for BodyControl {
             method: BodyMethod::default(),
             amp: 0.18,
             timbre: TimbreControl::default(),
+            modes: None,
         }
     }
 }

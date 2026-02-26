@@ -504,8 +504,14 @@ impl Population {
                         control: control.clone(),
                         articulation: spec.articulation.clone(),
                     };
-                    let spawned =
-                        cfg.spawn(id, self.current_frame, metadata, self.time.fs, self.seed);
+                    let spawned = cfg.spawn_with_landscape(
+                        id,
+                        self.current_frame,
+                        metadata,
+                        self.time.fs,
+                        Some(landscape),
+                        self.seed,
+                    );
                     let body = spawned.body_snapshot();
                     let pitch_hz = spawned.body.base_freq_hz();
                     let amp = spawned.body.amp();
@@ -734,7 +740,9 @@ mod tests {
                 kind: BodyKind::Sine,
                 amp_scale: 1.0,
                 brightness: 0.0,
+                width: 0.0,
                 noise_mix: 0.0,
+                ratios: None,
             },
             articulation: ArticulationWrapper::new(
                 AnyArticulationCore::Drone(DroneCore {

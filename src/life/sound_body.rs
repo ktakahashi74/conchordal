@@ -1,11 +1,17 @@
 use super::articulation_core::{ArticulationSignal, PinkNoise};
+use crate::core::landscape::LandscapeFrame;
 use crate::core::log2space::Log2Space;
+use crate::life::control::{AgentControl, BodyMethod};
 use crate::life::scenario::{SoundBodyConfig, TimbreGenotype};
 use crate::life::sound::spectral::{add_log2_energy, harmonic_gain, harmonic_ratio};
-use rand::Rng;
+use crate::life::sound::{BodyKind, BodySnapshot};
+use rand::{Rng, RngCore, rngs::SmallRng};
+use std::collections::HashMap;
 use std::f32::consts::PI;
+use std::sync::{Arc, Mutex, OnceLock};
+use tracing::warn;
 
-pub trait SoundBody {
+pub trait SoundBody: Send {
     fn base_freq_hz(&self) -> f32;
     fn set_freq(&mut self, freq: f32);
     fn set_pitch_log2(&mut self, log_freq: f32);
@@ -18,6 +24,8 @@ pub trait SoundBody {
         space: &Log2Space,
         signal: &ArticulationSignal,
     );
+    fn apply_timbre_controls(&mut self, brightness: f32, inharmonic: f32, width: f32, motion: f32);
+    fn snapshot(&self) -> BodySnapshot;
 }
 
 #[derive(Debug, Clone)]
@@ -74,6 +82,26 @@ impl SoundBody for SineBody {
         let energy = self.amp.max(0.0) * signal.amplitude;
         add_log2_energy(amps, space, self.freq_hz, energy);
     }
+
+    fn apply_timbre_controls(
+        &mut self,
+        _brightness: f32,
+        _inharmonic: f32,
+        _width: f32,
+        _motion: f32,
+    ) {
+    }
+
+    fn snapshot(&self) -> BodySnapshot {
+        BodySnapshot {
+            kind: BodyKind::Sine,
+            amp_scale: 1.0,
+            brightness: 0.0,
+            width: 0.0,
+            noise_mix: 0.0,
+            ratios: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -85,10 +113,16 @@ pub struct HarmonicBody {
     pub phases: Vec<f32>,
     pub detune_phases: Vec<f32>,
     pub jitter_gen: PinkNoise,
+    pub custom_ratios: Option<Arc<[f32]>>,
 }
 
 impl HarmonicBody {
     fn partial_ratio(&self, idx: usize) -> f32 {
+        if let Some(ratios) = &self.custom_ratios
+            && let Some(&ratio) = ratios.get(idx)
+        {
+            return ratio;
+        }
         harmonic_ratio(&self.genotype, idx.saturating_add(1))
     }
 
@@ -97,6 +131,12 @@ impl HarmonicBody {
     }
 
     fn partial_count(&self) -> usize {
+        if let Some(ratios) = &self.custom_ratios {
+            return ratios
+                .len()
+                .min(self.phases.len())
+                .min(self.detune_phases.len());
+        }
         self.phases.len().min(self.detune_phases.len())
     }
 }
@@ -192,12 +232,41 @@ impl SoundBody for HarmonicBody {
             add_log2_energy(amps, space, freq, amp_scale * part_amp);
         }
     }
+
+    fn apply_timbre_controls(&mut self, brightness: f32, inharmonic: f32, width: f32, motion: f32) {
+        self.genotype.brightness = brightness.clamp(0.0, 1.0);
+        self.genotype.stiffness = inharmonic.clamp(0.0, 1.0);
+        self.genotype.unison = width.clamp(0.0, 1.0);
+        self.genotype.jitter = motion.clamp(0.0, 1.0);
+        self.genotype.vibrato_depth = self.genotype.jitter * 0.02;
+    }
+
+    fn snapshot(&self) -> BodySnapshot {
+        BodySnapshot {
+            kind: BodyKind::Harmonic,
+            amp_scale: 1.0,
+            brightness: self.genotype.brightness.clamp(0.0, 1.0),
+            width: self.genotype.unison.clamp(0.0, 1.0),
+            noise_mix: self.genotype.jitter.clamp(0.0, 1.0),
+            ratios: self.custom_ratios.clone(),
+        }
+    }
 }
 
-#[derive(Debug, Clone)]
 pub enum AnySoundBody {
     Sine(SineBody),
     Harmonic(HarmonicBody),
+    Dyn(Box<dyn SoundBody + Send>),
+}
+
+impl std::fmt::Debug for AnySoundBody {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AnySoundBody::Sine(body) => f.debug_tuple("Sine").field(body).finish(),
+            AnySoundBody::Harmonic(body) => f.debug_tuple("Harmonic").field(body).finish(),
+            AnySoundBody::Dyn(_) => f.write_str("Dyn(..)"),
+        }
+    }
 }
 
 impl AnySoundBody {
@@ -229,9 +298,14 @@ impl AnySoundBody {
                     phases,
                     detune_phases,
                     jitter_gen: PinkNoise::new(rng.next_u64(), 0.001),
+                    custom_ratios: None,
                 })
             }
         }
+    }
+
+    pub fn from_dyn(body: Box<dyn SoundBody + Send>) -> Self {
+        AnySoundBody::Dyn(body)
     }
 }
 
@@ -240,6 +314,7 @@ impl SoundBody for AnySoundBody {
         match self {
             AnySoundBody::Sine(body) => body.base_freq_hz(),
             AnySoundBody::Harmonic(body) => body.base_freq_hz(),
+            AnySoundBody::Dyn(body) => body.base_freq_hz(),
         }
     }
 
@@ -247,6 +322,7 @@ impl SoundBody for AnySoundBody {
         match self {
             AnySoundBody::Sine(body) => body.set_freq(freq),
             AnySoundBody::Harmonic(body) => body.set_freq(freq),
+            AnySoundBody::Dyn(body) => body.set_freq(freq),
         }
     }
 
@@ -254,6 +330,7 @@ impl SoundBody for AnySoundBody {
         match self {
             AnySoundBody::Sine(body) => body.set_pitch_log2(log_freq),
             AnySoundBody::Harmonic(body) => body.set_pitch_log2(log_freq),
+            AnySoundBody::Dyn(body) => body.set_pitch_log2(log_freq),
         }
     }
 
@@ -261,6 +338,7 @@ impl SoundBody for AnySoundBody {
         match self {
             AnySoundBody::Sine(body) => body.set_amp(amp),
             AnySoundBody::Harmonic(body) => body.set_amp(amp),
+            AnySoundBody::Dyn(body) => body.set_amp(amp),
         }
     }
 
@@ -268,6 +346,7 @@ impl SoundBody for AnySoundBody {
         match self {
             AnySoundBody::Sine(body) => body.amp(),
             AnySoundBody::Harmonic(body) => body.amp(),
+            AnySoundBody::Dyn(body) => body.amp(),
         }
     }
 
@@ -275,6 +354,7 @@ impl SoundBody for AnySoundBody {
         match self {
             AnySoundBody::Sine(body) => body.articulate_wave(sample, fs, dt, signal),
             AnySoundBody::Harmonic(body) => body.articulate_wave(sample, fs, dt, signal),
+            AnySoundBody::Dyn(body) => body.articulate_wave(sample, fs, dt, signal),
         }
     }
 
@@ -287,6 +367,218 @@ impl SoundBody for AnySoundBody {
         match self {
             AnySoundBody::Sine(body) => body.project_spectral_body(amps, space, signal),
             AnySoundBody::Harmonic(body) => body.project_spectral_body(amps, space, signal),
+            AnySoundBody::Dyn(body) => body.project_spectral_body(amps, space, signal),
         }
+    }
+
+    fn apply_timbre_controls(&mut self, brightness: f32, inharmonic: f32, width: f32, motion: f32) {
+        match self {
+            AnySoundBody::Sine(body) => {
+                body.apply_timbre_controls(brightness, inharmonic, width, motion)
+            }
+            AnySoundBody::Harmonic(body) => {
+                body.apply_timbre_controls(brightness, inharmonic, width, motion)
+            }
+            AnySoundBody::Dyn(body) => {
+                body.apply_timbre_controls(brightness, inharmonic, width, motion)
+            }
+        }
+    }
+
+    fn snapshot(&self) -> BodySnapshot {
+        match self {
+            AnySoundBody::Sine(body) => body.snapshot(),
+            AnySoundBody::Harmonic(body) => body.snapshot(),
+            AnySoundBody::Dyn(body) => body.snapshot(),
+        }
+    }
+}
+
+pub struct SoundBodyBuildInput<'a> {
+    pub control: &'a AgentControl,
+    pub base_freq_hz: f32,
+    pub fs: f32,
+    pub landscape: Option<&'a LandscapeFrame>,
+}
+
+pub trait SoundBodyFactory: Send + Sync {
+    fn build(&self, input: &SoundBodyBuildInput<'_>, rng: &mut SmallRng) -> AnySoundBody;
+}
+
+#[derive(Default)]
+pub struct SoundBodyFactoryRegistry {
+    factories: HashMap<String, Arc<dyn SoundBodyFactory>>,
+}
+
+impl SoundBodyFactoryRegistry {
+    pub fn register(&mut self, id: &str, factory: Arc<dyn SoundBodyFactory>) {
+        self.factories
+            .insert(id.trim().to_ascii_lowercase(), factory);
+    }
+
+    pub fn get(&self, id: &str) -> Option<Arc<dyn SoundBodyFactory>> {
+        self.factories.get(&id.trim().to_ascii_lowercase()).cloned()
+    }
+}
+
+pub fn body_method_id(method: BodyMethod) -> &'static str {
+    match method {
+        BodyMethod::Sine => "sine",
+        BodyMethod::Harmonic => "harmonic",
+        BodyMethod::Modal => "modal",
+    }
+}
+
+fn global_factory_registry() -> &'static Mutex<SoundBodyFactoryRegistry> {
+    static REGISTRY: OnceLock<Mutex<SoundBodyFactoryRegistry>> = OnceLock::new();
+    REGISTRY.get_or_init(|| {
+        let mut registry = SoundBodyFactoryRegistry::default();
+        registry.register("sine", Arc::new(SineBodyFactory));
+        registry.register("harmonic", Arc::new(HarmonicBodyFactory));
+        Mutex::new(registry)
+    })
+}
+
+pub fn register_sound_body_factory(id: &str, factory: Arc<dyn SoundBodyFactory>) {
+    let mut registry = global_factory_registry()
+        .lock()
+        .expect("sound body factory registry");
+    registry.register(id, factory);
+}
+
+pub fn build_sound_body_from_control(
+    control: &AgentControl,
+    base_freq_hz: f32,
+    fs: f32,
+    landscape: Option<&LandscapeFrame>,
+    rng: &mut SmallRng,
+) -> AnySoundBody {
+    let method_id = body_method_id(control.body.method);
+    let factory = {
+        let registry = global_factory_registry()
+            .lock()
+            .expect("sound body factory registry");
+        registry.get(method_id)
+    };
+    let input = SoundBodyBuildInput {
+        control,
+        base_freq_hz,
+        fs,
+        landscape,
+    };
+
+    if let Some(factory) = factory {
+        return factory.build(&input, rng);
+    }
+
+    warn!(
+        "Unknown sound body method '{}'; falling back to harmonic factory",
+        method_id
+    );
+    HarmonicBodyFactory.build(&input, rng)
+}
+
+struct SineBodyFactory;
+
+impl SoundBodyFactory for SineBodyFactory {
+    fn build(&self, input: &SoundBodyBuildInput<'_>, rng: &mut SmallRng) -> AnySoundBody {
+        AnySoundBody::Sine(SineBody {
+            freq_hz: input.base_freq_hz.max(1.0),
+            amp: input.control.body.amp,
+            audio_phase: rng.random_range(0.0..std::f32::consts::TAU),
+        })
+    }
+}
+
+struct HarmonicBodyFactory;
+
+impl SoundBodyFactory for HarmonicBodyFactory {
+    fn build(&self, input: &SoundBodyBuildInput<'_>, rng: &mut SmallRng) -> AnySoundBody {
+        let timbre = &input.control.body.timbre;
+        let genotype = TimbreGenotype {
+            mode: crate::life::scenario::HarmonicMode::Harmonic,
+            stiffness: timbre.inharmonic,
+            brightness: timbre.brightness,
+            comb: 0.0,
+            damping: 0.5,
+            vibrato_rate: 5.0,
+            vibrato_depth: timbre.motion * 0.02,
+            jitter: timbre.motion,
+            unison: timbre.width,
+        };
+
+        let fallback_space;
+        let eval_space = if let Some(frame) = input.landscape {
+            &frame.space
+        } else {
+            fallback_space = Log2Space::new(55.0, 8000.0, 96);
+            &fallback_space
+        };
+        let custom_ratios = input
+            .control
+            .body
+            .modes
+            .as_ref()
+            .map(|pattern| pattern.eval(input.base_freq_hz, eval_space, input.landscape, rng))
+            .and_then(sanitize_mode_ratios);
+
+        let partials = custom_ratios
+            .as_ref()
+            .map_or(16usize, |ratios| ratios.len());
+        let partials = partials.max(1);
+        let mut phases = Vec::with_capacity(partials);
+        let mut detune_phases = Vec::with_capacity(partials);
+        for _ in 0..partials {
+            phases.push(rng.random_range(0.0..std::f32::consts::TAU));
+            detune_phases.push(rng.random_range(0.0..std::f32::consts::TAU));
+        }
+
+        AnySoundBody::Harmonic(HarmonicBody {
+            base_freq_hz: input.base_freq_hz.max(1.0),
+            amp: input.control.body.amp,
+            genotype,
+            lfo_phase: 0.0,
+            phases,
+            detune_phases,
+            jitter_gen: PinkNoise::new(rng.next_u64(), 0.001),
+            custom_ratios,
+        })
+    }
+}
+
+fn sanitize_mode_ratios(mut ratios: Vec<f32>) -> Option<Arc<[f32]>> {
+    ratios.retain(|r| r.is_finite() && *r > 0.0);
+    ratios.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    ratios.dedup_by(|a, b| (*a - *b).abs() <= 1.0e-4);
+    if ratios.is_empty() {
+        None
+    } else {
+        Some(Arc::<[f32]>::from(ratios))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn harmonic_snapshot_preserves_custom_ratios_and_width() {
+        let mut body = HarmonicBody {
+            base_freq_hz: 220.0,
+            amp: 0.2,
+            genotype: TimbreGenotype::default(),
+            lfo_phase: 0.0,
+            phases: vec![0.0, 0.0, 0.0],
+            detune_phases: vec![0.0, 0.0, 0.0],
+            jitter_gen: PinkNoise::new(1, 0.001),
+            custom_ratios: Some(Arc::<[f32]>::from(vec![1.0, 3.0, 5.0])),
+        };
+        body.apply_timbre_controls(0.4, 0.0, 0.55, 0.2);
+        let snapshot = body.snapshot();
+        assert_eq!(snapshot.kind, BodyKind::Harmonic);
+        assert!((snapshot.width - 0.55).abs() <= 1.0e-6);
+        assert!((snapshot.noise_mix - 0.2).abs() <= 1.0e-6);
+        let ratios = snapshot.ratios.expect("ratios");
+        assert_eq!(ratios.as_ref(), &[1.0, 3.0, 5.0]);
     }
 }

@@ -1,12 +1,10 @@
 use crate::life::control::{
-    BodyControl, BodyMethod, PerceptualControl, PhonationControl, PhonationType, PitchControl,
-    PitchCoreKind,
+    PerceptualControl, PhonationControl, PhonationType, PitchControl, PitchCoreKind,
 };
 use crate::life::perceptual::PerceptualConfig;
 use crate::life::scenario::{
-    HarmonicMode, PhonationClockConfig, PhonationConfig, PhonationConnectConfig,
-    PhonationIntervalConfig, PhonationMode, PitchCoreConfig, SocialConfig, SoundBodyConfig,
-    SubThetaModConfig, TimbreGenotype,
+    PhonationClockConfig, PhonationConfig, PhonationConnectConfig, PhonationIntervalConfig,
+    PhonationMode, PitchCoreConfig, SocialConfig, SubThetaModConfig,
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -88,30 +86,6 @@ pub(crate) fn perceptual_config_from_control(control: &PerceptualControl) -> Per
         boredom_gamma: Some(params.boredom_gamma),
         self_smoothing_radius: Some(params.self_smoothing_radius),
         silence_mass_epsilon: Some(params.silence_mass_epsilon),
-    }
-}
-
-pub(crate) fn sound_body_config_from_control(body: &BodyControl) -> SoundBodyConfig {
-    match body.method {
-        BodyMethod::Sine => SoundBodyConfig::Sine { phase: None },
-        BodyMethod::Harmonic => {
-            let timbre = &body.timbre;
-            let genotype = TimbreGenotype {
-                mode: HarmonicMode::Harmonic,
-                stiffness: timbre.inharmonic,
-                brightness: timbre.brightness,
-                comb: 0.0,
-                damping: 0.5,
-                vibrato_rate: 5.0,
-                vibrato_depth: timbre.motion * 0.02,
-                jitter: timbre.motion,
-                unison: timbre.width,
-            };
-            SoundBodyConfig::Harmonic {
-                genotype,
-                partials: None,
-            }
-        }
     }
 }
 

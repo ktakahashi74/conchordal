@@ -302,7 +302,9 @@ mod tests {
                     kind: BodyKind::Sine,
                     amp_scale: 1.0,
                     brightness: 0.0,
+                    width: 0.0,
                     noise_mix: 0.0,
+                    ratios: None,
                 },
                 articulation,
             }],
@@ -369,7 +371,9 @@ mod tests {
                     kind: BodyKind::Sine,
                     amp_scale: 1.0,
                     brightness: 0.0,
+                    width: 0.0,
                     noise_mix: 0.0,
+                    ratios: None,
                 },
                 articulation,
             }],
@@ -394,7 +398,9 @@ mod tests {
             kind: BodyKind::Sine,
             amp_scale: 1.0,
             brightness: 0.0,
+            width: 0.0,
             noise_mix: 0.0,
+            ratios: None,
         };
         let voice_targets = [VoiceTarget {
             id: 11,
@@ -420,7 +426,9 @@ mod tests {
             kind: BodyKind::Harmonic,
             amp_scale: 1.0,
             brightness: 0.6,
+            width: 0.0,
             noise_mix: 0.2,
+            ratios: None,
         };
         let voice_targets = [VoiceTarget {
             id: 12,
@@ -465,7 +473,9 @@ mod tests {
             kind: BodyKind::Sine,
             amp_scale: 1.0,
             brightness: 0.0,
+            width: 0.0,
             noise_mix: 0.0,
+            ratios: None,
         };
         let cmds = [
             AudioCommand::EnsureVoice {
@@ -493,7 +503,9 @@ mod tests {
             kind: BodyKind::Sine,
             amp_scale: 1.0,
             brightness: 0.0,
+            width: 0.0,
             noise_mix: 0.0,
+            ratios: None,
         };
         let voice_targets = [VoiceTarget {
             id: 13,
@@ -525,7 +537,9 @@ mod tests {
             kind: BodyKind::Harmonic,
             amp_scale: 1.0,
             brightness: 0.7,
+            width: 0.0,
             noise_mix: 0.2,
+            ratios: None,
         };
         let voice_targets = [VoiceTarget {
             id: 14,
@@ -566,7 +580,9 @@ mod tests {
             kind: BodyKind::Sine,
             amp_scale: 1.0,
             brightness: 0.0,
+            width: 0.0,
             noise_mix: 0.0,
+            ratios: None,
         };
         let voice_targets = [VoiceTarget {
             id: 16,
@@ -596,7 +612,9 @@ mod tests {
             kind: BodyKind::Sine,
             amp_scale: 1.0,
             brightness: 0.0,
+            width: 0.0,
             noise_mix: 0.0,
+            ratios: None,
         };
         let voice_targets = [VoiceTarget {
             id: 15,
@@ -631,7 +649,9 @@ mod tests {
             kind: BodyKind::Sine,
             amp_scale: 1.0,
             brightness: 0.0,
+            width: 0.0,
             noise_mix: 0.0,
+            ratios: None,
         };
         let voice_targets = [VoiceTarget {
             id: 22,

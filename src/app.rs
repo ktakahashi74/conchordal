@@ -210,6 +210,7 @@ pub fn compile_scenario_from_script(
     _args: &crate::cli::Args,
     _config: &AppConfig,
 ) -> Result<Scenario, String> {
+    crate::life::modal::register_modal();
     validate_scenario_script_extension(script_path)?;
     let path_str = script_path.to_string_lossy();
     ScriptHost::load_script(&path_str).map_err(|e| {
@@ -434,6 +435,7 @@ fn init_runtime(
     config: AppConfig,
     stop_flag: Arc<AtomicBool>,
 ) -> RuntimeInit {
+    crate::life::modal::register_modal();
     let latency_ms = config.audio.latency_ms;
     #[cfg(debug_assertions)]
     let wav_enabled = args.wav.is_some();

@@ -7,6 +7,7 @@ use crate::life::scenario::TimbreGenotype;
 use crate::life::sound::any_backend::AnyBackend;
 use crate::life::sound::control::{ControlRamp, VoiceControlBlock};
 use crate::life::sound::modal_engine::ModeShape;
+use crate::life::sound::mode_utils::modal_modes_from_ratios;
 use crate::life::sound::{BodyKind, BodySnapshot};
 use std::collections::VecDeque;
 
@@ -470,16 +471,39 @@ fn default_mode_shape() -> ModeShape {
 
 fn mode_shape_from_snapshot(snapshot: &BodySnapshot) -> ModeShape {
     match snapshot.kind {
-        BodyKind::Harmonic => ModeShape::Harmonic {
-            partials: 16,
-            base_t60_s: 0.8,
-            in_gain: 1.0,
-            genotype: TimbreGenotype {
-                brightness: snapshot.brightness.clamp(0.0, 1.0),
-                jitter: snapshot.noise_mix.clamp(0.0, 1.0),
-                ..TimbreGenotype::default()
-            },
-        },
+        BodyKind::Harmonic => {
+            if let Some(ratios) = snapshot.ratios.as_deref() {
+                return ModeShape::Modal {
+                    modes: modal_modes_from_ratios(
+                        ratios,
+                        snapshot.brightness.clamp(0.0, 1.0),
+                        snapshot.width.clamp(0.0, 1.0),
+                    ),
+                };
+            }
+            ModeShape::Harmonic {
+                partials: 16,
+                base_t60_s: 0.8,
+                in_gain: 1.0,
+                genotype: TimbreGenotype {
+                    brightness: snapshot.brightness.clamp(0.0, 1.0),
+                    jitter: snapshot.noise_mix.clamp(0.0, 1.0),
+                    unison: snapshot.width.clamp(0.0, 1.0),
+                    ..TimbreGenotype::default()
+                },
+            }
+        }
+        BodyKind::Modal => {
+            let fallback = [1.0f32];
+            let ratios = snapshot.ratios.as_deref().unwrap_or(&fallback);
+            ModeShape::Modal {
+                modes: modal_modes_from_ratios(
+                    ratios,
+                    snapshot.brightness.clamp(0.0, 1.0),
+                    snapshot.width.clamp(0.0, 1.0),
+                ),
+            }
+        }
         BodyKind::Sine => default_mode_shape(),
     }
 }
@@ -487,6 +511,7 @@ fn mode_shape_from_snapshot(snapshot: &BodySnapshot) -> ModeShape {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
 
     #[test]
     fn mode_shape_from_snapshot_maps_sine_to_default() {
@@ -494,7 +519,9 @@ mod tests {
             kind: BodyKind::Sine,
             amp_scale: 1.0,
             brightness: 0.8,
+            width: 0.0,
             noise_mix: 0.6,
+            ratios: None,
         };
         let shape = mode_shape_from_snapshot(&snapshot);
         match shape {
@@ -517,7 +544,9 @@ mod tests {
             kind: BodyKind::Harmonic,
             amp_scale: 1.0,
             brightness: 0.42,
+            width: 0.35,
             noise_mix: 0.73,
+            ratios: None,
         };
         let shape = mode_shape_from_snapshot(&snapshot);
         match shape {
@@ -532,8 +561,55 @@ mod tests {
                 assert!((in_gain - 1.0).abs() <= 1e-6);
                 assert!((genotype.brightness - 0.42).abs() <= 1e-6);
                 assert!((genotype.jitter - 0.73).abs() <= 1e-6);
+                assert!((genotype.unison - 0.35).abs() <= 1e-6);
             }
             other => panic!("unexpected shape: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn harmonic_custom_ratios_use_snapshot_width_for_detune() {
+        let base = BodySnapshot {
+            kind: BodyKind::Harmonic,
+            amp_scale: 1.0,
+            brightness: 0.42,
+            width: 0.0,
+            noise_mix: 0.9,
+            ratios: Some(Arc::<[f32]>::from(vec![1.0, 3.0, 5.0])),
+        };
+        let wide = BodySnapshot {
+            width: 0.5,
+            ..base.clone()
+        };
+        let same_width_diff_noise = BodySnapshot {
+            noise_mix: 0.1,
+            ..wide.clone()
+        };
+
+        let base_shape = mode_shape_from_snapshot(&base);
+        let wide_shape = mode_shape_from_snapshot(&wide);
+        let same_width_shape = mode_shape_from_snapshot(&same_width_diff_noise);
+
+        match (base_shape, wide_shape, same_width_shape) {
+            (
+                ModeShape::Modal { modes: base_modes },
+                ModeShape::Modal { modes: wide_modes },
+                ModeShape::Modal {
+                    modes: same_width_modes,
+                },
+            ) => {
+                assert_eq!(base_modes.len(), wide_modes.len());
+                assert_eq!(wide_modes.len(), same_width_modes.len());
+                assert!(
+                    (base_modes[0].ratio - wide_modes[0].ratio).abs() > 1.0e-4,
+                    "width should affect detune ratio"
+                );
+                assert!(
+                    (wide_modes[0].ratio - same_width_modes[0].ratio).abs() <= 1.0e-6,
+                    "noise_mix must not affect custom ratio detune"
+                );
+            }
+            other => panic!("unexpected shape tuple: {other:?}"),
         }
     }
 

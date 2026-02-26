@@ -6,6 +6,7 @@ pub mod individual;
 pub mod lifecycle;
 pub mod meta;
 pub mod metabolism_policy;
+pub mod modal;
 pub mod perceptual;
 pub mod phonation_engine;
 pub mod population;

@@ -2,6 +2,7 @@ pub mod any_backend;
 pub mod control;
 pub mod events;
 pub mod modal_engine;
+pub(crate) mod mode_utils;
 pub(crate) mod spectral;
 pub mod voice;
 

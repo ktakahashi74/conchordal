@@ -292,6 +292,18 @@ impl AgentSpec {
         fs: f32,
         seed_offset: u64,
     ) -> Individual {
+        self.spawn_with_landscape(assigned_id, start_frame, metadata, fs, None, seed_offset)
+    }
+
+    pub fn spawn_with_landscape(
+        &self,
+        assigned_id: u64,
+        start_frame: u64,
+        metadata: AgentMetadata,
+        fs: f32,
+        landscape: Option<&crate::core::landscape::LandscapeFrame>,
+        seed_offset: u64,
+    ) -> Individual {
         Individual::spawn_from_control(
             self.control.clone(),
             self.articulation.clone(),
@@ -299,6 +311,7 @@ impl AgentSpec {
             start_frame,
             metadata,
             fs,
+            landscape,
             seed_offset,
         )
     }
@@ -363,6 +376,7 @@ impl SpawnStrategy {
 }
 
 #[derive(Debug, Clone)]
+#[allow(clippy::large_enum_variant)]
 pub enum Action {
     Spawn {
         group_id: u64,

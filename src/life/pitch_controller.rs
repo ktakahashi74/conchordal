@@ -67,6 +67,7 @@ impl PitchController {
 
     pub fn set_perceptual_enabled(&mut self, enabled: bool) {
         self.perceptual_enabled = enabled;
+        self.perceptual.set_enabled(enabled);
     }
 
     pub fn force_set_target_pitch_log2(&mut self, log_freq: f32) {
@@ -113,11 +114,9 @@ impl PitchController {
             0.0
         };
 
-        // Perceptual gating only affects proposal/learning, not lock overrides.
-        if self.perceptual_enabled
-            && theta_cross
-            && self.accumulated_time >= self.integration_window
-        {
+        // Pitch proposal always runs when timing conditions are met.
+        // perceptual_enabled gates only perceptual-state learning.
+        if theta_cross && self.accumulated_time >= self.integration_window {
             let elapsed = self.accumulated_time;
             self.accumulated_time = 0.0;
             let features = FeaturesNow::from_subjective_intensity(&landscape.subjective_intensity);
@@ -135,7 +134,9 @@ impl PitchController {
             );
             target_pitch_log2 = proposal.target_pitch_log2;
             self.last_target_salience = proposal.salience;
-            if let Some(idx) = landscape.space.index_of_log2(target_pitch_log2) {
+            if self.perceptual_enabled
+                && let Some(idx) = landscape.space.index_of_log2(target_pitch_log2)
+            {
                 self.perceptual.update(idx, &features, elapsed);
             }
         }

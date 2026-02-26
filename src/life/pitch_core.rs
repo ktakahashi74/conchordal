@@ -53,6 +53,7 @@ pub struct PitchHillClimbPitchCore {
     neighbor_step_log2: f32,
     tessitura_center: f32,
     tessitura_gravity: f32,
+    landscape_weight: f32,
     move_cost_coeff: f32,
     move_cost_exp: u8,
     improvement_threshold: f32,
@@ -78,6 +79,7 @@ impl PitchHillClimbPitchCore {
             neighbor_step_log2: cents_to_log2(neighbor_step_cents),
             tessitura_center,
             tessitura_gravity,
+            landscape_weight: 1.0,
             move_cost_coeff: DEFAULT_MOVE_COST_COEFF,
             move_cost_exp: DEFAULT_MOVE_COST_EXP,
             improvement_threshold,
@@ -109,6 +111,14 @@ impl PitchHillClimbPitchCore {
 
     pub fn set_tessitura_gravity(&mut self, value: f32) {
         self.tessitura_gravity = value;
+    }
+
+    pub fn set_landscape_weight(&mut self, value: f32) {
+        self.landscape_weight = if value.is_finite() {
+            value.max(0.0)
+        } else {
+            1.0
+        };
     }
 
     pub fn set_move_cost_coeff(&mut self, value: f32) {
@@ -157,6 +167,7 @@ impl PitchCore for PitchHillClimbPitchCore {
             integration_window,
             self.tessitura_center,
             self.tessitura_gravity,
+            self.landscape_weight,
             self.move_cost_coeff,
             self.move_cost_exp,
             perceptual,
@@ -179,6 +190,7 @@ impl PitchCore for PitchHillClimbPitchCore {
                 integration_window,
                 self.tessitura_center,
                 self.tessitura_gravity,
+                self.landscape_weight,
                 self.move_cost_coeff,
                 self.move_cost_exp,
                 landscape,
@@ -248,6 +260,7 @@ pub struct PitchPeakSamplerCore {
     random_candidates: usize,
     tessitura_center: f32,
     tessitura_gravity: f32,
+    landscape_weight: f32,
     exploration: f32,
     persistence: f32,
 }
@@ -275,6 +288,7 @@ impl PitchPeakSamplerCore {
             random_candidates,
             tessitura_center,
             tessitura_gravity,
+            landscape_weight: 1.0,
             exploration: exploration.clamp(0.0, 1.0),
             persistence: persistence.clamp(0.0, 1.0),
         }
@@ -303,6 +317,14 @@ impl PitchPeakSamplerCore {
 
     pub fn set_tessitura_gravity(&mut self, value: f32) {
         self.tessitura_gravity = value;
+    }
+
+    pub fn set_landscape_weight(&mut self, value: f32) {
+        self.landscape_weight = if value.is_finite() {
+            value.max(0.0)
+        } else {
+            1.0
+        };
     }
 }
 
@@ -336,6 +358,7 @@ impl PitchCore for PitchPeakSamplerCore {
             integration_window,
             self.tessitura_center,
             self.tessitura_gravity,
+            self.landscape_weight,
             DEFAULT_MOVE_COST_COEFF,
             DEFAULT_MOVE_COST_EXP,
             perceptual,
@@ -359,6 +382,7 @@ impl PitchCore for PitchPeakSamplerCore {
                 integration_window,
                 self.tessitura_center,
                 self.tessitura_gravity,
+                self.landscape_weight,
                 DEFAULT_MOVE_COST_COEFF,
                 DEFAULT_MOVE_COST_EXP,
                 landscape,
@@ -381,6 +405,7 @@ impl PitchCore for PitchPeakSamplerCore {
             integration_window,
             self.tessitura_center,
             self.tessitura_gravity,
+            self.landscape_weight,
             DEFAULT_MOVE_COST_COEFF,
             DEFAULT_MOVE_COST_EXP,
             landscape,
@@ -566,6 +591,7 @@ fn adjusted_pitch_score(
     integration_window: f32,
     tessitura_center: f32,
     tessitura_gravity: f32,
+    landscape_weight: f32,
     move_cost_coeff: f32,
     move_cost_exp: u8,
     landscape: &Landscape,
@@ -583,7 +609,8 @@ fn adjusted_pitch_score(
     let penalty = dist_cost * integration_window * move_cost_coeff.max(0.0);
     let dist = clamped - tessitura_center;
     let gravity_penalty = dist * dist * tessitura_gravity;
-    let base = score - penalty - gravity_penalty;
+    let weighted_score = landscape_weight.max(0.0) * score;
+    let base = weighted_score - penalty - gravity_penalty;
     let idx = landscape.space.index_of_log2(clamped).unwrap_or(0);
     base + perceptual.score_adjustment(idx)
 }
@@ -598,6 +625,7 @@ fn top_local_candidates(
     integration_window: f32,
     tessitura_center: f32,
     tessitura_gravity: f32,
+    landscape_weight: f32,
     move_cost_coeff: f32,
     move_cost_exp: u8,
     perceptual: &PerceptualContext,
@@ -621,6 +649,7 @@ fn top_local_candidates(
             integration_window,
             tessitura_center,
             tessitura_gravity,
+            landscape_weight,
             move_cost_coeff,
             move_cost_exp,
             landscape,
@@ -926,6 +955,13 @@ impl AnyPitchCore {
             AnyPitchCore::PitchPeakSampler(core) => core.set_tessitura_gravity(value),
         }
     }
+
+    pub fn set_landscape_weight(&mut self, value: f32) {
+        match self {
+            AnyPitchCore::PitchHillClimb(core) => core.set_landscape_weight(value),
+            AnyPitchCore::PitchPeakSampler(core) => core.set_landscape_weight(value),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -954,6 +990,43 @@ mod tests {
 
     fn test_perceptual(n_bins: usize) -> PerceptualContext {
         PerceptualContext::from_config(&PerceptualConfig::default(), n_bins)
+    }
+
+    #[test]
+    fn adjusted_score_landscape_weight_zero_disables_landscape_term() {
+        let mut landscape = Landscape::new(Log2Space::new(110.0, 880.0, 96));
+        let idx = landscape.space.n_bins() / 2;
+        let pitch_log2 = landscape.space.centers_log2[idx];
+        landscape.consonance_field_score[idx] = 1.75;
+        let perceptual = test_perceptual(landscape.space.n_bins());
+
+        let weighted = adjusted_pitch_score(
+            pitch_log2,
+            pitch_log2,
+            0.0,
+            pitch_log2,
+            0.0,
+            1.0,
+            0.0,
+            1,
+            &landscape,
+            &perceptual,
+        );
+        let without_landscape = adjusted_pitch_score(
+            pitch_log2,
+            pitch_log2,
+            0.0,
+            pitch_log2,
+            0.0,
+            0.0,
+            0.0,
+            1,
+            &landscape,
+            &perceptual,
+        );
+
+        assert!((weighted - 1.75).abs() <= 1e-6);
+        assert!(without_landscape.abs() <= 1e-6);
     }
 
     #[test]

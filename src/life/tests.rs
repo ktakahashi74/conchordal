@@ -172,7 +172,7 @@ fn lock_mode_keeps_pitch_and_target() {
 }
 
 #[test]
-fn perceptual_disabled_does_not_propose_pitch() {
+fn perceptual_disabled_still_runs_pitch_proposal() {
     let mut control = AgentControl::default();
     control.pitch.freq = 220.0;
     control.perceptual.enabled = false;
@@ -187,19 +187,27 @@ fn perceptual_disabled_does_not_propose_pitch() {
     let mut agent = cfg.spawn(6, 0, meta, 48_000.0, 0);
 
     let integration_window = agent.integration_window();
-    agent.set_accumulated_time_for_test(integration_window);
-    agent.set_theta_phase_state_for_test(0.9, true);
+    agent.set_accumulated_time_for_test(0.0);
     let mut rhythms = NeuralRhythms::default();
-    rhythms.theta.phase = 0.1;
-    rhythms.theta.mag = 1.0;
-
     let landscape = make_test_landscape(48_000.0);
-    let before_target = agent.target_pitch_log2();
-    let before_accum = agent.accumulated_time_for_test();
-    agent.update_pitch_target(&rhythms, 0.01, &landscape);
+    let mut proposal_path_ran = false;
+    let dt = integration_window.max(0.05);
+    for _ in 0..8 {
+        agent.set_theta_phase_state_for_test(0.9, true);
+        rhythms.theta.phase = 0.1;
+        rhythms.theta.mag = 1.0;
+        let before_accum = agent.accumulated_time_for_test();
+        agent.update_pitch_target(&rhythms, dt, &landscape);
+        if before_accum + dt >= integration_window && agent.accumulated_time_for_test() <= 1e-6 {
+            proposal_path_ran = true;
+            break;
+        }
+    }
 
-    assert!((agent.target_pitch_log2() - before_target).abs() <= 1e-6);
-    assert!(agent.accumulated_time_for_test() > before_accum);
+    assert!(
+        proposal_path_ran,
+        "expected pitch proposal path to run even when perceptual is disabled"
+    );
 }
 
 #[test]

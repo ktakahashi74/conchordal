@@ -124,6 +124,7 @@ pub struct PitchControl {
     pub freq: f32,
     pub range_oct: f32,
     pub gravity: f32,
+    pub landscape_weight: f32,
     pub exploration: f32,
     pub persistence: f32,
 }
@@ -136,6 +137,7 @@ impl Default for PitchControl {
             freq: 220.0,
             range_oct: RANGE_OCT_MAX,
             gravity: 0.5,
+            landscape_weight: 1.0,
             exploration: 0.0,
             persistence: 0.5,
         }

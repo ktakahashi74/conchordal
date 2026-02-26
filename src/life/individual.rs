@@ -195,6 +195,9 @@ impl Individual {
             integration_window,
             rng,
         );
+        pitch_ctl
+            .core_mut()
+            .set_landscape_weight(effective_control.pitch.landscape_weight);
         pitch_ctl.set_perceptual_enabled(effective_control.perceptual.enabled);
 
         let (articulation_core, lifecycle_label, default_by_articulation, breath_gain_init) =
@@ -284,6 +287,7 @@ impl Individual {
         let core = self.pitch_ctl.core_mut();
         core.set_tessitura_center(center_log2);
         core.set_tessitura_gravity(gravity);
+        core.set_landscape_weight(pitch.landscape_weight);
         core.set_exploration(pitch.exploration);
         core.set_persistence(pitch.persistence);
     }

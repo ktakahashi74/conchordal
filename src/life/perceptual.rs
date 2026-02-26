@@ -40,6 +40,7 @@ impl FeaturesNow {
 
 #[derive(Debug, Clone)]
 pub struct PerceptualContext {
+    enabled: bool,
     pub tau_fast: f32,
     pub tau_slow: f32,
     pub w_boredom: f32,
@@ -63,6 +64,7 @@ impl PerceptualContext {
         let self_smoothing_radius = config.self_smoothing_radius.unwrap_or(1);
         let silence_mass_epsilon = config.silence_mass_epsilon.unwrap_or(1e-6).max(0.0);
         Self {
+            enabled: true,
             tau_fast,
             tau_slow,
             w_boredom,
@@ -84,7 +86,14 @@ impl PerceptualContext {
         self.h_slow.resize(n_bins, 0.0);
     }
 
+    pub fn set_enabled(&mut self, enabled: bool) {
+        self.enabled = enabled;
+    }
+
     pub fn score_adjustment(&self, candidate_idx: usize) -> f32 {
+        if !self.enabled {
+            return 0.0;
+        }
         if candidate_idx >= self.h_fast.len() {
             return 0.0;
         }
@@ -102,6 +111,9 @@ impl PerceptualContext {
     }
 
     pub fn update(&mut self, candidate_idx: usize, features: &FeaturesNow, dt: f32) {
+        if !self.enabled {
+            return;
+        }
         if self.h_fast.is_empty() || self.h_slow.is_empty() {
             return;
         }
@@ -202,7 +214,7 @@ fn candidate_weight(offset: isize, radius: usize) -> f32 {
 
 #[cfg(test)]
 mod tests {
-    use super::for_each_candidate_weight;
+    use super::{FeaturesNow, PerceptualConfig, PerceptualContext, for_each_candidate_weight};
 
     #[test]
     fn candidate_weights_normalize_and_stay_in_range() {
@@ -241,5 +253,29 @@ mod tests {
         });
         assert!((sum - 1.0).abs() < 1e-6);
         assert!(max_idx < 5);
+    }
+
+    #[test]
+    fn disabled_context_forces_zero_score_adjustment() {
+        let mut cfg = PerceptualConfig::default();
+        cfg.w_boredom = Some(1.0);
+        cfg.w_familiarity = Some(0.0);
+        cfg.rho_self = Some(1.0);
+        let mut ctx = PerceptualContext::from_config(&cfg, 8);
+
+        let mut features = vec![0.0f32; 8];
+        features[3] = 1.0;
+        let now = FeaturesNow {
+            distribution: features,
+            mass: 1.0,
+        };
+        for _ in 0..8 {
+            ctx.update(3, &now, 0.2);
+        }
+        let before_disable = ctx.score_adjustment(3);
+        assert!(before_disable.abs() > 1e-6);
+
+        ctx.set_enabled(false);
+        assert!(ctx.score_adjustment(3).abs() <= 1e-6);
     }
 }

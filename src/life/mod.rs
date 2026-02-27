@@ -3,6 +3,7 @@ pub mod control;
 mod control_adapters;
 pub mod gate_clock;
 pub mod individual;
+pub use individual::articulation_core;
 pub mod lifecycle;
 pub mod meta;
 pub mod metabolism_policy;

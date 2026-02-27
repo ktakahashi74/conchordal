@@ -251,6 +251,45 @@ fn normalized_vitality(energy: f32, energy_cap: f32, vitality_exponent: f32) -> 
     if vitality.is_finite() { vitality } else { 0.0 }
 }
 
+/// Compute effective Kuramoto coupling strength.
+///
+/// This is the same calculation used inside `KuramotoCore::update_phase`.
+/// Extracted as a pure function so external simulation harnesses can
+/// replicate the coupling model without instantiating a full KuramotoCore.
+#[inline]
+pub fn kuramoto_k_eff(
+    omega_target: f32,
+    global_coupling: f32,
+    sensitivity_theta: f32,
+    theta_mag: f32,
+    theta_alpha: f32,
+    env_gate: f32,
+    env_amp: f32,
+) -> f32 {
+    let base_k = omega_target.max(20.0);
+    base_k * global_coupling * sensitivity_theta * theta_mag * theta_alpha * env_gate * env_amp
+}
+
+/// Perform one Kuramoto phase integration step.
+///
+/// Returns the new (unwrapped) phase. Caller is responsible for wrapping
+/// and any side-effects (energy, envelope, etc.).
+///
+/// This is the same calculation used inside `KuramotoCore::update_phase`.
+#[inline]
+pub fn kuramoto_phase_step(
+    phase: f32,
+    omega: f32,
+    target_phase: f32,
+    k_eff: f32,
+    noise: f32,
+    dt: f32,
+) -> f32 {
+    let diff = angle_diff_pm_pi(target_phase, wrap_0_tau(phase));
+    let d_phi = omega + noise + k_eff * diff.sin();
+    phase + d_phi * dt
+}
+
 impl KuramotoCore {
     #[inline]
     fn apply_energy_delta(&mut self, delta: f32) {
@@ -316,17 +355,17 @@ impl KuramotoCore {
         bootstrap_active: bool,
     ) -> PhaseStep {
         let omega_target = TAU * theta.freq_hz;
-        // base_k scales with target omega so coupling stays in rad/s units.
-        let base_k = omega_target.max(20.0);
         let env_gate = rhythms.env_open;
         let env_amp = rhythms.env_level.sqrt();
-        let k_eff = base_k
-            * global_coupling
-            * self.sensitivity.theta
-            * theta.mag
-            * theta.alpha
-            * env_gate
-            * env_amp;
+        let k_eff = kuramoto_k_eff(
+            omega_target,
+            global_coupling,
+            self.sensitivity.theta,
+            theta.mag,
+            theta.alpha,
+            env_gate,
+            env_amp,
+        );
         self.dbg_last_k_eff = k_eff;
 
         let mut pull = self.k_omega * theta.alpha * env_gate;
@@ -346,9 +385,8 @@ impl KuramotoCore {
         let noise = self.noise_1f.sample() * sigma;
 
         let target = wrap_0_tau(theta.phase + self.phase_offset);
-        let diff = angle_diff_pm_pi(target, wrap_0_tau(self.rhythm_phase));
-        let d_phi = self.omega_rad + noise + k_eff * diff.sin();
-        self.rhythm_phase += d_phi * dt;
+        self.rhythm_phase =
+            kuramoto_phase_step(self.rhythm_phase, self.omega_rad, target, k_eff, noise, dt);
 
         PhaseStep { k_eff }
     }
@@ -901,7 +939,7 @@ fn envelope_from_lifecycle(lifecycle: &LifecycleConfig) -> LifecycleDerived {
 mod tests {
     use super::*;
     use crate::core::modulation::NeuralRhythms;
-    use std::f32::consts::TAU;
+    use std::f32::consts::{PI, TAU};
 
     fn test_core(energy: f32) -> KuramotoCore {
         let energy_cap = 1.0;
@@ -956,6 +994,124 @@ mod tests {
             dbg_last_theta_alpha: 0.0,
             dbg_last_theta_beta: 0.0,
             dbg_last_k_eff: 0.0,
+        }
+    }
+
+    #[test]
+    fn test_kuramoto_k_eff_zero_coupling() {
+        let k = kuramoto_k_eff(2.0 * PI * 6.0, 0.0, 0.8, 0.9, 0.7, 1.0, 0.6);
+        assert!(k.abs() <= 1e-6);
+    }
+
+    #[test]
+    fn test_kuramoto_k_eff_scales_linearly() {
+        let base = kuramoto_k_eff(2.0 * PI * 6.0, 0.2, 0.5, 0.9, 0.7, 1.0, 0.6);
+        let double_coupling = kuramoto_k_eff(2.0 * PI * 6.0, 0.4, 0.5, 0.9, 0.7, 1.0, 0.6);
+        let double_sensitivity = kuramoto_k_eff(2.0 * PI * 6.0, 0.2, 1.0, 0.9, 0.7, 1.0, 0.6);
+        assert!((double_coupling - 2.0 * base).abs() <= 1e-6);
+        assert!((double_sensitivity - 2.0 * base).abs() <= 1e-6);
+    }
+
+    #[test]
+    fn test_kuramoto_phase_step_no_coupling() {
+        let phase = 1.0;
+        let omega = 3.0;
+        let dt = 0.1;
+        let next = kuramoto_phase_step(phase, omega, 2.0, 0.0, 0.0, dt);
+        assert!((next - (phase + omega * dt)).abs() <= 1e-6);
+    }
+
+    #[test]
+    fn test_kuramoto_phase_step_attracts() {
+        let phase = 0.0;
+        let target = PI * 0.5;
+        let next = kuramoto_phase_step(phase, 0.0, target, 2.0, 0.0, 0.05);
+        assert!(next > phase, "phase should move toward target when coupled");
+    }
+
+    #[test]
+    fn test_refactored_update_phase_unchanged() {
+        let mut core = test_core(1.0);
+        let mut manual = test_core(1.0);
+
+        core.sensitivity.theta = 0.7;
+        manual.sensitivity.theta = 0.7;
+        core.k_omega = 0.8;
+        manual.k_omega = 0.8;
+        core.base_sigma = 0.2;
+        manual.base_sigma = 0.2;
+        core.beta_gain = 0.5;
+        manual.beta_gain = 0.5;
+        core.phase_offset = 0.33;
+        manual.phase_offset = 0.33;
+        core.rhythm_phase = 1.0;
+        manual.rhythm_phase = 1.0;
+        core.omega_rad = TAU * 5.2;
+        manual.omega_rad = TAU * 5.2;
+        core.rhythm_freq = 5.2;
+        manual.rhythm_freq = 5.2;
+        core.noise_1f = PinkNoise::new(42, 1.0);
+        manual.noise_1f = PinkNoise::new(42, 1.0);
+        core.state = ArticulationState::Decay;
+        manual.state = ArticulationState::Decay;
+        core.decay_rate = 0.0;
+        manual.decay_rate = 0.0;
+        core.retrigger = false;
+        manual.retrigger = false;
+        core.bootstrap_timer = 0.0;
+        manual.bootstrap_timer = 0.0;
+
+        let dt = 0.01;
+        let global_coupling = 0.6;
+        let mut rhythms = NeuralRhythms::default();
+        rhythms.theta.phase = 0.2;
+        rhythms.theta.freq_hz = 6.8;
+        rhythms.theta.mag = 0.9;
+        rhythms.theta.alpha = 0.8;
+        rhythms.theta.beta = 0.2;
+        rhythms.env_open = 0.95;
+        rhythms.env_level = 0.81;
+
+        for _ in 0..100 {
+            core.process(0.0, &rhythms, dt, global_coupling);
+
+            let omega_target = TAU * rhythms.theta.freq_hz;
+            let k_eff = kuramoto_k_eff(
+                omega_target,
+                global_coupling,
+                manual.sensitivity.theta,
+                rhythms.theta.mag,
+                rhythms.theta.alpha,
+                rhythms.env_open,
+                rhythms.env_level.sqrt(),
+            );
+            let pull = manual.k_omega * rhythms.theta.alpha * rhythms.env_open;
+            if pull > 0.0 {
+                let blend = (pull * dt).min(1.0);
+                manual.omega_rad = manual.omega_rad + (omega_target - manual.omega_rad) * blend;
+            }
+            manual.omega_rad = manual.omega_rad.clamp(TAU * 3.0, TAU * 12.0);
+            manual.rhythm_freq = manual.omega_rad / TAU;
+
+            let sigma = manual.base_sigma * (1.0 + manual.beta_gain * rhythms.theta.beta);
+            let noise = manual.noise_1f.sample() * sigma;
+            let target = wrap_0_tau(rhythms.theta.phase + manual.phase_offset);
+            manual.rhythm_phase = kuramoto_phase_step(
+                manual.rhythm_phase,
+                manual.omega_rad,
+                target,
+                k_eff,
+                noise,
+                dt,
+            );
+            while manual.rhythm_phase >= 2.0 * PI {
+                manual.rhythm_phase -= 2.0 * PI;
+            }
+
+            assert!((core.dbg_last_k_eff - k_eff).abs() <= 1e-6);
+            assert!((core.omega_rad - manual.omega_rad).abs() <= 1e-6);
+            assert!((core.rhythm_freq - manual.rhythm_freq).abs() <= 1e-6);
+            assert!((core.rhythm_phase - manual.rhythm_phase).abs() <= 1e-6);
         }
     }
 

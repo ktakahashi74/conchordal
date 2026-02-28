@@ -1,5 +1,6 @@
 use std::fmt;
 
+use crate::core::float::sanitize_nonnegative_finite;
 use crate::core::landscape::LandscapeUpdate;
 use crate::life::control::{AgentControl, ControlUpdate};
 use crate::life::individual::{AgentMetadata, Individual};
@@ -278,14 +279,6 @@ impl MetabolismRhythmReward {
     }
 }
 
-fn sanitize_nonnegative_finite(value: f32, fallback: f32) -> f32 {
-    if value.is_finite() {
-        value.max(0.0)
-    } else {
-        fallback
-    }
-}
-
 fn sanitize_v_floor(v_floor: f32) -> f32 {
     if v_floor.is_finite() {
         // Keep denominator in g(v) = (v - v_floor) / (1 - v_floor) stable.
@@ -519,5 +512,28 @@ mod tests {
         let b = as_spawn.spawn(10, 0, AgentMetadata::default(), 48_000.0, 99);
         assert_eq!(a.id(), b.id());
         assert!((a.body.base_freq_hz() - b.body.base_freq_hz()).abs() <= 1e-6);
+    }
+
+    #[test]
+    fn rhythm_sanitizers_handle_nonfinite_and_negative_inputs() {
+        let mode = RhythmCouplingMode::TemporalTimesVitality {
+            lambda_v: f32::NAN,
+            v_floor: f32::INFINITY,
+        }
+        .sanitized();
+        assert_eq!(
+            mode,
+            RhythmCouplingMode::TemporalTimesVitality {
+                lambda_v: 0.0,
+                v_floor: 0.0
+            }
+        );
+
+        let reward = MetabolismRhythmReward {
+            rho_t: -1.0,
+            metric: RhythmRewardMetric::AttackPhaseMatch,
+        }
+        .sanitized();
+        assert_eq!(reward.rho_t, 0.0);
     }
 }

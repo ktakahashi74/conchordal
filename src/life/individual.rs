@@ -467,12 +467,11 @@ impl Individual {
         let mut signal = self
             .articulation
             .process(consonance, rhythms, dt_sec, global_coupling);
-        signal.amplitude *= self.articulation.gate();
         if self.release_pending {
             let step = dt_sec / self.release_sec.max(1e-6);
             self.release_gain = (self.release_gain - step).max(0.0);
         }
-        signal.amplitude *= self.release_gain;
+        signal.amplitude *= self.compute_output_gain();
         signal.is_active = signal.is_active && signal.amplitude > 0.0;
         self.last_signal = signal;
         signal
@@ -600,19 +599,28 @@ impl Individual {
     }
 
     pub(crate) fn compute_target_amp(&self) -> f32 {
-        let release_gain = self.release_gain.clamp(0.0, 1.0);
-        // Include articulation gate in the final target amp.
-        let gate = self.articulation.gate().clamp(0.0, 1.0);
-        let mut amp = self.body.amp() * release_gain * gate;
+        let mut amp =
+            self.body.amp() * self.compute_output_gain() * self.articulation.vitality_scalar();
         if !amp.is_finite() {
             amp = 0.0;
         }
         amp.max(0.0)
     }
 
+    pub(crate) fn compute_output_gain(&self) -> f32 {
+        let gate = self.articulation.gate().clamp(0.0, 1.0);
+        let release = self.release_gain.clamp(0.0, 1.0);
+        let mut gain = gate * release;
+        if !gain.is_finite() {
+            gain = 0.0;
+        }
+        gain.max(0.0)
+    }
+
     /// Gate is baked into amp, so render-side gate is fixed to 1.0 while other articulation state is preserved.
     fn articulation_snapshot_for_render(&self) -> ArticulationWrapper {
         let mut articulation = self.articulation.clone();
+        articulation.strip_metabolism_for_render();
         // Normalize render gate to avoid double-applying the gate.
         articulation.set_gate(1.0);
         articulation

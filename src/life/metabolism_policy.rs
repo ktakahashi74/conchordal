@@ -1,3 +1,5 @@
+use crate::core::float::clamp01_finite;
+use crate::life::constants::MAX_RECHARGE_MULT;
 use crate::life::lifecycle::LifecycleConfig;
 
 pub const DEFAULT_ACTION_COST_PER_ATTACK: f32 = 0.02;
@@ -19,14 +21,6 @@ pub struct EnergyTelemetry {
     pub energy_after: f32,
     pub did_attack: bool,
     pub consonance_used: f32,
-}
-
-fn clamp01_finite(x: f32) -> f32 {
-    if x.is_finite() {
-        x.clamp(0.0, 1.0)
-    } else {
-        0.0
-    }
 }
 
 impl MetabolismPolicy {
@@ -64,7 +58,7 @@ impl MetabolismPolicy {
         recharge_mult: f32,
     ) -> f32 {
         let mult = if recharge_mult.is_finite() {
-            recharge_mult.clamp(0.0, 2.0)
+            recharge_mult.clamp(0.0, MAX_RECHARGE_MULT)
         } else {
             1.0
         };

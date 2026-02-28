@@ -1,6 +1,8 @@
+use crate::core::float::clamp01_finite;
 use crate::core::modulation::NeuralRhythms;
 use crate::core::phase::{angle_diff_pm_pi, wrap_0_tau};
 use crate::core::utils::pink_noise_tick;
+use crate::life::constants::{MAX_COUPLING_MULT, MAX_RECHARGE_MULT};
 use crate::life::lifecycle::LifecycleConfig;
 use crate::life::metabolism_policy::MetabolismPolicy;
 use crate::life::phonation_engine::PhonationKick;
@@ -93,6 +95,33 @@ impl ArticulationWrapper {
 
     pub fn kick_planned(&mut self, kick: PhonationKick, rhythms: &NeuralRhythms, dt: f32) {
         self.core.kick_planned(kick, rhythms, dt);
+    }
+
+    pub fn vitality_scalar(&self) -> f32 {
+        match &self.core {
+            AnyArticulationCore::Entrain(core) => clamp01_finite(core.vitality_level),
+            AnyArticulationCore::Seq(_) | AnyArticulationCore::Drone(_) => 1.0,
+        }
+    }
+
+    pub fn strip_metabolism_for_render(&mut self) {
+        let AnyArticulationCore::Entrain(core) = &mut self.core else {
+            return;
+        };
+        core.basal_cost = 0.0;
+        core.action_cost = 0.0;
+        core.recharge_rate = 0.0;
+        core.rhythm_reward = None;
+        core.rhythm_coupling = RhythmCouplingMode::TemporalOnly;
+
+        let energy_cap = if core.energy_cap.is_finite() {
+            core.energy_cap.max(1.0)
+        } else {
+            1.0
+        };
+        core.energy_cap = energy_cap;
+        core.energy = energy_cap;
+        core.vitality_level = 1.0;
     }
 }
 
@@ -261,23 +290,16 @@ fn normalized_vitality(energy: f32, energy_cap: f32, vitality_exponent: f32) -> 
 }
 
 #[inline]
-fn clamp01_finite(value: f32) -> f32 {
-    if value.is_finite() {
-        value.clamp(0.0, 1.0)
-    } else {
-        0.0
-    }
-}
-
-#[inline]
 fn coupling_multiplier_from_mode(mode: RhythmCouplingMode, vitality: f32) -> f32 {
-    match mode.sanitized() {
+    match mode {
         RhythmCouplingMode::TemporalOnly => 1.0,
         RhythmCouplingMode::TemporalTimesVitality { lambda_v, v_floor } => {
+            debug_assert!(lambda_v.is_finite() && lambda_v >= 0.0);
+            debug_assert!(v_floor.is_finite() && (0.0..1.0).contains(&v_floor));
             let vitality = clamp01_finite(vitality);
             let denom = (1.0 - v_floor).max(1e-6);
             let g = ((vitality - v_floor) / denom).clamp(0.0, 1.0);
-            (1.0 + lambda_v * g).clamp(0.0, 2.0)
+            (1.0 + lambda_v * g).clamp(0.0, MAX_COUPLING_MULT)
         }
     }
 }
@@ -296,11 +318,12 @@ fn recharge_multiplier_from_reward(
     reward: Option<MetabolismRhythmReward>,
     attack_metric: Option<f32>,
 ) -> f32 {
-    let Some(reward) = reward.map(MetabolismRhythmReward::sanitized) else {
+    let Some(reward) = reward else {
         return 1.0;
     };
+    debug_assert!(reward.rho_t.is_finite() && reward.rho_t >= 0.0);
     let t = clamp01_finite(attack_metric.unwrap_or(0.0));
-    (1.0 + reward.rho_t * t).clamp(0.0, 2.0)
+    (1.0 + reward.rho_t * t).clamp(0.0, MAX_RECHARGE_MULT)
 }
 
 /// Compute effective Kuramoto coupling strength.
@@ -425,11 +448,7 @@ impl KuramotoCore {
         };
         let vitality = clamp01_finite(self.vitality_level);
         let coupling_mult = coupling_multiplier_from_mode(self.rhythm_coupling, vitality);
-        let k_eff = if k_time <= 0.0 {
-            0.0
-        } else {
-            k_time * coupling_mult
-        };
+        let k_eff = k_time * coupling_mult;
         let k_eff = if k_eff.is_finite() {
             k_eff.max(0.0)
         } else {
@@ -859,6 +878,8 @@ impl AnyArticulationCore {
                 let energy_cap = energy.max(0.0);
                 let vitality_exponent = 0.5;
                 let vitality_level = normalized_vitality(energy, energy_cap, vitality_exponent);
+                let rhythm_coupling = rhythm_coupling.sanitized();
+                let rhythm_reward = rhythm_reward.map(MetabolismRhythmReward::sanitized);
                 let env_level = if matches!(state, ArticulationState::Attack) {
                     attack_step
                 } else {
@@ -879,8 +900,8 @@ impl AnyArticulationCore {
                         theta: rhythm_sensitivity.unwrap_or(sensitivity.theta),
                         ..sensitivity
                     },
-                    rhythm_coupling: rhythm_coupling.sanitized(),
-                    rhythm_reward: rhythm_reward.map(MetabolismRhythmReward::sanitized),
+                    rhythm_coupling,
+                    rhythm_reward,
                     rhythm_phase: rng.random_range(0.0..std::f32::consts::TAU),
                     rhythm_freq: init_freq,
                     omega_rad: TAU * init_freq,
@@ -1291,6 +1312,7 @@ mod tests {
         let dt = 0.01;
         let global_coupling = 0.7;
         core.update_phase(&theta, &rhythms, dt, global_coupling, false);
+        assert!(core.dbg_last_k_eff.is_finite());
 
         let k_time = kuramoto_k_eff(
             TAU * theta.freq_hz,
@@ -1302,8 +1324,9 @@ mod tests {
             rhythms.env_level.sqrt(),
         );
         assert!(
-            core.dbg_last_k_eff <= 2.0 * k_time + 1e-6,
-            "effective coupling should be capped at 2x temporal coupling"
+            core.dbg_last_k_eff <= MAX_COUPLING_MULT * k_time + 1e-6,
+            "effective coupling should be capped at {}x temporal coupling",
+            MAX_COUPLING_MULT
         );
     }
 
@@ -1427,6 +1450,37 @@ mod tests {
             ((rewarded.energy - base.energy) - expected_extra).abs() < 1e-5,
             "rhythm reward should increase only recharge contribution"
         );
+    }
+
+    #[test]
+    fn strip_metabolism_for_render_keeps_energy_constant() {
+        let mut wrapper =
+            ArticulationWrapper::new(AnyArticulationCore::Entrain(test_core(0.6)), 0.8);
+        wrapper.strip_metabolism_for_render();
+
+        let energy_before = match &wrapper.core {
+            AnyArticulationCore::Entrain(core) => core.energy,
+            _ => 0.0,
+        };
+        let mut rhythms = NeuralRhythms::default();
+        rhythms.theta.freq_hz = 6.0;
+        rhythms.theta.mag = 1.0;
+        rhythms.theta.alpha = 1.0;
+        rhythms.theta.beta = 0.2;
+        rhythms.env_open = 1.0;
+        rhythms.env_level = 1.0;
+
+        for _ in 0..64 {
+            let signal = wrapper.process(1.0, &rhythms, 1.0 / 48_000.0, 1.0);
+            assert!(signal.amplitude.is_finite());
+            rhythms.advance_in_place(1.0 / 48_000.0);
+        }
+
+        let energy_after = match &wrapper.core {
+            AnyArticulationCore::Entrain(core) => core.energy,
+            _ => 0.0,
+        };
+        assert!((energy_after - energy_before).abs() <= 1e-6);
     }
 
     #[test]

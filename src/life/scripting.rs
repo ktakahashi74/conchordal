@@ -252,20 +252,18 @@ impl SpeciesSpec {
     }
 
     fn set_rhythm_coupling_vitality(&mut self, lambda_v: f32, v_floor: f32) {
-        self.rhythm_coupling =
-            RhythmCouplingMode::TemporalTimesVitality { lambda_v, v_floor }.sanitized();
+        self.rhythm_coupling = RhythmCouplingMode::TemporalTimesVitality { lambda_v, v_floor };
     }
 
     fn set_rhythm_reward(&mut self, rho_t: f32, metric: &str) {
         let lowered = metric.trim().to_ascii_lowercase();
         self.rhythm_reward = match lowered.as_str() {
-            "attack_phase_match" | "attackphasematch" | "phase_match" => Some(
-                MetabolismRhythmReward {
+            "attack_phase_match" | "attackphasematch" | "phase_match" => {
+                Some(MetabolismRhythmReward {
                     rho_t,
                     metric: RhythmRewardMetric::AttackPhaseMatch,
-                }
-                .sanitized(),
-            ),
+                })
+            }
             "none" | "off" | "disabled" => None,
             other => {
                 warn!(
@@ -1576,7 +1574,10 @@ mod tests {
     use super::*;
     use crate::core::landscape::LandscapeFrame;
     use crate::core::timebase::Timebase;
+    use crate::life::individual::AnyArticulationCore;
     use crate::life::population::Population;
+    use crate::life::scenario::RhythmCouplingMode;
+    use rand::SeedableRng;
     use std::collections::HashMap;
 
     fn run_script(src: &str) -> (Scenario, ScriptWarnings) {
@@ -1990,6 +1991,45 @@ mod tests {
         assert_eq!(control.pitch.mode, PitchMode::Lock);
         assert!((control.body.timbre.brightness - 0.7).abs() <= 1e-6);
         assert!((control.body.timbre.width - 0.2).abs() <= 1e-6);
+    }
+
+    #[test]
+    fn rhythm_modulators_are_sanitized_at_core_boundary() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            create(
+                sine
+                    .rhythm_coupling_vitality(-3.0, 2.0)
+                    .rhythm_reward(-2.0, "attack_phase_match"),
+                1
+            );
+            flush();
+        "#,
+        );
+        let spawn = scenario
+            .events
+            .iter()
+            .flat_map(|event| &event.actions)
+            .find_map(|action| match action {
+                Action::Spawn { spec, .. } => Some(spec.clone()),
+                _ => None,
+            })
+            .expect("spawn action");
+        let mut rng = rand::rngs::StdRng::seed_from_u64(9);
+        let core = AnyArticulationCore::from_config(&spawn.articulation, 48_000.0, 9, &mut rng);
+        let AnyArticulationCore::Entrain(core) = core else {
+            panic!("expected entrain core");
+        };
+
+        assert_eq!(
+            core.rhythm_coupling,
+            RhythmCouplingMode::TemporalTimesVitality {
+                lambda_v: 0.0,
+                v_floor: 0.999
+            }
+        );
+        let reward = core.rhythm_reward.expect("expected rhythm reward");
+        assert_eq!(reward.rho_t, 0.0);
     }
 
     #[test]

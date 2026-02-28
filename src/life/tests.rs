@@ -1,5 +1,5 @@
 use super::conductor::Conductor;
-use super::individual::{AgentMetadata, PhonationBatch, SoundBody};
+use super::individual::{AgentMetadata, AnyArticulationCore, PhonationBatch, SoundBody};
 use super::population::Population;
 use super::scenario::{
     Action, ArticulationCoreConfig, IndividualConfig, Scenario, SpawnSpec, TimedEvent,
@@ -296,6 +296,70 @@ fn remove_pending_still_emits_note_offs() {
         rhythms.advance_in_place(tb.hop as f32 / tb.fs);
     }
     assert!(saw_note_off, "expected note-off during remove fade");
+}
+
+#[test]
+fn render_snapshot_articulation_is_finite_and_energy_stable() {
+    let mut control = AgentControl::default();
+    control.pitch.freq = 220.0;
+    control.phonation.r#type = PhonationType::Interval;
+    control.phonation.density = 1.0;
+    control.phonation.legato = 0.0;
+    let cfg = IndividualConfig {
+        control,
+        articulation: ArticulationCoreConfig::default(),
+    };
+    let meta = AgentMetadata {
+        group_id: 0,
+        member_idx: 0,
+    };
+    let mut agent = cfg.spawn(41, 0, meta, 48_000.0, 0);
+    let tb = Timebase {
+        fs: 48_000.0,
+        hop: 12_001,
+    };
+    let mut rhythms = NeuralRhythms::default();
+    rhythms.theta.freq_hz = 4.0;
+    rhythms.theta.phase = 0.0;
+    rhythms.env_open = 1.0;
+    rhythms.env_level = 1.0;
+
+    let mut batch = PhonationBatch::default();
+    let mut now: Tick = 0;
+    let mut note = None;
+    for _ in 0..20 {
+        agent.tick_phonation_into(&tb, now, &rhythms, None, 0.0, 1.0, &mut batch);
+        if let Some(first) = batch.notes.first() {
+            note = Some(first.clone());
+            break;
+        }
+        now = now.saturating_add(tb.hop as Tick);
+        rhythms.advance_in_place(tb.hop as f32 / tb.fs);
+    }
+    let mut note = note.expect("expected at least one rendered note spec");
+    let energy_before = match &note.articulation.core {
+        AnyArticulationCore::Entrain(core) => core.energy,
+        AnyArticulationCore::Seq(_) | AnyArticulationCore::Drone(_) => 0.0,
+    };
+
+    let mut render_rhythms = NeuralRhythms::default();
+    render_rhythms.theta.freq_hz = 4.0;
+    render_rhythms.theta.phase = 0.0;
+    render_rhythms.env_open = 1.0;
+    render_rhythms.env_level = 1.0;
+    for _ in 0..64 {
+        let signal = note
+            .articulation
+            .process(1.0, &render_rhythms, 1.0 / tb.fs, 1.0);
+        let sample = signal.amplitude * note.amp;
+        assert!(sample.is_finite());
+        render_rhythms.advance_in_place(1.0 / tb.fs);
+    }
+    let energy_after = match &note.articulation.core {
+        AnyArticulationCore::Entrain(core) => core.energy,
+        AnyArticulationCore::Seq(_) | AnyArticulationCore::Drone(_) => 0.0,
+    };
+    assert!((energy_after - energy_before).abs() <= 1e-6);
 }
 
 #[test]

@@ -4,7 +4,9 @@ use crate::core::utils::pink_noise_tick;
 use crate::life::lifecycle::LifecycleConfig;
 use crate::life::metabolism_policy::MetabolismPolicy;
 use crate::life::phonation_engine::PhonationKick;
-use crate::life::scenario::ArticulationCoreConfig;
+use crate::life::scenario::{
+    ArticulationCoreConfig, MetabolismRhythmReward, RhythmCouplingMode, RhythmRewardMetric,
+};
 use rand::{Rng, SeedableRng, rngs::SmallRng};
 use std::f32::consts::{PI, TAU};
 use tracing::debug;
@@ -156,6 +158,8 @@ pub struct KuramotoCore {
     pub action_cost: f32,
     pub recharge_rate: f32,
     pub sensitivity: Sensitivity,
+    pub rhythm_coupling: RhythmCouplingMode,
+    pub rhythm_reward: Option<MetabolismRhythmReward>,
     pub rhythm_phase: f32,
     pub rhythm_freq: f32,
     pub omega_rad: f32,
@@ -228,6 +232,11 @@ struct PhaseStep {
 }
 
 #[derive(Clone, Copy, Debug)]
+struct AttackInfo {
+    phase_err_at_attack: f32,
+}
+
+#[derive(Clone, Copy, Debug)]
 struct ThetaView {
     phase: f32,
     freq_hz: f32,
@@ -249,6 +258,49 @@ fn normalized_vitality(energy: f32, energy_cap: f32, vitality_exponent: f32) -> 
     };
     vitality = vitality.powf(exponent);
     if vitality.is_finite() { vitality } else { 0.0 }
+}
+
+#[inline]
+fn clamp01_finite(value: f32) -> f32 {
+    if value.is_finite() {
+        value.clamp(0.0, 1.0)
+    } else {
+        0.0
+    }
+}
+
+#[inline]
+fn coupling_multiplier_from_mode(mode: RhythmCouplingMode, vitality: f32) -> f32 {
+    match mode.sanitized() {
+        RhythmCouplingMode::TemporalOnly => 1.0,
+        RhythmCouplingMode::TemporalTimesVitality { lambda_v, v_floor } => {
+            let vitality = clamp01_finite(vitality);
+            let denom = (1.0 - v_floor).max(1e-6);
+            let g = ((vitality - v_floor) / denom).clamp(0.0, 1.0);
+            (1.0 + lambda_v * g).clamp(0.0, 2.0)
+        }
+    }
+}
+
+#[inline]
+fn attack_metric_value(metric: RhythmRewardMetric, phase_err_at_attack: f32) -> f32 {
+    match metric {
+        RhythmRewardMetric::AttackPhaseMatch => {
+            clamp01_finite(0.5 + 0.5 * phase_err_at_attack.cos())
+        }
+    }
+}
+
+#[inline]
+fn recharge_multiplier_from_reward(
+    reward: Option<MetabolismRhythmReward>,
+    attack_metric: Option<f32>,
+) -> f32 {
+    let Some(reward) = reward.map(MetabolismRhythmReward::sanitized) else {
+        return 1.0;
+    };
+    let t = clamp01_finite(attack_metric.unwrap_or(0.0));
+    (1.0 + reward.rho_t * t).clamp(0.0, 2.0)
 }
 
 /// Compute effective Kuramoto coupling strength.
@@ -357,7 +409,7 @@ impl KuramotoCore {
         let omega_target = TAU * theta.freq_hz;
         let env_gate = rhythms.env_open;
         let env_amp = rhythms.env_level.sqrt();
-        let k_eff = kuramoto_k_eff(
+        let k_time = kuramoto_k_eff(
             omega_target,
             global_coupling,
             self.sensitivity.theta,
@@ -366,6 +418,23 @@ impl KuramotoCore {
             env_gate,
             env_amp,
         );
+        let k_time = if k_time.is_finite() {
+            k_time.max(0.0)
+        } else {
+            0.0
+        };
+        let vitality = clamp01_finite(self.vitality_level);
+        let coupling_mult = coupling_multiplier_from_mode(self.rhythm_coupling, vitality);
+        let k_eff = if k_time <= 0.0 {
+            0.0
+        } else {
+            k_time * coupling_mult
+        };
+        let k_eff = if k_eff.is_finite() {
+            k_eff.max(0.0)
+        } else {
+            0.0
+        };
         self.dbg_last_k_eff = k_eff;
 
         let mut pull = self.k_omega * theta.alpha * env_gate;
@@ -399,7 +468,7 @@ impl KuramotoCore {
         theta: &ThetaView,
         bootstrap_active: bool,
         k_eff: f32,
-    ) -> bool {
+    ) -> Option<AttackInfo> {
         self.record_gate_failures(gate);
 
         let target_phase = wrap_0_tau(theta.phase + self.phase_offset);
@@ -457,7 +526,13 @@ impl KuramotoCore {
             }
         }
 
-        attack
+        if attack {
+            Some(AttackInfo {
+                phase_err_at_attack,
+            })
+        } else {
+            None
+        }
     }
 
     #[inline]
@@ -538,16 +613,34 @@ impl ArticulationCore for KuramotoCore {
         let bootstrap_active = self.bootstrap_timer > 0.0;
         let step = self.update_phase(&theta, rhythms, dt, global_coupling, bootstrap_active);
         let mut attacked_this_sample = false;
+        let mut attack_metric_sum = 0.0f32;
+        let mut attack_metric_count = 0u32;
 
         while self.rhythm_phase >= 2.0 * PI {
             self.rhythm_phase -= 2.0 * PI;
             self.dbg_wraps += 1;
-            let attacked =
+            let attack_info =
                 self.maybe_trigger_attack(&gate, rhythms, &theta, bootstrap_active, step.k_eff);
-            attacked_this_sample = attacked_this_sample || attacked;
+            if let Some(info) = attack_info {
+                attacked_this_sample = true;
+                if let Some(reward) = self.rhythm_reward {
+                    let metric_t = attack_metric_value(reward.metric, info.phase_err_at_attack);
+                    attack_metric_sum += metric_t;
+                    attack_metric_count += 1;
+                }
+            }
         }
         if attacked_this_sample {
-            self.apply_energy_delta(policy.attack_delta_with_recharge(consonance));
+            let attack_metric = if attack_metric_count > 0 {
+                Some(attack_metric_sum / attack_metric_count as f32)
+            } else {
+                None
+            };
+            let recharge_multiplier =
+                recharge_multiplier_from_reward(self.rhythm_reward, attack_metric);
+            let delta =
+                policy.attack_delta_with_recharge_multiplier(consonance, recharge_multiplier);
+            self.apply_energy_delta(delta);
         }
         self.update_envelope(dt);
 
@@ -749,6 +842,8 @@ impl AnyArticulationCore {
                 lifecycle,
                 rhythm_freq,
                 rhythm_sensitivity,
+                rhythm_coupling,
+                rhythm_reward,
                 ..
             } => {
                 let derived = envelope_from_lifecycle(lifecycle);
@@ -784,6 +879,8 @@ impl AnyArticulationCore {
                         theta: rhythm_sensitivity.unwrap_or(sensitivity.theta),
                         ..sensitivity
                     },
+                    rhythm_coupling: rhythm_coupling.sanitized(),
+                    rhythm_reward: rhythm_reward.map(MetabolismRhythmReward::sanitized),
                     rhythm_phase: rng.random_range(0.0..std::f32::consts::TAU),
                     rhythm_freq: init_freq,
                     omega_rad: TAU * init_freq,
@@ -954,6 +1051,8 @@ mod tests {
             action_cost: 0.0,
             recharge_rate: 0.0,
             sensitivity: Sensitivity::default(),
+            rhythm_coupling: RhythmCouplingMode::TemporalOnly,
+            rhythm_reward: None,
             rhythm_phase: 0.0,
             rhythm_freq: 5.0,
             omega_rad: TAU * 5.0,
@@ -1113,6 +1212,221 @@ mod tests {
             assert!((core.rhythm_freq - manual.rhythm_freq).abs() <= 1e-6);
             assert!((core.rhythm_phase - manual.rhythm_phase).abs() <= 1e-6);
         }
+    }
+
+    #[test]
+    fn vitality_coupling_increases_k_eff_when_opted_in() {
+        let mut low = test_core(0.16);
+        let mut high = test_core(1.0);
+
+        low.sensitivity.theta = 0.8;
+        high.sensitivity.theta = 0.8;
+        low.rhythm_coupling = RhythmCouplingMode::TemporalTimesVitality {
+            lambda_v: 1.5,
+            v_floor: 0.2,
+        };
+        high.rhythm_coupling = low.rhythm_coupling;
+
+        let theta = ThetaView {
+            phase: 0.2,
+            freq_hz: 6.0,
+            mag: 0.9,
+            alpha: 0.8,
+            beta: 0.2,
+        };
+        let rhythms = NeuralRhythms {
+            theta: crate::core::modulation::RhythmBand {
+                phase: theta.phase,
+                freq_hz: theta.freq_hz,
+                mag: theta.mag,
+                alpha: theta.alpha,
+                beta: theta.beta,
+            },
+            delta: crate::core::modulation::RhythmBand::default(),
+            env_level: 0.81,
+            env_open: 0.95,
+        };
+
+        let dt = 0.01;
+        let global_coupling = 0.7;
+        low.update_phase(&theta, &rhythms, dt, global_coupling, false);
+        high.update_phase(&theta, &rhythms, dt, global_coupling, false);
+
+        assert!(
+            high.dbg_last_k_eff > low.dbg_last_k_eff,
+            "higher vitality should increase effective coupling in TemporalTimesVitality mode"
+        );
+        assert!(low.dbg_last_k_eff > 0.0);
+    }
+
+    #[test]
+    fn vitality_coupling_multiplier_is_capped() {
+        let mut core = test_core(1.0);
+        core.sensitivity.theta = 0.8;
+        core.rhythm_coupling = RhythmCouplingMode::TemporalTimesVitality {
+            lambda_v: 1_000.0,
+            v_floor: 0.0,
+        };
+
+        let theta = ThetaView {
+            phase: 0.2,
+            freq_hz: 6.0,
+            mag: 0.9,
+            alpha: 0.8,
+            beta: 0.2,
+        };
+        let rhythms = NeuralRhythms {
+            theta: crate::core::modulation::RhythmBand {
+                phase: theta.phase,
+                freq_hz: theta.freq_hz,
+                mag: theta.mag,
+                alpha: theta.alpha,
+                beta: theta.beta,
+            },
+            delta: crate::core::modulation::RhythmBand::default(),
+            env_level: 0.81,
+            env_open: 0.95,
+        };
+
+        let dt = 0.01;
+        let global_coupling = 0.7;
+        core.update_phase(&theta, &rhythms, dt, global_coupling, false);
+
+        let k_time = kuramoto_k_eff(
+            TAU * theta.freq_hz,
+            global_coupling,
+            core.sensitivity.theta,
+            theta.mag,
+            theta.alpha,
+            rhythms.env_open,
+            rhythms.env_level.sqrt(),
+        );
+        assert!(
+            core.dbg_last_k_eff <= 2.0 * k_time + 1e-6,
+            "effective coupling should be capped at 2x temporal coupling"
+        );
+    }
+
+    #[test]
+    fn vitality_mode_cannot_create_coupling_when_env_gate_closed() {
+        let mut core = test_core(1.0);
+        core.sensitivity.theta = 1.0;
+        core.rhythm_coupling = RhythmCouplingMode::TemporalTimesVitality {
+            lambda_v: 2.0,
+            v_floor: 0.0,
+        };
+        core.vitality_level = 1.0;
+
+        let theta = ThetaView {
+            phase: 0.1,
+            freq_hz: 6.0,
+            mag: 1.0,
+            alpha: 1.0,
+            beta: 0.2,
+        };
+        let rhythms = NeuralRhythms {
+            theta: crate::core::modulation::RhythmBand {
+                phase: theta.phase,
+                freq_hz: theta.freq_hz,
+                mag: theta.mag,
+                alpha: theta.alpha,
+                beta: theta.beta,
+            },
+            delta: crate::core::modulation::RhythmBand::default(),
+            env_level: 1.0,
+            env_open: 0.0,
+        };
+
+        core.update_phase(&theta, &rhythms, 0.01, 0.7, false);
+        assert_eq!(core.dbg_last_k_eff, 0.0);
+    }
+
+    #[test]
+    fn update_phase_keff_is_finite_under_nonfinite_inputs() {
+        let mut core = test_core(1.0);
+        core.rhythm_coupling = RhythmCouplingMode::TemporalTimesVitality {
+            lambda_v: 2.0,
+            v_floor: 0.0,
+        };
+
+        let theta = ThetaView {
+            phase: 0.1,
+            freq_hz: 6.0,
+            mag: 1.0,
+            alpha: 1.0,
+            beta: 0.2,
+        };
+        let rhythms = NeuralRhythms {
+            theta: crate::core::modulation::RhythmBand {
+                phase: theta.phase,
+                freq_hz: theta.freq_hz,
+                mag: theta.mag,
+                alpha: theta.alpha,
+                beta: theta.beta,
+            },
+            delta: crate::core::modulation::RhythmBand::default(),
+            env_level: -1.0,
+            env_open: 1.0,
+        };
+
+        core.update_phase(&theta, &rhythms, 0.01, 0.7, false);
+        assert!(core.dbg_last_k_eff.is_finite());
+        assert_eq!(core.dbg_last_k_eff, 0.0);
+    }
+
+    #[test]
+    fn attack_metric_nan_is_sanitized() {
+        let t = attack_metric_value(RhythmRewardMetric::AttackPhaseMatch, f32::NAN);
+        assert_eq!(t, 0.0);
+    }
+
+    #[test]
+    fn rhythm_reward_increases_energy_delta_when_attack_occurs() {
+        let mut base = test_core(1.0);
+        let mut rewarded = test_core(1.0);
+
+        for core in [&mut base, &mut rewarded] {
+            core.state = ArticulationState::Idle;
+            core.retrigger = true;
+            core.rhythm_phase = 2.0 * PI + 0.1;
+            core.phase_offset = 0.0;
+            core.basal_cost = 0.0;
+            core.action_cost = 0.2;
+            core.recharge_rate = 0.5;
+            core.rhythm_coupling = RhythmCouplingMode::TemporalOnly;
+            core.bootstrap_timer = 0.0;
+            core.env_open_threshold = 0.0;
+            core.env_level_min = 0.0;
+            core.mag_threshold = 0.0;
+            core.alpha_threshold = 0.0;
+            core.beta_threshold = 1.0;
+        }
+        rewarded.rhythm_reward = Some(MetabolismRhythmReward {
+            rho_t: 1.0,
+            metric: RhythmRewardMetric::AttackPhaseMatch,
+        });
+
+        let mut rhythms = NeuralRhythms::default();
+        rhythms.theta.phase = 0.1;
+        rhythms.theta.freq_hz = 6.0;
+        rhythms.theta.mag = 1.0;
+        rhythms.theta.alpha = 1.0;
+        rhythms.theta.beta = 0.2;
+        rhythms.env_open = 1.0;
+        rhythms.env_level = 1.0;
+
+        let consonance = 1.0;
+        base.process(consonance, &rhythms, 0.0, 1.0);
+        rewarded.process(consonance, &rhythms, 0.0, 1.0);
+
+        assert_eq!(base.dbg_attacks, 1);
+        assert_eq!(rewarded.dbg_attacks, 1);
+        assert!(rewarded.energy > base.energy);
+        let expected_extra = 0.5;
+        assert!(
+            ((rewarded.energy - base.energy) - expected_extra).abs() < 1e-5,
+            "rhythm reward should increase only recharge contribution"
+        );
     }
 
     #[test]

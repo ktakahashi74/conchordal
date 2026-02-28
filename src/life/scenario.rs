@@ -220,6 +220,8 @@ pub enum ArticulationCoreConfig {
         lifecycle: LifecycleConfig,
         rhythm_freq: Option<f32>,
         rhythm_sensitivity: Option<f32>,
+        rhythm_coupling: RhythmCouplingMode,
+        rhythm_reward: Option<MetabolismRhythmReward>,
         breath_gain_init: Option<f32>,
     },
     Seq {
@@ -232,12 +234,75 @@ pub enum ArticulationCoreConfig {
     },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum RhythmCouplingMode {
+    #[default]
+    TemporalOnly,
+    TemporalTimesVitality {
+        lambda_v: f32,
+        v_floor: f32,
+    },
+}
+
+impl RhythmCouplingMode {
+    pub fn sanitized(self) -> Self {
+        match self {
+            RhythmCouplingMode::TemporalOnly => RhythmCouplingMode::TemporalOnly,
+            RhythmCouplingMode::TemporalTimesVitality { lambda_v, v_floor } => {
+                RhythmCouplingMode::TemporalTimesVitality {
+                    lambda_v: sanitize_nonnegative_finite(lambda_v, 0.0),
+                    v_floor: sanitize_v_floor(v_floor),
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RhythmRewardMetric {
+    AttackPhaseMatch,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct MetabolismRhythmReward {
+    pub rho_t: f32,
+    pub metric: RhythmRewardMetric,
+}
+
+impl MetabolismRhythmReward {
+    pub fn sanitized(self) -> Self {
+        Self {
+            rho_t: sanitize_nonnegative_finite(self.rho_t, 0.0),
+            metric: self.metric,
+        }
+    }
+}
+
+fn sanitize_nonnegative_finite(value: f32, fallback: f32) -> f32 {
+    if value.is_finite() {
+        value.max(0.0)
+    } else {
+        fallback
+    }
+}
+
+fn sanitize_v_floor(v_floor: f32) -> f32 {
+    if v_floor.is_finite() {
+        // Keep denominator in g(v) = (v - v_floor) / (1 - v_floor) stable.
+        v_floor.clamp(0.0, 0.999)
+    } else {
+        0.0
+    }
+}
+
 impl Default for ArticulationCoreConfig {
     fn default() -> Self {
         ArticulationCoreConfig::Entrain {
             lifecycle: LifecycleConfig::default(),
             rhythm_freq: None,
             rhythm_sensitivity: None,
+            rhythm_coupling: RhythmCouplingMode::TemporalOnly,
+            rhythm_reward: None,
             breath_gain_init: None,
         }
     }

@@ -174,6 +174,8 @@ fn articulation_snapshot_kuramoto_decay_signature() {
         },
         rhythm_freq: Some(6.0),
         rhythm_sensitivity: None,
+        rhythm_coupling: crate::life::scenario::RhythmCouplingMode::TemporalOnly,
+        rhythm_reward: None,
         breath_gain_init: None,
     };
     let mut articulation = AnyArticulationCore::from_config(&core, fs, 7, &mut rng);

@@ -13,8 +13,8 @@ use super::control::{
 };
 use super::lifecycle::LifecycleConfig;
 use super::scenario::{
-    Action, ArticulationCoreConfig, EnvelopeConfig, Scenario, SceneMarker, SpawnSpec,
-    SpawnStrategy, TimedEvent,
+    Action, ArticulationCoreConfig, EnvelopeConfig, MetabolismRhythmReward, RhythmCouplingMode,
+    RhythmRewardMetric, Scenario, SceneMarker, SpawnSpec, SpawnStrategy, TimedEvent,
 };
 
 const DEFAULT_RELEASE_SEC: f32 = 0.05;
@@ -65,6 +65,8 @@ struct SpeciesSpec {
     phonation: Option<PhonationKind>,
     metabolism_rate: Option<f32>,
     adsr: Option<AdsrSpec>,
+    rhythm_coupling: RhythmCouplingMode,
+    rhythm_reward: Option<MetabolismRhythmReward>,
 }
 
 impl SpeciesSpec {
@@ -77,6 +79,8 @@ impl SpeciesSpec {
             phonation: None,
             metabolism_rate: None,
             adsr: None,
+            rhythm_coupling: RhythmCouplingMode::TemporalOnly,
+            rhythm_reward: None,
         }
     }
 
@@ -120,6 +124,8 @@ impl SpeciesSpec {
                 lifecycle: self.lifecycle_config(),
                 rhythm_freq: None,
                 rhythm_sensitivity: None,
+                rhythm_coupling: self.rhythm_coupling,
+                rhythm_reward: self.rhythm_reward,
                 breath_gain_init: None,
             },
             BrainKind::Seq => ArticulationCoreConfig::Seq {
@@ -229,6 +235,46 @@ impl SpeciesSpec {
             sustain_level: s.clamp(0.0, 1.0),
             release_sec: r.max(0.0),
         });
+    }
+
+    fn set_rhythm_coupling(&mut self, mode: &str) {
+        let lowered = mode.trim().to_ascii_lowercase();
+        self.rhythm_coupling = match lowered.as_str() {
+            "temporal" | "temporal_only" | "temporalonly" => RhythmCouplingMode::TemporalOnly,
+            other => {
+                warn!(
+                    "rhythm_coupling() expects 'temporal'; use rhythm_coupling_vitality() for vitality modulation, got '{}'",
+                    other
+                );
+                self.rhythm_coupling
+            }
+        };
+    }
+
+    fn set_rhythm_coupling_vitality(&mut self, lambda_v: f32, v_floor: f32) {
+        self.rhythm_coupling =
+            RhythmCouplingMode::TemporalTimesVitality { lambda_v, v_floor }.sanitized();
+    }
+
+    fn set_rhythm_reward(&mut self, rho_t: f32, metric: &str) {
+        let lowered = metric.trim().to_ascii_lowercase();
+        self.rhythm_reward = match lowered.as_str() {
+            "attack_phase_match" | "attackphasematch" | "phase_match" => Some(
+                MetabolismRhythmReward {
+                    rho_t,
+                    metric: RhythmRewardMetric::AttackPhaseMatch,
+                }
+                .sanitized(),
+            ),
+            "none" | "off" | "disabled" => None,
+            other => {
+                warn!(
+                    "rhythm_reward() expects 'attack_phase_match' or 'none', got '{}'",
+                    other
+                );
+                self.rhythm_reward
+            }
+        };
     }
 }
 
@@ -699,6 +745,29 @@ impl ScriptHost {
                 species
                     .spec
                     .set_adsr(a as f32, d as f32, s as f32, r as f32);
+                species
+            },
+        );
+        engine.register_fn(
+            "rhythm_coupling",
+            |mut species: SpeciesHandle, mode: &str| {
+                species.spec.set_rhythm_coupling(mode);
+                species
+            },
+        );
+        engine.register_fn(
+            "rhythm_coupling_vitality",
+            |mut species: SpeciesHandle, lambda_v: FLOAT, v_floor: FLOAT| {
+                species
+                    .spec
+                    .set_rhythm_coupling_vitality(lambda_v as f32, v_floor as f32);
+                species
+            },
+        );
+        engine.register_fn(
+            "rhythm_reward",
+            |mut species: SpeciesHandle, rho_t: FLOAT, metric: &str| {
+                species.spec.set_rhythm_reward(rho_t as f32, metric);
                 species
             },
         );
@@ -1286,6 +1355,76 @@ impl ScriptHost {
                     }
                     GroupStatus::Live => ctx.warn_live_builder(handle.id, "adsr"),
                     _ => ctx.warn_live_builder(handle.id, "adsr"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_rhythm_coupling = ctx.clone();
+        engine.register_fn(
+            "rhythm_coupling",
+            move |handle: GroupHandle, mode: &str| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_rhythm_coupling
+                    .lock()
+                    .expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("rhythm_coupling ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                match group.status {
+                    GroupStatus::Draft => group.spec.set_rhythm_coupling(mode),
+                    GroupStatus::Live => ctx.warn_live_builder(handle.id, "rhythm_coupling"),
+                    _ => ctx.warn_live_builder(handle.id, "rhythm_coupling"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_rhythm_coupling_vitality = ctx.clone();
+        engine.register_fn(
+            "rhythm_coupling_vitality",
+            move |handle: GroupHandle,
+                  lambda_v: FLOAT,
+                  v_floor: FLOAT|
+                  -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_rhythm_coupling_vitality
+                    .lock()
+                    .expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!(
+                        "rhythm_coupling_vitality ignored for unknown group {}",
+                        handle.id
+                    );
+                    return Ok(handle);
+                };
+                match group.status {
+                    GroupStatus::Draft => group
+                        .spec
+                        .set_rhythm_coupling_vitality(lambda_v as f32, v_floor as f32),
+                    GroupStatus::Live => {
+                        ctx.warn_live_builder(handle.id, "rhythm_coupling_vitality")
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "rhythm_coupling_vitality"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_rhythm_reward = ctx.clone();
+        engine.register_fn(
+            "rhythm_reward",
+            move |handle: GroupHandle,
+                  rho_t: FLOAT,
+                  metric: &str|
+                  -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_rhythm_reward
+                    .lock()
+                    .expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("rhythm_reward ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                match group.status {
+                    GroupStatus::Draft => group.spec.set_rhythm_reward(rho_t as f32, metric),
+                    GroupStatus::Live => ctx.warn_live_builder(handle.id, "rhythm_reward"),
+                    _ => ctx.warn_live_builder(handle.id, "rhythm_reward"),
                 }
                 Ok(handle)
             },

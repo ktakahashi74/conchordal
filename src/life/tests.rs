@@ -326,6 +326,8 @@ fn agent_lifecycle_decay_death() {
             },
             rhythm_freq: None,
             rhythm_sensitivity: None,
+            rhythm_coupling: crate::life::scenario::RhythmCouplingMode::TemporalOnly,
+            rhythm_reward: None,
             breath_gain_init: None,
         };
         let mut rng = rand::rngs::StdRng::seed_from_u64(7);

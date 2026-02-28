@@ -55,7 +55,20 @@ impl MetabolismPolicy {
     }
 
     pub fn attack_delta_with_recharge(&self, consonance: f32) -> f32 {
-        -self.action_cost_per_attack + self.recharge_per_attack * clamp01_finite(consonance)
+        self.attack_delta_with_recharge_multiplier(consonance, 1.0)
+    }
+
+    pub fn attack_delta_with_recharge_multiplier(
+        &self,
+        consonance: f32,
+        recharge_mult: f32,
+    ) -> f32 {
+        let mult = if recharge_mult.is_finite() {
+            recharge_mult.clamp(0.0, 2.0)
+        } else {
+            1.0
+        };
+        -self.action_cost_per_attack + self.recharge_per_attack * clamp01_finite(consonance) * mult
     }
 
     pub fn attack_delta_cost_only(&self) -> f32 {
@@ -293,6 +306,41 @@ mod tests {
         let (next, tel) = policy.apply_attack_with_recharge(1.0, f32::NAN);
         assert!(next.is_finite());
         approx_eq(tel.recharge_delta, 0.0);
+    }
+
+    #[test]
+    fn attack_delta_with_recharge_multiplier_scales_recharge_only() {
+        let policy = MetabolismPolicy {
+            basal_cost_per_sec: 0.0,
+            action_cost_per_attack: 0.3,
+            recharge_per_attack: 0.5,
+        };
+        let c = 0.6;
+        let base = policy.attack_delta_with_recharge_multiplier(c, 1.0);
+        let boosted = policy.attack_delta_with_recharge_multiplier(c, 2.0);
+        approx_eq(base, -0.3 + 0.5 * c);
+        approx_eq(boosted, -0.3 + 0.5 * c * 2.0);
+        approx_eq(boosted - base, 0.5 * c);
+    }
+
+    #[test]
+    fn attack_delta_with_recharge_multiplier_clamps_and_handles_zero_consonance() {
+        let policy = MetabolismPolicy {
+            basal_cost_per_sec: 0.0,
+            action_cost_per_attack: 0.25,
+            recharge_per_attack: 0.5,
+        };
+        let low = policy.attack_delta_with_recharge_multiplier(0.8, -10.0);
+        let high = policy.attack_delta_with_recharge_multiplier(0.8, 10.0);
+        let nan = policy.attack_delta_with_recharge_multiplier(0.8, f32::NAN);
+        approx_eq(low, -0.25);
+        approx_eq(high, -0.25 + 0.5 * 0.8 * 2.0);
+        approx_eq(nan, -0.25 + 0.5 * 0.8);
+
+        let zero_c_low = policy.attack_delta_with_recharge_multiplier(0.0, 0.0);
+        let zero_c_high = policy.attack_delta_with_recharge_multiplier(0.0, 2.0);
+        approx_eq(zero_c_low, -0.25);
+        approx_eq(zero_c_high, -0.25);
     }
 
     #[test]

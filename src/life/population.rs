@@ -217,6 +217,8 @@ impl Population {
                 id: agent.id(),
                 pitch_hz,
                 amp,
+                continuous_drive: agent.effective_control.body.continuous_drive,
+                pitch_smooth_tau: agent.effective_control.body.pitch_smooth_tau,
             });
         }
     }

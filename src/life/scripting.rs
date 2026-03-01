@@ -169,6 +169,14 @@ impl SpeciesSpec {
         self.control.set_landscape_weight_clamped(value);
     }
 
+    fn set_continuous_drive(&mut self, value: f32) {
+        self.control.set_continuous_drive_clamped(value);
+    }
+
+    fn set_pitch_smooth_tau(&mut self, value: f32) {
+        self.control.set_pitch_smooth_tau_clamped(value);
+    }
+
     fn set_exploration(&mut self, value: f32) {
         self.control.set_exploration_clamped(value);
     }
@@ -762,6 +770,28 @@ impl ScriptHost {
                 species
             },
         );
+        engine.register_fn(
+            "sustain_drive",
+            |mut species: SpeciesHandle, value: FLOAT| {
+                species.spec.set_continuous_drive(value as f32);
+                species
+            },
+        );
+        engine.register_fn("sustain_drive", |mut species: SpeciesHandle, value: INT| {
+            species.spec.set_continuous_drive(value as f32);
+            species
+        });
+        engine.register_fn(
+            "pitch_smooth",
+            |mut species: SpeciesHandle, value: FLOAT| {
+                species.spec.set_pitch_smooth_tau(value as f32);
+                species
+            },
+        );
+        engine.register_fn("pitch_smooth", |mut species: SpeciesHandle, value: INT| {
+            species.spec.set_pitch_smooth_tau(value as f32);
+            species
+        });
         engine.register_fn("exploration", |mut species: SpeciesHandle, value: FLOAT| {
             species.spec.set_exploration(value as f32);
             species
@@ -1381,6 +1411,106 @@ impl ScriptHost {
                         group.pending_update.landscape_weight = Some(value);
                     }
                     _ => ctx.warn_live_builder(handle.id, "landscape_weight"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_sustain_drive = ctx.clone();
+        engine.register_fn(
+            "sustain_drive",
+            move |handle: GroupHandle, value: FLOAT| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_sustain_drive
+                    .lock()
+                    .expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("sustain_drive ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                let value = value as f32;
+                match group.status {
+                    GroupStatus::Draft => {
+                        group.spec.set_continuous_drive(value);
+                    }
+                    GroupStatus::Live => {
+                        group.spec.set_continuous_drive(value);
+                        group.pending_update.continuous_drive = Some(value);
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "sustain_drive"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_sustain_drive_int = ctx.clone();
+        engine.register_fn(
+            "sustain_drive",
+            move |handle: GroupHandle, value: INT| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_sustain_drive_int
+                    .lock()
+                    .expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("sustain_drive ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                let value = value as f32;
+                match group.status {
+                    GroupStatus::Draft => {
+                        group.spec.set_continuous_drive(value);
+                    }
+                    GroupStatus::Live => {
+                        group.spec.set_continuous_drive(value);
+                        group.pending_update.continuous_drive = Some(value);
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "sustain_drive"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_pitch_smooth = ctx.clone();
+        engine.register_fn(
+            "pitch_smooth",
+            move |handle: GroupHandle, value: FLOAT| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_pitch_smooth
+                    .lock()
+                    .expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("pitch_smooth ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                let value = value as f32;
+                match group.status {
+                    GroupStatus::Draft => {
+                        group.spec.set_pitch_smooth_tau(value);
+                    }
+                    GroupStatus::Live => {
+                        group.spec.set_pitch_smooth_tau(value);
+                        group.pending_update.pitch_smooth_tau = Some(value);
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "pitch_smooth"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_pitch_smooth_int = ctx.clone();
+        engine.register_fn(
+            "pitch_smooth",
+            move |handle: GroupHandle, value: INT| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_pitch_smooth_int
+                    .lock()
+                    .expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("pitch_smooth ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                let value = value as f32;
+                match group.status {
+                    GroupStatus::Draft => {
+                        group.spec.set_pitch_smooth_tau(value);
+                    }
+                    GroupStatus::Live => {
+                        group.spec.set_pitch_smooth_tau(value);
+                        group.pending_update.pitch_smooth_tau = Some(value);
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "pitch_smooth"),
                 }
                 Ok(handle)
             },

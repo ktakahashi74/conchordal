@@ -100,6 +100,24 @@ impl AgentControl {
     }
 
     #[inline]
+    pub fn set_continuous_drive_clamped(&mut self, value: f32) {
+        self.body.continuous_drive = if value.is_finite() {
+            value.max(0.0)
+        } else {
+            0.0
+        };
+    }
+
+    #[inline]
+    pub fn set_pitch_smooth_tau_clamped(&mut self, value: f32) {
+        self.body.pitch_smooth_tau = if value.is_finite() {
+            value.max(0.0)
+        } else {
+            0.0
+        };
+    }
+
+    #[inline]
     pub fn set_anneal_temp_clamped(&mut self, value: f32) {
         self.pitch.anneal_temp = if value.is_finite() {
             value.max(0.0)
@@ -142,6 +160,8 @@ pub struct BodyControl {
     pub amp: f32,
     pub timbre: TimbreControl,
     pub modes: Option<ModePattern>,
+    pub continuous_drive: f32,
+    pub pitch_smooth_tau: f32,
 }
 
 impl Default for BodyControl {
@@ -151,6 +171,8 @@ impl Default for BodyControl {
             amp: 0.18,
             timbre: TimbreControl::default(),
             modes: None,
+            continuous_drive: 0.0,
+            pitch_smooth_tau: 0.0,
         }
     }
 }
@@ -271,6 +293,8 @@ pub struct ControlUpdate {
     pub timbre_inharmonic: Option<f32>,
     pub timbre_width: Option<f32>,
     pub timbre_motion: Option<f32>,
+    pub continuous_drive: Option<f32>,
+    pub pitch_smooth_tau: Option<f32>,
 }
 
 impl ControlUpdate {
@@ -288,6 +312,8 @@ impl ControlUpdate {
             && self.timbre_inharmonic.is_none()
             && self.timbre_width.is_none()
             && self.timbre_motion.is_none()
+            && self.continuous_drive.is_none()
+            && self.pitch_smooth_tau.is_none()
     }
 }
 
@@ -332,6 +358,12 @@ impl AgentControl {
         if let Some(motion) = update.timbre_motion {
             self.set_timbre_motion_clamped(motion);
         }
+        if let Some(drive) = update.continuous_drive {
+            self.set_continuous_drive_clamped(drive);
+        }
+        if let Some(tau) = update.pitch_smooth_tau {
+            self.set_pitch_smooth_tau_clamped(tau);
+        }
     }
 }
 
@@ -357,6 +389,8 @@ mod tests {
             timbre_inharmonic: Some(2.0),
             timbre_width: Some(0.25),
             timbre_motion: Some(0.5),
+            continuous_drive: None,
+            pitch_smooth_tau: None,
         };
         control.apply_update(&update);
 

@@ -44,6 +44,7 @@ pub struct Voice {
     amp_alpha: f32,
     pitch_alpha: f32,
     sample_dt: f32,
+    continuous_drive: f32,
 }
 
 impl Voice {
@@ -122,6 +123,7 @@ impl Voice {
             amp_alpha,
             pitch_alpha,
             sample_dt,
+            continuous_drive: 0.0,
         })
     }
 
@@ -259,8 +261,9 @@ impl Voice {
         signal.amplitude *= gain;
         signal.is_active = signal.is_active && signal.amplitude > 0.0;
 
-        let drive = self.pending_impulse_energy;
+        let impulse = self.pending_impulse_energy;
         self.pending_impulse_energy = 0.0;
+        let drive = impulse + self.continuous_drive * signal.amplitude;
         let ctrl = VoiceControlBlock {
             pitch_hz: ControlRamp {
                 start: self.current_pitch_hz.max(1.0),
@@ -298,6 +301,14 @@ impl Voice {
                 break;
             }
         }
+    }
+
+    pub fn set_continuous_drive(&mut self, level: f32) {
+        self.continuous_drive = if level.is_finite() {
+            level.max(0.0)
+        } else {
+            0.0
+        };
     }
 
     pub fn set_smoothing_tau_sec(&mut self, tau_sec: f32) {

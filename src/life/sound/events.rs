@@ -38,4 +38,6 @@ pub struct VoiceTarget {
     pub id: IndividualId,
     pub pitch_hz: f32,
     pub amp: f32,
+    pub continuous_drive: f32,
+    pub pitch_smooth_tau: f32,
 }

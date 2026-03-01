@@ -99,7 +99,8 @@ impl ScheduleRenderer {
         }
         for state in voice_targets {
             if let Some(voice) = self.agent_voices.get_mut(&state.id) {
-                voice.set_target(state.pitch_hz, state.amp, 0.0);
+                voice.set_target(state.pitch_hz, state.amp, state.pitch_smooth_tau);
+                voice.set_continuous_drive(state.continuous_drive);
             }
         }
         for cmd in audio_cmds {
@@ -422,6 +423,8 @@ mod tests {
             id: 11,
             pitch_hz: 220.0,
             amp: 0.4,
+            continuous_drive: 0.0,
+            pitch_smooth_tau: 0.0,
         }];
         let cmds = [AudioCommand::EnsureVoice {
             id: 11,
@@ -450,6 +453,8 @@ mod tests {
             id: 12,
             pitch_hz: 220.0,
             amp: 0.4,
+            continuous_drive: 0.0,
+            pitch_smooth_tau: 0.0,
         }];
         let cmds = [
             AudioCommand::EnsureVoice {
@@ -527,6 +532,8 @@ mod tests {
             id: 13,
             pitch_hz: 220.0,
             amp: 0.4,
+            continuous_drive: 0.0,
+            pitch_smooth_tau: 0.0,
         }];
         let cmds = [
             AudioCommand::Impulse {
@@ -561,6 +568,8 @@ mod tests {
             id: 14,
             pitch_hz: 220.0,
             amp: 0.4,
+            continuous_drive: 0.0,
+            pitch_smooth_tau: 0.0,
         }];
         let cmds = [
             AudioCommand::EnsureVoice {
@@ -604,6 +613,8 @@ mod tests {
             id: 16,
             pitch_hz: 440.0,
             amp: 0.8,
+            continuous_drive: 0.0,
+            pitch_smooth_tau: 0.0,
         }];
         let cmds = [AudioCommand::EnsureVoice {
             id: 16,
@@ -636,6 +647,8 @@ mod tests {
             id: 15,
             pitch_hz: 220.0,
             amp: 0.4,
+            continuous_drive: 0.0,
+            pitch_smooth_tau: 0.0,
         }];
         let cmds = [
             AudioCommand::EnsureVoice {
@@ -673,6 +686,8 @@ mod tests {
             id: 22,
             pitch_hz: 220.0,
             amp: 0.4,
+            continuous_drive: 0.0,
+            pitch_smooth_tau: 0.0,
         }];
         let cmds = [
             AudioCommand::EnsureVoice {

@@ -45,6 +45,7 @@ pub struct Voice {
     pitch_alpha: f32,
     sample_dt: f32,
     continuous_drive: f32,
+    noise_state: u64,
 }
 
 impl Voice {
@@ -124,6 +125,7 @@ impl Voice {
             pitch_alpha,
             sample_dt,
             continuous_drive: 0.0,
+            noise_state: 0x9E3779B97F4A7C15_u64.wrapping_add(onset),
         })
     }
 
@@ -263,7 +265,8 @@ impl Voice {
 
         let impulse = self.pending_impulse_energy;
         self.pending_impulse_energy = 0.0;
-        let drive = impulse + self.continuous_drive * signal.amplitude;
+        let noise = fast_noise(&mut self.noise_state);
+        let drive = impulse + self.continuous_drive * signal.amplitude * noise;
         let ctrl = VoiceControlBlock {
             pitch_hz: ControlRamp {
                 start: self.current_pitch_hz.max(1.0),
@@ -431,6 +434,17 @@ impl Voice {
 
         (attack * release).clamp(0.0, 1.0)
     }
+}
+
+/// Fast per-sample noise via splitmix64, returns value in [-1, 1].
+fn fast_noise(state: &mut u64) -> f32 {
+    *state = state.wrapping_add(0x9E3779B97F4A7C15);
+    let mut z = *state;
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58476D1CE4E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D049BB133111EB);
+    z ^= z >> 31;
+    // Map to [-1, 1]
+    (z as i64 as f64 / i64::MAX as f64) as f32
 }
 
 fn smooth_step(current: f32, target: f32, alpha: f32) -> f32 {
@@ -646,5 +660,49 @@ mod tests {
         let mut out = vec![0.0f32; tb.hop];
         voice.render_block(0, tb.fs, 1.0 / tb.fs, &mut rhythms, &mut out);
         assert!(out.iter().any(|s| s.abs() > 1e-6));
+    }
+
+    #[test]
+    fn continuous_drive_sustains_sound_without_impulse() {
+        let tb = Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        };
+        let mut voice = Voice::from_parts(tb, 0, Tick::MAX, 440.0, 0.5, None, None).expect("voice");
+        voice.set_continuous_drive(0.01);
+
+        // Render 2 seconds (enough for steady state at T60=0.8)
+        let dt = 1.0 / tb.fs;
+        let blocks = (2.0 * tb.fs as f64 / tb.hop as f64) as usize;
+        let mut last_block = vec![0.0f32; tb.hop];
+        for b in 0..blocks {
+            let tick = (b * tb.hop) as Tick;
+            let mut rhythms = NeuralRhythms::default();
+            voice.render_block(tick, tb.fs, dt, &mut rhythms, &mut last_block);
+        }
+        let peak = last_block.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
+        assert!(
+            peak > 0.01,
+            "continuous drive should sustain sound; peak was {peak}"
+        );
+    }
+
+    #[test]
+    fn continuous_drive_zero_is_silent_without_impulse() {
+        let tb = Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        };
+        let mut voice = Voice::from_parts(tb, 0, Tick::MAX, 440.0, 0.5, None, None).expect("voice");
+        // continuous_drive defaults to 0.0 — no energy injected
+        let dt = 1.0 / tb.fs;
+        let blocks = 100;
+        let mut last_block = vec![0.0f32; tb.hop];
+        for b in 0..blocks {
+            let tick = (b * tb.hop) as Tick;
+            let mut rhythms = NeuralRhythms::default();
+            voice.render_block(tick, tb.fs, dt, &mut rhythms, &mut last_block);
+        }
+        assert!(last_block.iter().all(|s| s.abs() <= 1e-6));
     }
 }

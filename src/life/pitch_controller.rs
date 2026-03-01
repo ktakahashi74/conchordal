@@ -115,9 +115,16 @@ impl PitchController {
             0.0
         };
 
-        // Pitch proposal always runs when timing conditions are met.
-        // perceptual_enabled gates only perceptual-state learning.
-        if theta_cross && self.accumulated_time >= self.integration_window {
+        // Pitch proposal runs when timing conditions are met.
+        // When theta rhythm is present, sync proposals to theta zero-crossings.
+        // When no rhythm is detected (e.g. drone agents), fall back to time-based triggering.
+        let has_rhythm = rhythms.theta.mag.is_finite() && rhythms.theta.mag > 0.0;
+        let should_propose = if has_rhythm {
+            theta_cross && self.accumulated_time >= self.integration_window
+        } else {
+            self.accumulated_time >= self.integration_window
+        };
+        if should_propose {
             let elapsed = self.accumulated_time;
             self.accumulated_time = 0.0;
             let features = FeaturesNow::from_subjective_intensity(&landscape.subjective_intensity);

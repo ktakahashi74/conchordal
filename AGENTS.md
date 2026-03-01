@@ -65,7 +65,13 @@ echo "cargo test exit=$? @ $(date -Iseconds)" > test_status.txt
 
 
 ## Air-Gap Protocol
-- In release builds, audio file export is forbidden. Do not add or restore any functionality that writes audio to disk (e.g., WAV export).
+- The `conchordal` binary (instrument) MUST NOT write audio to disk
+  in any build profile. Performances are ephemeral by design (manifesto).
+  The `#[cfg(debug_assertions)]` guards in `cli.rs` and `app.rs` enforce this.
+- Offline WAV rendering is provided by the separate `conchordal-render` binary
+  (`src/bin/render.rs`), which shares the core engine but is not the instrument.
+  The air-gap policy does not apply to `conchordal-render`.
+- Do not add `--wav` or any disk-write capability to the `conchordal` binary.
 
 ## Coding Style & Naming Conventions
 - **Comments**:  All comments must be in concise English.  Do not use Japanese in code comments.

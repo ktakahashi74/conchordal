@@ -673,6 +673,201 @@ pub fn run_headless(args: crate::cli::Args, config: AppConfig, stop_flag: Arc<At
     }
 }
 
+fn render_compile_args(scenario_path: &str) -> crate::cli::Args {
+    #[cfg(debug_assertions)]
+    {
+        crate::cli::Args {
+            play: false,
+            wav: None,
+            scenario_path: scenario_path.to_string(),
+            config: "config.toml".to_string(),
+            wait_user_exit: None,
+            wait_user_start: None,
+            nogui: true,
+            compile_only: false,
+        }
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        crate::cli::Args {
+            play: false,
+            scenario_path: scenario_path.to_string(),
+            config: "config.toml".to_string(),
+            wait_user_exit: None,
+            wait_user_start: None,
+            nogui: true,
+            compile_only: false,
+        }
+    }
+}
+
+pub fn run_render(
+    scenario_path: &str,
+    wav_path: String,
+    config: AppConfig,
+    stop_flag: Arc<AtomicBool>,
+) {
+    crate::life::modal::register_modal();
+
+    let guard_mode = match config.audio.limiter {
+        crate::config::LimiterSetting::None => LimiterMode::None,
+        crate::config::LimiterSetting::SoftClip => {
+            LimiterMode::SoftClip(crate::audio::limiter::SoftClipParams::default())
+        }
+        crate::config::LimiterSetting::PeakLimiter => {
+            LimiterMode::PeakLimiter(crate::audio::limiter::PeakLimiterParams::default())
+        }
+    };
+    let guard_mode = Limiter::from_env_or(guard_mode);
+    let guard_meter = Some(Arc::new(LimiterMeter::default()));
+
+    // Render mode never opens an audio device: use configured sample-rate directly.
+    let runtime_sample_rate = config.audio.sample_rate;
+    let (wav_tx, wav_rx) = bounded::<Arc<[f32]>>(16);
+    let wav_handle = crate::audio::writer::WavOutput::run(
+        wav_rx,
+        wav_path,
+        runtime_sample_rate,
+        guard_mode,
+        guard_meter.clone(),
+    );
+
+    let fs: f32 = runtime_sample_rate as f32;
+    let space = Log2Space::new(55.0, 8000.0, 96);
+    let lparams = LandscapeParams {
+        fs,
+        max_hist_cols: 256,
+        roughness_kernel: RoughnessKernel::new(KernelParams::default(), 0.005), // ΔERB LUT step
+        harmonicity_kernel: HarmonicityKernel::new(&space, HarmonicityParams::default()),
+        consonance_kernel: ConsonanceKernel {
+            a: config.psychoacoustics.consonance.field.kernel.a,
+            b: config.psychoacoustics.consonance.field.kernel.b,
+            c: config.psychoacoustics.consonance.field.kernel.c,
+            d: config.psychoacoustics.consonance.field.kernel.d,
+        },
+        consonance_representation: ConsonanceRepresentationParams {
+            beta: config.psychoacoustics.consonance.field.level.beta,
+            theta: config.psychoacoustics.consonance.field.level.theta,
+        },
+        consonance_density_roughness_gain: config.psychoacoustics.consonance.density.roughness_gain,
+        roughness_scalar_mode: crate::core::landscape::RoughnessScalarMode::Total,
+        roughness_half: 0.1,
+        loudness_exp: config.psychoacoustics.loudness_exp, // Zwicker
+        tau_ms: config.analysis.tau_ms,
+        ref_power: 1e-4,
+        roughness_k: config.psychoacoustics.roughness_k,
+        roughness_ref_f0_hz: 1000.0,
+        roughness_ref_sep_erb: 0.25,
+        roughness_ref_mass_split: 0.5,
+        roughness_ref_eps: 1e-12,
+    };
+    let nfft = config.analysis.nfft;
+    let hop = config.analysis.hop_size;
+    let overlap = 1.0 - (hop as f32 / nfft as f32);
+    let power_mode = if config.psychoacoustics.use_incoherent_power {
+        PowerMode::Incoherent
+    } else {
+        PowerMode::Coherent
+    };
+    let nsgt_kernel = NsgtKernelLog2::new(
+        NsgtLog2Config {
+            fs,
+            overlap,
+            nfft_override: Some(nfft),
+            kernel_align: config.analysis.kernel_align,
+        },
+        space,
+        None,
+        power_mode,
+    );
+    let nsgt = RtNsgtKernelLog2::with_config(nsgt_kernel.clone(), RtConfig::default());
+    let hop_duration = Duration::from_secs_f32(hop as f32 / fs);
+
+    let (ui_frame_tx, _ui_frame_rx) = bounded::<UiFrame>(1);
+    let (analysis_update_tx, analysis_update_rx) = bounded::<LandscapeUpdate>(8);
+    let (audio_to_analysis_tx, audio_to_analysis_rx) = bounded::<(u64, Arc<[f32]>)>(64);
+    let (analysis_result_tx, analysis_result_rx) = bounded::<(u64, Landscape)>(4);
+
+    let analysis_stream = AnalysisStream::new(lparams.clone(), nsgt.clone());
+    let landscape = Landscape::new(nsgt.space().clone());
+    let dorsal = DorsalStream::new(fs);
+    let lparams_runtime = lparams.clone();
+
+    {
+        std::thread::Builder::new()
+            .name("analysis".into())
+            .spawn(move || {
+                analysis_worker::run(
+                    analysis_stream,
+                    audio_to_analysis_rx,
+                    analysis_result_tx,
+                    analysis_update_rx,
+                )
+            })
+            .expect("spawn analysis worker");
+    }
+
+    let path = Path::new(scenario_path);
+    if let Err(e) = validate_scenario_script_extension(path) {
+        eprintln!("{e}");
+        std::process::exit(1);
+    }
+    let scenario_label = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("scenario")
+        .to_string();
+    let compile_args = render_compile_args(scenario_path);
+    let scenario = compile_scenario_from_script(path, &compile_args, &config).unwrap_or_else(|e| {
+        eprintln!("{e}");
+        std::process::exit(1);
+    });
+    if let Err(e) = validate_scenario(&scenario) {
+        eprintln!("{e}");
+        std::process::exit(1);
+    }
+
+    let mut pop = Population::new(crate::core::timebase::Timebase {
+        fs: runtime_sample_rate as f32,
+        hop,
+    });
+    pop.set_seed(scenario.seed);
+    let conductor = Conductor::from_scenario(scenario);
+
+    let stop_flag_worker = stop_flag.clone();
+    let start_flag = Arc::new(AtomicBool::new(true));
+    let start_flag_for_worker = start_flag.clone();
+    let worker_handle = thread::Builder::new()
+        .name("worker".into())
+        .spawn(move || {
+            worker_loop(
+                scenario_label,
+                false,
+                start_flag_for_worker,
+                ui_frame_tx,
+                pop,
+                conductor,
+                landscape,
+                lparams_runtime,
+                dorsal,
+                None,
+                Some(wav_tx),
+                guard_meter,
+                stop_flag_worker,
+                audio_to_analysis_tx,
+                analysis_result_rx,
+                analysis_update_tx,
+                hop,
+                hop_duration,
+                fs,
+            )
+        })
+        .expect("spawn worker");
+
+    let _ = worker_handle.join();
+    let _ = wav_handle.join();
+}
+
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         if ctx.input(|i| i.viewport().close_requested()) {

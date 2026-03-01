@@ -12,6 +12,14 @@ categories = ["multimedia::audio"]
 [lib]
 test = false
 
+[[bin]]
+name = "conchordal"
+path = "src/main.rs"
+
+[[bin]]
+name = "conchordal-render"
+path = "src/bin/render.rs"
+
 [profile.dev]
 opt-level = 1
 debug = true

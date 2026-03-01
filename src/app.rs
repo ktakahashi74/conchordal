@@ -993,6 +993,8 @@ fn worker_loop(
         playback_state: playback_state.clone(),
         channel_peak: [0.0; 2],
         window_peak: [0.0; 2],
+        kuramoto_order_r: None,
+        kuramoto_active_count: 0,
     };
     let init_frame = UiFrame {
         wave: WaveFrame {
@@ -1363,6 +1365,7 @@ fn worker_loop(
                     })
                     .collect();
                 let pred_stats = pop.last_pred_gate_stats();
+                let kuramoto = pop.kuramoto_order_parameter();
                 let theta_hz = {
                     let hz = current_landscape.rhythm.theta.freq_hz;
                     if hz.is_finite() && hz > 0.0 {
@@ -1406,6 +1409,8 @@ fn worker_loop(
                         playback_state: playback_state.clone(),
                         channel_peak,
                         window_peak: channel_peak,
+                        kuramoto_order_r: kuramoto.map(|(r, _)| r),
+                        kuramoto_active_count: kuramoto.map(|(_, n)| n).unwrap_or(0),
                     },
                     next_gate_tick_est: world.next_gate_tick_est,
                     theta_hz,

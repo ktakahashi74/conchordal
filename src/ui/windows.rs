@@ -142,6 +142,16 @@ pub fn main_window(
             ui.label(format!("Scene: {scene}"));
             ui.separator();
             ui.label(format!("Events: {}", frame.meta.event_queue_len));
+            if let Some(r) = frame.meta.kuramoto_order_r {
+                let r = r.clamp(0.0, 1.0);
+                ui.separator();
+                ui.label("Kuramoto R");
+                ui.add(
+                    egui::ProgressBar::new(r)
+                        .desired_width(110.0)
+                        .text(format!("{r:.2}  N={}", frame.meta.kuramoto_active_count)),
+                );
+            }
         });
 
         let progress = if frame.meta.duration_sec > 0.0 {

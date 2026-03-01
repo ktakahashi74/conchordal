@@ -60,6 +60,8 @@ pub(crate) fn pitch_core_config_from_control(pitch: &PitchControl) -> PitchCoreC
             improvement_threshold: None,
             exploration: Some(pitch.exploration),
             persistence: Some(pitch.persistence),
+            leave_self_out: Some(pitch.leave_self_out),
+            anneal_temp: Some(pitch.anneal_temp),
         },
         PitchCoreKind::PeakSampler => PitchCoreConfig::PitchPeakSampler {
             neighbor_step_cents: None,
@@ -71,6 +73,7 @@ pub(crate) fn pitch_core_config_from_control(pitch: &PitchControl) -> PitchCoreC
             tessitura_gravity: Some(tessitura_gravity_from_control(pitch.gravity)),
             exploration: Some(pitch.exploration),
             persistence: Some(pitch.persistence),
+            leave_self_out: Some(pitch.leave_self_out),
         },
     }
 }

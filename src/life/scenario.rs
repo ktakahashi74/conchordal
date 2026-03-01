@@ -311,6 +311,8 @@ pub enum PitchCoreConfig {
         improvement_threshold: Option<f32>,
         exploration: Option<f32>,
         persistence: Option<f32>,
+        leave_self_out: Option<bool>,
+        anneal_temp: Option<f32>,
     },
     PitchPeakSampler {
         neighbor_step_cents: Option<f32>,
@@ -322,6 +324,7 @@ pub enum PitchCoreConfig {
         tessitura_gravity: Option<f32>,
         exploration: Option<f32>,
         persistence: Option<f32>,
+        leave_self_out: Option<bool>,
     },
 }
 
@@ -335,6 +338,8 @@ impl Default for PitchCoreConfig {
             improvement_threshold: None,
             exploration: None,
             persistence: None,
+            leave_self_out: None,
+            anneal_temp: None,
         }
     }
 }

@@ -182,6 +182,14 @@ impl SpeciesSpec {
         self.control.set_repulsion_sigma_cents_clamped(sigma_cents);
     }
 
+    fn set_leave_self_out(&mut self, enabled: bool) {
+        self.control.set_leave_self_out(enabled);
+    }
+
+    fn set_anneal_temp(&mut self, value: f32) {
+        self.control.set_anneal_temp_clamped(value);
+    }
+
     fn set_pitch_mode(&mut self, name: &str) {
         let lowered = name.trim().to_ascii_lowercase();
         self.control.pitch.mode = match lowered.as_str() {
@@ -797,6 +805,25 @@ impl ScriptHost {
         );
         engine.register_fn("repulsion", |mut species: SpeciesHandle, strength: INT| {
             species.spec.set_repulsion(strength as f32, 60.0);
+            species
+        });
+        engine.register_fn(
+            "leave_self_out",
+            |mut species: SpeciesHandle, enabled: bool| {
+                species.spec.set_leave_self_out(enabled);
+                species
+            },
+        );
+        engine.register_fn("loo", |mut species: SpeciesHandle, enabled: bool| {
+            species.spec.set_leave_self_out(enabled);
+            species
+        });
+        engine.register_fn("anneal_temp", |mut species: SpeciesHandle, value: FLOAT| {
+            species.spec.set_anneal_temp(value as f32);
+            species
+        });
+        engine.register_fn("anneal_temp", |mut species: SpeciesHandle, value: INT| {
+            species.spec.set_anneal_temp(value as f32);
             species
         });
         engine.register_fn("pitch_mode", |mut species: SpeciesHandle, name: &str| {
@@ -1534,6 +1561,94 @@ impl ScriptHost {
                         group.pending_update.repulsion_sigma_cents = Some(sigma_cents);
                     }
                     _ => ctx.warn_live_builder(handle.id, "repulsion"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_leave_self_out = ctx.clone();
+        engine.register_fn(
+            "leave_self_out",
+            move |handle: GroupHandle, enabled: bool| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_leave_self_out
+                    .lock()
+                    .expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("leave_self_out ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                match group.status {
+                    GroupStatus::Draft => group.spec.set_leave_self_out(enabled),
+                    GroupStatus::Live => {
+                        group.spec.set_leave_self_out(enabled);
+                        group.pending_update.leave_self_out = Some(enabled);
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "leave_self_out"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_loo = ctx.clone();
+        engine.register_fn(
+            "loo",
+            move |handle: GroupHandle, enabled: bool| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_loo.lock().expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("loo ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                match group.status {
+                    GroupStatus::Draft => group.spec.set_leave_self_out(enabled),
+                    GroupStatus::Live => {
+                        group.spec.set_leave_self_out(enabled);
+                        group.pending_update.leave_self_out = Some(enabled);
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "loo"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_anneal_temp = ctx.clone();
+        engine.register_fn(
+            "anneal_temp",
+            move |handle: GroupHandle, value: FLOAT| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_anneal_temp
+                    .lock()
+                    .expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("anneal_temp ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                let value = value as f32;
+                match group.status {
+                    GroupStatus::Draft => group.spec.set_anneal_temp(value),
+                    GroupStatus::Live => {
+                        group.spec.set_anneal_temp(value);
+                        group.pending_update.anneal_temp = Some(value);
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "anneal_temp"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_anneal_temp_int = ctx.clone();
+        engine.register_fn(
+            "anneal_temp",
+            move |handle: GroupHandle, value: INT| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_anneal_temp_int
+                    .lock()
+                    .expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("anneal_temp ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                let value = value as f32;
+                match group.status {
+                    GroupStatus::Draft => group.spec.set_anneal_temp(value),
+                    GroupStatus::Live => {
+                        group.spec.set_anneal_temp(value);
+                        group.pending_update.anneal_temp = Some(value);
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "anneal_temp"),
                 }
                 Ok(handle)
             },
@@ -2590,6 +2705,65 @@ mod tests {
             .expect("spawn action");
         assert!((strength - 1.2).abs() <= 1e-6);
         assert!((sigma_cents - 35.0).abs() <= 1e-6);
+    }
+
+    #[test]
+    fn species_loo_and_anneal_reach_spawned_core() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            create(sine.loo(true).anneal_temp(0.12), 1);
+            flush();
+        "#,
+        );
+        let mut pop = Population::new(Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        });
+        let landscape = LandscapeFrame::default();
+        for action in scenario
+            .events
+            .iter()
+            .flat_map(|event| event.actions.iter())
+        {
+            if let Action::Spawn { .. } = action {
+                pop.apply_action(action.clone(), &landscape, None);
+            }
+        }
+        let agent = pop.individuals.first().expect("spawned");
+        assert!(agent.pitch_core_for_test().leave_self_out_for_test());
+        assert!((agent.pitch_core_for_test().anneal_temp_for_test() - 0.12).abs() <= 1e-6);
+    }
+
+    #[test]
+    fn group_loo_and_anneal_live_update_reaches_individual() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            let g = create(sine, 1);
+            flush();
+            let g = g.leave_self_out(true).anneal_temp(0.2);
+            flush();
+        "#,
+        );
+        let mut pop = Population::new(Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        });
+        let landscape = LandscapeFrame::default();
+        for action in scenario
+            .events
+            .iter()
+            .flat_map(|event| event.actions.iter())
+        {
+            match action {
+                Action::Spawn { .. } | Action::Update { .. } => {
+                    pop.apply_action(action.clone(), &landscape, None);
+                }
+                _ => {}
+            }
+        }
+        let agent = pop.individuals.first().expect("spawned");
+        assert!(agent.pitch_core_for_test().leave_self_out_for_test());
+        assert!((agent.pitch_core_for_test().anneal_temp_for_test() - 0.2).abs() <= 1e-6);
     }
 
     #[test]

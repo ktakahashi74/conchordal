@@ -2,6 +2,7 @@ const RANGE_OCT_MAX: f32 = 6.0;
 pub const MIN_FREQ_HZ: f32 = 1.0;
 pub const MAX_FREQ_HZ: f32 = 20_000.0;
 const DEFAULT_REPULSION_SIGMA_CENTS: f32 = 60.0;
+const DEFAULT_ANNEAL_TEMP: f32 = 0.0;
 
 use crate::core::mode_pattern::ModePattern;
 
@@ -92,6 +93,20 @@ impl AgentControl {
             DEFAULT_REPULSION_SIGMA_CENTS
         };
     }
+
+    #[inline]
+    pub fn set_leave_self_out(&mut self, enabled: bool) {
+        self.pitch.leave_self_out = enabled;
+    }
+
+    #[inline]
+    pub fn set_anneal_temp_clamped(&mut self, value: f32) {
+        self.pitch.anneal_temp = if value.is_finite() {
+            value.max(0.0)
+        } else {
+            DEFAULT_ANNEAL_TEMP
+        };
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -167,6 +182,8 @@ pub struct PitchControl {
     pub persistence: f32,
     pub repulsion_strength: f32,
     pub repulsion_sigma_cents: f32,
+    pub leave_self_out: bool,
+    pub anneal_temp: f32,
 }
 
 impl Default for PitchControl {
@@ -182,6 +199,8 @@ impl Default for PitchControl {
             persistence: 0.5,
             repulsion_strength: 0.0,
             repulsion_sigma_cents: DEFAULT_REPULSION_SIGMA_CENTS,
+            leave_self_out: false,
+            anneal_temp: DEFAULT_ANNEAL_TEMP,
         }
     }
 }
@@ -246,6 +265,8 @@ pub struct ControlUpdate {
     pub persistence: Option<f32>,
     pub repulsion_strength: Option<f32>,
     pub repulsion_sigma_cents: Option<f32>,
+    pub leave_self_out: Option<bool>,
+    pub anneal_temp: Option<f32>,
     pub timbre_brightness: Option<f32>,
     pub timbre_inharmonic: Option<f32>,
     pub timbre_width: Option<f32>,
@@ -261,6 +282,8 @@ impl ControlUpdate {
             && self.persistence.is_none()
             && self.repulsion_strength.is_none()
             && self.repulsion_sigma_cents.is_none()
+            && self.leave_self_out.is_none()
+            && self.anneal_temp.is_none()
             && self.timbre_brightness.is_none()
             && self.timbre_inharmonic.is_none()
             && self.timbre_width.is_none()
@@ -290,6 +313,12 @@ impl AgentControl {
         }
         if let Some(sigma) = update.repulsion_sigma_cents {
             self.set_repulsion_sigma_cents_clamped(sigma);
+        }
+        if let Some(enabled) = update.leave_self_out {
+            self.set_leave_self_out(enabled);
+        }
+        if let Some(anneal_temp) = update.anneal_temp {
+            self.set_anneal_temp_clamped(anneal_temp);
         }
         if let Some(brightness) = update.timbre_brightness {
             self.set_timbre_brightness_clamped(brightness);
@@ -322,6 +351,8 @@ mod tests {
             persistence: Some(-1.0),
             repulsion_strength: Some(-4.0),
             repulsion_sigma_cents: Some(-3.0),
+            leave_self_out: Some(true),
+            anneal_temp: Some(-0.5),
             timbre_brightness: Some(-0.1),
             timbre_inharmonic: Some(2.0),
             timbre_width: Some(0.25),
@@ -337,6 +368,8 @@ mod tests {
         assert!((control.pitch.persistence - 0.0).abs() <= 1e-6);
         assert!((control.pitch.repulsion_strength - 0.0).abs() <= 1e-6);
         assert!((control.pitch.repulsion_sigma_cents - 1e-3).abs() <= 1e-6);
+        assert!(control.pitch.leave_self_out);
+        assert!((control.pitch.anneal_temp - 0.0).abs() <= 1e-6);
         assert!((control.body.timbre.brightness - 0.0).abs() <= 1e-6);
         assert!((control.body.timbre.inharmonic - 1.0).abs() <= 1e-6);
         assert!((control.body.timbre.width - 0.25).abs() <= 1e-6);

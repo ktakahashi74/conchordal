@@ -1,4 +1,6 @@
-use super::individual::{AgentMetadata, Individual, PhonationBatch, SoundBody};
+use super::individual::{
+    AgentMetadata, AnyArticulationCore, Individual, PhonationBatch, SoundBody,
+};
 use super::scenario::{Action, IndividualConfig, RespawnPolicy, SpawnStrategy};
 use crate::core::landscape::{LandscapeFrame, LandscapeUpdate};
 use crate::core::timebase::{Tick, Timebase};
@@ -907,6 +909,23 @@ impl Population {
         self.pending_update.take()
     }
 
+    pub fn kuramoto_order_parameter(&self) -> Option<(f32, usize)> {
+        let mut phases = Vec::with_capacity(self.individuals.len());
+        for agent in &self.individuals {
+            if !agent.is_alive() {
+                continue;
+            }
+            let AnyArticulationCore::Entrain(core) = &agent.articulation.core else {
+                continue;
+            };
+            if core.rhythm_phase.is_finite() {
+                phases.push(core.rhythm_phase);
+            }
+        }
+        let r = kuramoto_order_from_phases(&phases)?;
+        Some((r, phases.len()))
+    }
+
     /// Assumes `set_current_frame` has been called for the current hop.
     pub fn remove_agent(&mut self, id: u64) {
         self.individuals.retain(|agent| agent.id() != id);
@@ -1042,6 +1061,32 @@ impl Population {
     }
 }
 
+fn kuramoto_order_from_phases(phases: &[f32]) -> Option<f32> {
+    if phases.is_empty() {
+        return None;
+    }
+    let mut sum_cos = 0.0f32;
+    let mut sum_sin = 0.0f32;
+    let mut count = 0usize;
+    for &phase in phases {
+        if !phase.is_finite() {
+            continue;
+        }
+        sum_cos += phase.cos();
+        sum_sin += phase.sin();
+        count += 1;
+    }
+    if count == 0 {
+        return None;
+    }
+    let n = count as f32;
+    if n <= 0.0 {
+        return None;
+    }
+    let r = (sum_cos * sum_cos + sum_sin * sum_sin).sqrt() / n;
+    Some(r.clamp(0.0, 1.0))
+}
+
 fn mix_pred_gate_gain(sync: f32, gain_raw: f32) -> f32 {
     let sync = sync.clamp(0.0, 1.0);
     let gain01 = 0.2 + 0.8 * gain_raw.powf(2.0);
@@ -1099,7 +1144,7 @@ mod tests {
     use crate::life::scenario::{ArticulationCoreConfig, RespawnPolicy, SpawnSpec, SpawnStrategy};
     use crate::life::sound::{BodyKind, BodySnapshot};
     use crate::life::world_model::WorldModel;
-    use rand::SeedableRng;
+    use rand::{Rng, SeedableRng};
     use std::collections::HashSet;
 
     fn make_dummy_note_spec() -> crate::life::individual::PhonationNoteSpec {
@@ -2022,6 +2067,33 @@ mod tests {
         let agent = pop.individuals.first().expect("spawned");
         assert_eq!(agent.effective_control.pitch.mode, PitchMode::Free);
         assert!((agent.effective_control.pitch.freq - 220.0).abs() <= 1e-6);
+    }
+
+    #[test]
+    fn kuramoto_order_parameter_is_bounded() {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(4242);
+        let phases: Vec<f32> = (0..256)
+            .map(|_| rng.random_range(0.0..std::f32::consts::TAU))
+            .collect();
+        let r = kuramoto_order_from_phases(&phases).expect("non-empty");
+        assert!((0.0..=1.0).contains(&r));
+    }
+
+    #[test]
+    fn kuramoto_order_parameter_high_for_aligned_low_for_random() {
+        let aligned = vec![0.0f32; 128];
+        let aligned_r = kuramoto_order_from_phases(&aligned).expect("non-empty");
+        assert!(aligned_r > 0.99, "aligned phase set should have high order");
+
+        let mut rng = rand::rngs::StdRng::seed_from_u64(99);
+        let random: Vec<f32> = (0..128)
+            .map(|_| rng.random_range(0.0..std::f32::consts::TAU))
+            .collect();
+        let random_r = kuramoto_order_from_phases(&random).expect("non-empty");
+        assert!(
+            random_r < 0.35,
+            "random phase set should have low order (got {random_r})"
+        );
     }
 
     #[test]

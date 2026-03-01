@@ -12,6 +12,7 @@ const DEFAULT_RANDOM_SIGMA_CENTS: f32 = 30.0;
 const DEFAULT_FALLBACK_RATIO_ORDER: u16 = 12;
 const DEFAULT_MOVE_COST_COEFF: f32 = 0.5;
 const DEFAULT_MOVE_COST_EXP: u8 = 1;
+const DEFAULT_APPROX_LOO_SIGMA_CENTS: f32 = 24.0;
 static FALLBACK_REDUCED_RATIOS: OnceLock<Vec<(u16, u16)>> = OnceLock::new();
 
 #[derive(Debug, Clone, Copy)]
@@ -62,6 +63,8 @@ pub struct PitchHillClimbPitchCore {
     persistence: f32,
     repulsion_strength: f32,
     repulsion_sigma_log2: f32,
+    leave_self_out: bool,
+    anneal_temp: f32,
 }
 
 impl PitchHillClimbPitchCore {
@@ -90,6 +93,8 @@ impl PitchHillClimbPitchCore {
             persistence: persistence.clamp(0.0, 1.0),
             repulsion_strength: 0.0,
             repulsion_sigma_log2: cents_to_log2(60.0),
+            leave_self_out: false,
+            anneal_temp: 0.0,
         }
     }
 
@@ -113,6 +118,18 @@ impl PitchHillClimbPitchCore {
             60.0
         };
         self.repulsion_sigma_log2 = cents_to_log2(sigma_cents);
+    }
+
+    pub fn set_leave_self_out(&mut self, enabled: bool) {
+        self.leave_self_out = enabled;
+    }
+
+    pub fn set_anneal_temp(&mut self, value: f32) {
+        self.anneal_temp = if value.is_finite() {
+            value.max(0.0)
+        } else {
+            0.0
+        };
     }
 
     pub fn set_neighbor_step_cents(&mut self, value: f32) {
@@ -191,6 +208,7 @@ impl PitchCore for PitchHillClimbPitchCore {
             self.move_cost_coeff,
             self.move_cost_exp,
             perceptual,
+            self.leave_self_out,
             self.repulsion_strength,
             self.repulsion_sigma_log2,
             neighbor_pitch_log2,
@@ -218,20 +236,34 @@ impl PitchCore for PitchHillClimbPitchCore {
                 self.move_cost_exp,
                 landscape,
                 perceptual,
+                self.leave_self_out,
                 self.repulsion_strength,
                 self.repulsion_sigma_log2,
                 neighbor_pitch_log2,
             )
         };
 
-        let mut best_pitch = current_target_log2;
-        let mut best_score = f32::MIN;
+        let mut scored = Vec::with_capacity(candidates.len());
         for p in candidates {
             let clamped = p.clamp(fmin, fmax);
             let adjusted = adjusted_score(clamped);
-            if adjusted > best_score {
-                best_score = adjusted;
-                best_pitch = clamped;
+            if adjusted.is_finite() {
+                scored.push((clamped, adjusted));
+            }
+        }
+        if scored.is_empty() {
+            return TargetProposal {
+                target_pitch_log2: current_target_log2,
+                salience: 0.0,
+            };
+        }
+
+        let mut best_pitch = current_target_log2;
+        let mut best_score = f32::MIN;
+        for &(pitch, score) in &scored {
+            if score > best_score {
+                best_score = score;
+                best_pitch = pitch;
             }
         }
 
@@ -248,7 +280,30 @@ impl PitchCore for PitchHillClimbPitchCore {
             let exploration = self.exploration.clamp(0.0, 1.0);
             stay_prob = (stay_prob * (1.0 - exploration)).clamp(0.0, 1.0);
             if rng.random_range(0.0..1.0) > stay_prob {
-                target_pitch_log2 = best_pitch;
+                if self.anneal_temp > 0.0 {
+                    let mut movable: Vec<(f32, f32)> = scored
+                        .iter()
+                        .copied()
+                        .filter(|(pitch, _)| (*pitch - current_target_log2).abs() > 1e-9)
+                        .collect();
+                    if !movable.is_empty() {
+                        let pick = rng.random_range(0..movable.len());
+                        let (candidate_pitch, candidate_score) = movable.swap_remove(pick);
+                        let delta = candidate_score - current_adjusted;
+                        if delta >= 0.0 {
+                            target_pitch_log2 = candidate_pitch;
+                        } else {
+                            let accept_prob = (delta / self.anneal_temp).exp().clamp(0.0, 1.0);
+                            if rng.random_range(0.0..1.0) < accept_prob {
+                                target_pitch_log2 = candidate_pitch;
+                            }
+                        }
+                    } else {
+                        target_pitch_log2 = best_pitch;
+                    }
+                } else {
+                    target_pitch_log2 = best_pitch;
+                }
             }
         }
 
@@ -291,6 +346,7 @@ pub struct PitchPeakSamplerCore {
     persistence: f32,
     repulsion_strength: f32,
     repulsion_sigma_log2: f32,
+    leave_self_out: bool,
 }
 
 impl PitchPeakSamplerCore {
@@ -321,6 +377,7 @@ impl PitchPeakSamplerCore {
             persistence: persistence.clamp(0.0, 1.0),
             repulsion_strength: 0.0,
             repulsion_sigma_log2: cents_to_log2(60.0),
+            leave_self_out: false,
         }
     }
 
@@ -344,6 +401,10 @@ impl PitchPeakSamplerCore {
             60.0
         };
         self.repulsion_sigma_log2 = cents_to_log2(sigma_cents);
+    }
+
+    pub fn set_leave_self_out(&mut self, enabled: bool) {
+        self.leave_self_out = enabled;
     }
 
     pub fn set_neighbor_step_cents(&mut self, value: f32) {
@@ -407,6 +468,7 @@ impl PitchCore for PitchPeakSamplerCore {
             DEFAULT_MOVE_COST_COEFF,
             DEFAULT_MOVE_COST_EXP,
             perceptual,
+            self.leave_self_out,
             self.repulsion_strength,
             self.repulsion_sigma_log2,
             neighbor_pitch_log2,
@@ -435,6 +497,7 @@ impl PitchCore for PitchPeakSamplerCore {
                 DEFAULT_MOVE_COST_EXP,
                 landscape,
                 perceptual,
+                self.leave_self_out,
                 self.repulsion_strength,
                 self.repulsion_sigma_log2,
                 neighbor_pitch_log2,
@@ -461,6 +524,7 @@ impl PitchCore for PitchPeakSamplerCore {
             DEFAULT_MOVE_COST_EXP,
             landscape,
             perceptual,
+            self.leave_self_out,
             self.repulsion_strength,
             self.repulsion_sigma_log2,
             neighbor_pitch_log2,
@@ -650,13 +714,24 @@ fn adjusted_pitch_score(
     move_cost_exp: u8,
     landscape: &Landscape,
     perceptual: &PerceptualContext,
+    leave_self_out: bool,
     repulsion_strength: f32,
     repulsion_sigma_log2: f32,
     neighbor_pitch_log2: &[f32],
 ) -> f32 {
     let (fmin, fmax) = landscape.freq_bounds_log2();
     let clamped = pitch_log2.clamp(fmin, fmax);
-    let score = landscape.evaluate_pitch_score_log2(clamped);
+    let mut score = landscape.evaluate_pitch_score_log2(clamped);
+    if leave_self_out {
+        let current_clamped = current_pitch_log2.clamp(fmin, fmax);
+        let self_score = landscape.evaluate_pitch_score_log2(current_clamped);
+        if self_score.is_finite() && self_score > 0.0 {
+            let sigma = cents_to_log2(DEFAULT_APPROX_LOO_SIGMA_CENTS).max(1e-6);
+            let d = (clamped - current_clamped).abs();
+            // Lightweight leave-self-out approximation: suppress a local self-attractor bump.
+            score -= self_score * (-d / sigma).exp();
+        }
+    }
     let distance_oct = (clamped - current_pitch_log2).abs();
     let dist_cost = if move_cost_exp == 2 {
         distance_oct * distance_oct
@@ -702,6 +777,7 @@ fn top_local_candidates(
     move_cost_coeff: f32,
     move_cost_exp: u8,
     perceptual: &PerceptualContext,
+    leave_self_out: bool,
     repulsion_strength: f32,
     repulsion_sigma_log2: f32,
     neighbor_pitch_log2: &[f32],
@@ -730,6 +806,7 @@ fn top_local_candidates(
             move_cost_exp,
             landscape,
             perceptual,
+            leave_self_out,
             repulsion_strength,
             repulsion_sigma_log2,
             neighbor_pitch_log2,
@@ -947,6 +1024,8 @@ impl AnyPitchCore {
                 improvement_threshold,
                 exploration,
                 persistence,
+                leave_self_out,
+                anneal_temp,
             } => {
                 let neighbor_step_cents = neighbor_step_cents.unwrap_or(200.0);
                 let tessitura_gravity = tessitura_gravity.unwrap_or(0.1);
@@ -955,6 +1034,8 @@ impl AnyPitchCore {
                 let improvement_threshold = improvement_threshold.unwrap_or(0.1);
                 let exploration = exploration.unwrap_or(0.0);
                 let persistence = persistence.unwrap_or(0.5);
+                let leave_self_out = leave_self_out.unwrap_or(false);
+                let anneal_temp = anneal_temp.unwrap_or(0.0);
                 let mut core = PitchHillClimbPitchCore::new(
                     neighbor_step_cents,
                     initial_pitch_log2,
@@ -965,6 +1046,8 @@ impl AnyPitchCore {
                 );
                 core.set_move_cost_coeff(move_cost_coeff);
                 core.set_move_cost_exp(move_cost_exp);
+                core.set_leave_self_out(leave_self_out);
+                core.set_anneal_temp(anneal_temp);
                 AnyPitchCore::PitchHillClimb(core)
             }
             PitchCoreConfig::PitchPeakSampler {
@@ -977,6 +1060,7 @@ impl AnyPitchCore {
                 tessitura_gravity,
                 exploration,
                 persistence,
+                leave_self_out,
             } => {
                 let neighbor_step_cents = neighbor_step_cents.unwrap_or(160.0);
                 let window_cents = window_cents.unwrap_or(DEFAULT_LOCAL_WINDOW_CENTS);
@@ -987,7 +1071,7 @@ impl AnyPitchCore {
                 let tessitura_gravity = tessitura_gravity.unwrap_or(0.1);
                 let exploration = exploration.unwrap_or(0.2);
                 let persistence = persistence.unwrap_or(0.35);
-                AnyPitchCore::PitchPeakSampler(PitchPeakSamplerCore::new(
+                let mut core = PitchPeakSamplerCore::new(
                     neighbor_step_cents,
                     initial_pitch_log2,
                     tessitura_gravity,
@@ -998,7 +1082,9 @@ impl AnyPitchCore {
                     random_candidates,
                     exploration,
                     persistence,
-                ))
+                );
+                core.set_leave_self_out(leave_self_out.unwrap_or(false));
+                AnyPitchCore::PitchPeakSampler(core)
             }
         }
     }
@@ -1028,6 +1114,19 @@ impl AnyPitchCore {
         match self {
             AnyPitchCore::PitchHillClimb(core) => core.set_repulsion(strength, sigma_cents),
             AnyPitchCore::PitchPeakSampler(core) => core.set_repulsion(strength, sigma_cents),
+        }
+    }
+
+    pub fn set_leave_self_out(&mut self, enabled: bool) {
+        match self {
+            AnyPitchCore::PitchHillClimb(core) => core.set_leave_self_out(enabled),
+            AnyPitchCore::PitchPeakSampler(core) => core.set_leave_self_out(enabled),
+        }
+    }
+
+    pub fn set_anneal_temp(&mut self, value: f32) {
+        if let AnyPitchCore::PitchHillClimb(core) = self {
+            core.set_anneal_temp(value);
         }
     }
 
@@ -1066,6 +1165,20 @@ impl AnyPitchCore {
         match self {
             AnyPitchCore::PitchHillClimb(core) => core.persistence,
             AnyPitchCore::PitchPeakSampler(core) => core.persistence,
+        }
+    }
+
+    pub(crate) fn leave_self_out_for_test(&self) -> bool {
+        match self {
+            AnyPitchCore::PitchHillClimb(core) => core.leave_self_out,
+            AnyPitchCore::PitchPeakSampler(core) => core.leave_self_out,
+        }
+    }
+
+    pub(crate) fn anneal_temp_for_test(&self) -> f32 {
+        match self {
+            AnyPitchCore::PitchHillClimb(core) => core.anneal_temp,
+            AnyPitchCore::PitchPeakSampler(_) => 0.0,
         }
     }
 }
@@ -1117,6 +1230,7 @@ mod tests {
             1,
             &landscape,
             &perceptual,
+            false,
             0.0,
             0.0,
             &[],
@@ -1132,6 +1246,7 @@ mod tests {
             1,
             &landscape,
             &perceptual,
+            false,
             0.0,
             0.0,
             &[],
@@ -1160,6 +1275,7 @@ mod tests {
             1,
             &landscape,
             &perceptual,
+            false,
             1.0,
             cents_to_log2(20.0),
             &[],
@@ -1175,6 +1291,7 @@ mod tests {
             1,
             &landscape,
             &perceptual,
+            false,
             1.0,
             cents_to_log2(20.0),
             &[pitch_log2],
@@ -1184,6 +1301,112 @@ mod tests {
             with_close_neighbor < without_repulsion,
             "repulsion should lower score when neighbor is near"
         );
+    }
+
+    #[test]
+    fn loo_off_preserves_legacy_score_formula() {
+        let mut landscape = Landscape::new(Log2Space::new(110.0, 880.0, 96));
+        let idx = landscape.space.n_bins() / 2;
+        let pitch_log2 = landscape.space.centers_log2[idx];
+        landscape.consonance_field_score[idx] = 1.23;
+        let perceptual = test_perceptual(landscape.space.n_bins());
+
+        let score = adjusted_pitch_score(
+            pitch_log2,
+            pitch_log2,
+            0.0,
+            pitch_log2,
+            0.0,
+            1.0,
+            0.0,
+            1,
+            &landscape,
+            &perceptual,
+            false,
+            0.0,
+            0.0,
+            &[],
+        );
+        assert!((score - 1.23).abs() <= 1e-6);
+    }
+
+    #[test]
+    fn approximate_loo_weakens_self_locking() {
+        let mut landscape = Landscape::new(Log2Space::new(110.0, 880.0, 96));
+        let idx = landscape.space.n_bins() / 2;
+        let current = landscape.space.centers_log2[idx];
+        let nearby = landscape.space.centers_log2[idx + 1];
+        landscape.consonance_field_score[idx] = 1.0;
+        landscape.consonance_field_score[idx + 1] = 0.7;
+        let perceptual = test_perceptual(landscape.space.n_bins());
+
+        let current_no_loo = adjusted_pitch_score(
+            current,
+            current,
+            0.0,
+            current,
+            0.0,
+            1.0,
+            0.0,
+            1,
+            &landscape,
+            &perceptual,
+            false,
+            0.0,
+            0.0,
+            &[],
+        );
+        let nearby_no_loo = adjusted_pitch_score(
+            nearby,
+            current,
+            0.0,
+            current,
+            0.0,
+            1.0,
+            0.0,
+            1,
+            &landscape,
+            &perceptual,
+            false,
+            0.0,
+            0.0,
+            &[],
+        );
+        assert!(current_no_loo > nearby_no_loo);
+
+        let current_with_loo = adjusted_pitch_score(
+            current,
+            current,
+            0.0,
+            current,
+            0.0,
+            1.0,
+            0.0,
+            1,
+            &landscape,
+            &perceptual,
+            true,
+            0.0,
+            0.0,
+            &[],
+        );
+        let nearby_with_loo = adjusted_pitch_score(
+            nearby,
+            current,
+            0.0,
+            current,
+            0.0,
+            1.0,
+            0.0,
+            1,
+            &landscape,
+            &perceptual,
+            true,
+            0.0,
+            0.0,
+            &[],
+        );
+        assert!(nearby_with_loo > current_with_loo);
     }
 
     #[test]
@@ -1221,6 +1444,111 @@ mod tests {
 
         assert!((base.target_pitch_log2 - with_neighbors.target_pitch_log2).abs() <= 1e-6);
         assert!((base.salience - with_neighbors.salience).abs() <= 1e-6);
+    }
+
+    #[test]
+    fn hillclimb_anneal_temp_zero_matches_legacy_behavior() {
+        let landscape = test_landscape(&[(330.0, 1.0)]);
+        let perceptual = test_perceptual(landscape.space.n_bins());
+        let features = FeaturesNow::from_subjective_intensity(&landscape.subjective_intensity);
+        let mut legacy = PitchHillClimbPitchCore::new(120.0, 330.0f32.log2(), 0.0, 0.0, 0.0, 0.0);
+        let mut anneal_zero =
+            PitchHillClimbPitchCore::new(120.0, 330.0f32.log2(), 0.0, 0.0, 0.0, 0.0);
+        anneal_zero.set_anneal_temp(0.0);
+
+        let mut rng_a = SmallRng::seed_from_u64(2024);
+        let mut rng_b = SmallRng::seed_from_u64(2024);
+        let base = legacy.propose_target(
+            330.0f32.log2(),
+            330.0f32.log2(),
+            330.0,
+            1.0,
+            &landscape,
+            &perceptual,
+            &features,
+            &[],
+            &mut rng_a,
+        );
+        let with_zero = anneal_zero.propose_target(
+            330.0f32.log2(),
+            330.0f32.log2(),
+            330.0,
+            1.0,
+            &landscape,
+            &perceptual,
+            &features,
+            &[],
+            &mut rng_b,
+        );
+
+        assert!((base.target_pitch_log2 - with_zero.target_pitch_log2).abs() <= 1e-6);
+        assert!((base.salience - with_zero.salience).abs() <= 1e-6);
+    }
+
+    #[test]
+    fn hillclimb_anneal_accepts_downhill_moves_probabilistically() {
+        let mut landscape = Landscape::new(Log2Space::new(220.0, 440.0, 256));
+        let idx_center = landscape.space.n_bins() / 2;
+        let current = landscape.space.centers_log2[idx_center];
+        let width_cents = 40.0f32;
+        for (idx, &bin_log2) in landscape.space.centers_log2.iter().enumerate() {
+            let d_cents = (bin_log2 - current).abs() * 1200.0;
+            let score = (-(d_cents * d_cents) / (2.0 * width_cents * width_cents)).exp();
+            landscape.consonance_field_score[idx] = score;
+            landscape.consonance_field_level[idx] = score.clamp(0.0, 1.0);
+        }
+        let perceptual = test_perceptual(landscape.space.n_bins());
+        let features = FeaturesNow::from_subjective_intensity(&landscape.subjective_intensity);
+        let trials = 256u64;
+        let mut moved_with_anneal = 0usize;
+        let mut moved_without_anneal = 0usize;
+
+        for seed in 0..trials {
+            let mut no_anneal = PitchHillClimbPitchCore::new(30.0, current, 0.0, 0.1, 0.0, 0.0);
+            no_anneal.set_anneal_temp(0.0);
+            let mut with_anneal = PitchHillClimbPitchCore::new(30.0, current, 0.0, 0.1, 0.0, 0.0);
+            with_anneal.set_anneal_temp(0.2);
+
+            let mut rng_a = SmallRng::seed_from_u64(5_000 + seed);
+            let mut rng_b = SmallRng::seed_from_u64(5_000 + seed);
+            let p0 = no_anneal.propose_target(
+                current,
+                current,
+                2.0f32.powf(current),
+                1.0,
+                &landscape,
+                &perceptual,
+                &features,
+                &[],
+                &mut rng_a,
+            );
+            let p1 = with_anneal.propose_target(
+                current,
+                current,
+                2.0f32.powf(current),
+                1.0,
+                &landscape,
+                &perceptual,
+                &features,
+                &[],
+                &mut rng_b,
+            );
+            if (p0.target_pitch_log2 - current).abs() > 1e-6 {
+                moved_without_anneal += 1;
+            }
+            if (p1.target_pitch_log2 - current).abs() > 1e-6 {
+                moved_with_anneal += 1;
+            }
+        }
+
+        assert_eq!(
+            moved_without_anneal, 0,
+            "anneal_temp=0 should keep greedy hill-climb behavior"
+        );
+        assert!(
+            moved_with_anneal > 0 && moved_with_anneal < trials as usize,
+            "anneal should probabilistically accept downhill moves"
+        );
     }
 
     fn mean_pairwise_distance_cents(values_log2: &[f32]) -> f32 {

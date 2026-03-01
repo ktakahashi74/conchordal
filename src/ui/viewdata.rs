@@ -53,6 +53,8 @@ pub struct SimulationMeta {
     pub playback_state: PlaybackState,
     pub channel_peak: [f32; 2],
     pub window_peak: [f32; 2],
+    pub kuramoto_order_r: Option<f32>,
+    pub kuramoto_active_count: usize,
 }
 
 #[derive(Clone, Debug, Default)]

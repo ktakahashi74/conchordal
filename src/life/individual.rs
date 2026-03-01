@@ -135,7 +135,12 @@ impl Dirty {
             || update.timbre_inharmonic.is_some()
             || update.timbre_width.is_some()
             || update.timbre_motion.is_some();
-        let pitch = update.freq.is_some() || update.landscape_weight.is_some();
+        let pitch = update.freq.is_some()
+            || update.landscape_weight.is_some()
+            || update.exploration.is_some()
+            || update.persistence.is_some()
+            || update.repulsion_strength.is_some()
+            || update.repulsion_sigma_cents.is_some();
         Self {
             body,
             pitch,
@@ -198,6 +203,16 @@ impl Individual {
         pitch_ctl
             .core_mut()
             .set_landscape_weight(effective_control.pitch.landscape_weight);
+        pitch_ctl
+            .core_mut()
+            .set_exploration(effective_control.pitch.exploration);
+        pitch_ctl
+            .core_mut()
+            .set_persistence(effective_control.pitch.persistence);
+        pitch_ctl.core_mut().set_repulsion(
+            effective_control.pitch.repulsion_strength,
+            effective_control.pitch.repulsion_sigma_cents,
+        );
         pitch_ctl.set_perceptual_enabled(effective_control.perceptual.enabled);
 
         let (articulation_core, lifecycle_label, default_by_articulation, breath_gain_init) =
@@ -290,6 +305,7 @@ impl Individual {
         core.set_landscape_weight(pitch.landscape_weight);
         core.set_exploration(pitch.exploration);
         core.set_persistence(pitch.persistence);
+        core.set_repulsion(pitch.repulsion_strength, pitch.repulsion_sigma_cents);
     }
 
     fn apply_phonation_control(&mut self) {
@@ -374,6 +390,11 @@ impl Individual {
     }
 
     #[cfg(test)]
+    pub(crate) fn pitch_core_for_test(&self) -> &AnyPitchCore {
+        self.pitch_ctl.core_for_test()
+    }
+
+    #[cfg(test)]
     pub(crate) fn accumulated_time_for_test(&self) -> f32 {
         self.pitch_ctl.accumulated_time_for_test()
     }
@@ -401,6 +422,7 @@ impl Individual {
         rhythms: &NeuralRhythms,
         dt_sec: f32,
         landscape: &Landscape,
+        neighbor_pitch_log2: &[f32],
     ) {
         let current_freq = self.body.base_freq_hz();
         self.pitch_ctl.update_pitch_target(
@@ -409,6 +431,7 @@ impl Individual {
             dt_sec,
             landscape,
             &self.effective_control.pitch,
+            neighbor_pitch_log2,
         );
     }
 
@@ -418,9 +441,16 @@ impl Individual {
         dt_sec: f32,
         rhythms: &NeuralRhythms,
         landscape: &Landscape,
+        neighbor_pitch_log2: &[f32],
         global_coupling: f32,
     ) -> ArticulationSignal {
-        self.update_articulation(dt_sec, rhythms, landscape, global_coupling)
+        self.update_articulation(
+            dt_sec,
+            rhythms,
+            landscape,
+            neighbor_pitch_log2,
+            global_coupling,
+        )
     }
 
     /// Update articulation at control rate (hop-sized steps).
@@ -429,9 +459,10 @@ impl Individual {
         dt_sec: f32,
         rhythms: &NeuralRhythms,
         landscape: &Landscape,
+        neighbor_pitch_log2: &[f32],
         global_coupling: f32,
     ) -> ArticulationSignal {
-        self.update_pitch_target(rhythms, dt_sec, landscape);
+        self.update_pitch_target(rhythms, dt_sec, landscape, neighbor_pitch_log2);
         self.update_articulation_autonomous(dt_sec, rhythms);
         self.tick_articulation_lifecycle(dt_sec, rhythms, landscape, global_coupling)
     }

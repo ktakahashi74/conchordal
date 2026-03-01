@@ -169,6 +169,19 @@ impl SpeciesSpec {
         self.control.set_landscape_weight_clamped(value);
     }
 
+    fn set_exploration(&mut self, value: f32) {
+        self.control.set_exploration_clamped(value);
+    }
+
+    fn set_persistence(&mut self, value: f32) {
+        self.control.set_persistence_clamped(value);
+    }
+
+    fn set_repulsion(&mut self, strength: f32, sigma_cents: f32) {
+        self.control.set_repulsion_strength_clamped(strength);
+        self.control.set_repulsion_sigma_cents_clamped(sigma_cents);
+    }
+
     fn set_pitch_mode(&mut self, name: &str) {
         let lowered = name.trim().to_ascii_lowercase();
         self.control.pitch.mode = match lowered.as_str() {
@@ -741,6 +754,51 @@ impl ScriptHost {
                 species
             },
         );
+        engine.register_fn("exploration", |mut species: SpeciesHandle, value: FLOAT| {
+            species.spec.set_exploration(value as f32);
+            species
+        });
+        engine.register_fn("exploration", |mut species: SpeciesHandle, value: INT| {
+            species.spec.set_exploration(value as f32);
+            species
+        });
+        engine.register_fn("persistence", |mut species: SpeciesHandle, value: FLOAT| {
+            species.spec.set_persistence(value as f32);
+            species
+        });
+        engine.register_fn("persistence", |mut species: SpeciesHandle, value: INT| {
+            species.spec.set_persistence(value as f32);
+            species
+        });
+        engine.register_fn(
+            "repulsion",
+            |mut species: SpeciesHandle, strength: FLOAT, sigma_cents: FLOAT| {
+                species
+                    .spec
+                    .set_repulsion(strength as f32, sigma_cents as f32);
+                species
+            },
+        );
+        engine.register_fn(
+            "repulsion",
+            |mut species: SpeciesHandle, strength: INT, sigma_cents: INT| {
+                species
+                    .spec
+                    .set_repulsion(strength as f32, sigma_cents as f32);
+                species
+            },
+        );
+        engine.register_fn(
+            "repulsion",
+            |mut species: SpeciesHandle, strength: FLOAT| {
+                species.spec.set_repulsion(strength as f32, 60.0);
+                species
+            },
+        );
+        engine.register_fn("repulsion", |mut species: SpeciesHandle, strength: INT| {
+            species.spec.set_repulsion(strength as f32, 60.0);
+            species
+        });
         engine.register_fn("pitch_mode", |mut species: SpeciesHandle, name: &str| {
             species.spec.set_pitch_mode(name);
             species
@@ -1278,6 +1336,204 @@ impl ScriptHost {
                         group.pending_update.landscape_weight = Some(value);
                     }
                     _ => ctx.warn_live_builder(handle.id, "landscape_weight"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_exploration = ctx.clone();
+        engine.register_fn(
+            "exploration",
+            move |handle: GroupHandle, value: FLOAT| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_exploration
+                    .lock()
+                    .expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("exploration ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                let value = value as f32;
+                match group.status {
+                    GroupStatus::Draft => group.spec.set_exploration(value),
+                    GroupStatus::Live => {
+                        group.spec.set_exploration(value);
+                        group.pending_update.exploration = Some(value);
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "exploration"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_exploration_int = ctx.clone();
+        engine.register_fn(
+            "exploration",
+            move |handle: GroupHandle, value: INT| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_exploration_int
+                    .lock()
+                    .expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("exploration ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                let value = value as f32;
+                match group.status {
+                    GroupStatus::Draft => group.spec.set_exploration(value),
+                    GroupStatus::Live => {
+                        group.spec.set_exploration(value);
+                        group.pending_update.exploration = Some(value);
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "exploration"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_persistence = ctx.clone();
+        engine.register_fn(
+            "persistence",
+            move |handle: GroupHandle, value: FLOAT| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_persistence
+                    .lock()
+                    .expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("persistence ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                let value = value as f32;
+                match group.status {
+                    GroupStatus::Draft => group.spec.set_persistence(value),
+                    GroupStatus::Live => {
+                        group.spec.set_persistence(value);
+                        group.pending_update.persistence = Some(value);
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "persistence"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_persistence_int = ctx.clone();
+        engine.register_fn(
+            "persistence",
+            move |handle: GroupHandle, value: INT| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_persistence_int
+                    .lock()
+                    .expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("persistence ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                let value = value as f32;
+                match group.status {
+                    GroupStatus::Draft => group.spec.set_persistence(value),
+                    GroupStatus::Live => {
+                        group.spec.set_persistence(value);
+                        group.pending_update.persistence = Some(value);
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "persistence"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_repulsion = ctx.clone();
+        engine.register_fn(
+            "repulsion",
+            move |handle: GroupHandle,
+                  strength: FLOAT,
+                  sigma_cents: FLOAT|
+                  -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_repulsion.lock().expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("repulsion ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                let strength = strength as f32;
+                let sigma_cents = sigma_cents as f32;
+                match group.status {
+                    GroupStatus::Draft => group.spec.set_repulsion(strength, sigma_cents),
+                    GroupStatus::Live => {
+                        group.spec.set_repulsion(strength, sigma_cents);
+                        group.pending_update.repulsion_strength = Some(strength);
+                        group.pending_update.repulsion_sigma_cents = Some(sigma_cents);
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "repulsion"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_repulsion_default = ctx.clone();
+        engine.register_fn(
+            "repulsion",
+            move |handle: GroupHandle,
+                  strength: FLOAT|
+                  -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_repulsion_default
+                    .lock()
+                    .expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("repulsion ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                let strength = strength as f32;
+                let sigma_cents = 60.0;
+                match group.status {
+                    GroupStatus::Draft => group.spec.set_repulsion(strength, sigma_cents),
+                    GroupStatus::Live => {
+                        group.spec.set_repulsion(strength, sigma_cents);
+                        group.pending_update.repulsion_strength = Some(strength);
+                        group.pending_update.repulsion_sigma_cents = Some(sigma_cents);
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "repulsion"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_repulsion_int = ctx.clone();
+        engine.register_fn(
+            "repulsion",
+            move |handle: GroupHandle,
+                  strength: INT,
+                  sigma_cents: INT|
+                  -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_repulsion_int
+                    .lock()
+                    .expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("repulsion ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                let strength = strength as f32;
+                let sigma_cents = sigma_cents as f32;
+                match group.status {
+                    GroupStatus::Draft => group.spec.set_repulsion(strength, sigma_cents),
+                    GroupStatus::Live => {
+                        group.spec.set_repulsion(strength, sigma_cents);
+                        group.pending_update.repulsion_strength = Some(strength);
+                        group.pending_update.repulsion_sigma_cents = Some(sigma_cents);
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "repulsion"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_repulsion_default_int = ctx.clone();
+        engine.register_fn(
+            "repulsion",
+            move |handle: GroupHandle, strength: INT| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_repulsion_default_int
+                    .lock()
+                    .expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("repulsion ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                let strength = strength as f32;
+                let sigma_cents = 60.0;
+                match group.status {
+                    GroupStatus::Draft => group.spec.set_repulsion(strength, sigma_cents),
+                    GroupStatus::Live => {
+                        group.spec.set_repulsion(strength, sigma_cents);
+                        group.pending_update.repulsion_strength = Some(strength);
+                        group.pending_update.repulsion_sigma_cents = Some(sigma_cents);
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "repulsion"),
                 }
                 Ok(handle)
             },
@@ -2197,6 +2453,33 @@ mod tests {
     }
 
     #[test]
+    fn species_exploration_persistence_reach_spawned_core() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            create(sine.exploration(0.8).persistence(0.2), 1);
+            flush();
+        "#,
+        );
+        let mut pop = Population::new(Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        });
+        let landscape = LandscapeFrame::default();
+        for action in scenario
+            .events
+            .iter()
+            .flat_map(|event| event.actions.iter())
+        {
+            if let Action::Spawn { .. } = action {
+                pop.apply_action(action.clone(), &landscape, None);
+            }
+        }
+        let agent = pop.individuals.first().expect("spawned");
+        assert!((agent.pitch_core_for_test().exploration_for_test() - 0.8).abs() <= 1e-6);
+        assert!((agent.pitch_core_for_test().persistence_for_test() - 0.2).abs() <= 1e-6);
+    }
+
+    #[test]
     fn group_landscape_weight_emits_live_update() {
         let (scenario, _warnings) = run_script(
             r#"
@@ -2254,6 +2537,82 @@ mod tests {
     }
 
     #[test]
+    fn group_exploration_persistence_live_update_reaches_individual() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            let g = create(sine, 1);
+            flush();
+            let g = g.exploration(0.75).persistence(0.1);
+            flush();
+        "#,
+        );
+        let mut pop = Population::new(Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        });
+        let landscape = LandscapeFrame::default();
+        for action in scenario
+            .events
+            .iter()
+            .flat_map(|event| event.actions.iter())
+        {
+            match action {
+                Action::Spawn { .. } | Action::Update { .. } => {
+                    pop.apply_action(action.clone(), &landscape, None);
+                }
+                _ => {}
+            }
+        }
+        let agent = pop.individuals.first().expect("spawned");
+        assert!((agent.pitch_core_for_test().exploration_for_test() - 0.75).abs() <= 1e-6);
+        assert!((agent.pitch_core_for_test().persistence_for_test() - 0.1).abs() <= 1e-6);
+    }
+
+    #[test]
+    fn species_repulsion_sets_spawn_control() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            create(sine.repulsion(1.2, 35.0), 1);
+            flush();
+        "#,
+        );
+        let (strength, sigma_cents) = scenario
+            .events
+            .iter()
+            .flat_map(|event| &event.actions)
+            .find_map(|action| match action {
+                Action::Spawn { spec, .. } => Some((
+                    spec.control.pitch.repulsion_strength,
+                    spec.control.pitch.repulsion_sigma_cents,
+                )),
+                _ => None,
+            })
+            .expect("spawn action");
+        assert!((strength - 1.2).abs() <= 1e-6);
+        assert!((sigma_cents - 35.0).abs() <= 1e-6);
+    }
+
+    #[test]
+    fn group_draft_landscape_weight_sets_spawn_control() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            let g = create(sine, 1).landscape_weight(0.4);
+            flush();
+        "#,
+        );
+        let weight = scenario
+            .events
+            .iter()
+            .flat_map(|event| &event.actions)
+            .find_map(|action| match action {
+                Action::Spawn { spec, .. } => Some(spec.control.pitch.landscape_weight),
+                _ => None,
+            })
+            .expect("spawn action");
+        assert!((weight - 0.4).abs() <= 1e-6);
+    }
+
+    #[test]
     fn species_respawn_policy_emits_runtime_action() {
         let (scenario, _warnings) = run_script(
             r#"
@@ -2274,6 +2633,52 @@ mod tests {
             }
         }
         assert!(saw_policy, "expected SetRespawnPolicy action");
+    }
+
+    #[test]
+    fn group_draft_respawn_random_emits_runtime_action() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            let g = create(sine, 1).respawn_random();
+            flush();
+        "#,
+        );
+        let mut saw_policy = false;
+        for action in scenario
+            .events
+            .iter()
+            .flat_map(|event| event.actions.iter())
+        {
+            if let Action::SetRespawnPolicy { group_id, policy } = action {
+                assert_eq!(*group_id, 1);
+                assert_eq!(*policy, RespawnPolicy::Random);
+                saw_policy = true;
+            }
+        }
+        assert!(saw_policy, "expected SetRespawnPolicy(Random)");
+    }
+
+    #[test]
+    fn group_draft_respawn_hereditary_emits_runtime_action() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            let g = create(sine, 1).respawn_hereditary(0.03);
+            flush();
+        "#,
+        );
+        let mut saw_policy = false;
+        for action in scenario
+            .events
+            .iter()
+            .flat_map(|event| event.actions.iter())
+        {
+            if let Action::SetRespawnPolicy { group_id, policy } = action {
+                assert_eq!(*group_id, 1);
+                assert_eq!(*policy, RespawnPolicy::Hereditary { sigma_oct: 0.03 });
+                saw_policy = true;
+            }
+        }
+        assert!(saw_policy, "expected SetRespawnPolicy(Hereditary)");
     }
 
     #[test]

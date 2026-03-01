@@ -454,11 +454,15 @@ pub enum Action {
     },
     Update {
         group_id: u64,
+        /// Legacy payload retained for script/schema compatibility.
+        /// Runtime resolution is group-wide by `group_id`.
         ids: Vec<u64>,
         update: ControlUpdate,
     },
     Release {
         group_id: u64,
+        /// Legacy payload retained for script/schema compatibility.
+        /// Runtime resolution is group-wide by `group_id`.
         ids: Vec<u64>,
         fade_sec: f32,
     },

@@ -86,6 +86,7 @@ impl PitchController {
         dt_sec: f32,
         landscape: &Landscape,
         pitch: &PitchControl,
+        neighbor_pitch_log2: &[f32],
     ) {
         let dt_sec = dt_sec.max(0.0);
         let current_freq = current_freq_hz.max(1.0);
@@ -130,6 +131,7 @@ impl PitchController {
                 landscape,
                 &self.perceptual,
                 &features,
+                neighbor_pitch_log2,
                 &mut self.rng,
             );
             target_pitch_log2 = proposal.target_pitch_log2;
@@ -179,6 +181,10 @@ impl PitchController {
 
 #[cfg(test)]
 impl PitchController {
+    pub(crate) fn core_for_test(&self) -> &AnyPitchCore {
+        &self.core
+    }
+
     pub(crate) fn set_accumulated_time_for_test(&mut self, value: f32) {
         self.accumulated_time = value;
     }

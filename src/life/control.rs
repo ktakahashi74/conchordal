@@ -1,6 +1,7 @@
 const RANGE_OCT_MAX: f32 = 6.0;
 pub const MIN_FREQ_HZ: f32 = 1.0;
 pub const MAX_FREQ_HZ: f32 = 20_000.0;
+const DEFAULT_REPULSION_SIGMA_CENTS: f32 = 60.0;
 
 use crate::core::mode_pattern::ModePattern;
 
@@ -61,6 +62,34 @@ impl AgentControl {
             weight.max(0.0)
         } else {
             1.0
+        };
+    }
+
+    #[inline]
+    pub fn set_exploration_clamped(&mut self, value: f32) {
+        self.pitch.exploration = value.clamp(0.0, 1.0);
+    }
+
+    #[inline]
+    pub fn set_persistence_clamped(&mut self, value: f32) {
+        self.pitch.persistence = value.clamp(0.0, 1.0);
+    }
+
+    #[inline]
+    pub fn set_repulsion_strength_clamped(&mut self, value: f32) {
+        self.pitch.repulsion_strength = if value.is_finite() {
+            value.max(0.0)
+        } else {
+            0.0
+        };
+    }
+
+    #[inline]
+    pub fn set_repulsion_sigma_cents_clamped(&mut self, value: f32) {
+        self.pitch.repulsion_sigma_cents = if value.is_finite() {
+            value.max(1e-3)
+        } else {
+            DEFAULT_REPULSION_SIGMA_CENTS
         };
     }
 }
@@ -136,6 +165,8 @@ pub struct PitchControl {
     pub landscape_weight: f32,
     pub exploration: f32,
     pub persistence: f32,
+    pub repulsion_strength: f32,
+    pub repulsion_sigma_cents: f32,
 }
 
 impl Default for PitchControl {
@@ -149,6 +180,8 @@ impl Default for PitchControl {
             landscape_weight: 1.0,
             exploration: 0.0,
             persistence: 0.5,
+            repulsion_strength: 0.0,
+            repulsion_sigma_cents: DEFAULT_REPULSION_SIGMA_CENTS,
         }
     }
 }
@@ -209,6 +242,10 @@ pub struct ControlUpdate {
     pub amp: Option<f32>,
     pub freq: Option<f32>,
     pub landscape_weight: Option<f32>,
+    pub exploration: Option<f32>,
+    pub persistence: Option<f32>,
+    pub repulsion_strength: Option<f32>,
+    pub repulsion_sigma_cents: Option<f32>,
     pub timbre_brightness: Option<f32>,
     pub timbre_inharmonic: Option<f32>,
     pub timbre_width: Option<f32>,
@@ -220,6 +257,10 @@ impl ControlUpdate {
         self.amp.is_none()
             && self.freq.is_none()
             && self.landscape_weight.is_none()
+            && self.exploration.is_none()
+            && self.persistence.is_none()
+            && self.repulsion_strength.is_none()
+            && self.repulsion_sigma_cents.is_none()
             && self.timbre_brightness.is_none()
             && self.timbre_inharmonic.is_none()
             && self.timbre_width.is_none()
@@ -237,6 +278,18 @@ impl AgentControl {
         }
         if let Some(weight) = update.landscape_weight {
             self.set_landscape_weight_clamped(weight);
+        }
+        if let Some(exploration) = update.exploration {
+            self.set_exploration_clamped(exploration);
+        }
+        if let Some(persistence) = update.persistence {
+            self.set_persistence_clamped(persistence);
+        }
+        if let Some(strength) = update.repulsion_strength {
+            self.set_repulsion_strength_clamped(strength);
+        }
+        if let Some(sigma) = update.repulsion_sigma_cents {
+            self.set_repulsion_sigma_cents_clamped(sigma);
         }
         if let Some(brightness) = update.timbre_brightness {
             self.set_timbre_brightness_clamped(brightness);
@@ -265,6 +318,10 @@ mod tests {
             amp: Some(1.2),
             freq: Some(99_999.0),
             landscape_weight: Some(-2.0),
+            exploration: Some(2.0),
+            persistence: Some(-1.0),
+            repulsion_strength: Some(-4.0),
+            repulsion_sigma_cents: Some(-3.0),
             timbre_brightness: Some(-0.1),
             timbre_inharmonic: Some(2.0),
             timbre_width: Some(0.25),
@@ -276,6 +333,10 @@ mod tests {
         assert_eq!(control.pitch.mode, PitchMode::Lock);
         assert!((control.pitch.freq - MAX_FREQ_HZ).abs() <= 1e-6);
         assert!((control.pitch.landscape_weight - 0.0).abs() <= 1e-6);
+        assert!((control.pitch.exploration - 1.0).abs() <= 1e-6);
+        assert!((control.pitch.persistence - 0.0).abs() <= 1e-6);
+        assert!((control.pitch.repulsion_strength - 0.0).abs() <= 1e-6);
+        assert!((control.pitch.repulsion_sigma_cents - 1e-3).abs() <= 1e-6);
         assert!((control.body.timbre.brightness - 0.0).abs() <= 1e-6);
         assert!((control.body.timbre.inharmonic - 1.0).abs() <= 1e-6);
         assert!((control.body.timbre.width - 0.25).abs() <= 1e-6);

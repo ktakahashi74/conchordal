@@ -66,7 +66,7 @@ fn population_spawn_and_release_removes_agent() {
     let samples_per_hop = (fs * dt) as usize;
     let landscape_rt = make_test_landscape(fs);
     pop.advance(samples_per_hop, fs, 0, dt, &landscape_rt);
-    pop.cleanup_dead(0, dt, false);
+    pop.cleanup_dead(0, dt, false, &landscape);
     assert!(pop.individuals.is_empty());
 }
 
@@ -405,7 +405,7 @@ fn agent_lifecycle_decay_death() {
 
     for i in 0..100 {
         pop.advance(samples_per_hop, fs, i, dt, &landscape_rt);
-        pop.cleanup_dead(i, dt, false);
+        pop.cleanup_dead(i, dt, false, &landscape);
     }
 
     assert!(pop.individuals.is_empty());

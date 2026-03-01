@@ -135,7 +135,7 @@ impl Dirty {
             || update.timbre_inharmonic.is_some()
             || update.timbre_width.is_some()
             || update.timbre_motion.is_some();
-        let pitch = update.freq.is_some();
+        let pitch = update.freq.is_some() || update.landscape_weight.is_some();
         Self {
             body,
             pitch,

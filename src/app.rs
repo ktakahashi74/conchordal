@@ -238,7 +238,10 @@ pub fn validate_scenario(scenario: &Scenario) -> Result<(), String> {
                 Action::Finish => {
                     has_finish = true;
                 }
-                Action::Spawn { .. } | Action::Update { .. } | Action::Release { .. } => {}
+                Action::Spawn { .. }
+                | Action::Update { .. }
+                | Action::Release { .. }
+                | Action::SetRespawnPolicy { .. } => {}
                 Action::SetHarmonicityParams { .. }
                 | Action::SetGlobalCoupling { .. }
                 | Action::SetRoughnessTolerance { .. } => {}
@@ -1223,7 +1226,12 @@ fn worker_loop(
                 hop_duration.as_secs_f32(),
                 &current_landscape,
             );
-            pop.cleanup_dead(frame_idx, hop_duration.as_secs_f32(), conductor.is_done());
+            pop.cleanup_dead(
+                frame_idx,
+                hop_duration.as_secs_f32(),
+                conductor.is_done(),
+                &current_landscape,
+            );
             pop.fill_voice_targets(&mut voice_targets);
 
             // [FIX] Audio is MONO. Treat it as such.

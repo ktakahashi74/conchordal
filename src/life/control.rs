@@ -54,6 +54,15 @@ impl AgentControl {
     pub fn set_timbre_motion_clamped(&mut self, motion: f32) {
         self.body.timbre.motion = motion.clamp(0.0, 1.0);
     }
+
+    #[inline]
+    pub fn set_landscape_weight_clamped(&mut self, weight: f32) {
+        self.pitch.landscape_weight = if weight.is_finite() {
+            weight.max(0.0)
+        } else {
+            1.0
+        };
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -199,6 +208,7 @@ impl Default for PerceptualControl {
 pub struct ControlUpdate {
     pub amp: Option<f32>,
     pub freq: Option<f32>,
+    pub landscape_weight: Option<f32>,
     pub timbre_brightness: Option<f32>,
     pub timbre_inharmonic: Option<f32>,
     pub timbre_width: Option<f32>,
@@ -209,6 +219,7 @@ impl ControlUpdate {
     pub fn is_empty(&self) -> bool {
         self.amp.is_none()
             && self.freq.is_none()
+            && self.landscape_weight.is_none()
             && self.timbre_brightness.is_none()
             && self.timbre_inharmonic.is_none()
             && self.timbre_width.is_none()
@@ -223,6 +234,9 @@ impl AgentControl {
         }
         if let Some(freq) = update.freq {
             self.set_freq_lock_clamped(freq);
+        }
+        if let Some(weight) = update.landscape_weight {
+            self.set_landscape_weight_clamped(weight);
         }
         if let Some(brightness) = update.timbre_brightness {
             self.set_timbre_brightness_clamped(brightness);
@@ -250,6 +264,7 @@ mod tests {
         let update = ControlUpdate {
             amp: Some(1.2),
             freq: Some(99_999.0),
+            landscape_weight: Some(-2.0),
             timbre_brightness: Some(-0.1),
             timbre_inharmonic: Some(2.0),
             timbre_width: Some(0.25),
@@ -260,6 +275,7 @@ mod tests {
         assert!((control.body.amp - 1.0).abs() <= 1e-6);
         assert_eq!(control.pitch.mode, PitchMode::Lock);
         assert!((control.pitch.freq - MAX_FREQ_HZ).abs() <= 1e-6);
+        assert!((control.pitch.landscape_weight - 0.0).abs() <= 1e-6);
         assert!((control.body.timbre.brightness - 0.0).abs() <= 1e-6);
         assert!((control.body.timbre.inharmonic - 1.0).abs() <= 1e-6);
         assert!((control.body.timbre.width - 0.25).abs() <= 1e-6);

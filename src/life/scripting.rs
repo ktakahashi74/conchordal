@@ -13,8 +13,9 @@ use super::control::{
 };
 use super::lifecycle::LifecycleConfig;
 use super::scenario::{
-    Action, ArticulationCoreConfig, EnvelopeConfig, MetabolismRhythmReward, RhythmCouplingMode,
-    RhythmRewardMetric, Scenario, SceneMarker, SpawnSpec, SpawnStrategy, TimedEvent,
+    Action, ArticulationCoreConfig, EnvelopeConfig, MetabolismRhythmReward, RespawnPolicy,
+    RhythmCouplingMode, RhythmRewardMetric, Scenario, SceneMarker, SpawnSpec, SpawnStrategy,
+    TimedEvent,
 };
 
 const DEFAULT_RELEASE_SEC: f32 = 0.05;
@@ -61,6 +62,7 @@ struct AdsrSpec {
 #[derive(Clone, Debug)]
 struct SpeciesSpec {
     control: AgentControl,
+    respawn_policy: RespawnPolicy,
     brain: BrainKind,
     phonation: Option<PhonationKind>,
     metabolism_rate: Option<f32>,
@@ -75,6 +77,7 @@ impl SpeciesSpec {
         control.body.method = body;
         Self {
             control,
+            respawn_policy: RespawnPolicy::None,
             brain: BrainKind::Entrain,
             phonation: None,
             metabolism_rate: None,
@@ -162,6 +165,10 @@ impl SpeciesSpec {
         self.control.set_freq_lock_clamped(freq);
     }
 
+    fn set_landscape_weight(&mut self, value: f32) {
+        self.control.set_landscape_weight_clamped(value);
+    }
+
     fn set_pitch_mode(&mut self, name: &str) {
         let lowered = name.trim().to_ascii_lowercase();
         self.control.pitch.mode = match lowered.as_str() {
@@ -237,6 +244,19 @@ impl SpeciesSpec {
         });
     }
 
+    fn set_respawn_random(&mut self) {
+        self.respawn_policy = RespawnPolicy::Random;
+    }
+
+    fn set_respawn_hereditary(&mut self, sigma_oct: f32) {
+        let sigma_oct = if sigma_oct.is_finite() {
+            sigma_oct.max(0.0)
+        } else {
+            0.0
+        };
+        self.respawn_policy = RespawnPolicy::Hereditary { sigma_oct };
+    }
+
     fn set_rhythm_coupling(&mut self, mode: &str) {
         let lowered = mode.trim().to_ascii_lowercase();
         self.rhythm_coupling = match lowered.as_str() {
@@ -299,6 +319,7 @@ struct GroupState {
     id: u64,
     count: usize,
     spec: SpeciesSpec,
+    respawn_policy: RespawnPolicy,
     strategy: Option<SpawnStrategy>,
     status: GroupStatus,
     live_ids: Vec<u64>,
@@ -472,6 +493,12 @@ impl ScriptContext {
                         spec: group.spec.spawn_spec(),
                         strategy: group.strategy.clone(),
                     });
+                    if !matches!(group.respawn_policy, RespawnPolicy::None) {
+                        spawn_actions.push(Action::SetRespawnPolicy {
+                            group_id: group.id,
+                            policy: group.respawn_policy,
+                        });
+                    }
                 }
             }
         }
@@ -553,6 +580,7 @@ impl ScriptContext {
         let group = GroupState {
             id,
             count,
+            respawn_policy: species.spec.respawn_policy,
             spec: species.spec,
             strategy: None,
             status: GroupStatus::Draft,
@@ -699,6 +727,20 @@ impl ScriptHost {
             species.spec.set_freq(value as f32);
             species
         });
+        engine.register_fn(
+            "landscape_weight",
+            |mut species: SpeciesHandle, value: FLOAT| {
+                species.spec.set_landscape_weight(value as f32);
+                species
+            },
+        );
+        engine.register_fn(
+            "landscape_weight",
+            |mut species: SpeciesHandle, value: INT| {
+                species.spec.set_landscape_weight(value as f32);
+                species
+            },
+        );
         engine.register_fn("pitch_mode", |mut species: SpeciesHandle, name: &str| {
             species.spec.set_pitch_mode(name);
             species
@@ -766,6 +808,24 @@ impl ScriptHost {
             "rhythm_reward",
             |mut species: SpeciesHandle, rho_t: FLOAT, metric: &str| {
                 species.spec.set_rhythm_reward(rho_t as f32, metric);
+                species
+            },
+        );
+        engine.register_fn("respawn_random", |mut species: SpeciesHandle| {
+            species.spec.set_respawn_random();
+            species
+        });
+        engine.register_fn(
+            "respawn_hereditary",
+            |mut species: SpeciesHandle, sigma_oct: FLOAT| {
+                species.spec.set_respawn_hereditary(sigma_oct as f32);
+                species
+            },
+        );
+        engine.register_fn(
+            "respawn_hereditary",
+            |mut species: SpeciesHandle, sigma_oct: INT| {
+                species.spec.set_respawn_hereditary(sigma_oct as f32);
                 species
             },
         );
@@ -1172,6 +1232,56 @@ impl ScriptHost {
                 Ok(handle)
             },
         );
+        let ctx_for_group_landscape_weight = ctx.clone();
+        engine.register_fn(
+            "landscape_weight",
+            move |handle: GroupHandle, value: FLOAT| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_landscape_weight
+                    .lock()
+                    .expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("landscape_weight ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                let value = value as f32;
+                match group.status {
+                    GroupStatus::Draft => {
+                        group.spec.set_landscape_weight(value);
+                    }
+                    GroupStatus::Live => {
+                        group.spec.set_landscape_weight(value);
+                        group.pending_update.landscape_weight = Some(value);
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "landscape_weight"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_landscape_weight_int = ctx.clone();
+        engine.register_fn(
+            "landscape_weight",
+            move |handle: GroupHandle, value: INT| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_landscape_weight_int
+                    .lock()
+                    .expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("landscape_weight ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                let value = value as f32;
+                match group.status {
+                    GroupStatus::Draft => {
+                        group.spec.set_landscape_weight(value);
+                    }
+                    GroupStatus::Live => {
+                        group.spec.set_landscape_weight(value);
+                        group.pending_update.landscape_weight = Some(value);
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "landscape_weight"),
+                }
+                Ok(handle)
+            },
+        );
         let ctx_for_group_brain = ctx.clone();
         engine.register_fn(
             "brain",
@@ -1423,6 +1533,83 @@ impl ScriptHost {
                     GroupStatus::Draft => group.spec.set_rhythm_reward(rho_t as f32, metric),
                     GroupStatus::Live => ctx.warn_live_builder(handle.id, "rhythm_reward"),
                     _ => ctx.warn_live_builder(handle.id, "rhythm_reward"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_respawn_random = ctx.clone();
+        engine.register_fn(
+            "respawn_random",
+            move |handle: GroupHandle| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_respawn_random
+                    .lock()
+                    .expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("respawn_random ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                match group.status {
+                    GroupStatus::Draft => {
+                        group.respawn_policy = RespawnPolicy::Random;
+                        group.spec.respawn_policy = RespawnPolicy::Random;
+                    }
+                    GroupStatus::Live => ctx.warn_live_builder(handle.id, "respawn_random"),
+                    _ => ctx.warn_live_builder(handle.id, "respawn_random"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_respawn_hereditary = ctx.clone();
+        engine.register_fn(
+            "respawn_hereditary",
+            move |handle: GroupHandle,
+                  sigma_oct: FLOAT|
+                  -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_respawn_hereditary
+                    .lock()
+                    .expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("respawn_hereditary ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                let sigma_oct = sigma_oct as f32;
+                let sigma_oct = if sigma_oct.is_finite() {
+                    sigma_oct.max(0.0)
+                } else {
+                    0.0
+                };
+                match group.status {
+                    GroupStatus::Draft => {
+                        let policy = RespawnPolicy::Hereditary { sigma_oct };
+                        group.respawn_policy = policy;
+                        group.spec.respawn_policy = policy;
+                    }
+                    GroupStatus::Live => ctx.warn_live_builder(handle.id, "respawn_hereditary"),
+                    _ => ctx.warn_live_builder(handle.id, "respawn_hereditary"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_respawn_hereditary_int = ctx.clone();
+        engine.register_fn(
+            "respawn_hereditary",
+            move |handle: GroupHandle, sigma_oct: INT| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_respawn_hereditary_int
+                    .lock()
+                    .expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("respawn_hereditary ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                let sigma_oct = (sigma_oct as f32).max(0.0);
+                match group.status {
+                    GroupStatus::Draft => {
+                        let policy = RespawnPolicy::Hereditary { sigma_oct };
+                        group.respawn_policy = policy;
+                        group.spec.respawn_policy = policy;
+                    }
+                    GroupStatus::Live => ctx.warn_live_builder(handle.id, "respawn_hereditary"),
+                    _ => ctx.warn_live_builder(handle.id, "respawn_hereditary"),
                 }
                 Ok(handle)
             },
@@ -1961,6 +2148,132 @@ mod tests {
             })
             .expect("spawn action");
         assert_eq!(core_kind, PitchCoreKind::PeakSampler);
+    }
+
+    #[test]
+    fn species_landscape_weight_sets_spawn_control() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            create(sine.landscape_weight(0.25), 1);
+            flush();
+        "#,
+        );
+        let weight = scenario
+            .events
+            .iter()
+            .flat_map(|event| &event.actions)
+            .find_map(|action| match action {
+                Action::Spawn { spec, .. } => Some(spec.control.pitch.landscape_weight),
+                _ => None,
+            })
+            .expect("spawn action");
+        assert!((weight - 0.25).abs() <= 1e-6);
+    }
+
+    #[test]
+    fn species_landscape_weight_reaches_spawned_individual() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            create(sine.landscape_weight(0.3), 1);
+            flush();
+        "#,
+        );
+        let mut pop = Population::new(Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        });
+        let landscape = LandscapeFrame::default();
+        for action in scenario
+            .events
+            .iter()
+            .flat_map(|event| event.actions.iter())
+        {
+            if let Action::Spawn { .. } = action {
+                pop.apply_action(action.clone(), &landscape, None);
+            }
+        }
+        let agent = pop.individuals.first().expect("spawned");
+        assert!((agent.effective_control.pitch.landscape_weight - 0.3).abs() <= 1e-6);
+    }
+
+    #[test]
+    fn group_landscape_weight_emits_live_update() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            let g = create(sine, 1);
+            flush();
+            let g = g.landscape_weight(0.4);
+            flush();
+        "#,
+        );
+        let mut saw_update = false;
+        for action in scenario
+            .events
+            .iter()
+            .flat_map(|event| event.actions.iter())
+        {
+            if let Action::Update { update, .. } = action
+                && update.landscape_weight == Some(0.4)
+            {
+                saw_update = true;
+                break;
+            }
+        }
+        assert!(saw_update, "expected landscape_weight live update");
+    }
+
+    #[test]
+    fn group_landscape_weight_live_update_reaches_individual() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            let g = create(sine, 1);
+            flush();
+            let g = g.landscape_weight(0.6);
+            flush();
+        "#,
+        );
+        let mut pop = Population::new(Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        });
+        let landscape = LandscapeFrame::default();
+        for action in scenario
+            .events
+            .iter()
+            .flat_map(|event| event.actions.iter())
+        {
+            match action {
+                Action::Spawn { .. } | Action::Update { .. } => {
+                    pop.apply_action(action.clone(), &landscape, None);
+                }
+                _ => {}
+            }
+        }
+        let agent = pop.individuals.first().expect("spawned");
+        assert!((agent.effective_control.pitch.landscape_weight - 0.6).abs() <= 1e-6);
+    }
+
+    #[test]
+    fn species_respawn_policy_emits_runtime_action() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            create(sine.respawn_hereditary(0.03), 1);
+            flush();
+        "#,
+        );
+        let mut saw_policy = false;
+        for action in scenario
+            .events
+            .iter()
+            .flat_map(|event| event.actions.iter())
+        {
+            if let Action::SetRespawnPolicy { group_id, policy } = action {
+                assert_eq!(*group_id, 1);
+                assert_eq!(*policy, RespawnPolicy::Hereditary { sigma_oct: 0.03 });
+                saw_policy = true;
+            }
+        }
+        assert!(saw_policy, "expected SetRespawnPolicy action");
     }
 
     #[test]

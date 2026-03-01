@@ -433,6 +433,16 @@ impl SpawnStrategy {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum RespawnPolicy {
+    #[default]
+    None,
+    Random,
+    Hereditary {
+        sigma_oct: f32,
+    },
+}
+
 #[derive(Debug, Clone)]
 #[allow(clippy::large_enum_variant)]
 pub enum Action {
@@ -451,6 +461,10 @@ pub enum Action {
         group_id: u64,
         ids: Vec<u64>,
         fade_sec: f32,
+    },
+    SetRespawnPolicy {
+        group_id: u64,
+        policy: RespawnPolicy,
     },
     SetHarmonicityParams {
         update: LandscapeUpdate,
@@ -474,6 +488,9 @@ impl fmt::Display for Action {
             Action::Release {
                 group_id, fade_sec, ..
             } => write!(f, "Release group={} fade={:.3}", group_id, fade_sec),
+            Action::SetRespawnPolicy { group_id, policy } => {
+                write!(f, "SetRespawnPolicy group={} policy={:?}", group_id, policy)
+            }
             Action::SetHarmonicityParams { update } => write!(
                 f,
                 "SetHarmonicityParams mirror={:?} roughness_k={:?}",

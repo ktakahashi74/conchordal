@@ -1181,6 +1181,20 @@ impl AnyPitchCore {
             AnyPitchCore::PitchPeakSampler(_) => 0.0,
         }
     }
+
+    pub(crate) fn repulsion_strength_for_test(&self) -> f32 {
+        match self {
+            AnyPitchCore::PitchHillClimb(core) => core.repulsion_strength,
+            AnyPitchCore::PitchPeakSampler(core) => core.repulsion_strength,
+        }
+    }
+
+    pub(crate) fn repulsion_sigma_cents_for_test(&self) -> f32 {
+        match self {
+            AnyPitchCore::PitchHillClimb(core) => core.repulsion_sigma_log2 * 1200.0,
+            AnyPitchCore::PitchPeakSampler(core) => core.repulsion_sigma_log2 * 1200.0,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1444,6 +1458,109 @@ mod tests {
 
         assert!((base.target_pitch_log2 - with_neighbors.target_pitch_log2).abs() <= 1e-6);
         assert!((base.salience - with_neighbors.salience).abs() <= 1e-6);
+    }
+
+    #[test]
+    fn peak_sampler_repulsion_zero_ignores_neighbors() {
+        let landscape = test_landscape(&[(330.0, 1.0)]);
+        let perceptual = test_perceptual(landscape.space.n_bins());
+        let features = FeaturesNow::from_subjective_intensity(&landscape.subjective_intensity);
+        let mut core = PitchPeakSamplerCore::new(
+            120.0,
+            330.0f32.log2(),
+            0.0,
+            700.0,
+            16,
+            0.03,
+            10.0,
+            2,
+            1.0,
+            0.0,
+        );
+        core.set_repulsion(0.0, 20.0);
+
+        let mut rng_a = SmallRng::seed_from_u64(71);
+        let mut rng_b = SmallRng::seed_from_u64(71);
+        let base = core.propose_target(
+            330.0f32.log2(),
+            330.0f32.log2(),
+            330.0,
+            1.0,
+            &landscape,
+            &perceptual,
+            &features,
+            &[],
+            &mut rng_a,
+        );
+        let with_neighbors = core.propose_target(
+            330.0f32.log2(),
+            330.0f32.log2(),
+            330.0,
+            1.0,
+            &landscape,
+            &perceptual,
+            &features,
+            &[330.0f32.log2(), 440.0f32.log2()],
+            &mut rng_b,
+        );
+
+        assert!((base.target_pitch_log2 - with_neighbors.target_pitch_log2).abs() <= 1e-6);
+        assert!((base.salience - with_neighbors.salience).abs() <= 1e-6);
+    }
+
+    #[test]
+    fn peak_sampler_repulsion_penalizes_close_neighbor_selection() {
+        let landscape = test_landscape(&[(330.0, 1.0)]);
+        let perceptual = test_perceptual(landscape.space.n_bins());
+        let features = FeaturesNow::from_subjective_intensity(&landscape.subjective_intensity);
+        let mut no_repulsion = PitchPeakSamplerCore::new(
+            24.0,
+            330.0f32.log2(),
+            0.0,
+            700.0,
+            16,
+            0.001,
+            0.0,
+            0,
+            1.0,
+            0.0,
+        );
+        let mut with_repulsion = no_repulsion.clone();
+        no_repulsion.set_repulsion(0.0, 8.0);
+        with_repulsion.set_repulsion(3.0, 8.0);
+        let neighbor = 330.0f32.log2();
+
+        let mut rng_a = SmallRng::seed_from_u64(99);
+        let mut rng_b = SmallRng::seed_from_u64(99);
+        let off = no_repulsion.propose_target(
+            neighbor,
+            neighbor,
+            330.0,
+            1.0,
+            &landscape,
+            &perceptual,
+            &features,
+            &[neighbor],
+            &mut rng_a,
+        );
+        let on = with_repulsion.propose_target(
+            neighbor,
+            neighbor,
+            330.0,
+            1.0,
+            &landscape,
+            &perceptual,
+            &features,
+            &[neighbor],
+            &mut rng_b,
+        );
+
+        let dist_off = (off.target_pitch_log2 - neighbor).abs();
+        let dist_on = (on.target_pitch_log2 - neighbor).abs();
+        assert!(
+            dist_on > dist_off + 1e-6,
+            "repulsion should bias peak-sampler away from close neighbor"
+        );
     }
 
     #[test]

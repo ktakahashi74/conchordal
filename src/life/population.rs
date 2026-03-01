@@ -1206,6 +1206,21 @@ mod tests {
         LandscapeFrame::new(Log2Space::new(55.0, 1760.0, 24))
     }
 
+    fn repulsion_order_landscape() -> LandscapeFrame {
+        let mut landscape = LandscapeFrame::new(Log2Space::new(220.0, 440.0, 96));
+        let center_log2 = 330.0f32.log2();
+        let width_cents = 50.0f32;
+        for (idx, &bin_log2) in landscape.space.centers_log2.iter().enumerate() {
+            let d_cents = (bin_log2 - center_log2).abs() * 1200.0;
+            let score = (-(d_cents * d_cents) / (2.0 * width_cents * width_cents)).exp();
+            landscape.consonance_field_score[idx] = score;
+            landscape.consonance_field_level[idx] = score.clamp(0.0, 1.0);
+        }
+        landscape.rhythm.theta.phase = 0.1;
+        landscape.rhythm.theta.mag = 1.0;
+        landscape
+    }
+
     fn step_population(pop: &mut Population, frame: u64, dt_sec: f32, landscape: &LandscapeFrame) {
         let fs = 48_000.0;
         let samples_per_hop = (fs * dt_sec) as usize;
@@ -1218,6 +1233,53 @@ mod tests {
             dying.release_gain = 0.0;
             dying.release_pending = true;
         }
+    }
+
+    fn run_single_substep_targets(
+        order_reversed: bool,
+        repulsion_strength: f32,
+    ) -> Vec<(u64, f32)> {
+        let mut pop = Population::new(Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        });
+        pop.set_seed(101);
+        let landscape = repulsion_order_landscape();
+        let mut spec = spawn_spec_with_freq(330.0);
+        spec.control.pitch.mode = PitchMode::Free;
+        spec.control.pitch.range_oct = 1.5;
+        spec.control.pitch.exploration = 0.0;
+        spec.control.pitch.persistence = 0.0;
+        spec.control.pitch.repulsion_strength = repulsion_strength;
+        spec.control.pitch.repulsion_sigma_cents = 20.0;
+        pop.apply_action(
+            Action::Spawn {
+                group_id: 66,
+                ids: vec![660, 661, 662],
+                spec,
+                strategy: Some(SpawnStrategy::Linear {
+                    start_freq: 320.0,
+                    end_freq: 340.0,
+                }),
+            },
+            &landscape,
+            None,
+        );
+        for agent in pop.individuals.iter_mut() {
+            agent.set_theta_phase_state_for_test(0.9, true);
+            agent.set_accumulated_time_for_test(agent.integration_window());
+        }
+        if order_reversed {
+            pop.individuals.reverse();
+        }
+        pop.advance(64, 48_000.0, 0, 1.0, &landscape);
+        let mut out: Vec<(u64, f32)> = pop
+            .individuals
+            .iter()
+            .map(|agent| (agent.id(), agent.target_pitch_log2()))
+            .collect();
+        out.sort_by_key(|(id, _)| *id);
+        out
     }
 
     #[test]
@@ -1518,6 +1580,28 @@ mod tests {
         );
         for agent in &pop.individuals {
             assert!((agent.effective_control.body.amp - 0.42).abs() <= 1e-6);
+        }
+    }
+
+    #[test]
+    fn neighbor_snapshot_order_independent_without_repulsion() {
+        let forward = run_single_substep_targets(false, 0.0);
+        let reversed = run_single_substep_targets(true, 0.0);
+        assert_eq!(forward.len(), reversed.len());
+        for ((id_a, pitch_a), (id_b, pitch_b)) in forward.iter().zip(reversed.iter()) {
+            assert_eq!(*id_a, *id_b);
+            assert!((pitch_a - pitch_b).abs() <= 1e-6);
+        }
+    }
+
+    #[test]
+    fn neighbor_snapshot_order_independent_with_repulsion() {
+        let forward = run_single_substep_targets(false, 2.0);
+        let reversed = run_single_substep_targets(true, 2.0);
+        assert_eq!(forward.len(), reversed.len());
+        for ((id_a, pitch_a), (id_b, pitch_b)) in forward.iter().zip(reversed.iter()) {
+            assert_eq!(*id_a, *id_b);
+            assert!((pitch_a - pitch_b).abs() <= 1e-6);
         }
     }
 

@@ -789,6 +789,24 @@ impl ScriptHost {
         );
         engine.register_fn(
             "repulsion",
+            |mut species: SpeciesHandle, strength: INT, sigma_cents: FLOAT| {
+                species
+                    .spec
+                    .set_repulsion(strength as f32, sigma_cents as f32);
+                species
+            },
+        );
+        engine.register_fn(
+            "repulsion",
+            |mut species: SpeciesHandle, strength: FLOAT, sigma_cents: INT| {
+                species
+                    .spec
+                    .set_repulsion(strength as f32, sigma_cents as f32);
+                species
+            },
+        );
+        engine.register_fn(
+            "repulsion",
             |mut species: SpeciesHandle, strength: INT, sigma_cents: INT| {
                 species
                     .spec
@@ -1467,6 +1485,62 @@ impl ScriptHost {
                   sigma_cents: FLOAT|
                   -> Result<GroupHandle, Box<EvalAltResult>> {
                 let mut ctx = ctx_for_group_repulsion.lock().expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("repulsion ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                let strength = strength as f32;
+                let sigma_cents = sigma_cents as f32;
+                match group.status {
+                    GroupStatus::Draft => group.spec.set_repulsion(strength, sigma_cents),
+                    GroupStatus::Live => {
+                        group.spec.set_repulsion(strength, sigma_cents);
+                        group.pending_update.repulsion_strength = Some(strength);
+                        group.pending_update.repulsion_sigma_cents = Some(sigma_cents);
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "repulsion"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_repulsion_int_float = ctx.clone();
+        engine.register_fn(
+            "repulsion",
+            move |handle: GroupHandle,
+                  strength: INT,
+                  sigma_cents: FLOAT|
+                  -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_repulsion_int_float
+                    .lock()
+                    .expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("repulsion ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                let strength = strength as f32;
+                let sigma_cents = sigma_cents as f32;
+                match group.status {
+                    GroupStatus::Draft => group.spec.set_repulsion(strength, sigma_cents),
+                    GroupStatus::Live => {
+                        group.spec.set_repulsion(strength, sigma_cents);
+                        group.pending_update.repulsion_strength = Some(strength);
+                        group.pending_update.repulsion_sigma_cents = Some(sigma_cents);
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "repulsion"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_repulsion_float_int = ctx.clone();
+        engine.register_fn(
+            "repulsion",
+            move |handle: GroupHandle,
+                  strength: FLOAT,
+                  sigma_cents: INT|
+                  -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_repulsion_float_int
+                    .lock()
+                    .expect("lock script context");
                 let Some(group) = ctx.groups.get_mut(&handle.id) else {
                     warn!("repulsion ignored for unknown group {}", handle.id);
                     return Ok(handle);
@@ -2705,6 +2779,152 @@ mod tests {
             .expect("spawn action");
         assert!((strength - 1.2).abs() <= 1e-6);
         assert!((sigma_cents - 35.0).abs() <= 1e-6);
+    }
+
+    #[test]
+    fn species_repulsion_reaches_spawned_core() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            create(sine.repulsion(1.2, 35.0), 1);
+            flush();
+        "#,
+        );
+        let mut pop = Population::new(Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        });
+        let landscape = LandscapeFrame::default();
+        for action in scenario
+            .events
+            .iter()
+            .flat_map(|event| event.actions.iter())
+        {
+            if let Action::Spawn { .. } = action {
+                pop.apply_action(action.clone(), &landscape, None);
+            }
+        }
+        let agent = pop.individuals.first().expect("spawned");
+        assert!((agent.pitch_core_for_test().repulsion_strength_for_test() - 1.2).abs() <= 1e-6);
+        assert!(
+            (agent.pitch_core_for_test().repulsion_sigma_cents_for_test() - 35.0).abs() <= 1e-3
+        );
+    }
+
+    #[test]
+    fn species_repulsion_single_arg_uses_default_sigma() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            create(sine.repulsion(0.8), 1);
+            flush();
+        "#,
+        );
+        let mut pop = Population::new(Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        });
+        let landscape = LandscapeFrame::default();
+        for action in scenario
+            .events
+            .iter()
+            .flat_map(|event| event.actions.iter())
+        {
+            if let Action::Spawn { .. } = action {
+                pop.apply_action(action.clone(), &landscape, None);
+            }
+        }
+        let agent = pop.individuals.first().expect("spawned");
+        assert!((agent.pitch_core_for_test().repulsion_strength_for_test() - 0.8).abs() <= 1e-6);
+        assert!(
+            (agent.pitch_core_for_test().repulsion_sigma_cents_for_test() - 60.0).abs() <= 1e-3
+        );
+    }
+
+    #[test]
+    fn species_repulsion_mixed_numeric_overloads_work() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            create(sine.repulsion(1, 35.0), 1);
+            create(sine.repulsion(1.0, 35), 1);
+            flush();
+        "#,
+        );
+        let mut seen = 0usize;
+        for action in scenario
+            .events
+            .iter()
+            .flat_map(|event| event.actions.iter())
+        {
+            if let Action::Spawn { spec, .. } = action {
+                assert!((spec.control.pitch.repulsion_strength - 1.0).abs() <= 1e-6);
+                assert!((spec.control.pitch.repulsion_sigma_cents - 35.0).abs() <= 1e-6);
+                seen += 1;
+            }
+        }
+        assert_eq!(seen, 2);
+    }
+
+    #[test]
+    fn group_repulsion_live_update_reaches_individual_core() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            let g = create(sine, 1);
+            flush();
+            let g = g.repulsion(0.8, 25.0);
+            flush();
+        "#,
+        );
+        let mut pop = Population::new(Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        });
+        let landscape = LandscapeFrame::default();
+        for action in scenario
+            .events
+            .iter()
+            .flat_map(|event| event.actions.iter())
+        {
+            match action {
+                Action::Spawn { .. } | Action::Update { .. } => {
+                    pop.apply_action(action.clone(), &landscape, None);
+                }
+                _ => {}
+            }
+        }
+        let agent = pop.individuals.first().expect("spawned");
+        assert!((agent.pitch_core_for_test().repulsion_strength_for_test() - 0.8).abs() <= 1e-6);
+        assert!(
+            (agent.pitch_core_for_test().repulsion_sigma_cents_for_test() - 25.0).abs() <= 1e-3
+        );
+    }
+
+    #[test]
+    fn group_repulsion_mixed_numeric_overloads_work() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            let g = create(sine, 1);
+            flush();
+            let g = g.repulsion(1, 35.0);
+            flush();
+            let g = g.repulsion(1.0, 35);
+            flush();
+        "#,
+        );
+        let mut updates = 0usize;
+        for action in scenario
+            .events
+            .iter()
+            .flat_map(|event| event.actions.iter())
+        {
+            if let Action::Update { update, .. } = action
+                && let (Some(strength), Some(sigma)) =
+                    (update.repulsion_strength, update.repulsion_sigma_cents)
+            {
+                assert!((strength - 1.0).abs() <= 1e-6);
+                assert!((sigma - 35.0).abs() <= 1e-6);
+                updates += 1;
+            }
+        }
+        assert_eq!(updates, 2);
     }
 
     #[test]

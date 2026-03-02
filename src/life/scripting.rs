@@ -198,6 +198,14 @@ impl SpeciesSpec {
         self.control.set_anneal_temp_clamped(value);
     }
 
+    fn set_move_cost_coeff(&mut self, value: f32) {
+        self.control.set_move_cost_coeff_clamped(value);
+    }
+
+    fn set_improvement_threshold(&mut self, value: f32) {
+        self.control.set_improvement_threshold_clamped(value);
+    }
+
     fn set_pitch_mode(&mut self, name: &str) {
         let lowered = name.trim().to_ascii_lowercase();
         self.control.pitch.mode = match lowered.as_str() {
@@ -874,6 +882,28 @@ impl ScriptHost {
             species.spec.set_anneal_temp(value as f32);
             species
         });
+        engine.register_fn("move_cost", |mut species: SpeciesHandle, value: FLOAT| {
+            species.spec.set_move_cost_coeff(value as f32);
+            species
+        });
+        engine.register_fn("move_cost", |mut species: SpeciesHandle, value: INT| {
+            species.spec.set_move_cost_coeff(value as f32);
+            species
+        });
+        engine.register_fn(
+            "improvement_threshold",
+            |mut species: SpeciesHandle, value: FLOAT| {
+                species.spec.set_improvement_threshold(value as f32);
+                species
+            },
+        );
+        engine.register_fn(
+            "improvement_threshold",
+            |mut species: SpeciesHandle, value: INT| {
+                species.spec.set_improvement_threshold(value as f32);
+                species
+            },
+        );
         engine.register_fn("pitch_mode", |mut species: SpeciesHandle, name: &str| {
             species.spec.set_pitch_mode(name);
             species
@@ -1853,6 +1883,102 @@ impl ScriptHost {
                         group.pending_update.anneal_temp = Some(value);
                     }
                     _ => ctx.warn_live_builder(handle.id, "anneal_temp"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_move_cost = ctx.clone();
+        engine.register_fn(
+            "move_cost",
+            move |handle: GroupHandle, value: FLOAT| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_move_cost.lock().expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("move_cost ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                let value = value as f32;
+                match group.status {
+                    GroupStatus::Draft => group.spec.set_move_cost_coeff(value),
+                    GroupStatus::Live => {
+                        group.spec.set_move_cost_coeff(value);
+                        group.pending_update.move_cost_coeff = Some(value);
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "move_cost"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_move_cost_int = ctx.clone();
+        engine.register_fn(
+            "move_cost",
+            move |handle: GroupHandle, value: INT| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_move_cost_int
+                    .lock()
+                    .expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("move_cost ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                let value = value as f32;
+                match group.status {
+                    GroupStatus::Draft => group.spec.set_move_cost_coeff(value),
+                    GroupStatus::Live => {
+                        group.spec.set_move_cost_coeff(value);
+                        group.pending_update.move_cost_coeff = Some(value);
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "move_cost"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_imp_thresh = ctx.clone();
+        engine.register_fn(
+            "improvement_threshold",
+            move |handle: GroupHandle, value: FLOAT| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_imp_thresh
+                    .lock()
+                    .expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!(
+                        "improvement_threshold ignored for unknown group {}",
+                        handle.id
+                    );
+                    return Ok(handle);
+                };
+                let value = value as f32;
+                match group.status {
+                    GroupStatus::Draft => group.spec.set_improvement_threshold(value),
+                    GroupStatus::Live => {
+                        group.spec.set_improvement_threshold(value);
+                        group.pending_update.improvement_threshold = Some(value);
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "improvement_threshold"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_imp_thresh_int = ctx.clone();
+        engine.register_fn(
+            "improvement_threshold",
+            move |handle: GroupHandle, value: INT| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_imp_thresh_int
+                    .lock()
+                    .expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!(
+                        "improvement_threshold ignored for unknown group {}",
+                        handle.id
+                    );
+                    return Ok(handle);
+                };
+                let value = value as f32;
+                match group.status {
+                    GroupStatus::Draft => group.spec.set_improvement_threshold(value),
+                    GroupStatus::Live => {
+                        group.spec.set_improvement_threshold(value);
+                        group.pending_update.improvement_threshold = Some(value);
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "improvement_threshold"),
                 }
                 Ok(handle)
             },
@@ -3114,6 +3240,69 @@ mod tests {
         let agent = pop.individuals.first().expect("spawned");
         assert!(agent.pitch_core_for_test().leave_self_out_for_test());
         assert!((agent.pitch_core_for_test().anneal_temp_for_test() - 0.2).abs() <= 1e-6);
+    }
+
+    #[test]
+    fn species_move_cost_and_improvement_threshold_reach_spawned_core() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            create(sine.move_cost(0.9).improvement_threshold(0.07), 1);
+            flush();
+        "#,
+        );
+        let mut pop = Population::new(Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        });
+        let landscape = LandscapeFrame::default();
+        for action in scenario
+            .events
+            .iter()
+            .flat_map(|event| event.actions.iter())
+        {
+            if let Action::Spawn { .. } = action {
+                pop.apply_action(action.clone(), &landscape, None);
+            }
+        }
+        let agent = pop.individuals.first().expect("spawned");
+        assert!((agent.pitch_core_for_test().move_cost_coeff_for_test() - 0.9).abs() <= 1e-6);
+        assert!(
+            (agent.pitch_core_for_test().improvement_threshold_for_test() - 0.07).abs() <= 1e-6
+        );
+    }
+
+    #[test]
+    fn group_move_cost_and_improvement_threshold_live_update_reaches_individual() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            let g = create(sine, 1);
+            flush();
+            let g = g.move_cost(0.8).improvement_threshold(0.05);
+            flush();
+        "#,
+        );
+        let mut pop = Population::new(Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        });
+        let landscape = LandscapeFrame::default();
+        for action in scenario
+            .events
+            .iter()
+            .flat_map(|event| event.actions.iter())
+        {
+            match action {
+                Action::Spawn { .. } | Action::Update { .. } => {
+                    pop.apply_action(action.clone(), &landscape, None);
+                }
+                _ => {}
+            }
+        }
+        let agent = pop.individuals.first().expect("spawned");
+        assert!((agent.pitch_core_for_test().move_cost_coeff_for_test() - 0.8).abs() <= 1e-6);
+        assert!(
+            (agent.pitch_core_for_test().improvement_threshold_for_test() - 0.05).abs() <= 1e-6
+        );
     }
 
     #[test]

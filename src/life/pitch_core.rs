@@ -169,6 +169,14 @@ impl PitchHillClimbPitchCore {
     pub fn set_move_cost_exp(&mut self, value: u8) {
         self.move_cost_exp = if value == 2 { 2 } else { 1 };
     }
+
+    pub fn set_improvement_threshold(&mut self, value: f32) {
+        self.improvement_threshold = if value.is_finite() {
+            value.max(0.0)
+        } else {
+            0.1
+        };
+    }
 }
 
 impl PitchCore for PitchHillClimbPitchCore {
@@ -1130,6 +1138,18 @@ impl AnyPitchCore {
         }
     }
 
+    pub fn set_move_cost_coeff(&mut self, value: f32) {
+        if let AnyPitchCore::PitchHillClimb(core) = self {
+            core.set_move_cost_coeff(value);
+        }
+    }
+
+    pub fn set_improvement_threshold(&mut self, value: f32) {
+        if let AnyPitchCore::PitchHillClimb(core) = self {
+            core.set_improvement_threshold(value);
+        }
+    }
+
     pub fn set_tessitura_center(&mut self, value: f32) {
         match self {
             AnyPitchCore::PitchHillClimb(core) => core.set_tessitura_center(value),
@@ -1178,6 +1198,20 @@ impl AnyPitchCore {
     pub(crate) fn anneal_temp_for_test(&self) -> f32 {
         match self {
             AnyPitchCore::PitchHillClimb(core) => core.anneal_temp,
+            AnyPitchCore::PitchPeakSampler(_) => 0.0,
+        }
+    }
+
+    pub(crate) fn move_cost_coeff_for_test(&self) -> f32 {
+        match self {
+            AnyPitchCore::PitchHillClimb(core) => core.move_cost_coeff,
+            AnyPitchCore::PitchPeakSampler(_) => 0.0,
+        }
+    }
+
+    pub(crate) fn improvement_threshold_for_test(&self) -> f32 {
+        match self {
+            AnyPitchCore::PitchHillClimb(core) => core.improvement_threshold,
             AnyPitchCore::PitchPeakSampler(_) => 0.0,
         }
     }

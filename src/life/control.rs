@@ -3,6 +3,8 @@ pub const MIN_FREQ_HZ: f32 = 1.0;
 pub const MAX_FREQ_HZ: f32 = 20_000.0;
 const DEFAULT_REPULSION_SIGMA_CENTS: f32 = 60.0;
 const DEFAULT_ANNEAL_TEMP: f32 = 0.0;
+const DEFAULT_MOVE_COST_COEFF: f32 = 0.5;
+const DEFAULT_IMPROVEMENT_THRESHOLD: f32 = 0.1;
 
 use crate::core::mode_pattern::ModePattern;
 
@@ -125,6 +127,24 @@ impl AgentControl {
             DEFAULT_ANNEAL_TEMP
         };
     }
+
+    #[inline]
+    pub fn set_move_cost_coeff_clamped(&mut self, value: f32) {
+        self.pitch.move_cost_coeff = if value.is_finite() {
+            value.max(0.0)
+        } else {
+            DEFAULT_MOVE_COST_COEFF
+        };
+    }
+
+    #[inline]
+    pub fn set_improvement_threshold_clamped(&mut self, value: f32) {
+        self.pitch.improvement_threshold = if value.is_finite() {
+            value.max(0.0)
+        } else {
+            DEFAULT_IMPROVEMENT_THRESHOLD
+        };
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -206,6 +226,8 @@ pub struct PitchControl {
     pub repulsion_sigma_cents: f32,
     pub leave_self_out: bool,
     pub anneal_temp: f32,
+    pub move_cost_coeff: f32,
+    pub improvement_threshold: f32,
 }
 
 impl Default for PitchControl {
@@ -223,6 +245,8 @@ impl Default for PitchControl {
             repulsion_sigma_cents: DEFAULT_REPULSION_SIGMA_CENTS,
             leave_self_out: false,
             anneal_temp: DEFAULT_ANNEAL_TEMP,
+            move_cost_coeff: DEFAULT_MOVE_COST_COEFF,
+            improvement_threshold: DEFAULT_IMPROVEMENT_THRESHOLD,
         }
     }
 }
@@ -295,6 +319,8 @@ pub struct ControlUpdate {
     pub timbre_motion: Option<f32>,
     pub continuous_drive: Option<f32>,
     pub pitch_smooth_tau: Option<f32>,
+    pub move_cost_coeff: Option<f32>,
+    pub improvement_threshold: Option<f32>,
 }
 
 impl ControlUpdate {
@@ -314,6 +340,8 @@ impl ControlUpdate {
             && self.timbre_motion.is_none()
             && self.continuous_drive.is_none()
             && self.pitch_smooth_tau.is_none()
+            && self.move_cost_coeff.is_none()
+            && self.improvement_threshold.is_none()
     }
 }
 
@@ -364,6 +392,12 @@ impl AgentControl {
         if let Some(tau) = update.pitch_smooth_tau {
             self.set_pitch_smooth_tau_clamped(tau);
         }
+        if let Some(coeff) = update.move_cost_coeff {
+            self.set_move_cost_coeff_clamped(coeff);
+        }
+        if let Some(threshold) = update.improvement_threshold {
+            self.set_improvement_threshold_clamped(threshold);
+        }
     }
 }
 
@@ -391,6 +425,8 @@ mod tests {
             timbre_motion: Some(0.5),
             continuous_drive: None,
             pitch_smooth_tau: None,
+            move_cost_coeff: None,
+            improvement_threshold: None,
         };
         control.apply_update(&update);
 

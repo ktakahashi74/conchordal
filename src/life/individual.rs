@@ -142,7 +142,9 @@ impl Dirty {
             || update.repulsion_strength.is_some()
             || update.repulsion_sigma_cents.is_some()
             || update.leave_self_out.is_some()
-            || update.anneal_temp.is_some();
+            || update.anneal_temp.is_some()
+            || update.move_cost_coeff.is_some()
+            || update.improvement_threshold.is_some();
         Self {
             body,
             pitch,
@@ -316,6 +318,8 @@ impl Individual {
         core.set_repulsion(pitch.repulsion_strength, pitch.repulsion_sigma_cents);
         core.set_leave_self_out(pitch.leave_self_out);
         core.set_anneal_temp(pitch.anneal_temp);
+        core.set_move_cost_coeff(pitch.move_cost_coeff);
+        core.set_improvement_threshold(pitch.improvement_threshold);
     }
 
     fn apply_phonation_control(&mut self) {

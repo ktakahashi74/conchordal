@@ -17,6 +17,7 @@ pub struct PitchController {
     last_target_salience: f32,
     rng: SmallRng,
     perceptual_enabled: bool,
+    proposal_interval_override: f32,
 }
 
 impl PitchController {
@@ -42,6 +43,7 @@ impl PitchController {
             last_target_salience: 0.0,
             rng,
             perceptual_enabled: true,
+            proposal_interval_override: 0.0,
         }
     }
 
@@ -70,6 +72,14 @@ impl PitchController {
         self.perceptual.set_enabled(enabled);
     }
 
+    pub fn set_proposal_interval_override(&mut self, value: f32) {
+        self.proposal_interval_override = if value.is_finite() && value > 0.0 {
+            value
+        } else {
+            0.0
+        };
+    }
+
     pub fn force_set_target_pitch_log2(&mut self, log_freq: f32) {
         self.target_pitch_log2 = log_freq.max(0.0);
         self.accumulated_time = 0.0;
@@ -96,7 +106,11 @@ impl PitchController {
         } else {
             self.target_pitch_log2
         };
-        self.integration_window = Self::integration_window_for_freq(current_freq);
+        self.integration_window = if self.proposal_interval_override > 0.0 {
+            self.proposal_interval_override
+        } else {
+            Self::integration_window_for_freq(current_freq)
+        };
         self.accumulated_time += dt_sec;
 
         // Detect theta wrap to avoid missing zero-crossings at control rate.

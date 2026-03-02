@@ -9,7 +9,8 @@ use tracing::warn;
 use crate::core::mode_pattern::ModePattern;
 
 use super::control::{
-    AgentControl, BodyMethod, ControlUpdate, PhonationType, PitchCoreKind, PitchMode,
+    AgentControl, BodyMethod, ControlUpdate, MoveCostTimeScale, PhonationType, PitchApplyMode,
+    PitchCoreKind, PitchMode,
 };
 use super::lifecycle::LifecycleConfig;
 use super::scenario::{
@@ -204,6 +205,63 @@ impl SpeciesSpec {
 
     fn set_improvement_threshold(&mut self, value: f32) {
         self.control.set_improvement_threshold_clamped(value);
+    }
+
+    fn set_proposal_interval_sec(&mut self, value: f32) {
+        self.control.set_proposal_interval_sec_clamped(value);
+    }
+
+    fn set_global_peaks(&mut self, count: i64, min_sep_cents: f32) {
+        self.control.set_global_peak_count_clamped(count);
+        self.control
+            .set_global_peak_min_sep_cents_clamped(min_sep_cents);
+    }
+
+    fn set_ratio_candidates(&mut self, count: i64) {
+        self.control.set_ratio_candidate_count_clamped(count);
+        self.control.set_use_ratio_candidates(count > 0);
+    }
+
+    fn set_move_cost_time_scale(&mut self, name: &str) {
+        let lowered = name.trim().to_ascii_lowercase();
+        let value = match lowered.as_str() {
+            "legacy" | "integration" | "integration_window" => {
+                MoveCostTimeScale::LegacyIntegrationWindow
+            }
+            "proposal" | "proposal_interval" => MoveCostTimeScale::ProposalInterval,
+            other => {
+                warn!(
+                    "move_cost_time_scale() expects 'legacy' or 'proposal_interval', got '{}'",
+                    other
+                );
+                self.control.pitch.move_cost_time_scale
+            }
+        };
+        self.control.set_move_cost_time_scale(value);
+    }
+
+    fn set_leave_self_out_harmonics(&mut self, value: i64) {
+        self.control.set_leave_self_out_harmonics_clamped(value);
+    }
+
+    fn set_pitch_apply_mode(&mut self, name: &str) {
+        let lowered = name.trim().to_ascii_lowercase();
+        let mode = match lowered.as_str() {
+            "gate_snap" | "gatesnap" | "snap" => PitchApplyMode::GateSnap,
+            "glide" | "gliss" | "glissando" => PitchApplyMode::Glide,
+            other => {
+                warn!(
+                    "pitch_apply_mode() expects 'gate_snap' or 'glide', got '{}'",
+                    other
+                );
+                self.control.pitch.pitch_apply_mode
+            }
+        };
+        self.control.set_pitch_apply_mode(mode);
+    }
+
+    fn set_pitch_glide_tau_sec(&mut self, value: f32) {
+        self.control.set_pitch_glide_tau_sec_clamped(value);
     }
 
     fn set_pitch_mode(&mut self, name: &str) {
@@ -904,6 +962,78 @@ impl ScriptHost {
                 species
             },
         );
+        engine.register_fn(
+            "proposal_interval",
+            |mut species: SpeciesHandle, value: FLOAT| {
+                species.spec.set_proposal_interval_sec(value as f32);
+                species
+            },
+        );
+        engine.register_fn(
+            "proposal_interval",
+            |mut species: SpeciesHandle, value: INT| {
+                species.spec.set_proposal_interval_sec(value as f32);
+                species
+            },
+        );
+        engine.register_fn("global_peaks", |mut species: SpeciesHandle, count: INT| {
+            species.spec.set_global_peaks(count, 0.0);
+            species
+        });
+        engine.register_fn(
+            "global_peaks",
+            |mut species: SpeciesHandle, count: INT, min_sep_cents: FLOAT| {
+                species.spec.set_global_peaks(count, min_sep_cents as f32);
+                species
+            },
+        );
+        engine.register_fn(
+            "global_peaks",
+            |mut species: SpeciesHandle, count: INT, min_sep_cents: INT| {
+                species.spec.set_global_peaks(count, min_sep_cents as f32);
+                species
+            },
+        );
+        engine.register_fn(
+            "ratio_candidates",
+            |mut species: SpeciesHandle, count: INT| {
+                species.spec.set_ratio_candidates(count);
+                species
+            },
+        );
+        engine.register_fn(
+            "move_cost_time_scale",
+            |mut species: SpeciesHandle, name: &str| {
+                species.spec.set_move_cost_time_scale(name);
+                species
+            },
+        );
+        engine.register_fn(
+            "leave_self_out_harmonics",
+            |mut species: SpeciesHandle, value: INT| {
+                species.spec.set_leave_self_out_harmonics(value);
+                species
+            },
+        );
+        engine.register_fn(
+            "pitch_apply_mode",
+            |mut species: SpeciesHandle, name: &str| {
+                species.spec.set_pitch_apply_mode(name);
+                species
+            },
+        );
+        engine.register_fn("pitch_apply", |mut species: SpeciesHandle, name: &str| {
+            species.spec.set_pitch_apply_mode(name);
+            species
+        });
+        engine.register_fn("pitch_glide", |mut species: SpeciesHandle, value: FLOAT| {
+            species.spec.set_pitch_glide_tau_sec(value as f32);
+            species
+        });
+        engine.register_fn("pitch_glide", |mut species: SpeciesHandle, value: INT| {
+            species.spec.set_pitch_glide_tau_sec(value as f32);
+            species
+        });
         engine.register_fn("pitch_mode", |mut species: SpeciesHandle, name: &str| {
             species.spec.set_pitch_mode(name);
             species
@@ -1979,6 +2109,321 @@ impl ScriptHost {
                         group.pending_update.improvement_threshold = Some(value);
                     }
                     _ => ctx.warn_live_builder(handle.id, "improvement_threshold"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_proposal_interval = ctx.clone();
+        engine.register_fn(
+            "proposal_interval",
+            move |handle: GroupHandle, value: FLOAT| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_proposal_interval
+                    .lock()
+                    .expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("proposal_interval ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                let value = value as f32;
+                match group.status {
+                    GroupStatus::Draft => group.spec.set_proposal_interval_sec(value),
+                    GroupStatus::Live => {
+                        group.spec.set_proposal_interval_sec(value);
+                        group.pending_update.proposal_interval_sec = Some(value);
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "proposal_interval"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_proposal_interval_int = ctx.clone();
+        engine.register_fn(
+            "proposal_interval",
+            move |handle: GroupHandle, value: INT| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_proposal_interval_int
+                    .lock()
+                    .expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("proposal_interval ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                let value = value as f32;
+                match group.status {
+                    GroupStatus::Draft => group.spec.set_proposal_interval_sec(value),
+                    GroupStatus::Live => {
+                        group.spec.set_proposal_interval_sec(value);
+                        group.pending_update.proposal_interval_sec = Some(value);
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "proposal_interval"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_global_peaks = ctx.clone();
+        engine.register_fn(
+            "global_peaks",
+            move |handle: GroupHandle, count: INT| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_global_peaks
+                    .lock()
+                    .expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("global_peaks ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                match group.status {
+                    GroupStatus::Draft => group.spec.set_global_peaks(count, 0.0),
+                    GroupStatus::Live => {
+                        group.spec.set_global_peaks(count, 0.0);
+                        group.pending_update.global_peak_count = Some(count);
+                        group.pending_update.global_peak_min_sep_cents = Some(0.0);
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "global_peaks"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_global_peaks_sep = ctx.clone();
+        engine.register_fn(
+            "global_peaks",
+            move |handle: GroupHandle,
+                  count: INT,
+                  min_sep_cents: FLOAT|
+                  -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_global_peaks_sep
+                    .lock()
+                    .expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("global_peaks ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                let min_sep = min_sep_cents as f32;
+                match group.status {
+                    GroupStatus::Draft => group.spec.set_global_peaks(count, min_sep),
+                    GroupStatus::Live => {
+                        group.spec.set_global_peaks(count, min_sep);
+                        group.pending_update.global_peak_count = Some(count);
+                        group.pending_update.global_peak_min_sep_cents = Some(min_sep);
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "global_peaks"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_global_peaks_sep_int = ctx.clone();
+        engine.register_fn(
+            "global_peaks",
+            move |handle: GroupHandle,
+                  count: INT,
+                  min_sep_cents: INT|
+                  -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_global_peaks_sep_int
+                    .lock()
+                    .expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("global_peaks ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                let min_sep = min_sep_cents as f32;
+                match group.status {
+                    GroupStatus::Draft => group.spec.set_global_peaks(count, min_sep),
+                    GroupStatus::Live => {
+                        group.spec.set_global_peaks(count, min_sep);
+                        group.pending_update.global_peak_count = Some(count);
+                        group.pending_update.global_peak_min_sep_cents = Some(min_sep);
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "global_peaks"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_ratio_candidates = ctx.clone();
+        engine.register_fn(
+            "ratio_candidates",
+            move |handle: GroupHandle, count: INT| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_ratio_candidates
+                    .lock()
+                    .expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("ratio_candidates ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                match group.status {
+                    GroupStatus::Draft => group.spec.set_ratio_candidates(count),
+                    GroupStatus::Live => {
+                        group.spec.set_ratio_candidates(count);
+                        group.pending_update.ratio_candidate_count = Some(count);
+                        group.pending_update.use_ratio_candidates = Some(count > 0);
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "ratio_candidates"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_move_cost_time_scale = ctx.clone();
+        engine.register_fn(
+            "move_cost_time_scale",
+            move |handle: GroupHandle, name: &str| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_move_cost_time_scale
+                    .lock()
+                    .expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!(
+                        "move_cost_time_scale ignored for unknown group {}",
+                        handle.id
+                    );
+                    return Ok(handle);
+                };
+                let lowered = name.trim().to_ascii_lowercase();
+                let value = match lowered.as_str() {
+                    "legacy" | "integration" | "integration_window" => {
+                        MoveCostTimeScale::LegacyIntegrationWindow
+                    }
+                    "proposal" | "proposal_interval" => MoveCostTimeScale::ProposalInterval,
+                    _ => {
+                        ctx.warn_live_builder(handle.id, "move_cost_time_scale");
+                        return Ok(handle);
+                    }
+                };
+                match group.status {
+                    GroupStatus::Draft => group.spec.control.set_move_cost_time_scale(value),
+                    GroupStatus::Live => {
+                        group.spec.control.set_move_cost_time_scale(value);
+                        group.pending_update.move_cost_time_scale = Some(value);
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "move_cost_time_scale"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_loo_harmonics = ctx.clone();
+        engine.register_fn(
+            "leave_self_out_harmonics",
+            move |handle: GroupHandle, value: INT| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_loo_harmonics
+                    .lock()
+                    .expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!(
+                        "leave_self_out_harmonics ignored for unknown group {}",
+                        handle.id
+                    );
+                    return Ok(handle);
+                };
+                match group.status {
+                    GroupStatus::Draft => group.spec.set_leave_self_out_harmonics(value),
+                    GroupStatus::Live => {
+                        group.spec.set_leave_self_out_harmonics(value);
+                        group.pending_update.leave_self_out_harmonics = Some(value);
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "leave_self_out_harmonics"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_pitch_apply_mode = ctx.clone();
+        engine.register_fn(
+            "pitch_apply_mode",
+            move |handle: GroupHandle, name: &str| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_pitch_apply_mode
+                    .lock()
+                    .expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("pitch_apply_mode ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                let lowered = name.trim().to_ascii_lowercase();
+                let mode = match lowered.as_str() {
+                    "gate_snap" | "gatesnap" | "snap" => PitchApplyMode::GateSnap,
+                    "glide" | "gliss" | "glissando" => PitchApplyMode::Glide,
+                    _ => {
+                        ctx.warn_live_builder(handle.id, "pitch_apply_mode");
+                        return Ok(handle);
+                    }
+                };
+                match group.status {
+                    GroupStatus::Draft => group.spec.control.set_pitch_apply_mode(mode),
+                    GroupStatus::Live => {
+                        group.spec.control.set_pitch_apply_mode(mode);
+                        group.pending_update.pitch_apply_mode = Some(mode);
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "pitch_apply_mode"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_pitch_apply = ctx.clone();
+        engine.register_fn(
+            "pitch_apply",
+            move |handle: GroupHandle, name: &str| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_pitch_apply
+                    .lock()
+                    .expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("pitch_apply ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                let lowered = name.trim().to_ascii_lowercase();
+                let mode = match lowered.as_str() {
+                    "gate_snap" | "gatesnap" | "snap" => PitchApplyMode::GateSnap,
+                    "glide" | "gliss" | "glissando" => PitchApplyMode::Glide,
+                    _ => {
+                        ctx.warn_live_builder(handle.id, "pitch_apply");
+                        return Ok(handle);
+                    }
+                };
+                match group.status {
+                    GroupStatus::Draft => group.spec.control.set_pitch_apply_mode(mode),
+                    GroupStatus::Live => {
+                        group.spec.control.set_pitch_apply_mode(mode);
+                        group.pending_update.pitch_apply_mode = Some(mode);
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "pitch_apply"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_pitch_glide = ctx.clone();
+        engine.register_fn(
+            "pitch_glide",
+            move |handle: GroupHandle, value: FLOAT| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_pitch_glide
+                    .lock()
+                    .expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("pitch_glide ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                let value = value as f32;
+                match group.status {
+                    GroupStatus::Draft => group.spec.set_pitch_glide_tau_sec(value),
+                    GroupStatus::Live => {
+                        group.spec.set_pitch_glide_tau_sec(value);
+                        group.pending_update.pitch_glide_tau_sec = Some(value);
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "pitch_glide"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_pitch_glide_int = ctx.clone();
+        engine.register_fn(
+            "pitch_glide",
+            move |handle: GroupHandle, value: INT| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_pitch_glide_int
+                    .lock()
+                    .expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("pitch_glide ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                let value = value as f32;
+                match group.status {
+                    GroupStatus::Draft => group.spec.set_pitch_glide_tau_sec(value),
+                    GroupStatus::Live => {
+                        group.spec.set_pitch_glide_tau_sec(value);
+                        group.pending_update.pitch_glide_tau_sec = Some(value);
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "pitch_glide"),
                 }
                 Ok(handle)
             },
@@ -3303,6 +3748,108 @@ mod tests {
         assert!(
             (agent.pitch_core_for_test().improvement_threshold_for_test() - 0.05).abs() <= 1e-6
         );
+    }
+
+    #[test]
+    fn species_advanced_pitch_knobs_reach_spawned_core() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            create(
+                sine
+                    .proposal_interval(0.3)
+                    .global_peaks(12, 40.0)
+                    .ratio_candidates(5)
+                    .move_cost_time_scale("proposal_interval")
+                    .leave_self_out_harmonics(4)
+                    .pitch_apply_mode("glide")
+                    .pitch_glide(0.08),
+                1
+            );
+            flush();
+        "#,
+        );
+        let mut pop = Population::new(Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        });
+        let landscape = LandscapeFrame::default();
+        for action in scenario
+            .events
+            .iter()
+            .flat_map(|event| event.actions.iter())
+        {
+            if let Action::Spawn { .. } = action {
+                pop.apply_action(action.clone(), &landscape, None);
+            }
+        }
+        let agent = pop.individuals.first().expect("spawned");
+        let core = agent.pitch_core_for_test();
+        assert!((core.proposal_interval_sec_for_test().unwrap_or(0.0) - 0.3).abs() <= 1e-6);
+        assert_eq!(core.global_peak_count_for_test(), 12);
+        assert_eq!(core.ratio_candidate_count_for_test(), 5);
+        assert!(core.use_ratio_candidates_for_test());
+        assert_eq!(
+            core.move_cost_time_scale_for_test(),
+            MoveCostTimeScale::ProposalInterval
+        );
+        assert_eq!(core.leave_self_out_harmonics_for_test(), 4);
+        assert_eq!(
+            agent.effective_control.pitch.pitch_apply_mode,
+            PitchApplyMode::Glide
+        );
+        assert!((agent.effective_control.pitch.pitch_glide_tau_sec - 0.08).abs() <= 1e-6);
+    }
+
+    #[test]
+    fn group_advanced_pitch_knobs_live_update_reaches_individual() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            let g = create(sine, 1);
+            flush();
+            let g = g
+                .proposal_interval(0.25)
+                .global_peaks(10, 30)
+                .ratio_candidates(4)
+                .move_cost_time_scale("proposal_interval")
+                .leave_self_out_harmonics(3)
+                .pitch_apply("glide")
+                .pitch_glide(0.05);
+            flush();
+        "#,
+        );
+        let mut pop = Population::new(Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        });
+        let landscape = LandscapeFrame::default();
+        for action in scenario
+            .events
+            .iter()
+            .flat_map(|event| event.actions.iter())
+        {
+            match action {
+                Action::Spawn { .. } | Action::Update { .. } => {
+                    pop.apply_action(action.clone(), &landscape, None);
+                }
+                _ => {}
+            }
+        }
+        let agent = pop.individuals.first().expect("spawned");
+        let core = agent.pitch_core_for_test();
+        assert!((core.proposal_interval_sec_for_test().unwrap_or(0.0) - 0.25).abs() <= 1e-6);
+        assert_eq!(core.global_peak_count_for_test(), 10);
+        assert_eq!(core.ratio_candidate_count_for_test(), 4);
+        assert!(core.use_ratio_candidates_for_test());
+        assert_eq!(
+            core.move_cost_time_scale_for_test(),
+            MoveCostTimeScale::ProposalInterval
+        );
+        assert_eq!(core.leave_self_out_harmonics_for_test(), 3);
+        assert_eq!(
+            agent.effective_control.pitch.pitch_apply_mode,
+            PitchApplyMode::Glide
+        );
+        assert!((agent.effective_control.pitch.pitch_glide_tau_sec - 0.05).abs() <= 1e-6);
     }
 
     #[test]

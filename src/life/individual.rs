@@ -3,7 +3,7 @@ use crate::core::log2space::Log2Space;
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
 use crate::life::control::{
-    AgentControl, BodyControl, BodyMethod, ControlUpdate, PhonationType, PitchMode,
+    AgentControl, BodyControl, BodyMethod, ControlUpdate, PhonationType, PitchApplyMode, PitchMode,
 };
 use crate::life::control_adapters::{
     perceptual_config_from_control, perceptual_params_from_control, phonation_config_from_control,
@@ -144,7 +144,16 @@ impl Dirty {
             || update.leave_self_out.is_some()
             || update.anneal_temp.is_some()
             || update.move_cost_coeff.is_some()
-            || update.improvement_threshold.is_some();
+            || update.improvement_threshold.is_some()
+            || update.proposal_interval_sec.is_some()
+            || update.global_peak_count.is_some()
+            || update.global_peak_min_sep_cents.is_some()
+            || update.use_ratio_candidates.is_some()
+            || update.ratio_candidate_count.is_some()
+            || update.move_cost_time_scale.is_some()
+            || update.leave_self_out_harmonics.is_some()
+            || update.pitch_apply_mode.is_some()
+            || update.pitch_glide_tau_sec.is_some();
         Self {
             body,
             pitch,
@@ -223,6 +232,29 @@ impl Individual {
         pitch_ctl
             .core_mut()
             .set_anneal_temp(effective_control.pitch.anneal_temp);
+        pitch_ctl
+            .core_mut()
+            .set_move_cost_coeff(effective_control.pitch.move_cost_coeff);
+        pitch_ctl
+            .core_mut()
+            .set_improvement_threshold(effective_control.pitch.improvement_threshold);
+        pitch_ctl.core_mut().set_global_peaks(
+            effective_control.pitch.global_peak_count,
+            effective_control.pitch.global_peak_min_sep_cents,
+        );
+        pitch_ctl.core_mut().set_ratio_candidates(
+            effective_control.pitch.use_ratio_candidates,
+            effective_control.pitch.ratio_candidate_count,
+        );
+        pitch_ctl
+            .core_mut()
+            .set_move_cost_time_scale(effective_control.pitch.move_cost_time_scale);
+        pitch_ctl
+            .core_mut()
+            .set_leave_self_out_harmonics(effective_control.pitch.leave_self_out_harmonics);
+        pitch_ctl
+            .core_mut()
+            .set_proposal_interval_sec(effective_control.pitch.proposal_interval_sec);
         pitch_ctl.set_perceptual_enabled(effective_control.perceptual.enabled);
 
         let (articulation_core, lifecycle_label, default_by_articulation, breath_gain_init) =
@@ -320,6 +352,11 @@ impl Individual {
         core.set_anneal_temp(pitch.anneal_temp);
         core.set_move_cost_coeff(pitch.move_cost_coeff);
         core.set_improvement_threshold(pitch.improvement_threshold);
+        core.set_global_peaks(pitch.global_peak_count, pitch.global_peak_min_sep_cents);
+        core.set_ratio_candidates(pitch.use_ratio_candidates, pitch.ratio_candidate_count);
+        core.set_move_cost_time_scale(pitch.move_cost_time_scale);
+        core.set_leave_self_out_harmonics(pitch.leave_self_out_harmonics);
+        core.set_proposal_interval_sec(pitch.proposal_interval_sec);
     }
 
     fn apply_phonation_control(&mut self) {
@@ -496,8 +533,24 @@ impl Individual {
             self.body.set_pitch_log2(planned.target_pitch_log2);
             return;
         }
-        if apply_planned_pitch {
-            self.body.set_pitch_log2(planned.target_pitch_log2);
+        match self.effective_control.pitch.pitch_apply_mode {
+            PitchApplyMode::GateSnap => {
+                if apply_planned_pitch {
+                    self.body.set_pitch_log2(planned.target_pitch_log2);
+                }
+            }
+            PitchApplyMode::Glide => {
+                self.articulation.set_gate(1.0);
+                let tau = self.effective_control.pitch.pitch_glide_tau_sec.max(0.0);
+                if tau <= 1e-6 {
+                    self.body.set_pitch_log2(planned.target_pitch_log2);
+                } else {
+                    let alpha = 1.0 - (-dt_sec.max(0.0) / tau).exp();
+                    let next_pitch_log2 = current_pitch_log2
+                        + (planned.target_pitch_log2 - current_pitch_log2) * alpha.clamp(0.0, 1.0);
+                    self.body.set_pitch_log2(next_pitch_log2);
+                }
+            }
         }
     }
 

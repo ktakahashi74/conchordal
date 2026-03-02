@@ -2,7 +2,7 @@ use std::fmt;
 
 use crate::core::float::sanitize_nonnegative_finite;
 use crate::core::landscape::LandscapeUpdate;
-use crate::life::control::{AgentControl, ControlUpdate};
+use crate::life::control::{AgentControl, ControlUpdate, MoveCostTimeScale};
 use crate::life::individual::{AgentMetadata, Individual};
 use crate::life::lifecycle::LifecycleConfig;
 
@@ -313,6 +313,12 @@ pub enum PitchCoreConfig {
         persistence: Option<f32>,
         leave_self_out: Option<bool>,
         anneal_temp: Option<f32>,
+        global_peak_count: Option<usize>,
+        global_peak_min_sep_cents: Option<f32>,
+        use_ratio_candidates: Option<bool>,
+        ratio_candidate_count: Option<usize>,
+        move_cost_time_scale: Option<MoveCostTimeScale>,
+        leave_self_out_harmonics: Option<u8>,
     },
     PitchPeakSampler {
         neighbor_step_cents: Option<f32>,
@@ -340,6 +346,12 @@ impl Default for PitchCoreConfig {
             persistence: None,
             leave_self_out: None,
             anneal_temp: None,
+            global_peak_count: None,
+            global_peak_min_sep_cents: None,
+            use_ratio_candidates: None,
+            ratio_candidate_count: None,
+            move_cost_time_scale: None,
+            leave_self_out_harmonics: None,
         }
     }
 }

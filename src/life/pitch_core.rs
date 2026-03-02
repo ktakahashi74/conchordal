@@ -1,5 +1,6 @@
 use crate::core::harmonic_ratios::{HARMONIC_RATIOS, fold_to_octave_near, ratio_to_f32};
 use crate::core::landscape::Landscape;
+use crate::life::control::MoveCostTimeScale;
 use crate::life::perceptual::{FeaturesNow, PerceptualContext};
 use crate::life::scenario::PitchCoreConfig;
 use rand::Rng;
@@ -13,6 +14,10 @@ const DEFAULT_FALLBACK_RATIO_ORDER: u16 = 12;
 const DEFAULT_MOVE_COST_COEFF: f32 = 0.5;
 const DEFAULT_MOVE_COST_EXP: u8 = 1;
 const DEFAULT_APPROX_LOO_SIGMA_CENTS: f32 = 24.0;
+const DEFAULT_GLOBAL_PEAK_COUNT: usize = 0;
+const DEFAULT_GLOBAL_PEAK_MIN_SEP_CENTS: f32 = 0.0;
+const DEFAULT_RUNTIME_RATIO_CANDIDATE_COUNT: usize = 0;
+const DEFAULT_LOO_HARMONICS: u8 = 1;
 static FALLBACK_REDUCED_RATIOS: OnceLock<Vec<(u16, u16)>> = OnceLock::new();
 
 #[derive(Debug, Clone, Copy)]
@@ -59,12 +64,19 @@ pub struct PitchHillClimbPitchCore {
     move_cost_coeff: f32,
     move_cost_exp: u8,
     improvement_threshold: f32,
+    move_cost_time_scale: MoveCostTimeScale,
+    proposal_interval_sec: Option<f32>,
     exploration: f32,
     persistence: f32,
     repulsion_strength: f32,
     repulsion_sigma_log2: f32,
     leave_self_out: bool,
+    leave_self_out_harmonics: u8,
     anneal_temp: f32,
+    global_peak_count: usize,
+    global_peak_min_sep_log2: f32,
+    use_ratio_candidates: bool,
+    ratio_candidate_count: usize,
 }
 
 impl PitchHillClimbPitchCore {
@@ -89,12 +101,19 @@ impl PitchHillClimbPitchCore {
             move_cost_coeff: DEFAULT_MOVE_COST_COEFF,
             move_cost_exp: DEFAULT_MOVE_COST_EXP,
             improvement_threshold,
+            move_cost_time_scale: MoveCostTimeScale::LegacyIntegrationWindow,
+            proposal_interval_sec: None,
             exploration: exploration.clamp(0.0, 1.0),
             persistence: persistence.clamp(0.0, 1.0),
             repulsion_strength: 0.0,
             repulsion_sigma_log2: cents_to_log2(60.0),
             leave_self_out: false,
+            leave_self_out_harmonics: DEFAULT_LOO_HARMONICS,
             anneal_temp: 0.0,
+            global_peak_count: DEFAULT_GLOBAL_PEAK_COUNT,
+            global_peak_min_sep_log2: cents_to_log2(DEFAULT_GLOBAL_PEAK_MIN_SEP_CENTS),
+            use_ratio_candidates: false,
+            ratio_candidate_count: DEFAULT_RUNTIME_RATIO_CANDIDATE_COUNT,
         }
     }
 
@@ -177,6 +196,44 @@ impl PitchHillClimbPitchCore {
             0.1
         };
     }
+
+    pub fn set_move_cost_time_scale(&mut self, value: MoveCostTimeScale) {
+        self.move_cost_time_scale = value;
+    }
+
+    pub fn set_proposal_interval_sec(&mut self, value: Option<f32>) {
+        self.proposal_interval_sec = value.filter(|v| v.is_finite() && *v > 0.0);
+    }
+
+    pub fn set_global_peaks(&mut self, count: usize, min_sep_cents: f32) {
+        self.global_peak_count = count;
+        let min_sep = if min_sep_cents.is_finite() {
+            min_sep_cents.max(0.0)
+        } else {
+            DEFAULT_GLOBAL_PEAK_MIN_SEP_CENTS
+        };
+        self.global_peak_min_sep_log2 = cents_to_log2(min_sep);
+    }
+
+    pub fn set_ratio_candidates(&mut self, enabled: bool, count: usize) {
+        self.use_ratio_candidates = enabled;
+        self.ratio_candidate_count = count;
+    }
+
+    pub fn set_leave_self_out_harmonics(&mut self, harmonics: u8) {
+        self.leave_self_out_harmonics = harmonics.max(1);
+    }
+
+    fn move_cost_time_sec(&self, integration_window: f32) -> f32 {
+        match self.move_cost_time_scale {
+            MoveCostTimeScale::LegacyIntegrationWindow => integration_window.max(0.0),
+            MoveCostTimeScale::ProposalInterval => self
+                .proposal_interval_sec
+                .filter(|v| v.is_finite() && *v > 0.0)
+                .unwrap_or(integration_window)
+                .max(0.0),
+        }
+    }
 }
 
 impl PitchCore for PitchHillClimbPitchCore {
@@ -194,6 +251,7 @@ impl PitchCore for PitchHillClimbPitchCore {
     ) -> TargetProposal {
         let (fmin, fmax) = landscape.freq_bounds_log2();
         let current_target_log2 = current_target_log2.clamp(fmin, fmax);
+        let move_cost_time_sec = self.move_cost_time_sec(integration_window);
 
         let adaptive_window_cents =
             (self.neighbor_step_log2.abs() * 1200.0 * 4.0).max(DEFAULT_LOCAL_WINDOW_CENTS);
@@ -203,13 +261,13 @@ impl PitchCore for PitchHillClimbPitchCore {
             current_target_log2 + self.neighbor_step_log2,
             current_target_log2 - self.neighbor_step_log2,
         ];
-        candidates.extend(top_local_candidates(
+        candidates.extend(top_local_candidates_harmonics(
             landscape,
             current_target_log2,
             window_bins,
             DEFAULT_LOCAL_TOP_K,
             current_pitch_log2,
-            integration_window,
+            move_cost_time_sec,
             self.tessitura_center,
             self.tessitura_gravity,
             self.landscape_weight,
@@ -217,10 +275,42 @@ impl PitchCore for PitchHillClimbPitchCore {
             self.move_cost_exp,
             perceptual,
             self.leave_self_out,
+            self.leave_self_out_harmonics,
             self.repulsion_strength,
             self.repulsion_sigma_log2,
             neighbor_pitch_log2,
         ));
+        if self.global_peak_count > 0 {
+            candidates.extend(top_global_candidates_harmonics(
+                landscape,
+                self.global_peak_count,
+                self.global_peak_min_sep_log2,
+                current_pitch_log2,
+                move_cost_time_sec,
+                self.tessitura_center,
+                self.tessitura_gravity,
+                self.landscape_weight,
+                self.move_cost_coeff,
+                self.move_cost_exp,
+                perceptual,
+                self.leave_self_out,
+                self.leave_self_out_harmonics,
+                self.repulsion_strength,
+                self.repulsion_sigma_log2,
+                neighbor_pitch_log2,
+            ));
+        }
+        if self.use_ratio_candidates && self.ratio_candidate_count > 0 {
+            push_runtime_ratio_candidates(
+                &mut candidates,
+                current_target_log2,
+                current_pitch_log2,
+                neighbor_pitch_log2,
+                self.ratio_candidate_count,
+                fmin,
+                fmax,
+            );
+        }
         push_gaussian_candidates(
             &mut candidates,
             current_target_log2,
@@ -231,12 +321,13 @@ impl PitchCore for PitchHillClimbPitchCore {
             rng,
         );
         candidates.retain(|x| x.is_finite());
+        candidates = dedupe_log2_by_cents(candidates, 1.0);
 
         let adjusted_score = |pitch_log2: f32| -> f32 {
-            adjusted_pitch_score(
+            adjusted_pitch_score_with_loo_harmonics(
                 pitch_log2,
                 current_pitch_log2,
-                integration_window,
+                move_cost_time_sec,
                 self.tessitura_center,
                 self.tessitura_gravity,
                 self.landscape_weight,
@@ -245,6 +336,7 @@ impl PitchCore for PitchHillClimbPitchCore {
                 landscape,
                 perceptual,
                 self.leave_self_out,
+                self.leave_self_out_harmonics,
                 self.repulsion_strength,
                 self.repulsion_sigma_log2,
                 neighbor_pitch_log2,
@@ -268,10 +360,15 @@ impl PitchCore for PitchHillClimbPitchCore {
 
         let mut best_pitch = current_target_log2;
         let mut best_score = f32::MIN;
+        let mut best_distance = f32::INFINITY;
         for &(pitch, score) in &scored {
-            if score > best_score {
+            let distance = (pitch - current_target_log2).abs();
+            if score > best_score + 1e-6
+                || ((score - best_score).abs() <= 1e-6 && distance < best_distance)
+            {
                 best_score = score;
                 best_pitch = pitch;
+                best_distance = distance;
             }
         }
 
@@ -310,7 +407,10 @@ impl PitchCore for PitchHillClimbPitchCore {
                         target_pitch_log2 = best_pitch;
                     }
                 } else {
-                    target_pitch_log2 = best_pitch;
+                    // Keep non-annealed hill-climb greedy: do not take downhill moves.
+                    if best_score >= current_adjusted {
+                        target_pitch_log2 = best_pitch;
+                    }
                 }
             }
         }
@@ -727,17 +827,65 @@ fn adjusted_pitch_score(
     repulsion_sigma_log2: f32,
     neighbor_pitch_log2: &[f32],
 ) -> f32 {
+    adjusted_pitch_score_with_loo_harmonics(
+        pitch_log2,
+        current_pitch_log2,
+        integration_window,
+        tessitura_center,
+        tessitura_gravity,
+        landscape_weight,
+        move_cost_coeff,
+        move_cost_exp,
+        landscape,
+        perceptual,
+        leave_self_out,
+        DEFAULT_LOO_HARMONICS,
+        repulsion_strength,
+        repulsion_sigma_log2,
+        neighbor_pitch_log2,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn adjusted_pitch_score_with_loo_harmonics(
+    pitch_log2: f32,
+    current_pitch_log2: f32,
+    integration_window: f32,
+    tessitura_center: f32,
+    tessitura_gravity: f32,
+    landscape_weight: f32,
+    move_cost_coeff: f32,
+    move_cost_exp: u8,
+    landscape: &Landscape,
+    perceptual: &PerceptualContext,
+    leave_self_out: bool,
+    leave_self_out_harmonics: u8,
+    repulsion_strength: f32,
+    repulsion_sigma_log2: f32,
+    neighbor_pitch_log2: &[f32],
+) -> f32 {
     let (fmin, fmax) = landscape.freq_bounds_log2();
     let clamped = pitch_log2.clamp(fmin, fmax);
     let mut score = landscape.evaluate_pitch_score_log2(clamped);
     if leave_self_out {
         let current_clamped = current_pitch_log2.clamp(fmin, fmax);
-        let self_score = landscape.evaluate_pitch_score_log2(current_clamped);
-        if self_score.is_finite() && self_score > 0.0 {
+        let harmonics = leave_self_out_harmonics.max(1);
+        if harmonics >= 1 {
             let sigma = cents_to_log2(DEFAULT_APPROX_LOO_SIGMA_CENTS).max(1e-6);
-            let d = (clamped - current_clamped).abs();
-            // Lightweight leave-self-out approximation: suppress a local self-attractor bump.
-            score -= self_score * (-d / sigma).exp();
+            for harmonic in 1..=harmonics {
+                let harmonic_f = harmonic as f32;
+                let harmonic_log2 = current_clamped + harmonic_f.log2();
+                if harmonic_log2 < fmin || harmonic_log2 > fmax {
+                    continue;
+                }
+                let self_score = landscape.evaluate_pitch_score_log2(harmonic_log2);
+                if !self_score.is_finite() || self_score <= 0.0 {
+                    continue;
+                }
+                let d = (clamped - harmonic_log2).abs();
+                let harmonic_weight = 1.0 / harmonic_f.max(1.0);
+                score -= harmonic_weight * self_score * (-d / sigma).exp();
+            }
         }
     }
     let distance_oct = (clamped - current_pitch_log2).abs();
@@ -831,6 +979,184 @@ fn top_local_candidates(
         .take(limit)
         .map(|(_, pitch)| pitch)
         .collect()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn top_local_candidates_harmonics(
+    landscape: &Landscape,
+    current_target_log2: f32,
+    window_bins: usize,
+    top_k: usize,
+    current_pitch_log2: f32,
+    integration_window: f32,
+    tessitura_center: f32,
+    tessitura_gravity: f32,
+    landscape_weight: f32,
+    move_cost_coeff: f32,
+    move_cost_exp: u8,
+    perceptual: &PerceptualContext,
+    leave_self_out: bool,
+    leave_self_out_harmonics: u8,
+    repulsion_strength: f32,
+    repulsion_sigma_log2: f32,
+    neighbor_pitch_log2: &[f32],
+) -> Vec<f32> {
+    let (fmin, fmax) = landscape.freq_bounds_log2();
+    let n_bins = landscape.space.n_bins();
+    if n_bins == 0 {
+        return Vec::new();
+    }
+    let clamped_target = current_target_log2.clamp(fmin, fmax);
+    let idx0 = landscape.space.index_of_log2(clamped_target).unwrap_or(0);
+    let start = idx0.saturating_sub(window_bins);
+    let end = idx0.saturating_add(window_bins).min(n_bins - 1);
+
+    let mut scored = Vec::with_capacity(end.saturating_sub(start) + 1);
+    for idx in start..=end {
+        let pitch_log2 = landscape.space.centers_log2[idx];
+        let score = adjusted_pitch_score_with_loo_harmonics(
+            pitch_log2,
+            current_pitch_log2,
+            integration_window,
+            tessitura_center,
+            tessitura_gravity,
+            landscape_weight,
+            move_cost_coeff,
+            move_cost_exp,
+            landscape,
+            perceptual,
+            leave_self_out,
+            leave_self_out_harmonics,
+            repulsion_strength,
+            repulsion_sigma_log2,
+            neighbor_pitch_log2,
+        );
+        if score.is_finite() {
+            scored.push((score, pitch_log2));
+        }
+    }
+    scored.sort_by(|a, b| b.0.total_cmp(&a.0));
+
+    let limit = top_k.max(1).min(scored.len());
+    scored
+        .into_iter()
+        .take(limit)
+        .map(|(_, pitch)| pitch)
+        .collect()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn top_global_candidates_harmonics(
+    landscape: &Landscape,
+    top_k: usize,
+    min_sep_log2: f32,
+    current_pitch_log2: f32,
+    integration_window: f32,
+    tessitura_center: f32,
+    tessitura_gravity: f32,
+    landscape_weight: f32,
+    move_cost_coeff: f32,
+    move_cost_exp: u8,
+    perceptual: &PerceptualContext,
+    leave_self_out: bool,
+    leave_self_out_harmonics: u8,
+    repulsion_strength: f32,
+    repulsion_sigma_log2: f32,
+    neighbor_pitch_log2: &[f32],
+) -> Vec<f32> {
+    let n_bins = landscape.space.n_bins();
+    if n_bins == 0 || top_k == 0 {
+        return Vec::new();
+    }
+    let mut scored = Vec::with_capacity(n_bins);
+    for &pitch_log2 in &landscape.space.centers_log2 {
+        let score = adjusted_pitch_score_with_loo_harmonics(
+            pitch_log2,
+            current_pitch_log2,
+            integration_window,
+            tessitura_center,
+            tessitura_gravity,
+            landscape_weight,
+            move_cost_coeff,
+            move_cost_exp,
+            landscape,
+            perceptual,
+            leave_self_out,
+            leave_self_out_harmonics,
+            repulsion_strength,
+            repulsion_sigma_log2,
+            neighbor_pitch_log2,
+        );
+        if score.is_finite() {
+            scored.push((score, pitch_log2));
+        }
+    }
+    scored.sort_by(|a, b| b.0.total_cmp(&a.0));
+    let mut out: Vec<f32> = Vec::with_capacity(top_k.min(scored.len()));
+    for (_, pitch_log2) in scored {
+        if min_sep_log2 > 0.0
+            && out
+                .iter()
+                .any(|selected| (pitch_log2 - *selected).abs() < min_sep_log2)
+        {
+            continue;
+        }
+        out.push(pitch_log2);
+        if out.len() >= top_k {
+            break;
+        }
+    }
+    out
+}
+
+fn push_runtime_ratio_candidates(
+    candidates: &mut Vec<f32>,
+    current_target_log2: f32,
+    current_pitch_log2: f32,
+    neighbor_pitch_log2: &[f32],
+    max_count: usize,
+    min_log2: f32,
+    max_log2: f32,
+) {
+    if max_count == 0 {
+        return;
+    }
+    let mut anchors = vec![current_target_log2, current_pitch_log2];
+    let mut sum = 0.0f32;
+    let mut count = 0usize;
+    for &neighbor in neighbor_pitch_log2 {
+        if neighbor.is_finite() {
+            sum += neighbor;
+            count += 1;
+        }
+    }
+    if count > 0 {
+        anchors.push(sum / count as f32);
+    }
+
+    let mut generated = Vec::with_capacity(anchors.len() * HARMONIC_RATIOS.len() * 2);
+    for anchor in anchors {
+        if !anchor.is_finite() {
+            continue;
+        }
+        for &ratio in HARMONIC_RATIOS {
+            let ratio_f = ratio_to_f32(ratio);
+            if !ratio_f.is_finite() || ratio_f <= 0.0 {
+                continue;
+            }
+            let ratio_log2 = ratio_f.log2();
+            generated.push((anchor + ratio_log2).clamp(min_log2, max_log2));
+            generated.push((anchor - ratio_log2).clamp(min_log2, max_log2));
+        }
+    }
+    generated.retain(|x| x.is_finite());
+    generated = dedupe_log2_by_cents(generated, 2.0);
+    generated.sort_by(|a, b| {
+        (a - current_target_log2)
+            .abs()
+            .total_cmp(&(b - current_target_log2).abs())
+    });
+    candidates.extend(generated.into_iter().take(max_count));
 }
 
 fn push_gaussian_candidates<R: Rng + ?Sized>(
@@ -930,6 +1256,27 @@ fn dedupe_by_cents(mut freqs: Vec<f32>, dedupe_cents: f32) -> Vec<f32> {
         }
         last = Some(f);
         out.push(f);
+    }
+    out
+}
+
+fn dedupe_log2_by_cents(mut values_log2: Vec<f32>, dedupe_cents: f32) -> Vec<f32> {
+    if values_log2.is_empty() {
+        return values_log2;
+    }
+    let min_log2 = cents_to_log2(dedupe_cents.max(0.0));
+    values_log2.retain(|x| x.is_finite());
+    values_log2.sort_by(|a, b| a.total_cmp(b));
+    let mut out = Vec::with_capacity(values_log2.len());
+    let mut last: Option<f32> = None;
+    for value in values_log2 {
+        if let Some(prev) = last
+            && (value - prev).abs() < min_log2
+        {
+            continue;
+        }
+        last = Some(value);
+        out.push(value);
     }
     out
 }
@@ -1034,6 +1381,12 @@ impl AnyPitchCore {
                 persistence,
                 leave_self_out,
                 anneal_temp,
+                global_peak_count,
+                global_peak_min_sep_cents,
+                use_ratio_candidates,
+                ratio_candidate_count,
+                move_cost_time_scale,
+                leave_self_out_harmonics,
             } => {
                 let neighbor_step_cents = neighbor_step_cents.unwrap_or(200.0);
                 let tessitura_gravity = tessitura_gravity.unwrap_or(0.1);
@@ -1044,6 +1397,16 @@ impl AnyPitchCore {
                 let persistence = persistence.unwrap_or(0.5);
                 let leave_self_out = leave_self_out.unwrap_or(false);
                 let anneal_temp = anneal_temp.unwrap_or(0.0);
+                let global_peak_count = global_peak_count.unwrap_or(DEFAULT_GLOBAL_PEAK_COUNT);
+                let global_peak_min_sep_cents =
+                    global_peak_min_sep_cents.unwrap_or(DEFAULT_GLOBAL_PEAK_MIN_SEP_CENTS);
+                let use_ratio_candidates = use_ratio_candidates.unwrap_or(false);
+                let ratio_candidate_count =
+                    ratio_candidate_count.unwrap_or(DEFAULT_RUNTIME_RATIO_CANDIDATE_COUNT);
+                let move_cost_time_scale =
+                    move_cost_time_scale.unwrap_or(MoveCostTimeScale::LegacyIntegrationWindow);
+                let leave_self_out_harmonics =
+                    leave_self_out_harmonics.unwrap_or(DEFAULT_LOO_HARMONICS);
                 let mut core = PitchHillClimbPitchCore::new(
                     neighbor_step_cents,
                     initial_pitch_log2,
@@ -1056,6 +1419,10 @@ impl AnyPitchCore {
                 core.set_move_cost_exp(move_cost_exp);
                 core.set_leave_self_out(leave_self_out);
                 core.set_anneal_temp(anneal_temp);
+                core.set_global_peaks(global_peak_count, global_peak_min_sep_cents);
+                core.set_ratio_candidates(use_ratio_candidates, ratio_candidate_count);
+                core.set_move_cost_time_scale(move_cost_time_scale);
+                core.set_leave_self_out_harmonics(leave_self_out_harmonics);
                 AnyPitchCore::PitchHillClimb(core)
             }
             PitchCoreConfig::PitchPeakSampler {
@@ -1150,6 +1517,36 @@ impl AnyPitchCore {
         }
     }
 
+    pub fn set_move_cost_time_scale(&mut self, value: MoveCostTimeScale) {
+        if let AnyPitchCore::PitchHillClimb(core) = self {
+            core.set_move_cost_time_scale(value);
+        }
+    }
+
+    pub fn set_proposal_interval_sec(&mut self, value: Option<f32>) {
+        if let AnyPitchCore::PitchHillClimb(core) = self {
+            core.set_proposal_interval_sec(value);
+        }
+    }
+
+    pub fn set_global_peaks(&mut self, count: usize, min_sep_cents: f32) {
+        if let AnyPitchCore::PitchHillClimb(core) = self {
+            core.set_global_peaks(count, min_sep_cents);
+        }
+    }
+
+    pub fn set_ratio_candidates(&mut self, enabled: bool, count: usize) {
+        if let AnyPitchCore::PitchHillClimb(core) = self {
+            core.set_ratio_candidates(enabled, count);
+        }
+    }
+
+    pub fn set_leave_self_out_harmonics(&mut self, harmonics: u8) {
+        if let AnyPitchCore::PitchHillClimb(core) = self {
+            core.set_leave_self_out_harmonics(harmonics);
+        }
+    }
+
     pub fn set_tessitura_center(&mut self, value: f32) {
         match self {
             AnyPitchCore::PitchHillClimb(core) => core.set_tessitura_center(value),
@@ -1213,6 +1610,48 @@ impl AnyPitchCore {
         match self {
             AnyPitchCore::PitchHillClimb(core) => core.improvement_threshold,
             AnyPitchCore::PitchPeakSampler(_) => 0.0,
+        }
+    }
+
+    pub(crate) fn proposal_interval_sec_for_test(&self) -> Option<f32> {
+        match self {
+            AnyPitchCore::PitchHillClimb(core) => core.proposal_interval_sec,
+            AnyPitchCore::PitchPeakSampler(_) => None,
+        }
+    }
+
+    pub(crate) fn global_peak_count_for_test(&self) -> usize {
+        match self {
+            AnyPitchCore::PitchHillClimb(core) => core.global_peak_count,
+            AnyPitchCore::PitchPeakSampler(_) => 0,
+        }
+    }
+
+    pub(crate) fn ratio_candidate_count_for_test(&self) -> usize {
+        match self {
+            AnyPitchCore::PitchHillClimb(core) => core.ratio_candidate_count,
+            AnyPitchCore::PitchPeakSampler(_) => 0,
+        }
+    }
+
+    pub(crate) fn use_ratio_candidates_for_test(&self) -> bool {
+        match self {
+            AnyPitchCore::PitchHillClimb(core) => core.use_ratio_candidates,
+            AnyPitchCore::PitchPeakSampler(_) => false,
+        }
+    }
+
+    pub(crate) fn move_cost_time_scale_for_test(&self) -> MoveCostTimeScale {
+        match self {
+            AnyPitchCore::PitchHillClimb(core) => core.move_cost_time_scale,
+            AnyPitchCore::PitchPeakSampler(_) => MoveCostTimeScale::LegacyIntegrationWindow,
+        }
+    }
+
+    pub(crate) fn leave_self_out_harmonics_for_test(&self) -> u8 {
+        match self {
+            AnyPitchCore::PitchHillClimb(core) => core.leave_self_out_harmonics,
+            AnyPitchCore::PitchPeakSampler(_) => DEFAULT_LOO_HARMONICS,
         }
     }
 
@@ -1778,6 +2217,53 @@ mod tests {
         assert!(
             with_repulsion > without_repulsion + 0.5,
             "repulsion should keep wider spacing (off={without_repulsion:.2}c, on={with_repulsion:.2}c)"
+        );
+    }
+
+    #[test]
+    fn hillclimb_global_peaks_enable_distant_peak_escape() {
+        let current_hz = 220.0;
+        let distant_hz = 330.0;
+        let landscape = test_landscape(&[(current_hz, 0.4), (distant_hz, 1.0)]);
+        let perceptual = test_perceptual(landscape.space.n_bins());
+        let features = FeaturesNow::from_subjective_intensity(&landscape.subjective_intensity);
+        let current_log2 = current_hz.log2();
+
+        let mut local_only = PitchHillClimbPitchCore::new(120.0, current_log2, 0.0, 0.0, 0.0, 0.0);
+        local_only.set_global_peaks(0, 0.0);
+        let mut with_global = local_only.clone();
+        with_global.set_global_peaks(8, 20.0);
+
+        let mut rng_a = SmallRng::seed_from_u64(3001);
+        let mut rng_b = SmallRng::seed_from_u64(3001);
+        let local = local_only.propose_target(
+            current_log2,
+            current_log2,
+            current_hz,
+            1.0,
+            &landscape,
+            &perceptual,
+            &features,
+            &[],
+            &mut rng_a,
+        );
+        let global = with_global.propose_target(
+            current_log2,
+            current_log2,
+            current_hz,
+            1.0,
+            &landscape,
+            &perceptual,
+            &features,
+            &[],
+            &mut rng_b,
+        );
+
+        let local_dist_cents = (local.target_pitch_log2 - current_log2).abs() * 1200.0;
+        let global_dist_cents = (global.target_pitch_log2 - current_log2).abs() * 1200.0;
+        assert!(
+            global_dist_cents > local_dist_cents + 80.0,
+            "global peaks should enable distant move (local={local_dist_cents:.1}c, global={global_dist_cents:.1}c)"
         );
     }
 

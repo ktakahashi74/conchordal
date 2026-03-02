@@ -98,6 +98,12 @@ impl PitchController {
         };
         self.integration_window = Self::integration_window_for_freq(current_freq);
         self.accumulated_time += dt_sec;
+        let proposal_interval_sec = if pitch.proposal_interval_sec.is_some_and(|v| v > 0.0) {
+            pitch.proposal_interval_sec
+        } else {
+            None
+        };
+        self.core.set_proposal_interval_sec(proposal_interval_sec);
 
         // Detect theta wrap to avoid missing zero-crossings at control rate.
         let theta_phase = rhythms.theta.phase;
@@ -119,14 +125,20 @@ impl PitchController {
         // When theta rhythm is present, sync proposals to theta zero-crossings.
         // When no rhythm is detected (e.g. drone agents), fall back to time-based triggering.
         let has_rhythm = rhythms.theta.mag.is_finite() && rhythms.theta.mag > 0.0;
-        let should_propose = if has_rhythm {
+        let should_propose = if let Some(interval_sec) = proposal_interval_sec {
+            self.accumulated_time >= interval_sec
+        } else if has_rhythm {
             theta_cross && self.accumulated_time >= self.integration_window
         } else {
             self.accumulated_time >= self.integration_window
         };
         if should_propose {
             let elapsed = self.accumulated_time;
-            self.accumulated_time = 0.0;
+            self.accumulated_time = if let Some(interval_sec) = proposal_interval_sec {
+                (self.accumulated_time - interval_sec).max(0.0)
+            } else {
+                0.0
+            };
             let features = FeaturesNow::from_subjective_intensity(&landscape.subjective_intensity);
             debug_assert_eq!(features.distribution.len(), landscape.space.n_bins());
             self.perceptual.ensure_len(features.distribution.len());

@@ -5,6 +5,8 @@ const DEFAULT_REPULSION_SIGMA_CENTS: f32 = 60.0;
 const DEFAULT_ANNEAL_TEMP: f32 = 0.0;
 const DEFAULT_MOVE_COST_COEFF: f32 = 0.5;
 const DEFAULT_IMPROVEMENT_THRESHOLD: f32 = 0.1;
+const DEFAULT_GLOBAL_PEAK_MIN_SEP_CENTS: f32 = 0.0;
+const DEFAULT_PITCH_GLIDE_TAU_SEC: f32 = 0.0;
 
 use crate::core::mode_pattern::ModePattern;
 
@@ -145,6 +147,63 @@ impl AgentControl {
             DEFAULT_IMPROVEMENT_THRESHOLD
         };
     }
+
+    #[inline]
+    pub fn set_proposal_interval_sec_clamped(&mut self, value: f32) {
+        self.pitch.proposal_interval_sec = if value.is_finite() && value > 0.0 {
+            Some(value)
+        } else {
+            None
+        };
+    }
+
+    #[inline]
+    pub fn set_global_peak_count_clamped(&mut self, value: i64) {
+        self.pitch.global_peak_count = value.max(0) as usize;
+    }
+
+    #[inline]
+    pub fn set_global_peak_min_sep_cents_clamped(&mut self, value: f32) {
+        self.pitch.global_peak_min_sep_cents = if value.is_finite() {
+            value.max(0.0)
+        } else {
+            DEFAULT_GLOBAL_PEAK_MIN_SEP_CENTS
+        };
+    }
+
+    #[inline]
+    pub fn set_use_ratio_candidates(&mut self, enabled: bool) {
+        self.pitch.use_ratio_candidates = enabled;
+    }
+
+    #[inline]
+    pub fn set_ratio_candidate_count_clamped(&mut self, value: i64) {
+        self.pitch.ratio_candidate_count = value.max(0) as usize;
+    }
+
+    #[inline]
+    pub fn set_move_cost_time_scale(&mut self, value: MoveCostTimeScale) {
+        self.pitch.move_cost_time_scale = value;
+    }
+
+    #[inline]
+    pub fn set_leave_self_out_harmonics_clamped(&mut self, value: i64) {
+        self.pitch.leave_self_out_harmonics = value.clamp(1, i64::from(u8::MAX)) as u8;
+    }
+
+    #[inline]
+    pub fn set_pitch_apply_mode(&mut self, value: PitchApplyMode) {
+        self.pitch.pitch_apply_mode = value;
+    }
+
+    #[inline]
+    pub fn set_pitch_glide_tau_sec_clamped(&mut self, value: f32) {
+        self.pitch.pitch_glide_tau_sec = if value.is_finite() {
+            value.max(0.0)
+        } else {
+            DEFAULT_PITCH_GLIDE_TAU_SEC
+        };
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -211,6 +270,20 @@ pub enum PitchCoreKind {
     PeakSampler,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum MoveCostTimeScale {
+    #[default]
+    LegacyIntegrationWindow,
+    ProposalInterval,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PitchApplyMode {
+    #[default]
+    GateSnap,
+    Glide,
+}
+
 #[derive(Debug, Clone)]
 pub struct PitchControl {
     pub mode: PitchMode,
@@ -228,6 +301,15 @@ pub struct PitchControl {
     pub anneal_temp: f32,
     pub move_cost_coeff: f32,
     pub improvement_threshold: f32,
+    pub proposal_interval_sec: Option<f32>,
+    pub global_peak_count: usize,
+    pub global_peak_min_sep_cents: f32,
+    pub use_ratio_candidates: bool,
+    pub ratio_candidate_count: usize,
+    pub move_cost_time_scale: MoveCostTimeScale,
+    pub leave_self_out_harmonics: u8,
+    pub pitch_apply_mode: PitchApplyMode,
+    pub pitch_glide_tau_sec: f32,
 }
 
 impl Default for PitchControl {
@@ -247,6 +329,15 @@ impl Default for PitchControl {
             anneal_temp: DEFAULT_ANNEAL_TEMP,
             move_cost_coeff: DEFAULT_MOVE_COST_COEFF,
             improvement_threshold: DEFAULT_IMPROVEMENT_THRESHOLD,
+            proposal_interval_sec: None,
+            global_peak_count: 0,
+            global_peak_min_sep_cents: DEFAULT_GLOBAL_PEAK_MIN_SEP_CENTS,
+            use_ratio_candidates: false,
+            ratio_candidate_count: 0,
+            move_cost_time_scale: MoveCostTimeScale::LegacyIntegrationWindow,
+            leave_self_out_harmonics: 1,
+            pitch_apply_mode: PitchApplyMode::GateSnap,
+            pitch_glide_tau_sec: DEFAULT_PITCH_GLIDE_TAU_SEC,
         }
     }
 }
@@ -321,6 +412,15 @@ pub struct ControlUpdate {
     pub pitch_smooth_tau: Option<f32>,
     pub move_cost_coeff: Option<f32>,
     pub improvement_threshold: Option<f32>,
+    pub proposal_interval_sec: Option<f32>,
+    pub global_peak_count: Option<i64>,
+    pub global_peak_min_sep_cents: Option<f32>,
+    pub use_ratio_candidates: Option<bool>,
+    pub ratio_candidate_count: Option<i64>,
+    pub move_cost_time_scale: Option<MoveCostTimeScale>,
+    pub leave_self_out_harmonics: Option<i64>,
+    pub pitch_apply_mode: Option<PitchApplyMode>,
+    pub pitch_glide_tau_sec: Option<f32>,
 }
 
 impl ControlUpdate {
@@ -342,6 +442,15 @@ impl ControlUpdate {
             && self.pitch_smooth_tau.is_none()
             && self.move_cost_coeff.is_none()
             && self.improvement_threshold.is_none()
+            && self.proposal_interval_sec.is_none()
+            && self.global_peak_count.is_none()
+            && self.global_peak_min_sep_cents.is_none()
+            && self.use_ratio_candidates.is_none()
+            && self.ratio_candidate_count.is_none()
+            && self.move_cost_time_scale.is_none()
+            && self.leave_self_out_harmonics.is_none()
+            && self.pitch_apply_mode.is_none()
+            && self.pitch_glide_tau_sec.is_none()
     }
 }
 
@@ -398,6 +507,33 @@ impl AgentControl {
         if let Some(threshold) = update.improvement_threshold {
             self.set_improvement_threshold_clamped(threshold);
         }
+        if let Some(interval) = update.proposal_interval_sec {
+            self.set_proposal_interval_sec_clamped(interval);
+        }
+        if let Some(count) = update.global_peak_count {
+            self.set_global_peak_count_clamped(count);
+        }
+        if let Some(min_sep) = update.global_peak_min_sep_cents {
+            self.set_global_peak_min_sep_cents_clamped(min_sep);
+        }
+        if let Some(enabled) = update.use_ratio_candidates {
+            self.set_use_ratio_candidates(enabled);
+        }
+        if let Some(count) = update.ratio_candidate_count {
+            self.set_ratio_candidate_count_clamped(count);
+        }
+        if let Some(scale) = update.move_cost_time_scale {
+            self.set_move_cost_time_scale(scale);
+        }
+        if let Some(harmonics) = update.leave_self_out_harmonics {
+            self.set_leave_self_out_harmonics_clamped(harmonics);
+        }
+        if let Some(mode) = update.pitch_apply_mode {
+            self.set_pitch_apply_mode(mode);
+        }
+        if let Some(tau) = update.pitch_glide_tau_sec {
+            self.set_pitch_glide_tau_sec_clamped(tau);
+        }
     }
 }
 
@@ -425,8 +561,17 @@ mod tests {
             timbre_motion: Some(0.5),
             continuous_drive: None,
             pitch_smooth_tau: None,
-            move_cost_coeff: None,
-            improvement_threshold: None,
+            move_cost_coeff: Some(-0.2),
+            improvement_threshold: Some(-0.5),
+            proposal_interval_sec: Some(-1.0),
+            global_peak_count: Some(8),
+            global_peak_min_sep_cents: Some(-9.0),
+            use_ratio_candidates: Some(true),
+            ratio_candidate_count: Some(6),
+            move_cost_time_scale: Some(MoveCostTimeScale::ProposalInterval),
+            leave_self_out_harmonics: Some(0),
+            pitch_apply_mode: Some(PitchApplyMode::Glide),
+            pitch_glide_tau_sec: Some(-0.2),
         };
         control.apply_update(&update);
 
@@ -440,6 +585,20 @@ mod tests {
         assert!((control.pitch.repulsion_sigma_cents - 1e-3).abs() <= 1e-6);
         assert!(control.pitch.leave_self_out);
         assert!((control.pitch.anneal_temp - 0.0).abs() <= 1e-6);
+        assert!((control.pitch.move_cost_coeff - 0.0).abs() <= 1e-6);
+        assert!((control.pitch.improvement_threshold - 0.0).abs() <= 1e-6);
+        assert_eq!(control.pitch.proposal_interval_sec, None);
+        assert_eq!(control.pitch.global_peak_count, 8);
+        assert!((control.pitch.global_peak_min_sep_cents - 0.0).abs() <= 1e-6);
+        assert!(control.pitch.use_ratio_candidates);
+        assert_eq!(control.pitch.ratio_candidate_count, 6);
+        assert_eq!(
+            control.pitch.move_cost_time_scale,
+            MoveCostTimeScale::ProposalInterval
+        );
+        assert_eq!(control.pitch.leave_self_out_harmonics, 1);
+        assert_eq!(control.pitch.pitch_apply_mode, PitchApplyMode::Glide);
+        assert!((control.pitch.pitch_glide_tau_sec - 0.0).abs() <= 1e-6);
         assert!((control.body.timbre.brightness - 0.0).abs() <= 1e-6);
         assert!((control.body.timbre.inharmonic - 1.0).abs() <= 1e-6);
         assert!((control.body.timbre.width - 0.25).abs() <= 1e-6);

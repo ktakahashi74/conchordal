@@ -62,6 +62,12 @@ pub(crate) fn pitch_core_config_from_control(pitch: &PitchControl) -> PitchCoreC
             persistence: Some(pitch.persistence),
             leave_self_out: Some(pitch.leave_self_out),
             anneal_temp: Some(pitch.anneal_temp),
+            global_peak_count: Some(pitch.global_peak_count),
+            global_peak_min_sep_cents: Some(pitch.global_peak_min_sep_cents),
+            use_ratio_candidates: Some(pitch.use_ratio_candidates),
+            ratio_candidate_count: Some(pitch.ratio_candidate_count),
+            move_cost_time_scale: Some(pitch.move_cost_time_scale),
+            leave_self_out_harmonics: Some(pitch.leave_self_out_harmonics),
         },
         PitchCoreKind::PeakSampler => PitchCoreConfig::PitchPeakSampler {
             neighbor_step_cents: None,

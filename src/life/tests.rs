@@ -8,7 +8,7 @@ use crate::core::landscape::{Landscape, LandscapeFrame};
 use crate::core::log2space::Log2Space;
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
-use crate::life::control::{AgentControl, PhonationType, PitchMode};
+use crate::life::control::{AgentControl, PhonationType, PitchApplyMode, PitchMode};
 use crate::life::lifecycle::LifecycleConfig;
 use crate::life::phonation_engine::{OnsetEvent, PhonationCmd};
 use rand::SeedableRng;
@@ -207,6 +207,76 @@ fn perceptual_disabled_still_runs_pitch_proposal() {
     assert!(
         proposal_path_ran,
         "expected pitch proposal path to run even when perceptual is disabled"
+    );
+}
+
+#[test]
+fn proposal_interval_decouples_from_integration_window() {
+    let mut control = AgentControl::default();
+    control.pitch.freq = 220.0;
+    control.pitch.proposal_interval_sec = Some(0.2);
+    let cfg = IndividualConfig {
+        control,
+        articulation: ArticulationCoreConfig::default(),
+    };
+    let meta = AgentMetadata {
+        group_id: 0,
+        member_idx: 0,
+    };
+    let mut agent = cfg.spawn(61, 0, meta, 48_000.0, 0);
+    let mut rhythms = NeuralRhythms::default();
+    rhythms.theta.mag = 0.0;
+    let landscape = make_test_landscape(48_000.0);
+    agent.set_accumulated_time_for_test(0.0);
+    for _ in 0..6 {
+        agent.update_pitch_target(&rhythms, 0.05, &landscape, &[]);
+    }
+    assert!(
+        agent.accumulated_time_for_test() < 0.2,
+        "proposal interval should trigger before integration-window horizon"
+    );
+}
+
+#[test]
+fn glide_mode_applies_pitch_without_gate_fade_delay() {
+    let mut control = AgentControl::default();
+    control.pitch.mode = PitchMode::Free;
+    control.pitch.freq = 220.0;
+    let cfg = IndividualConfig {
+        control,
+        articulation: ArticulationCoreConfig::default(),
+    };
+    let meta = AgentMetadata {
+        group_id: 0,
+        member_idx: 0,
+    };
+    let mut agent = cfg.spawn(62, 0, meta, 48_000.0, 0);
+    let rhythms = NeuralRhythms::default();
+
+    let current_log2 = agent.body.base_freq_hz().log2();
+    let target_log2 = current_log2 + 1.0;
+    agent.pitch_ctl.force_set_target_pitch_log2(target_log2);
+
+    agent.effective_control.pitch.pitch_apply_mode = PitchApplyMode::GateSnap;
+    let before_freq = agent.body.base_freq_hz();
+    agent.update_articulation_autonomous(0.1, &rhythms);
+    let snap_gate = agent.articulation.gate();
+    let after_snap_freq = agent.body.base_freq_hz();
+    assert!(
+        snap_gate < 1.0,
+        "gate-snap mode should fade down on large jump"
+    );
+    assert!((after_snap_freq - before_freq).abs() <= 1e-6);
+
+    agent.effective_control.pitch.pitch_apply_mode = PitchApplyMode::Glide;
+    agent.effective_control.pitch.pitch_glide_tau_sec = 0.05;
+    agent.update_articulation_autonomous(0.1, &rhythms);
+    let glide_gate = agent.articulation.gate();
+    let after_glide_freq = agent.body.base_freq_hz();
+    assert!(glide_gate >= 0.99, "glide mode should avoid gate fade-down");
+    assert!(
+        after_glide_freq > after_snap_freq,
+        "glide mode should move pitch immediately"
     );
 }
 

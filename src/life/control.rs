@@ -118,15 +118,6 @@ impl AgentControl {
     }
 
     #[inline]
-    pub fn set_proposal_interval_clamped(&mut self, value: f32) {
-        self.pitch.proposal_interval = if value.is_finite() {
-            value.max(0.0)
-        } else {
-            0.0
-        };
-    }
-
-    #[inline]
     pub fn set_anneal_temp_clamped(&mut self, value: f32) {
         self.pitch.anneal_temp = if value.is_finite() {
             value.max(0.0)
@@ -215,9 +206,6 @@ pub struct PitchControl {
     pub repulsion_sigma_cents: f32,
     pub leave_self_out: bool,
     pub anneal_temp: f32,
-    /// Override for pitch proposal interval in seconds.
-    /// When > 0, replaces the computed integration_window.
-    pub proposal_interval: f32,
 }
 
 impl Default for PitchControl {
@@ -235,7 +223,6 @@ impl Default for PitchControl {
             repulsion_sigma_cents: DEFAULT_REPULSION_SIGMA_CENTS,
             leave_self_out: false,
             anneal_temp: DEFAULT_ANNEAL_TEMP,
-            proposal_interval: 0.0,
         }
     }
 }
@@ -308,7 +295,6 @@ pub struct ControlUpdate {
     pub timbre_motion: Option<f32>,
     pub continuous_drive: Option<f32>,
     pub pitch_smooth_tau: Option<f32>,
-    pub proposal_interval: Option<f32>,
 }
 
 impl ControlUpdate {
@@ -328,7 +314,6 @@ impl ControlUpdate {
             && self.timbre_motion.is_none()
             && self.continuous_drive.is_none()
             && self.pitch_smooth_tau.is_none()
-            && self.proposal_interval.is_none()
     }
 }
 
@@ -379,9 +364,6 @@ impl AgentControl {
         if let Some(tau) = update.pitch_smooth_tau {
             self.set_pitch_smooth_tau_clamped(tau);
         }
-        if let Some(interval) = update.proposal_interval {
-            self.set_proposal_interval_clamped(interval);
-        }
     }
 }
 
@@ -409,7 +391,6 @@ mod tests {
             timbre_motion: Some(0.5),
             continuous_drive: None,
             pitch_smooth_tau: None,
-            proposal_interval: None,
         };
         control.apply_update(&update);
 

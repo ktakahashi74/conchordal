@@ -177,10 +177,6 @@ impl SpeciesSpec {
         self.control.set_pitch_smooth_tau_clamped(value);
     }
 
-    fn set_proposal_interval(&mut self, value: f32) {
-        self.control.set_proposal_interval_clamped(value);
-    }
-
     fn set_exploration(&mut self, value: f32) {
         self.control.set_exploration_clamped(value);
     }
@@ -796,20 +792,6 @@ impl ScriptHost {
             species.spec.set_pitch_smooth_tau(value as f32);
             species
         });
-        engine.register_fn(
-            "proposal_interval",
-            |mut species: SpeciesHandle, value: FLOAT| {
-                species.spec.set_proposal_interval(value as f32);
-                species
-            },
-        );
-        engine.register_fn(
-            "proposal_interval",
-            |mut species: SpeciesHandle, value: INT| {
-                species.spec.set_proposal_interval(value as f32);
-                species
-            },
-        );
         engine.register_fn("exploration", |mut species: SpeciesHandle, value: FLOAT| {
             species.spec.set_exploration(value as f32);
             species
@@ -1529,56 +1511,6 @@ impl ScriptHost {
                         group.pending_update.pitch_smooth_tau = Some(value);
                     }
                     _ => ctx.warn_live_builder(handle.id, "pitch_smooth"),
-                }
-                Ok(handle)
-            },
-        );
-        let ctx_for_group_proposal_interval = ctx.clone();
-        engine.register_fn(
-            "proposal_interval",
-            move |handle: GroupHandle, value: FLOAT| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_proposal_interval
-                    .lock()
-                    .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("proposal_interval ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                let value = value as f32;
-                match group.status {
-                    GroupStatus::Draft => {
-                        group.spec.set_proposal_interval(value);
-                    }
-                    GroupStatus::Live => {
-                        group.spec.set_proposal_interval(value);
-                        group.pending_update.proposal_interval = Some(value);
-                    }
-                    _ => ctx.warn_live_builder(handle.id, "proposal_interval"),
-                }
-                Ok(handle)
-            },
-        );
-        let ctx_for_group_proposal_interval_int = ctx.clone();
-        engine.register_fn(
-            "proposal_interval",
-            move |handle: GroupHandle, value: INT| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_proposal_interval_int
-                    .lock()
-                    .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("proposal_interval ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                let value = value as f32;
-                match group.status {
-                    GroupStatus::Draft => {
-                        group.spec.set_proposal_interval(value);
-                    }
-                    GroupStatus::Live => {
-                        group.spec.set_proposal_interval(value);
-                        group.pending_update.proposal_interval = Some(value);
-                    }
-                    _ => ctx.warn_live_builder(handle.id, "proposal_interval"),
                 }
                 Ok(handle)
             },

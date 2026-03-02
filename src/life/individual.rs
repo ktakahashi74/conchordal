@@ -142,8 +142,7 @@ impl Dirty {
             || update.repulsion_strength.is_some()
             || update.repulsion_sigma_cents.is_some()
             || update.leave_self_out.is_some()
-            || update.anneal_temp.is_some()
-            || update.proposal_interval.is_some();
+            || update.anneal_temp.is_some();
         Self {
             body,
             pitch,
@@ -223,7 +222,6 @@ impl Individual {
             .core_mut()
             .set_anneal_temp(effective_control.pitch.anneal_temp);
         pitch_ctl.set_perceptual_enabled(effective_control.perceptual.enabled);
-        pitch_ctl.set_proposal_interval_override(effective_control.pitch.proposal_interval);
 
         let (articulation_core, lifecycle_label, default_by_articulation, breath_gain_init) =
             match &articulation_config {
@@ -318,8 +316,6 @@ impl Individual {
         core.set_repulsion(pitch.repulsion_strength, pitch.repulsion_sigma_cents);
         core.set_leave_self_out(pitch.leave_self_out);
         core.set_anneal_temp(pitch.anneal_temp);
-        self.pitch_ctl
-            .set_proposal_interval_override(pitch.proposal_interval);
     }
 
     fn apply_phonation_control(&mut self) {

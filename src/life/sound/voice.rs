@@ -3,13 +3,14 @@ use crate::core::timebase::{Tick, Timebase};
 use crate::life::individual::{ArticulationSignal, ArticulationWrapper};
 use crate::life::lifecycle::default_decay_attack;
 use crate::life::phonation_engine::{PhonationKick, PhonationUpdate};
-use crate::life::scenario::TimbreGenotype;
 use crate::life::sound::any_backend::AnyBackend;
 use crate::life::sound::control::{ControlRamp, VoiceControlBlock};
-use crate::life::sound::modal_engine::ModeShape;
-use crate::life::sound::mode_utils::modal_modes_from_ratios;
 use crate::life::sound::{BodyKind, BodySnapshot};
 use std::collections::VecDeque;
+
+const SINE_IMPULSE_BOOST_GAIN: f32 = 0.2;
+const SINE_IMPULSE_BOOST_MAX: f32 = 1.0;
+const SINE_IMPULSE_BOOST_DECAY_SEC: f32 = 0.08;
 
 #[derive(Debug, Clone, Copy)]
 struct PendingUpdate {
@@ -46,6 +47,8 @@ pub struct Voice {
     sample_dt: f32,
     continuous_drive: f32,
     noise_state: u64,
+    started: bool,
+    sine_impulse_boost: f32,
 }
 
 impl Voice {
@@ -68,16 +71,14 @@ impl Voice {
             return None;
         }
 
-        let (shape, amp_scale) = match body.as_ref() {
-            Some(snapshot) => (mode_shape_from_snapshot(snapshot), snapshot.amp_scale),
-            None => (default_mode_shape(), 1.0),
-        };
+        let snapshot = body.unwrap_or_else(default_body_snapshot);
+        let amp_scale = snapshot.amp_scale;
         let amp = amp * amp_scale.clamp(0.0, 1.0);
         if !amp.is_finite() || amp <= 0.0 {
             return None;
         }
 
-        let backend = AnyBackend::from_shape(time.fs, shape).ok()?;
+        let backend = AnyBackend::from_snapshot(time.fs, &snapshot).ok()?;
 
         let attack_ticks = default_attack_ticks(time);
         let release_ticks = default_release_ticks(time);
@@ -126,6 +127,8 @@ impl Voice {
             sample_dt,
             continuous_drive: 0.0,
             noise_state: 0x9E3779B97F4A7C15_u64.wrapping_add(onset),
+            started: false,
+            sine_impulse_boost: 0.0,
         })
     }
 
@@ -265,8 +268,24 @@ impl Voice {
 
         let impulse = self.pending_impulse_energy;
         self.pending_impulse_energy = 0.0;
-        let noise = fast_noise(&mut self.noise_state);
-        let drive = impulse + self.continuous_drive * signal.amplitude * noise;
+        if impulse > 0.0 {
+            self.started = true;
+            if self.backend.is_sine() {
+                self.sine_impulse_boost = (self.sine_impulse_boost
+                    + impulse * SINE_IMPULSE_BOOST_GAIN)
+                    .clamp(0.0, SINE_IMPULSE_BOOST_MAX);
+            }
+        }
+        if !self.started {
+            return 0.0;
+        }
+
+        let drive = if self.backend.supports_continuous_drive() {
+            let noise = fast_noise(&mut self.noise_state);
+            impulse + self.continuous_drive * signal.amplitude * noise
+        } else {
+            0.0
+        };
         let ctrl = VoiceControlBlock {
             pitch_hz: ControlRamp {
                 start: self.current_pitch_hz.max(1.0),
@@ -283,7 +302,12 @@ impl Voice {
         if !signal.is_active {
             return 0.0;
         }
-        out[0] * signal.amplitude
+        let mut sample = out[0] * signal.amplitude;
+        if self.backend.is_sine() {
+            sample *= 1.0 + self.sine_impulse_boost;
+            self.sine_impulse_boost *= impulse_boost_decay(self.sample_dt);
+        }
+        sample
     }
 
     pub fn render_block(
@@ -307,7 +331,10 @@ impl Voice {
     }
 
     pub fn set_continuous_drive(&mut self, level: f32) {
-        self.continuous_drive = if level.is_finite() {
+        // Sine backend is pure oscillator; sustain-drive is intentionally ignored.
+        self.continuous_drive = if self.backend.is_sine() {
+            0.0
+        } else if level.is_finite() {
             level.max(0.0)
         } else {
             0.0
@@ -472,6 +499,13 @@ fn smoothing_alpha(dt: f32, tau_sec: f32) -> f32 {
     }
 }
 
+fn impulse_boost_decay(dt: f32) -> f32 {
+    if !dt.is_finite() || dt <= 0.0 {
+        return 0.0;
+    }
+    (-dt / SINE_IMPULSE_BOOST_DECAY_SEC).exp().clamp(0.0, 1.0)
+}
+
 pub fn default_release_ticks(time: Timebase) -> Tick {
     let release_sec = default_decay_attack();
     sec_to_tick_at_least_one(time, release_sec)
@@ -490,157 +524,20 @@ fn sec_to_tick_at_least_one(time: Timebase, sec: f32) -> Tick {
     if ticks < 1 { 1 } else { ticks }
 }
 
-fn default_mode_shape() -> ModeShape {
-    ModeShape::Sine {
-        t60_s: 0.8,
-        out_gain: 1.0,
-        in_gain: 1.0,
-    }
-}
-
-fn mode_shape_from_snapshot(snapshot: &BodySnapshot) -> ModeShape {
-    match snapshot.kind {
-        BodyKind::Harmonic => {
-            if let Some(ratios) = snapshot.ratios.as_deref() {
-                return ModeShape::Modal {
-                    modes: modal_modes_from_ratios(
-                        ratios,
-                        snapshot.brightness.clamp(0.0, 1.0),
-                        snapshot.width.clamp(0.0, 1.0),
-                    ),
-                };
-            }
-            ModeShape::Harmonic {
-                partials: 16,
-                base_t60_s: 0.8,
-                in_gain: 1.0,
-                genotype: TimbreGenotype {
-                    brightness: snapshot.brightness.clamp(0.0, 1.0),
-                    jitter: snapshot.noise_mix.clamp(0.0, 1.0),
-                    unison: snapshot.width.clamp(0.0, 1.0),
-                    ..TimbreGenotype::default()
-                },
-            }
-        }
-        BodyKind::Modal => {
-            let fallback = [1.0f32];
-            let ratios = snapshot.ratios.as_deref().unwrap_or(&fallback);
-            ModeShape::Modal {
-                modes: modal_modes_from_ratios(
-                    ratios,
-                    snapshot.brightness.clamp(0.0, 1.0),
-                    snapshot.width.clamp(0.0, 1.0),
-                ),
-            }
-        }
-        BodyKind::Sine => default_mode_shape(),
+fn default_body_snapshot() -> BodySnapshot {
+    BodySnapshot {
+        kind: BodyKind::Sine,
+        amp_scale: 1.0,
+        brightness: 0.0,
+        width: 0.0,
+        noise_mix: 0.0,
+        ratios: None,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
-
-    #[test]
-    fn mode_shape_from_snapshot_maps_sine_to_default() {
-        let snapshot = BodySnapshot {
-            kind: BodyKind::Sine,
-            amp_scale: 1.0,
-            brightness: 0.8,
-            width: 0.0,
-            noise_mix: 0.6,
-            ratios: None,
-        };
-        let shape = mode_shape_from_snapshot(&snapshot);
-        match shape {
-            ModeShape::Sine {
-                t60_s,
-                out_gain,
-                in_gain,
-            } => {
-                assert!((t60_s - 0.8).abs() <= 1e-6);
-                assert!((out_gain - 1.0).abs() <= 1e-6);
-                assert!((in_gain - 1.0).abs() <= 1e-6);
-            }
-            other => panic!("unexpected shape: {other:?}"),
-        }
-    }
-
-    #[test]
-    fn mode_shape_from_snapshot_maps_harmonic_fields() {
-        let snapshot = BodySnapshot {
-            kind: BodyKind::Harmonic,
-            amp_scale: 1.0,
-            brightness: 0.42,
-            width: 0.35,
-            noise_mix: 0.73,
-            ratios: None,
-        };
-        let shape = mode_shape_from_snapshot(&snapshot);
-        match shape {
-            ModeShape::Harmonic {
-                partials,
-                base_t60_s,
-                in_gain,
-                genotype,
-            } => {
-                assert_eq!(partials, 16);
-                assert!((base_t60_s - 0.8).abs() <= 1e-6);
-                assert!((in_gain - 1.0).abs() <= 1e-6);
-                assert!((genotype.brightness - 0.42).abs() <= 1e-6);
-                assert!((genotype.jitter - 0.73).abs() <= 1e-6);
-                assert!((genotype.unison - 0.35).abs() <= 1e-6);
-            }
-            other => panic!("unexpected shape: {other:?}"),
-        }
-    }
-
-    #[test]
-    fn harmonic_custom_ratios_use_snapshot_width_for_detune() {
-        let base = BodySnapshot {
-            kind: BodyKind::Harmonic,
-            amp_scale: 1.0,
-            brightness: 0.42,
-            width: 0.0,
-            noise_mix: 0.9,
-            ratios: Some(Arc::<[f32]>::from(vec![1.0, 3.0, 5.0])),
-        };
-        let wide = BodySnapshot {
-            width: 0.5,
-            ..base.clone()
-        };
-        let same_width_diff_noise = BodySnapshot {
-            noise_mix: 0.1,
-            ..wide.clone()
-        };
-
-        let base_shape = mode_shape_from_snapshot(&base);
-        let wide_shape = mode_shape_from_snapshot(&wide);
-        let same_width_shape = mode_shape_from_snapshot(&same_width_diff_noise);
-
-        match (base_shape, wide_shape, same_width_shape) {
-            (
-                ModeShape::Modal { modes: base_modes },
-                ModeShape::Modal { modes: wide_modes },
-                ModeShape::Modal {
-                    modes: same_width_modes,
-                },
-            ) => {
-                assert_eq!(base_modes.len(), wide_modes.len());
-                assert_eq!(wide_modes.len(), same_width_modes.len());
-                assert!(
-                    (base_modes[0].ratio - wide_modes[0].ratio).abs() > 1.0e-4,
-                    "width should affect detune ratio"
-                );
-                assert!(
-                    (wide_modes[0].ratio - same_width_modes[0].ratio).abs() <= 1.0e-6,
-                    "noise_mix must not affect custom ratio detune"
-                );
-            }
-            other => panic!("unexpected shape tuple: {other:?}"),
-        }
-    }
 
     #[test]
     fn spawn_does_not_sound_until_triggered() {
@@ -663,7 +560,7 @@ mod tests {
     }
 
     #[test]
-    fn continuous_drive_sustains_sound_without_impulse() {
+    fn continuous_drive_does_not_start_sine_without_impulse() {
         let tb = Timebase {
             fs: 48_000.0,
             hop: 64,
@@ -671,7 +568,35 @@ mod tests {
         let mut voice = Voice::from_parts(tb, 0, Tick::MAX, 440.0, 0.5, None, None).expect("voice");
         voice.set_continuous_drive(0.01);
 
-        // Render 2 seconds (enough for steady state at T60=0.8)
+        let dt = 1.0 / tb.fs;
+        let blocks = 64;
+        let mut last_block = vec![0.0f32; tb.hop];
+        for b in 0..blocks {
+            let tick = (b * tb.hop) as Tick;
+            let mut rhythms = NeuralRhythms::default();
+            voice.render_block(tick, tb.fs, dt, &mut rhythms, &mut last_block);
+        }
+        assert!(last_block.iter().all(|s| s.abs() <= 1e-6));
+    }
+
+    #[test]
+    fn harmonic_continuous_drive_sustains_after_first_impulse() {
+        let tb = Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        };
+        let harmonic = BodySnapshot {
+            kind: BodyKind::Harmonic,
+            amp_scale: 1.0,
+            brightness: 0.6,
+            width: 0.1,
+            noise_mix: 0.0,
+            ratios: None,
+        };
+        let mut voice =
+            Voice::from_parts(tb, 0, Tick::MAX, 220.0, 0.5, Some(harmonic), None).expect("voice");
+        voice.set_continuous_drive(0.03);
+        voice.trigger_impulse(1.0);
         let dt = 1.0 / tb.fs;
         let blocks = (2.0 * tb.fs as f64 / tb.hop as f64) as usize;
         let mut last_block = vec![0.0f32; tb.hop];
@@ -682,27 +607,34 @@ mod tests {
         }
         let peak = last_block.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
         assert!(
-            peak > 0.01,
-            "continuous drive should sustain sound; peak was {peak}"
+            peak > 1e-4,
+            "harmonic sustain drive should keep energy; peak={peak}"
         );
     }
 
     #[test]
-    fn continuous_drive_zero_is_silent_without_impulse() {
+    fn sine_reimpulse_adds_short_boost() {
         let tb = Timebase {
             fs: 48_000.0,
             hop: 64,
         };
         let mut voice = Voice::from_parts(tb, 0, Tick::MAX, 440.0, 0.5, None, None).expect("voice");
-        // continuous_drive defaults to 0.0 — no energy injected
         let dt = 1.0 / tb.fs;
-        let blocks = 100;
-        let mut last_block = vec![0.0f32; tb.hop];
-        for b in 0..blocks {
-            let tick = (b * tb.hop) as Tick;
-            let mut rhythms = NeuralRhythms::default();
-            voice.render_block(tick, tb.fs, dt, &mut rhythms, &mut last_block);
-        }
-        assert!(last_block.iter().all(|s| s.abs() <= 1e-6));
+        let mut rhythms = NeuralRhythms::default();
+
+        voice.trigger_impulse(1.0);
+        let mut before = vec![0.0f32; tb.hop];
+        voice.render_block(0, tb.fs, dt, &mut rhythms, &mut before);
+        let before_peak = before.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
+
+        voice.trigger_impulse(1.0);
+        let mut after = vec![0.0f32; tb.hop];
+        voice.render_block(tb.hop as Tick, tb.fs, dt, &mut rhythms, &mut after);
+        let after_peak = after.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
+
+        assert!(
+            after_peak > before_peak,
+            "re-impulse should add short sine boost: before={before_peak}, after={after_peak}"
+        );
     }
 }

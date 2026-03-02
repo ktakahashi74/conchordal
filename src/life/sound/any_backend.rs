@@ -1,27 +1,54 @@
 use crate::core::log2space::Log2Space;
 use crate::life::individual::ArticulationSignal;
 use crate::life::sound::control::VoiceControlBlock;
+use crate::life::sound::harmonic_resonator_backend::HarmonicResonatorBackend;
 use crate::life::sound::modal_engine::{ModalEngine, ModeShape};
+use crate::life::sound::mode_utils::modal_modes_from_ratios;
+use crate::life::sound::sine_osc_backend::SineOscBackend;
+use crate::life::sound::{BodyKind, BodySnapshot};
 use crate::synth::SynthError;
 
 #[derive(Debug, Clone)]
 pub enum AnyBackend {
+    Sine(SineOscBackend),
+    Harmonic(HarmonicResonatorBackend),
     Modal(ModalEngine),
 }
 
 impl AnyBackend {
-    pub fn from_shape(fs: f32, shape: ModeShape) -> Result<Self, SynthError> {
-        Ok(Self::Modal(ModalEngine::new(fs, shape)?))
+    pub fn from_snapshot(fs: f32, snapshot: &BodySnapshot) -> Result<Self, SynthError> {
+        match snapshot.kind {
+            BodyKind::Sine => Ok(Self::Sine(SineOscBackend::new(fs)?)),
+            BodyKind::Harmonic => Ok(Self::Harmonic(HarmonicResonatorBackend::from_snapshot(
+                fs, snapshot,
+            )?)),
+            BodyKind::Modal => {
+                let shape = modal_shape_from_snapshot(snapshot);
+                Ok(Self::Modal(ModalEngine::new(fs, shape)?))
+            }
+        }
+    }
+
+    pub fn is_sine(&self) -> bool {
+        matches!(self, Self::Sine(_))
+    }
+
+    pub fn supports_continuous_drive(&self) -> bool {
+        !self.is_sine()
     }
 
     pub fn seed_modal_phases(&mut self, seed: u64) {
         match self {
+            AnyBackend::Sine(backend) => backend.seed_phase(seed),
+            AnyBackend::Harmonic(backend) => backend.seed_phases(seed),
             AnyBackend::Modal(engine) => engine.seed_modal_phases(seed),
         }
     }
 
     pub fn render_block(&mut self, drive: &[f32], ctrl: VoiceControlBlock, out: &mut [f32]) {
         match self {
+            AnyBackend::Sine(backend) => backend.render_block(drive, ctrl, out),
+            AnyBackend::Harmonic(backend) => backend.render_block(drive, ctrl, out),
             AnyBackend::Modal(engine) => engine.render_block(drive, ctrl, out),
         }
     }
@@ -33,6 +60,8 @@ impl AnyBackend {
         signal: &ArticulationSignal,
     ) {
         match self {
+            AnyBackend::Sine(backend) => backend.project_spectral(amps, space, signal),
+            AnyBackend::Harmonic(backend) => backend.project_spectral(amps, space, signal),
             AnyBackend::Modal(engine) => engine.project_spectral(amps, space, signal),
         }
     }
@@ -40,8 +69,22 @@ impl AnyBackend {
     #[cfg(test)]
     pub(crate) fn debug_last_modes_len(&self) -> usize {
         match self {
+            AnyBackend::Sine(_) => 1,
+            AnyBackend::Harmonic(backend) => backend.last_modes_len(),
             AnyBackend::Modal(engine) => engine.last_modes_len(),
         }
+    }
+}
+
+fn modal_shape_from_snapshot(snapshot: &BodySnapshot) -> ModeShape {
+    let fallback = [1.0f32];
+    let ratios = snapshot.ratios.as_deref().unwrap_or(&fallback);
+    ModeShape::Modal {
+        modes: modal_modes_from_ratios(
+            ratios,
+            snapshot.brightness.clamp(0.0, 1.0),
+            snapshot.width.clamp(0.0, 1.0),
+        ),
     }
 }
 
@@ -53,12 +96,15 @@ mod tests {
     #[test]
     fn any_backend_delegates_render_block() {
         let fs = 48_000.0;
-        let shape = ModeShape::Sine {
-            t60_s: 0.3,
-            out_gain: 1.0,
-            in_gain: 1.0,
+        let snapshot = BodySnapshot {
+            kind: BodyKind::Harmonic,
+            amp_scale: 1.0,
+            brightness: 0.6,
+            width: 0.0,
+            noise_mix: 0.0,
+            ratios: None,
         };
-        let mut backend = AnyBackend::from_shape(fs, shape).expect("backend");
+        let mut backend = AnyBackend::from_snapshot(fs, &snapshot).expect("backend");
         let drive = [1.0, 0.0, 0.0, 0.0];
         let ctrl = VoiceControlBlock {
             pitch_hz: ControlRamp {

@@ -1,0 +1,258 @@
+use crate::core::log2space::Log2Space;
+use crate::life::individual::ArticulationSignal;
+use crate::life::scenario::TimbreGenotype;
+use crate::life::sound::BodySnapshot;
+use crate::life::sound::control::VoiceControlBlock;
+use crate::life::sound::modal_engine::ModalMode;
+use crate::life::sound::mode_utils::modal_modes_from_ratios;
+use crate::life::sound::spectral::{add_log2_energy, harmonic_gain, harmonic_ratio};
+use crate::synth::SynthError;
+use crate::synth::modes::ModeParams;
+use crate::synth::resonator::ResonatorBank;
+
+const DEFAULT_UPDATE_PERIOD_SAMPLES: usize = 64;
+const DEFAULT_PARTIALS: usize = 16;
+
+#[derive(Debug, Clone)]
+enum HarmonicProfile {
+    Harmonic {
+        partials: usize,
+        base_t60_s: f32,
+        in_gain: f32,
+        genotype: TimbreGenotype,
+    },
+    Ratios {
+        modes: Vec<ModalMode>,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub struct HarmonicResonatorBackend {
+    bank: ResonatorBank,
+    profile: HarmonicProfile,
+    scratch: Vec<ModeParams>,
+    last_built_pitch_hz: f32,
+    update_period_samples: usize,
+    counter: usize,
+    last_modes_len: usize,
+    pending_phase_seed: Option<u64>,
+}
+
+impl HarmonicResonatorBackend {
+    pub fn from_snapshot(fs: f32, snapshot: &BodySnapshot) -> Result<Self, SynthError> {
+        let profile = if let Some(ratios) = snapshot.ratios.as_deref() {
+            HarmonicProfile::Ratios {
+                modes: modal_modes_from_ratios(
+                    ratios,
+                    snapshot.brightness.clamp(0.0, 1.0),
+                    snapshot.width.clamp(0.0, 1.0),
+                ),
+            }
+        } else {
+            HarmonicProfile::Harmonic {
+                partials: DEFAULT_PARTIALS,
+                base_t60_s: 0.8,
+                in_gain: 1.0,
+                genotype: TimbreGenotype {
+                    brightness: snapshot.brightness.clamp(0.0, 1.0),
+                    jitter: snapshot.noise_mix.clamp(0.0, 1.0),
+                    unison: snapshot.width.clamp(0.0, 1.0),
+                    ..TimbreGenotype::default()
+                },
+            }
+        };
+        let max_modes = match &profile {
+            HarmonicProfile::Harmonic { partials, .. } => (*partials).max(1),
+            HarmonicProfile::Ratios { modes } => modes.len().max(1),
+        };
+        let bank = ResonatorBank::new(fs, max_modes)?;
+        let scratch = Vec::with_capacity(max_modes);
+        Ok(Self {
+            bank,
+            profile,
+            scratch,
+            last_built_pitch_hz: 0.0,
+            update_period_samples: DEFAULT_UPDATE_PERIOD_SAMPLES.max(1),
+            counter: 0,
+            last_modes_len: 0,
+            pending_phase_seed: None,
+        })
+    }
+
+    pub fn seed_phases(&mut self, seed: u64) {
+        self.pending_phase_seed = Some(seed);
+    }
+
+    pub fn last_modes_len(&self) -> usize {
+        self.last_modes_len
+    }
+
+    fn rebuild_modes(&mut self, pitch_hz: f32) {
+        if !pitch_hz.is_finite() || pitch_hz <= 0.0 {
+            self.last_modes_len = 0;
+            let _ = self.bank.set_modes_preserve_state(&[]);
+            self.last_built_pitch_hz = pitch_hz;
+            return;
+        }
+
+        let limit = self.bank.capacity();
+        self.scratch.clear();
+        match &self.profile {
+            HarmonicProfile::Harmonic {
+                partials,
+                base_t60_s,
+                in_gain,
+                genotype,
+            } => {
+                let energy = 1.0;
+                for k in 1..=(*partials).max(1) {
+                    if self.scratch.len() >= limit {
+                        break;
+                    }
+                    let ratio = harmonic_ratio(genotype, k);
+                    let freq_hz = pitch_hz * ratio;
+                    if !freq_hz.is_finite() || freq_hz <= 0.0 {
+                        continue;
+                    }
+                    let gain = harmonic_gain(genotype, k, energy);
+                    let t60_s = base_t60_s.max(1e-3) / (1.0 + 0.15 * k as f32);
+                    self.scratch.push(ModeParams {
+                        freq_hz,
+                        t60_s,
+                        gain,
+                        in_gain: *in_gain,
+                    });
+                }
+            }
+            HarmonicProfile::Ratios { modes } => {
+                for mode in modes {
+                    if self.scratch.len() >= limit {
+                        break;
+                    }
+                    let freq_hz = pitch_hz * mode.ratio;
+                    if !freq_hz.is_finite() || freq_hz <= 0.0 {
+                        continue;
+                    }
+                    self.scratch.push(ModeParams {
+                        freq_hz,
+                        t60_s: mode.t60_s.max(1e-3),
+                        gain: mode.gain,
+                        in_gain: mode.in_gain,
+                    });
+                }
+            }
+        }
+
+        self.last_modes_len = self.scratch.len();
+        let _ = self
+            .bank
+            .set_modes_preserve_state(&self.scratch[..self.last_modes_len]);
+        if let Some(seed) = self.pending_phase_seed.take() {
+            self.bank.randomize_input_phase_from_seed(seed);
+        }
+        self.last_built_pitch_hz = pitch_hz;
+    }
+
+    pub fn render_block(&mut self, drive: &[f32], ctrl: VoiceControlBlock, out: &mut [f32]) {
+        debug_assert_eq!(drive.len(), out.len());
+        if drive.is_empty() {
+            return;
+        }
+        let mut counter = self.counter;
+        let period = self.update_period_samples.max(1);
+        for (idx, (u, y)) in drive.iter().copied().zip(out.iter_mut()).enumerate() {
+            let pitch_hz = ctrl.pitch_hz.start + ctrl.pitch_hz.step * idx as f32;
+            let amp = ctrl.amp.start + ctrl.amp.step * idx as f32;
+            if counter == 0 {
+                self.rebuild_modes(pitch_hz.max(1.0));
+            }
+            let sample = self.bank.process_sample(u);
+            if amp.is_finite() {
+                *y += amp.max(0.0) * sample;
+            }
+            counter += 1;
+            if counter >= period {
+                counter = 0;
+            }
+        }
+        self.counter = counter;
+    }
+
+    pub fn project_spectral(
+        &mut self,
+        amps: &mut [f32],
+        space: &Log2Space,
+        signal: &ArticulationSignal,
+    ) {
+        debug_assert_eq!(amps.len(), space.n_bins());
+        if !signal.is_active || signal.amplitude <= 0.0 {
+            return;
+        }
+        let pitch_hz = self.last_built_pitch_hz;
+        if !pitch_hz.is_finite() || pitch_hz <= 0.0 {
+            return;
+        }
+        let amp_scale = signal.amplitude;
+        match &self.profile {
+            HarmonicProfile::Harmonic {
+                partials, genotype, ..
+            } => {
+                let partials = (*partials).max(1);
+                let energy = 1.0;
+                for k in 1..=partials {
+                    let ratio = harmonic_ratio(genotype, k);
+                    let freq_hz = pitch_hz * ratio;
+                    let gain = harmonic_gain(genotype, k, energy);
+                    add_log2_energy(amps, space, freq_hz, amp_scale * gain);
+                }
+            }
+            HarmonicProfile::Ratios { modes } => {
+                for mode in modes {
+                    let freq_hz = pitch_hz * mode.ratio;
+                    add_log2_energy(amps, space, freq_hz, amp_scale * mode.gain);
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::life::sound::BodyKind;
+    use crate::life::sound::control::ControlRamp;
+
+    #[test]
+    fn harmonic_backend_renders_finite_signal() {
+        let snapshot = BodySnapshot {
+            kind: BodyKind::Harmonic,
+            amp_scale: 1.0,
+            brightness: 0.6,
+            width: 0.1,
+            noise_mix: 0.2,
+            ratios: None,
+        };
+        let mut backend =
+            HarmonicResonatorBackend::from_snapshot(48_000.0, &snapshot).expect("harmonic backend");
+        backend.seed_phases(123);
+        let mut out = [0.0f32; 16];
+        backend.render_block(
+            &[
+                0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+            ],
+            VoiceControlBlock {
+                pitch_hz: ControlRamp {
+                    start: 220.0,
+                    step: 0.0,
+                },
+                amp: ControlRamp {
+                    start: 0.5,
+                    step: 0.0,
+                },
+            },
+            &mut out,
+        );
+        assert!(out.iter().all(|s| s.is_finite()));
+        assert!(out.iter().any(|s| s.abs() > 1e-7));
+    }
+}

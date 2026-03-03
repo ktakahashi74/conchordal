@@ -29,6 +29,7 @@ impl AnalysisStream {
         let mut last_landscape = Landscape::new(nsgt_rt.space().clone());
         last_landscape.roughness_suppress_sigma_erb =
             params.roughness_kernel.params.suppress_sigma_erb.max(1e-6);
+        last_landscape.roughness_kernel_params = params.roughness_kernel.params;
 
         Self {
             nsgt_rt: nsgt_rt.clone(),
@@ -84,6 +85,7 @@ impl AnalysisStream {
             .params
             .suppress_sigma_erb
             .max(1e-6);
+        self.last_landscape.roughness_kernel_params = self.params.roughness_kernel.params;
         let h_dual = self
             .params
             .harmonicity_kernel
@@ -157,6 +159,7 @@ impl AnalysisStream {
             .params
             .suppress_sigma_erb
             .max(1e-6);
+        landscape.roughness_kernel_params = self.params.roughness_kernel.params;
         self.last_landscape = landscape;
     }
 

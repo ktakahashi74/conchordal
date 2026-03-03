@@ -993,6 +993,7 @@ impl Population {
                             agent.id(),
                             agent.metadata.group_id,
                             agent.body.base_freq_hz().max(1.0).log2(),
+                            1.0,
                         ));
                     }
                 }
@@ -1014,13 +1015,17 @@ impl Population {
                 BTreeMap::new()
             };
             let mut neighbor_pitch_log2 = Vec::new();
+            let mut neighbor_salience = Vec::new();
             for agent in self.individuals.iter_mut() {
                 if agent.is_alive() {
                     let actor_group_id = agent.metadata.group_id;
+                    let self_salience = 1.0;
                     if let Some(snapshot) = freq_snapshot.as_ref() {
                         neighbor_pitch_log2.clear();
+                        neighbor_salience.clear();
                         neighbor_pitch_log2.reserve(snapshot.len());
-                        for &(id, neighbor_group_id, log2) in snapshot {
+                        neighbor_salience.reserve(snapshot.len());
+                        for &(id, neighbor_group_id, log2, salience) in snapshot {
                             if id != agent.id() {
                                 let visible = group_visibility
                                     .get(&neighbor_group_id)
@@ -1034,6 +1039,7 @@ impl Population {
                                     .unwrap_or(neighbor_group_id == actor_group_id);
                                 if visible {
                                     neighbor_pitch_log2.push(log2);
+                                    neighbor_salience.push(salience);
                                 }
                             }
                         }
@@ -1043,11 +1049,18 @@ impl Population {
                     } else {
                         &[]
                     };
+                    let neighbor_weights = if freq_snapshot.is_some() {
+                        neighbor_salience.as_slice()
+                    } else {
+                        &[]
+                    };
                     agent.tick_control(
                         dt_step_sec,
                         &rhythms,
                         landscape,
                         neighbors,
+                        neighbor_weights,
+                        self_salience,
                         self.global_coupling,
                     );
                 }

@@ -79,6 +79,7 @@ impl PitchController {
     }
 
     /// Update pitch targets at control rate (hop-sized steps).
+    #[allow(clippy::too_many_arguments)]
     pub fn update_pitch_target(
         &mut self,
         current_freq_hz: f32,
@@ -87,6 +88,8 @@ impl PitchController {
         landscape: &Landscape,
         pitch: &PitchControl,
         neighbor_pitch_log2: &[f32],
+        neighbor_salience: &[f32],
+        self_salience: f32,
     ) {
         let dt_sec = dt_sec.max(0.0);
         let current_freq = current_freq_hz.max(1.0);
@@ -142,7 +145,7 @@ impl PitchController {
             let features = FeaturesNow::from_subjective_intensity(&landscape.subjective_intensity);
             debug_assert_eq!(features.distribution.len(), landscape.space.n_bins());
             self.perceptual.ensure_len(features.distribution.len());
-            let proposal = self.core.propose_target(
+            let proposal = self.core.propose_target_with_crowding_salience(
                 current_pitch_log2,
                 target_pitch_log2,
                 current_freq,
@@ -151,6 +154,8 @@ impl PitchController {
                 &self.perceptual,
                 &features,
                 neighbor_pitch_log2,
+                neighbor_salience,
+                self_salience,
                 &mut self.rng,
             );
             target_pitch_log2 = proposal.target_pitch_log2;

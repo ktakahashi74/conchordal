@@ -1102,6 +1102,7 @@ fn worker_loop(
                     }
                     current_landscape.roughness_suppress_sigma_erb =
                         frame.roughness_suppress_sigma_erb;
+                    current_landscape.roughness_kernel_params = frame.roughness_kernel_params;
                     current_landscape.roughness = frame.roughness;
                     current_landscape.roughness_shape_raw = frame.roughness_shape_raw;
                     current_landscape.roughness01 = frame.roughness01;

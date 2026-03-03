@@ -1,6 +1,7 @@
 use crate::core::erb::hz_to_erb;
 use crate::core::harmonic_ratios::{HARMONIC_RATIOS, fold_to_octave_near, ratio_to_f32};
 use crate::core::landscape::Landscape;
+use crate::core::roughness_kernel::crowding_runtime_delta_erb;
 use crate::life::control::MoveCostTimeScale;
 use crate::life::perceptual::{FeaturesNow, PerceptualContext};
 use crate::life::scenario::PitchCoreConfig;
@@ -41,6 +42,36 @@ pub trait PitchCore {
         neighbor_pitch_log2: &[f32],
         rng: &mut R,
     ) -> TargetProposal;
+
+    #[allow(clippy::too_many_arguments)]
+    fn propose_target_with_crowding_salience<R: Rng + ?Sized>(
+        &mut self,
+        current_pitch_log2: f32,
+        current_target_log2: f32,
+        current_freq_hz: f32,
+        integration_window: f32,
+        landscape: &Landscape,
+        perceptual: &PerceptualContext,
+        features: &FeaturesNow,
+        neighbor_pitch_log2: &[f32],
+        neighbor_salience: &[f32],
+        self_salience: f32,
+        rng: &mut R,
+    ) -> TargetProposal {
+        let _ = neighbor_salience;
+        let _ = self_salience;
+        self.propose_target(
+            current_pitch_log2,
+            current_target_log2,
+            current_freq_hz,
+            integration_window,
+            landscape,
+            perceptual,
+            features,
+            neighbor_pitch_log2,
+            rng,
+        )
+    }
 
     fn propose_freqs_hz(&mut self, base_freq_hz: f32, k: usize) -> Vec<f32> {
         self.propose_freqs_hz_with_neighbors(base_freq_hz, &[], k, k.clamp(1, 8), 12.0)
@@ -252,6 +283,35 @@ impl PitchCore for PitchHillClimbPitchCore {
         neighbor_pitch_log2: &[f32],
         rng: &mut R,
     ) -> TargetProposal {
+        self.propose_target_with_crowding_salience(
+            current_pitch_log2,
+            current_target_log2,
+            _current_freq_hz,
+            integration_window,
+            landscape,
+            perceptual,
+            _features,
+            neighbor_pitch_log2,
+            &[],
+            1.0,
+            rng,
+        )
+    }
+
+    fn propose_target_with_crowding_salience<R: Rng + ?Sized>(
+        &mut self,
+        current_pitch_log2: f32,
+        current_target_log2: f32,
+        _current_freq_hz: f32,
+        integration_window: f32,
+        landscape: &Landscape,
+        perceptual: &PerceptualContext,
+        _features: &FeaturesNow,
+        neighbor_pitch_log2: &[f32],
+        neighbor_salience: &[f32],
+        self_salience: f32,
+        rng: &mut R,
+    ) -> TargetProposal {
         let (fmin, fmax) = landscape.freq_bounds_log2();
         let current_target_log2 = current_target_log2.clamp(fmin, fmax);
         let move_cost_time_sec = self.move_cost_time_sec(integration_window);
@@ -283,6 +343,8 @@ impl PitchCore for PitchHillClimbPitchCore {
             self.crowding_sigma_cents,
             self.crowding_sigma_from_roughness,
             neighbor_pitch_log2,
+            neighbor_salience,
+            self_salience,
         ));
         if self.global_peak_count > 0 {
             candidates.extend(top_global_candidates_harmonics(
@@ -303,6 +365,8 @@ impl PitchCore for PitchHillClimbPitchCore {
                 self.crowding_sigma_cents,
                 self.crowding_sigma_from_roughness,
                 neighbor_pitch_log2,
+                neighbor_salience,
+                self_salience,
             ));
         }
         if self.use_ratio_candidates && self.ratio_candidate_count > 0 {
@@ -311,6 +375,7 @@ impl PitchCore for PitchHillClimbPitchCore {
                 current_target_log2,
                 current_pitch_log2,
                 neighbor_pitch_log2,
+                neighbor_salience,
                 self.ratio_candidate_count,
                 fmin,
                 fmax,
@@ -346,6 +411,8 @@ impl PitchCore for PitchHillClimbPitchCore {
                 self.crowding_sigma_cents,
                 self.crowding_sigma_from_roughness,
                 neighbor_pitch_log2,
+                neighbor_salience,
+                self_salience,
             )
         };
 
@@ -565,6 +632,35 @@ impl PitchCore for PitchPeakSamplerCore {
         neighbor_pitch_log2: &[f32],
         rng: &mut R,
     ) -> TargetProposal {
+        self.propose_target_with_crowding_salience(
+            current_pitch_log2,
+            current_target_log2,
+            _current_freq_hz,
+            integration_window,
+            landscape,
+            perceptual,
+            _features,
+            neighbor_pitch_log2,
+            &[],
+            1.0,
+            rng,
+        )
+    }
+
+    fn propose_target_with_crowding_salience<R: Rng + ?Sized>(
+        &mut self,
+        current_pitch_log2: f32,
+        current_target_log2: f32,
+        _current_freq_hz: f32,
+        integration_window: f32,
+        landscape: &Landscape,
+        perceptual: &PerceptualContext,
+        _features: &FeaturesNow,
+        neighbor_pitch_log2: &[f32],
+        neighbor_salience: &[f32],
+        self_salience: f32,
+        rng: &mut R,
+    ) -> TargetProposal {
         let (fmin, fmax) = landscape.freq_bounds_log2();
         let current_target_log2 = current_target_log2.clamp(fmin, fmax);
         let window_bins = window_bins_from_cents(landscape, self.window_cents);
@@ -592,6 +688,8 @@ impl PitchCore for PitchPeakSamplerCore {
             self.crowding_sigma_cents,
             self.crowding_sigma_from_roughness,
             neighbor_pitch_log2,
+            neighbor_salience,
+            self_salience,
         ));
         push_gaussian_candidates(
             &mut candidates,
@@ -622,6 +720,8 @@ impl PitchCore for PitchPeakSamplerCore {
                 self.crowding_sigma_cents,
                 self.crowding_sigma_from_roughness,
                 neighbor_pitch_log2,
+                neighbor_salience,
+                self_salience,
             );
             if score.is_finite() {
                 scored.push((pitch, score));
@@ -650,6 +750,8 @@ impl PitchCore for PitchPeakSamplerCore {
             self.crowding_sigma_cents,
             self.crowding_sigma_from_roughness,
             neighbor_pitch_log2,
+            neighbor_salience,
+            self_salience,
         );
         let mut best_score = current_adjusted;
         for &(_, score) in &scored {
@@ -824,15 +926,7 @@ fn window_bins_from_cents(landscape: &Landscape, cents: f32) -> usize {
     (span_log2 / step).ceil() as usize
 }
 
-fn crowding_sigma_erb(
-    pitch_log2: f32,
-    sigma_cents: f32,
-    sigma_from_roughness: bool,
-    roughness_suppress_sigma_erb: f32,
-) -> f32 {
-    if sigma_from_roughness {
-        return roughness_suppress_sigma_erb.max(1e-6);
-    }
+fn crowding_sigma_erb(pitch_log2: f32, sigma_cents: f32) -> f32 {
     let sigma_log2 = cents_to_log2(sigma_cents.max(1e-3));
     let base_hz = 2.0f32.powf(pitch_log2).max(1e-6);
     let plus_hz = 2.0f32.powf(pitch_log2 + sigma_log2).max(1e-6);
@@ -856,6 +950,8 @@ fn adjusted_pitch_score(
     crowding_sigma_cents: f32,
     crowding_sigma_from_roughness: bool,
     neighbor_pitch_log2: &[f32],
+    _neighbor_salience: &[f32],
+    _self_salience: f32,
 ) -> f32 {
     adjusted_pitch_score_with_loo_harmonics(
         pitch_log2,
@@ -874,6 +970,8 @@ fn adjusted_pitch_score(
         crowding_sigma_cents,
         crowding_sigma_from_roughness,
         neighbor_pitch_log2,
+        _neighbor_salience,
+        _self_salience,
     )
 }
 
@@ -895,6 +993,8 @@ fn adjusted_pitch_score_with_loo_harmonics(
     crowding_sigma_cents: f32,
     crowding_sigma_from_roughness: bool,
     neighbor_pitch_log2: &[f32],
+    _neighbor_salience: &[f32],
+    _self_salience: f32,
 ) -> f32 {
     let (fmin, fmax) = landscape.freq_bounds_log2();
     let clamped = pitch_log2.clamp(fmin, fmax);
@@ -931,23 +1031,27 @@ fn adjusted_pitch_score_with_loo_harmonics(
     let gravity_penalty = dist * dist * tessitura_gravity;
     let weighted_score = landscape_weight.max(0.0) * score;
     let crowding_penalty = if crowding_strength > 0.0 && !neighbor_pitch_log2.is_empty() {
-        let sigma_erb = crowding_sigma_erb(
-            clamped,
-            crowding_sigma_cents,
-            crowding_sigma_from_roughness,
-            landscape.roughness_suppress_sigma_erb,
-        );
         let candidate_hz = 2.0f32.powf(clamped).max(1e-6);
         let candidate_erb = hz_to_erb(candidate_hz);
         let mut sum = 0.0f32;
+        let sigma_erb_explicit = if crowding_sigma_from_roughness {
+            0.0
+        } else {
+            crowding_sigma_erb(clamped, crowding_sigma_cents)
+        };
         for &neighbor_log2 in neighbor_pitch_log2 {
             if !neighbor_log2.is_finite() {
                 continue;
             }
             let neighbor_hz = 2.0f32.powf(neighbor_log2).max(1e-6);
-            let d_erb = (candidate_erb - hz_to_erb(neighbor_hz)).abs();
-            let z = d_erb / sigma_erb;
-            sum += (-0.5 * z * z).exp();
+            let d_erb_signed = candidate_erb - hz_to_erb(neighbor_hz);
+            let term = if crowding_sigma_from_roughness {
+                crowding_runtime_delta_erb(&landscape.roughness_kernel_params, d_erb_signed)
+            } else {
+                let z = d_erb_signed.abs() / sigma_erb_explicit;
+                (-0.5 * z * z).exp()
+            };
+            sum += term;
         }
         crowding_strength * sum
     } else {
@@ -977,6 +1081,8 @@ fn top_local_candidates(
     crowding_sigma_cents: f32,
     crowding_sigma_from_roughness: bool,
     neighbor_pitch_log2: &[f32],
+    neighbor_salience: &[f32],
+    self_salience: f32,
 ) -> Vec<f32> {
     let (fmin, fmax) = landscape.freq_bounds_log2();
     let n_bins = landscape.space.n_bins();
@@ -1007,6 +1113,8 @@ fn top_local_candidates(
             crowding_sigma_cents,
             crowding_sigma_from_roughness,
             neighbor_pitch_log2,
+            neighbor_salience,
+            self_salience,
         );
         if score.is_finite() {
             scored.push((score, pitch_log2));
@@ -1042,6 +1150,8 @@ fn top_local_candidates_harmonics(
     crowding_sigma_cents: f32,
     crowding_sigma_from_roughness: bool,
     neighbor_pitch_log2: &[f32],
+    neighbor_salience: &[f32],
+    self_salience: f32,
 ) -> Vec<f32> {
     let (fmin, fmax) = landscape.freq_bounds_log2();
     let n_bins = landscape.space.n_bins();
@@ -1073,6 +1183,8 @@ fn top_local_candidates_harmonics(
             crowding_sigma_cents,
             crowding_sigma_from_roughness,
             neighbor_pitch_log2,
+            neighbor_salience,
+            self_salience,
         );
         if score.is_finite() {
             scored.push((score, pitch_log2));
@@ -1107,6 +1219,8 @@ fn top_global_candidates_harmonics(
     crowding_sigma_cents: f32,
     crowding_sigma_from_roughness: bool,
     neighbor_pitch_log2: &[f32],
+    neighbor_salience: &[f32],
+    self_salience: f32,
 ) -> Vec<f32> {
     let n_bins = landscape.space.n_bins();
     if n_bins == 0 || top_k == 0 {
@@ -1131,6 +1245,8 @@ fn top_global_candidates_harmonics(
             crowding_sigma_cents,
             crowding_sigma_from_roughness,
             neighbor_pitch_log2,
+            neighbor_salience,
+            self_salience,
         );
         if score.is_finite() {
             scored.push((score, pitch_log2));
@@ -1154,11 +1270,13 @@ fn top_global_candidates_harmonics(
     out
 }
 
+#[allow(clippy::too_many_arguments)]
 fn push_runtime_ratio_candidates(
     candidates: &mut Vec<f32>,
     current_target_log2: f32,
     current_pitch_log2: f32,
     neighbor_pitch_log2: &[f32],
+    _neighbor_salience: &[f32],
     max_count: usize,
     min_log2: f32,
     max_log2: f32,
@@ -1377,6 +1495,50 @@ impl PitchCore for AnyPitchCore {
                 perceptual,
                 features,
                 neighbor_pitch_log2,
+                rng,
+            ),
+        }
+    }
+
+    fn propose_target_with_crowding_salience<R: Rng + ?Sized>(
+        &mut self,
+        current_pitch_log2: f32,
+        current_target_log2: f32,
+        current_freq_hz: f32,
+        integration_window: f32,
+        landscape: &Landscape,
+        perceptual: &PerceptualContext,
+        features: &FeaturesNow,
+        neighbor_pitch_log2: &[f32],
+        neighbor_salience: &[f32],
+        self_salience: f32,
+        rng: &mut R,
+    ) -> TargetProposal {
+        match self {
+            AnyPitchCore::PitchHillClimb(core) => core.propose_target_with_crowding_salience(
+                current_pitch_log2,
+                current_target_log2,
+                current_freq_hz,
+                integration_window,
+                landscape,
+                perceptual,
+                features,
+                neighbor_pitch_log2,
+                neighbor_salience,
+                self_salience,
+                rng,
+            ),
+            AnyPitchCore::PitchPeakSampler(core) => core.propose_target_with_crowding_salience(
+                current_pitch_log2,
+                current_target_log2,
+                current_freq_hz,
+                integration_window,
+                landscape,
+                perceptual,
+                features,
+                neighbor_pitch_log2,
+                neighbor_salience,
+                self_salience,
                 rng,
             ),
         }
@@ -1778,6 +1940,8 @@ mod tests {
             0.0,
             false,
             &[],
+            &[],
+            1.0,
         );
         let without_landscape = adjusted_pitch_score(
             pitch_log2,
@@ -1795,6 +1959,8 @@ mod tests {
             0.0,
             false,
             &[],
+            &[],
+            1.0,
         );
 
         assert!((weighted - 1.75).abs() <= 1e-6);
@@ -1825,6 +1991,8 @@ mod tests {
             20.0,
             false,
             &[],
+            &[],
+            1.0,
         );
         let with_close_neighbor = adjusted_pitch_score(
             pitch_log2,
@@ -1842,6 +2010,8 @@ mod tests {
             20.0,
             false,
             &[pitch_log2],
+            &[1.0],
+            1.0,
         );
 
         assert!(
@@ -1860,6 +2030,7 @@ mod tests {
         let perceptual = test_perceptual(landscape.space.n_bins());
 
         landscape.roughness_suppress_sigma_erb = 0.04;
+        landscape.roughness_kernel_params.suppress_sigma_erb = 0.04;
         let narrow = adjusted_pitch_score(
             pitch_log2,
             pitch_log2,
@@ -1876,9 +2047,12 @@ mod tests {
             20.0,
             true,
             &[neighbor_log2],
+            &[1.0],
+            1.0,
         );
 
         landscape.roughness_suppress_sigma_erb = 0.10;
+        landscape.roughness_kernel_params.suppress_sigma_erb = 0.10;
         let wide = adjusted_pitch_score(
             pitch_log2,
             pitch_log2,
@@ -1895,6 +2069,8 @@ mod tests {
             20.0,
             true,
             &[neighbor_log2],
+            &[1.0],
+            1.0,
         );
         assert!(
             wide < narrow - 1e-6,
@@ -1902,6 +2078,7 @@ mod tests {
         );
 
         landscape.roughness_suppress_sigma_erb = 0.04;
+        landscape.roughness_kernel_params.suppress_sigma_erb = 0.04;
         let explicit_a = adjusted_pitch_score(
             pitch_log2,
             pitch_log2,
@@ -1918,8 +2095,11 @@ mod tests {
             20.0,
             false,
             &[neighbor_log2],
+            &[1.0],
+            1.0,
         );
         landscape.roughness_suppress_sigma_erb = 0.10;
+        landscape.roughness_kernel_params.suppress_sigma_erb = 0.10;
         let explicit_b = adjusted_pitch_score(
             pitch_log2,
             pitch_log2,
@@ -1936,6 +2116,8 @@ mod tests {
             20.0,
             false,
             &[neighbor_log2],
+            &[1.0],
+            1.0,
         );
         assert!(
             (explicit_a - explicit_b).abs() <= 1e-6,
@@ -1967,6 +2149,8 @@ mod tests {
             0.0,
             false,
             &[],
+            &[],
+            1.0,
         );
         assert!((score - 1.23).abs() <= 1e-6);
     }
@@ -1997,6 +2181,8 @@ mod tests {
             0.0,
             false,
             &[],
+            &[],
+            1.0,
         );
         let nearby_no_loo = adjusted_pitch_score(
             nearby,
@@ -2014,6 +2200,8 @@ mod tests {
             0.0,
             false,
             &[],
+            &[],
+            1.0,
         );
         assert!(current_no_loo > nearby_no_loo);
 
@@ -2033,6 +2221,8 @@ mod tests {
             0.0,
             false,
             &[],
+            &[],
+            1.0,
         );
         let nearby_with_loo = adjusted_pitch_score(
             nearby,
@@ -2050,6 +2240,8 @@ mod tests {
             0.0,
             false,
             &[],
+            &[],
+            1.0,
         );
         assert!(nearby_with_loo > current_with_loo);
     }

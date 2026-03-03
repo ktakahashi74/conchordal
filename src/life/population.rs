@@ -665,6 +665,27 @@ impl Population {
         }
     }
 
+    #[inline]
+    fn pairwise_split_sign(a: u64, b: u64) -> f32 {
+        if a == b {
+            return 0.0;
+        }
+        let (lo, hi, orient) = if a < b { (a, b, 1.0) } else { (b, a, -1.0) };
+        // Deterministic pair hash; orientation restores anti-symmetry:
+        // sign(a,b) == -sign(b,a).
+        let mut x = lo
+            .wrapping_mul(0x9E37_79B9_7F4A_7C15)
+            .wrapping_add(hi.rotate_left(32))
+            ^ 0xA076_1D64_78BD_642F;
+        x ^= x >> 30;
+        x = x.wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        x ^= x >> 27;
+        x = x.wrapping_mul(0x94D0_49BB_1331_11EB);
+        x ^= x >> 31;
+        let pair_sign = if (x & 1) == 0 { 1.0 } else { -1.0 };
+        orient * pair_sign
+    }
+
     fn random_respawn_frequency<R: Rng + ?Sized>(
         &self,
         group: &RuntimeGroupState,
@@ -993,7 +1014,6 @@ impl Population {
                             agent.id(),
                             agent.metadata.group_id,
                             agent.body.base_freq_hz().max(1.0).log2(),
-                            1.0,
                         ));
                     }
                 }
@@ -1025,7 +1045,7 @@ impl Population {
                         neighbor_salience.clear();
                         neighbor_pitch_log2.reserve(snapshot.len());
                         neighbor_salience.reserve(snapshot.len());
-                        for &(id, neighbor_group_id, log2, salience) in snapshot {
+                        for &(id, neighbor_group_id, log2) in snapshot {
                             if id != agent.id() {
                                 let visible = group_visibility
                                     .get(&neighbor_group_id)
@@ -1039,7 +1059,8 @@ impl Population {
                                     .unwrap_or(neighbor_group_id == actor_group_id);
                                 if visible {
                                     neighbor_pitch_log2.push(log2);
-                                    neighbor_salience.push(salience);
+                                    neighbor_salience
+                                        .push(Self::pairwise_split_sign(agent.id(), id));
                                 }
                             }
                         }
@@ -1744,6 +1765,14 @@ mod tests {
             visible > hidden + 1e-6,
             "cross-group crowding should only affect behavior when target group allows visibility"
         );
+    }
+
+    #[test]
+    fn pairwise_split_sign_is_antisymmetric() {
+        let ab = Population::pairwise_split_sign(10, 42);
+        let ba = Population::pairwise_split_sign(42, 10);
+        assert!(ab.abs() > 0.0);
+        assert!((ab + ba).abs() <= 1e-6);
     }
 
     #[test]

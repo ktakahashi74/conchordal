@@ -20,6 +20,7 @@ const DEFAULT_GLOBAL_PEAK_COUNT: usize = 0;
 const DEFAULT_GLOBAL_PEAK_MIN_SEP_CENTS: f32 = 0.0;
 const DEFAULT_RUNTIME_RATIO_CANDIDATE_COUNT: usize = 0;
 const DEFAULT_LOO_HARMONICS: u8 = 1;
+const DEFAULT_CROWDING_PAIR_SPLIT_EPS_FRAC: f32 = 0.25;
 static FALLBACK_REDUCED_RATIOS: OnceLock<Vec<(u16, u16)>> = OnceLock::new();
 
 #[derive(Debug, Clone, Copy)]
@@ -950,7 +951,7 @@ fn adjusted_pitch_score(
     crowding_sigma_cents: f32,
     crowding_sigma_from_roughness: bool,
     neighbor_pitch_log2: &[f32],
-    _neighbor_salience: &[f32],
+    neighbor_salience: &[f32],
     _self_salience: f32,
 ) -> f32 {
     adjusted_pitch_score_with_loo_harmonics(
@@ -970,7 +971,7 @@ fn adjusted_pitch_score(
         crowding_sigma_cents,
         crowding_sigma_from_roughness,
         neighbor_pitch_log2,
-        _neighbor_salience,
+        neighbor_salience,
         _self_salience,
     )
 }
@@ -993,7 +994,7 @@ fn adjusted_pitch_score_with_loo_harmonics(
     crowding_sigma_cents: f32,
     crowding_sigma_from_roughness: bool,
     neighbor_pitch_log2: &[f32],
-    _neighbor_salience: &[f32],
+    neighbor_salience: &[f32],
     _self_salience: f32,
 ) -> f32 {
     let (fmin, fmax) = landscape.freq_bounds_log2();
@@ -1034,21 +1035,33 @@ fn adjusted_pitch_score_with_loo_harmonics(
         let candidate_hz = 2.0f32.powf(clamped).max(1e-6);
         let candidate_erb = hz_to_erb(candidate_hz);
         let mut sum = 0.0f32;
-        let sigma_erb_explicit = if crowding_sigma_from_roughness {
-            0.0
+        let sigma_erb_explicit = crowding_sigma_erb(clamped, crowding_sigma_cents);
+        let split_ref_sigma = if crowding_sigma_from_roughness {
+            landscape
+                .roughness_kernel_params
+                .suppress_sigma_erb
+                .max(1e-6)
         } else {
-            crowding_sigma_erb(clamped, crowding_sigma_cents)
+            sigma_erb_explicit
         };
-        for &neighbor_log2 in neighbor_pitch_log2 {
+        let split_eps_erb = split_ref_sigma * DEFAULT_CROWDING_PAIR_SPLIT_EPS_FRAC;
+        for (idx, &neighbor_log2) in neighbor_pitch_log2.iter().enumerate() {
             if !neighbor_log2.is_finite() {
                 continue;
             }
             let neighbor_hz = 2.0f32.powf(neighbor_log2).max(1e-6);
             let d_erb_signed = candidate_erb - hz_to_erb(neighbor_hz);
+            let split_sign = neighbor_salience
+                .get(idx)
+                .copied()
+                .filter(|v| v.is_finite())
+                .unwrap_or(0.0)
+                .clamp(-1.0, 1.0);
+            let d_erb_biased = d_erb_signed + split_sign * split_eps_erb;
             let term = if crowding_sigma_from_roughness {
-                crowding_runtime_delta_erb(&landscape.roughness_kernel_params, d_erb_signed)
+                crowding_runtime_delta_erb(&landscape.roughness_kernel_params, d_erb_biased)
             } else {
-                let z = d_erb_signed.abs() / sigma_erb_explicit;
+                let z = d_erb_biased.abs() / sigma_erb_explicit;
                 (-0.5 * z * z).exp()
             };
             sum += term;
@@ -2017,6 +2030,101 @@ mod tests {
         assert!(
             with_close_neighbor < without_crowding,
             "crowding should lower score when neighbor is near"
+        );
+    }
+
+    #[test]
+    fn crowding_pairwise_split_biases_agents_in_opposite_directions() {
+        let mut landscape = Landscape::new(Log2Space::new(110.0, 880.0, 128));
+        landscape.consonance_field_score.fill(1.0);
+        let perceptual = test_perceptual(landscape.space.n_bins());
+        let center = landscape.space.centers_log2[landscape.space.n_bins() / 2];
+        let left = center - cents_to_log2(6.0);
+        let right = center + cents_to_log2(6.0);
+        let neighbor = [center];
+
+        let left_pos = adjusted_pitch_score(
+            left,
+            center,
+            0.0,
+            center,
+            0.0,
+            1.0,
+            0.0,
+            1,
+            &landscape,
+            &perceptual,
+            false,
+            4.0,
+            60.0,
+            true,
+            &neighbor,
+            &[1.0],
+            1.0,
+        );
+        let right_pos = adjusted_pitch_score(
+            right,
+            center,
+            0.0,
+            center,
+            0.0,
+            1.0,
+            0.0,
+            1,
+            &landscape,
+            &perceptual,
+            false,
+            4.0,
+            60.0,
+            true,
+            &neighbor,
+            &[1.0],
+            1.0,
+        );
+        let left_neg = adjusted_pitch_score(
+            left,
+            center,
+            0.0,
+            center,
+            0.0,
+            1.0,
+            0.0,
+            1,
+            &landscape,
+            &perceptual,
+            false,
+            4.0,
+            60.0,
+            true,
+            &neighbor,
+            &[-1.0],
+            1.0,
+        );
+        let right_neg = adjusted_pitch_score(
+            right,
+            center,
+            0.0,
+            center,
+            0.0,
+            1.0,
+            0.0,
+            1,
+            &landscape,
+            &perceptual,
+            false,
+            4.0,
+            60.0,
+            true,
+            &neighbor,
+            &[-1.0],
+            1.0,
+        );
+
+        let dir_pos = right_pos - left_pos;
+        let dir_neg = right_neg - left_neg;
+        assert!(
+            dir_pos * dir_neg < 0.0,
+            "pairwise split sign should induce opposite directional preference (dir_pos={dir_pos}, dir_neg={dir_neg})"
         );
     }
 

@@ -26,6 +26,9 @@ impl AnalysisStream {
         let ref_vals = compute_roughness_reference(&params, nsgt_rt.space());
         let roughness_ref_total = ref_vals.total;
         let roughness_ref_peak = ref_vals.peak;
+        let mut last_landscape = Landscape::new(nsgt_rt.space().clone());
+        last_landscape.roughness_suppress_sigma_erb =
+            params.roughness_kernel.params.suppress_sigma_erb.max(1e-6);
 
         Self {
             nsgt_rt: nsgt_rt.clone(),
@@ -33,7 +36,7 @@ impl AnalysisStream {
             spectral_frontend,
             roughness_ref_total,
             roughness_ref_peak,
-            last_landscape: Landscape::new(nsgt_rt.space().clone()),
+            last_landscape,
         }
     }
 
@@ -75,6 +78,12 @@ impl AnalysisStream {
         let (_erb, du) = erb_grid(space);
         let eps = self.params.roughness_ref_eps.max(1e-12);
         let roughness_k = self.params.roughness_k.max(1e-6);
+        self.last_landscape.roughness_suppress_sigma_erb = self
+            .params
+            .roughness_kernel
+            .params
+            .suppress_sigma_erb
+            .max(1e-6);
         let h_dual = self
             .params
             .harmonicity_kernel
@@ -141,7 +150,14 @@ impl AnalysisStream {
     pub fn reset(&mut self) {
         self.nsgt_rt.reset();
         self.spectral_frontend.reset();
-        self.last_landscape = Landscape::new(self.nsgt_rt.space().clone());
+        let mut landscape = Landscape::new(self.nsgt_rt.space().clone());
+        landscape.roughness_suppress_sigma_erb = self
+            .params
+            .roughness_kernel
+            .params
+            .suppress_sigma_erb
+            .max(1e-6);
+        self.last_landscape = landscape;
     }
 
     pub fn apply_update(&mut self, upd: LandscapeUpdate) {

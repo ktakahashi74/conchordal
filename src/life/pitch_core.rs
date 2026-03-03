@@ -19,8 +19,6 @@ const DEFAULT_GLOBAL_PEAK_COUNT: usize = 0;
 const DEFAULT_GLOBAL_PEAK_MIN_SEP_CENTS: f32 = 0.0;
 const DEFAULT_RUNTIME_RATIO_CANDIDATE_COUNT: usize = 0;
 const DEFAULT_LOO_HARMONICS: u8 = 1;
-// Keep crowding width aligned with roughness-kernel center suppression by default.
-const DEFAULT_CROWDING_SIGMA_ERB: f32 = 0.06;
 static FALLBACK_REDUCED_RATIOS: OnceLock<Vec<(u16, u16)>> = OnceLock::new();
 
 #[derive(Debug, Clone, Copy)]
@@ -826,9 +824,14 @@ fn window_bins_from_cents(landscape: &Landscape, cents: f32) -> usize {
     (span_log2 / step).ceil() as usize
 }
 
-fn crowding_sigma_erb(pitch_log2: f32, sigma_cents: f32, sigma_from_roughness: bool) -> f32 {
+fn crowding_sigma_erb(
+    pitch_log2: f32,
+    sigma_cents: f32,
+    sigma_from_roughness: bool,
+    roughness_suppress_sigma_erb: f32,
+) -> f32 {
     if sigma_from_roughness {
-        return DEFAULT_CROWDING_SIGMA_ERB.max(1e-6);
+        return roughness_suppress_sigma_erb.max(1e-6);
     }
     let sigma_log2 = cents_to_log2(sigma_cents.max(1e-3));
     let base_hz = 2.0f32.powf(pitch_log2).max(1e-6);
@@ -928,8 +931,12 @@ fn adjusted_pitch_score_with_loo_harmonics(
     let gravity_penalty = dist * dist * tessitura_gravity;
     let weighted_score = landscape_weight.max(0.0) * score;
     let crowding_penalty = if crowding_strength > 0.0 && !neighbor_pitch_log2.is_empty() {
-        let sigma_erb =
-            crowding_sigma_erb(clamped, crowding_sigma_cents, crowding_sigma_from_roughness);
+        let sigma_erb = crowding_sigma_erb(
+            clamped,
+            crowding_sigma_cents,
+            crowding_sigma_from_roughness,
+            landscape.roughness_suppress_sigma_erb,
+        );
         let candidate_hz = 2.0f32.powf(clamped).max(1e-6);
         let candidate_erb = hz_to_erb(candidate_hz);
         let mut sum = 0.0f32;
@@ -1840,6 +1847,99 @@ mod tests {
         assert!(
             with_close_neighbor < without_crowding,
             "crowding should lower score when neighbor is near"
+        );
+    }
+
+    #[test]
+    fn crowding_sigma_from_roughness_uses_runtime_landscape_sigma() {
+        let mut landscape = Landscape::new(Log2Space::new(110.0, 880.0, 96));
+        let idx = landscape.space.n_bins() / 2;
+        let pitch_log2 = landscape.space.centers_log2[idx];
+        let neighbor_log2 = pitch_log2 + cents_to_log2(40.0);
+        landscape.consonance_field_score[idx] = 1.0;
+        let perceptual = test_perceptual(landscape.space.n_bins());
+
+        landscape.roughness_suppress_sigma_erb = 0.04;
+        let narrow = adjusted_pitch_score(
+            pitch_log2,
+            pitch_log2,
+            0.0,
+            pitch_log2,
+            0.0,
+            1.0,
+            0.0,
+            1,
+            &landscape,
+            &perceptual,
+            false,
+            1.0,
+            20.0,
+            true,
+            &[neighbor_log2],
+        );
+
+        landscape.roughness_suppress_sigma_erb = 0.10;
+        let wide = adjusted_pitch_score(
+            pitch_log2,
+            pitch_log2,
+            0.0,
+            pitch_log2,
+            0.0,
+            1.0,
+            0.0,
+            1,
+            &landscape,
+            &perceptual,
+            false,
+            1.0,
+            20.0,
+            true,
+            &[neighbor_log2],
+        );
+        assert!(
+            wide < narrow - 1e-6,
+            "wider roughness suppress sigma should increase crowding penalty"
+        );
+
+        landscape.roughness_suppress_sigma_erb = 0.04;
+        let explicit_a = adjusted_pitch_score(
+            pitch_log2,
+            pitch_log2,
+            0.0,
+            pitch_log2,
+            0.0,
+            1.0,
+            0.0,
+            1,
+            &landscape,
+            &perceptual,
+            false,
+            1.0,
+            20.0,
+            false,
+            &[neighbor_log2],
+        );
+        landscape.roughness_suppress_sigma_erb = 0.10;
+        let explicit_b = adjusted_pitch_score(
+            pitch_log2,
+            pitch_log2,
+            0.0,
+            pitch_log2,
+            0.0,
+            1.0,
+            0.0,
+            1,
+            &landscape,
+            &perceptual,
+            false,
+            1.0,
+            20.0,
+            false,
+            &[neighbor_log2],
+        );
+        assert!(
+            (explicit_a - explicit_b).abs() <= 1e-6,
+            "explicit sigma path must ignore landscape suppress sigma"
         );
     }
 

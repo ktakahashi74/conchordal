@@ -63,6 +63,9 @@ pub enum RoughnessScalarMode {
 #[derive(Clone, Debug)]
 pub struct Landscape {
     pub space: Log2Space,
+    /// Runtime copy of roughness-kernel center suppression width (ERB).
+    /// Used by behavior-side crowding when sigma is synced to roughness settings.
+    pub roughness_suppress_sigma_erb: f32,
     /// perc_potential_R over log2 frequency.
     pub roughness: Vec<f32>,
     /// Raw shape for perc_potential_R normalization.
@@ -114,6 +117,7 @@ impl Landscape {
         let n = space.n_bins();
         Self {
             space,
+            roughness_suppress_sigma_erb: 0.06,
             roughness: vec![0.0; n],
             roughness_shape_raw: vec![0.0; n],
             roughness01: vec![0.0; n],

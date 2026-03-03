@@ -1100,6 +1100,8 @@ fn worker_loop(
                         log_space = current_landscape.space.clone();
                         world.set_space(log_space.clone());
                     }
+                    current_landscape.roughness_suppress_sigma_erb =
+                        frame.roughness_suppress_sigma_erb;
                     current_landscape.roughness = frame.roughness;
                     current_landscape.roughness_shape_raw = frame.roughness_shape_raw;
                     current_landscape.roughness01 = frame.roughness01;

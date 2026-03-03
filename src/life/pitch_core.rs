@@ -56,11 +56,9 @@ pub trait PitchCore {
         features: &FeaturesNow,
         neighbor_pitch_log2: &[f32],
         neighbor_salience: &[f32],
-        self_salience: f32,
         rng: &mut R,
     ) -> TargetProposal {
         let _ = neighbor_salience;
-        let _ = self_salience;
         self.propose_target(
             current_pitch_log2,
             current_target_log2,
@@ -294,7 +292,6 @@ impl PitchCore for PitchHillClimbPitchCore {
             _features,
             neighbor_pitch_log2,
             &[],
-            1.0,
             rng,
         )
     }
@@ -310,7 +307,6 @@ impl PitchCore for PitchHillClimbPitchCore {
         _features: &FeaturesNow,
         neighbor_pitch_log2: &[f32],
         neighbor_salience: &[f32],
-        self_salience: f32,
         rng: &mut R,
     ) -> TargetProposal {
         let (fmin, fmax) = landscape.freq_bounds_log2();
@@ -345,7 +341,6 @@ impl PitchCore for PitchHillClimbPitchCore {
             self.crowding_sigma_from_roughness,
             neighbor_pitch_log2,
             neighbor_salience,
-            self_salience,
         ));
         if self.global_peak_count > 0 {
             candidates.extend(top_global_candidates_harmonics(
@@ -367,7 +362,6 @@ impl PitchCore for PitchHillClimbPitchCore {
                 self.crowding_sigma_from_roughness,
                 neighbor_pitch_log2,
                 neighbor_salience,
-                self_salience,
             ));
         }
         if self.use_ratio_candidates && self.ratio_candidate_count > 0 {
@@ -376,7 +370,6 @@ impl PitchCore for PitchHillClimbPitchCore {
                 current_target_log2,
                 current_pitch_log2,
                 neighbor_pitch_log2,
-                neighbor_salience,
                 self.ratio_candidate_count,
                 fmin,
                 fmax,
@@ -413,7 +406,6 @@ impl PitchCore for PitchHillClimbPitchCore {
                 self.crowding_sigma_from_roughness,
                 neighbor_pitch_log2,
                 neighbor_salience,
-                self_salience,
             )
         };
 
@@ -643,7 +635,6 @@ impl PitchCore for PitchPeakSamplerCore {
             _features,
             neighbor_pitch_log2,
             &[],
-            1.0,
             rng,
         )
     }
@@ -659,7 +650,6 @@ impl PitchCore for PitchPeakSamplerCore {
         _features: &FeaturesNow,
         neighbor_pitch_log2: &[f32],
         neighbor_salience: &[f32],
-        self_salience: f32,
         rng: &mut R,
     ) -> TargetProposal {
         let (fmin, fmax) = landscape.freq_bounds_log2();
@@ -690,7 +680,6 @@ impl PitchCore for PitchPeakSamplerCore {
             self.crowding_sigma_from_roughness,
             neighbor_pitch_log2,
             neighbor_salience,
-            self_salience,
         ));
         push_gaussian_candidates(
             &mut candidates,
@@ -722,7 +711,6 @@ impl PitchCore for PitchPeakSamplerCore {
                 self.crowding_sigma_from_roughness,
                 neighbor_pitch_log2,
                 neighbor_salience,
-                self_salience,
             );
             if score.is_finite() {
                 scored.push((pitch, score));
@@ -752,7 +740,6 @@ impl PitchCore for PitchPeakSamplerCore {
             self.crowding_sigma_from_roughness,
             neighbor_pitch_log2,
             neighbor_salience,
-            self_salience,
         );
         let mut best_score = current_adjusted;
         for &(_, score) in &scored {
@@ -952,7 +939,6 @@ fn adjusted_pitch_score(
     crowding_sigma_from_roughness: bool,
     neighbor_pitch_log2: &[f32],
     neighbor_salience: &[f32],
-    _self_salience: f32,
 ) -> f32 {
     adjusted_pitch_score_with_loo_harmonics(
         pitch_log2,
@@ -972,7 +958,6 @@ fn adjusted_pitch_score(
         crowding_sigma_from_roughness,
         neighbor_pitch_log2,
         neighbor_salience,
-        _self_salience,
     )
 }
 
@@ -995,7 +980,6 @@ fn adjusted_pitch_score_with_loo_harmonics(
     crowding_sigma_from_roughness: bool,
     neighbor_pitch_log2: &[f32],
     neighbor_salience: &[f32],
-    _self_salience: f32,
 ) -> f32 {
     let (fmin, fmax) = landscape.freq_bounds_log2();
     let clamped = pitch_log2.clamp(fmin, fmax);
@@ -1095,7 +1079,6 @@ fn top_local_candidates(
     crowding_sigma_from_roughness: bool,
     neighbor_pitch_log2: &[f32],
     neighbor_salience: &[f32],
-    self_salience: f32,
 ) -> Vec<f32> {
     let (fmin, fmax) = landscape.freq_bounds_log2();
     let n_bins = landscape.space.n_bins();
@@ -1127,7 +1110,6 @@ fn top_local_candidates(
             crowding_sigma_from_roughness,
             neighbor_pitch_log2,
             neighbor_salience,
-            self_salience,
         );
         if score.is_finite() {
             scored.push((score, pitch_log2));
@@ -1164,7 +1146,6 @@ fn top_local_candidates_harmonics(
     crowding_sigma_from_roughness: bool,
     neighbor_pitch_log2: &[f32],
     neighbor_salience: &[f32],
-    self_salience: f32,
 ) -> Vec<f32> {
     let (fmin, fmax) = landscape.freq_bounds_log2();
     let n_bins = landscape.space.n_bins();
@@ -1197,7 +1178,6 @@ fn top_local_candidates_harmonics(
             crowding_sigma_from_roughness,
             neighbor_pitch_log2,
             neighbor_salience,
-            self_salience,
         );
         if score.is_finite() {
             scored.push((score, pitch_log2));
@@ -1233,7 +1213,6 @@ fn top_global_candidates_harmonics(
     crowding_sigma_from_roughness: bool,
     neighbor_pitch_log2: &[f32],
     neighbor_salience: &[f32],
-    self_salience: f32,
 ) -> Vec<f32> {
     let n_bins = landscape.space.n_bins();
     if n_bins == 0 || top_k == 0 {
@@ -1259,7 +1238,6 @@ fn top_global_candidates_harmonics(
             crowding_sigma_from_roughness,
             neighbor_pitch_log2,
             neighbor_salience,
-            self_salience,
         );
         if score.is_finite() {
             scored.push((score, pitch_log2));
@@ -1289,7 +1267,6 @@ fn push_runtime_ratio_candidates(
     current_target_log2: f32,
     current_pitch_log2: f32,
     neighbor_pitch_log2: &[f32],
-    _neighbor_salience: &[f32],
     max_count: usize,
     min_log2: f32,
     max_log2: f32,
@@ -1524,7 +1501,6 @@ impl PitchCore for AnyPitchCore {
         features: &FeaturesNow,
         neighbor_pitch_log2: &[f32],
         neighbor_salience: &[f32],
-        self_salience: f32,
         rng: &mut R,
     ) -> TargetProposal {
         match self {
@@ -1538,7 +1514,6 @@ impl PitchCore for AnyPitchCore {
                 features,
                 neighbor_pitch_log2,
                 neighbor_salience,
-                self_salience,
                 rng,
             ),
             AnyPitchCore::PitchPeakSampler(core) => core.propose_target_with_crowding_salience(
@@ -1551,7 +1526,6 @@ impl PitchCore for AnyPitchCore {
                 features,
                 neighbor_pitch_log2,
                 neighbor_salience,
-                self_salience,
                 rng,
             ),
         }
@@ -1954,7 +1928,6 @@ mod tests {
             false,
             &[],
             &[],
-            1.0,
         );
         let without_landscape = adjusted_pitch_score(
             pitch_log2,
@@ -1973,7 +1946,6 @@ mod tests {
             false,
             &[],
             &[],
-            1.0,
         );
 
         assert!((weighted - 1.75).abs() <= 1e-6);
@@ -2005,7 +1977,6 @@ mod tests {
             false,
             &[],
             &[],
-            1.0,
         );
         let with_close_neighbor = adjusted_pitch_score(
             pitch_log2,
@@ -2024,7 +1995,6 @@ mod tests {
             false,
             &[pitch_log2],
             &[1.0],
-            1.0,
         );
 
         assert!(
@@ -2060,7 +2030,6 @@ mod tests {
             true,
             &neighbor,
             &[1.0],
-            1.0,
         );
         let right_pos = adjusted_pitch_score(
             right,
@@ -2079,7 +2048,6 @@ mod tests {
             true,
             &neighbor,
             &[1.0],
-            1.0,
         );
         let left_neg = adjusted_pitch_score(
             left,
@@ -2098,7 +2066,6 @@ mod tests {
             true,
             &neighbor,
             &[-1.0],
-            1.0,
         );
         let right_neg = adjusted_pitch_score(
             right,
@@ -2117,7 +2084,6 @@ mod tests {
             true,
             &neighbor,
             &[-1.0],
-            1.0,
         );
 
         let dir_pos = right_pos - left_pos;
@@ -2156,7 +2122,6 @@ mod tests {
             true,
             &[neighbor_log2],
             &[1.0],
-            1.0,
         );
 
         landscape.roughness_suppress_sigma_erb = 0.10;
@@ -2178,7 +2143,6 @@ mod tests {
             true,
             &[neighbor_log2],
             &[1.0],
-            1.0,
         );
         assert!(
             wide < narrow - 1e-6,
@@ -2204,7 +2168,6 @@ mod tests {
             false,
             &[neighbor_log2],
             &[1.0],
-            1.0,
         );
         landscape.roughness_suppress_sigma_erb = 0.10;
         landscape.roughness_kernel_params.suppress_sigma_erb = 0.10;
@@ -2225,7 +2188,6 @@ mod tests {
             false,
             &[neighbor_log2],
             &[1.0],
-            1.0,
         );
         assert!(
             (explicit_a - explicit_b).abs() <= 1e-6,
@@ -2258,7 +2220,6 @@ mod tests {
             false,
             &[],
             &[],
-            1.0,
         );
         assert!((score - 1.23).abs() <= 1e-6);
     }
@@ -2290,7 +2251,6 @@ mod tests {
             false,
             &[],
             &[],
-            1.0,
         );
         let nearby_no_loo = adjusted_pitch_score(
             nearby,
@@ -2309,7 +2269,6 @@ mod tests {
             false,
             &[],
             &[],
-            1.0,
         );
         assert!(current_no_loo > nearby_no_loo);
 
@@ -2330,7 +2289,6 @@ mod tests {
             false,
             &[],
             &[],
-            1.0,
         );
         let nearby_with_loo = adjusted_pitch_score(
             nearby,
@@ -2349,7 +2307,6 @@ mod tests {
             false,
             &[],
             &[],
-            1.0,
         );
         assert!(nearby_with_loo > current_with_loo);
     }

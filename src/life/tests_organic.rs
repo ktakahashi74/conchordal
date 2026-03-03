@@ -48,8 +48,8 @@ fn test_inertia_calculation() {
     let mut high = spawn_agent(1000.0, 2);
     let rhythms = NeuralRhythms::default();
 
-    low.update_pitch_target(&rhythms, 0.01, &landscape, &[], &[], 1.0);
-    high.update_pitch_target(&rhythms, 0.01, &landscape, &[], &[], 1.0);
+    low.update_pitch_target(&rhythms, 0.01, &landscape, &[], &[]);
+    high.update_pitch_target(&rhythms, 0.01, &landscape, &[], &[]);
 
     assert!(
         low.integration_window() > high.integration_window(),
@@ -92,7 +92,7 @@ fn test_scan_logic() {
     rhythms.theta.phase = 0.25;
 
     let before = agent.target_pitch_log2();
-    agent.update_pitch_target(&rhythms, 0.01, &landscape, &[], &[], 1.0);
+    agent.update_pitch_target(&rhythms, 0.01, &landscape, &[], &[]);
     assert!(
         agent.target_pitch_log2() > before,
         "agent should move toward higher-scoring neighbor"
@@ -150,7 +150,7 @@ fn lock_mode_prevents_snapback() {
     let steps = 50;
     let agent = pop.individuals.first_mut().expect("agent exists");
     for _ in 0..steps {
-        agent.update_pitch_target(&rhythms, dt_sec, &landscape, &[], &[], 1.0);
+        agent.update_pitch_target(&rhythms, dt_sec, &landscape, &[], &[]);
     }
     assert!(
         (agent.target_pitch_log2() - new_log).abs() < 1e-6,

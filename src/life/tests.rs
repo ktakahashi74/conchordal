@@ -197,7 +197,7 @@ fn perceptual_disabled_still_runs_pitch_proposal() {
         rhythms.theta.phase = 0.1;
         rhythms.theta.mag = 1.0;
         let before_accum = agent.accumulated_time_for_test();
-        agent.update_pitch_target(&rhythms, dt, &landscape, &[], &[], 1.0);
+        agent.update_pitch_target(&rhythms, dt, &landscape, &[], &[]);
         if before_accum + dt >= integration_window && agent.accumulated_time_for_test() <= 1e-6 {
             proposal_path_ran = true;
             break;
@@ -229,7 +229,7 @@ fn proposal_interval_decouples_from_integration_window() {
     let landscape = make_test_landscape(48_000.0);
     agent.set_accumulated_time_for_test(0.0);
     for _ in 0..6 {
-        agent.update_pitch_target(&rhythms, 0.05, &landscape, &[], &[], 1.0);
+        agent.update_pitch_target(&rhythms, 0.05, &landscape, &[], &[]);
     }
     assert!(
         agent.accumulated_time_for_test() < 0.2,
@@ -302,7 +302,7 @@ fn free_mode_uses_freq_center_when_range_zero() {
     agent.set_theta_phase_state_for_test(0.9, true);
     agent.set_accumulated_time_for_test(integration_window);
     let landscape = make_test_landscape(48_000.0);
-    agent.update_pitch_target(&rhythms, 0.01, &landscape, &[], &[], 1.0);
+    agent.update_pitch_target(&rhythms, 0.01, &landscape, &[], &[]);
     let expected = 220.0_f32.log2();
     assert!((agent.target_pitch_log2() - expected).abs() <= 1e-6);
 }

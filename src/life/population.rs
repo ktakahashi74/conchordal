@@ -1039,7 +1039,6 @@ impl Population {
             for agent in self.individuals.iter_mut() {
                 if agent.is_alive() {
                     let actor_group_id = agent.metadata.group_id;
-                    let self_salience = 1.0;
                     if let Some(snapshot) = freq_snapshot.as_ref() {
                         neighbor_pitch_log2.clear();
                         neighbor_salience.clear();
@@ -1081,7 +1080,6 @@ impl Population {
                         landscape,
                         neighbors,
                         neighbor_weights,
-                        self_salience,
                         self.global_coupling,
                     );
                 }

@@ -89,7 +89,6 @@ impl PitchController {
         pitch: &PitchControl,
         neighbor_pitch_log2: &[f32],
         neighbor_salience: &[f32],
-        self_salience: f32,
     ) {
         let dt_sec = dt_sec.max(0.0);
         let current_freq = current_freq_hz.max(1.0);
@@ -155,7 +154,6 @@ impl PitchController {
                 &features,
                 neighbor_pitch_log2,
                 neighbor_salience,
-                self_salience,
                 &mut self.rng,
             );
             target_pitch_log2 = proposal.target_pitch_log2;

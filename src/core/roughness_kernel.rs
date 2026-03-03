@@ -19,7 +19,6 @@ use rustfft::{FftPlanner, num_complex::Complex32};
 #[derive(Clone, Copy, Debug)]
 pub struct KernelParams {
     // === Cochlear layer ===
-    pub sigma_erb: f32,
     pub tau_erb: f32,
     pub mix_tail: f32,
     pub sethares_gain: f32,
@@ -37,6 +36,11 @@ pub struct KernelParams {
     pub w_neural: f32,
 }
 
+// Runtime crowding is intentionally shaped to:
+// 1) keep strong anti-unison pressure from center to around the Sethares local peak, and
+// 2) drop quickly outside that neighborhood so roughness shoulders dominate long-range motion.
+// The multipliers are expressed against (a) analytic Sethares peak location and
+// (b) suppress_sigma_erb, then clamped at runtime.
 const CROWDING_CORE_PEAK_MUL: f32 = 0.35;
 const CROWDING_CORE_SIGMA_MUL: f32 = 0.15;
 const CROWDING_OUTER_PEAK_MUL: f32 = 1.20;
@@ -46,7 +50,6 @@ const CROWDING_OUTER_POW: f32 = 6.0;
 impl Default for KernelParams {
     fn default() -> Self {
         Self {
-            sigma_erb: 0.45,
             tau_erb: 1.0,
             mix_tail: 0.15,
             sethares_gain: 5.0,
@@ -112,19 +115,6 @@ pub fn eval_kernel_delta_erb(params: &KernelParams, d_erb: f32) -> f32 {
     let g_coch = base * suppress.powf(params.suppress_pow);
     let g_neural = (-desq / (2.0 * sig_n * sig_n)).exp();
     (1.0 - params.w_neural) * g_coch + params.w_neural * g_neural
-}
-
-/// Behavior-side crowding compensation corresponding to the roughness center-dip term.
-/// This is the analytic difference between masking-off and dipped cochlear roughness:
-///   compensation = (1-w_neural) * base_no_dip * (1 - suppress)
-/// where `suppress` includes `suppress_pow`.
-#[inline]
-pub fn crowding_compensation_delta_erb(params: &KernelParams, d_erb: f32) -> f32 {
-    let s_sup = params.suppress_sigma_erb.max(1e-6);
-    let desq = d_erb * d_erb;
-    let base = eval_kernel_base_no_dip(params, d_erb);
-    let suppress = (1.0 - (-desq / (2.0 * s_sup * s_sup)).exp()).clamp(0.0, 1.0);
-    ((1.0 - params.w_neural) * base * (1.0 - suppress.powf(params.suppress_pow))).max(0.0)
 }
 
 /// Runtime crowding profile used for behavior-side anti-unison pressure.
@@ -623,6 +613,36 @@ mod tests {
         assert!(
             outside < near_peak * 0.25,
             "crowding should decay rapidly outside the peak neighborhood (near={near_peak}, outside={outside})"
+        );
+    }
+
+    #[test]
+    fn runtime_crowding_keeps_combined_profile_open_around_peak_band() {
+        let p = KernelParams::default();
+        let (_gain, b, c, kappa_erb) = sethares_shape_params(&p);
+        let peak_erb =
+            ((c / b).ln() / (c - b).max(1e-6) * kappa_erb).max(p.suppress_sigma_erb.max(1e-6));
+        let band_max = peak_erb * 1.05;
+        let step = 0.0025f32;
+
+        let mut no_dip_peak = 0.0f32;
+        for i in 0..=((band_max / step).ceil() as usize) {
+            let d = i as f32 * step;
+            let no_dip = eval_kernel_base_no_dip(&p, d);
+            no_dip_peak = no_dip_peak.max(no_dip);
+        }
+
+        let mut band_min = f32::INFINITY;
+        for i in -((band_max / step).ceil() as i32)..=((band_max / step).ceil() as i32) {
+            let d = i as f32 * step;
+            let combined = eval_kernel_delta_erb(&p, d) + crowding_runtime_delta_erb(&p, d);
+            band_min = band_min.min(combined);
+        }
+
+        let floor = 0.08 * no_dip_peak.max(1e-6);
+        assert!(
+            band_min >= floor,
+            "combined roughness+crowding should not open a gap near the roughness peak band (band_min={band_min}, floor={floor})"
         );
     }
 

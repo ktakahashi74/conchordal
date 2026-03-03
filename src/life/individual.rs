@@ -481,7 +481,6 @@ impl Individual {
         landscape: &Landscape,
         neighbor_pitch_log2: &[f32],
         neighbor_salience: &[f32],
-        self_salience: f32,
     ) {
         let current_freq = self.body.base_freq_hz();
         self.pitch_ctl.update_pitch_target(
@@ -492,7 +491,6 @@ impl Individual {
             &self.effective_control.pitch,
             neighbor_pitch_log2,
             neighbor_salience,
-            self_salience,
         );
     }
 
@@ -505,7 +503,6 @@ impl Individual {
         landscape: &Landscape,
         neighbor_pitch_log2: &[f32],
         neighbor_salience: &[f32],
-        self_salience: f32,
         global_coupling: f32,
     ) -> ArticulationSignal {
         self.update_articulation(
@@ -514,7 +511,6 @@ impl Individual {
             landscape,
             neighbor_pitch_log2,
             neighbor_salience,
-            self_salience,
             global_coupling,
         )
     }
@@ -528,7 +524,6 @@ impl Individual {
         landscape: &Landscape,
         neighbor_pitch_log2: &[f32],
         neighbor_salience: &[f32],
-        self_salience: f32,
         global_coupling: f32,
     ) -> ArticulationSignal {
         self.update_pitch_target(
@@ -537,7 +532,6 @@ impl Individual {
             landscape,
             neighbor_pitch_log2,
             neighbor_salience,
-            self_salience,
         );
         self.update_articulation_autonomous(dt_sec, rhythms);
         self.tick_articulation_lifecycle(dt_sec, rhythms, landscape, global_coupling)

@@ -70,9 +70,9 @@ fn control_rate_dt_invariance() {
     let steps = 10;
     let dt = total_sec / steps as f32;
     for _ in 0..steps {
-        fine.update_articulation(dt, &rhythms, &landscape, &[], &[], 1.0, 1.0);
+        fine.update_articulation(dt, &rhythms, &landscape, &[], &[], 1.0);
     }
-    coarse.update_articulation(total_sec, &rhythms, &landscape, &[], &[], 1.0, 1.0);
+    coarse.update_articulation(total_sec, &rhythms, &landscape, &[], &[], 1.0);
 
     let tol = 1e-2;
     let gate_fine = fine.articulation.gate();

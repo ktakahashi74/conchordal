@@ -299,7 +299,7 @@ fn coupling_multiplier_from_mode(mode: RhythmCouplingMode, vitality: f32) -> f32
             let vitality = clamp01_finite(vitality);
             let denom = (1.0 - v_floor).max(1e-6);
             let g = ((vitality - v_floor) / denom).clamp(0.0, 1.0);
-            (1.0 + lambda_v * g).clamp(0.0, MAX_COUPLING_MULT)
+            (lambda_v * g).clamp(0.0, MAX_COUPLING_MULT)
         }
     }
 }

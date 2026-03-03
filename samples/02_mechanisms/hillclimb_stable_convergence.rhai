@@ -21,7 +21,7 @@ let mover = derive(sine)
     .leave_self_out_harmonics(1)
     .exploration(0.10)
     .persistence(0.72)
-    .repulsion(0.20, 95.0)
+    .crowding(0.20, 95.0)
     .pitch_apply("glide")
     .pitch_glide(0.40);
 

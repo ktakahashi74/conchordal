@@ -51,6 +51,8 @@ struct RuntimeGroupState {
     template: IndividualConfig,
     strategy: Option<SpawnStrategy>,
     respawn_policy: RespawnPolicy,
+    crowding_target_same: bool,
+    crowding_target_other: bool,
     released: bool,
     next_member_idx: usize,
     spawn_count_hint: usize,
@@ -606,7 +608,7 @@ impl Population {
         if let Some(group) = self.groups.get_mut(&group_id) {
             // Runtime currently allows multiple Spawn actions with the same group_id.
             // In that case we treat it as "refresh group template/strategy" while preserving
-            // existing respawn policy. New Spawn implicitly re-activates the group.
+            // existing runtime policies. New Spawn implicitly re-activates the group.
             group.template = spec;
             group.strategy = strategy;
             group.released = false;
@@ -620,6 +622,8 @@ impl Population {
                 template: spec,
                 strategy,
                 respawn_policy: RespawnPolicy::None,
+                crowding_target_same: true,
+                crowding_target_other: false,
                 released: false,
                 next_member_idx: current_members.max(member_count),
                 spawn_count_hint: member_count.max(1),
@@ -644,6 +648,20 @@ impl Population {
             group.respawn_policy = policy;
         } else {
             warn!("SetRespawnPolicy: unknown group {group_id}");
+        }
+    }
+
+    fn set_group_crowding_target(
+        &mut self,
+        group_id: u64,
+        same_group_visible: bool,
+        other_group_visible: bool,
+    ) {
+        if let Some(group) = self.groups.get_mut(&group_id) {
+            group.crowding_target_same = same_group_visible;
+            group.crowding_target_other = other_group_visible;
+        } else {
+            warn!("SetGroupCrowdingTarget: unknown group {group_id}");
         }
     }
 
@@ -880,6 +898,13 @@ impl Population {
             Action::SetRespawnPolicy { group_id, policy } => {
                 self.set_group_respawn_policy(group_id, policy);
             }
+            Action::SetGroupCrowdingTarget {
+                group_id,
+                same_group_visible,
+                other_group_visible,
+            } => {
+                self.set_group_crowding_target(group_id, same_group_visible, other_group_visible);
+            }
             Action::SetHarmonicityParams { update } => {
                 self.merge_landscape_update(update);
             }
@@ -956,30 +981,60 @@ impl Population {
         }
         let mut rhythms = landscape.rhythm;
         for _ in 0..steps {
-            let repulsion_active = self.individuals.iter().any(|agent| {
-                agent.is_alive() && agent.effective_control.pitch.repulsion_strength > 0.0
+            let crowding_active = self.individuals.iter().any(|agent| {
+                agent.is_alive() && agent.effective_control.pitch.crowding_strength > 0.0
             });
-            let freq_snapshot = if repulsion_active {
+            let freq_snapshot = if crowding_active {
                 // Snapshot alive frequencies once per substep to avoid order-dependent updates.
                 let mut snapshot = Vec::with_capacity(self.individuals.len());
                 for agent in &self.individuals {
                     if agent.is_alive() {
-                        snapshot.push((agent.id(), agent.body.base_freq_hz().max(1.0).log2()));
+                        snapshot.push((
+                            agent.id(),
+                            agent.metadata.group_id,
+                            agent.body.base_freq_hz().max(1.0).log2(),
+                        ));
                     }
                 }
                 Some(snapshot)
             } else {
                 None
             };
+            let group_visibility: BTreeMap<u64, (bool, bool)> = if crowding_active {
+                self.groups
+                    .iter()
+                    .map(|(&group_id, group)| {
+                        (
+                            group_id,
+                            (group.crowding_target_same, group.crowding_target_other),
+                        )
+                    })
+                    .collect()
+            } else {
+                BTreeMap::new()
+            };
             let mut neighbor_pitch_log2 = Vec::new();
             for agent in self.individuals.iter_mut() {
                 if agent.is_alive() {
+                    let actor_group_id = agent.metadata.group_id;
                     if let Some(snapshot) = freq_snapshot.as_ref() {
                         neighbor_pitch_log2.clear();
                         neighbor_pitch_log2.reserve(snapshot.len());
-                        for &(id, log2) in snapshot {
+                        for &(id, neighbor_group_id, log2) in snapshot {
                             if id != agent.id() {
-                                neighbor_pitch_log2.push(log2);
+                                let visible = group_visibility
+                                    .get(&neighbor_group_id)
+                                    .map(|&(same_visible, other_visible)| {
+                                        if neighbor_group_id == actor_group_id {
+                                            same_visible
+                                        } else {
+                                            other_visible
+                                        }
+                                    })
+                                    .unwrap_or(neighbor_group_id == actor_group_id);
+                                if visible {
+                                    neighbor_pitch_log2.push(log2);
+                                }
                             }
                         }
                     }
@@ -1208,7 +1263,7 @@ mod tests {
         LandscapeFrame::new(Log2Space::new(55.0, 1760.0, 24))
     }
 
-    fn repulsion_order_landscape() -> LandscapeFrame {
+    fn crowding_order_landscape() -> LandscapeFrame {
         let mut landscape = LandscapeFrame::new(Log2Space::new(220.0, 440.0, 96));
         let center_log2 = 330.0f32.log2();
         let width_cents = 50.0f32;
@@ -1237,23 +1292,20 @@ mod tests {
         }
     }
 
-    fn run_single_substep_targets(
-        order_reversed: bool,
-        repulsion_strength: f32,
-    ) -> Vec<(u64, f32)> {
+    fn run_single_substep_targets(order_reversed: bool, crowding_strength: f32) -> Vec<(u64, f32)> {
         let mut pop = Population::new(Timebase {
             fs: 48_000.0,
             hop: 64,
         });
         pop.set_seed(101);
-        let landscape = repulsion_order_landscape();
+        let landscape = crowding_order_landscape();
         let mut spec = spawn_spec_with_freq(330.0);
         spec.control.pitch.mode = PitchMode::Free;
         spec.control.pitch.range_oct = 1.5;
         spec.control.pitch.exploration = 0.0;
         spec.control.pitch.persistence = 0.0;
-        spec.control.pitch.repulsion_strength = repulsion_strength;
-        spec.control.pitch.repulsion_sigma_cents = 20.0;
+        spec.control.pitch.crowding_strength = crowding_strength;
+        spec.control.pitch.crowding_sigma_cents = 20.0;
         pop.apply_action(
             Action::Spawn {
                 group_id: 66,
@@ -1282,6 +1334,70 @@ mod tests {
             .collect();
         out.sort_by_key(|(id, _)| *id);
         out
+    }
+
+    fn run_cross_group_visibility_trial(other_group_visible: bool) -> f32 {
+        let mut pop = Population::new(Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        });
+        pop.set_seed(303);
+        let landscape = crowding_order_landscape();
+
+        let mut mover_spec = spawn_spec_with_freq(330.0);
+        mover_spec.control.pitch.mode = PitchMode::Free;
+        mover_spec.control.pitch.range_oct = 1.5;
+        mover_spec.control.pitch.exploration = 0.0;
+        mover_spec.control.pitch.persistence = 0.0;
+        mover_spec.control.pitch.crowding_strength = 3.0;
+        mover_spec.control.pitch.crowding_sigma_cents = 20.0;
+        mover_spec.control.pitch.crowding_sigma_from_roughness = false;
+
+        let mut neighbor_spec = spawn_spec_with_freq(330.0);
+        neighbor_spec.control.pitch.mode = PitchMode::Lock;
+
+        pop.apply_action(
+            Action::Spawn {
+                group_id: 70,
+                ids: vec![700],
+                spec: mover_spec,
+                strategy: None,
+            },
+            &landscape,
+            None,
+        );
+        pop.apply_action(
+            Action::Spawn {
+                group_id: 71,
+                ids: vec![701],
+                spec: neighbor_spec,
+                strategy: None,
+            },
+            &landscape,
+            None,
+        );
+        pop.apply_action(
+            Action::SetGroupCrowdingTarget {
+                group_id: 71,
+                same_group_visible: true,
+                other_group_visible: other_group_visible,
+            },
+            &landscape,
+            None,
+        );
+
+        for agent in pop.individuals.iter_mut() {
+            agent.set_theta_phase_state_for_test(0.9, true);
+            agent.set_accumulated_time_for_test(agent.integration_window());
+        }
+        pop.advance(64, 48_000.0, 0, 1.0, &landscape);
+
+        let mover = pop
+            .individuals
+            .iter()
+            .find(|agent| agent.id() == 700)
+            .expect("mover");
+        (mover.target_pitch_log2() - 330.0f32.log2()).abs()
     }
 
     #[test]
@@ -1586,7 +1702,7 @@ mod tests {
     }
 
     #[test]
-    fn neighbor_snapshot_order_independent_without_repulsion() {
+    fn neighbor_snapshot_order_independent_without_crowding() {
         let forward = run_single_substep_targets(false, 0.0);
         let reversed = run_single_substep_targets(true, 0.0);
         assert_eq!(forward.len(), reversed.len());
@@ -1597,7 +1713,7 @@ mod tests {
     }
 
     #[test]
-    fn neighbor_snapshot_order_independent_with_repulsion() {
+    fn neighbor_snapshot_order_independent_with_crowding() {
         let forward = run_single_substep_targets(false, 2.0);
         let reversed = run_single_substep_targets(true, 2.0);
         assert_eq!(forward.len(), reversed.len());
@@ -1605,6 +1721,16 @@ mod tests {
             assert_eq!(*id_a, *id_b);
             assert!((pitch_a - pitch_b).abs() <= 1e-6);
         }
+    }
+
+    #[test]
+    fn cross_group_crowding_follows_target_visibility_policy() {
+        let hidden = run_cross_group_visibility_trial(false);
+        let visible = run_cross_group_visibility_trial(true);
+        assert!(
+            visible > hidden + 1e-6,
+            "cross-group crowding should only affect behavior when target group allows visibility"
+        );
     }
 
     #[test]

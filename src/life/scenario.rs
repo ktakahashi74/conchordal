@@ -487,6 +487,11 @@ pub enum Action {
         group_id: u64,
         policy: RespawnPolicy,
     },
+    SetGroupCrowdingTarget {
+        group_id: u64,
+        same_group_visible: bool,
+        other_group_visible: bool,
+    },
     SetHarmonicityParams {
         update: LandscapeUpdate,
     },
@@ -512,6 +517,15 @@ impl fmt::Display for Action {
             Action::SetRespawnPolicy { group_id, policy } => {
                 write!(f, "SetRespawnPolicy group={} policy={:?}", group_id, policy)
             }
+            Action::SetGroupCrowdingTarget {
+                group_id,
+                same_group_visible,
+                other_group_visible,
+            } => write!(
+                f,
+                "SetGroupCrowdingTarget group={} same={} other={}",
+                group_id, same_group_visible, other_group_visible
+            ),
             Action::SetHarmonicityParams { update } => write!(
                 f,
                 "SetHarmonicityParams mirror={:?} roughness_k={:?}",

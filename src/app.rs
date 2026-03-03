@@ -241,7 +241,8 @@ pub fn validate_scenario(scenario: &Scenario) -> Result<(), String> {
                 Action::Spawn { .. }
                 | Action::Update { .. }
                 | Action::Release { .. }
-                | Action::SetRespawnPolicy { .. } => {}
+                | Action::SetRespawnPolicy { .. }
+                | Action::SetGroupCrowdingTarget { .. } => {}
                 Action::SetHarmonicityParams { .. }
                 | Action::SetGlobalCoupling { .. }
                 | Action::SetRoughnessTolerance { .. } => {}

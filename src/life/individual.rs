@@ -139,8 +139,9 @@ impl Dirty {
             || update.landscape_weight.is_some()
             || update.exploration.is_some()
             || update.persistence.is_some()
-            || update.repulsion_strength.is_some()
-            || update.repulsion_sigma_cents.is_some()
+            || update.crowding_strength.is_some()
+            || update.crowding_sigma_cents.is_some()
+            || update.crowding_sigma_from_roughness.is_some()
             || update.leave_self_out.is_some()
             || update.anneal_temp.is_some()
             || update.move_cost_coeff.is_some()
@@ -222,9 +223,10 @@ impl Individual {
         pitch_ctl
             .core_mut()
             .set_persistence(effective_control.pitch.persistence);
-        pitch_ctl.core_mut().set_repulsion(
-            effective_control.pitch.repulsion_strength,
-            effective_control.pitch.repulsion_sigma_cents,
+        pitch_ctl.core_mut().set_crowding(
+            effective_control.pitch.crowding_strength,
+            effective_control.pitch.crowding_sigma_cents,
+            effective_control.pitch.crowding_sigma_from_roughness,
         );
         pitch_ctl
             .core_mut()
@@ -347,7 +349,11 @@ impl Individual {
         core.set_landscape_weight(pitch.landscape_weight);
         core.set_exploration(pitch.exploration);
         core.set_persistence(pitch.persistence);
-        core.set_repulsion(pitch.repulsion_strength, pitch.repulsion_sigma_cents);
+        core.set_crowding(
+            pitch.crowding_strength,
+            pitch.crowding_sigma_cents,
+            pitch.crowding_sigma_from_roughness,
+        );
         core.set_leave_self_out(pitch.leave_self_out);
         core.set_anneal_temp(pitch.anneal_temp);
         core.set_move_cost_coeff(pitch.move_cost_coeff);

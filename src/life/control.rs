@@ -1,7 +1,7 @@
 const RANGE_OCT_MAX: f32 = 6.0;
 pub const MIN_FREQ_HZ: f32 = 1.0;
 pub const MAX_FREQ_HZ: f32 = 20_000.0;
-const DEFAULT_REPULSION_SIGMA_CENTS: f32 = 60.0;
+const DEFAULT_CROWDING_SIGMA_CENTS: f32 = 60.0;
 const DEFAULT_ANNEAL_TEMP: f32 = 0.0;
 const DEFAULT_MOVE_COST_COEFF: f32 = 0.5;
 const DEFAULT_IMPROVEMENT_THRESHOLD: f32 = 0.1;
@@ -81,8 +81,8 @@ impl AgentControl {
     }
 
     #[inline]
-    pub fn set_repulsion_strength_clamped(&mut self, value: f32) {
-        self.pitch.repulsion_strength = if value.is_finite() {
+    pub fn set_crowding_strength_clamped(&mut self, value: f32) {
+        self.pitch.crowding_strength = if value.is_finite() {
             value.max(0.0)
         } else {
             0.0
@@ -90,12 +90,18 @@ impl AgentControl {
     }
 
     #[inline]
-    pub fn set_repulsion_sigma_cents_clamped(&mut self, value: f32) {
-        self.pitch.repulsion_sigma_cents = if value.is_finite() {
+    pub fn set_crowding_sigma_cents_clamped(&mut self, value: f32) {
+        self.pitch.crowding_sigma_cents = if value.is_finite() {
             value.max(1e-3)
         } else {
-            DEFAULT_REPULSION_SIGMA_CENTS
+            DEFAULT_CROWDING_SIGMA_CENTS
         };
+        self.pitch.crowding_sigma_from_roughness = false;
+    }
+
+    #[inline]
+    pub fn set_crowding_sigma_from_roughness(&mut self, enabled: bool) {
+        self.pitch.crowding_sigma_from_roughness = enabled;
     }
 
     #[inline]
@@ -295,8 +301,9 @@ pub struct PitchControl {
     pub landscape_weight: f32,
     pub exploration: f32,
     pub persistence: f32,
-    pub repulsion_strength: f32,
-    pub repulsion_sigma_cents: f32,
+    pub crowding_strength: f32,
+    pub crowding_sigma_cents: f32,
+    pub crowding_sigma_from_roughness: bool,
     pub leave_self_out: bool,
     pub anneal_temp: f32,
     pub move_cost_coeff: f32,
@@ -323,8 +330,9 @@ impl Default for PitchControl {
             landscape_weight: 1.0,
             exploration: 0.0,
             persistence: 0.5,
-            repulsion_strength: 0.0,
-            repulsion_sigma_cents: DEFAULT_REPULSION_SIGMA_CENTS,
+            crowding_strength: 0.0,
+            crowding_sigma_cents: DEFAULT_CROWDING_SIGMA_CENTS,
+            crowding_sigma_from_roughness: true,
             leave_self_out: false,
             anneal_temp: DEFAULT_ANNEAL_TEMP,
             move_cost_coeff: DEFAULT_MOVE_COST_COEFF,
@@ -400,8 +408,9 @@ pub struct ControlUpdate {
     pub landscape_weight: Option<f32>,
     pub exploration: Option<f32>,
     pub persistence: Option<f32>,
-    pub repulsion_strength: Option<f32>,
-    pub repulsion_sigma_cents: Option<f32>,
+    pub crowding_strength: Option<f32>,
+    pub crowding_sigma_cents: Option<f32>,
+    pub crowding_sigma_from_roughness: Option<bool>,
     pub leave_self_out: Option<bool>,
     pub anneal_temp: Option<f32>,
     pub timbre_brightness: Option<f32>,
@@ -430,8 +439,9 @@ impl ControlUpdate {
             && self.landscape_weight.is_none()
             && self.exploration.is_none()
             && self.persistence.is_none()
-            && self.repulsion_strength.is_none()
-            && self.repulsion_sigma_cents.is_none()
+            && self.crowding_strength.is_none()
+            && self.crowding_sigma_cents.is_none()
+            && self.crowding_sigma_from_roughness.is_none()
             && self.leave_self_out.is_none()
             && self.anneal_temp.is_none()
             && self.timbre_brightness.is_none()
@@ -471,11 +481,14 @@ impl AgentControl {
         if let Some(persistence) = update.persistence {
             self.set_persistence_clamped(persistence);
         }
-        if let Some(strength) = update.repulsion_strength {
-            self.set_repulsion_strength_clamped(strength);
+        if let Some(strength) = update.crowding_strength {
+            self.set_crowding_strength_clamped(strength);
         }
-        if let Some(sigma) = update.repulsion_sigma_cents {
-            self.set_repulsion_sigma_cents_clamped(sigma);
+        if let Some(sigma) = update.crowding_sigma_cents {
+            self.set_crowding_sigma_cents_clamped(sigma);
+        }
+        if let Some(enabled) = update.crowding_sigma_from_roughness {
+            self.set_crowding_sigma_from_roughness(enabled);
         }
         if let Some(enabled) = update.leave_self_out {
             self.set_leave_self_out(enabled);
@@ -551,8 +564,9 @@ mod tests {
             landscape_weight: Some(-2.0),
             exploration: Some(2.0),
             persistence: Some(-1.0),
-            repulsion_strength: Some(-4.0),
-            repulsion_sigma_cents: Some(-3.0),
+            crowding_strength: Some(-4.0),
+            crowding_sigma_cents: Some(-3.0),
+            crowding_sigma_from_roughness: Some(false),
             leave_self_out: Some(true),
             anneal_temp: Some(-0.5),
             timbre_brightness: Some(-0.1),
@@ -581,8 +595,9 @@ mod tests {
         assert!((control.pitch.landscape_weight - 0.0).abs() <= 1e-6);
         assert!((control.pitch.exploration - 1.0).abs() <= 1e-6);
         assert!((control.pitch.persistence - 0.0).abs() <= 1e-6);
-        assert!((control.pitch.repulsion_strength - 0.0).abs() <= 1e-6);
-        assert!((control.pitch.repulsion_sigma_cents - 1e-3).abs() <= 1e-6);
+        assert!((control.pitch.crowding_strength - 0.0).abs() <= 1e-6);
+        assert!((control.pitch.crowding_sigma_cents - 1e-3).abs() <= 1e-6);
+        assert!(!control.pitch.crowding_sigma_from_roughness);
         assert!(control.pitch.leave_self_out);
         assert!((control.pitch.anneal_temp - 0.0).abs() <= 1e-6);
         assert!((control.pitch.move_cost_coeff - 0.0).abs() <= 1e-6);

@@ -64,6 +64,8 @@ struct AdsrSpec {
 struct SpeciesSpec {
     control: AgentControl,
     respawn_policy: RespawnPolicy,
+    crowding_target_same: bool,
+    crowding_target_other: bool,
     brain: BrainKind,
     phonation: Option<PhonationKind>,
     metabolism_rate: Option<f32>,
@@ -79,6 +81,8 @@ impl SpeciesSpec {
         Self {
             control,
             respawn_policy: RespawnPolicy::None,
+            crowding_target_same: true,
+            crowding_target_other: false,
             brain: BrainKind::Entrain,
             phonation: None,
             metabolism_rate: None,
@@ -186,9 +190,19 @@ impl SpeciesSpec {
         self.control.set_persistence_clamped(value);
     }
 
-    fn set_repulsion(&mut self, strength: f32, sigma_cents: f32) {
-        self.control.set_repulsion_strength_clamped(strength);
-        self.control.set_repulsion_sigma_cents_clamped(sigma_cents);
+    fn set_crowding(&mut self, strength: f32, sigma_cents: f32) {
+        self.control.set_crowding_strength_clamped(strength);
+        self.control.set_crowding_sigma_cents_clamped(sigma_cents);
+    }
+
+    fn set_crowding_auto_sigma(&mut self, strength: f32) {
+        self.control.set_crowding_strength_clamped(strength);
+        self.control.set_crowding_sigma_from_roughness(true);
+    }
+
+    fn set_crowding_target(&mut self, same_group_visible: bool, other_group_visible: bool) {
+        self.crowding_target_same = same_group_visible;
+        self.crowding_target_other = other_group_visible;
     }
 
     fn set_leave_self_out(&mut self, enabled: bool) {
@@ -415,10 +429,13 @@ struct GroupState {
     count: usize,
     spec: SpeciesSpec,
     respawn_policy: RespawnPolicy,
+    crowding_target_same: bool,
+    crowding_target_other: bool,
     strategy: Option<SpawnStrategy>,
     status: GroupStatus,
     live_ids: Vec<u64>,
     pending_update: ControlUpdate,
+    pending_crowding_target: Option<(bool, bool)>,
     pending_release: bool,
 }
 
@@ -522,6 +539,7 @@ impl ScriptContext {
                         });
                     }
                     group.pending_update = ControlUpdate::default();
+                    group.pending_crowding_target = None;
                     group.pending_release = false;
                     group.status = GroupStatus::Released;
                 }
@@ -588,6 +606,11 @@ impl ScriptContext {
                         spec: group.spec.spawn_spec(),
                         strategy: group.strategy.clone(),
                     });
+                    spawn_actions.push(Action::SetGroupCrowdingTarget {
+                        group_id: group.id,
+                        same_group_visible: group.crowding_target_same,
+                        other_group_visible: group.crowding_target_other,
+                    });
                     if !matches!(group.respawn_policy, RespawnPolicy::None) {
                         spawn_actions.push(Action::SetRespawnPolicy {
                             group_id: group.id,
@@ -599,6 +622,7 @@ impl ScriptContext {
         }
 
         let mut update_actions = Vec::new();
+        let mut crowding_target_actions = Vec::new();
         for group in self.groups.values_mut() {
             if !matches!(group.status, GroupStatus::Live) {
                 continue;
@@ -612,6 +636,14 @@ impl ScriptContext {
                     });
                 }
                 group.pending_update = ControlUpdate::default();
+            }
+            if let Some((same_group_visible, other_group_visible)) = group.pending_crowding_target {
+                crowding_target_actions.push(Action::SetGroupCrowdingTarget {
+                    group_id: group.id,
+                    same_group_visible,
+                    other_group_visible,
+                });
+                group.pending_crowding_target = None;
             }
         }
 
@@ -633,12 +665,20 @@ impl ScriptContext {
             }
         }
 
-        if !spawn_actions.is_empty() || !update_actions.is_empty() || !release_actions.is_empty() {
+        if !spawn_actions.is_empty()
+            || !update_actions.is_empty()
+            || !crowding_target_actions.is_empty()
+            || !release_actions.is_empty()
+        {
             let mut actions = Vec::with_capacity(
-                spawn_actions.len() + update_actions.len() + release_actions.len(),
+                spawn_actions.len()
+                    + update_actions.len()
+                    + crowding_target_actions.len()
+                    + release_actions.len(),
             );
             actions.extend(spawn_actions);
             actions.extend(update_actions);
+            actions.extend(crowding_target_actions);
             actions.extend(release_actions);
             self.push_event(self.cursor, actions);
         }
@@ -676,11 +716,14 @@ impl ScriptContext {
             id,
             count,
             respawn_policy: species.spec.respawn_policy,
+            crowding_target_same: species.spec.crowding_target_same,
+            crowding_target_other: species.spec.crowding_target_other,
             spec: species.spec,
             strategy: None,
             status: GroupStatus::Draft,
             live_ids: Vec::new(),
             pending_update: ControlUpdate::default(),
+            pending_crowding_target: None,
             pending_release: false,
         };
         self.groups.insert(id, group);
@@ -875,52 +918,58 @@ impl ScriptHost {
             species
         });
         engine.register_fn(
-            "repulsion",
+            "crowding",
             |mut species: SpeciesHandle, strength: FLOAT, sigma_cents: FLOAT| {
                 species
                     .spec
-                    .set_repulsion(strength as f32, sigma_cents as f32);
+                    .set_crowding(strength as f32, sigma_cents as f32);
                 species
             },
         );
         engine.register_fn(
-            "repulsion",
+            "crowding",
             |mut species: SpeciesHandle, strength: INT, sigma_cents: FLOAT| {
                 species
                     .spec
-                    .set_repulsion(strength as f32, sigma_cents as f32);
+                    .set_crowding(strength as f32, sigma_cents as f32);
                 species
             },
         );
         engine.register_fn(
-            "repulsion",
+            "crowding",
             |mut species: SpeciesHandle, strength: FLOAT, sigma_cents: INT| {
                 species
                     .spec
-                    .set_repulsion(strength as f32, sigma_cents as f32);
+                    .set_crowding(strength as f32, sigma_cents as f32);
                 species
             },
         );
         engine.register_fn(
-            "repulsion",
+            "crowding",
             |mut species: SpeciesHandle, strength: INT, sigma_cents: INT| {
                 species
                     .spec
-                    .set_repulsion(strength as f32, sigma_cents as f32);
+                    .set_crowding(strength as f32, sigma_cents as f32);
                 species
             },
         );
-        engine.register_fn(
-            "repulsion",
-            |mut species: SpeciesHandle, strength: FLOAT| {
-                species.spec.set_repulsion(strength as f32, 60.0);
-                species
-            },
-        );
-        engine.register_fn("repulsion", |mut species: SpeciesHandle, strength: INT| {
-            species.spec.set_repulsion(strength as f32, 60.0);
+        engine.register_fn("crowding", |mut species: SpeciesHandle, strength: FLOAT| {
+            species.spec.set_crowding_auto_sigma(strength as f32);
             species
         });
+        engine.register_fn("crowding", |mut species: SpeciesHandle, strength: INT| {
+            species.spec.set_crowding_auto_sigma(strength as f32);
+            species
+        });
+        engine.register_fn(
+            "crowding_target",
+            |mut species: SpeciesHandle, same_group_visible: bool, other_group_visible: bool| {
+                species
+                    .spec
+                    .set_crowding_target(same_group_visible, other_group_visible);
+                species
+            },
+        );
         engine.register_fn(
             "leave_self_out",
             |mut species: SpeciesHandle, enabled: bool| {
@@ -1767,164 +1816,202 @@ impl ScriptHost {
                 Ok(handle)
             },
         );
-        let ctx_for_group_repulsion = ctx.clone();
+        let ctx_for_group_crowding = ctx.clone();
         engine.register_fn(
-            "repulsion",
+            "crowding",
             move |handle: GroupHandle,
                   strength: FLOAT,
                   sigma_cents: FLOAT|
                   -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_repulsion.lock().expect("lock script context");
+                let mut ctx = ctx_for_group_crowding.lock().expect("lock script context");
                 let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("repulsion ignored for unknown group {}", handle.id);
+                    warn!("crowding ignored for unknown group {}", handle.id);
                     return Ok(handle);
                 };
                 let strength = strength as f32;
                 let sigma_cents = sigma_cents as f32;
                 match group.status {
-                    GroupStatus::Draft => group.spec.set_repulsion(strength, sigma_cents),
+                    GroupStatus::Draft => group.spec.set_crowding(strength, sigma_cents),
                     GroupStatus::Live => {
-                        group.spec.set_repulsion(strength, sigma_cents);
-                        group.pending_update.repulsion_strength = Some(strength);
-                        group.pending_update.repulsion_sigma_cents = Some(sigma_cents);
+                        group.spec.set_crowding(strength, sigma_cents);
+                        group.pending_update.crowding_strength = Some(strength);
+                        group.pending_update.crowding_sigma_cents = Some(sigma_cents);
+                        group.pending_update.crowding_sigma_from_roughness = Some(false);
                     }
-                    _ => ctx.warn_live_builder(handle.id, "repulsion"),
+                    _ => ctx.warn_live_builder(handle.id, "crowding"),
                 }
                 Ok(handle)
             },
         );
-        let ctx_for_group_repulsion_int_float = ctx.clone();
+        let ctx_for_group_crowding_int_float = ctx.clone();
         engine.register_fn(
-            "repulsion",
+            "crowding",
             move |handle: GroupHandle,
                   strength: INT,
                   sigma_cents: FLOAT|
                   -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_repulsion_int_float
+                let mut ctx = ctx_for_group_crowding_int_float
                     .lock()
                     .expect("lock script context");
                 let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("repulsion ignored for unknown group {}", handle.id);
+                    warn!("crowding ignored for unknown group {}", handle.id);
                     return Ok(handle);
                 };
                 let strength = strength as f32;
                 let sigma_cents = sigma_cents as f32;
                 match group.status {
-                    GroupStatus::Draft => group.spec.set_repulsion(strength, sigma_cents),
+                    GroupStatus::Draft => group.spec.set_crowding(strength, sigma_cents),
                     GroupStatus::Live => {
-                        group.spec.set_repulsion(strength, sigma_cents);
-                        group.pending_update.repulsion_strength = Some(strength);
-                        group.pending_update.repulsion_sigma_cents = Some(sigma_cents);
+                        group.spec.set_crowding(strength, sigma_cents);
+                        group.pending_update.crowding_strength = Some(strength);
+                        group.pending_update.crowding_sigma_cents = Some(sigma_cents);
+                        group.pending_update.crowding_sigma_from_roughness = Some(false);
                     }
-                    _ => ctx.warn_live_builder(handle.id, "repulsion"),
+                    _ => ctx.warn_live_builder(handle.id, "crowding"),
                 }
                 Ok(handle)
             },
         );
-        let ctx_for_group_repulsion_float_int = ctx.clone();
+        let ctx_for_group_crowding_float_int = ctx.clone();
         engine.register_fn(
-            "repulsion",
+            "crowding",
             move |handle: GroupHandle,
                   strength: FLOAT,
                   sigma_cents: INT|
                   -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_repulsion_float_int
+                let mut ctx = ctx_for_group_crowding_float_int
                     .lock()
                     .expect("lock script context");
                 let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("repulsion ignored for unknown group {}", handle.id);
+                    warn!("crowding ignored for unknown group {}", handle.id);
                     return Ok(handle);
                 };
                 let strength = strength as f32;
                 let sigma_cents = sigma_cents as f32;
                 match group.status {
-                    GroupStatus::Draft => group.spec.set_repulsion(strength, sigma_cents),
+                    GroupStatus::Draft => group.spec.set_crowding(strength, sigma_cents),
                     GroupStatus::Live => {
-                        group.spec.set_repulsion(strength, sigma_cents);
-                        group.pending_update.repulsion_strength = Some(strength);
-                        group.pending_update.repulsion_sigma_cents = Some(sigma_cents);
+                        group.spec.set_crowding(strength, sigma_cents);
+                        group.pending_update.crowding_strength = Some(strength);
+                        group.pending_update.crowding_sigma_cents = Some(sigma_cents);
+                        group.pending_update.crowding_sigma_from_roughness = Some(false);
                     }
-                    _ => ctx.warn_live_builder(handle.id, "repulsion"),
+                    _ => ctx.warn_live_builder(handle.id, "crowding"),
                 }
                 Ok(handle)
             },
         );
-        let ctx_for_group_repulsion_default = ctx.clone();
+        let ctx_for_group_crowding_default = ctx.clone();
         engine.register_fn(
-            "repulsion",
+            "crowding",
             move |handle: GroupHandle,
                   strength: FLOAT|
                   -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_repulsion_default
+                let mut ctx = ctx_for_group_crowding_default
                     .lock()
                     .expect("lock script context");
                 let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("repulsion ignored for unknown group {}", handle.id);
+                    warn!("crowding ignored for unknown group {}", handle.id);
                     return Ok(handle);
                 };
                 let strength = strength as f32;
-                let sigma_cents = 60.0;
                 match group.status {
-                    GroupStatus::Draft => group.spec.set_repulsion(strength, sigma_cents),
+                    GroupStatus::Draft => group.spec.set_crowding_auto_sigma(strength),
                     GroupStatus::Live => {
-                        group.spec.set_repulsion(strength, sigma_cents);
-                        group.pending_update.repulsion_strength = Some(strength);
-                        group.pending_update.repulsion_sigma_cents = Some(sigma_cents);
+                        group.spec.set_crowding_auto_sigma(strength);
+                        group.pending_update.crowding_strength = Some(strength);
+                        group.pending_update.crowding_sigma_from_roughness = Some(true);
                     }
-                    _ => ctx.warn_live_builder(handle.id, "repulsion"),
+                    _ => ctx.warn_live_builder(handle.id, "crowding"),
                 }
                 Ok(handle)
             },
         );
-        let ctx_for_group_repulsion_int = ctx.clone();
+        let ctx_for_group_crowding_int = ctx.clone();
         engine.register_fn(
-            "repulsion",
+            "crowding",
             move |handle: GroupHandle,
                   strength: INT,
                   sigma_cents: INT|
                   -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_repulsion_int
+                let mut ctx = ctx_for_group_crowding_int
                     .lock()
                     .expect("lock script context");
                 let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("repulsion ignored for unknown group {}", handle.id);
+                    warn!("crowding ignored for unknown group {}", handle.id);
                     return Ok(handle);
                 };
                 let strength = strength as f32;
                 let sigma_cents = sigma_cents as f32;
                 match group.status {
-                    GroupStatus::Draft => group.spec.set_repulsion(strength, sigma_cents),
+                    GroupStatus::Draft => group.spec.set_crowding(strength, sigma_cents),
                     GroupStatus::Live => {
-                        group.spec.set_repulsion(strength, sigma_cents);
-                        group.pending_update.repulsion_strength = Some(strength);
-                        group.pending_update.repulsion_sigma_cents = Some(sigma_cents);
+                        group.spec.set_crowding(strength, sigma_cents);
+                        group.pending_update.crowding_strength = Some(strength);
+                        group.pending_update.crowding_sigma_cents = Some(sigma_cents);
+                        group.pending_update.crowding_sigma_from_roughness = Some(false);
                     }
-                    _ => ctx.warn_live_builder(handle.id, "repulsion"),
+                    _ => ctx.warn_live_builder(handle.id, "crowding"),
                 }
                 Ok(handle)
             },
         );
-        let ctx_for_group_repulsion_default_int = ctx.clone();
+        let ctx_for_group_crowding_default_int = ctx.clone();
         engine.register_fn(
-            "repulsion",
+            "crowding",
             move |handle: GroupHandle, strength: INT| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_repulsion_default_int
+                let mut ctx = ctx_for_group_crowding_default_int
                     .lock()
                     .expect("lock script context");
                 let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("repulsion ignored for unknown group {}", handle.id);
+                    warn!("crowding ignored for unknown group {}", handle.id);
                     return Ok(handle);
                 };
                 let strength = strength as f32;
-                let sigma_cents = 60.0;
                 match group.status {
-                    GroupStatus::Draft => group.spec.set_repulsion(strength, sigma_cents),
+                    GroupStatus::Draft => group.spec.set_crowding_auto_sigma(strength),
                     GroupStatus::Live => {
-                        group.spec.set_repulsion(strength, sigma_cents);
-                        group.pending_update.repulsion_strength = Some(strength);
-                        group.pending_update.repulsion_sigma_cents = Some(sigma_cents);
+                        group.spec.set_crowding_auto_sigma(strength);
+                        group.pending_update.crowding_strength = Some(strength);
+                        group.pending_update.crowding_sigma_from_roughness = Some(true);
                     }
-                    _ => ctx.warn_live_builder(handle.id, "repulsion"),
+                    _ => ctx.warn_live_builder(handle.id, "crowding"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_crowding_target = ctx.clone();
+        engine.register_fn(
+            "crowding_target",
+            move |handle: GroupHandle,
+                  same_group_visible: bool,
+                  other_group_visible: bool|
+                  -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_crowding_target
+                    .lock()
+                    .expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("crowding_target ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                match group.status {
+                    GroupStatus::Draft => {
+                        group.crowding_target_same = same_group_visible;
+                        group.crowding_target_other = other_group_visible;
+                        group
+                            .spec
+                            .set_crowding_target(same_group_visible, other_group_visible);
+                    }
+                    GroupStatus::Live => {
+                        group.crowding_target_same = same_group_visible;
+                        group.crowding_target_other = other_group_visible;
+                        group
+                            .spec
+                            .set_crowding_target(same_group_visible, other_group_visible);
+                        group.pending_crowding_target =
+                            Some((same_group_visible, other_group_visible));
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "crowding_target"),
                 }
                 Ok(handle)
             },
@@ -3459,10 +3546,10 @@ mod tests {
     }
 
     #[test]
-    fn species_repulsion_sets_spawn_control() {
+    fn species_crowding_sets_spawn_control() {
         let (scenario, _warnings) = run_script(
             r#"
-            create(sine.repulsion(1.2, 35.0), 1);
+            create(sine.crowding(1.2, 35.0), 1);
             flush();
         "#,
         );
@@ -3472,8 +3559,8 @@ mod tests {
             .flat_map(|event| &event.actions)
             .find_map(|action| match action {
                 Action::Spawn { spec, .. } => Some((
-                    spec.control.pitch.repulsion_strength,
-                    spec.control.pitch.repulsion_sigma_cents,
+                    spec.control.pitch.crowding_strength,
+                    spec.control.pitch.crowding_sigma_cents,
                 )),
                 _ => None,
             })
@@ -3483,10 +3570,10 @@ mod tests {
     }
 
     #[test]
-    fn species_repulsion_reaches_spawned_core() {
+    fn species_crowding_reaches_spawned_core() {
         let (scenario, _warnings) = run_script(
             r#"
-            create(sine.repulsion(1.2, 35.0), 1);
+            create(sine.crowding(1.2, 35.0), 1);
             flush();
         "#,
         );
@@ -3505,17 +3592,15 @@ mod tests {
             }
         }
         let agent = pop.individuals.first().expect("spawned");
-        assert!((agent.pitch_core_for_test().repulsion_strength_for_test() - 1.2).abs() <= 1e-6);
-        assert!(
-            (agent.pitch_core_for_test().repulsion_sigma_cents_for_test() - 35.0).abs() <= 1e-3
-        );
+        assert!((agent.pitch_core_for_test().crowding_strength_for_test() - 1.2).abs() <= 1e-6);
+        assert!((agent.pitch_core_for_test().crowding_sigma_cents_for_test() - 35.0).abs() <= 1e-3);
     }
 
     #[test]
-    fn species_repulsion_single_arg_uses_default_sigma() {
+    fn species_crowding_single_arg_uses_default_sigma() {
         let (scenario, _warnings) = run_script(
             r#"
-            create(sine.repulsion(0.8), 1);
+            create(sine.crowding(0.8), 1);
             flush();
         "#,
         );
@@ -3534,18 +3619,21 @@ mod tests {
             }
         }
         let agent = pop.individuals.first().expect("spawned");
-        assert!((agent.pitch_core_for_test().repulsion_strength_for_test() - 0.8).abs() <= 1e-6);
+        assert!((agent.pitch_core_for_test().crowding_strength_for_test() - 0.8).abs() <= 1e-6);
+        assert!((agent.pitch_core_for_test().crowding_sigma_cents_for_test() - 60.0).abs() <= 1e-3);
         assert!(
-            (agent.pitch_core_for_test().repulsion_sigma_cents_for_test() - 60.0).abs() <= 1e-3
+            agent
+                .pitch_core_for_test()
+                .crowding_sigma_from_roughness_for_test()
         );
     }
 
     #[test]
-    fn species_repulsion_mixed_numeric_overloads_work() {
+    fn species_crowding_mixed_numeric_overloads_work() {
         let (scenario, _warnings) = run_script(
             r#"
-            create(sine.repulsion(1, 35.0), 1);
-            create(sine.repulsion(1.0, 35), 1);
+            create(sine.crowding(1, 35.0), 1);
+            create(sine.crowding(1.0, 35), 1);
             flush();
         "#,
         );
@@ -3556,8 +3644,8 @@ mod tests {
             .flat_map(|event| event.actions.iter())
         {
             if let Action::Spawn { spec, .. } = action {
-                assert!((spec.control.pitch.repulsion_strength - 1.0).abs() <= 1e-6);
-                assert!((spec.control.pitch.repulsion_sigma_cents - 35.0).abs() <= 1e-6);
+                assert!((spec.control.pitch.crowding_strength - 1.0).abs() <= 1e-6);
+                assert!((spec.control.pitch.crowding_sigma_cents - 35.0).abs() <= 1e-6);
                 seen += 1;
             }
         }
@@ -3565,12 +3653,12 @@ mod tests {
     }
 
     #[test]
-    fn group_repulsion_live_update_reaches_individual_core() {
+    fn group_crowding_live_update_reaches_individual_core() {
         let (scenario, _warnings) = run_script(
             r#"
             let g = create(sine, 1);
             flush();
-            let g = g.repulsion(0.8, 25.0);
+            let g = g.crowding(0.8, 25.0);
             flush();
         "#,
         );
@@ -3592,21 +3680,19 @@ mod tests {
             }
         }
         let agent = pop.individuals.first().expect("spawned");
-        assert!((agent.pitch_core_for_test().repulsion_strength_for_test() - 0.8).abs() <= 1e-6);
-        assert!(
-            (agent.pitch_core_for_test().repulsion_sigma_cents_for_test() - 25.0).abs() <= 1e-3
-        );
+        assert!((agent.pitch_core_for_test().crowding_strength_for_test() - 0.8).abs() <= 1e-6);
+        assert!((agent.pitch_core_for_test().crowding_sigma_cents_for_test() - 25.0).abs() <= 1e-3);
     }
 
     #[test]
-    fn group_repulsion_mixed_numeric_overloads_work() {
+    fn group_crowding_mixed_numeric_overloads_work() {
         let (scenario, _warnings) = run_script(
             r#"
             let g = create(sine, 1);
             flush();
-            let g = g.repulsion(1, 35.0);
+            let g = g.crowding(1, 35.0);
             flush();
-            let g = g.repulsion(1.0, 35);
+            let g = g.crowding(1.0, 35);
             flush();
         "#,
         );
@@ -3618,7 +3704,7 @@ mod tests {
         {
             if let Action::Update { update, .. } = action
                 && let (Some(strength), Some(sigma)) =
-                    (update.repulsion_strength, update.repulsion_sigma_cents)
+                    (update.crowding_strength, update.crowding_sigma_cents)
             {
                 assert!((strength - 1.0).abs() <= 1e-6);
                 assert!((sigma - 35.0).abs() <= 1e-6);
@@ -3626,6 +3712,47 @@ mod tests {
             }
         }
         assert_eq!(updates, 2);
+    }
+
+    #[test]
+    fn group_crowding_target_emits_actions_for_draft_and_live_updates() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            let g = create(sine.crowding_target(true, false), 1);
+            flush();
+            let g = g.crowding_target(true, true);
+            flush();
+        "#,
+        );
+        let mut saw_spawn_target = false;
+        let mut saw_live_target = false;
+        for action in scenario
+            .events
+            .iter()
+            .flat_map(|event| event.actions.iter())
+        {
+            if let Action::SetGroupCrowdingTarget {
+                same_group_visible,
+                other_group_visible,
+                ..
+            } = action
+            {
+                if *same_group_visible && !*other_group_visible {
+                    saw_spawn_target = true;
+                }
+                if *same_group_visible && *other_group_visible {
+                    saw_live_target = true;
+                }
+            }
+        }
+        assert!(
+            saw_spawn_target,
+            "expected draft crowding_target to be emitted"
+        );
+        assert!(
+            saw_live_target,
+            "expected live crowding_target update to be emitted"
+        );
     }
 
     #[test]

@@ -1,3 +1,4 @@
+use crate::core::erb::hz_to_erb;
 use crate::core::harmonic_ratios::{HARMONIC_RATIOS, fold_to_octave_near, ratio_to_f32};
 use crate::core::landscape::Landscape;
 use crate::life::control::MoveCostTimeScale;
@@ -18,6 +19,8 @@ const DEFAULT_GLOBAL_PEAK_COUNT: usize = 0;
 const DEFAULT_GLOBAL_PEAK_MIN_SEP_CENTS: f32 = 0.0;
 const DEFAULT_RUNTIME_RATIO_CANDIDATE_COUNT: usize = 0;
 const DEFAULT_LOO_HARMONICS: u8 = 1;
+// Keep crowding width aligned with roughness-kernel center suppression by default.
+const DEFAULT_CROWDING_SIGMA_ERB: f32 = 0.06;
 static FALLBACK_REDUCED_RATIOS: OnceLock<Vec<(u16, u16)>> = OnceLock::new();
 
 #[derive(Debug, Clone, Copy)]
@@ -68,8 +71,9 @@ pub struct PitchHillClimbPitchCore {
     proposal_interval_sec: Option<f32>,
     exploration: f32,
     persistence: f32,
-    repulsion_strength: f32,
-    repulsion_sigma_log2: f32,
+    crowding_strength: f32,
+    crowding_sigma_cents: f32,
+    crowding_sigma_from_roughness: bool,
     leave_self_out: bool,
     leave_self_out_harmonics: u8,
     anneal_temp: f32,
@@ -105,8 +109,9 @@ impl PitchHillClimbPitchCore {
             proposal_interval_sec: None,
             exploration: exploration.clamp(0.0, 1.0),
             persistence: persistence.clamp(0.0, 1.0),
-            repulsion_strength: 0.0,
-            repulsion_sigma_log2: cents_to_log2(60.0),
+            crowding_strength: 0.0,
+            crowding_sigma_cents: 60.0,
+            crowding_sigma_from_roughness: true,
             leave_self_out: false,
             leave_self_out_harmonics: DEFAULT_LOO_HARMONICS,
             anneal_temp: 0.0,
@@ -125,18 +130,18 @@ impl PitchHillClimbPitchCore {
         self.persistence = value.clamp(0.0, 1.0);
     }
 
-    pub fn set_repulsion(&mut self, strength: f32, sigma_cents: f32) {
-        self.repulsion_strength = if strength.is_finite() {
+    pub fn set_crowding(&mut self, strength: f32, sigma_cents: f32, sigma_from_roughness: bool) {
+        self.crowding_strength = if strength.is_finite() {
             strength.max(0.0)
         } else {
             0.0
         };
-        let sigma_cents = if sigma_cents.is_finite() {
+        self.crowding_sigma_cents = if sigma_cents.is_finite() {
             sigma_cents.max(1e-3)
         } else {
             60.0
         };
-        self.repulsion_sigma_log2 = cents_to_log2(sigma_cents);
+        self.crowding_sigma_from_roughness = sigma_from_roughness;
     }
 
     pub fn set_leave_self_out(&mut self, enabled: bool) {
@@ -276,8 +281,9 @@ impl PitchCore for PitchHillClimbPitchCore {
             perceptual,
             self.leave_self_out,
             self.leave_self_out_harmonics,
-            self.repulsion_strength,
-            self.repulsion_sigma_log2,
+            self.crowding_strength,
+            self.crowding_sigma_cents,
+            self.crowding_sigma_from_roughness,
             neighbor_pitch_log2,
         ));
         if self.global_peak_count > 0 {
@@ -295,8 +301,9 @@ impl PitchCore for PitchHillClimbPitchCore {
                 perceptual,
                 self.leave_self_out,
                 self.leave_self_out_harmonics,
-                self.repulsion_strength,
-                self.repulsion_sigma_log2,
+                self.crowding_strength,
+                self.crowding_sigma_cents,
+                self.crowding_sigma_from_roughness,
                 neighbor_pitch_log2,
             ));
         }
@@ -337,8 +344,9 @@ impl PitchCore for PitchHillClimbPitchCore {
                 perceptual,
                 self.leave_self_out,
                 self.leave_self_out_harmonics,
-                self.repulsion_strength,
-                self.repulsion_sigma_log2,
+                self.crowding_strength,
+                self.crowding_sigma_cents,
+                self.crowding_sigma_from_roughness,
                 neighbor_pitch_log2,
             )
         };
@@ -363,9 +371,12 @@ impl PitchCore for PitchHillClimbPitchCore {
         let mut best_distance = f32::INFINITY;
         for &(pitch, score) in &scored {
             let distance = (pitch - current_target_log2).abs();
-            if score > best_score + 1e-6
-                || ((score - best_score).abs() <= 1e-6 && distance < best_distance)
-            {
+            let better_score = score > best_score + 1e-6;
+            let same_score = (score - best_score).abs() <= 1e-6;
+            let closer = distance < best_distance - 1e-6;
+            let same_distance = (distance - best_distance).abs() <= 1e-6;
+            let random_tie_break = same_score && same_distance && rng.random_range(0.0..1.0) < 0.5;
+            if better_score || (same_score && closer) || random_tie_break {
                 best_score = score;
                 best_pitch = pitch;
                 best_distance = distance;
@@ -452,8 +463,9 @@ pub struct PitchPeakSamplerCore {
     landscape_weight: f32,
     exploration: f32,
     persistence: f32,
-    repulsion_strength: f32,
-    repulsion_sigma_log2: f32,
+    crowding_strength: f32,
+    crowding_sigma_cents: f32,
+    crowding_sigma_from_roughness: bool,
     leave_self_out: bool,
 }
 
@@ -483,8 +495,9 @@ impl PitchPeakSamplerCore {
             landscape_weight: 1.0,
             exploration: exploration.clamp(0.0, 1.0),
             persistence: persistence.clamp(0.0, 1.0),
-            repulsion_strength: 0.0,
-            repulsion_sigma_log2: cents_to_log2(60.0),
+            crowding_strength: 0.0,
+            crowding_sigma_cents: 60.0,
+            crowding_sigma_from_roughness: true,
             leave_self_out: false,
         }
     }
@@ -497,18 +510,18 @@ impl PitchPeakSamplerCore {
         self.persistence = value.clamp(0.0, 1.0);
     }
 
-    pub fn set_repulsion(&mut self, strength: f32, sigma_cents: f32) {
-        self.repulsion_strength = if strength.is_finite() {
+    pub fn set_crowding(&mut self, strength: f32, sigma_cents: f32, sigma_from_roughness: bool) {
+        self.crowding_strength = if strength.is_finite() {
             strength.max(0.0)
         } else {
             0.0
         };
-        let sigma_cents = if sigma_cents.is_finite() {
+        self.crowding_sigma_cents = if sigma_cents.is_finite() {
             sigma_cents.max(1e-3)
         } else {
             60.0
         };
-        self.repulsion_sigma_log2 = cents_to_log2(sigma_cents);
+        self.crowding_sigma_from_roughness = sigma_from_roughness;
     }
 
     pub fn set_leave_self_out(&mut self, enabled: bool) {
@@ -577,8 +590,9 @@ impl PitchCore for PitchPeakSamplerCore {
             DEFAULT_MOVE_COST_EXP,
             perceptual,
             self.leave_self_out,
-            self.repulsion_strength,
-            self.repulsion_sigma_log2,
+            self.crowding_strength,
+            self.crowding_sigma_cents,
+            self.crowding_sigma_from_roughness,
             neighbor_pitch_log2,
         ));
         push_gaussian_candidates(
@@ -606,8 +620,9 @@ impl PitchCore for PitchPeakSamplerCore {
                 landscape,
                 perceptual,
                 self.leave_self_out,
-                self.repulsion_strength,
-                self.repulsion_sigma_log2,
+                self.crowding_strength,
+                self.crowding_sigma_cents,
+                self.crowding_sigma_from_roughness,
                 neighbor_pitch_log2,
             );
             if score.is_finite() {
@@ -633,8 +648,9 @@ impl PitchCore for PitchPeakSamplerCore {
             landscape,
             perceptual,
             self.leave_self_out,
-            self.repulsion_strength,
-            self.repulsion_sigma_log2,
+            self.crowding_strength,
+            self.crowding_sigma_cents,
+            self.crowding_sigma_from_roughness,
             neighbor_pitch_log2,
         );
         let mut best_score = current_adjusted;
@@ -810,6 +826,16 @@ fn window_bins_from_cents(landscape: &Landscape, cents: f32) -> usize {
     (span_log2 / step).ceil() as usize
 }
 
+fn crowding_sigma_erb(pitch_log2: f32, sigma_cents: f32, sigma_from_roughness: bool) -> f32 {
+    if sigma_from_roughness {
+        return DEFAULT_CROWDING_SIGMA_ERB.max(1e-6);
+    }
+    let sigma_log2 = cents_to_log2(sigma_cents.max(1e-3));
+    let base_hz = 2.0f32.powf(pitch_log2).max(1e-6);
+    let plus_hz = 2.0f32.powf(pitch_log2 + sigma_log2).max(1e-6);
+    (hz_to_erb(plus_hz) - hz_to_erb(base_hz)).abs().max(1e-6)
+}
+
 #[allow(clippy::too_many_arguments)]
 fn adjusted_pitch_score(
     pitch_log2: f32,
@@ -823,8 +849,9 @@ fn adjusted_pitch_score(
     landscape: &Landscape,
     perceptual: &PerceptualContext,
     leave_self_out: bool,
-    repulsion_strength: f32,
-    repulsion_sigma_log2: f32,
+    crowding_strength: f32,
+    crowding_sigma_cents: f32,
+    crowding_sigma_from_roughness: bool,
     neighbor_pitch_log2: &[f32],
 ) -> f32 {
     adjusted_pitch_score_with_loo_harmonics(
@@ -840,8 +867,9 @@ fn adjusted_pitch_score(
         perceptual,
         leave_self_out,
         DEFAULT_LOO_HARMONICS,
-        repulsion_strength,
-        repulsion_sigma_log2,
+        crowding_strength,
+        crowding_sigma_cents,
+        crowding_sigma_from_roughness,
         neighbor_pitch_log2,
     )
 }
@@ -860,8 +888,9 @@ fn adjusted_pitch_score_with_loo_harmonics(
     perceptual: &PerceptualContext,
     leave_self_out: bool,
     leave_self_out_harmonics: u8,
-    repulsion_strength: f32,
-    repulsion_sigma_log2: f32,
+    crowding_strength: f32,
+    crowding_sigma_cents: f32,
+    crowding_sigma_from_roughness: bool,
     neighbor_pitch_log2: &[f32],
 ) -> f32 {
     let (fmin, fmax) = landscape.freq_bounds_log2();
@@ -898,23 +927,26 @@ fn adjusted_pitch_score_with_loo_harmonics(
     let dist = clamped - tessitura_center;
     let gravity_penalty = dist * dist * tessitura_gravity;
     let weighted_score = landscape_weight.max(0.0) * score;
-    let repulsion_penalty = if repulsion_strength > 0.0
-        && repulsion_sigma_log2 > 0.0
-        && !neighbor_pitch_log2.is_empty()
-    {
+    let crowding_penalty = if crowding_strength > 0.0 && !neighbor_pitch_log2.is_empty() {
+        let sigma_erb =
+            crowding_sigma_erb(clamped, crowding_sigma_cents, crowding_sigma_from_roughness);
+        let candidate_hz = 2.0f32.powf(clamped).max(1e-6);
+        let candidate_erb = hz_to_erb(candidate_hz);
         let mut sum = 0.0f32;
         for &neighbor_log2 in neighbor_pitch_log2 {
             if !neighbor_log2.is_finite() {
                 continue;
             }
-            let d = (clamped - neighbor_log2).abs();
-            sum += (-d / repulsion_sigma_log2).exp();
+            let neighbor_hz = 2.0f32.powf(neighbor_log2).max(1e-6);
+            let d_erb = (candidate_erb - hz_to_erb(neighbor_hz)).abs();
+            let z = d_erb / sigma_erb;
+            sum += (-0.5 * z * z).exp();
         }
-        repulsion_strength * sum
+        crowding_strength * sum
     } else {
         0.0
     };
-    let base = weighted_score - penalty - gravity_penalty - repulsion_penalty;
+    let base = weighted_score - penalty - gravity_penalty - crowding_penalty;
     let idx = landscape.space.index_of_log2(clamped).unwrap_or(0);
     base + perceptual.score_adjustment(idx)
 }
@@ -934,8 +966,9 @@ fn top_local_candidates(
     move_cost_exp: u8,
     perceptual: &PerceptualContext,
     leave_self_out: bool,
-    repulsion_strength: f32,
-    repulsion_sigma_log2: f32,
+    crowding_strength: f32,
+    crowding_sigma_cents: f32,
+    crowding_sigma_from_roughness: bool,
     neighbor_pitch_log2: &[f32],
 ) -> Vec<f32> {
     let (fmin, fmax) = landscape.freq_bounds_log2();
@@ -963,8 +996,9 @@ fn top_local_candidates(
             landscape,
             perceptual,
             leave_self_out,
-            repulsion_strength,
-            repulsion_sigma_log2,
+            crowding_strength,
+            crowding_sigma_cents,
+            crowding_sigma_from_roughness,
             neighbor_pitch_log2,
         );
         if score.is_finite() {
@@ -997,8 +1031,9 @@ fn top_local_candidates_harmonics(
     perceptual: &PerceptualContext,
     leave_self_out: bool,
     leave_self_out_harmonics: u8,
-    repulsion_strength: f32,
-    repulsion_sigma_log2: f32,
+    crowding_strength: f32,
+    crowding_sigma_cents: f32,
+    crowding_sigma_from_roughness: bool,
     neighbor_pitch_log2: &[f32],
 ) -> Vec<f32> {
     let (fmin, fmax) = landscape.freq_bounds_log2();
@@ -1027,8 +1062,9 @@ fn top_local_candidates_harmonics(
             perceptual,
             leave_self_out,
             leave_self_out_harmonics,
-            repulsion_strength,
-            repulsion_sigma_log2,
+            crowding_strength,
+            crowding_sigma_cents,
+            crowding_sigma_from_roughness,
             neighbor_pitch_log2,
         );
         if score.is_finite() {
@@ -1060,8 +1096,9 @@ fn top_global_candidates_harmonics(
     perceptual: &PerceptualContext,
     leave_self_out: bool,
     leave_self_out_harmonics: u8,
-    repulsion_strength: f32,
-    repulsion_sigma_log2: f32,
+    crowding_strength: f32,
+    crowding_sigma_cents: f32,
+    crowding_sigma_from_roughness: bool,
     neighbor_pitch_log2: &[f32],
 ) -> Vec<f32> {
     let n_bins = landscape.space.n_bins();
@@ -1083,8 +1120,9 @@ fn top_global_candidates_harmonics(
             perceptual,
             leave_self_out,
             leave_self_out_harmonics,
-            repulsion_strength,
-            repulsion_sigma_log2,
+            crowding_strength,
+            crowding_sigma_cents,
+            crowding_sigma_from_roughness,
             neighbor_pitch_log2,
         );
         if score.is_finite() {
@@ -1485,10 +1523,14 @@ impl AnyPitchCore {
         }
     }
 
-    pub fn set_repulsion(&mut self, strength: f32, sigma_cents: f32) {
+    pub fn set_crowding(&mut self, strength: f32, sigma_cents: f32, sigma_from_roughness: bool) {
         match self {
-            AnyPitchCore::PitchHillClimb(core) => core.set_repulsion(strength, sigma_cents),
-            AnyPitchCore::PitchPeakSampler(core) => core.set_repulsion(strength, sigma_cents),
+            AnyPitchCore::PitchHillClimb(core) => {
+                core.set_crowding(strength, sigma_cents, sigma_from_roughness)
+            }
+            AnyPitchCore::PitchPeakSampler(core) => {
+                core.set_crowding(strength, sigma_cents, sigma_from_roughness)
+            }
         }
     }
 
@@ -1655,17 +1697,24 @@ impl AnyPitchCore {
         }
     }
 
-    pub(crate) fn repulsion_strength_for_test(&self) -> f32 {
+    pub(crate) fn crowding_strength_for_test(&self) -> f32 {
         match self {
-            AnyPitchCore::PitchHillClimb(core) => core.repulsion_strength,
-            AnyPitchCore::PitchPeakSampler(core) => core.repulsion_strength,
+            AnyPitchCore::PitchHillClimb(core) => core.crowding_strength,
+            AnyPitchCore::PitchPeakSampler(core) => core.crowding_strength,
         }
     }
 
-    pub(crate) fn repulsion_sigma_cents_for_test(&self) -> f32 {
+    pub(crate) fn crowding_sigma_cents_for_test(&self) -> f32 {
         match self {
-            AnyPitchCore::PitchHillClimb(core) => core.repulsion_sigma_log2 * 1200.0,
-            AnyPitchCore::PitchPeakSampler(core) => core.repulsion_sigma_log2 * 1200.0,
+            AnyPitchCore::PitchHillClimb(core) => core.crowding_sigma_cents,
+            AnyPitchCore::PitchPeakSampler(core) => core.crowding_sigma_cents,
+        }
+    }
+
+    pub(crate) fn crowding_sigma_from_roughness_for_test(&self) -> bool {
+        match self {
+            AnyPitchCore::PitchHillClimb(core) => core.crowding_sigma_from_roughness,
+            AnyPitchCore::PitchPeakSampler(core) => core.crowding_sigma_from_roughness,
         }
     }
 }
@@ -1720,6 +1769,7 @@ mod tests {
             false,
             0.0,
             0.0,
+            false,
             &[],
         );
         let without_landscape = adjusted_pitch_score(
@@ -1736,6 +1786,7 @@ mod tests {
             false,
             0.0,
             0.0,
+            false,
             &[],
         );
 
@@ -1744,14 +1795,14 @@ mod tests {
     }
 
     #[test]
-    fn adjusted_score_repulsion_penalizes_close_neighbor() {
+    fn adjusted_score_crowding_penalizes_close_neighbor() {
         let mut landscape = Landscape::new(Log2Space::new(110.0, 880.0, 96));
         let idx = landscape.space.n_bins() / 2;
         let pitch_log2 = landscape.space.centers_log2[idx];
         landscape.consonance_field_score[idx] = 1.0;
         let perceptual = test_perceptual(landscape.space.n_bins());
 
-        let without_repulsion = adjusted_pitch_score(
+        let without_crowding = adjusted_pitch_score(
             pitch_log2,
             pitch_log2,
             0.0,
@@ -1764,7 +1815,8 @@ mod tests {
             &perceptual,
             false,
             1.0,
-            cents_to_log2(20.0),
+            20.0,
+            false,
             &[],
         );
         let with_close_neighbor = adjusted_pitch_score(
@@ -1780,13 +1832,14 @@ mod tests {
             &perceptual,
             false,
             1.0,
-            cents_to_log2(20.0),
+            20.0,
+            false,
             &[pitch_log2],
         );
 
         assert!(
-            with_close_neighbor < without_repulsion,
-            "repulsion should lower score when neighbor is near"
+            with_close_neighbor < without_crowding,
+            "crowding should lower score when neighbor is near"
         );
     }
 
@@ -1812,6 +1865,7 @@ mod tests {
             false,
             0.0,
             0.0,
+            false,
             &[],
         );
         assert!((score - 1.23).abs() <= 1e-6);
@@ -1841,6 +1895,7 @@ mod tests {
             false,
             0.0,
             0.0,
+            false,
             &[],
         );
         let nearby_no_loo = adjusted_pitch_score(
@@ -1857,6 +1912,7 @@ mod tests {
             false,
             0.0,
             0.0,
+            false,
             &[],
         );
         assert!(current_no_loo > nearby_no_loo);
@@ -1875,6 +1931,7 @@ mod tests {
             true,
             0.0,
             0.0,
+            false,
             &[],
         );
         let nearby_with_loo = adjusted_pitch_score(
@@ -1891,18 +1948,19 @@ mod tests {
             true,
             0.0,
             0.0,
+            false,
             &[],
         );
         assert!(nearby_with_loo > current_with_loo);
     }
 
     #[test]
-    fn repulsion_strength_zero_keeps_behavior_with_neighbors() {
+    fn crowding_strength_zero_keeps_behavior_with_neighbors() {
         let landscape = test_landscape(&[(330.0, 1.0)]);
         let perceptual = test_perceptual(landscape.space.n_bins());
         let features = FeaturesNow::from_subjective_intensity(&landscape.subjective_intensity);
         let mut core = PitchHillClimbPitchCore::new(120.0, 330.0f32.log2(), 0.0, 0.0, 0.0, 0.0);
-        core.set_repulsion(0.0, 20.0);
+        core.set_crowding(0.0, 20.0, false);
 
         let mut rng_a = SmallRng::seed_from_u64(77);
         let mut rng_b = SmallRng::seed_from_u64(77);
@@ -1934,7 +1992,7 @@ mod tests {
     }
 
     #[test]
-    fn peak_sampler_repulsion_zero_ignores_neighbors() {
+    fn peak_sampler_crowding_zero_ignores_neighbors() {
         let landscape = test_landscape(&[(330.0, 1.0)]);
         let perceptual = test_perceptual(landscape.space.n_bins());
         let features = FeaturesNow::from_subjective_intensity(&landscape.subjective_intensity);
@@ -1950,7 +2008,7 @@ mod tests {
             1.0,
             0.0,
         );
-        core.set_repulsion(0.0, 20.0);
+        core.set_crowding(0.0, 20.0, false);
 
         let mut rng_a = SmallRng::seed_from_u64(71);
         let mut rng_b = SmallRng::seed_from_u64(71);
@@ -1982,11 +2040,11 @@ mod tests {
     }
 
     #[test]
-    fn peak_sampler_repulsion_penalizes_close_neighbor_selection() {
+    fn peak_sampler_crowding_penalizes_close_neighbor_selection() {
         let landscape = test_landscape(&[(330.0, 1.0)]);
         let perceptual = test_perceptual(landscape.space.n_bins());
         let features = FeaturesNow::from_subjective_intensity(&landscape.subjective_intensity);
-        let mut no_repulsion = PitchPeakSamplerCore::new(
+        let mut no_crowding = PitchPeakSamplerCore::new(
             24.0,
             330.0f32.log2(),
             0.0,
@@ -1998,14 +2056,14 @@ mod tests {
             1.0,
             0.0,
         );
-        let mut with_repulsion = no_repulsion.clone();
-        no_repulsion.set_repulsion(0.0, 8.0);
-        with_repulsion.set_repulsion(3.0, 8.0);
+        let mut with_crowding = no_crowding.clone();
+        no_crowding.set_crowding(0.0, 8.0, false);
+        with_crowding.set_crowding(3.0, 8.0, false);
         let neighbor = 330.0f32.log2();
 
         let mut rng_a = SmallRng::seed_from_u64(99);
         let mut rng_b = SmallRng::seed_from_u64(99);
-        let off = no_repulsion.propose_target(
+        let off = no_crowding.propose_target(
             neighbor,
             neighbor,
             330.0,
@@ -2016,7 +2074,7 @@ mod tests {
             &[neighbor],
             &mut rng_a,
         );
-        let on = with_repulsion.propose_target(
+        let on = with_crowding.propose_target(
             neighbor,
             neighbor,
             330.0,
@@ -2032,7 +2090,7 @@ mod tests {
         let dist_on = (on.target_pitch_log2 - neighbor).abs();
         assert!(
             dist_on > dist_off + 1e-6,
-            "repulsion should bias peak-sampler away from close neighbor"
+            "crowding should bias peak-sampler away from close neighbor"
         );
     }
 
@@ -2141,22 +2199,8 @@ mod tests {
         );
     }
 
-    fn mean_pairwise_distance_cents(values_log2: &[f32]) -> f32 {
-        if values_log2.len() < 2 {
-            return 0.0;
-        }
-        let mut sum = 0.0f32;
-        let mut pairs = 0usize;
-        for i in 0..values_log2.len() {
-            for j in (i + 1)..values_log2.len() {
-                sum += (values_log2[i] - values_log2[j]).abs() * 1200.0;
-                pairs += 1;
-            }
-        }
-        sum / pairs as f32
-    }
-
-    fn run_multi_agent_repulsion_trial(repulsion_strength: f32) -> f32 {
+    #[test]
+    fn hillclimb_crowding_moves_away_from_close_neighbor() {
         let mut landscape = Landscape::new(Log2Space::new(220.0, 440.0, 256));
         let center_log2 = 330.0f32.log2();
         let width_cents = 20.0f32;
@@ -2169,54 +2213,41 @@ mod tests {
         let perceptual = test_perceptual(landscape.space.n_bins());
         let features = FeaturesNow::from_subjective_intensity(&landscape.subjective_intensity);
 
-        let mut cores = Vec::new();
-        let mut rngs = Vec::new();
-        for idx in 0..4usize {
-            let mut core = PitchHillClimbPitchCore::new(8.0, center_log2, 0.0, 0.0, 0.0, 0.0);
-            core.set_repulsion(repulsion_strength, 10.0);
-            cores.push(core);
-            rngs.push(SmallRng::seed_from_u64(500 + idx as u64));
-        }
+        let mut without_crowding =
+            PitchHillClimbPitchCore::new(24.0, center_log2, 0.0, 0.0, 0.0, 0.0);
+        let mut with_crowding = without_crowding.clone();
+        without_crowding.set_crowding(0.0, 60.0, false);
+        with_crowding.set_crowding(6.0, 60.0, false);
 
-        let mut pitches = vec![
-            320.0f32.log2(),
-            326.0f32.log2(),
-            334.0f32.log2(),
-            340.0f32.log2(),
-        ];
-        for _ in 0..10 {
-            let snapshot = pitches.clone();
-            for i in 0..pitches.len() {
-                let mut neighbors = Vec::with_capacity(snapshot.len().saturating_sub(1));
-                for (j, &pitch) in snapshot.iter().enumerate() {
-                    if i != j {
-                        neighbors.push(pitch);
-                    }
-                }
-                let proposal = cores[i].propose_target(
-                    snapshot[i],
-                    snapshot[i],
-                    2.0f32.powf(snapshot[i]),
-                    1.0,
-                    &landscape,
-                    &perceptual,
-                    &features,
-                    &neighbors,
-                    &mut rngs[i],
-                );
-                pitches[i] = proposal.target_pitch_log2;
-            }
-        }
-        mean_pairwise_distance_cents(&pitches)
-    }
-
-    #[test]
-    fn repulsion_reduces_unison_collapse_in_multi_agent_trial() {
-        let without_repulsion = run_multi_agent_repulsion_trial(0.0);
-        let with_repulsion = run_multi_agent_repulsion_trial(2.0);
+        let mut rng_a = SmallRng::seed_from_u64(6001);
+        let mut rng_b = SmallRng::seed_from_u64(6001);
+        let off = without_crowding.propose_target(
+            center_log2,
+            center_log2,
+            330.0,
+            1.0,
+            &landscape,
+            &perceptual,
+            &features,
+            &[center_log2],
+            &mut rng_a,
+        );
+        let on = with_crowding.propose_target(
+            center_log2,
+            center_log2,
+            330.0,
+            1.0,
+            &landscape,
+            &perceptual,
+            &features,
+            &[center_log2],
+            &mut rng_b,
+        );
+        let dist_off = (off.target_pitch_log2 - center_log2).abs();
+        let dist_on = (on.target_pitch_log2 - center_log2).abs();
         assert!(
-            with_repulsion > without_repulsion + 0.5,
-            "repulsion should keep wider spacing (off={without_repulsion:.2}c, on={with_repulsion:.2}c)"
+            dist_on > dist_off + 1e-6,
+            "crowding should bias hill-climb away from a close neighbor"
         );
     }
 

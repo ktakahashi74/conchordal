@@ -1,6 +1,6 @@
 //! core/roughness_kernel.rs — perc_potential_R via ERB-domain kernel convolution.
 //! Computes frequency-space roughness potential by convolving the
-//! envelope energy using an asymmetric kernel.
+//! envelope energy using a symmetric kernel.
 //! density: per-ERB power density; mass: sum(density * du) over ERB.
 
 use crate::core::density;
@@ -13,7 +13,7 @@ use crate::core::peak_extraction::Peak;
 use rustfft::{FftPlanner, num_complex::Complex32};
 
 // ======================================================================
-// Kernel parameter definition (Plomp–Levelt inspired, ΔERB domain)
+// Kernel parameter definition (Sethares-inspired, ΔERB domain)
 // ======================================================================
 
 #[derive(Clone, Copy, Debug)]
@@ -22,6 +22,13 @@ pub struct KernelParams {
     pub sigma_erb: f32,
     pub tau_erb: f32,
     pub mix_tail: f32,
+    pub sethares_gain: f32,
+    pub sethares_b: f32,
+    pub sethares_c: f32,
+    // Sethares width parameter in ERB-rate difference space.
+    // For ERB-rate distance, 1.0 is a practical default. The often-cited
+    // 0.25 value corresponds to Hz/ERB-width normalization, not this space.
+    pub sethares_kappa_erb: f32,
     pub half_width_erb: f32,
     pub suppress_sigma_erb: f32,
     pub suppress_pow: f32,
@@ -35,7 +42,11 @@ impl Default for KernelParams {
         Self {
             sigma_erb: 0.45,
             tau_erb: 1.0,
-            mix_tail: 0.20,
+            mix_tail: 0.15,
+            sethares_gain: 5.0,
+            sethares_b: 3.51,
+            sethares_c: 5.75,
+            sethares_kappa_erb: 1.0,
             half_width_erb: 4.0,
             suppress_sigma_erb: 0.06,
             suppress_pow: 1.0,
@@ -49,23 +60,47 @@ impl Default for KernelParams {
 // Core kernel evaluation
 // ======================================================================
 
-/// Evaluate kernel at `d_erb = erb_probe - erb_masker`.
-/// `d_erb >= 0` means the probe is above the masker (upward direction).
+/// Evaluate Sethares core shape at `d_erb = erb_probe - erb_masker`.
+/// This is the masking-off reference family:
+///   gain * max(0, exp(-b*u) - exp(-c*u)), u = |d_erb| / kappa_erb.
+#[inline]
+fn sethares_shape_params(params: &KernelParams) -> (f32, f32, f32, f32) {
+    let gain = params.sethares_gain.max(0.0);
+    let b = params.sethares_b.max(1e-6);
+    let c = params.sethares_c.max(b + 1e-6);
+    let kappa = params.sethares_kappa_erb.max(1e-6);
+    (gain, b, c, kappa)
+}
+
+#[inline]
+fn asymmetry_gain(params: &KernelParams, d_erb: f32) -> f32 {
+    let mix = params.mix_tail.clamp(0.0, 0.99);
+    if mix <= 0.0 {
+        return 1.0;
+    }
+    let tau = params.tau_erb.max(1e-6);
+    if d_erb >= 0.0 {
+        1.0 + mix * (-d_erb / tau).exp()
+    } else {
+        (1.0 - mix * (d_erb / tau).exp()).max(1e-6)
+    }
+}
+
+#[inline]
+fn eval_kernel_base_no_dip(params: &KernelParams, d_erb: f32) -> f32 {
+    let (gain, b, c, kappa_erb) = sethares_shape_params(params);
+    let u = (d_erb.abs() / kappa_erb).max(0.0);
+    let sethares = gain * ((-b * u).exp() - (-c * u).exp()).max(0.0);
+    sethares * asymmetry_gain(params, d_erb)
+}
+
 #[inline]
 pub fn eval_kernel_delta_erb(params: &KernelParams, d_erb: f32) -> f32 {
-    let sigma = params.sigma_erb.max(1e-6);
-    let tau = params.tau_erb.max(1e-6);
     let s_sup = params.suppress_sigma_erb.max(1e-6);
     let sig_n = params.sigma_neural_erb.max(1e-6);
 
     let desq = d_erb * d_erb;
-    let g_gauss = (-desq / (2.0 * sigma * sigma)).exp();
-    let g_tail = if d_erb >= 0.0 {
-        (-d_erb / tau).exp()
-    } else {
-        0.0
-    };
-    let base = (1.0 - params.mix_tail) * g_gauss + params.mix_tail * g_tail;
+    let base = eval_kernel_base_no_dip(params, d_erb);
 
     let suppress = (1.0 - (-desq / (2.0 * s_sup * s_sup)).exp()).clamp(0.0, 1.0);
     let g_coch = base * suppress.powf(params.suppress_pow);
@@ -346,11 +381,16 @@ impl RoughnessKernel {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "plotcheck")]
+    use crate::core::erb::erb_to_hz;
     use crate::core::erb::{erb_bw_hz, hz_to_erb};
     use crate::core::peak_extraction::{PeakExtractConfig, extract_peaks_density};
+    #[cfg(feature = "plotcheck")]
     use plotters::prelude::*;
     use rand::{Rng, SeedableRng};
+    #[cfg(feature = "plotcheck")]
     use std::fs::File;
+    #[cfg(feature = "plotcheck")]
     use std::path::Path;
 
     const ERB_STEP: f32 = 0.005;
@@ -382,7 +422,7 @@ mod tests {
             .1
             .max(1e-12);
         assert!(
-            edge_mean / peak < 5e-3,
+            edge_mean / peak < 1e-2,
             "edges should decay (edge/peak={})",
             edge_mean / peak
         );
@@ -414,10 +454,6 @@ mod tests {
         let k = make_kernel();
         let g = &k.lut;
         let hw = k.hw;
-        let n = g.len();
-        let d_erb: Vec<f32> = (0..n)
-            .map(|i| (i as i32 - hw as i32) as f32 * ERB_STEP)
-            .collect();
 
         let (pos_x, pos_val) = find_first_peak(g, hw, true).expect("no positive-side peak");
         let (neg_x, _neg_val) = find_first_peak(g, hw, false).expect("no negative-side peak");
@@ -435,8 +471,10 @@ mod tests {
     }
 
     #[test]
-    fn kernel_is_asymmetric() {
-        let k = make_kernel();
+    fn kernel_is_symmetric() {
+        let mut p = KernelParams::default();
+        p.mix_tail = 0.0;
+        let k = RoughnessKernel::new(p, ERB_STEP);
         let g = &k.lut;
         let hw = k.hw;
         let pos_val = find_first_peak(g, hw, true)
@@ -445,7 +483,85 @@ mod tests {
         let neg_val = find_first_peak(g, hw, false)
             .expect("no negative-side peak")
             .1;
-        assert!(pos_val > neg_val);
+        let rel = ((pos_val - neg_val).abs()) / pos_val.max(neg_val).max(1e-9);
+        assert!(
+            rel < 1e-3,
+            "kernel should be mirror-symmetric around center (rel diff={rel})"
+        );
+    }
+
+    #[test]
+    fn kernel_base_sethares_is_continuous_and_symmetric_at_zero() {
+        let mut p = KernelParams::default();
+        p.mix_tail = 0.0;
+        let h = 1e-4;
+        let left = eval_kernel_base_no_dip(&p, -h);
+        let center = eval_kernel_base_no_dip(&p, 0.0);
+        let right = eval_kernel_base_no_dip(&p, h);
+
+        assert!(
+            center <= 1e-8,
+            "Sethares core should dip at center (got center={center})"
+        );
+        assert!(
+            (left - right).abs() < 1e-6,
+            "base should be symmetric near center: left={left}, right={right}"
+        );
+        assert!(left > center && right > center);
+    }
+
+    #[test]
+    fn kernel_base_supports_asymmetry_when_enabled() {
+        let mut p = KernelParams::default();
+        p.mix_tail = 0.15;
+        let d = 0.3;
+        let pos = eval_kernel_base_no_dip(&p, d);
+        let neg = eval_kernel_base_no_dip(&p, -d);
+        assert!(
+            pos > neg,
+            "expected positive-side asymmetry when mix_tail>0 (pos={pos}, neg={neg})"
+        );
+    }
+
+    #[test]
+    fn sethares_tail_retains_fourth_and_fifth_in_erb_rate_mode() {
+        let mut p = KernelParams::default();
+        p.mix_tail = 0.0;
+        p.w_neural = 0.0;
+
+        // Peak of gain * (exp(-b*u) - exp(-c*u)) occurs at:
+        // u* = ln(c/b) / (c - b)
+        let (_gain, b, c, kappa) = sethares_shape_params(&p);
+        let u_peak = (c / b).ln() / (c - b).max(1e-6);
+        let d_peak = u_peak * kappa;
+        let peak = eval_kernel_base_no_dip(&p, d_peak).max(1e-9);
+
+        let f0 = 1000.0f32;
+        for (st, min_ratio) in [(2.0f32, 0.15f32), (4.0f32, 0.008f32), (5.0f32, 0.0015f32)] {
+            let f2 = f0 * 2.0f32.powf(st / 12.0);
+            let d_erb = (hz_to_erb(f2) - hz_to_erb(f0)).abs();
+            let v = eval_kernel_base_no_dip(&p, d_erb);
+            let ratio = v / peak;
+            assert!(
+                ratio > min_ratio,
+                "tail too narrow at {st} semitones: ratio={ratio:.6} (min={min_ratio})"
+            );
+        }
+    }
+
+    #[test]
+    fn kernel_base_uses_sethares_family() {
+        let p = KernelParams::default();
+        let (gain, b, c, kappa_erb) = sethares_shape_params(&p);
+        let d = 0.35f32;
+        let u = (d.abs() / kappa_erb).max(0.0);
+        let explicit = gain * ((-b * u).exp() - (-c * u).exp()).max(0.0) * asymmetry_gain(&p, d);
+        let base = eval_kernel_base_no_dip(&p, d);
+        let rel_err = (base - explicit).abs() / explicit.max(1e-9);
+        assert!(
+            rel_err < 1e-7,
+            "Sethares family mismatch: base={base}, explicit={explicit}, rel_err={rel_err}"
+        );
     }
 
     fn find_first_peak(g: &[f32], hw: usize, positive: bool) -> Option<(f32, f32)> {
@@ -462,6 +578,39 @@ mod tests {
             }
         }
         None
+    }
+
+    #[cfg(feature = "plotcheck")]
+    fn build_sethares_gm_masked_reference(
+        params: &KernelParams,
+        d_erb: &[f32],
+        masking_on: bool,
+    ) -> (Vec<f32>, f32, f32, f32, f32, f32, f32) {
+        let (gain, b, c, kappa_erb) = sethares_shape_params(params);
+
+        // GM-like masking approximation (amplitude-independent):
+        // M(d) = (1 - exp(-d^2/(2*s_sup^2)))^pow
+        // Equivalent u-domain approximation: q=2*pow, u0=s_sup/(sqrt(2)*scale).
+        let s_sup = params.suppress_sigma_erb.max(1e-6);
+        let pow = params.suppress_pow.max(0.1);
+        let u0 = (s_sup / (2.0f32.sqrt() * kappa_erb)).max(1e-6);
+        let q = (2.0 * pow).max(0.1);
+
+        let mut reference = Vec::with_capacity(d_erb.len());
+        for &d in d_erb {
+            let sethares = eval_kernel_base_no_dip(params, d);
+            let v = if masking_on {
+                let desq = d * d;
+                let suppress = (1.0 - (-desq / (2.0 * s_sup * s_sup)).exp()).clamp(0.0, 1.0);
+                sethares * suppress.powf(pow)
+            } else {
+                sethares
+            };
+            reference.push(v.max(0.0));
+        }
+        let max_v = reference.iter().copied().fold(0.0f32, f32::max).max(1e-9);
+        let reference_norm: Vec<f32> = reference.iter().map(|v| *v / max_v).collect();
+        (reference_norm, gain, b, c, kappa_erb, u0, q)
     }
 
     fn find_max_peak(g: &[f32], hw: usize, positive: bool) -> Option<(f32, f32)> {
@@ -668,8 +817,10 @@ mod tests {
     }
 
     #[test]
-    fn delta_input_follows_kernel_asymmetry_direction() {
-        let k = make_kernel();
+    fn delta_input_follows_kernel_symmetry_direction() {
+        let mut p = KernelParams::default();
+        p.mix_tail = 0.0;
+        let k = RoughnessKernel::new(p, ERB_STEP);
         let space = Log2Space::new(20.0, 8000.0, 500);
 
         let mut amps = vec![0.0f32; space.centers_hz.len()];
@@ -686,23 +837,22 @@ mod tests {
 
         let r_pos = r_vec[idx_pos];
         let r_neg = r_vec[idx_neg];
+        let r_rel = (r_pos - r_neg).abs() / r_pos.max(r_neg).max(1e-12);
         assert!(
-            r_pos > r_neg,
-            "expected R(u0 + {:.2}) > R(u0 - {:.2}), got {} <= {}",
+            r_rel < 0.05,
+            "expected near-symmetric response around ±{:.2} ERB, rel diff={}",
             d,
-            d,
-            r_pos,
-            r_neg
+            r_rel
         );
 
         let w_pos = lut_interp(&k.lut, k.erb_step, k.hw, d);
         let w_neg = lut_interp(&k.lut, k.erb_step, k.hw, -d);
+        let w_rel = (w_pos - w_neg).abs() / w_pos.max(w_neg).max(1e-12);
         assert!(
-            w_pos > w_neg,
-            "kernel asymmetry must hold at ±{:.2} ERB, got {} <= {}",
+            w_rel < 1e-3,
+            "kernel should be symmetric at ±{:.2} ERB, rel diff={}",
             d,
-            w_pos,
-            w_neg
+            w_rel
         );
 
         let r_ratio = r_pos.max(1e-12) / r_neg.max(1e-12);
@@ -822,30 +972,115 @@ mod tests {
         let (g, _) = build_kernel_erbstep(&params, erb_step);
         let hw = (params.half_width_erb / erb_step).ceil() as i32;
         let d_erb: Vec<f32> = (-hw..=hw).map(|i| i as f32 * erb_step).collect();
+        let g_max = g.iter().copied().fold(0.0f32, f32::max).max(1e-9);
+        let g_norm: Vec<f32> = g.iter().map(|v| *v / g_max).collect();
+
+        // Reference model: Sethares core roughness + GM-like masking approximation.
+        let (sethares_ref_norm, gain, b, c, kappa_erb, u0, q) =
+            build_sethares_gm_masked_reference(&params, &d_erb, true);
+
+        let mut xs = Vec::new();
+        let mut ys = Vec::new();
+        for ((_, &x), &y) in d_erb
+            .iter()
+            .zip(g_norm.iter())
+            .zip(sethares_ref_norm.iter())
+        {
+            xs.push(x);
+            ys.push(y);
+        }
+        let n = xs.len().max(1) as f32;
+        let rmse = (xs
+            .iter()
+            .zip(ys.iter())
+            .map(|(x, y)| {
+                let e = *x - *y;
+                e * e
+            })
+            .sum::<f32>()
+            / n)
+            .sqrt();
+        let mx = xs.iter().sum::<f32>() / n;
+        let my = ys.iter().sum::<f32>() / n;
+        let mut num = 0.0f32;
+        let mut den_x = 0.0f32;
+        let mut den_y = 0.0f32;
+        for (x, y) in xs.iter().zip(ys.iter()) {
+            let dx = *x - mx;
+            let dy = *y - my;
+            num += dx * dy;
+            den_x += dx * dx;
+            den_y += dy * dy;
+        }
+        let corr = if den_x > 0.0 && den_y > 0.0 {
+            num / (den_x.sqrt() * den_y.sqrt())
+        } else {
+            0.0
+        };
+        assert!(
+            corr > 0.995,
+            "kernel/reference correlation too low: corr={corr:.3}, rmse={rmse:.3}"
+        );
+
+        let f_ref_hz = 1000.0f32;
+        let f_ref_erb = hz_to_erb(f_ref_hz);
 
         let out_path = Path::new("target/plots/it_roughness_kernel_shape.png");
         let root = BitMapBackend::new(out_path, (1600, 1000)).into_drawing_area();
         root.fill(&WHITE).unwrap();
         let mut chart = ChartBuilder::on(&root)
-            .caption("Asymmetric ERB-domain Kernel", ("sans-serif", 30))
-            .margin(10)
-            .build_cartesian_2d(
-                d_erb[0]..d_erb[d_erb.len() - 1],
-                0.0..g.iter().cloned().fold(0.0, f32::max) * 1.1,
+            .caption(
+                format!(
+                    "Kernel vs Sethares+GM-like Masking Reference (corr={:.3}, rmse={:.3}, gain={:.2}, b={:.2}, c={:.2}, kappa={:.3}, u0={:.3}, q={:.2}, mix={:.2}, tau={:.2})",
+                    corr, rmse, gain, b, c, kappa_erb, u0, q, params.mix_tail, params.tau_erb
+                ),
+                ("sans-serif", 30),
             )
+            .margin(16)
+            .x_label_area_size(92)
+            .y_label_area_size(72)
+            .build_cartesian_2d(d_erb[0]..d_erb[d_erb.len() - 1], 0.0f32..1.05f32)
             .unwrap();
 
         chart
             .configure_mesh()
-            .x_desc("ΔERB")
-            .y_desc("Amplitude")
+            .x_desc("ΔERB / Δsemitones (@1kHz)")
+            .x_labels(11)
+            .y_labels(8)
+            .axis_desc_style(("sans-serif", 24))
+            .label_style(("sans-serif", 16))
+            .x_label_formatter(&|x| {
+                let e = (f_ref_erb + *x).max(1e-6);
+                let f = erb_to_hz(e).max(1e-6);
+                let semitone = 12.0 * (f / f_ref_hz).log2();
+                format!("{:.1}E/{:.1}st", x, semitone)
+            })
+            .y_desc("Normalized amplitude")
             .draw()
             .unwrap();
         chart
             .draw_series(LineSeries::new(
-                d_erb.iter().zip(g.iter()).map(|(&x, &y)| (x, y)),
-                &BLUE,
+                d_erb.iter().zip(g_norm.iter()).map(|(&x, &y)| (x, y)),
+                &BLACK,
             ))
+            .unwrap()
+            .label("kernel")
+            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], &BLACK));
+        chart
+            .draw_series(LineSeries::new(
+                d_erb
+                    .iter()
+                    .zip(sethares_ref_norm.iter())
+                    .map(|(&x, &y)| (x, y)),
+                &MAGENTA,
+            ))
+            .unwrap()
+            .label("Sethares+GM-like masking reference")
+            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], &MAGENTA));
+        chart
+            .configure_series_labels()
+            .border_style(&BLACK)
+            .draw()
             .unwrap();
         root.present().unwrap();
         assert!(File::open(out_path).is_ok());
@@ -916,6 +1151,236 @@ mod tests {
             .border_style(&BLACK)
             .draw()?;
         root.present()?;
+        Ok(())
+    }
+
+    #[test]
+    #[cfg(feature = "plotcheck")]
+    fn plot_roughness_plus_crowding_matches_no_dip() -> Result<(), Box<dyn std::error::Error>> {
+        ensure_plots_dir()?;
+        let params = KernelParams::default();
+        let erb_step = 0.005;
+        let hw = (params.half_width_erb / erb_step).ceil() as i32;
+        let d_erb: Vec<f32> = (-hw..=hw).map(|i| i as f32 * erb_step).collect();
+
+        let sig_n = params.sigma_neural_erb.max(1e-6);
+        let s_sup = params.suppress_sigma_erb.max(1e-6);
+
+        let mut roughness_with_dip = Vec::with_capacity(d_erb.len());
+        let mut crowding_comp = Vec::with_capacity(d_erb.len());
+        let mut roughness_no_dip = Vec::with_capacity(d_erb.len());
+        let mut sum_curve = Vec::with_capacity(d_erb.len());
+        let mut abs_err = Vec::with_capacity(d_erb.len());
+
+        for &d in &d_erb {
+            let desq = d * d;
+            let base = eval_kernel_base_no_dip(&params, d);
+            let suppress = (1.0 - (-desq / (2.0 * s_sup * s_sup)).exp()).clamp(0.0, 1.0);
+            let g_neural = (-desq / (2.0 * sig_n * sig_n)).exp();
+
+            let dipped = eval_kernel_delta_erb(&params, d);
+            let no_dip = (1.0 - params.w_neural) * base + params.w_neural * g_neural;
+            let crowding =
+                (1.0 - params.w_neural) * base * (1.0 - suppress.powf(params.suppress_pow));
+            let summed = dipped + crowding;
+            let err = (summed - no_dip).abs();
+
+            roughness_with_dip.push(dipped);
+            crowding_comp.push(crowding);
+            roughness_no_dip.push(no_dip);
+            sum_curve.push(summed);
+            abs_err.push(err);
+        }
+
+        let mae = abs_err.iter().sum::<f32>() / abs_err.len().max(1) as f32;
+        let max_err = abs_err.iter().copied().fold(0.0f32, f32::max);
+        assert!(
+            max_err < 1e-6,
+            "roughness + crowding should match no-dip roughness (max_err={max_err}, mae={mae})"
+        );
+
+        let y_max = roughness_no_dip
+            .iter()
+            .copied()
+            .fold(0.0f32, f32::max)
+            .max(sum_curve.iter().copied().fold(0.0f32, f32::max))
+            * 1.1;
+        let out_path = "target/plots/it_roughness_plus_crowding_matches_no_dip.png";
+        let root = BitMapBackend::new(out_path, (1600, 1000)).into_drawing_area();
+        root.fill(&WHITE)?;
+        let mut chart = ChartBuilder::on(&root)
+            .caption(
+                "Roughness + Crowding vs No-Dip Roughness",
+                ("sans-serif", 30),
+            )
+            .margin(10)
+            .build_cartesian_2d(d_erb[0]..d_erb[d_erb.len() - 1], 0.0f32..y_max.max(1e-6))
+            .unwrap();
+
+        chart
+            .configure_mesh()
+            .x_desc("ΔERB")
+            .y_desc("Amplitude")
+            .draw()?;
+        chart
+            .draw_series(LineSeries::new(
+                d_erb
+                    .iter()
+                    .zip(roughness_with_dip.iter())
+                    .map(|(&x, &y)| (x, y)),
+                &BLUE,
+            ))?
+            .label("roughness (with dip)")
+            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], &BLUE));
+        chart
+            .draw_series(LineSeries::new(
+                d_erb
+                    .iter()
+                    .zip(crowding_comp.iter())
+                    .map(|(&x, &y)| (x, y)),
+                &GREEN,
+            ))?
+            .label("crowding compensation")
+            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], &GREEN));
+        chart
+            .draw_series(LineSeries::new(
+                d_erb.iter().zip(sum_curve.iter()).map(|(&x, &y)| (x, y)),
+                &RED,
+            ))?
+            .label("roughness + crowding")
+            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], &RED));
+        chart
+            .draw_series(LineSeries::new(
+                d_erb
+                    .iter()
+                    .zip(roughness_no_dip.iter())
+                    .map(|(&x, &y)| (x, y)),
+                &BLACK,
+            ))?
+            .label("roughness (no dip)")
+            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], &BLACK));
+        chart
+            .configure_series_labels()
+            .border_style(&BLACK)
+            .draw()?;
+        root.present()?;
+        assert!(std::path::Path::new(out_path).exists());
+        Ok(())
+    }
+
+    #[test]
+    #[cfg(feature = "plotcheck")]
+    fn plot_kernel_masking_off_vs_sethares_reference() -> Result<(), Box<dyn std::error::Error>> {
+        ensure_plots_dir()?;
+        let mut params = KernelParams::default();
+        // Explicit masking-off + symmetric comparison against pure Sethares.
+        params.mix_tail = 0.0;
+        let erb_step = 0.005;
+        let hw = (params.half_width_erb / erb_step).ceil() as i32;
+        let d_erb: Vec<f32> = (-hw..=hw).map(|i| i as f32 * erb_step).collect();
+        let sig_n = params.sigma_neural_erb.max(1e-6);
+
+        let mut no_dip = Vec::with_capacity(d_erb.len());
+        for &d in &d_erb {
+            let desq = d * d;
+            let base = eval_kernel_base_no_dip(&params, d);
+            let g_neural = (-desq / (2.0 * sig_n * sig_n)).exp();
+            let v = (1.0 - params.w_neural) * base + params.w_neural * g_neural;
+            no_dip.push(v.max(0.0));
+        }
+        let no_dip_max = no_dip.iter().copied().fold(0.0f32, f32::max).max(1e-9);
+        let no_dip_norm: Vec<f32> = no_dip.iter().map(|v| *v / no_dip_max).collect();
+
+        let (sethares_ref_norm, gain, b, c, kappa_erb, _u0, _q) =
+            build_sethares_gm_masked_reference(&params, &d_erb, false);
+
+        // Similarity over the full axis (both curves are symmetric here).
+        let mut xs = Vec::new();
+        let mut ys = Vec::new();
+        for ((_, &x), &y) in d_erb
+            .iter()
+            .zip(no_dip_norm.iter())
+            .zip(sethares_ref_norm.iter())
+        {
+            xs.push(x);
+            ys.push(y);
+        }
+        let n = xs.len().max(1) as f32;
+        let rmse = (xs
+            .iter()
+            .zip(ys.iter())
+            .map(|(x, y)| {
+                let e = *x - *y;
+                e * e
+            })
+            .sum::<f32>()
+            / n)
+            .sqrt();
+        let mx = xs.iter().sum::<f32>() / n;
+        let my = ys.iter().sum::<f32>() / n;
+        let mut num = 0.0f32;
+        let mut den_x = 0.0f32;
+        let mut den_y = 0.0f32;
+        for (x, y) in xs.iter().zip(ys.iter()) {
+            let dx = *x - mx;
+            let dy = *y - my;
+            num += dx * dy;
+            den_x += dx * dx;
+            den_y += dy * dy;
+        }
+        let corr = if den_x > 0.0 && den_y > 0.0 {
+            num / (den_x.sqrt() * den_y.sqrt())
+        } else {
+            0.0
+        };
+        assert!(
+            corr > 0.995,
+            "masking-off kernel/Sethares correlation too low: corr={corr:.3}, rmse={rmse:.3}"
+        );
+
+        let out_path = "target/plots/it_roughness_kernel_masking_off_vs_sethares_reference.png";
+        let root = BitMapBackend::new(out_path, (1600, 1000)).into_drawing_area();
+        root.fill(&WHITE)?;
+        let mut chart = ChartBuilder::on(&root)
+            .caption(
+                format!(
+                    "Masking-Off Kernel vs Sethares Reference (corr={:.3}, rmse={:.3}, gain={:.2}, b={:.2}, c={:.2}, kappa={:.3})",
+                    corr, rmse, gain, b, c, kappa_erb
+                ),
+                ("sans-serif", 28),
+            )
+            .margin(10)
+            .build_cartesian_2d(d_erb[0]..d_erb[d_erb.len() - 1], 0.0f32..1.05f32)
+            .unwrap();
+
+        chart
+            .configure_mesh()
+            .x_desc("ΔERB")
+            .y_desc("Normalized amplitude")
+            .draw()?;
+        chart
+            .draw_series(LineSeries::new(
+                d_erb.iter().zip(no_dip_norm.iter()).map(|(&x, &y)| (x, y)),
+                &BLACK,
+            ))?
+            .label("kernel (masking off)")
+            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], &BLACK));
+        chart
+            .draw_series(LineSeries::new(
+                d_erb
+                    .iter()
+                    .zip(sethares_ref_norm.iter())
+                    .map(|(&x, &y)| (x, y)),
+                &MAGENTA,
+            ))?
+            .label("Sethares reference")
+            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], &MAGENTA));
+        chart
+            .configure_series_labels()
+            .border_style(&BLACK)
+            .draw()?;
+        root.present()?;
+        assert!(std::path::Path::new(out_path).exists());
         Ok(())
     }
 

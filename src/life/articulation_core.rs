@@ -1,6 +1,6 @@
 use crate::core::float::clamp01_finite;
 use crate::core::modulation::NeuralRhythms;
-use crate::core::phase::{angle_diff_pm_pi, wrap_0_tau};
+use crate::core::phase::{SlidingPlv, angle_diff_pm_pi, wrap_0_tau};
 use crate::core::utils::pink_noise_tick;
 use crate::life::constants::{MAX_COUPLING_MULT, MAX_RECHARGE_MULT};
 use crate::life::lifecycle::LifecycleConfig;
@@ -229,6 +229,7 @@ pub struct KuramotoCore {
     pub dbg_last_theta_alpha: f32,
     pub dbg_last_theta_beta: f32,
     pub dbg_last_k_eff: f32,
+    pub sliding_plv: Option<SlidingPlv>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -366,6 +367,18 @@ pub fn kuramoto_phase_step(
 }
 
 impl KuramotoCore {
+    pub fn plv(&self) -> Option<f32> {
+        self.sliding_plv.as_ref().map(|p| p.plv())
+    }
+
+    pub fn plv_is_full(&self) -> bool {
+        self.sliding_plv.as_ref().is_some_and(|p| p.is_full())
+    }
+
+    pub fn enable_plv(&mut self, window: usize) {
+        self.sliding_plv = Some(SlidingPlv::new(window));
+    }
+
     #[inline]
     fn apply_energy_delta(&mut self, delta: f32) {
         self.energy += delta;
@@ -519,6 +532,9 @@ impl KuramotoCore {
                 self.dbg_attack_sum_abs_diff += phase_err_at_attack.abs();
                 self.dbg_attack_sum_cos += phase_err_at_attack.cos();
                 self.dbg_attack_sum_sin += phase_err_at_attack.sin();
+            }
+            if let Some(ref mut plv) = self.sliding_plv {
+                plv.push(phase_err_at_attack);
             }
             if self.dbg_attack_logs_left > 0 {
                 debug!(
@@ -942,6 +958,7 @@ impl AnyArticulationCore {
                     dbg_last_theta_alpha: 0.0,
                     dbg_last_theta_beta: 0.0,
                     dbg_last_k_eff: 0.0,
+                    sliding_plv: None,
                 })
             }
             ArticulationCoreConfig::Seq { duration, .. } => {
@@ -1114,6 +1131,7 @@ mod tests {
             dbg_last_theta_alpha: 0.0,
             dbg_last_theta_beta: 0.0,
             dbg_last_k_eff: 0.0,
+            sliding_plv: None,
         }
     }
 

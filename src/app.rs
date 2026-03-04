@@ -245,7 +245,9 @@ pub fn validate_scenario(scenario: &Scenario) -> Result<(), String> {
                 | Action::SetGroupCrowdingTarget { .. } => {}
                 Action::SetHarmonicityParams { .. }
                 | Action::SetGlobalCoupling { .. }
-                | Action::SetRoughnessTolerance { .. } => {}
+                | Action::SetRoughnessTolerance { .. }
+                | Action::EnableTelemetry { .. }
+                | Action::EnablePlv { .. } => {}
             }
         }
     }

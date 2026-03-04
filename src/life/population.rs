@@ -2,6 +2,7 @@ use super::individual::{
     AgentMetadata, AnyArticulationCore, Individual, PhonationBatch, SoundBody,
 };
 use super::scenario::{Action, IndividualConfig, RespawnPolicy, SpawnStrategy};
+use super::telemetry::LifeRecord;
 use crate::core::landscape::{LandscapeFrame, LandscapeUpdate};
 use crate::core::timebase::{Tick, Timebase};
 use crate::life::control::{MAX_FREQ_HZ, MIN_FREQ_HZ};
@@ -44,6 +45,7 @@ pub struct Population {
     last_pred_gate_stats: Option<PredGateStats>,
     last_gate_boundary_in_hop: Option<bool>,
     last_phonation_onsets_in_hop: Option<u32>,
+    pub death_records: Vec<LifeRecord>,
 }
 
 #[derive(Debug, Clone)]
@@ -56,6 +58,8 @@ struct RuntimeGroupState {
     released: bool,
     next_member_idx: usize,
     spawn_count_hint: usize,
+    telemetry_first_k: Option<u32>,
+    plv_window: Option<usize>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -122,6 +126,7 @@ impl Population {
             last_pred_gate_stats: None,
             last_gate_boundary_in_hop: None,
             last_phonation_onsets_in_hop: None,
+            death_records: Vec::new(),
         }
     }
 
@@ -568,7 +573,7 @@ impl Population {
             control: control.clone(),
             articulation: spec.articulation.clone(),
         };
-        let spawned = cfg.spawn_with_landscape(
+        let mut spawned = cfg.spawn_with_landscape(
             id,
             self.current_frame,
             metadata,
@@ -576,6 +581,21 @@ impl Population {
             Some(landscape),
             self.seed,
         );
+        // Apply group-level telemetry/PLV settings from RuntimeGroupState
+        if let Some(group) = self.groups.get(&group_id) {
+            if let Some(first_k) = group.telemetry_first_k {
+                spawned.life_accumulator = Some(super::telemetry::LifeAccumulator::new(
+                    self.current_frame,
+                    first_k,
+                    0.0,
+                ));
+            }
+            if let Some(window) = group.plv_window {
+                if let AnyArticulationCore::Entrain(ref mut core) = spawned.articulation.core {
+                    core.enable_plv(window);
+                }
+            }
+        }
         let body = spawned.body_snapshot();
         let pitch_hz = spawned.body.base_freq_hz();
         let amp = spawned.body.amp();
@@ -627,6 +647,8 @@ impl Population {
                 released: false,
                 next_member_idx: current_members.max(member_count),
                 spawn_count_hint: member_count.max(1),
+                telemetry_first_k: None,
+                plv_window: None,
             },
         );
     }
@@ -662,6 +684,44 @@ impl Population {
             group.crowding_target_other = other_group_visible;
         } else {
             warn!("SetGroupCrowdingTarget: unknown group {group_id}");
+        }
+    }
+
+    fn enable_group_telemetry(&mut self, group_id: u64, first_k: u32) {
+        if let Some(group) = self.groups.get_mut(&group_id) {
+            group.telemetry_first_k = Some(first_k);
+        }
+        let current_frame = self.current_frame;
+        for agent in self
+            .individuals
+            .iter_mut()
+            .filter(|a| a.metadata.group_id == group_id)
+        {
+            if agent.life_accumulator.is_none() {
+                let consonance = 0.0; // initial consonance unknown at enable time
+                agent.life_accumulator = Some(super::telemetry::LifeAccumulator::new(
+                    current_frame,
+                    first_k,
+                    consonance,
+                ));
+            }
+        }
+    }
+
+    fn enable_group_plv(&mut self, group_id: u64, window: usize) {
+        if let Some(group) = self.groups.get_mut(&group_id) {
+            group.plv_window = Some(window);
+        }
+        for agent in self
+            .individuals
+            .iter_mut()
+            .filter(|a| a.metadata.group_id == group_id)
+        {
+            if let AnyArticulationCore::Entrain(ref mut core) = agent.articulation.core {
+                if core.sliding_plv.is_none() {
+                    core.enable_plv(window);
+                }
+            }
         }
     }
 
@@ -939,6 +999,12 @@ impl Population {
                 };
                 self.merge_landscape_update(update);
             }
+            Action::EnableTelemetry { group_id, first_k } => {
+                self.enable_group_telemetry(group_id, first_k);
+            }
+            Action::EnablePlv { group_id, window } => {
+                self.enable_group_plv(group_id, window);
+            }
         }
     }
 
@@ -1110,10 +1176,23 @@ impl Population {
 
         let before_count = self.individuals.len();
         let mut removed_ids = Vec::new();
+        let death_records = &mut self.death_records;
         self.individuals.retain(|agent| {
             let keep = agent.should_retain();
             if !keep {
                 removed_ids.push(agent.id());
+                if let Some(ref acc) = agent.life_accumulator {
+                    let plv = match &agent.articulation.core {
+                        AnyArticulationCore::Entrain(core) => core.plv(),
+                        _ => None,
+                    };
+                    death_records.push(acc.finalize(
+                        agent.id(),
+                        agent.metadata.group_id,
+                        current_frame,
+                        plv,
+                    ));
+                }
             }
             keep
         });

@@ -16,6 +16,7 @@ pub mod scenario;
 pub mod schedule_renderer;
 pub mod scripting;
 pub mod social_density;
+pub mod telemetry;
 pub mod world_model;
 
 pub mod sound;

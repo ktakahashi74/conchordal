@@ -501,6 +501,14 @@ pub enum Action {
     SetRoughnessTolerance {
         value: f32,
     },
+    EnableTelemetry {
+        group_id: u64,
+        first_k: u32,
+    },
+    EnablePlv {
+        group_id: u64,
+        window: usize,
+    },
     Finish,
 }
 
@@ -537,6 +545,12 @@ impl fmt::Display for Action {
             Action::SetRoughnessTolerance { value } => {
                 write!(f, "SetRoughnessTolerance value={:.3}", value)
             }
+            Action::EnableTelemetry {
+                group_id, first_k, ..
+            } => write!(f, "EnableTelemetry group={} first_k={}", group_id, first_k),
+            Action::EnablePlv {
+                group_id, window, ..
+            } => write!(f, "EnablePlv group={} window={}", group_id, window),
             Action::Finish => write!(f, "Finish"),
         }
     }

@@ -63,6 +63,7 @@ pub struct Individual {
     pub(crate) release_pending: bool,
     pub(crate) remove_pending: bool,
     pub(crate) phonation_scratch: PhonationScratch,
+    pub(crate) life_accumulator: Option<super::telemetry::LifeAccumulator>,
 }
 
 #[derive(Clone, Debug)]
@@ -311,6 +312,7 @@ impl Individual {
             release_pending: false,
             remove_pending: false,
             phonation_scratch: Default::default(),
+            life_accumulator: None,
         }
     }
 
@@ -581,6 +583,9 @@ impl Individual {
         global_coupling: f32,
     ) -> ArticulationSignal {
         let consonance = landscape.evaluate_pitch_level(self.body.base_freq_hz());
+        if let Some(ref mut acc) = self.life_accumulator {
+            acc.accumulate_tick(consonance);
+        }
         let mut signal = self
             .articulation
             .process(consonance, rhythms, dt_sec, global_coupling);

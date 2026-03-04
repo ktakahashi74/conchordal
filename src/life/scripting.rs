@@ -72,6 +72,8 @@ struct SpeciesSpec {
     adsr: Option<AdsrSpec>,
     rhythm_coupling: RhythmCouplingMode,
     rhythm_reward: Option<MetabolismRhythmReward>,
+    telemetry_first_k: Option<u32>,
+    plv_window: Option<usize>,
 }
 
 impl SpeciesSpec {
@@ -89,6 +91,8 @@ impl SpeciesSpec {
             adsr: None,
             rhythm_coupling: RhythmCouplingMode::TemporalOnly,
             rhythm_reward: None,
+            telemetry_first_k: None,
+            plv_window: None,
         }
     }
 
@@ -615,6 +619,18 @@ impl ScriptContext {
                         spawn_actions.push(Action::SetRespawnPolicy {
                             group_id: group.id,
                             policy: group.respawn_policy,
+                        });
+                    }
+                    if let Some(first_k) = group.spec.telemetry_first_k {
+                        spawn_actions.push(Action::EnableTelemetry {
+                            group_id: group.id,
+                            first_k,
+                        });
+                    }
+                    if let Some(window) = group.spec.plv_window {
+                        spawn_actions.push(Action::EnablePlv {
+                            group_id: group.id,
+                            window,
                         });
                     }
                 }
@@ -1171,6 +1187,17 @@ impl ScriptHost {
                 species
             },
         );
+        engine.register_fn(
+            "enable_telemetry",
+            |mut species: SpeciesHandle, first_k: INT| {
+                species.spec.telemetry_first_k = Some(first_k.max(0) as u32);
+                species
+            },
+        );
+        engine.register_fn("enable_plv", |mut species: SpeciesHandle, window: INT| {
+            species.spec.plv_window = Some(window.max(1) as usize);
+            species
+        });
 
         let ctx_for_create = ctx.clone();
         engine.register_fn(

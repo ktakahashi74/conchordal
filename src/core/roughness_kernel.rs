@@ -36,16 +36,13 @@ pub struct KernelParams {
     pub w_neural: f32,
 }
 
-// Runtime crowding is intentionally shaped to:
-// 1) keep strong anti-unison pressure from center to around the Sethares local peak, and
-// 2) drop quickly outside that neighborhood so roughness shoulders dominate long-range motion.
-// The multipliers are expressed against (a) analytic Sethares peak location and
-// (b) suppress_sigma_erb, then clamped at runtime.
-const CROWDING_CORE_PEAK_MUL: f32 = 0.35;
-const CROWDING_CORE_SIGMA_MUL: f32 = 0.15;
-const CROWDING_OUTER_PEAK_MUL: f32 = 1.20;
-const CROWDING_OUTER_SIGMA_MUL: f32 = 0.50;
-const CROWDING_OUTER_POW: f32 = 6.0;
+/// Crowding reach scale: how many times further than the roughness peak
+/// the crowding kernel extends.  At scale=1.0 crowding is the exact
+/// complement of the roughness kernel (half-power ≈ 0.24 st).
+/// The default 2.0 widens this to ≈ 0.48 st, bridging the zone where
+/// roughness exists but its landscape gradient is too flat for effective
+/// agent dispersal.
+const CROWDING_REACH_FACTOR: f32 = 2.1;
 
 impl Default for KernelParams {
     fn default() -> Self {
@@ -118,28 +115,35 @@ pub fn eval_kernel_delta_erb(params: &KernelParams, d_erb: f32) -> f32 {
 }
 
 /// Runtime crowding profile used for behavior-side anti-unison pressure.
-/// This is a compact-support repulsion kernel centered at ΔERB=0.
-/// It acts strongly up to around the Sethares local roughness peak and vanishes outside,
-/// so behavior can slide on roughness shoulders once pushed out of the dip.
 ///
-/// The shape is amplitude-independent and depends only on distance in ERB.
+/// Shape is the analytic complement of the roughness kernel:
+///   crowding(d) = 1 − R(d/scale) / R_peak
+/// where R is the full roughness kernel (including suppress dip) and
+/// scale = [`CROWDING_REACH_FACTOR`].  This ensures a smooth, parameter-free
+/// handoff: crowding dominates where roughness is weak (near unison) and
+/// vanishes where roughness is strong (at the Sethares peak).
+///
+/// The transition at d = scale × peak_erb is C¹-smooth because
+/// R′(peak) ≈ 0.
 #[inline]
 pub fn crowding_runtime_delta_erb(params: &KernelParams, d_erb: f32) -> f32 {
     let (_, b, c, kappa_erb) = sethares_shape_params(params);
     let denom = (c - b).max(1e-6);
     let ratio = (c / b).max(1.0 + 1e-6);
-    let sigma = params.suppress_sigma_erb.max(1e-6);
-    let peak_erb = (ratio.ln() / denom * kappa_erb).max(sigma);
-    let core_erb = (peak_erb * CROWDING_CORE_PEAK_MUL + sigma * CROWDING_CORE_SIGMA_MUL).max(1e-6);
-    let outer_erb = (peak_erb * CROWDING_OUTER_PEAK_MUL + sigma * CROWDING_OUTER_SIGMA_MUL)
-        .max(core_erb + 1e-6);
+    let peak_erb = (ratio.ln() / denom * kappa_erb).max(params.suppress_sigma_erb.max(1e-6));
+
     let d = d_erb.abs();
-    // Single smooth form:
-    // - Lorentzian core keeps a pointed center and strong repulsion around the roughness peak.
-    // - Super-Gaussian taper suppresses far-range influence quickly.
-    let core = 1.0 / (1.0 + (d / core_erb).powi(2));
-    let taper = (-(d / outer_erb).powf(CROWDING_OUTER_POW)).exp();
-    (core * taper).clamp(0.0, 1.0)
+    let scaled_peak = peak_erb * CROWDING_REACH_FACTOR;
+    if d >= scaled_peak {
+        return 0.0;
+    }
+
+    let r_at_compressed = eval_kernel_delta_erb(params, d / CROWDING_REACH_FACTOR);
+    let r_peak = eval_kernel_delta_erb(params, peak_erb);
+    if r_peak <= 1e-12 {
+        return 0.0;
+    }
+    (1.0 - r_at_compressed / r_peak).clamp(0.0, 1.0)
 }
 
 pub fn build_kernel_erbstep(params: &KernelParams, erb_step: f32) -> (Vec<f32>, usize) {
@@ -605,14 +609,16 @@ mod tests {
         let peak_erb =
             ((c / b).ln() / (c - b).max(1e-6) * kappa_erb).max(p.suppress_sigma_erb.max(1e-6));
         let near_peak = crowding_runtime_delta_erb(&p, peak_erb);
-        let outside = crowding_runtime_delta_erb(&p, peak_erb * 1.8 + p.suppress_sigma_erb * 1.2);
+        let at_cutoff = crowding_runtime_delta_erb(&p, peak_erb * CROWDING_REACH_FACTOR);
+        // With the roughness-complement shape, crowding at the roughness
+        // peak is ~0.37 (significant bridging), and zero at the cutoff.
         assert!(
-            (0.07..=0.15).contains(&near_peak),
-            "crowding near roughness peak should be around 10% (got {near_peak})"
+            (0.25..=0.50).contains(&near_peak),
+            "crowding near roughness peak should bridge roughness gap (got {near_peak})"
         );
         assert!(
-            outside < near_peak * 0.25,
-            "crowding should decay rapidly outside the peak neighborhood (near={near_peak}, outside={outside})"
+            at_cutoff < 1e-6,
+            "crowding should be zero at reach-factor cutoff (got {at_cutoff})"
         );
     }
 

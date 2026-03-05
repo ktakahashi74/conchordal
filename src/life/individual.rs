@@ -521,7 +521,11 @@ impl Individual {
         self.commit_decided_control(dt_sec, rhythms, landscape, global_coupling)
     }
 
-    /// Decide phase: updates only pitch-controller state (targets, perceptual memory).
+    /// Decide phase.
+    ///
+    /// Contract: this must not mutate body/articulation/lifecycle fields that
+    /// other agents can observe in the same substep. Only local pitch-controller
+    /// decision state (target/perceptual memory) may change here.
     #[allow(clippy::too_many_arguments)]
     pub fn decide_pitch_target(
         &mut self,

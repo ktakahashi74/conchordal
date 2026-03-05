@@ -105,6 +105,8 @@ pub fn build_roughness_reference_density(params: &LandscapeParams, space: &Log2S
         return Vec::new();
     }
     let f0 = params.roughness_ref_f0_hz.max(1.0);
+    // Intentionally use Log2Space-aligned nearest-bin mapping so the reference
+    // anchor stays consistent with terrain binning.
     let a = space.nearest_index(f0);
     let target_erb = erb[a] + params.roughness_ref_sep_erb;
     let mut b = nearest_bin_by_erb(&erb, target_erb);
@@ -203,6 +205,22 @@ mod tests {
         assert!((ref_vals.peak - legacy_peak).abs() < 1e-6);
         let ref_from_kernel = compute_roughness_reference(&params, &space);
         assert!((ref_from_kernel.total - r_total).abs() < 1e-6);
+    }
+
+    #[test]
+    fn roughness_reference_anchor_uses_log2space_nearest_index() {
+        let space = Log2Space::new(80.0, 8000.0, 96);
+        let mut params = build_params(&space);
+        params.roughness_ref_f0_hz = 997.0;
+        params.roughness_ref_mass_split = 1.0;
+        let ref_density = build_roughness_reference_density(&params, &space);
+        let peak_idx = ref_density
+            .iter()
+            .enumerate()
+            .max_by(|(_, a), (_, b)| a.total_cmp(b))
+            .map(|(idx, _)| idx)
+            .expect("non-empty density");
+        assert_eq!(peak_idx, space.nearest_index(params.roughness_ref_f0_hz));
     }
 
     #[test]

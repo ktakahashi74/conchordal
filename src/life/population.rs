@@ -10,7 +10,7 @@ use crate::life::social_density::SocialDensityTrace;
 use crate::life::sound::{AudioCommand, VoiceTarget};
 use crate::life::world_model::WorldModel;
 use rand::{Rng, SeedableRng, distr::Distribution, distr::weighted::WeightedIndex, rngs::SmallRng};
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use tracing::{debug, info, warn};
 
@@ -74,14 +74,14 @@ struct SpawnParams {
 #[derive(Default)]
 struct AdvanceScratch {
     freq_snapshot: Vec<(u64, u64, f32)>,
-    group_visibility: BTreeMap<u64, (bool, bool)>,
+    group_visibility: HashMap<u64, (bool, bool)>,
     neighbor_pitch_log2: Vec<f32>,
     neighbor_salience: Vec<f32>,
-    decisions: Vec<AdvanceStepDecision>,
+    commit_queue: Vec<CommitQueueEntry>,
 }
 
 #[derive(Clone, Copy, Debug)]
-struct AdvanceStepDecision {
+struct CommitQueueEntry {
     individual_idx: usize,
 }
 
@@ -1083,7 +1083,7 @@ impl Population {
             });
             scratch.freq_snapshot.clear();
             scratch.group_visibility.clear();
-            scratch.decisions.clear();
+            scratch.commit_queue.clear();
             if crowding_active {
                 // Snapshot alive frequencies once per substep to avoid order-dependent updates.
                 scratch.freq_snapshot.reserve(self.individuals.len());
@@ -1159,13 +1159,15 @@ impl Population {
                         neighbor_weights,
                     );
                     scratch
-                        .decisions
-                        .push(AdvanceStepDecision { individual_idx });
+                        .commit_queue
+                        .push(CommitQueueEntry { individual_idx });
                 }
             }
             // Commit phase: apply articulation/body/lifecycle after all decisions are fixed.
-            for decision in &scratch.decisions {
-                if let Some(agent) = self.individuals.get_mut(decision.individual_idx)
+            // Contract: no insertion/removal/reordering of `self.individuals` is allowed between
+            // decide and commit; commit entries carry stable indices for this substep only.
+            for entry in &scratch.commit_queue {
+                if let Some(agent) = self.individuals.get_mut(entry.individual_idx)
                     && agent.is_alive()
                 {
                     agent.commit_decided_control(dt_step_sec, &rhythms, landscape, global_coupling);
@@ -1558,6 +1560,43 @@ mod tests {
         let freq = pop.decide_frequency(&strategy, &landscape, &mut rng, &[]);
         let picked_idx = space.index_of_freq(freq).expect("picked idx");
         assert_eq!(picked_idx, idx_high);
+    }
+
+    #[test]
+    fn decide_phase_does_not_mutate_body_or_release_state() {
+        let mut pop = Population::new(Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        });
+        let landscape = runtime_landscape();
+        let mut spec = spawn_spec_with_freq(330.0);
+        spec.control.pitch.mode = PitchMode::Free;
+        spec.control.pitch.range_oct = 0.5;
+        pop.apply_action(
+            Action::Spawn {
+                group_id: 90,
+                ids: vec![900],
+                spec,
+                strategy: None,
+            },
+            &landscape,
+            None,
+        );
+
+        let agent = pop.individuals.first_mut().expect("spawned agent");
+        agent.release_gain = 0.37;
+        agent.release_pending = true;
+        agent.set_accumulated_time_for_test(agent.integration_window());
+        let base_before = agent.body.base_freq_hz();
+        let release_gain_before = agent.release_gain;
+        let release_pending_before = agent.release_pending;
+        let rhythms = landscape.rhythm;
+
+        agent.decide_pitch_target(0.05, &rhythms, &landscape, &[], &[]);
+
+        assert_eq!(agent.body.base_freq_hz(), base_before);
+        assert_eq!(agent.release_gain, release_gain_before);
+        assert_eq!(agent.release_pending, release_pending_before);
     }
 
     #[test]

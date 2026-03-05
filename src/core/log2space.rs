@@ -103,13 +103,18 @@ impl Log2Space {
     }
 
     /// Find nearest bin index, clamping to space boundaries for out-of-range
-    /// frequencies. Always returns a valid index.
+    /// frequencies.
+    ///
+    /// Returns `0` as a sentinel for empty spaces.
     pub fn nearest_index(&self, hz: f32) -> usize {
         let n = self.centers_hz.len();
         if n == 0 {
             return 0;
         }
-        if !hz.is_finite() || hz <= 0.0 || hz <= self.fmin {
+        if hz.is_nan() || hz <= 0.0 {
+            return 0;
+        }
+        if hz <= self.fmin {
             return 0;
         }
         if hz >= self.fmax {
@@ -309,5 +314,17 @@ mod tests {
         let f_mid = (space.centers_hz[i] * space.centers_hz[i + 1]).sqrt();
         let got = sample_scan_linear_log2(&space, &scan, f_mid);
         assert!((got - 0.5).abs() < 5e-5, "got={got}");
+    }
+
+    #[test]
+    fn nearest_index_clamps_out_of_range_and_special_values() {
+        let space = Log2Space::new(100.0, 6400.0, 24);
+        let last = space.n_bins() - 1;
+
+        assert_eq!(space.nearest_index(10.0), 0);
+        assert_eq!(space.nearest_index(10_000.0), last);
+        assert_eq!(space.nearest_index(f32::NAN), 0);
+        assert_eq!(space.nearest_index(f32::NEG_INFINITY), 0);
+        assert_eq!(space.nearest_index(f32::INFINITY), last);
     }
 }

@@ -3018,6 +3018,7 @@ mod tests {
     use crate::core::landscape::LandscapeFrame;
     use crate::core::timebase::Timebase;
     use crate::life::individual::AnyArticulationCore;
+    use crate::life::individual::sound_body::SoundBody;
     use crate::life::population::Population;
     use crate::life::scenario::RhythmCouplingMode;
     use rand::SeedableRng;
@@ -3534,6 +3535,147 @@ mod tests {
         }
         let agent = pop.individuals.first().expect("spawned");
         assert!((agent.effective_control.pitch.landscape_weight - 0.6).abs() <= 1e-6);
+    }
+
+    #[test]
+    fn group_amp_live_update_preserves_member_pitch_centers() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            let g = create(sine, 4).place(consonance(196.0).range(0.8, 2.5).min_dist(0.9));
+            flush();
+            let g = g.amp(0.33);
+            flush();
+        "#,
+        );
+        let mut pop = Population::new(Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        });
+        let landscape = LandscapeFrame::default();
+        let mut before_update: Vec<(u64, f32)> = Vec::new();
+        let mut after_update: Vec<(u64, f32)> = Vec::new();
+
+        for event in &scenario.events {
+            for action in &event.actions {
+                pop.apply_action(action.clone(), &landscape, None);
+            }
+            if event
+                .actions
+                .iter()
+                .any(|action| matches!(action, Action::Spawn { .. }))
+            {
+                for (idx, agent) in pop.individuals.iter_mut().enumerate() {
+                    let freq_hz = 220.0 * (idx as f32 + 1.0);
+                    agent.force_set_pitch_log2(freq_hz.log2());
+                }
+                before_update = pop
+                    .individuals
+                    .iter()
+                    .map(|agent| (agent.id(), agent.body.base_freq_hz()))
+                    .collect();
+                before_update.sort_by_key(|(id, _)| *id);
+            }
+            if event
+                .actions
+                .iter()
+                .any(|action| matches!(action, Action::UpdateGroup { .. }))
+            {
+                after_update = pop
+                    .individuals
+                    .iter()
+                    .map(|agent| (agent.id(), agent.body.base_freq_hz()))
+                    .collect();
+                after_update.sort_by_key(|(id, _)| *id);
+            }
+        }
+
+        assert_eq!(before_update.len(), 4);
+        assert_eq!(before_update.len(), after_update.len());
+
+        for ((id_a, freq_a), (id_b, freq_b)) in before_update.iter().zip(after_update.iter()) {
+            assert_eq!(*id_a, *id_b);
+            assert!(
+                (freq_a - freq_b).abs() <= 1e-6,
+                "amp-only live update must not modify member pitch center"
+            );
+        }
+    }
+
+    #[test]
+    fn group_live_update_last_write_wins_within_flush() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            let g = create(sine, 1);
+            flush();
+            let g = g.amp(0.2).amp(0.8);
+            flush();
+            let g = g.crowding(1.0, 35.0).crowding(1.0);
+            flush();
+            let g = g.crowding(1.0).crowding(1.0, 35.0);
+            flush();
+        "#,
+        );
+
+        let updates = scenario
+            .events
+            .iter()
+            .flat_map(|event| event.actions.iter())
+            .filter_map(|action| match action {
+                Action::UpdateGroup { patch, .. } => Some(patch.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(updates.len(), 3, "expected three live update flushes");
+        assert_eq!(updates[0].amp, Some(0.8));
+        assert_eq!(updates[1].crowding_strength, Some(1.0));
+        assert_eq!(updates[1].crowding_sigma_from_roughness, Some(true));
+        assert_eq!(updates[2].crowding_strength, Some(1.0));
+        assert_eq!(updates[2].crowding_sigma_from_roughness, Some(false));
+        assert_eq!(updates[2].crowding_sigma_cents, Some(35.0));
+    }
+
+    #[test]
+    fn flush_emits_update_before_release_for_same_group() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            let g = create(sine, 1);
+            flush();
+            let g = g.amp(0.25);
+            release(g);
+            flush();
+        "#,
+        );
+
+        let event = scenario
+            .events
+            .iter()
+            .find(|event| {
+                event
+                    .actions
+                    .iter()
+                    .any(|action| matches!(action, Action::UpdateGroup { .. }))
+                    && event
+                        .actions
+                        .iter()
+                        .any(|action| matches!(action, Action::ReleaseGroup { .. }))
+            })
+            .expect("event with both update and release");
+
+        let update_idx = event
+            .actions
+            .iter()
+            .position(|action| matches!(action, Action::UpdateGroup { .. }))
+            .expect("update action");
+        let release_idx = event
+            .actions
+            .iter()
+            .position(|action| matches!(action, Action::ReleaseGroup { .. }))
+            .expect("release action");
+        assert!(
+            update_idx < release_idx,
+            "flush must emit update before release within same event"
+        );
     }
 
     #[test]

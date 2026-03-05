@@ -462,90 +462,6 @@ impl ControlUpdate {
             && self.pitch_apply_mode.is_none()
             && self.pitch_glide_tau_sec.is_none()
     }
-
-    pub fn merge_from(&mut self, newer: &ControlUpdate) {
-        if newer.amp.is_some() {
-            self.amp = newer.amp;
-        }
-        if newer.freq.is_some() {
-            self.freq = newer.freq;
-        }
-        if newer.landscape_weight.is_some() {
-            self.landscape_weight = newer.landscape_weight;
-        }
-        if newer.exploration.is_some() {
-            self.exploration = newer.exploration;
-        }
-        if newer.persistence.is_some() {
-            self.persistence = newer.persistence;
-        }
-        if newer.crowding_strength.is_some() {
-            self.crowding_strength = newer.crowding_strength;
-        }
-        if newer.crowding_sigma_cents.is_some() {
-            self.crowding_sigma_cents = newer.crowding_sigma_cents;
-        }
-        if newer.crowding_sigma_from_roughness.is_some() {
-            self.crowding_sigma_from_roughness = newer.crowding_sigma_from_roughness;
-        }
-        if newer.leave_self_out.is_some() {
-            self.leave_self_out = newer.leave_self_out;
-        }
-        if newer.anneal_temp.is_some() {
-            self.anneal_temp = newer.anneal_temp;
-        }
-        if newer.timbre_brightness.is_some() {
-            self.timbre_brightness = newer.timbre_brightness;
-        }
-        if newer.timbre_inharmonic.is_some() {
-            self.timbre_inharmonic = newer.timbre_inharmonic;
-        }
-        if newer.timbre_width.is_some() {
-            self.timbre_width = newer.timbre_width;
-        }
-        if newer.timbre_motion.is_some() {
-            self.timbre_motion = newer.timbre_motion;
-        }
-        if newer.continuous_drive.is_some() {
-            self.continuous_drive = newer.continuous_drive;
-        }
-        if newer.pitch_smooth_tau.is_some() {
-            self.pitch_smooth_tau = newer.pitch_smooth_tau;
-        }
-        if newer.move_cost_coeff.is_some() {
-            self.move_cost_coeff = newer.move_cost_coeff;
-        }
-        if newer.improvement_threshold.is_some() {
-            self.improvement_threshold = newer.improvement_threshold;
-        }
-        if newer.proposal_interval_sec.is_some() {
-            self.proposal_interval_sec = newer.proposal_interval_sec;
-        }
-        if newer.global_peak_count.is_some() {
-            self.global_peak_count = newer.global_peak_count;
-        }
-        if newer.global_peak_min_sep_cents.is_some() {
-            self.global_peak_min_sep_cents = newer.global_peak_min_sep_cents;
-        }
-        if newer.use_ratio_candidates.is_some() {
-            self.use_ratio_candidates = newer.use_ratio_candidates;
-        }
-        if newer.ratio_candidate_count.is_some() {
-            self.ratio_candidate_count = newer.ratio_candidate_count;
-        }
-        if newer.move_cost_time_scale.is_some() {
-            self.move_cost_time_scale = newer.move_cost_time_scale;
-        }
-        if newer.leave_self_out_harmonics.is_some() {
-            self.leave_self_out_harmonics = newer.leave_self_out_harmonics;
-        }
-        if newer.pitch_apply_mode.is_some() {
-            self.pitch_apply_mode = newer.pitch_apply_mode;
-        }
-        if newer.pitch_glide_tau_sec.is_some() {
-            self.pitch_glide_tau_sec = newer.pitch_glide_tau_sec;
-        }
-    }
 }
 
 impl AgentControl {
@@ -710,26 +626,5 @@ mod tests {
         control.set_freq_lock_clamped(-10.0);
         assert_eq!(control.pitch.mode, PitchMode::Lock);
         assert!((control.pitch.freq - MIN_FREQ_HZ).abs() <= 1e-6);
-    }
-
-    #[test]
-    fn control_update_merge_from_last_write_wins() {
-        let mut base = ControlUpdate {
-            amp: Some(0.2),
-            freq: Some(220.0),
-            ..ControlUpdate::default()
-        };
-        let next = ControlUpdate {
-            amp: Some(0.7),
-            landscape_weight: Some(0.4),
-            ..ControlUpdate::default()
-        };
-
-        base.merge_from(&next);
-
-        assert_eq!(base.amp, Some(0.7));
-        assert_eq!(base.freq, Some(220.0));
-        assert_eq!(base.landscape_weight, Some(0.4));
-        assert!(base.exploration.is_none());
     }
 }

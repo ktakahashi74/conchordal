@@ -641,7 +641,7 @@ impl ScriptContext {
             if !matches!(group.status, GroupStatus::Live) {
                 continue;
             }
-            if !group.pending_patch.is_empty() {
+            if group.pending_patch != ControlUpdate::default() {
                 if !group.live_ids.is_empty() {
                     update_actions.push(Action::UpdateGroup {
                         group_id: group.id,
@@ -793,6 +793,7 @@ impl ScriptContext {
 }
 
 type SpeciesNumericSetter = fn(&mut SpeciesSpec, f32);
+type SpeciesPairNumericSetter = fn(&mut SpeciesSpec, f32, f32);
 type GroupSpecNumericSetter = fn(&mut SpeciesSpec, f32);
 type GroupPatchNumericSetter = fn(&mut ControlUpdate, f32);
 type GroupDraftHook = fn(&mut GroupState);
@@ -810,6 +811,41 @@ fn register_species_numeric_overloads(
         setter(&mut species.spec, value as f32);
         species
     });
+}
+
+fn register_species_pair_numeric_overloads(
+    engine: &mut Engine,
+    name: &'static str,
+    setter: SpeciesPairNumericSetter,
+) {
+    engine.register_fn(
+        name,
+        move |mut species: SpeciesHandle, first: FLOAT, second: FLOAT| {
+            setter(&mut species.spec, first as f32, second as f32);
+            species
+        },
+    );
+    engine.register_fn(
+        name,
+        move |mut species: SpeciesHandle, first: INT, second: FLOAT| {
+            setter(&mut species.spec, first as f32, second as f32);
+            species
+        },
+    );
+    engine.register_fn(
+        name,
+        move |mut species: SpeciesHandle, first: FLOAT, second: INT| {
+            setter(&mut species.spec, first as f32, second as f32);
+            species
+        },
+    );
+    engine.register_fn(
+        name,
+        move |mut species: SpeciesHandle, first: INT, second: INT| {
+            setter(&mut species.spec, first as f32, second as f32);
+            species
+        },
+    );
 }
 
 fn apply_group_numeric_patch(
@@ -879,6 +915,121 @@ fn register_group_numeric_overloads(
                 patch_setter,
                 draft_hook,
             )
+        },
+    );
+}
+
+fn apply_group_crowding(
+    ctx_arc: &Arc<Mutex<ScriptContext>>,
+    handle: GroupHandle,
+    label: &'static str,
+    strength: f32,
+    sigma_cents: Option<f32>,
+) -> Result<GroupHandle, Box<EvalAltResult>> {
+    let mut ctx = ctx_arc.lock().expect("lock script context");
+    let Some(group) = ctx.groups.get_mut(&handle.id) else {
+        warn!("{label} ignored for unknown group {}", handle.id);
+        return Ok(handle);
+    };
+    match group.status {
+        GroupStatus::Draft => match sigma_cents {
+            Some(sigma) => group.spec.set_crowding(strength, sigma),
+            None => group.spec.set_crowding_auto_sigma(strength),
+        },
+        GroupStatus::Live => match sigma_cents {
+            Some(sigma) => {
+                group.spec.set_crowding(strength, sigma);
+                group.pending_patch.crowding_strength = Some(strength);
+                group.pending_patch.crowding_sigma_cents = Some(sigma);
+                group.pending_patch.crowding_sigma_from_roughness = Some(false);
+            }
+            None => {
+                group.spec.set_crowding_auto_sigma(strength);
+                group.pending_patch.crowding_strength = Some(strength);
+                group.pending_patch.crowding_sigma_from_roughness = Some(true);
+            }
+        },
+        _ => ctx.warn_live_builder(handle.id, label),
+    }
+    Ok(handle)
+}
+
+fn register_group_crowding_overloads(engine: &mut Engine, ctx: Arc<Mutex<ScriptContext>>) {
+    let ctx_float_float = ctx.clone();
+    engine.register_fn(
+        "crowding",
+        move |handle: GroupHandle,
+              strength: FLOAT,
+              sigma_cents: FLOAT|
+              -> Result<GroupHandle, Box<EvalAltResult>> {
+            apply_group_crowding(
+                &ctx_float_float,
+                handle,
+                "crowding",
+                strength as f32,
+                Some(sigma_cents as f32),
+            )
+        },
+    );
+    let ctx_int_float = ctx.clone();
+    engine.register_fn(
+        "crowding",
+        move |handle: GroupHandle,
+              strength: INT,
+              sigma_cents: FLOAT|
+              -> Result<GroupHandle, Box<EvalAltResult>> {
+            apply_group_crowding(
+                &ctx_int_float,
+                handle,
+                "crowding",
+                strength as f32,
+                Some(sigma_cents as f32),
+            )
+        },
+    );
+    let ctx_float_int = ctx.clone();
+    engine.register_fn(
+        "crowding",
+        move |handle: GroupHandle,
+              strength: FLOAT,
+              sigma_cents: INT|
+              -> Result<GroupHandle, Box<EvalAltResult>> {
+            apply_group_crowding(
+                &ctx_float_int,
+                handle,
+                "crowding",
+                strength as f32,
+                Some(sigma_cents as f32),
+            )
+        },
+    );
+    let ctx_int_int = ctx.clone();
+    engine.register_fn(
+        "crowding",
+        move |handle: GroupHandle,
+              strength: INT,
+              sigma_cents: INT|
+              -> Result<GroupHandle, Box<EvalAltResult>> {
+            apply_group_crowding(
+                &ctx_int_int,
+                handle,
+                "crowding",
+                strength as f32,
+                Some(sigma_cents as f32),
+            )
+        },
+    );
+    let ctx_float = ctx.clone();
+    engine.register_fn(
+        "crowding",
+        move |handle: GroupHandle, strength: FLOAT| -> Result<GroupHandle, Box<EvalAltResult>> {
+            apply_group_crowding(&ctx_float, handle, "crowding", strength as f32, None)
+        },
+    );
+    engine.register_fn(
+        "crowding",
+        move |handle: GroupHandle, strength: INT| -> Result<GroupHandle, Box<EvalAltResult>> {
+            apply_group_crowding(&ctx, handle, "crowding", strength as f32, None)
         },
     );
 }
@@ -1031,42 +1182,7 @@ impl ScriptHost {
             "persistence",
             SpeciesSpec::set_persistence,
         );
-        engine.register_fn(
-            "crowding",
-            |mut species: SpeciesHandle, strength: FLOAT, sigma_cents: FLOAT| {
-                species
-                    .spec
-                    .set_crowding(strength as f32, sigma_cents as f32);
-                species
-            },
-        );
-        engine.register_fn(
-            "crowding",
-            |mut species: SpeciesHandle, strength: INT, sigma_cents: FLOAT| {
-                species
-                    .spec
-                    .set_crowding(strength as f32, sigma_cents as f32);
-                species
-            },
-        );
-        engine.register_fn(
-            "crowding",
-            |mut species: SpeciesHandle, strength: FLOAT, sigma_cents: INT| {
-                species
-                    .spec
-                    .set_crowding(strength as f32, sigma_cents as f32);
-                species
-            },
-        );
-        engine.register_fn(
-            "crowding",
-            |mut species: SpeciesHandle, strength: INT, sigma_cents: INT| {
-                species
-                    .spec
-                    .set_crowding(strength as f32, sigma_cents as f32);
-                species
-            },
-        );
+        register_species_pair_numeric_overloads(&mut engine, "crowding", SpeciesSpec::set_crowding);
         engine.register_fn("crowding", |mut species: SpeciesHandle, strength: FLOAT| {
             species.spec.set_crowding_auto_sigma(strength as f32);
             species
@@ -1091,10 +1207,6 @@ impl ScriptHost {
                 species
             },
         );
-        engine.register_fn("loo", |mut species: SpeciesHandle, enabled: bool| {
-            species.spec.set_leave_self_out(enabled);
-            species
-        });
         register_species_numeric_overloads(
             &mut engine,
             "anneal_temp",
@@ -1634,170 +1746,7 @@ impl ScriptHost {
             patch_persistence,
             None,
         );
-        let ctx_for_group_crowding = ctx.clone();
-        engine.register_fn(
-            "crowding",
-            move |handle: GroupHandle,
-                  strength: FLOAT,
-                  sigma_cents: FLOAT|
-                  -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_crowding.lock().expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("crowding ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                let strength = strength as f32;
-                let sigma_cents = sigma_cents as f32;
-                match group.status {
-                    GroupStatus::Draft => group.spec.set_crowding(strength, sigma_cents),
-                    GroupStatus::Live => {
-                        group.spec.set_crowding(strength, sigma_cents);
-                        group.pending_patch.crowding_strength = Some(strength);
-                        group.pending_patch.crowding_sigma_cents = Some(sigma_cents);
-                        group.pending_patch.crowding_sigma_from_roughness = Some(false);
-                    }
-                    _ => ctx.warn_live_builder(handle.id, "crowding"),
-                }
-                Ok(handle)
-            },
-        );
-        let ctx_for_group_crowding_int_float = ctx.clone();
-        engine.register_fn(
-            "crowding",
-            move |handle: GroupHandle,
-                  strength: INT,
-                  sigma_cents: FLOAT|
-                  -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_crowding_int_float
-                    .lock()
-                    .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("crowding ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                let strength = strength as f32;
-                let sigma_cents = sigma_cents as f32;
-                match group.status {
-                    GroupStatus::Draft => group.spec.set_crowding(strength, sigma_cents),
-                    GroupStatus::Live => {
-                        group.spec.set_crowding(strength, sigma_cents);
-                        group.pending_patch.crowding_strength = Some(strength);
-                        group.pending_patch.crowding_sigma_cents = Some(sigma_cents);
-                        group.pending_patch.crowding_sigma_from_roughness = Some(false);
-                    }
-                    _ => ctx.warn_live_builder(handle.id, "crowding"),
-                }
-                Ok(handle)
-            },
-        );
-        let ctx_for_group_crowding_float_int = ctx.clone();
-        engine.register_fn(
-            "crowding",
-            move |handle: GroupHandle,
-                  strength: FLOAT,
-                  sigma_cents: INT|
-                  -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_crowding_float_int
-                    .lock()
-                    .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("crowding ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                let strength = strength as f32;
-                let sigma_cents = sigma_cents as f32;
-                match group.status {
-                    GroupStatus::Draft => group.spec.set_crowding(strength, sigma_cents),
-                    GroupStatus::Live => {
-                        group.spec.set_crowding(strength, sigma_cents);
-                        group.pending_patch.crowding_strength = Some(strength);
-                        group.pending_patch.crowding_sigma_cents = Some(sigma_cents);
-                        group.pending_patch.crowding_sigma_from_roughness = Some(false);
-                    }
-                    _ => ctx.warn_live_builder(handle.id, "crowding"),
-                }
-                Ok(handle)
-            },
-        );
-        let ctx_for_group_crowding_default = ctx.clone();
-        engine.register_fn(
-            "crowding",
-            move |handle: GroupHandle,
-                  strength: FLOAT|
-                  -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_crowding_default
-                    .lock()
-                    .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("crowding ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                let strength = strength as f32;
-                match group.status {
-                    GroupStatus::Draft => group.spec.set_crowding_auto_sigma(strength),
-                    GroupStatus::Live => {
-                        group.spec.set_crowding_auto_sigma(strength);
-                        group.pending_patch.crowding_strength = Some(strength);
-                        group.pending_patch.crowding_sigma_from_roughness = Some(true);
-                    }
-                    _ => ctx.warn_live_builder(handle.id, "crowding"),
-                }
-                Ok(handle)
-            },
-        );
-        let ctx_for_group_crowding_int = ctx.clone();
-        engine.register_fn(
-            "crowding",
-            move |handle: GroupHandle,
-                  strength: INT,
-                  sigma_cents: INT|
-                  -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_crowding_int
-                    .lock()
-                    .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("crowding ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                let strength = strength as f32;
-                let sigma_cents = sigma_cents as f32;
-                match group.status {
-                    GroupStatus::Draft => group.spec.set_crowding(strength, sigma_cents),
-                    GroupStatus::Live => {
-                        group.spec.set_crowding(strength, sigma_cents);
-                        group.pending_patch.crowding_strength = Some(strength);
-                        group.pending_patch.crowding_sigma_cents = Some(sigma_cents);
-                        group.pending_patch.crowding_sigma_from_roughness = Some(false);
-                    }
-                    _ => ctx.warn_live_builder(handle.id, "crowding"),
-                }
-                Ok(handle)
-            },
-        );
-        let ctx_for_group_crowding_default_int = ctx.clone();
-        engine.register_fn(
-            "crowding",
-            move |handle: GroupHandle, strength: INT| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_crowding_default_int
-                    .lock()
-                    .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("crowding ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                let strength = strength as f32;
-                match group.status {
-                    GroupStatus::Draft => group.spec.set_crowding_auto_sigma(strength),
-                    GroupStatus::Live => {
-                        group.spec.set_crowding_auto_sigma(strength);
-                        group.pending_patch.crowding_strength = Some(strength);
-                        group.pending_patch.crowding_sigma_from_roughness = Some(true);
-                    }
-                    _ => ctx.warn_live_builder(handle.id, "crowding"),
-                }
-                Ok(handle)
-            },
-        );
+        register_group_crowding_overloads(&mut engine, ctx.clone());
         let ctx_for_group_crowding_target = ctx.clone();
         engine.register_fn(
             "crowding_target",
@@ -1852,26 +1801,6 @@ impl ScriptHost {
                         group.pending_patch.leave_self_out = Some(enabled);
                     }
                     _ => ctx.warn_live_builder(handle.id, "leave_self_out"),
-                }
-                Ok(handle)
-            },
-        );
-        let ctx_for_group_loo = ctx.clone();
-        engine.register_fn(
-            "loo",
-            move |handle: GroupHandle, enabled: bool| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_loo.lock().expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("loo ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                match group.status {
-                    GroupStatus::Draft => group.spec.set_leave_self_out(enabled),
-                    GroupStatus::Live => {
-                        group.spec.set_leave_self_out(enabled);
-                        group.pending_patch.leave_self_out = Some(enabled);
-                    }
-                    _ => ctx.warn_live_builder(handle.id, "loo"),
                 }
                 Ok(handle)
             },
@@ -3522,10 +3451,10 @@ mod tests {
     }
 
     #[test]
-    fn species_loo_and_anneal_reach_spawned_core() {
+    fn species_leave_self_out_and_anneal_reach_spawned_core() {
         let (scenario, _warnings) = run_script(
             r#"
-            create(sine.loo(true).anneal_temp(0.12), 1);
+            create(sine.leave_self_out(true).anneal_temp(0.12), 1);
             flush();
         "#,
         );
@@ -3549,7 +3478,7 @@ mod tests {
     }
 
     #[test]
-    fn group_loo_and_anneal_live_update_reaches_individual() {
+    fn group_leave_self_out_and_anneal_live_update_reaches_individual() {
         let (scenario, _warnings) = run_script(
             r#"
             let g = create(sine, 1);

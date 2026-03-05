@@ -316,11 +316,7 @@ impl PitchCore for PitchHillClimbPitchCore {
         let adaptive_window_cents =
             (self.neighbor_step_log2.abs() * 1200.0 * 4.0).max(DEFAULT_LOCAL_WINDOW_CENTS);
         let window_bins = window_bins_from_cents(landscape, adaptive_window_cents);
-        let mut candidates = vec![
-            current_target_log2,
-            current_target_log2 + self.neighbor_step_log2,
-            current_target_log2 - self.neighbor_step_log2,
-        ];
+        let mut candidates = seed_step_candidates(current_target_log2, self.neighbor_step_log2);
         candidates.extend(top_local_candidates_harmonics(
             landscape,
             current_target_log2,
@@ -409,14 +405,7 @@ impl PitchCore for PitchHillClimbPitchCore {
             )
         };
 
-        let mut scored = Vec::with_capacity(candidates.len());
-        for p in candidates {
-            let clamped = p.clamp(fmin, fmax);
-            let adjusted = adjusted_score(clamped);
-            if adjusted.is_finite() {
-                scored.push((clamped, adjusted));
-            }
-        }
+        let scored = score_candidates_with(candidates, fmin, fmax, adjusted_score);
         if scored.is_empty() {
             return TargetProposal {
                 target_pitch_log2: current_target_log2,
@@ -656,11 +645,7 @@ impl PitchCore for PitchPeakSamplerCore {
         let current_target_log2 = current_target_log2.clamp(fmin, fmax);
         let window_bins = window_bins_from_cents(landscape, self.window_cents);
 
-        let mut candidates = vec![
-            current_target_log2,
-            current_target_log2 + self.neighbor_step_log2,
-            current_target_log2 - self.neighbor_step_log2,
-        ];
+        let mut candidates = seed_step_candidates(current_target_log2, self.neighbor_step_log2);
         candidates.extend(top_local_candidates(
             landscape,
             current_target_log2,
@@ -691,10 +676,8 @@ impl PitchCore for PitchPeakSamplerCore {
             rng,
         );
 
-        let mut scored = Vec::with_capacity(candidates.len());
-        for candidate in candidates {
-            let pitch = candidate.clamp(fmin, fmax);
-            let score = adjusted_pitch_score(
+        let scored = score_candidates_with(candidates, fmin, fmax, |pitch| {
+            adjusted_pitch_score(
                 pitch,
                 current_pitch_log2,
                 integration_window,
@@ -711,11 +694,8 @@ impl PitchCore for PitchPeakSamplerCore {
                 self.crowding_sigma_from_roughness,
                 neighbor_pitch_log2,
                 neighbor_salience,
-            );
-            if score.is_finite() {
-                scored.push((pitch, score));
-            }
-        }
+            )
+        });
         if scored.is_empty() {
             return TargetProposal {
                 target_pitch_log2: current_target_log2,
@@ -1310,6 +1290,31 @@ fn push_runtime_ratio_candidates(
             .total_cmp(&(b - current_target_log2).abs())
     });
     candidates.extend(generated.into_iter().take(max_count));
+}
+
+fn seed_step_candidates(current_target_log2: f32, neighbor_step_log2: f32) -> Vec<f32> {
+    vec![
+        current_target_log2,
+        current_target_log2 + neighbor_step_log2,
+        current_target_log2 - neighbor_step_log2,
+    ]
+}
+
+fn score_candidates_with(
+    candidates: Vec<f32>,
+    fmin: f32,
+    fmax: f32,
+    mut score_fn: impl FnMut(f32) -> f32,
+) -> Vec<(f32, f32)> {
+    let mut scored = Vec::with_capacity(candidates.len());
+    for candidate in candidates {
+        let pitch = candidate.clamp(fmin, fmax);
+        let score = score_fn(pitch);
+        if score.is_finite() {
+            scored.push((pitch, score));
+        }
+    }
+    scored
 }
 
 fn push_gaussian_candidates<R: Rng + ?Sized>(

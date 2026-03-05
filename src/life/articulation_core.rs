@@ -620,6 +620,74 @@ impl KuramotoCore {
         }
         self.vitality_level
     }
+
+    fn emit_and_reset_debug_metrics(&mut self, rhythms: &NeuralRhythms) {
+        let agent_freq_hz = self.omega_rad / TAU;
+        let freq_err_hz = agent_freq_hz - rhythms.theta.freq_hz;
+        let (attack_plv, attack_mean_abs_diff) = if self.dbg_attack_count_normal > 0 {
+            let count = self.dbg_attack_count_normal as f32;
+            let plv = (self.dbg_attack_sum_cos * self.dbg_attack_sum_cos
+                + self.dbg_attack_sum_sin * self.dbg_attack_sum_sin)
+                .sqrt()
+                / count;
+            let mean_abs_diff = self.dbg_attack_sum_abs_diff / count;
+            (plv, mean_abs_diff)
+        } else {
+            (0.0, 0.0)
+        };
+        debug!(
+            target: "rhythm::metrics",
+            id = self.debug_id,
+            attack_count_normal = self.dbg_attack_count_normal,
+            attack_mean_abs_diff = attack_mean_abs_diff,
+            attack_plv_target = attack_plv,
+            last_env_open = self.dbg_last_env_open,
+            last_env_level = self.dbg_last_env_level,
+            last_theta_mag = self.dbg_last_theta_mag,
+            last_theta_alpha = self.dbg_last_theta_alpha,
+            last_theta_beta = self.dbg_last_theta_beta,
+            last_k_eff = self.dbg_last_k_eff,
+            fail_env_open = self.dbg_fail_env,
+            fail_env_level = self.dbg_fail_env_level,
+            fail_mag = self.dbg_fail_mag,
+            fail_alpha = self.dbg_fail_alpha,
+            fail_beta = self.dbg_fail_beta
+        );
+        debug!(
+            target: "rhythm::agent",
+            id = self.debug_id,
+            agent_freq_hz,
+            freq_err_hz,
+            wraps = self.dbg_wraps,
+            attacks = self.dbg_attacks,
+            boot_attacks = self.dbg_boot_attacks,
+            fail_env = self.dbg_fail_env,
+            fail_mag = self.dbg_fail_mag,
+            fail_alpha = self.dbg_fail_alpha,
+            fail_beta = self.dbg_fail_beta,
+            last_env_open = self.dbg_last_env_open,
+            last_env_level = self.dbg_last_env_level,
+            last_theta_mag = self.dbg_last_theta_mag,
+            last_theta_alpha = self.dbg_last_theta_alpha,
+            last_theta_beta = self.dbg_last_theta_beta,
+            last_k_eff = self.dbg_last_k_eff,
+            omega_rad = self.omega_rad,
+            theta_freq_hz = rhythms.theta.freq_hz
+        );
+        self.dbg_accum_time = 0.0;
+        self.dbg_wraps = 0;
+        self.dbg_attacks = 0;
+        self.dbg_boot_attacks = 0;
+        self.dbg_attack_count_normal = 0;
+        self.dbg_attack_sum_abs_diff = 0.0;
+        self.dbg_attack_sum_cos = 0.0;
+        self.dbg_attack_sum_sin = 0.0;
+        self.dbg_fail_env = 0;
+        self.dbg_fail_env_level = 0;
+        self.dbg_fail_mag = 0;
+        self.dbg_fail_alpha = 0;
+        self.dbg_fail_beta = 0;
+    }
 }
 
 impl ArticulationCore for KuramotoCore {
@@ -680,71 +748,7 @@ impl ArticulationCore for KuramotoCore {
         self.update_envelope(dt);
 
         if self.dbg_accum_time >= 1.0 {
-            let agent_freq_hz = self.omega_rad / TAU;
-            let freq_err_hz = agent_freq_hz - rhythms.theta.freq_hz;
-            let (attack_plv, attack_mean_abs_diff) = if self.dbg_attack_count_normal > 0 {
-                let count = self.dbg_attack_count_normal as f32;
-                let plv = (self.dbg_attack_sum_cos * self.dbg_attack_sum_cos
-                    + self.dbg_attack_sum_sin * self.dbg_attack_sum_sin)
-                    .sqrt()
-                    / count;
-                let mean_abs_diff = self.dbg_attack_sum_abs_diff / count;
-                (plv, mean_abs_diff)
-            } else {
-                (0.0, 0.0)
-            };
-            debug!(
-                target: "rhythm::metrics",
-                id = self.debug_id,
-                attack_count_normal = self.dbg_attack_count_normal,
-                attack_mean_abs_diff = attack_mean_abs_diff,
-                attack_plv_target = attack_plv,
-                last_env_open = self.dbg_last_env_open,
-                last_env_level = self.dbg_last_env_level,
-                last_theta_mag = self.dbg_last_theta_mag,
-                last_theta_alpha = self.dbg_last_theta_alpha,
-                last_theta_beta = self.dbg_last_theta_beta,
-                last_k_eff = self.dbg_last_k_eff,
-                fail_env_open = self.dbg_fail_env,
-                fail_env_level = self.dbg_fail_env_level,
-                fail_mag = self.dbg_fail_mag,
-                fail_alpha = self.dbg_fail_alpha,
-                fail_beta = self.dbg_fail_beta
-            );
-            debug!(
-                target: "rhythm::agent",
-                id = self.debug_id,
-                agent_freq_hz,
-                freq_err_hz,
-                wraps = self.dbg_wraps,
-                attacks = self.dbg_attacks,
-                boot_attacks = self.dbg_boot_attacks,
-                fail_env = self.dbg_fail_env,
-                fail_mag = self.dbg_fail_mag,
-                fail_alpha = self.dbg_fail_alpha,
-                fail_beta = self.dbg_fail_beta,
-                last_env_open = self.dbg_last_env_open,
-                last_env_level = self.dbg_last_env_level,
-                last_theta_mag = self.dbg_last_theta_mag,
-                last_theta_alpha = self.dbg_last_theta_alpha,
-                last_theta_beta = self.dbg_last_theta_beta,
-                last_k_eff = self.dbg_last_k_eff,
-                omega_rad = self.omega_rad,
-                theta_freq_hz = rhythms.theta.freq_hz
-            );
-            self.dbg_accum_time = 0.0;
-            self.dbg_wraps = 0;
-            self.dbg_attacks = 0;
-            self.dbg_boot_attacks = 0;
-            self.dbg_attack_count_normal = 0;
-            self.dbg_attack_sum_abs_diff = 0.0;
-            self.dbg_attack_sum_cos = 0.0;
-            self.dbg_attack_sum_sin = 0.0;
-            self.dbg_fail_env = 0;
-            self.dbg_fail_env_level = 0;
-            self.dbg_fail_mag = 0;
-            self.dbg_fail_alpha = 0;
-            self.dbg_fail_beta = 0;
+            self.emit_and_reset_debug_metrics(rhythms);
         }
 
         let relaxation = rhythms.theta.alpha * self.sensitivity.alpha;

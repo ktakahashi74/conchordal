@@ -435,7 +435,7 @@ impl Individual {
     }
 
     pub fn apply_patch(&mut self, patch: &ControlUpdate) -> Result<(), String> {
-        if patch.is_empty() {
+        if patch == &ControlUpdate::default() {
             return Ok(());
         }
         let mut control = self.effective_control.clone();

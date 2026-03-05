@@ -401,7 +401,7 @@ impl Default for PerceptualControl {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct ControlUpdate {
     pub amp: Option<f32>,
     pub freq: Option<f32>,
@@ -430,38 +430,6 @@ pub struct ControlUpdate {
     pub leave_self_out_harmonics: Option<i64>,
     pub pitch_apply_mode: Option<PitchApplyMode>,
     pub pitch_glide_tau_sec: Option<f32>,
-}
-
-impl ControlUpdate {
-    pub fn is_empty(&self) -> bool {
-        self.amp.is_none()
-            && self.freq.is_none()
-            && self.landscape_weight.is_none()
-            && self.exploration.is_none()
-            && self.persistence.is_none()
-            && self.crowding_strength.is_none()
-            && self.crowding_sigma_cents.is_none()
-            && self.crowding_sigma_from_roughness.is_none()
-            && self.leave_self_out.is_none()
-            && self.anneal_temp.is_none()
-            && self.timbre_brightness.is_none()
-            && self.timbre_inharmonic.is_none()
-            && self.timbre_width.is_none()
-            && self.timbre_motion.is_none()
-            && self.continuous_drive.is_none()
-            && self.pitch_smooth_tau.is_none()
-            && self.move_cost_coeff.is_none()
-            && self.improvement_threshold.is_none()
-            && self.proposal_interval_sec.is_none()
-            && self.global_peak_count.is_none()
-            && self.global_peak_min_sep_cents.is_none()
-            && self.use_ratio_candidates.is_none()
-            && self.ratio_candidate_count.is_none()
-            && self.move_cost_time_scale.is_none()
-            && self.leave_self_out_harmonics.is_none()
-            && self.pitch_apply_mode.is_none()
-            && self.pitch_glide_tau_sec.is_none()
-    }
 }
 
 impl AgentControl {

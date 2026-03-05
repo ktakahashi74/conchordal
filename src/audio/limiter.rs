@@ -236,7 +236,13 @@ impl Limiter {
                     }
                 } else {
                     if state.gains.len() != channels {
-                        return;
+                        debug_assert!(
+                            false,
+                            "Peak limiter channel gains mismatch (state={}, input={})",
+                            state.gains.len(),
+                            channels
+                        );
+                        state.gains.resize(channels, 1.0);
                     }
                     for frame in 0..n_frames {
                         for ch in 0..channels {

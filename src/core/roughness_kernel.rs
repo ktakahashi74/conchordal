@@ -424,6 +424,8 @@ mod tests {
     use crate::core::erb::{erb_bw_hz, hz_to_erb};
     use crate::core::peak_extraction::{PeakExtractConfig, extract_peaks_density};
     #[cfg(feature = "plotcheck")]
+    use crate::core::utils::ensure_plots_dir;
+    #[cfg(feature = "plotcheck")]
     use plotters::prelude::*;
     use rand::{Rng, SeedableRng};
     #[cfg(feature = "plotcheck")]
@@ -432,10 +434,6 @@ mod tests {
     use std::path::Path;
 
     const ERB_STEP: f32 = 0.005;
-
-    fn ensure_plots_dir() -> std::io::Result<()> {
-        std::fs::create_dir_all("target/plots")
-    }
 
     fn make_kernel() -> RoughnessKernel {
         let p = KernelParams::default();

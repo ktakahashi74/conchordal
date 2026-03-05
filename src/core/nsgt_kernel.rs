@@ -454,12 +454,10 @@ impl NsgtKernelLog2 {
 mod tests {
     use super::*;
     use crate::core::phase::wrap_pm_pi;
+    #[cfg(feature = "plotcheck")]
+    use crate::core::utils::ensure_plots_dir;
     use crate::core::utils::{brown_noise, pink_noise, white_noise};
     use approx::assert_relative_eq;
-
-    fn ensure_plots_dir() -> std::io::Result<()> {
-        std::fs::create_dir_all("target/plots")
-    }
 
     fn mk_sine(fs: f32, f: f32, secs: f32) -> Vec<f32> {
         let n = (fs * secs).round() as usize;

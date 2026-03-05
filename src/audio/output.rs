@@ -125,10 +125,7 @@ impl AudioOutput {
                     let n_frames = data.len() / channels as usize;
 
                     for frame in 0..n_frames {
-                        // Pop one frame of samples.
                         let s = cons.try_pop().unwrap_or(0.0);
-
-                        // Mono: copy to all channels.
                         for ch in 0..channels {
                             data[frame * channels as usize + ch as usize] = s;
                         }
@@ -152,7 +149,7 @@ impl AudioOutput {
     }
 
     pub fn stop(&mut self) {
-        self.stream.take(); // take and Drop
+        self.stream.take();
     }
 
     /// Worker loop pushes new samples.
@@ -167,14 +164,6 @@ impl AudioOutput {
             }
         }
     }
-
-    // pub fn buffered_samples(&self) -> usize {
-    //     self._rb.occupied_len()
-    // }
-
-    // pub fn capacity(&self) -> usize {
-    //     self._rb.capacity().get()
-    // }
 }
 
 impl Drop for AudioOutput {

@@ -1,5 +1,10 @@
 use rand::{Rng, SeedableRng};
 
+#[cfg(all(test, feature = "plotcheck"))]
+pub(crate) fn ensure_plots_dir() -> std::io::Result<()> {
+    std::fs::create_dir_all("target/plots")
+}
+
 /// Calculate A-weighting gain (linear) for a given frequency.
 /// Standard curve approximation normalized to 1.0 at 1000 Hz.
 pub fn a_weighting_gain(f_hz: f32) -> f32 {
@@ -75,10 +80,6 @@ pub fn brown_noise(n: usize, seed: u64) -> Vec<f32> {
 mod tests {
     use super::*;
     use crate::core::db;
-
-    fn ensure_plots_dir() -> std::io::Result<()> {
-        std::fs::create_dir_all("target/plots")
-    }
 
     #[test]
     fn test_a_weighting_reference_values() {

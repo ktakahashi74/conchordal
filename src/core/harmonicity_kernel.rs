@@ -456,9 +456,8 @@ impl HarmonicityKernel {
 mod tests {
     use super::*;
     use crate::core::log2space::Log2Space;
-    use plotters::prelude::*;
-    use std::fs::File;
-    use std::path::Path;
+    #[cfg(feature = "plotcheck")]
+    use crate::core::utils::ensure_plots_dir;
 
     fn rel_l2(a: &[f32], b: &[f32]) -> f32 {
         let mut diff2 = 0.0f32;
@@ -479,10 +478,6 @@ mod tests {
             }
         }
         env
-    }
-
-    fn ensure_plots_dir() -> std::io::Result<()> {
-        std::fs::create_dir_all("target/plots")
     }
 
     #[test]
@@ -713,6 +708,10 @@ mod tests {
     #[test]
     #[cfg(feature = "plotcheck")]
     fn plot_sibling_landscape_png() {
+        use plotters::prelude::*;
+        use std::fs::File;
+        use std::path::Path;
+
         ensure_plots_dir().expect("create target/plots");
         let space = Log2Space::new(20.0, 8000.0, 200);
 

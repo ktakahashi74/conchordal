@@ -723,7 +723,7 @@ impl Population {
             .filter(|a| a.metadata.group_id == group_id)
         {
             if let AnyArticulationCore::Entrain(ref mut core) = agent.articulation.core
-                && core.sliding_plv.is_none()
+                && core.plv().is_none()
             {
                 core.enable_plv(window);
             }

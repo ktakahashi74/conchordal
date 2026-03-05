@@ -11,7 +11,6 @@ use crate::life::scenario::{
 };
 use rand::{Rng, SeedableRng, rngs::SmallRng};
 use std::f32::consts::{PI, TAU};
-use tracing::debug;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ArticulationSignal {
@@ -177,6 +176,17 @@ impl PinkNoise {
     }
 }
 
+#[derive(Debug, Clone, Default)]
+struct KuramotoMetrics {
+    last_k_eff: f32,
+    total_attacks: u32,
+}
+
+#[derive(Debug, Clone, Default)]
+struct KuramotoTelemetry {
+    sliding_plv: Option<SlidingPlv>,
+}
+
 #[derive(Debug, Clone)]
 pub struct KuramotoCore {
     pub energy: f32,
@@ -193,7 +203,6 @@ pub struct KuramotoCore {
     pub rhythm_freq: f32,
     pub omega_rad: f32,
     pub phase_offset: f32,
-    pub debug_id: u64,
     pub env_level: f32,
     pub state: ArticulationState,
     pub attack_step: f32,
@@ -209,27 +218,8 @@ pub struct KuramotoCore {
     pub mag_threshold: f32,
     pub alpha_threshold: f32,
     pub beta_threshold: f32,
-    pub dbg_accum_time: f32,
-    pub dbg_wraps: u32,
-    pub dbg_attacks: u32,
-    pub dbg_boot_attacks: u32,
-    pub dbg_attack_logs_left: u32,
-    pub dbg_attack_count_normal: u32,
-    pub dbg_attack_sum_abs_diff: f32,
-    pub dbg_attack_sum_cos: f32,
-    pub dbg_attack_sum_sin: f32,
-    pub dbg_fail_env: u32,
-    pub dbg_fail_env_level: u32,
-    pub dbg_fail_mag: u32,
-    pub dbg_fail_alpha: u32,
-    pub dbg_fail_beta: u32,
-    pub dbg_last_env_open: f32,
-    pub dbg_last_env_level: f32,
-    pub dbg_last_theta_mag: f32,
-    pub dbg_last_theta_alpha: f32,
-    pub dbg_last_theta_beta: f32,
-    pub dbg_last_k_eff: f32,
-    pub sliding_plv: Option<SlidingPlv>,
+    metrics: KuramotoMetrics,
+    telemetry: KuramotoTelemetry,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -254,11 +244,6 @@ impl GateStatus {
     fn bootstrap_ok(&self) -> bool {
         self.env_level_ok_boot && (self.mag_ok_boot || self.alpha_ok_boot)
     }
-}
-
-#[derive(Clone, Copy, Debug)]
-struct PhaseStep {
-    k_eff: f32,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -368,15 +353,18 @@ pub fn kuramoto_phase_step(
 
 impl KuramotoCore {
     pub fn plv(&self) -> Option<f32> {
-        self.sliding_plv.as_ref().map(|p| p.plv())
+        self.telemetry.sliding_plv.as_ref().map(|p| p.plv())
     }
 
     pub fn plv_is_full(&self) -> bool {
-        self.sliding_plv.as_ref().is_some_and(|p| p.is_full())
+        self.telemetry
+            .sliding_plv
+            .as_ref()
+            .is_some_and(|p| p.is_full())
     }
 
     pub fn enable_plv(&mut self, window: usize) {
-        self.sliding_plv = Some(SlidingPlv::new(window));
+        self.telemetry.sliding_plv = Some(SlidingPlv::new(window));
     }
 
     #[inline]
@@ -395,13 +383,7 @@ impl KuramotoCore {
     }
 
     #[inline]
-    fn compute_gate_status(&mut self, rhythms: &NeuralRhythms, theta: &ThetaView) -> GateStatus {
-        self.dbg_last_env_open = rhythms.env_open;
-        self.dbg_last_env_level = rhythms.env_level;
-        self.dbg_last_theta_mag = theta.mag;
-        self.dbg_last_theta_alpha = theta.alpha;
-        self.dbg_last_theta_beta = theta.beta;
-
+    fn compute_gate_status(&self, rhythms: &NeuralRhythms, theta: &ThetaView) -> GateStatus {
         GateStatus {
             env_open_ok: rhythms.env_open > self.env_open_threshold,
             env_level_ok: rhythms.env_level > self.env_level_min,
@@ -415,25 +397,6 @@ impl KuramotoCore {
     }
 
     #[inline]
-    fn record_gate_failures(&mut self, gate: &GateStatus) {
-        if !gate.env_open_ok {
-            self.dbg_fail_env += 1;
-        }
-        if !gate.env_level_ok {
-            self.dbg_fail_env_level += 1;
-        }
-        if !gate.mag_ok {
-            self.dbg_fail_mag += 1;
-        }
-        if !gate.alpha_ok {
-            self.dbg_fail_alpha += 1;
-        }
-        if !gate.beta_ok {
-            self.dbg_fail_beta += 1;
-        }
-    }
-
-    #[inline]
     fn update_phase(
         &mut self,
         theta: &ThetaView,
@@ -441,7 +404,7 @@ impl KuramotoCore {
         dt: f32,
         global_coupling: f32,
         bootstrap_active: bool,
-    ) -> PhaseStep {
+    ) -> f32 {
         let omega_target = TAU * theta.freq_hz;
         let env_gate = rhythms.env_open;
         let env_amp = rhythms.env_level.sqrt();
@@ -467,7 +430,7 @@ impl KuramotoCore {
         } else {
             0.0
         };
-        self.dbg_last_k_eff = k_eff;
+        self.metrics.last_k_eff = k_eff;
 
         let mut pull = self.k_omega * theta.alpha * env_gate;
         if pull > 0.0 {
@@ -489,31 +452,25 @@ impl KuramotoCore {
         self.rhythm_phase =
             kuramoto_phase_step(self.rhythm_phase, self.omega_rad, target, k_eff, noise, dt);
 
-        PhaseStep { k_eff }
+        k_eff
     }
 
     #[inline]
     fn maybe_trigger_attack(
         &mut self,
         gate: &GateStatus,
-        rhythms: &NeuralRhythms,
         theta: &ThetaView,
         bootstrap_active: bool,
-        k_eff: f32,
     ) -> Option<AttackInfo> {
-        self.record_gate_failures(gate);
-
         let target_phase = wrap_0_tau(theta.phase + self.phase_offset);
         let agent_phase = wrap_0_tau(self.rhythm_phase);
         let phase_err_at_attack = angle_diff_pm_pi(target_phase, agent_phase);
 
         let mut attack = false;
-        let mut boot_attack = false;
         if self.state == ArticulationState::Idle && self.retrigger {
             if bootstrap_active {
                 if gate.bootstrap_ok() {
                     attack = true;
-                    boot_attack = true;
                 }
             } else if gate.normal_ok() {
                 attack = true;
@@ -523,41 +480,9 @@ impl KuramotoCore {
         if attack {
             self.env_level = 0.0;
             self.state = ArticulationState::Attack;
-            self.dbg_attacks += 1;
-            if boot_attack {
-                self.dbg_boot_attacks += 1;
-            }
-            if !boot_attack {
-                self.dbg_attack_count_normal += 1;
-                self.dbg_attack_sum_abs_diff += phase_err_at_attack.abs();
-                self.dbg_attack_sum_cos += phase_err_at_attack.cos();
-                self.dbg_attack_sum_sin += phase_err_at_attack.sin();
-            }
-            if let Some(ref mut plv) = self.sliding_plv {
+            self.metrics.total_attacks = self.metrics.total_attacks.saturating_add(1);
+            if let Some(ref mut plv) = self.telemetry.sliding_plv {
                 plv.push(phase_err_at_attack);
-            }
-            if self.dbg_attack_logs_left > 0 {
-                debug!(
-                    target: "rhythm::attack",
-                    id = self.debug_id,
-                    mode = if boot_attack { "bootstrap" } else { "normal" },
-                    env_open = rhythms.env_open,
-                    env_level = rhythms.env_level,
-                    env_open_threshold = self.env_open_threshold,
-                    env_level_min = self.env_level_min,
-                    mag_threshold = self.mag_threshold,
-                    alpha_threshold = self.alpha_threshold,
-                    beta_threshold = self.beta_threshold,
-                    theta_mag = theta.mag,
-                    theta_alpha = theta.alpha,
-                    theta_beta = theta.beta,
-                    k_eff,
-                    target_phase,
-                    agent_phase,
-                    phase_err_at_attack,
-                    phase_offset = self.phase_offset
-                );
-                self.dbg_attack_logs_left -= 1;
             }
         }
 
@@ -620,74 +545,6 @@ impl KuramotoCore {
         }
         self.vitality_level
     }
-
-    fn emit_and_reset_debug_metrics(&mut self, rhythms: &NeuralRhythms) {
-        let agent_freq_hz = self.omega_rad / TAU;
-        let freq_err_hz = agent_freq_hz - rhythms.theta.freq_hz;
-        let (attack_plv, attack_mean_abs_diff) = if self.dbg_attack_count_normal > 0 {
-            let count = self.dbg_attack_count_normal as f32;
-            let plv = (self.dbg_attack_sum_cos * self.dbg_attack_sum_cos
-                + self.dbg_attack_sum_sin * self.dbg_attack_sum_sin)
-                .sqrt()
-                / count;
-            let mean_abs_diff = self.dbg_attack_sum_abs_diff / count;
-            (plv, mean_abs_diff)
-        } else {
-            (0.0, 0.0)
-        };
-        debug!(
-            target: "rhythm::metrics",
-            id = self.debug_id,
-            attack_count_normal = self.dbg_attack_count_normal,
-            attack_mean_abs_diff = attack_mean_abs_diff,
-            attack_plv_target = attack_plv,
-            last_env_open = self.dbg_last_env_open,
-            last_env_level = self.dbg_last_env_level,
-            last_theta_mag = self.dbg_last_theta_mag,
-            last_theta_alpha = self.dbg_last_theta_alpha,
-            last_theta_beta = self.dbg_last_theta_beta,
-            last_k_eff = self.dbg_last_k_eff,
-            fail_env_open = self.dbg_fail_env,
-            fail_env_level = self.dbg_fail_env_level,
-            fail_mag = self.dbg_fail_mag,
-            fail_alpha = self.dbg_fail_alpha,
-            fail_beta = self.dbg_fail_beta
-        );
-        debug!(
-            target: "rhythm::agent",
-            id = self.debug_id,
-            agent_freq_hz,
-            freq_err_hz,
-            wraps = self.dbg_wraps,
-            attacks = self.dbg_attacks,
-            boot_attacks = self.dbg_boot_attacks,
-            fail_env = self.dbg_fail_env,
-            fail_mag = self.dbg_fail_mag,
-            fail_alpha = self.dbg_fail_alpha,
-            fail_beta = self.dbg_fail_beta,
-            last_env_open = self.dbg_last_env_open,
-            last_env_level = self.dbg_last_env_level,
-            last_theta_mag = self.dbg_last_theta_mag,
-            last_theta_alpha = self.dbg_last_theta_alpha,
-            last_theta_beta = self.dbg_last_theta_beta,
-            last_k_eff = self.dbg_last_k_eff,
-            omega_rad = self.omega_rad,
-            theta_freq_hz = rhythms.theta.freq_hz
-        );
-        self.dbg_accum_time = 0.0;
-        self.dbg_wraps = 0;
-        self.dbg_attacks = 0;
-        self.dbg_boot_attacks = 0;
-        self.dbg_attack_count_normal = 0;
-        self.dbg_attack_sum_abs_diff = 0.0;
-        self.dbg_attack_sum_cos = 0.0;
-        self.dbg_attack_sum_sin = 0.0;
-        self.dbg_fail_env = 0;
-        self.dbg_fail_env_level = 0;
-        self.dbg_fail_mag = 0;
-        self.dbg_fail_alpha = 0;
-        self.dbg_fail_beta = 0;
-    }
 }
 
 impl ArticulationCore for KuramotoCore {
@@ -710,20 +567,17 @@ impl ArticulationCore for KuramotoCore {
         };
 
         let gate = self.compute_gate_status(rhythms, &theta);
-        self.dbg_accum_time += dt;
 
         self.bootstrap_timer = (self.bootstrap_timer - dt).max(0.0);
         let bootstrap_active = self.bootstrap_timer > 0.0;
-        let step = self.update_phase(&theta, rhythms, dt, global_coupling, bootstrap_active);
+        self.update_phase(&theta, rhythms, dt, global_coupling, bootstrap_active);
         let mut attacked_this_sample = false;
         let mut attack_metric_sum = 0.0f32;
         let mut attack_metric_count = 0u32;
 
         while self.rhythm_phase >= 2.0 * PI {
             self.rhythm_phase -= 2.0 * PI;
-            self.dbg_wraps += 1;
-            let attack_info =
-                self.maybe_trigger_attack(&gate, rhythms, &theta, bootstrap_active, step.k_eff);
+            let attack_info = self.maybe_trigger_attack(&gate, &theta, bootstrap_active);
             if let Some(info) = attack_info {
                 attacked_this_sample = true;
                 if let Some(reward) = self.rhythm_reward {
@@ -746,10 +600,6 @@ impl ArticulationCore for KuramotoCore {
             self.apply_energy_delta(delta);
         }
         self.update_envelope(dt);
-
-        if self.dbg_accum_time >= 1.0 {
-            self.emit_and_reset_debug_metrics(rhythms);
-        }
 
         let relaxation = rhythms.theta.alpha * self.sensitivity.alpha;
         let tension = rhythms.theta.beta * self.sensitivity.beta;
@@ -926,7 +776,6 @@ impl AnyArticulationCore {
                     rhythm_freq: init_freq,
                     omega_rad: TAU * init_freq,
                     phase_offset: rng.random_range(-std::f32::consts::PI..std::f32::consts::PI),
-                    debug_id: noise_seed,
                     env_level,
                     state,
                     attack_step,
@@ -942,27 +791,8 @@ impl AnyArticulationCore {
                     mag_threshold: 0.04,
                     alpha_threshold: 0.2,
                     beta_threshold: 0.9,
-                    dbg_accum_time: 0.0,
-                    dbg_wraps: 0,
-                    dbg_attacks: 0,
-                    dbg_boot_attacks: 0,
-                    dbg_attack_logs_left: 5,
-                    dbg_attack_count_normal: 0,
-                    dbg_attack_sum_abs_diff: 0.0,
-                    dbg_attack_sum_cos: 0.0,
-                    dbg_attack_sum_sin: 0.0,
-                    dbg_fail_env: 0,
-                    dbg_fail_env_level: 0,
-                    dbg_fail_mag: 0,
-                    dbg_fail_alpha: 0,
-                    dbg_fail_beta: 0,
-                    dbg_last_env_open: 0.0,
-                    dbg_last_env_level: 0.0,
-                    dbg_last_theta_mag: 0.0,
-                    dbg_last_theta_alpha: 0.0,
-                    dbg_last_theta_beta: 0.0,
-                    dbg_last_k_eff: 0.0,
-                    sliding_plv: None,
+                    metrics: KuramotoMetrics::default(),
+                    telemetry: KuramotoTelemetry::default(),
                 })
             }
             ArticulationCoreConfig::Seq { duration, .. } => {
@@ -1099,7 +929,6 @@ mod tests {
             rhythm_freq: 5.0,
             omega_rad: TAU * 5.0,
             phase_offset: 0.0,
-            debug_id: 0,
             env_level: 1.0,
             state: ArticulationState::Decay,
             attack_step: 0.1,
@@ -1115,27 +944,8 @@ mod tests {
             mag_threshold: 0.0,
             alpha_threshold: 0.0,
             beta_threshold: 1.0,
-            dbg_accum_time: 0.0,
-            dbg_wraps: 0,
-            dbg_attacks: 0,
-            dbg_boot_attacks: 0,
-            dbg_attack_logs_left: 0,
-            dbg_attack_count_normal: 0,
-            dbg_attack_sum_abs_diff: 0.0,
-            dbg_attack_sum_cos: 0.0,
-            dbg_attack_sum_sin: 0.0,
-            dbg_fail_env: 0,
-            dbg_fail_env_level: 0,
-            dbg_fail_mag: 0,
-            dbg_fail_alpha: 0,
-            dbg_fail_beta: 0,
-            dbg_last_env_open: 0.0,
-            dbg_last_env_level: 0.0,
-            dbg_last_theta_mag: 0.0,
-            dbg_last_theta_alpha: 0.0,
-            dbg_last_theta_beta: 0.0,
-            dbg_last_k_eff: 0.0,
-            sliding_plv: None,
+            metrics: KuramotoMetrics::default(),
+            telemetry: KuramotoTelemetry::default(),
         }
     }
 
@@ -1250,7 +1060,7 @@ mod tests {
                 manual.rhythm_phase -= 2.0 * PI;
             }
 
-            assert!((core.dbg_last_k_eff - k_eff).abs() <= 1e-6);
+            assert!((core.metrics.last_k_eff - k_eff).abs() <= 1e-6);
             assert!((core.omega_rad - manual.omega_rad).abs() <= 1e-6);
             assert!((core.rhythm_freq - manual.rhythm_freq).abs() <= 1e-6);
             assert!((core.rhythm_phase - manual.rhythm_phase).abs() <= 1e-6);
@@ -1296,10 +1106,10 @@ mod tests {
         high.update_phase(&theta, &rhythms, dt, global_coupling, false);
 
         assert!(
-            high.dbg_last_k_eff > low.dbg_last_k_eff,
+            high.metrics.last_k_eff > low.metrics.last_k_eff,
             "higher vitality should increase effective coupling in TemporalTimesVitality mode"
         );
-        assert!(low.dbg_last_k_eff > 0.0);
+        assert!(low.metrics.last_k_eff > 0.0);
     }
 
     #[test]
@@ -1334,7 +1144,7 @@ mod tests {
         let dt = 0.01;
         let global_coupling = 0.7;
         core.update_phase(&theta, &rhythms, dt, global_coupling, false);
-        assert!(core.dbg_last_k_eff.is_finite());
+        assert!(core.metrics.last_k_eff.is_finite());
 
         let k_time = kuramoto_k_eff(
             TAU * theta.freq_hz,
@@ -1346,7 +1156,7 @@ mod tests {
             rhythms.env_level.sqrt(),
         );
         assert!(
-            core.dbg_last_k_eff <= MAX_COUPLING_MULT * k_time + 1e-6,
+            core.metrics.last_k_eff <= MAX_COUPLING_MULT * k_time + 1e-6,
             "effective coupling should be capped at {}x temporal coupling",
             MAX_COUPLING_MULT
         );
@@ -1383,7 +1193,7 @@ mod tests {
         };
 
         core.update_phase(&theta, &rhythms, 0.01, 0.7, false);
-        assert_eq!(core.dbg_last_k_eff, 0.0);
+        assert_eq!(core.metrics.last_k_eff, 0.0);
     }
 
     #[test]
@@ -1415,8 +1225,8 @@ mod tests {
         };
 
         core.update_phase(&theta, &rhythms, 0.01, 0.7, false);
-        assert!(core.dbg_last_k_eff.is_finite());
-        assert_eq!(core.dbg_last_k_eff, 0.0);
+        assert!(core.metrics.last_k_eff.is_finite());
+        assert_eq!(core.metrics.last_k_eff, 0.0);
     }
 
     #[test]
@@ -1464,8 +1274,8 @@ mod tests {
         base.process(consonance, &rhythms, 0.0, 1.0);
         rewarded.process(consonance, &rhythms, 0.0, 1.0);
 
-        assert_eq!(base.dbg_attacks, 1);
-        assert_eq!(rewarded.dbg_attacks, 1);
+        assert_eq!(base.metrics.total_attacks, 1);
+        assert_eq!(rewarded.metrics.total_attacks, 1);
         assert!(rewarded.energy > base.energy);
         let expected_extra = 0.5;
         assert!(

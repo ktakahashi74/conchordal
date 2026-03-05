@@ -469,18 +469,13 @@ pub enum Action {
         spec: AgentSpec,
         strategy: Option<SpawnStrategy>,
     },
-    Update {
+    UpdateGroup {
         group_id: u64,
-        /// Legacy payload retained for script/schema compatibility.
-        /// Runtime resolution is group-wide by `group_id`.
-        ids: Vec<u64>,
-        update: ControlUpdate,
+        /// Partial control patch applied to runtime current members of `group_id`.
+        patch: ControlUpdate,
     },
-    Release {
+    ReleaseGroup {
         group_id: u64,
-        /// Legacy payload retained for script/schema compatibility.
-        /// Runtime resolution is group-wide by `group_id`.
-        ids: Vec<u64>,
         fade_sec: f32,
     },
     SetRespawnPolicy {
@@ -518,10 +513,10 @@ impl fmt::Display for Action {
             Action::Spawn { group_id, ids, .. } => {
                 write!(f, "Spawn group={} count={}", group_id, ids.len())
             }
-            Action::Update { group_id, .. } => write!(f, "Update group={}", group_id),
-            Action::Release {
-                group_id, fade_sec, ..
-            } => write!(f, "Release group={} fade={:.3}", group_id, fade_sec),
+            Action::UpdateGroup { group_id, .. } => write!(f, "Update group={}", group_id),
+            Action::ReleaseGroup { group_id, fade_sec } => {
+                write!(f, "Release group={} fade={:.3}", group_id, fade_sec)
+            }
             Action::SetRespawnPolicy { group_id, policy } => {
                 write!(f, "SetRespawnPolicy group={} policy={:?}", group_id, policy)
             }

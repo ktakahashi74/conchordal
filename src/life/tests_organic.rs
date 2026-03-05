@@ -131,10 +131,9 @@ fn lock_mode_prevents_snapback() {
     let new_freq: f32 = 440.0;
     let new_log = new_freq.log2();
     pop.apply_action(
-        Action::Update {
+        Action::UpdateGroup {
             group_id: 1,
-            ids: vec![1],
-            update: ControlUpdate {
+            patch: ControlUpdate {
                 freq: Some(new_freq),
                 ..ControlUpdate::default()
             },

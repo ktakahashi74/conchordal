@@ -239,8 +239,8 @@ pub fn validate_scenario(scenario: &Scenario) -> Result<(), String> {
                     has_finish = true;
                 }
                 Action::Spawn { .. }
-                | Action::Update { .. }
-                | Action::Release { .. }
+                | Action::UpdateGroup { .. }
+                | Action::ReleaseGroup { .. }
                 | Action::SetRespawnPolicy { .. }
                 | Action::SetGroupCrowdingTarget { .. } => {}
                 Action::SetHarmonicityParams { .. }

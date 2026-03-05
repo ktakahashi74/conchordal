@@ -430,17 +430,21 @@ impl Individual {
         self.release_gain
     }
 
-    pub fn apply_update(&mut self, update: &ControlUpdate) -> Result<(), String> {
-        if update.is_empty() {
+    pub fn apply_patch(&mut self, patch: &ControlUpdate) -> Result<(), String> {
+        if patch.is_empty() {
             return Ok(());
         }
         let mut control = self.effective_control.clone();
-        control.apply_update(update);
+        control.apply_update(patch);
         self.ensure_fixed_kinds(&control)?;
-        let dirty = Dirty::from_update(update);
+        let dirty = Dirty::from_update(patch);
         self.base_control = control.clone();
         self.apply_effective_control(control, dirty);
         Ok(())
+    }
+
+    pub fn apply_update(&mut self, update: &ControlUpdate) -> Result<(), String> {
+        self.apply_patch(update)
     }
 
     #[cfg(test)]

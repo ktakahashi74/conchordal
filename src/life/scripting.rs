@@ -438,7 +438,7 @@ struct GroupState {
     strategy: Option<SpawnStrategy>,
     status: GroupStatus,
     live_ids: Vec<u64>,
-    pending_update: ControlUpdate,
+    pending_patch: ControlUpdate,
     pending_crowding_target: Option<(bool, bool)>,
     pending_release: bool,
 }
@@ -534,15 +534,13 @@ impl ScriptContext {
                     group.status = GroupStatus::Dropped;
                 }
                 GroupStatus::Live => {
-                    let ids = group.live_ids.clone();
-                    if !ids.is_empty() {
-                        releases.push(Action::Release {
+                    if !group.live_ids.is_empty() {
+                        releases.push(Action::ReleaseGroup {
                             group_id,
-                            ids,
                             fade_sec: group.spec.release_sec(),
                         });
                     }
-                    group.pending_update = ControlUpdate::default();
+                    group.pending_patch = ControlUpdate::default();
                     group.pending_crowding_target = None;
                     group.pending_release = false;
                     group.status = GroupStatus::Released;
@@ -579,7 +577,7 @@ impl ScriptContext {
         let mut max_end: f32 = 0.0;
         for event in &self.scenario.events {
             for action in &event.actions {
-                if let Action::Release { fade_sec, .. } = action {
+                if let Action::ReleaseGroup { fade_sec, .. } = action {
                     let fade = fade_sec.max(0.0);
                     max_end = max_end.max(event.time + fade);
                 }
@@ -643,15 +641,14 @@ impl ScriptContext {
             if !matches!(group.status, GroupStatus::Live) {
                 continue;
             }
-            if !group.pending_update.is_empty() {
+            if !group.pending_patch.is_empty() {
                 if !group.live_ids.is_empty() {
-                    update_actions.push(Action::Update {
+                    update_actions.push(Action::UpdateGroup {
                         group_id: group.id,
-                        ids: group.live_ids.clone(),
-                        update: group.pending_update.clone(),
+                        patch: group.pending_patch.clone(),
                     });
                 }
-                group.pending_update = ControlUpdate::default();
+                group.pending_patch = ControlUpdate::default();
             }
             if let Some((same_group_visible, other_group_visible)) = group.pending_crowding_target {
                 crowding_target_actions.push(Action::SetGroupCrowdingTarget {
@@ -670,9 +667,8 @@ impl ScriptContext {
             }
             if group.pending_release {
                 if !group.live_ids.is_empty() {
-                    release_actions.push(Action::Release {
+                    release_actions.push(Action::ReleaseGroup {
                         group_id: group.id,
-                        ids: group.live_ids.clone(),
                         fade_sec: group.spec.release_sec(),
                     });
                 }
@@ -738,7 +734,7 @@ impl ScriptContext {
             strategy: None,
             status: GroupStatus::Draft,
             live_ids: Vec::new(),
-            pending_update: ControlUpdate::default(),
+            pending_patch: ControlUpdate::default(),
             pending_crowding_target: None,
             pending_release: false,
         };
@@ -1523,7 +1519,7 @@ impl ScriptHost {
                     }
                     GroupStatus::Live => {
                         group.spec.set_amp(value);
-                        group.pending_update.amp = Some(value);
+                        group.pending_patch.amp = Some(value);
                     }
                     _ => ctx.warn_live_builder(handle.id, "amp"),
                 }
@@ -1546,7 +1542,7 @@ impl ScriptHost {
                     }
                     GroupStatus::Live => {
                         group.spec.set_amp(value);
-                        group.pending_update.amp = Some(value);
+                        group.pending_patch.amp = Some(value);
                     }
                     _ => ctx.warn_live_builder(handle.id, "amp"),
                 }
@@ -1570,7 +1566,7 @@ impl ScriptHost {
                     }
                     GroupStatus::Live => {
                         group.spec.set_freq(value);
-                        group.pending_update.freq = Some(value);
+                        group.pending_patch.freq = Some(value);
                     }
                     _ => ctx.warn_live_builder(handle.id, "freq"),
                 }
@@ -1594,7 +1590,7 @@ impl ScriptHost {
                     }
                     GroupStatus::Live => {
                         group.spec.set_freq(value);
-                        group.pending_update.freq = Some(value);
+                        group.pending_patch.freq = Some(value);
                     }
                     _ => ctx.warn_live_builder(handle.id, "freq"),
                 }
@@ -1619,7 +1615,7 @@ impl ScriptHost {
                     }
                     GroupStatus::Live => {
                         group.spec.set_landscape_weight(value);
-                        group.pending_update.landscape_weight = Some(value);
+                        group.pending_patch.landscape_weight = Some(value);
                     }
                     _ => ctx.warn_live_builder(handle.id, "landscape_weight"),
                 }
@@ -1644,7 +1640,7 @@ impl ScriptHost {
                     }
                     GroupStatus::Live => {
                         group.spec.set_landscape_weight(value);
-                        group.pending_update.landscape_weight = Some(value);
+                        group.pending_patch.landscape_weight = Some(value);
                     }
                     _ => ctx.warn_live_builder(handle.id, "landscape_weight"),
                 }
@@ -1669,7 +1665,7 @@ impl ScriptHost {
                     }
                     GroupStatus::Live => {
                         group.spec.set_continuous_drive(value);
-                        group.pending_update.continuous_drive = Some(value);
+                        group.pending_patch.continuous_drive = Some(value);
                     }
                     _ => ctx.warn_live_builder(handle.id, "sustain_drive"),
                 }
@@ -1694,7 +1690,7 @@ impl ScriptHost {
                     }
                     GroupStatus::Live => {
                         group.spec.set_continuous_drive(value);
-                        group.pending_update.continuous_drive = Some(value);
+                        group.pending_patch.continuous_drive = Some(value);
                     }
                     _ => ctx.warn_live_builder(handle.id, "sustain_drive"),
                 }
@@ -1719,7 +1715,7 @@ impl ScriptHost {
                     }
                     GroupStatus::Live => {
                         group.spec.set_pitch_smooth_tau(value);
-                        group.pending_update.pitch_smooth_tau = Some(value);
+                        group.pending_patch.pitch_smooth_tau = Some(value);
                     }
                     _ => ctx.warn_live_builder(handle.id, "pitch_smooth"),
                 }
@@ -1744,7 +1740,7 @@ impl ScriptHost {
                     }
                     GroupStatus::Live => {
                         group.spec.set_pitch_smooth_tau(value);
-                        group.pending_update.pitch_smooth_tau = Some(value);
+                        group.pending_patch.pitch_smooth_tau = Some(value);
                     }
                     _ => ctx.warn_live_builder(handle.id, "pitch_smooth"),
                 }
@@ -1767,7 +1763,7 @@ impl ScriptHost {
                     GroupStatus::Draft => group.spec.set_exploration(value),
                     GroupStatus::Live => {
                         group.spec.set_exploration(value);
-                        group.pending_update.exploration = Some(value);
+                        group.pending_patch.exploration = Some(value);
                     }
                     _ => ctx.warn_live_builder(handle.id, "exploration"),
                 }
@@ -1790,7 +1786,7 @@ impl ScriptHost {
                     GroupStatus::Draft => group.spec.set_exploration(value),
                     GroupStatus::Live => {
                         group.spec.set_exploration(value);
-                        group.pending_update.exploration = Some(value);
+                        group.pending_patch.exploration = Some(value);
                     }
                     _ => ctx.warn_live_builder(handle.id, "exploration"),
                 }
@@ -1813,7 +1809,7 @@ impl ScriptHost {
                     GroupStatus::Draft => group.spec.set_persistence(value),
                     GroupStatus::Live => {
                         group.spec.set_persistence(value);
-                        group.pending_update.persistence = Some(value);
+                        group.pending_patch.persistence = Some(value);
                     }
                     _ => ctx.warn_live_builder(handle.id, "persistence"),
                 }
@@ -1836,7 +1832,7 @@ impl ScriptHost {
                     GroupStatus::Draft => group.spec.set_persistence(value),
                     GroupStatus::Live => {
                         group.spec.set_persistence(value);
-                        group.pending_update.persistence = Some(value);
+                        group.pending_patch.persistence = Some(value);
                     }
                     _ => ctx.warn_live_builder(handle.id, "persistence"),
                 }
@@ -1861,9 +1857,9 @@ impl ScriptHost {
                     GroupStatus::Draft => group.spec.set_crowding(strength, sigma_cents),
                     GroupStatus::Live => {
                         group.spec.set_crowding(strength, sigma_cents);
-                        group.pending_update.crowding_strength = Some(strength);
-                        group.pending_update.crowding_sigma_cents = Some(sigma_cents);
-                        group.pending_update.crowding_sigma_from_roughness = Some(false);
+                        group.pending_patch.crowding_strength = Some(strength);
+                        group.pending_patch.crowding_sigma_cents = Some(sigma_cents);
+                        group.pending_patch.crowding_sigma_from_roughness = Some(false);
                     }
                     _ => ctx.warn_live_builder(handle.id, "crowding"),
                 }
@@ -1890,9 +1886,9 @@ impl ScriptHost {
                     GroupStatus::Draft => group.spec.set_crowding(strength, sigma_cents),
                     GroupStatus::Live => {
                         group.spec.set_crowding(strength, sigma_cents);
-                        group.pending_update.crowding_strength = Some(strength);
-                        group.pending_update.crowding_sigma_cents = Some(sigma_cents);
-                        group.pending_update.crowding_sigma_from_roughness = Some(false);
+                        group.pending_patch.crowding_strength = Some(strength);
+                        group.pending_patch.crowding_sigma_cents = Some(sigma_cents);
+                        group.pending_patch.crowding_sigma_from_roughness = Some(false);
                     }
                     _ => ctx.warn_live_builder(handle.id, "crowding"),
                 }
@@ -1919,9 +1915,9 @@ impl ScriptHost {
                     GroupStatus::Draft => group.spec.set_crowding(strength, sigma_cents),
                     GroupStatus::Live => {
                         group.spec.set_crowding(strength, sigma_cents);
-                        group.pending_update.crowding_strength = Some(strength);
-                        group.pending_update.crowding_sigma_cents = Some(sigma_cents);
-                        group.pending_update.crowding_sigma_from_roughness = Some(false);
+                        group.pending_patch.crowding_strength = Some(strength);
+                        group.pending_patch.crowding_sigma_cents = Some(sigma_cents);
+                        group.pending_patch.crowding_sigma_from_roughness = Some(false);
                     }
                     _ => ctx.warn_live_builder(handle.id, "crowding"),
                 }
@@ -1946,8 +1942,8 @@ impl ScriptHost {
                     GroupStatus::Draft => group.spec.set_crowding_auto_sigma(strength),
                     GroupStatus::Live => {
                         group.spec.set_crowding_auto_sigma(strength);
-                        group.pending_update.crowding_strength = Some(strength);
-                        group.pending_update.crowding_sigma_from_roughness = Some(true);
+                        group.pending_patch.crowding_strength = Some(strength);
+                        group.pending_patch.crowding_sigma_from_roughness = Some(true);
                     }
                     _ => ctx.warn_live_builder(handle.id, "crowding"),
                 }
@@ -1974,9 +1970,9 @@ impl ScriptHost {
                     GroupStatus::Draft => group.spec.set_crowding(strength, sigma_cents),
                     GroupStatus::Live => {
                         group.spec.set_crowding(strength, sigma_cents);
-                        group.pending_update.crowding_strength = Some(strength);
-                        group.pending_update.crowding_sigma_cents = Some(sigma_cents);
-                        group.pending_update.crowding_sigma_from_roughness = Some(false);
+                        group.pending_patch.crowding_strength = Some(strength);
+                        group.pending_patch.crowding_sigma_cents = Some(sigma_cents);
+                        group.pending_patch.crowding_sigma_from_roughness = Some(false);
                     }
                     _ => ctx.warn_live_builder(handle.id, "crowding"),
                 }
@@ -1999,8 +1995,8 @@ impl ScriptHost {
                     GroupStatus::Draft => group.spec.set_crowding_auto_sigma(strength),
                     GroupStatus::Live => {
                         group.spec.set_crowding_auto_sigma(strength);
-                        group.pending_update.crowding_strength = Some(strength);
-                        group.pending_update.crowding_sigma_from_roughness = Some(true);
+                        group.pending_patch.crowding_strength = Some(strength);
+                        group.pending_patch.crowding_sigma_from_roughness = Some(true);
                     }
                     _ => ctx.warn_live_builder(handle.id, "crowding"),
                 }
@@ -2058,7 +2054,7 @@ impl ScriptHost {
                     GroupStatus::Draft => group.spec.set_leave_self_out(enabled),
                     GroupStatus::Live => {
                         group.spec.set_leave_self_out(enabled);
-                        group.pending_update.leave_self_out = Some(enabled);
+                        group.pending_patch.leave_self_out = Some(enabled);
                     }
                     _ => ctx.warn_live_builder(handle.id, "leave_self_out"),
                 }
@@ -2078,7 +2074,7 @@ impl ScriptHost {
                     GroupStatus::Draft => group.spec.set_leave_self_out(enabled),
                     GroupStatus::Live => {
                         group.spec.set_leave_self_out(enabled);
-                        group.pending_update.leave_self_out = Some(enabled);
+                        group.pending_patch.leave_self_out = Some(enabled);
                     }
                     _ => ctx.warn_live_builder(handle.id, "loo"),
                 }
@@ -2101,7 +2097,7 @@ impl ScriptHost {
                     GroupStatus::Draft => group.spec.set_anneal_temp(value),
                     GroupStatus::Live => {
                         group.spec.set_anneal_temp(value);
-                        group.pending_update.anneal_temp = Some(value);
+                        group.pending_patch.anneal_temp = Some(value);
                     }
                     _ => ctx.warn_live_builder(handle.id, "anneal_temp"),
                 }
@@ -2124,7 +2120,7 @@ impl ScriptHost {
                     GroupStatus::Draft => group.spec.set_anneal_temp(value),
                     GroupStatus::Live => {
                         group.spec.set_anneal_temp(value);
-                        group.pending_update.anneal_temp = Some(value);
+                        group.pending_patch.anneal_temp = Some(value);
                     }
                     _ => ctx.warn_live_builder(handle.id, "anneal_temp"),
                 }
@@ -2145,7 +2141,7 @@ impl ScriptHost {
                     GroupStatus::Draft => group.spec.set_move_cost_coeff(value),
                     GroupStatus::Live => {
                         group.spec.set_move_cost_coeff(value);
-                        group.pending_update.move_cost_coeff = Some(value);
+                        group.pending_patch.move_cost_coeff = Some(value);
                     }
                     _ => ctx.warn_live_builder(handle.id, "move_cost"),
                 }
@@ -2168,7 +2164,7 @@ impl ScriptHost {
                     GroupStatus::Draft => group.spec.set_move_cost_coeff(value),
                     GroupStatus::Live => {
                         group.spec.set_move_cost_coeff(value);
-                        group.pending_update.move_cost_coeff = Some(value);
+                        group.pending_patch.move_cost_coeff = Some(value);
                     }
                     _ => ctx.warn_live_builder(handle.id, "move_cost"),
                 }
@@ -2194,7 +2190,7 @@ impl ScriptHost {
                     GroupStatus::Draft => group.spec.set_improvement_threshold(value),
                     GroupStatus::Live => {
                         group.spec.set_improvement_threshold(value);
-                        group.pending_update.improvement_threshold = Some(value);
+                        group.pending_patch.improvement_threshold = Some(value);
                     }
                     _ => ctx.warn_live_builder(handle.id, "improvement_threshold"),
                 }
@@ -2220,7 +2216,7 @@ impl ScriptHost {
                     GroupStatus::Draft => group.spec.set_improvement_threshold(value),
                     GroupStatus::Live => {
                         group.spec.set_improvement_threshold(value);
-                        group.pending_update.improvement_threshold = Some(value);
+                        group.pending_patch.improvement_threshold = Some(value);
                     }
                     _ => ctx.warn_live_builder(handle.id, "improvement_threshold"),
                 }
@@ -2243,7 +2239,7 @@ impl ScriptHost {
                     GroupStatus::Draft => group.spec.set_proposal_interval_sec(value),
                     GroupStatus::Live => {
                         group.spec.set_proposal_interval_sec(value);
-                        group.pending_update.proposal_interval_sec = Some(value);
+                        group.pending_patch.proposal_interval_sec = Some(value);
                     }
                     _ => ctx.warn_live_builder(handle.id, "proposal_interval"),
                 }
@@ -2266,7 +2262,7 @@ impl ScriptHost {
                     GroupStatus::Draft => group.spec.set_proposal_interval_sec(value),
                     GroupStatus::Live => {
                         group.spec.set_proposal_interval_sec(value);
-                        group.pending_update.proposal_interval_sec = Some(value);
+                        group.pending_patch.proposal_interval_sec = Some(value);
                     }
                     _ => ctx.warn_live_builder(handle.id, "proposal_interval"),
                 }
@@ -2288,8 +2284,8 @@ impl ScriptHost {
                     GroupStatus::Draft => group.spec.set_global_peaks(count, 0.0),
                     GroupStatus::Live => {
                         group.spec.set_global_peaks(count, 0.0);
-                        group.pending_update.global_peak_count = Some(count);
-                        group.pending_update.global_peak_min_sep_cents = Some(0.0);
+                        group.pending_patch.global_peak_count = Some(count);
+                        group.pending_patch.global_peak_min_sep_cents = Some(0.0);
                     }
                     _ => ctx.warn_live_builder(handle.id, "global_peaks"),
                 }
@@ -2315,8 +2311,8 @@ impl ScriptHost {
                     GroupStatus::Draft => group.spec.set_global_peaks(count, min_sep),
                     GroupStatus::Live => {
                         group.spec.set_global_peaks(count, min_sep);
-                        group.pending_update.global_peak_count = Some(count);
-                        group.pending_update.global_peak_min_sep_cents = Some(min_sep);
+                        group.pending_patch.global_peak_count = Some(count);
+                        group.pending_patch.global_peak_min_sep_cents = Some(min_sep);
                     }
                     _ => ctx.warn_live_builder(handle.id, "global_peaks"),
                 }
@@ -2342,8 +2338,8 @@ impl ScriptHost {
                     GroupStatus::Draft => group.spec.set_global_peaks(count, min_sep),
                     GroupStatus::Live => {
                         group.spec.set_global_peaks(count, min_sep);
-                        group.pending_update.global_peak_count = Some(count);
-                        group.pending_update.global_peak_min_sep_cents = Some(min_sep);
+                        group.pending_patch.global_peak_count = Some(count);
+                        group.pending_patch.global_peak_min_sep_cents = Some(min_sep);
                     }
                     _ => ctx.warn_live_builder(handle.id, "global_peaks"),
                 }
@@ -2365,8 +2361,8 @@ impl ScriptHost {
                     GroupStatus::Draft => group.spec.set_ratio_candidates(count),
                     GroupStatus::Live => {
                         group.spec.set_ratio_candidates(count);
-                        group.pending_update.ratio_candidate_count = Some(count);
-                        group.pending_update.use_ratio_candidates = Some(count > 0);
+                        group.pending_patch.ratio_candidate_count = Some(count);
+                        group.pending_patch.use_ratio_candidates = Some(count > 0);
                     }
                     _ => ctx.warn_live_builder(handle.id, "ratio_candidates"),
                 }
@@ -2402,7 +2398,7 @@ impl ScriptHost {
                     GroupStatus::Draft => group.spec.control.set_move_cost_time_scale(value),
                     GroupStatus::Live => {
                         group.spec.control.set_move_cost_time_scale(value);
-                        group.pending_update.move_cost_time_scale = Some(value);
+                        group.pending_patch.move_cost_time_scale = Some(value);
                     }
                     _ => ctx.warn_live_builder(handle.id, "move_cost_time_scale"),
                 }
@@ -2427,7 +2423,7 @@ impl ScriptHost {
                     GroupStatus::Draft => group.spec.set_leave_self_out_harmonics(value),
                     GroupStatus::Live => {
                         group.spec.set_leave_self_out_harmonics(value);
-                        group.pending_update.leave_self_out_harmonics = Some(value);
+                        group.pending_patch.leave_self_out_harmonics = Some(value);
                     }
                     _ => ctx.warn_live_builder(handle.id, "leave_self_out_harmonics"),
                 }
@@ -2458,7 +2454,7 @@ impl ScriptHost {
                     GroupStatus::Draft => group.spec.control.set_pitch_apply_mode(mode),
                     GroupStatus::Live => {
                         group.spec.control.set_pitch_apply_mode(mode);
-                        group.pending_update.pitch_apply_mode = Some(mode);
+                        group.pending_patch.pitch_apply_mode = Some(mode);
                     }
                     _ => ctx.warn_live_builder(handle.id, "pitch_apply_mode"),
                 }
@@ -2489,7 +2485,7 @@ impl ScriptHost {
                     GroupStatus::Draft => group.spec.control.set_pitch_apply_mode(mode),
                     GroupStatus::Live => {
                         group.spec.control.set_pitch_apply_mode(mode);
-                        group.pending_update.pitch_apply_mode = Some(mode);
+                        group.pending_patch.pitch_apply_mode = Some(mode);
                     }
                     _ => ctx.warn_live_builder(handle.id, "pitch_apply"),
                 }
@@ -2512,7 +2508,7 @@ impl ScriptHost {
                     GroupStatus::Draft => group.spec.set_pitch_glide_tau_sec(value),
                     GroupStatus::Live => {
                         group.spec.set_pitch_glide_tau_sec(value);
-                        group.pending_update.pitch_glide_tau_sec = Some(value);
+                        group.pending_patch.pitch_glide_tau_sec = Some(value);
                     }
                     _ => ctx.warn_live_builder(handle.id, "pitch_glide"),
                 }
@@ -2535,7 +2531,7 @@ impl ScriptHost {
                     GroupStatus::Draft => group.spec.set_pitch_glide_tau_sec(value),
                     GroupStatus::Live => {
                         group.spec.set_pitch_glide_tau_sec(value);
-                        group.pending_update.pitch_glide_tau_sec = Some(value);
+                        group.pending_patch.pitch_glide_tau_sec = Some(value);
                     }
                     _ => ctx.warn_live_builder(handle.id, "pitch_glide"),
                 }
@@ -2657,8 +2653,8 @@ impl ScriptHost {
                     }
                     GroupStatus::Live => {
                         group.spec.set_timbre(brightness, width);
-                        group.pending_update.timbre_brightness = Some(brightness);
-                        group.pending_update.timbre_width = Some(width);
+                        group.pending_patch.timbre_brightness = Some(brightness);
+                        group.pending_patch.timbre_width = Some(width);
                     }
                     _ => ctx.warn_live_builder(handle.id, "timbre"),
                 }
@@ -3145,7 +3141,7 @@ mod tests {
         );
         let mut release_time = None;
         for (time, action) in action_times(&scenario) {
-            if matches!(action, Action::Release { .. }) {
+            if matches!(action, Action::ReleaseGroup { .. }) {
                 release_time = Some(time);
             }
         }
@@ -3170,7 +3166,7 @@ mod tests {
         let mut release_tail: f32 = 0.0;
         for event in &scenario.events {
             for action in &event.actions {
-                if let Action::Release { fade_sec, .. } = action {
+                if let Action::ReleaseGroup { fade_sec, .. } = action {
                     release_tail = release_tail.max(event.time + fade_sec);
                 }
             }
@@ -3499,8 +3495,8 @@ mod tests {
             .iter()
             .flat_map(|event| event.actions.iter())
         {
-            if let Action::Update { update, .. } = action
-                && update.landscape_weight == Some(0.4)
+            if let Action::UpdateGroup { patch, .. } = action
+                && patch.landscape_weight == Some(0.4)
             {
                 saw_update = true;
                 break;
@@ -3530,7 +3526,7 @@ mod tests {
             .flat_map(|event| event.actions.iter())
         {
             match action {
-                Action::Spawn { .. } | Action::Update { .. } => {
+                Action::Spawn { .. } | Action::UpdateGroup { .. } => {
                     pop.apply_action(action.clone(), &landscape, None);
                 }
                 _ => {}
@@ -3561,7 +3557,7 @@ mod tests {
             .flat_map(|event| event.actions.iter())
         {
             match action {
-                Action::Spawn { .. } | Action::Update { .. } => {
+                Action::Spawn { .. } | Action::UpdateGroup { .. } => {
                     pop.apply_action(action.clone(), &landscape, None);
                 }
                 _ => {}
@@ -3700,7 +3696,7 @@ mod tests {
             .flat_map(|event| event.actions.iter())
         {
             match action {
-                Action::Spawn { .. } | Action::Update { .. } => {
+                Action::Spawn { .. } | Action::UpdateGroup { .. } => {
                     pop.apply_action(action.clone(), &landscape, None);
                 }
                 _ => {}
@@ -3729,9 +3725,9 @@ mod tests {
             .iter()
             .flat_map(|event| event.actions.iter())
         {
-            if let Action::Update { update, .. } = action
+            if let Action::UpdateGroup { patch, .. } = action
                 && let (Some(strength), Some(sigma)) =
-                    (update.crowding_strength, update.crowding_sigma_cents)
+                    (patch.crowding_strength, patch.crowding_sigma_cents)
             {
                 assert!((strength - 1.0).abs() <= 1e-6);
                 assert!((sigma - 35.0).abs() <= 1e-6);
@@ -3830,7 +3826,7 @@ mod tests {
             .flat_map(|event| event.actions.iter())
         {
             match action {
-                Action::Spawn { .. } | Action::Update { .. } => {
+                Action::Spawn { .. } | Action::UpdateGroup { .. } => {
                     pop.apply_action(action.clone(), &landscape, None);
                 }
                 _ => {}
@@ -3891,7 +3887,7 @@ mod tests {
             .flat_map(|event| event.actions.iter())
         {
             match action {
-                Action::Spawn { .. } | Action::Update { .. } => {
+                Action::Spawn { .. } | Action::UpdateGroup { .. } => {
                     pop.apply_action(action.clone(), &landscape, None);
                 }
                 _ => {}
@@ -3982,7 +3978,7 @@ mod tests {
             .flat_map(|event| event.actions.iter())
         {
             match action {
-                Action::Spawn { .. } | Action::Update { .. } => {
+                Action::Spawn { .. } | Action::UpdateGroup { .. } => {
                     pop.apply_action(action.clone(), &landscape, None);
                 }
                 _ => {}
@@ -4230,7 +4226,7 @@ mod tests {
                 Action::Spawn { group_id, .. } => {
                     *spawn_by_group.entry(*group_id).or_insert(0) += 1;
                 }
-                Action::Release { group_id, .. } => {
+                Action::ReleaseGroup { group_id, .. } => {
                     *release_by_group.entry(*group_id).or_insert(0) += 1;
                 }
                 _ => {}

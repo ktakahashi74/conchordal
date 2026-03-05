@@ -52,9 +52,8 @@ fn population_spawn_and_release_removes_agent() {
     assert_eq!(pop.individuals.len(), 1);
 
     pop.apply_action(
-        Action::Release {
+        Action::ReleaseGroup {
             group_id: 1,
-            ids: vec![1],
             fade_sec: 0.05,
         },
         &landscape,

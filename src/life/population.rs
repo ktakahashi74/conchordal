@@ -590,10 +590,10 @@ impl Population {
                     0.0,
                 ));
             }
-            if let Some(window) = group.plv_window {
-                if let AnyArticulationCore::Entrain(ref mut core) = spawned.articulation.core {
-                    core.enable_plv(window);
-                }
+            if let Some(window) = group.plv_window
+                && let AnyArticulationCore::Entrain(ref mut core) = spawned.articulation.core
+            {
+                core.enable_plv(window);
             }
         }
         let body = spawned.body_snapshot();
@@ -717,10 +717,10 @@ impl Population {
             .iter_mut()
             .filter(|a| a.metadata.group_id == group_id)
         {
-            if let AnyArticulationCore::Entrain(ref mut core) = agent.articulation.core {
-                if core.sliding_plv.is_none() {
-                    core.enable_plv(window);
-                }
+            if let AnyArticulationCore::Entrain(ref mut core) = agent.articulation.core
+                && core.sliding_plv.is_none()
+            {
+                core.enable_plv(window);
             }
         }
     }
@@ -930,11 +930,7 @@ impl Population {
                 }
                 self.ensure_group_state(group_id, spec, strategy, total);
             }
-            Action::Update {
-                group_id,
-                ids: _ids,
-                update,
-            } => {
+            Action::UpdateGroup { group_id, patch } => {
                 // Group-wide runtime semantics:
                 // updates apply to all current members with matching group_id.
                 let mut updated = 0usize;
@@ -943,7 +939,7 @@ impl Population {
                     .iter_mut()
                     .filter(|agent| agent.metadata.group_id == group_id)
                 {
-                    if let Err(err) = agent.apply_update(&update) {
+                    if let Err(err) = agent.apply_patch(&patch) {
                         warn!(
                             "Update: agent {} (group {group_id}) rejected update: {err}",
                             agent.id()
@@ -955,13 +951,9 @@ impl Population {
                 if updated == 0 {
                     warn!("Update: no active members found for group {group_id}");
                 }
-                self.apply_group_update(group_id, &update);
+                self.apply_group_update(group_id, &patch);
             }
-            Action::Release {
-                group_id,
-                ids: _ids,
-                fade_sec,
-            } => {
+            Action::ReleaseGroup { group_id, fade_sec } => {
                 // Group-wide runtime semantics:
                 // release applies to all current members with matching group_id.
                 let fade_sec = fade_sec.max(0.0);
@@ -1067,50 +1059,44 @@ impl Population {
             return;
         }
         let mut rhythms = landscape.rhythm;
+        let mut freq_snapshot: Vec<(u64, u64, f32)> = Vec::new();
+        let mut group_visibility: BTreeMap<u64, (bool, bool)> = BTreeMap::new();
+        let mut neighbor_pitch_log2 = Vec::new();
+        let mut neighbor_salience = Vec::new();
         for _ in 0..steps {
             let crowding_active = self.individuals.iter().any(|agent| {
                 agent.is_alive() && agent.effective_control.pitch.crowding_strength > 0.0
             });
-            let freq_snapshot = if crowding_active {
+            freq_snapshot.clear();
+            group_visibility.clear();
+            if crowding_active {
                 // Snapshot alive frequencies once per substep to avoid order-dependent updates.
-                let mut snapshot = Vec::with_capacity(self.individuals.len());
+                freq_snapshot.reserve(self.individuals.len());
                 for agent in &self.individuals {
                     if agent.is_alive() {
-                        snapshot.push((
+                        freq_snapshot.push((
                             agent.id(),
                             agent.metadata.group_id,
                             agent.body.base_freq_hz().max(1.0).log2(),
                         ));
                     }
                 }
-                Some(snapshot)
-            } else {
-                None
-            };
-            let group_visibility: BTreeMap<u64, (bool, bool)> = if crowding_active {
-                self.groups
-                    .iter()
-                    .map(|(&group_id, group)| {
-                        (
-                            group_id,
-                            (group.crowding_target_same, group.crowding_target_other),
-                        )
-                    })
-                    .collect()
-            } else {
-                BTreeMap::new()
-            };
-            let mut neighbor_pitch_log2 = Vec::new();
-            let mut neighbor_salience = Vec::new();
+                group_visibility.extend(self.groups.iter().map(|(&group_id, group)| {
+                    (
+                        group_id,
+                        (group.crowding_target_same, group.crowding_target_other),
+                    )
+                }));
+            }
             for agent in self.individuals.iter_mut() {
                 if agent.is_alive() {
                     let actor_group_id = agent.metadata.group_id;
-                    if let Some(snapshot) = freq_snapshot.as_ref() {
+                    if crowding_active {
                         neighbor_pitch_log2.clear();
                         neighbor_salience.clear();
-                        neighbor_pitch_log2.reserve(snapshot.len());
-                        neighbor_salience.reserve(snapshot.len());
-                        for &(id, neighbor_group_id, log2) in snapshot {
+                        neighbor_pitch_log2.reserve(freq_snapshot.len());
+                        neighbor_salience.reserve(freq_snapshot.len());
+                        for &(id, neighbor_group_id, log2) in &freq_snapshot {
                             if id != agent.id() {
                                 let visible = group_visibility
                                     .get(&neighbor_group_id)
@@ -1130,12 +1116,12 @@ impl Population {
                             }
                         }
                     }
-                    let neighbors = if freq_snapshot.is_some() {
+                    let neighbors = if crowding_active {
                         neighbor_pitch_log2.as_slice()
                     } else {
                         &[]
                     };
-                    let neighbor_weights = if freq_snapshot.is_some() {
+                    let neighbor_weights = if crowding_active {
                         neighbor_salience.as_slice()
                     } else {
                         &[]
@@ -1799,10 +1785,9 @@ mod tests {
             ..ControlUpdate::default()
         };
         pop.apply_action(
-            Action::Update {
+            Action::UpdateGroup {
                 group_id: 1,
-                ids: vec![10],
-                update,
+                patch: update,
             },
             &landscape,
             None,
@@ -1870,9 +1855,8 @@ mod tests {
             None,
         );
         pop.apply_action(
-            Action::Release {
+            Action::ReleaseGroup {
                 group_id: 1,
-                ids: vec![21],
                 fade_sec: 0.05,
             },
             &landscape,
@@ -2122,9 +2106,8 @@ mod tests {
         let respawned_id = respawned_id.expect("respawned member should exist");
 
         pop.apply_action(
-            Action::Release {
+            Action::ReleaseGroup {
                 group_id: 10,
-                ids: vec![30],
                 fade_sec: 0.05,
             },
             &landscape,
@@ -2182,10 +2165,9 @@ mod tests {
         let respawned_id = respawned_id.expect("respawned member should exist");
 
         pop.apply_action(
-            Action::Update {
+            Action::UpdateGroup {
                 group_id: 11,
-                ids: vec![40],
-                update: ControlUpdate {
+                patch: ControlUpdate {
                     amp: Some(0.17),
                     ..ControlUpdate::default()
                 },
@@ -2229,10 +2211,9 @@ mod tests {
             None,
         );
         pop.apply_action(
-            Action::Update {
+            Action::UpdateGroup {
                 group_id: 91,
-                ids: vec![910],
-                update: ControlUpdate {
+                patch: ControlUpdate {
                     landscape_weight: Some(0.73),
                     ..ControlUpdate::default()
                 },
@@ -2287,9 +2268,8 @@ mod tests {
             None,
         );
         pop.apply_action(
-            Action::Release {
+            Action::ReleaseGroup {
                 group_id: 92,
-                ids: vec![920],
                 fade_sec: 0.01,
             },
             &landscape,

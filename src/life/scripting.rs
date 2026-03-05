@@ -792,6 +792,149 @@ impl ScriptContext {
     }
 }
 
+type SpeciesNumericSetter = fn(&mut SpeciesSpec, f32);
+type GroupSpecNumericSetter = fn(&mut SpeciesSpec, f32);
+type GroupPatchNumericSetter = fn(&mut ControlUpdate, f32);
+type GroupDraftHook = fn(&mut GroupState);
+
+fn register_species_numeric_overloads(
+    engine: &mut Engine,
+    name: &'static str,
+    setter: SpeciesNumericSetter,
+) {
+    engine.register_fn(name, move |mut species: SpeciesHandle, value: FLOAT| {
+        setter(&mut species.spec, value as f32);
+        species
+    });
+    engine.register_fn(name, move |mut species: SpeciesHandle, value: INT| {
+        setter(&mut species.spec, value as f32);
+        species
+    });
+}
+
+fn apply_group_numeric_patch(
+    ctx_arc: &Arc<Mutex<ScriptContext>>,
+    handle: GroupHandle,
+    label: &'static str,
+    value: f32,
+    spec_setter: GroupSpecNumericSetter,
+    patch_setter: GroupPatchNumericSetter,
+    draft_hook: Option<GroupDraftHook>,
+) -> Result<GroupHandle, Box<EvalAltResult>> {
+    let mut ctx = ctx_arc.lock().expect("lock script context");
+    let Some(group) = ctx.groups.get_mut(&handle.id) else {
+        warn!("{label} ignored for unknown group {}", handle.id);
+        return Ok(handle);
+    };
+    match group.status {
+        GroupStatus::Draft => {
+            if let Some(hook) = draft_hook {
+                hook(group);
+            }
+            spec_setter(&mut group.spec, value);
+        }
+        GroupStatus::Live => {
+            spec_setter(&mut group.spec, value);
+            patch_setter(&mut group.pending_patch, value);
+        }
+        GroupStatus::Released | GroupStatus::Dropped => {
+            warn!("{label} ignored for inactive group {}", handle.id);
+        }
+    }
+    Ok(handle)
+}
+
+fn register_group_numeric_overloads(
+    engine: &mut Engine,
+    ctx: Arc<Mutex<ScriptContext>>,
+    name: &'static str,
+    spec_setter: GroupSpecNumericSetter,
+    patch_setter: GroupPatchNumericSetter,
+    draft_hook: Option<GroupDraftHook>,
+) {
+    let ctx_float = ctx.clone();
+    engine.register_fn(
+        name,
+        move |handle: GroupHandle, value: FLOAT| -> Result<GroupHandle, Box<EvalAltResult>> {
+            apply_group_numeric_patch(
+                &ctx_float,
+                handle,
+                name,
+                value as f32,
+                spec_setter,
+                patch_setter,
+                draft_hook,
+            )
+        },
+    );
+    engine.register_fn(
+        name,
+        move |handle: GroupHandle, value: INT| -> Result<GroupHandle, Box<EvalAltResult>> {
+            apply_group_numeric_patch(
+                &ctx,
+                handle,
+                name,
+                value as f32,
+                spec_setter,
+                patch_setter,
+                draft_hook,
+            )
+        },
+    );
+}
+
+fn patch_amp(update: &mut ControlUpdate, value: f32) {
+    update.amp = Some(value);
+}
+
+fn patch_freq(update: &mut ControlUpdate, value: f32) {
+    update.freq = Some(value);
+}
+
+fn patch_landscape_weight(update: &mut ControlUpdate, value: f32) {
+    update.landscape_weight = Some(value);
+}
+
+fn patch_continuous_drive(update: &mut ControlUpdate, value: f32) {
+    update.continuous_drive = Some(value);
+}
+
+fn patch_pitch_smooth_tau(update: &mut ControlUpdate, value: f32) {
+    update.pitch_smooth_tau = Some(value);
+}
+
+fn patch_exploration(update: &mut ControlUpdate, value: f32) {
+    update.exploration = Some(value);
+}
+
+fn patch_persistence(update: &mut ControlUpdate, value: f32) {
+    update.persistence = Some(value);
+}
+
+fn patch_anneal_temp(update: &mut ControlUpdate, value: f32) {
+    update.anneal_temp = Some(value);
+}
+
+fn patch_move_cost_coeff(update: &mut ControlUpdate, value: f32) {
+    update.move_cost_coeff = Some(value);
+}
+
+fn patch_improvement_threshold(update: &mut ControlUpdate, value: f32) {
+    update.improvement_threshold = Some(value);
+}
+
+fn patch_proposal_interval(update: &mut ControlUpdate, value: f32) {
+    update.proposal_interval_sec = Some(value);
+}
+
+fn patch_pitch_glide_tau(update: &mut ControlUpdate, value: f32) {
+    update.pitch_glide_tau_sec = Some(value);
+}
+
+fn draft_clear_strategy(group: &mut GroupState) {
+    group.strategy = None;
+}
+
 pub struct ScriptHost;
 
 impl ScriptHost {
@@ -861,74 +1004,33 @@ impl ScriptHost {
 
         engine.register_fn("derive", |parent: SpeciesHandle| parent);
 
-        engine.register_fn("amp", |mut species: SpeciesHandle, value: FLOAT| {
-            species.spec.set_amp(value as f32);
-            species
-        });
-        engine.register_fn("amp", |mut species: SpeciesHandle, value: INT| {
-            species.spec.set_amp(value as f32);
-            species
-        });
-        engine.register_fn("freq", |mut species: SpeciesHandle, value: FLOAT| {
-            species.spec.set_freq(value as f32);
-            species
-        });
-        engine.register_fn("freq", |mut species: SpeciesHandle, value: INT| {
-            species.spec.set_freq(value as f32);
-            species
-        });
-        engine.register_fn(
+        register_species_numeric_overloads(&mut engine, "amp", SpeciesSpec::set_amp);
+        register_species_numeric_overloads(&mut engine, "freq", SpeciesSpec::set_freq);
+        register_species_numeric_overloads(
+            &mut engine,
             "landscape_weight",
-            |mut species: SpeciesHandle, value: FLOAT| {
-                species.spec.set_landscape_weight(value as f32);
-                species
-            },
+            SpeciesSpec::set_landscape_weight,
         );
-        engine.register_fn(
-            "landscape_weight",
-            |mut species: SpeciesHandle, value: INT| {
-                species.spec.set_landscape_weight(value as f32);
-                species
-            },
-        );
-        engine.register_fn(
+        register_species_numeric_overloads(
+            &mut engine,
             "sustain_drive",
-            |mut species: SpeciesHandle, value: FLOAT| {
-                species.spec.set_continuous_drive(value as f32);
-                species
-            },
+            SpeciesSpec::set_continuous_drive,
         );
-        engine.register_fn("sustain_drive", |mut species: SpeciesHandle, value: INT| {
-            species.spec.set_continuous_drive(value as f32);
-            species
-        });
-        engine.register_fn(
+        register_species_numeric_overloads(
+            &mut engine,
             "pitch_smooth",
-            |mut species: SpeciesHandle, value: FLOAT| {
-                species.spec.set_pitch_smooth_tau(value as f32);
-                species
-            },
+            SpeciesSpec::set_pitch_smooth_tau,
         );
-        engine.register_fn("pitch_smooth", |mut species: SpeciesHandle, value: INT| {
-            species.spec.set_pitch_smooth_tau(value as f32);
-            species
-        });
-        engine.register_fn("exploration", |mut species: SpeciesHandle, value: FLOAT| {
-            species.spec.set_exploration(value as f32);
-            species
-        });
-        engine.register_fn("exploration", |mut species: SpeciesHandle, value: INT| {
-            species.spec.set_exploration(value as f32);
-            species
-        });
-        engine.register_fn("persistence", |mut species: SpeciesHandle, value: FLOAT| {
-            species.spec.set_persistence(value as f32);
-            species
-        });
-        engine.register_fn("persistence", |mut species: SpeciesHandle, value: INT| {
-            species.spec.set_persistence(value as f32);
-            species
-        });
+        register_species_numeric_overloads(
+            &mut engine,
+            "exploration",
+            SpeciesSpec::set_exploration,
+        );
+        register_species_numeric_overloads(
+            &mut engine,
+            "persistence",
+            SpeciesSpec::set_persistence,
+        );
         engine.register_fn(
             "crowding",
             |mut species: SpeciesHandle, strength: FLOAT, sigma_cents: FLOAT| {
@@ -993,49 +1095,25 @@ impl ScriptHost {
             species.spec.set_leave_self_out(enabled);
             species
         });
-        engine.register_fn("anneal_temp", |mut species: SpeciesHandle, value: FLOAT| {
-            species.spec.set_anneal_temp(value as f32);
-            species
-        });
-        engine.register_fn("anneal_temp", |mut species: SpeciesHandle, value: INT| {
-            species.spec.set_anneal_temp(value as f32);
-            species
-        });
-        engine.register_fn("move_cost", |mut species: SpeciesHandle, value: FLOAT| {
-            species.spec.set_move_cost_coeff(value as f32);
-            species
-        });
-        engine.register_fn("move_cost", |mut species: SpeciesHandle, value: INT| {
-            species.spec.set_move_cost_coeff(value as f32);
-            species
-        });
-        engine.register_fn(
+        register_species_numeric_overloads(
+            &mut engine,
+            "anneal_temp",
+            SpeciesSpec::set_anneal_temp,
+        );
+        register_species_numeric_overloads(
+            &mut engine,
+            "move_cost",
+            SpeciesSpec::set_move_cost_coeff,
+        );
+        register_species_numeric_overloads(
+            &mut engine,
             "improvement_threshold",
-            |mut species: SpeciesHandle, value: FLOAT| {
-                species.spec.set_improvement_threshold(value as f32);
-                species
-            },
+            SpeciesSpec::set_improvement_threshold,
         );
-        engine.register_fn(
-            "improvement_threshold",
-            |mut species: SpeciesHandle, value: INT| {
-                species.spec.set_improvement_threshold(value as f32);
-                species
-            },
-        );
-        engine.register_fn(
+        register_species_numeric_overloads(
+            &mut engine,
             "proposal_interval",
-            |mut species: SpeciesHandle, value: FLOAT| {
-                species.spec.set_proposal_interval_sec(value as f32);
-                species
-            },
-        );
-        engine.register_fn(
-            "proposal_interval",
-            |mut species: SpeciesHandle, value: INT| {
-                species.spec.set_proposal_interval_sec(value as f32);
-                species
-            },
+            SpeciesSpec::set_proposal_interval_sec,
         );
         engine.register_fn("global_peaks", |mut species: SpeciesHandle, count: INT| {
             species.spec.set_global_peaks(count, 0.0);
@@ -1087,14 +1165,11 @@ impl ScriptHost {
             species.spec.set_pitch_apply_mode(name);
             species
         });
-        engine.register_fn("pitch_glide", |mut species: SpeciesHandle, value: FLOAT| {
-            species.spec.set_pitch_glide_tau_sec(value as f32);
-            species
-        });
-        engine.register_fn("pitch_glide", |mut species: SpeciesHandle, value: INT| {
-            species.spec.set_pitch_glide_tau_sec(value as f32);
-            species
-        });
+        register_species_numeric_overloads(
+            &mut engine,
+            "pitch_glide",
+            SpeciesSpec::set_pitch_glide_tau_sec,
+        );
         engine.register_fn("pitch_mode", |mut species: SpeciesHandle, name: &str| {
             species.spec.set_pitch_mode(name);
             species
@@ -1503,341 +1578,61 @@ impl ScriptHost {
             end_freq: end as f32,
         });
 
-        let ctx_for_group_amp = ctx.clone();
-        engine.register_fn(
+        register_group_numeric_overloads(
+            &mut engine,
+            ctx.clone(),
             "amp",
-            move |handle: GroupHandle, value: FLOAT| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_amp.lock().expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("amp ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                let value = value as f32;
-                match group.status {
-                    GroupStatus::Draft => {
-                        group.spec.set_amp(value);
-                    }
-                    GroupStatus::Live => {
-                        group.spec.set_amp(value);
-                        group.pending_patch.amp = Some(value);
-                    }
-                    _ => ctx.warn_live_builder(handle.id, "amp"),
-                }
-                Ok(handle)
-            },
+            SpeciesSpec::set_amp,
+            patch_amp,
+            None,
         );
-        let ctx_for_group_amp_int = ctx.clone();
-        engine.register_fn(
-            "amp",
-            move |handle: GroupHandle, value: INT| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_amp_int.lock().expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("amp ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                let value = value as f32;
-                match group.status {
-                    GroupStatus::Draft => {
-                        group.spec.set_amp(value);
-                    }
-                    GroupStatus::Live => {
-                        group.spec.set_amp(value);
-                        group.pending_patch.amp = Some(value);
-                    }
-                    _ => ctx.warn_live_builder(handle.id, "amp"),
-                }
-                Ok(handle)
-            },
-        );
-        let ctx_for_group_freq = ctx.clone();
-        engine.register_fn(
+        register_group_numeric_overloads(
+            &mut engine,
+            ctx.clone(),
             "freq",
-            move |handle: GroupHandle, value: FLOAT| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_freq.lock().expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("freq ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                let value = value as f32;
-                match group.status {
-                    GroupStatus::Draft => {
-                        group.strategy = None;
-                        group.spec.set_freq(value);
-                    }
-                    GroupStatus::Live => {
-                        group.spec.set_freq(value);
-                        group.pending_patch.freq = Some(value);
-                    }
-                    _ => ctx.warn_live_builder(handle.id, "freq"),
-                }
-                Ok(handle)
-            },
+            SpeciesSpec::set_freq,
+            patch_freq,
+            Some(draft_clear_strategy),
         );
-        let ctx_for_group_freq_int = ctx.clone();
-        engine.register_fn(
-            "freq",
-            move |handle: GroupHandle, value: INT| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_freq_int.lock().expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("freq ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                let value = value as f32;
-                match group.status {
-                    GroupStatus::Draft => {
-                        group.strategy = None;
-                        group.spec.set_freq(value);
-                    }
-                    GroupStatus::Live => {
-                        group.spec.set_freq(value);
-                        group.pending_patch.freq = Some(value);
-                    }
-                    _ => ctx.warn_live_builder(handle.id, "freq"),
-                }
-                Ok(handle)
-            },
-        );
-        let ctx_for_group_landscape_weight = ctx.clone();
-        engine.register_fn(
+        register_group_numeric_overloads(
+            &mut engine,
+            ctx.clone(),
             "landscape_weight",
-            move |handle: GroupHandle, value: FLOAT| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_landscape_weight
-                    .lock()
-                    .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("landscape_weight ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                let value = value as f32;
-                match group.status {
-                    GroupStatus::Draft => {
-                        group.spec.set_landscape_weight(value);
-                    }
-                    GroupStatus::Live => {
-                        group.spec.set_landscape_weight(value);
-                        group.pending_patch.landscape_weight = Some(value);
-                    }
-                    _ => ctx.warn_live_builder(handle.id, "landscape_weight"),
-                }
-                Ok(handle)
-            },
+            SpeciesSpec::set_landscape_weight,
+            patch_landscape_weight,
+            None,
         );
-        let ctx_for_group_landscape_weight_int = ctx.clone();
-        engine.register_fn(
-            "landscape_weight",
-            move |handle: GroupHandle, value: INT| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_landscape_weight_int
-                    .lock()
-                    .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("landscape_weight ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                let value = value as f32;
-                match group.status {
-                    GroupStatus::Draft => {
-                        group.spec.set_landscape_weight(value);
-                    }
-                    GroupStatus::Live => {
-                        group.spec.set_landscape_weight(value);
-                        group.pending_patch.landscape_weight = Some(value);
-                    }
-                    _ => ctx.warn_live_builder(handle.id, "landscape_weight"),
-                }
-                Ok(handle)
-            },
-        );
-        let ctx_for_group_sustain_drive = ctx.clone();
-        engine.register_fn(
+        register_group_numeric_overloads(
+            &mut engine,
+            ctx.clone(),
             "sustain_drive",
-            move |handle: GroupHandle, value: FLOAT| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_sustain_drive
-                    .lock()
-                    .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("sustain_drive ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                let value = value as f32;
-                match group.status {
-                    GroupStatus::Draft => {
-                        group.spec.set_continuous_drive(value);
-                    }
-                    GroupStatus::Live => {
-                        group.spec.set_continuous_drive(value);
-                        group.pending_patch.continuous_drive = Some(value);
-                    }
-                    _ => ctx.warn_live_builder(handle.id, "sustain_drive"),
-                }
-                Ok(handle)
-            },
+            SpeciesSpec::set_continuous_drive,
+            patch_continuous_drive,
+            None,
         );
-        let ctx_for_group_sustain_drive_int = ctx.clone();
-        engine.register_fn(
-            "sustain_drive",
-            move |handle: GroupHandle, value: INT| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_sustain_drive_int
-                    .lock()
-                    .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("sustain_drive ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                let value = value as f32;
-                match group.status {
-                    GroupStatus::Draft => {
-                        group.spec.set_continuous_drive(value);
-                    }
-                    GroupStatus::Live => {
-                        group.spec.set_continuous_drive(value);
-                        group.pending_patch.continuous_drive = Some(value);
-                    }
-                    _ => ctx.warn_live_builder(handle.id, "sustain_drive"),
-                }
-                Ok(handle)
-            },
-        );
-        let ctx_for_group_pitch_smooth = ctx.clone();
-        engine.register_fn(
+        register_group_numeric_overloads(
+            &mut engine,
+            ctx.clone(),
             "pitch_smooth",
-            move |handle: GroupHandle, value: FLOAT| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_pitch_smooth
-                    .lock()
-                    .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("pitch_smooth ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                let value = value as f32;
-                match group.status {
-                    GroupStatus::Draft => {
-                        group.spec.set_pitch_smooth_tau(value);
-                    }
-                    GroupStatus::Live => {
-                        group.spec.set_pitch_smooth_tau(value);
-                        group.pending_patch.pitch_smooth_tau = Some(value);
-                    }
-                    _ => ctx.warn_live_builder(handle.id, "pitch_smooth"),
-                }
-                Ok(handle)
-            },
+            SpeciesSpec::set_pitch_smooth_tau,
+            patch_pitch_smooth_tau,
+            None,
         );
-        let ctx_for_group_pitch_smooth_int = ctx.clone();
-        engine.register_fn(
-            "pitch_smooth",
-            move |handle: GroupHandle, value: INT| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_pitch_smooth_int
-                    .lock()
-                    .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("pitch_smooth ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                let value = value as f32;
-                match group.status {
-                    GroupStatus::Draft => {
-                        group.spec.set_pitch_smooth_tau(value);
-                    }
-                    GroupStatus::Live => {
-                        group.spec.set_pitch_smooth_tau(value);
-                        group.pending_patch.pitch_smooth_tau = Some(value);
-                    }
-                    _ => ctx.warn_live_builder(handle.id, "pitch_smooth"),
-                }
-                Ok(handle)
-            },
-        );
-        let ctx_for_group_exploration = ctx.clone();
-        engine.register_fn(
+        register_group_numeric_overloads(
+            &mut engine,
+            ctx.clone(),
             "exploration",
-            move |handle: GroupHandle, value: FLOAT| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_exploration
-                    .lock()
-                    .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("exploration ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                let value = value as f32;
-                match group.status {
-                    GroupStatus::Draft => group.spec.set_exploration(value),
-                    GroupStatus::Live => {
-                        group.spec.set_exploration(value);
-                        group.pending_patch.exploration = Some(value);
-                    }
-                    _ => ctx.warn_live_builder(handle.id, "exploration"),
-                }
-                Ok(handle)
-            },
+            SpeciesSpec::set_exploration,
+            patch_exploration,
+            None,
         );
-        let ctx_for_group_exploration_int = ctx.clone();
-        engine.register_fn(
-            "exploration",
-            move |handle: GroupHandle, value: INT| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_exploration_int
-                    .lock()
-                    .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("exploration ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                let value = value as f32;
-                match group.status {
-                    GroupStatus::Draft => group.spec.set_exploration(value),
-                    GroupStatus::Live => {
-                        group.spec.set_exploration(value);
-                        group.pending_patch.exploration = Some(value);
-                    }
-                    _ => ctx.warn_live_builder(handle.id, "exploration"),
-                }
-                Ok(handle)
-            },
-        );
-        let ctx_for_group_persistence = ctx.clone();
-        engine.register_fn(
+        register_group_numeric_overloads(
+            &mut engine,
+            ctx.clone(),
             "persistence",
-            move |handle: GroupHandle, value: FLOAT| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_persistence
-                    .lock()
-                    .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("persistence ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                let value = value as f32;
-                match group.status {
-                    GroupStatus::Draft => group.spec.set_persistence(value),
-                    GroupStatus::Live => {
-                        group.spec.set_persistence(value);
-                        group.pending_patch.persistence = Some(value);
-                    }
-                    _ => ctx.warn_live_builder(handle.id, "persistence"),
-                }
-                Ok(handle)
-            },
-        );
-        let ctx_for_group_persistence_int = ctx.clone();
-        engine.register_fn(
-            "persistence",
-            move |handle: GroupHandle, value: INT| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_persistence_int
-                    .lock()
-                    .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("persistence ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                let value = value as f32;
-                match group.status {
-                    GroupStatus::Draft => group.spec.set_persistence(value),
-                    GroupStatus::Live => {
-                        group.spec.set_persistence(value);
-                        group.pending_patch.persistence = Some(value);
-                    }
-                    _ => ctx.warn_live_builder(handle.id, "persistence"),
-                }
-                Ok(handle)
-            },
+            SpeciesSpec::set_persistence,
+            patch_persistence,
+            None,
         );
         let ctx_for_group_crowding = ctx.clone();
         engine.register_fn(
@@ -2081,193 +1876,37 @@ impl ScriptHost {
                 Ok(handle)
             },
         );
-        let ctx_for_group_anneal_temp = ctx.clone();
-        engine.register_fn(
+        register_group_numeric_overloads(
+            &mut engine,
+            ctx.clone(),
             "anneal_temp",
-            move |handle: GroupHandle, value: FLOAT| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_anneal_temp
-                    .lock()
-                    .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("anneal_temp ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                let value = value as f32;
-                match group.status {
-                    GroupStatus::Draft => group.spec.set_anneal_temp(value),
-                    GroupStatus::Live => {
-                        group.spec.set_anneal_temp(value);
-                        group.pending_patch.anneal_temp = Some(value);
-                    }
-                    _ => ctx.warn_live_builder(handle.id, "anneal_temp"),
-                }
-                Ok(handle)
-            },
+            SpeciesSpec::set_anneal_temp,
+            patch_anneal_temp,
+            None,
         );
-        let ctx_for_group_anneal_temp_int = ctx.clone();
-        engine.register_fn(
-            "anneal_temp",
-            move |handle: GroupHandle, value: INT| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_anneal_temp_int
-                    .lock()
-                    .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("anneal_temp ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                let value = value as f32;
-                match group.status {
-                    GroupStatus::Draft => group.spec.set_anneal_temp(value),
-                    GroupStatus::Live => {
-                        group.spec.set_anneal_temp(value);
-                        group.pending_patch.anneal_temp = Some(value);
-                    }
-                    _ => ctx.warn_live_builder(handle.id, "anneal_temp"),
-                }
-                Ok(handle)
-            },
-        );
-        let ctx_for_group_move_cost = ctx.clone();
-        engine.register_fn(
+        register_group_numeric_overloads(
+            &mut engine,
+            ctx.clone(),
             "move_cost",
-            move |handle: GroupHandle, value: FLOAT| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_move_cost.lock().expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("move_cost ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                let value = value as f32;
-                match group.status {
-                    GroupStatus::Draft => group.spec.set_move_cost_coeff(value),
-                    GroupStatus::Live => {
-                        group.spec.set_move_cost_coeff(value);
-                        group.pending_patch.move_cost_coeff = Some(value);
-                    }
-                    _ => ctx.warn_live_builder(handle.id, "move_cost"),
-                }
-                Ok(handle)
-            },
+            SpeciesSpec::set_move_cost_coeff,
+            patch_move_cost_coeff,
+            None,
         );
-        let ctx_for_group_move_cost_int = ctx.clone();
-        engine.register_fn(
-            "move_cost",
-            move |handle: GroupHandle, value: INT| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_move_cost_int
-                    .lock()
-                    .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("move_cost ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                let value = value as f32;
-                match group.status {
-                    GroupStatus::Draft => group.spec.set_move_cost_coeff(value),
-                    GroupStatus::Live => {
-                        group.spec.set_move_cost_coeff(value);
-                        group.pending_patch.move_cost_coeff = Some(value);
-                    }
-                    _ => ctx.warn_live_builder(handle.id, "move_cost"),
-                }
-                Ok(handle)
-            },
-        );
-        let ctx_for_group_imp_thresh = ctx.clone();
-        engine.register_fn(
+        register_group_numeric_overloads(
+            &mut engine,
+            ctx.clone(),
             "improvement_threshold",
-            move |handle: GroupHandle, value: FLOAT| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_imp_thresh
-                    .lock()
-                    .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!(
-                        "improvement_threshold ignored for unknown group {}",
-                        handle.id
-                    );
-                    return Ok(handle);
-                };
-                let value = value as f32;
-                match group.status {
-                    GroupStatus::Draft => group.spec.set_improvement_threshold(value),
-                    GroupStatus::Live => {
-                        group.spec.set_improvement_threshold(value);
-                        group.pending_patch.improvement_threshold = Some(value);
-                    }
-                    _ => ctx.warn_live_builder(handle.id, "improvement_threshold"),
-                }
-                Ok(handle)
-            },
+            SpeciesSpec::set_improvement_threshold,
+            patch_improvement_threshold,
+            None,
         );
-        let ctx_for_group_imp_thresh_int = ctx.clone();
-        engine.register_fn(
-            "improvement_threshold",
-            move |handle: GroupHandle, value: INT| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_imp_thresh_int
-                    .lock()
-                    .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!(
-                        "improvement_threshold ignored for unknown group {}",
-                        handle.id
-                    );
-                    return Ok(handle);
-                };
-                let value = value as f32;
-                match group.status {
-                    GroupStatus::Draft => group.spec.set_improvement_threshold(value),
-                    GroupStatus::Live => {
-                        group.spec.set_improvement_threshold(value);
-                        group.pending_patch.improvement_threshold = Some(value);
-                    }
-                    _ => ctx.warn_live_builder(handle.id, "improvement_threshold"),
-                }
-                Ok(handle)
-            },
-        );
-        let ctx_for_group_proposal_interval = ctx.clone();
-        engine.register_fn(
+        register_group_numeric_overloads(
+            &mut engine,
+            ctx.clone(),
             "proposal_interval",
-            move |handle: GroupHandle, value: FLOAT| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_proposal_interval
-                    .lock()
-                    .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("proposal_interval ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                let value = value as f32;
-                match group.status {
-                    GroupStatus::Draft => group.spec.set_proposal_interval_sec(value),
-                    GroupStatus::Live => {
-                        group.spec.set_proposal_interval_sec(value);
-                        group.pending_patch.proposal_interval_sec = Some(value);
-                    }
-                    _ => ctx.warn_live_builder(handle.id, "proposal_interval"),
-                }
-                Ok(handle)
-            },
-        );
-        let ctx_for_group_proposal_interval_int = ctx.clone();
-        engine.register_fn(
-            "proposal_interval",
-            move |handle: GroupHandle, value: INT| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_proposal_interval_int
-                    .lock()
-                    .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("proposal_interval ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                let value = value as f32;
-                match group.status {
-                    GroupStatus::Draft => group.spec.set_proposal_interval_sec(value),
-                    GroupStatus::Live => {
-                        group.spec.set_proposal_interval_sec(value);
-                        group.pending_patch.proposal_interval_sec = Some(value);
-                    }
-                    _ => ctx.warn_live_builder(handle.id, "proposal_interval"),
-                }
-                Ok(handle)
-            },
+            SpeciesSpec::set_proposal_interval_sec,
+            patch_proposal_interval,
+            None,
         );
         let ctx_for_group_global_peaks = ctx.clone();
         engine.register_fn(
@@ -2492,51 +2131,13 @@ impl ScriptHost {
                 Ok(handle)
             },
         );
-        let ctx_for_group_pitch_glide = ctx.clone();
-        engine.register_fn(
+        register_group_numeric_overloads(
+            &mut engine,
+            ctx.clone(),
             "pitch_glide",
-            move |handle: GroupHandle, value: FLOAT| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_pitch_glide
-                    .lock()
-                    .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("pitch_glide ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                let value = value as f32;
-                match group.status {
-                    GroupStatus::Draft => group.spec.set_pitch_glide_tau_sec(value),
-                    GroupStatus::Live => {
-                        group.spec.set_pitch_glide_tau_sec(value);
-                        group.pending_patch.pitch_glide_tau_sec = Some(value);
-                    }
-                    _ => ctx.warn_live_builder(handle.id, "pitch_glide"),
-                }
-                Ok(handle)
-            },
-        );
-        let ctx_for_group_pitch_glide_int = ctx.clone();
-        engine.register_fn(
-            "pitch_glide",
-            move |handle: GroupHandle, value: INT| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_pitch_glide_int
-                    .lock()
-                    .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("pitch_glide ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                let value = value as f32;
-                match group.status {
-                    GroupStatus::Draft => group.spec.set_pitch_glide_tau_sec(value),
-                    GroupStatus::Live => {
-                        group.spec.set_pitch_glide_tau_sec(value);
-                        group.pending_patch.pitch_glide_tau_sec = Some(value);
-                    }
-                    _ => ctx.warn_live_builder(handle.id, "pitch_glide"),
-                }
-                Ok(handle)
-            },
+            SpeciesSpec::set_pitch_glide_tau_sec,
+            patch_pitch_glide_tau,
+            None,
         );
         let ctx_for_group_brain = ctx.clone();
         engine.register_fn(

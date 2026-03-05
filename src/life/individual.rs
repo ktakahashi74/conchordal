@@ -6,8 +6,8 @@ use crate::life::control::{
     AgentControl, BodyControl, BodyMethod, ControlUpdate, PhonationType, PitchApplyMode, PitchMode,
 };
 use crate::life::control_adapters::{
-    perceptual_config_from_control, perceptual_params_from_control, phonation_config_from_control,
-    pitch_core_config_from_control, tessitura_gravity_from_control,
+    perceptual_config_from_control, phonation_config_from_control, pitch_core_config_from_control,
+    tessitura_gravity_from_control,
 };
 use crate::life::lifecycle::LifecycleConfig;
 use crate::life::phonation_engine::{
@@ -328,17 +328,21 @@ impl Individual {
     }
 
     fn apply_perceptual_control(&mut self) {
-        let params = perceptual_params_from_control(&self.effective_control.perceptual);
+        let config = perceptual_config_from_control(&self.effective_control.perceptual);
         let perceptual = self.pitch_ctl.perceptual_mut();
-        perceptual.tau_fast = params.tau_fast;
-        perceptual.tau_slow = params.tau_slow;
-        perceptual.w_boredom = params.w_boredom;
-        perceptual.w_familiarity = params.w_familiarity;
-        perceptual.rho_self = params.rho_self;
-        perceptual.boredom_gamma = params.boredom_gamma;
-        perceptual.self_smoothing_radius = params.self_smoothing_radius;
-        perceptual.silence_mass_epsilon = params.silence_mass_epsilon;
-        self.pitch_ctl.set_perceptual_enabled(params.enabled);
+        perceptual.tau_fast = config.tau_fast.unwrap_or(0.5).max(1e-3);
+        perceptual.tau_slow = config
+            .tau_slow
+            .unwrap_or(20.0)
+            .max(perceptual.tau_fast + 1e-3);
+        perceptual.w_boredom = config.w_boredom.unwrap_or(1.0).max(0.0);
+        perceptual.w_familiarity = config.w_familiarity.unwrap_or(0.2).max(0.0);
+        perceptual.rho_self = config.rho_self.unwrap_or(0.15).clamp(0.0, 1.0);
+        perceptual.boredom_gamma = config.boredom_gamma.unwrap_or(0.5).clamp(0.1, 1.0);
+        perceptual.self_smoothing_radius = config.self_smoothing_radius.unwrap_or(1);
+        perceptual.silence_mass_epsilon = config.silence_mass_epsilon.unwrap_or(1e-6).max(0.0);
+        self.pitch_ctl
+            .set_perceptual_enabled(self.effective_control.perceptual.enabled);
     }
 
     fn apply_pitch_control(&mut self) {

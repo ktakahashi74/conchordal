@@ -7,45 +7,6 @@ use crate::life::scenario::{
     PhonationMode, PitchCoreConfig, SocialConfig, SubThetaModConfig,
 };
 
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct PerceptualParams {
-    pub(crate) enabled: bool,
-    pub(crate) tau_fast: f32,
-    pub(crate) tau_slow: f32,
-    pub(crate) w_boredom: f32,
-    pub(crate) w_familiarity: f32,
-    pub(crate) rho_self: f32,
-    pub(crate) boredom_gamma: f32,
-    pub(crate) self_smoothing_radius: usize,
-    pub(crate) silence_mass_epsilon: f32,
-}
-
-pub(crate) fn perceptual_params_from_control(control: &PerceptualControl) -> PerceptualParams {
-    let adaptation = control.adaptation.clamp(0.0, 1.0);
-    let tau_fast = 0.1 + (1.0 - adaptation) * 0.8;
-    let tau_slow = 5.0 + (1.0 - adaptation) * 30.0;
-    let (w_boredom, w_familiarity, rho_self) = if control.enabled {
-        (
-            control.novelty_bias,
-            0.2,
-            control.self_focus.clamp(0.0, 1.0),
-        )
-    } else {
-        (0.0, 0.0, 0.0)
-    };
-    PerceptualParams {
-        enabled: control.enabled,
-        tau_fast,
-        tau_slow,
-        w_boredom,
-        w_familiarity,
-        rho_self,
-        boredom_gamma: 0.5,
-        self_smoothing_radius: 1,
-        silence_mass_epsilon: 1e-6,
-    }
-}
-
 pub(crate) fn tessitura_gravity_from_control(gravity: f32) -> f32 {
     gravity.clamp(0.0, 1.0) * 0.2
 }
@@ -85,16 +46,27 @@ pub(crate) fn pitch_core_config_from_control(pitch: &PitchControl) -> PitchCoreC
 }
 
 pub(crate) fn perceptual_config_from_control(control: &PerceptualControl) -> PerceptualConfig {
-    let params = perceptual_params_from_control(control);
+    let adaptation = control.adaptation.clamp(0.0, 1.0);
+    let tau_fast = 0.1 + (1.0 - adaptation) * 0.8;
+    let tau_slow = 5.0 + (1.0 - adaptation) * 30.0;
+    let (w_boredom, w_familiarity, rho_self) = if control.enabled {
+        (
+            control.novelty_bias,
+            0.2,
+            control.self_focus.clamp(0.0, 1.0),
+        )
+    } else {
+        (0.0, 0.0, 0.0)
+    };
     PerceptualConfig {
-        tau_fast: Some(params.tau_fast),
-        tau_slow: Some(params.tau_slow),
-        w_boredom: Some(params.w_boredom),
-        w_familiarity: Some(params.w_familiarity),
-        rho_self: Some(params.rho_self),
-        boredom_gamma: Some(params.boredom_gamma),
-        self_smoothing_radius: Some(params.self_smoothing_radius),
-        silence_mass_epsilon: Some(params.silence_mass_epsilon),
+        tau_fast: Some(tau_fast),
+        tau_slow: Some(tau_slow),
+        w_boredom: Some(w_boredom),
+        w_familiarity: Some(w_familiarity),
+        rho_self: Some(rho_self),
+        boredom_gamma: Some(0.5),
+        self_smoothing_radius: Some(1),
+        silence_mass_epsilon: Some(1e-6),
     }
 }
 

@@ -176,24 +176,12 @@ impl Population {
         }
     }
 
-    fn group_member_ids(&self, group_id: u64) -> Vec<u64> {
-        self.individuals
-            .iter()
-            .filter(|agent| agent.metadata.group_id == group_id)
-            .map(|agent| agent.id())
-            .collect()
-    }
-
     fn normal_sample<R: Rng + ?Sized>(rng: &mut R) -> f32 {
         let u1 = (1.0 - rng.random::<f32>()).max(1e-7);
         let u2 = rng.random::<f32>();
         let mag = (-2.0 * u1.ln()).sqrt();
         let theta = std::f32::consts::TAU * u2;
         mag * theta.cos()
-    }
-
-    fn find_individual_mut(&mut self, id: u64) -> Option<&mut Individual> {
-        self.individuals.iter_mut().find(|a| a.id() == id)
     }
 
     pub fn add_individual(&mut self, individual: Individual) {
@@ -973,14 +961,17 @@ impl Population {
                 // Group-wide runtime semantics:
                 // release applies to all current members with matching group_id.
                 let fade_sec = fade_sec.max(0.0);
-                let member_ids = self.group_member_ids(group_id);
-                if member_ids.is_empty() {
-                    warn!("Release: no active members found for group {group_id}");
+                let mut released = 0usize;
+                for agent in self
+                    .individuals
+                    .iter_mut()
+                    .filter(|agent| agent.metadata.group_id == group_id)
+                {
+                    agent.start_remove_fade(fade_sec);
+                    released += 1;
                 }
-                for id in member_ids {
-                    if let Some(agent) = self.find_individual_mut(id) {
-                        agent.start_remove_fade(fade_sec);
-                    }
+                if released == 0 {
+                    warn!("Release: no active members found for group {group_id}");
                 }
                 self.mark_group_released(group_id);
             }

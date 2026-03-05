@@ -511,14 +511,45 @@ impl Individual {
         neighbor_salience: &[f32],
         global_coupling: f32,
     ) -> ArticulationSignal {
-        self.update_articulation(
+        self.decide_pitch_target(
             dt_sec,
             rhythms,
             landscape,
             neighbor_pitch_log2,
             neighbor_salience,
-            global_coupling,
-        )
+        );
+        self.commit_decided_control(dt_sec, rhythms, landscape, global_coupling)
+    }
+
+    /// Decide phase: updates only pitch-controller state (targets, perceptual memory).
+    #[allow(clippy::too_many_arguments)]
+    pub fn decide_pitch_target(
+        &mut self,
+        dt_sec: f32,
+        rhythms: &NeuralRhythms,
+        landscape: &Landscape,
+        neighbor_pitch_log2: &[f32],
+        neighbor_salience: &[f32],
+    ) {
+        self.update_pitch_target(
+            rhythms,
+            dt_sec,
+            landscape,
+            neighbor_pitch_log2,
+            neighbor_salience,
+        );
+    }
+
+    /// Commit phase: applies articulation/body/lifecycle using already-decided targets.
+    pub fn commit_decided_control(
+        &mut self,
+        dt_sec: f32,
+        rhythms: &NeuralRhythms,
+        landscape: &Landscape,
+        global_coupling: f32,
+    ) -> ArticulationSignal {
+        self.update_articulation_autonomous(dt_sec, rhythms);
+        self.tick_articulation_lifecycle(dt_sec, rhythms, landscape, global_coupling)
     }
 
     /// Update articulation at control rate (hop-sized steps).
@@ -532,15 +563,14 @@ impl Individual {
         neighbor_salience: &[f32],
         global_coupling: f32,
     ) -> ArticulationSignal {
-        self.update_pitch_target(
-            rhythms,
+        self.decide_pitch_target(
             dt_sec,
+            rhythms,
             landscape,
             neighbor_pitch_log2,
             neighbor_salience,
         );
-        self.update_articulation_autonomous(dt_sec, rhythms);
-        self.tick_articulation_lifecycle(dt_sec, rhythms, landscape, global_coupling)
+        self.commit_decided_control(dt_sec, rhythms, landscape, global_coupling)
     }
 
     pub fn update_articulation_autonomous(&mut self, dt_sec: f32, rhythms: &NeuralRhythms) {

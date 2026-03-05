@@ -198,7 +198,7 @@ fn local_du_from_grid(erb: &[f32]) -> Vec<f32> {
     du
 }
 
-pub(crate) fn erb_grid(space: &Log2Space) -> (Vec<f32>, Vec<f32>) {
+pub fn erb_grid(space: &Log2Space) -> (Vec<f32>, Vec<f32>) {
     let erb: Vec<f32> = space.centers_hz.iter().map(|&f| hz_to_erb(f)).collect();
     let du = local_du_from_grid(&erb);
     (erb, du)

@@ -105,7 +105,7 @@ pub fn build_roughness_reference_density(params: &LandscapeParams, space: &Log2S
         return Vec::new();
     }
     let f0 = params.roughness_ref_f0_hz.max(1.0);
-    let a = nearest_bin_by_freq(space, f0);
+    let a = space.nearest_index(f0);
     let target_erb = erb[a] + params.roughness_ref_sep_erb;
     let mut b = nearest_bin_by_erb(&erb, target_erb);
     if b == a && erb.len() > 1 {
@@ -142,19 +142,6 @@ pub fn compute_roughness_reference(params: &LandscapeParams, space: &Log2Space) 
     ref_vals.total = r_total.max(eps);
     ref_vals.peak = ref_vals.peak.max(eps);
     ref_vals
-}
-
-fn nearest_bin_by_freq(space: &Log2Space, f0: f32) -> usize {
-    let mut best = 0;
-    let mut best_diff = f32::MAX;
-    for (i, &f) in space.centers_hz.iter().enumerate() {
-        let diff = (f - f0).abs();
-        if diff < best_diff {
-            best_diff = diff;
-            best = i;
-        }
-    }
-    best
 }
 
 fn nearest_bin_by_erb(erb: &[f32], target: f32) -> usize {

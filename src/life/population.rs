@@ -46,6 +46,7 @@ pub struct Population {
     last_gate_boundary_in_hop: Option<bool>,
     last_phonation_onsets_in_hop: Option<u32>,
     pub death_records: Vec<LifeRecord>,
+    advance_scratch: AdvanceScratch,
 }
 
 #[derive(Debug, Clone)]
@@ -68,6 +69,20 @@ struct SpawnParams {
     group_id: u64,
     member_idx: usize,
     resolved_freq_hz: f32,
+}
+
+#[derive(Default)]
+struct AdvanceScratch {
+    freq_snapshot: Vec<(u64, u64, f32)>,
+    group_visibility: BTreeMap<u64, (bool, bool)>,
+    neighbor_pitch_log2: Vec<f32>,
+    neighbor_salience: Vec<f32>,
+    decisions: Vec<AdvanceStepDecision>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct AdvanceStepDecision {
+    individual_idx: usize,
 }
 
 impl Population {
@@ -127,6 +142,7 @@ impl Population {
             last_gate_boundary_in_hop: None,
             last_phonation_onsets_in_hop: None,
             death_records: Vec::new(),
+            advance_scratch: AdvanceScratch::default(),
         }
     }
 
@@ -1059,46 +1075,54 @@ impl Population {
             return;
         }
         let mut rhythms = landscape.rhythm;
-        let mut freq_snapshot: Vec<(u64, u64, f32)> = Vec::new();
-        let mut group_visibility: BTreeMap<u64, (bool, bool)> = BTreeMap::new();
-        let mut neighbor_pitch_log2 = Vec::new();
-        let mut neighbor_salience = Vec::new();
+        let global_coupling = self.global_coupling;
         for _ in 0..steps {
+            let scratch = &mut self.advance_scratch;
             let crowding_active = self.individuals.iter().any(|agent| {
                 agent.is_alive() && agent.effective_control.pitch.crowding_strength > 0.0
             });
-            freq_snapshot.clear();
-            group_visibility.clear();
+            scratch.freq_snapshot.clear();
+            scratch.group_visibility.clear();
+            scratch.decisions.clear();
             if crowding_active {
                 // Snapshot alive frequencies once per substep to avoid order-dependent updates.
-                freq_snapshot.reserve(self.individuals.len());
+                scratch.freq_snapshot.reserve(self.individuals.len());
                 for agent in &self.individuals {
                     if agent.is_alive() {
-                        freq_snapshot.push((
+                        scratch.freq_snapshot.push((
                             agent.id(),
                             agent.metadata.group_id,
                             agent.body.base_freq_hz().max(1.0).log2(),
                         ));
                     }
                 }
-                group_visibility.extend(self.groups.iter().map(|(&group_id, group)| {
-                    (
-                        group_id,
-                        (group.crowding_target_same, group.crowding_target_other),
-                    )
-                }));
+                scratch
+                    .group_visibility
+                    .extend(self.groups.iter().map(|(&group_id, group)| {
+                        (
+                            group_id,
+                            (group.crowding_target_same, group.crowding_target_other),
+                        )
+                    }));
             }
-            for agent in self.individuals.iter_mut() {
+            // Decide phase: evaluate all alive agents against a stable snapshot.
+            for individual_idx in 0..self.individuals.len() {
+                let agent = &mut self.individuals[individual_idx];
                 if agent.is_alive() {
                     let actor_group_id = agent.metadata.group_id;
                     if crowding_active {
-                        neighbor_pitch_log2.clear();
-                        neighbor_salience.clear();
-                        neighbor_pitch_log2.reserve(freq_snapshot.len());
-                        neighbor_salience.reserve(freq_snapshot.len());
-                        for &(id, neighbor_group_id, log2) in &freq_snapshot {
+                        scratch.neighbor_pitch_log2.clear();
+                        scratch.neighbor_salience.clear();
+                        scratch
+                            .neighbor_pitch_log2
+                            .reserve(scratch.freq_snapshot.len());
+                        scratch
+                            .neighbor_salience
+                            .reserve(scratch.freq_snapshot.len());
+                        for &(id, neighbor_group_id, log2) in &scratch.freq_snapshot {
                             if id != agent.id() {
-                                let visible = group_visibility
+                                let visible = scratch
+                                    .group_visibility
                                     .get(&neighbor_group_id)
                                     .map(|&(same_visible, other_visible)| {
                                         if neighbor_group_id == actor_group_id {
@@ -1109,31 +1133,42 @@ impl Population {
                                     })
                                     .unwrap_or(neighbor_group_id == actor_group_id);
                                 if visible {
-                                    neighbor_pitch_log2.push(log2);
-                                    neighbor_salience
+                                    scratch.neighbor_pitch_log2.push(log2);
+                                    scratch
+                                        .neighbor_salience
                                         .push(Self::pairwise_split_sign(agent.id(), id));
                                 }
                             }
                         }
                     }
                     let neighbors = if crowding_active {
-                        neighbor_pitch_log2.as_slice()
+                        scratch.neighbor_pitch_log2.as_slice()
                     } else {
                         &[]
                     };
                     let neighbor_weights = if crowding_active {
-                        neighbor_salience.as_slice()
+                        scratch.neighbor_salience.as_slice()
                     } else {
                         &[]
                     };
-                    agent.tick_control(
+                    agent.decide_pitch_target(
                         dt_step_sec,
                         &rhythms,
                         landscape,
                         neighbors,
                         neighbor_weights,
-                        self.global_coupling,
                     );
+                    scratch
+                        .decisions
+                        .push(AdvanceStepDecision { individual_idx });
+                }
+            }
+            // Commit phase: apply articulation/body/lifecycle after all decisions are fixed.
+            for decision in &scratch.decisions {
+                if let Some(agent) = self.individuals.get_mut(decision.individual_idx)
+                    && agent.is_alive()
+                {
+                    agent.commit_decided_control(dt_step_sec, &rhythms, landscape, global_coupling);
                 }
             }
             rhythms.advance_in_place(dt_step_sec);

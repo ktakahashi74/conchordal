@@ -91,6 +91,7 @@ impl Log2Space {
     }
 
     /// Find nearest bin index for given frequency.
+    /// Returns `None` if `hz` is outside `[fmin, fmax]`.
     pub fn index_of_freq(&self, hz: f32) -> Option<usize> {
         if hz < self.fmin || hz > self.fmax {
             return None;
@@ -99,6 +100,24 @@ impl Log2Space {
         let idx = ((l - self.centers_log2[0]) / self.step_log2).round() as usize;
         self.centers_hz.get(idx)?;
         Some(idx)
+    }
+
+    /// Find nearest bin index, clamping to space boundaries for out-of-range
+    /// frequencies. Always returns a valid index.
+    pub fn nearest_index(&self, hz: f32) -> usize {
+        let n = self.centers_hz.len();
+        if n == 0 {
+            return 0;
+        }
+        if !hz.is_finite() || hz <= 0.0 || hz <= self.fmin {
+            return 0;
+        }
+        if hz >= self.fmax {
+            return n - 1;
+        }
+        let l = hz.log2();
+        let idx = ((l - self.centers_log2[0]) / self.step_log2).round() as i64;
+        idx.clamp(0, (n - 1) as i64) as usize
     }
 
     /// Map Hz to a continuous bin position (0..n_bins-1).

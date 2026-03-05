@@ -78,6 +78,13 @@ echo "cargo test exit=$? @ $(date -Iseconds)" > test_status.txt
 - **DSP Efficiency**: Prefer `f32`. Avoid allocations in the audio thread (`worker_loop`). Use `Vec::with_capacity` or pre-allocated ringbuffers.
 - **Naming**: `snake_case` for modules/functions, `CamelCase` for structs/traits.
 
+## Anti-Bloat Rules
+- Enforce YAGNI strictly: do not add abstractions before a second concrete use appears.
+- Handle only errors that can actually occur on the current path.
+- Do not add comments that only restate code; keep comments for intent/constraints only.
+- Inline helpers unless they are used in 3 or more places.
+- Prefer plain structs and existing types over new nominal wrapper types.
+
 ## Testing Policy
 - **Inline tests** (`#[cfg(test)] mod tests` in the same source file) are for module-internal logic and private APIs.
 - **Integration tests** (`tests/` directory) are for public API and cross-module behavior; treat them as black-box specs.

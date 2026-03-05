@@ -1,5 +1,5 @@
 use super::conductor::Conductor;
-use super::individual::{AgentMetadata, AnyArticulationCore, PhonationBatch, SoundBody};
+use super::individual::{AgentMetadata, AnyArticulationCore, SoundBody, UtteranceBatch};
 use super::population::Population;
 use super::scenario::{
     Action, ArticulationCoreConfig, IndividualConfig, Scenario, SpawnSpec, TimedEvent,
@@ -8,9 +8,10 @@ use crate::core::landscape::{Landscape, LandscapeFrame};
 use crate::core::log2space::Log2Space;
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
-use crate::life::control::{AgentControl, PhonationType, PitchApplyMode, PitchMode};
+use crate::life::control::{AgentControl, PitchApplyMode, PitchMode};
 use crate::life::lifecycle::LifecycleConfig;
-use crate::life::phonation_engine::{OnsetEvent, PhonationCmd};
+use crate::life::scenario::{DurationSpec, UtteranceSpec, WhenSpec};
+use crate::life::utterance_engine::NoteCmd;
 use rand::SeedableRng;
 
 fn test_timebase() -> Timebase {
@@ -310,9 +311,14 @@ fn free_mode_uses_freq_center_when_range_zero() {
 fn remove_pending_still_emits_note_offs() {
     let mut control = AgentControl::default();
     control.pitch.freq = 220.0;
-    control.phonation.r#type = PhonationType::Interval;
-    control.phonation.density = 1.0;
-    control.phonation.legato = 0.0;
+    control.utterance.spec = UtteranceSpec {
+        when: WhenSpec::Pulse {
+            rate: 4.0,
+            sync: 0.0,
+            social: 0.0,
+        },
+        duration: DurationSpec::Gates(1),
+    };
     let cfg = IndividualConfig {
         control,
         articulation: ArticulationCoreConfig::default(),
@@ -331,7 +337,7 @@ fn remove_pending_still_emits_note_offs() {
     rhythms.theta.phase = 0.0;
     rhythms.env_open = 1.0;
     rhythms.env_level = 1.0;
-    let mut batch = PhonationBatch::default();
+    let mut batch = UtteranceBatch::default();
     let mut now: Tick = 0;
     let mut saw_note_on = false;
     for _ in 0..20 {
@@ -339,7 +345,7 @@ fn remove_pending_still_emits_note_offs() {
         if batch
             .cmds
             .iter()
-            .any(|cmd| matches!(cmd, PhonationCmd::NoteOn { .. }))
+            .any(|cmd| matches!(cmd, NoteCmd::NoteOn { .. }))
         {
             saw_note_on = true;
             break;
@@ -356,7 +362,7 @@ fn remove_pending_still_emits_note_offs() {
         if batch
             .cmds
             .iter()
-            .any(|cmd| matches!(cmd, PhonationCmd::NoteOff { .. }))
+            .any(|cmd| matches!(cmd, NoteCmd::NoteOff { .. }))
         {
             saw_note_off = true;
             break;
@@ -371,9 +377,14 @@ fn remove_pending_still_emits_note_offs() {
 fn render_snapshot_articulation_is_finite_and_energy_stable() {
     let mut control = AgentControl::default();
     control.pitch.freq = 220.0;
-    control.phonation.r#type = PhonationType::Interval;
-    control.phonation.density = 1.0;
-    control.phonation.legato = 0.0;
+    control.utterance.spec = UtteranceSpec {
+        when: WhenSpec::Pulse {
+            rate: 4.0,
+            sync: 0.0,
+            social: 0.0,
+        },
+        duration: DurationSpec::Gates(1),
+    };
     let cfg = IndividualConfig {
         control,
         articulation: ArticulationCoreConfig::default(),
@@ -393,7 +404,7 @@ fn render_snapshot_articulation_is_finite_and_energy_stable() {
     rhythms.env_open = 1.0;
     rhythms.env_level = 1.0;
 
-    let mut batch = PhonationBatch::default();
+    let mut batch = UtteranceBatch::default();
     let mut now: Tick = 0;
     let mut note = None;
     for _ in 0..20 {

@@ -17,7 +17,7 @@ pub struct WorldControl {}
 pub struct AgentControl {
     pub body: BodyControl,
     pub pitch: PitchControl,
-    pub phonation: PhonationControl,
+    pub utterance: UtteranceControl,
     pub perceptual: PerceptualControl,
 }
 
@@ -350,36 +350,9 @@ impl Default for PitchControl {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum PhonationType {
-    #[default]
-    Interval,
-    Clock,
-    Field,
-    /// Sustain once per lifecycle; ignores density/sync/legato.
-    Hold,
-    None,
-}
-
-#[derive(Debug, Clone)]
-pub struct PhonationControl {
-    pub r#type: PhonationType,
-    pub density: f32,
-    pub sync: f32,
-    pub legato: f32,
-    pub sociality: f32,
-}
-
-impl Default for PhonationControl {
-    fn default() -> Self {
-        Self {
-            r#type: PhonationType::default(),
-            density: 0.5,
-            sync: 0.5,
-            legato: 0.5,
-            sociality: 0.0,
-        }
-    }
+#[derive(Debug, Clone, Default)]
+pub struct UtteranceControl {
+    pub spec: crate::life::scenario::UtteranceSpec,
 }
 
 #[derive(Debug, Clone)]

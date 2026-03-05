@@ -3,19 +3,19 @@ use crate::core::log2space::Log2Space;
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
 use crate::life::control::{
-    AgentControl, BodyControl, BodyMethod, ControlUpdate, PhonationType, PitchApplyMode, PitchMode,
+    AgentControl, BodyControl, BodyMethod, ControlUpdate, PitchApplyMode, PitchMode,
 };
 use crate::life::control_adapters::{
-    perceptual_config_from_control, phonation_config_from_control, pitch_core_config_from_control,
-    tessitura_gravity_from_control,
+    perceptual_config_from_control, pitch_core_config_from_control, tessitura_gravity_from_control,
 };
 use crate::life::lifecycle::LifecycleConfig;
-use crate::life::phonation_engine::{
-    CoreState, CoreTickCtx, NoteId, OnsetEvent, PhonationCmd, PhonationEngine, PhonationNoteOn,
-};
 use crate::life::scenario::ArticulationCoreConfig;
+use crate::life::scenario::WhenSpec;
 use crate::life::social_density::SocialDensityTrace;
 use crate::life::sound::BodySnapshot;
+use crate::life::utterance_engine::{
+    CoreState, CoreTickCtx, NoteCmd, NoteId, NoteOnEvent, OnsetEvent, UtteranceRuntime,
+};
 use rand::SeedableRng;
 
 #[path = "articulation_core.rs"]
@@ -49,13 +49,13 @@ pub struct Individual {
     pub id: u64,
     pub metadata: AgentMetadata,
     fixed_body_method: BodyMethod,
-    fixed_phonation_type: PhonationType,
+    fixed_utterance_when: std::mem::Discriminant<WhenSpec>,
     pub base_control: AgentControl,
     pub effective_control: AgentControl,
     pub articulation: ArticulationWrapper,
     pub(crate) pitch_ctl: PitchController,
-    pub phonation_engine: PhonationEngine,
-    pub(crate) phonation_coupling: f32,
+    pub utterance_engine: UtteranceRuntime,
+    pub(crate) social_coupling: f32,
     pub body: AnySoundBody,
     pub last_signal: ArticulationSignal,
     pub(crate) release_gain: f32,
@@ -67,7 +67,7 @@ pub struct Individual {
 }
 
 #[derive(Clone, Debug)]
-pub struct PhonationNoteSpec {
+pub struct NoteSpec {
     pub note_id: NoteId,
     pub onset: Tick,
     pub hold_ticks: Option<Tick>,
@@ -80,18 +80,18 @@ pub struct PhonationNoteSpec {
 
 #[derive(Debug, Default)]
 pub(crate) struct PhonationScratch {
-    events: Vec<PhonationNoteOn>,
+    events: Vec<NoteOnEvent>,
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct PhonationBatch {
+pub struct UtteranceBatch {
     pub source_id: u64,
-    pub cmds: Vec<PhonationCmd>,
-    pub notes: Vec<PhonationNoteSpec>,
+    pub cmds: Vec<NoteCmd>,
+    pub notes: Vec<NoteSpec>,
     pub onsets: Vec<OnsetEvent>,
 }
 
-impl PhonationBatch {
+impl UtteranceBatch {
     pub(crate) fn clear(&mut self) {
         self.cmds.clear();
         self.notes.clear();
@@ -125,7 +125,7 @@ impl BodyRuntime {
 struct Dirty {
     body: bool,
     pitch: bool,
-    phonation: bool,
+    utterance: bool,
     perceptual: bool,
 }
 
@@ -159,7 +159,7 @@ impl Dirty {
         Self {
             body,
             pitch,
-            phonation: false,
+            utterance: false,
             perceptual: false,
         }
     }
@@ -190,9 +190,8 @@ impl Individual {
         let core =
             AnyArticulationCore::from_config(&articulation_config, fs, assigned_id, &mut rng);
 
-        let phonation_config = phonation_config_from_control(&effective_control.phonation);
-        let phonation_engine = PhonationEngine::from_config(&phonation_config, seed);
-        let phonation_coupling = phonation_config.social.coupling;
+        let utterance_engine = UtteranceRuntime::from_spec(&effective_control.utterance.spec, seed);
+        let social_coupling = effective_control.utterance.spec.social_coupling();
 
         let pitch_config = pitch_core_config_from_control(&effective_control.pitch);
         let pitch = AnyPitchCore::from_config(&pitch_config, target_pitch_log2, &mut rng);
@@ -298,13 +297,13 @@ impl Individual {
             id: assigned_id,
             metadata,
             fixed_body_method: effective_control.body.method,
-            fixed_phonation_type: effective_control.phonation.r#type,
+            fixed_utterance_when: std::mem::discriminant(&effective_control.utterance.spec.when),
             base_control: control,
             effective_control,
             articulation: ArticulationWrapper::new(core, breath_gain),
             pitch_ctl,
-            phonation_engine,
-            phonation_coupling,
+            utterance_engine,
+            social_coupling,
             body,
             last_signal: Default::default(),
             release_gain: 1.0,
@@ -372,9 +371,9 @@ impl Individual {
     }
 
     fn apply_phonation_control(&mut self) {
-        let config = phonation_config_from_control(&self.effective_control.phonation);
-        self.phonation_engine.update_from_config(&config);
-        self.phonation_coupling = config.social.coupling;
+        self.utterance_engine
+            .update_from_spec(&self.effective_control.utterance.spec);
+        self.social_coupling = self.effective_control.utterance.spec.social_coupling();
     }
 
     fn apply_effective_control(&mut self, control: AgentControl, dirty: Dirty) {
@@ -388,17 +387,17 @@ impl Individual {
         if dirty.pitch {
             self.apply_pitch_control();
         }
-        if dirty.phonation {
+        if dirty.utterance {
             self.apply_phonation_control();
         }
     }
 
     fn ensure_fixed_kinds(&self, control: &AgentControl) -> Result<(), String> {
         if control.body.method != self.fixed_body_method
-            || control.phonation.r#type != self.fixed_phonation_type
+            || std::mem::discriminant(&control.utterance.spec.when) != self.fixed_utterance_when
         {
             return Err(
-                "update cannot change body.method or phonation.type; use spawn() for type selection"
+                "update cannot change body.method or utterance.when kind; use spawn() for type selection"
                     .to_string(),
             );
         }
@@ -412,7 +411,7 @@ impl Individual {
         if self.remove_pending {
             return self.is_alive();
         }
-        self.is_alive() || self.phonation_engine.has_active_notes()
+        self.is_alive() || self.utterance_engine.has_active_notes()
     }
     pub fn metadata(&self) -> &AgentMetadata {
         &self.metadata
@@ -659,8 +658,8 @@ impl Individual {
         social: Option<&SocialDensityTrace>,
         social_coupling: f32,
         extra_gate_gain: f32,
-    ) -> PhonationBatch {
-        let mut batch = PhonationBatch::default();
+    ) -> UtteranceBatch {
+        let mut batch = UtteranceBatch::default();
         self.tick_phonation_into(
             tb,
             now,
@@ -682,14 +681,11 @@ impl Individual {
         social: Option<&SocialDensityTrace>,
         social_coupling: f32,
         extra_gate_gain: f32,
-        out: &mut PhonationBatch,
+        out: &mut UtteranceBatch,
     ) {
         out.source_id = self.id;
         out.clear();
         self.phonation_scratch.events.clear();
-        if matches!(self.effective_control.phonation.r#type, PhonationType::None) {
-            return;
-        }
         let hop_tick = (tb.hop as Tick).max(1);
         let frame_end = now.saturating_add(hop_tick);
         let ctx = CoreTickCtx {
@@ -701,7 +697,7 @@ impl Individual {
         let state = CoreState {
             is_alive: self.is_alive() && !self.remove_pending,
         };
-        self.phonation_engine.tick(
+        self.utterance_engine.tick(
             &ctx,
             &state,
             social,
@@ -715,7 +711,7 @@ impl Individual {
         let had_note_on = out
             .cmds
             .iter()
-            .any(|cmd| matches!(cmd, PhonationCmd::NoteOn { .. }));
+            .any(|cmd| matches!(cmd, NoteCmd::NoteOn { .. }));
         if self.phonation_scratch.events.is_empty() {
             debug_assert!(
                 !had_note_on,
@@ -745,7 +741,7 @@ impl Individual {
         let body = self.body_snapshot();
         let smoothing_tau_sec = 0.0;
         for event in self.phonation_scratch.events.drain(..) {
-            out.notes.push(PhonationNoteSpec {
+            out.notes.push(NoteSpec {
                 note_id: event.note_id,
                 onset: event.onset_tick,
                 hold_ticks: None,

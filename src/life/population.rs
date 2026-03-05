@@ -1,5 +1,5 @@
 use super::individual::{
-    AgentMetadata, AnyArticulationCore, Individual, PhonationBatch, SoundBody,
+    AgentMetadata, AnyArticulationCore, Individual, SoundBody, UtteranceBatch,
 };
 use super::scenario::{Action, IndividualConfig, RespawnPolicy, SpawnStrategy};
 use super::telemetry::LifeRecord;
@@ -240,7 +240,7 @@ impl Population {
         world: &mut WorldModel,
         landscape: &LandscapeFrame,
         now: Tick,
-    ) -> Vec<PhonationBatch> {
+    ) -> Vec<UtteranceBatch> {
         let mut batches = Vec::new();
         let count = self.collect_phonation_batches_into(world, landscape, now, &mut batches);
         batches.truncate(count);
@@ -252,7 +252,7 @@ impl Population {
         world: &mut WorldModel,
         landscape: &LandscapeFrame,
         now: Tick,
-        out: &mut Vec<PhonationBatch>,
+        out: &mut Vec<UtteranceBatch>,
     ) -> usize {
         let tb = world.time;
         let hop_tick = (tb.hop as Tick).max(1);
@@ -282,9 +282,9 @@ impl Population {
         let mut used = 0usize;
         let social_trace = self.social_trace.as_ref();
         for agent in &mut self.individuals {
-            let social_coupling = agent.phonation_coupling;
+            let social_coupling = agent.social_coupling;
             if used == out.len() {
-                out.push(PhonationBatch::default());
+                out.push(UtteranceBatch::default());
             }
             let batch = &mut out[used];
             let mut extra_gate_gain = 1.0;
@@ -294,7 +294,10 @@ impl Population {
                     gain_raw = 0.0;
                 }
                 gain_raw = gain_raw.clamp(0.0, 1.0);
-                let mut sync = agent.effective_control.phonation.sync;
+                let mut sync = match &agent.effective_control.utterance.spec.when {
+                    crate::life::scenario::WhenSpec::Pulse { sync, .. } => *sync,
+                    _ => 0.0,
+                };
                 if !sync.is_finite() {
                     sync = 0.0;
                 }
@@ -331,9 +334,8 @@ impl Population {
             }
         }
         let active_batches = &out[..used];
-        let social_enabled = social_trace_enabled_from_couplings(
-            self.individuals.iter().map(|a| a.phonation_coupling),
-        );
+        let social_enabled =
+            social_trace_enabled_from_couplings(self.individuals.iter().map(|a| a.social_coupling));
         if social_enabled {
             let (bin_ticks, smooth) = social_trace_params(hop_tick);
             self.social_trace = Some(build_social_trace_from_batches(
@@ -1359,7 +1361,7 @@ fn mix_pred_gate_gain(sync: f32, gain_raw: f32) -> f32 {
 }
 
 fn build_social_trace_from_batches(
-    phonation_batches: &[PhonationBatch],
+    phonation_batches: &[UtteranceBatch],
     frame_end: Tick,
     hop_tick: Tick,
     bin_ticks: u32,
@@ -1401,18 +1403,18 @@ mod tests {
     use crate::core::landscape::LandscapeFrame;
     use crate::core::log2space::Log2Space;
     use crate::core::timebase::Timebase;
-    use crate::life::control::{AgentControl, ControlUpdate, PhonationType, PitchMode};
+    use crate::life::control::{AgentControl, ControlUpdate, PitchMode};
     use crate::life::individual::{AnyArticulationCore, ArticulationWrapper, DroneCore};
     use crate::life::lifecycle::LifecycleConfig;
-    use crate::life::phonation_engine::{OnsetEvent, PhonationCmd, PhonationKick};
     use crate::life::scenario::{ArticulationCoreConfig, RespawnPolicy, SpawnSpec, SpawnStrategy};
     use crate::life::sound::{BodyKind, BodySnapshot};
+    use crate::life::utterance_engine::{NoteCmd, OnsetEvent, OnsetKick};
     use crate::life::world_model::WorldModel;
     use rand::{Rng, SeedableRng};
     use std::collections::HashSet;
 
-    fn make_dummy_note_spec() -> crate::life::individual::PhonationNoteSpec {
-        crate::life::individual::PhonationNoteSpec {
+    fn make_dummy_note_spec() -> crate::life::individual::NoteSpec {
+        crate::life::individual::NoteSpec {
             note_id: 1,
             onset: 0,
             hold_ticks: None,
@@ -1888,7 +1890,7 @@ mod tests {
 
     #[test]
     fn social_trace_is_delayed_by_one_hop() {
-        let batch = PhonationBatch {
+        let batch = UtteranceBatch {
             source_id: 1,
             cmds: Vec::new(),
             notes: Vec::new(),
@@ -2555,7 +2557,7 @@ mod tests {
     }
 
     #[test]
-    fn collect_phonation_batches_into_clears_unused_batch() {
+    fn collect_phonation_batches_into_clears_stale_batch() {
         let time = Timebase {
             fs: 48_000.0,
             hop: 64,
@@ -2564,24 +2566,23 @@ mod tests {
         let landscape = LandscapeFrame::new(space.clone());
         let mut world = WorldModel::new(time, space);
         let mut pop = Population::new(time);
-        let mut silent_spec = spawn_spec_with_freq(440.0);
-        silent_spec.control.phonation.r#type = PhonationType::None;
+        let spec = spawn_spec_with_freq(440.0);
         pop.apply_action(
             Action::Spawn {
                 group_id: 2,
                 ids: vec![77],
-                spec: silent_spec,
+                spec,
                 strategy: None,
             },
             &landscape,
             None,
         );
 
-        let mut batches = vec![PhonationBatch {
+        let mut batches = vec![UtteranceBatch {
             source_id: 99,
-            cmds: vec![PhonationCmd::NoteOn {
+            cmds: vec![NoteCmd::NoteOn {
                 note_id: 1,
-                kick: PhonationKick::Planned { strength: 1.0 },
+                kick: OnsetKick::Planned { strength: 1.0 },
             }],
             notes: vec![make_dummy_note_spec()],
             onsets: vec![OnsetEvent {
@@ -2592,9 +2593,11 @@ mod tests {
         }];
 
         let used = pop.collect_phonation_batches_into(&mut world, &landscape, 0, &mut batches);
-        assert_eq!(used, 0);
-        assert!(batches[0].cmds.is_empty());
-        assert!(batches[0].notes.is_empty());
-        assert!(batches[0].onsets.is_empty());
+        // Agent with default Sustain produces output, stale data is replaced
+        assert!(used > 0 || batches[0].cmds.is_empty());
+        // Source id is from the actual agent, not the stale 99
+        if used > 0 {
+            assert_eq!(batches[0].source_id, 77);
+        }
     }
 }

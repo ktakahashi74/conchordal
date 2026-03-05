@@ -4,7 +4,9 @@ use conchordal::core::timebase::{Tick, Timebase};
 use conchordal::life::control::AgentControl;
 use conchordal::life::individual::AgentMetadata;
 use conchordal::life::population::Population;
-use conchordal::life::scenario::{ArticulationCoreConfig, IndividualConfig};
+use conchordal::life::scenario::{
+    ArticulationCoreConfig, DurationSpec, IndividualConfig, UtteranceSpec, WhenSpec,
+};
 use conchordal::life::schedule_renderer::ScheduleRenderer;
 use conchordal::life::world_model::WorldModel;
 
@@ -20,7 +22,14 @@ fn agents_publish_notes_and_render_audio() {
     let mut control = AgentControl::default();
     control.pitch.freq = 440.0;
     control.body.amp = 0.4;
-    control.phonation.density = 0.8;
+    control.utterance.spec = UtteranceSpec {
+        when: WhenSpec::Pulse {
+            rate: 3.3,
+            sync: 0.0,
+            social: 0.0,
+        },
+        duration: DurationSpec::Gates(5),
+    };
     let agent_cfg = IndividualConfig {
         control,
         articulation: ArticulationCoreConfig::default(),
@@ -71,7 +80,14 @@ fn publish_notes_runs_when_gate_in_hop_window() {
     let mut control = AgentControl::default();
     control.pitch.freq = 440.0;
     control.body.amp = 0.4;
-    control.phonation.density = 0.8;
+    control.utterance.spec = UtteranceSpec {
+        when: WhenSpec::Pulse {
+            rate: 3.3,
+            sync: 0.0,
+            social: 0.0,
+        },
+        duration: DurationSpec::Gates(5),
+    };
     let agent_cfg = IndividualConfig {
         control,
         articulation: ArticulationCoreConfig::default(),

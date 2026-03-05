@@ -1,10 +1,9 @@
-use crate::life::control::{
-    PerceptualControl, PhonationControl, PhonationType, PitchControl, PitchCoreKind,
-};
+use crate::life::control::{PerceptualControl, PitchControl, PitchCoreKind};
 use crate::life::perceptual::PerceptualConfig;
 use crate::life::scenario::{
-    PhonationClockConfig, PhonationConfig, PhonationConnectConfig, PhonationIntervalConfig,
-    PhonationMode, PitchCoreConfig, SocialConfig, SubThetaModConfig,
+    DurationSpec, PhonationClockConfig, PhonationConfig, PhonationConnectConfig,
+    PhonationIntervalConfig, PhonationMode, PitchCoreConfig, SocialConfig, SubThetaModConfig,
+    UtteranceSpec, WhenSpec,
 };
 
 pub(crate) fn tessitura_gravity_from_control(gravity: f32) -> f32 {
@@ -70,64 +69,73 @@ pub(crate) fn perceptual_config_from_control(control: &PerceptualControl) -> Per
     }
 }
 
-pub(crate) fn phonation_config_from_control(control: &PhonationControl) -> PhonationConfig {
-    // Hold ignores density/sync/legato; it is purely lifecycle-driven.
-    if matches!(control.r#type, PhonationType::Hold) {
-        let social = SocialConfig {
-            coupling: control.sociality.clamp(0.0, 1.0),
-            bin_ticks: 0,
-            smooth: 0.0,
-        };
-        return PhonationConfig {
-            mode: PhonationMode::Hold,
-            interval: PhonationIntervalConfig::None,
-            connect: PhonationConnectConfig::FixedGate { length_gates: 1 },
-            clock: PhonationClockConfig::ThetaGate,
-            sub_theta_mod: SubThetaModConfig::None,
-            social,
-        };
+fn connect_from_duration(duration: &DurationSpec) -> PhonationConnectConfig {
+    match duration {
+        DurationSpec::Field(f) => PhonationConnectConfig::Field {
+            hold_min_theta: f.hold_min_theta,
+            hold_max_theta: f.hold_max_theta,
+            curve_k: f.curve_k,
+            curve_x0: f.curve_x0,
+            drop_gain: f.drop_gain,
+        },
+        DurationSpec::Gates(n) => PhonationConnectConfig::FixedGate { length_gates: *n },
+        DurationSpec::WhileAlive => PhonationConnectConfig::FixedGate { length_gates: 1 },
     }
-    let density = control.density.clamp(0.0, 1.0);
-    let rate = 0.5 + density * 3.5;
-    let interval = match control.r#type {
-        PhonationType::None => PhonationIntervalConfig::None,
-        _ => PhonationIntervalConfig::Accumulator {
-            rate,
-            refractory: 1,
+}
+
+pub(crate) fn phonation_config_from_utterance(spec: &UtteranceSpec) -> PhonationConfig {
+    let connect = connect_from_duration(&spec.duration);
+
+    match &spec.when {
+        WhenSpec::Once => match &spec.duration {
+            // once() + while_alive() = sustain: Hold mode, NoteOff on death.
+            DurationSpec::WhileAlive => PhonationConfig {
+                mode: PhonationMode::Hold,
+                interval: PhonationIntervalConfig::None,
+                connect,
+                clock: PhonationClockConfig::ThetaGate,
+                sub_theta_mod: SubThetaModConfig::None,
+                social: SocialConfig::default(),
+            },
+            // once() + gates(n) / field(): fire immediately, never repeat.
+            _ => PhonationConfig {
+                mode: PhonationMode::Gated,
+                interval: PhonationIntervalConfig::Accumulator {
+                    rate: 1e6,
+                    refractory: u32::MAX,
+                },
+                connect,
+                clock: PhonationClockConfig::ThetaGate,
+                sub_theta_mod: SubThetaModConfig::None,
+                social: SocialConfig::default(),
+            },
         },
-    };
-    let legato = control.legato.clamp(0.0, 1.0);
-    let length_gates = (1.0 + legato * 8.0).round().max(1.0) as u32;
-    let connect = match control.r#type {
-        PhonationType::Field => PhonationConnectConfig::Field {
-            hold_min_theta: 0.1 + legato * 0.2,
-            hold_max_theta: 0.6 + legato * 0.4,
-            curve_k: 2.0,
-            curve_x0: 0.5,
-            drop_gain: (1.0 - legato).clamp(0.0, 1.0),
-        },
-        _ => PhonationConnectConfig::FixedGate { length_gates },
-    };
-    let sub_theta_mod = if control.sync > 0.0 {
-        SubThetaModConfig::Cosine {
-            n: 1,
-            depth: control.sync.clamp(0.0, 1.0),
-            phase0: 0.0,
+        WhenSpec::Pulse { rate, sync, social } => {
+            let interval = PhonationIntervalConfig::Accumulator {
+                rate: rate.max(0.01),
+                refractory: 1,
+            };
+            let sub_theta_mod = if *sync > 0.0 {
+                SubThetaModConfig::Cosine {
+                    n: 1,
+                    depth: sync.clamp(0.0, 1.0),
+                    phase0: 0.0,
+                }
+            } else {
+                SubThetaModConfig::None
+            };
+            PhonationConfig {
+                mode: PhonationMode::Gated,
+                interval,
+                connect,
+                clock: PhonationClockConfig::ThetaGate,
+                sub_theta_mod,
+                social: SocialConfig {
+                    coupling: social.clamp(0.0, 1.0),
+                    bin_ticks: 0,
+                    smooth: 0.0,
+                },
+            }
         }
-    } else {
-        SubThetaModConfig::None
-    };
-    let social = SocialConfig {
-        coupling: control.sociality.clamp(0.0, 1.0),
-        bin_ticks: 0,
-        smooth: 0.0,
-    };
-    PhonationConfig {
-        mode: PhonationMode::Gated,
-        interval,
-        connect,
-        clock: PhonationClockConfig::ThetaGate,
-        sub_theta_mod,
-        social,
     }
 }

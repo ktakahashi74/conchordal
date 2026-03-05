@@ -1,8 +1,8 @@
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
-use crate::life::individual::PhonationBatch;
-use crate::life::phonation_engine::PhonationCmd;
+use crate::life::individual::UtteranceBatch;
 use crate::life::sound::{AudioCommand, Voice, VoiceTarget};
+use crate::life::utterance_engine::NoteCmd;
 use std::collections::{HashMap, HashSet};
 use tracing::debug;
 
@@ -37,7 +37,7 @@ impl ScheduleRenderer {
 
     pub fn render(
         &mut self,
-        phonation_batches: &[PhonationBatch],
+        phonation_batches: &[UtteranceBatch],
         now: Tick,
         rhythms: &NeuralRhythms,
         voice_targets: &[VoiceTarget],
@@ -161,7 +161,7 @@ impl ScheduleRenderer {
 
     fn apply_phonation_batches(
         &mut self,
-        phonation_batches: &[PhonationBatch],
+        phonation_batches: &[UtteranceBatch],
         now: Tick,
         _rhythms: &NeuralRhythms,
         _dt: f32,
@@ -170,7 +170,7 @@ impl ScheduleRenderer {
         for batch in phonation_batches {
             for cmd in &batch.cmds {
                 match *cmd {
-                    PhonationCmd::NoteOn { note_id, kick } => {
+                    NoteCmd::NoteOn { note_id, kick } => {
                         let key = VoiceKey {
                             source_id: batch.source_id,
                             note_id,
@@ -215,7 +215,7 @@ impl ScheduleRenderer {
                             self.voices.insert(key, voice);
                         }
                     }
-                    PhonationCmd::NoteOff { note_id, off_tick } => {
+                    NoteCmd::NoteOff { note_id, off_tick } => {
                         let key = VoiceKey {
                             source_id: batch.source_id,
                             note_id,
@@ -224,11 +224,11 @@ impl ScheduleRenderer {
                             voice.note_off(off_tick);
                         }
                     }
-                    PhonationCmd::Update { .. } => {}
+                    NoteCmd::Update { .. } => {}
                 }
             }
             for cmd in &batch.cmds {
-                let PhonationCmd::Update {
+                let NoteCmd::Update {
                     note_id,
                     at_tick,
                     update,
@@ -271,12 +271,12 @@ fn modal_phase_seed(a: u64, b: u64, c: u64) -> u64 {
 mod tests {
     use super::*;
     use crate::life::individual::{
-        AnyArticulationCore, ArticulationWrapper, PhonationBatch, PhonationNoteSpec, SequencedCore,
+        AnyArticulationCore, ArticulationWrapper, NoteSpec, SequencedCore, UtteranceBatch,
     };
-    use crate::life::phonation_engine::{PhonationKick, PhonationUpdate};
     use crate::life::sound::{
         AudioCommand, BodyKind, BodySnapshot, VoiceTarget, default_release_ticks,
     };
+    use crate::life::utterance_engine::{NoteUpdate, OnsetKick};
 
     #[test]
     fn update_command_applies_to_voice() {
@@ -292,23 +292,23 @@ mod tests {
             0.0,
         );
         let note_id = 1;
-        let batch = PhonationBatch {
+        let batch = UtteranceBatch {
             source_id: 2,
             cmds: vec![
-                PhonationCmd::Update {
+                NoteCmd::Update {
                     note_id,
                     at_tick: Some(0),
-                    update: PhonationUpdate {
+                    update: NoteUpdate {
                         target_freq_hz: Some(440.0),
                         target_amp: Some(0.25),
                     },
                 },
-                PhonationCmd::NoteOn {
+                NoteCmd::NoteOn {
                     note_id,
-                    kick: PhonationKick::Planned { strength: 1.0 },
+                    kick: OnsetKick::Planned { strength: 1.0 },
                 },
             ],
-            notes: vec![PhonationNoteSpec {
+            notes: vec![NoteSpec {
                 note_id,
                 onset: 0,
                 hold_ticks: Some(8),
@@ -352,32 +352,32 @@ mod tests {
             0.0,
         );
         let note_id = 1;
-        let batch = PhonationBatch {
+        let batch = UtteranceBatch {
             source_id: 2,
             cmds: vec![
-                PhonationCmd::Update {
+                NoteCmd::Update {
                     note_id,
                     at_tick: Some(0),
-                    update: PhonationUpdate {
+                    update: NoteUpdate {
                         target_freq_hz: Some(330.0),
                         target_amp: None,
                     },
                 },
                 // Same-tick updates are applied in command order; later update wins.
-                PhonationCmd::Update {
+                NoteCmd::Update {
                     note_id,
                     at_tick: Some(0),
-                    update: PhonationUpdate {
+                    update: NoteUpdate {
                         target_freq_hz: Some(440.0),
                         target_amp: None,
                     },
                 },
-                PhonationCmd::NoteOn {
+                NoteCmd::NoteOn {
                     note_id,
-                    kick: PhonationKick::Planned { strength: 1.0 },
+                    kick: OnsetKick::Planned { strength: 1.0 },
                 },
             ],
-            notes: vec![PhonationNoteSpec {
+            notes: vec![NoteSpec {
                 note_id,
                 onset: 0,
                 hold_ticks: Some(8),

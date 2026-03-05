@@ -1,8 +1,8 @@
 let pad = derive(harmonic)
     .amp(0.1)
-    .phonation("hold")
+    .sustain()
     .adsr(0.2, 0.2, 0.8, 1.0);
-let bass = derive(sine).amp(0.18).phonation("hold");
+let bass = derive(sine).amp(0.18).sustain();
 
 let chord = |root| {
     create(bass, 1).freq(root);

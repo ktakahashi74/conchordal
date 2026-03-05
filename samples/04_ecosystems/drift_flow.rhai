@@ -1,6 +1,6 @@
-let anchor = derive(sine).amp(0.3).phonation("hold");
-let slider = derive(sine).amp(0.2).phonation("hold");
-let swarm = derive(sine).amp(0.08).phonation("hold");
+let anchor = derive(sine).amp(0.3).sustain();
+let slider = derive(sine).amp(0.2).sustain();
+let swarm = derive(sine).amp(0.08).sustain();
 
 scene("Drift Flow", || {
     let a = create(anchor, 1).freq(65.41);

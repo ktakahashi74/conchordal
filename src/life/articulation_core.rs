@@ -5,10 +5,10 @@ use crate::core::utils::pink_noise_tick;
 use crate::life::constants::{MAX_COUPLING_MULT, MAX_RECHARGE_MULT};
 use crate::life::lifecycle::LifecycleConfig;
 use crate::life::metabolism_policy::MetabolismPolicy;
-use crate::life::phonation_engine::PhonationKick;
 use crate::life::scenario::{
     ArticulationCoreConfig, MetabolismRhythmReward, RhythmCouplingMode, RhythmRewardMetric,
 };
+use crate::life::utterance_engine::OnsetKick;
 use rand::{Rng, SeedableRng, rngs::SmallRng};
 use std::f32::consts::{PI, TAU};
 
@@ -92,7 +92,7 @@ impl ArticulationWrapper {
         self.planned_gate.gate = gate.clamp(0.0, 1.0);
     }
 
-    pub fn kick_planned(&mut self, kick: PhonationKick, rhythms: &NeuralRhythms, dt: f32) {
+    pub fn kick_planned(&mut self, kick: OnsetKick, rhythms: &NeuralRhythms, dt: f32) {
         self.core.kick_planned(kick, rhythms, dt);
     }
 
@@ -813,7 +813,7 @@ impl AnyArticulationCore {
         }
     }
 
-    pub fn kick_planned(&mut self, kick: PhonationKick, _rhythms: &NeuralRhythms, _dt: f32) {
+    pub fn kick_planned(&mut self, kick: OnsetKick, _rhythms: &NeuralRhythms, _dt: f32) {
         let strength = kick.strength();
         match self {
             AnyArticulationCore::Entrain(core) => core.kick_planned(strength),

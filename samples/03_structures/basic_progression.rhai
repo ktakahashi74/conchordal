@@ -1,6 +1,6 @@
 let pad = derive(harmonic)
     .amp(0.13)
-    .phonation("hold")
+    .sustain()
     .adsr(0.2, 0.3, 0.8, 1.0);
 
 let chord = |root, dur| {

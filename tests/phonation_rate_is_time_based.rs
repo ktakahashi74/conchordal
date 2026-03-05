@@ -1,4 +1,4 @@
-use conchordal::life::phonation_engine::{
+use conchordal::life::utterance_engine::{
     AccumulatorInterval, CoreState, IntervalInput, PhonationInterval,
 };
 

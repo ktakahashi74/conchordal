@@ -1,13 +1,13 @@
 let bed = derive(sine)
-    .amp(0.05)
-    .phonation("hold")
+    .energy(0.05)
+    .sustain()
     .metabolism(0.0)
     .sustain_drive(0.01)
     .pitch_mode("lock");
 
 let mover = derive(sine)
-    .amp(0.05)
-    .phonation("hold")
+    .energy(0.05)
+    .sustain()
     .metabolism(0.0)
     .sustain_drive(0.012)
     .pitch_mode("free")

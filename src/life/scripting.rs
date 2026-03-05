@@ -9,18 +9,21 @@ use tracing::warn;
 use crate::core::mode_pattern::ModePattern;
 
 use super::control::{
-    AgentControl, BodyMethod, ControlUpdate, MoveCostTimeScale, PhonationType, PitchApplyMode,
-    PitchCoreKind, PitchMode,
+    AgentControl, BodyMethod, ControlUpdate, MoveCostTimeScale, PitchApplyMode, PitchCoreKind,
+    PitchMode,
 };
 use super::lifecycle::LifecycleConfig;
 use super::scenario::{
-    Action, ArticulationCoreConfig, EnvelopeConfig, MetabolismRhythmReward, RespawnPolicy,
-    RhythmCouplingMode, RhythmRewardMetric, Scenario, SceneMarker, SpawnSpec, SpawnStrategy,
-    TimedEvent,
+    Action, ArticulationCoreConfig, DurationSpec, EnvelopeConfig, FieldDurationSpec,
+    MetabolismRhythmReward, RespawnPolicy, RhythmCouplingMode, RhythmRewardMetric, Scenario,
+    SceneMarker, SpawnSpec, SpawnStrategy, TimedEvent, UtteranceSpec, WhenSpec,
 };
 
 const DEFAULT_RELEASE_SEC: f32 = 0.05;
 const DEFAULT_SEQ_DURATION_SEC: f32 = 1.0;
+const DEFAULT_PULSE_RATE: f32 = 2.25;
+const DEFAULT_PULSE_SYNC: f32 = 0.5;
+const DEFAULT_GATE_COUNT: u32 = 5;
 
 fn rhai_array_to_f32(values: Array, label: &str) -> Vec<f32> {
     let mut out = Vec::with_capacity(values.len());
@@ -46,9 +49,9 @@ enum BrainKind {
 }
 
 #[derive(Clone, Copy, Debug)]
-enum PhonationKind {
-    Hold,
-    Decay,
+enum UtteranceKind {
+    Sustain,
+    Repeat,
     Grain,
 }
 
@@ -67,7 +70,7 @@ struct SpeciesSpec {
     crowding_target_same: bool,
     crowding_target_other: bool,
     brain: BrainKind,
-    phonation: Option<PhonationKind>,
+    utterance_spec: UtteranceSpec,
     metabolism_rate: Option<f32>,
     adsr: Option<AdsrSpec>,
     rhythm_coupling: RhythmCouplingMode,
@@ -86,7 +89,7 @@ impl SpeciesSpec {
             crowding_target_same: true,
             crowding_target_other: false,
             brain: BrainKind::Entrain,
-            phonation: None,
+            utterance_spec: UtteranceSpec::default(),
             metabolism_rate: None,
             adsr: None,
             rhythm_coupling: RhythmCouplingMode::TemporalOnly,
@@ -153,13 +156,7 @@ impl SpeciesSpec {
 
     fn spawn_spec(&self) -> SpawnSpec {
         let mut control = self.control.clone();
-        if let Some(phonation) = self.phonation {
-            control.phonation.r#type = match phonation {
-                PhonationKind::Hold => PhonationType::Hold,
-                PhonationKind::Decay => PhonationType::Interval,
-                PhonationKind::Grain => PhonationType::Field,
-            };
-        }
+        control.utterance.spec = self.utterance_spec.clone();
         SpawnSpec {
             control,
             articulation: self.articulation_config(),
@@ -331,17 +328,97 @@ impl SpeciesSpec {
         };
     }
 
-    fn set_phonation(&mut self, name: &str) {
-        let lowered = name.trim().to_ascii_lowercase();
-        self.phonation = match lowered.as_str() {
-            "hold" => Some(PhonationKind::Hold),
-            "decay" => Some(PhonationKind::Decay),
-            "grain" => Some(PhonationKind::Grain),
-            other => {
-                warn!("phonation '{}' not supported yet", other);
-                self.phonation
-            }
+    fn set_utterance(&mut self, kind: UtteranceKind) {
+        self.utterance_spec = match kind {
+            UtteranceKind::Sustain => UtteranceSpec::default(),
+            UtteranceKind::Repeat => UtteranceSpec {
+                when: WhenSpec::Pulse {
+                    rate: DEFAULT_PULSE_RATE,
+                    sync: DEFAULT_PULSE_SYNC,
+                    social: 0.0,
+                },
+                duration: DurationSpec::Gates(DEFAULT_GATE_COUNT),
+            },
+            UtteranceKind::Grain => UtteranceSpec {
+                when: WhenSpec::Pulse {
+                    rate: DEFAULT_PULSE_RATE,
+                    sync: DEFAULT_PULSE_SYNC,
+                    social: 0.0,
+                },
+                duration: DurationSpec::Field(FieldDurationSpec::default()),
+            },
         };
+    }
+
+    fn set_when_once(&mut self) {
+        self.utterance_spec.when = WhenSpec::Once;
+    }
+
+    fn set_when_pulse(&mut self, rate: f32) {
+        let rate = rate.max(0.01);
+        match &mut self.utterance_spec.when {
+            WhenSpec::Pulse { rate: r, .. } => *r = rate,
+            _ => {
+                self.utterance_spec.when = WhenSpec::Pulse {
+                    rate,
+                    sync: DEFAULT_PULSE_SYNC,
+                    social: 0.0,
+                };
+            }
+        }
+    }
+
+    fn set_duration_while_alive(&mut self) {
+        self.utterance_spec.duration = DurationSpec::WhileAlive;
+    }
+
+    fn set_duration_gates(&mut self, n: u32) {
+        self.utterance_spec.duration = DurationSpec::Gates(n.max(1));
+    }
+
+    fn set_duration_field(&mut self) {
+        self.utterance_spec.duration = DurationSpec::Field(FieldDurationSpec::default());
+    }
+
+    fn set_sync(&mut self, depth: f32) {
+        match &mut self.utterance_spec.when {
+            WhenSpec::Pulse { sync, .. } => *sync = depth.clamp(0.0, 1.0),
+            _ => warn!("sync() requires pulse(); ignored"),
+        }
+    }
+
+    fn set_social(&mut self, coupling: f32) {
+        match &mut self.utterance_spec.when {
+            WhenSpec::Pulse { social, .. } => *social = coupling.clamp(0.0, 1.0),
+            _ => warn!("social() requires pulse(); ignored"),
+        }
+    }
+
+    fn set_field_window(&mut self, min: f32, max: f32) {
+        match &mut self.utterance_spec.duration {
+            DurationSpec::Field(f) => {
+                f.hold_min_theta = min.clamp(0.0, 1.0);
+                f.hold_max_theta = max.clamp(0.0, 1.0);
+            }
+            _ => warn!("field_window() requires field(); ignored"),
+        }
+    }
+
+    fn set_field_curve(&mut self, k: f32, x0: f32) {
+        match &mut self.utterance_spec.duration {
+            DurationSpec::Field(f) => {
+                f.curve_k = k;
+                f.curve_x0 = x0;
+            }
+            _ => warn!("field_curve() requires field(); ignored"),
+        }
+    }
+
+    fn set_field_drop(&mut self, gain: f32) {
+        match &mut self.utterance_spec.duration {
+            DurationSpec::Field(f) => f.drop_gain = gain.max(0.0),
+            _ => warn!("field_drop() requires field(); ignored"),
+        }
     }
 
     fn set_metabolism(&mut self, rate: f32) {
@@ -1298,10 +1375,67 @@ impl ScriptHost {
             species.spec.set_brain(name);
             species
         });
-        engine.register_fn("phonation", |mut species: SpeciesHandle, name: &str| {
-            species.spec.set_phonation(name);
+        engine.register_fn("sustain", |mut species: SpeciesHandle| {
+            species.spec.set_utterance(UtteranceKind::Sustain);
             species
         });
+        engine.register_fn("repeat", |mut species: SpeciesHandle| {
+            species.spec.set_utterance(UtteranceKind::Repeat);
+            species
+        });
+        engine.register_fn("grain", |mut species: SpeciesHandle| {
+            species.spec.set_utterance(UtteranceKind::Grain);
+            species
+        });
+        // Tier 2: explicit when/duration
+        engine.register_fn("once", |mut species: SpeciesHandle| {
+            species.spec.set_when_once();
+            species
+        });
+        engine.register_fn("pulse", |mut species: SpeciesHandle, rate: FLOAT| {
+            species.spec.set_when_pulse(rate as f32);
+            species
+        });
+        engine.register_fn("while_alive", |mut species: SpeciesHandle| {
+            species.spec.set_duration_while_alive();
+            species
+        });
+        engine.register_fn("gates", |mut species: SpeciesHandle, n: INT| {
+            species.spec.set_duration_gates(n.max(1) as u32);
+            species
+        });
+        engine.register_fn("field", |mut species: SpeciesHandle| {
+            species.spec.set_duration_field();
+            species
+        });
+        // Tier 3: expert tuning
+        engine.register_fn("sync", |mut species: SpeciesHandle, depth: FLOAT| {
+            species.spec.set_sync(depth as f32);
+            species
+        });
+        engine.register_fn("social", |mut species: SpeciesHandle, coupling: FLOAT| {
+            species.spec.set_social(coupling as f32);
+            species
+        });
+        engine.register_fn(
+            "field_window",
+            |mut species: SpeciesHandle, min: FLOAT, max: FLOAT| {
+                species.spec.set_field_window(min as f32, max as f32);
+                species
+            },
+        );
+        engine.register_fn(
+            "field_curve",
+            |mut species: SpeciesHandle, k: FLOAT, x0: FLOAT| {
+                species.spec.set_field_curve(k as f32, x0 as f32);
+                species
+            },
+        );
+        engine.register_fn("field_drop", |mut species: SpeciesHandle, gain: FLOAT| {
+            species.spec.set_field_drop(gain as f32);
+            species
+        });
+        register_species_numeric_overloads(&mut engine, "energy", SpeciesSpec::set_amp);
         engine.register_fn(
             "timbre",
             |mut species: SpeciesHandle, brightness: FLOAT, width: FLOAT| {
@@ -1694,6 +1828,14 @@ impl ScriptHost {
             &mut engine,
             ctx.clone(),
             "amp",
+            SpeciesSpec::set_amp,
+            patch_amp,
+            None,
+        );
+        register_group_numeric_overloads(
+            &mut engine,
+            ctx.clone(),
+            "energy",
             SpeciesSpec::set_amp,
             patch_amp,
             None,
@@ -2146,23 +2288,153 @@ impl ScriptHost {
                 Ok(handle)
             },
         );
-        let ctx_for_group_phonation = ctx.clone();
+        let ctx_for_group_sustain = ctx.clone();
         engine.register_fn(
-            "phonation",
-            move |handle: GroupHandle, name: &str| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_phonation.lock().expect("lock script context");
+            "sustain",
+            move |handle: GroupHandle| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_sustain.lock().expect("lock script context");
                 let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("phonation ignored for unknown group {}", handle.id);
+                    warn!("sustain ignored for unknown group {}", handle.id);
                     return Ok(handle);
                 };
                 match group.status {
-                    GroupStatus::Draft => group.spec.set_phonation(name),
-                    GroupStatus::Live => ctx.warn_live_builder(handle.id, "phonation"),
-                    _ => ctx.warn_live_builder(handle.id, "phonation"),
+                    GroupStatus::Draft => {
+                        group.spec.set_utterance(UtteranceKind::Sustain);
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "sustain"),
                 }
                 Ok(handle)
             },
         );
+        let ctx_for_group_repeat = ctx.clone();
+        engine.register_fn(
+            "repeat",
+            move |handle: GroupHandle| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_repeat.lock().expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("repeat ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                match group.status {
+                    GroupStatus::Draft => {
+                        group.spec.set_utterance(UtteranceKind::Repeat);
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "repeat"),
+                }
+                Ok(handle)
+            },
+        );
+        let ctx_for_group_grain = ctx.clone();
+        engine.register_fn(
+            "grain",
+            move |handle: GroupHandle| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_grain.lock().expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("grain ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                match group.status {
+                    GroupStatus::Draft => {
+                        group.spec.set_utterance(UtteranceKind::Grain);
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "grain"),
+                }
+                Ok(handle)
+            },
+        );
+        // Tier 2: explicit when/duration (group, draft-only)
+        macro_rules! register_group_draft_fn {
+            ($name:expr, $ctx:expr, $engine:expr, |$spec:ident| $body:expr) => {{
+                let ctx_clone = $ctx.clone();
+                $engine.register_fn(
+                    $name,
+                    move |handle: GroupHandle| -> Result<GroupHandle, Box<EvalAltResult>> {
+                        let mut ctx = ctx_clone.lock().expect("lock script context");
+                        let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                            warn!("{} ignored for unknown group {}", $name, handle.id);
+                            return Ok(handle);
+                        };
+                        match group.status {
+                            GroupStatus::Draft => {
+                                let $spec = &mut group.spec;
+                                $body;
+                            }
+                            _ => ctx.warn_live_builder(handle.id, $name),
+                        }
+                        Ok(handle)
+                    },
+                );
+            }};
+        }
+        macro_rules! register_group_draft_fn1 {
+            ($name:expr, $ctx:expr, $engine:expr, |$spec:ident, $a:ident: $at:ty| $body:expr) => {{
+                let ctx_clone = $ctx.clone();
+                $engine.register_fn(
+                    $name,
+                    move |handle: GroupHandle,
+                          $a: $at|
+                          -> Result<GroupHandle, Box<EvalAltResult>> {
+                        let mut ctx = ctx_clone.lock().expect("lock script context");
+                        let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                            warn!("{} ignored for unknown group {}", $name, handle.id);
+                            return Ok(handle);
+                        };
+                        match group.status {
+                            GroupStatus::Draft => {
+                                let $spec = &mut group.spec;
+                                $body;
+                            }
+                            _ => ctx.warn_live_builder(handle.id, $name),
+                        }
+                        Ok(handle)
+                    },
+                );
+            }};
+        }
+        macro_rules! register_group_draft_fn2 {
+            ($name:expr, $ctx:expr, $engine:expr, |$spec:ident, $a:ident: $at:ty, $b:ident: $bt:ty| $body:expr) => {{
+                let ctx_clone = $ctx.clone();
+                $engine.register_fn(
+                    $name,
+                    move |handle: GroupHandle,
+                          $a: $at,
+                          $b: $bt|
+                          -> Result<GroupHandle, Box<EvalAltResult>> {
+                        let mut ctx = ctx_clone.lock().expect("lock script context");
+                        let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                            warn!("{} ignored for unknown group {}", $name, handle.id);
+                            return Ok(handle);
+                        };
+                        match group.status {
+                            GroupStatus::Draft => {
+                                let $spec = &mut group.spec;
+                                $body;
+                            }
+                            _ => ctx.warn_live_builder(handle.id, $name),
+                        }
+                        Ok(handle)
+                    },
+                );
+            }};
+        }
+        register_group_draft_fn!("once", ctx, engine, |s| s.set_when_once());
+        register_group_draft_fn1!("pulse", ctx, engine, |s, rate: FLOAT| s
+            .set_when_pulse(rate as f32));
+        register_group_draft_fn!("while_alive", ctx, engine, |s| s.set_duration_while_alive());
+        register_group_draft_fn1!("gates", ctx, engine, |s, n: INT| s
+            .set_duration_gates(n.max(1) as u32));
+        register_group_draft_fn!("field", ctx, engine, |s| s.set_duration_field());
+        register_group_draft_fn1!("sync", ctx, engine, |s, depth: FLOAT| s
+            .set_sync(depth as f32));
+        register_group_draft_fn1!("social", ctx, engine, |s, coupling: FLOAT| s
+            .set_social(coupling as f32));
+        register_group_draft_fn2!("field_window", ctx, engine, |s, min: FLOAT, max: FLOAT| s
+            .set_field_window(min as f32, max as f32));
+        register_group_draft_fn2!("field_curve", ctx, engine, |s, k: FLOAT, x0: FLOAT| s
+            .set_field_curve(k as f32, x0 as f32));
+        register_group_draft_fn1!("field_drop", ctx, engine, |s, gain: FLOAT| s
+            .set_field_drop(gain as f32));
+
         let ctx_for_group_timbre = ctx.clone();
         engine.register_fn(
             "timbre",

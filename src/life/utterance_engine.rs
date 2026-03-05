@@ -6,10 +6,11 @@ use std::fmt;
 
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::Tick;
+use crate::life::control_adapters::phonation_config_from_utterance;
 use crate::life::gate_clock::next_gate_tick;
 use crate::life::scenario::{
     PhonationClockConfig, PhonationConfig, PhonationConnectConfig, PhonationIntervalConfig,
-    PhonationMode, SubThetaModConfig,
+    PhonationMode, SubThetaModConfig, UtteranceSpec,
 };
 use crate::life::social_density::SocialDensityTrace;
 use tracing::{debug, warn};
@@ -17,36 +18,36 @@ use tracing::{debug, warn};
 pub type NoteId = u64;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum PhonationKick {
+pub enum OnsetKick {
     Planned { strength: f32 },
 }
 
-impl PhonationKick {
+impl OnsetKick {
     pub fn strength(self) -> f32 {
         match self {
-            PhonationKick::Planned { strength } => strength,
+            OnsetKick::Planned { strength } => strength,
         }
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
-pub struct PhonationUpdate {
+pub struct NoteUpdate {
     pub target_freq_hz: Option<f32>,
     /// Final output target amp (linear).
     pub target_amp: Option<f32>,
 }
 
-impl PhonationUpdate {
+impl NoteUpdate {
     pub fn is_empty(&self) -> bool {
         self.target_freq_hz.is_none() && self.target_amp.is_none()
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum PhonationCmd {
+pub enum NoteCmd {
     NoteOn {
         note_id: NoteId,
-        kick: PhonationKick,
+        kick: OnsetKick,
     },
     NoteOff {
         note_id: NoteId,
@@ -55,7 +56,7 @@ pub enum PhonationCmd {
     Update {
         note_id: NoteId,
         at_tick: Option<Tick>,
-        update: PhonationUpdate,
+        update: NoteUpdate,
     },
 }
 
@@ -549,7 +550,7 @@ impl PhonationClock for CompositeClock {
 }
 
 pub trait PhonationInterval: Send {
-    fn on_candidate(&mut self, c: &IntervalInput, state: &CoreState) -> Option<PhonationKick>;
+    fn on_candidate(&mut self, c: &IntervalInput, state: &CoreState) -> Option<OnsetKick>;
     fn update_config(&mut self, _config: &PhonationIntervalConfig) -> bool {
         false
     }
@@ -606,7 +607,7 @@ impl SubThetaMod for CosineHarmonicMod {
 pub struct NoneInterval;
 
 impl PhonationInterval for NoneInterval {
-    fn on_candidate(&mut self, _c: &IntervalInput, _state: &CoreState) -> Option<PhonationKick> {
+    fn on_candidate(&mut self, _c: &IntervalInput, _state: &CoreState) -> Option<OnsetKick> {
         None
     }
 
@@ -637,7 +638,7 @@ impl AccumulatorInterval {
 }
 
 impl PhonationInterval for AccumulatorInterval {
-    fn on_candidate(&mut self, c: &IntervalInput, _state: &CoreState) -> Option<PhonationKick> {
+    fn on_candidate(&mut self, c: &IntervalInput, _state: &CoreState) -> Option<OnsetKick> {
         const ACC_MAX: f32 = 32.0;
         if !_state.is_alive {
             return None;
@@ -654,7 +655,7 @@ impl PhonationInterval for AccumulatorInterval {
         if self.acc >= 1.0 && refractory_ok {
             self.acc -= 1.0;
             self.next_allowed_gate = c.gate + self.refractory_gates as u64 + 1;
-            return Some(PhonationKick::Planned { strength: 1.0 });
+            return Some(OnsetKick::Planned { strength: 1.0 });
         }
         None
     }
@@ -698,7 +699,7 @@ pub trait PhonationConnect: Send {
     /// If on_note_on returns ConnectPlan::HoldTheta, the engine schedules the NoteOff via
     /// its pending-off queue, and implementations must not emit a NoteOff for that note_id in poll.
     fn on_note_on(&mut self, onset: ConnectOnset) -> ConnectPlan;
-    fn poll(&mut self, now: ConnectNow, out: &mut Vec<PhonationCmd>);
+    fn poll(&mut self, now: ConnectNow, out: &mut Vec<NoteCmd>);
     fn update_config(&mut self, _config: &PhonationConnectConfig) -> bool {
         false
     }
@@ -726,13 +727,13 @@ impl PhonationConnect for FixedGateConnect {
         ConnectPlan::None
     }
 
-    fn poll(&mut self, now: ConnectNow, out: &mut Vec<PhonationCmd>) {
+    fn poll(&mut self, now: ConnectNow, out: &mut Vec<NoteCmd>) {
         let mut idx = 0;
         while idx < self.pending.len() {
             if self.pending[idx].1 <= now.gate {
                 let note_id = self.pending[idx].0;
                 self.pending.swap_remove(idx);
-                out.push(PhonationCmd::NoteOff {
+                out.push(NoteCmd::NoteOff {
                     note_id,
                     off_tick: now.tick,
                 });
@@ -819,7 +820,7 @@ impl PhonationConnect for FieldConnect {
         ConnectPlan::HoldTheta(hold)
     }
 
-    fn poll(&mut self, now: ConnectNow, out: &mut Vec<PhonationCmd>) {
+    fn poll(&mut self, now: ConnectNow, out: &mut Vec<NoteCmd>) {
         let _ = now;
         let _ = out;
     }
@@ -846,7 +847,7 @@ impl PhonationConnect for FieldConnect {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct PhonationNoteOn {
+pub struct NoteOnEvent {
     pub note_id: NoteId,
     pub onset_tick: Tick,
 }
@@ -884,7 +885,7 @@ struct HoldCore {
     note_id: Option<NoteId>,
 }
 
-pub struct PhonationEngine {
+pub struct UtteranceRuntime {
     pub clock: Box<dyn PhonationClock + Send>,
     pub interval: Box<dyn PhonationInterval + Send>,
     pub connect: Box<dyn PhonationConnect + Send>,
@@ -902,9 +903,9 @@ pub struct PhonationEngine {
     scratch_merged: Vec<CandidatePoint>,
 }
 
-impl fmt::Debug for PhonationEngine {
+impl fmt::Debug for UtteranceRuntime {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("PhonationEngine")
+        f.debug_struct("UtteranceRuntime")
             .field("next_note_id", &self.next_note_id)
             .field("last_gate_index", &self.last_gate_index)
             .field("active_notes", &self.active_notes)
@@ -913,7 +914,7 @@ impl fmt::Debug for PhonationEngine {
     }
 }
 
-impl PhonationEngine {
+impl UtteranceRuntime {
     fn make_interval_from_config(
         config: &PhonationIntervalConfig,
         seed: u64,
@@ -947,6 +948,16 @@ impl PhonationEngine {
                 *drop_gain,
             )),
         }
+    }
+
+    pub fn from_spec(spec: &UtteranceSpec, seed: u64) -> Self {
+        let config = phonation_config_from_utterance(spec);
+        Self::from_config(&config, seed)
+    }
+
+    pub fn update_from_spec(&mut self, spec: &UtteranceSpec) {
+        let config = phonation_config_from_utterance(spec);
+        self.update_from_config(&config);
     }
 
     pub fn from_config(config: &PhonationConfig, seed: u64) -> Self {
@@ -1034,8 +1045,8 @@ impl PhonationEngine {
         ctx: &CoreTickCtx,
         state: &CoreState,
         min_allowed_onset_tick: Option<Tick>,
-        out_cmds: &mut Vec<PhonationCmd>,
-        out_events: &mut Vec<PhonationNoteOn>,
+        out_cmds: &mut Vec<NoteCmd>,
+        out_events: &mut Vec<NoteOnEvent>,
         out_onsets: &mut Vec<OnsetEvent>,
     ) {
         let allow_onset = min_allowed_onset_tick
@@ -1046,12 +1057,12 @@ impl PhonationEngine {
             self.next_note_id = self.next_note_id.wrapping_add(1);
             self.hold.note_on_sent = true;
             self.hold.note_id = Some(note_id);
-            out_cmds.push(PhonationCmd::NoteOn {
+            out_cmds.push(NoteCmd::NoteOn {
                 note_id,
-                kick: PhonationKick::Planned { strength: 1.0 },
+                kick: OnsetKick::Planned { strength: 1.0 },
             });
             self.active_notes = self.active_notes.saturating_add(1);
-            out_events.push(PhonationNoteOn {
+            out_events.push(NoteOnEvent {
                 note_id,
                 onset_tick: ctx.now_tick,
             });
@@ -1064,7 +1075,7 @@ impl PhonationEngine {
         if !state.is_alive
             && let Some(note_id) = self.hold.note_id.take()
         {
-            out_cmds.push(PhonationCmd::NoteOff {
+            out_cmds.push(NoteCmd::NoteOff {
                 note_id,
                 off_tick: ctx.now_tick,
             });
@@ -1077,13 +1088,13 @@ impl PhonationEngine {
             .push(Reverse(PendingOff { off_tick, note_id }));
     }
 
-    fn drain_note_offs(&mut self, up_to_tick: Tick, out_cmds: &mut Vec<PhonationCmd>) {
+    fn drain_note_offs(&mut self, up_to_tick: Tick, out_cmds: &mut Vec<NoteCmd>) {
         while let Some(Reverse(next)) = self.pending_off.peek().copied() {
             if next.off_tick > up_to_tick {
                 break;
             }
             self.pending_off.pop();
-            out_cmds.push(PhonationCmd::NoteOff {
+            out_cmds.push(NoteCmd::NoteOff {
                 note_id: next.note_id,
                 off_tick: next.off_tick,
             });
@@ -1145,8 +1156,8 @@ impl PhonationEngine {
         social_coupling: f32,
         extra_gate_gain: f32,
         min_allowed_onset_tick: Option<Tick>,
-        out_cmds: &mut Vec<PhonationCmd>,
-        out_events: &mut Vec<PhonationNoteOn>,
+        out_cmds: &mut Vec<NoteCmd>,
+        out_events: &mut Vec<NoteOnEvent>,
         out_onsets: &mut Vec<OnsetEvent>,
     ) {
         if matches!(self.mode, PhonationMode::Hold) {
@@ -1195,8 +1206,8 @@ impl PhonationEngine {
         timing_field: &TimingField,
         state: &CoreState,
         min_allowed_onset_tick: Option<Tick>,
-        out_cmds: &mut Vec<PhonationCmd>,
-        out_events: &mut Vec<PhonationNoteOn>,
+        out_cmds: &mut Vec<NoteCmd>,
+        out_events: &mut Vec<NoteOnEvent>,
         out_onsets: &mut Vec<OnsetEvent>,
     ) {
         let mut prev_gate_exc: Option<f32> = None;
@@ -1259,7 +1270,7 @@ impl PhonationEngine {
             let before = out_cmds.len();
             self.connect.poll(connect_now, out_cmds);
             for cmd in &out_cmds[before..] {
-                if matches!(cmd, PhonationCmd::NoteOff { .. }) {
+                if matches!(cmd, NoteCmd::NoteOff { .. }) {
                     self.active_notes = self.active_notes.saturating_sub(1);
                 }
             }
@@ -1278,9 +1289,9 @@ impl PhonationEngine {
             if allow_onset && let Some(kick) = self.interval.on_candidate(&input, state) {
                 let note_id = self.next_note_id;
                 self.next_note_id = self.next_note_id.wrapping_add(1);
-                out_cmds.push(PhonationCmd::NoteOn { note_id, kick });
+                out_cmds.push(NoteCmd::NoteOn { note_id, kick });
                 self.active_notes = self.active_notes.saturating_add(1);
-                out_events.push(PhonationNoteOn {
+                out_events.push(NoteOnEvent {
                     note_id,
                     onset_tick: c.tick,
                 });
@@ -1306,7 +1317,7 @@ impl PhonationEngine {
             let before = out_cmds.len();
             self.connect.poll(connect_now, out_cmds);
             for cmd in &out_cmds[before..] {
-                if matches!(cmd, PhonationCmd::NoteOff { .. }) {
+                if matches!(cmd, NoteCmd::NoteOff { .. }) {
                     self.active_notes = self.active_notes.saturating_sub(1);
                 }
             }
@@ -1546,7 +1557,7 @@ mod tests {
         );
         assert_eq!(
             out,
-            vec![PhonationCmd::NoteOff {
+            vec![NoteCmd::NoteOff {
                 note_id: 1,
                 off_tick: 123,
             }]
@@ -1623,7 +1634,7 @@ mod tests {
         let timing_field = TimingField::from_values(0, vec![0.0, 1.0]);
         let mut interval = AccumulatorInterval::new(250.0, 0, 1);
         interval.acc = 0.0;
-        let mut engine = PhonationEngine {
+        let mut engine = UtteranceRuntime {
             clock: Box::<ThetaGateClock>::default(),
             interval: Box::new(interval),
             connect: Box::new(FixedGateConnect::new(1)),
@@ -1938,7 +1949,7 @@ mod tests {
         let mut candidates = Vec::new();
         let clock = SubdivisionClock::new(vec![2, 4]);
         clock.gather_candidates(&grid, &mut candidates);
-        let merged = PhonationEngine::merge_candidates(candidates);
+        let merged = UtteranceRuntime::merge_candidates(candidates);
         let tick_50 = merged.iter().find(|c| c.tick == 50).expect("tick 50");
         assert!(tick_50.sources.contains(&ClockSource::Subdivision { n: 2 }));
         assert!(tick_50.sources.contains(&ClockSource::Subdivision { n: 4 }));
@@ -1952,11 +1963,7 @@ mod tests {
         }
 
         impl PhonationInterval for RecordingInterval {
-            fn on_candidate(
-                &mut self,
-                c: &IntervalInput,
-                _state: &CoreState,
-            ) -> Option<PhonationKick> {
+            fn on_candidate(&mut self, c: &IntervalInput, _state: &CoreState) -> Option<OnsetKick> {
                 self.log.lock().expect("dt log").push(c.dt_theta);
                 None
             }
@@ -1992,7 +1999,7 @@ mod tests {
             rhythms: NeuralRhythms::default(),
         };
         let timing_field = TimingField::from_values(0, vec![1.0, 1.0]);
-        let mut engine = PhonationEngine {
+        let mut engine = UtteranceRuntime {
             clock: Box::<ThetaGateClock>::default(),
             interval: Box::new(RecordingInterval { log: log.clone() }),
             connect: Box::new(FixedGateConnect::new(1)),
@@ -2036,11 +2043,7 @@ mod tests {
         }
 
         impl PhonationInterval for RecordingInterval {
-            fn on_candidate(
-                &mut self,
-                c: &IntervalInput,
-                _state: &CoreState,
-            ) -> Option<PhonationKick> {
+            fn on_candidate(&mut self, c: &IntervalInput, _state: &CoreState) -> Option<OnsetKick> {
                 self.log.lock().expect("dt log").push(c.dt_theta);
                 None
             }
@@ -2069,7 +2072,7 @@ mod tests {
             rhythms: NeuralRhythms::default(),
         };
         let timing_field = TimingField::from_values(0, vec![1.0, 1.0]);
-        let mut engine = PhonationEngine {
+        let mut engine = UtteranceRuntime {
             clock: Box::<ThetaGateClock>::default(),
             interval: Box::new(RecordingInterval { log: log.clone() }),
             connect: Box::new(FixedGateConnect::new(1)),
@@ -2123,7 +2126,7 @@ mod tests {
             rhythms: NeuralRhythms::default(),
         };
         let timing_field = TimingField::from_values(0, vec![1.0]);
-        let mut engine = PhonationEngine {
+        let mut engine = UtteranceRuntime {
             clock: Box::<ThetaGateClock>::default(),
             interval: Box::<NoneInterval>::default(),
             connect: Box::new(FixedGateConnect::new(1)),
@@ -2166,11 +2169,7 @@ mod tests {
         }
 
         impl PhonationInterval for RecordingInterval {
-            fn on_candidate(
-                &mut self,
-                c: &IntervalInput,
-                _state: &CoreState,
-            ) -> Option<PhonationKick> {
+            fn on_candidate(&mut self, c: &IntervalInput, _state: &CoreState) -> Option<OnsetKick> {
                 self.log.lock().expect("dt log").push(c.dt_theta);
                 None
             }
@@ -2199,7 +2198,7 @@ mod tests {
             rhythms: NeuralRhythms::default(),
         };
         let timing_field = TimingField::from_values(20_000_000, vec![1.0, 1.0]);
-        let mut engine = PhonationEngine {
+        let mut engine = UtteranceRuntime {
             clock: Box::<ThetaGateClock>::default(),
             interval: Box::new(RecordingInterval { log: log.clone() }),
             connect: Box::new(FixedGateConnect::new(1)),
@@ -2286,7 +2285,7 @@ mod tests {
         let timing_field = TimingField::from_values(0, vec![1.0, 1.0]);
         let mut interval = AccumulatorInterval::new(50.0, 0, 1);
         interval.acc = 0.0;
-        let mut engine = PhonationEngine {
+        let mut engine = UtteranceRuntime {
             clock: Box::<ThetaGateClock>::default(),
             interval: Box::new(interval),
             connect: Box::new(FixedGateConnect::new(1)),
@@ -2337,7 +2336,7 @@ mod tests {
         };
         let mut interval = AccumulatorInterval::new(1.0, 0, 1);
         interval.acc = 1.0;
-        let mut engine = PhonationEngine {
+        let mut engine = UtteranceRuntime {
             clock: Box::<ThetaGateClock>::default(),
             interval: Box::new(interval),
             connect: Box::new(FixedGateConnect::new(0)),
@@ -2379,13 +2378,10 @@ mod tests {
             &mut onsets,
         );
         assert_eq!(engine.active_notes, 0, "note on/off should settle to zero");
+        assert!(cmds.iter().any(|cmd| matches!(cmd, NoteCmd::NoteOn { .. })));
         assert!(
             cmds.iter()
-                .any(|cmd| matches!(cmd, PhonationCmd::NoteOn { .. }))
-        );
-        assert!(
-            cmds.iter()
-                .any(|cmd| matches!(cmd, PhonationCmd::NoteOff { .. }))
+                .any(|cmd| matches!(cmd, NoteCmd::NoteOff { .. }))
         );
     }
 
@@ -2399,7 +2395,7 @@ mod tests {
         };
         let mut interval = AccumulatorInterval::new(1.0, 0, 1);
         interval.acc = 1.0;
-        let mut engine = PhonationEngine {
+        let mut engine = UtteranceRuntime {
             clock: Box::<ThetaGateClock>::default(),
             interval: Box::new(interval),
             connect: Box::new(FixedGateConnect::new(1)),
@@ -2441,14 +2437,11 @@ mod tests {
             &mut onsets,
         );
         assert_eq!(engine.active_notes, 1);
-        assert!(
-            cmds.iter()
-                .any(|cmd| matches!(cmd, PhonationCmd::NoteOn { .. }))
-        );
+        assert!(cmds.iter().any(|cmd| matches!(cmd, NoteCmd::NoteOn { .. })));
         assert!(
             !cmds
                 .iter()
-                .any(|cmd| matches!(cmd, PhonationCmd::NoteOff { .. }))
+                .any(|cmd| matches!(cmd, NoteCmd::NoteOff { .. }))
         );
     }
 
@@ -2460,7 +2453,7 @@ mod tests {
             fs: 1000.0,
             rhythms: NeuralRhythms::default(),
         };
-        let mut engine = PhonationEngine {
+        let mut engine = UtteranceRuntime {
             clock: Box::<ThetaGateClock>::default(),
             interval: Box::<NoneInterval>::default(),
             connect: Box::new(FixedGateConnect::new(1)),
@@ -2498,7 +2491,7 @@ mod tests {
         );
         assert!(cmds.iter().any(|cmd| matches!(
             cmd,
-            PhonationCmd::NoteOff {
+            NoteCmd::NoteOff {
                 note_id: 42,
                 off_tick: 5
             }
@@ -2514,8 +2507,8 @@ mod tests {
                 &mut self,
                 _c: &IntervalInput,
                 _state: &CoreState,
-            ) -> Option<PhonationKick> {
-                Some(PhonationKick::Planned { strength: 1.0 })
+            ) -> Option<OnsetKick> {
+                Some(OnsetKick::Planned { strength: 1.0 })
             }
         }
 
@@ -2526,7 +2519,7 @@ mod tests {
                 ConnectPlan::None
             }
 
-            fn poll(&mut self, _now: ConnectNow, _out: &mut Vec<PhonationCmd>) {}
+            fn poll(&mut self, _now: ConnectNow, _out: &mut Vec<NoteCmd>) {}
         }
 
         let ctx = CoreTickCtx {
@@ -2543,7 +2536,7 @@ mod tests {
             sources: vec![ClockSource::GateBoundary],
         }];
         let timing_field = TimingField::from_values(0, vec![1.0]);
-        let mut engine = PhonationEngine {
+        let mut engine = UtteranceRuntime {
             clock: Box::<ThetaGateClock>::default(),
             interval: Box::new(AlwaysInterval),
             connect: Box::new(NoopConnect),
@@ -2579,10 +2572,10 @@ mod tests {
         );
         let off_pos = cmds
             .iter()
-            .position(|cmd| matches!(cmd, PhonationCmd::NoteOff { note_id: 99, .. }));
+            .position(|cmd| matches!(cmd, NoteCmd::NoteOff { note_id: 99, .. }));
         let on_pos = cmds
             .iter()
-            .position(|cmd| matches!(cmd, PhonationCmd::NoteOn { .. }));
+            .position(|cmd| matches!(cmd, NoteCmd::NoteOn { .. }));
         assert!(off_pos.is_some());
         assert!(on_pos.is_some());
         assert!(off_pos < on_pos);
@@ -2596,7 +2589,7 @@ mod tests {
             fs: 100.0,
             rhythms: NeuralRhythms::default(),
         };
-        let mut engine = PhonationEngine {
+        let mut engine = UtteranceRuntime {
             clock: Box::<ThetaGateClock>::default(),
             interval: Box::<NoneInterval>::default(),
             connect: Box::new(FixedGateConnect::new(1)),
@@ -2641,7 +2634,7 @@ mod tests {
             fs: 100.0,
             rhythms: NeuralRhythms::default(),
         };
-        let mut engine = PhonationEngine {
+        let mut engine = UtteranceRuntime {
             clock: Box::<ThetaGateClock>::default(),
             interval: Box::<NoneInterval>::default(),
             connect: Box::new(FixedGateConnect::new(1)),
@@ -2716,7 +2709,7 @@ mod tests {
                 sources: vec![ClockSource::GateBoundary],
             },
         ];
-        let merged = PhonationEngine::merge_candidates(candidates);
+        let merged = UtteranceRuntime::merge_candidates(candidates);
         assert_eq!(merged.len(), 2);
         assert_ne!(merged[0].gate, merged[1].gate);
     }
@@ -2731,7 +2724,7 @@ mod tests {
             sub_theta_mod: SubThetaModConfig::None,
             social: SocialConfig::default(),
         };
-        let mut engine = PhonationEngine::from_config(&base, 7);
+        let mut engine = UtteranceRuntime::from_config(&base, 7);
         let changed = PhonationConfig {
             interval: PhonationIntervalConfig::Accumulator {
                 rate: 2.0,
@@ -2791,7 +2784,7 @@ mod tests {
                 sources: vec![ClockSource::GateBoundary],
             },
         ];
-        let merged = PhonationEngine::merge_candidates(candidates);
+        let merged = UtteranceRuntime::merge_candidates(candidates);
         assert_eq!(merged.len(), 1);
         assert_eq!(merged[0].phase_in_gate, 0.0);
         assert!(merged[0].sources.contains(&ClockSource::GateBoundary));
@@ -2840,7 +2833,7 @@ mod tests {
             }
         }
 
-        let mut engine = PhonationEngine {
+        let mut engine = UtteranceRuntime {
             clock: Box::new(StubClock {
                 ticks: vec![0, 4, 8],
                 index: 0,
@@ -2879,9 +2872,7 @@ mod tests {
         let first = events[0];
         let second = events[1];
         let off_tick = cmds.iter().find_map(|cmd| match cmd {
-            PhonationCmd::NoteOff { note_id, off_tick } if *note_id == first.note_id => {
-                Some(*off_tick)
-            }
+            NoteCmd::NoteOff { note_id, off_tick } if *note_id == first.note_id => Some(*off_tick),
             _ => None,
         });
         assert_eq!(off_tick, Some(second.onset_tick));
@@ -2951,13 +2942,9 @@ mod tests {
         }
 
         impl PhonationInterval for TickInterval {
-            fn on_candidate(
-                &mut self,
-                c: &IntervalInput,
-                _state: &CoreState,
-            ) -> Option<PhonationKick> {
+            fn on_candidate(&mut self, c: &IntervalInput, _state: &CoreState) -> Option<OnsetKick> {
                 if c.tick == self.tick {
-                    Some(PhonationKick::Planned { strength: 1.0 })
+                    Some(OnsetKick::Planned { strength: 1.0 })
                 } else {
                     None
                 }
@@ -2990,7 +2977,7 @@ mod tests {
             phase_in_gate: 0.0,
             sources: vec![ClockSource::GateBoundary],
         }];
-        let mut engine = PhonationEngine {
+        let mut engine = UtteranceRuntime {
             clock: Box::<ThetaGateClock>::default(),
             interval: Box::new(TickInterval { tick: 0 }),
             connect: Box::new(FieldConnect::new(0.5, 0.5, 10.0, 0.5, 0.0)),
@@ -3024,7 +3011,7 @@ mod tests {
         );
         assert!(cmds.iter().any(|cmd| matches!(
             cmd,
-            PhonationCmd::NoteOff {
+            NoteCmd::NoteOff {
                 off_tick,
                 ..
             } if *off_tick == expected_off_tick
@@ -3038,13 +3025,9 @@ mod tests {
         }
 
         impl PhonationInterval for TickInterval {
-            fn on_candidate(
-                &mut self,
-                c: &IntervalInput,
-                _state: &CoreState,
-            ) -> Option<PhonationKick> {
+            fn on_candidate(&mut self, c: &IntervalInput, _state: &CoreState) -> Option<OnsetKick> {
                 if c.tick == self.tick {
-                    Some(PhonationKick::Planned { strength: 1.0 })
+                    Some(OnsetKick::Planned { strength: 1.0 })
                 } else {
                     None
                 }
@@ -3077,7 +3060,7 @@ mod tests {
             },
         ];
 
-        let mut engine_base = PhonationEngine {
+        let mut engine_base = UtteranceRuntime {
             clock: Box::<ThetaGateClock>::default(),
             interval: Box::new(TickInterval { tick: 0 }),
             connect: Box::new(FieldConnect::new(0.5, 0.5, 10.0, 0.5, 0.0)),
@@ -3110,11 +3093,11 @@ mod tests {
             &mut onsets,
         );
         let note_on_id = cmds.iter().find_map(|cmd| match cmd {
-            PhonationCmd::NoteOn { note_id, .. } => Some(*note_id),
+            NoteCmd::NoteOn { note_id, .. } => Some(*note_id),
             _ => None,
         });
         let off_tick_base = cmds.iter().find_map(|cmd| match cmd {
-            PhonationCmd::NoteOff { note_id, off_tick } if Some(*note_id) == note_on_id => {
+            NoteCmd::NoteOff { note_id, off_tick } if Some(*note_id) == note_on_id => {
                 Some(*off_tick)
             }
             _ => None,
@@ -3144,7 +3127,7 @@ mod tests {
             },
         ];
 
-        let mut engine_sub = PhonationEngine {
+        let mut engine_sub = UtteranceRuntime {
             clock: Box::<ThetaGateClock>::default(),
             interval: Box::new(TickInterval { tick: 0 }),
             connect: Box::new(FieldConnect::new(0.5, 0.5, 10.0, 0.5, 0.0)),
@@ -3177,11 +3160,11 @@ mod tests {
             &mut onsets_sub,
         );
         let note_on_id_sub = cmds_sub.iter().find_map(|cmd| match cmd {
-            PhonationCmd::NoteOn { note_id, .. } => Some(*note_id),
+            NoteCmd::NoteOn { note_id, .. } => Some(*note_id),
             _ => None,
         });
         let off_tick_sub = cmds_sub.iter().find_map(|cmd| match cmd {
-            PhonationCmd::NoteOff { note_id, off_tick } if Some(*note_id) == note_on_id_sub => {
+            NoteCmd::NoteOff { note_id, off_tick } if Some(*note_id) == note_on_id_sub => {
                 Some(*off_tick)
             }
             _ => None,
@@ -3198,13 +3181,9 @@ mod tests {
         }
 
         impl PhonationInterval for TickInterval {
-            fn on_candidate(
-                &mut self,
-                c: &IntervalInput,
-                _state: &CoreState,
-            ) -> Option<PhonationKick> {
+            fn on_candidate(&mut self, c: &IntervalInput, _state: &CoreState) -> Option<OnsetKick> {
                 if c.tick == self.tick {
-                    Some(PhonationKick::Planned { strength: 1.0 })
+                    Some(OnsetKick::Planned { strength: 1.0 })
                 } else {
                     None
                 }
@@ -3213,7 +3192,7 @@ mod tests {
 
         let timing_field = TimingField::from_values(0, vec![1.0, 1.0]);
         let state = CoreState { is_alive: true };
-        let mut engine = PhonationEngine {
+        let mut engine = UtteranceRuntime {
             clock: Box::<ThetaGateClock>::default(),
             interval: Box::new(TickInterval { tick: 0 }),
             connect: Box::new(FieldConnect::new(1.0, 1.0, 10.0, 0.5, 0.0)),
@@ -3266,14 +3245,14 @@ mod tests {
             &mut onsets,
         );
         let note_on_id = cmds.iter().find_map(|cmd| match cmd {
-            PhonationCmd::NoteOn { note_id, .. } => Some(*note_id),
+            NoteCmd::NoteOn { note_id, .. } => Some(*note_id),
             _ => None,
         });
         assert!(note_on_id.is_some());
         assert!(
             !cmds
                 .iter()
-                .any(|cmd| matches!(cmd, PhonationCmd::NoteOff { .. }))
+                .any(|cmd| matches!(cmd, NoteCmd::NoteOff { .. }))
         );
 
         let ctx2 = CoreTickCtx {
@@ -3299,7 +3278,7 @@ mod tests {
             &mut onsets2,
         );
         let off_tick = cmds2.iter().find_map(|cmd| match cmd {
-            PhonationCmd::NoteOff { note_id, off_tick } if Some(*note_id) == note_on_id => {
+            NoteCmd::NoteOff { note_id, off_tick } if Some(*note_id) == note_on_id => {
                 Some(*off_tick)
             }
             _ => None,
@@ -3317,13 +3296,9 @@ mod tests {
         }
 
         impl PhonationInterval for TickFilteredInterval {
-            fn on_candidate(
-                &mut self,
-                c: &IntervalInput,
-                _state: &CoreState,
-            ) -> Option<PhonationKick> {
+            fn on_candidate(&mut self, c: &IntervalInput, _state: &CoreState) -> Option<OnsetKick> {
                 if self.ticks.contains(&c.tick) {
-                    Some(PhonationKick::Planned { strength: 1.0 })
+                    Some(OnsetKick::Planned { strength: 1.0 })
                 } else {
                     None
                 }
@@ -3340,7 +3315,7 @@ mod tests {
                 ConnectPlan::None
             }
 
-            fn poll(&mut self, _now: ConnectNow, _out: &mut Vec<PhonationCmd>) {}
+            fn poll(&mut self, _now: ConnectNow, _out: &mut Vec<NoteCmd>) {}
         }
 
         let ctx = CoreTickCtx {
@@ -3353,7 +3328,7 @@ mod tests {
         let state = CoreState { is_alive: true };
 
         let slopes_base = Arc::new(Mutex::new(Vec::new()));
-        let mut engine_base = PhonationEngine {
+        let mut engine_base = UtteranceRuntime {
             clock: Box::<ThetaGateClock>::default(),
             interval: Box::new(TickFilteredInterval {
                 ticks: [0, 10, 20].into_iter().collect(),
@@ -3415,7 +3390,7 @@ mod tests {
         let base_slopes = slopes_base.lock().expect("slopes").clone();
 
         let slopes_sub = Arc::new(Mutex::new(Vec::new()));
-        let mut engine_sub = PhonationEngine {
+        let mut engine_sub = UtteranceRuntime {
             clock: Box::<ThetaGateClock>::default(),
             interval: Box::new(TickFilteredInterval {
                 ticks: [0, 10, 20].into_iter().collect(),

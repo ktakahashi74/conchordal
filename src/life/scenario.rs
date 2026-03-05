@@ -189,6 +189,66 @@ pub struct PhonationConfig {
     pub social: SocialConfig,
 }
 
+// --- Utterance specification (when / duration) ---
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct UtteranceSpec {
+    pub when: WhenSpec,
+    pub duration: DurationSpec,
+}
+
+impl UtteranceSpec {
+    pub fn social_coupling(&self) -> f32 {
+        match &self.when {
+            WhenSpec::Pulse { social, .. } => social.clamp(0.0, 1.0),
+            _ => 0.0,
+        }
+    }
+}
+
+impl Default for UtteranceSpec {
+    fn default() -> Self {
+        Self {
+            when: WhenSpec::Once,
+            duration: DurationSpec::WhileAlive,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum WhenSpec {
+    Once,
+    Pulse { rate: f32, sync: f32, social: f32 },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum DurationSpec {
+    WhileAlive,
+    Gates(u32),
+    Field(FieldDurationSpec),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FieldDurationSpec {
+    pub hold_min_theta: f32,
+    pub hold_max_theta: f32,
+    pub curve_k: f32,
+    pub curve_x0: f32,
+    pub drop_gain: f32,
+}
+
+impl Default for FieldDurationSpec {
+    fn default() -> Self {
+        Self {
+            hold_min_theta: 0.2,
+            hold_max_theta: 0.8,
+            curve_k: 2.0,
+            curve_x0: 0.5,
+            drop_gain: 0.5,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct AgentSpec {
     pub control: AgentControl,

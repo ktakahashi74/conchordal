@@ -27,7 +27,7 @@ fn spawn_agent(freq: f32, amp: f32) -> IndividualConfig {
 }
 
 #[test]
-fn spawn_does_not_publish_birth_note() {
+fn spawn_sustain_publishes_note_on_first_tick() {
     let tb = test_timebase();
     let space = Log2Space::new(55.0, 8000.0, 96);
     let mut world = WorldModel::new(tb, space.clone());
@@ -44,7 +44,8 @@ fn spawn_does_not_publish_birth_note() {
     let landscape = Landscape::new(space);
     let now: Tick = 0;
     let batches = pop.collect_phonation_batches(&mut world, &landscape, now);
-    assert!(batches.is_empty());
+    // Default is Sustain (Hold): NoteOn fires on first tick
+    assert!(!batches.is_empty());
 }
 
 #[test]

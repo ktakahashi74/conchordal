@@ -1,4 +1,4 @@
-let modal_sustain = derive(modal).phonation("hold");
+let modal_sustain = derive(modal).sustain();
 
 let table_uniform_aluminum_bar = derive(modal_sustain)
     .pitch_mode("lock")

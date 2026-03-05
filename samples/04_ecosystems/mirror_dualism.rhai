@@ -1,5 +1,5 @@
-let anchor = derive(sine).amp(0.2).phonation("hold");
-let voice = derive(sine).amp(0.1).phonation("hold");
+let anchor = derive(sine).amp(0.2).sustain();
+let voice = derive(sine).amp(0.1).sustain();
 
 scene("Mirror Dualism", || {
     let mirror_warmup_sec = 0.2;

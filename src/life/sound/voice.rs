@@ -2,10 +2,10 @@ use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
 use crate::life::individual::{ArticulationSignal, ArticulationWrapper};
 use crate::life::lifecycle::default_decay_attack;
-use crate::life::phonation_engine::{PhonationKick, PhonationUpdate};
 use crate::life::sound::any_backend::AnyBackend;
 use crate::life::sound::control::{ControlRamp, VoiceControlBlock};
 use crate::life::sound::{BodyKind, BodySnapshot};
+use crate::life::utterance_engine::{NoteUpdate, OnsetKick};
 use std::collections::VecDeque;
 
 const SINE_IMPULSE_BOOST_GAIN: f32 = 0.2;
@@ -15,7 +15,7 @@ const SINE_IMPULSE_BOOST_DECAY_SEC: f32 = 0.08;
 #[derive(Debug, Clone, Copy)]
 struct PendingUpdate {
     at_tick: Tick,
-    update: PhonationUpdate,
+    update: NoteUpdate,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -33,7 +33,7 @@ pub struct Voice {
     release_end: Tick,
     attack_ticks: Tick,
     release_ticks: Tick,
-    planned_kick_pending: Option<PhonationKick>,
+    planned_kick_pending: Option<OnsetKick>,
     pending_updates: VecDeque<PendingUpdate>,
     pending_trigger: Option<PendingTrigger>,
     current_amp: f32,
@@ -187,7 +187,7 @@ impl Voice {
         }
     }
 
-    pub fn kick_planned(&mut self, kick: PhonationKick, rhythms: &NeuralRhythms, dt: f32) -> bool {
+    pub fn kick_planned(&mut self, kick: OnsetKick, rhythms: &NeuralRhythms, dt: f32) -> bool {
         if let Some(articulation) = self.articulation.as_mut() {
             articulation.kick_planned(kick, rhythms, dt);
             return true;
@@ -195,11 +195,11 @@ impl Voice {
         false
     }
 
-    pub fn schedule_planned_kick(&mut self, kick: PhonationKick) {
+    pub fn schedule_planned_kick(&mut self, kick: OnsetKick) {
         self.planned_kick_pending = Some(kick);
     }
 
-    pub fn schedule_update(&mut self, at_tick: Tick, update: PhonationUpdate) {
+    pub fn schedule_update(&mut self, at_tick: Tick, update: NoteUpdate) {
         if update.is_empty() {
             return;
         }
@@ -396,7 +396,7 @@ impl Voice {
         now >= self.release_end
     }
 
-    fn apply_update(&mut self, update: &PhonationUpdate) {
+    fn apply_update(&mut self, update: &NoteUpdate) {
         if let Some(freq_hz) = update.target_freq_hz
             && freq_hz.is_finite()
             && freq_hz > 0.0

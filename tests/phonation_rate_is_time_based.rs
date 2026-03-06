@@ -1,10 +1,8 @@
-use conchordal::life::phonation_engine::{
-    AccumulatorInterval, CoreState, IntervalInput, PhonationInterval,
-};
+use conchordal::life::phonation_engine::{AccumulatorOnset, CoreState, IntervalInput, OnsetRule};
 
 #[test]
 fn phonation_rate_is_time_based() {
-    let mut interval = AccumulatorInterval::new(1.0, 0, 1);
+    let mut interval = AccumulatorOnset::new(1.0, 0, 1);
     let state = CoreState { is_alive: true };
     let dt_sec = 1.0 / 12.0;
     let tick_step = 10u64;

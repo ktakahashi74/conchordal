@@ -1,9 +1,8 @@
 use crate::life::control::{PerceptualControl, PitchControl, PitchCoreKind};
 use crate::life::perceptual::PerceptualConfig;
 use crate::life::scenario::{
-    DurationSpec, PhonationClockConfig, PhonationConfig, PhonationConnectConfig,
-    PhonationIntervalConfig, PhonationMode, PhonationSpec, PitchCoreConfig, SocialConfig,
-    SubThetaModConfig, WhenSpec,
+    DurationConfig, DurationSpec, OnsetConfig, PhonationClockConfig, PhonationConfig,
+    PhonationMode, PhonationSpec, PitchCoreConfig, SocialConfig, SubThetaModConfig, WhenSpec,
 };
 
 pub(crate) fn tessitura_gravity_from_control(gravity: f32) -> f32 {
@@ -69,30 +68,30 @@ pub(crate) fn perceptual_config_from_control(control: &PerceptualControl) -> Per
     }
 }
 
-fn connect_from_duration(duration: &DurationSpec) -> PhonationConnectConfig {
+fn duration_config_from_spec(duration: &DurationSpec) -> DurationConfig {
     match duration {
-        DurationSpec::Field(f) => PhonationConnectConfig::Field {
+        DurationSpec::Field(f) => DurationConfig::Field {
             hold_min_theta: f.hold_min_theta,
             hold_max_theta: f.hold_max_theta,
             curve_k: f.curve_k,
             curve_x0: f.curve_x0,
             drop_gain: f.drop_gain,
         },
-        DurationSpec::Gates(n) => PhonationConnectConfig::FixedGate { length_gates: *n },
-        DurationSpec::WhileAlive => PhonationConnectConfig::FixedGate { length_gates: 1 },
+        DurationSpec::Gates(n) => DurationConfig::FixedGate { length_gates: *n },
+        DurationSpec::WhileAlive => DurationConfig::FixedGate { length_gates: 1 },
     }
 }
 
 pub(crate) fn phonation_config_from_spec(spec: &PhonationSpec) -> PhonationConfig {
-    let connect = connect_from_duration(&spec.duration);
+    let duration = duration_config_from_spec(&spec.duration);
 
     match &spec.when {
         WhenSpec::Once => match &spec.duration {
             // once() + while_alive() = sustain: Hold mode, NoteOff on death.
             DurationSpec::WhileAlive => PhonationConfig {
                 mode: PhonationMode::Hold,
-                interval: PhonationIntervalConfig::None,
-                connect,
+                onset: OnsetConfig::None,
+                duration,
                 clock: PhonationClockConfig::ThetaGate,
                 sub_theta_mod: SubThetaModConfig::None,
                 social: SocialConfig::default(),
@@ -100,18 +99,18 @@ pub(crate) fn phonation_config_from_spec(spec: &PhonationSpec) -> PhonationConfi
             // once() + gates(n) / field(): fire immediately, never repeat.
             _ => PhonationConfig {
                 mode: PhonationMode::Gated,
-                interval: PhonationIntervalConfig::Accumulator {
+                onset: OnsetConfig::Accumulator {
                     rate: 1e6,
                     refractory: u32::MAX,
                 },
-                connect,
+                duration,
                 clock: PhonationClockConfig::ThetaGate,
                 sub_theta_mod: SubThetaModConfig::None,
                 social: SocialConfig::default(),
             },
         },
         WhenSpec::Pulse { rate, sync, social } => {
-            let interval = PhonationIntervalConfig::Accumulator {
+            let onset = OnsetConfig::Accumulator {
                 rate: rate.max(0.01),
                 refractory: 1,
             };
@@ -126,8 +125,8 @@ pub(crate) fn phonation_config_from_spec(spec: &PhonationSpec) -> PhonationConfi
             };
             PhonationConfig {
                 mode: PhonationMode::Gated,
-                interval,
-                connect,
+                onset,
+                duration,
                 clock: PhonationClockConfig::ThetaGate,
                 sub_theta_mod,
                 social: SocialConfig {

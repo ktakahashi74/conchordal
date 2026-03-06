@@ -89,14 +89,14 @@ impl Default for TimbreGenotype {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum PhonationIntervalConfig {
+pub enum OnsetConfig {
     None,
     Accumulator { rate: f32, refractory: u32 },
 }
 
-impl Default for PhonationIntervalConfig {
+impl Default for OnsetConfig {
     fn default() -> Self {
-        PhonationIntervalConfig::Accumulator {
+        OnsetConfig::Accumulator {
             rate: 1.0,
             refractory: 1,
         }
@@ -136,7 +136,7 @@ pub enum SubThetaModConfig {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum PhonationConnectConfig {
+pub enum DurationConfig {
     FixedGate {
         length_gates: u32,
     },
@@ -149,9 +149,9 @@ pub enum PhonationConnectConfig {
     },
 }
 
-impl Default for PhonationConnectConfig {
+impl Default for DurationConfig {
     fn default() -> Self {
-        PhonationConnectConfig::FixedGate { length_gates: 8 }
+        DurationConfig::FixedGate { length_gates: 8 }
     }
 }
 
@@ -182,8 +182,8 @@ pub enum PhonationMode {
 #[derive(Debug, Clone, Default)]
 pub struct PhonationConfig {
     pub mode: PhonationMode,
-    pub interval: PhonationIntervalConfig,
-    pub connect: PhonationConnectConfig,
+    pub onset: OnsetConfig,
+    pub duration: DurationConfig,
     pub clock: PhonationClockConfig,
     pub sub_theta_mod: SubThetaModConfig,
     pub social: SocialConfig,

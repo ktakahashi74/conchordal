@@ -424,11 +424,15 @@ impl Voice {
         }
         self.current_amp = self.current_amp.max(0.0);
 
-        self.current_pitch_hz = smooth_step(
-            self.current_pitch_hz,
-            self.target_pitch_hz,
-            self.pitch_alpha,
-        );
+        // Smooth pitch in log2 space so equal semitone steps take equal time.
+        if self.pitch_alpha >= 1.0 || self.current_pitch_hz <= 0.0 || self.target_pitch_hz <= 0.0 {
+            self.current_pitch_hz = self.target_pitch_hz;
+        } else {
+            let cur_log = self.current_pitch_hz.ln();
+            let tgt_log = self.target_pitch_hz.ln();
+            let next_log = smooth_step(cur_log, tgt_log, self.pitch_alpha);
+            self.current_pitch_hz = next_log.exp();
+        }
         if !self.current_pitch_hz.is_finite() || self.current_pitch_hz <= 0.0 {
             self.current_pitch_hz = self.target_pitch_hz;
         }

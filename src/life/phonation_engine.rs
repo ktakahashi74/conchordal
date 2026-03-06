@@ -17,16 +17,8 @@ use crate::life::social_density::SocialDensityTrace;
 pub type NoteId = u64;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum OnsetKick {
-    Planned { strength: f32 },
-}
-
-impl OnsetKick {
-    pub fn strength(self) -> f32 {
-        match self {
-            OnsetKick::Planned { strength } => strength,
-        }
-    }
+pub struct OnsetKick {
+    pub strength: f32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -59,20 +51,12 @@ pub enum NoteCmd {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum ClockSource {
-    GateBoundary,
-    Subdivision { n: u32 },
-    InternalPhase,
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct CandidatePoint {
     pub tick: Tick,
     pub gate: u64,
     pub theta_pos: f64,
     pub phase_in_gate: f32,
-    pub sources: Vec<ClockSource>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -113,24 +97,11 @@ impl ThetaGrid {
                 if candidate.gate < prev_gate {
                     panic!("candidate gates must be non-decreasing");
                 }
-                if candidate.gate == prev_gate {
+                if candidate.gate == prev_gate || candidate.gate != prev_gate.saturating_add(1) {
                     continue;
                 }
-                debug_assert!(
-                    candidate.gate == prev_gate.saturating_add(1),
-                    "theta grid gates must be contiguous"
-                );
-                if candidate.gate != prev_gate.saturating_add(1) {
+                if last_tick.is_some_and(|t| candidate.tick < t) {
                     continue;
-                }
-                if let Some(prev_tick) = last_tick {
-                    debug_assert!(
-                        candidate.tick >= prev_tick,
-                        "theta grid ticks must be non-decreasing"
-                    );
-                    if candidate.tick < prev_tick {
-                        continue;
-                    }
                 }
             }
             boundaries.push(GateBoundary {
@@ -334,25 +305,15 @@ pub struct ThetaGateClock {
 }
 
 impl ThetaGateClock {
-    pub fn gate_index_hint(&self) -> u64 {
-        if self.has_gate {
-            self.gate_index + 1
-        } else {
-            0
-        }
-    }
-
-    fn gather_candidates_with<F>(
+    fn gather_candidates_core(
         &mut self,
         ctx: &CoreTickCtx,
         out: &mut Vec<CandidatePoint>,
-        mut next_gate_tick: F,
-    ) where
-        F: FnMut(Tick, &CoreTickCtx) -> Option<Tick>,
-    {
+        mut next_gate_tick_fn: impl FnMut(Tick, &CoreTickCtx) -> Option<Tick>,
+    ) {
         let mut cursor = ctx.now_tick;
         while cursor < ctx.frame_end {
-            let gate_tick = match next_gate_tick(cursor, ctx) {
+            let gate_tick = match next_gate_tick_fn(cursor, ctx) {
                 Some(tick) => tick,
                 None => return,
             };
@@ -379,7 +340,6 @@ impl ThetaGateClock {
                 gate: self.gate_index,
                 theta_pos: self.gate_index as f64,
                 phase_in_gate: 0.0,
-                sources: vec![ClockSource::GateBoundary],
             });
             cursor = gate_tick.saturating_add(1);
         }
@@ -388,7 +348,7 @@ impl ThetaGateClock {
 
 impl ThetaGateClock {
     fn gather_candidates_impl(&mut self, ctx: &CoreTickCtx, out: &mut Vec<CandidatePoint>) {
-        self.gather_candidates_with(ctx, out, |cursor, ctx| {
+        self.gather_candidates_core(ctx, out, |cursor, ctx| {
             next_gate_tick(cursor, ctx.fs, ctx.rhythms.theta, 0.0)
         });
     }
@@ -440,7 +400,6 @@ impl SubdivisionClock {
                         gate,
                         theta_pos: gate as f64 + phase as f64,
                         phase_in_gate: phase,
-                        sources: vec![ClockSource::Subdivision { n }],
                     });
                 }
             }
@@ -500,7 +459,6 @@ impl InternalPhaseClock {
                     gate,
                     theta_pos: gate as f64 + phase_in_gate as f64,
                     phase_in_gate,
-                    sources: vec![ClockSource::InternalPhase],
                 });
             }
             self.phase = end_phase.rem_euclid(1.0);
@@ -651,7 +609,7 @@ impl OnsetRule {
                 if *acc >= 1.0 && refractory_ok {
                     *acc -= 1.0;
                     *next_allowed_gate = c.gate + *refractory_gates as u64 + 1;
-                    return Some(OnsetKick::Planned { strength: 1.0 });
+                    return Some(OnsetKick { strength: 1.0 });
                 }
                 None
             }
@@ -955,7 +913,7 @@ impl PhonationEngine {
             self.hold.note_id = Some(note_id);
             out_cmds.push(NoteCmd::NoteOn {
                 note_id,
-                kick: OnsetKick::Planned { strength: 1.0 },
+                kick: OnsetKick { strength: 1.0 },
             });
             self.active_notes = self.active_notes.saturating_add(1);
             out_events.push(NoteOnEvent {
@@ -1248,7 +1206,7 @@ impl PhonationEngine {
                 out_onsets.push(OnsetEvent {
                     gate: c.gate,
                     onset_tick: c.tick,
-                    strength: kick.strength(),
+                    strength: kick.strength,
                 });
                 let onset = OnsetContext {
                     note_id,
@@ -1274,7 +1232,6 @@ impl PhonationEngine {
     /// - sort by (tick, gate, phase_in_gate)
     /// - merge only when tick and gate match
     /// - prefer phase_in_gate == 0.0 (GateBoundary) as the representative
-    /// - append sources (duplicates allowed)
     #[cfg(test)]
     fn merge_candidates(mut candidates: Vec<CandidatePoint>) -> Vec<CandidatePoint> {
         let mut merged = Vec::with_capacity(candidates.len());
@@ -1297,12 +1254,8 @@ impl PhonationEngine {
                 && last.gate == candidate.gate
             {
                 if last.phase_in_gate != 0.0 && candidate.phase_in_gate == 0.0 {
-                    let mut replacement = candidate;
-                    replacement.sources.append(&mut last.sources);
-                    *last = replacement;
-                    continue;
+                    *last = candidate;
                 }
-                last.sources.extend(candidate.sources);
                 continue;
             }
             out.push(candidate);
@@ -1323,7 +1276,26 @@ mod tests {
             gate,
             theta_pos: gate as f64,
             phase_in_gate: 0.0,
-            sources: vec![ClockSource::GateBoundary],
+        }
+    }
+
+    fn test_engine(onset_rule: OnsetRule, duration_rule: DurationRule) -> PhonationEngine {
+        PhonationEngine {
+            clock: PhonationClock::ThetaGate(ThetaGateClock::default()),
+            onset_rule,
+            duration_rule,
+            sub_theta_mod: SubThetaMod::None,
+            mode: PhonationMode::Gated,
+            hold: HoldCore::default(),
+            initial_seed: 0,
+            next_note_id: 0,
+            last_gate_index: None,
+            last_theta_pos: None,
+            last_tick: None,
+            active_notes: 0,
+            pending_off: BinaryHeap::new(),
+            scratch_candidates: Vec::new(),
+            scratch_merged: Vec::new(),
         }
     }
 
@@ -1530,7 +1502,7 @@ mod tests {
         };
         let mut out = Vec::new();
         let mut calls = 0;
-        clock.gather_candidates_with(&ctx, &mut out, |_cursor, _ctx| {
+        clock.gather_candidates_core(&ctx, &mut out, |_cursor, _ctx| {
             let tick = match calls {
                 0 => Some(0),
                 1 => Some(4),
@@ -1555,7 +1527,7 @@ mod tests {
             rhythms,
         };
         let mut out = Vec::new();
-        clock.gather_candidates_with(&ctx, &mut out, |cursor, _ctx| {
+        clock.gather_candidates_core(&ctx, &mut out, |cursor, _ctx| {
             if cursor == 0 { Some(cursor) } else { None }
         });
         assert_eq!(out.len(), 1);
@@ -1576,14 +1548,12 @@ mod tests {
                 gate: 0,
                 theta_pos: 0.0,
                 phase_in_gate: 0.0,
-                sources: vec![ClockSource::GateBoundary],
             },
             CandidatePoint {
                 tick: 4,
                 gate: 1,
                 theta_pos: 1.0,
                 phase_in_gate: 0.0,
-                sources: vec![ClockSource::GateBoundary],
             },
         ];
         let timing_field = TimingField::from_values(0, vec![0.0, 1.0]);
@@ -1593,24 +1563,7 @@ mod tests {
             acc: 0.0,
             next_allowed_gate: 0,
         };
-        let mut engine = PhonationEngine {
-            clock: PhonationClock::ThetaGate(ThetaGateClock::default()),
-            onset_rule: interval,
-            duration_rule: DurationRule::fixed_gate(1),
-            sub_theta_mod: SubThetaMod::None,
-            mode: PhonationMode::Gated,
-            hold: HoldCore::default(),
-            initial_seed: 0,
-            next_note_id: 0,
-            last_gate_index: None,
-            last_theta_pos: None,
-            last_tick: None,
-            active_notes: 0,
-            pending_off: BinaryHeap::new(),
-
-            scratch_candidates: Vec::new(),
-            scratch_merged: Vec::new(),
-        };
+        let mut engine = test_engine(interval, DurationRule::fixed_gate(1));
         let state = CoreState { is_alive: true };
         let mut cmds = Vec::new();
         let mut events = Vec::new();
@@ -1665,21 +1618,18 @@ mod tests {
                 gate: 0,
                 theta_pos: 0.0,
                 phase_in_gate: 0.0,
-                sources: vec![ClockSource::GateBoundary],
             },
             CandidatePoint {
                 tick: 1,
                 gate: 0,
                 theta_pos: 0.0,
                 phase_in_gate: 0.0,
-                sources: vec![ClockSource::GateBoundary],
             },
             CandidatePoint {
                 tick: 2,
                 gate: 1,
                 theta_pos: 1.0,
                 phase_in_gate: 0.0,
-                sources: vec![ClockSource::GateBoundary],
             },
         ];
         let grid = ThetaGrid::from_candidates(&candidates);
@@ -1702,14 +1652,12 @@ mod tests {
                 gate: 1,
                 theta_pos: 1.0,
                 phase_in_gate: 0.0,
-                sources: vec![ClockSource::GateBoundary],
             },
             CandidatePoint {
                 tick: 1,
                 gate: 0,
                 theta_pos: 0.0,
                 phase_in_gate: 0.0,
-                sources: vec![ClockSource::GateBoundary],
             },
         ];
         let _ = ThetaGrid::from_candidates(&candidates);
@@ -1725,40 +1673,39 @@ mod tests {
                 gate: 0,
                 theta_pos: 0.0,
                 phase_in_gate: 0.0,
-                sources: vec![ClockSource::GateBoundary],
             },
             CandidatePoint {
                 tick: 1,
                 gate: 1,
                 theta_pos: 1.0,
                 phase_in_gate: 0.0,
-                sources: vec![ClockSource::GateBoundary],
             },
         ];
         let _ = ThetaGrid::from_candidates(&candidates);
     }
 
     #[test]
-    #[cfg(debug_assertions)]
-    #[should_panic]
-    fn theta_grid_panics_on_noncontiguous_gates() {
+    fn theta_grid_skips_noncontiguous_gates() {
         let candidates = vec![
             CandidatePoint {
                 tick: 0,
                 gate: 0,
                 theta_pos: 0.0,
                 phase_in_gate: 0.0,
-                sources: vec![ClockSource::GateBoundary],
             },
             CandidatePoint {
                 tick: 10,
                 gate: 2,
                 theta_pos: 2.0,
                 phase_in_gate: 0.0,
-                sources: vec![ClockSource::GateBoundary],
             },
         ];
-        let _ = ThetaGrid::from_candidates(&candidates);
+        let grid = ThetaGrid::from_candidates(&candidates);
+        assert_eq!(
+            grid.boundaries.len(),
+            1,
+            "non-contiguous gate 2 should be skipped"
+        );
     }
 
     #[test]
@@ -1910,9 +1857,8 @@ mod tests {
         let clock = SubdivisionClock::new(vec![2, 4]);
         clock.gather_candidates(&grid, &mut candidates);
         let merged = PhonationEngine::merge_candidates(candidates);
-        let tick_50 = merged.iter().find(|c| c.tick == 50).expect("tick 50");
-        assert!(tick_50.sources.contains(&ClockSource::Subdivision { n: 2 }));
-        assert!(tick_50.sources.contains(&ClockSource::Subdivision { n: 4 }));
+        let tick_50 = merged.iter().find(|c| c.tick == 50);
+        assert!(tick_50.is_some(), "subdivision at tick 50 should be merged");
     }
 
     #[test]
@@ -1926,21 +1872,18 @@ mod tests {
                 gate: 0,
                 theta_pos: 0.0,
                 phase_in_gate: 0.0,
-                sources: vec![ClockSource::GateBoundary],
             },
             CandidatePoint {
                 tick: 10,
                 gate: 0,
                 theta_pos: 0.5,
                 phase_in_gate: 0.5,
-                sources: vec![ClockSource::Subdivision { n: 2 }],
             },
             CandidatePoint {
                 tick: 20,
                 gate: 1,
                 theta_pos: 1.0,
                 phase_in_gate: 0.0,
-                sources: vec![ClockSource::GateBoundary],
             },
         ];
         let ctx = CoreTickCtx {
@@ -1950,27 +1893,13 @@ mod tests {
             rhythms: NeuralRhythms::default(),
         };
         let timing_field = TimingField::from_values(0, vec![1.0, 1.0]);
-        let mut engine = PhonationEngine {
-            clock: PhonationClock::ThetaGate(ThetaGateClock::default()),
-            onset_rule: OnsetRule::Custom(Box::new(move |c, _| {
+        let mut engine = test_engine(
+            OnsetRule::Custom(Box::new(move |c, _| {
                 log_c.lock().expect("dt log").push(c.dt_theta);
                 None
             })),
-            duration_rule: DurationRule::fixed_gate(1),
-            sub_theta_mod: SubThetaMod::None,
-            mode: PhonationMode::Gated,
-            hold: HoldCore::default(),
-            initial_seed: 0,
-            next_note_id: 0,
-            last_gate_index: None,
-            last_theta_pos: None,
-            last_tick: None,
-            active_notes: 0,
-            pending_off: BinaryHeap::new(),
-
-            scratch_candidates: Vec::new(),
-            scratch_merged: Vec::new(),
-        };
+            DurationRule::fixed_gate(1),
+        );
         let state = CoreState { is_alive: true };
         let mut cmds = Vec::new();
         let mut events = Vec::new();
@@ -2001,14 +1930,12 @@ mod tests {
                 gate: 0,
                 theta_pos: 0.0,
                 phase_in_gate: 0.0,
-                sources: vec![ClockSource::GateBoundary],
             },
             CandidatePoint {
                 tick: 0,
                 gate: 1,
                 theta_pos: 1.0,
                 phase_in_gate: 0.0,
-                sources: vec![ClockSource::GateBoundary],
             },
         ];
         let ctx = CoreTickCtx {
@@ -2018,30 +1945,16 @@ mod tests {
             rhythms: NeuralRhythms::default(),
         };
         let timing_field = TimingField::from_values(0, vec![1.0, 1.0]);
-        let mut engine = PhonationEngine {
-            clock: PhonationClock::ThetaGate(ThetaGateClock::default()),
-            onset_rule: OnsetRule::Custom(Box::new({
+        let mut engine = test_engine(
+            OnsetRule::Custom(Box::new({
                 let log = log_c.clone();
                 move |c, _| {
                     log.lock().expect("dt log").push(c.dt_theta);
                     None
                 }
             })),
-            duration_rule: DurationRule::fixed_gate(1),
-            sub_theta_mod: SubThetaMod::None,
-            mode: PhonationMode::Gated,
-            hold: HoldCore::default(),
-            initial_seed: 0,
-            next_note_id: 0,
-            last_gate_index: None,
-            last_theta_pos: None,
-            last_tick: None,
-            active_notes: 0,
-            pending_off: BinaryHeap::new(),
-
-            scratch_candidates: Vec::new(),
-            scratch_merged: Vec::new(),
-        };
+            DurationRule::fixed_gate(1),
+        );
         let state = CoreState { is_alive: true };
         let mut cmds = Vec::new();
         let mut events = Vec::new();
@@ -2070,7 +1983,6 @@ mod tests {
             gate: 0,
             theta_pos: 0.0,
             phase_in_gate: 0.0,
-            sources: vec![ClockSource::GateBoundary],
         }];
         let ctx = CoreTickCtx {
             now_tick: 0,
@@ -2126,14 +2038,12 @@ mod tests {
                 gate: 20_000_000,
                 theta_pos: 20_000_000.0,
                 phase_in_gate: 0.0,
-                sources: vec![ClockSource::GateBoundary],
             },
             CandidatePoint {
                 tick: 1,
                 gate: 20_000_001,
                 theta_pos: 20_000_001.0,
                 phase_in_gate: 0.0,
-                sources: vec![ClockSource::GateBoundary],
             },
         ];
         let ctx = CoreTickCtx {
@@ -2143,30 +2053,16 @@ mod tests {
             rhythms: NeuralRhythms::default(),
         };
         let timing_field = TimingField::from_values(20_000_000, vec![1.0, 1.0]);
-        let mut engine = PhonationEngine {
-            clock: PhonationClock::ThetaGate(ThetaGateClock::default()),
-            onset_rule: OnsetRule::Custom(Box::new({
+        let mut engine = test_engine(
+            OnsetRule::Custom(Box::new({
                 let log = log_c.clone();
                 move |c, _| {
                     log.lock().expect("dt log").push(c.dt_theta);
                     None
                 }
             })),
-            duration_rule: DurationRule::fixed_gate(1),
-            sub_theta_mod: SubThetaMod::None,
-            mode: PhonationMode::Gated,
-            hold: HoldCore::default(),
-            initial_seed: 0,
-            next_note_id: 0,
-            last_gate_index: None,
-            last_theta_pos: None,
-            last_tick: None,
-            active_notes: 0,
-            pending_off: BinaryHeap::new(),
-
-            scratch_candidates: Vec::new(),
-            scratch_merged: Vec::new(),
-        };
+            DurationRule::fixed_gate(1),
+        );
         let state = CoreState { is_alive: true };
         let mut cmds = Vec::new();
         let mut events = Vec::new();
@@ -2211,21 +2107,18 @@ mod tests {
                 gate: 0,
                 theta_pos: 0.0,
                 phase_in_gate: 0.0,
-                sources: vec![ClockSource::GateBoundary],
             },
             CandidatePoint {
                 tick: 10,
                 gate: 0,
                 theta_pos: 0.5,
                 phase_in_gate: 0.5,
-                sources: vec![ClockSource::Subdivision { n: 2 }],
             },
             CandidatePoint {
                 tick: 20,
                 gate: 1,
                 theta_pos: 1.0,
                 phase_in_gate: 0.0,
-                sources: vec![ClockSource::GateBoundary],
             },
         ];
         let ctx = CoreTickCtx {
@@ -2297,24 +2190,7 @@ mod tests {
             acc: 1.0,
             next_allowed_gate: 0,
         };
-        let mut engine = PhonationEngine {
-            clock: PhonationClock::ThetaGate(ThetaGateClock::default()),
-            onset_rule: interval,
-            duration_rule: DurationRule::fixed_gate(0),
-            sub_theta_mod: SubThetaMod::None,
-            mode: PhonationMode::Gated,
-            hold: HoldCore::default(),
-            initial_seed: 0,
-            next_note_id: 0,
-            last_gate_index: None,
-            last_theta_pos: None,
-            last_tick: None,
-            active_notes: 0,
-            pending_off: BinaryHeap::new(),
-
-            scratch_candidates: Vec::new(),
-            scratch_merged: Vec::new(),
-        };
+        let mut engine = test_engine(interval, DurationRule::fixed_gate(0));
         let state = CoreState { is_alive: true };
         let timing_field = TimingField::from_values(0, vec![1.0]);
         let candidates = vec![CandidatePoint {
@@ -2322,7 +2198,6 @@ mod tests {
             gate: 0,
             theta_pos: 0.0,
             phase_in_gate: 0.0,
-            sources: vec![ClockSource::GateBoundary],
         }];
         let mut cmds = Vec::new();
         let mut events = Vec::new();
@@ -2361,24 +2236,7 @@ mod tests {
             acc: 1.0,
             next_allowed_gate: 0,
         };
-        let mut engine = PhonationEngine {
-            clock: PhonationClock::ThetaGate(ThetaGateClock::default()),
-            onset_rule: interval,
-            duration_rule: DurationRule::fixed_gate(1),
-            sub_theta_mod: SubThetaMod::None,
-            mode: PhonationMode::Gated,
-            hold: HoldCore::default(),
-            initial_seed: 0,
-            next_note_id: 0,
-            last_gate_index: None,
-            last_theta_pos: None,
-            last_tick: None,
-            active_notes: 0,
-            pending_off: BinaryHeap::new(),
-
-            scratch_candidates: Vec::new(),
-            scratch_merged: Vec::new(),
-        };
+        let mut engine = test_engine(interval, DurationRule::fixed_gate(1));
         let state = CoreState { is_alive: true };
         let timing_field = TimingField::from_values(0, vec![1.0]);
         let candidates = vec![CandidatePoint {
@@ -2386,7 +2244,6 @@ mod tests {
             gate: 0,
             theta_pos: 0.0,
             phase_in_gate: 0.0,
-            sources: vec![ClockSource::GateBoundary],
         }];
         let mut cmds = Vec::new();
         let mut events = Vec::new();
@@ -2420,24 +2277,7 @@ mod tests {
             fs: 1000.0,
             rhythms: NeuralRhythms::default(),
         };
-        let mut engine = PhonationEngine {
-            clock: PhonationClock::ThetaGate(ThetaGateClock::default()),
-            onset_rule: OnsetRule::None,
-            duration_rule: DurationRule::fixed_gate(1),
-            sub_theta_mod: SubThetaMod::None,
-            mode: PhonationMode::Gated,
-            hold: HoldCore::default(),
-            initial_seed: 0,
-            next_note_id: 0,
-            last_gate_index: None,
-            last_theta_pos: None,
-            last_tick: None,
-            active_notes: 0,
-            pending_off: BinaryHeap::new(),
-
-            scratch_candidates: Vec::new(),
-            scratch_merged: Vec::new(),
-        };
+        let mut engine = test_engine(OnsetRule::None, DurationRule::fixed_gate(1));
         engine.schedule_note_off(42, 5);
         let state = CoreState { is_alive: true };
         let timing_field = TimingField::from_values(0, Vec::new());
@@ -2479,29 +2319,12 @@ mod tests {
             gate: 0,
             theta_pos: 0.0,
             phase_in_gate: 0.0,
-            sources: vec![ClockSource::GateBoundary],
         }];
         let timing_field = TimingField::from_values(0, vec![1.0]);
-        let mut engine = PhonationEngine {
-            clock: PhonationClock::ThetaGate(ThetaGateClock::default()),
-            onset_rule: OnsetRule::Custom(Box::new(|_, _| {
-                Some(OnsetKick::Planned { strength: 1.0 })
-            })),
-            duration_rule: DurationRule::Custom(Box::new(|_| DurationPlan::None)),
-            sub_theta_mod: SubThetaMod::None,
-            mode: PhonationMode::Gated,
-            hold: HoldCore::default(),
-            initial_seed: 0,
-            next_note_id: 0,
-            last_gate_index: None,
-            last_theta_pos: None,
-            last_tick: None,
-            active_notes: 0,
-            pending_off: BinaryHeap::new(),
-
-            scratch_candidates: Vec::new(),
-            scratch_merged: Vec::new(),
-        };
+        let mut engine = test_engine(
+            OnsetRule::Custom(Box::new(|_, _| Some(OnsetKick { strength: 1.0 }))),
+            DurationRule::Custom(Box::new(|_| DurationPlan::None)),
+        );
         engine.schedule_note_off(99, 0);
         let state = CoreState { is_alive: true };
         let mut cmds = Vec::new();
@@ -2538,24 +2361,7 @@ mod tests {
             fs: 100.0,
             rhythms: NeuralRhythms::default(),
         };
-        let mut engine = PhonationEngine {
-            clock: PhonationClock::ThetaGate(ThetaGateClock::default()),
-            onset_rule: OnsetRule::None,
-            duration_rule: DurationRule::fixed_gate(1),
-            sub_theta_mod: SubThetaMod::None,
-            mode: PhonationMode::Gated,
-            hold: HoldCore::default(),
-            initial_seed: 0,
-            next_note_id: 0,
-            last_gate_index: None,
-            last_theta_pos: None,
-            last_tick: None,
-            active_notes: 0,
-            pending_off: BinaryHeap::new(),
-
-            scratch_candidates: Vec::new(),
-            scratch_merged: Vec::new(),
-        };
+        let mut engine = test_engine(OnsetRule::None, DurationRule::fixed_gate(1));
         let onset = OnsetContext {
             note_id: 7,
             tick: 10,
@@ -2584,24 +2390,7 @@ mod tests {
             fs: 100.0,
             rhythms: NeuralRhythms::default(),
         };
-        let mut engine = PhonationEngine {
-            clock: PhonationClock::ThetaGate(ThetaGateClock::default()),
-            onset_rule: OnsetRule::None,
-            duration_rule: DurationRule::fixed_gate(1),
-            sub_theta_mod: SubThetaMod::None,
-            mode: PhonationMode::Gated,
-            hold: HoldCore::default(),
-            initial_seed: 0,
-            next_note_id: 0,
-            last_gate_index: None,
-            last_theta_pos: None,
-            last_tick: None,
-            active_notes: 0,
-            pending_off: BinaryHeap::new(),
-
-            scratch_candidates: Vec::new(),
-            scratch_merged: Vec::new(),
-        };
+        let mut engine = test_engine(OnsetRule::None, DurationRule::fixed_gate(1));
         let onset = OnsetContext {
             note_id: 11,
             tick: 0,
@@ -2650,14 +2439,12 @@ mod tests {
                 gate: 0,
                 theta_pos: 0.0,
                 phase_in_gate: 0.0,
-                sources: vec![ClockSource::GateBoundary],
             },
             CandidatePoint {
                 tick: 10,
                 gate: 1,
                 theta_pos: 1.0,
                 phase_in_gate: 0.0,
-                sources: vec![ClockSource::GateBoundary],
             },
         ];
         let merged = PhonationEngine::merge_candidates(candidates);
@@ -2725,25 +2512,17 @@ mod tests {
                 gate: 1,
                 theta_pos: 1.5,
                 phase_in_gate: 0.5,
-                sources: vec![ClockSource::Subdivision { n: 2 }],
             },
             CandidatePoint {
                 tick: 10,
                 gate: 1,
                 theta_pos: 1.0,
                 phase_in_gate: 0.0,
-                sources: vec![ClockSource::GateBoundary],
             },
         ];
         let merged = PhonationEngine::merge_candidates(candidates);
         assert_eq!(merged.len(), 1);
         assert_eq!(merged[0].phase_in_gate, 0.0);
-        assert!(merged[0].sources.contains(&ClockSource::GateBoundary));
-        assert!(
-            merged[0]
-                .sources
-                .contains(&ClockSource::Subdivision { n: 2 })
-        );
     }
 
     #[test]
@@ -2765,42 +2544,25 @@ mod tests {
         };
         let stub_ticks: Vec<Tick> = vec![0, 4, 8];
         let mut stub_index = 0usize;
-        let mut engine = PhonationEngine {
-            clock: PhonationClock::Custom(Box::new(
-                move |ctx: &CoreTickCtx, out: &mut Vec<CandidatePoint>| {
-                    while stub_index < stub_ticks.len() {
-                        let tick = stub_ticks[stub_index];
-                        if tick < ctx.now_tick || tick >= ctx.frame_end {
-                            return;
-                        }
-                        let gate = stub_index as u64;
-                        out.push(CandidatePoint {
-                            tick,
-                            gate,
-                            theta_pos: gate as f64,
-                            phase_in_gate: 0.0,
-                            sources: vec![ClockSource::GateBoundary],
-                        });
-                        stub_index += 1;
+        let mut engine = test_engine(interval, DurationRule::fixed_gate(1));
+        engine.clock = PhonationClock::Custom(Box::new(
+            move |ctx: &CoreTickCtx, out: &mut Vec<CandidatePoint>| {
+                while stub_index < stub_ticks.len() {
+                    let tick = stub_ticks[stub_index];
+                    if tick < ctx.now_tick || tick >= ctx.frame_end {
+                        return;
                     }
-                },
-            )),
-            onset_rule: interval,
-            duration_rule: DurationRule::fixed_gate(1),
-            sub_theta_mod: SubThetaMod::None,
-            mode: PhonationMode::Gated,
-            hold: HoldCore::default(),
-            initial_seed: 0,
-            next_note_id: 0,
-            last_gate_index: None,
-            last_theta_pos: None,
-            last_tick: None,
-            active_notes: 0,
-            pending_off: BinaryHeap::new(),
-
-            scratch_candidates: Vec::new(),
-            scratch_merged: Vec::new(),
-        };
+                    let gate = stub_index as u64;
+                    out.push(CandidatePoint {
+                        tick,
+                        gate,
+                        theta_pos: gate as f64,
+                        phase_in_gate: 0.0,
+                    });
+                    stub_index += 1;
+                }
+            },
+        ));
         let state = CoreState { is_alive: true };
         let mut cmds = Vec::new();
         let mut events = Vec::new();
@@ -2911,32 +2673,17 @@ mod tests {
             gate: 0,
             theta_pos: 0.0,
             phase_in_gate: 0.0,
-            sources: vec![ClockSource::GateBoundary],
         }];
-        let mut engine = PhonationEngine {
-            clock: PhonationClock::ThetaGate(ThetaGateClock::default()),
-            onset_rule: OnsetRule::Custom(Box::new(move |c, _| {
+        let mut engine = test_engine(
+            OnsetRule::Custom(Box::new(move |c, _| {
                 if c.tick == onset_tick {
-                    Some(OnsetKick::Planned { strength: 1.0 })
+                    Some(OnsetKick { strength: 1.0 })
                 } else {
                     None
                 }
             })),
-            duration_rule: DurationRule::field(0.5, 0.5, 10.0, 0.5, 0.0),
-            sub_theta_mod: SubThetaMod::None,
-            mode: PhonationMode::Gated,
-            hold: HoldCore::default(),
-            initial_seed: 0,
-            next_note_id: 0,
-            last_gate_index: None,
-            last_theta_pos: None,
-            last_tick: None,
-            active_notes: 0,
-            pending_off: BinaryHeap::new(),
-
-            scratch_candidates: Vec::new(),
-            scratch_merged: Vec::new(),
-        };
+            DurationRule::field(0.5, 0.5, 10.0, 0.5, 0.0),
+        );
         let mut cmds = Vec::new();
         let mut events = Vec::new();
         let mut onsets = Vec::new();
@@ -2980,41 +2727,25 @@ mod tests {
                 gate: 0,
                 theta_pos: 0.0,
                 phase_in_gate: 0.0,
-                sources: vec![ClockSource::GateBoundary],
             },
             CandidatePoint {
                 tick: 100,
                 gate: 1,
                 theta_pos: 1.0,
                 phase_in_gate: 0.0,
-                sources: vec![ClockSource::GateBoundary],
             },
         ];
 
-        let mut engine_base = PhonationEngine {
-            clock: PhonationClock::ThetaGate(ThetaGateClock::default()),
-            onset_rule: OnsetRule::Custom(Box::new(move |c, _| {
+        let mut engine_base = test_engine(
+            OnsetRule::Custom(Box::new(move |c, _| {
                 if c.tick == onset_tick {
-                    Some(OnsetKick::Planned { strength: 1.0 })
+                    Some(OnsetKick { strength: 1.0 })
                 } else {
                     None
                 }
             })),
-            duration_rule: DurationRule::field(0.5, 0.5, 10.0, 0.5, 0.0),
-            sub_theta_mod: SubThetaMod::None,
-            mode: PhonationMode::Gated,
-            hold: HoldCore::default(),
-            initial_seed: 0,
-            next_note_id: 0,
-            last_gate_index: None,
-            last_theta_pos: None,
-            last_tick: None,
-            active_notes: 0,
-            pending_off: BinaryHeap::new(),
-
-            scratch_candidates: Vec::new(),
-            scratch_merged: Vec::new(),
-        };
+            DurationRule::field(0.5, 0.5, 10.0, 0.5, 0.0),
+        );
         let mut cmds = Vec::new();
         let mut events = Vec::new();
         let mut onsets = Vec::new();
@@ -3047,48 +2778,31 @@ mod tests {
                 gate: 0,
                 theta_pos: 0.0,
                 phase_in_gate: 0.0,
-                sources: vec![ClockSource::GateBoundary],
             },
             CandidatePoint {
                 tick: 50,
                 gate: 0,
                 theta_pos: 0.5,
                 phase_in_gate: 0.5,
-                sources: vec![ClockSource::Subdivision { n: 2 }],
             },
             CandidatePoint {
                 tick: 100,
                 gate: 1,
                 theta_pos: 1.0,
                 phase_in_gate: 0.0,
-                sources: vec![ClockSource::GateBoundary],
             },
         ];
 
-        let mut engine_sub = PhonationEngine {
-            clock: PhonationClock::ThetaGate(ThetaGateClock::default()),
-            onset_rule: OnsetRule::Custom(Box::new(move |c, _| {
+        let mut engine_sub = test_engine(
+            OnsetRule::Custom(Box::new(move |c, _| {
                 if c.tick == onset_tick {
-                    Some(OnsetKick::Planned { strength: 1.0 })
+                    Some(OnsetKick { strength: 1.0 })
                 } else {
                     None
                 }
             })),
-            duration_rule: DurationRule::field(0.5, 0.5, 10.0, 0.5, 0.0),
-            sub_theta_mod: SubThetaMod::None,
-            mode: PhonationMode::Gated,
-            hold: HoldCore::default(),
-            initial_seed: 0,
-            next_note_id: 0,
-            last_gate_index: None,
-            last_theta_pos: None,
-            last_tick: None,
-            active_notes: 0,
-            pending_off: BinaryHeap::new(),
-
-            scratch_candidates: Vec::new(),
-            scratch_merged: Vec::new(),
-        };
+            DurationRule::field(0.5, 0.5, 10.0, 0.5, 0.0),
+        );
         let mut cmds_sub = Vec::new();
         let mut events_sub = Vec::new();
         let mut onsets_sub = Vec::new();
@@ -3125,30 +2839,16 @@ mod tests {
 
         let timing_field = TimingField::from_values(0, vec![1.0, 1.0]);
         let state = CoreState { is_alive: true };
-        let mut engine = PhonationEngine {
-            clock: PhonationClock::ThetaGate(ThetaGateClock::default()),
-            onset_rule: OnsetRule::Custom(Box::new(move |c, _| {
+        let mut engine = test_engine(
+            OnsetRule::Custom(Box::new(move |c, _| {
                 if c.tick == onset_tick {
-                    Some(OnsetKick::Planned { strength: 1.0 })
+                    Some(OnsetKick { strength: 1.0 })
                 } else {
                     None
                 }
             })),
-            duration_rule: DurationRule::field(1.0, 1.0, 10.0, 0.5, 0.0),
-            sub_theta_mod: SubThetaMod::None,
-            mode: PhonationMode::Gated,
-            hold: HoldCore::default(),
-            initial_seed: 0,
-            next_note_id: 0,
-            last_gate_index: None,
-            last_theta_pos: None,
-            last_tick: None,
-            active_notes: 0,
-            pending_off: BinaryHeap::new(),
-
-            scratch_candidates: Vec::new(),
-            scratch_merged: Vec::new(),
-        };
+            DurationRule::field(1.0, 1.0, 10.0, 0.5, 0.0),
+        );
 
         let ctx1 = CoreTickCtx {
             now_tick: 0,
@@ -3161,7 +2861,6 @@ mod tests {
             gate: 0,
             theta_pos: 0.0,
             phase_in_gate: 0.0,
-            sources: vec![ClockSource::GateBoundary],
         }];
         let mut timing_grid = ThetaGrid {
             boundaries: vec![
@@ -3243,60 +2942,43 @@ mod tests {
         let state = CoreState { is_alive: true };
 
         let slopes_base = Arc::new(Mutex::new(Vec::new()));
-        let mut engine_base = PhonationEngine {
-            clock: PhonationClock::ThetaGate(ThetaGateClock::default()),
-            onset_rule: OnsetRule::Custom(Box::new({
+        let mut engine_base = test_engine(
+            OnsetRule::Custom(Box::new({
                 let ticks = fire_ticks.clone();
                 move |c, _| {
                     if ticks.contains(&c.tick) {
-                        Some(OnsetKick::Planned { strength: 1.0 })
+                        Some(OnsetKick { strength: 1.0 })
                     } else {
                         None
                     }
                 }
             })),
-            duration_rule: DurationRule::Custom(Box::new({
+            DurationRule::Custom(Box::new({
                 let slopes = slopes_base.clone();
                 move |onset| {
                     slopes.lock().expect("slopes").push(onset.exc_slope);
                     DurationPlan::None
                 }
             })),
-            sub_theta_mod: SubThetaMod::None,
-            mode: PhonationMode::Gated,
-            hold: HoldCore::default(),
-            initial_seed: 0,
-            next_note_id: 0,
-            last_gate_index: None,
-            last_theta_pos: None,
-            last_tick: None,
-            active_notes: 0,
-            pending_off: BinaryHeap::new(),
-
-            scratch_candidates: Vec::new(),
-            scratch_merged: Vec::new(),
-        };
+        );
         let candidates_base = vec![
             CandidatePoint {
                 tick: 0,
                 gate: 0,
                 theta_pos: 0.0,
                 phase_in_gate: 0.0,
-                sources: vec![ClockSource::GateBoundary],
             },
             CandidatePoint {
                 tick: 10,
                 gate: 1,
                 theta_pos: 1.0,
                 phase_in_gate: 0.0,
-                sources: vec![ClockSource::GateBoundary],
             },
             CandidatePoint {
                 tick: 20,
                 gate: 2,
                 theta_pos: 2.0,
                 phase_in_gate: 0.0,
-                sources: vec![ClockSource::GateBoundary],
             },
         ];
         let mut cmds = Vec::new();
@@ -3317,74 +2999,55 @@ mod tests {
         let base_slopes = slopes_base.lock().expect("slopes").clone();
 
         let slopes_sub = Arc::new(Mutex::new(Vec::new()));
-        let mut engine_sub = PhonationEngine {
-            clock: PhonationClock::ThetaGate(ThetaGateClock::default()),
-            onset_rule: OnsetRule::Custom(Box::new({
+        let mut engine_sub = test_engine(
+            OnsetRule::Custom(Box::new({
                 let ticks = fire_ticks.clone();
                 move |c, _| {
                     if ticks.contains(&c.tick) {
-                        Some(OnsetKick::Planned { strength: 1.0 })
+                        Some(OnsetKick { strength: 1.0 })
                     } else {
                         None
                     }
                 }
             })),
-            duration_rule: DurationRule::Custom(Box::new({
+            DurationRule::Custom(Box::new({
                 let slopes = slopes_sub.clone();
                 move |onset| {
                     slopes.lock().expect("slopes").push(onset.exc_slope);
                     DurationPlan::None
                 }
             })),
-            sub_theta_mod: SubThetaMod::None,
-            mode: PhonationMode::Gated,
-            hold: HoldCore::default(),
-            initial_seed: 0,
-            next_note_id: 0,
-            last_gate_index: None,
-            last_theta_pos: None,
-            last_tick: None,
-            active_notes: 0,
-            pending_off: BinaryHeap::new(),
-
-            scratch_candidates: Vec::new(),
-            scratch_merged: Vec::new(),
-        };
+        );
         let candidates_sub = vec![
             CandidatePoint {
                 tick: 0,
                 gate: 0,
                 theta_pos: 0.0,
                 phase_in_gate: 0.0,
-                sources: vec![ClockSource::GateBoundary],
             },
             CandidatePoint {
                 tick: 5,
                 gate: 0,
                 theta_pos: 0.5,
                 phase_in_gate: 0.5,
-                sources: vec![ClockSource::Subdivision { n: 2 }],
             },
             CandidatePoint {
                 tick: 10,
                 gate: 1,
                 theta_pos: 1.0,
                 phase_in_gate: 0.0,
-                sources: vec![ClockSource::GateBoundary],
             },
             CandidatePoint {
                 tick: 15,
                 gate: 1,
                 theta_pos: 1.5,
                 phase_in_gate: 0.5,
-                sources: vec![ClockSource::Subdivision { n: 2 }],
             },
             CandidatePoint {
                 tick: 20,
                 gate: 2,
                 theta_pos: 2.0,
                 phase_in_gate: 0.0,
-                sources: vec![ClockSource::GateBoundary],
             },
         ];
         let mut cmds = Vec::new();

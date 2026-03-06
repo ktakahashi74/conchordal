@@ -814,7 +814,7 @@ impl AnyArticulationCore {
     }
 
     pub fn kick_planned(&mut self, kick: OnsetKick, _rhythms: &NeuralRhythms, _dt: f32) {
-        let strength = kick.strength();
+        let strength = kick.strength;
         match self {
             AnyArticulationCore::Entrain(core) => core.kick_planned(strength),
             AnyArticulationCore::Seq(core) => core.kick_planned(strength),

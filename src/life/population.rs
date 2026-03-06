@@ -2582,7 +2582,7 @@ mod tests {
             source_id: 99,
             cmds: vec![NoteCmd::NoteOn {
                 note_id: 1,
-                kick: OnsetKick::Planned { strength: 1.0 },
+                kick: OnsetKick { strength: 1.0 },
             }],
             notes: vec![make_dummy_note_spec()],
             onsets: vec![OnsetEvent {

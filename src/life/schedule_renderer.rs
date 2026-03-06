@@ -203,7 +203,7 @@ impl ScheduleRenderer {
                             voice.set_smoothing_tau_sec(spec.smoothing_tau_sec);
                             voice.note_on(spec.onset);
                             voice.schedule_planned_kick(kick);
-                            voice.arm_onset_trigger(kick.strength().max(0.0));
+                            voice.arm_onset_trigger(kick.strength.max(0.0));
                             debug!(
                                 target: "phonation::note_on",
                                 source_id = batch.source_id,
@@ -305,7 +305,7 @@ mod tests {
                 },
                 NoteCmd::NoteOn {
                     note_id,
-                    kick: OnsetKick::Planned { strength: 1.0 },
+                    kick: OnsetKick { strength: 1.0 },
                 },
             ],
             notes: vec![NoteSpec {
@@ -374,7 +374,7 @@ mod tests {
                 },
                 NoteCmd::NoteOn {
                     note_id,
-                    kick: OnsetKick::Planned { strength: 1.0 },
+                    kick: OnsetKick { strength: 1.0 },
                 },
             ],
             notes: vec![NoteSpec {

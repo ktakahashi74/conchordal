@@ -189,15 +189,15 @@ pub struct PhonationConfig {
     pub social: SocialConfig,
 }
 
-// --- Utterance specification (when / duration) ---
+// --- Phonation specification (when / duration) ---
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct UtteranceSpec {
+pub struct PhonationSpec {
     pub when: WhenSpec,
     pub duration: DurationSpec,
 }
 
-impl UtteranceSpec {
+impl PhonationSpec {
     pub fn social_coupling(&self) -> f32 {
         match &self.when {
             WhenSpec::Pulse { social, .. } => social.clamp(0.0, 1.0),
@@ -206,7 +206,7 @@ impl UtteranceSpec {
     }
 }
 
-impl Default for UtteranceSpec {
+impl Default for PhonationSpec {
     fn default() -> Self {
         Self {
             when: WhenSpec::Once,

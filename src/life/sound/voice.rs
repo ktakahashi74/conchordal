@@ -2,10 +2,10 @@ use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
 use crate::life::individual::{ArticulationSignal, ArticulationWrapper};
 use crate::life::lifecycle::default_decay_attack;
+use crate::life::phonation_engine::{NoteUpdate, OnsetKick};
 use crate::life::sound::any_backend::AnyBackend;
 use crate::life::sound::control::{ControlRamp, VoiceControlBlock};
 use crate::life::sound::{BodyKind, BodySnapshot};
-use crate::life::utterance_engine::{NoteUpdate, OnsetKick};
 use std::collections::VecDeque;
 
 const SINE_IMPULSE_BOOST_GAIN: f32 = 0.2;

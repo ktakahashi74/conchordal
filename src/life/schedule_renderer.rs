@@ -1,8 +1,8 @@
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
-use crate::life::individual::UtteranceBatch;
+use crate::life::individual::PhonationBatch;
+use crate::life::phonation_engine::NoteCmd;
 use crate::life::sound::{AudioCommand, Voice, VoiceTarget};
-use crate::life::utterance_engine::NoteCmd;
 use std::collections::{HashMap, HashSet};
 use tracing::debug;
 
@@ -37,7 +37,7 @@ impl ScheduleRenderer {
 
     pub fn render(
         &mut self,
-        phonation_batches: &[UtteranceBatch],
+        phonation_batches: &[PhonationBatch],
         now: Tick,
         rhythms: &NeuralRhythms,
         voice_targets: &[VoiceTarget],
@@ -161,7 +161,7 @@ impl ScheduleRenderer {
 
     fn apply_phonation_batches(
         &mut self,
-        phonation_batches: &[UtteranceBatch],
+        phonation_batches: &[PhonationBatch],
         now: Tick,
         _rhythms: &NeuralRhythms,
         _dt: f32,
@@ -271,12 +271,12 @@ fn modal_phase_seed(a: u64, b: u64, c: u64) -> u64 {
 mod tests {
     use super::*;
     use crate::life::individual::{
-        AnyArticulationCore, ArticulationWrapper, NoteSpec, SequencedCore, UtteranceBatch,
+        AnyArticulationCore, ArticulationWrapper, NoteSpec, PhonationBatch, SequencedCore,
     };
+    use crate::life::phonation_engine::{NoteUpdate, OnsetKick};
     use crate::life::sound::{
         AudioCommand, BodyKind, BodySnapshot, VoiceTarget, default_release_ticks,
     };
-    use crate::life::utterance_engine::{NoteUpdate, OnsetKick};
 
     #[test]
     fn update_command_applies_to_voice() {
@@ -292,7 +292,7 @@ mod tests {
             0.0,
         );
         let note_id = 1;
-        let batch = UtteranceBatch {
+        let batch = PhonationBatch {
             source_id: 2,
             cmds: vec![
                 NoteCmd::Update {
@@ -352,7 +352,7 @@ mod tests {
             0.0,
         );
         let note_id = 1;
-        let batch = UtteranceBatch {
+        let batch = PhonationBatch {
             source_id: 2,
             cmds: vec![
                 NoteCmd::Update {

@@ -2,8 +2,8 @@ use crate::life::control::{PerceptualControl, PitchControl, PitchCoreKind};
 use crate::life::perceptual::PerceptualConfig;
 use crate::life::scenario::{
     DurationSpec, PhonationClockConfig, PhonationConfig, PhonationConnectConfig,
-    PhonationIntervalConfig, PhonationMode, PitchCoreConfig, SocialConfig, SubThetaModConfig,
-    UtteranceSpec, WhenSpec,
+    PhonationIntervalConfig, PhonationMode, PhonationSpec, PitchCoreConfig, SocialConfig,
+    SubThetaModConfig, WhenSpec,
 };
 
 pub(crate) fn tessitura_gravity_from_control(gravity: f32) -> f32 {
@@ -83,7 +83,7 @@ fn connect_from_duration(duration: &DurationSpec) -> PhonationConnectConfig {
     }
 }
 
-pub(crate) fn phonation_config_from_utterance(spec: &UtteranceSpec) -> PhonationConfig {
+pub(crate) fn phonation_config_from_spec(spec: &PhonationSpec) -> PhonationConfig {
     let connect = connect_from_duration(&spec.duration);
 
     match &spec.when {

@@ -6,11 +6,11 @@ use std::fmt;
 
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::Tick;
-use crate::life::control_adapters::phonation_config_from_utterance;
+use crate::life::control_adapters::phonation_config_from_spec;
 use crate::life::gate_clock::next_gate_tick;
 use crate::life::scenario::{
     PhonationClockConfig, PhonationConfig, PhonationConnectConfig, PhonationIntervalConfig,
-    PhonationMode, SubThetaModConfig, UtteranceSpec,
+    PhonationMode, PhonationSpec, SubThetaModConfig,
 };
 use crate::life::social_density::SocialDensityTrace;
 use tracing::{debug, warn};
@@ -673,13 +673,6 @@ impl PhonationInterval for AccumulatorInterval {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct ConnectNow {
-    pub tick: Tick,
-    pub gate: u64,
-    pub theta_pos: f64,
-}
-
-#[derive(Debug, Clone, Copy)]
 pub struct ConnectOnset {
     pub note_id: NoteId,
     pub tick: Tick,
@@ -693,13 +686,11 @@ pub struct ConnectOnset {
 pub enum ConnectPlan {
     None,
     HoldTheta(f32),
+    AtGate(u64),
 }
 
 pub trait PhonationConnect: Send {
-    /// If on_note_on returns ConnectPlan::HoldTheta, the engine schedules the NoteOff via
-    /// its pending-off queue, and implementations must not emit a NoteOff for that note_id in poll.
     fn on_note_on(&mut self, onset: ConnectOnset) -> ConnectPlan;
-    fn poll(&mut self, now: ConnectNow, out: &mut Vec<NoteCmd>);
     fn update_config(&mut self, _config: &PhonationConnectConfig) -> bool {
         false
     }
@@ -708,39 +699,18 @@ pub trait PhonationConnect: Send {
 #[derive(Debug)]
 pub struct FixedGateConnect {
     pub length_gates: u32,
-    pending: Vec<(NoteId, u64)>,
 }
 
 impl FixedGateConnect {
     pub fn new(length_gates: u32) -> Self {
-        Self {
-            length_gates,
-            pending: Vec::new(),
-        }
+        Self { length_gates }
     }
 }
 
 impl PhonationConnect for FixedGateConnect {
     fn on_note_on(&mut self, onset: ConnectOnset) -> ConnectPlan {
         let off_gate = onset.gate + self.length_gates as u64;
-        self.pending.push((onset.note_id, off_gate));
-        ConnectPlan::None
-    }
-
-    fn poll(&mut self, now: ConnectNow, out: &mut Vec<NoteCmd>) {
-        let mut idx = 0;
-        while idx < self.pending.len() {
-            if self.pending[idx].1 <= now.gate {
-                let note_id = self.pending[idx].0;
-                self.pending.swap_remove(idx);
-                out.push(NoteCmd::NoteOff {
-                    note_id,
-                    off_tick: now.tick,
-                });
-            } else {
-                idx += 1;
-            }
-        }
+        ConnectPlan::AtGate(off_gate)
     }
 
     fn update_config(&mut self, config: &PhonationConnectConfig) -> bool {
@@ -820,11 +790,6 @@ impl PhonationConnect for FieldConnect {
         ConnectPlan::HoldTheta(hold)
     }
 
-    fn poll(&mut self, now: ConnectNow, out: &mut Vec<NoteCmd>) {
-        let _ = now;
-        let _ = out;
-    }
-
     fn update_config(&mut self, config: &PhonationConnectConfig) -> bool {
         match config {
             PhonationConnectConfig::Field {
@@ -885,7 +850,7 @@ struct HoldCore {
     note_id: Option<NoteId>,
 }
 
-pub struct UtteranceRuntime {
+pub struct PhonationEngine {
     pub clock: Box<dyn PhonationClock + Send>,
     pub interval: Box<dyn PhonationInterval + Send>,
     pub connect: Box<dyn PhonationConnect + Send>,
@@ -899,13 +864,14 @@ pub struct UtteranceRuntime {
     last_tick: Option<Tick>,
     active_notes: u32,
     pending_off: BinaryHeap<Reverse<PendingOff>>,
+    pending_off_gates: Vec<(NoteId, u64)>,
     scratch_candidates: Vec<CandidatePoint>,
     scratch_merged: Vec<CandidatePoint>,
 }
 
-impl fmt::Debug for UtteranceRuntime {
+impl fmt::Debug for PhonationEngine {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("UtteranceRuntime")
+        f.debug_struct("PhonationEngine")
             .field("next_note_id", &self.next_note_id)
             .field("last_gate_index", &self.last_gate_index)
             .field("active_notes", &self.active_notes)
@@ -914,7 +880,7 @@ impl fmt::Debug for UtteranceRuntime {
     }
 }
 
-impl UtteranceRuntime {
+impl PhonationEngine {
     fn make_interval_from_config(
         config: &PhonationIntervalConfig,
         seed: u64,
@@ -950,13 +916,13 @@ impl UtteranceRuntime {
         }
     }
 
-    pub fn from_spec(spec: &UtteranceSpec, seed: u64) -> Self {
-        let config = phonation_config_from_utterance(spec);
+    pub fn from_spec(spec: &PhonationSpec, seed: u64) -> Self {
+        let config = phonation_config_from_spec(spec);
         Self::from_config(&config, seed)
     }
 
-    pub fn update_from_spec(&mut self, spec: &UtteranceSpec) {
-        let config = phonation_config_from_utterance(spec);
+    pub fn update_from_spec(&mut self, spec: &PhonationSpec) {
+        let config = phonation_config_from_spec(spec);
         self.update_from_config(&config);
     }
 
@@ -1007,6 +973,7 @@ impl UtteranceRuntime {
             last_tick: None,
             active_notes: 0,
             pending_off: BinaryHeap::new(),
+            pending_off_gates: Vec::new(),
             scratch_candidates: Vec::new(),
             scratch_merged: Vec::new(),
         }
@@ -1099,6 +1066,28 @@ impl UtteranceRuntime {
                 off_tick: next.off_tick,
             });
             self.active_notes = self.active_notes.saturating_sub(1);
+        }
+    }
+
+    fn drain_gate_offs(
+        &mut self,
+        current_gate: u64,
+        current_tick: Tick,
+        out_cmds: &mut Vec<NoteCmd>,
+    ) {
+        let mut idx = 0;
+        while idx < self.pending_off_gates.len() {
+            if self.pending_off_gates[idx].1 <= current_gate {
+                let note_id = self.pending_off_gates[idx].0;
+                self.pending_off_gates.swap_remove(idx);
+                out_cmds.push(NoteCmd::NoteOff {
+                    note_id,
+                    off_tick: current_tick,
+                });
+                self.active_notes = self.active_notes.saturating_sub(1);
+            } else {
+                idx += 1;
+            }
         }
     }
 
@@ -1262,18 +1251,7 @@ impl UtteranceRuntime {
                 Some(prev_exc) => (exc_gate - prev_exc).clamp(-1.0, 1.0),
                 None => 0.0,
             };
-            let connect_now = ConnectNow {
-                tick: c.tick,
-                gate: c.gate,
-                theta_pos: c.theta_pos,
-            };
-            let before = out_cmds.len();
-            self.connect.poll(connect_now, out_cmds);
-            for cmd in &out_cmds[before..] {
-                if matches!(cmd, NoteCmd::NoteOff { .. }) {
-                    self.active_notes = self.active_notes.saturating_sub(1);
-                }
-            }
+            self.drain_gate_offs(c.gate, c.tick, out_cmds);
             let sub_theta_mod = if c.phase_in_gate == 0.0 {
                 1.0
             } else {
@@ -1309,18 +1287,18 @@ impl UtteranceRuntime {
                     exc_slope,
                 };
                 let plan = self.connect.on_note_on(onset);
-                if let ConnectPlan::HoldTheta(hold_theta) = plan {
-                    self.schedule_hold_theta(onset, hold_theta, ctx, timing_grid);
+                match plan {
+                    ConnectPlan::HoldTheta(hold_theta) => {
+                        self.schedule_hold_theta(onset, hold_theta, ctx, timing_grid);
+                    }
+                    ConnectPlan::AtGate(off_gate) => {
+                        self.pending_off_gates.push((note_id, off_gate));
+                    }
+                    ConnectPlan::None => {}
                 }
             }
             self.last_gate_index = Some(c.gate);
-            let before = out_cmds.len();
-            self.connect.poll(connect_now, out_cmds);
-            for cmd in &out_cmds[before..] {
-                if matches!(cmd, NoteCmd::NoteOff { .. }) {
-                    self.active_notes = self.active_notes.saturating_sub(1);
-                }
-            }
+            self.drain_gate_offs(c.gate, c.tick, out_cmds);
             self.last_theta_pos = Some(c.theta_pos);
             self.last_tick = Some(c.tick);
             if c.phase_in_gate == 0.0 {
@@ -1535,9 +1513,8 @@ mod tests {
     }
 
     #[test]
-    fn fixed_gate_connect_sets_off_tick() {
+    fn fixed_gate_connect_returns_at_gate() {
         let mut connect = FixedGateConnect::new(0);
-        let mut out = Vec::new();
         let plan = connect.on_note_on(ConnectOnset {
             note_id: 1,
             tick: 123,
@@ -1546,22 +1523,7 @@ mod tests {
             exc_gate: 1.0,
             exc_slope: 0.0,
         });
-        assert_eq!(plan, ConnectPlan::None);
-        connect.poll(
-            ConnectNow {
-                tick: 123,
-                gate: 10,
-                theta_pos: 10.0,
-            },
-            &mut out,
-        );
-        assert_eq!(
-            out,
-            vec![NoteCmd::NoteOff {
-                note_id: 1,
-                off_tick: 123,
-            }]
-        );
+        assert_eq!(plan, ConnectPlan::AtGate(10));
     }
 
     #[test]
@@ -1634,7 +1596,7 @@ mod tests {
         let timing_field = TimingField::from_values(0, vec![0.0, 1.0]);
         let mut interval = AccumulatorInterval::new(250.0, 0, 1);
         interval.acc = 0.0;
-        let mut engine = UtteranceRuntime {
+        let mut engine = PhonationEngine {
             clock: Box::<ThetaGateClock>::default(),
             interval: Box::new(interval),
             connect: Box::new(FixedGateConnect::new(1)),
@@ -1648,6 +1610,7 @@ mod tests {
             last_tick: None,
             active_notes: 0,
             pending_off: BinaryHeap::new(),
+            pending_off_gates: Vec::new(),
             scratch_candidates: Vec::new(),
             scratch_merged: Vec::new(),
         };
@@ -1949,7 +1912,7 @@ mod tests {
         let mut candidates = Vec::new();
         let clock = SubdivisionClock::new(vec![2, 4]);
         clock.gather_candidates(&grid, &mut candidates);
-        let merged = UtteranceRuntime::merge_candidates(candidates);
+        let merged = PhonationEngine::merge_candidates(candidates);
         let tick_50 = merged.iter().find(|c| c.tick == 50).expect("tick 50");
         assert!(tick_50.sources.contains(&ClockSource::Subdivision { n: 2 }));
         assert!(tick_50.sources.contains(&ClockSource::Subdivision { n: 4 }));
@@ -1999,7 +1962,7 @@ mod tests {
             rhythms: NeuralRhythms::default(),
         };
         let timing_field = TimingField::from_values(0, vec![1.0, 1.0]);
-        let mut engine = UtteranceRuntime {
+        let mut engine = PhonationEngine {
             clock: Box::<ThetaGateClock>::default(),
             interval: Box::new(RecordingInterval { log: log.clone() }),
             connect: Box::new(FixedGateConnect::new(1)),
@@ -2013,6 +1976,7 @@ mod tests {
             last_tick: None,
             active_notes: 0,
             pending_off: BinaryHeap::new(),
+            pending_off_gates: Vec::new(),
             scratch_candidates: Vec::new(),
             scratch_merged: Vec::new(),
         };
@@ -2072,7 +2036,7 @@ mod tests {
             rhythms: NeuralRhythms::default(),
         };
         let timing_field = TimingField::from_values(0, vec![1.0, 1.0]);
-        let mut engine = UtteranceRuntime {
+        let mut engine = PhonationEngine {
             clock: Box::<ThetaGateClock>::default(),
             interval: Box::new(RecordingInterval { log: log.clone() }),
             connect: Box::new(FixedGateConnect::new(1)),
@@ -2086,6 +2050,7 @@ mod tests {
             last_tick: None,
             active_notes: 0,
             pending_off: BinaryHeap::new(),
+            pending_off_gates: Vec::new(),
             scratch_candidates: Vec::new(),
             scratch_merged: Vec::new(),
         };
@@ -2126,7 +2091,7 @@ mod tests {
             rhythms: NeuralRhythms::default(),
         };
         let timing_field = TimingField::from_values(0, vec![1.0]);
-        let mut engine = UtteranceRuntime {
+        let mut engine = PhonationEngine {
             clock: Box::<ThetaGateClock>::default(),
             interval: Box::<NoneInterval>::default(),
             connect: Box::new(FixedGateConnect::new(1)),
@@ -2140,6 +2105,7 @@ mod tests {
             last_tick: None,
             active_notes: 0,
             pending_off: BinaryHeap::new(),
+            pending_off_gates: Vec::new(),
             scratch_candidates: Vec::new(),
             scratch_merged: Vec::new(),
         };
@@ -2198,7 +2164,7 @@ mod tests {
             rhythms: NeuralRhythms::default(),
         };
         let timing_field = TimingField::from_values(20_000_000, vec![1.0, 1.0]);
-        let mut engine = UtteranceRuntime {
+        let mut engine = PhonationEngine {
             clock: Box::<ThetaGateClock>::default(),
             interval: Box::new(RecordingInterval { log: log.clone() }),
             connect: Box::new(FixedGateConnect::new(1)),
@@ -2212,6 +2178,7 @@ mod tests {
             last_tick: None,
             active_notes: 0,
             pending_off: BinaryHeap::new(),
+            pending_off_gates: Vec::new(),
             scratch_candidates: Vec::new(),
             scratch_merged: Vec::new(),
         };
@@ -2285,7 +2252,7 @@ mod tests {
         let timing_field = TimingField::from_values(0, vec![1.0, 1.0]);
         let mut interval = AccumulatorInterval::new(50.0, 0, 1);
         interval.acc = 0.0;
-        let mut engine = UtteranceRuntime {
+        let mut engine = PhonationEngine {
             clock: Box::<ThetaGateClock>::default(),
             interval: Box::new(interval),
             connect: Box::new(FixedGateConnect::new(1)),
@@ -2303,6 +2270,7 @@ mod tests {
             last_tick: None,
             active_notes: 0,
             pending_off: BinaryHeap::new(),
+            pending_off_gates: Vec::new(),
             scratch_candidates: Vec::new(),
             scratch_merged: Vec::new(),
         };
@@ -2336,7 +2304,7 @@ mod tests {
         };
         let mut interval = AccumulatorInterval::new(1.0, 0, 1);
         interval.acc = 1.0;
-        let mut engine = UtteranceRuntime {
+        let mut engine = PhonationEngine {
             clock: Box::<ThetaGateClock>::default(),
             interval: Box::new(interval),
             connect: Box::new(FixedGateConnect::new(0)),
@@ -2350,6 +2318,7 @@ mod tests {
             last_tick: None,
             active_notes: 0,
             pending_off: BinaryHeap::new(),
+            pending_off_gates: Vec::new(),
             scratch_candidates: Vec::new(),
             scratch_merged: Vec::new(),
         };
@@ -2395,7 +2364,7 @@ mod tests {
         };
         let mut interval = AccumulatorInterval::new(1.0, 0, 1);
         interval.acc = 1.0;
-        let mut engine = UtteranceRuntime {
+        let mut engine = PhonationEngine {
             clock: Box::<ThetaGateClock>::default(),
             interval: Box::new(interval),
             connect: Box::new(FixedGateConnect::new(1)),
@@ -2409,6 +2378,7 @@ mod tests {
             last_tick: None,
             active_notes: 0,
             pending_off: BinaryHeap::new(),
+            pending_off_gates: Vec::new(),
             scratch_candidates: Vec::new(),
             scratch_merged: Vec::new(),
         };
@@ -2453,7 +2423,7 @@ mod tests {
             fs: 1000.0,
             rhythms: NeuralRhythms::default(),
         };
-        let mut engine = UtteranceRuntime {
+        let mut engine = PhonationEngine {
             clock: Box::<ThetaGateClock>::default(),
             interval: Box::<NoneInterval>::default(),
             connect: Box::new(FixedGateConnect::new(1)),
@@ -2467,6 +2437,7 @@ mod tests {
             last_tick: None,
             active_notes: 0,
             pending_off: BinaryHeap::new(),
+            pending_off_gates: Vec::new(),
             scratch_candidates: Vec::new(),
             scratch_merged: Vec::new(),
         };
@@ -2518,8 +2489,6 @@ mod tests {
             fn on_note_on(&mut self, _onset: ConnectOnset) -> ConnectPlan {
                 ConnectPlan::None
             }
-
-            fn poll(&mut self, _now: ConnectNow, _out: &mut Vec<NoteCmd>) {}
         }
 
         let ctx = CoreTickCtx {
@@ -2536,7 +2505,7 @@ mod tests {
             sources: vec![ClockSource::GateBoundary],
         }];
         let timing_field = TimingField::from_values(0, vec![1.0]);
-        let mut engine = UtteranceRuntime {
+        let mut engine = PhonationEngine {
             clock: Box::<ThetaGateClock>::default(),
             interval: Box::new(AlwaysInterval),
             connect: Box::new(NoopConnect),
@@ -2550,6 +2519,7 @@ mod tests {
             last_tick: None,
             active_notes: 0,
             pending_off: BinaryHeap::new(),
+            pending_off_gates: Vec::new(),
             scratch_candidates: Vec::new(),
             scratch_merged: Vec::new(),
         };
@@ -2589,7 +2559,7 @@ mod tests {
             fs: 100.0,
             rhythms: NeuralRhythms::default(),
         };
-        let mut engine = UtteranceRuntime {
+        let mut engine = PhonationEngine {
             clock: Box::<ThetaGateClock>::default(),
             interval: Box::<NoneInterval>::default(),
             connect: Box::new(FixedGateConnect::new(1)),
@@ -2603,6 +2573,7 @@ mod tests {
             last_tick: None,
             active_notes: 0,
             pending_off: BinaryHeap::new(),
+            pending_off_gates: Vec::new(),
             scratch_candidates: Vec::new(),
             scratch_merged: Vec::new(),
         };
@@ -2634,7 +2605,7 @@ mod tests {
             fs: 100.0,
             rhythms: NeuralRhythms::default(),
         };
-        let mut engine = UtteranceRuntime {
+        let mut engine = PhonationEngine {
             clock: Box::<ThetaGateClock>::default(),
             interval: Box::<NoneInterval>::default(),
             connect: Box::new(FixedGateConnect::new(1)),
@@ -2648,6 +2619,7 @@ mod tests {
             last_tick: None,
             active_notes: 0,
             pending_off: BinaryHeap::new(),
+            pending_off_gates: Vec::new(),
             scratch_candidates: Vec::new(),
             scratch_merged: Vec::new(),
         };
@@ -2709,7 +2681,7 @@ mod tests {
                 sources: vec![ClockSource::GateBoundary],
             },
         ];
-        let merged = UtteranceRuntime::merge_candidates(candidates);
+        let merged = PhonationEngine::merge_candidates(candidates);
         assert_eq!(merged.len(), 2);
         assert_ne!(merged[0].gate, merged[1].gate);
     }
@@ -2724,7 +2696,7 @@ mod tests {
             sub_theta_mod: SubThetaModConfig::None,
             social: SocialConfig::default(),
         };
-        let mut engine = UtteranceRuntime::from_config(&base, 7);
+        let mut engine = PhonationEngine::from_config(&base, 7);
         let changed = PhonationConfig {
             interval: PhonationIntervalConfig::Accumulator {
                 rate: 2.0,
@@ -2784,7 +2756,7 @@ mod tests {
                 sources: vec![ClockSource::GateBoundary],
             },
         ];
-        let merged = UtteranceRuntime::merge_candidates(candidates);
+        let merged = PhonationEngine::merge_candidates(candidates);
         assert_eq!(merged.len(), 1);
         assert_eq!(merged[0].phase_in_gate, 0.0);
         assert!(merged[0].sources.contains(&ClockSource::GateBoundary));
@@ -2833,7 +2805,7 @@ mod tests {
             }
         }
 
-        let mut engine = UtteranceRuntime {
+        let mut engine = PhonationEngine {
             clock: Box::new(StubClock {
                 ticks: vec![0, 4, 8],
                 index: 0,
@@ -2850,6 +2822,7 @@ mod tests {
             last_tick: None,
             active_notes: 0,
             pending_off: BinaryHeap::new(),
+            pending_off_gates: Vec::new(),
             scratch_candidates: Vec::new(),
             scratch_merged: Vec::new(),
         };
@@ -2977,7 +2950,7 @@ mod tests {
             phase_in_gate: 0.0,
             sources: vec![ClockSource::GateBoundary],
         }];
-        let mut engine = UtteranceRuntime {
+        let mut engine = PhonationEngine {
             clock: Box::<ThetaGateClock>::default(),
             interval: Box::new(TickInterval { tick: 0 }),
             connect: Box::new(FieldConnect::new(0.5, 0.5, 10.0, 0.5, 0.0)),
@@ -2991,6 +2964,7 @@ mod tests {
             last_tick: None,
             active_notes: 0,
             pending_off: BinaryHeap::new(),
+            pending_off_gates: Vec::new(),
             scratch_candidates: Vec::new(),
             scratch_merged: Vec::new(),
         };
@@ -3060,7 +3034,7 @@ mod tests {
             },
         ];
 
-        let mut engine_base = UtteranceRuntime {
+        let mut engine_base = PhonationEngine {
             clock: Box::<ThetaGateClock>::default(),
             interval: Box::new(TickInterval { tick: 0 }),
             connect: Box::new(FieldConnect::new(0.5, 0.5, 10.0, 0.5, 0.0)),
@@ -3074,6 +3048,7 @@ mod tests {
             last_tick: None,
             active_notes: 0,
             pending_off: BinaryHeap::new(),
+            pending_off_gates: Vec::new(),
             scratch_candidates: Vec::new(),
             scratch_merged: Vec::new(),
         };
@@ -3127,7 +3102,7 @@ mod tests {
             },
         ];
 
-        let mut engine_sub = UtteranceRuntime {
+        let mut engine_sub = PhonationEngine {
             clock: Box::<ThetaGateClock>::default(),
             interval: Box::new(TickInterval { tick: 0 }),
             connect: Box::new(FieldConnect::new(0.5, 0.5, 10.0, 0.5, 0.0)),
@@ -3141,6 +3116,7 @@ mod tests {
             last_tick: None,
             active_notes: 0,
             pending_off: BinaryHeap::new(),
+            pending_off_gates: Vec::new(),
             scratch_candidates: Vec::new(),
             scratch_merged: Vec::new(),
         };
@@ -3192,7 +3168,7 @@ mod tests {
 
         let timing_field = TimingField::from_values(0, vec![1.0, 1.0]);
         let state = CoreState { is_alive: true };
-        let mut engine = UtteranceRuntime {
+        let mut engine = PhonationEngine {
             clock: Box::<ThetaGateClock>::default(),
             interval: Box::new(TickInterval { tick: 0 }),
             connect: Box::new(FieldConnect::new(1.0, 1.0, 10.0, 0.5, 0.0)),
@@ -3206,6 +3182,7 @@ mod tests {
             last_tick: None,
             active_notes: 0,
             pending_off: BinaryHeap::new(),
+            pending_off_gates: Vec::new(),
             scratch_candidates: Vec::new(),
             scratch_merged: Vec::new(),
         };
@@ -3314,8 +3291,6 @@ mod tests {
                 self.slopes.lock().expect("slopes").push(onset.exc_slope);
                 ConnectPlan::None
             }
-
-            fn poll(&mut self, _now: ConnectNow, _out: &mut Vec<NoteCmd>) {}
         }
 
         let ctx = CoreTickCtx {
@@ -3328,7 +3303,7 @@ mod tests {
         let state = CoreState { is_alive: true };
 
         let slopes_base = Arc::new(Mutex::new(Vec::new()));
-        let mut engine_base = UtteranceRuntime {
+        let mut engine_base = PhonationEngine {
             clock: Box::<ThetaGateClock>::default(),
             interval: Box::new(TickFilteredInterval {
                 ticks: [0, 10, 20].into_iter().collect(),
@@ -3346,6 +3321,7 @@ mod tests {
             last_tick: None,
             active_notes: 0,
             pending_off: BinaryHeap::new(),
+            pending_off_gates: Vec::new(),
             scratch_candidates: Vec::new(),
             scratch_merged: Vec::new(),
         };
@@ -3390,7 +3366,7 @@ mod tests {
         let base_slopes = slopes_base.lock().expect("slopes").clone();
 
         let slopes_sub = Arc::new(Mutex::new(Vec::new()));
-        let mut engine_sub = UtteranceRuntime {
+        let mut engine_sub = PhonationEngine {
             clock: Box::<ThetaGateClock>::default(),
             interval: Box::new(TickFilteredInterval {
                 ticks: [0, 10, 20].into_iter().collect(),
@@ -3408,6 +3384,7 @@ mod tests {
             last_tick: None,
             active_notes: 0,
             pending_off: BinaryHeap::new(),
+            pending_off_gates: Vec::new(),
             scratch_candidates: Vec::new(),
             scratch_merged: Vec::new(),
         };

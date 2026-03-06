@@ -1,5 +1,5 @@
 use super::individual::{
-    AgentMetadata, AnyArticulationCore, Individual, SoundBody, UtteranceBatch,
+    AgentMetadata, AnyArticulationCore, Individual, PhonationBatch, SoundBody,
 };
 use super::scenario::{Action, IndividualConfig, RespawnPolicy, SpawnStrategy};
 use super::telemetry::LifeRecord;
@@ -240,7 +240,7 @@ impl Population {
         world: &mut WorldModel,
         landscape: &LandscapeFrame,
         now: Tick,
-    ) -> Vec<UtteranceBatch> {
+    ) -> Vec<PhonationBatch> {
         let mut batches = Vec::new();
         let count = self.collect_phonation_batches_into(world, landscape, now, &mut batches);
         batches.truncate(count);
@@ -252,7 +252,7 @@ impl Population {
         world: &mut WorldModel,
         landscape: &LandscapeFrame,
         now: Tick,
-        out: &mut Vec<UtteranceBatch>,
+        out: &mut Vec<PhonationBatch>,
     ) -> usize {
         let tb = world.time;
         let hop_tick = (tb.hop as Tick).max(1);
@@ -284,7 +284,7 @@ impl Population {
         for agent in &mut self.individuals {
             let social_coupling = agent.social_coupling;
             if used == out.len() {
-                out.push(UtteranceBatch::default());
+                out.push(PhonationBatch::default());
             }
             let batch = &mut out[used];
             let mut extra_gate_gain = 1.0;
@@ -294,7 +294,7 @@ impl Population {
                     gain_raw = 0.0;
                 }
                 gain_raw = gain_raw.clamp(0.0, 1.0);
-                let mut sync = match &agent.effective_control.utterance.spec.when {
+                let mut sync = match &agent.effective_control.phonation.spec.when {
                     crate::life::scenario::WhenSpec::Pulse { sync, .. } => *sync,
                     _ => 0.0,
                 };
@@ -1361,7 +1361,7 @@ fn mix_pred_gate_gain(sync: f32, gain_raw: f32) -> f32 {
 }
 
 fn build_social_trace_from_batches(
-    phonation_batches: &[UtteranceBatch],
+    phonation_batches: &[PhonationBatch],
     frame_end: Tick,
     hop_tick: Tick,
     bin_ticks: u32,
@@ -1406,9 +1406,9 @@ mod tests {
     use crate::life::control::{AgentControl, ControlUpdate, PitchMode};
     use crate::life::individual::{AnyArticulationCore, ArticulationWrapper, DroneCore};
     use crate::life::lifecycle::LifecycleConfig;
+    use crate::life::phonation_engine::{NoteCmd, OnsetEvent, OnsetKick};
     use crate::life::scenario::{ArticulationCoreConfig, RespawnPolicy, SpawnSpec, SpawnStrategy};
     use crate::life::sound::{BodyKind, BodySnapshot};
-    use crate::life::utterance_engine::{NoteCmd, OnsetEvent, OnsetKick};
     use crate::life::world_model::WorldModel;
     use rand::{Rng, SeedableRng};
     use std::collections::HashSet;
@@ -1890,7 +1890,7 @@ mod tests {
 
     #[test]
     fn social_trace_is_delayed_by_one_hop() {
-        let batch = UtteranceBatch {
+        let batch = PhonationBatch {
             source_id: 1,
             cmds: Vec::new(),
             notes: Vec::new(),
@@ -2578,7 +2578,7 @@ mod tests {
             None,
         );
 
-        let mut batches = vec![UtteranceBatch {
+        let mut batches = vec![PhonationBatch {
             source_id: 99,
             cmds: vec![NoteCmd::NoteOn {
                 note_id: 1,

@@ -10,13 +10,13 @@ pub mod meta;
 pub mod metabolism_policy;
 pub mod modal;
 pub mod perceptual;
+pub mod phonation_engine;
 pub mod population;
 pub mod scenario;
 pub mod schedule_renderer;
 pub mod scripting;
 pub mod social_density;
 pub mod telemetry;
-pub mod utterance_engine;
 pub mod world_model;
 
 pub mod sound;

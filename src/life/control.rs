@@ -17,7 +17,7 @@ pub struct WorldControl {}
 pub struct AgentControl {
     pub body: BodyControl,
     pub pitch: PitchControl,
-    pub utterance: UtteranceControl,
+    pub phonation: PhonationControl,
     pub perceptual: PerceptualControl,
 }
 
@@ -351,8 +351,8 @@ impl Default for PitchControl {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct UtteranceControl {
-    pub spec: crate::life::scenario::UtteranceSpec,
+pub struct PhonationControl {
+    pub spec: crate::life::scenario::PhonationSpec,
 }
 
 #[derive(Debug, Clone)]

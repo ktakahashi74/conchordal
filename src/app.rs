@@ -25,7 +25,7 @@ use crate::core::roughness_kernel::{KernelParams, RoughnessKernel};
 use crate::core::stream::{analysis::AnalysisStream, dorsal::DorsalStream};
 use crate::core::timebase::Tick;
 use crate::life::conductor::Conductor;
-use crate::life::individual::{SoundBody, UtteranceBatch};
+use crate::life::individual::{PhonationBatch, SoundBody};
 use crate::life::population::Population;
 use crate::life::scenario::{Action, Scenario};
 use crate::life::schedule_renderer::ScheduleRenderer;
@@ -980,7 +980,7 @@ fn worker_loop(
     let mut last_tick_log = Instant::now();
     let idle_silence = vec![0.0f32; hop];
     let mut scenario_end_tick: Option<Tick> = None;
-    let mut phonation_batches_buf: Vec<UtteranceBatch> = Vec::new();
+    let mut phonation_batches_buf: Vec<PhonationBatch> = Vec::new();
     let mut audio_cmds: Vec<AudioCommand> = Vec::new();
     let mut voice_targets: Vec<VoiceTarget> = Vec::new();
 

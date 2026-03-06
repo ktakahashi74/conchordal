@@ -1,5 +1,5 @@
 use super::conductor::Conductor;
-use super::individual::{AgentMetadata, AnyArticulationCore, SoundBody, UtteranceBatch};
+use super::individual::{AgentMetadata, AnyArticulationCore, PhonationBatch, SoundBody};
 use super::population::Population;
 use super::scenario::{
     Action, ArticulationCoreConfig, IndividualConfig, Scenario, SpawnSpec, TimedEvent,
@@ -10,8 +10,8 @@ use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
 use crate::life::control::{AgentControl, PitchApplyMode, PitchMode};
 use crate::life::lifecycle::LifecycleConfig;
-use crate::life::scenario::{DurationSpec, UtteranceSpec, WhenSpec};
-use crate::life::utterance_engine::NoteCmd;
+use crate::life::phonation_engine::NoteCmd;
+use crate::life::scenario::{DurationSpec, PhonationSpec, WhenSpec};
 use rand::SeedableRng;
 
 fn test_timebase() -> Timebase {
@@ -311,7 +311,7 @@ fn free_mode_uses_freq_center_when_range_zero() {
 fn remove_pending_still_emits_note_offs() {
     let mut control = AgentControl::default();
     control.pitch.freq = 220.0;
-    control.utterance.spec = UtteranceSpec {
+    control.phonation.spec = PhonationSpec {
         when: WhenSpec::Pulse {
             rate: 4.0,
             sync: 0.0,
@@ -337,7 +337,7 @@ fn remove_pending_still_emits_note_offs() {
     rhythms.theta.phase = 0.0;
     rhythms.env_open = 1.0;
     rhythms.env_level = 1.0;
-    let mut batch = UtteranceBatch::default();
+    let mut batch = PhonationBatch::default();
     let mut now: Tick = 0;
     let mut saw_note_on = false;
     for _ in 0..20 {
@@ -377,7 +377,7 @@ fn remove_pending_still_emits_note_offs() {
 fn render_snapshot_articulation_is_finite_and_energy_stable() {
     let mut control = AgentControl::default();
     control.pitch.freq = 220.0;
-    control.utterance.spec = UtteranceSpec {
+    control.phonation.spec = PhonationSpec {
         when: WhenSpec::Pulse {
             rate: 4.0,
             sync: 0.0,
@@ -404,7 +404,7 @@ fn render_snapshot_articulation_is_finite_and_energy_stable() {
     rhythms.env_open = 1.0;
     rhythms.env_level = 1.0;
 
-    let mut batch = UtteranceBatch::default();
+    let mut batch = PhonationBatch::default();
     let mut now: Tick = 0;
     let mut note = None;
     for _ in 0..20 {

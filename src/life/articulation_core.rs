@@ -5,10 +5,10 @@ use crate::core::utils::pink_noise_tick;
 use crate::life::constants::{MAX_COUPLING_MULT, MAX_RECHARGE_MULT};
 use crate::life::lifecycle::LifecycleConfig;
 use crate::life::metabolism_policy::MetabolismPolicy;
+use crate::life::phonation_engine::OnsetKick;
 use crate::life::scenario::{
     ArticulationCoreConfig, MetabolismRhythmReward, RhythmCouplingMode, RhythmRewardMetric,
 };
-use crate::life::utterance_engine::OnsetKick;
 use rand::{Rng, SeedableRng, rngs::SmallRng};
 use std::f32::consts::{PI, TAU};
 

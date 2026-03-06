@@ -15,8 +15,8 @@ use super::control::{
 use super::lifecycle::LifecycleConfig;
 use super::scenario::{
     Action, ArticulationCoreConfig, DurationSpec, EnvelopeConfig, FieldDurationSpec,
-    MetabolismRhythmReward, RespawnPolicy, RhythmCouplingMode, RhythmRewardMetric, Scenario,
-    SceneMarker, SpawnSpec, SpawnStrategy, TimedEvent, UtteranceSpec, WhenSpec,
+    MetabolismRhythmReward, PhonationSpec, RespawnPolicy, RhythmCouplingMode, RhythmRewardMetric,
+    Scenario, SceneMarker, SpawnSpec, SpawnStrategy, TimedEvent, WhenSpec,
 };
 
 const DEFAULT_RELEASE_SEC: f32 = 0.05;
@@ -49,10 +49,9 @@ enum BrainKind {
 }
 
 #[derive(Clone, Copy, Debug)]
-enum UtteranceKind {
+enum PhonationKind {
     Sustain,
     Repeat,
-    Grain,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -70,7 +69,7 @@ struct SpeciesSpec {
     crowding_target_same: bool,
     crowding_target_other: bool,
     brain: BrainKind,
-    utterance_spec: UtteranceSpec,
+    phonation_spec: PhonationSpec,
     metabolism_rate: Option<f32>,
     adsr: Option<AdsrSpec>,
     rhythm_coupling: RhythmCouplingMode,
@@ -89,7 +88,7 @@ impl SpeciesSpec {
             crowding_target_same: true,
             crowding_target_other: false,
             brain: BrainKind::Entrain,
-            utterance_spec: UtteranceSpec::default(),
+            phonation_spec: PhonationSpec::default(),
             metabolism_rate: None,
             adsr: None,
             rhythm_coupling: RhythmCouplingMode::TemporalOnly,
@@ -156,7 +155,7 @@ impl SpeciesSpec {
 
     fn spawn_spec(&self) -> SpawnSpec {
         let mut control = self.control.clone();
-        control.utterance.spec = self.utterance_spec.clone();
+        control.phonation.spec = self.phonation_spec.clone();
         SpawnSpec {
             control,
             articulation: self.articulation_config(),
@@ -328,10 +327,10 @@ impl SpeciesSpec {
         };
     }
 
-    fn set_utterance(&mut self, kind: UtteranceKind) {
-        self.utterance_spec = match kind {
-            UtteranceKind::Sustain => UtteranceSpec::default(),
-            UtteranceKind::Repeat => UtteranceSpec {
+    fn set_phonation(&mut self, kind: PhonationKind) {
+        self.phonation_spec = match kind {
+            PhonationKind::Sustain => PhonationSpec::default(),
+            PhonationKind::Repeat => PhonationSpec {
                 when: WhenSpec::Pulse {
                     rate: DEFAULT_PULSE_RATE,
                     sync: DEFAULT_PULSE_SYNC,
@@ -339,27 +338,19 @@ impl SpeciesSpec {
                 },
                 duration: DurationSpec::Gates(DEFAULT_GATE_COUNT),
             },
-            UtteranceKind::Grain => UtteranceSpec {
-                when: WhenSpec::Pulse {
-                    rate: DEFAULT_PULSE_RATE,
-                    sync: DEFAULT_PULSE_SYNC,
-                    social: 0.0,
-                },
-                duration: DurationSpec::Field(FieldDurationSpec::default()),
-            },
         };
     }
 
     fn set_when_once(&mut self) {
-        self.utterance_spec.when = WhenSpec::Once;
+        self.phonation_spec.when = WhenSpec::Once;
     }
 
     fn set_when_pulse(&mut self, rate: f32) {
         let rate = rate.max(0.01);
-        match &mut self.utterance_spec.when {
+        match &mut self.phonation_spec.when {
             WhenSpec::Pulse { rate: r, .. } => *r = rate,
             _ => {
-                self.utterance_spec.when = WhenSpec::Pulse {
+                self.phonation_spec.when = WhenSpec::Pulse {
                     rate,
                     sync: DEFAULT_PULSE_SYNC,
                     social: 0.0,
@@ -369,33 +360,33 @@ impl SpeciesSpec {
     }
 
     fn set_duration_while_alive(&mut self) {
-        self.utterance_spec.duration = DurationSpec::WhileAlive;
+        self.phonation_spec.duration = DurationSpec::WhileAlive;
     }
 
     fn set_duration_gates(&mut self, n: u32) {
-        self.utterance_spec.duration = DurationSpec::Gates(n.max(1));
+        self.phonation_spec.duration = DurationSpec::Gates(n.max(1));
     }
 
     fn set_duration_field(&mut self) {
-        self.utterance_spec.duration = DurationSpec::Field(FieldDurationSpec::default());
+        self.phonation_spec.duration = DurationSpec::Field(FieldDurationSpec::default());
     }
 
     fn set_sync(&mut self, depth: f32) {
-        match &mut self.utterance_spec.when {
+        match &mut self.phonation_spec.when {
             WhenSpec::Pulse { sync, .. } => *sync = depth.clamp(0.0, 1.0),
             _ => warn!("sync() requires pulse(); ignored"),
         }
     }
 
     fn set_social(&mut self, coupling: f32) {
-        match &mut self.utterance_spec.when {
+        match &mut self.phonation_spec.when {
             WhenSpec::Pulse { social, .. } => *social = coupling.clamp(0.0, 1.0),
             _ => warn!("social() requires pulse(); ignored"),
         }
     }
 
     fn set_field_window(&mut self, min: f32, max: f32) {
-        match &mut self.utterance_spec.duration {
+        match &mut self.phonation_spec.duration {
             DurationSpec::Field(f) => {
                 f.hold_min_theta = min.clamp(0.0, 1.0);
                 f.hold_max_theta = max.clamp(0.0, 1.0);
@@ -405,7 +396,7 @@ impl SpeciesSpec {
     }
 
     fn set_field_curve(&mut self, k: f32, x0: f32) {
-        match &mut self.utterance_spec.duration {
+        match &mut self.phonation_spec.duration {
             DurationSpec::Field(f) => {
                 f.curve_k = k;
                 f.curve_x0 = x0;
@@ -415,7 +406,7 @@ impl SpeciesSpec {
     }
 
     fn set_field_drop(&mut self, gain: f32) {
-        match &mut self.utterance_spec.duration {
+        match &mut self.phonation_spec.duration {
             DurationSpec::Field(f) => f.drop_gain = gain.max(0.0),
             _ => warn!("field_drop() requires field(); ignored"),
         }
@@ -1376,15 +1367,11 @@ impl ScriptHost {
             species
         });
         engine.register_fn("sustain", |mut species: SpeciesHandle| {
-            species.spec.set_utterance(UtteranceKind::Sustain);
+            species.spec.set_phonation(PhonationKind::Sustain);
             species
         });
         engine.register_fn("repeat", |mut species: SpeciesHandle| {
-            species.spec.set_utterance(UtteranceKind::Repeat);
-            species
-        });
-        engine.register_fn("grain", |mut species: SpeciesHandle| {
-            species.spec.set_utterance(UtteranceKind::Grain);
+            species.spec.set_phonation(PhonationKind::Repeat);
             species
         });
         // Tier 2: explicit when/duration
@@ -2299,7 +2286,7 @@ impl ScriptHost {
                 };
                 match group.status {
                     GroupStatus::Draft => {
-                        group.spec.set_utterance(UtteranceKind::Sustain);
+                        group.spec.set_phonation(PhonationKind::Sustain);
                     }
                     _ => ctx.warn_live_builder(handle.id, "sustain"),
                 }
@@ -2317,27 +2304,9 @@ impl ScriptHost {
                 };
                 match group.status {
                     GroupStatus::Draft => {
-                        group.spec.set_utterance(UtteranceKind::Repeat);
+                        group.spec.set_phonation(PhonationKind::Repeat);
                     }
                     _ => ctx.warn_live_builder(handle.id, "repeat"),
-                }
-                Ok(handle)
-            },
-        );
-        let ctx_for_group_grain = ctx.clone();
-        engine.register_fn(
-            "grain",
-            move |handle: GroupHandle| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_grain.lock().expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("grain ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                match group.status {
-                    GroupStatus::Draft => {
-                        group.spec.set_utterance(UtteranceKind::Grain);
-                    }
-                    _ => ctx.warn_live_builder(handle.id, "grain"),
                 }
                 Ok(handle)
             },

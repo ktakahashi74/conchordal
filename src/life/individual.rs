@@ -9,13 +9,13 @@ use crate::life::control_adapters::{
     perceptual_config_from_control, pitch_core_config_from_control, tessitura_gravity_from_control,
 };
 use crate::life::lifecycle::LifecycleConfig;
+use crate::life::phonation_engine::{
+    CoreState, CoreTickCtx, NoteCmd, NoteId, NoteOnEvent, OnsetEvent, PhonationEngine,
+};
 use crate::life::scenario::ArticulationCoreConfig;
 use crate::life::scenario::WhenSpec;
 use crate::life::social_density::SocialDensityTrace;
 use crate::life::sound::BodySnapshot;
-use crate::life::utterance_engine::{
-    CoreState, CoreTickCtx, NoteCmd, NoteId, NoteOnEvent, OnsetEvent, UtteranceRuntime,
-};
 use rand::SeedableRng;
 
 #[path = "articulation_core.rs"]
@@ -49,12 +49,12 @@ pub struct Individual {
     pub id: u64,
     pub metadata: AgentMetadata,
     fixed_body_method: BodyMethod,
-    fixed_utterance_when: std::mem::Discriminant<WhenSpec>,
+    fixed_phonation_when: std::mem::Discriminant<WhenSpec>,
     pub base_control: AgentControl,
     pub effective_control: AgentControl,
     pub articulation: ArticulationWrapper,
     pub(crate) pitch_ctl: PitchController,
-    pub utterance_engine: UtteranceRuntime,
+    pub phonation_engine: PhonationEngine,
     pub(crate) social_coupling: f32,
     pub body: AnySoundBody,
     pub last_signal: ArticulationSignal,
@@ -84,14 +84,14 @@ pub(crate) struct PhonationScratch {
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct UtteranceBatch {
+pub struct PhonationBatch {
     pub source_id: u64,
     pub cmds: Vec<NoteCmd>,
     pub notes: Vec<NoteSpec>,
     pub onsets: Vec<OnsetEvent>,
 }
 
-impl UtteranceBatch {
+impl PhonationBatch {
     pub(crate) fn clear(&mut self) {
         self.cmds.clear();
         self.notes.clear();
@@ -125,7 +125,7 @@ impl BodyRuntime {
 struct Dirty {
     body: bool,
     pitch: bool,
-    utterance: bool,
+    phonation: bool,
     perceptual: bool,
 }
 
@@ -159,7 +159,7 @@ impl Dirty {
         Self {
             body,
             pitch,
-            utterance: false,
+            phonation: false,
             perceptual: false,
         }
     }
@@ -190,8 +190,8 @@ impl Individual {
         let core =
             AnyArticulationCore::from_config(&articulation_config, fs, assigned_id, &mut rng);
 
-        let utterance_engine = UtteranceRuntime::from_spec(&effective_control.utterance.spec, seed);
-        let social_coupling = effective_control.utterance.spec.social_coupling();
+        let phonation_engine = PhonationEngine::from_spec(&effective_control.phonation.spec, seed);
+        let social_coupling = effective_control.phonation.spec.social_coupling();
 
         let pitch_config = pitch_core_config_from_control(&effective_control.pitch);
         let pitch = AnyPitchCore::from_config(&pitch_config, target_pitch_log2, &mut rng);
@@ -297,12 +297,12 @@ impl Individual {
             id: assigned_id,
             metadata,
             fixed_body_method: effective_control.body.method,
-            fixed_utterance_when: std::mem::discriminant(&effective_control.utterance.spec.when),
+            fixed_phonation_when: std::mem::discriminant(&effective_control.phonation.spec.when),
             base_control: control,
             effective_control,
             articulation: ArticulationWrapper::new(core, breath_gain),
             pitch_ctl,
-            utterance_engine,
+            phonation_engine,
             social_coupling,
             body,
             last_signal: Default::default(),
@@ -371,9 +371,9 @@ impl Individual {
     }
 
     fn apply_phonation_control(&mut self) {
-        self.utterance_engine
-            .update_from_spec(&self.effective_control.utterance.spec);
-        self.social_coupling = self.effective_control.utterance.spec.social_coupling();
+        self.phonation_engine
+            .update_from_spec(&self.effective_control.phonation.spec);
+        self.social_coupling = self.effective_control.phonation.spec.social_coupling();
     }
 
     fn apply_effective_control(&mut self, control: AgentControl, dirty: Dirty) {
@@ -387,17 +387,17 @@ impl Individual {
         if dirty.pitch {
             self.apply_pitch_control();
         }
-        if dirty.utterance {
+        if dirty.phonation {
             self.apply_phonation_control();
         }
     }
 
     fn ensure_fixed_kinds(&self, control: &AgentControl) -> Result<(), String> {
         if control.body.method != self.fixed_body_method
-            || std::mem::discriminant(&control.utterance.spec.when) != self.fixed_utterance_when
+            || std::mem::discriminant(&control.phonation.spec.when) != self.fixed_phonation_when
         {
             return Err(
-                "update cannot change body.method or utterance.when kind; use spawn() for type selection"
+                "update cannot change body.method or phonation.when kind; use spawn() for type selection"
                     .to_string(),
             );
         }
@@ -411,7 +411,7 @@ impl Individual {
         if self.remove_pending {
             return self.is_alive();
         }
-        self.is_alive() || self.utterance_engine.has_active_notes()
+        self.is_alive() || self.phonation_engine.has_active_notes()
     }
     pub fn metadata(&self) -> &AgentMetadata {
         &self.metadata
@@ -658,8 +658,8 @@ impl Individual {
         social: Option<&SocialDensityTrace>,
         social_coupling: f32,
         extra_gate_gain: f32,
-    ) -> UtteranceBatch {
-        let mut batch = UtteranceBatch::default();
+    ) -> PhonationBatch {
+        let mut batch = PhonationBatch::default();
         self.tick_phonation_into(
             tb,
             now,
@@ -681,7 +681,7 @@ impl Individual {
         social: Option<&SocialDensityTrace>,
         social_coupling: f32,
         extra_gate_gain: f32,
-        out: &mut UtteranceBatch,
+        out: &mut PhonationBatch,
     ) {
         out.source_id = self.id;
         out.clear();
@@ -697,7 +697,7 @@ impl Individual {
         let state = CoreState {
             is_alive: self.is_alive() && !self.remove_pending,
         };
-        self.utterance_engine.tick(
+        self.phonation_engine.tick(
             &ctx,
             &state,
             social,

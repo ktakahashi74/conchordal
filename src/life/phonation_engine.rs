@@ -13,7 +13,6 @@ use crate::life::scenario::{
     PhonationSpec, SubThetaModConfig,
 };
 use crate::life::social_density::SocialDensityTrace;
-use tracing::{debug, warn};
 
 pub type NoteId = u64;
 
@@ -327,10 +326,6 @@ pub struct CoreState {
     pub is_alive: bool,
 }
 
-pub trait PhonationClock: Send {
-    fn gather_candidates(&mut self, ctx: &CoreTickCtx, out: &mut Vec<CandidatePoint>);
-}
-
 #[derive(Debug, Default)]
 pub struct ThetaGateClock {
     last_gate_tick: Option<Tick>,
@@ -391,8 +386,8 @@ impl ThetaGateClock {
     }
 }
 
-impl PhonationClock for ThetaGateClock {
-    fn gather_candidates(&mut self, ctx: &CoreTickCtx, out: &mut Vec<CandidatePoint>) {
+impl ThetaGateClock {
+    fn gather_candidates_impl(&mut self, ctx: &CoreTickCtx, out: &mut Vec<CandidatePoint>) {
         self.gather_candidates_with(ctx, out, |cursor, ctx| {
             next_gate_tick(cursor, ctx.fs, ctx.rhythms.theta, 0.0)
         });
@@ -513,161 +508,181 @@ impl InternalPhaseClock {
     }
 }
 
-#[derive(Debug)]
-pub struct CompositeClock {
-    gate_clock: ThetaGateClock,
-    subdivision: Option<SubdivisionClock>,
-    internal_phase: Option<InternalPhaseClock>,
-}
-
-impl CompositeClock {
-    pub fn new(
+pub enum PhonationClock {
+    ThetaGate(ThetaGateClock),
+    Composite {
         gate_clock: ThetaGateClock,
         subdivision: Option<SubdivisionClock>,
         internal_phase: Option<InternalPhaseClock>,
-    ) -> Self {
-        Self {
-            gate_clock,
-            subdivision,
-            internal_phase,
-        }
-    }
+    },
+    #[cfg(test)]
+    Custom(Box<dyn FnMut(&CoreTickCtx, &mut Vec<CandidatePoint>) + Send>),
 }
 
-impl PhonationClock for CompositeClock {
-    fn gather_candidates(&mut self, ctx: &CoreTickCtx, out: &mut Vec<CandidatePoint>) {
-        let mut gate_candidates = Vec::new();
-        self.gate_clock.gather_candidates(ctx, &mut gate_candidates);
-        out.extend(gate_candidates.iter().cloned());
-        let grid = ThetaGrid::from_candidates(&gate_candidates);
-        if let Some(clock) = self.subdivision.as_ref() {
-            clock.gather_candidates(&grid, out);
-        }
-        if let Some(clock) = self.internal_phase.as_mut() {
-            clock.gather_candidates(&grid, out);
-        }
-    }
-}
-
-pub trait OnsetRule: Send {
-    fn on_candidate(&mut self, c: &IntervalInput, state: &CoreState) -> Option<OnsetKick>;
-    fn update_config(&mut self, _config: &OnsetConfig) -> bool {
-        false
-    }
-}
-
-pub trait SubThetaMod: Send + Sync {
-    fn mod_at_phase(&self, phase_in_gate: f32) -> f32;
-    fn update_config(&mut self, _config: &SubThetaModConfig) -> bool {
-        false
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct NoneMod;
-
-impl SubThetaMod for NoneMod {
-    fn mod_at_phase(&self, _phase_in_gate: f32) -> f32 {
-        1.0
-    }
-
-    fn update_config(&mut self, config: &SubThetaModConfig) -> bool {
-        matches!(config, SubThetaModConfig::None)
-    }
-}
-
-#[derive(Debug)]
-pub struct CosineHarmonicMod {
-    pub n: u32,
-    pub depth: f32,
-    pub phase0: f32,
-}
-
-impl SubThetaMod for CosineHarmonicMod {
-    fn mod_at_phase(&self, phase_in_gate: f32) -> f32 {
-        let depth = self.depth.clamp(0.0, 1.0);
-        let phase = phase_in_gate.rem_euclid(1.0);
-        1.0 + depth * (TAU * self.n as f32 * phase + self.phase0).cos()
-    }
-
-    fn update_config(&mut self, config: &SubThetaModConfig) -> bool {
-        match config {
-            SubThetaModConfig::Cosine { n, depth, phase0 } => {
-                self.n = *n;
-                self.depth = *depth;
-                self.phase0 = *phase0;
-                true
+impl PhonationClock {
+    pub fn gather_candidates(&mut self, ctx: &CoreTickCtx, out: &mut Vec<CandidatePoint>) {
+        match self {
+            PhonationClock::ThetaGate(clock) => {
+                clock.gather_candidates_impl(ctx, out);
             }
-            _ => false,
+            PhonationClock::Composite {
+                gate_clock,
+                subdivision,
+                internal_phase,
+            } => {
+                let mut gate_candidates = Vec::new();
+                gate_clock.gather_candidates_impl(ctx, &mut gate_candidates);
+                out.extend(gate_candidates.iter().cloned());
+                let grid = ThetaGrid::from_candidates(&gate_candidates);
+                if let Some(clock) = subdivision.as_ref() {
+                    clock.gather_candidates(&grid, out);
+                }
+                if let Some(clock) = internal_phase.as_mut() {
+                    clock.gather_candidates(&grid, out);
+                }
+            }
+            #[cfg(test)]
+            PhonationClock::Custom(f) => f(ctx, out),
+        }
+    }
+
+    pub fn from_config(config: &PhonationClockConfig) -> Self {
+        match config {
+            PhonationClockConfig::ThetaGate => PhonationClock::ThetaGate(ThetaGateClock::default()),
+            PhonationClockConfig::Composite {
+                subdivision,
+                internal_phase,
+            } => {
+                let subdivision = subdivision
+                    .as_ref()
+                    .map(|c| SubdivisionClock::new(c.divisions.clone()));
+                let internal_phase = internal_phase
+                    .as_ref()
+                    .map(|c| InternalPhaseClock::new(c.ratio, c.phase0));
+                PhonationClock::Composite {
+                    gate_clock: ThetaGateClock::default(),
+                    subdivision,
+                    internal_phase,
+                }
+            }
         }
     }
 }
 
-#[derive(Debug, Default)]
-pub struct NoneOnset;
+pub enum SubThetaMod {
+    None,
+    CosineHarmonic { n: u32, depth: f32, phase0: f32 },
+}
 
-impl OnsetRule for NoneOnset {
-    fn on_candidate(&mut self, _c: &IntervalInput, _state: &CoreState) -> Option<OnsetKick> {
-        None
+impl SubThetaMod {
+    pub fn mod_at_phase(&self, phase_in_gate: f32) -> f32 {
+        match self {
+            SubThetaMod::None => 1.0,
+            SubThetaMod::CosineHarmonic { n, depth, phase0 } => {
+                let depth = depth.clamp(0.0, 1.0);
+                let phase = phase_in_gate.rem_euclid(1.0);
+                1.0 + depth * (TAU * *n as f32 * phase + phase0).cos()
+            }
+        }
     }
 
-    fn update_config(&mut self, config: &OnsetConfig) -> bool {
-        matches!(config, OnsetConfig::None)
+    fn from_config(config: &SubThetaModConfig) -> Self {
+        match config {
+            SubThetaModConfig::None => SubThetaMod::None,
+            SubThetaModConfig::Cosine { n, depth, phase0 } => SubThetaMod::CosineHarmonic {
+                n: *n,
+                depth: *depth,
+                phase0: *phase0,
+            },
+        }
+    }
+
+    fn update_config(&mut self, config: &SubThetaModConfig) {
+        *self = Self::from_config(config);
     }
 }
 
-#[derive(Debug)]
-pub struct AccumulatorOnset {
-    pub rate_hz: f32,
-    pub refractory_gates: u32,
-    pub acc: f32,
-    pub next_allowed_gate: u64,
+pub enum OnsetRule {
+    None,
+    Accumulator {
+        rate_hz: f32,
+        refractory_gates: u32,
+        acc: f32,
+        next_allowed_gate: u64,
+    },
+    #[cfg(test)]
+    Custom(Box<dyn FnMut(&IntervalInput, &CoreState) -> Option<OnsetKick> + Send>),
 }
 
-impl AccumulatorOnset {
-    pub fn new(rate_hz: f32, refractory_gates: u32, seed: u64) -> Self {
+impl OnsetRule {
+    pub fn accumulator(rate_hz: f32, refractory_gates: u32, seed: u64) -> Self {
         let mut rng = SmallRng::seed_from_u64(seed);
         let acc = rng.random_range(0.7..1.0);
-        Self {
+        OnsetRule::Accumulator {
             rate_hz,
             refractory_gates,
             acc,
             next_allowed_gate: 0,
         }
     }
-}
 
-impl OnsetRule for AccumulatorOnset {
-    fn on_candidate(&mut self, c: &IntervalInput, _state: &CoreState) -> Option<OnsetKick> {
-        const ACC_MAX: f32 = 32.0;
-        if !_state.is_alive {
-            return None;
+    pub fn on_candidate(&mut self, c: &IntervalInput, state: &CoreState) -> Option<OnsetKick> {
+        match self {
+            OnsetRule::None => None,
+            OnsetRule::Accumulator {
+                rate_hz,
+                refractory_gates,
+                acc,
+                next_allowed_gate,
+            } => {
+                const ACC_MAX: f32 = 32.0;
+                if !state.is_alive {
+                    return None;
+                }
+                if !rate_hz.is_finite() || *rate_hz <= 0.0 {
+                    return None;
+                }
+                let weight = c.weight.max(0.0);
+                *acc += *rate_hz * weight * c.dt_sec;
+                if !acc.is_finite() || *acc > ACC_MAX {
+                    *acc = ACC_MAX;
+                }
+                let refractory_ok = c.gate >= *next_allowed_gate;
+                if *acc >= 1.0 && refractory_ok {
+                    *acc -= 1.0;
+                    *next_allowed_gate = c.gate + *refractory_gates as u64 + 1;
+                    return Some(OnsetKick::Planned { strength: 1.0 });
+                }
+                None
+            }
+            #[cfg(test)]
+            OnsetRule::Custom(f) => f(c, state),
         }
-        if !self.rate_hz.is_finite() || self.rate_hz <= 0.0 {
-            return None;
-        }
-        let weight = c.weight.max(0.0);
-        self.acc += self.rate_hz * weight * c.dt_sec;
-        if !self.acc.is_finite() || self.acc > ACC_MAX {
-            self.acc = ACC_MAX;
-        }
-        let refractory_ok = c.gate >= self.next_allowed_gate;
-        if self.acc >= 1.0 && refractory_ok {
-            self.acc -= 1.0;
-            self.next_allowed_gate = c.gate + self.refractory_gates as u64 + 1;
-            return Some(OnsetKick::Planned { strength: 1.0 });
-        }
-        None
     }
 
-    fn update_config(&mut self, config: &OnsetConfig) -> bool {
+    fn from_config(config: &OnsetConfig, seed: u64) -> Self {
         match config {
+            OnsetConfig::None => OnsetRule::None,
             OnsetConfig::Accumulator { rate, refractory } => {
-                self.rate_hz = *rate;
-                self.refractory_gates = *refractory;
-                true
+                OnsetRule::accumulator(*rate, *refractory, seed)
             }
-            _ => false,
+        }
+    }
+
+    fn update_config(&mut self, config: &OnsetConfig, seed: u64) {
+        if let (
+            OnsetConfig::Accumulator { rate, refractory },
+            OnsetRule::Accumulator {
+                rate_hz,
+                refractory_gates,
+                ..
+            },
+        ) = (config, &mut *self)
+        {
+            *rate_hz = *rate;
+            *refractory_gates = *refractory;
+        } else {
+            *self = Self::from_config(config, seed);
         }
     }
 }
@@ -689,52 +704,27 @@ pub enum DurationPlan {
     AtGate(u64),
 }
 
-pub trait DurationRule: Send {
-    fn on_note_on(&mut self, onset: OnsetContext) -> DurationPlan;
-    fn update_config(&mut self, _config: &DurationConfig) -> bool {
-        false
-    }
+pub enum DurationRule {
+    FixedGate {
+        length_gates: u32,
+    },
+    Field {
+        hold_min_theta: f32,
+        hold_max_theta: f32,
+        curve_k: f32,
+        curve_x0: f32,
+        drop_gain: f32,
+    },
+    #[cfg(test)]
+    Custom(Box<dyn FnMut(OnsetContext) -> DurationPlan + Send>),
 }
 
-#[derive(Debug)]
-pub struct FixedGateDuration {
-    pub length_gates: u32,
-}
-
-impl FixedGateDuration {
-    pub fn new(length_gates: u32) -> Self {
-        Self { length_gates }
-    }
-}
-
-impl DurationRule for FixedGateDuration {
-    fn on_note_on(&mut self, onset: OnsetContext) -> DurationPlan {
-        let off_gate = onset.gate + self.length_gates as u64;
-        DurationPlan::AtGate(off_gate)
+impl DurationRule {
+    pub fn fixed_gate(length_gates: u32) -> Self {
+        DurationRule::FixedGate { length_gates }
     }
 
-    fn update_config(&mut self, config: &DurationConfig) -> bool {
-        match config {
-            DurationConfig::FixedGate { length_gates } => {
-                self.length_gates = *length_gates;
-                true
-            }
-            _ => false,
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct FieldDuration {
-    pub hold_min_theta: f32,
-    pub hold_max_theta: f32,
-    pub curve_k: f32,
-    pub curve_x0: f32,
-    pub drop_gain: f32,
-}
-
-impl FieldDuration {
-    pub fn new(
+    pub fn field(
         hold_min_theta: f32,
         hold_max_theta: f32,
         curve_k: f32,
@@ -761,7 +751,7 @@ impl FieldDuration {
         } else {
             0.0
         };
-        Self {
+        DurationRule::Field {
             hold_min_theta,
             hold_max_theta,
             curve_k,
@@ -770,44 +760,56 @@ impl FieldDuration {
         }
     }
 
-    fn hold_theta(&self, exc_gate: f32, exc_slope: f32) -> f32 {
-        let min = self.hold_min_theta.max(0.0);
-        let max = self.hold_max_theta.max(min);
-        let p = 1.0 / (1.0 + (-(self.curve_k * (exc_gate - self.curve_x0))).exp());
-        let mut hold = min + (max - min) * p;
-        if self.drop_gain > 0.0 && exc_slope.is_finite() {
-            let drop = (-exc_slope).max(0.0).clamp(0.0, 1.0);
-            hold *= 1.0 - self.drop_gain.clamp(0.0, 1.0) * drop;
-        }
-        hold.max(0.0)
-    }
-}
-
-impl DurationRule for FieldDuration {
-    fn on_note_on(&mut self, onset: OnsetContext) -> DurationPlan {
-        let exc_gate = onset.exc_gate.clamp(0.0, 1.0);
-        let hold = self.hold_theta(exc_gate, onset.exc_slope);
-        DurationPlan::HoldTheta(hold)
-    }
-
-    fn update_config(&mut self, config: &DurationConfig) -> bool {
-        match config {
-            DurationConfig::Field {
+    pub fn on_note_on(&mut self, onset: OnsetContext) -> DurationPlan {
+        match self {
+            DurationRule::FixedGate { length_gates } => {
+                let off_gate = onset.gate + *length_gates as u64;
+                DurationPlan::AtGate(off_gate)
+            }
+            DurationRule::Field {
                 hold_min_theta,
                 hold_max_theta,
                 curve_k,
                 curve_x0,
                 drop_gain,
             } => {
-                self.hold_min_theta = *hold_min_theta;
-                self.hold_max_theta = *hold_max_theta;
-                self.curve_k = *curve_k;
-                self.curve_x0 = *curve_x0;
-                self.drop_gain = *drop_gain;
-                true
+                let exc_gate = onset.exc_gate.clamp(0.0, 1.0);
+                let min = hold_min_theta.max(0.0);
+                let max = hold_max_theta.max(min);
+                let p = 1.0 / (1.0 + (-(*curve_k * (exc_gate - *curve_x0))).exp());
+                let mut hold = min + (max - min) * p;
+                if *drop_gain > 0.0 && onset.exc_slope.is_finite() {
+                    let drop_val = (-onset.exc_slope).max(0.0).clamp(0.0, 1.0);
+                    hold *= 1.0 - drop_gain.clamp(0.0, 1.0) * drop_val;
+                }
+                DurationPlan::HoldTheta(hold.max(0.0))
             }
-            _ => false,
+            #[cfg(test)]
+            DurationRule::Custom(f) => f(onset),
         }
+    }
+
+    fn from_config(config: &DurationConfig) -> Self {
+        match config {
+            DurationConfig::FixedGate { length_gates } => DurationRule::fixed_gate(*length_gates),
+            DurationConfig::Field {
+                hold_min_theta,
+                hold_max_theta,
+                curve_k,
+                curve_x0,
+                drop_gain,
+            } => DurationRule::field(
+                *hold_min_theta,
+                *hold_max_theta,
+                *curve_k,
+                *curve_x0,
+                *drop_gain,
+            ),
+        }
+    }
+
+    fn update_config(&mut self, config: &DurationConfig) {
+        *self = Self::from_config(config);
     }
 }
 
@@ -822,6 +824,14 @@ pub struct OnsetEvent {
     pub gate: u64,
     pub onset_tick: Tick,
     pub strength: f32,
+}
+
+struct CandidateStep {
+    dt_theta: f32,
+    dt_sec: f32,
+    exc_gate: f32,
+    exc_slope: f32,
+    weight: f32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -851,10 +861,10 @@ struct HoldCore {
 }
 
 pub struct PhonationEngine {
-    pub clock: Box<dyn PhonationClock + Send>,
-    pub onset_rule: Box<dyn OnsetRule + Send>,
-    pub duration_rule: Box<dyn DurationRule + Send>,
-    pub sub_theta_mod: Box<dyn SubThetaMod + Send + Sync>,
+    pub clock: PhonationClock,
+    pub onset_rule: OnsetRule,
+    pub duration_rule: DurationRule,
+    pub sub_theta_mod: SubThetaMod,
     pub mode: PhonationMode,
     hold: HoldCore,
     initial_seed: u64,
@@ -880,36 +890,6 @@ impl fmt::Debug for PhonationEngine {
 }
 
 impl PhonationEngine {
-    fn make_onset_rule(config: &OnsetConfig, seed: u64) -> Box<dyn OnsetRule + Send> {
-        match config {
-            OnsetConfig::None => Box::<NoneOnset>::default(),
-            OnsetConfig::Accumulator { rate, refractory } => {
-                Box::new(AccumulatorOnset::new(*rate, *refractory, seed))
-            }
-        }
-    }
-
-    fn make_duration_rule(config: &DurationConfig) -> Box<dyn DurationRule + Send> {
-        match config {
-            DurationConfig::FixedGate { length_gates } => {
-                Box::new(FixedGateDuration::new(*length_gates))
-            }
-            DurationConfig::Field {
-                hold_min_theta,
-                hold_max_theta,
-                curve_k,
-                curve_x0,
-                drop_gain,
-            } => Box::new(FieldDuration::new(
-                *hold_min_theta,
-                *hold_max_theta,
-                *curve_k,
-                *curve_x0,
-                *drop_gain,
-            )),
-        }
-    }
-
     pub fn from_spec(spec: &PhonationSpec, seed: u64) -> Self {
         let config = phonation_config_from_spec(spec);
         Self::from_config(&config, seed)
@@ -921,40 +901,11 @@ impl PhonationEngine {
     }
 
     pub fn from_config(config: &PhonationConfig, seed: u64) -> Self {
-        let onset_rule = Self::make_onset_rule(&config.onset, seed);
-        let sub_theta_mod: Box<dyn SubThetaMod + Send + Sync> = match &config.sub_theta_mod {
-            SubThetaModConfig::None => Box::<NoneMod>::default(),
-            SubThetaModConfig::Cosine { n, depth, phase0 } => Box::new(CosineHarmonicMod {
-                n: *n,
-                depth: *depth,
-                phase0: *phase0,
-            }),
-        };
-        let duration_rule = Self::make_duration_rule(&config.duration);
-        let (subdivision, internal_phase) = match &config.clock {
-            PhonationClockConfig::ThetaGate => (None, None),
-            PhonationClockConfig::Composite {
-                subdivision,
-                internal_phase,
-            } => {
-                let subdivision = subdivision
-                    .as_ref()
-                    .map(|config| SubdivisionClock::new(config.divisions.clone()));
-                let internal_phase = internal_phase
-                    .as_ref()
-                    .map(|config| InternalPhaseClock::new(config.ratio, config.phase0));
-                (subdivision, internal_phase)
-            }
-        };
+        let onset_rule = OnsetRule::from_config(&config.onset, seed);
+        let sub_theta_mod = SubThetaMod::from_config(&config.sub_theta_mod);
+        let duration_rule = DurationRule::from_config(&config.duration);
         Self {
-            clock: match &config.clock {
-                PhonationClockConfig::ThetaGate => Box::<ThetaGateClock>::default(),
-                PhonationClockConfig::Composite { .. } => Box::new(CompositeClock::new(
-                    ThetaGateClock::default(),
-                    subdivision,
-                    internal_phase,
-                )),
-            },
+            clock: PhonationClock::from_config(&config.clock),
             onset_rule,
             duration_rule,
             sub_theta_mod,
@@ -975,26 +926,10 @@ impl PhonationEngine {
 
     pub fn update_from_config(&mut self, config: &PhonationConfig) {
         self.mode = config.mode;
-        if !self.onset_rule.update_config(&config.onset) {
-            warn!("phonation onset config mismatch; rebuilding onset rule to match config");
-            let seed = self.initial_seed ^ 0xA5A5_5A5A_5A5A_A5A5;
-            self.onset_rule = Self::make_onset_rule(&config.onset, seed);
-        }
-        if !self.duration_rule.update_config(&config.duration) {
-            warn!("phonation duration config mismatch; rebuilding duration rule to match config");
-            self.duration_rule = Self::make_duration_rule(&config.duration);
-        }
-        if !self.sub_theta_mod.update_config(&config.sub_theta_mod) {
-            debug!("phonation sub-theta config mismatch; rebuilding modulation to match config");
-            self.sub_theta_mod = match &config.sub_theta_mod {
-                SubThetaModConfig::None => Box::<NoneMod>::default(),
-                SubThetaModConfig::Cosine { n, depth, phase0 } => Box::new(CosineHarmonicMod {
-                    n: *n,
-                    depth: *depth,
-                    phase0: *phase0,
-                }),
-            };
-        }
+        let seed = self.initial_seed ^ 0xA5A5_5A5A_5A5A_A5A5;
+        self.onset_rule.update_config(&config.onset, seed);
+        self.duration_rule.update_config(&config.duration);
+        self.sub_theta_mod.update_config(&config.sub_theta_mod);
     }
 
     pub fn has_active_notes(&self) -> bool {
@@ -1180,6 +1115,98 @@ impl PhonationEngine {
         self.scratch_merged = merged;
     }
 
+    fn step_for_candidate(
+        &self,
+        c: &CandidatePoint,
+        timing_field: &TimingField,
+        prev_gate_exc: Option<f32>,
+        fs: f32,
+    ) -> CandidateStep {
+        // dt_theta spec: same tick -> 0; negative/non-finite delta -> 0; NaN/Inf after cast -> 0.
+        let dt_theta = if self.last_tick == Some(c.tick) {
+            0.0
+        } else {
+            match self.last_theta_pos {
+                Some(prev_pos) => {
+                    let dt = c.theta_pos - prev_pos;
+                    if !dt.is_finite() {
+                        debug_assert!(false, "candidate theta_pos delta must be finite");
+                        0.0
+                    } else if dt < 0.0 {
+                        debug_assert!(false, "candidate theta_pos must be non-decreasing");
+                        0.0
+                    } else {
+                        let dt_f32 = dt as f32;
+                        if dt_f32.is_finite() { dt_f32 } else { 0.0 }
+                    }
+                }
+                None => 1.0,
+            }
+        };
+        let dt_sec = if self.last_tick == Some(c.tick) {
+            0.0
+        } else {
+            match self.last_tick {
+                Some(prev_tick) => {
+                    if c.tick < prev_tick {
+                        debug_assert!(false, "candidate ticks must be non-decreasing");
+                        0.0
+                    } else {
+                        let dt_ticks = c.tick - prev_tick;
+                        let dt = dt_ticks as f32 / fs;
+                        if dt.is_finite() { dt } else { 0.0 }
+                    }
+                }
+                None => 0.0,
+            }
+        };
+        let exc_gate = timing_field.e(c.gate);
+        let exc_slope = match prev_gate_exc {
+            Some(prev_exc) => (exc_gate - prev_exc).clamp(-1.0, 1.0),
+            None => 0.0,
+        };
+        let mod_val = if c.phase_in_gate == 0.0 {
+            1.0
+        } else {
+            self.sub_theta_mod.mod_at_phase(c.phase_in_gate)
+        };
+        CandidateStep {
+            dt_theta,
+            dt_sec,
+            exc_gate,
+            exc_slope,
+            weight: exc_gate * mod_val,
+        }
+    }
+
+    fn schedule_duration(
+        &mut self,
+        onset: OnsetContext,
+        ctx: &CoreTickCtx,
+        timing_grid: &mut ThetaGrid,
+    ) {
+        let plan = self.duration_rule.on_note_on(onset);
+        match plan {
+            DurationPlan::HoldTheta(hold_theta) => {
+                self.schedule_hold_theta(onset, hold_theta, ctx, timing_grid);
+            }
+            DurationPlan::AtGate(off_gate) => {
+                timing_grid.ensure_boundaries_until(ctx, off_gate.saturating_add(1));
+                let off_tick = timing_grid
+                    .boundaries
+                    .iter()
+                    .find(|b| b.gate >= off_gate)
+                    .map(|b| b.tick)
+                    .unwrap_or_else(|| {
+                        Self::extrapolate_gate_tick(timing_grid, off_gate).unwrap_or(ctx.frame_end)
+                    })
+                    .max(onset.tick);
+                self.schedule_note_off(onset.note_id, off_tick);
+            }
+            DurationPlan::None => {}
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn process_candidates(
         &mut self,
@@ -1196,66 +1223,18 @@ impl PhonationEngine {
         let mut prev_gate_exc: Option<f32> = None;
         self.drain_note_offs(ctx.now_tick, out_cmds);
         for c in candidates {
+            debug_assert!(c.theta_pos.is_finite());
+            self.drain_note_offs(c.tick, out_cmds);
+            let step = self.step_for_candidate(c, timing_field, prev_gate_exc, ctx.fs);
             let allow_onset = min_allowed_onset_tick
                 .map(|min_tick| c.tick >= min_tick)
                 .unwrap_or(true);
-            debug_assert!(c.theta_pos.is_finite());
-            self.drain_note_offs(c.tick, out_cmds);
-            // dt_theta spec: same tick -> 0; negative/non-finite delta -> 0 (debug assert);
-            // NaN/Inf after cast -> 0.
-            let dt_theta = if self.last_tick == Some(c.tick) {
-                0.0
-            } else {
-                match self.last_theta_pos {
-                    Some(prev_pos) => {
-                        let dt = c.theta_pos - prev_pos;
-                        if !dt.is_finite() {
-                            debug_assert!(false, "candidate theta_pos delta must be finite");
-                            0.0
-                        } else if dt < 0.0 {
-                            debug_assert!(false, "candidate theta_pos must be non-decreasing");
-                            0.0
-                        } else {
-                            let dt_f32 = dt as f32;
-                            if dt_f32.is_finite() { dt_f32 } else { 0.0 }
-                        }
-                    }
-                    None => 1.0,
-                }
-            };
-            let dt_sec = if self.last_tick == Some(c.tick) {
-                0.0
-            } else {
-                match self.last_tick {
-                    Some(prev_tick) => {
-                        if c.tick < prev_tick {
-                            debug_assert!(false, "candidate ticks must be non-decreasing");
-                            0.0
-                        } else {
-                            let dt_ticks = c.tick - prev_tick;
-                            let dt = dt_ticks as f32 / ctx.fs;
-                            if dt.is_finite() { dt } else { 0.0 }
-                        }
-                    }
-                    None => 0.0,
-                }
-            };
-            let exc_gate = timing_field.e(c.gate);
-            let exc_slope = match prev_gate_exc {
-                Some(prev_exc) => (exc_gate - prev_exc).clamp(-1.0, 1.0),
-                None => 0.0,
-            };
-            let sub_theta_mod = if c.phase_in_gate == 0.0 {
-                1.0
-            } else {
-                self.sub_theta_mod.mod_at_phase(c.phase_in_gate)
-            };
             let input = IntervalInput {
                 gate: c.gate,
                 tick: c.tick,
-                dt_theta,
-                dt_sec,
-                weight: exc_gate * sub_theta_mod,
+                dt_theta: step.dt_theta,
+                dt_sec: step.dt_sec,
+                weight: step.weight,
             };
             if allow_onset && let Some(kick) = self.onset_rule.on_candidate(&input, state) {
                 let note_id = self.next_note_id;
@@ -1276,38 +1255,16 @@ impl PhonationEngine {
                     tick: c.tick,
                     gate: c.gate,
                     theta_pos: c.theta_pos,
-                    exc_gate,
-                    exc_slope,
+                    exc_gate: step.exc_gate,
+                    exc_slope: step.exc_slope,
                 };
-                let plan = self.duration_rule.on_note_on(onset);
-                match plan {
-                    DurationPlan::HoldTheta(hold_theta) => {
-                        self.schedule_hold_theta(onset, hold_theta, ctx, timing_grid);
-                    }
-                    DurationPlan::AtGate(off_gate) => {
-                        timing_grid.ensure_boundaries_until(ctx, off_gate.saturating_add(1));
-                        let off_tick = timing_grid
-                            .boundaries
-                            .iter()
-                            .find(|b| b.gate >= off_gate)
-                            .map(|b| b.tick)
-                            .unwrap_or_else(|| {
-                                // Grid couldn't reach off_gate (cap or no theta clock).
-                                // Extrapolate from the last two boundaries.
-                                Self::extrapolate_gate_tick(timing_grid, off_gate)
-                                    .unwrap_or(ctx.frame_end)
-                            })
-                            .max(onset.tick);
-                        self.schedule_note_off(onset.note_id, off_tick);
-                    }
-                    DurationPlan::None => {}
-                }
+                self.schedule_duration(onset, ctx, timing_grid);
             }
             self.last_gate_index = Some(c.gate);
             self.last_theta_pos = Some(c.theta_pos);
             self.last_tick = Some(c.tick);
             if c.phase_in_gate == 0.0 {
-                prev_gate_exc = Some(exc_gate);
+                prev_gate_exc = Some(step.exc_gate);
             }
         }
         self.drain_note_offs(ctx.frame_end.saturating_sub(1), out_cmds);
@@ -1372,8 +1329,12 @@ mod tests {
 
     #[test]
     fn accumulator_rate_zero_never_fires() {
-        let mut interval = AccumulatorOnset::new(0.0, 0, 1);
-        interval.acc = 0.0;
+        let mut interval = OnsetRule::Accumulator {
+            rate_hz: 0.0,
+            refractory_gates: 0,
+            acc: 0.0,
+            next_allowed_gate: 0,
+        };
         let state = CoreState { is_alive: true };
         for gate in 0..10u64 {
             let c = candidate_at_gate(gate);
@@ -1390,8 +1351,12 @@ mod tests {
 
     #[test]
     fn accumulator_rate_half_fires_every_other_gate() {
-        let mut interval = AccumulatorOnset::new(0.5, 0, 1);
-        interval.acc = 0.0;
+        let mut interval = OnsetRule::Accumulator {
+            rate_hz: 0.5,
+            refractory_gates: 0,
+            acc: 0.0,
+            next_allowed_gate: 0,
+        };
         let state = CoreState { is_alive: true };
         let mut fired = Vec::new();
         for gate in 0..10u64 {
@@ -1412,8 +1377,12 @@ mod tests {
 
     #[test]
     fn accumulator_refractory_blocks_adjacent_gates() {
-        let mut interval = AccumulatorOnset::new(1.0, 1, 1);
-        interval.acc = 0.0;
+        let mut interval = OnsetRule::Accumulator {
+            rate_hz: 1.0,
+            refractory_gates: 1,
+            acc: 0.0,
+            next_allowed_gate: 0,
+        };
         let state = CoreState { is_alive: true };
         let mut fired = Vec::new();
         for gate in 0..6u64 {
@@ -1434,8 +1403,12 @@ mod tests {
 
     #[test]
     fn accumulator_weighted_steps_fire_after_sum() {
-        let mut interval = AccumulatorOnset::new(1.0, 0, 1);
-        interval.acc = 0.0;
+        let mut interval = OnsetRule::Accumulator {
+            rate_hz: 1.0,
+            refractory_gates: 0,
+            acc: 0.0,
+            next_allowed_gate: 0,
+        };
         let state = CoreState { is_alive: true };
         let mut fired = Vec::new();
         let inputs = [
@@ -1464,8 +1437,12 @@ mod tests {
 
     #[test]
     fn accumulator_ignores_zero_weight() {
-        let mut interval = AccumulatorOnset::new(1.0, 0, 1);
-        interval.acc = 0.0;
+        let mut interval = OnsetRule::Accumulator {
+            rate_hz: 1.0,
+            refractory_gates: 0,
+            acc: 0.0,
+            next_allowed_gate: 0,
+        };
         let state = CoreState { is_alive: true };
         let input = IntervalInput {
             gate: 0,
@@ -1479,8 +1456,12 @@ mod tests {
 
     #[test]
     fn accumulator_respects_dt_sec() {
-        let mut interval = AccumulatorOnset::new(1.0, 0, 1);
-        interval.acc = 0.0;
+        let mut interval = OnsetRule::Accumulator {
+            rate_hz: 1.0,
+            refractory_gates: 0,
+            acc: 0.0,
+            next_allowed_gate: 0,
+        };
         let state = CoreState { is_alive: true };
         let input = IntervalInput {
             gate: 0,
@@ -1502,8 +1483,12 @@ mod tests {
 
     #[test]
     fn accumulator_acc_is_clamped() {
-        let mut interval = AccumulatorOnset::new(1.0, 0, 1);
-        interval.acc = 0.0;
+        let mut interval = OnsetRule::Accumulator {
+            rate_hz: 1.0,
+            refractory_gates: 0,
+            acc: 0.0,
+            next_allowed_gate: 0,
+        };
         let state = CoreState { is_alive: true };
         let input = IntervalInput {
             gate: 0,
@@ -1513,13 +1498,16 @@ mod tests {
             weight: 1.0e9,
         };
         let _ = interval.on_candidate(&input, &state);
-        assert!(interval.acc.is_finite());
-        assert!(interval.acc <= 32.0);
+        let OnsetRule::Accumulator { acc, .. } = &interval else {
+            panic!("expected Accumulator");
+        };
+        assert!(acc.is_finite());
+        assert!(*acc <= 32.0);
     }
 
     #[test]
     fn fixed_gate_connect_returns_at_gate() {
-        let mut connect = FixedGateDuration::new(0);
+        let mut connect = DurationRule::fixed_gate(0);
         let plan = connect.on_note_on(OnsetContext {
             note_id: 1,
             tick: 123,
@@ -1599,13 +1587,17 @@ mod tests {
             },
         ];
         let timing_field = TimingField::from_values(0, vec![0.0, 1.0]);
-        let mut interval = AccumulatorOnset::new(250.0, 0, 1);
-        interval.acc = 0.0;
+        let interval = OnsetRule::Accumulator {
+            rate_hz: 250.0,
+            refractory_gates: 0,
+            acc: 0.0,
+            next_allowed_gate: 0,
+        };
         let mut engine = PhonationEngine {
-            clock: Box::<ThetaGateClock>::default(),
-            onset_rule: Box::new(interval),
-            duration_rule: Box::new(FixedGateDuration::new(1)),
-            sub_theta_mod: Box::<NoneMod>::default(),
+            clock: PhonationClock::ThetaGate(ThetaGateClock::default()),
+            onset_rule: interval,
+            duration_rule: DurationRule::fixed_gate(1),
+            sub_theta_mod: SubThetaMod::None,
             mode: PhonationMode::Gated,
             hold: HoldCore::default(),
             initial_seed: 0,
@@ -1926,16 +1918,7 @@ mod tests {
     #[test]
     fn dt_theta_is_continuous() {
         let log = Arc::new(Mutex::new(Vec::new()));
-        struct RecordingInterval {
-            log: Arc<Mutex<Vec<f32>>>,
-        }
-
-        impl OnsetRule for RecordingInterval {
-            fn on_candidate(&mut self, c: &IntervalInput, _state: &CoreState) -> Option<OnsetKick> {
-                self.log.lock().expect("dt log").push(c.dt_theta);
-                None
-            }
-        }
+        let log_c = log.clone();
 
         let candidates = vec![
             CandidatePoint {
@@ -1968,10 +1951,13 @@ mod tests {
         };
         let timing_field = TimingField::from_values(0, vec![1.0, 1.0]);
         let mut engine = PhonationEngine {
-            clock: Box::<ThetaGateClock>::default(),
-            onset_rule: Box::new(RecordingInterval { log: log.clone() }),
-            duration_rule: Box::new(FixedGateDuration::new(1)),
-            sub_theta_mod: Box::<NoneMod>::default(),
+            clock: PhonationClock::ThetaGate(ThetaGateClock::default()),
+            onset_rule: OnsetRule::Custom(Box::new(move |c, _| {
+                log_c.lock().expect("dt log").push(c.dt_theta);
+                None
+            })),
+            duration_rule: DurationRule::fixed_gate(1),
+            sub_theta_mod: SubThetaMod::None,
             mode: PhonationMode::Gated,
             hold: HoldCore::default(),
             initial_seed: 0,
@@ -2007,16 +1993,7 @@ mod tests {
     #[test]
     fn dt_theta_zero_when_same_tick() {
         let log = Arc::new(Mutex::new(Vec::new()));
-        struct RecordingInterval {
-            log: Arc<Mutex<Vec<f32>>>,
-        }
-
-        impl OnsetRule for RecordingInterval {
-            fn on_candidate(&mut self, c: &IntervalInput, _state: &CoreState) -> Option<OnsetKick> {
-                self.log.lock().expect("dt log").push(c.dt_theta);
-                None
-            }
-        }
+        let log_c = log.clone();
 
         let candidates = vec![
             CandidatePoint {
@@ -2042,10 +2019,16 @@ mod tests {
         };
         let timing_field = TimingField::from_values(0, vec![1.0, 1.0]);
         let mut engine = PhonationEngine {
-            clock: Box::<ThetaGateClock>::default(),
-            onset_rule: Box::new(RecordingInterval { log: log.clone() }),
-            duration_rule: Box::new(FixedGateDuration::new(1)),
-            sub_theta_mod: Box::<NoneMod>::default(),
+            clock: PhonationClock::ThetaGate(ThetaGateClock::default()),
+            onset_rule: OnsetRule::Custom(Box::new({
+                let log = log_c.clone();
+                move |c, _| {
+                    log.lock().expect("dt log").push(c.dt_theta);
+                    None
+                }
+            })),
+            duration_rule: DurationRule::fixed_gate(1),
+            sub_theta_mod: SubThetaMod::None,
             mode: PhonationMode::Gated,
             hold: HoldCore::default(),
             initial_seed: 0,
@@ -2097,10 +2080,10 @@ mod tests {
         };
         let timing_field = TimingField::from_values(0, vec![1.0]);
         let mut engine = PhonationEngine {
-            clock: Box::<ThetaGateClock>::default(),
-            onset_rule: Box::<NoneOnset>::default(),
-            duration_rule: Box::new(FixedGateDuration::new(1)),
-            sub_theta_mod: Box::<NoneMod>::default(),
+            clock: PhonationClock::ThetaGate(ThetaGateClock::default()),
+            onset_rule: OnsetRule::None,
+            duration_rule: DurationRule::fixed_gate(1),
+            sub_theta_mod: SubThetaMod::None,
             mode: PhonationMode::Gated,
             hold: HoldCore::default(),
             initial_seed: 0,
@@ -2135,16 +2118,7 @@ mod tests {
     #[test]
     fn dt_theta_large_gate_precision() {
         let log = Arc::new(Mutex::new(Vec::new()));
-        struct RecordingInterval {
-            log: Arc<Mutex<Vec<f32>>>,
-        }
-
-        impl OnsetRule for RecordingInterval {
-            fn on_candidate(&mut self, c: &IntervalInput, _state: &CoreState) -> Option<OnsetKick> {
-                self.log.lock().expect("dt log").push(c.dt_theta);
-                None
-            }
-        }
+        let log_c = log.clone();
 
         let candidates = vec![
             CandidatePoint {
@@ -2170,10 +2144,16 @@ mod tests {
         };
         let timing_field = TimingField::from_values(20_000_000, vec![1.0, 1.0]);
         let mut engine = PhonationEngine {
-            clock: Box::<ThetaGateClock>::default(),
-            onset_rule: Box::new(RecordingInterval { log: log.clone() }),
-            duration_rule: Box::new(FixedGateDuration::new(1)),
-            sub_theta_mod: Box::<NoneMod>::default(),
+            clock: PhonationClock::ThetaGate(ThetaGateClock::default()),
+            onset_rule: OnsetRule::Custom(Box::new({
+                let log = log_c.clone();
+                move |c, _| {
+                    log.lock().expect("dt log").push(c.dt_theta);
+                    None
+                }
+            })),
+            duration_rule: DurationRule::fixed_gate(1),
+            sub_theta_mod: SubThetaMod::None,
             mode: PhonationMode::Gated,
             hold: HoldCore::default(),
             initial_seed: 0,
@@ -2208,7 +2188,7 @@ mod tests {
 
     #[test]
     fn cosine_mod_has_unit_mean() {
-        let modulator = CosineHarmonicMod {
+        let modulator = SubThetaMod::CosineHarmonic {
             n: 3,
             depth: 0.8,
             phase0: 0.2,
@@ -2255,17 +2235,21 @@ mod tests {
             rhythms: NeuralRhythms::default(),
         };
         let timing_field = TimingField::from_values(0, vec![1.0, 1.0]);
-        let mut interval = AccumulatorOnset::new(50.0, 0, 1);
-        interval.acc = 0.0;
+        let interval = OnsetRule::Accumulator {
+            rate_hz: 50.0,
+            refractory_gates: 0,
+            acc: 0.0,
+            next_allowed_gate: 0,
+        };
         let mut engine = PhonationEngine {
-            clock: Box::<ThetaGateClock>::default(),
-            onset_rule: Box::new(interval),
-            duration_rule: Box::new(FixedGateDuration::new(1)),
-            sub_theta_mod: Box::new(CosineHarmonicMod {
+            clock: PhonationClock::ThetaGate(ThetaGateClock::default()),
+            onset_rule: interval,
+            duration_rule: DurationRule::fixed_gate(1),
+            sub_theta_mod: SubThetaMod::CosineHarmonic {
                 n: 1,
                 depth: 1.0,
                 phase0: -std::f32::consts::PI,
-            }),
+            },
             mode: PhonationMode::Gated,
             hold: HoldCore::default(),
             initial_seed: 0,
@@ -2307,13 +2291,17 @@ mod tests {
             fs: 1000.0,
             rhythms: NeuralRhythms::default(),
         };
-        let mut interval = AccumulatorOnset::new(1.0, 0, 1);
-        interval.acc = 1.0;
+        let interval = OnsetRule::Accumulator {
+            rate_hz: 1.0,
+            refractory_gates: 0,
+            acc: 1.0,
+            next_allowed_gate: 0,
+        };
         let mut engine = PhonationEngine {
-            clock: Box::<ThetaGateClock>::default(),
-            onset_rule: Box::new(interval),
-            duration_rule: Box::new(FixedGateDuration::new(0)),
-            sub_theta_mod: Box::<NoneMod>::default(),
+            clock: PhonationClock::ThetaGate(ThetaGateClock::default()),
+            onset_rule: interval,
+            duration_rule: DurationRule::fixed_gate(0),
+            sub_theta_mod: SubThetaMod::None,
             mode: PhonationMode::Gated,
             hold: HoldCore::default(),
             initial_seed: 0,
@@ -2367,13 +2355,17 @@ mod tests {
             fs: 1000.0,
             rhythms: NeuralRhythms::default(),
         };
-        let mut interval = AccumulatorOnset::new(1.0, 0, 1);
-        interval.acc = 1.0;
+        let interval = OnsetRule::Accumulator {
+            rate_hz: 1.0,
+            refractory_gates: 0,
+            acc: 1.0,
+            next_allowed_gate: 0,
+        };
         let mut engine = PhonationEngine {
-            clock: Box::<ThetaGateClock>::default(),
-            onset_rule: Box::new(interval),
-            duration_rule: Box::new(FixedGateDuration::new(1)),
-            sub_theta_mod: Box::<NoneMod>::default(),
+            clock: PhonationClock::ThetaGate(ThetaGateClock::default()),
+            onset_rule: interval,
+            duration_rule: DurationRule::fixed_gate(1),
+            sub_theta_mod: SubThetaMod::None,
             mode: PhonationMode::Gated,
             hold: HoldCore::default(),
             initial_seed: 0,
@@ -2429,10 +2421,10 @@ mod tests {
             rhythms: NeuralRhythms::default(),
         };
         let mut engine = PhonationEngine {
-            clock: Box::<ThetaGateClock>::default(),
-            onset_rule: Box::<NoneOnset>::default(),
-            duration_rule: Box::new(FixedGateDuration::new(1)),
-            sub_theta_mod: Box::<NoneMod>::default(),
+            clock: PhonationClock::ThetaGate(ThetaGateClock::default()),
+            onset_rule: OnsetRule::None,
+            duration_rule: DurationRule::fixed_gate(1),
+            sub_theta_mod: SubThetaMod::None,
             mode: PhonationMode::Gated,
             hold: HoldCore::default(),
             initial_seed: 0,
@@ -2476,26 +2468,6 @@ mod tests {
 
     #[test]
     fn note_off_emits_before_note_on_when_due() {
-        struct AlwaysInterval;
-
-        impl OnsetRule for AlwaysInterval {
-            fn on_candidate(
-                &mut self,
-                _c: &IntervalInput,
-                _state: &CoreState,
-            ) -> Option<OnsetKick> {
-                Some(OnsetKick::Planned { strength: 1.0 })
-            }
-        }
-
-        struct NoopConnect;
-
-        impl DurationRule for NoopConnect {
-            fn on_note_on(&mut self, _onset: OnsetContext) -> DurationPlan {
-                DurationPlan::None
-            }
-        }
-
         let ctx = CoreTickCtx {
             now_tick: 0,
             frame_end: 2,
@@ -2511,10 +2483,12 @@ mod tests {
         }];
         let timing_field = TimingField::from_values(0, vec![1.0]);
         let mut engine = PhonationEngine {
-            clock: Box::<ThetaGateClock>::default(),
-            onset_rule: Box::new(AlwaysInterval),
-            duration_rule: Box::new(NoopConnect),
-            sub_theta_mod: Box::<NoneMod>::default(),
+            clock: PhonationClock::ThetaGate(ThetaGateClock::default()),
+            onset_rule: OnsetRule::Custom(Box::new(|_, _| {
+                Some(OnsetKick::Planned { strength: 1.0 })
+            })),
+            duration_rule: DurationRule::Custom(Box::new(|_| DurationPlan::None)),
+            sub_theta_mod: SubThetaMod::None,
             mode: PhonationMode::Gated,
             hold: HoldCore::default(),
             initial_seed: 0,
@@ -2565,10 +2539,10 @@ mod tests {
             rhythms: NeuralRhythms::default(),
         };
         let mut engine = PhonationEngine {
-            clock: Box::<ThetaGateClock>::default(),
-            onset_rule: Box::<NoneOnset>::default(),
-            duration_rule: Box::new(FixedGateDuration::new(1)),
-            sub_theta_mod: Box::<NoneMod>::default(),
+            clock: PhonationClock::ThetaGate(ThetaGateClock::default()),
+            onset_rule: OnsetRule::None,
+            duration_rule: DurationRule::fixed_gate(1),
+            sub_theta_mod: SubThetaMod::None,
             mode: PhonationMode::Gated,
             hold: HoldCore::default(),
             initial_seed: 0,
@@ -2611,10 +2585,10 @@ mod tests {
             rhythms: NeuralRhythms::default(),
         };
         let mut engine = PhonationEngine {
-            clock: Box::<ThetaGateClock>::default(),
-            onset_rule: Box::<NoneOnset>::default(),
-            duration_rule: Box::new(FixedGateDuration::new(1)),
-            sub_theta_mod: Box::<NoneMod>::default(),
+            clock: PhonationClock::ThetaGate(ThetaGateClock::default()),
+            onset_rule: OnsetRule::None,
+            duration_rule: DurationRule::fixed_gate(1),
+            sub_theta_mod: SubThetaMod::None,
             mode: PhonationMode::Gated,
             hold: HoldCore::default(),
             initial_seed: 0,
@@ -2783,41 +2757,37 @@ mod tests {
             fs: 1000.0,
             rhythms,
         };
-        let mut interval = AccumulatorOnset::new(250.0, 0, 1);
-        interval.acc = 0.0;
-        struct StubClock {
-            ticks: Vec<Tick>,
-            index: usize,
-        }
-
-        impl PhonationClock for StubClock {
-            fn gather_candidates(&mut self, ctx: &CoreTickCtx, out: &mut Vec<CandidatePoint>) {
-                while self.index < self.ticks.len() {
-                    let tick = self.ticks[self.index];
-                    if tick < ctx.now_tick || tick >= ctx.frame_end {
-                        return;
-                    }
-                    let gate = self.index as u64;
-                    out.push(CandidatePoint {
-                        tick,
-                        gate,
-                        theta_pos: gate as f64,
-                        phase_in_gate: 0.0,
-                        sources: vec![ClockSource::GateBoundary],
-                    });
-                    self.index += 1;
-                }
-            }
-        }
-
+        let interval = OnsetRule::Accumulator {
+            rate_hz: 250.0,
+            refractory_gates: 0,
+            acc: 0.0,
+            next_allowed_gate: 0,
+        };
+        let stub_ticks: Vec<Tick> = vec![0, 4, 8];
+        let mut stub_index = 0usize;
         let mut engine = PhonationEngine {
-            clock: Box::new(StubClock {
-                ticks: vec![0, 4, 8],
-                index: 0,
-            }),
-            onset_rule: Box::new(interval),
-            duration_rule: Box::new(FixedGateDuration::new(1)),
-            sub_theta_mod: Box::<NoneMod>::default(),
+            clock: PhonationClock::Custom(Box::new(
+                move |ctx: &CoreTickCtx, out: &mut Vec<CandidatePoint>| {
+                    while stub_index < stub_ticks.len() {
+                        let tick = stub_ticks[stub_index];
+                        if tick < ctx.now_tick || tick >= ctx.frame_end {
+                            return;
+                        }
+                        let gate = stub_index as u64;
+                        out.push(CandidatePoint {
+                            tick,
+                            gate,
+                            theta_pos: gate as f64,
+                            phase_in_gate: 0.0,
+                            sources: vec![ClockSource::GateBoundary],
+                        });
+                        stub_index += 1;
+                    }
+                },
+            )),
+            onset_rule: interval,
+            duration_rule: DurationRule::fixed_gate(1),
+            sub_theta_mod: SubThetaMod::None,
             mode: PhonationMode::Gated,
             hold: HoldCore::default(),
             initial_seed: 0,
@@ -2885,7 +2855,7 @@ mod tests {
 
     #[test]
     fn field_connect_holds_longer_with_high_excitation() {
-        let mut connect = FieldDuration::new(0.25, 1.0, 10.0, 0.5, 0.0);
+        let mut connect = DurationRule::field(0.25, 1.0, 10.0, 0.5, 0.0);
         let low_plan = connect.on_note_on(OnsetContext {
             note_id: 1,
             tick: 0,
@@ -2915,19 +2885,7 @@ mod tests {
 
     #[test]
     fn field_connect_schedules_off_tick_when_next_boundary_not_in_candidates() {
-        struct TickInterval {
-            tick: Tick,
-        }
-
-        impl OnsetRule for TickInterval {
-            fn on_candidate(&mut self, c: &IntervalInput, _state: &CoreState) -> Option<OnsetKick> {
-                if c.tick == self.tick {
-                    Some(OnsetKick::Planned { strength: 1.0 })
-                } else {
-                    None
-                }
-            }
-        }
+        let onset_tick: Tick = 0;
 
         let mut rhythms = NeuralRhythms::default();
         rhythms.theta.freq_hz = 1.0;
@@ -2956,10 +2914,16 @@ mod tests {
             sources: vec![ClockSource::GateBoundary],
         }];
         let mut engine = PhonationEngine {
-            clock: Box::<ThetaGateClock>::default(),
-            onset_rule: Box::new(TickInterval { tick: 0 }),
-            duration_rule: Box::new(FieldDuration::new(0.5, 0.5, 10.0, 0.5, 0.0)),
-            sub_theta_mod: Box::<NoneMod>::default(),
+            clock: PhonationClock::ThetaGate(ThetaGateClock::default()),
+            onset_rule: OnsetRule::Custom(Box::new(move |c, _| {
+                if c.tick == onset_tick {
+                    Some(OnsetKick::Planned { strength: 1.0 })
+                } else {
+                    None
+                }
+            })),
+            duration_rule: DurationRule::field(0.5, 0.5, 10.0, 0.5, 0.0),
+            sub_theta_mod: SubThetaMod::None,
             mode: PhonationMode::Gated,
             hold: HoldCore::default(),
             initial_seed: 0,
@@ -2999,19 +2963,7 @@ mod tests {
 
     #[test]
     fn field_connect_off_tick_independent_of_subdivision() {
-        struct TickInterval {
-            tick: Tick,
-        }
-
-        impl OnsetRule for TickInterval {
-            fn on_candidate(&mut self, c: &IntervalInput, _state: &CoreState) -> Option<OnsetKick> {
-                if c.tick == self.tick {
-                    Some(OnsetKick::Planned { strength: 1.0 })
-                } else {
-                    None
-                }
-            }
-        }
+        let onset_tick: Tick = 0;
 
         let ctx = CoreTickCtx {
             now_tick: 0,
@@ -3040,10 +2992,16 @@ mod tests {
         ];
 
         let mut engine_base = PhonationEngine {
-            clock: Box::<ThetaGateClock>::default(),
-            onset_rule: Box::new(TickInterval { tick: 0 }),
-            duration_rule: Box::new(FieldDuration::new(0.5, 0.5, 10.0, 0.5, 0.0)),
-            sub_theta_mod: Box::<NoneMod>::default(),
+            clock: PhonationClock::ThetaGate(ThetaGateClock::default()),
+            onset_rule: OnsetRule::Custom(Box::new(move |c, _| {
+                if c.tick == onset_tick {
+                    Some(OnsetKick::Planned { strength: 1.0 })
+                } else {
+                    None
+                }
+            })),
+            duration_rule: DurationRule::field(0.5, 0.5, 10.0, 0.5, 0.0),
+            sub_theta_mod: SubThetaMod::None,
             mode: PhonationMode::Gated,
             hold: HoldCore::default(),
             initial_seed: 0,
@@ -3108,10 +3066,16 @@ mod tests {
         ];
 
         let mut engine_sub = PhonationEngine {
-            clock: Box::<ThetaGateClock>::default(),
-            onset_rule: Box::new(TickInterval { tick: 0 }),
-            duration_rule: Box::new(FieldDuration::new(0.5, 0.5, 10.0, 0.5, 0.0)),
-            sub_theta_mod: Box::<NoneMod>::default(),
+            clock: PhonationClock::ThetaGate(ThetaGateClock::default()),
+            onset_rule: OnsetRule::Custom(Box::new(move |c, _| {
+                if c.tick == onset_tick {
+                    Some(OnsetKick::Planned { strength: 1.0 })
+                } else {
+                    None
+                }
+            })),
+            duration_rule: DurationRule::field(0.5, 0.5, 10.0, 0.5, 0.0),
+            sub_theta_mod: SubThetaMod::None,
             mode: PhonationMode::Gated,
             hold: HoldCore::default(),
             initial_seed: 0,
@@ -3157,27 +3121,21 @@ mod tests {
 
     #[test]
     fn field_connect_note_off_survives_empty_hop() {
-        struct TickInterval {
-            tick: Tick,
-        }
-
-        impl OnsetRule for TickInterval {
-            fn on_candidate(&mut self, c: &IntervalInput, _state: &CoreState) -> Option<OnsetKick> {
-                if c.tick == self.tick {
-                    Some(OnsetKick::Planned { strength: 1.0 })
-                } else {
-                    None
-                }
-            }
-        }
+        let onset_tick: Tick = 0;
 
         let timing_field = TimingField::from_values(0, vec![1.0, 1.0]);
         let state = CoreState { is_alive: true };
         let mut engine = PhonationEngine {
-            clock: Box::<ThetaGateClock>::default(),
-            onset_rule: Box::new(TickInterval { tick: 0 }),
-            duration_rule: Box::new(FieldDuration::new(1.0, 1.0, 10.0, 0.5, 0.0)),
-            sub_theta_mod: Box::<NoneMod>::default(),
+            clock: PhonationClock::ThetaGate(ThetaGateClock::default()),
+            onset_rule: OnsetRule::Custom(Box::new(move |c, _| {
+                if c.tick == onset_tick {
+                    Some(OnsetKick::Planned { strength: 1.0 })
+                } else {
+                    None
+                }
+            })),
+            duration_rule: DurationRule::field(1.0, 1.0, 10.0, 0.5, 0.0),
+            sub_theta_mod: SubThetaMod::None,
             mode: PhonationMode::Gated,
             hold: HoldCore::default(),
             initial_seed: 0,
@@ -3273,30 +3231,7 @@ mod tests {
         use std::collections::HashSet;
         use std::sync::{Arc, Mutex};
 
-        struct TickFilteredInterval {
-            ticks: HashSet<Tick>,
-        }
-
-        impl OnsetRule for TickFilteredInterval {
-            fn on_candidate(&mut self, c: &IntervalInput, _state: &CoreState) -> Option<OnsetKick> {
-                if self.ticks.contains(&c.tick) {
-                    Some(OnsetKick::Planned { strength: 1.0 })
-                } else {
-                    None
-                }
-            }
-        }
-
-        struct RecordingConnect {
-            slopes: Arc<Mutex<Vec<f32>>>,
-        }
-
-        impl DurationRule for RecordingConnect {
-            fn on_note_on(&mut self, onset: OnsetContext) -> DurationPlan {
-                self.slopes.lock().expect("slopes").push(onset.exc_slope);
-                DurationPlan::None
-            }
-        }
+        let fire_ticks: HashSet<Tick> = [0, 10, 20].into_iter().collect();
 
         let ctx = CoreTickCtx {
             now_tick: 0,
@@ -3309,14 +3244,25 @@ mod tests {
 
         let slopes_base = Arc::new(Mutex::new(Vec::new()));
         let mut engine_base = PhonationEngine {
-            clock: Box::<ThetaGateClock>::default(),
-            onset_rule: Box::new(TickFilteredInterval {
-                ticks: [0, 10, 20].into_iter().collect(),
-            }),
-            duration_rule: Box::new(RecordingConnect {
-                slopes: slopes_base.clone(),
-            }),
-            sub_theta_mod: Box::<NoneMod>::default(),
+            clock: PhonationClock::ThetaGate(ThetaGateClock::default()),
+            onset_rule: OnsetRule::Custom(Box::new({
+                let ticks = fire_ticks.clone();
+                move |c, _| {
+                    if ticks.contains(&c.tick) {
+                        Some(OnsetKick::Planned { strength: 1.0 })
+                    } else {
+                        None
+                    }
+                }
+            })),
+            duration_rule: DurationRule::Custom(Box::new({
+                let slopes = slopes_base.clone();
+                move |onset| {
+                    slopes.lock().expect("slopes").push(onset.exc_slope);
+                    DurationPlan::None
+                }
+            })),
+            sub_theta_mod: SubThetaMod::None,
             mode: PhonationMode::Gated,
             hold: HoldCore::default(),
             initial_seed: 0,
@@ -3372,14 +3318,25 @@ mod tests {
 
         let slopes_sub = Arc::new(Mutex::new(Vec::new()));
         let mut engine_sub = PhonationEngine {
-            clock: Box::<ThetaGateClock>::default(),
-            onset_rule: Box::new(TickFilteredInterval {
-                ticks: [0, 10, 20].into_iter().collect(),
-            }),
-            duration_rule: Box::new(RecordingConnect {
-                slopes: slopes_sub.clone(),
-            }),
-            sub_theta_mod: Box::<NoneMod>::default(),
+            clock: PhonationClock::ThetaGate(ThetaGateClock::default()),
+            onset_rule: OnsetRule::Custom(Box::new({
+                let ticks = fire_ticks.clone();
+                move |c, _| {
+                    if ticks.contains(&c.tick) {
+                        Some(OnsetKick::Planned { strength: 1.0 })
+                    } else {
+                        None
+                    }
+                }
+            })),
+            duration_rule: DurationRule::Custom(Box::new({
+                let slopes = slopes_sub.clone();
+                move |onset| {
+                    slopes.lock().expect("slopes").push(onset.exc_slope);
+                    DurationPlan::None
+                }
+            })),
+            sub_theta_mod: SubThetaMod::None,
             mode: PhonationMode::Gated,
             hold: HoldCore::default(),
             initial_seed: 0,

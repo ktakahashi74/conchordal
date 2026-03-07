@@ -9,12 +9,15 @@ use crate::life::individual::{
     PhonationBatch, SoundBody,
 };
 use crate::life::lifecycle::LifecycleConfig;
-use crate::life::phonation_engine::NoteCmd;
+use crate::life::phonation_engine::{
+    CandidatePoint, NoteCmd, OnsetKick, OnsetRule, PhonationClock,
+};
 use crate::life::population::Population;
 use crate::life::scenario::{
-    Action, ArticulationCoreConfig, DurationSpec, IndividualConfig, PhonationSpec, Scenario,
-    SpawnSpec, TimedEvent, WhenSpec,
+    Action, ArticulationCoreConfig, DurationSpec, EnvelopeConfig, IndividualConfig, PhonationSpec,
+    Scenario, SpawnSpec, TimedEvent, WhenSpec,
 };
+use crate::life::sound::RenderModulator;
 use rand::SeedableRng;
 
 fn test_timebase() -> Timebase {
@@ -52,6 +55,27 @@ fn spawn_agent(freq: f32, assigned_id: u64) -> Individual {
         member_idx: 0,
     };
     cfg.spawn(assigned_id, 0, meta, 48_000.0, 0)
+}
+
+fn sustain_entrain_articulation() -> ArticulationCoreConfig {
+    ArticulationCoreConfig::Entrain {
+        lifecycle: LifecycleConfig::Sustain {
+            initial_energy: 0.2,
+            metabolism_rate: 0.0,
+            recharge_rate: Some(0.5),
+            action_cost: Some(0.1),
+            envelope: EnvelopeConfig {
+                attack_sec: 0.01,
+                decay_sec: 0.05,
+                sustain_level: 0.0,
+            },
+        },
+        rhythm_freq: Some(4.0),
+        rhythm_sensitivity: None,
+        rhythm_coupling: crate::life::scenario::RhythmCouplingMode::TemporalOnly,
+        rhythm_reward: None,
+        breath_gain_init: None,
+    }
 }
 
 // ──── Population / Conductor ────
@@ -515,7 +539,7 @@ fn remove_pending_still_emits_note_offs() {
     let mut now: Tick = 0;
     let mut saw_note_on = false;
     for _ in 0..20 {
-        agent.tick_phonation_into(&tb, now, &rhythms, None, 0.0, 1.0, &mut batch);
+        agent.tick_phonation_into(&tb, now, &rhythms, None, 0.0, 1.0, 1.0, &mut batch);
         if batch
             .cmds
             .iter()
@@ -532,7 +556,7 @@ fn remove_pending_still_emits_note_offs() {
     agent.start_remove_fade(0.05);
     let mut saw_note_off = false;
     for _ in 0..40 {
-        agent.tick_phonation_into(&tb, now, &rhythms, None, 0.0, 1.0, &mut batch);
+        agent.tick_phonation_into(&tb, now, &rhythms, None, 0.0, 1.0, 1.0, &mut batch);
         if batch
             .cmds
             .iter()
@@ -548,7 +572,138 @@ fn remove_pending_still_emits_note_offs() {
 }
 
 #[test]
-fn render_snapshot_articulation_is_finite_and_energy_stable() {
+fn tick_phonation_into_gated_bridges_each_onset_to_body_articulation() {
+    let mut control = AgentControl::default();
+    control.pitch.freq = 220.0;
+    control.phonation.spec = PhonationSpec {
+        when: WhenSpec::Once,
+        duration: DurationSpec::Gates(1),
+    };
+    let cfg = IndividualConfig {
+        control,
+        articulation: sustain_entrain_articulation(),
+    };
+    let meta = AgentMetadata {
+        group_id: 0,
+        member_idx: 0,
+    };
+    let mut agent = cfg.spawn(77, 0, meta, 48_000.0, 0);
+    agent.phonation_engine.clock = PhonationClock::Custom(Box::new(|_, out| {
+        out.extend([
+            CandidatePoint {
+                tick: 0,
+                gate: 0,
+                theta_pos: 0.0,
+                phase_in_gate: 0.0,
+            },
+            CandidatePoint {
+                tick: 10,
+                gate: 1,
+                theta_pos: 1.0,
+                phase_in_gate: 0.0,
+            },
+            CandidatePoint {
+                tick: 20,
+                gate: 2,
+                theta_pos: 2.0,
+                phase_in_gate: 0.0,
+            },
+        ]);
+    }));
+    agent.phonation_engine.onset_rule =
+        OnsetRule::Custom(Box::new(|_, _| Some(OnsetKick { strength: 1.0 })));
+    let tb = Timebase {
+        fs: 48_000.0,
+        hop: 48_001,
+    };
+    let mut rhythms = NeuralRhythms::default();
+    rhythms.theta.freq_hz = 4.0;
+    rhythms.theta.phase = 0.0;
+    rhythms.theta.mag = 1.0;
+    rhythms.theta.alpha = 1.0;
+    rhythms.theta.beta = 0.2;
+    rhythms.env_open = 1.0;
+    rhythms.env_level = 1.0;
+
+    let energy_before = match &agent.articulation.core {
+        AnyArticulationCore::Entrain(core) => core.energy,
+        _ => panic!("expected entrain articulation"),
+    };
+
+    let mut batch = PhonationBatch::default();
+    agent.tick_phonation_into(&tb, 0, &rhythms, None, 0.0, 1.0, 1.0, &mut batch);
+
+    assert_eq!(batch.onsets.len(), 3);
+    let energy_after = match &agent.articulation.core {
+        AnyArticulationCore::Entrain(core) => {
+            assert_eq!(
+                core.state,
+                crate::life::individual::ArticulationState::Attack
+            );
+            core.energy
+        }
+        _ => panic!("expected entrain articulation"),
+    };
+    let expected = energy_before + batch.onsets.len() as f32 * 0.4;
+    assert!(
+        (energy_after - expected).abs() < 1e-4,
+        "expected bridged energy {expected}, got {energy_after}"
+    );
+}
+
+#[test]
+fn hold_mode_renderer_still_pulses_after_render_clone_removal() {
+    let mut control = AgentControl::default();
+    control.pitch.freq = 220.0;
+    control.phonation.spec = PhonationSpec {
+        when: WhenSpec::Once,
+        duration: DurationSpec::WhileAlive,
+    };
+    let cfg = IndividualConfig {
+        control,
+        articulation: sustain_entrain_articulation(),
+    };
+    let meta = AgentMetadata {
+        group_id: 0,
+        member_idx: 0,
+    };
+    let mut agent = cfg.spawn(78, 0, meta, 48_000.0, 0);
+    let tb = Timebase {
+        fs: 48_000.0,
+        hop: 64,
+    };
+    let mut rhythms = NeuralRhythms::default();
+    rhythms.theta.freq_hz = 4.0;
+    rhythms.theta.phase = 0.0;
+    rhythms.theta.mag = 1.0;
+    rhythms.theta.alpha = 1.0;
+    rhythms.theta.beta = 0.2;
+    rhythms.env_open = 1.0;
+    rhythms.env_level = 1.0;
+
+    let mut batch = PhonationBatch::default();
+    agent.tick_phonation_into(&tb, 0, &rhythms, None, 0.0, 1.0, 1.0, &mut batch);
+    let note = batch.notes.first().cloned().expect("expected hold note");
+    let mut render_modulator = RenderModulator::from_spec(note.render_modulator);
+
+    let dt = 0.001;
+    let mut render_rhythms = rhythms;
+    let mut rises = 0u32;
+    let mut prev_active = false;
+    for _ in 0..2_000 {
+        let signal = render_modulator.process(&render_rhythms, dt);
+        if signal.is_active && !prev_active {
+            rises += 1;
+        }
+        prev_active = signal.is_active;
+        render_rhythms.advance_in_place(dt);
+    }
+
+    assert!(rises >= 2, "expected repeated hold pulses, got {rises}");
+}
+
+#[test]
+fn render_modulator_snapshot_is_finite() {
     let mut control = AgentControl::default();
     control.pitch.freq = 220.0;
     control.phonation.spec = PhonationSpec {
@@ -582,7 +737,7 @@ fn render_snapshot_articulation_is_finite_and_energy_stable() {
     let mut now: Tick = 0;
     let mut note = None;
     for _ in 0..20 {
-        agent.tick_phonation_into(&tb, now, &rhythms, None, 0.0, 1.0, &mut batch);
+        agent.tick_phonation_into(&tb, now, &rhythms, None, 0.0, 1.0, 1.0, &mut batch);
         if let Some(first) = batch.notes.first() {
             note = Some(first.clone());
             break;
@@ -590,11 +745,8 @@ fn render_snapshot_articulation_is_finite_and_energy_stable() {
         now = now.saturating_add(tb.hop as Tick);
         rhythms.advance_in_place(tb.hop as f32 / tb.fs);
     }
-    let mut note = note.expect("expected at least one rendered note spec");
-    let energy_before = match &note.articulation.core {
-        AnyArticulationCore::Entrain(core) => core.energy,
-        AnyArticulationCore::Seq(_) | AnyArticulationCore::Drone(_) => 0.0,
-    };
+    let note = note.expect("expected at least one rendered note spec");
+    let mut render_modulator = RenderModulator::from_spec(note.render_modulator.clone());
 
     let mut render_rhythms = NeuralRhythms::default();
     render_rhythms.theta.freq_hz = 4.0;
@@ -602,18 +754,11 @@ fn render_snapshot_articulation_is_finite_and_energy_stable() {
     render_rhythms.env_open = 1.0;
     render_rhythms.env_level = 1.0;
     for _ in 0..64 {
-        let signal = note
-            .articulation
-            .process(1.0, &render_rhythms, 1.0 / tb.fs, 1.0);
+        let signal = render_modulator.process(&render_rhythms, 1.0 / tb.fs);
         let sample = signal.amplitude * note.amp;
         assert!(sample.is_finite());
         render_rhythms.advance_in_place(1.0 / tb.fs);
     }
-    let energy_after = match &note.articulation.core {
-        AnyArticulationCore::Entrain(core) => core.energy,
-        AnyArticulationCore::Seq(_) | AnyArticulationCore::Drone(_) => 0.0,
-    };
-    assert!((energy_after - energy_before).abs() <= 1e-6);
 }
 
 // ──── Articulation ────

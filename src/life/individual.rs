@@ -15,7 +15,7 @@ use crate::life::phonation_engine::{
 use crate::life::scenario::WhenSpec;
 use crate::life::scenario::{ArticulationCoreConfig, PhonationMode};
 use crate::life::social_density::SocialDensityTrace;
-use crate::life::sound::BodySnapshot;
+use crate::life::sound::{BodySnapshot, RenderModulatorSpec};
 use rand::SeedableRng;
 
 #[path = "articulation_core.rs"]
@@ -75,7 +75,7 @@ pub struct NoteSpec {
     pub amp: f32,
     pub smoothing_tau_sec: f32,
     pub body: BodySnapshot,
-    pub articulation: ArticulationWrapper,
+    pub render_modulator: RenderModulatorSpec,
 }
 
 #[derive(Debug, Default)]
@@ -377,6 +377,10 @@ impl Individual {
     fn apply_phonation_control(&mut self) {
         self.phonation_engine
             .update_from_spec(&self.effective_control.phonation.spec);
+        self.articulation.set_autonomous_attack_enabled(matches!(
+            self.phonation_engine.mode,
+            PhonationMode::Hold
+        ));
         self.social_coupling = self.effective_control.phonation.spec.social_coupling();
     }
 
@@ -654,6 +658,7 @@ impl Individual {
         self.release_gain = self.release_gain.clamp(0.0, 1.0);
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn tick_phonation(
         &mut self,
         tb: &Timebase,
@@ -662,6 +667,7 @@ impl Individual {
         social: Option<&SocialDensityTrace>,
         social_coupling: f32,
         extra_gate_gain: f32,
+        consonance: f32,
     ) -> PhonationBatch {
         let mut batch = PhonationBatch::default();
         self.tick_phonation_into(
@@ -671,6 +677,7 @@ impl Individual {
             social,
             social_coupling,
             extra_gate_gain,
+            consonance,
             &mut batch,
         );
         batch
@@ -685,6 +692,7 @@ impl Individual {
         social: Option<&SocialDensityTrace>,
         social_coupling: f32,
         extra_gate_gain: f32,
+        consonance: f32,
         out: &mut PhonationBatch,
     ) {
         out.source_id = self.id;
@@ -712,6 +720,7 @@ impl Individual {
             &mut self.phonation_scratch.events,
             &mut out.onsets,
         );
+        let phonation_mode = self.phonation_engine.mode;
         let had_note_on = out
             .cmds
             .iter()
@@ -723,15 +732,6 @@ impl Individual {
             );
             return;
         }
-        let amp = self.compute_target_amp();
-        if amp <= Self::AMP_EPS {
-            debug_assert!(
-                !had_note_on,
-                "NoteOn emitted but amp invalid => no note specs"
-            );
-            self.phonation_scratch.events.clear();
-            return;
-        }
         let freq_hz = self.body.base_freq_hz();
         if !freq_hz.is_finite() || freq_hz <= 0.0 {
             debug_assert!(
@@ -741,7 +741,22 @@ impl Individual {
             self.phonation_scratch.events.clear();
             return;
         }
-        let articulation = self.articulation_snapshot_for_render();
+        if matches!(phonation_mode, PhonationMode::Gated) {
+            for onset in &out.onsets {
+                self.articulation
+                    .apply_phonation_onset(consonance, onset.strength);
+            }
+        }
+        let amp = self.compute_target_amp();
+        if amp <= Self::AMP_EPS {
+            debug_assert!(
+                !had_note_on,
+                "NoteOn emitted but amp invalid => no note specs"
+            );
+            self.phonation_scratch.events.clear();
+            return;
+        }
+        let render_modulator = self.articulation.render_modulator_spec(phonation_mode);
         let body = self.body_snapshot();
         let smoothing_tau_sec = 0.0;
         for event in self.phonation_scratch.events.drain(..) {
@@ -753,7 +768,7 @@ impl Individual {
                 amp,
                 smoothing_tau_sec,
                 body: body.clone(),
-                articulation: articulation.clone(),
+                render_modulator: render_modulator.clone(),
             });
         }
         debug_assert!(
@@ -779,15 +794,6 @@ impl Individual {
             gain = 0.0;
         }
         gain.max(0.0)
-    }
-
-    /// Gate is baked into amp, so render-side gate is fixed to 1.0 while other articulation state is preserved.
-    fn articulation_snapshot_for_render(&self) -> ArticulationWrapper {
-        let mut articulation = self.articulation.clone();
-        articulation.strip_metabolism_for_render();
-        // Normalize render gate to avoid double-applying the gate.
-        articulation.set_gate(1.0);
-        articulation
     }
 
     pub(crate) fn body_snapshot(&self) -> BodySnapshot {

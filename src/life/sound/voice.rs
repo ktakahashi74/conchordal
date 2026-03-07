@@ -1,11 +1,11 @@
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
-use crate::life::individual::{ArticulationSignal, ArticulationWrapper};
+use crate::life::individual::ArticulationSignal;
 use crate::life::lifecycle::default_decay_attack;
 use crate::life::phonation_engine::{NoteUpdate, OnsetKick};
 use crate::life::sound::any_backend::AnyBackend;
 use crate::life::sound::control::{ControlRamp, VoiceControlBlock};
-use crate::life::sound::{BodyKind, BodySnapshot};
+use crate::life::sound::{BodyKind, BodySnapshot, RenderModulator, RenderModulatorSpec};
 use std::collections::VecDeque;
 
 const SINE_IMPULSE_BOOST_GAIN: f32 = 0.2;
@@ -26,7 +26,7 @@ struct PendingTrigger {
 
 pub struct Voice {
     backend: AnyBackend,
-    articulation: Option<ArticulationWrapper>,
+    render_modulator: Option<RenderModulator>,
     pending_impulse_energy: f32,
     onset: Tick,
     hold_end: Tick,
@@ -59,7 +59,7 @@ impl Voice {
         freq_hz: f32,
         amp: f32,
         body: Option<BodySnapshot>,
-        articulation: Option<ArticulationWrapper>,
+        render_modulator: Option<RenderModulatorSpec>,
     ) -> Option<Self> {
         if duration == 0 || freq_hz <= 0.0 {
             return None;
@@ -106,7 +106,7 @@ impl Voice {
 
         Some(Self {
             backend,
-            articulation,
+            render_modulator: render_modulator.map(RenderModulator::from_spec),
             pending_impulse_energy: 0.0,
             onset,
             hold_end,
@@ -187,9 +187,9 @@ impl Voice {
         }
     }
 
-    pub fn kick_planned(&mut self, kick: OnsetKick, rhythms: &NeuralRhythms, dt: f32) -> bool {
-        if let Some(articulation) = self.articulation.as_mut() {
-            articulation.kick_planned(kick, rhythms, dt);
+    pub fn kick_planned(&mut self, kick: OnsetKick) -> bool {
+        if let Some(render_modulator) = self.render_modulator.as_mut() {
+            render_modulator.kick_planned(kick);
             return true;
         }
         false
@@ -226,13 +226,13 @@ impl Voice {
         }
     }
 
-    pub fn kick_planned_if_due(&mut self, tick: Tick, rhythms: &NeuralRhythms, dt: f32) -> bool {
+    pub fn kick_planned_if_due(&mut self, tick: Tick) -> bool {
         let Some(kick) = self.planned_kick_pending else {
             return false;
         };
         if tick >= self.onset {
             self.planned_kick_pending = None;
-            return self.kick_planned(kick, rhythms, dt);
+            return self.kick_planned(kick);
         }
         false
     }
@@ -247,10 +247,8 @@ impl Voice {
         self.advance_smoothing();
         let gain = self.gain_at(tick);
 
-        let mut signal = if let Some(articulation) = self.articulation.as_mut() {
-            let mut signal = articulation.process(1.0, rhythms, dt, 1.0);
-            signal.amplitude *= articulation.gate();
-            signal
+        let mut signal = if let Some(render_modulator) = self.render_modulator.as_mut() {
+            render_modulator.process(rhythms, dt)
         } else {
             ArticulationSignal {
                 amplitude: 1.0,
@@ -259,7 +257,7 @@ impl Voice {
                 tension: rhythms.theta.beta,
             }
         };
-        if self.articulation.is_none() {
+        if self.render_modulator.is_none() {
             let tension = signal.tension.clamp(0.0, 1.0);
             signal.amplitude *= 1.0 + 0.05 * tension;
         }
@@ -377,11 +375,6 @@ impl Voice {
     #[cfg(test)]
     pub(crate) fn debug_current_freq_hz(&self) -> f32 {
         self.current_pitch_hz
-    }
-
-    #[cfg(test)]
-    pub(crate) fn debug_last_modes_len(&self) -> usize {
-        self.backend.debug_last_modes_len()
     }
 
     pub fn end_tick(&self) -> Tick {

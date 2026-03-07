@@ -2,13 +2,15 @@ use crate::core::float::clamp01_finite;
 use crate::core::modulation::NeuralRhythms;
 use crate::core::phase::{SlidingPlv, angle_diff_pm_pi, wrap_0_tau};
 use crate::core::utils::pink_noise_tick;
+use crate::life::articulation_envelope::step_attack_decay_envelope;
 use crate::life::constants::{MAX_COUPLING_MULT, MAX_RECHARGE_MULT};
 use crate::life::lifecycle::LifecycleConfig;
 use crate::life::metabolism_policy::MetabolismPolicy;
-use crate::life::phonation_engine::OnsetKick;
 use crate::life::scenario::{
-    ArticulationCoreConfig, MetabolismRhythmReward, RhythmCouplingMode, RhythmRewardMetric,
+    ArticulationCoreConfig, MetabolismRhythmReward, PhonationMode, RhythmCouplingMode,
+    RhythmRewardMetric,
 };
+use crate::life::sound::{AutonomousPulseSpec, RenderModulatorSpec, RenderModulatorStateKind};
 use rand::{Rng, SeedableRng, rngs::SmallRng};
 use std::f32::consts::{PI, TAU};
 
@@ -91,12 +93,18 @@ impl ArticulationWrapper {
         self.planned_gate.gate
     }
 
+    pub fn set_autonomous_attack_enabled(&mut self, enabled: bool) {
+        if let AnyArticulationCore::Entrain(core) = &mut self.core {
+            core.autonomous_attack = enabled;
+        }
+    }
+
     pub fn set_gate(&mut self, gate: f32) {
         self.planned_gate.gate = gate.clamp(0.0, 1.0);
     }
 
-    pub fn kick_planned(&mut self, kick: OnsetKick, rhythms: &NeuralRhythms, dt: f32) {
-        self.core.kick_planned(kick, rhythms, dt);
+    pub fn apply_phonation_onset(&mut self, consonance: f32, strength: f32) {
+        self.core.apply_phonation_onset(consonance, strength);
     }
 
     pub fn vitality_scalar(&self) -> f32 {
@@ -106,24 +114,8 @@ impl ArticulationWrapper {
         }
     }
 
-    pub fn strip_metabolism_for_render(&mut self) {
-        let AnyArticulationCore::Entrain(core) = &mut self.core else {
-            return;
-        };
-        core.basal_cost = 0.0;
-        core.action_cost = 0.0;
-        core.recharge_rate = 0.0;
-        core.rhythm_reward = None;
-        core.rhythm_coupling = RhythmCouplingMode::TemporalOnly;
-
-        let energy_cap = if core.energy_cap.is_finite() {
-            core.energy_cap.max(1.0)
-        } else {
-            1.0
-        };
-        core.energy_cap = energy_cap;
-        core.energy = energy_cap;
-        core.vitality_level = 1.0;
+    pub fn render_modulator_spec(&self, phonation_mode: PhonationMode) -> RenderModulatorSpec {
+        self.core.render_modulator_spec(phonation_mode)
     }
 }
 
@@ -356,6 +348,13 @@ pub fn kuramoto_phase_step(
 }
 
 impl KuramotoCore {
+    #[inline]
+    fn begin_attack(&mut self) {
+        self.env_level = 0.0;
+        self.state = ArticulationState::Attack;
+        self.metrics.total_attacks = self.metrics.total_attacks.saturating_add(1);
+    }
+
     pub fn plv(&self) -> Option<f32> {
         self.telemetry.sliding_plv.as_ref().map(|p| p.plv())
     }
@@ -485,9 +484,7 @@ impl KuramotoCore {
         }
 
         if attack {
-            self.env_level = 0.0;
-            self.state = ArticulationState::Attack;
-            self.metrics.total_attacks = self.metrics.total_attacks.saturating_add(1);
+            self.begin_attack();
             if let Some(ref mut plv) = self.telemetry.sliding_plv {
                 plv.push(phase_err_at_attack);
             }
@@ -504,25 +501,25 @@ impl KuramotoCore {
 
     #[inline]
     fn update_envelope(&mut self, dt: f32) {
-        let dt = dt.max(0.0);
-        match self.state {
-            ArticulationState::Attack => {
-                self.env_level += self.attack_step * dt;
-                if self.env_level >= 1.0 {
-                    self.env_level = 1.0;
-                    self.state = ArticulationState::Decay;
-                }
-            }
-            ArticulationState::Decay => {
-                let decay = (-self.decay_rate * dt).exp();
-                self.env_level *= decay;
-                if self.env_level < 0.001 {
-                    self.env_level = 0.0;
-                    self.state = ArticulationState::Idle;
-                }
-            }
-            ArticulationState::Idle => {}
+        step_attack_decay_envelope(
+            &mut self.state,
+            &mut self.env_level,
+            self.attack_step,
+            self.decay_rate,
+            dt,
+        );
+    }
+
+    fn apply_phonation_onset(&mut self, consonance: f32, strength: f32) {
+        let strength = strength.clamp(0.0, 1.0);
+        if strength <= 0.0 {
+            return;
         }
+        self.begin_attack();
+        let delta = self
+            .metabolism_policy()
+            .attack_delta_with_recharge_multiplier(consonance, 1.0);
+        self.apply_energy_delta(delta * strength);
     }
 
     #[inline]
@@ -821,36 +818,56 @@ impl AnyArticulationCore {
         }
     }
 
-    pub fn kick_planned(&mut self, kick: OnsetKick, _rhythms: &NeuralRhythms, _dt: f32) {
-        let strength = kick.strength;
+    pub fn apply_phonation_onset(&mut self, consonance: f32, strength: f32) {
+        let strength = strength.clamp(0.0, 1.0);
+        if strength <= 0.0 {
+            return;
+        }
         match self {
-            AnyArticulationCore::Entrain(core) => core.kick_planned(strength),
-            AnyArticulationCore::Seq(core) => core.kick_planned(strength),
-            AnyArticulationCore::Drone(core) => core.kick_planned(strength),
+            AnyArticulationCore::Entrain(core) => core.apply_phonation_onset(consonance, strength),
+            AnyArticulationCore::Seq(core) => core.apply_phonation_onset(strength),
+            AnyArticulationCore::Drone(core) => core.apply_phonation_onset(),
         }
     }
-}
 
-impl KuramotoCore {
-    fn kick_planned(&mut self, strength: f32) {
-        let strength = strength.clamp(0.0, 1.0);
-        self.state = ArticulationState::Attack;
-        let policy = self.metabolism_policy();
-        if self.energy.is_finite() && self.energy >= policy.action_cost_per_attack {
-            let delta = policy.attack_delta_cost_only();
-            self.apply_energy_delta(delta * strength);
+    pub fn render_modulator_spec(&self, phonation_mode: PhonationMode) -> RenderModulatorSpec {
+        match self {
+            AnyArticulationCore::Entrain(core) => {
+                let autonomous_pulse =
+                    matches!(phonation_mode, PhonationMode::Hold).then_some(AutonomousPulseSpec {
+                        rate_hz: core.rhythm_freq.max(0.01),
+                        phase_0_1: (core.rhythm_phase / TAU).rem_euclid(1.0),
+                        retrigger: core.retrigger,
+                    });
+                RenderModulatorSpec::EntrainPulse {
+                    attack_step: core.attack_step,
+                    decay_rate: core.decay_rate,
+                    initial_state: RenderModulatorStateKind::from(core.state),
+                    initial_env_level: core.env_level.clamp(0.0, 1.0),
+                    alpha_gain: core.sensitivity.alpha,
+                    beta_gain: core.sensitivity.beta,
+                    autonomous_pulse,
+                }
+            }
+            AnyArticulationCore::Seq(core) => RenderModulatorSpec::SeqGate {
+                duration_sec: core.duration.max(0.0),
+            },
+            AnyArticulationCore::Drone(core) => RenderModulatorSpec::DroneSway {
+                phase: core.phase,
+                sway_rate: core.sway_rate.max(0.01),
+            },
         }
     }
 }
 
 impl SequencedCore {
-    fn kick_planned(&mut self, _strength: f32) {
+    fn apply_phonation_onset(&mut self, _strength: f32) {
         self.timer = 0.0;
     }
 }
 
 impl DroneCore {
-    fn kick_planned(&mut self, _strength: f32) {}
+    fn apply_phonation_onset(&mut self) {}
 }
 
 struct LifecycleDerived {
@@ -1294,34 +1311,33 @@ mod tests {
     }
 
     #[test]
-    fn strip_metabolism_for_render_keeps_energy_constant() {
-        let mut wrapper =
-            ArticulationWrapper::new(AnyArticulationCore::Entrain(test_core(0.6)), 0.8, true);
-        wrapper.strip_metabolism_for_render();
+    fn apply_phonation_onset_entrain_updates_attack_state_and_metrics() {
+        let mut core = test_core(0.6);
+        core.state = ArticulationState::Idle;
+        core.env_level = 0.4;
+        core.metrics.total_attacks = 0;
+        core.action_cost = 0.2;
+        core.recharge_rate = 0.3;
 
-        let energy_before = match &wrapper.core {
-            AnyArticulationCore::Entrain(core) => core.energy,
-            _ => 0.0,
+        core.apply_phonation_onset(0.8, 1.0);
+
+        assert_eq!(core.state, ArticulationState::Attack);
+        assert_eq!(core.env_level, 0.0);
+        assert_eq!(core.metrics.total_attacks, 1);
+        assert!(core.energy > 0.6 - 0.2);
+    }
+
+    #[test]
+    fn render_modulator_spec_entrain_hold_has_autonomous_pulse() {
+        let core = AnyArticulationCore::Entrain(test_core(0.6));
+        let spec = core.render_modulator_spec(PhonationMode::Hold);
+        let RenderModulatorSpec::EntrainPulse {
+            autonomous_pulse, ..
+        } = spec
+        else {
+            panic!("expected entrain pulse");
         };
-        let mut rhythms = NeuralRhythms::default();
-        rhythms.theta.freq_hz = 6.0;
-        rhythms.theta.mag = 1.0;
-        rhythms.theta.alpha = 1.0;
-        rhythms.theta.beta = 0.2;
-        rhythms.env_open = 1.0;
-        rhythms.env_level = 1.0;
-
-        for _ in 0..64 {
-            let signal = wrapper.process(1.0, &rhythms, 1.0 / 48_000.0, 1.0);
-            assert!(signal.amplitude.is_finite());
-            rhythms.advance_in_place(1.0 / 48_000.0);
-        }
-
-        let energy_after = match &wrapper.core {
-            AnyArticulationCore::Entrain(core) => core.energy,
-            _ => 0.0,
-        };
-        assert!((energy_after - energy_before).abs() <= 1e-6);
+        assert!(autonomous_pulse.is_some());
     }
 
     #[test]

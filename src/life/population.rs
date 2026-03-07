@@ -329,6 +329,7 @@ impl Population {
                 out.push(PhonationBatch::default());
             }
             let batch = &mut out[used];
+            let consonance = landscape.evaluate_pitch_level(agent.body.base_freq_hz());
             let extra_gate_gain = match pred_scan.as_ref() {
                 Some(scan) => {
                     let gain_raw = world
@@ -352,6 +353,7 @@ impl Population {
                 social_trace,
                 social_coupling,
                 extra_gate_gain,
+                consonance,
                 batch,
             );
             phonation_onsets_in_hop = phonation_onsets_in_hop
@@ -1375,7 +1377,6 @@ mod tests {
     use crate::core::log2space::Log2Space;
     use crate::core::timebase::Timebase;
     use crate::life::control::{AgentControl, ControlUpdate, PitchMode};
-    use crate::life::individual::{AnyArticulationCore, ArticulationWrapper, DroneCore};
     use crate::life::lifecycle::LifecycleConfig;
     use crate::life::phonation_engine::{NoteCmd, OnsetEvent, OnsetKick};
     use crate::life::scenario::{ArticulationCoreConfig, RespawnPolicy, SpawnSpec, SpawnStrategy};
@@ -1407,14 +1408,10 @@ mod tests {
                 noise_mix: 0.0,
                 ratios: None,
             },
-            articulation: ArticulationWrapper::new(
-                AnyArticulationCore::Drone(DroneCore {
-                    phase: 0.0,
-                    sway_rate: 1.0,
-                }),
-                1.0,
-                false,
-            ),
+            render_modulator: crate::life::sound::RenderModulatorSpec::DroneSway {
+                phase: 0.0,
+                sway_rate: 1.0,
+            },
         }
     }
 

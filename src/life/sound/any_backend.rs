@@ -65,15 +65,6 @@ impl AnyBackend {
             AnyBackend::Modal(engine) => engine.project_spectral(amps, space, signal),
         }
     }
-
-    #[cfg(test)]
-    pub(crate) fn debug_last_modes_len(&self) -> usize {
-        match self {
-            AnyBackend::Sine(_) => 1,
-            AnyBackend::Harmonic(backend) => backend.last_modes_len(),
-            AnyBackend::Modal(engine) => engine.last_modes_len(),
-        }
-    }
 }
 
 fn modal_shape_from_snapshot(snapshot: &BodySnapshot) -> ModeShape {

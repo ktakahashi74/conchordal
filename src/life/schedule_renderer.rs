@@ -124,12 +124,12 @@ impl ScheduleRenderer {
             let mut acc = 0.0f32;
             for (_key, voice) in self.voices.iter_mut() {
                 voice.apply_updates_if_due(tick);
-                voice.kick_planned_if_due(tick, &rhythms, dt);
+                voice.kick_planned_if_due(tick);
                 acc += voice.render_tick(tick, fs, dt, &rhythms);
             }
             for voice in self.agent_voices.values_mut() {
                 voice.apply_updates_if_due(tick);
-                voice.kick_planned_if_due(tick, &rhythms, dt);
+                voice.kick_planned_if_due(tick);
                 acc += voice.render_tick(tick, fs, dt, &rhythms);
             }
             self.buf[idx] = acc;
@@ -193,7 +193,7 @@ impl ScheduleRenderer {
                             spec.freq_hz,
                             spec.amp,
                             Some(spec.body.clone()),
-                            Some(spec.articulation.clone()),
+                            Some(spec.render_modulator.clone()),
                         ) {
                             voice.seed_modal_phases(modal_phase_seed(
                                 batch.source_id,
@@ -270,12 +270,11 @@ fn modal_phase_seed(a: u64, b: u64, c: u64) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::life::individual::{
-        AnyArticulationCore, ArticulationWrapper, NoteSpec, PhonationBatch, SequencedCore,
-    };
+    use crate::life::individual::{NoteSpec, PhonationBatch};
     use crate::life::phonation_engine::{NoteUpdate, OnsetKick};
     use crate::life::sound::{
-        AudioCommand, BodyKind, BodySnapshot, VoiceTarget, default_release_ticks,
+        AudioCommand, BodyKind, BodySnapshot, RenderModulatorSpec, VoiceTarget,
+        default_release_ticks,
     };
 
     #[test]
@@ -283,15 +282,6 @@ mod tests {
         let tb = Timebase { fs: 1000.0, hop: 4 };
         let mut renderer = ScheduleRenderer::new(tb);
         let rhythms = NeuralRhythms::default();
-        let articulation = ArticulationWrapper::new(
-            AnyArticulationCore::Seq(SequencedCore {
-                timer: 0.0,
-                duration: 0.1,
-                env_level: 0.0,
-            }),
-            0.0,
-            false,
-        );
         let note_id = 1;
         let batch = PhonationBatch {
             source_id: 2,
@@ -324,7 +314,7 @@ mod tests {
                     noise_mix: 0.0,
                     ratios: None,
                 },
-                articulation,
+                render_modulator: RenderModulatorSpec::SeqGate { duration_sec: 0.1 },
             }],
             onsets: Vec::new(),
         };
@@ -344,15 +334,6 @@ mod tests {
         let tb = Timebase { fs: 1000.0, hop: 4 };
         let mut renderer = ScheduleRenderer::new(tb);
         let rhythms = NeuralRhythms::default();
-        let articulation = ArticulationWrapper::new(
-            AnyArticulationCore::Seq(SequencedCore {
-                timer: 0.0,
-                duration: 0.1,
-                env_level: 0.0,
-            }),
-            0.0,
-            false,
-        );
         let note_id = 1;
         let batch = PhonationBatch {
             source_id: 2,
@@ -394,7 +375,7 @@ mod tests {
                     noise_mix: 0.0,
                     ratios: None,
                 },
-                articulation,
+                render_modulator: RenderModulatorSpec::SeqGate { duration_sec: 0.1 },
             }],
             onsets: Vec::new(),
         };

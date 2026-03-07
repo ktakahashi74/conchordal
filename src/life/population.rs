@@ -27,6 +27,55 @@ pub struct PredGateStats {
     pub count: u32,
 }
 
+#[derive(Default)]
+struct PredGateAccum {
+    count: u32,
+    raw_min: f32,
+    raw_max: f32,
+    raw_sum: f32,
+    mixed_min: f32,
+    mixed_max: f32,
+    mixed_sum: f32,
+    sync_sum: f32,
+}
+
+impl PredGateAccum {
+    fn push(&mut self, raw: f32, mixed: f32, sync: f32) {
+        if self.count == 0 {
+            self.raw_min = raw;
+            self.raw_max = raw;
+            self.mixed_min = mixed;
+            self.mixed_max = mixed;
+        } else {
+            self.raw_min = self.raw_min.min(raw);
+            self.raw_max = self.raw_max.max(raw);
+            self.mixed_min = self.mixed_min.min(mixed);
+            self.mixed_max = self.mixed_max.max(mixed);
+        }
+        self.raw_sum += raw;
+        self.mixed_sum += mixed;
+        self.sync_sum += sync;
+        self.count += 1;
+    }
+
+    fn finalize(&self) -> Option<PredGateStats> {
+        if self.count == 0 {
+            return None;
+        }
+        let inv = 1.0 / self.count as f32;
+        Some(PredGateStats {
+            raw_min: self.raw_min,
+            raw_max: self.raw_max,
+            raw_mean: self.raw_sum * inv,
+            mixed_min: self.mixed_min,
+            mixed_max: self.mixed_max,
+            mixed_mean: self.mixed_sum * inv,
+            sync_mean: self.sync_sum * inv,
+            count: self.count,
+        })
+    }
+}
+
 pub struct Population {
     pub individuals: Vec<Individual>,
     current_frame: u64,
@@ -270,14 +319,7 @@ impl Population {
                         None
                     }
                 });
-        let mut pred_count = 0u32;
-        let mut pred_raw_sum = 0.0f32;
-        let mut pred_raw_min = f32::INFINITY;
-        let mut pred_raw_max = f32::NEG_INFINITY;
-        let mut pred_mixed_sum = 0.0f32;
-        let mut pred_mixed_min = f32::INFINITY;
-        let mut pred_mixed_max = f32::NEG_INFINITY;
-        let mut pred_sync_sum = 0.0f32;
+        let mut pred_acc = PredGateAccum::default();
         let mut phonation_onsets_in_hop = 0u32;
         let mut used = 0usize;
         let social_trace = self.social_trace.as_ref();
@@ -287,35 +329,22 @@ impl Population {
                 out.push(PhonationBatch::default());
             }
             let batch = &mut out[used];
-            let mut extra_gate_gain = 1.0;
-            if let Some(scan) = pred_scan.as_ref() {
-                let mut gain_raw = world.sample_scan_field_level(scan, agent.body.base_freq_hz());
-                if !gain_raw.is_finite() {
-                    gain_raw = 0.0;
+            let extra_gate_gain = match pred_scan.as_ref() {
+                Some(scan) => {
+                    let gain_raw = world
+                        .sample_scan_field_level(scan, agent.body.base_freq_hz())
+                        .clamp(0.0, 1.0);
+                    let sync = match &agent.effective_control.phonation.spec.when {
+                        crate::life::scenario::WhenSpec::Pulse { sync, .. } => sync.clamp(0.0, 1.0),
+                        _ => 0.0,
+                    };
+                    let mixed = mix_pred_gate_gain(sync, gain_raw);
+                    let mixed = if mixed.is_finite() { mixed } else { 1.0 };
+                    pred_acc.push(gain_raw, mixed, sync);
+                    mixed
                 }
-                gain_raw = gain_raw.clamp(0.0, 1.0);
-                let mut sync = match &agent.effective_control.phonation.spec.when {
-                    crate::life::scenario::WhenSpec::Pulse { sync, .. } => *sync,
-                    _ => 0.0,
-                };
-                if !sync.is_finite() {
-                    sync = 0.0;
-                }
-                sync = sync.clamp(0.0, 1.0);
-                let mut mixed = mix_pred_gate_gain(sync, gain_raw);
-                if !mixed.is_finite() {
-                    mixed = 1.0;
-                }
-                pred_count = pred_count.saturating_add(1);
-                pred_raw_sum += gain_raw;
-                pred_raw_min = pred_raw_min.min(gain_raw);
-                pred_raw_max = pred_raw_max.max(gain_raw);
-                pred_mixed_sum += mixed;
-                pred_mixed_min = pred_mixed_min.min(mixed);
-                pred_mixed_max = pred_mixed_max.max(mixed);
-                pred_sync_sum += sync;
-                extra_gate_gain = mixed;
-            }
+                None => 1.0,
+            };
             agent.tick_phonation_into(
                 &tb,
                 now,
@@ -351,21 +380,7 @@ impl Population {
         }
         self.last_gate_boundary_in_hop = Some(gate_boundary_in_hop);
         self.last_phonation_onsets_in_hop = Some(phonation_onsets_in_hop);
-        self.last_pred_gate_stats = if pred_count > 0 {
-            let inv = 1.0 / pred_count as f32;
-            Some(PredGateStats {
-                raw_min: pred_raw_min,
-                raw_max: pred_raw_max,
-                raw_mean: pred_raw_sum * inv,
-                mixed_min: pred_mixed_min,
-                mixed_max: pred_mixed_max,
-                mixed_mean: pred_mixed_sum * inv,
-                sync_mean: pred_sync_sum * inv,
-                count: pred_count,
-            })
-        } else {
-            None
-        };
+        self.last_pred_gate_stats = pred_acc.finalize();
         used
     }
 
@@ -422,89 +437,62 @@ impl Population {
 
         let pick_idx = match strategy {
             SpawnStrategy::Consonance { .. } => {
-                let mut best = idx_min;
-                let mut best_val = f32::MIN;
-                let mut found = false;
+                let mut best_free = None;
+                let mut best_any = (idx_min, f32::MIN);
                 for i in idx_min..=idx_max {
+                    let c_val = landscape
+                        .consonance_field_level
+                        .get(i)
+                        .copied()
+                        .unwrap_or(f32::MIN);
+                    if c_val > best_any.1 {
+                        best_any = (i, c_val);
+                    }
                     let f = space.freq_of_index(i);
-                    if self.is_range_occupied_with(f, min_dist_erb, reserved) {
-                        continue;
-                    }
-                    if let Some(&c_val) = landscape.consonance_field_level.get(i)
-                        && c_val > best_val
+                    if !self.is_range_occupied_with(f, min_dist_erb, reserved)
+                        && c_val > best_free.map_or(f32::MIN, |(_, v)| v)
                     {
-                        found = true;
-                        best_val = c_val;
-                        best = i;
+                        best_free = Some((i, c_val));
                     }
                 }
-                if found {
-                    best
-                } else {
-                    // Fallback: everything is occupied; pick the best bin ignoring occupancy.
-                    let mut best = idx_min;
-                    let mut best_val = f32::MIN;
-                    for i in idx_min..=idx_max {
-                        if let Some(&c_val) = landscape.consonance_field_level.get(i)
-                            && c_val > best_val
-                        {
-                            best_val = c_val;
-                            best = i;
-                        }
-                    }
-                    best
-                }
+                best_free.unwrap_or(best_any).0
             }
             SpawnStrategy::ConsonanceDensity { .. } => {
-                let mut range_min = idx_min;
-                let mut range_max = idx_max;
-                if range_max < range_min {
-                    std::mem::swap(&mut range_min, &mut range_max);
-                }
-                debug_assert!(range_min <= range_max);
-
-                let range_len = range_max - range_min + 1;
-                let mut occupied_flags = vec![false; range_len];
-                let mut weights = vec![0.0f32; range_len];
+                let range_len = idx_max - idx_min + 1;
+                let mut weights = Vec::with_capacity(range_len);
+                let mut has_unoccupied = false;
                 let mut sum = 0.0f32;
-                let mut unoccupied_count = 0usize;
-
-                for (offset, i) in (range_min..=range_max).enumerate() {
+                for i in idx_min..=idx_max {
                     let f = space.freq_of_index(i);
-                    let occupied_i = self.is_range_occupied_with(f, min_dist_erb, reserved);
-                    occupied_flags[offset] = occupied_i;
-                    if !occupied_i {
-                        unoccupied_count += 1;
+                    let occupied = self.is_range_occupied_with(f, min_dist_erb, reserved);
+                    if !occupied {
+                        has_unoccupied = true;
                     }
                     let raw = landscape
                         .consonance_density_mass
                         .get(i)
                         .copied()
                         .unwrap_or(0.0);
-                    let mut w = if occupied_i { 0.0 } else { raw.max(0.0) };
-                    if !w.is_finite() {
-                        w = 0.0;
-                    }
-                    weights[offset] = w;
+                    let w = if occupied { 0.0 } else { raw.max(0.0) };
+                    let w = if w.is_finite() { w } else { 0.0 };
+                    weights.push((w, occupied));
                     sum += w;
                 }
-
+                // Fallback: if density mass sums to zero, use uniform over unoccupied bins.
                 if !(sum > 0.0 && sum.is_finite()) {
-                    if unoccupied_count > 0 {
-                        for (offset, occupied_i) in occupied_flags.iter().enumerate() {
-                            weights[offset] = if *occupied_i { 0.0 } else { 1.0 };
-                        }
-                    } else {
-                        weights.fill(1.0);
+                    for (w, occupied) in &mut weights {
+                        *w = if *occupied && has_unoccupied {
+                            0.0
+                        } else {
+                            1.0
+                        };
                     }
                 }
-
-                if let Ok(dist) = WeightedIndex::new(&weights) {
-                    range_min + dist.sample(rng)
+                let ws: Vec<f32> = weights.iter().map(|(w, _)| *w).collect();
+                if let Ok(dist) = WeightedIndex::new(&ws) {
+                    idx_min + dist.sample(rng)
                 } else {
-                    // Defensive fallback; this path should be unreachable after range-local
-                    // fallback weights, but keep behavior safe and unbiased in-range.
-                    range_min + rng.random_range(0..range_len)
+                    idx_min + rng.random_range(0..range_len)
                 }
             }
             SpawnStrategy::RandomLog { .. } => {
@@ -1301,26 +1289,15 @@ impl Population {
 
         if removed_count > 0 {
             let t = current_frame as f32 * dt_sec;
-            let prefix = if scenario_finished || self.abort_requested {
-                "Event after scenario close: "
-            } else {
-                ""
-            };
             if scenario_finished || self.abort_requested {
                 warn!(
-                    "{prefix}[t={:.6}] Cleaned up {} dead individuals. Remaining: {} (frame_idx={})",
-                    t,
-                    removed_count,
+                    "Event after scenario close: [t={t:.6}] Cleaned up {removed_count} dead individuals. Remaining: {} (frame_idx={current_frame})",
                     self.individuals.len(),
-                    current_frame
                 );
             } else {
                 info!(
-                    "{prefix}[t={:.6}] Cleaned up {} dead individuals. Remaining: {} (frame_idx={})",
-                    t,
-                    removed_count,
+                    "[t={t:.6}] Cleaned up {removed_count} dead individuals. Remaining: {} (frame_idx={current_frame})",
                     self.individuals.len(),
-                    current_frame
                 );
             }
         }
@@ -1328,12 +1305,9 @@ impl Population {
 }
 
 fn kuramoto_order_from_phases(phases: &[f32]) -> Option<f32> {
-    if phases.is_empty() {
-        return None;
-    }
     let mut sum_cos = 0.0f32;
     let mut sum_sin = 0.0f32;
-    let mut count = 0usize;
+    let mut count = 0u32;
     for &phase in phases {
         if !phase.is_finite() {
             continue;
@@ -1346,9 +1320,6 @@ fn kuramoto_order_from_phases(phases: &[f32]) -> Option<f32> {
         return None;
     }
     let n = count as f32;
-    if n <= 0.0 {
-        return None;
-    }
     let r = (sum_cos * sum_cos + sum_sin * sum_sin).sqrt() / n;
     Some(r.clamp(0.0, 1.0))
 }
@@ -1412,6 +1383,13 @@ mod tests {
     use crate::life::world_model::WorldModel;
     use rand::{Rng, SeedableRng};
     use std::collections::HashSet;
+
+    fn test_pop() -> Population {
+        Population::new(Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        })
+    }
 
     fn make_dummy_note_spec() -> crate::life::individual::NoteSpec {
         crate::life::individual::NoteSpec {
@@ -1502,10 +1480,7 @@ mod tests {
     }
 
     fn run_single_substep_targets(order_reversed: bool, crowding_strength: f32) -> Vec<(u64, f32)> {
-        let mut pop = Population::new(Timebase {
-            fs: 48_000.0,
-            hop: 64,
-        });
+        let mut pop = test_pop();
         pop.set_seed(101);
         let landscape = crowding_order_landscape();
         let mut spec = spawn_spec_with_freq(330.0);
@@ -1546,10 +1521,7 @@ mod tests {
     }
 
     fn run_cross_group_visibility_trial(other_group_visible: bool) -> f32 {
-        let mut pop = Population::new(Timebase {
-            fs: 48_000.0,
-            hop: 64,
-        });
+        let mut pop = test_pop();
         pop.set_seed(303);
         let landscape = crowding_order_landscape();
 
@@ -1621,10 +1593,7 @@ mod tests {
         landscape.consonance_field_level[idx_high] = 1.0;
         landscape.consonance_field_score[idx_raw] = 10.0;
 
-        let pop = Population::new(Timebase {
-            fs: 48_000.0,
-            hop: 64,
-        });
+        let pop = test_pop();
         let strategy = SpawnStrategy::Consonance {
             root_freq: 100.0,
             min_mul: 1.0,
@@ -1639,10 +1608,7 @@ mod tests {
 
     #[test]
     fn decide_phase_does_not_mutate_body_or_release_state() {
-        let mut pop = Population::new(Timebase {
-            fs: 48_000.0,
-            hop: 64,
-        });
+        let mut pop = test_pop();
         let landscape = runtime_landscape();
         let mut spec = spawn_spec_with_freq(330.0);
         spec.control.pitch.mode = PitchMode::Free;
@@ -1688,10 +1654,7 @@ mod tests {
         let idx_target = space.index_of_freq(220.0).expect("idx target");
         landscape.consonance_density_mass[idx_target] = 1.0;
 
-        let pop = Population::new(Timebase {
-            fs: 48_000.0,
-            hop: 64,
-        });
+        let pop = test_pop();
         let strategy = SpawnStrategy::ConsonanceDensity {
             min_freq: space.fmin,
             max_freq: space.fmax,
@@ -1718,10 +1681,7 @@ mod tests {
             landscape.consonance_density_mass[i] = 0.0;
         }
 
-        let pop = Population::new(Timebase {
-            fs: 48_000.0,
-            hop: 64,
-        });
+        let pop = test_pop();
         let strategy = SpawnStrategy::ConsonanceDensity {
             min_freq: space.freq_of_index(idx_min),
             max_freq: space.freq_of_index(idx_max),
@@ -1758,10 +1718,7 @@ mod tests {
             .map(|i| space.freq_of_index(i))
             .collect();
 
-        let pop = Population::new(Timebase {
-            fs: 48_000.0,
-            hop: 64,
-        });
+        let pop = test_pop();
         let strategy = SpawnStrategy::ConsonanceDensity {
             min_freq: space.freq_of_index(idx_min),
             max_freq: space.freq_of_index(idx_max),
@@ -1790,10 +1747,7 @@ mod tests {
         let idx_occupied = 8usize;
         let reserved = vec![space.freq_of_index(idx_occupied)];
 
-        let pop = Population::new(Timebase {
-            fs: 48_000.0,
-            hop: 64,
-        });
+        let pop = test_pop();
         let strategy = SpawnStrategy::ConsonanceDensity {
             min_freq: space.freq_of_index(idx_min),
             max_freq: space.freq_of_index(idx_max),
@@ -1829,10 +1783,7 @@ mod tests {
         let idx_occupied = 8usize;
         let reserved = vec![space.freq_of_index(idx_occupied)];
 
-        let pop = Population::new(Timebase {
-            fs: 48_000.0,
-            hop: 64,
-        });
+        let pop = test_pop();
         let strategy = SpawnStrategy::ConsonanceDensity {
             min_freq: space.freq_of_index(idx_min),
             max_freq: space.freq_of_index(idx_max),
@@ -1865,10 +1816,7 @@ mod tests {
         let idx_target = 9usize;
         landscape.consonance_density_mass[idx_target] = 1.0;
 
-        let pop = Population::new(Timebase {
-            fs: 48_000.0,
-            hop: 64,
-        });
+        let pop = test_pop();
         let strategy = SpawnStrategy::ConsonanceDensity {
             // Intentionally reversed order to emulate Rhai-side input mistakes.
             min_freq: space.freq_of_index(idx_high),
@@ -1914,10 +1862,7 @@ mod tests {
 
     #[test]
     fn update_applies_to_group_members() {
-        let mut pop = Population::new(Timebase {
-            fs: 48_000.0,
-            hop: 64,
-        });
+        let mut pop = test_pop();
         let landscape = LandscapeFrame::default();
         pop.apply_action(
             Action::Spawn {
@@ -1988,10 +1933,7 @@ mod tests {
 
     #[test]
     fn release_marks_group_members() {
-        let mut pop = Population::new(Timebase {
-            fs: 48_000.0,
-            hop: 64,
-        });
+        let mut pop = test_pop();
         let landscape = LandscapeFrame::default();
         pop.apply_action(
             Action::Spawn {
@@ -2024,10 +1966,7 @@ mod tests {
 
     #[test]
     fn spawn_without_strategy_keeps_spec_frequency() {
-        let mut pop = Population::new(Timebase {
-            fs: 48_000.0,
-            hop: 64,
-        });
+        let mut pop = test_pop();
         let landscape = LandscapeFrame::default();
         pop.apply_action(
             Action::Spawn {
@@ -2045,10 +1984,7 @@ mod tests {
 
     #[test]
     fn respawn_none_keeps_current_behavior() {
-        let mut pop = Population::new(Timebase {
-            fs: 48_000.0,
-            hop: 64,
-        });
+        let mut pop = test_pop();
         pop.set_seed(7);
         let landscape = runtime_landscape();
         pop.apply_action(
@@ -2074,10 +2010,7 @@ mod tests {
 
     #[test]
     fn respawn_random_maintains_population() {
-        let mut pop = Population::new(Timebase {
-            fs: 48_000.0,
-            hop: 64,
-        });
+        let mut pop = test_pop();
         pop.set_seed(11);
         let landscape = runtime_landscape();
         pop.apply_action(
@@ -2117,10 +2050,7 @@ mod tests {
 
     #[test]
     fn respawn_hereditary_maintains_population() {
-        let mut pop = Population::new(Timebase {
-            fs: 48_000.0,
-            hop: 64,
-        });
+        let mut pop = test_pop();
         pop.set_seed(13);
         let landscape = runtime_landscape();
         pop.apply_action(
@@ -2160,10 +2090,7 @@ mod tests {
 
     #[test]
     fn hereditary_respawn_without_strategy_uses_parent_pitch_regression() {
-        let mut pop = Population::new(Timebase {
-            fs: 48_000.0,
-            hop: 64,
-        });
+        let mut pop = test_pop();
         pop.set_seed(31);
         let landscape = runtime_landscape();
 
@@ -2214,10 +2141,7 @@ mod tests {
 
     #[test]
     fn release_reaches_respawned_members() {
-        let mut pop = Population::new(Timebase {
-            fs: 48_000.0,
-            hop: 64,
-        });
+        let mut pop = test_pop();
         pop.set_seed(17);
         let landscape = runtime_landscape();
         pop.apply_action(
@@ -2273,10 +2197,7 @@ mod tests {
 
     #[test]
     fn live_update_reaches_respawned_members() {
-        let mut pop = Population::new(Timebase {
-            fs: 48_000.0,
-            hop: 64,
-        });
+        let mut pop = test_pop();
         pop.set_seed(23);
         let landscape = runtime_landscape();
         pop.apply_action(
@@ -2335,10 +2256,7 @@ mod tests {
 
     #[test]
     fn live_landscape_weight_update_is_inherited_by_respawn() {
-        let mut pop = Population::new(Timebase {
-            fs: 48_000.0,
-            hop: 64,
-        });
+        let mut pop = test_pop();
         pop.set_seed(41);
         let landscape = runtime_landscape();
         pop.apply_action(
@@ -2392,10 +2310,7 @@ mod tests {
 
     #[test]
     fn release_disables_future_respawns() {
-        let mut pop = Population::new(Timebase {
-            fs: 48_000.0,
-            hop: 64,
-        });
+        let mut pop = test_pop();
         pop.set_seed(47);
         let landscape = runtime_landscape();
         pop.apply_action(
@@ -2446,10 +2361,7 @@ mod tests {
 
     #[test]
     fn hereditary_respawn_child_stays_near_parent() {
-        let mut pop = Population::new(Timebase {
-            fs: 48_000.0,
-            hop: 64,
-        });
+        let mut pop = test_pop();
         pop.set_seed(29);
         let landscape = runtime_landscape();
 
@@ -2504,10 +2416,7 @@ mod tests {
 
     #[test]
     fn spawn_strategy_respects_free_pitch_mode() {
-        let mut pop = Population::new(Timebase {
-            fs: 48_000.0,
-            hop: 64,
-        });
+        let mut pop = test_pop();
         let landscape = LandscapeFrame::default();
         let mut spec = spawn_spec_with_freq(110.0);
         spec.control.pitch.mode = PitchMode::Free;

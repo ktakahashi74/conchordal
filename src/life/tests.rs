@@ -703,6 +703,210 @@ fn hold_mode_renderer_still_pulses_after_render_clone_removal() {
 }
 
 #[test]
+fn hold_note_emits_target_amp_update_when_authority_amp_changes() {
+    let mut control = AgentControl::default();
+    control.pitch.freq = 220.0;
+    control.phonation.spec = PhonationSpec {
+        when: WhenSpec::Once,
+        duration: DurationSpec::WhileAlive,
+    };
+    let cfg = IndividualConfig {
+        control,
+        articulation: sustain_entrain_articulation(),
+    };
+    let meta = AgentMetadata {
+        group_id: 0,
+        member_idx: 0,
+    };
+    let mut agent = cfg.spawn(79, 0, meta, 48_000.0, 0);
+    let tb = Timebase {
+        fs: 48_000.0,
+        hop: 64,
+    };
+    let mut rhythms = NeuralRhythms::default();
+    rhythms.theta.freq_hz = 4.0;
+    rhythms.theta.phase = 0.0;
+    rhythms.theta.mag = 1.0;
+    rhythms.theta.alpha = 1.0;
+    rhythms.theta.beta = 0.2;
+    rhythms.env_open = 1.0;
+    rhythms.env_level = 1.0;
+
+    let mut batch = PhonationBatch::default();
+    agent.tick_phonation_into(&tb, 0, &rhythms, None, 0.0, 1.0, 1.0, &mut batch);
+    let note_id = batch.notes.first().expect("expected hold note").note_id;
+
+    match &mut agent.articulation.core {
+        AnyArticulationCore::Entrain(core) => core.vitality_level = 0.25,
+        _ => panic!("expected entrain articulation"),
+    }
+    let expected_amp = agent.compute_target_amp();
+    let mut update_batch = PhonationBatch::default();
+    agent.tick_phonation_into(
+        &tb,
+        tb.hop as Tick,
+        &rhythms,
+        None,
+        0.0,
+        1.0,
+        1.0,
+        &mut update_batch,
+    );
+
+    assert!(update_batch.notes.is_empty());
+    let update = update_batch
+        .cmds
+        .iter()
+        .find_map(|cmd| match cmd {
+            NoteCmd::Update {
+                note_id: update_note_id,
+                update,
+                ..
+            } if *update_note_id == note_id => update.target_amp,
+            _ => None,
+        })
+        .expect("expected target_amp update");
+    assert!((update - expected_amp).abs() < 1e-6);
+}
+
+#[test]
+fn hold_note_does_not_emit_update_below_amp_threshold() {
+    let mut control = AgentControl::default();
+    control.pitch.freq = 220.0;
+    control.phonation.spec = PhonationSpec {
+        when: WhenSpec::Once,
+        duration: DurationSpec::WhileAlive,
+    };
+    let cfg = IndividualConfig {
+        control,
+        articulation: sustain_entrain_articulation(),
+    };
+    let meta = AgentMetadata {
+        group_id: 0,
+        member_idx: 0,
+    };
+    let mut agent = cfg.spawn(80, 0, meta, 48_000.0, 0);
+    let tb = Timebase {
+        fs: 48_000.0,
+        hop: 64,
+    };
+    let mut rhythms = NeuralRhythms::default();
+    rhythms.theta.freq_hz = 4.0;
+    rhythms.theta.phase = 0.0;
+    rhythms.theta.mag = 1.0;
+    rhythms.theta.alpha = 1.0;
+    rhythms.theta.beta = 0.2;
+    rhythms.env_open = 1.0;
+    rhythms.env_level = 1.0;
+
+    let mut batch = PhonationBatch::default();
+    agent.tick_phonation_into(&tb, 0, &rhythms, None, 0.0, 1.0, 1.0, &mut batch);
+    let current_amp = agent.compute_target_amp();
+    match &mut agent.articulation.core {
+        AnyArticulationCore::Entrain(core) => {
+            let base_amp = current_amp / core.vitality_level.max(1e-6);
+            core.vitality_level = ((current_amp - 0.005) / base_amp).clamp(0.0, 1.0);
+        }
+        _ => panic!("expected entrain articulation"),
+    }
+    let mut update_batch = PhonationBatch::default();
+    agent.tick_phonation_into(
+        &tb,
+        tb.hop as Tick,
+        &rhythms,
+        None,
+        0.0,
+        1.0,
+        1.0,
+        &mut update_batch,
+    );
+
+    assert!(
+        !update_batch
+            .cmds
+            .iter()
+            .any(|cmd| matches!(cmd, NoteCmd::Update { .. })),
+        "expected no amp update below threshold"
+    );
+}
+
+#[test]
+fn tracked_note_is_removed_after_note_off_for_future_hops() {
+    let mut control = AgentControl::default();
+    control.pitch.freq = 220.0;
+    control.phonation.spec = PhonationSpec {
+        when: WhenSpec::Once,
+        duration: DurationSpec::WhileAlive,
+    };
+    let cfg = IndividualConfig {
+        control,
+        articulation: sustain_entrain_articulation(),
+    };
+    let meta = AgentMetadata {
+        group_id: 0,
+        member_idx: 0,
+    };
+    let mut agent = cfg.spawn(81, 0, meta, 48_000.0, 0);
+    let tb = Timebase {
+        fs: 48_000.0,
+        hop: 64,
+    };
+    let mut rhythms = NeuralRhythms::default();
+    rhythms.theta.freq_hz = 4.0;
+    rhythms.theta.phase = 0.0;
+    rhythms.theta.mag = 1.0;
+    rhythms.theta.alpha = 1.0;
+    rhythms.theta.beta = 0.2;
+    rhythms.env_open = 1.0;
+    rhythms.env_level = 1.0;
+
+    let mut batch = PhonationBatch::default();
+    agent.tick_phonation_into(&tb, 0, &rhythms, None, 0.0, 1.0, 1.0, &mut batch);
+    agent.remove_pending = true;
+    let mut off_batch = PhonationBatch::default();
+    agent.tick_phonation_into(
+        &tb,
+        tb.hop as Tick,
+        &rhythms,
+        None,
+        0.0,
+        1.0,
+        1.0,
+        &mut off_batch,
+    );
+    assert!(
+        off_batch
+            .cmds
+            .iter()
+            .any(|cmd| matches!(cmd, NoteCmd::NoteOff { .. })),
+        "expected note-off when hold note is removed"
+    );
+
+    match &mut agent.articulation.core {
+        AnyArticulationCore::Entrain(core) => core.vitality_level = 0.25,
+        _ => panic!("expected entrain articulation"),
+    }
+    let mut later_batch = PhonationBatch::default();
+    agent.tick_phonation_into(
+        &tb,
+        (tb.hop as Tick) * 2,
+        &rhythms,
+        None,
+        0.0,
+        1.0,
+        1.0,
+        &mut later_batch,
+    );
+    assert!(
+        !later_batch
+            .cmds
+            .iter()
+            .any(|cmd| matches!(cmd, NoteCmd::Update { .. })),
+        "expected no updates after tracked note was pruned"
+    );
+}
+
+#[test]
 fn render_modulator_snapshot_is_finite() {
     let mut control = AgentControl::default();
     control.pitch.freq = 220.0;

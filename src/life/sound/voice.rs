@@ -213,16 +213,15 @@ impl Voice {
     }
 
     pub fn apply_updates_if_due(&mut self, tick: Tick) {
-        if tick >= self.hold_end {
-            self.pending_updates.clear();
-            return;
-        }
         while let Some(pending) = self.pending_updates.front().copied() {
             if pending.at_tick > tick {
                 break;
             }
             let pending = self.pending_updates.pop_front().expect("pending update");
             self.apply_update(&pending.update);
+        }
+        if tick >= self.hold_end {
+            self.pending_updates.clear();
         }
     }
 
@@ -633,5 +632,29 @@ mod tests {
             after_peak > before_peak,
             "re-impulse should add short sine boost: before={before_peak}, after={after_peak}"
         );
+    }
+
+    #[test]
+    fn release_tick_update_applies_before_pending_updates_are_cleared() {
+        let tb = Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        };
+        let mut voice =
+            Voice::from_parts(tb, 0, 8, 440.0, 0.5, None, None).expect("voice");
+        voice.set_smoothing_tau_sec(0.0);
+        voice.note_off(4);
+        voice.schedule_update(
+            4,
+            NoteUpdate {
+                target_freq_hz: None,
+                target_amp: Some(0.25),
+            },
+        );
+
+        voice.apply_updates_if_due(4);
+
+        assert!((voice.debug_target_amp() - 0.25).abs() < 1e-6);
+        assert!((voice.debug_current_amp() - 0.25).abs() < 1e-6);
     }
 }

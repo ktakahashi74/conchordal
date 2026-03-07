@@ -10,7 +10,7 @@ use crate::life::control_adapters::{
 };
 use crate::life::lifecycle::LifecycleConfig;
 use crate::life::phonation_engine::{
-    CoreState, CoreTickCtx, NoteCmd, NoteId, NoteOnEvent, OnsetEvent, PhonationEngine,
+    CoreState, CoreTickCtx, NoteCmd, NoteId, NoteOnEvent, NoteUpdate, OnsetEvent, PhonationEngine,
 };
 use crate::life::scenario::WhenSpec;
 use crate::life::scenario::{ArticulationCoreConfig, PhonationMode};
@@ -63,6 +63,7 @@ pub struct Individual {
     pub(crate) release_pending: bool,
     pub(crate) remove_pending: bool,
     pub(crate) phonation_scratch: PhonationScratch,
+    active_render_notes: Vec<TrackedRenderNote>,
     pub(crate) life_accumulator: Option<super::telemetry::LifeAccumulator>,
 }
 
@@ -81,6 +82,12 @@ pub struct NoteSpec {
 #[derive(Debug, Default)]
 pub(crate) struct PhonationScratch {
     events: Vec<NoteOnEvent>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct TrackedRenderNote {
+    note_id: NoteId,
+    last_target_amp: f32,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -167,6 +174,8 @@ impl Dirty {
 
 impl Individual {
     const AMP_EPS: f32 = 1e-6;
+    const PHONATION_AMP_UPDATE_EPS: f32 = 0.01;
+    const PHONATION_UPDATE_SMOOTH_TAU_SEC: f32 = 0.02;
 
     #[allow(clippy::too_many_arguments)]
     pub fn spawn_from_control(
@@ -315,6 +324,7 @@ impl Individual {
             release_pending: false,
             remove_pending: false,
             phonation_scratch: Default::default(),
+            active_render_notes: Vec::new(),
             life_accumulator: None,
         }
     }
@@ -725,6 +735,15 @@ impl Individual {
             .cmds
             .iter()
             .any(|cmd| matches!(cmd, NoteCmd::NoteOn { .. }));
+        if matches!(phonation_mode, PhonationMode::Gated) {
+            for onset in &out.onsets {
+                self.articulation
+                    .apply_phonation_onset(consonance, onset.strength);
+            }
+        }
+        let target_amp = self.compute_target_amp();
+        self.emit_phonation_amp_updates(now, target_amp, &mut out.cmds);
+        self.prune_tracked_render_notes(&out.cmds);
         if self.phonation_scratch.events.is_empty() {
             debug_assert!(
                 !had_note_on,
@@ -741,14 +760,7 @@ impl Individual {
             self.phonation_scratch.events.clear();
             return;
         }
-        if matches!(phonation_mode, PhonationMode::Gated) {
-            for onset in &out.onsets {
-                self.articulation
-                    .apply_phonation_onset(consonance, onset.strength);
-            }
-        }
-        let amp = self.compute_target_amp();
-        if amp <= Self::AMP_EPS {
+        if target_amp <= Self::AMP_EPS {
             debug_assert!(
                 !had_note_on,
                 "NoteOn emitted but amp invalid => no note specs"
@@ -758,23 +770,69 @@ impl Individual {
         }
         let render_modulator = self.articulation.render_modulator_spec(phonation_mode);
         let body = self.body_snapshot();
-        let smoothing_tau_sec = 0.0;
+        let smoothing_tau_sec = Self::PHONATION_UPDATE_SMOOTH_TAU_SEC;
         for event in self.phonation_scratch.events.drain(..) {
             out.notes.push(NoteSpec {
                 note_id: event.note_id,
                 onset: event.onset_tick,
                 hold_ticks: None,
                 freq_hz,
-                amp,
+                amp: target_amp,
                 smoothing_tau_sec,
                 body: body.clone(),
                 render_modulator: render_modulator.clone(),
             });
         }
+        self.track_new_render_notes(&out.notes);
         debug_assert!(
             !had_note_on || !out.notes.is_empty(),
             "NoteOn emitted without note specs"
         );
+    }
+
+    fn emit_phonation_amp_updates(
+        &mut self,
+        now: Tick,
+        target_amp: f32,
+        out_cmds: &mut Vec<NoteCmd>,
+    ) {
+        for tracked in &mut self.active_render_notes {
+            if (target_amp - tracked.last_target_amp).abs() < Self::PHONATION_AMP_UPDATE_EPS {
+                continue;
+            }
+            out_cmds.push(NoteCmd::Update {
+                note_id: tracked.note_id,
+                at_tick: Some(now),
+                update: NoteUpdate {
+                    target_freq_hz: None,
+                    target_amp: Some(target_amp),
+                },
+            });
+            tracked.last_target_amp = target_amp;
+        }
+    }
+
+    fn prune_tracked_render_notes(&mut self, cmds: &[NoteCmd]) {
+        let off_note_ids: Vec<NoteId> = cmds
+            .iter()
+            .filter_map(|cmd| match cmd {
+                NoteCmd::NoteOff { note_id, .. } => Some(*note_id),
+                _ => None,
+            })
+            .collect();
+        if off_note_ids.is_empty() {
+            return;
+        }
+        self.active_render_notes
+            .retain(|tracked| !off_note_ids.contains(&tracked.note_id));
+    }
+
+    fn track_new_render_notes(&mut self, notes: &[NoteSpec]) {
+        self.active_render_notes
+            .extend(notes.iter().map(|note| TrackedRenderNote {
+                note_id: note.note_id,
+                last_target_amp: note.amp,
+            }));
     }
 
     pub(crate) fn compute_target_amp(&self) -> f32 {

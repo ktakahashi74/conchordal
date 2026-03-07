@@ -838,6 +838,9 @@ impl AnyArticulationCore {
                         rate_hz: core.rhythm_freq.max(0.01),
                         phase_0_1: (core.rhythm_phase / TAU).rem_euclid(1.0),
                         retrigger: core.retrigger,
+                        env_open_threshold: core.env_open_threshold,
+                        mag_threshold: core.mag_threshold,
+                        alpha_threshold: core.alpha_threshold,
                     });
                 RenderModulatorSpec::EntrainPulse {
                     attack_step: core.attack_step,
@@ -1329,7 +1332,11 @@ mod tests {
 
     #[test]
     fn render_modulator_spec_entrain_hold_has_autonomous_pulse() {
-        let core = AnyArticulationCore::Entrain(test_core(0.6));
+        let mut inner = test_core(0.6);
+        inner.env_open_threshold = 0.3;
+        inner.mag_threshold = 0.4;
+        inner.alpha_threshold = 0.5;
+        let core = AnyArticulationCore::Entrain(inner);
         let spec = core.render_modulator_spec(PhonationMode::Hold);
         let RenderModulatorSpec::EntrainPulse {
             autonomous_pulse, ..
@@ -1337,7 +1344,10 @@ mod tests {
         else {
             panic!("expected entrain pulse");
         };
-        assert!(autonomous_pulse.is_some());
+        let pulse = autonomous_pulse.expect("expected hold autonomous pulse");
+        assert_eq!(pulse.env_open_threshold, 0.3);
+        assert_eq!(pulse.mag_threshold, 0.4);
+        assert_eq!(pulse.alpha_threshold, 0.5);
     }
 
     #[test]

@@ -55,6 +55,9 @@ pub struct AutonomousPulseSpec {
     pub rate_hz: f32,
     pub phase_0_1: f32,
     pub retrigger: bool,
+    pub env_open_threshold: f32,
+    pub mag_threshold: f32,
+    pub alpha_threshold: f32,
 }
 
 #[derive(Clone, Debug)]
@@ -62,6 +65,9 @@ struct AutonomousPulseRuntime {
     rate_hz: f32,
     phase_0_1: f32,
     retrigger: bool,
+    env_open_threshold: f32,
+    mag_threshold: f32,
+    alpha_threshold: f32,
 }
 
 #[derive(Clone, Debug)]
@@ -116,6 +122,9 @@ impl RenderModulator {
                     rate_hz: pulse.rate_hz.max(0.01),
                     phase_0_1: pulse.phase_0_1.rem_euclid(1.0),
                     retrigger: pulse.retrigger,
+                    env_open_threshold: pulse.env_open_threshold,
+                    mag_threshold: pulse.mag_threshold,
+                    alpha_threshold: pulse.alpha_threshold,
                 }),
             }),
             RenderModulatorSpec::SeqGate { duration_sec } => Self::SeqGate(SeqGateModulator {
@@ -169,7 +178,12 @@ impl EntrainPulseModulator {
         }
         if wrapped > 0 {
             for _ in 0..wrapped {
-                if self.state == ArticulationState::Idle {
+                let gate_ok = self.autonomous_pulse.as_ref().is_some_and(|pulse| {
+                    rhythms.env_open > pulse.env_open_threshold
+                        && rhythms.theta.mag > pulse.mag_threshold
+                        && rhythms.theta.alpha > pulse.alpha_threshold
+                });
+                if self.state == ArticulationState::Idle && gate_ok {
                     self.begin_attack();
                 }
             }
@@ -261,10 +275,17 @@ mod tests {
                 rate_hz: 5.0,
                 phase_0_1: 0.99,
                 retrigger: true,
+                env_open_threshold: 0.1,
+                mag_threshold: 0.1,
+                alpha_threshold: 0.1,
             }),
         };
         let mut modulator = RenderModulator::from_spec(spec);
-        let signal = modulator.process(&default_rhythms(), 0.01);
+        let mut rhythms = default_rhythms();
+        rhythms.env_open = 1.0;
+        rhythms.theta.mag = 1.0;
+        rhythms.theta.alpha = 1.0;
+        let signal = modulator.process(&rhythms, 0.01);
         assert!(signal.is_active);
         assert!(signal.amplitude > 0.0);
     }
@@ -309,5 +330,110 @@ mod tests {
         let signal = modulator.process(&default_rhythms(), 0.01);
         assert!(signal.is_active);
         assert!(signal.amplitude > 0.0);
+    }
+
+    #[test]
+    fn entrain_pulse_hold_gate_blocks_retrigger_when_mag_below_threshold() {
+        let spec = RenderModulatorSpec::EntrainPulse {
+            attack_step: 1000.0,
+            decay_rate: 2000.0,
+            initial_state: RenderModulatorStateKind::Idle,
+            initial_env_level: 0.0,
+            alpha_gain: 0.5,
+            beta_gain: 0.25,
+            autonomous_pulse: Some(AutonomousPulseSpec {
+                rate_hz: 2.0,
+                phase_0_1: 0.0,
+                retrigger: true,
+                env_open_threshold: 0.1,
+                mag_threshold: 0.5,
+                alpha_threshold: 0.1,
+            }),
+        };
+        let mut modulator = RenderModulator::from_spec(spec);
+        let mut rhythms = default_rhythms();
+        rhythms.env_open = 1.0;
+        rhythms.theta.mag = 0.1;
+        rhythms.theta.alpha = 1.0;
+        let mut rises = 0;
+        let mut prev_active = false;
+        for _ in 0..2_000 {
+            let signal = modulator.process(&rhythms, 0.001);
+            if signal.is_active && !prev_active {
+                rises += 1;
+            }
+            prev_active = signal.is_active;
+        }
+        assert_eq!(rises, 0);
+    }
+
+    #[test]
+    fn entrain_pulse_hold_gate_blocks_retrigger_when_alpha_below_threshold() {
+        let spec = RenderModulatorSpec::EntrainPulse {
+            attack_step: 1000.0,
+            decay_rate: 2000.0,
+            initial_state: RenderModulatorStateKind::Idle,
+            initial_env_level: 0.0,
+            alpha_gain: 0.5,
+            beta_gain: 0.25,
+            autonomous_pulse: Some(AutonomousPulseSpec {
+                rate_hz: 2.0,
+                phase_0_1: 0.0,
+                retrigger: true,
+                env_open_threshold: 0.1,
+                mag_threshold: 0.1,
+                alpha_threshold: 0.5,
+            }),
+        };
+        let mut modulator = RenderModulator::from_spec(spec);
+        let mut rhythms = default_rhythms();
+        rhythms.env_open = 1.0;
+        rhythms.theta.mag = 1.0;
+        rhythms.theta.alpha = 0.1;
+        let mut rises = 0;
+        let mut prev_active = false;
+        for _ in 0..2_000 {
+            let signal = modulator.process(&rhythms, 0.001);
+            if signal.is_active && !prev_active {
+                rises += 1;
+            }
+            prev_active = signal.is_active;
+        }
+        assert_eq!(rises, 0);
+    }
+
+    #[test]
+    fn entrain_pulse_hold_gate_allows_retrigger_when_thresholds_satisfied() {
+        let spec = RenderModulatorSpec::EntrainPulse {
+            attack_step: 1000.0,
+            decay_rate: 2000.0,
+            initial_state: RenderModulatorStateKind::Idle,
+            initial_env_level: 0.0,
+            alpha_gain: 0.5,
+            beta_gain: 0.25,
+            autonomous_pulse: Some(AutonomousPulseSpec {
+                rate_hz: 2.0,
+                phase_0_1: 0.0,
+                retrigger: true,
+                env_open_threshold: 0.1,
+                mag_threshold: 0.1,
+                alpha_threshold: 0.1,
+            }),
+        };
+        let mut modulator = RenderModulator::from_spec(spec);
+        let mut rhythms = default_rhythms();
+        rhythms.env_open = 1.0;
+        rhythms.theta.mag = 1.0;
+        rhythms.theta.alpha = 1.0;
+        let mut rises = 0;
+        let mut prev_active = false;
+        for _ in 0..2_000 {
+            let signal = modulator.process(&rhythms, 0.001);
+            if signal.is_active && !prev_active {
+                rises += 1;
+            }
+            prev_active = signal.is_active;
+        }
+        assert!(rises >= 2, "expected repeated gated rises, got {rises}");
     }
 }

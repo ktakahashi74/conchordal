@@ -640,8 +640,7 @@ mod tests {
             fs: 48_000.0,
             hop: 64,
         };
-        let mut voice =
-            Voice::from_parts(tb, 0, 8, 440.0, 0.5, None, None).expect("voice");
+        let mut voice = Voice::from_parts(tb, 0, 8, 440.0, 0.5, None, None).expect("voice");
         voice.set_smoothing_tau_sec(0.0);
         voice.note_off(4);
         voice.schedule_update(

@@ -54,7 +54,10 @@ pub struct ArticulationWrapper {
 }
 
 impl ArticulationWrapper {
-    pub fn new(core: AnyArticulationCore, gate: f32) -> Self {
+    pub fn new(mut core: AnyArticulationCore, gate: f32, autonomous_attack: bool) -> Self {
+        if let AnyArticulationCore::Entrain(ref mut k) = core {
+            k.autonomous_attack = autonomous_attack;
+        }
         Self {
             core,
             planned_gate: PlannedGate { gate },
@@ -218,6 +221,7 @@ pub struct KuramotoCore {
     pub mag_threshold: f32,
     pub alpha_threshold: f32,
     pub beta_threshold: f32,
+    pub autonomous_attack: bool,
     metrics: KuramotoMetrics,
     telemetry: KuramotoTelemetry,
 }
@@ -466,6 +470,9 @@ impl KuramotoCore {
         let agent_phase = wrap_0_tau(self.rhythm_phase);
         let phase_err_at_attack = angle_diff_pm_pi(target_phase, agent_phase);
 
+        if !self.autonomous_attack {
+            return None;
+        }
         let mut attack = false;
         if self.state == ArticulationState::Idle && self.retrigger {
             if bootstrap_active {
@@ -791,6 +798,7 @@ impl AnyArticulationCore {
                     mag_threshold: 0.04,
                     alpha_threshold: 0.2,
                     beta_threshold: 0.9,
+                    autonomous_attack: true,
                     metrics: KuramotoMetrics::default(),
                     telemetry: KuramotoTelemetry::default(),
                 })
@@ -944,6 +952,7 @@ mod tests {
             mag_threshold: 0.0,
             alpha_threshold: 0.0,
             beta_threshold: 1.0,
+            autonomous_attack: true,
             metrics: KuramotoMetrics::default(),
             telemetry: KuramotoTelemetry::default(),
         }
@@ -1287,7 +1296,7 @@ mod tests {
     #[test]
     fn strip_metabolism_for_render_keeps_energy_constant() {
         let mut wrapper =
-            ArticulationWrapper::new(AnyArticulationCore::Entrain(test_core(0.6)), 0.8);
+            ArticulationWrapper::new(AnyArticulationCore::Entrain(test_core(0.6)), 0.8, true);
         wrapper.strip_metabolism_for_render();
 
         let energy_before = match &wrapper.core {

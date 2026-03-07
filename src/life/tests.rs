@@ -163,7 +163,7 @@ fn agent_lifecycle_decay_death() {
         };
         let mut rng = rand::rngs::StdRng::seed_from_u64(7);
         let core = AnyArticulationCore::from_config(&core_cfg, fs, 1, &mut rng);
-        agent.articulation = ArticulationWrapper::new(core, 1.0);
+        agent.articulation = ArticulationWrapper::new(core, 1.0, false);
     }
 
     let dt = 0.01;

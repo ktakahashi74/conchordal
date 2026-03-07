@@ -290,6 +290,7 @@ mod tests {
                 env_level: 0.0,
             }),
             0.0,
+            false,
         );
         let note_id = 1;
         let batch = PhonationBatch {
@@ -350,6 +351,7 @@ mod tests {
                 env_level: 0.0,
             }),
             0.0,
+            false,
         );
         let note_id = 1;
         let batch = PhonationBatch {

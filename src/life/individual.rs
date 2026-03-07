@@ -12,8 +12,8 @@ use crate::life::lifecycle::LifecycleConfig;
 use crate::life::phonation_engine::{
     CoreState, CoreTickCtx, NoteCmd, NoteId, NoteOnEvent, OnsetEvent, PhonationEngine,
 };
-use crate::life::scenario::ArticulationCoreConfig;
 use crate::life::scenario::WhenSpec;
+use crate::life::scenario::{ArticulationCoreConfig, PhonationMode};
 use crate::life::social_density::SocialDensityTrace;
 use crate::life::sound::BodySnapshot;
 use rand::SeedableRng;
@@ -300,7 +300,11 @@ impl Individual {
             fixed_phonation_when: std::mem::discriminant(&effective_control.phonation.spec.when),
             base_control: control,
             effective_control,
-            articulation: ArticulationWrapper::new(core, breath_gain),
+            articulation: ArticulationWrapper::new(
+                core,
+                breath_gain,
+                matches!(phonation_engine.mode, PhonationMode::Hold),
+            ),
             pitch_ctl,
             phonation_engine,
             social_coupling,

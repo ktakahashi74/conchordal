@@ -1413,6 +1413,7 @@ mod tests {
                     sway_rate: 1.0,
                 }),
                 1.0,
+                false,
             ),
         }
     }

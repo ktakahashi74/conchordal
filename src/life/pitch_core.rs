@@ -2,8 +2,8 @@ use crate::core::erb::hz_to_erb;
 use crate::core::harmonic_ratios::{HARMONIC_RATIOS, fold_to_octave_near, ratio_to_f32};
 use crate::core::landscape::Landscape;
 use crate::core::roughness_kernel::crowding_runtime_delta_erb;
+use crate::life::adaptation::{AdaptationContext, FeaturesNow};
 use crate::life::control::MoveCostTimeScale;
-use crate::life::perceptual::{FeaturesNow, PerceptualContext};
 use crate::life::scenario::PitchCoreConfig;
 use rand::Rng;
 use std::sync::OnceLock;
@@ -38,7 +38,7 @@ pub trait PitchCore {
         current_freq_hz: f32,
         integration_window: f32,
         landscape: &Landscape,
-        perceptual: &PerceptualContext,
+        perceptual: &AdaptationContext,
         _features: &FeaturesNow,
         neighbor_pitch_log2: &[f32],
         rng: &mut R,
@@ -52,7 +52,7 @@ pub trait PitchCore {
         current_freq_hz: f32,
         integration_window: f32,
         landscape: &Landscape,
-        perceptual: &PerceptualContext,
+        perceptual: &AdaptationContext,
         features: &FeaturesNow,
         neighbor_pitch_log2: &[f32],
         neighbor_salience: &[f32],
@@ -415,7 +415,7 @@ impl PitchCore for PitchHillClimbPitchCore {
         _current_freq_hz: f32,
         integration_window: f32,
         landscape: &Landscape,
-        perceptual: &PerceptualContext,
+        perceptual: &AdaptationContext,
         _features: &FeaturesNow,
         neighbor_pitch_log2: &[f32],
         rng: &mut R,
@@ -441,7 +441,7 @@ impl PitchCore for PitchHillClimbPitchCore {
         _current_freq_hz: f32,
         integration_window: f32,
         landscape: &Landscape,
-        perceptual: &PerceptualContext,
+        perceptual: &AdaptationContext,
         _features: &FeaturesNow,
         neighbor_pitch_log2: &[f32],
         neighbor_salience: &[f32],
@@ -618,7 +618,7 @@ impl PitchCore for PitchPeakSamplerCore {
         _current_freq_hz: f32,
         integration_window: f32,
         landscape: &Landscape,
-        perceptual: &PerceptualContext,
+        perceptual: &AdaptationContext,
         _features: &FeaturesNow,
         neighbor_pitch_log2: &[f32],
         rng: &mut R,
@@ -644,7 +644,7 @@ impl PitchCore for PitchPeakSamplerCore {
         _current_freq_hz: f32,
         integration_window: f32,
         landscape: &Landscape,
-        perceptual: &PerceptualContext,
+        perceptual: &AdaptationContext,
         _features: &FeaturesNow,
         neighbor_pitch_log2: &[f32],
         neighbor_salience: &[f32],
@@ -901,7 +901,7 @@ fn adjusted_pitch_score(
     move_cost_coeff: f32,
     move_cost_exp: u8,
     landscape: &Landscape,
-    perceptual: &PerceptualContext,
+    perceptual: &AdaptationContext,
     leave_self_out: bool,
     crowding_strength: f32,
     crowding_sigma_cents: f32,
@@ -941,7 +941,7 @@ fn adjusted_pitch_score_with_loo_harmonics(
     move_cost_coeff: f32,
     move_cost_exp: u8,
     landscape: &Landscape,
-    perceptual: &PerceptualContext,
+    perceptual: &AdaptationContext,
     leave_self_out: bool,
     leave_self_out_harmonics: u8,
     crowding_strength: f32,
@@ -1321,7 +1321,7 @@ impl PitchCore for AnyPitchCore {
         current_freq_hz: f32,
         integration_window: f32,
         landscape: &Landscape,
-        perceptual: &PerceptualContext,
+        perceptual: &AdaptationContext,
         features: &FeaturesNow,
         neighbor_pitch_log2: &[f32],
         rng: &mut R,
@@ -1359,7 +1359,7 @@ impl PitchCore for AnyPitchCore {
         current_freq_hz: f32,
         integration_window: f32,
         landscape: &Landscape,
-        perceptual: &PerceptualContext,
+        perceptual: &AdaptationContext,
         features: &FeaturesNow,
         neighbor_pitch_log2: &[f32],
         neighbor_salience: &[f32],
@@ -1741,7 +1741,7 @@ impl AnyPitchCore {
 mod tests {
     use super::*;
     use crate::core::log2space::Log2Space;
-    use crate::life::perceptual::PerceptualConfig;
+    use crate::life::adaptation::AdaptationConfig;
     use rand::{SeedableRng, rngs::SmallRng};
 
     fn test_landscape(peaks_hz: &[(f32, f32)]) -> Landscape {
@@ -1761,8 +1761,8 @@ mod tests {
         landscape
     }
 
-    fn test_perceptual(n_bins: usize) -> PerceptualContext {
-        PerceptualContext::from_config(&PerceptualConfig::default(), n_bins)
+    fn test_adaptation(n_bins: usize) -> AdaptationContext {
+        AdaptationContext::from_config(&AdaptationConfig::default(), n_bins)
     }
 
     #[test]
@@ -1771,7 +1771,7 @@ mod tests {
         let idx = landscape.space.n_bins() / 2;
         let pitch_log2 = landscape.space.centers_log2[idx];
         landscape.consonance_field_score[idx] = 1.75;
-        let perceptual = test_perceptual(landscape.space.n_bins());
+        let perceptual = test_adaptation(landscape.space.n_bins());
 
         let weighted = adjusted_pitch_score(
             pitch_log2,
@@ -1820,7 +1820,7 @@ mod tests {
         let idx = landscape.space.n_bins() / 2;
         let pitch_log2 = landscape.space.centers_log2[idx];
         landscape.consonance_field_score[idx] = 1.0;
-        let perceptual = test_perceptual(landscape.space.n_bins());
+        let perceptual = test_adaptation(landscape.space.n_bins());
 
         let without_crowding = adjusted_pitch_score(
             pitch_log2,
@@ -1869,7 +1869,7 @@ mod tests {
     fn crowding_pairwise_split_biases_agents_in_opposite_directions() {
         let mut landscape = Landscape::new(Log2Space::new(110.0, 880.0, 128));
         landscape.consonance_field_score.fill(1.0);
-        let perceptual = test_perceptual(landscape.space.n_bins());
+        let perceptual = test_adaptation(landscape.space.n_bins());
         let center = landscape.space.centers_log2[landscape.space.n_bins() / 2];
         let left = center - cents_to_log2(6.0);
         let right = center + cents_to_log2(6.0);
@@ -1963,7 +1963,7 @@ mod tests {
         let pitch_log2 = landscape.space.centers_log2[idx];
         let neighbor_log2 = pitch_log2 + cents_to_log2(40.0);
         landscape.consonance_field_score[idx] = 1.0;
-        let perceptual = test_perceptual(landscape.space.n_bins());
+        let perceptual = test_adaptation(landscape.space.n_bins());
 
         landscape.roughness_suppress_sigma_erb = 0.04;
         landscape.roughness_kernel_params.suppress_sigma_erb = 0.04;
@@ -2063,7 +2063,7 @@ mod tests {
         let idx = landscape.space.n_bins() / 2;
         let pitch_log2 = landscape.space.centers_log2[idx];
         landscape.consonance_field_score[idx] = 1.23;
-        let perceptual = test_perceptual(landscape.space.n_bins());
+        let perceptual = test_adaptation(landscape.space.n_bins());
 
         let score = adjusted_pitch_score(
             pitch_log2,
@@ -2094,7 +2094,7 @@ mod tests {
         let nearby = landscape.space.centers_log2[idx + 1];
         landscape.consonance_field_score[idx] = 1.0;
         landscape.consonance_field_score[idx + 1] = 0.7;
-        let perceptual = test_perceptual(landscape.space.n_bins());
+        let perceptual = test_adaptation(landscape.space.n_bins());
 
         let current_no_loo = adjusted_pitch_score(
             current,
@@ -2176,7 +2176,7 @@ mod tests {
     #[test]
     fn crowding_strength_zero_keeps_behavior_with_neighbors() {
         let landscape = test_landscape(&[(330.0, 1.0)]);
-        let perceptual = test_perceptual(landscape.space.n_bins());
+        let perceptual = test_adaptation(landscape.space.n_bins());
         let features = FeaturesNow::from_subjective_intensity(&landscape.subjective_intensity);
         let mut core = PitchHillClimbPitchCore::new(120.0, 330.0f32.log2(), 0.0, 0.0, 0.0, 0.0);
         core.set_crowding(0.0, 20.0, false);
@@ -2213,7 +2213,7 @@ mod tests {
     #[test]
     fn peak_sampler_crowding_zero_ignores_neighbors() {
         let landscape = test_landscape(&[(330.0, 1.0)]);
-        let perceptual = test_perceptual(landscape.space.n_bins());
+        let perceptual = test_adaptation(landscape.space.n_bins());
         let features = FeaturesNow::from_subjective_intensity(&landscape.subjective_intensity);
         let mut core = PitchPeakSamplerCore::new(
             120.0,
@@ -2261,7 +2261,7 @@ mod tests {
     #[test]
     fn peak_sampler_crowding_penalizes_close_neighbor_selection() {
         let landscape = test_landscape(&[(330.0, 1.0)]);
-        let perceptual = test_perceptual(landscape.space.n_bins());
+        let perceptual = test_adaptation(landscape.space.n_bins());
         let features = FeaturesNow::from_subjective_intensity(&landscape.subjective_intensity);
         let mut no_crowding = PitchPeakSamplerCore::new(
             24.0,
@@ -2316,7 +2316,7 @@ mod tests {
     #[test]
     fn hillclimb_anneal_temp_zero_matches_legacy_behavior() {
         let landscape = test_landscape(&[(330.0, 1.0)]);
-        let perceptual = test_perceptual(landscape.space.n_bins());
+        let perceptual = test_adaptation(landscape.space.n_bins());
         let features = FeaturesNow::from_subjective_intensity(&landscape.subjective_intensity);
         let mut legacy = PitchHillClimbPitchCore::new(120.0, 330.0f32.log2(), 0.0, 0.0, 0.0, 0.0);
         let mut anneal_zero =
@@ -2364,7 +2364,7 @@ mod tests {
             landscape.consonance_field_score[idx] = score;
             landscape.consonance_field_level[idx] = score.clamp(0.0, 1.0);
         }
-        let perceptual = test_perceptual(landscape.space.n_bins());
+        let perceptual = test_adaptation(landscape.space.n_bins());
         let features = FeaturesNow::from_subjective_intensity(&landscape.subjective_intensity);
         let trials = 256u64;
         let mut moved_with_anneal = 0usize;
@@ -2429,7 +2429,7 @@ mod tests {
             landscape.consonance_field_score[idx] = score;
             landscape.consonance_field_level[idx] = score.clamp(0.0, 1.0);
         }
-        let perceptual = test_perceptual(landscape.space.n_bins());
+        let perceptual = test_adaptation(landscape.space.n_bins());
         let features = FeaturesNow::from_subjective_intensity(&landscape.subjective_intensity);
 
         let mut without_crowding =
@@ -2475,7 +2475,7 @@ mod tests {
         let current_hz = 220.0;
         let distant_hz = 330.0;
         let landscape = test_landscape(&[(current_hz, 0.4), (distant_hz, 1.0)]);
-        let perceptual = test_perceptual(landscape.space.n_bins());
+        let perceptual = test_adaptation(landscape.space.n_bins());
         let features = FeaturesNow::from_subjective_intensity(&landscape.subjective_intensity);
         let current_log2 = current_hz.log2();
 
@@ -2521,7 +2521,7 @@ mod tests {
     fn peak_sampler_converges_to_single_peak() {
         let peak_hz = 330.0;
         let landscape = test_landscape(&[(peak_hz, 1.0)]);
-        let perceptual = test_perceptual(landscape.space.n_bins());
+        let perceptual = test_adaptation(landscape.space.n_bins());
         let features = FeaturesNow::from_subjective_intensity(&landscape.subjective_intensity);
         let mut rng = SmallRng::seed_from_u64(17);
 
@@ -2568,7 +2568,7 @@ mod tests {
         left_peak_hz: f32,
         right_peak_hz: f32,
     ) -> f32 {
-        let perceptual = test_perceptual(landscape.space.n_bins());
+        let perceptual = test_adaptation(landscape.space.n_bins());
         let features = FeaturesNow::from_subjective_intensity(&landscape.subjective_intensity);
         let mut rng = SmallRng::seed_from_u64(seed);
         let mut right_hits = 0u32;
@@ -2668,7 +2668,7 @@ mod tests {
     fn non_tet_peak_is_reached_by_hillclimb_and_peaksampler() {
         let peak_hz = 347.0;
         let landscape = test_landscape(&[(peak_hz, 1.0)]);
-        let perceptual = test_perceptual(landscape.space.n_bins());
+        let perceptual = test_adaptation(landscape.space.n_bins());
         let features = FeaturesNow::from_subjective_intensity(&landscape.subjective_intensity);
 
         let mut hill_rng = SmallRng::seed_from_u64(123);
@@ -2762,7 +2762,7 @@ mod tests {
     #[test]
     fn peak_sampler_scorer_matches_adjusted_pitch_score() {
         let landscape = test_landscape(&[(330.0, 1.0), (440.0, 0.6)]);
-        let perceptual = test_perceptual(landscape.space.n_bins());
+        let perceptual = test_adaptation(landscape.space.n_bins());
         let current = 330.0f32.log2();
         let neighbor = [440.0f32.log2()];
         let salience = [1.0f32];
@@ -2816,7 +2816,7 @@ mod tests {
     #[test]
     fn peak_sampler_proposal_unchanged_after_refactor() {
         let landscape = test_landscape(&[(330.0, 1.0)]);
-        let perceptual = test_perceptual(landscape.space.n_bins());
+        let perceptual = test_adaptation(landscape.space.n_bins());
         let features = FeaturesNow::from_subjective_intensity(&landscape.subjective_intensity);
         let mut core_a = PitchPeakSamplerCore::new(
             120.0,
@@ -2866,7 +2866,7 @@ mod tests {
     #[test]
     fn propose_with_scorer_default_matches_trait_method() {
         let landscape = test_landscape(&[(330.0, 1.0), (440.0, 0.6)]);
-        let perceptual = test_perceptual(landscape.space.n_bins());
+        let perceptual = test_adaptation(landscape.space.n_bins());
         let features = FeaturesNow::from_subjective_intensity(&landscape.subjective_intensity);
         let core = PitchHillClimbPitchCore::new(120.0, 330.0f32.log2(), 0.0, 0.0, 0.0, 0.0);
         let current = 330.0f32.log2();
@@ -2924,7 +2924,7 @@ mod tests {
     #[test]
     fn propose_with_scorer_negated_prefers_different_peak() {
         let landscape = test_landscape(&[(330.0, 1.0), (550.0, 0.3)]);
-        let _perceptual = test_perceptual(landscape.space.n_bins());
+        let _perceptual = test_adaptation(landscape.space.n_bins());
         let mut core = PitchHillClimbPitchCore::new(120.0, 440.0f32.log2(), 0.0, 0.0, 0.0, 0.0);
         core.set_global_peaks(3, 0.0);
         let current = 440.0f32.log2();

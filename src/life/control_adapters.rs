@@ -1,5 +1,5 @@
-use crate::life::control::{PerceptualControl, PitchControl, PitchCoreKind};
-use crate::life::perceptual::PerceptualConfig;
+use crate::life::adaptation::AdaptationConfig;
+use crate::life::control::{AdaptationControl, PitchControl, PitchCoreKind};
 use crate::life::scenario::{
     DurationConfig, DurationSpec, OnsetConfig, PhonationClockConfig, PhonationConfig,
     PhonationMode, PhonationSpec, PitchCoreConfig, SocialConfig, SubThetaModConfig, WhenSpec,
@@ -43,7 +43,7 @@ pub(crate) fn pitch_core_config_from_control(pitch: &PitchControl) -> PitchCoreC
     }
 }
 
-pub(crate) fn perceptual_config_from_control(control: &PerceptualControl) -> PerceptualConfig {
+pub(crate) fn adaptation_config_from_control(control: &AdaptationControl) -> AdaptationConfig {
     let adaptation = control.adaptation.clamp(0.0, 1.0);
     let tau_fast = 0.1 + (1.0 - adaptation) * 0.8;
     let tau_slow = 5.0 + (1.0 - adaptation) * 30.0;
@@ -56,7 +56,7 @@ pub(crate) fn perceptual_config_from_control(control: &PerceptualControl) -> Per
     } else {
         (0.0, 0.0, 0.0)
     };
-    PerceptualConfig {
+    AdaptationConfig {
         tau_fast: Some(tau_fast),
         tau_slow: Some(tau_slow),
         w_boredom: Some(w_boredom),

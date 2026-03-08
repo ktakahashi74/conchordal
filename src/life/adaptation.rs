@@ -1,5 +1,5 @@
 #[derive(Debug, Clone, Default)]
-pub struct PerceptualConfig {
+pub struct AdaptationConfig {
     pub tau_fast: Option<f32>,
     pub tau_slow: Option<f32>,
     pub w_boredom: Option<f32>,
@@ -12,34 +12,31 @@ pub struct PerceptualConfig {
 
 #[derive(Debug, Clone)]
 pub struct FeaturesNow {
-    pub distribution: Vec<f32>,
+    pub density: Vec<f32>,
     pub mass: f32,
 }
 
 impl FeaturesNow {
     pub fn from_subjective_intensity(raw: &[f32]) -> Self {
-        let mut distribution = Vec::with_capacity(raw.len());
+        let mut density = Vec::with_capacity(raw.len());
         let mut sum = 0.0f32;
         for &v in raw {
             let c = v.max(0.0).ln_1p();
             sum += c;
-            distribution.push(c);
+            density.push(c);
         }
         if sum > 0.0 {
             let inv = 1.0 / sum;
-            for v in &mut distribution {
+            for v in &mut density {
                 *v *= inv;
             }
         }
-        Self {
-            distribution,
-            mass: sum,
-        }
+        Self { density, mass: sum }
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct PerceptualContext {
+pub struct AdaptationContext {
     enabled: bool,
     pub tau_fast: f32,
     pub tau_slow: f32,
@@ -53,8 +50,8 @@ pub struct PerceptualContext {
     h_slow: Vec<f32>,
 }
 
-impl PerceptualContext {
-    pub fn from_config(config: &PerceptualConfig, n_bins: usize) -> Self {
+impl AdaptationContext {
+    pub fn from_config(config: &AdaptationConfig, n_bins: usize) -> Self {
         let tau_fast = config.tau_fast.unwrap_or(0.5).max(1e-3);
         let tau_slow = config.tau_slow.unwrap_or(20.0).max(tau_fast + 1e-3);
         let w_boredom = config.w_boredom.unwrap_or(1.0).max(0.0);
@@ -117,7 +114,7 @@ impl PerceptualContext {
         if self.h_fast.is_empty() || self.h_slow.is_empty() {
             return;
         }
-        debug_assert_eq!(features.distribution.len(), self.h_fast.len());
+        debug_assert_eq!(features.density.len(), self.h_fast.len());
         let dt = dt.max(0.0);
         let a_f = (-dt / self.tau_fast.max(1e-3)).exp();
         let a_s = (-dt / self.tau_slow.max(1e-3)).exp();
@@ -138,8 +135,8 @@ impl PerceptualContext {
             .zip(self.h_slow.iter_mut())
             .enumerate()
         {
-            let x_env = if env_present && i < features.distribution.len() {
-                features.distribution[i]
+            let x_env = if env_present && i < features.density.len() {
+                features.density[i]
             } else {
                 0.0
             };
@@ -214,7 +211,7 @@ fn candidate_weight(offset: isize, radius: usize) -> f32 {
 
 #[cfg(test)]
 mod tests {
-    use super::{FeaturesNow, PerceptualConfig, PerceptualContext, for_each_candidate_weight};
+    use super::{AdaptationConfig, AdaptationContext, FeaturesNow, for_each_candidate_weight};
 
     #[test]
     fn candidate_weights_normalize_and_stay_in_range() {
@@ -257,16 +254,16 @@ mod tests {
 
     #[test]
     fn disabled_context_forces_zero_score_adjustment() {
-        let mut cfg = PerceptualConfig::default();
+        let mut cfg = AdaptationConfig::default();
         cfg.w_boredom = Some(1.0);
         cfg.w_familiarity = Some(0.0);
         cfg.rho_self = Some(1.0);
-        let mut ctx = PerceptualContext::from_config(&cfg, 8);
+        let mut ctx = AdaptationContext::from_config(&cfg, 8);
 
         let mut features = vec![0.0f32; 8];
         features[3] = 1.0;
         let now = FeaturesNow {
-            distribution: features,
+            density: features,
             mass: 1.0,
         };
         for _ in 0..8 {

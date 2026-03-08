@@ -377,13 +377,13 @@ fn glide_mode_applies_pitch_without_gate_fade_delay() {
     );
 }
 
-// ──── Pitch: proposal / perceptual / inertia ────
+// ──── Pitch: proposal / adaptation / inertia ────
 
 #[test]
-fn perceptual_disabled_still_runs_pitch_proposal() {
+fn adaptation_disabled_still_runs_pitch_proposal() {
     let mut control = AgentControl::default();
     control.pitch.freq = 220.0;
-    control.perceptual.enabled = false;
+    control.adaptation.enabled = false;
     let cfg = IndividualConfig {
         control,
         articulation: ArticulationCoreConfig::default(),
@@ -414,7 +414,7 @@ fn perceptual_disabled_still_runs_pitch_proposal() {
 
     assert!(
         proposal_path_ran,
-        "expected pitch proposal path to run even when perceptual is disabled"
+        "expected pitch proposal path to run even when adaptation is disabled"
     );
 }
 

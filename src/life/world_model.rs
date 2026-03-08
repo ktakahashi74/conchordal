@@ -67,9 +67,9 @@ impl TerrainPredictor {
         space: &Log2Space,
     ) -> Option<Arc<[f32]>> {
         let (last_tick, last_scan) = self.last_obs.as_ref()?;
-        space.assert_scan_len_named(last_scan, "pred_c_field_level_scan");
+        space.assert_scan_len_named(last_scan, "perc_c_field_level_scan_last");
         if let Some((prev_tick, prev_scan)) = self.prev_obs.as_ref() {
-            space.assert_scan_len_named(prev_scan, "pred_c_field_level_scan_prev");
+            space.assert_scan_len_named(prev_scan, "perc_c_field_level_scan_prev");
             if prev_scan.len() != last_scan.len() {
                 return Some(Arc::clone(last_scan));
             }

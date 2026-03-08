@@ -18,7 +18,7 @@ pub struct AgentControl {
     pub body: BodyControl,
     pub pitch: PitchControl,
     pub phonation: PhonationControl,
-    pub perceptual: PerceptualControl,
+    pub adaptation: AdaptationControl,
 }
 
 impl AgentControl {
@@ -356,14 +356,14 @@ pub struct PhonationControl {
 }
 
 #[derive(Debug, Clone)]
-pub struct PerceptualControl {
+pub struct AdaptationControl {
     pub enabled: bool,
     pub adaptation: f32,
     pub novelty_bias: f32,
     pub self_focus: f32,
 }
 
-impl Default for PerceptualControl {
+impl Default for AdaptationControl {
     fn default() -> Self {
         Self {
             enabled: true,

@@ -1,14 +1,14 @@
 use super::pitch_core::{AnyPitchCore, PitchCore};
 use crate::core::landscape::Landscape;
 use crate::core::modulation::NeuralRhythms;
+use crate::life::adaptation::{AdaptationContext, FeaturesNow};
 use crate::life::control::{PitchControl, PitchMode};
-use crate::life::perceptual::{FeaturesNow, PerceptualContext};
 use rand::rngs::SmallRng;
 
 #[derive(Debug)]
 pub struct PitchController {
     core: AnyPitchCore,
-    perceptual: PerceptualContext,
+    adaptation: AdaptationContext,
     target_pitch_log2: f32,
     integration_window: f32,
     accumulated_time: f32,
@@ -16,7 +16,7 @@ pub struct PitchController {
     theta_phase_initialized: bool,
     last_target_salience: f32,
     rng: SmallRng,
-    perceptual_enabled: bool,
+    adaptation_enabled: bool,
 }
 
 impl PitchController {
@@ -26,14 +26,14 @@ impl PitchController {
 
     pub fn new(
         core: AnyPitchCore,
-        perceptual: PerceptualContext,
+        adaptation: AdaptationContext,
         target_pitch_log2: f32,
         integration_window: f32,
         rng: SmallRng,
     ) -> Self {
         Self {
             core,
-            perceptual,
+            adaptation,
             target_pitch_log2,
             integration_window,
             accumulated_time: 0.0,
@@ -41,7 +41,7 @@ impl PitchController {
             theta_phase_initialized: false,
             last_target_salience: 0.0,
             rng,
-            perceptual_enabled: true,
+            adaptation_enabled: true,
         }
     }
 
@@ -61,13 +61,13 @@ impl PitchController {
         &mut self.core
     }
 
-    pub fn perceptual_mut(&mut self) -> &mut PerceptualContext {
-        &mut self.perceptual
+    pub fn adaptation_mut(&mut self) -> &mut AdaptationContext {
+        &mut self.adaptation
     }
 
-    pub fn set_perceptual_enabled(&mut self, enabled: bool) {
-        self.perceptual_enabled = enabled;
-        self.perceptual.set_enabled(enabled);
+    pub fn set_adaptation_enabled(&mut self, enabled: bool) {
+        self.adaptation_enabled = enabled;
+        self.adaptation.set_enabled(enabled);
     }
 
     pub fn force_set_target_pitch_log2(&mut self, log_freq: f32) {
@@ -142,15 +142,15 @@ impl PitchController {
                 0.0
             };
             let features = FeaturesNow::from_subjective_intensity(&landscape.subjective_intensity);
-            debug_assert_eq!(features.distribution.len(), landscape.space.n_bins());
-            self.perceptual.ensure_len(features.distribution.len());
+            debug_assert_eq!(features.density.len(), landscape.space.n_bins());
+            self.adaptation.ensure_len(features.density.len());
             let proposal = self.core.propose_target_with_crowding_salience(
                 current_pitch_log2,
                 target_pitch_log2,
                 current_freq,
                 self.integration_window,
                 landscape,
-                &self.perceptual,
+                &self.adaptation,
                 &features,
                 neighbor_pitch_log2,
                 neighbor_salience,
@@ -158,10 +158,10 @@ impl PitchController {
             );
             target_pitch_log2 = proposal.target_pitch_log2;
             self.last_target_salience = proposal.salience;
-            if self.perceptual_enabled
+            if self.adaptation_enabled
                 && let Some(idx) = landscape.space.index_of_log2(target_pitch_log2)
             {
-                self.perceptual.update(idx, &features, elapsed);
+                self.adaptation.update(idx, &features, elapsed);
             }
         }
 

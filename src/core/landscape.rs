@@ -72,7 +72,7 @@ pub struct Landscape {
     pub roughness: Vec<f32>,
     /// Raw shape for perc_potential_R normalization.
     pub roughness_shape_raw: Vec<f32>,
-    /// Normalized perc_potential_R [0, 1].
+    /// Normalized perc_state_R in [0, 1].
     pub roughness01: Vec<f32>,
     /// perc_potential_H over log2 frequency.
     pub harmonicity: Vec<f32>,
@@ -80,13 +80,13 @@ pub struct Landscape {
     pub harmonicity_path_a: Vec<f32>,
     /// Overtone/Ceiling-binding path (Path B) before blend.
     pub harmonicity_path_b: Vec<f32>,
-    /// Normalized perc_potential_H [0, 1].
+    /// Normalized perc_state_H in [0, 1].
     pub harmonicity01: Vec<f32>,
     /// Layer 1: kernel output (unbounded).
     pub consonance_field_score: Vec<f32>,
     /// Layer 2: normalized level in [0, 1].
     pub consonance_field_level: Vec<f32>,
-    /// Density axis: raw spawn weight before occupancy/mask.
+    /// Density axis: spawn mass before occupancy/mask.
     /// Computed as max(0, H01 * (1 - rho * R01)) via ConsonanceKernel::density_with_rho.
     pub consonance_density_mass: Vec<f32>,
     /// Density axis: normalized PMF for no-mask/default view.
@@ -266,7 +266,7 @@ impl Landscape {
         debug_assert_eq!(self.roughness01.len(), n);
 
         self.recompute_consonance_field(params);
-        self.recompute_consonance_density_raw(params);
+        self.recompute_consonance_density_mass(params);
         for i in 0..n {
             self.consonance_density_pmf[i] = self.consonance_density_mass[i];
         }
@@ -286,7 +286,7 @@ impl Landscape {
         }
     }
 
-    pub fn recompute_consonance_density_raw(&mut self, params: &LandscapeParams) {
+    pub fn recompute_consonance_density_mass(&mut self, params: &LandscapeParams) {
         self.assert_scan_lengths();
         let density_kernel =
             ConsonanceKernel::density_with_rho(params.consonance_density_roughness_gain);
@@ -294,8 +294,8 @@ impl Landscape {
         for i in 0..n {
             let h01 = sanitize01(self.harmonicity01[i]);
             let r01 = sanitize01(self.roughness01[i]);
-            let raw = density_kernel.score(h01, r01).max(0.0);
-            self.consonance_density_mass[i] = if raw.is_finite() { raw } else { 0.0 };
+            let mass = density_kernel.score(h01, r01).max(0.0);
+            self.consonance_density_mass[i] = if mass.is_finite() { mass } else { 0.0 };
         }
     }
 
@@ -605,18 +605,18 @@ mod tests {
             let got = landscape.consonance_density_mass[i];
             assert!(
                 (got - expected).abs() < 1e-6,
-                "density raw mismatch at i={i}: got={got} expected={expected}"
+                "density mass mismatch at i={i}: got={got} expected={expected}"
             );
-            assert!(got.is_finite(), "density raw must be finite");
+            assert!(got.is_finite(), "density mass must be finite");
             assert!(
                 (0.0..=1.0).contains(&got),
-                "density raw out of [0,1]: {got}"
+                "density mass out of [0,1]: {got}"
             );
         }
     }
 
     #[test]
-    fn density_raw_edge_cases_match_definition() {
+    fn density_mass_edge_cases_match_definition() {
         let space = Log2Space::new(100.0, 400.0, 3);
         let params = build_params(&space);
         let mut landscape = Landscape::new(space);
@@ -634,7 +634,7 @@ mod tests {
     }
 
     #[test]
-    fn density_raw_respects_rho_zero() {
+    fn density_mass_respects_rho_zero() {
         let space = Log2Space::new(100.0, 400.0, 12);
         let mut params = build_params(&space);
         params.consonance_density_roughness_gain = 0.0;
@@ -655,7 +655,7 @@ mod tests {
     }
 
     #[test]
-    fn density_raw_respects_rho_two_with_clamp() {
+    fn density_mass_respects_rho_two_with_clamp() {
         let space = Log2Space::new(100.0, 400.0, 12);
         let mut params = build_params(&space);
         params.consonance_density_roughness_gain = 2.0;
@@ -676,7 +676,7 @@ mod tests {
     }
 
     #[test]
-    fn density_raw_sanitizes_non_finite_and_negative_rho() {
+    fn density_mass_sanitizes_non_finite_and_negative_rho() {
         let space = Log2Space::new(100.0, 400.0, 12);
         let mut params = build_params(&space);
         let mut landscape = Landscape::new(space);
@@ -704,7 +704,7 @@ mod tests {
     }
 
     #[test]
-    fn density_raw_stays_finite_for_extreme_positive_rho() {
+    fn density_mass_stays_finite_for_extreme_positive_rho() {
         let space = Log2Space::new(100.0, 400.0, 12);
         let mut params = build_params(&space);
         params.consonance_density_roughness_gain = 1e30;
@@ -972,12 +972,12 @@ mod tests {
         for i in 0..n {
             let score = c_score_scan[i];
             let level = c_level_scan[i];
-            let density_raw = c_density_mass_scan[i];
+            let density_mass = c_density_mass_scan[i];
             let density = c_density_scan[i];
             let energy = c_energy_scan[i];
             assert!(score.is_finite(), "score not finite at {i}");
             assert!(level.is_finite(), "level not finite at {i}");
-            assert!(density_raw.is_finite(), "density raw not finite at {i}");
+            assert!(density_mass.is_finite(), "density mass not finite at {i}");
             assert!(density.is_finite(), "density not finite at {i}");
             assert!(energy.is_finite(), "energy not finite at {i}");
             assert!(
@@ -985,7 +985,7 @@ mod tests {
                 "energy must be -score at i={i}: score={score} energy={energy}"
             );
             assert!((0.0..=1.0).contains(&level), "level out of range at {i}");
-            assert!(density_raw >= 0.0, "density raw negative at {i}");
+            assert!(density_mass >= 0.0, "density mass negative at {i}");
             assert!(density >= 0.0, "density negative at {i}");
         }
 

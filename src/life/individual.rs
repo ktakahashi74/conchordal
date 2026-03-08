@@ -6,7 +6,7 @@ use crate::life::control::{
     AgentControl, BodyControl, BodyMethod, ControlUpdate, PitchApplyMode, PitchMode,
 };
 use crate::life::control_adapters::{
-    perceptual_config_from_control, pitch_core_config_from_control, tessitura_gravity_from_control,
+    adaptation_config_from_control, pitch_core_config_from_control, tessitura_gravity_from_control,
 };
 use crate::life::lifecycle::LifecycleConfig;
 use crate::life::phonation_engine::{
@@ -133,7 +133,7 @@ struct Dirty {
     body: bool,
     pitch: bool,
     phonation: bool,
-    perceptual: bool,
+    adaptation: bool,
 }
 
 impl Dirty {
@@ -167,7 +167,7 @@ impl Dirty {
             body,
             pitch,
             phonation: false,
-            perceptual: false,
+            adaptation: false,
         }
     }
 }
@@ -204,9 +204,9 @@ impl Individual {
 
         let pitch_config = pitch_core_config_from_control(&effective_control.pitch);
         let pitch = AnyPitchCore::from_config(&pitch_config, target_pitch_log2, &mut rng);
-        let perceptual_config = perceptual_config_from_control(&effective_control.perceptual);
-        let perceptual =
-            crate::life::perceptual::PerceptualContext::from_config(&perceptual_config, 0);
+        let adaptation_config = adaptation_config_from_control(&effective_control.adaptation);
+        let adaptation =
+            crate::life::adaptation::AdaptationContext::from_config(&adaptation_config, 0);
 
         let body = sound_body::build_sound_body_from_control(
             &effective_control,
@@ -218,7 +218,7 @@ impl Individual {
 
         let mut pitch_ctl = PitchController::new(
             pitch,
-            perceptual,
+            adaptation,
             target_pitch_log2,
             integration_window,
             rng,
@@ -266,7 +266,7 @@ impl Individual {
         pitch_ctl
             .core_mut()
             .set_proposal_interval_sec(effective_control.pitch.proposal_interval_sec);
-        pitch_ctl.set_perceptual_enabled(effective_control.perceptual.enabled);
+        pitch_ctl.set_adaptation_enabled(effective_control.adaptation.enabled);
 
         let (articulation_core, lifecycle_label, default_by_articulation, breath_gain_init) =
             match &articulation_config {
@@ -340,22 +340,22 @@ impl Individual {
         );
     }
 
-    fn apply_perceptual_control(&mut self) {
-        let config = perceptual_config_from_control(&self.effective_control.perceptual);
-        let perceptual = self.pitch_ctl.perceptual_mut();
-        perceptual.tau_fast = config.tau_fast.unwrap_or(0.5).max(1e-3);
-        perceptual.tau_slow = config
+    fn apply_adaptation_control(&mut self) {
+        let config = adaptation_config_from_control(&self.effective_control.adaptation);
+        let adaptation = self.pitch_ctl.adaptation_mut();
+        adaptation.tau_fast = config.tau_fast.unwrap_or(0.5).max(1e-3);
+        adaptation.tau_slow = config
             .tau_slow
             .unwrap_or(20.0)
-            .max(perceptual.tau_fast + 1e-3);
-        perceptual.w_boredom = config.w_boredom.unwrap_or(1.0).max(0.0);
-        perceptual.w_familiarity = config.w_familiarity.unwrap_or(0.2).max(0.0);
-        perceptual.rho_self = config.rho_self.unwrap_or(0.15).clamp(0.0, 1.0);
-        perceptual.boredom_gamma = config.boredom_gamma.unwrap_or(0.5).clamp(0.1, 1.0);
-        perceptual.self_smoothing_radius = config.self_smoothing_radius.unwrap_or(1);
-        perceptual.silence_mass_epsilon = config.silence_mass_epsilon.unwrap_or(1e-6).max(0.0);
+            .max(adaptation.tau_fast + 1e-3);
+        adaptation.w_boredom = config.w_boredom.unwrap_or(1.0).max(0.0);
+        adaptation.w_familiarity = config.w_familiarity.unwrap_or(0.2).max(0.0);
+        adaptation.rho_self = config.rho_self.unwrap_or(0.15).clamp(0.0, 1.0);
+        adaptation.boredom_gamma = config.boredom_gamma.unwrap_or(0.5).clamp(0.1, 1.0);
+        adaptation.self_smoothing_radius = config.self_smoothing_radius.unwrap_or(1);
+        adaptation.silence_mass_epsilon = config.silence_mass_epsilon.unwrap_or(1e-6).max(0.0);
         self.pitch_ctl
-            .set_perceptual_enabled(self.effective_control.perceptual.enabled);
+            .set_adaptation_enabled(self.effective_control.adaptation.enabled);
     }
 
     fn apply_pitch_control(&mut self) {
@@ -399,8 +399,8 @@ impl Individual {
         if dirty.body {
             self.apply_body_runtime();
         }
-        if dirty.perceptual {
-            self.apply_perceptual_control();
+        if dirty.adaptation {
+            self.apply_adaptation_control();
         }
         if dirty.pitch {
             self.apply_pitch_control();
@@ -546,7 +546,7 @@ impl Individual {
     ///
     /// Contract: this must not mutate body/articulation/lifecycle fields that
     /// other agents can observe in the same substep. Only local pitch-controller
-    /// decision state (target/perceptual memory) may change here.
+    /// decision state (target/adaptation memory) may change here.
     #[allow(clippy::too_many_arguments)]
     pub fn decide_pitch_target(
         &mut self,

@@ -1084,6 +1084,7 @@ fn worker_loop(
             pop.set_current_frame(frame_idx);
 
             // Spec: landscape may lag analysis by <= MAX_LANDSCAPE_LAG_FRAMES.
+            let mut analysis_updated = false;
             loop {
                 // Merge analysis results (latest-only) into the landscape.
                 let mut latest_audio: Option<(u64, Landscape)> = None;
@@ -1091,8 +1092,7 @@ fn worker_loop(
                     last_analysis_frame = Some(analyzed_id);
                     latest_audio = Some((analyzed_id, frame));
                 }
-                let mut analysis_updated = false;
-                if let Some((analysis_id, frame)) = latest_audio {
+                if let Some((_analysis_id, frame)) = latest_audio {
                     let space_changed = current_landscape.space.n_bins() != frame.space.n_bins()
                         || current_landscape.space.fmin != frame.space.fmin
                         || current_landscape.space.fmax != frame.space.fmax
@@ -1126,13 +1126,6 @@ fn worker_loop(
                     current_landscape.subjective_intensity = frame.subjective_intensity;
                     current_landscape.nsgt_power = frame.nsgt_power;
                     current_landscape.recompute_consonance(&lparams);
-                    // analysis_id is the analysis frame index from analysis_result_rx.
-                    // NSGT is right-aligned; analysis represents sound up to the frame end.
-                    let obs_tick = timebase.frame_end_tick(analysis_id);
-                    world.observe_consonance_field_level(
-                        obs_tick,
-                        Arc::from(current_landscape.consonance_field_level.clone()),
-                    );
                     analysis_updated = true;
                 }
                 if analysis_updated && cfg!(debug_assertions) && frame_idx.is_multiple_of(30) {
@@ -1181,12 +1174,22 @@ fn worker_loop(
                 thread::sleep(Duration::from_micros(200));
             }
 
-            apply_pending_landscape_update(
+            let landscape_params_updated = apply_pending_landscape_update(
                 &mut pop,
                 &mut lparams,
                 &mut current_landscape,
                 &analysis_update_tx,
             );
+            if (analysis_updated || landscape_params_updated)
+                && let Some(analysis_id) = last_analysis_frame
+            {
+                // NSGT is right-aligned; the observed scan is stamped at the analysis frame end.
+                let obs_tick = timebase.frame_end_tick(analysis_id);
+                world.observe_consonance_field_level(
+                    obs_tick,
+                    Arc::from(current_landscape.consonance_field_level.clone()),
+                );
+            }
 
             let t_start = Instant::now();
             conductor.dispatch_until(
@@ -1390,9 +1393,12 @@ fn worker_loop(
                 };
                 let (pred_tau_tick, pred_horizon_tick) =
                     world.predictor_tau_horizon_ticks(&current_landscape.rhythm);
-                let pred_c_field_level_next_gate =
-                    world.last_pred_next_gate().map(|(_, scan)| scan);
-                let pred_available_in_hop = pred_c_field_level_next_gate.is_some();
+                let frame_end = now_tick.saturating_add((hop as Tick).max(1));
+                let pred_next_gate = world.last_pred_next_gate();
+                let pred_available_in_hop = pred_next_gate
+                    .as_ref()
+                    .is_some_and(|(gate_tick, _)| *gate_tick >= now_tick && *gate_tick < frame_end);
+                let pred_c_field_level_next_gate = pred_next_gate.map(|(_, scan)| scan);
                 let ui_frame = UiFrame {
                     wave: wave_frame,
                     spec: spec_frame,
@@ -1495,7 +1501,7 @@ fn apply_pending_landscape_update(
     params: &mut LandscapeParams,
     current_landscape: &mut LandscapeFrame,
     analysis_update_tx: &Sender<LandscapeUpdate>,
-) {
+) -> bool {
     if let Some(update) = pop.take_pending_update() {
         let effect = apply_params_update(params, &update);
         if effect.harmonicity_changed {
@@ -1505,7 +1511,9 @@ fn apply_pending_landscape_update(
             current_landscape.recompute_consonance(params);
         }
         let _ = analysis_update_tx.try_send(update);
+        return effect.harmonicity_changed || effect.roughness_changed;
     }
+    false
 }
 
 fn recompute_harmonicity_from_nsgt_power(

@@ -10,12 +10,15 @@ pub(crate) fn tessitura_gravity_from_control(gravity: f32) -> f32 {
 }
 
 pub(crate) fn pitch_core_config_from_control(pitch: &PitchControl) -> PitchCoreConfig {
+    let tessitura_gravity = pitch
+        .tessitura_gravity
+        .unwrap_or_else(|| tessitura_gravity_from_control(pitch.gravity));
     match pitch.core_kind {
         PitchCoreKind::HillClimb => PitchCoreConfig::PitchHillClimb {
-            neighbor_step_cents: None,
-            tessitura_gravity: Some(tessitura_gravity_from_control(pitch.gravity)),
+            neighbor_step_cents: pitch.neighbor_step_cents,
+            tessitura_gravity: Some(tessitura_gravity),
             move_cost_coeff: Some(pitch.move_cost_coeff),
-            move_cost_exp: None,
+            move_cost_exp: pitch.move_cost_exp,
             improvement_threshold: Some(pitch.improvement_threshold),
             exploration: Some(pitch.exploration),
             persistence: Some(pitch.persistence),
@@ -27,15 +30,16 @@ pub(crate) fn pitch_core_config_from_control(pitch: &PitchControl) -> PitchCoreC
             ratio_candidate_count: Some(pitch.ratio_candidate_count),
             move_cost_time_scale: Some(pitch.move_cost_time_scale),
             leave_self_out_harmonics: Some(pitch.leave_self_out_harmonics),
+            leave_self_out_mode: Some(pitch.leave_self_out_mode),
         },
         PitchCoreKind::PeakSampler => PitchCoreConfig::PitchPeakSampler {
-            neighbor_step_cents: None,
-            window_cents: None,
-            top_k: None,
-            temperature: None,
-            sigma_cents: None,
-            random_candidates: None,
-            tessitura_gravity: Some(tessitura_gravity_from_control(pitch.gravity)),
+            neighbor_step_cents: pitch.neighbor_step_cents,
+            window_cents: pitch.window_cents,
+            top_k: pitch.top_k,
+            temperature: pitch.temperature,
+            sigma_cents: pitch.sigma_cents,
+            random_candidates: pitch.random_candidates,
+            tessitura_gravity: Some(tessitura_gravity),
             exploration: Some(pitch.exploration),
             persistence: Some(pitch.persistence),
             leave_self_out: Some(pitch.leave_self_out),

@@ -135,6 +135,22 @@ struct CommitQueueEntry {
     individual_idx: usize,
 }
 
+fn semitone_distance_from_anchor(freq_hz: f32, anchor_hz: f32) -> f32 {
+    if !freq_hz.is_finite() || freq_hz <= 0.0 || !anchor_hz.is_finite() || anchor_hz <= 0.0 {
+        return 0.0;
+    }
+    12.0 * (freq_hz / anchor_hz).log2()
+}
+
+fn is_rejected_target(freq_hz: f32, anchor_hz: f32, targets_st: &[f32], exclusion_st: f32) -> bool {
+    let semitone_abs = semitone_distance_from_anchor(freq_hz, anchor_hz).abs();
+    targets_st.iter().any(|target| {
+        target.is_finite()
+            && exclusion_st.is_finite()
+            && (semitone_abs - target.abs()).abs() <= exclusion_st.max(0.0)
+    })
+}
+
 impl Population {
     const CONTROL_STEP_SAMPLES: usize = 64;
     /// Returns true if `freq_hz` is within `min_dist_erb` (ERB scale) of any existing agent's base
@@ -497,6 +513,27 @@ impl Population {
                     idx_min + rng.random_range(0..range_len)
                 }
             }
+            SpawnStrategy::RejectTargets {
+                base,
+                anchor_hz,
+                targets_st,
+                exclusion_st,
+                max_tries,
+            } => {
+                let tries = (*max_tries).max(1);
+                let mut last = self.decide_frequency(base, landscape, rng, reserved);
+                if !is_rejected_target(last, *anchor_hz, targets_st, *exclusion_st) {
+                    return last;
+                }
+                for _ in 1..tries {
+                    let candidate = self.decide_frequency(base, landscape, rng, reserved);
+                    last = candidate;
+                    if !is_rejected_target(candidate, *anchor_hz, targets_st, *exclusion_st) {
+                        return candidate;
+                    }
+                }
+                return last;
+            }
             SpawnStrategy::RandomLog { .. } => {
                 let min_l = min_freq.log2();
                 let max_l = max_freq.log2();
@@ -528,6 +565,41 @@ impl Population {
         member_count: usize,
     ) -> f32 {
         match strategy {
+            SpawnStrategy::RejectTargets {
+                base,
+                anchor_hz,
+                targets_st,
+                exclusion_st,
+                max_tries,
+            } => {
+                let tries = (*max_tries).max(1);
+                let mut last = self.resolve_strategy_frequency(
+                    base,
+                    landscape,
+                    rng,
+                    reserved,
+                    member_idx,
+                    member_count,
+                );
+                if !is_rejected_target(last, *anchor_hz, targets_st, *exclusion_st) {
+                    return last;
+                }
+                for _ in 1..tries {
+                    let candidate = self.resolve_strategy_frequency(
+                        base,
+                        landscape,
+                        rng,
+                        reserved,
+                        member_idx,
+                        member_count,
+                    );
+                    last = candidate;
+                    if !is_rejected_target(candidate, *anchor_hz, targets_st, *exclusion_st) {
+                        return candidate;
+                    }
+                }
+                last
+            }
             SpawnStrategy::Linear {
                 start_freq,
                 end_freq,
@@ -1028,6 +1100,9 @@ impl Population {
         }
         if update.roughness_k.is_some() {
             merged.roughness_k = update.roughness_k;
+        }
+        if update.pitch_objective_mode.is_some() {
+            merged.pitch_objective_mode = update.pitch_objective_mode;
         }
         self.pending_update = Some(merged);
     }

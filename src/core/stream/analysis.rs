@@ -30,6 +30,11 @@ impl AnalysisStream {
         last_landscape.roughness_suppress_sigma_erb =
             params.roughness_kernel.params.suppress_sigma_erb.max(1e-6);
         last_landscape.roughness_kernel_params = params.roughness_kernel.params;
+        last_landscape.harmonicity_params = params.harmonicity_kernel.params;
+        last_landscape.consonance_kernel = params.consonance_kernel;
+        last_landscape.roughness_k = params.roughness_k;
+        last_landscape.roughness_ref_peak = roughness_ref_peak;
+        last_landscape.roughness_ref_eps = params.roughness_ref_eps;
 
         Self {
             nsgt_rt: nsgt_rt.clone(),
@@ -86,6 +91,11 @@ impl AnalysisStream {
             .suppress_sigma_erb
             .max(1e-6);
         self.last_landscape.roughness_kernel_params = self.params.roughness_kernel.params;
+        self.last_landscape.harmonicity_params = self.params.harmonicity_kernel.params;
+        self.last_landscape.consonance_kernel = self.params.consonance_kernel;
+        self.last_landscape.roughness_k = self.params.roughness_k;
+        self.last_landscape.roughness_ref_peak = self.roughness_ref_peak;
+        self.last_landscape.roughness_ref_eps = self.params.roughness_ref_eps;
         let h_dual = self
             .params
             .harmonicity_kernel
@@ -160,6 +170,11 @@ impl AnalysisStream {
             .suppress_sigma_erb
             .max(1e-6);
         landscape.roughness_kernel_params = self.params.roughness_kernel.params;
+        landscape.harmonicity_params = self.params.harmonicity_kernel.params;
+        landscape.consonance_kernel = self.params.consonance_kernel;
+        landscape.roughness_k = self.params.roughness_k;
+        landscape.roughness_ref_peak = self.roughness_ref_peak;
+        landscape.roughness_ref_eps = self.params.roughness_ref_eps;
         self.last_landscape = landscape;
     }
 
@@ -177,6 +192,9 @@ impl AnalysisStream {
         }
         if let Some(k) = upd.roughness_k {
             self.params.roughness_k = k.max(1e-6);
+        }
+        if let Some(mode) = upd.pitch_objective_mode {
+            self.last_landscape.pitch_objective_mode = mode;
         }
     }
 }

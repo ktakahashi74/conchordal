@@ -46,5 +46,8 @@ fn main() {
     })
     .expect("Error setting Ctrl-C handler");
 
-    conchordal::app::run_render(&args.scenario, args.output, config, stop_flag);
+    if let Err(err) = conchordal::app::run_render(&args.scenario, args.output, config, stop_flag) {
+        eprintln!("{err}");
+        std::process::exit(1);
+    }
 }

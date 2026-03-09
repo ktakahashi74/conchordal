@@ -712,7 +712,7 @@ pub fn run_render(
     wav_path: String,
     config: AppConfig,
     stop_flag: Arc<AtomicBool>,
-) {
+) -> Result<(), String> {
     crate::life::modal::register_modal();
 
     let guard_mode = match config.audio.limiter {
@@ -799,19 +799,17 @@ pub fn run_render(
     let dorsal = DorsalStream::new(fs);
     let lparams_runtime = lparams.clone();
 
-    {
-        std::thread::Builder::new()
-            .name("analysis".into())
-            .spawn(move || {
-                analysis_worker::run(
-                    analysis_stream,
-                    audio_to_analysis_rx,
-                    analysis_result_tx,
-                    analysis_update_rx,
-                )
-            })
-            .expect("spawn analysis worker");
-    }
+    let analysis_handle = std::thread::Builder::new()
+        .name("analysis".into())
+        .spawn(move || {
+            analysis_worker::run(
+                analysis_stream,
+                audio_to_analysis_rx,
+                analysis_result_tx,
+                analysis_update_rx,
+            )
+        })
+        .expect("spawn analysis worker");
 
     let path = Path::new(scenario_path);
     if let Err(e) = validate_scenario_script_extension(path) {
@@ -870,8 +868,23 @@ pub fn run_render(
         })
         .expect("spawn worker");
 
-    let _ = worker_handle.join();
-    let _ = wav_handle.join();
+    join_render_thread("worker", worker_handle)?;
+    join_render_thread("wav", wav_handle)?;
+    join_render_thread("analysis", analysis_handle)?;
+    Ok(())
+}
+
+fn join_render_thread(name: &str, handle: thread::JoinHandle<()>) -> Result<(), String> {
+    handle.join().map_err(|payload| {
+        let detail = if let Some(msg) = payload.downcast_ref::<&str>() {
+            (*msg).to_string()
+        } else if let Some(msg) = payload.downcast_ref::<String>() {
+            msg.clone()
+        } else {
+            "unknown panic payload".to_string()
+        };
+        format!("render {name} thread failed: {detail}")
+    })
 }
 
 impl eframe::App for App {
@@ -1123,6 +1136,12 @@ fn worker_loop(
                     current_landscape.binding_strength = frame.binding_strength;
                     current_landscape.harmonic_tilt = frame.harmonic_tilt;
                     current_landscape.harmonicity_mirror_weight = frame.harmonicity_mirror_weight;
+                    current_landscape.pitch_objective_mode = frame.pitch_objective_mode;
+                    current_landscape.harmonicity_params = frame.harmonicity_params;
+                    current_landscape.consonance_kernel = frame.consonance_kernel;
+                    current_landscape.roughness_k = frame.roughness_k;
+                    current_landscape.roughness_ref_peak = frame.roughness_ref_peak;
+                    current_landscape.roughness_ref_eps = frame.roughness_ref_eps;
                     current_landscape.subjective_intensity = frame.subjective_intensity;
                     current_landscape.nsgt_power = frame.nsgt_power;
                     current_landscape.recompute_consonance(&lparams);
@@ -1504,6 +1523,9 @@ fn apply_pending_landscape_update(
 ) -> bool {
     if let Some(update) = pop.take_pending_update() {
         let effect = apply_params_update(params, &update);
+        if let Some(mode) = update.pitch_objective_mode {
+            current_landscape.pitch_objective_mode = mode;
+        }
         if effect.harmonicity_changed {
             let _ = recompute_harmonicity_from_nsgt_power(current_landscape, params);
         }
@@ -1570,6 +1592,10 @@ fn apply_params_update(params: &mut LandscapeParams, upd: &LandscapeUpdate) -> P
         let prev = params.roughness_k;
         params.roughness_k = roughness_k;
         effect.roughness_changed = (prev - roughness_k).abs() > f32::EPSILON;
+    }
+    if let Some(mode) = upd.pitch_objective_mode {
+        effect.harmonicity_changed |= false;
+        let _ = mode;
     }
     effect
 }
@@ -1674,6 +1700,7 @@ mod tests {
                 update: LandscapeUpdate {
                     mirror: Some(1.0),
                     roughness_k: None,
+                    pitch_objective_mode: None,
                 },
             },
             &landscape,

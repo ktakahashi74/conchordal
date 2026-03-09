@@ -6,11 +6,12 @@ use rand::random;
 use rhai::{Array, Dynamic, Engine, EvalAltResult, FLOAT, FnPtr, INT, NativeCallContext, Position};
 use tracing::warn;
 
+use crate::core::landscape::PitchObjectiveMode;
 use crate::core::mode_pattern::ModePattern;
 
 use super::control::{
-    AgentControl, BodyMethod, ControlUpdate, MoveCostTimeScale, PitchApplyMode, PitchCoreKind,
-    PitchMode,
+    AgentControl, BodyMethod, ControlUpdate, LeaveSelfOutMode, MoveCostTimeScale, PitchApplyMode,
+    PitchCoreKind, PitchMode,
 };
 use super::lifecycle::LifecycleConfig;
 use super::scenario::{
@@ -39,6 +40,20 @@ fn rhai_array_to_f32(values: Array, label: &str) -> Vec<f32> {
         warn!("{label} expects numeric array elements");
     }
     out
+}
+
+fn parse_leave_self_out_mode_name(current: LeaveSelfOutMode, name: &str) -> LeaveSelfOutMode {
+    match name.trim().to_ascii_lowercase().as_str() {
+        "approx" | "approx_harmonics" | "harmonics" => LeaveSelfOutMode::ApproxHarmonics,
+        "exact" | "exact_scan" | "scan" => LeaveSelfOutMode::ExactScan,
+        other => {
+            warn!(
+                "leave_self_out_mode() expects 'approx' or 'exact', got '{}'",
+                other
+            );
+            current
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -174,6 +189,14 @@ impl SpeciesSpec {
         self.control.set_landscape_weight_clamped(value);
     }
 
+    fn set_neighbor_step_cents(&mut self, value: f32) {
+        self.control.set_neighbor_step_cents_clamped(value);
+    }
+
+    fn set_tessitura_gravity(&mut self, value: f32) {
+        self.control.set_tessitura_gravity_clamped(value);
+    }
+
     fn set_continuous_drive(&mut self, value: f32) {
         self.control.set_continuous_drive_clamped(value);
     }
@@ -209,12 +232,21 @@ impl SpeciesSpec {
         self.control.set_leave_self_out(enabled);
     }
 
+    fn set_leave_self_out_mode(&mut self, name: &str) {
+        let mode = parse_leave_self_out_mode_name(self.control.pitch.leave_self_out_mode, name);
+        self.control.set_leave_self_out_mode(mode);
+    }
+
     fn set_anneal_temp(&mut self, value: f32) {
         self.control.set_anneal_temp_clamped(value);
     }
 
     fn set_move_cost_coeff(&mut self, value: f32) {
         self.control.set_move_cost_coeff_clamped(value);
+    }
+
+    fn set_move_cost_exp(&mut self, value: f32) {
+        self.control.set_move_cost_exp_clamped(value.round() as i64);
     }
 
     fn set_improvement_threshold(&mut self, value: f32) {
@@ -234,6 +266,27 @@ impl SpeciesSpec {
     fn set_ratio_candidates(&mut self, count: i64) {
         self.control.set_ratio_candidate_count_clamped(count);
         self.control.set_use_ratio_candidates(count > 0);
+    }
+
+    fn set_window_cents(&mut self, value: f32) {
+        self.control.set_window_cents_clamped(value);
+    }
+
+    fn set_top_k(&mut self, value: f32) {
+        self.control.set_top_k_clamped(value.round() as i64);
+    }
+
+    fn set_temperature(&mut self, value: f32) {
+        self.control.set_temperature_clamped(value);
+    }
+
+    fn set_sigma_cents(&mut self, value: f32) {
+        self.control.set_sigma_cents_clamped(value);
+    }
+
+    fn set_random_candidates(&mut self, value: f32) {
+        self.control
+            .set_random_candidates_clamped(value.round() as i64);
     }
 
     fn set_move_cost_time_scale(&mut self, name: &str) {
@@ -1114,6 +1167,14 @@ fn patch_landscape_weight(update: &mut ControlUpdate, value: f32) {
     update.landscape_weight = Some(value);
 }
 
+fn patch_neighbor_step_cents(update: &mut ControlUpdate, value: f32) {
+    update.neighbor_step_cents = Some(value);
+}
+
+fn patch_tessitura_gravity(update: &mut ControlUpdate, value: f32) {
+    update.tessitura_gravity = Some(value);
+}
+
 fn patch_continuous_drive(update: &mut ControlUpdate, value: f32) {
     update.continuous_drive = Some(value);
 }
@@ -1130,6 +1191,10 @@ fn patch_persistence(update: &mut ControlUpdate, value: f32) {
     update.persistence = Some(value);
 }
 
+fn patch_leave_self_out_mode(update: &mut ControlUpdate, mode: LeaveSelfOutMode) {
+    update.leave_self_out_mode = Some(mode);
+}
+
 fn patch_anneal_temp(update: &mut ControlUpdate, value: f32) {
     update.anneal_temp = Some(value);
 }
@@ -1138,12 +1203,36 @@ fn patch_move_cost_coeff(update: &mut ControlUpdate, value: f32) {
     update.move_cost_coeff = Some(value);
 }
 
+fn patch_move_cost_exp(update: &mut ControlUpdate, value: f32) {
+    update.move_cost_exp = Some(value.round() as i64);
+}
+
 fn patch_improvement_threshold(update: &mut ControlUpdate, value: f32) {
     update.improvement_threshold = Some(value);
 }
 
 fn patch_proposal_interval(update: &mut ControlUpdate, value: f32) {
     update.proposal_interval_sec = Some(value);
+}
+
+fn patch_window_cents(update: &mut ControlUpdate, value: f32) {
+    update.window_cents = Some(value);
+}
+
+fn patch_top_k(update: &mut ControlUpdate, value: f32) {
+    update.top_k = Some(value.round() as i64);
+}
+
+fn patch_temperature(update: &mut ControlUpdate, value: f32) {
+    update.temperature = Some(value);
+}
+
+fn patch_sigma_cents(update: &mut ControlUpdate, value: f32) {
+    update.sigma_cents = Some(value);
+}
+
+fn patch_random_candidates(update: &mut ControlUpdate, value: f32) {
+    update.random_candidates = Some(value.round() as i64);
 }
 
 fn patch_pitch_glide_tau(update: &mut ControlUpdate, value: f32) {
@@ -1232,6 +1321,16 @@ impl ScriptHost {
         );
         register_species_numeric_overloads(
             &mut engine,
+            "neighbor_step_cents",
+            SpeciesSpec::set_neighbor_step_cents,
+        );
+        register_species_numeric_overloads(
+            &mut engine,
+            "tessitura_gravity",
+            SpeciesSpec::set_tessitura_gravity,
+        );
+        register_species_numeric_overloads(
+            &mut engine,
             "sustain_drive",
             SpeciesSpec::set_continuous_drive,
         );
@@ -1275,6 +1374,13 @@ impl ScriptHost {
                 species
             },
         );
+        engine.register_fn(
+            "leave_self_out_mode",
+            |mut species: SpeciesHandle, name: &str| {
+                species.spec.set_leave_self_out_mode(name);
+                species
+            },
+        );
         register_species_numeric_overloads(
             &mut engine,
             "anneal_temp",
@@ -1284,6 +1390,11 @@ impl ScriptHost {
             &mut engine,
             "move_cost",
             SpeciesSpec::set_move_cost_coeff,
+        );
+        register_species_numeric_overloads(
+            &mut engine,
+            "move_cost_exp",
+            SpeciesSpec::set_move_cost_exp,
         );
         register_species_numeric_overloads(
             &mut engine,
@@ -1319,6 +1430,27 @@ impl ScriptHost {
                 species.spec.set_ratio_candidates(count);
                 species
             },
+        );
+        register_species_numeric_overloads(
+            &mut engine,
+            "window_cents",
+            SpeciesSpec::set_window_cents,
+        );
+        register_species_numeric_overloads(&mut engine, "top_k", SpeciesSpec::set_top_k);
+        register_species_numeric_overloads(
+            &mut engine,
+            "temperature",
+            SpeciesSpec::set_temperature,
+        );
+        register_species_numeric_overloads(
+            &mut engine,
+            "sigma_cents",
+            SpeciesSpec::set_sigma_cents,
+        );
+        register_species_numeric_overloads(
+            &mut engine,
+            "random_candidates",
+            SpeciesSpec::set_random_candidates,
         );
         engine.register_fn(
             "move_cost_time_scale",
@@ -1810,6 +1942,70 @@ impl ScriptHost {
             start_freq: start as f32,
             end_freq: end as f32,
         });
+        engine.register_fn(
+            "reject_targets",
+            |strategy: SpawnStrategy,
+             anchor_hz: FLOAT,
+             targets_st: Array,
+             exclusion_st: FLOAT,
+             max_tries: INT| {
+                SpawnStrategy::RejectTargets {
+                    base: Box::new(strategy),
+                    anchor_hz: anchor_hz as f32,
+                    targets_st: rhai_array_to_f32(targets_st, "reject_targets"),
+                    exclusion_st: exclusion_st as f32,
+                    max_tries: max_tries.max(1) as usize,
+                }
+            },
+        );
+        engine.register_fn(
+            "reject_targets",
+            |strategy: SpawnStrategy,
+             anchor_hz: INT,
+             targets_st: Array,
+             exclusion_st: FLOAT,
+             max_tries: INT| {
+                SpawnStrategy::RejectTargets {
+                    base: Box::new(strategy),
+                    anchor_hz: anchor_hz as f32,
+                    targets_st: rhai_array_to_f32(targets_st, "reject_targets"),
+                    exclusion_st: exclusion_st as f32,
+                    max_tries: max_tries.max(1) as usize,
+                }
+            },
+        );
+        engine.register_fn(
+            "reject_targets",
+            |strategy: SpawnStrategy,
+             anchor_hz: FLOAT,
+             targets_st: Array,
+             exclusion_st: INT,
+             max_tries: INT| {
+                SpawnStrategy::RejectTargets {
+                    base: Box::new(strategy),
+                    anchor_hz: anchor_hz as f32,
+                    targets_st: rhai_array_to_f32(targets_st, "reject_targets"),
+                    exclusion_st: exclusion_st as f32,
+                    max_tries: max_tries.max(1) as usize,
+                }
+            },
+        );
+        engine.register_fn(
+            "reject_targets",
+            |strategy: SpawnStrategy,
+             anchor_hz: INT,
+             targets_st: Array,
+             exclusion_st: INT,
+             max_tries: INT| {
+                SpawnStrategy::RejectTargets {
+                    base: Box::new(strategy),
+                    anchor_hz: anchor_hz as f32,
+                    targets_st: rhai_array_to_f32(targets_st, "reject_targets"),
+                    exclusion_st: exclusion_st as f32,
+                    max_tries: max_tries.max(1) as usize,
+                }
+            },
+        );
 
         register_group_numeric_overloads(
             &mut engine,
@@ -1841,6 +2037,22 @@ impl ScriptHost {
             "landscape_weight",
             SpeciesSpec::set_landscape_weight,
             patch_landscape_weight,
+            None,
+        );
+        register_group_numeric_overloads(
+            &mut engine,
+            ctx.clone(),
+            "neighbor_step_cents",
+            SpeciesSpec::set_neighbor_step_cents,
+            patch_neighbor_step_cents,
+            None,
+        );
+        register_group_numeric_overloads(
+            &mut engine,
+            ctx.clone(),
+            "tessitura_gravity",
+            SpeciesSpec::set_tessitura_gravity,
+            patch_tessitura_gravity,
             None,
         );
         register_group_numeric_overloads(
@@ -1934,6 +2146,35 @@ impl ScriptHost {
                 Ok(handle)
             },
         );
+        let ctx_for_group_leave_self_out_mode = ctx.clone();
+        engine.register_fn(
+            "leave_self_out_mode",
+            move |handle: GroupHandle, name: &str| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_leave_self_out_mode
+                    .lock()
+                    .expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!(
+                        "leave_self_out_mode ignored for unknown group {}",
+                        handle.id
+                    );
+                    return Ok(handle);
+                };
+                let mode = parse_leave_self_out_mode_name(
+                    group.spec.control.pitch.leave_self_out_mode,
+                    name,
+                );
+                match group.status {
+                    GroupStatus::Draft => group.spec.control.set_leave_self_out_mode(mode),
+                    GroupStatus::Live => {
+                        group.spec.control.set_leave_self_out_mode(mode);
+                        patch_leave_self_out_mode(&mut group.pending_patch, mode);
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "leave_self_out_mode"),
+                }
+                Ok(handle)
+            },
+        );
         register_group_numeric_overloads(
             &mut engine,
             ctx.clone(),
@@ -1948,6 +2189,14 @@ impl ScriptHost {
             "move_cost",
             SpeciesSpec::set_move_cost_coeff,
             patch_move_cost_coeff,
+            None,
+        );
+        register_group_numeric_overloads(
+            &mut engine,
+            ctx.clone(),
+            "move_cost_exp",
+            SpeciesSpec::set_move_cost_exp,
+            patch_move_cost_exp,
             None,
         );
         register_group_numeric_overloads(
@@ -2065,6 +2314,46 @@ impl ScriptHost {
                 }
                 Ok(handle)
             },
+        );
+        register_group_numeric_overloads(
+            &mut engine,
+            ctx.clone(),
+            "window_cents",
+            SpeciesSpec::set_window_cents,
+            patch_window_cents,
+            None,
+        );
+        register_group_numeric_overloads(
+            &mut engine,
+            ctx.clone(),
+            "top_k",
+            SpeciesSpec::set_top_k,
+            patch_top_k,
+            None,
+        );
+        register_group_numeric_overloads(
+            &mut engine,
+            ctx.clone(),
+            "temperature",
+            SpeciesSpec::set_temperature,
+            patch_temperature,
+            None,
+        );
+        register_group_numeric_overloads(
+            &mut engine,
+            ctx.clone(),
+            "sigma_cents",
+            SpeciesSpec::set_sigma_cents,
+            patch_sigma_cents,
+            None,
+        );
+        register_group_numeric_overloads(
+            &mut engine,
+            ctx.clone(),
+            "random_candidates",
+            SpeciesSpec::set_random_candidates,
+            patch_random_candidates,
+            None,
         );
         let ctx_for_group_move_cost_time_scale = ctx.clone();
         engine.register_fn(
@@ -2676,6 +2965,35 @@ impl ScriptHost {
                     ..crate::core::landscape::LandscapeUpdate::default()
                 };
                 let cursor = ctx.cursor;
+                ctx.push_event(cursor, vec![Action::SetHarmonicityParams { update }]);
+            },
+        );
+        let ctx_for_set_pitch_objective = ctx.clone();
+        engine.register_fn(
+            "set_pitch_objective",
+            move |_call_ctx: NativeCallContext, name: &str| {
+                let mut ctx = ctx_for_set_pitch_objective
+                    .lock()
+                    .expect("lock script context");
+                let lowered = name.trim().to_ascii_lowercase();
+                let mode = match lowered.as_str() {
+                    "consonance" | "positive" | "pos" => PitchObjectiveMode::Consonance,
+                    "negative_consonance" | "negative" | "neg" | "dissonance" => {
+                        PitchObjectiveMode::NegativeConsonance
+                    }
+                    other => {
+                        warn!(
+                            "set_pitch_objective() expects 'consonance' or 'negative_consonance', got '{}'",
+                            other
+                        );
+                        return;
+                    }
+                };
+                let cursor = ctx.cursor;
+                let update = crate::core::landscape::LandscapeUpdate {
+                    pitch_objective_mode: Some(mode),
+                    ..crate::core::landscape::LandscapeUpdate::default()
+                };
                 ctx.push_event(cursor, vec![Action::SetHarmonicityParams { update }]);
             },
         );
@@ -3814,6 +4132,98 @@ mod tests {
     }
 
     #[test]
+    fn group_hill_climb_knobs_and_exact_loo_live_update_reach_individual() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            let g = create(sine, 1);
+            flush();
+            let g = g
+                .neighbor_step_cents(25)
+                .tessitura_gravity(0.12)
+                .move_cost_exp(2)
+                .leave_self_out(true)
+                .leave_self_out_mode("exact");
+            flush();
+        "#,
+        );
+        let mut pop = Population::new(Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        });
+        let landscape = LandscapeFrame::default();
+        for action in scenario
+            .events
+            .iter()
+            .flat_map(|event| event.actions.iter())
+        {
+            match action {
+                Action::Spawn { .. } | Action::UpdateGroup { .. } => {
+                    pop.apply_action(action.clone(), &landscape, None);
+                }
+                _ => {}
+            }
+        }
+        let agent = pop.individuals.first().expect("spawned");
+        let core = agent.pitch_core_for_test();
+        assert!((core.neighbor_step_cents_for_test() - 25.0).abs() <= 1e-6);
+        assert!((core.tessitura_gravity_for_test() - 0.12).abs() <= 1e-6);
+        assert_eq!(core.move_cost_exp_for_test(), 2);
+        assert!(core.leave_self_out_for_test());
+        assert_eq!(
+            core.leave_self_out_mode_for_test(),
+            LeaveSelfOutMode::ExactScan
+        );
+        assert_eq!(
+            agent.effective_control.pitch.leave_self_out_mode,
+            LeaveSelfOutMode::ExactScan
+        );
+    }
+
+    #[test]
+    fn species_peak_sampler_knobs_reach_spawned_core() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            create(
+                sine
+                    .pitch_core("peak_sampler")
+                    .neighbor_step_cents(30)
+                    .tessitura_gravity(0.14)
+                    .window_cents(320)
+                    .top_k(7)
+                    .temperature(0.0)
+                    .sigma_cents(18)
+                    .random_candidates(5),
+                1
+            );
+            flush();
+        "#,
+        );
+        let mut pop = Population::new(Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        });
+        let landscape = LandscapeFrame::default();
+        for action in scenario
+            .events
+            .iter()
+            .flat_map(|event| event.actions.iter())
+        {
+            if let Action::Spawn { .. } = action {
+                pop.apply_action(action.clone(), &landscape, None);
+            }
+        }
+        let agent = pop.individuals.first().expect("spawned");
+        let core = agent.pitch_core_for_test();
+        assert!((core.neighbor_step_cents_for_test() - 30.0).abs() <= 1e-6);
+        assert!((core.tessitura_gravity_for_test() - 0.14).abs() <= 1e-6);
+        assert!((core.window_cents_for_test() - 320.0).abs() <= 1e-6);
+        assert_eq!(core.top_k_for_test(), 7);
+        assert!((core.temperature_for_test() - 0.0).abs() <= 1e-6);
+        assert!((core.sigma_cents_for_test() - 18.0).abs() <= 1e-6);
+        assert_eq!(core.random_candidates_for_test(), 5);
+    }
+
+    #[test]
     fn species_advanced_pitch_knobs_reach_spawned_core() {
         let (scenario, _warnings) = run_script(
             r#"
@@ -3913,6 +4323,72 @@ mod tests {
             PitchApplyMode::Glide
         );
         assert!((agent.effective_control.pitch.pitch_glide_tau_sec - 0.05).abs() <= 1e-6);
+    }
+
+    #[test]
+    fn set_pitch_objective_emits_landscape_update() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            set_pitch_objective("negative_consonance");
+            wait(0.1);
+            set_pitch_objective("consonance");
+        "#,
+        );
+        let modes: Vec<PitchObjectiveMode> = scenario
+            .events
+            .iter()
+            .flat_map(|event| event.actions.iter())
+            .filter_map(|action| match action {
+                Action::SetHarmonicityParams { update } => update.pitch_objective_mode,
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            modes,
+            vec![
+                PitchObjectiveMode::NegativeConsonance,
+                PitchObjectiveMode::Consonance
+            ]
+        );
+    }
+
+    #[test]
+    fn reject_targets_wraps_spawn_strategy() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            let g = create(sine, 1)
+                .place(reject_targets(random_log(200.0, 400.0), 220, [0, 7, 12], 0.35, 16));
+            flush();
+        "#,
+        );
+        let strategy = scenario
+            .events
+            .iter()
+            .flat_map(|event| event.actions.iter())
+            .find_map(|action| match action {
+                Action::Spawn {
+                    strategy: Some(strategy),
+                    ..
+                } => Some(strategy.clone()),
+                _ => None,
+            })
+            .expect("spawn strategy");
+        match strategy {
+            SpawnStrategy::RejectTargets {
+                base,
+                anchor_hz,
+                targets_st,
+                exclusion_st,
+                max_tries,
+            } => {
+                assert!(matches!(*base, SpawnStrategy::RandomLog { .. }));
+                assert!((anchor_hz - 220.0).abs() <= 1e-6);
+                assert_eq!(targets_st, vec![0.0, 7.0, 12.0]);
+                assert!((exclusion_st - 0.35).abs() <= 1e-6);
+                assert_eq!(max_tries, 16);
+            }
+            other => panic!("expected RejectTargets strategy, got {other:?}"),
+        }
     }
 
     #[test]

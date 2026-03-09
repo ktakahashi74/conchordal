@@ -144,6 +144,8 @@ impl Dirty {
             || update.timbre_width.is_some()
             || update.timbre_motion.is_some();
         let pitch = update.freq.is_some()
+            || update.neighbor_step_cents.is_some()
+            || update.tessitura_gravity.is_some()
             || update.landscape_weight.is_some()
             || update.exploration.is_some()
             || update.persistence.is_some()
@@ -151,14 +153,21 @@ impl Dirty {
             || update.crowding_sigma_cents.is_some()
             || update.crowding_sigma_from_roughness.is_some()
             || update.leave_self_out.is_some()
+            || update.leave_self_out_mode.is_some()
             || update.anneal_temp.is_some()
             || update.move_cost_coeff.is_some()
+            || update.move_cost_exp.is_some()
             || update.improvement_threshold.is_some()
             || update.proposal_interval_sec.is_some()
             || update.global_peak_count.is_some()
             || update.global_peak_min_sep_cents.is_some()
             || update.use_ratio_candidates.is_some()
             || update.ratio_candidate_count.is_some()
+            || update.window_cents.is_some()
+            || update.top_k.is_some()
+            || update.temperature.is_some()
+            || update.sigma_cents.is_some()
+            || update.random_candidates.is_some()
             || update.move_cost_time_scale.is_some()
             || update.leave_self_out_harmonics.is_some()
             || update.pitch_apply_mode.is_some()
@@ -242,10 +251,19 @@ impl Individual {
             .set_leave_self_out(effective_control.pitch.leave_self_out);
         pitch_ctl
             .core_mut()
+            .set_leave_self_out_mode(effective_control.pitch.leave_self_out_mode);
+        if let Some(cents) = effective_control.pitch.neighbor_step_cents {
+            pitch_ctl.core_mut().set_neighbor_step_cents(cents);
+        }
+        pitch_ctl
+            .core_mut()
             .set_anneal_temp(effective_control.pitch.anneal_temp);
         pitch_ctl
             .core_mut()
             .set_move_cost_coeff(effective_control.pitch.move_cost_coeff);
+        if let Some(exp) = effective_control.pitch.move_cost_exp {
+            pitch_ctl.core_mut().set_move_cost_exp(exp);
+        }
         pitch_ctl
             .core_mut()
             .set_improvement_threshold(effective_control.pitch.improvement_threshold);
@@ -266,6 +284,21 @@ impl Individual {
         pitch_ctl
             .core_mut()
             .set_proposal_interval_sec(effective_control.pitch.proposal_interval_sec);
+        if let Some(cents) = effective_control.pitch.window_cents {
+            pitch_ctl.core_mut().set_window_cents(cents);
+        }
+        if let Some(top_k) = effective_control.pitch.top_k {
+            pitch_ctl.core_mut().set_top_k(top_k);
+        }
+        if let Some(temperature) = effective_control.pitch.temperature {
+            pitch_ctl.core_mut().set_temperature(temperature);
+        }
+        if let Some(cents) = effective_control.pitch.sigma_cents {
+            pitch_ctl.core_mut().set_sigma_cents(cents);
+        }
+        if let Some(count) = effective_control.pitch.random_candidates {
+            pitch_ctl.core_mut().set_random_candidates(count);
+        }
         pitch_ctl.set_adaptation_enabled(effective_control.adaptation.enabled);
 
         let (articulation_core, lifecycle_label, default_by_articulation, breath_gain_init) =
@@ -361,10 +394,15 @@ impl Individual {
     fn apply_pitch_control(&mut self) {
         let pitch = &self.effective_control.pitch;
         let center_log2 = pitch.freq.max(1.0).log2();
-        let gravity = tessitura_gravity_from_control(pitch.gravity);
+        let gravity = pitch
+            .tessitura_gravity
+            .unwrap_or_else(|| tessitura_gravity_from_control(pitch.gravity));
         let core = self.pitch_ctl.core_mut();
         core.set_tessitura_center(center_log2);
         core.set_tessitura_gravity(gravity);
+        if let Some(cents) = pitch.neighbor_step_cents {
+            core.set_neighbor_step_cents(cents);
+        }
         core.set_landscape_weight(pitch.landscape_weight);
         core.set_exploration(pitch.exploration);
         core.set_persistence(pitch.persistence);
@@ -374,11 +412,30 @@ impl Individual {
             pitch.crowding_sigma_from_roughness,
         );
         core.set_leave_self_out(pitch.leave_self_out);
+        core.set_leave_self_out_mode(pitch.leave_self_out_mode);
         core.set_anneal_temp(pitch.anneal_temp);
         core.set_move_cost_coeff(pitch.move_cost_coeff);
+        if let Some(exp) = pitch.move_cost_exp {
+            core.set_move_cost_exp(exp);
+        }
         core.set_improvement_threshold(pitch.improvement_threshold);
         core.set_global_peaks(pitch.global_peak_count, pitch.global_peak_min_sep_cents);
         core.set_ratio_candidates(pitch.use_ratio_candidates, pitch.ratio_candidate_count);
+        if let Some(cents) = pitch.window_cents {
+            core.set_window_cents(cents);
+        }
+        if let Some(top_k) = pitch.top_k {
+            core.set_top_k(top_k);
+        }
+        if let Some(temperature) = pitch.temperature {
+            core.set_temperature(temperature);
+        }
+        if let Some(cents) = pitch.sigma_cents {
+            core.set_sigma_cents(cents);
+        }
+        if let Some(count) = pitch.random_candidates {
+            core.set_random_candidates(count);
+        }
         core.set_move_cost_time_scale(pitch.move_cost_time_scale);
         core.set_leave_self_out_harmonics(pitch.leave_self_out_harmonics);
         core.set_proposal_interval_sec(pitch.proposal_interval_sec);
@@ -745,26 +802,23 @@ impl Individual {
         self.emit_phonation_amp_updates(now, target_amp, &mut out.cmds);
         self.prune_tracked_render_notes(&out.cmds);
         if self.phonation_scratch.events.is_empty() {
-            debug_assert!(
-                !had_note_on,
-                "NoteOn emitted without note specs (no note events)"
-            );
+            if had_note_on {
+                Self::discard_pending_render_note_ons(&mut out.cmds);
+            }
             return;
         }
         let freq_hz = self.body.base_freq_hz();
         if !freq_hz.is_finite() || freq_hz <= 0.0 {
-            debug_assert!(
-                !had_note_on,
-                "NoteOn emitted but freq invalid => no note specs"
-            );
+            if had_note_on {
+                Self::discard_pending_render_note_ons(&mut out.cmds);
+            }
             self.phonation_scratch.events.clear();
             return;
         }
         if target_amp <= Self::AMP_EPS {
-            debug_assert!(
-                !had_note_on,
-                "NoteOn emitted but amp invalid => no note specs"
-            );
+            if had_note_on {
+                Self::discard_pending_render_note_ons(&mut out.cmds);
+            }
             self.phonation_scratch.events.clear();
             return;
         }
@@ -785,9 +839,17 @@ impl Individual {
         }
         self.track_new_render_notes(&out.notes);
         debug_assert!(
-            !had_note_on || !out.notes.is_empty(),
+            !out.cmds
+                .iter()
+                .any(|cmd| matches!(cmd, NoteCmd::NoteOn { .. }))
+                || !out.notes.is_empty(),
             "NoteOn emitted without note specs"
         );
+    }
+
+    fn discard_pending_render_note_ons(out_cmds: &mut Vec<NoteCmd>) {
+        // Keep NoteOff/Update commands intact when a new render note cannot be materialized.
+        out_cmds.retain(|cmd| !matches!(cmd, NoteCmd::NoteOn { .. }));
     }
 
     fn emit_phonation_amp_updates(

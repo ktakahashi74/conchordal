@@ -1,9 +1,11 @@
 use crate::core::erb::hz_to_erb;
 use crate::core::harmonic_ratios::{HARMONIC_RATIOS, fold_to_octave_near, ratio_to_f32};
+use crate::core::harmonicity_kernel::HarmonicityKernel;
 use crate::core::landscape::Landscape;
-use crate::core::roughness_kernel::crowding_runtime_delta_erb;
+use crate::core::psycho_state::{normalize_density, roughness_ratio_to_state01};
+use crate::core::roughness_kernel::{RoughnessKernel, crowding_runtime_delta_erb, erb_grid};
 use crate::life::adaptation::{AdaptationContext, FeaturesNow};
-use crate::life::control::MoveCostTimeScale;
+use crate::life::control::{LeaveSelfOutMode, MoveCostTimeScale};
 use crate::life::scenario::PitchCoreConfig;
 use rand::Rng;
 use std::sync::OnceLock;
@@ -21,6 +23,7 @@ const DEFAULT_GLOBAL_PEAK_MIN_SEP_CENTS: f32 = 0.0;
 const DEFAULT_RUNTIME_RATIO_CANDIDATE_COUNT: usize = 0;
 const DEFAULT_LOO_HARMONICS: u8 = 1;
 const DEFAULT_CROWDING_PAIR_SPLIT_EPS_FRAC: f32 = 0.25;
+const EXACT_LOO_ROUGHNESS_ERB_STEP: f32 = 0.005;
 static FALLBACK_REDUCED_RATIOS: OnceLock<Vec<(u16, u16)>> = OnceLock::new();
 
 #[derive(Debug, Clone, Copy)]
@@ -103,6 +106,7 @@ pub struct PitchHillClimbPitchCore {
     crowding_sigma_cents: f32,
     crowding_sigma_from_roughness: bool,
     leave_self_out: bool,
+    leave_self_out_mode: LeaveSelfOutMode,
     leave_self_out_harmonics: u8,
     anneal_temp: f32,
     global_peak_count: usize,
@@ -141,6 +145,7 @@ impl PitchHillClimbPitchCore {
             crowding_sigma_cents: 60.0,
             crowding_sigma_from_roughness: true,
             leave_self_out: false,
+            leave_self_out_mode: LeaveSelfOutMode::ApproxHarmonics,
             leave_self_out_harmonics: DEFAULT_LOO_HARMONICS,
             anneal_temp: 0.0,
             global_peak_count: DEFAULT_GLOBAL_PEAK_COUNT,
@@ -174,6 +179,10 @@ impl PitchHillClimbPitchCore {
 
     pub fn set_leave_self_out(&mut self, enabled: bool) {
         self.leave_self_out = enabled;
+    }
+
+    pub fn set_leave_self_out_mode(&mut self, mode: LeaveSelfOutMode) {
+        self.leave_self_out_mode = mode;
     }
 
     pub fn set_anneal_temp(&mut self, value: f32) {
@@ -454,10 +463,13 @@ impl PitchCore for PitchHillClimbPitchCore {
         let move_cost_coeff = self.move_cost_coeff;
         let move_cost_exp = self.move_cost_exp;
         let leave_self_out = self.leave_self_out;
+        let leave_self_out_mode = self.leave_self_out_mode;
         let leave_self_out_harmonics = self.leave_self_out_harmonics;
         let crowding_strength = self.crowding_strength;
         let crowding_sigma_cents = self.crowding_sigma_cents;
         let crowding_sigma_from_roughness = self.crowding_sigma_from_roughness;
+        let exact_loo_scan =
+            exact_loo_consonance_score_scan(landscape, current_pitch_log2, leave_self_out_mode);
         self.propose_with_scorer(
             current_pitch_log2,
             current_target_log2,
@@ -465,7 +477,7 @@ impl PitchCore for PitchHillClimbPitchCore {
             neighbor_pitch_log2,
             rng,
             |pitch_log2| {
-                adjusted_pitch_score_with_loo_harmonics(
+                adjusted_pitch_score_impl(
                     pitch_log2,
                     current_pitch_log2,
                     move_cost_time_sec,
@@ -477,7 +489,9 @@ impl PitchCore for PitchHillClimbPitchCore {
                     landscape,
                     perceptual,
                     leave_self_out,
+                    leave_self_out_mode,
                     leave_self_out_harmonics,
+                    exact_loo_scan.as_deref(),
                     crowding_strength,
                     crowding_sigma_cents,
                     crowding_sigma_from_roughness,
@@ -543,7 +557,11 @@ impl PitchPeakSamplerCore {
             neighbor_step_log2: cents_to_log2(neighbor_step_cents.max(0.0)),
             window_cents: window_cents.max(1.0),
             top_k: top_k.max(1),
-            temperature: temperature.max(1e-3),
+            temperature: if temperature.is_finite() {
+                temperature.max(0.0)
+            } else {
+                0.0
+            },
             sigma_cents: sigma_cents.max(0.0),
             random_candidates,
             tessitura_center,
@@ -582,6 +600,38 @@ impl PitchPeakSamplerCore {
 
     pub fn set_leave_self_out(&mut self, enabled: bool) {
         self.leave_self_out = enabled;
+    }
+
+    pub fn set_window_cents(&mut self, value: f32) {
+        self.window_cents = if value.is_finite() {
+            value.max(1.0)
+        } else {
+            DEFAULT_LOCAL_WINDOW_CENTS
+        };
+    }
+
+    pub fn set_top_k(&mut self, value: usize) {
+        self.top_k = value.max(1);
+    }
+
+    pub fn set_temperature(&mut self, value: f32) {
+        self.temperature = if value.is_finite() {
+            value.max(0.0)
+        } else {
+            0.0
+        };
+    }
+
+    pub fn set_sigma_cents(&mut self, value: f32) {
+        self.sigma_cents = if value.is_finite() {
+            value.max(0.0)
+        } else {
+            0.0
+        };
+    }
+
+    pub fn set_random_candidates(&mut self, value: usize) {
+        self.random_candidates = value;
     }
 
     pub fn set_neighbor_step_cents(&mut self, value: f32) {
@@ -661,7 +711,7 @@ impl PitchCore for PitchPeakSamplerCore {
         let crowding_sigma_cents = self.crowding_sigma_cents;
         let crowding_sigma_from_roughness = self.crowding_sigma_from_roughness;
         let mut scorer = |pitch_log2: f32| -> f32 {
-            adjusted_pitch_score_with_loo_harmonics(
+            adjusted_pitch_score_impl(
                 pitch_log2,
                 current_pitch_log2,
                 integration_window,
@@ -673,7 +723,9 @@ impl PitchCore for PitchPeakSamplerCore {
                 landscape,
                 perceptual,
                 leave_self_out,
+                LeaveSelfOutMode::ApproxHarmonics,
                 DEFAULT_LOO_HARMONICS,
+                None,
                 crowding_strength,
                 crowding_sigma_cents,
                 crowding_sigma_from_roughness,
@@ -909,7 +961,7 @@ fn adjusted_pitch_score(
     neighbor_pitch_log2: &[f32],
     neighbor_salience: &[f32],
 ) -> f32 {
-    adjusted_pitch_score_with_loo_harmonics(
+    adjusted_pitch_score_impl(
         pitch_log2,
         current_pitch_log2,
         integration_window,
@@ -921,7 +973,9 @@ fn adjusted_pitch_score(
         landscape,
         perceptual,
         leave_self_out,
+        LeaveSelfOutMode::ApproxHarmonics,
         DEFAULT_LOO_HARMONICS,
+        None,
         crowding_strength,
         crowding_sigma_cents,
         crowding_sigma_from_roughness,
@@ -930,6 +984,7 @@ fn adjusted_pitch_score(
     )
 }
 
+#[cfg(test)]
 #[allow(clippy::too_many_arguments)]
 fn adjusted_pitch_score_with_loo_harmonics(
     pitch_log2: f32,
@@ -950,30 +1005,62 @@ fn adjusted_pitch_score_with_loo_harmonics(
     neighbor_pitch_log2: &[f32],
     neighbor_salience: &[f32],
 ) -> f32 {
+    adjusted_pitch_score_impl(
+        pitch_log2,
+        current_pitch_log2,
+        integration_window,
+        tessitura_center,
+        tessitura_gravity,
+        landscape_weight,
+        move_cost_coeff,
+        move_cost_exp,
+        landscape,
+        perceptual,
+        leave_self_out,
+        LeaveSelfOutMode::ApproxHarmonics,
+        leave_self_out_harmonics,
+        None,
+        crowding_strength,
+        crowding_sigma_cents,
+        crowding_sigma_from_roughness,
+        neighbor_pitch_log2,
+        neighbor_salience,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn adjusted_pitch_score_impl(
+    pitch_log2: f32,
+    current_pitch_log2: f32,
+    integration_window: f32,
+    tessitura_center: f32,
+    tessitura_gravity: f32,
+    landscape_weight: f32,
+    move_cost_coeff: f32,
+    move_cost_exp: u8,
+    landscape: &Landscape,
+    perceptual: &AdaptationContext,
+    leave_self_out: bool,
+    leave_self_out_mode: LeaveSelfOutMode,
+    leave_self_out_harmonics: u8,
+    exact_loo_scan: Option<&[f32]>,
+    crowding_strength: f32,
+    crowding_sigma_cents: f32,
+    crowding_sigma_from_roughness: bool,
+    neighbor_pitch_log2: &[f32],
+    neighbor_salience: &[f32],
+) -> f32 {
     let (fmin, fmax) = landscape.freq_bounds_log2();
     let clamped = pitch_log2.clamp(fmin, fmax);
-    let mut score = landscape.evaluate_pitch_score_log2(clamped);
-    if leave_self_out {
-        let current_clamped = current_pitch_log2.clamp(fmin, fmax);
-        let harmonics = leave_self_out_harmonics.max(1);
-        if harmonics >= 1 {
-            let sigma = cents_to_log2(DEFAULT_APPROX_LOO_SIGMA_CENTS).max(1e-6);
-            for harmonic in 1..=harmonics {
-                let harmonic_f = harmonic as f32;
-                let harmonic_log2 = current_clamped + harmonic_f.log2();
-                if harmonic_log2 < fmin || harmonic_log2 > fmax {
-                    continue;
-                }
-                let self_score = landscape.evaluate_pitch_score_log2(harmonic_log2);
-                if !self_score.is_finite() || self_score <= 0.0 {
-                    continue;
-                }
-                let d = (clamped - harmonic_log2).abs();
-                let harmonic_weight = 1.0 / harmonic_f.max(1.0);
-                score -= harmonic_weight * self_score * (-d / sigma).exp();
-            }
-        }
-    }
+    let score = sample_consonance_score_with_loo(
+        clamped,
+        current_pitch_log2,
+        landscape,
+        leave_self_out,
+        leave_self_out_mode,
+        leave_self_out_harmonics,
+        exact_loo_scan,
+    );
     let distance_oct = (clamped - current_pitch_log2).abs();
     let dist_cost = if move_cost_exp == 2 {
         distance_oct * distance_oct
@@ -983,7 +1070,8 @@ fn adjusted_pitch_score_with_loo_harmonics(
     let penalty = dist_cost * integration_window * move_cost_coeff.max(0.0);
     let dist = clamped - tessitura_center;
     let gravity_penalty = dist * dist * tessitura_gravity;
-    let weighted_score = landscape_weight.max(0.0) * score;
+    let weighted_score =
+        landscape_weight.max(0.0) * landscape.pitch_objective_mode.apply_consonance_score(score);
     let crowding_penalty = if crowding_strength > 0.0 && !neighbor_pitch_log2.is_empty() {
         let candidate_hz = 2.0f32.powf(clamped).max(1e-6);
         let candidate_erb = hz_to_erb(candidate_hz);
@@ -1026,6 +1114,104 @@ fn adjusted_pitch_score_with_loo_harmonics(
     let base = weighted_score - penalty - gravity_penalty - crowding_penalty;
     let idx = landscape.space.index_of_log2(clamped).unwrap_or(0);
     base + perceptual.score_adjustment(idx)
+}
+
+fn sample_consonance_score_with_loo(
+    pitch_log2: f32,
+    current_pitch_log2: f32,
+    landscape: &Landscape,
+    leave_self_out: bool,
+    leave_self_out_mode: LeaveSelfOutMode,
+    leave_self_out_harmonics: u8,
+    exact_loo_scan: Option<&[f32]>,
+) -> f32 {
+    if leave_self_out
+        && matches!(leave_self_out_mode, LeaveSelfOutMode::ExactScan)
+        && let Some(scan) = exact_loo_scan
+    {
+        return landscape.sample_linear_log2(scan, pitch_log2);
+    }
+    let (fmin, fmax) = landscape.freq_bounds_log2();
+    let clamped = pitch_log2.clamp(fmin, fmax);
+    let mut score = landscape.evaluate_pitch_score_log2(clamped);
+    if leave_self_out {
+        let current_clamped = current_pitch_log2.clamp(fmin, fmax);
+        let harmonics = leave_self_out_harmonics.max(1);
+        let sigma = cents_to_log2(DEFAULT_APPROX_LOO_SIGMA_CENTS).max(1e-6);
+        for harmonic in 1..=harmonics {
+            let harmonic_f = harmonic as f32;
+            let harmonic_log2 = current_clamped + harmonic_f.log2();
+            if harmonic_log2 < fmin || harmonic_log2 > fmax {
+                continue;
+            }
+            let self_score = landscape.evaluate_pitch_score_log2(harmonic_log2);
+            if !self_score.is_finite() || self_score <= 0.0 {
+                continue;
+            }
+            let d = (clamped - harmonic_log2).abs();
+            let harmonic_weight = 1.0 / harmonic_f.max(1.0);
+            score -= harmonic_weight * self_score * (-d / sigma).exp();
+        }
+    }
+    score
+}
+
+fn exact_loo_consonance_score_scan(
+    landscape: &Landscape,
+    current_pitch_log2: f32,
+    mode: LeaveSelfOutMode,
+) -> Option<Vec<f32>> {
+    if !matches!(mode, LeaveSelfOutMode::ExactScan) {
+        return None;
+    }
+    let n = landscape.space.n_bins();
+    if n == 0
+        || landscape.subjective_intensity.len() != n
+        || landscape.roughness01.len() != n
+        || landscape.harmonicity01.len() != n
+    {
+        return None;
+    }
+    let current_idx = landscape.space.index_of_log2(current_pitch_log2)?;
+    let current_mass = landscape
+        .subjective_intensity
+        .get(current_idx)
+        .copied()
+        .filter(|v| v.is_finite() && *v > 0.0)?;
+    let mut density_loo = landscape.subjective_intensity.clone();
+    density_loo[current_idx] = (density_loo[current_idx] - current_mass).max(0.0);
+
+    let harmonicity_kernel = HarmonicityKernel::new(&landscape.space, landscape.harmonicity_params);
+    let h_dual =
+        harmonicity_kernel.potential_h_dual_from_log2_spectrum(&density_loo, &landscape.space);
+    let roughness_kernel = RoughnessKernel::new(
+        landscape.roughness_kernel_params,
+        EXACT_LOO_ROUGHNESS_ERB_STEP,
+    );
+    let (_erb, du) = erb_grid(&landscape.space);
+    let eps = landscape.roughness_ref_eps.max(1e-12);
+    let (p_density, mass) = normalize_density(&density_loo, &du, eps);
+    let r_shape_raw = if mass > eps {
+        roughness_kernel
+            .potential_r_from_log2_spectrum(&p_density, &landscape.space)
+            .0
+    } else {
+        vec![0.0; n]
+    };
+    let roughness_ref_peak = landscape.roughness_ref_peak.max(eps);
+    let roughness_k = landscape.roughness_k.max(1e-6);
+    let mut out = Vec::with_capacity(n);
+    for (i, r_shape) in r_shape_raw.iter().enumerate().take(n) {
+        let h01 = h_dual
+            .blended
+            .get(i)
+            .copied()
+            .unwrap_or(0.0)
+            .clamp(0.0, 1.0);
+        let r01 = roughness_ratio_to_state01(*r_shape / roughness_ref_peak, roughness_k);
+        out.push(landscape.consonance_kernel.score(h01, r01));
+    }
+    Some(out)
 }
 
 fn top_local_peaks(
@@ -1443,6 +1629,7 @@ impl AnyPitchCore {
                 ratio_candidate_count,
                 move_cost_time_scale,
                 leave_self_out_harmonics,
+                leave_self_out_mode,
             } => {
                 let neighbor_step_cents = neighbor_step_cents.unwrap_or(200.0);
                 let tessitura_gravity = tessitura_gravity.unwrap_or(0.1);
@@ -1463,6 +1650,8 @@ impl AnyPitchCore {
                     move_cost_time_scale.unwrap_or(MoveCostTimeScale::LegacyIntegrationWindow);
                 let leave_self_out_harmonics =
                     leave_self_out_harmonics.unwrap_or(DEFAULT_LOO_HARMONICS);
+                let leave_self_out_mode =
+                    leave_self_out_mode.unwrap_or(LeaveSelfOutMode::ApproxHarmonics);
                 let mut core = PitchHillClimbPitchCore::new(
                     neighbor_step_cents,
                     initial_pitch_log2,
@@ -1479,6 +1668,7 @@ impl AnyPitchCore {
                 core.set_ratio_candidates(use_ratio_candidates, ratio_candidate_count);
                 core.set_move_cost_time_scale(move_cost_time_scale);
                 core.set_leave_self_out_harmonics(leave_self_out_harmonics);
+                core.set_leave_self_out_mode(leave_self_out_mode);
                 AnyPitchCore::PitchHillClimb(core)
             }
             PitchCoreConfig::PitchPeakSampler {
@@ -1494,11 +1684,16 @@ impl AnyPitchCore {
                 leave_self_out,
             } => {
                 let neighbor_step_cents = neighbor_step_cents.unwrap_or(160.0);
-                let window_cents = window_cents.unwrap_or(DEFAULT_LOCAL_WINDOW_CENTS);
-                let top_k = top_k.unwrap_or(DEFAULT_LOCAL_TOP_K);
-                let temperature = temperature.unwrap_or(0.08);
-                let sigma_cents = sigma_cents.unwrap_or(DEFAULT_RANDOM_SIGMA_CENTS);
-                let random_candidates = random_candidates.unwrap_or(DEFAULT_RANDOM_CANDIDATES);
+                let window_cents_opt = *window_cents;
+                let top_k_opt = *top_k;
+                let temperature_opt = *temperature;
+                let sigma_cents_opt = *sigma_cents;
+                let random_candidates_opt = *random_candidates;
+                let window_cents = window_cents_opt.unwrap_or(DEFAULT_LOCAL_WINDOW_CENTS);
+                let top_k = top_k_opt.unwrap_or(DEFAULT_LOCAL_TOP_K);
+                let temperature = temperature_opt.unwrap_or(0.08);
+                let sigma_cents = sigma_cents_opt.unwrap_or(DEFAULT_RANDOM_SIGMA_CENTS);
+                let random_candidates = random_candidates_opt.unwrap_or(DEFAULT_RANDOM_CANDIDATES);
                 let tessitura_gravity = tessitura_gravity.unwrap_or(0.1);
                 let exploration = exploration.unwrap_or(0.2);
                 let persistence = persistence.unwrap_or(0.35);
@@ -1515,6 +1710,21 @@ impl AnyPitchCore {
                     persistence,
                 );
                 core.set_leave_self_out(leave_self_out.unwrap_or(false));
+                if let Some(window_cents) = window_cents_opt {
+                    core.set_window_cents(window_cents);
+                }
+                if let Some(top_k) = top_k_opt {
+                    core.set_top_k(top_k);
+                }
+                if let Some(temperature) = temperature_opt {
+                    core.set_temperature(temperature);
+                }
+                if let Some(sigma_cents) = sigma_cents_opt {
+                    core.set_sigma_cents(sigma_cents);
+                }
+                if let Some(random_candidates) = random_candidates_opt {
+                    core.set_random_candidates(random_candidates);
+                }
                 AnyPitchCore::PitchPeakSampler(core)
             }
         }
@@ -1559,6 +1769,12 @@ impl AnyPitchCore {
         }
     }
 
+    pub fn set_leave_self_out_mode(&mut self, mode: LeaveSelfOutMode) {
+        if let AnyPitchCore::PitchHillClimb(core) = self {
+            core.set_leave_self_out_mode(mode);
+        }
+    }
+
     pub fn set_anneal_temp(&mut self, value: f32) {
         if let AnyPitchCore::PitchHillClimb(core) = self {
             core.set_anneal_temp(value);
@@ -1568,6 +1784,12 @@ impl AnyPitchCore {
     pub fn set_move_cost_coeff(&mut self, value: f32) {
         if let AnyPitchCore::PitchHillClimb(core) = self {
             core.set_move_cost_coeff(value);
+        }
+    }
+
+    pub fn set_move_cost_exp(&mut self, value: u8) {
+        if let AnyPitchCore::PitchHillClimb(core) = self {
+            core.set_move_cost_exp(value);
         }
     }
 
@@ -1604,6 +1826,36 @@ impl AnyPitchCore {
     pub fn set_leave_self_out_harmonics(&mut self, harmonics: u8) {
         if let AnyPitchCore::PitchHillClimb(core) = self {
             core.set_leave_self_out_harmonics(harmonics);
+        }
+    }
+
+    pub fn set_window_cents(&mut self, value: f32) {
+        if let AnyPitchCore::PitchPeakSampler(core) = self {
+            core.set_window_cents(value);
+        }
+    }
+
+    pub fn set_top_k(&mut self, value: usize) {
+        if let AnyPitchCore::PitchPeakSampler(core) = self {
+            core.set_top_k(value);
+        }
+    }
+
+    pub fn set_temperature(&mut self, value: f32) {
+        if let AnyPitchCore::PitchPeakSampler(core) = self {
+            core.set_temperature(value);
+        }
+    }
+
+    pub fn set_sigma_cents(&mut self, value: f32) {
+        if let AnyPitchCore::PitchPeakSampler(core) = self {
+            core.set_sigma_cents(value);
+        }
+    }
+
+    pub fn set_random_candidates(&mut self, value: usize) {
+        if let AnyPitchCore::PitchPeakSampler(core) = self {
+            core.set_random_candidates(value);
         }
     }
 
@@ -1652,6 +1904,13 @@ impl AnyPitchCore {
         }
     }
 
+    pub(crate) fn leave_self_out_mode_for_test(&self) -> LeaveSelfOutMode {
+        match self {
+            AnyPitchCore::PitchHillClimb(core) => core.leave_self_out_mode,
+            AnyPitchCore::PitchPeakSampler(_) => LeaveSelfOutMode::ApproxHarmonics,
+        }
+    }
+
     pub(crate) fn anneal_temp_for_test(&self) -> f32 {
         match self {
             AnyPitchCore::PitchHillClimb(core) => core.anneal_temp,
@@ -1663,6 +1922,13 @@ impl AnyPitchCore {
         match self {
             AnyPitchCore::PitchHillClimb(core) => core.move_cost_coeff,
             AnyPitchCore::PitchPeakSampler(_) => 0.0,
+        }
+    }
+
+    pub(crate) fn move_cost_exp_for_test(&self) -> u8 {
+        match self {
+            AnyPitchCore::PitchHillClimb(core) => core.move_cost_exp,
+            AnyPitchCore::PitchPeakSampler(_) => DEFAULT_MOVE_COST_EXP,
         }
     }
 
@@ -1733,6 +1999,55 @@ impl AnyPitchCore {
         match self {
             AnyPitchCore::PitchHillClimb(core) => core.crowding_sigma_from_roughness,
             AnyPitchCore::PitchPeakSampler(core) => core.crowding_sigma_from_roughness,
+        }
+    }
+
+    pub(crate) fn neighbor_step_cents_for_test(&self) -> f32 {
+        match self {
+            AnyPitchCore::PitchHillClimb(core) => core.neighbor_step_log2 * 1200.0,
+            AnyPitchCore::PitchPeakSampler(core) => core.neighbor_step_log2 * 1200.0,
+        }
+    }
+
+    pub(crate) fn tessitura_gravity_for_test(&self) -> f32 {
+        match self {
+            AnyPitchCore::PitchHillClimb(core) => core.tessitura_gravity,
+            AnyPitchCore::PitchPeakSampler(core) => core.tessitura_gravity,
+        }
+    }
+
+    pub(crate) fn window_cents_for_test(&self) -> f32 {
+        match self {
+            AnyPitchCore::PitchHillClimb(_) => DEFAULT_LOCAL_WINDOW_CENTS,
+            AnyPitchCore::PitchPeakSampler(core) => core.window_cents,
+        }
+    }
+
+    pub(crate) fn top_k_for_test(&self) -> usize {
+        match self {
+            AnyPitchCore::PitchHillClimb(_) => DEFAULT_LOCAL_TOP_K,
+            AnyPitchCore::PitchPeakSampler(core) => core.top_k,
+        }
+    }
+
+    pub(crate) fn temperature_for_test(&self) -> f32 {
+        match self {
+            AnyPitchCore::PitchHillClimb(_) => 0.0,
+            AnyPitchCore::PitchPeakSampler(core) => core.temperature,
+        }
+    }
+
+    pub(crate) fn sigma_cents_for_test(&self) -> f32 {
+        match self {
+            AnyPitchCore::PitchHillClimb(_) => DEFAULT_RANDOM_SIGMA_CENTS,
+            AnyPitchCore::PitchPeakSampler(core) => core.sigma_cents,
+        }
+    }
+
+    pub(crate) fn random_candidates_for_test(&self) -> usize {
+        match self {
+            AnyPitchCore::PitchHillClimb(_) => DEFAULT_RANDOM_CANDIDATES,
+            AnyPitchCore::PitchPeakSampler(core) => core.random_candidates,
         }
     }
 }

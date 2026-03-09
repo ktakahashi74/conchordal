@@ -49,6 +49,24 @@ pub struct LandscapeParams {
 pub struct LandscapeUpdate {
     pub mirror: Option<f32>,
     pub roughness_k: Option<f32>,
+    pub pitch_objective_mode: Option<PitchObjectiveMode>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum PitchObjectiveMode {
+    #[default]
+    Consonance,
+    NegativeConsonance,
+}
+
+impl PitchObjectiveMode {
+    #[inline]
+    pub fn apply_consonance_score(self, score: f32) -> f32 {
+        match self {
+            Self::Consonance => score,
+            Self::NegativeConsonance => -score,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -108,6 +126,12 @@ pub struct Landscape {
     pub binding_strength: f32,
     pub harmonic_tilt: f32,
     pub harmonicity_mirror_weight: f32,
+    pub pitch_objective_mode: PitchObjectiveMode,
+    pub harmonicity_params: crate::core::harmonicity_kernel::HarmonicityParams,
+    pub consonance_kernel: ConsonanceKernel,
+    pub roughness_k: f32,
+    pub roughness_ref_peak: f32,
+    pub roughness_ref_eps: f32,
     pub rhythm: NeuralRhythms,
 }
 
@@ -147,6 +171,12 @@ impl Landscape {
             binding_strength: 0.0,
             harmonic_tilt: 0.0,
             harmonicity_mirror_weight: 0.0,
+            pitch_objective_mode: PitchObjectiveMode::Consonance,
+            harmonicity_params: crate::core::harmonicity_kernel::HarmonicityParams::default(),
+            consonance_kernel: ConsonanceKernel::default(),
+            roughness_k: 1.0,
+            roughness_ref_peak: 1.0,
+            roughness_ref_eps: 1e-6,
             rhythm: NeuralRhythms::default(),
         }
     }
@@ -336,7 +366,7 @@ impl Landscape {
         self.sample_linear_log2(data, l)
     }
 
-    fn sample_linear_log2(&self, data: &[f32], log_freq: f32) -> f32 {
+    pub(crate) fn sample_linear_log2(&self, data: &[f32], log_freq: f32) -> f32 {
         if data.is_empty() {
             return 0.0;
         }

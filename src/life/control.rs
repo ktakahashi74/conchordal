@@ -71,6 +71,24 @@ impl AgentControl {
     }
 
     #[inline]
+    pub fn set_neighbor_step_cents_clamped(&mut self, value: f32) {
+        self.pitch.neighbor_step_cents = Some(if value.is_finite() {
+            value.max(0.0)
+        } else {
+            0.0
+        });
+    }
+
+    #[inline]
+    pub fn set_tessitura_gravity_clamped(&mut self, value: f32) {
+        self.pitch.tessitura_gravity = Some(if value.is_finite() {
+            value.max(0.0)
+        } else {
+            0.0
+        });
+    }
+
+    #[inline]
     pub fn set_exploration_clamped(&mut self, value: f32) {
         self.pitch.exploration = value.clamp(0.0, 1.0);
     }
@@ -110,6 +128,11 @@ impl AgentControl {
     }
 
     #[inline]
+    pub fn set_leave_self_out_mode(&mut self, mode: LeaveSelfOutMode) {
+        self.pitch.leave_self_out_mode = mode;
+    }
+
+    #[inline]
     pub fn set_continuous_drive_clamped(&mut self, value: f32) {
         self.body.continuous_drive = if value.is_finite() {
             value.max(0.0)
@@ -143,6 +166,11 @@ impl AgentControl {
         } else {
             DEFAULT_MOVE_COST_COEFF
         };
+    }
+
+    #[inline]
+    pub fn set_move_cost_exp_clamped(&mut self, value: i64) {
+        self.pitch.move_cost_exp = Some(if value == 2 { 2 } else { 1 });
     }
 
     #[inline]
@@ -185,6 +213,43 @@ impl AgentControl {
     #[inline]
     pub fn set_ratio_candidate_count_clamped(&mut self, value: i64) {
         self.pitch.ratio_candidate_count = value.max(0) as usize;
+    }
+
+    #[inline]
+    pub fn set_window_cents_clamped(&mut self, value: f32) {
+        self.pitch.window_cents = Some(if value.is_finite() {
+            value.max(1.0)
+        } else {
+            1.0
+        });
+    }
+
+    #[inline]
+    pub fn set_top_k_clamped(&mut self, value: i64) {
+        self.pitch.top_k = Some(value.max(1) as usize);
+    }
+
+    #[inline]
+    pub fn set_temperature_clamped(&mut self, value: f32) {
+        self.pitch.temperature = Some(if value.is_finite() {
+            value.max(0.0)
+        } else {
+            0.0
+        });
+    }
+
+    #[inline]
+    pub fn set_sigma_cents_clamped(&mut self, value: f32) {
+        self.pitch.sigma_cents = Some(if value.is_finite() {
+            value.max(0.0)
+        } else {
+            0.0
+        });
+    }
+
+    #[inline]
+    pub fn set_random_candidates_clamped(&mut self, value: i64) {
+        self.pitch.random_candidates = Some(value.max(0) as usize);
     }
 
     #[inline]
@@ -284,6 +349,13 @@ pub enum MoveCostTimeScale {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LeaveSelfOutMode {
+    #[default]
+    ApproxHarmonics,
+    ExactScan,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PitchApplyMode {
     #[default]
     GateSnap,
@@ -298,6 +370,8 @@ pub struct PitchControl {
     pub freq: f32,
     pub range_oct: f32,
     pub gravity: f32,
+    pub neighbor_step_cents: Option<f32>,
+    pub tessitura_gravity: Option<f32>,
     pub landscape_weight: f32,
     pub exploration: f32,
     pub persistence: f32,
@@ -305,14 +379,21 @@ pub struct PitchControl {
     pub crowding_sigma_cents: f32,
     pub crowding_sigma_from_roughness: bool,
     pub leave_self_out: bool,
+    pub leave_self_out_mode: LeaveSelfOutMode,
     pub anneal_temp: f32,
     pub move_cost_coeff: f32,
+    pub move_cost_exp: Option<u8>,
     pub improvement_threshold: f32,
     pub proposal_interval_sec: Option<f32>,
     pub global_peak_count: usize,
     pub global_peak_min_sep_cents: f32,
     pub use_ratio_candidates: bool,
     pub ratio_candidate_count: usize,
+    pub window_cents: Option<f32>,
+    pub top_k: Option<usize>,
+    pub temperature: Option<f32>,
+    pub sigma_cents: Option<f32>,
+    pub random_candidates: Option<usize>,
     pub move_cost_time_scale: MoveCostTimeScale,
     pub leave_self_out_harmonics: u8,
     pub pitch_apply_mode: PitchApplyMode,
@@ -327,6 +408,8 @@ impl Default for PitchControl {
             freq: 220.0,
             range_oct: RANGE_OCT_MAX,
             gravity: 0.5,
+            neighbor_step_cents: None,
+            tessitura_gravity: None,
             landscape_weight: 1.0,
             exploration: 0.0,
             persistence: 0.5,
@@ -334,14 +417,21 @@ impl Default for PitchControl {
             crowding_sigma_cents: DEFAULT_CROWDING_SIGMA_CENTS,
             crowding_sigma_from_roughness: true,
             leave_self_out: false,
+            leave_self_out_mode: LeaveSelfOutMode::ApproxHarmonics,
             anneal_temp: DEFAULT_ANNEAL_TEMP,
             move_cost_coeff: DEFAULT_MOVE_COST_COEFF,
+            move_cost_exp: None,
             improvement_threshold: DEFAULT_IMPROVEMENT_THRESHOLD,
             proposal_interval_sec: None,
             global_peak_count: 0,
             global_peak_min_sep_cents: DEFAULT_GLOBAL_PEAK_MIN_SEP_CENTS,
             use_ratio_candidates: false,
             ratio_candidate_count: 0,
+            window_cents: None,
+            top_k: None,
+            temperature: None,
+            sigma_cents: None,
+            random_candidates: None,
             move_cost_time_scale: MoveCostTimeScale::LegacyIntegrationWindow,
             leave_self_out_harmonics: 1,
             pitch_apply_mode: PitchApplyMode::GateSnap,
@@ -378,6 +468,8 @@ impl Default for AdaptationControl {
 pub struct ControlUpdate {
     pub amp: Option<f32>,
     pub freq: Option<f32>,
+    pub neighbor_step_cents: Option<f32>,
+    pub tessitura_gravity: Option<f32>,
     pub landscape_weight: Option<f32>,
     pub exploration: Option<f32>,
     pub persistence: Option<f32>,
@@ -385,6 +477,7 @@ pub struct ControlUpdate {
     pub crowding_sigma_cents: Option<f32>,
     pub crowding_sigma_from_roughness: Option<bool>,
     pub leave_self_out: Option<bool>,
+    pub leave_self_out_mode: Option<LeaveSelfOutMode>,
     pub anneal_temp: Option<f32>,
     pub timbre_brightness: Option<f32>,
     pub timbre_inharmonic: Option<f32>,
@@ -393,12 +486,18 @@ pub struct ControlUpdate {
     pub continuous_drive: Option<f32>,
     pub pitch_smooth_tau: Option<f32>,
     pub move_cost_coeff: Option<f32>,
+    pub move_cost_exp: Option<i64>,
     pub improvement_threshold: Option<f32>,
     pub proposal_interval_sec: Option<f32>,
     pub global_peak_count: Option<i64>,
     pub global_peak_min_sep_cents: Option<f32>,
     pub use_ratio_candidates: Option<bool>,
     pub ratio_candidate_count: Option<i64>,
+    pub window_cents: Option<f32>,
+    pub top_k: Option<i64>,
+    pub temperature: Option<f32>,
+    pub sigma_cents: Option<f32>,
+    pub random_candidates: Option<i64>,
     pub move_cost_time_scale: Option<MoveCostTimeScale>,
     pub leave_self_out_harmonics: Option<i64>,
     pub pitch_apply_mode: Option<PitchApplyMode>,
@@ -412,6 +511,12 @@ impl AgentControl {
         }
         if let Some(freq) = update.freq {
             self.set_freq_lock_clamped(freq);
+        }
+        if let Some(cents) = update.neighbor_step_cents {
+            self.set_neighbor_step_cents_clamped(cents);
+        }
+        if let Some(gravity) = update.tessitura_gravity {
+            self.set_tessitura_gravity_clamped(gravity);
         }
         if let Some(weight) = update.landscape_weight {
             self.set_landscape_weight_clamped(weight);
@@ -433,6 +538,9 @@ impl AgentControl {
         }
         if let Some(enabled) = update.leave_self_out {
             self.set_leave_self_out(enabled);
+        }
+        if let Some(mode) = update.leave_self_out_mode {
+            self.set_leave_self_out_mode(mode);
         }
         if let Some(anneal_temp) = update.anneal_temp {
             self.set_anneal_temp_clamped(anneal_temp);
@@ -458,6 +566,9 @@ impl AgentControl {
         if let Some(coeff) = update.move_cost_coeff {
             self.set_move_cost_coeff_clamped(coeff);
         }
+        if let Some(exp) = update.move_cost_exp {
+            self.set_move_cost_exp_clamped(exp);
+        }
         if let Some(threshold) = update.improvement_threshold {
             self.set_improvement_threshold_clamped(threshold);
         }
@@ -475,6 +586,21 @@ impl AgentControl {
         }
         if let Some(count) = update.ratio_candidate_count {
             self.set_ratio_candidate_count_clamped(count);
+        }
+        if let Some(cents) = update.window_cents {
+            self.set_window_cents_clamped(cents);
+        }
+        if let Some(top_k) = update.top_k {
+            self.set_top_k_clamped(top_k);
+        }
+        if let Some(temperature) = update.temperature {
+            self.set_temperature_clamped(temperature);
+        }
+        if let Some(cents) = update.sigma_cents {
+            self.set_sigma_cents_clamped(cents);
+        }
+        if let Some(count) = update.random_candidates {
+            self.set_random_candidates_clamped(count);
         }
         if let Some(scale) = update.move_cost_time_scale {
             self.set_move_cost_time_scale(scale);
@@ -502,6 +628,8 @@ mod tests {
         let update = ControlUpdate {
             amp: Some(1.2),
             freq: Some(99_999.0),
+            neighbor_step_cents: Some(-25.0),
+            tessitura_gravity: Some(-0.3),
             landscape_weight: Some(-2.0),
             exploration: Some(2.0),
             persistence: Some(-1.0),
@@ -509,6 +637,7 @@ mod tests {
             crowding_sigma_cents: Some(-3.0),
             crowding_sigma_from_roughness: Some(false),
             leave_self_out: Some(true),
+            leave_self_out_mode: Some(LeaveSelfOutMode::ExactScan),
             anneal_temp: Some(-0.5),
             timbre_brightness: Some(-0.1),
             timbre_inharmonic: Some(2.0),
@@ -517,12 +646,18 @@ mod tests {
             continuous_drive: None,
             pitch_smooth_tau: None,
             move_cost_coeff: Some(-0.2),
+            move_cost_exp: Some(7),
             improvement_threshold: Some(-0.5),
             proposal_interval_sec: Some(-1.0),
             global_peak_count: Some(8),
             global_peak_min_sep_cents: Some(-9.0),
             use_ratio_candidates: Some(true),
             ratio_candidate_count: Some(6),
+            window_cents: Some(-5.0),
+            top_k: Some(0),
+            temperature: Some(-0.4),
+            sigma_cents: Some(-10.0),
+            random_candidates: Some(-3),
             move_cost_time_scale: Some(MoveCostTimeScale::ProposalInterval),
             leave_self_out_harmonics: Some(0),
             pitch_apply_mode: Some(PitchApplyMode::Glide),
@@ -540,9 +675,21 @@ mod tests {
         assert!((control.pitch.crowding_sigma_cents - 1e-3).abs() <= 1e-6);
         assert!(!control.pitch.crowding_sigma_from_roughness);
         assert!(control.pitch.leave_self_out);
+        assert_eq!(
+            control.pitch.leave_self_out_mode,
+            LeaveSelfOutMode::ExactScan
+        );
         assert!((control.pitch.anneal_temp - 0.0).abs() <= 1e-6);
+        assert_eq!(control.pitch.neighbor_step_cents, Some(0.0));
+        assert_eq!(control.pitch.tessitura_gravity, Some(0.0));
         assert!((control.pitch.move_cost_coeff - 0.0).abs() <= 1e-6);
+        assert_eq!(control.pitch.move_cost_exp, Some(1));
         assert!((control.pitch.improvement_threshold - 0.0).abs() <= 1e-6);
+        assert_eq!(control.pitch.window_cents, Some(1.0));
+        assert_eq!(control.pitch.top_k, Some(1));
+        assert_eq!(control.pitch.temperature, Some(0.0));
+        assert_eq!(control.pitch.sigma_cents, Some(0.0));
+        assert_eq!(control.pitch.random_candidates, Some(0));
         assert_eq!(control.pitch.proposal_interval_sec, None);
         assert_eq!(control.pitch.global_peak_count, 8);
         assert!((control.pitch.global_peak_min_sep_cents - 0.0).abs() <= 1e-6);

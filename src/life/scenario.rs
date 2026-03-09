@@ -2,7 +2,7 @@ use std::fmt;
 
 use crate::core::float::sanitize_nonnegative_finite;
 use crate::core::landscape::LandscapeUpdate;
-use crate::life::control::{AgentControl, ControlUpdate, MoveCostTimeScale};
+use crate::life::control::{AgentControl, ControlUpdate, LeaveSelfOutMode, MoveCostTimeScale};
 use crate::life::individual::{AgentMetadata, Individual};
 use crate::life::lifecycle::LifecycleConfig;
 
@@ -379,6 +379,7 @@ pub enum PitchCoreConfig {
         ratio_candidate_count: Option<usize>,
         move_cost_time_scale: Option<MoveCostTimeScale>,
         leave_self_out_harmonics: Option<u8>,
+        leave_self_out_mode: Option<LeaveSelfOutMode>,
     },
     PitchPeakSampler {
         neighbor_step_cents: Option<f32>,
@@ -412,6 +413,7 @@ impl Default for PitchCoreConfig {
             ratio_candidate_count: None,
             move_cost_time_scale: None,
             leave_self_out_harmonics: None,
+            leave_self_out_mode: None,
         }
     }
 }
@@ -475,6 +477,13 @@ pub enum SpawnStrategy {
         min_freq: f32,
         max_freq: f32,
     },
+    RejectTargets {
+        base: Box<SpawnStrategy>,
+        anchor_hz: f32,
+        targets_st: Vec<f32>,
+        exclusion_st: f32,
+        max_tries: usize,
+    },
     Linear {
         start_freq: f32,
         end_freq: f32,
@@ -498,6 +507,7 @@ impl SpawnStrategy {
                 start_freq: min_freq,
                 end_freq: max_freq,
             } => (*min_freq, *max_freq),
+            SpawnStrategy::RejectTargets { base, .. } => base.freq_range_hz(),
         }
     }
 
@@ -505,6 +515,7 @@ impl SpawnStrategy {
         match self {
             SpawnStrategy::Consonance { min_dist_erb, .. }
             | SpawnStrategy::ConsonanceDensity { min_dist_erb, .. } => *min_dist_erb,
+            SpawnStrategy::RejectTargets { base, .. } => base.min_dist_erb(),
             _ => 0.0,
         }
     }

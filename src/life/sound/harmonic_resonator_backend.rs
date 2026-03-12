@@ -1,17 +1,19 @@
 use crate::core::log2space::Log2Space;
+use crate::core::mode_pattern::DEFAULT_MODE_COUNT;
 use crate::life::individual::ArticulationSignal;
 use crate::life::scenario::TimbreGenotype;
 use crate::life::sound::BodySnapshot;
 use crate::life::sound::control::VoiceControlBlock;
 use crate::life::sound::modal_engine::ModalMode;
-use crate::life::sound::mode_utils::modal_modes_from_ratios;
-use crate::life::sound::spectral::{add_log2_energy, harmonic_gain, harmonic_ratio};
+use crate::life::sound::mode_utils::{modal_modes_from_ratios, modal_tilt_from_brightness};
+use crate::life::sound::spectral::{
+    add_log2_energy, harmonic_gain, harmonic_ratio, spectral_slope_from_brightness,
+};
 use crate::synth::SynthError;
 use crate::synth::modes::ModeParams;
 use crate::synth::resonator::ResonatorBank;
 
 const DEFAULT_UPDATE_PERIOD_SAMPLES: usize = 64;
-const DEFAULT_PARTIALS: usize = 16;
 
 #[derive(Debug, Clone)]
 enum HarmonicProfile {
@@ -40,23 +42,19 @@ pub struct HarmonicResonatorBackend {
 
 impl HarmonicResonatorBackend {
     pub fn from_snapshot(fs: f32, snapshot: &BodySnapshot) -> Result<Self, SynthError> {
+        let brightness = snapshot.brightness.clamp(0.0, 1.0);
         let profile = if let Some(ratios) = snapshot.ratios.as_deref() {
             HarmonicProfile::Ratios {
-                modes: modal_modes_from_ratios(
-                    ratios,
-                    snapshot.brightness.clamp(0.0, 1.0),
-                    snapshot.width.clamp(0.0, 1.0),
-                ),
+                modes: modal_modes_from_ratios(ratios, modal_tilt_from_brightness(brightness)),
             }
         } else {
             HarmonicProfile::Harmonic {
-                partials: DEFAULT_PARTIALS,
+                partials: DEFAULT_MODE_COUNT,
                 base_t60_s: 0.8,
                 in_gain: 1.0,
                 genotype: TimbreGenotype {
-                    brightness: snapshot.brightness.clamp(0.0, 1.0),
+                    spectral_slope: spectral_slope_from_brightness(brightness),
                     jitter: snapshot.noise_mix.clamp(0.0, 1.0),
-                    unison: snapshot.width.clamp(0.0, 1.0),
                     ..TimbreGenotype::default()
                 },
             }
@@ -96,6 +94,7 @@ impl HarmonicResonatorBackend {
         }
 
         let limit = self.bank.capacity();
+        let max_freq_hz = (self.bank.fs() * 0.49).max(1.0);
         self.scratch.clear();
         match &self.profile {
             HarmonicProfile::Harmonic {
@@ -113,6 +112,9 @@ impl HarmonicResonatorBackend {
                     let freq_hz = pitch_hz * ratio;
                     if !freq_hz.is_finite() || freq_hz <= 0.0 {
                         continue;
+                    }
+                    if freq_hz > max_freq_hz {
+                        break;
                     }
                     let gain = harmonic_gain(genotype, k, energy);
                     let t60_s = base_t60_s.max(1e-3) / (1.0 + 0.15 * k as f32);
@@ -132,6 +134,9 @@ impl HarmonicResonatorBackend {
                     let freq_hz = pitch_hz * mode.ratio;
                     if !freq_hz.is_finite() || freq_hz <= 0.0 {
                         continue;
+                    }
+                    if freq_hz > max_freq_hz {
+                        break;
                     }
                     self.scratch.push(ModeParams {
                         freq_hz,
@@ -193,6 +198,7 @@ impl HarmonicResonatorBackend {
             return;
         }
         let amp_scale = signal.amplitude;
+        let max_freq_hz = (self.bank.fs() * 0.49).max(1.0);
         match &self.profile {
             HarmonicProfile::Harmonic {
                 partials, genotype, ..
@@ -202,6 +208,9 @@ impl HarmonicResonatorBackend {
                 for k in 1..=partials {
                     let ratio = harmonic_ratio(genotype, k);
                     let freq_hz = pitch_hz * ratio;
+                    if freq_hz > max_freq_hz {
+                        break;
+                    }
                     let gain = harmonic_gain(genotype, k, energy);
                     add_log2_energy(amps, space, freq_hz, amp_scale * gain);
                 }
@@ -209,6 +218,9 @@ impl HarmonicResonatorBackend {
             HarmonicProfile::Ratios { modes } => {
                 for mode in modes {
                     let freq_hz = pitch_hz * mode.ratio;
+                    if freq_hz > max_freq_hz {
+                        break;
+                    }
                     add_log2_energy(amps, space, freq_hz, amp_scale * mode.gain);
                 }
             }
@@ -228,7 +240,6 @@ mod tests {
             kind: BodyKind::Harmonic,
             amp_scale: 1.0,
             brightness: 0.6,
-            width: 0.1,
             noise_mix: 0.2,
             ratios: None,
         };
@@ -254,5 +265,34 @@ mod tests {
         );
         assert!(out.iter().all(|s| s.is_finite()));
         assert!(out.iter().any(|s| s.abs() > 1e-7));
+    }
+
+    #[test]
+    fn harmonic_backend_limits_modes_by_nominal_pitch() {
+        let snapshot = BodySnapshot {
+            kind: BodyKind::Harmonic,
+            amp_scale: 1.0,
+            brightness: 0.6,
+            noise_mix: 0.0,
+            ratios: None,
+        };
+        let mut backend =
+            HarmonicResonatorBackend::from_snapshot(48_000.0, &snapshot).expect("harmonic backend");
+        let mut out = [0.0f32; 1];
+        backend.render_block(
+            &[0.0],
+            VoiceControlBlock {
+                pitch_hz: ControlRamp {
+                    start: 4_000.0,
+                    step: 0.0,
+                },
+                amp: ControlRamp {
+                    start: 0.0,
+                    step: 0.0,
+                },
+            },
+            &mut out,
+        );
+        assert_eq!(backend.last_modes_len(), 5);
     }
 }

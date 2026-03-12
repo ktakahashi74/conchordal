@@ -310,7 +310,6 @@ mod tests {
                     kind: BodyKind::Sine,
                     amp_scale: 1.0,
                     brightness: 0.0,
-                    width: 0.0,
                     noise_mix: 0.0,
                     ratios: None,
                 },
@@ -371,7 +370,6 @@ mod tests {
                     kind: BodyKind::Sine,
                     amp_scale: 1.0,
                     brightness: 0.0,
-                    width: 0.0,
                     noise_mix: 0.0,
                     ratios: None,
                 },
@@ -398,7 +396,6 @@ mod tests {
             kind: BodyKind::Sine,
             amp_scale: 1.0,
             brightness: 0.0,
-            width: 0.0,
             noise_mix: 0.0,
             ratios: None,
         };
@@ -428,7 +425,6 @@ mod tests {
             kind: BodyKind::Harmonic,
             amp_scale: 1.0,
             brightness: 0.6,
-            width: 0.0,
             noise_mix: 0.2,
             ratios: None,
         };
@@ -477,7 +473,6 @@ mod tests {
             kind: BodyKind::Sine,
             amp_scale: 1.0,
             brightness: 0.0,
-            width: 0.0,
             noise_mix: 0.0,
             ratios: None,
         };
@@ -507,7 +502,6 @@ mod tests {
             kind: BodyKind::Sine,
             amp_scale: 1.0,
             brightness: 0.0,
-            width: 0.0,
             noise_mix: 0.0,
             ratios: None,
         };
@@ -543,7 +537,6 @@ mod tests {
             kind: BodyKind::Harmonic,
             amp_scale: 1.0,
             brightness: 0.7,
-            width: 0.0,
             noise_mix: 0.2,
             ratios: None,
         };
@@ -588,7 +581,6 @@ mod tests {
             kind: BodyKind::Sine,
             amp_scale: 1.0,
             brightness: 0.0,
-            width: 0.0,
             noise_mix: 0.0,
             ratios: None,
         };
@@ -622,7 +614,6 @@ mod tests {
             kind: BodyKind::Sine,
             amp_scale: 1.0,
             brightness: 0.0,
-            width: 0.0,
             noise_mix: 0.0,
             ratios: None,
         };
@@ -661,7 +652,6 @@ mod tests {
             kind: BodyKind::Sine,
             amp_scale: 1.0,
             brightness: 0.0,
-            width: 0.0,
             noise_mix: 0.0,
             ratios: None,
         };

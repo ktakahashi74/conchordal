@@ -2,8 +2,9 @@ use crate::core::erb::hz_to_erb;
 use crate::core::landscape::LandscapeFrame;
 use crate::core::log2space::Log2Space;
 use rand::{Rng, SeedableRng, rngs::SmallRng};
+use tracing::warn;
 
-const DEFAULT_COUNT: usize = 32;
+pub(crate) const DEFAULT_MODE_COUNT: usize = 16;
 const DEFAULT_MIN_MUL: f32 = 1.0;
 const DEFAULT_MAX_MUL: f32 = 4.0;
 const DEFAULT_MIN_DIST_ERB: f32 = 1.0;
@@ -90,7 +91,7 @@ impl ModePattern {
     fn new(kind: ModePatternKind) -> Self {
         Self {
             kind,
-            count: DEFAULT_COUNT,
+            count: DEFAULT_MODE_COUNT,
             min_mul: DEFAULT_MIN_MUL,
             max_mul: DEFAULT_MAX_MUL,
             min_dist_erb: DEFAULT_MIN_DIST_ERB,
@@ -156,6 +157,21 @@ impl ModePattern {
         self
     }
 
+    pub(crate) fn supports_range(&self) -> bool {
+        matches!(
+            &self.kind,
+            ModePatternKind::LandscapeDensity | ModePatternKind::LandscapePeaks
+        )
+    }
+
+    pub(crate) fn supports_min_dist_erb(&self) -> bool {
+        self.supports_range()
+    }
+
+    pub(crate) fn supports_gamma(&self) -> bool {
+        matches!(&self.kind, ModePatternKind::LandscapeDensity)
+    }
+
     pub fn eval(
         &self,
         base_hz: f32,
@@ -184,50 +200,45 @@ impl ModePattern {
         }
 
         let count = self.count.max(1);
-        let (min_mul, max_mul) = sanitized_range(self.min_mul, self.max_mul);
 
         let mut ratios = match &self.kind {
-            ModePatternKind::Harmonic => self.eval_harmonic_like(min_mul, max_mul, count, 1.0),
-            ModePatternKind::Odd => self.eval_harmonic_like(min_mul, max_mul, count, 2.0),
+            ModePatternKind::Harmonic => self.eval_harmonic_like(count, 1.0),
+            ModePatternKind::Odd => self.eval_harmonic_like(count, 2.0),
             ModePatternKind::PowerLaw { beta } => {
                 let beta = sanitize_positive_finite(*beta, 1.0).max(1.0e-3);
-                self.eval_formula(min_mul, max_mul, count, |k| k.powf(beta))
+                self.eval_formula(count, |k| k.powf(beta))
             }
             ModePatternKind::StiffString { stiffness } => {
                 let stiffness = sanitize_nonnegative_finite(*stiffness);
-                self.eval_formula(min_mul, max_mul, count, |k| {
-                    k * (1.0 + stiffness * k * k).sqrt()
-                })
+                self.eval_formula(count, |k| k * (1.0 + stiffness * k * k).sqrt())
             }
             ModePatternKind::Custom { ratios } | ModePatternKind::ModalTable { ratios, .. } => {
                 ratios.clone()
             }
             ModePatternKind::LandscapeDensity => {
+                let (min_mul, max_mul) = sanitized_range(self.min_mul, self.max_mul);
                 self.eval_landscape_density(base_hz, space, landscape, min_mul, max_mul)
             }
             ModePatternKind::LandscapePeaks => {
+                let (min_mul, max_mul) = sanitized_range(self.min_mul, self.max_mul);
                 self.eval_landscape_peaks(base_hz, space, landscape, min_mul, max_mul)
             }
         };
 
         ratios.retain(|r| r.is_finite() && *r > 0.0);
-        ratios.retain(|r| *r >= min_mul && *r <= max_mul);
-        if ratios.is_empty() {
-            ratios = self.eval_harmonic_like(min_mul, max_mul, count, 1.0);
-        }
 
-        let mut jitter_filter_min = min_mul;
-        let mut jitter_filter_max = max_mul;
+        let mut jitter_filter = None;
         if let Some(cents) = self.jitter_cents {
             let cents = sanitize_nonnegative_finite(cents);
             if cents > 0.0 {
-                let jitter_mul = 2.0f32.powf(cents / 1200.0);
-                if jitter_mul.is_finite() && jitter_mul > 0.0 {
-                    jitter_filter_min = min_mul / jitter_mul;
-                    jitter_filter_max = max_mul * jitter_mul;
-                } else {
-                    jitter_filter_min = 0.0;
-                    jitter_filter_max = f32::INFINITY;
+                if self.supports_range() {
+                    let (min_mul, max_mul) = sanitized_range(self.min_mul, self.max_mul);
+                    let jitter_mul = 2.0f32.powf(cents / 1200.0);
+                    if jitter_mul.is_finite() && jitter_mul > 0.0 {
+                        jitter_filter = Some((min_mul / jitter_mul, max_mul * jitter_mul));
+                    } else {
+                        jitter_filter = Some((0.0, f32::INFINITY));
+                    }
                 }
                 for ratio in &mut ratios {
                     let detune = rng.random_range(-cents..=cents);
@@ -238,7 +249,9 @@ impl ModePattern {
         }
 
         ratios.retain(|r| r.is_finite() && *r > 0.0);
-        ratios.retain(|r| *r >= jitter_filter_min && *r <= jitter_filter_max);
+        if let Some((jitter_filter_min, jitter_filter_max)) = jitter_filter {
+            ratios.retain(|r| *r >= jitter_filter_min && *r <= jitter_filter_max);
+        }
         if ratios.is_empty() {
             return vec![1.0];
         }
@@ -247,10 +260,58 @@ impl ModePattern {
         if ratios.len() > count {
             ratios.truncate(count);
         }
-        if ratios.is_empty() { vec![1.0] } else { ratios }
+        if ratios.is_empty() {
+            return vec![1.0];
+        }
+        if ratios.len() < count {
+            warn!(
+                "mode pattern {} produced {} ratios below requested count {}; source data or search constraints kept fewer modes",
+                self.kind_label(),
+                ratios.len(),
+                count
+            );
+        }
+        ratios
     }
 
-    fn eval_harmonic_like(&self, min_mul: f32, max_mul: f32, count: usize, step: f32) -> Vec<f32> {
+    fn kind_label(&self) -> &'static str {
+        match &self.kind {
+            ModePatternKind::Harmonic => "harmonic_modes",
+            ModePatternKind::Odd => "odd_modes",
+            ModePatternKind::PowerLaw { .. } => "power_modes",
+            ModePatternKind::StiffString { .. } => "stiff_string_modes",
+            ModePatternKind::Custom { .. } => "custom_modes",
+            ModePatternKind::ModalTable { .. } => "modal_table",
+            ModePatternKind::LandscapeDensity => "landscape_density_modes",
+            ModePatternKind::LandscapePeaks => "landscape_peaks_modes",
+        }
+    }
+
+    fn eval_harmonic_like(&self, count: usize, step: f32) -> Vec<f32> {
+        let mut ratios = Vec::with_capacity(count);
+        let mut k = 1usize;
+        while ratios.len() < count {
+            let ratio = if step <= 1.0 {
+                k as f32
+            } else {
+                (2 * k - 1) as f32
+            };
+            ratios.push(ratio);
+            k = k.saturating_add(1);
+        }
+        if ratios.is_empty() {
+            ratios.push(1.0);
+        }
+        ratios
+    }
+
+    fn eval_harmonic_like_in_range(
+        &self,
+        min_mul: f32,
+        max_mul: f32,
+        count: usize,
+        step: f32,
+    ) -> Vec<f32> {
         let mut ratios = Vec::with_capacity(count);
         let mut k = 1usize;
         let mut guard = 0usize;
@@ -272,7 +333,7 @@ impl ModePattern {
         ratios
     }
 
-    fn eval_formula<F>(&self, min_mul: f32, max_mul: f32, count: usize, mut f: F) -> Vec<f32>
+    fn eval_formula<F>(&self, count: usize, mut f: F) -> Vec<f32>
     where
         F: FnMut(f32) -> f32,
     {
@@ -281,14 +342,14 @@ impl ModePattern {
         let mut guard = 0usize;
         while ratios.len() < count && guard < count.saturating_mul(128) {
             let raw = f(k as f32);
-            if raw.is_finite() && raw >= min_mul && raw <= max_mul {
+            if raw.is_finite() && raw > 0.0 {
                 ratios.push(raw);
             }
             k = k.saturating_add(1);
             guard = guard.saturating_add(1);
         }
         if ratios.is_empty() {
-            ratios.push(min_mul.max(1.0));
+            ratios.push(1.0);
         }
         ratios
     }
@@ -302,16 +363,16 @@ impl ModePattern {
         max_mul: f32,
     ) -> Vec<f32> {
         let Some(landscape) = landscape else {
-            return self.eval_harmonic_like(min_mul, max_mul, self.count.max(1), 1.0);
+            return self.eval_harmonic_like_in_range(min_mul, max_mul, self.count.max(1), 1.0);
         };
         let eval_space = &landscape.space;
         let Some((idx_min, idx_max)) =
             freq_range_to_bins(eval_space, base_hz * min_mul, base_hz * max_mul)
         else {
-            return self.eval_harmonic_like(min_mul, max_mul, self.count.max(1), 1.0);
+            return self.eval_harmonic_like_in_range(min_mul, max_mul, self.count.max(1), 1.0);
         };
         if landscape.consonance_density_mass.len() != eval_space.n_bins() {
-            return self.eval_harmonic_like(min_mul, max_mul, self.count.max(1), 1.0);
+            return self.eval_harmonic_like_in_range(min_mul, max_mul, self.count.max(1), 1.0);
         }
         let gamma = sanitize_positive_finite(self.gamma, 1.0);
         let mut weights = Vec::with_capacity(idx_max - idx_min + 1);
@@ -349,7 +410,7 @@ impl ModePattern {
         }
 
         if selected.is_empty() {
-            self.eval_harmonic_like(min_mul, max_mul, self.count.max(1), 1.0)
+            self.eval_harmonic_like_in_range(min_mul, max_mul, self.count.max(1), 1.0)
         } else {
             selected
         }
@@ -364,16 +425,16 @@ impl ModePattern {
         max_mul: f32,
     ) -> Vec<f32> {
         let Some(landscape) = landscape else {
-            return self.eval_harmonic_like(min_mul, max_mul, self.count.max(1), 1.0);
+            return self.eval_harmonic_like_in_range(min_mul, max_mul, self.count.max(1), 1.0);
         };
         let eval_space = &landscape.space;
         let Some((idx_min, idx_max)) =
             freq_range_to_bins(eval_space, base_hz * min_mul, base_hz * max_mul)
         else {
-            return self.eval_harmonic_like(min_mul, max_mul, self.count.max(1), 1.0);
+            return self.eval_harmonic_like_in_range(min_mul, max_mul, self.count.max(1), 1.0);
         };
         if landscape.consonance_field_level.len() != eval_space.n_bins() {
-            return self.eval_harmonic_like(min_mul, max_mul, self.count.max(1), 1.0);
+            return self.eval_harmonic_like_in_range(min_mul, max_mul, self.count.max(1), 1.0);
         }
         let scan = &landscape.consonance_field_level;
         let mut candidates = Vec::new();
@@ -418,7 +479,7 @@ impl ModePattern {
         }
 
         if selected.is_empty() {
-            self.eval_harmonic_like(min_mul, max_mul, self.count.max(1), 1.0)
+            self.eval_harmonic_like_in_range(min_mul, max_mul, self.count.max(1), 1.0)
         } else {
             selected.into_iter().map(|freq| freq / base_hz).collect()
         }
@@ -528,14 +589,26 @@ mod tests {
     use crate::core::landscape::Landscape;
 
     #[test]
-    fn harmonic_modes_default_count_is_32() {
-        let pattern = ModePattern::harmonic_modes().with_range(1.0, 64.0);
+    fn harmonic_modes_default_count_is_16() {
+        let pattern = ModePattern::harmonic_modes();
         let space = Log2Space::new(55.0, 8800.0, 48);
         let mut rng = SmallRng::seed_from_u64(1);
         let ratios = pattern.eval(220.0, &space, None, &mut rng);
-        assert_eq!(ratios.len(), 32);
+        assert_eq!(ratios.len(), 16);
         assert!((ratios[0] - 1.0).abs() <= 1e-6);
         assert!((ratios[1] - 2.0).abs() <= 1e-6);
+    }
+
+    #[test]
+    fn harmonic_modes_ignore_range_constraints() {
+        let pattern = ModePattern::harmonic_modes()
+            .with_count(16)
+            .with_range(1.0, 4.0);
+        let space = Log2Space::new(55.0, 8800.0, 48);
+        let mut rng = SmallRng::seed_from_u64(3);
+        let ratios = pattern.eval(220.0, &space, None, &mut rng);
+        assert_eq!(ratios.len(), 16);
+        assert!((ratios[15] - 16.0).abs() <= 1.0e-6);
     }
 
     #[test]

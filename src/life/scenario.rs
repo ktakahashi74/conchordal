@@ -59,8 +59,8 @@ pub struct TimbreGenotype {
     pub stiffness: f32, // Inharmonicity coefficient
 
     // --- Color ---
-    pub brightness: f32, // Spectral slope decay
-    pub comb: f32,       // Even harmonic attenuation
+    pub spectral_slope: f32, // Harmonic spectral decay exponent
+    pub comb: f32,           // Even harmonic attenuation
 
     // --- Physics (Time-variant) ---
     pub damping: f32, // High-frequency decay factor based on energy level
@@ -69,7 +69,6 @@ pub struct TimbreGenotype {
     pub vibrato_rate: f32,
     pub vibrato_depth: f32,
     pub jitter: f32, // 1/f Pink Noise FM strength
-    pub unison: f32, // Detune amount (0.0 = single)
 }
 
 impl Default for TimbreGenotype {
@@ -77,13 +76,12 @@ impl Default for TimbreGenotype {
         Self {
             mode: HarmonicMode::Harmonic,
             stiffness: 0.0,
-            brightness: 0.6,
+            spectral_slope: 0.6,
             comb: 0.0,
             damping: 0.5,
             vibrato_rate: 5.0,
             vibrato_depth: 0.0,
             jitter: 0.0,
-            unison: 0.0,
         }
     }
 }

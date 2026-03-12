@@ -4,77 +4,77 @@ let table_uniform_aluminum_bar = derive(modal_sustain)
     .pitch_mode("lock")
     .freq(196.0)
     .amp(0.12)
-    .timbre(0.58, 0.08)
+    .brightness(0.58)
     .modes(modal_table("uniform_aluminum_bar").count(6));
 
 let table_uniform_wooden_bar = derive(modal_sustain)
     .pitch_mode("lock")
     .freq(196.0)
     .amp(0.12)
-    .timbre(0.42, 0.04)
+    .brightness(0.42)
     .modes(modal_table("uniform_wooden_bar").count(6));
 
 let table_xylophone = derive(modal_sustain)
     .pitch_mode("lock")
     .freq(220.0)
     .amp(0.11)
-    .timbre(0.70, 0.10)
+    .brightness(0.70)
     .modes(modal_table("xylophone").count(6));
 
 let table_vibraphone_1 = derive(modal_sustain)
     .pitch_mode("lock")
     .freq(220.0)
     .amp(0.11)
-    .timbre(0.62, 0.14)
+    .brightness(0.62)
     .modes(modal_table("vibraphone_1").count(5));
 
 let table_vibraphone_2 = derive(modal_sustain)
     .pitch_mode("lock")
     .freq(220.0)
     .amp(0.11)
-    .timbre(0.66, 0.16)
+    .brightness(0.66)
     .modes(modal_table("vibraphone_2").count(5));
 
 let table_wine_glass = derive(modal_sustain)
     .pitch_mode("lock")
     .freq(330.0)
     .amp(0.10)
-    .timbre(0.86, 0.05)
+    .brightness(0.86)
     .modes(modal_table("wine_glass").count(6));
 
 let gen_harmonic = derive(modal_sustain)
     .pitch_mode("lock")
     .freq(110.0)
     .amp(0.10)
-    .timbre(0.72, 0.06)
-    .modes(harmonic_modes().count(14).range(1.0, 10.0));
+    .brightness(0.72)
+    .modes(harmonic_modes().count(10));
 
 let gen_odd = derive(modal_sustain)
     .pitch_mode("lock")
     .freq(110.0)
     .amp(0.10)
-    .timbre(0.64, 0.09)
-    .modes(odd_modes().count(10).range(1.0, 12.0));
+    .brightness(0.64)
+    .modes(odd_modes().count(6));
 
 let gen_power = derive(modal_sustain)
     .pitch_mode("lock")
     .freq(130.81)
     .amp(0.10)
-    .timbre(0.68, 0.15)
-    .modes(power_modes(1.35).count(14).range(1.0, 12.0));
+    .brightness(0.68)
+    .modes(power_modes(1.35).count(6));
 
 let gen_stiff_string = derive(modal_sustain)
     .pitch_mode("lock")
     .freq(130.81)
     .amp(0.10)
-    .timbre(0.60, 0.18)
-    .modes(stiff_string_modes(0.003).count(14).range(1.0, 11.0));
+    .brightness(0.60)
+    .modes(stiff_string_modes(0.003).count(9));
 
 let gen_custom = derive(modal_sustain)
     .pitch_mode("lock")
     .freq(146.83)
     .amp(0.10)
-    .timbre(0.74, 0.11)
+    .brightness(0.74)
     .modes(
         custom_modes([1.0, 2.02, 3.11, 4.22, 6.03, 8.91, 12.7])
             .jitter(4.0)
@@ -84,13 +84,13 @@ let gen_custom = derive(modal_sustain)
 let landscape_seed = derive(modal_sustain)
     .pitch_mode("free")
     .amp(0.045)
-    .timbre(0.64, 0.08)
-    .modes(harmonic_modes().count(16).range(1.0, 4.0));
+    .brightness(0.64)
+    .modes(harmonic_modes().count(4));
 
 let landscape_density = derive(modal_sustain)
     .pitch_mode("free")
     .amp(0.05)
-    .timbre(0.70, 0.16)
+    .brightness(0.70)
     .modes(
         landscape_density_modes()
             .count(16)
@@ -104,7 +104,7 @@ let landscape_density = derive(modal_sustain)
 let landscape_peaks = derive(modal_sustain)
     .pitch_mode("free")
     .amp(0.05)
-    .timbre(0.74, 0.14)
+    .brightness(0.74)
     .modes(
         landscape_peaks_modes()
             .count(14)

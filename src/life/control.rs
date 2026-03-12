@@ -52,11 +52,6 @@ impl AgentControl {
     }
 
     #[inline]
-    pub fn set_timbre_width_clamped(&mut self, width: f32) {
-        self.body.timbre.width = width.clamp(0.0, 1.0);
-    }
-
-    #[inline]
     pub fn set_timbre_motion_clamped(&mut self, motion: f32) {
         self.body.timbre.motion = motion.clamp(0.0, 1.0);
     }
@@ -289,7 +284,6 @@ pub enum BodyMethod {
 pub struct TimbreControl {
     pub brightness: f32,
     pub inharmonic: f32,
-    pub width: f32,
     pub motion: f32,
 }
 
@@ -298,7 +292,6 @@ impl Default for TimbreControl {
         Self {
             brightness: 0.6,
             inharmonic: 0.0,
-            width: 0.0,
             motion: 0.0,
         }
     }
@@ -481,7 +474,6 @@ pub struct ControlUpdate {
     pub anneal_temp: Option<f32>,
     pub timbre_brightness: Option<f32>,
     pub timbre_inharmonic: Option<f32>,
-    pub timbre_width: Option<f32>,
     pub timbre_motion: Option<f32>,
     pub continuous_drive: Option<f32>,
     pub pitch_smooth_tau: Option<f32>,
@@ -550,9 +542,6 @@ impl AgentControl {
         }
         if let Some(inharmonic) = update.timbre_inharmonic {
             self.set_timbre_inharmonic_clamped(inharmonic);
-        }
-        if let Some(width) = update.timbre_width {
-            self.set_timbre_width_clamped(width);
         }
         if let Some(motion) = update.timbre_motion {
             self.set_timbre_motion_clamped(motion);
@@ -641,7 +630,6 @@ mod tests {
             anneal_temp: Some(-0.5),
             timbre_brightness: Some(-0.1),
             timbre_inharmonic: Some(2.0),
-            timbre_width: Some(0.25),
             timbre_motion: Some(0.5),
             continuous_drive: None,
             pitch_smooth_tau: None,
@@ -704,7 +692,6 @@ mod tests {
         assert!((control.pitch.pitch_glide_tau_sec - 0.0).abs() <= 1e-6);
         assert!((control.body.timbre.brightness - 0.0).abs() <= 1e-6);
         assert!((control.body.timbre.inharmonic - 1.0).abs() <= 1e-6);
-        assert!((control.body.timbre.width - 0.25).abs() <= 1e-6);
         assert!((control.body.timbre.motion - 0.5).abs() <= 1e-6);
     }
 

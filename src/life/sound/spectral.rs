@@ -1,6 +1,22 @@
 use crate::core::log2space::Log2Space;
 use crate::life::scenario::{HarmonicMode, TimbreGenotype};
 
+const DARKEST_SPECTRAL_SLOPE: f32 = 1.2;
+const BRIGHTEST_SPECTRAL_SLOPE: f32 = 0.2;
+
+pub(crate) fn spectral_slope_from_brightness(brightness: f32) -> f32 {
+    let brightness = brightness.clamp(0.0, 1.0);
+    DARKEST_SPECTRAL_SLOPE + (BRIGHTEST_SPECTRAL_SLOPE - DARKEST_SPECTRAL_SLOPE) * brightness
+}
+
+pub(crate) fn brightness_from_spectral_slope(spectral_slope: f32) -> f32 {
+    let span = DARKEST_SPECTRAL_SLOPE - BRIGHTEST_SPECTRAL_SLOPE;
+    if span <= 0.0 {
+        return 0.0;
+    }
+    ((DARKEST_SPECTRAL_SLOPE - spectral_slope) / span).clamp(0.0, 1.0)
+}
+
 pub(crate) fn harmonic_ratio(genotype: &TimbreGenotype, harmonic_index_1: usize) -> f32 {
     let kf = harmonic_index_1.max(1) as f32;
     let base = match genotype.mode {
@@ -17,8 +33,8 @@ pub(crate) fn harmonic_gain(
     energy: f32,
 ) -> f32 {
     let kf = harmonic_index_1.max(1) as f32;
-    let slope = genotype.brightness.max(0.0);
-    let mut amp = 1.0 / kf.powf(slope.max(1e-6));
+    let spectral_slope = genotype.spectral_slope.max(0.0);
+    let mut amp = 1.0 / kf.powf(spectral_slope.max(1e-6));
     if harmonic_index_1.max(1).is_multiple_of(2) {
         amp *= 1.0 - genotype.comb.clamp(0.0, 1.0);
     }
@@ -98,8 +114,8 @@ mod tests {
 
     fn harmonic_gain_reference(genotype: &TimbreGenotype, k: usize, energy: f32) -> f32 {
         let kf = k.max(1) as f32;
-        let slope = genotype.brightness.max(0.0);
-        let mut amp = 1.0 / kf.powf(slope.max(1e-6));
+        let spectral_slope = genotype.spectral_slope.max(0.0);
+        let mut amp = 1.0 / kf.powf(spectral_slope.max(1e-6));
         if k.max(1).is_multiple_of(2) {
             amp *= 1.0 - genotype.comb.clamp(0.0, 1.0);
         }
@@ -153,9 +169,35 @@ mod tests {
     }
 
     #[test]
+    fn brightness_maps_to_expected_spectral_slope_range() {
+        for (brightness, spectral_slope) in [(0.0, 1.2), (0.6, 0.6), (1.0, 0.2)] {
+            let got_slope = spectral_slope_from_brightness(brightness);
+            assert!((got_slope - spectral_slope).abs() <= 1e-6);
+            let got_brightness = brightness_from_spectral_slope(spectral_slope);
+            assert!((got_brightness - brightness).abs() <= 1e-6);
+        }
+    }
+
+    #[test]
+    fn brighter_public_control_retains_more_upper_harmonics() {
+        let dark = TimbreGenotype {
+            spectral_slope: spectral_slope_from_brightness(0.0),
+            ..TimbreGenotype::default()
+        };
+        let bright = TimbreGenotype {
+            spectral_slope: spectral_slope_from_brightness(1.0),
+            ..TimbreGenotype::default()
+        };
+
+        let dark_gain = harmonic_gain(&dark, 8, 1.0);
+        let bright_gain = harmonic_gain(&bright, 8, 1.0);
+        assert!(bright_gain > dark_gain);
+    }
+
+    #[test]
     fn harmonic_gain_matches_reference_curve() {
         let genotype = TimbreGenotype {
-            brightness: 0.83,
+            spectral_slope: 0.83,
             comb: 0.37,
             damping: 0.42,
             ..TimbreGenotype::default()

@@ -1,5 +1,5 @@
 let kick = derive(sine).amp(0.3).repeat().adsr(0.01, 0.1, 0.0, 0.2);
-let drone = derive(harmonic).amp(0.1).sustain().timbre(0.5, 0.05);
+let drone = derive(harmonic).amp(0.1).sustain().brightness(0.5);
 let bugs = derive(sine).amp(0.1).repeat();
 
 parallel([

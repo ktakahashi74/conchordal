@@ -358,9 +358,19 @@ impl SpeciesSpec {
         };
     }
 
-    fn set_timbre(&mut self, brightness: f32, width: f32) {
+    #[cfg(debug_assertions)]
+    fn warn_timbre_noop_if_needed(&self, label: &str) {
+        if matches!(self.control.body.method, BodyMethod::Sine) {
+            warn!("{label}() is a no-op for sine bodies");
+        }
+    }
+
+    #[cfg(not(debug_assertions))]
+    fn warn_timbre_noop_if_needed(&self, _label: &str) {}
+
+    fn set_brightness(&mut self, brightness: f32) {
         self.control.set_timbre_brightness_clamped(brightness);
-        self.control.set_timbre_width_clamped(width);
+        self.warn_timbre_noop_if_needed("brightness");
     }
 
     fn set_modes(&mut self, pattern: ModePattern) {
@@ -1239,6 +1249,10 @@ fn patch_pitch_glide_tau(update: &mut ControlUpdate, value: f32) {
     update.pitch_glide_tau_sec = Some(value);
 }
 
+fn patch_timbre_brightness(update: &mut ControlUpdate, value: f32) {
+    update.timbre_brightness = Some(value);
+}
+
 fn draft_clear_strategy(group: &mut GroupState) {
     group.strategy = None;
 }
@@ -1274,7 +1288,6 @@ impl ScriptHost {
                 spec: {
                     let mut spec = SpeciesSpec::preset(BodyMethod::Harmonic);
                     spec.control.body.timbre.brightness = 0.85;
-                    spec.control.body.timbre.width = 0.2;
                     spec
                 },
             },
@@ -1285,7 +1298,6 @@ impl ScriptHost {
                 spec: {
                     let mut spec = SpeciesSpec::preset(BodyMethod::Harmonic);
                     spec.control.body.timbre.brightness = 0.65;
-                    spec.control.body.timbre.width = 0.1;
                     spec
                 },
             },
@@ -1297,7 +1309,6 @@ impl ScriptHost {
                     let mut spec = SpeciesSpec::preset(BodyMethod::Harmonic);
                     spec.control.body.timbre.brightness = 1.0;
                     spec.control.body.timbre.motion = 1.0;
-                    spec.control.body.timbre.width = 0.35;
                     spec
                 },
             },
@@ -1555,13 +1566,7 @@ impl ScriptHost {
             species
         });
         register_species_numeric_overloads(&mut engine, "energy", SpeciesSpec::set_amp);
-        engine.register_fn(
-            "timbre",
-            |mut species: SpeciesHandle, brightness: FLOAT, width: FLOAT| {
-                species.spec.set_timbre(brightness as f32, width as f32);
-                species
-            },
-        );
+        register_species_numeric_overloads(&mut engine, "brightness", SpeciesSpec::set_brightness);
         engine.register_fn(
             "modes",
             |mut species: SpeciesHandle, pattern: ModePattern| {
@@ -1851,14 +1856,29 @@ impl ScriptHost {
         engine.register_fn(
             "range",
             |pattern: ModePattern, min_mul: FLOAT, max_mul: FLOAT| {
-                pattern.with_range(min_mul as f32, max_mul as f32)
+                if pattern.supports_range() {
+                    pattern.with_range(min_mul as f32, max_mul as f32)
+                } else {
+                    warn!("range() is only supported for landscape_*_modes(); ignored");
+                    pattern
+                }
             },
         );
         engine.register_fn("min_dist", |pattern: ModePattern, min_dist: FLOAT| {
-            pattern.with_min_dist_erb(min_dist as f32)
+            if pattern.supports_min_dist_erb() {
+                pattern.with_min_dist_erb(min_dist as f32)
+            } else {
+                warn!("min_dist() is only supported for landscape_*_modes(); ignored");
+                pattern
+            }
         });
         engine.register_fn("gamma", |pattern: ModePattern, gamma: FLOAT| {
-            pattern.with_gamma(gamma as f32)
+            if pattern.supports_gamma() {
+                pattern.with_gamma(gamma as f32)
+            } else {
+                warn!("gamma() is only supported for landscape_density_modes(); ignored");
+                pattern
+            }
         });
         engine.register_fn("jitter", |pattern: ModePattern, cents: FLOAT| {
             pattern.with_jitter_cents(cents as f32)
@@ -2692,34 +2712,13 @@ impl ScriptHost {
             .set_field_curve(k as f32, x0 as f32));
         register_group_draft_fn1!("field_drop", ctx, engine, |s, gain: FLOAT| s
             .set_field_drop(gain as f32));
-
-        let ctx_for_group_timbre = ctx.clone();
-        engine.register_fn(
-            "timbre",
-            move |handle: GroupHandle,
-                  brightness: FLOAT,
-                  width: FLOAT|
-                  -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_timbre.lock().expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("timbre ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                let brightness = brightness as f32;
-                let width = width as f32;
-                match group.status {
-                    GroupStatus::Draft => {
-                        group.spec.set_timbre(brightness, width);
-                    }
-                    GroupStatus::Live => {
-                        group.spec.set_timbre(brightness, width);
-                        group.pending_patch.timbre_brightness = Some(brightness);
-                        group.pending_patch.timbre_width = Some(width);
-                    }
-                    _ => ctx.warn_live_builder(handle.id, "timbre"),
-                }
-                Ok(handle)
-            },
+        register_group_numeric_overloads(
+            &mut engine,
+            ctx.clone(),
+            "brightness",
+            SpeciesSpec::set_brightness,
+            patch_timbre_brightness,
+            None,
         );
         let ctx_for_group_modes = ctx.clone();
         engine.register_fn(
@@ -3120,6 +3119,15 @@ mod tests {
         let mut ctx_out = ctx.lock().expect("lock script context");
         ctx_out.finish();
         (ctx_out.scenario.clone(), ctx_out.warnings.clone())
+    }
+
+    fn run_script_err(src: &str) -> ScriptError {
+        let ctx = Arc::new(Mutex::new(ScriptContext::default()));
+        let engine = ScriptHost::create_engine(ctx);
+        let err = engine
+            .eval::<Dynamic>(&src)
+            .expect_err("script should fail");
+        ScriptError::from_eval(err, None)
     }
 
     fn action_times<'a>(scenario: &'a Scenario) -> Vec<(f32, &'a Action)> {
@@ -4487,7 +4495,7 @@ mod tests {
             create(harmonic, 1)
                 .amp(0.33)
                 .freq(330.0)
-                .timbre(0.7, 0.2);
+                .brightness(0.7);
             flush();
         "#,
         );
@@ -4507,7 +4515,48 @@ mod tests {
         assert!((control.pitch.freq - 330.0).abs() <= 1e-6);
         assert_eq!(control.pitch.mode, PitchMode::Lock);
         assert!((control.body.timbre.brightness - 0.7).abs() <= 1e-6);
-        assert!((control.body.timbre.width - 0.2).abs() <= 1e-6);
+    }
+
+    #[test]
+    fn live_group_brightness_emits_timbre_patch() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            let g = create(harmonic, 1);
+            flush();
+            g.brightness(0.25);
+            flush();
+        "#,
+        );
+        let patch = scenario
+            .events
+            .iter()
+            .flat_map(|event| &event.actions)
+            .find_map(|action| match action {
+                Action::UpdateGroup { patch, .. } => Some(patch.clone()),
+                _ => None,
+            })
+            .expect("update action");
+        assert_eq!(patch.timbre_brightness, Some(0.25));
+    }
+
+    #[test]
+    fn timbre_method_is_not_registered() {
+        let err = run_script_err(
+            r#"
+            create(harmonic, 1).timbre(0.7, 0.2);
+        "#,
+        );
+        assert!(err.message.contains("timbre"));
+    }
+
+    #[test]
+    fn width_method_is_not_registered() {
+        let err = run_script_err(
+            r#"
+            create(harmonic, 1).width(0.4);
+        "#,
+        );
+        assert!(err.message.contains("width"));
     }
 
     #[test]

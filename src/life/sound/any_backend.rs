@@ -3,7 +3,9 @@ use crate::life::individual::ArticulationSignal;
 use crate::life::sound::control::VoiceControlBlock;
 use crate::life::sound::harmonic_resonator_backend::HarmonicResonatorBackend;
 use crate::life::sound::modal_engine::{ModalEngine, ModeShape};
-use crate::life::sound::mode_utils::{modal_modes_from_ratios, modal_tilt_from_brightness};
+use crate::life::sound::mode_utils::{
+    cluster_spread_cents_from_public, modal_modes_from_ratios, modal_tilt_from_brightness,
+};
 use crate::life::sound::sine_osc_backend::SineOscBackend;
 use crate::life::sound::{BodyKind, BodySnapshot};
 use crate::synth::SynthError;
@@ -71,8 +73,9 @@ fn modal_shape_from_snapshot(snapshot: &BodySnapshot) -> ModeShape {
     let fallback = [1.0f32];
     let ratios = snapshot.ratios.as_deref().unwrap_or(&fallback);
     let modal_tilt = modal_tilt_from_brightness(snapshot.brightness);
+    let cluster_spread_cents = cluster_spread_cents_from_public(snapshot.spread);
     ModeShape::Modal {
-        modes: modal_modes_from_ratios(ratios, modal_tilt),
+        modes: modal_modes_from_ratios(ratios, modal_tilt, cluster_spread_cents, snapshot.voices),
     }
 }
 
@@ -88,6 +91,8 @@ mod tests {
             kind: BodyKind::Harmonic,
             amp_scale: 1.0,
             brightness: 0.6,
+            spread: 0.0,
+            voices: 1,
             noise_mix: 0.0,
             ratios: None,
         };

@@ -1,3 +1,4 @@
+use crate::life::control::{DEFAULT_TIMBRE_SPREAD, DEFAULT_TIMBRE_VOICES, MAX_TIMBRE_VOICES};
 use crate::life::sound::modal_engine::ModalMode;
 
 pub(crate) fn modal_tilt_from_brightness(brightness: f32) -> f32 {
@@ -8,6 +9,54 @@ pub(crate) fn brightness_from_modal_tilt(modal_tilt: f32) -> f32 {
     modal_tilt.clamp(0.0, 1.0)
 }
 
+const MAX_CLUSTER_SPREAD_CENTS: f32 = 24.0;
+const CLUSTER_SPREAD_EPS_CENTS: f32 = 1.0e-4;
+
+pub(crate) fn cluster_spread_cents_from_public(spread: f32) -> f32 {
+    let spread = if spread.is_finite() {
+        spread.clamp(0.0, 1.0)
+    } else {
+        DEFAULT_TIMBRE_SPREAD
+    };
+    spread * MAX_CLUSTER_SPREAD_CENTS
+}
+
+pub(crate) fn public_spread_from_cluster_spread_cents(spread_cents: f32) -> f32 {
+    if !spread_cents.is_finite() || MAX_CLUSTER_SPREAD_CENTS <= 0.0 {
+        return DEFAULT_TIMBRE_SPREAD;
+    }
+    (spread_cents / MAX_CLUSTER_SPREAD_CENTS).clamp(0.0, 1.0)
+}
+
+pub(crate) fn sanitize_cluster_voices(voices: usize) -> usize {
+    voices.clamp(DEFAULT_TIMBRE_VOICES, MAX_TIMBRE_VOICES)
+}
+
+pub(crate) fn active_cluster_voices(spread_cents: f32, voices: usize) -> usize {
+    let voices = sanitize_cluster_voices(voices);
+    if !spread_cents.is_finite() || spread_cents.abs() <= CLUSTER_SPREAD_EPS_CENTS {
+        DEFAULT_TIMBRE_VOICES
+    } else {
+        voices
+    }
+}
+
+pub(crate) fn cluster_detune_mul(spread_cents: f32, voices: usize, voice_idx: usize) -> f32 {
+    let voices = active_cluster_voices(spread_cents, voices);
+    if voices <= 1 {
+        return 1.0;
+    }
+    let center = (voices.saturating_sub(1)) as f32 * 0.5;
+    let denom = center.max(0.5);
+    let pos = voice_idx as f32 - center;
+    let offset_cents = (pos / denom) * spread_cents;
+    2.0f32.powf(offset_cents / 1200.0)
+}
+
+pub(crate) fn cluster_gain(base_gain: f32, spread_cents: f32, voices: usize) -> f32 {
+    base_gain / active_cluster_voices(spread_cents, voices) as f32
+}
+
 pub(crate) fn sanitize_mode_ratios(mut ratios: Vec<f32>) -> Vec<f32> {
     ratios.retain(|ratio| ratio.is_finite() && *ratio > 0.0);
     ratios.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
@@ -15,10 +64,16 @@ pub(crate) fn sanitize_mode_ratios(mut ratios: Vec<f32>) -> Vec<f32> {
     if ratios.is_empty() { vec![1.0] } else { ratios }
 }
 
-pub(crate) fn modal_modes_from_ratios(ratios: &[f32], modal_tilt: f32) -> Vec<ModalMode> {
+pub(crate) fn modal_modes_from_ratios(
+    ratios: &[f32],
+    modal_tilt: f32,
+    cluster_spread_cents: f32,
+    cluster_voices: usize,
+) -> Vec<ModalMode> {
     let modal_tilt = modal_tilt.clamp(0.0, 1.0);
     let tilt_exp = (1.85 - modal_tilt * 1.45).clamp(0.12, 2.2);
-    let mut modes = Vec::with_capacity(ratios.len().max(1));
+    let active_cluster_voices = active_cluster_voices(cluster_spread_cents, cluster_voices);
+    let mut base_modes = Vec::with_capacity(ratios.len().max(1));
     for (idx, ratio) in ratios.iter().copied().enumerate() {
         if !ratio.is_finite() || ratio <= 0.0 {
             continue;
@@ -27,7 +82,7 @@ pub(crate) fn modal_modes_from_ratios(ratios: &[f32], modal_tilt: f32) -> Vec<Mo
         let gain = 1.0 / k.powf(tilt_exp);
         let t60_s = ((0.35 + modal_tilt * 1.4) / (1.0 + 0.09 * k)).max(0.03);
         let in_gain = (1.0 / (1.0 + 0.04 * k)).max(0.02);
-        modes.push(ModalMode {
+        base_modes.push(ModalMode {
             ratio,
             t60_s,
             gain,
@@ -35,16 +90,42 @@ pub(crate) fn modal_modes_from_ratios(ratios: &[f32], modal_tilt: f32) -> Vec<Mo
         });
     }
 
-    if modes.is_empty() {
-        modes.push(ModalMode {
+    if base_modes.is_empty() {
+        base_modes.push(ModalMode {
             ratio: 1.0,
             t60_s: 0.8,
             gain: 1.0,
             in_gain: 1.0,
         });
     }
-    normalize_modal_gains(&mut modes);
-    modes
+    normalize_modal_gains(&mut base_modes);
+    if active_cluster_voices <= 1 {
+        return base_modes;
+    }
+
+    let mut clustered = Vec::with_capacity(base_modes.len() * active_cluster_voices);
+    for mode in base_modes {
+        let gain = cluster_gain(mode.gain, cluster_spread_cents, active_cluster_voices);
+        for voice_idx in 0..active_cluster_voices {
+            let detune = cluster_detune_mul(cluster_spread_cents, active_cluster_voices, voice_idx);
+            let ratio = mode.ratio * detune;
+            if !ratio.is_finite() || ratio <= 0.0 {
+                continue;
+            }
+            clustered.push(ModalMode {
+                ratio,
+                t60_s: mode.t60_s,
+                gain,
+                in_gain: mode.in_gain,
+            });
+        }
+    }
+    clustered.sort_by(|a, b| {
+        a.ratio
+            .partial_cmp(&b.ratio)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    clustered
 }
 
 fn normalize_modal_gains(modes: &mut [ModalMode]) {
@@ -75,10 +156,27 @@ mod tests {
     #[test]
     fn brighter_modal_tilt_boosts_upper_modes() {
         let ratios = [1.0, 2.0, 3.0, 4.0];
-        let dark = modal_modes_from_ratios(&ratios, modal_tilt_from_brightness(0.0));
-        let bright = modal_modes_from_ratios(&ratios, modal_tilt_from_brightness(1.0));
+        let dark = modal_modes_from_ratios(&ratios, modal_tilt_from_brightness(0.0), 0.0, 1);
+        let bright = modal_modes_from_ratios(&ratios, modal_tilt_from_brightness(1.0), 0.0, 1);
 
         assert!(bright[3].gain > dark[3].gain);
         assert!(bright[3].t60_s > dark[3].t60_s);
+    }
+
+    #[test]
+    fn clustered_modes_expand_symmetrically() {
+        let modes = modal_modes_from_ratios(
+            &[1.0],
+            modal_tilt_from_brightness(0.5),
+            cluster_spread_cents_from_public(0.5),
+            3,
+        );
+
+        assert_eq!(modes.len(), 3);
+        assert!(modes[0].ratio < 1.0);
+        assert!((modes[1].ratio - 1.0).abs() <= 1.0e-6);
+        assert!(modes[2].ratio > 1.0);
+        let total_gain: f32 = modes.iter().map(|mode| mode.gain).sum();
+        assert!((total_gain - 1.0).abs() <= 1.0e-5);
     }
 }

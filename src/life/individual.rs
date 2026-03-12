@@ -112,6 +112,8 @@ struct BodyRuntime {
     brightness: f32,
     inharmonic: f32,
     motion: f32,
+    spread: f32,
+    voices: usize,
 }
 
 impl BodyRuntime {
@@ -122,6 +124,8 @@ impl BodyRuntime {
             brightness: timbre.brightness,
             inharmonic: timbre.inharmonic,
             motion: timbre.motion,
+            spread: timbre.spread,
+            voices: timbre.voices,
         }
     }
 }
@@ -139,7 +143,9 @@ impl Dirty {
         let body = update.amp.is_some()
             || update.timbre_brightness.is_some()
             || update.timbre_inharmonic.is_some()
-            || update.timbre_motion.is_some();
+            || update.timbre_motion.is_some()
+            || update.timbre_spread.is_some()
+            || update.timbre_voices.is_some();
         let pitch = update.freq.is_some()
             || update.neighbor_step_cents.is_some()
             || update.tessitura_gravity.is_some()
@@ -362,8 +368,13 @@ impl Individual {
     fn apply_body_runtime(&mut self) {
         let runtime = BodyRuntime::from_control(&self.effective_control.body);
         self.body.set_amp(runtime.amp);
-        self.body
-            .apply_timbre_controls(runtime.brightness, runtime.inharmonic, runtime.motion);
+        self.body.apply_timbre_controls(
+            runtime.brightness,
+            runtime.inharmonic,
+            runtime.motion,
+            runtime.spread,
+            runtime.voices,
+        );
     }
 
     fn apply_adaptation_control(&mut self) {

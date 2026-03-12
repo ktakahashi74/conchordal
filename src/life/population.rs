@@ -1479,6 +1479,8 @@ mod tests {
                 kind: BodyKind::Sine,
                 amp_scale: 1.0,
                 brightness: 0.0,
+                spread: 0.0,
+                voices: 1,
                 noise_mix: 0.0,
                 ratios: None,
             },

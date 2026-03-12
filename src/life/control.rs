@@ -7,6 +7,9 @@ const DEFAULT_MOVE_COST_COEFF: f32 = 0.5;
 const DEFAULT_IMPROVEMENT_THRESHOLD: f32 = 0.1;
 const DEFAULT_GLOBAL_PEAK_MIN_SEP_CENTS: f32 = 0.0;
 const DEFAULT_PITCH_GLIDE_TAU_SEC: f32 = 0.0;
+pub(crate) const DEFAULT_TIMBRE_SPREAD: f32 = 0.0;
+pub(crate) const DEFAULT_TIMBRE_VOICES: usize = 1;
+pub(crate) const MAX_TIMBRE_VOICES: usize = 9;
 
 use crate::core::mode_pattern::ModePattern;
 
@@ -54,6 +57,20 @@ impl AgentControl {
     #[inline]
     pub fn set_timbre_motion_clamped(&mut self, motion: f32) {
         self.body.timbre.motion = motion.clamp(0.0, 1.0);
+    }
+
+    #[inline]
+    pub fn set_timbre_spread_clamped(&mut self, spread: f32) {
+        self.body.timbre.spread = if spread.is_finite() {
+            spread.clamp(0.0, 1.0)
+        } else {
+            DEFAULT_TIMBRE_SPREAD
+        };
+    }
+
+    #[inline]
+    pub fn set_timbre_voices_clamped(&mut self, voices: i64) {
+        self.body.timbre.voices = voices.clamp(1, MAX_TIMBRE_VOICES as i64) as usize;
     }
 
     #[inline]
@@ -285,6 +302,8 @@ pub struct TimbreControl {
     pub brightness: f32,
     pub inharmonic: f32,
     pub motion: f32,
+    pub spread: f32,
+    pub voices: usize,
 }
 
 impl Default for TimbreControl {
@@ -293,6 +312,8 @@ impl Default for TimbreControl {
             brightness: 0.6,
             inharmonic: 0.0,
             motion: 0.0,
+            spread: DEFAULT_TIMBRE_SPREAD,
+            voices: DEFAULT_TIMBRE_VOICES,
         }
     }
 }
@@ -475,6 +496,8 @@ pub struct ControlUpdate {
     pub timbre_brightness: Option<f32>,
     pub timbre_inharmonic: Option<f32>,
     pub timbre_motion: Option<f32>,
+    pub timbre_spread: Option<f32>,
+    pub timbre_voices: Option<i64>,
     pub continuous_drive: Option<f32>,
     pub pitch_smooth_tau: Option<f32>,
     pub move_cost_coeff: Option<f32>,
@@ -545,6 +568,12 @@ impl AgentControl {
         }
         if let Some(motion) = update.timbre_motion {
             self.set_timbre_motion_clamped(motion);
+        }
+        if let Some(spread) = update.timbre_spread {
+            self.set_timbre_spread_clamped(spread);
+        }
+        if let Some(voices) = update.timbre_voices {
+            self.set_timbre_voices_clamped(voices);
         }
         if let Some(drive) = update.continuous_drive {
             self.set_continuous_drive_clamped(drive);
@@ -631,6 +660,8 @@ mod tests {
             timbre_brightness: Some(-0.1),
             timbre_inharmonic: Some(2.0),
             timbre_motion: Some(0.5),
+            timbre_spread: Some(2.0),
+            timbre_voices: Some(99),
             continuous_drive: None,
             pitch_smooth_tau: None,
             move_cost_coeff: Some(-0.2),
@@ -693,6 +724,8 @@ mod tests {
         assert!((control.body.timbre.brightness - 0.0).abs() <= 1e-6);
         assert!((control.body.timbre.inharmonic - 1.0).abs() <= 1e-6);
         assert!((control.body.timbre.motion - 0.5).abs() <= 1e-6);
+        assert!((control.body.timbre.spread - 1.0).abs() <= 1e-6);
+        assert_eq!(control.body.timbre.voices, MAX_TIMBRE_VOICES);
     }
 
     #[test]

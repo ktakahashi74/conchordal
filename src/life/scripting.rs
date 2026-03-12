@@ -373,6 +373,21 @@ impl SpeciesSpec {
         self.warn_timbre_noop_if_needed("brightness");
     }
 
+    fn set_spread(&mut self, spread: f32) {
+        self.control.set_timbre_spread_clamped(spread);
+        self.warn_timbre_noop_if_needed("spread");
+    }
+
+    fn set_voices(&mut self, voices: f32) {
+        let voices = if voices.is_finite() {
+            voices.round() as i64
+        } else {
+            1
+        };
+        self.control.set_timbre_voices_clamped(voices);
+        self.warn_timbre_noop_if_needed("voices");
+    }
+
     fn set_modes(&mut self, pattern: ModePattern) {
         self.control.body.modes = Some(pattern);
     }
@@ -1253,6 +1268,14 @@ fn patch_timbre_brightness(update: &mut ControlUpdate, value: f32) {
     update.timbre_brightness = Some(value);
 }
 
+fn patch_timbre_spread(update: &mut ControlUpdate, value: f32) {
+    update.timbre_spread = Some(value);
+}
+
+fn patch_timbre_voices(update: &mut ControlUpdate, value: f32) {
+    update.timbre_voices = Some(value.round() as i64);
+}
+
 fn draft_clear_strategy(group: &mut GroupState) {
     group.strategy = None;
 }
@@ -1567,6 +1590,8 @@ impl ScriptHost {
         });
         register_species_numeric_overloads(&mut engine, "energy", SpeciesSpec::set_amp);
         register_species_numeric_overloads(&mut engine, "brightness", SpeciesSpec::set_brightness);
+        register_species_numeric_overloads(&mut engine, "spread", SpeciesSpec::set_spread);
+        register_species_numeric_overloads(&mut engine, "voices", SpeciesSpec::set_voices);
         engine.register_fn(
             "modes",
             |mut species: SpeciesHandle, pattern: ModePattern| {
@@ -2718,6 +2743,22 @@ impl ScriptHost {
             "brightness",
             SpeciesSpec::set_brightness,
             patch_timbre_brightness,
+            None,
+        );
+        register_group_numeric_overloads(
+            &mut engine,
+            ctx.clone(),
+            "spread",
+            SpeciesSpec::set_spread,
+            patch_timbre_spread,
+            None,
+        );
+        register_group_numeric_overloads(
+            &mut engine,
+            ctx.clone(),
+            "voices",
+            SpeciesSpec::set_voices,
+            patch_timbre_voices,
             None,
         );
         let ctx_for_group_modes = ctx.clone();
@@ -4557,6 +4598,51 @@ mod tests {
         "#,
         );
         assert!(err.message.contains("width"));
+    }
+
+    #[test]
+    fn spread_and_voices_methods_update_timbre() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            create(harmonic.spread(0.4).voices(5), 1);
+            flush();
+        "#,
+        );
+        let spawn = scenario
+            .events
+            .iter()
+            .flat_map(|event| &event.actions)
+            .find_map(|action| match action {
+                Action::Spawn { spec, .. } => Some(spec.clone()),
+                _ => None,
+            })
+            .expect("spawn action");
+
+        assert!((spawn.control.body.timbre.spread - 0.4).abs() <= 1.0e-6);
+        assert_eq!(spawn.control.body.timbre.voices, 5);
+    }
+
+    #[test]
+    fn live_group_spread_and_voices_emit_timbre_patch() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            let g = create(harmonic, 1);
+            flush();
+            g.spread(0.3).voices(4);
+            flush();
+        "#,
+        );
+        let patch = scenario
+            .events
+            .iter()
+            .flat_map(|event| &event.actions)
+            .find_map(|action| match action {
+                Action::UpdateGroup { patch, .. } => Some(patch.clone()),
+                _ => None,
+            })
+            .expect("update action");
+        assert_eq!(patch.timbre_spread, Some(0.3));
+        assert_eq!(patch.timbre_voices, Some(4));
     }
 
     #[test]

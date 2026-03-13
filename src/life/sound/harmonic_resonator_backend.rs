@@ -67,7 +67,8 @@ impl HarmonicResonatorBackend {
                 in_gain: 1.0,
                 genotype: TimbreGenotype {
                     spectral_slope: spectral_slope_from_brightness(brightness),
-                    jitter: snapshot.noise_mix.clamp(0.0, 1.0),
+                    stiffness: snapshot.inharmonic.clamp(0.0, 1.0),
+                    jitter: snapshot.motion.clamp(0.0, 1.0),
                     ..TimbreGenotype::default()
                 },
             }
@@ -292,9 +293,10 @@ mod tests {
             kind: BodyKind::Harmonic,
             amp_scale: 1.0,
             brightness: 0.6,
+            inharmonic: 0.0,
             spread: 0.0,
             voices: 1,
-            noise_mix: 0.2,
+            motion: 0.2,
             ratios: None,
         };
         let mut backend =
@@ -327,9 +329,10 @@ mod tests {
             kind: BodyKind::Harmonic,
             amp_scale: 1.0,
             brightness: 0.6,
+            inharmonic: 0.0,
             spread: 0.0,
             voices: 1,
-            noise_mix: 0.0,
+            motion: 0.0,
             ratios: None,
         };
         let mut backend =

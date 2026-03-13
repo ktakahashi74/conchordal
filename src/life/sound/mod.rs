@@ -4,6 +4,7 @@ pub mod events;
 pub mod harmonic_resonator_backend;
 pub mod modal_engine;
 pub(crate) mod mode_utils;
+pub mod oscillator_bank;
 pub mod render_modulator;
 pub mod sine_osc_backend;
 pub(crate) mod spectral;

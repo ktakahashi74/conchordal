@@ -1,57 +1,67 @@
 use crate::core::log2space::Log2Space;
 use crate::life::individual::ArticulationSignal;
 use crate::life::sound::control::VoiceControlBlock;
-use crate::life::sound::harmonic_resonator_backend::HarmonicResonatorBackend;
 use crate::life::sound::modal_engine::{ModalEngine, ModeShape};
 use crate::life::sound::mode_utils::{
     cluster_spread_cents_from_public, modal_modes_from_ratios, modal_tilt_from_brightness,
 };
-use crate::life::sound::sine_osc_backend::SineOscBackend;
+use crate::life::sound::oscillator_bank::OscillatorBank;
 use crate::life::sound::{BodyKind, BodySnapshot};
 use crate::synth::SynthError;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DriveMode {
+    None,
+    Deterministic,
+    Noisy,
+}
+
 #[derive(Debug, Clone)]
 pub enum AnyBackend {
-    Sine(SineOscBackend),
-    Harmonic(HarmonicResonatorBackend),
-    Modal(ModalEngine),
+    Oscillator(OscillatorBank),
+    Resonator(ModalEngine),
 }
 
 impl AnyBackend {
     pub fn from_snapshot(fs: f32, snapshot: &BodySnapshot) -> Result<Self, SynthError> {
         match snapshot.kind {
-            BodyKind::Sine => Ok(Self::Sine(SineOscBackend::new(fs)?)),
-            BodyKind::Harmonic => Ok(Self::Harmonic(HarmonicResonatorBackend::from_snapshot(
-                fs, snapshot,
-            )?)),
+            BodyKind::Sine | BodyKind::Harmonic => Ok(Self::Oscillator(
+                OscillatorBank::from_snapshot(fs, snapshot)?,
+            )),
             BodyKind::Modal => {
                 let shape = modal_shape_from_snapshot(snapshot);
-                Ok(Self::Modal(ModalEngine::new(fs, shape)?))
+                Ok(Self::Resonator(ModalEngine::new(fs, shape)?))
             }
         }
     }
 
     pub fn is_sine(&self) -> bool {
-        matches!(self, Self::Sine(_))
+        matches!(self, Self::Oscillator(backend) if backend.is_sine())
+    }
+
+    pub fn drive_mode(&self) -> DriveMode {
+        match self {
+            AnyBackend::Oscillator(backend) if backend.is_sine() => DriveMode::None,
+            AnyBackend::Oscillator(_) => DriveMode::Deterministic,
+            AnyBackend::Resonator(_) => DriveMode::Noisy,
+        }
     }
 
     pub fn supports_continuous_drive(&self) -> bool {
-        !self.is_sine()
+        !matches!(self.drive_mode(), DriveMode::None)
     }
 
     pub fn seed_modal_phases(&mut self, seed: u64) {
         match self {
-            AnyBackend::Sine(backend) => backend.seed_phase(seed),
-            AnyBackend::Harmonic(backend) => backend.seed_phases(seed),
-            AnyBackend::Modal(engine) => engine.seed_modal_phases(seed),
+            AnyBackend::Oscillator(backend) => backend.seed_phases(seed),
+            AnyBackend::Resonator(engine) => engine.seed_modal_phases(seed),
         }
     }
 
     pub fn render_block(&mut self, drive: &[f32], ctrl: VoiceControlBlock, out: &mut [f32]) {
         match self {
-            AnyBackend::Sine(backend) => backend.render_block(drive, ctrl, out),
-            AnyBackend::Harmonic(backend) => backend.render_block(drive, ctrl, out),
-            AnyBackend::Modal(engine) => engine.render_block(drive, ctrl, out),
+            AnyBackend::Oscillator(backend) => backend.render_block(drive, ctrl, out),
+            AnyBackend::Resonator(engine) => engine.render_block(drive, ctrl, out),
         }
     }
 
@@ -62,9 +72,8 @@ impl AnyBackend {
         signal: &ArticulationSignal,
     ) {
         match self {
-            AnyBackend::Sine(backend) => backend.project_spectral(amps, space, signal),
-            AnyBackend::Harmonic(backend) => backend.project_spectral(amps, space, signal),
-            AnyBackend::Modal(engine) => engine.project_spectral(amps, space, signal),
+            AnyBackend::Oscillator(backend) => backend.project_spectral(amps, space, signal),
+            AnyBackend::Resonator(engine) => engine.project_spectral(amps, space, signal),
         }
     }
 }
@@ -91,9 +100,10 @@ mod tests {
             kind: BodyKind::Harmonic,
             amp_scale: 1.0,
             brightness: 0.6,
+            inharmonic: 0.0,
             spread: 0.0,
             voices: 1,
-            noise_mix: 0.0,
+            motion: 0.0,
             ratios: None,
         };
         let mut backend = AnyBackend::from_snapshot(fs, &snapshot).expect("backend");

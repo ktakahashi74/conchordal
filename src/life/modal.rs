@@ -190,9 +190,10 @@ impl SoundBody for ModalBody {
             kind: BodyKind::Modal,
             amp_scale: 1.0,
             brightness: brightness_from_modal_tilt(self.modal_tilt),
+            inharmonic: 0.0,
             spread: public_spread_from_cluster_spread_cents(self.cluster_spread_cents),
             voices: self.cluster_voices,
-            noise_mix: 0.0,
+            motion: 0.0,
             ratios: Some(self.base_ratios.clone()),
         }
     }
@@ -252,9 +253,10 @@ mod tests {
         let ratios = snapshot.ratios.expect("ratios");
         assert_eq!(snapshot.kind, BodyKind::Modal);
         assert!((snapshot.brightness - 0.62).abs() <= 1.0e-6);
+        assert!((snapshot.inharmonic - 0.0).abs() <= 1.0e-6);
         assert!((snapshot.spread - 0.35).abs() <= 1.0e-6);
         assert_eq!(snapshot.voices, 5);
-        assert!((snapshot.noise_mix - 0.0).abs() <= 1.0e-6);
+        assert!((snapshot.motion - 0.0).abs() <= 1.0e-6);
         assert!((ratios[0] - 1.0).abs() <= 1.0e-6);
         assert!((ratios[1] - 2.756).abs() <= 1.0e-6);
         assert!((ratios[2] - 5.404).abs() <= 1.0e-6);

@@ -114,9 +114,10 @@ impl SoundBody for SineBody {
             kind: BodyKind::Sine,
             amp_scale: 1.0,
             brightness: 0.0,
+            inharmonic: 0.0,
             spread: 0.0,
             voices: DEFAULT_TIMBRE_VOICES,
-            noise_mix: 0.0,
+            motion: 0.0,
             ratios: None,
         }
     }
@@ -305,9 +306,10 @@ impl SoundBody for HarmonicBody {
             kind: BodyKind::Harmonic,
             amp_scale: 1.0,
             brightness: brightness_from_spectral_slope(self.genotype.spectral_slope),
+            inharmonic: self.genotype.stiffness.clamp(0.0, 1.0),
             spread: public_spread_from_cluster_spread_cents(self.cluster_spread_cents),
             voices: self.cluster_voices,
-            noise_mix: self.genotype.jitter.clamp(0.0, 1.0),
+            motion: self.genotype.jitter.clamp(0.0, 1.0),
             ratios: self.custom_ratios.clone(),
         }
     }
@@ -648,9 +650,10 @@ mod tests {
         let snapshot = body.snapshot();
         assert_eq!(snapshot.kind, BodyKind::Harmonic);
         assert!((snapshot.brightness - 0.4).abs() <= 1.0e-6);
+        assert!((snapshot.inharmonic - 0.0).abs() <= 1.0e-6);
         assert!((snapshot.spread - 0.5).abs() <= 1.0e-6);
         assert_eq!(snapshot.voices, 3);
-        assert!((snapshot.noise_mix - 0.2).abs() <= 1.0e-6);
+        assert!((snapshot.motion - 0.2).abs() <= 1.0e-6);
         let ratios = snapshot.ratios.expect("ratios");
         assert_eq!(ratios.as_ref(), &[1.0, 3.0, 5.0]);
     }

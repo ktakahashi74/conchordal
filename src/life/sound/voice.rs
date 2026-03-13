@@ -3,7 +3,7 @@ use crate::core::timebase::{Tick, Timebase};
 use crate::life::individual::ArticulationSignal;
 use crate::life::lifecycle::default_decay_attack;
 use crate::life::phonation_engine::{NoteUpdate, OnsetKick};
-use crate::life::sound::any_backend::AnyBackend;
+use crate::life::sound::any_backend::{AnyBackend, DriveMode};
 use crate::life::sound::control::{ControlRamp, VoiceControlBlock};
 use crate::life::sound::{BodyKind, BodySnapshot, RenderModulator, RenderModulatorSpec};
 use std::collections::VecDeque;
@@ -277,11 +277,13 @@ impl Voice {
             return 0.0;
         }
 
-        let drive = if self.backend.supports_continuous_drive() {
-            let noise = fast_noise(&mut self.noise_state);
-            impulse + self.continuous_drive * signal.amplitude * noise
-        } else {
-            0.0
+        let drive = match self.backend.drive_mode() {
+            DriveMode::None => 0.0,
+            DriveMode::Deterministic => impulse + self.continuous_drive * signal.amplitude,
+            DriveMode::Noisy => {
+                let noise = fast_noise(&mut self.noise_state);
+                impulse + self.continuous_drive * signal.amplitude * noise
+            }
         };
         let ctrl = VoiceControlBlock {
             pitch_hz: ControlRamp {
@@ -328,11 +330,12 @@ impl Voice {
     }
 
     pub fn set_continuous_drive(&mut self, level: f32) {
-        // Sine backend is pure oscillator; sustain-drive is intentionally ignored.
-        self.continuous_drive = if self.backend.is_sine() {
-            0.0
-        } else if level.is_finite() {
-            level.max(0.0)
+        self.continuous_drive = if self.backend.supports_continuous_drive() {
+            if level.is_finite() {
+                level.max(0.0)
+            } else {
+                0.0
+            }
         } else {
             0.0
         };
@@ -525,9 +528,10 @@ fn default_body_snapshot() -> BodySnapshot {
         kind: BodyKind::Sine,
         amp_scale: 1.0,
         brightness: 0.0,
+        inharmonic: 0.0,
         spread: 0.0,
         voices: 1,
-        noise_mix: 0.0,
+        motion: 0.0,
         ratios: None,
     }
 }
@@ -586,9 +590,10 @@ mod tests {
             kind: BodyKind::Harmonic,
             amp_scale: 1.0,
             brightness: 0.6,
+            inharmonic: 0.0,
             spread: 0.0,
             voices: 1,
-            noise_mix: 0.0,
+            motion: 0.0,
             ratios: None,
         };
         let mut voice =
@@ -607,6 +612,40 @@ mod tests {
         assert!(
             peak > 1e-4,
             "harmonic sustain drive should keep energy; peak={peak}"
+        );
+    }
+
+    #[test]
+    fn harmonic_note_without_continuous_drive_stays_audible() {
+        let tb = Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        };
+        let harmonic = BodySnapshot {
+            kind: BodyKind::Harmonic,
+            amp_scale: 1.0,
+            brightness: 0.6,
+            inharmonic: 0.0,
+            spread: 0.0,
+            voices: 1,
+            motion: 0.0,
+            ratios: None,
+        };
+        let mut voice =
+            Voice::from_parts(tb, 0, Tick::MAX, 220.0, 0.5, Some(harmonic), None).expect("voice");
+        voice.trigger_impulse(1.0);
+        let dt = 1.0 / tb.fs;
+        let blocks = (2.0 * tb.fs as f64 / tb.hop as f64) as usize;
+        let mut last_block = vec![0.0f32; tb.hop];
+        for b in 0..blocks {
+            let tick = (b * tb.hop) as Tick;
+            let mut rhythms = NeuralRhythms::default();
+            voice.render_block(tick, tb.fs, dt, &mut rhythms, &mut last_block);
+        }
+        let peak = last_block.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
+        assert!(
+            peak > 1e-4,
+            "harmonic note should remain audible; peak={peak}"
         );
     }
 

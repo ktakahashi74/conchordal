@@ -8,7 +8,6 @@ use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
 use crate::life::control::{MAX_FREQ_HZ, MIN_FREQ_HZ};
 use crate::life::social_density::SocialDensityTrace;
-use crate::life::sound::{AudioCommand, VoiceTarget};
 use crate::life::world_model::WorldModel;
 use rand::{Rng, SeedableRng, distr::Distribution, distr::weighted::WeightedIndex, rngs::SmallRng};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -81,14 +80,12 @@ pub struct Population {
     current_frame: u64,
     pub abort_requested: bool,
     pub global_coupling: f32,
-    birth_energy: f32,
     shutdown_gain: f32,
     pending_update: Option<LandscapeUpdate>,
     time: Timebase,
     seed: u64,
     spawn_counter: u64,
     social_trace: Option<SocialDensityTrace>,
-    audio_cmds: Vec<AudioCommand>,
     groups: BTreeMap<u64, RuntimeGroupState>,
     death_observed: HashSet<u64>,
     next_runtime_id: u64,
@@ -193,14 +190,12 @@ impl Population {
             current_frame: 0,
             abort_requested: false,
             global_coupling: 1.0,
-            birth_energy: 1.0,
             shutdown_gain: 1.0,
             pending_update: None,
             time,
             seed: rand::random::<u64>(),
             spawn_counter: 0,
             social_trace: None,
-            audio_cmds: Vec::new(),
             groups: BTreeMap::new(),
             death_observed: HashSet::new(),
             next_runtime_id: 1,
@@ -274,30 +269,6 @@ impl Population {
 
     pub fn last_phonation_onsets_in_hop(&self) -> Option<u32> {
         self.last_phonation_onsets_in_hop
-    }
-
-    pub fn drain_audio_cmds(&mut self, out: &mut Vec<AudioCommand>) {
-        out.clear();
-        out.append(&mut self.audio_cmds);
-    }
-
-    pub fn fill_voice_targets(&self, out: &mut Vec<VoiceTarget>) {
-        out.clear();
-        out.reserve(self.individuals.len());
-        for agent in &self.individuals {
-            if !agent.is_alive() {
-                continue;
-            }
-            let pitch_hz = agent.body.base_freq_hz();
-            let amp = agent.body.amp();
-            out.push(VoiceTarget {
-                id: agent.id(),
-                pitch_hz,
-                amp,
-                continuous_drive: agent.effective_control.body.continuous_drive,
-                pitch_smooth_tau: agent.effective_control.body.pitch_smooth_tau,
-            });
-        }
     }
 
     pub fn collect_phonation_batches(
@@ -665,21 +636,8 @@ impl Population {
                 core.enable_plv(window);
             }
         }
-        let body = spawned.body_snapshot();
-        let pitch_hz = spawned.body.base_freq_hz();
-        let amp = spawned.body.amp();
         self.individuals.push(spawned);
         self.track_runtime_id(id);
-        self.audio_cmds.push(AudioCommand::EnsureVoice {
-            id,
-            body,
-            pitch_hz,
-            amp,
-        });
-        self.audio_cmds.push(AudioCommand::Impulse {
-            id,
-            energy: self.birth_energy,
-        });
     }
 
     fn ensure_group_state(
@@ -1489,6 +1447,7 @@ mod tests {
                 phase: 0.0,
                 sway_rate: 1.0,
             },
+            adsr: None,
         }
     }
 

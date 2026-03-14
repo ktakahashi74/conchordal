@@ -845,6 +845,7 @@ impl AnyArticulationCore {
                 RenderModulatorSpec::EntrainPulse {
                     attack_step: core.attack_step,
                     decay_rate: core.decay_rate,
+                    sustain_level: 0.0,
                     initial_state: RenderModulatorStateKind::from(core.state),
                     initial_env_level: core.env_level.clamp(0.0, 1.0),
                     alpha_gain: core.sensitivity.alpha,

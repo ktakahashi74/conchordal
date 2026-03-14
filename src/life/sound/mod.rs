@@ -12,8 +12,8 @@ pub mod voice;
 
 pub use any_backend::AnyBackend;
 pub use control::{ControlRamp, VoiceControlBlock};
-pub use events::{AudioCommand, BodyKind, BodySnapshot, IndividualId, VoiceTarget};
+pub use events::{BodyKind, BodySnapshot, IndividualId};
 pub use modal_engine::{ModalEngine, ModalMode, ModeShape};
 pub(crate) use render_modulator::RenderModulator;
 pub use render_modulator::{AutonomousPulseSpec, RenderModulatorSpec, RenderModulatorStateKind};
-pub use voice::{Voice, default_release_ticks};
+pub use voice::{Voice, VoiceAdsr, default_release_ticks};

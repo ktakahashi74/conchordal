@@ -126,6 +126,7 @@ impl SpeciesSpec {
                 attack_sec: adsr.attack_sec.max(0.0),
                 decay_sec: adsr.decay_sec.max(0.0),
                 sustain_level: adsr.sustain_level.clamp(0.0, 1.0),
+                release_sec: adsr.release_sec.max(0.0),
             }
         } else {
             EnvelopeConfig::default()
@@ -164,6 +165,7 @@ impl SpeciesSpec {
             BrainKind::Drone => ArticulationCoreConfig::Drone {
                 sway: None,
                 breath_gain_init: None,
+                envelope: self.adsr.map(|_| self.envelope_from_adsr()),
             },
         }
     }

@@ -13,6 +13,14 @@ const SINE_IMPULSE_BOOST_MAX: f32 = 1.0;
 const SINE_IMPULSE_BOOST_DECAY_SEC: f32 = 0.08;
 
 #[derive(Debug, Clone, Copy)]
+pub struct VoiceAdsr {
+    pub attack_sec: f32,
+    pub decay_sec: f32,
+    pub sustain_level: f32,
+    pub release_sec: f32,
+}
+
+#[derive(Debug, Clone, Copy)]
 struct PendingUpdate {
     at_tick: Tick,
     update: NoteUpdate,
@@ -32,6 +40,9 @@ pub struct Voice {
     hold_end: Tick,
     release_end: Tick,
     attack_ticks: Tick,
+    decay_ticks: Tick,
+    sustain_level: f32,
+    decay_lambda: f32,
     release_ticks: Tick,
     planned_kick_pending: Option<OnsetKick>,
     pending_updates: VecDeque<PendingUpdate>,
@@ -52,6 +63,7 @@ pub struct Voice {
 }
 
 impl Voice {
+    #[allow(clippy::too_many_arguments)]
     pub fn from_parts(
         time: Timebase,
         onset: Tick,
@@ -60,6 +72,7 @@ impl Voice {
         amp: f32,
         body: Option<BodySnapshot>,
         render_modulator: Option<RenderModulatorSpec>,
+        adsr: Option<VoiceAdsr>,
     ) -> Option<Self> {
         if duration == 0 || freq_hz <= 0.0 {
             return None;
@@ -80,8 +93,25 @@ impl Voice {
 
         let backend = AnyBackend::from_snapshot(time.fs, &snapshot).ok()?;
 
-        let attack_ticks = default_attack_ticks(time);
-        let release_ticks = default_release_ticks(time);
+        let (attack_ticks, decay_ticks, sustain_level, release_ticks) = if let Some(adsr) = adsr {
+            let attack = sec_to_tick_at_least_one(time, adsr.attack_sec.max(0.0));
+            let s = adsr.sustain_level.clamp(0.0, 1.0);
+            let decay = if s < 1.0 {
+                sec_to_tick_at_least_one(time, adsr.decay_sec.max(0.0))
+            } else {
+                0
+            };
+            let release = sec_to_tick_at_least_one(time, adsr.release_sec.max(0.0));
+            (attack, decay, s, release)
+        } else {
+            (default_attack_ticks(time), 0, 1.0f32, default_release_ticks(time))
+        };
+        let decay_lambda = if decay_ticks > 0 {
+            6.908 / decay_ticks as f32
+        } else {
+            0.0
+        };
+
         let (hold_end, release_end) = if duration == Tick::MAX {
             (Tick::MAX, Tick::MAX)
         } else {
@@ -112,6 +142,9 @@ impl Voice {
             hold_end,
             release_end,
             attack_ticks,
+            decay_ticks,
+            sustain_level,
+            decay_lambda,
             release_ticks,
             planned_kick_pending: None,
             pending_updates: VecDeque::new(),
@@ -410,6 +443,9 @@ impl Voice {
                 self.current_amp = amp;
             }
         }
+        if let Some(drive) = update.continuous_drive {
+            self.set_continuous_drive(drive);
+        }
     }
 
     fn advance_smoothing(&mut self) {
@@ -441,10 +477,19 @@ impl Voice {
         let duration_ticks = self.hold_end.saturating_sub(self.onset).max(1);
         let pos = tick.saturating_sub(self.onset);
         let attack_len = self.attack_ticks.min(duration_ticks);
-        let attack = if attack_len > 0 && pos < attack_len {
+
+        // Pre-release level: attack → decay → sustain
+        let level = if attack_len > 0 && pos < attack_len {
             (pos.saturating_add(1) as f32 / attack_len as f32).clamp(0.0, 1.0)
+        } else if self.decay_ticks > 0
+            && pos < attack_len.saturating_add(self.decay_ticks)
+        {
+            let decay_pos = pos.saturating_sub(attack_len);
+            self.sustain_level
+                + (1.0 - self.sustain_level)
+                    * (-self.decay_lambda * decay_pos as f32).exp()
         } else {
-            1.0
+            self.sustain_level
         };
 
         let release = if tick >= self.hold_end {
@@ -458,7 +503,7 @@ impl Voice {
             1.0
         };
 
-        (attack * release).clamp(0.0, 1.0)
+        (level * release).clamp(0.0, 1.0)
     }
 }
 
@@ -546,7 +591,7 @@ mod tests {
             fs: 48_000.0,
             hop: 64,
         };
-        let mut voice = Voice::from_parts(tb, 0, Tick::MAX, 440.0, 0.5, None, None).expect("voice");
+        let mut voice = Voice::from_parts(tb, 0, Tick::MAX, 440.0, 0.5, None, None, None).expect("voice");
 
         let mut rhythms = NeuralRhythms::default();
         let mut out = vec![0.0f32; tb.hop];
@@ -566,7 +611,7 @@ mod tests {
             fs: 48_000.0,
             hop: 64,
         };
-        let mut voice = Voice::from_parts(tb, 0, Tick::MAX, 440.0, 0.5, None, None).expect("voice");
+        let mut voice = Voice::from_parts(tb, 0, Tick::MAX, 440.0, 0.5, None, None, None).expect("voice");
         voice.set_continuous_drive(0.01);
 
         let dt = 1.0 / tb.fs;
@@ -597,7 +642,7 @@ mod tests {
             ratios: None,
         };
         let mut voice =
-            Voice::from_parts(tb, 0, Tick::MAX, 220.0, 0.5, Some(harmonic), None).expect("voice");
+            Voice::from_parts(tb, 0, Tick::MAX, 220.0, 0.5, Some(harmonic), None, None).expect("voice");
         voice.set_continuous_drive(0.03);
         voice.trigger_impulse(1.0);
         let dt = 1.0 / tb.fs;
@@ -632,7 +677,7 @@ mod tests {
             ratios: None,
         };
         let mut voice =
-            Voice::from_parts(tb, 0, Tick::MAX, 220.0, 0.5, Some(harmonic), None).expect("voice");
+            Voice::from_parts(tb, 0, Tick::MAX, 220.0, 0.5, Some(harmonic), None, None).expect("voice");
         voice.trigger_impulse(1.0);
         let dt = 1.0 / tb.fs;
         let blocks = (2.0 * tb.fs as f64 / tb.hop as f64) as usize;
@@ -655,7 +700,7 @@ mod tests {
             fs: 48_000.0,
             hop: 64,
         };
-        let mut voice = Voice::from_parts(tb, 0, Tick::MAX, 440.0, 0.5, None, None).expect("voice");
+        let mut voice = Voice::from_parts(tb, 0, Tick::MAX, 440.0, 0.5, None, None, None).expect("voice");
         let dt = 1.0 / tb.fs;
         let mut rhythms = NeuralRhythms::default();
 
@@ -681,7 +726,7 @@ mod tests {
             fs: 48_000.0,
             hop: 64,
         };
-        let mut voice = Voice::from_parts(tb, 0, 8, 440.0, 0.5, None, None).expect("voice");
+        let mut voice = Voice::from_parts(tb, 0, 8, 440.0, 0.5, None, None, None).expect("voice");
         voice.set_smoothing_tau_sec(0.0);
         voice.note_off(4);
         voice.schedule_update(
@@ -689,6 +734,7 @@ mod tests {
             NoteUpdate {
                 target_freq_hz: None,
                 target_amp: Some(0.25),
+                continuous_drive: None,
             },
         );
 
@@ -696,5 +742,61 @@ mod tests {
 
         assert!((voice.debug_target_amp() - 0.25).abs() < 1e-6);
         assert!((voice.debug_current_amp() - 0.25).abs() < 1e-6);
+    }
+
+    #[test]
+    fn adsr_gain_follows_attack_decay_sustain_release() {
+        let tb = Timebase {
+            fs: 1000.0,
+            hop: 4,
+        };
+        let adsr = VoiceAdsr {
+            attack_sec: 0.01,
+            decay_sec: 0.02,
+            sustain_level: 0.5,
+            release_sec: 0.01,
+        };
+        let mut voice =
+            Voice::from_parts(tb, 0, 100, 440.0, 1.0, None, None, Some(adsr)).expect("voice");
+        voice.trigger_impulse(1.0);
+
+        // Attack phase: gain ramps 0 → 1 over ~10 ticks
+        let g_mid_attack = voice.gain_at(5);
+        assert!(g_mid_attack > 0.0 && g_mid_attack < 1.0, "mid-attack: {g_mid_attack}");
+
+        // After attack (tick 10): gain should be ~1.0
+        let g_attack_end = voice.gain_at(10);
+        assert!(g_attack_end > 0.95, "attack end: {g_attack_end}");
+
+        // After decay (tick 30 = 10 attack + 20 decay): close to sustain 0.5
+        let g_sustain = voice.gain_at(35);
+        assert!(
+            (g_sustain - 0.5).abs() < 0.05,
+            "sustain level: {g_sustain}"
+        );
+
+        // Release: note_off at tick 50
+        voice.note_off(50);
+        // Right after release starts
+        let g_release_start = voice.gain_at(51);
+        assert!(g_release_start > 0.0 && g_release_start < 0.5, "release start: {g_release_start}");
+
+        // After release_end
+        let g_done = voice.gain_at(61);
+        assert!(g_done == 0.0, "after release end: {g_done}");
+    }
+
+    #[test]
+    fn no_adsr_preserves_original_behavior() {
+        let tb = Timebase {
+            fs: 1000.0,
+            hop: 4,
+        };
+        let voice =
+            Voice::from_parts(tb, 0, 100, 440.0, 1.0, None, None, None).expect("voice");
+
+        // In sustain phase: gain should be 1.0
+        let g = voice.gain_at(50);
+        assert!((g - 1.0).abs() < 1e-6, "sustain without adsr: {g}");
     }
 }

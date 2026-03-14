@@ -20,26 +20,3 @@ pub struct BodySnapshot {
     pub motion: f32,
     pub ratios: Option<Arc<[f32]>>,
 }
-
-#[derive(Debug, Clone)]
-pub enum AudioCommand {
-    EnsureVoice {
-        id: IndividualId,
-        body: BodySnapshot,
-        pitch_hz: f32,
-        amp: f32,
-    },
-    Impulse {
-        id: IndividualId,
-        energy: f32,
-    },
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct VoiceTarget {
-    pub id: IndividualId,
-    pub pitch_hz: f32,
-    pub amp: f32,
-    pub continuous_drive: f32,
-    pub pitch_smooth_tau: f32,
-}

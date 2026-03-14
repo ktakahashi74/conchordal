@@ -33,6 +33,7 @@ pub struct EnvelopeConfig {
     pub attack_sec: f32,
     pub decay_sec: f32,
     pub sustain_level: f32,
+    pub release_sec: f32,
 }
 
 impl Default for EnvelopeConfig {
@@ -41,6 +42,7 @@ impl Default for EnvelopeConfig {
             attack_sec: 0.01,
             decay_sec: 0.1,
             sustain_level: 0.0,
+            release_sec: 0.03,
         }
     }
 }
@@ -290,6 +292,7 @@ pub enum ArticulationCoreConfig {
     Drone {
         sway: Option<f32>,
         breath_gain_init: Option<f32>,
+        envelope: Option<EnvelopeConfig>,
     },
 }
 

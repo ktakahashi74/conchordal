@@ -68,6 +68,7 @@ fn sustain_entrain_articulation() -> ArticulationCoreConfig {
                 attack_sec: 0.01,
                 decay_sec: 0.05,
                 sustain_level: 0.0,
+                release_sec: 0.03,
             },
         },
         rhythm_freq: Some(4.0),

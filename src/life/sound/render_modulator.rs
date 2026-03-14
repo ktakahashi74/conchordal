@@ -1,5 +1,5 @@
 use crate::core::modulation::NeuralRhythms;
-use crate::life::articulation_envelope::step_attack_decay_envelope;
+use crate::life::articulation_envelope::step_attack_decay_sustain_envelope;
 use crate::life::individual::{ArticulationSignal, ArticulationState};
 use crate::life::phonation_engine::OnsetKick;
 
@@ -8,6 +8,7 @@ pub enum RenderModulatorSpec {
     EntrainPulse {
         attack_step: f32,
         decay_rate: f32,
+        sustain_level: f32,
         initial_state: RenderModulatorStateKind,
         initial_env_level: f32,
         alpha_gain: f32,
@@ -74,6 +75,7 @@ struct AutonomousPulseRuntime {
 pub(crate) struct EntrainPulseModulator {
     attack_step: f32,
     decay_rate: f32,
+    sustain_level: f32,
     state: ArticulationState,
     env_level: f32,
     alpha_gain: f32,
@@ -106,6 +108,7 @@ impl RenderModulator {
             RenderModulatorSpec::EntrainPulse {
                 attack_step,
                 decay_rate,
+                sustain_level,
                 initial_state,
                 initial_env_level,
                 alpha_gain,
@@ -114,6 +117,7 @@ impl RenderModulator {
             } => Self::EntrainPulse(EntrainPulseModulator {
                 attack_step,
                 decay_rate,
+                sustain_level: sustain_level.clamp(0.0, 1.0),
                 state: initial_state.into(),
                 env_level: initial_env_level.clamp(0.0, 1.0),
                 alpha_gain,
@@ -188,11 +192,12 @@ impl EntrainPulseModulator {
                 }
             }
         }
-        step_attack_decay_envelope(
+        step_attack_decay_sustain_envelope(
             &mut self.state,
             &mut self.env_level,
             self.attack_step,
             self.decay_rate,
+            self.sustain_level,
             dt,
         );
         ArticulationSignal {
@@ -249,6 +254,7 @@ mod tests {
         let spec = RenderModulatorSpec::EntrainPulse {
             attack_step: 100.0,
             decay_rate: 10.0,
+            sustain_level: 0.0,
             initial_state: RenderModulatorStateKind::Idle,
             initial_env_level: 0.0,
             alpha_gain: 0.5,
@@ -267,6 +273,7 @@ mod tests {
         let spec = RenderModulatorSpec::EntrainPulse {
             attack_step: 1000.0,
             decay_rate: 2000.0,
+            sustain_level: 0.0,
             initial_state: RenderModulatorStateKind::Idle,
             initial_env_level: 0.0,
             alpha_gain: 0.5,
@@ -295,6 +302,7 @@ mod tests {
         let spec = RenderModulatorSpec::EntrainPulse {
             attack_step: 100.0,
             decay_rate: 10.0,
+            sustain_level: 0.0,
             initial_state: RenderModulatorStateKind::Attack,
             initial_env_level: 0.5,
             alpha_gain: 0.25,
@@ -337,6 +345,7 @@ mod tests {
         let spec = RenderModulatorSpec::EntrainPulse {
             attack_step: 1000.0,
             decay_rate: 2000.0,
+            sustain_level: 0.0,
             initial_state: RenderModulatorStateKind::Idle,
             initial_env_level: 0.0,
             alpha_gain: 0.5,
@@ -372,6 +381,7 @@ mod tests {
         let spec = RenderModulatorSpec::EntrainPulse {
             attack_step: 1000.0,
             decay_rate: 2000.0,
+            sustain_level: 0.0,
             initial_state: RenderModulatorStateKind::Idle,
             initial_env_level: 0.0,
             alpha_gain: 0.5,
@@ -407,6 +417,7 @@ mod tests {
         let spec = RenderModulatorSpec::EntrainPulse {
             attack_step: 1000.0,
             decay_rate: 2000.0,
+            sustain_level: 0.0,
             initial_state: RenderModulatorStateKind::Idle,
             initial_env_level: 0.0,
             alpha_gain: 0.5,

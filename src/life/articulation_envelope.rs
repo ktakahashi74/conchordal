@@ -7,7 +7,19 @@ pub(crate) fn step_attack_decay_envelope(
     decay_rate: f32,
     dt: f32,
 ) {
+    step_attack_decay_sustain_envelope(state, env_level, attack_step, decay_rate, 0.0, dt);
+}
+
+pub(crate) fn step_attack_decay_sustain_envelope(
+    state: &mut ArticulationState,
+    env_level: &mut f32,
+    attack_step: f32,
+    decay_rate: f32,
+    sustain_level: f32,
+    dt: f32,
+) {
     let dt = dt.max(0.0);
+    let floor = sustain_level.clamp(0.0, 1.0);
     match state {
         ArticulationState::Attack => {
             *env_level += attack_step * dt;
@@ -18,9 +30,11 @@ pub(crate) fn step_attack_decay_envelope(
         }
         ArticulationState::Decay => {
             *env_level *= (-decay_rate * dt).exp();
-            if *env_level < 0.001 {
-                *env_level = 0.0;
-                *state = ArticulationState::Idle;
+            if *env_level <= floor + 0.001 {
+                *env_level = floor;
+                if floor <= 0.0 {
+                    *state = ArticulationState::Idle;
+                }
             }
         }
         ArticulationState::Idle => {}

@@ -30,7 +30,6 @@ use crate::life::population::Population;
 use crate::life::scenario::{Action, Scenario};
 use crate::life::schedule_renderer::ScheduleRenderer;
 use crate::life::scripting::ScriptHost;
-use crate::life::sound::{AudioCommand, VoiceTarget};
 use crate::ui::viewdata::{
     AgentStateInfo, DorsalFrame, PlaybackState, SimulationMeta, SpecFrame, UiFrame, WaveFrame,
 };
@@ -994,8 +993,6 @@ fn worker_loop(
     let idle_silence = vec![0.0f32; hop];
     let mut scenario_end_tick: Option<Tick> = None;
     let mut phonation_batches_buf: Vec<PhonationBatch> = Vec::new();
-    let mut audio_cmds: Vec<AudioCommand> = Vec::new();
-    let mut voice_targets: Vec<VoiceTarget> = Vec::new();
 
     // Initial UI frame so metadata is visible before playback starts.
     let init_meta = SimulationMeta {
@@ -1218,8 +1215,6 @@ fn worker_loop(
                 None::<&mut crate::core::stream::analysis::AnalysisStream>,
                 &mut pop,
             );
-            pop.drain_audio_cmds(&mut audio_cmds);
-
             let phonation_count = if scenario_end_tick.is_none() {
                 pop.collect_phonation_batches_into(
                     &mut world,
@@ -1262,8 +1257,6 @@ fn worker_loop(
                 conductor.is_done(),
                 &current_landscape,
             );
-            pop.fill_voice_targets(&mut voice_targets);
-
             // [FIX] Audio is MONO. Treat it as such.
             // Previously incorrectly treated as stereo, leading to bad metering and destructive downsampling.
             let (mono_chunk, max_abs, channel_peak) = {
@@ -1271,8 +1264,6 @@ fn worker_loop(
                     phonation_batches,
                     now_tick,
                     &current_landscape.rhythm,
-                    &voice_targets,
-                    &audio_cmds,
                 );
 
                 // Calculate Peak (Mono)

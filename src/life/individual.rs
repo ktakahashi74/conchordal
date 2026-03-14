@@ -65,6 +65,7 @@ pub struct Individual {
     pub(crate) phonation_scratch: PhonationScratch,
     active_render_notes: Vec<TrackedRenderNote>,
     pub(crate) life_accumulator: Option<super::telemetry::LifeAccumulator>,
+    voice_adsr: Option<super::sound::VoiceAdsr>,
 }
 
 #[derive(Clone, Debug)]
@@ -77,6 +78,7 @@ pub struct NoteSpec {
     pub smoothing_tau_sec: f32,
     pub body: BodySnapshot,
     pub render_modulator: RenderModulatorSpec,
+    pub adsr: Option<super::sound::VoiceAdsr>,
 }
 
 #[derive(Debug, Default)]
@@ -88,6 +90,8 @@ pub(crate) struct PhonationScratch {
 struct TrackedRenderNote {
     note_id: NoteId,
     last_target_amp: f32,
+    last_target_freq_hz: f32,
+    last_continuous_drive: f32,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -304,7 +308,7 @@ impl Individual {
         }
         pitch_ctl.set_adaptation_enabled(effective_control.adaptation.enabled);
 
-        let (articulation_core, lifecycle_label, default_by_articulation, breath_gain_init) =
+        let (articulation_core, lifecycle_label, default_by_articulation, breath_gain_init, voice_adsr) =
             match &articulation_config {
                 ArticulationCoreConfig::Entrain {
                     lifecycle,
@@ -315,14 +319,24 @@ impl Individual {
                         LifecycleConfig::Decay { .. } => "decay",
                         LifecycleConfig::Sustain { .. } => "sustain",
                     };
-                    ("entrain", life_label, 1.0, *breath_gain_init)
+                    ("entrain", life_label, 1.0, *breath_gain_init, None)
                 }
                 ArticulationCoreConfig::Seq {
                     breath_gain_init, ..
-                } => ("seq", "none", 1.0, *breath_gain_init),
+                } => ("seq", "none", 1.0, *breath_gain_init, None),
                 ArticulationCoreConfig::Drone {
-                    breath_gain_init, ..
-                } => ("drone", "none", 0.0, *breath_gain_init),
+                    breath_gain_init,
+                    envelope,
+                    ..
+                } => {
+                    let adsr = envelope.as_ref().map(|env| super::sound::VoiceAdsr {
+                        attack_sec: env.attack_sec,
+                        decay_sec: env.decay_sec,
+                        sustain_level: env.sustain_level,
+                        release_sec: env.release_sec,
+                    });
+                    ("drone", "none", 0.0, *breath_gain_init, adsr)
+                }
             };
         let breath_gain = breath_gain_init
             .unwrap_or(default_by_articulation)
@@ -362,6 +376,7 @@ impl Individual {
             phonation_scratch: Default::default(),
             active_render_notes: Vec::new(),
             life_accumulator: None,
+            voice_adsr,
         }
     }
 
@@ -803,7 +818,9 @@ impl Individual {
             }
         }
         let target_amp = self.compute_target_amp();
-        self.emit_phonation_amp_updates(now, target_amp, &mut out.cmds);
+        let freq_hz = self.body.base_freq_hz();
+        let continuous_drive = self.effective_control.body.continuous_drive;
+        self.emit_phonation_updates(now, target_amp, freq_hz, continuous_drive, &mut out.cmds);
         self.prune_tracked_render_notes(&out.cmds);
         if self.phonation_scratch.events.is_empty() {
             if had_note_on {
@@ -811,7 +828,6 @@ impl Individual {
             }
             return;
         }
-        let freq_hz = self.body.base_freq_hz();
         if !freq_hz.is_finite() || freq_hz <= 0.0 {
             if had_note_on {
                 Self::discard_pending_render_note_ons(&mut out.cmds);
@@ -829,16 +845,22 @@ impl Individual {
         let render_modulator = self.articulation.render_modulator_spec(phonation_mode);
         let body = self.body_snapshot();
         let smoothing_tau_sec = Self::PHONATION_UPDATE_SMOOTH_TAU_SEC;
+        let hold_ticks = if matches!(phonation_mode, PhonationMode::Hold) {
+            Some(Tick::MAX)
+        } else {
+            None
+        };
         for event in self.phonation_scratch.events.drain(..) {
             out.notes.push(NoteSpec {
                 note_id: event.note_id,
                 onset: event.onset_tick,
-                hold_ticks: None,
+                hold_ticks,
                 freq_hz,
                 amp: target_amp,
                 smoothing_tau_sec,
                 body: body.clone(),
                 render_modulator: render_modulator.clone(),
+                adsr: self.voice_adsr,
             });
         }
         self.track_new_render_notes(&out.notes);
@@ -856,25 +878,50 @@ impl Individual {
         out_cmds.retain(|cmd| !matches!(cmd, NoteCmd::NoteOn { .. }));
     }
 
-    fn emit_phonation_amp_updates(
+    fn emit_phonation_updates(
         &mut self,
         now: Tick,
         target_amp: f32,
+        freq_hz: f32,
+        continuous_drive: f32,
         out_cmds: &mut Vec<NoteCmd>,
     ) {
         for tracked in &mut self.active_render_notes {
-            if (target_amp - tracked.last_target_amp).abs() < Self::PHONATION_AMP_UPDATE_EPS {
+            let amp_changed =
+                (target_amp - tracked.last_target_amp).abs() >= Self::PHONATION_AMP_UPDATE_EPS;
+            let freq_changed = freq_hz.is_finite()
+                && freq_hz > 0.0
+                && (freq_hz - tracked.last_target_freq_hz).abs() > 0.01;
+            let drive_changed = (continuous_drive - tracked.last_continuous_drive).abs() > 1e-4;
+            if !amp_changed && !freq_changed && !drive_changed {
                 continue;
             }
             out_cmds.push(NoteCmd::Update {
                 note_id: tracked.note_id,
                 at_tick: Some(now),
                 update: NoteUpdate {
-                    target_freq_hz: None,
-                    target_amp: Some(target_amp),
+                    target_freq_hz: if freq_changed { Some(freq_hz) } else { None },
+                    target_amp: if amp_changed {
+                        Some(target_amp)
+                    } else {
+                        None
+                    },
+                    continuous_drive: if drive_changed {
+                        Some(continuous_drive)
+                    } else {
+                        None
+                    },
                 },
             });
-            tracked.last_target_amp = target_amp;
+            if amp_changed {
+                tracked.last_target_amp = target_amp;
+            }
+            if freq_changed {
+                tracked.last_target_freq_hz = freq_hz;
+            }
+            if drive_changed {
+                tracked.last_continuous_drive = continuous_drive;
+            }
         }
     }
 
@@ -898,6 +945,8 @@ impl Individual {
             .extend(notes.iter().map(|note| TrackedRenderNote {
                 note_id: note.note_id,
                 last_target_amp: note.amp,
+                last_target_freq_hz: note.freq_hz,
+                last_continuous_drive: 0.0,
             }));
     }
 

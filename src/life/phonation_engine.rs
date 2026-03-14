@@ -26,11 +26,14 @@ pub struct NoteUpdate {
     pub target_freq_hz: Option<f32>,
     /// Final output target amp (linear).
     pub target_amp: Option<f32>,
+    pub continuous_drive: Option<f32>,
 }
 
 impl NoteUpdate {
     pub fn is_empty(&self) -> bool {
-        self.target_freq_hz.is_none() && self.target_amp.is_none()
+        self.target_freq_hz.is_none()
+            && self.target_amp.is_none()
+            && self.continuous_drive.is_none()
     }
 }
 

@@ -212,18 +212,24 @@ impl OscillatorBank {
 
         self.active_lane_len = 0;
         self.last_modes_len = 0;
+        let mut culled_from = self.lane_len_real;
         for idx in 0..self.lane_len_real {
             let freq_hz = nominal_pitch_hz * self.freq_mul[idx];
+            let is_active = freq_hz.is_finite() && freq_hz > 0.0 && freq_hz <= max_freq_hz;
+            if !is_active {
+                culled_from = idx;
+                break;
+            }
+
             let dphi = TAU * freq_hz / self.fs;
             self.rot_c[idx] = dphi.cos();
             self.rot_s[idx] = dphi.sin();
-
-            let is_active = freq_hz.is_finite() && freq_hz > 0.0 && freq_hz <= max_freq_hz;
-            self.gain_mask[idx] = if is_active { self.base_gain[idx] } else { 0.0 };
-            if is_active {
-                self.last_modes_len += 1;
-                self.active_lane_len = idx + 1;
-            }
+            self.gain_mask[idx] = self.base_gain[idx];
+            self.last_modes_len += 1;
+            self.active_lane_len = idx + 1;
+        }
+        for idx in culled_from..self.lane_len_real {
+            self.gain_mask[idx] = 0.0;
         }
         for idx in self.lane_len_real..self.lane_len_simd {
             self.rot_c[idx] = 1.0;
@@ -254,9 +260,6 @@ impl OscillatorBank {
     }
 
     fn needs_pitch_state_refresh(&self, nominal_pitch_hz: f32) -> bool {
-        if self.last_modes_len == 0 {
-            return true;
-        }
         if !nominal_pitch_hz.is_finite() || !self.last_built_pitch_hz.is_finite() {
             return nominal_pitch_hz.to_bits() != self.last_built_pitch_hz.to_bits();
         }
@@ -846,6 +849,7 @@ mod tests {
         let mut backend =
             OscillatorBank::from_snapshot(48_000.0, &harmonic_snapshot(0.0)).expect("backend");
         backend.refresh_pitch_state(4_000.0);
+        assert_eq!(backend.active_lane_len, 5);
         assert_eq!(
             backend.gain_mask[..backend.lane_len_real]
                 .iter()
@@ -862,6 +866,27 @@ mod tests {
         backend.refresh_pitch_state(3_900.0);
         assert_eq!(backend.last_modes_len(), 6);
         assert_eq!(backend.active_lane_len, 6);
+    }
+
+    #[test]
+    fn fully_culled_pitch_does_not_refresh_when_unchanged() {
+        let mut backend =
+            OscillatorBank::from_snapshot(48_000.0, &harmonic_snapshot(0.0)).expect("backend");
+        let ctrl = VoiceControlBlock {
+            pitch_hz: ControlRamp {
+                start: 48_000.0,
+                step: 0.0,
+            },
+            amp: ControlRamp {
+                start: 0.5,
+                step: 0.0,
+            },
+        };
+        let mut out = [0.0f32; 1];
+        backend.render_block(&[0.0], ctrl, &mut out);
+        backend.render_block(&[0.0], ctrl, &mut out);
+        assert_eq!(backend.rebuild_count(), 1);
+        assert_eq!(backend.active_lane_len, 0);
     }
 
     #[test]

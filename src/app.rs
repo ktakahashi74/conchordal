@@ -1085,7 +1085,7 @@ fn worker_loop(
             world.advance_to(now_tick);
             world.update_gate_from_rhythm(now_tick, &current_landscape.rhythm);
             if frame_idx == 0 || last_tick_log.elapsed() >= Duration::from_secs(1) {
-                info!(
+                debug!(
                     "[tick] frame_idx={} now_tick={} now_sec={:.6}",
                     frame_idx, now_tick, now_sec
                 );

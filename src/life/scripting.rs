@@ -141,6 +141,7 @@ impl SpeciesSpec {
                 metabolism_rate,
                 recharge_rate: None,
                 action_cost: None,
+                continuous_recharge_rate: None,
                 envelope: self.envelope_from_adsr(),
             }
         } else {
@@ -157,6 +158,10 @@ impl SpeciesSpec {
                 rhythm_coupling: self.rhythm_coupling,
                 rhythm_reward: self.rhythm_reward,
                 breath_gain_init: None,
+                k_omega: None,
+                base_sigma: None,
+                gate_thresholds: None,
+                energy_cap: None,
             },
             BrainKind::Seq => ArticulationCoreConfig::Seq {
                 duration: DEFAULT_SEQ_DURATION_SEC,

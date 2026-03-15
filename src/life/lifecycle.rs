@@ -14,6 +14,7 @@ pub enum LifecycleConfig {
         metabolism_rate: f32,
         recharge_rate: Option<f32>,
         action_cost: Option<f32>,
+        continuous_recharge_rate: Option<f32>,
         envelope: EnvelopeConfig,
     },
 }
@@ -46,6 +47,7 @@ impl fmt::Display for LifecycleConfig {
                 recharge_rate,
                 action_cost,
                 envelope,
+                ..
             } => write!(
                 f,
                 "lifecycle=sustain(init={:.2}, metab={:.3}/s, recharge={:.3}, action_cost={:.3}, env=[atk={:.3}s, dec={:.3}s, sus={:.2}])",

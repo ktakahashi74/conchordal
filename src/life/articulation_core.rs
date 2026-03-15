@@ -214,6 +214,7 @@ pub struct KuramotoCore {
     pub alpha_threshold: f32,
     pub beta_threshold: f32,
     pub autonomous_attack: bool,
+    pub continuous_recharge_per_sec: f32,
     metrics: KuramotoMetrics,
     telemetry: KuramotoTelemetry,
 }
@@ -382,6 +383,7 @@ impl KuramotoCore {
             basal_cost_per_sec: self.basal_cost,
             action_cost_per_attack: self.action_cost,
             recharge_per_attack: self.recharge_rate,
+            continuous_recharge_per_sec: self.continuous_recharge_per_sec,
         }
     }
 
@@ -561,6 +563,7 @@ impl ArticulationCore for KuramotoCore {
     ) -> ArticulationSignal {
         let policy = self.metabolism_policy();
         self.apply_energy_delta(policy.basal_delta(dt));
+        self.apply_energy_delta(policy.continuous_recharge_delta(dt, consonance));
 
         let theta = ThetaView {
             phase: rhythms.theta.phase,
@@ -737,19 +740,25 @@ impl AnyArticulationCore {
                 rhythm_sensitivity,
                 rhythm_coupling,
                 rhythm_reward,
+                k_omega: cfg_k_omega,
+                base_sigma: cfg_base_sigma,
+                gate_thresholds: cfg_gate_thresholds,
+                energy_cap: cfg_energy_cap,
                 ..
             } => {
+                let gate = cfg_gate_thresholds.unwrap_or_default();
                 let derived = envelope_from_lifecycle(lifecycle);
                 let energy = derived.initial_energy;
                 let basal_cost = derived.policy.basal_cost_per_sec;
                 let recharge_rate = derived.policy.recharge_per_attack;
                 let action_cost = derived.policy.action_cost_per_attack;
+                let continuous_recharge_per_sec = derived.policy.continuous_recharge_per_sec;
                 let attack_step = derived.attack_step;
                 let decay_rate = derived.decay_rate;
                 let state = derived.state;
                 let sensitivity = derived.sensitivity;
                 let retrigger = derived.retrigger;
-                let energy_cap = energy.max(0.0);
+                let energy_cap = cfg_energy_cap.unwrap_or(energy).max(energy).max(0.0);
                 let vitality_exponent = 0.5;
                 let vitality_level = normalized_vitality(energy, energy_cap, vitality_exponent);
                 let rhythm_coupling = rhythm_coupling.sanitized();
@@ -786,16 +795,17 @@ impl AnyArticulationCore {
                     decay_rate,
                     retrigger,
                     noise_1f: PinkNoise::new(noise_seed, 0.001),
-                    base_sigma: 0.3, // rad/s noise floor
-                    beta_gain: 1.0,  // beta -> noise gain
-                    k_omega: 3.0,    // omega pull toward theta
+                    base_sigma: cfg_base_sigma.unwrap_or(0.3), // rad/s noise floor
+                    beta_gain: 1.0,                            // beta -> noise gain
+                    k_omega: cfg_k_omega.unwrap_or(3.0),       // omega pull toward theta
                     bootstrap_timer: 1.5,
-                    env_open_threshold: 0.55,
+                    env_open_threshold: gate.env_open,
                     env_level_min: 0.02,
-                    mag_threshold: 0.04,
-                    alpha_threshold: 0.2,
-                    beta_threshold: 0.9,
+                    mag_threshold: gate.mag,
+                    alpha_threshold: gate.alpha,
+                    beta_threshold: gate.beta,
                     autonomous_attack: true,
+                    continuous_recharge_per_sec,
                     metrics: KuramotoMetrics::default(),
                     telemetry: KuramotoTelemetry::default(),
                 })
@@ -974,6 +984,7 @@ mod tests {
             alpha_threshold: 0.0,
             beta_threshold: 1.0,
             autonomous_attack: true,
+            continuous_recharge_per_sec: 0.0,
             metrics: KuramotoMetrics::default(),
             telemetry: KuramotoTelemetry::default(),
         }

@@ -1476,6 +1476,10 @@ mod tests {
                 rhythm_coupling: crate::life::scenario::RhythmCouplingMode::TemporalOnly,
                 rhythm_reward: None,
                 breath_gain_init: None,
+                k_omega: None,
+                base_sigma: None,
+                gate_thresholds: None,
+                energy_cap: None,
             },
         }
     }

@@ -64,6 +64,7 @@ fn sustain_entrain_articulation() -> ArticulationCoreConfig {
             metabolism_rate: 0.0,
             recharge_rate: Some(0.5),
             action_cost: Some(0.1),
+            continuous_recharge_rate: None,
             envelope: EnvelopeConfig {
                 attack_sec: 0.01,
                 decay_sec: 0.05,
@@ -76,6 +77,10 @@ fn sustain_entrain_articulation() -> ArticulationCoreConfig {
         rhythm_coupling: crate::life::scenario::RhythmCouplingMode::TemporalOnly,
         rhythm_reward: None,
         breath_gain_init: None,
+        k_omega: None,
+        base_sigma: None,
+        gate_thresholds: None,
+        energy_cap: None,
     }
 }
 
@@ -185,6 +190,10 @@ fn agent_lifecycle_decay_death() {
             rhythm_coupling: crate::life::scenario::RhythmCouplingMode::TemporalOnly,
             rhythm_reward: None,
             breath_gain_init: None,
+            k_omega: None,
+            base_sigma: None,
+            gate_thresholds: None,
+            energy_cap: None,
         };
         let mut rng = rand::rngs::StdRng::seed_from_u64(7);
         let core = AnyArticulationCore::from_config(&core_cfg, fs, 1, &mut rng);
@@ -989,6 +998,10 @@ fn articulation_snapshot_kuramoto_decay_signature() {
         rhythm_coupling: crate::life::scenario::RhythmCouplingMode::TemporalOnly,
         rhythm_reward: None,
         breath_gain_init: None,
+        k_omega: None,
+        base_sigma: None,
+        gate_thresholds: None,
+        energy_cap: None,
     };
     let mut articulation = AnyArticulationCore::from_config(&core, fs, 7, &mut rng);
     let mut rhythms = NeuralRhythms {

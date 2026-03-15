@@ -10,6 +10,7 @@ pub struct MetabolismPolicy {
     pub basal_cost_per_sec: f32,
     pub action_cost_per_attack: f32,
     pub recharge_per_attack: f32,
+    pub continuous_recharge_per_sec: f32,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -30,22 +31,32 @@ impl MetabolismPolicy {
                 basal_cost_per_sec: 0.0,
                 action_cost_per_attack: DEFAULT_ACTION_COST_PER_ATTACK,
                 recharge_per_attack: 0.0,
+                continuous_recharge_per_sec: 0.0,
             },
             LifecycleConfig::Sustain {
                 metabolism_rate,
                 recharge_rate,
                 action_cost,
+                continuous_recharge_rate,
                 ..
             } => MetabolismPolicy {
                 basal_cost_per_sec: *metabolism_rate,
                 action_cost_per_attack: action_cost.unwrap_or(DEFAULT_ACTION_COST_PER_ATTACK),
                 recharge_per_attack: recharge_rate.unwrap_or(DEFAULT_RECHARGE_PER_ATTACK),
+                continuous_recharge_per_sec: continuous_recharge_rate.unwrap_or(0.0),
             },
         }
     }
 
     pub fn basal_delta(&self, dt: f32) -> f32 {
         -self.basal_cost_per_sec * dt.max(0.0)
+    }
+
+    pub fn continuous_recharge_delta(&self, dt: f32, consonance: f32) -> f32 {
+        if self.continuous_recharge_per_sec == 0.0 {
+            return 0.0;
+        }
+        self.continuous_recharge_per_sec * clamp01_finite(consonance) * dt.max(0.0)
     }
 
     pub fn attack_delta_with_recharge(&self, consonance: f32) -> f32 {
@@ -180,6 +191,7 @@ mod tests {
             basal_cost_per_sec: 2.0,
             action_cost_per_attack: 1.0,
             recharge_per_attack: 0.5,
+            continuous_recharge_per_sec: 0.0,
         };
         let (next, tel) = policy.step(1.0, 0.25, false, 0.9);
         approx_eq(next, 0.5);
@@ -194,6 +206,7 @@ mod tests {
             basal_cost_per_sec: 0.0,
             action_cost_per_attack: 0.2,
             recharge_per_attack: 0.5,
+            continuous_recharge_per_sec: 0.0,
         };
         let (next_low, tel_low) = policy.step(1.0, 0.0, true, 0.2);
         approx_eq(next_low, 1.0 - 0.2 + 0.1);
@@ -212,6 +225,7 @@ mod tests {
             basal_cost_per_sec: 0.0,
             action_cost_per_attack: 0.2,
             recharge_per_attack: 1.0,
+            continuous_recharge_per_sec: 0.0,
         };
         let (_, tel_low) = policy.step(1.0, 0.0, true, 0.49);
         let (_, tel_high) = policy.step(1.0, 0.0, true, 0.51);
@@ -227,6 +241,7 @@ mod tests {
             basal_cost_per_sec: 0.0,
             action_cost_per_attack: 0.2,
             recharge_per_attack: 0.0,
+            continuous_recharge_per_sec: 0.0,
         };
         let (a, _) = policy.step(1.0, 0.0, true, 0.2);
         let (b, _) = policy.step(1.0, 0.0, true, 0.9);
@@ -240,6 +255,7 @@ mod tests {
             basal_cost_per_sec: 1.5,
             action_cost_per_attack: 0.3,
             recharge_per_attack: 0.2,
+            continuous_recharge_per_sec: 0.0,
         };
         let (step_energy, step_tel) = policy.step(2.0, 0.5, false, 0.9);
         let (basal_energy, basal_tel) = policy.apply_basal(2.0, 0.5);
@@ -255,6 +271,7 @@ mod tests {
             basal_cost_per_sec: 0.0,
             action_cost_per_attack: 0.4,
             recharge_per_attack: 0.25,
+            continuous_recharge_per_sec: 0.0,
         };
         let (step_energy, step_tel) = policy.step(1.0, 0.0, true, 0.6);
         let (attack_energy, attack_tel) = policy.apply_attack_with_recharge(1.0, 0.6);
@@ -269,6 +286,7 @@ mod tests {
             basal_cost_per_sec: 0.0,
             action_cost_per_attack: 0.4,
             recharge_per_attack: 0.0,
+            continuous_recharge_per_sec: 0.0,
         };
         let (cost_energy, _) = policy.apply_attack_cost_only(1.0);
         let (attack_low, _) = policy.apply_attack_with_recharge(1.0, 0.2);
@@ -283,6 +301,7 @@ mod tests {
             basal_cost_per_sec: 0.0,
             action_cost_per_attack: 0.2,
             recharge_per_attack: 0.5,
+            continuous_recharge_per_sec: 0.0,
         };
         let (_, tel_low) = policy.apply_attack_with_recharge(1.0, -1.0);
         let (_, tel_high) = policy.apply_attack_with_recharge(1.0, 2.0);
@@ -296,6 +315,7 @@ mod tests {
             basal_cost_per_sec: 0.0,
             action_cost_per_attack: 0.2,
             recharge_per_attack: 0.5,
+            continuous_recharge_per_sec: 0.0,
         };
         let (next, tel) = policy.apply_attack_with_recharge(1.0, f32::NAN);
         assert!(next.is_finite());
@@ -308,6 +328,7 @@ mod tests {
             basal_cost_per_sec: 0.0,
             action_cost_per_attack: 0.3,
             recharge_per_attack: 0.5,
+            continuous_recharge_per_sec: 0.0,
         };
         let c = 0.6;
         let base = policy.attack_delta_with_recharge_multiplier(c, 1.0);
@@ -323,6 +344,7 @@ mod tests {
             basal_cost_per_sec: 0.0,
             action_cost_per_attack: 0.25,
             recharge_per_attack: 0.5,
+            continuous_recharge_per_sec: 0.0,
         };
         let low = policy.attack_delta_with_recharge_multiplier(0.8, -10.0);
         let high = policy.attack_delta_with_recharge_multiplier(0.8, 10.0);
@@ -343,6 +365,7 @@ mod tests {
             basal_cost_per_sec: 0.4,
             action_cost_per_attack: 0.2,
             recharge_per_attack: 0.5,
+            continuous_recharge_per_sec: 0.0,
         };
         let low = simulate_lifetime(policy, 0.2);
         let high = simulate_lifetime(policy, 0.8);
@@ -364,6 +387,7 @@ mod tests {
             metabolism_rate: 0.1,
             recharge_rate: None,
             action_cost: None,
+            continuous_recharge_rate: None,
             envelope: EnvelopeConfig::default(),
         };
         let policy = MetabolismPolicy::from_lifecycle(&lifecycle);
@@ -377,10 +401,64 @@ mod tests {
             metabolism_rate: 0.1,
             recharge_rate: Some(0.0),
             action_cost: None,
+            continuous_recharge_rate: None,
             envelope: EnvelopeConfig::default(),
         };
         let policy = MetabolismPolicy::from_lifecycle(&lifecycle);
         approx_eq(policy.recharge_per_attack, 0.0);
+    }
+
+    #[test]
+    fn continuous_recharge_delta_scales_with_consonance_and_dt() {
+        let policy = MetabolismPolicy {
+            basal_cost_per_sec: 0.0,
+            action_cost_per_attack: 0.0,
+            recharge_per_attack: 0.0,
+            continuous_recharge_per_sec: 0.5,
+        };
+        approx_eq(policy.continuous_recharge_delta(1.0, 1.0), 0.5);
+        approx_eq(policy.continuous_recharge_delta(0.5, 1.0), 0.25);
+        approx_eq(policy.continuous_recharge_delta(1.0, 0.6), 0.3);
+        approx_eq(policy.continuous_recharge_delta(1.0, 0.0), 0.0);
+        // negative dt clamped to 0
+        approx_eq(policy.continuous_recharge_delta(-1.0, 1.0), 0.0);
+    }
+
+    #[test]
+    fn continuous_recharge_delta_zero_rate_returns_zero() {
+        let policy = MetabolismPolicy {
+            basal_cost_per_sec: 0.0,
+            action_cost_per_attack: 0.0,
+            recharge_per_attack: 0.0,
+            continuous_recharge_per_sec: 0.0,
+        };
+        approx_eq(policy.continuous_recharge_delta(1.0, 1.0), 0.0);
+        approx_eq(policy.continuous_recharge_delta(1.0, 0.5), 0.0);
+    }
+
+    #[test]
+    fn from_lifecycle_sustain_continuous_recharge_rate() {
+        let lifecycle = LifecycleConfig::Sustain {
+            initial_energy: 1.0,
+            metabolism_rate: 0.1,
+            recharge_rate: None,
+            action_cost: None,
+            continuous_recharge_rate: Some(0.3),
+            envelope: EnvelopeConfig::default(),
+        };
+        let policy = MetabolismPolicy::from_lifecycle(&lifecycle);
+        approx_eq(policy.continuous_recharge_per_sec, 0.3);
+
+        let lifecycle_none = LifecycleConfig::Sustain {
+            initial_energy: 1.0,
+            metabolism_rate: 0.1,
+            recharge_rate: None,
+            action_cost: None,
+            continuous_recharge_rate: None,
+            envelope: EnvelopeConfig::default(),
+        };
+        let policy_none = MetabolismPolicy::from_lifecycle(&lifecycle_none);
+        approx_eq(policy_none.continuous_recharge_per_sec, 0.0);
     }
 
     fn simulate_lifetime(policy: MetabolismPolicy, consonance: f32) -> usize {

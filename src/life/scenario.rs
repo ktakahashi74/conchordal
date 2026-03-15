@@ -275,6 +275,25 @@ impl Default for SoundBodyConfig {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GateThresholds {
+    pub env_open: f32,
+    pub mag: f32,
+    pub alpha: f32,
+    pub beta: f32,
+}
+
+impl Default for GateThresholds {
+    fn default() -> Self {
+        Self {
+            env_open: 0.55,
+            mag: 0.04,
+            alpha: 0.2,
+            beta: 0.9,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum ArticulationCoreConfig {
     Entrain {
@@ -284,6 +303,10 @@ pub enum ArticulationCoreConfig {
         rhythm_coupling: RhythmCouplingMode,
         rhythm_reward: Option<MetabolismRhythmReward>,
         breath_gain_init: Option<f32>,
+        k_omega: Option<f32>,
+        base_sigma: Option<f32>,
+        gate_thresholds: Option<GateThresholds>,
+        energy_cap: Option<f32>,
     },
     Seq {
         duration: f32,
@@ -358,6 +381,10 @@ impl Default for ArticulationCoreConfig {
             rhythm_coupling: RhythmCouplingMode::TemporalOnly,
             rhythm_reward: None,
             breath_gain_init: None,
+            k_omega: None,
+            base_sigma: None,
+            gate_thresholds: None,
+            energy_cap: None,
         }
     }
 }

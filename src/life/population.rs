@@ -26,6 +26,13 @@ pub struct PredGateStats {
     pub count: u32,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ControlUpdateMode {
+    #[default]
+    SnapshotPhased,
+    SequentialRotating,
+}
+
 #[derive(Default)]
 struct PredGateAccum {
     count: u32,
@@ -89,6 +96,7 @@ pub struct Population {
     groups: BTreeMap<u64, RuntimeGroupState>,
     death_observed: HashSet<u64>,
     next_runtime_id: u64,
+    control_update_mode: ControlUpdateMode,
     last_pred_gate_stats: Option<PredGateStats>,
     last_gate_boundary_in_hop: Option<bool>,
     last_phonation_onsets_in_hop: Option<u32>,
@@ -199,6 +207,7 @@ impl Population {
             groups: BTreeMap::new(),
             death_observed: HashSet::new(),
             next_runtime_id: 1,
+            control_update_mode: ControlUpdateMode::SnapshotPhased,
             last_pred_gate_stats: None,
             last_gate_boundary_in_hop: None,
             last_phonation_onsets_in_hop: None,
@@ -209,6 +218,10 @@ impl Population {
 
     pub fn set_seed(&mut self, seed: u64) {
         self.seed = seed;
+    }
+
+    pub fn set_control_update_mode(&mut self, mode: ControlUpdateMode) {
+        self.control_update_mode = mode;
     }
 
     fn spawn_seed(&self, group_id: u64, count: usize, seq: u64) -> u64 {
@@ -1114,11 +1127,25 @@ impl Population {
         }
         let mut rhythms = landscape.rhythm;
         let global_coupling = self.global_coupling;
-        for _ in 0..steps {
+        for substep_idx in 0..steps {
             let crowding_active = self.crowding_active();
-            self.prepare_substep_snapshot(crowding_active);
-            self.decide_substep(dt_step_sec, &rhythms, landscape, crowding_active);
-            self.commit_substep(dt_step_sec, &rhythms, landscape, global_coupling);
+            match self.control_update_mode {
+                ControlUpdateMode::SnapshotPhased => {
+                    self.prepare_substep_snapshot(crowding_active);
+                    self.decide_substep(dt_step_sec, &rhythms, landscape, crowding_active);
+                    self.commit_substep(dt_step_sec, &rhythms, landscape, global_coupling);
+                }
+                ControlUpdateMode::SequentialRotating => {
+                    self.advance_substep_sequential_current(
+                        dt_step_sec,
+                        &rhythms,
+                        landscape,
+                        global_coupling,
+                        crowding_active,
+                        current_frame as usize + substep_idx,
+                    );
+                }
+            }
             rhythms.advance_in_place(dt_step_sec);
         }
 
@@ -1239,6 +1266,44 @@ impl Population {
         }
     }
 
+    fn fill_neighbors_from_current_state(&mut self, actor_id: u64, actor_group_id: u64) {
+        let scratch = &mut self.advance_scratch;
+        scratch.neighbor_pitch_log2.clear();
+        scratch.neighbor_salience.clear();
+        scratch
+            .neighbor_pitch_log2
+            .reserve(self.individuals.len().saturating_sub(1));
+        scratch
+            .neighbor_salience
+            .reserve(self.individuals.len().saturating_sub(1));
+        for agent in &self.individuals {
+            if !agent.is_alive() || agent.id() == actor_id {
+                continue;
+            }
+            let neighbor_group_id = agent.metadata.group_id;
+            let visible = self
+                .groups
+                .get(&neighbor_group_id)
+                .map(|group| {
+                    Self::is_neighbor_visible(
+                        actor_group_id,
+                        neighbor_group_id,
+                        group.crowding_target_same,
+                        group.crowding_target_other,
+                    )
+                })
+                .unwrap_or(neighbor_group_id == actor_group_id);
+            if visible {
+                scratch
+                    .neighbor_pitch_log2
+                    .push(agent.body.base_freq_hz().max(1.0).log2());
+                scratch
+                    .neighbor_salience
+                    .push(Self::pairwise_split_sign(actor_id, agent.id()));
+            }
+        }
+    }
+
     #[inline]
     fn is_neighbor_visible(
         actor_group_id: u64,
@@ -1267,6 +1332,58 @@ impl Population {
             if let Some(agent) = self.individuals.get_mut(entry.individual_idx)
                 && agent.is_alive()
             {
+                agent.commit_decided_control(dt_step_sec, rhythms, landscape, global_coupling);
+            }
+        }
+    }
+
+    fn advance_substep_sequential_current(
+        &mut self,
+        dt_step_sec: f32,
+        rhythms: &NeuralRhythms,
+        landscape: &Landscape,
+        global_coupling: f32,
+        crowding_active: bool,
+        order_offset: usize,
+    ) {
+        if self.individuals.is_empty() {
+            return;
+        }
+        let mut order: Vec<usize> = (0..self.individuals.len()).collect();
+        let start = order_offset % order.len();
+        order.rotate_left(start);
+        for individual_idx in order {
+            let (agent_id, actor_group_id, alive) = {
+                let agent = &self.individuals[individual_idx];
+                (agent.id(), agent.metadata.group_id, agent.is_alive())
+            };
+            if !alive {
+                continue;
+            }
+            if crowding_active {
+                self.fill_neighbors_from_current_state(agent_id, actor_group_id);
+            } else {
+                self.advance_scratch.neighbor_pitch_log2.clear();
+                self.advance_scratch.neighbor_salience.clear();
+            }
+            let neighbors = if crowding_active {
+                self.advance_scratch.neighbor_pitch_log2.as_slice()
+            } else {
+                &[]
+            };
+            let neighbor_weights = if crowding_active {
+                self.advance_scratch.neighbor_salience.as_slice()
+            } else {
+                &[]
+            };
+            if let Some(agent) = self.individuals.get_mut(individual_idx) {
+                agent.decide_pitch_target(
+                    dt_step_sec,
+                    rhythms,
+                    landscape,
+                    neighbors,
+                    neighbor_weights,
+                );
                 agent.commit_decided_control(dt_step_sec, rhythms, landscape, global_coupling);
             }
         }
@@ -1517,9 +1634,14 @@ mod tests {
         }
     }
 
-    fn run_single_substep_targets(order_reversed: bool, crowding_strength: f32) -> Vec<(u64, f32)> {
+    fn run_single_substep_targets_with_mode(
+        order_reversed: bool,
+        crowding_strength: f32,
+        mode: ControlUpdateMode,
+    ) -> Vec<(u64, f32)> {
         let mut pop = test_pop();
         pop.set_seed(101);
+        pop.set_control_update_mode(mode);
         let landscape = crowding_order_landscape();
         let mut spec = spawn_spec_with_freq(330.0);
         spec.control.pitch.mode = PitchMode::Free;
@@ -1556,6 +1678,14 @@ mod tests {
             .collect();
         out.sort_by_key(|(id, _)| *id);
         out
+    }
+
+    fn run_single_substep_targets(order_reversed: bool, crowding_strength: f32) -> Vec<(u64, f32)> {
+        run_single_substep_targets_with_mode(
+            order_reversed,
+            crowding_strength,
+            ControlUpdateMode::SnapshotPhased,
+        )
     }
 
     fn run_cross_group_visibility_trial(other_group_visible: bool) -> f32 {
@@ -1949,6 +2079,27 @@ mod tests {
             assert_eq!(*id_a, *id_b);
             assert!((pitch_a - pitch_b).abs() <= 1e-6);
         }
+    }
+
+    #[test]
+    fn sequential_rotating_updates_are_order_dependent_with_crowding() {
+        let forward =
+            run_single_substep_targets_with_mode(false, 2.0, ControlUpdateMode::SequentialRotating);
+        let reversed =
+            run_single_substep_targets_with_mode(true, 2.0, ControlUpdateMode::SequentialRotating);
+        assert_eq!(forward.len(), reversed.len());
+        let any_diff =
+            forward
+                .iter()
+                .zip(reversed.iter())
+                .any(|((id_a, pitch_a), (id_b, pitch_b))| {
+                    assert_eq!(*id_a, *id_b);
+                    (pitch_a - pitch_b).abs() > 1e-6
+                });
+        assert!(
+            any_diff,
+            "sequential rotating updates should react to current-state order under crowding"
+        );
     }
 
     #[test]

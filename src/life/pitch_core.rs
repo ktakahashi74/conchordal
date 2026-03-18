@@ -373,6 +373,12 @@ impl PitchHillClimbPitchCore {
         if improvement > self.improvement_threshold {
             target_pitch_log2 = best_pitch;
         } else {
+            if self.anneal_temp <= 0.0 && self.exploration <= 0.0 {
+                return TargetProposal {
+                    target_pitch_log2,
+                    salience: (improvement / 0.2).clamp(0.0, 1.0),
+                };
+            }
             let satisfaction = ((current_adjusted + 1.0) * 0.5).clamp(0.0, 1.0);
             let mut stay_prob = self.persistence.clamp(0.0, 1.0) * satisfaction;
             stay_prob = stay_prob.clamp(0.0, 1.0);
@@ -3270,6 +3276,25 @@ mod tests {
              (pos={}, neg={})",
             positive.target_pitch_log2,
             negated.target_pitch_log2,
+        );
+    }
+
+    #[test]
+    fn propose_with_scorer_non_exploratory_plateau_stays_put() {
+        let landscape = test_landscape(&[(330.0, 1.0), (550.0, 0.3)]);
+        let mut core = PitchHillClimbPitchCore::new(120.0, 440.0f32.log2(), 0.0, 0.02, 0.0, 0.0);
+        core.set_global_peaks(3, 0.0);
+        let current = 440.0f32.log2();
+
+        let mut rng = SmallRng::seed_from_u64(7);
+        let proposal =
+            core.propose_with_scorer(current, current, &landscape, &[], &mut rng, |_| 0.0);
+
+        assert!(
+            (proposal.target_pitch_log2 - current).abs() < 1e-9,
+            "non-exploratory plateau should stay at current target (current={}, proposed={})",
+            current,
+            proposal.target_pitch_log2,
         );
     }
 }

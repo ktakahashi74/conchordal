@@ -13,6 +13,7 @@ pub mod metabolism_policy;
 pub mod modal;
 pub mod phonation_engine;
 pub mod population;
+pub mod report;
 pub mod scenario;
 pub mod schedule_renderer;
 pub mod scripting;

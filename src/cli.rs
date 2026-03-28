@@ -7,11 +7,6 @@ pub struct Args {
     #[arg(long, default_value_t = true, num_args = 0..=1, default_missing_value = "true")]
     pub play: bool,
 
-    /// Write audio to wav file (debug builds only)
-    #[cfg(debug_assertions)]
-    #[arg(long)]
-    pub wav: Option<String>,
-
     /// Scenario path (.rhai only)
     #[arg(value_name = "SCENARIO_PATH")]
     pub scenario_path: String,
@@ -35,6 +30,10 @@ pub struct Args {
     /// Compile scenario script only (no GUI, no audio, no execution)
     #[arg(long, default_value_t = false)]
     pub compile_only: bool,
+
+    /// Write machine-readable runtime report as JSONL
+    #[arg(long)]
+    pub report: Option<String>,
 }
 
 #[cfg(test)]

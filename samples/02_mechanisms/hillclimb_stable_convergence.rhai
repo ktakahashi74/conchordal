@@ -1,12 +1,12 @@
 let bed = derive(sine)
-    .energy(0.05)
+    .amp(0.05)
     .sustain()
     .metabolism(0.0)
     .sustain_drive(0.01)
     .pitch_mode("lock");
 
 let mover = derive(sine)
-    .energy(0.05)
+    .amp(0.05)
     .sustain()
     .metabolism(0.0)
     .sustain_drive(0.012)
@@ -22,7 +22,7 @@ let mover = derive(sine)
     .exploration(0.10)
     .persistence(0.72)
     .crowding(1.20)
-    .pitch_apply("glide")
+    .pitch_apply_mode("glide")
     .pitch_glide(0.40);
 
 scene("HillClimb Stable Convergence", || {
@@ -31,10 +31,9 @@ scene("HillClimb Stable Convergence", || {
     create(bed, 1).freq(220.0);
     wait(0.6);
 
-    // place(...) sets lock mode, so switch back to free for runtime search.
     let movers = create(mover, 6)
         .place(consonance_density_pmf(90.0, 420.0))
-        .mode("free");
+        .pitch_mode("free");
 
     wait(28.0);
     release(movers);

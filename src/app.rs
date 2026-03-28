@@ -12,8 +12,6 @@ use crossbeam_channel::{Receiver, Sender, bounded};
 use ringbuf::traits::Observer;
 
 use crate::audio::limiter::{Limiter, LimiterMeter, LimiterMode};
-#[cfg(debug_assertions)]
-use crate::audio::writer::WavOutput;
 use crate::core::analysis_worker;
 use crate::core::consonance_kernel::{ConsonanceKernel, ConsonanceRepresentationParams};
 use crate::core::harmonicity_kernel::HarmonicityKernel;
@@ -21,13 +19,15 @@ use crate::core::landscape::{Landscape, LandscapeFrame, LandscapeParams, Landsca
 use crate::core::log2space::Log2Space;
 use crate::core::nsgt_kernel::{NsgtKernelLog2, NsgtLog2Config, PowerMode};
 use crate::core::nsgt_rt::{RtConfig, RtNsgtKernelLog2};
+use crate::core::phase::wrap_pm_pi;
 use crate::core::roughness_kernel::{KernelParams, RoughnessKernel};
 use crate::core::stream::{analysis::AnalysisStream, dorsal::DorsalStream};
 use crate::core::timebase::Tick;
 use crate::life::conductor::Conductor;
 use crate::life::individual::{PhonationBatch, SoundBody};
 use crate::life::population::Population;
-use crate::life::scenario::{Action, Scenario};
+use crate::life::report::{JsonlReporter, onset_samples_from_batches, summarize_groups};
+use crate::life::scenario::{Action, ScaffoldConfig, Scenario};
 use crate::life::schedule_renderer::ScheduleRenderer;
 use crate::life::scripting::ScriptHost;
 use crate::ui::viewdata::{
@@ -160,7 +160,6 @@ pub struct App {
     _audio: Option<AudioOutput>,
     audio_init_error: Option<String>,
     worker_handle: Option<std::thread::JoinHandle<()>>,
-    wav_handle: Option<std::thread::JoinHandle<()>>,
     exiting: Arc<AtomicBool>,
     rhythm_history: VecDeque<(f64, crate::core::modulation::NeuralRhythms)>,
     dorsal_history: VecDeque<(f64, DorsalFrame)>,
@@ -174,7 +173,6 @@ struct RuntimeInit {
     ui_frame_rx: Receiver<UiFrame>,
     ctrl_tx: Sender<()>,
     worker_handle: Option<std::thread::JoinHandle<()>>,
-    wav_handle: Option<std::thread::JoinHandle<()>>,
     start_flag: Arc<AtomicBool>,
     audio_out: Option<AudioOutput>,
     audio_init_error: Option<String>,
@@ -187,6 +185,63 @@ fn cmp_time_order(a_time: f32, a_order: u64, b_time: f32, b_order: u64) -> std::
         .partial_cmp(&b_time)
         .unwrap_or(std::cmp::Ordering::Equal)
         .then_with(|| a_order.cmp(&b_order))
+}
+
+fn report_try<F>(reporter: &mut Option<JsonlReporter>, label: &str, f: F)
+where
+    F: FnOnce(&mut JsonlReporter) -> Result<(), String>,
+{
+    let Some(mut writer) = reporter.take() else {
+        return;
+    };
+    match f(&mut writer) {
+        Ok(()) => *reporter = Some(writer),
+        Err(err) => warn!("report {label} failed: {err}"),
+    }
+}
+
+fn scaffold_phase_for_frame(
+    scaffold: ScaffoldConfig,
+    time_sec: f32,
+    frame_idx: u64,
+) -> Option<f32> {
+    match scaffold {
+        ScaffoldConfig::Off => None,
+        ScaffoldConfig::Shared { freq_hz } => Some((time_sec * freq_hz.max(0.0)).fract()),
+        ScaffoldConfig::Scrambled { seed, .. } => {
+            let mut x = seed ^ frame_idx.rotate_left(13);
+            x ^= x >> 30;
+            x = x.wrapping_mul(0xBF58_476D_1CE4_E5B9);
+            x ^= x >> 27;
+            x = x.wrapping_mul(0x94D0_49BB_1331_11EB);
+            x ^= x >> 31;
+            Some((x as f64 / u64::MAX as f64) as f32)
+        }
+    }
+}
+
+fn apply_scaffold(
+    rhythms: &mut crate::core::modulation::NeuralRhythms,
+    scaffold: ScaffoldConfig,
+    time_sec: f32,
+    frame_idx: u64,
+) {
+    let Some(phase_0_1) = scaffold_phase_for_frame(scaffold, time_sec, frame_idx) else {
+        return;
+    };
+    let freq_hz = match scaffold {
+        ScaffoldConfig::Off => return,
+        ScaffoldConfig::Shared { freq_hz } | ScaffoldConfig::Scrambled { freq_hz, .. } => {
+            freq_hz.max(0.0)
+        }
+    };
+    rhythms.theta.freq_hz = freq_hz;
+    rhythms.theta.phase = wrap_pm_pi(std::f32::consts::TAU * phase_0_1);
+    rhythms.theta.mag = 1.0;
+    rhythms.theta.alpha = 1.0;
+    rhythms.theta.beta = 0.0;
+    rhythms.env_open = 1.0;
+    rhythms.env_level = 1.0;
 }
 
 pub fn validate_scenario_script_extension(script_path: &Path) -> Result<(), String> {
@@ -244,9 +299,7 @@ pub fn validate_scenario(scenario: &Scenario) -> Result<(), String> {
                 | Action::SetGroupCrowdingTarget { .. } => {}
                 Action::SetHarmonicityParams { .. }
                 | Action::SetGlobalCoupling { .. }
-                | Action::SetRoughnessTolerance { .. }
-                | Action::EnableTelemetry { .. }
-                | Action::EnablePlv { .. } => {}
+                | Action::SetRoughnessTolerance { .. } => {}
             }
         }
     }
@@ -371,7 +424,6 @@ impl App {
             visual_delay_frames: rt.visual_delay_frames,
             _audio: rt.audio_out,
             audio_init_error: rt.audio_init_error,
-            wav_handle: rt.wav_handle,
             worker_handle: rt.worker_handle,
             exiting: stop_flag,
             rhythm_history: VecDeque::with_capacity(4096),
@@ -442,10 +494,6 @@ fn init_runtime(
 ) -> RuntimeInit {
     crate::life::modal::register_modal();
     let latency_ms = config.audio.latency_ms;
-    #[cfg(debug_assertions)]
-    let wav_enabled = args.wav.is_some();
-    #[cfg(not(debug_assertions))]
-    let wav_enabled = false;
     let guard_mode = match config.audio.limiter {
         crate::config::LimiterSetting::None => LimiterMode::None,
         crate::config::LimiterSetting::SoftClip => {
@@ -456,7 +504,7 @@ fn init_runtime(
         }
     };
     let guard_mode = Limiter::from_env_or(guard_mode);
-    let guard_meter = if args.play || wav_enabled {
+    let guard_meter = if args.play {
         Some(Arc::new(LimiterMeter::default()))
     } else {
         None
@@ -492,24 +540,6 @@ fn init_runtime(
     } else {
         config.audio.sample_rate
     };
-
-    // WAV (debug-only)
-    #[cfg(debug_assertions)]
-    let (wav_tx, wav_handle) = if let Some(path) = args.wav.clone() {
-        let (wav_tx, wav_rx) = bounded::<Arc<[f32]>>(16);
-        let wav_handle = WavOutput::run(
-            wav_rx,
-            path,
-            runtime_sample_rate,
-            guard_mode,
-            guard_meter.clone(),
-        );
-        (Some(wav_tx), Some(wav_handle))
-    } else {
-        (None, None)
-    };
-    #[cfg(not(debug_assertions))]
-    let (wav_tx, wav_handle) = (None, None);
 
     // Analysis/NSGT setup
     let fs: f32 = runtime_sample_rate as f32;
@@ -610,15 +640,29 @@ fn init_runtime(
         eprintln!("{e}");
         std::process::exit(1);
     });
+    let mut reporter = args
+        .report
+        .as_deref()
+        .map(JsonlReporter::create)
+        .transpose()
+        .unwrap_or_else(|err| {
+            eprintln!("{err}");
+            std::process::exit(1);
+        });
+    report_try(&mut reporter, "scene markers", |writer| {
+        writer.write_scene_markers(&scenario.scene_markers)
+    });
     let mut pop = Population::new(crate::core::timebase::Timebase {
         fs: runtime_sample_rate as f32,
         hop,
     });
     pop.set_seed(scenario.seed);
+    pop.set_control_update_mode(scenario.control_update_mode);
+    if reporter.is_some() {
+        pop.enable_auto_observe();
+    }
+    let scaffold = scenario.scaffold;
     let conductor = Conductor::from_scenario(scenario);
-
-    // Give the worker its own handle if WAV output is enabled.
-    let wav_tx_for_worker = wav_tx;
 
     // Spawn worker thread
     let stop_flag_worker = stop_flag.clone();
@@ -640,7 +684,9 @@ fn init_runtime(
                     lparams_runtime,
                     dorsal,
                     audio_prod,
-                    wav_tx_for_worker,
+                    None,
+                    reporter,
+                    scaffold,
                     guard_meter.clone(),
                     stop_flag_worker,
                     audio_to_analysis_tx,
@@ -658,7 +704,6 @@ fn init_runtime(
         ui_frame_rx,
         ctrl_tx,
         worker_handle,
-        wav_handle,
         start_flag,
         audio_out,
         audio_init_error,
@@ -673,36 +718,18 @@ pub fn run_headless(args: crate::cli::Args, config: AppConfig, stop_flag: Arc<At
     if let Some(handle) = rt.worker_handle {
         let _ = handle.join();
     }
-    if let Some(handle) = rt.wav_handle {
-        let _ = handle.join();
-    }
 }
 
 fn render_compile_args(scenario_path: &str) -> crate::cli::Args {
-    #[cfg(debug_assertions)]
-    {
-        crate::cli::Args {
-            play: false,
-            wav: None,
-            scenario_path: scenario_path.to_string(),
-            config: "config.toml".to_string(),
-            wait_user_exit: None,
-            wait_user_start: None,
-            nogui: true,
-            compile_only: false,
-        }
-    }
-    #[cfg(not(debug_assertions))]
-    {
-        crate::cli::Args {
-            play: false,
-            scenario_path: scenario_path.to_string(),
-            config: "config.toml".to_string(),
-            wait_user_exit: None,
-            wait_user_start: None,
-            nogui: true,
-            compile_only: false,
-        }
+    crate::cli::Args {
+        play: false,
+        scenario_path: scenario_path.to_string(),
+        config: "config.toml".to_string(),
+        wait_user_exit: None,
+        wait_user_start: None,
+        nogui: true,
+        compile_only: false,
+        report: None,
     }
 }
 
@@ -835,6 +862,8 @@ pub fn run_render(
         hop,
     });
     pop.set_seed(scenario.seed);
+    pop.set_control_update_mode(scenario.control_update_mode);
+    let scaffold = scenario.scaffold;
     let conductor = Conductor::from_scenario(scenario);
 
     let stop_flag_worker = stop_flag.clone();
@@ -855,6 +884,8 @@ pub fn run_render(
                 dorsal,
                 None,
                 Some(wav_tx),
+                None,
+                scaffold,
                 guard_meter,
                 stop_flag_worker,
                 audio_to_analysis_tx,
@@ -939,9 +970,6 @@ impl Drop for App {
         if let Some(handle) = self.worker_handle.take() {
             let _ = handle.join();
         }
-        if let Some(handle) = self.wav_handle.take() {
-            let _ = handle.join();
-        }
     }
 }
 
@@ -958,6 +986,8 @@ fn worker_loop(
     mut dorsal: DorsalStream,
     mut audio_prod: Option<ringbuf::HeapProd<f32>>,
     mut wav_tx: Option<Sender<Arc<[f32]>>>,
+    mut reporter: Option<JsonlReporter>,
+    scaffold: ScaffoldConfig,
     guard_meter: Option<Arc<LimiterMeter>>,
     exiting: Arc<AtomicBool>,
     audio_to_analysis_tx: Sender<(u64, Arc<[f32]>)>,
@@ -1083,7 +1113,6 @@ fn worker_loop(
             let now_tick = timebase.frame_start_tick(frame_idx);
             let now_sec = timebase.tick_to_sec(now_tick);
             world.advance_to(now_tick);
-            world.update_gate_from_rhythm(now_tick, &current_landscape.rhythm);
             if frame_idx == 0 || last_tick_log.elapsed() >= Duration::from_secs(1) {
                 debug!(
                     "[tick] frame_idx={} now_tick={} now_sec={:.6}",
@@ -1207,6 +1236,9 @@ fn worker_loop(
                 );
             }
 
+            apply_scaffold(&mut current_landscape.rhythm, scaffold, now_sec, frame_idx);
+            world.update_gate_from_rhythm(now_tick, &current_landscape.rhythm);
+
             let t_start = Instant::now();
             conductor.dispatch_until(
                 current_time,
@@ -1226,6 +1258,13 @@ fn worker_loop(
                 0
             };
             let phonation_batches = &phonation_batches_buf[..phonation_count];
+            let onset_samples = onset_samples_from_batches(
+                &pop.individuals,
+                phonation_batches,
+                now_sec,
+                scaffold,
+                frame_idx,
+            );
             let vitality = if pop.individuals.is_empty() {
                 0.0
             } else {
@@ -1257,6 +1296,21 @@ fn worker_loop(
                 conductor.is_done(),
                 &current_landscape,
             );
+            let runtime_events = pop.drain_runtime_events();
+            let death_records = pop.take_death_records();
+            let group_steps = summarize_groups(&pop.individuals, &current_landscape, now_sec);
+            report_try(&mut reporter, "runtime events", |writer| {
+                writer.write_runtime_events(&runtime_events)
+            });
+            report_try(&mut reporter, "deaths", |writer| {
+                writer.write_deaths(&death_records, hop, fs)
+            });
+            report_try(&mut reporter, "onsets", |writer| {
+                writer.write_onsets(&onset_samples)
+            });
+            report_try(&mut reporter, "group steps", |writer| {
+                writer.write_group_steps(&group_steps)
+            });
             // [FIX] Audio is MONO. Treat it as such.
             // Previously incorrectly treated as stereo, leading to bad metering and destructive downsampling.
             let (mono_chunk, max_abs, channel_peak) = {
@@ -1498,6 +1552,7 @@ fn worker_loop(
             thread::sleep(Duration::from_millis(1));
         }
     }
+    report_try(&mut reporter, "flush", |writer| writer.flush());
 }
 
 #[derive(Clone, Copy, Debug, Default)]

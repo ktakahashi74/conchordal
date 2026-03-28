@@ -40,6 +40,9 @@ fn samples_have_no_legacy_keys() {
         format!("{PLAN_A}{PLAN_B}"),
         format!("{BIRTH_A}{BIRTH_B}"),
         format!("{SUSTAIN_A}{SUSTAIN_B}"),
+        ".energy(".to_string(),
+        ".mode(".to_string(),
+        ".pitch_apply(".to_string(),
     ];
     let phonation_key = ["pho", "nation"].concat();
     let quote = "\"";

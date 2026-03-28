@@ -1,7 +1,7 @@
 use super::individual::{
     AgentMetadata, AnyArticulationCore, Individual, PhonationBatch, SoundBody,
 };
-use super::scenario::{Action, IndividualConfig, RespawnPolicy, SpawnStrategy};
+use super::scenario::{Action, ControlUpdateMode, IndividualConfig, RespawnPolicy, SpawnStrategy};
 use super::telemetry::LifeRecord;
 use crate::core::landscape::{Landscape, LandscapeFrame, LandscapeUpdate};
 use crate::core::modulation::NeuralRhythms;
@@ -14,6 +14,9 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use tracing::{debug, info, warn};
 
+const DEFAULT_REPORT_FIRST_K: u32 = 10;
+const DEFAULT_REPORT_PLV_WINDOW: usize = 200;
+
 #[derive(Clone, Copy, Debug, Default)]
 pub struct PredGateStats {
     pub raw_min: f32,
@@ -24,13 +27,6 @@ pub struct PredGateStats {
     pub mixed_mean: f32,
     pub sync_mean: f32,
     pub count: u32,
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum ControlUpdateMode {
-    #[default]
-    SnapshotPhased,
-    SequentialRotating,
 }
 
 #[derive(Default)]
@@ -100,7 +96,9 @@ pub struct Population {
     last_pred_gate_stats: Option<PredGateStats>,
     last_gate_boundary_in_hop: Option<bool>,
     last_phonation_onsets_in_hop: Option<u32>,
-    pub death_records: Vec<LifeRecord>,
+    death_records: Vec<LifeRecord>,
+    auto_observe: Option<ObservationConfig>,
+    runtime_events: Vec<RuntimeEvent>,
     advance_scratch: AdvanceScratch,
 }
 
@@ -109,13 +107,14 @@ struct RuntimeGroupState {
     template: IndividualConfig,
     strategy: Option<SpawnStrategy>,
     respawn_policy: RespawnPolicy,
+    respawn_settle_strategy: Option<SpawnStrategy>,
+    respawn_capacity: usize,
+    respawn_min_c_level: Option<f32>,
     crowding_target_same: bool,
     crowding_target_other: bool,
     released: bool,
     next_member_idx: usize,
     spawn_count_hint: usize,
-    telemetry_first_k: Option<u32>,
-    plv_window: Option<usize>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -124,6 +123,31 @@ struct SpawnParams {
     group_id: u64,
     member_idx: usize,
     resolved_freq_hz: f32,
+    parent_id: Option<u64>,
+    reason: SpawnReason,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ObservationConfig {
+    first_k: u32,
+    plv_window: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SpawnReason {
+    Initial,
+    Respawn,
+}
+
+#[derive(Debug, Clone)]
+pub struct RuntimeEvent {
+    pub time_sec: f32,
+    pub group_id: u64,
+    pub agent_id: u64,
+    pub member_idx: usize,
+    pub freq_hz: f32,
+    pub parent_id: Option<u64>,
+    pub reason: SpawnReason,
 }
 
 #[derive(Default)]
@@ -212,6 +236,8 @@ impl Population {
             last_gate_boundary_in_hop: None,
             last_phonation_onsets_in_hop: None,
             death_records: Vec::new(),
+            auto_observe: None,
+            runtime_events: Vec::new(),
             advance_scratch: AdvanceScratch::default(),
         }
     }
@@ -222,6 +248,26 @@ impl Population {
 
     pub fn set_control_update_mode(&mut self, mode: ControlUpdateMode) {
         self.control_update_mode = mode;
+    }
+
+    pub fn enable_auto_observe(&mut self) {
+        self.auto_observe = Some(ObservationConfig {
+            first_k: DEFAULT_REPORT_FIRST_K,
+            plv_window: DEFAULT_REPORT_PLV_WINDOW,
+        });
+    }
+
+    pub fn drain_runtime_events(&mut self) -> Vec<RuntimeEvent> {
+        std::mem::take(&mut self.runtime_events)
+    }
+
+    pub fn take_death_records(&mut self) -> Vec<LifeRecord> {
+        std::mem::take(&mut self.death_records)
+    }
+
+    fn current_time_sec(&self) -> f32 {
+        let tick = self.time.frame_start_tick(self.current_frame);
+        self.time.tick_to_sec(tick)
     }
 
     fn spawn_seed(&self, group_id: u64, count: usize, seq: u64) -> u64 {
@@ -610,6 +656,8 @@ impl Population {
             group_id,
             member_idx,
             resolved_freq_hz,
+            parent_id,
+            reason,
         } = params;
         if self.individuals.iter().any(|agent| agent.id() == id) {
             warn!("Spawn: id collision for {id} in group {group_id}");
@@ -634,23 +682,27 @@ impl Population {
             Some(landscape),
             self.seed,
         );
-        // Apply group-level telemetry/PLV settings from RuntimeGroupState
-        if let Some(group) = self.groups.get(&group_id) {
-            if let Some(first_k) = group.telemetry_first_k {
-                spawned.life_accumulator = Some(super::telemetry::LifeAccumulator::new(
-                    self.current_frame,
-                    first_k,
-                    0.0,
-                ));
-            }
-            if let Some(window) = group.plv_window
-                && let AnyArticulationCore::Entrain(ref mut core) = spawned.articulation.core
-            {
-                core.enable_plv(window);
+        if let Some(observe) = self.auto_observe {
+            spawned.life_accumulator = Some(super::telemetry::LifeAccumulator::new(
+                self.current_frame,
+                observe.first_k,
+                landscape.evaluate_pitch_level(resolved_freq_hz),
+            ));
+            if let AnyArticulationCore::Entrain(ref mut core) = spawned.articulation.core {
+                core.enable_plv(observe.plv_window);
             }
         }
         self.individuals.push(spawned);
         self.track_runtime_id(id);
+        self.runtime_events.push(RuntimeEvent {
+            time_sec: self.current_time_sec(),
+            group_id,
+            agent_id: id,
+            member_idx,
+            freq_hz: resolved_freq_hz,
+            parent_id,
+            reason,
+        });
     }
 
     fn ensure_group_state(
@@ -682,13 +734,14 @@ impl Population {
                 template: spec,
                 strategy,
                 respawn_policy: RespawnPolicy::None,
+                respawn_settle_strategy: None,
+                respawn_capacity: 1,
+                respawn_min_c_level: None,
                 crowding_target_same: true,
                 crowding_target_other: false,
                 released: false,
                 next_member_idx: current_members.max(member_count),
                 spawn_count_hint: member_count.max(1),
-                telemetry_first_k: None,
-                plv_window: None,
             },
         );
     }
@@ -705,9 +758,19 @@ impl Population {
         }
     }
 
-    fn set_group_respawn_policy(&mut self, group_id: u64, policy: RespawnPolicy) {
+    fn set_group_respawn_policy(
+        &mut self,
+        group_id: u64,
+        policy: RespawnPolicy,
+        settle_strategy: Option<SpawnStrategy>,
+        capacity: usize,
+        min_c_level: Option<f32>,
+    ) {
         if let Some(group) = self.groups.get_mut(&group_id) {
             group.respawn_policy = policy;
+            group.respawn_settle_strategy = settle_strategy;
+            group.respawn_capacity = capacity.max(1);
+            group.respawn_min_c_level = min_c_level.map(|value| value.clamp(0.0, 1.0));
         } else {
             warn!("SetRespawnPolicy: unknown group {group_id}");
         }
@@ -724,44 +787,6 @@ impl Population {
             group.crowding_target_other = other_group_visible;
         } else {
             warn!("SetGroupCrowdingTarget: unknown group {group_id}");
-        }
-    }
-
-    fn enable_group_telemetry(&mut self, group_id: u64, first_k: u32) {
-        if let Some(group) = self.groups.get_mut(&group_id) {
-            group.telemetry_first_k = Some(first_k);
-        }
-        let current_frame = self.current_frame;
-        for agent in self
-            .individuals
-            .iter_mut()
-            .filter(|a| a.metadata.group_id == group_id)
-        {
-            if agent.life_accumulator.is_none() {
-                let consonance = 0.0; // initial consonance unknown at enable time
-                agent.life_accumulator = Some(super::telemetry::LifeAccumulator::new(
-                    current_frame,
-                    first_k,
-                    consonance,
-                ));
-            }
-        }
-    }
-
-    fn enable_group_plv(&mut self, group_id: u64, window: usize) {
-        if let Some(group) = self.groups.get_mut(&group_id) {
-            group.plv_window = Some(window);
-        }
-        for agent in self
-            .individuals
-            .iter_mut()
-            .filter(|a| a.metadata.group_id == group_id)
-        {
-            if let AnyArticulationCore::Entrain(ref mut core) = agent.articulation.core
-                && core.plv().is_none()
-            {
-                core.enable_plv(window);
-            }
         }
     }
 
@@ -818,17 +843,21 @@ impl Population {
         &self,
         group: &RuntimeGroupState,
         sigma_oct: f32,
-        parent_freqs_hz: &[f32],
+        parent_freqs_hz: &[(u64, f32)],
         landscape: &LandscapeFrame,
         rng: &mut R,
         member_idx: usize,
-    ) -> f32 {
+    ) -> (f32, Option<u64>) {
         if parent_freqs_hz.is_empty() {
-            return self.random_respawn_frequency(group, landscape, rng, member_idx);
+            return (
+                self.random_respawn_frequency(group, landscape, rng, member_idx),
+                None,
+            );
         }
 
         let parent_idx = rng.random_range(0..parent_freqs_hz.len());
-        let parent_log2 = parent_freqs_hz[parent_idx].max(MIN_FREQ_HZ).log2();
+        let (parent_id, parent_freq_hz) = parent_freqs_hz[parent_idx];
+        let parent_log2 = parent_freq_hz.max(MIN_FREQ_HZ).log2();
         let noise = Self::normal_sample(rng) * sigma_oct.max(0.0);
         let child_log2 = parent_log2 + noise;
         let (min_hz, max_hz) = group
@@ -839,7 +868,68 @@ impl Population {
         let lo = min_hz.clamp(MIN_FREQ_HZ, MAX_FREQ_HZ);
         let hi = max_hz.clamp(lo, MAX_FREQ_HZ);
         let child_hz = 2.0f32.powf(child_log2).clamp(lo, hi);
-        child_hz.clamp(MIN_FREQ_HZ, MAX_FREQ_HZ)
+        (child_hz.clamp(MIN_FREQ_HZ, MAX_FREQ_HZ), Some(parent_id))
+    }
+
+    fn pick_respawn_candidate<R: Rng + ?Sized>(
+        &self,
+        group_id: u64,
+        group: &RuntimeGroupState,
+        alive_by_group: &BTreeMap<u64, Vec<(u64, f32)>>,
+        landscape: &LandscapeFrame,
+        rng: &mut R,
+        member_idx: usize,
+    ) -> Option<(f32, Option<u64>)> {
+        let capacity = group.respawn_capacity.max(1);
+        let mut candidates = Vec::with_capacity(capacity);
+        for idx in 0..capacity {
+            let candidate = match (idx, group.respawn_settle_strategy.as_ref()) {
+                (1.., Some(strategy)) => (
+                    self.resolve_strategy_frequency(
+                        strategy,
+                        landscape,
+                        rng,
+                        &[],
+                        member_idx + idx,
+                        capacity,
+                    )
+                    .max(MIN_FREQ_HZ),
+                    None,
+                ),
+                _ => match group.respawn_policy {
+                    RespawnPolicy::None => return None,
+                    RespawnPolicy::Random => (
+                        self.random_respawn_frequency(group, landscape, rng, member_idx + idx),
+                        None,
+                    ),
+                    RespawnPolicy::Hereditary { sigma_oct } => self.hereditary_respawn_frequency(
+                        group,
+                        sigma_oct,
+                        alive_by_group
+                            .get(&group_id)
+                            .map(Vec::as_slice)
+                            .unwrap_or(&[]),
+                        landscape,
+                        rng,
+                        member_idx + idx,
+                    ),
+                },
+            };
+            candidates.push(candidate);
+        }
+
+        let best = candidates.into_iter().max_by(|(a_freq, _), (b_freq, _)| {
+            landscape
+                .evaluate_pitch_level(*a_freq)
+                .partial_cmp(&landscape.evaluate_pitch_level(*b_freq))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })?;
+        if let Some(min_c_level) = group.respawn_min_c_level
+            && landscape.evaluate_pitch_level(best.0) < min_c_level
+        {
+            return None;
+        }
+        Some(best)
     }
 
     fn respawn_on_new_deaths(&mut self, scenario_finished: bool, landscape: &LandscapeFrame) {
@@ -848,17 +938,17 @@ impl Population {
         }
 
         let mut statuses = Vec::with_capacity(self.individuals.len());
-        let mut alive_by_group: BTreeMap<u64, Vec<f32>> = BTreeMap::new();
+        let mut alive_by_group: BTreeMap<u64, Vec<(u64, f32)>> = BTreeMap::new();
         for agent in &self.individuals {
             let alive = agent.is_alive();
             let group_id = agent.metadata.group_id;
             let id = agent.id();
             statuses.push((id, group_id, alive));
             if alive {
-                alive_by_group
-                    .entry(group_id)
-                    .or_default()
-                    .push(agent.body.base_freq_hz().clamp(MIN_FREQ_HZ, MAX_FREQ_HZ));
+                alive_by_group.entry(group_id).or_default().push((
+                    id,
+                    agent.body.base_freq_hz().clamp(MIN_FREQ_HZ, MAX_FREQ_HZ),
+                ));
             }
         }
 
@@ -887,22 +977,15 @@ impl Population {
             let seed = self.spawn_seed(group_id, 1, spawn_seq);
             let mut rng = SmallRng::seed_from_u64(seed);
 
-            let freq_hz = match group.respawn_policy {
-                RespawnPolicy::None => continue,
-                RespawnPolicy::Random => {
-                    self.random_respawn_frequency(&group, landscape, &mut rng, member_idx)
-                }
-                RespawnPolicy::Hereditary { sigma_oct } => self.hereditary_respawn_frequency(
-                    &group,
-                    sigma_oct,
-                    alive_by_group
-                        .get(&group_id)
-                        .map(Vec::as_slice)
-                        .unwrap_or(&[]),
-                    landscape,
-                    &mut rng,
-                    member_idx,
-                ),
+            let Some((freq_hz, parent_id)) = self.pick_respawn_candidate(
+                group_id,
+                &group,
+                &alive_by_group,
+                landscape,
+                &mut rng,
+                member_idx,
+            ) else {
+                continue;
             };
 
             let id = self.allocate_runtime_id();
@@ -912,6 +995,8 @@ impl Population {
                     group_id,
                     member_idx,
                     resolved_freq_hz: freq_hz,
+                    parent_id,
+                    reason: SpawnReason::Respawn,
                 },
                 &group.template,
                 landscape,
@@ -920,7 +1005,10 @@ impl Population {
             if let Some(state) = self.groups.get_mut(&group_id) {
                 state.next_member_idx = state.next_member_idx.saturating_add(1);
             }
-            alive_by_group.entry(group_id).or_default().push(freq_hz);
+            alive_by_group
+                .entry(group_id)
+                .or_default()
+                .push((id, freq_hz));
         }
     }
 
@@ -946,8 +1034,20 @@ impl Population {
             Action::ReleaseGroup { group_id, fade_sec } => {
                 self.on_release_group_action(group_id, fade_sec);
             }
-            Action::SetRespawnPolicy { group_id, policy } => {
-                self.set_group_respawn_policy(group_id, policy);
+            Action::SetRespawnPolicy {
+                group_id,
+                policy,
+                settle_strategy,
+                capacity,
+                min_c_level,
+            } => {
+                self.set_group_respawn_policy(
+                    group_id,
+                    policy,
+                    settle_strategy,
+                    capacity,
+                    min_c_level,
+                );
             }
             Action::SetGroupCrowdingTarget {
                 group_id,
@@ -964,12 +1064,6 @@ impl Population {
             }
             Action::SetRoughnessTolerance { value } => {
                 self.on_set_roughness_tolerance(value);
-            }
-            Action::EnableTelemetry { group_id, first_k } => {
-                self.enable_group_telemetry(group_id, first_k);
-            }
-            Action::EnablePlv { group_id, window } => {
-                self.enable_group_plv(group_id, window);
             }
         }
     }
@@ -1004,6 +1098,8 @@ impl Population {
                     group_id,
                     member_idx,
                     resolved_freq_hz: freq_hz,
+                    parent_id: None,
+                    reason: SpawnReason::Initial,
                 },
                 &spec,
                 landscape,
@@ -2216,6 +2312,9 @@ mod tests {
             Action::SetRespawnPolicy {
                 group_id: 8,
                 policy: RespawnPolicy::Random,
+                settle_strategy: None,
+                capacity: 1,
+                min_c_level: None,
             },
             &landscape,
             None,
@@ -2256,6 +2355,9 @@ mod tests {
             Action::SetRespawnPolicy {
                 group_id: 9,
                 policy: RespawnPolicy::Hereditary { sigma_oct: 0.01 },
+                settle_strategy: None,
+                capacity: 1,
+                min_c_level: None,
             },
             &landscape,
             None,
@@ -2299,6 +2401,9 @@ mod tests {
             Action::SetRespawnPolicy {
                 group_id: 90,
                 policy: RespawnPolicy::Hereditary { sigma_oct: 0.002 },
+                settle_strategy: None,
+                capacity: 1,
+                min_c_level: None,
             },
             &landscape,
             None,
@@ -2347,6 +2452,9 @@ mod tests {
             Action::SetRespawnPolicy {
                 group_id: 10,
                 policy: RespawnPolicy::Random,
+                settle_strategy: None,
+                capacity: 1,
+                min_c_level: None,
             },
             &landscape,
             None,
@@ -2403,6 +2511,9 @@ mod tests {
             Action::SetRespawnPolicy {
                 group_id: 11,
                 policy: RespawnPolicy::Random,
+                settle_strategy: None,
+                capacity: 1,
+                min_c_level: None,
             },
             &landscape,
             None,
@@ -2462,6 +2573,9 @@ mod tests {
             Action::SetRespawnPolicy {
                 group_id: 91,
                 policy: RespawnPolicy::Random,
+                settle_strategy: None,
+                capacity: 1,
+                min_c_level: None,
             },
             &landscape,
             None,
@@ -2516,6 +2630,9 @@ mod tests {
             Action::SetRespawnPolicy {
                 group_id: 92,
                 policy: RespawnPolicy::Random,
+                settle_strategy: None,
+                capacity: 1,
+                min_c_level: None,
             },
             &landscape,
             None,
@@ -2573,6 +2690,9 @@ mod tests {
             Action::SetRespawnPolicy {
                 group_id: 12,
                 policy: RespawnPolicy::Hereditary { sigma_oct: 0.005 },
+                settle_strategy: None,
+                capacity: 1,
+                min_c_level: None,
             },
             &landscape,
             None,

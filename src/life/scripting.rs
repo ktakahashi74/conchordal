@@ -15,9 +15,10 @@ use super::control::{
 };
 use super::lifecycle::LifecycleConfig;
 use super::scenario::{
-    Action, ArticulationCoreConfig, DurationSpec, EnvelopeConfig, FieldDurationSpec,
-    MetabolismRhythmReward, PhonationSpec, RespawnPolicy, RhythmCouplingMode, RhythmRewardMetric,
-    Scenario, SceneMarker, SpawnSpec, SpawnStrategy, TimedEvent, WhenSpec,
+    Action, ArticulationCoreConfig, ControlUpdateMode, DurationSpec, EnvelopeConfig,
+    FieldDurationSpec, GateThresholds, MetabolismRhythmReward, PhonationSpec, RespawnPolicy,
+    RhythmCouplingMode, RhythmRewardMetric, ScaffoldConfig, Scenario, SceneMarker, SpawnSpec,
+    SpawnStrategy, TimedEvent, WhenSpec,
 };
 
 const DEFAULT_RELEASE_SEC: f32 = 0.05;
@@ -81,16 +82,27 @@ struct AdsrSpec {
 struct SpeciesSpec {
     control: AgentControl,
     respawn_policy: RespawnPolicy,
+    respawn_settle_strategy: Option<SpawnStrategy>,
+    respawn_capacity: usize,
+    respawn_min_c_level: Option<f32>,
     crowding_target_same: bool,
     crowding_target_other: bool,
     brain: BrainKind,
     phonation_spec: PhonationSpec,
     metabolism_rate: Option<f32>,
+    initial_energy: Option<f32>,
+    recharge_rate: Option<f32>,
+    action_cost: Option<f32>,
+    continuous_recharge_rate: Option<f32>,
     adsr: Option<AdsrSpec>,
     rhythm_coupling: RhythmCouplingMode,
     rhythm_reward: Option<MetabolismRhythmReward>,
-    telemetry_first_k: Option<u32>,
-    plv_window: Option<usize>,
+    rhythm_freq: Option<f32>,
+    rhythm_sensitivity: Option<f32>,
+    k_omega: Option<f32>,
+    base_sigma: Option<f32>,
+    gate_thresholds: Option<GateThresholds>,
+    energy_cap: Option<f32>,
 }
 
 impl SpeciesSpec {
@@ -100,16 +112,27 @@ impl SpeciesSpec {
         Self {
             control,
             respawn_policy: RespawnPolicy::None,
+            respawn_settle_strategy: None,
+            respawn_capacity: 1,
+            respawn_min_c_level: None,
             crowding_target_same: true,
             crowding_target_other: false,
             brain: BrainKind::Entrain,
             phonation_spec: PhonationSpec::default(),
             metabolism_rate: None,
+            initial_energy: None,
+            recharge_rate: None,
+            action_cost: None,
+            continuous_recharge_rate: None,
             adsr: None,
             rhythm_coupling: RhythmCouplingMode::TemporalOnly,
             rhythm_reward: None,
-            telemetry_first_k: None,
-            plv_window: None,
+            rhythm_freq: None,
+            rhythm_sensitivity: None,
+            k_omega: None,
+            base_sigma: None,
+            gate_thresholds: None,
+            energy_cap: None,
         }
     }
 
@@ -134,14 +157,20 @@ impl SpeciesSpec {
     }
 
     fn lifecycle_config(&self) -> LifecycleConfig {
-        if self.metabolism_rate.is_some() || self.adsr.is_some() {
+        if self.metabolism_rate.is_some()
+            || self.initial_energy.is_some()
+            || self.recharge_rate.is_some()
+            || self.action_cost.is_some()
+            || self.continuous_recharge_rate.is_some()
+            || self.adsr.is_some()
+        {
             let metabolism_rate = self.metabolism_rate.unwrap_or(0.5).max(1e-6);
             LifecycleConfig::Sustain {
-                initial_energy: 1.0,
+                initial_energy: self.initial_energy.unwrap_or(1.0).max(0.0),
                 metabolism_rate,
-                recharge_rate: None,
-                action_cost: None,
-                continuous_recharge_rate: None,
+                recharge_rate: self.recharge_rate.map(|value| value.max(0.0)),
+                action_cost: self.action_cost.map(|value| value.max(0.0)),
+                continuous_recharge_rate: self.continuous_recharge_rate.map(|value| value.max(0.0)),
                 envelope: self.envelope_from_adsr(),
             }
         } else {
@@ -153,15 +182,15 @@ impl SpeciesSpec {
         match self.brain {
             BrainKind::Entrain => ArticulationCoreConfig::Entrain {
                 lifecycle: self.lifecycle_config(),
-                rhythm_freq: None,
-                rhythm_sensitivity: None,
+                rhythm_freq: self.rhythm_freq,
+                rhythm_sensitivity: self.rhythm_sensitivity,
                 rhythm_coupling: self.rhythm_coupling,
                 rhythm_reward: self.rhythm_reward,
                 breath_gain_init: None,
-                k_omega: None,
-                base_sigma: None,
-                gate_thresholds: None,
-                energy_cap: None,
+                k_omega: self.k_omega,
+                base_sigma: self.base_sigma,
+                gate_thresholds: self.gate_thresholds,
+                energy_cap: self.energy_cap,
             },
             BrainKind::Seq => ArticulationCoreConfig::Seq {
                 duration: DEFAULT_SEQ_DURATION_SEC,
@@ -501,6 +530,26 @@ impl SpeciesSpec {
         self.metabolism_rate = Some(rate.max(0.0));
     }
 
+    fn set_initial_energy(&mut self, value: f32) {
+        self.initial_energy = Some(value.max(0.0));
+    }
+
+    fn set_recharge_rate(&mut self, value: f32) {
+        self.recharge_rate = Some(value.max(0.0));
+    }
+
+    fn set_action_cost(&mut self, value: f32) {
+        self.action_cost = Some(value.max(0.0));
+    }
+
+    fn set_continuous_recharge_rate(&mut self, value: f32) {
+        self.continuous_recharge_rate = Some(value.max(0.0));
+    }
+
+    fn set_energy_cap(&mut self, value: f32) {
+        self.energy_cap = Some(value.max(0.0));
+    }
+
     fn set_adsr(&mut self, a: f32, d: f32, s: f32, r: f32) {
         self.adsr = Some(AdsrSpec {
             attack_sec: a.max(0.0),
@@ -523,6 +572,23 @@ impl SpeciesSpec {
         self.respawn_policy = RespawnPolicy::Hereditary { sigma_oct };
     }
 
+    fn set_respawn_settle_strategy(&mut self, strategy: SpawnStrategy) {
+        self.respawn_settle_strategy = Some(strategy);
+    }
+
+    fn set_respawn_capacity(&mut self, value: f32) {
+        let rounded = if value.is_finite() {
+            value.round()
+        } else {
+            1.0
+        };
+        self.respawn_capacity = rounded.max(1.0) as usize;
+    }
+
+    fn set_respawn_min_c_level(&mut self, value: f32) {
+        self.respawn_min_c_level = Some(value.clamp(0.0, 1.0));
+    }
+
     fn set_rhythm_coupling(&mut self, mode: &str) {
         let lowered = mode.trim().to_ascii_lowercase();
         self.rhythm_coupling = match lowered.as_str() {
@@ -539,6 +605,31 @@ impl SpeciesSpec {
 
     fn set_rhythm_coupling_vitality(&mut self, lambda_v: f32, v_floor: f32) {
         self.rhythm_coupling = RhythmCouplingMode::TemporalTimesVitality { lambda_v, v_floor };
+    }
+
+    fn set_rhythm_freq(&mut self, value: f32) {
+        self.rhythm_freq = Some(value.max(0.0));
+    }
+
+    fn set_rhythm_sensitivity(&mut self, value: f32) {
+        self.rhythm_sensitivity = Some(value.max(0.0));
+    }
+
+    fn set_k_omega(&mut self, value: f32) {
+        self.k_omega = Some(value.max(0.0));
+    }
+
+    fn set_base_sigma(&mut self, value: f32) {
+        self.base_sigma = Some(value.max(0.0));
+    }
+
+    fn set_gate_thresholds(&mut self, env_open: f32, mag: f32, alpha: f32, beta: f32) {
+        self.gate_thresholds = Some(GateThresholds {
+            env_open: env_open.clamp(0.0, 1.0),
+            mag: mag.max(0.0),
+            alpha: alpha.max(0.0),
+            beta: beta.max(0.0),
+        });
     }
 
     fn set_rhythm_reward(&mut self, rho_t: f32, metric: &str) {
@@ -626,6 +717,8 @@ impl Default for ScriptContext {
             cursor: 0.0,
             scenario: Scenario {
                 seed,
+                control_update_mode: ControlUpdateMode::SnapshotPhased,
+                scaffold: ScaffoldConfig::Off,
                 scene_markers: Vec::new(),
                 events: Vec::new(),
                 duration_sec: 0.0,
@@ -770,18 +863,9 @@ impl ScriptContext {
                         spawn_actions.push(Action::SetRespawnPolicy {
                             group_id: group.id,
                             policy: group.respawn_policy,
-                        });
-                    }
-                    if let Some(first_k) = group.spec.telemetry_first_k {
-                        spawn_actions.push(Action::EnableTelemetry {
-                            group_id: group.id,
-                            first_k,
-                        });
-                    }
-                    if let Some(window) = group.spec.plv_window {
-                        spawn_actions.push(Action::EnablePlv {
-                            group_id: group.id,
-                            window,
+                            settle_strategy: group.spec.respawn_settle_strategy.clone(),
+                            capacity: group.spec.respawn_capacity.max(1),
+                            min_c_level: group.spec.respawn_min_c_level,
                         });
                     }
                 }
@@ -1068,6 +1152,45 @@ fn register_group_numeric_overloads(
                 patch_setter,
                 draft_hook,
             )
+        },
+    );
+}
+
+fn register_group_draft_numeric_overloads(
+    engine: &mut Engine,
+    ctx: Arc<Mutex<ScriptContext>>,
+    name: &'static str,
+    spec_setter: GroupSpecNumericSetter,
+) {
+    let ctx_float = ctx.clone();
+    engine.register_fn(
+        name,
+        move |handle: GroupHandle, value: FLOAT| -> Result<GroupHandle, Box<EvalAltResult>> {
+            let mut ctx = ctx_float.lock().expect("lock script context");
+            let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                warn!("{name} ignored for unknown group {}", handle.id);
+                return Ok(handle);
+            };
+            match group.status {
+                GroupStatus::Draft => spec_setter(&mut group.spec, value as f32),
+                _ => ctx.warn_live_builder(handle.id, name),
+            }
+            Ok(handle)
+        },
+    );
+    engine.register_fn(
+        name,
+        move |handle: GroupHandle, value: INT| -> Result<GroupHandle, Box<EvalAltResult>> {
+            let mut ctx = ctx.lock().expect("lock script context");
+            let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                warn!("{name} ignored for unknown group {}", handle.id);
+                return Ok(handle);
+            };
+            match group.status {
+                GroupStatus::Draft => spec_setter(&mut group.spec, value as f32),
+                _ => ctx.warn_live_builder(handle.id, name),
+            }
+            Ok(handle)
         },
     );
 }
@@ -1514,20 +1637,12 @@ impl ScriptHost {
                 species
             },
         );
-        engine.register_fn("pitch_apply", |mut species: SpeciesHandle, name: &str| {
-            species.spec.set_pitch_apply_mode(name);
-            species
-        });
         register_species_numeric_overloads(
             &mut engine,
             "pitch_glide",
             SpeciesSpec::set_pitch_glide_tau_sec,
         );
         engine.register_fn("pitch_mode", |mut species: SpeciesHandle, name: &str| {
-            species.spec.set_pitch_mode(name);
-            species
-        });
-        engine.register_fn("mode", |mut species: SpeciesHandle, name: &str| {
             species.spec.set_pitch_mode(name);
             species
         });
@@ -1595,7 +1710,6 @@ impl ScriptHost {
             species.spec.set_field_drop(gain as f32);
             species
         });
-        register_species_numeric_overloads(&mut engine, "energy", SpeciesSpec::set_amp);
         register_species_numeric_overloads(&mut engine, "brightness", SpeciesSpec::set_brightness);
         register_species_numeric_overloads(&mut engine, "spread", SpeciesSpec::set_spread);
         register_species_numeric_overloads(&mut engine, "voices", SpeciesSpec::set_voices);
@@ -1610,6 +1724,27 @@ impl ScriptHost {
             species.spec.set_metabolism(rate as f32);
             species
         });
+        register_species_numeric_overloads(
+            &mut engine,
+            "initial_energy",
+            SpeciesSpec::set_initial_energy,
+        );
+        register_species_numeric_overloads(
+            &mut engine,
+            "recharge_rate",
+            SpeciesSpec::set_recharge_rate,
+        );
+        register_species_numeric_overloads(
+            &mut engine,
+            "action_cost",
+            SpeciesSpec::set_action_cost,
+        );
+        register_species_numeric_overloads(
+            &mut engine,
+            "continuous_recharge_rate",
+            SpeciesSpec::set_continuous_recharge_rate,
+        );
+        register_species_numeric_overloads(&mut engine, "energy_cap", SpeciesSpec::set_energy_cap);
         engine.register_fn(
             "adsr",
             |mut species: SpeciesHandle, a: FLOAT, d: FLOAT, s: FLOAT, r: FLOAT| {
@@ -1642,6 +1777,35 @@ impl ScriptHost {
                 species
             },
         );
+        register_species_numeric_overloads(
+            &mut engine,
+            "rhythm_freq",
+            SpeciesSpec::set_rhythm_freq,
+        );
+        register_species_numeric_overloads(
+            &mut engine,
+            "rhythm_sensitivity",
+            SpeciesSpec::set_rhythm_sensitivity,
+        );
+        register_species_numeric_overloads(&mut engine, "k_omega", SpeciesSpec::set_k_omega);
+        register_species_numeric_overloads(&mut engine, "base_sigma", SpeciesSpec::set_base_sigma);
+        register_species_pair_numeric_overloads(
+            &mut engine,
+            "gate_thresholds",
+            |species, env_open, mag| species.set_gate_thresholds(env_open, mag, 0.2, 0.9),
+        );
+        engine.register_fn(
+            "gate_thresholds",
+            |mut species: SpeciesHandle, env_open: FLOAT, mag: FLOAT, alpha: FLOAT, beta: FLOAT| {
+                species.spec.set_gate_thresholds(
+                    env_open as f32,
+                    mag as f32,
+                    alpha as f32,
+                    beta as f32,
+                );
+                species
+            },
+        );
         engine.register_fn("respawn_random", |mut species: SpeciesHandle| {
             species.spec.set_respawn_random();
             species
@@ -1660,17 +1824,23 @@ impl ScriptHost {
                 species
             },
         );
+        register_species_numeric_overloads(
+            &mut engine,
+            "respawn_capacity",
+            SpeciesSpec::set_respawn_capacity,
+        );
+        register_species_numeric_overloads(
+            &mut engine,
+            "respawn_min_c_level",
+            SpeciesSpec::set_respawn_min_c_level,
+        );
         engine.register_fn(
-            "enable_telemetry",
-            |mut species: SpeciesHandle, first_k: INT| {
-                species.spec.telemetry_first_k = Some(first_k.max(0) as u32);
+            "respawn_settle",
+            |mut species: SpeciesHandle, strategy: SpawnStrategy| {
+                species.spec.set_respawn_settle_strategy(strategy);
                 species
             },
         );
-        engine.register_fn("enable_plv", |mut species: SpeciesHandle, window: INT| {
-            species.spec.plv_window = Some(window.max(1) as usize);
-            species
-        });
 
         let ctx_for_create = ctx.clone();
         engine.register_fn(
@@ -2063,14 +2233,6 @@ impl ScriptHost {
             &mut engine,
             ctx.clone(),
             "amp",
-            SpeciesSpec::set_amp,
-            patch_amp,
-            None,
-        );
-        register_group_numeric_overloads(
-            &mut engine,
-            ctx.clone(),
-            "energy",
             SpeciesSpec::set_amp,
             patch_amp,
             None,
@@ -2499,37 +2661,6 @@ impl ScriptHost {
                 Ok(handle)
             },
         );
-        let ctx_for_group_pitch_apply = ctx.clone();
-        engine.register_fn(
-            "pitch_apply",
-            move |handle: GroupHandle, name: &str| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_pitch_apply
-                    .lock()
-                    .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("pitch_apply ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                let lowered = name.trim().to_ascii_lowercase();
-                let mode = match lowered.as_str() {
-                    "gate_snap" | "gatesnap" | "snap" => PitchApplyMode::GateSnap,
-                    "glide" | "gliss" | "glissando" => PitchApplyMode::Glide,
-                    _ => {
-                        ctx.warn_live_builder(handle.id, "pitch_apply");
-                        return Ok(handle);
-                    }
-                };
-                match group.status {
-                    GroupStatus::Draft => group.spec.control.set_pitch_apply_mode(mode),
-                    GroupStatus::Live => {
-                        group.spec.control.set_pitch_apply_mode(mode);
-                        group.pending_patch.pitch_apply_mode = Some(mode);
-                    }
-                    _ => ctx.warn_live_builder(handle.id, "pitch_apply"),
-                }
-                Ok(handle)
-            },
-        );
         register_group_numeric_overloads(
             &mut engine,
             ctx.clone(),
@@ -2570,29 +2701,6 @@ impl ScriptHost {
                     GroupStatus::Draft => group.spec.set_pitch_mode(name),
                     GroupStatus::Live => ctx.warn_live_builder(handle.id, "pitch_mode"),
                     _ => ctx.warn_live_builder(handle.id, "pitch_mode"),
-                }
-                Ok(handle)
-            },
-        );
-        let ctx_for_group_mode = ctx.clone();
-        engine.register_fn(
-            "mode",
-            move |handle: GroupHandle, name: &str| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_mode.lock().map_err(|err| {
-                    let msg = format!("script context lock poisoned: {err}");
-                    Box::new(EvalAltResult::ErrorSystem(
-                        msg.clone(),
-                        Box::new(std::io::Error::other(msg)),
-                    ))
-                })?;
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("mode ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                match group.status {
-                    GroupStatus::Draft => group.spec.set_pitch_mode(name),
-                    GroupStatus::Live => ctx.warn_live_builder(handle.id, "mode"),
-                    _ => ctx.warn_live_builder(handle.id, "mode"),
                 }
                 Ok(handle)
             },
@@ -2787,24 +2895,41 @@ impl ScriptHost {
                 Ok(handle)
             },
         );
-        let ctx_for_group_metabolism = ctx.clone();
-        engine.register_fn(
+        register_group_draft_numeric_overloads(
+            &mut engine,
+            ctx.clone(),
             "metabolism",
-            move |handle: GroupHandle, rate: FLOAT| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_metabolism
-                    .lock()
-                    .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("metabolism ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                match group.status {
-                    GroupStatus::Draft => group.spec.set_metabolism(rate as f32),
-                    GroupStatus::Live => ctx.warn_live_builder(handle.id, "metabolism"),
-                    _ => ctx.warn_live_builder(handle.id, "metabolism"),
-                }
-                Ok(handle)
-            },
+            SpeciesSpec::set_metabolism,
+        );
+        register_group_draft_numeric_overloads(
+            &mut engine,
+            ctx.clone(),
+            "initial_energy",
+            SpeciesSpec::set_initial_energy,
+        );
+        register_group_draft_numeric_overloads(
+            &mut engine,
+            ctx.clone(),
+            "recharge_rate",
+            SpeciesSpec::set_recharge_rate,
+        );
+        register_group_draft_numeric_overloads(
+            &mut engine,
+            ctx.clone(),
+            "action_cost",
+            SpeciesSpec::set_action_cost,
+        );
+        register_group_draft_numeric_overloads(
+            &mut engine,
+            ctx.clone(),
+            "continuous_recharge_rate",
+            SpeciesSpec::set_continuous_recharge_rate,
+        );
+        register_group_draft_numeric_overloads(
+            &mut engine,
+            ctx.clone(),
+            "energy_cap",
+            SpeciesSpec::set_energy_cap,
         );
         let ctx_for_group_adsr = ctx.clone();
         engine.register_fn(
@@ -2900,6 +3025,58 @@ impl ScriptHost {
                 Ok(handle)
             },
         );
+        register_group_draft_numeric_overloads(
+            &mut engine,
+            ctx.clone(),
+            "rhythm_freq",
+            SpeciesSpec::set_rhythm_freq,
+        );
+        register_group_draft_numeric_overloads(
+            &mut engine,
+            ctx.clone(),
+            "rhythm_sensitivity",
+            SpeciesSpec::set_rhythm_sensitivity,
+        );
+        register_group_draft_numeric_overloads(
+            &mut engine,
+            ctx.clone(),
+            "k_omega",
+            SpeciesSpec::set_k_omega,
+        );
+        register_group_draft_numeric_overloads(
+            &mut engine,
+            ctx.clone(),
+            "base_sigma",
+            SpeciesSpec::set_base_sigma,
+        );
+        let ctx_for_group_gate_thresholds = ctx.clone();
+        engine.register_fn(
+            "gate_thresholds",
+            move |handle: GroupHandle,
+                  env_open: FLOAT,
+                  mag: FLOAT,
+                  alpha: FLOAT,
+                  beta: FLOAT|
+                  -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_gate_thresholds
+                    .lock()
+                    .expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("gate_thresholds ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                match group.status {
+                    GroupStatus::Draft => group.spec.set_gate_thresholds(
+                        env_open as f32,
+                        mag as f32,
+                        alpha as f32,
+                        beta as f32,
+                    ),
+                    _ => ctx.warn_live_builder(handle.id, "gate_thresholds"),
+                }
+                Ok(handle)
+            },
+        );
         let ctx_for_group_respawn_random = ctx.clone();
         engine.register_fn(
             "respawn_random",
@@ -2977,6 +3154,40 @@ impl ScriptHost {
                 Ok(handle)
             },
         );
+        register_group_draft_numeric_overloads(
+            &mut engine,
+            ctx.clone(),
+            "respawn_capacity",
+            SpeciesSpec::set_respawn_capacity,
+        );
+        register_group_draft_numeric_overloads(
+            &mut engine,
+            ctx.clone(),
+            "respawn_min_c_level",
+            SpeciesSpec::set_respawn_min_c_level,
+        );
+        let ctx_for_group_respawn_settle = ctx.clone();
+        engine.register_fn(
+            "respawn_settle",
+            move |handle: GroupHandle,
+                  strategy: SpawnStrategy|
+                  -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_respawn_settle
+                    .lock()
+                    .expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("respawn_settle ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                match group.status {
+                    GroupStatus::Draft => {
+                        group.spec.set_respawn_settle_strategy(strategy);
+                    }
+                    _ => ctx.warn_live_builder(handle.id, "respawn_settle"),
+                }
+                Ok(handle)
+            },
+        );
         let ctx_for_group_place = ctx.clone();
         engine.register_fn(
             "place",
@@ -2990,7 +3201,6 @@ impl ScriptHost {
                 };
                 match group.status {
                     GroupStatus::Draft => {
-                        group.spec.control.pitch.mode = PitchMode::Lock;
                         group.strategy = Some(strategy);
                     }
                     GroupStatus::Live => ctx.warn_live_builder(handle.id, "place"),
@@ -3059,6 +3269,89 @@ impl ScriptHost {
                         value: value as f32,
                     }],
                 );
+            },
+        );
+
+        let ctx_for_set_control_update_mode = ctx.clone();
+        engine.register_fn(
+            "set_control_update_mode",
+            move |_call_ctx: NativeCallContext, name: &str| {
+                let mut ctx = ctx_for_set_control_update_mode
+                    .lock()
+                    .expect("lock script context");
+                let lowered = name.trim().to_ascii_lowercase();
+                let mode = match lowered.as_str() {
+                    "snapshot_phased" | "snapshot" => ControlUpdateMode::SnapshotPhased,
+                    "sequential_rotating" | "sequential" => {
+                        ControlUpdateMode::SequentialRotating
+                    }
+                    other => {
+                        warn!(
+                            "set_control_update_mode() expects 'snapshot_phased' or 'sequential_rotating', got '{}'",
+                            other
+                        );
+                        return;
+                    }
+                };
+                ctx.scenario.control_update_mode = mode;
+            },
+        );
+
+        let ctx_for_set_scaffold_off = ctx.clone();
+        engine.register_fn("set_scaffold_off", move |_call_ctx: NativeCallContext| {
+            let mut ctx = ctx_for_set_scaffold_off
+                .lock()
+                .expect("lock script context");
+            ctx.scenario.scaffold = ScaffoldConfig::Off;
+        });
+        let ctx_for_set_scaffold_shared = ctx.clone();
+        engine.register_fn(
+            "set_scaffold_shared",
+            move |_call_ctx: NativeCallContext, freq_hz: FLOAT| {
+                let mut ctx = ctx_for_set_scaffold_shared
+                    .lock()
+                    .expect("lock script context");
+                ctx.scenario.scaffold = ScaffoldConfig::Shared {
+                    freq_hz: (freq_hz as f32).max(0.0),
+                };
+            },
+        );
+        let ctx_for_set_scaffold_shared_int = ctx.clone();
+        engine.register_fn(
+            "set_scaffold_shared",
+            move |_call_ctx: NativeCallContext, freq_hz: INT| {
+                let mut ctx = ctx_for_set_scaffold_shared_int
+                    .lock()
+                    .expect("lock script context");
+                ctx.scenario.scaffold = ScaffoldConfig::Shared {
+                    freq_hz: (freq_hz as f32).max(0.0),
+                };
+            },
+        );
+        let ctx_for_set_scaffold_scrambled = ctx.clone();
+        engine.register_fn(
+            "set_scaffold_scrambled",
+            move |_call_ctx: NativeCallContext, freq_hz: FLOAT, seed: INT| {
+                let mut ctx = ctx_for_set_scaffold_scrambled
+                    .lock()
+                    .expect("lock script context");
+                ctx.scenario.scaffold = ScaffoldConfig::Scrambled {
+                    freq_hz: (freq_hz as f32).max(0.0),
+                    seed: seed.max(0) as u64,
+                };
+            },
+        );
+        let ctx_for_set_scaffold_scrambled_int = ctx.clone();
+        engine.register_fn(
+            "set_scaffold_scrambled",
+            move |_call_ctx: NativeCallContext, freq_hz: INT, seed: INT| {
+                let mut ctx = ctx_for_set_scaffold_scrambled_int
+                    .lock()
+                    .expect("lock script context");
+                ctx.scenario.scaffold = ScaffoldConfig::Scrambled {
+                    freq_hz: (freq_hz as f32).max(0.0),
+                    seed: seed.max(0) as u64,
+                };
             },
         );
 
@@ -3198,7 +3491,7 @@ mod tests {
 
             let probes = create(probe, 12)
                 .place(consonance(196.0).range(0.8, 2.5).min_dist(0.9))
-                .mode("free");
+                .pitch_mode("free");
             flush();
 
             set_harmonicity_mirror_weight(0.0);
@@ -3227,7 +3520,7 @@ mod tests {
                 let base = create(anchor, 1).freq(196.0);
                 let probes = create(probe, 8)
                     .place(consonance(196.0).range(0.8, 2.5).min_dist(0.9))
-                    .mode("free");
+                    .pitch_mode("free");
                 flush();
 
                 release(probes);
@@ -3443,10 +3736,10 @@ mod tests {
     }
 
     #[test]
-    fn place_then_mode_free_survives_spawn() {
+    fn place_then_pitch_mode_free_survives_spawn() {
         let (scenario, _warnings) = run_script(
             r#"
-            create(sine, 2).place(consonance(220.0)).mode("free");
+            create(sine, 2).place(consonance(220.0)).pitch_mode("free");
             flush();
         "#,
         );
@@ -3473,7 +3766,7 @@ mod tests {
     }
 
     #[test]
-    fn place_defaults_to_lock_mode() {
+    fn place_preserves_default_pitch_mode() {
         let (scenario, _warnings) = run_script(
             r#"
             create(sine, 4).place(consonance(220.0));
@@ -3489,11 +3782,11 @@ mod tests {
                 _ => None,
             })
             .expect("spawn action");
-        assert_eq!(mode, PitchMode::Lock);
+        assert_eq!(mode, PitchMode::Free);
     }
 
     #[test]
-    fn pitch_mode_free_then_place_restores_lock() {
+    fn pitch_mode_free_then_place_preserves_free() {
         let (scenario, _warnings) = run_script(
             r#"
             create(sine, 4).pitch_mode("free").place(consonance(220.0));
@@ -3509,7 +3802,7 @@ mod tests {
                 _ => None,
             })
             .expect("spawn action");
-        assert_eq!(mode, PitchMode::Lock);
+        assert_eq!(mode, PitchMode::Free);
     }
 
     #[test]
@@ -4341,7 +4634,7 @@ mod tests {
                 .ratio_candidates(4)
                 .move_cost_time_scale("proposal_interval")
                 .leave_self_out_harmonics(3)
-                .pitch_apply("glide")
+                .pitch_apply_mode("glide")
                 .pitch_glide(0.05);
             flush();
         "#,
@@ -4481,7 +4774,10 @@ mod tests {
             .iter()
             .flat_map(|event| event.actions.iter())
         {
-            if let Action::SetRespawnPolicy { group_id, policy } = action {
+            if let Action::SetRespawnPolicy {
+                group_id, policy, ..
+            } = action
+            {
                 assert_eq!(*group_id, 1);
                 assert_eq!(*policy, RespawnPolicy::Hereditary { sigma_oct: 0.03 });
                 saw_policy = true;
@@ -4504,7 +4800,10 @@ mod tests {
             .iter()
             .flat_map(|event| event.actions.iter())
         {
-            if let Action::SetRespawnPolicy { group_id, policy } = action {
+            if let Action::SetRespawnPolicy {
+                group_id, policy, ..
+            } = action
+            {
                 assert_eq!(*group_id, 1);
                 assert_eq!(*policy, RespawnPolicy::Random);
                 saw_policy = true;
@@ -4527,13 +4826,104 @@ mod tests {
             .iter()
             .flat_map(|event| event.actions.iter())
         {
-            if let Action::SetRespawnPolicy { group_id, policy } = action {
+            if let Action::SetRespawnPolicy {
+                group_id, policy, ..
+            } = action
+            {
                 assert_eq!(*group_id, 1);
                 assert_eq!(*policy, RespawnPolicy::Hereditary { sigma_oct: 0.03 });
                 saw_policy = true;
             }
         }
         assert!(saw_policy, "expected SetRespawnPolicy(Hereditary)");
+    }
+
+    #[test]
+    fn group_respawn_tier2_settings_reach_runtime_action() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            let g = create(sine, 1)
+                .respawn_hereditary(0.03)
+                .respawn_settle(consonance(220.0).range(0.75, 1.5).min_dist(0.5))
+                .respawn_capacity(3)
+                .respawn_min_c_level(0.4);
+            flush();
+        "#,
+        );
+        let mut saw_policy = false;
+        for action in scenario
+            .events
+            .iter()
+            .flat_map(|event| event.actions.iter())
+        {
+            if let Action::SetRespawnPolicy {
+                group_id,
+                policy,
+                settle_strategy,
+                capacity,
+                min_c_level,
+            } = action
+            {
+                assert_eq!(*group_id, 1);
+                assert_eq!(*policy, RespawnPolicy::Hereditary { sigma_oct: 0.03 });
+                assert_eq!(*capacity, 3);
+                assert_eq!(*min_c_level, Some(0.4));
+                assert!(matches!(
+                    settle_strategy,
+                    Some(SpawnStrategy::Consonance {
+                        root_freq,
+                        min_mul,
+                        max_mul,
+                        min_dist_erb,
+                    }) if (*root_freq - 220.0).abs() <= 1e-6
+                        && (*min_mul - 0.75).abs() <= 1e-6
+                        && (*max_mul - 1.5).abs() <= 1e-6
+                        && (*min_dist_erb - 0.5).abs() <= 1e-6
+                ));
+                saw_policy = true;
+            }
+        }
+        assert!(saw_policy, "expected SetRespawnPolicy with tier-2 settings");
+    }
+
+    #[test]
+    fn set_control_update_mode_updates_scenario() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            set_control_update_mode("sequential_rotating");
+        "#,
+        );
+        assert_eq!(
+            scenario.control_update_mode,
+            ControlUpdateMode::SequentialRotating
+        );
+    }
+
+    #[test]
+    fn set_scaffold_shared_updates_scenario() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            set_scaffold_shared(2.5);
+        "#,
+        );
+        assert!(matches!(
+            scenario.scaffold,
+            ScaffoldConfig::Shared { freq_hz } if (freq_hz - 2.5).abs() <= 1e-6
+        ));
+    }
+
+    #[test]
+    fn set_scaffold_scrambled_updates_scenario() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            set_scaffold_scrambled(3.0, 17);
+        "#,
+        );
+        assert!(matches!(
+            scenario.scaffold,
+            ScaffoldConfig::Scrambled { freq_hz, seed }
+                if (freq_hz - 3.0).abs() <= 1e-6 && seed == 17
+        ));
     }
 
     #[test]

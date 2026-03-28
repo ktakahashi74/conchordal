@@ -9,9 +9,31 @@ use crate::life::lifecycle::LifecycleConfig;
 #[derive(Debug, Clone)]
 pub struct Scenario {
     pub seed: u64,
+    pub control_update_mode: ControlUpdateMode,
+    pub scaffold: ScaffoldConfig,
     pub scene_markers: Vec<SceneMarker>,
     pub events: Vec<TimedEvent>,
     pub duration_sec: f32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ControlUpdateMode {
+    #[default]
+    SnapshotPhased,
+    SequentialRotating,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum ScaffoldConfig {
+    #[default]
+    Off,
+    Shared {
+        freq_hz: f32,
+    },
+    Scrambled {
+        freq_hz: f32,
+        seed: u64,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -580,6 +602,9 @@ pub enum Action {
     SetRespawnPolicy {
         group_id: u64,
         policy: RespawnPolicy,
+        settle_strategy: Option<SpawnStrategy>,
+        capacity: usize,
+        min_c_level: Option<f32>,
     },
     SetGroupCrowdingTarget {
         group_id: u64,
@@ -595,14 +620,6 @@ pub enum Action {
     SetRoughnessTolerance {
         value: f32,
     },
-    EnableTelemetry {
-        group_id: u64,
-        first_k: u32,
-    },
-    EnablePlv {
-        group_id: u64,
-        window: usize,
-    },
     Finish,
 }
 
@@ -616,8 +633,17 @@ impl fmt::Display for Action {
             Action::ReleaseGroup { group_id, fade_sec } => {
                 write!(f, "Release group={} fade={:.3}", group_id, fade_sec)
             }
-            Action::SetRespawnPolicy { group_id, policy } => {
-                write!(f, "SetRespawnPolicy group={} policy={:?}", group_id, policy)
+            Action::SetRespawnPolicy {
+                group_id,
+                policy,
+                capacity,
+                ..
+            } => {
+                write!(
+                    f,
+                    "SetRespawnPolicy group={} policy={:?} capacity={}",
+                    group_id, policy, capacity
+                )
             }
             Action::SetGroupCrowdingTarget {
                 group_id,
@@ -639,12 +665,6 @@ impl fmt::Display for Action {
             Action::SetRoughnessTolerance { value } => {
                 write!(f, "SetRoughnessTolerance value={:.3}", value)
             }
-            Action::EnableTelemetry {
-                group_id, first_k, ..
-            } => write!(f, "EnableTelemetry group={} first_k={}", group_id, first_k),
-            Action::EnablePlv {
-                group_id, window, ..
-            } => write!(f, "EnablePlv group={} window={}", group_id, window),
             Action::Finish => write!(f, "Finish"),
         }
     }

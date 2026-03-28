@@ -132,6 +132,8 @@ fn conductor_dispatches_finish_on_time() {
     };
     let scenario = Scenario {
         seed: 0,
+        control_update_mode: crate::life::scenario::ControlUpdateMode::SnapshotPhased,
+        scaffold: crate::life::scenario::ScaffoldConfig::Off,
         scene_markers: Vec::new(),
         events: vec![event],
         duration_sec: 2.0,

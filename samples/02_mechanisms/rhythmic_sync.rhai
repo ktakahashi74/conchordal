@@ -1,5 +1,5 @@
 let click = derive(sine)
-    .energy(0.2)
+    .amp(0.2)
     .repeat()
     .adsr(0.01, 0.1, 0.0, 0.2);
 

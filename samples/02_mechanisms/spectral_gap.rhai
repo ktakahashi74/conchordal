@@ -1,5 +1,5 @@
 let grain = derive(sine)
-    .energy(0.09)
+    .amp(0.09)
     .repeat()
     .adsr(0.01, 0.1, 0.0, 0.3);
 

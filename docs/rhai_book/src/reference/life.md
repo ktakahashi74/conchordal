@@ -1,353 +1,437 @@
-# Conchordal Scripting API Reference
+# Rhai Scripting API Reference (v0.3.0)
 
-This document describes the Rhai scripting API for Conchordal's Life Engine.
+This reference documents the complete Rhai scripting API for Conchordal's Life
+Engine. Scenarios are scripts that define species, spawn agent groups, control
+the timeline, and tune global parameters.
 
-## Overview
+---
 
-The scripting API allows you to compose scenarios by:
-- Defining **species** (agent templates with body method, timbre, brain type)
-- Creating **groups** of agents from species
-- Controlling **timeline** (waiting, flushing, parallel execution)
-- Managing **placement** strategies (consonance-based, random, linear)
-- Adjusting **global parameters** (harmonicity mirror weight, coupling, roughness)
+## Registered Types
 
-## Types
+| Type | Description |
+|------|-------------|
+| `SpeciesHandle` | Species template, built with the builder pattern |
+| `GroupHandle` | Handle to an agent group (draft or live) |
+| `SpawnStrategy` | Frequency allocation strategy for placement |
+| `ModePattern` | Frequency pattern for modal synthesis bodies |
 
-### SpeciesHandle
-
-Represents a species template for creating agents. Created by deriving from presets or other species.
-
-### GroupHandle
-
-A handle to a group of agents. Returned by `create()`. Used to control live agents or configure draft groups before spawning.
-
-### SpawnStrategy
-
-Defines how frequencies are assigned when creating multiple agents. Created by strategy constructors like `consonance()`, `consonance_density()`, etc.
+---
 
 ## Preset Species
 
-Global variables for common body methods:
+Global constants available in every script:
 
-| Preset | Body Method | Description |
-|--------|-------------|-------------|
+| Preset | Body | Notes |
+|--------|------|-------|
 | `sine` | Sine | Pure sine wave |
 | `harmonic` | Harmonic | Harmonic series synthesis |
-| `saw` | Harmonic | Sawtooth-like (brightness=0.85, width=0.2) |
-| `square` | Harmonic | Square-like (brightness=0.65, width=0.1) |
-| `noise` | Harmonic | Noise-like (brightness=1.0, motion=1.0, width=0.35) |
+| `saw` | Harmonic | brightness = 0.85 |
+| `square` | Harmonic | brightness = 0.65 |
+| `noise` | Harmonic | brightness = 1.0, motion = 1.0 |
+| `modal` | Modal | Resonator-based modal synthesis |
+
+```ts
+let voice = derive(harmonic).amp(0.4).brightness(0.7);
+```
+
+---
 
 ## Species Definition
 
-### derive(parent: SpeciesHandle) → SpeciesHandle
+### derive(parent) -> SpeciesHandle
 
-Clone a species to create a new template.
-
-```ts
-let my_species = derive(sine).amp(0.5).phonation("hold");
-```
-
-### Species Methods (Chainable)
-
-These methods modify a `SpeciesHandle` and return it for chaining.
-
-#### amp(value: float) → SpeciesHandle
-#### amp(value: int) → SpeciesHandle
-
-Set amplitude (0.0–1.0).
+Clone a preset or existing species for modification.
 
 ```ts
-let loud = derive(sine).amp(0.8);
+let pluck = derive(harmonic).amp(0.3).adsr(0.01, 0.1, 0.3, 0.2);
 ```
 
-#### freq(value: float) → SpeciesHandle
-#### freq(value: int) → SpeciesHandle
+All species methods are chainable and return `SpeciesHandle`.
 
-Set default frequency in Hz.
+### Body and Amplitude
+
+| Method | Description |
+|--------|-------------|
+| `amp(value)` | Amplitude 0.0--1.0 |
+| `energy(value)` | Alias for `amp` |
+| `freq(value)` | Frequency lock in Hz |
+| `brightness(value)` | Spectral brightness 0.0--1.0 (harmonic/modal bodies) |
+| `spread(value)` | Detuning spread |
+| `voices(count)` | Number of unison voices |
+| `modes(pattern)` | Set mode pattern (modal body); see [Mode Patterns](#mode-patterns) |
 
 ```ts
-let a440 = derive(sine).freq(440.0);
+let pad = derive(harmonic).amp(0.5).brightness(0.6).spread(0.02).voices(3);
+let bell = derive(modal).modes(stiff_string_modes(0.02).count(8));
 ```
 
-#### brain(name: string) → SpeciesHandle
+### Pitch Control
 
-Set brain type. Valid values:
-- `"entrain"` - Entrainment brain (default): responds to rhythm field
-- `"seq"` - Sequencer brain: fixed duration notes
-- `"drone"` - Drone brain: sustained with sway modulation
+| Method | Description |
+|--------|-------------|
+| `pitch_mode(name)` | `"free"` or `"lock"` |
+| `mode(name)` | Alias for `pitch_mode` |
+| `pitch_core(name)` | `"hill_climb"` or `"peak_sampler"` |
+| `pitch_apply(name)` | `"gate_snap"` or `"glide"` |
+| `pitch_apply_mode(name)` | Alias for `pitch_apply` |
+| `pitch_glide(tau_sec)` | Glide time constant in seconds |
+| `pitch_smooth(tau_sec)` | Pitch smoothing time constant |
 
 ```ts
-let drone = derive(sine).brain("drone");
+let glider = derive(sine).pitch_mode("free").pitch_core("hill_climb")
+    .pitch_apply("glide").pitch_glide(0.1);
 ```
 
-#### phonation(name: string) → SpeciesHandle
+### Hill-Climb Tuning
 
-Set phonation type. Valid values:
-- `"hold"` - One-shot sustain tied to lifecycle
-- `"decay"` - Interval-based retriggering
-- `"grain"` - Field-based retriggering
+| Method | Description |
+|--------|-------------|
+| `landscape_weight(value)` | Weight of landscape objective |
+| `neighbor_step_cents(value)` | Step size for neighbor exploration |
+| `tessitura_gravity(value)` | Gravity toward tessitura center |
+| `exploration(value)` | Exploration tendency |
+| `persistence(value)` | Persistence bias |
+| `anneal_temp(value)` | Annealing temperature |
+| `temperature(value)` | Alias for `anneal_temp` |
+| `improvement_threshold(value)` | Minimum improvement to accept move |
+| `move_cost(coeff)` | Cost multiplier for pitch changes |
+| `move_cost_exp(exp)` | Exponent for move cost |
+| `move_cost_time_scale(name)` | `"legacy"`/`"integration_window"` or `"proposal"`/`"proposal_interval"` |
+| `proposal_interval(seconds)` | Proposal generation interval |
+
+### Peak Sampler Tuning
+
+| Method | Description |
+|--------|-------------|
+| `window_cents(width)` | Search window width in cents |
+| `top_k(count)` | Top-k candidates |
+| `sigma_cents(spread)` | Gaussian spread in cents |
+| `random_candidates(count)` | Number of random candidates |
+| `global_peaks(count)` | Global peak candidates (min_sep = 0) |
+| `global_peaks(count, min_sep_cents)` | Global peak candidates with separation |
+| `ratio_candidates(count)` | Enable ratio-based candidates (0 to disable) |
+
+### Crowding
+
+| Method | Description |
+|--------|-------------|
+| `crowding(strength)` | Auto-sigma from roughness kernel |
+| `crowding(strength, sigma_cents)` | Explicit sigma |
+| `crowding_target(same_visible, other_visible)` | Target visibility (booleans) |
+| `leave_self_out(enabled)` | Subtract own spectral contribution |
+| `leave_self_out_mode(name)` | `"approx"`/`"approx_harmonics"` or `"exact"`/`"exact_scan"` |
+| `leave_self_out_harmonics(count)` | Number of harmonics for self-subtraction |
 
 ```ts
-let voice = derive(harmonic).phonation("hold");
+let social = derive(harmonic)
+    .crowding(0.8)
+    .crowding_target(true, true)
+    .leave_self_out(true).leave_self_out_mode("approx");
 ```
 
-#### timbre(brightness: float, width: float) → SpeciesHandle
+### Brain (Articulation)
 
-Set timbre parameters (0.0–1.0 each).
-- `brightness`: Spectral brightness (higher = brighter)
-- `width`: Spectral width (higher = wider)
+| Method | Description |
+|--------|-------------|
+| `brain(name)` | `"entrain"`, `"seq"`, or `"drone"` |
+
+| Brain | Behavior |
+|-------|----------|
+| `entrain` | Synchronizes with detected rhythms in the field (default) |
+| `seq` | Fixed-duration note sequencing |
+| `drone` | Sustained tone with slow frequency sway |
+
+### Phonation
+
+Phonation is configured in three tiers of increasing detail.
+
+**Tier 1 -- Presets:**
+
+| Method | Description |
+|--------|-------------|
+| `sustain()` | Sustain mode (default) |
+| `repeat()` | Repeated/pulsed mode |
+
+**Tier 2 -- Explicit when/duration:**
+
+| Method | Description |
+|--------|-------------|
+| `once()` | Single trigger |
+| `pulse(rate_hz)` | Pulse at given rate |
+| `while_alive()` | Duration: while agent alive |
+| `gates(n)` | Duration: n theta gates |
+| `field()` | Duration: field-based |
+
+**Tier 3 -- Expert tuning:**
+
+| Method | Description |
+|--------|-------------|
+| `sync(depth)` | Sync depth 0--1 (requires `pulse`) |
+| `social(coupling)` | Social coupling 0--1 (requires `pulse`) |
+| `field_window(min, max)` | Field theta window 0--1 (requires `field`) |
+| `field_curve(k, x0)` | Field curve parameters (requires `field`) |
+| `field_drop(gain)` | Field drop gain (requires `field`) |
 
 ```ts
-let bright = derive(harmonic).timbre(0.9, 0.3);
+let pulsed = derive(harmonic).repeat().pulse(3.0).sync(0.6).social(0.3);
+let fielded = derive(sine).field().field_window(0.2, 0.8);
 ```
 
-#### metabolism(rate: float) → SpeciesHandle
+### Lifecycle
 
-Set metabolism rate (energy consumption/recovery rate).
+| Method | Description |
+|--------|-------------|
+| `metabolism(rate)` | Energy consumption rate |
+| `adsr(attack_sec, decay_sec, sustain_level, release_sec)` | ADSR envelope |
 
 ```ts
-let slow = derive(sine).metabolism(0.3);
+let pluck = derive(harmonic).metabolism(0.5).adsr(0.01, 0.1, 0.3, 0.2);
 ```
 
-#### adsr(attack: float, decay: float, sustain: float, release: float) → SpeciesHandle
+### Rhythm
 
-Set ADSR envelope parameters (time in seconds for A/D/R, level 0.0–1.0 for S).
+| Method | Description |
+|--------|-------------|
+| `rhythm_coupling(mode)` | `"temporal"` / `"temporal_only"` |
+| `rhythm_coupling_vitality(lambda_v, v_floor)` | Vitality-modulated coupling |
+| `rhythm_reward(rho_t, metric)` | `"attack_phase_match"` or `"none"` |
+
+### Respawn
+
+| Method | Description |
+|--------|-------------|
+| `respawn_random()` | Random respawn locations |
+| `respawn_hereditary(sigma_oct)` | Hereditary with frequency variance in octaves |
+
+### Telemetry
+
+| Method | Description |
+|--------|-------------|
+| `enable_telemetry(first_k)` | Enable for first k agents |
+| `enable_plv(window)` | Enable Phase Locking Value computation |
+
+### Sustain Drive
+
+| Method | Description |
+|--------|-------------|
+| `sustain_drive(value)` | Continuous drive level |
+
+---
+
+## Mode Patterns
+
+Mode patterns define frequency relationships for modal synthesis bodies.
+
+### Constructors
+
+All constructors return `ModePattern`.
+
+| Function | Description |
+|----------|-------------|
+| `harmonic_modes()` | Harmonic series: f, 2f, 3f, ... |
+| `odd_modes()` | Odd harmonics: f, 3f, 5f, ... |
+| `power_modes(beta)` | Power law: f * n^beta |
+| `stiff_string_modes(stiffness)` | Stiffness-adjusted harmonics |
+| `custom_modes(ratios)` | Custom frequency ratios from array |
+| `modal_table(name)` | Named mode table lookup |
+| `landscape_density_modes()` | Modes from landscape density |
+| `landscape_peaks_modes()` | Modes from landscape peaks |
+
+### Modifiers
+
+All modifiers are chainable and return `ModePattern`.
+
+| Method | Description |
+|--------|-------------|
+| `.count(n)` | Number of modes |
+| `.range(min_mul, max_mul)` | Frequency range (landscape modes only) |
+| `.min_dist(d)` | Min ERB distance (landscape modes only) |
+| `.gamma(g)` | Gamma parameter (landscape_density only) |
+| `.jitter(cents)` | Randomization in cents |
+| `.seed(s)` | Random seed |
 
 ```ts
-let pluck = derive(harmonic).adsr(0.01, 0.1, 0.3, 0.2);
+let bell_modes = stiff_string_modes(0.03).count(12).jitter(5.0);
+let adaptive = landscape_density_modes().count(6).range(1.0, 8.0).gamma(2.0);
 ```
 
-## Group Creation
+---
 
-### create(species: SpeciesHandle, count: int) → GroupHandle
+## Spawn Strategies
 
-Create a draft group of `count` agents from the given species. Returns a handle for further configuration. The group is spawned when `flush()` or `wait()` is called.
+Strategies define how frequencies are allocated when spawning a group.
+
+### Constructors
+
+All constructors return `SpawnStrategy`.
+
+| Function | Description |
+|----------|-------------|
+| `consonance(root_freq)` | Highest consonance positions (default range 1x--4x) |
+| `consonance_density_pmf(min_freq, max_freq)` | Weighted-random from density PMF |
+| `random_log(min_freq, max_freq)` | Log-uniform random |
+| `linear(start_freq, end_freq)` | Linear interpolation |
+
+### Modifiers
+
+| Method | Applies to | Description |
+|--------|------------|-------------|
+| `.range(min_mul, max_mul)` | `consonance` | Multiplier range relative to root |
+| `.min_dist(d)` | `consonance`, `consonance_density_pmf` | Min ERB distance between agents |
+| `.reject_targets(anchor_hz, targets_st, exclusion_st, max_tries)` | Any | Reject positions near specified targets |
+
+`reject_targets` wraps any strategy: `targets_st` is an array of semitone offsets
+from `anchor_hz`, `exclusion_st` is the exclusion zone width in semitones, and
+`max_tries` is the retry limit.
 
 ```ts
-let g = create(sine, 4).freq(220.0).amp(0.5);
+let strat = consonance(220.0).range(1.0, 3.0).min_dist(0.9);
+create(harmonic, 6).place(strat);
+
+let density = consonance_density_pmf(100.0, 800.0).min_dist(1.0);
+create(sine, 8).place(density);
+
+// Avoid octaves and fifths of 220 Hz
+let filtered = random_log(100.0, 1000.0)
+    .reject_targets(220.0, [0.0, 12.0, 7.0, 19.0], 0.5, 50);
 ```
 
-## Timeline Control
+---
 
-### wait(seconds: float)
-### wait(seconds: int)
+## Group Creation and Operations
 
-Flush pending groups, advance the timeline cursor by the given duration, and commit all scheduled events.
+### create(species, count) -> GroupHandle
+
+Create a draft group of `count` agents. The group spawns on the next `flush()` or
+`wait()` call.
 
 ```ts
-wait(2.0);  // Wait 2 seconds
+let g = create(sine, 4).amp(0.3);
+flush();  // spawns the group
 ```
 
-### flush()
+### place(strategy) -> GroupHandle
 
-Flush pending draft groups immediately without advancing time. Commits all scheduled events at the current cursor position.
+Set spawn strategy (draft only).
 
 ```ts
-create(sine, 1).freq(440.0);
-flush();  // Spawn immediately
+create(harmonic, 6).place(consonance(220.0).range(1.0, 4.0));
 ```
 
-### seed(value: int)
+### release(group)
 
-Set the random seed for reproducible placement strategies.
-
-```ts
-seed(12345);
-```
-
-## Group Control
-
-### GroupHandle Methods (Chainable)
-
-These methods can be used in two contexts:
-1. **Draft mode** (before `flush()`/`wait()`): Configure the group before spawning
-2. **Live mode** (after spawning): Update parameters of live agents
-
-#### amp(value: float) → GroupHandle
-#### amp(value: int) → GroupHandle
-
-Set or update amplitude.
-
-```ts
-let g = create(sine, 1).amp(0.5);  // Draft
-flush();
-g.amp(0.8);  // Live update
-```
-
-#### freq(value: float) → GroupHandle
-#### freq(value: int) → GroupHandle
-
-Set or update frequency. In draft mode, overrides any placement strategy.
-
-```ts
-let g = create(sine, 1).freq(220.0);  // Draft
-flush();
-g.freq(440.0);  // Live update (pitch slides)
-```
-
-#### brain(name: string) → GroupHandle
-
-Set brain type (draft only). See species `brain()` for valid values.
-
-```ts
-create(sine, 1).brain("drone");
-```
-
-#### phonation(name: string) → GroupHandle
-
-Set phonation type (draft only). See species `phonation()` for valid values.
-
-```ts
-create(harmonic, 1).phonation("decay");
-```
-
-#### timbre(brightness: float, width: float) → GroupHandle
-
-Set or update timbre.
-
-```ts
-let g = create(harmonic, 1).timbre(0.8, 0.2);
-flush();
-g.timbre(0.5, 0.3);  // Live update
-```
-
-#### metabolism(rate: float) → GroupHandle
-
-Set metabolism rate (draft only).
-
-```ts
-create(sine, 1).metabolism(0.5);
-```
-
-#### adsr(attack: float, decay: float, sustain: float, release: float) → GroupHandle
-
-Set ADSR envelope (draft only).
-
-```ts
-create(harmonic, 1).adsr(0.05, 0.1, 0.7, 0.2);
-```
-
-#### place(strategy: SpawnStrategy) → GroupHandle
-
-Set placement strategy (draft only). Assigns frequencies to agents in the group based on the strategy.
-
-```ts
-let strat = consonance(220.0).range(1.0, 4.0);
-create(sine, 4).place(strat);
-```
-
-### release(handle: GroupHandle)
-
-Release a group of agents. Agents enter their release phase and fade out.
+Release a live group. Agents enter their release phase and fade out.
 
 ```ts
 let g = create(sine, 1).freq(440.0);
 flush();
 wait(2.0);
-release(g);  // Begin release
+release(g);
 ```
 
-## Spawn Strategies
+### Draft vs. Live Methods
 
-Strategies define how frequencies are assigned when spawning multiple agents.
+Group methods work in two contexts:
 
-### consonance(root_freq: float) → SpawnStrategy
+- **Draft** (before `flush()`/`wait()`): configures the group before spawning.
+- **Live** (after spawning): patches parameters on running agents.
 
-Pick highest consonance positions within the multiplier range of the root frequency.
+**Live-patchable** (work in both draft and live):
 
-**Default range:** `[1.0, 4.0]` (root to 2 octaves above)
-**Default min_dist:** `1.0` ERB
+`amp`, `energy`, `freq`, `landscape_weight`, `neighbor_step_cents`,
+`tessitura_gravity`, `sustain_drive`, `pitch_smooth`, `exploration`,
+`persistence`, `anneal_temp`, `temperature`, `move_cost`, `move_cost_exp`,
+`improvement_threshold`, `proposal_interval`, `window_cents`, `top_k`,
+`sigma_cents`, `random_candidates`, `brightness`, `spread`, `voices`,
+`pitch_glide`, `leave_self_out`, `leave_self_out_mode`,
+`leave_self_out_harmonics`, `crowding`, `crowding_target`, `global_peaks`,
+`ratio_candidates`, `move_cost_time_scale`, `pitch_apply_mode`, `pitch_apply`
+
+**Draft-only** (ignored with a warning if called on a live group):
+
+`brain`, `pitch_mode`, `mode`, `pitch_core`, `sustain`, `repeat`, `once`,
+`pulse`, `while_alive`, `gates`, `field`, `sync`, `social`, `field_window`,
+`field_curve`, `field_drop`, `metabolism`, `adsr`, `rhythm_coupling`,
+`rhythm_coupling_vitality`, `rhythm_reward`, `respawn_random`,
+`respawn_hereditary`, `modes`, `place`
 
 ```ts
-let strat = consonance(220.0);
-create(sine, 4).place(strat);
+let g = create(harmonic, 4)
+    .brightness(0.7)          // draft: sets initial value
+    .brain("entrain")         // draft-only
+    .place(consonance(220.0));
+flush();
+
+g.brightness(0.3);            // live: patches running agents
+wait(2.0);
+release(g);
 ```
 
-### consonance_density(min_freq: float, max_freq: float) → SpawnStrategy
+---
 
-Weighted-random placement based on consonance density in the frequency range.
+## Timeline and Control Flow
 
-**Default min_dist:** `1.0` ERB
+### wait(seconds)
+
+Flush pending groups, then advance the timeline cursor.
 
 ```ts
-let strat = consonance_density(100.0, 800.0);
-create(sine, 8).place(strat);
+create(sine, 1).freq(440.0);
+wait(2.0);  // spawn + wait 2 seconds
 ```
 
-### random_log(min_freq: float, max_freq: float) → SpawnStrategy
+### flush()
 
-Uniform distribution in logarithmic frequency space (equal probability per octave).
+Commit pending draft groups without advancing time.
 
 ```ts
-let strat = random_log(100.0, 1000.0);
-create(sine, 6).place(strat);
+create(sine, 1).freq(440.0);
+flush();  // spawn immediately at current cursor
 ```
 
-### linear(start_freq: float, end_freq: float) → SpawnStrategy
+### seed(value)
 
-Linear interpolation between start and end frequencies.
+Set the random seed for reproducible scenarios.
 
 ```ts
-let strat = linear(200.0, 800.0);
-create(sine, 5).place(strat);  // Evenly spaced
+seed(42);
 ```
 
-## Strategy Modifiers
+### scene(name, callback)
 
-### range(strategy: SpawnStrategy, min_mul: float, max_mul: float) → SpawnStrategy
-
-Set multiplier range for `consonance()` strategy. Ignored for other strategies.
-
-```ts
-let strat = consonance(220.0).range(1.0, 3.0);  // 220 to 660 Hz
-```
-
-### min_dist(strategy: SpawnStrategy, distance: float) → SpawnStrategy
-
-Set minimum distance between agents in ERB units (critical band spacing). Applies to `consonance()` and `consonance_density()`.
-
-```ts
-let strat = consonance(220.0).min_dist(1.5);  // Wider spacing
-```
-
-## Scope Management
-
-### scene(name: string, callback: closure)
-
-Create a named scene marker. All groups created within the callback are automatically released when the scene ends (scoped cleanup).
+Named scope with automatic group release when the callback returns.
 
 ```ts
 scene("Intro", || {
     create(sine, 2).freq(220.0);
-    wait(2.0);
-    // Groups auto-released here
+    flush();
+    wait(4.0);
+    // all groups auto-released here
 });
 ```
 
-### play(callback: closure)
-### play(callback: closure, arg1)
-### play(callback: closure, arg1, arg2)
-### play(callback: closure, arg1, arg2, arg3)
-### play(callback: closure, args: array)
+### play(callback [, args...])
 
-Execute a closure with optional arguments. Creates a new scope for groups (scoped cleanup).
+Scoped callback execution with automatic cleanup.
+Accepts 0--3 positional arguments, or an array.
 
 ```ts
-let make_chord = |root| {
+let chord = |root| {
     create(sine, 1).freq(root);
     create(sine, 1).freq(root * 1.25);
     create(sine, 1).freq(root * 1.5);
     flush();
 };
 
-play(make_chord, 220.0);
+play(chord, 220.0);
 wait(2.0);
-// Groups auto-released
+// groups auto-released when play scope ends
 ```
 
-### parallel(callbacks: array)
+### parallel(callbacks)
 
-Execute multiple closures in parallel timelines. Each closure starts at the current cursor position. The cursor advances to the maximum end time of all branches.
+Execute closures on parallel timelines. Each branch starts at the current cursor.
+The cursor advances to the latest branch end.
 
 ```ts
 parallel([
@@ -357,79 +441,69 @@ parallel([
     },
     || {
         create(sine, 1).freq(330.0);
-        wait(2.0);  // This branch takes longer
-    }
+        wait(3.0);
+    },
 ]);
-// Cursor now at 2.0 seconds
+// cursor is now at +3.0 seconds
 ```
+
+---
 
 ## Global Parameters
 
-### set_harmonicity_mirror_weight(value: float)
-
-Set the overtone/undertone balance (0.0–1.0).
-- `0.0` = Pure overtone series (major/bright)
-- `1.0` = Pure undertone series (minor/dark)
-- `0.5` = Balanced
+| Function | Description |
+|----------|-------------|
+| `set_harmonicity_mirror_weight(value)` | Overtone/undertone balance 0.0--1.0 |
+| `set_roughness_k(value)` | Roughness tolerance |
+| `set_global_coupling(value)` | Agent interaction strength |
+| `set_pitch_objective(name)` | `"consonance"`/`"positive"` or `"dissonance"`/`"negative"` |
 
 ```ts
-set_harmonicity_mirror_weight(0.0);  // Major mode
-wait(2.0);
-set_harmonicity_mirror_weight(1.0);  // Minor mode
+set_harmonicity_mirror_weight(0.0);  // overtone-dominant (major)
+wait(4.0);
+set_harmonicity_mirror_weight(1.0);  // undertone-dominant (minor)
 ```
 
-### set_global_coupling(value: float)
+---
 
-Set global agent-agent interaction strength (0.0–1.0). Higher values increase mutual influence between agents.
-
-```ts
-set_global_coupling(0.5);
-```
-
-### set_roughness_k(value: float)
-
-Set roughness tolerance parameter. Controls how strongly agents avoid dissonant (rough) regions.
+## Complete Example
 
 ```ts
-set_roughness_k(0.8);
-```
+seed(1);
 
-## Example: Complete Scenario
-
-```ts
 // Define species
-let drone = derive(sine).amp(0.6).phonation("hold");
-let voice = derive(harmonic).amp(0.3).phonation("hold");
+let anchor = derive(sine).amp(0.6).sustain();
+let voice = derive(harmonic)
+    .amp(0.3)
+    .brightness(0.5)
+    .pitch_mode("free")
+    .pitch_core("hill_climb")
+    .pitch_apply("glide").pitch_glide(0.08)
+    .crowding(0.5)
+    .metabolism(0.4)
+    .adsr(0.05, 0.1, 0.7, 0.3)
+    .repeat().pulse(2.25).sync(0.5);
 
 scene("Opening", || {
-    // Create anchor drone
-    let anchor = create(drone, 1).freq(220.0);
+    // Anchor drone
+    let root = create(anchor, 1).freq(220.0);
     flush();
     wait(1.0);
 
-    // Spawn consonant voices
+    // Consonant voices
     let strat = consonance(220.0).range(1.0, 3.0).min_dist(0.9);
-    create(voice, 4).place(strat);
-    wait(2.0);
+    create(voice, 6).place(strat);
+    wait(4.0);
 
-    // Modulate harmonicity
+    // Shift to undertone mode
     set_harmonicity_mirror_weight(1.0);
-    wait(2.0);
+    wait(4.0);
+});
+
+scene("Development", || {
+    let dense = derive(voice).exploration(0.8).anneal_temp(0.5);
+    let strat = consonance_density_pmf(100.0, 800.0).min_dist(0.8);
+    create(dense, 12).place(strat);
+    wait(8.0);
 });
 ```
-
-## Brain Types Reference
-
-| Brain | Behavior |
-|-------|----------|
-| `entrain` | Synchronizes with detected rhythms in the field (default) |
-| `seq` | Fixed-duration note sequencing |
-| `drone` | Sustained tone with slow frequency sway |
-
-## Phonation Types Reference
-
-| Phonation | Behavior |
-|-----------|----------|
-| `hold` | One-shot sustain tied to agent lifecycle |
-| `decay` | Interval-based retriggering |
-| `grain` | Field-based granular retriggering |

@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-47a378f7.js";
+            window.path_to_searchindex_js = "searchindex-214be9d8.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-dd2a5500.js"></script>
@@ -176,35 +176,49 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="quick-start-guide"><a class="header" href="#quick-start-guide">Quick Start Guide</a></h1>
-<p>This page provides a quick introduction to Conchordal’s scripting API. For the complete API reference, see <a href="#conchordal-scripting-api-reference">Reference</a>.</p>
+<p>Conchordal v0.3.0 scripting API overview. For full details, see the <a href="#rhai-scripting-api-reference-v030">API Reference</a>.</p>
 <h2 id="basic-concepts"><a class="header" href="#basic-concepts">Basic Concepts</a></h2>
 <ul>
-<li><strong>Species</strong>: Templates for creating agents (defined with <code>derive()</code>)</li>
-<li><strong>Groups</strong>: Collections of agents created from a species (created with <code>create()</code>)</li>
-<li><strong>Timeline</strong>: Sequential and parallel execution controlled by <code>wait()</code>, <code>flush()</code>, and <code>parallel()</code></li>
-<li><strong>Strategies</strong>: Methods for placing multiple agents in frequency space</li>
+<li><strong>Species</strong>: Agent templates created with <code>derive()</code> from presets (<code>sine</code>, <code>harmonic</code>, <code>saw</code>, <code>square</code>, <code>noise</code>, <code>modal</code>).</li>
+<li><strong>Groups</strong>: Collections of agents spawned from a species via <code>create(species, count)</code>. Returns a <code>GroupHandle</code>.</li>
+<li><strong>Timeline</strong>: <code>wait(seconds)</code> advances the clock. <code>flush()</code> forces immediate dispatch. <code>scene()</code> scopes groups with auto-release. <code>parallel()</code> runs branches concurrently.</li>
+<li><strong>Strategies</strong>: Placement methods for multi-agent frequency assignment: <code>consonance()</code>, <code>consonance_density_pmf()</code>, <code>random_log()</code>, <code>linear()</code>.</li>
 </ul>
 <h2 id="minimal-example"><a class="header" href="#minimal-example">Minimal Example</a></h2>
-<pre><code class="language-ts">// Create a single sine wave at 440 Hz
+<pre><code class="language-ts">// Single sine agent at 440 Hz for 2 seconds
 create(sine, 1).freq(440.0);
-wait(2.0);  // Play for 2 seconds
+wait(2.0);
 </code></pre>
 <h2 id="common-patterns"><a class="header" href="#common-patterns">Common Patterns</a></h2>
-<h3 id="define-a-custom-species"><a class="header" href="#define-a-custom-species">Define a Custom Species</a></h3>
+<h3 id="custom-species-definition"><a class="header" href="#custom-species-definition">Custom Species Definition</a></h3>
 <pre><code class="language-ts">let voice = derive(harmonic)
     .amp(0.5)
-    .phonation("hold")
-    .timbre(0.7, 0.2);
+    .sustain()
+    .brightness(0.7)
+    .spread(0.2)
+    .voices(4);
 </code></pre>
-<h3 id="create-multiple-agents-with-consonance-strategy"><a class="header" href="#create-multiple-agents-with-consonance-strategy">Create Multiple Agents with Consonance Strategy</a></h3>
-<pre><code class="language-ts">let strat = consonance(220.0).range(1.0, 4.0);
-create(sine, 4).place(strat);
-flush();  // Spawn immediately
+<p>Body parameters are individual methods: <code>brightness(v)</code>, <code>spread(v)</code>, <code>voices(n)</code>.
+Use <code>energy(v)</code> as an alias for <code>amp(v)</code>.</p>
+<h3 id="multiple-agents-with-consonance-strategy"><a class="header" href="#multiple-agents-with-consonance-strategy">Multiple Agents with Consonance Strategy</a></h3>
+<pre><code class="language-ts">let base = derive(harmonic).energy(0.1).sustain();
+
+// Place 4 agents using harmonic consonance relative to 220 Hz
+create(base, 4)
+    .place(consonance(220.0).range(1.0, 4.0).min_dist(1.0));
+wait(2.0);
+
+// Or use landscape-derived density placement
+create(base, 4).place(consonance_density_pmf(110.0, 880.0));
+wait(2.0);
 </code></pre>
-<h3 id="scene-with-automatic-cleanup"><a class="header" href="#scene-with-automatic-cleanup">Scene with Automatic Cleanup</a></h3>
-<pre><code class="language-ts">scene("Introduction", || {
-    let drone = derive(sine).amp(0.6).phonation("hold");
-    create(drone, 1).freq(110.0);
+<h3 id="scene-with-auto-cleanup"><a class="header" href="#scene-with-auto-cleanup">Scene with Auto Cleanup</a></h3>
+<pre><code class="language-ts">let drone = derive(sine).amp(0.3).sustain();
+let seeker = derive(sine).amp(0.2).sustain();
+
+scene("Introduction", || {
+    let a = create(drone, 1).freq(110.0);
+    let s = create(seeker, 1).freq(220.0);
     wait(3.0);
     // All groups auto-released when scene ends
 });
@@ -212,36 +226,85 @@ flush();  // Spawn immediately
 <h3 id="parallel-timelines"><a class="header" href="#parallel-timelines">Parallel Timelines</a></h3>
 <pre><code class="language-ts">parallel([
     || {
-        // Bass line
-        create(sine, 1).freq(110.0);
+        // Bass layer
+        create(sine, 1).freq(110.0).sustain();
         wait(2.0);
     },
     || {
-        // Melody
-        create(harmonic, 1).freq(440.0);
+        // Melody layer
+        create(harmonic, 1).freq(440.0).sustain();
         wait(1.0);
-        create(harmonic, 1).freq(550.0);
+        create(harmonic, 1).freq(550.0).sustain();
         wait(1.0);
     }
 ]);
 </code></pre>
-<h3 id="live-parameter-updates"><a class="header" href="#live-parameter-updates">Live Parameter Updates</a></h3>
-<pre><code class="language-ts">let g = create(sine, 1).freq(220.0);
+<h3 id="modal-body-with-custom-modes"><a class="header" href="#modal-body-with-custom-modes">Modal Body with Custom Modes</a></h3>
+<p>The <code>modal</code> preset uses inharmonic mode patterns for bell/bar/glass timbres.
+Configure modes with <code>modes(pattern)</code> and control brightness.</p>
+<pre><code class="language-ts">let bell = derive(modal)
+    .sustain()
+    .pitch_mode("lock")
+    .freq(220.0)
+    .amp(0.11)
+    .brightness(0.7)
+    .modes(modal_table("vibraphone_1").count(5));
+
+create(bell, 1);
+wait(2.0);
+</code></pre>
+<p>Mode pattern constructors: <code>harmonic_modes()</code>, <code>odd_modes()</code>, <code>power_modes(beta)</code>,
+<code>stiff_string_modes(stiffness)</code>, <code>custom_modes([ratios])</code>, <code>modal_table(name)</code>.
+Chain <code>.count(n)</code>, <code>.jitter(cents)</code>, <code>.seed(n)</code> to refine patterns.</p>
+<p>Landscape-aware modes sample from the live perceptual field:</p>
+<pre><code class="language-ts">let adaptive = derive(modal)
+    .sustain()
+    .pitch_mode("free")
+    .amp(0.05)
+    .brightness(0.7)
+    .modes(landscape_density_modes().count(16).range(1.0, 3.5).min_dist(0.9));
+</code></pre>
+<h3 id="phonation-control"><a class="header" href="#phonation-control">Phonation Control</a></h3>
+<p>Phonation follows a tiered system.</p>
+<p><strong>Tier 1 – Presets</strong> set sensible defaults for common use:</p>
+<pre><code class="language-ts">derive(sine).sustain();   // Sustained tone, tied to lifecycle
+derive(sine).repeat();    // Interval-based retriggering
+</code></pre>
+<p><strong>Tier 2 – Explicit when/duration</strong> for finer control:</p>
+<pre><code class="language-ts">derive(sine).once();              // Single trigger
+derive(sine).pulse(2.0);         // Retrigger at 2 Hz
+derive(sine).while_alive();      // Duration spans full lifecycle
+derive(sine).gates(4);           // Hold for 4 gate cycles
+derive(sine).field();            // Field-driven duration
+</code></pre>
+<p>These compose: <code>derive(sine).pulse(3.0).gates(2)</code> pulses at 3 Hz, each lasting 2 gates.</p>
+<h3 id="pitch-control"><a class="header" href="#pitch-control">Pitch Control</a></h3>
+<pre><code class="language-ts">// "lock" keeps initial frequency; "free" allows hill-climbing
+derive(sine).pitch_mode("lock");
+derive(sine).pitch_mode("free");
+
+// "gate_snap" applies pitch on gate boundaries; "glide" interpolates
+derive(sine).pitch_apply("gate_snap");
+derive(sine).pitch_apply("glide").pitch_glide(0.05);
+</code></pre>
+<h3 id="live-parameter-patching"><a class="header" href="#live-parameter-patching">Live Parameter Patching</a></h3>
+<p>Groups support live updates on spawned agents:</p>
+<pre><code class="language-ts">let g = create(sine, 1).freq(220.0).sustain();
 flush();
 wait(1.0);
 
-g.freq(440.0);  // Slide to new frequency
+g.freq(440.0);   // Slide to new frequency
+g.amp(0.3);      // Adjust amplitude
 flush();
 wait(1.0);
 </code></pre>
-<h3 id="modulate-global-parameters"><a class="header" href="#modulate-global-parameters">Modulate Global Parameters</a></h3>
-<pre><code class="language-ts">// Start with overtone series (major)
+<h3 id="global-parameter-modulation"><a class="header" href="#global-parameter-modulation">Global Parameter Modulation</a></h3>
+<pre><code class="language-ts">// Overtone series emphasis (major quality)
 set_harmonicity_mirror_weight(0.0);
-let strat = consonance(261.63).range(1.0, 3.0);
-create(sine, 4).place(strat);
+create(sine, 4).place(consonance(261.63).range(1.0, 3.0));
 wait(2.0);
 
-// Switch to undertone series (minor)
+// Shift toward undertone series (minor quality)
 set_harmonicity_mirror_weight(1.0);
 wait(2.0);
 </code></pre>
@@ -249,322 +312,178 @@ wait(2.0);
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Preset</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>sine</code></td><td>Pure sine wave</td></tr>
-<tr><td><code>harmonic</code></td><td>Harmonic series</td></tr>
-<tr><td><code>saw</code></td><td>Sawtooth-like timbre</td></tr>
-<tr><td><code>square</code></td><td>Square-like timbre</td></tr>
-<tr><td><code>noise</code></td><td>Noise-like timbre</td></tr>
-</tbody>
-</table>
-</div>
-<h2 id="brain-types"><a class="header" href="#brain-types">Brain Types</a></h2>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Type</th><th>Behavior</th></tr>
-</thead>
-<tbody>
-<tr><td><code>"entrain"</code></td><td>Responds to rhythm field (default)</td></tr>
-<tr><td><code>"seq"</code></td><td>Fixed-duration notes</td></tr>
-<tr><td><code>"drone"</code></td><td>Sustained with sway</td></tr>
-</tbody>
-</table>
-</div>
-<h2 id="phonation-types"><a class="header" href="#phonation-types">Phonation Types</a></h2>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Type</th><th>Behavior</th></tr>
-</thead>
-<tbody>
-<tr><td><code>"hold"</code></td><td>Sustain tied to lifecycle</td></tr>
-<tr><td><code>"decay"</code></td><td>Interval retriggering</td></tr>
-<tr><td><code>"grain"</code></td><td>Field-based granular</td></tr>
-</tbody>
-</table>
-</div>
-<h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
-<p>See the <a href="#conchordal-scripting-api-reference">complete API reference</a> for detailed documentation of all functions, types, and parameters.</p>
-<div style="break-before: page; page-break-before: always;"></div>
-<h1 id="conchordal-scripting-api-reference"><a class="header" href="#conchordal-scripting-api-reference">Conchordal Scripting API Reference</a></h1>
-<p>This document describes the Rhai scripting API for Conchordal’s Life Engine.</p>
-<h2 id="overview"><a class="header" href="#overview">Overview</a></h2>
-<p>The scripting API allows you to compose scenarios by:</p>
-<ul>
-<li>Defining <strong>species</strong> (agent templates with body method, timbre, brain type)</li>
-<li>Creating <strong>groups</strong> of agents from species</li>
-<li>Controlling <strong>timeline</strong> (waiting, flushing, parallel execution)</li>
-<li>Managing <strong>placement</strong> strategies (consonance-based, random, linear)</li>
-<li>Adjusting <strong>global parameters</strong> (harmonicity mirror weight, coupling, roughness)</li>
-</ul>
-<h2 id="types"><a class="header" href="#types">Types</a></h2>
-<h3 id="specieshandle"><a class="header" href="#specieshandle">SpeciesHandle</a></h3>
-<p>Represents a species template for creating agents. Created by deriving from presets or other species.</p>
-<h3 id="grouphandle"><a class="header" href="#grouphandle">GroupHandle</a></h3>
-<p>A handle to a group of agents. Returned by <code>create()</code>. Used to control live agents or configure draft groups before spawning.</p>
-<h3 id="spawnstrategy"><a class="header" href="#spawnstrategy">SpawnStrategy</a></h3>
-<p>Defines how frequencies are assigned when creating multiple agents. Created by strategy constructors like <code>consonance()</code>, <code>consonance_density()</code>, etc.</p>
-<h2 id="preset-species-1"><a class="header" href="#preset-species-1">Preset Species</a></h2>
-<p>Global variables for common body methods:</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Preset</th><th>Body Method</th><th>Description</th></tr>
+<tr><th>Preset</th><th>Body</th><th>Description</th></tr>
 </thead>
 <tbody>
 <tr><td><code>sine</code></td><td>Sine</td><td>Pure sine wave</td></tr>
 <tr><td><code>harmonic</code></td><td>Harmonic</td><td>Harmonic series synthesis</td></tr>
-<tr><td><code>saw</code></td><td>Harmonic</td><td>Sawtooth-like (brightness=0.85, width=0.2)</td></tr>
-<tr><td><code>square</code></td><td>Harmonic</td><td>Square-like (brightness=0.65, width=0.1)</td></tr>
-<tr><td><code>noise</code></td><td>Harmonic</td><td>Noise-like (brightness=1.0, motion=1.0, width=0.35)</td></tr>
+<tr><td><code>saw</code></td><td>Harmonic</td><td>Sawtooth-like (bright)</td></tr>
+<tr><td><code>square</code></td><td>Harmonic</td><td>Square-like (odd harmonics)</td></tr>
+<tr><td><code>noise</code></td><td>Harmonic</td><td>Noise-like (full spectrum)</td></tr>
+<tr><td><code>modal</code></td><td>Modal</td><td>Inharmonic mode synthesis</td></tr>
 </tbody>
 </table>
 </div>
+<h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
+<p>See the <a href="#rhai-scripting-api-reference-v030">API Reference</a> for the complete function list, type details, and advanced parameters.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="rhai-scripting-api-reference-v030"><a class="header" href="#rhai-scripting-api-reference-v030">Rhai Scripting API Reference (v0.3.0)</a></h1>
+<p>This reference documents the complete Rhai scripting API for Conchordal’s Life
+Engine. Scenarios are scripts that define species, spawn agent groups, control
+the timeline, and tune global parameters.</p>
+<hr>
+<h2 id="registered-types"><a class="header" href="#registered-types">Registered Types</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Type</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>SpeciesHandle</code></td><td>Species template, built with the builder pattern</td></tr>
+<tr><td><code>GroupHandle</code></td><td>Handle to an agent group (draft or live)</td></tr>
+<tr><td><code>SpawnStrategy</code></td><td>Frequency allocation strategy for placement</td></tr>
+<tr><td><code>ModePattern</code></td><td>Frequency pattern for modal synthesis bodies</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="preset-species-1"><a class="header" href="#preset-species-1">Preset Species</a></h2>
+<p>Global constants available in every script:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Preset</th><th>Body</th><th>Notes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>sine</code></td><td>Sine</td><td>Pure sine wave</td></tr>
+<tr><td><code>harmonic</code></td><td>Harmonic</td><td>Harmonic series synthesis</td></tr>
+<tr><td><code>saw</code></td><td>Harmonic</td><td>brightness = 0.85</td></tr>
+<tr><td><code>square</code></td><td>Harmonic</td><td>brightness = 0.65</td></tr>
+<tr><td><code>noise</code></td><td>Harmonic</td><td>brightness = 1.0, motion = 1.0</td></tr>
+<tr><td><code>modal</code></td><td>Modal</td><td>Resonator-based modal synthesis</td></tr>
+</tbody>
+</table>
+</div>
+<pre><code class="language-ts">let voice = derive(harmonic).amp(0.4).brightness(0.7);
+</code></pre>
+<hr>
 <h2 id="species-definition"><a class="header" href="#species-definition">Species Definition</a></h2>
-<h3 id="deriveparent-specieshandle--specieshandle"><a class="header" href="#deriveparent-specieshandle--specieshandle">derive(parent: SpeciesHandle) → SpeciesHandle</a></h3>
-<p>Clone a species to create a new template.</p>
-<pre><code class="language-ts">let my_species = derive(sine).amp(0.5).phonation("hold");
+<h3 id="deriveparent---specieshandle"><a class="header" href="#deriveparent---specieshandle">derive(parent) -&gt; SpeciesHandle</a></h3>
+<p>Clone a preset or existing species for modification.</p>
+<pre><code class="language-ts">let pluck = derive(harmonic).amp(0.3).adsr(0.01, 0.1, 0.3, 0.2);
 </code></pre>
-<h3 id="species-methods-chainable"><a class="header" href="#species-methods-chainable">Species Methods (Chainable)</a></h3>
-<p>These methods modify a <code>SpeciesHandle</code> and return it for chaining.</p>
-<h4 id="ampvalue-float--specieshandle"><a class="header" href="#ampvalue-float--specieshandle">amp(value: float) → SpeciesHandle</a></h4>
-<h4 id="ampvalue-int--specieshandle"><a class="header" href="#ampvalue-int--specieshandle">amp(value: int) → SpeciesHandle</a></h4>
-<p>Set amplitude (0.0–1.0).</p>
-<pre><code class="language-ts">let loud = derive(sine).amp(0.8);
+<p>All species methods are chainable and return <code>SpeciesHandle</code>.</p>
+<h3 id="body-and-amplitude"><a class="header" href="#body-and-amplitude">Body and Amplitude</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>amp(value)</code></td><td>Amplitude 0.0–1.0</td></tr>
+<tr><td><code>energy(value)</code></td><td>Alias for <code>amp</code></td></tr>
+<tr><td><code>freq(value)</code></td><td>Frequency lock in Hz</td></tr>
+<tr><td><code>brightness(value)</code></td><td>Spectral brightness 0.0–1.0 (harmonic/modal bodies)</td></tr>
+<tr><td><code>spread(value)</code></td><td>Detuning spread</td></tr>
+<tr><td><code>voices(count)</code></td><td>Number of unison voices</td></tr>
+<tr><td><code>modes(pattern)</code></td><td>Set mode pattern (modal body); see <a href="#mode-patterns">Mode Patterns</a></td></tr>
+</tbody>
+</table>
+</div>
+<pre><code class="language-ts">let pad = derive(harmonic).amp(0.5).brightness(0.6).spread(0.02).voices(3);
+let bell = derive(modal).modes(stiff_string_modes(0.02).count(8));
 </code></pre>
-<h4 id="freqvalue-float--specieshandle"><a class="header" href="#freqvalue-float--specieshandle">freq(value: float) → SpeciesHandle</a></h4>
-<h4 id="freqvalue-int--specieshandle"><a class="header" href="#freqvalue-int--specieshandle">freq(value: int) → SpeciesHandle</a></h4>
-<p>Set default frequency in Hz.</p>
-<pre><code class="language-ts">let a440 = derive(sine).freq(440.0);
+<h3 id="pitch-control-1"><a class="header" href="#pitch-control-1">Pitch Control</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>pitch_mode(name)</code></td><td><code>"free"</code> or <code>"lock"</code></td></tr>
+<tr><td><code>mode(name)</code></td><td>Alias for <code>pitch_mode</code></td></tr>
+<tr><td><code>pitch_core(name)</code></td><td><code>"hill_climb"</code> or <code>"peak_sampler"</code></td></tr>
+<tr><td><code>pitch_apply(name)</code></td><td><code>"gate_snap"</code> or <code>"glide"</code></td></tr>
+<tr><td><code>pitch_apply_mode(name)</code></td><td>Alias for <code>pitch_apply</code></td></tr>
+<tr><td><code>pitch_glide(tau_sec)</code></td><td>Glide time constant in seconds</td></tr>
+<tr><td><code>pitch_smooth(tau_sec)</code></td><td>Pitch smoothing time constant</td></tr>
+</tbody>
+</table>
+</div>
+<pre><code class="language-ts">let glider = derive(sine).pitch_mode("free").pitch_core("hill_climb")
+    .pitch_apply("glide").pitch_glide(0.1);
 </code></pre>
-<h4 id="brainname-string--specieshandle"><a class="header" href="#brainname-string--specieshandle">brain(name: string) → SpeciesHandle</a></h4>
-<p>Set brain type. Valid values:</p>
-<ul>
-<li><code>"entrain"</code> - Entrainment brain (default): responds to rhythm field</li>
-<li><code>"seq"</code> - Sequencer brain: fixed duration notes</li>
-<li><code>"drone"</code> - Drone brain: sustained with sway modulation</li>
-</ul>
-<pre><code class="language-ts">let drone = derive(sine).brain("drone");
+<h3 id="hill-climb-tuning"><a class="header" href="#hill-climb-tuning">Hill-Climb Tuning</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>landscape_weight(value)</code></td><td>Weight of landscape objective</td></tr>
+<tr><td><code>neighbor_step_cents(value)</code></td><td>Step size for neighbor exploration</td></tr>
+<tr><td><code>tessitura_gravity(value)</code></td><td>Gravity toward tessitura center</td></tr>
+<tr><td><code>exploration(value)</code></td><td>Exploration tendency</td></tr>
+<tr><td><code>persistence(value)</code></td><td>Persistence bias</td></tr>
+<tr><td><code>anneal_temp(value)</code></td><td>Annealing temperature</td></tr>
+<tr><td><code>temperature(value)</code></td><td>Alias for <code>anneal_temp</code></td></tr>
+<tr><td><code>improvement_threshold(value)</code></td><td>Minimum improvement to accept move</td></tr>
+<tr><td><code>move_cost(coeff)</code></td><td>Cost multiplier for pitch changes</td></tr>
+<tr><td><code>move_cost_exp(exp)</code></td><td>Exponent for move cost</td></tr>
+<tr><td><code>move_cost_time_scale(name)</code></td><td><code>"legacy"</code>/<code>"integration_window"</code> or <code>"proposal"</code>/<code>"proposal_interval"</code></td></tr>
+<tr><td><code>proposal_interval(seconds)</code></td><td>Proposal generation interval</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="peak-sampler-tuning"><a class="header" href="#peak-sampler-tuning">Peak Sampler Tuning</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>window_cents(width)</code></td><td>Search window width in cents</td></tr>
+<tr><td><code>top_k(count)</code></td><td>Top-k candidates</td></tr>
+<tr><td><code>sigma_cents(spread)</code></td><td>Gaussian spread in cents</td></tr>
+<tr><td><code>random_candidates(count)</code></td><td>Number of random candidates</td></tr>
+<tr><td><code>global_peaks(count)</code></td><td>Global peak candidates (min_sep = 0)</td></tr>
+<tr><td><code>global_peaks(count, min_sep_cents)</code></td><td>Global peak candidates with separation</td></tr>
+<tr><td><code>ratio_candidates(count)</code></td><td>Enable ratio-based candidates (0 to disable)</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="crowding"><a class="header" href="#crowding">Crowding</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>crowding(strength)</code></td><td>Auto-sigma from roughness kernel</td></tr>
+<tr><td><code>crowding(strength, sigma_cents)</code></td><td>Explicit sigma</td></tr>
+<tr><td><code>crowding_target(same_visible, other_visible)</code></td><td>Target visibility (booleans)</td></tr>
+<tr><td><code>leave_self_out(enabled)</code></td><td>Subtract own spectral contribution</td></tr>
+<tr><td><code>leave_self_out_mode(name)</code></td><td><code>"approx"</code>/<code>"approx_harmonics"</code> or <code>"exact"</code>/<code>"exact_scan"</code></td></tr>
+<tr><td><code>leave_self_out_harmonics(count)</code></td><td>Number of harmonics for self-subtraction</td></tr>
+</tbody>
+</table>
+</div>
+<pre><code class="language-ts">let social = derive(harmonic)
+    .crowding(0.8)
+    .crowding_target(true, true)
+    .leave_self_out(true).leave_self_out_mode("approx");
 </code></pre>
-<h4 id="phonationname-string--specieshandle"><a class="header" href="#phonationname-string--specieshandle">phonation(name: string) → SpeciesHandle</a></h4>
-<p>Set phonation type. Valid values:</p>
-<ul>
-<li><code>"hold"</code> - One-shot sustain tied to lifecycle</li>
-<li><code>"decay"</code> - Interval-based retriggering</li>
-<li><code>"grain"</code> - Field-based retriggering</li>
-</ul>
-<pre><code class="language-ts">let voice = derive(harmonic).phonation("hold");
-</code></pre>
-<h4 id="timbrebrightness-float-width-float--specieshandle"><a class="header" href="#timbrebrightness-float-width-float--specieshandle">timbre(brightness: float, width: float) → SpeciesHandle</a></h4>
-<p>Set timbre parameters (0.0–1.0 each).</p>
-<ul>
-<li><code>brightness</code>: Spectral brightness (higher = brighter)</li>
-<li><code>width</code>: Spectral width (higher = wider)</li>
-</ul>
-<pre><code class="language-ts">let bright = derive(harmonic).timbre(0.9, 0.3);
-</code></pre>
-<h4 id="metabolismrate-float--specieshandle"><a class="header" href="#metabolismrate-float--specieshandle">metabolism(rate: float) → SpeciesHandle</a></h4>
-<p>Set metabolism rate (energy consumption/recovery rate).</p>
-<pre><code class="language-ts">let slow = derive(sine).metabolism(0.3);
-</code></pre>
-<h4 id="adsrattack-float-decay-float-sustain-float-release-float--specieshandle"><a class="header" href="#adsrattack-float-decay-float-sustain-float-release-float--specieshandle">adsr(attack: float, decay: float, sustain: float, release: float) → SpeciesHandle</a></h4>
-<p>Set ADSR envelope parameters (time in seconds for A/D/R, level 0.0–1.0 for S).</p>
-<pre><code class="language-ts">let pluck = derive(harmonic).adsr(0.01, 0.1, 0.3, 0.2);
-</code></pre>
-<h2 id="group-creation"><a class="header" href="#group-creation">Group Creation</a></h2>
-<h3 id="createspecies-specieshandle-count-int--grouphandle"><a class="header" href="#createspecies-specieshandle-count-int--grouphandle">create(species: SpeciesHandle, count: int) → GroupHandle</a></h3>
-<p>Create a draft group of <code>count</code> agents from the given species. Returns a handle for further configuration. The group is spawned when <code>flush()</code> or <code>wait()</code> is called.</p>
-<pre><code class="language-ts">let g = create(sine, 4).freq(220.0).amp(0.5);
-</code></pre>
-<h2 id="timeline-control"><a class="header" href="#timeline-control">Timeline Control</a></h2>
-<h3 id="waitseconds-float"><a class="header" href="#waitseconds-float">wait(seconds: float)</a></h3>
-<h3 id="waitseconds-int"><a class="header" href="#waitseconds-int">wait(seconds: int)</a></h3>
-<p>Flush pending groups, advance the timeline cursor by the given duration, and commit all scheduled events.</p>
-<pre><code class="language-ts">wait(2.0);  // Wait 2 seconds
-</code></pre>
-<h3 id="flush"><a class="header" href="#flush">flush()</a></h3>
-<p>Flush pending draft groups immediately without advancing time. Commits all scheduled events at the current cursor position.</p>
-<pre><code class="language-ts">create(sine, 1).freq(440.0);
-flush();  // Spawn immediately
-</code></pre>
-<h3 id="seedvalue-int"><a class="header" href="#seedvalue-int">seed(value: int)</a></h3>
-<p>Set the random seed for reproducible placement strategies.</p>
-<pre><code class="language-ts">seed(12345);
-</code></pre>
-<h2 id="group-control"><a class="header" href="#group-control">Group Control</a></h2>
-<h3 id="grouphandle-methods-chainable"><a class="header" href="#grouphandle-methods-chainable">GroupHandle Methods (Chainable)</a></h3>
-<p>These methods can be used in two contexts:</p>
-<ol>
-<li><strong>Draft mode</strong> (before <code>flush()</code>/<code>wait()</code>): Configure the group before spawning</li>
-<li><strong>Live mode</strong> (after spawning): Update parameters of live agents</li>
-</ol>
-<h4 id="ampvalue-float--grouphandle"><a class="header" href="#ampvalue-float--grouphandle">amp(value: float) → GroupHandle</a></h4>
-<h4 id="ampvalue-int--grouphandle"><a class="header" href="#ampvalue-int--grouphandle">amp(value: int) → GroupHandle</a></h4>
-<p>Set or update amplitude.</p>
-<pre><code class="language-ts">let g = create(sine, 1).amp(0.5);  // Draft
-flush();
-g.amp(0.8);  // Live update
-</code></pre>
-<h4 id="freqvalue-float--grouphandle"><a class="header" href="#freqvalue-float--grouphandle">freq(value: float) → GroupHandle</a></h4>
-<h4 id="freqvalue-int--grouphandle"><a class="header" href="#freqvalue-int--grouphandle">freq(value: int) → GroupHandle</a></h4>
-<p>Set or update frequency. In draft mode, overrides any placement strategy.</p>
-<pre><code class="language-ts">let g = create(sine, 1).freq(220.0);  // Draft
-flush();
-g.freq(440.0);  // Live update (pitch slides)
-</code></pre>
-<h4 id="brainname-string--grouphandle"><a class="header" href="#brainname-string--grouphandle">brain(name: string) → GroupHandle</a></h4>
-<p>Set brain type (draft only). See species <code>brain()</code> for valid values.</p>
-<pre><code class="language-ts">create(sine, 1).brain("drone");
-</code></pre>
-<h4 id="phonationname-string--grouphandle"><a class="header" href="#phonationname-string--grouphandle">phonation(name: string) → GroupHandle</a></h4>
-<p>Set phonation type (draft only). See species <code>phonation()</code> for valid values.</p>
-<pre><code class="language-ts">create(harmonic, 1).phonation("decay");
-</code></pre>
-<h4 id="timbrebrightness-float-width-float--grouphandle"><a class="header" href="#timbrebrightness-float-width-float--grouphandle">timbre(brightness: float, width: float) → GroupHandle</a></h4>
-<p>Set or update timbre.</p>
-<pre><code class="language-ts">let g = create(harmonic, 1).timbre(0.8, 0.2);
-flush();
-g.timbre(0.5, 0.3);  // Live update
-</code></pre>
-<h4 id="metabolismrate-float--grouphandle"><a class="header" href="#metabolismrate-float--grouphandle">metabolism(rate: float) → GroupHandle</a></h4>
-<p>Set metabolism rate (draft only).</p>
-<pre><code class="language-ts">create(sine, 1).metabolism(0.5);
-</code></pre>
-<h4 id="adsrattack-float-decay-float-sustain-float-release-float--grouphandle"><a class="header" href="#adsrattack-float-decay-float-sustain-float-release-float--grouphandle">adsr(attack: float, decay: float, sustain: float, release: float) → GroupHandle</a></h4>
-<p>Set ADSR envelope (draft only).</p>
-<pre><code class="language-ts">create(harmonic, 1).adsr(0.05, 0.1, 0.7, 0.2);
-</code></pre>
-<h4 id="placestrategy-spawnstrategy--grouphandle"><a class="header" href="#placestrategy-spawnstrategy--grouphandle">place(strategy: SpawnStrategy) → GroupHandle</a></h4>
-<p>Set placement strategy (draft only). Assigns frequencies to agents in the group based on the strategy.</p>
-<pre><code class="language-ts">let strat = consonance(220.0).range(1.0, 4.0);
-create(sine, 4).place(strat);
-</code></pre>
-<h3 id="releasehandle-grouphandle"><a class="header" href="#releasehandle-grouphandle">release(handle: GroupHandle)</a></h3>
-<p>Release a group of agents. Agents enter their release phase and fade out.</p>
-<pre><code class="language-ts">let g = create(sine, 1).freq(440.0);
-flush();
-wait(2.0);
-release(g);  // Begin release
-</code></pre>
-<h2 id="spawn-strategies"><a class="header" href="#spawn-strategies">Spawn Strategies</a></h2>
-<p>Strategies define how frequencies are assigned when spawning multiple agents.</p>
-<h3 id="consonanceroot_freq-float--spawnstrategy"><a class="header" href="#consonanceroot_freq-float--spawnstrategy">consonance(root_freq: float) → SpawnStrategy</a></h3>
-<p>Pick highest consonance positions within the multiplier range of the root frequency.</p>
-<p><strong>Default range:</strong> <code>[1.0, 4.0]</code> (root to 2 octaves above)
-<strong>Default min_dist:</strong> <code>1.0</code> ERB</p>
-<pre><code class="language-ts">let strat = consonance(220.0);
-create(sine, 4).place(strat);
-</code></pre>
-<h3 id="consonance_densitymin_freq-float-max_freq-float--spawnstrategy"><a class="header" href="#consonance_densitymin_freq-float-max_freq-float--spawnstrategy">consonance_density(min_freq: float, max_freq: float) → SpawnStrategy</a></h3>
-<p>Weighted-random placement based on consonance density in the frequency range.</p>
-<p><strong>Default min_dist:</strong> <code>1.0</code> ERB</p>
-<pre><code class="language-ts">let strat = consonance_density(100.0, 800.0);
-create(sine, 8).place(strat);
-</code></pre>
-<h3 id="random_logmin_freq-float-max_freq-float--spawnstrategy"><a class="header" href="#random_logmin_freq-float-max_freq-float--spawnstrategy">random_log(min_freq: float, max_freq: float) → SpawnStrategy</a></h3>
-<p>Uniform distribution in logarithmic frequency space (equal probability per octave).</p>
-<pre><code class="language-ts">let strat = random_log(100.0, 1000.0);
-create(sine, 6).place(strat);
-</code></pre>
-<h3 id="linearstart_freq-float-end_freq-float--spawnstrategy"><a class="header" href="#linearstart_freq-float-end_freq-float--spawnstrategy">linear(start_freq: float, end_freq: float) → SpawnStrategy</a></h3>
-<p>Linear interpolation between start and end frequencies.</p>
-<pre><code class="language-ts">let strat = linear(200.0, 800.0);
-create(sine, 5).place(strat);  // Evenly spaced
-</code></pre>
-<h2 id="strategy-modifiers"><a class="header" href="#strategy-modifiers">Strategy Modifiers</a></h2>
-<h3 id="rangestrategy-spawnstrategy-min_mul-float-max_mul-float--spawnstrategy"><a class="header" href="#rangestrategy-spawnstrategy-min_mul-float-max_mul-float--spawnstrategy">range(strategy: SpawnStrategy, min_mul: float, max_mul: float) → SpawnStrategy</a></h3>
-<p>Set multiplier range for <code>consonance()</code> strategy. Ignored for other strategies.</p>
-<pre><code class="language-ts">let strat = consonance(220.0).range(1.0, 3.0);  // 220 to 660 Hz
-</code></pre>
-<h3 id="min_diststrategy-spawnstrategy-distance-float--spawnstrategy"><a class="header" href="#min_diststrategy-spawnstrategy-distance-float--spawnstrategy">min_dist(strategy: SpawnStrategy, distance: float) → SpawnStrategy</a></h3>
-<p>Set minimum distance between agents in ERB units (critical band spacing). Applies to <code>consonance()</code> and <code>consonance_density()</code>.</p>
-<pre><code class="language-ts">let strat = consonance(220.0).min_dist(1.5);  // Wider spacing
-</code></pre>
-<h2 id="scope-management"><a class="header" href="#scope-management">Scope Management</a></h2>
-<h3 id="scenename-string-callback-closure"><a class="header" href="#scenename-string-callback-closure">scene(name: string, callback: closure)</a></h3>
-<p>Create a named scene marker. All groups created within the callback are automatically released when the scene ends (scoped cleanup).</p>
-<pre><code class="language-ts">scene("Intro", || {
-    create(sine, 2).freq(220.0);
-    wait(2.0);
-    // Groups auto-released here
-});
-</code></pre>
-<h3 id="playcallback-closure"><a class="header" href="#playcallback-closure">play(callback: closure)</a></h3>
-<h3 id="playcallback-closure-arg1"><a class="header" href="#playcallback-closure-arg1">play(callback: closure, arg1)</a></h3>
-<h3 id="playcallback-closure-arg1-arg2"><a class="header" href="#playcallback-closure-arg1-arg2">play(callback: closure, arg1, arg2)</a></h3>
-<h3 id="playcallback-closure-arg1-arg2-arg3"><a class="header" href="#playcallback-closure-arg1-arg2-arg3">play(callback: closure, arg1, arg2, arg3)</a></h3>
-<h3 id="playcallback-closure-args-array"><a class="header" href="#playcallback-closure-args-array">play(callback: closure, args: array)</a></h3>
-<p>Execute a closure with optional arguments. Creates a new scope for groups (scoped cleanup).</p>
-<pre><code class="language-ts">let make_chord = |root| {
-    create(sine, 1).freq(root);
-    create(sine, 1).freq(root * 1.25);
-    create(sine, 1).freq(root * 1.5);
-    flush();
-};
-
-play(make_chord, 220.0);
-wait(2.0);
-// Groups auto-released
-</code></pre>
-<h3 id="parallelcallbacks-array"><a class="header" href="#parallelcallbacks-array">parallel(callbacks: array)</a></h3>
-<p>Execute multiple closures in parallel timelines. Each closure starts at the current cursor position. The cursor advances to the maximum end time of all branches.</p>
-<pre><code class="language-ts">parallel([
-    || {
-        create(sine, 1).freq(220.0);
-        wait(1.0);
-    },
-    || {
-        create(sine, 1).freq(330.0);
-        wait(2.0);  // This branch takes longer
-    }
-]);
-// Cursor now at 2.0 seconds
-</code></pre>
-<h2 id="global-parameters"><a class="header" href="#global-parameters">Global Parameters</a></h2>
-<h3 id="set_harmonicity_mirror_weightvalue-float"><a class="header" href="#set_harmonicity_mirror_weightvalue-float">set_harmonicity_mirror_weight(value: float)</a></h3>
-<p>Set the overtone/undertone balance (0.0–1.0).</p>
-<ul>
-<li><code>0.0</code> = Pure overtone series (major/bright)</li>
-<li><code>1.0</code> = Pure undertone series (minor/dark)</li>
-<li><code>0.5</code> = Balanced</li>
-</ul>
-<pre><code class="language-ts">set_harmonicity_mirror_weight(0.0);  // Major mode
-wait(2.0);
-set_harmonicity_mirror_weight(1.0);  // Minor mode
-</code></pre>
-<h3 id="set_global_couplingvalue-float"><a class="header" href="#set_global_couplingvalue-float">set_global_coupling(value: float)</a></h3>
-<p>Set global agent-agent interaction strength (0.0–1.0). Higher values increase mutual influence between agents.</p>
-<pre><code class="language-ts">set_global_coupling(0.5);
-</code></pre>
-<h3 id="set_roughness_kvalue-float"><a class="header" href="#set_roughness_kvalue-float">set_roughness_k(value: float)</a></h3>
-<p>Set roughness tolerance parameter. Controls how strongly agents avoid dissonant (rough) regions.</p>
-<pre><code class="language-ts">set_roughness_k(0.8);
-</code></pre>
-<h2 id="example-complete-scenario"><a class="header" href="#example-complete-scenario">Example: Complete Scenario</a></h2>
-<pre><code class="language-ts">// Define species
-let drone = derive(sine).amp(0.6).phonation("hold");
-let voice = derive(harmonic).amp(0.3).phonation("hold");
-
-scene("Opening", || {
-    // Create anchor drone
-    let anchor = create(drone, 1).freq(220.0);
-    flush();
-    wait(1.0);
-
-    // Spawn consonant voices
-    let strat = consonance(220.0).range(1.0, 3.0).min_dist(0.9);
-    create(voice, 4).place(strat);
-    wait(2.0);
-
-    // Modulate harmonicity
-    set_harmonicity_mirror_weight(1.0);
-    wait(2.0);
-});
-</code></pre>
-<h2 id="brain-types-reference"><a class="header" href="#brain-types-reference">Brain Types Reference</a></h2>
+<h3 id="brain-articulation"><a class="header" href="#brain-articulation">Brain (Articulation)</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>brain(name)</code></td><td><code>"entrain"</code>, <code>"seq"</code>, or <code>"drone"</code></td></tr>
+</tbody>
+</table>
+</div>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -577,19 +496,364 @@ scene("Opening", || {
 </tbody>
 </table>
 </div>
-<h2 id="phonation-types-reference"><a class="header" href="#phonation-types-reference">Phonation Types Reference</a></h2>
+<h3 id="phonation"><a class="header" href="#phonation">Phonation</a></h3>
+<p>Phonation is configured in three tiers of increasing detail.</p>
+<p><strong>Tier 1 – Presets:</strong></p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Phonation</th><th>Behavior</th></tr>
+<tr><th>Method</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>hold</code></td><td>One-shot sustain tied to agent lifecycle</td></tr>
-<tr><td><code>decay</code></td><td>Interval-based retriggering</td></tr>
-<tr><td><code>grain</code></td><td>Field-based granular retriggering</td></tr>
+<tr><td><code>sustain()</code></td><td>Sustain mode (default)</td></tr>
+<tr><td><code>repeat()</code></td><td>Repeated/pulsed mode</td></tr>
 </tbody>
 </table>
 </div>
+<p><strong>Tier 2 – Explicit when/duration:</strong></p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>once()</code></td><td>Single trigger</td></tr>
+<tr><td><code>pulse(rate_hz)</code></td><td>Pulse at given rate</td></tr>
+<tr><td><code>while_alive()</code></td><td>Duration: while agent alive</td></tr>
+<tr><td><code>gates(n)</code></td><td>Duration: n theta gates</td></tr>
+<tr><td><code>field()</code></td><td>Duration: field-based</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Tier 3 – Expert tuning:</strong></p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>sync(depth)</code></td><td>Sync depth 0–1 (requires <code>pulse</code>)</td></tr>
+<tr><td><code>social(coupling)</code></td><td>Social coupling 0–1 (requires <code>pulse</code>)</td></tr>
+<tr><td><code>field_window(min, max)</code></td><td>Field theta window 0–1 (requires <code>field</code>)</td></tr>
+<tr><td><code>field_curve(k, x0)</code></td><td>Field curve parameters (requires <code>field</code>)</td></tr>
+<tr><td><code>field_drop(gain)</code></td><td>Field drop gain (requires <code>field</code>)</td></tr>
+</tbody>
+</table>
+</div>
+<pre><code class="language-ts">let pulsed = derive(harmonic).repeat().pulse(3.0).sync(0.6).social(0.3);
+let fielded = derive(sine).field().field_window(0.2, 0.8);
+</code></pre>
+<h3 id="lifecycle"><a class="header" href="#lifecycle">Lifecycle</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>metabolism(rate)</code></td><td>Energy consumption rate</td></tr>
+<tr><td><code>adsr(attack_sec, decay_sec, sustain_level, release_sec)</code></td><td>ADSR envelope</td></tr>
+</tbody>
+</table>
+</div>
+<pre><code class="language-ts">let pluck = derive(harmonic).metabolism(0.5).adsr(0.01, 0.1, 0.3, 0.2);
+</code></pre>
+<h3 id="rhythm"><a class="header" href="#rhythm">Rhythm</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>rhythm_coupling(mode)</code></td><td><code>"temporal"</code> / <code>"temporal_only"</code></td></tr>
+<tr><td><code>rhythm_coupling_vitality(lambda_v, v_floor)</code></td><td>Vitality-modulated coupling</td></tr>
+<tr><td><code>rhythm_reward(rho_t, metric)</code></td><td><code>"attack_phase_match"</code> or <code>"none"</code></td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="respawn"><a class="header" href="#respawn">Respawn</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>respawn_random()</code></td><td>Random respawn locations</td></tr>
+<tr><td><code>respawn_hereditary(sigma_oct)</code></td><td>Hereditary with frequency variance in octaves</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="telemetry"><a class="header" href="#telemetry">Telemetry</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>enable_telemetry(first_k)</code></td><td>Enable for first k agents</td></tr>
+<tr><td><code>enable_plv(window)</code></td><td>Enable Phase Locking Value computation</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="sustain-drive"><a class="header" href="#sustain-drive">Sustain Drive</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>sustain_drive(value)</code></td><td>Continuous drive level</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="mode-patterns"><a class="header" href="#mode-patterns">Mode Patterns</a></h2>
+<p>Mode patterns define frequency relationships for modal synthesis bodies.</p>
+<h3 id="constructors"><a class="header" href="#constructors">Constructors</a></h3>
+<p>All constructors return <code>ModePattern</code>.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Function</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>harmonic_modes()</code></td><td>Harmonic series: f, 2f, 3f, …</td></tr>
+<tr><td><code>odd_modes()</code></td><td>Odd harmonics: f, 3f, 5f, …</td></tr>
+<tr><td><code>power_modes(beta)</code></td><td>Power law: f * n^beta</td></tr>
+<tr><td><code>stiff_string_modes(stiffness)</code></td><td>Stiffness-adjusted harmonics</td></tr>
+<tr><td><code>custom_modes(ratios)</code></td><td>Custom frequency ratios from array</td></tr>
+<tr><td><code>modal_table(name)</code></td><td>Named mode table lookup</td></tr>
+<tr><td><code>landscape_density_modes()</code></td><td>Modes from landscape density</td></tr>
+<tr><td><code>landscape_peaks_modes()</code></td><td>Modes from landscape peaks</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="modifiers"><a class="header" href="#modifiers">Modifiers</a></h3>
+<p>All modifiers are chainable and return <code>ModePattern</code>.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>.count(n)</code></td><td>Number of modes</td></tr>
+<tr><td><code>.range(min_mul, max_mul)</code></td><td>Frequency range (landscape modes only)</td></tr>
+<tr><td><code>.min_dist(d)</code></td><td>Min ERB distance (landscape modes only)</td></tr>
+<tr><td><code>.gamma(g)</code></td><td>Gamma parameter (landscape_density only)</td></tr>
+<tr><td><code>.jitter(cents)</code></td><td>Randomization in cents</td></tr>
+<tr><td><code>.seed(s)</code></td><td>Random seed</td></tr>
+</tbody>
+</table>
+</div>
+<pre><code class="language-ts">let bell_modes = stiff_string_modes(0.03).count(12).jitter(5.0);
+let adaptive = landscape_density_modes().count(6).range(1.0, 8.0).gamma(2.0);
+</code></pre>
+<hr>
+<h2 id="spawn-strategies"><a class="header" href="#spawn-strategies">Spawn Strategies</a></h2>
+<p>Strategies define how frequencies are allocated when spawning a group.</p>
+<h3 id="constructors-1"><a class="header" href="#constructors-1">Constructors</a></h3>
+<p>All constructors return <code>SpawnStrategy</code>.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Function</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>consonance(root_freq)</code></td><td>Highest consonance positions (default range 1x–4x)</td></tr>
+<tr><td><code>consonance_density_pmf(min_freq, max_freq)</code></td><td>Weighted-random from density PMF</td></tr>
+<tr><td><code>random_log(min_freq, max_freq)</code></td><td>Log-uniform random</td></tr>
+<tr><td><code>linear(start_freq, end_freq)</code></td><td>Linear interpolation</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="modifiers-1"><a class="header" href="#modifiers-1">Modifiers</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Applies to</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>.range(min_mul, max_mul)</code></td><td><code>consonance</code></td><td>Multiplier range relative to root</td></tr>
+<tr><td><code>.min_dist(d)</code></td><td><code>consonance</code>, <code>consonance_density_pmf</code></td><td>Min ERB distance between agents</td></tr>
+<tr><td><code>.reject_targets(anchor_hz, targets_st, exclusion_st, max_tries)</code></td><td>Any</td><td>Reject positions near specified targets</td></tr>
+</tbody>
+</table>
+</div>
+<p><code>reject_targets</code> wraps any strategy: <code>targets_st</code> is an array of semitone offsets
+from <code>anchor_hz</code>, <code>exclusion_st</code> is the exclusion zone width in semitones, and
+<code>max_tries</code> is the retry limit.</p>
+<pre><code class="language-ts">let strat = consonance(220.0).range(1.0, 3.0).min_dist(0.9);
+create(harmonic, 6).place(strat);
+
+let density = consonance_density_pmf(100.0, 800.0).min_dist(1.0);
+create(sine, 8).place(density);
+
+// Avoid octaves and fifths of 220 Hz
+let filtered = random_log(100.0, 1000.0)
+    .reject_targets(220.0, [0.0, 12.0, 7.0, 19.0], 0.5, 50);
+</code></pre>
+<hr>
+<h2 id="group-creation-and-operations"><a class="header" href="#group-creation-and-operations">Group Creation and Operations</a></h2>
+<h3 id="createspecies-count---grouphandle"><a class="header" href="#createspecies-count---grouphandle">create(species, count) -&gt; GroupHandle</a></h3>
+<p>Create a draft group of <code>count</code> agents. The group spawns on the next <code>flush()</code> or
+<code>wait()</code> call.</p>
+<pre><code class="language-ts">let g = create(sine, 4).amp(0.3);
+flush();  // spawns the group
+</code></pre>
+<h3 id="placestrategy---grouphandle"><a class="header" href="#placestrategy---grouphandle">place(strategy) -&gt; GroupHandle</a></h3>
+<p>Set spawn strategy (draft only).</p>
+<pre><code class="language-ts">create(harmonic, 6).place(consonance(220.0).range(1.0, 4.0));
+</code></pre>
+<h3 id="releasegroup"><a class="header" href="#releasegroup">release(group)</a></h3>
+<p>Release a live group. Agents enter their release phase and fade out.</p>
+<pre><code class="language-ts">let g = create(sine, 1).freq(440.0);
+flush();
+wait(2.0);
+release(g);
+</code></pre>
+<h3 id="draft-vs-live-methods"><a class="header" href="#draft-vs-live-methods">Draft vs. Live Methods</a></h3>
+<p>Group methods work in two contexts:</p>
+<ul>
+<li><strong>Draft</strong> (before <code>flush()</code>/<code>wait()</code>): configures the group before spawning.</li>
+<li><strong>Live</strong> (after spawning): patches parameters on running agents.</li>
+</ul>
+<p><strong>Live-patchable</strong> (work in both draft and live):</p>
+<p><code>amp</code>, <code>energy</code>, <code>freq</code>, <code>landscape_weight</code>, <code>neighbor_step_cents</code>,
+<code>tessitura_gravity</code>, <code>sustain_drive</code>, <code>pitch_smooth</code>, <code>exploration</code>,
+<code>persistence</code>, <code>anneal_temp</code>, <code>temperature</code>, <code>move_cost</code>, <code>move_cost_exp</code>,
+<code>improvement_threshold</code>, <code>proposal_interval</code>, <code>window_cents</code>, <code>top_k</code>,
+<code>sigma_cents</code>, <code>random_candidates</code>, <code>brightness</code>, <code>spread</code>, <code>voices</code>,
+<code>pitch_glide</code>, <code>leave_self_out</code>, <code>leave_self_out_mode</code>,
+<code>leave_self_out_harmonics</code>, <code>crowding</code>, <code>crowding_target</code>, <code>global_peaks</code>,
+<code>ratio_candidates</code>, <code>move_cost_time_scale</code>, <code>pitch_apply_mode</code>, <code>pitch_apply</code></p>
+<p><strong>Draft-only</strong> (ignored with a warning if called on a live group):</p>
+<p><code>brain</code>, <code>pitch_mode</code>, <code>mode</code>, <code>pitch_core</code>, <code>sustain</code>, <code>repeat</code>, <code>once</code>,
+<code>pulse</code>, <code>while_alive</code>, <code>gates</code>, <code>field</code>, <code>sync</code>, <code>social</code>, <code>field_window</code>,
+<code>field_curve</code>, <code>field_drop</code>, <code>metabolism</code>, <code>adsr</code>, <code>rhythm_coupling</code>,
+<code>rhythm_coupling_vitality</code>, <code>rhythm_reward</code>, <code>respawn_random</code>,
+<code>respawn_hereditary</code>, <code>modes</code>, <code>place</code></p>
+<pre><code class="language-ts">let g = create(harmonic, 4)
+    .brightness(0.7)          // draft: sets initial value
+    .brain("entrain")         // draft-only
+    .place(consonance(220.0));
+flush();
+
+g.brightness(0.3);            // live: patches running agents
+wait(2.0);
+release(g);
+</code></pre>
+<hr>
+<h2 id="timeline-and-control-flow"><a class="header" href="#timeline-and-control-flow">Timeline and Control Flow</a></h2>
+<h3 id="waitseconds"><a class="header" href="#waitseconds">wait(seconds)</a></h3>
+<p>Flush pending groups, then advance the timeline cursor.</p>
+<pre><code class="language-ts">create(sine, 1).freq(440.0);
+wait(2.0);  // spawn + wait 2 seconds
+</code></pre>
+<h3 id="flush"><a class="header" href="#flush">flush()</a></h3>
+<p>Commit pending draft groups without advancing time.</p>
+<pre><code class="language-ts">create(sine, 1).freq(440.0);
+flush();  // spawn immediately at current cursor
+</code></pre>
+<h3 id="seedvalue"><a class="header" href="#seedvalue">seed(value)</a></h3>
+<p>Set the random seed for reproducible scenarios.</p>
+<pre><code class="language-ts">seed(42);
+</code></pre>
+<h3 id="scenename-callback"><a class="header" href="#scenename-callback">scene(name, callback)</a></h3>
+<p>Named scope with automatic group release when the callback returns.</p>
+<pre><code class="language-ts">scene("Intro", || {
+    create(sine, 2).freq(220.0);
+    flush();
+    wait(4.0);
+    // all groups auto-released here
+});
+</code></pre>
+<h3 id="playcallback--args"><a class="header" href="#playcallback--args">play(callback [, args…])</a></h3>
+<p>Scoped callback execution with automatic cleanup.
+Accepts 0–3 positional arguments, or an array.</p>
+<pre><code class="language-ts">let chord = |root| {
+    create(sine, 1).freq(root);
+    create(sine, 1).freq(root * 1.25);
+    create(sine, 1).freq(root * 1.5);
+    flush();
+};
+
+play(chord, 220.0);
+wait(2.0);
+// groups auto-released when play scope ends
+</code></pre>
+<h3 id="parallelcallbacks"><a class="header" href="#parallelcallbacks">parallel(callbacks)</a></h3>
+<p>Execute closures on parallel timelines. Each branch starts at the current cursor.
+The cursor advances to the latest branch end.</p>
+<pre><code class="language-ts">parallel([
+    || {
+        create(sine, 1).freq(220.0);
+        wait(1.0);
+    },
+    || {
+        create(sine, 1).freq(330.0);
+        wait(3.0);
+    },
+]);
+// cursor is now at +3.0 seconds
+</code></pre>
+<hr>
+<h2 id="global-parameters"><a class="header" href="#global-parameters">Global Parameters</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Function</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>set_harmonicity_mirror_weight(value)</code></td><td>Overtone/undertone balance 0.0–1.0</td></tr>
+<tr><td><code>set_roughness_k(value)</code></td><td>Roughness tolerance</td></tr>
+<tr><td><code>set_global_coupling(value)</code></td><td>Agent interaction strength</td></tr>
+<tr><td><code>set_pitch_objective(name)</code></td><td><code>"consonance"</code>/<code>"positive"</code> or <code>"dissonance"</code>/<code>"negative"</code></td></tr>
+</tbody>
+</table>
+</div>
+<pre><code class="language-ts">set_harmonicity_mirror_weight(0.0);  // overtone-dominant (major)
+wait(4.0);
+set_harmonicity_mirror_weight(1.0);  // undertone-dominant (minor)
+</code></pre>
+<hr>
+<h2 id="complete-example"><a class="header" href="#complete-example">Complete Example</a></h2>
+<pre><code class="language-ts">seed(1);
+
+// Define species
+let anchor = derive(sine).amp(0.6).sustain();
+let voice = derive(harmonic)
+    .amp(0.3)
+    .brightness(0.5)
+    .pitch_mode("free")
+    .pitch_core("hill_climb")
+    .pitch_apply("glide").pitch_glide(0.08)
+    .crowding(0.5)
+    .metabolism(0.4)
+    .adsr(0.05, 0.1, 0.7, 0.3)
+    .repeat().pulse(2.25).sync(0.5);
+
+scene("Opening", || {
+    // Anchor drone
+    let root = create(anchor, 1).freq(220.0);
+    flush();
+    wait(1.0);
+
+    // Consonant voices
+    let strat = consonance(220.0).range(1.0, 3.0).min_dist(0.9);
+    create(voice, 6).place(strat);
+    wait(4.0);
+
+    // Shift to undertone mode
+    set_harmonicity_mirror_weight(1.0);
+    wait(4.0);
+});
+
+scene("Development", || {
+    let dense = derive(voice).exploration(0.8).anneal_temp(0.5);
+    let strat = consonance_density_pmf(100.0, 800.0).min_dist(0.8);
+    create(dense, 12).place(strat);
+    wait(8.0);
+});
+</code></pre>
 
                     </main>
 

@@ -3,11 +3,11 @@ title = "Technical Note: The Physics of Conchordal"
 description = "A deep dive into the psychoacoustic algorithms, logarithmic signal processing, and artificial life strategies powering the Conchordal ecosystem."
 template = "page.html"
 [extra]
-source_commit = "50e5ba4"
+source_commit = "471fe86"
 author = "Koichi Takahashi"
-last_updated = "2026-02-23"
-source_version = "0.2.0"
-source_snapshot = "2026-02-23T16:35:20+09:00"
+last_updated = "2026-03-28"
+source_version = "0.3.0"
+source_snapshot = "2026-03-28T15:25:21+09:00"
 generated_by = "claude-opus-4-6"
 +++
 
@@ -253,37 +253,72 @@ The "Life Engine" is the agent-based simulation layer that runs atop the DSP lan
 
 ## 4.1 The Individual Architecture
 
-The `Individual` struct (`life/individual.rs`) is the atomic unit of the ecosystem. It is composed of several components: an `AnySoundBody` actuator, an `ArticulationWrapper` (wrapping an `ArticulationCore`), a `PitchController` (wrapping a `PitchCore`), and a `PhonationEngine` that manages note-level timing. The Individual itself acts as an integration layer, managing lifecycle (metabolism, energy), perceptual context, and the control-plane signals that coordinate the components without coupling them directly.
+The `Individual` struct (`life/individual.rs`) is the atomic unit of the ecosystem. It is composed of several components:
+
+*   An `AnySoundBody` actuator (synthesis backend).
+*   An `ArticulationWrapper` (wrapping an `ArticulationCore`).
+*   A `PitchController` (wrapping a `PitchCore`).
+*   A `PhonationEngine` that manages note-level timing and command queuing.
+*   An optional `VoiceAdsr` envelope for attack-decay-sustain-release shaping.
+*   Lifecycle and metabolism tracking (energy, age, perceptual context).
+
+The Individual itself acts as an integration layer, managing the control-plane signals that coordinate the components without coupling them directly.
 
 ### 4.1.1 The SoundBody (Actuator)
 
-The `SoundBody` trait defines the sound generation capabilities of an agent. It is responsible for rendering the waveform and projecting its spectral footprint back to the system (for the Landscape update).
+The `BodyMethod` enum defines three synthesis body types, each projecting a distinct spectral footprint onto the Landscape:
 
-*   `SineBody`: Synthesizes a pure sine tone.
-*   `HarmonicBody`: Synthesizes a complex tone consisting of a fundamental and a series of partials. This body introduces the concept of a `TimbreGenotype`, which encodes parameters such as:
-    *   `stiffness`: The inharmonicity coefficient (stretching the partial series).
-    *   `brightness`: The spectral slope (decay of higher partials).
+*   **`Sine`**: A pure sine tone via a single oscillator. Minimal spectral interference; useful as anchors and calibration probes.
+*   **`Harmonic`**: A complex tone with a `TimbreGenotype` governing its partial structure. Parameters include:
+    *   `stiffness`: Inharmonicity coefficient (stretching the partial series).
+    *   `brightness`: Spectral slope (decay of higher partials).
     *   `comb`: Even harmonic attenuation.
     *   `damping`: Frequency-dependent decay rates.
     *   `vibrato_rate` / `vibrato_depth`: LFO-based pitch modulation.
     *   `jitter`: 1/f pink noise FM strength for organic fluctuation.
     *   `unison`: Detuned copy amount for chorus-like thickening.
     *   `mode`: Harmonic (integer multiples) vs. Metallic (non-integer ratios).
+*   **`Modal`**: Resonator-based synthesis via `ModalEngine`, supporting arbitrary mode frequency ratios and decay times. Mode patterns can be specified as harmonic, odd harmonics, power-law, stiff string, or custom ratios.
+
+Sound generation is dispatched through the `AnyBackend` enum:
+
+*   **`Oscillator(OscillatorBank)`**: A struct-of-arrays layout for cache-efficient additive synthesis. Handles `Sine` and `Harmonic` bodies. Pitch refresh occurs every 64 samples; motion/vibrato refresh every 8 samples.
+*   **`Resonator(ModalEngine)`**: A Damped Modified Coupled Form resonator bank. Handles `Modal` bodies. Mode coefficients are rebuilt every 64 samples on pitch change.
 
 The `HarmonicBody` allows for the evolution of timbre. An agent with high stiffness might find survival difficult in a purely harmonic landscape, forcing it to seek out unique "spectral niches" where its inharmonic partials do not clash with the population.
 
-### 4.1.2 The Core Stack (Articulation, Pitch)
+### 4.1.2 The Core Stack
 
-Behavior is split into focused cores, each defined in a separate file to allow easy extension with new strategies:
+Behavior is split into three focused cores plus the `PhonationEngine`, each defined in a separate file:
 
-*   **ArticulationCore (When/Gate)** — `life/articulation_core.rs`: Manages rhythm, gating, and envelope dynamics. Variants include `KuramotoCore` (Kuramoto-like synchronization to `NeuralRhythms`), `SequencedCore` (fixed-duration envelopes), and `DroneCore` (slow sway). The ArticulationCore receives control-plane signals from the Individual and decides when to open or close the gate.
-*   **PitchCore (Where)** — `life/pitch_core.rs`: Proposes the next target in log-frequency space based on consonance, distance penalties, tessitura gravity, and per-agent perceptual adjustments. Two implementations exist:
-    *   `PitchHillClimbPitchCore`: Evaluates a discrete set of candidates around the current target, scoring each with consonance minus penalties (distance, tessitura gravity, persistence bias, and perceptual adjustments from `PerceptualContext`).
-    *   `PitchPeakSamplerCore`: Samples from consonance peaks in the landscape, offering a more exploratory strategy.
+*   **ArticulationCore (When/Gate)** — `life/articulation_core.rs`: Manages rhythm, gating, and envelope dynamics. Three variants exist:
+    *   `KuramotoCore`: Coupled oscillator with an energy/vitality model, rhythm coupling modes (`TemporalOnly`, `TemporalTimesVitality`), rhythm reward (metabolism bonus for phase match), and autonomous attack capability. Fields include `energy`, `energy_cap`, `vitality_level`, `vitality_exponent`, `sensitivity` (delta/theta/alpha/beta), and `k_omega` coupling strength.
+    *   `SequencedCore`: Fixed-duration gate patterns.
+    *   `DroneCore`: Sustained output with optional sway modulation.
 
-    The `PitchController` wraps the PitchCore with retargeting logic and integration window management.
+*   **PitchCore (Where)** — `life/pitch_core.rs`: Proposes the next target in log-frequency space. Two implementations:
+    *   `PitchHillClimbPitchCore`: Local search with crowding penalties. Parameters: `neighbor_step_log2`, `tessitura_gravity`, `landscape_weight`, `move_cost_coeff`, `move_cost_exp`, `improvement_threshold`, `exploration`, `persistence`, `anneal_temp`. Crowding: `crowding_strength`, `crowding_sigma_cents`, `crowding_sigma_from_roughness` (derives sigma from the roughness kernel's critical band width). Leave-self-out analysis supports `ApproxHarmonics` and `ExactScan` modes.
+    *   `PitchPeakSamplerPitchCore`: Probabilistic peak sampling with `window_cents`, `top_k`, `temperature`, `sigma_cents`.
 
-### 4.1.3 Control-Plane Signals: Planned and Error
+*   **PhonationEngine** — `life/phonation_engine.rs`: Manages note-level command scheduling. Issues `NoteCmd` (NoteOn, NoteOff, Update) to the `ScheduleRenderer`. Uses `ThetaGrid` for gate-synchronized onset timing. Configuration is via `PhonationSpec`:
+    *   **When**: `Once` (single trigger), `Pulse { rate_hz, sync, social }` (repeated triggers).
+    *   **Duration**: `WhileAlive`, `Gates(n)`, `Field { hold_min_theta, hold_max_theta, curve_k, curve_x0, drop_gain }`.
+
+### 4.1.3 The Sound Pipeline
+
+Audio rendering is handled by `ScheduleRenderer` (`life/schedule_renderer.rs`), which maintains a `HashMap<VoiceKey, Voice>` of active voices.
+
+The `Voice` struct (`life/sound/voice.rs`) combines:
+
+*   A backend (`AnyBackend`: `OscillatorBank` or `ModalEngine`).
+*   An optional `RenderModulator` for articulation envelope shaping.
+*   An ADSR envelope: linear attack ramp, exponential decay to sustain level, constant sustain, linear release ramp.
+*   Smoothed pitch and amplitude transitions with configurable time constants.
+*   Continuous drive for sustained excitation.
+
+The processing flow proceeds as follows: the `PhonationEngine` emits `NoteCmd` commands; the `ScheduleRenderer` creates, updates, or releases `Voice` instances accordingly; each `Voice` renders through its backend with ADSR shaping; the results are mixed to mono output.
+
+### 4.1.4 Control-Plane Signals: Planned and Error
 
 The Individual coordinates its cores through two orthogonal signals rather than direct coupling:
 
@@ -297,30 +332,34 @@ This separation keeps each core focused: PitchCore explores the landscape, Artic
 Agents in Conchordal are governed by energy dynamics modeled on biological metabolism. The `LifecycleConfig` defines two modes of existence:
 
 *   **Decay**: The agent is born with a fixed `initial_energy` pool. It expends this energy over time (half-life) and dies when it reaches zero. This models transient sounds like plucks or percussion.
-*   **Sustain**: The agent has a `metabolism_rate` (energy loss per second) and can gain energy via consonance-dependent recharge.
-    *   **Recharge**: This is the critical feedback loop. The energy gained per phonation attack is scaled by the agent's $C_{level01}$ (the sigmoid-mapped consonance) via the `MetabolismPolicy`.
-    *   **Survival**: An agent in a dissonant (low $C_{level01}$) region "starves"—its energy depletes, its amplitude fades, and it eventually dies. An agent in a consonant (high $C_{level01}$) region "feeds"—it maintains or gains energy, allowing it to sing louder and live longer.
+*   **Sustain**: The agent has a `metabolism_rate` (energy loss per second) and can gain energy via consonance-dependent recharge through `MetabolismPolicy`.
+    *   **Recharge**: Energy gained per phonation attack is scaled by $C_{level01}$.
+    *   **Action Cost**: An optional cost for pitch movement, penalizing excessive frequency hopping.
+    *   **Rhythm Reward**: An optional `MetabolismRhythmReward` provides a metabolic bonus for phase-matched attacks, configured via `rho_t` and `AttackPhaseMatch` metric.
 
-This mechanic creates a Darwinian pressure: **Survival of the Consonant**. The musical structure emerges because only the agents that find harmonic relationships survive to be heard.
+This mechanic creates a Darwinian pressure: **Survival of the Consonant**. Agents in dissonant (low $C_{level01}$) regions starve—energy depletes, amplitude fades, and they die. Agents in consonant (high $C_{level01}$) regions thrive—they maintain or gain energy, allowing them to sing louder and live longer. The musical structure emerges because only agents that find harmonic relationships survive to be heard.
 
 ## 4.3 Pitch Retargeting Logic
 
 Agents are not static; they move through frequency space to improve their fitness. The execution layer applies a retarget gate (theta zero-crossing plus an integration window) and then asks the PitchCore to propose the next target.
 
-1.  **Retarget Gate**: The Individual integrates time based on current frequency and fires only when a theta crossing aligns with the window. This keeps retargeting rhythmic and scale-sensitive.
-2.  **Pitch Proposal**: The PitchCore (e.g., `PitchHillClimbPitchCore`) evaluates a discrete set of candidates around the current target. It scores each candidate with consonance minus penalties (distance, tessitura gravity, persistence bias, and per-agent perceptual adjustments from `PerceptualContext`). The proposal includes a `salience` score (0..1) reflecting improvement strength.
+### 4.3.1 Pitch Application Modes
 
-### 4.3.1 The Hop Policy
+Two modes govern how a new pitch target is applied:
 
-Pitch movement uses a **hop** policy rather than continuous portamento:
+*   **GateSnap** (default): Discrete hop at gate boundaries. The ArticulationCore closes the gate, fading amplitude to silence; the Individual updates the SoundBody's pitch to the new target (discrete jump); the gate reopens and the new pitch sounds. Ordering matters: on the sample where the snap occurs, the pitch is updated *before* consonance is evaluated, ensuring the Landscape score reflects the agent's actual sounding frequency.
+*   **Glide**: Smooth continuous pitch transition with a configurable time constant $\tau$. The SoundBody interpolates exponentially toward the target frequency, producing portamento effects. Suited for drone-like species or slow melodic movement.
 
-1.  **Fade-out**: The ArticulationCore closes the gate, fading amplitude to silence.
-2.  **Snap**: The Individual updates the SoundBody's pitch to the new target (discrete jump).
-3.  **Fade-in**: The gate reopens, and the new pitch sounds.
+### 4.3.2 Crowding and Leave-Self-Out
 
-**Ordering matters**: On the sample where the snap occurs, the pitch is updated *before* consonance is evaluated, ensuring the Landscape score reflects the agent's actual sounding frequency. The error signal is computed from the *pre-snap* current pitch to maintain consistency; if post-snap error is needed in the future, it can be added as a separate signal.
+The crowding system prevents agents from collapsing to identical frequencies. Rather than using ad-hoc constants, it employs an analytical roughness complement: a Gaussian penalty centered on each occupied frequency, with width $\sigma$ that can be derived from the roughness kernel's critical band width (`crowding_sigma_from_roughness`). A pairwise split bias further prevents frequency degeneracy.
 
-These timing-sensitive transitions are guarded by regression tests to prevent subtle breakage.
+When evaluating landscape fitness, an agent can subtract its own spectral contribution via leave-self-out analysis. Two modes are supported:
+
+*   **`ApproxHarmonics`**: Fast approximation using ~24 cent Gaussian subtraction.
+*   **`ExactScan`**: Full ERB grid scan for precise spectral subtraction.
+
+These timing-sensitive transitions and crowding evaluations are guarded by regression tests to prevent subtle breakage.
 
 # 5. Temporal Dynamics: Neural Rhythms
 
@@ -330,12 +369,22 @@ Conchordal eschews the concept of a master clock or metronome. Instead, time is 
 
 The `NeuralRhythms` struct manages a bank of resonating filters tuned to physiological frequency bands:
 
-*   **Delta (0.5–4 Hz)**: The macroscopic "pulse" of the ecosystem. Agents locked to this band play long, phrase-level notes.
-*   **Theta (4–8 Hz)**: The "articulation" rate. Governs syllabic rhythms and medium-speed motifs.
-*   **Alpha (8–12 Hz)**: The "texture" rate. Used for tremolo, vibrato, and shimmering effects.
-*   **Beta (15–30 Hz)**: The "tension" rate. High-speed flutters associated with dissonance or excitement.
+*   **Delta (0.5--4 Hz)**: The macroscopic "pulse" of the ecosystem. Agents locked to this band play long, phrase-level notes.
+*   **Theta (4--8 Hz)**: The "articulation" rate. Governs syllabic rhythms and medium-speed motifs.
+*   **Alpha (8--12 Hz)**: The "texture" rate. Used for tremolo, vibrato, and shimmering effects.
+*   **Beta (15--30 Hz)**: The "tension" rate. High-speed flutters associated with dissonance or excitement.
 
-## 5.2 Vitality and Self-Oscillation
+## 5.2 DorsalStream and Rhythm Extraction
+
+The `DorsalStream` (`core/stream/dorsal.rs`) performs real-time rhythm analysis using a 3-Band Crossover Flux architecture:
+
+*   **Low band** (~200 Hz crossover): Captures bass and kick energy.
+*   **Mid band** (~3 kHz crossover): Captures vocal and melodic energy.
+*   **High band**: Captures high-frequency transients.
+
+The `DorsalMetrics` struct provides per-band energy (`e_low`, `e_mid`, `e_high`) and spectral flux values, which feed into the `NeuralRhythms` modulation bank. This creates a closed loop: agents produce audio, the DorsalStream extracts rhythmic structure from that audio, and the NeuralRhythms modulate agent behavior in return.
+
+## 5.3 Vitality and Self-Oscillation
 
 Each band is implemented as a Resonator, a damped harmonic oscillator. A key parameter is `vitality`.
 
@@ -344,18 +393,28 @@ Each band is implemented as a Resonator, a damped harmonic oscillator. A key par
 
 This creates a two-way interaction: The global rhythm drives the agents (entrainment), but the agents also drive the global rhythm (excitation). A loud "kick" agent spawning in the Delta band will "ring" the Delta resonator, causing other agents coupled to that band to synchronize.
 
-## 5.3 Kuramoto Entrainment
+## 5.4 Kuramoto Entrainment
 
-The `KuramotoCore` ArticulationCore uses a Kuramoto-style model of coupled oscillators.
+The `KuramotoCore` ArticulationCore uses a Kuramoto-style model of coupled oscillators:
 
 $$ \frac{d\theta_i}{dt} = \omega_i + \frac{K}{N} \sum_{j=1}^N \sin(\theta_j - \theta_i) $$
 
 In Conchordal, the "coupling" $K$ is to the global `NeuralRhythms` rather than directly to every other agent (Mean Field approximation).
 
-*   **Sensitivity**: Each agent has a sensitivity profile determining which bands (Delta, Theta, etc.) it listens to.
-*   **Phase Locking**: Agents adjust their internal articulation phase to match the phase of the resonator.
+The KuramotoCore implements a full energy/vitality model with several interacting subsystems:
 
-This results in emergent synchronization. Agents spawned at random times will gradually align their attacks to the beat of the Delta or Theta bands, creating coherent rhythmic patterns without a central sequencer.
+*   **Energy Pool**: Bounded by `energy_cap`. Energy is consumed by attacks and regenerated through metabolism.
+*   **Vitality**: `vitality_level` and `vitality_exponent` control self-oscillation strength. Higher vitality allows the oscillator to maintain phase coherence independently.
+*   **Rhythm Coupling Modes**:
+    *   `TemporalOnly`: Phase coupling only—the agent locks to the NeuralRhythm phase regardless of its internal state.
+    *   `TemporalTimesVitality { lambda_v, v_floor }`: Coupling strength is modulated by vitality, creating a feedback loop where healthy agents synchronize more strongly.
+*   **Rhythm Reward**: An optional `MetabolismRhythmReward` with parameter `rho_t` and `AttackPhaseMatch` metric provides a metabolic bonus for phase-matched onsets, linking rhythmic conformity to survival.
+*   **Autonomous Attack**: Self-triggered attacks when phase conditions align with thresholds (`env_open`, `magnitude`, `alpha`), enabling the oscillator to initiate sound events without external commands.
+*   **Effective Coupling**: The actual coupling strength is computed as:
+
+$$ K_{eff} = \omega_{target} \cdot K_{global} \cdot s_\theta \cdot |\theta_{mag}| \cdot \theta_\alpha \cdot g_{env} \cdot a_{env} $$
+
+where $s_\theta$ is the agent's theta sensitivity, $|\theta_{mag}|$ and $\theta_\alpha$ are the oscillator magnitude and alpha, and $g_{env}$, $a_{env}$ are the envelope gate and amplitude. Public helper functions `kuramoto_k_eff()` and `kuramoto_phase_step()` are exposed for external simulation use (e.g., paper experiments).
 
 # 6. System Architecture and Implementation Details
 
@@ -377,8 +436,7 @@ The application creates three primary thread contexts, plus the GUI event loop:
 
 3.  **Worker Thread (Simulation Loop)**:
     *   Named `"worker"` in `app.rs`.
-    *   **Responsibility**: Runs the main simulation loop. Each iteration: merges analysis results into the current Landscape, dispatches Conductor events, advances the Population (pitch retargeting, articulation, metabolism), renders audio via `ScheduleRenderer`, feeds the `DorsalStream` (rhythm extraction), and pushes mono samples into the ring buffer for the audio thread.
-    *   **DorsalStream**: Rhythm analysis (`core/stream/dorsal.rs`) runs synchronously within this loop, processing audio chunks to extract rhythmic energy metrics (e_low, e_mid, e_high, flux) for the `NeuralRhythms` modulation bank.
+    *   **Responsibility**: Runs the main simulation loop. Each iteration: merges analysis results into the current Landscape, dispatches Conductor events, advances the Population (pitch retargeting, articulation, metabolism), renders audio via `ScheduleRenderer` (which processes `PhonationBatch` vectors of `NoteCmd` and maintains the `Voice` pool), feeds the `DorsalStream` for rhythm extraction, and pushes mono samples into the ring buffer for the audio thread.
 
 4.  **App/GUI Thread (Main)**:
     *   Runs the `eframe`/`egui` visualizer.
@@ -386,36 +444,79 @@ The application creates three primary thread contexts, plus the GUI event loop:
 
 ## 6.2 Data Flow
 
-To maintain data consistency without locking the audio thread, Conchordal uses a multi-channel update strategy for the Landscape.
+To maintain data consistency without locking the audio thread, Conchordal uses a multi-channel update strategy for the Landscape:
 
 1.  The **Worker Thread** renders audio and sends each hop to the **Analysis Thread** via a bounded channel.
 2.  The **Analysis Thread** runs the full NSGT + Roughness + Harmonicity pipeline and sends the resulting `Landscape` snapshot back.
 3.  The **Worker Thread** merges the analysis result into the current `LandscapeFrame`, recomputing the combined Consonance field.
 4.  The `Population` evaluates the current Landscape for pitch selection, metabolism, and agent lifecycle.
-5.  The **DorsalStream** processes audio synchronously within the worker loop to update rhythm metrics, which are stored in `landscape.rhythm`.
-6.  Rendered mono audio is pushed into a lock-free ring buffer consumed by the **Audio Thread**.
+5.  The `PhonationEngine` emits `NoteCmd` batches; the `ScheduleRenderer` creates, updates, or releases `Voice` instances accordingly and renders audio through ADSR-shaped backends.
+6.  The `DorsalStream` processes the rendered audio synchronously to update rhythm metrics (`DorsalMetrics`), stored in `landscape.rhythm`.
+7.  Rendered mono audio is pushed into a lock-free ring buffer consumed by the **Audio Thread**.
 
 This decoupled architecture ensures that the audio thread always sees a consistent stream of samples, even if the analysis thread lags slightly behind real-time. The analysis thread processes all hops in-order to maintain NSGT time continuity.
 
 ## 6.3 The Conductor: Scripting with Rhai
 
-The Conductor module acts as the interface between the human artist and the ecosystem. It embeds the [Rhai](https://rhai.rs/) scripting language, exposing a high-level API for controlling the simulation.
+The Conductor module acts as the interface between the human artist and the ecosystem. It embeds the [Rhai](https://rhai.rs/) scripting language, exposing a tiered API for controlling the simulation.
 
-The `ScriptHost` struct maps internal Rust functions to Rhai commands:
+### 6.3.1 Species Configuration
 
-*   `derive(species)`: Creates a new species handle from a preset (`sine`, `harmonic`, `saw`, `square`, `noise`), allowing method-chaining to configure `amp`, `freq`, `brain`, `phonation`, `timbre`, `metabolism`, `adsr`, `pitch_mode`, and `pitch_core`.
-*   `create(species, count)`: Creates a group of agents from a species handle. Returns a `GroupHandle` for further configuration.
-*   `.place(strategy)`: Assigns a spawn strategy to a group. Strategies include `consonance(root_freq)`, `consonance_density_pmf(min, max)`, `random_log(min, max)`, and `linear(start, end)`.
-*   `wait(seconds)`: Commits pending groups, then advances the timeline cursor. This is the primary mechanism for shaping temporal structure.
-*   `flush()`: Commits pending groups without advancing the timeline.
+Species are configured via a `SpeciesHandle` builder pattern. A species begins with a preset and is refined through method chaining:
+
+**Presets**: `sine`, `harmonic`, `saw`, `square`, `noise`, `modal`.
+
+**Derivation**: `derive(parent)` clones an existing species for modification, enabling inheritance-style composition.
+
+**Body**: `amp(v)`, `freq(v)`, `brightness(v)`, `spread(v)`, `voices(n)`, `modes(pattern)`.
+
+**Pitch**: `pitch_mode("free"|"lock")`, `pitch_core("hill_climb"|"peak_sampler")`, `pitch_apply("gate_snap"|"glide")`, `pitch_glide(tau)`, `landscape_weight(v)`, `neighbor_step_cents(v)`, `tessitura_gravity(v)`, `exploration(v)`, `persistence(v)`, `anneal_temp(v)`, `move_cost(v)`, `improvement_threshold(v)`, `proposal_interval(sec)`, `window_cents(v)`, `top_k(n)`, `temperature(v)`, `sigma_cents(v)`, `random_candidates(n)`, `global_peaks(n)`, `ratio_candidates(n)`.
+
+**Crowding**: `crowding(strength)` (auto-sigma from roughness kernel), `crowding(strength, sigma_cents)`, `crowding_target(same, other)`, `leave_self_out(bool)`, `leave_self_out_mode("approx"|"exact")`, `leave_self_out_harmonics(n)`.
+
+**Brain/Phonation**: `brain("entrain"|"seq"|"drone")`, `sustain()`, `repeat()`, `once()`, `pulse(rate)`, `while_alive()`, `gates(n)`, `field()`, `sync(depth)`, `social(coupling)`, `field_window(min,max)`, `field_curve(k,x0)`, `field_drop(gain)`.
+
+**Lifecycle**: `metabolism(rate)`, `adsr(a,d,s,r)`.
+
+**Rhythm**: `rhythm_coupling("temporal")`, `rhythm_coupling_vitality(lambda_v, v_floor)`, `rhythm_reward(rho_t, "attack_phase_match")`.
+
+**Respawn**: `respawn_random()`, `respawn_hereditary(sigma_oct)`.
+
+### 6.3.2 Mode Patterns
+
+Modal synthesis mode patterns are specified via constructor functions with optional modifiers:
+
+*   `harmonic_modes()`, `odd_modes()`, `power_modes(beta)`, `stiff_string_modes(stiffness)`, `custom_modes(ratios)`, `modal_table(name)`, `landscape_density_modes()`, `landscape_peaks_modes()`.
+
+Modifiers: `.count(n)`, `.range(min, max)`, `.jitter(cents)`, `.seed(s)`.
+
+### 6.3.3 Spawn Strategies
+
+Spawn strategies determine initial frequency placement: `consonance(root)`, `consonance_density_pmf(min, max)`, `random_log(min, max)`, `linear(start, end)`. Modifiers: `.range(min, max)`, `.min_dist(d)`.
+
+### 6.3.4 Group Operations
+
+*   `create(species, count)`: Instantiates a group of agents. Returns a `GroupHandle`.
+*   `.place(strategy)`: Assigns a spawn strategy to a group.
 *   `release(group)`: Marks a group for fade-out release.
-*   `scene(name, callback)`: Marks a named scene boundary. Groups created within the callback are automatically released when the scene ends.
+
+Groups support live-patching of pitch parameters, amplitude, and timbre during execution.
+
+### 6.3.5 Control Flow
+
+*   `wait(sec)`: Commits pending groups, then advances the timeline cursor.
+*   `flush()`: Commits pending groups without advancing the timeline.
+*   `seed(n)`: Sets the random seed for reproducible runs.
+*   `scene(name, callback)`: Marks a named scene boundary; groups created within the callback are automatically released when the scene ends.
 *   `play(callback)`: Executes a scoped block—groups created inside are released on exit.
 *   `parallel([callbacks])`: Runs multiple blocks concurrently (timeline branches), advancing the cursor to the latest endpoint.
-*   `set_harmonicity_mirror_weight(value)`: Modulates the `mirror_weight` parameter in real-time.
-*   `set_roughness_k(value)`: Adjusts the roughness saturation parameter $k$.
-*   `set_global_coupling(value)`: Controls the Kuramoto coupling strength.
-*   `seed(value)`: Sets the random seed for reproducible runs.
+
+### 6.3.6 Global Parameters
+
+*   `set_harmonicity_mirror_weight(v)`: Modulates the `mirror_weight` parameter in real-time.
+*   `set_roughness_k(v)`: Adjusts the roughness saturation parameter $k$.
+*   `set_global_coupling(v)`: Controls the Kuramoto coupling strength.
+*   `set_pitch_objective("consonance"|"dissonance")`: Inverts the fitness function for adversarial experiments.
 
 **Scenario Parsing**: Scenarios are loaded from `.rhai` files. This separation allows users to compose the "Macro-Structure" (the narrative arc, the changing laws of physics) while the "Micro-Structure" (the specific notes and rhythms) emerges from the agents' adaptation to those changes.
 
@@ -449,11 +550,15 @@ This script validates the hop-based movement logic.
 
 # 8. Conclusion
 
-Conchordal successfully establishes a proof-of-concept for Bio-Mimetic Computational Audio. By replacing the rigid abstractions of music theory (notes, grids, BPM) with continuous physiological models (`Log2Space`, ERB bands, neural oscillation), it creates a system where music is not constructed, but grown.
+Conchordal establishes a foundation for Bio-Mimetic Computational Audio. By replacing the rigid abstractions of music theory (notes, grids, BPM) with continuous physiological models (`Log2Space`, ERB bands, neural oscillation), it creates a system where music is not constructed, but grown.
 
-The technical architecture—anchored by the `Log2Space` coordinate system and the "Sibling Projection" algorithm—provides a robust mathematical foundation for this new paradigm. The use of Rust ensures that these complex biological simulations can run in real-time, bridging the gap between ALife research and performative musical instruments.
+The paper "Conchordal: Emergent Harmony via Direct Cognitive Coupling in a Psychoacoustic Landscape" (arXiv:2603.25637) validated the psychoacoustic landscape as an effective ALife terrain through controlled experiments demonstrating self-organization, selection, synchronization, and hereditary accumulation. These results confirm that the Roughness-Harmonicity-Consonance pipeline and the Kuramoto entrainment model produce musically coherent emergent behavior under a range of initial conditions.
 
-Future development of Conchordal will focus on spatialization (extending the landscape to 3D space) and evolutionary genetics (allowing successful agents to pass on their `TimbreGenotype`), further deepening the analogy between sound and life.
+Version 0.3.0 extends the architecture with modal synthesis (damped resonator banks), ADSR envelopes for per-voice amplitude shaping, the `PhonationEngine` note scheduling system for decoupled timing control, and expanded crowding/pitch control (leave-self-out analysis, roughness-derived sigma, simulated annealing). The Rhai scripting API has been substantially expanded to expose these capabilities through a tiered builder-pattern interface.
+
+The technical architecture—anchored by the `Log2Space` coordinate system and the "Sibling Projection" algorithm—provides a robust mathematical foundation for this paradigm. The use of Rust ensures that these complex biological simulations can run in real-time, bridging the gap between ALife research and performative musical instruments.
+
+Future development will focus on integrating paper findings into the main binary (v0.4.0), spatialization (extending the landscape to 3D space), and evolutionary genetics (allowing successful agents to pass on their `TimbreGenotype`), further deepening the analogy between sound and life.
 
 # Appendix A: Key System Parameters
 
@@ -464,14 +569,21 @@ Future development of Conchordal will focus on spatialization (extending the lan
 | `mirror_weight` | `HarmonicityParams` | 0.0-1.0 | Balance between Overtone (Major) and Undertone (Minor) gravity. |
 | `roughness_k` | `LandscapeParams` | Float | Saturation parameter for roughness mapping. Default: $(1/0.7) - 1 \approx 0.4286$ (so $x=1$ maps to $\approx 0.7$). |
 | `kernel.a` | `ConsonanceKernel` | Float | Harmonicity coefficient (default 1.0). |
-| `kernel.b` | `ConsonanceKernel` | Float | Roughness coefficient (default −1.35; negative penalizes roughness). |
+| `kernel.b` | `ConsonanceKernel` | Float | Roughness coefficient (default -1.35; negative penalizes roughness). |
 | `kernel.c` | `ConsonanceKernel` | Float | Interaction coefficient (default 1.0; positive attenuates roughness penalty at high harmonicity). |
 | `kernel.d` | `ConsonanceKernel` | Float | Bias term (default 0.0). |
 | `beta` | `ConsonanceRepresentationParams` | Float | Sigmoid steepness for $C_{level01}$ (default 2.0). |
 | `theta` | `ConsonanceRepresentationParams` | Float | Sigmoid threshold for $C_{level01}$ (default 0.0). |
 | `consonance_density_roughness_gain` | `LandscapeParams` | Float | $\rho$ in density kernel $H(1-\rho R)$ (default 1.0). |
 | `vitality` | `DorsalStream` | 0.0-1.0 | Self-oscillation energy of the rhythm section. |
-| `persistence` | `PitchHillClimbPitchCore` | 0.0-1.0 | Resistance to movement/change of an agent (policy bias within pitch selection). |
+| `persistence` | `PitchHillClimbPitchCore` | 0.0-1.0 | Resistance to movement/change (policy bias within pitch selection). |
+| `crowding_strength` | `PitchHillClimbPitchCore` | Float | Strength of frequency-space crowding avoidance. |
+| `crowding_sigma_cents` | `PitchHillClimbPitchCore` | Cents | Width of crowding penalty Gaussian (default 60). |
+| `leave_self_out` | `PitchHillClimbPitchCore` | Bool | Whether to subtract own spectral contribution during evaluation. |
+| `anneal_temp` | `PitchHillClimbPitchCore` | Float | Simulated annealing temperature for pitch proposals. |
+| `attack_step` | `KuramotoCore` | Float | Envelope attack step size. |
+| `decay_rate` | `KuramotoCore` | Float | Envelope decay rate. |
+| `k_omega` | `KuramotoCore` | Float | Coupling strength scaling for Kuramoto phase step. |
 
 # Appendix B: Mathematical Summary
 

@@ -1,4 +1,4 @@
-use crate::life::control::{DEFAULT_TIMBRE_SPREAD, DEFAULT_TIMBRE_VOICES, MAX_TIMBRE_VOICES};
+use crate::life::control::{DEFAULT_TIMBRE_SPREAD, DEFAULT_TIMBRE_UNISON, MAX_TIMBRE_UNISON};
 use crate::life::sound::modal_engine::ModalMode;
 
 pub(crate) fn modal_tilt_from_brightness(brightness: f32) -> f32 {
@@ -28,33 +28,33 @@ pub(crate) fn public_spread_from_cluster_spread_cents(spread_cents: f32) -> f32 
     (spread_cents / MAX_CLUSTER_SPREAD_CENTS).clamp(0.0, 1.0)
 }
 
-pub(crate) fn sanitize_cluster_voices(voices: usize) -> usize {
-    voices.clamp(DEFAULT_TIMBRE_VOICES, MAX_TIMBRE_VOICES)
+pub(crate) fn sanitize_cluster_unison(unison: usize) -> usize {
+    unison.clamp(DEFAULT_TIMBRE_UNISON, MAX_TIMBRE_UNISON)
 }
 
-pub(crate) fn active_cluster_voices(spread_cents: f32, voices: usize) -> usize {
-    let voices = sanitize_cluster_voices(voices);
+pub(crate) fn active_cluster_unison(spread_cents: f32, unison: usize) -> usize {
+    let unison = sanitize_cluster_unison(unison);
     if !spread_cents.is_finite() || spread_cents.abs() <= CLUSTER_SPREAD_EPS_CENTS {
-        DEFAULT_TIMBRE_VOICES
+        DEFAULT_TIMBRE_UNISON
     } else {
-        voices
+        unison
     }
 }
 
-pub(crate) fn cluster_detune_mul(spread_cents: f32, voices: usize, voice_idx: usize) -> f32 {
-    let voices = active_cluster_voices(spread_cents, voices);
-    if voices <= 1 {
+pub(crate) fn cluster_detune_mul(spread_cents: f32, unison: usize, unison_idx: usize) -> f32 {
+    let unison = active_cluster_unison(spread_cents, unison);
+    if unison <= 1 {
         return 1.0;
     }
-    let center = (voices.saturating_sub(1)) as f32 * 0.5;
+    let center = (unison.saturating_sub(1)) as f32 * 0.5;
     let denom = center.max(0.5);
-    let pos = voice_idx as f32 - center;
+    let pos = unison_idx as f32 - center;
     let offset_cents = (pos / denom) * spread_cents;
     2.0f32.powf(offset_cents / 1200.0)
 }
 
-pub(crate) fn cluster_gain(base_gain: f32, spread_cents: f32, voices: usize) -> f32 {
-    base_gain / active_cluster_voices(spread_cents, voices) as f32
+pub(crate) fn cluster_gain(base_gain: f32, spread_cents: f32, unison: usize) -> f32 {
+    base_gain / active_cluster_unison(spread_cents, unison) as f32
 }
 
 pub(crate) fn sanitize_mode_ratios(mut ratios: Vec<f32>) -> Vec<f32> {
@@ -68,11 +68,11 @@ pub(crate) fn modal_modes_from_ratios(
     ratios: &[f32],
     modal_tilt: f32,
     cluster_spread_cents: f32,
-    cluster_voices: usize,
+    cluster_unison: usize,
 ) -> Vec<ModalMode> {
     let modal_tilt = modal_tilt.clamp(0.0, 1.0);
     let tilt_exp = (1.85 - modal_tilt * 1.45).clamp(0.12, 2.2);
-    let active_cluster_voices = active_cluster_voices(cluster_spread_cents, cluster_voices);
+    let active_cluster_unison = active_cluster_unison(cluster_spread_cents, cluster_unison);
     let mut base_modes = Vec::with_capacity(ratios.len().max(1));
     for (idx, ratio) in ratios.iter().copied().enumerate() {
         if !ratio.is_finite() || ratio <= 0.0 {
@@ -99,15 +99,16 @@ pub(crate) fn modal_modes_from_ratios(
         });
     }
     normalize_modal_gains(&mut base_modes);
-    if active_cluster_voices <= 1 {
+    if active_cluster_unison <= 1 {
         return base_modes;
     }
 
-    let mut clustered = Vec::with_capacity(base_modes.len() * active_cluster_voices);
+    let mut clustered = Vec::with_capacity(base_modes.len() * active_cluster_unison);
     for mode in base_modes {
-        let gain = cluster_gain(mode.gain, cluster_spread_cents, active_cluster_voices);
-        for voice_idx in 0..active_cluster_voices {
-            let detune = cluster_detune_mul(cluster_spread_cents, active_cluster_voices, voice_idx);
+        let gain = cluster_gain(mode.gain, cluster_spread_cents, active_cluster_unison);
+        for unison_idx in 0..active_cluster_unison {
+            let detune =
+                cluster_detune_mul(cluster_spread_cents, active_cluster_unison, unison_idx);
             let ratio = mode.ratio * detune;
             if !ratio.is_finite() || ratio <= 0.0 {
                 continue;

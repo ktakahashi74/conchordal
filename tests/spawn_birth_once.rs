@@ -1,11 +1,11 @@
 use conchordal::core::landscape::Landscape;
 use conchordal::core::log2space::Log2Space;
 use conchordal::core::timebase::{Tick, Timebase};
-use conchordal::life::control::AgentControl;
-use conchordal::life::individual::AgentMetadata;
+use conchordal::life::control::VoiceControl;
 use conchordal::life::population::Population;
-use conchordal::life::scenario::{ArticulationCoreConfig, IndividualConfig};
+use conchordal::life::scenario::{ArticulationCoreConfig, VoiceConfig};
 use conchordal::life::schedule_renderer::ScheduleRenderer;
+use conchordal::life::voice::VoiceMetadata;
 use conchordal::life::world_model::WorldModel;
 
 fn test_timebase() -> Timebase {
@@ -15,11 +15,11 @@ fn test_timebase() -> Timebase {
     }
 }
 
-fn spawn_agent(freq: f32, amp: f32) -> IndividualConfig {
-    let mut control = AgentControl::default();
+fn spawn_agent(freq: f32, amp: f32) -> VoiceConfig {
+    let mut control = VoiceControl::default();
     control.pitch.freq = freq;
     control.body.amp = amp;
-    IndividualConfig {
+    VoiceConfig {
         control,
         articulation: ArticulationCoreConfig::default(),
     }
@@ -34,11 +34,11 @@ fn spawn_sustain_publishes_note_on_first_tick() {
 
     let cfg = spawn_agent(440.0, 0.4);
     let assigned_id = 1;
-    let meta = AgentMetadata {
+    let meta = VoiceMetadata {
         group_id: 0,
         member_idx: 0,
     };
-    pop.add_individual(cfg.spawn(assigned_id, 0, meta, tb.fs, 0));
+    pop.add_voice(cfg.spawn(assigned_id, 0, meta, tb.fs, 0));
 
     let landscape = Landscape::new(space);
     let now: Tick = 0;
@@ -55,11 +55,11 @@ fn spawn_emits_phonation_note_that_renders_audio() {
 
     let cfg = spawn_agent(440.0, 0.4);
     let assigned_id = 1;
-    let meta = AgentMetadata {
+    let meta = VoiceMetadata {
         group_id: 0,
         member_idx: 0,
     };
-    pop.add_individual(cfg.spawn(assigned_id, 0, meta, tb.fs, 0));
+    pop.add_voice(cfg.spawn(assigned_id, 0, meta, tb.fs, 0));
 
     let landscape = Landscape::new(space);
     let now: Tick = 0;

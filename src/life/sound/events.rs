@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-pub type IndividualId = u64;
+pub type VoiceId = u64;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BodyKind {
@@ -16,7 +16,7 @@ pub struct BodySnapshot {
     pub brightness: f32,
     pub inharmonic: f32,
     pub spread: f32,
-    pub voices: usize,
+    pub unison: usize,
     pub motion: f32,
     pub ratios: Option<Arc<[f32]>>,
 }

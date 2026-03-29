@@ -1,11 +1,11 @@
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
-use crate::life::individual::ArticulationSignal;
 use crate::life::lifecycle::default_decay_attack;
-use crate::life::phonation_engine::{NoteUpdate, OnsetKick};
+use crate::life::phonation_engine::{OnsetKick, ToneUpdate};
 use crate::life::sound::any_backend::{AnyBackend, DriveMode};
-use crate::life::sound::control::{ControlRamp, VoiceControlBlock};
+use crate::life::sound::control::{ControlRamp, ToneControlBlock};
 use crate::life::sound::{BodyKind, BodySnapshot, RenderModulator, RenderModulatorSpec};
+use crate::life::voice::ArticulationSignal;
 use std::collections::VecDeque;
 
 const SINE_IMPULSE_BOOST_GAIN: f32 = 0.2;
@@ -13,7 +13,7 @@ const SINE_IMPULSE_BOOST_MAX: f32 = 1.0;
 const SINE_IMPULSE_BOOST_DECAY_SEC: f32 = 0.08;
 
 #[derive(Debug, Clone, Copy)]
-pub struct VoiceAdsr {
+pub struct ToneAdsr {
     pub attack_sec: f32,
     pub decay_sec: f32,
     pub sustain_level: f32,
@@ -23,7 +23,7 @@ pub struct VoiceAdsr {
 #[derive(Debug, Clone, Copy)]
 struct PendingUpdate {
     at_tick: Tick,
-    update: NoteUpdate,
+    update: ToneUpdate,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -32,7 +32,7 @@ struct PendingTrigger {
     energy: f32,
 }
 
-pub struct Voice {
+pub struct Tone {
     backend: AnyBackend,
     render_modulator: Option<RenderModulator>,
     pending_impulse_energy: f32,
@@ -62,7 +62,7 @@ pub struct Voice {
     sine_impulse_boost: f32,
 }
 
-impl Voice {
+impl Tone {
     #[allow(clippy::too_many_arguments)]
     pub fn from_parts(
         time: Timebase,
@@ -72,7 +72,7 @@ impl Voice {
         amp: f32,
         body: Option<BodySnapshot>,
         render_modulator: Option<RenderModulatorSpec>,
-        adsr: Option<VoiceAdsr>,
+        adsr: Option<ToneAdsr>,
     ) -> Option<Self> {
         if duration == 0 || freq_hz <= 0.0 {
             return None;
@@ -237,7 +237,7 @@ impl Voice {
         self.planned_kick_pending = Some(kick);
     }
 
-    pub fn schedule_update(&mut self, at_tick: Tick, update: NoteUpdate) {
+    pub fn schedule_update(&mut self, at_tick: Tick, update: ToneUpdate) {
         if update.is_empty() {
             return;
         }
@@ -323,7 +323,7 @@ impl Voice {
                 impulse + self.continuous_drive * signal.amplitude * noise
             }
         };
-        let ctrl = VoiceControlBlock {
+        let ctrl = ToneControlBlock {
             pitch_hz: ControlRamp {
                 start: self.current_pitch_hz.max(1.0),
                 step: 0.0,
@@ -429,7 +429,7 @@ impl Voice {
         now >= self.release_end
     }
 
-    fn apply_update(&mut self, update: &NoteUpdate) {
+    fn apply_update(&mut self, update: &ToneUpdate) {
         if let Some(freq_hz) = update.target_freq_hz
             && freq_hz.is_finite()
             && freq_hz > 0.0
@@ -577,7 +577,7 @@ fn default_body_snapshot() -> BodySnapshot {
         brightness: 0.0,
         inharmonic: 0.0,
         spread: 0.0,
-        voices: 1,
+        unison: 1,
         motion: 0.0,
         ratios: None,
     }
@@ -593,18 +593,18 @@ mod tests {
             fs: 48_000.0,
             hop: 64,
         };
-        let mut voice =
-            Voice::from_parts(tb, 0, Tick::MAX, 440.0, 0.5, None, None, None).expect("voice");
+        let mut tone =
+            Tone::from_parts(tb, 0, Tick::MAX, 440.0, 0.5, None, None, None).expect("tone");
 
         let mut rhythms = NeuralRhythms::default();
         let mut out = vec![0.0f32; tb.hop];
-        voice.render_block(0, tb.fs, 1.0 / tb.fs, &mut rhythms, &mut out);
+        tone.render_block(0, tb.fs, 1.0 / tb.fs, &mut rhythms, &mut out);
         assert!(out.iter().all(|s| s.abs() <= 1e-6));
 
-        voice.trigger_impulse(1.0);
+        tone.trigger_impulse(1.0);
         let mut rhythms = NeuralRhythms::default();
         let mut out = vec![0.0f32; tb.hop];
-        voice.render_block(0, tb.fs, 1.0 / tb.fs, &mut rhythms, &mut out);
+        tone.render_block(0, tb.fs, 1.0 / tb.fs, &mut rhythms, &mut out);
         assert!(out.iter().any(|s| s.abs() > 1e-6));
     }
 
@@ -614,9 +614,9 @@ mod tests {
             fs: 48_000.0,
             hop: 64,
         };
-        let mut voice =
-            Voice::from_parts(tb, 0, Tick::MAX, 440.0, 0.5, None, None, None).expect("voice");
-        voice.set_continuous_drive(0.01);
+        let mut tone =
+            Tone::from_parts(tb, 0, Tick::MAX, 440.0, 0.5, None, None, None).expect("tone");
+        tone.set_continuous_drive(0.01);
 
         let dt = 1.0 / tb.fs;
         let blocks = 64;
@@ -624,7 +624,7 @@ mod tests {
         for b in 0..blocks {
             let tick = (b * tb.hop) as Tick;
             let mut rhythms = NeuralRhythms::default();
-            voice.render_block(tick, tb.fs, dt, &mut rhythms, &mut last_block);
+            tone.render_block(tick, tb.fs, dt, &mut rhythms, &mut last_block);
         }
         assert!(last_block.iter().all(|s| s.abs() <= 1e-6));
     }
@@ -641,21 +641,21 @@ mod tests {
             brightness: 0.6,
             inharmonic: 0.0,
             spread: 0.0,
-            voices: 1,
+            unison: 1,
             motion: 0.0,
             ratios: None,
         };
-        let mut voice = Voice::from_parts(tb, 0, Tick::MAX, 220.0, 0.5, Some(harmonic), None, None)
-            .expect("voice");
-        voice.set_continuous_drive(0.03);
-        voice.trigger_impulse(1.0);
+        let mut tone = Tone::from_parts(tb, 0, Tick::MAX, 220.0, 0.5, Some(harmonic), None, None)
+            .expect("tone");
+        tone.set_continuous_drive(0.03);
+        tone.trigger_impulse(1.0);
         let dt = 1.0 / tb.fs;
         let blocks = (2.0 * tb.fs as f64 / tb.hop as f64) as usize;
         let mut last_block = vec![0.0f32; tb.hop];
         for b in 0..blocks {
             let tick = (b * tb.hop) as Tick;
             let mut rhythms = NeuralRhythms::default();
-            voice.render_block(tick, tb.fs, dt, &mut rhythms, &mut last_block);
+            tone.render_block(tick, tb.fs, dt, &mut rhythms, &mut last_block);
         }
         let peak = last_block.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
         assert!(
@@ -676,20 +676,20 @@ mod tests {
             brightness: 0.6,
             inharmonic: 0.0,
             spread: 0.0,
-            voices: 1,
+            unison: 1,
             motion: 0.0,
             ratios: None,
         };
-        let mut voice = Voice::from_parts(tb, 0, Tick::MAX, 220.0, 0.5, Some(harmonic), None, None)
-            .expect("voice");
-        voice.trigger_impulse(1.0);
+        let mut tone = Tone::from_parts(tb, 0, Tick::MAX, 220.0, 0.5, Some(harmonic), None, None)
+            .expect("tone");
+        tone.trigger_impulse(1.0);
         let dt = 1.0 / tb.fs;
         let blocks = (2.0 * tb.fs as f64 / tb.hop as f64) as usize;
         let mut last_block = vec![0.0f32; tb.hop];
         for b in 0..blocks {
             let tick = (b * tb.hop) as Tick;
             let mut rhythms = NeuralRhythms::default();
-            voice.render_block(tick, tb.fs, dt, &mut rhythms, &mut last_block);
+            tone.render_block(tick, tb.fs, dt, &mut rhythms, &mut last_block);
         }
         let peak = last_block.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
         assert!(
@@ -704,19 +704,19 @@ mod tests {
             fs: 48_000.0,
             hop: 64,
         };
-        let mut voice =
-            Voice::from_parts(tb, 0, Tick::MAX, 440.0, 0.5, None, None, None).expect("voice");
+        let mut tone =
+            Tone::from_parts(tb, 0, Tick::MAX, 440.0, 0.5, None, None, None).expect("tone");
         let dt = 1.0 / tb.fs;
         let mut rhythms = NeuralRhythms::default();
 
-        voice.trigger_impulse(1.0);
+        tone.trigger_impulse(1.0);
         let mut before = vec![0.0f32; tb.hop];
-        voice.render_block(0, tb.fs, dt, &mut rhythms, &mut before);
+        tone.render_block(0, tb.fs, dt, &mut rhythms, &mut before);
         let before_peak = before.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
 
-        voice.trigger_impulse(1.0);
+        tone.trigger_impulse(1.0);
         let mut after = vec![0.0f32; tb.hop];
-        voice.render_block(tb.hop as Tick, tb.fs, dt, &mut rhythms, &mut after);
+        tone.render_block(tb.hop as Tick, tb.fs, dt, &mut rhythms, &mut after);
         let after_peak = after.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
 
         assert!(
@@ -731,73 +731,73 @@ mod tests {
             fs: 48_000.0,
             hop: 64,
         };
-        let mut voice = Voice::from_parts(tb, 0, 8, 440.0, 0.5, None, None, None).expect("voice");
-        voice.set_smoothing_tau_sec(0.0);
-        voice.note_off(4);
-        voice.schedule_update(
+        let mut tone = Tone::from_parts(tb, 0, 8, 440.0, 0.5, None, None, None).expect("tone");
+        tone.set_smoothing_tau_sec(0.0);
+        tone.note_off(4);
+        tone.schedule_update(
             4,
-            NoteUpdate {
+            ToneUpdate {
                 target_freq_hz: None,
                 target_amp: Some(0.25),
                 continuous_drive: None,
             },
         );
 
-        voice.apply_updates_if_due(4);
+        tone.apply_updates_if_due(4);
 
-        assert!((voice.debug_target_amp() - 0.25).abs() < 1e-6);
-        assert!((voice.debug_current_amp() - 0.25).abs() < 1e-6);
+        assert!((tone.debug_target_amp() - 0.25).abs() < 1e-6);
+        assert!((tone.debug_current_amp() - 0.25).abs() < 1e-6);
     }
 
     #[test]
     fn adsr_gain_follows_attack_decay_sustain_release() {
         let tb = Timebase { fs: 1000.0, hop: 4 };
-        let adsr = VoiceAdsr {
+        let adsr = ToneAdsr {
             attack_sec: 0.01,
             decay_sec: 0.02,
             sustain_level: 0.5,
             release_sec: 0.01,
         };
-        let mut voice =
-            Voice::from_parts(tb, 0, 100, 440.0, 1.0, None, None, Some(adsr)).expect("voice");
-        voice.trigger_impulse(1.0);
+        let mut tone =
+            Tone::from_parts(tb, 0, 100, 440.0, 1.0, None, None, Some(adsr)).expect("tone");
+        tone.trigger_impulse(1.0);
 
         // Attack phase: gain ramps 0 → 1 over ~10 ticks
-        let g_mid_attack = voice.gain_at(5);
+        let g_mid_attack = tone.gain_at(5);
         assert!(
             g_mid_attack > 0.0 && g_mid_attack < 1.0,
             "mid-attack: {g_mid_attack}"
         );
 
         // After attack (tick 10): gain should be ~1.0
-        let g_attack_end = voice.gain_at(10);
+        let g_attack_end = tone.gain_at(10);
         assert!(g_attack_end > 0.95, "attack end: {g_attack_end}");
 
         // After decay (tick 30 = 10 attack + 20 decay): close to sustain 0.5
-        let g_sustain = voice.gain_at(35);
+        let g_sustain = tone.gain_at(35);
         assert!((g_sustain - 0.5).abs() < 0.05, "sustain level: {g_sustain}");
 
         // Release: note_off at tick 50
-        voice.note_off(50);
+        tone.note_off(50);
         // Right after release starts
-        let g_release_start = voice.gain_at(51);
+        let g_release_start = tone.gain_at(51);
         assert!(
             g_release_start > 0.0 && g_release_start < 0.5,
             "release start: {g_release_start}"
         );
 
         // After release_end
-        let g_done = voice.gain_at(61);
+        let g_done = tone.gain_at(61);
         assert!(g_done == 0.0, "after release end: {g_done}");
     }
 
     #[test]
     fn no_adsr_preserves_original_behavior() {
         let tb = Timebase { fs: 1000.0, hop: 4 };
-        let voice = Voice::from_parts(tb, 0, 100, 440.0, 1.0, None, None, None).expect("voice");
+        let tone = Tone::from_parts(tb, 0, 100, 440.0, 1.0, None, None, None).expect("tone");
 
         // In sustain phase: gain should be 1.0
-        let g = voice.gain_at(50);
+        let g = tone.gain_at(50);
         assert!((g - 1.0).abs() < 1e-6, "sustain without adsr: {g}");
     }
 }

@@ -10,8 +10,8 @@ use crate::core::landscape::PitchObjectiveMode;
 use crate::core::mode_pattern::ModePattern;
 
 use super::control::{
-    AgentControl, BodyMethod, ControlUpdate, LeaveSelfOutMode, MoveCostTimeScale, PitchApplyMode,
-    PitchCoreKind, PitchMode,
+    BodyMethod, ControlUpdate, LeaveSelfOutMode, MoveCostTimeScale, PitchApplyMode, PitchCoreKind,
+    PitchMode, VoiceControl,
 };
 use super::lifecycle::LifecycleConfig;
 use super::scenario::{
@@ -80,7 +80,7 @@ struct AdsrSpec {
 
 #[derive(Clone, Debug)]
 struct SpeciesSpec {
-    control: AgentControl,
+    control: VoiceControl,
     respawn_policy: RespawnPolicy,
     respawn_settle_strategy: Option<SpawnStrategy>,
     respawn_capacity: usize,
@@ -107,7 +107,7 @@ struct SpeciesSpec {
 
 impl SpeciesSpec {
     fn preset(body: BodyMethod) -> Self {
-        let mut control = AgentControl::default();
+        let mut control = VoiceControl::default();
         control.body.method = body;
         Self {
             control,
@@ -414,14 +414,14 @@ impl SpeciesSpec {
         self.warn_timbre_noop_if_needed("spread");
     }
 
-    fn set_voices(&mut self, voices: f32) {
-        let voices = if voices.is_finite() {
-            voices.round() as i64
+    fn set_unison(&mut self, unison: f32) {
+        let unison = if unison.is_finite() {
+            unison.round() as i64
         } else {
             1
         };
-        self.control.set_timbre_voices_clamped(voices);
-        self.warn_timbre_noop_if_needed("voices");
+        self.control.set_timbre_unison_clamped(unison);
+        self.warn_timbre_noop_if_needed("unison");
     }
 
     fn set_modes(&mut self, pattern: ModePattern) {
@@ -704,7 +704,7 @@ pub struct ScriptContext {
     pub seed: u64,
     pub next_event_order: u64,
     next_group_id: u64,
-    next_agent_id: u64,
+    next_voice_id: u64,
     groups: BTreeMap<u64, GroupState>,
     scopes: Vec<ScopeFrame>,
     warnings: ScriptWarnings,
@@ -726,7 +726,7 @@ impl Default for ScriptContext {
             seed,
             next_event_order: 1,
             next_group_id: 1,
-            next_agent_id: 1,
+            next_voice_id: 1,
             groups: BTreeMap::new(),
             scopes: Vec::new(),
             warnings: ScriptWarnings::default(),
@@ -841,8 +841,8 @@ impl ScriptContext {
                 }
                 let mut ids = Vec::with_capacity(group.count);
                 for _ in 0..group.count {
-                    let id = self.next_agent_id;
-                    self.next_agent_id = self.next_agent_id.wrapping_add(1);
+                    let id = self.next_voice_id;
+                    self.next_voice_id = self.next_voice_id.wrapping_add(1);
                     ids.push(id);
                 }
                 group.live_ids = ids.clone();
@@ -1402,8 +1402,8 @@ fn patch_timbre_spread(update: &mut ControlUpdate, value: f32) {
     update.timbre_spread = Some(value);
 }
 
-fn patch_timbre_voices(update: &mut ControlUpdate, value: f32) {
-    update.timbre_voices = Some(value.round() as i64);
+fn patch_timbre_unison(update: &mut ControlUpdate, value: f32) {
+    update.timbre_unison = Some(value.round() as i64);
 }
 
 fn draft_clear_strategy(group: &mut GroupState) {
@@ -1712,7 +1712,7 @@ impl ScriptHost {
         });
         register_species_numeric_overloads(&mut engine, "brightness", SpeciesSpec::set_brightness);
         register_species_numeric_overloads(&mut engine, "spread", SpeciesSpec::set_spread);
-        register_species_numeric_overloads(&mut engine, "voices", SpeciesSpec::set_voices);
+        register_species_numeric_overloads(&mut engine, "unison", SpeciesSpec::set_unison);
         engine.register_fn(
             "modes",
             |mut species: SpeciesHandle, pattern: ModePattern| {
@@ -2871,9 +2871,9 @@ impl ScriptHost {
         register_group_numeric_overloads(
             &mut engine,
             ctx.clone(),
-            "voices",
-            SpeciesSpec::set_voices,
-            patch_timbre_voices,
+            "unison",
+            SpeciesSpec::set_unison,
+            patch_timbre_unison,
             None,
         );
         let ctx_for_group_modes = ctx.clone();
@@ -3446,10 +3446,10 @@ mod tests {
     use super::*;
     use crate::core::landscape::LandscapeFrame;
     use crate::core::timebase::Timebase;
-    use crate::life::individual::AnyArticulationCore;
-    use crate::life::individual::sound_body::SoundBody;
     use crate::life::population::Population;
     use crate::life::scenario::RhythmCouplingMode;
+    use crate::life::voice::AnyArticulationCore;
+    use crate::life::voice::sound_body::SoundBody;
     use rand::SeedableRng;
     use std::collections::HashMap;
 
@@ -3760,9 +3760,9 @@ mod tests {
         let landscape = LandscapeFrame::default();
         pop.apply_action(spawn_action, &landscape, None);
 
-        let agent = pop.individuals.first().expect("spawned");
-        assert_eq!(agent.base_control.pitch.mode, PitchMode::Free);
-        assert_eq!(agent.effective_control.pitch.mode, PitchMode::Free);
+        let voice = pop.voices.first().expect("spawned");
+        assert_eq!(voice.base_control.pitch.mode, PitchMode::Free);
+        assert_eq!(voice.effective_control.pitch.mode, PitchMode::Free);
     }
 
     #[test]
@@ -3887,8 +3887,8 @@ mod tests {
                 pop.apply_action(action.clone(), &landscape, None);
             }
         }
-        let agent = pop.individuals.first().expect("spawned");
-        assert!((agent.effective_control.pitch.landscape_weight - 0.3).abs() <= 1e-6);
+        let voice = pop.voices.first().expect("spawned");
+        assert!((voice.effective_control.pitch.landscape_weight - 0.3).abs() <= 1e-6);
     }
 
     #[test]
@@ -3913,9 +3913,9 @@ mod tests {
                 pop.apply_action(action.clone(), &landscape, None);
             }
         }
-        let agent = pop.individuals.first().expect("spawned");
-        assert!((agent.pitch_core_for_test().exploration_for_test() - 0.8).abs() <= 1e-6);
-        assert!((agent.pitch_core_for_test().persistence_for_test() - 0.2).abs() <= 1e-6);
+        let voice = pop.voices.first().expect("spawned");
+        assert!((voice.pitch_core_for_test().exploration_for_test() - 0.8).abs() <= 1e-6);
+        assert!((voice.pitch_core_for_test().persistence_for_test() - 0.2).abs() <= 1e-6);
     }
 
     #[test]
@@ -3971,8 +3971,8 @@ mod tests {
                 _ => {}
             }
         }
-        let agent = pop.individuals.first().expect("spawned");
-        assert!((agent.effective_control.pitch.landscape_weight - 0.6).abs() <= 1e-6);
+        let voice = pop.voices.first().expect("spawned");
+        assert!((voice.effective_control.pitch.landscape_weight - 0.6).abs() <= 1e-6);
     }
 
     #[test]
@@ -4002,14 +4002,14 @@ mod tests {
                 .iter()
                 .any(|action| matches!(action, Action::Spawn { .. }))
             {
-                for (idx, agent) in pop.individuals.iter_mut().enumerate() {
+                for (idx, voice) in pop.voices.iter_mut().enumerate() {
                     let freq_hz = 220.0 * (idx as f32 + 1.0);
-                    agent.force_set_pitch_log2(freq_hz.log2());
+                    voice.force_set_pitch_log2(freq_hz.log2());
                 }
                 before_update = pop
-                    .individuals
+                    .voices
                     .iter()
-                    .map(|agent| (agent.id(), agent.body.base_freq_hz()))
+                    .map(|voice| (voice.id(), voice.body.base_freq_hz()))
                     .collect();
                 before_update.sort_by_key(|(id, _)| *id);
             }
@@ -4019,9 +4019,9 @@ mod tests {
                 .any(|action| matches!(action, Action::UpdateGroup { .. }))
             {
                 after_update = pop
-                    .individuals
+                    .voices
                     .iter()
-                    .map(|agent| (agent.id(), agent.body.base_freq_hz()))
+                    .map(|voice| (voice.id(), voice.body.base_freq_hz()))
                     .collect();
                 after_update.sort_by_key(|(id, _)| *id);
             }
@@ -4143,9 +4143,9 @@ mod tests {
                 _ => {}
             }
         }
-        let agent = pop.individuals.first().expect("spawned");
-        assert!((agent.pitch_core_for_test().exploration_for_test() - 0.75).abs() <= 1e-6);
-        assert!((agent.pitch_core_for_test().persistence_for_test() - 0.1).abs() <= 1e-6);
+        let voice = pop.voices.first().expect("spawned");
+        assert!((voice.pitch_core_for_test().exploration_for_test() - 0.75).abs() <= 1e-6);
+        assert!((voice.pitch_core_for_test().persistence_for_test() - 0.1).abs() <= 1e-6);
     }
 
     #[test]
@@ -4194,9 +4194,9 @@ mod tests {
                 pop.apply_action(action.clone(), &landscape, None);
             }
         }
-        let agent = pop.individuals.first().expect("spawned");
-        assert!((agent.pitch_core_for_test().crowding_strength_for_test() - 1.2).abs() <= 1e-6);
-        assert!((agent.pitch_core_for_test().crowding_sigma_cents_for_test() - 35.0).abs() <= 1e-3);
+        let voice = pop.voices.first().expect("spawned");
+        assert!((voice.pitch_core_for_test().crowding_strength_for_test() - 1.2).abs() <= 1e-6);
+        assert!((voice.pitch_core_for_test().crowding_sigma_cents_for_test() - 35.0).abs() <= 1e-3);
     }
 
     #[test]
@@ -4221,11 +4221,11 @@ mod tests {
                 pop.apply_action(action.clone(), &landscape, None);
             }
         }
-        let agent = pop.individuals.first().expect("spawned");
-        assert!((agent.pitch_core_for_test().crowding_strength_for_test() - 0.8).abs() <= 1e-6);
-        assert!((agent.pitch_core_for_test().crowding_sigma_cents_for_test() - 60.0).abs() <= 1e-3);
+        let voice = pop.voices.first().expect("spawned");
+        assert!((voice.pitch_core_for_test().crowding_strength_for_test() - 0.8).abs() <= 1e-6);
+        assert!((voice.pitch_core_for_test().crowding_sigma_cents_for_test() - 60.0).abs() <= 1e-3);
         assert!(
-            agent
+            voice
                 .pitch_core_for_test()
                 .crowding_sigma_from_roughness_for_test()
         );
@@ -4282,9 +4282,9 @@ mod tests {
                 _ => {}
             }
         }
-        let agent = pop.individuals.first().expect("spawned");
-        assert!((agent.pitch_core_for_test().crowding_strength_for_test() - 0.8).abs() <= 1e-6);
-        assert!((agent.pitch_core_for_test().crowding_sigma_cents_for_test() - 25.0).abs() <= 1e-3);
+        let voice = pop.voices.first().expect("spawned");
+        assert!((voice.pitch_core_for_test().crowding_strength_for_test() - 0.8).abs() <= 1e-6);
+        assert!((voice.pitch_core_for_test().crowding_sigma_cents_for_test() - 25.0).abs() <= 1e-3);
     }
 
     #[test]
@@ -4380,9 +4380,9 @@ mod tests {
                 pop.apply_action(action.clone(), &landscape, None);
             }
         }
-        let agent = pop.individuals.first().expect("spawned");
-        assert!(agent.pitch_core_for_test().leave_self_out_for_test());
-        assert!((agent.pitch_core_for_test().anneal_temp_for_test() - 0.12).abs() <= 1e-6);
+        let voice = pop.voices.first().expect("spawned");
+        assert!(voice.pitch_core_for_test().leave_self_out_for_test());
+        assert!((voice.pitch_core_for_test().anneal_temp_for_test() - 0.12).abs() <= 1e-6);
     }
 
     #[test]
@@ -4412,9 +4412,9 @@ mod tests {
                 _ => {}
             }
         }
-        let agent = pop.individuals.first().expect("spawned");
-        assert!(agent.pitch_core_for_test().leave_self_out_for_test());
-        assert!((agent.pitch_core_for_test().anneal_temp_for_test() - 0.2).abs() <= 1e-6);
+        let voice = pop.voices.first().expect("spawned");
+        assert!(voice.pitch_core_for_test().leave_self_out_for_test());
+        assert!((voice.pitch_core_for_test().anneal_temp_for_test() - 0.2).abs() <= 1e-6);
     }
 
     #[test]
@@ -4439,10 +4439,10 @@ mod tests {
                 pop.apply_action(action.clone(), &landscape, None);
             }
         }
-        let agent = pop.individuals.first().expect("spawned");
-        assert!((agent.pitch_core_for_test().move_cost_coeff_for_test() - 0.9).abs() <= 1e-6);
+        let voice = pop.voices.first().expect("spawned");
+        assert!((voice.pitch_core_for_test().move_cost_coeff_for_test() - 0.9).abs() <= 1e-6);
         assert!(
-            (agent.pitch_core_for_test().improvement_threshold_for_test() - 0.07).abs() <= 1e-6
+            (voice.pitch_core_for_test().improvement_threshold_for_test() - 0.07).abs() <= 1e-6
         );
     }
 
@@ -4473,10 +4473,10 @@ mod tests {
                 _ => {}
             }
         }
-        let agent = pop.individuals.first().expect("spawned");
-        assert!((agent.pitch_core_for_test().move_cost_coeff_for_test() - 0.8).abs() <= 1e-6);
+        let voice = pop.voices.first().expect("spawned");
+        assert!((voice.pitch_core_for_test().move_cost_coeff_for_test() - 0.8).abs() <= 1e-6);
         assert!(
-            (agent.pitch_core_for_test().improvement_threshold_for_test() - 0.05).abs() <= 1e-6
+            (voice.pitch_core_for_test().improvement_threshold_for_test() - 0.05).abs() <= 1e-6
         );
     }
 
@@ -4512,8 +4512,8 @@ mod tests {
                 _ => {}
             }
         }
-        let agent = pop.individuals.first().expect("spawned");
-        let core = agent.pitch_core_for_test();
+        let voice = pop.voices.first().expect("spawned");
+        let core = voice.pitch_core_for_test();
         assert!((core.neighbor_step_cents_for_test() - 25.0).abs() <= 1e-6);
         assert!((core.tessitura_gravity_for_test() - 0.12).abs() <= 1e-6);
         assert_eq!(core.move_cost_exp_for_test(), 2);
@@ -4523,7 +4523,7 @@ mod tests {
             LeaveSelfOutMode::ExactScan
         );
         assert_eq!(
-            agent.effective_control.pitch.leave_self_out_mode,
+            voice.effective_control.pitch.leave_self_out_mode,
             LeaveSelfOutMode::ExactScan
         );
     }
@@ -4561,8 +4561,8 @@ mod tests {
                 pop.apply_action(action.clone(), &landscape, None);
             }
         }
-        let agent = pop.individuals.first().expect("spawned");
-        let core = agent.pitch_core_for_test();
+        let voice = pop.voices.first().expect("spawned");
+        let core = voice.pitch_core_for_test();
         assert!((core.neighbor_step_cents_for_test() - 30.0).abs() <= 1e-6);
         assert!((core.tessitura_gravity_for_test() - 0.14).abs() <= 1e-6);
         assert!((core.window_cents_for_test() - 320.0).abs() <= 1e-6);
@@ -4604,8 +4604,8 @@ mod tests {
                 pop.apply_action(action.clone(), &landscape, None);
             }
         }
-        let agent = pop.individuals.first().expect("spawned");
-        let core = agent.pitch_core_for_test();
+        let voice = pop.voices.first().expect("spawned");
+        let core = voice.pitch_core_for_test();
         assert!((core.proposal_interval_sec_for_test().unwrap_or(0.0) - 0.3).abs() <= 1e-6);
         assert_eq!(core.global_peak_count_for_test(), 12);
         assert_eq!(core.ratio_candidate_count_for_test(), 5);
@@ -4616,10 +4616,10 @@ mod tests {
         );
         assert_eq!(core.leave_self_out_harmonics_for_test(), 4);
         assert_eq!(
-            agent.effective_control.pitch.pitch_apply_mode,
+            voice.effective_control.pitch.pitch_apply_mode,
             PitchApplyMode::Glide
         );
-        assert!((agent.effective_control.pitch.pitch_glide_tau_sec - 0.08).abs() <= 1e-6);
+        assert!((voice.effective_control.pitch.pitch_glide_tau_sec - 0.08).abs() <= 1e-6);
     }
 
     #[test]
@@ -4656,8 +4656,8 @@ mod tests {
                 _ => {}
             }
         }
-        let agent = pop.individuals.first().expect("spawned");
-        let core = agent.pitch_core_for_test();
+        let voice = pop.voices.first().expect("spawned");
+        let core = voice.pitch_core_for_test();
         assert!((core.proposal_interval_sec_for_test().unwrap_or(0.0) - 0.25).abs() <= 1e-6);
         assert_eq!(core.global_peak_count_for_test(), 10);
         assert_eq!(core.ratio_candidate_count_for_test(), 4);
@@ -4668,10 +4668,10 @@ mod tests {
         );
         assert_eq!(core.leave_self_out_harmonics_for_test(), 3);
         assert_eq!(
-            agent.effective_control.pitch.pitch_apply_mode,
+            voice.effective_control.pitch.pitch_apply_mode,
             PitchApplyMode::Glide
         );
-        assert!((agent.effective_control.pitch.pitch_glide_tau_sec - 0.05).abs() <= 1e-6);
+        assert!((voice.effective_control.pitch.pitch_glide_tau_sec - 0.05).abs() <= 1e-6);
     }
 
     #[test]
@@ -4998,10 +4998,10 @@ mod tests {
     }
 
     #[test]
-    fn spread_and_voices_methods_update_timbre() {
+    fn spread_and_unison_methods_update_timbre() {
         let (scenario, _warnings) = run_script(
             r#"
-            create(harmonic.spread(0.4).voices(5), 1);
+            create(harmonic.spread(0.4).unison(5), 1);
             flush();
         "#,
         );
@@ -5016,16 +5016,16 @@ mod tests {
             .expect("spawn action");
 
         assert!((spawn.control.body.timbre.spread - 0.4).abs() <= 1.0e-6);
-        assert_eq!(spawn.control.body.timbre.voices, 5);
+        assert_eq!(spawn.control.body.timbre.unison, 5);
     }
 
     #[test]
-    fn live_group_spread_and_voices_emit_timbre_patch() {
+    fn live_group_spread_and_unison_emit_timbre_patch() {
         let (scenario, _warnings) = run_script(
             r#"
             let g = create(harmonic, 1);
             flush();
-            g.spread(0.3).voices(4);
+            g.spread(0.3).unison(4);
             flush();
         "#,
         );
@@ -5039,7 +5039,7 @@ mod tests {
             })
             .expect("update action");
         assert_eq!(patch.timbre_spread, Some(0.3));
-        assert_eq!(patch.timbre_voices, Some(4));
+        assert_eq!(patch.timbre_unison, Some(4));
     }
 
     #[test]

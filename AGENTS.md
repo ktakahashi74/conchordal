@@ -19,8 +19,8 @@
     - Phase-vocoder/additive synthesis based on NSGT bins.
   - `ui/` (UI and visualization):
     - Egui views, plots, and visualization logic.
-  - `life/` (Agents and behaviors):
-    - Individual/Population models, temporal cores, fields, and scenario scripting.
+  - `life/` (Voices and behaviors):
+    - Voice/Population models, temporal cores, fields, and scenario scripting.
   - `web/` (Project website):
     - Zola site sources.
 - Entrypoints: `src/main.rs` (binary) and `src/app.rs` (GUI/Thread wiring).
@@ -138,7 +138,7 @@ Potential/representation is orthogonal to pred/perc:
 - Usage: hill-climb evaluation in `src/life/pitch_core.rs`.
 2. `consonance_field_level`
 - Definition: `sigmoid(beta*(score-theta))`.
-- Usage: individual behavior, world model, UI in `src/life/population.rs`, `src/life/world_model.rs`, `src/ui/windows.rs`.
+- Usage: voice behavior, world model, UI in `src/life/population.rs`, `src/life/world_model.rs`, `src/ui/windows.rs`.
 3. `consonance_field_energy`
 - Definition: `-score`.
 - Usage: retained for minimization view and consistency checks.

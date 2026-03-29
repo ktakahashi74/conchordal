@@ -1,7 +1,7 @@
 use crate::core::log2space::Log2Space;
-use crate::life::individual::ArticulationSignal;
-use crate::life::sound::control::VoiceControlBlock;
+use crate::life::sound::control::ToneControlBlock;
 use crate::life::sound::spectral::add_log2_energy;
+use crate::life::voice::ArticulationSignal;
 use crate::synth::SynthError;
 use std::f32::consts::TAU;
 
@@ -28,7 +28,7 @@ impl SineOscBackend {
         self.phase_rad = splitmix64_unit_f32(seed) * TAU;
     }
 
-    pub fn render_block(&mut self, _drive: &[f32], ctrl: VoiceControlBlock, out: &mut [f32]) {
+    pub fn render_block(&mut self, _drive: &[f32], ctrl: ToneControlBlock, out: &mut [f32]) {
         if out.is_empty() {
             return;
         }
@@ -80,7 +80,7 @@ mod tests {
         let mut out = [0.0f32; 8];
         backend.render_block(
             &[0.0; 8],
-            VoiceControlBlock {
+            ToneControlBlock {
                 pitch_hz: ControlRamp {
                     start: 440.0,
                     step: 0.0,

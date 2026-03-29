@@ -17,7 +17,7 @@ impl ControlRamp {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct VoiceControlBlock {
+pub struct ToneControlBlock {
     pub pitch_hz: ControlRamp,
     pub amp: ControlRamp,
 }

@@ -1,8 +1,6 @@
-use super::individual::{
-    AgentMetadata, AnyArticulationCore, Individual, PhonationBatch, SoundBody,
-};
-use super::scenario::{Action, ControlUpdateMode, IndividualConfig, RespawnPolicy, SpawnStrategy};
+use super::scenario::{Action, ControlUpdateMode, RespawnPolicy, SpawnStrategy, VoiceConfig};
 use super::telemetry::LifeRecord;
+use super::voice::{AnyArticulationCore, PhonationBatch, SoundBody, Voice, VoiceMetadata};
 use crate::core::landscape::{Landscape, LandscapeFrame, LandscapeUpdate};
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
@@ -79,7 +77,7 @@ impl PredGateAccum {
 }
 
 pub struct Population {
-    pub individuals: Vec<Individual>,
+    pub voices: Vec<Voice>,
     current_frame: u64,
     pub abort_requested: bool,
     pub global_coupling: f32,
@@ -104,7 +102,7 @@ pub struct Population {
 
 #[derive(Debug, Clone)]
 struct RuntimeGroupState {
-    template: IndividualConfig,
+    template: VoiceConfig,
     strategy: Option<SpawnStrategy>,
     respawn_policy: RespawnPolicy,
     respawn_settle_strategy: Option<SpawnStrategy>,
@@ -143,7 +141,7 @@ pub enum SpawnReason {
 pub struct RuntimeEvent {
     pub time_sec: f32,
     pub group_id: u64,
-    pub agent_id: u64,
+    pub voice_id: u64,
     pub member_idx: usize,
     pub freq_hz: f32,
     pub parent_id: Option<u64>,
@@ -161,7 +159,7 @@ struct AdvanceScratch {
 
 #[derive(Clone, Copy, Debug)]
 struct CommitQueueEntry {
-    individual_idx: usize,
+    voice_idx: usize,
 }
 
 fn semitone_distance_from_anchor(freq_hz: f32, anchor_hz: f32) -> f32 {
@@ -182,7 +180,7 @@ fn is_rejected_target(freq_hz: f32, anchor_hz: f32, targets_st: &[f32], exclusio
 
 impl Population {
     const CONTROL_STEP_SAMPLES: usize = 64;
-    /// Returns true if `freq_hz` is within `min_dist_erb` (ERB scale) of any existing agent's base
+    /// Returns true if `freq_hz` is within `min_dist_erb` (ERB scale) of any existing voice's base
     /// frequency.
     pub fn is_range_occupied(&self, freq_hz: f32, min_dist_erb: f32) -> bool {
         self.is_range_occupied_with(freq_hz, min_dist_erb, &[])
@@ -193,8 +191,8 @@ impl Population {
             return false;
         }
         let target_erb = crate::core::erb::hz_to_erb(freq_hz.max(1e-6));
-        for agent in &self.individuals {
-            let base_hz = agent.body.base_freq_hz();
+        for voice in &self.voices {
+            let base_hz = voice.body.base_freq_hz();
             if !base_hz.is_finite() {
                 continue;
             }
@@ -218,7 +216,7 @@ impl Population {
     pub fn new(time: Timebase) -> Self {
         debug!("Population sample rate: {:.1} Hz", time.fs);
         Self {
-            individuals: Vec::new(),
+            voices: Vec::new(),
             current_frame: 0,
             abort_requested: false,
             global_coupling: 1.0,
@@ -290,7 +288,7 @@ impl Population {
         loop {
             let id = self.next_runtime_id.max(1);
             self.next_runtime_id = self.next_runtime_id.wrapping_add(1).max(1);
-            if self.individuals.iter().all(|agent| agent.id() != id) {
+            if self.voices.iter().all(|v| v.id() != id) {
                 return id;
             }
         }
@@ -304,14 +302,14 @@ impl Population {
         mag * theta.cos()
     }
 
-    pub fn add_individual(&mut self, individual: Individual) {
-        let id = individual.id();
-        if self.individuals.iter().any(|a| a.id() == id) {
-            warn!("AddIndividual: id collision for {id}");
+    pub fn add_voice(&mut self, voice: Voice) {
+        let id = voice.id();
+        if self.voices.iter().any(|a| a.id() == id) {
+            warn!("AddVoice: id collision for {id}");
             return;
         }
         self.track_runtime_id(id);
-        self.individuals.push(individual);
+        self.voices.push(voice);
     }
 
     pub fn set_current_frame(&mut self, frame: u64) {
@@ -369,19 +367,19 @@ impl Population {
         let mut phonation_onsets_in_hop = 0u32;
         let mut used = 0usize;
         let social_trace = self.social_trace.as_ref();
-        for agent in &mut self.individuals {
-            let social_coupling = agent.social_coupling;
+        for voice in &mut self.voices {
+            let social_coupling = voice.social_coupling;
             if used == out.len() {
                 out.push(PhonationBatch::default());
             }
             let batch = &mut out[used];
-            let consonance = landscape.evaluate_pitch_level(agent.body.base_freq_hz());
+            let consonance = landscape.evaluate_pitch_level(voice.body.base_freq_hz());
             let extra_gate_gain = match pred_scan.as_ref() {
                 Some(scan) => {
                     let gain_raw = world
-                        .sample_scan_field_level(scan, agent.body.base_freq_hz())
+                        .sample_scan_field_level(scan, voice.body.base_freq_hz())
                         .clamp(0.0, 1.0);
-                    let sync = match &agent.effective_control.phonation.spec.when {
+                    let sync = match &voice.effective_control.phonation.spec.when {
                         crate::life::scenario::WhenSpec::Pulse { sync, .. } => sync.clamp(0.0, 1.0),
                         _ => 0.0,
                     };
@@ -392,7 +390,7 @@ impl Population {
                 }
                 None => 1.0,
             };
-            agent.tick_phonation_into(
+            voice.tick_phonation_into(
                 &tb,
                 now,
                 &landscape.rhythm,
@@ -405,14 +403,14 @@ impl Population {
             phonation_onsets_in_hop = phonation_onsets_in_hop
                 .saturating_add(batch.onsets.len().min(u32::MAX as usize) as u32);
             let has_output =
-                !(batch.cmds.is_empty() && batch.notes.is_empty() && batch.onsets.is_empty());
+                !(batch.cmds.is_empty() && batch.tones.is_empty() && batch.onsets.is_empty());
             if has_output {
                 used += 1;
             }
         }
         let active_batches = &out[..used];
         let social_enabled =
-            social_trace_enabled_from_couplings(self.individuals.iter().map(|a| a.social_coupling));
+            social_trace_enabled_from_couplings(self.voices.iter().map(|a| a.social_coupling));
         if social_enabled {
             let (bin_ticks, smooth) = social_trace_params(hop_tick);
             self.social_trace = Some(build_social_trace_from_batches(
@@ -421,7 +419,7 @@ impl Population {
                 hop_tick,
                 bin_ticks,
                 smooth,
-                self.individuals.len(),
+                self.voices.len(),
             ));
         } else {
             self.social_trace = None;
@@ -645,12 +643,7 @@ impl Population {
         }
     }
 
-    fn spawn_one(
-        &mut self,
-        params: SpawnParams,
-        spec: &IndividualConfig,
-        landscape: &LandscapeFrame,
-    ) {
+    fn spawn_one(&mut self, params: SpawnParams, spec: &VoiceConfig, landscape: &LandscapeFrame) {
         let SpawnParams {
             id,
             group_id,
@@ -659,18 +652,18 @@ impl Population {
             parent_id,
             reason,
         } = params;
-        if self.individuals.iter().any(|agent| agent.id() == id) {
+        if self.voices.iter().any(|v| v.id() == id) {
             warn!("Spawn: id collision for {id} in group {group_id}");
             return;
         }
 
         let mut control = spec.control.clone();
         control.pitch.freq = resolved_freq_hz.clamp(MIN_FREQ_HZ, MAX_FREQ_HZ);
-        let metadata = AgentMetadata {
+        let metadata = VoiceMetadata {
             group_id,
             member_idx,
         };
-        let cfg = IndividualConfig {
+        let cfg = VoiceConfig {
             control: control.clone(),
             articulation: spec.articulation.clone(),
         };
@@ -692,13 +685,13 @@ impl Population {
                 core.enable_plv(observe.plv_window);
             }
         }
-        self.individuals.push(spawned);
+        self.voices.push(spawned);
         self.track_runtime_id(id);
         if self.auto_observe.is_some() {
             self.runtime_events.push(RuntimeEvent {
                 time_sec: self.current_time_sec(),
                 group_id,
-                agent_id: id,
+                voice_id: id,
                 member_idx,
                 freq_hz: resolved_freq_hz,
                 parent_id,
@@ -710,14 +703,14 @@ impl Population {
     fn ensure_group_state(
         &mut self,
         group_id: u64,
-        spec: IndividualConfig,
+        spec: VoiceConfig,
         strategy: Option<SpawnStrategy>,
         member_count: usize,
     ) {
         let current_members = self
-            .individuals
+            .voices
             .iter()
-            .filter(|agent| agent.metadata.group_id == group_id)
+            .filter(|v| v.metadata.group_id == group_id)
             .count();
         if let Some(group) = self.groups.get_mut(&group_id) {
             // Runtime currently allows multiple Spawn actions with the same group_id.
@@ -939,17 +932,17 @@ impl Population {
             return;
         }
 
-        let mut statuses = Vec::with_capacity(self.individuals.len());
+        let mut statuses = Vec::with_capacity(self.voices.len());
         let mut alive_by_group: BTreeMap<u64, Vec<(u64, f32)>> = BTreeMap::new();
-        for agent in &self.individuals {
-            let alive = agent.is_alive();
-            let group_id = agent.metadata.group_id;
-            let id = agent.id();
+        for voice in &self.voices {
+            let alive = voice.is_alive();
+            let group_id = voice.metadata.group_id;
+            let id = voice.id();
             statuses.push((id, group_id, alive));
             if alive {
                 alive_by_group.entry(group_id).or_default().push((
                     id,
-                    agent.body.base_freq_hz().clamp(MIN_FREQ_HZ, MAX_FREQ_HZ),
+                    voice.body.base_freq_hz().clamp(MIN_FREQ_HZ, MAX_FREQ_HZ),
                 ));
             }
         }
@@ -1074,7 +1067,7 @@ impl Population {
         &mut self,
         group_id: u64,
         ids: Vec<u64>,
-        spec: IndividualConfig,
+        spec: VoiceConfig,
         strategy: Option<SpawnStrategy>,
         landscape: &LandscapeFrame,
     ) {
@@ -1115,15 +1108,15 @@ impl Population {
         // Group-wide runtime semantics:
         // updates apply to all current members with matching group_id.
         let mut updated = 0usize;
-        for agent in self
-            .individuals
+        for voice in self
+            .voices
             .iter_mut()
-            .filter(|agent| agent.metadata.group_id == group_id)
+            .filter(|v| v.metadata.group_id == group_id)
         {
-            if let Err(err) = agent.apply_patch(&patch) {
+            if let Err(err) = voice.apply_patch(&patch) {
                 warn!(
-                    "Update: agent {} (group {group_id}) rejected update: {err}",
-                    agent.id()
+                    "Update: voice {} (group {group_id}) rejected update: {err}",
+                    voice.id()
                 );
             } else {
                 updated += 1;
@@ -1140,12 +1133,12 @@ impl Population {
         // release applies to all current members with matching group_id.
         let fade_sec = fade_sec.max(0.0);
         let mut released = 0usize;
-        for agent in self
-            .individuals
+        for voice in self
+            .voices
             .iter_mut()
-            .filter(|agent| agent.metadata.group_id == group_id)
+            .filter(|v| v.metadata.group_id == group_id)
         {
-            agent.start_remove_fade(fade_sec);
+            voice.start_remove_fade(fade_sec);
             released += 1;
         }
         if released == 0 {
@@ -1181,12 +1174,12 @@ impl Population {
     }
 
     pub fn kuramoto_order_parameter(&self) -> Option<(f32, usize)> {
-        let mut phases = Vec::with_capacity(self.individuals.len());
-        for agent in &self.individuals {
-            if !agent.is_alive() {
+        let mut phases = Vec::with_capacity(self.voices.len());
+        for voice in &self.voices {
+            if !voice.is_alive() {
                 continue;
             }
-            let AnyArticulationCore::Entrain(core) = &agent.articulation.core else {
+            let AnyArticulationCore::Entrain(core) = &voice.articulation.core else {
                 continue;
             };
             if core.rhythm_phase.is_finite() {
@@ -1198,12 +1191,12 @@ impl Population {
     }
 
     /// Assumes `set_current_frame` has been called for the current hop.
-    pub fn remove_agent(&mut self, id: u64) {
-        self.individuals.retain(|agent| agent.id() != id);
+    pub fn remove_voice(&mut self, id: u64) {
+        self.voices.retain(|v| v.id() != id);
         self.death_observed.remove(&id);
     }
 
-    /// Advance agent state without emitting audio (ScheduleRenderer is output authority).
+    /// Advance voice state without emitting audio (ScheduleRenderer is output authority).
     /// `samples_len` controls sub-stepping of control-rate updates within the block.
     pub fn advance(
         &mut self,
@@ -1251,9 +1244,9 @@ impl Population {
     }
 
     fn crowding_active(&self) -> bool {
-        self.individuals
+        self.voices
             .iter()
-            .any(|agent| agent.is_alive() && agent.effective_control.pitch.crowding_strength > 0.0)
+            .any(|v| v.is_alive() && v.effective_control.pitch.crowding_strength > 0.0)
     }
 
     fn prepare_substep_snapshot(&mut self, crowding_active: bool) {
@@ -1265,13 +1258,13 @@ impl Population {
             return;
         }
         // Snapshot alive frequencies once per substep to avoid order-dependent updates.
-        scratch.freq_snapshot.reserve(self.individuals.len());
-        for agent in &self.individuals {
-            if agent.is_alive() {
+        scratch.freq_snapshot.reserve(self.voices.len());
+        for voice in &self.voices {
+            if voice.is_alive() {
                 scratch.freq_snapshot.push((
-                    agent.id(),
-                    agent.metadata.group_id,
-                    agent.body.base_freq_hz().max(1.0).log2(),
+                    voice.id(),
+                    voice.metadata.group_id,
+                    voice.body.base_freq_hz().max(1.0).log2(),
                 ));
             }
         }
@@ -1292,17 +1285,17 @@ impl Population {
         landscape: &Landscape,
         crowding_active: bool,
     ) {
-        // Decide phase: evaluate all alive agents against a stable snapshot.
-        for individual_idx in 0..self.individuals.len() {
-            let (agent_id, actor_group_id, alive) = {
-                let agent = &self.individuals[individual_idx];
-                (agent.id(), agent.metadata.group_id, agent.is_alive())
+        // Decide phase: evaluate all alive voices against a stable snapshot.
+        for voice_idx in 0..self.voices.len() {
+            let (vid, actor_group_id, alive) = {
+                let v = &self.voices[voice_idx];
+                (v.id(), v.metadata.group_id, v.is_alive())
             };
             if !alive {
                 continue;
             }
             if crowding_active {
-                self.fill_neighbors_from_snapshot(agent_id, actor_group_id);
+                self.fill_neighbors_from_snapshot(vid, actor_group_id);
             }
             let neighbors = if crowding_active {
                 self.advance_scratch.neighbor_pitch_log2.as_slice()
@@ -1314,8 +1307,8 @@ impl Population {
             } else {
                 &[]
             };
-            if let Some(agent) = self.individuals.get_mut(individual_idx) {
-                agent.decide_pitch_target(
+            if let Some(voice) = self.voices.get_mut(voice_idx) {
+                voice.decide_pitch_target(
                     dt_step_sec,
                     rhythms,
                     landscape,
@@ -1325,7 +1318,7 @@ impl Population {
             }
             self.advance_scratch
                 .commit_queue
-                .push(CommitQueueEntry { individual_idx });
+                .push(CommitQueueEntry { voice_idx });
         }
     }
 
@@ -1370,15 +1363,15 @@ impl Population {
         scratch.neighbor_salience.clear();
         scratch
             .neighbor_pitch_log2
-            .reserve(self.individuals.len().saturating_sub(1));
+            .reserve(self.voices.len().saturating_sub(1));
         scratch
             .neighbor_salience
-            .reserve(self.individuals.len().saturating_sub(1));
-        for agent in &self.individuals {
-            if !agent.is_alive() || agent.id() == actor_id {
+            .reserve(self.voices.len().saturating_sub(1));
+        for voice in &self.voices {
+            if !voice.is_alive() || voice.id() == actor_id {
                 continue;
             }
-            let neighbor_group_id = agent.metadata.group_id;
+            let neighbor_group_id = voice.metadata.group_id;
             let visible = self
                 .groups
                 .get(&neighbor_group_id)
@@ -1394,10 +1387,10 @@ impl Population {
             if visible {
                 scratch
                     .neighbor_pitch_log2
-                    .push(agent.body.base_freq_hz().max(1.0).log2());
+                    .push(voice.body.base_freq_hz().max(1.0).log2());
                 scratch
                     .neighbor_salience
-                    .push(Self::pairwise_split_sign(actor_id, agent.id()));
+                    .push(Self::pairwise_split_sign(actor_id, voice.id()));
             }
         }
     }
@@ -1424,13 +1417,13 @@ impl Population {
         global_coupling: f32,
     ) {
         // Commit phase: apply articulation/body/lifecycle after all decisions are fixed.
-        // Contract: no insertion/removal/reordering of `self.individuals` is allowed between
+        // Contract: no insertion/removal/reordering of `self.voices` is allowed between
         // decide and commit; commit entries carry stable indices for this substep only.
         for entry in &self.advance_scratch.commit_queue {
-            if let Some(agent) = self.individuals.get_mut(entry.individual_idx)
-                && agent.is_alive()
+            if let Some(voice) = self.voices.get_mut(entry.voice_idx)
+                && voice.is_alive()
             {
-                agent.commit_decided_control(dt_step_sec, rhythms, landscape, global_coupling);
+                voice.commit_decided_control(dt_step_sec, rhythms, landscape, global_coupling);
             }
         }
     }
@@ -1444,22 +1437,22 @@ impl Population {
         crowding_active: bool,
         order_offset: usize,
     ) {
-        if self.individuals.is_empty() {
+        if self.voices.is_empty() {
             return;
         }
-        let mut order: Vec<usize> = (0..self.individuals.len()).collect();
+        let mut order: Vec<usize> = (0..self.voices.len()).collect();
         let start = order_offset % order.len();
         order.rotate_left(start);
-        for individual_idx in order {
-            let (agent_id, actor_group_id, alive) = {
-                let agent = &self.individuals[individual_idx];
-                (agent.id(), agent.metadata.group_id, agent.is_alive())
+        for voice_idx in order {
+            let (vid, actor_group_id, alive) = {
+                let v = &self.voices[voice_idx];
+                (v.id(), v.metadata.group_id, v.is_alive())
             };
             if !alive {
                 continue;
             }
             if crowding_active {
-                self.fill_neighbors_from_current_state(agent_id, actor_group_id);
+                self.fill_neighbors_from_current_state(vid, actor_group_id);
             } else {
                 self.advance_scratch.neighbor_pitch_log2.clear();
                 self.advance_scratch.neighbor_salience.clear();
@@ -1474,15 +1467,15 @@ impl Population {
             } else {
                 &[]
             };
-            if let Some(agent) = self.individuals.get_mut(individual_idx) {
-                agent.decide_pitch_target(
+            if let Some(voice) = self.voices.get_mut(voice_idx) {
+                voice.decide_pitch_target(
                     dt_step_sec,
                     rhythms,
                     landscape,
                     neighbors,
                     neighbor_weights,
                 );
-                agent.commit_decided_control(dt_step_sec, rhythms, landscape, global_coupling);
+                voice.commit_decided_control(dt_step_sec, rhythms, landscape, global_coupling);
             }
         }
     }
@@ -1496,7 +1489,7 @@ impl Population {
             self.shutdown_gain = (self.shutdown_gain - step).max(0.0);
         }
         if self.shutdown_gain <= 0.0 {
-            self.individuals.clear();
+            self.voices.clear();
         }
     }
 
@@ -1510,21 +1503,21 @@ impl Population {
         self.current_frame = current_frame;
         self.respawn_on_new_deaths(scenario_finished, landscape);
 
-        let before_count = self.individuals.len();
+        let before_count = self.voices.len();
         let mut removed_ids = Vec::new();
         let death_records = &mut self.death_records;
-        self.individuals.retain(|agent| {
-            let keep = agent.should_retain();
+        self.voices.retain(|voice| {
+            let keep = voice.should_retain();
             if !keep {
-                removed_ids.push(agent.id());
-                if let Some(ref acc) = agent.life_accumulator {
-                    let plv = match &agent.articulation.core {
+                removed_ids.push(voice.id());
+                if let Some(ref acc) = voice.life_accumulator {
+                    let plv = match &voice.articulation.core {
                         AnyArticulationCore::Entrain(core) => core.plv(),
                         _ => None,
                     };
                     death_records.push(acc.finalize(
-                        agent.id(),
-                        agent.metadata.group_id,
+                        voice.id(),
+                        voice.metadata.group_id,
                         current_frame,
                         plv,
                     ));
@@ -1532,7 +1525,7 @@ impl Population {
             }
             keep
         });
-        let removed_count = before_count - self.individuals.len();
+        let removed_count = before_count - self.voices.len();
         for id in removed_ids {
             self.death_observed.remove(&id);
         }
@@ -1541,13 +1534,13 @@ impl Population {
             let t = current_frame as f32 * dt_sec;
             if scenario_finished || self.abort_requested {
                 warn!(
-                    "Event after scenario close: [t={t:.6}] Cleaned up {removed_count} dead individuals. Remaining: {} (frame_idx={current_frame})",
-                    self.individuals.len(),
+                    "Event after scenario close: [t={t:.6}] Cleaned up {removed_count} dead voices. Remaining: {} (frame_idx={current_frame})",
+                    self.voices.len(),
                 );
             } else {
                 info!(
-                    "[t={t:.6}] Cleaned up {removed_count} dead individuals. Remaining: {} (frame_idx={current_frame})",
-                    self.individuals.len(),
+                    "[t={t:.6}] Cleaned up {removed_count} dead voices. Remaining: {} (frame_idx={current_frame})",
+                    self.voices.len(),
                 );
             }
         }
@@ -1624,9 +1617,9 @@ mod tests {
     use crate::core::landscape::LandscapeFrame;
     use crate::core::log2space::Log2Space;
     use crate::core::timebase::Timebase;
-    use crate::life::control::{AgentControl, ControlUpdate, PitchMode};
+    use crate::life::control::{ControlUpdate, PitchMode, VoiceControl};
     use crate::life::lifecycle::LifecycleConfig;
-    use crate::life::phonation_engine::{NoteCmd, OnsetEvent, OnsetKick};
+    use crate::life::phonation_engine::{OnsetEvent, OnsetKick, ToneCmd};
     use crate::life::scenario::{ArticulationCoreConfig, RespawnPolicy, SpawnSpec, SpawnStrategy};
     use crate::life::sound::{BodyKind, BodySnapshot};
     use crate::life::world_model::WorldModel;
@@ -1640,9 +1633,9 @@ mod tests {
         })
     }
 
-    fn make_dummy_note_spec() -> crate::life::individual::NoteSpec {
-        crate::life::individual::NoteSpec {
-            note_id: 1,
+    fn make_dummy_tone_spec() -> crate::life::voice::ToneSpec {
+        crate::life::voice::ToneSpec {
+            tone_id: 1,
             onset: 0,
             hold_ticks: None,
             freq_hz: 440.0,
@@ -1654,7 +1647,7 @@ mod tests {
                 brightness: 0.0,
                 inharmonic: 0.0,
                 spread: 0.0,
-                voices: 1,
+                unison: 1,
                 motion: 0.0,
                 ratios: None,
             },
@@ -1667,7 +1660,7 @@ mod tests {
     }
 
     fn spawn_spec_with_freq(freq: f32) -> SpawnSpec {
-        let mut control = AgentControl::default();
+        let mut control = VoiceControl::default();
         control.pitch.freq = freq;
         SpawnSpec {
             control,
@@ -1676,7 +1669,7 @@ mod tests {
     }
 
     fn decay_spawn_spec_with_freq(freq: f32, half_life_sec: f32) -> SpawnSpec {
-        let mut control = AgentControl::default();
+        let mut control = VoiceControl::default();
         control.pitch.freq = freq;
         SpawnSpec {
             control,
@@ -1726,7 +1719,7 @@ mod tests {
     }
 
     fn force_dead(pop: &mut Population, id: u64) {
-        if let Some(dying) = pop.individuals.iter_mut().find(|agent| agent.id() == id) {
+        if let Some(dying) = pop.voices.iter_mut().find(|v| v.id() == id) {
             dying.release_gain = 0.0;
             dying.release_pending = true;
         }
@@ -1761,18 +1754,18 @@ mod tests {
             &landscape,
             None,
         );
-        for agent in pop.individuals.iter_mut() {
-            agent.set_theta_phase_state_for_test(0.9, true);
-            agent.set_accumulated_time_for_test(agent.integration_window());
+        for voice in pop.voices.iter_mut() {
+            voice.set_theta_phase_state_for_test(0.9, true);
+            voice.set_accumulated_time_for_test(voice.integration_window());
         }
         if order_reversed {
-            pop.individuals.reverse();
+            pop.voices.reverse();
         }
         pop.advance(64, 48_000.0, 0, 1.0, &landscape);
         let mut out: Vec<(u64, f32)> = pop
-            .individuals
+            .voices
             .iter()
-            .map(|agent| (agent.id(), agent.target_pitch_log2()))
+            .map(|v| (v.id(), v.target_pitch_log2()))
             .collect();
         out.sort_by_key(|(id, _)| *id);
         out
@@ -1833,17 +1826,13 @@ mod tests {
             None,
         );
 
-        for agent in pop.individuals.iter_mut() {
-            agent.set_theta_phase_state_for_test(0.9, true);
-            agent.set_accumulated_time_for_test(agent.integration_window());
+        for voice in pop.voices.iter_mut() {
+            voice.set_theta_phase_state_for_test(0.9, true);
+            voice.set_accumulated_time_for_test(voice.integration_window());
         }
         pop.advance(64, 48_000.0, 0, 1.0, &landscape);
 
-        let mover = pop
-            .individuals
-            .iter()
-            .find(|agent| agent.id() == 700)
-            .expect("mover");
+        let mover = pop.voices.iter().find(|v| v.id() == 700).expect("mover");
         (mover.target_pitch_log2() - 330.0f32.log2()).abs()
     }
 
@@ -1890,20 +1879,20 @@ mod tests {
             None,
         );
 
-        let agent = pop.individuals.first_mut().expect("spawned agent");
-        agent.release_gain = 0.37;
-        agent.release_pending = true;
-        agent.set_accumulated_time_for_test(agent.integration_window());
-        let base_before = agent.body.base_freq_hz();
-        let release_gain_before = agent.release_gain;
-        let release_pending_before = agent.release_pending;
+        let voice = pop.voices.first_mut().expect("spawned voice");
+        voice.release_gain = 0.37;
+        voice.release_pending = true;
+        voice.set_accumulated_time_for_test(voice.integration_window());
+        let base_before = voice.body.base_freq_hz();
+        let release_gain_before = voice.release_gain;
+        let release_pending_before = voice.release_pending;
         let rhythms = landscape.rhythm;
 
-        agent.decide_pitch_target(0.05, &rhythms, &landscape, &[], &[]);
+        voice.decide_pitch_target(0.05, &rhythms, &landscape, &[], &[]);
 
-        assert_eq!(agent.body.base_freq_hz(), base_before);
-        assert_eq!(agent.release_gain, release_gain_before);
-        assert_eq!(agent.release_pending, release_pending_before);
+        assert_eq!(voice.body.base_freq_hz(), base_before);
+        assert_eq!(voice.release_gain, release_gain_before);
+        assert_eq!(voice.release_pending, release_pending_before);
     }
 
     #[test]
@@ -2107,7 +2096,7 @@ mod tests {
         let batch = PhonationBatch {
             source_id: 1,
             cmds: Vec::new(),
-            notes: Vec::new(),
+            tones: Vec::new(),
             onsets: vec![OnsetEvent {
                 gate: 0,
                 onset_tick: 90,
@@ -2152,8 +2141,8 @@ mod tests {
             &landscape,
             None,
         );
-        for agent in &pop.individuals {
-            assert!((agent.effective_control.body.amp - 0.42).abs() <= 1e-6);
+        for voice in &pop.voices {
+            assert!((voice.effective_control.body.amp - 0.42).abs() <= 1e-6);
         }
     }
 
@@ -2241,10 +2230,10 @@ mod tests {
             None,
         );
         let released: Vec<u64> = pop
-            .individuals
+            .voices
             .iter()
-            .filter(|agent| agent.remove_pending)
-            .map(|agent| agent.id())
+            .filter(|v| v.remove_pending)
+            .map(|v| v.id())
             .collect();
         assert_eq!(released.len(), 2);
         assert!(released.contains(&21));
@@ -2265,7 +2254,7 @@ mod tests {
             &landscape,
             None,
         );
-        let spawned = pop.individuals.first().expect("spawned");
+        let spawned = pop.voices.first().expect("spawned");
         assert!((spawned.body.base_freq_hz() - 275.0).abs() <= 1e-6);
     }
 
@@ -2287,12 +2276,12 @@ mod tests {
 
         for frame in 0..300 {
             step_population(&mut pop, frame, 0.01, &landscape);
-            if pop.individuals.is_empty() {
+            if pop.voices.is_empty() {
                 break;
             }
         }
 
-        assert!(pop.individuals.is_empty());
+        assert!(pop.voices.is_empty());
     }
 
     #[test]
@@ -2325,7 +2314,7 @@ mod tests {
         let mut saw_respawned = false;
         for frame in 0..300 {
             step_population(&mut pop, frame, 0.01, &landscape);
-            if pop.individuals.iter().any(|a| a.id() != 10) {
+            if pop.voices.iter().any(|a| a.id() != 10) {
                 saw_respawned = true;
                 break;
             }
@@ -2333,7 +2322,7 @@ mod tests {
 
         assert!(saw_respawned, "expected at least one respawned member");
         assert!(
-            !pop.individuals.is_empty(),
+            !pop.voices.is_empty(),
             "population should not collapse with random respawn"
         );
     }
@@ -2368,7 +2357,7 @@ mod tests {
         let mut saw_respawned = false;
         for frame in 0..300 {
             step_population(&mut pop, frame, 0.01, &landscape);
-            if pop.individuals.iter().any(|a| a.id() != 20) {
+            if pop.voices.iter().any(|a| a.id() != 20) {
                 saw_respawned = true;
                 break;
             }
@@ -2376,7 +2365,7 @@ mod tests {
 
         assert!(saw_respawned, "expected at least one respawned member");
         assert!(
-            !pop.individuals.is_empty(),
+            !pop.voices.is_empty(),
             "population should not collapse with hereditary respawn"
         );
     }
@@ -2412,16 +2401,16 @@ mod tests {
         );
 
         let parent_target_hz: f32 = 440.0;
-        if let Some(parent) = pop.individuals.iter_mut().find(|agent| agent.id() == 901) {
+        if let Some(parent) = pop.voices.iter_mut().find(|v| v.id() == 901) {
             parent.force_set_pitch_log2(parent_target_hz.log2());
         }
         force_dead(&mut pop, 900);
         pop.cleanup_dead(0, 0.01, false, &landscape);
 
         let child = pop
-            .individuals
+            .voices
             .iter()
-            .find(|agent| agent.id() != 901)
+            .find(|v| v.id() != 901)
             .expect("child exists");
         let child_log2 = child.body.base_freq_hz().log2();
         let parent_log2 = parent_target_hz.log2();
@@ -2466,10 +2455,10 @@ mod tests {
         for frame in 0..300 {
             step_population(&mut pop, frame, 0.01, &landscape);
             if let Some(id) = pop
-                .individuals
+                .voices
                 .iter()
-                .find(|agent| agent.metadata.group_id == 10 && agent.id() != 30)
-                .map(|agent| agent.id())
+                .find(|v| v.metadata.group_id == 10 && v.id() != 30)
+                .map(|v| v.id())
             {
                 respawned_id = Some(id);
                 break;
@@ -2487,9 +2476,9 @@ mod tests {
         );
 
         let respawned = pop
-            .individuals
+            .voices
             .iter()
-            .find(|agent| agent.id() == respawned_id)
+            .find(|v| v.id() == respawned_id)
             .expect("respawned member");
         assert!(respawned.remove_pending);
     }
@@ -2525,10 +2514,10 @@ mod tests {
         for frame in 0..300 {
             step_population(&mut pop, frame, 0.01, &landscape);
             if let Some(id) = pop
-                .individuals
+                .voices
                 .iter()
-                .find(|agent| agent.metadata.group_id == 11 && agent.id() != 40)
-                .map(|agent| agent.id())
+                .find(|v| v.metadata.group_id == 11 && v.id() != 40)
+                .map(|v| v.id())
             {
                 respawned_id = Some(id);
                 break;
@@ -2549,9 +2538,9 @@ mod tests {
         );
 
         let respawned = pop
-            .individuals
+            .voices
             .iter()
-            .find(|agent| agent.id() == respawned_id)
+            .find(|v| v.id() == respawned_id)
             .expect("respawned member");
         assert!((respawned.effective_control.body.amp - 0.17).abs() <= 1e-6);
     }
@@ -2594,11 +2583,7 @@ mod tests {
             None,
         );
 
-        for member in pop
-            .individuals
-            .iter()
-            .filter(|agent| agent.metadata.group_id == 91)
-        {
+        for member in pop.voices.iter().filter(|v| v.metadata.group_id == 91) {
             assert!((member.effective_control.pitch.landscape_weight - 0.73).abs() <= 1e-6);
         }
 
@@ -2606,9 +2591,9 @@ mod tests {
         pop.cleanup_dead(0, 0.01, false, &landscape);
 
         let child = pop
-            .individuals
+            .voices
             .iter()
-            .find(|agent| agent.id() != 911)
+            .find(|v| v.id() != 911)
             .expect("child exists");
         assert!((child.effective_control.pitch.landscape_weight - 0.73).abs() <= 1e-6);
     }
@@ -2651,18 +2636,18 @@ mod tests {
         let mut saw_new_id = false;
         for frame in 0..400 {
             step_population(&mut pop, frame, 0.01, &landscape);
-            if pop.individuals.iter().any(|agent| agent.id() != 920) {
+            if pop.voices.iter().any(|v| v.id() != 920) {
                 saw_new_id = true;
                 break;
             }
-            if pop.individuals.is_empty() {
+            if pop.voices.is_empty() {
                 break;
             }
         }
 
         assert!(!saw_new_id, "release must disable future respawns");
         assert!(
-            pop.individuals.is_empty(),
+            pop.voices.is_empty(),
             "released group should drain without repopulation"
         );
     }
@@ -2701,22 +2686,22 @@ mod tests {
         );
 
         let parent_freq = pop
-            .individuals
+            .voices
             .iter()
-            .find(|agent| agent.id() == 101)
-            .map(|agent| agent.body.base_freq_hz())
+            .find(|v| v.id() == 101)
+            .map(|v| v.body.base_freq_hz())
             .expect("parent exists");
 
-        if let Some(dying) = pop.individuals.iter_mut().find(|agent| agent.id() == 100) {
+        if let Some(dying) = pop.voices.iter_mut().find(|v| v.id() == 100) {
             dying.release_gain = 0.0;
             dying.release_pending = true;
         }
         pop.cleanup_dead(0, 0.01, false, &landscape);
 
         let child = pop
-            .individuals
+            .voices
             .iter()
-            .find(|agent| agent.id() != 101)
+            .find(|v| v.id() != 101)
             .expect("child exists");
         let delta_oct = (child.body.base_freq_hz().log2() - parent_freq.log2()).abs();
         assert!(
@@ -2744,9 +2729,9 @@ mod tests {
             &landscape,
             None,
         );
-        let agent = pop.individuals.first().expect("spawned");
-        assert_eq!(agent.effective_control.pitch.mode, PitchMode::Free);
-        assert!((agent.effective_control.pitch.freq - 220.0).abs() <= 1e-6);
+        let voice = pop.voices.first().expect("spawned");
+        assert_eq!(voice.effective_control.pitch.mode, PitchMode::Free);
+        assert!((voice.effective_control.pitch.freq - 220.0).abs() <= 1e-6);
     }
 
     #[test]
@@ -2800,11 +2785,11 @@ mod tests {
 
         let mut batches = vec![PhonationBatch {
             source_id: 99,
-            cmds: vec![NoteCmd::NoteOn {
-                note_id: 1,
+            cmds: vec![ToneCmd::On {
+                tone_id: 1,
                 kick: OnsetKick { strength: 1.0 },
             }],
-            notes: vec![make_dummy_note_spec()],
+            tones: vec![make_dummy_tone_spec()],
             onsets: vec![OnsetEvent {
                 gate: 0,
                 onset_tick: 0,
@@ -2813,9 +2798,9 @@ mod tests {
         }];
 
         let used = pop.collect_phonation_batches_into(&mut world, &landscape, 0, &mut batches);
-        // Agent with default Sustain produces output, stale data is replaced
+        // Voice with default Sustain produces output, stale data is replaced
         assert!(used > 0 || batches[0].cmds.is_empty());
-        // Source id is from the actual agent, not the stale 99
+        // Source id is from the actual voice, not the stale 99
         if used > 0 {
             assert_eq!(batches[0].source_id, 77);
         }

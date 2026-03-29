@@ -8,8 +8,8 @@ const DEFAULT_IMPROVEMENT_THRESHOLD: f32 = 0.1;
 const DEFAULT_GLOBAL_PEAK_MIN_SEP_CENTS: f32 = 0.0;
 const DEFAULT_PITCH_GLIDE_TAU_SEC: f32 = 0.0;
 pub(crate) const DEFAULT_TIMBRE_SPREAD: f32 = 0.0;
-pub(crate) const DEFAULT_TIMBRE_VOICES: usize = 1;
-pub(crate) const MAX_TIMBRE_VOICES: usize = 9;
+pub(crate) const DEFAULT_TIMBRE_UNISON: usize = 1;
+pub(crate) const MAX_TIMBRE_UNISON: usize = 9;
 
 use crate::core::mode_pattern::ModePattern;
 
@@ -17,14 +17,14 @@ use crate::core::mode_pattern::ModePattern;
 pub struct WorldControl {}
 
 #[derive(Debug, Clone, Default)]
-pub struct AgentControl {
+pub struct VoiceControl {
     pub body: BodyControl,
     pub pitch: PitchControl,
     pub phonation: PhonationControl,
     pub adaptation: AdaptationControl,
 }
 
-impl AgentControl {
+impl VoiceControl {
     pub fn validate(&self) -> Result<(), String> {
         let freq = self.pitch.freq;
         if !freq.is_finite() || freq < MIN_FREQ_HZ {
@@ -69,8 +69,8 @@ impl AgentControl {
     }
 
     #[inline]
-    pub fn set_timbre_voices_clamped(&mut self, voices: i64) {
-        self.body.timbre.voices = voices.clamp(1, MAX_TIMBRE_VOICES as i64) as usize;
+    pub fn set_timbre_unison_clamped(&mut self, unison: i64) {
+        self.body.timbre.unison = unison.clamp(1, MAX_TIMBRE_UNISON as i64) as usize;
     }
 
     #[inline]
@@ -303,7 +303,7 @@ pub struct TimbreControl {
     pub inharmonic: f32,
     pub motion: f32,
     pub spread: f32,
-    pub voices: usize,
+    pub unison: usize,
 }
 
 impl Default for TimbreControl {
@@ -313,7 +313,7 @@ impl Default for TimbreControl {
             inharmonic: 0.0,
             motion: 0.0,
             spread: DEFAULT_TIMBRE_SPREAD,
-            voices: DEFAULT_TIMBRE_VOICES,
+            unison: DEFAULT_TIMBRE_UNISON,
         }
     }
 }
@@ -497,7 +497,7 @@ pub struct ControlUpdate {
     pub timbre_inharmonic: Option<f32>,
     pub timbre_motion: Option<f32>,
     pub timbre_spread: Option<f32>,
-    pub timbre_voices: Option<i64>,
+    pub timbre_unison: Option<i64>,
     pub continuous_drive: Option<f32>,
     pub pitch_smooth_tau: Option<f32>,
     pub move_cost_coeff: Option<f32>,
@@ -519,7 +519,7 @@ pub struct ControlUpdate {
     pub pitch_glide_tau_sec: Option<f32>,
 }
 
-impl AgentControl {
+impl VoiceControl {
     pub fn apply_update(&mut self, update: &ControlUpdate) {
         if let Some(amp) = update.amp {
             self.set_amp_clamped(amp);
@@ -572,8 +572,8 @@ impl AgentControl {
         if let Some(spread) = update.timbre_spread {
             self.set_timbre_spread_clamped(spread);
         }
-        if let Some(voices) = update.timbre_voices {
-            self.set_timbre_voices_clamped(voices);
+        if let Some(unison) = update.timbre_unison {
+            self.set_timbre_unison_clamped(unison);
         }
         if let Some(drive) = update.continuous_drive {
             self.set_continuous_drive_clamped(drive);
@@ -641,7 +641,7 @@ mod tests {
 
     #[test]
     fn apply_update_clamps_and_locks_freq() {
-        let mut control = AgentControl::default();
+        let mut control = VoiceControl::default();
         control.pitch.mode = PitchMode::Free;
         let update = ControlUpdate {
             amp: Some(1.2),
@@ -661,7 +661,7 @@ mod tests {
             timbre_inharmonic: Some(2.0),
             timbre_motion: Some(0.5),
             timbre_spread: Some(2.0),
-            timbre_voices: Some(99),
+            timbre_unison: Some(99),
             continuous_drive: None,
             pitch_smooth_tau: None,
             move_cost_coeff: Some(-0.2),
@@ -725,12 +725,12 @@ mod tests {
         assert!((control.body.timbre.inharmonic - 1.0).abs() <= 1e-6);
         assert!((control.body.timbre.motion - 0.5).abs() <= 1e-6);
         assert!((control.body.timbre.spread - 1.0).abs() <= 1e-6);
-        assert_eq!(control.body.timbre.voices, MAX_TIMBRE_VOICES);
+        assert_eq!(control.body.timbre.unison, MAX_TIMBRE_UNISON);
     }
 
     #[test]
     fn set_freq_lock_uses_min_bound() {
-        let mut control = AgentControl::default();
+        let mut control = VoiceControl::default();
         control.set_freq_lock_clamped(-10.0);
         assert_eq!(control.pitch.mode, PitchMode::Lock);
         assert!((control.pitch.freq - MIN_FREQ_HZ).abs() <= 1e-6);

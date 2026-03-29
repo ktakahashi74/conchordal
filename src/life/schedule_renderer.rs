@@ -1,21 +1,21 @@
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
-use crate::life::individual::PhonationBatch;
-use crate::life::phonation_engine::NoteCmd;
-use crate::life::sound::Voice;
+use crate::life::phonation_engine::ToneCmd;
+use crate::life::sound::Tone;
+use crate::life::voice::PhonationBatch;
 use std::collections::HashMap;
 use tracing::debug;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-struct VoiceKey {
+struct ToneKey {
     source_id: u64,
-    note_id: u64,
+    tone_id: u64,
 }
 
 pub struct ScheduleRenderer {
     time: Timebase,
     buf: Vec<f32>,
-    voices: HashMap<VoiceKey, Voice>,
+    tones: HashMap<ToneKey, Tone>,
     cutoff_tick: Option<Tick>,
 }
 
@@ -26,7 +26,7 @@ impl ScheduleRenderer {
         Self {
             time,
             buf: vec![0.0; time.hop],
-            voices: HashMap::new(),
+            tones: HashMap::new(),
             cutoff_tick: None,
         }
     }
@@ -48,7 +48,7 @@ impl ScheduleRenderer {
             return &self.buf;
         }
 
-        self.voices.retain(|_, voice| !voice.is_done(now));
+        self.tones.retain(|_, tone| !tone.is_done(now));
 
         let end = now.saturating_add(hop as Tick);
         let dt = 1.0 / fs;
@@ -57,10 +57,10 @@ impl ScheduleRenderer {
         for tick in now..end {
             let idx = (tick - now) as usize;
             let mut acc = 0.0f32;
-            for (_key, voice) in self.voices.iter_mut() {
-                voice.apply_updates_if_due(tick);
-                voice.kick_planned_if_due(tick);
-                acc += voice.render_tick(tick, fs, dt, &rhythms);
+            for (_key, tone) in self.tones.iter_mut() {
+                tone.apply_updates_if_due(tick);
+                tone.kick_planned_if_due(tick);
+                acc += tone.render_tick(tick, fs, dt, &rhythms);
             }
             self.buf[idx] = acc;
             rhythms.advance_in_place(dt);
@@ -70,7 +70,7 @@ impl ScheduleRenderer {
     }
 
     pub fn is_idle(&self) -> bool {
-        self.voices.is_empty()
+        self.tones.is_empty()
     }
 
     pub fn set_cutoff_tick(&mut self, cutoff: Option<Tick>) {
@@ -79,9 +79,9 @@ impl ScheduleRenderer {
 
     pub fn shutdown_at(&mut self, tick: Tick) {
         self.cutoff_tick = Some(tick);
-        self.voices.retain(|_, voice| voice.onset() <= tick);
-        for voice in self.voices.values_mut() {
-            voice.note_off(tick);
+        self.tones.retain(|_, tone| tone.onset() <= tick);
+        for tone in self.tones.values_mut() {
+            tone.note_off(tick);
         }
     }
 
@@ -96,15 +96,15 @@ impl ScheduleRenderer {
         for batch in phonation_batches {
             for cmd in &batch.cmds {
                 match *cmd {
-                    NoteCmd::NoteOn { note_id, kick } => {
-                        let key = VoiceKey {
+                    ToneCmd::On { tone_id, kick } => {
+                        let key = ToneKey {
                             source_id: batch.source_id,
-                            note_id,
+                            tone_id,
                         };
-                        if self.voices.contains_key(&key) {
+                        if self.tones.contains_key(&key) {
                             continue;
                         }
-                        let spec = batch.notes.iter().find(|note| note.note_id == note_id);
+                        let spec = batch.tones.iter().find(|t| t.tone_id == tone_id);
                         let Some(spec) = spec else { continue };
                         if let Some(cutoff) = self.cutoff_tick
                             && spec.onset >= cutoff
@@ -112,7 +112,7 @@ impl ScheduleRenderer {
                             continue;
                         }
                         let hold_ticks = spec.hold_ticks.unwrap_or(default_hold_ticks);
-                        if let Some(mut voice) = Voice::from_parts(
+                        if let Some(mut tone) = Tone::from_parts(
                             self.time,
                             spec.onset,
                             hold_ticks,
@@ -122,56 +122,56 @@ impl ScheduleRenderer {
                             Some(spec.render_modulator.clone()),
                             spec.adsr,
                         ) {
-                            voice.seed_modal_phases(modal_phase_seed(
+                            tone.seed_modal_phases(modal_phase_seed(
                                 batch.source_id,
                                 spec.onset,
-                                note_id,
+                                tone_id,
                             ));
-                            voice.set_smoothing_tau_sec(spec.smoothing_tau_sec);
-                            voice.note_on(spec.onset);
-                            voice.schedule_planned_kick(kick);
-                            voice.arm_onset_trigger(kick.strength.max(0.0));
+                            tone.set_smoothing_tau_sec(spec.smoothing_tau_sec);
+                            tone.note_on(spec.onset);
+                            tone.schedule_planned_kick(kick);
+                            tone.arm_onset_trigger(kick.strength.max(0.0));
                             debug!(
-                                target: "phonation::note_on",
+                                target: "phonation::tone_on",
                                 source_id = batch.source_id,
-                                note_id,
+                                tone_id,
                                 onset = spec.onset,
                                 freq_hz = spec.freq_hz,
                                 amp = spec.amp
                             );
-                            self.voices.insert(key, voice);
+                            self.tones.insert(key, tone);
                         }
                     }
-                    NoteCmd::NoteOff { note_id, off_tick } => {
-                        let key = VoiceKey {
+                    ToneCmd::Off { tone_id, off_tick } => {
+                        let key = ToneKey {
                             source_id: batch.source_id,
-                            note_id,
+                            tone_id,
                         };
-                        if let Some(voice) = self.voices.get_mut(&key) {
-                            voice.note_off(off_tick);
+                        if let Some(tone) = self.tones.get_mut(&key) {
+                            tone.note_off(off_tick);
                         }
                     }
-                    NoteCmd::Update { .. } => {}
+                    ToneCmd::Update { .. } => {}
                 }
             }
             for cmd in &batch.cmds {
-                let NoteCmd::Update {
-                    note_id,
+                let ToneCmd::Update {
+                    tone_id,
                     at_tick,
                     update,
                 } = *cmd
                 else {
                     continue;
                 };
-                let key = VoiceKey {
+                let key = ToneKey {
                     source_id: batch.source_id,
-                    note_id,
+                    tone_id,
                 };
-                let Some(voice) = self.voices.get_mut(&key) else {
+                let Some(tone) = self.tones.get_mut(&key) else {
                     continue;
                 };
                 let tick = at_tick.unwrap_or(now);
-                voice.schedule_update(tick, update);
+                tone.schedule_update(tick, update);
             }
         }
     }
@@ -195,35 +195,35 @@ fn modal_phase_seed(a: u64, b: u64, c: u64) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::life::individual::{NoteSpec, PhonationBatch};
-    use crate::life::phonation_engine::{NoteUpdate, OnsetKick};
+    use crate::life::phonation_engine::{OnsetKick, ToneUpdate};
     use crate::life::sound::{BodyKind, BodySnapshot, RenderModulatorSpec, default_release_ticks};
+    use crate::life::voice::{PhonationBatch, ToneSpec};
 
     #[test]
-    fn update_command_applies_to_voice() {
+    fn update_command_applies_to_tone() {
         let tb = Timebase { fs: 1000.0, hop: 4 };
         let mut renderer = ScheduleRenderer::new(tb);
         let rhythms = NeuralRhythms::default();
-        let note_id = 1;
+        let tone_id = 1;
         let batch = PhonationBatch {
             source_id: 2,
             cmds: vec![
-                NoteCmd::Update {
-                    note_id,
+                ToneCmd::Update {
+                    tone_id,
                     at_tick: Some(0),
-                    update: NoteUpdate {
+                    update: ToneUpdate {
                         target_freq_hz: Some(440.0),
                         target_amp: Some(0.25),
                         continuous_drive: None,
                     },
                 },
-                NoteCmd::NoteOn {
-                    note_id,
+                ToneCmd::On {
+                    tone_id,
                     kick: OnsetKick { strength: 1.0 },
                 },
             ],
-            notes: vec![NoteSpec {
-                note_id,
+            tones: vec![ToneSpec {
+                tone_id,
                 onset: 0,
                 hold_ticks: Some(8),
                 freq_hz: 220.0,
@@ -235,7 +235,7 @@ mod tests {
                     brightness: 0.0,
                     inharmonic: 0.0,
                     spread: 0.0,
-                    voices: 1,
+                    unison: 1,
                     motion: 0.0,
                     ratios: None,
                 },
@@ -246,13 +246,13 @@ mod tests {
         };
         renderer.render(&[batch], 0, &rhythms);
 
-        let key = VoiceKey {
+        let key = ToneKey {
             source_id: 2,
-            note_id,
+            tone_id,
         };
-        let voice = renderer.voices.get(&key).expect("voice");
-        assert!((voice.debug_current_freq_hz() - 440.0).abs() < 1e-6);
-        assert!((voice.debug_current_amp() - 0.25).abs() < 1e-6);
+        let tone = renderer.tones.get(&key).expect("tone");
+        assert!((tone.debug_current_freq_hz() - 440.0).abs() < 1e-6);
+        assert!((tone.debug_current_amp() - 0.25).abs() < 1e-6);
     }
 
     #[test]
@@ -260,35 +260,35 @@ mod tests {
         let tb = Timebase { fs: 1000.0, hop: 4 };
         let mut renderer = ScheduleRenderer::new(tb);
         let rhythms = NeuralRhythms::default();
-        let note_id = 1;
+        let tone_id = 1;
         let batch = PhonationBatch {
             source_id: 2,
             cmds: vec![
-                NoteCmd::Update {
-                    note_id,
+                ToneCmd::Update {
+                    tone_id,
                     at_tick: Some(0),
-                    update: NoteUpdate {
+                    update: ToneUpdate {
                         target_freq_hz: Some(330.0),
                         target_amp: None,
                         continuous_drive: None,
                     },
                 },
-                NoteCmd::Update {
-                    note_id,
+                ToneCmd::Update {
+                    tone_id,
                     at_tick: Some(0),
-                    update: NoteUpdate {
+                    update: ToneUpdate {
                         target_freq_hz: Some(440.0),
                         target_amp: None,
                         continuous_drive: None,
                     },
                 },
-                NoteCmd::NoteOn {
-                    note_id,
+                ToneCmd::On {
+                    tone_id,
                     kick: OnsetKick { strength: 1.0 },
                 },
             ],
-            notes: vec![NoteSpec {
-                note_id,
+            tones: vec![ToneSpec {
+                tone_id,
                 onset: 0,
                 hold_ticks: Some(8),
                 freq_hz: 220.0,
@@ -300,7 +300,7 @@ mod tests {
                     brightness: 0.0,
                     inharmonic: 0.0,
                     spread: 0.0,
-                    voices: 1,
+                    unison: 1,
                     motion: 0.0,
                     ratios: None,
                 },
@@ -311,28 +311,28 @@ mod tests {
         };
         renderer.render(&[batch], 0, &rhythms);
 
-        let key = VoiceKey {
+        let key = ToneKey {
             source_id: 2,
-            note_id,
+            tone_id,
         };
-        let voice = renderer.voices.get(&key).expect("voice");
-        assert!((voice.debug_target_freq_hz() - 440.0).abs() < 1e-6);
+        let tone = renderer.tones.get(&key).expect("tone");
+        assert!((tone.debug_target_freq_hz() - 440.0).abs() < 1e-6);
     }
 
     #[test]
-    fn shutdown_releases_voices_and_becomes_idle() {
+    fn shutdown_releases_tones_and_becomes_idle() {
         let tb = Timebase { fs: 1000.0, hop: 8 };
         let mut renderer = ScheduleRenderer::new(tb);
         let rhythms = NeuralRhythms::default();
-        let note_id = 1;
+        let tone_id = 1;
         let batch = PhonationBatch {
             source_id: 1,
-            cmds: vec![NoteCmd::NoteOn {
-                note_id,
+            cmds: vec![ToneCmd::On {
+                tone_id,
                 kick: OnsetKick { strength: 1.0 },
             }],
-            notes: vec![NoteSpec {
-                note_id,
+            tones: vec![ToneSpec {
+                tone_id,
                 onset: 0,
                 hold_ticks: Some(Tick::MAX),
                 freq_hz: 220.0,
@@ -344,7 +344,7 @@ mod tests {
                     brightness: 0.0,
                     inharmonic: 0.0,
                     spread: 0.0,
-                    voices: 1,
+                    unison: 1,
                     motion: 0.0,
                     ratios: None,
                 },

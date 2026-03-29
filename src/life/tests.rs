@@ -3,21 +3,21 @@ use crate::core::log2space::Log2Space;
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
 use crate::life::conductor::Conductor;
-use crate::life::control::{AgentControl, ControlUpdate, PitchApplyMode, PitchMode};
-use crate::life::individual::{
-    AgentMetadata, AnyArticulationCore, ArticulationCore, ArticulationWrapper, Individual,
-    PhonationBatch, SoundBody,
-};
+use crate::life::control::{ControlUpdate, PitchApplyMode, PitchMode, VoiceControl};
 use crate::life::lifecycle::LifecycleConfig;
 use crate::life::phonation_engine::{
-    CandidatePoint, NoteCmd, OnsetKick, OnsetRule, PhonationClock,
+    CandidatePoint, OnsetKick, OnsetRule, PhonationClock, ToneCmd,
 };
 use crate::life::population::Population;
 use crate::life::scenario::{
-    Action, ArticulationCoreConfig, DurationSpec, EnvelopeConfig, IndividualConfig, PhonationSpec,
-    Scenario, SpawnSpec, TimedEvent, WhenSpec,
+    Action, ArticulationCoreConfig, DurationSpec, EnvelopeConfig, PhonationSpec, Scenario,
+    SpawnSpec, TimedEvent, VoiceConfig, WhenSpec,
 };
 use crate::life::sound::RenderModulator;
+use crate::life::voice::{
+    AnyArticulationCore, ArticulationCore, ArticulationWrapper, PhonationBatch, SoundBody, Voice,
+    VoiceMetadata,
+};
 use rand::SeedableRng;
 
 fn test_timebase() -> Timebase {
@@ -32,25 +32,25 @@ fn make_landscape() -> Landscape {
     Landscape::new(space)
 }
 
-fn spawn_spec_with_control(control: AgentControl) -> SpawnSpec {
+fn spawn_spec_with_control(control: VoiceControl) -> SpawnSpec {
     SpawnSpec {
         control,
         articulation: ArticulationCoreConfig::default(),
     }
 }
 
-fn control_with_pitch(freq: f32) -> AgentControl {
-    let mut control = AgentControl::default();
+fn control_with_pitch(freq: f32) -> VoiceControl {
+    let mut control = VoiceControl::default();
     control.pitch.freq = freq.max(1.0);
     control
 }
 
-fn spawn_agent(freq: f32, assigned_id: u64) -> Individual {
-    let cfg = IndividualConfig {
+fn spawn_voice(freq: f32, assigned_id: u64) -> Voice {
+    let cfg = VoiceConfig {
         control: control_with_pitch(freq),
         articulation: ArticulationCoreConfig::default(),
     };
-    let meta = AgentMetadata {
+    let meta = VoiceMetadata {
         group_id: 0,
         member_idx: 0,
     };
@@ -87,10 +87,10 @@ fn sustain_entrain_articulation() -> ArticulationCoreConfig {
 // ──── Population / Conductor ────
 
 #[test]
-fn population_spawn_and_release_removes_agent() {
+fn population_spawn_and_release_removes_voice() {
     let mut pop = Population::new(test_timebase());
     let landscape = LandscapeFrame::default();
-    let mut control = AgentControl::default();
+    let mut control = VoiceControl::default();
     control.pitch.freq = 440.0;
 
     pop.apply_action(
@@ -103,7 +103,7 @@ fn population_spawn_and_release_removes_agent() {
         &landscape,
         None,
     );
-    assert_eq!(pop.individuals.len(), 1);
+    assert_eq!(pop.voices.len(), 1);
 
     pop.apply_action(
         Action::ReleaseGroup {
@@ -120,7 +120,7 @@ fn population_spawn_and_release_removes_agent() {
     let landscape_rt = make_landscape();
     pop.advance(samples_per_hop, fs, 0, dt, &landscape_rt);
     pop.cleanup_dead(0, dt, false, &landscape);
-    assert!(pop.individuals.is_empty());
+    assert!(pop.voices.is_empty());
 }
 
 #[test]
@@ -162,10 +162,10 @@ fn conductor_dispatches_finish_on_time() {
 }
 
 #[test]
-fn agent_lifecycle_decay_death() {
+fn voice_lifecycle_decay_death() {
     let mut pop = Population::new(test_timebase());
     let landscape = LandscapeFrame::default();
-    let mut control = AgentControl::default();
+    let mut control = VoiceControl::default();
     control.pitch.freq = 440.0;
     pop.apply_action(
         Action::Spawn {
@@ -180,7 +180,7 @@ fn agent_lifecycle_decay_death() {
 
     let fs = 48_000.0;
     {
-        let agent = pop.individuals.first_mut().expect("agent exists");
+        let voice = pop.voices.first_mut().expect("agent exists");
         let core_cfg = ArticulationCoreConfig::Entrain {
             lifecycle: LifecycleConfig::Decay {
                 initial_energy: 1.0,
@@ -199,7 +199,7 @@ fn agent_lifecycle_decay_death() {
         };
         let mut rng = rand::rngs::StdRng::seed_from_u64(7);
         let core = AnyArticulationCore::from_config(&core_cfg, fs, 1, &mut rng);
-        agent.articulation = ArticulationWrapper::new(core, 1.0, false);
+        voice.articulation = ArticulationWrapper::new(core, 1.0, false);
     }
 
     let dt = 0.01;
@@ -211,7 +211,7 @@ fn agent_lifecycle_decay_death() {
         pop.cleanup_dead(i, dt, false, &landscape);
     }
 
-    assert!(pop.individuals.is_empty());
+    assert!(pop.voices.is_empty());
 }
 
 // ──── Pitch: Lock / Free / Glide ────
@@ -220,7 +220,7 @@ fn agent_lifecycle_decay_death() {
 fn lock_mode_advances_release_gain() {
     let fs = 48_000.0;
     let mut pop = Population::new(test_timebase());
-    let mut control = AgentControl::default();
+    let mut control = VoiceControl::default();
     control.pitch.freq = 440.0;
     control.pitch.mode = PitchMode::Lock;
     pop.apply_action(
@@ -233,16 +233,16 @@ fn lock_mode_advances_release_gain() {
         &LandscapeFrame::default(),
         None,
     );
-    let agent = pop.individuals.first_mut().expect("agent exists");
-    agent.start_remove_fade(0.05);
-    let gain_before = agent.release_gain();
+    let voice = pop.voices.first_mut().expect("agent exists");
+    voice.start_remove_fade(0.05);
+    let gain_before = voice.release_gain();
 
     let dt = 0.01;
     let samples_per_hop = (fs * dt) as usize;
     let landscape = make_landscape();
     pop.advance(samples_per_hop, fs, 0, dt, &landscape);
 
-    let gain_after = pop.individuals[0].release_gain();
+    let gain_after = pop.voices[0].release_gain();
     assert!(gain_after < gain_before);
 }
 
@@ -250,7 +250,7 @@ fn lock_mode_advances_release_gain() {
 fn lock_mode_keeps_pitch_and_target() {
     let fs = 48_000.0;
     let mut pop = Population::new(test_timebase());
-    let mut control = AgentControl::default();
+    let mut control = VoiceControl::default();
     control.pitch.freq = 440.0;
     control.pitch.mode = PitchMode::Lock;
     pop.apply_action(
@@ -265,8 +265,8 @@ fn lock_mode_keeps_pitch_and_target() {
     );
 
     let (freq_before, target_before) = {
-        let agent = pop.individuals.first().expect("agent exists");
-        (agent.body.base_freq_hz(), agent.target_pitch_log2())
+        let voice = pop.voices.first().expect("agent exists");
+        (voice.body.base_freq_hz(), voice.target_pitch_log2())
     };
 
     let dt = 0.01;
@@ -276,16 +276,16 @@ fn lock_mode_keeps_pitch_and_target() {
         pop.advance(samples_per_hop, fs, i, dt, &landscape);
     }
 
-    let agent = pop.individuals.first().expect("agent exists");
-    assert!((agent.body.base_freq_hz() - freq_before).abs() <= 1e-6);
-    assert!((agent.target_pitch_log2() - target_before).abs() <= 1e-6);
+    let voice = pop.voices.first().expect("agent exists");
+    assert!((voice.body.base_freq_hz() - freq_before).abs() <= 1e-6);
+    assert!((voice.target_pitch_log2() - target_before).abs() <= 1e-6);
 }
 
 #[test]
 fn lock_mode_prevents_snapback() {
     let landscape = Landscape::new(Log2Space::new(55.0, 4000.0, 48));
     let mut pop = Population::new(test_timebase());
-    let mut control = AgentControl::default();
+    let mut control = VoiceControl::default();
     control.pitch.freq = 220.0;
     pop.apply_action(
         Action::Spawn {
@@ -299,7 +299,7 @@ fn lock_mode_prevents_snapback() {
     );
 
     let old_target = pop
-        .individuals
+        .voices
         .first()
         .expect("agent exists")
         .target_pitch_log2();
@@ -323,65 +323,65 @@ fn lock_mode_prevents_snapback() {
     rhythms.theta.phase = 0.0;
     let dt_sec = 0.02;
     let steps = 50;
-    let agent = pop.individuals.first_mut().expect("agent exists");
+    let voice = pop.voices.first_mut().expect("agent exists");
     for _ in 0..steps {
-        agent.update_pitch_target(&rhythms, dt_sec, &landscape, &[], &[]);
+        voice.update_pitch_target(&rhythms, dt_sec, &landscape, &[], &[]);
     }
     assert!(
-        (agent.target_pitch_log2() - new_log).abs() < 1e-6,
+        (voice.target_pitch_log2() - new_log).abs() < 1e-6,
         "target should remain locked to mode"
     );
     assert!(
-        (agent.target_pitch_log2() - old_target).abs() > 0.5,
+        (voice.target_pitch_log2() - old_target).abs() > 0.5,
         "target should move away from old target"
     );
 }
 
 #[test]
 fn free_mode_uses_freq_center_when_range_zero() {
-    let mut control = AgentControl::default();
+    let mut control = VoiceControl::default();
     control.pitch.mode = PitchMode::Free;
     control.pitch.freq = 220.0;
     control.pitch.range_oct = 0.0;
-    let mut agent = spawn_agent(220.0, 4);
-    agent.effective_control = control;
+    let mut voice = spawn_voice(220.0, 4);
+    voice.effective_control = control;
     let mut rhythms = NeuralRhythms::default();
     rhythms.theta.phase = 0.1;
     rhythms.theta.mag = 1.0;
-    let integration_window = agent.integration_window();
-    agent.set_theta_phase_state_for_test(0.9, true);
-    agent.set_accumulated_time_for_test(integration_window);
+    let integration_window = voice.integration_window();
+    voice.set_theta_phase_state_for_test(0.9, true);
+    voice.set_accumulated_time_for_test(integration_window);
     let landscape = make_landscape();
-    agent.update_pitch_target(&rhythms, 0.01, &landscape, &[], &[]);
+    voice.update_pitch_target(&rhythms, 0.01, &landscape, &[], &[]);
     let expected = 220.0_f32.log2();
-    assert!((agent.target_pitch_log2() - expected).abs() <= 1e-6);
+    assert!((voice.target_pitch_log2() - expected).abs() <= 1e-6);
 }
 
 #[test]
 fn glide_mode_applies_pitch_without_gate_fade_delay() {
-    let mut agent = spawn_agent(220.0, 62);
+    let mut voice = spawn_voice(220.0, 62);
     let rhythms = NeuralRhythms::default();
 
-    let current_log2 = agent.body.base_freq_hz().log2();
+    let current_log2 = voice.body.base_freq_hz().log2();
     let target_log2 = current_log2 + 1.0;
-    agent.pitch_ctl.force_set_target_pitch_log2(target_log2);
+    voice.pitch_ctl.force_set_target_pitch_log2(target_log2);
 
-    agent.effective_control.pitch.pitch_apply_mode = PitchApplyMode::GateSnap;
-    let before_freq = agent.body.base_freq_hz();
-    agent.update_articulation_autonomous(0.1, &rhythms);
-    let snap_gate = agent.articulation.gate();
-    let after_snap_freq = agent.body.base_freq_hz();
+    voice.effective_control.pitch.pitch_apply_mode = PitchApplyMode::GateSnap;
+    let before_freq = voice.body.base_freq_hz();
+    voice.update_articulation_autonomous(0.1, &rhythms);
+    let snap_gate = voice.articulation.gate();
+    let after_snap_freq = voice.body.base_freq_hz();
     assert!(
         snap_gate < 1.0,
         "gate-snap mode should fade down on large jump"
     );
     assert!((after_snap_freq - before_freq).abs() <= 1e-6);
 
-    agent.effective_control.pitch.pitch_apply_mode = PitchApplyMode::Glide;
-    agent.effective_control.pitch.pitch_glide_tau_sec = 0.05;
-    agent.update_articulation_autonomous(0.1, &rhythms);
-    let glide_gate = agent.articulation.gate();
-    let after_glide_freq = agent.body.base_freq_hz();
+    voice.effective_control.pitch.pitch_apply_mode = PitchApplyMode::Glide;
+    voice.effective_control.pitch.pitch_glide_tau_sec = 0.05;
+    voice.update_articulation_autonomous(0.1, &rhythms);
+    let glide_gate = voice.articulation.gate();
+    let after_glide_freq = voice.body.base_freq_hz();
     assert!(glide_gate >= 0.99, "glide mode should avoid gate fade-down");
     assert!(
         after_glide_freq > after_snap_freq,
@@ -393,32 +393,32 @@ fn glide_mode_applies_pitch_without_gate_fade_delay() {
 
 #[test]
 fn adaptation_disabled_still_runs_pitch_proposal() {
-    let mut control = AgentControl::default();
+    let mut control = VoiceControl::default();
     control.pitch.freq = 220.0;
     control.adaptation.enabled = false;
-    let cfg = IndividualConfig {
+    let cfg = VoiceConfig {
         control,
         articulation: ArticulationCoreConfig::default(),
     };
-    let meta = AgentMetadata {
+    let meta = VoiceMetadata {
         group_id: 0,
         member_idx: 0,
     };
-    let mut agent = cfg.spawn(6, 0, meta, 48_000.0, 0);
+    let mut voice = cfg.spawn(6, 0, meta, 48_000.0, 0);
 
-    let integration_window = agent.integration_window();
-    agent.set_accumulated_time_for_test(0.0);
+    let integration_window = voice.integration_window();
+    voice.set_accumulated_time_for_test(0.0);
     let mut rhythms = NeuralRhythms::default();
     let landscape = make_landscape();
     let mut proposal_path_ran = false;
     let dt = integration_window.max(0.05);
     for _ in 0..8 {
-        agent.set_theta_phase_state_for_test(0.9, true);
+        voice.set_theta_phase_state_for_test(0.9, true);
         rhythms.theta.phase = 0.1;
         rhythms.theta.mag = 1.0;
-        let before_accum = agent.accumulated_time_for_test();
-        agent.update_pitch_target(&rhythms, dt, &landscape, &[], &[]);
-        if before_accum + dt >= integration_window && agent.accumulated_time_for_test() <= 1e-6 {
+        let before_accum = voice.accumulated_time_for_test();
+        voice.update_pitch_target(&rhythms, dt, &landscape, &[], &[]);
+        if before_accum + dt >= integration_window && voice.accumulated_time_for_test() <= 1e-6 {
             proposal_path_ran = true;
             break;
         }
@@ -432,27 +432,27 @@ fn adaptation_disabled_still_runs_pitch_proposal() {
 
 #[test]
 fn proposal_interval_decouples_from_integration_window() {
-    let mut control = AgentControl::default();
+    let mut control = VoiceControl::default();
     control.pitch.freq = 220.0;
     control.pitch.proposal_interval_sec = Some(0.2);
-    let cfg = IndividualConfig {
+    let cfg = VoiceConfig {
         control,
         articulation: ArticulationCoreConfig::default(),
     };
-    let meta = AgentMetadata {
+    let meta = VoiceMetadata {
         group_id: 0,
         member_idx: 0,
     };
-    let mut agent = cfg.spawn(61, 0, meta, 48_000.0, 0);
+    let mut voice = cfg.spawn(61, 0, meta, 48_000.0, 0);
     let mut rhythms = NeuralRhythms::default();
     rhythms.theta.mag = 0.0;
     let landscape = make_landscape();
-    agent.set_accumulated_time_for_test(0.0);
+    voice.set_accumulated_time_for_test(0.0);
     for _ in 0..6 {
-        agent.update_pitch_target(&rhythms, 0.05, &landscape, &[], &[]);
+        voice.update_pitch_target(&rhythms, 0.05, &landscape, &[], &[]);
     }
     assert!(
-        agent.accumulated_time_for_test() < 0.2,
+        voice.accumulated_time_for_test() < 0.2,
         "proposal interval should trigger before integration-window horizon"
     );
 }
@@ -460,8 +460,8 @@ fn proposal_interval_decouples_from_integration_window() {
 #[test]
 fn inertia_depends_on_frequency() {
     let landscape = make_landscape();
-    let mut low = spawn_agent(60.0, 1);
-    let mut high = spawn_agent(1000.0, 2);
+    let mut low = spawn_voice(60.0, 1);
+    let mut high = spawn_voice(1000.0, 2);
     let rhythms = NeuralRhythms::default();
 
     low.update_pitch_target(&rhythms, 0.01, &landscape, &[], &[]);
@@ -476,18 +476,18 @@ fn inertia_depends_on_frequency() {
 #[test]
 fn scan_moves_toward_higher_scoring_neighbor() {
     let mut landscape = make_landscape();
-    let mut agent = spawn_agent(220.0, 3);
+    let mut voice = spawn_voice(220.0, 3);
     let n = landscape.consonance_field_score.len();
     landscape.subjective_intensity = vec![1.0; n];
     landscape.consonance_field_score.fill(0.0);
     landscape.consonance_field_level.fill(0.0);
     let idx_cur = landscape
         .space
-        .index_of_freq(agent.body.base_freq_hz())
+        .index_of_freq(voice.body.base_freq_hz())
         .unwrap_or(0);
     landscape.consonance_field_score[idx_cur] = 0.0;
     landscape.consonance_field_level[idx_cur] = 0.0;
-    let target_alt = agent.body.base_freq_hz() * 1.5;
+    let target_alt = voice.body.base_freq_hz() * 1.5;
     if let Some(idx_alt) = landscape.space.index_of_freq(target_alt) {
         let lo = idx_alt.saturating_sub(1);
         let hi = (idx_alt + 1).min(n.saturating_sub(1));
@@ -501,16 +501,16 @@ fn scan_moves_toward_higher_scoring_neighbor() {
         }
     }
 
-    agent.set_accumulated_time_for_test(5.0);
-    agent.set_theta_phase_state_for_test(6.0, true);
+    voice.set_accumulated_time_for_test(5.0);
+    voice.set_theta_phase_state_for_test(6.0, true);
     let mut rhythms = NeuralRhythms::default();
     rhythms.theta.mag = 1.0;
     rhythms.theta.phase = 0.25;
 
-    let before = agent.target_pitch_log2();
-    agent.update_pitch_target(&rhythms, 0.01, &landscape, &[], &[]);
+    let before = voice.target_pitch_log2();
+    voice.update_pitch_target(&rhythms, 0.01, &landscape, &[], &[]);
     assert!(
-        agent.target_pitch_log2() > before,
+        voice.target_pitch_log2() > before,
         "agent should move toward higher-scoring neighbor"
     );
 }
@@ -519,7 +519,7 @@ fn scan_moves_toward_higher_scoring_neighbor() {
 
 #[test]
 fn remove_pending_still_emits_note_offs() {
-    let mut control = AgentControl::default();
+    let mut control = VoiceControl::default();
     control.pitch.freq = 220.0;
     control.phonation.spec = PhonationSpec {
         when: WhenSpec::Pulse {
@@ -529,15 +529,15 @@ fn remove_pending_still_emits_note_offs() {
         },
         duration: DurationSpec::Gates(1),
     };
-    let cfg = IndividualConfig {
+    let cfg = VoiceConfig {
         control,
         articulation: ArticulationCoreConfig::default(),
     };
-    let meta = AgentMetadata {
+    let meta = VoiceMetadata {
         group_id: 0,
         member_idx: 0,
     };
-    let mut agent = cfg.spawn(1, 0, meta, 48_000.0, 0);
+    let mut voice = cfg.spawn(1, 0, meta, 48_000.0, 0);
     let tb = Timebase {
         fs: 48_000.0,
         hop: 12_001,
@@ -551,11 +551,11 @@ fn remove_pending_still_emits_note_offs() {
     let mut now: Tick = 0;
     let mut saw_note_on = false;
     for _ in 0..20 {
-        agent.tick_phonation_into(&tb, now, &rhythms, None, 0.0, 1.0, 1.0, &mut batch);
+        voice.tick_phonation_into(&tb, now, &rhythms, None, 0.0, 1.0, 1.0, &mut batch);
         if batch
             .cmds
             .iter()
-            .any(|cmd| matches!(cmd, NoteCmd::NoteOn { .. }))
+            .any(|cmd| matches!(cmd, ToneCmd::On { .. }))
         {
             saw_note_on = true;
             break;
@@ -565,14 +565,14 @@ fn remove_pending_still_emits_note_offs() {
     }
     assert!(saw_note_on, "expected at least one note-on before remove");
 
-    agent.start_remove_fade(0.05);
+    voice.start_remove_fade(0.05);
     let mut saw_note_off = false;
     for _ in 0..40 {
-        agent.tick_phonation_into(&tb, now, &rhythms, None, 0.0, 1.0, 1.0, &mut batch);
+        voice.tick_phonation_into(&tb, now, &rhythms, None, 0.0, 1.0, 1.0, &mut batch);
         if batch
             .cmds
             .iter()
-            .any(|cmd| matches!(cmd, NoteCmd::NoteOff { .. }))
+            .any(|cmd| matches!(cmd, ToneCmd::Off { .. }))
         {
             saw_note_off = true;
             break;
@@ -585,22 +585,22 @@ fn remove_pending_still_emits_note_offs() {
 
 #[test]
 fn tick_phonation_into_gated_bridges_each_onset_to_body_articulation() {
-    let mut control = AgentControl::default();
+    let mut control = VoiceControl::default();
     control.pitch.freq = 220.0;
     control.phonation.spec = PhonationSpec {
         when: WhenSpec::Once,
         duration: DurationSpec::Gates(1),
     };
-    let cfg = IndividualConfig {
+    let cfg = VoiceConfig {
         control,
         articulation: sustain_entrain_articulation(),
     };
-    let meta = AgentMetadata {
+    let meta = VoiceMetadata {
         group_id: 0,
         member_idx: 0,
     };
-    let mut agent = cfg.spawn(77, 0, meta, 48_000.0, 0);
-    agent.phonation_engine.clock = PhonationClock::Custom(Box::new(|_, out| {
+    let mut voice = cfg.spawn(77, 0, meta, 48_000.0, 0);
+    voice.phonation_engine.clock = PhonationClock::Custom(Box::new(|_, out| {
         out.extend([
             CandidatePoint {
                 tick: 0,
@@ -622,7 +622,7 @@ fn tick_phonation_into_gated_bridges_each_onset_to_body_articulation() {
             },
         ]);
     }));
-    agent.phonation_engine.onset_rule =
+    voice.phonation_engine.onset_rule =
         OnsetRule::Custom(Box::new(|_, _| Some(OnsetKick { strength: 1.0 })));
     let tb = Timebase {
         fs: 48_000.0,
@@ -637,21 +637,18 @@ fn tick_phonation_into_gated_bridges_each_onset_to_body_articulation() {
     rhythms.env_open = 1.0;
     rhythms.env_level = 1.0;
 
-    let energy_before = match &agent.articulation.core {
+    let energy_before = match &voice.articulation.core {
         AnyArticulationCore::Entrain(core) => core.energy,
         _ => panic!("expected entrain articulation"),
     };
 
     let mut batch = PhonationBatch::default();
-    agent.tick_phonation_into(&tb, 0, &rhythms, None, 0.0, 1.0, 1.0, &mut batch);
+    voice.tick_phonation_into(&tb, 0, &rhythms, None, 0.0, 1.0, 1.0, &mut batch);
 
     assert_eq!(batch.onsets.len(), 3);
-    let energy_after = match &agent.articulation.core {
+    let energy_after = match &voice.articulation.core {
         AnyArticulationCore::Entrain(core) => {
-            assert_eq!(
-                core.state,
-                crate::life::individual::ArticulationState::Attack
-            );
+            assert_eq!(core.state, crate::life::voice::ArticulationState::Attack);
             core.energy
         }
         _ => panic!("expected entrain articulation"),
@@ -665,21 +662,21 @@ fn tick_phonation_into_gated_bridges_each_onset_to_body_articulation() {
 
 #[test]
 fn hold_mode_renderer_still_pulses_after_render_clone_removal() {
-    let mut control = AgentControl::default();
+    let mut control = VoiceControl::default();
     control.pitch.freq = 220.0;
     control.phonation.spec = PhonationSpec {
         when: WhenSpec::Once,
         duration: DurationSpec::WhileAlive,
     };
-    let cfg = IndividualConfig {
+    let cfg = VoiceConfig {
         control,
         articulation: sustain_entrain_articulation(),
     };
-    let meta = AgentMetadata {
+    let meta = VoiceMetadata {
         group_id: 0,
         member_idx: 0,
     };
-    let mut agent = cfg.spawn(78, 0, meta, 48_000.0, 0);
+    let mut voice = cfg.spawn(78, 0, meta, 48_000.0, 0);
     let tb = Timebase {
         fs: 48_000.0,
         hop: 64,
@@ -694,9 +691,9 @@ fn hold_mode_renderer_still_pulses_after_render_clone_removal() {
     rhythms.env_level = 1.0;
 
     let mut batch = PhonationBatch::default();
-    agent.tick_phonation_into(&tb, 0, &rhythms, None, 0.0, 1.0, 1.0, &mut batch);
-    let note = batch.notes.first().cloned().expect("expected hold note");
-    let mut render_modulator = RenderModulator::from_spec(note.render_modulator);
+    voice.tick_phonation_into(&tb, 0, &rhythms, None, 0.0, 1.0, 1.0, &mut batch);
+    let tone = batch.tones.first().cloned().expect("expected hold note");
+    let mut render_modulator = RenderModulator::from_spec(tone.render_modulator);
 
     let dt = 0.001;
     let mut render_rhythms = rhythms;
@@ -716,21 +713,21 @@ fn hold_mode_renderer_still_pulses_after_render_clone_removal() {
 
 #[test]
 fn hold_note_emits_target_amp_update_when_authority_amp_changes() {
-    let mut control = AgentControl::default();
+    let mut control = VoiceControl::default();
     control.pitch.freq = 220.0;
     control.phonation.spec = PhonationSpec {
         when: WhenSpec::Once,
         duration: DurationSpec::WhileAlive,
     };
-    let cfg = IndividualConfig {
+    let cfg = VoiceConfig {
         control,
         articulation: sustain_entrain_articulation(),
     };
-    let meta = AgentMetadata {
+    let meta = VoiceMetadata {
         group_id: 0,
         member_idx: 0,
     };
-    let mut agent = cfg.spawn(79, 0, meta, 48_000.0, 0);
+    let mut voice = cfg.spawn(79, 0, meta, 48_000.0, 0);
     let tb = Timebase {
         fs: 48_000.0,
         hop: 64,
@@ -745,16 +742,16 @@ fn hold_note_emits_target_amp_update_when_authority_amp_changes() {
     rhythms.env_level = 1.0;
 
     let mut batch = PhonationBatch::default();
-    agent.tick_phonation_into(&tb, 0, &rhythms, None, 0.0, 1.0, 1.0, &mut batch);
-    let note_id = batch.notes.first().expect("expected hold note").note_id;
+    voice.tick_phonation_into(&tb, 0, &rhythms, None, 0.0, 1.0, 1.0, &mut batch);
+    let tone_id = batch.tones.first().expect("expected hold note").tone_id;
 
-    match &mut agent.articulation.core {
+    match &mut voice.articulation.core {
         AnyArticulationCore::Entrain(core) => core.vitality_level = 0.25,
         _ => panic!("expected entrain articulation"),
     }
-    let expected_amp = agent.compute_target_amp();
+    let expected_amp = voice.compute_target_amp();
     let mut update_batch = PhonationBatch::default();
-    agent.tick_phonation_into(
+    voice.tick_phonation_into(
         &tb,
         tb.hop as Tick,
         &rhythms,
@@ -765,16 +762,16 @@ fn hold_note_emits_target_amp_update_when_authority_amp_changes() {
         &mut update_batch,
     );
 
-    assert!(update_batch.notes.is_empty());
+    assert!(update_batch.tones.is_empty());
     let update = update_batch
         .cmds
         .iter()
         .find_map(|cmd| match cmd {
-            NoteCmd::Update {
-                note_id: update_note_id,
+            ToneCmd::Update {
+                tone_id: update_tone_id,
                 update,
                 ..
-            } if *update_note_id == note_id => update.target_amp,
+            } if *update_tone_id == tone_id => update.target_amp,
             _ => None,
         })
         .expect("expected target_amp update");
@@ -783,21 +780,21 @@ fn hold_note_emits_target_amp_update_when_authority_amp_changes() {
 
 #[test]
 fn hold_note_does_not_emit_update_below_amp_threshold() {
-    let mut control = AgentControl::default();
+    let mut control = VoiceControl::default();
     control.pitch.freq = 220.0;
     control.phonation.spec = PhonationSpec {
         when: WhenSpec::Once,
         duration: DurationSpec::WhileAlive,
     };
-    let cfg = IndividualConfig {
+    let cfg = VoiceConfig {
         control,
         articulation: sustain_entrain_articulation(),
     };
-    let meta = AgentMetadata {
+    let meta = VoiceMetadata {
         group_id: 0,
         member_idx: 0,
     };
-    let mut agent = cfg.spawn(80, 0, meta, 48_000.0, 0);
+    let mut voice = cfg.spawn(80, 0, meta, 48_000.0, 0);
     let tb = Timebase {
         fs: 48_000.0,
         hop: 64,
@@ -812,9 +809,9 @@ fn hold_note_does_not_emit_update_below_amp_threshold() {
     rhythms.env_level = 1.0;
 
     let mut batch = PhonationBatch::default();
-    agent.tick_phonation_into(&tb, 0, &rhythms, None, 0.0, 1.0, 1.0, &mut batch);
-    let current_amp = agent.compute_target_amp();
-    match &mut agent.articulation.core {
+    voice.tick_phonation_into(&tb, 0, &rhythms, None, 0.0, 1.0, 1.0, &mut batch);
+    let current_amp = voice.compute_target_amp();
+    match &mut voice.articulation.core {
         AnyArticulationCore::Entrain(core) => {
             let base_amp = current_amp / core.vitality_level.max(1e-6);
             core.vitality_level = ((current_amp - 0.005) / base_amp).clamp(0.0, 1.0);
@@ -822,7 +819,7 @@ fn hold_note_does_not_emit_update_below_amp_threshold() {
         _ => panic!("expected entrain articulation"),
     }
     let mut update_batch = PhonationBatch::default();
-    agent.tick_phonation_into(
+    voice.tick_phonation_into(
         &tb,
         tb.hop as Tick,
         &rhythms,
@@ -837,28 +834,28 @@ fn hold_note_does_not_emit_update_below_amp_threshold() {
         !update_batch
             .cmds
             .iter()
-            .any(|cmd| matches!(cmd, NoteCmd::Update { .. })),
+            .any(|cmd| matches!(cmd, ToneCmd::Update { .. })),
         "expected no amp update below threshold"
     );
 }
 
 #[test]
 fn tracked_note_is_removed_after_note_off_for_future_hops() {
-    let mut control = AgentControl::default();
+    let mut control = VoiceControl::default();
     control.pitch.freq = 220.0;
     control.phonation.spec = PhonationSpec {
         when: WhenSpec::Once,
         duration: DurationSpec::WhileAlive,
     };
-    let cfg = IndividualConfig {
+    let cfg = VoiceConfig {
         control,
         articulation: sustain_entrain_articulation(),
     };
-    let meta = AgentMetadata {
+    let meta = VoiceMetadata {
         group_id: 0,
         member_idx: 0,
     };
-    let mut agent = cfg.spawn(81, 0, meta, 48_000.0, 0);
+    let mut voice = cfg.spawn(81, 0, meta, 48_000.0, 0);
     let tb = Timebase {
         fs: 48_000.0,
         hop: 64,
@@ -873,10 +870,10 @@ fn tracked_note_is_removed_after_note_off_for_future_hops() {
     rhythms.env_level = 1.0;
 
     let mut batch = PhonationBatch::default();
-    agent.tick_phonation_into(&tb, 0, &rhythms, None, 0.0, 1.0, 1.0, &mut batch);
-    agent.remove_pending = true;
+    voice.tick_phonation_into(&tb, 0, &rhythms, None, 0.0, 1.0, 1.0, &mut batch);
+    voice.remove_pending = true;
     let mut off_batch = PhonationBatch::default();
-    agent.tick_phonation_into(
+    voice.tick_phonation_into(
         &tb,
         tb.hop as Tick,
         &rhythms,
@@ -890,16 +887,16 @@ fn tracked_note_is_removed_after_note_off_for_future_hops() {
         off_batch
             .cmds
             .iter()
-            .any(|cmd| matches!(cmd, NoteCmd::NoteOff { .. })),
+            .any(|cmd| matches!(cmd, ToneCmd::Off { .. })),
         "expected note-off when hold note is removed"
     );
 
-    match &mut agent.articulation.core {
+    match &mut voice.articulation.core {
         AnyArticulationCore::Entrain(core) => core.vitality_level = 0.25,
         _ => panic!("expected entrain articulation"),
     }
     let mut later_batch = PhonationBatch::default();
-    agent.tick_phonation_into(
+    voice.tick_phonation_into(
         &tb,
         (tb.hop as Tick) * 2,
         &rhythms,
@@ -913,14 +910,14 @@ fn tracked_note_is_removed_after_note_off_for_future_hops() {
         !later_batch
             .cmds
             .iter()
-            .any(|cmd| matches!(cmd, NoteCmd::Update { .. })),
+            .any(|cmd| matches!(cmd, ToneCmd::Update { .. })),
         "expected no updates after tracked note was pruned"
     );
 }
 
 #[test]
 fn render_modulator_snapshot_is_finite() {
-    let mut control = AgentControl::default();
+    let mut control = VoiceControl::default();
     control.pitch.freq = 220.0;
     control.phonation.spec = PhonationSpec {
         when: WhenSpec::Pulse {
@@ -930,15 +927,15 @@ fn render_modulator_snapshot_is_finite() {
         },
         duration: DurationSpec::Gates(1),
     };
-    let cfg = IndividualConfig {
+    let cfg = VoiceConfig {
         control,
         articulation: ArticulationCoreConfig::default(),
     };
-    let meta = AgentMetadata {
+    let meta = VoiceMetadata {
         group_id: 0,
         member_idx: 0,
     };
-    let mut agent = cfg.spawn(41, 0, meta, 48_000.0, 0);
+    let mut voice = cfg.spawn(41, 0, meta, 48_000.0, 0);
     let tb = Timebase {
         fs: 48_000.0,
         hop: 12_001,
@@ -951,18 +948,18 @@ fn render_modulator_snapshot_is_finite() {
 
     let mut batch = PhonationBatch::default();
     let mut now: Tick = 0;
-    let mut note = None;
+    let mut tone = None;
     for _ in 0..20 {
-        agent.tick_phonation_into(&tb, now, &rhythms, None, 0.0, 1.0, 1.0, &mut batch);
-        if let Some(first) = batch.notes.first() {
-            note = Some(first.clone());
+        voice.tick_phonation_into(&tb, now, &rhythms, None, 0.0, 1.0, 1.0, &mut batch);
+        if let Some(first) = batch.tones.first() {
+            tone = Some(first.clone());
             break;
         }
         now = now.saturating_add(tb.hop as Tick);
         rhythms.advance_in_place(tb.hop as f32 / tb.fs);
     }
-    let note = note.expect("expected at least one rendered note spec");
-    let mut render_modulator = RenderModulator::from_spec(note.render_modulator.clone());
+    let tone = tone.expect("expected at least one rendered tone spec");
+    let mut render_modulator = RenderModulator::from_spec(tone.render_modulator.clone());
 
     let mut render_rhythms = NeuralRhythms::default();
     render_rhythms.theta.freq_hz = 4.0;
@@ -971,7 +968,7 @@ fn render_modulator_snapshot_is_finite() {
     render_rhythms.env_level = 1.0;
     for _ in 0..64 {
         let signal = render_modulator.process(&render_rhythms, 1.0 / tb.fs);
-        let sample = signal.amplitude * note.amp;
+        let sample = signal.amplitude * tone.amp;
         assert!(sample.is_finite());
         render_rhythms.advance_in_place(1.0 / tb.fs);
     }

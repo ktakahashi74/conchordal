@@ -1,4 +1,4 @@
-use crate::ui::viewdata::AgentStateInfo;
+use crate::ui::viewdata::VoiceStateInfo;
 use egui::{Align2, Color32, FontId, Id, Stroke, Vec2, Vec2b};
 use egui_plot::{
     Bar, BarChart, GridInput, GridMark, Line, LineStyle, Plot, PlotPoints, Points, Polygon,
@@ -431,10 +431,10 @@ pub fn neural_activity_plot(
     });
 }
 
-/// Show current vs target frequency for each agent with target arrows.
+/// Show current vs target frequency for each voice with target arrows.
 pub fn plot_population_dynamics(
     ui: &mut egui::Ui,
-    agents: &[AgentStateInfo],
+    voices: &[VoiceStateInfo],
     spec_hz: &[f32],
     spec_amps: &[f32],
     height: f32,
@@ -469,25 +469,25 @@ pub fn plot_population_dynamics(
             plot_ui.bar_chart(BarChart::new("Sound bodies", bars));
         }
 
-        for agent in agents {
-            let y = agent.consonance as f64;
-            let x = agent.freq_hz.max(1.0).log2() as f64;
-            let xt = agent.target_freq.max(1.0).log2() as f64;
+        for voice in voices {
+            let y = voice.consonance as f64;
+            let x = voice.freq_hz.max(1.0).log2() as f64;
+            let xt = voice.target_freq.max(1.0).log2() as f64;
             if (x - xt).abs() > f64::EPSILON {
                 plot_ui.line(
-                    Line::new(format!("target-{}", agent.id), vec![[x, y], [xt, y]])
+                    Line::new(format!("target-{}", voice.id), vec![[x, y], [xt, y]])
                         .color(Color32::from_rgb(80, 140, 255))
                         .style(LineStyle::Dashed { length: 4.0 }),
                 );
             }
-            let t = agent.consonance.clamp(0.0, 1.0);
+            let t = voice.consonance.clamp(0.0, 1.0);
             let r = (60.0 + 180.0 * (1.0 - t)) as u8;
             let g = (80.0 + 140.0 * t) as u8;
             let b = (180.0 - 80.0 * t) as u8;
             // Use log2(window) so point size varies smoothly on a log-frequency x-axis.
-            let radius = (agent.integration_window.max(1.0).log2() * 4.0).clamp(3.0, 20.0);
+            let radius = (voice.integration_window.max(1.0).log2() * 4.0).clamp(3.0, 20.0);
             plot_ui.points(
-                Points::new(format!("agent-{}", agent.id), vec![[x, y]])
+                Points::new(format!("voice-{}", voice.id), vec![[x, y]])
                     .radius(radius)
                     .color(Color32::from_rgb(r, g, b)),
             );

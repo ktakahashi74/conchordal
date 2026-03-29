@@ -43,6 +43,7 @@ fn samples_have_no_legacy_keys() {
         ".energy(".to_string(),
         ".mode(".to_string(),
         ".pitch_apply(".to_string(),
+        ".voices(".to_string(),
     ];
     let phonation_key = ["pho", "nation"].concat();
     let quote = "\"";

@@ -385,11 +385,11 @@ pub fn main_window(
         ui.horizontal(|ui| {
             ui.heading("Population Dynamics");
             ui.separator();
-            ui.label(format!("Agents: {}", frame.meta.agent_count));
+            ui.label(format!("Voices: {}", frame.meta.voice_count));
         });
         plot_population_dynamics(
             ui,
-            &frame.agents,
+            &frame.voices,
             &frame.spec.spec_hz,
             &frame.spec.amps,
             72.0,

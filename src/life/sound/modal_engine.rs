@@ -1,8 +1,8 @@
 use crate::core::log2space::Log2Space;
-use crate::life::individual::ArticulationSignal;
 use crate::life::scenario::TimbreGenotype;
-use crate::life::sound::control::VoiceControlBlock;
+use crate::life::sound::control::ToneControlBlock;
 use crate::life::sound::spectral::{add_log2_energy, harmonic_gain, harmonic_ratio};
+use crate::life::voice::ArticulationSignal;
 use crate::synth::SynthError;
 use crate::synth::modes::ModeParams;
 use crate::synth::resonator::ResonatorBank;
@@ -92,7 +92,7 @@ impl ModalEngine {
         }
         self.last_built_pitch_hz = pitch_hz;
     }
-    pub fn render_block(&mut self, drive: &[f32], ctrl: VoiceControlBlock, out: &mut [f32]) {
+    pub fn render_block(&mut self, drive: &[f32], ctrl: ToneControlBlock, out: &mut [f32]) {
         debug_assert_eq!(drive.len(), out.len());
         if drive.is_empty() {
             return;

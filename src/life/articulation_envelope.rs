@@ -1,4 +1,4 @@
-use crate::life::individual::ArticulationState;
+use crate::life::voice::ArticulationState;
 
 pub(crate) fn step_attack_decay_envelope(
     state: &mut ArticulationState,

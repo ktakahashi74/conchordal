@@ -1,16 +1,16 @@
 use crate::core::log2space::Log2Space;
 use crate::core::mode_pattern::ModePattern;
-use crate::life::individual::ArticulationSignal;
-use crate::life::individual::sound_body::{
-    AnySoundBody, SoundBody, SoundBodyBuildInput, SoundBodyFactory, register_sound_body_factory,
-};
-use crate::life::sound::control::{ControlRamp, VoiceControlBlock};
+use crate::life::sound::control::{ControlRamp, ToneControlBlock};
 use crate::life::sound::mode_utils::{
     brightness_from_modal_tilt, cluster_spread_cents_from_public, modal_modes_from_ratios,
-    modal_tilt_from_brightness, public_spread_from_cluster_spread_cents, sanitize_cluster_voices,
+    modal_tilt_from_brightness, public_spread_from_cluster_spread_cents, sanitize_cluster_unison,
     sanitize_mode_ratios,
 };
 use crate::life::sound::{BodyKind, BodySnapshot, ModalEngine, ModeShape};
+use crate::life::voice::ArticulationSignal;
+use crate::life::voice::sound_body::{
+    AnySoundBody, SoundBody, SoundBodyBuildInput, SoundBodyFactory, register_sound_body_factory,
+};
 use rand::rngs::SmallRng;
 use std::sync::{Arc, Once};
 
@@ -21,7 +21,7 @@ pub struct ModalBody {
     fs: f32,
     modal_tilt: f32,
     cluster_spread_cents: f32,
-    cluster_voices: usize,
+    cluster_unison: usize,
     base_ratios: Arc<[f32]>,
     engine: ModalEngine,
 }
@@ -36,7 +36,7 @@ impl ModalBody {
         ratios: Vec<f32>,
         brightness: f32,
         spread: f32,
-        voices: usize,
+        unison: usize,
     ) -> Self {
         let fs = if fs.is_finite() && fs > 0.0 {
             fs
@@ -45,13 +45,13 @@ impl ModalBody {
         };
         let modal_tilt = modal_tilt_from_brightness(brightness);
         let cluster_spread_cents = cluster_spread_cents_from_public(spread);
-        let cluster_voices = sanitize_cluster_voices(voices);
+        let cluster_unison = sanitize_cluster_unison(unison);
         let base_ratios = Arc::<[f32]>::from(sanitize_mode_ratios(ratios));
         let modes = modal_modes_from_ratios(
             &base_ratios,
             modal_tilt,
             cluster_spread_cents,
-            cluster_voices,
+            cluster_unison,
         );
         let shape = ModeShape::Modal { modes };
         let engine = ModalEngine::new(fs, shape).unwrap_or_else(|_| {
@@ -72,14 +72,14 @@ impl ModalBody {
             fs,
             modal_tilt,
             cluster_spread_cents,
-            cluster_voices,
+            cluster_unison,
             base_ratios,
             engine,
         }
     }
 
-    fn control_block(&self, amp: f32) -> VoiceControlBlock {
-        VoiceControlBlock {
+    fn control_block(&self, amp: f32) -> ToneControlBlock {
+        ToneControlBlock {
             pitch_hz: ControlRamp {
                 start: self.base_freq_hz.max(1.0),
                 step: 0.0,
@@ -96,7 +96,7 @@ impl ModalBody {
             &self.base_ratios,
             self.modal_tilt,
             self.cluster_spread_cents,
-            self.cluster_voices,
+            self.cluster_unison,
         );
         if let Ok(engine) = ModalEngine::new(self.fs, ModeShape::Modal { modes }) {
             self.engine = engine;
@@ -168,20 +168,20 @@ impl SoundBody for ModalBody {
         _inharmonic: f32,
         _motion: f32,
         spread: f32,
-        voices: usize,
+        unison: usize,
     ) {
         let next_modal_tilt = modal_tilt_from_brightness(brightness);
         let next_cluster_spread_cents = cluster_spread_cents_from_public(spread);
-        let next_cluster_voices = sanitize_cluster_voices(voices);
+        let next_cluster_unison = sanitize_cluster_unison(unison);
         if (self.modal_tilt - next_modal_tilt).abs() <= Self::TIMBRE_EPS
             && (self.cluster_spread_cents - next_cluster_spread_cents).abs() <= Self::TIMBRE_EPS
-            && self.cluster_voices == next_cluster_voices
+            && self.cluster_unison == next_cluster_unison
         {
             return;
         }
         self.modal_tilt = next_modal_tilt;
         self.cluster_spread_cents = next_cluster_spread_cents;
-        self.cluster_voices = next_cluster_voices;
+        self.cluster_unison = next_cluster_unison;
         self.rebuild_engine_shape();
     }
 
@@ -192,7 +192,7 @@ impl SoundBody for ModalBody {
             brightness: brightness_from_modal_tilt(self.modal_tilt),
             inharmonic: 0.0,
             spread: public_spread_from_cluster_spread_cents(self.cluster_spread_cents),
-            voices: self.cluster_voices,
+            unison: self.cluster_unison,
             motion: 0.0,
             ratios: Some(self.base_ratios.clone()),
         }
@@ -227,7 +227,7 @@ impl SoundBodyFactory for ModalBodyFactory {
             ratios,
             timbre.brightness,
             timbre.spread,
-            timbre.voices,
+            timbre.unison,
         );
         let mut body = body;
         body.seed_modal_phases(rand::RngCore::next_u64(rng));
@@ -255,7 +255,7 @@ mod tests {
         assert!((snapshot.brightness - 0.62).abs() <= 1.0e-6);
         assert!((snapshot.inharmonic - 0.0).abs() <= 1.0e-6);
         assert!((snapshot.spread - 0.35).abs() <= 1.0e-6);
-        assert_eq!(snapshot.voices, 5);
+        assert_eq!(snapshot.unison, 5);
         assert!((snapshot.motion - 0.0).abs() <= 1.0e-6);
         assert!((ratios[0] - 1.0).abs() <= 1.0e-6);
         assert!((ratios[1] - 2.756).abs() <= 1.0e-6);

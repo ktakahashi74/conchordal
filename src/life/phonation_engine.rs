@@ -14,7 +14,7 @@ use crate::life::scenario::{
 };
 use crate::life::social_density::SocialDensityTrace;
 
-pub type NoteId = u64;
+pub type ToneId = u64;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct OnsetKick {
@@ -22,14 +22,14 @@ pub struct OnsetKick {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
-pub struct NoteUpdate {
+pub struct ToneUpdate {
     pub target_freq_hz: Option<f32>,
     /// Final output target amp (linear).
     pub target_amp: Option<f32>,
     pub continuous_drive: Option<f32>,
 }
 
-impl NoteUpdate {
+impl ToneUpdate {
     pub fn is_empty(&self) -> bool {
         self.target_freq_hz.is_none()
             && self.target_amp.is_none()
@@ -38,19 +38,19 @@ impl NoteUpdate {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum NoteCmd {
-    NoteOn {
-        note_id: NoteId,
+pub enum ToneCmd {
+    On {
+        tone_id: ToneId,
         kick: OnsetKick,
     },
-    NoteOff {
-        note_id: NoteId,
+    Off {
+        tone_id: ToneId,
         off_tick: Tick,
     },
     Update {
-        note_id: NoteId,
+        tone_id: ToneId,
         at_tick: Option<Tick>,
-        update: NoteUpdate,
+        update: ToneUpdate,
     },
 }
 
@@ -650,7 +650,7 @@ impl OnsetRule {
 
 #[derive(Debug, Clone, Copy)]
 pub struct OnsetContext {
-    pub note_id: NoteId,
+    pub tone_id: ToneId,
     pub tick: Tick,
     pub gate: u64,
     pub theta_pos: f64,
@@ -775,8 +775,8 @@ impl DurationRule {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct NoteOnEvent {
-    pub note_id: NoteId,
+pub struct ToneOnEvent {
+    pub tone_id: ToneId,
     pub onset_tick: Tick,
 }
 
@@ -798,14 +798,14 @@ struct CandidateStep {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct PendingOff {
     off_tick: Tick,
-    note_id: NoteId,
+    tone_id: ToneId,
 }
 
 impl Ord for PendingOff {
     fn cmp(&self, other: &Self) -> Ordering {
         self.off_tick
             .cmp(&other.off_tick)
-            .then_with(|| self.note_id.cmp(&other.note_id))
+            .then_with(|| self.tone_id.cmp(&other.tone_id))
     }
 }
 
@@ -818,7 +818,7 @@ impl PartialOrd for PendingOff {
 #[derive(Debug, Default)]
 struct HoldCore {
     note_on_sent: bool,
-    note_id: Option<NoteId>,
+    tone_id: Option<ToneId>,
 }
 
 pub struct PhonationEngine {
@@ -829,7 +829,7 @@ pub struct PhonationEngine {
     pub mode: PhonationMode,
     hold: HoldCore,
     initial_seed: u64,
-    pub next_note_id: NoteId,
+    pub next_tone_id: ToneId,
     last_gate_index: Option<u64>,
     last_theta_pos: Option<f64>,
     last_tick: Option<Tick>,
@@ -842,7 +842,7 @@ pub struct PhonationEngine {
 impl fmt::Debug for PhonationEngine {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PhonationEngine")
-            .field("next_note_id", &self.next_note_id)
+            .field("next_tone_id", &self.next_tone_id)
             .field("last_gate_index", &self.last_gate_index)
             .field("active_notes", &self.active_notes)
             .field("mode", &self.mode)
@@ -873,7 +873,7 @@ impl PhonationEngine {
             mode: config.mode,
             hold: HoldCore::default(),
             initial_seed: seed,
-            next_note_id: 0,
+            next_tone_id: 0,
             last_gate_index: None,
             last_theta_pos: None,
             last_tick: None,
@@ -902,25 +902,25 @@ impl PhonationEngine {
         ctx: &CoreTickCtx,
         state: &CoreState,
         min_allowed_onset_tick: Option<Tick>,
-        out_cmds: &mut Vec<NoteCmd>,
-        out_events: &mut Vec<NoteOnEvent>,
+        out_cmds: &mut Vec<ToneCmd>,
+        out_events: &mut Vec<ToneOnEvent>,
         out_onsets: &mut Vec<OnsetEvent>,
     ) {
         let allow_onset = min_allowed_onset_tick
             .map(|min_tick| ctx.now_tick >= min_tick)
             .unwrap_or(true);
         if allow_onset && state.is_alive && !self.hold.note_on_sent {
-            let note_id = self.next_note_id;
-            self.next_note_id = self.next_note_id.wrapping_add(1);
+            let tone_id = self.next_tone_id;
+            self.next_tone_id = self.next_tone_id.wrapping_add(1);
             self.hold.note_on_sent = true;
-            self.hold.note_id = Some(note_id);
-            out_cmds.push(NoteCmd::NoteOn {
-                note_id,
+            self.hold.tone_id = Some(tone_id);
+            out_cmds.push(ToneCmd::On {
+                tone_id,
                 kick: OnsetKick { strength: 1.0 },
             });
             self.active_notes = self.active_notes.saturating_add(1);
-            out_events.push(NoteOnEvent {
-                note_id,
+            out_events.push(ToneOnEvent {
+                tone_id,
                 onset_tick: ctx.now_tick,
             });
             out_onsets.push(OnsetEvent {
@@ -930,29 +930,29 @@ impl PhonationEngine {
             });
         }
         if !state.is_alive
-            && let Some(note_id) = self.hold.note_id.take()
+            && let Some(tone_id) = self.hold.tone_id.take()
         {
-            out_cmds.push(NoteCmd::NoteOff {
-                note_id,
+            out_cmds.push(ToneCmd::Off {
+                tone_id,
                 off_tick: ctx.now_tick,
             });
             self.active_notes = self.active_notes.saturating_sub(1);
         }
     }
 
-    fn schedule_note_off(&mut self, note_id: NoteId, off_tick: Tick) {
+    fn schedule_note_off(&mut self, tone_id: ToneId, off_tick: Tick) {
         self.pending_off
-            .push(Reverse(PendingOff { off_tick, note_id }));
+            .push(Reverse(PendingOff { off_tick, tone_id }));
     }
 
-    fn drain_note_offs(&mut self, up_to_tick: Tick, out_cmds: &mut Vec<NoteCmd>) {
+    fn drain_note_offs(&mut self, up_to_tick: Tick, out_cmds: &mut Vec<ToneCmd>) {
         while let Some(Reverse(next)) = self.pending_off.peek().copied() {
             if next.off_tick > up_to_tick {
                 break;
             }
             self.pending_off.pop();
-            out_cmds.push(NoteCmd::NoteOff {
-                note_id: next.note_id,
+            out_cmds.push(ToneCmd::Off {
+                tone_id: next.tone_id,
                 off_tick: next.off_tick,
             });
             self.active_notes = self.active_notes.saturating_sub(1);
@@ -979,7 +979,7 @@ impl PhonationEngine {
             .map(|boundary| boundary.tick)
             .unwrap_or(onset.tick);
         let off_tick = off_tick_opt.unwrap_or(fallback).max(onset.tick);
-        self.schedule_note_off(onset.note_id, off_tick);
+        self.schedule_note_off(onset.tone_id, off_tick);
     }
 
     fn extrapolate_gate_tick(grid: &ThetaGrid, target_gate: u64) -> Option<Tick> {
@@ -1035,8 +1035,8 @@ impl PhonationEngine {
         social_coupling: f32,
         extra_gate_gain: f32,
         min_allowed_onset_tick: Option<Tick>,
-        out_cmds: &mut Vec<NoteCmd>,
-        out_events: &mut Vec<NoteOnEvent>,
+        out_cmds: &mut Vec<ToneCmd>,
+        out_events: &mut Vec<ToneOnEvent>,
         out_onsets: &mut Vec<OnsetEvent>,
     ) {
         if matches!(self.mode, PhonationMode::Hold) {
@@ -1162,7 +1162,7 @@ impl PhonationEngine {
                         Self::extrapolate_gate_tick(timing_grid, off_gate).unwrap_or(ctx.frame_end)
                     })
                     .max(onset.tick);
-                self.schedule_note_off(onset.note_id, off_tick);
+                self.schedule_note_off(onset.tone_id, off_tick);
             }
             DurationPlan::None => {}
         }
@@ -1177,8 +1177,8 @@ impl PhonationEngine {
         timing_field: &TimingField,
         state: &CoreState,
         min_allowed_onset_tick: Option<Tick>,
-        out_cmds: &mut Vec<NoteCmd>,
-        out_events: &mut Vec<NoteOnEvent>,
+        out_cmds: &mut Vec<ToneCmd>,
+        out_events: &mut Vec<ToneOnEvent>,
         out_onsets: &mut Vec<OnsetEvent>,
     ) {
         let mut prev_gate_exc: Option<f32> = None;
@@ -1198,12 +1198,12 @@ impl PhonationEngine {
                 weight: step.weight,
             };
             if allow_onset && let Some(kick) = self.onset_rule.on_candidate(&input, state) {
-                let note_id = self.next_note_id;
-                self.next_note_id = self.next_note_id.wrapping_add(1);
-                out_cmds.push(NoteCmd::NoteOn { note_id, kick });
+                let tone_id = self.next_tone_id;
+                self.next_tone_id = self.next_tone_id.wrapping_add(1);
+                out_cmds.push(ToneCmd::On { tone_id, kick });
                 self.active_notes = self.active_notes.saturating_add(1);
-                out_events.push(NoteOnEvent {
-                    note_id,
+                out_events.push(ToneOnEvent {
+                    tone_id,
                     onset_tick: c.tick,
                 });
                 out_onsets.push(OnsetEvent {
@@ -1212,7 +1212,7 @@ impl PhonationEngine {
                     strength: kick.strength,
                 });
                 let onset = OnsetContext {
-                    note_id,
+                    tone_id,
                     tick: c.tick,
                     gate: c.gate,
                     theta_pos: c.theta_pos,
@@ -1291,7 +1291,7 @@ mod tests {
             mode: PhonationMode::Gated,
             hold: HoldCore::default(),
             initial_seed: 0,
-            next_note_id: 0,
+            next_tone_id: 0,
             last_gate_index: None,
             last_theta_pos: None,
             last_tick: None,
@@ -1484,7 +1484,7 @@ mod tests {
     fn fixed_gate_connect_returns_at_gate() {
         let mut connect = DurationRule::fixed_gate(0);
         let plan = connect.on_note_on(OnsetContext {
-            note_id: 1,
+            tone_id: 1,
             tick: 123,
             gate: 10,
             theta_pos: 10.0,
@@ -2002,7 +2002,7 @@ mod tests {
             mode: PhonationMode::Gated,
             hold: HoldCore::default(),
             initial_seed: 0,
-            next_note_id: 0,
+            next_tone_id: 0,
             last_gate_index: None,
             last_theta_pos: Some(1.0),
             last_tick: None,
@@ -2149,7 +2149,7 @@ mod tests {
             mode: PhonationMode::Gated,
             hold: HoldCore::default(),
             initial_seed: 0,
-            next_note_id: 0,
+            next_tone_id: 0,
             last_gate_index: None,
             last_theta_pos: Some(0.0),
             last_tick: None,
@@ -2218,11 +2218,8 @@ mod tests {
             &mut onsets,
         );
         assert_eq!(engine.active_notes, 0, "note on/off should settle to zero");
-        assert!(cmds.iter().any(|cmd| matches!(cmd, NoteCmd::NoteOn { .. })));
-        assert!(
-            cmds.iter()
-                .any(|cmd| matches!(cmd, NoteCmd::NoteOff { .. }))
-        );
+        assert!(cmds.iter().any(|cmd| matches!(cmd, ToneCmd::On { .. })));
+        assert!(cmds.iter().any(|cmd| matches!(cmd, ToneCmd::Off { .. })));
     }
 
     #[test]
@@ -2264,12 +2261,8 @@ mod tests {
             &mut onsets,
         );
         assert_eq!(engine.active_notes, 1);
-        assert!(cmds.iter().any(|cmd| matches!(cmd, NoteCmd::NoteOn { .. })));
-        assert!(
-            !cmds
-                .iter()
-                .any(|cmd| matches!(cmd, NoteCmd::NoteOff { .. }))
-        );
+        assert!(cmds.iter().any(|cmd| matches!(cmd, ToneCmd::On { .. })));
+        assert!(!cmds.iter().any(|cmd| matches!(cmd, ToneCmd::Off { .. })));
     }
 
     #[test]
@@ -2302,8 +2295,8 @@ mod tests {
         );
         assert!(cmds.iter().any(|cmd| matches!(
             cmd,
-            NoteCmd::NoteOff {
-                note_id: 42,
+            ToneCmd::Off {
+                tone_id: 42,
                 off_tick: 5
             }
         )));
@@ -2347,10 +2340,10 @@ mod tests {
         );
         let off_pos = cmds
             .iter()
-            .position(|cmd| matches!(cmd, NoteCmd::NoteOff { note_id: 99, .. }));
+            .position(|cmd| matches!(cmd, ToneCmd::Off { tone_id: 99, .. }));
         let on_pos = cmds
             .iter()
-            .position(|cmd| matches!(cmd, NoteCmd::NoteOn { .. }));
+            .position(|cmd| matches!(cmd, ToneCmd::On { .. }));
         assert!(off_pos.is_some());
         assert!(on_pos.is_some());
         assert!(off_pos < on_pos);
@@ -2366,7 +2359,7 @@ mod tests {
         };
         let mut engine = test_engine(OnsetRule::None, DurationRule::fixed_gate(1));
         let onset = OnsetContext {
-            note_id: 7,
+            tone_id: 7,
             tick: 10,
             gate: 0,
             theta_pos: 0.0,
@@ -2395,7 +2388,7 @@ mod tests {
         };
         let mut engine = test_engine(OnsetRule::None, DurationRule::fixed_gate(1));
         let onset = OnsetContext {
-            note_id: 11,
+            tone_id: 11,
             tick: 0,
             gate: 0,
             theta_pos: 0.0,
@@ -2494,7 +2487,7 @@ mod tests {
         );
         assert!(kick.is_some(), "expected accumulator interval to be active");
         let plan = engine.duration_rule.on_note_on(OnsetContext {
-            note_id: 1,
+            tone_id: 1,
             tick: 0,
             gate: 0,
             theta_pos: 0.0,
@@ -2585,7 +2578,7 @@ mod tests {
         let first = events[0];
         let second = events[1];
         let off_tick = cmds.iter().find_map(|cmd| match cmd {
-            NoteCmd::NoteOff { note_id, off_tick } if *note_id == first.note_id => Some(*off_tick),
+            ToneCmd::Off { tone_id, off_tick } if *tone_id == first.tone_id => Some(*off_tick),
             _ => None,
         });
         assert_eq!(off_tick, Some(second.onset_tick));
@@ -2622,7 +2615,7 @@ mod tests {
     fn field_connect_holds_longer_with_high_excitation() {
         let mut connect = DurationRule::field(0.25, 1.0, 10.0, 0.5, 0.0);
         let low_plan = connect.on_note_on(OnsetContext {
-            note_id: 1,
+            tone_id: 1,
             tick: 0,
             gate: 0,
             theta_pos: 0.0,
@@ -2630,7 +2623,7 @@ mod tests {
             exc_slope: 0.0,
         });
         let high_plan = connect.on_note_on(OnsetContext {
-            note_id: 2,
+            tone_id: 2,
             tick: 0,
             gate: 0,
             theta_pos: 0.0,
@@ -2704,7 +2697,7 @@ mod tests {
         );
         assert!(cmds.iter().any(|cmd| matches!(
             cmd,
-            NoteCmd::NoteOff {
+            ToneCmd::Off {
                 off_tick,
                 ..
             } if *off_tick == expected_off_tick
@@ -2765,13 +2758,11 @@ mod tests {
             &mut onsets,
         );
         let note_on_id = cmds.iter().find_map(|cmd| match cmd {
-            NoteCmd::NoteOn { note_id, .. } => Some(*note_id),
+            ToneCmd::On { tone_id, .. } => Some(*tone_id),
             _ => None,
         });
         let off_tick_base = cmds.iter().find_map(|cmd| match cmd {
-            NoteCmd::NoteOff { note_id, off_tick } if Some(*note_id) == note_on_id => {
-                Some(*off_tick)
-            }
+            ToneCmd::Off { tone_id, off_tick } if Some(*tone_id) == note_on_id => Some(*off_tick),
             _ => None,
         });
 
@@ -2822,11 +2813,11 @@ mod tests {
             &mut onsets_sub,
         );
         let note_on_id_sub = cmds_sub.iter().find_map(|cmd| match cmd {
-            NoteCmd::NoteOn { note_id, .. } => Some(*note_id),
+            ToneCmd::On { tone_id, .. } => Some(*tone_id),
             _ => None,
         });
         let off_tick_sub = cmds_sub.iter().find_map(|cmd| match cmd {
-            NoteCmd::NoteOff { note_id, off_tick } if Some(*note_id) == note_on_id_sub => {
+            ToneCmd::Off { tone_id, off_tick } if Some(*tone_id) == note_on_id_sub => {
                 Some(*off_tick)
             }
             _ => None,
@@ -2887,15 +2878,11 @@ mod tests {
             &mut onsets,
         );
         let note_on_id = cmds.iter().find_map(|cmd| match cmd {
-            NoteCmd::NoteOn { note_id, .. } => Some(*note_id),
+            ToneCmd::On { tone_id, .. } => Some(*tone_id),
             _ => None,
         });
         assert!(note_on_id.is_some());
-        assert!(
-            !cmds
-                .iter()
-                .any(|cmd| matches!(cmd, NoteCmd::NoteOff { .. }))
-        );
+        assert!(!cmds.iter().any(|cmd| matches!(cmd, ToneCmd::Off { .. })));
 
         let ctx2 = CoreTickCtx {
             now_tick: 50,
@@ -2920,9 +2907,7 @@ mod tests {
             &mut onsets2,
         );
         let off_tick = cmds2.iter().find_map(|cmd| match cmd {
-            NoteCmd::NoteOff { note_id, off_tick } if Some(*note_id) == note_on_id => {
-                Some(*off_tick)
-            }
+            ToneCmd::Off { tone_id, off_tick } if Some(*tone_id) == note_on_id => Some(*off_tick),
             _ => None,
         });
         assert_eq!(off_tick, Some(100));

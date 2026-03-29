@@ -1,4 +1,4 @@
-use conchordal::life::individual::{PitchCore, PitchHillClimbPitchCore};
+use conchordal::life::voice::{PitchCore, PitchHillClimbPitchCore};
 
 #[test]
 fn neighbors_produce_ratio_candidates() {

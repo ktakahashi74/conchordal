@@ -24,7 +24,7 @@ pub struct DorsalFrame {
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct AgentStateInfo {
+pub struct VoiceStateInfo {
     pub id: u64,
     pub freq_hz: f32,
     pub target_freq: f32,
@@ -45,7 +45,7 @@ pub enum PlaybackState {
 pub struct SimulationMeta {
     pub time_sec: f32,
     pub duration_sec: f32,
-    pub agent_count: usize,
+    pub voice_count: usize,
     pub event_queue_len: usize,
     pub peak_level: f32,
     pub scenario_name: String,
@@ -82,7 +82,7 @@ pub struct UiFrame {
     pub gate_boundary_in_hop: Option<bool>,
     pub pred_available_in_hop: Option<bool>,
     pub phonation_onsets_in_hop: Option<u32>,
-    pub agents: Vec<AgentStateInfo>,
+    pub voices: Vec<VoiceStateInfo>,
 }
 
 impl Default for WaveFrame {

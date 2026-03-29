@@ -1,18 +1,18 @@
 # Quick Start Guide
 
-Conchordal v0.3.0 scripting API overview. For full details, see the [API Reference](reference/life.md).
+Conchordal v0.4.0-dev scripting API overview. For full details, see the [API Reference](reference/life.md).
 
 ## Basic Concepts
 
-- **Species**: Agent templates created with `derive()` from presets (`sine`, `harmonic`, `saw`, `square`, `noise`, `modal`).
-- **Groups**: Collections of agents spawned from a species via `create(species, count)`. Returns a `GroupHandle`.
+- **Species**: Voice templates created with `derive()` from presets (`sine`, `harmonic`, `saw`, `square`, `noise`, `modal`).
+- **Groups**: Collections of voices spawned from a species via `create(species, count)`. Returns a `GroupHandle`.
 - **Timeline**: `wait(seconds)` advances the clock. `flush()` forces immediate dispatch. `scene()` scopes groups with auto-release. `parallel()` runs branches concurrently.
-- **Strategies**: Placement methods for multi-agent frequency assignment: `consonance()`, `consonance_density_pmf()`, `random_log()`, `linear()`.
+- **Strategies**: Placement methods for multi-voice frequency assignment: `consonance()`, `consonance_density_pmf()`, `random_log()`, `linear()`.
 
 ## Minimal Example
 
 ```ts
-// Single sine agent at 440 Hz for 2 seconds
+// Single sine voice at 440 Hz for 2 seconds
 create(sine, 1).freq(440.0);
 wait(2.0);
 ```
@@ -27,18 +27,17 @@ let voice = derive(harmonic)
     .sustain()
     .brightness(0.7)
     .spread(0.2)
-    .voices(4);
+    .unison(4);
 ```
 
-Body parameters are individual methods: `brightness(v)`, `spread(v)`, `voices(n)`.
-Use `energy(v)` as an alias for `amp(v)`.
+Body parameters are individual methods: `brightness(v)`, `spread(v)`, `unison(n)`.
 
-### Multiple Agents with Consonance Strategy
+### Multiple Voices with Consonance Strategy
 
 ```ts
-let base = derive(harmonic).energy(0.1).sustain();
+let base = derive(harmonic).amp(0.1).sustain();
 
-// Place 4 agents using harmonic consonance relative to 220 Hz
+// Place 4 voices using harmonic consonance relative to 220 Hz
 create(base, 4)
     .place(consonance(220.0).range(1.0, 4.0).min_dist(1.0));
 wait(2.0);
@@ -145,13 +144,13 @@ derive(sine).pitch_mode("lock");
 derive(sine).pitch_mode("free");
 
 // "gate_snap" applies pitch on gate boundaries; "glide" interpolates
-derive(sine).pitch_apply("gate_snap");
-derive(sine).pitch_apply("glide").pitch_glide(0.05);
+derive(sine).pitch_apply_mode("gate_snap");
+derive(sine).pitch_apply_mode("glide").pitch_glide(0.05);
 ```
 
 ### Live Parameter Patching
 
-Groups support live updates on spawned agents:
+Groups support live updates on spawned voices:
 
 ```ts
 let g = create(sine, 1).freq(220.0).sustain();

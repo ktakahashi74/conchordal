@@ -1,7 +1,7 @@
-# Rhai Scripting API Reference (v0.3.0)
+# Rhai Scripting API Reference (v0.4.0-dev)
 
 This reference documents the complete Rhai scripting API for Conchordal's Life
-Engine. Scenarios are scripts that define species, spawn agent groups, control
+Engine. Scenarios are scripts that define species, spawn voice groups, control
 the timeline, and tune global parameters.
 
 ---
@@ -11,7 +11,7 @@ the timeline, and tune global parameters.
 | Type | Description |
 |------|-------------|
 | `SpeciesHandle` | Species template, built with the builder pattern |
-| `GroupHandle` | Handle to an agent group (draft or live) |
+| `GroupHandle` | Handle to a voice group (draft or live) |
 | `SpawnStrategy` | Frequency allocation strategy for placement |
 | `ModePattern` | Frequency pattern for modal synthesis bodies |
 
@@ -53,15 +53,14 @@ All species methods are chainable and return `SpeciesHandle`.
 | Method | Description |
 |--------|-------------|
 | `amp(value)` | Amplitude 0.0--1.0 |
-| `energy(value)` | Alias for `amp` |
 | `freq(value)` | Frequency lock in Hz |
 | `brightness(value)` | Spectral brightness 0.0--1.0 (harmonic/modal bodies) |
 | `spread(value)` | Detuning spread |
-| `voices(count)` | Number of unison voices |
+| `unison(count)` | Number of unison detuning copies |
 | `modes(pattern)` | Set mode pattern (modal body); see [Mode Patterns](#mode-patterns) |
 
 ```ts
-let pad = derive(harmonic).amp(0.5).brightness(0.6).spread(0.02).voices(3);
+let pad = derive(harmonic).amp(0.5).brightness(0.6).spread(0.02).unison(3);
 let bell = derive(modal).modes(stiff_string_modes(0.02).count(8));
 ```
 
@@ -70,16 +69,14 @@ let bell = derive(modal).modes(stiff_string_modes(0.02).count(8));
 | Method | Description |
 |--------|-------------|
 | `pitch_mode(name)` | `"free"` or `"lock"` |
-| `mode(name)` | Alias for `pitch_mode` |
 | `pitch_core(name)` | `"hill_climb"` or `"peak_sampler"` |
-| `pitch_apply(name)` | `"gate_snap"` or `"glide"` |
-| `pitch_apply_mode(name)` | Alias for `pitch_apply` |
+| `pitch_apply_mode(name)` | `"gate_snap"` or `"glide"` |
 | `pitch_glide(tau_sec)` | Glide time constant in seconds |
 | `pitch_smooth(tau_sec)` | Pitch smoothing time constant |
 
 ```ts
 let glider = derive(sine).pitch_mode("free").pitch_core("hill_climb")
-    .pitch_apply("glide").pitch_glide(0.1);
+    .pitch_apply_mode("glide").pitch_glide(0.1);
 ```
 
 ### Hill-Climb Tuning
@@ -158,7 +155,7 @@ Phonation is configured in three tiers of increasing detail.
 |--------|-------------|
 | `once()` | Single trigger |
 | `pulse(rate_hz)` | Pulse at given rate |
-| `while_alive()` | Duration: while agent alive |
+| `while_alive()` | Duration: while voice alive |
 | `gates(n)` | Duration: n theta gates |
 | `field()` | Duration: field-based |
 
@@ -207,7 +204,7 @@ let pluck = derive(harmonic).metabolism(0.5).adsr(0.01, 0.1, 0.3, 0.2);
 
 | Method | Description |
 |--------|-------------|
-| `enable_telemetry(first_k)` | Enable for first k agents |
+| `enable_telemetry(first_k)` | Enable for first k voices |
 | `enable_plv(window)` | Enable Phase Locking Value computation |
 
 ### Sustain Drive
@@ -277,7 +274,7 @@ All constructors return `SpawnStrategy`.
 | Method | Applies to | Description |
 |--------|------------|-------------|
 | `.range(min_mul, max_mul)` | `consonance` | Multiplier range relative to root |
-| `.min_dist(d)` | `consonance`, `consonance_density_pmf` | Min ERB distance between agents |
+| `.min_dist(d)` | `consonance`, `consonance_density_pmf` | Min ERB distance between voices |
 | `.reject_targets(anchor_hz, targets_st, exclusion_st, max_tries)` | Any | Reject positions near specified targets |
 
 `reject_targets` wraps any strategy: `targets_st` is an array of semitone offsets
@@ -302,7 +299,7 @@ let filtered = random_log(100.0, 1000.0)
 
 ### create(species, count) -> GroupHandle
 
-Create a draft group of `count` agents. The group spawns on the next `flush()` or
+Create a draft group of `count` voices. The group spawns on the next `flush()` or
 `wait()` call.
 
 ```ts
@@ -334,22 +331,22 @@ release(g);
 Group methods work in two contexts:
 
 - **Draft** (before `flush()`/`wait()`): configures the group before spawning.
-- **Live** (after spawning): patches parameters on running agents.
+- **Live** (after spawning): patches parameters on running voices.
 
 **Live-patchable** (work in both draft and live):
 
-`amp`, `energy`, `freq`, `landscape_weight`, `neighbor_step_cents`,
+`amp`, `freq`, `landscape_weight`, `neighbor_step_cents`,
 `tessitura_gravity`, `sustain_drive`, `pitch_smooth`, `exploration`,
 `persistence`, `anneal_temp`, `temperature`, `move_cost`, `move_cost_exp`,
 `improvement_threshold`, `proposal_interval`, `window_cents`, `top_k`,
-`sigma_cents`, `random_candidates`, `brightness`, `spread`, `voices`,
+`sigma_cents`, `random_candidates`, `brightness`, `spread`, `unison`,
 `pitch_glide`, `leave_self_out`, `leave_self_out_mode`,
 `leave_self_out_harmonics`, `crowding`, `crowding_target`, `global_peaks`,
-`ratio_candidates`, `move_cost_time_scale`, `pitch_apply_mode`, `pitch_apply`
+`ratio_candidates`, `move_cost_time_scale`, `pitch_apply_mode`
 
 **Draft-only** (ignored with a warning if called on a live group):
 
-`brain`, `pitch_mode`, `mode`, `pitch_core`, `sustain`, `repeat`, `once`,
+`brain`, `pitch_mode`, `pitch_core`, `sustain`, `repeat`, `once`,
 `pulse`, `while_alive`, `gates`, `field`, `sync`, `social`, `field_window`,
 `field_curve`, `field_drop`, `metabolism`, `adsr`, `rhythm_coupling`,
 `rhythm_coupling_vitality`, `rhythm_reward`, `respawn_random`,
@@ -362,7 +359,7 @@ let g = create(harmonic, 4)
     .place(consonance(220.0));
 flush();
 
-g.brightness(0.3);            // live: patches running agents
+g.brightness(0.3);            // live: patches running voices
 wait(2.0);
 release(g);
 ```
@@ -478,7 +475,7 @@ let voice = derive(harmonic)
     .brightness(0.5)
     .pitch_mode("free")
     .pitch_core("hill_climb")
-    .pitch_apply("glide").pitch_glide(0.08)
+    .pitch_apply_mode("glide").pitch_glide(0.08)
     .crowding(0.5)
     .metabolism(0.4)
     .adsr(0.05, 0.1, 0.7, 0.3)
@@ -490,7 +487,7 @@ scene("Opening", || {
     flush();
     wait(1.0);
 
-    // Consonant voices
+    // Consonant placement
     let strat = consonance(220.0).range(1.0, 3.0).min_dist(0.9);
     create(voice, 6).place(strat);
     wait(4.0);

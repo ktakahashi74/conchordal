@@ -1,12 +1,12 @@
 use crate::core::log2space::Log2Space;
-use crate::life::individual::ArticulationSignal;
-use crate::life::sound::control::VoiceControlBlock;
+use crate::life::sound::control::ToneControlBlock;
 use crate::life::sound::modal_engine::{ModalEngine, ModeShape};
 use crate::life::sound::mode_utils::{
     cluster_spread_cents_from_public, modal_modes_from_ratios, modal_tilt_from_brightness,
 };
 use crate::life::sound::oscillator_bank::OscillatorBank;
 use crate::life::sound::{BodyKind, BodySnapshot};
+use crate::life::voice::ArticulationSignal;
 use crate::synth::SynthError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -58,7 +58,7 @@ impl AnyBackend {
         }
     }
 
-    pub fn render_block(&mut self, drive: &[f32], ctrl: VoiceControlBlock, out: &mut [f32]) {
+    pub fn render_block(&mut self, drive: &[f32], ctrl: ToneControlBlock, out: &mut [f32]) {
         match self {
             AnyBackend::Oscillator(backend) => backend.render_block(drive, ctrl, out),
             AnyBackend::Resonator(engine) => engine.render_block(drive, ctrl, out),
@@ -84,14 +84,14 @@ fn modal_shape_from_snapshot(snapshot: &BodySnapshot) -> ModeShape {
     let modal_tilt = modal_tilt_from_brightness(snapshot.brightness);
     let cluster_spread_cents = cluster_spread_cents_from_public(snapshot.spread);
     ModeShape::Modal {
-        modes: modal_modes_from_ratios(ratios, modal_tilt, cluster_spread_cents, snapshot.voices),
+        modes: modal_modes_from_ratios(ratios, modal_tilt, cluster_spread_cents, snapshot.unison),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::life::sound::control::{ControlRamp, VoiceControlBlock};
+    use crate::life::sound::control::{ControlRamp, ToneControlBlock};
 
     #[test]
     fn any_backend_delegates_render_block() {
@@ -102,13 +102,13 @@ mod tests {
             brightness: 0.6,
             inharmonic: 0.0,
             spread: 0.0,
-            voices: 1,
+            unison: 1,
             motion: 0.0,
             ratios: None,
         };
         let mut backend = AnyBackend::from_snapshot(fs, &snapshot).expect("backend");
         let drive = [1.0, 0.0, 0.0, 0.0];
-        let ctrl = VoiceControlBlock {
+        let ctrl = ToneControlBlock {
             pitch_hz: ControlRamp {
                 start: 440.0,
                 step: 0.0,

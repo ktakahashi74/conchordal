@@ -5,11 +5,11 @@ use std::io::{BufWriter, Write};
 use serde::Serialize;
 
 use crate::core::landscape::LandscapeFrame;
-use crate::life::individual::sound_body::SoundBody;
-use crate::life::individual::{AnyArticulationCore, Individual};
 use crate::life::population::{RuntimeEvent, SpawnReason};
 use crate::life::scenario::{ScaffoldConfig, SceneMarker};
 use crate::life::telemetry::LifeRecord;
+use crate::life::voice::sound_body::SoundBody;
+use crate::life::voice::{AnyArticulationCore, Voice};
 
 #[derive(Debug)]
 pub struct JsonlReporter {
@@ -20,7 +20,7 @@ pub struct JsonlReporter {
 pub struct OnsetSample {
     pub time_sec: f32,
     pub group_id: u64,
-    pub agent_id: u64,
+    pub voice_id: u64,
     pub freq_hz: f32,
     pub strength: f32,
     pub plv: Option<f32>,
@@ -50,14 +50,14 @@ enum ReportRecord<'a> {
     Spawn {
         time_sec: f32,
         group_id: u64,
-        agent_id: u64,
+        voice_id: u64,
         member_idx: usize,
         freq_hz: f32,
     },
     Respawn {
         time_sec: f32,
         group_id: u64,
-        agent_id: u64,
+        voice_id: u64,
         member_idx: usize,
         freq_hz: f32,
         parent_id: Option<u64>,
@@ -65,7 +65,7 @@ enum ReportRecord<'a> {
     Death {
         time_sec: f32,
         group_id: u64,
-        agent_id: u64,
+        voice_id: u64,
         lifetime_sec: f32,
         first_k_mean: f32,
         plv_at_death: Option<f32>,
@@ -73,7 +73,7 @@ enum ReportRecord<'a> {
     Onset {
         time_sec: f32,
         group_id: u64,
-        agent_id: u64,
+        voice_id: u64,
         freq_hz: f32,
         strength: f32,
         plv: Option<f32>,
@@ -116,14 +116,14 @@ impl JsonlReporter {
                 SpawnReason::Initial => self.write_record(&ReportRecord::Spawn {
                     time_sec: event.time_sec,
                     group_id: event.group_id,
-                    agent_id: event.agent_id,
+                    voice_id: event.voice_id,
                     member_idx: event.member_idx,
                     freq_hz: event.freq_hz,
                 })?,
                 SpawnReason::Respawn => self.write_record(&ReportRecord::Respawn {
                     time_sec: event.time_sec,
                     group_id: event.group_id,
-                    agent_id: event.agent_id,
+                    voice_id: event.voice_id,
                     member_idx: event.member_idx,
                     freq_hz: event.freq_hz,
                     parent_id: event.parent_id,
@@ -144,7 +144,7 @@ impl JsonlReporter {
             self.write_record(&ReportRecord::Death {
                 time_sec: record.death_frame as f32 * frame_sec,
                 group_id: record.group_id,
-                agent_id: record.agent_id,
+                voice_id: record.voice_id,
                 lifetime_sec: record.lifetime_ticks as f32 * frame_sec,
                 first_k_mean: record.c_level_firstk_mean,
                 plv_at_death: record.plv_at_death,
@@ -158,7 +158,7 @@ impl JsonlReporter {
             self.write_record(&ReportRecord::Onset {
                 time_sec: onset.time_sec,
                 group_id: onset.group_id,
-                agent_id: onset.agent_id,
+                voice_id: onset.voice_id,
                 freq_hz: onset.freq_hz,
                 strength: onset.strength,
                 plv: onset.plv,
@@ -201,7 +201,7 @@ impl JsonlReporter {
 }
 
 pub fn summarize_groups(
-    individuals: &[Individual],
+    voices: &[Voice],
     landscape: &LandscapeFrame,
     time_sec: f32,
 ) -> Vec<GroupStepSummary> {
@@ -215,7 +215,7 @@ pub fn summarize_groups(
     }
 
     let mut by_group: BTreeMap<u64, GroupAccum> = BTreeMap::new();
-    for agent in individuals {
+    for agent in voices {
         if !agent.is_alive() {
             continue;
         }
@@ -279,14 +279,14 @@ pub fn scaffold_phase_0_1(config: ScaffoldConfig, time_sec: f32, frame_idx: u64)
 }
 
 pub fn onset_samples_from_batches(
-    individuals: &[Individual],
-    batches: &[crate::life::individual::PhonationBatch],
+    voices: &[Voice],
+    batches: &[crate::life::voice::PhonationBatch],
     time_sec: f32,
     scaffold: ScaffoldConfig,
     frame_idx: u64,
 ) -> Vec<OnsetSample> {
     let mut by_agent = BTreeMap::new();
-    for agent in individuals {
+    for agent in voices {
         by_agent.insert(agent.id(), agent);
     }
 
@@ -306,7 +306,7 @@ pub fn onset_samples_from_batches(
             out.push(OnsetSample {
                 time_sec,
                 group_id: agent.metadata.group_id,
-                agent_id: agent.id(),
+                voice_id: agent.id(),
                 freq_hz,
                 strength: onset.strength,
                 plv,

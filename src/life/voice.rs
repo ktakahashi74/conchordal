@@ -3,14 +3,14 @@ use crate::core::log2space::Log2Space;
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
 use crate::life::control::{
-    AgentControl, BodyControl, BodyMethod, ControlUpdate, PitchApplyMode, PitchMode,
+    BodyControl, BodyMethod, ControlUpdate, PitchApplyMode, PitchMode, VoiceControl,
 };
 use crate::life::control_adapters::{
     adaptation_config_from_control, pitch_core_config_from_control, tessitura_gravity_from_control,
 };
 use crate::life::lifecycle::LifecycleConfig;
 use crate::life::phonation_engine::{
-    CoreState, CoreTickCtx, NoteCmd, NoteId, NoteOnEvent, NoteUpdate, OnsetEvent, PhonationEngine,
+    CoreState, CoreTickCtx, OnsetEvent, PhonationEngine, ToneCmd, ToneId, ToneOnEvent, ToneUpdate,
 };
 use crate::life::scenario::WhenSpec;
 use crate::life::scenario::{ArticulationCoreConfig, PhonationMode};
@@ -39,19 +39,19 @@ pub use pitch_core::{
 pub use sound_body::{AnySoundBody, HarmonicBody, SineBody, SoundBody};
 
 #[derive(Debug, Clone, Default)]
-pub struct AgentMetadata {
+pub struct VoiceMetadata {
     pub group_id: u64,
     pub member_idx: usize,
 }
 
 #[derive(Debug)]
-pub struct Individual {
+pub struct Voice {
     pub id: u64,
-    pub metadata: AgentMetadata,
+    pub metadata: VoiceMetadata,
     fixed_body_method: BodyMethod,
     fixed_phonation_when: std::mem::Discriminant<WhenSpec>,
-    pub base_control: AgentControl,
-    pub effective_control: AgentControl,
+    pub base_control: VoiceControl,
+    pub effective_control: VoiceControl,
     pub articulation: ArticulationWrapper,
     pub(crate) pitch_ctl: PitchController,
     pub phonation_engine: PhonationEngine,
@@ -65,12 +65,12 @@ pub struct Individual {
     pub(crate) phonation_scratch: PhonationScratch,
     active_render_notes: Vec<TrackedRenderNote>,
     pub(crate) life_accumulator: Option<super::telemetry::LifeAccumulator>,
-    voice_adsr: Option<super::sound::VoiceAdsr>,
+    voice_adsr: Option<super::sound::ToneAdsr>,
 }
 
 #[derive(Clone, Debug)]
-pub struct NoteSpec {
-    pub note_id: NoteId,
+pub struct ToneSpec {
+    pub tone_id: ToneId,
     pub onset: Tick,
     pub hold_ticks: Option<Tick>,
     pub freq_hz: f32,
@@ -78,17 +78,17 @@ pub struct NoteSpec {
     pub smoothing_tau_sec: f32,
     pub body: BodySnapshot,
     pub render_modulator: RenderModulatorSpec,
-    pub adsr: Option<super::sound::VoiceAdsr>,
+    pub adsr: Option<super::sound::ToneAdsr>,
 }
 
 #[derive(Debug, Default)]
 pub(crate) struct PhonationScratch {
-    events: Vec<NoteOnEvent>,
+    events: Vec<ToneOnEvent>,
 }
 
 #[derive(Clone, Copy, Debug)]
 struct TrackedRenderNote {
-    note_id: NoteId,
+    tone_id: ToneId,
     last_target_amp: f32,
     last_target_freq_hz: f32,
     last_continuous_drive: f32,
@@ -97,15 +97,15 @@ struct TrackedRenderNote {
 #[derive(Clone, Debug, Default)]
 pub struct PhonationBatch {
     pub source_id: u64,
-    pub cmds: Vec<NoteCmd>,
-    pub notes: Vec<NoteSpec>,
+    pub cmds: Vec<ToneCmd>,
+    pub tones: Vec<ToneSpec>,
     pub onsets: Vec<OnsetEvent>,
 }
 
 impl PhonationBatch {
     pub(crate) fn clear(&mut self) {
         self.cmds.clear();
-        self.notes.clear();
+        self.tones.clear();
         self.onsets.clear();
     }
 }
@@ -117,7 +117,7 @@ struct BodyRuntime {
     inharmonic: f32,
     motion: f32,
     spread: f32,
-    voices: usize,
+    unison: usize,
 }
 
 impl BodyRuntime {
@@ -129,7 +129,7 @@ impl BodyRuntime {
             inharmonic: timbre.inharmonic,
             motion: timbre.motion,
             spread: timbre.spread,
-            voices: timbre.voices,
+            unison: timbre.unison,
         }
     }
 }
@@ -149,7 +149,7 @@ impl Dirty {
             || update.timbre_inharmonic.is_some()
             || update.timbre_motion.is_some()
             || update.timbre_spread.is_some()
-            || update.timbre_voices.is_some();
+            || update.timbre_unison.is_some();
         let pitch = update.freq.is_some()
             || update.neighbor_step_cents.is_some()
             || update.tessitura_gravity.is_some()
@@ -188,18 +188,18 @@ impl Dirty {
     }
 }
 
-impl Individual {
+impl Voice {
     const AMP_EPS: f32 = 1e-6;
     const PHONATION_AMP_UPDATE_EPS: f32 = 0.01;
     const PHONATION_UPDATE_SMOOTH_TAU_SEC: f32 = 0.02;
 
     #[allow(clippy::too_many_arguments)]
     pub fn spawn_from_control(
-        control: AgentControl,
+        control: VoiceControl,
         articulation_config: ArticulationCoreConfig,
         assigned_id: u64,
         start_frame: u64,
-        metadata: AgentMetadata,
+        metadata: VoiceMetadata,
         fs: f32,
         landscape: Option<&LandscapeFrame>,
         seed_offset: u64,
@@ -334,7 +334,7 @@ impl Individual {
                 envelope,
                 ..
             } => {
-                let adsr = envelope.as_ref().map(|env| super::sound::VoiceAdsr {
+                let adsr = envelope.as_ref().map(|env| super::sound::ToneAdsr {
                     attack_sec: env.attack_sec,
                     decay_sec: env.decay_sec,
                     sustain_level: env.sustain_level,
@@ -357,7 +357,7 @@ impl Individual {
             breath_gain
         );
 
-        Individual {
+        Voice {
             id: assigned_id,
             metadata,
             fixed_body_method: effective_control.body.method,
@@ -393,7 +393,7 @@ impl Individual {
             runtime.inharmonic,
             runtime.motion,
             runtime.spread,
-            runtime.voices,
+            runtime.unison,
         );
     }
 
@@ -475,7 +475,7 @@ impl Individual {
         self.social_coupling = self.effective_control.phonation.spec.social_coupling();
     }
 
-    fn apply_effective_control(&mut self, control: AgentControl, dirty: Dirty) {
+    fn apply_effective_control(&mut self, control: VoiceControl, dirty: Dirty) {
         self.effective_control = control;
         if dirty.body {
             self.apply_body_runtime();
@@ -491,7 +491,7 @@ impl Individual {
         }
     }
 
-    fn ensure_fixed_kinds(&self, control: &AgentControl) -> Result<(), String> {
+    fn ensure_fixed_kinds(&self, control: &VoiceControl) -> Result<(), String> {
         if control.body.method != self.fixed_body_method
             || std::mem::discriminant(&control.phonation.spec.when) != self.fixed_phonation_when
         {
@@ -512,7 +512,7 @@ impl Individual {
         }
         self.is_alive() || self.phonation_engine.has_active_notes()
     }
-    pub fn metadata(&self) -> &AgentMetadata {
+    pub fn metadata(&self) -> &VoiceMetadata {
         &self.metadata
     }
 
@@ -812,10 +812,7 @@ impl Individual {
             &mut out.onsets,
         );
         let phonation_mode = self.phonation_engine.mode;
-        let had_note_on = out
-            .cmds
-            .iter()
-            .any(|cmd| matches!(cmd, NoteCmd::NoteOn { .. }));
+        let had_tone_on = out.cmds.iter().any(|cmd| matches!(cmd, ToneCmd::On { .. }));
         if matches!(phonation_mode, PhonationMode::Gated) {
             for onset in &out.onsets {
                 self.articulation
@@ -828,21 +825,21 @@ impl Individual {
         self.emit_phonation_updates(now, target_amp, freq_hz, continuous_drive, &mut out.cmds);
         self.prune_tracked_render_notes(&out.cmds);
         if self.phonation_scratch.events.is_empty() {
-            if had_note_on {
-                Self::discard_pending_render_note_ons(&mut out.cmds);
+            if had_tone_on {
+                Self::discard_pending_render_tone_ons(&mut out.cmds);
             }
             return;
         }
         if !freq_hz.is_finite() || freq_hz <= 0.0 {
-            if had_note_on {
-                Self::discard_pending_render_note_ons(&mut out.cmds);
+            if had_tone_on {
+                Self::discard_pending_render_tone_ons(&mut out.cmds);
             }
             self.phonation_scratch.events.clear();
             return;
         }
         if target_amp <= Self::AMP_EPS {
-            if had_note_on {
-                Self::discard_pending_render_note_ons(&mut out.cmds);
+            if had_tone_on {
+                Self::discard_pending_render_tone_ons(&mut out.cmds);
             }
             self.phonation_scratch.events.clear();
             return;
@@ -856,8 +853,8 @@ impl Individual {
             None
         };
         for event in self.phonation_scratch.events.drain(..) {
-            out.notes.push(NoteSpec {
-                note_id: event.note_id,
+            out.tones.push(ToneSpec {
+                tone_id: event.tone_id,
                 onset: event.onset_tick,
                 hold_ticks,
                 freq_hz,
@@ -868,19 +865,16 @@ impl Individual {
                 adsr: self.voice_adsr,
             });
         }
-        self.track_new_render_notes(&out.notes);
+        self.track_new_render_notes(&out.tones);
         debug_assert!(
-            !out.cmds
-                .iter()
-                .any(|cmd| matches!(cmd, NoteCmd::NoteOn { .. }))
-                || !out.notes.is_empty(),
-            "NoteOn emitted without note specs"
+            !out.cmds.iter().any(|cmd| matches!(cmd, ToneCmd::On { .. })) || !out.tones.is_empty(),
+            "ToneCmd::On emitted without tone specs"
         );
     }
 
-    fn discard_pending_render_note_ons(out_cmds: &mut Vec<NoteCmd>) {
-        // Keep NoteOff/Update commands intact when a new render note cannot be materialized.
-        out_cmds.retain(|cmd| !matches!(cmd, NoteCmd::NoteOn { .. }));
+    fn discard_pending_render_tone_ons(out_cmds: &mut Vec<ToneCmd>) {
+        // Keep Off/Update commands intact when a new render tone cannot be materialized.
+        out_cmds.retain(|cmd| !matches!(cmd, ToneCmd::On { .. }));
     }
 
     fn emit_phonation_updates(
@@ -889,7 +883,7 @@ impl Individual {
         target_amp: f32,
         freq_hz: f32,
         continuous_drive: f32,
-        out_cmds: &mut Vec<NoteCmd>,
+        out_cmds: &mut Vec<ToneCmd>,
     ) {
         for tracked in &mut self.active_render_notes {
             let amp_changed =
@@ -901,10 +895,10 @@ impl Individual {
             if !amp_changed && !freq_changed && !drive_changed {
                 continue;
             }
-            out_cmds.push(NoteCmd::Update {
-                note_id: tracked.note_id,
+            out_cmds.push(ToneCmd::Update {
+                tone_id: tracked.tone_id,
                 at_tick: Some(now),
-                update: NoteUpdate {
+                update: ToneUpdate {
                     target_freq_hz: if freq_changed { Some(freq_hz) } else { None },
                     target_amp: if amp_changed { Some(target_amp) } else { None },
                     continuous_drive: if drive_changed {
@@ -926,27 +920,27 @@ impl Individual {
         }
     }
 
-    fn prune_tracked_render_notes(&mut self, cmds: &[NoteCmd]) {
-        let off_note_ids: Vec<NoteId> = cmds
+    fn prune_tracked_render_notes(&mut self, cmds: &[ToneCmd]) {
+        let off_tone_ids: Vec<ToneId> = cmds
             .iter()
             .filter_map(|cmd| match cmd {
-                NoteCmd::NoteOff { note_id, .. } => Some(*note_id),
+                ToneCmd::Off { tone_id, .. } => Some(*tone_id),
                 _ => None,
             })
             .collect();
-        if off_note_ids.is_empty() {
+        if off_tone_ids.is_empty() {
             return;
         }
         self.active_render_notes
-            .retain(|tracked| !off_note_ids.contains(&tracked.note_id));
+            .retain(|tracked| !off_tone_ids.contains(&tracked.tone_id));
     }
 
-    fn track_new_render_notes(&mut self, notes: &[NoteSpec]) {
+    fn track_new_render_notes(&mut self, tones: &[ToneSpec]) {
         self.active_render_notes
-            .extend(notes.iter().map(|note| TrackedRenderNote {
-                note_id: note.note_id,
-                last_target_amp: note.amp,
-                last_target_freq_hz: note.freq_hz,
+            .extend(tones.iter().map(|tone| TrackedRenderNote {
+                tone_id: tone.tone_id,
+                last_target_amp: tone.amp,
+                last_target_freq_hz: tone.freq_hz,
                 last_continuous_drive: 0.0,
             }));
     }

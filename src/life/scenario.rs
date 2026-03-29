@@ -2,9 +2,9 @@ use std::fmt;
 
 use crate::core::float::sanitize_nonnegative_finite;
 use crate::core::landscape::LandscapeUpdate;
-use crate::life::control::{AgentControl, ControlUpdate, LeaveSelfOutMode, MoveCostTimeScale};
-use crate::life::individual::{AgentMetadata, Individual};
+use crate::life::control::{ControlUpdate, LeaveSelfOutMode, MoveCostTimeScale, VoiceControl};
 use crate::life::lifecycle::LifecycleConfig;
+use crate::life::voice::{Voice, VoiceMetadata};
 
 #[derive(Debug, Clone)]
 pub struct Scenario {
@@ -272,13 +272,13 @@ impl Default for FieldDurationSpec {
 }
 
 #[derive(Debug, Clone)]
-pub struct AgentSpec {
-    pub control: AgentControl,
+pub struct VoiceSpec {
+    pub control: VoiceControl,
     pub articulation: ArticulationCoreConfig,
 }
 
-pub type IndividualConfig = AgentSpec;
-pub type SpawnSpec = AgentSpec;
+pub type VoiceConfig = VoiceSpec;
+pub type SpawnSpec = VoiceSpec;
 
 #[derive(Debug, Clone)]
 pub enum SoundBodyConfig {
@@ -470,15 +470,15 @@ impl Default for PitchCoreConfig {
 
 // Scenes are represented by SceneMarker and do not own events.
 
-impl AgentSpec {
+impl VoiceSpec {
     pub fn spawn(
         &self,
         assigned_id: u64,
         start_frame: u64,
-        metadata: AgentMetadata,
+        metadata: VoiceMetadata,
         fs: f32,
         seed_offset: u64,
-    ) -> Individual {
+    ) -> Voice {
         self.spawn_with_landscape(assigned_id, start_frame, metadata, fs, None, seed_offset)
     }
 
@@ -486,12 +486,12 @@ impl AgentSpec {
         &self,
         assigned_id: u64,
         start_frame: u64,
-        metadata: AgentMetadata,
+        metadata: VoiceMetadata,
         fs: f32,
         landscape: Option<&crate::core::landscape::LandscapeFrame>,
         seed_offset: u64,
-    ) -> Individual {
-        Individual::spawn_from_control(
+    ) -> Voice {
+        Voice::spawn_from_control(
             self.control.clone(),
             self.articulation.clone(),
             assigned_id,
@@ -504,9 +504,9 @@ impl AgentSpec {
     }
 }
 
-impl fmt::Display for AgentSpec {
+impl fmt::Display for VoiceSpec {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Agent(control={:?})", self.control)
+        write!(f, "Voice(control={:?})", self.control)
     }
 }
 
@@ -587,7 +587,7 @@ pub enum Action {
     Spawn {
         group_id: u64,
         ids: Vec<u64>,
-        spec: AgentSpec,
+        spec: VoiceSpec,
         strategy: Option<SpawnStrategy>,
     },
     UpdateGroup {
@@ -673,23 +673,23 @@ impl fmt::Display for Action {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::life::individual::{AgentMetadata, SoundBody};
+    use crate::life::voice::{SoundBody, VoiceMetadata};
 
     #[test]
     fn agent_spec_aliases_behave_identically() {
-        let mut control = AgentControl::default();
+        let mut control = VoiceControl::default();
         control.pitch.freq = 330.0;
-        let base = AgentSpec {
+        let base = VoiceSpec {
             control,
             articulation: ArticulationCoreConfig::default(),
         };
 
-        let as_individual: IndividualConfig = base.clone();
+        let as_individual: VoiceConfig = base.clone();
         let as_spawn: SpawnSpec = base.clone();
         assert_eq!(format!("{as_individual}"), format!("{as_spawn}"));
 
-        let a = as_individual.spawn(10, 0, AgentMetadata::default(), 48_000.0, 99);
-        let b = as_spawn.spawn(10, 0, AgentMetadata::default(), 48_000.0, 99);
+        let a = as_individual.spawn(10, 0, VoiceMetadata::default(), 48_000.0, 99);
+        let b = as_spawn.spawn(10, 0, VoiceMetadata::default(), 48_000.0, 99);
         assert_eq!(a.id(), b.id());
         assert!((a.body.base_freq_hz() - b.body.base_freq_hz()).abs() <= 1e-6);
     }

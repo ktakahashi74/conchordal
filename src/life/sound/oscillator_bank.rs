@@ -1,16 +1,16 @@
 use crate::core::log2space::Log2Space;
 use crate::core::mode_pattern::DEFAULT_MODE_COUNT;
 use crate::life::articulation_core::PinkNoise;
-use crate::life::individual::ArticulationSignal;
 use crate::life::scenario::{HarmonicMode, TimbreGenotype};
-use crate::life::sound::control::VoiceControlBlock;
+use crate::life::sound::control::ToneControlBlock;
 use crate::life::sound::mode_utils::{
-    active_cluster_voices, cluster_detune_mul, cluster_gain, cluster_spread_cents_from_public,
+    active_cluster_unison, cluster_detune_mul, cluster_gain, cluster_spread_cents_from_public,
 };
 use crate::life::sound::spectral::{
     add_log2_energy, harmonic_gain, harmonic_ratio, spectral_slope_from_brightness,
 };
 use crate::life::sound::{BodyKind, BodySnapshot};
+use crate::life::voice::ArticulationSignal;
 use crate::synth::SynthError;
 use std::f32::consts::TAU;
 use std::sync::Arc;
@@ -101,7 +101,7 @@ impl OscillatorBank {
                 let (freq_mul, base_gain, lane_len_real) = build_harmonic_lanes(
                     partials,
                     cluster_spread_cents,
-                    snapshot.voices,
+                    snapshot.unison,
                     &genotype,
                     snapshot.ratios.as_ref(),
                 );
@@ -419,7 +419,7 @@ impl OscillatorBank {
         self.process_sample_basic(use_motion, motion_s, motion_c)
     }
 
-    pub fn render_block(&mut self, drive: &[f32], ctrl: VoiceControlBlock, out: &mut [f32]) {
+    pub fn render_block(&mut self, drive: &[f32], ctrl: ToneControlBlock, out: &mut [f32]) {
         if out.is_empty() {
             return;
         }
@@ -487,7 +487,7 @@ impl OscillatorBank {
     fn render_block_for_test(
         &mut self,
         drive: &[f32],
-        ctrl: crate::life::sound::control::VoiceControlBlock,
+        ctrl: crate::life::sound::control::ToneControlBlock,
         out: &mut [f32],
         use_optimized: bool,
     ) {
@@ -553,12 +553,12 @@ fn build_sine_lanes() -> (Vec<f32>, Vec<f32>, usize) {
 fn build_harmonic_lanes(
     partials: usize,
     cluster_spread_cents: f32,
-    cluster_voices: usize,
+    cluster_unison: usize,
     genotype: &TimbreGenotype,
     ratios: Option<&Arc<[f32]>>,
 ) -> (Vec<f32>, Vec<f32>, usize) {
-    let cluster_voices = active_cluster_voices(cluster_spread_cents, cluster_voices);
-    let lane_len_real = partials.max(1) * cluster_voices.max(1);
+    let cluster_unison = active_cluster_unison(cluster_spread_cents, cluster_unison);
+    let lane_len_real = partials.max(1) * cluster_unison.max(1);
     let mut lanes = Vec::with_capacity(lane_len_real);
     let energy = 1.0;
 
@@ -567,10 +567,10 @@ fn build_harmonic_lanes(
         let partial_gain = cluster_gain(
             harmonic_gain(genotype, partial_idx.saturating_add(1), energy),
             cluster_spread_cents,
-            cluster_voices,
+            cluster_unison,
         );
-        for voice_idx in 0..cluster_voices {
-            let detune = cluster_detune_mul(cluster_spread_cents, cluster_voices, voice_idx);
+        for unison_idx in 0..cluster_unison {
+            let detune = cluster_detune_mul(cluster_spread_cents, cluster_unison, unison_idx);
             lanes.push((ratio * detune, partial_gain));
         }
     }
@@ -614,7 +614,7 @@ fn splitmix64_unit_f32(state: &mut u64) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::life::sound::control::{ControlRamp, VoiceControlBlock};
+    use crate::life::sound::control::{ControlRamp, ToneControlBlock};
 
     fn harmonic_snapshot(motion: f32) -> BodySnapshot {
         BodySnapshot {
@@ -623,7 +623,7 @@ mod tests {
             brightness: 0.6,
             inharmonic: 0.0,
             spread: 0.0,
-            voices: 1,
+            unison: 1,
             motion,
             ratios: None,
         }
@@ -637,7 +637,7 @@ mod tests {
         let mut out = [0.0f32; 16];
         backend.render_block(
             &[0.0; 16],
-            VoiceControlBlock {
+            ToneControlBlock {
                 pitch_hz: ControlRamp {
                     start: 220.0,
                     step: 0.0,
@@ -660,7 +660,7 @@ mod tests {
         let mut out = [0.0f32; 1];
         backend.render_block(
             &[0.0],
-            VoiceControlBlock {
+            ToneControlBlock {
                 pitch_hz: ControlRamp {
                     start: 4_000.0,
                     step: 0.0,
@@ -683,7 +683,7 @@ mod tests {
         let mut wet = dry.clone();
         let mut dry_out = [0.0f32; 16];
         let mut wet_out = [0.0f32; 16];
-        let ctrl = VoiceControlBlock {
+        let ctrl = ToneControlBlock {
             pitch_hz: ControlRamp {
                 start: 220.0,
                 step: 0.0,
@@ -710,7 +710,7 @@ mod tests {
         let mut out = [0.0f32; 8];
         backend.render_block(
             &[0.0; 8],
-            VoiceControlBlock {
+            ToneControlBlock {
                 pitch_hz: ControlRamp {
                     start: 220.0,
                     step: 0.0,
@@ -732,7 +732,7 @@ mod tests {
         let mut out = [0.0f32; 8];
         backend.render_block(
             &[0.0; 8],
-            VoiceControlBlock {
+            ToneControlBlock {
                 pitch_hz: ControlRamp {
                     start: 220.0,
                     step: 0.0,
@@ -754,7 +754,7 @@ mod tests {
         let mut out = [0.0f32; 128];
         backend.render_block(
             &[0.0; 128],
-            VoiceControlBlock {
+            ToneControlBlock {
                 pitch_hz: ControlRamp {
                     start: 220.0,
                     step: 0.0,
@@ -776,7 +776,7 @@ mod tests {
         let mut out = [0.0f32; 16];
         backend.render_block(
             &[0.0; 16],
-            VoiceControlBlock {
+            ToneControlBlock {
                 pitch_hz: ControlRamp {
                     start: 220.0,
                     step: 0.0,
@@ -798,7 +798,7 @@ mod tests {
         let mut out = [0.0f32; 16];
         backend.render_block(
             &[0.0; 16],
-            VoiceControlBlock {
+            ToneControlBlock {
                 pitch_hz: ControlRamp {
                     start: 220.0,
                     step: 0.0,
@@ -818,7 +818,7 @@ mod tests {
     fn pitch_start_change_refreshes_immediately() {
         let mut backend =
             OscillatorBank::from_snapshot(48_000.0, &harmonic_snapshot(0.0)).expect("backend");
-        let ctrl_a = VoiceControlBlock {
+        let ctrl_a = ToneControlBlock {
             pitch_hz: ControlRamp {
                 start: 220.0,
                 step: 0.0,
@@ -828,7 +828,7 @@ mod tests {
                 step: 0.0,
             },
         };
-        let ctrl_b = VoiceControlBlock {
+        let ctrl_b = ToneControlBlock {
             pitch_hz: ControlRamp {
                 start: 330.0,
                 step: 0.0,
@@ -872,7 +872,7 @@ mod tests {
     fn fully_culled_pitch_does_not_refresh_when_unchanged() {
         let mut backend =
             OscillatorBank::from_snapshot(48_000.0, &harmonic_snapshot(0.0)).expect("backend");
-        let ctrl = VoiceControlBlock {
+        let ctrl = ToneControlBlock {
             pitch_hz: ControlRamp {
                 start: 48_000.0,
                 step: 0.0,
@@ -897,7 +897,7 @@ mod tests {
             brightness: 0.6,
             inharmonic: 0.0,
             spread: 0.5,
-            voices: 3,
+            unison: 3,
             motion: 0.0,
             ratios: Some(Arc::<[f32]>::from(vec![1.0, 2.0, 3.0])),
         };
@@ -919,11 +919,11 @@ mod tests {
             brightness: 0.6,
             inharmonic: 0.0,
             spread: 0.5,
-            voices: 3,
+            unison: 3,
             motion: 0.4,
             ratios: Some(Arc::<[f32]>::from(vec![1.0, 2.3, 3.7])),
         };
-        let ctrl = VoiceControlBlock {
+        let ctrl = ToneControlBlock {
             pitch_hz: ControlRamp {
                 start: 220.0,
                 step: 1.25,

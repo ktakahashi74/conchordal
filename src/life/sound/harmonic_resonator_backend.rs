@@ -1,17 +1,17 @@
 use crate::core::log2space::Log2Space;
 use crate::core::mode_pattern::DEFAULT_MODE_COUNT;
-use crate::life::individual::ArticulationSignal;
 use crate::life::scenario::TimbreGenotype;
 use crate::life::sound::BodySnapshot;
-use crate::life::sound::control::VoiceControlBlock;
+use crate::life::sound::control::ToneControlBlock;
 use crate::life::sound::modal_engine::ModalMode;
 use crate::life::sound::mode_utils::{
-    active_cluster_voices, cluster_detune_mul, cluster_gain, cluster_spread_cents_from_public,
+    active_cluster_unison, cluster_detune_mul, cluster_gain, cluster_spread_cents_from_public,
     modal_modes_from_ratios, modal_tilt_from_brightness,
 };
 use crate::life::sound::spectral::{
     add_log2_energy, harmonic_gain, harmonic_ratio, spectral_slope_from_brightness,
 };
+use crate::life::voice::ArticulationSignal;
 use crate::synth::SynthError;
 use crate::synth::modes::ModeParams;
 use crate::synth::resonator::ResonatorBank;
@@ -23,7 +23,7 @@ enum HarmonicProfile {
     Harmonic {
         partials: usize,
         cluster_spread_cents: f32,
-        cluster_voices: usize,
+        cluster_unison: usize,
         base_t60_s: f32,
         in_gain: f32,
         genotype: TimbreGenotype,
@@ -55,14 +55,14 @@ impl HarmonicResonatorBackend {
                     ratios,
                     modal_tilt_from_brightness(brightness),
                     cluster_spread_cents,
-                    snapshot.voices,
+                    snapshot.unison,
                 ),
             }
         } else {
             HarmonicProfile::Harmonic {
                 partials: DEFAULT_MODE_COUNT,
                 cluster_spread_cents,
-                cluster_voices: snapshot.voices,
+                cluster_unison: snapshot.unison,
                 base_t60_s: 0.8,
                 in_gain: 1.0,
                 genotype: TimbreGenotype {
@@ -77,9 +77,9 @@ impl HarmonicResonatorBackend {
             HarmonicProfile::Harmonic {
                 partials,
                 cluster_spread_cents,
-                cluster_voices,
+                cluster_unison,
                 ..
-            } => (*partials).max(1) * active_cluster_voices(*cluster_spread_cents, *cluster_voices),
+            } => (*partials).max(1) * active_cluster_unison(*cluster_spread_cents, *cluster_unison),
             HarmonicProfile::Ratios { modes } => modes.len().max(1),
         };
         let bank = ResonatorBank::new(fs, max_modes)?;
@@ -119,28 +119,28 @@ impl HarmonicResonatorBackend {
             HarmonicProfile::Harmonic {
                 partials,
                 cluster_spread_cents,
-                cluster_voices,
+                cluster_unison,
                 base_t60_s,
                 in_gain,
                 genotype,
             } => {
                 let energy = 1.0;
-                let cluster_voices = active_cluster_voices(*cluster_spread_cents, *cluster_voices);
+                let cluster_unison = active_cluster_unison(*cluster_spread_cents, *cluster_unison);
                 for k in 1..=(*partials).max(1) {
                     let ratio = harmonic_ratio(genotype, k);
                     let gain = cluster_gain(
                         harmonic_gain(genotype, k, energy),
                         *cluster_spread_cents,
-                        cluster_voices,
+                        cluster_unison,
                     );
                     let t60_s = base_t60_s.max(1e-3) / (1.0 + 0.15 * k as f32);
                     let mut any_below_nyquist = false;
-                    for voice_idx in 0..cluster_voices {
+                    for unison_idx in 0..cluster_unison {
                         if self.scratch.len() >= limit {
                             break;
                         }
                         let detune =
-                            cluster_detune_mul(*cluster_spread_cents, cluster_voices, voice_idx);
+                            cluster_detune_mul(*cluster_spread_cents, cluster_unison, unison_idx);
                         let freq_hz = pitch_hz * ratio * detune;
                         if !freq_hz.is_finite() || freq_hz <= 0.0 {
                             continue;
@@ -193,7 +193,7 @@ impl HarmonicResonatorBackend {
         self.last_built_pitch_hz = pitch_hz;
     }
 
-    pub fn render_block(&mut self, drive: &[f32], ctrl: VoiceControlBlock, out: &mut [f32]) {
+    pub fn render_block(&mut self, drive: &[f32], ctrl: ToneControlBlock, out: &mut [f32]) {
         debug_assert_eq!(drive.len(), out.len());
         if drive.is_empty() {
             return;
@@ -238,24 +238,24 @@ impl HarmonicResonatorBackend {
             HarmonicProfile::Harmonic {
                 partials,
                 cluster_spread_cents,
-                cluster_voices,
+                cluster_unison,
                 genotype,
                 ..
             } => {
                 let partials = (*partials).max(1);
                 let energy = 1.0;
-                let cluster_voices = active_cluster_voices(*cluster_spread_cents, *cluster_voices);
+                let cluster_unison = active_cluster_unison(*cluster_spread_cents, *cluster_unison);
                 for k in 1..=partials {
                     let ratio = harmonic_ratio(genotype, k);
                     let gain = cluster_gain(
                         harmonic_gain(genotype, k, energy),
                         *cluster_spread_cents,
-                        cluster_voices,
+                        cluster_unison,
                     );
                     let mut any_below_nyquist = false;
-                    for voice_idx in 0..cluster_voices {
+                    for unison_idx in 0..cluster_unison {
                         let detune =
-                            cluster_detune_mul(*cluster_spread_cents, cluster_voices, voice_idx);
+                            cluster_detune_mul(*cluster_spread_cents, cluster_unison, unison_idx);
                         let freq_hz = pitch_hz * ratio * detune;
                         if !freq_hz.is_finite() || freq_hz <= 0.0 || freq_hz > max_freq_hz {
                             continue;
@@ -295,7 +295,7 @@ mod tests {
             brightness: 0.6,
             inharmonic: 0.0,
             spread: 0.0,
-            voices: 1,
+            unison: 1,
             motion: 0.2,
             ratios: None,
         };
@@ -307,7 +307,7 @@ mod tests {
             &[
                 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
             ],
-            VoiceControlBlock {
+            ToneControlBlock {
                 pitch_hz: ControlRamp {
                     start: 220.0,
                     step: 0.0,
@@ -331,7 +331,7 @@ mod tests {
             brightness: 0.6,
             inharmonic: 0.0,
             spread: 0.0,
-            voices: 1,
+            unison: 1,
             motion: 0.0,
             ratios: None,
         };
@@ -340,7 +340,7 @@ mod tests {
         let mut out = [0.0f32; 1];
         backend.render_block(
             &[0.0],
-            VoiceControlBlock {
+            ToneControlBlock {
                 pitch_hz: ControlRamp {
                     start: 4_000.0,
                     step: 0.0,

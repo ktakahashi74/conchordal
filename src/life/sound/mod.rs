@@ -8,12 +8,12 @@ pub mod oscillator_bank;
 pub mod render_modulator;
 pub mod sine_osc_backend;
 pub(crate) mod spectral;
-pub mod voice;
+pub mod tone;
 
 pub use any_backend::AnyBackend;
-pub use control::{ControlRamp, VoiceControlBlock};
-pub use events::{BodyKind, BodySnapshot, IndividualId};
+pub use control::{ControlRamp, ToneControlBlock};
+pub use events::{BodyKind, BodySnapshot, VoiceId};
 pub use modal_engine::{ModalEngine, ModalMode, ModeShape};
 pub(crate) use render_modulator::RenderModulator;
 pub use render_modulator::{AutonomousPulseSpec, RenderModulatorSpec, RenderModulatorStateKind};
-pub use voice::{Voice, VoiceAdsr, default_release_ticks};
+pub use tone::{Tone, ToneAdsr, default_release_ticks};

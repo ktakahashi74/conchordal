@@ -1,11 +1,11 @@
-/// Per-agent life-history accumulator and death record.
+/// Per-voice life-history accumulator and death record.
 ///
 /// Mirrors the paper's E3DeathRecord / E3LifeState with adaptations
 /// for the real-time instrument context.
 
 #[derive(Debug, Clone)]
 pub struct LifeRecord {
-    pub agent_id: u64,
+    pub voice_id: u64,
     pub group_id: u64,
     pub birth_frame: u64,
     pub death_frame: u64,
@@ -69,7 +69,7 @@ impl LifeAccumulator {
 
     pub fn finalize(
         &self,
-        agent_id: u64,
+        voice_id: u64,
         group_id: u64,
         death_frame: u64,
         plv: Option<f32>,
@@ -93,7 +93,7 @@ impl LifeAccumulator {
             0.0
         };
         LifeRecord {
-            agent_id,
+            voice_id,
             group_id,
             birth_frame: self.birth_frame,
             death_frame,
@@ -124,7 +124,7 @@ mod tests {
         acc.accumulate_attack(4.0);
 
         let rec = acc.finalize(42, 7, 200, Some(0.9));
-        assert_eq!(rec.agent_id, 42);
+        assert_eq!(rec.voice_id, 42);
         assert_eq!(rec.group_id, 7);
         assert_eq!(rec.birth_frame, 100);
         assert_eq!(rec.death_frame, 200);

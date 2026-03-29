@@ -24,7 +24,6 @@ use crate::core::roughness_kernel::{KernelParams, RoughnessKernel};
 use crate::core::stream::{analysis::AnalysisStream, dorsal::DorsalStream};
 use crate::core::timebase::Tick;
 use crate::life::conductor::Conductor;
-use crate::life::individual::{PhonationBatch, SoundBody};
 use crate::life::population::Population;
 use crate::life::report::{
     JsonlReporter, onset_samples_from_batches, scaffold_phase_0_1, summarize_groups,
@@ -32,8 +31,9 @@ use crate::life::report::{
 use crate::life::scenario::{Action, ScaffoldConfig, Scenario};
 use crate::life::schedule_renderer::ScheduleRenderer;
 use crate::life::scripting::ScriptHost;
+use crate::life::voice::{PhonationBatch, SoundBody};
 use crate::ui::viewdata::{
-    AgentStateInfo, DorsalFrame, PlaybackState, SimulationMeta, SpecFrame, UiFrame, WaveFrame,
+    DorsalFrame, PlaybackState, SimulationMeta, SpecFrame, UiFrame, VoiceStateInfo, WaveFrame,
 };
 use crate::{
     audio::output::AudioOutput, config::AppConfig, core::harmonicity_kernel::HarmonicityParams,
@@ -1009,7 +1009,7 @@ fn worker_loop(
     let init_meta = SimulationMeta {
         time_sec: current_time,
         duration_sec: conductor.total_duration(),
-        agent_count: pop.individuals.len(),
+        voice_count: pop.voices.len(),
         event_queue_len: conductor.remaining_events(),
         peak_level: 0.0,
         scenario_name: scenario_name.clone(),
@@ -1050,7 +1050,7 @@ fn worker_loop(
         gate_boundary_in_hop: None,
         pred_available_in_hop: None,
         phonation_onsets_in_hop: None,
-        agents: Vec::new(),
+        voices: Vec::new(),
     };
     let _ = ui_tx.try_send(init_frame);
 
@@ -1239,21 +1239,21 @@ fn worker_loop(
                 0
             };
             let phonation_batches = &phonation_batches_buf[..phonation_count];
-            let vitality = if pop.individuals.is_empty() {
+            let vitality = if pop.voices.is_empty() {
                 0.0
             } else {
                 let sum: f32 = pop
-                    .individuals
+                    .voices
                     .iter()
                     .map(|agent| agent.last_signal.amplitude)
                     .sum();
-                sum / pop.individuals.len() as f32
+                sum / pop.voices.len() as f32
             };
             dorsal.set_vitality(vitality);
 
             if scenario_end_tick.is_none() && conductor.is_done() {
                 scenario_end_tick = Some(now_tick);
-                pop.individuals.clear();
+                pop.voices.clear();
                 schedule_renderer.shutdown_at(now_tick);
             }
 
@@ -1272,7 +1272,7 @@ fn worker_loop(
             );
             if reporter.is_some() {
                 let onset_samples = onset_samples_from_batches(
-                    &pop.individuals,
+                    &pop.voices,
                     phonation_batches,
                     now_sec,
                     scaffold,
@@ -1280,7 +1280,7 @@ fn worker_loop(
                 );
                 let runtime_events = pop.drain_runtime_events();
                 let death_records = pop.take_death_records();
-                let group_steps = summarize_groups(&pop.individuals, &current_landscape, now_sec);
+                let group_steps = summarize_groups(&pop.voices, &current_landscape, now_sec);
                 report_try(&mut reporter, "runtime events", |writer| {
                     writer.write_runtime_events(&runtime_events)
                 });
@@ -1405,12 +1405,12 @@ fn worker_loop(
                         .collect(),
                 };
                 let ui_landscape: LandscapeFrame = current_landscape.clone();
-                let agent_states: Vec<AgentStateInfo> = pop
-                    .individuals
+                let voice_states: Vec<VoiceStateInfo> = pop
+                    .voices
                     .iter()
                     .map(|agent| {
                         let f = agent.body.base_freq_hz();
-                        AgentStateInfo {
+                        VoiceStateInfo {
                             id: agent.id,
                             freq_hz: f,
                             target_freq: 2.0f32.powf(agent.target_pitch_log2()),
@@ -1460,7 +1460,7 @@ fn worker_loop(
                     meta: SimulationMeta {
                         time_sec: current_time,
                         duration_sec: conductor.total_duration(),
-                        agent_count: pop.individuals.len(),
+                        voice_count: pop.voices.len(),
                         event_queue_len: conductor.remaining_events(),
                         peak_level,
                         scenario_name: scenario_name.clone(),
@@ -1490,7 +1490,7 @@ fn worker_loop(
                     gate_boundary_in_hop: pop.last_gate_boundary_in_hop(),
                     pred_available_in_hop: Some(pred_available_in_hop),
                     phonation_onsets_in_hop: pop.last_phonation_onsets_in_hop(),
-                    agents: agent_states,
+                    voices: voice_states,
                 };
                 let _ = ui_tx.try_send(ui_frame);
                 last_ui_update = Instant::now();

@@ -1,7 +1,7 @@
 use crate::core::modulation::NeuralRhythms;
 use crate::life::articulation_envelope::step_attack_decay_sustain_envelope;
-use crate::life::individual::{ArticulationSignal, ArticulationState};
 use crate::life::phonation_engine::OnsetKick;
+use crate::life::voice::{ArticulationSignal, ArticulationState};
 
 #[derive(Clone, Debug)]
 pub enum RenderModulatorSpec {

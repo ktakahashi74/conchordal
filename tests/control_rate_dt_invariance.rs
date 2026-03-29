@@ -1,29 +1,27 @@
 use conchordal::core::landscape::Landscape;
 use conchordal::core::log2space::Log2Space;
 use conchordal::core::modulation::{NeuralRhythms, RhythmBand};
-use conchordal::life::control::AgentControl;
-use conchordal::life::individual::{
-    AgentMetadata, AnyArticulationCore, ArticulationState, Individual,
-};
-use conchordal::life::scenario::{ArticulationCoreConfig, IndividualConfig};
+use conchordal::life::control::VoiceControl;
+use conchordal::life::scenario::{ArticulationCoreConfig, VoiceConfig};
+use conchordal::life::voice::{AnyArticulationCore, ArticulationState, Voice, VoiceMetadata};
 
-fn build_agent() -> Individual {
-    let mut control = AgentControl::default();
+fn build_agent() -> Voice {
+    let mut control = VoiceControl::default();
     control.pitch.freq = 440.0;
     control.body.amp = 0.3;
-    let cfg = IndividualConfig {
+    let cfg = VoiceConfig {
         control,
         articulation: ArticulationCoreConfig::default(),
     };
     let assigned_id = 1;
-    let metadata = AgentMetadata {
+    let metadata = VoiceMetadata {
         group_id: 0,
         member_idx: 0,
     };
     cfg.spawn(assigned_id, 0, metadata, 48_000.0, 0)
 }
 
-fn prepare_agent(mut agent: Individual) -> Individual {
+fn prepare_agent(mut agent: Voice) -> Voice {
     agent.articulation.set_gate(0.2);
     if let AnyArticulationCore::Entrain(core) = &mut agent.articulation.core {
         core.base_sigma = 0.0;

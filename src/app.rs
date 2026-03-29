@@ -26,7 +26,9 @@ use crate::core::timebase::Tick;
 use crate::life::conductor::Conductor;
 use crate::life::individual::{PhonationBatch, SoundBody};
 use crate::life::population::Population;
-use crate::life::report::{JsonlReporter, onset_samples_from_batches, summarize_groups};
+use crate::life::report::{
+    JsonlReporter, onset_samples_from_batches, scaffold_phase_0_1, summarize_groups,
+};
 use crate::life::scenario::{Action, ScaffoldConfig, Scenario};
 use crate::life::schedule_renderer::ScheduleRenderer;
 use crate::life::scripting::ScriptHost;
@@ -191,32 +193,11 @@ fn report_try<F>(reporter: &mut Option<JsonlReporter>, label: &str, f: F)
 where
     F: FnOnce(&mut JsonlReporter) -> Result<(), String>,
 {
-    let Some(mut writer) = reporter.take() else {
+    let Some(writer) = reporter.as_mut() else {
         return;
     };
-    match f(&mut writer) {
-        Ok(()) => *reporter = Some(writer),
-        Err(err) => warn!("report {label} failed: {err}"),
-    }
-}
-
-fn scaffold_phase_for_frame(
-    scaffold: ScaffoldConfig,
-    time_sec: f32,
-    frame_idx: u64,
-) -> Option<f32> {
-    match scaffold {
-        ScaffoldConfig::Off => None,
-        ScaffoldConfig::Shared { freq_hz } => Some((time_sec * freq_hz.max(0.0)).fract()),
-        ScaffoldConfig::Scrambled { seed, .. } => {
-            let mut x = seed ^ frame_idx.rotate_left(13);
-            x ^= x >> 30;
-            x = x.wrapping_mul(0xBF58_476D_1CE4_E5B9);
-            x ^= x >> 27;
-            x = x.wrapping_mul(0x94D0_49BB_1331_11EB);
-            x ^= x >> 31;
-            Some((x as f64 / u64::MAX as f64) as f32)
-        }
+    if let Err(err) = f(writer) {
+        warn!("report {label} failed: {err}");
     }
 }
 
@@ -226,7 +207,7 @@ fn apply_scaffold(
     time_sec: f32,
     frame_idx: u64,
 ) {
-    let Some(phase_0_1) = scaffold_phase_for_frame(scaffold, time_sec, frame_idx) else {
+    let Some(phase_0_1) = scaffold_phase_0_1(scaffold, time_sec, frame_idx) else {
         return;
     };
     let freq_hz = match scaffold {
@@ -1258,13 +1239,6 @@ fn worker_loop(
                 0
             };
             let phonation_batches = &phonation_batches_buf[..phonation_count];
-            let onset_samples = onset_samples_from_batches(
-                &pop.individuals,
-                phonation_batches,
-                now_sec,
-                scaffold,
-                frame_idx,
-            );
             let vitality = if pop.individuals.is_empty() {
                 0.0
             } else {
@@ -1296,21 +1270,30 @@ fn worker_loop(
                 conductor.is_done(),
                 &current_landscape,
             );
-            let runtime_events = pop.drain_runtime_events();
-            let death_records = pop.take_death_records();
-            let group_steps = summarize_groups(&pop.individuals, &current_landscape, now_sec);
-            report_try(&mut reporter, "runtime events", |writer| {
-                writer.write_runtime_events(&runtime_events)
-            });
-            report_try(&mut reporter, "deaths", |writer| {
-                writer.write_deaths(&death_records, hop, fs)
-            });
-            report_try(&mut reporter, "onsets", |writer| {
-                writer.write_onsets(&onset_samples)
-            });
-            report_try(&mut reporter, "group steps", |writer| {
-                writer.write_group_steps(&group_steps)
-            });
+            if reporter.is_some() {
+                let onset_samples = onset_samples_from_batches(
+                    &pop.individuals,
+                    phonation_batches,
+                    now_sec,
+                    scaffold,
+                    frame_idx,
+                );
+                let runtime_events = pop.drain_runtime_events();
+                let death_records = pop.take_death_records();
+                let group_steps = summarize_groups(&pop.individuals, &current_landscape, now_sec);
+                report_try(&mut reporter, "runtime events", |writer| {
+                    writer.write_runtime_events(&runtime_events)
+                });
+                report_try(&mut reporter, "deaths", |writer| {
+                    writer.write_deaths(&death_records, hop, fs)
+                });
+                report_try(&mut reporter, "onsets", |writer| {
+                    writer.write_onsets(&onset_samples)
+                });
+                report_try(&mut reporter, "group steps", |writer| {
+                    writer.write_group_steps(&group_steps)
+                });
+            }
             // [FIX] Audio is MONO. Treat it as such.
             // Previously incorrectly treated as stereo, leading to bad metering and destructive downsampling.
             let (mono_chunk, max_abs, channel_peak) = {

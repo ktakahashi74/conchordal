@@ -694,15 +694,17 @@ impl Population {
         }
         self.individuals.push(spawned);
         self.track_runtime_id(id);
-        self.runtime_events.push(RuntimeEvent {
-            time_sec: self.current_time_sec(),
-            group_id,
-            agent_id: id,
-            member_idx,
-            freq_hz: resolved_freq_hz,
-            parent_id,
-            reason,
-        });
+        if self.auto_observe.is_some() {
+            self.runtime_events.push(RuntimeEvent {
+                time_sec: self.current_time_sec(),
+                group_id,
+                agent_id: id,
+                member_idx,
+                freq_hz: resolved_freq_hz,
+                parent_id,
+                reason,
+            });
+        }
     }
 
     fn ensure_group_state(

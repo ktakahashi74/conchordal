@@ -326,3 +326,28 @@ fn hash01(mut x: u64) -> f32 {
     x ^= x >> 31;
     (x as f64 / u64::MAX as f64) as f32
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shared_scaffold_phase_wraps_consistently() {
+        let phase = scaffold_phase_0_1(ScaffoldConfig::Shared { freq_hz: 2.0 }, -0.25, 0)
+            .expect("shared scaffold phase");
+        assert!((phase - 0.5).abs() <= 1e-6);
+    }
+
+    #[test]
+    fn scrambled_scaffold_phase_is_frame_stable() {
+        let config = ScaffoldConfig::Scrambled {
+            freq_hz: 3.0,
+            seed: 17,
+        };
+        let a = scaffold_phase_0_1(config, 0.0, 42).expect("phase");
+        let b = scaffold_phase_0_1(config, 99.0, 42).expect("phase");
+        let c = scaffold_phase_0_1(config, 99.0, 43).expect("phase");
+        assert!((a - b).abs() <= f32::EPSILON);
+        assert!((a - c).abs() > f32::EPSILON);
+    }
+}

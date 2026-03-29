@@ -215,6 +215,7 @@ pub struct KuramotoCore {
     pub beta_threshold: f32,
     pub autonomous_attack: bool,
     pub continuous_recharge_per_sec: f32,
+    pub dissonance_cost: f32,
     metrics: KuramotoMetrics,
     telemetry: KuramotoTelemetry,
 }
@@ -384,6 +385,7 @@ impl KuramotoCore {
             action_cost_per_attack: self.action_cost,
             recharge_per_attack: self.recharge_rate,
             continuous_recharge_per_sec: self.continuous_recharge_per_sec,
+            dissonance_cost: self.dissonance_cost,
         }
     }
 
@@ -562,7 +564,7 @@ impl ArticulationCore for KuramotoCore {
         global_coupling: f32,
     ) -> ArticulationSignal {
         let policy = self.metabolism_policy();
-        self.apply_energy_delta(policy.basal_delta(dt));
+        self.apply_energy_delta(policy.basal_delta(dt, consonance));
         self.apply_energy_delta(policy.continuous_recharge_delta(dt, consonance));
 
         let theta = ThetaView {
@@ -753,6 +755,7 @@ impl AnyArticulationCore {
                 let recharge_rate = derived.policy.recharge_per_attack;
                 let action_cost = derived.policy.action_cost_per_attack;
                 let continuous_recharge_per_sec = derived.policy.continuous_recharge_per_sec;
+                let dissonance_cost = derived.policy.dissonance_cost;
                 let attack_step = derived.attack_step;
                 let decay_rate = derived.decay_rate;
                 let state = derived.state;
@@ -806,6 +809,7 @@ impl AnyArticulationCore {
                     beta_threshold: gate.beta,
                     autonomous_attack: true,
                     continuous_recharge_per_sec,
+                    dissonance_cost,
                     metrics: KuramotoMetrics::default(),
                     telemetry: KuramotoTelemetry::default(),
                 })
@@ -985,6 +989,7 @@ mod tests {
             beta_threshold: 1.0,
             autonomous_attack: true,
             continuous_recharge_per_sec: 0.0,
+            dissonance_cost: 0.0,
             metrics: KuramotoMetrics::default(),
             telemetry: KuramotoTelemetry::default(),
         }

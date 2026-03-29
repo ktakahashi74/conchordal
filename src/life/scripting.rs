@@ -94,6 +94,7 @@ struct SpeciesSpec {
     recharge_rate: Option<f32>,
     action_cost: Option<f32>,
     continuous_recharge_rate: Option<f32>,
+    dissonance_cost: Option<f32>,
     adsr: Option<AdsrSpec>,
     rhythm_coupling: RhythmCouplingMode,
     rhythm_reward: Option<MetabolismRhythmReward>,
@@ -124,6 +125,7 @@ impl SpeciesSpec {
             recharge_rate: None,
             action_cost: None,
             continuous_recharge_rate: None,
+            dissonance_cost: None,
             adsr: None,
             rhythm_coupling: RhythmCouplingMode::TemporalOnly,
             rhythm_reward: None,
@@ -162,6 +164,7 @@ impl SpeciesSpec {
             || self.recharge_rate.is_some()
             || self.action_cost.is_some()
             || self.continuous_recharge_rate.is_some()
+            || self.dissonance_cost.is_some()
             || self.adsr.is_some()
         {
             let metabolism_rate = self.metabolism_rate.unwrap_or(0.5).max(1e-6);
@@ -171,6 +174,7 @@ impl SpeciesSpec {
                 recharge_rate: self.recharge_rate.map(|value| value.max(0.0)),
                 action_cost: self.action_cost.map(|value| value.max(0.0)),
                 continuous_recharge_rate: self.continuous_recharge_rate.map(|value| value.max(0.0)),
+                dissonance_cost: self.dissonance_cost,
                 envelope: self.envelope_from_adsr(),
             }
         } else {
@@ -544,6 +548,10 @@ impl SpeciesSpec {
 
     fn set_continuous_recharge_rate(&mut self, value: f32) {
         self.continuous_recharge_rate = Some(value.max(0.0));
+    }
+
+    fn set_dissonance_cost(&mut self, value: f32) {
+        self.dissonance_cost = Some(value.max(0.0));
     }
 
     fn set_energy_cap(&mut self, value: f32) {
@@ -1744,6 +1752,11 @@ impl ScriptHost {
             "continuous_recharge_rate",
             SpeciesSpec::set_continuous_recharge_rate,
         );
+        register_species_numeric_overloads(
+            &mut engine,
+            "dissonance_cost",
+            SpeciesSpec::set_dissonance_cost,
+        );
         register_species_numeric_overloads(&mut engine, "energy_cap", SpeciesSpec::set_energy_cap);
         engine.register_fn(
             "adsr",
@@ -2924,6 +2937,12 @@ impl ScriptHost {
             ctx.clone(),
             "continuous_recharge_rate",
             SpeciesSpec::set_continuous_recharge_rate,
+        );
+        register_group_draft_numeric_overloads(
+            &mut engine,
+            ctx.clone(),
+            "dissonance_cost",
+            SpeciesSpec::set_dissonance_cost,
         );
         register_group_draft_numeric_overloads(
             &mut engine,

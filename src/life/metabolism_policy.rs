@@ -11,6 +11,7 @@ pub struct MetabolismPolicy {
     pub action_cost_per_attack: f32,
     pub recharge_per_attack: f32,
     pub continuous_recharge_per_sec: f32,
+    pub dissonance_cost: f32,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -32,24 +33,29 @@ impl MetabolismPolicy {
                 action_cost_per_attack: DEFAULT_ACTION_COST_PER_ATTACK,
                 recharge_per_attack: 0.0,
                 continuous_recharge_per_sec: 0.0,
+                dissonance_cost: 0.0,
             },
             LifecycleConfig::Sustain {
                 metabolism_rate,
                 recharge_rate,
                 action_cost,
                 continuous_recharge_rate,
+                dissonance_cost,
                 ..
             } => MetabolismPolicy {
                 basal_cost_per_sec: *metabolism_rate,
                 action_cost_per_attack: action_cost.unwrap_or(DEFAULT_ACTION_COST_PER_ATTACK),
                 recharge_per_attack: recharge_rate.unwrap_or(DEFAULT_RECHARGE_PER_ATTACK),
                 continuous_recharge_per_sec: continuous_recharge_rate.unwrap_or(0.0),
+                dissonance_cost: dissonance_cost.unwrap_or(0.0),
             },
         }
     }
 
-    pub fn basal_delta(&self, dt: f32) -> f32 {
-        -self.basal_cost_per_sec * dt.max(0.0)
+    pub fn basal_delta(&self, dt: f32, consonance: f32) -> f32 {
+        let c = clamp01_finite(consonance);
+        let factor = 1.0 + self.dissonance_cost * (1.0 - c);
+        -self.basal_cost_per_sec * factor * dt.max(0.0)
     }
 
     pub fn continuous_recharge_delta(&self, dt: f32, consonance: f32) -> f32 {
@@ -82,8 +88,8 @@ impl MetabolismPolicy {
 
     // Explicit transition helpers are kept for deterministic tests and offline analysis.
     // Runtime control uses basal_delta/attack_delta_* directly inside articulation_core.
-    pub fn apply_basal(&self, energy: f32, dt_sec: f32) -> (f32, EnergyTelemetry) {
-        let basal_delta = self.basal_delta(dt_sec);
+    pub fn apply_basal(&self, energy: f32, dt_sec: f32, consonance: f32) -> (f32, EnergyTelemetry) {
+        let basal_delta = self.basal_delta(dt_sec, consonance);
         let next = energy + basal_delta;
         let telemetry = EnergyTelemetry {
             energy_before: energy,
@@ -145,7 +151,7 @@ impl MetabolismPolicy {
         did_attack: bool,
         consonance: f32,
     ) -> (f32, EnergyTelemetry) {
-        let basal_delta = self.basal_delta(dt);
+        let basal_delta = self.basal_delta(dt, consonance);
         let after_basal = energy + basal_delta;
         if did_attack {
             let attack_delta = self.attack_delta_with_recharge(consonance);
@@ -192,6 +198,7 @@ mod tests {
             action_cost_per_attack: 1.0,
             recharge_per_attack: 0.5,
             continuous_recharge_per_sec: 0.0,
+            dissonance_cost: 0.0,
         };
         let (next, tel) = policy.step(1.0, 0.25, false, 0.9);
         approx_eq(next, 0.5);
@@ -207,6 +214,7 @@ mod tests {
             action_cost_per_attack: 0.2,
             recharge_per_attack: 0.5,
             continuous_recharge_per_sec: 0.0,
+            dissonance_cost: 0.0,
         };
         let (next_low, tel_low) = policy.step(1.0, 0.0, true, 0.2);
         approx_eq(next_low, 1.0 - 0.2 + 0.1);
@@ -226,6 +234,7 @@ mod tests {
             action_cost_per_attack: 0.2,
             recharge_per_attack: 1.0,
             continuous_recharge_per_sec: 0.0,
+            dissonance_cost: 0.0,
         };
         let (_, tel_low) = policy.step(1.0, 0.0, true, 0.49);
         let (_, tel_high) = policy.step(1.0, 0.0, true, 0.51);
@@ -242,6 +251,7 @@ mod tests {
             action_cost_per_attack: 0.2,
             recharge_per_attack: 0.0,
             continuous_recharge_per_sec: 0.0,
+            dissonance_cost: 0.0,
         };
         let (a, _) = policy.step(1.0, 0.0, true, 0.2);
         let (b, _) = policy.step(1.0, 0.0, true, 0.9);
@@ -256,9 +266,10 @@ mod tests {
             action_cost_per_attack: 0.3,
             recharge_per_attack: 0.2,
             continuous_recharge_per_sec: 0.0,
+            dissonance_cost: 0.0,
         };
         let (step_energy, step_tel) = policy.step(2.0, 0.5, false, 0.9);
-        let (basal_energy, basal_tel) = policy.apply_basal(2.0, 0.5);
+        let (basal_energy, basal_tel) = policy.apply_basal(2.0, 0.5, 0.9);
         approx_eq(step_energy, basal_energy);
         approx_eq(step_tel.basal_delta, basal_tel.basal_delta);
         approx_eq(step_tel.action_delta, 0.0);
@@ -272,6 +283,7 @@ mod tests {
             action_cost_per_attack: 0.4,
             recharge_per_attack: 0.25,
             continuous_recharge_per_sec: 0.0,
+            dissonance_cost: 0.0,
         };
         let (step_energy, step_tel) = policy.step(1.0, 0.0, true, 0.6);
         let (attack_energy, attack_tel) = policy.apply_attack_with_recharge(1.0, 0.6);
@@ -287,6 +299,7 @@ mod tests {
             action_cost_per_attack: 0.4,
             recharge_per_attack: 0.0,
             continuous_recharge_per_sec: 0.0,
+            dissonance_cost: 0.0,
         };
         let (cost_energy, _) = policy.apply_attack_cost_only(1.0);
         let (attack_low, _) = policy.apply_attack_with_recharge(1.0, 0.2);
@@ -302,6 +315,7 @@ mod tests {
             action_cost_per_attack: 0.2,
             recharge_per_attack: 0.5,
             continuous_recharge_per_sec: 0.0,
+            dissonance_cost: 0.0,
         };
         let (_, tel_low) = policy.apply_attack_with_recharge(1.0, -1.0);
         let (_, tel_high) = policy.apply_attack_with_recharge(1.0, 2.0);
@@ -316,6 +330,7 @@ mod tests {
             action_cost_per_attack: 0.2,
             recharge_per_attack: 0.5,
             continuous_recharge_per_sec: 0.0,
+            dissonance_cost: 0.0,
         };
         let (next, tel) = policy.apply_attack_with_recharge(1.0, f32::NAN);
         assert!(next.is_finite());
@@ -329,6 +344,7 @@ mod tests {
             action_cost_per_attack: 0.3,
             recharge_per_attack: 0.5,
             continuous_recharge_per_sec: 0.0,
+            dissonance_cost: 0.0,
         };
         let c = 0.6;
         let base = policy.attack_delta_with_recharge_multiplier(c, 1.0);
@@ -345,6 +361,7 @@ mod tests {
             action_cost_per_attack: 0.25,
             recharge_per_attack: 0.5,
             continuous_recharge_per_sec: 0.0,
+            dissonance_cost: 0.0,
         };
         let low = policy.attack_delta_with_recharge_multiplier(0.8, -10.0);
         let high = policy.attack_delta_with_recharge_multiplier(0.8, 10.0);
@@ -366,6 +383,7 @@ mod tests {
             action_cost_per_attack: 0.2,
             recharge_per_attack: 0.5,
             continuous_recharge_per_sec: 0.0,
+            dissonance_cost: 0.0,
         };
         let low = simulate_lifetime(policy, 0.2);
         let high = simulate_lifetime(policy, 0.8);
@@ -388,6 +406,7 @@ mod tests {
             recharge_rate: None,
             action_cost: None,
             continuous_recharge_rate: None,
+            dissonance_cost: None,
             envelope: EnvelopeConfig::default(),
         };
         let policy = MetabolismPolicy::from_lifecycle(&lifecycle);
@@ -402,6 +421,7 @@ mod tests {
             recharge_rate: Some(0.0),
             action_cost: None,
             continuous_recharge_rate: None,
+            dissonance_cost: None,
             envelope: EnvelopeConfig::default(),
         };
         let policy = MetabolismPolicy::from_lifecycle(&lifecycle);
@@ -415,6 +435,7 @@ mod tests {
             action_cost_per_attack: 0.0,
             recharge_per_attack: 0.0,
             continuous_recharge_per_sec: 0.5,
+            dissonance_cost: 0.0,
         };
         approx_eq(policy.continuous_recharge_delta(1.0, 1.0), 0.5);
         approx_eq(policy.continuous_recharge_delta(0.5, 1.0), 0.25);
@@ -431,6 +452,7 @@ mod tests {
             action_cost_per_attack: 0.0,
             recharge_per_attack: 0.0,
             continuous_recharge_per_sec: 0.0,
+            dissonance_cost: 0.0,
         };
         approx_eq(policy.continuous_recharge_delta(1.0, 1.0), 0.0);
         approx_eq(policy.continuous_recharge_delta(1.0, 0.5), 0.0);
@@ -444,6 +466,7 @@ mod tests {
             recharge_rate: None,
             action_cost: None,
             continuous_recharge_rate: Some(0.3),
+            dissonance_cost: None,
             envelope: EnvelopeConfig::default(),
         };
         let policy = MetabolismPolicy::from_lifecycle(&lifecycle);
@@ -455,6 +478,7 @@ mod tests {
             recharge_rate: None,
             action_cost: None,
             continuous_recharge_rate: None,
+            dissonance_cost: None,
             envelope: EnvelopeConfig::default(),
         };
         let policy_none = MetabolismPolicy::from_lifecycle(&lifecycle_none);
@@ -470,5 +494,36 @@ mod tests {
             steps += 1;
         }
         steps
+    }
+
+    #[test]
+    fn dissonance_cost_zero_backward_compatible() {
+        let policy = MetabolismPolicy {
+            basal_cost_per_sec: 1.0,
+            action_cost_per_attack: 0.0,
+            recharge_per_attack: 0.0,
+            continuous_recharge_per_sec: 0.0,
+            dissonance_cost: 0.0,
+        };
+        let d1 = policy.basal_delta(1.0, 0.0);
+        let d2 = policy.basal_delta(1.0, 1.0);
+        assert!((d1 - d2).abs() < 1e-6);
+    }
+
+    #[test]
+    fn dissonance_cost_amplifies_at_low_consonance() {
+        let policy = MetabolismPolicy {
+            basal_cost_per_sec: 1.0,
+            action_cost_per_attack: 0.0,
+            recharge_per_attack: 0.0,
+            continuous_recharge_per_sec: 0.0,
+            dissonance_cost: 2.0,
+        };
+        let at_zero = policy.basal_delta(1.0, 0.0);
+        let at_half = policy.basal_delta(1.0, 0.5);
+        let at_one = policy.basal_delta(1.0, 1.0);
+        approx_eq(at_zero, -3.0);
+        approx_eq(at_half, -2.0);
+        approx_eq(at_one, -1.0);
     }
 }

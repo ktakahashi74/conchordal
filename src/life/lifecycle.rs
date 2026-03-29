@@ -15,6 +15,7 @@ pub enum LifecycleConfig {
         recharge_rate: Option<f32>,
         action_cost: Option<f32>,
         continuous_recharge_rate: Option<f32>,
+        dissonance_cost: Option<f32>,
         envelope: EnvelopeConfig,
     },
 }
@@ -46,19 +47,26 @@ impl fmt::Display for LifecycleConfig {
                 metabolism_rate,
                 recharge_rate,
                 action_cost,
+                dissonance_cost,
                 envelope,
                 ..
-            } => write!(
-                f,
-                "lifecycle=sustain(init={:.2}, metab={:.3}/s, recharge={:.3}, action_cost={:.3}, env=[atk={:.3}s, dec={:.3}s, sus={:.2}])",
-                initial_energy,
-                metabolism_rate,
-                recharge_rate.unwrap_or(DEFAULT_RECHARGE_PER_ATTACK),
-                action_cost.unwrap_or(DEFAULT_ACTION_COST_PER_ATTACK),
-                envelope.attack_sec,
-                envelope.decay_sec,
-                envelope.sustain_level
-            ),
+            } => {
+                write!(
+                    f,
+                    "lifecycle=sustain(init={:.2}, metab={:.3}/s, recharge={:.3}, action_cost={:.3}, env=[atk={:.3}s, dec={:.3}s, sus={:.2}]",
+                    initial_energy,
+                    metabolism_rate,
+                    recharge_rate.unwrap_or(DEFAULT_RECHARGE_PER_ATTACK),
+                    action_cost.unwrap_or(DEFAULT_ACTION_COST_PER_ATTACK),
+                    envelope.attack_sec,
+                    envelope.decay_sec,
+                    envelope.sustain_level
+                )?;
+                if let Some(dc) = dissonance_cost {
+                    write!(f, ", diss_cost={dc:.3}")?;
+                }
+                write!(f, ")")
+            }
         }
     }
 }

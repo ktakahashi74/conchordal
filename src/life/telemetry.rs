@@ -17,6 +17,7 @@ pub struct LifeRecord {
     pub c_level_attack_mean: f32,
     pub attack_count: u32,
     pub plv_at_death: Option<f32>,
+    pub generation: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -73,6 +74,7 @@ impl LifeAccumulator {
         group_id: u64,
         death_frame: u64,
         plv: Option<f32>,
+        generation: u32,
     ) -> LifeRecord {
         let n = self.lifetime_count;
         let (mean, std) = if n > 0 {
@@ -105,6 +107,7 @@ impl LifeAccumulator {
             c_level_attack_mean: attack_mean,
             attack_count: self.attack_count,
             plv_at_death: plv,
+            generation,
         }
     }
 }
@@ -123,7 +126,7 @@ mod tests {
         acc.accumulate_attack(2.0);
         acc.accumulate_attack(4.0);
 
-        let rec = acc.finalize(42, 7, 200, Some(0.9));
+        let rec = acc.finalize(42, 7, 200, Some(0.9), 0);
         assert_eq!(rec.voice_id, 42);
         assert_eq!(rec.group_id, 7);
         assert_eq!(rec.birth_frame, 100);
@@ -147,7 +150,7 @@ mod tests {
     #[test]
     fn finalize_empty() {
         let acc = LifeAccumulator::new(0, 5, 0.0);
-        let rec = acc.finalize(1, 1, 0, None);
+        let rec = acc.finalize(1, 1, 0, None, 0);
         assert_eq!(rec.lifetime_ticks, 0);
         assert_eq!(rec.c_level_lifetime_mean, 0.0);
         assert_eq!(rec.c_level_lifetime_std, 0.0);

@@ -53,6 +53,8 @@ fn spawn_voice(freq: f32, assigned_id: u64) -> Voice {
     let meta = VoiceMetadata {
         group_id: 0,
         member_idx: 0,
+        generation: 0,
+        parent_id: None,
     };
     cfg.spawn(assigned_id, 0, meta, 48_000.0, 0)
 }
@@ -65,6 +67,7 @@ fn sustain_entrain_articulation() -> ArticulationCoreConfig {
             recharge_rate: Some(0.5),
             action_cost: Some(0.1),
             continuous_recharge_rate: None,
+            dissonance_cost: None,
             envelope: EnvelopeConfig {
                 attack_sec: 0.01,
                 decay_sec: 0.05,
@@ -403,6 +406,8 @@ fn adaptation_disabled_still_runs_pitch_proposal() {
     let meta = VoiceMetadata {
         group_id: 0,
         member_idx: 0,
+        generation: 0,
+        parent_id: None,
     };
     let mut voice = cfg.spawn(6, 0, meta, 48_000.0, 0);
 
@@ -442,6 +447,8 @@ fn proposal_interval_decouples_from_integration_window() {
     let meta = VoiceMetadata {
         group_id: 0,
         member_idx: 0,
+        generation: 0,
+        parent_id: None,
     };
     let mut voice = cfg.spawn(61, 0, meta, 48_000.0, 0);
     let mut rhythms = NeuralRhythms::default();
@@ -536,6 +543,8 @@ fn remove_pending_still_emits_note_offs() {
     let meta = VoiceMetadata {
         group_id: 0,
         member_idx: 0,
+        generation: 0,
+        parent_id: None,
     };
     let mut voice = cfg.spawn(1, 0, meta, 48_000.0, 0);
     let tb = Timebase {
@@ -598,6 +607,8 @@ fn tick_phonation_into_gated_bridges_each_onset_to_body_articulation() {
     let meta = VoiceMetadata {
         group_id: 0,
         member_idx: 0,
+        generation: 0,
+        parent_id: None,
     };
     let mut voice = cfg.spawn(77, 0, meta, 48_000.0, 0);
     voice.phonation_engine.clock = PhonationClock::Custom(Box::new(|_, out| {
@@ -675,6 +686,8 @@ fn hold_mode_renderer_still_pulses_after_render_clone_removal() {
     let meta = VoiceMetadata {
         group_id: 0,
         member_idx: 0,
+        generation: 0,
+        parent_id: None,
     };
     let mut voice = cfg.spawn(78, 0, meta, 48_000.0, 0);
     let tb = Timebase {
@@ -726,6 +739,8 @@ fn hold_note_emits_target_amp_update_when_authority_amp_changes() {
     let meta = VoiceMetadata {
         group_id: 0,
         member_idx: 0,
+        generation: 0,
+        parent_id: None,
     };
     let mut voice = cfg.spawn(79, 0, meta, 48_000.0, 0);
     let tb = Timebase {
@@ -793,6 +808,8 @@ fn hold_note_does_not_emit_update_below_amp_threshold() {
     let meta = VoiceMetadata {
         group_id: 0,
         member_idx: 0,
+        generation: 0,
+        parent_id: None,
     };
     let mut voice = cfg.spawn(80, 0, meta, 48_000.0, 0);
     let tb = Timebase {
@@ -854,6 +871,8 @@ fn tracked_note_is_removed_after_note_off_for_future_hops() {
     let meta = VoiceMetadata {
         group_id: 0,
         member_idx: 0,
+        generation: 0,
+        parent_id: None,
     };
     let mut voice = cfg.spawn(81, 0, meta, 48_000.0, 0);
     let tb = Timebase {
@@ -934,6 +953,8 @@ fn render_modulator_snapshot_is_finite() {
     let meta = VoiceMetadata {
         group_id: 0,
         member_idx: 0,
+        generation: 0,
+        parent_id: None,
     };
     let mut voice = cfg.spawn(41, 0, meta, 48_000.0, 0);
     let tb = Timebase {

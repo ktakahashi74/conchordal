@@ -37,6 +37,8 @@ fn spawn_sustain_publishes_note_on_first_tick() {
     let meta = VoiceMetadata {
         group_id: 0,
         member_idx: 0,
+        generation: 0,
+        parent_id: None,
     };
     pop.add_voice(cfg.spawn(assigned_id, 0, meta, tb.fs, 0));
 
@@ -58,6 +60,8 @@ fn spawn_emits_phonation_note_that_renders_audio() {
     let meta = VoiceMetadata {
         group_id: 0,
         member_idx: 0,
+        generation: 0,
+        parent_id: None,
     };
     pop.add_voice(cfg.spawn(assigned_id, 0, meta, tb.fs, 0));
 

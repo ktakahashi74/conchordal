@@ -122,6 +122,7 @@ struct SpawnParams {
     member_idx: usize,
     resolved_freq_hz: f32,
     parent_id: Option<u64>,
+    parent_generation: Option<u32>,
     reason: SpawnReason,
 }
 
@@ -129,6 +130,14 @@ struct SpawnParams {
 struct ObservationConfig {
     first_k: u32,
     plv_window: usize,
+}
+
+#[derive(Clone, Copy)]
+struct ParentCandidate {
+    id: u64,
+    freq_hz: f32,
+    energy: f32,
+    generation: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -145,6 +154,7 @@ pub struct RuntimeEvent {
     pub member_idx: usize,
     pub freq_hz: f32,
     pub parent_id: Option<u64>,
+    pub generation: u32,
     pub reason: SpawnReason,
 }
 
@@ -167,6 +177,23 @@ fn semitone_distance_from_anchor(freq_hz: f32, anchor_hz: f32) -> f32 {
         return 0.0;
     }
     12.0 * (freq_hz / anchor_hz).log2()
+}
+
+fn weighted_parent_select<R: Rng + ?Sized>(parents: &[ParentCandidate], rng: &mut R) -> usize {
+    debug_assert!(!parents.is_empty());
+    let total: f32 = parents.iter().map(|p| p.energy.max(0.0)).sum();
+    if total > 0.0 && total.is_finite() {
+        let mut threshold = rng.random_range(0.0..total);
+        for (i, p) in parents.iter().enumerate() {
+            threshold -= p.energy.max(0.0);
+            if threshold <= 0.0 {
+                return i;
+            }
+        }
+        parents.len() - 1
+    } else {
+        rng.random_range(0..parents.len())
+    }
 }
 
 fn is_rejected_target(freq_hz: f32, anchor_hz: f32, targets_st: &[f32], exclusion_st: f32) -> bool {
@@ -650,6 +677,7 @@ impl Population {
             member_idx,
             resolved_freq_hz,
             parent_id,
+            parent_generation,
             reason,
         } = params;
         if self.voices.iter().any(|v| v.id() == id) {
@@ -657,11 +685,14 @@ impl Population {
             return;
         }
 
+        let generation = parent_generation.map_or(0, |g| g + 1);
         let mut control = spec.control.clone();
         control.pitch.freq = resolved_freq_hz.clamp(MIN_FREQ_HZ, MAX_FREQ_HZ);
         let metadata = VoiceMetadata {
             group_id,
             member_idx,
+            generation,
+            parent_id,
         };
         let cfg = VoiceConfig {
             control: control.clone(),
@@ -695,6 +726,7 @@ impl Population {
                 member_idx,
                 freq_hz: resolved_freq_hz,
                 parent_id,
+                generation,
                 reason,
             });
         }
@@ -834,53 +866,40 @@ impl Population {
         }
     }
 
-    fn hereditary_respawn_frequency<R: Rng + ?Sized>(
-        &self,
-        group: &RuntimeGroupState,
-        sigma_oct: f32,
-        parent_freqs_hz: &[(u64, f32)],
-        landscape: &LandscapeFrame,
-        rng: &mut R,
-        member_idx: usize,
-    ) -> (f32, Option<u64>) {
-        if parent_freqs_hz.is_empty() {
-            return (
-                self.random_respawn_frequency(group, landscape, rng, member_idx),
-                None,
-            );
-        }
-
-        let parent_idx = rng.random_range(0..parent_freqs_hz.len());
-        let (parent_id, parent_freq_hz) = parent_freqs_hz[parent_idx];
-        let parent_log2 = parent_freq_hz.max(MIN_FREQ_HZ).log2();
-        let noise = Self::normal_sample(rng) * sigma_oct.max(0.0);
-        let child_log2 = parent_log2 + noise;
-        let (min_hz, max_hz) = group
-            .strategy
-            .as_ref()
-            .map(SpawnStrategy::freq_range_hz)
-            .unwrap_or_else(|| landscape.freq_bounds());
-        let lo = min_hz.clamp(MIN_FREQ_HZ, MAX_FREQ_HZ);
-        let hi = max_hz.clamp(lo, MAX_FREQ_HZ);
-        let child_hz = 2.0f32.powf(child_log2).clamp(lo, hi);
-        (child_hz.clamp(MIN_FREQ_HZ, MAX_FREQ_HZ), Some(parent_id))
-    }
-
     fn pick_respawn_candidate<R: Rng + ?Sized>(
         &self,
         group_id: u64,
         group: &RuntimeGroupState,
-        alive_by_group: &BTreeMap<u64, Vec<(u64, f32)>>,
+        alive_by_group: &BTreeMap<u64, Vec<ParentCandidate>>,
         landscape: &LandscapeFrame,
         rng: &mut R,
         member_idx: usize,
-    ) -> Option<(f32, Option<u64>)> {
+    ) -> Option<(f32, Option<u64>, Option<u32>)> {
         let capacity = group.respawn_capacity.max(1);
+
+        // Step 1: Select parent ONCE before candidate generation
+        let selected_parent: Option<ParentCandidate> = match group.respawn_policy {
+            RespawnPolicy::None => return None,
+            RespawnPolicy::Random => None,
+            RespawnPolicy::Hereditary { .. } => {
+                let pool = alive_by_group
+                    .get(&group_id)
+                    .map(Vec::as_slice)
+                    .unwrap_or(&[]);
+                if pool.is_empty() {
+                    None
+                } else {
+                    Some(pool[weighted_parent_select(pool, rng)])
+                }
+            }
+        };
+
+        // Step 2: Generate candidates (all share same parent lineage)
         let mut candidates = Vec::with_capacity(capacity);
         for idx in 0..capacity {
-            let candidate = match (idx, group.respawn_settle_strategy.as_ref()) {
-                (1.., Some(strategy)) => (
-                    self.resolve_strategy_frequency(
+            let freq = match (idx, group.respawn_settle_strategy.as_ref()) {
+                (1.., Some(strategy)) => self
+                    .resolve_strategy_frequency(
                         strategy,
                         landscape,
                         rng,
@@ -889,42 +908,53 @@ impl Population {
                         capacity,
                     )
                     .max(MIN_FREQ_HZ),
-                    None,
-                ),
                 _ => match group.respawn_policy {
                     RespawnPolicy::None => return None,
-                    RespawnPolicy::Random => (
-                        self.random_respawn_frequency(group, landscape, rng, member_idx + idx),
-                        None,
-                    ),
-                    RespawnPolicy::Hereditary { sigma_oct } => self.hereditary_respawn_frequency(
-                        group,
-                        sigma_oct,
-                        alive_by_group
-                            .get(&group_id)
-                            .map(Vec::as_slice)
-                            .unwrap_or(&[]),
-                        landscape,
-                        rng,
-                        member_idx + idx,
-                    ),
+                    RespawnPolicy::Random => {
+                        self.random_respawn_frequency(group, landscape, rng, member_idx + idx)
+                    }
+                    RespawnPolicy::Hereditary { sigma_oct } => {
+                        if let Some(ref parent) = selected_parent {
+                            let parent_log2 = parent.freq_hz.max(MIN_FREQ_HZ).log2();
+                            let noise = Self::normal_sample(rng) * sigma_oct.max(0.0);
+                            let child_log2 = parent_log2 + noise;
+                            let (min_hz, max_hz) = group
+                                .strategy
+                                .as_ref()
+                                .map(SpawnStrategy::freq_range_hz)
+                                .unwrap_or_else(|| landscape.freq_bounds());
+                            let lo = min_hz.clamp(MIN_FREQ_HZ, MAX_FREQ_HZ);
+                            let hi = max_hz.clamp(lo, MAX_FREQ_HZ);
+                            2.0f32.powf(child_log2).clamp(lo, hi)
+                        } else {
+                            self.random_respawn_frequency(group, landscape, rng, member_idx + idx)
+                        }
+                    }
                 },
             };
-            candidates.push(candidate);
+            candidates.push(freq);
         }
 
-        let best = candidates.into_iter().max_by(|(a_freq, _), (b_freq, _)| {
+        // Step 3: Select best by consonance
+        let best_freq = *candidates.iter().max_by(|a, b| {
             landscape
-                .evaluate_pitch_level(*a_freq)
-                .partial_cmp(&landscape.evaluate_pitch_level(*b_freq))
+                .evaluate_pitch_level(**a)
+                .partial_cmp(&landscape.evaluate_pitch_level(**b))
                 .unwrap_or(std::cmp::Ordering::Equal)
         })?;
+
         if let Some(min_c_level) = group.respawn_min_c_level
-            && landscape.evaluate_pitch_level(best.0) < min_c_level
+            && landscape.evaluate_pitch_level(best_freq) < min_c_level
         {
             return None;
         }
-        Some(best)
+
+        // All candidates share same parent lineage
+        let (parent_id, parent_gen) = match selected_parent {
+            Some(p) => (Some(p.id), Some(p.generation)),
+            None => (None, None),
+        };
+        Some((best_freq, parent_id, parent_gen))
     }
 
     fn respawn_on_new_deaths(&mut self, scenario_finished: bool, landscape: &LandscapeFrame) {
@@ -933,17 +963,26 @@ impl Population {
         }
 
         let mut statuses = Vec::with_capacity(self.voices.len());
-        let mut alive_by_group: BTreeMap<u64, Vec<(u64, f32)>> = BTreeMap::new();
+        let mut alive_by_group: BTreeMap<u64, Vec<ParentCandidate>> = BTreeMap::new();
         for voice in &self.voices {
             let alive = voice.is_alive();
             let group_id = voice.metadata.group_id;
             let id = voice.id();
             statuses.push((id, group_id, alive));
             if alive {
-                alive_by_group.entry(group_id).or_default().push((
-                    id,
-                    voice.body.base_freq_hz().clamp(MIN_FREQ_HZ, MAX_FREQ_HZ),
-                ));
+                let energy = match &voice.articulation.core {
+                    AnyArticulationCore::Entrain(core) => core.energy.max(0.0),
+                    _ => 0.0,
+                };
+                alive_by_group
+                    .entry(group_id)
+                    .or_default()
+                    .push(ParentCandidate {
+                        id,
+                        freq_hz: voice.body.base_freq_hz().clamp(MIN_FREQ_HZ, MAX_FREQ_HZ),
+                        energy,
+                        generation: voice.metadata.generation,
+                    });
             }
         }
 
@@ -972,7 +1011,7 @@ impl Population {
             let seed = self.spawn_seed(group_id, 1, spawn_seq);
             let mut rng = SmallRng::seed_from_u64(seed);
 
-            let Some((freq_hz, parent_id)) = self.pick_respawn_candidate(
+            let Some((freq_hz, parent_id, parent_generation)) = self.pick_respawn_candidate(
                 group_id,
                 &group,
                 &alive_by_group,
@@ -991,6 +1030,7 @@ impl Population {
                     member_idx,
                     resolved_freq_hz: freq_hz,
                     parent_id,
+                    parent_generation,
                     reason: SpawnReason::Respawn,
                 },
                 &group.template,
@@ -1000,10 +1040,6 @@ impl Population {
             if let Some(state) = self.groups.get_mut(&group_id) {
                 state.next_member_idx = state.next_member_idx.saturating_add(1);
             }
-            alive_by_group
-                .entry(group_id)
-                .or_default()
-                .push((id, freq_hz));
         }
     }
 
@@ -1094,6 +1130,7 @@ impl Population {
                     member_idx,
                     resolved_freq_hz: freq_hz,
                     parent_id: None,
+                    parent_generation: None,
                     reason: SpawnReason::Initial,
                 },
                 &spec,
@@ -1520,6 +1557,7 @@ impl Population {
                         voice.metadata.group_id,
                         current_frame,
                         plv,
+                        voice.metadata.generation,
                     ));
                 }
             }

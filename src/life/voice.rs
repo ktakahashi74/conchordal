@@ -42,6 +42,8 @@ pub use sound_body::{AnySoundBody, HarmonicBody, SineBody, SoundBody};
 pub struct VoiceMetadata {
     pub group_id: u64,
     pub member_idx: usize,
+    pub generation: u32,
+    pub parent_id: Option<u64>,
 }
 
 #[derive(Debug)]

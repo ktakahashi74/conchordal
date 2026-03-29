@@ -17,6 +17,8 @@ fn build_agent() -> Voice {
     let metadata = VoiceMetadata {
         group_id: 0,
         member_idx: 0,
+        generation: 0,
+        parent_id: None,
     };
     cfg.spawn(assigned_id, 0, metadata, 48_000.0, 0)
 }

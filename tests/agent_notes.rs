@@ -38,6 +38,8 @@ fn agents_publish_notes_and_render_audio() {
     let metadata = VoiceMetadata {
         group_id: 0,
         member_idx: 0,
+        generation: 0,
+        parent_id: None,
     };
     let agent = agent_cfg.spawn(assigned_id, 0, metadata.clone(), tb.fs, 0);
     pop.add_voice(agent);
@@ -96,6 +98,8 @@ fn publish_notes_runs_when_gate_in_hop_window() {
     let metadata = VoiceMetadata {
         group_id: 0,
         member_idx: 0,
+        generation: 0,
+        parent_id: None,
     };
     let agent = agent_cfg.spawn(assigned_id, 0, metadata.clone(), tb.fs, 0);
     pop.add_voice(agent);

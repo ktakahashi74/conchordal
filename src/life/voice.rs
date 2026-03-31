@@ -27,6 +27,7 @@ pub mod pitch_core;
 #[path = "sound_body.rs"]
 pub mod sound_body;
 
+use self::pitch_core::approx_loo_pitch_score;
 pub use articulation_core::{
     AnyArticulationCore, ArticulationCore, ArticulationSignal, ArticulationState,
     ArticulationWrapper, DroneCore, KuramotoCore, PinkNoise, PlannedGate, PlannedPitch,
@@ -64,6 +65,7 @@ pub struct Voice {
     pub(crate) release_sec: f32,
     pub(crate) release_pending: bool,
     pub(crate) remove_pending: bool,
+    pub(crate) selection_approx_loo: bool,
     pub(crate) phonation_scratch: PhonationScratch,
     active_render_notes: Vec<TrackedRenderNote>,
     pub(crate) life_accumulator: Option<super::telemetry::LifeAccumulator>,
@@ -213,6 +215,16 @@ impl Voice {
         let target_freq = effective_control.pitch.freq.max(1.0);
         let target_pitch_log2 = target_freq.log2();
         let integration_window = PitchController::integration_window_for_freq(target_freq);
+        let selection_approx_loo = matches!(
+            &articulation_config,
+            ArticulationCoreConfig::Entrain {
+                lifecycle: LifecycleConfig::Sustain {
+                    selection_approx_loo: true,
+                    ..
+                },
+                ..
+            }
+        );
 
         let core =
             AnyArticulationCore::from_config(&articulation_config, fs, assigned_id, &mut rng);
@@ -380,6 +392,7 @@ impl Voice {
             release_sec: 0.03,
             release_pending: false,
             remove_pending: false,
+            selection_approx_loo,
             phonation_scratch: Default::default(),
             active_render_notes: Vec::new(),
             life_accumulator: None,
@@ -725,7 +738,15 @@ impl Voice {
         global_coupling: f32,
     ) -> ArticulationSignal {
         let consonance_level = landscape.evaluate_pitch_level(self.body.base_freq_hz());
-        let selection_score = landscape.evaluate_pitch_score(self.body.base_freq_hz());
+        let selection_score = if self.selection_approx_loo {
+            approx_loo_pitch_score(
+                landscape,
+                self.body.base_freq_hz(),
+                self.effective_control.pitch.leave_self_out_harmonics,
+            )
+        } else {
+            landscape.evaluate_pitch_score(self.body.base_freq_hz())
+        };
         if let Some(ref mut acc) = self.life_accumulator {
             acc.accumulate_tick(consonance_level);
         }

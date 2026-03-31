@@ -97,6 +97,7 @@ struct SpeciesSpec {
     continuous_recharge_rate: Option<f32>,
     continuous_recharge_score_low: Option<f32>,
     continuous_recharge_score_high: Option<f32>,
+    selection_approx_loo: bool,
     dissonance_cost: Option<f32>,
     adsr: Option<AdsrSpec>,
     rhythm_coupling: RhythmCouplingMode,
@@ -131,6 +132,7 @@ impl SpeciesSpec {
             continuous_recharge_rate: None,
             continuous_recharge_score_low: None,
             continuous_recharge_score_high: None,
+            selection_approx_loo: false,
             dissonance_cost: None,
             adsr: None,
             rhythm_coupling: RhythmCouplingMode::TemporalOnly,
@@ -172,6 +174,7 @@ impl SpeciesSpec {
             || self.continuous_recharge_rate.is_some()
             || self.continuous_recharge_score_low.is_some()
             || self.continuous_recharge_score_high.is_some()
+            || self.selection_approx_loo
             || self.dissonance_cost.is_some()
             || self.adsr.is_some()
         {
@@ -184,6 +187,7 @@ impl SpeciesSpec {
                 continuous_recharge_rate: self.continuous_recharge_rate.map(|value| value.max(0.0)),
                 continuous_recharge_score_low: self.continuous_recharge_score_low,
                 continuous_recharge_score_high: self.continuous_recharge_score_high,
+                selection_approx_loo: self.selection_approx_loo,
                 dissonance_cost: self.dissonance_cost,
                 envelope: self.envelope_from_adsr(),
             }
@@ -567,6 +571,10 @@ impl SpeciesSpec {
         }
         self.continuous_recharge_score_low = Some(low);
         self.continuous_recharge_score_high = Some(high);
+    }
+
+    fn set_selection_approx_loo(&mut self, enabled: bool) {
+        self.selection_approx_loo = enabled;
     }
 
     fn set_dissonance_cost(&mut self, value: f32) {
@@ -1872,6 +1880,13 @@ impl ScriptHost {
             &mut engine,
             "survival_signal",
             SpeciesSpec::set_survival_signal,
+        );
+        engine.register_fn(
+            "selection_approx_loo",
+            |mut species: SpeciesHandle, enabled: bool| {
+                species.spec.set_selection_approx_loo(enabled);
+                species
+            },
         );
         register_species_numeric_overloads(
             &mut engine,
@@ -5208,6 +5223,41 @@ mod tests {
         };
         assert_eq!(continuous_recharge_score_low, Some(0.3));
         assert_eq!(continuous_recharge_score_high, Some(0.8));
+    }
+
+    #[test]
+    fn spawn_payload_preserves_selection_approx_loo() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            create(
+                harmonic
+                    .metabolism(0.1)
+                    .selection_approx_loo(true),
+                1
+            );
+            flush();
+        "#,
+        );
+        let spawn = scenario
+            .events
+            .iter()
+            .flat_map(|event| &event.actions)
+            .find_map(|action| match action {
+                Action::Spawn { spec, .. } => Some(spec.clone()),
+                _ => None,
+            })
+            .expect("spawn action");
+        let ArticulationCoreConfig::Entrain { lifecycle, .. } = spawn.articulation else {
+            panic!("expected entrain articulation");
+        };
+        let LifecycleConfig::Sustain {
+            selection_approx_loo,
+            ..
+        } = lifecycle
+        else {
+            panic!("expected sustain lifecycle");
+        };
+        assert!(selection_approx_loo);
     }
 
     #[test]

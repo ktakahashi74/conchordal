@@ -69,6 +69,7 @@ fn sustain_entrain_articulation() -> ArticulationCoreConfig {
             continuous_recharge_rate: None,
             continuous_recharge_score_low: None,
             continuous_recharge_score_high: None,
+            selection_approx_loo: false,
             dissonance_cost: None,
             envelope: EnvelopeConfig {
                 attack_sec: 0.01,

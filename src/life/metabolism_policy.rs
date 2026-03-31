@@ -463,6 +463,7 @@ mod tests {
             continuous_recharge_rate: None,
             continuous_recharge_score_low: None,
             continuous_recharge_score_high: None,
+            selection_approx_loo: false,
             dissonance_cost: None,
             envelope: EnvelopeConfig::default(),
         };
@@ -480,6 +481,7 @@ mod tests {
             continuous_recharge_rate: None,
             continuous_recharge_score_low: None,
             continuous_recharge_score_high: None,
+            selection_approx_loo: false,
             dissonance_cost: None,
             envelope: EnvelopeConfig::default(),
         };
@@ -547,6 +549,7 @@ mod tests {
             continuous_recharge_rate: Some(0.3),
             continuous_recharge_score_low: Some(0.3),
             continuous_recharge_score_high: Some(0.8),
+            selection_approx_loo: false,
             dissonance_cost: None,
             envelope: EnvelopeConfig::default(),
         };
@@ -563,6 +566,7 @@ mod tests {
             continuous_recharge_rate: None,
             continuous_recharge_score_low: None,
             continuous_recharge_score_high: None,
+            selection_approx_loo: false,
             dissonance_cost: None,
             envelope: EnvelopeConfig::default(),
         };

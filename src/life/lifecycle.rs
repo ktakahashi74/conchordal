@@ -17,6 +17,7 @@ pub enum LifecycleConfig {
         continuous_recharge_rate: Option<f32>,
         continuous_recharge_score_low: Option<f32>,
         continuous_recharge_score_high: Option<f32>,
+        selection_approx_loo: bool,
         dissonance_cost: Option<f32>,
         envelope: EnvelopeConfig,
     },
@@ -51,6 +52,7 @@ impl fmt::Display for LifecycleConfig {
                 action_cost,
                 continuous_recharge_score_low,
                 continuous_recharge_score_high,
+                selection_approx_loo,
                 dissonance_cost,
                 envelope,
                 ..
@@ -71,6 +73,9 @@ impl fmt::Display for LifecycleConfig {
                     continuous_recharge_score_high,
                 ) {
                     write!(f, ", survival_signal=[{low:.3}, {high:.3}]")?;
+                }
+                if *selection_approx_loo {
+                    write!(f, ", selection_approx_loo")?;
                 }
                 if let Some(dc) = dissonance_cost {
                     write!(f, ", diss_cost={dc:.3}")?;

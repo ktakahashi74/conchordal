@@ -2102,6 +2102,7 @@ mod tests {
                     continuous_recharge_rate: None,
                     continuous_recharge_score_low: None,
                     continuous_recharge_score_high: None,
+                    selection_approx_loo: false,
                     dissonance_cost: None,
                     envelope: crate::life::scenario::EnvelopeConfig::default(),
                 },

@@ -1162,6 +1162,19 @@ fn sample_consonance_score_with_loo(
     score
 }
 
+pub(crate) fn approx_loo_pitch_score(landscape: &Landscape, freq_hz: f32, harmonics: u8) -> f32 {
+    let pitch_log2 = freq_hz.max(1.0).log2();
+    sample_consonance_score_with_loo(
+        pitch_log2,
+        pitch_log2,
+        landscape,
+        true,
+        LeaveSelfOutMode::ApproxHarmonics,
+        harmonics.max(1),
+        None,
+    )
+}
+
 fn exact_loo_consonance_score_scan(
     landscape: &Landscape,
     current_pitch_log2: f32,
@@ -2084,6 +2097,16 @@ mod tests {
 
     fn test_adaptation(n_bins: usize) -> AdaptationContext {
         AdaptationContext::from_config(&AdaptationConfig::default(), n_bins)
+    }
+
+    #[test]
+    fn approx_loo_pitch_score_reduces_positive_self_peak_score() {
+        let landscape = test_landscape(&[(220.0, 1.0)]);
+        let raw = landscape.evaluate_pitch_score(220.0);
+        let loo = approx_loo_pitch_score(&landscape, 220.0, 1);
+
+        assert!(raw > 0.0);
+        assert!(loo < raw);
     }
 
     #[test]

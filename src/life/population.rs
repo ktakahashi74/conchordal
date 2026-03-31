@@ -1,8 +1,11 @@
-use super::scenario::{Action, ControlUpdateMode, RespawnPolicy, SpawnStrategy, VoiceConfig};
+use super::scenario::{
+    Action, ControlUpdateMode, RespawnPeakBiasConfig, RespawnPolicy, SpawnStrategy, VoiceConfig,
+};
 use super::telemetry::LifeRecord;
 use super::voice::{AnyArticulationCore, PhonationBatch, SoundBody, Voice, VoiceMetadata};
 use crate::core::landscape::{Landscape, LandscapeFrame, LandscapeUpdate};
 use crate::core::modulation::NeuralRhythms;
+use crate::core::peak_extraction::{PeakExtractConfig, extract_peaks_density};
 use crate::core::timebase::{Tick, Timebase};
 use crate::life::control::{MAX_FREQ_HZ, MIN_FREQ_HZ};
 use crate::life::social_density::SocialDensityTrace;
@@ -108,6 +111,7 @@ struct RuntimeGroupState {
     respawn_settle_strategy: Option<SpawnStrategy>,
     respawn_capacity: usize,
     respawn_min_c_level: Option<f32>,
+    respawn_background_death_rate_per_sec: f32,
     crowding_target_same: bool,
     crowding_target_other: bool,
     released: bool,
@@ -194,6 +198,190 @@ fn weighted_parent_select<R: Rng + ?Sized>(parents: &[ParentCandidate], rng: &mu
     } else {
         rng.random_range(0..parents.len())
     }
+}
+
+fn peak_bias_gaussian_weight(delta_st: f32, sigma_st: f32) -> f32 {
+    let sigma_st = if sigma_st.is_finite() {
+        sigma_st.max(1e-3)
+    } else {
+        9.0
+    };
+    (-0.5 * (delta_st / sigma_st).powi(2)).exp()
+}
+
+fn peak_bias_same_band(parent_freq_hz: f32, candidate_freq_hz: f32, window_cents: f32) -> bool {
+    if !parent_freq_hz.is_finite()
+        || parent_freq_hz <= 0.0
+        || !candidate_freq_hz.is_finite()
+        || candidate_freq_hz <= 0.0
+    {
+        return false;
+    }
+    let window_cents = window_cents.max(0.0);
+    (1200.0 * (candidate_freq_hz / parent_freq_hz).log2()).abs() <= window_cents
+}
+
+fn peak_bias_parent_octave(parent_freq_hz: f32, candidate_freq_hz: f32, window_cents: f32) -> bool {
+    if !parent_freq_hz.is_finite()
+        || parent_freq_hz <= 0.0
+        || !candidate_freq_hz.is_finite()
+        || candidate_freq_hz <= 0.0
+    {
+        return false;
+    }
+    let delta_cents = 1200.0 * (candidate_freq_hz / parent_freq_hz).log2();
+    let nearest_octave = (delta_cents / 1200.0).round();
+    nearest_octave.abs() >= 1.0
+        && (delta_cents - nearest_octave * 1200.0).abs() <= window_cents.max(0.0)
+}
+
+fn peak_bias_candidate_bins(
+    landscape: &LandscapeFrame,
+    min_hz: f32,
+    max_hz: f32,
+    candidate_count: usize,
+) -> Vec<usize> {
+    let candidate_count = candidate_count.max(1);
+    let min_hz = min_hz
+        .min(max_hz)
+        .clamp(landscape.space.fmin.max(1e-6), landscape.space.fmax);
+    let max_hz = max_hz
+        .max(min_hz)
+        .clamp(min_hz, landscape.space.fmax.max(min_hz));
+    let mut weights = vec![0.0f32; landscape.space.n_bins()];
+    for (idx, &freq_hz) in landscape.space.centers_hz.iter().enumerate() {
+        if !freq_hz.is_finite() || freq_hz < min_hz || freq_hz > max_hz {
+            continue;
+        }
+        let weight = landscape.consonance_field_score[idx].max(0.0);
+        if weight.is_finite() {
+            weights[idx] = weight;
+        }
+    }
+
+    let mut cfg = PeakExtractConfig::normal();
+    cfg.max_peaks = Some(candidate_count.saturating_mul(2));
+    cfg.min_prominence_db_power = 0.5;
+    cfg.min_sep_erb = 0.10;
+    let mut bins: Vec<usize> = extract_peaks_density(&weights, &landscape.space, &cfg)
+        .into_iter()
+        .filter_map(|peak| (weights[peak.bin_idx] > 0.0).then_some(peak.bin_idx))
+        .collect();
+
+    bins.sort_by(|a, b| {
+        weights[*b]
+            .partial_cmp(&weights[*a])
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    if bins.len() < candidate_count {
+        let mut ranked_bins: Vec<usize> = weights
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, weight)| (*weight > 0.0).then_some(idx))
+            .collect();
+        ranked_bins.sort_by(|a, b| {
+            weights[*b]
+                .partial_cmp(&weights[*a])
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        for idx in ranked_bins {
+            if bins.contains(&idx) {
+                continue;
+            }
+            bins.push(idx);
+            if bins.len() >= candidate_count {
+                break;
+            }
+        }
+    }
+
+    bins.truncate(candidate_count);
+    bins
+}
+
+fn peak_bias_local_search_frequency(
+    landscape: &LandscapeFrame,
+    center_hz: f32,
+    min_hz: f32,
+    max_hz: f32,
+    config: RespawnPeakBiasConfig,
+) -> f32 {
+    let lo = min_hz.min(max_hz).max(MIN_FREQ_HZ);
+    let hi = max_hz.max(min_hz).clamp(lo, MAX_FREQ_HZ);
+    let center_hz = center_hz.clamp(lo, hi);
+    let radius_log2 = (config.local_search_radius_st.max(0.0)) / 12.0;
+    let step_log2 = (if config.local_search_step_st.is_finite() {
+        config.local_search_step_st.max(1e-3)
+    } else {
+        0.05
+    }) / 12.0;
+    if radius_log2 <= 0.0 {
+        return center_hz;
+    }
+    let center_log2 = center_hz.log2();
+    let min_log2 = lo.log2().max(center_log2 - radius_log2);
+    let max_log2 = hi.log2().min(center_log2 + radius_log2);
+    let mut best_freq = center_hz;
+    let mut best_score = landscape.evaluate_pitch_score(center_hz);
+    let mut cur = min_log2;
+    while cur <= max_log2 + 1e-6 {
+        let freq_hz = 2.0f32.powf(cur).clamp(lo, hi);
+        let score = landscape.evaluate_pitch_score(freq_hz);
+        if score.is_finite() && (!best_score.is_finite() || score > best_score) {
+            best_score = score;
+            best_freq = freq_hz;
+        }
+        cur += step_log2;
+    }
+    best_freq
+}
+
+fn choose_candidate_by_scene_score<R: Rng + ?Sized>(
+    landscape: &LandscapeFrame,
+    candidates: &[f32],
+    rng: &mut R,
+) -> Option<f32> {
+    if candidates.is_empty() {
+        return None;
+    }
+
+    let mut scene_scores = Vec::with_capacity(candidates.len());
+    let mut selection_weights = Vec::with_capacity(candidates.len());
+    for &freq_hz in candidates {
+        let scene_score = landscape.evaluate_pitch_score(freq_hz);
+        scene_scores.push(scene_score);
+        selection_weights.push(if scene_score.is_finite() {
+            scene_score.max(0.0)
+        } else {
+            0.0
+        });
+    }
+
+    let chosen_idx = if selection_weights
+        .iter()
+        .any(|weight| *weight > 0.0 && weight.is_finite())
+    {
+        if let Ok(dist) = WeightedIndex::new(&selection_weights) {
+            dist.sample(rng)
+        } else {
+            selection_weights
+                .iter()
+                .enumerate()
+                .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+                .map(|(idx, _)| idx)
+                .unwrap_or(0)
+        }
+    } else {
+        scene_scores
+            .iter()
+            .enumerate()
+            .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+            .map(|(idx, _)| idx)
+            .unwrap_or(0)
+    };
+
+    Some(candidates[chosen_idx])
 }
 
 fn is_rejected_target(freq_hz: f32, anchor_hz: f32, targets_st: &[f32], exclusion_st: f32) -> bool {
@@ -327,6 +515,14 @@ impl Population {
         let mag = (-2.0 * u1.ln()).sqrt();
         let theta = std::f32::consts::TAU * u2;
         mag * theta.cos()
+    }
+
+    fn background_turnover_seed(&self, substep_idx: usize) -> u64 {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        self.seed.hash(&mut hasher);
+        self.current_frame.hash(&mut hasher);
+        substep_idx.hash(&mut hasher);
+        hasher.finish() ^ 0xBADC_0FFE_E0DD_F00D
     }
 
     pub fn add_voice(&mut self, voice: Voice) {
@@ -764,6 +960,7 @@ impl Population {
                 respawn_settle_strategy: None,
                 respawn_capacity: 1,
                 respawn_min_c_level: None,
+                respawn_background_death_rate_per_sec: 0.0,
                 crowding_target_same: true,
                 crowding_target_other: false,
                 released: false,
@@ -792,12 +989,14 @@ impl Population {
         settle_strategy: Option<SpawnStrategy>,
         capacity: usize,
         min_c_level: Option<f32>,
+        background_death_rate_per_sec: f32,
     ) {
         if let Some(group) = self.groups.get_mut(&group_id) {
             group.respawn_policy = policy;
             group.respawn_settle_strategy = settle_strategy;
             group.respawn_capacity = capacity.max(1);
             group.respawn_min_c_level = min_c_level.map(|value| value.clamp(0.0, 1.0));
+            group.respawn_background_death_rate_per_sec = background_death_rate_per_sec.max(0.0);
         } else {
             warn!("SetRespawnPolicy: unknown group {group_id}");
         }
@@ -866,6 +1065,103 @@ impl Population {
         }
     }
 
+    fn peak_biased_respawn_candidate<R: Rng + ?Sized>(
+        &self,
+        group: &RuntimeGroupState,
+        selected_parent: Option<ParentCandidate>,
+        landscape: &LandscapeFrame,
+        rng: &mut R,
+        member_idx: usize,
+        config: RespawnPeakBiasConfig,
+    ) -> Option<(f32, Option<u64>, Option<u32>)> {
+        let (min_hz, max_hz) = group
+            .strategy
+            .as_ref()
+            .map(SpawnStrategy::freq_range_hz)
+            .unwrap_or_else(|| landscape.freq_bounds());
+        let lo = min_hz.clamp(MIN_FREQ_HZ, MAX_FREQ_HZ);
+        let hi = max_hz.clamp(lo, MAX_FREQ_HZ);
+        let candidate_count = group.respawn_capacity.max(1);
+        let candidate_bins = peak_bias_candidate_bins(landscape, lo, hi, candidate_count);
+
+        let fallback_freq = selected_parent
+            .map(|parent| parent.freq_hz.clamp(lo, hi))
+            .unwrap_or_else(|| self.random_respawn_frequency(group, landscape, rng, member_idx));
+
+        let chosen_freq = if candidate_bins.is_empty() {
+            fallback_freq
+        } else {
+            let scene_exp = if config.scene_score_exponent.is_finite() {
+                config.scene_score_exponent.max(0.0)
+            } else {
+                0.35
+            };
+            let parent_freq_hz = selected_parent
+                .map(|parent| parent.freq_hz.max(MIN_FREQ_HZ))
+                .filter(|freq_hz| freq_hz.is_finite() && *freq_hz > 0.0);
+            let mut scene_weights = Vec::with_capacity(candidate_bins.len());
+            let mut final_weights = Vec::with_capacity(candidate_bins.len());
+            for &bin_idx in &candidate_bins {
+                let center_hz = landscape.space.centers_hz[bin_idx].clamp(lo, hi);
+                let mut scene_weight = landscape.consonance_field_score[bin_idx].max(0.0);
+                if scene_exp > 0.0 {
+                    scene_weight = scene_weight.powf(scene_exp);
+                }
+                scene_weights.push(scene_weight);
+
+                let mut final_weight = scene_weight;
+                if let Some(parent_freq_hz) = parent_freq_hz {
+                    let delta_st = 12.0 * (center_hz / parent_freq_hz).log2();
+                    final_weight *= peak_bias_gaussian_weight(delta_st, config.proposal_sigma_st);
+                    if peak_bias_same_band(parent_freq_hz, center_hz, config.same_band_window_cents)
+                    {
+                        final_weight *= config.same_band_discount.clamp(0.0, 1.0);
+                    }
+                    if peak_bias_parent_octave(
+                        parent_freq_hz,
+                        center_hz,
+                        config.octave_window_cents,
+                    ) {
+                        final_weight *= config.octave_discount.clamp(0.0, 1.0);
+                    }
+                }
+                final_weights.push(final_weight.max(0.0));
+            }
+
+            if final_weights
+                .iter()
+                .all(|weight| !weight.is_finite() || *weight <= 0.0)
+            {
+                final_weights.clone_from(&scene_weights);
+            }
+
+            let chosen_idx = if let Ok(dist) = WeightedIndex::new(&final_weights) {
+                dist.sample(rng)
+            } else {
+                scene_weights
+                    .iter()
+                    .enumerate()
+                    .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
+                    .map(|(idx, _)| idx)
+                    .unwrap_or(0)
+            };
+            let center_hz = landscape.space.centers_hz[candidate_bins[chosen_idx]].clamp(lo, hi);
+            peak_bias_local_search_frequency(landscape, center_hz, lo, hi, config)
+        };
+
+        if let Some(min_c_level) = group.respawn_min_c_level
+            && landscape.evaluate_pitch_level(chosen_freq) < min_c_level
+        {
+            return None;
+        }
+
+        let (parent_id, parent_gen) = match selected_parent {
+            Some(parent) => (Some(parent.id), Some(parent.generation)),
+            None => (None, None),
+        };
+        Some((chosen_freq, parent_id, parent_gen))
+    }
+
     fn pick_respawn_candidate<R: Rng + ?Sized>(
         &self,
         group_id: u64,
@@ -875,6 +1171,26 @@ impl Population {
         rng: &mut R,
         member_idx: usize,
     ) -> Option<(f32, Option<u64>, Option<u32>)> {
+        if let RespawnPolicy::PeakBiased { config } = group.respawn_policy {
+            let pool = alive_by_group
+                .get(&group_id)
+                .map(Vec::as_slice)
+                .unwrap_or(&[]);
+            let selected_parent = if pool.is_empty() {
+                None
+            } else {
+                Some(pool[weighted_parent_select(pool, rng)])
+            };
+            return self.peak_biased_respawn_candidate(
+                group,
+                selected_parent,
+                landscape,
+                rng,
+                member_idx,
+                config,
+            );
+        }
+
         let capacity = group.respawn_capacity.max(1);
 
         // Step 1: Select parent ONCE before candidate generation
@@ -892,6 +1208,7 @@ impl Population {
                     Some(pool[weighted_parent_select(pool, rng)])
                 }
             }
+            RespawnPolicy::PeakBiased { .. } => unreachable!("handled above"),
         };
 
         // Step 2: Generate candidates (all share same parent lineage)
@@ -930,21 +1247,24 @@ impl Population {
                             self.random_respawn_frequency(group, landscape, rng, member_idx + idx)
                         }
                     }
+                    RespawnPolicy::PeakBiased { .. } => unreachable!("handled above"),
                 },
             };
             candidates.push(freq);
         }
 
-        // Step 3: Select best by consonance
-        let best_freq = *candidates.iter().max_by(|a, b| {
-            landscape
-                .evaluate_pitch_level(**a)
-                .partial_cmp(&landscape.evaluate_pitch_level(**b))
-                .unwrap_or(std::cmp::Ordering::Equal)
-        })?;
+        let chosen_freq = match group.respawn_policy {
+            RespawnPolicy::Random => choose_candidate_by_scene_score(landscape, &candidates, rng)?,
+            _ => *candidates.iter().max_by(|a, b| {
+                landscape
+                    .evaluate_pitch_level(**a)
+                    .partial_cmp(&landscape.evaluate_pitch_level(**b))
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })?,
+        };
 
         if let Some(min_c_level) = group.respawn_min_c_level
-            && landscape.evaluate_pitch_level(best_freq) < min_c_level
+            && landscape.evaluate_pitch_level(chosen_freq) < min_c_level
         {
             return None;
         }
@@ -954,7 +1274,7 @@ impl Population {
             Some(p) => (Some(p.id), Some(p.generation)),
             None => (None, None),
         };
-        Some((best_freq, parent_id, parent_gen))
+        Some((chosen_freq, parent_id, parent_gen))
     }
 
     fn respawn_on_new_deaths(&mut self, scenario_finished: bool, landscape: &LandscapeFrame) {
@@ -1071,6 +1391,7 @@ impl Population {
                 settle_strategy,
                 capacity,
                 min_c_level,
+                background_death_rate_per_sec,
             } => {
                 self.set_group_respawn_policy(
                     group_id,
@@ -1078,6 +1399,7 @@ impl Population {
                     settle_strategy,
                     capacity,
                     min_c_level,
+                    background_death_rate_per_sec,
                 );
             }
             Action::SetGroupCrowdingTarget {
@@ -1256,6 +1578,7 @@ impl Population {
         let mut rhythms = landscape.rhythm;
         let global_coupling = self.global_coupling;
         for substep_idx in 0..steps {
+            self.apply_background_turnover(dt_step_sec, substep_idx);
             let crowding_active = self.crowding_active();
             match self.control_update_mode {
                 ControlUpdateMode::SnapshotPhased => {
@@ -1530,6 +1853,38 @@ impl Population {
         }
     }
 
+    fn apply_background_turnover(&mut self, dt_step_sec: f32, substep_idx: usize) {
+        if !dt_step_sec.is_finite() || dt_step_sec <= 0.0 {
+            return;
+        }
+        let mut rng = SmallRng::seed_from_u64(self.background_turnover_seed(substep_idx));
+        let mut dying_ids = Vec::new();
+        for voice in &self.voices {
+            if !voice.is_alive() || voice.remove_pending {
+                continue;
+            }
+            let Some(group) = self.groups.get(&voice.metadata.group_id) else {
+                continue;
+            };
+            if group.released {
+                continue;
+            }
+            let rate = group.respawn_background_death_rate_per_sec;
+            if !rate.is_finite() || rate <= 0.0 {
+                continue;
+            }
+            let hazard = (rate * dt_step_sec).clamp(0.0, 1.0);
+            if hazard > 0.0 && rng.random::<f32>() < hazard {
+                dying_ids.push(voice.id());
+            }
+        }
+        for id in dying_ids {
+            if let Some(voice) = self.voices.iter_mut().find(|voice| voice.id() == id) {
+                voice.start_remove_fade(0.0);
+            }
+        }
+    }
+
     pub fn cleanup_dead(
         &mut self,
         current_frame: u64,
@@ -1658,7 +2013,10 @@ mod tests {
     use crate::life::control::{ControlUpdate, PitchMode, VoiceControl};
     use crate::life::lifecycle::LifecycleConfig;
     use crate::life::phonation_engine::{OnsetEvent, OnsetKick, ToneCmd};
-    use crate::life::scenario::{ArticulationCoreConfig, RespawnPolicy, SpawnSpec, SpawnStrategy};
+    use crate::life::scenario::{
+        Action, ArticulationCoreConfig, RespawnPeakBiasConfig, RespawnPolicy, SpawnSpec,
+        SpawnStrategy,
+    };
     use crate::life::sound::{BodyKind, BodySnapshot};
     use crate::life::world_model::WorldModel;
     use rand::{Rng, SeedableRng};
@@ -1730,6 +2088,36 @@ mod tests {
         }
     }
 
+    fn sustain_spawn_spec_with_freq(freq: f32) -> SpawnSpec {
+        let mut control = VoiceControl::default();
+        control.pitch.freq = freq;
+        SpawnSpec {
+            control,
+            articulation: ArticulationCoreConfig::Entrain {
+                lifecycle: LifecycleConfig::Sustain {
+                    initial_energy: 1.0,
+                    metabolism_rate: 0.0,
+                    recharge_rate: Some(0.0),
+                    action_cost: Some(0.0),
+                    continuous_recharge_rate: None,
+                    continuous_recharge_score_low: None,
+                    continuous_recharge_score_high: None,
+                    dissonance_cost: None,
+                    envelope: crate::life::scenario::EnvelopeConfig::default(),
+                },
+                rhythm_freq: None,
+                rhythm_sensitivity: None,
+                rhythm_coupling: crate::life::scenario::RhythmCouplingMode::TemporalOnly,
+                rhythm_reward: None,
+                breath_gain_init: None,
+                k_omega: None,
+                base_sigma: None,
+                gate_thresholds: None,
+                energy_cap: None,
+            },
+        }
+    }
+
     fn runtime_landscape() -> LandscapeFrame {
         LandscapeFrame::new(Log2Space::new(55.0, 1760.0, 24))
     }
@@ -1741,6 +2129,25 @@ mod tests {
         for (idx, &bin_log2) in landscape.space.centers_log2.iter().enumerate() {
             let d_cents = (bin_log2 - center_log2).abs() * 1200.0;
             let score = (-(d_cents * d_cents) / (2.0 * width_cents * width_cents)).exp();
+            landscape.consonance_field_score[idx] = score;
+            landscape.consonance_field_level[idx] = score.clamp(0.0, 1.0);
+        }
+        landscape.rhythm.theta.phase = 0.1;
+        landscape.rhythm.theta.mag = 1.0;
+        landscape
+    }
+
+    fn peak_bias_landscape() -> LandscapeFrame {
+        let mut landscape = LandscapeFrame::new(Log2Space::new(220.0, 880.0, 96));
+        let peak_a_log2 = 330.0f32.log2();
+        let peak_b_log2 = 660.0f32.log2();
+        let sigma_cents = 35.0f32;
+        for (idx, &bin_log2) in landscape.space.centers_log2.iter().enumerate() {
+            let da = (bin_log2 - peak_a_log2).abs() * 1200.0;
+            let db = (bin_log2 - peak_b_log2).abs() * 1200.0;
+            let peak_a = 0.85 * (-(da * da) / (2.0 * sigma_cents * sigma_cents)).exp();
+            let peak_b = 1.00 * (-(db * db) / (2.0 * sigma_cents * sigma_cents)).exp();
+            let score = peak_a.max(peak_b);
             landscape.consonance_field_score[idx] = score;
             landscape.consonance_field_level[idx] = score.clamp(0.0, 1.0);
         }
@@ -2344,6 +2751,7 @@ mod tests {
                 settle_strategy: None,
                 capacity: 1,
                 min_c_level: None,
+                background_death_rate_per_sec: 0.0,
             },
             &landscape,
             None,
@@ -2362,6 +2770,48 @@ mod tests {
         assert!(
             !pop.voices.is_empty(),
             "population should not collapse with random respawn"
+        );
+    }
+
+    #[test]
+    fn background_turnover_replaces_member_via_respawn() {
+        let mut pop = test_pop();
+        pop.set_seed(61);
+        let landscape = runtime_landscape();
+        pop.apply_action(
+            Action::Spawn {
+                group_id: 81,
+                ids: vec![810],
+                spec: sustain_spawn_spec_with_freq(220.0),
+                strategy: None,
+            },
+            &landscape,
+            None,
+        );
+        pop.apply_action(
+            Action::SetRespawnPolicy {
+                group_id: 81,
+                policy: RespawnPolicy::Random,
+                settle_strategy: None,
+                capacity: 1,
+                min_c_level: None,
+                background_death_rate_per_sec: 10_000.0,
+            },
+            &landscape,
+            None,
+        );
+
+        step_population(&mut pop, 0, 0.01, &landscape);
+
+        assert_eq!(
+            pop.voices.len(),
+            1,
+            "respawn should preserve population size"
+        );
+        assert_ne!(
+            pop.voices[0].id(),
+            810,
+            "background turnover should replace the member"
         );
     }
 
@@ -2387,6 +2837,7 @@ mod tests {
                 settle_strategy: None,
                 capacity: 1,
                 min_c_level: None,
+                background_death_rate_per_sec: 0.0,
             },
             &landscape,
             None,
@@ -2433,6 +2884,7 @@ mod tests {
                 settle_strategy: None,
                 capacity: 1,
                 min_c_level: None,
+                background_death_rate_per_sec: 0.0,
             },
             &landscape,
             None,
@@ -2484,6 +2936,7 @@ mod tests {
                 settle_strategy: None,
                 capacity: 1,
                 min_c_level: None,
+                background_death_rate_per_sec: 0.0,
             },
             &landscape,
             None,
@@ -2543,6 +2996,7 @@ mod tests {
                 settle_strategy: None,
                 capacity: 1,
                 min_c_level: None,
+                background_death_rate_per_sec: 0.0,
             },
             &landscape,
             None,
@@ -2605,6 +3059,7 @@ mod tests {
                 settle_strategy: None,
                 capacity: 1,
                 min_c_level: None,
+                background_death_rate_per_sec: 0.0,
             },
             &landscape,
             None,
@@ -2658,6 +3113,7 @@ mod tests {
                 settle_strategy: None,
                 capacity: 1,
                 min_c_level: None,
+                background_death_rate_per_sec: 0.0,
             },
             &landscape,
             None,
@@ -2718,6 +3174,7 @@ mod tests {
                 settle_strategy: None,
                 capacity: 1,
                 min_c_level: None,
+                background_death_rate_per_sec: 0.0,
             },
             &landscape,
             None,
@@ -2745,6 +3202,100 @@ mod tests {
         assert!(
             delta_oct < 0.05,
             "child should stay near parent in log2 space"
+        );
+    }
+
+    #[test]
+    fn peak_biased_respawn_prefers_parent_nearby_peak_family() {
+        let mut pop = test_pop();
+        pop.set_seed(59);
+        let landscape = peak_bias_landscape();
+
+        let mut spec = spawn_spec_with_freq(220.0);
+        spec.control.pitch.mode = PitchMode::Lock;
+        pop.apply_action(
+            Action::Spawn {
+                group_id: 13,
+                ids: vec![130, 131],
+                spec,
+                strategy: Some(SpawnStrategy::Linear {
+                    start_freq: 250.0,
+                    end_freq: 700.0,
+                }),
+            },
+            &landscape,
+            None,
+        );
+        pop.apply_action(
+            Action::SetRespawnPolicy {
+                group_id: 13,
+                policy: RespawnPolicy::PeakBiased {
+                    config: RespawnPeakBiasConfig::default(),
+                },
+                settle_strategy: None,
+                capacity: 8,
+                min_c_level: None,
+                background_death_rate_per_sec: 0.0,
+            },
+            &landscape,
+            None,
+        );
+
+        if let Some(parent) = pop.voices.iter_mut().find(|v| v.id() == 131) {
+            parent.force_set_pitch_log2(300.0f32.log2());
+        }
+        force_dead(&mut pop, 130);
+        pop.cleanup_dead(0, 0.01, false, &landscape);
+
+        let child = pop
+            .voices
+            .iter()
+            .find(|v| v.id() != 131)
+            .expect("child exists");
+        let child_freq = child.body.base_freq_hz();
+        let near_parent_peak = (child_freq.log2() - 330.0f32.log2()).abs();
+        let far_peak = (child_freq.log2() - 660.0f32.log2()).abs();
+        assert!(
+            near_parent_peak < far_peak,
+            "child should stay closer to the parent-aligned peak family"
+        );
+    }
+
+    #[test]
+    fn random_respawn_capacity_uses_weighted_scene_scores() {
+        let mut landscape = LandscapeFrame::new(Log2Space::new(220.0, 880.0, 96));
+        let candidate_bins = [12usize, 36usize, 60usize];
+        let candidate_freqs = candidate_bins.map(|idx| landscape.space.centers_hz[idx]);
+        let candidate_scores = [0.0f32, 0.5, 2.0];
+
+        for (bin_idx, score) in candidate_bins.into_iter().zip(candidate_scores) {
+            landscape.consonance_field_score[bin_idx] = score;
+            landscape.consonance_field_level[bin_idx] = score.clamp(0.0, 1.0);
+        }
+
+        let mut rng = rand::rngs::StdRng::seed_from_u64(20260331);
+        let mut counts = [0usize; 3];
+        for _ in 0..4096 {
+            let chosen = choose_candidate_by_scene_score(&landscape, &candidate_freqs, &mut rng)
+                .expect("candidate should be selected");
+            let idx = candidate_freqs
+                .iter()
+                .position(|freq_hz| (*freq_hz - chosen).abs() <= 1e-6)
+                .expect("chosen candidate should come from the candidate list");
+            counts[idx] += 1;
+        }
+
+        assert_eq!(
+            counts[0], 0,
+            "zero-score candidates should not be sampled when positive weights exist"
+        );
+        assert!(
+            counts[1] > 0,
+            "lower-score positive candidates should remain reachable"
+        );
+        assert!(
+            counts[2] > counts[1],
+            "higher scene scores should win more often than lower ones"
         );
     }
 

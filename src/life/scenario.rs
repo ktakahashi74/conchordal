@@ -579,6 +579,36 @@ pub enum RespawnPolicy {
     Hereditary {
         sigma_oct: f32,
     },
+    PeakBiased {
+        config: RespawnPeakBiasConfig,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RespawnPeakBiasConfig {
+    pub proposal_sigma_st: f32,
+    pub same_band_discount: f32,
+    pub same_band_window_cents: f32,
+    pub octave_discount: f32,
+    pub octave_window_cents: f32,
+    pub local_search_radius_st: f32,
+    pub local_search_step_st: f32,
+    pub scene_score_exponent: f32,
+}
+
+impl Default for RespawnPeakBiasConfig {
+    fn default() -> Self {
+        Self {
+            proposal_sigma_st: 9.0,
+            same_band_discount: 0.08,
+            same_band_window_cents: 35.0,
+            octave_discount: 0.20,
+            octave_window_cents: 35.0,
+            local_search_radius_st: 0.50,
+            local_search_step_st: 0.05,
+            scene_score_exponent: 0.35,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -605,6 +635,7 @@ pub enum Action {
         settle_strategy: Option<SpawnStrategy>,
         capacity: usize,
         min_c_level: Option<f32>,
+        background_death_rate_per_sec: f32,
     },
     SetGroupCrowdingTarget {
         group_id: u64,
@@ -637,12 +668,13 @@ impl fmt::Display for Action {
                 group_id,
                 policy,
                 capacity,
+                background_death_rate_per_sec,
                 ..
             } => {
                 write!(
                     f,
-                    "SetRespawnPolicy group={} policy={:?} capacity={}",
-                    group_id, policy, capacity
+                    "SetRespawnPolicy group={} policy={:?} capacity={} background_death_rate_per_sec={:.3}",
+                    group_id, policy, capacity, background_death_rate_per_sec
                 )
             }
             Action::SetGroupCrowdingTarget {

@@ -16,9 +16,9 @@ use super::control::{
 use super::lifecycle::LifecycleConfig;
 use super::scenario::{
     Action, ArticulationCoreConfig, ControlUpdateMode, DurationSpec, EnvelopeConfig,
-    FieldDurationSpec, GateThresholds, MetabolismRhythmReward, PhonationSpec, RespawnPolicy,
-    RhythmCouplingMode, RhythmRewardMetric, ScaffoldConfig, Scenario, SceneMarker, SpawnSpec,
-    SpawnStrategy, TimedEvent, WhenSpec,
+    FieldDurationSpec, GateThresholds, MetabolismRhythmReward, PhonationSpec,
+    RespawnPeakBiasConfig, RespawnPolicy, RhythmCouplingMode, RhythmRewardMetric, ScaffoldConfig,
+    Scenario, SceneMarker, SpawnSpec, SpawnStrategy, TimedEvent, WhenSpec,
 };
 
 const DEFAULT_RELEASE_SEC: f32 = 0.05;
@@ -85,6 +85,7 @@ struct SpeciesSpec {
     respawn_settle_strategy: Option<SpawnStrategy>,
     respawn_capacity: usize,
     respawn_min_c_level: Option<f32>,
+    respawn_background_death_rate_per_sec: f32,
     crowding_target_same: bool,
     crowding_target_other: bool,
     brain: BrainKind,
@@ -94,6 +95,8 @@ struct SpeciesSpec {
     recharge_rate: Option<f32>,
     action_cost: Option<f32>,
     continuous_recharge_rate: Option<f32>,
+    continuous_recharge_score_low: Option<f32>,
+    continuous_recharge_score_high: Option<f32>,
     dissonance_cost: Option<f32>,
     adsr: Option<AdsrSpec>,
     rhythm_coupling: RhythmCouplingMode,
@@ -116,6 +119,7 @@ impl SpeciesSpec {
             respawn_settle_strategy: None,
             respawn_capacity: 1,
             respawn_min_c_level: None,
+            respawn_background_death_rate_per_sec: 0.0,
             crowding_target_same: true,
             crowding_target_other: false,
             brain: BrainKind::Entrain,
@@ -125,6 +129,8 @@ impl SpeciesSpec {
             recharge_rate: None,
             action_cost: None,
             continuous_recharge_rate: None,
+            continuous_recharge_score_low: None,
+            continuous_recharge_score_high: None,
             dissonance_cost: None,
             adsr: None,
             rhythm_coupling: RhythmCouplingMode::TemporalOnly,
@@ -164,6 +170,8 @@ impl SpeciesSpec {
             || self.recharge_rate.is_some()
             || self.action_cost.is_some()
             || self.continuous_recharge_rate.is_some()
+            || self.continuous_recharge_score_low.is_some()
+            || self.continuous_recharge_score_high.is_some()
             || self.dissonance_cost.is_some()
             || self.adsr.is_some()
         {
@@ -174,6 +182,8 @@ impl SpeciesSpec {
                 recharge_rate: self.recharge_rate.map(|value| value.max(0.0)),
                 action_cost: self.action_cost.map(|value| value.max(0.0)),
                 continuous_recharge_rate: self.continuous_recharge_rate.map(|value| value.max(0.0)),
+                continuous_recharge_score_low: self.continuous_recharge_score_low,
+                continuous_recharge_score_high: self.continuous_recharge_score_high,
                 dissonance_cost: self.dissonance_cost,
                 envelope: self.envelope_from_adsr(),
             }
@@ -550,6 +560,15 @@ impl SpeciesSpec {
         self.continuous_recharge_rate = Some(value.max(0.0));
     }
 
+    fn set_survival_signal(&mut self, low: f32, high: f32) {
+        if !low.is_finite() || !high.is_finite() {
+            warn!("survival_signal() expects finite thresholds");
+            return;
+        }
+        self.continuous_recharge_score_low = Some(low);
+        self.continuous_recharge_score_high = Some(high);
+    }
+
     fn set_dissonance_cost(&mut self, value: f32) {
         self.dissonance_cost = Some(value.max(0.0));
     }
@@ -580,6 +599,12 @@ impl SpeciesSpec {
         self.respawn_policy = RespawnPolicy::Hereditary { sigma_oct };
     }
 
+    fn set_respawn_peak_bias(&mut self) {
+        self.respawn_policy = RespawnPolicy::PeakBiased {
+            config: RespawnPeakBiasConfig::default(),
+        };
+    }
+
     fn set_respawn_settle_strategy(&mut self, strategy: SpawnStrategy) {
         self.respawn_settle_strategy = Some(strategy);
     }
@@ -595,6 +620,10 @@ impl SpeciesSpec {
 
     fn set_respawn_min_c_level(&mut self, value: f32) {
         self.respawn_min_c_level = Some(value.clamp(0.0, 1.0));
+    }
+
+    fn set_respawn_background_death_rate(&mut self, value: f32) {
+        self.respawn_background_death_rate_per_sec = value.max(0.0);
     }
 
     fn set_rhythm_coupling(&mut self, mode: &str) {
@@ -874,6 +903,9 @@ impl ScriptContext {
                             settle_strategy: group.spec.respawn_settle_strategy.clone(),
                             capacity: group.spec.respawn_capacity.max(1),
                             min_c_level: group.spec.respawn_min_c_level,
+                            background_death_rate_per_sec: group
+                                .spec
+                                .respawn_background_death_rate_per_sec,
                         });
                     }
                 }
@@ -1040,6 +1072,7 @@ impl ScriptContext {
 type SpeciesNumericSetter = fn(&mut SpeciesSpec, f32);
 type SpeciesPairNumericSetter = fn(&mut SpeciesSpec, f32, f32);
 type GroupSpecNumericSetter = fn(&mut SpeciesSpec, f32);
+type GroupSpecPairNumericSetter = fn(&mut SpeciesSpec, f32, f32);
 type GroupPatchNumericSetter = fn(&mut ControlUpdate, f32);
 type GroupDraftHook = fn(&mut GroupState);
 
@@ -1196,6 +1229,89 @@ fn register_group_draft_numeric_overloads(
             };
             match group.status {
                 GroupStatus::Draft => spec_setter(&mut group.spec, value as f32),
+                _ => ctx.warn_live_builder(handle.id, name),
+            }
+            Ok(handle)
+        },
+    );
+}
+
+fn register_group_draft_pair_numeric_overloads(
+    engine: &mut Engine,
+    ctx: Arc<Mutex<ScriptContext>>,
+    name: &'static str,
+    spec_setter: GroupSpecPairNumericSetter,
+) {
+    let ctx_ff = ctx.clone();
+    engine.register_fn(
+        name,
+        move |handle: GroupHandle,
+              first: FLOAT,
+              second: FLOAT|
+              -> Result<GroupHandle, Box<EvalAltResult>> {
+            let mut ctx = ctx_ff.lock().expect("lock script context");
+            let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                warn!("{name} ignored for unknown group {}", handle.id);
+                return Ok(handle);
+            };
+            match group.status {
+                GroupStatus::Draft => spec_setter(&mut group.spec, first as f32, second as f32),
+                _ => ctx.warn_live_builder(handle.id, name),
+            }
+            Ok(handle)
+        },
+    );
+    let ctx_if = ctx.clone();
+    engine.register_fn(
+        name,
+        move |handle: GroupHandle,
+              first: INT,
+              second: FLOAT|
+              -> Result<GroupHandle, Box<EvalAltResult>> {
+            let mut ctx = ctx_if.lock().expect("lock script context");
+            let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                warn!("{name} ignored for unknown group {}", handle.id);
+                return Ok(handle);
+            };
+            match group.status {
+                GroupStatus::Draft => spec_setter(&mut group.spec, first as f32, second as f32),
+                _ => ctx.warn_live_builder(handle.id, name),
+            }
+            Ok(handle)
+        },
+    );
+    let ctx_fi = ctx.clone();
+    engine.register_fn(
+        name,
+        move |handle: GroupHandle,
+              first: FLOAT,
+              second: INT|
+              -> Result<GroupHandle, Box<EvalAltResult>> {
+            let mut ctx = ctx_fi.lock().expect("lock script context");
+            let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                warn!("{name} ignored for unknown group {}", handle.id);
+                return Ok(handle);
+            };
+            match group.status {
+                GroupStatus::Draft => spec_setter(&mut group.spec, first as f32, second as f32),
+                _ => ctx.warn_live_builder(handle.id, name),
+            }
+            Ok(handle)
+        },
+    );
+    engine.register_fn(
+        name,
+        move |handle: GroupHandle,
+              first: INT,
+              second: INT|
+              -> Result<GroupHandle, Box<EvalAltResult>> {
+            let mut ctx = ctx.lock().expect("lock script context");
+            let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                warn!("{name} ignored for unknown group {}", handle.id);
+                return Ok(handle);
+            };
+            match group.status {
+                GroupStatus::Draft => spec_setter(&mut group.spec, first as f32, second as f32),
                 _ => ctx.warn_live_builder(handle.id, name),
             }
             Ok(handle)
@@ -1752,6 +1868,11 @@ impl ScriptHost {
             "continuous_recharge_rate",
             SpeciesSpec::set_continuous_recharge_rate,
         );
+        register_species_pair_numeric_overloads(
+            &mut engine,
+            "survival_signal",
+            SpeciesSpec::set_survival_signal,
+        );
         register_species_numeric_overloads(
             &mut engine,
             "dissonance_cost",
@@ -1837,6 +1958,10 @@ impl ScriptHost {
                 species
             },
         );
+        engine.register_fn("respawn_peak_bias", |mut species: SpeciesHandle| {
+            species.spec.set_respawn_peak_bias();
+            species
+        });
         register_species_numeric_overloads(
             &mut engine,
             "respawn_capacity",
@@ -1846,6 +1971,11 @@ impl ScriptHost {
             &mut engine,
             "respawn_min_c_level",
             SpeciesSpec::set_respawn_min_c_level,
+        );
+        register_species_numeric_overloads(
+            &mut engine,
+            "respawn_background_death_rate",
+            SpeciesSpec::set_respawn_background_death_rate,
         );
         engine.register_fn(
             "respawn_settle",
@@ -2938,6 +3068,12 @@ impl ScriptHost {
             "continuous_recharge_rate",
             SpeciesSpec::set_continuous_recharge_rate,
         );
+        register_group_draft_pair_numeric_overloads(
+            &mut engine,
+            ctx.clone(),
+            "survival_signal",
+            SpeciesSpec::set_survival_signal,
+        );
         register_group_draft_numeric_overloads(
             &mut engine,
             ctx.clone(),
@@ -3173,6 +3309,31 @@ impl ScriptHost {
                 Ok(handle)
             },
         );
+        let ctx_for_group_respawn_peak_bias = ctx.clone();
+        engine.register_fn(
+            "respawn_peak_bias",
+            move |handle: GroupHandle| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_respawn_peak_bias
+                    .lock()
+                    .expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!("respawn_peak_bias ignored for unknown group {}", handle.id);
+                    return Ok(handle);
+                };
+                match group.status {
+                    GroupStatus::Draft => {
+                        let policy = RespawnPolicy::PeakBiased {
+                            config: RespawnPeakBiasConfig::default(),
+                        };
+                        group.respawn_policy = policy;
+                        group.spec.respawn_policy = policy;
+                    }
+                    GroupStatus::Live => ctx.warn_live_builder(handle.id, "respawn_peak_bias"),
+                    _ => ctx.warn_live_builder(handle.id, "respawn_peak_bias"),
+                }
+                Ok(handle)
+            },
+        );
         register_group_draft_numeric_overloads(
             &mut engine,
             ctx.clone(),
@@ -3184,6 +3345,12 @@ impl ScriptHost {
             ctx.clone(),
             "respawn_min_c_level",
             SpeciesSpec::set_respawn_min_c_level,
+        );
+        register_group_draft_numeric_overloads(
+            &mut engine,
+            ctx.clone(),
+            "respawn_background_death_rate",
+            SpeciesSpec::set_respawn_background_death_rate,
         );
         let ctx_for_group_respawn_settle = ctx.clone();
         engine.register_fn(
@@ -4858,6 +5025,34 @@ mod tests {
     }
 
     #[test]
+    fn group_draft_respawn_peak_bias_emits_runtime_action() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            let g = create(sine, 1).respawn_peak_bias();
+            flush();
+        "#,
+        );
+        let mut saw_policy = false;
+        for action in scenario
+            .events
+            .iter()
+            .flat_map(|event| event.actions.iter())
+        {
+            if let Action::SetRespawnPolicy {
+                group_id,
+                policy: RespawnPolicy::PeakBiased { config },
+                ..
+            } = action
+            {
+                assert_eq!(*group_id, 1);
+                assert_eq!(*config, RespawnPeakBiasConfig::default());
+                saw_policy = true;
+            }
+        }
+        assert!(saw_policy, "expected SetRespawnPolicy(PeakBiased)");
+    }
+
+    #[test]
     fn group_respawn_tier2_settings_reach_runtime_action() {
         let (scenario, _warnings) = run_script(
             r#"
@@ -4865,7 +5060,8 @@ mod tests {
                 .respawn_hereditary(0.03)
                 .respawn_settle(consonance(220.0).range(0.75, 1.5).min_dist(0.5))
                 .respawn_capacity(3)
-                .respawn_min_c_level(0.4);
+                .respawn_min_c_level(0.4)
+                .respawn_background_death_rate(0.03);
             flush();
         "#,
         );
@@ -4881,12 +5077,14 @@ mod tests {
                 settle_strategy,
                 capacity,
                 min_c_level,
+                background_death_rate_per_sec,
             } = action
             {
                 assert_eq!(*group_id, 1);
                 assert_eq!(*policy, RespawnPolicy::Hereditary { sigma_oct: 0.03 });
                 assert_eq!(*capacity, 3);
                 assert_eq!(*min_c_level, Some(0.4));
+                assert!((*background_death_rate_per_sec - 0.03).abs() <= 1e-6);
                 assert!(matches!(
                     settle_strategy,
                     Some(SpawnStrategy::Consonance {
@@ -4972,6 +5170,44 @@ mod tests {
         assert!((control.pitch.freq - 330.0).abs() <= 1e-6);
         assert_eq!(control.pitch.mode, PitchMode::Lock);
         assert!((control.body.timbre.brightness - 0.7).abs() <= 1e-6);
+    }
+
+    #[test]
+    fn spawn_payload_preserves_survival_signal_window() {
+        let (scenario, _warnings) = run_script(
+            r#"
+            create(
+                harmonic
+                    .metabolism(0.1)
+                    .continuous_recharge_rate(0.3)
+                    .survival_signal(0.3, 0.8),
+                1
+            );
+            flush();
+        "#,
+        );
+        let spawn = scenario
+            .events
+            .iter()
+            .flat_map(|event| &event.actions)
+            .find_map(|action| match action {
+                Action::Spawn { spec, .. } => Some(spec.clone()),
+                _ => None,
+            })
+            .expect("spawn action");
+        let ArticulationCoreConfig::Entrain { lifecycle, .. } = spawn.articulation else {
+            panic!("expected entrain articulation");
+        };
+        let LifecycleConfig::Sustain {
+            continuous_recharge_score_low,
+            continuous_recharge_score_high,
+            ..
+        } = lifecycle
+        else {
+            panic!("expected sustain lifecycle");
+        };
+        assert_eq!(continuous_recharge_score_low, Some(0.3));
+        assert_eq!(continuous_recharge_score_high, Some(0.8));
     }
 
     #[test]

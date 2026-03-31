@@ -1355,7 +1355,8 @@ fn worker_loop(
                 info!("[t={:.6}] WAV closed.", current_time);
             }
 
-            let must_send_ui = conductor.is_done() || pop.abort_requested;
+            let must_send_ui =
+                conductor.is_done() || pop.abort_requested || scenario_end_tick.is_some();
             let should_send_ui = must_send_ui || last_ui_update.elapsed() >= ui_min_interval;
 
             if should_send_ui {

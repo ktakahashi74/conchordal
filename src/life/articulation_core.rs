@@ -68,12 +68,19 @@ impl ArticulationWrapper {
 
     pub fn process(
         &mut self,
-        consonance: f32,
+        consonance_level: f32,
+        selection_score: f32,
         rhythms: &NeuralRhythms,
         dt: f32,
         global_coupling: f32,
     ) -> ArticulationSignal {
-        self.core.process(consonance, rhythms, dt, global_coupling)
+        self.core.process(
+            consonance_level,
+            selection_score,
+            rhythms,
+            dt,
+            global_coupling,
+        )
     }
 
     pub fn is_alive(&self) -> bool {
@@ -122,7 +129,8 @@ impl ArticulationWrapper {
 pub trait ArticulationCore {
     fn process(
         &mut self,
-        consonance: f32,
+        consonance_level: f32,
+        selection_score: f32,
         rhythms: &NeuralRhythms,
         dt: f32,
         global_coupling: f32,
@@ -202,6 +210,7 @@ pub struct KuramotoCore {
     pub state: ArticulationState,
     pub attack_step: f32,
     pub decay_rate: f32,
+    pub sustain_level: f32,
     pub retrigger: bool,
     pub noise_1f: PinkNoise,
     pub base_sigma: f32,
@@ -215,6 +224,8 @@ pub struct KuramotoCore {
     pub beta_threshold: f32,
     pub autonomous_attack: bool,
     pub continuous_recharge_per_sec: f32,
+    pub continuous_recharge_score_low: Option<f32>,
+    pub continuous_recharge_score_high: Option<f32>,
     pub dissonance_cost: f32,
     metrics: KuramotoMetrics,
     telemetry: KuramotoTelemetry,
@@ -385,6 +396,8 @@ impl KuramotoCore {
             action_cost_per_attack: self.action_cost,
             recharge_per_attack: self.recharge_rate,
             continuous_recharge_per_sec: self.continuous_recharge_per_sec,
+            continuous_recharge_score_low: self.continuous_recharge_score_low,
+            continuous_recharge_score_high: self.continuous_recharge_score_high,
             dissonance_cost: self.dissonance_cost,
         }
     }
@@ -558,14 +571,19 @@ impl KuramotoCore {
 impl ArticulationCore for KuramotoCore {
     fn process(
         &mut self,
-        consonance: f32,
+        consonance_level: f32,
+        selection_score: f32,
         rhythms: &NeuralRhythms,
         dt: f32,
         global_coupling: f32,
     ) -> ArticulationSignal {
         let policy = self.metabolism_policy();
-        self.apply_energy_delta(policy.basal_delta(dt, consonance));
-        self.apply_energy_delta(policy.continuous_recharge_delta(dt, consonance));
+        self.apply_energy_delta(policy.basal_delta(dt, consonance_level));
+        self.apply_energy_delta(policy.continuous_recharge_delta(
+            dt,
+            consonance_level,
+            selection_score,
+        ));
 
         let theta = ThetaView {
             phase: rhythms.theta.phase,
@@ -605,7 +623,7 @@ impl ArticulationCore for KuramotoCore {
             let recharge_multiplier =
                 recharge_multiplier_from_reward(self.rhythm_reward, attack_metric);
             let delta =
-                policy.attack_delta_with_recharge_multiplier(consonance, recharge_multiplier);
+                policy.attack_delta_with_recharge_multiplier(consonance_level, recharge_multiplier);
             self.apply_energy_delta(delta);
         }
         self.update_envelope(dt);
@@ -643,7 +661,8 @@ pub struct SequencedCore {
 impl ArticulationCore for SequencedCore {
     fn process(
         &mut self,
-        _consonance: f32,
+        _consonance_level: f32,
+        _selection_score: f32,
         rhythms: &NeuralRhythms,
         dt: f32,
         _global_coupling: f32,
@@ -673,7 +692,8 @@ pub struct DroneCore {
 impl ArticulationCore for DroneCore {
     fn process(
         &mut self,
-        _consonance: f32,
+        _consonance_level: f32,
+        _selection_score: f32,
         rhythms: &NeuralRhythms,
         dt: f32,
         _global_coupling: f32,
@@ -707,15 +727,34 @@ pub enum AnyArticulationCore {
 impl ArticulationCore for AnyArticulationCore {
     fn process(
         &mut self,
-        consonance: f32,
+        consonance_level: f32,
+        selection_score: f32,
         rhythms: &NeuralRhythms,
         dt: f32,
         global_coupling: f32,
     ) -> ArticulationSignal {
         match self {
-            AnyArticulationCore::Entrain(c) => c.process(consonance, rhythms, dt, global_coupling),
-            AnyArticulationCore::Seq(c) => c.process(consonance, rhythms, dt, global_coupling),
-            AnyArticulationCore::Drone(c) => c.process(consonance, rhythms, dt, global_coupling),
+            AnyArticulationCore::Entrain(c) => c.process(
+                consonance_level,
+                selection_score,
+                rhythms,
+                dt,
+                global_coupling,
+            ),
+            AnyArticulationCore::Seq(c) => c.process(
+                consonance_level,
+                selection_score,
+                rhythms,
+                dt,
+                global_coupling,
+            ),
+            AnyArticulationCore::Drone(c) => c.process(
+                consonance_level,
+                selection_score,
+                rhythms,
+                dt,
+                global_coupling,
+            ),
         }
     }
 
@@ -755,9 +794,12 @@ impl AnyArticulationCore {
                 let recharge_rate = derived.policy.recharge_per_attack;
                 let action_cost = derived.policy.action_cost_per_attack;
                 let continuous_recharge_per_sec = derived.policy.continuous_recharge_per_sec;
+                let continuous_recharge_score_low = derived.policy.continuous_recharge_score_low;
+                let continuous_recharge_score_high = derived.policy.continuous_recharge_score_high;
                 let dissonance_cost = derived.policy.dissonance_cost;
                 let attack_step = derived.attack_step;
                 let decay_rate = derived.decay_rate;
+                let sustain_level = derived.sustain_level;
                 let state = derived.state;
                 let sensitivity = derived.sensitivity;
                 let retrigger = derived.retrigger;
@@ -796,6 +838,7 @@ impl AnyArticulationCore {
                     state,
                     attack_step,
                     decay_rate,
+                    sustain_level,
                     retrigger,
                     noise_1f: PinkNoise::new(noise_seed, 0.001),
                     base_sigma: cfg_base_sigma.unwrap_or(0.3), // rad/s noise floor
@@ -809,6 +852,8 @@ impl AnyArticulationCore {
                     beta_threshold: gate.beta,
                     autonomous_attack: true,
                     continuous_recharge_per_sec,
+                    continuous_recharge_score_low,
+                    continuous_recharge_score_high,
                     dissonance_cost,
                     metrics: KuramotoMetrics::default(),
                     telemetry: KuramotoTelemetry::default(),
@@ -859,7 +904,7 @@ impl AnyArticulationCore {
                 RenderModulatorSpec::EntrainPulse {
                     attack_step: core.attack_step,
                     decay_rate: core.decay_rate,
-                    sustain_level: 0.0,
+                    sustain_level: core.sustain_level,
                     initial_state: RenderModulatorStateKind::from(core.state),
                     initial_env_level: core.env_level.clamp(0.0, 1.0),
                     alpha_gain: core.sensitivity.alpha,
@@ -892,6 +937,7 @@ struct LifecycleDerived {
     initial_energy: f32,
     attack_step: f32,
     decay_rate: f32,
+    sustain_level: f32,
     state: ArticulationState,
     sensitivity: Sensitivity,
     retrigger: bool,
@@ -914,6 +960,7 @@ fn envelope_from_lifecycle(lifecycle: &LifecycleConfig) -> LifecycleDerived {
                 initial_energy: *initial_energy,
                 attack_step,
                 decay_rate,
+                sustain_level: 0.0,
                 state: ArticulationState::Attack,
                 sensitivity: Sensitivity::default(),
                 retrigger: false,
@@ -933,6 +980,7 @@ fn envelope_from_lifecycle(lifecycle: &LifecycleConfig) -> LifecycleDerived {
                 initial_energy: *initial_energy,
                 attack_step,
                 decay_rate,
+                sustain_level: envelope.sustain_level.clamp(0.0, 1.0),
                 state: ArticulationState::Idle,
                 sensitivity: Sensitivity {
                     delta: 1.0,
@@ -976,6 +1024,7 @@ mod tests {
             state: ArticulationState::Decay,
             attack_step: 0.1,
             decay_rate: 1.0,
+            sustain_level: 0.0,
             retrigger: true,
             noise_1f: PinkNoise::new(1, 0.0),
             base_sigma: 0.0,
@@ -989,6 +1038,8 @@ mod tests {
             beta_threshold: 1.0,
             autonomous_attack: true,
             continuous_recharge_per_sec: 0.0,
+            continuous_recharge_score_low: None,
+            continuous_recharge_score_high: None,
             dissonance_cost: 0.0,
             metrics: KuramotoMetrics::default(),
             telemetry: KuramotoTelemetry::default(),
@@ -1071,7 +1122,7 @@ mod tests {
         rhythms.env_level = 0.81;
 
         for _ in 0..100 {
-            core.process(0.0, &rhythms, dt, global_coupling);
+            core.process(0.0, 0.0, &rhythms, dt, global_coupling);
 
             let omega_target = TAU * rhythms.theta.freq_hz;
             let k_eff = kuramoto_k_eff(
@@ -1317,8 +1368,8 @@ mod tests {
         rhythms.env_level = 1.0;
 
         let consonance = 1.0;
-        base.process(consonance, &rhythms, 0.0, 1.0);
-        rewarded.process(consonance, &rhythms, 0.0, 1.0);
+        base.process(consonance, 0.0, &rhythms, 0.0, 1.0);
+        rewarded.process(consonance, 0.0, &rhythms, 0.0, 1.0);
 
         assert_eq!(base.metrics.total_attacks, 1);
         assert_eq!(rewarded.metrics.total_attacks, 1);
@@ -1353,10 +1404,13 @@ mod tests {
         inner.env_open_threshold = 0.3;
         inner.mag_threshold = 0.4;
         inner.alpha_threshold = 0.5;
+        inner.sustain_level = 0.5;
         let core = AnyArticulationCore::Entrain(inner);
         let spec = core.render_modulator_spec(PhonationMode::Hold);
         let RenderModulatorSpec::EntrainPulse {
-            autonomous_pulse, ..
+            autonomous_pulse,
+            sustain_level,
+            ..
         } = spec
         else {
             panic!("expected entrain pulse");
@@ -1365,6 +1419,7 @@ mod tests {
         assert_eq!(pulse.env_open_threshold, 0.3);
         assert_eq!(pulse.mag_threshold, 0.4);
         assert_eq!(pulse.alpha_threshold, 0.5);
+        assert!((sustain_level - 0.5).abs() <= 1e-6);
     }
 
     #[test]
@@ -1376,7 +1431,7 @@ mod tests {
         core.state = ArticulationState::Decay;
 
         let rhythms = NeuralRhythms::default();
-        let signal = core.process(0.0, &rhythms, 0.01, 0.0);
+        let signal = core.process(0.0, 0.0, &rhythms, 0.01, 0.0);
 
         assert!(core.energy <= 0.0);
         assert_eq!(core.state, ArticulationState::Decay);
@@ -1396,7 +1451,7 @@ mod tests {
         core.state = ArticulationState::Attack;
 
         let rhythms = NeuralRhythms::default();
-        let signal = core.process(0.0, &rhythms, 0.01, 0.0);
+        let signal = core.process(0.0, 0.0, &rhythms, 0.01, 0.0);
 
         assert!(core.energy <= 0.0);
         assert_eq!(core.state, ArticulationState::Decay);
@@ -1417,7 +1472,7 @@ mod tests {
 
         let rhythms = NeuralRhythms::default();
         for _ in 0..240 {
-            core.process(0.0, &rhythms, 0.01, 0.0);
+            core.process(0.0, 0.0, &rhythms, 0.01, 0.0);
         }
 
         assert_eq!(core.state, ArticulationState::Idle);
@@ -1436,11 +1491,11 @@ mod tests {
 
         let rhythms = NeuralRhythms::default();
         for _ in 0..300 {
-            core.process(0.0, &rhythms, 0.01, 0.0);
+            core.process(0.0, 0.0, &rhythms, 0.01, 0.0);
         }
         assert_eq!(core.state, ArticulationState::Idle);
 
-        let signal = core.process(0.0, &rhythms, 0.01, 0.0);
+        let signal = core.process(0.0, 0.0, &rhythms, 0.01, 0.0);
         assert!(core.vitality_level <= 1e-6);
         assert!(!signal.is_active);
     }
@@ -1455,7 +1510,7 @@ mod tests {
         core.decay_rate = 0.0;
 
         let rhythms = NeuralRhythms::default();
-        let signal = core.process(0.0, &rhythms, 0.01, 0.0);
+        let signal = core.process(0.0, 0.0, &rhythms, 0.01, 0.0);
 
         assert!(signal.amplitude <= 1e-6);
         assert!(!signal.is_active);
@@ -1470,8 +1525,8 @@ mod tests {
         let mut low = test_core(0.25);
         low.decay_rate = 0.0;
 
-        let high_signal = high.process(0.0, &rhythms, 0.01, 0.0);
-        let low_signal = low.process(0.0, &rhythms, 0.01, 0.0);
+        let high_signal = high.process(0.0, 0.0, &rhythms, 0.01, 0.0);
+        let low_signal = low.process(0.0, 0.0, &rhythms, 0.01, 0.0);
 
         assert!(
             low_signal.amplitude < high_signal.amplitude,

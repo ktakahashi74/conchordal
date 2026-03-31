@@ -724,13 +724,18 @@ impl Voice {
         landscape: &Landscape,
         global_coupling: f32,
     ) -> ArticulationSignal {
-        let consonance = landscape.evaluate_pitch_level(self.body.base_freq_hz());
+        let consonance_level = landscape.evaluate_pitch_level(self.body.base_freq_hz());
+        let selection_score = landscape.evaluate_pitch_score(self.body.base_freq_hz());
         if let Some(ref mut acc) = self.life_accumulator {
-            acc.accumulate_tick(consonance);
+            acc.accumulate_tick(consonance_level);
         }
-        let mut signal = self
-            .articulation
-            .process(consonance, rhythms, dt_sec, global_coupling);
+        let mut signal = self.articulation.process(
+            consonance_level,
+            selection_score,
+            rhythms,
+            dt_sec,
+            global_coupling,
+        );
         if self.release_pending {
             let step = dt_sec / self.release_sec.max(1e-6);
             self.release_gain = (self.release_gain - step).max(0.0);

@@ -67,6 +67,8 @@ fn sustain_entrain_articulation() -> ArticulationCoreConfig {
             recharge_rate: Some(0.5),
             action_cost: Some(0.1),
             continuous_recharge_rate: None,
+            continuous_recharge_score_low: None,
+            continuous_recharge_score_high: None,
             dissonance_cost: None,
             envelope: EnvelopeConfig {
                 attack_sec: 0.01,
@@ -1049,7 +1051,7 @@ fn articulation_snapshot_kuramoto_decay_signature() {
     let mut early_active = false;
 
     for i in 0..steps {
-        let signal = articulation.process(consonance, &rhythms, dt, 1.0);
+        let signal = articulation.process(consonance, 0.0, &rhythms, dt, 1.0);
         if i < 10 && (signal.is_active || signal.amplitude > 0.0) {
             early_active = true;
         }

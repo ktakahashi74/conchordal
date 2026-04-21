@@ -69,6 +69,32 @@ impl Default for EnvelopeConfig {
     }
 }
 
+impl EnvelopeConfig {
+    pub fn for_body_method(method: crate::life::control::BodyMethod) -> Self {
+        use crate::life::control::BodyMethod;
+        match method {
+            BodyMethod::Sine => Self {
+                attack_sec: 0.005,
+                decay_sec: 0.05,
+                sustain_level: 0.9,
+                release_sec: 0.050,
+            },
+            BodyMethod::Harmonic => Self {
+                attack_sec: 0.030,
+                decay_sec: 0.10,
+                sustain_level: 0.9,
+                release_sec: 0.300,
+            },
+            BodyMethod::Modal => Self {
+                attack_sec: 0.005,
+                decay_sec: 0.10,
+                sustain_level: 0.9,
+                release_sec: 0.800,
+            },
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum HarmonicMode {
     Harmonic, // Integer multiples (1, 2, 3...)
@@ -337,7 +363,6 @@ pub enum ArticulationCoreConfig {
     Drone {
         sway: Option<f32>,
         breath_gain_init: Option<f32>,
-        envelope: Option<EnvelopeConfig>,
     },
 }
 

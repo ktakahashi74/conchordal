@@ -21,7 +21,6 @@ use super::scenario::{
     Scenario, SceneMarker, SpawnSpec, SpawnStrategy, TimedEvent, WhenSpec,
 };
 
-const DEFAULT_RELEASE_SEC: f32 = 0.05;
 const DEFAULT_SEQ_DURATION_SEC: f32 = 1.0;
 const DEFAULT_PULSE_RATE: f32 = 2.25;
 const DEFAULT_PULSE_SYNC: f32 = 0.5;
@@ -70,14 +69,6 @@ enum PhonationKind {
     Repeat,
 }
 
-#[derive(Clone, Copy, Debug)]
-struct AdsrSpec {
-    attack_sec: f32,
-    decay_sec: f32,
-    sustain_level: f32,
-    release_sec: f32,
-}
-
 #[derive(Clone, Debug)]
 struct SpeciesSpec {
     control: VoiceControl,
@@ -99,7 +90,7 @@ struct SpeciesSpec {
     continuous_recharge_score_high: Option<f32>,
     selection_approx_loo: bool,
     dissonance_cost: Option<f32>,
-    adsr: Option<AdsrSpec>,
+    adsr_user_set: bool,
     rhythm_coupling: RhythmCouplingMode,
     rhythm_reward: Option<MetabolismRhythmReward>,
     rhythm_freq: Option<f32>,
@@ -114,6 +105,7 @@ impl SpeciesSpec {
     fn preset(body: BodyMethod) -> Self {
         let mut control = VoiceControl::default();
         control.body.method = body;
+        control.body.envelope = EnvelopeConfig::for_body_method(body);
         Self {
             control,
             respawn_policy: RespawnPolicy::None,
@@ -134,7 +126,7 @@ impl SpeciesSpec {
             continuous_recharge_score_high: None,
             selection_approx_loo: false,
             dissonance_cost: None,
-            adsr: None,
+            adsr_user_set: false,
             rhythm_coupling: RhythmCouplingMode::TemporalOnly,
             rhythm_reward: None,
             rhythm_freq: None,
@@ -147,22 +139,16 @@ impl SpeciesSpec {
     }
 
     fn release_sec(&self) -> f32 {
-        self.adsr
-            .map(|adsr| adsr.release_sec)
-            .unwrap_or(DEFAULT_RELEASE_SEC)
-            .max(0.0)
+        self.control.body.envelope.release_sec.max(0.0)
     }
 
-    fn envelope_from_adsr(&self) -> EnvelopeConfig {
-        if let Some(adsr) = self.adsr {
-            EnvelopeConfig {
-                attack_sec: adsr.attack_sec.max(0.0),
-                decay_sec: adsr.decay_sec.max(0.0),
-                sustain_level: adsr.sustain_level.clamp(0.0, 1.0),
-                release_sec: adsr.release_sec.max(0.0),
-            }
-        } else {
-            EnvelopeConfig::default()
+    fn lifecycle_envelope(&self) -> EnvelopeConfig {
+        let env = &self.control.body.envelope;
+        EnvelopeConfig {
+            attack_sec: env.attack_sec.max(0.0),
+            decay_sec: env.decay_sec.max(0.0),
+            sustain_level: env.sustain_level.clamp(0.0, 1.0),
+            release_sec: env.release_sec.max(0.0),
         }
     }
 
@@ -176,7 +162,7 @@ impl SpeciesSpec {
             || self.continuous_recharge_score_high.is_some()
             || self.selection_approx_loo
             || self.dissonance_cost.is_some()
-            || self.adsr.is_some()
+            || self.adsr_user_set
         {
             let metabolism_rate = self.metabolism_rate.unwrap_or(0.5).max(1e-6);
             LifecycleConfig::Sustain {
@@ -189,7 +175,7 @@ impl SpeciesSpec {
                 continuous_recharge_score_high: self.continuous_recharge_score_high,
                 selection_approx_loo: self.selection_approx_loo,
                 dissonance_cost: self.dissonance_cost,
-                envelope: self.envelope_from_adsr(),
+                envelope: self.lifecycle_envelope(),
             }
         } else {
             LifecycleConfig::default()
@@ -217,7 +203,6 @@ impl SpeciesSpec {
             BrainKind::Drone => ArticulationCoreConfig::Drone {
                 sway: None,
                 breath_gain_init: None,
-                envelope: self.adsr.map(|_| self.envelope_from_adsr()),
             },
         }
     }
@@ -586,12 +571,13 @@ impl SpeciesSpec {
     }
 
     fn set_adsr(&mut self, a: f32, d: f32, s: f32, r: f32) {
-        self.adsr = Some(AdsrSpec {
+        self.control.body.envelope = EnvelopeConfig {
             attack_sec: a.max(0.0),
             decay_sec: d.max(0.0),
             sustain_level: s.clamp(0.0, 1.0),
             release_sec: r.max(0.0),
-        });
+        };
+        self.adsr_user_set = true;
     }
 
     fn set_respawn_random(&mut self) {

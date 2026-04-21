@@ -12,6 +12,7 @@ pub(crate) const DEFAULT_TIMBRE_UNISON: usize = 1;
 pub(crate) const MAX_TIMBRE_UNISON: usize = 9;
 
 use crate::core::mode_pattern::ModePattern;
+use crate::life::scenario::EnvelopeConfig;
 
 #[derive(Debug, Clone, Default)]
 pub struct WorldControl {}
@@ -326,17 +327,20 @@ pub struct BodyControl {
     pub modes: Option<ModePattern>,
     pub continuous_drive: f32,
     pub pitch_smooth_tau: f32,
+    pub envelope: EnvelopeConfig,
 }
 
 impl Default for BodyControl {
     fn default() -> Self {
+        let method = BodyMethod::default();
         Self {
-            method: BodyMethod::default(),
+            method,
             amp: 0.18,
             timbre: TimbreControl::default(),
             modes: None,
             continuous_drive: 0.0,
             pitch_smooth_tau: 0.0,
+            envelope: EnvelopeConfig::for_body_method(method),
         }
     }
 }

@@ -322,41 +322,34 @@ impl Voice {
         }
         pitch_ctl.set_adaptation_enabled(effective_control.adaptation.enabled);
 
-        let (
-            articulation_core,
-            lifecycle_label,
-            default_by_articulation,
-            breath_gain_init,
-            voice_adsr,
-        ) = match &articulation_config {
-            ArticulationCoreConfig::Entrain {
-                lifecycle,
-                breath_gain_init,
-                ..
-            } => {
-                let life_label = match lifecycle {
-                    LifecycleConfig::Decay { .. } => "decay",
-                    LifecycleConfig::Sustain { .. } => "sustain",
-                };
-                ("entrain", life_label, 1.0, *breath_gain_init, None)
-            }
-            ArticulationCoreConfig::Seq {
-                breath_gain_init, ..
-            } => ("seq", "none", 1.0, *breath_gain_init, None),
-            ArticulationCoreConfig::Drone {
-                breath_gain_init,
-                envelope,
-                ..
-            } => {
-                let adsr = envelope.as_ref().map(|env| super::sound::ToneAdsr {
-                    attack_sec: env.attack_sec,
-                    decay_sec: env.decay_sec,
-                    sustain_level: env.sustain_level,
-                    release_sec: env.release_sec,
-                });
-                ("drone", "none", 1.0, *breath_gain_init, adsr)
-            }
-        };
+        let body_envelope = &effective_control.body.envelope;
+        let voice_adsr = Some(super::sound::ToneAdsr {
+            attack_sec: body_envelope.attack_sec,
+            decay_sec: body_envelope.decay_sec,
+            sustain_level: body_envelope.sustain_level,
+            release_sec: body_envelope.release_sec,
+        });
+
+        let (articulation_core, lifecycle_label, default_by_articulation, breath_gain_init) =
+            match &articulation_config {
+                ArticulationCoreConfig::Entrain {
+                    lifecycle,
+                    breath_gain_init,
+                    ..
+                } => {
+                    let life_label = match lifecycle {
+                        LifecycleConfig::Decay { .. } => "decay",
+                        LifecycleConfig::Sustain { .. } => "sustain",
+                    };
+                    ("entrain", life_label, 1.0, *breath_gain_init)
+                }
+                ArticulationCoreConfig::Seq {
+                    breath_gain_init, ..
+                } => ("seq", "none", 1.0, *breath_gain_init),
+                ArticulationCoreConfig::Drone {
+                    breath_gain_init, ..
+                } => ("drone", "none", 1.0, *breath_gain_init),
+            };
         let breath_gain = breath_gain_init
             .unwrap_or(default_by_articulation)
             .clamp(0.0, 1.0);

@@ -174,6 +174,28 @@ let pulsed = derive(harmonic).repeat().pulse(3.0).sync(0.6).social(0.3);
 let fielded = derive(sine).field().field_window(0.2, 0.8);
 ```
 
+### Routing
+
+Each voice contributes to two independent mono buses:
+
+- **listener bus** → cpal output / wav / UI metering (what the audience hears)
+- **perceptual bus** → NSGT analysis → landscape (what other voices perceive)
+
+By default both buses receive the voice. Opt out per axis:
+
+| Method | Effect |
+|--------|--------|
+| `mute()` | Voice bypasses the listener bus; still contributes to the perceptual landscape. |
+| `unperceived()` | Voice bypasses the perceptual bus; still audible to the listener. |
+
+```ts
+// Reference anchor: sensed by the population, silent to the audience.
+let anchor = derive(harmonic).brain("drone").mute();
+
+// (Hypothetical) audience-only decor that does not influence the ecosystem.
+let decor = derive(sine).unperceived();
+```
+
 ### Lifecycle
 
 | Method | Description |

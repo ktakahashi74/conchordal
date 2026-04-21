@@ -298,6 +298,21 @@ pub enum BodyMethod {
     Modal,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Routing {
+    pub to_listener: bool,
+    pub to_voices: bool,
+}
+
+impl Default for Routing {
+    fn default() -> Self {
+        Self {
+            to_listener: true,
+            to_voices: true,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct TimbreControl {
     pub brightness: f32,
@@ -328,6 +343,7 @@ pub struct BodyControl {
     pub continuous_drive: f32,
     pub pitch_smooth_tau: f32,
     pub envelope: EnvelopeConfig,
+    pub routing: Routing,
 }
 
 impl Default for BodyControl {
@@ -341,6 +357,7 @@ impl Default for BodyControl {
             continuous_drive: 0.0,
             pitch_smooth_tau: 0.0,
             envelope: EnvelopeConfig::for_body_method(method),
+            routing: Routing::default(),
         }
     }
 }

@@ -101,6 +101,7 @@ struct TrackedRenderNote {
 #[derive(Clone, Debug, Default)]
 pub struct PhonationBatch {
     pub source_id: u64,
+    pub routing: crate::life::control::Routing,
     pub cmds: Vec<ToneCmd>,
     pub tones: Vec<ToneSpec>,
     pub onsets: Vec<OnsetEvent>,
@@ -808,6 +809,7 @@ impl Voice {
         out: &mut PhonationBatch,
     ) {
         out.source_id = self.id;
+        out.routing = self.effective_control.body.routing;
         out.clear();
         self.phonation_scratch.events.clear();
         let hop_tick = (tb.hop as Tick).max(1);

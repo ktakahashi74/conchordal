@@ -1294,48 +1294,47 @@ fn worker_loop(
                     writer.write_group_steps(&group_steps)
                 });
             }
-            // [FIX] Audio is MONO. Treat it as such.
-            // Previously incorrectly treated as stereo, leading to bad metering and destructive downsampling.
-            let (mono_chunk, max_abs, channel_peak) = {
-                let time_chunk = schedule_renderer.render(
+            // Two mono buses:
+            //   listener_chunk  -> cpal output + wav + UI metering (respects .mute())
+            //   perceptual_chunk -> dorsal rhythm + NSGT analysis  (respects .unperceived())
+            let (listener_chunk, perceptual_chunk, max_abs, channel_peak) = {
+                let frame = schedule_renderer.render(
                     phonation_batches,
                     now_tick,
                     &current_landscape.rhythm,
                 );
 
-                // Calculate Peak (Mono)
                 let mut max_p = 0.0f32;
-                for &s in time_chunk {
+                for &s in frame.listener {
                     let abs_s = s.abs();
                     if abs_s > max_p {
                         max_p = abs_s;
                     }
                 }
 
-                // Output to Audio Backend
-                // Note: If the audio backend expects Stereo, we might need to duplicate samples here.
-                // But typically ringbuf just takes the slice. Assuming backend handles mono or we rely on OS mixing.
                 if let Some(prod) = prod_opt.as_deref_mut() {
-                    AudioOutput::push_samples(prod, time_chunk);
+                    AudioOutput::push_samples(prod, frame.listener);
                 }
 
-                let mono_chunk: Arc<[f32]> = Arc::from(time_chunk);
+                let listener_chunk: Arc<[f32]> = Arc::from(frame.listener);
+                let perceptual_chunk: Arc<[f32]> = Arc::from(frame.perceptual);
                 if let Some(tx) = wav_tx.as_ref() {
-                    let _ = tx.try_send(Arc::clone(&mono_chunk));
+                    let _ = tx.try_send(Arc::clone(&listener_chunk));
                 }
 
-                // Channel peak for UI (Duplicate Mono to L/R)
-                (mono_chunk, max_p, [max_p, max_p])
+                (listener_chunk, perceptual_chunk, max_p, [max_p, max_p])
             };
 
-            // [FIX] No Downmix needed. The signal is already Mono.
+            // Dorsal rhythm derives from what the ecosystem perceives, not what the listener
+            // hears. With every voice .unperceived() the input is silent, which is the intended
+            // invariant (no organism-heard audio -> no emergent rhythm).
             if !finished {
-                current_landscape.rhythm = dorsal.process(mono_chunk.as_ref());
+                current_landscape.rhythm = dorsal.process(perceptual_chunk.as_ref());
             }
             let dorsal_metrics = dorsal.last_metrics();
 
-            // Feed audio analysis (NSGT + peak extraction + R/H).
-            let _ = audio_to_analysis_tx.try_send((frame_idx, Arc::clone(&mono_chunk)));
+            // Feed perceptual bus to audio analysis (NSGT + peak extraction + R/H).
+            let _ = audio_to_analysis_tx.try_send((frame_idx, Arc::clone(&perceptual_chunk)));
 
             // Lag is measured against generated frames, because population dynamics depend on
             // the landscape evolution in the generated timebase (not wall-clock playback).
@@ -1395,7 +1394,7 @@ fn worker_loop(
             if should_send_ui {
                 let wave_frame = WaveFrame {
                     fs,
-                    samples: Arc::clone(&mono_chunk),
+                    samples: Arc::clone(&listener_chunk),
                 };
                 let spec_frame = SpecFrame {
                     spec_hz: log_space.centers_hz.clone(),

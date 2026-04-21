@@ -2541,6 +2541,7 @@ mod tests {
     fn social_trace_is_delayed_by_one_hop() {
         let batch = PhonationBatch {
             source_id: 1,
+            routing: crate::life::control::Routing::default(),
             cmds: Vec::new(),
             tones: Vec::new(),
             onsets: vec![OnsetEvent {
@@ -3375,6 +3376,7 @@ mod tests {
 
         let mut batches = vec![PhonationBatch {
             source_id: 99,
+            routing: crate::life::control::Routing::default(),
             cmds: vec![ToneCmd::On {
                 tone_id: 1,
                 kick: OnsetKick { strength: 1.0 },

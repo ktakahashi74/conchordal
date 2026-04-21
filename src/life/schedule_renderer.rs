@@ -1,5 +1,6 @@
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
+use crate::life::control::Routing;
 use crate::life::phonation_engine::ToneCmd;
 use crate::life::sound::Tone;
 use crate::life::voice::PhonationBatch;
@@ -12,10 +13,21 @@ struct ToneKey {
     tone_id: u64,
 }
 
+struct RoutedTone {
+    tone: Tone,
+    routing: Routing,
+}
+
+pub struct RenderFrame<'a> {
+    pub listener: &'a [f32],
+    pub perceptual: &'a [f32],
+}
+
 pub struct ScheduleRenderer {
     time: Timebase,
-    buf: Vec<f32>,
-    tones: HashMap<ToneKey, Tone>,
+    buf_listener: Vec<f32>,
+    buf_perceptual: Vec<f32>,
+    tones: HashMap<ToneKey, RoutedTone>,
     cutoff_tick: Option<Tick>,
 }
 
@@ -25,7 +37,8 @@ impl ScheduleRenderer {
     pub fn new(time: Timebase) -> Self {
         Self {
             time,
-            buf: vec![0.0; time.hop],
+            buf_listener: vec![0.0; time.hop],
+            buf_perceptual: vec![0.0; time.hop],
             tones: HashMap::new(),
             cutoff_tick: None,
         }
@@ -36,19 +49,26 @@ impl ScheduleRenderer {
         phonation_batches: &[PhonationBatch],
         now: Tick,
         rhythms: &NeuralRhythms,
-    ) -> &[f32] {
+    ) -> RenderFrame<'_> {
         let hop = self.time.hop;
-        if self.buf.len() != hop {
-            self.buf.resize(hop, 0.0);
+        if self.buf_listener.len() != hop {
+            self.buf_listener.resize(hop, 0.0);
         }
-        self.buf.fill(0.0);
+        if self.buf_perceptual.len() != hop {
+            self.buf_perceptual.resize(hop, 0.0);
+        }
+        self.buf_listener.fill(0.0);
+        self.buf_perceptual.fill(0.0);
 
         let fs = self.time.fs;
         if fs <= 0.0 {
-            return &self.buf;
+            return RenderFrame {
+                listener: &self.buf_listener,
+                perceptual: &self.buf_perceptual,
+            };
         }
 
-        self.tones.retain(|_, tone| !tone.is_done(now));
+        self.tones.retain(|_, rt| !rt.tone.is_done(now));
 
         let end = now.saturating_add(hop as Tick);
         let dt = 1.0 / fs;
@@ -56,17 +76,28 @@ impl ScheduleRenderer {
         self.apply_phonation_batches(phonation_batches, now, &rhythms, dt);
         for tick in now..end {
             let idx = (tick - now) as usize;
-            let mut acc = 0.0f32;
-            for (_key, tone) in self.tones.iter_mut() {
-                tone.apply_updates_if_due(tick);
-                tone.kick_planned_if_due(tick);
-                acc += tone.render_tick(tick, fs, dt, &rhythms);
+            let mut acc_listener = 0.0f32;
+            let mut acc_perceptual = 0.0f32;
+            for (_key, rt) in self.tones.iter_mut() {
+                rt.tone.apply_updates_if_due(tick);
+                rt.tone.kick_planned_if_due(tick);
+                let sample = rt.tone.render_tick(tick, fs, dt, &rhythms);
+                if rt.routing.to_listener {
+                    acc_listener += sample;
+                }
+                if rt.routing.to_voices {
+                    acc_perceptual += sample;
+                }
             }
-            self.buf[idx] = acc;
+            self.buf_listener[idx] = acc_listener;
+            self.buf_perceptual[idx] = acc_perceptual;
             rhythms.advance_in_place(dt);
         }
 
-        &self.buf
+        RenderFrame {
+            listener: &self.buf_listener,
+            perceptual: &self.buf_perceptual,
+        }
     }
 
     pub fn is_idle(&self) -> bool {
@@ -79,9 +110,9 @@ impl ScheduleRenderer {
 
     pub fn shutdown_at(&mut self, tick: Tick) {
         self.cutoff_tick = Some(tick);
-        self.tones.retain(|_, tone| tone.onset() <= tick);
-        for tone in self.tones.values_mut() {
-            tone.note_off(tick);
+        self.tones.retain(|_, rt| rt.tone.onset() <= tick);
+        for rt in self.tones.values_mut() {
+            rt.tone.note_off(tick);
         }
     }
 
@@ -139,7 +170,13 @@ impl ScheduleRenderer {
                                 freq_hz = spec.freq_hz,
                                 amp = spec.amp
                             );
-                            self.tones.insert(key, tone);
+                            self.tones.insert(
+                                key,
+                                RoutedTone {
+                                    tone,
+                                    routing: batch.routing,
+                                },
+                            );
                         }
                     }
                     ToneCmd::Off { tone_id, off_tick } => {
@@ -147,8 +184,8 @@ impl ScheduleRenderer {
                             source_id: batch.source_id,
                             tone_id,
                         };
-                        if let Some(tone) = self.tones.get_mut(&key) {
-                            tone.note_off(off_tick);
+                        if let Some(rt) = self.tones.get_mut(&key) {
+                            rt.tone.note_off(off_tick);
                         }
                     }
                     ToneCmd::Update { .. } => {}
@@ -167,11 +204,11 @@ impl ScheduleRenderer {
                     source_id: batch.source_id,
                     tone_id,
                 };
-                let Some(tone) = self.tones.get_mut(&key) else {
+                let Some(rt) = self.tones.get_mut(&key) else {
                     continue;
                 };
                 let tick = at_tick.unwrap_or(now);
-                tone.schedule_update(tick, update);
+                rt.tone.schedule_update(tick, update);
             }
         }
     }
@@ -207,6 +244,7 @@ mod tests {
         let tone_id = 1;
         let batch = PhonationBatch {
             source_id: 2,
+            routing: crate::life::control::Routing::default(),
             cmds: vec![
                 ToneCmd::Update {
                     tone_id,
@@ -250,9 +288,9 @@ mod tests {
             source_id: 2,
             tone_id,
         };
-        let tone = renderer.tones.get(&key).expect("tone");
-        assert!((tone.debug_current_freq_hz() - 440.0).abs() < 1e-6);
-        assert!((tone.debug_current_amp() - 0.25).abs() < 1e-6);
+        let rt = renderer.tones.get(&key).expect("tone");
+        assert!((rt.tone.debug_current_freq_hz() - 440.0).abs() < 1e-6);
+        assert!((rt.tone.debug_current_amp() - 0.25).abs() < 1e-6);
     }
 
     #[test]
@@ -263,6 +301,7 @@ mod tests {
         let tone_id = 1;
         let batch = PhonationBatch {
             source_id: 2,
+            routing: crate::life::control::Routing::default(),
             cmds: vec![
                 ToneCmd::Update {
                     tone_id,
@@ -315,8 +354,8 @@ mod tests {
             source_id: 2,
             tone_id,
         };
-        let tone = renderer.tones.get(&key).expect("tone");
-        assert!((tone.debug_target_freq_hz() - 440.0).abs() < 1e-6);
+        let rt = renderer.tones.get(&key).expect("tone");
+        assert!((rt.tone.debug_target_freq_hz() - 440.0).abs() < 1e-6);
     }
 
     #[test]
@@ -327,6 +366,7 @@ mod tests {
         let tone_id = 1;
         let batch = PhonationBatch {
             source_id: 1,
+            routing: crate::life::control::Routing::default(),
             cmds: vec![ToneCmd::On {
                 tone_id,
                 kick: OnsetKick { strength: 1.0 },

@@ -1780,6 +1780,15 @@ impl ScriptHost {
             species.spec.set_phonation(PhonationKind::Repeat);
             species
         });
+        // Routing: .mute() bypasses listener output, .unperceived() bypasses voice perception.
+        engine.register_fn("mute", |mut species: SpeciesHandle| {
+            species.spec.control.body.routing.to_listener = false;
+            species
+        });
+        engine.register_fn("unperceived", |mut species: SpeciesHandle| {
+            species.spec.control.body.routing.to_voices = false;
+            species
+        });
         // Tier 2: explicit when/duration
         engine.register_fn("once", |mut species: SpeciesHandle| {
             species.spec.set_when_once();
@@ -2980,6 +2989,16 @@ impl ScriptHost {
             }};
         }
         register_group_draft_fn!("once", ctx, engine, |s| s.set_when_once());
+        register_group_draft_fn!("mute", ctx, engine, |s| s
+            .control
+            .body
+            .routing
+            .to_listener = false);
+        register_group_draft_fn!("unperceived", ctx, engine, |s| s
+            .control
+            .body
+            .routing
+            .to_voices = false);
         register_group_draft_fn1!("pulse", ctx, engine, |s, rate: FLOAT| s
             .set_when_pulse(rate as f32));
         register_group_draft_fn!("while_alive", ctx, engine, |s| s.set_duration_while_alive());

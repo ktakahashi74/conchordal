@@ -66,8 +66,8 @@ fn agents_publish_notes_and_render_audio() {
     assert!(!phonation_batches.is_empty());
     let mut renderer = ScheduleRenderer::new(tb);
     let rhythms = landscape.rhythm;
-    let out = renderer.render(&phonation_batches, render_now, &rhythms);
-    assert!(out.iter().any(|s| s.abs() > 1e-6));
+    let frame = renderer.render(&phonation_batches, render_now, &rhythms);
+    assert!(frame.listener.iter().any(|s| s.abs() > 1e-6));
 }
 
 #[test]

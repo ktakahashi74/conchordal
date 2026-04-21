@@ -34,7 +34,8 @@
 ## 共通条件
 
 - `seed(20260330)`、初期個体数 16、`respawn_capacity(16)`、`random_log(55.0, 880.0)` に配置
-- `anchor` は 220 Hz の harmonic drone、`assay_voice` は metabolism=0.12、action/recharge/dissonance_cost=0
+- `anchor` は 220 Hz の harmonic drone で **`.mute()`** — 聴者バスには出さず、perceptual bus (他 voice の harmonicity 場) にのみ貢献する参照音源
+- `assay_voice` は metabolism=0.12、action/recharge/dissonance_cost=0
 - 時間スケールは E6b の step 比率 (`512/48000` s × 12000 ステップ) を live 倍速 1.0 で再生
 - intro / outro 各 0.5 s
 

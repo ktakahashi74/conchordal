@@ -16,7 +16,7 @@ impl AudioBuffer {
     pub fn stereo(left: Vec<f32>, right: Vec<f32>) -> Self {
         assert_eq!(left.len(), right.len());
         let mut interleaved = Vec::with_capacity(left.len() * 2);
-        for (l, r) in left.into_iter().zip(right.into_iter()) {
+        for (l, r) in left.into_iter().zip(right) {
             interleaved.push(l);
             interleaved.push(r);
         }

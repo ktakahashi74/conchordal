@@ -60,8 +60,9 @@ let assay_voice = derive(harmonic)
     );
 
 let random_selection = derive(assay_voice)
-    .continuous_recharge_rate(0.10 * audition_speedup)
+    .continuous_recharge_rate(0.12 * audition_speedup)
     .survival_signal(0.30, 0.80)
+    .dissonance_cost(1.0)
     .respawn_random()
     .respawn_capacity(16);
 

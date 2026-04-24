@@ -73,6 +73,13 @@ fn conchordal_render_generates_valid_wav() {
     assert_eq!(spec.bits_per_sample, 16, "render output must be 16-bit");
     assert!(spec.sample_rate > 0, "invalid sample rate");
     assert!(reader.duration() > 0, "wav has no samples");
+    let min_expected_samples = (spec.sample_rate as f32 * 0.8) as u32;
+    assert!(
+        reader.duration() >= min_expected_samples,
+        "wav is too short for a 1s scenario: {} < {} samples",
+        reader.duration(),
+        min_expected_samples
+    );
 
     let _ = fs::remove_file(&wav_path);
 }

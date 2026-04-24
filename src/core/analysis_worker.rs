@@ -38,6 +38,8 @@ pub fn run(
         for hop in &hops[1..] {
             analysis = stream.process(hop.as_ref());
         }
+        // Result snapshots are latest-observed state. The main runtime merges only the newest
+        // available snapshot, so dropping a stale result under backpressure is acceptable here.
         let _ = result_tx.try_send((frame_id, analysis));
     }
 }

@@ -11,6 +11,7 @@ mod cli;
 mod config;
 mod core;
 mod life;
+mod runtime;
 mod synth;
 mod ui;
 

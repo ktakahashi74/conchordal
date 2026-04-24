@@ -9,6 +9,42 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+fn consonance_field_score_axis_bounds(
+    kernel: crate::core::consonance_kernel::ConsonanceKernel,
+) -> (f64, f64) {
+    let mut y_min = -1.0f32;
+    let mut y_max = 1.0f32;
+
+    // Bound from kernel corners instead of live scan values, so the axis does not jitter.
+    for score in [
+        kernel.score(0.0, 0.0),
+        kernel.score(1.0, 0.0),
+        kernel.score(0.0, 1.0),
+        kernel.score(1.0, 1.0),
+    ] {
+        if score.is_finite() {
+            y_min = y_min.min(score);
+            y_max = y_max.max(score);
+        }
+    }
+
+    if (y_max - y_min).abs() < 1e-6 {
+        y_min -= 0.5;
+        y_max += 0.5;
+    }
+
+    let pad = ((y_max - y_min).abs() * 0.05).max(0.1);
+    let step = 0.5;
+    y_min = ((y_min - pad) / step).floor() * step;
+    y_max = ((y_max + pad) / step).ceil() * step;
+
+    if y_max <= y_min {
+        y_max = y_min + step;
+    }
+
+    (y_min as f64, y_max as f64)
+}
+
 fn format_time(sec: f32) -> String {
     let total_secs = sec.max(0.0).floor() as u64;
     let minutes = total_secs / 60;
@@ -455,28 +491,7 @@ pub fn main_window(
         ui.separator();
 
         let consonance_field_score = &frame.landscape.consonance_field_score;
-        let (mut c_min, mut c_max) = (f32::INFINITY, f32::NEG_INFINITY);
-        for &v in consonance_field_score.iter() {
-            if v.is_finite() {
-                if v < c_min {
-                    c_min = v;
-                }
-                if v > c_max {
-                    c_max = v;
-                }
-            }
-        }
-        if !c_min.is_finite() || !c_max.is_finite() {
-            c_min = -1.0;
-            c_max = 1.0;
-        }
-        if (c_max - c_min).abs() < 1e-6 {
-            c_min -= 0.5;
-            c_max += 0.5;
-        }
-        let pad = (c_max - c_min).abs() * 0.1;
-        let y_min = (c_min - pad) as f64;
-        let y_max = (c_max + pad) as f64;
+        let (y_min, y_max) = consonance_field_score_axis_bounds(frame.landscape.consonance_kernel);
 
         ui.columns(1, |cols| {
             let ui = &mut cols[0];
@@ -512,7 +527,7 @@ pub fn main_window(
         ui.separator();
         egui::CollapsingHeader::new("Prediction")
             .default_open(false)
-            .show(ui, |ui| {
+            .show_unindented(ui, |ui| {
                 let fs = frame.wave.fs;
                 let next_gate_tick = frame
                     .next_gate_tick_est

@@ -530,10 +530,11 @@ pub fn main_window(
             .show_unindented(ui, |ui| {
                 let fs = frame.wave.fs;
                 let next_gate_tick = frame
+                    .prediction
                     .next_gate_tick_est
                     .map(|tick| tick.to_string())
                     .unwrap_or_else(|| "None".to_string());
-                let next_gate_sec = frame.next_gate_tick_est.and_then(|tick| {
+                let next_gate_sec = frame.prediction.next_gate_tick_est.and_then(|tick| {
                     if fs > 0.0 {
                         Some(tick as f32 / fs)
                     } else {
@@ -544,19 +545,22 @@ pub fn main_window(
                     .map(|sec| format!("{sec:.3}"))
                     .unwrap_or_else(|| "None".to_string());
                 let theta_hz = frame
+                    .prediction
                     .theta_hz
                     .map(|hz| format!("{hz:.3}"))
                     .unwrap_or_else(|| "None".to_string());
                 let delta_hz = frame
+                    .prediction
                     .delta_hz
                     .map(|hz| format!("{hz:.3}"))
                     .unwrap_or_else(|| "None".to_string());
                 let n_theta_per_delta = frame
+                    .prediction
                     .pred_n_theta_per_delta
                     .map(|n| n.to_string())
                     .unwrap_or_else(|| "None".to_string());
-                let pred_tau_tick = frame.pred_tau_tick;
-                let pred_horizon_tick = frame.pred_horizon_tick;
+                let pred_tau_tick = frame.prediction.pred_tau_tick;
+                let pred_horizon_tick = frame.prediction.pred_horizon_tick;
                 let pred_tau = if let Some(tick) = pred_tau_tick {
                     if fs > 0.0 {
                         format!("{tick} ({:.1} ms)", tick as f32 / fs * 1000.0)
@@ -592,13 +596,18 @@ pub fn main_window(
                     ui.label(format!("pred_horizon={pred_horizon}"));
                 });
 
-                let pred_overlay = frame.pred_c_field_level_next_gate.as_ref().map(|scan| {
-                    (
-                        scan.as_ref(),
-                        "Predicted C_field_level",
-                        Color32::from_rgb(230, 170, 90),
-                    )
-                });
+                let pred_overlay =
+                    frame
+                        .prediction
+                        .pred_c_field_level_next_gate
+                        .as_ref()
+                        .map(|scan| {
+                            (
+                                scan.as_ref(),
+                                "Predicted C_field_level",
+                                Color32::from_rgb(230, 170, 90),
+                            )
+                        });
                 log2_plot_hz(
                     ui,
                     "Consonance Field Level (Observed/Predicted)",
@@ -612,7 +621,7 @@ pub fn main_window(
                     None,
                     pred_overlay,
                 );
-                if let Some(scan) = frame.pred_c_field_level_next_gate.as_ref() {
+                if let Some(scan) = frame.prediction.pred_c_field_level_next_gate.as_ref() {
                     let mut sum = 0.0f32;
                     let mut max = 0.0f32;
                     for &v in scan.iter() {
@@ -635,14 +644,17 @@ pub fn main_window(
             .default_open(false)
             .show(ui, |ui| {
                 let gate_boundary = frame
+                    .prediction
                     .gate_boundary_in_hop
                     .map(|val| val.to_string())
                     .unwrap_or_else(|| "None".to_string());
                 let pred_available = frame
+                    .prediction
                     .pred_available_in_hop
                     .map(|val| val.to_string())
                     .unwrap_or_else(|| "None".to_string());
                 let phonation_onsets = frame
+                    .prediction
                     .phonation_onsets_in_hop
                     .map(|val| val.to_string())
                     .unwrap_or_else(|| "None".to_string());
@@ -654,9 +666,9 @@ pub fn main_window(
                     ui.label(format!("phonation_onsets_in_hop={phonation_onsets}"));
                 });
                 if let (Some(min), Some(mean), Some(max)) = (
-                    frame.pred_gain_raw_min,
-                    frame.pred_gain_raw_mean,
-                    frame.pred_gain_raw_max,
+                    frame.prediction.pred_gain_raw_min,
+                    frame.prediction.pred_gain_raw_mean,
+                    frame.prediction.pred_gain_raw_max,
                 ) {
                     ui.label(format!(
                         "pred_gain_raw min/mean/max={min:.3}/{mean:.3}/{max:.3}"
@@ -665,9 +677,9 @@ pub fn main_window(
                     ui.label("pred_gain_raw=None");
                 }
                 if let (Some(min), Some(mean), Some(max)) = (
-                    frame.pred_gain_mixed_min,
-                    frame.pred_gain_mixed_mean,
-                    frame.pred_gain_mixed_max,
+                    frame.prediction.pred_gain_mixed_min,
+                    frame.prediction.pred_gain_mixed_mean,
+                    frame.prediction.pred_gain_mixed_max,
                 ) {
                     ui.label(format!(
                         "pred_gain_mixed min/mean/max={min:.3}/{mean:.3}/{max:.3}"
@@ -676,6 +688,7 @@ pub fn main_window(
                     ui.label("pred_gain_mixed=None");
                 }
                 let pred_sync = frame
+                    .prediction
                     .pred_sync_mean
                     .map(|val| format!("{val:.3}"))
                     .unwrap_or_else(|| "None".to_string());

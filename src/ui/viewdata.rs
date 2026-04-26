@@ -29,6 +29,7 @@ pub struct VoiceStateInfo {
     pub freq_hz: f32,
     pub target_freq: f32,
     pub integration_window: f32,
+    #[allow(dead_code)]
     pub breath_gain: f32,
     pub consonance: f32,
 }
@@ -58,13 +59,7 @@ pub struct SimulationMeta {
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct UiFrame {
-    pub wave: WaveFrame,
-    pub spec: SpecFrame,
-    pub dorsal: DorsalFrame,
-    pub landscape: LandscapeFrame,
-    pub time_sec: f32,
-    pub meta: SimulationMeta,
+pub struct PredictionFrame {
     pub next_gate_tick_est: Option<Tick>,
     pub theta_hz: Option<f32>,
     pub delta_hz: Option<f32>,
@@ -82,6 +77,17 @@ pub struct UiFrame {
     pub gate_boundary_in_hop: Option<bool>,
     pub pred_available_in_hop: Option<bool>,
     pub phonation_onsets_in_hop: Option<u32>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct UiFrame {
+    pub wave: WaveFrame,
+    pub spec: SpecFrame,
+    pub dorsal: DorsalFrame,
+    pub landscape: LandscapeFrame,
+    pub time_sec: f32,
+    pub meta: SimulationMeta,
+    pub prediction: PredictionFrame,
     pub voices: Vec<VoiceStateInfo>,
 }
 

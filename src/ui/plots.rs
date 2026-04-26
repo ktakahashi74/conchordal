@@ -27,6 +27,7 @@ fn log2_bar_center_width(f_left_hz: f32, f_hz: f32, f_right_hz: f32) -> (f64, f6
 }
 
 /// Histogram on a log2 frequency axis (auto bin width).
+#[allow(dead_code)]
 #[allow(clippy::too_many_arguments)]
 pub fn log2_hist_hz(
     ui: &mut egui::Ui,
@@ -606,6 +607,7 @@ pub fn spectrum_time_freq_axes(
 }
 
 /// Visualize neural rhythms (Delta/Theta/Alpha/Beta) as radial gauges.
+#[allow(dead_code)]
 pub fn neural_compass(
     ui: &mut egui::Ui,
     rhythms: &crate::core::modulation::NeuralRhythms,

@@ -1,10 +1,12 @@
-// Generic audio buffer type to support mono/stereo interleaved data
+// Generic audio buffer type to support mono/stereo interleaved data.
+#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct AudioBuffer {
     pub channels: usize,
     pub samples: Vec<f32>,
 }
 
+#[allow(dead_code)]
 impl AudioBuffer {
     pub fn mono(samples: Vec<f32>) -> Self {
         Self {

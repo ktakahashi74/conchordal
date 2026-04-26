@@ -9,9 +9,6 @@ repository = "https://github.com/ktakahashi74/conchordal"
 keywords = ["audio", "alife", "music", "art", "sound","synthesizer"]
 categories = ["multimedia::audio"]
 
-[lib]
-test = false
-
 [[bin]]
 name = "conchordal"
 path = "src/main.rs"

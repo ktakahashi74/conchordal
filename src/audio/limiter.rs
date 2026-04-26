@@ -291,6 +291,7 @@ impl Limiter {
         }
     }
 
+    #[allow(dead_code)]
     pub fn stats(&self) -> LimiterStats {
         self.stats
     }

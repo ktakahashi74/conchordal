@@ -20,7 +20,7 @@ use crate::core::nsgt_kernel::{NsgtKernelLog2, NsgtLog2Config, PowerMode};
 use crate::core::nsgt_rt::{RtConfig, RtNsgtKernelLog2};
 use crate::core::phase::wrap_pm_pi;
 use crate::core::roughness_kernel::{KernelParams, RoughnessKernel};
-use crate::core::stream::{analysis::AnalysisStream, dorsal::DorsalStream};
+use crate::core::stream::{analysis::AnalysisStream, dorsal::DorsalMetrics, dorsal::DorsalStream};
 use crate::core::timebase::Tick;
 use crate::life::conductor::Conductor;
 use crate::life::population::Population;
@@ -32,7 +32,8 @@ use crate::life::schedule_renderer::ScheduleRenderer;
 use crate::life::scripting::ScriptHost;
 use crate::life::voice::{PhonationBatch, SoundBody};
 use crate::ui::viewdata::{
-    DorsalFrame, PlaybackState, SimulationMeta, SpecFrame, UiFrame, VoiceStateInfo, WaveFrame,
+    DorsalFrame, PlaybackState, PredictionFrame, SimulationMeta, SpecFrame, UiFrame,
+    VoiceStateInfo, WaveFrame,
 };
 use crate::{
     audio::output::AudioOutput, config::AppConfig, core::harmonicity_kernel::HarmonicityParams,
@@ -150,6 +151,261 @@ fn analysis_ok(frame_idx: u64, last_analysis: Option<u64>, max_lag: u64) -> bool
         Some(id) => frame_idx.saturating_sub(id) <= max_lag,
         None => false,
     }
+}
+
+struct RuntimeUiFrameInput<'a> {
+    scenario_name: &'a str,
+    conductor: &'a Conductor,
+    pop: &'a Population,
+    world: &'a crate::life::world_model::WorldModel,
+    current_landscape: &'a LandscapeFrame,
+    log_space: &'a Log2Space,
+    listener_chunk: Arc<[f32]>,
+    dorsal_metrics: DorsalMetrics,
+    current_time: f32,
+    playback_state: PlaybackState,
+    peak_level: f32,
+    channel_peak: [f32; 2],
+    now_tick: Tick,
+    hop: usize,
+    fs: f32,
+}
+
+fn build_initial_ui_frame(
+    scenario_name: &str,
+    conductor: &Conductor,
+    pop: &Population,
+    current_landscape: &LandscapeFrame,
+    current_time: f32,
+    playback_state: PlaybackState,
+    fs: f32,
+) -> UiFrame {
+    UiFrame {
+        wave: WaveFrame {
+            fs,
+            samples: Arc::from(Vec::<f32>::new()),
+        },
+        spec: SpecFrame {
+            spec_hz: current_landscape.space.centers_hz.clone(),
+            amps: vec![0.0; current_landscape.space.n_bins()],
+        },
+        dorsal: DorsalFrame::default(),
+        landscape: current_landscape.clone(),
+        time_sec: current_time,
+        meta: SimulationMeta {
+            time_sec: current_time,
+            duration_sec: conductor.total_duration(),
+            voice_count: pop.voices.len(),
+            event_queue_len: conductor.remaining_events(),
+            peak_level: 0.0,
+            scenario_name: scenario_name.to_string(),
+            scene_name: conductor.current_scene_name(current_time),
+            playback_state,
+            channel_peak: [0.0; 2],
+            window_peak: [0.0; 2],
+            kuramoto_order_r: None,
+            kuramoto_active_count: 0,
+        },
+        prediction: PredictionFrame::default(),
+        voices: Vec::new(),
+    }
+}
+
+fn build_runtime_ui_frame(input: RuntimeUiFrameInput<'_>) -> UiFrame {
+    let wave = WaveFrame {
+        fs: input.fs,
+        samples: input.listener_chunk,
+    };
+    let spec = SpecFrame {
+        spec_hz: input.log_space.centers_hz.clone(),
+        amps: input
+            .current_landscape
+            .nsgt_power
+            .iter()
+            .map(|&x| x.sqrt())
+            .collect(),
+    };
+    let voices: Vec<VoiceStateInfo> = input
+        .pop
+        .voices
+        .iter()
+        .map(|agent| {
+            let freq_hz = agent.body.base_freq_hz();
+            VoiceStateInfo {
+                id: agent.id,
+                freq_hz,
+                target_freq: 2.0f32.powf(agent.target_pitch_log2()),
+                integration_window: agent.integration_window(),
+                breath_gain: agent.articulation.gate(),
+                consonance: input.current_landscape.evaluate_pitch_level(freq_hz),
+            }
+        })
+        .collect();
+    let pred_stats = input.pop.last_pred_gate_stats();
+    let kuramoto = input.pop.kuramoto_order_parameter();
+    let theta_hz = positive_hz(input.current_landscape.rhythm.theta.freq_hz);
+    let delta_hz = positive_hz(input.current_landscape.rhythm.delta.freq_hz);
+    let (pred_tau_tick, pred_horizon_tick) = input
+        .world
+        .predictor_tau_horizon_ticks(&input.current_landscape.rhythm);
+    let frame_end = input.now_tick.saturating_add((input.hop as Tick).max(1));
+    let pred_next_gate = input.world.last_pred_next_gate();
+    let pred_available_in_hop = pred_next_gate
+        .as_ref()
+        .is_some_and(|(gate_tick, _)| *gate_tick >= input.now_tick && *gate_tick < frame_end);
+    let pred_c_field_level_next_gate = pred_next_gate.map(|(_, scan)| scan);
+
+    UiFrame {
+        wave,
+        spec,
+        dorsal: DorsalFrame {
+            e_low: input.dorsal_metrics.e_low,
+            e_mid: input.dorsal_metrics.e_mid,
+            e_high: input.dorsal_metrics.e_high,
+            flux: input.dorsal_metrics.flux,
+        },
+        landscape: input.current_landscape.clone(),
+        time_sec: input.current_time,
+        meta: SimulationMeta {
+            time_sec: input.current_time,
+            duration_sec: input.conductor.total_duration(),
+            voice_count: input.pop.voices.len(),
+            event_queue_len: input.conductor.remaining_events(),
+            peak_level: input.peak_level,
+            scenario_name: input.scenario_name.to_string(),
+            scene_name: input.conductor.current_scene_name(input.current_time),
+            playback_state: input.playback_state,
+            channel_peak: input.channel_peak,
+            window_peak: input.channel_peak,
+            kuramoto_order_r: kuramoto.map(|(r, _)| r),
+            kuramoto_active_count: kuramoto.map(|(_, n)| n).unwrap_or(0),
+        },
+        prediction: PredictionFrame {
+            next_gate_tick_est: input.world.next_gate_tick_est,
+            theta_hz,
+            delta_hz,
+            pred_n_theta_per_delta: Some(
+                input
+                    .world
+                    .predictor_n_theta_per_delta(&input.current_landscape.rhythm),
+            ),
+            pred_tau_tick: Some(pred_tau_tick),
+            pred_horizon_tick: Some(pred_horizon_tick),
+            pred_c_field_level_next_gate,
+            pred_gain_raw_mean: pred_stats.map(|stats| stats.raw_mean),
+            pred_gain_raw_min: pred_stats.map(|stats| stats.raw_min),
+            pred_gain_raw_max: pred_stats.map(|stats| stats.raw_max),
+            pred_gain_mixed_mean: pred_stats.map(|stats| stats.mixed_mean),
+            pred_gain_mixed_min: pred_stats.map(|stats| stats.mixed_min),
+            pred_gain_mixed_max: pred_stats.map(|stats| stats.mixed_max),
+            pred_sync_mean: pred_stats.map(|stats| stats.sync_mean),
+            gate_boundary_in_hop: input.pop.last_gate_boundary_in_hop(),
+            pred_available_in_hop: Some(pred_available_in_hop),
+            phonation_onsets_in_hop: input.pop.last_phonation_onsets_in_hop(),
+        },
+        voices,
+    }
+}
+
+fn positive_hz(hz: f32) -> Option<f32> {
+    (hz.is_finite() && hz > 0.0).then_some(hz)
+}
+
+fn merge_latest_analysis_results(
+    analysis_result_rx: &Receiver<(u64, Landscape)>,
+    current_landscape: &mut LandscapeFrame,
+    log_space: &mut Log2Space,
+    world: &mut crate::life::world_model::WorldModel,
+    lparams: &LandscapeParams,
+    last_analysis_frame: &mut Option<u64>,
+    frame_idx: u64,
+) -> bool {
+    let mut latest_audio: Option<(u64, Landscape)> = None;
+    while let Ok((analyzed_id, frame)) = analysis_result_rx.try_recv() {
+        *last_analysis_frame = Some(analyzed_id);
+        latest_audio = Some((analyzed_id, frame));
+    }
+    let Some((_analysis_id, frame)) = latest_audio else {
+        return false;
+    };
+
+    let space_changed = current_landscape.space.n_bins() != frame.space.n_bins()
+        || current_landscape.space.fmin != frame.space.fmin
+        || current_landscape.space.fmax != frame.space.fmax
+        || current_landscape.space.bins_per_oct != frame.space.bins_per_oct;
+    if space_changed {
+        current_landscape.resize_to_space(frame.space.clone());
+        *log_space = current_landscape.space.clone();
+        world.set_space(log_space.clone());
+    }
+    current_landscape.roughness_suppress_sigma_erb = frame.roughness_suppress_sigma_erb;
+    current_landscape.roughness_kernel_params = frame.roughness_kernel_params;
+    current_landscape.roughness = frame.roughness;
+    current_landscape.roughness_shape_raw = frame.roughness_shape_raw;
+    current_landscape.roughness01 = frame.roughness01;
+    current_landscape.harmonicity = frame.harmonicity;
+    current_landscape.harmonicity_path_a = frame.harmonicity_path_a;
+    current_landscape.harmonicity_path_b = frame.harmonicity_path_b;
+    current_landscape.roughness_total = frame.roughness_total;
+    current_landscape.roughness_max = frame.roughness_max;
+    current_landscape.roughness_p95 = frame.roughness_p95;
+    current_landscape.roughness_scalar_raw = frame.roughness_scalar_raw;
+    current_landscape.roughness_norm = frame.roughness_norm;
+    current_landscape.roughness01_scalar = frame.roughness01_scalar;
+    current_landscape.loudness_mass = frame.loudness_mass;
+    current_landscape.root_affinity = frame.root_affinity;
+    current_landscape.overtone_affinity = frame.overtone_affinity;
+    current_landscape.binding_strength = frame.binding_strength;
+    current_landscape.harmonic_tilt = frame.harmonic_tilt;
+    current_landscape.harmonicity_mirror_weight = frame.harmonicity_mirror_weight;
+    current_landscape.pitch_objective_mode = frame.pitch_objective_mode;
+    current_landscape.harmonicity_params = frame.harmonicity_params;
+    current_landscape.consonance_kernel = frame.consonance_kernel;
+    current_landscape.roughness_k = frame.roughness_k;
+    current_landscape.roughness_ref_peak = frame.roughness_ref_peak;
+    current_landscape.roughness_ref_eps = frame.roughness_ref_eps;
+    current_landscape.subjective_intensity = frame.subjective_intensity;
+    current_landscape.nsgt_power = frame.nsgt_power;
+    current_landscape.recompute_consonance(lparams);
+
+    if cfg!(debug_assertions) && frame_idx.is_multiple_of(30) {
+        let mut max_r = 0.0f32;
+        let mut max_i = 0usize;
+        for (i, &r) in current_landscape.roughness01.iter().enumerate() {
+            if r.is_finite() && r > max_r {
+                max_r = r;
+                max_i = i;
+            }
+        }
+        let h = current_landscape
+            .harmonicity01
+            .get(max_i)
+            .copied()
+            .unwrap_or(0.0);
+        let r = current_landscape
+            .roughness01
+            .get(max_i)
+            .copied()
+            .unwrap_or(0.0);
+        let c_score = current_landscape
+            .consonance_field_score
+            .get(max_i)
+            .copied()
+            .unwrap_or(0.0);
+        let c_level = current_landscape
+            .consonance_field_level
+            .get(max_i)
+            .copied()
+            .unwrap_or(0.0);
+        let (c_score_pred, c_level_pred) =
+            compose_consonance_field_score_level_with_params(h, r, lparams);
+        debug!(
+            "c_score_check bin={} h={:.4} r={:.4} c_score={:.4} c_score_pred={:.4} c_level={:.4} c_level_pred={:.4}",
+            max_i, h, r, c_score, c_score_pred, c_level, c_level_pred
+        );
+    }
+
+    true
 }
 
 pub(crate) struct RuntimeInit {
@@ -819,54 +1075,15 @@ fn worker_loop(
     let mut scenario_end_tick: Option<Tick> = None;
     let mut phonation_batches_buf: Vec<PhonationBatch> = Vec::new();
 
-    // Initial UI frame so metadata is visible before playback starts.
-    let init_meta = SimulationMeta {
-        time_sec: current_time,
-        duration_sec: conductor.total_duration(),
-        voice_count: pop.voices.len(),
-        event_queue_len: conductor.remaining_events(),
-        peak_level: 0.0,
-        scenario_name: scenario_name.clone(),
-        scene_name: conductor.current_scene_name(current_time),
-        playback_state: playback_state.clone(),
-        channel_peak: [0.0; 2],
-        window_peak: [0.0; 2],
-        kuramoto_order_r: None,
-        kuramoto_active_count: 0,
-    };
-    let init_frame = UiFrame {
-        wave: WaveFrame {
-            fs,
-            samples: Arc::from(Vec::<f32>::new()),
-        },
-        spec: SpecFrame {
-            spec_hz: current_landscape.space.centers_hz.clone(),
-            amps: vec![0.0; current_landscape.space.n_bins()],
-        },
-        dorsal: DorsalFrame::default(),
-        landscape: current_landscape.clone(),
-        time_sec: current_time,
-        meta: init_meta,
-        next_gate_tick_est: None,
-        theta_hz: None,
-        delta_hz: None,
-        pred_n_theta_per_delta: None,
-        pred_tau_tick: None,
-        pred_horizon_tick: None,
-        pred_c_field_level_next_gate: None,
-        pred_gain_raw_mean: None,
-        pred_gain_raw_min: None,
-        pred_gain_raw_max: None,
-        pred_gain_mixed_mean: None,
-        pred_gain_mixed_min: None,
-        pred_gain_mixed_max: None,
-        pred_sync_mean: None,
-        gate_boundary_in_hop: None,
-        pred_available_in_hop: None,
-        phonation_onsets_in_hop: None,
-        voices: Vec::new(),
-    };
-    let _ = ui_tx.try_send(init_frame);
+    let _ = ui_tx.try_send(build_initial_ui_frame(
+        &scenario_name,
+        &conductor,
+        &pop,
+        &current_landscape,
+        current_time,
+        playback_state.clone(),
+        fs,
+    ));
 
     loop {
         if exiting.load(Ordering::SeqCst) {
@@ -920,89 +1137,16 @@ fn worker_loop(
             // Spec: landscape may lag analysis by <= MAX_LANDSCAPE_LAG_FRAMES.
             let mut analysis_updated = false;
             loop {
-                // Merge analysis results (latest-only) into the landscape.
-                let mut latest_audio: Option<(u64, Landscape)> = None;
-                while let Ok((analyzed_id, frame)) = analysis_result_rx.try_recv() {
-                    last_analysis_frame = Some(analyzed_id);
-                    latest_audio = Some((analyzed_id, frame));
-                }
-                if let Some((_analysis_id, frame)) = latest_audio {
-                    let space_changed = current_landscape.space.n_bins() != frame.space.n_bins()
-                        || current_landscape.space.fmin != frame.space.fmin
-                        || current_landscape.space.fmax != frame.space.fmax
-                        || current_landscape.space.bins_per_oct != frame.space.bins_per_oct;
-                    if space_changed {
-                        current_landscape.resize_to_space(frame.space.clone());
-                        log_space = current_landscape.space.clone();
-                        world.set_space(log_space.clone());
-                    }
-                    current_landscape.roughness_suppress_sigma_erb =
-                        frame.roughness_suppress_sigma_erb;
-                    current_landscape.roughness_kernel_params = frame.roughness_kernel_params;
-                    current_landscape.roughness = frame.roughness;
-                    current_landscape.roughness_shape_raw = frame.roughness_shape_raw;
-                    current_landscape.roughness01 = frame.roughness01;
-                    current_landscape.harmonicity = frame.harmonicity;
-                    current_landscape.harmonicity_path_a = frame.harmonicity_path_a;
-                    current_landscape.harmonicity_path_b = frame.harmonicity_path_b;
-                    current_landscape.roughness_total = frame.roughness_total;
-                    current_landscape.roughness_max = frame.roughness_max;
-                    current_landscape.roughness_p95 = frame.roughness_p95;
-                    current_landscape.roughness_scalar_raw = frame.roughness_scalar_raw;
-                    current_landscape.roughness_norm = frame.roughness_norm;
-                    current_landscape.roughness01_scalar = frame.roughness01_scalar;
-                    current_landscape.loudness_mass = frame.loudness_mass;
-                    current_landscape.root_affinity = frame.root_affinity;
-                    current_landscape.overtone_affinity = frame.overtone_affinity;
-                    current_landscape.binding_strength = frame.binding_strength;
-                    current_landscape.harmonic_tilt = frame.harmonic_tilt;
-                    current_landscape.harmonicity_mirror_weight = frame.harmonicity_mirror_weight;
-                    current_landscape.pitch_objective_mode = frame.pitch_objective_mode;
-                    current_landscape.harmonicity_params = frame.harmonicity_params;
-                    current_landscape.consonance_kernel = frame.consonance_kernel;
-                    current_landscape.roughness_k = frame.roughness_k;
-                    current_landscape.roughness_ref_peak = frame.roughness_ref_peak;
-                    current_landscape.roughness_ref_eps = frame.roughness_ref_eps;
-                    current_landscape.subjective_intensity = frame.subjective_intensity;
-                    current_landscape.nsgt_power = frame.nsgt_power;
-                    current_landscape.recompute_consonance(&lparams);
+                if merge_latest_analysis_results(
+                    &analysis_result_rx,
+                    &mut current_landscape,
+                    &mut log_space,
+                    &mut world,
+                    &lparams,
+                    &mut last_analysis_frame,
+                    frame_idx,
+                ) {
                     analysis_updated = true;
-                }
-                if analysis_updated && cfg!(debug_assertions) && frame_idx.is_multiple_of(30) {
-                    let mut max_r = 0.0f32;
-                    let mut max_i = 0usize;
-                    for (i, &r) in current_landscape.roughness01.iter().enumerate() {
-                        if r.is_finite() && r > max_r {
-                            max_r = r;
-                            max_i = i;
-                        }
-                    }
-                    let h = current_landscape
-                        .harmonicity01
-                        .get(max_i)
-                        .copied()
-                        .unwrap_or(0.0);
-                    let r = current_landscape
-                        .roughness01
-                        .get(max_i)
-                        .copied()
-                        .unwrap_or(0.0);
-                    let c_score = current_landscape
-                        .consonance_field_score
-                        .get(max_i)
-                        .copied()
-                        .unwrap_or(0.0);
-                    let c_level = current_landscape
-                        .consonance_field_level
-                        .get(max_i)
-                        .copied()
-                        .unwrap_or(0.0);
-                    let (c_score_pred, c_level_pred) =
-                        compose_consonance_field_score_level_with_params(h, r, &lparams);
-                    debug!(
-                        "c_score_check bin={} h={:.4} r={:.4} c_score={:.4} c_score_pred={:.4} c_level={:.4} c_level_pred={:.4}",
-                        max_i, h, r, c_score, c_score_pred, c_level, c_level_pred
-                    );
                 }
 
                 if analysis_ok(frame_idx, last_analysis_frame, MAX_LANDSCAPE_LAG_FRAMES) {
@@ -1213,107 +1357,23 @@ fn worker_loop(
             }
 
             if should_send_ui {
-                let wave_frame = WaveFrame {
+                let _ = ui_tx.try_send(build_runtime_ui_frame(RuntimeUiFrameInput {
+                    scenario_name: &scenario_name,
+                    conductor: &conductor,
+                    pop: &pop,
+                    world: &world,
+                    current_landscape: &current_landscape,
+                    log_space: &log_space,
+                    listener_chunk: Arc::clone(&listener_chunk),
+                    dorsal_metrics,
+                    current_time,
+                    playback_state: playback_state.clone(),
+                    peak_level,
+                    channel_peak,
+                    now_tick,
+                    hop,
                     fs,
-                    samples: Arc::clone(&listener_chunk),
-                };
-                let spec_frame = SpecFrame {
-                    spec_hz: log_space.centers_hz.clone(),
-                    amps: current_landscape
-                        .nsgt_power
-                        .iter()
-                        .map(|&x| x.sqrt())
-                        .collect(),
-                };
-                let ui_landscape: LandscapeFrame = current_landscape.clone();
-                let voice_states: Vec<VoiceStateInfo> = pop
-                    .voices
-                    .iter()
-                    .map(|agent| {
-                        let f = agent.body.base_freq_hz();
-                        VoiceStateInfo {
-                            id: agent.id,
-                            freq_hz: f,
-                            target_freq: 2.0f32.powf(agent.target_pitch_log2()),
-                            integration_window: agent.integration_window(),
-                            breath_gain: agent.articulation.gate(),
-                            consonance: current_landscape.evaluate_pitch_level(f),
-                        }
-                    })
-                    .collect();
-                let pred_stats = pop.last_pred_gate_stats();
-                let kuramoto = pop.kuramoto_order_parameter();
-                let theta_hz = {
-                    let hz = current_landscape.rhythm.theta.freq_hz;
-                    if hz.is_finite() && hz > 0.0 {
-                        Some(hz)
-                    } else {
-                        None
-                    }
-                };
-                let delta_hz = {
-                    let hz = current_landscape.rhythm.delta.freq_hz;
-                    if hz.is_finite() && hz > 0.0 {
-                        Some(hz)
-                    } else {
-                        None
-                    }
-                };
-                let (pred_tau_tick, pred_horizon_tick) =
-                    world.predictor_tau_horizon_ticks(&current_landscape.rhythm);
-                let frame_end = now_tick.saturating_add((hop as Tick).max(1));
-                let pred_next_gate = world.last_pred_next_gate();
-                let pred_available_in_hop = pred_next_gate
-                    .as_ref()
-                    .is_some_and(|(gate_tick, _)| *gate_tick >= now_tick && *gate_tick < frame_end);
-                let pred_c_field_level_next_gate = pred_next_gate.map(|(_, scan)| scan);
-                let ui_frame = UiFrame {
-                    wave: wave_frame,
-                    spec: spec_frame,
-                    dorsal: DorsalFrame {
-                        e_low: dorsal_metrics.e_low,
-                        e_mid: dorsal_metrics.e_mid,
-                        e_high: dorsal_metrics.e_high,
-                        flux: dorsal_metrics.flux,
-                    },
-                    landscape: ui_landscape,
-                    time_sec: current_time,
-                    meta: SimulationMeta {
-                        time_sec: current_time,
-                        duration_sec: conductor.total_duration(),
-                        voice_count: pop.voices.len(),
-                        event_queue_len: conductor.remaining_events(),
-                        peak_level,
-                        scenario_name: scenario_name.clone(),
-                        scene_name: conductor.current_scene_name(current_time),
-                        playback_state: playback_state.clone(),
-                        channel_peak,
-                        window_peak: channel_peak,
-                        kuramoto_order_r: kuramoto.map(|(r, _)| r),
-                        kuramoto_active_count: kuramoto.map(|(_, n)| n).unwrap_or(0),
-                    },
-                    next_gate_tick_est: world.next_gate_tick_est,
-                    theta_hz,
-                    delta_hz,
-                    pred_n_theta_per_delta: Some(
-                        world.predictor_n_theta_per_delta(&current_landscape.rhythm),
-                    ),
-                    pred_tau_tick: Some(pred_tau_tick),
-                    pred_horizon_tick: Some(pred_horizon_tick),
-                    pred_c_field_level_next_gate,
-                    pred_gain_raw_mean: pred_stats.map(|stats| stats.raw_mean),
-                    pred_gain_raw_min: pred_stats.map(|stats| stats.raw_min),
-                    pred_gain_raw_max: pred_stats.map(|stats| stats.raw_max),
-                    pred_gain_mixed_mean: pred_stats.map(|stats| stats.mixed_mean),
-                    pred_gain_mixed_min: pred_stats.map(|stats| stats.mixed_min),
-                    pred_gain_mixed_max: pred_stats.map(|stats| stats.mixed_max),
-                    pred_sync_mean: pred_stats.map(|stats| stats.sync_mean),
-                    gate_boundary_in_hop: pop.last_gate_boundary_in_hop(),
-                    pred_available_in_hop: Some(pred_available_in_hop),
-                    phonation_onsets_in_hop: pop.last_phonation_onsets_in_hop(),
-                    voices: voice_states,
-                };
-                let _ = ui_tx.try_send(ui_frame);
+                }));
                 last_ui_update = Instant::now();
             }
 

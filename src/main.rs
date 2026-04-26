@@ -1,30 +1,11 @@
-#![allow(dead_code)]
-#![allow(unused_imports)]
-#![allow(unused_variables)]
-
-// Entry point: launches the egui/eframe app.
-// Worker threads (including the harmonicity analysis worker) are spawned from `src/app.rs` and
-// receive only the minimal data they need (fs/Log2Space/HarmonicityKernel), not a full Landscape.
-mod app;
-mod audio;
-mod cli;
-mod config;
-mod core;
-mod life;
-mod runtime;
-mod synth;
-mod ui;
-
 use clap::Parser;
+use conchordal::{app, cli::Args, config::AppConfig};
 use std::path::Path;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
 use tracing_subscriber::EnvFilter;
-
-use crate::cli::Args;
-use crate::config::AppConfig;
 
 fn main() -> eframe::Result<()> {
     // Initialize tracing/logging (honors RUST_LOG).

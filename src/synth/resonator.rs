@@ -52,6 +52,7 @@ pub struct ResonatorBank {
     theta: Vec<f32>,
 }
 
+#[allow(dead_code)]
 impl ResonatorBank {
     /// Create a new bank with a fixed capacity.
     pub fn new(fs: f32, max_modes: usize) -> Result<Self, SynthError> {

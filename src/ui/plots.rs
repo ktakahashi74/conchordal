@@ -27,6 +27,7 @@ fn log2_bar_center_width(f_left_hz: f32, f_hz: f32, f_right_hz: f32) -> (f64, f6
 }
 
 /// Histogram on a log2 frequency axis (auto bin width).
+#[allow(dead_code)]
 #[allow(clippy::too_many_arguments)]
 pub fn log2_hist_hz(
     ui: &mut egui::Ui,
@@ -73,6 +74,8 @@ pub fn log2_hist_hz(
         .height(height)
         .allow_scroll(false)
         .allow_drag(false)
+        .allow_zoom(false)
+        .allow_double_click_reset(false)
         .include_y(y_min)
         .include_y(y_max_fixed)
         .include_x(x_min)
@@ -106,6 +109,7 @@ pub fn log2_hist_hz(
         })
         .y_axis_formatter(|mark, _| format!("{:.2}", mark.value))
         .show(ui, |plot_ui| {
+            plot_ui.set_plot_bounds_x(x_min..=x_max);
             plot_ui.bar_chart(chart);
         });
 }
@@ -171,14 +175,20 @@ pub fn log2_plot_hz(
     let (x_min, x_max) = log2_plot_x_bounds();
 
     // === Render ===
+    let y_max_fixed = if y_max <= y_min { y_min + 1.0 } else { y_max };
+
     let mut plot = Plot::new(title)
         .height(height)
         .allow_scroll(false)
         .allow_drag(false)
+        .allow_zoom(false)
+        .allow_double_click_reset(false)
         .include_x(x_min)
         .include_x(x_max)
         .include_y(y_min)
-        .include_y(y_max)
+        .include_y(y_max_fixed)
+        .default_x_bounds(x_min, x_max)
+        .default_y_bounds(y_min, y_max_fixed)
         .x_grid_spacer(log_grid_spacer(10))
         .x_axis_formatter(|mark, _range| {
             let hz = 2f64.powf(mark.value);
@@ -190,6 +200,7 @@ pub fn log2_plot_hz(
     }
 
     plot.show(ui, |plot_ui| {
+        plot_ui.set_plot_bounds_x(x_min..=x_max);
         plot_ui.line(line);
         if let Some(line) = overlay_line {
             plot_ui.line(line);
@@ -247,10 +258,13 @@ pub fn draw_roughness_harmonicity(
         .height(height)
         .allow_scroll(false)
         .allow_drag(false)
+        .allow_zoom(false)
+        .allow_double_click_reset(false)
         .include_x(x_min)
         .include_x(x_max)
         .include_y(-1.0)
         .include_y(1.0)
+        .default_x_bounds(x_min, x_max)
         .default_y_bounds(-1.0, 1.0)
         .x_grid_spacer(log_grid_spacer(10))
         .x_axis_formatter(|mark, _range| {
@@ -263,6 +277,7 @@ pub fn draw_roughness_harmonicity(
     }
 
     plot.show(ui, |plot_ui| {
+        plot_ui.set_plot_bounds_x(x_min..=x_max);
         plot_ui.line(Line::new("H", points_h));
         plot_ui.line(Line::new("R", points_r));
     });
@@ -442,17 +457,21 @@ pub fn plot_population_dynamics(
     let (x_min, x_max) = log2_plot_x_bounds();
     let plot = Plot::new("population_dynamics")
         .height(height)
-        .allow_scroll(true)
-        .allow_drag(true)
+        .allow_scroll(false)
+        .allow_drag(false)
+        .allow_zoom(false)
+        .allow_double_click_reset(false)
         .include_y(-1.0)
         .include_y(1.1)
         .include_x(x_min)
         .include_x(x_max)
+        .default_x_bounds(x_min, x_max)
         .x_axis_formatter(|mark, _| format!("{:.0} Hz", 2f64.powf(mark.value)))
         .y_axis_formatter(|mark, _| format!("{:.2}", mark.value))
         .link_axis(Id::new("landscape_group"), Vec2b::new(true, false));
 
     plot.show(ui, |plot_ui| {
+        plot_ui.set_plot_bounds_x(x_min..=x_max);
         if spec_hz.len() > 1 && spec_amps.len() > 1 {
             let mut bars: Vec<Bar> = Vec::with_capacity(spec_hz.len().saturating_sub(1));
             for i in 1..spec_hz.len().min(spec_amps.len()) {
@@ -588,6 +607,7 @@ pub fn spectrum_time_freq_axes(
 }
 
 /// Visualize neural rhythms (Delta/Theta/Alpha/Beta) as radial gauges.
+#[allow(dead_code)]
 pub fn neural_compass(
     ui: &mut egui::Ui,
     rhythms: &crate::core::modulation::NeuralRhythms,

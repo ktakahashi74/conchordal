@@ -148,6 +148,7 @@ impl AudioOutput {
         ))
     }
 
+    #[allow(dead_code)]
     pub fn stop(&mut self) {
         self.stream.take();
     }

@@ -193,12 +193,12 @@ scene("Modal Gen: Custom Modes", || {
 
 scene("Modal Landscape: Density Modes", || {
     let bed = create(landscape_seed, 8)
-        .place(consonance_density_pmf(110.0, 880.0))
+        .place(consonance_density(110.0, 880.0))
         .pitch_mode("free");
     wait(3.0);
 
     let g = create(landscape_density, 3)
-        .place(consonance_density_pmf(110.0, 880.0))
+        .place(consonance_density(110.0, 880.0))
         .pitch_mode("free");
     wait(2.4);
 
@@ -209,12 +209,12 @@ scene("Modal Landscape: Density Modes", || {
 
 scene("Modal Landscape: Peaks Modes", || {
     let bed = create(landscape_seed, 8)
-        .place(consonance_density_pmf(110.0, 880.0))
+        .place(consonance_density(110.0, 880.0))
         .pitch_mode("free");
     wait(3.0);
 
     let g = create(landscape_peaks, 3)
-        .place(consonance_density_pmf(110.0, 880.0))
+        .place(consonance_density(110.0, 880.0))
         .pitch_mode("free");
     wait(2.4);
 

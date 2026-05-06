@@ -7,7 +7,7 @@ Conchordal v0.4.0-dev scripting API overview. For full details, see the [API Ref
 - **Species**: Voice templates created with `derive()` from presets (`sine`, `harmonic`, `saw`, `square`, `noise`, `modal`).
 - **Groups**: Collections of voices spawned from a species via `create(species, count)`. Returns a `GroupHandle`.
 - **Timeline**: `wait(seconds)` advances the clock. `flush()` forces immediate dispatch. `scene()` scopes groups with auto-release. `parallel()` runs branches concurrently.
-- **Strategies**: Placement methods for multi-voice frequency assignment: `consonance()`, `consonance_density_pmf()`, `random_log()`, `linear()`.
+- **Strategies**: Placement methods for multi-voice frequency assignment: `consonance()`, `consonance_density()`, `random_log()`, `linear()`.
 
 ## Minimal Example
 
@@ -43,7 +43,7 @@ create(base, 4)
 wait(2.0);
 
 // Or use landscape-derived density placement
-create(base, 4).place(consonance_density_pmf(110.0, 880.0));
+create(base, 4).place(consonance_density(110.0, 880.0));
 wait(2.0);
 ```
 
@@ -107,7 +107,7 @@ Landscape-aware modes sample from the live perceptual field:
 ```ts
 let adaptive = derive(modal)
     .sustain()
-    .pitch_mode("free")
+    .consonance_movement()
     .amp(0.05)
     .brightness(0.7)
     .modes(landscape_density_modes().count(16).range(1.0, 3.5).min_dist(0.9));
@@ -139,13 +139,12 @@ These compose: `derive(sine).pulse(3.0).gates(2)` pulses at 3 Hz, each lasting 2
 ### Pitch Control
 
 ```ts
-// "lock" keeps initial frequency; "free" allows hill-climbing
+// "lock" keeps initial frequency
 derive(sine).pitch_mode("lock");
-derive(sine).pitch_mode("free");
 
-// "gate_snap" applies pitch on gate boundaries; "glide" interpolates
-derive(sine).pitch_apply_mode("gate_snap");
-derive(sine).pitch_apply_mode("glide").pitch_glide(0.05);
+// Consonance movement enables free hill-climb movement with glide defaults
+derive(sine).consonance_movement();
+derive(sine).consonance_movement().movement_glide(0.05);
 ```
 
 ### Live Parameter Patching
@@ -167,12 +166,12 @@ wait(1.0);
 
 ```ts
 // Overtone series emphasis (major quality)
-set_harmonicity_mirror_weight(0.0);
+set_harmonic_mirror(0.0);
 create(sine, 4).place(consonance(261.63).range(1.0, 3.0));
 wait(2.0);
 
 // Shift toward undertone series (minor quality)
-set_harmonicity_mirror_weight(1.0);
+set_harmonic_mirror(1.0);
 wait(2.0);
 ```
 

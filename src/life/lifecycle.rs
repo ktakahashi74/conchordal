@@ -50,6 +50,7 @@ impl fmt::Display for LifecycleConfig {
                 metabolism_rate,
                 recharge_rate,
                 action_cost,
+                continuous_recharge_rate,
                 continuous_recharge_score_low,
                 continuous_recharge_score_high,
                 selection_approx_loo,
@@ -68,14 +69,17 @@ impl fmt::Display for LifecycleConfig {
                     envelope.decay_sec,
                     envelope.sustain_level
                 )?;
+                if let Some(rate) = continuous_recharge_rate {
+                    write!(f, ", viability_rate={rate:.3}/s")?;
+                }
                 if let (Some(low), Some(high)) = (
                     continuous_recharge_score_low,
                     continuous_recharge_score_high,
                 ) {
-                    write!(f, ", survival_signal=[{low:.3}, {high:.3}]")?;
+                    write!(f, ", consonance_viability=[{low:.3}, {high:.3}]")?;
                 }
                 if *selection_approx_loo {
-                    write!(f, ", selection_approx_loo")?;
+                    write!(f, ", environment_relative")?;
                 }
                 if let Some(dc) = dissonance_cost {
                     write!(f, ", diss_cost={dc:.3}")?;

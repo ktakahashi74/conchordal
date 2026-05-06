@@ -8,24 +8,26 @@
 
 | 軸 | 実装上の切替 |
 | --- | --- |
-| **Respawn 起源** | `respawn_peak_bias()` (heredity) / `respawn_random()` (random) |
-| **選択圧** | `continuous_recharge_rate(0.10)` + `survival_signal(0.30, 0.80)` を入れる (selection) / 0.0 + 未指定 (only) |
-| **選択の正確さ** | `selection_approx_loo(true)` を付加 (approx_loo) / 付加なし (baseline) |
+| **Respawn 起源** | `respawn_consonance()` (heredity) / `respawn_random()` (random) |
+| **選択圧** | `viability_rate(0.10)` + `consonance_viability(0.30, 0.80)` を入れる (selection) / 0.0 + 未指定 (only) |
+| **選択の正確さ** | `selection_approx_loo(true)` (approx_loo) / `selection_approx_loo(false)` (baseline) |
+
+`consonance_viability()` は v0.4.0 API では環境相対をデフォルトにする。ここでは論文 E6 の比較軸を保つため、baseline 側だけ明示的に `selection_approx_loo(false)` で旧対照条件へ戻している。
 
 ## 6 変種
 
 | # | ファイル | Respawn | 選択圧 | Approx LOO |
 | --- | --- | --- | --- | --- |
-| 1 | `hereditary_adaptation_heredity_only.rhai` | peak_bias | — | — |
-| 2 | `hereditary_adaptation_heredity_selection.rhai` | peak_bias | ✓ | — |
-| 3 | `hereditary_adaptation_heredity_selection_approx_loo.rhai` | peak_bias | ✓ | ✓ |
+| 1 | `hereditary_adaptation_heredity_only.rhai` | consonance | — | — |
+| 2 | `hereditary_adaptation_heredity_selection.rhai` | consonance | ✓ | — |
+| 3 | `hereditary_adaptation_heredity_selection_approx_loo.rhai` | consonance | ✓ | ✓ |
 | 4 | `hereditary_adaptation_random_only.rhai` | random | — | — |
 | 5 | `hereditary_adaptation_random_selection.rhai` | random | ✓ | — |
 | 6 | `hereditary_adaptation_random_selection_approx_loo.rhai` | random | ✓ | ✓ |
 
 ## 対照関係
 
-- **1 vs 4 / 2 vs 5 / 3 vs 6**: 遺伝 (peak_bias) が寄与しているかを比較する軸。
+- **1 vs 4 / 2 vs 5 / 3 vs 6**: 遺伝的な `respawn_consonance()` が寄与しているかを比較する軸。
 - **1 vs 2 / 4 vs 5**: 選択圧が寄与しているかを比較する軸。
 - **2 vs 3 / 5 vs 6**: Approx LOO による選択の先鋭化が差を生むかを比較する軸。
 - **1 (heredity only) と 4 (random only)**: 選択圧なしベースライン。
@@ -43,12 +45,12 @@
 
 - **1, 4** (選択圧なし): ランダム拡散。可聴な収束なし。
 - **2, 5** (選択+遺伝/ランダム): 遺伝ありの方が協和帯域に収束しやすい。
-- **3, 6** (+Approx LOO): 選択の近似改善により、peak_bias 側は収束がより鋭く、random 側はまだ揺らぐ。
+- **3, 6** (+Approx LOO): 選択の近似改善により、consonance respawn 側は収束がより鋭く、random 側はまだ揺らぐ。
 
 ## 参照
 
 - 論文: arXiv:2603.25637 実験 E6 / E6b
-- コード: `src/life/population.rs` (respawn / survival), `src/life/pitch_core.rs` (hill-climb)
+- コード: `src/life/population.rs` (respawn / viability), `src/life/pitch_core.rs` (hill-climb)
 
 ## 関連サンプル群
 

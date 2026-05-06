@@ -60,11 +60,11 @@ let assay_voice = derive(harmonic)
     );
 
 let heredity_selection = derive(assay_voice)
-    .continuous_recharge_rate(0.12 * audition_speedup)
-    .survival_signal(0.30, 0.80)
+    .viability_rate(0.12 * audition_speedup)
+    .consonance_viability(0.30, 0.80)
     .dissonance_cost(1.0)
     .selection_approx_loo(true)
-    .respawn_peak_bias()
+    .respawn_consonance()
     .respawn_capacity(16);
 
 scene("E6: Heredity + Selection (Approx LOO)", || {

@@ -68,6 +68,8 @@ let bell = derive(modal).modes(stiff_string_modes(0.02).count(8));
 
 | Method | Description |
 |--------|-------------|
+| `consonance_movement()` | Free hill-climb pitch movement with glide defaults |
+| `movement_glide(tau_sec)` | Glide time constant for movement APIs |
 | `pitch_mode(name)` | `"free"` or `"lock"` |
 | `pitch_core(name)` | `"hill_climb"` or `"peak_sampler"` |
 | `pitch_apply_mode(name)` | `"gate_snap"` or `"glide"` |
@@ -75,8 +77,7 @@ let bell = derive(modal).modes(stiff_string_modes(0.02).count(8));
 | `pitch_smooth(tau_sec)` | Pitch smoothing time constant |
 
 ```ts
-let glider = derive(sine).pitch_mode("free").pitch_core("hill_climb")
-    .pitch_apply_mode("glide").pitch_glide(0.1);
+let glider = derive(sine).consonance_movement().movement_glide(0.1);
 ```
 
 ### Hill-Climb Tuning
@@ -201,10 +202,16 @@ let decor = derive(sine).unperceived();
 | Method | Description |
 |--------|-------------|
 | `metabolism(rate)` | Energy consumption rate |
+| `viability_rate(rate)` | Environment-relative consonance recharge rate |
+| `consonance_viability(low, high)` | Consonance window used for viability |
 | `adsr(attack_sec, decay_sec, sustain_level, release_sec)` | ADSR envelope |
 
 ```ts
-let pluck = derive(harmonic).metabolism(0.5).adsr(0.01, 0.1, 0.3, 0.2);
+let pluck = derive(harmonic)
+    .metabolism(0.5)
+    .viability_rate(0.2)
+    .consonance_viability(0.3, 0.8)
+    .adsr(0.01, 0.1, 0.3, 0.2);
 ```
 
 ### Rhythm
@@ -221,6 +228,7 @@ let pluck = derive(harmonic).metabolism(0.5).adsr(0.01, 0.1, 0.3, 0.2);
 |--------|-------------|
 | `respawn_random()` | Random respawn locations |
 | `respawn_hereditary(sigma_oct)` | Hereditary with frequency variance in octaves |
+| `respawn_consonance()` | Respawn from consonance-biased parental peaks |
 
 ### Telemetry
 
@@ -287,7 +295,7 @@ All constructors return `SpawnStrategy`.
 | Function | Description |
 |----------|-------------|
 | `consonance(root_freq)` | Highest consonance positions (default range 1x--4x) |
-| `consonance_density_pmf(min_freq, max_freq)` | Weighted-random from density PMF |
+| `consonance_density(min_freq, max_freq)` | Weighted-random from density PMF |
 | `random_log(min_freq, max_freq)` | Log-uniform random |
 | `linear(start_freq, end_freq)` | Linear interpolation |
 
@@ -296,7 +304,7 @@ All constructors return `SpawnStrategy`.
 | Method | Applies to | Description |
 |--------|------------|-------------|
 | `.range(min_mul, max_mul)` | `consonance` | Multiplier range relative to root |
-| `.min_dist(d)` | `consonance`, `consonance_density_pmf` | Min ERB distance between voices |
+| `.min_dist(d)` | `consonance`, `consonance_density` | Min ERB distance between voices |
 | `.reject_targets(anchor_hz, targets_st, exclusion_st, max_tries)` | Any | Reject positions near specified targets |
 
 `reject_targets` wraps any strategy: `targets_st` is an array of semitone offsets
@@ -307,7 +315,7 @@ from `anchor_hz`, `exclusion_st` is the exclusion zone width in semitones, and
 let strat = consonance(220.0).range(1.0, 3.0).min_dist(0.9);
 create(harmonic, 6).place(strat);
 
-let density = consonance_density_pmf(100.0, 800.0).min_dist(1.0);
+let density = consonance_density(100.0, 800.0).min_dist(1.0);
 create(sine, 8).place(density);
 
 // Avoid octaves and fifths of 220 Hz
@@ -362,17 +370,17 @@ Group methods work in two contexts:
 `persistence`, `anneal_temp`, `temperature`, `move_cost`, `move_cost_exp`,
 `improvement_threshold`, `proposal_interval`, `window_cents`, `top_k`,
 `sigma_cents`, `random_candidates`, `brightness`, `spread`, `unison`,
-`pitch_glide`, `leave_self_out`, `leave_self_out_mode`,
+`movement_glide`, `pitch_glide`, `leave_self_out`, `leave_self_out_mode`,
 `leave_self_out_harmonics`, `crowding`, `crowding_target`, `global_peaks`,
 `ratio_candidates`, `move_cost_time_scale`, `pitch_apply_mode`
 
 **Draft-only** (ignored with a warning if called on a live group):
 
-`brain`, `pitch_mode`, `pitch_core`, `sustain`, `repeat`, `once`,
+`brain`, `consonance_movement`, `pitch_mode`, `pitch_core`, `sustain`, `repeat`, `once`,
 `pulse`, `while_alive`, `gates`, `field`, `sync`, `social`, `field_window`,
 `field_curve`, `field_drop`, `metabolism`, `adsr`, `rhythm_coupling`,
 `rhythm_coupling_vitality`, `rhythm_reward`, `respawn_random`,
-`respawn_hereditary`, `modes`, `place`
+`respawn_hereditary`, `respawn_consonance`, `modes`, `place`
 
 ```ts
 let g = create(harmonic, 4)
@@ -472,15 +480,15 @@ parallel([
 
 | Function | Description |
 |----------|-------------|
-| `set_harmonicity_mirror_weight(value)` | Overtone/undertone balance 0.0--1.0 |
+| `set_harmonic_mirror(value)` | Overtone/undertone balance 0.0--1.0 |
 | `set_roughness_k(value)` | Roughness tolerance |
 | `set_global_coupling(value)` | Agent interaction strength |
 | `set_pitch_objective(name)` | `"consonance"`/`"positive"` or `"dissonance"`/`"negative"` |
 
 ```ts
-set_harmonicity_mirror_weight(0.0);  // overtone-dominant (major)
+set_harmonic_mirror(0.0);  // overtone-dominant (major)
 wait(4.0);
-set_harmonicity_mirror_weight(1.0);  // undertone-dominant (minor)
+set_harmonic_mirror(1.0);  // undertone-dominant (minor)
 ```
 
 ---
@@ -495,11 +503,12 @@ let anchor = derive(sine).amp(0.6).sustain();
 let voice = derive(harmonic)
     .amp(0.3)
     .brightness(0.5)
-    .pitch_mode("free")
-    .pitch_core("hill_climb")
-    .pitch_apply_mode("glide").pitch_glide(0.08)
+    .consonance_movement()
+    .movement_glide(0.08)
     .crowding(0.5)
     .metabolism(0.4)
+    .viability_rate(0.2)
+    .consonance_viability(0.3, 0.8)
     .adsr(0.05, 0.1, 0.7, 0.3)
     .repeat().pulse(2.25).sync(0.5);
 
@@ -515,13 +524,13 @@ scene("Opening", || {
     wait(4.0);
 
     // Shift to undertone mode
-    set_harmonicity_mirror_weight(1.0);
+    set_harmonic_mirror(1.0);
     wait(4.0);
 });
 
 scene("Development", || {
     let dense = derive(voice).exploration(0.8).anneal_temp(0.5);
-    let strat = consonance_density_pmf(100.0, 800.0).min_dist(0.8);
+    let strat = consonance_density(100.0, 800.0).min_dist(0.8);
     create(dense, 12).place(strat);
     wait(8.0);
 });

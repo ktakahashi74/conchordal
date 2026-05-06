@@ -230,6 +230,15 @@ impl ScriptHost {
             "pitch_glide",
             SpeciesSpec::set_pitch_glide_tau_sec,
         );
+        register_species_numeric_overloads(
+            &mut engine,
+            "movement_glide",
+            SpeciesSpec::set_pitch_glide_tau_sec,
+        );
+        engine.register_fn("consonance_movement", |mut species: SpeciesHandle| {
+            species.spec.set_consonance_movement();
+            species
+        });
         engine.register_fn("pitch_mode", |mut species: SpeciesHandle, name: &str| {
             species.spec.set_pitch_mode(name);
             species
@@ -338,13 +347,13 @@ impl ScriptHost {
         );
         register_species_numeric_overloads(
             &mut engine,
-            "continuous_recharge_rate",
-            SpeciesSpec::set_continuous_recharge_rate,
+            "viability_rate",
+            SpeciesSpec::set_viability_rate,
         );
         register_species_pair_numeric_overloads(
             &mut engine,
-            "survival_signal",
-            SpeciesSpec::set_survival_signal,
+            "consonance_viability",
+            SpeciesSpec::set_consonance_viability,
         );
         engine.register_fn(
             "selection_approx_loo",
@@ -438,8 +447,8 @@ impl ScriptHost {
                 species
             },
         );
-        engine.register_fn("respawn_peak_bias", |mut species: SpeciesHandle| {
-            species.spec.set_respawn_peak_bias();
+        engine.register_fn("respawn_consonance", |mut species: SpeciesHandle| {
+            species.spec.set_respawn_consonance();
             species
         });
         register_species_numeric_overloads(
@@ -769,14 +778,13 @@ impl ScriptHost {
                 }
             },
         );
-        engine.register_fn(
-            "consonance_density_pmf",
-            |min_freq: FLOAT, max_freq: FLOAT| SpawnStrategy::ConsonanceDensity {
+        engine.register_fn("consonance_density", |min_freq: FLOAT, max_freq: FLOAT| {
+            SpawnStrategy::ConsonanceDensity {
                 min_freq: min_freq as f32,
                 max_freq: max_freq as f32,
                 min_dist_erb: 1.0,
-            },
-        );
+            }
+        });
         engine.register_fn("random_log", |min_freq: FLOAT, max_freq: FLOAT| {
             SpawnStrategy::RandomLog {
                 min_freq: min_freq as f32,
@@ -1292,6 +1300,36 @@ impl ScriptHost {
             patch_pitch_glide_tau,
             None,
         );
+        register_group_numeric_overloads(
+            &mut engine,
+            ctx.clone(),
+            "movement_glide",
+            SpeciesSpec::set_pitch_glide_tau_sec,
+            patch_pitch_glide_tau,
+            None,
+        );
+        let ctx_for_group_consonance_movement = ctx.clone();
+        engine.register_fn(
+            "consonance_movement",
+            move |handle: GroupHandle| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_consonance_movement
+                    .lock()
+                    .expect("lock script context");
+                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                    warn!(
+                        "consonance_movement ignored for unknown group {}",
+                        handle.id
+                    );
+                    return Ok(handle);
+                };
+                match group.status {
+                    GroupStatus::Draft => group.spec.set_consonance_movement(),
+                    GroupStatus::Live => ctx.warn_live_builder(handle.id, "consonance_movement"),
+                    _ => ctx.warn_live_builder(handle.id, "consonance_movement"),
+                }
+                Ok(handle)
+            },
+        );
         let ctx_for_group_brain = ctx.clone();
         engine.register_fn(
             "brain",
@@ -1555,14 +1593,14 @@ impl ScriptHost {
         register_group_draft_numeric_overloads(
             &mut engine,
             ctx.clone(),
-            "continuous_recharge_rate",
-            SpeciesSpec::set_continuous_recharge_rate,
+            "viability_rate",
+            SpeciesSpec::set_viability_rate,
         );
         register_group_draft_pair_numeric_overloads(
             &mut engine,
             ctx.clone(),
-            "survival_signal",
-            SpeciesSpec::set_survival_signal,
+            "consonance_viability",
+            SpeciesSpec::set_consonance_viability,
         );
         register_group_draft_numeric_overloads(
             &mut engine,
@@ -1799,15 +1837,15 @@ impl ScriptHost {
                 Ok(handle)
             },
         );
-        let ctx_for_group_respawn_peak_bias = ctx.clone();
+        let ctx_for_group_respawn_consonance = ctx.clone();
         engine.register_fn(
-            "respawn_peak_bias",
+            "respawn_consonance",
             move |handle: GroupHandle| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_respawn_peak_bias
+                let mut ctx = ctx_for_group_respawn_consonance
                     .lock()
                     .expect("lock script context");
                 let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("respawn_peak_bias ignored for unknown group {}", handle.id);
+                    warn!("respawn_consonance ignored for unknown group {}", handle.id);
                     return Ok(handle);
                 };
                 match group.status {
@@ -1818,8 +1856,8 @@ impl ScriptHost {
                         group.respawn_policy = policy;
                         group.spec.respawn_policy = policy;
                     }
-                    GroupStatus::Live => ctx.warn_live_builder(handle.id, "respawn_peak_bias"),
-                    _ => ctx.warn_live_builder(handle.id, "respawn_peak_bias"),
+                    GroupStatus::Live => ctx.warn_live_builder(handle.id, "respawn_consonance"),
+                    _ => ctx.warn_live_builder(handle.id, "respawn_consonance"),
                 }
                 Ok(handle)
             },
@@ -1886,11 +1924,11 @@ impl ScriptHost {
             },
         );
 
-        let ctx_for_set_harmonicity_mirror_weight = ctx.clone();
+        let ctx_for_set_harmonic_mirror = ctx.clone();
         engine.register_fn(
-            "set_harmonicity_mirror_weight",
+            "set_harmonic_mirror",
             move |_call_ctx: NativeCallContext, mirror: FLOAT| {
-                let mut ctx = ctx_for_set_harmonicity_mirror_weight
+                let mut ctx = ctx_for_set_harmonic_mirror
                     .lock()
                     .expect("lock script context");
                 let update = crate::core::landscape::LandscapeUpdate {

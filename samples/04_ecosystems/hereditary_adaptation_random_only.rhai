@@ -60,7 +60,7 @@ let assay_voice = derive(harmonic)
     );
 
 let random_turnover = derive(assay_voice)
-    .continuous_recharge_rate(0.0)
+    .viability_rate(0.0)
     .respawn_background_death_rate(0.03 * audition_speedup)
     .respawn_random()
     .respawn_capacity(16);

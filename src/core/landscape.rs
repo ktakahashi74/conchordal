@@ -108,7 +108,7 @@ pub struct Landscape {
     /// Computed as max(0, H01 * (1 - rho * R01)) via ConsonanceKernel::density_with_rho.
     pub consonance_density_mass: Vec<f32>,
     /// Density axis: normalized PMF for no-mask/default view.
-    pub consonance_density_pmf: Vec<f32>,
+    pub consonance_density: Vec<f32>,
     /// Field energy cache (`-score`) kept for diagnostics/tests/plots.
     pub consonance_field_energy: Vec<f32>,
     pub subjective_intensity: Vec<f32>,
@@ -155,7 +155,7 @@ impl Landscape {
             consonance_field_score: vec![0.0; n],
             consonance_field_level: vec![0.0; n],
             consonance_density_mass: vec![0.0; n],
-            consonance_density_pmf: vec![0.0; n],
+            consonance_density: vec![0.0; n],
             consonance_field_energy: vec![0.0; n],
             subjective_intensity: vec![0.0; n],
             nsgt_power: vec![0.0; n],
@@ -194,7 +194,7 @@ impl Landscape {
         self.consonance_field_score.resize(n, 0.0);
         self.consonance_field_level.resize(n, 0.0);
         self.consonance_density_mass.resize(n, 0.0);
-        self.consonance_density_pmf.resize(n, 0.0);
+        self.consonance_density.resize(n, 0.0);
         self.consonance_field_energy.resize(n, 0.0);
         self.subjective_intensity.resize(n, 0.0);
         self.nsgt_power.resize(n, 0.0);
@@ -222,7 +222,7 @@ impl Landscape {
         self.space
             .assert_scan_len_named(&self.consonance_density_mass, "consonance_density_mass");
         self.space
-            .assert_scan_len_named(&self.consonance_density_pmf, "consonance_density_pmf");
+            .assert_scan_len_named(&self.consonance_density, "consonance_density");
         self.space
             .assert_scan_len_named(&self.consonance_field_energy, "consonance_field_energy");
         self.space
@@ -282,7 +282,7 @@ impl Landscape {
         let n = self.consonance_field_score.len();
         reset_if_len_mismatch(&mut self.consonance_field_level, n);
         reset_if_len_mismatch(&mut self.consonance_density_mass, n);
-        reset_if_len_mismatch(&mut self.consonance_density_pmf, n);
+        reset_if_len_mismatch(&mut self.consonance_density, n);
         reset_if_len_mismatch(&mut self.consonance_field_energy, n);
 
         let perc_h_pot_scan = &self.harmonicity;
@@ -298,9 +298,9 @@ impl Landscape {
         self.recompute_consonance_field(params);
         self.recompute_consonance_density_mass(params);
         for i in 0..n {
-            self.consonance_density_pmf[i] = self.consonance_density_mass[i];
+            self.consonance_density[i] = self.consonance_density_mass[i];
         }
-        normalize_or_uniform(&mut self.consonance_density_pmf[..n]);
+        normalize_or_uniform(&mut self.consonance_density[..n]);
     }
 
     pub fn recompute_consonance_field(&mut self, params: &LandscapeParams) {
@@ -329,7 +329,7 @@ impl Landscape {
         }
     }
 
-    pub fn build_consonance_density_pmf(&self, occupied: &[bool], out: &mut [f32]) {
+    pub fn build_consonance_density(&self, occupied: &[bool], out: &mut [f32]) {
         self.assert_scan_lengths();
         debug_assert_eq!(occupied.len(), self.consonance_density_mass.len());
         debug_assert_eq!(out.len(), self.consonance_density_mass.len());
@@ -762,18 +762,18 @@ mod tests {
 
         let mut pmf = vec![0.0f32; n];
         let occupied_none = vec![false; n];
-        landscape.build_consonance_density_pmf(&occupied_none, &mut pmf);
+        landscape.build_consonance_density(&occupied_none, &mut pmf);
         let density_sum: f32 = pmf.iter().sum();
         assert!(
             (density_sum - 1.0).abs() < 1e-5,
-            "consonance_density_pmf must sum to 1, got {density_sum}"
+            "consonance_density must sum to 1, got {density_sum}"
         );
 
         let mut occupied_some = vec![false; n];
         for i in (0..n).step_by(2) {
             occupied_some[i] = true;
         }
-        landscape.build_consonance_density_pmf(&occupied_some, &mut pmf);
+        landscape.build_consonance_density(&occupied_some, &mut pmf);
         let density_sum: f32 = pmf.iter().sum();
         assert!(
             (density_sum - 1.0).abs() < 1e-5,
@@ -786,7 +786,7 @@ mod tests {
         }
 
         landscape.consonance_density_mass.fill(0.0);
-        landscape.build_consonance_density_pmf(&occupied_none, &mut pmf);
+        landscape.build_consonance_density(&occupied_none, &mut pmf);
         let density_sum: f32 = pmf.iter().sum();
         assert!(
             (density_sum - 1.0).abs() < 1e-5,
@@ -794,7 +794,7 @@ mod tests {
         );
 
         let occupied_all = vec![true; n];
-        landscape.build_consonance_density_pmf(&occupied_all, &mut pmf);
+        landscape.build_consonance_density(&occupied_all, &mut pmf);
         let density_sum: f32 = pmf.iter().sum();
         assert!(
             (density_sum - 1.0).abs() < 1e-5,
@@ -840,19 +840,19 @@ mod tests {
 
         for i in 0..n {
             let expected = landscape.consonance_density_mass[i].max(0.0) / sum_raw;
-            let got = landscape.consonance_density_pmf[i];
+            let got = landscape.consonance_density[i];
             assert!(
                 (got - expected).abs() < 1e-6,
                 "density pmf mismatch at i={i}: got={got} expected={expected}"
             );
         }
 
-        let pmf_sum: f32 = landscape.consonance_density_pmf.iter().sum();
+        let pmf_sum: f32 = landscape.consonance_density.iter().sum();
         assert!((pmf_sum - 1.0).abs() < 1e-6, "pmf sum={pmf_sum}");
     }
 
     #[test]
-    fn recompute_consonance_density_pmf_falls_back_to_uniform_on_all_zero_raw() {
+    fn recompute_consonance_density_falls_back_to_uniform_on_all_zero_raw() {
         let space = Log2Space::new(100.0, 400.0, 12);
         let params = build_params(&space);
         let mut landscape = Landscape::new(space);
@@ -862,7 +862,7 @@ mod tests {
         landscape.recompute_consonance(&params);
 
         let uniform = 1.0 / n as f32;
-        for (i, &p) in landscape.consonance_density_pmf.iter().enumerate() {
+        for (i, &p) in landscape.consonance_density.iter().enumerate() {
             assert!((p - uniform).abs() < 1e-6, "i={i} p={p} uniform={uniform}");
         }
     }
@@ -903,7 +903,7 @@ mod tests {
         assert_eq!(landscape.consonance_field_score.len(), n);
         assert_eq!(landscape.consonance_field_level.len(), n);
         assert_eq!(landscape.consonance_density_mass.len(), n);
-        assert_eq!(landscape.consonance_density_pmf.len(), n);
+        assert_eq!(landscape.consonance_density.len(), n);
         assert_eq!(landscape.consonance_field_energy.len(), n);
         assert_eq!(landscape.subjective_intensity.len(), n);
         assert_eq!(landscape.nsgt_power.len(), n);

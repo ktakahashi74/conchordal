@@ -49,11 +49,11 @@ const E4_STEP_RESPONSE_SCRIPT: &str = r#"
                 .pitch_mode("free");
             flush();
 
-            set_harmonicity_mirror_weight(0.0);
+            set_harmonic_mirror(0.0);
             flush();
-            set_harmonicity_mirror_weight(0.5);
+            set_harmonic_mirror(0.5);
             flush();
-            set_harmonicity_mirror_weight(1.0);
+            set_harmonic_mirror(1.0);
             flush();
 
             release(probes);
@@ -69,7 +69,7 @@ const E4_BETWEEN_RUNS_SCRIPT: &str = r#"
         scene("E4 Between Runs Test", || {
             let weights = [0.0, 0.5, 1.0];
             for w in weights {
-                set_harmonicity_mirror_weight(w);
+                set_harmonic_mirror(w);
                 flush();
 
                 let base = create(anchor, 1).freq(196.0);
@@ -378,6 +378,62 @@ fn species_pitch_mode_sets_spawn_mode() {
         })
         .expect("spawn action");
     assert_eq!(mode, PitchMode::Lock);
+}
+
+#[test]
+fn consonance_movement_sets_free_hill_climb_glide_defaults() {
+    let (scenario, _warnings) = run_script(
+        r#"
+            create(sine.consonance_movement(), 1);
+            flush();
+        "#,
+    );
+    let mut pop = Population::new(Timebase {
+        fs: 48_000.0,
+        hop: 64,
+    });
+    let landscape = LandscapeFrame::default();
+    for action in scenario
+        .events
+        .iter()
+        .flat_map(|event| event.actions.iter())
+    {
+        if let Action::Spawn { .. } = action {
+            pop.apply_action(action.clone(), &landscape, None);
+        }
+    }
+    let voice = pop.voices.first().expect("spawned voice");
+    assert_eq!(voice.effective_control.pitch.mode, PitchMode::Free);
+    assert_eq!(
+        voice.effective_control.pitch.core_kind,
+        PitchCoreKind::HillClimb
+    );
+    assert_eq!(
+        voice.effective_control.pitch.pitch_apply_mode,
+        PitchApplyMode::Glide
+    );
+    assert!((voice.effective_control.pitch.pitch_glide_tau_sec - 0.30).abs() <= 1e-6);
+}
+
+#[test]
+fn movement_glide_overrides_consonance_movement_default() {
+    let (scenario, _warnings) = run_script(
+        r#"
+            create(sine.consonance_movement().movement_glide(0.12), 1);
+            flush();
+        "#,
+    );
+    let control = scenario
+        .events
+        .iter()
+        .flat_map(|event| &event.actions)
+        .find_map(|action| match action {
+            Action::Spawn { spec, .. } => Some(spec.control.clone()),
+            _ => None,
+        })
+        .expect("spawn action");
+    assert_eq!(control.pitch.pitch_apply_mode, PitchApplyMode::Glide);
+    assert!((control.pitch.pitch_glide_tau_sec - 0.12).abs() <= 1e-6);
 }
 
 #[test]
@@ -1390,10 +1446,10 @@ fn group_draft_respawn_hereditary_emits_runtime_action() {
 }
 
 #[test]
-fn group_draft_respawn_peak_bias_emits_runtime_action() {
+fn group_draft_respawn_consonance_emits_runtime_action() {
     let (scenario, _warnings) = run_script(
         r#"
-            let g = create(sine, 1).respawn_peak_bias();
+            let g = create(sine, 1).respawn_consonance();
             flush();
         "#,
     );
@@ -1538,14 +1594,14 @@ fn spawn_payload_preserves_species_control_fields() {
 }
 
 #[test]
-fn spawn_payload_preserves_survival_signal_window() {
+fn spawn_payload_preserves_consonance_viability_window() {
     let (scenario, _warnings) = run_script(
         r#"
             create(
                 harmonic
                     .metabolism(0.1)
-                    .continuous_recharge_rate(0.3)
-                    .survival_signal(0.3, 0.8),
+                    .viability_rate(0.3)
+                    .consonance_viability(0.3, 0.8),
                 1
             );
             flush();
@@ -1566,6 +1622,7 @@ fn spawn_payload_preserves_survival_signal_window() {
     let LifecycleConfig::Sustain {
         continuous_recharge_score_low,
         continuous_recharge_score_high,
+        selection_approx_loo,
         ..
     } = lifecycle
     else {
@@ -1573,6 +1630,7 @@ fn spawn_payload_preserves_survival_signal_window() {
     };
     assert_eq!(continuous_recharge_score_low, Some(0.3));
     assert_eq!(continuous_recharge_score_high, Some(0.8));
+    assert!(selection_approx_loo);
 }
 
 #[test]
@@ -1608,6 +1666,42 @@ fn spawn_payload_preserves_selection_approx_loo() {
         panic!("expected sustain lifecycle");
     };
     assert!(selection_approx_loo);
+}
+
+#[test]
+fn selection_approx_loo_can_override_consonance_viability_for_reference_assays() {
+    let (scenario, _warnings) = run_script(
+        r#"
+            create(
+                harmonic
+                    .metabolism(0.1)
+                    .consonance_viability(0.3, 0.8)
+                    .selection_approx_loo(false),
+                1
+            );
+            flush();
+        "#,
+    );
+    let spawn = scenario
+        .events
+        .iter()
+        .flat_map(|event| &event.actions)
+        .find_map(|action| match action {
+            Action::Spawn { spec, .. } => Some(spec.clone()),
+            _ => None,
+        })
+        .expect("spawn action");
+    let ArticulationCoreConfig::Entrain { lifecycle, .. } = spawn.articulation else {
+        panic!("expected entrain articulation");
+    };
+    let LifecycleConfig::Sustain {
+        selection_approx_loo,
+        ..
+    } = lifecycle
+    else {
+        panic!("expected sustain lifecycle");
+    };
+    assert!(!selection_approx_loo);
 }
 
 #[test]

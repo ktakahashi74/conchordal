@@ -202,17 +202,30 @@ let decor = derive(sine).unperceived();
 | Method | Description |
 |--------|-------------|
 | `metabolism(rate)` | Energy consumption rate |
+| `initial_energy(value)` | Starting energy for sustain lifecycle |
+| `energy_cap(value)` | Maximum energy after recharge/reward |
+| `recharge_rate(rate)` | Energy gained per attack |
+| `action_cost(cost)` | Energy cost per attack |
 | `viability_rate(rate)` | Environment-relative consonance recharge rate |
 | `consonance_viability(low, high)` | Consonance window used for viability |
+| `selection_approx_loo(enabled)` | Override environment-relative viability scoring for reference assays |
+| `dissonance_cost(cost)` | Extra energy cost at low consonance |
 | `adsr(attack_sec, decay_sec, sustain_level, release_sec)` | ADSR envelope |
 
 ```ts
 let pluck = derive(harmonic)
+    .initial_energy(0.8)
+    .energy_cap(1.0)
     .metabolism(0.5)
+    .action_cost(0.02)
     .viability_rate(0.2)
     .consonance_viability(0.3, 0.8)
     .adsr(0.01, 0.1, 0.3, 0.2);
 ```
+
+`consonance_viability()` enables environment-relative scoring by default. Use
+`selection_approx_loo(false)` only when recreating older reference assays that
+need total-field selection.
 
 ### Rhythm
 
@@ -221,6 +234,20 @@ let pluck = derive(harmonic)
 | `rhythm_coupling(mode)` | `"temporal"` / `"temporal_only"` |
 | `rhythm_coupling_vitality(lambda_v, v_floor)` | Vitality-modulated coupling |
 | `rhythm_reward(rho_t, metric)` | `"attack_phase_match"` or `"none"` |
+| `rhythm_freq(freq_hz)` | Internal theta/rhythm frequency |
+| `rhythm_sensitivity(value)` | Rhythm detector sensitivity |
+| `k_omega(value)` | Kuramoto frequency coupling strength |
+| `base_sigma(value)` | Base phase noise |
+| `gate_thresholds(env_open, mag)` | Gate thresholds with default alpha/beta |
+| `gate_thresholds(env_open, mag, alpha, beta)` | Gate thresholds with explicit shape |
+
+```ts
+let timed = derive(harmonic)
+    .repeat().pulse(2.0)
+    .rhythm_freq(2.0)
+    .rhythm_coupling("temporal")
+    .rhythm_reward(0.25, "attack_phase_match");
+```
 
 ### Respawn
 
@@ -229,6 +256,17 @@ let pluck = derive(harmonic)
 | `respawn_random()` | Random respawn locations |
 | `respawn_hereditary(sigma_oct)` | Hereditary with frequency variance in octaves |
 | `respawn_consonance()` | Respawn from consonance-biased parental peaks |
+| `respawn_capacity(count)` | Maintain population up to count |
+| `respawn_settle(strategy)` | Strategy for replacement placement |
+| `respawn_min_c_level(level)` | Minimum consonance level for respawn acceptance |
+| `respawn_background_death_rate(rate)` | Background turnover rate per second |
+
+```ts
+let ecology = derive(harmonic)
+    .respawn_consonance()
+    .respawn_capacity(16)
+    .respawn_settle(consonance_density(80.0, 1200.0));
+```
 
 ### Telemetry
 
@@ -376,11 +414,16 @@ Group methods work in two contexts:
 
 **Draft-only** (ignored with a warning if called on a live group):
 
-`brain`, `consonance_movement`, `pitch_mode`, `pitch_core`, `sustain`, `repeat`, `once`,
-`pulse`, `while_alive`, `gates`, `field`, `sync`, `social`, `field_window`,
-`field_curve`, `field_drop`, `metabolism`, `adsr`, `rhythm_coupling`,
-`rhythm_coupling_vitality`, `rhythm_reward`, `respawn_random`,
-`respawn_hereditary`, `respawn_consonance`, `modes`, `place`
+`brain`, `consonance_movement`, `pitch_mode`, `pitch_core`, `sustain`,
+`repeat`, `once`, `pulse`, `while_alive`, `gates`, `field`, `sync`,
+`social`, `field_window`, `field_curve`, `field_drop`, `metabolism`,
+`initial_energy`, `recharge_rate`, `action_cost`, `viability_rate`,
+`consonance_viability`, `selection_approx_loo`, `dissonance_cost`,
+`energy_cap`, `adsr`, `rhythm_coupling`, `rhythm_coupling_vitality`,
+`rhythm_reward`, `rhythm_freq`, `rhythm_sensitivity`, `k_omega`,
+`base_sigma`, `gate_thresholds`, `respawn_random`, `respawn_hereditary`,
+`respawn_consonance`, `respawn_capacity`, `respawn_settle`,
+`respawn_min_c_level`, `respawn_background_death_rate`, `modes`, `place`
 
 ```ts
 let g = create(harmonic, 4)
@@ -484,11 +527,18 @@ parallel([
 | `set_roughness_k(value)` | Roughness tolerance |
 | `set_global_coupling(value)` | Agent interaction strength |
 | `set_pitch_objective(name)` | `"consonance"`/`"positive"` or `"dissonance"`/`"negative"` |
+| `set_control_update_mode(name)` | `"snapshot_phased"`/`"snapshot"` or `"sequential_rotating"`/`"sequential"` |
+| `set_scaffold_off()` | Disable external rhythm scaffold |
+| `set_scaffold_shared(freq_hz)` | Shared external scaffold pulse |
+| `set_scaffold_scrambled(freq_hz, seed)` | Per-voice scrambled scaffold pulse |
 
 ```ts
 set_harmonic_mirror(0.0);  // overtone-dominant (major)
 wait(4.0);
 set_harmonic_mirror(1.0);  // undertone-dominant (minor)
+
+set_scaffold_shared(2.0);
+set_control_update_mode("snapshot_phased");
 ```
 
 ---

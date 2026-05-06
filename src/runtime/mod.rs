@@ -160,7 +160,7 @@ struct RuntimeUiFrameInput<'a> {
     world: &'a crate::life::world_model::WorldModel,
     current_landscape: &'a LandscapeFrame,
     log_space: &'a Log2Space,
-    listener_chunk: Arc<[f32]>,
+    presentation_chunk: Arc<[f32]>,
     dorsal_metrics: DorsalMetrics,
     current_time: f32,
     playback_state: PlaybackState,
@@ -214,7 +214,7 @@ fn build_initial_ui_frame(
 fn build_runtime_ui_frame(input: RuntimeUiFrameInput<'_>) -> UiFrame {
     let wave = WaveFrame {
         fs: input.fs,
-        samples: input.listener_chunk,
+        samples: input.presentation_chunk,
     };
     let spec = SpecFrame {
         spec_hz: input.log_space.centers_hz.clone(),
@@ -1253,9 +1253,9 @@ fn worker_loop(
                 });
             }
             // Two mono buses:
-            //   listener_chunk  -> cpal output + wav + UI metering (respects .mute())
-            //   perceptual_chunk -> dorsal rhythm + NSGT analysis  (respects .unperceived())
-            let (listener_chunk, perceptual_chunk, max_abs, channel_peak) = {
+            //   presentation_chunk -> cpal output + wav + UI metering
+            //   field_chunk        -> dorsal rhythm + NSGT analysis
+            let (presentation_chunk, field_chunk, max_abs, channel_peak) = {
                 let frame = schedule_renderer.render(
                     phonation_batches,
                     now_tick,
@@ -1263,7 +1263,7 @@ fn worker_loop(
                 );
 
                 let mut max_p = 0.0f32;
-                for &s in frame.listener {
+                for &s in frame.presentation {
                     let abs_s = s.abs();
                     if abs_s > max_p {
                         max_p = abs_s;
@@ -1271,32 +1271,30 @@ fn worker_loop(
                 }
 
                 if let Some(prod) = prod_opt.as_deref_mut() {
-                    AudioOutput::push_samples(prod, frame.listener);
+                    AudioOutput::push_samples(prod, frame.presentation);
                 }
 
-                let listener_chunk: Arc<[f32]> = Arc::from(frame.listener);
-                let perceptual_chunk: Arc<[f32]> = Arc::from(frame.perceptual);
+                let presentation_chunk: Arc<[f32]> = Arc::from(frame.presentation);
+                let field_chunk: Arc<[f32]> = Arc::from(frame.field);
                 if let Some(tx) = wav_tx.as_ref()
-                    && let Err(err) = tx.send(Arc::clone(&listener_chunk))
+                    && let Err(err) = tx.send(Arc::clone(&presentation_chunk))
                 {
                     warn!("WAV render output disconnected: {err}");
                     exiting.store(true, Ordering::SeqCst);
                 }
 
-                (listener_chunk, perceptual_chunk, max_p, [max_p, max_p])
+                (presentation_chunk, field_chunk, max_p, [max_p, max_p])
             };
 
-            // Dorsal rhythm derives from what the ecosystem perceives, not what the listener
-            // hears. With every voice .unperceived() the input is silent, which is the intended
-            // invariant (no organism-heard audio -> no emergent rhythm).
+            // Dorsal rhythm derives from the field bus. With every voice
+            // .presentation_only(), the input is silent, which is the intended invariant.
             if !finished {
-                current_landscape.rhythm = dorsal.process(perceptual_chunk.as_ref());
+                current_landscape.rhythm = dorsal.process(field_chunk.as_ref());
             }
             let dorsal_metrics = dorsal.last_metrics();
 
-            // Feed every perceptual hop to NSGT-RT. Dropping hops breaks time continuity.
-            if let Err(err) = audio_to_analysis_tx.send((frame_idx, Arc::clone(&perceptual_chunk)))
-            {
+            // Feed every field hop to NSGT-RT. Dropping hops breaks time continuity.
+            if let Err(err) = audio_to_analysis_tx.send((frame_idx, Arc::clone(&field_chunk))) {
                 warn!("analysis worker disconnected: {err}");
                 exiting.store(true, Ordering::SeqCst);
             }
@@ -1364,7 +1362,7 @@ fn worker_loop(
                     world: &world,
                     current_landscape: &current_landscape,
                     log_space: &log_space,
-                    listener_chunk: Arc::clone(&listener_chunk),
+                    presentation_chunk: Arc::clone(&presentation_chunk),
                     dorsal_metrics,
                     current_time,
                     playback_state: playback_state.clone(),

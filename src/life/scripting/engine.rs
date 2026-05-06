@@ -259,13 +259,13 @@ impl ScriptHost {
             species.spec.set_phonation(PhonationKind::Repeat);
             species
         });
-        // Routing: .mute() bypasses listener output, .unperceived() bypasses voice perception.
-        engine.register_fn("mute", |mut species: SpeciesHandle| {
-            species.spec.control.body.routing.to_listener = false;
+        // Routing: presentation reaches the work output; field reaches ALIFE cognition.
+        engine.register_fn("field_only", |mut species: SpeciesHandle| {
+            species.spec.control.body.routing.to_presentation = false;
             species
         });
-        engine.register_fn("unperceived", |mut species: SpeciesHandle| {
-            species.spec.control.body.routing.to_voices = false;
+        engine.register_fn("presentation_only", |mut species: SpeciesHandle| {
+            species.spec.control.body.routing.to_field = false;
             species
         });
         // Tier 2: explicit when/duration
@@ -1497,16 +1497,16 @@ impl ScriptHost {
             }};
         }
         register_group_draft_fn!("once", ctx, engine, |s| s.set_when_once());
-        register_group_draft_fn!("mute", ctx, engine, |s| s
+        register_group_draft_fn!("field_only", ctx, engine, |s| s
             .control
             .body
             .routing
-            .to_listener = false);
-        register_group_draft_fn!("unperceived", ctx, engine, |s| s
+            .to_presentation = false);
+        register_group_draft_fn!("presentation_only", ctx, engine, |s| s
             .control
             .body
             .routing
-            .to_voices = false);
+            .to_field = false);
         register_group_draft_fn1!("pulse", ctx, engine, |s, rate: FLOAT| s
             .set_when_pulse(rate as f32));
         register_group_draft_fn!("while_alive", ctx, engine, |s| s.set_duration_while_alive());

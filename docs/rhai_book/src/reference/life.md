@@ -179,22 +179,22 @@ let fielded = derive(sine).field().field_window(0.2, 0.8);
 
 Each voice contributes to two independent mono buses:
 
-- **listener bus** → cpal output / wav / UI metering (what the audience hears)
-- **perceptual bus** → NSGT analysis → landscape (what other voices perceive)
+- **presentation bus** -> cpal output / wav / UI metering (the work as presented)
+- **field bus** -> NSGT analysis -> landscape (what the ALIFE ecology responds to)
 
 By default both buses receive the voice. Opt out per axis:
 
 | Method | Effect |
 |--------|--------|
-| `mute()` | Voice bypasses the listener bus; still contributes to the perceptual landscape. |
-| `unperceived()` | Voice bypasses the perceptual bus; still audible to the listener. |
+| `field_only()` | Voice bypasses the presentation bus; still contributes to the field. |
+| `presentation_only()` | Voice bypasses the field bus; still contributes to the presented sound. |
 
 ```ts
-// Reference anchor: sensed by the population, silent to the audience.
-let anchor = derive(harmonic).brain("drone").mute();
+// Reference anchor: sensed by the ecology, absent from the presented sound.
+let anchor = derive(harmonic).brain("drone").field_only();
 
-// (Hypothetical) audience-only decor that does not influence the ecosystem.
-let decor = derive(sine).unperceived();
+// Presented decor that does not influence the ecology.
+let decor = derive(sine).presentation_only();
 ```
 
 ### Lifecycle

@@ -300,15 +300,15 @@ pub enum BodyMethod {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Routing {
-    pub to_listener: bool,
-    pub to_voices: bool,
+    pub to_presentation: bool,
+    pub to_field: bool,
 }
 
 impl Default for Routing {
     fn default() -> Self {
         Self {
-            to_listener: true,
-            to_voices: true,
+            to_presentation: true,
+            to_field: true,
         }
     }
 }

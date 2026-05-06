@@ -22,7 +22,7 @@ let voice_release_sec = 0.900;
 
 let anchor = derive(harmonic)
     .brain("drone")
-    .mute()
+    .field_only()
     .amp(0.05)
     .sustain()
     .pitch_mode("lock")

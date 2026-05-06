@@ -514,10 +514,10 @@ impl Voice {
 
     pub fn should_retain(&self) -> bool {
         if self.remove_pending && self.release_gain <= 0.0 {
-            return false;
+            return !self.active_render_notes.is_empty();
         }
         if self.remove_pending {
-            return self.is_alive();
+            return self.is_alive() || !self.active_render_notes.is_empty();
         }
         self.is_alive() || self.phonation_engine.has_active_notes()
     }
@@ -836,6 +836,14 @@ impl Voice {
         );
         let phonation_mode = self.phonation_engine.mode;
         let had_tone_on = out.cmds.iter().any(|cmd| matches!(cmd, ToneCmd::On { .. }));
+        if self.remove_pending {
+            self.emit_release_note_offs(now, &mut out.cmds);
+            Self::discard_pending_render_tone_ons(&mut out.cmds);
+            self.phonation_scratch.events.clear();
+            out.onsets.clear();
+            self.prune_tracked_render_notes(&out.cmds);
+            return;
+        }
         if matches!(phonation_mode, PhonationMode::Gated) {
             for onset in &out.onsets {
                 self.articulation
@@ -898,6 +906,20 @@ impl Voice {
     fn discard_pending_render_tone_ons(out_cmds: &mut Vec<ToneCmd>) {
         // Keep Off/Update commands intact when a new render tone cannot be materialized.
         out_cmds.retain(|cmd| !matches!(cmd, ToneCmd::On { .. }));
+    }
+
+    fn emit_release_note_offs(&self, now: Tick, out_cmds: &mut Vec<ToneCmd>) {
+        for tracked in &self.active_render_notes {
+            let already_off = out_cmds.iter().any(
+                |cmd| matches!(cmd, ToneCmd::Off { tone_id, .. } if *tone_id == tracked.tone_id),
+            );
+            if !already_off {
+                out_cmds.push(ToneCmd::Off {
+                    tone_id: tracked.tone_id,
+                    off_tick: now,
+                });
+            }
+        }
     }
 
     fn emit_phonation_updates(
@@ -1004,5 +1026,84 @@ impl Voice {
             return false;
         }
         self.articulation.is_alive() && self.release_gain > 0.0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_voice() -> Voice {
+        Voice::spawn_from_control(
+            VoiceControl::default(),
+            ArticulationCoreConfig::Drone {
+                sway: None,
+                breath_gain_init: None,
+            },
+            1,
+            0,
+            VoiceMetadata::default(),
+            48_000.0,
+            None,
+            0,
+        )
+    }
+
+    #[test]
+    fn release_note_offs_cover_tracked_render_notes_once() {
+        let mut voice = test_voice();
+        voice.active_render_notes = vec![
+            TrackedRenderNote {
+                tone_id: 10,
+                last_target_amp: 0.5,
+                last_target_freq_hz: 220.0,
+                last_continuous_drive: 0.0,
+            },
+            TrackedRenderNote {
+                tone_id: 11,
+                last_target_amp: 0.5,
+                last_target_freq_hz: 330.0,
+                last_continuous_drive: 0.0,
+            },
+        ];
+        let mut cmds = vec![ToneCmd::Off {
+            tone_id: 10,
+            off_tick: 7,
+        }];
+
+        voice.emit_release_note_offs(9, &mut cmds);
+        voice.prune_tracked_render_notes(&cmds);
+
+        let off_10 = cmds
+            .iter()
+            .filter(|cmd| matches!(cmd, ToneCmd::Off { tone_id: 10, .. }))
+            .count();
+        assert_eq!(off_10, 1);
+        assert!(cmds.iter().any(|cmd| matches!(
+            cmd,
+            ToneCmd::Off {
+                tone_id: 11,
+                off_tick: 9
+            }
+        )));
+        assert!(voice.active_render_notes.is_empty());
+    }
+
+    #[test]
+    fn remove_pending_voice_waits_to_flush_tracked_notes() {
+        let mut voice = test_voice();
+        voice.remove_pending = true;
+        voice.release_gain = 0.0;
+        voice.active_render_notes = vec![TrackedRenderNote {
+            tone_id: 10,
+            last_target_amp: 0.5,
+            last_target_freq_hz: 220.0,
+            last_continuous_drive: 0.0,
+        }];
+
+        assert!(voice.should_retain());
+
+        voice.active_render_notes.clear();
+        assert!(!voice.should_retain());
     }
 }

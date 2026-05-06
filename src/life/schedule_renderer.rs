@@ -19,14 +19,14 @@ struct RoutedTone {
 }
 
 pub struct RenderFrame<'a> {
-    pub listener: &'a [f32],
-    pub perceptual: &'a [f32],
+    pub presentation: &'a [f32],
+    pub field: &'a [f32],
 }
 
 pub struct ScheduleRenderer {
     time: Timebase,
-    buf_listener: Vec<f32>,
-    buf_perceptual: Vec<f32>,
+    buf_presentation: Vec<f32>,
+    buf_field: Vec<f32>,
     tones: HashMap<ToneKey, RoutedTone>,
     cutoff_tick: Option<Tick>,
 }
@@ -37,8 +37,8 @@ impl ScheduleRenderer {
     pub fn new(time: Timebase) -> Self {
         Self {
             time,
-            buf_listener: vec![0.0; time.hop],
-            buf_perceptual: vec![0.0; time.hop],
+            buf_presentation: vec![0.0; time.hop],
+            buf_field: vec![0.0; time.hop],
             tones: HashMap::new(),
             cutoff_tick: None,
         }
@@ -51,20 +51,20 @@ impl ScheduleRenderer {
         rhythms: &NeuralRhythms,
     ) -> RenderFrame<'_> {
         let hop = self.time.hop;
-        if self.buf_listener.len() != hop {
-            self.buf_listener.resize(hop, 0.0);
+        if self.buf_presentation.len() != hop {
+            self.buf_presentation.resize(hop, 0.0);
         }
-        if self.buf_perceptual.len() != hop {
-            self.buf_perceptual.resize(hop, 0.0);
+        if self.buf_field.len() != hop {
+            self.buf_field.resize(hop, 0.0);
         }
-        self.buf_listener.fill(0.0);
-        self.buf_perceptual.fill(0.0);
+        self.buf_presentation.fill(0.0);
+        self.buf_field.fill(0.0);
 
         let fs = self.time.fs;
         if fs <= 0.0 {
             return RenderFrame {
-                listener: &self.buf_listener,
-                perceptual: &self.buf_perceptual,
+                presentation: &self.buf_presentation,
+                field: &self.buf_field,
             };
         }
 
@@ -76,27 +76,27 @@ impl ScheduleRenderer {
         self.apply_phonation_batches(phonation_batches, now, &rhythms, dt);
         for tick in now..end {
             let idx = (tick - now) as usize;
-            let mut acc_listener = 0.0f32;
-            let mut acc_perceptual = 0.0f32;
+            let mut acc_presentation = 0.0f32;
+            let mut acc_field = 0.0f32;
             for (_key, rt) in self.tones.iter_mut() {
                 rt.tone.apply_updates_if_due(tick);
                 rt.tone.kick_planned_if_due(tick);
                 let sample = rt.tone.render_tick(tick, fs, dt, &rhythms);
-                if rt.routing.to_listener {
-                    acc_listener += sample;
+                if rt.routing.to_presentation {
+                    acc_presentation += sample;
                 }
-                if rt.routing.to_voices {
-                    acc_perceptual += sample;
+                if rt.routing.to_field {
+                    acc_field += sample;
                 }
             }
-            self.buf_listener[idx] = acc_listener;
-            self.buf_perceptual[idx] = acc_perceptual;
+            self.buf_presentation[idx] = acc_presentation;
+            self.buf_field[idx] = acc_field;
             rhythms.advance_in_place(dt);
         }
 
         RenderFrame {
-            listener: &self.buf_listener,
-            perceptual: &self.buf_perceptual,
+            presentation: &self.buf_presentation,
+            field: &self.buf_field,
         }
     }
 

@@ -23,7 +23,7 @@ let voice_energy_cap = 0.20;
 
 let anchor = derive(harmonic)
     .brain("drone")
-    .mute()
+    .field_only()
     .amp(0.05)
     .sustain()
     .pitch_mode("lock")
@@ -60,9 +60,9 @@ let assay_voice = derive(harmonic)
     );
 
 let heredity_turnover = derive(assay_voice)
-    .continuous_recharge_rate(0.0)
+    .viability_rate(0.0)
     .respawn_background_death_rate(0.03 * audition_speedup)
-    .respawn_peak_bias()
+    .respawn_consonance()
     .respawn_capacity(16);
 
 scene("E6: Heredity Only", || {

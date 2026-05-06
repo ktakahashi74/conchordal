@@ -15,7 +15,7 @@ scene("Mirror Dualism (Fixed Population)", || {
     wait(0.6);
 
     for w in [0.0, 1.0] {
-        set_harmonicity_mirror_weight(w);
+        set_harmonic_mirror(w);
         wait(mirror_warmup_sec);
         wait(sample_sec);
     }

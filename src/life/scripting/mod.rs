@@ -25,6 +25,7 @@ const DEFAULT_SEQ_DURATION_SEC: f32 = 1.0;
 const DEFAULT_PULSE_RATE: f32 = 2.25;
 const DEFAULT_PULSE_SYNC: f32 = 0.5;
 const DEFAULT_GATE_COUNT: u32 = 5;
+const DEFAULT_CONSONANCE_MOVEMENT_GLIDE_TAU_SEC: f32 = 0.30;
 
 fn rhai_array_to_f32(values: Array, label: &str) -> Vec<f32> {
     let mut out = Vec::with_capacity(values.len());
@@ -85,7 +86,7 @@ struct SpeciesSpec {
     initial_energy: Option<f32>,
     recharge_rate: Option<f32>,
     action_cost: Option<f32>,
-    continuous_recharge_rate: Option<f32>,
+    viability_rate: Option<f32>,
     continuous_recharge_score_low: Option<f32>,
     continuous_recharge_score_high: Option<f32>,
     selection_approx_loo: bool,
@@ -121,7 +122,7 @@ impl SpeciesSpec {
             initial_energy: None,
             recharge_rate: None,
             action_cost: None,
-            continuous_recharge_rate: None,
+            viability_rate: None,
             continuous_recharge_score_low: None,
             continuous_recharge_score_high: None,
             selection_approx_loo: false,
@@ -157,7 +158,7 @@ impl SpeciesSpec {
             || self.initial_energy.is_some()
             || self.recharge_rate.is_some()
             || self.action_cost.is_some()
-            || self.continuous_recharge_rate.is_some()
+            || self.viability_rate.is_some()
             || self.continuous_recharge_score_low.is_some()
             || self.continuous_recharge_score_high.is_some()
             || self.selection_approx_loo
@@ -170,7 +171,7 @@ impl SpeciesSpec {
                 metabolism_rate,
                 recharge_rate: self.recharge_rate.map(|value| value.max(0.0)),
                 action_cost: self.action_cost.map(|value| value.max(0.0)),
-                continuous_recharge_rate: self.continuous_recharge_rate.map(|value| value.max(0.0)),
+                continuous_recharge_rate: self.viability_rate.map(|value| value.max(0.0)),
                 continuous_recharge_score_low: self.continuous_recharge_score_low,
                 continuous_recharge_score_high: self.continuous_recharge_score_high,
                 selection_approx_loo: self.selection_approx_loo,
@@ -370,6 +371,14 @@ impl SpeciesSpec {
         self.control.set_pitch_glide_tau_sec_clamped(value);
     }
 
+    fn set_consonance_movement(&mut self) {
+        self.control.pitch.mode = PitchMode::Free;
+        self.control.pitch.core_kind = PitchCoreKind::HillClimb;
+        self.control.set_pitch_apply_mode(PitchApplyMode::Glide);
+        self.control
+            .set_pitch_glide_tau_sec_clamped(DEFAULT_CONSONANCE_MOVEMENT_GLIDE_TAU_SEC);
+    }
+
     fn set_pitch_mode(&mut self, name: &str) {
         let lowered = name.trim().to_ascii_lowercase();
         self.control.pitch.mode = match lowered.as_str() {
@@ -545,17 +554,18 @@ impl SpeciesSpec {
         self.action_cost = Some(value.max(0.0));
     }
 
-    fn set_continuous_recharge_rate(&mut self, value: f32) {
-        self.continuous_recharge_rate = Some(value.max(0.0));
+    fn set_viability_rate(&mut self, value: f32) {
+        self.viability_rate = Some(value.max(0.0));
     }
 
-    fn set_survival_signal(&mut self, low: f32, high: f32) {
+    fn set_consonance_viability(&mut self, low: f32, high: f32) {
         if !low.is_finite() || !high.is_finite() {
-            warn!("survival_signal() expects finite thresholds");
+            warn!("consonance_viability() expects finite thresholds");
             return;
         }
         self.continuous_recharge_score_low = Some(low);
         self.continuous_recharge_score_high = Some(high);
+        self.selection_approx_loo = true;
     }
 
     fn set_selection_approx_loo(&mut self, enabled: bool) {
@@ -593,7 +603,7 @@ impl SpeciesSpec {
         self.respawn_policy = RespawnPolicy::Hereditary { sigma_oct };
     }
 
-    fn set_respawn_peak_bias(&mut self) {
+    fn set_respawn_consonance(&mut self) {
         self.respawn_policy = RespawnPolicy::PeakBiased {
             config: RespawnPeakBiasConfig::default(),
         };

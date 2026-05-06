@@ -1,192 +1,232 @@
 # Quick Start Guide
 
-Conchordal v0.4.0-dev scripting API overview. For full details, see the [API Reference](reference/life.md).
+Conchordal v0.4.0-dev is a research-composer scripting surface. The central
+idea is not note scheduling. The central idea is shaping a perceptual consonance
+field, then letting populations move, survive, and reorganize inside it.
 
-## Basic Concepts
+For a guided listening path, see the [Alpha Guide](alpha_guide.md). For the full
+function list, see the [API Reference](reference/life.md).
 
-- **Species**: Voice templates created with `derive()` from presets (`sine`, `harmonic`, `saw`, `square`, `noise`, `modal`).
-- **Groups**: Collections of voices spawned from a species via `create(species, count)`. Returns a `GroupHandle`.
-- **Timeline**: `wait(seconds)` advances the clock. `flush()` forces immediate dispatch. `scene()` scopes groups with auto-release. `parallel()` runs branches concurrently.
-- **Strategies**: Placement methods for multi-voice frequency assignment: `consonance()`, `consonance_density_pmf()`, `random_log()`, `linear()`.
-
-## Minimal Example
+## Minimal Sound
 
 ```ts
-// Single sine voice at 440 Hz for 2 seconds
 create(sine, 1).freq(440.0);
 wait(2.0);
 ```
 
-## Common Patterns
+`create(species, count)` spawns a group. `wait(seconds)` advances the scenario
+time and flushes pending groups.
 
-### Custom Species Definition
+## Basic Objects
+
+- **Species** are voice templates made with `derive()` from presets such as
+  `sine`, `harmonic`, `modal`, `saw`, `square`, and `noise`.
+- **Groups** are live or draft collections returned by `create()`.
+- **Strategies** decide spawn frequencies: `consonance()`,
+  `consonance_density()`, `random_log()`, and `linear()`.
+- **Scenes** scope groups and release them automatically.
 
 ```ts
 let voice = derive(harmonic)
-    .amp(0.5)
+    .amp(0.08)
     .sustain()
-    .brightness(0.7)
-    .spread(0.2)
-    .unison(4);
-```
+    .brightness(0.35);
 
-Body parameters are individual methods: `brightness(v)`, `spread(v)`, `unison(n)`.
-
-### Multiple Voices with Consonance Strategy
-
-```ts
-let base = derive(harmonic).amp(0.1).sustain();
-
-// Place 4 voices using harmonic consonance relative to 220 Hz
-create(base, 4)
-    .place(consonance(220.0).range(1.0, 4.0).min_dist(1.0));
-wait(2.0);
-
-// Or use landscape-derived density placement
-create(base, 4).place(consonance_density_pmf(110.0, 880.0));
-wait(2.0);
-```
-
-### Scene with Auto Cleanup
-
-```ts
-let drone = derive(sine).amp(0.3).sustain();
-let seeker = derive(sine).amp(0.2).sustain();
-
-scene("Introduction", || {
-    let a = create(drone, 1).freq(110.0);
-    let s = create(seeker, 1).freq(220.0);
-    wait(3.0);
-    // All groups auto-released when scene ends
+scene("plain entry", || {
+    create(voice, 3).place(linear(220.0, 440.0));
+    wait(4.0);
 });
 ```
 
-### Parallel Timelines
+## Consonance Field
+
+`consonance(root_hz)` places voices at high Consonance Field positions around a
+root. The field is shaped by what the system perceives.
 
 ```ts
-parallel([
-    || {
-        // Bass layer
-        create(sine, 1).freq(110.0).sustain();
-        wait(2.0);
-    },
-    || {
-        // Melody layer
-        create(harmonic, 1).freq(440.0).sustain();
-        wait(1.0);
-        create(harmonic, 1).freq(550.0).sustain();
-        wait(1.0);
-    }
-]);
-```
-
-### Modal Body with Custom Modes
-
-The `modal` preset uses inharmonic mode patterns for bell/bar/glass timbres.
-Configure modes with `modes(pattern)` and control brightness.
-
-```ts
-let bell = derive(modal)
+let anchor = derive(harmonic)
+    .brain("drone")
+    .amp(0.06)
     .sustain()
-    .pitch_mode("lock")
-    .freq(220.0)
-    .amp(0.11)
-    .brightness(0.7)
-    .modes(modal_table("vibraphone_1").count(5));
+    .pitch_mode("lock");
 
-create(bell, 1);
-wait(2.0);
+let voice = derive(harmonic)
+    .amp(0.04)
+    .sustain();
+
+scene("field placement", || {
+    create(anchor, 1).freq(110.0);
+    wait(1.0);
+
+    create(voice, 6)
+        .place(consonance(110.0).range(1.0, 4.0).min_dist(0.9));
+    wait(6.0);
+});
 ```
 
-Mode pattern constructors: `harmonic_modes()`, `odd_modes()`, `power_modes(beta)`,
-`stiff_string_modes(stiffness)`, `custom_modes([ratios])`, `modal_table(name)`.
-Chain `.count(n)`, `.jitter(cents)`, `.seed(n)` to refine patterns.
-
-Landscape-aware modes sample from the live perceptual field:
+`set_harmonic_mirror(value)` bends the harmonicity field from overtone emphasis
+toward undertone emphasis.
 
 ```ts
-let adaptive = derive(modal)
+set_harmonic_mirror(0.0);
+wait(4.0);
+set_harmonic_mirror(1.0);
+wait(4.0);
+```
+
+## Consonance Density
+
+`consonance_density(min_hz, max_hz)` samples from the density view of the field.
+Use it when the musical thought is a population seeded by the current terrain.
+
+```ts
+let cloud = derive(harmonic).amp(0.035).sustain();
+
+create(cloud, 10)
+    .place(consonance_density(90.0, 1200.0).min_dist(0.8));
+wait(8.0);
+```
+
+Density is not just "random but harmonic". It is a normalized distribution
+derived from the consonance model, and it remains well-defined inside the
+requested range.
+
+## Consonance Movement
+
+Use `consonance_movement()` when voices should actively seek better field
+positions. It sets free hill-climb movement with glide defaults.
+
+```ts
+let mover = derive(harmonic)
+    .amp(0.045)
     .sustain()
-    .pitch_mode("free")
-    .amp(0.05)
-    .brightness(0.7)
-    .modes(landscape_density_modes().count(16).range(1.0, 3.5).min_dist(0.9));
+    .consonance_movement()
+    .movement_glide(0.35)
+    .crowding(0.6)
+    .global_peaks(8, 70.0)
+    .ratio_candidates(5);
+
+create(mover, 8)
+    .place(consonance_density(80.0, 900.0));
+wait(12.0);
 ```
 
-### Phonation Control
+Advanced controls such as `pitch_mode()`, `pitch_core()`,
+`pitch_apply_mode()`, and `pitch_glide()` remain available for mechanism-level
+work. Prefer `consonance_movement()` in curated v0.4.0 scripts.
 
-Phonation follows a tiered system.
+## Consonance Viability And Respawn
 
-**Tier 1 -- Presets** set sensible defaults for common use:
+Viability makes field fit matter over time. `consonance_viability(low, high)`
+defines the consonance window, and `viability_rate(rate)` controls continuous
+recharge. By default, viability uses environment-relative scoring.
 
 ```ts
-derive(sine).sustain();   // Sustained tone, tied to lifecycle
-derive(sine).repeat();    // Interval-based retriggering
+let settle = consonance_density(70.0, 1100.0).min_dist(0.8);
+
+let ecology = derive(harmonic)
+    .amp(0.04)
+    .repeat()
+    .pulse(1.5)
+    .gates(3)
+    .consonance_movement()
+    .movement_glide(0.45)
+    .initial_energy(0.7)
+    .energy_cap(1.0)
+    .metabolism(0.09)
+    .action_cost(0.012)
+    .viability_rate(0.18)
+    .consonance_viability(0.32, 0.82)
+    .respawn_consonance()
+    .respawn_capacity(14)
+    .respawn_settle(settle);
+
+create(ecology, 14)
+    .place(consonance_density(70.0, 1100.0));
+wait(30.0);
 ```
 
-**Tier 2 -- Explicit when/duration** for finer control:
+Use `selection_approx_loo(false)` only for older reference assays that need the
+previous total-field selection condition.
+
+## Rhythm Foundation
+
+The v0.4.0 rhythm API is a foundation, not the finished rhythm/harmony fusion.
+Use explicit attack structure first:
 
 ```ts
-derive(sine).once();              // Single trigger
-derive(sine).pulse(2.0);         // Retrigger at 2 Hz
-derive(sine).while_alive();      // Duration spans full lifecycle
-derive(sine).gates(4);           // Hold for 4 gate cycles
-derive(sine).field();            // Field-driven duration
+let pulse_voice = derive(harmonic)
+    .repeat()
+    .pulse(2.0)
+    .gates(2)
+    .rhythm_freq(2.0)
+    .rhythm_coupling_vitality(0.8, 0.4)
+    .rhythm_reward(0.4, "attack_phase_match");
 ```
 
-These compose: `derive(sine).pulse(3.0).gates(2)` pulses at 3 Hz, each lasting 2 gates.
-
-### Pitch Control
+Scaffold functions are external comparison controls:
 
 ```ts
-// "lock" keeps initial frequency; "free" allows hill-climbing
-derive(sine).pitch_mode("lock");
-derive(sine).pitch_mode("free");
-
-// "gate_snap" applies pitch on gate boundaries; "glide" interpolates
-derive(sine).pitch_apply_mode("gate_snap");
-derive(sine).pitch_apply_mode("glide").pitch_glide(0.05);
+set_scaffold_off();
+set_scaffold_shared(2.0);
+set_scaffold_scrambled(2.0, 17);
 ```
 
-### Live Parameter Patching
+They are useful for demos and assays. They are not the final rhythm-composition
+abstraction.
 
-Groups support live updates on spawned voices:
+## Modal Bodies
+
+The `modal` preset can use inharmonic mode patterns. Landscape-aware modes can
+sample the live field.
 
 ```ts
-let g = create(sine, 1).freq(220.0).sustain();
+let shimmer_modes = landscape_density_modes()
+    .count(10)
+    .range(1.0, 5.5)
+    .gamma(1.6)
+    .min_dist(0.7);
+
+let shimmer = derive(modal)
+    .amp(0.025)
+    .sustain()
+    .consonance_movement()
+    .modes(shimmer_modes)
+    .brightness(0.7);
+```
+
+Mode constructors include `harmonic_modes()`, `odd_modes()`,
+`power_modes(beta)`, `stiff_string_modes(stiffness)`,
+`custom_modes([ratios])`, `modal_table(name)`, `landscape_density_modes()`, and
+`landscape_peaks_modes()`.
+
+## Live Patching
+
+Some group methods patch running voices. Others are draft-only and must be set
+before the first `flush()` or `wait()`.
+
+```ts
+let g = create(harmonic, 3)
+    .amp(0.04)
+    .place(consonance(220.0));
 flush();
-wait(1.0);
 
-g.freq(440.0);   // Slide to new frequency
-g.amp(0.3);      // Adjust amplitude
-flush();
-wait(1.0);
+g.amp(0.02);
+g.movement_glide(0.8);
+wait(3.0);
+release(g);
 ```
 
-### Global Parameter Modulation
+See the [API Reference](reference/life.md) for the live-patchable and
+draft-only method lists.
 
-```ts
-// Overtone series emphasis (major quality)
-set_harmonicity_mirror_weight(0.0);
-create(sine, 4).place(consonance(261.63).range(1.0, 3.0));
-wait(2.0);
+## Curated Starting Point
 
-// Shift toward undertone series (minor quality)
-set_harmonicity_mirror_weight(1.0);
-wait(2.0);
+Start with:
+
+```bash
+cargo run --release -- samples/04_ecosystems/consonance_ecology.rhai
 ```
 
-## Preset Species
-
-| Preset | Body | Description |
-|--------|------|-------------|
-| `sine` | Sine | Pure sine wave |
-| `harmonic` | Harmonic | Harmonic series synthesis |
-| `saw` | Harmonic | Sawtooth-like (bright) |
-| `square` | Harmonic | Square-like (odd harmonics) |
-| `noise` | Harmonic | Noise-like (full spectrum) |
-| `modal` | Modal | Inharmonic mode synthesis |
-
-## Next Steps
-
-See the [API Reference](reference/life.md) for the complete function list, type details, and advanced parameters.
+That script combines Consonance Field, Density, Movement, Viability, respawn,
+mirror modulation, and the rhythm foundation in one 75-90 second example.

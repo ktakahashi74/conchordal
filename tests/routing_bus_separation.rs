@@ -47,53 +47,56 @@ fn render_one_frame(routing: Routing) -> (bool, bool) {
 
     let mut renderer = ScheduleRenderer::new(tb);
     let frame = renderer.render(&batches, now, &landscape.rhythm);
-    let listener_active = frame.listener.iter().any(|s| s.abs() > 1e-6);
-    let perceptual_active = frame.perceptual.iter().any(|s| s.abs() > 1e-6);
-    (listener_active, perceptual_active)
+    let presentation_active = frame.presentation.iter().any(|s| s.abs() > 1e-6);
+    let field_active = frame.field.iter().any(|s| s.abs() > 1e-6);
+    (presentation_active, field_active)
 }
 
 #[test]
 fn default_routing_fills_both_buses() {
-    let (listener, perceptual) = render_one_frame(Routing::default());
-    assert!(listener, "default routing must feed listener bus");
-    assert!(perceptual, "default routing must feed perceptual bus");
+    let (presentation, field) = render_one_frame(Routing::default());
+    assert!(presentation, "default routing must feed presentation bus");
+    assert!(field, "default routing must feed field bus");
 }
 
 #[test]
-fn mute_suppresses_only_listener_bus() {
+fn field_only_suppresses_only_presentation_bus() {
     let routing = Routing {
-        to_listener: false,
-        to_voices: true,
+        to_presentation: false,
+        to_field: true,
     };
-    let (listener, perceptual) = render_one_frame(routing);
-    assert!(!listener, "muted voice must not leak into listener bus");
+    let (presentation, field) = render_one_frame(routing);
     assert!(
-        perceptual,
-        "muted voice must still contribute to perceptual bus"
+        !presentation,
+        "field-only voice must not leak into presentation bus"
     );
+    assert!(field, "field-only voice must still contribute to field bus");
 }
 
 #[test]
-fn unperceived_suppresses_only_perceptual_bus() {
+fn presentation_only_suppresses_only_field_bus() {
     let routing = Routing {
-        to_listener: true,
-        to_voices: false,
+        to_presentation: true,
+        to_field: false,
     };
-    let (listener, perceptual) = render_one_frame(routing);
-    assert!(listener, "unperceived voice must still reach listener bus");
+    let (presentation, field) = render_one_frame(routing);
     assert!(
-        !perceptual,
-        "unperceived voice must not leak into perceptual bus"
+        presentation,
+        "presentation-only voice must still reach presentation bus"
+    );
+    assert!(
+        !field,
+        "presentation-only voice must not leak into field bus"
     );
 }
 
 #[test]
 fn both_flags_off_produces_silence_everywhere() {
     let routing = Routing {
-        to_listener: false,
-        to_voices: false,
+        to_presentation: false,
+        to_field: false,
     };
-    let (listener, perceptual) = render_one_frame(routing);
-    assert!(!listener);
-    assert!(!perceptual);
+    let (presentation, field) = render_one_frame(routing);
+    assert!(!presentation);
+    assert!(!field);
 }

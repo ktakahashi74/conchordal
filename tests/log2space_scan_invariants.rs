@@ -18,7 +18,7 @@ fn landscape_scans_match_space_bins() {
     space.assert_scan_len(&landscape.consonance_field_score);
     space.assert_scan_len(&landscape.consonance_field_level);
     space.assert_scan_len(&landscape.consonance_density_mass);
-    space.assert_scan_len(&landscape.consonance_density_pmf);
+    space.assert_scan_len(&landscape.consonance_density);
     space.assert_scan_len(&landscape.consonance_field_energy);
     space.assert_scan_len(&landscape.subjective_intensity);
     space.assert_scan_len(&landscape.nsgt_power);

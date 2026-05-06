@@ -524,7 +524,7 @@ mod tests {
     }
 
     #[test]
-    fn continuous_recharge_delta_uses_survival_signal_window_when_configured() {
+    fn continuous_recharge_delta_uses_consonance_viability_window_when_configured() {
         let policy = MetabolismPolicy {
             basal_cost_per_sec: 0.0,
             action_cost_per_attack: 0.0,
@@ -540,7 +540,7 @@ mod tests {
     }
 
     #[test]
-    fn from_lifecycle_sustain_continuous_recharge_rate() {
+    fn from_lifecycle_sustain_viability_rate() {
         let lifecycle = LifecycleConfig::Sustain {
             initial_energy: 1.0,
             metabolism_rate: 0.1,

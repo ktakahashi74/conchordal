@@ -10,8 +10,7 @@ let mover = derive(sine)
     .sustain()
     .metabolism(0.0)
     .sustain_drive(0.012)
-    .pitch_mode("free")
-    .pitch_core("hill_climb")
+    .consonance_movement()
     .proposal_interval(0.60)
     .global_peaks(6, 60.0)
     .ratio_candidates(4)
@@ -22,8 +21,7 @@ let mover = derive(sine)
     .exploration(0.10)
     .persistence(0.72)
     .crowding(1.20)
-    .pitch_apply_mode("glide")
-    .pitch_glide(0.40);
+    .movement_glide(0.40);
 
 scene("HillClimb Stable Convergence", || {
     create(bed, 1).freq(110.0);
@@ -32,8 +30,7 @@ scene("HillClimb Stable Convergence", || {
     wait(0.6);
 
     let movers = create(mover, 6)
-        .place(consonance_density_pmf(90.0, 420.0))
-        .pitch_mode("free");
+        .place(consonance_density(90.0, 420.0));
 
     wait(28.0);
     release(movers);

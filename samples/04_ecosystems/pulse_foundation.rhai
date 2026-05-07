@@ -8,11 +8,12 @@ let pulse_hz = 2.0;
 
 let field_anchor = derive(harmonic)
     .brain("drone")
-    .amp(0.040)
+    .field_only()
+    .amp(0.055)
     .sustain()
     .pitch_mode("lock")
-    .modes(harmonic_modes().count(7))
-    .brightness(0.24)
+    .modes(harmonic_modes().count(6))
+    .brightness(0.20)
     .sustain_drive(0.0015)
     .adsr(0.4, 0.9, 0.97, 1.8);
 

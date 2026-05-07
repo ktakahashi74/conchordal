@@ -1,73 +1,97 @@
 // v0.4 harmony control demo.
-// Shows field placement, density placement, mirror modulation, and movement.
+// Shows audible field states, then a guide voice snapping to each state.
 
 seed(20260507);
 
 let root_hz = 130.81;
-let low_band = 90.0;
-let high_band = 1200.0;
+let field_a_hz = root_hz;
+let field_b_hz = root_hz * 1.25;
+let field_c_hz = root_hz * 1.5;
 
 let anchor = derive(harmonic)
     .brain("drone")
-    .amp(0.045)
+    .field_only()
+    .amp(0.060)
     .sustain()
     .pitch_mode("lock")
-    .modes(harmonic_modes().count(8))
-    .brightness(0.28)
+    .modes(harmonic_modes().count(7))
+    .brightness(0.22)
     .sustain_drive(0.002)
-    .adsr(0.5, 1.1, 0.98, 2.4);
+    .adsr(0.35, 0.9, 0.98, 1.6);
 
-let fixed_voice = derive(harmonic)
-    .amp(0.042)
+let reference = derive(harmonic)
+    .brain("drone")
+    .presentation_only()
+    .amp(0.024)
     .sustain()
-    .modes(harmonic_modes().count(6))
+    .pitch_mode("lock")
+    .modes(harmonic_modes().count(4))
+    .brightness(0.16)
+    .adsr(0.20, 0.55, 0.84, 1.2);
+
+let marker = derive(harmonic)
+    .brain("drone")
+    .presentation_only()
+    .amp(0.044)
+    .sustain()
+    .modes(harmonic_modes().count(5))
     .brightness(0.34)
-    .adsr(0.35, 0.9, 0.86, 1.8);
+    .adsr(0.16, 0.45, 0.82, 0.9);
 
 let mover = derive(harmonic)
-    .amp(0.038)
+    .brain("drone")
+    .presentation_only()
+    .amp(0.058)
     .sustain()
     .consonance_movement()
-    .movement_glide(0.38)
-    .modes(harmonic_modes().count(7))
-    .brightness(0.44)
-    .crowding(0.45)
-    .leave_self_out_harmonics(3)
-    .global_peaks(8, 60.0)
-    .ratio_candidates(4)
-    .adsr(0.45, 1.0, 0.82, 1.9);
+    .pitch_apply_mode("gate_snap")
+    .modes(harmonic_modes().count(5))
+    .brightness(0.40)
+    .crowding(0.18)
+    .leave_self_out_harmonics(2)
+    .global_peaks(3, 140.0)
+    .ratio_candidates(2)
+    .adsr(0.24, 0.70, 0.82, 1.3);
 
 scene("Consonance Field Control", || {
     set_control_update_mode("snapshot_phased");
     set_harmonic_mirror(0.0);
 
-    let root = create(anchor, 1).freq(root_hz);
-    wait(5.0);
+    let field = create(anchor, 1).freq(field_a_hz);
+    let root = create(reference, 1).freq(field_a_hz);
+    wait(0.8);
 
-    let field_group = create(fixed_voice, 4)
-        .place(consonance(root_hz).range(1.0, 3.0).min_dist(0.9));
-    wait(10.0);
-
-    let density_group = create(mover, 5)
-        .place(consonance_density(low_band, high_band).min_dist(0.85));
-    wait(9.0);
-
-    set_harmonic_mirror(0.55);
-    root.freq(root_hz * 1.25);
-    density_group.movement_glide(0.28);
-    wait(10.0);
-
-    set_harmonic_mirror(1.0);
-    let high_group = create(derive(mover).amp(0.032).brightness(0.62), 4)
-        .place(consonance_density(150.0, 1500.0).min_dist(0.75));
-    wait(9.0);
-
-    release(field_group);
-    wait(1.0);
-    release(density_group);
-    wait(1.0);
-    release(high_group);
-    wait(1.0);
-    release(root);
+    let marker_a = create(marker, 2)
+        .place(consonance(field_a_hz).range(1.0, 2.0).min_dist(0.95));
     wait(4.0);
+
+    let guide = create(mover, 1)
+        .place(consonance_density(140.0, 720.0).min_dist(1.4));
+    wait(5.5);
+
+    release(marker_a);
+    wait(0.4);
+    set_harmonic_mirror(0.35);
+    field.freq(field_b_hz);
+    root.freq(field_b_hz);
+    let marker_b = create(marker, 2)
+        .place(consonance(field_b_hz).range(0.9, 2.1).min_dist(0.95));
+    wait(6.5);
+
+    release(marker_b);
+    wait(0.4);
+    set_harmonic_mirror(0.85);
+    field.freq(field_c_hz);
+    root.freq(field_c_hz);
+    let marker_c = create(derive(marker).brightness(0.42), 2)
+        .place(consonance(field_c_hz).range(0.8, 1.9).min_dist(0.95));
+    wait(6.5);
+
+    release(guide);
+    wait(0.6);
+    release(marker_c);
+    wait(0.6);
+    release(root);
+    release(field);
+    wait(2.0);
 });

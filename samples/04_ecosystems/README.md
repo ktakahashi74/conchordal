@@ -9,14 +9,12 @@ specific mechanism.
 Run these in order:
 
 ```bash
-cargo run --release -- samples/04_ecosystems/consonance_field_control.rhai
 cargo run --release -- samples/04_ecosystems/consonance_ecology.rhai
 cargo run --release -- samples/04_ecosystems/pulse_foundation.rhai
 ```
 
 | Script | Role | Approx. duration | What it should show |
 |---|---|---:|---|
-| `consonance_field_control.rhai` | Harmony control demo | 50s | Field placement, density placement, mirror modulation, and active Consonance Movement. |
 | `consonance_ecology.rhai` | Flagship ecology demo | 75s | A population reorganizing under field changes, viability pressure, respawn, and mirror shifts. |
 | `pulse_foundation.rhai` | Rhythm foundation sketch | 52s | Pulse articulation, gated durations, vitality coupling, and attack-phase reward without making rhythm the release center. |
 
@@ -26,6 +24,7 @@ These scripts remain useful, but they are not the first v0.4 user path.
 
 | Scripts | Role |
 |---|---|
+| `consonance_field_control.rhai` | Demoted harmony-control sketch; useful for mechanism comparison, but not clear enough as a first-listen demo. |
 | `mirror_dualism*.rhai` | Compact mirror/field comparison sketches. |
 | `temporal_scaffolding_*.rhai` | External scaffold comparisons for rhythm-coupling behavior. |
 | `hereditary_adaptation_*.rhai` | Reference assays for selection, heredity, and approximate leave-one-out variants. |
@@ -33,7 +32,7 @@ These scripts remain useful, but they are not the first v0.4 user path.
 
 ## Audition Gate
 
-Before cutting v0.4.0 alpha, audition the three curated scripts and record:
+Before cutting v0.4.0 alpha, audition the two curated scripts and record:
 
 - whether each script should remain curated, be revised, or be demoted
 - whether the duration and density are acceptable

@@ -13,14 +13,9 @@ foundation that can later fuse with harmony.
 Run these scripts in order:
 
 ```bash
-cargo run --release -- samples/04_ecosystems/consonance_field_control.rhai
 cargo run --release -- samples/04_ecosystems/consonance_ecology.rhai
 cargo run --release -- samples/04_ecosystems/pulse_foundation.rhai
 ```
-
-`consonance_field_control.rhai` is the first-pass harmony-control demo. Listen
-for the difference between root-centered Consonance Field placement, Consonance
-Density placement, active movement, and mirror changes.
 
 `consonance_ecology.rhai` is the flagship demo. Listen for a population that is
 not merely placed on a chord, but reorganizes as the consonance terrain, mirror,
@@ -31,8 +26,8 @@ rhythm/harmony fusion. Listen for pulse articulation, gated durations,
 vitality-modulated coupling, and attack-phase reward.
 
 The rest of `samples/04_ecosystems/` contains research comparisons and older
-mechanism sketches. Use its local README to distinguish the curated path from
-those comparison scripts.
+mechanism sketches. `consonance_field_control.rhai` remains there as a demoted
+harmony-control sketch, but it is not part of the first v0.4 alpha path.
 
 ## Core API Concepts
 

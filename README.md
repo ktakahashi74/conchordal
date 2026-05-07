@@ -159,8 +159,9 @@ log levels are either `error`, `warn`, `info`, `debug`, or `trace`.
 
 - **circa 1994** — Core concept conceived 
 - **Aug 25, 2025** — Project started 
-- **Dec 25, 2025** — Source & web release (pre-alpha) ← *current* 
-- **Early 2026** — Demo scenario and tutorials
+- **Dec 25, 2025** — Source & web release (pre-alpha)
+- **Mar 2026** — v0.3.0 pre-alpha paper release
+- **May 2026** — v0.4.0 alpha preparation: consonance-first API and curated demos ← *current*
 - **Summer 2026** — Beta, featuring first compositions
 
 

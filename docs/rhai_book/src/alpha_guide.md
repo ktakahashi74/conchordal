@@ -30,6 +30,10 @@ viability pressure, and respawn rules interact.
 rhythm/harmony fusion. Listen for pulse articulation, gated durations,
 vitality-modulated coupling, and attack-phase reward.
 
+The rest of `samples/04_ecosystems/` contains research comparisons and older
+mechanism sketches. Use its local README to distinguish the curated path from
+those comparison scripts.
+
 ## Core API Concepts
 
 `consonance(root_hz)` places voices near high Consonance Field positions around

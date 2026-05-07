@@ -225,11 +225,15 @@ draft-only method lists.
 
 ## Curated Starting Point
 
-Start with:
+Start with the three-script alpha path:
 
 ```bash
+cargo run --release -- samples/04_ecosystems/consonance_field_control.rhai
 cargo run --release -- samples/04_ecosystems/consonance_ecology.rhai
+cargo run --release -- samples/04_ecosystems/pulse_foundation.rhai
 ```
 
-That script combines Consonance Field, Density, Movement, Viability, respawn,
-mirror modulation, and the rhythm foundation in one 75-90 second example.
+`consonance_field_control.rhai` introduces the harmony-control vocabulary,
+`consonance_ecology.rhai` is the flagship ecology demo, and
+`pulse_foundation.rhai` shows the rhythm foundation without claiming complete
+rhythm/harmony fusion.

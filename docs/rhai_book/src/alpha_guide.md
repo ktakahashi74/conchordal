@@ -13,22 +13,22 @@ foundation that can later fuse with harmony.
 Run these scripts in order:
 
 ```bash
+cargo run --release -- samples/04_ecosystems/consonance_field_control.rhai
 cargo run --release -- samples/04_ecosystems/consonance_ecology.rhai
-cargo run --release -- samples/04_ecosystems/mirror_dualism.rhai
-cargo run --release -- samples/04_ecosystems/temporal_scaffolding_shared.rhai
+cargo run --release -- samples/04_ecosystems/pulse_foundation.rhai
 ```
+
+`consonance_field_control.rhai` is the first-pass harmony-control demo. Listen
+for the difference between root-centered Consonance Field placement, Consonance
+Density placement, active movement, and mirror changes.
 
 `consonance_ecology.rhai` is the flagship demo. Listen for a population that is
 not merely placed on a chord, but reorganizes as the consonance terrain, mirror,
 viability pressure, and respawn rules interact.
 
-`mirror_dualism.rhai` is a smaller field-control demo. Listen for how
-`set_harmonic_mirror()` bends the harmonic terrain and changes where new voices
-prefer to appear.
-
-`temporal_scaffolding_shared.rhai` is a rhythm-foundation demo. It is not the
-final rhythm/harmony fusion. Listen for a shared pulse that makes attack timing
-legible while the consonance ecology remains the main v0.4.0 focus.
+`pulse_foundation.rhai` is a rhythm-foundation sketch. It is not the final
+rhythm/harmony fusion. Listen for pulse articulation, gated durations,
+vitality-modulated coupling, and attack-phase reward.
 
 ## Core API Concepts
 
@@ -45,6 +45,8 @@ glide defaults. Use `movement_glide(tau_sec)` when the musical thought is
 `consonance_viability(low, high)` defines the consonance window that feeds
 life-cycle viability. It defaults to environment-relative scoring, so a voice
 is evaluated against the field with its own footprint approximately removed.
+Use `viability_scope("total")` only when total-field viability is the intended
+comparison.
 
 `respawn_consonance()` lets a population replace itself through
 consonance-biased heredity. Combine it with `respawn_capacity(count)` and

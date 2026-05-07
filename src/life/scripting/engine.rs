@@ -356,6 +356,13 @@ impl ScriptHost {
             SpeciesSpec::set_consonance_viability,
         );
         engine.register_fn(
+            "viability_scope",
+            |mut species: SpeciesHandle, name: &str| {
+                species.spec.set_viability_scope(name);
+                species
+            },
+        );
+        engine.register_fn(
             "selection_approx_loo",
             |mut species: SpeciesHandle, enabled: bool| {
                 species.spec.set_selection_approx_loo(enabled);
@@ -1602,6 +1609,8 @@ impl ScriptHost {
             "consonance_viability",
             SpeciesSpec::set_consonance_viability,
         );
+        register_group_draft_fn1!("viability_scope", ctx, engine, |s, name: &str| s
+            .set_viability_scope(name));
         register_group_draft_numeric_overloads(
             &mut engine,
             ctx.clone(),

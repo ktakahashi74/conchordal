@@ -1705,6 +1705,75 @@ fn selection_approx_loo_can_override_consonance_viability_for_reference_assays()
 }
 
 #[test]
+fn viability_scope_total_overrides_environment_default() {
+    let (scenario, _warnings) = run_script(
+        r#"
+            create(
+                harmonic
+                    .metabolism(0.1)
+                    .consonance_viability(0.3, 0.8)
+                    .viability_scope("total"),
+                1
+            );
+            flush();
+        "#,
+    );
+    let spawn = scenario
+        .events
+        .iter()
+        .flat_map(|event| &event.actions)
+        .find_map(|action| match action {
+            Action::Spawn { spec, .. } => Some(spec.clone()),
+            _ => None,
+        })
+        .expect("spawn action");
+    let ArticulationCoreConfig::Entrain { lifecycle, .. } = spawn.articulation else {
+        panic!("expected entrain articulation");
+    };
+    let LifecycleConfig::Sustain {
+        selection_approx_loo,
+        ..
+    } = lifecycle
+    else {
+        panic!("expected sustain lifecycle");
+    };
+    assert!(!selection_approx_loo);
+}
+
+#[test]
+fn draft_group_viability_scope_total_overrides_environment_default() {
+    let (scenario, _warnings) = run_script(
+        r#"
+            create(harmonic, 1)
+                .metabolism(0.1)
+                .consonance_viability(0.3, 0.8)
+                .viability_scope("total");
+            flush();
+        "#,
+    );
+    let spawn = scenario
+        .events
+        .iter()
+        .flat_map(|event| &event.actions)
+        .find_map(|action| match action {
+            Action::Spawn { spec, .. } => Some(spec.clone()),
+            _ => None,
+        })
+        .expect("spawn action");
+    let ArticulationCoreConfig::Entrain { lifecycle, .. } = spawn.articulation else {
+        panic!("expected entrain articulation");
+    };
+    let LifecycleConfig::Sustain {
+        selection_approx_loo,
+        ..
+    } = lifecycle
+    else {
+        panic!("expected sustain lifecycle");
+    };
+    assert!(!selection_approx_loo);
+}
+
+#[test]
 fn live_group_brightness_emits_timbre_patch() {
     let (scenario, _warnings) = run_script(
         r#"

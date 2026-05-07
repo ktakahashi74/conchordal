@@ -568,6 +568,17 @@ impl SpeciesSpec {
         self.selection_approx_loo = true;
     }
 
+    fn set_viability_scope(&mut self, name: &str) {
+        match name.trim().to_ascii_lowercase().as_str() {
+            "environment" => self.selection_approx_loo = true,
+            "total" => self.selection_approx_loo = false,
+            other => warn!(
+                "viability_scope() expects 'environment' or 'total', got '{}'",
+                other
+            ),
+        }
+    }
+
     fn set_selection_approx_loo(&mut self, enabled: bool) {
         self.selection_approx_loo = enabled;
     }

@@ -63,7 +63,7 @@ let random_selection = derive(assay_voice)
     .viability_rate(0.12 * audition_speedup)
     .consonance_viability(0.30, 0.80)
     .dissonance_cost(1.0)
-    .selection_approx_loo(false)
+    .viability_scope("total")
     .respawn_random()
     .respawn_capacity(16);
 

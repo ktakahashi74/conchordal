@@ -146,8 +146,11 @@ create(ecology, 14)
 wait(30.0);
 ```
 
+Use `viability_scope("total")` when the compositional question is explicitly
+total-field viability. The default `viability_scope("environment")` keeps
+v0.4.0 ecology centered on whether a voice is supported by its surroundings.
 Use `selection_approx_loo(false)` only for older reference assays that need the
-previous total-field selection condition.
+previous implementation-level control.
 
 ## Rhythm Foundation
 

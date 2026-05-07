@@ -45,6 +45,8 @@ glide defaults. Use `movement_glide(tau_sec)` when the musical thought is
 `consonance_viability(low, high)` defines the consonance window that feeds
 life-cycle viability. It defaults to environment-relative scoring, so a voice
 is evaluated against the field with its own footprint approximately removed.
+Use `viability_scope("total")` only when total-field viability is the intended
+comparison.
 
 `respawn_consonance()` lets a population replace itself through
 consonance-biased heredity. Combine it with `respawn_capacity(count)` and

@@ -208,6 +208,7 @@ let decor = derive(sine).presentation_only();
 | `action_cost(cost)` | Energy cost per attack |
 | `viability_rate(rate)` | Environment-relative consonance recharge rate |
 | `consonance_viability(low, high)` | Consonance window used for viability |
+| `viability_scope(name)` | `"environment"` or `"total"` viability scoring scope |
 | `selection_approx_loo(enabled)` | Override environment-relative viability scoring for reference assays |
 | `dissonance_cost(cost)` | Extra energy cost at low consonance |
 | `adsr(attack_sec, decay_sec, sustain_level, release_sec)` | ADSR envelope |
@@ -220,12 +221,14 @@ let pluck = derive(harmonic)
     .action_cost(0.02)
     .viability_rate(0.2)
     .consonance_viability(0.3, 0.8)
+    .viability_scope("environment")
     .adsr(0.01, 0.1, 0.3, 0.2);
 ```
 
 `consonance_viability()` enables environment-relative scoring by default. Use
-`selection_approx_loo(false)` only when recreating older reference assays that
-need total-field selection.
+`viability_scope("total")` only when the selection question should include the
+voice's own contribution. `selection_approx_loo()` remains a research/reference
+control for older assays.
 
 ### Rhythm
 
@@ -418,7 +421,7 @@ Group methods work in two contexts:
 `repeat`, `once`, `pulse`, `while_alive`, `gates`, `field`, `sync`,
 `social`, `field_window`, `field_curve`, `field_drop`, `metabolism`,
 `initial_energy`, `recharge_rate`, `action_cost`, `viability_rate`,
-`consonance_viability`, `selection_approx_loo`, `dissonance_cost`,
+`consonance_viability`, `viability_scope`, `dissonance_cost`,
 `energy_cap`, `adsr`, `rhythm_coupling`, `rhythm_coupling_vitality`,
 `rhythm_reward`, `rhythm_freq`, `rhythm_sensitivity`, `k_omega`,
 `base_sigma`, `gate_thresholds`, `respawn_random`, `respawn_hereditary`,

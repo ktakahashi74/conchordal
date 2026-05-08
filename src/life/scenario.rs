@@ -140,6 +140,7 @@ impl Default for TimbreGenotype {
 pub enum OnsetConfig {
     None,
     Accumulator { rate: f32, refractory: u32 },
+    Flow { mean_rate: f32, depth: f32 },
 }
 
 impl Default for OnsetConfig {
@@ -237,19 +238,103 @@ pub struct PhonationConfig {
     pub social: SocialConfig,
 }
 
-// --- Phonation specification (when / duration) ---
+// --- Rhythm intention and phonation specification ---
+
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum RhythmIntent {
+    #[default]
+    None,
+    MetricBeat(MetricBeatSpec),
+    EntrainedBeat(EntrainedBeatSpec),
+    FlowTiming(FlowTimingSpec),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct MetricBeatSpec {
+    pub rate_hz: f32,
+    pub accent: f32,
+}
+
+impl MetricBeatSpec {
+    pub fn sanitized(self) -> Self {
+        Self {
+            rate_hz: sanitize_positive_rate_hz(self.rate_hz),
+            accent: self.accent.clamp(0.0, 1.0),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct EntrainedBeatSpec {
+    pub rate_hz: f32,
+    pub social: f32,
+    pub vitality_lambda: f32,
+    pub vitality_floor: f32,
+    pub reward: f32,
+}
+
+impl EntrainedBeatSpec {
+    pub fn sanitized(self) -> Self {
+        Self {
+            rate_hz: sanitize_positive_rate_hz(self.rate_hz),
+            social: self.social.clamp(0.0, 1.0),
+            vitality_lambda: sanitize_nonnegative_finite(self.vitality_lambda, 0.0),
+            vitality_floor: sanitize_v_floor(self.vitality_floor),
+            reward: sanitize_nonnegative_finite(self.reward, 0.0),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FlowTimingSpec {
+    pub mean_rate_hz: f32,
+    pub depth: f32,
+}
+
+impl FlowTimingSpec {
+    pub fn sanitized(self) -> Self {
+        Self {
+            mean_rate_hz: sanitize_positive_rate_hz(self.mean_rate_hz),
+            depth: self.depth.clamp(0.0, 1.0),
+        }
+    }
+}
+
+fn sanitize_positive_rate_hz(rate_hz: f32) -> f32 {
+    if rate_hz.is_finite() {
+        rate_hz.max(0.01)
+    } else {
+        1.0
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PhonationSpec {
+    pub rhythm: RhythmIntent,
     pub when: WhenSpec,
     pub duration: DurationSpec,
 }
 
 impl PhonationSpec {
     pub fn social_coupling(&self) -> f32 {
+        if let RhythmIntent::EntrainedBeat(spec) = self.rhythm {
+            return spec.sanitized().social;
+        }
         match &self.when {
             WhenSpec::Pulse { social, .. } => social.clamp(0.0, 1.0),
             _ => 0.0,
+        }
+    }
+
+    pub fn prediction_sync(&self) -> f32 {
+        match self.rhythm {
+            RhythmIntent::MetricBeat(spec) => spec.sanitized().accent,
+            RhythmIntent::EntrainedBeat(_) => 0.25,
+            RhythmIntent::FlowTiming(_) => 0.0,
+            RhythmIntent::None => match &self.when {
+                WhenSpec::Pulse { sync, .. } => sync.clamp(0.0, 1.0),
+                _ => 0.0,
+            },
         }
     }
 }
@@ -257,6 +342,7 @@ impl PhonationSpec {
 impl Default for PhonationSpec {
     fn default() -> Self {
         Self {
+            rhythm: RhythmIntent::None,
             when: WhenSpec::Once,
             duration: DurationSpec::WhileAlive,
         }

@@ -2,7 +2,8 @@ use crate::life::adaptation::AdaptationConfig;
 use crate::life::control::{AdaptationControl, PitchControl, PitchCoreKind};
 use crate::life::scenario::{
     DurationConfig, DurationSpec, OnsetConfig, PhonationClockConfig, PhonationConfig,
-    PhonationMode, PhonationSpec, PitchCoreConfig, SocialConfig, SubThetaModConfig, WhenSpec,
+    PhonationMode, PhonationSpec, PitchCoreConfig, RhythmIntent, SocialConfig, SubThetaModConfig,
+    SubdivisionClockConfig, WhenSpec,
 };
 
 pub(crate) fn tessitura_gravity_from_control(gravity: f32) -> f32 {
@@ -89,6 +90,69 @@ fn duration_config_from_spec(duration: &DurationSpec) -> DurationConfig {
 pub(crate) fn phonation_config_from_spec(spec: &PhonationSpec) -> PhonationConfig {
     let duration = duration_config_from_spec(&spec.duration);
 
+    match spec.rhythm {
+        RhythmIntent::MetricBeat(metric) => {
+            let metric = metric.sanitized();
+            return PhonationConfig {
+                mode: PhonationMode::Gated,
+                onset: OnsetConfig::Accumulator {
+                    rate: metric.rate_hz,
+                    refractory: 1,
+                },
+                duration,
+                clock: PhonationClockConfig::ThetaGate,
+                sub_theta_mod: if metric.accent > 0.0 {
+                    SubThetaModConfig::Cosine {
+                        n: 1,
+                        depth: metric.accent,
+                        phase0: 0.0,
+                    }
+                } else {
+                    SubThetaModConfig::None
+                },
+                social: SocialConfig::default(),
+            };
+        }
+        RhythmIntent::EntrainedBeat(entrained) => {
+            let entrained = entrained.sanitized();
+            return PhonationConfig {
+                mode: PhonationMode::Gated,
+                onset: OnsetConfig::Accumulator {
+                    rate: entrained.rate_hz,
+                    refractory: 1,
+                },
+                duration,
+                clock: PhonationClockConfig::ThetaGate,
+                sub_theta_mod: SubThetaModConfig::None,
+                social: SocialConfig {
+                    coupling: entrained.social,
+                    bin_ticks: 0,
+                    smooth: 0.0,
+                },
+            };
+        }
+        RhythmIntent::FlowTiming(flow) => {
+            let flow = flow.sanitized();
+            return PhonationConfig {
+                mode: PhonationMode::Gated,
+                onset: OnsetConfig::Flow {
+                    mean_rate: flow.mean_rate_hz,
+                    depth: flow.depth,
+                },
+                duration,
+                clock: PhonationClockConfig::Composite {
+                    subdivision: Some(SubdivisionClockConfig {
+                        divisions: vec![5, 7, 11],
+                    }),
+                    internal_phase: None,
+                },
+                sub_theta_mod: SubThetaModConfig::None,
+                social: SocialConfig::default(),
+            };
+        }
+        RhythmIntent::None => {}
+    }
+
     match &spec.when {
         WhenSpec::Once => match &spec.duration {
             // once() + while_alive() = sustain: Hold mode, NoteOff on death.
@@ -140,5 +204,30 @@ pub(crate) fn phonation_config_from_spec(spec: &PhonationSpec) -> PhonationConfi
                 },
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::life::scenario::{FlowTimingSpec, RhythmIntent};
+
+    #[test]
+    fn flow_timing_uses_dense_non_binary_clock() {
+        let mut spec = PhonationSpec::default();
+        spec.rhythm = RhythmIntent::FlowTiming(FlowTimingSpec {
+            mean_rate_hz: 2.5,
+            depth: 0.9,
+        });
+
+        let config = phonation_config_from_spec(&spec);
+        let PhonationClockConfig::Composite {
+            subdivision: Some(subdivision),
+            internal_phase: None,
+        } = config.clock
+        else {
+            panic!("expected flow timing to use a composite clock");
+        };
+        assert_eq!(subdivision.divisions, vec![5, 7, 11]);
     }
 }

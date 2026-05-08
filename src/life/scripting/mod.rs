@@ -15,10 +15,11 @@ use super::control::{
 };
 use super::lifecycle::LifecycleConfig;
 use super::scenario::{
-    Action, ArticulationCoreConfig, ControlUpdateMode, DurationSpec, EnvelopeConfig,
-    FieldDurationSpec, GateThresholds, MetabolismRhythmReward, PhonationSpec,
-    RespawnPeakBiasConfig, RespawnPolicy, RhythmCouplingMode, RhythmRewardMetric, ScaffoldConfig,
-    Scenario, SceneMarker, SpawnSpec, SpawnStrategy, TimedEvent, WhenSpec,
+    Action, ArticulationCoreConfig, ControlUpdateMode, DurationSpec, EntrainedBeatSpec,
+    EnvelopeConfig, FieldDurationSpec, FlowTimingSpec, GateThresholds, MetabolismRhythmReward,
+    MetricBeatSpec, PhonationSpec, RespawnPeakBiasConfig, RespawnPolicy, RhythmCouplingMode,
+    RhythmIntent, RhythmRewardMetric, ScaffoldConfig, Scenario, SceneMarker, SpawnSpec,
+    SpawnStrategy, TimedEvent, WhenSpec,
 };
 
 const DEFAULT_SEQ_DURATION_SEC: f32 = 1.0;
@@ -457,6 +458,7 @@ impl SpeciesSpec {
         self.phonation_spec = match kind {
             PhonationKind::Sustain => PhonationSpec::default(),
             PhonationKind::Repeat => PhonationSpec {
+                rhythm: RhythmIntent::None,
                 when: WhenSpec::Pulse {
                     rate: DEFAULT_PULSE_RATE,
                     sync: DEFAULT_PULSE_SYNC,
@@ -467,12 +469,77 @@ impl SpeciesSpec {
         };
     }
 
+    fn ensure_gated_duration(&mut self, default_gates: u32) {
+        if matches!(self.phonation_spec.duration, DurationSpec::WhileAlive) {
+            self.phonation_spec.duration = DurationSpec::Gates(default_gates.max(1));
+        }
+    }
+
+    fn set_metric_beat(&mut self, rate_hz: f32) {
+        let rate_hz = rate_hz.max(0.01);
+        let accent = DEFAULT_PULSE_SYNC;
+        self.phonation_spec.rhythm =
+            RhythmIntent::MetricBeat(MetricBeatSpec { rate_hz, accent }.sanitized());
+        self.phonation_spec.when = WhenSpec::Pulse {
+            rate: rate_hz,
+            sync: accent,
+            social: 0.0,
+        };
+        self.ensure_gated_duration(DEFAULT_GATE_COUNT);
+        self.rhythm_freq = Some(rate_hz);
+    }
+
+    fn set_entrained_beat(&mut self, rate_hz: f32) {
+        let rate_hz = rate_hz.max(0.01);
+        let spec = EntrainedBeatSpec {
+            rate_hz,
+            social: 0.6,
+            vitality_lambda: 0.8,
+            vitality_floor: 0.35,
+            reward: 0.6,
+        }
+        .sanitized();
+        self.phonation_spec.rhythm = RhythmIntent::EntrainedBeat(spec);
+        self.phonation_spec.when = WhenSpec::Pulse {
+            rate: spec.rate_hz,
+            sync: 0.0,
+            social: spec.social,
+        };
+        self.ensure_gated_duration(DEFAULT_GATE_COUNT);
+        self.rhythm_freq = Some(spec.rate_hz);
+        self.rhythm_coupling = RhythmCouplingMode::TemporalTimesVitality {
+            lambda_v: spec.vitality_lambda,
+            v_floor: spec.vitality_floor,
+        };
+        self.rhythm_reward = Some(MetabolismRhythmReward {
+            rho_t: spec.reward,
+            metric: RhythmRewardMetric::AttackPhaseMatch,
+        });
+    }
+
+    fn set_flow_timing(&mut self, mean_rate_hz: f32, depth: f32) {
+        let spec = FlowTimingSpec {
+            mean_rate_hz,
+            depth,
+        }
+        .sanitized();
+        self.phonation_spec.rhythm = RhythmIntent::FlowTiming(spec);
+        self.phonation_spec.when = WhenSpec::Pulse {
+            rate: spec.mean_rate_hz,
+            sync: 0.0,
+            social: 0.0,
+        };
+        self.ensure_gated_duration(1);
+    }
+
     fn set_when_once(&mut self) {
+        self.phonation_spec.rhythm = RhythmIntent::None;
         self.phonation_spec.when = WhenSpec::Once;
     }
 
     fn set_when_pulse(&mut self, rate: f32) {
         let rate = rate.max(0.01);
+        self.phonation_spec.rhythm = RhythmIntent::None;
         match &mut self.phonation_spec.when {
             WhenSpec::Pulse { rate: r, .. } => *r = rate,
             _ => {
@@ -497,14 +564,30 @@ impl SpeciesSpec {
         self.phonation_spec.duration = DurationSpec::Field(FieldDurationSpec::default());
     }
 
-    fn set_sync(&mut self, depth: f32) {
+    fn set_sync_with_label(&mut self, depth: f32, label: &str) {
+        if let RhythmIntent::MetricBeat(mut spec) = self.phonation_spec.rhythm {
+            spec.accent = depth.clamp(0.0, 1.0);
+            self.phonation_spec.rhythm = RhythmIntent::MetricBeat(spec);
+        }
         match &mut self.phonation_spec.when {
             WhenSpec::Pulse { sync, .. } => *sync = depth.clamp(0.0, 1.0),
-            _ => warn!("sync() requires pulse(); ignored"),
+            _ => warn!("{label}() requires pulse(); ignored"),
         }
     }
 
+    fn set_sync(&mut self, depth: f32) {
+        self.set_sync_with_label(depth, "sync");
+    }
+
+    fn set_accent(&mut self, depth: f32) {
+        self.set_sync_with_label(depth, "accent");
+    }
+
     fn set_social(&mut self, coupling: f32) {
+        if let RhythmIntent::EntrainedBeat(mut spec) = self.phonation_spec.rhythm {
+            spec.social = coupling.clamp(0.0, 1.0);
+            self.phonation_spec.rhythm = RhythmIntent::EntrainedBeat(spec);
+        }
         match &mut self.phonation_spec.when {
             WhenSpec::Pulse { social, .. } => *social = coupling.clamp(0.0, 1.0),
             _ => warn!("social() requires pulse(); ignored"),

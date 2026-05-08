@@ -4,30 +4,41 @@ Conchordal v0.4.0 is aimed at research composers who want to work with
 Conchordal concepts directly. It is not trying to hide the model behind common
 music-production vocabulary.
 
-The release center is harmony-first composition: Consonance Field, Consonance
-Density, Consonance Movement, Consonance Viability, and the first rhythm
-foundation that can later fuse with harmony.
+The release center is being reset around rhythm/harmony ecology: Consonance
+Field, Consonance Density, Consonance Movement, Consonance Viability, and
+rhythm as a living time structure. The previous rhythm-foundation framing is no
+longer sufficient for v0.4.0.
 
-## Suggested Path
+## Current Candidate Path
 
-Run these scripts in order:
+The redesigned v0.4.0 rhythm/harmony path is now the active candidate set.
+These scripts still require audition and tuning before release curation:
 
 ```bash
-cargo run --release -- samples/04_ecosystems/consonance_ecology.rhai
-cargo run --release -- samples/04_ecosystems/pulse_foundation.rhai
+cargo run --release -- samples/04_ecosystems/metric_beat_foundation.rhai
+cargo run --release -- samples/04_ecosystems/entrained_beat.rhai
+cargo run --release -- samples/04_ecosystems/flow_timing_field.rhai
+cargo run --release -- samples/04_ecosystems/conchordal_ecology.rhai
 ```
 
-`consonance_ecology.rhai` is the flagship demo. Listen for a population that is
-not merely placed on a chord, but reorganizes as the consonance terrain, mirror,
-viability pressure, and respawn rules interact.
+`metric_beat_foundation.rhai` should make a Western-music-like pulse surface
+immediately legible.
 
-`pulse_foundation.rhai` is a rhythm-foundation sketch. It is not the final
-rhythm/harmony fusion. Listen for pulse articulation, gated durations,
-vitality-modulated coupling, and attack-phase reward.
+`entrained_beat.rhai` should make synchronization emerge from agent phase,
+social onset feedback, vitality coupling, and attack reward.
+
+`flow_timing_field.rhai` should make non-metric but structured timing audible
+over consonance-biased placement.
+
+`conchordal_ecology.rhai` is the integrated flagship candidate. Listen for one
+ecology in which metric beat, entrained beat, flow timing, consonance movement,
+viability, and respawn interact.
 
 The rest of `samples/04_ecosystems/` contains research comparisons and older
-mechanism sketches. `consonance_field_control.rhai` remains there as a demoted
-harmony-control sketch, but it is not part of the first v0.4 alpha path.
+mechanism sketches. `consonance_ecology.rhai` and `pulse_foundation.rhai`
+remain useful source material, but they are no longer sufficient as the v0.4.0
+alpha path. `consonance_field_control.rhai` remains there as a demoted
+harmony-control sketch.
 
 ## Core API Concepts
 
@@ -55,12 +66,22 @@ consonance-biased heredity. Combine it with `respawn_capacity(count)` and
 harmonicity field. It is the most direct way to bend the harmonic terrain during
 a scene.
 
-## Rhythm Foundation
+## Rhythm Redesign
 
-Use `repeat()`, `pulse(freq_hz)`, and `gates(n)` for explicit attacks. Use
+The v0.4.0 rhythm surface is being redesigned around three families:
+
+- metric beat: a Western-music-like pulse surface
+- entrained beat: synchronization emerging from agent coupling and survival
+- flow timing: rain/river-like non-metric onset texture
+
+The new entry points are `metric_beat(rate_hz)`, `entrained_beat(rate_hz)`,
+and `flow_timing(mean_rate_hz[, depth])`.
+
+The current low-level tools remain useful while this is designed. Use
+`repeat()`, `pulse(freq_hz)`, and `gates(n)` for explicit attacks. Use
 `rhythm_coupling_vitality(lambda_v, v_floor)` and
-`rhythm_reward(rho_t, "attack_phase_match")` when timing should affect
-survival and reorganization.
+`rhythm_reward(rho_t, "attack_phase_match")` when timing should affect survival
+and reorganization.
 
 The scaffold functions are external comparison controls:
 

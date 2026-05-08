@@ -25,7 +25,8 @@ use crate::core::timebase::Tick;
 use crate::life::conductor::Conductor;
 use crate::life::population::Population;
 use crate::life::report::{
-    JsonlReporter, onset_samples_from_batches, scaffold_phase_0_1, summarize_groups,
+    JsonlReporter, RhythmObservation, onset_samples_from_batches, scaffold_phase_0_1,
+    summarize_groups,
 };
 use crate::life::scenario::{Action, ScaffoldConfig, Scenario};
 use crate::life::schedule_renderer::ScheduleRenderer;
@@ -794,6 +795,15 @@ pub(crate) fn init_runtime(
         eprintln!("{e}");
         std::process::exit(1);
     });
+    let max_scenario_voice_id = scenario
+        .events
+        .iter()
+        .flat_map(|event| &event.actions)
+        .filter_map(|action| match action {
+            Action::Spawn { ids, .. } => ids.iter().copied().max(),
+            _ => None,
+        })
+        .max();
     let mut reporter = args
         .report
         .as_deref()
@@ -810,6 +820,9 @@ pub(crate) fn init_runtime(
         fs: runtime_sample_rate as f32,
         hop,
     });
+    if let Some(max_id) = max_scenario_voice_id {
+        pop.reserve_runtime_ids_through(max_id);
+    }
     pop.set_seed(scenario.seed);
     pop.set_control_update_mode(scenario.control_update_mode);
     if reporter.is_some() {
@@ -1239,6 +1252,17 @@ fn worker_loop(
                 let runtime_events = pop.drain_runtime_events();
                 let death_records = pop.take_death_records();
                 let group_steps = summarize_groups(&pop.voices, &current_landscape, now_sec);
+                let kuramoto = pop.kuramoto_order_parameter();
+                let rhythm_observation = RhythmObservation {
+                    time_sec: now_sec,
+                    kuramoto_order_r: kuramoto.map(|(r, _)| r),
+                    kuramoto_active_count: kuramoto.map(|(_, n)| n).unwrap_or(0),
+                    onsets_in_hop: onset_samples.len(),
+                    theta_hz: positive_hz(current_landscape.rhythm.theta.freq_hz),
+                    delta_hz: positive_hz(current_landscape.rhythm.delta.freq_hz),
+                    env_open: current_landscape.rhythm.env_open.clamp(0.0, 1.0),
+                    env_level: current_landscape.rhythm.env_level.clamp(0.0, 1.0),
+                };
                 report_try(&mut reporter, "runtime events", |writer| {
                     writer.write_runtime_events(&runtime_events)
                 });
@@ -1250,6 +1274,9 @@ fn worker_loop(
                 });
                 report_try(&mut reporter, "group steps", |writer| {
                     writer.write_group_steps(&group_steps)
+                });
+                report_try(&mut reporter, "rhythm observation", |writer| {
+                    writer.write_rhythm_observation(rhythm_observation)
                 });
             }
             // Two mono buses:
@@ -1414,6 +1441,9 @@ fn worker_loop(
             thread::sleep(Duration::from_millis(1));
         }
     }
+    report_try(&mut reporter, "rhythm summary", |writer| {
+        writer.write_rhythm_summary()
+    });
     report_try(&mut reporter, "flush", |writer| writer.flush());
 }
 

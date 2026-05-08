@@ -81,23 +81,35 @@ Run a sample scenario.
 ```bash
 git clone https://github.com/ktakahashi74/conchordal.git
 cd conchordal
-cargo run --release -- samples/03_structures/autumn_cycle.rhai
+cargo run --release -- samples/04_ecosystems/conchordal_ecology.rhai
 ```
 
 On Linux, you need `libasound2-dev` installed (ALSA headers required by `cpal`).
 
+The current v0.4.0 alpha candidates are being rebuilt around rhythm/harmony
+ecology:
+
+```bash
+cargo run --release -- samples/04_ecosystems/metric_beat_foundation.rhai
+cargo run --release -- samples/04_ecosystems/entrained_beat.rhai
+cargo run --release -- samples/04_ecosystems/flow_timing_field.rhai
+cargo run --release -- samples/04_ecosystems/conchordal_ecology.rhai
+```
+
+These are alpha candidates, not polished works. They are intended to exercise
+metric beat, agent entrainment, flow timing, and the integrated ecology.
 
 ### Scenario scripting example
 
 Create a scenario using Rhai scripts as follows and save it as `sample.rhai`.
 
 ```rust
-let soft = derive(sine).amp(0.2).phonation("hold");
+let soft = derive(sine)
+    .amp(0.08)
+    .sustain();
 
-for i in 0..5 {
-    create(soft, 1);
-    wait(0.5);
-}
+create(soft, 3).place(linear(220.0, 440.0));
+wait(2.0);
 ```
 
 then run the script with
@@ -161,7 +173,7 @@ log levels are either `error`, `warn`, `info`, `debug`, or `trace`.
 - **Aug 25, 2025** — Project started 
 - **Dec 25, 2025** — Source & web release (pre-alpha)
 - **Mar 2026** — v0.3.0 pre-alpha paper release
-- **May 2026** — v0.4.0 alpha preparation: consonance-first API and curated demos ← *current*
+- **May 2026** — v0.4.0 alpha preparation: rhythm/harmony ecology API and curated demos ← *current*
 - **Summer 2026** — Beta, featuring first compositions
 
 

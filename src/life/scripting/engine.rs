@@ -259,6 +259,31 @@ impl ScriptHost {
             species.spec.set_phonation(PhonationKind::Repeat);
             species
         });
+        engine.register_fn("metric_beat", |mut species: SpeciesHandle, rate: FLOAT| {
+            species.spec.set_metric_beat(rate as f32);
+            species
+        });
+        engine.register_fn(
+            "entrained_beat",
+            |mut species: SpeciesHandle, rate: FLOAT| {
+                species.spec.set_entrained_beat(rate as f32);
+                species
+            },
+        );
+        engine.register_fn(
+            "flow_timing",
+            |mut species: SpeciesHandle, mean_rate: FLOAT| {
+                species.spec.set_flow_timing(mean_rate as f32, 0.65);
+                species
+            },
+        );
+        engine.register_fn(
+            "flow_timing",
+            |mut species: SpeciesHandle, mean_rate: FLOAT, depth: FLOAT| {
+                species.spec.set_flow_timing(mean_rate as f32, depth as f32);
+                species
+            },
+        );
         // Routing: presentation reaches the work output; field reaches ALIFE cognition.
         engine.register_fn("field_only", |mut species: SpeciesHandle| {
             species.spec.control.body.routing.to_presentation = false;
@@ -292,6 +317,10 @@ impl ScriptHost {
         // Tier 3: expert tuning
         engine.register_fn("sync", |mut species: SpeciesHandle, depth: FLOAT| {
             species.spec.set_sync(depth as f32);
+            species
+        });
+        engine.register_fn("accent", |mut species: SpeciesHandle, depth: FLOAT| {
+            species.spec.set_accent(depth as f32);
             species
         });
         engine.register_fn("social", |mut species: SpeciesHandle, coupling: FLOAT| {
@@ -1522,6 +1551,8 @@ impl ScriptHost {
         register_group_draft_fn!("field", ctx, engine, |s| s.set_duration_field());
         register_group_draft_fn1!("sync", ctx, engine, |s, depth: FLOAT| s
             .set_sync(depth as f32));
+        register_group_draft_fn1!("accent", ctx, engine, |s, depth: FLOAT| s
+            .set_accent(depth as f32));
         register_group_draft_fn1!("social", ctx, engine, |s, coupling: FLOAT| s
             .set_social(coupling as f32));
         register_group_draft_fn2!("field_window", ctx, engine, |s, min: FLOAT, max: FLOAT| s

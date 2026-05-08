@@ -571,6 +571,14 @@ pub enum OnsetRule {
         acc: f32,
         next_allowed_gate: u64,
     },
+    Flow {
+        mean_rate_hz: f32,
+        depth: f32,
+        elapsed_sec: f32,
+        next_ioi_sec: f32,
+        cluster_remaining: u8,
+        rng: SmallRng,
+    },
     #[cfg(test)]
     Custom(Box<dyn FnMut(&IntervalInput, &CoreState) -> Option<OnsetKick> + Send>),
 }
@@ -585,6 +593,61 @@ impl OnsetRule {
             acc,
             next_allowed_gate: 0,
         }
+    }
+
+    pub fn flow(mean_rate_hz: f32, depth: f32, seed: u64) -> Self {
+        let mut rng = SmallRng::seed_from_u64(seed ^ 0xA53C_9E71_8D4B_2F10);
+        let mut cluster_remaining = 0;
+        let next_ioi_sec =
+            Self::flow_next_ioi(mean_rate_hz, depth, &mut cluster_remaining, &mut rng);
+        let elapsed_sec = rng.random_range(0.0..next_ioi_sec);
+        OnsetRule::Flow {
+            mean_rate_hz,
+            depth,
+            elapsed_sec,
+            next_ioi_sec,
+            cluster_remaining,
+            rng,
+        }
+    }
+
+    fn flow_next_ioi(
+        mean_rate_hz: f32,
+        depth: f32,
+        cluster_remaining: &mut u8,
+        rng: &mut SmallRng,
+    ) -> f32 {
+        let mean_rate_hz = if mean_rate_hz.is_finite() {
+            mean_rate_hz.max(0.01)
+        } else {
+            1.0
+        };
+        let base_ioi = 1.0 / mean_rate_hz;
+        let depth = depth.clamp(0.0, 1.0);
+
+        if depth <= f32::EPSILON {
+            *cluster_remaining = 0;
+            return base_ioi.clamp(0.035, 4.0);
+        }
+
+        let mult = if *cluster_remaining > 0 {
+            *cluster_remaining = cluster_remaining.saturating_sub(1);
+            rng.random_range(0.30..0.62)
+        } else {
+            let p_cluster = 0.05 + 0.17 * depth;
+            let p_gap = 0.04 + 0.10 * depth;
+            let draw = rng.random_range(0.0..1.0);
+            if draw < p_cluster {
+                *cluster_remaining = rng.random_range(1..=2);
+                rng.random_range(0.34..0.72)
+            } else if draw < p_cluster + p_gap {
+                rng.random_range(1.18..1.72)
+            } else {
+                let local = rng.random_range(-1.0..1.0) + rng.random_range(-1.0..1.0);
+                (0.22 * depth * local).exp().clamp(0.58, 1.58)
+            }
+        };
+        (base_ioi * mult).clamp(0.035, 4.0)
     }
 
     pub fn on_candidate(&mut self, c: &IntervalInput, state: &CoreState) -> Option<OnsetKick> {
@@ -616,6 +679,34 @@ impl OnsetRule {
                 }
                 None
             }
+            OnsetRule::Flow {
+                mean_rate_hz,
+                depth,
+                elapsed_sec,
+                next_ioi_sec,
+                cluster_remaining,
+                rng,
+            } => {
+                if !state.is_alive {
+                    return None;
+                }
+                if !mean_rate_hz.is_finite() || *mean_rate_hz <= 0.0 {
+                    return None;
+                }
+                *elapsed_sec += c.dt_sec.max(0.0);
+                if !elapsed_sec.is_finite() || *elapsed_sec > 16.0 {
+                    *elapsed_sec = 16.0;
+                }
+                let can_fire = c.weight > 0.0 && *elapsed_sec >= *next_ioi_sec;
+                if can_fire {
+                    *elapsed_sec = (*elapsed_sec - *next_ioi_sec).min(*next_ioi_sec);
+                    *next_ioi_sec =
+                        Self::flow_next_ioi(*mean_rate_hz, *depth, cluster_remaining, rng);
+                    let strength = (0.48 + 0.14 * depth.clamp(0.0, 1.0)).clamp(0.30, 0.66);
+                    return Some(OnsetKick { strength });
+                }
+                None
+            }
             #[cfg(test)]
             OnsetRule::Custom(f) => f(c, state),
         }
@@ -627,23 +718,43 @@ impl OnsetRule {
             OnsetConfig::Accumulator { rate, refractory } => {
                 OnsetRule::accumulator(*rate, *refractory, seed)
             }
+            OnsetConfig::Flow { mean_rate, depth } => OnsetRule::flow(*mean_rate, *depth, seed),
         }
     }
 
     fn update_config(&mut self, config: &OnsetConfig, seed: u64) {
-        if let (
-            OnsetConfig::Accumulator { rate, refractory },
-            OnsetRule::Accumulator {
-                rate_hz,
-                refractory_gates,
-                ..
-            },
-        ) = (config, &mut *self)
-        {
-            *rate_hz = *rate;
-            *refractory_gates = *refractory;
-        } else {
-            *self = Self::from_config(config, seed);
+        match (config, &mut *self) {
+            (
+                OnsetConfig::Accumulator { rate, refractory },
+                OnsetRule::Accumulator {
+                    rate_hz,
+                    refractory_gates,
+                    ..
+                },
+            ) => {
+                *rate_hz = *rate;
+                *refractory_gates = *refractory;
+            }
+            (
+                OnsetConfig::Flow { mean_rate, depth },
+                OnsetRule::Flow {
+                    mean_rate_hz,
+                    depth: current_depth,
+                    next_ioi_sec,
+                    cluster_remaining,
+                    rng,
+                    ..
+                },
+            ) => {
+                *mean_rate_hz = *mean_rate;
+                *current_depth = *depth;
+                if !next_ioi_sec.is_finite() || *next_ioi_sec <= 0.0 {
+                    *next_ioi_sec = Self::flow_next_ioi(*mean_rate, *depth, cluster_remaining, rng);
+                }
+            }
+            _ => {
+                *self = Self::from_config(config, seed);
+            }
         }
     }
 }
@@ -724,8 +835,7 @@ impl DurationRule {
     pub fn on_note_on(&mut self, onset: OnsetContext) -> DurationPlan {
         match self {
             DurationRule::FixedGate { length_gates } => {
-                let off_gate = onset.gate + *length_gates as u64;
-                DurationPlan::AtGate(off_gate)
+                DurationPlan::HoldTheta(*length_gates as f32)
             }
             DurationRule::Field {
                 hold_min_theta,
@@ -1481,7 +1591,7 @@ mod tests {
     }
 
     #[test]
-    fn fixed_gate_connect_returns_at_gate() {
+    fn fixed_gate_connect_returns_hold_theta() {
         let mut connect = DurationRule::fixed_gate(0);
         let plan = connect.on_note_on(OnsetContext {
             tone_id: 1,
@@ -1491,7 +1601,7 @@ mod tests {
             exc_gate: 1.0,
             exc_slope: 0.0,
         });
-        assert_eq!(plan, DurationPlan::AtGate(10));
+        assert_eq!(plan, DurationPlan::HoldTheta(0.0));
     }
 
     #[test]
@@ -1566,12 +1676,19 @@ mod tests {
             acc: 0.0,
             next_allowed_gate: 0,
         };
-        let mut engine = test_engine(interval, DurationRule::fixed_gate(1));
+        let mut engine = test_engine(interval, DurationRule::fixed_gate(2));
         let state = CoreState { is_alive: true };
         let mut cmds = Vec::new();
         let mut events = Vec::new();
         let mut onsets = Vec::new();
-        let mut timing_grid = ThetaGrid::from_candidates(&candidates);
+        let mut timing_grid = ThetaGrid {
+            boundaries: vec![
+                GateBoundary { gate: 0, tick: 0 },
+                GateBoundary { gate: 1, tick: 10 },
+                GateBoundary { gate: 2, tick: 20 },
+                GateBoundary { gate: 3, tick: 30 },
+            ],
+        };
         let _ = engine.process_candidates(
             &ctx,
             &candidates,
@@ -2236,7 +2353,7 @@ mod tests {
             acc: 1.0,
             next_allowed_gate: 0,
         };
-        let mut engine = test_engine(interval, DurationRule::fixed_gate(1));
+        let mut engine = test_engine(interval, DurationRule::fixed_gate(2));
         let state = CoreState { is_alive: true };
         let timing_field = TimingField::from_values(0, vec![1.0]);
         let candidates = vec![CandidatePoint {
@@ -2248,7 +2365,14 @@ mod tests {
         let mut cmds = Vec::new();
         let mut events = Vec::new();
         let mut onsets = Vec::new();
-        let mut timing_grid = ThetaGrid::from_candidates(&candidates);
+        let mut timing_grid = ThetaGrid {
+            boundaries: vec![
+                GateBoundary { gate: 0, tick: 0 },
+                GateBoundary { gate: 1, tick: 10 },
+                GateBoundary { gate: 2, tick: 20 },
+                GateBoundary { gate: 3, tick: 30 },
+            ],
+        };
         let _ = engine.process_candidates(
             &ctx,
             &candidates,
@@ -2582,6 +2706,81 @@ mod tests {
             _ => None,
         });
         assert_eq!(off_tick, Some(second.onset_tick));
+    }
+
+    #[test]
+    fn fixed_gate_duration_counts_from_subgate_onset() {
+        let ctx = CoreTickCtx {
+            now_tick: 0,
+            frame_end: 50,
+            fs: 1000.0,
+            rhythms: NeuralRhythms::default(),
+        };
+        let candidates = vec![
+            CandidatePoint {
+                tick: 0,
+                gate: 0,
+                theta_pos: 0.0,
+                phase_in_gate: 0.0,
+            },
+            CandidatePoint {
+                tick: 10,
+                gate: 0,
+                theta_pos: 0.5,
+                phase_in_gate: 0.5,
+            },
+            CandidatePoint {
+                tick: 20,
+                gate: 1,
+                theta_pos: 1.0,
+                phase_in_gate: 0.0,
+            },
+            CandidatePoint {
+                tick: 40,
+                gate: 2,
+                theta_pos: 2.0,
+                phase_in_gate: 0.0,
+            },
+        ];
+        let mut engine = test_engine(
+            OnsetRule::Custom(Box::new(|input, _| {
+                if input.tick == 10 {
+                    Some(OnsetKick { strength: 1.0 })
+                } else {
+                    None
+                }
+            })),
+            DurationRule::fixed_gate(1),
+        );
+        let state = CoreState { is_alive: true };
+        let timing_field = TimingField::from_values(0, vec![1.0, 1.0, 1.0]);
+        let mut timing_grid = ThetaGrid::from_candidates(&candidates);
+        let mut cmds = Vec::new();
+        let mut events = Vec::new();
+        let mut onsets = Vec::new();
+
+        engine.process_candidates(
+            &ctx,
+            &candidates,
+            &mut timing_grid,
+            &timing_field,
+            &state,
+            None,
+            &mut cmds,
+            &mut events,
+            &mut onsets,
+        );
+
+        assert_eq!(events.len(), 1);
+        let tone_id = events[0].tone_id;
+        let off_tick = cmds.iter().find_map(|cmd| match cmd {
+            ToneCmd::Off {
+                tone_id: cmd_tone_id,
+                off_tick,
+            } if *cmd_tone_id == tone_id => Some(*off_tick),
+            _ => None,
+        });
+        assert_eq!(off_tick, Some(30));
     }
 
     #[test]
@@ -3078,5 +3277,93 @@ mod tests {
         };
         let timing_field = TimingField::build_from(&ctx, &grid, Some((&trace, 1000.0)), 1.0);
         assert!(timing_field.e(0).is_finite());
+    }
+
+    #[test]
+    fn flow_onset_process_is_seed_deterministic() {
+        fn run(seed: u64) -> Vec<u64> {
+            let mut rule = OnsetRule::flow(3.0, 0.8, seed);
+            let state = CoreState { is_alive: true };
+            let mut fired = Vec::new();
+            for gate in 0..80 {
+                let input = IntervalInput {
+                    gate,
+                    tick: gate * 100,
+                    dt_theta: 1.0,
+                    dt_sec: 0.1,
+                    weight: 1.0,
+                };
+                if rule.on_candidate(&input, &state).is_some() {
+                    fired.push(gate);
+                }
+            }
+            fired
+        }
+
+        let a = run(42);
+        let b = run(42);
+        let c = run(43);
+        assert_eq!(a, b);
+        assert_ne!(a, c);
+        assert!(!a.is_empty());
+    }
+
+    #[test]
+    fn flow_next_ioi_depth_zero_returns_base_interval() {
+        let mut cluster_remaining = 2;
+        let mut rng = SmallRng::seed_from_u64(7);
+
+        let ioi = OnsetRule::flow_next_ioi(2.5, 0.0, &mut cluster_remaining, &mut rng);
+
+        assert!((ioi - 0.4).abs() < f32::EPSILON);
+        assert_eq!(cluster_remaining, 0);
+    }
+
+    #[test]
+    fn flow_next_ioi_keeps_stationary_local_variation() {
+        let mut cluster_remaining = 0;
+        let mut rng = SmallRng::seed_from_u64(11);
+        let mut iois = Vec::new();
+        for _ in 0..96 {
+            iois.push(OnsetRule::flow_next_ioi(
+                2.5,
+                0.9,
+                &mut cluster_remaining,
+                &mut rng,
+            ));
+        }
+
+        let first = iois[..32].iter().sum::<f32>() / 32.0;
+        let middle = iois[32..64].iter().sum::<f32>() / 32.0;
+        let last = iois[64..].iter().sum::<f32>() / 32.0;
+        let min = first.min(middle).min(last);
+        let max = first.max(middle).max(last);
+        assert!(max / min < 1.55, "block means drifted too far: {iois:?}");
+        assert!(iois.iter().any(|ioi| *ioi < 0.28));
+        assert!(iois.iter().any(|ioi| *ioi > 0.50));
+    }
+
+    #[test]
+    fn flow_onset_direct_ioi_allows_same_gate_clusters() {
+        let mut rule = OnsetRule::Flow {
+            mean_rate_hz: 40.0,
+            depth: 0.0,
+            elapsed_sec: 0.06,
+            next_ioi_sec: 0.05,
+            cluster_remaining: 0,
+            rng: SmallRng::seed_from_u64(7),
+        };
+        let state = CoreState { is_alive: true };
+        let input = |tick, dt_sec| IntervalInput {
+            gate: 3,
+            tick,
+            dt_theta: dt_sec * 6.0,
+            dt_sec,
+            weight: 1.0,
+        };
+
+        assert!(rule.on_candidate(&input(100, 0.0), &state).is_some());
+        assert!(rule.on_candidate(&input(120, 0.01), &state).is_none());
+        assert!(rule.on_candidate(&input(170, 0.05), &state).is_some());
     }
 }

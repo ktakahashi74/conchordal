@@ -149,6 +149,10 @@ Phonation is configured in three tiers of increasing detail.
 |--------|-------------|
 | `sustain()` | Sustain mode (default) |
 | `repeat()` | Repeated/pulsed mode |
+| `metric_beat(rate_hz)` | Composer-facing metric beat intent |
+| `entrained_beat(rate_hz)` | Agent-phase entrainment intent |
+| `flow_timing(mean_rate_hz)` | Flow timing with default depth |
+| `flow_timing(mean_rate_hz, depth)` | Flow timing with explicit depth 0--1 |
 
 **Tier 2 -- Explicit when/duration:**
 
@@ -164,14 +168,18 @@ Phonation is configured in three tiers of increasing detail.
 
 | Method | Description |
 |--------|-------------|
-| `sync(depth)` | Sync depth 0--1 (requires `pulse`) |
+| `accent(depth)` | Metric accent depth 0--1 (requires `metric_beat` or `pulse`) |
+| `sync(depth)` | Legacy low-level name for phase weighting; use `accent` in new scripts |
 | `social(coupling)` | Social coupling 0--1 (requires `pulse`) |
 | `field_window(min, max)` | Field theta window 0--1 (requires `field`) |
 | `field_curve(k, x0)` | Field curve parameters (requires `field`) |
 | `field_drop(gain)` | Field drop gain (requires `field`) |
 
 ```ts
-let pulsed = derive(harmonic).repeat().pulse(3.0).sync(0.6).social(0.3);
+let beat = derive(harmonic).metric_beat(2.0).accent(0.7).gates(2);
+let entrained = derive(harmonic).entrained_beat(2.0).gates(2);
+let flow = derive(harmonic).flow_timing(3.0, 0.7).gates(1);
+let pulsed = derive(harmonic).repeat().pulse(3.0).accent(0.6).social(0.3);
 let fielded = derive(sine).field().field_window(0.2, 0.8);
 ```
 
@@ -273,10 +281,8 @@ let ecology = derive(harmonic)
 
 ### Telemetry
 
-| Method | Description |
-|--------|-------------|
-| `enable_telemetry(first_k)` | Enable for first k voices |
-| `enable_plv(window)` | Enable Phase Locking Value computation |
+Telemetry and rhythm summaries are currently emitted through runtime reporting
+paths, not through per-species Rhai builder methods.
 
 ### Sustain Drive
 
@@ -418,8 +424,9 @@ Group methods work in two contexts:
 **Draft-only** (ignored with a warning if called on a live group):
 
 `brain`, `consonance_movement`, `pitch_mode`, `pitch_core`, `sustain`,
-`repeat`, `once`, `pulse`, `while_alive`, `gates`, `field`, `sync`,
-`social`, `field_window`, `field_curve`, `field_drop`, `metabolism`,
+`repeat`, `once`, `metric_beat`, `entrained_beat`, `flow_timing`, `pulse`,
+`while_alive`, `gates`, `field`, `accent`, `sync`, `social`, `field_window`,
+`field_curve`, `field_drop`, `metabolism`,
 `initial_energy`, `recharge_rate`, `action_cost`, `viability_rate`,
 `consonance_viability`, `viability_scope`, `dissonance_cost`,
 `energy_cap`, `adsr`, `rhythm_coupling`, `rhythm_coupling_vitality`,
@@ -563,7 +570,7 @@ let voice = derive(harmonic)
     .viability_rate(0.2)
     .consonance_viability(0.3, 0.8)
     .adsr(0.05, 0.1, 0.7, 0.3)
-    .repeat().pulse(2.25).sync(0.5);
+    .repeat().pulse(2.25).accent(0.5);
 
 scene("Opening", || {
     // Anchor drone

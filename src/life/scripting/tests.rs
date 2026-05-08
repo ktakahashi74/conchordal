@@ -2,7 +2,7 @@ use super::*;
 use crate::core::landscape::LandscapeFrame;
 use crate::core::timebase::Timebase;
 use crate::life::population::Population;
-use crate::life::scenario::RhythmCouplingMode;
+use crate::life::scenario::{RhythmCouplingMode, RhythmIntent};
 use crate::life::voice::AnyArticulationCore;
 use crate::life::voice::sound_body::SoundBody;
 use rand::SeedableRng;
@@ -1897,6 +1897,96 @@ fn rhythm_modulators_are_sanitized_at_core_boundary() {
     );
     let reward = core.rhythm_reward.expect("expected rhythm reward");
     assert_eq!(reward.rho_t, 0.0);
+}
+
+#[test]
+fn metric_beat_sets_rhythm_intent() {
+    let (scenario, _warnings) = run_script(
+        r#"
+            create(sine.metric_beat(2.0).accent(0.25).gates(2), 1);
+            flush();
+        "#,
+    );
+    let spawn = scenario
+        .events
+        .iter()
+        .flat_map(|event| &event.actions)
+        .find_map(|action| match action {
+            Action::Spawn { spec, .. } => Some(spec.clone()),
+            _ => None,
+        })
+        .expect("spawn action");
+
+    let RhythmIntent::MetricBeat(spec) = spawn.control.phonation.spec.rhythm else {
+        panic!("expected metric beat intent");
+    };
+    assert!((spec.rate_hz - 2.0).abs() <= 1e-6);
+    assert!((spec.accent - 0.25).abs() <= 1e-6);
+}
+
+#[test]
+fn entrained_beat_sets_intent_and_agent_phase_defaults() {
+    let (scenario, _warnings) = run_script(
+        r#"
+            create(sine.entrained_beat(2.0).gates(2), 1);
+            flush();
+        "#,
+    );
+    let spawn = scenario
+        .events
+        .iter()
+        .flat_map(|event| &event.actions)
+        .find_map(|action| match action {
+            Action::Spawn { spec, .. } => Some(spec.clone()),
+            _ => None,
+        })
+        .expect("spawn action");
+
+    let RhythmIntent::EntrainedBeat(spec) = spawn.control.phonation.spec.rhythm else {
+        panic!("expected entrained beat intent");
+    };
+    assert!((spec.rate_hz - 2.0).abs() <= 1e-6);
+    assert!(spec.social > 0.0);
+    let ArticulationCoreConfig::Entrain {
+        rhythm_freq,
+        rhythm_coupling,
+        rhythm_reward,
+        ..
+    } = spawn.articulation
+    else {
+        panic!("expected entrain articulation");
+    };
+    assert_eq!(rhythm_freq, Some(2.0));
+    assert!(matches!(
+        rhythm_coupling,
+        RhythmCouplingMode::TemporalTimesVitality { .. }
+    ));
+    assert!(rhythm_reward.is_some());
+}
+
+#[test]
+fn flow_timing_sets_flow_intent() {
+    let (scenario, _warnings) = run_script(
+        r#"
+            create(sine.flow_timing(3.0, 0.8).gates(1), 1);
+            flush();
+        "#,
+    );
+    let spawn = scenario
+        .events
+        .iter()
+        .flat_map(|event| &event.actions)
+        .find_map(|action| match action {
+            Action::Spawn { spec, .. } => Some(spec.clone()),
+            _ => None,
+        })
+        .expect("spawn action");
+
+    let RhythmIntent::FlowTiming(spec) = spawn.control.phonation.spec.rhythm else {
+        panic!("expected flow timing intent");
+    };
+    assert!((spec.mean_rate_hz - 3.0).abs() <= 1e-6);
+    assert!((spec.depth - 0.8).abs() <= 1e-6);
 }
 
 #[test]

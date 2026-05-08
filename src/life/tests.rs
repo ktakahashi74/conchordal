@@ -532,6 +532,7 @@ fn remove_pending_still_emits_note_offs() {
     let mut control = VoiceControl::default();
     control.pitch.freq = 220.0;
     control.phonation.spec = PhonationSpec {
+        rhythm: Default::default(),
         when: WhenSpec::Pulse {
             rate: 4.0,
             sync: 0.0,
@@ -600,6 +601,7 @@ fn tick_phonation_into_gated_bridges_each_onset_to_body_articulation() {
     let mut control = VoiceControl::default();
     control.pitch.freq = 220.0;
     control.phonation.spec = PhonationSpec {
+        rhythm: Default::default(),
         when: WhenSpec::Once,
         duration: DurationSpec::Gates(1),
     };
@@ -679,6 +681,7 @@ fn hold_mode_renderer_still_pulses_after_render_clone_removal() {
     let mut control = VoiceControl::default();
     control.pitch.freq = 220.0;
     control.phonation.spec = PhonationSpec {
+        rhythm: Default::default(),
         when: WhenSpec::Once,
         duration: DurationSpec::WhileAlive,
     };
@@ -732,6 +735,7 @@ fn hold_note_emits_target_amp_update_when_authority_amp_changes() {
     let mut control = VoiceControl::default();
     control.pitch.freq = 220.0;
     control.phonation.spec = PhonationSpec {
+        rhythm: Default::default(),
         when: WhenSpec::Once,
         duration: DurationSpec::WhileAlive,
     };
@@ -801,6 +805,7 @@ fn hold_note_does_not_emit_update_below_amp_threshold() {
     let mut control = VoiceControl::default();
     control.pitch.freq = 220.0;
     control.phonation.spec = PhonationSpec {
+        rhythm: Default::default(),
         when: WhenSpec::Once,
         duration: DurationSpec::WhileAlive,
     };
@@ -864,6 +869,7 @@ fn tracked_note_is_removed_after_note_off_for_future_hops() {
     let mut control = VoiceControl::default();
     control.pitch.freq = 220.0;
     control.phonation.spec = PhonationSpec {
+        rhythm: Default::default(),
         when: WhenSpec::Once,
         duration: DurationSpec::WhileAlive,
     };
@@ -942,6 +948,7 @@ fn render_modulator_snapshot_is_finite() {
     let mut control = VoiceControl::default();
     control.pitch.freq = 220.0;
     control.phonation.spec = PhonationSpec {
+        rhythm: Default::default(),
         when: WhenSpec::Pulse {
             rate: 4.0,
             sync: 0.0,

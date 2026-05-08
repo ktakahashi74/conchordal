@@ -258,6 +258,10 @@ impl Population {
         });
     }
 
+    pub fn reserve_runtime_ids_through(&mut self, max_id: u64) {
+        self.track_runtime_id(max_id);
+    }
+
     pub fn drain_runtime_events(&mut self) -> Vec<RuntimeEvent> {
         std::mem::take(&mut self.runtime_events)
     }
@@ -390,10 +394,7 @@ impl Population {
                     let gain_raw = world
                         .sample_scan_field_level(scan, voice.body.base_freq_hz())
                         .clamp(0.0, 1.0);
-                    let sync = match &voice.effective_control.phonation.spec.when {
-                        crate::life::scenario::WhenSpec::Pulse { sync, .. } => sync.clamp(0.0, 1.0),
-                        _ => 0.0,
-                    };
+                    let sync = voice.effective_control.phonation.spec.prediction_sync();
                     let mixed = mix_pred_gate_gain(sync, gain_raw);
                     let mixed = if mixed.is_finite() { mixed } else { 1.0 };
                     pred_acc.push(gain_raw, mixed, sync);
@@ -1329,8 +1330,10 @@ impl Population {
             let AnyArticulationCore::Entrain(core) = &voice.articulation.core else {
                 continue;
             };
-            if core.rhythm_phase.is_finite() {
-                phases.push(core.rhythm_phase);
+            let aligned_phase =
+                (core.rhythm_phase - core.phase_offset).rem_euclid(std::f32::consts::TAU);
+            if aligned_phase.is_finite() {
+                phases.push(aligned_phase);
             }
         }
         let r = kuramoto_order_from_phases(&phases)?;
@@ -2430,6 +2433,16 @@ mod tests {
     }
 
     #[test]
+    fn reserved_scenario_ids_are_not_reused_by_runtime_spawns() {
+        let mut pop = test_pop();
+        pop.reserve_runtime_ids_through(12);
+
+        let id = pop.allocate_runtime_id();
+
+        assert_eq!(id, 13);
+    }
+
+    #[test]
     fn respawn_none_keeps_current_behavior() {
         let mut pop = test_pop();
         pop.set_seed(7);
@@ -3074,6 +3087,35 @@ mod tests {
             random_r < 0.35,
             "random phase set should have low order (got {random_r})"
         );
+    }
+
+    #[test]
+    fn kuramoto_order_parameter_uses_relative_phase_offset() {
+        let mut pop = test_pop();
+        let landscape = LandscapeFrame::default();
+        pop.apply_action(
+            Action::Spawn {
+                group_id: 1,
+                ids: vec![1, 2, 3],
+                spec: spawn_spec_with_freq(220.0),
+                strategy: None,
+            },
+            &landscape,
+            None,
+        );
+        let shared_phase = 0.75;
+        for (idx, voice) in pop.voices.iter_mut().enumerate() {
+            let AnyArticulationCore::Entrain(core) = &mut voice.articulation.core else {
+                panic!("expected entrain core");
+            };
+            core.phase_offset = idx as f32 * 2.0;
+            core.rhythm_phase = shared_phase + core.phase_offset;
+        }
+
+        let (order, count) = pop.kuramoto_order_parameter().expect("order");
+
+        assert_eq!(count, 3);
+        assert!(order > 0.99);
     }
 
     #[test]

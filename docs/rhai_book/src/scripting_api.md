@@ -152,10 +152,30 @@ v0.4.0 ecology centered on whether a voice is supported by its surroundings.
 Use `selection_approx_loo(false)` only for older reference assays that need the
 previous implementation-level control.
 
-## Rhythm Foundation
+## Rhythm Redesign
 
-The v0.4.0 rhythm API is a foundation, not the finished rhythm/harmony fusion.
-Use explicit attack structure first:
+The v0.4.0 rhythm surface is being redesigned so rhythm is a core part of the
+same ecology as consonance, viability, movement, and respawn. The redesign must
+cover metric beat, entrained beat, and flow timing.
+
+The new entry points name the musical timing intent directly:
+
+```ts
+let beat = derive(harmonic)
+    .metric_beat(2.0)
+    .accent(0.7)
+    .gates(2);
+
+let entrained = derive(harmonic)
+    .entrained_beat(2.0)
+    .gates(2);
+
+let flow = derive(harmonic)
+    .flow_timing(3.0, 0.7)
+    .gates(1);
+```
+
+The current low-level tools remain useful for mechanism-level scripts:
 
 ```ts
 let pulse_voice = derive(harmonic)
@@ -223,16 +243,19 @@ release(g);
 See the [API Reference](reference/life.md) for the live-patchable and
 draft-only method lists.
 
-## Curated Starting Point
+## Current Candidate Path
 
-Start with the two-script alpha path:
+The active v0.4.0 candidate path is the redesigned rhythm/harmony set:
 
 ```bash
-cargo run --release -- samples/04_ecosystems/consonance_ecology.rhai
-cargo run --release -- samples/04_ecosystems/pulse_foundation.rhai
+cargo run --release -- samples/04_ecosystems/metric_beat_foundation.rhai
+cargo run --release -- samples/04_ecosystems/entrained_beat.rhai
+cargo run --release -- samples/04_ecosystems/flow_timing_field.rhai
+cargo run --release -- samples/04_ecosystems/conchordal_ecology.rhai
 ```
 
-`consonance_ecology.rhai` is the flagship ecology demo, and
-`pulse_foundation.rhai` shows the rhythm foundation without claiming complete
-rhythm/harmony fusion. `consonance_field_control.rhai` remains available as a
-research comparison, but it is not the first alpha-user path.
+These scripts cover metric beat, entrained beat, flow timing, and the integrated
+rhythm/harmony ecology. They still need audition before final release curation.
+`consonance_ecology.rhai`, `pulse_foundation.rhai`, and
+`consonance_field_control.rhai` remain useful research comparisons, but they are
+not the first alpha-user path.

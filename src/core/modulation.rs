@@ -593,7 +593,7 @@ mod tests {
         rhythms.advance_in_place(0.1);
         let env_after = rhythms.env_open;
         assert!(env_after.is_finite());
-        assert!(env_after >= 0.0 && env_after <= 1.0);
+        assert!((0.0..=1.0).contains(&env_after));
         assert!(
             (env_before - env_after).abs() > 1e-4,
             "env_open should respond to delta phase advance"

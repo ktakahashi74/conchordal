@@ -441,6 +441,12 @@ pub fn map_roughness01(r_norm: f32, r_half: f32) -> f32 {
     }
 }
 
+impl Default for Landscape {
+    fn default() -> Self {
+        Self::new(Log2Space::new(1.0, 2.0, 1))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1220,11 +1226,5 @@ mod tests {
         assert!(std::path::Path::new(png_path).exists());
         assert!(std::path::Path::new(csv_path).exists());
         Ok(())
-    }
-}
-
-impl Default for Landscape {
-    fn default() -> Self {
-        Self::new(Log2Space::new(1.0, 2.0, 1))
     }
 }

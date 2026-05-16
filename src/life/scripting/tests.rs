@@ -11,7 +11,7 @@ use std::collections::HashMap;
 fn run_script(src: &str) -> (Scenario, ScriptWarnings) {
     let ctx = Arc::new(Mutex::new(ScriptContext::default()));
     let engine = ScriptHost::create_engine(ctx.clone());
-    let _ = engine.eval::<Dynamic>(&src).expect("script runs");
+    let _ = engine.eval::<Dynamic>(src).expect("script runs");
     let mut ctx_out = ctx.lock().expect("lock script context");
     ctx_out.finish();
     (ctx_out.scenario.clone(), ctx_out.warnings.clone())
@@ -20,13 +20,11 @@ fn run_script(src: &str) -> (Scenario, ScriptWarnings) {
 fn run_script_err(src: &str) -> ScriptError {
     let ctx = Arc::new(Mutex::new(ScriptContext::default()));
     let engine = ScriptHost::create_engine(ctx);
-    let err = engine
-        .eval::<Dynamic>(&src)
-        .expect_err("script should fail");
+    let err = engine.eval::<Dynamic>(src).expect_err("script should fail");
     ScriptError::from_eval(err, None)
 }
 
-fn action_times<'a>(scenario: &'a Scenario) -> Vec<(f32, &'a Action)> {
+fn action_times(scenario: &Scenario) -> Vec<(f32, &Action)> {
     let mut out = Vec::new();
     for ev in &scenario.events {
         for action in &ev.actions {
@@ -2012,10 +2010,8 @@ fn e4_step_response_script_has_fixed_population_spawns() {
                 spawn_actions += 1;
                 spawned_agents += ids.len();
             }
-            Action::SetHarmonicityParams { update } => {
-                if update.mirror.is_some() {
-                    mirror_updates += 1;
-                }
+            Action::SetHarmonicityParams { update } if update.mirror.is_some() => {
+                mirror_updates += 1;
             }
             _ => {}
         }
@@ -2047,10 +2043,8 @@ fn e4_between_runs_script_pairs_spawns_and_releases_per_weight() {
 
     for action in scenario.events.iter().flat_map(|ev| ev.actions.iter()) {
         match action {
-            Action::SetHarmonicityParams { update } => {
-                if update.mirror.is_some() {
-                    mirror_updates += 1;
-                }
+            Action::SetHarmonicityParams { update } if update.mirror.is_some() => {
+                mirror_updates += 1;
             }
             Action::Spawn { group_id, .. } => {
                 *spawn_by_group.entry(*group_id).or_insert(0) += 1;

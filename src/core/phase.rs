@@ -97,7 +97,7 @@ mod tests {
         ];
         for (a, b) in pairs {
             let d = angle_diff_pm_pi(a, b);
-            assert!(d >= -PI && d < PI, "angle_diff out of range: {d}");
+            assert!((-PI..PI).contains(&d), "angle_diff out of range: {d}");
             let d2 = angle_diff_pm_pi(a + TAU, b);
             assert!((d - d2).abs() < 1e-5, "angle_diff periodicity failed");
         }
@@ -108,7 +108,7 @@ mod tests {
         let values = [-10.0 * TAU, -TAU, -PI, -0.1, 0.0, PI, TAU, 3.5 * TAU];
         for v in values {
             let w = wrap_0_tau(v);
-            assert!(w >= 0.0 && w < TAU, "wrap_0_tau out of range: {w}");
+            assert!((0.0..TAU).contains(&w), "wrap_0_tau out of range: {w}");
         }
     }
 
@@ -117,7 +117,7 @@ mod tests {
         let values = [-10.0 * TAU, -TAU, -PI, -0.1, 0.0, PI, TAU, 3.5 * TAU];
         for v in values {
             let w = wrap_pm_pi(v);
-            assert!(w >= -PI && w < PI, "wrap_pm_pi out of range: {w}");
+            assert!((-PI..PI).contains(&w), "wrap_pm_pi out of range: {w}");
         }
     }
 

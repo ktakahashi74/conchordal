@@ -1993,7 +1993,7 @@ mod tests {
             Action::SetGroupCrowdingTarget {
                 group_id: 71,
                 same_group_visible: true,
-                other_group_visible: other_group_visible,
+                other_group_visible,
             },
             &landscape,
             None,

@@ -28,6 +28,14 @@ opt-level = 3
 lto = true
 #debug = true
 
+# DSP code intentionally uses mutation-style struct construction and indexed
+# loops for clarity around parallel arrays and incremental builders. These
+# style lints fire across the kernel and engine layers; silencing them keeps
+# `cargo clippy -- -D warnings` actionable for real issues.
+[lints.clippy]
+field_reassign_with_default = "allow"
+needless_range_loop = "allow"
+type_complexity = "allow"
 
 [dependencies]
 anyhow = "1.0"

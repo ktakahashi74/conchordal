@@ -499,10 +499,8 @@ mod tests {
 
         let mut side = 0.0f32;
         for (k, &m) in mags.iter().enumerate() {
-            if k < left || k > right {
-                if m > side {
-                    side = m;
-                }
+            if (k < left || k > right) && m > side {
+                side = m;
             }
         }
         if side <= 0.0 {
@@ -1068,9 +1066,9 @@ mod tests {
         let fs = 48_000.0;
         let n = (fs * 4.0) as usize;
 
-        let white: Vec<f32> = white_noise(n, 1).iter().map(|&v| v as f32).collect();
-        let pink: Vec<f32> = pink_noise(n, 1).iter().map(|&v| v as f32).collect();
-        let brown: Vec<f32> = brown_noise(n, 1).iter().map(|&v| v as f32).collect();
+        let white: Vec<f32> = white_noise(n, 1).to_vec();
+        let pink: Vec<f32> = pink_noise(n, 1).to_vec();
+        let brown: Vec<f32> = brown_noise(n, 1).to_vec();
 
         let space = Log2Space::new(50.0, 8000.0, 150);
         let nsgt = NsgtKernelLog2::new_coherent(NsgtLog2Config::default(), space.clone(), None);

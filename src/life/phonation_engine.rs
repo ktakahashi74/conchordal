@@ -1385,7 +1385,7 @@ mod tests {
 
     fn candidate_at_gate(gate: u64) -> CandidatePoint {
         CandidatePoint {
-            tick: gate as u64,
+            tick: gate,
             gate,
             theta_pos: gate as f64,
             phase_in_gate: 0.0,
@@ -1689,7 +1689,7 @@ mod tests {
                 GateBoundary { gate: 3, tick: 30 },
             ],
         };
-        let _ = engine.process_candidates(
+        engine.process_candidates(
             &ctx,
             &candidates,
             &mut timing_grid,
@@ -2025,7 +2025,7 @@ mod tests {
         let mut events = Vec::new();
         let mut onsets = Vec::new();
         let mut timing_grid = ThetaGrid::from_candidates(&candidates);
-        let _ = engine.process_candidates(
+        engine.process_candidates(
             &ctx,
             &candidates,
             &mut timing_grid,
@@ -2080,7 +2080,7 @@ mod tests {
         let mut events = Vec::new();
         let mut onsets = Vec::new();
         let mut timing_grid = ThetaGrid::from_candidates(&candidates);
-        let _ = engine.process_candidates(
+        engine.process_candidates(
             &ctx,
             &candidates,
             &mut timing_grid,
@@ -2134,7 +2134,7 @@ mod tests {
         let mut events = Vec::new();
         let mut onsets = Vec::new();
         let mut timing_grid = ThetaGrid::from_candidates(&candidates);
-        let _ = engine.process_candidates(
+        engine.process_candidates(
             &ctx,
             &candidates,
             &mut timing_grid,
@@ -2188,7 +2188,7 @@ mod tests {
         let mut events = Vec::new();
         let mut onsets = Vec::new();
         let mut timing_grid = ThetaGrid::from_candidates(&candidates);
-        let _ = engine.process_candidates(
+        engine.process_candidates(
             &ctx,
             &candidates,
             &mut timing_grid,
@@ -2281,7 +2281,7 @@ mod tests {
         let mut events = Vec::new();
         let mut onsets = Vec::new();
         let mut timing_grid = ThetaGrid::from_candidates(&candidates);
-        let _ = engine.process_candidates(
+        engine.process_candidates(
             &ctx,
             &candidates,
             &mut timing_grid,
@@ -2323,7 +2323,7 @@ mod tests {
         let mut events = Vec::new();
         let mut onsets = Vec::new();
         let mut timing_grid = ThetaGrid::from_candidates(&candidates);
-        let _ = engine.process_candidates(
+        engine.process_candidates(
             &ctx,
             &candidates,
             &mut timing_grid,
@@ -2373,7 +2373,7 @@ mod tests {
                 GateBoundary { gate: 3, tick: 30 },
             ],
         };
-        let _ = engine.process_candidates(
+        engine.process_candidates(
             &ctx,
             &candidates,
             &mut timing_grid,
@@ -2406,7 +2406,7 @@ mod tests {
         let mut cmds = Vec::new();
         let mut events = Vec::new();
         let mut onsets = Vec::new();
-        let _ = engine.process_candidates(
+        engine.process_candidates(
             &ctx,
             &candidates,
             &mut timing_grid,
@@ -2451,7 +2451,7 @@ mod tests {
         let mut events = Vec::new();
         let mut onsets = Vec::new();
         let mut timing_grid = ThetaGrid::from_candidates(&candidates);
-        let _ = engine.process_candidates(
+        engine.process_candidates(
             &ctx,
             &candidates,
             &mut timing_grid,
@@ -2883,7 +2883,7 @@ mod tests {
         let mut events = Vec::new();
         let mut onsets = Vec::new();
         let mut timing_grid = ThetaGrid::from_candidates(&candidates);
-        let _ = engine.process_candidates(
+        engine.process_candidates(
             &ctx,
             &candidates,
             &mut timing_grid,
@@ -2945,7 +2945,7 @@ mod tests {
         let mut events = Vec::new();
         let mut onsets = Vec::new();
         let mut timing_grid = ThetaGrid::from_candidates(&candidates_base);
-        let _ = engine_base.process_candidates(
+        engine_base.process_candidates(
             &ctx,
             &candidates_base,
             &mut timing_grid,
@@ -3000,7 +3000,7 @@ mod tests {
         let mut events_sub = Vec::new();
         let mut onsets_sub = Vec::new();
         let mut timing_grid = ThetaGrid::from_candidates(&candidates_sub);
-        let _ = engine_sub.process_candidates(
+        engine_sub.process_candidates(
             &ctx,
             &candidates_sub,
             &mut timing_grid,
@@ -3065,7 +3065,7 @@ mod tests {
         let mut cmds = Vec::new();
         let mut events = Vec::new();
         let mut onsets = Vec::new();
-        let _ = engine.process_candidates(
+        engine.process_candidates(
             &ctx1,
             &candidates,
             &mut timing_grid,
@@ -3094,7 +3094,7 @@ mod tests {
         let mut cmds2 = Vec::new();
         let mut events2 = Vec::new();
         let mut onsets2 = Vec::new();
-        let _ = engine.process_candidates(
+        engine.process_candidates(
             &ctx2,
             &empty,
             &mut timing_grid,
@@ -3172,7 +3172,7 @@ mod tests {
         let mut events = Vec::new();
         let mut onsets = Vec::new();
         let mut timing_grid = ThetaGrid::from_candidates(&candidates_base);
-        let _ = engine_base.process_candidates(
+        engine_base.process_candidates(
             &ctx,
             &candidates_base,
             &mut timing_grid,
@@ -3241,7 +3241,7 @@ mod tests {
         let mut events = Vec::new();
         let mut onsets = Vec::new();
         let mut timing_grid = ThetaGrid::from_candidates(&candidates_sub);
-        let _ = engine_sub.process_candidates(
+        engine_sub.process_candidates(
             &ctx,
             &candidates_sub,
             &mut timing_grid,

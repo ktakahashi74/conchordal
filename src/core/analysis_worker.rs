@@ -122,14 +122,14 @@ mod tests {
         let mut last_analysis: Option<u64> = None;
 
         for frame_idx in 0..steps {
-            if frame_idx >= warmup {
-                if let Some(analysis_id) = last_analysis {
-                    let age = frame_idx.saturating_sub(analysis_id);
-                    assert!(
-                        age <= 1,
-                        "expected landscape_age<=1 after warmup (frame={frame_idx}, id={analysis_id}, age={age})"
-                    );
-                }
+            if frame_idx >= warmup
+                && let Some(analysis_id) = last_analysis
+            {
+                let age = frame_idx.saturating_sub(analysis_id);
+                assert!(
+                    age <= 1,
+                    "expected landscape_age<=1 after warmup (frame={frame_idx}, id={analysis_id}, age={age})"
+                );
             }
 
             hop_tx

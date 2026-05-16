@@ -6,9 +6,9 @@ seed(20260509);
 let root_hz = 196.0;
 let beat_hz = 1.8;
 
-let field_anchor = derive(harmonic)
+let field_anchor = harmonic("harmonic")
     .brain("drone")
-    .field_only()
+    .send(field)
     .amp(0.060)
     .sustain()
     .pitch_mode("lock")
@@ -17,15 +17,15 @@ let field_anchor = derive(harmonic)
     .sustain_drive(0.002)
     .adsr(0.45, 1.0, 0.97, 2.0);
 
-let colony = derive(harmonic)
+let colony = harmonic("harmonic")
     .amp(0.040)
     .entrained_beat(beat_hz)
     .gates(3)
-    .consonance_movement()
+    .seek_consonance()
     .pitch_apply_mode("gate_snap")
     .modes(harmonic_modes().count(7))
     .brightness(0.46)
-    .crowding(0.55)
+    .avoid_neighbors(0.55)
     .initial_energy(0.62)
     .energy_cap(0.92)
     .metabolism(0.055)
@@ -35,29 +35,27 @@ let colony = derive(harmonic)
     .dissonance_cost(0.35)
     .adsr(0.055, 0.380, 0.72, 0.85);
 
-let late_colony = derive(colony)
+let late_colony = variant("colony", colony)
     .amp(0.032)
     .entrained_beat(beat_hz * 1.25)
     .gates(2)
     .brightness(0.62)
-    .crowding(0.70);
+    .avoid_neighbors(0.70);
 
-scene("Entrained Beat", || {
+section("Entrained Beat", || {
     set_control_update_mode("snapshot_phased");
-    set_harmonic_mirror(0.05);
+    harmonic_mirror(0.05);
 
-    let root = create(field_anchor, 1).freq(root_hz);
+    let root = place(field_anchor, at(root_hz).count(1));
     wait(2.0);
 
-    let a = create(colony, 7)
-        .place(consonance_density(90.0, 780.0).min_dist(0.85));
+    let a = place(colony, density(90.0, 780.0).spacing(0.85).count(7));
     wait(12.0);
 
-    let b = create(late_colony, 5)
-        .place(consonance_density(160.0, 1100.0).min_dist(0.75));
+    let b = place(late_colony, density(160.0, 1100.0).spacing(0.75).count(5));
     wait(10.0);
 
-    set_harmonic_mirror(0.55);
+    harmonic_mirror(0.55);
     root.freq(root_hz * 1.5);
     a.amp(0.034);
     b.amp(0.036);

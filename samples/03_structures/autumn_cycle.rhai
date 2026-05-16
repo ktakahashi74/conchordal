@@ -1,14 +1,14 @@
-let bass = derive(sine).amp(0.1).sustain();
-let pad = derive(harmonic).amp(0.05).sustain().brightness(0.7);
+let bass = sine("sine").amp(0.1).sustain();
+let pad = harmonic("harmonic").amp(0.05).sustain().brightness(0.7);
 
 let step = |root, dur| {
-    create(bass, 1).freq(root);
-    let strat = consonance(root).range(2.0, 5.0).min_dist(1.0);
-    create(pad, 3).place(strat);
+    place(bass, at(root).count(1));
+    let strat = peaks(root).range(2.0, 5.0).spacing(1.0);
+    place(pad, strat.count(3));
     wait(dur);
 };
 
-scene("Autumn Cycle", || {
+section("Autumn Cycle", || {
     play(step, 110.0, 1.6);
     play(step, 146.83, 1.6);
     play(step, 196.0, 1.6);

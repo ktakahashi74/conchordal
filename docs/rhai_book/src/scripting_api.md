@@ -11,8 +11,8 @@ function list, see the [API Reference](reference/life.md).
 
 Conchordal ships a Rhai LSP definition file describing the entire scripting
 surface. Hooking your editor up to it gives you completion, hover, go-to-def,
-and inline diagnostics for every conchordal function — `derive`, `harmonic`,
-`.brain()`, `.field_only()`, and so on.
+and inline diagnostics for every conchordal function — `place`, `harmonic`,
+`.brain()`, `.send(field)`, and so on.
 
 The two files that drive this are committed at the repo root:
 
@@ -32,8 +32,14 @@ Then wire your editor:
 
 ### VS Code
 
-Install the [Rhai](https://marketplace.visualstudio.com/items?itemName=rhaiscript.vscode-rhai)
-extension. Open the conchordal folder; the extension auto-detects `Rhai.toml`.
+The official [Rhai](https://marketplace.visualstudio.com/items?itemName=rhaiscript.vscode-rhai)
+extension currently provides syntax highlighting only. It does not launch
+`rhai-lsp`. For LSP features in VS Code, use an LSP client/extension that can
+launch this command from the conchordal workspace:
+
+```bash
+rhai lsp stdio --config Rhai.toml
+```
 
 ### Neovim (nvim-lspconfig)
 
@@ -81,80 +87,83 @@ cargo run --bin gen_rhai_defs > rhai-defs/conchordal.d.rhai
 ## Minimal Sound
 
 ```ts
-create(sine, 1).freq(440.0);
+place(sine("tone").amp(0.08).sustain(), at(440.0));
 wait(2.0);
 ```
 
-`create(species, count)` spawns a group. `wait(seconds)` advances the scenario
-time and flushes pending groups.
+`place(material, placement)` stages a `Participant` at the current script time.
+It is committed by `wait(seconds)` or `flush()`, then can be patched while it is
+alive.
 
 ## Basic Objects
 
-- **Species** are voice templates made with `derive()` from presets such as
-  `sine`, `harmonic`, `modal`, `saw`, `square`, and `noise`.
-- **Groups** are live or draft collections returned by `create()`.
-- **Strategies** decide spawn frequencies: `consonance()`,
-  `consonance_density()`, `random_log()`, and `linear()`.
-- **Scenes** scope groups and release them automatically.
+- **Materials** are voice templates made with `sine(name)`,
+  `harmonic(name)`, `modal(name)`, `saw(name)`, `square(name)`, and
+  `noise(name)`.
+- **Variants** clone a material with `variant(name, material)`.
+- **Placements** decide where participants enter: `at()`, `peaks()`,
+  `density()`, `random()`, and `line()`.
+- **Participants** are collections returned by `place()`. Before the next
+  `wait()` or `flush()`, participant builder methods still shape the initial
+  spawn; after that, patchable methods update running voices.
+- **Sections** scope participants and release them automatically.
 
 ```ts
-let voice = derive(harmonic)
+let voice = harmonic("harmonic")
     .amp(0.08)
     .sustain()
     .brightness(0.35);
 
-scene("plain entry", || {
-    create(voice, 3).place(linear(220.0, 440.0));
+section("plain entry", || {
+    place(voice, line(220.0, 440.0).count(3));
     wait(4.0);
 });
 ```
 
 ## Consonance Field
 
-`consonance(root_hz)` places voices at high Consonance Field positions around a
+`peaks(root_hz)` places voices at high Consonance Field positions around a
 root. The field is shaped by what the system perceives.
 
 ```ts
-let anchor = derive(harmonic)
+let anchor = harmonic("harmonic")
     .brain("drone")
     .amp(0.06)
     .sustain()
     .pitch_mode("lock");
 
-let voice = derive(harmonic)
+let voice = harmonic("harmonic")
     .amp(0.04)
     .sustain();
 
-scene("field placement", || {
-    create(anchor, 1).freq(110.0);
+section("field placement", || {
+    place(anchor, at(110.0));
     wait(1.0);
 
-    create(voice, 6)
-        .place(consonance(110.0).range(1.0, 4.0).min_dist(0.9));
+    place(voice, peaks(110.0).range(1.0, 4.0).count(6).spacing(0.9));
     wait(6.0);
 });
 ```
 
-`set_harmonic_mirror(value)` bends the harmonicity field from overtone emphasis
+`harmonic_mirror(value)` bends the harmonicity field from overtone emphasis
 toward undertone emphasis.
 
 ```ts
-set_harmonic_mirror(0.0);
+harmonic_mirror(0.0);
 wait(4.0);
-set_harmonic_mirror(1.0);
+harmonic_mirror(1.0);
 wait(4.0);
 ```
 
 ## Consonance Density
 
-`consonance_density(min_hz, max_hz)` samples from the density view of the field.
+`density(min_hz, max_hz)` samples from the density view of the field.
 Use it when the musical thought is a population seeded by the current terrain.
 
 ```ts
-let cloud = derive(harmonic).amp(0.035).sustain();
+let cloud = harmonic("harmonic").amp(0.035).sustain();
 
-create(cloud, 10)
-    .place(consonance_density(90.0, 1200.0).min_dist(0.8));
+place(cloud, density(90.0, 1200.0).count(10).spacing(0.8));
 wait(8.0);
 ```
 
@@ -164,27 +173,26 @@ requested range.
 
 ## Consonance Movement
 
-Use `consonance_movement()` when voices should actively seek better field
+Use `seek_consonance()` when voices should actively seek better field
 positions. It sets free hill-climb movement with glide defaults.
 
 ```ts
-let mover = derive(harmonic)
+let mover = harmonic("harmonic")
     .amp(0.045)
     .sustain()
-    .consonance_movement()
-    .movement_glide(0.35)
-    .crowding(0.6)
+    .seek_consonance()
+    .glide(0.35)
+    .avoid_neighbors(0.6)
     .global_peaks(8, 70.0)
     .ratio_candidates(5);
 
-create(mover, 8)
-    .place(consonance_density(80.0, 900.0));
+place(mover, density(80.0, 900.0).count(8));
 wait(12.0);
 ```
 
 Advanced controls such as `pitch_mode()`, `pitch_core()`,
-`pitch_apply_mode()`, and `pitch_glide()` remain available for mechanism-level
-work. Prefer `consonance_movement()` in curated v0.4.0 scripts.
+and `pitch_apply_mode()` remain available for mechanism-level work. Prefer
+`seek_consonance()` and `glide()` in curated v0.4.0 scripts.
 
 ## Consonance Viability And Respawn
 
@@ -193,15 +201,15 @@ defines the consonance window, and `viability_rate(rate)` controls continuous
 recharge. By default, viability uses environment-relative scoring.
 
 ```ts
-let settle = consonance_density(70.0, 1100.0).min_dist(0.8);
+let settle = density(70.0, 1100.0).spacing(0.8);
 
-let ecology = derive(harmonic)
+let ecology = harmonic("harmonic")
     .amp(0.04)
     .repeat()
     .pulse(1.5)
     .gates(3)
-    .consonance_movement()
-    .movement_glide(0.45)
+    .seek_consonance()
+    .glide(0.45)
     .initial_energy(0.7)
     .energy_cap(1.0)
     .metabolism(0.09)
@@ -212,8 +220,7 @@ let ecology = derive(harmonic)
     .respawn_capacity(14)
     .respawn_settle(settle);
 
-create(ecology, 14)
-    .place(consonance_density(70.0, 1100.0));
+place(ecology, density(70.0, 1100.0).count(14));
 wait(30.0);
 ```
 
@@ -232,16 +239,16 @@ cover metric beat, entrained beat, and flow timing.
 The new entry points name the musical timing intent directly:
 
 ```ts
-let beat = derive(harmonic)
+let beat = harmonic("harmonic")
     .metric_beat(2.0)
     .accent(0.7)
     .gates(2);
 
-let entrained = derive(harmonic)
+let entrained = harmonic("harmonic")
     .entrained_beat(2.0)
     .gates(2);
 
-let flow = derive(harmonic)
+let flow = harmonic("harmonic")
     .flow_timing(3.0, 0.7)
     .gates(1);
 ```
@@ -249,7 +256,7 @@ let flow = derive(harmonic)
 The current low-level tools remain useful for mechanism-level scripts:
 
 ```ts
-let pulse_voice = derive(harmonic)
+let pulse_voice = harmonic("harmonic")
     .repeat()
     .pulse(2.0)
     .gates(2)
@@ -279,12 +286,12 @@ let shimmer_modes = landscape_density_modes()
     .count(10)
     .range(1.0, 5.5)
     .gamma(1.6)
-    .min_dist(0.7);
+    .spacing(0.7);
 
-let shimmer = derive(modal)
+let shimmer = modal("modal")
     .amp(0.025)
     .sustain()
-    .consonance_movement()
+    .seek_consonance()
     .modes(shimmer_modes)
     .brightness(0.7);
 ```
@@ -296,17 +303,17 @@ Mode constructors include `harmonic_modes()`, `odd_modes()`,
 
 ## Live Patching
 
-Some group methods patch running voices. Others are draft-only and must be set
-before the first `flush()` or `wait()`.
+Some participant methods patch running voices. Material-only methods must be set
+before `place()`.
 
 ```ts
-let g = create(harmonic, 3)
-    .amp(0.04)
-    .place(consonance(220.0));
-flush();
+let g = place(
+    harmonic("patchable").amp(0.04),
+    peaks(220.0).count(3)
+);
 
 g.amp(0.02);
-g.movement_glide(0.8);
+g.glide(0.8);
 wait(3.0);
 release(g);
 ```

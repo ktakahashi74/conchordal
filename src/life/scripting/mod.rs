@@ -11,7 +11,7 @@ use crate::core::mode_pattern::ModePattern;
 
 use super::control::{
     BodyMethod, ControlUpdate, LeaveSelfOutMode, MoveCostTimeScale, PitchApplyMode, PitchCoreKind,
-    PitchMode, VoiceControl,
+    PitchMode, Routing, VoiceControl,
 };
 use super::lifecycle::LifecycleConfig;
 use super::scenario::{
@@ -262,6 +262,10 @@ impl SpeciesSpec {
     fn set_crowding_auto_sigma(&mut self, strength: f32) {
         self.control.set_crowding_strength_clamped(strength);
         self.control.set_crowding_sigma_from_roughness(true);
+    }
+
+    fn set_routing(&mut self, routing: Routing) {
+        self.control.body.routing = routing;
     }
 
     fn set_crowding_target(&mut self, same_group_visible: bool, other_group_visible: bool) {
@@ -798,6 +802,195 @@ pub struct GroupHandle {
     id: u64,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct Bus {
+    routing: Routing,
+}
+
+impl Bus {
+    pub fn field() -> Self {
+        Self {
+            routing: Routing {
+                to_presentation: false,
+                to_field: true,
+            },
+        }
+    }
+
+    pub fn presentation() -> Self {
+        Self {
+            routing: Routing {
+                to_presentation: true,
+                to_field: false,
+            },
+        }
+    }
+
+    fn set(self) -> BusSet {
+        BusSet {
+            routing: self.routing,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct BusSet {
+    routing: Routing,
+}
+
+impl BusSet {
+    fn combine(self, other: Self) -> Self {
+        Self {
+            routing: Routing {
+                to_presentation: self.routing.to_presentation || other.routing.to_presentation,
+                to_field: self.routing.to_field || other.routing.to_field,
+            },
+        }
+    }
+
+    fn routing(self) -> Routing {
+        self.routing
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Placement {
+    count: usize,
+    strategy: Option<SpawnStrategy>,
+    freq_hz: Option<f32>,
+}
+
+impl Placement {
+    fn at(freq_hz: f32) -> Self {
+        Self {
+            count: 1,
+            strategy: None,
+            freq_hz: Some(freq_hz),
+        }
+    }
+
+    fn density(min_freq: f32, max_freq: f32) -> Self {
+        Self {
+            count: 1,
+            strategy: Some(SpawnStrategy::ConsonanceDensity {
+                min_freq,
+                max_freq,
+                min_dist_erb: 1.0,
+            }),
+            freq_hz: None,
+        }
+    }
+
+    fn peaks(root_freq: f32) -> Self {
+        Self {
+            count: 1,
+            strategy: Some(SpawnStrategy::Consonance {
+                root_freq,
+                min_mul: 1.0,
+                max_mul: 4.0,
+                min_dist_erb: 1.0,
+            }),
+            freq_hz: None,
+        }
+    }
+
+    fn random(min_freq: f32, max_freq: f32) -> Self {
+        Self {
+            count: 1,
+            strategy: Some(SpawnStrategy::RandomLog { min_freq, max_freq }),
+            freq_hz: None,
+        }
+    }
+
+    fn line(start_freq: f32, end_freq: f32) -> Self {
+        Self {
+            count: 1,
+            strategy: Some(SpawnStrategy::Linear {
+                start_freq,
+                end_freq,
+            }),
+            freq_hz: None,
+        }
+    }
+
+    fn with_count(mut self, count: i64) -> Self {
+        self.count = count.max(0) as usize;
+        self
+    }
+
+    fn with_range(mut self, min_mul: f32, max_mul: f32) -> Self {
+        if let Some(SpawnStrategy::Consonance {
+            root_freq,
+            min_dist_erb,
+            ..
+        }) = self.strategy
+        {
+            self.strategy = Some(SpawnStrategy::Consonance {
+                root_freq,
+                min_mul,
+                max_mul,
+                min_dist_erb,
+            });
+        } else {
+            warn!("range() is only supported for peaks(); ignored");
+        }
+        self
+    }
+
+    fn with_spacing(mut self, spacing: f32) -> Self {
+        self.strategy = self.strategy.map(|strategy| match strategy {
+            SpawnStrategy::Consonance {
+                root_freq,
+                min_mul,
+                max_mul,
+                ..
+            } => SpawnStrategy::Consonance {
+                root_freq,
+                min_mul,
+                max_mul,
+                min_dist_erb: spacing,
+            },
+            SpawnStrategy::ConsonanceDensity {
+                min_freq, max_freq, ..
+            } => SpawnStrategy::ConsonanceDensity {
+                min_freq,
+                max_freq,
+                min_dist_erb: spacing,
+            },
+            other => {
+                warn!("spacing() is only supported for peaks() and density(); ignored");
+                other
+            }
+        });
+        self
+    }
+
+    fn with_reject_targets(
+        mut self,
+        anchor_hz: f32,
+        targets_st: Vec<f32>,
+        exclusion_st: f32,
+        max_tries: i64,
+    ) -> Self {
+        if let Some(base) = self.strategy.take() {
+            self.strategy = Some(SpawnStrategy::RejectTargets {
+                base: Box::new(base),
+                anchor_hz,
+                targets_st,
+                exclusion_st,
+                max_tries: max_tries.max(1) as usize,
+            });
+        } else {
+            warn!("reject_targets() requires density(), peaks(), random(), or line()");
+        }
+        self
+    }
+
+    fn strategy(&self) -> Option<SpawnStrategy> {
+        self.strategy.clone()
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum GroupStatus {
     Draft,
@@ -1118,6 +1311,22 @@ impl ScriptContext {
             scope.created_groups.push(id);
         }
         Ok(GroupHandle { id })
+    }
+
+    fn place_material(
+        &mut self,
+        mut species: SpeciesHandle,
+        placement: Placement,
+        position: Position,
+    ) -> Result<GroupHandle, Box<EvalAltResult>> {
+        if let Some(freq_hz) = placement.freq_hz {
+            species.spec.set_freq(freq_hz);
+        }
+        let handle = self.create_group(species, placement.count as i64, position)?;
+        if let Some(group) = self.groups.get_mut(&handle.id) {
+            group.strategy = placement.strategy;
+        }
+        Ok(handle)
     }
 
     fn set_seed(&mut self, seed: i64, position: Position) -> Result<(), Box<EvalAltResult>> {
@@ -1452,10 +1661,14 @@ fn apply_group_crowding(
     Ok(handle)
 }
 
-fn register_group_crowding_overloads(engine: &mut Engine, ctx: Arc<Mutex<ScriptContext>>) {
+fn register_group_crowding_overloads(
+    engine: &mut Engine,
+    ctx: Arc<Mutex<ScriptContext>>,
+    name: &'static str,
+) {
     let ctx_float_float = ctx.clone();
     engine.register_fn(
-        "crowding",
+        name,
         move |handle: GroupHandle,
               strength: FLOAT,
               sigma_cents: FLOAT|
@@ -1463,7 +1676,7 @@ fn register_group_crowding_overloads(engine: &mut Engine, ctx: Arc<Mutex<ScriptC
             apply_group_crowding(
                 &ctx_float_float,
                 handle,
-                "crowding",
+                name,
                 strength as f32,
                 Some(sigma_cents as f32),
             )
@@ -1471,7 +1684,7 @@ fn register_group_crowding_overloads(engine: &mut Engine, ctx: Arc<Mutex<ScriptC
     );
     let ctx_int_float = ctx.clone();
     engine.register_fn(
-        "crowding",
+        name,
         move |handle: GroupHandle,
               strength: INT,
               sigma_cents: FLOAT|
@@ -1479,7 +1692,7 @@ fn register_group_crowding_overloads(engine: &mut Engine, ctx: Arc<Mutex<ScriptC
             apply_group_crowding(
                 &ctx_int_float,
                 handle,
-                "crowding",
+                name,
                 strength as f32,
                 Some(sigma_cents as f32),
             )
@@ -1487,7 +1700,7 @@ fn register_group_crowding_overloads(engine: &mut Engine, ctx: Arc<Mutex<ScriptC
     );
     let ctx_float_int = ctx.clone();
     engine.register_fn(
-        "crowding",
+        name,
         move |handle: GroupHandle,
               strength: FLOAT,
               sigma_cents: INT|
@@ -1495,7 +1708,7 @@ fn register_group_crowding_overloads(engine: &mut Engine, ctx: Arc<Mutex<ScriptC
             apply_group_crowding(
                 &ctx_float_int,
                 handle,
-                "crowding",
+                name,
                 strength as f32,
                 Some(sigma_cents as f32),
             )
@@ -1503,7 +1716,7 @@ fn register_group_crowding_overloads(engine: &mut Engine, ctx: Arc<Mutex<ScriptC
     );
     let ctx_int_int = ctx.clone();
     engine.register_fn(
-        "crowding",
+        name,
         move |handle: GroupHandle,
               strength: INT,
               sigma_cents: INT|
@@ -1511,7 +1724,7 @@ fn register_group_crowding_overloads(engine: &mut Engine, ctx: Arc<Mutex<ScriptC
             apply_group_crowding(
                 &ctx_int_int,
                 handle,
-                "crowding",
+                name,
                 strength as f32,
                 Some(sigma_cents as f32),
             )
@@ -1519,15 +1732,15 @@ fn register_group_crowding_overloads(engine: &mut Engine, ctx: Arc<Mutex<ScriptC
     );
     let ctx_float = ctx.clone();
     engine.register_fn(
-        "crowding",
+        name,
         move |handle: GroupHandle, strength: FLOAT| -> Result<GroupHandle, Box<EvalAltResult>> {
-            apply_group_crowding(&ctx_float, handle, "crowding", strength as f32, None)
+            apply_group_crowding(&ctx_float, handle, name, strength as f32, None)
         },
     );
     engine.register_fn(
-        "crowding",
+        name,
         move |handle: GroupHandle, strength: INT| -> Result<GroupHandle, Box<EvalAltResult>> {
-            apply_group_crowding(&ctx, handle, "crowding", strength as f32, None)
+            apply_group_crowding(&ctx, handle, name, strength as f32, None)
         },
     );
 }

@@ -21,9 +21,9 @@ let voice_release_sec = 0.220;
 let voice_initial_energy = 0.10;
 let voice_energy_cap = 0.20;
 
-let anchor = derive(harmonic)
+let anchor = harmonic("harmonic")
     .brain("drone")
-    .field_only()
+    .send(field)
     .amp(0.05)
     .sustain()
     .pitch_mode("lock")
@@ -38,7 +38,7 @@ let anchor = derive(harmonic)
         anchor_release_sec,
     );
 
-let assay_voice = derive(harmonic)
+let assay_voice = harmonic("harmonic")
     .amp(0.070)
     .sustain()
     .pitch_mode("lock")
@@ -59,18 +59,17 @@ let assay_voice = derive(harmonic)
         voice_release_sec,
     );
 
-let heredity_turnover = derive(assay_voice)
+let heredity_turnover = variant("assay_voice", assay_voice)
     .viability_rate(0.0)
     .respawn_background_death_rate(0.03 * audition_speedup)
     .respawn_consonance()
     .respawn_capacity(16);
 
-scene("E6: Heredity Only", || {
-    let drone = create(anchor, 1).freq(220.0);
+section("E6: Heredity Only", || {
+    let drone = place(anchor, at(220.0).count(1));
     wait(intro_sec);
 
-    let population = create(heredity_turnover, 16)
-        .place(random_log(55.0, 880.0));
+    let population = place(heredity_turnover, random(55.0, 880.0).count(16));
     wait(scene_runtime_sec);
 
     release(population);

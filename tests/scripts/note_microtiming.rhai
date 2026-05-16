@@ -1,5 +1,5 @@
 print("TEST_OK: note_microtiming");
-let micro = create(sine, 3).freq(440.0).amp(0.4);
+let micro = place(sine("sine"), at(440.0).count(3)).amp(0.4);
 flush();
 for i in 0..6 {
     wait(1.2);

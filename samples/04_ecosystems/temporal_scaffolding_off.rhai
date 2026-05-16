@@ -20,9 +20,9 @@ let voice_decay_sec = 0.150;
 let voice_sustain_level = 0.96;
 let voice_release_sec = 0.900;
 
-let anchor = derive(harmonic)
+let anchor = harmonic("harmonic")
     .brain("drone")
-    .field_only()
+    .send(field)
     .amp(0.05)
     .sustain()
     .pitch_mode("lock")
@@ -36,7 +36,7 @@ let anchor = derive(harmonic)
         anchor_release_sec,
     );
 
-let assay_voice = derive(harmonic)
+let assay_voice = harmonic("harmonic")
     .amp(0.060)
     .repeat()
     .pitch_mode("lock")
@@ -62,13 +62,12 @@ let assay_voice = derive(harmonic)
         voice_release_sec,
     );
 
-scene("E: Scaffold Off", || {
+section("E: Scaffold Off", || {
     set_scaffold_off();
-    let drone = create(anchor, 1).freq(220.0);
+    let drone = place(anchor, at(220.0).count(1));
     wait(intro_sec);
 
-    let population = create(assay_voice, 12)
-        .place(random_log(110.0, 880.0));
+    let population = place(assay_voice, random(110.0, 880.0).count(12));
     wait(run_sec);
 
     release(population);

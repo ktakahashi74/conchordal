@@ -31,10 +31,10 @@ fn collect_sample_files(root: &Path, out: &mut Vec<PathBuf>) {
 
 #[test]
 fn samples_have_no_legacy_keys() {
-    let root = Path::new("samples");
     let mut files = Vec::new();
-    collect_sample_files(root, &mut files);
-    assert!(!files.is_empty(), "no sample files found under {root:?}");
+    collect_sample_files(Path::new("samples"), &mut files);
+    collect_sample_files(Path::new("tests/scripts"), &mut files);
+    assert!(!files.is_empty(), "no sample or script files found");
 
     let banned_raw = [
         format!("{PLAN_A}{PLAN_B}"),
@@ -44,6 +44,17 @@ fn samples_have_no_legacy_keys() {
         ".mode(".to_string(),
         ".pitch_apply(".to_string(),
         ".voices(".to_string(),
+        "create(".to_string(),
+        "derive(".to_string(),
+        ".crowding(".to_string(),
+        "set_harmonic_mirror(".to_string(),
+        ".movement_glide(".to_string(),
+        ".pitch_glide(".to_string(),
+        "consonance_density(".to_string(),
+        "random_log(".to_string(),
+        "linear(".to_string(),
+        ".field_only(".to_string(),
+        ".presentation_only(".to_string(),
     ];
     let phonation_key = ["pho", "nation"].concat();
     let quote = "\"";

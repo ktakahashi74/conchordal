@@ -5,9 +5,9 @@ seed(20260510);
 
 let root_hz = 146.83;
 
-let field_anchor = derive(harmonic)
+let field_anchor = harmonic("harmonic")
     .brain("drone")
-    .field_only()
+    .send(field)
     .amp(0.052)
     .sustain()
     .pitch_mode("lock")
@@ -16,44 +16,42 @@ let field_anchor = derive(harmonic)
     .sustain_drive(0.0018)
     .adsr(0.6, 1.4, 0.96, 2.4);
 
-let droplet = derive(modal)
+let droplet = modal("modal")
     .amp(0.027)
     .flow_timing(2.6, 0.95)
     .gates(3)
-    .consonance_movement()
+    .seek_consonance()
     .pitch_apply_mode("gate_snap")
     .modes(landscape_density_modes().count(6).range(1.0, 5.0).gamma(1.5))
     .brightness(0.74)
-    .crowding(0.42)
+    .avoid_neighbors(0.42)
     .adsr(0.024, 0.300, 0.38, 0.72);
 
-let stream = derive(harmonic)
+let stream = harmonic("harmonic")
     .amp(0.026)
     .flow_timing(1.25, 0.88)
     .gates(4)
-    .consonance_movement()
+    .seek_consonance()
     .pitch_apply_mode("gate_snap")
     .modes(harmonic_modes().count(5))
     .brightness(0.50)
-    .crowding(0.55)
+    .avoid_neighbors(0.55)
     .adsr(0.045, 0.540, 0.62, 1.10);
 
-scene("Flow Timing Field", || {
+section("Flow Timing Field", || {
     set_control_update_mode("snapshot_phased");
-    set_harmonic_mirror(0.25);
+    harmonic_mirror(0.25);
 
-    let root = create(field_anchor, 1).freq(root_hz);
+    let root = place(field_anchor, at(root_hz).count(1));
     wait(2.0);
 
-    let low_stream = create(stream, 7)
-        .place(consonance_density(80.0, 720.0).min_dist(0.80));
+    let low_stream = place(stream, density(80.0, 720.0).spacing(0.80).count(7));
     wait(8.0);
 
-    let high_drops = create(droplet, 10)
-        .place(consonance_density(220.0, 1600.0).min_dist(0.65));
+    let high_drops = place(droplet, density(220.0, 1600.0).spacing(0.65).count(10));
     wait(12.0);
 
-    set_harmonic_mirror(0.80);
+    harmonic_mirror(0.80);
     root.freq(root_hz * 1.25);
     low_stream.amp(0.023);
     high_drops.amp(0.030);

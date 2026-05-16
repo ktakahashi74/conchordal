@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 
 use conchordal::life::scripting::{ScriptContext, ScriptHost};
 
-const PRESETS: &[&str] = &["sine", "harmonic", "saw", "square", "noise", "modal"];
+const BUILTIN_BUSES: &[&str] = &["field", "presentation"];
 
 /// Rhai reserved keywords that cannot appear as fn names in a `.d.rhai`.
 /// See https://rhai.rs/book/language/keywords.html.
@@ -52,9 +52,9 @@ fn main() {
     println!();
     println!("module static;");
     println!();
-    println!("// Preset species (registered as module constants).");
-    for preset in PRESETS {
-        println!("const {preset}: SpeciesHandle;");
+    println!("// Built-in buses (registered as module constants).");
+    for bus in BUILTIN_BUSES {
+        println!("const {bus}: Bus;");
     }
     println!();
 
@@ -63,7 +63,7 @@ fn main() {
     for sig in engine.gen_fn_signatures(false) {
         let name_end = sig.find('(').expect("signature has '('");
         let name = &sig[..name_end];
-        if RHAI_RESERVED.contains(&name) {
+        if RHAI_RESERVED.contains(&name) || !is_rhai_identifier(name) {
             skipped.push(sig);
             continue;
         }
@@ -76,11 +76,23 @@ fn main() {
 
     if !skipped.is_empty() {
         println!();
-        println!("// Skipped (function name collides with a Rhai reserved keyword):");
+        println!("// Skipped (reserved keyword or non-identifier function name):");
+        skipped.sort();
         for s in skipped {
             println!("// - {s}");
         }
     }
+}
+
+fn is_rhai_identifier(name: &str) -> bool {
+    let mut chars = name.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if !(first == '_' || first.is_ascii_alphabetic()) {
+        return false;
+    }
+    chars.all(|c| c == '_' || c.is_ascii_alphanumeric())
 }
 
 /// Convert one `gen_fn_signatures` line to a `.d.rhai` fn declaration.
@@ -140,6 +152,8 @@ fn map_type(t: &str) -> String {
         "string" => "String".to_string(),
         "Dynamic" => "?".to_string(),
         "array" => "[?]".to_string(),
+        "SpeciesHandle" => "Material".to_string(),
+        "GroupHandle" => "Participant".to_string(),
         // f64, i64, bool, (), Fn, custom handle types -> pass through.
         other => other.to_string(),
     }

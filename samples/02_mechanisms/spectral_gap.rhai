@@ -1,11 +1,11 @@
-let grain = derive(sine)
+let grain = sine("sine")
     .amp(0.09)
     .repeat()
     .adsr(0.01, 0.1, 0.0, 0.3);
 
-scene("Spectral Gap", || {
+section("Spectral Gap", || {
     for i in 0..8 {
-        create(grain, 1).place(random_log(120.0, 2200.0));
+        place(grain, random(120.0, 2200.0).count(1));
         wait(0.4);
     }
 });

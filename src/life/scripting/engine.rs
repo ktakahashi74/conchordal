@@ -5,64 +5,63 @@ impl ScriptHost {
         let mut engine = Engine::new();
         engine.on_print(|msg| println!("[rhai] {msg}"));
 
-        engine.register_type_with_name::<SpeciesHandle>("SpeciesHandle");
-        engine.register_type_with_name::<GroupHandle>("GroupHandle");
-        engine.register_type_with_name::<SpawnStrategy>("SpawnStrategy");
+        engine.register_type_with_name::<SpeciesHandle>("Material");
+        engine.register_type_with_name::<GroupHandle>("Participant");
+        engine.register_type_with_name::<Placement>("Placement");
+        engine.register_type_with_name::<Bus>("Bus");
+        engine.register_type_with_name::<BusSet>("BusSet");
         engine.register_type_with_name::<ModePattern>("ModePattern");
 
-        let mut presets = rhai::Module::new();
-        presets.set_var(
-            "sine",
-            SpeciesHandle {
-                spec: SpeciesSpec::preset(BodyMethod::Sine),
-            },
-        );
-        presets.set_var(
-            "harmonic",
-            SpeciesHandle {
-                spec: SpeciesSpec::preset(BodyMethod::Harmonic),
-            },
-        );
-        presets.set_var(
-            "saw",
-            SpeciesHandle {
-                spec: {
-                    let mut spec = SpeciesSpec::preset(BodyMethod::Harmonic);
-                    spec.control.body.timbre.brightness = 0.85;
-                    spec
-                },
-            },
-        );
-        presets.set_var(
-            "square",
-            SpeciesHandle {
-                spec: {
-                    let mut spec = SpeciesSpec::preset(BodyMethod::Harmonic);
-                    spec.control.body.timbre.brightness = 0.65;
-                    spec
-                },
-            },
-        );
-        presets.set_var(
-            "noise",
-            SpeciesHandle {
-                spec: {
-                    let mut spec = SpeciesSpec::preset(BodyMethod::Harmonic);
-                    spec.control.body.timbre.brightness = 1.0;
-                    spec.control.body.timbre.motion = 1.0;
-                    spec
-                },
-            },
-        );
-        presets.set_var(
-            "modal",
-            SpeciesHandle {
-                spec: SpeciesSpec::preset(BodyMethod::Modal),
-            },
-        );
-        engine.register_global_module(presets.into());
+        let mut builtins = rhai::Module::new();
+        builtins.set_var("field", Bus::field());
+        builtins.set_var("presentation", Bus::presentation());
+        engine.register_global_module(builtins.into());
 
-        engine.register_fn("derive", |parent: SpeciesHandle| parent);
+        engine.register_fn("sine", |_name: &str| SpeciesHandle {
+            spec: SpeciesSpec::preset(BodyMethod::Sine),
+        });
+        engine.register_fn("harmonic", |_name: &str| SpeciesHandle {
+            spec: SpeciesSpec::preset(BodyMethod::Harmonic),
+        });
+        engine.register_fn("modal", |_name: &str| SpeciesHandle {
+            spec: SpeciesSpec::preset(BodyMethod::Modal),
+        });
+        engine.register_fn("saw", |_name: &str| SpeciesHandle {
+            spec: {
+                let mut spec = SpeciesSpec::preset(BodyMethod::Harmonic);
+                spec.control.body.timbre.brightness = 0.85;
+                spec
+            },
+        });
+        engine.register_fn("square", |_name: &str| SpeciesHandle {
+            spec: {
+                let mut spec = SpeciesSpec::preset(BodyMethod::Harmonic);
+                spec.control.body.timbre.brightness = 0.65;
+                spec
+            },
+        });
+        engine.register_fn("noise", |_name: &str| SpeciesHandle {
+            spec: {
+                let mut spec = SpeciesSpec::preset(BodyMethod::Harmonic);
+                spec.control.body.timbre.brightness = 1.0;
+                spec.control.body.timbre.motion = 1.0;
+                spec
+            },
+        });
+        engine.register_fn("variant", |_name: &str, parent: SpeciesHandle| parent);
+
+        engine.register_fn("|", |left: Bus, right: Bus| left.set().combine(right.set()));
+        engine.register_fn("|", |left: BusSet, right: Bus| left.combine(right.set()));
+        engine.register_fn("|", |left: Bus, right: BusSet| left.set().combine(right));
+        engine.register_fn("|", |left: BusSet, right: BusSet| left.combine(right));
+        engine.register_fn("send", |mut species: SpeciesHandle, bus: Bus| {
+            species.spec.set_routing(bus.set().routing());
+            species
+        });
+        engine.register_fn("send", |mut species: SpeciesHandle, bus: BusSet| {
+            species.spec.set_routing(bus.routing());
+            species
+        });
 
         register_species_numeric_overloads(&mut engine, "amp", SpeciesSpec::set_amp);
         register_species_numeric_overloads(&mut engine, "freq", SpeciesSpec::set_freq);
@@ -101,15 +100,25 @@ impl ScriptHost {
             "persistence",
             SpeciesSpec::set_persistence,
         );
-        register_species_pair_numeric_overloads(&mut engine, "crowding", SpeciesSpec::set_crowding);
-        engine.register_fn("crowding", |mut species: SpeciesHandle, strength: FLOAT| {
-            species.spec.set_crowding_auto_sigma(strength as f32);
-            species
-        });
-        engine.register_fn("crowding", |mut species: SpeciesHandle, strength: INT| {
-            species.spec.set_crowding_auto_sigma(strength as f32);
-            species
-        });
+        register_species_pair_numeric_overloads(
+            &mut engine,
+            "avoid_neighbors",
+            SpeciesSpec::set_crowding,
+        );
+        engine.register_fn(
+            "avoid_neighbors",
+            |mut species: SpeciesHandle, strength: FLOAT| {
+                species.spec.set_crowding_auto_sigma(strength as f32);
+                species
+            },
+        );
+        engine.register_fn(
+            "avoid_neighbors",
+            |mut species: SpeciesHandle, strength: INT| {
+                species.spec.set_crowding_auto_sigma(strength as f32);
+                species
+            },
+        );
         engine.register_fn(
             "crowding_target",
             |mut species: SpeciesHandle, same_group_visible: bool, other_group_visible: bool| {
@@ -227,15 +236,10 @@ impl ScriptHost {
         );
         register_species_numeric_overloads(
             &mut engine,
-            "pitch_glide",
+            "glide",
             SpeciesSpec::set_pitch_glide_tau_sec,
         );
-        register_species_numeric_overloads(
-            &mut engine,
-            "movement_glide",
-            SpeciesSpec::set_pitch_glide_tau_sec,
-        );
-        engine.register_fn("consonance_movement", |mut species: SpeciesHandle| {
+        engine.register_fn("seek_consonance", |mut species: SpeciesHandle| {
             species.spec.set_consonance_movement();
             species
         });
@@ -284,15 +288,6 @@ impl ScriptHost {
                 species
             },
         );
-        // Routing: presentation reaches the work output; field reaches ALIFE cognition.
-        engine.register_fn("field_only", |mut species: SpeciesHandle| {
-            species.spec.control.body.routing.to_presentation = false;
-            species
-        });
-        engine.register_fn("presentation_only", |mut species: SpeciesHandle| {
-            species.spec.control.body.routing.to_field = false;
-            species
-        });
         // Tier 2: explicit when/duration
         engine.register_fn("once", |mut species: SpeciesHandle| {
             species.spec.set_when_once();
@@ -504,18 +499,36 @@ impl ScriptHost {
         );
         engine.register_fn(
             "respawn_settle",
-            |mut species: SpeciesHandle, strategy: SpawnStrategy| {
-                species.spec.set_respawn_settle_strategy(strategy);
+            |mut species: SpeciesHandle, placement: Placement| {
+                if let Some(strategy) = placement.strategy() {
+                    species.spec.set_respawn_settle_strategy(strategy);
+                } else {
+                    warn!("respawn_settle() requires density(), peaks(), random(), or line()");
+                }
                 species
             },
         );
 
-        let ctx_for_create = ctx.clone();
+        #[cfg(test)]
+        {
+            let ctx_for_create = ctx.clone();
+            engine.register_fn(
+                "create",
+                move |call_ctx: NativeCallContext, species: SpeciesHandle, count: INT| {
+                    let mut ctx = ctx_for_create.lock().expect("lock script context");
+                    ctx.create_group(species, count, call_ctx.call_position())
+                },
+            );
+        }
+        let ctx_for_place_material = ctx.clone();
         engine.register_fn(
-            "create",
-            move |call_ctx: NativeCallContext, species: SpeciesHandle, count: INT| {
-                let mut ctx = ctx_for_create.lock().expect("lock script context");
-                ctx.create_group(species, count, call_ctx.call_position())
+            "place",
+            move |call_ctx: NativeCallContext,
+                  species: SpeciesHandle,
+                  placement: Placement|
+                  -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_place_material.lock().expect("lock script context");
+                ctx.place_material(species, placement, call_ctx.call_position())
             },
         );
 
@@ -566,17 +579,17 @@ impl ScriptHost {
             },
         );
 
-        let ctx_for_scene = ctx.clone();
+        let ctx_for_section = ctx.clone();
         engine.register_fn(
-            "scene",
+            "section",
             move |call_ctx: NativeCallContext, name: &str, callback: FnPtr| {
                 {
-                    let mut ctx = ctx_for_scene.lock().expect("lock script context");
+                    let mut ctx = ctx_for_section.lock().expect("lock script context");
                     ctx.push_scene_marker(name);
                     ctx.push_scope();
                 }
                 let result = callback.call_within_context::<Dynamic>(&call_ctx, ());
-                let mut ctx = ctx_for_scene.lock().expect("lock script context");
+                let mut ctx = ctx_for_section.lock().expect("lock script context");
                 ctx.pop_scope();
                 result.map(|_| ())
             },
@@ -742,6 +755,14 @@ impl ScriptHost {
                 pattern
             }
         });
+        engine.register_fn("spacing", |pattern: ModePattern, min_dist: FLOAT| {
+            if pattern.supports_min_dist_erb() {
+                pattern.with_min_dist_erb(min_dist as f32)
+            } else {
+                warn!("spacing() is only supported for landscape_*_modes(); ignored");
+                pattern
+            }
+        });
         engine.register_fn("gamma", |pattern: ModePattern, gamma: FLOAT| {
             if pattern.supports_gamma() {
                 pattern.with_gamma(gamma as f32)
@@ -762,137 +783,140 @@ impl ScriptHost {
             }
         });
 
-        engine.register_fn("consonance", |root_freq: FLOAT| SpawnStrategy::Consonance {
-            root_freq: root_freq as f32,
-            min_mul: 1.0,
-            max_mul: 4.0,
-            min_dist_erb: 1.0,
+        engine.register_fn("at", |freq: FLOAT| Placement::at(freq as f32));
+        engine.register_fn("at", |freq: INT| Placement::at(freq as f32));
+        engine.register_fn("density", |min_freq: FLOAT, max_freq: FLOAT| {
+            Placement::density(min_freq as f32, max_freq as f32)
+        });
+        engine.register_fn("density", |min_freq: INT, max_freq: FLOAT| {
+            Placement::density(min_freq as f32, max_freq as f32)
+        });
+        engine.register_fn("density", |min_freq: FLOAT, max_freq: INT| {
+            Placement::density(min_freq as f32, max_freq as f32)
+        });
+        engine.register_fn("density", |min_freq: INT, max_freq: INT| {
+            Placement::density(min_freq as f32, max_freq as f32)
+        });
+        engine.register_fn("peaks", |root_freq: FLOAT| {
+            Placement::peaks(root_freq as f32)
+        });
+        engine.register_fn("peaks", |root_freq: INT| Placement::peaks(root_freq as f32));
+        engine.register_fn("random", |min_freq: FLOAT, max_freq: FLOAT| {
+            Placement::random(min_freq as f32, max_freq as f32)
+        });
+        engine.register_fn("random", |min_freq: INT, max_freq: FLOAT| {
+            Placement::random(min_freq as f32, max_freq as f32)
+        });
+        engine.register_fn("random", |min_freq: FLOAT, max_freq: INT| {
+            Placement::random(min_freq as f32, max_freq as f32)
+        });
+        engine.register_fn("random", |min_freq: INT, max_freq: INT| {
+            Placement::random(min_freq as f32, max_freq as f32)
+        });
+        engine.register_fn("line", |start_freq: FLOAT, end_freq: FLOAT| {
+            Placement::line(start_freq as f32, end_freq as f32)
+        });
+        engine.register_fn("line", |start_freq: INT, end_freq: FLOAT| {
+            Placement::line(start_freq as f32, end_freq as f32)
+        });
+        engine.register_fn("line", |start_freq: FLOAT, end_freq: INT| {
+            Placement::line(start_freq as f32, end_freq as f32)
+        });
+        engine.register_fn("line", |start_freq: INT, end_freq: INT| {
+            Placement::line(start_freq as f32, end_freq as f32)
+        });
+        engine.register_fn("count", |placement: Placement, count: INT| {
+            placement.with_count(count)
         });
         engine.register_fn(
             "range",
-            |strategy: SpawnStrategy, min_mul: FLOAT, max_mul: FLOAT| match strategy {
-                SpawnStrategy::Consonance {
-                    root_freq,
-                    min_dist_erb,
-                    ..
-                } => SpawnStrategy::Consonance {
-                    root_freq,
-                    min_mul: min_mul as f32,
-                    max_mul: max_mul as f32,
-                    min_dist_erb,
-                },
-                other => {
-                    warn!("range() ignored for non-consonance strategy");
-                    other
-                }
+            |placement: Placement, min_mul: FLOAT, max_mul: FLOAT| {
+                placement.with_range(min_mul as f32, max_mul as f32)
             },
         );
         engine.register_fn(
-            "min_dist",
-            |strategy: SpawnStrategy, min_dist: FLOAT| match strategy {
-                SpawnStrategy::Consonance {
-                    root_freq,
-                    min_mul,
-                    max_mul,
-                    ..
-                } => SpawnStrategy::Consonance {
-                    root_freq,
-                    min_mul,
-                    max_mul,
-                    min_dist_erb: min_dist as f32,
-                },
-                SpawnStrategy::ConsonanceDensity {
-                    min_freq, max_freq, ..
-                } => SpawnStrategy::ConsonanceDensity {
-                    min_freq,
-                    max_freq,
-                    min_dist_erb: min_dist as f32,
-                },
-                other => {
-                    warn!("min_dist() ignored for non-consonance strategy");
-                    other
-                }
+            "range",
+            |placement: Placement, min_mul: INT, max_mul: FLOAT| {
+                placement.with_range(min_mul as f32, max_mul as f32)
             },
         );
-        engine.register_fn("consonance_density", |min_freq: FLOAT, max_freq: FLOAT| {
-            SpawnStrategy::ConsonanceDensity {
-                min_freq: min_freq as f32,
-                max_freq: max_freq as f32,
-                min_dist_erb: 1.0,
-            }
+        engine.register_fn(
+            "range",
+            |placement: Placement, min_mul: FLOAT, max_mul: INT| {
+                placement.with_range(min_mul as f32, max_mul as f32)
+            },
+        );
+        engine.register_fn(
+            "range",
+            |placement: Placement, min_mul: INT, max_mul: INT| {
+                placement.with_range(min_mul as f32, max_mul as f32)
+            },
+        );
+        engine.register_fn("spacing", |placement: Placement, spacing: FLOAT| {
+            placement.with_spacing(spacing as f32)
         });
-        engine.register_fn("random_log", |min_freq: FLOAT, max_freq: FLOAT| {
-            SpawnStrategy::RandomLog {
-                min_freq: min_freq as f32,
-                max_freq: max_freq as f32,
-            }
+        engine.register_fn("spacing", |placement: Placement, spacing: INT| {
+            placement.with_spacing(spacing as f32)
         });
-        engine.register_fn("linear", |start: FLOAT, end: FLOAT| SpawnStrategy::Linear {
-            start_freq: start as f32,
-            end_freq: end as f32,
-        });
+
         engine.register_fn(
             "reject_targets",
-            |strategy: SpawnStrategy,
+            |placement: Placement,
              anchor_hz: FLOAT,
              targets_st: Array,
              exclusion_st: FLOAT,
              max_tries: INT| {
-                SpawnStrategy::RejectTargets {
-                    base: Box::new(strategy),
-                    anchor_hz: anchor_hz as f32,
-                    targets_st: rhai_array_to_f32(targets_st, "reject_targets"),
-                    exclusion_st: exclusion_st as f32,
-                    max_tries: max_tries.max(1) as usize,
-                }
+                placement.with_reject_targets(
+                    anchor_hz as f32,
+                    rhai_array_to_f32(targets_st, "reject_targets"),
+                    exclusion_st as f32,
+                    max_tries,
+                )
             },
         );
         engine.register_fn(
             "reject_targets",
-            |strategy: SpawnStrategy,
+            |placement: Placement,
              anchor_hz: INT,
              targets_st: Array,
              exclusion_st: FLOAT,
              max_tries: INT| {
-                SpawnStrategy::RejectTargets {
-                    base: Box::new(strategy),
-                    anchor_hz: anchor_hz as f32,
-                    targets_st: rhai_array_to_f32(targets_st, "reject_targets"),
-                    exclusion_st: exclusion_st as f32,
-                    max_tries: max_tries.max(1) as usize,
-                }
+                placement.with_reject_targets(
+                    anchor_hz as f32,
+                    rhai_array_to_f32(targets_st, "reject_targets"),
+                    exclusion_st as f32,
+                    max_tries,
+                )
             },
         );
         engine.register_fn(
             "reject_targets",
-            |strategy: SpawnStrategy,
+            |placement: Placement,
              anchor_hz: FLOAT,
              targets_st: Array,
              exclusion_st: INT,
              max_tries: INT| {
-                SpawnStrategy::RejectTargets {
-                    base: Box::new(strategy),
-                    anchor_hz: anchor_hz as f32,
-                    targets_st: rhai_array_to_f32(targets_st, "reject_targets"),
-                    exclusion_st: exclusion_st as f32,
-                    max_tries: max_tries.max(1) as usize,
-                }
+                placement.with_reject_targets(
+                    anchor_hz as f32,
+                    rhai_array_to_f32(targets_st, "reject_targets"),
+                    exclusion_st as f32,
+                    max_tries,
+                )
             },
         );
         engine.register_fn(
             "reject_targets",
-            |strategy: SpawnStrategy,
+            |placement: Placement,
              anchor_hz: INT,
              targets_st: Array,
              exclusion_st: INT,
              max_tries: INT| {
-                SpawnStrategy::RejectTargets {
-                    base: Box::new(strategy),
-                    anchor_hz: anchor_hz as f32,
-                    targets_st: rhai_array_to_f32(targets_st, "reject_targets"),
-                    exclusion_st: exclusion_st as f32,
-                    max_tries: max_tries.max(1) as usize,
-                }
+                placement.with_reject_targets(
+                    anchor_hz as f32,
+                    rhai_array_to_f32(targets_st, "reject_targets"),
+                    exclusion_st as f32,
+                    max_tries,
+                )
             },
         );
 
@@ -968,7 +992,7 @@ impl ScriptHost {
             patch_persistence,
             None,
         );
-        register_group_crowding_overloads(&mut engine, ctx.clone());
+        register_group_crowding_overloads(&mut engine, ctx.clone(), "avoid_neighbors");
         let ctx_for_group_crowding_target = ctx.clone();
         engine.register_fn(
             "crowding_target",
@@ -1331,37 +1355,26 @@ impl ScriptHost {
         register_group_numeric_overloads(
             &mut engine,
             ctx.clone(),
-            "pitch_glide",
+            "glide",
             SpeciesSpec::set_pitch_glide_tau_sec,
             patch_pitch_glide_tau,
             None,
         );
-        register_group_numeric_overloads(
-            &mut engine,
-            ctx.clone(),
-            "movement_glide",
-            SpeciesSpec::set_pitch_glide_tau_sec,
-            patch_pitch_glide_tau,
-            None,
-        );
-        let ctx_for_group_consonance_movement = ctx.clone();
+        let ctx_for_group_seek_consonance = ctx.clone();
         engine.register_fn(
-            "consonance_movement",
+            "seek_consonance",
             move |handle: GroupHandle| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_consonance_movement
+                let mut ctx = ctx_for_group_seek_consonance
                     .lock()
                     .expect("lock script context");
                 let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!(
-                        "consonance_movement ignored for unknown group {}",
-                        handle.id
-                    );
+                    warn!("seek_consonance ignored for unknown group {}", handle.id);
                     return Ok(handle);
                 };
                 match group.status {
                     GroupStatus::Draft => group.spec.set_consonance_movement(),
-                    GroupStatus::Live => ctx.warn_live_builder(handle.id, "consonance_movement"),
-                    _ => ctx.warn_live_builder(handle.id, "consonance_movement"),
+                    GroupStatus::Live => ctx.warn_live_builder(handle.id, "seek_consonance"),
+                    _ => ctx.warn_live_builder(handle.id, "seek_consonance"),
                 }
                 Ok(handle)
             },
@@ -1533,16 +1546,6 @@ impl ScriptHost {
             }};
         }
         register_group_draft_fn!("once", ctx, engine, |s| s.set_when_once());
-        register_group_draft_fn!("field_only", ctx, engine, |s| s
-            .control
-            .body
-            .routing
-            .to_presentation = false);
-        register_group_draft_fn!("presentation_only", ctx, engine, |s| s
-            .control
-            .body
-            .routing
-            .to_field = false);
         register_group_draft_fn1!("pulse", ctx, engine, |s, rate: FLOAT| s
             .set_when_pulse(rate as f32));
         register_group_draft_fn!("while_alive", ctx, engine, |s| s.set_duration_while_alive());
@@ -1920,13 +1923,13 @@ impl ScriptHost {
             "respawn_background_death_rate",
             SpeciesSpec::set_respawn_background_death_rate,
         );
-        let ctx_for_group_respawn_settle = ctx.clone();
+        let ctx_for_group_respawn_settle_placement = ctx.clone();
         engine.register_fn(
             "respawn_settle",
             move |handle: GroupHandle,
-                  strategy: SpawnStrategy|
+                  placement: Placement|
                   -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_respawn_settle
+                let mut ctx = ctx_for_group_respawn_settle_placement
                     .lock()
                     .expect("lock script context");
                 let Some(group) = ctx.groups.get_mut(&handle.id) else {
@@ -1935,27 +1938,41 @@ impl ScriptHost {
                 };
                 match group.status {
                     GroupStatus::Draft => {
-                        group.spec.set_respawn_settle_strategy(strategy);
+                        if let Some(strategy) = placement.strategy() {
+                            group.spec.set_respawn_settle_strategy(strategy);
+                        } else {
+                            warn!(
+                                "respawn_settle() requires density(), peaks(), random(), or line()"
+                            );
+                        }
                     }
                     _ => ctx.warn_live_builder(handle.id, "respawn_settle"),
                 }
                 Ok(handle)
             },
         );
-        let ctx_for_group_place = ctx.clone();
+        let ctx_for_group_place_placement = ctx.clone();
         engine.register_fn(
             "place",
             move |handle: GroupHandle,
-                  strategy: SpawnStrategy|
+                  placement: Placement|
                   -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_place.lock().expect("lock script context");
+                let mut ctx = ctx_for_group_place_placement
+                    .lock()
+                    .expect("lock script context");
                 let Some(group) = ctx.groups.get_mut(&handle.id) else {
                     warn!("place ignored for unknown group {}", handle.id);
                     return Ok(handle);
                 };
                 match group.status {
                     GroupStatus::Draft => {
-                        group.strategy = Some(strategy);
+                        if let Some(freq_hz) = placement.freq_hz {
+                            group.spec.set_freq(freq_hz);
+                        }
+                        if placement.count != 1 {
+                            group.count = placement.count;
+                        }
+                        group.strategy = placement.strategy();
                     }
                     GroupStatus::Live => ctx.warn_live_builder(handle.id, "place"),
                     _ => ctx.warn_live_builder(handle.id, "place"),
@@ -1964,13 +1981,11 @@ impl ScriptHost {
             },
         );
 
-        let ctx_for_set_harmonic_mirror = ctx.clone();
+        let ctx_for_harmonic_mirror = ctx.clone();
         engine.register_fn(
-            "set_harmonic_mirror",
+            "harmonic_mirror",
             move |_call_ctx: NativeCallContext, mirror: FLOAT| {
-                let mut ctx = ctx_for_set_harmonic_mirror
-                    .lock()
-                    .expect("lock script context");
+                let mut ctx = ctx_for_harmonic_mirror.lock().expect("lock script context");
                 let update = crate::core::landscape::LandscapeUpdate {
                     mirror: Some(mirror as f32),
                     ..crate::core::landscape::LandscapeUpdate::default()

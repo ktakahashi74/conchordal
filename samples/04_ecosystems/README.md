@@ -11,6 +11,7 @@ script is release curated.
 cargo run --release -- samples/04_ecosystems/metric_beat_foundation.rhai
 cargo run --release -- samples/04_ecosystems/entrained_beat.rhai
 cargo run --release -- samples/04_ecosystems/flow_timing_field.rhai
+cargo run --release -- samples/04_ecosystems/rhythm_harmony_ecology.rhai
 cargo run --release -- samples/04_ecosystems/conchordal_ecology.rhai
 ```
 
@@ -19,7 +20,8 @@ cargo run --release -- samples/04_ecosystems/conchordal_ecology.rhai
 | `metric_beat_foundation.rhai` | Metric beat candidate | 39s | Stable beat, gate-snap articulation, and consonance-biased pitch placement. |
 | `entrained_beat.rhai` | Entrained beat candidate | 43s | Agent-phase timing, social onset feedback, vitality coupling, and attack reward. |
 | `flow_timing_field.rhai` | Flow timing candidate | 40s | Seeded non-metric onset flow over consonance-biased regions. |
-| `conchordal_ecology.rhai` | Integrated flagship candidate | 55s | Metric beat, entrained beat, flow timing, consonance movement, viability, and respawn in one ecology. |
+| `rhythm_harmony_ecology.rhai` | Functional integration demo | 55s | Shows metric beat, entrained agents, flow timing, consonance movement, and field shifts coexisting on one stable groove. |
+| `conchordal_ecology.rhai` | Musical showcase candidate material | 55s | Tests whether metric beat, entrained beat, flow timing, consonance movement, viability, and respawn can become one musical ecology. |
 
 ## Paused v0.4 Alpha Path
 
@@ -43,7 +45,9 @@ The final curated path should be rebuilt around:
 - metric beat: a Western-music-like pulse surface
 - entrained beat: synchronization emerging from agent coupling and survival
 - flow timing: rain/river-like non-metric onset texture
-- integrated rhythm/harmony ecology: the final flagship
+- functional rhythm/harmony integration: the APIs working together in one ecology
+- musical etude or showcase: a separate script judged by musical result, not by
+  how many features it demonstrates
 
 See `docs/roadmap/v0.4.0-rhythm-redesign.md`.
 
@@ -56,6 +60,7 @@ The current non-audition report gate is recorded in
 target/debug/conchordal --nogui --play false --report target/rhythm_reports/metric_beat_foundation.jsonl samples/04_ecosystems/metric_beat_foundation.rhai
 target/debug/conchordal --nogui --play false --report target/rhythm_reports/entrained_beat.jsonl samples/04_ecosystems/entrained_beat.rhai
 target/debug/conchordal --nogui --play false --report target/rhythm_reports/flow_timing_field.jsonl samples/04_ecosystems/flow_timing_field.rhai
+target/debug/conchordal --nogui --play false --report target/rhythm_reports/rhythm_harmony_ecology.jsonl samples/04_ecosystems/rhythm_harmony_ecology.rhai
 target/debug/conchordal --nogui --play false --report target/rhythm_reports/conchordal_ecology.jsonl samples/04_ecosystems/conchordal_ecology.rhai
 ```
 
@@ -79,5 +84,7 @@ demo set and record:
 - whether each script should remain curated, be revised, or be demoted
 - whether the duration and density are acceptable
 - whether the metric, entrained, and flow rhythm families are each audible
-- whether the integrated flagship sounds like one Conchordal ecology rather
-  than separate rhythm and harmony layers
+- whether functional integration demos make the API roles audible without being
+  mistaken for musical showcases
+- whether the separate musical showcase sounds like one Conchordal ecology
+  rather than separate rhythm and harmony layers

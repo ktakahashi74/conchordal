@@ -35,23 +35,23 @@ fn action_times(scenario: &Scenario) -> Vec<(f32, &Action)> {
 }
 
 const E4_STEP_RESPONSE_SCRIPT: &str = r#"
-        let anchor = derive(harmonic).pitch_mode("lock");
-        let probe = derive(harmonic).pitch_mode("free").pitch_core("peak_sampler");
+        let anchor = harmonic("harmonic").pitch_mode("lock");
+        let probe = harmonic("harmonic").pitch_mode("free").pitch_core("peak_sampler");
 
-        scene("E4 Step Response Test", || {
+        section("E4 Step Response Test", || {
             let base = create(anchor, 1).freq(196.0);
             flush();
 
             let probes = create(probe, 12)
-                .place(consonance(196.0).range(0.8, 2.5).min_dist(0.9))
+                .place(peaks(196.0).range(0.8, 2.5).spacing(0.9))
                 .pitch_mode("free");
             flush();
 
-            set_harmonic_mirror(0.0);
+            harmonic_mirror(0.0);
             flush();
-            set_harmonic_mirror(0.5);
+            harmonic_mirror(0.5);
             flush();
-            set_harmonic_mirror(1.0);
+            harmonic_mirror(1.0);
             flush();
 
             release(probes);
@@ -61,18 +61,18 @@ const E4_STEP_RESPONSE_SCRIPT: &str = r#"
     "#;
 
 const E4_BETWEEN_RUNS_SCRIPT: &str = r#"
-        let anchor = derive(harmonic).pitch_mode("lock");
-        let probe = derive(harmonic).pitch_mode("free").pitch_core("peak_sampler");
+        let anchor = harmonic("harmonic").pitch_mode("lock");
+        let probe = harmonic("harmonic").pitch_mode("free").pitch_core("peak_sampler");
 
-        scene("E4 Between Runs Test", || {
+        section("E4 Between Runs Test", || {
             let weights = [0.0, 0.5, 1.0];
             for w in weights {
-                set_harmonic_mirror(w);
+                harmonic_mirror(w);
                 flush();
 
                 let base = create(anchor, 1).freq(196.0);
                 let probes = create(probe, 8)
-                    .place(consonance(196.0).range(0.8, 2.5).min_dist(0.9))
+                    .place(peaks(196.0).range(0.8, 2.5).spacing(0.9))
                     .pitch_mode("free");
                 flush();
 
@@ -87,7 +87,7 @@ const E4_BETWEEN_RUNS_SCRIPT: &str = r#"
 fn draft_group_without_commit_is_dropped() {
     let (scenario, warnings) = run_script(
         r#"
-            create(sine, 1);
+            create(sine("sine"), 1);
         "#,
     );
     let has_spawn = scenario
@@ -102,7 +102,7 @@ fn draft_group_without_commit_is_dropped() {
 fn flush_spawns_without_advancing_time() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(sine, 1);
+            create(sine("sine"), 1);
             flush();
             wait(1.0);
         "#,
@@ -124,8 +124,8 @@ fn flush_spawns_without_advancing_time() {
 fn scene_scope_releases_live_groups() {
     let (scenario, _warnings) = run_script(
         r#"
-            scene("alpha", || {
-                let g = create(sine, 1);
+            section("alpha", || {
+                let g = create(sine("sine"), 1);
                 flush();
                 wait(0.5);
             });
@@ -145,8 +145,8 @@ fn parallel_advances_to_max_child_end() {
     let (scenario, _warnings) = run_script(
         r#"
             parallel([
-                || { create(sine, 1); wait(0.5); },
-                || { create(sine, 1); wait(1.0); }
+                || { create(sine("sine"), 1); wait(0.5); },
+                || { create(sine("sine"), 1); wait(1.0); }
             ]);
         "#,
     );
@@ -171,7 +171,7 @@ fn parallel_advances_to_max_child_end() {
 fn scope_drop_warns_on_draft() {
     let (_scenario, warnings) = run_script(
         r#"
-            scene("alpha", || { create(sine, 1); });
+            section("alpha", || { create(sine("sine"), 1); });
         "#,
     );
     assert_eq!(warnings.draft_dropped, 1);
@@ -181,8 +181,8 @@ fn scope_drop_warns_on_draft() {
 fn spawn_order_is_group_id_order() {
     let (scenario, _warnings) = run_script(
         r#"
-            let a = create(sine, 1);
-            let b = create(sine, 1);
+            let a = create(sine("sine"), 1);
+            let b = create(sine("sine"), 1);
             flush();
         "#,
     );
@@ -204,12 +204,55 @@ fn spawn_order_is_group_id_order() {
 }
 
 #[test]
+fn place_material_builds_draft_participant_until_flush() {
+    let (scenario, _warnings) = run_script(
+        r#"
+            let p = place(
+                harmonic("cell").amp(0.04).send(field | presentation),
+                density(90.0, 900.0).count(3).spacing(0.8)
+            );
+            p.amp(0.02);
+            flush();
+        "#,
+    );
+    let mut spawn = None;
+    for event in &scenario.events {
+        for action in &event.actions {
+            if let Action::Spawn {
+                ids,
+                spec,
+                strategy,
+                ..
+            } = action
+            {
+                spawn = Some((
+                    event.time,
+                    ids.len(),
+                    spec.control.clone(),
+                    strategy.clone(),
+                ));
+            }
+        }
+    }
+    let (time, count, control, strategy) = spawn.expect("spawn action");
+    assert_eq!(time, 0.0);
+    assert_eq!(count, 3);
+    assert_eq!(control.body.amp, 0.02);
+    assert!(control.body.routing.to_field);
+    assert!(control.body.routing.to_presentation);
+    assert!(matches!(
+        strategy,
+        Some(SpawnStrategy::ConsonanceDensity { .. })
+    ));
+}
+
+#[test]
 fn flush_events_have_increasing_order_at_same_time() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(sine, 1);
+            create(sine("sine"), 1);
             flush();
-            create(sine, 1);
+            create(sine("sine"), 1);
             flush();
         "#,
     );
@@ -229,7 +272,7 @@ fn flush_events_have_increasing_order_at_same_time() {
 fn place_then_freq_clears_strategy() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(sine, 4).place(consonance(220.0)).freq(330.0);
+            create(sine("sine"), 4).place(peaks(220.0)).freq(330.0);
             flush();
         "#,
     );
@@ -249,7 +292,7 @@ fn place_then_freq_clears_strategy() {
 fn freq_then_place_sets_strategy() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(sine, 4).freq(330.0).place(consonance(220.0));
+            create(sine("sine"), 4).freq(330.0).place(peaks(220.0));
             flush();
         "#,
     );
@@ -269,7 +312,7 @@ fn freq_then_place_sets_strategy() {
 fn place_then_pitch_mode_free_overrides_lock() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(sine, 4).place(consonance(220.0)).pitch_mode("free");
+            create(sine("sine"), 4).place(peaks(220.0)).pitch_mode("free");
             flush();
         "#,
     );
@@ -292,7 +335,7 @@ fn place_then_pitch_mode_free_overrides_lock() {
 fn place_then_pitch_mode_free_survives_spawn() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(sine, 2).place(consonance(220.0)).pitch_mode("free");
+            create(sine("sine"), 2).place(peaks(220.0)).pitch_mode("free");
             flush();
         "#,
     );
@@ -322,7 +365,7 @@ fn place_then_pitch_mode_free_survives_spawn() {
 fn place_preserves_default_pitch_mode() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(sine, 4).place(consonance(220.0));
+            create(sine("sine"), 4).place(peaks(220.0));
             flush();
         "#,
     );
@@ -342,7 +385,7 @@ fn place_preserves_default_pitch_mode() {
 fn pitch_mode_free_then_place_preserves_free() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(sine, 4).pitch_mode("free").place(consonance(220.0));
+            create(sine("sine"), 4).pitch_mode("free").place(peaks(220.0));
             flush();
         "#,
     );
@@ -362,7 +405,7 @@ fn pitch_mode_free_then_place_preserves_free() {
 fn species_pitch_mode_sets_spawn_mode() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(sine.pitch_mode("lock"), 1);
+            create(sine("sine").pitch_mode("lock"), 1);
             flush();
         "#,
     );
@@ -382,7 +425,7 @@ fn species_pitch_mode_sets_spawn_mode() {
 fn consonance_movement_sets_free_hill_climb_glide_defaults() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(sine.consonance_movement(), 1);
+            create(sine("sine").seek_consonance(), 1);
             flush();
         "#,
     );
@@ -417,7 +460,7 @@ fn consonance_movement_sets_free_hill_climb_glide_defaults() {
 fn movement_glide_overrides_consonance_movement_default() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(sine.consonance_movement().movement_glide(0.12), 1);
+            create(sine("sine").seek_consonance().glide(0.12), 1);
             flush();
         "#,
     );
@@ -438,7 +481,7 @@ fn movement_glide_overrides_consonance_movement_default() {
 fn species_pitch_core_sets_spawn_core_kind() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(sine.pitch_core("peak_sampler"), 1);
+            create(sine("sine").pitch_core("peak_sampler"), 1);
             flush();
         "#,
     );
@@ -458,7 +501,7 @@ fn species_pitch_core_sets_spawn_core_kind() {
 fn species_landscape_weight_sets_spawn_control() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(sine.landscape_weight(0.25), 1);
+            create(sine("sine").landscape_weight(0.25), 1);
             flush();
         "#,
     );
@@ -478,7 +521,7 @@ fn species_landscape_weight_sets_spawn_control() {
 fn species_landscape_weight_reaches_spawned_individual() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(sine.landscape_weight(0.3), 1);
+            create(sine("sine").landscape_weight(0.3), 1);
             flush();
         "#,
     );
@@ -504,7 +547,7 @@ fn species_landscape_weight_reaches_spawned_individual() {
 fn species_exploration_persistence_reach_spawned_core() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(sine.exploration(0.8).persistence(0.2), 1);
+            create(sine("sine").exploration(0.8).persistence(0.2), 1);
             flush();
         "#,
     );
@@ -531,7 +574,7 @@ fn species_exploration_persistence_reach_spawned_core() {
 fn group_landscape_weight_emits_live_update() {
     let (scenario, _warnings) = run_script(
         r#"
-            let g = create(sine, 1);
+            let g = create(sine("sine"), 1);
             flush();
             let g = g.landscape_weight(0.4);
             flush();
@@ -557,7 +600,7 @@ fn group_landscape_weight_emits_live_update() {
 fn group_landscape_weight_live_update_reaches_individual() {
     let (scenario, _warnings) = run_script(
         r#"
-            let g = create(sine, 1);
+            let g = create(sine("sine"), 1);
             flush();
             let g = g.landscape_weight(0.6);
             flush();
@@ -588,7 +631,7 @@ fn group_landscape_weight_live_update_reaches_individual() {
 fn group_amp_live_update_preserves_member_pitch_centers() {
     let (scenario, _warnings) = run_script(
         r#"
-            let g = create(sine, 4).place(consonance(196.0).range(0.8, 2.5).min_dist(0.9));
+            let g = create(sine("sine"), 4).place(peaks(196.0).range(0.8, 2.5).spacing(0.9));
             flush();
             let g = g.amp(0.33);
             flush();
@@ -652,13 +695,13 @@ fn group_amp_live_update_preserves_member_pitch_centers() {
 fn group_live_update_last_write_wins_within_flush() {
     let (scenario, _warnings) = run_script(
         r#"
-            let g = create(sine, 1);
+            let g = create(sine("sine"), 1);
             flush();
             let g = g.amp(0.2).amp(0.8);
             flush();
-            let g = g.crowding(1.0, 35.0).crowding(1.0);
+            let g = g.avoid_neighbors(1.0, 35.0).avoid_neighbors(1.0);
             flush();
-            let g = g.crowding(1.0).crowding(1.0, 35.0);
+            let g = g.avoid_neighbors(1.0).avoid_neighbors(1.0, 35.0);
             flush();
         "#,
     );
@@ -686,7 +729,7 @@ fn group_live_update_last_write_wins_within_flush() {
 fn flush_emits_update_before_release_for_same_group() {
     let (scenario, _warnings) = run_script(
         r#"
-            let g = create(sine, 1);
+            let g = create(sine("sine"), 1);
             flush();
             let g = g.amp(0.25);
             release(g);
@@ -729,7 +772,7 @@ fn flush_emits_update_before_release_for_same_group() {
 fn group_exploration_persistence_live_update_reaches_individual() {
     let (scenario, _warnings) = run_script(
         r#"
-            let g = create(sine, 1);
+            let g = create(sine("sine"), 1);
             flush();
             let g = g.exploration(0.75).persistence(0.1);
             flush();
@@ -761,7 +804,7 @@ fn group_exploration_persistence_live_update_reaches_individual() {
 fn species_crowding_sets_spawn_control() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(sine.crowding(1.2, 35.0), 1);
+            create(sine("sine").avoid_neighbors(1.2, 35.0), 1);
             flush();
         "#,
     );
@@ -785,7 +828,7 @@ fn species_crowding_sets_spawn_control() {
 fn species_crowding_reaches_spawned_core() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(sine.crowding(1.2, 35.0), 1);
+            create(sine("sine").avoid_neighbors(1.2, 35.0), 1);
             flush();
         "#,
     );
@@ -812,7 +855,7 @@ fn species_crowding_reaches_spawned_core() {
 fn species_crowding_single_arg_uses_default_sigma() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(sine.crowding(0.8), 1);
+            create(sine("sine").avoid_neighbors(0.8), 1);
             flush();
         "#,
     );
@@ -844,8 +887,8 @@ fn species_crowding_single_arg_uses_default_sigma() {
 fn species_crowding_mixed_numeric_overloads_work() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(sine.crowding(1, 35.0), 1);
-            create(sine.crowding(1.0, 35), 1);
+            create(sine("sine").avoid_neighbors(1, 35.0), 1);
+            create(sine("sine").avoid_neighbors(1.0, 35), 1);
             flush();
         "#,
     );
@@ -868,9 +911,9 @@ fn species_crowding_mixed_numeric_overloads_work() {
 fn group_crowding_live_update_reaches_individual_core() {
     let (scenario, _warnings) = run_script(
         r#"
-            let g = create(sine, 1);
+            let g = create(sine("sine"), 1);
             flush();
-            let g = g.crowding(0.8, 25.0);
+            let g = g.avoid_neighbors(0.8, 25.0);
             flush();
         "#,
     );
@@ -900,11 +943,11 @@ fn group_crowding_live_update_reaches_individual_core() {
 fn group_crowding_mixed_numeric_overloads_work() {
     let (scenario, _warnings) = run_script(
         r#"
-            let g = create(sine, 1);
+            let g = create(sine("sine"), 1);
             flush();
-            let g = g.crowding(1, 35.0);
+            let g = g.avoid_neighbors(1, 35.0);
             flush();
-            let g = g.crowding(1.0, 35);
+            let g = g.avoid_neighbors(1.0, 35);
             flush();
         "#,
     );
@@ -930,7 +973,7 @@ fn group_crowding_mixed_numeric_overloads_work() {
 fn group_crowding_target_emits_actions_for_draft_and_live_updates() {
     let (scenario, _warnings) = run_script(
         r#"
-            let g = create(sine.crowding_target(true, false), 1);
+            let g = create(sine("sine").crowding_target(true, false), 1);
             flush();
             let g = g.crowding_target(true, true);
             flush();
@@ -971,7 +1014,7 @@ fn group_crowding_target_emits_actions_for_draft_and_live_updates() {
 fn species_leave_self_out_and_anneal_reach_spawned_core() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(sine.leave_self_out(true).anneal_temp(0.12), 1);
+            create(sine("sine").leave_self_out(true).anneal_temp(0.12), 1);
             flush();
         "#,
     );
@@ -998,7 +1041,7 @@ fn species_leave_self_out_and_anneal_reach_spawned_core() {
 fn group_leave_self_out_and_anneal_live_update_reaches_individual() {
     let (scenario, _warnings) = run_script(
         r#"
-            let g = create(sine, 1);
+            let g = create(sine("sine"), 1);
             flush();
             let g = g.leave_self_out(true).anneal_temp(0.2);
             flush();
@@ -1030,7 +1073,7 @@ fn group_leave_self_out_and_anneal_live_update_reaches_individual() {
 fn species_move_cost_and_improvement_threshold_reach_spawned_core() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(sine.move_cost(0.9).improvement_threshold(0.07), 1);
+            create(sine("sine").move_cost(0.9).improvement_threshold(0.07), 1);
             flush();
         "#,
     );
@@ -1057,7 +1100,7 @@ fn species_move_cost_and_improvement_threshold_reach_spawned_core() {
 fn group_move_cost_and_improvement_threshold_live_update_reaches_individual() {
     let (scenario, _warnings) = run_script(
         r#"
-            let g = create(sine, 1);
+            let g = create(sine("sine"), 1);
             flush();
             let g = g.move_cost(0.8).improvement_threshold(0.05);
             flush();
@@ -1089,7 +1132,7 @@ fn group_move_cost_and_improvement_threshold_live_update_reaches_individual() {
 fn group_hill_climb_knobs_and_exact_loo_live_update_reach_individual() {
     let (scenario, _warnings) = run_script(
         r#"
-            let g = create(sine, 1);
+            let g = create(sine("sine"), 1);
             flush();
             let g = g
                 .neighbor_step_cents(25)
@@ -1138,8 +1181,7 @@ fn species_peak_sampler_knobs_reach_spawned_core() {
     let (scenario, _warnings) = run_script(
         r#"
             create(
-                sine
-                    .pitch_core("peak_sampler")
+                sine("sine")                    .pitch_core("peak_sampler")
                     .neighbor_step_cents(30)
                     .tessitura_gravity(0.14)
                     .window_cents(320)
@@ -1182,14 +1224,13 @@ fn species_advanced_pitch_knobs_reach_spawned_core() {
     let (scenario, _warnings) = run_script(
         r#"
             create(
-                sine
-                    .proposal_interval(0.3)
+                sine("sine")                    .proposal_interval(0.3)
                     .global_peaks(12, 40.0)
                     .ratio_candidates(5)
                     .move_cost_time_scale("proposal_interval")
                     .leave_self_out_harmonics(4)
                     .pitch_apply_mode("glide")
-                    .pitch_glide(0.08),
+                    .glide(0.08),
                 1
             );
             flush();
@@ -1231,7 +1272,7 @@ fn species_advanced_pitch_knobs_reach_spawned_core() {
 fn group_advanced_pitch_knobs_live_update_reaches_individual() {
     let (scenario, _warnings) = run_script(
         r#"
-            let g = create(sine, 1);
+            let g = create(sine("sine"), 1);
             flush();
             let g = g
                 .proposal_interval(0.25)
@@ -1240,7 +1281,7 @@ fn group_advanced_pitch_knobs_live_update_reaches_individual() {
                 .move_cost_time_scale("proposal_interval")
                 .leave_self_out_harmonics(3)
                 .pitch_apply_mode("glide")
-                .pitch_glide(0.05);
+                .glide(0.05);
             flush();
         "#,
     );
@@ -1310,8 +1351,8 @@ fn set_pitch_objective_emits_landscape_update() {
 fn reject_targets_wraps_spawn_strategy() {
     let (scenario, _warnings) = run_script(
         r#"
-            let g = create(sine, 1)
-                .place(reject_targets(random_log(200.0, 400.0), 220, [0, 7, 12], 0.35, 16));
+            let g = create(sine("sine"), 1)
+                .place(reject_targets(random(200.0, 400.0), 220, [0, 7, 12], 0.35, 16));
             flush();
         "#,
     );
@@ -1349,7 +1390,7 @@ fn reject_targets_wraps_spawn_strategy() {
 fn group_draft_landscape_weight_sets_spawn_control() {
     let (scenario, _warnings) = run_script(
         r#"
-            let g = create(sine, 1).landscape_weight(0.4);
+            let g = create(sine("sine"), 1).landscape_weight(0.4);
             flush();
         "#,
     );
@@ -1369,7 +1410,7 @@ fn group_draft_landscape_weight_sets_spawn_control() {
 fn species_respawn_policy_emits_runtime_action() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(sine.respawn_hereditary(0.03), 1);
+            create(sine("sine").respawn_hereditary(0.03), 1);
             flush();
         "#,
     );
@@ -1395,7 +1436,7 @@ fn species_respawn_policy_emits_runtime_action() {
 fn group_draft_respawn_random_emits_runtime_action() {
     let (scenario, _warnings) = run_script(
         r#"
-            let g = create(sine, 1).respawn_random();
+            let g = create(sine("sine"), 1).respawn_random();
             flush();
         "#,
     );
@@ -1421,7 +1462,7 @@ fn group_draft_respawn_random_emits_runtime_action() {
 fn group_draft_respawn_hereditary_emits_runtime_action() {
     let (scenario, _warnings) = run_script(
         r#"
-            let g = create(sine, 1).respawn_hereditary(0.03);
+            let g = create(sine("sine"), 1).respawn_hereditary(0.03);
             flush();
         "#,
     );
@@ -1447,7 +1488,7 @@ fn group_draft_respawn_hereditary_emits_runtime_action() {
 fn group_draft_respawn_consonance_emits_runtime_action() {
     let (scenario, _warnings) = run_script(
         r#"
-            let g = create(sine, 1).respawn_consonance();
+            let g = create(sine("sine"), 1).respawn_consonance();
             flush();
         "#,
     );
@@ -1475,9 +1516,9 @@ fn group_draft_respawn_consonance_emits_runtime_action() {
 fn group_respawn_tier2_settings_reach_runtime_action() {
     let (scenario, _warnings) = run_script(
         r#"
-            let g = create(sine, 1)
+            let g = create(sine("sine"), 1)
                 .respawn_hereditary(0.03)
-                .respawn_settle(consonance(220.0).range(0.75, 1.5).min_dist(0.5))
+                .respawn_settle(peaks(220.0).range(0.75, 1.5).spacing(0.5))
                 .respawn_capacity(3)
                 .respawn_min_c_level(0.4)
                 .respawn_background_death_rate(0.03);
@@ -1566,7 +1607,7 @@ fn set_scaffold_scrambled_updates_scenario() {
 fn spawn_payload_preserves_species_control_fields() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(harmonic, 1)
+            create(harmonic("harmonic"), 1)
                 .amp(0.33)
                 .freq(330.0)
                 .brightness(0.7);
@@ -1596,8 +1637,7 @@ fn spawn_payload_preserves_consonance_viability_window() {
     let (scenario, _warnings) = run_script(
         r#"
             create(
-                harmonic
-                    .metabolism(0.1)
+                harmonic("harmonic")                    .metabolism(0.1)
                     .viability_rate(0.3)
                     .consonance_viability(0.3, 0.8),
                 1
@@ -1636,8 +1676,7 @@ fn spawn_payload_preserves_selection_approx_loo() {
     let (scenario, _warnings) = run_script(
         r#"
             create(
-                harmonic
-                    .metabolism(0.1)
+                harmonic("harmonic")                    .metabolism(0.1)
                     .selection_approx_loo(true),
                 1
             );
@@ -1671,8 +1710,7 @@ fn selection_approx_loo_can_override_consonance_viability_for_reference_assays()
     let (scenario, _warnings) = run_script(
         r#"
             create(
-                harmonic
-                    .metabolism(0.1)
+                harmonic("harmonic")                    .metabolism(0.1)
                     .consonance_viability(0.3, 0.8)
                     .selection_approx_loo(false),
                 1
@@ -1707,8 +1745,7 @@ fn viability_scope_total_overrides_environment_default() {
     let (scenario, _warnings) = run_script(
         r#"
             create(
-                harmonic
-                    .metabolism(0.1)
+                harmonic("harmonic")                    .metabolism(0.1)
                     .consonance_viability(0.3, 0.8)
                     .viability_scope("total"),
                 1
@@ -1742,7 +1779,7 @@ fn viability_scope_total_overrides_environment_default() {
 fn draft_group_viability_scope_total_overrides_environment_default() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(harmonic, 1)
+            create(harmonic("harmonic"), 1)
                 .metabolism(0.1)
                 .consonance_viability(0.3, 0.8)
                 .viability_scope("total");
@@ -1775,7 +1812,7 @@ fn draft_group_viability_scope_total_overrides_environment_default() {
 fn live_group_brightness_emits_timbre_patch() {
     let (scenario, _warnings) = run_script(
         r#"
-            let g = create(harmonic, 1);
+            let g = create(harmonic("harmonic"), 1);
             flush();
             g.brightness(0.25);
             flush();
@@ -1797,7 +1834,7 @@ fn live_group_brightness_emits_timbre_patch() {
 fn timbre_method_is_not_registered() {
     let err = run_script_err(
         r#"
-            create(harmonic, 1).timbre(0.7, 0.2);
+            create(harmonic("harmonic"), 1).timbre(0.7, 0.2);
         "#,
     );
     assert!(err.message.contains("timbre"));
@@ -1807,17 +1844,36 @@ fn timbre_method_is_not_registered() {
 fn width_method_is_not_registered() {
     let err = run_script_err(
         r#"
-            create(harmonic, 1).width(0.4);
+            create(harmonic("harmonic"), 1).width(0.4);
         "#,
     );
     assert!(err.message.contains("width"));
 }
 
 #[test]
+fn removed_pre_040_api_names_are_not_registered() {
+    for (script, name) in [
+        (r#"harmonic("h").crowding(0.5);"#, "crowding"),
+        (r#"harmonic("h").movement_glide(0.2);"#, "movement_glide"),
+        (r#"harmonic("h").pitch_glide(0.2);"#, "pitch_glide"),
+        (r#"set_harmonic_mirror(0.5);"#, "set_harmonic_mirror"),
+        (r#"derive(harmonic("h"));"#, "derive"),
+        (r#"consonance_density(80.0, 900.0);"#, "consonance_density"),
+    ] {
+        let err = run_script_err(script);
+        assert!(
+            err.message.contains(name),
+            "expected error for removed API name {name}, got {}",
+            err.message
+        );
+    }
+}
+
+#[test]
 fn spread_and_unison_methods_update_timbre() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(harmonic.spread(0.4).unison(5), 1);
+            create(harmonic("harmonic").spread(0.4).unison(5), 1);
             flush();
         "#,
     );
@@ -1839,7 +1895,7 @@ fn spread_and_unison_methods_update_timbre() {
 fn live_group_spread_and_unison_emit_timbre_patch() {
     let (scenario, _warnings) = run_script(
         r#"
-            let g = create(harmonic, 1);
+            let g = create(harmonic("harmonic"), 1);
             flush();
             g.spread(0.3).unison(4);
             flush();
@@ -1863,8 +1919,7 @@ fn rhythm_modulators_are_sanitized_at_core_boundary() {
     let (scenario, _warnings) = run_script(
         r#"
             create(
-                sine
-                    .rhythm_coupling_vitality(-3.0, 2.0)
+                sine("sine")                    .rhythm_coupling_vitality(-3.0, 2.0)
                     .rhythm_reward(-2.0, "attack_phase_match"),
                 1
             );
@@ -1901,7 +1956,7 @@ fn rhythm_modulators_are_sanitized_at_core_boundary() {
 fn metric_beat_sets_rhythm_intent() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(sine.metric_beat(2.0).accent(0.25).gates(2), 1);
+            create(sine("sine").metric_beat(2.0).accent(0.25).gates(2), 1);
             flush();
         "#,
     );
@@ -1926,7 +1981,7 @@ fn metric_beat_sets_rhythm_intent() {
 fn entrained_beat_sets_intent_and_agent_phase_defaults() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(sine.entrained_beat(2.0).gates(2), 1);
+            create(sine("sine").entrained_beat(2.0).gates(2), 1);
             flush();
         "#,
     );
@@ -1966,7 +2021,7 @@ fn entrained_beat_sets_intent_and_agent_phase_defaults() {
 fn flow_timing_sets_flow_intent() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(sine.flow_timing(3.0, 0.8).gates(1), 1);
+            create(sine("sine").flow_timing(3.0, 0.8).gates(1), 1);
             flush();
         "#,
     );
@@ -1991,8 +2046,8 @@ fn flow_timing_sets_flow_intent() {
 fn e4_step_response_script_has_fixed_population_spawns() {
     let script = E4_STEP_RESPONSE_SCRIPT;
     assert!(
-        script.contains("let anchor = derive(harmonic)")
-            && script.contains("let probe = derive(harmonic)"),
+        script.contains("let anchor = harmonic(\"harmonic\")")
+            && script.contains("let probe = harmonic(\"harmonic\")"),
         "E4 step response must use harmonic bodies"
     );
     assert!(
@@ -2027,8 +2082,8 @@ fn e4_step_response_script_has_fixed_population_spawns() {
 fn e4_between_runs_script_pairs_spawns_and_releases_per_weight() {
     let script = E4_BETWEEN_RUNS_SCRIPT;
     assert!(
-        script.contains("let anchor = derive(harmonic)")
-            && script.contains("let probe = derive(harmonic)"),
+        script.contains("let anchor = harmonic(\"harmonic\")")
+            && script.contains("let probe = harmonic(\"harmonic\")"),
         "E4 between-runs must use harmonic bodies"
     );
     assert!(

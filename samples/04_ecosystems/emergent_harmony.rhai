@@ -1,12 +1,12 @@
-let anchor = derive(sine).amp(0.06).sustain();
-let seeker = derive(sine).amp(0.04).sustain();
+let anchor = sine("sine").amp(0.06).sustain();
+let seeker = sine("sine").amp(0.04).sustain();
 
-scene("Emergent Harmony", || {
-    let base = create(anchor, 1).freq(65.406);
+section("Emergent Harmony", || {
+    let base = place(anchor, at(65.406).count(1));
     wait(1.0);
 
-    create(seeker, 1).freq(92.499);
-    create(seeker, 1).freq(69.296);
+    place(seeker, at(92.499).count(1));
+    place(seeker, at(69.296).count(1));
     wait(2.0);
 
     base.freq(87.307);

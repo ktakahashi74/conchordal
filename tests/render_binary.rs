@@ -88,8 +88,8 @@ fn conchordal_render_generates_valid_wav() {
 fn conchordal_render_skips_zero_amp_note_on_and_still_writes_audio() {
     let scenario = write_inline_scenario(
         r#"
-let silent = create(sine.pitch_mode("lock"), 1).freq(220.0).amp(0.0);
-let audible = create(sine.pitch_mode("lock"), 1).freq(330.0).amp(0.25);
+let silent = place(sine("sine").pitch_mode("lock"), at(220.0)).amp(0.0);
+let audible = place(sine("sine").pitch_mode("lock"), at(330.0)).amp(0.25);
 flush();
 wait(0.4);
 release(silent);
@@ -128,7 +128,7 @@ wait(0.2);
 fn conchordal_render_fails_when_wav_thread_panics() {
     let scenario = write_inline_scenario(
         r#"
-let tone = create(sine.pitch_mode("lock"), 1).freq(220.0).amp(0.2);
+let tone = place(sine("sine").pitch_mode("lock"), at(220.0)).amp(0.2);
 flush();
 wait(0.2);
 release(tone);

@@ -1,4 +1,4 @@
 print("TEST_OK: minimal_spawn_run");
-create(sine, 5);
+place(sine("sine"), at(440.0).count(5));
 flush();
 wait(1.0);

@@ -52,3 +52,60 @@ fn rhai_defs_match_generator_output() {
         );
     }
 }
+
+#[test]
+fn rhai_lsp_config_includes_generated_definitions() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = root.join("Rhai.toml");
+    let contents =
+        fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {}", path.display(), e));
+    let parsed: toml::Table =
+        toml::from_str(&contents).unwrap_or_else(|e| panic!("parse {}: {e}", path.display()));
+    let include = parsed
+        .get("source")
+        .and_then(|source| source.get("include"))
+        .and_then(|include| include.as_array())
+        .unwrap_or_else(|| panic!("Rhai.toml must define source.include"));
+    let include: Vec<&str> = include.iter().filter_map(|value| value.as_str()).collect();
+    for required in [
+        "rhai-defs/**/*.d.rhai",
+        "samples/**/*.rhai",
+        "tests/scripts/**/*.rhai",
+    ] {
+        assert!(
+            include.contains(&required),
+            "Rhai.toml source.include must contain {required:?}"
+        );
+    }
+}
+
+#[test]
+fn rhai_defs_use_lsp_parseable_function_names() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("rhai-defs/conchordal.d.rhai");
+    let contents =
+        fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {}", path.display(), e));
+    for (idx, line) in contents.lines().enumerate() {
+        let Some(rest) = line.strip_prefix("fn ") else {
+            continue;
+        };
+        let Some((name, _)) = rest.split_once('(') else {
+            continue;
+        };
+        assert!(
+            is_rhai_identifier(name),
+            "line {} uses a non-identifier function name not parseable by Rhai LSP: {name:?}",
+            idx + 1
+        );
+    }
+}
+
+fn is_rhai_identifier(name: &str) -> bool {
+    let mut chars = name.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if !(first == '_' || first.is_ascii_alphabetic()) {
+        return false;
+    }
+    chars.all(|c| c == '_' || c.is_ascii_alphanumeric())
+}

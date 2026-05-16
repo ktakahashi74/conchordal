@@ -6,9 +6,9 @@ seed(20260508);
 let root_hz = 220.0;
 let beat_hz = 2.0;
 
-let field_anchor = derive(harmonic)
+let field_anchor = harmonic("harmonic")
     .brain("drone")
-    .field_only()
+    .send(field)
     .amp(0.052)
     .sustain()
     .pitch_mode("lock")
@@ -17,7 +17,7 @@ let field_anchor = derive(harmonic)
     .sustain_drive(0.0015)
     .adsr(0.35, 0.90, 0.96, 1.6);
 
-let downbeat = derive(harmonic)
+let downbeat = harmonic("harmonic")
     .amp(0.060)
     .metric_beat(beat_hz)
     .accent(0.80)
@@ -27,19 +27,19 @@ let downbeat = derive(harmonic)
     .brightness(0.36)
     .adsr(0.006, 0.070, 0.42, 0.16);
 
-let consonant_pulse = derive(harmonic)
+let consonant_pulse = harmonic("harmonic")
     .amp(0.045)
     .metric_beat(beat_hz)
     .accent(0.55)
     .gates(3)
-    .consonance_movement()
+    .seek_consonance()
     .pitch_apply_mode("gate_snap")
     .modes(harmonic_modes().count(6))
     .brightness(0.48)
-    .crowding(0.45)
+    .avoid_neighbors(0.45)
     .adsr(0.018, 0.120, 0.72, 0.34);
 
-let offbeat = derive(modal)
+let offbeat = modal("modal")
     .amp(0.030)
     .metric_beat(beat_hz * 1.5)
     .accent(0.35)
@@ -49,25 +49,23 @@ let offbeat = derive(modal)
     .brightness(0.62)
     .adsr(0.004, 0.060, 0.36, 0.12);
 
-scene("Metric Beat Foundation", || {
+section("Metric Beat Foundation", || {
     set_control_update_mode("snapshot_phased");
-    set_harmonic_mirror(0.15);
+    harmonic_mirror(0.15);
 
-    let root = create(field_anchor, 1).freq(root_hz);
+    let root = place(field_anchor, at(root_hz).count(1));
     wait(1.5);
 
-    let beat = create(downbeat, 1).freq(root_hz * 0.5);
+    let beat = place(downbeat, at(root_hz * 0.5).count(1));
     wait(3.0);
 
-    let voices = create(consonant_pulse, 8)
-        .place(consonance_density(120.0, 900.0).min_dist(0.85));
+    let voices = place(consonant_pulse, density(120.0, 900.0).spacing(0.85).count(8));
     wait(12.0);
 
-    let cross = create(offbeat, 4)
-        .place(consonance_density(260.0, 1320.0).min_dist(0.75));
+    let cross = place(offbeat, density(260.0, 1320.0).spacing(0.75).count(4));
     wait(9.0);
 
-    set_harmonic_mirror(0.65);
+    harmonic_mirror(0.65);
     root.freq(root_hz * 1.25);
     voices.amp(0.037);
     wait(10.0);

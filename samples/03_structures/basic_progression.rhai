@@ -1,15 +1,15 @@
-let pad = derive(harmonic)
+let pad = harmonic("harmonic")
     .amp(0.13)
     .sustain()
     .adsr(0.2, 0.3, 0.8, 1.0);
 
 let chord = |root, dur| {
-    let strat = consonance(root).range(1.0, 3.0).min_dist(1.0);
-    create(pad, 4).place(strat);
+    let strat = peaks(root).range(1.0, 3.0).spacing(1.0);
+    place(pad, strat.count(4));
     wait(dur);
 };
 
-scene("Basic Progression", || {
+section("Basic Progression", || {
     play(chord, 110.0, 3.0);
     play(chord, 146.83, 3.0);
     play(chord, 196.0, 3.0);

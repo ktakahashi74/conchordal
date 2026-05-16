@@ -18,6 +18,7 @@ These scripts still require audition and tuning before release curation:
 cargo run --release -- samples/04_ecosystems/metric_beat_foundation.rhai
 cargo run --release -- samples/04_ecosystems/entrained_beat.rhai
 cargo run --release -- samples/04_ecosystems/flow_timing_field.rhai
+cargo run --release -- samples/04_ecosystems/rhythm_harmony_ecology.rhai
 cargo run --release -- samples/04_ecosystems/conchordal_ecology.rhai
 ```
 
@@ -30,9 +31,19 @@ social onset feedback, vitality coupling, and attack reward.
 `flow_timing_field.rhai` should make non-metric but structured timing audible
 over consonance-biased placement.
 
-`conchordal_ecology.rhai` is the integrated flagship candidate. Listen for one
-ecology in which metric beat, entrained beat, flow timing, consonance movement,
-viability, and respawn interact.
+`rhythm_harmony_ecology.rhai` is a functional integration demo. It should keep
+the metric groove stable while entrained agents, non-metric flow, consonance
+movement, and harmonic field changes coexist on one field. Do not judge it as
+the musical showcase.
+
+`conchordal_ecology.rhai` is candidate material for the musical showcase. Listen
+for whether metric beat, entrained beat, flow timing, consonance movement,
+viability, and respawn form one ecology, or whether a dedicated etude is needed
+instead.
+
+A separate musical etude or showcase is still needed. It should use only the
+features that serve the musical form, rather than trying to demonstrate every
+v0.4.0 API concept at once.
 
 The rest of `samples/04_ecosystems/` contains research comparisons and older
 mechanism sketches. `consonance_ecology.rhai` and `pulse_foundation.rhai`
@@ -42,14 +53,14 @@ harmony-control sketch.
 
 ## Core API Concepts
 
-`consonance(root_hz)` places voices near high Consonance Field positions around
+`peaks(root_hz)` places voices near high Consonance Field positions around
 a root. Use it when the musical thought is "start from this harmonic center".
 
-`consonance_density(min_hz, max_hz)` samples from Consonance Density. Use it
+`density(min_hz, max_hz)` samples from Consonance Density. Use it
 when the musical thought is "let the field seed a population inside this range".
 
-`consonance_movement()` makes a voice move by free hill-climb behavior with
-glide defaults. Use `movement_glide(tau_sec)` when the musical thought is
+`seek_consonance()` makes a voice move by free hill-climb behavior with
+glide defaults. Use `glide(tau_sec)` when the musical thought is
 "same movement idea, slower or faster pitch motion".
 
 `consonance_viability(low, high)` defines the consonance window that feeds
@@ -62,7 +73,7 @@ comparison.
 consonance-biased heredity. Combine it with `respawn_capacity(count)` and
 `respawn_settle(strategy)` for ecology-scale scripts.
 
-`set_harmonic_mirror(value)` changes the overtone/undertone balance of the
+`harmonic_mirror(value)` changes the overtone/undertone balance of the
 harmonicity field. It is the most direct way to bend the harmonic terrain during
 a scene.
 
@@ -98,8 +109,7 @@ Some functions remain available because they are useful for assays and
 mechanism-level work:
 
 - `selection_approx_loo(enabled)`
-- `pitch_mode(name)`, `pitch_core(name)`, `pitch_apply_mode(name)`,
-  `pitch_glide(tau_sec)`
+- `pitch_mode(name)`, `pitch_core(name)`, `pitch_apply_mode(name)`
 - `set_control_update_mode(name)`
 - `set_pitch_objective(name)`
 

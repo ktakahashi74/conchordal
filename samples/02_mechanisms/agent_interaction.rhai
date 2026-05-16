@@ -1,11 +1,11 @@
-let anchor = derive(sine).amp(0.3).sustain();
-let seeker = derive(sine).amp(0.2).sustain();
+let anchor = sine("sine").amp(0.3).sustain();
+let seeker = sine("sine").amp(0.2).sustain();
 
-scene("Interaction", || {
-    let anchor_group = create(anchor, 1).freq(65.41);
+section("Interaction", || {
+    let anchor_group = place(anchor, at(65.41).count(1));
     wait(1.0);
 
-    let seekers = create(seeker, 2).place(consonance_density(90.0, 180.0));
+    let seekers = place(seeker, density(90.0, 180.0).count(2));
     wait(2.0);
     release(seekers);
     wait(0.5);

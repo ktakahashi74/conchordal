@@ -1,76 +1,76 @@
-let modal_sustain = derive(modal).sustain();
+let modal_sustain = modal("modal").sustain();
 
-let table_uniform_aluminum_bar = derive(modal_sustain)
+let table_uniform_aluminum_bar = variant("modal_sustain", modal_sustain)
     .pitch_mode("lock")
     .freq(196.0)
     .amp(0.12)
     .brightness(0.58)
     .modes(modal_table("uniform_aluminum_bar").count(6));
 
-let table_uniform_wooden_bar = derive(modal_sustain)
+let table_uniform_wooden_bar = variant("modal_sustain", modal_sustain)
     .pitch_mode("lock")
     .freq(196.0)
     .amp(0.12)
     .brightness(0.42)
     .modes(modal_table("uniform_wooden_bar").count(6));
 
-let table_xylophone = derive(modal_sustain)
+let table_xylophone = variant("modal_sustain", modal_sustain)
     .pitch_mode("lock")
     .freq(220.0)
     .amp(0.11)
     .brightness(0.70)
     .modes(modal_table("xylophone").count(6));
 
-let table_vibraphone_1 = derive(modal_sustain)
+let table_vibraphone_1 = variant("modal_sustain", modal_sustain)
     .pitch_mode("lock")
     .freq(220.0)
     .amp(0.11)
     .brightness(0.62)
     .modes(modal_table("vibraphone_1").count(5));
 
-let table_vibraphone_2 = derive(modal_sustain)
+let table_vibraphone_2 = variant("modal_sustain", modal_sustain)
     .pitch_mode("lock")
     .freq(220.0)
     .amp(0.11)
     .brightness(0.66)
     .modes(modal_table("vibraphone_2").count(5));
 
-let table_wine_glass = derive(modal_sustain)
+let table_wine_glass = variant("modal_sustain", modal_sustain)
     .pitch_mode("lock")
     .freq(330.0)
     .amp(0.10)
     .brightness(0.86)
     .modes(modal_table("wine_glass").count(6));
 
-let gen_harmonic = derive(modal_sustain)
+let gen_harmonic = variant("modal_sustain", modal_sustain)
     .pitch_mode("lock")
     .freq(110.0)
     .amp(0.10)
     .brightness(0.72)
     .modes(harmonic_modes().count(10));
 
-let gen_odd = derive(modal_sustain)
+let gen_odd = variant("modal_sustain", modal_sustain)
     .pitch_mode("lock")
     .freq(110.0)
     .amp(0.10)
     .brightness(0.64)
     .modes(odd_modes().count(6));
 
-let gen_power = derive(modal_sustain)
+let gen_power = variant("modal_sustain", modal_sustain)
     .pitch_mode("lock")
     .freq(130.81)
     .amp(0.10)
     .brightness(0.68)
     .modes(power_modes(1.35).count(6));
 
-let gen_stiff_string = derive(modal_sustain)
+let gen_stiff_string = variant("modal_sustain", modal_sustain)
     .pitch_mode("lock")
     .freq(130.81)
     .amp(0.10)
     .brightness(0.60)
     .modes(stiff_string_modes(0.003).count(9));
 
-let gen_custom = derive(modal_sustain)
+let gen_custom = variant("modal_sustain", modal_sustain)
     .pitch_mode("lock")
     .freq(146.83)
     .amp(0.10)
@@ -81,13 +81,13 @@ let gen_custom = derive(modal_sustain)
             .seed(42)
     );
 
-let landscape_seed = derive(modal_sustain)
+let landscape_seed = variant("modal_sustain", modal_sustain)
     .pitch_mode("free")
     .amp(0.045)
     .brightness(0.64)
     .modes(harmonic_modes().count(4));
 
-let landscape_density = derive(modal_sustain)
+let landscape_density = variant("modal_sustain", modal_sustain)
     .pitch_mode("free")
     .amp(0.05)
     .brightness(0.70)
@@ -95,13 +95,13 @@ let landscape_density = derive(modal_sustain)
         landscape_density_modes()
             .count(16)
             .range(1.0, 3.5)
-            .min_dist(0.9)
+            .spacing(0.9)
             .gamma(1.15)
             .jitter(4.0)
             .seed(7)
     );
 
-let landscape_peaks = derive(modal_sustain)
+let landscape_peaks = variant("modal_sustain", modal_sustain)
     .pitch_mode("free")
     .amp(0.05)
     .brightness(0.74)
@@ -109,96 +109,94 @@ let landscape_peaks = derive(modal_sustain)
         landscape_peaks_modes()
             .count(14)
             .range(1.0, 3.5)
-            .min_dist(0.9)
+            .spacing(0.9)
             .jitter(4.0)
             .seed(13)
     );
 
-scene("Modal Table: Uniform Aluminum Bar", || {
-    let g = create(table_uniform_aluminum_bar, 1);
+section("Modal Table: Uniform Aluminum Bar", || {
+    let g = place(table_uniform_aluminum_bar, at(440.0).count(1));
     wait(2.2);
     release(g);
     wait(0.3);
 });
 
-scene("Modal Table: Uniform Wooden Bar", || {
-    let g = create(table_uniform_wooden_bar, 1);
+section("Modal Table: Uniform Wooden Bar", || {
+    let g = place(table_uniform_wooden_bar, at(440.0).count(1));
     wait(2.2);
     release(g);
     wait(0.3);
 });
 
-scene("Modal Table: Xylophone", || {
-    let g = create(table_xylophone, 1);
+section("Modal Table: Xylophone", || {
+    let g = place(table_xylophone, at(440.0).count(1));
     wait(2.2);
     release(g);
     wait(0.3);
 });
 
-scene("Modal Table: Vibraphone 1", || {
-    let g = create(table_vibraphone_1, 1);
+section("Modal Table: Vibraphone 1", || {
+    let g = place(table_vibraphone_1, at(440.0).count(1));
     wait(2.2);
     release(g);
     wait(0.3);
 });
 
-scene("Modal Table: Vibraphone 2", || {
-    let g = create(table_vibraphone_2, 1);
+section("Modal Table: Vibraphone 2", || {
+    let g = place(table_vibraphone_2, at(440.0).count(1));
     wait(2.2);
     release(g);
     wait(0.3);
 });
 
-scene("Modal Table: Wine Glass", || {
-    let g = create(table_wine_glass, 1);
+section("Modal Table: Wine Glass", || {
+    let g = place(table_wine_glass, at(440.0).count(1));
     wait(2.2);
     release(g);
     wait(0.3);
 });
 
-scene("Modal Gen: Harmonic Modes", || {
-    let g = create(gen_harmonic, 1);
+section("Modal Gen: Harmonic Modes", || {
+    let g = place(gen_harmonic, at(440.0).count(1));
     wait(2.2);
     release(g);
     wait(0.3);
 });
 
-scene("Modal Gen: Odd Modes", || {
-    let g = create(gen_odd, 1);
+section("Modal Gen: Odd Modes", || {
+    let g = place(gen_odd, at(440.0).count(1));
     wait(2.2);
     release(g);
     wait(0.3);
 });
 
-scene("Modal Gen: Power Modes", || {
-    let g = create(gen_power, 1);
+section("Modal Gen: Power Modes", || {
+    let g = place(gen_power, at(440.0).count(1));
     wait(2.2);
     release(g);
     wait(0.3);
 });
 
-scene("Modal Gen: Stiff String Modes", || {
-    let g = create(gen_stiff_string, 1);
+section("Modal Gen: Stiff String Modes", || {
+    let g = place(gen_stiff_string, at(440.0).count(1));
     wait(2.2);
     release(g);
     wait(0.3);
 });
 
-scene("Modal Gen: Custom Modes", || {
-    let g = create(gen_custom, 1);
+section("Modal Gen: Custom Modes", || {
+    let g = place(gen_custom, at(440.0).count(1));
     wait(2.2);
     release(g);
     wait(0.3);
 });
 
-scene("Modal Landscape: Density Modes", || {
-    let bed = create(landscape_seed, 8)
-        .place(consonance_density(110.0, 880.0))
+section("Modal Landscape: Density Modes", || {
+    let bed = place(landscape_seed, density(110.0, 880.0).count(8))
         .pitch_mode("free");
     wait(3.0);
 
-    let g = create(landscape_density, 3)
-        .place(consonance_density(110.0, 880.0))
+    let g = place(landscape_density, density(110.0, 880.0).count(3))
         .pitch_mode("free");
     wait(2.4);
 
@@ -207,14 +205,12 @@ scene("Modal Landscape: Density Modes", || {
     wait(0.4);
 });
 
-scene("Modal Landscape: Peaks Modes", || {
-    let bed = create(landscape_seed, 8)
-        .place(consonance_density(110.0, 880.0))
+section("Modal Landscape: Peaks Modes", || {
+    let bed = place(landscape_seed, density(110.0, 880.0).count(8))
         .pitch_mode("free");
     wait(3.0);
 
-    let g = create(landscape_peaks, 3)
-        .place(consonance_density(110.0, 880.0))
+    let g = place(landscape_peaks, density(110.0, 880.0).count(3))
         .pitch_mode("free");
     wait(2.4);
 

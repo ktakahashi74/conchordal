@@ -1,21 +1,20 @@
 // Mirror Dualism variant: fixed population, mirror switch only.
-let anchor = derive(sine).amp(0.2).sustain();
-let voice = derive(sine).amp(0.1).sustain();
+let anchor = sine("sine").amp(0.2).sustain();
+let voice = sine("sine").amp(0.1).sustain();
 
-scene("Mirror Dualism (Fixed Population)", || {
+section("Mirror Dualism (Fixed Population)", || {
     let mirror_warmup_sec = 0.2;
     let sample_sec = 1.3;
 
-    let base = create(anchor, 1).freq(261.63);
+    let base = place(anchor, at(261.63).count(1));
     wait(0.8);
 
-    let probes = create(voice, 8)
-        .place(consonance(261.63).range(0.8, 3.0).min_dist(0.9))
+    let probes = place(voice, peaks(261.63).range(0.8, 3.0).spacing(0.9).count(8))
         .pitch_mode("free");
     wait(0.6);
 
     for w in [0.0, 1.0] {
-        set_harmonic_mirror(w);
+        harmonic_mirror(w);
         wait(mirror_warmup_sec);
         wait(sample_sec);
     }

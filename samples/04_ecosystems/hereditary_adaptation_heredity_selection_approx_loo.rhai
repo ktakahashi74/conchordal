@@ -21,7 +21,7 @@ let voice_release_sec = 0.220;
 let voice_initial_energy = 0.10;
 let voice_energy_cap = 0.20;
 
-let anchor = harmonic("harmonic")
+let anchor = harmonic()
     .brain("drone")
     .send(field)
     .amp(0.05)
@@ -38,7 +38,7 @@ let anchor = harmonic("harmonic")
         anchor_release_sec,
     );
 
-let assay_voice = harmonic("harmonic")
+let assay_voice = harmonic()
     .amp(0.070)
     .sustain()
     .pitch_mode("lock")
@@ -59,7 +59,7 @@ let assay_voice = harmonic("harmonic")
         voice_release_sec,
     );
 
-let heredity_selection = variant("assay_voice", assay_voice)
+let heredity_selection = variant(assay_voice)
     .viability_rate(0.12 * audition_speedup)
     .consonance_viability(0.30, 0.80)
     .dissonance_cost(1.0)

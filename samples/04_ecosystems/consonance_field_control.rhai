@@ -8,7 +8,7 @@ let field_a_hz = root_hz;
 let field_b_hz = root_hz * 1.25;
 let field_c_hz = root_hz * 1.5;
 
-let anchor = harmonic("harmonic")
+let anchor = harmonic()
     .brain("drone")
     .send(field)
     .amp(0.060)
@@ -19,7 +19,7 @@ let anchor = harmonic("harmonic")
     .sustain_drive(0.002)
     .adsr(0.35, 0.9, 0.98, 1.6);
 
-let reference = harmonic("harmonic")
+let reference = harmonic()
     .brain("drone")
     .send(presentation)
     .amp(0.024)
@@ -29,7 +29,7 @@ let reference = harmonic("harmonic")
     .brightness(0.16)
     .adsr(0.20, 0.55, 0.84, 1.2);
 
-let marker = harmonic("harmonic")
+let marker = harmonic()
     .brain("drone")
     .send(presentation)
     .amp(0.044)
@@ -38,7 +38,7 @@ let marker = harmonic("harmonic")
     .brightness(0.34)
     .adsr(0.16, 0.45, 0.82, 0.9);
 
-let mover = harmonic("harmonic")
+let mover = harmonic()
     .brain("drone")
     .send(presentation)
     .amp(0.058)
@@ -80,7 +80,7 @@ section("Consonance Field Control", || {
     harmonic_mirror(0.85);
     field.freq(field_c_hz);
     root.freq(field_c_hz);
-    let marker_c = place(variant("marker", marker).brightness(0.42), peaks(field_c_hz).range(0.8, 1.9).spacing(0.95).count(2));
+    let marker_c = place(variant(marker).brightness(0.42), peaks(field_c_hz).range(0.8, 1.9).spacing(0.95).count(2));
     wait(6.5);
 
     release(guide);

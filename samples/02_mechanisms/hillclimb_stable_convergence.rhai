@@ -1,11 +1,11 @@
-let bed = sine("sine")
+let bed = sine()
     .amp(0.05)
     .sustain()
     .metabolism(0.0)
     .sustain_drive(0.01)
     .pitch_mode("lock");
 
-let mover = sine("sine")
+let mover = sine()
     .amp(0.05)
     .sustain()
     .metabolism(0.0)

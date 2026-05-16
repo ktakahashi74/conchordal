@@ -1,5 +1,5 @@
-let bass = sine("sine").amp(0.1).sustain();
-let pad = harmonic("harmonic").amp(0.05).sustain().brightness(0.7);
+let bass = sine().amp(0.1).sustain();
+let pad = harmonic().amp(0.05).sustain().brightness(0.7);
 
 let step = |root, dur| {
     place(bass, at(root).count(1));

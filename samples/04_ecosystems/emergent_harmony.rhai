@@ -1,5 +1,5 @@
-let anchor = sine("sine").amp(0.06).sustain();
-let seeker = sine("sine").amp(0.04).sustain();
+let anchor = sine().amp(0.06).sustain();
+let seeker = sine().amp(0.04).sustain();
 
 section("Emergent Harmony", || {
     let base = place(anchor, at(65.406).count(1));

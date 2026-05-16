@@ -6,7 +6,7 @@ seed(20260508);
 let root_hz = 220.0;
 let beat_hz = 2.0;
 
-let field_anchor = harmonic("harmonic")
+let field_anchor = harmonic()
     .brain("drone")
     .send(field)
     .amp(0.052)
@@ -17,7 +17,7 @@ let field_anchor = harmonic("harmonic")
     .sustain_drive(0.0015)
     .adsr(0.35, 0.90, 0.96, 1.6);
 
-let downbeat = harmonic("harmonic")
+let downbeat = harmonic()
     .amp(0.060)
     .metric_beat(beat_hz)
     .accent(0.80)
@@ -27,7 +27,7 @@ let downbeat = harmonic("harmonic")
     .brightness(0.36)
     .adsr(0.006, 0.070, 0.42, 0.16);
 
-let consonant_pulse = harmonic("harmonic")
+let consonant_pulse = harmonic()
     .amp(0.045)
     .metric_beat(beat_hz)
     .accent(0.55)
@@ -39,7 +39,7 @@ let consonant_pulse = harmonic("harmonic")
     .avoid_neighbors(0.45)
     .adsr(0.018, 0.120, 0.72, 0.34);
 
-let offbeat = modal("modal")
+let offbeat = modal()
     .amp(0.030)
     .metric_beat(beat_hz * 1.5)
     .accent(0.35)

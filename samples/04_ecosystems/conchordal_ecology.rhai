@@ -6,7 +6,7 @@ seed(20260511);
 let root_hz = 110.0;
 let metric_hz = 2.0;
 
-let field_anchor = harmonic("harmonic")
+let field_anchor = harmonic()
     .brain("drone")
     .send(field)
     .amp(0.065)
@@ -17,7 +17,7 @@ let field_anchor = harmonic("harmonic")
     .sustain_drive(0.002)
     .adsr(0.6, 1.2, 0.97, 2.6);
 
-let metric_body = harmonic("harmonic")
+let metric_body = harmonic()
     .amp(0.040)
     .metric_beat(metric_hz)
     .accent(0.70)
@@ -27,7 +27,7 @@ let metric_body = harmonic("harmonic")
     .brightness(0.42)
     .adsr(0.006, 0.080, 0.45, 0.18);
 
-let entrained_colony = harmonic("harmonic")
+let entrained_colony = harmonic()
     .amp(0.038)
     .entrained_beat(metric_hz)
     .gates(3)
@@ -49,7 +49,7 @@ let entrained_colony = harmonic("harmonic")
     .respawn_background_death_rate(0.010)
     .adsr(0.055, 0.390, 0.72, 0.85);
 
-let flow_particles = modal("modal")
+let flow_particles = modal()
     .amp(0.023)
     .flow_timing(2.25, 0.94)
     .gates(3)

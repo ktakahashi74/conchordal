@@ -5,7 +5,7 @@ seed(20260510);
 
 let root_hz = 146.83;
 
-let field_anchor = harmonic("harmonic")
+let field_anchor = harmonic()
     .brain("drone")
     .send(field)
     .amp(0.052)
@@ -16,7 +16,7 @@ let field_anchor = harmonic("harmonic")
     .sustain_drive(0.0018)
     .adsr(0.6, 1.4, 0.96, 2.4);
 
-let droplet = modal("modal")
+let droplet = modal()
     .amp(0.027)
     .flow_timing(2.6, 0.95)
     .gates(3)
@@ -27,7 +27,7 @@ let droplet = modal("modal")
     .avoid_neighbors(0.42)
     .adsr(0.024, 0.300, 0.38, 0.72);
 
-let stream = harmonic("harmonic")
+let stream = harmonic()
     .amp(0.026)
     .flow_timing(1.25, 0.88)
     .gates(4)

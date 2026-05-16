@@ -1,6 +1,6 @@
 // Mirror Dualism variant: fixed population, mirror switch only.
-let anchor = sine("sine").amp(0.2).sustain();
-let voice = sine("sine").amp(0.1).sustain();
+let anchor = sine().amp(0.2).sustain();
+let voice = sine().amp(0.1).sustain();
 
 section("Mirror Dualism (Fixed Population)", || {
     let mirror_warmup_sec = 0.2;

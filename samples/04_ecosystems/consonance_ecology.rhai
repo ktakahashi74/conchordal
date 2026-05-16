@@ -18,7 +18,7 @@ let shimmer_modes = landscape_density_modes()
     .gamma(1.4)
     .spacing(0.65);
 
-let field_anchor = harmonic("harmonic")
+let field_anchor = harmonic()
     .brain("drone")
     .amp(0.075)
     .send(field)
@@ -29,7 +29,7 @@ let field_anchor = harmonic("harmonic")
     .sustain_drive(0.002)
     .adsr(0.4, 1.0, 0.98, 2.8);
 
-let colony_body = harmonic("harmonic")
+let colony_body = harmonic()
     .amp(0.052)
     .sustain()
     .seek_consonance()
@@ -41,7 +41,7 @@ let colony_body = harmonic("harmonic")
     .global_peaks(10, 55.0)
     .ratio_candidates(6);
 
-let colony_life = variant("colony_body", colony_body)
+let colony_life = variant(colony_body)
     .metabolism(0.15)
     .initial_energy(0.48)
     .energy_cap(0.85)
@@ -50,7 +50,7 @@ let colony_life = variant("colony_body", colony_body)
     .consonance_viability(0.34, 0.84)
     .dissonance_cost(0.80);
 
-let colony_voice = variant("colony_life", colony_life)
+let colony_voice = variant(colony_life)
     .respawn_consonance()
     .respawn_capacity(12)
     .respawn_settle(settle_strategy)
@@ -58,21 +58,21 @@ let colony_voice = variant("colony_life", colony_life)
     .respawn_background_death_rate(0.015)
     .adsr(0.45, 1.40, 0.86, 1.80);
 
-let bright_colony = variant("colony_voice", colony_voice)
+let bright_colony = variant(colony_voice)
     .amp(0.045)
     .glide(0.28)
     .brightness(0.62)
     .avoid_neighbors(0.85)
     .respawn_background_death_rate(0.025);
 
-let quiet_bridge = variant("bright_colony", bright_colony)
+let quiet_bridge = variant(bright_colony)
     .amp(0.001);
 
-let quiet_final = variant("bright_colony", bright_colony)
+let quiet_final = variant(bright_colony)
     .amp(0.001)
     .glide(0.32);
 
-let shimmer = modal("modal")
+let shimmer = modal()
     .brain("drone")
     .amp(0.035)
     .sustain()
@@ -92,10 +92,10 @@ section("Consonance Ecology", || {
 
     let colony_a = place(colony_voice, open_density.count(4));
     wait(1.7);
-    let colony_b = place(variant("colony_voice", colony_voice).amp(0.046), open_density.count(3));
+    let colony_b = place(variant(colony_voice).amp(0.046), open_density.count(3));
     wait(1.9);
     let colony_c = place(
-        variant("colony_voice", colony_voice).amp(0.040).glide(0.40),
+        variant(colony_voice).amp(0.040).glide(0.40),
         open_density.count(3)
     );
     wait(2.4);

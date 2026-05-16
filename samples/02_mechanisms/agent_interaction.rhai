@@ -1,5 +1,5 @@
-let anchor = sine("sine").amp(0.3).sustain();
-let seeker = sine("sine").amp(0.2).sustain();
+let anchor = sine().amp(0.3).sustain();
+let seeker = sine().amp(0.2).sustain();
 
 section("Interaction", || {
     let anchor_group = place(anchor, at(65.41).count(1));

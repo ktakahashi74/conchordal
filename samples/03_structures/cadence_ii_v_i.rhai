@@ -1,8 +1,8 @@
-let pad = harmonic("harmonic")
+let pad = harmonic()
     .amp(0.1)
     .sustain()
     .adsr(0.2, 0.2, 0.8, 1.0);
-let bass = sine("sine").amp(0.18).sustain();
+let bass = sine().amp(0.18).sustain();
 
 let chord = |root| {
     place(bass, at(root).count(1));

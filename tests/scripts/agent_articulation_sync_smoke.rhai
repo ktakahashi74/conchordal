@@ -1,5 +1,5 @@
 print("TEST_OK: agent_articulation_sync_smoke");
-let ghost = sine("sine")
+let ghost = sine()
     .amp(0.3)
     .repeat()
     .adsr(0.01, 0.1, 0.0, 0.2);

@@ -87,7 +87,7 @@ cargo run --bin gen_rhai_defs > rhai-defs/conchordal.d.rhai
 ## Minimal Sound
 
 ```ts
-place(sine("tone").amp(0.08).sustain(), at(440.0));
+place(sine().amp(0.08).sustain(), at(440.0));
 wait(2.0);
 ```
 
@@ -97,10 +97,9 @@ alive.
 
 ## Basic Objects
 
-- **Materials** are voice templates made with `sine(name)`,
-  `harmonic(name)`, `modal(name)`, `saw(name)`, `square(name)`, and
-  `noise(name)`.
-- **Variants** clone a material with `variant(name, material)`.
+- **Materials** are voice templates made with `sine()`, `harmonic()`,
+  `modal()`, `saw()`, `square()`, and `noise()`.
+- **Variants** clone a material with `variant(material)`.
 - **Placements** decide where participants enter: `at()`, `peaks()`,
   `density()`, `random()`, and `line()`.
 - **Participants** are collections returned by `place()`. Before the next
@@ -109,7 +108,7 @@ alive.
 - **Sections** scope participants and release them automatically.
 
 ```ts
-let voice = harmonic("harmonic")
+let voice = harmonic()
     .amp(0.08)
     .sustain()
     .brightness(0.35);
@@ -126,13 +125,13 @@ section("plain entry", || {
 root. The field is shaped by what the system perceives.
 
 ```ts
-let anchor = harmonic("harmonic")
+let anchor = harmonic()
     .brain("drone")
     .amp(0.06)
     .sustain()
     .pitch_mode("lock");
 
-let voice = harmonic("harmonic")
+let voice = harmonic()
     .amp(0.04)
     .sustain();
 
@@ -161,7 +160,7 @@ wait(4.0);
 Use it when the musical thought is a population seeded by the current terrain.
 
 ```ts
-let cloud = harmonic("harmonic").amp(0.035).sustain();
+let cloud = harmonic().amp(0.035).sustain();
 
 place(cloud, density(90.0, 1200.0).count(10).spacing(0.8));
 wait(8.0);
@@ -177,7 +176,7 @@ Use `seek_consonance()` when voices should actively seek better field
 positions. It sets free hill-climb movement with glide defaults.
 
 ```ts
-let mover = harmonic("harmonic")
+let mover = harmonic()
     .amp(0.045)
     .sustain()
     .seek_consonance()
@@ -203,7 +202,7 @@ recharge. By default, viability uses environment-relative scoring.
 ```ts
 let settle = density(70.0, 1100.0).spacing(0.8);
 
-let ecology = harmonic("harmonic")
+let ecology = harmonic()
     .amp(0.04)
     .repeat()
     .pulse(1.5)
@@ -239,16 +238,16 @@ cover metric beat, entrained beat, and flow timing.
 The new entry points name the musical timing intent directly:
 
 ```ts
-let beat = harmonic("harmonic")
+let beat = harmonic()
     .metric_beat(2.0)
     .accent(0.7)
     .gates(2);
 
-let entrained = harmonic("harmonic")
+let entrained = harmonic()
     .entrained_beat(2.0)
     .gates(2);
 
-let flow = harmonic("harmonic")
+let flow = harmonic()
     .flow_timing(3.0, 0.7)
     .gates(1);
 ```
@@ -256,7 +255,7 @@ let flow = harmonic("harmonic")
 The current low-level tools remain useful for mechanism-level scripts:
 
 ```ts
-let pulse_voice = harmonic("harmonic")
+let pulse_voice = harmonic()
     .repeat()
     .pulse(2.0)
     .gates(2)
@@ -288,7 +287,7 @@ let shimmer_modes = landscape_density_modes()
     .gamma(1.6)
     .spacing(0.7);
 
-let shimmer = modal("modal")
+let shimmer = modal()
     .amp(0.025)
     .sustain()
     .seek_consonance()
@@ -308,7 +307,7 @@ before `place()`.
 
 ```ts
 let g = place(
-    harmonic("patchable").amp(0.04),
+    harmonic().amp(0.04),
     peaks(220.0).count(3)
 );
 

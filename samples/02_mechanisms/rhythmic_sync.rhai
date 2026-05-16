@@ -1,4 +1,4 @@
-let click = sine("sine")
+let click = sine()
     .amp(0.2)
     .repeat()
     .adsr(0.01, 0.1, 0.0, 0.2);

@@ -6,7 +6,7 @@ seed(20260516);
 let root_hz = 130.81;
 let beat_hz = 2.0;
 
-let field_anchor = harmonic("harmonic")
+let field_anchor = harmonic()
     .brain("drone")
     .send(field)
     .amp(0.034)
@@ -17,7 +17,7 @@ let field_anchor = harmonic("harmonic")
     .sustain_drive(0.0011)
     .adsr(0.7, 1.4, 0.96, 2.4);
 
-let pulse_ground = harmonic("harmonic")
+let pulse_ground = harmonic()
     .brain("drone")
     .amp(0.052)
     .metric_beat(beat_hz)
@@ -28,7 +28,7 @@ let pulse_ground = harmonic("harmonic")
     .brightness(0.36)
     .adsr(0.006, 0.075, 0.44, 0.16);
 
-let motif = harmonic("harmonic")
+let motif = harmonic()
     .brain("drone")
     .amp(0.034)
     .metric_beat(beat_hz)
@@ -39,7 +39,7 @@ let motif = harmonic("harmonic")
     .brightness(0.58)
     .adsr(0.010, 0.110, 0.34, 0.20);
 
-let colony = harmonic("harmonic")
+let colony = harmonic()
     .amp(0.030)
     .entrained_beat(beat_hz)
     .gates(3)
@@ -62,7 +62,7 @@ let colony = harmonic("harmonic")
     .respawn_background_death_rate(0.006)
     .adsr(0.055, 0.360, 0.68, 0.78);
 
-let flow_texture = modal("modal")
+let flow_texture = modal()
     .amp(0.014)
     .flow_timing(2.05, 0.82)
     .gates(2)
@@ -74,7 +74,7 @@ let flow_texture = modal("modal")
     .avoid_neighbors(0.38)
     .adsr(0.020, 0.260, 0.34, 0.60);
 
-let cadence_mark = harmonic("harmonic")
+let cadence_mark = harmonic()
     .brain("drone")
     .amp(0.020)
     .metric_beat(beat_hz * 0.5)
@@ -119,7 +119,7 @@ section("Rhythm Harmony Ecology", || {
     agents.amp(0.034);
     flow.amp(0.017);
     let upper_theme = place(
-        variant("motif", motif).amp(0.028).brightness(0.66),
+        variant(motif).amp(0.028).brightness(0.66),
         at(root_hz * 2.25)
     );
     wait(7.0);

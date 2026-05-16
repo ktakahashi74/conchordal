@@ -1,4 +1,4 @@
-let pad = harmonic("harmonic")
+let pad = harmonic()
     .amp(0.13)
     .sustain()
     .adsr(0.2, 0.3, 0.8, 1.0);

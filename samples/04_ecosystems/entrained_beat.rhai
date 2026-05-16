@@ -6,7 +6,7 @@ seed(20260509);
 let root_hz = 196.0;
 let beat_hz = 1.8;
 
-let field_anchor = harmonic("harmonic")
+let field_anchor = harmonic()
     .brain("drone")
     .send(field)
     .amp(0.060)
@@ -17,7 +17,7 @@ let field_anchor = harmonic("harmonic")
     .sustain_drive(0.002)
     .adsr(0.45, 1.0, 0.97, 2.0);
 
-let colony = harmonic("harmonic")
+let colony = harmonic()
     .amp(0.040)
     .entrained_beat(beat_hz)
     .gates(3)
@@ -35,7 +35,7 @@ let colony = harmonic("harmonic")
     .dissonance_cost(0.35)
     .adsr(0.055, 0.380, 0.72, 0.85);
 
-let late_colony = variant("colony", colony)
+let late_colony = variant(colony)
     .amp(0.032)
     .entrained_beat(beat_hz * 1.25)
     .gates(2)

@@ -17,30 +17,30 @@ impl ScriptHost {
         builtins.set_var("presentation", Bus::presentation());
         engine.register_global_module(builtins.into());
 
-        engine.register_fn("sine", |_name: &str| SpeciesHandle {
+        engine.register_fn("sine", || SpeciesHandle {
             spec: SpeciesSpec::preset(BodyMethod::Sine),
         });
-        engine.register_fn("harmonic", |_name: &str| SpeciesHandle {
+        engine.register_fn("harmonic", || SpeciesHandle {
             spec: SpeciesSpec::preset(BodyMethod::Harmonic),
         });
-        engine.register_fn("modal", |_name: &str| SpeciesHandle {
+        engine.register_fn("modal", || SpeciesHandle {
             spec: SpeciesSpec::preset(BodyMethod::Modal),
         });
-        engine.register_fn("saw", |_name: &str| SpeciesHandle {
+        engine.register_fn("saw", || SpeciesHandle {
             spec: {
                 let mut spec = SpeciesSpec::preset(BodyMethod::Harmonic);
                 spec.control.body.timbre.brightness = 0.85;
                 spec
             },
         });
-        engine.register_fn("square", |_name: &str| SpeciesHandle {
+        engine.register_fn("square", || SpeciesHandle {
             spec: {
                 let mut spec = SpeciesSpec::preset(BodyMethod::Harmonic);
                 spec.control.body.timbre.brightness = 0.65;
                 spec
             },
         });
-        engine.register_fn("noise", |_name: &str| SpeciesHandle {
+        engine.register_fn("noise", || SpeciesHandle {
             spec: {
                 let mut spec = SpeciesSpec::preset(BodyMethod::Harmonic);
                 spec.control.body.timbre.brightness = 1.0;
@@ -48,7 +48,7 @@ impl ScriptHost {
                 spec
             },
         });
-        engine.register_fn("variant", |_name: &str, parent: SpeciesHandle| parent);
+        engine.register_fn("variant", |parent: SpeciesHandle| parent);
 
         engine.register_fn("|", |left: Bus, right: Bus| left.set().combine(right.set()));
         engine.register_fn("|", |left: BusSet, right: Bus| left.combine(right.set()));

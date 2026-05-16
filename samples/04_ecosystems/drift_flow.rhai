@@ -1,6 +1,6 @@
-let anchor = sine("sine").amp(0.3).sustain();
-let slider = sine("sine").amp(0.2).sustain();
-let swarm = sine("sine").amp(0.08).sustain();
+let anchor = sine().amp(0.3).sustain();
+let slider = sine().amp(0.2).sustain();
+let swarm = sine().amp(0.08).sustain();
 
 section("Drift Flow", || {
     let a = place(anchor, at(65.41).count(1));

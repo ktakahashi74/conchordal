@@ -6,7 +6,7 @@ seed(20260507);
 let root_hz = 220.0;
 let pulse_hz = 2.0;
 
-let field_anchor = harmonic("harmonic")
+let field_anchor = harmonic()
     .brain("drone")
     .send(field)
     .amp(0.055)
@@ -17,7 +17,7 @@ let field_anchor = harmonic("harmonic")
     .sustain_drive(0.0015)
     .adsr(0.4, 0.9, 0.97, 1.8);
 
-let clock_voice = sine("sine")
+let clock_voice = sine()
     .amp(0.030)
     .repeat()
     .pulse(pulse_hz)
@@ -25,7 +25,7 @@ let clock_voice = sine("sine")
     .pitch_mode("lock")
     .adsr(0.01, 0.08, 0.55, 0.18);
 
-let follower = harmonic("harmonic")
+let follower = harmonic()
     .amp(0.050)
     .repeat()
     .pulse(pulse_hz)
@@ -62,7 +62,7 @@ section("Pulse Foundation", || {
     followers.glide(0.24);
     wait(14.0);
 
-    let cross_pulse = place(variant("follower", follower)
+    let cross_pulse = place(variant(follower)
             .amp(0.034)
             .pulse(pulse_hz * 1.5)
             .rhythm_freq(pulse_hz * 1.5)

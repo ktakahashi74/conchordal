@@ -21,7 +21,7 @@ let voice_decay_sec = 0.150;
 let voice_sustain_level = 0.96;
 let voice_release_sec = 0.900;
 
-let anchor = harmonic("harmonic")
+let anchor = harmonic()
     .brain("drone")
     .send(field)
     .amp(0.05)
@@ -37,7 +37,7 @@ let anchor = harmonic("harmonic")
         anchor_release_sec,
     );
 
-let assay_voice = harmonic("harmonic")
+let assay_voice = harmonic()
     .amp(0.060)
     .repeat()
     .pitch_mode("lock")

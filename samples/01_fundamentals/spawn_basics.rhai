@@ -1,4 +1,4 @@
-let base = harmonic("harmonic").amp(0.1).sustain();
+let base = harmonic().amp(0.1).sustain();
 
 place(base, peaks(220.0).range(1.0, 4.0).spacing(1.0).count(4));
 wait(2.0);

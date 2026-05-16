@@ -17,6 +17,10 @@ path = "src/main.rs"
 name = "conchordal-render"
 path = "src/bin/render.rs"
 
+[[bin]]
+name = "gen_rhai_defs"
+path = "src/bin/gen_rhai_defs.rs"
+
 [profile.dev]
 opt-level = 1
 debug = true
@@ -70,7 +74,7 @@ cpal = "0.17"
 hound = "3.5"
 
 ringbuf = "0.4"
-rhai = "1.23"
+rhai = { version = "1.23", features = ["metadata"] }
 wide = { version = "1.1.1", optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]

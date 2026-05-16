@@ -1,7 +1,7 @@
 use super::*;
 
 impl ScriptHost {
-    pub(super) fn create_engine(ctx: Arc<Mutex<ScriptContext>>) -> Engine {
+    pub fn create_engine(ctx: Arc<Mutex<ScriptContext>>) -> Engine {
         let mut engine = Engine::new();
         engine.on_print(|msg| println!("[rhai] {msg}"));
 

@@ -1,0 +1,11 @@
+# Configuration for rhai-lsp (https://github.com/rhaiscript/lsp).
+# Picked up automatically when the LSP is launched in this workspace.
+
+[source]
+# Files the LSP should scan. `.d.rhai` definition files are detected by
+# extension and provide type/fn information for the host-registered API.
+include = [
+    "rhai-defs/**/*.d.rhai",
+    "samples/**/*.rhai",
+    "tests/scripts/**/*.rhai",
+]

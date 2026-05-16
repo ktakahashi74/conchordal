@@ -7,6 +7,77 @@ field, then letting populations move, survive, and reorganize inside it.
 For a guided listening path, see the [Alpha Guide](alpha_guide.md). For the full
 function list, see the [API Reference](reference/life.md).
 
+## Editor Setup (Recommended)
+
+Conchordal ships a Rhai LSP definition file describing the entire scripting
+surface. Hooking your editor up to it gives you completion, hover, go-to-def,
+and inline diagnostics for every conchordal function — `derive`, `harmonic`,
+`.brain()`, `.field_only()`, and so on.
+
+The two files that drive this are committed at the repo root:
+
+- `Rhai.toml` — workspace config picked up by `rhai-lsp`
+- `rhai-defs/conchordal.d.rhai` — auto-generated type/fn declarations
+
+Install the [rhai-lsp](https://github.com/rhaiscript/lsp) server once (it is
+not on crates.io; install directly from the git repo):
+
+```bash
+cargo install --git https://github.com/rhaiscript/lsp rhai-cli
+```
+
+This builds a binary named `rhai` with the `lsp` subcommand.
+
+Then wire your editor:
+
+### VS Code
+
+Install the [Rhai](https://marketplace.visualstudio.com/items?itemName=rhaiscript.vscode-rhai)
+extension. Open the conchordal folder; the extension auto-detects `Rhai.toml`.
+
+### Neovim (nvim-lspconfig)
+
+```lua
+require("lspconfig").rhai.setup({
+  cmd = { "rhai", "lsp", "stdio" },
+  filetypes = { "rhai" },
+  root_dir = require("lspconfig.util").root_pattern("Rhai.toml", ".git"),
+})
+```
+
+### Helix
+
+In `~/.config/helix/languages.toml`:
+
+```toml
+[[language]]
+name = "rhai"
+scope = "source.rhai"
+file-types = ["rhai"]
+language-servers = ["rhai-lsp"]
+
+[language-server.rhai-lsp]
+command = "rhai"
+args = ["lsp", "stdio"]
+```
+
+### Emacs (eglot)
+
+```elisp
+(add-to-list 'eglot-server-programs
+             '(rhai-mode . ("rhai" "lsp" "stdio")))
+(add-hook 'rhai-mode-hook #'eglot-ensure)
+```
+
+### Regenerating the definition file
+
+The definition file is auto-generated from the host's `register_fn` calls.
+If you pull a new conchordal version and miss diagnostics, regenerate:
+
+```bash
+cargo run --bin gen_rhai_defs > rhai-defs/conchordal.d.rhai
+```
+
 ## Minimal Sound
 
 ```ts
@@ -251,11 +322,15 @@ The active v0.4.0 candidate path is the redesigned rhythm/harmony set:
 cargo run --release -- samples/04_ecosystems/metric_beat_foundation.rhai
 cargo run --release -- samples/04_ecosystems/entrained_beat.rhai
 cargo run --release -- samples/04_ecosystems/flow_timing_field.rhai
+cargo run --release -- samples/04_ecosystems/rhythm_harmony_ecology.rhai
 cargo run --release -- samples/04_ecosystems/conchordal_ecology.rhai
 ```
 
-These scripts cover metric beat, entrained beat, flow timing, and the integrated
-rhythm/harmony ecology. They still need audition before final release curation.
+These scripts cover metric beat, entrained beat, flow timing, functional
+rhythm/harmony integration, and musical-showcase candidate material. Functional
+integration is not the same as the musical showcase; a separate etude should be
+judged by musical result rather than feature coverage. These scripts still need
+audition before final release curation.
 `consonance_ecology.rhai`, `pulse_foundation.rhai`, and
 `consonance_field_control.rhai` remain useful research comparisons, but they are
 not the first alpha-user path.

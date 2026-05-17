@@ -34,6 +34,19 @@ fn action_times(scenario: &Scenario) -> Vec<(f32, &Action)> {
     out
 }
 
+fn first_spawn_spec_for_script(src: &str) -> SpawnSpec {
+    let (scenario, _warnings) = run_script(src);
+    scenario
+        .events
+        .iter()
+        .flat_map(|event| &event.actions)
+        .find_map(|action| match action {
+            Action::Spawn { spec, .. } => Some(spec.clone()),
+            _ => None,
+        })
+        .expect("spawn action")
+}
+
 const E4_STEP_RESPONSE_SCRIPT: &str = r#"
         let anchor = harmonic().pitch_mode("lock");
         let probe = harmonic().pitch_mode("free").pitch_core("peak_sampler");
@@ -1988,202 +2001,116 @@ fn rhythm_modulators_are_sanitized_at_core_boundary() {
 }
 
 #[test]
-fn metric_beat_sets_rhythm_intent() {
-    let (scenario, _warnings) = run_script(
-        r#"
-            create(sine().metric_beat(2.0).beat_strength(0.25).cycles(2), 1);
-            flush();
-        "#,
-    );
-    let spawn = scenario
-        .events
-        .iter()
-        .flat_map(|event| &event.actions)
-        .find_map(|action| match action {
-            Action::Spawn { spec, .. } => Some(spec.clone()),
-            _ => None,
-        })
-        .expect("spawn action");
+fn metric_and_pulse_tuning_are_order_independent() {
+    for (label, script) in [
+        (
+            "metric then tuning",
+            r#"
+                create(sine().metric_beat(2.0).beat_strength(0.25).cycles(2), 1);
+                flush();
+            "#,
+        ),
+        (
+            "tuning then metric",
+            r#"
+                create(sine().beat_strength(0.25).metric_beat(2.0).cycles(2), 1);
+                flush();
+            "#,
+        ),
+    ] {
+        let spawn = first_spawn_spec_for_script(script);
+        let RhythmIntent::MetricBeat(spec) = spawn.control.phonation.spec.rhythm else {
+            panic!("{label}: expected metric beat intent");
+        };
+        assert!((spec.rate_hz - 2.0).abs() <= 1e-6, "{label}");
+        assert!((spec.accent - 0.25).abs() <= 1e-6, "{label}");
+    }
 
-    let RhythmIntent::MetricBeat(spec) = spawn.control.phonation.spec.rhythm else {
-        panic!("expected metric beat intent");
-    };
-    assert!((spec.rate_hz - 2.0).abs() <= 1e-6);
-    assert!((spec.accent - 0.25).abs() <= 1e-6);
-}
-
-#[test]
-fn metric_beat_tuning_is_order_independent() {
-    let (scenario, _warnings) = run_script(
-        r#"
-            create(sine().beat_strength(0.25).metric_beat(2.0).cycles(2), 1);
-            flush();
-        "#,
-    );
-    let spawn = scenario
-        .events
-        .iter()
-        .flat_map(|event| &event.actions)
-        .find_map(|action| match action {
-            Action::Spawn { spec, .. } => Some(spec.clone()),
-            _ => None,
-        })
-        .expect("spawn action");
-
-    let RhythmIntent::MetricBeat(spec) = spawn.control.phonation.spec.rhythm else {
-        panic!("expected metric beat intent");
-    };
-    assert!((spec.rate_hz - 2.0).abs() <= 1e-6);
-    assert!((spec.accent - 0.25).abs() <= 1e-6);
-}
-
-#[test]
-fn pulse_lock_sets_low_level_pulse_sync() {
-    let (scenario, _warnings) = run_script(
-        r#"
-            create(sine().repeat().pulse(2.0).pulse_lock(0.35).cycles(2), 1);
-            flush();
-        "#,
-    );
-    let spawn = scenario
-        .events
-        .iter()
-        .flat_map(|event| &event.actions)
-        .find_map(|action| match action {
-            Action::Spawn { spec, .. } => Some(spec.clone()),
-            _ => None,
-        })
-        .expect("spawn action");
-
-    let WhenSpec::Pulse { rate, sync, .. } = spawn.control.phonation.spec.when else {
-        panic!("expected pulse timing");
-    };
-    assert!((rate - 2.0).abs() <= 1e-6);
-    assert!((sync - 0.35).abs() <= 1e-6);
-    assert!(matches!(
-        spawn.control.phonation.spec.duration,
-        DurationSpec::Gates(2)
-    ));
-}
-
-#[test]
-fn pulse_lock_tuning_is_order_independent() {
-    let (scenario, _warnings) = run_script(
-        r#"
-            create(sine().pulse_lock(0.35).pulse(2.0).cycles(2), 1);
-            flush();
-        "#,
-    );
-    let spawn = scenario
-        .events
-        .iter()
-        .flat_map(|event| &event.actions)
-        .find_map(|action| match action {
-            Action::Spawn { spec, .. } => Some(spec.clone()),
-            _ => None,
-        })
-        .expect("spawn action");
-
-    let WhenSpec::Pulse { rate, sync, .. } = spawn.control.phonation.spec.when else {
-        panic!("expected pulse timing");
-    };
-    assert!((rate - 2.0).abs() <= 1e-6);
-    assert!((sync - 0.35).abs() <= 1e-6);
-    assert!(matches!(
-        spawn.control.phonation.spec.duration,
-        DurationSpec::Gates(2)
-    ));
-}
-
-#[test]
-fn adaptive_duration_controls_field_duration() {
-    let (scenario, _warnings) = run_script(
-        r#"
-            create(
-                sine()
-                    .once()
-                    .adaptive_duration()
-                    .duration_range(0.2, 0.8)
-                    .duration_curve(3.0, 0.4)
-                    .shorten_on_drop(0.6),
-                1
-            );
-            flush();
-        "#,
-    );
-    let spawn = scenario
-        .events
-        .iter()
-        .flat_map(|event| &event.actions)
-        .find_map(|action| match action {
-            Action::Spawn { spec, .. } => Some(spec.clone()),
-            _ => None,
-        })
-        .expect("spawn action");
-
-    let DurationSpec::Field(field) = spawn.control.phonation.spec.duration else {
-        panic!("expected adaptive field duration");
-    };
-    assert!((field.hold_min_theta - 0.2).abs() <= 1e-6);
-    assert!((field.hold_max_theta - 0.8).abs() <= 1e-6);
-    assert!((field.curve_k - 3.0).abs() <= 1e-6);
-    assert!((field.curve_x0 - 0.4).abs() <= 1e-6);
-    assert!((field.drop_gain - 0.6).abs() <= 1e-6);
+    for (label, script) in [
+        (
+            "pulse then tuning",
+            r#"
+                create(sine().repeat().pulse(2.0).pulse_lock(0.35).cycles(2), 1);
+                flush();
+            "#,
+        ),
+        (
+            "tuning then pulse",
+            r#"
+                create(sine().pulse_lock(0.35).pulse(2.0).cycles(2), 1);
+                flush();
+            "#,
+        ),
+    ] {
+        let spawn = first_spawn_spec_for_script(script);
+        let WhenSpec::Pulse { rate, sync, .. } = &spawn.control.phonation.spec.when else {
+            panic!("{label}: expected pulse timing");
+        };
+        assert!((*rate - 2.0).abs() <= 1e-6, "{label}");
+        assert!((*sync - 0.35).abs() <= 1e-6, "{label}");
+        assert!(
+            matches!(
+                spawn.control.phonation.spec.duration,
+                DurationSpec::Gates(2)
+            ),
+            "{label}"
+        );
+    }
 }
 
 #[test]
 fn adaptive_duration_tuning_is_order_independent() {
-    let (scenario, _warnings) = run_script(
-        r#"
-            create(
-                sine()
-                    .duration_range(0.2, 0.8)
-                    .duration_curve(3.0, 0.4)
-                    .shorten_on_drop(0.6)
-                    .adaptive_duration(),
-                1
-            );
-            flush();
-        "#,
-    );
-    let spawn = scenario
-        .events
-        .iter()
-        .flat_map(|event| &event.actions)
-        .find_map(|action| match action {
-            Action::Spawn { spec, .. } => Some(spec.clone()),
-            _ => None,
-        })
-        .expect("spawn action");
-
-    let DurationSpec::Field(field) = spawn.control.phonation.spec.duration else {
-        panic!("expected adaptive field duration");
-    };
-    assert!((field.hold_min_theta - 0.2).abs() <= 1e-6);
-    assert!((field.hold_max_theta - 0.8).abs() <= 1e-6);
-    assert!((field.curve_k - 3.0).abs() <= 1e-6);
-    assert!((field.curve_x0 - 0.4).abs() <= 1e-6);
-    assert!((field.drop_gain - 0.6).abs() <= 1e-6);
+    for (label, script) in [
+        (
+            "duration then tuning",
+            r#"
+                create(
+                    sine()
+                        .once()
+                        .adaptive_duration()
+                        .duration_range(0.2, 0.8)
+                        .duration_curve(3.0, 0.4)
+                        .shorten_on_drop(0.6),
+                    1
+                );
+                flush();
+            "#,
+        ),
+        (
+            "tuning then duration",
+            r#"
+                create(
+                    sine()
+                        .duration_range(0.2, 0.8)
+                        .duration_curve(3.0, 0.4)
+                        .shorten_on_drop(0.6)
+                        .adaptive_duration(),
+                    1
+                );
+                flush();
+            "#,
+        ),
+    ] {
+        let spawn = first_spawn_spec_for_script(script);
+        let DurationSpec::Field(field) = spawn.control.phonation.spec.duration else {
+            panic!("{label}: expected adaptive field duration");
+        };
+        assert!((field.hold_min_theta - 0.2).abs() <= 1e-6, "{label}");
+        assert!((field.hold_max_theta - 0.8).abs() <= 1e-6, "{label}");
+        assert!((field.curve_k - 3.0).abs() <= 1e-6, "{label}");
+        assert!((field.curve_x0 - 0.4).abs() <= 1e-6, "{label}");
+        assert!((field.drop_gain - 0.6).abs() <= 1e-6, "{label}");
+    }
 }
 
 #[test]
-fn entrained_beat_sets_intent_and_agent_phase_defaults() {
-    let (scenario, _warnings) = run_script(
+fn entrained_beat_sets_defaults_and_accepts_prior_social_tuning() {
+    let spawn = first_spawn_spec_for_script(
         r#"
             create(sine().entrained_beat(2.0).cycles(2), 1);
             flush();
         "#,
     );
-    let spawn = scenario
-        .events
-        .iter()
-        .flat_map(|event| &event.actions)
-        .find_map(|action| match action {
-            Action::Spawn { spec, .. } => Some(spec.clone()),
-            _ => None,
-        })
-        .expect("spawn action");
-
     let RhythmIntent::EntrainedBeat(spec) = spawn.control.phonation.spec.rhythm else {
         panic!("expected entrained beat intent");
     };
@@ -2204,58 +2131,35 @@ fn entrained_beat_sets_intent_and_agent_phase_defaults() {
         RhythmCouplingMode::TemporalTimesVitality { .. }
     ));
     assert!(rhythm_reward.is_some());
-}
 
-#[test]
-fn social_tuning_is_order_independent_for_entrained_beat() {
-    let (scenario, _warnings) = run_script(
+    let tuned = first_spawn_spec_for_script(
         r#"
             create(sine().social(0.25).entrained_beat(2.0).cycles(2), 1);
             flush();
         "#,
     );
-    let spawn = scenario
-        .events
-        .iter()
-        .flat_map(|event| &event.actions)
-        .find_map(|action| match action {
-            Action::Spawn { spec, .. } => Some(spec.clone()),
-            _ => None,
-        })
-        .expect("spawn action");
-
-    let RhythmIntent::EntrainedBeat(spec) = spawn.control.phonation.spec.rhythm else {
+    let RhythmIntent::EntrainedBeat(tuned_spec) = tuned.control.phonation.spec.rhythm else {
         panic!("expected entrained beat intent");
     };
-    assert!((spec.rate_hz - 2.0).abs() <= 1e-6);
-    assert!((spec.social - 0.25).abs() <= 1e-6);
+    assert!((tuned_spec.rate_hz - 2.0).abs() <= 1e-6);
+    assert!((tuned_spec.social - 0.25).abs() <= 1e-6);
 }
 
 #[test]
-fn while_alive_last_returns_to_hold_mode() {
-    let (scenario, _warnings) = run_script(
+fn while_alive_and_beat_modes_are_last_write_wins() {
+    let hold = first_spawn_spec_for_script(
         r#"
             create(sine().metric_beat(2.0).while_alive(), 1);
             flush();
         "#,
     );
-    let spawn = scenario
-        .events
-        .iter()
-        .flat_map(|event| &event.actions)
-        .find_map(|action| match action {
-            Action::Spawn { spec, .. } => Some(spec.clone()),
-            _ => None,
-        })
-        .expect("spawn action");
-
     assert!(matches!(
-        spawn.control.phonation.spec.rhythm,
+        hold.control.phonation.spec.rhythm,
         RhythmIntent::None
     ));
-    assert!(matches!(spawn.control.phonation.spec.when, WhenSpec::Once));
+    assert!(matches!(hold.control.phonation.spec.when, WhenSpec::Once));
     assert!(matches!(
-        spawn.control.phonation.spec.duration,
+        hold.control.phonation.spec.duration,
         DurationSpec::WhileAlive
     ));
     let ArticulationCoreConfig::Entrain {
@@ -2263,39 +2167,26 @@ fn while_alive_last_returns_to_hold_mode() {
         rhythm_coupling,
         rhythm_reward,
         ..
-    } = spawn.articulation
+    } = hold.articulation
     else {
         panic!("expected entrain articulation");
     };
     assert_eq!(rhythm_freq, None);
     assert!(matches!(rhythm_coupling, RhythmCouplingMode::TemporalOnly));
     assert!(rhythm_reward.is_none());
-}
 
-#[test]
-fn beat_mode_after_while_alive_uses_gated_duration() {
-    let (scenario, _warnings) = run_script(
+    let beat = first_spawn_spec_for_script(
         r#"
             create(sine().while_alive().metric_beat(2.0), 1);
             flush();
         "#,
     );
-    let spawn = scenario
-        .events
-        .iter()
-        .flat_map(|event| &event.actions)
-        .find_map(|action| match action {
-            Action::Spawn { spec, .. } => Some(spec.clone()),
-            _ => None,
-        })
-        .expect("spawn action");
-
     assert!(matches!(
-        spawn.control.phonation.spec.rhythm,
+        beat.control.phonation.spec.rhythm,
         RhythmIntent::MetricBeat(_)
     ));
     assert!(matches!(
-        spawn.control.phonation.spec.duration,
+        beat.control.phonation.spec.duration,
         DurationSpec::Gates(DEFAULT_GATE_COUNT)
     ));
 }

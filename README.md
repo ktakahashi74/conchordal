@@ -188,4 +188,4 @@ Distributed under the terms of both the MIT license and the Apache License (Vers
 
 ### Author
 
-Created by Koichi Takahashi <info@conchordal.org>
+Created by Koichi Takahashi <contact@conchordal.org>

@@ -28,10 +28,10 @@ use crate::life::report::{
     JsonlReporter, RhythmObservation, onset_samples_from_batches, scaffold_phase_0_1,
     summarize_groups,
 };
-use crate::life::scenario::{Action, ScaffoldConfig, Scenario};
 use crate::life::schedule_renderer::ScheduleRenderer;
-use crate::life::scripting::ScriptHost;
 use crate::life::voice::{PhonationBatch, SoundBody};
+use crate::scenario::{Action, ScaffoldConfig, Scenario};
+use crate::scripting::ScriptHost;
 use crate::ui::viewdata::{
     DorsalFrame, PlaybackState, PredictionFrame, SimulationMeta, SpecFrame, UiFrame,
     VoiceStateInfo, WaveFrame,

@@ -1,52 +1,9 @@
 use crate::life::adaptation::AdaptationConfig;
-use crate::life::control::{AdaptationControl, PitchControl, PitchCoreKind};
-use crate::life::scenario::{
+use crate::life::control::AdaptationControl;
+use crate::scenario::{
     DurationConfig, DurationSpec, OnsetConfig, PhonationClockConfig, PhonationConfig,
-    PhonationMode, PhonationSpec, PitchCoreConfig, RhythmIntent, SocialConfig, SubThetaModConfig,
-    SubdivisionClockConfig, WhenSpec,
+    PhonationMode, PhonationSpec, PhonationTiming, SubThetaModConfig, SubdivisionClockConfig,
 };
-
-pub(crate) fn tessitura_gravity_from_control(gravity: f32) -> f32 {
-    gravity.clamp(0.0, 1.0) * 0.2
-}
-
-pub(crate) fn pitch_core_config_from_control(pitch: &PitchControl) -> PitchCoreConfig {
-    let tessitura_gravity = pitch
-        .tessitura_gravity
-        .unwrap_or_else(|| tessitura_gravity_from_control(pitch.gravity));
-    match pitch.core_kind {
-        PitchCoreKind::HillClimb => PitchCoreConfig::PitchHillClimb {
-            neighbor_step_cents: pitch.neighbor_step_cents,
-            tessitura_gravity: Some(tessitura_gravity),
-            move_cost_coeff: Some(pitch.move_cost_coeff),
-            move_cost_exp: pitch.move_cost_exp,
-            improvement_threshold: Some(pitch.improvement_threshold),
-            exploration: Some(pitch.exploration),
-            persistence: Some(pitch.persistence),
-            leave_self_out: Some(pitch.leave_self_out),
-            anneal_temp: Some(pitch.anneal_temp),
-            global_peak_count: Some(pitch.global_peak_count),
-            global_peak_min_sep_cents: Some(pitch.global_peak_min_sep_cents),
-            use_ratio_candidates: Some(pitch.use_ratio_candidates),
-            ratio_candidate_count: Some(pitch.ratio_candidate_count),
-            move_cost_time_scale: Some(pitch.move_cost_time_scale),
-            leave_self_out_harmonics: Some(pitch.leave_self_out_harmonics),
-            leave_self_out_mode: Some(pitch.leave_self_out_mode),
-        },
-        PitchCoreKind::PeakSampler => PitchCoreConfig::PitchPeakSampler {
-            neighbor_step_cents: pitch.neighbor_step_cents,
-            window_cents: pitch.window_cents,
-            top_k: pitch.top_k,
-            temperature: pitch.temperature,
-            sigma_cents: pitch.sigma_cents,
-            random_candidates: pitch.random_candidates,
-            tessitura_gravity: Some(tessitura_gravity),
-            exploration: Some(pitch.exploration),
-            persistence: Some(pitch.persistence),
-            leave_self_out: Some(pitch.leave_self_out),
-        },
-    }
-}
 
 pub(crate) fn adaptation_config_from_control(control: &AdaptationControl) -> AdaptationConfig {
     let adaptation = control.adaptation.clamp(0.0, 1.0);
@@ -90,8 +47,8 @@ fn duration_config_from_spec(duration: &DurationSpec) -> DurationConfig {
 pub(crate) fn phonation_config_from_spec(spec: &PhonationSpec) -> PhonationConfig {
     let duration = duration_config_from_spec(&spec.duration);
 
-    match spec.rhythm {
-        RhythmIntent::MetricBeat(metric) => {
+    match spec.timing {
+        PhonationTiming::MetricBeat(metric) => {
             let metric = metric.sanitized();
             return PhonationConfig {
                 mode: PhonationMode::Gated,
@@ -110,10 +67,9 @@ pub(crate) fn phonation_config_from_spec(spec: &PhonationSpec) -> PhonationConfi
                 } else {
                     SubThetaModConfig::None
                 },
-                social: SocialConfig::default(),
             };
         }
-        RhythmIntent::EntrainedBeat(entrained) => {
+        PhonationTiming::EntrainedBeat(entrained) => {
             let entrained = entrained.sanitized();
             return PhonationConfig {
                 mode: PhonationMode::Gated,
@@ -124,14 +80,9 @@ pub(crate) fn phonation_config_from_spec(spec: &PhonationSpec) -> PhonationConfi
                 duration,
                 clock: PhonationClockConfig::ThetaGate,
                 sub_theta_mod: SubThetaModConfig::None,
-                social: SocialConfig {
-                    coupling: entrained.social,
-                    bin_ticks: 0,
-                    smooth: 0.0,
-                },
             };
         }
-        RhythmIntent::FlowTiming(flow) => {
+        PhonationTiming::FlowTiming(flow) => {
             let flow = flow.sanitized();
             return PhonationConfig {
                 mode: PhonationMode::Gated,
@@ -147,14 +98,13 @@ pub(crate) fn phonation_config_from_spec(spec: &PhonationSpec) -> PhonationConfi
                     internal_phase: None,
                 },
                 sub_theta_mod: SubThetaModConfig::None,
-                social: SocialConfig::default(),
             };
         }
-        RhythmIntent::None => {}
+        PhonationTiming::Once | PhonationTiming::Pulse { .. } => {}
     }
 
-    match &spec.when {
-        WhenSpec::Once => match &spec.duration {
+    match spec.timing {
+        PhonationTiming::Once => match &spec.duration {
             // once() + while_alive() = sustain: Hold mode, NoteOff on death.
             DurationSpec::WhileAlive => PhonationConfig {
                 mode: PhonationMode::Hold,
@@ -162,7 +112,6 @@ pub(crate) fn phonation_config_from_spec(spec: &PhonationSpec) -> PhonationConfi
                 duration,
                 clock: PhonationClockConfig::ThetaGate,
                 sub_theta_mod: SubThetaModConfig::None,
-                social: SocialConfig::default(),
             },
             // once() + cycles(n) / adaptive_duration(): fire immediately, never repeat.
             _ => PhonationConfig {
@@ -174,15 +123,18 @@ pub(crate) fn phonation_config_from_spec(spec: &PhonationSpec) -> PhonationConfi
                 duration,
                 clock: PhonationClockConfig::ThetaGate,
                 sub_theta_mod: SubThetaModConfig::None,
-                social: SocialConfig::default(),
             },
         },
-        WhenSpec::Pulse { rate, sync, social } => {
+        PhonationTiming::Pulse {
+            rate_hz,
+            sync,
+            social: _,
+        } => {
             let onset = OnsetConfig::Accumulator {
-                rate: rate.max(0.01),
+                rate: rate_hz.max(0.01),
                 refractory: 1,
             };
-            let sub_theta_mod = if *sync > 0.0 {
+            let sub_theta_mod = if sync > 0.0 {
                 SubThetaModConfig::Cosine {
                     n: 1,
                     depth: sync.clamp(0.0, 1.0),
@@ -197,25 +149,23 @@ pub(crate) fn phonation_config_from_spec(spec: &PhonationSpec) -> PhonationConfi
                 duration,
                 clock: PhonationClockConfig::ThetaGate,
                 sub_theta_mod,
-                social: SocialConfig {
-                    coupling: social.clamp(0.0, 1.0),
-                    bin_ticks: 0,
-                    smooth: 0.0,
-                },
             }
         }
+        PhonationTiming::MetricBeat(_)
+        | PhonationTiming::EntrainedBeat(_)
+        | PhonationTiming::FlowTiming(_) => unreachable!("handled above"),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::life::scenario::{FlowTimingSpec, RhythmIntent};
+    use crate::scenario::{FlowTimingSpec, PhonationTiming};
 
     #[test]
     fn flow_timing_uses_dense_non_binary_clock() {
         let mut spec = PhonationSpec::default();
-        spec.rhythm = RhythmIntent::FlowTiming(FlowTimingSpec {
+        spec.timing = PhonationTiming::FlowTiming(FlowTimingSpec {
             mean_rate_hz: 2.5,
             depth: 0.9,
         });

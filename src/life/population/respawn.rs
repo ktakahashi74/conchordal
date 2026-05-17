@@ -2,7 +2,7 @@ use super::ParentCandidate;
 use crate::core::landscape::LandscapeFrame;
 use crate::core::peak_extraction::{PeakExtractConfig, extract_peaks_density};
 use crate::life::control::{MAX_FREQ_HZ, MIN_FREQ_HZ};
-use crate::life::scenario::RespawnPeakBiasConfig;
+use crate::scenario::RespawnPeakBiasConfig;
 use rand::{Rng, distr::Distribution, distr::weighted::WeightedIndex};
 
 pub(super) fn semitone_distance_from_anchor(freq_hz: f32, anchor_hz: f32) -> f32 {

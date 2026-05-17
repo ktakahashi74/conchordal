@@ -8,11 +8,11 @@ use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::Tick;
 use crate::life::control_adapters::phonation_config_from_spec;
 use crate::life::gate_clock::next_gate_tick;
-use crate::life::scenario::{
+use crate::life::social_density::SocialDensityTrace;
+use crate::scenario::{
     DurationConfig, OnsetConfig, PhonationClockConfig, PhonationConfig, PhonationMode,
     PhonationSpec, SubThetaModConfig,
 };
-use crate::life::social_density::SocialDensityTrace;
 
 pub type ToneId = u64;
 
@@ -507,7 +507,7 @@ impl PhonationClock {
         }
     }
 
-    pub fn from_config(config: &PhonationClockConfig) -> Self {
+    pub(crate) fn from_config(config: &PhonationClockConfig) -> Self {
         match config {
             PhonationClockConfig::ThetaGate => PhonationClock::ThetaGate(ThetaGateClock::default()),
             PhonationClockConfig::Composite {
@@ -971,7 +971,7 @@ impl PhonationEngine {
         self.update_from_config(&config);
     }
 
-    pub fn from_config(config: &PhonationConfig, seed: u64) -> Self {
+    pub(crate) fn from_config(config: &PhonationConfig, seed: u64) -> Self {
         let onset_rule = OnsetRule::from_config(&config.onset, seed);
         let sub_theta_mod = SubThetaMod::from_config(&config.sub_theta_mod);
         let duration_rule = DurationRule::from_config(&config.duration);
@@ -995,7 +995,7 @@ impl PhonationEngine {
         }
     }
 
-    pub fn update_from_config(&mut self, config: &PhonationConfig) {
+    pub(crate) fn update_from_config(&mut self, config: &PhonationConfig) {
         self.mode = config.mode;
         let seed = self.initial_seed ^ 0xA5A5_5A5A_5A5A_A5A5;
         self.onset_rule.update_config(&config.onset, seed);
@@ -1379,7 +1379,6 @@ impl PhonationEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::life::scenario::SocialConfig;
     use std::collections::BinaryHeap;
     use std::sync::{Arc, Mutex};
 
@@ -2580,7 +2579,6 @@ mod tests {
             duration: DurationConfig::FixedGate { length_gates: 1 },
             clock: PhonationClockConfig::ThetaGate,
             sub_theta_mod: SubThetaModConfig::None,
-            social: SocialConfig::default(),
         };
         let mut engine = PhonationEngine::from_config(&base, 7);
         let changed = PhonationConfig {

@@ -1,6 +1,3 @@
-use super::scenario::{
-    Action, ControlUpdateMode, RespawnPeakBiasConfig, RespawnPolicy, SpawnStrategy, VoiceConfig,
-};
 use super::telemetry::LifeRecord;
 use super::voice::{AnyArticulationCore, PhonationBatch, SoundBody, Voice, VoiceMetadata};
 use crate::core::landscape::{Landscape, LandscapeFrame, LandscapeUpdate};
@@ -9,6 +6,9 @@ use crate::core::timebase::{Tick, Timebase};
 use crate::life::control::{MAX_FREQ_HZ, MIN_FREQ_HZ};
 use crate::life::social_density::SocialDensityTrace;
 use crate::life::world_model::WorldModel;
+use crate::scenario::{
+    Action, ControlUpdateMode, RespawnPeakBiasConfig, RespawnPolicy, SpawnStrategy, VoiceConfig,
+};
 use rand::{Rng, SeedableRng, distr::Distribution, distr::weighted::WeightedIndex, rngs::SmallRng};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::hash::{Hash, Hasher};
@@ -1740,12 +1740,12 @@ mod tests {
     use crate::life::control::{ControlUpdate, PitchMode, VoiceControl};
     use crate::life::lifecycle::LifecycleConfig;
     use crate::life::phonation_engine::{OnsetEvent, OnsetKick, ToneCmd};
-    use crate::life::scenario::{
+    use crate::life::sound::{BodyKind, BodySnapshot};
+    use crate::life::world_model::WorldModel;
+    use crate::scenario::{
         Action, ArticulationCoreConfig, RespawnPeakBiasConfig, RespawnPolicy, SpawnSpec,
         SpawnStrategy,
     };
-    use crate::life::sound::{BodyKind, BodySnapshot};
-    use crate::life::world_model::WorldModel;
     use rand::{Rng, SeedableRng};
     use std::collections::HashSet;
 
@@ -1804,7 +1804,7 @@ mod tests {
                 },
                 rhythm_freq: None,
                 rhythm_sensitivity: None,
-                rhythm_coupling: crate::life::scenario::RhythmCouplingMode::TemporalOnly,
+                rhythm_coupling: crate::scenario::RhythmCouplingMode::TemporalOnly,
                 rhythm_reward: None,
                 breath_gain_init: None,
                 k_omega: None,
@@ -1831,11 +1831,11 @@ mod tests {
                     continuous_recharge_score_high: None,
                     selection_approx_loo: false,
                     dissonance_cost: None,
-                    envelope: crate::life::scenario::EnvelopeConfig::default(),
+                    envelope: crate::scenario::EnvelopeConfig::default(),
                 },
                 rhythm_freq: None,
                 rhythm_sensitivity: None,
-                rhythm_coupling: crate::life::scenario::RhythmCouplingMode::TemporalOnly,
+                rhythm_coupling: crate::scenario::RhythmCouplingMode::TemporalOnly,
                 rhythm_reward: None,
                 breath_gain_init: None,
                 k_omega: None,

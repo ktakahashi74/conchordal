@@ -63,47 +63,23 @@ impl ScriptHost {
             species
         });
 
-        register_species_numeric_overloads(&mut engine, "amp", SpeciesSpec::set_amp);
-        register_species_numeric_overloads(&mut engine, "freq", SpeciesSpec::set_freq);
-        register_species_numeric_overloads(
+        register_species_numeric_methods(
             &mut engine,
-            "landscape_weight",
-            SpeciesSpec::set_landscape_weight,
+            &[
+                ("amp", SpeciesSpec::set_amp),
+                ("freq", SpeciesSpec::set_freq),
+                ("landscape_weight", SpeciesSpec::set_landscape_weight),
+                ("neighbor_step_cents", SpeciesSpec::set_neighbor_step_cents),
+                ("tessitura_gravity", SpeciesSpec::set_tessitura_gravity),
+                ("sustain_drive", SpeciesSpec::set_continuous_drive),
+                ("pitch_smooth", SpeciesSpec::set_pitch_smooth_tau),
+                ("exploration", SpeciesSpec::set_exploration),
+                ("persistence", SpeciesSpec::set_persistence),
+            ],
         );
-        register_species_numeric_overloads(
+        register_species_pair_numeric_methods(
             &mut engine,
-            "neighbor_step_cents",
-            SpeciesSpec::set_neighbor_step_cents,
-        );
-        register_species_numeric_overloads(
-            &mut engine,
-            "tessitura_gravity",
-            SpeciesSpec::set_tessitura_gravity,
-        );
-        register_species_numeric_overloads(
-            &mut engine,
-            "sustain_drive",
-            SpeciesSpec::set_continuous_drive,
-        );
-        register_species_numeric_overloads(
-            &mut engine,
-            "pitch_smooth",
-            SpeciesSpec::set_pitch_smooth_tau,
-        );
-        register_species_numeric_overloads(
-            &mut engine,
-            "exploration",
-            SpeciesSpec::set_exploration,
-        );
-        register_species_numeric_overloads(
-            &mut engine,
-            "persistence",
-            SpeciesSpec::set_persistence,
-        );
-        register_species_pair_numeric_overloads(
-            &mut engine,
-            "avoid_neighbors",
-            SpeciesSpec::set_crowding,
+            &[("avoid_neighbors", SpeciesSpec::set_crowding)],
         );
         engine.register_fn(
             "avoid_neighbors",
@@ -142,30 +118,18 @@ impl ScriptHost {
                 species
             },
         );
-        register_species_numeric_overloads(
+        register_species_numeric_methods(
             &mut engine,
-            "anneal_temp",
-            SpeciesSpec::set_anneal_temp,
-        );
-        register_species_numeric_overloads(
-            &mut engine,
-            "move_cost",
-            SpeciesSpec::set_move_cost_coeff,
-        );
-        register_species_numeric_overloads(
-            &mut engine,
-            "move_cost_exp",
-            SpeciesSpec::set_move_cost_exp,
-        );
-        register_species_numeric_overloads(
-            &mut engine,
-            "improvement_threshold",
-            SpeciesSpec::set_improvement_threshold,
-        );
-        register_species_numeric_overloads(
-            &mut engine,
-            "proposal_interval",
-            SpeciesSpec::set_proposal_interval_sec,
+            &[
+                ("anneal_temp", SpeciesSpec::set_anneal_temp),
+                ("move_cost", SpeciesSpec::set_move_cost_coeff),
+                ("move_cost_exp", SpeciesSpec::set_move_cost_exp),
+                (
+                    "improvement_threshold",
+                    SpeciesSpec::set_improvement_threshold,
+                ),
+                ("proposal_interval", SpeciesSpec::set_proposal_interval_sec),
+            ],
         );
         engine.register_fn("global_peaks", |mut species: SpeciesHandle, count: INT| {
             species.spec.set_global_peaks(count, 0.0);
@@ -192,26 +156,15 @@ impl ScriptHost {
                 species
             },
         );
-        register_species_numeric_overloads(
+        register_species_numeric_methods(
             &mut engine,
-            "window_cents",
-            SpeciesSpec::set_window_cents,
-        );
-        register_species_numeric_overloads(&mut engine, "top_k", SpeciesSpec::set_top_k);
-        register_species_numeric_overloads(
-            &mut engine,
-            "temperature",
-            SpeciesSpec::set_temperature,
-        );
-        register_species_numeric_overloads(
-            &mut engine,
-            "sigma_cents",
-            SpeciesSpec::set_sigma_cents,
-        );
-        register_species_numeric_overloads(
-            &mut engine,
-            "random_candidates",
-            SpeciesSpec::set_random_candidates,
+            &[
+                ("window_cents", SpeciesSpec::set_window_cents),
+                ("top_k", SpeciesSpec::set_top_k),
+                ("temperature", SpeciesSpec::set_temperature),
+                ("sigma_cents", SpeciesSpec::set_sigma_cents),
+                ("random_candidates", SpeciesSpec::set_random_candidates),
+            ],
         );
         engine.register_fn(
             "move_cost_time_scale",
@@ -234,10 +187,9 @@ impl ScriptHost {
                 species
             },
         );
-        register_species_numeric_overloads(
+        register_species_numeric_methods(
             &mut engine,
-            "glide",
-            SpeciesSpec::set_pitch_glide_tau_sec,
+            &[("glide", SpeciesSpec::set_pitch_glide_tau_sec)],
         );
         engine.register_fn("seek_consonance", |mut species: SpeciesHandle| {
             species.spec.set_consonance_movement();
@@ -346,9 +298,14 @@ impl ScriptHost {
                 species
             },
         );
-        register_species_numeric_overloads(&mut engine, "brightness", SpeciesSpec::set_brightness);
-        register_species_numeric_overloads(&mut engine, "spread", SpeciesSpec::set_spread);
-        register_species_numeric_overloads(&mut engine, "unison", SpeciesSpec::set_unison);
+        register_species_numeric_methods(
+            &mut engine,
+            &[
+                ("brightness", SpeciesSpec::set_brightness),
+                ("spread", SpeciesSpec::set_spread),
+                ("unison", SpeciesSpec::set_unison),
+            ],
+        );
         engine.register_fn(
             "modes",
             |mut species: SpeciesHandle, pattern: ModePattern| {
@@ -360,30 +317,21 @@ impl ScriptHost {
             species.spec.set_metabolism(rate as f32);
             species
         });
-        register_species_numeric_overloads(
+        register_species_numeric_methods(
             &mut engine,
-            "initial_energy",
-            SpeciesSpec::set_initial_energy,
+            &[
+                ("initial_energy", SpeciesSpec::set_initial_energy),
+                ("recharge_rate", SpeciesSpec::set_recharge_rate),
+                ("action_cost", SpeciesSpec::set_action_cost),
+                ("viability_rate", SpeciesSpec::set_viability_rate),
+            ],
         );
-        register_species_numeric_overloads(
+        register_species_pair_numeric_methods(
             &mut engine,
-            "recharge_rate",
-            SpeciesSpec::set_recharge_rate,
-        );
-        register_species_numeric_overloads(
-            &mut engine,
-            "action_cost",
-            SpeciesSpec::set_action_cost,
-        );
-        register_species_numeric_overloads(
-            &mut engine,
-            "viability_rate",
-            SpeciesSpec::set_viability_rate,
-        );
-        register_species_pair_numeric_overloads(
-            &mut engine,
-            "consonance_viability",
-            SpeciesSpec::set_consonance_viability,
+            &[(
+                "consonance_viability",
+                SpeciesSpec::set_consonance_viability,
+            )],
         );
         engine.register_fn(
             "viability_scope",
@@ -399,12 +347,13 @@ impl ScriptHost {
                 species
             },
         );
-        register_species_numeric_overloads(
+        register_species_numeric_methods(
             &mut engine,
-            "dissonance_cost",
-            SpeciesSpec::set_dissonance_cost,
+            &[
+                ("dissonance_cost", SpeciesSpec::set_dissonance_cost),
+                ("energy_cap", SpeciesSpec::set_energy_cap),
+            ],
         );
-        register_species_numeric_overloads(&mut engine, "energy_cap", SpeciesSpec::set_energy_cap);
         engine.register_fn(
             "adsr",
             |mut species: SpeciesHandle, a: FLOAT, d: FLOAT, s: FLOAT, r: FLOAT| {
@@ -437,22 +386,20 @@ impl ScriptHost {
                 species
             },
         );
-        register_species_numeric_overloads(
+        register_species_numeric_methods(
             &mut engine,
-            "rhythm_freq",
-            SpeciesSpec::set_rhythm_freq,
+            &[
+                ("rhythm_freq", SpeciesSpec::set_rhythm_freq),
+                ("rhythm_sensitivity", SpeciesSpec::set_rhythm_sensitivity),
+                ("k_omega", SpeciesSpec::set_k_omega),
+                ("base_sigma", SpeciesSpec::set_base_sigma),
+            ],
         );
-        register_species_numeric_overloads(
+        register_species_pair_numeric_methods(
             &mut engine,
-            "rhythm_sensitivity",
-            SpeciesSpec::set_rhythm_sensitivity,
-        );
-        register_species_numeric_overloads(&mut engine, "k_omega", SpeciesSpec::set_k_omega);
-        register_species_numeric_overloads(&mut engine, "base_sigma", SpeciesSpec::set_base_sigma);
-        register_species_pair_numeric_overloads(
-            &mut engine,
-            "gate_thresholds",
-            |species, env_open, mag| species.set_gate_thresholds(env_open, mag, 0.2, 0.9),
+            &[("gate_thresholds", |species, env_open, mag| {
+                species.set_gate_thresholds(env_open, mag, 0.2, 0.9)
+            })],
         );
         engine.register_fn(
             "gate_thresholds",
@@ -488,20 +435,16 @@ impl ScriptHost {
             species.spec.set_respawn_consonance();
             species
         });
-        register_species_numeric_overloads(
+        register_species_numeric_methods(
             &mut engine,
-            "respawn_capacity",
-            SpeciesSpec::set_respawn_capacity,
-        );
-        register_species_numeric_overloads(
-            &mut engine,
-            "respawn_min_c_level",
-            SpeciesSpec::set_respawn_min_c_level,
-        );
-        register_species_numeric_overloads(
-            &mut engine,
-            "respawn_background_death_rate",
-            SpeciesSpec::set_respawn_background_death_rate,
+            &[
+                ("respawn_capacity", SpeciesSpec::set_respawn_capacity),
+                ("respawn_min_c_level", SpeciesSpec::set_respawn_min_c_level),
+                (
+                    "respawn_background_death_rate",
+                    SpeciesSpec::set_respawn_background_death_rate,
+                ),
+            ],
         );
         engine.register_fn(
             "respawn_settle",
@@ -926,77 +869,60 @@ impl ScriptHost {
             },
         );
 
-        register_group_numeric_overloads(
+        register_group_numeric_methods(
             &mut engine,
             ctx.clone(),
-            "amp",
-            SpeciesSpec::set_amp,
-            patch_amp,
-            None,
-        );
-        register_group_numeric_overloads(
-            &mut engine,
-            ctx.clone(),
-            "freq",
-            SpeciesSpec::set_freq,
-            patch_freq,
-            Some(draft_clear_strategy),
-        );
-        register_group_numeric_overloads(
-            &mut engine,
-            ctx.clone(),
-            "landscape_weight",
-            SpeciesSpec::set_landscape_weight,
-            patch_landscape_weight,
-            None,
-        );
-        register_group_numeric_overloads(
-            &mut engine,
-            ctx.clone(),
-            "neighbor_step_cents",
-            SpeciesSpec::set_neighbor_step_cents,
-            patch_neighbor_step_cents,
-            None,
-        );
-        register_group_numeric_overloads(
-            &mut engine,
-            ctx.clone(),
-            "tessitura_gravity",
-            SpeciesSpec::set_tessitura_gravity,
-            patch_tessitura_gravity,
-            None,
-        );
-        register_group_numeric_overloads(
-            &mut engine,
-            ctx.clone(),
-            "sustain_drive",
-            SpeciesSpec::set_continuous_drive,
-            patch_continuous_drive,
-            None,
-        );
-        register_group_numeric_overloads(
-            &mut engine,
-            ctx.clone(),
-            "pitch_smooth",
-            SpeciesSpec::set_pitch_smooth_tau,
-            patch_pitch_smooth_tau,
-            None,
-        );
-        register_group_numeric_overloads(
-            &mut engine,
-            ctx.clone(),
-            "exploration",
-            SpeciesSpec::set_exploration,
-            patch_exploration,
-            None,
-        );
-        register_group_numeric_overloads(
-            &mut engine,
-            ctx.clone(),
-            "persistence",
-            SpeciesSpec::set_persistence,
-            patch_persistence,
-            None,
+            &[
+                ("amp", SpeciesSpec::set_amp, patch_amp, None),
+                (
+                    "freq",
+                    SpeciesSpec::set_freq,
+                    patch_freq,
+                    Some(draft_clear_strategy),
+                ),
+                (
+                    "landscape_weight",
+                    SpeciesSpec::set_landscape_weight,
+                    patch_landscape_weight,
+                    None,
+                ),
+                (
+                    "neighbor_step_cents",
+                    SpeciesSpec::set_neighbor_step_cents,
+                    patch_neighbor_step_cents,
+                    None,
+                ),
+                (
+                    "tessitura_gravity",
+                    SpeciesSpec::set_tessitura_gravity,
+                    patch_tessitura_gravity,
+                    None,
+                ),
+                (
+                    "sustain_drive",
+                    SpeciesSpec::set_continuous_drive,
+                    patch_continuous_drive,
+                    None,
+                ),
+                (
+                    "pitch_smooth",
+                    SpeciesSpec::set_pitch_smooth_tau,
+                    patch_pitch_smooth_tau,
+                    None,
+                ),
+                (
+                    "exploration",
+                    SpeciesSpec::set_exploration,
+                    patch_exploration,
+                    None,
+                ),
+                (
+                    "persistence",
+                    SpeciesSpec::set_persistence,
+                    patch_persistence,
+                    None,
+                ),
+            ],
         );
         register_group_crowding_overloads(&mut engine, ctx.clone(), "avoid_neighbors");
         let ctx_for_group_crowding_target = ctx.clone();
@@ -1076,9 +1002,9 @@ impl ScriptHost {
                     name,
                 );
                 match group.status {
-                    GroupStatus::Draft => group.spec.control.set_leave_self_out_mode(mode),
+                    GroupStatus::Draft => group.spec.control.pitch.set_leave_self_out_mode(mode),
                     GroupStatus::Live => {
-                        group.spec.control.set_leave_self_out_mode(mode);
+                        group.spec.control.pitch.set_leave_self_out_mode(mode);
                         patch_leave_self_out_mode(&mut group.pending_patch, mode);
                     }
                     _ => ctx.warn_live_builder(handle.id, "leave_self_out_mode"),
@@ -1086,45 +1012,41 @@ impl ScriptHost {
                 Ok(handle)
             },
         );
-        register_group_numeric_overloads(
+        register_group_numeric_methods(
             &mut engine,
             ctx.clone(),
-            "anneal_temp",
-            SpeciesSpec::set_anneal_temp,
-            patch_anneal_temp,
-            None,
-        );
-        register_group_numeric_overloads(
-            &mut engine,
-            ctx.clone(),
-            "move_cost",
-            SpeciesSpec::set_move_cost_coeff,
-            patch_move_cost_coeff,
-            None,
-        );
-        register_group_numeric_overloads(
-            &mut engine,
-            ctx.clone(),
-            "move_cost_exp",
-            SpeciesSpec::set_move_cost_exp,
-            patch_move_cost_exp,
-            None,
-        );
-        register_group_numeric_overloads(
-            &mut engine,
-            ctx.clone(),
-            "improvement_threshold",
-            SpeciesSpec::set_improvement_threshold,
-            patch_improvement_threshold,
-            None,
-        );
-        register_group_numeric_overloads(
-            &mut engine,
-            ctx.clone(),
-            "proposal_interval",
-            SpeciesSpec::set_proposal_interval_sec,
-            patch_proposal_interval,
-            None,
+            &[
+                (
+                    "anneal_temp",
+                    SpeciesSpec::set_anneal_temp,
+                    patch_anneal_temp,
+                    None,
+                ),
+                (
+                    "move_cost",
+                    SpeciesSpec::set_move_cost_coeff,
+                    patch_move_cost_coeff,
+                    None,
+                ),
+                (
+                    "move_cost_exp",
+                    SpeciesSpec::set_move_cost_exp,
+                    patch_move_cost_exp,
+                    None,
+                ),
+                (
+                    "improvement_threshold",
+                    SpeciesSpec::set_improvement_threshold,
+                    patch_improvement_threshold,
+                    None,
+                ),
+                (
+                    "proposal_interval",
+                    SpeciesSpec::set_proposal_interval_sec,
+                    patch_proposal_interval,
+                    None,
+                ),
+            ],
         );
         let ctx_for_group_global_peaks = ctx.clone();
         engine.register_fn(
@@ -1226,45 +1148,36 @@ impl ScriptHost {
                 Ok(handle)
             },
         );
-        register_group_numeric_overloads(
+        register_group_numeric_methods(
             &mut engine,
             ctx.clone(),
-            "window_cents",
-            SpeciesSpec::set_window_cents,
-            patch_window_cents,
-            None,
-        );
-        register_group_numeric_overloads(
-            &mut engine,
-            ctx.clone(),
-            "top_k",
-            SpeciesSpec::set_top_k,
-            patch_top_k,
-            None,
-        );
-        register_group_numeric_overloads(
-            &mut engine,
-            ctx.clone(),
-            "temperature",
-            SpeciesSpec::set_temperature,
-            patch_temperature,
-            None,
-        );
-        register_group_numeric_overloads(
-            &mut engine,
-            ctx.clone(),
-            "sigma_cents",
-            SpeciesSpec::set_sigma_cents,
-            patch_sigma_cents,
-            None,
-        );
-        register_group_numeric_overloads(
-            &mut engine,
-            ctx.clone(),
-            "random_candidates",
-            SpeciesSpec::set_random_candidates,
-            patch_random_candidates,
-            None,
+            &[
+                (
+                    "window_cents",
+                    SpeciesSpec::set_window_cents,
+                    patch_window_cents,
+                    None,
+                ),
+                ("top_k", SpeciesSpec::set_top_k, patch_top_k, None),
+                (
+                    "temperature",
+                    SpeciesSpec::set_temperature,
+                    patch_temperature,
+                    None,
+                ),
+                (
+                    "sigma_cents",
+                    SpeciesSpec::set_sigma_cents,
+                    patch_sigma_cents,
+                    None,
+                ),
+                (
+                    "random_candidates",
+                    SpeciesSpec::set_random_candidates,
+                    patch_random_candidates,
+                    None,
+                ),
+            ],
         );
         let ctx_for_group_move_cost_time_scale = ctx.clone();
         engine.register_fn(
@@ -1292,9 +1205,9 @@ impl ScriptHost {
                     }
                 };
                 match group.status {
-                    GroupStatus::Draft => group.spec.control.set_move_cost_time_scale(value),
+                    GroupStatus::Draft => group.spec.control.pitch.set_move_cost_time_scale(value),
                     GroupStatus::Live => {
-                        group.spec.control.set_move_cost_time_scale(value);
+                        group.spec.control.pitch.set_move_cost_time_scale(value);
                         group.pending_patch.move_cost_time_scale = Some(value);
                     }
                     _ => ctx.warn_live_builder(handle.id, "move_cost_time_scale"),
@@ -1348,9 +1261,9 @@ impl ScriptHost {
                     }
                 };
                 match group.status {
-                    GroupStatus::Draft => group.spec.control.set_pitch_apply_mode(mode),
+                    GroupStatus::Draft => group.spec.control.pitch.set_pitch_apply_mode(mode),
                     GroupStatus::Live => {
-                        group.spec.control.set_pitch_apply_mode(mode);
+                        group.spec.control.pitch.set_pitch_apply_mode(mode);
                         group.pending_patch.pitch_apply_mode = Some(mode);
                     }
                     _ => ctx.warn_live_builder(handle.id, "pitch_apply_mode"),
@@ -1358,13 +1271,15 @@ impl ScriptHost {
                 Ok(handle)
             },
         );
-        register_group_numeric_overloads(
+        register_group_numeric_methods(
             &mut engine,
             ctx.clone(),
-            "glide",
-            SpeciesSpec::set_pitch_glide_tau_sec,
-            patch_pitch_glide_tau,
-            None,
+            &[(
+                "glide",
+                SpeciesSpec::set_pitch_glide_tau_sec,
+                patch_pitch_glide_tau,
+                None,
+            )],
         );
         let ctx_for_group_seek_consonance = ctx.clone();
         engine.register_fn(
@@ -1575,29 +1490,19 @@ impl ScriptHost {
             .set_duration_curve(k as f32, x0 as f32));
         register_group_draft_fn1!("shorten_on_drop", ctx, engine, |s, gain: FLOAT| s
             .set_shorten_on_drop(gain as f32));
-        register_group_numeric_overloads(
+        register_group_numeric_methods(
             &mut engine,
             ctx.clone(),
-            "brightness",
-            SpeciesSpec::set_brightness,
-            patch_timbre_brightness,
-            None,
-        );
-        register_group_numeric_overloads(
-            &mut engine,
-            ctx.clone(),
-            "spread",
-            SpeciesSpec::set_spread,
-            patch_timbre_spread,
-            None,
-        );
-        register_group_numeric_overloads(
-            &mut engine,
-            ctx.clone(),
-            "unison",
-            SpeciesSpec::set_unison,
-            patch_timbre_unison,
-            None,
+            &[
+                (
+                    "brightness",
+                    SpeciesSpec::set_brightness,
+                    patch_timbre_brightness,
+                    None,
+                ),
+                ("spread", SpeciesSpec::set_spread, patch_timbre_spread, None),
+                ("unison", SpeciesSpec::set_unison, patch_timbre_unison, None),
+            ],
         );
         let ctx_for_group_modes = ctx.clone();
         engine.register_fn(
@@ -1618,55 +1523,34 @@ impl ScriptHost {
                 Ok(handle)
             },
         );
-        register_group_draft_numeric_overloads(
+        register_group_draft_numeric_methods(
             &mut engine,
             ctx.clone(),
-            "metabolism",
-            SpeciesSpec::set_metabolism,
+            &[
+                ("metabolism", SpeciesSpec::set_metabolism),
+                ("initial_energy", SpeciesSpec::set_initial_energy),
+                ("recharge_rate", SpeciesSpec::set_recharge_rate),
+                ("action_cost", SpeciesSpec::set_action_cost),
+                ("viability_rate", SpeciesSpec::set_viability_rate),
+            ],
         );
-        register_group_draft_numeric_overloads(
+        register_group_draft_pair_numeric_methods(
             &mut engine,
             ctx.clone(),
-            "initial_energy",
-            SpeciesSpec::set_initial_energy,
-        );
-        register_group_draft_numeric_overloads(
-            &mut engine,
-            ctx.clone(),
-            "recharge_rate",
-            SpeciesSpec::set_recharge_rate,
-        );
-        register_group_draft_numeric_overloads(
-            &mut engine,
-            ctx.clone(),
-            "action_cost",
-            SpeciesSpec::set_action_cost,
-        );
-        register_group_draft_numeric_overloads(
-            &mut engine,
-            ctx.clone(),
-            "viability_rate",
-            SpeciesSpec::set_viability_rate,
-        );
-        register_group_draft_pair_numeric_overloads(
-            &mut engine,
-            ctx.clone(),
-            "consonance_viability",
-            SpeciesSpec::set_consonance_viability,
+            &[(
+                "consonance_viability",
+                SpeciesSpec::set_consonance_viability,
+            )],
         );
         register_group_draft_fn1!("viability_scope", ctx, engine, |s, name: &str| s
             .set_viability_scope(name));
-        register_group_draft_numeric_overloads(
+        register_group_draft_numeric_methods(
             &mut engine,
             ctx.clone(),
-            "dissonance_cost",
-            SpeciesSpec::set_dissonance_cost,
-        );
-        register_group_draft_numeric_overloads(
-            &mut engine,
-            ctx.clone(),
-            "energy_cap",
-            SpeciesSpec::set_energy_cap,
+            &[
+                ("dissonance_cost", SpeciesSpec::set_dissonance_cost),
+                ("energy_cap", SpeciesSpec::set_energy_cap),
+            ],
         );
         let ctx_for_group_adsr = ctx.clone();
         engine.register_fn(
@@ -1762,29 +1646,15 @@ impl ScriptHost {
                 Ok(handle)
             },
         );
-        register_group_draft_numeric_overloads(
+        register_group_draft_numeric_methods(
             &mut engine,
             ctx.clone(),
-            "rhythm_freq",
-            SpeciesSpec::set_rhythm_freq,
-        );
-        register_group_draft_numeric_overloads(
-            &mut engine,
-            ctx.clone(),
-            "rhythm_sensitivity",
-            SpeciesSpec::set_rhythm_sensitivity,
-        );
-        register_group_draft_numeric_overloads(
-            &mut engine,
-            ctx.clone(),
-            "k_omega",
-            SpeciesSpec::set_k_omega,
-        );
-        register_group_draft_numeric_overloads(
-            &mut engine,
-            ctx.clone(),
-            "base_sigma",
-            SpeciesSpec::set_base_sigma,
+            &[
+                ("rhythm_freq", SpeciesSpec::set_rhythm_freq),
+                ("rhythm_sensitivity", SpeciesSpec::set_rhythm_sensitivity),
+                ("k_omega", SpeciesSpec::set_k_omega),
+                ("base_sigma", SpeciesSpec::set_base_sigma),
+            ],
         );
         let ctx_for_group_gate_thresholds = ctx.clone();
         engine.register_fn(
@@ -1916,23 +1786,17 @@ impl ScriptHost {
                 Ok(handle)
             },
         );
-        register_group_draft_numeric_overloads(
+        register_group_draft_numeric_methods(
             &mut engine,
             ctx.clone(),
-            "respawn_capacity",
-            SpeciesSpec::set_respawn_capacity,
-        );
-        register_group_draft_numeric_overloads(
-            &mut engine,
-            ctx.clone(),
-            "respawn_min_c_level",
-            SpeciesSpec::set_respawn_min_c_level,
-        );
-        register_group_draft_numeric_overloads(
-            &mut engine,
-            ctx.clone(),
-            "respawn_background_death_rate",
-            SpeciesSpec::set_respawn_background_death_rate,
+            &[
+                ("respawn_capacity", SpeciesSpec::set_respawn_capacity),
+                ("respawn_min_c_level", SpeciesSpec::set_respawn_min_c_level),
+                (
+                    "respawn_background_death_rate",
+                    SpeciesSpec::set_respawn_background_death_rate,
+                ),
+            ],
         );
         let ctx_for_group_respawn_settle_placement = ctx.clone();
         engine.register_fn(

@@ -2,7 +2,7 @@ use std::fmt;
 
 use crate::core::float::sanitize_nonnegative_finite;
 use crate::core::landscape::LandscapeUpdate;
-use crate::life::control::{ControlUpdate, LeaveSelfOutMode, MoveCostTimeScale, VoiceControl};
+use crate::life::control::{ControlUpdate, VoiceControl};
 use crate::life::lifecycle::LifecycleConfig;
 use crate::life::voice::{Voice, VoiceMetadata};
 
@@ -137,7 +137,7 @@ impl Default for TimbreGenotype {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum OnsetConfig {
+pub(crate) enum OnsetConfig {
     None,
     Accumulator { rate: f32, refractory: u32 },
     Flow { mean_rate: f32, depth: f32 },
@@ -153,18 +153,18 @@ impl Default for OnsetConfig {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct SubdivisionClockConfig {
-    pub divisions: Vec<u32>,
+pub(crate) struct SubdivisionClockConfig {
+    pub(crate) divisions: Vec<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct InternalPhaseClockConfig {
-    pub ratio: f32,
-    pub phase0: f32,
+pub(crate) struct InternalPhaseClockConfig {
+    pub(crate) ratio: f32,
+    pub(crate) phase0: f32,
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
-pub enum PhonationClockConfig {
+pub(crate) enum PhonationClockConfig {
     #[default]
     ThetaGate,
     Composite {
@@ -174,7 +174,7 @@ pub enum PhonationClockConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
-pub enum SubThetaModConfig {
+pub(crate) enum SubThetaModConfig {
     #[default]
     None,
     Cosine {
@@ -185,7 +185,7 @@ pub enum SubThetaModConfig {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum DurationConfig {
+pub(crate) enum DurationConfig {
     FixedGate {
         length_gates: u32,
     },
@@ -204,23 +204,6 @@ impl Default for DurationConfig {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct SocialConfig {
-    pub coupling: f32,
-    pub bin_ticks: u32,
-    pub smooth: f32,
-}
-
-impl Default for SocialConfig {
-    fn default() -> Self {
-        Self {
-            coupling: 0.0,
-            bin_ticks: 0,
-            smooth: 0.0,
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PhonationMode {
     #[default]
@@ -229,21 +212,25 @@ pub enum PhonationMode {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct PhonationConfig {
-    pub mode: PhonationMode,
-    pub onset: OnsetConfig,
-    pub duration: DurationConfig,
-    pub clock: PhonationClockConfig,
-    pub sub_theta_mod: SubThetaModConfig,
-    pub social: SocialConfig,
+pub(crate) struct PhonationConfig {
+    pub(crate) mode: PhonationMode,
+    pub(crate) onset: OnsetConfig,
+    pub(crate) duration: DurationConfig,
+    pub(crate) clock: PhonationClockConfig,
+    pub(crate) sub_theta_mod: SubThetaModConfig,
 }
 
 // --- Rhythm intention and phonation specification ---
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
-pub enum RhythmIntent {
+pub enum PhonationTiming {
     #[default]
-    None,
+    Once,
+    Pulse {
+        rate_hz: f32,
+        sync: f32,
+        social: f32,
+    },
     MetricBeat(MetricBeatSpec),
     EntrainedBeat(EntrainedBeatSpec),
     FlowTiming(FlowTimingSpec),
@@ -310,31 +297,36 @@ fn sanitize_positive_rate_hz(rate_hz: f32) -> f32 {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PhonationSpec {
-    pub rhythm: RhythmIntent,
-    pub when: WhenSpec,
+    pub timing: PhonationTiming,
     pub duration: DurationSpec,
 }
 
 impl PhonationSpec {
     pub fn social_coupling(&self) -> f32 {
-        if let RhythmIntent::EntrainedBeat(spec) = self.rhythm {
-            return spec.sanitized().social;
-        }
-        match &self.when {
-            WhenSpec::Pulse { social, .. } => social.clamp(0.0, 1.0),
+        match self.timing {
+            PhonationTiming::EntrainedBeat(spec) => spec.sanitized().social,
+            PhonationTiming::Pulse { social, .. } => social.clamp(0.0, 1.0),
             _ => 0.0,
         }
     }
 
     pub fn prediction_sync(&self) -> f32 {
-        match self.rhythm {
-            RhythmIntent::MetricBeat(spec) => spec.sanitized().accent,
-            RhythmIntent::EntrainedBeat(_) => 0.25,
-            RhythmIntent::FlowTiming(_) => 0.0,
-            RhythmIntent::None => match &self.when {
-                WhenSpec::Pulse { sync, .. } => sync.clamp(0.0, 1.0),
-                _ => 0.0,
-            },
+        match self.timing {
+            PhonationTiming::MetricBeat(spec) => spec.sanitized().accent,
+            PhonationTiming::EntrainedBeat(_) => 0.25,
+            PhonationTiming::FlowTiming(_) => 0.0,
+            PhonationTiming::Pulse { sync, .. } => sync.clamp(0.0, 1.0),
+            PhonationTiming::Once => 0.0,
+        }
+    }
+
+    pub(crate) fn timing_update_kind(&self) -> PhonationTimingUpdateKind {
+        match self.timing {
+            PhonationTiming::Once => PhonationTimingUpdateKind::Once,
+            PhonationTiming::Pulse { .. }
+            | PhonationTiming::MetricBeat(_)
+            | PhonationTiming::EntrainedBeat(_)
+            | PhonationTiming::FlowTiming(_) => PhonationTimingUpdateKind::Repeating,
         }
     }
 }
@@ -342,17 +334,16 @@ impl PhonationSpec {
 impl Default for PhonationSpec {
     fn default() -> Self {
         Self {
-            rhythm: RhythmIntent::None,
-            when: WhenSpec::Once,
+            timing: PhonationTiming::Once,
             duration: DurationSpec::WhileAlive,
         }
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum WhenSpec {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PhonationTimingUpdateKind {
     Once,
-    Pulse { rate: f32, sync: f32, social: f32 },
+    Repeating,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -518,63 +509,6 @@ impl Default for ArticulationCoreConfig {
             base_sigma: None,
             gate_thresholds: None,
             energy_cap: None,
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum PitchCoreConfig {
-    PitchHillClimb {
-        neighbor_step_cents: Option<f32>,
-        tessitura_gravity: Option<f32>,
-        move_cost_coeff: Option<f32>,
-        move_cost_exp: Option<u8>,
-        improvement_threshold: Option<f32>,
-        exploration: Option<f32>,
-        persistence: Option<f32>,
-        leave_self_out: Option<bool>,
-        anneal_temp: Option<f32>,
-        global_peak_count: Option<usize>,
-        global_peak_min_sep_cents: Option<f32>,
-        use_ratio_candidates: Option<bool>,
-        ratio_candidate_count: Option<usize>,
-        move_cost_time_scale: Option<MoveCostTimeScale>,
-        leave_self_out_harmonics: Option<u8>,
-        leave_self_out_mode: Option<LeaveSelfOutMode>,
-    },
-    PitchPeakSampler {
-        neighbor_step_cents: Option<f32>,
-        window_cents: Option<f32>,
-        top_k: Option<usize>,
-        temperature: Option<f32>,
-        sigma_cents: Option<f32>,
-        random_candidates: Option<usize>,
-        tessitura_gravity: Option<f32>,
-        exploration: Option<f32>,
-        persistence: Option<f32>,
-        leave_self_out: Option<bool>,
-    },
-}
-
-impl Default for PitchCoreConfig {
-    fn default() -> Self {
-        PitchCoreConfig::PitchHillClimb {
-            neighbor_step_cents: None,
-            tessitura_gravity: None,
-            move_cost_coeff: None,
-            move_cost_exp: None,
-            improvement_threshold: None,
-            exploration: None,
-            persistence: None,
-            leave_self_out: None,
-            anneal_temp: None,
-            global_peak_count: None,
-            global_peak_min_sep_cents: None,
-            use_ratio_candidates: None,
-            ratio_candidate_count: None,
-            move_cost_time_scale: None,
-            leave_self_out_harmonics: None,
-            leave_self_out_mode: None,
         }
     }
 }

@@ -6,10 +6,10 @@ use serde::Serialize;
 
 use crate::core::landscape::LandscapeFrame;
 use crate::life::population::{RuntimeEvent, SpawnReason};
-use crate::life::scenario::{ScaffoldConfig, SceneMarker};
 use crate::life::telemetry::LifeRecord;
 use crate::life::voice::sound_body::SoundBody;
 use crate::life::voice::{AnyArticulationCore, Voice};
+use crate::scenario::{ScaffoldConfig, SceneMarker};
 
 #[derive(Debug)]
 pub struct JsonlReporter {

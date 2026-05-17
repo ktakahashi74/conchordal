@@ -9,17 +9,18 @@ use tracing::warn;
 use crate::core::landscape::PitchObjectiveMode;
 use crate::core::mode_pattern::ModePattern;
 
-use super::control::{
+use crate::life::control::{
     BodyMethod, ControlUpdate, LeaveSelfOutMode, MoveCostTimeScale, PitchApplyMode, PitchCoreKind,
     PitchMode, Routing, VoiceControl,
 };
-use super::lifecycle::LifecycleConfig;
-use super::scenario::{
+use crate::life::lifecycle::LifecycleConfig;
+use crate::scenario::PhonationTiming;
+use crate::scenario::{
     Action, ArticulationCoreConfig, ControlUpdateMode, DurationSpec, EntrainedBeatSpec,
     EnvelopeConfig, FieldDurationSpec, FlowTimingSpec, GateThresholds, MetabolismRhythmReward,
     MetricBeatSpec, PhonationSpec, RespawnPeakBiasConfig, RespawnPolicy, RhythmCouplingMode,
-    RhythmIntent, RhythmRewardMetric, ScaffoldConfig, Scenario, SceneMarker, SpawnSpec,
-    SpawnStrategy, TimedEvent, WhenSpec,
+    RhythmRewardMetric, ScaffoldConfig, Scenario, SceneMarker, SpawnSpec, SpawnStrategy,
+    TimedEvent,
 };
 
 const DEFAULT_SEQ_DURATION_SEC: f32 = 1.0;
@@ -249,19 +250,19 @@ impl SpeciesSpec {
     }
 
     fn set_freq(&mut self, freq: f32) {
-        self.control.set_freq_lock_clamped(freq);
+        self.control.pitch.set_freq_lock_clamped(freq);
     }
 
     fn set_landscape_weight(&mut self, value: f32) {
-        self.control.set_landscape_weight_clamped(value);
+        self.control.pitch.set_landscape_weight_clamped(value);
     }
 
     fn set_neighbor_step_cents(&mut self, value: f32) {
-        self.control.set_neighbor_step_cents_clamped(value);
+        self.control.pitch.set_neighbor_step_cents_clamped(value);
     }
 
     fn set_tessitura_gravity(&mut self, value: f32) {
-        self.control.set_tessitura_gravity_clamped(value);
+        self.control.pitch.set_tessitura_gravity_clamped(value);
     }
 
     fn set_continuous_drive(&mut self, value: f32) {
@@ -273,21 +274,23 @@ impl SpeciesSpec {
     }
 
     fn set_exploration(&mut self, value: f32) {
-        self.control.set_exploration_clamped(value);
+        self.control.pitch.set_exploration_clamped(value);
     }
 
     fn set_persistence(&mut self, value: f32) {
-        self.control.set_persistence_clamped(value);
+        self.control.pitch.set_persistence_clamped(value);
     }
 
     fn set_crowding(&mut self, strength: f32, sigma_cents: f32) {
-        self.control.set_crowding_strength_clamped(strength);
-        self.control.set_crowding_sigma_cents_clamped(sigma_cents);
+        self.control.pitch.set_crowding_strength_clamped(strength);
+        self.control
+            .pitch
+            .set_crowding_sigma_cents_clamped(sigma_cents);
     }
 
     fn set_crowding_auto_sigma(&mut self, strength: f32) {
-        self.control.set_crowding_strength_clamped(strength);
-        self.control.set_crowding_sigma_from_roughness(true);
+        self.control.pitch.set_crowding_strength_clamped(strength);
+        self.control.pitch.set_crowding_sigma_from_roughness(true);
     }
 
     fn set_routing(&mut self, routing: Routing) {
@@ -300,63 +303,67 @@ impl SpeciesSpec {
     }
 
     fn set_leave_self_out(&mut self, enabled: bool) {
-        self.control.set_leave_self_out(enabled);
+        self.control.pitch.set_leave_self_out(enabled);
     }
 
     fn set_leave_self_out_mode(&mut self, name: &str) {
         let mode = parse_leave_self_out_mode_name(self.control.pitch.leave_self_out_mode, name);
-        self.control.set_leave_self_out_mode(mode);
+        self.control.pitch.set_leave_self_out_mode(mode);
     }
 
     fn set_anneal_temp(&mut self, value: f32) {
-        self.control.set_anneal_temp_clamped(value);
+        self.control.pitch.set_anneal_temp_clamped(value);
     }
 
     fn set_move_cost_coeff(&mut self, value: f32) {
-        self.control.set_move_cost_coeff_clamped(value);
+        self.control.pitch.set_move_cost_coeff_clamped(value);
     }
 
     fn set_move_cost_exp(&mut self, value: f32) {
-        self.control.set_move_cost_exp_clamped(value.round() as i64);
+        self.control
+            .pitch
+            .set_move_cost_exp_clamped(value.round() as i64);
     }
 
     fn set_improvement_threshold(&mut self, value: f32) {
-        self.control.set_improvement_threshold_clamped(value);
+        self.control.pitch.set_improvement_threshold_clamped(value);
     }
 
     fn set_proposal_interval_sec(&mut self, value: f32) {
-        self.control.set_proposal_interval_sec_clamped(value);
+        self.control.pitch.set_proposal_interval_sec_clamped(value);
     }
 
     fn set_global_peaks(&mut self, count: i64, min_sep_cents: f32) {
-        self.control.set_global_peak_count_clamped(count);
+        self.control.pitch.set_global_peak_count_clamped(count);
         self.control
+            .pitch
             .set_global_peak_min_sep_cents_clamped(min_sep_cents);
     }
 
     fn set_ratio_candidates(&mut self, count: i64) {
-        self.control.set_ratio_candidate_count_clamped(count);
-        self.control.set_use_ratio_candidates(count > 0);
+        self.control.pitch.set_ratio_candidate_count_clamped(count);
+        self.control.pitch.set_use_ratio_candidates(count > 0);
     }
 
     fn set_window_cents(&mut self, value: f32) {
-        self.control.set_window_cents_clamped(value);
+        self.control.pitch.set_window_cents_clamped(value);
     }
 
     fn set_top_k(&mut self, value: f32) {
-        self.control.set_top_k_clamped(value.round() as i64);
+        self.control.pitch.set_top_k_clamped(value.round() as i64);
     }
 
     fn set_temperature(&mut self, value: f32) {
-        self.control.set_temperature_clamped(value);
+        self.control.pitch.set_temperature_clamped(value);
     }
 
     fn set_sigma_cents(&mut self, value: f32) {
-        self.control.set_sigma_cents_clamped(value);
+        self.control.pitch.set_sigma_cents_clamped(value);
     }
 
     fn set_random_candidates(&mut self, value: f32) {
         self.control
+            .pitch
             .set_random_candidates_clamped(value.round() as i64);
     }
 
@@ -375,11 +382,13 @@ impl SpeciesSpec {
                 self.control.pitch.move_cost_time_scale
             }
         };
-        self.control.set_move_cost_time_scale(value);
+        self.control.pitch.set_move_cost_time_scale(value);
     }
 
     fn set_leave_self_out_harmonics(&mut self, value: i64) {
-        self.control.set_leave_self_out_harmonics_clamped(value);
+        self.control
+            .pitch
+            .set_leave_self_out_harmonics_clamped(value);
     }
 
     fn set_pitch_apply_mode(&mut self, name: &str) {
@@ -395,18 +404,21 @@ impl SpeciesSpec {
                 self.control.pitch.pitch_apply_mode
             }
         };
-        self.control.set_pitch_apply_mode(mode);
+        self.control.pitch.set_pitch_apply_mode(mode);
     }
 
     fn set_pitch_glide_tau_sec(&mut self, value: f32) {
-        self.control.set_pitch_glide_tau_sec_clamped(value);
+        self.control.pitch.set_pitch_glide_tau_sec_clamped(value);
     }
 
     fn set_consonance_movement(&mut self) {
         self.control.pitch.mode = PitchMode::Free;
         self.control.pitch.core_kind = PitchCoreKind::HillClimb;
-        self.control.set_pitch_apply_mode(PitchApplyMode::Glide);
         self.control
+            .pitch
+            .set_pitch_apply_mode(PitchApplyMode::Glide);
+        self.control
+            .pitch
             .set_pitch_glide_tau_sec_clamped(DEFAULT_CONSONANCE_MOVEMENT_GLIDE_TAU_SEC);
     }
 
@@ -490,9 +502,8 @@ impl SpeciesSpec {
             PhonationKind::Repeat => {
                 self.clear_rhythm_preset_controls();
                 self.phonation_spec = PhonationSpec {
-                    rhythm: RhythmIntent::None,
-                    when: WhenSpec::Pulse {
-                        rate: DEFAULT_PULSE_RATE,
+                    timing: PhonationTiming::Pulse {
+                        rate_hz: DEFAULT_PULSE_RATE,
                         sync: self.pulse_sync_or(DEFAULT_PULSE_SYNC),
                         social: self.social_coupling_or(0.0),
                     },
@@ -512,13 +523,8 @@ impl SpeciesSpec {
         let rate_hz = rate_hz.max(0.01);
         let accent = self.pulse_sync_or(DEFAULT_PULSE_SYNC);
         self.clear_rhythm_preset_controls();
-        self.phonation_spec.rhythm =
-            RhythmIntent::MetricBeat(MetricBeatSpec { rate_hz, accent }.sanitized());
-        self.phonation_spec.when = WhenSpec::Pulse {
-            rate: rate_hz,
-            sync: accent,
-            social: 0.0,
-        };
+        self.phonation_spec.timing =
+            PhonationTiming::MetricBeat(MetricBeatSpec { rate_hz, accent }.sanitized());
         self.ensure_gated_duration(DEFAULT_GATE_COUNT);
         self.rhythm_freq = Some(rate_hz);
     }
@@ -534,12 +540,7 @@ impl SpeciesSpec {
             reward: 0.6,
         }
         .sanitized();
-        self.phonation_spec.rhythm = RhythmIntent::EntrainedBeat(spec);
-        self.phonation_spec.when = WhenSpec::Pulse {
-            rate: spec.rate_hz,
-            sync: 0.0,
-            social: spec.social,
-        };
+        self.phonation_spec.timing = PhonationTiming::EntrainedBeat(spec);
         self.ensure_gated_duration(DEFAULT_GATE_COUNT);
         self.rhythm_freq = Some(spec.rate_hz);
         self.rhythm_coupling = RhythmCouplingMode::TemporalTimesVitality {
@@ -559,36 +560,29 @@ impl SpeciesSpec {
         }
         .sanitized();
         self.clear_rhythm_preset_controls();
-        self.phonation_spec.rhythm = RhythmIntent::FlowTiming(spec);
-        self.phonation_spec.when = WhenSpec::Pulse {
-            rate: spec.mean_rate_hz,
-            sync: 0.0,
-            social: 0.0,
-        };
+        self.phonation_spec.timing = PhonationTiming::FlowTiming(spec);
         self.ensure_gated_duration(1);
     }
 
     fn set_when_once(&mut self) {
         self.clear_rhythm_preset_controls();
-        self.phonation_spec.rhythm = RhythmIntent::None;
-        self.phonation_spec.when = WhenSpec::Once;
+        self.phonation_spec.timing = PhonationTiming::Once;
     }
 
     fn set_when_pulse(&mut self, rate: f32) {
         let rate = rate.max(0.01);
         self.clear_rhythm_preset_controls();
-        self.phonation_spec.rhythm = RhythmIntent::None;
-        match &mut self.phonation_spec.when {
-            WhenSpec::Pulse { rate: r, .. } => *r = rate,
+        match &mut self.phonation_spec.timing {
+            PhonationTiming::Pulse { rate_hz, .. } => *rate_hz = rate,
             _ => {
-                self.phonation_spec.when = WhenSpec::Pulse {
-                    rate,
+                self.phonation_spec.timing = PhonationTiming::Pulse {
+                    rate_hz: rate,
                     sync: self.pulse_sync_or(DEFAULT_PULSE_SYNC),
                     social: self.social_coupling_or(0.0),
                 };
             }
         }
-        if let WhenSpec::Pulse { sync, social, .. } = &mut self.phonation_spec.when {
+        if let PhonationTiming::Pulse { sync, social, .. } = &mut self.phonation_spec.timing {
             if let Some(value) = self.pulse_sync {
                 *sync = value.clamp(0.0, 1.0);
             }
@@ -602,8 +596,7 @@ impl SpeciesSpec {
     fn set_duration_while_alive(&mut self) {
         self.clear_rhythm_preset_controls();
         self.phonation_spec = PhonationSpec {
-            rhythm: RhythmIntent::None,
-            when: WhenSpec::Once,
+            timing: PhonationTiming::Once,
             duration: DurationSpec::WhileAlive,
         };
     }
@@ -619,11 +612,11 @@ impl SpeciesSpec {
     fn set_pulse_lock(&mut self, depth: f32) {
         let depth = depth.clamp(0.0, 1.0);
         self.pulse_sync = Some(depth);
-        if let RhythmIntent::MetricBeat(mut spec) = self.phonation_spec.rhythm {
+        if let PhonationTiming::MetricBeat(mut spec) = self.phonation_spec.timing {
             spec.accent = depth;
-            self.phonation_spec.rhythm = RhythmIntent::MetricBeat(spec);
+            self.phonation_spec.timing = PhonationTiming::MetricBeat(spec);
         }
-        if let WhenSpec::Pulse { sync, .. } = &mut self.phonation_spec.when {
+        if let PhonationTiming::Pulse { sync, .. } = &mut self.phonation_spec.timing {
             *sync = depth;
         }
     }
@@ -635,11 +628,11 @@ impl SpeciesSpec {
     fn set_social(&mut self, coupling: f32) {
         let coupling = coupling.clamp(0.0, 1.0);
         self.social_coupling = Some(coupling);
-        if let RhythmIntent::EntrainedBeat(mut spec) = self.phonation_spec.rhythm {
+        if let PhonationTiming::EntrainedBeat(mut spec) = self.phonation_spec.timing {
             spec.social = coupling;
-            self.phonation_spec.rhythm = RhythmIntent::EntrainedBeat(spec);
+            self.phonation_spec.timing = PhonationTiming::EntrainedBeat(spec);
         }
-        if let WhenSpec::Pulse { social, .. } = &mut self.phonation_spec.when {
+        if let PhonationTiming::Pulse { social, .. } = &mut self.phonation_spec.timing {
             *social = coupling;
         }
     }
@@ -1418,6 +1411,16 @@ type GroupSpecNumericSetter = fn(&mut SpeciesSpec, f32);
 type GroupSpecPairNumericSetter = fn(&mut SpeciesSpec, f32, f32);
 type GroupPatchNumericSetter = fn(&mut ControlUpdate, f32);
 type GroupDraftHook = fn(&mut GroupState);
+type SpeciesNumericMethod = (&'static str, SpeciesNumericSetter);
+type SpeciesPairNumericMethod = (&'static str, SpeciesPairNumericSetter);
+type GroupNumericMethod = (
+    &'static str,
+    GroupSpecNumericSetter,
+    GroupPatchNumericSetter,
+    Option<GroupDraftHook>,
+);
+type GroupDraftNumericMethod = (&'static str, GroupSpecNumericSetter);
+type GroupDraftPairNumericMethod = (&'static str, GroupSpecPairNumericSetter);
 
 fn register_species_numeric_overloads(
     engine: &mut Engine,
@@ -1467,6 +1470,21 @@ fn register_species_pair_numeric_overloads(
             species
         },
     );
+}
+
+fn register_species_numeric_methods(engine: &mut Engine, methods: &[SpeciesNumericMethod]) {
+    for &(name, setter) in methods {
+        register_species_numeric_overloads(engine, name, setter);
+    }
+}
+
+fn register_species_pair_numeric_methods(
+    engine: &mut Engine,
+    methods: &[SpeciesPairNumericMethod],
+) {
+    for &(name, setter) in methods {
+        register_species_pair_numeric_overloads(engine, name, setter);
+    }
 }
 
 fn apply_group_numeric_patch(
@@ -1540,6 +1558,23 @@ fn register_group_numeric_overloads(
     );
 }
 
+fn register_group_numeric_methods(
+    engine: &mut Engine,
+    ctx: Arc<Mutex<ScriptContext>>,
+    methods: &[GroupNumericMethod],
+) {
+    for &(name, spec_setter, patch_setter, draft_hook) in methods {
+        register_group_numeric_overloads(
+            engine,
+            ctx.clone(),
+            name,
+            spec_setter,
+            patch_setter,
+            draft_hook,
+        );
+    }
+}
+
 fn register_group_draft_numeric_overloads(
     engine: &mut Engine,
     ctx: Arc<Mutex<ScriptContext>>,
@@ -1577,6 +1612,16 @@ fn register_group_draft_numeric_overloads(
             Ok(handle)
         },
     );
+}
+
+fn register_group_draft_numeric_methods(
+    engine: &mut Engine,
+    ctx: Arc<Mutex<ScriptContext>>,
+    methods: &[GroupDraftNumericMethod],
+) {
+    for &(name, spec_setter) in methods {
+        register_group_draft_numeric_overloads(engine, ctx.clone(), name, spec_setter);
+    }
 }
 
 fn register_group_draft_pair_numeric_overloads(
@@ -1660,6 +1705,16 @@ fn register_group_draft_pair_numeric_overloads(
             Ok(handle)
         },
     );
+}
+
+fn register_group_draft_pair_numeric_methods(
+    engine: &mut Engine,
+    ctx: Arc<Mutex<ScriptContext>>,
+    methods: &[GroupDraftPairNumericMethod],
+) {
+    for &(name, spec_setter) in methods {
+        register_group_draft_pair_numeric_overloads(engine, ctx.clone(), name, spec_setter);
+    }
 }
 
 fn apply_group_crowding(

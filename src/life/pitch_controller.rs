@@ -57,12 +57,12 @@ impl PitchController {
         self.last_target_salience
     }
 
-    pub fn core_mut(&mut self) -> &mut AnyPitchCore {
-        &mut self.core
-    }
-
     pub fn adaptation_mut(&mut self) -> &mut AdaptationContext {
         &mut self.adaptation
+    }
+
+    pub(crate) fn apply_control(&mut self, pitch: &PitchControl) {
+        self.core.apply_control(pitch);
     }
 
     pub fn set_adaptation_enabled(&mut self, enabled: bool) {

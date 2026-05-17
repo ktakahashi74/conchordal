@@ -3,9 +3,9 @@ use conchordal::core::log2space::Log2Space;
 use conchordal::core::timebase::Timebase;
 use conchordal::life::control::VoiceControl;
 use conchordal::life::population::Population;
-use conchordal::life::scenario::{ArticulationCoreConfig, EnvelopeConfig, VoiceConfig};
 use conchordal::life::voice::VoiceMetadata;
 use conchordal::life::world_model::WorldModel;
+use conchordal::scenario::{ArticulationCoreConfig, EnvelopeConfig, VoiceConfig};
 
 fn test_timebase() -> Timebase {
     Timebase {

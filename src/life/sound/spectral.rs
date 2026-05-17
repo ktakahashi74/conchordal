@@ -1,5 +1,5 @@
 use crate::core::log2space::Log2Space;
-use crate::life::scenario::{HarmonicMode, TimbreGenotype};
+use crate::scenario::{HarmonicMode, TimbreGenotype};
 
 const DARKEST_SPECTRAL_SLOPE: f32 = 1.2;
 const BRIGHTEST_SPECTRAL_SLOPE: f32 = 0.2;

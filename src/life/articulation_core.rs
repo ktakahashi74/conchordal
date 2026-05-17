@@ -6,11 +6,11 @@ use crate::life::articulation_envelope::step_attack_decay_envelope;
 use crate::life::constants::{MAX_COUPLING_MULT, MAX_RECHARGE_MULT};
 use crate::life::lifecycle::LifecycleConfig;
 use crate::life::metabolism_policy::MetabolismPolicy;
-use crate::life::scenario::{
+use crate::life::sound::{AutonomousPulseSpec, RenderModulatorSpec, RenderModulatorStateKind};
+use crate::scenario::{
     ArticulationCoreConfig, MetabolismRhythmReward, PhonationMode, RhythmCouplingMode,
     RhythmRewardMetric,
 };
-use crate::life::sound::{AutonomousPulseSpec, RenderModulatorSpec, RenderModulatorStateKind};
 use rand::{Rng, SeedableRng, rngs::SmallRng};
 use std::f32::consts::{PI, TAU};
 

@@ -5,5 +5,7 @@ pub mod config;
 pub mod core;
 pub mod life;
 pub(crate) mod runtime;
+pub mod scenario;
+pub mod scripting;
 pub(crate) mod synth;
 pub(crate) mod ui;

@@ -9,14 +9,14 @@ use crate::life::phonation_engine::{
     CandidatePoint, OnsetKick, OnsetRule, PhonationClock, ToneCmd,
 };
 use crate::life::population::Population;
-use crate::life::scenario::{
-    Action, ArticulationCoreConfig, DurationSpec, EnvelopeConfig, PhonationSpec, Scenario,
-    SpawnSpec, TimedEvent, VoiceConfig, WhenSpec,
-};
 use crate::life::sound::RenderModulator;
 use crate::life::voice::{
     AnyArticulationCore, ArticulationCore, ArticulationWrapper, PhonationBatch, SoundBody, Voice,
     VoiceMetadata,
+};
+use crate::scenario::{
+    Action, ArticulationCoreConfig, DurationSpec, EnvelopeConfig, PhonationSpec, PhonationTiming,
+    Scenario, SpawnSpec, TimedEvent, VoiceConfig,
 };
 use rand::SeedableRng;
 
@@ -80,7 +80,7 @@ fn sustain_entrain_articulation() -> ArticulationCoreConfig {
         },
         rhythm_freq: Some(4.0),
         rhythm_sensitivity: None,
-        rhythm_coupling: crate::life::scenario::RhythmCouplingMode::TemporalOnly,
+        rhythm_coupling: crate::scenario::RhythmCouplingMode::TemporalOnly,
         rhythm_reward: None,
         breath_gain_init: None,
         k_omega: None,
@@ -138,8 +138,8 @@ fn conductor_dispatches_finish_on_time() {
     };
     let scenario = Scenario {
         seed: 0,
-        control_update_mode: crate::life::scenario::ControlUpdateMode::SnapshotPhased,
-        scaffold: crate::life::scenario::ScaffoldConfig::Off,
+        control_update_mode: crate::scenario::ControlUpdateMode::SnapshotPhased,
+        scaffold: crate::scenario::ScaffoldConfig::Off,
         scene_markers: Vec::new(),
         events: vec![event],
         duration_sec: 2.0,
@@ -195,7 +195,7 @@ fn voice_lifecycle_decay_death() {
             },
             rhythm_freq: None,
             rhythm_sensitivity: None,
-            rhythm_coupling: crate::life::scenario::RhythmCouplingMode::TemporalOnly,
+            rhythm_coupling: crate::scenario::RhythmCouplingMode::TemporalOnly,
             rhythm_reward: None,
             breath_gain_init: None,
             k_omega: None,
@@ -532,9 +532,8 @@ fn remove_pending_still_emits_note_offs() {
     let mut control = VoiceControl::default();
     control.pitch.freq = 220.0;
     control.phonation.spec = PhonationSpec {
-        rhythm: Default::default(),
-        when: WhenSpec::Pulse {
-            rate: 4.0,
+        timing: PhonationTiming::Pulse {
+            rate_hz: 4.0,
             sync: 0.0,
             social: 0.0,
         },
@@ -601,8 +600,7 @@ fn tick_phonation_into_gated_bridges_each_onset_to_body_articulation() {
     let mut control = VoiceControl::default();
     control.pitch.freq = 220.0;
     control.phonation.spec = PhonationSpec {
-        rhythm: Default::default(),
-        when: WhenSpec::Once,
+        timing: PhonationTiming::Once,
         duration: DurationSpec::Gates(1),
     };
     let cfg = VoiceConfig {
@@ -681,8 +679,7 @@ fn hold_mode_renderer_still_pulses_after_render_clone_removal() {
     let mut control = VoiceControl::default();
     control.pitch.freq = 220.0;
     control.phonation.spec = PhonationSpec {
-        rhythm: Default::default(),
-        when: WhenSpec::Once,
+        timing: PhonationTiming::Once,
         duration: DurationSpec::WhileAlive,
     };
     let cfg = VoiceConfig {
@@ -735,8 +732,7 @@ fn hold_note_emits_target_amp_update_when_authority_amp_changes() {
     let mut control = VoiceControl::default();
     control.pitch.freq = 220.0;
     control.phonation.spec = PhonationSpec {
-        rhythm: Default::default(),
-        when: WhenSpec::Once,
+        timing: PhonationTiming::Once,
         duration: DurationSpec::WhileAlive,
     };
     let cfg = VoiceConfig {
@@ -805,8 +801,7 @@ fn hold_note_does_not_emit_update_below_amp_threshold() {
     let mut control = VoiceControl::default();
     control.pitch.freq = 220.0;
     control.phonation.spec = PhonationSpec {
-        rhythm: Default::default(),
-        when: WhenSpec::Once,
+        timing: PhonationTiming::Once,
         duration: DurationSpec::WhileAlive,
     };
     let cfg = VoiceConfig {
@@ -869,8 +864,7 @@ fn tracked_note_is_removed_after_note_off_for_future_hops() {
     let mut control = VoiceControl::default();
     control.pitch.freq = 220.0;
     control.phonation.spec = PhonationSpec {
-        rhythm: Default::default(),
-        when: WhenSpec::Once,
+        timing: PhonationTiming::Once,
         duration: DurationSpec::WhileAlive,
     };
     let cfg = VoiceConfig {
@@ -948,9 +942,8 @@ fn render_modulator_snapshot_is_finite() {
     let mut control = VoiceControl::default();
     control.pitch.freq = 220.0;
     control.phonation.spec = PhonationSpec {
-        rhythm: Default::default(),
-        when: WhenSpec::Pulse {
-            rate: 4.0,
+        timing: PhonationTiming::Pulse {
+            rate_hz: 4.0,
             sync: 0.0,
             social: 0.0,
         },
@@ -1025,7 +1018,7 @@ fn articulation_snapshot_kuramoto_decay_signature() {
         },
         rhythm_freq: Some(6.0),
         rhythm_sensitivity: None,
-        rhythm_coupling: crate::life::scenario::RhythmCouplingMode::TemporalOnly,
+        rhythm_coupling: crate::scenario::RhythmCouplingMode::TemporalOnly,
         rhythm_reward: None,
         breath_gain_init: None,
         k_omega: None,

@@ -5,8 +5,7 @@ use crate::core::landscape::Landscape;
 use crate::core::psycho_state::{normalize_density, roughness_ratio_to_state01};
 use crate::core::roughness_kernel::{RoughnessKernel, crowding_runtime_delta_erb, erb_grid};
 use crate::life::adaptation::{AdaptationContext, FeaturesNow};
-use crate::life::control::{LeaveSelfOutMode, MoveCostTimeScale};
-use crate::life::scenario::PitchCoreConfig;
+use crate::life::control::{LeaveSelfOutMode, MoveCostTimeScale, PitchControl, PitchCoreKind};
 use rand::Rng;
 use std::sync::OnceLock;
 
@@ -1626,277 +1625,107 @@ impl PitchCore for AnyPitchCore {
 }
 
 impl AnyPitchCore {
-    pub fn from_config<R: Rng + ?Sized>(
-        config: &PitchCoreConfig,
-        initial_pitch_log2: f32,
-        _rng: &mut R,
-    ) -> Self {
-        match config {
-            PitchCoreConfig::PitchHillClimb {
-                neighbor_step_cents,
-                tessitura_gravity,
-                move_cost_coeff,
-                move_cost_exp,
-                improvement_threshold,
-                exploration,
-                persistence,
-                leave_self_out,
-                anneal_temp,
-                global_peak_count,
-                global_peak_min_sep_cents,
-                use_ratio_candidates,
-                ratio_candidate_count,
-                move_cost_time_scale,
-                leave_self_out_harmonics,
-                leave_self_out_mode,
-            } => {
-                let neighbor_step_cents = neighbor_step_cents.unwrap_or(200.0);
-                let tessitura_gravity = tessitura_gravity.unwrap_or(0.1);
-                let move_cost_coeff = move_cost_coeff.unwrap_or(DEFAULT_MOVE_COST_COEFF);
-                let move_cost_exp = move_cost_exp.unwrap_or(DEFAULT_MOVE_COST_EXP);
-                let improvement_threshold = improvement_threshold.unwrap_or(0.1);
-                let exploration = exploration.unwrap_or(0.0);
-                let persistence = persistence.unwrap_or(0.5);
-                let leave_self_out = leave_self_out.unwrap_or(false);
-                let anneal_temp = anneal_temp.unwrap_or(0.0);
-                let global_peak_count = global_peak_count.unwrap_or(DEFAULT_GLOBAL_PEAK_COUNT);
-                let global_peak_min_sep_cents =
-                    global_peak_min_sep_cents.unwrap_or(DEFAULT_GLOBAL_PEAK_MIN_SEP_CENTS);
-                let use_ratio_candidates = use_ratio_candidates.unwrap_or(false);
-                let ratio_candidate_count =
-                    ratio_candidate_count.unwrap_or(DEFAULT_RUNTIME_RATIO_CANDIDATE_COUNT);
-                let move_cost_time_scale =
-                    move_cost_time_scale.unwrap_or(MoveCostTimeScale::LegacyIntegrationWindow);
-                let leave_self_out_harmonics =
-                    leave_self_out_harmonics.unwrap_or(DEFAULT_LOO_HARMONICS);
-                let leave_self_out_mode =
-                    leave_self_out_mode.unwrap_or(LeaveSelfOutMode::ApproxHarmonics);
-                let mut core = PitchHillClimbPitchCore::new(
-                    neighbor_step_cents,
+    pub(crate) fn from_control(pitch: &PitchControl, initial_pitch_log2: f32) -> Self {
+        let mut core = match pitch.core_kind {
+            PitchCoreKind::HillClimb => AnyPitchCore::PitchHillClimb(PitchHillClimbPitchCore::new(
+                pitch.neighbor_step_cents.unwrap_or(200.0),
+                initial_pitch_log2,
+                pitch.resolved_tessitura_gravity(),
+                pitch.improvement_threshold,
+                pitch.exploration,
+                pitch.persistence,
+            )),
+            PitchCoreKind::PeakSampler => {
+                AnyPitchCore::PitchPeakSampler(PitchPeakSamplerCore::new(
+                    pitch.neighbor_step_cents.unwrap_or(160.0),
                     initial_pitch_log2,
-                    tessitura_gravity,
-                    improvement_threshold,
-                    exploration,
-                    persistence,
-                );
-                core.set_move_cost_coeff(move_cost_coeff);
-                core.set_move_cost_exp(move_cost_exp);
-                core.set_leave_self_out(leave_self_out);
-                core.set_anneal_temp(anneal_temp);
-                core.set_global_peaks(global_peak_count, global_peak_min_sep_cents);
-                core.set_ratio_candidates(use_ratio_candidates, ratio_candidate_count);
-                core.set_move_cost_time_scale(move_cost_time_scale);
-                core.set_leave_self_out_harmonics(leave_self_out_harmonics);
-                core.set_leave_self_out_mode(leave_self_out_mode);
-                AnyPitchCore::PitchHillClimb(core)
+                    pitch.resolved_tessitura_gravity(),
+                    pitch.window_cents.unwrap_or(DEFAULT_LOCAL_WINDOW_CENTS),
+                    pitch.top_k.unwrap_or(DEFAULT_LOCAL_TOP_K),
+                    pitch.temperature.unwrap_or(0.08),
+                    pitch.sigma_cents.unwrap_or(DEFAULT_RANDOM_SIGMA_CENTS),
+                    pitch.random_candidates.unwrap_or(DEFAULT_RANDOM_CANDIDATES),
+                    pitch.exploration,
+                    pitch.persistence,
+                ))
             }
-            PitchCoreConfig::PitchPeakSampler {
-                neighbor_step_cents,
-                window_cents,
-                top_k,
-                temperature,
-                sigma_cents,
-                random_candidates,
-                tessitura_gravity,
-                exploration,
-                persistence,
-                leave_self_out,
-            } => {
-                let neighbor_step_cents = neighbor_step_cents.unwrap_or(160.0);
-                let window_cents_opt = *window_cents;
-                let top_k_opt = *top_k;
-                let temperature_opt = *temperature;
-                let sigma_cents_opt = *sigma_cents;
-                let random_candidates_opt = *random_candidates;
-                let window_cents = window_cents_opt.unwrap_or(DEFAULT_LOCAL_WINDOW_CENTS);
-                let top_k = top_k_opt.unwrap_or(DEFAULT_LOCAL_TOP_K);
-                let temperature = temperature_opt.unwrap_or(0.08);
-                let sigma_cents = sigma_cents_opt.unwrap_or(DEFAULT_RANDOM_SIGMA_CENTS);
-                let random_candidates = random_candidates_opt.unwrap_or(DEFAULT_RANDOM_CANDIDATES);
-                let tessitura_gravity = tessitura_gravity.unwrap_or(0.1);
-                let exploration = exploration.unwrap_or(0.2);
-                let persistence = persistence.unwrap_or(0.35);
-                let mut core = PitchPeakSamplerCore::new(
-                    neighbor_step_cents,
-                    initial_pitch_log2,
-                    tessitura_gravity,
-                    window_cents,
-                    top_k,
-                    temperature,
-                    sigma_cents,
-                    random_candidates,
-                    exploration,
-                    persistence,
-                );
-                core.set_leave_self_out(leave_self_out.unwrap_or(false));
-                if let Some(window_cents) = window_cents_opt {
-                    core.set_window_cents(window_cents);
-                }
-                if let Some(top_k) = top_k_opt {
-                    core.set_top_k(top_k);
-                }
-                if let Some(temperature) = temperature_opt {
-                    core.set_temperature(temperature);
-                }
-                if let Some(sigma_cents) = sigma_cents_opt {
-                    core.set_sigma_cents(sigma_cents);
-                }
-                if let Some(random_candidates) = random_candidates_opt {
-                    core.set_random_candidates(random_candidates);
-                }
-                AnyPitchCore::PitchPeakSampler(core)
-            }
-        }
+        };
+        core.apply_control(pitch);
+        core
     }
 
-    pub fn set_exploration(&mut self, value: f32) {
+    pub(crate) fn apply_control(&mut self, pitch: &PitchControl) {
         match self {
-            AnyPitchCore::PitchHillClimb(core) => core.set_exploration(value),
-            AnyPitchCore::PitchPeakSampler(core) => core.set_exploration(value),
+            AnyPitchCore::PitchHillClimb(core) => apply_hill_climb_control(core, pitch),
+            AnyPitchCore::PitchPeakSampler(core) => apply_peak_sampler_control(core, pitch),
         }
     }
 
-    pub fn set_neighbor_step_cents(&mut self, value: f32) {
-        match self {
-            AnyPitchCore::PitchHillClimb(core) => core.set_neighbor_step_cents(value),
-            AnyPitchCore::PitchPeakSampler(core) => core.set_neighbor_step_cents(value),
-        }
-    }
-
-    pub fn set_persistence(&mut self, value: f32) {
-        match self {
-            AnyPitchCore::PitchHillClimb(core) => core.set_persistence(value),
-            AnyPitchCore::PitchPeakSampler(core) => core.set_persistence(value),
-        }
-    }
-
-    pub fn set_crowding(&mut self, strength: f32, sigma_cents: f32, sigma_from_roughness: bool) {
-        match self {
-            AnyPitchCore::PitchHillClimb(core) => {
-                core.set_crowding(strength, sigma_cents, sigma_from_roughness)
-            }
-            AnyPitchCore::PitchPeakSampler(core) => {
-                core.set_crowding(strength, sigma_cents, sigma_from_roughness)
-            }
-        }
-    }
-
-    pub fn set_leave_self_out(&mut self, enabled: bool) {
-        match self {
-            AnyPitchCore::PitchHillClimb(core) => core.set_leave_self_out(enabled),
-            AnyPitchCore::PitchPeakSampler(core) => core.set_leave_self_out(enabled),
-        }
-    }
-
-    pub fn set_leave_self_out_mode(&mut self, mode: LeaveSelfOutMode) {
-        if let AnyPitchCore::PitchHillClimb(core) = self {
-            core.set_leave_self_out_mode(mode);
-        }
-    }
-
-    pub fn set_anneal_temp(&mut self, value: f32) {
-        if let AnyPitchCore::PitchHillClimb(core) = self {
-            core.set_anneal_temp(value);
-        }
-    }
-
-    pub fn set_move_cost_coeff(&mut self, value: f32) {
-        if let AnyPitchCore::PitchHillClimb(core) = self {
-            core.set_move_cost_coeff(value);
-        }
-    }
-
-    pub fn set_move_cost_exp(&mut self, value: u8) {
-        if let AnyPitchCore::PitchHillClimb(core) = self {
-            core.set_move_cost_exp(value);
-        }
-    }
-
-    pub fn set_improvement_threshold(&mut self, value: f32) {
-        if let AnyPitchCore::PitchHillClimb(core) = self {
-            core.set_improvement_threshold(value);
-        }
-    }
-
-    pub fn set_move_cost_time_scale(&mut self, value: MoveCostTimeScale) {
-        if let AnyPitchCore::PitchHillClimb(core) = self {
-            core.set_move_cost_time_scale(value);
-        }
-    }
-
-    pub fn set_proposal_interval_sec(&mut self, value: Option<f32>) {
+    pub(crate) fn set_proposal_interval_sec(&mut self, value: Option<f32>) {
         if let AnyPitchCore::PitchHillClimb(core) = self {
             core.set_proposal_interval_sec(value);
         }
     }
+}
 
-    pub fn set_global_peaks(&mut self, count: usize, min_sep_cents: f32) {
-        if let AnyPitchCore::PitchHillClimb(core) = self {
-            core.set_global_peaks(count, min_sep_cents);
-        }
+fn apply_hill_climb_control(core: &mut PitchHillClimbPitchCore, pitch: &PitchControl) {
+    core.set_tessitura_center(pitch.freq.max(1.0).log2());
+    core.set_tessitura_gravity(pitch.resolved_tessitura_gravity());
+    core.set_landscape_weight(pitch.landscape_weight);
+    core.set_exploration(pitch.exploration);
+    core.set_persistence(pitch.persistence);
+    core.set_crowding(
+        pitch.crowding_strength,
+        pitch.crowding_sigma_cents,
+        pitch.crowding_sigma_from_roughness,
+    );
+    core.set_leave_self_out(pitch.leave_self_out);
+    core.set_leave_self_out_mode(pitch.leave_self_out_mode);
+    if let Some(cents) = pitch.neighbor_step_cents {
+        core.set_neighbor_step_cents(cents);
     }
-
-    pub fn set_ratio_candidates(&mut self, enabled: bool, count: usize) {
-        if let AnyPitchCore::PitchHillClimb(core) = self {
-            core.set_ratio_candidates(enabled, count);
-        }
+    core.set_anneal_temp(pitch.anneal_temp);
+    core.set_move_cost_coeff(pitch.move_cost_coeff);
+    if let Some(exp) = pitch.move_cost_exp {
+        core.set_move_cost_exp(exp);
     }
+    core.set_improvement_threshold(pitch.improvement_threshold);
+    core.set_global_peaks(pitch.global_peak_count, pitch.global_peak_min_sep_cents);
+    core.set_ratio_candidates(pitch.use_ratio_candidates, pitch.ratio_candidate_count);
+    core.set_move_cost_time_scale(pitch.move_cost_time_scale);
+    core.set_leave_self_out_harmonics(pitch.leave_self_out_harmonics);
+    core.set_proposal_interval_sec(pitch.proposal_interval_sec);
+}
 
-    pub fn set_leave_self_out_harmonics(&mut self, harmonics: u8) {
-        if let AnyPitchCore::PitchHillClimb(core) = self {
-            core.set_leave_self_out_harmonics(harmonics);
-        }
+fn apply_peak_sampler_control(core: &mut PitchPeakSamplerCore, pitch: &PitchControl) {
+    core.set_tessitura_center(pitch.freq.max(1.0).log2());
+    core.set_tessitura_gravity(pitch.resolved_tessitura_gravity());
+    core.set_landscape_weight(pitch.landscape_weight);
+    core.set_exploration(pitch.exploration);
+    core.set_persistence(pitch.persistence);
+    core.set_crowding(
+        pitch.crowding_strength,
+        pitch.crowding_sigma_cents,
+        pitch.crowding_sigma_from_roughness,
+    );
+    core.set_leave_self_out(pitch.leave_self_out);
+    if let Some(cents) = pitch.neighbor_step_cents {
+        core.set_neighbor_step_cents(cents);
     }
-
-    pub fn set_window_cents(&mut self, value: f32) {
-        if let AnyPitchCore::PitchPeakSampler(core) = self {
-            core.set_window_cents(value);
-        }
+    if let Some(cents) = pitch.window_cents {
+        core.set_window_cents(cents);
     }
-
-    pub fn set_top_k(&mut self, value: usize) {
-        if let AnyPitchCore::PitchPeakSampler(core) = self {
-            core.set_top_k(value);
-        }
+    if let Some(top_k) = pitch.top_k {
+        core.set_top_k(top_k);
     }
-
-    pub fn set_temperature(&mut self, value: f32) {
-        if let AnyPitchCore::PitchPeakSampler(core) = self {
-            core.set_temperature(value);
-        }
+    if let Some(temperature) = pitch.temperature {
+        core.set_temperature(temperature);
     }
-
-    pub fn set_sigma_cents(&mut self, value: f32) {
-        if let AnyPitchCore::PitchPeakSampler(core) = self {
-            core.set_sigma_cents(value);
-        }
+    if let Some(cents) = pitch.sigma_cents {
+        core.set_sigma_cents(cents);
     }
-
-    pub fn set_random_candidates(&mut self, value: usize) {
-        if let AnyPitchCore::PitchPeakSampler(core) = self {
-            core.set_random_candidates(value);
-        }
-    }
-
-    pub fn set_tessitura_center(&mut self, value: f32) {
-        match self {
-            AnyPitchCore::PitchHillClimb(core) => core.set_tessitura_center(value),
-            AnyPitchCore::PitchPeakSampler(core) => core.set_tessitura_center(value),
-        }
-    }
-
-    pub fn set_tessitura_gravity(&mut self, value: f32) {
-        match self {
-            AnyPitchCore::PitchHillClimb(core) => core.set_tessitura_gravity(value),
-            AnyPitchCore::PitchPeakSampler(core) => core.set_tessitura_gravity(value),
-        }
-    }
-
-    pub fn set_landscape_weight(&mut self, value: f32) {
-        match self {
-            AnyPitchCore::PitchHillClimb(core) => core.set_landscape_weight(value),
-            AnyPitchCore::PitchPeakSampler(core) => core.set_landscape_weight(value),
-        }
+    if let Some(count) = pitch.random_candidates {
+        core.set_random_candidates(count);
     }
 }
 

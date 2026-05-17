@@ -216,7 +216,7 @@ impl MetabolismPolicy {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::life::scenario::EnvelopeConfig;
+    use crate::scenario::EnvelopeConfig;
 
     fn approx_eq(a: f32, b: f32) {
         assert!((a - b).abs() < 1e-6, "expected {b}, got {a}");

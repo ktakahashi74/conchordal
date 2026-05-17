@@ -3,12 +3,12 @@ use conchordal::core::log2space::Log2Space;
 use conchordal::core::timebase::{Tick, Timebase};
 use conchordal::life::control::VoiceControl;
 use conchordal::life::population::Population;
-use conchordal::life::scenario::{
-    ArticulationCoreConfig, DurationSpec, PhonationSpec, VoiceConfig, WhenSpec,
-};
 use conchordal::life::schedule_renderer::ScheduleRenderer;
 use conchordal::life::voice::VoiceMetadata;
 use conchordal::life::world_model::WorldModel;
+use conchordal::scenario::{
+    ArticulationCoreConfig, DurationSpec, PhonationSpec, PhonationTiming, VoiceConfig,
+};
 
 #[test]
 fn agents_publish_notes_and_render_audio() {
@@ -23,9 +23,8 @@ fn agents_publish_notes_and_render_audio() {
     control.pitch.freq = 440.0;
     control.body.amp = 0.4;
     control.phonation.spec = PhonationSpec {
-        rhythm: Default::default(),
-        when: WhenSpec::Pulse {
-            rate: 3.3,
+        timing: PhonationTiming::Pulse {
+            rate_hz: 3.3,
             sync: 0.0,
             social: 0.0,
         },
@@ -84,9 +83,8 @@ fn publish_notes_runs_when_gate_in_hop_window() {
     control.pitch.freq = 440.0;
     control.body.amp = 0.4;
     control.phonation.spec = PhonationSpec {
-        rhythm: Default::default(),
-        when: WhenSpec::Pulse {
-            rate: 3.3,
+        timing: PhonationTiming::Pulse {
+            rate_hz: 3.3,
             sync: 0.0,
             social: 0.0,
         },

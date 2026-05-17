@@ -5,17 +5,14 @@ use crate::core::timebase::{Tick, Timebase};
 use crate::life::control::{
     BodyControl, BodyMethod, ControlUpdate, PitchApplyMode, PitchMode, VoiceControl,
 };
-use crate::life::control_adapters::{
-    adaptation_config_from_control, pitch_core_config_from_control, tessitura_gravity_from_control,
-};
+use crate::life::control_adapters::adaptation_config_from_control;
 use crate::life::lifecycle::LifecycleConfig;
 use crate::life::phonation_engine::{
     CoreState, CoreTickCtx, OnsetEvent, PhonationEngine, ToneCmd, ToneId, ToneOnEvent, ToneUpdate,
 };
-use crate::life::scenario::WhenSpec;
-use crate::life::scenario::{ArticulationCoreConfig, PhonationMode};
 use crate::life::social_density::SocialDensityTrace;
 use crate::life::sound::{BodySnapshot, RenderModulatorSpec};
+use crate::scenario::{ArticulationCoreConfig, PhonationMode, PhonationTimingUpdateKind};
 use rand::SeedableRng;
 
 #[path = "articulation_core.rs"]
@@ -52,7 +49,7 @@ pub struct Voice {
     pub id: u64,
     pub metadata: VoiceMetadata,
     fixed_body_method: BodyMethod,
-    fixed_phonation_when: std::mem::Discriminant<WhenSpec>,
+    fixed_phonation_timing: PhonationTimingUpdateKind,
     pub base_control: VoiceControl,
     pub effective_control: VoiceControl,
     pub articulation: ArticulationWrapper,
@@ -233,8 +230,7 @@ impl Voice {
         let phonation_engine = PhonationEngine::from_spec(&effective_control.phonation.spec, seed);
         let social_coupling = effective_control.phonation.spec.social_coupling();
 
-        let pitch_config = pitch_core_config_from_control(&effective_control.pitch);
-        let pitch = AnyPitchCore::from_config(&pitch_config, target_pitch_log2, &mut rng);
+        let pitch = AnyPitchCore::from_control(&effective_control.pitch, target_pitch_log2);
         let adaptation_config = adaptation_config_from_control(&effective_control.adaptation);
         let adaptation =
             crate::life::adaptation::AdaptationContext::from_config(&adaptation_config, 0);
@@ -254,73 +250,6 @@ impl Voice {
             integration_window,
             rng,
         );
-        pitch_ctl
-            .core_mut()
-            .set_landscape_weight(effective_control.pitch.landscape_weight);
-        pitch_ctl
-            .core_mut()
-            .set_exploration(effective_control.pitch.exploration);
-        pitch_ctl
-            .core_mut()
-            .set_persistence(effective_control.pitch.persistence);
-        pitch_ctl.core_mut().set_crowding(
-            effective_control.pitch.crowding_strength,
-            effective_control.pitch.crowding_sigma_cents,
-            effective_control.pitch.crowding_sigma_from_roughness,
-        );
-        pitch_ctl
-            .core_mut()
-            .set_leave_self_out(effective_control.pitch.leave_self_out);
-        pitch_ctl
-            .core_mut()
-            .set_leave_self_out_mode(effective_control.pitch.leave_self_out_mode);
-        if let Some(cents) = effective_control.pitch.neighbor_step_cents {
-            pitch_ctl.core_mut().set_neighbor_step_cents(cents);
-        }
-        pitch_ctl
-            .core_mut()
-            .set_anneal_temp(effective_control.pitch.anneal_temp);
-        pitch_ctl
-            .core_mut()
-            .set_move_cost_coeff(effective_control.pitch.move_cost_coeff);
-        if let Some(exp) = effective_control.pitch.move_cost_exp {
-            pitch_ctl.core_mut().set_move_cost_exp(exp);
-        }
-        pitch_ctl
-            .core_mut()
-            .set_improvement_threshold(effective_control.pitch.improvement_threshold);
-        pitch_ctl.core_mut().set_global_peaks(
-            effective_control.pitch.global_peak_count,
-            effective_control.pitch.global_peak_min_sep_cents,
-        );
-        pitch_ctl.core_mut().set_ratio_candidates(
-            effective_control.pitch.use_ratio_candidates,
-            effective_control.pitch.ratio_candidate_count,
-        );
-        pitch_ctl
-            .core_mut()
-            .set_move_cost_time_scale(effective_control.pitch.move_cost_time_scale);
-        pitch_ctl
-            .core_mut()
-            .set_leave_self_out_harmonics(effective_control.pitch.leave_self_out_harmonics);
-        pitch_ctl
-            .core_mut()
-            .set_proposal_interval_sec(effective_control.pitch.proposal_interval_sec);
-        if let Some(cents) = effective_control.pitch.window_cents {
-            pitch_ctl.core_mut().set_window_cents(cents);
-        }
-        if let Some(top_k) = effective_control.pitch.top_k {
-            pitch_ctl.core_mut().set_top_k(top_k);
-        }
-        if let Some(temperature) = effective_control.pitch.temperature {
-            pitch_ctl.core_mut().set_temperature(temperature);
-        }
-        if let Some(cents) = effective_control.pitch.sigma_cents {
-            pitch_ctl.core_mut().set_sigma_cents(cents);
-        }
-        if let Some(count) = effective_control.pitch.random_candidates {
-            pitch_ctl.core_mut().set_random_candidates(count);
-        }
         pitch_ctl.set_adaptation_enabled(effective_control.adaptation.enabled);
 
         let body_envelope = &effective_control.body.envelope;
@@ -369,7 +298,7 @@ impl Voice {
             id: assigned_id,
             metadata,
             fixed_body_method: effective_control.body.method,
-            fixed_phonation_when: std::mem::discriminant(&effective_control.phonation.spec.when),
+            fixed_phonation_timing: effective_control.phonation.spec.timing_update_kind(),
             base_control: control,
             effective_control,
             articulation: ArticulationWrapper::new(
@@ -426,52 +355,7 @@ impl Voice {
 
     fn apply_pitch_control(&mut self) {
         let pitch = &self.effective_control.pitch;
-        let center_log2 = pitch.freq.max(1.0).log2();
-        let gravity = pitch
-            .tessitura_gravity
-            .unwrap_or_else(|| tessitura_gravity_from_control(pitch.gravity));
-        let core = self.pitch_ctl.core_mut();
-        core.set_tessitura_center(center_log2);
-        core.set_tessitura_gravity(gravity);
-        if let Some(cents) = pitch.neighbor_step_cents {
-            core.set_neighbor_step_cents(cents);
-        }
-        core.set_landscape_weight(pitch.landscape_weight);
-        core.set_exploration(pitch.exploration);
-        core.set_persistence(pitch.persistence);
-        core.set_crowding(
-            pitch.crowding_strength,
-            pitch.crowding_sigma_cents,
-            pitch.crowding_sigma_from_roughness,
-        );
-        core.set_leave_self_out(pitch.leave_self_out);
-        core.set_leave_self_out_mode(pitch.leave_self_out_mode);
-        core.set_anneal_temp(pitch.anneal_temp);
-        core.set_move_cost_coeff(pitch.move_cost_coeff);
-        if let Some(exp) = pitch.move_cost_exp {
-            core.set_move_cost_exp(exp);
-        }
-        core.set_improvement_threshold(pitch.improvement_threshold);
-        core.set_global_peaks(pitch.global_peak_count, pitch.global_peak_min_sep_cents);
-        core.set_ratio_candidates(pitch.use_ratio_candidates, pitch.ratio_candidate_count);
-        if let Some(cents) = pitch.window_cents {
-            core.set_window_cents(cents);
-        }
-        if let Some(top_k) = pitch.top_k {
-            core.set_top_k(top_k);
-        }
-        if let Some(temperature) = pitch.temperature {
-            core.set_temperature(temperature);
-        }
-        if let Some(cents) = pitch.sigma_cents {
-            core.set_sigma_cents(cents);
-        }
-        if let Some(count) = pitch.random_candidates {
-            core.set_random_candidates(count);
-        }
-        core.set_move_cost_time_scale(pitch.move_cost_time_scale);
-        core.set_leave_self_out_harmonics(pitch.leave_self_out_harmonics);
-        core.set_proposal_interval_sec(pitch.proposal_interval_sec);
+        self.pitch_ctl.apply_control(pitch);
     }
 
     fn apply_phonation_control(&mut self) {
@@ -502,10 +386,10 @@ impl Voice {
 
     fn ensure_fixed_kinds(&self, control: &VoiceControl) -> Result<(), String> {
         if control.body.method != self.fixed_body_method
-            || std::mem::discriminant(&control.phonation.spec.when) != self.fixed_phonation_when
+            || control.phonation.spec.timing_update_kind() != self.fixed_phonation_timing
         {
             return Err(
-                "update cannot change body.method or phonation.when kind; use spawn() for type selection"
+                "update cannot change body.method or phonation timing kind; use spawn() for type selection"
                     .to_string(),
             );
         }
@@ -584,10 +468,6 @@ impl Voice {
         self.body.set_pitch_log2(log_freq);
         self.articulation.set_gate(1.0);
         self.pitch_ctl.force_set_target_pitch_log2(log_freq);
-    }
-
-    pub fn set_neighbor_step_cents(&mut self, value: f32) {
-        self.pitch_ctl.core_mut().set_neighbor_step_cents(value);
     }
 
     /// Update pitch targets at control rate (hop-sized steps).

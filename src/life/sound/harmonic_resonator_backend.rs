@@ -1,6 +1,5 @@
 use crate::core::log2space::Log2Space;
 use crate::core::mode_pattern::DEFAULT_MODE_COUNT;
-use crate::life::scenario::TimbreGenotype;
 use crate::life::sound::BodySnapshot;
 use crate::life::sound::control::ToneControlBlock;
 use crate::life::sound::modal_engine::ModalMode;
@@ -12,6 +11,7 @@ use crate::life::sound::spectral::{
     add_log2_energy, harmonic_gain, harmonic_ratio, spectral_slope_from_brightness,
 };
 use crate::life::voice::ArticulationSignal;
+use crate::scenario::TimbreGenotype;
 use crate::synth::SynthError;
 use crate::synth::modes::ModeParams;
 use crate::synth::resonator::ResonatorBank;

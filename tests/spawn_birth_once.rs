@@ -3,10 +3,10 @@ use conchordal::core::log2space::Log2Space;
 use conchordal::core::timebase::{Tick, Timebase};
 use conchordal::life::control::VoiceControl;
 use conchordal::life::population::Population;
-use conchordal::life::scenario::{ArticulationCoreConfig, VoiceConfig};
 use conchordal::life::schedule_renderer::ScheduleRenderer;
 use conchordal::life::voice::VoiceMetadata;
 use conchordal::life::world_model::WorldModel;
+use conchordal::scenario::{ArticulationCoreConfig, VoiceConfig};
 
 fn test_timebase() -> Timebase {
     Timebase {

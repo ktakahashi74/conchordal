@@ -2,9 +2,9 @@ use super::*;
 use crate::core::landscape::LandscapeFrame;
 use crate::core::timebase::Timebase;
 use crate::life::population::Population;
-use crate::life::scenario::{DurationSpec, RhythmCouplingMode, RhythmIntent, WhenSpec};
 use crate::life::voice::AnyArticulationCore;
 use crate::life::voice::sound_body::SoundBody;
+use crate::scenario::{DurationSpec, PhonationTiming, RhythmCouplingMode};
 use rand::SeedableRng;
 use std::collections::HashMap;
 
@@ -2019,7 +2019,7 @@ fn metric_and_pulse_tuning_are_order_independent() {
         ),
     ] {
         let spawn = first_spawn_spec_for_script(script);
-        let RhythmIntent::MetricBeat(spec) = spawn.control.phonation.spec.rhythm else {
+        let PhonationTiming::MetricBeat(spec) = spawn.control.phonation.spec.timing else {
             panic!("{label}: expected metric beat intent");
         };
         assert!((spec.rate_hz - 2.0).abs() <= 1e-6, "{label}");
@@ -2043,10 +2043,11 @@ fn metric_and_pulse_tuning_are_order_independent() {
         ),
     ] {
         let spawn = first_spawn_spec_for_script(script);
-        let WhenSpec::Pulse { rate, sync, .. } = &spawn.control.phonation.spec.when else {
+        let PhonationTiming::Pulse { rate_hz, sync, .. } = &spawn.control.phonation.spec.timing
+        else {
             panic!("{label}: expected pulse timing");
         };
-        assert!((*rate - 2.0).abs() <= 1e-6, "{label}");
+        assert!((*rate_hz - 2.0).abs() <= 1e-6, "{label}");
         assert!((*sync - 0.35).abs() <= 1e-6, "{label}");
         assert!(
             matches!(
@@ -2111,7 +2112,7 @@ fn entrained_beat_sets_defaults_and_accepts_prior_social_tuning() {
             flush();
         "#,
     );
-    let RhythmIntent::EntrainedBeat(spec) = spawn.control.phonation.spec.rhythm else {
+    let PhonationTiming::EntrainedBeat(spec) = spawn.control.phonation.spec.timing else {
         panic!("expected entrained beat intent");
     };
     assert!((spec.rate_hz - 2.0).abs() <= 1e-6);
@@ -2138,7 +2139,7 @@ fn entrained_beat_sets_defaults_and_accepts_prior_social_tuning() {
             flush();
         "#,
     );
-    let RhythmIntent::EntrainedBeat(tuned_spec) = tuned.control.phonation.spec.rhythm else {
+    let PhonationTiming::EntrainedBeat(tuned_spec) = tuned.control.phonation.spec.timing else {
         panic!("expected entrained beat intent");
     };
     assert!((tuned_spec.rate_hz - 2.0).abs() <= 1e-6);
@@ -2154,10 +2155,9 @@ fn while_alive_and_beat_modes_are_last_write_wins() {
         "#,
     );
     assert!(matches!(
-        hold.control.phonation.spec.rhythm,
-        RhythmIntent::None
+        hold.control.phonation.spec.timing,
+        PhonationTiming::Once
     ));
-    assert!(matches!(hold.control.phonation.spec.when, WhenSpec::Once));
     assert!(matches!(
         hold.control.phonation.spec.duration,
         DurationSpec::WhileAlive
@@ -2182,8 +2182,8 @@ fn while_alive_and_beat_modes_are_last_write_wins() {
         "#,
     );
     assert!(matches!(
-        beat.control.phonation.spec.rhythm,
-        RhythmIntent::MetricBeat(_)
+        beat.control.phonation.spec.timing,
+        PhonationTiming::MetricBeat(_)
     ));
     assert!(matches!(
         beat.control.phonation.spec.duration,
@@ -2209,7 +2209,7 @@ fn flow_timing_sets_flow_intent() {
         })
         .expect("spawn action");
 
-    let RhythmIntent::FlowTiming(spec) = spawn.control.phonation.spec.rhythm else {
+    let PhonationTiming::FlowTiming(spec) = spawn.control.phonation.spec.timing else {
         panic!("expected flow timing intent");
     };
     assert!((spec.mean_rate_hz - 3.0).abs() <= 1e-6);

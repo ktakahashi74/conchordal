@@ -8,7 +8,7 @@ let pulse_hz = 2.0;
 
 let field_anchor = harmonic()
     .brain("drone")
-    .send(field)
+    .send(field_bus)
     .amp(0.055)
     .sustain()
     .pitch_mode("lock")
@@ -21,7 +21,7 @@ let clock_voice = sine()
     .amp(0.030)
     .repeat()
     .pulse(pulse_hz)
-    .gates(1)
+    .cycles(1)
     .pitch_mode("lock")
     .adsr(0.01, 0.08, 0.55, 0.18);
 
@@ -29,7 +29,7 @@ let follower = harmonic()
     .amp(0.050)
     .repeat()
     .pulse(pulse_hz)
-    .gates(3)
+    .cycles(3)
     .rhythm_freq(pulse_hz)
     .rhythm_coupling_vitality(0.85, 0.35)
     .rhythm_reward(0.70, "attack_phase_match")
@@ -66,7 +66,7 @@ section("Pulse Foundation", || {
             .amp(0.034)
             .pulse(pulse_hz * 1.5)
             .rhythm_freq(pulse_hz * 1.5)
-            .gates(2), density(220.0, 1320.0).spacing(0.7).count(5,));
+            .cycles(2), density(220.0, 1320.0).spacing(0.7).count(5,));
     wait(10.0);
 
     release(cross_pulse);

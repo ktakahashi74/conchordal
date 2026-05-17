@@ -4,15 +4,15 @@
 module static;
 
 // Built-in buses (registered as module constants).
-const field: Bus;
-const presentation: Bus;
+const field_bus: Bus;
+const presentation_bus: Bus;
 
-fn accent(arg0: Material, arg1: f64) -> Material;
-fn accent(arg0: Participant, arg1: f64) -> Participant;
 fn action_cost(arg0: Material, arg1: f64) -> Material;
 fn action_cost(arg0: Material, arg1: i64) -> Material;
 fn action_cost(arg0: Participant, arg1: f64) -> Participant;
 fn action_cost(arg0: Participant, arg1: i64) -> Participant;
+fn adaptive_duration(arg0: Material) -> Material;
+fn adaptive_duration(arg0: Participant) -> Participant;
 fn adsr(arg0: Material, arg1: f64, arg2: f64, arg3: f64, arg4: f64) -> Material;
 fn adsr(arg0: Participant, arg1: f64, arg2: f64, arg3: f64, arg4: f64) -> Participant;
 fn amp(arg0: Material, arg1: f64) -> Material;
@@ -41,6 +41,8 @@ fn base_sigma(arg0: Material, arg1: f64) -> Material;
 fn base_sigma(arg0: Material, arg1: i64) -> Material;
 fn base_sigma(arg0: Participant, arg1: f64) -> Participant;
 fn base_sigma(arg0: Participant, arg1: i64) -> Participant;
+fn beat_strength(arg0: Material, arg1: f64) -> Material;
+fn beat_strength(arg0: Participant, arg1: f64) -> Participant;
 fn brain(arg0: Material, arg1: String) -> Material;
 fn brain(arg0: Participant, arg1: String) -> Participant;
 fn brightness(arg0: Material, arg1: f64) -> Material;
@@ -60,6 +62,8 @@ fn count(arg0: Placement, arg1: i64) -> Placement;
 fn crowding_target(arg0: Material, arg1: bool, arg2: bool) -> Material;
 fn crowding_target(arg0: Participant, arg1: bool, arg2: bool) -> Participant;
 fn custom_modes(arg0: [?]) -> ModePattern;
+fn cycles(arg0: Material, arg1: i64) -> Material;
+fn cycles(arg0: Participant, arg1: i64) -> Participant;
 fn density(arg0: f64, arg1: f64) -> Placement;
 fn density(arg0: f64, arg1: i64) -> Placement;
 fn density(arg0: i64, arg1: f64) -> Placement;
@@ -68,6 +72,10 @@ fn dissonance_cost(arg0: Material, arg1: f64) -> Material;
 fn dissonance_cost(arg0: Material, arg1: i64) -> Material;
 fn dissonance_cost(arg0: Participant, arg1: f64) -> Participant;
 fn dissonance_cost(arg0: Participant, arg1: i64) -> Participant;
+fn duration_curve(arg0: Material, arg1: f64, arg2: f64) -> Material;
+fn duration_curve(arg0: Participant, arg1: f64, arg2: f64) -> Participant;
+fn duration_range(arg0: Material, arg1: f64, arg2: f64) -> Material;
+fn duration_range(arg0: Participant, arg1: f64, arg2: f64) -> Participant;
 fn energy_cap(arg0: Material, arg1: f64) -> Material;
 fn energy_cap(arg0: Material, arg1: i64) -> Material;
 fn energy_cap(arg0: Participant, arg1: f64) -> Participant;
@@ -77,14 +85,6 @@ fn exploration(arg0: Material, arg1: f64) -> Material;
 fn exploration(arg0: Material, arg1: i64) -> Material;
 fn exploration(arg0: Participant, arg1: f64) -> Participant;
 fn exploration(arg0: Participant, arg1: i64) -> Participant;
-fn field(arg0: Material) -> Material;
-fn field(arg0: Participant) -> Participant;
-fn field_curve(arg0: Material, arg1: f64, arg2: f64) -> Material;
-fn field_curve(arg0: Participant, arg1: f64, arg2: f64) -> Participant;
-fn field_drop(arg0: Material, arg1: f64) -> Material;
-fn field_drop(arg0: Participant, arg1: f64) -> Participant;
-fn field_window(arg0: Material, arg1: f64, arg2: f64) -> Material;
-fn field_window(arg0: Participant, arg1: f64, arg2: f64) -> Participant;
 fn flow_timing(arg0: Material, arg1: f64) -> Material;
 fn flow_timing(arg0: Material, arg1: f64, arg2: f64) -> Material;
 fn flush();
@@ -99,8 +99,6 @@ fn gate_thresholds(arg0: Material, arg1: f64, arg2: i64) -> Material;
 fn gate_thresholds(arg0: Material, arg1: i64, arg2: f64) -> Material;
 fn gate_thresholds(arg0: Material, arg1: i64, arg2: i64) -> Material;
 fn gate_thresholds(arg0: Participant, arg1: f64, arg2: f64, arg3: f64, arg4: f64) -> Participant;
-fn gates(arg0: Material, arg1: i64) -> Material;
-fn gates(arg0: Participant, arg1: i64) -> Participant;
 fn glide(arg0: Material, arg1: f64) -> Material;
 fn glide(arg0: Material, arg1: i64) -> Material;
 fn glide(arg0: Participant, arg1: f64) -> Participant;
@@ -201,6 +199,8 @@ fn proposal_interval(arg0: Participant, arg1: f64) -> Participant;
 fn proposal_interval(arg0: Participant, arg1: i64) -> Participant;
 fn pulse(arg0: Material, arg1: f64) -> Material;
 fn pulse(arg0: Participant, arg1: f64) -> Participant;
+fn pulse_lock(arg0: Material, arg1: f64) -> Material;
+fn pulse_lock(arg0: Participant, arg1: f64) -> Participant;
 fn random(arg0: f64, arg1: f64) -> Placement;
 fn random(arg0: f64, arg1: i64) -> Placement;
 fn random(arg0: i64, arg1: f64) -> Placement;
@@ -281,6 +281,8 @@ fn set_scaffold_scrambled(arg0: f64, arg1: i64);
 fn set_scaffold_scrambled(arg0: i64, arg1: i64);
 fn set_scaffold_shared(arg0: f64);
 fn set_scaffold_shared(arg0: i64);
+fn shorten_on_drop(arg0: Material, arg1: f64) -> Material;
+fn shorten_on_drop(arg0: Participant, arg1: f64) -> Participant;
 fn sigma_cents(arg0: Material, arg1: f64) -> Material;
 fn sigma_cents(arg0: Material, arg1: i64) -> Material;
 fn sigma_cents(arg0: Participant, arg1: f64) -> Participant;
@@ -336,8 +338,6 @@ fn window_cents(arg0: Participant, arg1: f64) -> Participant;
 fn window_cents(arg0: Participant, arg1: i64) -> Participant;
 
 // Skipped (reserved keyword or non-identifier function name):
-// - sync(_: Material, _: f64) -> Material
-// - sync(_: Participant, _: f64) -> core::result::Result<conchordal::life::scripting::GroupHandle,alloc::boxed::Box<rhai::types::error::EvalAltResult>>
 // - |(_: Bus, _: Bus) -> BusSet
 // - |(_: Bus, _: BusSet) -> BusSet
 // - |(_: BusSet, _: Bus) -> BusSet

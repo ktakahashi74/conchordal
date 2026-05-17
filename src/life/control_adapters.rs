@@ -164,7 +164,7 @@ pub(crate) fn phonation_config_from_spec(spec: &PhonationSpec) -> PhonationConfi
                 sub_theta_mod: SubThetaModConfig::None,
                 social: SocialConfig::default(),
             },
-            // once() + gates(n) / field(): fire immediately, never repeat.
+            // once() + cycles(n) / adaptive_duration(): fire immediately, never repeat.
             _ => PhonationConfig {
                 mode: PhonationMode::Gated,
                 onset: OnsetConfig::Accumulator {

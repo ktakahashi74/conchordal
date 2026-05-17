@@ -14,7 +14,7 @@ let anchor_sustain_level = 0.97;
 let anchor_release_sec = 0.320;
 
 let voice_pulse_hz = 2.0;
-let voice_gates = 3;
+let voice_cycles = 3;
 let voice_attack_sec = 0.060;
 let voice_decay_sec = 0.150;
 let voice_sustain_level = 0.96;
@@ -22,7 +22,7 @@ let voice_release_sec = 0.900;
 
 let anchor = harmonic()
     .brain("drone")
-    .send(field)
+    .send(field_bus)
     .amp(0.05)
     .sustain()
     .pitch_mode("lock")
@@ -52,7 +52,7 @@ let assay_voice = harmonic()
     .rhythm_coupling_vitality(0.8, 0.4)
     .rhythm_reward(2.0, "attack_phase_match")
     .pulse(voice_pulse_hz)
-    .gates(voice_gates)
+    .cycles(voice_cycles)
     .respawn_consonance()
     .respawn_capacity(12)
     .adsr(

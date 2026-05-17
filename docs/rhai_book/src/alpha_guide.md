@@ -89,7 +89,7 @@ The new entry points are `metric_beat(rate_hz)`, `entrained_beat(rate_hz)`,
 and `flow_timing(mean_rate_hz[, depth])`.
 
 The current low-level tools remain useful while this is designed. Use
-`repeat()`, `pulse(freq_hz)`, and `gates(n)` for explicit attacks. Use
+`repeat()`, `pulse(freq_hz)`, and `cycles(n)` for explicit attacks. Use
 `rhythm_coupling_vitality(lambda_v, v_floor)` and
 `rhythm_reward(rho_t, "attack_phase_match")` when timing should affect survival
 and reorganization.

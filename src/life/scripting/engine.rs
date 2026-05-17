@@ -13,8 +13,8 @@ impl ScriptHost {
         engine.register_type_with_name::<ModePattern>("ModePattern");
 
         let mut builtins = rhai::Module::new();
-        builtins.set_var("field", Bus::field());
-        builtins.set_var("presentation", Bus::presentation());
+        builtins.set_var("field_bus", Bus::field());
+        builtins.set_var("presentation_bus", Bus::presentation());
         engine.register_global_module(builtins.into());
 
         engine.register_fn("sine", || SpeciesHandle {
@@ -301,45 +301,51 @@ impl ScriptHost {
             species.spec.set_duration_while_alive();
             species
         });
-        engine.register_fn("gates", |mut species: SpeciesHandle, n: INT| {
-            species.spec.set_duration_gates(n.max(1) as u32);
+        engine.register_fn("cycles", |mut species: SpeciesHandle, n: INT| {
+            species.spec.set_duration_cycles(n.max(1) as u32);
             species
         });
-        engine.register_fn("field", |mut species: SpeciesHandle| {
-            species.spec.set_duration_field();
+        engine.register_fn("adaptive_duration", |mut species: SpeciesHandle| {
+            species.spec.set_adaptive_duration();
             species
         });
         // Tier 3: expert tuning
-        engine.register_fn("sync", |mut species: SpeciesHandle, depth: FLOAT| {
-            species.spec.set_sync(depth as f32);
+        engine.register_fn("pulse_lock", |mut species: SpeciesHandle, depth: FLOAT| {
+            species.spec.set_pulse_lock(depth as f32);
             species
         });
-        engine.register_fn("accent", |mut species: SpeciesHandle, depth: FLOAT| {
-            species.spec.set_accent(depth as f32);
-            species
-        });
+        engine.register_fn(
+            "beat_strength",
+            |mut species: SpeciesHandle, depth: FLOAT| {
+                species.spec.set_beat_strength(depth as f32);
+                species
+            },
+        );
         engine.register_fn("social", |mut species: SpeciesHandle, coupling: FLOAT| {
             species.spec.set_social(coupling as f32);
             species
         });
         engine.register_fn(
-            "field_window",
+            "duration_range",
             |mut species: SpeciesHandle, min: FLOAT, max: FLOAT| {
-                species.spec.set_field_window(min as f32, max as f32);
+                species.spec.set_duration_range(min as f32, max as f32);
                 species
             },
         );
         engine.register_fn(
-            "field_curve",
+            "duration_curve",
             |mut species: SpeciesHandle, k: FLOAT, x0: FLOAT| {
-                species.spec.set_field_curve(k as f32, x0 as f32);
+                species.spec.set_duration_curve(k as f32, x0 as f32);
                 species
             },
         );
-        engine.register_fn("field_drop", |mut species: SpeciesHandle, gain: FLOAT| {
-            species.spec.set_field_drop(gain as f32);
-            species
-        });
+        engine.register_fn(
+            "shorten_on_drop",
+            |mut species: SpeciesHandle, gain: FLOAT| {
+                species.spec.set_shorten_on_drop(gain as f32);
+                species
+            },
+        );
         register_species_numeric_overloads(&mut engine, "brightness", SpeciesSpec::set_brightness);
         register_species_numeric_overloads(&mut engine, "spread", SpeciesSpec::set_spread);
         register_species_numeric_overloads(&mut engine, "unison", SpeciesSpec::set_unison);
@@ -1549,21 +1555,26 @@ impl ScriptHost {
         register_group_draft_fn1!("pulse", ctx, engine, |s, rate: FLOAT| s
             .set_when_pulse(rate as f32));
         register_group_draft_fn!("while_alive", ctx, engine, |s| s.set_duration_while_alive());
-        register_group_draft_fn1!("gates", ctx, engine, |s, n: INT| s
-            .set_duration_gates(n.max(1) as u32));
-        register_group_draft_fn!("field", ctx, engine, |s| s.set_duration_field());
-        register_group_draft_fn1!("sync", ctx, engine, |s, depth: FLOAT| s
-            .set_sync(depth as f32));
-        register_group_draft_fn1!("accent", ctx, engine, |s, depth: FLOAT| s
-            .set_accent(depth as f32));
+        register_group_draft_fn1!("cycles", ctx, engine, |s, n: INT| s
+            .set_duration_cycles(n.max(1) as u32));
+        register_group_draft_fn!("adaptive_duration", ctx, engine, |s| s
+            .set_adaptive_duration());
+        register_group_draft_fn1!("pulse_lock", ctx, engine, |s, depth: FLOAT| s
+            .set_pulse_lock(depth as f32));
+        register_group_draft_fn1!("beat_strength", ctx, engine, |s, depth: FLOAT| s
+            .set_beat_strength(depth as f32));
         register_group_draft_fn1!("social", ctx, engine, |s, coupling: FLOAT| s
             .set_social(coupling as f32));
-        register_group_draft_fn2!("field_window", ctx, engine, |s, min: FLOAT, max: FLOAT| s
-            .set_field_window(min as f32, max as f32));
-        register_group_draft_fn2!("field_curve", ctx, engine, |s, k: FLOAT, x0: FLOAT| s
-            .set_field_curve(k as f32, x0 as f32));
-        register_group_draft_fn1!("field_drop", ctx, engine, |s, gain: FLOAT| s
-            .set_field_drop(gain as f32));
+        register_group_draft_fn2!(
+            "duration_range",
+            ctx,
+            engine,
+            |s, min: FLOAT, max: FLOAT| s.set_duration_range(min as f32, max as f32)
+        );
+        register_group_draft_fn2!("duration_curve", ctx, engine, |s, k: FLOAT, x0: FLOAT| s
+            .set_duration_curve(k as f32, x0 as f32));
+        register_group_draft_fn1!("shorten_on_drop", ctx, engine, |s, gain: FLOAT| s
+            .set_shorten_on_drop(gain as f32));
         register_group_numeric_overloads(
             &mut engine,
             ctx.clone(),

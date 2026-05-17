@@ -23,7 +23,7 @@ let voice_energy_cap = 0.20;
 
 let anchor = harmonic()
     .brain("drone")
-    .send(field)
+    .send(field_bus)
     .amp(0.05)
     .sustain()
     .pitch_mode("lock")

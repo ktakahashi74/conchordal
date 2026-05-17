@@ -12,7 +12,7 @@ function list, see the [API Reference](reference/life.md).
 Conchordal ships a Rhai LSP definition file describing the entire scripting
 surface. Hooking your editor up to it gives you completion, hover, go-to-def,
 and inline diagnostics for every conchordal function — `place`, `harmonic`,
-`.brain()`, `.send(field)`, and so on.
+`.brain()`, `.send(field_bus)`, and so on.
 
 The two files that drive this are committed at the repo root:
 
@@ -206,7 +206,7 @@ let ecology = harmonic()
     .amp(0.04)
     .repeat()
     .pulse(1.5)
-    .gates(3)
+    .cycles(3)
     .seek_consonance()
     .glide(0.45)
     .initial_energy(0.7)
@@ -240,16 +240,16 @@ The new entry points name the musical timing intent directly:
 ```ts
 let beat = harmonic()
     .metric_beat(2.0)
-    .accent(0.7)
-    .gates(2);
+    .beat_strength(0.7)
+    .cycles(2);
 
 let entrained = harmonic()
     .entrained_beat(2.0)
-    .gates(2);
+    .cycles(2);
 
 let flow = harmonic()
     .flow_timing(3.0, 0.7)
-    .gates(1);
+    .cycles(1);
 ```
 
 The current low-level tools remain useful for mechanism-level scripts:
@@ -258,7 +258,7 @@ The current low-level tools remain useful for mechanism-level scripts:
 let pulse_voice = harmonic()
     .repeat()
     .pulse(2.0)
-    .gates(2)
+    .cycles(2)
     .rhythm_freq(2.0)
     .rhythm_coupling_vitality(0.8, 0.4)
     .rhythm_reward(0.4, "attack_phase_match");

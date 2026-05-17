@@ -160,27 +160,34 @@ Phonation is configured in three tiers of increasing detail.
 |--------|-------------|
 | `once()` | Single trigger |
 | `pulse(rate_hz)` | Pulse at given rate |
-| `while_alive()` | Duration: while voice alive |
-| `gates(n)` | Duration: n theta gates |
-| `field()` | Duration: field-based |
+| `while_alive()` | Hold/sustain until release |
+| `cycles(n)` | Duration: n rhythm cycles |
+| `adaptive_duration()` | Duration follows field support |
 
 **Tier 3 -- Expert tuning:**
 
 | Method | Description |
 |--------|-------------|
-| `accent(depth)` | Metric accent depth 0--1 (requires `metric_beat` or `pulse`) |
-| `sync(depth)` | Legacy low-level name for phase weighting; use `accent` in new scripts |
-| `social(coupling)` | Social coupling 0--1 (requires `pulse`) |
-| `field_window(min, max)` | Field theta window 0--1 (requires `field`) |
-| `field_curve(k, x0)` | Field curve parameters (requires `field`) |
-| `field_drop(gain)` | Field drop gain (requires `field`) |
+| `beat_strength(depth)` | Metric/pulse phase strength 0--1 |
+| `pulse_lock(depth)` | Low-level pulse phase weighting 0--1 |
+| `social(coupling)` | Social coupling for `entrained_beat` or `pulse`, 0--1 |
+| `duration_range(min, max)` | Adaptive duration range in rhythm cycles |
+| `duration_curve(k, x0)` | Adaptive duration curve parameters |
+| `shorten_on_drop(gain)` | Shorten adaptive duration when field support drops |
+
+Calls on the same axis are last-write-wins: the last timing mode and the last
+duration mode determine the final behavior. Tuning calls are remembered and
+applied when their matching mode is selected, so
+`beat_strength(0.7).metric_beat(2.0)` and
+`metric_beat(2.0).beat_strength(0.7)` are equivalent. The same applies to
+`duration_range(...).adaptive_duration()` and the reverse order.
 
 ```ts
-let beat = derive(harmonic).metric_beat(2.0).accent(0.7).gates(2);
-let entrained = derive(harmonic).entrained_beat(2.0).gates(2);
-let flow = derive(harmonic).flow_timing(3.0, 0.7).gates(1);
-let pulsed = derive(harmonic).repeat().pulse(3.0).accent(0.6).social(0.3);
-let fielded = derive(sine).field().field_window(0.2, 0.8);
+let beat = derive(harmonic).metric_beat(2.0).beat_strength(0.7).cycles(2);
+let entrained = derive(harmonic).entrained_beat(2.0).cycles(2);
+let flow = derive(harmonic).flow_timing(3.0, 0.7).cycles(1);
+let pulsed = derive(harmonic).repeat().pulse(3.0).pulse_lock(0.6).social(0.3);
+let fielded = derive(sine).adaptive_duration().duration_range(0.2, 0.8);
 ```
 
 ### Routing
@@ -190,19 +197,21 @@ Each voice contributes to two independent mono buses:
 - **presentation bus** -> cpal output / wav / UI metering (the work as presented)
 - **field bus** -> NSGT analysis -> landscape (what the ALIFE ecology responds to)
 
-By default both buses receive the voice. Opt out per axis:
+By default both buses receive the voice. Use `send()` when a voice should feed
+only one side, or combine buses with `|`.
 
 | Method | Effect |
 |--------|--------|
-| `field_only()` | Voice bypasses the presentation bus; still contributes to the field. |
-| `presentation_only()` | Voice bypasses the field bus; still contributes to the presented sound. |
+| `send(field_bus)` | Voice bypasses the presentation bus; still contributes to the field. |
+| `send(presentation_bus)` | Voice bypasses the field bus; still contributes to the presented sound. |
+| `send(field_bus | presentation_bus)` | Voice contributes to both buses. |
 
 ```ts
 // Reference anchor: sensed by the ecology, absent from the presented sound.
-let anchor = derive(harmonic).brain("drone").field_only();
+let anchor = harmonic().brain("drone").send(field_bus);
 
 // Presented decor that does not influence the ecology.
-let decor = derive(sine).presentation_only();
+let decor = sine().send(presentation_bus);
 ```
 
 ### Lifecycle
@@ -425,8 +434,8 @@ Group methods work in two contexts:
 
 `brain`, `consonance_movement`, `pitch_mode`, `pitch_core`, `sustain`,
 `repeat`, `once`, `metric_beat`, `entrained_beat`, `flow_timing`, `pulse`,
-`while_alive`, `gates`, `field`, `accent`, `sync`, `social`, `field_window`,
-`field_curve`, `field_drop`, `metabolism`,
+`while_alive`, `cycles`, `adaptive_duration`, `beat_strength`, `pulse_lock`,
+`social`, `duration_range`, `duration_curve`, `shorten_on_drop`, `metabolism`,
 `initial_energy`, `recharge_rate`, `action_cost`, `viability_rate`,
 `consonance_viability`, `viability_scope`, `dissonance_cost`,
 `energy_cap`, `adsr`, `rhythm_coupling`, `rhythm_coupling_vitality`,
@@ -570,7 +579,7 @@ let voice = derive(harmonic)
     .viability_rate(0.2)
     .consonance_viability(0.3, 0.8)
     .adsr(0.05, 0.1, 0.7, 0.3)
-    .repeat().pulse(2.25).accent(0.5);
+    .repeat().pulse(2.25).pulse_lock(0.5);
 
 scene("Opening", || {
     // Anchor drone

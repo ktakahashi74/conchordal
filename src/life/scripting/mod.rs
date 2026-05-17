@@ -83,6 +83,9 @@ struct SpeciesSpec {
     crowding_target_other: bool,
     brain: BrainKind,
     phonation_spec: PhonationSpec,
+    field_duration_spec: FieldDurationSpec,
+    pulse_sync: Option<f32>,
+    social_coupling: Option<f32>,
     metabolism_rate: Option<f32>,
     initial_energy: Option<f32>,
     recharge_rate: Option<f32>,
@@ -119,6 +122,9 @@ impl SpeciesSpec {
             crowding_target_other: false,
             brain: BrainKind::Entrain,
             phonation_spec: PhonationSpec::default(),
+            field_duration_spec: FieldDurationSpec::default(),
+            pulse_sync: None,
+            social_coupling: None,
             metabolism_rate: None,
             initial_energy: None,
             recharge_rate: None,
@@ -142,6 +148,26 @@ impl SpeciesSpec {
 
     fn release_sec(&self) -> f32 {
         self.control.body.envelope.release_sec.max(0.0)
+    }
+
+    fn pulse_sync_or(&self, default: f32) -> f32 {
+        self.pulse_sync.unwrap_or(default).clamp(0.0, 1.0)
+    }
+
+    fn social_coupling_or(&self, default: f32) -> f32 {
+        self.social_coupling.unwrap_or(default).clamp(0.0, 1.0)
+    }
+
+    fn apply_field_duration_spec(&mut self) {
+        if let DurationSpec::Field(field) = &mut self.phonation_spec.duration {
+            *field = self.field_duration_spec.clone();
+        }
+    }
+
+    fn clear_rhythm_preset_controls(&mut self) {
+        self.rhythm_freq = None;
+        self.rhythm_coupling = RhythmCouplingMode::TemporalOnly;
+        self.rhythm_reward = None;
     }
 
     fn lifecycle_envelope(&self) -> EnvelopeConfig {
@@ -459,18 +485,21 @@ impl SpeciesSpec {
     }
 
     fn set_phonation(&mut self, kind: PhonationKind) {
-        self.phonation_spec = match kind {
-            PhonationKind::Sustain => PhonationSpec::default(),
-            PhonationKind::Repeat => PhonationSpec {
-                rhythm: RhythmIntent::None,
-                when: WhenSpec::Pulse {
-                    rate: DEFAULT_PULSE_RATE,
-                    sync: DEFAULT_PULSE_SYNC,
-                    social: 0.0,
-                },
-                duration: DurationSpec::Gates(DEFAULT_GATE_COUNT),
-            },
-        };
+        match kind {
+            PhonationKind::Sustain => self.set_duration_while_alive(),
+            PhonationKind::Repeat => {
+                self.clear_rhythm_preset_controls();
+                self.phonation_spec = PhonationSpec {
+                    rhythm: RhythmIntent::None,
+                    when: WhenSpec::Pulse {
+                        rate: DEFAULT_PULSE_RATE,
+                        sync: self.pulse_sync_or(DEFAULT_PULSE_SYNC),
+                        social: self.social_coupling_or(0.0),
+                    },
+                    duration: DurationSpec::Gates(DEFAULT_GATE_COUNT),
+                };
+            }
+        }
     }
 
     fn ensure_gated_duration(&mut self, default_gates: u32) {
@@ -481,7 +510,8 @@ impl SpeciesSpec {
 
     fn set_metric_beat(&mut self, rate_hz: f32) {
         let rate_hz = rate_hz.max(0.01);
-        let accent = DEFAULT_PULSE_SYNC;
+        let accent = self.pulse_sync_or(DEFAULT_PULSE_SYNC);
+        self.clear_rhythm_preset_controls();
         self.phonation_spec.rhythm =
             RhythmIntent::MetricBeat(MetricBeatSpec { rate_hz, accent }.sanitized());
         self.phonation_spec.when = WhenSpec::Pulse {
@@ -495,9 +525,10 @@ impl SpeciesSpec {
 
     fn set_entrained_beat(&mut self, rate_hz: f32) {
         let rate_hz = rate_hz.max(0.01);
+        self.clear_rhythm_preset_controls();
         let spec = EntrainedBeatSpec {
             rate_hz,
-            social: 0.6,
+            social: self.social_coupling_or(0.6),
             vitality_lambda: 0.8,
             vitality_floor: 0.35,
             reward: 0.6,
@@ -527,6 +558,7 @@ impl SpeciesSpec {
             depth,
         }
         .sanitized();
+        self.clear_rhythm_preset_controls();
         self.phonation_spec.rhythm = RhythmIntent::FlowTiming(spec);
         self.phonation_spec.when = WhenSpec::Pulse {
             rate: spec.mean_rate_hz,
@@ -537,92 +569,96 @@ impl SpeciesSpec {
     }
 
     fn set_when_once(&mut self) {
+        self.clear_rhythm_preset_controls();
         self.phonation_spec.rhythm = RhythmIntent::None;
         self.phonation_spec.when = WhenSpec::Once;
     }
 
     fn set_when_pulse(&mut self, rate: f32) {
         let rate = rate.max(0.01);
+        self.clear_rhythm_preset_controls();
         self.phonation_spec.rhythm = RhythmIntent::None;
         match &mut self.phonation_spec.when {
             WhenSpec::Pulse { rate: r, .. } => *r = rate,
             _ => {
                 self.phonation_spec.when = WhenSpec::Pulse {
                     rate,
-                    sync: DEFAULT_PULSE_SYNC,
-                    social: 0.0,
+                    sync: self.pulse_sync_or(DEFAULT_PULSE_SYNC),
+                    social: self.social_coupling_or(0.0),
                 };
             }
         }
+        if let WhenSpec::Pulse { sync, social, .. } = &mut self.phonation_spec.when {
+            if let Some(value) = self.pulse_sync {
+                *sync = value.clamp(0.0, 1.0);
+            }
+            if let Some(value) = self.social_coupling {
+                *social = value.clamp(0.0, 1.0);
+            }
+        }
+        self.ensure_gated_duration(1);
     }
 
     fn set_duration_while_alive(&mut self) {
-        self.phonation_spec.duration = DurationSpec::WhileAlive;
+        self.clear_rhythm_preset_controls();
+        self.phonation_spec = PhonationSpec {
+            rhythm: RhythmIntent::None,
+            when: WhenSpec::Once,
+            duration: DurationSpec::WhileAlive,
+        };
     }
 
-    fn set_duration_gates(&mut self, n: u32) {
+    fn set_duration_cycles(&mut self, n: u32) {
         self.phonation_spec.duration = DurationSpec::Gates(n.max(1));
     }
 
-    fn set_duration_field(&mut self) {
-        self.phonation_spec.duration = DurationSpec::Field(FieldDurationSpec::default());
+    fn set_adaptive_duration(&mut self) {
+        self.phonation_spec.duration = DurationSpec::Field(self.field_duration_spec.clone());
     }
 
-    fn set_sync_with_label(&mut self, depth: f32, label: &str) {
+    fn set_pulse_lock(&mut self, depth: f32) {
+        let depth = depth.clamp(0.0, 1.0);
+        self.pulse_sync = Some(depth);
         if let RhythmIntent::MetricBeat(mut spec) = self.phonation_spec.rhythm {
-            spec.accent = depth.clamp(0.0, 1.0);
+            spec.accent = depth;
             self.phonation_spec.rhythm = RhythmIntent::MetricBeat(spec);
         }
-        match &mut self.phonation_spec.when {
-            WhenSpec::Pulse { sync, .. } => *sync = depth.clamp(0.0, 1.0),
-            _ => warn!("{label}() requires pulse(); ignored"),
+        if let WhenSpec::Pulse { sync, .. } = &mut self.phonation_spec.when {
+            *sync = depth;
         }
     }
 
-    fn set_sync(&mut self, depth: f32) {
-        self.set_sync_with_label(depth, "sync");
-    }
-
-    fn set_accent(&mut self, depth: f32) {
-        self.set_sync_with_label(depth, "accent");
+    fn set_beat_strength(&mut self, depth: f32) {
+        self.set_pulse_lock(depth);
     }
 
     fn set_social(&mut self, coupling: f32) {
+        let coupling = coupling.clamp(0.0, 1.0);
+        self.social_coupling = Some(coupling);
         if let RhythmIntent::EntrainedBeat(mut spec) = self.phonation_spec.rhythm {
-            spec.social = coupling.clamp(0.0, 1.0);
+            spec.social = coupling;
             self.phonation_spec.rhythm = RhythmIntent::EntrainedBeat(spec);
         }
-        match &mut self.phonation_spec.when {
-            WhenSpec::Pulse { social, .. } => *social = coupling.clamp(0.0, 1.0),
-            _ => warn!("social() requires pulse(); ignored"),
+        if let WhenSpec::Pulse { social, .. } = &mut self.phonation_spec.when {
+            *social = coupling;
         }
     }
 
-    fn set_field_window(&mut self, min: f32, max: f32) {
-        match &mut self.phonation_spec.duration {
-            DurationSpec::Field(f) => {
-                f.hold_min_theta = min.clamp(0.0, 1.0);
-                f.hold_max_theta = max.clamp(0.0, 1.0);
-            }
-            _ => warn!("field_window() requires field(); ignored"),
-        }
+    fn set_duration_range(&mut self, min: f32, max: f32) {
+        self.field_duration_spec.hold_min_theta = min.clamp(0.0, 1.0);
+        self.field_duration_spec.hold_max_theta = max.clamp(0.0, 1.0);
+        self.apply_field_duration_spec();
     }
 
-    fn set_field_curve(&mut self, k: f32, x0: f32) {
-        match &mut self.phonation_spec.duration {
-            DurationSpec::Field(f) => {
-                f.curve_k = k;
-                f.curve_x0 = x0;
-            }
-            _ => warn!("field_curve() requires field(); ignored"),
-        }
+    fn set_duration_curve(&mut self, k: f32, x0: f32) {
+        self.field_duration_spec.curve_k = k;
+        self.field_duration_spec.curve_x0 = x0;
+        self.apply_field_duration_spec();
     }
 
-    fn set_field_drop(&mut self, gain: f32) {
-        match &mut self.phonation_spec.duration {
-            DurationSpec::Field(f) => f.drop_gain = gain.max(0.0),
-            _ => warn!("field_drop() requires field(); ignored"),
-        }
+    fn set_shorten_on_drop(&mut self, gain: f32) {
+        self.field_duration_spec.drop_gain = gain.max(0.0);
+        self.apply_field_duration_spec();
     }
 
     fn set_metabolism(&mut self, rate: f32) {

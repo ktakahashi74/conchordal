@@ -8,7 +8,7 @@ let beat_hz = 2.0;
 
 let field_anchor = harmonic()
     .brain("drone")
-    .send(field_bus)
+    .send(habitat_bus)
     .amp(0.052)
     .sustain()
     .pitch_mode("lock")

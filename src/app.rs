@@ -27,6 +27,7 @@ pub struct App {
     audio_init_error: Option<String>,
     worker_handle: Option<std::thread::JoinHandle<()>>,
     analysis_handle: Option<std::thread::JoinHandle<()>>,
+    listener_analysis_handle: Option<std::thread::JoinHandle<()>>,
     exiting: Arc<AtomicBool>,
     rhythm_history: VecDeque<(f64, crate::core::modulation::NeuralRhythms)>,
     dorsal_history: VecDeque<(f64, DorsalFrame)>,
@@ -81,6 +82,7 @@ impl App {
             audio_init_error: rt.audio_init_error,
             worker_handle: rt.worker_handle,
             analysis_handle: rt.analysis_handle,
+            listener_analysis_handle: rt.listener_analysis_handle,
             exiting: stop_flag,
             rhythm_history: VecDeque::with_capacity(4096),
             dorsal_history: VecDeque::with_capacity(4096),
@@ -193,6 +195,9 @@ impl Drop for App {
             let _ = handle.join();
         }
         if let Some(handle) = self.analysis_handle.take() {
+            let _ = handle.join();
+        }
+        if let Some(handle) = self.listener_analysis_handle.take() {
             let _ = handle.join();
         }
     }

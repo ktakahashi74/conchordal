@@ -2,9 +2,9 @@ use conchordal::core::landscape::Landscape;
 use conchordal::core::log2space::Log2Space;
 use conchordal::core::timebase::Timebase;
 use conchordal::life::control::VoiceControl;
+use conchordal::life::generator_model::GeneratorModel;
 use conchordal::life::population::Population;
 use conchordal::life::voice::VoiceMetadata;
-use conchordal::life::world_model::WorldModel;
 use conchordal::scenario::{ArticulationCoreConfig, EnvelopeConfig, VoiceConfig};
 
 fn test_timebase() -> Timebase {
@@ -33,7 +33,7 @@ fn assert_adsr_matches(adsr: conchordal::life::sound::ToneAdsr, expected: &Envel
 fn spawn_and_get_adsr(articulation: ArticulationCoreConfig, envelope: EnvelopeConfig) {
     let tb = test_timebase();
     let space = Log2Space::new(55.0, 8000.0, 96);
-    let mut world = WorldModel::new(tb, space.clone());
+    let mut world = GeneratorModel::new(tb, space.clone());
     let mut pop = Population::new(tb);
 
     let mut control = VoiceControl::default();

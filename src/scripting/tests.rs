@@ -221,7 +221,7 @@ fn place_material_builds_draft_participant_until_flush() {
     let (scenario, _warnings) = run_script(
         r#"
             let p = place(
-                harmonic().amp(0.04).send(field_bus | presentation_bus),
+                harmonic().amp(0.04).send(habitat_bus | presentation_bus),
                 density(90.0, 900.0).count(3).spacing(0.8)
             );
             p.amp(0.02);
@@ -251,7 +251,7 @@ fn place_material_builds_draft_participant_until_flush() {
     assert_eq!(time, 0.0);
     assert_eq!(count, 3);
     assert_eq!(control.body.amp, 0.02);
-    assert!(control.body.routing.to_field);
+    assert!(control.body.routing.to_habitat);
     assert!(control.body.routing.to_presentation);
     assert!(matches!(
         strategy,
@@ -260,10 +260,10 @@ fn place_material_builds_draft_participant_until_flush() {
 }
 
 #[test]
-fn field_can_be_user_variable_when_using_field_bus() {
+fn field_can_be_user_variable_when_using_habitat_bus() {
     let (scenario, _warnings) = run_script(
         r#"
-            let field = place(harmonic().amp(0.04).send(field_bus), at(220.0));
+            let field = place(harmonic().amp(0.04).send(habitat_bus), at(220.0));
             field.freq(330.0);
             flush();
         "#,
@@ -278,7 +278,7 @@ fn field_can_be_user_variable_when_using_field_bus() {
         })
         .expect("spawn action");
 
-    assert!(control.body.routing.to_field);
+    assert!(control.body.routing.to_habitat);
     assert!(!control.body.routing.to_presentation);
     assert!((control.pitch.freq - 330.0).abs() <= 1e-6);
 }
@@ -1899,6 +1899,11 @@ fn removed_pre_040_api_names_are_not_registered() {
         (r#"harmonic("name");"#, "harmonic"),
         (r#"variant("name", harmonic());"#, "variant"),
         (r#"harmonic().send(field);"#, "field"),
+        (r#"harmonic().send(field_bus);"#, "field_bus"),
+        (
+            r#"harmonic().send(generator_field_bus);"#,
+            "generator_field_bus",
+        ),
         (r#"harmonic().send(presentation);"#, "presentation"),
         (r#"harmonic().accent(0.5);"#, "accent"),
         (r#"harmonic().sync(0.5);"#, "sync"),

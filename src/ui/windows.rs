@@ -147,6 +147,40 @@ fn split_widths(ui: &egui::Ui, ratio: f32, min_left: f32, min_right: f32) -> (f3
     (left_width, right_width)
 }
 
+fn listener_level_bar(ui: &mut egui::Ui, label: &str, value: f32) {
+    let level = value.clamp(0.0, 1.0);
+    ui.label(label);
+    ui.add(
+        egui::ProgressBar::new(level)
+            .desired_width(150.0)
+            .text(format!("{level:.2}")),
+    );
+}
+
+fn draw_listener_twin(ui: &mut egui::Ui, frame: &UiFrame) {
+    ui.horizontal(|ui| {
+        ui.heading("Listener Twin");
+        ui.separator();
+        if frame.listener.has_state {
+            listener_level_bar(ui, "Stability", frame.listener.stability_level);
+            ui.separator();
+            listener_level_bar(ui, "Resolvability", frame.listener.resolvability_level);
+            ui.separator();
+            listener_level_bar(ui, "Tension", frame.listener.tension_level);
+            ui.separator();
+            ui.label(format!(
+                "t={:.2}s gen={} ana={} lag={}",
+                frame.listener.time_sec,
+                frame.listener.generated_frame_id,
+                frame.listener.analysis_frame_id,
+                frame.listener.analysis_lag_frames
+            ));
+        } else {
+            ui.label("Waiting for presentation analysis");
+        }
+    });
+}
+
 /// === Main window ===
 #[allow(clippy::too_many_arguments)]
 pub fn main_window(
@@ -346,7 +380,7 @@ pub fn main_window(
                     );
 
                     ui.separator();
-                    ui.heading("Neural Mandala");
+                    ui.heading("Habitat Rhythm");
                     ui.allocate_ui_with_layout(
                         Vec2::new(left_width, left_block_height),
                         egui::Layout::top_down(egui::Align::LEFT),
@@ -385,7 +419,7 @@ pub fn main_window(
                 |ui| {
                     let old_spacing = ui.spacing().item_spacing;
                     ui.spacing_mut().item_spacing.y = 0.0;
-                    ui.label("Auditory attention");
+                    ui.label("Habitat flux");
                     spectrum_time_freq_axes(
                         ui,
                         dorsal_history,
@@ -396,7 +430,7 @@ pub fn main_window(
                     );
                     ui.spacing_mut().item_spacing = old_spacing;
                     ui.separator();
-                    ui.label("Neural activity");
+                    ui.label("Habitat rhythm");
                     ui.allocate_ui_with_layout(
                         Vec2::new(right_width, neural_time_height),
                         egui::Layout::top_down(egui::Align::LEFT),
@@ -416,6 +450,9 @@ pub fn main_window(
                 },
             );
         });
+
+        ui.separator();
+        draw_listener_twin(ui, frame);
 
         ui.separator();
         ui.horizontal(|ui| {

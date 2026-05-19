@@ -23,6 +23,18 @@ pub struct DorsalFrame {
     pub flux: f32,
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ListenerFrame {
+    pub time_sec: f32,
+    pub generated_frame_id: u64,
+    pub analysis_frame_id: u64,
+    pub analysis_lag_frames: u64,
+    pub stability_level: f32,
+    pub resolvability_level: f32,
+    pub tension_level: f32,
+    pub has_state: bool,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct VoiceStateInfo {
     pub id: u64,
@@ -84,6 +96,7 @@ pub struct UiFrame {
     pub wave: WaveFrame,
     pub spec: SpecFrame,
     pub dorsal: DorsalFrame,
+    pub listener: ListenerFrame,
     pub landscape: LandscapeFrame,
     pub time_sec: f32,
     pub meta: SimulationMeta,

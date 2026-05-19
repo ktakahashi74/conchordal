@@ -4,8 +4,8 @@ use crate::core::landscape::{Landscape, LandscapeFrame, LandscapeUpdate};
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
 use crate::life::control::{MAX_FREQ_HZ, MIN_FREQ_HZ};
+use crate::life::generator_model::GeneratorModel;
 use crate::life::social_density::SocialDensityTrace;
-use crate::life::world_model::WorldModel;
 use crate::scenario::{
     Action, ControlUpdateMode, RespawnPeakBiasConfig, RespawnPolicy, SpawnStrategy, VoiceConfig,
 };
@@ -345,39 +345,39 @@ impl Population {
 
     pub fn collect_phonation_batches(
         &mut self,
-        world: &mut WorldModel,
+        generator_model: &mut GeneratorModel,
         landscape: &LandscapeFrame,
         now: Tick,
     ) -> Vec<PhonationBatch> {
         let mut batches = Vec::new();
-        let count = self.collect_phonation_batches_into(world, landscape, now, &mut batches);
+        let count =
+            self.collect_phonation_batches_into(generator_model, landscape, now, &mut batches);
         batches.truncate(count);
         batches
     }
 
     pub(crate) fn collect_phonation_batches_into(
         &mut self,
-        world: &mut WorldModel,
+        generator_model: &mut GeneratorModel,
         landscape: &LandscapeFrame,
         now: Tick,
         out: &mut Vec<PhonationBatch>,
     ) -> usize {
-        let tb = world.time;
+        let tb = generator_model.time;
         let hop_tick = (tb.hop as Tick).max(1);
         let frame_end = now.saturating_add(hop_tick);
-        let gate_boundary_in_hop = world
+        let gate_boundary_in_hop = generator_model
             .next_gate_tick_est
             .is_some_and(|gate_tick| gate_tick > now && gate_tick <= frame_end);
-        let pred_scan =
-            world
-                .predict_consonance_field_level_next_gate()
-                .and_then(|(gate_tick, scan)| {
-                    if gate_tick >= now && gate_tick < frame_end {
-                        Some(scan)
-                    } else {
-                        None
-                    }
-                });
+        let pred_scan = generator_model
+            .predict_consonance_field_level_next_gate()
+            .and_then(|(gate_tick, scan)| {
+                if gate_tick >= now && gate_tick < frame_end {
+                    Some(scan)
+                } else {
+                    None
+                }
+            });
         let mut pred_acc = PredGateAccum::default();
         let mut phonation_onsets_in_hop = 0u32;
         let mut used = 0usize;
@@ -391,7 +391,7 @@ impl Population {
             let consonance = landscape.evaluate_pitch_level(voice.body.base_freq_hz());
             let extra_gate_gain = match pred_scan.as_ref() {
                 Some(scan) => {
-                    let gain_raw = world
+                    let gain_raw = generator_model
                         .sample_scan_field_level(scan, voice.body.base_freq_hz())
                         .clamp(0.0, 1.0);
                     let sync = voice.effective_control.phonation.spec.prediction_sync();
@@ -1738,10 +1738,10 @@ mod tests {
     use crate::core::log2space::Log2Space;
     use crate::core::timebase::Timebase;
     use crate::life::control::{ControlUpdate, PitchMode, VoiceControl};
+    use crate::life::generator_model::GeneratorModel;
     use crate::life::lifecycle::LifecycleConfig;
     use crate::life::phonation_engine::{OnsetEvent, OnsetKick, ToneCmd};
     use crate::life::sound::{BodyKind, BodySnapshot};
-    use crate::life::world_model::WorldModel;
     use crate::scenario::{
         Action, ArticulationCoreConfig, RespawnPeakBiasConfig, RespawnPolicy, SpawnSpec,
         SpawnStrategy,
@@ -3126,7 +3126,7 @@ mod tests {
         };
         let space = Log2Space::new(55.0, 880.0, 12);
         let landscape = LandscapeFrame::new(space.clone());
-        let mut world = WorldModel::new(time, space);
+        let mut world = GeneratorModel::new(time, space);
         let mut pop = Population::new(time);
         let spec = spawn_spec_with_freq(440.0);
         pop.apply_action(

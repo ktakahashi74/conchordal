@@ -13,7 +13,7 @@ impl ScriptHost {
         engine.register_type_with_name::<ModePattern>("ModePattern");
 
         let mut builtins = rhai::Module::new();
-        builtins.set_var("field_bus", Bus::field());
+        builtins.set_var("habitat_bus", Bus::habitat());
         builtins.set_var("presentation_bus", Bus::presentation());
         engine.register_global_module(builtins.into());
 

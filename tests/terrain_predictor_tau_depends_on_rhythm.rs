@@ -3,7 +3,7 @@ use std::sync::Arc;
 use conchordal::core::log2space::Log2Space;
 use conchordal::core::modulation::{NeuralRhythms, RhythmBand};
 use conchordal::core::timebase::Timebase;
-use conchordal::life::world_model::WorldModel;
+use conchordal::life::generator_model::GeneratorModel;
 
 #[test]
 fn tau_tick_depends_on_theta_delta() {
@@ -12,7 +12,7 @@ fn tau_tick_depends_on_theta_delta() {
         hop: 512,
     };
     let space = Log2Space::new(55.0, 8000.0, 96);
-    let world = WorldModel::new(timebase, space);
+    let world = GeneratorModel::new(timebase, space);
     let rhythm_low = NeuralRhythms {
         theta: RhythmBand {
             freq_hz: 2.0,
@@ -51,7 +51,7 @@ fn tau_tick_clamps_theta_delta_ratio() {
         hop: 512,
     };
     let space = Log2Space::new(55.0, 8000.0, 96);
-    let world = WorldModel::new(timebase, space);
+    let world = GeneratorModel::new(timebase, space);
     let rhythm_small = NeuralRhythms {
         theta: RhythmBand {
             freq_hz: 1.0,
@@ -89,7 +89,7 @@ fn prediction_decay_reduces_far_extrapolation() {
         hop: 512,
     };
     let space = Log2Space::new(55.0, 8000.0, 96);
-    let mut world = WorldModel::new(timebase, space);
+    let mut world = GeneratorModel::new(timebase, space);
     let rhythm = NeuralRhythms {
         theta: RhythmBand {
             freq_hz: 4.0,

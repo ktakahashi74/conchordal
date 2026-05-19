@@ -3,16 +3,16 @@ use std::sync::Arc;
 use conchordal::core::log2space::Log2Space;
 use conchordal::core::modulation::NeuralRhythms;
 use conchordal::core::timebase::Timebase;
-use conchordal::life::world_model::WorldModel;
+use conchordal::life::generator_model::GeneratorModel;
 
 #[test]
-fn world_model_pred_cache_resets_on_updates() {
+fn generator_model_pred_cache_resets_on_updates() {
     let time = Timebase {
         fs: 48_000.0,
         hop: 512,
     };
     let space = Log2Space::new(55.0, 8000.0, 96);
-    let mut world = WorldModel::new(time, space.clone());
+    let mut world = GeneratorModel::new(time, space.clone());
     let mut rhythm = NeuralRhythms::default();
     rhythm.theta.freq_hz = 6.0;
     rhythm.theta.phase = 0.0;

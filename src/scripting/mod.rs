@@ -837,11 +837,11 @@ pub struct Bus {
 }
 
 impl Bus {
-    pub fn field() -> Self {
+    pub fn habitat() -> Self {
         Self {
             routing: Routing {
                 to_presentation: false,
-                to_field: true,
+                to_habitat: true,
             },
         }
     }
@@ -850,7 +850,7 @@ impl Bus {
         Self {
             routing: Routing {
                 to_presentation: true,
-                to_field: false,
+                to_habitat: false,
             },
         }
     }
@@ -872,7 +872,7 @@ impl BusSet {
         Self {
             routing: Routing {
                 to_presentation: self.routing.to_presentation || other.routing.to_presentation,
-                to_field: self.routing.to_field || other.routing.to_field,
+                to_habitat: self.routing.to_habitat || other.routing.to_habitat,
             },
         }
     }

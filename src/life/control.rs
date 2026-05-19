@@ -98,14 +98,14 @@ pub enum BodyMethod {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Routing {
     pub to_presentation: bool,
-    pub to_field: bool,
+    pub to_habitat: bool,
 }
 
 impl Default for Routing {
     fn default() -> Self {
         Self {
             to_presentation: true,
-            to_field: true,
+            to_habitat: true,
         }
     }
 }

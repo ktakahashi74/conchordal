@@ -12,7 +12,7 @@ function list, see the [API Reference](reference/life.md).
 Conchordal ships a Rhai LSP definition file describing the entire scripting
 surface. Hooking your editor up to it gives you completion, hover, go-to-def,
 and inline diagnostics for every conchordal function — `place`, `harmonic`,
-`.brain()`, `.send(field_bus)`, and so on.
+`.brain()`, `.send(habitat_bus)`, and so on.
 
 The two files that drive this are committed at the repo root:
 

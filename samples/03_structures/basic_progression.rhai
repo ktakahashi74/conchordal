@@ -3,7 +3,7 @@ seed(9);
 let guide = sine()
     .amp(0.18)
     .sustain()
-    .send(field_bus);
+    .send(habitat_bus);
 let pad = harmonic()
     .amp(0.11)
     .sustain()

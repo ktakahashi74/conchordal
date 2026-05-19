@@ -195,20 +195,20 @@ let fielded = derive(sine).adaptive_duration().duration_range(0.2, 0.8);
 Each voice contributes to two independent mono buses:
 
 - **presentation bus** -> cpal output / wav / UI metering (the work as presented)
-- **field bus** -> NSGT analysis -> landscape (what the ALIFE ecology responds to)
+- **habitat bus** -> NSGT analysis -> landscape (what the ALife ecology responds to)
 
 By default both buses receive the voice. Use `send()` when a voice should feed
 only one side, or combine buses with `|`.
 
 | Method | Effect |
 |--------|--------|
-| `send(field_bus)` | Voice bypasses the presentation bus; still contributes to the field. |
-| `send(presentation_bus)` | Voice bypasses the field bus; still contributes to the presented sound. |
-| `send(field_bus | presentation_bus)` | Voice contributes to both buses. |
+| `send(habitat_bus)` | Voice bypasses the presentation bus; still contributes to the habitat. |
+| `send(presentation_bus)` | Voice bypasses the habitat bus; still contributes to the presented sound. |
+| `send(habitat_bus | presentation_bus)` | Voice contributes to both buses. |
 
 ```ts
 // Reference anchor: sensed by the ecology, absent from the presented sound.
-let anchor = harmonic().brain("drone").send(field_bus);
+let anchor = harmonic().brain("drone").send(habitat_bus);
 
 // Presented decor that does not influence the ecology.
 let decor = sine().send(presentation_bus);

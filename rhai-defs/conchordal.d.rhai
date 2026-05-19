@@ -4,7 +4,7 @@
 module static;
 
 // Built-in buses (registered as module constants).
-const field_bus: Bus;
+const habitat_bus: Bus;
 const presentation_bus: Bus;
 
 fn action_cost(arg0: Material, arg1: f64) -> Material;

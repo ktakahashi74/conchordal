@@ -1,9 +1,7 @@
 use std::sync::Arc;
 
-use crate::core::landscape::LandscapeFrame;
 use crate::core::log2space::{Log2Space, sample_scan_linear_log2};
 use crate::core::modulation::NeuralRhythms;
-use crate::core::stream::dorsal::DorsalMetrics;
 use crate::core::timebase::{Tick, Timebase};
 use crate::life::gate_clock::next_gate_tick;
 use tracing::debug;
@@ -96,26 +94,22 @@ impl TerrainPredictor {
     }
 }
 
-pub struct WorldModel {
+pub struct GeneratorModel {
     pub time: Timebase,
     pub space: Log2Space,
     pub now: Tick,
-    pub percept_landscape: Option<LandscapeFrame>,
-    pub dorsal_metrics: Option<DorsalMetrics>,
     pub next_gate_tick_est: Option<Tick>,
     last_pred_next_gate: Option<(Tick, Arc<[f32]>)>,
     last_rhythm: NeuralRhythms,
     terrain_predictor: TerrainPredictor,
 }
 
-impl WorldModel {
+impl GeneratorModel {
     pub fn new(time: Timebase, space: Log2Space) -> Self {
         Self {
             time,
             space,
             now: 0,
-            percept_landscape: None,
-            dorsal_metrics: None,
             next_gate_tick_est: None,
             last_pred_next_gate: None,
             last_rhythm: NeuralRhythms::default(),

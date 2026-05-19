@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 
 use conchordal::scripting::{ScriptContext, ScriptHost};
 
-const BUILTIN_BUSES: &[&str] = &["field_bus", "presentation_bus"];
+const BUILTIN_BUSES: &[&str] = &["habitat_bus", "presentation_bus"];
 
 /// Rhai reserved keywords that cannot appear as fn names in a `.d.rhai`.
 /// See https://rhai.rs/book/language/keywords.html.

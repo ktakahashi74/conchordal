@@ -2,10 +2,10 @@ use conchordal::core::landscape::Landscape;
 use conchordal::core::log2space::Log2Space;
 use conchordal::core::timebase::{Tick, Timebase};
 use conchordal::life::control::VoiceControl;
+use conchordal::life::generator_model::GeneratorModel;
 use conchordal::life::population::Population;
 use conchordal::life::schedule_renderer::ScheduleRenderer;
 use conchordal::life::voice::VoiceMetadata;
-use conchordal::life::world_model::WorldModel;
 use conchordal::scenario::{ArticulationCoreConfig, VoiceConfig};
 
 fn test_timebase() -> Timebase {
@@ -29,7 +29,7 @@ fn spawn_agent(freq: f32, amp: f32) -> VoiceConfig {
 fn spawn_sustain_publishes_note_on_first_tick() {
     let tb = test_timebase();
     let space = Log2Space::new(55.0, 8000.0, 96);
-    let mut world = WorldModel::new(tb, space.clone());
+    let mut world = GeneratorModel::new(tb, space.clone());
     let mut pop = Population::new(tb);
 
     let cfg = spawn_agent(440.0, 0.4);
@@ -52,7 +52,7 @@ fn spawn_sustain_publishes_note_on_first_tick() {
 fn spawn_emits_phonation_note_that_renders_audio() {
     let tb = test_timebase();
     let space = Log2Space::new(55.0, 8000.0, 96);
-    let mut world = WorldModel::new(tb, space.clone());
+    let mut world = GeneratorModel::new(tb, space.clone());
     let mut pop = Population::new(tb);
 
     let cfg = spawn_agent(440.0, 0.4);

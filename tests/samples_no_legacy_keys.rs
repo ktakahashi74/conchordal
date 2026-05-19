@@ -29,6 +29,18 @@ fn collect_sample_files(root: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
+fn contains_identifier(contents: &str, needle: &str) -> bool {
+    contents.match_indices(needle).any(|(idx, _)| {
+        let before = contents[..idx].chars().next_back();
+        let after = contents[idx + needle.len()..].chars().next();
+        !before.is_some_and(is_identifier_char) && !after.is_some_and(is_identifier_char)
+    })
+}
+
+fn is_identifier_char(ch: char) -> bool {
+    ch == '_' || ch.is_ascii_alphanumeric()
+}
+
 #[test]
 fn samples_have_no_legacy_keys() {
     let mut files = Vec::new();
@@ -74,6 +86,7 @@ fn samples_have_no_legacy_keys() {
         ".presentation_only(".to_string(),
     ];
     let phonation_key = ["pho", "nation"].concat();
+    let banned_identifiers = ["field_bus", "generator_field_bus"];
     let quote = "\"";
     let mut banned_compact = Vec::new();
     let timing_key = format!("{TIMING_A}{TIMING_B}");
@@ -93,6 +106,12 @@ fn samples_have_no_legacy_keys() {
             assert!(
                 !contents.contains(token),
                 "legacy token \"{token}\" found in {path:?}"
+            );
+        }
+        for token in &banned_identifiers {
+            assert!(
+                !contains_identifier(&contents, token),
+                "legacy identifier \"{token}\" found in {path:?}"
             );
         }
         let compact: String = contents.chars().filter(|c| !c.is_whitespace()).collect();

@@ -9,6 +9,7 @@ use crate::life::population::{RuntimeEvent, SpawnReason};
 use crate::life::telemetry::LifeRecord;
 use crate::life::voice::sound_body::SoundBody;
 use crate::life::voice::{AnyArticulationCore, Voice};
+use crate::listener_twin::ListenerState;
 use crate::scenario::{ScaffoldConfig, SceneMarker};
 
 #[derive(Debug)]
@@ -138,6 +139,15 @@ enum ReportRecord<'a> {
         delta_hz: Option<f32>,
         env_open: f32,
         env_level: f32,
+    },
+    ListenerState {
+        time_sec: f32,
+        generated_frame_id: u64,
+        analysis_frame_id: u64,
+        analysis_lag_frames: u64,
+        stability_level: f32,
+        resolvability_level: f32,
+        tension_level: f32,
     },
     RhythmSummary {
         time_sec: f32,
@@ -280,6 +290,18 @@ impl JsonlReporter {
         self.rhythm_observations.push(observation);
         self.rhythm_summary_written = false;
         Ok(())
+    }
+
+    pub(crate) fn write_listener_state(&mut self, state: ListenerState) -> Result<(), String> {
+        self.write_record(&ReportRecord::ListenerState {
+            time_sec: state.time_sec,
+            generated_frame_id: state.generated_frame_id,
+            analysis_frame_id: state.analysis_frame_id,
+            analysis_lag_frames: state.analysis_lag_frames,
+            stability_level: state.stability_level,
+            resolvability_level: state.resolvability_level,
+            tension_level: state.tension_level,
+        })
     }
 
     pub fn write_rhythm_summary(&mut self) -> Result<(), String> {

@@ -9,7 +9,9 @@ use crate::life::social_density::SocialDensityTrace;
 use crate::scenario::{
     Action, ControlUpdateMode, RespawnPeakBiasConfig, RespawnPolicy, SpawnStrategy, VoiceConfig,
 };
-use rand::{Rng, SeedableRng, distr::Distribution, distr::weighted::WeightedIndex, rngs::SmallRng};
+use rand::{
+    Rng, RngExt, SeedableRng, distr::Distribution, distr::weighted::WeightedIndex, rngs::SmallRng,
+};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use tracing::{debug, info, warn};
@@ -1746,7 +1748,7 @@ mod tests {
         Action, ArticulationCoreConfig, RespawnPeakBiasConfig, RespawnPolicy, SpawnSpec,
         SpawnStrategy,
     };
-    use rand::{Rng, SeedableRng};
+    use rand::{RngExt, SeedableRng};
     use std::collections::HashSet;
 
     fn test_pop() -> Population {

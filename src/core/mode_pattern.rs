@@ -1,7 +1,7 @@
 use crate::core::erb::hz_to_erb;
 use crate::core::landscape::LandscapeFrame;
 use crate::core::log2space::Log2Space;
-use rand::{Rng, SeedableRng, rngs::SmallRng};
+use rand::{Rng, RngExt, SeedableRng, rngs::SmallRng};
 use tracing::warn;
 
 pub(crate) const DEFAULT_MODE_COUNT: usize = 16;

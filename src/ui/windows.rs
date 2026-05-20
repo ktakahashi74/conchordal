@@ -4,7 +4,7 @@ use crate::ui::plots::{
     plot_population_dynamics, spectrum_time_freq_axes, time_plot,
 };
 use crate::ui::viewdata::{PlaybackState, UiFrame};
-use egui::{CentralPanel, Color32, TopBottomPanel, Vec2};
+use egui::{CentralPanel, Color32, Panel, Vec2};
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -69,6 +69,8 @@ fn draw_level_meters(
     let (rect, _resp) =
         ui.allocate_exact_size(Vec2::new(total_width, meter_height), egui::Sense::hover());
     let painter = ui.painter_at(rect);
+    let window_stroke_color = ui.visuals().window_stroke().color;
+    let text_color = ui.visuals().text_color();
     let min_db = -60.0;
 
     let inner = rect.shrink2(Vec2::new(0.0, pad_y));
@@ -105,7 +107,7 @@ fn draw_level_meters(
         p.rect_stroke(
             m_rect,
             2.0,
-            egui::Stroke::new(1.0, p.ctx().style().visuals.window_stroke().color),
+            egui::Stroke::new(1.0, window_stroke_color),
             egui::StrokeKind::Inside,
         );
         let inst_rect = egui::Rect::from_min_size(
@@ -128,7 +130,7 @@ fn draw_level_meters(
             egui::Align2::CENTER_TOP,
             label,
             egui::FontId::proportional(12.0),
-            p.ctx().style().visuals.text_color(),
+            text_color,
         );
     };
 
@@ -184,7 +186,7 @@ fn draw_listener_twin(ui: &mut egui::Ui, frame: &UiFrame) {
 /// === Main window ===
 #[allow(clippy::too_many_arguments)]
 pub fn main_window(
-    ctx: &egui::Context,
+    root_ui: &mut egui::Ui,
     frame: &UiFrame,
     rhythm_history: &VecDeque<(f64, crate::core::modulation::NeuralRhythms)>,
     dorsal_history: &VecDeque<(f64, crate::ui::viewdata::DorsalFrame)>,
@@ -193,7 +195,8 @@ pub fn main_window(
     start_flag: &Arc<AtomicBool>,
     show_raw_nsgt_power: &mut bool,
 ) {
-    TopBottomPanel::top("top").show(ctx, |ui| {
+    let ctx = root_ui.ctx().clone();
+    Panel::top("top").show_inside(root_ui, |ui| {
         ui.horizontal(|ui| {
             ui.heading("Conchordal");
             ui.separator();
@@ -299,7 +302,7 @@ pub fn main_window(
         }
     });
 
-    CentralPanel::default().show(ctx, |ui| {
+    CentralPanel::default().show_inside(root_ui, |ui| {
         if let Some(err) = audio_error {
             ui.colored_label(egui::Color32::RED, format!("Audio init failed: {err}"));
         }

@@ -30,7 +30,7 @@ pub fn peaks_mass_to_delta_density(len: usize, peaks: &[(usize, f32)], du: &[f32
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::{Rng, SeedableRng};
+    use rand::{RngExt, SeedableRng};
 
     #[test]
     fn peaks_mass_round_trip_preserves_total_mass() {

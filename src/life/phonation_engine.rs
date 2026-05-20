@@ -1,4 +1,4 @@
-use rand::{Rng, SeedableRng, rngs::SmallRng};
+use rand::{RngExt, SeedableRng, rngs::SmallRng};
 use std::cmp::{Ordering, Reverse};
 use std::collections::BinaryHeap;
 use std::f32::consts::TAU;

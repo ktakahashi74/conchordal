@@ -146,7 +146,7 @@ impl App {
 }
 
 impl eframe::App for App {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         if ctx.input(|i| i.viewport().close_requested()) {
             self.exiting.store(true, Ordering::SeqCst);
         }
@@ -172,8 +172,12 @@ impl eframe::App for App {
             }
         }
 
+        ctx.request_repaint_after(Duration::from_millis(16));
+    }
+
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         crate::ui::windows::main_window(
-            ctx,
+            ui,
             &self.last_frame,
             &self.rhythm_history,
             &self.dorsal_history,
@@ -182,7 +186,6 @@ impl eframe::App for App {
             &self.start_flag,
             &mut self.show_raw_nsgt_power,
         );
-        ctx.request_repaint_after(Duration::from_millis(16));
     }
 }
 

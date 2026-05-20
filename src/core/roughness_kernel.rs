@@ -427,7 +427,7 @@ mod tests {
     use crate::core::utils::ensure_plots_dir;
     #[cfg(feature = "plotcheck")]
     use plotters::prelude::*;
-    use rand::{Rng, SeedableRng};
+    use rand::{RngExt, SeedableRng};
     #[cfg(feature = "plotcheck")]
     use std::fs::File;
     #[cfg(feature = "plotcheck")]

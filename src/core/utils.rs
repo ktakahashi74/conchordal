@@ -1,4 +1,4 @@
-use rand::{Rng, SeedableRng};
+use rand::{Rng, RngExt, SeedableRng};
 
 #[cfg(all(test, feature = "plotcheck"))]
 pub(crate) fn ensure_plots_dir() -> std::io::Result<()> {

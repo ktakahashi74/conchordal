@@ -11,7 +11,7 @@ use crate::scenario::{
     ArticulationCoreConfig, MetabolismRhythmReward, PhonationMode, RhythmCouplingMode,
     RhythmRewardMetric,
 };
-use rand::{Rng, SeedableRng, rngs::SmallRng};
+use rand::{Rng, RngExt, SeedableRng, rngs::SmallRng};
 use std::f32::consts::{PI, TAU};
 
 #[derive(Debug, Clone, Copy, Default)]

@@ -14,7 +14,7 @@ use crate::life::sound::spectral::{
 };
 use crate::life::sound::{BodyKind, BodySnapshot};
 use crate::scenario::{SoundBodyConfig, TimbreGenotype};
-use rand::{Rng, RngCore, rngs::SmallRng};
+use rand::{Rng, RngExt, rngs::SmallRng};
 use std::collections::HashMap;
 use std::f32::consts::PI;
 use std::sync::{Arc, Mutex, OnceLock};

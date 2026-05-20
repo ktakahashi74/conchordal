@@ -6,7 +6,7 @@ use crate::core::psycho_state::{normalize_density, roughness_ratio_to_state01};
 use crate::core::roughness_kernel::{RoughnessKernel, crowding_runtime_delta_erb, erb_grid};
 use crate::life::adaptation::{AdaptationContext, FeaturesNow};
 use crate::life::control::{LeaveSelfOutMode, MoveCostTimeScale, PitchControl, PitchCoreKind};
-use rand::Rng;
+use rand::{Rng, RngExt};
 use std::sync::OnceLock;
 
 const DEFAULT_LOCAL_WINDOW_CENTS: f32 = 240.0;

@@ -1450,7 +1450,6 @@ fn worker_loop(
                 now_sec,
                 frame_idx,
                 presentation_chunk.as_ref(),
-                vitality,
             ));
 
             // Feed every habitat hop to NSGT-RT. Dropping hops breaks time continuity.

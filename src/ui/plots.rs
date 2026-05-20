@@ -327,15 +327,28 @@ pub fn neural_activity_plot(
     window_end: f64,
     link_group: Option<&str>,
 ) {
-    if history.len() < 2 {
-        ui.label("No rhythm data");
-        return;
-    }
+    let fallback_history;
+    let history = if history.len() < 2 {
+        if let Some((t, rhythms)) = history.back() {
+            fallback_history = VecDeque::from([
+                ((*t - 0.1).max(window_start), *rhythms),
+                ((*t).min(window_end), *rhythms),
+            ]);
+            &fallback_history
+        } else {
+            ui.label("No rhythm data");
+            return;
+        }
+    } else {
+        history
+    };
 
     let mut plot = Plot::new("neural_activity")
         .height(height)
-        .allow_drag(true)
-        .allow_scroll(true)
+        .allow_drag(false)
+        .allow_scroll(false)
+        .allow_zoom(false)
+        .allow_double_click_reset(false)
         .include_y(0.0)
         .include_y(1.0)
         .include_x(window_start)
@@ -347,6 +360,10 @@ pub fn neural_activity_plot(
         plot = plot.link_axis(Id::new(link), Vec2b::new(true, false));
     }
     plot.show(ui, |plot_ui| {
+        plot_ui.set_plot_bounds_x(window_start..=window_end);
+        plot_ui.set_plot_bounds_y(0.0..=1.0);
+        let rhythm_confidence =
+            |band: crate::core::modulation::RhythmBand| (band.mag * band.alpha).clamp(0.0, 1.0);
         let colors = [
             (Color32::from_rgb(80, 180, 255), "Delta (Phase)"),
             (Color32::from_rgb(70, 225, 135), "Theta (Phase)"),
@@ -356,7 +373,7 @@ pub fn neural_activity_plot(
 
         for (idx, (color, name)) in colors.iter().enumerate() {
             let is_phase = idx <= 1;
-            let mut segments: Vec<(Vec<[f64; 2]>, Color32)> = Vec::new();
+            let mut segments: Vec<(Vec<[f64; 2]>, Color32, f32)> = Vec::new();
             let mut current_pts: Vec<[f64; 2]> = Vec::new();
             let mut current_opacity: f32 = 1.0;
             let mut prev_val = 0.0f64;
@@ -368,12 +385,12 @@ pub fn neural_activity_plot(
                     0 => (
                         (r.delta.phase as f64).rem_euclid(std::f64::consts::TAU)
                             / std::f64::consts::TAU,
-                        r.delta.mag,
+                        rhythm_confidence(r.delta),
                     ),
                     1 => (
                         (r.theta.phase as f64).rem_euclid(std::f64::consts::TAU)
                             / std::f64::consts::TAU,
-                        r.theta.mag,
+                        rhythm_confidence(r.theta),
                     ),
                     2 => {
                         let alpha_mag = 0.5 * (r.theta.alpha + r.delta.alpha);
@@ -408,17 +425,29 @@ pub fn neural_activity_plot(
                         let frac = (1.0 - prev_val) / v_diff;
                         let t_cross = prev_t + dt * frac;
                         current_pts.push([t_cross, 1.0]);
-                        segments.push((current_pts, color.gamma_multiply(current_opacity)));
+                        segments.push((
+                            current_pts,
+                            color.gamma_multiply(current_opacity),
+                            0.8 + 2.2 * current_opacity,
+                        ));
                         current_pts = vec![[t_cross, 0.0]];
                     } else {
-                        segments.push((current_pts, color.gamma_multiply(current_opacity)));
+                        segments.push((
+                            current_pts,
+                            color.gamma_multiply(current_opacity),
+                            0.8 + 2.2 * current_opacity,
+                        ));
                         current_pts = Vec::new();
                     }
 
                     current_pts.push([*t, val]);
                     current_opacity = new_opacity;
                 } else if is_opacity_change {
-                    segments.push((current_pts.clone(), color.gamma_multiply(current_opacity)));
+                    segments.push((
+                        current_pts.clone(),
+                        color.gamma_multiply(current_opacity),
+                        0.8 + 2.2 * current_opacity,
+                    ));
                     let last_pt = *current_pts.last().unwrap();
                     current_pts = vec![last_pt, [*t, val]];
                     current_opacity = new_opacity;
@@ -431,12 +460,16 @@ pub fn neural_activity_plot(
             }
 
             if !current_pts.is_empty() {
-                segments.push((current_pts, color.gamma_multiply(current_opacity)));
+                segments.push((
+                    current_pts,
+                    color.gamma_multiply(current_opacity),
+                    0.8 + 2.2 * current_opacity,
+                ));
             }
 
-            for (seg_i, (pts, col)) in segments.into_iter().enumerate() {
+            for (seg_i, (pts, col, width)) in segments.into_iter().enumerate() {
                 let series = PlotPoints::from(pts);
-                let mut line = Line::new("", series).color(col).width(2.0);
+                let mut line = Line::new("", series).color(col).width(width);
                 if seg_i == 0 {
                     line = line.name(*name);
                 }
@@ -522,10 +555,28 @@ pub fn spectrum_time_freq_axes(
     window_end: f64,
     link_group: Option<&str>,
 ) {
+    let fallback_history;
+    let history = if history.len() < 2 {
+        if let Some((t, dorsal)) = history.back() {
+            fallback_history = VecDeque::from([
+                ((*t - 0.1).max(window_start), *dorsal),
+                ((*t).min(window_end), *dorsal),
+            ]);
+            &fallback_history
+        } else {
+            ui.label("No salience data");
+            return;
+        }
+    } else {
+        history
+    };
+
     let mut plot = Plot::new("time_freq_spectrum")
         .height(height)
-        .allow_drag(true)
-        .allow_scroll(true)
+        .allow_drag(false)
+        .allow_scroll(false)
+        .allow_zoom(false)
+        .allow_double_click_reset(false)
         .include_x(window_start)
         .include_x(window_end)
         .include_y(0.0)
@@ -539,6 +590,8 @@ pub fn spectrum_time_freq_axes(
     }
 
     plot.show(ui, |plot_ui| {
+        plot_ui.set_plot_bounds_x(window_start..=window_end);
+        plot_ui.set_plot_bounds_y(0.0..=3.0);
         let samples: Vec<(f64, crate::ui::viewdata::DorsalFrame)> = history
             .iter()
             .filter(|(t, _)| *t >= window_start && *t <= window_end)
@@ -680,11 +733,48 @@ pub fn neural_compass(
     });
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+struct ListenerMandalaLevels {
+    attention: Option<f32>,
+    stability: Option<f32>,
+    tension: Option<f32>,
+}
+
 /// Draw a mandala-style rhythm compass combining meter, beat, stability, and error without fast rotation.
+#[allow(dead_code)]
 pub fn draw_rhythm_mandala(
     ui: &mut egui::Ui,
     rhythms: &crate::core::modulation::NeuralRhythms,
     size: Vec2,
+) {
+    draw_mandala(ui, rhythms, size, ListenerMandalaLevels::default());
+}
+
+/// Draw listener-side rhythm and salience state as an at-a-glance mandala.
+pub fn draw_listener_mandala(
+    ui: &mut egui::Ui,
+    listener: &crate::ui::viewdata::ListenerFrame,
+    size: Vec2,
+) {
+    let levels = ListenerMandalaLevels {
+        attention: listener
+            .has_fast_state
+            .then_some(listener.attention_level.clamp(0.0, 1.0)),
+        stability: listener
+            .has_state
+            .then_some(listener.stability_level.clamp(0.0, 1.0)),
+        tension: listener
+            .has_state
+            .then_some(listener.tension_level.clamp(0.0, 1.0)),
+    };
+    draw_mandala(ui, &listener.neural_rhythms, size, levels);
+}
+
+fn draw_mandala(
+    ui: &mut egui::Ui,
+    rhythms: &crate::core::modulation::NeuralRhythms,
+    size: Vec2,
+    listener_levels: ListenerMandalaLevels,
 ) {
     let side = size.x.min(size.y).clamp(80.0, 200.0);
     let _scale = (side / 150.0).clamp(0.6, 1.2);
@@ -714,10 +804,38 @@ pub fn draw_rhythm_mandala(
     let color_theta = Color32::from_rgb(70, 225, 135);
     let color_alpha = Color32::from_rgb(255, 215, 60);
     let color_beta = Color32::from_rgb(255, 110, 90);
+    let outer_r = radius * 1.15;
+
+    if let Some(attention) = listener_levels.attention {
+        let attention = attention.clamp(0.0, 1.0);
+        if attention > 0.01 {
+            let halo_r = outer_r * (1.12 + 0.12 * attention);
+            let halo_color =
+                Color32::from_rgb(90, 180, 230).gamma_multiply(0.06 + 0.20 * attention);
+            painter.circle_filled(center, halo_r, halo_color);
+        }
+    }
+
+    if let Some(tension) = listener_levels.tension {
+        let tension = tension.clamp(0.0, 1.0);
+        if tension > 0.01 {
+            let tension_color =
+                Color32::from_rgb(255, 95, 65).gamma_multiply(0.18 + 0.72 * tension);
+            painter.circle_stroke(
+                center,
+                outer_r * 1.08,
+                Stroke::new(1.0 + 4.0 * tension, tension_color),
+            );
+            painter.circle_stroke(
+                center,
+                outer_r * 1.18,
+                Stroke::new(0.5 + 2.5 * tension, tension_color.gamma_multiply(0.45)),
+            );
+        }
+    }
 
     // Delta: progress arc as the meter with magnitude-driven opacity/width.
     let delta_phase = wrap(rhythms.delta.phase);
-    let outer_r = radius * 1.15;
     let (d_color, d_weight) = get_visuals(rhythms.delta.mag, color_delta);
     painter.circle_stroke(
         center,
@@ -752,7 +870,21 @@ pub fn draw_rhythm_mandala(
         dot_radius + 1.0,
         Stroke::new(1.0, t_color.gamma_multiply(0.5)),
     );
-    painter.circle_filled(center, 3.0, base_circle);
+    let (center_radius, center_color) = if let Some(stability) = listener_levels.stability {
+        let stability = stability.clamp(0.0, 1.0);
+        (
+            2.8 + 3.8 * stability,
+            Color32::from_rgb(210, 255, 225).gamma_multiply(0.35 + 0.65 * stability),
+        )
+    } else {
+        (3.0, base_circle)
+    };
+    painter.circle_filled(center, center_radius, center_color);
+    painter.circle_stroke(
+        center,
+        center_radius + 1.0,
+        Stroke::new(1.0, center_color.gamma_multiply(0.7)),
+    );
 
     // Alpha: stability axis along the vertical.
     let alpha_mag = (0.5 * (rhythms.theta.alpha + rhythms.delta.alpha)).clamp(0.0, 1.0);

@@ -116,6 +116,10 @@ Recommended meanings:
 - `attention_level`: presentation-derived onset / spectral-flux salience.
 - `neural_rhythms`: presentation-derived listener-side rhythm model.
 
+Low or absent presentation evidence should not be reported as instability.
+When the presentation-derived intensity mass is effectively zero, the first
+implementation reports neutral stability, zero resolvability, and zero tension.
+
 Derived values should not be stored in Phase 1:
 
 - `instability_level = 1.0 - stability_level`
@@ -130,6 +134,10 @@ only after a sample needs them and their input signals are clear.
 
 `attention_level` and `neural_rhythms` are output state in the first
 implementation. They must not act as direct generation commands.
+They must also remain listener-side: do not feed generator vitality,
+population energy, or habitat-only scaffold state into these values.
+If rhythm persistence needs a gain, derive it from ListenerTwin's own
+presentation-derived attention state, not from generator-side vitality.
 
 For harmonic tension, the clean first definition is:
 
@@ -393,7 +401,7 @@ Current behavior:
 
 - Public scripting uses `habitat_bus` and `presentation_bus`.
 - Do not keep a `field_bus` alias.
-- GUI should show `Auditory attention` and `Neural rhythm` only from
+- GUI should show `Auditory salience` and `Neural rhythm` only from
   ListenerTwin, not from habitat-derived generator state.
 - The Listener Twin mandala should keep the listener-side delta/theta rhythm
   display and layer compact visual cues for attention, stability,

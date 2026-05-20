@@ -20,7 +20,7 @@ use crate::core::nsgt_kernel::{NsgtKernelLog2, NsgtLog2Config, PowerMode};
 use crate::core::nsgt_rt::{RtConfig, RtNsgtKernelLog2};
 use crate::core::phase::wrap_pm_pi;
 use crate::core::roughness_kernel::{KernelParams, RoughnessKernel};
-use crate::core::stream::{analysis::AnalysisStream, dorsal::DorsalMetrics, dorsal::DorsalStream};
+use crate::core::stream::{analysis::AnalysisStream, dorsal::DorsalStream};
 use crate::core::timebase::Tick;
 use crate::life::conductor::Conductor;
 use crate::life::population::Population;
@@ -30,7 +30,7 @@ use crate::life::report::{
 };
 use crate::life::schedule_renderer::ScheduleRenderer;
 use crate::life::voice::{PhonationBatch, SoundBody};
-use crate::listener_twin::{ListenerState, ListenerTwin};
+use crate::listener_twin::{ListenerFastState, ListenerState, ListenerTwin};
 use crate::scenario::{Action, ScaffoldConfig, Scenario};
 use crate::scripting::ScriptHost;
 use crate::ui::viewdata::{
@@ -163,7 +163,7 @@ struct RuntimeUiFrameInput<'a> {
     current_landscape: &'a LandscapeFrame,
     log_space: &'a Log2Space,
     presentation_chunk: Arc<[f32]>,
-    dorsal_metrics: DorsalMetrics,
+    listener_fast_state: Option<ListenerFastState>,
     listener_state: Option<ListenerState>,
     current_time: f32,
     playback_state: PlaybackState,
@@ -192,10 +192,8 @@ fn build_initial_ui_frame(
             spec_hz: current_landscape.space.centers_hz.clone(),
             amps: vec![0.0; current_landscape.space.n_bins()],
         },
-        dorsal: DorsalFrame::default(),
         listener: ListenerFrame::default(),
         landscape: current_landscape.clone(),
-        time_sec: current_time,
         meta: SimulationMeta {
             time_sec: current_time,
             duration_sec: conductor.total_duration(),
@@ -262,18 +260,8 @@ fn build_runtime_ui_frame(input: RuntimeUiFrameInput<'_>) -> UiFrame {
     UiFrame {
         wave,
         spec,
-        dorsal: DorsalFrame {
-            e_low: input.dorsal_metrics.e_low,
-            e_mid: input.dorsal_metrics.e_mid,
-            e_high: input.dorsal_metrics.e_high,
-            flux: input.dorsal_metrics.flux,
-        },
-        listener: input
-            .listener_state
-            .map(listener_frame_from_state)
-            .unwrap_or_default(),
+        listener: listener_frame_from_states(input.listener_fast_state, input.listener_state),
         landscape: input.current_landscape.clone(),
-        time_sec: input.current_time,
         meta: SimulationMeta {
             time_sec: input.current_time,
             duration_sec: input.conductor.total_duration(),
@@ -319,17 +307,35 @@ fn positive_hz(hz: f32) -> Option<f32> {
     (hz.is_finite() && hz > 0.0).then_some(hz)
 }
 
-fn listener_frame_from_state(state: ListenerState) -> ListenerFrame {
-    ListenerFrame {
-        time_sec: state.time_sec,
-        generated_frame_id: state.generated_frame_id,
-        analysis_frame_id: state.analysis_frame_id,
-        analysis_lag_frames: state.analysis_lag_frames,
-        stability_level: state.stability_level,
-        resolvability_level: state.resolvability_level,
-        tension_level: state.tension_level,
-        has_state: true,
+fn listener_frame_from_states(
+    fast_state: Option<ListenerFastState>,
+    state: Option<ListenerState>,
+) -> ListenerFrame {
+    let mut frame = ListenerFrame::default();
+    if let Some(fast) = fast_state {
+        frame.time_sec = fast.time_sec;
+        frame.generated_frame_id = fast.generated_frame_id;
+        frame.attention_level = fast.attention_level;
+        frame.attention = DorsalFrame {
+            e_low: fast.attention_metrics.e_low,
+            e_mid: fast.attention_metrics.e_mid,
+            e_high: fast.attention_metrics.e_high,
+            flux: fast.attention_metrics.flux,
+        };
+        frame.neural_rhythms = fast.neural_rhythms;
+        frame.has_fast_state = fast.has_state;
     }
+    if let Some(state) = state {
+        frame.time_sec = state.time_sec;
+        frame.generated_frame_id = state.generated_frame_id;
+        frame.analysis_frame_id = state.analysis_frame_id;
+        frame.analysis_lag_frames = state.analysis_lag_frames;
+        frame.stability_level = state.stability_level;
+        frame.resolvability_level = state.resolvability_level;
+        frame.tension_level = state.tension_level;
+        frame.has_state = true;
+    }
+    frame
 }
 
 fn merge_latest_analysis_results(
@@ -1168,7 +1174,9 @@ fn worker_loop(
     let mut last_ui_update = Instant::now();
     let ui_min_interval = Duration::from_millis(33);
     let mut last_analysis_frame: Option<u64> = None;
-    let mut listener_twin = ListenerTwin::default();
+    let mut listener_twin =
+        ListenerTwin::with_sample_rate(fs, crate::listener_twin::ListenerTwinConfig::default());
+    let mut latest_listener_fast_state: Option<ListenerFastState> = None;
     let mut latest_listener_state: Option<ListenerState> = None;
     let timebase = crate::core::timebase::Timebase { fs, hop };
     let mut generator_model =
@@ -1438,7 +1446,12 @@ fn worker_loop(
             if !finished {
                 current_landscape.rhythm = dorsal.process(habitat_chunk.as_ref());
             }
-            let dorsal_metrics = dorsal.last_metrics();
+            latest_listener_fast_state = Some(listener_twin.observe_presentation_audio(
+                now_sec,
+                frame_idx,
+                presentation_chunk.as_ref(),
+                vitality,
+            ));
 
             // Feed every habitat hop to NSGT-RT. Dropping hops breaks time continuity.
             if let Err(err) = audio_to_analysis_tx.send((frame_idx, Arc::clone(&habitat_chunk))) {
@@ -1506,7 +1519,7 @@ fn worker_loop(
                     current_landscape: &current_landscape,
                     log_space: &log_space,
                     presentation_chunk: Arc::clone(&presentation_chunk),
-                    dorsal_metrics,
+                    listener_fast_state: latest_listener_fast_state,
                     listener_state: latest_listener_state,
                     current_time,
                     playback_state: playback_state.clone(),

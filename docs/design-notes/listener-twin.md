@@ -99,6 +99,8 @@ The minimal state should be small and explicit:
 ```text
 ListenerState {
   time_sec,
+  attention_level,
+  neural_rhythms,
   stability_level,
   resolvability_level,
   tension_level
@@ -111,6 +113,8 @@ Recommended meanings:
 - `resolvability_level`: whether nearby audible states offer a plausible
   improvement.
 - `tension_level`: unstable now, but with an available path toward improvement.
+- `attention_level`: presentation-derived onset / spectral-flux salience.
+- `neural_rhythms`: presentation-derived listener-side rhythm model.
 
 Derived values should not be stored in Phase 1:
 
@@ -120,14 +124,12 @@ Delayed values:
 
 - `closure_level`: stable state with low unresolved pressure.
 - `surprise_level`: mismatch from the listener twin's short-term expectation.
-- `attention_level`: listener salience, not a direct musical command.
 
 Do not include delayed values in the first report format. They should be added
 only after a sample needs them and their input signals are clear.
 
-When `attention_level` is added, it should be presentation-derived output:
-onset / spectral-flux salience estimated from what the listener can hear. In the
-first implementation it must not act as a generation command.
+`attention_level` and `neural_rhythms` are output state in the first
+implementation. They must not act as direct generation commands.
 
 For harmonic tension, the clean first definition is:
 
@@ -323,6 +325,10 @@ Expected JSONL event:
   "type": "listener_state",
   "time_sec": 1.25,
   "analysis_lag_frames": 2,
+  "attention_level": 0.31,
+  "theta_hz": 5.84,
+  "theta_mag": 0.42,
+  "theta_alpha": 0.74,
   "stability_level": 0.72,
   "resolvability_level": 0.64,
   "tension_level": 0.18
@@ -343,7 +349,9 @@ Implemented in:
 Current behavior:
 
 - `ListenerTwin` is passive.
-- It reads presentation-derived analysis only.
+- It reads presentation-derived audio for fast attention / rhythm state.
+- It reads presentation-derived analysis for stability / resolvability /
+  tension.
 - It reports `listener_state` JSONL records when `--report` is enabled and
   exposes the latest state to the GUI.
 - It does not change population movement, pitch, rhythm, spawning, or audio
@@ -356,6 +364,8 @@ Current behavior:
 
 - Add a small `listener_twin` module.
 - Compute `ListenerState` from presentation-derived `Landscape`.
+- Compute listener-side `attention_level` and `neural_rhythms` from
+  presentation audio.
 - Report `listener_state` in headless reports.
 - Show the latest listener state in the GUI when the presentation analysis path
   is active.
@@ -373,32 +383,27 @@ Current behavior:
   affordance audible.
 - Check that hidden anchors do not affect reported listener tension.
 
-### Phase 3: Listener Fast Path
-
-- Add presentation-derived onset / flux salience as `attention_level`.
-- Add presentation-derived listener entrainment as report/UI state.
-- Keep generator rhythm and listener entrainment separate.
-- Use confidence-weighted blending only when listener entrainment starts
-  influencing generation.
-
-### Phase 4: Weak DCC Coupling
+### Phase 3: Weak DCC Coupling
 
 - Add a narrow coupling layer that reads `ListenerState`.
 - Convert high tension / high resolvability into small distributed pressure.
 - Keep the coupling weak enough that voice dynamics remain ALife-like.
 
-### Phase 5: Public Bus Naming
+### Phase 4: Public Bus Naming
 
 - Public scripting uses `habitat_bus` and `presentation_bus`.
 - Do not keep a `field_bus` alias.
-- GUI should say `Generator Diagnostics` for habitat rhythm and
-  prediction views, not `Auditory attention` or `Neural activity`.
+- GUI should show `Auditory attention` and `Neural rhythm` only from
+  ListenerTwin, not from habitat-derived generator state.
+- The Listener Twin mandala should keep the listener-side delta/theta rhythm
+  display and layer compact visual cues for attention, stability,
+  resolvability, and tension. Numeric details can live below the time-series
+  plots.
 
-### Phase 6: Memory And Expectation
+### Phase 5: Memory And Expectation
 
 - Add short-term expectation only after passive state is useful.
-- Add `surprise_level`, `closure_level`, and `attention_level` only after their
-  inputs are explicit.
+- Add `surprise_level` and `closure_level` only after their inputs are explicit.
 - Add phrase/event memory only after a concrete sample needs it.
 - Keep `Memory` scoped as `ListenerMemory` or inside `ListenerTwin`, never as an
   unqualified global `Memory`.

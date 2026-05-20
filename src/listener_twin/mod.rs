@@ -1,5 +1,7 @@
 use crate::core::landscape::LandscapeFrame;
 use crate::core::log2space::Log2Space;
+use crate::core::modulation::NeuralRhythms;
+use crate::core::stream::dorsal::{DorsalMetrics, DorsalStream};
 use serde::Serialize;
 
 #[derive(Clone, Copy, Debug, Serialize)]
@@ -11,6 +13,23 @@ pub(crate) struct ListenerState {
     pub(crate) stability_level: f32,
     pub(crate) resolvability_level: f32,
     pub(crate) tension_level: f32,
+    pub(crate) attention_level: f32,
+    pub(crate) theta_hz: f32,
+    pub(crate) theta_mag: f32,
+    pub(crate) theta_alpha: f32,
+    pub(crate) delta_hz: f32,
+    pub(crate) delta_mag: f32,
+    pub(crate) delta_alpha: f32,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct ListenerFastState {
+    pub(crate) time_sec: f32,
+    pub(crate) generated_frame_id: u64,
+    pub(crate) attention_level: f32,
+    pub(crate) attention_metrics: DorsalMetrics,
+    pub(crate) neural_rhythms: NeuralRhythms,
+    pub(crate) has_state: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -30,14 +49,45 @@ impl Default for ListenerTwinConfig {
     }
 }
 
-#[derive(Clone, Debug)]
 pub(crate) struct ListenerTwin {
     config: ListenerTwinConfig,
+    fast_stream: DorsalStream,
+    fast_state: ListenerFastState,
 }
 
 impl ListenerTwin {
     pub(crate) fn new(config: ListenerTwinConfig) -> Self {
-        Self { config }
+        Self::with_sample_rate(48_000.0, config)
+    }
+
+    pub(crate) fn with_sample_rate(fs: f32, config: ListenerTwinConfig) -> Self {
+        Self {
+            config,
+            fast_stream: DorsalStream::new(fs),
+            fast_state: ListenerFastState::default(),
+        }
+    }
+
+    pub(crate) fn observe_presentation_audio(
+        &mut self,
+        time_sec: f32,
+        generated_frame_id: u64,
+        audio: &[f32],
+        vitality: f32,
+    ) -> ListenerFastState {
+        self.fast_stream.set_vitality(vitality);
+        let neural_rhythms = self.fast_stream.process(audio);
+        let attention_metrics = self.fast_stream.last_metrics();
+        let attention_level = attention_level_from_metrics(attention_metrics);
+        self.fast_state = ListenerFastState {
+            time_sec,
+            generated_frame_id,
+            attention_level,
+            attention_metrics,
+            neural_rhythms,
+            has_state: true,
+        };
+        self.fast_state
     }
 
     pub(crate) fn observe_presentation_landscape(
@@ -61,6 +111,13 @@ impl ListenerTwin {
             stability_level,
             resolvability_level,
             tension_level,
+            attention_level: self.fast_state.attention_level,
+            theta_hz: finite_positive(self.fast_state.neural_rhythms.theta.freq_hz),
+            theta_mag: self.fast_state.neural_rhythms.theta.mag.clamp(0.0, 1.0),
+            theta_alpha: self.fast_state.neural_rhythms.theta.alpha.clamp(0.0, 1.0),
+            delta_hz: finite_positive(self.fast_state.neural_rhythms.delta.freq_hz),
+            delta_mag: self.fast_state.neural_rhythms.delta.mag.clamp(0.0, 1.0),
+            delta_alpha: self.fast_state.neural_rhythms.delta.alpha.clamp(0.0, 1.0),
         }
     }
 }
@@ -160,6 +217,20 @@ fn finite_nonnegative(value: f32) -> f32 {
     }
 }
 
+fn finite_positive(value: f32) -> f32 {
+    if value.is_finite() && value > 0.0 {
+        value
+    } else {
+        0.0
+    }
+}
+
+fn attention_level_from_metrics(metrics: DorsalMetrics) -> f32 {
+    (finite_nonnegative(metrics.flux) * 500.0)
+        .tanh()
+        .clamp(0.0, 1.0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -222,5 +293,20 @@ mod tests {
         assert!(state.stability_level < 0.25);
         assert!(state.resolvability_level < 0.05);
         assert!(state.tension_level < 0.05);
+    }
+
+    #[test]
+    fn presentation_audio_transient_raises_attention() {
+        let mut twin = ListenerTwin::with_sample_rate(48_000.0, ListenerTwinConfig::default());
+        let quiet = vec![0.0f32; 256];
+        let quiet_state = twin.observe_presentation_audio(0.0, 0, &quiet, 1.0);
+
+        let mut transient = vec![0.0f32; 256];
+        transient[0] = 1.0;
+        let active_state = twin.observe_presentation_audio(0.01, 1, &transient, 1.0);
+
+        assert!(quiet_state.attention_level < 0.01);
+        assert!(active_state.attention_level > quiet_state.attention_level);
+        assert!(active_state.has_state);
     }
 }

@@ -148,6 +148,13 @@ enum ReportRecord<'a> {
         stability_level: f32,
         resolvability_level: f32,
         tension_level: f32,
+        attention_level: f32,
+        theta_hz: f32,
+        theta_mag: f32,
+        theta_alpha: f32,
+        delta_hz: f32,
+        delta_mag: f32,
+        delta_alpha: f32,
     },
     RhythmSummary {
         time_sec: f32,
@@ -301,6 +308,13 @@ impl JsonlReporter {
             stability_level: state.stability_level,
             resolvability_level: state.resolvability_level,
             tension_level: state.tension_level,
+            attention_level: state.attention_level,
+            theta_hz: state.theta_hz,
+            theta_mag: state.theta_mag,
+            theta_alpha: state.theta_alpha,
+            delta_hz: state.delta_hz,
+            delta_mag: state.delta_mag,
+            delta_alpha: state.delta_alpha,
         })
     }
 

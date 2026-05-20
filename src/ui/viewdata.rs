@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use crate::core::landscape::LandscapeFrame;
+use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::Tick;
 
 #[derive(Clone, Debug)]
@@ -29,9 +30,13 @@ pub struct ListenerFrame {
     pub generated_frame_id: u64,
     pub analysis_frame_id: u64,
     pub analysis_lag_frames: u64,
+    pub attention_level: f32,
+    pub attention: DorsalFrame,
+    pub neural_rhythms: NeuralRhythms,
     pub stability_level: f32,
     pub resolvability_level: f32,
     pub tension_level: f32,
+    pub has_fast_state: bool,
     pub has_state: bool,
 }
 
@@ -95,10 +100,8 @@ pub struct PredictionFrame {
 pub struct UiFrame {
     pub wave: WaveFrame,
     pub spec: SpecFrame,
-    pub dorsal: DorsalFrame,
     pub listener: ListenerFrame,
     pub landscape: LandscapeFrame,
-    pub time_sec: f32,
     pub meta: SimulationMeta,
     pub prediction: PredictionFrame,
     pub voices: Vec<VoiceStateInfo>,

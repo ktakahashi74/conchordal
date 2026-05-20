@@ -29,8 +29,8 @@ pub struct App {
     analysis_handle: Option<std::thread::JoinHandle<()>>,
     listener_analysis_handle: Option<std::thread::JoinHandle<()>>,
     exiting: Arc<AtomicBool>,
-    rhythm_history: VecDeque<(f64, crate::core::modulation::NeuralRhythms)>,
-    dorsal_history: VecDeque<(f64, DorsalFrame)>,
+    listener_rhythm_history: VecDeque<(f64, crate::core::modulation::NeuralRhythms)>,
+    listener_attention_history: VecDeque<(f64, DorsalFrame)>,
     start_flag: Arc<AtomicBool>,
     level_history: VecDeque<(std::time::Instant, [f32; 2])>,
     show_raw_nsgt_power: bool,
@@ -84,8 +84,8 @@ impl App {
             analysis_handle: rt.analysis_handle,
             listener_analysis_handle: rt.listener_analysis_handle,
             exiting: stop_flag,
-            rhythm_history: VecDeque::with_capacity(4096),
-            dorsal_history: VecDeque::with_capacity(4096),
+            listener_rhythm_history: VecDeque::with_capacity(4096),
+            listener_attention_history: VecDeque::with_capacity(4096),
             start_flag: rt.start_flag,
             level_history: VecDeque::with_capacity(256),
             show_raw_nsgt_power: false,
@@ -96,32 +96,35 @@ impl App {
     fn apply_ui_frame(&mut self, frame: UiFrame) {
         self.last_frame = frame;
 
-        let t = self.last_frame.time_sec as f64;
-        if self.last_frame.meta.playback_state != PlaybackState::Finished {
-            self.rhythm_history
-                .push_back((t, self.last_frame.landscape.rhythm));
-            self.dorsal_history.push_back((t, self.last_frame.dorsal));
+        let t = self.last_frame.meta.time_sec as f64;
+        if self.last_frame.meta.playback_state != PlaybackState::Finished
+            && self.last_frame.listener.has_fast_state
+        {
+            self.listener_rhythm_history
+                .push_back((t, self.last_frame.listener.neural_rhythms));
+            self.listener_attention_history
+                .push_back((t, self.last_frame.listener.attention));
         }
 
         let t_last = self
-            .rhythm_history
+            .listener_rhythm_history
             .back()
             .map(|(t, _)| *t)
-            .or_else(|| self.dorsal_history.back().map(|(t, _)| *t));
+            .or_else(|| self.listener_attention_history.back().map(|(t, _)| *t));
         if let Some(t_last) = t_last {
             while self
-                .rhythm_history
+                .listener_rhythm_history
                 .front()
                 .is_some_and(|(time, _)| *time < t_last - 5.0)
             {
-                self.rhythm_history.pop_front();
+                self.listener_rhythm_history.pop_front();
             }
             while self
-                .dorsal_history
+                .listener_attention_history
                 .front()
                 .is_some_and(|(time, _)| *time < t_last - 5.0)
             {
-                self.dorsal_history.pop_front();
+                self.listener_attention_history.pop_front();
             }
         }
 
@@ -179,8 +182,8 @@ impl eframe::App for App {
         crate::ui::windows::main_window(
             ui,
             &self.last_frame,
-            &self.rhythm_history,
-            &self.dorsal_history,
+            &self.listener_rhythm_history,
+            &self.listener_attention_history,
             self.audio_init_error.as_deref(),
             &self.exiting,
             &self.start_flag,

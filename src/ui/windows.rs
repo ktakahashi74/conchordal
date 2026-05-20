@@ -58,9 +58,10 @@ fn draw_level_meters(
     left_win: f32,
     right_inst: f32,
     right_win: f32,
+    meter_height: f32,
     meter_width_scale: f32,
 ) {
-    let meter_height = (ui.available_height() * 0.8).max(80.0);
+    let meter_height = meter_height.max(42.0);
     let label_width = 20.0;
     let meter_width = 22.0 * meter_width_scale;
     let spacing = 8.0;
@@ -149,26 +150,72 @@ fn split_widths(ui: &egui::Ui, ratio: f32, min_left: f32, min_right: f32) -> (f3
     (left_width, right_width)
 }
 
-fn listener_level_bar(ui: &mut egui::Ui, label: &str, value: f32) {
+fn listener_level_chip(ui: &mut egui::Ui, label: &str, value: f32, color: egui::Color32) {
     let level = value.clamp(0.0, 1.0);
-    ui.label(label);
-    ui.add(
-        egui::ProgressBar::new(level)
-            .desired_width(150.0)
-            .text(format!("{level:.2}")),
+    let desired = Vec2::new(86.0, 18.0);
+    let (rect, _resp) = ui.allocate_exact_size(desired, egui::Sense::hover());
+    let painter = ui.painter_at(rect);
+    let bg = ui.visuals().extreme_bg_color;
+    let stroke = ui.visuals().window_stroke();
+    painter.rect_filled(rect, 2.0, bg);
+    painter.rect_stroke(rect, 2.0, stroke, egui::StrokeKind::Inside);
+
+    let fill_rect = egui::Rect::from_min_max(
+        rect.left_top(),
+        egui::pos2(rect.left() + rect.width() * level, rect.bottom()),
+    )
+    .shrink2(Vec2::new(1.0, 1.0));
+    painter.rect_filled(fill_rect, 1.0, color.gamma_multiply(0.75));
+    painter.text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        format!("{label} {level:.2}"),
+        egui::FontId::proportional(11.0),
+        ui.visuals().text_color(),
     );
 }
 
-fn draw_listener_twin(ui: &mut egui::Ui, frame: &UiFrame) {
+fn draw_listener_twin_summary(ui: &mut egui::Ui, frame: &UiFrame) {
     ui.horizontal(|ui| {
-        ui.heading("Listener Twin");
-        ui.separator();
+        if frame.listener.has_fast_state {
+            listener_level_chip(
+                ui,
+                "Att",
+                frame.listener.attention_level,
+                Color32::from_rgb(90, 180, 230),
+            );
+            ui.label(format!(
+                "theta {:.2}Hz",
+                frame.listener.neural_rhythms.theta.freq_hz.max(0.0)
+            ));
+            ui.label(format!(
+                "delta {:.2}Hz",
+                frame.listener.neural_rhythms.delta.freq_hz.max(0.0)
+            ));
+        } else {
+            ui.label("Waiting for presentation audio");
+        }
+
         if frame.listener.has_state {
-            listener_level_bar(ui, "Stability", frame.listener.stability_level);
             ui.separator();
-            listener_level_bar(ui, "Resolvability", frame.listener.resolvability_level);
-            ui.separator();
-            listener_level_bar(ui, "Tension", frame.listener.tension_level);
+            listener_level_chip(
+                ui,
+                "Sta",
+                frame.listener.stability_level,
+                Color32::from_rgb(80, 200, 130),
+            );
+            listener_level_chip(
+                ui,
+                "Res",
+                frame.listener.resolvability_level,
+                Color32::from_rgb(235, 200, 75),
+            );
+            listener_level_chip(
+                ui,
+                "Ten",
+                frame.listener.tension_level,
+                Color32::from_rgb(235, 95, 85),
+            );
             ui.separator();
             ui.label(format!(
                 "t={:.2}s gen={} ana={} lag={}",
@@ -178,8 +225,138 @@ fn draw_listener_twin(ui: &mut egui::Ui, frame: &UiFrame) {
                 frame.listener.analysis_lag_frames
             ));
         } else {
+            ui.separator();
             ui.label("Waiting for presentation analysis");
         }
+    });
+}
+
+fn draw_listener_dashboard(
+    ui: &mut egui::Ui,
+    frame: &UiFrame,
+    rhythm_history: &VecDeque<(f64, crate::core::modulation::NeuralRhythms)>,
+    dorsal_history: &VecDeque<(f64, crate::ui::viewdata::DorsalFrame)>,
+    window_start: f64,
+    window_end: f64,
+    time_link_id: &str,
+) {
+    let (left_width, _) = split_widths(ui, 0.22, 250.0, 480.0);
+    let dashboard_height = 178.0;
+    let audio_height = 52.0;
+    let plot_height = 42.0;
+    let neural_height = 44.0;
+    let mandala_side = 76.0;
+
+    ui.horizontal(|ui| {
+        ui.allocate_ui_with_layout(
+            Vec2::new(left_width, dashboard_height),
+            egui::Layout::top_down(egui::Align::LEFT),
+            |ui| {
+                let peak_db = if frame.meta.peak_level > 0.0 {
+                    20.0 * frame.meta.peak_level.log10()
+                } else {
+                    f32::NEG_INFINITY
+                };
+                let peak_text = if peak_db.is_infinite() {
+                    "-inf dB".to_string()
+                } else {
+                    format!("{:>5.1} dB", peak_db)
+                };
+                let peak_color = if frame.meta.peak_level > 1.0 {
+                    egui::Color32::RED
+                } else {
+                    ui.visuals().text_color()
+                };
+
+                ui.horizontal(|ui| {
+                    ui.heading("Audio");
+                    ui.separator();
+                    ui.colored_label(peak_color, format!("Peak level: {peak_text}"));
+                });
+                ui.allocate_ui_with_layout(
+                    Vec2::new(left_width, audio_height),
+                    egui::Layout::left_to_right(egui::Align::Min),
+                    |ui| {
+                        draw_level_meters(
+                            ui,
+                            frame.meta.channel_peak[0],
+                            frame.meta.window_peak[0],
+                            frame.meta.channel_peak[1],
+                            frame.meta.window_peak[1],
+                            audio_height,
+                            0.45,
+                        );
+
+                        ui.separator();
+                        ui.vertical(|ui| {
+                            time_plot(
+                                ui,
+                                "Current Hop Wave",
+                                frame.wave.fs as f64,
+                                frame.wave.samples.as_ref(),
+                                audio_height,
+                                false,
+                            );
+                        });
+                    },
+                );
+
+                ui.separator();
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("Mandala").strong());
+                    draw_rhythm_mandala(
+                        ui,
+                        &frame.listener.neural_rhythms,
+                        Vec2::splat(mandala_side),
+                    );
+                    ui.vertical(|ui| {
+                        let labels = [
+                            ("Delta", egui::Color32::from_rgb(80, 180, 255)),
+                            ("Theta", egui::Color32::from_rgb(70, 225, 135)),
+                            ("Alpha", egui::Color32::from_rgb(255, 215, 60)),
+                            ("Beta", egui::Color32::from_rgb(255, 110, 90)),
+                        ];
+                        for (label, color) in labels {
+                            ui.label(egui::RichText::new(label).color(color).size(12.0));
+                        }
+                    });
+                });
+            },
+        );
+
+        ui.separator();
+        let right_width = ui.available_width().max(0.0);
+        ui.allocate_ui_with_layout(
+            Vec2::new(right_width, dashboard_height),
+            egui::Layout::top_down(egui::Align::LEFT),
+            |ui| {
+                ui.heading("Listener Twin");
+                let old_spacing = ui.spacing().item_spacing;
+                ui.spacing_mut().item_spacing.y = 0.0;
+                ui.label("Auditory attention");
+                spectrum_time_freq_axes(
+                    ui,
+                    dorsal_history,
+                    plot_height,
+                    window_start,
+                    window_end,
+                    Some(time_link_id),
+                );
+                ui.separator();
+                ui.label("Neural rhythm");
+                neural_activity_plot(
+                    ui,
+                    rhythm_history,
+                    neural_height,
+                    window_start,
+                    window_end,
+                    Some(time_link_id),
+                );
+                ui.spacing_mut().item_spacing = old_spacing;
+                ui.separator();
+                draw_listener_twin_summary(ui, frame);
+            },
+        );
     });
 }
 
@@ -310,152 +487,15 @@ pub fn main_window(
         let x_max = rhythm_history.back().map(|(t, _)| *t).unwrap_or(0.0);
         let window_start = x_max - 5.0;
         let window_end = (window_start + 5.0).max(window_start + 0.1);
-        let (left_width, _) = split_widths(ui, 0.17, 100.0, 200.0);
-        let row_height = 100.0;
-        let height = 100.0;
-        let legend_room = 12.0;
-        let block_height = height + legend_room;
-        let attention_height = row_height * 0.7;
-        let neural_time_height = block_height * 0.7;
-        let left_row_height = attention_height;
-        let left_block_height = neural_time_height;
-        ui.horizontal(|ui| {
-            ui.allocate_ui_with_layout(
-                Vec2::new(left_width, left_row_height + left_block_height),
-                egui::Layout::top_down(egui::Align::LEFT),
-                |ui| {
-                    let peak_db = if frame.meta.peak_level > 0.0 {
-                        20.0 * frame.meta.peak_level.log10()
-                    } else {
-                        f32::NEG_INFINITY
-                    };
-                    let peak_text = if peak_db.is_infinite() {
-                        "-inf dB".to_string()
-                    } else {
-                        format!("{:>5.1} dB", peak_db)
-                    };
-                    let peak_color = if frame.meta.peak_level > 1.0 {
-                        egui::Color32::RED
-                    } else {
-                        ui.visuals().text_color()
-                    };
-                    ui.horizontal(|ui| {
-                        ui.heading("Audio");
-                        ui.separator();
-                        ui.colored_label(peak_color, format!("Peak level: {peak_text}"));
-                    });
-                    ui.allocate_ui_with_layout(
-                        Vec2::new(left_width, left_row_height),
-                        egui::Layout::left_to_right(egui::Align::Min),
-                        |ui| {
-                            // === Level meter ===
-                            ui.vertical(|ui| {
-                                draw_level_meters(
-                                    ui,
-                                    frame.meta.channel_peak[0],
-                                    frame.meta.window_peak[0],
-                                    frame.meta.channel_peak[1],
-                                    frame.meta.window_peak[1],
-                                    0.45,
-                                );
-                            });
-
-                            ui.separator();
-                            // === Waveform ===
-                            ui.vertical(|ui| {
-                                ui.label("Wave frame");
-                                ui.allocate_ui_with_layout(
-                                    Vec2::new(ui.available_width(), left_row_height),
-                                    egui::Layout::top_down(egui::Align::LEFT),
-                                    |ui| {
-                                        time_plot(
-                                            ui,
-                                            "Current Hop Wave",
-                                            frame.wave.fs as f64,
-                                            frame.wave.samples.as_ref(),
-                                            left_row_height,
-                                            false,
-                                        );
-                                    },
-                                );
-                            });
-                        },
-                    );
-
-                    ui.separator();
-                    ui.heading("Habitat Rhythm");
-                    ui.allocate_ui_with_layout(
-                        Vec2::new(left_width, left_block_height),
-                        egui::Layout::top_down(egui::Align::LEFT),
-                        |ui| {
-                            ui.set_min_height(left_block_height);
-                            let side_len = ((left_block_height - legend_room) * 0.4).max(60.0);
-                            let side = Vec2::splat(side_len);
-                            ui.add_space(10.0);
-                            ui.horizontal(|ui| {
-                                ui.add_space(8.0);
-                                draw_rhythm_mandala(ui, &frame.landscape.rhythm, side);
-                                ui.vertical(|ui| {
-                                    let labels = [
-                                        ("Delta", egui::Color32::from_rgb(80, 180, 255)),
-                                        ("Theta", egui::Color32::from_rgb(70, 225, 135)),
-                                        ("Alpha", egui::Color32::from_rgb(255, 215, 60)),
-                                        ("Beta", egui::Color32::from_rgb(255, 110, 90)),
-                                    ];
-                                    for (label, color) in labels {
-                                        ui.label(
-                                            egui::RichText::new(label).color(color).size(12.0),
-                                        );
-                                    }
-                                });
-                            });
-                        },
-                    );
-                },
-            );
-
-            ui.separator();
-            let right_width = ui.available_width().max(0.0);
-            ui.allocate_ui_with_layout(
-                Vec2::new(right_width, attention_height + neural_time_height),
-                egui::Layout::top_down(egui::Align::LEFT),
-                |ui| {
-                    let old_spacing = ui.spacing().item_spacing;
-                    ui.spacing_mut().item_spacing.y = 0.0;
-                    ui.label("Habitat flux");
-                    spectrum_time_freq_axes(
-                        ui,
-                        dorsal_history,
-                        attention_height,
-                        window_start,
-                        window_end,
-                        Some(time_link_id),
-                    );
-                    ui.spacing_mut().item_spacing = old_spacing;
-                    ui.separator();
-                    ui.label("Habitat rhythm");
-                    ui.allocate_ui_with_layout(
-                        Vec2::new(right_width, neural_time_height),
-                        egui::Layout::top_down(egui::Align::LEFT),
-                        |ui| {
-                            ui.set_min_width(right_width);
-                            ui.set_min_height(neural_time_height);
-                            neural_activity_plot(
-                                ui,
-                                rhythm_history,
-                                neural_time_height,
-                                window_start,
-                                window_end,
-                                Some(time_link_id),
-                            );
-                        },
-                    );
-                },
-            );
-        });
-
-        ui.separator();
-        draw_listener_twin(ui, frame);
+        draw_listener_dashboard(
+            ui,
+            frame,
+            rhythm_history,
+            dorsal_history,
+            window_start,
+            window_end,
+            time_link_id,
+        );
 
         ui.separator();
         ui.horizontal(|ui| {

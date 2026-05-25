@@ -70,21 +70,28 @@ impl Default for KernelParams {
 /// This is the masking-off reference family:
 ///   gain * max(0, exp(-b*u) - exp(-c*u)), u = |d_erb| / kappa_erb.
 #[inline]
+fn finite_or(x: f32, fallback: f32) -> f32 {
+    if x.is_finite() { x } else { fallback }
+}
+
+#[inline]
 fn sethares_shape_params(params: &KernelParams) -> (f32, f32, f32, f32) {
-    let gain = params.sethares_gain.max(0.0);
-    let b = params.sethares_b.max(1e-6);
-    let c = params.sethares_c.max(b + 1e-6);
-    let kappa = params.sethares_kappa_erb.max(1e-6);
+    let defaults = KernelParams::default();
+    let gain = finite_or(params.sethares_gain, defaults.sethares_gain).max(0.0);
+    let b = finite_or(params.sethares_b, defaults.sethares_b).max(1e-6);
+    let c = finite_or(params.sethares_c, defaults.sethares_c).max(b + 1e-6);
+    let kappa = finite_or(params.sethares_kappa_erb, defaults.sethares_kappa_erb).max(1e-6);
     (gain, b, c, kappa)
 }
 
 #[inline]
 fn asymmetry_gain(params: &KernelParams, d_erb: f32) -> f32 {
-    let mix = params.mix_tail.clamp(0.0, 0.99);
+    let defaults = KernelParams::default();
+    let mix = finite_or(params.mix_tail, defaults.mix_tail).clamp(0.0, 0.99);
     if mix <= 0.0 {
         return 1.0;
     }
-    let tau = params.tau_erb.max(1e-6);
+    let tau = finite_or(params.tau_erb, defaults.tau_erb).max(1e-6);
     if d_erb >= 0.0 {
         1.0 + mix * (-d_erb / tau).exp()
     } else {
@@ -102,16 +109,22 @@ fn eval_kernel_base_no_dip(params: &KernelParams, d_erb: f32) -> f32 {
 
 #[inline]
 pub fn eval_kernel_delta_erb(params: &KernelParams, d_erb: f32) -> f32 {
-    let s_sup = params.suppress_sigma_erb.max(1e-6);
-    let sig_n = params.sigma_neural_erb.max(1e-6);
+    if !d_erb.is_finite() {
+        return 0.0;
+    }
+    let defaults = KernelParams::default();
+    let s_sup = finite_or(params.suppress_sigma_erb, defaults.suppress_sigma_erb).max(1e-6);
+    let sig_n = finite_or(params.sigma_neural_erb, defaults.sigma_neural_erb).max(1e-6);
+    let suppress_pow = finite_or(params.suppress_pow, defaults.suppress_pow).max(1e-6);
+    let w_neural = finite_or(params.w_neural, defaults.w_neural).clamp(0.0, 1.0);
 
     let desq = d_erb * d_erb;
     let base = eval_kernel_base_no_dip(params, d_erb);
 
     let suppress = (1.0 - (-desq / (2.0 * s_sup * s_sup)).exp()).clamp(0.0, 1.0);
-    let g_coch = base * suppress.powf(params.suppress_pow);
+    let g_coch = base * suppress.powf(suppress_pow);
     let g_neural = (-desq / (2.0 * sig_n * sig_n)).exp();
-    (1.0 - params.w_neural) * g_coch + params.w_neural * g_neural
+    (1.0 - w_neural) * g_coch + w_neural * g_neural
 }
 
 /// Runtime crowding profile used for behavior-side anti-unison pressure.
@@ -127,6 +140,9 @@ pub fn eval_kernel_delta_erb(params: &KernelParams, d_erb: f32) -> f32 {
 /// R′(peak) ≈ 0.
 #[inline]
 pub fn crowding_runtime_delta_erb(params: &KernelParams, d_erb: f32) -> f32 {
+    if !d_erb.is_finite() {
+        return 0.0;
+    }
     let (_, b, c, kappa_erb) = sethares_shape_params(params);
     let denom = (c - b).max(1e-6);
     let ratio = (c / b).max(1.0 + 1e-6);
@@ -147,7 +163,15 @@ pub fn crowding_runtime_delta_erb(params: &KernelParams, d_erb: f32) -> f32 {
 }
 
 pub fn build_kernel_erbstep(params: &KernelParams, erb_step: f32) -> (Vec<f32>, usize) {
-    let hw_erb = params.half_width_erb;
+    assert!(
+        erb_step.is_finite() && erb_step > 0.0,
+        "erb_step must be finite and positive"
+    );
+    let hw_erb = finite_or(
+        params.half_width_erb,
+        KernelParams::default().half_width_erb,
+    )
+    .max(0.0);
     let n_side = (hw_erb / erb_step).ceil() as usize;
     let len = 2 * n_side + 1;
 
@@ -244,7 +268,11 @@ impl RoughnessKernel {
 
         let f: Vec<f32> = (0..n).map(|i| i as f32 * df).collect();
         let erb: Vec<f32> = f.iter().map(|&x| hz_to_erb(x)).collect();
-        let half_width = self.params.half_width_erb;
+        let half_width = finite_or(
+            self.params.half_width_erb,
+            KernelParams::default().half_width_erb,
+        )
+        .max(0.0);
         let du = local_du_from_grid(&erb);
 
         let mut r = vec![0.0f32; n];
@@ -337,7 +365,11 @@ impl RoughnessKernel {
         let (erb, du) = erb_grid(space);
 
         // (2) Convolution over ERB axis
-        let half_width_erb = self.params.half_width_erb;
+        let half_width_erb = finite_or(
+            self.params.half_width_erb,
+            KernelParams::default().half_width_erb,
+        )
+        .max(0.0);
         let mut r = vec![0.0f32; n];
 
         for i in 0..n {
@@ -346,10 +378,9 @@ impl RoughnessKernel {
 
             let lo_hz = erb_to_hz(fi_erb - half_width_erb);
             let hi_hz = erb_to_hz(fi_erb + half_width_erb);
-            let j_lo = space.index_of_freq(lo_hz).unwrap_or(0);
-            let j_hi = space.index_of_freq(hi_hz).unwrap_or(n - 1);
+            let (j_lo, j_hi) = space.bin_range_of_freqs(lo_hz, hi_hz).unwrap_or((0, n - 1));
 
-            for j in j_lo..j_hi {
+            for j in j_lo..=j_hi {
                 if j == i {
                     continue;
                 }
@@ -386,15 +417,20 @@ impl RoughnessKernel {
         use crate::core::erb::erb_to_hz;
 
         let (erb, _du) = erb_grid(space);
-        let half_width_erb = self.params.half_width_erb;
+        let half_width_erb = finite_or(
+            self.params.half_width_erb,
+            KernelParams::default().half_width_erb,
+        )
+        .max(0.0);
         let mut r = vec![0.0f32; erb.len()];
 
         for (i, &u_i) in erb.iter().enumerate() {
             let mut sum = 0.0f32;
             let lo_hz = erb_to_hz(u_i - half_width_erb);
             let hi_hz = erb_to_hz(u_i + half_width_erb);
-            let j_lo = space.index_of_freq(lo_hz).unwrap_or(0);
-            let j_hi = space.index_of_freq(hi_hz).unwrap_or(erb.len() - 1);
+            let (j_lo, j_hi) = space
+                .bin_range_of_freqs(lo_hz, hi_hz)
+                .unwrap_or((0, erb.len() - 1));
             for peak in peaks {
                 if peak.bin_idx == i {
                     continue;
@@ -403,7 +439,7 @@ impl RoughnessKernel {
                 if d.abs() > half_width_erb {
                     continue;
                 }
-                if peak.bin_idx < erb.len() && (peak.bin_idx < j_lo || peak.bin_idx >= j_hi) {
+                if peak.bin_idx < erb.len() && (peak.bin_idx < j_lo || peak.bin_idx > j_hi) {
                     continue;
                 }
                 let w = lut_interp(&self.lut, self.erb_step, self.hw, d);
@@ -438,6 +474,30 @@ mod tests {
     fn make_kernel() -> RoughnessKernel {
         let p = KernelParams::default();
         RoughnessKernel::new(p, ERB_STEP)
+    }
+
+    #[test]
+    fn kernel_eval_sanitizes_non_finite_params() {
+        let p = KernelParams {
+            tau_erb: f32::NAN,
+            mix_tail: f32::NAN,
+            sethares_gain: f32::NAN,
+            sethares_b: f32::NAN,
+            sethares_c: f32::NAN,
+            sethares_kappa_erb: f32::NAN,
+            half_width_erb: f32::NAN,
+            suppress_sigma_erb: f32::NAN,
+            suppress_pow: f32::NAN,
+            sigma_neural_erb: f32::NAN,
+            w_neural: f32::NAN,
+        };
+
+        let v = eval_kernel_delta_erb(&p, 0.25);
+        assert!(v.is_finite() && v >= 0.0, "v={v}");
+        assert_eq!(eval_kernel_delta_erb(&p, f32::NAN), 0.0);
+        let k = RoughnessKernel::new(p, ERB_STEP);
+        assert!(!k.lut.is_empty());
+        assert!(k.lut.iter().all(|v| v.is_finite() && *v >= 0.0));
     }
 
     // ------------------------------------------------------------

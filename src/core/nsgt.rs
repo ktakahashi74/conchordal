@@ -82,6 +82,10 @@ impl NsgtLog2 {
             cfg.overlap >= 0.0 && cfg.overlap < 0.95,
             "Overlap must be in [0,0.95)"
         );
+        assert!(
+            cfg.fs.is_finite() && cfg.fs > 0.0,
+            "sampling rate must be finite and positive"
+        );
 
         let fs = cfg.fs;
         let bpo = space.bins_per_oct as f32;

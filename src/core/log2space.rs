@@ -25,7 +25,10 @@ pub struct Log2SpaceSpec {
 impl Log2Space {
     /// Create a log2-space grid between fmin..fmax (inclusive).
     pub fn new(fmin: f32, fmax: f32, bins_per_oct: u32) -> Self {
-        assert!(fmin > 0.0 && fmax > fmin);
+        assert!(
+            fmin.is_finite() && fmax.is_finite() && fmin > 0.0 && fmax > fmin,
+            "Log2Space bounds must be finite and ordered"
+        );
         assert!(bins_per_oct > 0);
 
         let lo = fmin.log2();
@@ -93,13 +96,10 @@ impl Log2Space {
     /// Find nearest bin index for given frequency.
     /// Returns `None` if `hz` is outside `[fmin, fmax]`.
     pub fn index_of_freq(&self, hz: f32) -> Option<usize> {
-        if hz < self.fmin || hz > self.fmax {
+        if !hz.is_finite() || hz < self.fmin || hz > self.fmax {
             return None;
         }
-        let l = hz.log2();
-        let idx = ((l - self.centers_log2[0]) / self.step_log2).round() as usize;
-        self.centers_hz.get(idx)?;
-        Some(idx)
+        Some(self.nearest_index(hz))
     }
 
     /// Find nearest bin index, clamping to space boundaries for out-of-range
@@ -137,8 +137,30 @@ impl Log2Space {
 
     /// Find nearest bin index for a log2(Hz) coordinate.
     pub fn index_of_log2(&self, log2_hz: f32) -> Option<usize> {
+        if !log2_hz.is_finite() {
+            return None;
+        }
         let hz = 2f32.powf(log2_hz);
         self.index_of_freq(hz)
+    }
+
+    /// Return an inclusive bin range for a possibly out-of-bounds frequency range.
+    ///
+    /// The requested range is clamped to this space. Returns `None` only for an
+    /// empty space or non-finite input.
+    pub fn bin_range_of_freqs(&self, min_hz: f32, max_hz: f32) -> Option<(usize, usize)> {
+        if self.n_bins() == 0 || !min_hz.is_finite() || !max_hz.is_finite() {
+            return None;
+        }
+        let lo = min_hz.min(max_hz).max(self.fmin).min(self.fmax);
+        let hi = min_hz.max(max_hz).max(self.fmin).min(self.fmax);
+        let idx_lo = self.nearest_index(lo);
+        let idx_hi = self.nearest_index(hi);
+        if idx_lo <= idx_hi {
+            Some((idx_lo, idx_hi))
+        } else {
+            Some((idx_hi, idx_lo))
+        }
     }
 
     pub fn freq_of_index(&self, i: usize) -> f32 {
@@ -182,7 +204,10 @@ impl Log2Space {
 /// `pos` values outside [0, n-1] are saturated by index clamping.
 #[inline]
 pub(crate) fn sample_scan_linear_at_pos(scan: &[f32], pos: f32) -> f32 {
-    debug_assert!(!scan.is_empty());
+    if scan.is_empty() || !pos.is_finite() {
+        return 0.0;
+    }
+    let pos = pos.clamp(0.0, scan.len().saturating_sub(1) as f32);
     let idx_base = pos.floor();
     let idx = idx_base as usize;
     let frac = pos - idx_base;
@@ -314,6 +339,36 @@ mod tests {
         let f_mid = (space.centers_hz[i] * space.centers_hz[i + 1]).sqrt();
         let got = sample_scan_linear_log2(&space, &scan, f_mid);
         assert!((got - 0.5).abs() < 5e-5, "got={got}");
+    }
+
+    #[test]
+    fn sample_scan_linear_at_pos_saturates_outside_scan() {
+        let scan = [0.25f32, 0.5, 0.75];
+
+        assert_eq!(sample_scan_linear_at_pos(&scan, -0.5), 0.25);
+        assert_eq!(sample_scan_linear_at_pos(&scan, 8.0), 0.75);
+        assert_eq!(sample_scan_linear_at_pos(&scan, f32::NAN), 0.0);
+    }
+
+    #[test]
+    fn index_of_freq_handles_fmax_and_non_finite_values() {
+        let space = Log2Space::new(100.0, 1234.0, 24);
+        let last = space.n_bins() - 1;
+
+        assert_eq!(space.index_of_freq(space.fmax), Some(last));
+        assert_eq!(space.index_of_freq(f32::NAN), None);
+        assert_eq!(space.index_of_freq(f32::INFINITY), None);
+        assert_eq!(space.index_of_log2(f32::NAN), None);
+    }
+
+    #[test]
+    fn bin_range_of_freqs_clamps_to_space_bounds() {
+        let space = Log2Space::new(100.0, 1234.0, 24);
+        let last = space.n_bins() - 1;
+
+        assert_eq!(space.bin_range_of_freqs(20.0, 20_000.0), Some((0, last)));
+        assert_eq!(space.bin_range_of_freqs(20_000.0, 20.0), Some((0, last)));
+        assert_eq!(space.bin_range_of_freqs(f32::NAN, 200.0), None);
     }
 
     #[test]

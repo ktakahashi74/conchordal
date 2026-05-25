@@ -16,7 +16,7 @@ pub struct HarmonicityRef {
 
 #[inline]
 pub fn clamp01(x: f32) -> f32 {
-    x.clamp(0.0, 1.0)
+    sanitize01(x)
 }
 
 #[inline]
@@ -32,12 +32,24 @@ pub fn sanitize01(x: f32) -> f32 {
 
 /// Normalize a density curve for potential scans, returning (normalized, mass).
 pub fn normalize_density(density_vals: &[f32], du: &[f32], eps: f32) -> (Vec<f32>, f32) {
-    let mass = density::density_to_mass(density_vals, du);
-    if mass <= eps {
+    assert_eq!(density_vals.len(), du.len(), "density/du length mismatch");
+    let mass = density_vals
+        .iter()
+        .zip(du.iter())
+        .map(|(&d, &du)| {
+            let d = if d.is_finite() { d.max(0.0) } else { 0.0 };
+            let du = if du.is_finite() { du.max(0.0) } else { 0.0 };
+            d * du
+        })
+        .sum::<f32>();
+    if !mass.is_finite() || mass <= eps {
         return (vec![0.0; density_vals.len()], mass);
     }
     let inv = 1.0 / (mass + eps);
-    let norm = density_vals.iter().map(|&v| v * inv).collect();
+    let norm = density_vals
+        .iter()
+        .map(|&v| if v.is_finite() { v.max(0.0) * inv } else { 0.0 })
+        .collect();
     (norm, mass)
 }
 
@@ -66,34 +78,32 @@ pub fn roughness_ratio_to_state01(ratio: f32, k: f32) -> f32 {
 }
 
 pub fn r_pot_scan_to_r_state01_scan(r_pot_scan: &[f32], r_ref_peak: f32, k: f32, out: &mut [f32]) {
-    debug_assert_eq!(out.len(), r_pot_scan.len());
+    assert_eq!(out.len(), r_pot_scan.len(), "r scan length mismatch");
     let denom = if r_ref_peak.is_finite() && r_ref_peak > 0.0 {
         r_ref_peak
     } else {
         1.0
     };
-    let len = out.len().min(r_pot_scan.len());
-    for i in 0..len {
+    for i in 0..out.len() {
         let ratio = r_pot_scan[i] / denom;
         out[i] = roughness_ratio_to_state01(ratio, k);
     }
 }
 
 pub fn h_pot_scan_to_h_state01_scan(h_pot_scan: &[f32], h_ref_max: f32, out: &mut [f32]) {
-    debug_assert_eq!(out.len(), h_pot_scan.len());
+    assert_eq!(out.len(), h_pot_scan.len(), "h scan length mismatch");
     let denom = if h_ref_max.is_finite() && h_ref_max > 0.0 {
         h_ref_max
     } else {
         1.0
     };
-    let len = out.len().min(h_pot_scan.len());
-    for i in 0..len {
+    for i in 0..out.len() {
         out[i] = clamp01(h_pot_scan[i] / denom);
     }
 }
 
 pub fn roughness_ref_from_r_pot_scan(r_pot_scan: &[f32], du: &[f32]) -> RoughnessRef {
-    debug_assert_eq!(r_pot_scan.len(), du.len());
+    assert_eq!(r_pot_scan.len(), du.len(), "roughness/du length mismatch");
     let peak = r_pot_scan.iter().copied().fold(0.0f32, f32::max);
     let total = density::density_to_mass(r_pot_scan, du);
     RoughnessRef { total, peak }
@@ -253,5 +263,26 @@ mod tests {
             let old_val = legacy(ratio);
             assert!((new_val - old_val).abs() < 1e-6);
         }
+    }
+
+    #[test]
+    fn normalize_density_sanitizes_non_finite_values() {
+        let density = [1.0, f32::NAN, -2.0, 3.0];
+        let du = [0.5, 0.5, 0.5, 0.5];
+
+        let (norm, mass) = normalize_density(&density, &du, 1e-12);
+
+        assert!((mass - 2.0).abs() < 1e-6);
+        assert_eq!(norm[1], 0.0);
+        assert_eq!(norm[2], 0.0);
+        assert!(norm.iter().all(|v| v.is_finite() && *v >= 0.0));
+    }
+
+    #[test]
+    #[should_panic]
+    fn r_state_conversion_panics_on_len_mismatch() {
+        let r_pot = [0.1f32, 0.2];
+        let mut out = [0.0f32; 1];
+        r_pot_scan_to_r_state01_scan(&r_pot, 1.0, 1.0, &mut out);
     }
 }

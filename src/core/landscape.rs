@@ -331,15 +331,20 @@ impl Landscape {
 
     pub fn build_consonance_density(&self, occupied: &[bool], out: &mut [f32]) {
         self.assert_scan_lengths();
-        debug_assert_eq!(occupied.len(), self.consonance_density_mass.len());
-        debug_assert_eq!(out.len(), self.consonance_density_mass.len());
+        assert_eq!(
+            occupied.len(),
+            self.consonance_density_mass.len(),
+            "occupied scan length mismatch"
+        );
+        assert_eq!(
+            out.len(),
+            self.consonance_density_mass.len(),
+            "output scan length mismatch"
+        );
         if out.is_empty() {
             return;
         }
-        let n = out
-            .len()
-            .min(self.consonance_density_mass.len())
-            .min(occupied.len());
+        let n = out.len();
 
         let occupied_n = &occupied[..n];
         let out_n = &mut out[..n];
@@ -367,7 +372,7 @@ impl Landscape {
     }
 
     pub(crate) fn sample_linear_log2(&self, data: &[f32], log_freq: f32) -> f32 {
-        if data.is_empty() {
+        if data.is_empty() || !log_freq.is_finite() {
             return 0.0;
         }
         let step = self.space.step();
@@ -406,7 +411,7 @@ fn normalize_or_uniform(out: &mut [f32]) {
 }
 
 fn normalize_or_uniform_masked(out: &mut [f32], occupied: &[bool], unoccupied_count: usize) {
-    debug_assert_eq!(out.len(), occupied.len());
+    assert_eq!(out.len(), occupied.len(), "mask/output length mismatch");
     let mut sum = 0.0f32;
     for v in out.iter_mut() {
         *v = sanitize_nonnegative_finite(*v);
@@ -806,6 +811,16 @@ mod tests {
             (density_sum - 1.0).abs() < 1e-5,
             "all-occupied fallback sum={density_sum}"
         );
+    }
+
+    #[test]
+    #[should_panic]
+    fn build_consonance_density_panics_on_len_mismatch() {
+        let landscape = Landscape::new(Log2Space::new(100.0, 400.0, 12));
+        let occupied = vec![false; landscape.consonance_density_mass.len() - 1];
+        let mut out = vec![0.0f32; landscape.consonance_density_mass.len()];
+
+        landscape.build_consonance_density(&occupied, &mut out);
     }
 
     #[test]

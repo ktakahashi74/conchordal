@@ -87,6 +87,7 @@ impl RtNsgtKernelLog2 {
 
     /// Construct with explicit RtConfig.
     pub fn with_config(nsgt: NsgtKernelLog2, cfg: RtConfig) -> Self {
+        let cfg = sanitize_rt_config(cfg);
         let fs = nsgt.cfg.fs;
         let nfft = nsgt.nfft();
         let hop = nsgt.hop();
@@ -211,11 +212,16 @@ impl RtNsgtKernelLog2 {
 
     /// Reconfigure τ mapping and recompute α (no allocation).
     pub fn reconfigure_smoothing(&mut self, tau_min: f32, tau_max: f32, f_ref: f32) {
-        let tau_min = tau_min.max(1e-6);
-        let tau_max = tau_max.max(tau_min);
+        let cfg = sanitize_rt_config(RtConfig {
+            tau_min,
+            tau_max,
+            f_ref,
+        });
+        let tau_min = cfg.tau_min;
+        let tau_max = cfg.tau_max;
         for (b, state) in self.nsgt.bands().iter().zip(self.bands_state.iter_mut()) {
             let f = b.f_hz.max(1e-6);
-            let ratio = (f_ref / f).clamp(0.0, 1.0);
+            let ratio = (cfg.f_ref / f).clamp(0.0, 1.0);
             let mut tau = tau_min + (tau_max - tau_min) * ratio;
             tau = tau.clamp(tau_min, tau_max);
             state.tau = tau;
@@ -343,6 +349,30 @@ impl RtNsgtKernelLog2 {
             state.smooth = (1.0 - state.alpha) * p + state.alpha * state.smooth;
             self.out_env[bi] = state.smooth;
         }
+    }
+}
+
+fn sanitize_rt_config(cfg: RtConfig) -> RtConfig {
+    let defaults = RtConfig::default();
+    let tau_min = if cfg.tau_min.is_finite() {
+        cfg.tau_min.max(1e-6)
+    } else {
+        defaults.tau_min
+    };
+    let tau_max = if cfg.tau_max.is_finite() {
+        cfg.tau_max.max(tau_min)
+    } else {
+        defaults.tau_max.max(tau_min)
+    };
+    let f_ref = if cfg.f_ref.is_finite() {
+        cfg.f_ref.max(1e-6)
+    } else {
+        defaults.f_ref
+    };
+    RtConfig {
+        tau_min,
+        tau_max,
+        f_ref,
     }
 }
 

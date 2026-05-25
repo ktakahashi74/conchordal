@@ -3,8 +3,8 @@ use std::path::PathBuf;
 
 use conchordal::config::{
     AnalysisConfig, AppConfig, AudioConfig, ConsonanceConfig, ConsonanceDensityConfig,
-    ConsonanceFieldConfig, ConsonanceKernelConfig, ConsonanceLevelConfig, LimiterSetting,
-    PlaybackConfig, PsychoAcousticsConfig,
+    ConsonanceFieldConfig, ConsonanceKernelConfig, ConsonanceLevelConfig, DccConfig,
+    LimiterSetting, PlaybackConfig, PsychoAcousticsConfig,
 };
 use conchordal::core::nsgt_kernel::KernelAlign;
 
@@ -99,6 +99,16 @@ fn assert_config_eq(actual: &AppConfig, expected: &AppConfig) {
         actual.playback.wait_user_start,
         expected.playback.wait_user_start
     );
+    assert_close(
+        actual.dcc.coupling_strength,
+        expected.dcc.coupling_strength,
+        "dcc.coupling_strength",
+    );
+    assert_close(
+        actual.dcc.max_exploration_bonus,
+        expected.dcc.max_exploration_bonus,
+        "dcc.max_exploration_bonus",
+    );
 }
 
 #[test]
@@ -150,6 +160,10 @@ fn config_load_custom_values() {
         playback: PlaybackConfig {
             wait_user_exit: false,
             wait_user_start: true,
+        },
+        dcc: DccConfig {
+            coupling_strength: 0.25,
+            max_exploration_bonus: 0.12,
         },
     };
     let text = toml::to_string_pretty(&custom).expect("serialize custom");

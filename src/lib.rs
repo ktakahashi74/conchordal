@@ -3,6 +3,7 @@ pub(crate) mod audio;
 pub mod cli;
 pub mod config;
 pub mod core;
+pub(crate) mod dcc_coupler;
 pub mod life;
 pub(crate) mod listener_twin;
 pub(crate) mod runtime;

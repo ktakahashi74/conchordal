@@ -2,6 +2,7 @@ use crate::core::landscape::{Landscape, LandscapeFrame};
 use crate::core::log2space::Log2Space;
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
+use crate::dcc_coupler::ListenerPressure;
 use crate::life::control::{
     BodyControl, BodyMethod, ControlUpdate, PitchApplyMode, PitchMode, VoiceControl,
 };
@@ -479,6 +480,25 @@ impl Voice {
         neighbor_pitch_log2: &[f32],
         neighbor_salience: &[f32],
     ) {
+        self.update_pitch_target_with_listener_pressure(
+            rhythms,
+            dt_sec,
+            landscape,
+            neighbor_pitch_log2,
+            neighbor_salience,
+            ListenerPressure::default(),
+        );
+    }
+
+    pub(crate) fn update_pitch_target_with_listener_pressure(
+        &mut self,
+        rhythms: &NeuralRhythms,
+        dt_sec: f32,
+        landscape: &Landscape,
+        neighbor_pitch_log2: &[f32],
+        neighbor_salience: &[f32],
+        listener_pressure: ListenerPressure,
+    ) {
         let current_freq = self.body.base_freq_hz();
         self.pitch_ctl.update_pitch_target(
             current_freq,
@@ -488,6 +508,7 @@ impl Voice {
             &self.effective_control.pitch,
             neighbor_pitch_log2,
             neighbor_salience,
+            listener_pressure.exploration_bonus,
         );
     }
 
@@ -502,12 +523,35 @@ impl Voice {
         neighbor_salience: &[f32],
         global_coupling: f32,
     ) -> ArticulationSignal {
-        self.decide_pitch_target(
+        self.tick_control_with_listener_pressure(
             dt_sec,
             rhythms,
             landscape,
             neighbor_pitch_log2,
             neighbor_salience,
+            global_coupling,
+            ListenerPressure::default(),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn tick_control_with_listener_pressure(
+        &mut self,
+        dt_sec: f32,
+        rhythms: &NeuralRhythms,
+        landscape: &Landscape,
+        neighbor_pitch_log2: &[f32],
+        neighbor_salience: &[f32],
+        global_coupling: f32,
+        listener_pressure: ListenerPressure,
+    ) -> ArticulationSignal {
+        self.decide_pitch_target_with_listener_pressure(
+            dt_sec,
+            rhythms,
+            landscape,
+            neighbor_pitch_log2,
+            neighbor_salience,
+            listener_pressure,
         );
         self.commit_decided_control(dt_sec, rhythms, landscape, global_coupling)
     }
@@ -526,12 +570,33 @@ impl Voice {
         neighbor_pitch_log2: &[f32],
         neighbor_salience: &[f32],
     ) {
-        self.update_pitch_target(
+        self.decide_pitch_target_with_listener_pressure(
+            dt_sec,
+            rhythms,
+            landscape,
+            neighbor_pitch_log2,
+            neighbor_salience,
+            ListenerPressure::default(),
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn decide_pitch_target_with_listener_pressure(
+        &mut self,
+        dt_sec: f32,
+        rhythms: &NeuralRhythms,
+        landscape: &Landscape,
+        neighbor_pitch_log2: &[f32],
+        neighbor_salience: &[f32],
+        listener_pressure: ListenerPressure,
+    ) {
+        self.update_pitch_target_with_listener_pressure(
             rhythms,
             dt_sec,
             landscape,
             neighbor_pitch_log2,
             neighbor_salience,
+            listener_pressure,
         );
     }
 
@@ -558,12 +623,35 @@ impl Voice {
         neighbor_salience: &[f32],
         global_coupling: f32,
     ) -> ArticulationSignal {
-        self.decide_pitch_target(
+        self.update_articulation_with_listener_pressure(
             dt_sec,
             rhythms,
             landscape,
             neighbor_pitch_log2,
             neighbor_salience,
+            global_coupling,
+            ListenerPressure::default(),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn update_articulation_with_listener_pressure(
+        &mut self,
+        dt_sec: f32,
+        rhythms: &NeuralRhythms,
+        landscape: &Landscape,
+        neighbor_pitch_log2: &[f32],
+        neighbor_salience: &[f32],
+        global_coupling: f32,
+        listener_pressure: ListenerPressure,
+    ) -> ArticulationSignal {
+        self.decide_pitch_target_with_listener_pressure(
+            dt_sec,
+            rhythms,
+            landscape,
+            neighbor_pitch_log2,
+            neighbor_salience,
+            listener_pressure,
         );
         self.commit_decided_control(dt_sec, rhythms, landscape, global_coupling)
     }

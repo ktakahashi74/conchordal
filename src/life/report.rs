@@ -5,6 +5,7 @@ use std::io::{BufWriter, Write};
 use serde::Serialize;
 
 use crate::core::landscape::LandscapeFrame;
+use crate::dcc_coupler::ListenerPressure;
 use crate::life::population::{RuntimeEvent, SpawnReason};
 use crate::life::telemetry::LifeRecord;
 use crate::life::voice::sound_body::SoundBody;
@@ -155,6 +156,11 @@ enum ReportRecord<'a> {
         delta_hz: f32,
         delta_mag: f32,
         delta_alpha: f32,
+    },
+    DccPressure {
+        time_sec: f32,
+        tension_pressure: f32,
+        exploration_bonus: f32,
     },
     RhythmSummary {
         time_sec: f32,
@@ -315,6 +321,18 @@ impl JsonlReporter {
             delta_hz: state.delta_hz,
             delta_mag: state.delta_mag,
             delta_alpha: state.delta_alpha,
+        })
+    }
+
+    pub(crate) fn write_dcc_pressure(
+        &mut self,
+        time_sec: f32,
+        pressure: ListenerPressure,
+    ) -> Result<(), String> {
+        self.write_record(&ReportRecord::DccPressure {
+            time_sec,
+            tension_pressure: pressure.tension_pressure,
+            exploration_bonus: pressure.exploration_bonus,
         })
     }
 

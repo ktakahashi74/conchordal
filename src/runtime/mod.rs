@@ -22,6 +22,7 @@ use crate::core::phase::wrap_pm_pi;
 use crate::core::roughness_kernel::{KernelParams, RoughnessKernel};
 use crate::core::stream::{analysis::AnalysisStream, dorsal::DorsalStream};
 use crate::core::timebase::Tick;
+use crate::dcc_coupler::DccCoupler;
 use crate::life::conductor::Conductor;
 use crate::life::population::Population;
 use crate::life::report::{
@@ -819,7 +820,9 @@ pub(crate) fn init_runtime(
     let (ui_frame_tx, ui_frame_rx) = bounded::<UiFrame>(ui_channel_capacity);
     let (ctrl_tx, _ctrl_rx) = bounded::<()>(1);
     let (analysis_update_tx, analysis_update_rx) = bounded::<LandscapeUpdate>(8);
-    let listener_analysis_enabled = !args.nogui || args.report.is_some();
+    let dcc_coupler = DccCoupler::new(config.dcc);
+    let listener_analysis_enabled =
+        !args.nogui || args.report.is_some() || dcc_coupler.coupling_strength() > 0.0;
 
     let analysis_stream = AnalysisStream::new(core.lparams.clone(), core.nsgt.clone());
     let lparams_runtime = core.lparams.clone();
@@ -937,6 +940,7 @@ pub(crate) fn init_runtime(
                     reporter,
                     scaffold,
                     guard_meter.clone(),
+                    dcc_coupler,
                     stop_flag_worker,
                     audio_to_analysis_tx,
                     analysis_result_rx,
@@ -1079,6 +1083,35 @@ pub fn run_render(
     let stop_flag_worker = stop_flag.clone();
     let start_flag = Arc::new(AtomicBool::new(true));
     let start_flag_for_worker = start_flag.clone();
+    let dcc_coupler = DccCoupler::new(config.dcc);
+    let listener_analysis_enabled = dcc_coupler.coupling_strength() > 0.0;
+    let (
+        presentation_to_listener_tx,
+        listener_result_rx,
+        listener_analysis_update_tx,
+        listener_analysis_handle,
+    ) = if listener_analysis_enabled {
+        let listener_stream = AnalysisStream::new(core.lparams.clone(), core.nsgt.clone());
+        let (presentation_tx, presentation_rx) = bounded::<(u64, Arc<[f32]>)>(64);
+        let (result_tx, result_rx) = bounded::<(u64, Landscape)>(4);
+        let (update_tx, update_rx) = bounded::<LandscapeUpdate>(8);
+        let handle = spawn_analysis_worker(
+            "listener-analysis",
+            listener_stream,
+            presentation_rx,
+            result_tx,
+            update_rx,
+        );
+        (
+            Some(presentation_tx),
+            Some(result_rx),
+            Some(update_tx),
+            Some(handle),
+        )
+    } else {
+        (None, None, None, None)
+    };
+
     let worker_handle = thread::Builder::new()
         .name("worker".into())
         .spawn(move || {
@@ -1097,13 +1130,14 @@ pub fn run_render(
                 None,
                 scaffold,
                 guard_meter,
+                dcc_coupler,
                 stop_flag_worker,
                 audio_to_analysis_tx,
                 analysis_result_rx,
                 analysis_update_tx,
-                None,
-                None,
-                None,
+                presentation_to_listener_tx,
+                listener_result_rx,
+                listener_analysis_update_tx,
                 hop,
                 hop_duration,
                 fs,
@@ -1114,6 +1148,9 @@ pub fn run_render(
     join_render_thread("worker", worker_handle)?;
     join_render_thread("wav", wav_handle)?;
     join_render_thread("analysis", analysis_handle)?;
+    if let Some(handle) = listener_analysis_handle {
+        join_render_thread("listener-analysis", handle)?;
+    }
     Ok(())
 }
 
@@ -1146,6 +1183,7 @@ fn worker_loop(
     mut reporter: Option<JsonlReporter>,
     scaffold: ScaffoldConfig,
     guard_meter: Option<Arc<LimiterMeter>>,
+    dcc_coupler: DccCoupler,
     exiting: Arc<AtomicBool>,
     audio_to_analysis_tx: Sender<(u64, Arc<[f32]>)>,
     analysis_result_rx: Receiver<(u64, Landscape)>,
@@ -1302,6 +1340,9 @@ fn worker_loop(
             if let Some(state) = listener_state_update {
                 latest_listener_state = Some(state);
             }
+            let listener_pressure = dcc_coupler.pressure(latest_listener_state);
+            let listener_pressure_update =
+                listener_state_update.map(|state| dcc_coupler.pressure(Some(state)));
 
             let t_start = Instant::now();
             conductor.dispatch_until(
@@ -1340,12 +1381,12 @@ fn worker_loop(
                 schedule_renderer.shutdown_at(now_tick);
             }
 
-            pop.advance(
+            pop.advance_with_listener_pressure(
                 hop,
-                fs,
                 frame_idx,
                 hop_duration.as_secs_f32(),
                 &current_landscape,
+                listener_pressure,
             );
             pop.cleanup_dead(
                 frame_idx,
@@ -1393,6 +1434,11 @@ fn worker_loop(
                 if let Some(listener_state) = listener_state_update {
                     report_try(&mut reporter, "listener state", |writer| {
                         writer.write_listener_state(listener_state)
+                    });
+                }
+                if let Some(pressure) = listener_pressure_update {
+                    report_try(&mut reporter, "dcc pressure", |writer| {
+                        writer.write_dcc_pressure(now_sec, pressure)
                     });
                 }
             }

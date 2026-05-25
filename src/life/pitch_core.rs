@@ -1661,6 +1661,13 @@ impl AnyPitchCore {
         }
     }
 
+    pub(crate) fn set_exploration(&mut self, value: f32) {
+        match self {
+            AnyPitchCore::PitchHillClimb(core) => core.set_exploration(value),
+            AnyPitchCore::PitchPeakSampler(core) => core.set_exploration(value),
+        }
+    }
+
     pub(crate) fn set_proposal_interval_sec(&mut self, value: Option<f32>) {
         if let AnyPitchCore::PitchHillClimb(core) = self {
             core.set_proposal_interval_sec(value);

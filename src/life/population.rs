@@ -3,6 +3,7 @@ use super::voice::{AnyArticulationCore, PhonationBatch, SoundBody, Voice, VoiceM
 use crate::core::landscape::{Landscape, LandscapeFrame, LandscapeUpdate};
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
+use crate::dcc_coupler::ListenerPressure;
 use crate::life::control::{MAX_FREQ_HZ, MIN_FREQ_HZ};
 use crate::life::generator_model::GeneratorModel;
 use crate::life::social_density::SocialDensityTrace;
@@ -1358,6 +1359,23 @@ impl Population {
         dt_sec: f32,
         landscape: &Landscape,
     ) {
+        self.advance_with_listener_pressure(
+            samples_len,
+            current_frame,
+            dt_sec,
+            landscape,
+            ListenerPressure::default(),
+        );
+    }
+
+    pub(crate) fn advance_with_listener_pressure(
+        &mut self,
+        samples_len: usize,
+        current_frame: u64,
+        dt_sec: f32,
+        landscape: &Landscape,
+        listener_pressure: ListenerPressure,
+    ) {
         self.current_frame = current_frame;
         if !dt_sec.is_finite() || dt_sec <= 0.0 {
             return;
@@ -1376,7 +1394,13 @@ impl Population {
             match self.control_update_mode {
                 ControlUpdateMode::SnapshotPhased => {
                     self.prepare_substep_snapshot(crowding_active);
-                    self.decide_substep(dt_step_sec, &rhythms, landscape, crowding_active);
+                    self.decide_substep(
+                        dt_step_sec,
+                        &rhythms,
+                        landscape,
+                        crowding_active,
+                        listener_pressure,
+                    );
                     self.commit_substep(dt_step_sec, &rhythms, landscape, global_coupling);
                 }
                 ControlUpdateMode::SequentialRotating => {
@@ -1387,6 +1411,7 @@ impl Population {
                         global_coupling,
                         crowding_active,
                         current_frame as usize + substep_idx,
+                        listener_pressure,
                     );
                 }
             }
@@ -1437,6 +1462,7 @@ impl Population {
         rhythms: &NeuralRhythms,
         landscape: &Landscape,
         crowding_active: bool,
+        listener_pressure: ListenerPressure,
     ) {
         // Decide phase: evaluate all alive voices against a stable snapshot.
         for voice_idx in 0..self.voices.len() {
@@ -1461,12 +1487,13 @@ impl Population {
                 &[]
             };
             if let Some(voice) = self.voices.get_mut(voice_idx) {
-                voice.decide_pitch_target(
+                voice.decide_pitch_target_with_listener_pressure(
                     dt_step_sec,
                     rhythms,
                     landscape,
                     neighbors,
                     neighbor_weights,
+                    listener_pressure,
                 );
             }
             self.advance_scratch
@@ -1581,6 +1608,7 @@ impl Population {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn advance_substep_sequential_current(
         &mut self,
         dt_step_sec: f32,
@@ -1589,6 +1617,7 @@ impl Population {
         global_coupling: f32,
         crowding_active: bool,
         order_offset: usize,
+        listener_pressure: ListenerPressure,
     ) {
         if self.voices.is_empty() {
             return;
@@ -1621,12 +1650,13 @@ impl Population {
                 &[]
             };
             if let Some(voice) = self.voices.get_mut(voice_idx) {
-                voice.decide_pitch_target(
+                voice.decide_pitch_target_with_listener_pressure(
                     dt_step_sec,
                     rhythms,
                     landscape,
                     neighbors,
                     neighbor_weights,
+                    listener_pressure,
                 );
                 voice.commit_decided_control(dt_step_sec, rhythms, landscape, global_coupling);
             }

@@ -1,6 +1,6 @@
 # Listener Twin Design
 
-Status: Phase 1 implemented; later phases are design proposal
+Status: Phase 1 and 3 implemented; Phase 2 validation fixture started
 Scope: future conchordal architecture, DCC coupling, tension/resolution model
 Date: 2026-05-19
 
@@ -302,29 +302,27 @@ The clean target is:
 
 ## DCC Coupler Interface
 
-The coupling layer should be narrow when it is added:
+The coupling layer is narrow:
 
 ```text
 DccCoupler {
   coupling_strength: f32 in [0, 1]
+  max_exploration_bonus: f32
 }
 ```
 
 Semantics:
 
 - `0.0`: listener state is report/UI only; generation is unchanged.
-- `1.0`: listener pressure is fully applied by whatever pressure mapping is
-  chosen.
+- `1.0`: listener pressure uses the full configured mapping.
 
-Do not add a no-op code skeleton before the first concrete pressure consumer.
-The interface belongs in the design now; the module belongs with the first
-actual coupling implementation.
+The first concrete pressure consumer is population pitch exploration. The
+coupler does not command pitch or rhythm directly.
 
 ## Reporting
 
-The first implementation should expose `ListenerState` in reports before using
-it to control behavior. This gives a way to inspect whether tension, closure,
-and surprise match what is heard.
+Reports expose `ListenerState` and `dcc_pressure`. This gives a way to inspect
+whether tension matches what is heard before raising coupling strength.
 
 Expected JSONL event:
 
@@ -383,19 +381,37 @@ Current behavior:
   `listener_state`.
 - Do not change audio generation yet.
 
-### Phase 2: Validation Samples
+### Phase 2: Validation Fixtures
 
-- Add or revise one tension/resolution sample so the report can be compared
-  with what is heard.
-- The sample should not hard-code `V7 -> I`; it should make the landscape
-  affordance audible.
+- Add or revise one tension/resolution validation fixture so the report can be
+  compared with what is heard.
+- A fixture may hard-code a known tension-to-resolution transition. A
+  user-facing sample should not claim that such a transition is spontaneous.
 - Check that hidden anchors do not affect reported listener tension.
+
+First validation surface:
+
+- `tests/scripts/listener_twin_tension_resolution.rhai`
+- `tests/listener_twin_validation_fixture.rs`
+
+This is a test fixture, not a user-facing musical sample. It deliberately
+separates hidden habitat, stable audible presentation, a distinct audible
+tension sonority that resolves into a stable chord, and a later settled
+presentation. The test checks the expected report shape: hidden habitat stays
+neutral, stable presentation has high stability and low tension, the tension
+sonority exposes resolvability and raises tension, and the resolved/settled
+windows lower tension.
 
 ### Phase 3: Weak DCC Coupling
 
-- Add a narrow coupling layer that reads `ListenerState`.
-- Convert high tension / high resolvability into small distributed pressure.
-- Keep the coupling weak enough that voice dynamics remain ALife-like.
+- Implemented as `src/dcc_coupler.rs`.
+- Reads `ListenerState` and computes:
+  `tension_pressure = tension_level * resolvability_level * coupling_strength`.
+- Applies pressure only as a transient exploration bonus in population pitch
+  decisions. It does not set target pitches or change rhythm synchronization.
+- Reports `dcc_pressure` records beside `listener_state` records.
+- Defaults to `coupling_strength = 0.0`, so ListenerTwin remains report/UI-only
+  unless `[dcc]` opts in.
 
 ### Phase 4: Public Bus Naming
 

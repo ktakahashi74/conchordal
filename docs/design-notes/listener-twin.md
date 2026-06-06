@@ -1,8 +1,8 @@
 # Listener Twin Design
 
-Status: Phase 1 and 3 implemented; Phase 2 validation fixture started
-Scope: future conchordal architecture, DCC coupling, tension/resolution model
-Date: 2026-05-19
+Status: Phases 1-4 implemented; in scope for v0.4.0 (Phase 5 deferred)
+Scope: conchordal architecture, DCC coupling, tension/resolution model
+Date: 2026-05-19 (scope update 2026-06-02)
 
 This memo records the proposed design before implementation. It intentionally
 does not define a public scripting API yet.

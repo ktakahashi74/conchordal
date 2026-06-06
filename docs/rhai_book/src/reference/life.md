@@ -214,6 +214,11 @@ let anchor = harmonic().brain("drone").send(habitat_bus);
 let decor = sine().send(presentation_bus);
 ```
 
+The presentation bus is also what the listener-side `ListenerTwin` observes, so
+a voice routed only to `habitat_bus` shapes the ecology without contributing to
+reported listener tension. See the [Listener Twin And DCC](../alpha_guide.md)
+section of the Alpha Guide.
+
 ### Lifecycle
 
 | Method | Description |

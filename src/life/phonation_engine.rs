@@ -154,7 +154,17 @@ impl ThetaGrid {
         Some(tick)
     }
 
-    pub fn ensure_boundaries_until(&mut self, ctx: &CoreTickCtx, target_gate_plus_1: u64) {
+    /// Extend the gate grid up to `target_gate_plus_1`. `fixed_period`, when set,
+    /// extends at a constant tick spacing (a `FixedRate` clock) so a note-off
+    /// lands on the same isochronous grid that generated the onset. When `None`,
+    /// the grid follows the adaptive theta (a `ThetaGate` clock). Using theta to
+    /// extend a fixed-rate voice would make its note length drift with theta.
+    pub fn ensure_boundaries_until(
+        &mut self,
+        ctx: &CoreTickCtx,
+        target_gate_plus_1: u64,
+        fixed_period: Option<f64>,
+    ) {
         const MAX_EXTRA_GATES: u64 = 4096;
         let Some(mut last) = self.boundaries.last().copied() else {
             return;
@@ -166,10 +176,18 @@ impl ThetaGrid {
         let mut next_gate = last.gate.saturating_add(1);
         let mut added = 0u64;
         while last.gate < target_gate_plus_1 && added < MAX_EXTRA_GATES {
-            let search_tick = cursor_tick.saturating_add(1);
-            let Some(mut next_tick) = next_gate_tick(search_tick, ctx.fs, ctx.rhythms.theta, 0.0)
-            else {
-                break;
+            let mut next_tick = match fixed_period {
+                Some(period) => {
+                    let step = (period.round() as Tick).max(1);
+                    cursor_tick.saturating_add(step)
+                }
+                None => {
+                    let search_tick = cursor_tick.saturating_add(1);
+                    match next_gate_tick(search_tick, ctx.fs, ctx.rhythms.theta, 0.0) {
+                        Some(tick) => tick,
+                        None => break,
+                    }
+                }
             };
             // Failsafe: if the clock still returns a non-advancing tick, force monotonic progress.
             if next_tick <= cursor_tick {
@@ -200,6 +218,24 @@ pub struct TimingField {
 impl TimingField {
     pub fn from_values(start_gate: u64, e_gate: Vec<f32>) -> Self {
         Self { start_gate, e_gate }
+    }
+
+    /// Uniform field (weight 1.0 at every gate), ignoring `env_open`/social.
+    /// Used by fixed-rate clocks so their onsets are not gated by the adaptive
+    /// theta envelope.
+    pub fn flat(grid: &ThetaGrid) -> Self {
+        let Some(start_gate) = grid.boundaries.first().map(|b| b.gate) else {
+            return Self {
+                start_gate: 0,
+                e_gate: Vec::new(),
+            };
+        };
+        let last_gate = grid.boundaries.last().map(|b| b.gate).unwrap_or(start_gate);
+        let len = (last_gate.saturating_sub(start_gate) as usize).saturating_add(1);
+        Self {
+            start_gate,
+            e_gate: vec![1.0; len],
+        }
     }
 
     pub fn build_from(
@@ -357,125 +393,73 @@ impl ThetaGateClock {
     }
 }
 
-#[derive(Debug)]
-pub struct SubdivisionClock {
-    pub divisions: Vec<u32>,
+/// Isochronous gate clock at a fixed wall-clock rate, independent of the
+/// adaptive theta. The grid is anchored to absolute tick 0, so every voice at
+/// the same rate shares the same beat phase and a metric pulse stays coherent
+/// across voices regardless of when each voice was placed.
+#[derive(Debug, Default)]
+pub struct FixedRateClock {
+    rate_hz: f32,
+    /// Absolute (tick 0) anchor when true — all voices at this rate share the
+    /// beat phase (metric). Per-voice anchor when false — each voice keeps its
+    /// own phase so voices stay independent (flow droplets).
+    shared_grid: bool,
+    anchor_tick: Option<Tick>,
+    gate: ThetaGateClock,
 }
 
-impl SubdivisionClock {
-    pub fn new(divisions: Vec<u32>) -> Self {
-        Self { divisions }
-    }
+/// Upper bound on the fixed grid rate. Caps candidate density so a pathological
+/// `metric_beat`/flow rate cannot collapse the period to ~1 tick and emit a
+/// candidate at every sample.
+const MAX_FIXED_GRID_HZ: f32 = 200.0;
 
-    fn gather_candidates(&self, grid: &ThetaGrid, out: &mut Vec<CandidatePoint>) {
-        if grid.boundaries.len() < 2 {
-            return;
-        }
-        for pair in grid.boundaries.windows(2) {
-            let b0 = pair[0];
-            let b1 = pair[1];
-            if b1.gate != b0.gate.saturating_add(1) {
-                continue;
-            }
-            if b1.tick <= b0.tick.saturating_add(1) {
-                continue;
-            }
-            let gate = b0.gate;
-            for &n in &self.divisions {
-                if n < 2 {
-                    continue;
-                }
-                for k in 1..n {
-                    let phase = k as f32 / n as f32;
-                    if phase <= 0.0 || phase >= 1.0 {
-                        continue;
-                    }
-                    let tick = match grid.tick_at(gate, phase) {
-                        Some(tick) => tick,
-                        None => continue,
-                    };
-                    if tick == b0.tick || tick == b1.tick {
-                        continue;
-                    }
-                    debug_assert!((gate as f64 + phase as f64).is_finite());
-                    out.push(CandidatePoint {
-                        tick,
-                        gate,
-                        theta_pos: gate as f64 + phase as f64,
-                        phase_in_gate: phase,
-                    });
-                }
-            }
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct InternalPhaseClock {
-    pub ratio: f32,
-    pub phase: f32,
-}
-
-impl InternalPhaseClock {
-    pub fn new(ratio: f32, phase: f32) -> Self {
+impl FixedRateClock {
+    fn new(rate_hz: f32, shared_grid: bool) -> Self {
+        let rate_hz = if rate_hz.is_finite() {
+            rate_hz.clamp(0.01, MAX_FIXED_GRID_HZ)
+        } else {
+            1.0
+        };
         Self {
-            ratio,
-            phase: phase.rem_euclid(1.0),
+            rate_hz,
+            shared_grid,
+            anchor_tick: None,
+            gate: ThetaGateClock::default(),
         }
     }
 
-    fn gather_candidates(&mut self, grid: &ThetaGrid, out: &mut Vec<CandidatePoint>) {
-        if !self.ratio.is_finite() || self.ratio <= 0.0 {
+    fn gather_candidates_impl(&mut self, ctx: &CoreTickCtx, out: &mut Vec<CandidatePoint>) {
+        if !ctx.fs.is_finite() || ctx.fs <= 0.0 {
             return;
         }
-        if grid.boundaries.len() < 2 {
-            return;
-        }
-        for pair in grid.boundaries.windows(2) {
-            let b0 = pair[0];
-            let b1 = pair[1];
-            if b1.gate != b0.gate.saturating_add(1) {
-                continue;
+        // Shared grid anchors at absolute 0 (coherent across voices); per-voice
+        // grid anchors at this voice's first observed tick (independent phase).
+        let anchor = if self.shared_grid {
+            0
+        } else {
+            *self.anchor_tick.get_or_insert(ctx.now_tick)
+        };
+        // f64 throughout: the offset grows unbounded over a session, so f32 would
+        // lose integer resolution past ~2^24 ticks and jitter the grid. f64 keeps
+        // tick-exact placement for any realistic run.
+        let period = (ctx.fs as f64 / self.rate_hz.max(0.01) as f64).max(1.0);
+        let step = (period.round() as Tick).max(1);
+        self.gate.gather_candidates_core(ctx, out, |cursor, _ctx| {
+            let offset = cursor.saturating_sub(anchor) as f64;
+            let k = (offset / period).ceil().max(0.0);
+            let tick = anchor.saturating_add((k * period).round() as Tick);
+            if tick < cursor {
+                Some(tick.saturating_add(step))
+            } else {
+                Some(tick)
             }
-            if b1.tick <= b0.tick.saturating_add(1) {
-                continue;
-            }
-            let gate = b0.gate;
-            let start_phase = self.phase;
-            let end_phase = start_phase + self.ratio;
-            let wraps = end_phase.floor() as i32;
-            for m in 1..=wraps {
-                let phase_in_gate = (m as f32 - start_phase) / self.ratio;
-                if phase_in_gate <= 0.0 || phase_in_gate >= 1.0 {
-                    continue;
-                }
-                let tick = match grid.tick_at(gate, phase_in_gate) {
-                    Some(tick) => tick,
-                    None => continue,
-                };
-                if tick == b0.tick || tick == b1.tick {
-                    continue;
-                }
-                debug_assert!((gate as f64 + phase_in_gate as f64).is_finite());
-                out.push(CandidatePoint {
-                    tick,
-                    gate,
-                    theta_pos: gate as f64 + phase_in_gate as f64,
-                    phase_in_gate,
-                });
-            }
-            self.phase = end_phase.rem_euclid(1.0);
-        }
+        });
     }
 }
 
 pub enum PhonationClock {
     ThetaGate(ThetaGateClock),
-    Composite {
-        gate_clock: ThetaGateClock,
-        subdivision: Option<SubdivisionClock>,
-        internal_phase: Option<InternalPhaseClock>,
-    },
+    FixedRate(FixedRateClock),
     #[cfg(test)]
     Custom(Box<dyn FnMut(&CoreTickCtx, &mut Vec<CandidatePoint>) + Send>),
 }
@@ -486,46 +470,41 @@ impl PhonationClock {
             PhonationClock::ThetaGate(clock) => {
                 clock.gather_candidates_impl(ctx, out);
             }
-            PhonationClock::Composite {
-                gate_clock,
-                subdivision,
-                internal_phase,
-            } => {
-                let mut gate_candidates = Vec::new();
-                gate_clock.gather_candidates_impl(ctx, &mut gate_candidates);
-                out.extend(gate_candidates.iter().cloned());
-                let grid = ThetaGrid::from_candidates(&gate_candidates);
-                if let Some(clock) = subdivision.as_ref() {
-                    clock.gather_candidates(&grid, out);
-                }
-                if let Some(clock) = internal_phase.as_mut() {
-                    clock.gather_candidates(&grid, out);
-                }
+            PhonationClock::FixedRate(clock) => {
+                clock.gather_candidates_impl(ctx, out);
             }
             #[cfg(test)]
             PhonationClock::Custom(f) => f(ctx, out),
         }
     }
 
+    fn is_fixed_rate(&self) -> bool {
+        matches!(self, PhonationClock::FixedRate(_))
+    }
+
+    /// Constant tick spacing of a `FixedRate` clock, used to extend the duration
+    /// grid without falling back to the adaptive theta. `None` for theta-driven
+    /// clocks, whose spacing is not constant.
+    fn fixed_period_ticks(&self, fs: f32) -> Option<f64> {
+        match self {
+            PhonationClock::FixedRate(clock) => {
+                if fs.is_finite() && fs > 0.0 {
+                    Some((fs as f64 / clock.rate_hz.max(0.01) as f64).max(1.0))
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
+
     pub(crate) fn from_config(config: &PhonationClockConfig) -> Self {
         match config {
             PhonationClockConfig::ThetaGate => PhonationClock::ThetaGate(ThetaGateClock::default()),
-            PhonationClockConfig::Composite {
-                subdivision,
-                internal_phase,
-            } => {
-                let subdivision = subdivision
-                    .as_ref()
-                    .map(|c| SubdivisionClock::new(c.divisions.clone()));
-                let internal_phase = internal_phase
-                    .as_ref()
-                    .map(|c| InternalPhaseClock::new(c.ratio, c.phase0));
-                PhonationClock::Composite {
-                    gate_clock: ThetaGateClock::default(),
-                    subdivision,
-                    internal_phase,
-                }
-            }
+            PhonationClockConfig::FixedRate {
+                rate_hz,
+                shared_grid,
+            } => PhonationClock::FixedRate(FixedRateClock::new(*rate_hz, *shared_grid)),
         }
     }
 }
@@ -1075,6 +1054,7 @@ impl PhonationEngine {
         hold_theta: f32,
         ctx: &CoreTickCtx,
         timing_grid: &mut ThetaGrid,
+        fixed_period: Option<f64>,
     ) {
         let hold_theta = if hold_theta.is_finite() {
             hold_theta.max(0.0)
@@ -1082,7 +1062,7 @@ impl PhonationEngine {
             0.0
         };
         let off_theta = onset.theta_pos + hold_theta as f64;
-        let off_tick_opt = Self::tick_for_theta(off_theta, ctx, timing_grid);
+        let off_tick_opt = Self::tick_for_theta(off_theta, ctx, timing_grid, fixed_period);
         let fallback = timing_grid
             .boundaries
             .last()
@@ -1118,6 +1098,7 @@ impl PhonationEngine {
         theta_pos: f64,
         ctx: &CoreTickCtx,
         timing_grid: &mut ThetaGrid,
+        fixed_period: Option<f64>,
     ) -> Option<Tick> {
         if !theta_pos.is_finite() || theta_pos < 0.0 {
             return None;
@@ -1132,7 +1113,7 @@ impl PhonationEngine {
             off_phase = 0.0;
             off_gate = off_gate.saturating_add(1);
         }
-        timing_grid.ensure_boundaries_until(ctx, off_gate.saturating_add(1));
+        timing_grid.ensure_boundaries_until(ctx, off_gate.saturating_add(1), fixed_period);
         timing_grid.tick_at(off_gate, off_phase as f32)
     }
 
@@ -1166,12 +1147,20 @@ impl PhonationEngine {
         Self::merge_candidates_into(&mut self.scratch_merged, &mut self.scratch_candidates);
         let merged = std::mem::take(&mut self.scratch_merged);
         let mut timing_grid = ThetaGrid::from_candidates(&merged);
-        let timing_field = TimingField::build_from(
-            ctx,
-            &timing_grid,
-            social.map(|trace| (trace, social_coupling)),
-            extra_gate_gain,
-        );
+        // Fixed-rate clocks (metric, flow) are external/renewal clocks: their
+        // onsets must not be gated by the adaptive `env_open`, or they would
+        // re-couple to theta (metric loses its steady pulse; flow droplets lock
+        // to one period instead of staying independent). Use a flat field.
+        let timing_field = if self.clock.is_fixed_rate() {
+            TimingField::flat(&timing_grid)
+        } else {
+            TimingField::build_from(
+                ctx,
+                &timing_grid,
+                social.map(|trace| (trace, social_coupling)),
+                extra_gate_gain,
+            )
+        };
         self.process_candidates(
             ctx,
             &merged,
@@ -1255,14 +1244,15 @@ impl PhonationEngine {
         onset: OnsetContext,
         ctx: &CoreTickCtx,
         timing_grid: &mut ThetaGrid,
+        fixed_period: Option<f64>,
     ) {
         let plan = self.duration_rule.on_note_on(onset);
         match plan {
             DurationPlan::HoldTheta(hold_theta) => {
-                self.schedule_hold_theta(onset, hold_theta, ctx, timing_grid);
+                self.schedule_hold_theta(onset, hold_theta, ctx, timing_grid, fixed_period);
             }
             DurationPlan::AtGate(off_gate) => {
-                timing_grid.ensure_boundaries_until(ctx, off_gate.saturating_add(1));
+                timing_grid.ensure_boundaries_until(ctx, off_gate.saturating_add(1), fixed_period);
                 let off_tick = timing_grid
                     .boundaries
                     .iter()
@@ -1292,6 +1282,7 @@ impl PhonationEngine {
         out_onsets: &mut Vec<OnsetEvent>,
     ) {
         let mut prev_gate_exc: Option<f32> = None;
+        let fixed_period = self.clock.fixed_period_ticks(ctx.fs);
         self.drain_note_offs(ctx.now_tick, out_cmds);
         for c in candidates {
             debug_assert!(c.theta_pos.is_finite());
@@ -1329,7 +1320,7 @@ impl PhonationEngine {
                     exc_gate: step.exc_gate,
                     exc_slope: step.exc_slope,
                 };
-                self.schedule_duration(onset, ctx, timing_grid);
+                self.schedule_duration(onset, ctx, timing_grid, fixed_period);
             }
             self.last_gate_index = Some(c.gate);
             self.last_theta_pos = Some(c.theta_pos);
@@ -1647,6 +1638,95 @@ mod tests {
     }
 
     #[test]
+    fn fixed_rate_clock_emits_isochronous_anchored_gates() {
+        let mut clock = FixedRateClock::new(10.0, true); // period = fs/10 = 100 ticks
+        let rhythms = NeuralRhythms::default();
+        let ctx = CoreTickCtx {
+            now_tick: 0,
+            frame_end: 350,
+            fs: 1000.0,
+            rhythms,
+        };
+        let mut out = Vec::new();
+        clock.gather_candidates_impl(&ctx, &mut out);
+        assert_eq!(
+            out.iter().map(|c| c.tick).collect::<Vec<_>>(),
+            vec![0, 100, 200, 300]
+        );
+        assert!(out.iter().all(|c| c.phase_in_gate == 0.0));
+        assert_eq!(
+            out.iter().map(|c| c.gate).collect::<Vec<_>>(),
+            vec![0, 1, 2, 3]
+        );
+
+        // Next hop continues on the same anchored grid with no drift.
+        let ctx2 = CoreTickCtx {
+            now_tick: 350,
+            frame_end: 650,
+            fs: 1000.0,
+            rhythms,
+        };
+        let mut out2 = Vec::new();
+        clock.gather_candidates_impl(&ctx2, &mut out2);
+        assert_eq!(
+            out2.iter().map(|c| c.tick).collect::<Vec<_>>(),
+            vec![400, 500, 600]
+        );
+    }
+
+    #[test]
+    fn fixed_rate_clock_per_voice_anchor_uses_own_start() {
+        // shared_grid = false: the grid is anchored to the voice's first tick,
+        // so two voices placed at different times keep independent phase.
+        let rhythms = NeuralRhythms::default();
+        let mut a = FixedRateClock::new(10.0, false); // period 100 @ fs 1000
+        let mut b = FixedRateClock::new(10.0, false);
+        let ctx_a = CoreTickCtx {
+            now_tick: 30,
+            frame_end: 260,
+            fs: 1000.0,
+            rhythms,
+        };
+        let ctx_b = CoreTickCtx {
+            now_tick: 70,
+            frame_end: 300,
+            fs: 1000.0,
+            rhythms,
+        };
+        let (mut oa, mut ob) = (Vec::new(), Vec::new());
+        a.gather_candidates_impl(&ctx_a, &mut oa);
+        b.gather_candidates_impl(&ctx_b, &mut ob);
+        // Each anchors at its own start, so the phases differ (not a shared grid).
+        assert_eq!(oa.first().map(|c| c.tick), Some(30));
+        assert_eq!(ob.first().map(|c| c.tick), Some(70));
+    }
+
+    #[test]
+    fn fixed_rate_clock_clamps_extreme_rate() {
+        // A pathological rate must not collapse the period to ~1 tick.
+        let mut clock = FixedRateClock::new(1.0e9, true);
+        let rhythms = NeuralRhythms::default();
+        let ctx = CoreTickCtx {
+            now_tick: 0,
+            frame_end: 1000,
+            fs: 48_000.0,
+            rhythms,
+        };
+        let mut out = Vec::new();
+        clock.gather_candidates_impl(&ctx, &mut out);
+        // At the 200 Hz cap, fs/200 = 240-tick period -> at most a few gates in
+        // a 1000-tick hop, never one-per-tick.
+        assert!(
+            out.len() <= 1000 / 200 + 2,
+            "clamped grid emitted too many gates: {}",
+            out.len()
+        );
+        for pair in out.windows(2) {
+            assert!(pair[1].tick - pair[0].tick >= 200);
+        }
+    }
+
+    #[test]
     fn phonation_engine_uses_timing_field_weight() {
         let ctx = CoreTickCtx {
             now_tick: 0,
@@ -1923,7 +2003,7 @@ mod tests {
         let mut grid = ThetaGrid {
             boundaries: vec![GateBoundary { gate: 0, tick: t0 }],
         };
-        grid.ensure_boundaries_until(&ctx, 1);
+        grid.ensure_boundaries_until(&ctx, 1, None);
         assert_eq!(grid.boundaries.len(), 2);
         assert_eq!(grid.boundaries[1].tick, expected);
     }
@@ -1942,42 +2022,12 @@ mod tests {
         let mut grid = ThetaGrid {
             boundaries: vec![GateBoundary { gate: 0, tick: 0 }],
         };
-        grid.ensure_boundaries_until(&ctx, 4);
+        grid.ensure_boundaries_until(&ctx, 4, None);
         assert!(grid.boundaries.len() >= 5);
         for pair in grid.boundaries.windows(2) {
             assert_eq!(pair[1].gate, pair[0].gate + 1);
             assert!(pair[1].tick > pair[0].tick);
         }
-    }
-
-    #[test]
-    fn subdivision_clock_skips_short_interval() {
-        let grid = ThetaGrid {
-            boundaries: vec![
-                GateBoundary { gate: 0, tick: 0 },
-                GateBoundary { gate: 1, tick: 1 },
-            ],
-        };
-        let mut candidates = Vec::new();
-        let clock = SubdivisionClock::new(vec![2]);
-        clock.gather_candidates(&grid, &mut candidates);
-        assert!(candidates.is_empty());
-    }
-
-    #[test]
-    fn subdivision_clock_merges_duplicate_ticks() {
-        let grid = ThetaGrid {
-            boundaries: vec![
-                GateBoundary { gate: 0, tick: 0 },
-                GateBoundary { gate: 1, tick: 100 },
-            ],
-        };
-        let mut candidates = Vec::new();
-        let clock = SubdivisionClock::new(vec![2, 4]);
-        clock.gather_candidates(&grid, &mut candidates);
-        let merged = PhonationEngine::merge_candidates(candidates);
-        let tick_50 = merged.iter().find(|c| c.tick == 50);
-        assert!(tick_50.is_some(), "subdivision at tick 50 should be merged");
     }
 
     #[test]
@@ -2492,7 +2542,7 @@ mod tests {
         let mut timing_grid = ThetaGrid {
             boundaries: Vec::new(),
         };
-        engine.schedule_hold_theta(onset, 1.0, &ctx, &mut timing_grid);
+        engine.schedule_hold_theta(onset, 1.0, &ctx, &mut timing_grid, None);
         let off_tick = engine
             .pending_off
             .peek()
@@ -2524,7 +2574,7 @@ mod tests {
                 GateBoundary { gate: 1, tick: 1 },
             ],
         };
-        engine.schedule_hold_theta(onset, 0.5, &ctx, &mut timing_grid);
+        engine.schedule_hold_theta(onset, 0.5, &ctx, &mut timing_grid, None);
         let off_tick = engine
             .pending_off
             .peek()

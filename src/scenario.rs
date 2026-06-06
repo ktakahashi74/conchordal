@@ -152,25 +152,16 @@ impl Default for OnsetConfig {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) struct SubdivisionClockConfig {
-    pub(crate) divisions: Vec<u32>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) struct InternalPhaseClockConfig {
-    pub(crate) ratio: f32,
-    pub(crate) phase0: f32,
-}
-
 #[derive(Debug, Clone, PartialEq, Default)]
 pub(crate) enum PhonationClockConfig {
     #[default]
     ThetaGate,
-    Composite {
-        subdivision: Option<SubdivisionClockConfig>,
-        internal_phase: Option<InternalPhaseClockConfig>,
-    },
+    /// Isochronous wall-clock gate grid at a fixed rate, independent of the
+    /// adaptive theta. Used by metric beat and as the dense base for flow.
+    /// `shared_grid` anchors at absolute tick 0 so all voices at this rate share
+    /// the same beat phase (metric); when false each voice anchors to its own
+    /// start, keeping voices independent (flow droplets).
+    FixedRate { rate_hz: f32, shared_grid: bool },
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]

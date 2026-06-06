@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::core::landscape::LandscapeFrame;
-use crate::core::modulation::NeuralRhythms;
+use crate::core::meter::MeterState;
 use crate::core::timebase::Tick;
 
 #[derive(Clone, Debug)]
@@ -32,7 +32,7 @@ pub struct ListenerFrame {
     pub analysis_lag_frames: u64,
     pub attention_level: f32,
     pub attention: DorsalFrame,
-    pub neural_rhythms: NeuralRhythms,
+    pub meter: MeterState,
     pub stability_level: f32,
     pub resolvability_level: f32,
     pub tension_level: f32,
@@ -73,6 +73,8 @@ pub struct SimulationMeta {
     pub window_peak: [f32; 2],
     pub kuramoto_order_r: Option<f32>,
     pub kuramoto_active_count: usize,
+    /// Offset-removed entrainment phases (radians) of live voices, for the phase circle.
+    pub entrain_phases: Vec<f32>,
 }
 
 #[derive(Clone, Debug, Default)]

@@ -29,7 +29,7 @@ pub struct App {
     analysis_handle: Option<std::thread::JoinHandle<()>>,
     listener_analysis_handle: Option<std::thread::JoinHandle<()>>,
     exiting: Arc<AtomicBool>,
-    listener_rhythm_history: VecDeque<(f64, crate::core::modulation::NeuralRhythms)>,
+    listener_rhythm_history: VecDeque<(f64, crate::core::meter::MeterState)>,
     listener_attention_history: VecDeque<(f64, DorsalFrame)>,
     start_flag: Arc<AtomicBool>,
     level_history: VecDeque<(std::time::Instant, [f32; 2])>,
@@ -101,7 +101,7 @@ impl App {
             && self.last_frame.listener.has_fast_state
         {
             self.listener_rhythm_history
-                .push_back((t, self.last_frame.listener.neural_rhythms));
+                .push_back((t, self.last_frame.listener.meter));
             self.listener_attention_history
                 .push_back((t, self.last_frame.listener.attention));
         }

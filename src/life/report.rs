@@ -18,6 +18,7 @@ pub struct JsonlReporter {
     writer: BufWriter<File>,
     rhythm_onsets: Vec<OnsetSample>,
     rhythm_observations: Vec<RhythmObservation>,
+    listener_beat_confidence: Vec<(f32, f32)>,
     rhythm_summary_written: bool,
 }
 
@@ -150,12 +151,14 @@ enum ReportRecord<'a> {
         resolvability_level: f32,
         tension_level: f32,
         attention_level: f32,
-        theta_hz: f32,
-        theta_mag: f32,
-        theta_alpha: f32,
-        delta_hz: f32,
-        delta_mag: f32,
-        delta_alpha: f32,
+        beat_hz: f32,
+        beat_phase: f32,
+        beat_confidence: f32,
+        subdivision_ratio: u8,
+        subdivision_confidence: f32,
+        measure_hz: f32,
+        measure_ratio: u8,
+        measure_confidence: f32,
     },
     DccPressure {
         time_sec: f32,
@@ -180,6 +183,13 @@ enum ReportRecord<'a> {
         one_over_f_slope: Option<f32>,
         ioi_one_over_f_slope: Option<f32>,
     },
+    ListenerConfidenceSummary {
+        window_start_sec: f32,
+        window_end_sec: f32,
+        sample_count: usize,
+        beat_confidence_peak: f32,
+        beat_confidence_late_mean: f32,
+    },
 }
 
 impl JsonlReporter {
@@ -189,6 +199,7 @@ impl JsonlReporter {
             writer: BufWriter::new(file),
             rhythm_onsets: Vec::new(),
             rhythm_observations: Vec::new(),
+            listener_beat_confidence: Vec::new(),
             rhythm_summary_written: false,
         })
     }
@@ -315,13 +326,20 @@ impl JsonlReporter {
             resolvability_level: state.resolvability_level,
             tension_level: state.tension_level,
             attention_level: state.attention_level,
-            theta_hz: state.theta_hz,
-            theta_mag: state.theta_mag,
-            theta_alpha: state.theta_alpha,
-            delta_hz: state.delta_hz,
-            delta_mag: state.delta_mag,
-            delta_alpha: state.delta_alpha,
-        })
+            beat_hz: state.beat_hz,
+            beat_phase: state.beat_phase,
+            beat_confidence: state.beat_confidence,
+            subdivision_ratio: state.subdivision_ratio,
+            subdivision_confidence: state.subdivision_confidence,
+            measure_hz: state.measure_hz,
+            measure_ratio: state.measure_ratio,
+            measure_confidence: state.measure_confidence,
+        })?;
+        if state.time_sec.is_finite() && state.beat_confidence.is_finite() {
+            self.listener_beat_confidence
+                .push((state.time_sec, state.beat_confidence));
+        }
+        Ok(())
     }
 
     pub(crate) fn write_dcc_pressure(
@@ -357,6 +375,45 @@ impl JsonlReporter {
         }
         self.rhythm_summary_written = true;
         Ok(())
+    }
+
+    /// Emit a trajectory-aware summary of listener beat confidence. Entrainment
+    /// is a process, so a grand mean over the run blurs warmup, settled lock,
+    /// and voice die-off together; the peak and a late-window mean capture the
+    /// shape instead.
+    pub fn write_listener_confidence_summary(&mut self) -> Result<(), String> {
+        let samples = &self.listener_beat_confidence;
+        if samples.is_empty() {
+            return Ok(());
+        }
+        let window_start_sec = samples.first().map(|s| s.0).unwrap_or(0.0);
+        let window_end_sec = samples.last().map(|s| s.0).unwrap_or(window_start_sec);
+        let span = (window_end_sec - window_start_sec).max(0.0);
+        let late_cutoff = window_start_sec + 0.75 * span;
+
+        let mut peak = 0.0f32;
+        let mut late_sum = 0.0f32;
+        let mut late_n = 0usize;
+        for &(t, c) in samples {
+            peak = peak.max(c);
+            if t >= late_cutoff {
+                late_sum += c;
+                late_n += 1;
+            }
+        }
+        let beat_confidence_late_mean = if late_n > 0 {
+            late_sum / late_n as f32
+        } else {
+            0.0
+        };
+
+        self.write_record(&ReportRecord::ListenerConfidenceSummary {
+            window_start_sec,
+            window_end_sec,
+            sample_count: samples.len(),
+            beat_confidence_peak: peak,
+            beat_confidence_late_mean,
+        })
     }
 
     fn write_summary_record(&mut self, summary: &RhythmSummary) -> Result<(), String> {

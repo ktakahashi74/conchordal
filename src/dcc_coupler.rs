@@ -69,12 +69,14 @@ mod tests {
             resolvability_level,
             tension_level,
             attention_level: 0.0,
-            theta_hz: 0.0,
-            theta_mag: 0.0,
-            theta_alpha: 0.0,
-            delta_hz: 0.0,
-            delta_mag: 0.0,
-            delta_alpha: 0.0,
+            beat_hz: 0.0,
+            beat_phase: 0.0,
+            beat_confidence: 0.0,
+            subdivision_ratio: 0,
+            subdivision_confidence: 0.0,
+            measure_hz: 0.0,
+            measure_ratio: 0,
+            measure_confidence: 0.0,
         }
     }
 

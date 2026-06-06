@@ -1,5 +1,5 @@
 use crate::ui::viewdata::VoiceStateInfo;
-use egui::{Align2, Color32, FontId, Id, Stroke, Vec2, Vec2b};
+use egui::{Color32, Id, Stroke, Vec2, Vec2b};
 use egui_plot::{
     Bar, BarChart, GridInput, GridMark, Line, LineStyle, Plot, PlotPoints, Points, Polygon,
     log_grid_spacer,
@@ -321,7 +321,7 @@ pub fn time_plot(
 /// Show magnitude history for neural rhythms to avoid phase aliasing.
 pub fn neural_activity_plot(
     ui: &mut egui::Ui,
-    history: &VecDeque<(f64, crate::core::modulation::NeuralRhythms)>,
+    history: &VecDeque<(f64, crate::core::meter::MeterState)>,
     height: f32,
     window_start: f64,
     window_end: f64,
@@ -329,14 +329,14 @@ pub fn neural_activity_plot(
 ) {
     let fallback_history;
     let history = if history.len() < 2 {
-        if let Some((t, rhythms)) = history.back() {
+        if let Some((t, meter)) = history.back() {
             fallback_history = VecDeque::from([
-                ((*t - 0.1).max(window_start), *rhythms),
-                ((*t).min(window_end), *rhythms),
+                ((*t - 0.1).max(window_start), *meter),
+                ((*t).min(window_end), *meter),
             ]);
             &fallback_history
         } else {
-            ui.label("No rhythm data");
+            ui.label("No meter data");
             return;
         }
     } else {
@@ -362,13 +362,11 @@ pub fn neural_activity_plot(
     plot.show(ui, |plot_ui| {
         plot_ui.set_plot_bounds_x(window_start..=window_end);
         plot_ui.set_plot_bounds_y(0.0..=1.0);
-        let rhythm_confidence =
-            |band: crate::core::modulation::RhythmBand| (band.mag * band.alpha).clamp(0.0, 1.0);
         let colors = [
-            (Color32::from_rgb(80, 180, 255), "Delta (Phase)"),
-            (Color32::from_rgb(70, 225, 135), "Theta (Phase)"),
-            (Color32::from_rgb(255, 215, 60), "Alpha (Mag)"),
-            (Color32::from_rgb(255, 110, 90), "Beta (Mag)"),
+            (Color32::from_rgb(80, 180, 255), "Beat (Phase)"),
+            (Color32::from_rgb(70, 225, 135), "Sub (Phase)"),
+            (Color32::from_rgb(255, 215, 60), "Beat conf"),
+            (Color32::from_rgb(255, 110, 90), "Measure conf"),
         ];
 
         for (idx, (color, name)) in colors.iter().enumerate() {
@@ -380,25 +378,25 @@ pub fn neural_activity_plot(
             let mut prev_t = 0.0f64;
             let mut has_prev = false;
 
-            for (t, r) in history {
+            for (t, m) in history {
                 let (val, mag) = match idx {
                     0 => (
-                        (r.delta.phase as f64).rem_euclid(std::f64::consts::TAU)
+                        (m.beat.phase as f64).rem_euclid(std::f64::consts::TAU)
                             / std::f64::consts::TAU,
-                        rhythm_confidence(r.delta),
+                        m.beat.confidence.clamp(0.0, 1.0),
                     ),
                     1 => (
-                        (r.theta.phase as f64).rem_euclid(std::f64::consts::TAU)
+                        (m.subdivision.phase as f64).rem_euclid(std::f64::consts::TAU)
                             / std::f64::consts::TAU,
-                        rhythm_confidence(r.theta),
+                        m.subdivision.confidence.clamp(0.0, 1.0),
                     ),
                     2 => {
-                        let alpha_mag = 0.5 * (r.theta.alpha + r.delta.alpha);
-                        (alpha_mag.clamp(0.0, 1.0) as f64, alpha_mag)
+                        let c = m.beat.confidence.clamp(0.0, 1.0);
+                        (c as f64, c)
                     }
                     3 => {
-                        let beta_mag = r.theta.beta.max(r.delta.beta);
-                        (beta_mag.clamp(0.0, 1.0) as f64, beta_mag)
+                        let c = m.measure.confidence.clamp(0.0, 1.0);
+                        (c as f64, c)
                     }
                     _ => (0.0, 0.0),
                 };
@@ -659,80 +657,6 @@ pub fn spectrum_time_freq_axes(
     });
 }
 
-/// Visualize neural rhythms (Delta/Theta/Alpha/Beta) as radial gauges.
-#[allow(dead_code)]
-pub fn neural_compass(
-    ui: &mut egui::Ui,
-    rhythms: &crate::core::modulation::NeuralRhythms,
-    height: f32,
-) {
-    let color_delta = Color32::from_rgb(80, 180, 255);
-    let color_theta = Color32::from_rgb(70, 225, 135);
-    let color_alpha = Color32::from_rgb(255, 215, 60);
-    let color_beta = Color32::from_rgb(255, 110, 90);
-    let alpha_mag = 0.5 * (rhythms.theta.alpha + rhythms.delta.alpha);
-    let beta_mag = rhythms.theta.beta.max(rhythms.delta.beta);
-    let alpha_band = crate::core::modulation::RhythmBand {
-        phase: 0.0,
-        freq_hz: 0.0,
-        mag: alpha_mag,
-        alpha: alpha_mag,
-        beta: beta_mag,
-    };
-    let beta_band = crate::core::modulation::RhythmBand {
-        phase: 0.0,
-        freq_hz: 0.0,
-        mag: beta_mag,
-        alpha: alpha_mag,
-        beta: beta_mag,
-    };
-    let bands = [
-        ("Delta", color_delta, rhythms.delta),
-        ("Theta", color_theta, rhythms.theta),
-        ("Alpha", color_alpha, alpha_band),
-        ("Beta", color_beta, beta_band),
-    ];
-
-    let cheight = (height / 4.0) * 0.95;
-    ui.vertical(|ui| {
-        for (label, color, rhythm) in bands {
-            let desired = egui::vec2(130.0, cheight);
-            let (rect, _resp) = ui.allocate_exact_size(desired, egui::Sense::hover());
-            let painter = ui.painter_at(rect);
-            let center = rect.center();
-            let radius = rect.width().min(rect.height()) * 0.45;
-
-            // Background circle
-            painter.circle_stroke(center, radius, Stroke::new(1.0, color.gamma_multiply(0.35)));
-            painter.circle_filled(center, 2.0, Color32::WHITE);
-            painter.circle_stroke(center, 2.0, Stroke::new(1.0, color.gamma_multiply(0.6)));
-            let top = center + egui::vec2(0.0, -radius);
-            painter.line_segment(
-                [center, top],
-                Stroke::new(1.0, Color32::WHITE.gamma_multiply(0.3)),
-            );
-
-            // Needle with log-style gain and a visible floor.
-            let vis_mag =
-                ((1.0f32 + (rhythm.mag * 50.0)).ln() / (1.0f32 + 50.0).ln()).clamp(0.35, 1.0);
-            let length = radius * (0.3 + 0.7 * vis_mag);
-            let angle = rhythm.phase - std::f32::consts::FRAC_PI_2;
-            let tip = center + egui::vec2(angle.cos(), angle.sin()) * length;
-            let thickness = 2.0 + 3.8 * vis_mag;
-            painter.line_segment([center, tip], Stroke::new(thickness, color));
-
-            // Label
-            painter.text(
-                rect.center_top() + egui::vec2(-40.0, 10.0),
-                Align2::CENTER_TOP,
-                label,
-                FontId::proportional(12.0),
-                color,
-            );
-        }
-    });
-}
-
 #[derive(Clone, Copy, Debug, Default)]
 struct ListenerMandalaLevels {
     attention: Option<f32>,
@@ -740,20 +664,17 @@ struct ListenerMandalaLevels {
     tension: Option<f32>,
 }
 
-/// Draw a mandala-style rhythm compass combining meter, beat, stability, and error without fast rotation.
-#[allow(dead_code)]
-pub fn draw_rhythm_mandala(
-    ui: &mut egui::Ui,
-    rhythms: &crate::core::modulation::NeuralRhythms,
-    size: Vec2,
-) {
-    draw_mandala(ui, rhythms, size, ListenerMandalaLevels::default());
-}
-
-/// Draw listener-side rhythm and salience state as an at-a-glance mandala.
+/// Draw listener-side meter and salience state as an at-a-glance mandala.
+///
+/// `entrain_phases` are the live voices' offset-removed rhythm phases and
+/// `entrain_order_r` their Kuramoto order; they are overlaid as dots on the
+/// subdivision ring with a mean-resultant vector so voice entrainment reads on
+/// the same compass as the listener meter.
 pub fn draw_listener_mandala(
     ui: &mut egui::Ui,
     listener: &crate::ui::viewdata::ListenerFrame,
+    entrain_phases: &[f32],
+    entrain_order_r: Option<f32>,
     size: Vec2,
 ) {
     let levels = ListenerMandalaLevels {
@@ -767,14 +688,23 @@ pub fn draw_listener_mandala(
             .has_state
             .then_some(listener.tension_level.clamp(0.0, 1.0)),
     };
-    draw_mandala(ui, &listener.neural_rhythms, size, levels);
+    draw_mandala(
+        ui,
+        &listener.meter,
+        size,
+        levels,
+        entrain_phases,
+        entrain_order_r,
+    );
 }
 
 fn draw_mandala(
     ui: &mut egui::Ui,
-    rhythms: &crate::core::modulation::NeuralRhythms,
+    meter: &crate::core::meter::MeterState,
     size: Vec2,
     listener_levels: ListenerMandalaLevels,
+    entrain_phases: &[f32],
+    entrain_order_r: Option<f32>,
 ) {
     let side = size.x.min(size.y).clamp(80.0, 200.0);
     let _scale = (side / 150.0).clamp(0.6, 1.2);
@@ -792,18 +722,18 @@ fn draw_mandala(
         v
     };
 
-    // Delta: orbiting marker outside the base ring.
-    let get_visuals = |mag: f32, color: Color32| {
-        let m = mag.clamp(0.0, 1.0);
-        let alpha = 0.3 + 0.7 * m;
-        let weight = m;
+    // Confidence (entrainment PLV) drives opacity/weight, not drive amplitude.
+    let get_visuals = |confidence: f32, color: Color32| {
+        let c = confidence.clamp(0.0, 1.0);
+        let alpha = 0.3 + 0.7 * c;
+        let weight = c;
         (color.gamma_multiply(alpha), weight)
     };
 
-    let color_delta = Color32::from_rgb(80, 180, 255);
-    let color_theta = Color32::from_rgb(70, 225, 135);
-    let color_alpha = Color32::from_rgb(255, 215, 60);
-    let color_beta = Color32::from_rgb(255, 110, 90);
+    let color_beat = Color32::from_rgb(80, 180, 255);
+    let color_sub = Color32::from_rgb(70, 225, 135);
+    let color_measure = Color32::from_rgb(255, 215, 60);
+    let color_error = Color32::from_rgb(255, 110, 90);
     let outer_r = radius * 1.15;
 
     if let Some(attention) = listener_levels.attention {
@@ -834,39 +764,39 @@ fn draw_mandala(
         }
     }
 
-    // Delta: progress arc as the meter with magnitude-driven opacity/width.
-    let delta_phase = wrap(rhythms.delta.phase);
-    let (d_color, d_weight) = get_visuals(rhythms.delta.mag, color_delta);
+    // Beat (tactus): progress arc as the meter with confidence-driven opacity/width.
+    let beat_phase = wrap(meter.beat.phase);
+    let (d_color, d_weight) = get_visuals(meter.beat.confidence, color_beat);
     painter.circle_stroke(
         center,
         outer_r,
         Stroke::new(1.0, d_color.gamma_multiply(0.2)),
     );
-    if delta_phase > 0.01 {
-        let steps = (delta_phase * 12.0).max(2.0) as usize;
+    if beat_phase > 0.01 {
+        let steps = (beat_phase * 12.0).max(2.0) as usize;
         let points: Vec<egui::Pos2> = (0..=steps)
             .map(|i| {
-                let angle = start_angle + (delta_phase * i as f32 / steps as f32);
+                let angle = start_angle + (beat_phase * i as f32 / steps as f32);
                 center + egui::vec2(angle.cos(), angle.sin()) * outer_r
             })
             .collect();
         let width = 1.0 + d_weight * 3.0;
         painter.add(egui::Shape::line(points, Stroke::new(width, d_color)));
     }
-    let delta_tip_angle = start_angle + delta_phase;
-    let delta_tip_pos = center + egui::vec2(delta_tip_angle.cos(), delta_tip_angle.sin()) * outer_r;
-    painter.circle_filled(delta_tip_pos, 2.0 + d_weight * 2.0, d_color);
+    let beat_tip_angle = start_angle + beat_phase;
+    let beat_tip_pos = center + egui::vec2(beat_tip_angle.cos(), beat_tip_angle.sin()) * outer_r;
+    painter.circle_filled(beat_tip_pos, 2.0 + d_weight * 2.0, d_color);
 
-    // Theta: base ring plus a slow cursor.
+    // Subdivision (tatum): base ring plus a fast cursor.
     let base_circle = Color32::from_gray(180);
     painter.circle_stroke(center, radius, Stroke::new(2.5, base_circle));
-    let (t_color, t_weight) = get_visuals(rhythms.theta.mag, color_theta);
-    let theta_angle = start_angle + wrap(rhythms.theta.phase);
-    let theta_pos = center + egui::vec2(theta_angle.cos(), theta_angle.sin()) * radius;
+    let (t_color, t_weight) = get_visuals(meter.subdivision.confidence, color_sub);
+    let sub_angle = start_angle + wrap(meter.subdivision.phase);
+    let sub_pos = center + egui::vec2(sub_angle.cos(), sub_angle.sin()) * radius;
     let dot_radius = 2.0 + t_weight * 3.0;
-    painter.circle_filled(theta_pos, dot_radius, t_color);
+    painter.circle_filled(sub_pos, dot_radius, t_color);
     painter.circle_stroke(
-        theta_pos,
+        sub_pos,
         dot_radius + 1.0,
         Stroke::new(1.0, t_color.gamma_multiply(0.5)),
     );
@@ -886,36 +816,66 @@ fn draw_mandala(
         Stroke::new(1.0, center_color.gamma_multiply(0.7)),
     );
 
-    // Alpha: stability axis along the vertical.
-    let alpha_mag = (0.5 * (rhythms.theta.alpha + rhythms.delta.alpha)).clamp(0.0, 1.0);
-    let alpha_vis = 0.25 + 0.75 * alpha_mag;
-    let alpha_color = color_alpha.gamma_multiply(alpha_vis);
-    let alpha_width = 2.0 + 6.0 * alpha_mag;
-    painter.line_segment(
-        [
-            center + egui::vec2(0.0, -radius),
-            center + egui::vec2(0.0, radius),
-        ],
-        Stroke::new(alpha_width, alpha_color),
-    );
+    // Measure: a downbeat hand pointing at the measure phase, shown only when an
+    // accent grouping holds. Length and opacity track the measure confidence.
+    if meter.measure_ratio > 0 {
+        let measure_conf = meter.measure.confidence.clamp(0.0, 1.0);
+        let measure_vis = 0.25 + 0.75 * measure_conf;
+        let measure_color = color_measure.gamma_multiply(measure_vis);
+        let measure_width = 2.0 + 4.0 * measure_conf;
+        let measure_angle = start_angle + wrap(meter.measure.phase);
+        let measure_len = radius * (0.35 + 0.6 * measure_conf);
+        let tip = center + egui::vec2(measure_angle.cos(), measure_angle.sin()) * measure_len;
+        painter.line_segment([center, tip], Stroke::new(measure_width, measure_color));
+        painter.circle_filled(tip, 2.0 + 2.0 * measure_conf, measure_color);
+    }
 
-    // Beta: prediction error cross-grid.
-    let beta_mag = rhythms.theta.beta.max(rhythms.delta.beta).clamp(0.0, 1.0);
-    let beta_vis = 0.2 + 0.8 * beta_mag;
-    let beta_color = color_beta.gamma_multiply(beta_vis);
-    let beta_width = 1.5 + 6.0 * beta_mag;
+    // Prediction error cross-grid: intensifies as beat entrainment confidence drops.
+    let error_mag = (1.0 - meter.beat.confidence).clamp(0.0, 1.0);
+    let error_vis = 0.2 + 0.8 * error_mag;
+    let error_color = color_error.gamma_multiply(error_vis);
+    let error_width = 1.5 + 6.0 * error_mag;
     painter.line_segment(
         [
             center + egui::vec2(0.0, -radius),
             center + egui::vec2(0.0, radius),
         ],
-        Stroke::new(beta_width, beta_color),
+        Stroke::new(error_width, error_color),
     );
     painter.line_segment(
         [
             center + egui::vec2(-radius, 0.0),
             center + egui::vec2(radius, 0.0),
         ],
-        Stroke::new(beta_width, beta_color),
+        Stroke::new(error_width, error_color),
     );
+
+    // Voice entrainment: each live Entrain voice's phase as a dot on the
+    // subdivision ring, plus the Kuramoto mean-resultant vector. Clustered dots
+    // and a long vector mean the voices are phase-locked. Distinct violet so it
+    // reads apart from the beat/subdivision/measure/error meter marks.
+    if !entrain_phases.is_empty() {
+        let voice_color = Color32::from_rgb(196, 150, 255);
+        let mut sx = 0.0f32;
+        let mut sy = 0.0f32;
+        let mut n = 0u32;
+        for &phase in entrain_phases {
+            if !phase.is_finite() {
+                continue;
+            }
+            let angle = start_angle + wrap(phase);
+            let dot = center + egui::vec2(angle.cos(), angle.sin()) * radius;
+            painter.circle_filled(dot, 2.2, voice_color.gamma_multiply(0.9));
+            sx += phase.cos();
+            sy += phase.sin();
+            n += 1;
+        }
+        if n > 0 && (sx != 0.0 || sy != 0.0) {
+            let r = entrain_order_r.unwrap_or(0.0).clamp(0.0, 1.0);
+            let mean_angle = start_angle + wrap(sy.atan2(sx));
+            let tip = center + egui::vec2(mean_angle.cos(), mean_angle.sin()) * (radius * r);
+            painter.line_segment([center, tip], Stroke::new(2.0, voice_color));
+            painter.circle_filled(tip, 2.8, voice_color);
+        }
+    }
 }

@@ -1324,7 +1324,9 @@ impl Population {
         self.pending_update.take()
     }
 
-    pub fn kuramoto_order_parameter(&self) -> Option<(f32, usize)> {
+    /// Offset-removed entrainment phases of live voices, one per `Entrain` core.
+    /// Used for the Kuramoto order parameter and the GUI phase circle.
+    pub fn entrain_aligned_phases(&self) -> Vec<f32> {
         let mut phases = Vec::with_capacity(self.voices.len());
         for voice in &self.voices {
             if !voice.is_alive() {
@@ -1339,8 +1341,21 @@ impl Population {
                 phases.push(aligned_phase);
             }
         }
+        phases
+    }
+
+    pub fn kuramoto_order_parameter(&self) -> Option<(f32, usize)> {
+        let phases = self.entrain_aligned_phases();
         let r = kuramoto_order_from_phases(&phases)?;
         Some((r, phases.len()))
+    }
+
+    /// Entrainment phases plus their Kuramoto order in a single voice scan, for
+    /// the UI frame (avoids scanning + allocating twice per frame).
+    pub fn entrain_phases_and_order(&self) -> (Vec<f32>, Option<f32>) {
+        let phases = self.entrain_aligned_phases();
+        let r = kuramoto_order_from_phases(&phases);
+        (phases, r)
     }
 
     /// Assumes `set_current_frame` has been called for the current hop.

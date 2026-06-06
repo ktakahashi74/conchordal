@@ -1,6 +1,6 @@
 use crate::core::landscape::LandscapeFrame;
 use crate::core::log2space::Log2Space;
-use crate::core::modulation::NeuralRhythms;
+use crate::core::meter::{MeterNetwork, MeterState};
 use crate::core::stream::dorsal::{DorsalMetrics, DorsalStream};
 use serde::Serialize;
 
@@ -19,12 +19,14 @@ pub(crate) struct ListenerState {
     pub(crate) resolvability_level: f32,
     pub(crate) tension_level: f32,
     pub(crate) attention_level: f32,
-    pub(crate) theta_hz: f32,
-    pub(crate) theta_mag: f32,
-    pub(crate) theta_alpha: f32,
-    pub(crate) delta_hz: f32,
-    pub(crate) delta_mag: f32,
-    pub(crate) delta_alpha: f32,
+    pub(crate) beat_hz: f32,
+    pub(crate) beat_phase: f32,
+    pub(crate) beat_confidence: f32,
+    pub(crate) subdivision_ratio: u8,
+    pub(crate) subdivision_confidence: f32,
+    pub(crate) measure_hz: f32,
+    pub(crate) measure_ratio: u8,
+    pub(crate) measure_confidence: f32,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -33,7 +35,7 @@ pub(crate) struct ListenerFastState {
     pub(crate) generated_frame_id: u64,
     pub(crate) attention_level: f32,
     pub(crate) attention_metrics: DorsalMetrics,
-    pub(crate) neural_rhythms: NeuralRhythms,
+    pub(crate) meter_state: MeterState,
     pub(crate) has_state: bool,
 }
 
@@ -57,6 +59,7 @@ impl Default for ListenerTwinConfig {
 pub(crate) struct ListenerTwin {
     config: ListenerTwinConfig,
     fast_stream: DorsalStream,
+    meter: MeterNetwork,
     fast_state: ListenerFastState,
 }
 
@@ -66,11 +69,11 @@ impl ListenerTwin {
     }
 
     pub(crate) fn with_sample_rate(fs: f32, config: ListenerTwinConfig) -> Self {
-        let mut fast_stream = DorsalStream::new(fs);
-        fast_stream.set_vitality(0.0);
+        let fast_stream = DorsalStream::new(fs);
         Self {
             config,
             fast_stream,
+            meter: MeterNetwork::new(),
             fast_state: ListenerFastState::default(),
         }
     }
@@ -81,27 +84,26 @@ impl ListenerTwin {
         generated_frame_id: u64,
         audio: &[f32],
     ) -> ListenerFastState {
-        let listener_rhythm_vitality = if self.fast_state.has_state {
-            self.fast_state.attention_level
+        self.fast_stream.process(audio);
+        let attention_metrics = self.fast_stream.last_metrics();
+        let salience_level = bottom_up_salience_level_from_metrics(attention_metrics);
+        let dt_sec = if self.fast_state.has_state {
+            (time_sec - self.fast_state.time_sec).max(0.0)
         } else {
             0.0
         };
-        self.fast_stream.set_vitality(listener_rhythm_vitality);
-        let neural_rhythms = self.fast_stream.process(audio);
-        let attention_metrics = self.fast_stream.last_metrics();
-        let salience_level = bottom_up_salience_level_from_metrics(attention_metrics);
         let attention_level = if self.fast_state.has_state {
-            let dt_sec = (time_sec - self.fast_state.time_sec).max(0.0);
             smooth_attention_level(self.fast_state.attention_level, salience_level, dt_sec)
         } else {
             salience_level
         };
+        let meter_state = self.meter.process(dt_sec, salience_level);
         self.fast_state = ListenerFastState {
             time_sec,
             generated_frame_id,
             attention_level,
             attention_metrics,
-            neural_rhythms,
+            meter_state,
             has_state: true,
         };
         self.fast_state
@@ -135,12 +137,24 @@ impl ListenerTwin {
             resolvability_level,
             tension_level,
             attention_level: self.fast_state.attention_level,
-            theta_hz: finite_positive(self.fast_state.neural_rhythms.theta.freq_hz),
-            theta_mag: self.fast_state.neural_rhythms.theta.mag.clamp(0.0, 1.0),
-            theta_alpha: self.fast_state.neural_rhythms.theta.alpha.clamp(0.0, 1.0),
-            delta_hz: finite_positive(self.fast_state.neural_rhythms.delta.freq_hz),
-            delta_mag: self.fast_state.neural_rhythms.delta.mag.clamp(0.0, 1.0),
-            delta_alpha: self.fast_state.neural_rhythms.delta.alpha.clamp(0.0, 1.0),
+            beat_hz: finite_positive(self.fast_state.meter_state.beat.freq_hz),
+            beat_phase: self.fast_state.meter_state.beat.phase,
+            beat_confidence: self.fast_state.meter_state.beat.confidence.clamp(0.0, 1.0),
+            subdivision_ratio: self.fast_state.meter_state.subdivision_ratio,
+            subdivision_confidence: self
+                .fast_state
+                .meter_state
+                .subdivision
+                .confidence
+                .clamp(0.0, 1.0),
+            measure_hz: finite_positive(self.fast_state.meter_state.measure.freq_hz),
+            measure_ratio: self.fast_state.meter_state.measure_ratio,
+            measure_confidence: self
+                .fast_state
+                .meter_state
+                .measure
+                .confidence
+                .clamp(0.0, 1.0),
         }
     }
 }

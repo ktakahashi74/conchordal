@@ -261,8 +261,8 @@ fn draw_mandala_state_readout(ui: &mut egui::Ui, frame: &UiFrame) {
     });
 }
 
-fn rhythm_band_label(name: &str, band: crate::core::modulation::RhythmBand) -> String {
-    let confidence = (band.mag * band.alpha).clamp(0.0, 1.0);
+fn meter_band_label(name: &str, band: crate::core::meter::MeterBand) -> String {
+    let confidence = band.confidence.clamp(0.0, 1.0);
     let freq_text = if confidence < 0.08 {
         "--.--".to_string()
     } else {
@@ -276,13 +276,19 @@ fn rhythm_band_label(name: &str, band: crate::core::modulation::RhythmBand) -> S
     format!("{name} {freq_text}Hz c{confidence:>4.2}")
 }
 
-fn rhythm_scalar_labels(rhythms: crate::core::modulation::NeuralRhythms) -> (String, String) {
-    let alpha_level = (0.5 * (rhythms.theta.alpha + rhythms.delta.alpha)).clamp(0.0, 1.0);
-    let beta_level = rhythms.theta.beta.max(rhythms.delta.beta).clamp(0.0, 1.0);
-    (
-        format!("Alpha precision {alpha_level:>4.2}"),
-        format!("Beta error     {beta_level:>4.2}"),
-    )
+fn meter_ratio_labels(meter: &crate::core::meter::MeterState) -> (String, String) {
+    let sub = if meter.subdivision_ratio > 0 {
+        format!("Sub ratio  x{}", meter.subdivision_ratio)
+    } else {
+        "Sub ratio  x--".to_string()
+    };
+    let meas = if meter.measure_ratio > 0 {
+        let conf = meter.measure.confidence.clamp(0.0, 1.0);
+        format!("Measure x{} c{conf:>4.2}", meter.measure_ratio)
+    } else {
+        "Measure x--".to_string()
+    };
+    (sub, meas)
 }
 
 fn rhythm_label_width(label: &str) -> f32 {
@@ -352,7 +358,7 @@ fn draw_kuramoto_order(ui: &mut egui::Ui, frame: &UiFrame) {
 fn draw_listener_dashboard(
     ui: &mut egui::Ui,
     frame: &UiFrame,
-    rhythm_history: &VecDeque<(f64, crate::core::modulation::NeuralRhythms)>,
+    rhythm_history: &VecDeque<(f64, crate::core::meter::MeterState)>,
     dorsal_history: &VecDeque<(f64, crate::ui::viewdata::DorsalFrame)>,
     window_start: f64,
     window_end: f64,
@@ -423,11 +429,17 @@ fn draw_listener_dashboard(
                     Vec2::new(left_width, mandala_area_height),
                     egui::Layout::top_down(egui::Align::LEFT),
                     |ui| {
-                        ui.heading("Mandala");
+                        ui.heading("Neural Mandala");
                         let bottom_gap = (ui.available_height() - mandala_side).max(0.0);
                         ui.add_space(bottom_gap);
                         ui.horizontal_top(|ui| {
-                            draw_listener_mandala(ui, &frame.listener, Vec2::splat(mandala_side));
+                            draw_listener_mandala(
+                                ui,
+                                &frame.listener,
+                                &frame.meta.entrain_phases,
+                                frame.meta.kuramoto_order_r,
+                                Vec2::splat(mandala_side),
+                            );
                             draw_mandala_state_readout(ui, frame);
                         });
                     },
@@ -455,23 +467,27 @@ fn draw_listener_dashboard(
                 );
                 ui.separator();
                 ui.horizontal(|ui| {
-                    ui.label("Neural rhythm");
+                    ui.label("Neural Rhythm");
                     if frame.listener.has_fast_state {
-                        let rhythms = frame.listener.neural_rhythms;
-                        let (alpha_label, beta_label) = rhythm_scalar_labels(rhythms);
+                        let meter = frame.listener.meter;
+                        let (sub_label, measure_label) = meter_ratio_labels(&meter);
                         ui.separator();
                         fixed_rhythm_label(
                             ui,
-                            rhythm_band_label("Delta", rhythms.delta),
+                            meter_band_label("Beat", meter.beat),
                             egui::Color32::from_rgb(80, 180, 255),
                         );
                         fixed_rhythm_label(
                             ui,
-                            rhythm_band_label("Theta", rhythms.theta),
+                            meter_band_label("Sub", meter.subdivision),
                             egui::Color32::from_rgb(70, 225, 135),
                         );
-                        fixed_rhythm_label(ui, alpha_label, egui::Color32::from_rgb(255, 215, 60));
-                        fixed_rhythm_label(ui, beta_label, egui::Color32::from_rgb(255, 110, 90));
+                        fixed_rhythm_label(ui, sub_label, egui::Color32::from_rgb(255, 215, 60));
+                        fixed_rhythm_label(
+                            ui,
+                            measure_label,
+                            egui::Color32::from_rgb(255, 110, 90),
+                        );
                     }
                 });
                 neural_activity_plot(
@@ -493,7 +509,7 @@ fn draw_listener_dashboard(
 pub fn main_window(
     root_ui: &mut egui::Ui,
     frame: &UiFrame,
-    rhythm_history: &VecDeque<(f64, crate::core::modulation::NeuralRhythms)>,
+    rhythm_history: &VecDeque<(f64, crate::core::meter::MeterState)>,
     dorsal_history: &VecDeque<(f64, crate::ui::viewdata::DorsalFrame)>,
     audio_error: Option<&str>,
     exit_flag: &Arc<AtomicBool>,

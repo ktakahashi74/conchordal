@@ -16,6 +16,8 @@ use crate::core::consonance_kernel::{ConsonanceKernel, ConsonanceRepresentationP
 use crate::core::harmonicity_kernel::HarmonicityKernel;
 use crate::core::landscape::{Landscape, LandscapeFrame, LandscapeParams, LandscapeUpdate};
 use crate::core::log2space::Log2Space;
+use crate::core::meter::MeterNetwork;
+use crate::core::modulation::NeuralRhythms;
 use crate::core::nsgt_kernel::{NsgtKernelLog2, NsgtLog2Config, PowerMode};
 use crate::core::nsgt_rt::{RtConfig, RtNsgtKernelLog2};
 use crate::core::phase::wrap_pm_pi;
@@ -208,6 +210,7 @@ fn build_initial_ui_frame(
             window_peak: [0.0; 2],
             kuramoto_order_r: None,
             kuramoto_active_count: 0,
+            entrain_phases: Vec::new(),
         },
         prediction: PredictionFrame::default(),
         voices: Vec::new(),
@@ -245,7 +248,7 @@ fn build_runtime_ui_frame(input: RuntimeUiFrameInput<'_>) -> UiFrame {
         })
         .collect();
     let pred_stats = input.pop.last_pred_gate_stats();
-    let kuramoto = input.pop.kuramoto_order_parameter();
+    let (entrain_phases, kuramoto_order_r) = input.pop.entrain_phases_and_order();
     let theta_hz = positive_hz(input.current_landscape.rhythm.theta.freq_hz);
     let delta_hz = positive_hz(input.current_landscape.rhythm.delta.freq_hz);
     let (pred_tau_tick, pred_horizon_tick) = input
@@ -274,8 +277,9 @@ fn build_runtime_ui_frame(input: RuntimeUiFrameInput<'_>) -> UiFrame {
             playback_state: input.playback_state,
             channel_peak: input.channel_peak,
             window_peak: input.channel_peak,
-            kuramoto_order_r: kuramoto.map(|(r, _)| r),
-            kuramoto_active_count: kuramoto.map(|(_, n)| n).unwrap_or(0),
+            kuramoto_order_r,
+            kuramoto_active_count: entrain_phases.len(),
+            entrain_phases,
         },
         prediction: PredictionFrame {
             next_gate_tick_est: input.generator_model.next_gate_tick_est,
@@ -323,7 +327,7 @@ fn listener_frame_from_states(
             e_high: fast.attention_metrics.e_high,
             flux: fast.attention_metrics.flux,
         };
-        frame.neural_rhythms = fast.neural_rhythms;
+        frame.meter = fast.meter_state;
         frame.has_fast_state = fast.has_state;
     }
     if let Some(state) = state {
@@ -1217,6 +1221,9 @@ fn worker_loop(
     let mut latest_listener_fast_state: Option<ListenerFastState> = None;
     let mut latest_listener_state: Option<ListenerState> = None;
     let timebase = crate::core::timebase::Timebase { fs, hop };
+    // Production-side meter core (auditory-motor coupling), separate from the
+    // perception meter inside ListenerTwin. See "Perception vs Production".
+    let mut prod_meter = MeterNetwork::new();
     let mut generator_model =
         crate::life::generator_model::GeneratorModel::new(timebase, log_space.clone());
     let mut schedule_renderer = ScheduleRenderer::new(timebase);
@@ -1363,17 +1370,6 @@ fn worker_loop(
                 0
             };
             let phonation_batches = &phonation_batches_buf[..phonation_count];
-            let vitality = if pop.voices.is_empty() {
-                0.0
-            } else {
-                let sum: f32 = pop
-                    .voices
-                    .iter()
-                    .map(|agent| agent.last_signal.amplitude)
-                    .sum();
-                sum / pop.voices.len() as f32
-            };
-            dorsal.set_vitality(vitality);
 
             if scenario_end_tick.is_none() && conductor.is_done() {
                 scenario_end_tick = Some(now_tick);
@@ -1488,9 +1484,16 @@ fn worker_loop(
                 (presentation_chunk, habitat_chunk, max_p, [max_p, max_p])
             };
 
-            // Generator rhythm derives from the habitat bus.
+            // Generator rhythm derives from the habitat bus via the production
+            // meter core. Dorsal still runs the flux front-end; its drive feeds
+            // the meter network instead of the legacy theta/delta engine.
             if !finished {
-                current_landscape.rhythm = dorsal.process(habitat_chunk.as_ref());
+                dorsal.process(habitat_chunk.as_ref());
+                let drive = (dorsal.last_metrics().flux.max(0.0) * 500.0)
+                    .tanh()
+                    .clamp(0.0, 1.0);
+                let meter_state = prod_meter.process(hop_duration.as_secs_f32(), drive);
+                current_landscape.rhythm = NeuralRhythms::from_meter_state(&meter_state);
             }
             latest_listener_fast_state = Some(listener_twin.observe_presentation_audio(
                 now_sec,
@@ -1618,6 +1621,9 @@ fn worker_loop(
     }
     report_try(&mut reporter, "rhythm summary", |writer| {
         writer.write_rhythm_summary()
+    });
+    report_try(&mut reporter, "listener confidence summary", |writer| {
+        writer.write_listener_confidence_summary()
     });
     report_try(&mut reporter, "flush", |writer| writer.flush());
 }

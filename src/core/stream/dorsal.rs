@@ -1,23 +1,19 @@
-use crate::core::modulation::{NeuralRhythms, RhythmEngine};
 use tracing::debug;
 
 /// Dorsal Stream (Where/How Pathway)
-/// Handles fast articulation processing, rhythm extraction, and motor synchronization.
+/// Fast articulation front-end: computes 3-band spectral flux used as the
+/// metric drive for downstream meter networks.
 ///
 /// Features:
 /// - Low-latency synchronous processing.
 /// - 3-Band Crossover Flux detection (Low/Mid/High).
-/// - Non-linear sensitivity boost for ambient signals.
 pub struct DorsalStream {
-    dynamics: RhythmEngine,
     // IIR Filter States
     lp_low_state: f32, // ~200Hz
     lp_mid_state: f32, // ~3000Hz
     prev_band_energy: [f32; 3],
-    delta_env: f32,
     last_metrics: DorsalMetrics,
     fs: f32,
-    vitality: f32,
     debug_timer: f32,
 }
 
@@ -32,23 +28,19 @@ pub struct DorsalMetrics {
 impl DorsalStream {
     pub fn new(fs: f32) -> Self {
         Self {
-            dynamics: RhythmEngine::default(),
             lp_low_state: 0.0,
             lp_mid_state: 0.0,
             prev_band_energy: [0.0; 3],
-            delta_env: 0.0,
             last_metrics: DorsalMetrics::default(),
             fs,
-            vitality: 1.0,
             debug_timer: 0.0,
         }
     }
 
-    /// Process audio chunk synchronously.
-    /// Returns the updated NeuralRhythms immediately.
-    pub fn process(&mut self, audio: &[f32]) -> NeuralRhythms {
+    /// Process an audio chunk synchronously, updating the 3-band flux metrics.
+    pub fn process(&mut self, audio: &[f32]) {
         if audio.is_empty() {
-            return self.dynamics.last();
+            return;
         }
 
         // --- 1. Sub-band Flux Calculation ---
@@ -101,48 +93,20 @@ impl DorsalStream {
             flux: raw_flux,
         };
 
-        // --- 2. Non-linear Boost (Simulating Neural Activation) ---
-        // High gain (500.0) + tanh saturation to detect ambient shifts
-        let drive = (raw_flux * 500.0).tanh();
-        let u_theta = drive.clamp(0.0, 1.0);
-
-        // --- 3. Update Oscillators ---
         let dt = audio.len() as f32 / self.fs;
-        let tau_delta = 0.6;
-        let alpha = 1.0 - (-dt / tau_delta).exp();
-        self.delta_env += alpha * (u_theta - self.delta_env);
-        let u_delta = self.delta_env.clamp(0.0, 1.0);
-
         self.debug_timer += dt;
         if self.debug_timer >= 1.0 {
-            debug!(
-                target: "rhythm::dorsal",
-                raw_flux,
-                drive,
-                u_theta,
-                u_delta,
-                dt,
-                vitality = self.vitality
-            );
+            debug!(target: "rhythm::dorsal", raw_flux, dt);
             self.debug_timer = 0.0;
         }
-
-        self.dynamics.update(dt, u_theta, u_delta, self.vitality)
     }
 
     pub fn reset(&mut self) {
-        self.dynamics = RhythmEngine::default();
         self.lp_low_state = 0.0;
         self.lp_mid_state = 0.0;
         self.prev_band_energy = [0.0; 3];
-        self.delta_env = 0.0;
         self.last_metrics = DorsalMetrics::default();
-        self.vitality = 1.0;
         self.debug_timer = 0.0;
-    }
-
-    pub fn set_vitality(&mut self, v: f32) {
-        self.vitality = v.clamp(0.0, 1.0);
     }
 
     pub fn last_metrics(&self) -> DorsalMetrics {
@@ -173,31 +137,19 @@ mod tests {
         }
 
         let mut dorsal = DorsalStream::new(fs);
-        let mut max_u_theta: f32 = 0.0;
-        let mut last = NeuralRhythms::default();
+        let mut max_drive: f32 = 0.0;
         let mut idx = 0;
         while idx < total {
             let end = (idx + hop).min(total);
-            last = dorsal.process(&sig[idx..end]);
-            let raw_flux = dorsal.last_metrics().flux;
-            let drive = (raw_flux * 500.0).tanh();
-            max_u_theta = max_u_theta.max(drive);
+            dorsal.process(&sig[idx..end]);
+            let drive = (dorsal.last_metrics().flux * 500.0).tanh();
+            max_drive = max_drive.max(drive);
             idx = end;
         }
 
         assert!(
-            max_u_theta > 0.05,
-            "expected u_theta to rise above 0.05, got {max_u_theta}"
-        );
-        assert!(
-            last.theta.mag > 0.04,
-            "expected theta.mag to rise, got {}",
-            last.theta.mag
-        );
-        assert!(
-            (last.theta.freq_hz - 6.0).abs() < 1.5,
-            "expected theta.freq_hz near 6Hz, got {}",
-            last.theta.freq_hz
+            max_drive > 0.05,
+            "expected flux drive to rise above 0.05, got {max_drive}"
         );
     }
 }

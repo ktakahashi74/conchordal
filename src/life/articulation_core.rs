@@ -39,12 +39,17 @@ impl PlannedGate {
         let dt = dt.max(0.0);
         let move_threshold = 10.0;
         if planned.jump_cents_abs > move_threshold {
+            // Large jump: duck the gate and snap the pitch once faded out.
             self.gate = (self.gate - dt * 1.5).max(0.0);
             self.gate < 0.1
         } else {
+            // Small drift: open the gate but do NOT apply the pitch every tick.
+            // Continuous application turned the consonance hill-climb into an
+            // audible glissando; GateSnap pitch is instead set discretely at each
+            // note onset and held (see Voice::tick_phonation).
             let attack_rate = 1.0 + rhythms.theta.beta;
             self.gate = (self.gate + dt * attack_rate).clamp(0.0, 1.0);
-            true
+            false
         }
     }
 }

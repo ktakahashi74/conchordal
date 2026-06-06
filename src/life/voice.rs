@@ -817,6 +817,18 @@ impl Voice {
                 self.articulation
                     .apply_phonation_onset(consonance, onset.strength);
             }
+            // Snap-and-hold: a GateSnap voice adopts the current consonance
+            // target at the note onset, then holds that pitch for the note (no
+            // mid-note glide). Successive notes step toward consonance discretely.
+            if !out.onsets.is_empty()
+                && matches!(
+                    self.effective_control.pitch.pitch_apply_mode,
+                    PitchApplyMode::GateSnap
+                )
+                && !matches!(self.effective_control.pitch.mode, PitchMode::Lock)
+            {
+                self.body.set_pitch_log2(self.target_pitch_log2());
+            }
         }
         let target_amp = self.compute_target_amp();
         let freq_hz = self.body.base_freq_hz();

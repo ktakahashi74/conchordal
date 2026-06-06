@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-214be9d8.js";
+            window.path_to_searchindex_js = "searchindex-e16cf72f.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-dd2a5500.js"></script>
+        <script src="toc-33c4e52c.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -175,163 +175,272 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="quick-start-guide"><a class="header" href="#quick-start-guide">Quick Start Guide</a></h1>
-<p>Conchordal v0.3.0 scripting API overview. For full details, see the <a href="reference/life.html">API Reference</a>.</p>
-<h2 id="basic-concepts"><a class="header" href="#basic-concepts">Basic Concepts</a></h2>
+<p>Conchordal v0.4.0-dev is a research-composer scripting surface. The central
+idea is not note scheduling. The central idea is shaping a perceptual consonance
+field, then letting populations move, survive, and reorganize inside it.</p>
+<p>For a guided listening path, see the <a href="alpha_guide.html">Alpha Guide</a>. For the full
+function list, see the <a href="reference/life.html">API Reference</a>.</p>
+<h2 id="editor-setup-recommended"><a class="header" href="#editor-setup-recommended">Editor Setup (Recommended)</a></h2>
+<p>Conchordal ships a Rhai LSP definition file describing the entire scripting
+surface. Hooking your editor up to it gives you completion, hover, go-to-def,
+and inline diagnostics for every conchordal function — <code>place</code>, <code>harmonic</code>,
+<code>.brain()</code>, <code>.send(habitat_bus)</code>, and so on.</p>
+<p>The two files that drive this are committed at the repo root:</p>
 <ul>
-<li><strong>Species</strong>: Agent templates created with <code>derive()</code> from presets (<code>sine</code>, <code>harmonic</code>, <code>saw</code>, <code>square</code>, <code>noise</code>, <code>modal</code>).</li>
-<li><strong>Groups</strong>: Collections of agents spawned from a species via <code>create(species, count)</code>. Returns a <code>GroupHandle</code>.</li>
-<li><strong>Timeline</strong>: <code>wait(seconds)</code> advances the clock. <code>flush()</code> forces immediate dispatch. <code>scene()</code> scopes groups with auto-release. <code>parallel()</code> runs branches concurrently.</li>
-<li><strong>Strategies</strong>: Placement methods for multi-agent frequency assignment: <code>consonance()</code>, <code>consonance_density_pmf()</code>, <code>random_log()</code>, <code>linear()</code>.</li>
+<li><code>Rhai.toml</code> — workspace config picked up by <code>rhai-lsp</code></li>
+<li><code>rhai-defs/conchordal.d.rhai</code> — auto-generated type/fn declarations</li>
 </ul>
-<h2 id="minimal-example"><a class="header" href="#minimal-example">Minimal Example</a></h2>
-<pre><code class="language-ts">// Single sine agent at 440 Hz for 2 seconds
-create(sine, 1).freq(440.0);
+<p>Install the <a href="https://github.com/rhaiscript/lsp">rhai-lsp</a> server once (it is
+not on crates.io; install directly from the git repo):</p>
+<pre><code class="language-bash">cargo install --git https://github.com/rhaiscript/lsp rhai-cli
+</code></pre>
+<p>This builds a binary named <code>rhai</code> with the <code>lsp</code> subcommand.</p>
+<p>Then wire your editor:</p>
+<h3 id="vs-code"><a class="header" href="#vs-code">VS Code</a></h3>
+<p>The official <a href="https://marketplace.visualstudio.com/items?itemName=rhaiscript.vscode-rhai">Rhai</a>
+extension currently provides syntax highlighting only. It does not launch
+<code>rhai-lsp</code>. For LSP features in VS Code, use an LSP client/extension that can
+launch this command from the conchordal workspace:</p>
+<pre><code class="language-bash">rhai lsp stdio --config Rhai.toml
+</code></pre>
+<h3 id="neovim-nvim-lspconfig"><a class="header" href="#neovim-nvim-lspconfig">Neovim (nvim-lspconfig)</a></h3>
+<pre><code class="language-lua">require("lspconfig").rhai.setup({
+  cmd = { "rhai", "lsp", "stdio" },
+  filetypes = { "rhai" },
+  root_dir = require("lspconfig.util").root_pattern("Rhai.toml", ".git"),
+})
+</code></pre>
+<h3 id="helix"><a class="header" href="#helix">Helix</a></h3>
+<p>In <code>~/.config/helix/languages.toml</code>:</p>
+<pre><code class="language-toml">[[language]]
+name = "rhai"
+scope = "source.rhai"
+file-types = ["rhai"]
+language-servers = ["rhai-lsp"]
+
+[language-server.rhai-lsp]
+command = "rhai"
+args = ["lsp", "stdio"]
+</code></pre>
+<h3 id="emacs-eglot"><a class="header" href="#emacs-eglot">Emacs (eglot)</a></h3>
+<pre><code class="language-elisp">(add-to-list 'eglot-server-programs
+             '(rhai-mode . ("rhai" "lsp" "stdio")))
+(add-hook 'rhai-mode-hook #'eglot-ensure)
+</code></pre>
+<h3 id="regenerating-the-definition-file"><a class="header" href="#regenerating-the-definition-file">Regenerating the definition file</a></h3>
+<p>The definition file is auto-generated from the host’s <code>register_fn</code> calls.
+If you pull a new conchordal version and miss diagnostics, regenerate:</p>
+<pre><code class="language-bash">cargo run --bin gen_rhai_defs &gt; rhai-defs/conchordal.d.rhai
+</code></pre>
+<h2 id="minimal-sound"><a class="header" href="#minimal-sound">Minimal Sound</a></h2>
+<pre><code class="language-ts">place(sine().amp(0.08).sustain(), at(440.0));
 wait(2.0);
 </code></pre>
-<h2 id="common-patterns"><a class="header" href="#common-patterns">Common Patterns</a></h2>
-<h3 id="custom-species-definition"><a class="header" href="#custom-species-definition">Custom Species Definition</a></h3>
-<pre><code class="language-ts">let voice = derive(harmonic)
-    .amp(0.5)
+<p><code>place(material, placement)</code> stages a <code>Participant</code> at the current script time.
+It is committed by <code>wait(seconds)</code> or <code>flush()</code>, then can be patched while it is
+alive.</p>
+<h2 id="basic-objects"><a class="header" href="#basic-objects">Basic Objects</a></h2>
+<ul>
+<li><strong>Materials</strong> are voice templates made with <code>sine()</code>, <code>harmonic()</code>,
+<code>modal()</code>, <code>saw()</code>, <code>square()</code>, and <code>noise()</code>.</li>
+<li><strong>Variants</strong> clone a material with <code>variant(material)</code>.</li>
+<li><strong>Placements</strong> decide where participants enter: <code>at()</code>, <code>peaks()</code>,
+<code>density()</code>, <code>random()</code>, and <code>line()</code>.</li>
+<li><strong>Participants</strong> are collections returned by <code>place()</code>. Before the next
+<code>wait()</code> or <code>flush()</code>, participant builder methods still shape the initial
+spawn; after that, patchable methods update running voices.</li>
+<li><strong>Sections</strong> scope participants and release them automatically.</li>
+</ul>
+<pre><code class="language-ts">let voice = harmonic()
+    .amp(0.08)
     .sustain()
-    .brightness(0.7)
-    .spread(0.2)
-    .voices(4);
-</code></pre>
-<p>Body parameters are individual methods: <code>brightness(v)</code>, <code>spread(v)</code>, <code>voices(n)</code>.
-Use <code>energy(v)</code> as an alias for <code>amp(v)</code>.</p>
-<h3 id="multiple-agents-with-consonance-strategy"><a class="header" href="#multiple-agents-with-consonance-strategy">Multiple Agents with Consonance Strategy</a></h3>
-<pre><code class="language-ts">let base = derive(harmonic).energy(0.1).sustain();
+    .brightness(0.35);
 
-// Place 4 agents using harmonic consonance relative to 220 Hz
-create(base, 4)
-    .place(consonance(220.0).range(1.0, 4.0).min_dist(1.0));
-wait(2.0);
-
-// Or use landscape-derived density placement
-create(base, 4).place(consonance_density_pmf(110.0, 880.0));
-wait(2.0);
-</code></pre>
-<h3 id="scene-with-auto-cleanup"><a class="header" href="#scene-with-auto-cleanup">Scene with Auto Cleanup</a></h3>
-<pre><code class="language-ts">let drone = derive(sine).amp(0.3).sustain();
-let seeker = derive(sine).amp(0.2).sustain();
-
-scene("Introduction", || {
-    let a = create(drone, 1).freq(110.0);
-    let s = create(seeker, 1).freq(220.0);
-    wait(3.0);
-    // All groups auto-released when scene ends
+section("plain entry", || {
+    place(voice, line(220.0, 440.0).count(3));
+    wait(4.0);
 });
 </code></pre>
-<h3 id="parallel-timelines"><a class="header" href="#parallel-timelines">Parallel Timelines</a></h3>
-<pre><code class="language-ts">parallel([
-    || {
-        // Bass layer
-        create(sine, 1).freq(110.0).sustain();
-        wait(2.0);
-    },
-    || {
-        // Melody layer
-        create(harmonic, 1).freq(440.0).sustain();
-        wait(1.0);
-        create(harmonic, 1).freq(550.0).sustain();
-        wait(1.0);
-    }
-]);
-</code></pre>
-<h3 id="modal-body-with-custom-modes"><a class="header" href="#modal-body-with-custom-modes">Modal Body with Custom Modes</a></h3>
-<p>The <code>modal</code> preset uses inharmonic mode patterns for bell/bar/glass timbres.
-Configure modes with <code>modes(pattern)</code> and control brightness.</p>
-<pre><code class="language-ts">let bell = derive(modal)
+<h2 id="consonance-field"><a class="header" href="#consonance-field">Consonance Field</a></h2>
+<p><code>peaks(root_hz)</code> places voices at high Consonance Field positions around a
+root. The field is shaped by what the system perceives.</p>
+<pre><code class="language-ts">let anchor = harmonic()
+    .brain("drone")
+    .amp(0.06)
     .sustain()
-    .pitch_mode("lock")
-    .freq(220.0)
-    .amp(0.11)
-    .brightness(0.7)
-    .modes(modal_table("vibraphone_1").count(5));
+    .pitch_mode("lock");
 
-create(bell, 1);
-wait(2.0);
+let voice = harmonic()
+    .amp(0.04)
+    .sustain();
+
+section("field placement", || {
+    place(anchor, at(110.0));
+    wait(1.0);
+
+    place(voice, peaks(110.0).range(1.0, 4.0).count(6).spacing(0.9));
+    wait(6.0);
+});
 </code></pre>
-<p>Mode pattern constructors: <code>harmonic_modes()</code>, <code>odd_modes()</code>, <code>power_modes(beta)</code>,
-<code>stiff_string_modes(stiffness)</code>, <code>custom_modes([ratios])</code>, <code>modal_table(name)</code>.
-Chain <code>.count(n)</code>, <code>.jitter(cents)</code>, <code>.seed(n)</code> to refine patterns.</p>
-<p>Landscape-aware modes sample from the live perceptual field:</p>
-<pre><code class="language-ts">let adaptive = derive(modal)
+<p><code>harmonic_mirror(value)</code> bends the harmonicity field from overtone emphasis
+toward undertone emphasis.</p>
+<pre><code class="language-ts">harmonic_mirror(0.0);
+wait(4.0);
+harmonic_mirror(1.0);
+wait(4.0);
+</code></pre>
+<h2 id="consonance-density"><a class="header" href="#consonance-density">Consonance Density</a></h2>
+<p><code>density(min_hz, max_hz)</code> samples from the density view of the field.
+Use it when the musical thought is a population seeded by the current terrain.</p>
+<pre><code class="language-ts">let cloud = harmonic().amp(0.035).sustain();
+
+place(cloud, density(90.0, 1200.0).count(10).spacing(0.8));
+wait(8.0);
+</code></pre>
+<p>Density is not just “random but harmonic”. It is a normalized distribution
+derived from the consonance model, and it remains well-defined inside the
+requested range.</p>
+<h2 id="consonance-movement"><a class="header" href="#consonance-movement">Consonance Movement</a></h2>
+<p>Use <code>seek_consonance()</code> when voices should actively seek better field
+positions. It sets free hill-climb movement with glide defaults.</p>
+<pre><code class="language-ts">let mover = harmonic()
+    .amp(0.045)
     .sustain()
-    .pitch_mode("free")
-    .amp(0.05)
-    .brightness(0.7)
-    .modes(landscape_density_modes().count(16).range(1.0, 3.5).min_dist(0.9));
-</code></pre>
-<h3 id="phonation-control"><a class="header" href="#phonation-control">Phonation Control</a></h3>
-<p>Phonation follows a tiered system.</p>
-<p><strong>Tier 1 – Presets</strong> set sensible defaults for common use:</p>
-<pre><code class="language-ts">derive(sine).sustain();   // Sustained tone, tied to lifecycle
-derive(sine).repeat();    // Interval-based retriggering
-</code></pre>
-<p><strong>Tier 2 – Explicit when/duration</strong> for finer control:</p>
-<pre><code class="language-ts">derive(sine).once();              // Single trigger
-derive(sine).pulse(2.0);         // Retrigger at 2 Hz
-derive(sine).while_alive();      // Duration spans full lifecycle
-derive(sine).gates(4);           // Hold for 4 gate cycles
-derive(sine).field();            // Field-driven duration
-</code></pre>
-<p>These compose: <code>derive(sine).pulse(3.0).gates(2)</code> pulses at 3 Hz, each lasting 2 gates.</p>
-<h3 id="pitch-control"><a class="header" href="#pitch-control">Pitch Control</a></h3>
-<pre><code class="language-ts">// "lock" keeps initial frequency; "free" allows hill-climbing
-derive(sine).pitch_mode("lock");
-derive(sine).pitch_mode("free");
+    .seek_consonance()
+    .glide(0.35)
+    .avoid_neighbors(0.6)
+    .global_peaks(8, 70.0)
+    .ratio_candidates(5);
 
-// "gate_snap" applies pitch on gate boundaries; "glide" interpolates
-derive(sine).pitch_apply("gate_snap");
-derive(sine).pitch_apply("glide").pitch_glide(0.05);
+place(mover, density(80.0, 900.0).count(8));
+wait(12.0);
 </code></pre>
-<h3 id="live-parameter-patching"><a class="header" href="#live-parameter-patching">Live Parameter Patching</a></h3>
-<p>Groups support live updates on spawned agents:</p>
-<pre><code class="language-ts">let g = create(sine, 1).freq(220.0).sustain();
-flush();
-wait(1.0);
+<p>Advanced controls such as <code>pitch_mode()</code>, <code>pitch_core()</code>,
+and <code>pitch_apply_mode()</code> remain available for mechanism-level work. Prefer
+<code>seek_consonance()</code> and <code>glide()</code> in curated v0.4.0 scripts.</p>
+<h2 id="consonance-viability-and-respawn"><a class="header" href="#consonance-viability-and-respawn">Consonance Viability And Respawn</a></h2>
+<p>Viability makes field fit matter over time. <code>consonance_viability(low, high)</code>
+defines the consonance window, and <code>viability_rate(rate)</code> controls continuous
+recharge. By default, viability uses environment-relative scoring.</p>
+<pre><code class="language-ts">let settle = density(70.0, 1100.0).spacing(0.8);
 
-g.freq(440.0);   // Slide to new frequency
-g.amp(0.3);      // Adjust amplitude
-flush();
-wait(1.0);
-</code></pre>
-<h3 id="global-parameter-modulation"><a class="header" href="#global-parameter-modulation">Global Parameter Modulation</a></h3>
-<pre><code class="language-ts">// Overtone series emphasis (major quality)
-set_harmonicity_mirror_weight(0.0);
-create(sine, 4).place(consonance(261.63).range(1.0, 3.0));
-wait(2.0);
+let ecology = harmonic()
+    .amp(0.04)
+    .repeat()
+    .pulse(1.5)
+    .cycles(3)
+    .seek_consonance()
+    .glide(0.45)
+    .initial_energy(0.7)
+    .energy_cap(1.0)
+    .metabolism(0.09)
+    .action_cost(0.012)
+    .viability_rate(0.18)
+    .consonance_viability(0.32, 0.82)
+    .respawn_consonance()
+    .respawn_capacity(14)
+    .respawn_settle(settle);
 
-// Shift toward undertone series (minor quality)
-set_harmonicity_mirror_weight(1.0);
-wait(2.0);
+place(ecology, density(70.0, 1100.0).count(14));
+wait(30.0);
 </code></pre>
-<h2 id="preset-species"><a class="header" href="#preset-species">Preset Species</a></h2>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Preset</th><th>Body</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>sine</code></td><td>Sine</td><td>Pure sine wave</td></tr>
-<tr><td><code>harmonic</code></td><td>Harmonic</td><td>Harmonic series synthesis</td></tr>
-<tr><td><code>saw</code></td><td>Harmonic</td><td>Sawtooth-like (bright)</td></tr>
-<tr><td><code>square</code></td><td>Harmonic</td><td>Square-like (odd harmonics)</td></tr>
-<tr><td><code>noise</code></td><td>Harmonic</td><td>Noise-like (full spectrum)</td></tr>
-<tr><td><code>modal</code></td><td>Modal</td><td>Inharmonic mode synthesis</td></tr>
-</tbody>
-</table>
-</div>
-<h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
-<p>See the <a href="reference/life.html">API Reference</a> for the complete function list, type details, and advanced parameters.</p>
+<p>Use <code>viability_scope("total")</code> when the compositional question is explicitly
+total-field viability. The default <code>viability_scope("environment")</code> keeps
+v0.4.0 ecology centered on whether a voice is supported by its surroundings.
+Use <code>selection_approx_loo(false)</code> only for older reference assays that need the
+previous implementation-level control.</p>
+<h2 id="rhythm-redesign"><a class="header" href="#rhythm-redesign">Rhythm Redesign</a></h2>
+<p>The v0.4.0 rhythm surface is being redesigned so rhythm is a core part of the
+same ecology as consonance, viability, movement, and respawn. The redesign must
+cover metric beat, entrained beat, and flow timing.</p>
+<p>The new entry points name the musical timing intent directly:</p>
+<pre><code class="language-ts">let beat = harmonic()
+    .metric_beat(2.0)
+    .beat_strength(0.7)
+    .cycles(2);
+
+let entrained = harmonic()
+    .entrained_beat(2.0)
+    .cycles(2);
+
+let flow = harmonic()
+    .flow_timing(3.0, 0.7)
+    .cycles(1);
+</code></pre>
+<p>The current low-level tools remain useful for mechanism-level scripts:</p>
+<pre><code class="language-ts">let pulse_voice = harmonic()
+    .repeat()
+    .pulse(2.0)
+    .cycles(2)
+    .rhythm_freq(2.0)
+    .rhythm_coupling_vitality(0.8, 0.4)
+    .rhythm_reward(0.4, "attack_phase_match");
+</code></pre>
+<p>Scaffold functions are external comparison controls:</p>
+<pre><code class="language-ts">set_scaffold_off();
+set_scaffold_shared(2.0);
+set_scaffold_scrambled(2.0, 17);
+</code></pre>
+<p>They are useful for demos and assays. They are not the final rhythm-composition
+abstraction.</p>
+<h2 id="modal-bodies"><a class="header" href="#modal-bodies">Modal Bodies</a></h2>
+<p>The <code>modal</code> preset can use inharmonic mode patterns. Landscape-aware modes can
+sample the live field.</p>
+<pre><code class="language-ts">let shimmer_modes = landscape_density_modes()
+    .count(10)
+    .range(1.0, 5.5)
+    .gamma(1.6)
+    .spacing(0.7);
+
+let shimmer = modal()
+    .amp(0.025)
+    .sustain()
+    .seek_consonance()
+    .modes(shimmer_modes)
+    .brightness(0.7);
+</code></pre>
+<p>Mode constructors include <code>harmonic_modes()</code>, <code>odd_modes()</code>,
+<code>power_modes(beta)</code>, <code>stiff_string_modes(stiffness)</code>,
+<code>custom_modes([ratios])</code>, <code>modal_table(name)</code>, <code>landscape_density_modes()</code>, and
+<code>landscape_peaks_modes()</code>.</p>
+<h2 id="live-patching"><a class="header" href="#live-patching">Live Patching</a></h2>
+<p>Some participant methods patch running voices. Material-only methods must be set
+before <code>place()</code>.</p>
+<pre><code class="language-ts">let g = place(
+    harmonic().amp(0.04),
+    peaks(220.0).count(3)
+);
+
+g.amp(0.02);
+g.glide(0.8);
+wait(3.0);
+release(g);
+</code></pre>
+<p>See the <a href="reference/life.html">API Reference</a> for the live-patchable and
+draft-only method lists.</p>
+<h2 id="current-candidate-path"><a class="header" href="#current-candidate-path">Current Candidate Path</a></h2>
+<p>The active v0.4.0 candidate path is the redesigned rhythm/harmony set:</p>
+<pre><code class="language-bash">cargo run --release -- samples/04_ecosystems/metric_beat_foundation.rhai
+cargo run --release -- samples/04_ecosystems/entrained_beat.rhai
+cargo run --release -- samples/04_ecosystems/flow_timing_field.rhai
+cargo run --release -- samples/04_ecosystems/rhythm_harmony_ecology.rhai
+cargo run --release -- samples/04_ecosystems/conchordal_ecology.rhai
+</code></pre>
+<p>These scripts cover metric beat, entrained beat, flow timing, functional
+rhythm/harmony integration, and musical-showcase candidate material. Functional
+integration is not the same as the musical showcase; a separate etude should be
+judged by musical result rather than feature coverage. These scripts still need
+audition before final release curation.
+<code>consonance_ecology.rhai</code>, <code>pulse_foundation.rhai</code>, and
+<code>consonance_field_control.rhai</code> remain useful research comparisons, but they are
+not the first alpha-user path.</p>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
 
-                            <a rel="next prefetch" href="reference/life.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="alpha_guide.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -342,7 +451,7 @@ wait(2.0);
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
 
-                    <a rel="next prefetch" href="reference/life.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="alpha_guide.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>

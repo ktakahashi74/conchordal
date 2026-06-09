@@ -11,8 +11,11 @@ longer sufficient for v0.4.0.
 
 ## Current Candidate Path
 
-The redesigned v0.4.0 rhythm/harmony path is now the active candidate set.
-These scripts still require audition and tuning before release curation:
+The redesigned v0.4.0 rhythm/harmony path is now the active candidate set. The
+three rhythm families pass the initial separation audition (metric beat is a
+stable pulse, entrained beat drifts with the population, flow timing stays
+non-metric). Meter correspondence, musicality, and a dedicated flagship showcase
+are still being tuned, so these scripts are candidates, not final curation:
 
 ```bash
 cargo run --release -- samples/04_ecosystems/metric_beat_foundation.rhai
@@ -79,17 +82,20 @@ a scene.
 
 ## Rhythm Redesign
 
-The v0.4.0 rhythm surface is being redesigned around three families:
+The v0.4.0 rhythm surface is organized around three families:
 
 - metric beat: a Western-music-like pulse surface
 - entrained beat: synchronization emerging from agent coupling and survival
 - flow timing: rain/river-like non-metric onset texture
 
-The new entry points are `metric_beat(rate_hz)`, `entrained_beat(rate_hz)`,
-and `flow_timing(mean_rate_hz[, depth])`.
+The entry points are `metric_beat(rate_hz)`, `entrained_beat(rate_hz)`, and
+`flow_timing(mean_rate_hz[, depth])`. They are Tier-1 phonation presets and
+work on both a species (`Material`) and a draft group (`Participant`). Rates
+accept integer or float literals: `metric_beat(2)` and `metric_beat(2.0)` are
+the same.
 
-The current low-level tools remain useful while this is designed. Use
-`repeat()`, `pulse(freq_hz)`, and `cycles(n)` for explicit attacks. Use
+Below them sit the explicit lower-level controls. Use `repeat()`,
+`pulse(freq_hz)`, and `cycles(n)` for explicit attacks. Use
 `rhythm_coupling_vitality(lambda_v, v_floor)` and
 `rhythm_reward(rho_t, "attack_phase_match")` when timing should affect survival
 and reorganization.

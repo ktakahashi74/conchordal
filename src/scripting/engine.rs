@@ -215,16 +215,16 @@ impl ScriptHost {
             species.spec.set_phonation(PhonationKind::Repeat);
             species
         });
-        engine.register_fn("metric_beat", |mut species: SpeciesHandle, rate: FLOAT| {
-            species.spec.set_metric_beat(rate as f32);
-            species
-        });
-        engine.register_fn(
-            "entrained_beat",
-            |mut species: SpeciesHandle, rate: FLOAT| {
-                species.spec.set_entrained_beat(rate as f32);
-                species
-            },
+        register_species_numeric_methods(
+            &mut engine,
+            &[
+                ("metric_beat", SpeciesSpec::set_metric_beat),
+                ("entrained_beat", SpeciesSpec::set_entrained_beat),
+            ],
+        );
+        register_species_pair_numeric_methods(
+            &mut engine,
+            &[("flow_timing", SpeciesSpec::set_flow_timing)],
         );
         engine.register_fn(
             "flow_timing",
@@ -235,8 +235,8 @@ impl ScriptHost {
         );
         engine.register_fn(
             "flow_timing",
-            |mut species: SpeciesHandle, mean_rate: FLOAT, depth: FLOAT| {
-                species.spec.set_flow_timing(mean_rate as f32, depth as f32);
+            |mut species: SpeciesHandle, mean_rate: INT| {
+                species.spec.set_flow_timing(mean_rate as f32, 0.65);
                 species
             },
         );
@@ -245,10 +245,7 @@ impl ScriptHost {
             species.spec.set_when_once();
             species
         });
-        engine.register_fn("pulse", |mut species: SpeciesHandle, rate: FLOAT| {
-            species.spec.set_when_pulse(rate as f32);
-            species
-        });
+        register_species_numeric_methods(&mut engine, &[("pulse", SpeciesSpec::set_when_pulse)]);
         engine.register_fn("while_alive", |mut species: SpeciesHandle| {
             species.spec.set_duration_while_alive();
             species
@@ -262,41 +259,21 @@ impl ScriptHost {
             species
         });
         // Tier 3: expert tuning
-        engine.register_fn("pulse_lock", |mut species: SpeciesHandle, depth: FLOAT| {
-            species.spec.set_pulse_lock(depth as f32);
-            species
-        });
-        engine.register_fn(
-            "beat_strength",
-            |mut species: SpeciesHandle, depth: FLOAT| {
-                species.spec.set_beat_strength(depth as f32);
-                species
-            },
+        register_species_numeric_methods(
+            &mut engine,
+            &[
+                ("pulse_lock", SpeciesSpec::set_pulse_lock),
+                ("beat_strength", SpeciesSpec::set_beat_strength),
+                ("social", SpeciesSpec::set_social),
+                ("shorten_on_drop", SpeciesSpec::set_shorten_on_drop),
+            ],
         );
-        engine.register_fn("social", |mut species: SpeciesHandle, coupling: FLOAT| {
-            species.spec.set_social(coupling as f32);
-            species
-        });
-        engine.register_fn(
-            "duration_range",
-            |mut species: SpeciesHandle, min: FLOAT, max: FLOAT| {
-                species.spec.set_duration_range(min as f32, max as f32);
-                species
-            },
-        );
-        engine.register_fn(
-            "duration_curve",
-            |mut species: SpeciesHandle, k: FLOAT, x0: FLOAT| {
-                species.spec.set_duration_curve(k as f32, x0 as f32);
-                species
-            },
-        );
-        engine.register_fn(
-            "shorten_on_drop",
-            |mut species: SpeciesHandle, gain: FLOAT| {
-                species.spec.set_shorten_on_drop(gain as f32);
-                species
-            },
+        register_species_pair_numeric_methods(
+            &mut engine,
+            &[
+                ("duration_range", SpeciesSpec::set_duration_range),
+                ("duration_curve", SpeciesSpec::set_duration_curve),
+            ],
         );
         register_species_numeric_methods(
             &mut engine,
@@ -313,13 +290,10 @@ impl ScriptHost {
                 species
             },
         );
-        engine.register_fn("metabolism", |mut species: SpeciesHandle, rate: FLOAT| {
-            species.spec.set_metabolism(rate as f32);
-            species
-        });
         register_species_numeric_methods(
             &mut engine,
             &[
+                ("metabolism", SpeciesSpec::set_metabolism),
                 ("initial_energy", SpeciesSpec::set_initial_energy),
                 ("recharge_rate", SpeciesSpec::set_recharge_rate),
                 ("action_cost", SpeciesSpec::set_action_cost),
@@ -1440,56 +1414,48 @@ impl ScriptHost {
                 );
             }};
         }
-        macro_rules! register_group_draft_fn2 {
-            ($name:expr, $ctx:expr, $engine:expr, |$spec:ident, $a:ident: $at:ty, $b:ident: $bt:ty| $body:expr) => {{
-                let ctx_clone = $ctx.clone();
-                $engine.register_fn(
-                    $name,
-                    move |handle: GroupHandle,
-                          $a: $at,
-                          $b: $bt|
-                          -> Result<GroupHandle, Box<EvalAltResult>> {
-                        let mut ctx = ctx_clone.lock().expect("lock script context");
-                        let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                            warn!("{} ignored for unknown group {}", $name, handle.id);
-                            return Ok(handle);
-                        };
-                        match group.status {
-                            GroupStatus::Draft => {
-                                let $spec = &mut group.spec;
-                                $body;
-                            }
-                            _ => ctx.warn_live_builder(handle.id, $name),
-                        }
-                        Ok(handle)
-                    },
-                );
-            }};
-        }
+        register_group_draft_numeric_methods(
+            &mut engine,
+            ctx.clone(),
+            &[
+                ("metric_beat", SpeciesSpec::set_metric_beat),
+                ("entrained_beat", SpeciesSpec::set_entrained_beat),
+            ],
+        );
+        register_group_draft_pair_numeric_methods(
+            &mut engine,
+            ctx.clone(),
+            &[("flow_timing", SpeciesSpec::set_flow_timing)],
+        );
+        register_group_draft_fn1!("flow_timing", ctx, engine, |s, mean: FLOAT| s
+            .set_flow_timing(mean as f32, 0.65));
+        register_group_draft_fn1!("flow_timing", ctx, engine, |s, mean: INT| s
+            .set_flow_timing(mean as f32, 0.65));
         register_group_draft_fn!("once", ctx, engine, |s| s.set_when_once());
-        register_group_draft_fn1!("pulse", ctx, engine, |s, rate: FLOAT| s
-            .set_when_pulse(rate as f32));
         register_group_draft_fn!("while_alive", ctx, engine, |s| s.set_duration_while_alive());
         register_group_draft_fn1!("cycles", ctx, engine, |s, n: INT| s
             .set_duration_cycles(n.max(1) as u32));
         register_group_draft_fn!("adaptive_duration", ctx, engine, |s| s
             .set_adaptive_duration());
-        register_group_draft_fn1!("pulse_lock", ctx, engine, |s, depth: FLOAT| s
-            .set_pulse_lock(depth as f32));
-        register_group_draft_fn1!("beat_strength", ctx, engine, |s, depth: FLOAT| s
-            .set_beat_strength(depth as f32));
-        register_group_draft_fn1!("social", ctx, engine, |s, coupling: FLOAT| s
-            .set_social(coupling as f32));
-        register_group_draft_fn2!(
-            "duration_range",
-            ctx,
-            engine,
-            |s, min: FLOAT, max: FLOAT| s.set_duration_range(min as f32, max as f32)
+        register_group_draft_numeric_methods(
+            &mut engine,
+            ctx.clone(),
+            &[
+                ("pulse", SpeciesSpec::set_when_pulse),
+                ("pulse_lock", SpeciesSpec::set_pulse_lock),
+                ("beat_strength", SpeciesSpec::set_beat_strength),
+                ("social", SpeciesSpec::set_social),
+                ("shorten_on_drop", SpeciesSpec::set_shorten_on_drop),
+            ],
         );
-        register_group_draft_fn2!("duration_curve", ctx, engine, |s, k: FLOAT, x0: FLOAT| s
-            .set_duration_curve(k as f32, x0 as f32));
-        register_group_draft_fn1!("shorten_on_drop", ctx, engine, |s, gain: FLOAT| s
-            .set_shorten_on_drop(gain as f32));
+        register_group_draft_pair_numeric_methods(
+            &mut engine,
+            ctx.clone(),
+            &[
+                ("duration_range", SpeciesSpec::set_duration_range),
+                ("duration_curve", SpeciesSpec::set_duration_curve),
+            ],
+        );
         register_group_numeric_methods(
             &mut engine,
             ctx.clone(),

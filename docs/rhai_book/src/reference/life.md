@@ -182,6 +182,11 @@ applied when their matching mode is selected, so
 `metric_beat(2.0).beat_strength(0.7)` are equivalent. The same applies to
 `duration_range(...).adaptive_duration()` and the reverse order.
 
+Every numeric argument here accepts an integer or a float literal
+interchangeably, so `metric_beat(2)` and `metric_beat(2.0)` are the same. All of
+these phonation verbs apply to both a `Material` (species) and a draft
+`Participant` (group) handle.
+
 ```ts
 let beat = derive(harmonic).metric_beat(2.0).beat_strength(0.7).cycles(2);
 let entrained = derive(harmonic).entrained_beat(2.0).cycles(2);

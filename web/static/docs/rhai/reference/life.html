@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e16cf72f.js";
+            window.path_to_searchindex_js = "../searchindex-30654c20.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-33c4e52c.js"></script>
@@ -396,6 +396,10 @@ applied when their matching mode is selected, so
 <code>beat_strength(0.7).metric_beat(2.0)</code> and
 <code>metric_beat(2.0).beat_strength(0.7)</code> are equivalent. The same applies to
 <code>duration_range(...).adaptive_duration()</code> and the reverse order.</p>
+<p>Every numeric argument here accepts an integer or a float literal
+interchangeably, so <code>metric_beat(2)</code> and <code>metric_beat(2.0)</code> are the same. All of
+these phonation verbs apply to both a <code>Material</code> (species) and a draft
+<code>Participant</code> (group) handle.</p>
 <pre><code class="language-ts">let beat = derive(harmonic).metric_beat(2.0).beat_strength(0.7).cycles(2);
 let entrained = derive(harmonic).entrained_beat(2.0).cycles(2);
 let flow = derive(harmonic).flow_timing(3.0, 0.7).cycles(1);

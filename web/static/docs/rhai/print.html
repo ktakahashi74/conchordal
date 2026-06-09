@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-e16cf72f.js";
+            window.path_to_searchindex_js = "searchindex-30654c20.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-33c4e52c.js"></script>
@@ -445,8 +445,11 @@ Field, Consonance Density, Consonance Movement, Consonance Viability, and
 rhythm as a living time structure. The previous rhythm-foundation framing is no
 longer sufficient for v0.4.0.</p>
 <h2 id="current-candidate-path-1"><a class="header" href="#current-candidate-path-1">Current Candidate Path</a></h2>
-<p>The redesigned v0.4.0 rhythm/harmony path is now the active candidate set.
-These scripts still require audition and tuning before release curation:</p>
+<p>The redesigned v0.4.0 rhythm/harmony path is now the active candidate set. The
+three rhythm families pass the initial separation audition (metric beat is a
+stable pulse, entrained beat drifts with the population, flow timing stays
+non-metric). Meter correspondence, musicality, and a dedicated flagship showcase
+are still being tuned, so these scripts are candidates, not final curation:</p>
 <pre><code class="language-bash">cargo run --release -- samples/04_ecosystems/metric_beat_foundation.rhai
 cargo run --release -- samples/04_ecosystems/entrained_beat.rhai
 cargo run --release -- samples/04_ecosystems/flow_timing_field.rhai
@@ -495,16 +498,19 @@ consonance-biased heredity. Combine it with <code>respawn_capacity(count)</code>
 harmonicity field. It is the most direct way to bend the harmonic terrain during
 a scene.</p>
 <h2 id="rhythm-redesign-1"><a class="header" href="#rhythm-redesign-1">Rhythm Redesign</a></h2>
-<p>The v0.4.0 rhythm surface is being redesigned around three families:</p>
+<p>The v0.4.0 rhythm surface is organized around three families:</p>
 <ul>
 <li>metric beat: a Western-music-like pulse surface</li>
 <li>entrained beat: synchronization emerging from agent coupling and survival</li>
 <li>flow timing: rain/river-like non-metric onset texture</li>
 </ul>
-<p>The new entry points are <code>metric_beat(rate_hz)</code>, <code>entrained_beat(rate_hz)</code>,
-and <code>flow_timing(mean_rate_hz[, depth])</code>.</p>
-<p>The current low-level tools remain useful while this is designed. Use
-<code>repeat()</code>, <code>pulse(freq_hz)</code>, and <code>cycles(n)</code> for explicit attacks. Use
+<p>The entry points are <code>metric_beat(rate_hz)</code>, <code>entrained_beat(rate_hz)</code>, and
+<code>flow_timing(mean_rate_hz[, depth])</code>. They are Tier-1 phonation presets and
+work on both a species (<code>Material</code>) and a draft group (<code>Participant</code>). Rates
+accept integer or float literals: <code>metric_beat(2)</code> and <code>metric_beat(2.0)</code> are
+the same.</p>
+<p>Below them sit the explicit lower-level controls. Use <code>repeat()</code>,
+<code>pulse(freq_hz)</code>, and <code>cycles(n)</code> for explicit attacks. Use
 <code>rhythm_coupling_vitality(lambda_v, v_floor)</code> and
 <code>rhythm_reward(rho_t, "attack_phase_match")</code> when timing should affect survival
 and reorganization.</p>
@@ -803,6 +809,10 @@ applied when their matching mode is selected, so
 <code>beat_strength(0.7).metric_beat(2.0)</code> and
 <code>metric_beat(2.0).beat_strength(0.7)</code> are equivalent. The same applies to
 <code>duration_range(...).adaptive_duration()</code> and the reverse order.</p>
+<p>Every numeric argument here accepts an integer or a float literal
+interchangeably, so <code>metric_beat(2)</code> and <code>metric_beat(2.0)</code> are the same. All of
+these phonation verbs apply to both a <code>Material</code> (species) and a draft
+<code>Participant</code> (group) handle.</p>
 <pre><code class="language-ts">let beat = derive(harmonic).metric_beat(2.0).beat_strength(0.7).cycles(2);
 let entrained = derive(harmonic).entrained_beat(2.0).cycles(2);
 let flow = derive(harmonic).flow_timing(3.0, 0.7).cycles(1);

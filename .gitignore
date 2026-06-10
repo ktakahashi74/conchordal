@@ -1,8 +1,6 @@
 /target
 /debug
 /web/public
-/docs/generated/*
-!/docs/generated/.gitkeep
 /docs/rhai_book/src/reference
 
 *~

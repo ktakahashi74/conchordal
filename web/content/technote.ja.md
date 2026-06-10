@@ -8,7 +8,6 @@ author = "Koichi Takahashi"
 last_updated = "2026-03-28"
 source_version = "0.3.0"
 source_snapshot = "2026-03-28T15:25:21+09:00"
-generated_by = "claude-opus-4-6"
 +++
 
 # 1. 導入：バイオアコースティック・パラダイム

@@ -273,7 +273,3 @@ drive:
 
 clean:
 	@rm -f "{{CONTEXT_FILE}}" "{{DIFF_FILE}}" "{{SYNC_FILE}}" "{{PROMPT_FILE}}" "{{REQUEST_FILE}}" context-*.xml diff-*.patch
-
-# Update technote.md via Claude (pass options: --model sonnet, --skip-ja, --dry-run, etc.)
-technote *args:
-	python3 scripts/update_technote.py {{args}}

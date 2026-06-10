@@ -215,7 +215,7 @@ Scenarios should be approachable for newcomers while remaining expressive for ad
 
 ## Other
 - Don't touch `web/` when editing sourcecode. Don't touch `src/` when editing `web/`, unless otherwise specified.
-- `docs/generated` contains technote revision history (archive only).
+- `web/content/technote.md` (+ `.ja.md`) is hand-curated; keep it in sync with the code when core algorithms change. There is no generation pipeline.
 - `docs/rhai_book` is the Rhai API reference (mdBook source); build with `mdbook build docs/rhai_book`.
 
 ## Compatibility Policy

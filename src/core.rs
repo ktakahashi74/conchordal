@@ -14,7 +14,6 @@ pub mod log2space;
 pub mod meter;
 pub mod mode_pattern;
 pub mod modulation;
-pub mod nsgt;
 pub mod nsgt_kernel;
 pub mod nsgt_rt;
 pub mod peak_extraction;

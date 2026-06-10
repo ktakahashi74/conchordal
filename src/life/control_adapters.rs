@@ -2,7 +2,7 @@ use crate::life::adaptation::AdaptationConfig;
 use crate::life::control::AdaptationControl;
 use crate::scenario::{
     DurationConfig, DurationSpec, OnsetConfig, PhonationClockConfig, PhonationConfig,
-    PhonationMode, PhonationSpec, PhonationTiming, RhythmRole, SubThetaModConfig,
+    PhonationMode, PhonationSpec, PhonationTiming, RhythmRole,
 };
 
 pub(crate) fn adaptation_config_from_control(control: &AdaptationControl) -> AdaptationConfig {
@@ -99,7 +99,6 @@ pub(crate) fn phonation_config_from_spec(spec: &PhonationSpec) -> PhonationConfi
                 flow_depth: coupled.flow_depth,
                 microtiming: coupled.microtiming,
             },
-            sub_theta_mod: SubThetaModConfig::None,
         };
     }
 
@@ -111,7 +110,6 @@ pub(crate) fn phonation_config_from_spec(spec: &PhonationSpec) -> PhonationConfi
                 onset: OnsetConfig::None,
                 duration,
                 clock: PhonationClockConfig::ThetaGate,
-                sub_theta_mod: SubThetaModConfig::None,
             },
             // once() + cycles(n) / adaptive_duration(): fire immediately, never repeat.
             _ => PhonationConfig {
@@ -122,35 +120,19 @@ pub(crate) fn phonation_config_from_spec(spec: &PhonationSpec) -> PhonationConfi
                 },
                 duration,
                 clock: PhonationClockConfig::ThetaGate,
-                sub_theta_mod: SubThetaModConfig::None,
             },
         },
-        PhonationTiming::Pulse {
-            rate_hz,
-            sync,
-            social: _,
-        } => {
-            let onset = OnsetConfig::Accumulator {
+        // `sync` does not shape onset timing; it only mixes the predictive gate
+        // gain (`prediction_sync`) read by the population layer.
+        PhonationTiming::Pulse { rate_hz, .. } => PhonationConfig {
+            mode: PhonationMode::Gated,
+            onset: OnsetConfig::Accumulator {
                 rate: rate_hz.max(0.01),
                 refractory: 1,
-            };
-            let sub_theta_mod = if sync > 0.0 {
-                SubThetaModConfig::Cosine {
-                    n: 1,
-                    depth: sync.clamp(0.0, 1.0),
-                    phase0: 0.0,
-                }
-            } else {
-                SubThetaModConfig::None
-            };
-            PhonationConfig {
-                mode: PhonationMode::Gated,
-                onset,
-                duration,
-                clock: PhonationClockConfig::ThetaGate,
-                sub_theta_mod,
-            }
-        }
+            },
+            duration,
+            clock: PhonationClockConfig::ThetaGate,
+        },
         PhonationTiming::Coupled(_) => unreachable!("handled above"),
     }
 }

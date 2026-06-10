@@ -11,7 +11,6 @@ fn phonation_rate_is_time_based() {
         let input = IntervalInput {
             gate,
             tick: gate * tick_step,
-            dt_theta: 1.0,
             dt_sec,
             weight: 1.0,
         };

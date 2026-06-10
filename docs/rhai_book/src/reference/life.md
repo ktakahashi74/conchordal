@@ -273,21 +273,14 @@ control for older assays.
 
 | Method | Description |
 |--------|-------------|
-| `rhythm_coupling(mode)` | `"temporal"` / `"temporal_only"` |
 | `rhythm_coupling_vitality(lambda_v, v_floor)` | Vitality-modulated coupling |
 | `rhythm_reward(rho_t, metric)` | `"attack_phase_match"` or `"none"` |
 | `rhythm_freq(freq_hz)` | Internal theta/rhythm frequency |
-| `rhythm_sensitivity(value)` | Rhythm detector sensitivity |
-| `k_omega(value)` | Kuramoto frequency coupling strength |
-| `base_sigma(value)` | Base phase noise |
-| `gate_thresholds(env_open, mag)` | Gate thresholds with default alpha/beta |
-| `gate_thresholds(env_open, mag, alpha, beta)` | Gate thresholds with explicit shape |
 
 ```ts
 let timed = derive(harmonic)
     .repeat().pulse(2.0)
     .rhythm_freq(2.0)
-    .rhythm_coupling("temporal")
     .rhythm_reward(0.25, "attack_phase_match");
 ```
 
@@ -350,7 +343,7 @@ All modifiers are chainable and return `ModePattern`.
 |--------|-------------|
 | `.count(n)` | Number of modes |
 | `.range(min_mul, max_mul)` | Frequency range (landscape modes only) |
-| `.min_dist(d)` | Min ERB distance (landscape modes only) |
+| `.spacing(d)` | Min ERB distance (landscape modes only) |
 | `.gamma(g)` | Gamma parameter (landscape_density only) |
 | `.jitter(cents)` | Randomization in cents |
 | `.seed(s)` | Random seed |
@@ -382,7 +375,7 @@ All constructors return `SpawnStrategy`.
 | Method | Applies to | Description |
 |--------|------------|-------------|
 | `.range(min_mul, max_mul)` | `consonance` | Multiplier range relative to root |
-| `.min_dist(d)` | `consonance`, `consonance_density` | Min ERB distance between voices |
+| `.spacing(d)` | `consonance`, `consonance_density` | Min ERB distance between voices |
 | `.reject_targets(anchor_hz, targets_st, exclusion_st, max_tries)` | Any | Reject positions near specified targets |
 
 `reject_targets` wraps any strategy: `targets_st` is an array of semitone offsets
@@ -390,10 +383,10 @@ from `anchor_hz`, `exclusion_st` is the exclusion zone width in semitones, and
 `max_tries` is the retry limit.
 
 ```ts
-let strat = consonance(220.0).range(1.0, 3.0).min_dist(0.9);
+let strat = consonance(220.0).range(1.0, 3.0).spacing(0.9);
 create(harmonic, 6).place(strat);
 
-let density = consonance_density(100.0, 800.0).min_dist(1.0);
+let density = consonance_density(100.0, 800.0).spacing(1.0);
 create(sine, 8).place(density);
 
 // Avoid octaves and fifths of 220 Hz
@@ -460,9 +453,8 @@ Group methods work in two contexts:
 `pulse_lock`, `social`, `duration_range`, `duration_curve`, `shorten_on_drop`, `metabolism`,
 `initial_energy`, `recharge_rate`, `action_cost`, `viability_rate`,
 `consonance_viability`, `viability_scope`, `dissonance_cost`,
-`energy_cap`, `adsr`, `rhythm_coupling`, `rhythm_coupling_vitality`,
-`rhythm_reward`, `rhythm_freq`, `rhythm_sensitivity`, `k_omega`,
-`base_sigma`, `gate_thresholds`, `respawn_random`, `respawn_hereditary`,
+`energy_cap`, `adsr`, `rhythm_coupling_vitality`,
+`rhythm_reward`, `rhythm_freq`, `respawn_random`, `respawn_hereditary`,
 `respawn_consonance`, `respawn_capacity`, `respawn_settle`,
 `respawn_min_c_level`, `respawn_background_death_rate`, `modes`, `place`
 

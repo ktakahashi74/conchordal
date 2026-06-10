@@ -11,7 +11,7 @@ use crate::life::gate_clock::next_gate_tick;
 use crate::life::social_density::SocialDensityTrace;
 use crate::scenario::{
     DurationConfig, OnsetConfig, PhonationClockConfig, PhonationConfig, PhonationMode,
-    PhonationSpec, SubThetaModConfig,
+    PhonationSpec,
 };
 
 pub type ToneId = u64;
@@ -58,15 +58,12 @@ pub enum ToneCmd {
 pub struct CandidatePoint {
     pub tick: Tick,
     pub gate: u64,
-    pub theta_pos: f64,
-    pub phase_in_gate: f32,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub struct IntervalInput {
     pub gate: u64,
     pub tick: Tick,
-    pub dt_theta: f32,
     pub dt_sec: f32,
     pub weight: f32,
 }
@@ -93,9 +90,6 @@ impl ThetaGrid {
         let mut last_gate = None;
         let mut last_tick = None;
         for candidate in candidates {
-            if candidate.phase_in_gate != 0.0 {
-                continue;
-            }
             if let Some(prev_gate) = last_gate {
                 if candidate.gate < prev_gate {
                     panic!("candidate gates must be non-decreasing");
@@ -378,8 +372,6 @@ impl ThetaGateClock {
             out.push(CandidatePoint {
                 tick: gate_tick,
                 gate: self.gate_index,
-                theta_pos: self.gate_index as f64,
-                phase_in_gate: 0.0,
             });
             cursor = gate_tick.saturating_add(1);
         }
@@ -541,8 +533,6 @@ impl CouplingClock {
             out.push(CandidatePoint {
                 tick,
                 gate: self.gate_index,
-                theta_pos: self.gate_index as f64,
-                phase_in_gate: 0.0,
             });
 
             // Renewal: redraw the intrinsic rate for the next interval.
@@ -613,39 +603,6 @@ impl PhonationClock {
                 seed,
             )),
         }
-    }
-}
-
-pub enum SubThetaMod {
-    None,
-    CosineHarmonic { n: u32, depth: f32, phase0: f32 },
-}
-
-impl SubThetaMod {
-    pub fn mod_at_phase(&self, phase_in_gate: f32) -> f32 {
-        match self {
-            SubThetaMod::None => 1.0,
-            SubThetaMod::CosineHarmonic { n, depth, phase0 } => {
-                let depth = depth.clamp(0.0, 1.0);
-                let phase = phase_in_gate.rem_euclid(1.0);
-                1.0 + depth * (TAU * *n as f32 * phase + phase0).cos()
-            }
-        }
-    }
-
-    fn from_config(config: &SubThetaModConfig) -> Self {
-        match config {
-            SubThetaModConfig::None => SubThetaMod::None,
-            SubThetaModConfig::Cosine { n, depth, phase0 } => SubThetaMod::CosineHarmonic {
-                n: *n,
-                depth: *depth,
-                phase0: *phase0,
-            },
-        }
-    }
-
-    fn update_config(&mut self, config: &SubThetaModConfig) {
-        *self = Self::from_config(config);
     }
 }
 
@@ -800,7 +757,6 @@ pub struct OnsetContext {
     pub tone_id: ToneId,
     pub tick: Tick,
     pub gate: u64,
-    pub theta_pos: f64,
     pub exc_gate: f32,
     pub exc_slope: f32,
 }
@@ -809,7 +765,6 @@ pub struct OnsetContext {
 pub enum DurationPlan {
     None,
     HoldTheta(f32),
-    AtGate(u64),
 }
 
 pub enum DurationRule {
@@ -934,7 +889,6 @@ pub struct OnsetEvent {
 }
 
 struct CandidateStep {
-    dt_theta: f32,
     dt_sec: f32,
     exc_gate: f32,
     exc_slope: f32,
@@ -971,13 +925,10 @@ pub struct PhonationEngine {
     pub clock: PhonationClock,
     pub onset_rule: OnsetRule,
     pub duration_rule: DurationRule,
-    pub sub_theta_mod: SubThetaMod,
     pub mode: PhonationMode,
     hold: HoldCore,
     initial_seed: u64,
     pub next_tone_id: ToneId,
-    last_gate_index: Option<u64>,
-    last_theta_pos: Option<f64>,
     last_tick: Option<Tick>,
     active_notes: u32,
     pending_off: BinaryHeap<Reverse<PendingOff>>,
@@ -989,7 +940,6 @@ impl fmt::Debug for PhonationEngine {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PhonationEngine")
             .field("next_tone_id", &self.next_tone_id)
-            .field("last_gate_index", &self.last_gate_index)
             .field("active_notes", &self.active_notes)
             .field("mode", &self.mode)
             .finish()
@@ -1009,19 +959,15 @@ impl PhonationEngine {
 
     pub(crate) fn from_config(config: &PhonationConfig, seed: u64) -> Self {
         let onset_rule = OnsetRule::from_config(&config.onset, seed);
-        let sub_theta_mod = SubThetaMod::from_config(&config.sub_theta_mod);
         let duration_rule = DurationRule::from_config(&config.duration);
         Self {
             clock: PhonationClock::from_config(&config.clock, seed),
             onset_rule,
             duration_rule,
-            sub_theta_mod,
             mode: config.mode,
             hold: HoldCore::default(),
             initial_seed: seed,
             next_tone_id: 0,
-            last_gate_index: None,
-            last_theta_pos: None,
             last_tick: None,
             active_notes: 0,
             pending_off: BinaryHeap::new(),
@@ -1036,7 +982,6 @@ impl PhonationEngine {
         let seed = self.initial_seed ^ 0xA5A5_5A5A_5A5A_A5A5;
         self.onset_rule.update_config(&config.onset, seed);
         self.duration_rule.update_config(&config.duration);
-        self.sub_theta_mod.update_config(&config.sub_theta_mod);
     }
 
     pub fn has_active_notes(&self) -> bool {
@@ -1118,8 +1063,8 @@ impl PhonationEngine {
         } else {
             0.0
         };
-        let off_theta = onset.theta_pos + hold_theta as f64;
-        let off_tick_opt = Self::tick_for_theta(off_theta, ctx, timing_grid, fixed_period);
+        let off_pos = onset.gate as f64 + hold_theta as f64;
+        let off_tick_opt = Self::tick_for_gate_pos(off_pos, ctx, timing_grid, fixed_period);
         let fallback = timing_grid
             .boundaries
             .last()
@@ -1129,43 +1074,22 @@ impl PhonationEngine {
         self.schedule_note_off(onset.tone_id, off_tick);
     }
 
-    fn extrapolate_gate_tick(grid: &ThetaGrid, target_gate: u64) -> Option<Tick> {
-        let n = grid.boundaries.len();
-        if n < 2 {
-            return None;
-        }
-        let last = grid.boundaries[n - 1];
-        let prev = grid.boundaries[n - 2];
-        let gate_span = last.gate.saturating_sub(prev.gate);
-        if gate_span == 0 {
-            return None;
-        }
-        let ticks_per_gate = last.tick.saturating_sub(prev.tick) / gate_span;
-        if ticks_per_gate == 0 {
-            return None;
-        }
-        let extra_gates = target_gate.saturating_sub(last.gate);
-        Some(
-            last.tick
-                .saturating_add(extra_gates.saturating_mul(ticks_per_gate)),
-        )
-    }
-
-    fn tick_for_theta(
-        theta_pos: f64,
+    /// Map a fractional gate position to a tick on the timing grid.
+    fn tick_for_gate_pos(
+        gate_pos: f64,
         ctx: &CoreTickCtx,
         timing_grid: &mut ThetaGrid,
         fixed_period: Option<f64>,
     ) -> Option<Tick> {
-        if !theta_pos.is_finite() || theta_pos < 0.0 {
+        if !gate_pos.is_finite() || gate_pos < 0.0 {
             return None;
         }
-        let off_gate_f = theta_pos.floor();
+        let off_gate_f = gate_pos.floor();
         if off_gate_f >= u64::MAX as f64 {
             return None;
         }
         let mut off_gate = off_gate_f as u64;
-        let mut off_phase = (theta_pos - off_gate_f).clamp(0.0, 1.0);
+        let mut off_phase = (gate_pos - off_gate_f).clamp(0.0, 1.0);
         if off_phase >= 1.0 {
             off_phase = 0.0;
             off_gate = off_gate.saturating_add(1);
@@ -1240,27 +1164,6 @@ impl PhonationEngine {
         prev_gate_exc: Option<f32>,
         fs: f32,
     ) -> CandidateStep {
-        // dt_theta spec: same tick -> 0; negative/non-finite delta -> 0; NaN/Inf after cast -> 0.
-        let dt_theta = if self.last_tick == Some(c.tick) {
-            0.0
-        } else {
-            match self.last_theta_pos {
-                Some(prev_pos) => {
-                    let dt = c.theta_pos - prev_pos;
-                    if !dt.is_finite() {
-                        debug_assert!(false, "candidate theta_pos delta must be finite");
-                        0.0
-                    } else if dt < 0.0 {
-                        debug_assert!(false, "candidate theta_pos must be non-decreasing");
-                        0.0
-                    } else {
-                        let dt_f32 = dt as f32;
-                        if dt_f32.is_finite() { dt_f32 } else { 0.0 }
-                    }
-                }
-                None => 1.0,
-            }
-        };
         let dt_sec = if self.last_tick == Some(c.tick) {
             0.0
         } else {
@@ -1283,17 +1186,11 @@ impl PhonationEngine {
             Some(prev_exc) => (exc_gate - prev_exc).clamp(-1.0, 1.0),
             None => 0.0,
         };
-        let mod_val = if c.phase_in_gate == 0.0 {
-            1.0
-        } else {
-            self.sub_theta_mod.mod_at_phase(c.phase_in_gate)
-        };
         CandidateStep {
-            dt_theta,
             dt_sec,
             exc_gate,
             exc_slope,
-            weight: exc_gate * mod_val,
+            weight: exc_gate,
         }
     }
 
@@ -1308,19 +1205,6 @@ impl PhonationEngine {
         match plan {
             DurationPlan::HoldTheta(hold_theta) => {
                 self.schedule_hold_theta(onset, hold_theta, ctx, timing_grid, fixed_period);
-            }
-            DurationPlan::AtGate(off_gate) => {
-                timing_grid.ensure_boundaries_until(ctx, off_gate.saturating_add(1), fixed_period);
-                let off_tick = timing_grid
-                    .boundaries
-                    .iter()
-                    .find(|b| b.gate >= off_gate)
-                    .map(|b| b.tick)
-                    .unwrap_or_else(|| {
-                        Self::extrapolate_gate_tick(timing_grid, off_gate).unwrap_or(ctx.frame_end)
-                    })
-                    .max(onset.tick);
-                self.schedule_note_off(onset.tone_id, off_tick);
             }
             DurationPlan::None => {}
         }
@@ -1343,7 +1227,6 @@ impl PhonationEngine {
         let fixed_period = self.clock.fixed_period_ticks(ctx.fs);
         self.drain_note_offs(ctx.now_tick, out_cmds);
         for c in candidates {
-            debug_assert!(c.theta_pos.is_finite());
             self.drain_note_offs(c.tick, out_cmds);
             let step = self.step_for_candidate(c, timing_field, prev_gate_exc, ctx.fs);
             let allow_onset = min_allowed_onset_tick
@@ -1352,7 +1235,6 @@ impl PhonationEngine {
             let input = IntervalInput {
                 gate: c.gate,
                 tick: c.tick,
-                dt_theta: step.dt_theta,
                 dt_sec: step.dt_sec,
                 weight: step.weight,
             };
@@ -1374,26 +1256,18 @@ impl PhonationEngine {
                     tone_id,
                     tick: c.tick,
                     gate: c.gate,
-                    theta_pos: c.theta_pos,
                     exc_gate: step.exc_gate,
                     exc_slope: step.exc_slope,
                 };
                 self.schedule_duration(onset, ctx, timing_grid, fixed_period);
             }
-            self.last_gate_index = Some(c.gate);
-            self.last_theta_pos = Some(c.theta_pos);
             self.last_tick = Some(c.tick);
-            if c.phase_in_gate == 0.0 {
-                prev_gate_exc = Some(step.exc_gate);
-            }
+            prev_gate_exc = Some(step.exc_gate);
         }
         self.drain_note_offs(ctx.frame_end.saturating_sub(1), out_cmds);
     }
 
-    /// Merge rules:
-    /// - sort by (tick, gate, phase_in_gate)
-    /// - merge only when tick and gate match
-    /// - prefer phase_in_gate == 0.0 (GateBoundary) as the representative
+    /// Sort by (tick, gate) and drop duplicate (tick, gate) candidates.
     #[cfg(test)]
     fn merge_candidates(mut candidates: Vec<CandidatePoint>) -> Vec<CandidatePoint> {
         let mut merged = Vec::with_capacity(candidates.len());
@@ -1402,22 +1276,14 @@ impl PhonationEngine {
     }
 
     fn merge_candidates_into(out: &mut Vec<CandidatePoint>, candidates: &mut Vec<CandidatePoint>) {
-        candidates.sort_by(|a, b| {
-            a.tick
-                .cmp(&b.tick)
-                .then_with(|| a.gate.cmp(&b.gate))
-                .then_with(|| a.phase_in_gate.total_cmp(&b.phase_in_gate))
-        });
+        candidates.sort_by(|a, b| a.tick.cmp(&b.tick).then_with(|| a.gate.cmp(&b.gate)));
         out.clear();
         out.reserve(candidates.len());
         for candidate in candidates.drain(..) {
-            if let Some(last) = out.last_mut()
+            if let Some(last) = out.last()
                 && last.tick == candidate.tick
                 && last.gate == candidate.gate
             {
-                if last.phase_in_gate != 0.0 && candidate.phase_in_gate == 0.0 {
-                    *last = candidate;
-                }
                 continue;
             }
             out.push(candidate);
@@ -1429,15 +1295,9 @@ impl PhonationEngine {
 mod tests {
     use super::*;
     use std::collections::BinaryHeap;
-    use std::sync::{Arc, Mutex};
 
     fn candidate_at_gate(gate: u64) -> CandidatePoint {
-        CandidatePoint {
-            tick: gate,
-            gate,
-            theta_pos: gate as f64,
-            phase_in_gate: 0.0,
-        }
+        CandidatePoint { tick: gate, gate }
     }
 
     fn test_engine(onset_rule: OnsetRule, duration_rule: DurationRule) -> PhonationEngine {
@@ -1445,13 +1305,10 @@ mod tests {
             clock: PhonationClock::ThetaGate(ThetaGateClock::default()),
             onset_rule,
             duration_rule,
-            sub_theta_mod: SubThetaMod::None,
             mode: PhonationMode::Gated,
             hold: HoldCore::default(),
             initial_seed: 0,
             next_tone_id: 0,
-            last_gate_index: None,
-            last_theta_pos: None,
             last_tick: None,
             active_notes: 0,
             pending_off: BinaryHeap::new(),
@@ -1474,7 +1331,6 @@ mod tests {
             let input = IntervalInput {
                 gate: c.gate,
                 tick: c.tick,
-                dt_theta: 1.0,
                 dt_sec: 1.0,
                 weight: 1.0,
             };
@@ -1497,7 +1353,6 @@ mod tests {
             let input = IntervalInput {
                 gate: c.gate,
                 tick: c.tick,
-                dt_theta: 1.0,
                 dt_sec: 1.0,
                 weight: 1.0,
             };
@@ -1523,7 +1378,6 @@ mod tests {
             let input = IntervalInput {
                 gate: c.gate,
                 tick: c.tick,
-                dt_theta: 1.0,
                 dt_sec: 1.0,
                 weight: 1.0,
             };
@@ -1548,14 +1402,12 @@ mod tests {
             IntervalInput {
                 gate: 0,
                 tick: 0,
-                dt_theta: 1.0,
                 dt_sec: 1.0,
                 weight: 0.5,
             },
             IntervalInput {
                 gate: 1,
                 tick: 1,
-                dt_theta: 1.0,
                 dt_sec: 1.0,
                 weight: 0.5,
             },
@@ -1580,7 +1432,6 @@ mod tests {
         let input = IntervalInput {
             gate: 0,
             tick: 0,
-            dt_theta: 1.0,
             dt_sec: 1.0,
             weight: 0.0,
         };
@@ -1599,7 +1450,6 @@ mod tests {
         let input = IntervalInput {
             gate: 0,
             tick: 0,
-            dt_theta: 0.5,
             dt_sec: 0.5,
             weight: 1.0,
         };
@@ -1607,7 +1457,6 @@ mod tests {
         let input = IntervalInput {
             gate: 1,
             tick: 1,
-            dt_theta: 0.5,
             dt_sec: 0.5,
             weight: 1.0,
         };
@@ -1626,7 +1475,6 @@ mod tests {
         let input = IntervalInput {
             gate: 0,
             tick: 0,
-            dt_theta: 1.0,
             dt_sec: 1.0,
             weight: 1.0e9,
         };
@@ -1645,7 +1493,6 @@ mod tests {
             tone_id: 1,
             tick: 123,
             gate: 10,
-            theta_pos: 10.0,
             exc_gate: 1.0,
             exc_slope: 0.0,
         });
@@ -1780,18 +1627,8 @@ mod tests {
             rhythms: NeuralRhythms::default(),
         };
         let candidates = vec![
-            CandidatePoint {
-                tick: 0,
-                gate: 0,
-                theta_pos: 0.0,
-                phase_in_gate: 0.0,
-            },
-            CandidatePoint {
-                tick: 4,
-                gate: 1,
-                theta_pos: 1.0,
-                phase_in_gate: 0.0,
-            },
+            CandidatePoint { tick: 0, gate: 0 },
+            CandidatePoint { tick: 4, gate: 1 },
         ];
         let timing_field = TimingField::from_values(0, vec![0.0, 1.0]);
         let interval = OnsetRule::Accumulator {
@@ -1857,24 +1694,9 @@ mod tests {
     #[test]
     fn theta_grid_skips_duplicate_gates() {
         let candidates = vec![
-            CandidatePoint {
-                tick: 0,
-                gate: 0,
-                theta_pos: 0.0,
-                phase_in_gate: 0.0,
-            },
-            CandidatePoint {
-                tick: 1,
-                gate: 0,
-                theta_pos: 0.0,
-                phase_in_gate: 0.0,
-            },
-            CandidatePoint {
-                tick: 2,
-                gate: 1,
-                theta_pos: 1.0,
-                phase_in_gate: 0.0,
-            },
+            CandidatePoint { tick: 0, gate: 0 },
+            CandidatePoint { tick: 1, gate: 0 },
+            CandidatePoint { tick: 2, gate: 1 },
         ];
         let grid = ThetaGrid::from_candidates(&candidates);
         assert_eq!(
@@ -1891,18 +1713,8 @@ mod tests {
     #[should_panic]
     fn theta_grid_panics_on_reverse_gates() {
         let candidates = vec![
-            CandidatePoint {
-                tick: 0,
-                gate: 1,
-                theta_pos: 1.0,
-                phase_in_gate: 0.0,
-            },
-            CandidatePoint {
-                tick: 1,
-                gate: 0,
-                theta_pos: 0.0,
-                phase_in_gate: 0.0,
-            },
+            CandidatePoint { tick: 0, gate: 1 },
+            CandidatePoint { tick: 1, gate: 0 },
         ];
         let _ = ThetaGrid::from_candidates(&candidates);
     }
@@ -1912,18 +1724,8 @@ mod tests {
     #[should_panic]
     fn theta_grid_panics_on_unsorted_ticks() {
         let candidates = vec![
-            CandidatePoint {
-                tick: 2,
-                gate: 0,
-                theta_pos: 0.0,
-                phase_in_gate: 0.0,
-            },
-            CandidatePoint {
-                tick: 1,
-                gate: 1,
-                theta_pos: 1.0,
-                phase_in_gate: 0.0,
-            },
+            CandidatePoint { tick: 2, gate: 0 },
+            CandidatePoint { tick: 1, gate: 1 },
         ];
         let _ = ThetaGrid::from_candidates(&candidates);
     }
@@ -1931,18 +1733,8 @@ mod tests {
     #[test]
     fn theta_grid_skips_noncontiguous_gates() {
         let candidates = vec![
-            CandidatePoint {
-                tick: 0,
-                gate: 0,
-                theta_pos: 0.0,
-                phase_in_gate: 0.0,
-            },
-            CandidatePoint {
-                tick: 10,
-                gate: 2,
-                theta_pos: 2.0,
-                phase_in_gate: 0.0,
-            },
+            CandidatePoint { tick: 0, gate: 0 },
+            CandidatePoint { tick: 10, gate: 2 },
         ];
         let grid = ThetaGrid::from_candidates(&candidates);
         assert_eq!(
@@ -2076,321 +1868,6 @@ mod tests {
     }
 
     #[test]
-    fn dt_theta_is_continuous() {
-        let log = Arc::new(Mutex::new(Vec::new()));
-        let log_c = log.clone();
-
-        let candidates = vec![
-            CandidatePoint {
-                tick: 0,
-                gate: 0,
-                theta_pos: 0.0,
-                phase_in_gate: 0.0,
-            },
-            CandidatePoint {
-                tick: 10,
-                gate: 0,
-                theta_pos: 0.5,
-                phase_in_gate: 0.5,
-            },
-            CandidatePoint {
-                tick: 20,
-                gate: 1,
-                theta_pos: 1.0,
-                phase_in_gate: 0.0,
-            },
-        ];
-        let ctx = CoreTickCtx {
-            now_tick: 0,
-            frame_end: 30,
-            fs: 1000.0,
-            rhythms: NeuralRhythms::default(),
-        };
-        let timing_field = TimingField::from_values(0, vec![1.0, 1.0]);
-        let mut engine = test_engine(
-            OnsetRule::Custom(Box::new(move |c, _| {
-                log_c.lock().expect("dt log").push(c.dt_theta);
-                None
-            })),
-            DurationRule::fixed_gate(1),
-        );
-        let state = CoreState { is_alive: true };
-        let mut cmds = Vec::new();
-        let mut events = Vec::new();
-        let mut onsets = Vec::new();
-        let mut timing_grid = ThetaGrid::from_candidates(&candidates);
-        engine.process_candidates(
-            &ctx,
-            &candidates,
-            &mut timing_grid,
-            &timing_field,
-            &state,
-            None,
-            &mut cmds,
-            &mut events,
-            &mut onsets,
-        );
-        assert_eq!(*log.lock().expect("dt log"), vec![1.0, 0.5, 0.5]);
-    }
-
-    #[test]
-    fn dt_theta_zero_when_same_tick() {
-        let log = Arc::new(Mutex::new(Vec::new()));
-        let log_c = log.clone();
-
-        let candidates = vec![
-            CandidatePoint {
-                tick: 0,
-                gate: 0,
-                theta_pos: 0.0,
-                phase_in_gate: 0.0,
-            },
-            CandidatePoint {
-                tick: 0,
-                gate: 1,
-                theta_pos: 1.0,
-                phase_in_gate: 0.0,
-            },
-        ];
-        let ctx = CoreTickCtx {
-            now_tick: 0,
-            frame_end: 1,
-            fs: 1000.0,
-            rhythms: NeuralRhythms::default(),
-        };
-        let timing_field = TimingField::from_values(0, vec![1.0, 1.0]);
-        let mut engine = test_engine(
-            OnsetRule::Custom(Box::new({
-                let log = log_c.clone();
-                move |c, _| {
-                    log.lock().expect("dt log").push(c.dt_theta);
-                    None
-                }
-            })),
-            DurationRule::fixed_gate(1),
-        );
-        let state = CoreState { is_alive: true };
-        let mut cmds = Vec::new();
-        let mut events = Vec::new();
-        let mut onsets = Vec::new();
-        let mut timing_grid = ThetaGrid::from_candidates(&candidates);
-        engine.process_candidates(
-            &ctx,
-            &candidates,
-            &mut timing_grid,
-            &timing_field,
-            &state,
-            None,
-            &mut cmds,
-            &mut events,
-            &mut onsets,
-        );
-        assert_eq!(*log.lock().expect("dt log"), vec![1.0, 0.0]);
-    }
-
-    #[test]
-    #[cfg(debug_assertions)]
-    #[should_panic]
-    fn dt_theta_panics_on_negative_theta() {
-        let candidates = vec![CandidatePoint {
-            tick: 1,
-            gate: 0,
-            theta_pos: 0.0,
-            phase_in_gate: 0.0,
-        }];
-        let ctx = CoreTickCtx {
-            now_tick: 0,
-            frame_end: 2,
-            fs: 1000.0,
-            rhythms: NeuralRhythms::default(),
-        };
-        let timing_field = TimingField::from_values(0, vec![1.0]);
-        let mut engine = PhonationEngine {
-            clock: PhonationClock::ThetaGate(ThetaGateClock::default()),
-            onset_rule: OnsetRule::None,
-            duration_rule: DurationRule::fixed_gate(1),
-            sub_theta_mod: SubThetaMod::None,
-            mode: PhonationMode::Gated,
-            hold: HoldCore::default(),
-            initial_seed: 0,
-            next_tone_id: 0,
-            last_gate_index: None,
-            last_theta_pos: Some(1.0),
-            last_tick: None,
-            active_notes: 0,
-            pending_off: BinaryHeap::new(),
-
-            scratch_candidates: Vec::new(),
-            scratch_merged: Vec::new(),
-        };
-        let state = CoreState { is_alive: true };
-        let mut cmds = Vec::new();
-        let mut events = Vec::new();
-        let mut onsets = Vec::new();
-        let mut timing_grid = ThetaGrid::from_candidates(&candidates);
-        engine.process_candidates(
-            &ctx,
-            &candidates,
-            &mut timing_grid,
-            &timing_field,
-            &state,
-            None,
-            &mut cmds,
-            &mut events,
-            &mut onsets,
-        );
-    }
-
-    #[test]
-    fn dt_theta_large_gate_precision() {
-        let log = Arc::new(Mutex::new(Vec::new()));
-        let log_c = log.clone();
-
-        let candidates = vec![
-            CandidatePoint {
-                tick: 0,
-                gate: 20_000_000,
-                theta_pos: 20_000_000.0,
-                phase_in_gate: 0.0,
-            },
-            CandidatePoint {
-                tick: 1,
-                gate: 20_000_001,
-                theta_pos: 20_000_001.0,
-                phase_in_gate: 0.0,
-            },
-        ];
-        let ctx = CoreTickCtx {
-            now_tick: 0,
-            frame_end: 2,
-            fs: 1000.0,
-            rhythms: NeuralRhythms::default(),
-        };
-        let timing_field = TimingField::from_values(20_000_000, vec![1.0, 1.0]);
-        let mut engine = test_engine(
-            OnsetRule::Custom(Box::new({
-                let log = log_c.clone();
-                move |c, _| {
-                    log.lock().expect("dt log").push(c.dt_theta);
-                    None
-                }
-            })),
-            DurationRule::fixed_gate(1),
-        );
-        let state = CoreState { is_alive: true };
-        let mut cmds = Vec::new();
-        let mut events = Vec::new();
-        let mut onsets = Vec::new();
-        let mut timing_grid = ThetaGrid::from_candidates(&candidates);
-        engine.process_candidates(
-            &ctx,
-            &candidates,
-            &mut timing_grid,
-            &timing_field,
-            &state,
-            None,
-            &mut cmds,
-            &mut events,
-            &mut onsets,
-        );
-        assert_eq!(*log.lock().expect("dt log"), vec![1.0, 1.0]);
-    }
-
-    #[test]
-    fn cosine_mod_has_unit_mean() {
-        let modulator = SubThetaMod::CosineHarmonic {
-            n: 3,
-            depth: 0.8,
-            phase0: 0.2,
-        };
-        let mut sum = 0.0;
-        let samples = 1000;
-        for i in 0..samples {
-            let phase = i as f32 / samples as f32;
-            sum += modulator.mod_at_phase(phase);
-        }
-        let avg = sum / samples as f32;
-        assert!((avg - 1.0).abs() < 1e-3);
-    }
-
-    #[test]
-    fn sub_theta_mod_biases_onset() {
-        let candidates = vec![
-            CandidatePoint {
-                tick: 0,
-                gate: 0,
-                theta_pos: 0.0,
-                phase_in_gate: 0.0,
-            },
-            CandidatePoint {
-                tick: 10,
-                gate: 0,
-                theta_pos: 0.5,
-                phase_in_gate: 0.5,
-            },
-            CandidatePoint {
-                tick: 20,
-                gate: 1,
-                theta_pos: 1.0,
-                phase_in_gate: 0.0,
-            },
-        ];
-        let ctx = CoreTickCtx {
-            now_tick: 0,
-            frame_end: 30,
-            fs: 1000.0,
-            rhythms: NeuralRhythms::default(),
-        };
-        let timing_field = TimingField::from_values(0, vec![1.0, 1.0]);
-        let interval = OnsetRule::Accumulator {
-            rate_hz: 50.0,
-            refractory_gates: 0,
-            acc: 0.0,
-            next_allowed_gate: 0,
-        };
-        let mut engine = PhonationEngine {
-            clock: PhonationClock::ThetaGate(ThetaGateClock::default()),
-            onset_rule: interval,
-            duration_rule: DurationRule::fixed_gate(1),
-            sub_theta_mod: SubThetaMod::CosineHarmonic {
-                n: 1,
-                depth: 1.0,
-                phase0: -std::f32::consts::PI,
-            },
-            mode: PhonationMode::Gated,
-            hold: HoldCore::default(),
-            initial_seed: 0,
-            next_tone_id: 0,
-            last_gate_index: None,
-            last_theta_pos: Some(0.0),
-            last_tick: None,
-            active_notes: 0,
-            pending_off: BinaryHeap::new(),
-
-            scratch_candidates: Vec::new(),
-            scratch_merged: Vec::new(),
-        };
-        let state = CoreState { is_alive: true };
-        let mut cmds = Vec::new();
-        let mut events = Vec::new();
-        let mut onsets = Vec::new();
-        let mut timing_grid = ThetaGrid::from_candidates(&candidates);
-        engine.process_candidates(
-            &ctx,
-            &candidates,
-            &mut timing_grid,
-            &timing_field,
-            &state,
-            None,
-            &mut cmds,
-            &mut events,
-            &mut onsets,
-        );
-        assert_eq!(events.len(), 1);
-        assert_eq!(events[0].onset_tick, 10);
-    }
-
-    #[test]
     fn active_notes_tracks_note_on_and_off() {
         let ctx = CoreTickCtx {
             now_tick: 0,
@@ -2407,12 +1884,7 @@ mod tests {
         let mut engine = test_engine(interval, DurationRule::fixed_gate(0));
         let state = CoreState { is_alive: true };
         let timing_field = TimingField::from_values(0, vec![1.0]);
-        let candidates = vec![CandidatePoint {
-            tick: 0,
-            gate: 0,
-            theta_pos: 0.0,
-            phase_in_gate: 0.0,
-        }];
+        let candidates = vec![CandidatePoint { tick: 0, gate: 0 }];
         let mut cmds = Vec::new();
         let mut events = Vec::new();
         let mut onsets = Vec::new();
@@ -2450,12 +1922,7 @@ mod tests {
         let mut engine = test_engine(interval, DurationRule::fixed_gate(2));
         let state = CoreState { is_alive: true };
         let timing_field = TimingField::from_values(0, vec![1.0]);
-        let candidates = vec![CandidatePoint {
-            tick: 0,
-            gate: 0,
-            theta_pos: 0.0,
-            phase_in_gate: 0.0,
-        }];
+        let candidates = vec![CandidatePoint { tick: 0, gate: 0 }];
         let mut cmds = Vec::new();
         let mut events = Vec::new();
         let mut onsets = Vec::new();
@@ -2528,12 +1995,7 @@ mod tests {
             fs: 1000.0,
             rhythms: NeuralRhythms::default(),
         };
-        let candidates = vec![CandidatePoint {
-            tick: 0,
-            gate: 0,
-            theta_pos: 0.0,
-            phase_in_gate: 0.0,
-        }];
+        let candidates = vec![CandidatePoint { tick: 0, gate: 0 }];
         let timing_field = TimingField::from_values(0, vec![1.0]);
         let mut engine = test_engine(
             OnsetRule::Custom(Box::new(|_, _| Some(OnsetKick { strength: 1.0 }))),
@@ -2580,7 +2042,6 @@ mod tests {
             tone_id: 7,
             tick: 10,
             gate: 0,
-            theta_pos: 0.0,
             exc_gate: 0.0,
             exc_slope: 0.0,
         };
@@ -2609,7 +2070,6 @@ mod tests {
             tone_id: 11,
             tick: 0,
             gate: 0,
-            theta_pos: 0.0,
             exc_gate: 0.0,
             exc_slope: 0.0,
         };
@@ -2648,18 +2108,8 @@ mod tests {
     #[test]
     fn merge_candidates_keeps_distinct_gates() {
         let candidates = vec![
-            CandidatePoint {
-                tick: 10,
-                gate: 0,
-                theta_pos: 0.0,
-                phase_in_gate: 0.0,
-            },
-            CandidatePoint {
-                tick: 10,
-                gate: 1,
-                theta_pos: 1.0,
-                phase_in_gate: 0.0,
-            },
+            CandidatePoint { tick: 10, gate: 0 },
+            CandidatePoint { tick: 10, gate: 1 },
         ];
         let merged = PhonationEngine::merge_candidates(candidates);
         assert_eq!(merged.len(), 2);
@@ -2673,7 +2123,6 @@ mod tests {
             onset: OnsetConfig::None,
             duration: DurationConfig::FixedGate { length_gates: 1 },
             clock: PhonationClockConfig::ThetaGate,
-            sub_theta_mod: SubThetaModConfig::None,
         };
         let mut engine = PhonationEngine::from_config(&base, 7);
         let changed = PhonationConfig {
@@ -2696,7 +2145,6 @@ mod tests {
             &IntervalInput {
                 gate: 0,
                 tick: 0,
-                dt_theta: 1.0,
                 dt_sec: 1.0,
                 weight: 1.0,
             },
@@ -2707,7 +2155,6 @@ mod tests {
             tone_id: 1,
             tick: 0,
             gate: 0,
-            theta_pos: 0.0,
             exc_gate: 0.2,
             exc_slope: 0.1,
         });
@@ -2715,27 +2162,6 @@ mod tests {
             matches!(plan, DurationPlan::HoldTheta(_)),
             "expected field connect plan"
         );
-    }
-
-    #[test]
-    fn merge_candidates_prioritizes_gate_boundary_on_collision() {
-        let candidates = vec![
-            CandidatePoint {
-                tick: 10,
-                gate: 1,
-                theta_pos: 1.5,
-                phase_in_gate: 0.5,
-            },
-            CandidatePoint {
-                tick: 10,
-                gate: 1,
-                theta_pos: 1.0,
-                phase_in_gate: 0.0,
-            },
-        ];
-        let merged = PhonationEngine::merge_candidates(candidates);
-        assert_eq!(merged.len(), 1);
-        assert_eq!(merged[0].phase_in_gate, 0.0);
     }
 
     #[test]
@@ -2766,12 +2192,7 @@ mod tests {
                         return;
                     }
                     let gate = stub_index as u64;
-                    out.push(CandidatePoint {
-                        tick,
-                        gate,
-                        theta_pos: gate as f64,
-                        phase_in_gate: 0.0,
-                    });
+                    out.push(CandidatePoint { tick, gate });
                     stub_index += 1;
                 }
             },
@@ -2799,81 +2220,6 @@ mod tests {
             _ => None,
         });
         assert_eq!(off_tick, Some(second.onset_tick));
-    }
-
-    #[test]
-    fn fixed_gate_duration_counts_from_subgate_onset() {
-        let ctx = CoreTickCtx {
-            now_tick: 0,
-            frame_end: 50,
-            fs: 1000.0,
-            rhythms: NeuralRhythms::default(),
-        };
-        let candidates = vec![
-            CandidatePoint {
-                tick: 0,
-                gate: 0,
-                theta_pos: 0.0,
-                phase_in_gate: 0.0,
-            },
-            CandidatePoint {
-                tick: 10,
-                gate: 0,
-                theta_pos: 0.5,
-                phase_in_gate: 0.5,
-            },
-            CandidatePoint {
-                tick: 20,
-                gate: 1,
-                theta_pos: 1.0,
-                phase_in_gate: 0.0,
-            },
-            CandidatePoint {
-                tick: 40,
-                gate: 2,
-                theta_pos: 2.0,
-                phase_in_gate: 0.0,
-            },
-        ];
-        let mut engine = test_engine(
-            OnsetRule::Custom(Box::new(|input, _| {
-                if input.tick == 10 {
-                    Some(OnsetKick { strength: 1.0 })
-                } else {
-                    None
-                }
-            })),
-            DurationRule::fixed_gate(1),
-        );
-        let state = CoreState { is_alive: true };
-        let timing_field = TimingField::from_values(0, vec![1.0, 1.0, 1.0]);
-        let mut timing_grid = ThetaGrid::from_candidates(&candidates);
-        let mut cmds = Vec::new();
-        let mut events = Vec::new();
-        let mut onsets = Vec::new();
-
-        engine.process_candidates(
-            &ctx,
-            &candidates,
-            &mut timing_grid,
-            &timing_field,
-            &state,
-            None,
-            &mut cmds,
-            &mut events,
-            &mut onsets,
-        );
-
-        assert_eq!(events.len(), 1);
-        let tone_id = events[0].tone_id;
-        let off_tick = cmds.iter().find_map(|cmd| match cmd {
-            ToneCmd::Off {
-                tone_id: cmd_tone_id,
-                off_tick,
-            } if *cmd_tone_id == tone_id => Some(*off_tick),
-            _ => None,
-        });
-        assert_eq!(off_tick, Some(30));
     }
 
     #[test]
@@ -2910,7 +2256,6 @@ mod tests {
             tone_id: 1,
             tick: 0,
             gate: 0,
-            theta_pos: 0.0,
             exc_gate: 0.0,
             exc_slope: 0.0,
         });
@@ -2918,7 +2263,6 @@ mod tests {
             tone_id: 2,
             tick: 0,
             gate: 0,
-            theta_pos: 0.0,
             exc_gate: 1.0,
             exc_slope: 0.0,
         });
@@ -2956,12 +2300,7 @@ mod tests {
         };
         let timing_field = TimingField::from_values(0, vec![1.0, 1.0]);
         let state = CoreState { is_alive: true };
-        let candidates = vec![CandidatePoint {
-            tick: 0,
-            gate: 0,
-            theta_pos: 0.0,
-            phase_in_gate: 0.0,
-        }];
+        let candidates = vec![CandidatePoint { tick: 0, gate: 0 }];
         let mut engine = test_engine(
             OnsetRule::Custom(Box::new(move |c, _| {
                 if c.tick == onset_tick {
@@ -2997,129 +2336,6 @@ mod tests {
     }
 
     #[test]
-    fn field_connect_off_tick_independent_of_subdivision() {
-        let onset_tick: Tick = 0;
-
-        let ctx = CoreTickCtx {
-            now_tick: 0,
-            frame_end: 120,
-            fs: 1000.0,
-            rhythms: NeuralRhythms::default(),
-        };
-        let timing_field = TimingField::from_values(0, vec![1.0, 1.0]);
-        let state = CoreState { is_alive: true };
-
-        let candidates_base = vec![
-            CandidatePoint {
-                tick: 0,
-                gate: 0,
-                theta_pos: 0.0,
-                phase_in_gate: 0.0,
-            },
-            CandidatePoint {
-                tick: 100,
-                gate: 1,
-                theta_pos: 1.0,
-                phase_in_gate: 0.0,
-            },
-        ];
-
-        let mut engine_base = test_engine(
-            OnsetRule::Custom(Box::new(move |c, _| {
-                if c.tick == onset_tick {
-                    Some(OnsetKick { strength: 1.0 })
-                } else {
-                    None
-                }
-            })),
-            DurationRule::field(0.5, 0.5, 10.0, 0.5, 0.0),
-        );
-        let mut cmds = Vec::new();
-        let mut events = Vec::new();
-        let mut onsets = Vec::new();
-        let mut timing_grid = ThetaGrid::from_candidates(&candidates_base);
-        engine_base.process_candidates(
-            &ctx,
-            &candidates_base,
-            &mut timing_grid,
-            &timing_field,
-            &state,
-            None,
-            &mut cmds,
-            &mut events,
-            &mut onsets,
-        );
-        let note_on_id = cmds.iter().find_map(|cmd| match cmd {
-            ToneCmd::On { tone_id, .. } => Some(*tone_id),
-            _ => None,
-        });
-        let off_tick_base = cmds.iter().find_map(|cmd| match cmd {
-            ToneCmd::Off { tone_id, off_tick } if Some(*tone_id) == note_on_id => Some(*off_tick),
-            _ => None,
-        });
-
-        let candidates_sub = vec![
-            CandidatePoint {
-                tick: 0,
-                gate: 0,
-                theta_pos: 0.0,
-                phase_in_gate: 0.0,
-            },
-            CandidatePoint {
-                tick: 50,
-                gate: 0,
-                theta_pos: 0.5,
-                phase_in_gate: 0.5,
-            },
-            CandidatePoint {
-                tick: 100,
-                gate: 1,
-                theta_pos: 1.0,
-                phase_in_gate: 0.0,
-            },
-        ];
-
-        let mut engine_sub = test_engine(
-            OnsetRule::Custom(Box::new(move |c, _| {
-                if c.tick == onset_tick {
-                    Some(OnsetKick { strength: 1.0 })
-                } else {
-                    None
-                }
-            })),
-            DurationRule::field(0.5, 0.5, 10.0, 0.5, 0.0),
-        );
-        let mut cmds_sub = Vec::new();
-        let mut events_sub = Vec::new();
-        let mut onsets_sub = Vec::new();
-        let mut timing_grid = ThetaGrid::from_candidates(&candidates_sub);
-        engine_sub.process_candidates(
-            &ctx,
-            &candidates_sub,
-            &mut timing_grid,
-            &timing_field,
-            &state,
-            None,
-            &mut cmds_sub,
-            &mut events_sub,
-            &mut onsets_sub,
-        );
-        let note_on_id_sub = cmds_sub.iter().find_map(|cmd| match cmd {
-            ToneCmd::On { tone_id, .. } => Some(*tone_id),
-            _ => None,
-        });
-        let off_tick_sub = cmds_sub.iter().find_map(|cmd| match cmd {
-            ToneCmd::Off { tone_id, off_tick } if Some(*tone_id) == note_on_id_sub => {
-                Some(*off_tick)
-            }
-            _ => None,
-        });
-
-        assert_eq!(off_tick_base, Some(50));
-        assert_eq!(off_tick_sub, Some(50));
-    }
-
-    #[test]
     fn field_connect_note_off_survives_empty_hop() {
         let onset_tick: Tick = 0;
 
@@ -3142,12 +2358,7 @@ mod tests {
             fs: 1000.0,
             rhythms: NeuralRhythms::default(),
         };
-        let candidates = vec![CandidatePoint {
-            tick: 0,
-            gate: 0,
-            theta_pos: 0.0,
-            phase_in_gate: 0.0,
-        }];
+        let candidates = vec![CandidatePoint { tick: 0, gate: 0 }];
         let mut timing_grid = ThetaGrid {
             boundaries: vec![
                 GateBoundary { gate: 0, tick: 0 },
@@ -3203,150 +2414,6 @@ mod tests {
             _ => None,
         });
         assert_eq!(off_tick, Some(100));
-    }
-
-    #[test]
-    fn exc_slope_is_stable_with_sub_candidates() {
-        use std::collections::HashSet;
-        use std::sync::{Arc, Mutex};
-
-        let fire_ticks: HashSet<Tick> = [0, 10, 20].into_iter().collect();
-
-        let ctx = CoreTickCtx {
-            now_tick: 0,
-            frame_end: 30,
-            fs: 1000.0,
-            rhythms: NeuralRhythms::default(),
-        };
-        let timing_field = TimingField::from_values(0, vec![0.2, 0.8, 0.2]);
-        let state = CoreState { is_alive: true };
-
-        let slopes_base = Arc::new(Mutex::new(Vec::new()));
-        let mut engine_base = test_engine(
-            OnsetRule::Custom(Box::new({
-                let ticks = fire_ticks.clone();
-                move |c, _| {
-                    if ticks.contains(&c.tick) {
-                        Some(OnsetKick { strength: 1.0 })
-                    } else {
-                        None
-                    }
-                }
-            })),
-            DurationRule::Custom(Box::new({
-                let slopes = slopes_base.clone();
-                move |onset| {
-                    slopes.lock().expect("slopes").push(onset.exc_slope);
-                    DurationPlan::None
-                }
-            })),
-        );
-        let candidates_base = vec![
-            CandidatePoint {
-                tick: 0,
-                gate: 0,
-                theta_pos: 0.0,
-                phase_in_gate: 0.0,
-            },
-            CandidatePoint {
-                tick: 10,
-                gate: 1,
-                theta_pos: 1.0,
-                phase_in_gate: 0.0,
-            },
-            CandidatePoint {
-                tick: 20,
-                gate: 2,
-                theta_pos: 2.0,
-                phase_in_gate: 0.0,
-            },
-        ];
-        let mut cmds = Vec::new();
-        let mut events = Vec::new();
-        let mut onsets = Vec::new();
-        let mut timing_grid = ThetaGrid::from_candidates(&candidates_base);
-        engine_base.process_candidates(
-            &ctx,
-            &candidates_base,
-            &mut timing_grid,
-            &timing_field,
-            &state,
-            None,
-            &mut cmds,
-            &mut events,
-            &mut onsets,
-        );
-        let base_slopes = slopes_base.lock().expect("slopes").clone();
-
-        let slopes_sub = Arc::new(Mutex::new(Vec::new()));
-        let mut engine_sub = test_engine(
-            OnsetRule::Custom(Box::new({
-                let ticks = fire_ticks.clone();
-                move |c, _| {
-                    if ticks.contains(&c.tick) {
-                        Some(OnsetKick { strength: 1.0 })
-                    } else {
-                        None
-                    }
-                }
-            })),
-            DurationRule::Custom(Box::new({
-                let slopes = slopes_sub.clone();
-                move |onset| {
-                    slopes.lock().expect("slopes").push(onset.exc_slope);
-                    DurationPlan::None
-                }
-            })),
-        );
-        let candidates_sub = vec![
-            CandidatePoint {
-                tick: 0,
-                gate: 0,
-                theta_pos: 0.0,
-                phase_in_gate: 0.0,
-            },
-            CandidatePoint {
-                tick: 5,
-                gate: 0,
-                theta_pos: 0.5,
-                phase_in_gate: 0.5,
-            },
-            CandidatePoint {
-                tick: 10,
-                gate: 1,
-                theta_pos: 1.0,
-                phase_in_gate: 0.0,
-            },
-            CandidatePoint {
-                tick: 15,
-                gate: 1,
-                theta_pos: 1.5,
-                phase_in_gate: 0.5,
-            },
-            CandidatePoint {
-                tick: 20,
-                gate: 2,
-                theta_pos: 2.0,
-                phase_in_gate: 0.0,
-            },
-        ];
-        let mut cmds = Vec::new();
-        let mut events = Vec::new();
-        let mut onsets = Vec::new();
-        let mut timing_grid = ThetaGrid::from_candidates(&candidates_sub);
-        engine_sub.process_candidates(
-            &ctx,
-            &candidates_sub,
-            &mut timing_grid,
-            &timing_field,
-            &state,
-            None,
-            &mut cmds,
-            &mut events,
-            &mut onsets,
-        );
-        let sub_slopes = slopes_sub.lock().expect("slopes").clone();
-        assert_eq!(base_slopes, sub_slopes);
     }
 
     #[test]

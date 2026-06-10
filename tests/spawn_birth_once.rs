@@ -6,7 +6,7 @@ use conchordal::life::generator_model::GeneratorModel;
 use conchordal::life::population::Population;
 use conchordal::life::schedule_renderer::ScheduleRenderer;
 use conchordal::life::voice::VoiceMetadata;
-use conchordal::scenario::{ArticulationCoreConfig, VoiceConfig};
+use conchordal::scenario::{ArticulationCoreConfig, VoiceSpec};
 
 fn test_timebase() -> Timebase {
     Timebase {
@@ -15,11 +15,11 @@ fn test_timebase() -> Timebase {
     }
 }
 
-fn spawn_agent(freq: f32, amp: f32) -> VoiceConfig {
+fn spawn_agent(freq: f32, amp: f32) -> VoiceSpec {
     let mut control = VoiceControl::default();
     control.pitch.freq = freq;
     control.body.amp = amp;
-    VoiceConfig {
+    VoiceSpec {
         control,
         articulation: ArticulationCoreConfig::default(),
     }

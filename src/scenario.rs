@@ -170,8 +170,6 @@ impl Default for OnsetConfig {
 pub(crate) enum PhonationClockConfig {
     #[default]
     ThetaGate,
-    /// Isochronous wall-clock gate grid at a fixed rate, independent of the
-    /// adaptive theta. Used by metric beat and as the dense base for flow.
     /// Per-voice phase oscillator that entrains its onset phase to the shared
     /// production meter beat with a coupling strength `coupling`. This is the
     /// single mechanism behind the rhythm family continuum: `coupling -> 0` is a
@@ -186,17 +184,6 @@ pub(crate) enum PhonationClockConfig {
         base_rate_hz: f32,
         flow_depth: f32,
         microtiming: f32,
-    },
-}
-
-#[derive(Debug, Clone, PartialEq, Default)]
-pub(crate) enum SubThetaModConfig {
-    #[default]
-    None,
-    Cosine {
-        n: u32,
-        depth: f32,
-        phase0: f32,
     },
 }
 
@@ -233,7 +220,6 @@ pub(crate) struct PhonationConfig {
     pub(crate) onset: OnsetConfig,
     pub(crate) duration: DurationConfig,
     pub(crate) clock: PhonationClockConfig,
-    pub(crate) sub_theta_mod: SubThetaModConfig,
 }
 
 // --- Rhythm intention and phonation specification ---
@@ -417,9 +403,6 @@ pub struct VoiceSpec {
     pub articulation: ArticulationCoreConfig,
 }
 
-pub type VoiceConfig = VoiceSpec;
-pub type SpawnSpec = VoiceSpec;
-
 #[derive(Debug, Clone)]
 pub enum SoundBodyConfig {
     Sine {
@@ -437,37 +420,14 @@ impl Default for SoundBodyConfig {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct GateThresholds {
-    pub env_open: f32,
-    pub mag: f32,
-    pub alpha: f32,
-    pub beta: f32,
-}
-
-impl Default for GateThresholds {
-    fn default() -> Self {
-        Self {
-            env_open: 0.55,
-            mag: 0.04,
-            alpha: 0.2,
-            beta: 0.9,
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub enum ArticulationCoreConfig {
     Entrain {
         lifecycle: LifecycleConfig,
         rhythm_freq: Option<f32>,
-        rhythm_sensitivity: Option<f32>,
         rhythm_coupling: RhythmCouplingMode,
         rhythm_reward: Option<MetabolismRhythmReward>,
         breath_gain_init: Option<f32>,
-        k_omega: Option<f32>,
-        base_sigma: Option<f32>,
-        gate_thresholds: Option<GateThresholds>,
         energy_cap: Option<f32>,
     },
     Seq {
@@ -538,13 +498,9 @@ impl Default for ArticulationCoreConfig {
         ArticulationCoreConfig::Entrain {
             lifecycle: LifecycleConfig::default(),
             rhythm_freq: None,
-            rhythm_sensitivity: None,
             rhythm_coupling: RhythmCouplingMode::TemporalOnly,
             rhythm_reward: None,
             breath_gain_init: None,
-            k_omega: None,
-            base_sigma: None,
-            gate_thresholds: None,
             energy_cap: None,
         }
     }
@@ -787,26 +743,6 @@ impl fmt::Display for Action {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::life::voice::{SoundBody, VoiceMetadata};
-
-    #[test]
-    fn agent_spec_aliases_behave_identically() {
-        let mut control = VoiceControl::default();
-        control.pitch.freq = 330.0;
-        let base = VoiceSpec {
-            control,
-            articulation: ArticulationCoreConfig::default(),
-        };
-
-        let as_individual: VoiceConfig = base.clone();
-        let as_spawn: SpawnSpec = base.clone();
-        assert_eq!(format!("{as_individual}"), format!("{as_spawn}"));
-
-        let a = as_individual.spawn(10, 0, VoiceMetadata::default(), 48_000.0, 99);
-        let b = as_spawn.spawn(10, 0, VoiceMetadata::default(), 48_000.0, 99);
-        assert_eq!(a.id(), b.id());
-        assert!((a.body.base_freq_hz() - b.body.base_freq_hz()).abs() <= 1e-6);
-    }
 
     #[test]
     fn rhythm_sanitizers_handle_nonfinite_and_negative_inputs() {

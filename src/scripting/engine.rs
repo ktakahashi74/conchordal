@@ -338,13 +338,6 @@ impl ScriptHost {
             },
         );
         engine.register_fn(
-            "rhythm_coupling",
-            |mut species: SpeciesHandle, mode: &str| {
-                species.spec.set_rhythm_coupling(mode);
-                species
-            },
-        );
-        engine.register_fn(
             "rhythm_coupling_vitality",
             |mut species: SpeciesHandle, lambda_v: FLOAT, v_floor: FLOAT| {
                 species
@@ -362,30 +355,7 @@ impl ScriptHost {
         );
         register_species_numeric_methods(
             &mut engine,
-            &[
-                ("rhythm_freq", SpeciesSpec::set_rhythm_freq),
-                ("rhythm_sensitivity", SpeciesSpec::set_rhythm_sensitivity),
-                ("k_omega", SpeciesSpec::set_k_omega),
-                ("base_sigma", SpeciesSpec::set_base_sigma),
-            ],
-        );
-        register_species_pair_numeric_methods(
-            &mut engine,
-            &[("gate_thresholds", |species, env_open, mag| {
-                species.set_gate_thresholds(env_open, mag, 0.2, 0.9)
-            })],
-        );
-        engine.register_fn(
-            "gate_thresholds",
-            |mut species: SpeciesHandle, env_open: FLOAT, mag: FLOAT, alpha: FLOAT, beta: FLOAT| {
-                species.spec.set_gate_thresholds(
-                    env_open as f32,
-                    mag as f32,
-                    alpha as f32,
-                    beta as f32,
-                );
-                species
-            },
+            &[("rhythm_freq", SpeciesSpec::set_rhythm_freq)],
         );
         engine.register_fn("respawn_random", |mut species: SpeciesHandle| {
             species.spec.set_respawn_random();
@@ -670,14 +640,6 @@ impl ScriptHost {
                 }
             },
         );
-        engine.register_fn("min_dist", |pattern: ModePattern, min_dist: FLOAT| {
-            if pattern.supports_min_dist_erb() {
-                pattern.with_min_dist_erb(min_dist as f32)
-            } else {
-                warn!("min_dist() is only supported for landscape_*_modes(); ignored");
-                pattern
-            }
-        });
         engine.register_fn("spacing", |pattern: ModePattern, min_dist: FLOAT| {
             if pattern.supports_min_dist_erb() {
                 pattern.with_min_dist_erb(min_dist as f32)
@@ -1537,25 +1499,6 @@ impl ScriptHost {
                 Ok(handle)
             },
         );
-        let ctx_for_group_rhythm_coupling = ctx.clone();
-        engine.register_fn(
-            "rhythm_coupling",
-            move |handle: GroupHandle, mode: &str| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_rhythm_coupling
-                    .lock()
-                    .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("rhythm_coupling ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                match group.status {
-                    GroupStatus::Draft => group.spec.set_rhythm_coupling(mode),
-                    GroupStatus::Live => ctx.warn_live_builder(handle.id, "rhythm_coupling"),
-                    _ => ctx.warn_live_builder(handle.id, "rhythm_coupling"),
-                }
-                Ok(handle)
-            },
-        );
         let ctx_for_group_rhythm_coupling_vitality = ctx.clone();
         engine.register_fn(
             "rhythm_coupling_vitality",
@@ -1610,40 +1553,7 @@ impl ScriptHost {
         register_group_draft_numeric_methods(
             &mut engine,
             ctx.clone(),
-            &[
-                ("rhythm_freq", SpeciesSpec::set_rhythm_freq),
-                ("rhythm_sensitivity", SpeciesSpec::set_rhythm_sensitivity),
-                ("k_omega", SpeciesSpec::set_k_omega),
-                ("base_sigma", SpeciesSpec::set_base_sigma),
-            ],
-        );
-        let ctx_for_group_gate_thresholds = ctx.clone();
-        engine.register_fn(
-            "gate_thresholds",
-            move |handle: GroupHandle,
-                  env_open: FLOAT,
-                  mag: FLOAT,
-                  alpha: FLOAT,
-                  beta: FLOAT|
-                  -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_gate_thresholds
-                    .lock()
-                    .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("gate_thresholds ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                match group.status {
-                    GroupStatus::Draft => group.spec.set_gate_thresholds(
-                        env_open as f32,
-                        mag as f32,
-                        alpha as f32,
-                        beta as f32,
-                    ),
-                    _ => ctx.warn_live_builder(handle.id, "gate_thresholds"),
-                }
-                Ok(handle)
-            },
+            &[("rhythm_freq", SpeciesSpec::set_rhythm_freq)],
         );
         let ctx_for_group_respawn_random = ctx.clone();
         engine.register_fn(

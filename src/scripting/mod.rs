@@ -18,9 +18,9 @@ use crate::life::lifecycle::LifecycleConfig;
 use crate::scenario::PhonationTiming;
 use crate::scenario::{
     Action, ArticulationCoreConfig, ControlUpdateMode, CoupledTimingSpec, DurationSpec,
-    EnvelopeConfig, FieldDurationSpec, GateThresholds, MetabolismRhythmReward, PhonationSpec,
+    EnvelopeConfig, FieldDurationSpec, MetabolismRhythmReward, PhonationSpec,
     RespawnPeakBiasConfig, RespawnPolicy, RhythmCouplingMode, RhythmRewardMetric, RhythmRole,
-    ScaffoldConfig, Scenario, SceneMarker, SpawnSpec, SpawnStrategy, TimedEvent,
+    ScaffoldConfig, Scenario, SceneMarker, SpawnStrategy, TimedEvent, VoiceSpec,
 };
 
 const DEFAULT_SEQ_DURATION_SEC: f32 = 1.0;
@@ -103,10 +103,6 @@ struct SpeciesSpec {
     rhythm_coupling: RhythmCouplingMode,
     rhythm_reward: Option<MetabolismRhythmReward>,
     rhythm_freq: Option<f32>,
-    rhythm_sensitivity: Option<f32>,
-    k_omega: Option<f32>,
-    base_sigma: Option<f32>,
-    gate_thresholds: Option<GateThresholds>,
     energy_cap: Option<f32>,
 }
 
@@ -145,10 +141,6 @@ impl SpeciesSpec {
             rhythm_coupling: RhythmCouplingMode::TemporalOnly,
             rhythm_reward: None,
             rhythm_freq: None,
-            rhythm_sensitivity: None,
-            k_omega: None,
-            base_sigma: None,
-            gate_thresholds: None,
             energy_cap: None,
         }
     }
@@ -251,13 +243,9 @@ impl SpeciesSpec {
             BrainKind::Entrain => ArticulationCoreConfig::Entrain {
                 lifecycle: self.lifecycle_config(),
                 rhythm_freq: self.rhythm_freq,
-                rhythm_sensitivity: self.rhythm_sensitivity,
                 rhythm_coupling: self.rhythm_coupling,
                 rhythm_reward: self.rhythm_reward,
                 breath_gain_init: None,
-                k_omega: self.k_omega,
-                base_sigma: self.base_sigma,
-                gate_thresholds: self.gate_thresholds,
                 energy_cap: self.energy_cap,
             },
             BrainKind::Seq => ArticulationCoreConfig::Seq {
@@ -271,10 +259,10 @@ impl SpeciesSpec {
         }
     }
 
-    fn spawn_spec(&self) -> SpawnSpec {
+    fn spawn_spec(&self) -> VoiceSpec {
         let mut control = self.control.clone();
         control.phonation.spec = self.phonation_spec.clone();
-        SpawnSpec {
+        VoiceSpec {
             control,
             articulation: self.articulation_config(),
         }
@@ -829,47 +817,12 @@ impl SpeciesSpec {
         self.respawn_background_death_rate_per_sec = value.max(0.0);
     }
 
-    fn set_rhythm_coupling(&mut self, mode: &str) {
-        let lowered = mode.trim().to_ascii_lowercase();
-        self.rhythm_coupling = match lowered.as_str() {
-            "temporal" | "temporal_only" | "temporalonly" => RhythmCouplingMode::TemporalOnly,
-            other => {
-                warn!(
-                    "rhythm_coupling() expects 'temporal'; use rhythm_coupling_vitality() for vitality modulation, got '{}'",
-                    other
-                );
-                self.rhythm_coupling
-            }
-        };
-    }
-
     fn set_rhythm_coupling_vitality(&mut self, lambda_v: f32, v_floor: f32) {
         self.rhythm_coupling = RhythmCouplingMode::TemporalTimesVitality { lambda_v, v_floor };
     }
 
     fn set_rhythm_freq(&mut self, value: f32) {
         self.rhythm_freq = Some(value.max(0.0));
-    }
-
-    fn set_rhythm_sensitivity(&mut self, value: f32) {
-        self.rhythm_sensitivity = Some(value.max(0.0));
-    }
-
-    fn set_k_omega(&mut self, value: f32) {
-        self.k_omega = Some(value.max(0.0));
-    }
-
-    fn set_base_sigma(&mut self, value: f32) {
-        self.base_sigma = Some(value.max(0.0));
-    }
-
-    fn set_gate_thresholds(&mut self, env_open: f32, mag: f32, alpha: f32, beta: f32) {
-        self.gate_thresholds = Some(GateThresholds {
-            env_open: env_open.clamp(0.0, 1.0),
-            mag: mag.max(0.0),
-            alpha: alpha.max(0.0),
-            beta: beta.max(0.0),
-        });
     }
 
     fn set_rhythm_reward(&mut self, rho_t: f32, metric: &str) {

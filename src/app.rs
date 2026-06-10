@@ -5,7 +5,7 @@ use std::sync::{
 };
 use std::time::Duration;
 
-use crossbeam_channel::{Receiver, Sender};
+use crossbeam_channel::Receiver;
 use tracing::debug;
 
 use crate::audio::output::AudioOutput;
@@ -19,7 +19,6 @@ pub use crate::runtime::{
 
 pub struct App {
     ui_frame_rx: Receiver<UiFrame>,
-    _ctrl_tx: Sender<()>, // placeholder
     last_frame: UiFrame,
     ui_queue: VecDeque<UiFrame>,
     visual_delay_frames: usize,
@@ -74,7 +73,6 @@ impl App {
 
         Self {
             ui_frame_rx: rt.ui_frame_rx,
-            _ctrl_tx: rt.ctrl_tx,
             last_frame: UiFrame::default(),
             ui_queue: VecDeque::new(),
             visual_delay_frames: rt.visual_delay_frames,

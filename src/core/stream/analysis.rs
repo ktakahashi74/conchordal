@@ -1,4 +1,3 @@
-use crate::core::landscape::RoughnessScalarMode;
 use crate::core::landscape::{Landscape, LandscapeParams, LandscapeUpdate};
 use crate::core::landscape_spectral::SpectralFrontEnd;
 use crate::core::nsgt_rt::RtNsgtKernelLog2;
@@ -105,22 +104,15 @@ impl AnalysisStream {
         let (r_strength, r_total) = self
             .params
             .roughness_kernel
-            .potential_r_from_log2_spectrum(density, space);
-        let r_max = r_strength.iter().cloned().fold(0.0f32, f32::max);
-        let r_p95 = percentile_95(&r_strength);
-        let r_scalar_raw = match self.params.roughness_scalar_mode {
-            RoughnessScalarMode::Total => r_total,
-            RoughnessScalarMode::Max => r_max,
-            RoughnessScalarMode::P95 => r_p95,
-        };
-        let r_norm = r_scalar_raw / (loudness_mass + eps);
+            .potential_r_from_log2_spectrum_density(density, space);
+        let r_norm = r_total / (loudness_mass + eps);
 
         // Roughness shape (level-invariant).
         let (p_density, mass) = normalize_density(density, &du, eps);
         let (r_shape_raw, r_shape_total) = if mass > eps {
             self.params
                 .roughness_kernel
-                .potential_r_from_log2_spectrum(&p_density, space)
+                .potential_r_from_log2_spectrum_density(&p_density, space)
         } else {
             (vec![0.0; r_strength.len()], 0.0)
         };
@@ -150,9 +142,7 @@ impl AnalysisStream {
             0.0
         };
         self.last_landscape.roughness_total = r_total;
-        self.last_landscape.roughness_max = r_max;
-        self.last_landscape.roughness_p95 = r_p95;
-        self.last_landscape.roughness_scalar_raw = r_scalar_raw;
+        self.last_landscape.roughness_scalar_raw = r_total;
         self.last_landscape.roughness_norm = r_norm;
         self.last_landscape.roughness01_scalar = r01_scalar;
         self.last_landscape.loudness_mass = loudness_mass;
@@ -199,24 +189,12 @@ impl AnalysisStream {
     }
 }
 
-fn percentile_95(vals: &[f32]) -> f32 {
-    if vals.is_empty() {
-        return 0.0;
-    }
-    let mut buf = vals.to_vec();
-    let idx = ((buf.len() - 1) as f32 * 0.95).round() as usize;
-    let (_, v, _) = buf.select_nth_unstable_by(idx, |a, b| {
-        a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)
-    });
-    *v
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::core::consonance_kernel::{ConsonanceKernel, ConsonanceRepresentationParams};
     use crate::core::harmonicity_kernel::{HarmonicityKernel, HarmonicityParams};
-    use crate::core::landscape::{LandscapeParams, RoughnessScalarMode};
+    use crate::core::landscape::LandscapeParams;
     use crate::core::log2space::Log2Space;
     use crate::core::psycho_state::build_roughness_reference_density;
     use crate::core::roughness_kernel::{KernelParams, RoughnessKernel};
@@ -230,8 +208,6 @@ mod tests {
             consonance_kernel: ConsonanceKernel::default(),
             consonance_representation: ConsonanceRepresentationParams::default(),
             consonance_density_roughness_gain: 1.0,
-            roughness_scalar_mode: RoughnessScalarMode::Total,
-            roughness_half: 0.1,
             loudness_exp: 1.0,
             ref_power: 1.0,
             tau_ms: 1.0,
@@ -259,13 +235,13 @@ mod tests {
         let (p1, _) = normalize_density(&density, &du, params.roughness_ref_eps);
         let (r1, _) = params
             .roughness_kernel
-            .potential_r_from_log2_spectrum(&p1, &space);
+            .potential_r_from_log2_spectrum_density(&p1, &space);
 
         let scaled: Vec<f32> = density.iter().map(|&v| v * 5.0).collect();
         let (p2, _) = normalize_density(&scaled, &du, params.roughness_ref_eps);
         let (r2, _) = params
             .roughness_kernel
-            .potential_r_from_log2_spectrum(&p2, &space);
+            .potential_r_from_log2_spectrum_density(&p2, &space);
 
         for (a, b) in r1.iter().zip(r2.iter()) {
             assert!((a - b).abs() < 1e-6, "shape changed: {a} vs {b}");
@@ -312,7 +288,7 @@ mod tests {
         let (p_density, _) = normalize_density(&density, &du, params.roughness_ref_eps);
         let (r_shape, _r_total) = params
             .roughness_kernel
-            .potential_r_from_log2_spectrum(&p_density, &space);
+            .potential_r_from_log2_spectrum_density(&p_density, &space);
 
         assert!(r_shape[mid].abs() < 1e-6, "self roughness {}", r_shape[mid]);
     }

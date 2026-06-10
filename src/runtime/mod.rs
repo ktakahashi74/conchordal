@@ -379,8 +379,6 @@ fn merge_latest_analysis_results(
     current_landscape.harmonicity_path_a = frame.harmonicity_path_a;
     current_landscape.harmonicity_path_b = frame.harmonicity_path_b;
     current_landscape.roughness_total = frame.roughness_total;
-    current_landscape.roughness_max = frame.roughness_max;
-    current_landscape.roughness_p95 = frame.roughness_p95;
     current_landscape.roughness_scalar_raw = frame.roughness_scalar_raw;
     current_landscape.roughness_norm = frame.roughness_norm;
     current_landscape.roughness01_scalar = frame.roughness01_scalar;
@@ -466,7 +464,6 @@ fn merge_latest_listener_analysis_results(
 
 pub(crate) struct RuntimeInit {
     pub(crate) ui_frame_rx: Receiver<UiFrame>,
-    pub(crate) ctrl_tx: Sender<()>,
     pub(crate) worker_handle: Option<std::thread::JoinHandle<()>>,
     pub(crate) analysis_handle: Option<std::thread::JoinHandle<()>>,
     pub(crate) listener_analysis_handle: Option<std::thread::JoinHandle<()>>,
@@ -552,8 +549,6 @@ fn build_analysis_runtime_core(
             theta: config.psychoacoustics.consonance.field.level.theta,
         },
         consonance_density_roughness_gain: config.psychoacoustics.consonance.density.roughness_gain,
-        roughness_scalar_mode: crate::core::landscape::RoughnessScalarMode::Total,
-        roughness_half: 0.1,
         loudness_exp: config.psychoacoustics.loudness_exp,
         tau_ms: config.analysis.tau_ms,
         ref_power: 1e-4,
@@ -822,7 +817,6 @@ pub(crate) fn init_runtime(
 
     // Channels
     let (ui_frame_tx, ui_frame_rx) = bounded::<UiFrame>(ui_channel_capacity);
-    let (ctrl_tx, _ctrl_rx) = bounded::<()>(1);
     let (analysis_update_tx, analysis_update_rx) = bounded::<LandscapeUpdate>(8);
     let dcc_coupler = DccCoupler::new(config.dcc);
     let listener_analysis_enabled =
@@ -964,7 +958,6 @@ pub(crate) fn init_runtime(
 
     RuntimeInit {
         ui_frame_rx,
-        ctrl_tx,
         worker_handle,
         analysis_handle,
         listener_analysis_handle,
@@ -1754,7 +1747,6 @@ fn compose_consonance_field_score_level_with_params(
 mod tests {
     use super::*;
     use crate::core::harmonicity_kernel::{HarmonicityKernel, HarmonicityParams};
-    use crate::core::landscape::RoughnessScalarMode;
     use crate::core::roughness_kernel::{KernelParams, RoughnessKernel};
     use crate::core::timebase::Timebase;
 
@@ -1802,8 +1794,6 @@ mod tests {
             consonance_kernel: ConsonanceKernel::default(),
             consonance_representation: ConsonanceRepresentationParams::default(),
             consonance_density_roughness_gain: 1.0,
-            roughness_scalar_mode: RoughnessScalarMode::Total,
-            roughness_half: 0.1,
             loudness_exp: 1.0,
             ref_power: 1.0,
             tau_ms: 1.0,

@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-716b7a91.js";
+            window.path_to_searchindex_js = "../searchindex-93be7dfe.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-33c4e52c.js"></script>
@@ -488,22 +488,15 @@ control for older assays.</p>
 <tr><th>Method</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>rhythm_coupling(mode)</code></td><td><code>"temporal"</code> / <code>"temporal_only"</code></td></tr>
 <tr><td><code>rhythm_coupling_vitality(lambda_v, v_floor)</code></td><td>Vitality-modulated coupling</td></tr>
 <tr><td><code>rhythm_reward(rho_t, metric)</code></td><td><code>"attack_phase_match"</code> or <code>"none"</code></td></tr>
 <tr><td><code>rhythm_freq(freq_hz)</code></td><td>Internal theta/rhythm frequency</td></tr>
-<tr><td><code>rhythm_sensitivity(value)</code></td><td>Rhythm detector sensitivity</td></tr>
-<tr><td><code>k_omega(value)</code></td><td>Kuramoto frequency coupling strength</td></tr>
-<tr><td><code>base_sigma(value)</code></td><td>Base phase noise</td></tr>
-<tr><td><code>gate_thresholds(env_open, mag)</code></td><td>Gate thresholds with default alpha/beta</td></tr>
-<tr><td><code>gate_thresholds(env_open, mag, alpha, beta)</code></td><td>Gate thresholds with explicit shape</td></tr>
 </tbody>
 </table>
 </div>
 <pre><code class="language-ts">let timed = derive(harmonic)
     .repeat().pulse(2.0)
     .rhythm_freq(2.0)
-    .rhythm_coupling("temporal")
     .rhythm_reward(0.25, "attack_phase_match");
 </code></pre>
 <h3 id="respawn"><a class="header" href="#respawn">Respawn</a></h3>
@@ -574,7 +567,7 @@ paths, not through per-species Rhai builder methods.</p>
 <tbody>
 <tr><td><code>.count(n)</code></td><td>Number of modes</td></tr>
 <tr><td><code>.range(min_mul, max_mul)</code></td><td>Frequency range (landscape modes only)</td></tr>
-<tr><td><code>.min_dist(d)</code></td><td>Min ERB distance (landscape modes only)</td></tr>
+<tr><td><code>.spacing(d)</code></td><td>Min ERB distance (landscape modes only)</td></tr>
 <tr><td><code>.gamma(g)</code></td><td>Gamma parameter (landscape_density only)</td></tr>
 <tr><td><code>.jitter(cents)</code></td><td>Randomization in cents</td></tr>
 <tr><td><code>.seed(s)</code></td><td>Random seed</td></tr>
@@ -610,7 +603,7 @@ let adaptive = landscape_density_modes().count(6).range(1.0, 8.0).gamma(2.0);
 </thead>
 <tbody>
 <tr><td><code>.range(min_mul, max_mul)</code></td><td><code>consonance</code></td><td>Multiplier range relative to root</td></tr>
-<tr><td><code>.min_dist(d)</code></td><td><code>consonance</code>, <code>consonance_density</code></td><td>Min ERB distance between voices</td></tr>
+<tr><td><code>.spacing(d)</code></td><td><code>consonance</code>, <code>consonance_density</code></td><td>Min ERB distance between voices</td></tr>
 <tr><td><code>.reject_targets(anchor_hz, targets_st, exclusion_st, max_tries)</code></td><td>Any</td><td>Reject positions near specified targets</td></tr>
 </tbody>
 </table>
@@ -618,10 +611,10 @@ let adaptive = landscape_density_modes().count(6).range(1.0, 8.0).gamma(2.0);
 <p><code>reject_targets</code> wraps any strategy: <code>targets_st</code> is an array of semitone offsets
 from <code>anchor_hz</code>, <code>exclusion_st</code> is the exclusion zone width in semitones, and
 <code>max_tries</code> is the retry limit.</p>
-<pre><code class="language-ts">let strat = consonance(220.0).range(1.0, 3.0).min_dist(0.9);
+<pre><code class="language-ts">let strat = consonance(220.0).range(1.0, 3.0).spacing(0.9);
 create(harmonic, 6).place(strat);
 
-let density = consonance_density(100.0, 800.0).min_dist(1.0);
+let density = consonance_density(100.0, 800.0).spacing(1.0);
 create(sine, 8).place(density);
 
 // Avoid octaves and fifths of 220 Hz
@@ -669,9 +662,8 @@ release(g);
 <code>pulse_lock</code>, <code>social</code>, <code>duration_range</code>, <code>duration_curve</code>, <code>shorten_on_drop</code>, <code>metabolism</code>,
 <code>initial_energy</code>, <code>recharge_rate</code>, <code>action_cost</code>, <code>viability_rate</code>,
 <code>consonance_viability</code>, <code>viability_scope</code>, <code>dissonance_cost</code>,
-<code>energy_cap</code>, <code>adsr</code>, <code>rhythm_coupling</code>, <code>rhythm_coupling_vitality</code>,
-<code>rhythm_reward</code>, <code>rhythm_freq</code>, <code>rhythm_sensitivity</code>, <code>k_omega</code>,
-<code>base_sigma</code>, <code>gate_thresholds</code>, <code>respawn_random</code>, <code>respawn_hereditary</code>,
+<code>energy_cap</code>, <code>adsr</code>, <code>rhythm_coupling_vitality</code>,
+<code>rhythm_reward</code>, <code>rhythm_freq</code>, <code>respawn_random</code>, <code>respawn_hereditary</code>,
 <code>respawn_consonance</code>, <code>respawn_capacity</code>, <code>respawn_settle</code>,
 <code>respawn_min_c_level</code>, <code>respawn_background_death_rate</code>, <code>modes</code>, <code>place</code></p>
 <pre><code class="language-ts">let g = create(harmonic, 4)

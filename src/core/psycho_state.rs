@@ -174,7 +174,6 @@ mod tests {
     use super::*;
     use crate::core::consonance_kernel::{ConsonanceKernel, ConsonanceRepresentationParams};
     use crate::core::harmonicity_kernel::{HarmonicityKernel, HarmonicityParams};
-    use crate::core::landscape::RoughnessScalarMode;
     use crate::core::roughness_kernel::{KernelParams, RoughnessKernel};
 
     fn build_params(space: &Log2Space) -> LandscapeParams {
@@ -186,8 +185,6 @@ mod tests {
             consonance_kernel: ConsonanceKernel::default(),
             consonance_representation: ConsonanceRepresentationParams::default(),
             consonance_density_roughness_gain: 1.0,
-            roughness_scalar_mode: RoughnessScalarMode::Total,
-            roughness_half: 0.1,
             loudness_exp: 1.0,
             ref_power: 1.0,
             tau_ms: 1.0,

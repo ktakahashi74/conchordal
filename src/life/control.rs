@@ -15,9 +15,6 @@ use crate::core::mode_pattern::ModePattern;
 use crate::scenario::EnvelopeConfig;
 
 #[derive(Debug, Clone, Default)]
-pub struct WorldControl {}
-
-#[derive(Debug, Clone, Default)]
 pub struct VoiceControl {
     pub body: BodyControl,
     pub pitch: PitchControl,

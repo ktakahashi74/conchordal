@@ -8,7 +8,7 @@ use crate::life::control::{MAX_FREQ_HZ, MIN_FREQ_HZ};
 use crate::life::generator_model::GeneratorModel;
 use crate::life::social_density::SocialDensityTrace;
 use crate::scenario::{
-    Action, ControlUpdateMode, RespawnPeakBiasConfig, RespawnPolicy, SpawnStrategy, VoiceConfig,
+    Action, ControlUpdateMode, RespawnPeakBiasConfig, RespawnPolicy, SpawnStrategy, VoiceSpec,
 };
 use rand::{
     Rng, RngExt, SeedableRng, distr::Distribution, distr::weighted::WeightedIndex, rngs::SmallRng,
@@ -108,7 +108,7 @@ pub struct Population {
 
 #[derive(Debug, Clone)]
 struct RuntimeGroupState {
-    template: VoiceConfig,
+    template: VoiceSpec,
     strategy: Option<SpawnStrategy>,
     respawn_policy: RespawnPolicy,
     respawn_settle_strategy: Option<SpawnStrategy>,
@@ -674,7 +674,7 @@ impl Population {
         }
     }
 
-    fn spawn_one(&mut self, params: SpawnParams, spec: &VoiceConfig, landscape: &LandscapeFrame) {
+    fn spawn_one(&mut self, params: SpawnParams, spec: &VoiceSpec, landscape: &LandscapeFrame) {
         let SpawnParams {
             id,
             group_id,
@@ -698,7 +698,7 @@ impl Population {
             generation,
             parent_id,
         };
-        let cfg = VoiceConfig {
+        let cfg = VoiceSpec {
             control: control.clone(),
             articulation: spec.articulation.clone(),
         };
@@ -714,7 +714,6 @@ impl Population {
             spawned.life_accumulator = Some(super::telemetry::LifeAccumulator::new(
                 self.current_frame,
                 observe.first_k,
-                landscape.evaluate_pitch_level(resolved_freq_hz),
             ));
             if let AnyArticulationCore::Entrain(ref mut core) = spawned.articulation.core {
                 core.enable_plv(observe.plv_window);
@@ -739,7 +738,7 @@ impl Population {
     fn ensure_group_state(
         &mut self,
         group_id: u64,
-        spec: VoiceConfig,
+        spec: VoiceSpec,
         strategy: Option<SpawnStrategy>,
         member_count: usize,
     ) {
@@ -1233,7 +1232,7 @@ impl Population {
         &mut self,
         group_id: u64,
         ids: Vec<u64>,
-        spec: VoiceConfig,
+        spec: VoiceSpec,
         strategy: Option<SpawnStrategy>,
         landscape: &LandscapeFrame,
     ) {
@@ -1806,8 +1805,8 @@ mod tests {
     use crate::life::phonation_engine::{OnsetEvent, OnsetKick, ToneCmd};
     use crate::life::sound::{BodyKind, BodySnapshot};
     use crate::scenario::{
-        Action, ArticulationCoreConfig, RespawnPeakBiasConfig, RespawnPolicy, SpawnSpec,
-        SpawnStrategy,
+        Action, ArticulationCoreConfig, RespawnPeakBiasConfig, RespawnPolicy, SpawnStrategy,
+        VoiceSpec,
     };
     use rand::{RngExt, SeedableRng};
     use std::collections::HashSet;
@@ -1845,19 +1844,19 @@ mod tests {
         }
     }
 
-    fn spawn_spec_with_freq(freq: f32) -> SpawnSpec {
+    fn spawn_spec_with_freq(freq: f32) -> VoiceSpec {
         let mut control = VoiceControl::default();
         control.pitch.freq = freq;
-        SpawnSpec {
+        VoiceSpec {
             control,
             articulation: ArticulationCoreConfig::default(),
         }
     }
 
-    fn decay_spawn_spec_with_freq(freq: f32, half_life_sec: f32) -> SpawnSpec {
+    fn decay_spawn_spec_with_freq(freq: f32, half_life_sec: f32) -> VoiceSpec {
         let mut control = VoiceControl::default();
         control.pitch.freq = freq;
-        SpawnSpec {
+        VoiceSpec {
             control,
             articulation: ArticulationCoreConfig::Entrain {
                 lifecycle: LifecycleConfig::Decay {
@@ -1866,22 +1865,18 @@ mod tests {
                     attack_sec: 0.001,
                 },
                 rhythm_freq: None,
-                rhythm_sensitivity: None,
                 rhythm_coupling: crate::scenario::RhythmCouplingMode::TemporalOnly,
                 rhythm_reward: None,
                 breath_gain_init: None,
-                k_omega: None,
-                base_sigma: None,
-                gate_thresholds: None,
                 energy_cap: None,
             },
         }
     }
 
-    fn sustain_spawn_spec_with_freq(freq: f32) -> SpawnSpec {
+    fn sustain_spawn_spec_with_freq(freq: f32) -> VoiceSpec {
         let mut control = VoiceControl::default();
         control.pitch.freq = freq;
-        SpawnSpec {
+        VoiceSpec {
             control,
             articulation: ArticulationCoreConfig::Entrain {
                 lifecycle: LifecycleConfig::Sustain {
@@ -1897,13 +1892,9 @@ mod tests {
                     envelope: crate::scenario::EnvelopeConfig::default(),
                 },
                 rhythm_freq: None,
-                rhythm_sensitivity: None,
                 rhythm_coupling: crate::scenario::RhythmCouplingMode::TemporalOnly,
                 rhythm_reward: None,
                 breath_gain_init: None,
-                k_omega: None,
-                base_sigma: None,
-                gate_thresholds: None,
                 energy_cap: None,
             },
         }

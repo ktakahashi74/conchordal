@@ -18,11 +18,6 @@ pub struct LandscapeParams {
     pub consonance_representation: ConsonanceRepresentationParams,
     pub consonance_density_roughness_gain: f32,
 
-    /// Scalar roughness summary used for normalization and diagnostics.
-    pub roughness_scalar_mode: RoughnessScalarMode,
-    /// Half-saturation point for roughness range compression (legacy helper).
-    pub roughness_half: f32,
-
     /// Exponent for subjective intensity (≈ specific loudness). Typical: 0.23
     pub loudness_exp: f32,
     /// Reference power for normalization. Tune to your signal scale.
@@ -69,13 +64,6 @@ impl PitchObjectiveMode {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-pub enum RoughnessScalarMode {
-    Total,
-    Max,
-    P95,
-}
-
 /// Pure data snapshot for UI and agent evaluation.
 /// Values here are perceptual (`perc_*`) unless stated otherwise.
 #[derive(Clone, Debug)]
@@ -115,8 +103,6 @@ pub struct Landscape {
     pub nsgt_power: Vec<f32>,
     /// perc_state_R (summary statistics).
     pub roughness_total: f32,
-    pub roughness_max: f32,
-    pub roughness_p95: f32,
     pub roughness_scalar_raw: f32,
     pub roughness_norm: f32,
     pub roughness01_scalar: f32,
@@ -160,8 +146,6 @@ impl Landscape {
             subjective_intensity: vec![0.0; n],
             nsgt_power: vec![0.0; n],
             roughness_total: 0.0,
-            roughness_max: 0.0,
-            roughness_p95: 0.0,
             roughness_scalar_raw: 0.0,
             roughness_norm: 0.0,
             roughness01_scalar: 0.0,
@@ -468,8 +452,6 @@ mod tests {
             consonance_kernel: ConsonanceKernel::default(),
             consonance_representation: ConsonanceRepresentationParams::default(),
             consonance_density_roughness_gain: 1.0,
-            roughness_scalar_mode: RoughnessScalarMode::Total,
-            roughness_half: 0.1,
             loudness_exp: 1.0,
             ref_power: 1.0,
             tau_ms: 1.0,

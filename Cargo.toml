@@ -84,9 +84,8 @@ eframe = { version = "0.34", default-features = false, features = ["default_font
 eframe = { version = "0.34", default-features = false, features = ["default_fonts", "glow"] }
 
 [features]
-default = ["bench-hooks", "simd-wide"]
+default = ["simd-wide"]
 simd-wide = ["dep:wide"]
-bench-hooks = []
 plotcheck = ["dep:plotters"]
 
 [dev-dependencies]

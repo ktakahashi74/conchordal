@@ -34,7 +34,7 @@ fn action_times(scenario: &Scenario) -> Vec<(f32, &Action)> {
     out
 }
 
-fn first_spawn_spec_for_script(src: &str) -> SpawnSpec {
+fn first_spawn_spec_for_script(src: &str) -> VoiceSpec {
     let (scenario, _warnings) = run_script(src);
     scenario
         .events

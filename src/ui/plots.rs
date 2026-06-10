@@ -1,8 +1,7 @@
 use crate::ui::viewdata::VoiceStateInfo;
 use egui::{Color32, Id, Stroke, Vec2, Vec2b};
 use egui_plot::{
-    Bar, BarChart, GridInput, GridMark, Line, LineStyle, Plot, PlotPoints, Points, Polygon,
-    log_grid_spacer,
+    Bar, BarChart, Line, LineStyle, Plot, PlotPoints, Points, Polygon, log_grid_spacer,
 };
 use std::collections::VecDeque;
 
@@ -24,94 +23,6 @@ fn log2_bar_center_width(f_left_hz: f32, f_hz: f32, f_right_hz: f32) -> (f64, f6
     let right = (f_right.log2() + center) * 0.5;
     let width = (right - left).abs().max(0.001);
     (center as f64, width as f64)
-}
-
-/// Histogram on a log2 frequency axis (auto bin width).
-#[allow(dead_code)]
-#[allow(clippy::too_many_arguments)]
-pub fn log2_hist_hz(
-    ui: &mut egui::Ui,
-    title: &str,
-    xs_hz: &[f32],
-    ys: &[f32],
-    y_label: &str,
-    y_min: f64,
-    y_max: f64,
-    height: f32,
-) {
-    assert_eq!(xs_hz.len(), ys.len());
-    if xs_hz.is_empty() {
-        return;
-    }
-
-    // Use a sparser set to keep labels from colliding.
-    const HZ_TICKS: [f64; 5] = [20.0, 100.0, 1_000.0, 10_000.0, 20_000.0];
-    let tick_marks_log2: Vec<f64> = HZ_TICKS.iter().map(|hz| hz.log2()).collect();
-
-    // Choose a bar width per bin based on neighbor spacing in log2 frequency.
-    let mut bars: Vec<Bar> = Vec::with_capacity(xs_hz.len());
-    for i in 0..xs_hz.len() {
-        let f = xs_hz[i];
-        let f_left = if i > 0 { xs_hz[i - 1] } else { f };
-        let f_right = if i + 1 < xs_hz.len() { xs_hz[i + 1] } else { f };
-        let (center, width) = log2_bar_center_width(f_left, f, f_right);
-
-        bars.push(
-            Bar::new(center, ys[i] as f64)
-                .width(width)
-                .fill(Color32::from_rgb(240, 120, 120)) // match Roughness accent
-                .stroke(egui::Stroke::NONE),
-        );
-    }
-
-    let chart = BarChart::new(y_label, bars);
-
-    let y_max_fixed = if y_max <= y_min { y_min + 1.0 } else { y_max };
-
-    let tick_marks_log2_for_grid = tick_marks_log2.clone();
-    let (x_min, x_max) = log2_plot_x_bounds();
-    Plot::new(title)
-        .height(height)
-        .allow_scroll(false)
-        .allow_drag(false)
-        .allow_zoom(false)
-        .allow_double_click_reset(false)
-        .include_y(y_min)
-        .include_y(y_max_fixed)
-        .include_x(x_min)
-        .include_x(x_max)
-        .default_x_bounds(x_min, x_max)
-        .default_y_bounds(y_min, y_max_fixed)
-        .x_grid_spacer(move |_input: GridInput| {
-            tick_marks_log2_for_grid
-                .iter()
-                .enumerate()
-                .map(|(i, &v)| {
-                    let step_size = if i + 1 < tick_marks_log2_for_grid.len() {
-                        tick_marks_log2_for_grid[i + 1] - v
-                    } else {
-                        tick_marks_log2_for_grid[i] - tick_marks_log2_for_grid[i - 1]
-                    };
-                    GridMark {
-                        value: v,
-                        step_size,
-                    }
-                })
-                .collect()
-        })
-        .x_axis_formatter(|mark, _range| {
-            let hz = 2f64.powf(mark.value);
-            if hz < 1000.0 {
-                format!("{:.0} Hz", hz)
-            } else {
-                format!("{:.1} kHz", hz / 1000.0)
-            }
-        })
-        .y_axis_formatter(|mark, _| format!("{:.2}", mark.value))
-        .show(ui, |plot_ui| {
-            plot_ui.set_plot_bounds_x(x_min..=x_max);
-            plot_ui.bar_chart(chart);
-        });
 }
 
 /// Generic log2-frequency plot.

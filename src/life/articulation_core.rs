@@ -783,16 +783,11 @@ impl AnyArticulationCore {
             ArticulationCoreConfig::Entrain {
                 lifecycle,
                 rhythm_freq,
-                rhythm_sensitivity,
                 rhythm_coupling,
                 rhythm_reward,
-                k_omega: cfg_k_omega,
-                base_sigma: cfg_base_sigma,
-                gate_thresholds: cfg_gate_thresholds,
                 energy_cap: cfg_energy_cap,
                 ..
             } => {
-                let gate = cfg_gate_thresholds.unwrap_or_default();
                 let derived = envelope_from_lifecycle(lifecycle);
                 let energy = derived.initial_energy;
                 let basal_cost = derived.policy.basal_cost_per_sec;
@@ -828,11 +823,7 @@ impl AnyArticulationCore {
                     basal_cost,
                     action_cost,
                     recharge_rate,
-                    sensitivity: Sensitivity {
-                        // rhythm_sensitivity targets theta coupling strength.
-                        theta: rhythm_sensitivity.unwrap_or(sensitivity.theta),
-                        ..sensitivity
-                    },
+                    sensitivity,
                     rhythm_coupling,
                     rhythm_reward,
                     rhythm_phase: rng.random_range(0.0..std::f32::consts::TAU),
@@ -846,15 +837,15 @@ impl AnyArticulationCore {
                     sustain_level,
                     retrigger,
                     noise_1f: PinkNoise::new(noise_seed, 0.001),
-                    base_sigma: cfg_base_sigma.unwrap_or(0.3), // rad/s noise floor
-                    beta_gain: 1.0,                            // beta -> noise gain
-                    k_omega: cfg_k_omega.unwrap_or(3.0),       // omega pull toward theta
+                    base_sigma: 0.3, // rad/s noise floor
+                    beta_gain: 1.0,  // beta -> noise gain
+                    k_omega: 3.0,    // omega pull toward theta
                     bootstrap_timer: 1.5,
-                    env_open_threshold: gate.env_open,
+                    env_open_threshold: 0.55,
                     env_level_min: 0.02,
-                    mag_threshold: gate.mag,
-                    alpha_threshold: gate.alpha,
-                    beta_threshold: gate.beta,
+                    mag_threshold: 0.04,
+                    alpha_threshold: 0.2,
+                    beta_threshold: 0.9,
                     autonomous_attack: true,
                     continuous_recharge_per_sec,
                     continuous_recharge_score_low,

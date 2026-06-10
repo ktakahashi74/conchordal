@@ -5,7 +5,7 @@ use conchordal::life::control::VoiceControl;
 use conchordal::life::generator_model::GeneratorModel;
 use conchordal::life::population::Population;
 use conchordal::life::voice::VoiceMetadata;
-use conchordal::scenario::{ArticulationCoreConfig, EnvelopeConfig, VoiceConfig};
+use conchordal::scenario::{ArticulationCoreConfig, EnvelopeConfig, VoiceSpec};
 
 fn test_timebase() -> Timebase {
     Timebase {
@@ -41,7 +41,7 @@ fn spawn_and_get_adsr(articulation: ArticulationCoreConfig, envelope: EnvelopeCo
     control.body.amp = 0.4;
     control.body.envelope = envelope.clone();
 
-    let cfg = VoiceConfig {
+    let cfg = VoiceSpec {
         control,
         articulation,
     };

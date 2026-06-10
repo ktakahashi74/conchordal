@@ -7,7 +7,7 @@ use conchordal::life::population::Population;
 use conchordal::life::schedule_renderer::ScheduleRenderer;
 use conchordal::life::voice::VoiceMetadata;
 use conchordal::scenario::{
-    ArticulationCoreConfig, DurationSpec, PhonationSpec, PhonationTiming, VoiceConfig,
+    ArticulationCoreConfig, DurationSpec, PhonationSpec, PhonationTiming, VoiceSpec,
 };
 
 #[test]
@@ -30,7 +30,7 @@ fn agents_publish_notes_and_render_audio() {
         },
         duration: DurationSpec::Gates(5),
     };
-    let agent_cfg = VoiceConfig {
+    let agent_cfg = VoiceSpec {
         control,
         articulation: ArticulationCoreConfig::default(),
     };
@@ -90,7 +90,7 @@ fn publish_notes_runs_when_gate_in_hop_window() {
         },
         duration: DurationSpec::Gates(5),
     };
-    let agent_cfg = VoiceConfig {
+    let agent_cfg = VoiceSpec {
         control,
         articulation: ArticulationCoreConfig::default(),
     };

@@ -143,16 +143,22 @@ let social = derive(harmonic)
 
 Phonation is configured in three tiers of increasing detail.
 
-**Tier 1 -- Presets:**
+**Tier 1 -- Continuum presets + modifiers:**
+
+All metric voices share one emergent meter; a preset only picks where on the
+coupling continuum the voice sits (no rate argument -- tempo is director-level
+terrain, see below).
 
 | Method | Description |
 |--------|-------------|
 | `sustain()` | Sustain mode (default) |
 | `repeat()` | Repeated/pulsed mode |
-| `metric_beat(rate_hz)` | Composer-facing metric beat intent |
-| `entrained_beat(rate_hz)` | Agent-phase entrainment intent |
-| `flow_timing(mean_rate_hz)` | Flow timing with default depth |
-| `flow_timing(mean_rate_hz, depth)` | Flow timing with explicit depth 0--1 |
+| `metric()` | High coupling: deep attractor, stable pulse |
+| `entrained()` | Medium coupling: synchronization emerges over time |
+| `flow()` | Near-zero coupling: free renewal, non-metric texture |
+| `entrainment(strength)` | Override coupling 0--1 (free .. locked) |
+| `rhythm_role(name)` | `"beat"`, `"subdivision"`, `"accent"`, or `"texture"` |
+| `microtiming(amount)` | Signed beat-phase offset -0.5--0.5 (syncopation) |
 
 **Tier 2 -- Explicit when/duration:**
 
@@ -168,29 +174,35 @@ Phonation is configured in three tiers of increasing detail.
 
 | Method | Description |
 |--------|-------------|
-| `beat_strength(depth)` | Metric/pulse phase strength 0--1 |
 | `pulse_lock(depth)` | Low-level pulse phase weighting 0--1 |
-| `social(coupling)` | Social coupling for `entrained_beat` or `pulse`, 0--1 |
+| `social(coupling)` | Social coupling for `entrained()` or `pulse`, 0--1 |
 | `duration_range(min, max)` | Adaptive duration range in rhythm cycles |
 | `duration_curve(k, x0)` | Adaptive duration curve parameters |
 | `shorten_on_drop(gain)` | Shorten adaptive duration when field support drops |
 
+**Director-level rhythm terrain** (scene-global, not per voice): `metric_stability(value)`
+sets attractor depth 0--1 (how readily a pulse forms), and `temporal_basin(min_hz, max_hz)`
+sets the tempo region the emergent beat gravitates toward. Both are soft priors --
+they shape the terrain and never schedule a beat or force a measure.
+
 Calls on the same axis are last-write-wins: the last timing mode and the last
-duration mode determine the final behavior. Tuning calls are remembered and
-applied when their matching mode is selected, so
-`beat_strength(0.7).metric_beat(2.0)` and
-`metric_beat(2.0).beat_strength(0.7)` are equivalent. The same applies to
+duration mode determine the final behavior. Modifiers are remembered and applied
+when their matching preset is selected, so `entrainment(0.8).metric()` and
+`metric().entrainment(0.8)` are equivalent. The same applies to
 `duration_range(...).adaptive_duration()` and the reverse order.
 
 Every numeric argument here accepts an integer or a float literal
-interchangeably, so `metric_beat(2)` and `metric_beat(2.0)` are the same. All of
+interchangeably, so `entrainment(1)` and `entrainment(1.0)` are the same. All of
 these phonation verbs apply to both a `Material` (species) and a draft
 `Participant` (group) handle.
 
 ```ts
-let beat = derive(harmonic).metric_beat(2.0).beat_strength(0.7).cycles(2);
-let entrained = derive(harmonic).entrained_beat(2.0).cycles(2);
-let flow = derive(harmonic).flow_timing(3.0, 0.7).cycles(1);
+metric_stability(0.85);
+temporal_basin(1.8, 2.2);
+let beat = derive(harmonic).metric().rhythm_role("accent").cycles(2);
+let entrained = derive(harmonic).entrained().cycles(2);
+let flow = derive(harmonic).flow().cycles(1);
+let offbeat = derive(harmonic).metric().microtiming(0.5).cycles(2);
 let pulsed = derive(harmonic).repeat().pulse(3.0).pulse_lock(0.6).social(0.3);
 let fielded = derive(sine).adaptive_duration().duration_range(0.2, 0.8);
 ```
@@ -443,9 +455,9 @@ Group methods work in two contexts:
 **Draft-only** (ignored with a warning if called on a live group):
 
 `brain`, `consonance_movement`, `pitch_mode`, `pitch_core`, `sustain`,
-`repeat`, `once`, `metric_beat`, `entrained_beat`, `flow_timing`, `pulse`,
-`while_alive`, `cycles`, `adaptive_duration`, `beat_strength`, `pulse_lock`,
-`social`, `duration_range`, `duration_curve`, `shorten_on_drop`, `metabolism`,
+`repeat`, `once`, `metric`, `entrained`, `flow`, `entrainment`, `rhythm_role`,
+`microtiming`, `pulse`, `while_alive`, `cycles`, `adaptive_duration`,
+`pulse_lock`, `social`, `duration_range`, `duration_curve`, `shorten_on_drop`, `metabolism`,
 `initial_energy`, `recharge_rate`, `action_cost`, `viability_rate`,
 `consonance_viability`, `viability_scope`, `dissonance_cost`,
 `energy_cap`, `adsr`, `rhythm_coupling`, `rhythm_coupling_vitality`,

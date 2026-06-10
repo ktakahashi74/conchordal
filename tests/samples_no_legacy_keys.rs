@@ -84,6 +84,13 @@ fn samples_have_no_legacy_keys() {
         "linear(".to_string(),
         ".field_only(".to_string(),
         ".presentation_only(".to_string(),
+        // Pre-continuum rhythm verbs (replaced by metric()/entrained()/flow()
+        // + entrainment()/rhythm_role()/microtiming() and director
+        // metric_stability()/temporal_basin()).
+        "metric_beat(".to_string(),
+        "entrained_beat(".to_string(),
+        "flow_timing(".to_string(),
+        "beat_strength(".to_string(),
     ];
     let phonation_key = ["pho", "nation"].concat();
     let banned_identifiers = ["field_bus", "generator_field_bus"];

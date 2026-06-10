@@ -23,6 +23,7 @@ cargo run --release -- samples/04_ecosystems/entrained_beat.rhai
 cargo run --release -- samples/04_ecosystems/flow_timing_field.rhai
 cargo run --release -- samples/04_ecosystems/rhythm_harmony_ecology.rhai
 cargo run --release -- samples/04_ecosystems/conchordal_ecology.rhai
+cargo run --release -- samples/04_ecosystems/conchordal_flagship.rhai
 ```
 
 `metric_beat_foundation.rhai` should make a Western-music-like pulse surface
@@ -39,14 +40,23 @@ the metric groove stable while entrained agents, non-metric flow, consonance
 movement, and harmonic field changes coexist on one field. Do not judge it as
 the musical showcase.
 
-`conchordal_ecology.rhai` is candidate material for the musical showcase. Listen
-for whether metric beat, entrained beat, flow timing, consonance movement,
-viability, and respawn form one ecology, or whether a dedicated etude is needed
-instead.
+`conchordal_ecology.rhai` is the feature-integration candidate. Listen for
+whether metric beat, entrained beat, flow timing, consonance movement,
+viability, and respawn coexist on one field; judge it as coverage, not as the
+musical showcase.
 
-A separate musical etude or showcase is still needed. It should use only the
-features that serve the musical form, rather than trying to demonstrate every
-v0.4.0 API concept at once.
+`conchordal_flagship.rhai` is the dedicated musical etude, "Emergence and
+Resolution". It is a single directed arc: a `harmonic_mirror` arch
+(consonant -> dissonant -> consonant) and register transposition shape the
+tension/release drama, while harmony emerges from the agents. The pulse is a
+deep emergent attractor: a metric heartbeat (an `accent` role + high
+`metric_stability`) drives the shared meter hard, and a living colony locks to
+that *same* emergent beat so it reads as one with the heartbeat -- its
+life is harmonic (which pitches snap in and survive each onset, plus viability
+and consonance-biased respawn), not rhythmic drift. Flow is the non-metric
+shimmer that appears only at the tension peak. It uses only the features that
+serve the form, rather than demonstrating every v0.4.0 API concept at once. It
+is the criterion-3 flagship candidate and still needs a listening audition.
 
 The rest of `samples/04_ecosystems/` contains research comparisons and older
 mechanism sketches. `consonance_ecology.rhai` and `pulse_foundation.rhai`
@@ -82,19 +92,44 @@ a scene.
 
 ## Rhythm Redesign
 
-The v0.4.0 rhythm surface is organized around three families:
+Rhythm in v0.4.0 is **one coupling continuum on a shared emergent meter**, not a
+set of independent clocks. The population drives a single production meter (a
+coupled-oscillator beat); each voice is a phase oscillator that entrains its
+onset phase to that emergent beat with a coupling strength. There is no
+externally imposed grid -- coherence (or its absence) emerges from how tightly
+each voice locks to the meter the population itself drives. The three "families"
+are just three regions of the continuum:
 
-- metric beat: a Western-music-like pulse surface
-- entrained beat: synchronization emerging from agent coupling and survival
-- flow timing: rain/river-like non-metric onset texture
+- metric: high coupling -- a deep attractor, reads as a stable pulse.
+- entrained: medium coupling -- synchronization emerges over time, still drifts.
+- flow: near-zero coupling -- a free renewal process, non-metric texture.
 
-The entry points are `metric_beat(rate_hz)`, `entrained_beat(rate_hz)`, and
-`flow_timing(mean_rate_hz[, depth])`. They are Tier-1 phonation presets and
-work on both a species (`Material`) and a draft group (`Participant`). Rates
-accept integer or float literals: `metric_beat(2)` and `metric_beat(2.0)` are
-the same.
+The Tier-1 presets take **no rate argument**: `metric()`, `entrained()`, and
+`flow()`. The tempo region is a property of the terrain, set once at the
+director level (see below), not per voice. They work on both a species
+(`Material`) and a draft group (`Participant`).
 
-Below them sit the explicit lower-level controls. Use `repeat()`,
+Per-voice modifiers refine where on the continuum a voice sits:
+
+- `entrainment(strength)` -- coupling in `[0,1]`, free (`0`) .. locked (`1`).
+- `rhythm_role("beat"|"subdivision"|"accent"|"texture")` -- the voice's metrical
+  job. `accent` emits a stronger onset that drives the shared meter harder, so a
+  recurring downbeat can seed an emergent measure.
+- `microtiming(amount)` -- a signed beat-phase offset in `[-0.5, 0.5]`. `0.5`
+  places a voice a half-beat off, reading as syncopation.
+
+The director shapes the rhythmic terrain (symmetric to the consonance-field
+ops). These are soft priors, never a schedule -- emergence still does the work:
+
+- `metric_stability(value)` -- attractor depth in `[0,1]`: how readily a pulse
+  forms. It only deepens the basin for a *real* periodicity; it never fabricates
+  a beat from non-metric input.
+- `temporal_basin(min_hz, max_hz)` -- the tempo region the emergent beat
+  gravitates toward (the time-axis analogue of `density(min,max)`). It shapes
+  the terrain; it does not place a beat, and it never forces a measure. Rates
+  accept integer or float literals.
+
+Below these sit the explicit lower-level controls. Use `repeat()`,
 `pulse(freq_hz)`, and `cycles(n)` for explicit attacks. Use
 `rhythm_coupling_vitality(lambda_v, v_floor)` and
 `rhythm_reward(rho_t, "attack_phase_match")` when timing should affect survival

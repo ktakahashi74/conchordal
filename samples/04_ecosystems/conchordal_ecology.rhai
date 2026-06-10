@@ -4,7 +4,6 @@
 seed(20260511);
 
 let root_hz = 110.0;
-let metric_hz = 2.0;
 
 let field_anchor = harmonic()
     .brain("drone")
@@ -19,8 +18,8 @@ let field_anchor = harmonic()
 
 let metric_body = harmonic()
     .amp(0.040)
-    .metric_beat(metric_hz)
-    .beat_strength(0.70)
+    .metric()
+    .rhythm_role("accent")
     .cycles(2)
     .pitch_mode("lock")
     .modes(odd_modes().count(5))
@@ -29,7 +28,7 @@ let metric_body = harmonic()
 
 let entrained_colony = harmonic()
     .amp(0.038)
-    .entrained_beat(metric_hz)
+    .entrained()
     .cycles(3)
     .seek_consonance()
     .pitch_apply_mode("gate_snap")
@@ -51,7 +50,7 @@ let entrained_colony = harmonic()
 
 let flow_particles = modal()
     .amp(0.023)
-    .flow_timing(2.25, 0.94)
+    .flow()
     .cycles(3)
     .seek_consonance()
     .pitch_apply_mode("gate_snap")
@@ -63,6 +62,10 @@ let flow_particles = modal()
 section("Conchordal Ecology", || {
     set_control_update_mode("snapshot_phased");
     harmonic_mirror(0.10);
+    // Metric beat, entrained colony, and flow all share one ~2 Hz emergent
+    // attractor; coverage demo, not the musical showcase.
+    metric_stability(0.7);
+    temporal_basin(1.8, 2.2);
 
     let root = place(field_anchor, at(root_hz).count(1));
     wait(1.5);

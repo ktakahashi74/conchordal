@@ -18,7 +18,7 @@ let field_anchor = harmonic()
 
 let droplet = modal()
     .amp(0.027)
-    .flow_timing(2.6, 0.95)
+    .flow()
     .cycles(3)
     .seek_consonance()
     .pitch_apply_mode("gate_snap")
@@ -29,7 +29,8 @@ let droplet = modal()
 
 let stream = harmonic()
     .amp(0.026)
-    .flow_timing(1.25, 0.88)
+    .flow()
+    // A longer hold makes this layer read as a slow stream under the droplets.
     .cycles(4)
     .seek_consonance()
     .pitch_apply_mode("gate_snap")
@@ -41,6 +42,10 @@ let stream = harmonic()
 section("Flow Timing Field", || {
     set_control_update_mode("snapshot_phased");
     harmonic_mirror(0.25);
+    // Flow voices barely couple, so no beat forms: the terrain priors are gentle
+    // and the texture stays non-metric over consonance-biased placement.
+    metric_stability(0.1);
+    temporal_basin(1.0, 2.6);
 
     let root = place(field_anchor, at(root_hz).count(1));
     wait(2.0);

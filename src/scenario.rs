@@ -2,6 +2,7 @@ use std::fmt;
 
 use crate::core::float::sanitize_nonnegative_finite;
 use crate::core::landscape::LandscapeUpdate;
+use crate::core::meter::MeterShaping;
 use crate::life::control::{ControlUpdate, VoiceControl};
 use crate::life::lifecycle::LifecycleConfig;
 use crate::life::voice::{Voice, VoiceMetadata};
@@ -11,6 +12,9 @@ pub struct Scenario {
     pub seed: u64,
     pub control_update_mode: ControlUpdateMode,
     pub scaffold: ScaffoldConfig,
+    /// Scene-global shaping of the emergent production meter (composer-set soft
+    /// priors: attractor depth + frequency basin). Default = neutral.
+    pub meter_shaping: MeterShaping,
     pub scene_markers: Vec<SceneMarker>,
     pub events: Vec<TimedEvent>,
     pub duration_sec: f32,
@@ -139,8 +143,18 @@ impl Default for TimbreGenotype {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum OnsetConfig {
     None,
-    Accumulator { rate: f32, refractory: u32 },
-    Flow { mean_rate: f32, depth: f32 },
+    /// Fire on every candidate the clock emits (gated only by liveness). The
+    /// coupling clock already emits candidates exactly at onset times, so the
+    /// onset rule does not need to re-decide timing. Each onset carries
+    /// `strength`: 1.0 is a plain beat, > 1.0 marks an accent that drives the
+    /// shared meter harder so a recurring downbeat can seed an emergent measure.
+    Always {
+        strength: f32,
+    },
+    Accumulator {
+        rate: f32,
+        refractory: u32,
+    },
 }
 
 impl Default for OnsetConfig {
@@ -158,10 +172,21 @@ pub(crate) enum PhonationClockConfig {
     ThetaGate,
     /// Isochronous wall-clock gate grid at a fixed rate, independent of the
     /// adaptive theta. Used by metric beat and as the dense base for flow.
-    /// `shared_grid` anchors at absolute tick 0 so all voices at this rate share
-    /// the same beat phase (metric); when false each voice anchors to its own
-    /// start, keeping voices independent (flow droplets).
-    FixedRate { rate_hz: f32, shared_grid: bool },
+    /// Per-voice phase oscillator that entrains its onset phase to the shared
+    /// production meter beat with a coupling strength `coupling`. This is the
+    /// single mechanism behind the rhythm family continuum: `coupling -> 0` is a
+    /// free renewal process (flow), medium coupling entrains loosely over time
+    /// (entrained beat), and high coupling locks into the shared beat as a deep
+    /// attractor (metric beat). `base_rate_hz` is the intrinsic onset rate the
+    /// voice free-runs at before/while it entrains; `flow_depth` shapes the
+    /// renewal clustering (0 = regular); `microtiming` is a signed beat-phase
+    /// offset applied to the lock target.
+    Coupling {
+        coupling: f32,
+        base_rate_hz: f32,
+        flow_depth: f32,
+        microtiming: f32,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -222,58 +247,82 @@ pub enum PhonationTiming {
         sync: f32,
         social: f32,
     },
-    MetricBeat(MetricBeatSpec),
-    EntrainedBeat(EntrainedBeatSpec),
-    FlowTiming(FlowTimingSpec),
+    /// The rhythm-family continuum. One phase-coupling clock whose `coupling`
+    /// selects the family on the shared emergent meter: low = flow (free
+    /// renewal), medium = entrained (lock emerges over time), high = metric
+    /// (deep attractor). See `PhonationClockConfig::Coupling`.
+    Coupled(CoupledTimingSpec),
+}
+
+/// What metrical job a coupled voice does. The role tunes its onset emphasis and
+/// (for accent) lets a recurring strong onset seed an emergent measure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RhythmRole {
+    /// Carries the tactus.
+    #[default]
+    Beat,
+    /// Fills between beats (lighter onsets).
+    Subdivision,
+    /// Emphasized onset: drives the shared meter harder so a recurring downbeat
+    /// can induce a measure.
+    Accent,
+    /// Non-metric texture (lightest onsets); pairs with low coupling.
+    Texture,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct MetricBeatSpec {
-    pub rate_hz: f32,
-    pub accent: f32,
-}
-
-impl MetricBeatSpec {
-    pub fn sanitized(self) -> Self {
-        Self {
-            rate_hz: sanitize_positive_rate_hz(self.rate_hz),
-            accent: self.accent.clamp(0.0, 1.0),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct EntrainedBeatSpec {
-    pub rate_hz: f32,
+pub struct CoupledTimingSpec {
+    /// Entrainment strength in [0, 1]: free renewal (0) .. locked beat (1).
+    pub coupling: f32,
+    /// Intrinsic onset rate the voice free-runs at before/while it entrains, and
+    /// the renewal mean for flow. The shared meter (shaped by `temporal_basin`)
+    /// is the real tempo authority once the voice locks.
+    pub base_rate_hz: f32,
+    /// Renewal clustering for the low-coupling (flow) limit; 0 = regular.
+    pub flow_depth: f32,
+    /// Signed beat-phase offset (timing elasticity) in [-0.5, 0.5].
+    pub microtiming: f32,
+    pub role: RhythmRole,
+    /// Survival coupling. Non-zero only when the voice's timing should feed its
+    /// life cycle (the entrained preset); zero leaves the life cycle untouched.
     pub social: f32,
     pub vitality_lambda: f32,
     pub vitality_floor: f32,
     pub reward: f32,
 }
 
-impl EntrainedBeatSpec {
-    pub fn sanitized(self) -> Self {
+impl Default for CoupledTimingSpec {
+    fn default() -> Self {
         Self {
-            rate_hz: sanitize_positive_rate_hz(self.rate_hz),
-            social: self.social.clamp(0.0, 1.0),
-            vitality_lambda: sanitize_nonnegative_finite(self.vitality_lambda, 0.0),
-            vitality_floor: sanitize_v_floor(self.vitality_floor),
-            reward: sanitize_nonnegative_finite(self.reward, 0.0),
+            coupling: 0.5,
+            base_rate_hz: 2.0,
+            flow_depth: 0.0,
+            microtiming: 0.0,
+            role: RhythmRole::Beat,
+            social: 0.0,
+            vitality_lambda: 0.0,
+            vitality_floor: 0.0,
+            reward: 0.0,
         }
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct FlowTimingSpec {
-    pub mean_rate_hz: f32,
-    pub depth: f32,
-}
-
-impl FlowTimingSpec {
+impl CoupledTimingSpec {
     pub fn sanitized(self) -> Self {
         Self {
-            mean_rate_hz: sanitize_positive_rate_hz(self.mean_rate_hz),
-            depth: self.depth.clamp(0.0, 1.0),
+            coupling: self.coupling.clamp(0.0, 1.0),
+            base_rate_hz: sanitize_positive_rate_hz(self.base_rate_hz),
+            flow_depth: self.flow_depth.clamp(0.0, 1.0),
+            microtiming: if self.microtiming.is_finite() {
+                self.microtiming.clamp(-0.5, 0.5)
+            } else {
+                0.0
+            },
+            role: self.role,
+            social: self.social.clamp(0.0, 1.0),
+            vitality_lambda: sanitize_nonnegative_finite(self.vitality_lambda, 0.0),
+            vitality_floor: sanitize_v_floor(self.vitality_floor),
+            reward: sanitize_nonnegative_finite(self.reward, 0.0),
         }
     }
 }
@@ -295,17 +344,15 @@ pub struct PhonationSpec {
 impl PhonationSpec {
     pub fn social_coupling(&self) -> f32 {
         match self.timing {
-            PhonationTiming::EntrainedBeat(spec) => spec.sanitized().social,
+            PhonationTiming::Coupled(spec) => spec.sanitized().social,
             PhonationTiming::Pulse { social, .. } => social.clamp(0.0, 1.0),
-            _ => 0.0,
+            PhonationTiming::Once => 0.0,
         }
     }
 
     pub fn prediction_sync(&self) -> f32 {
         match self.timing {
-            PhonationTiming::MetricBeat(spec) => spec.sanitized().accent,
-            PhonationTiming::EntrainedBeat(_) => 0.25,
-            PhonationTiming::FlowTiming(_) => 0.0,
+            PhonationTiming::Coupled(spec) => (spec.sanitized().coupling * 0.25).clamp(0.0, 1.0),
             PhonationTiming::Pulse { sync, .. } => sync.clamp(0.0, 1.0),
             PhonationTiming::Once => 0.0,
         }
@@ -314,10 +361,9 @@ impl PhonationSpec {
     pub(crate) fn timing_update_kind(&self) -> PhonationTimingUpdateKind {
         match self.timing {
             PhonationTiming::Once => PhonationTimingUpdateKind::Once,
-            PhonationTiming::Pulse { .. }
-            | PhonationTiming::MetricBeat(_)
-            | PhonationTiming::EntrainedBeat(_)
-            | PhonationTiming::FlowTiming(_) => PhonationTimingUpdateKind::Repeating,
+            PhonationTiming::Pulse { .. } | PhonationTiming::Coupled(_) => {
+                PhonationTimingUpdateKind::Repeating
+            }
         }
     }
 }

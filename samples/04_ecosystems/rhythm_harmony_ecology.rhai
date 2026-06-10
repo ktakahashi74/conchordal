@@ -4,7 +4,6 @@
 seed(20260516);
 
 let root_hz = 130.81;
-let beat_hz = 2.0;
 
 let field_anchor = harmonic()
     .brain("drone")
@@ -20,8 +19,8 @@ let field_anchor = harmonic()
 let pulse_ground = harmonic()
     .brain("drone")
     .amp(0.052)
-    .metric_beat(beat_hz)
-    .beat_strength(0.78)
+    .metric()
+    .rhythm_role("accent")
     .cycles(2)
     .pitch_mode("lock")
     .modes(odd_modes().count(5))
@@ -31,8 +30,7 @@ let pulse_ground = harmonic()
 let motif = harmonic()
     .brain("drone")
     .amp(0.034)
-    .metric_beat(beat_hz)
-    .beat_strength(0.45)
+    .metric()
     .cycles(1)
     .pitch_mode("lock")
     .modes(harmonic_modes().count(5))
@@ -41,7 +39,7 @@ let motif = harmonic()
 
 let colony = harmonic()
     .amp(0.030)
-    .entrained_beat(beat_hz)
+    .entrained()
     .cycles(3)
     .seek_consonance()
     .pitch_apply_mode("gate_snap")
@@ -64,7 +62,7 @@ let colony = harmonic()
 
 let flow_texture = modal()
     .amp(0.014)
-    .flow_timing(2.05, 0.82)
+    .flow()
     .cycles(2)
     .seek_consonance()
     .pitch_apply_mode("gate_snap")
@@ -77,8 +75,8 @@ let flow_texture = modal()
 let cadence_mark = harmonic()
     .brain("drone")
     .amp(0.020)
-    .metric_beat(beat_hz * 0.5)
-    .beat_strength(0.38)
+    .metric()
+    .rhythm_role("accent")
     .cycles(3)
     .pitch_mode("lock")
     .modes(harmonic_modes().count(6))
@@ -88,6 +86,10 @@ let cadence_mark = harmonic()
 section("Rhythm Harmony Ecology", || {
     set_control_update_mode("snapshot_phased");
     harmonic_mirror(0.18);
+    // One shared ~2 Hz attractor: the metric ground locks tightly, the colony
+    // entrains over time, and flow stays free -- all on the same emergent meter.
+    metric_stability(0.7);
+    temporal_basin(1.8, 2.2);
 
     let field = place(field_anchor, at(root_hz));
     wait(1.2);

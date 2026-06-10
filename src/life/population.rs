@@ -99,6 +99,7 @@ pub struct Population {
     last_pred_gate_stats: Option<PredGateStats>,
     last_gate_boundary_in_hop: Option<bool>,
     last_phonation_onsets_in_hop: Option<u32>,
+    last_phonation_onset_strength_in_hop: Option<f32>,
     death_records: Vec<LifeRecord>,
     auto_observe: Option<ObservationConfig>,
     runtime_events: Vec<RuntimeEvent>,
@@ -239,6 +240,7 @@ impl Population {
             last_pred_gate_stats: None,
             last_gate_boundary_in_hop: None,
             last_phonation_onsets_in_hop: None,
+            last_phonation_onset_strength_in_hop: None,
             death_records: Vec::new(),
             auto_observe: None,
             runtime_events: Vec::new(),
@@ -346,6 +348,13 @@ impl Population {
         self.last_phonation_onsets_in_hop
     }
 
+    /// Sum of onset strengths fired this hop. Accented onsets weigh more, so the
+    /// production meter can sense a recurring downbeat (the seed of an emergent
+    /// measure), not just an onset count.
+    pub fn last_phonation_onset_strength_in_hop(&self) -> Option<f32> {
+        self.last_phonation_onset_strength_in_hop
+    }
+
     pub fn collect_phonation_batches(
         &mut self,
         generator_model: &mut GeneratorModel,
@@ -383,6 +392,7 @@ impl Population {
             });
         let mut pred_acc = PredGateAccum::default();
         let mut phonation_onsets_in_hop = 0u32;
+        let mut phonation_onset_strength_in_hop = 0.0f32;
         let mut used = 0usize;
         let social_trace = self.social_trace.as_ref();
         for voice in &mut self.voices {
@@ -417,6 +427,11 @@ impl Population {
             );
             phonation_onsets_in_hop = phonation_onsets_in_hop
                 .saturating_add(batch.onsets.len().min(u32::MAX as usize) as u32);
+            phonation_onset_strength_in_hop += batch
+                .onsets
+                .iter()
+                .map(|o| o.strength.max(0.0))
+                .sum::<f32>();
             let has_output =
                 !(batch.cmds.is_empty() && batch.tones.is_empty() && batch.onsets.is_empty());
             if has_output {
@@ -441,6 +456,7 @@ impl Population {
         }
         self.last_gate_boundary_in_hop = Some(gate_boundary_in_hop);
         self.last_phonation_onsets_in_hop = Some(phonation_onsets_in_hop);
+        self.last_phonation_onset_strength_in_hop = Some(phonation_onset_strength_in_hop);
         self.last_pred_gate_stats = pred_acc.finalize();
         used
     }

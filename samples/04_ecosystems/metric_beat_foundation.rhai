@@ -1,10 +1,13 @@
 // v0.4 metric beat candidate.
-// Demonstrates a legible beat surface with gate-snap articulation.
+// A legible pulse that is a DEEP EMERGENT ATTRACTOR: each voice locks its onset
+// phase to the shared production meter the population itself drives -- there is
+// no externally imposed clock. The tempo region and attractor depth are
+// director-level terrain (temporal_basin / metric_stability); a voice only
+// chooses how it relates to the emergent beat (lock strength, role, phase).
 
 seed(20260508);
 
 let root_hz = 220.0;
-let beat_hz = 2.0;
 
 let field_anchor = harmonic()
     .brain("drone")
@@ -19,8 +22,8 @@ let field_anchor = harmonic()
 
 let downbeat = harmonic()
     .amp(0.060)
-    .metric_beat(beat_hz)
-    .beat_strength(0.80)
+    .metric()
+    .rhythm_role("accent")
     .cycles(2)
     .pitch_mode("lock")
     .modes(odd_modes().count(5))
@@ -29,8 +32,7 @@ let downbeat = harmonic()
 
 let consonant_pulse = harmonic()
     .amp(0.045)
-    .metric_beat(beat_hz)
-    .beat_strength(0.55)
+    .metric()
     .cycles(3)
     .seek_consonance()
     .pitch_apply_mode("gate_snap")
@@ -41,9 +43,10 @@ let consonant_pulse = harmonic()
 
 let offbeat = modal()
     .amp(0.030)
-    .metric_beat(beat_hz * 1.5)
-    .beat_strength(0.35)
-    // Hold two grid gates so the off-beat reads as a syncopated note, not a tick.
+    .metric()
+    .rhythm_role("subdivision")
+    // Half a beat of phase offset reads as a syncopated note between the beats.
+    .microtiming(0.5)
     .cycles(2)
     .pitch_mode("lock")
     .modes(landscape_density_modes().count(5).range(1.0, 4.0).gamma(1.2))
@@ -53,6 +56,10 @@ let offbeat = modal()
 section("Metric Beat Foundation", || {
     set_control_update_mode("snapshot_phased");
     harmonic_mirror(0.15);
+    // Deep attractor in a ~2 Hz tempo region: the pulse forms readily and reads
+    // as a stable metric heartbeat without any imposed grid.
+    metric_stability(0.85);
+    temporal_basin(1.8, 2.2);
 
     let root = place(field_anchor, at(root_hz).count(1));
     wait(1.5);

@@ -9,6 +9,7 @@ use tracing::warn;
 use crate::core::landscape::PitchObjectiveMode;
 use crate::core::mode_pattern::ModePattern;
 
+use crate::core::meter::MeterShaping;
 use crate::life::control::{
     BodyMethod, ControlUpdate, LeaveSelfOutMode, MoveCostTimeScale, PitchApplyMode, PitchCoreKind,
     PitchMode, Routing, VoiceControl,
@@ -16,11 +17,10 @@ use crate::life::control::{
 use crate::life::lifecycle::LifecycleConfig;
 use crate::scenario::PhonationTiming;
 use crate::scenario::{
-    Action, ArticulationCoreConfig, ControlUpdateMode, DurationSpec, EntrainedBeatSpec,
-    EnvelopeConfig, FieldDurationSpec, FlowTimingSpec, GateThresholds, MetabolismRhythmReward,
-    MetricBeatSpec, PhonationSpec, RespawnPeakBiasConfig, RespawnPolicy, RhythmCouplingMode,
-    RhythmRewardMetric, ScaffoldConfig, Scenario, SceneMarker, SpawnSpec, SpawnStrategy,
-    TimedEvent,
+    Action, ArticulationCoreConfig, ControlUpdateMode, CoupledTimingSpec, DurationSpec,
+    EnvelopeConfig, FieldDurationSpec, GateThresholds, MetabolismRhythmReward, PhonationSpec,
+    RespawnPeakBiasConfig, RespawnPolicy, RhythmCouplingMode, RhythmRewardMetric, RhythmRole,
+    ScaffoldConfig, Scenario, SceneMarker, SpawnSpec, SpawnStrategy, TimedEvent,
 };
 
 const DEFAULT_SEQ_DURATION_SEC: f32 = 1.0;
@@ -87,6 +87,9 @@ struct SpeciesSpec {
     field_duration_spec: FieldDurationSpec,
     pulse_sync: Option<f32>,
     social_coupling: Option<f32>,
+    entrainment: Option<f32>,
+    rhythm_role: Option<RhythmRole>,
+    microtiming: Option<f32>,
     metabolism_rate: Option<f32>,
     initial_energy: Option<f32>,
     recharge_rate: Option<f32>,
@@ -126,6 +129,9 @@ impl SpeciesSpec {
             field_duration_spec: FieldDurationSpec::default(),
             pulse_sync: None,
             social_coupling: None,
+            entrainment: None,
+            rhythm_role: None,
+            microtiming: None,
             metabolism_rate: None,
             initial_energy: None,
             recharge_rate: None,
@@ -157,6 +163,35 @@ impl SpeciesSpec {
 
     fn social_coupling_or(&self, default: f32) -> f32 {
         self.social_coupling.unwrap_or(default).clamp(0.0, 1.0)
+    }
+
+    fn entrainment_or(&self, default: f32) -> f32 {
+        self.entrainment.unwrap_or(default).clamp(0.0, 1.0)
+    }
+
+    fn rhythm_role_or(&self, default: RhythmRole) -> RhythmRole {
+        self.rhythm_role.unwrap_or(default)
+    }
+
+    fn microtiming_or(&self, default: f32) -> f32 {
+        // set_microtiming already clamps the stored value and the built spec is
+        // sanitized before use, so no clamp is needed here.
+        self.microtiming.unwrap_or(default)
+    }
+
+    /// Get the current coupled-timing spec, creating a default one (medium
+    /// coupling, plain beat) if the voice is not already on the continuum. Lets
+    /// a bare `entrainment(..)` / `rhythm_role(..)` / `microtiming(..)` work
+    /// without first naming a preset.
+    fn coupled_spec_mut(&mut self) -> &mut CoupledTimingSpec {
+        if !matches!(self.phonation_spec.timing, PhonationTiming::Coupled(_)) {
+            self.phonation_spec.timing = PhonationTiming::Coupled(CoupledTimingSpec::default());
+            self.ensure_gated_duration(DEFAULT_GATE_COUNT);
+        }
+        match &mut self.phonation_spec.timing {
+            PhonationTiming::Coupled(spec) => spec,
+            _ => unreachable!("just ensured Coupled"),
+        }
     }
 
     fn apply_field_duration_spec(&mut self) {
@@ -519,30 +554,40 @@ impl SpeciesSpec {
         }
     }
 
-    fn set_metric_beat(&mut self, rate_hz: f32) {
-        let rate_hz = rate_hz.max(0.01);
-        let accent = self.pulse_sync_or(DEFAULT_PULSE_SYNC);
+    /// Metric preset: a deep attractor on the shared beat. Locks tightly and
+    /// reads as a stable pulse. No Hz argument -- the tempo region is the
+    /// director's `temporal_basin`; this only sets how hard the voice locks.
+    fn set_metric(&mut self) {
         self.clear_rhythm_preset_controls();
-        self.phonation_spec.timing =
-            PhonationTiming::MetricBeat(MetricBeatSpec { rate_hz, accent }.sanitized());
+        self.phonation_spec.timing = PhonationTiming::Coupled(
+            CoupledTimingSpec {
+                coupling: self.entrainment_or(0.95),
+                role: self.rhythm_role_or(RhythmRole::Beat),
+                microtiming: self.microtiming_or(0.0),
+                ..CoupledTimingSpec::default()
+            }
+            .sanitized(),
+        );
         self.ensure_gated_duration(DEFAULT_GATE_COUNT);
-        self.rhythm_freq = Some(rate_hz);
     }
 
-    fn set_entrained_beat(&mut self, rate_hz: f32) {
-        let rate_hz = rate_hz.max(0.01);
+    /// Entrained preset: medium coupling, so synchronization emerges over time
+    /// while timing still feeds the life cycle (vitality + attack reward).
+    fn set_entrained(&mut self) {
         self.clear_rhythm_preset_controls();
-        let spec = EntrainedBeatSpec {
-            rate_hz,
+        let spec = CoupledTimingSpec {
+            coupling: self.entrainment_or(0.5),
+            role: self.rhythm_role_or(RhythmRole::Beat),
+            microtiming: self.microtiming_or(0.0),
             social: self.social_coupling_or(0.6),
             vitality_lambda: 0.8,
             vitality_floor: 0.35,
             reward: 0.6,
+            ..CoupledTimingSpec::default()
         }
         .sanitized();
-        self.phonation_spec.timing = PhonationTiming::EntrainedBeat(spec);
+        self.phonation_spec.timing = PhonationTiming::Coupled(spec);
         self.ensure_gated_duration(DEFAULT_GATE_COUNT);
-        self.rhythm_freq = Some(spec.rate_hz);
         self.rhythm_coupling = RhythmCouplingMode::TemporalTimesVitality {
             lambda_v: spec.vitality_lambda,
             v_floor: spec.vitality_floor,
@@ -553,15 +598,52 @@ impl SpeciesSpec {
         });
     }
 
-    fn set_flow_timing(&mut self, mean_rate_hz: f32, depth: f32) {
-        let spec = FlowTimingSpec {
-            mean_rate_hz,
-            depth,
-        }
-        .sanitized();
+    /// Flow preset: near-zero coupling, a free renewal process that ignores the
+    /// beat and fires at clustered, non-metric IOIs.
+    fn set_flow(&mut self) {
         self.clear_rhythm_preset_controls();
-        self.phonation_spec.timing = PhonationTiming::FlowTiming(spec);
+        self.phonation_spec.timing = PhonationTiming::Coupled(
+            CoupledTimingSpec {
+                coupling: self.entrainment_or(0.05),
+                flow_depth: 0.65,
+                role: self.rhythm_role_or(RhythmRole::Texture),
+                microtiming: self.microtiming_or(0.0),
+                ..CoupledTimingSpec::default()
+            }
+            .sanitized(),
+        );
         self.ensure_gated_duration(1);
+    }
+
+    fn set_entrainment(&mut self, strength: f32) {
+        let strength = strength.clamp(0.0, 1.0);
+        self.entrainment = Some(strength);
+        self.coupled_spec_mut().coupling = strength;
+    }
+
+    fn set_rhythm_role(&mut self, name: &str) {
+        let role = match name {
+            "beat" => RhythmRole::Beat,
+            "subdivision" => RhythmRole::Subdivision,
+            "accent" => RhythmRole::Accent,
+            "texture" => RhythmRole::Texture,
+            other => {
+                warn!("unknown rhythm_role '{other}', ignoring");
+                return;
+            }
+        };
+        self.rhythm_role = Some(role);
+        self.coupled_spec_mut().role = role;
+    }
+
+    fn set_microtiming(&mut self, amount: f32) {
+        let amount = if amount.is_finite() {
+            amount.clamp(-0.5, 0.5)
+        } else {
+            0.0
+        };
+        self.microtiming = Some(amount);
+        self.coupled_spec_mut().microtiming = amount;
     }
 
     fn set_when_once(&mut self) {
@@ -612,28 +694,18 @@ impl SpeciesSpec {
     fn set_pulse_lock(&mut self, depth: f32) {
         let depth = depth.clamp(0.0, 1.0);
         self.pulse_sync = Some(depth);
-        if let PhonationTiming::MetricBeat(mut spec) = self.phonation_spec.timing {
-            spec.accent = depth;
-            self.phonation_spec.timing = PhonationTiming::MetricBeat(spec);
-        }
         if let PhonationTiming::Pulse { sync, .. } = &mut self.phonation_spec.timing {
             *sync = depth;
         }
     }
 
-    fn set_beat_strength(&mut self, depth: f32) {
-        self.set_pulse_lock(depth);
-    }
-
     fn set_social(&mut self, coupling: f32) {
         let coupling = coupling.clamp(0.0, 1.0);
         self.social_coupling = Some(coupling);
-        if let PhonationTiming::EntrainedBeat(mut spec) = self.phonation_spec.timing {
-            spec.social = coupling;
-            self.phonation_spec.timing = PhonationTiming::EntrainedBeat(spec);
-        }
-        if let PhonationTiming::Pulse { social, .. } = &mut self.phonation_spec.timing {
-            *social = coupling;
+        match &mut self.phonation_spec.timing {
+            PhonationTiming::Coupled(spec) => spec.social = coupling,
+            PhonationTiming::Pulse { social, .. } => *social = coupling,
+            PhonationTiming::Once => {}
         }
     }
 
@@ -1076,6 +1148,7 @@ impl Default for ScriptContext {
                 seed,
                 control_update_mode: ControlUpdateMode::SnapshotPhased,
                 scaffold: ScaffoldConfig::Off,
+                meter_shaping: MeterShaping::default(),
                 scene_markers: Vec::new(),
                 events: Vec::new(),
                 duration_sec: 0.0,

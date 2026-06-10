@@ -4,7 +4,7 @@ use crate::core::timebase::Timebase;
 use crate::life::population::Population;
 use crate::life::voice::AnyArticulationCore;
 use crate::life::voice::sound_body::SoundBody;
-use crate::scenario::{DurationSpec, PhonationTiming, RhythmCouplingMode};
+use crate::scenario::{DurationSpec, PhonationTiming, RhythmCouplingMode, RhythmRole};
 use rand::SeedableRng;
 use std::collections::HashMap;
 
@@ -2011,24 +2011,24 @@ fn metric_and_pulse_tuning_are_order_independent() {
         (
             "metric then tuning",
             r#"
-                create(sine().metric_beat(2.0).beat_strength(0.25).cycles(2), 1);
+                create(sine().metric().entrainment(0.8).rhythm_role("accent").cycles(2), 1);
                 flush();
             "#,
         ),
         (
             "tuning then metric",
             r#"
-                create(sine().beat_strength(0.25).metric_beat(2.0).cycles(2), 1);
+                create(sine().entrainment(0.8).rhythm_role("accent").metric().cycles(2), 1);
                 flush();
             "#,
         ),
     ] {
         let spawn = first_spawn_spec_for_script(script);
-        let PhonationTiming::MetricBeat(spec) = spawn.control.phonation.spec.timing else {
-            panic!("{label}: expected metric beat intent");
+        let PhonationTiming::Coupled(spec) = spawn.control.phonation.spec.timing else {
+            panic!("{label}: expected coupled timing intent");
         };
-        assert!((spec.rate_hz - 2.0).abs() <= 1e-6, "{label}");
-        assert!((spec.accent - 0.25).abs() <= 1e-6, "{label}");
+        assert!((spec.coupling - 0.8).abs() <= 1e-6, "{label}");
+        assert_eq!(spec.role, RhythmRole::Accent, "{label}");
     }
 
     for (label, script) in [
@@ -2110,20 +2110,19 @@ fn adaptive_duration_tuning_is_order_independent() {
 }
 
 #[test]
-fn entrained_beat_sets_defaults_and_accepts_prior_social_tuning() {
+fn entrained_sets_defaults_and_accepts_prior_social_tuning() {
     let spawn = first_spawn_spec_for_script(
         r#"
-            create(sine().entrained_beat(2.0).cycles(2), 1);
+            create(sine().entrained().cycles(2), 1);
             flush();
         "#,
     );
-    let PhonationTiming::EntrainedBeat(spec) = spawn.control.phonation.spec.timing else {
-        panic!("expected entrained beat intent");
+    let PhonationTiming::Coupled(spec) = spawn.control.phonation.spec.timing else {
+        panic!("expected coupled timing intent");
     };
-    assert!((spec.rate_hz - 2.0).abs() <= 1e-6);
+    assert!(spec.coupling > 0.0 && spec.coupling < 1.0);
     assert!(spec.social > 0.0);
     let ArticulationCoreConfig::Entrain {
-        rhythm_freq,
         rhythm_coupling,
         rhythm_reward,
         ..
@@ -2131,7 +2130,6 @@ fn entrained_beat_sets_defaults_and_accepts_prior_social_tuning() {
     else {
         panic!("expected entrain articulation");
     };
-    assert_eq!(rhythm_freq, Some(2.0));
     assert!(matches!(
         rhythm_coupling,
         RhythmCouplingMode::TemporalTimesVitality { .. }
@@ -2140,14 +2138,13 @@ fn entrained_beat_sets_defaults_and_accepts_prior_social_tuning() {
 
     let tuned = first_spawn_spec_for_script(
         r#"
-            create(sine().social(0.25).entrained_beat(2.0).cycles(2), 1);
+            create(sine().social(0.25).entrained().cycles(2), 1);
             flush();
         "#,
     );
-    let PhonationTiming::EntrainedBeat(tuned_spec) = tuned.control.phonation.spec.timing else {
-        panic!("expected entrained beat intent");
+    let PhonationTiming::Coupled(tuned_spec) = tuned.control.phonation.spec.timing else {
+        panic!("expected coupled timing intent");
     };
-    assert!((tuned_spec.rate_hz - 2.0).abs() <= 1e-6);
     assert!((tuned_spec.social - 0.25).abs() <= 1e-6);
 }
 
@@ -2155,7 +2152,7 @@ fn entrained_beat_sets_defaults_and_accepts_prior_social_tuning() {
 fn while_alive_and_beat_modes_are_last_write_wins() {
     let hold = first_spawn_spec_for_script(
         r#"
-            create(sine().metric_beat(2.0).while_alive(), 1);
+            create(sine().metric().while_alive(), 1);
             flush();
         "#,
     );
@@ -2168,7 +2165,6 @@ fn while_alive_and_beat_modes_are_last_write_wins() {
         DurationSpec::WhileAlive
     ));
     let ArticulationCoreConfig::Entrain {
-        rhythm_freq,
         rhythm_coupling,
         rhythm_reward,
         ..
@@ -2176,19 +2172,18 @@ fn while_alive_and_beat_modes_are_last_write_wins() {
     else {
         panic!("expected entrain articulation");
     };
-    assert_eq!(rhythm_freq, None);
     assert!(matches!(rhythm_coupling, RhythmCouplingMode::TemporalOnly));
     assert!(rhythm_reward.is_none());
 
     let beat = first_spawn_spec_for_script(
         r#"
-            create(sine().while_alive().metric_beat(2.0), 1);
+            create(sine().while_alive().metric(), 1);
             flush();
         "#,
     );
     assert!(matches!(
         beat.control.phonation.spec.timing,
-        PhonationTiming::MetricBeat(_)
+        PhonationTiming::Coupled(_)
     ));
     assert!(matches!(
         beat.control.phonation.spec.duration,
@@ -2197,10 +2192,10 @@ fn while_alive_and_beat_modes_are_last_write_wins() {
 }
 
 #[test]
-fn flow_timing_sets_flow_intent() {
+fn flow_sets_low_coupling_intent() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(sine().flow_timing(3.0, 0.8).cycles(1), 1);
+            create(sine().flow().cycles(1), 1);
             flush();
         "#,
     );
@@ -2214,11 +2209,41 @@ fn flow_timing_sets_flow_intent() {
         })
         .expect("spawn action");
 
-    let PhonationTiming::FlowTiming(spec) = spawn.control.phonation.spec.timing else {
-        panic!("expected flow timing intent");
+    let PhonationTiming::Coupled(spec) = spawn.control.phonation.spec.timing else {
+        panic!("expected coupled timing intent");
     };
-    assert!((spec.mean_rate_hz - 3.0).abs() <= 1e-6);
-    assert!((spec.depth - 0.8).abs() <= 1e-6);
+    assert!(spec.coupling < 0.2, "flow should be near-zero coupling");
+    assert!(spec.flow_depth > 0.0, "flow should jitter its renewal");
+    assert_eq!(spec.role, RhythmRole::Texture);
+}
+
+#[test]
+fn metric_stability_and_temporal_basin_set_scene_meter_shaping() {
+    let (scenario, _warnings) = run_script(
+        r#"
+            metric_stability(0.7);
+            temporal_basin(1.8, 2.4);
+            create(sine().metric().cycles(1), 1);
+            flush();
+        "#,
+    );
+    assert!((scenario.meter_shaping.stability - 0.7).abs() <= 1e-6);
+    let (min, max) = scenario.meter_shaping.basin_hz.expect("basin set");
+    assert!((min - 1.8).abs() <= 1e-6 && (max - 2.4).abs() <= 1e-6);
+}
+
+#[test]
+fn microtiming_sets_signed_beat_phase_offset() {
+    let spawn = first_spawn_spec_for_script(
+        r#"
+            create(sine().metric().microtiming(-0.1).cycles(1), 1);
+            flush();
+        "#,
+    );
+    let PhonationTiming::Coupled(spec) = spawn.control.phonation.spec.timing else {
+        panic!("expected coupled timing intent");
+    };
+    assert!((spec.microtiming + 0.1).abs() <= 1e-6);
 }
 
 #[test]

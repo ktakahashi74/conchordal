@@ -22,6 +22,12 @@ const F_BEAT_MIN: f32 = 0.5;
 const F_BEAT_MAX: f32 = 4.0;
 const F_BEAT_INIT: f32 = 2.0;
 
+// `temporal_basin` restoring rate (per second): a weak pull of the beat
+// frequency toward the basin center. Kept gentle so onset entrainment within
+// the basin dominates -- the basin shapes the terrain, it does not schedule a
+// beat.
+const BASIN_PULL: f32 = 0.6;
+
 // Forced Hopf normal form (Large neural resonance). ALPHA > 0 with BETA < 0
 // gives a stable limit cycle of radius sqrt(-ALPHA/BETA) = 1.0, so the beat is
 // self-sustaining and coasts through gaps (Regime C: persistence).
@@ -86,6 +92,20 @@ pub struct MeterState {
     pub measure_ratio: u8,
 }
 
+/// Composer-set terrain shaping for the production meter. These are soft priors
+/// on how a pulse forms, never a schedule: emergence (onset entrainment, accent
+/// grouping) still does the work, the shaping only bends the terrain it forms on.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct MeterShaping {
+    /// Attractor depth in [0, 1]. How strongly a pulse wants to form: scales the
+    /// entrainment forcing. 0 = neutral baseline.
+    pub stability: f32,
+    /// Frequency-prior region in Hz `(min, max)`. The beat is seeded at the
+    /// center and gently pulled toward it, and its frequency learning is confined
+    /// to this band. `None` = the full default beat band, no prior.
+    pub basin_hz: Option<(f32, f32)>,
+}
+
 /// Coupled limit-cycle meter network (single beat oscillator + subdivision
 /// detection). One instance per listener.
 #[derive(Clone, Debug)]
@@ -120,6 +140,7 @@ pub struct MeterNetwork {
     meas_norm: f32,
 
     attention_ema: f32,
+    shaping: MeterShaping,
     last: MeterState,
 }
 
@@ -145,6 +166,7 @@ impl Default for MeterNetwork {
             meas_im: [0.0; 3],
             meas_norm: 0.0,
             attention_ema: 0.0,
+            shaping: MeterShaping::default(),
             last: MeterState::default(),
         }
     }
@@ -155,6 +177,18 @@ impl MeterNetwork {
         Self::default()
     }
 
+    /// Install composer-set terrain shaping. A basin seeds the beat frequency at
+    /// its center (cold-start prior) and confines later frequency learning to the
+    /// band; stability takes effect on the next `process` call.
+    pub fn set_shaping(&mut self, shaping: MeterShaping) {
+        if let Some((min_hz, max_hz)) = shaping.basin_hz {
+            let (lo, hi) = sane_basin(min_hz, max_hz);
+            let center = 0.5 * (lo + hi);
+            self.beat_omega = TAU * center;
+        }
+        self.shaping = shaping;
+    }
+
     /// Advance the network by `dt` seconds under acoustic onset `drive` in
     /// [0, 1] (rectified spectral flux). Returns the updated meter state.
     pub fn process(&mut self, dt: f32, drive: f32) -> MeterState {
@@ -163,23 +197,43 @@ impl MeterNetwork {
 
         let onset = self.detect_onset(dt, drive);
 
+        // Attractor depth: a deeper basin (higher stability) forces phase and
+        // amplitude harder toward the stimulus. The forcing only acts in the
+        // stimulus direction, so random drive still cancels and no beat is
+        // fabricated.
+        let force_gain = 1.0 + self.shaping.stability.clamp(0.0, 1.0);
+        let force_amp = FORCE_AMP * force_gain;
+        let force_phase = FORCE_PHASE * force_gain;
+
         // --- Beat oscillator: forced limit cycle, integrated in polar form so
         // the rotation is exact and only the slow amplitude/forcing terms use
         // Euler steps. ---
         let phi_before = self.beat_phi;
         let r = self.beat_r.max(1e-3);
         let dr =
-            ALPHA * self.beat_r + BETA * self.beat_r.powi(3) + FORCE_AMP * drive * phi_before.cos();
+            ALPHA * self.beat_r + BETA * self.beat_r.powi(3) + force_amp * drive * phi_before.cos();
         self.beat_r = (self.beat_r + dr * dt).clamp(0.0, 2.0);
 
-        let dphi = self.beat_omega - FORCE_PHASE * (drive / r) * phi_before.sin();
+        let dphi = self.beat_omega - force_phase * (drive / r) * phi_before.sin();
         self.beat_phi = wrap_pm_pi(phi_before + dphi * dt);
 
         // Hebbian frequency learning: shift omega to reduce the phase error to
-        // the stimulus. Random (renewal) input averages to ~0 net shift, so the
-        // beat does not chase noise.
-        self.beat_omega -= ETA_OMEGA * drive * phi_before.sin() * dt;
-        self.beat_omega = self.beat_omega.clamp(TAU * F_BEAT_MIN, TAU * F_BEAT_MAX);
+        // the stimulus. A deeper attractor adapts frequency faster (scaled by the
+        // same gain), so it locks sooner. Random (renewal) input still averages
+        // to ~0 net shift, so the beat does not chase noise.
+        self.beat_omega -= ETA_OMEGA * force_gain * drive * phi_before.sin() * dt;
+        // A temporal basin adds a weak restoring pull toward its center and
+        // confines learning to the band; otherwise the full beat band applies.
+        let (omega_lo, omega_hi) = match self.shaping.basin_hz {
+            Some((min_hz, max_hz)) => {
+                let (lo, hi) = sane_basin(min_hz, max_hz);
+                let center_omega = TAU * 0.5 * (lo + hi);
+                self.beat_omega += BASIN_PULL * (center_omega - self.beat_omega) * dt;
+                (TAU * lo, TAU * hi)
+            }
+            None => (TAU * F_BEAT_MIN, TAU * F_BEAT_MAX),
+        };
+        self.beat_omega = self.beat_omega.clamp(omega_lo, omega_hi);
 
         // Unwrapped beat count, used to phase the slow measure subharmonic.
         self.beat_cycles += dphi * dt / TAU;
@@ -269,8 +323,12 @@ impl MeterNetwork {
         // unreliable (a couple of coincidentally aligned onsets read as a high
         // PLV), so confidence requires ~4 accumulated onsets of evidence before
         // it is trusted, matching beat-induction needing a few cycles. Decays in
-        // silence as the leaky count fades.
-        let presence = smoothstep(1.0, 4.0, self.plv_count);
+        // silence as the leaky count fades. A deeper attractor (higher stability)
+        // is a top-down prior that commits with less evidence, lowering this
+        // threshold. It cannot fabricate a beat: scattered phases keep the PLV
+        // resultant low regardless of how readily presence saturates.
+        let stab = self.shaping.stability.clamp(0.0, 1.0);
+        let presence = smoothstep(1.0 - 0.5 * stab, 4.0 - 2.0 * stab, self.plv_count);
 
         let beat_plv = (self.beat_re * self.beat_re + self.beat_im * self.beat_im).sqrt() / count;
         let beat_conf = (beat_plv * presence).clamp(0.0, 1.0);
@@ -362,6 +420,29 @@ impl MeterNetwork {
 struct Onset {
     fired: bool,
     frac: f32,
+}
+
+/// Sanitize a basin `(min, max)` into an ordered, finite, in-band pair.
+fn sane_basin(min_hz: f32, max_hz: f32) -> (f32, f32) {
+    let a = if min_hz.is_finite() {
+        min_hz
+    } else {
+        F_BEAT_MIN
+    };
+    let b = if max_hz.is_finite() {
+        max_hz
+    } else {
+        F_BEAT_MAX
+    };
+    let lo = a.min(b).clamp(F_BEAT_MIN, F_BEAT_MAX);
+    let hi = a.max(b).clamp(F_BEAT_MIN, F_BEAT_MAX);
+    if hi - lo < 1e-3 {
+        // Degenerate (point) basin: widen slightly so the clamp has room.
+        let c = (0.5 * (lo + hi)).clamp(F_BEAT_MIN, F_BEAT_MAX);
+        ((c - 0.05).max(F_BEAT_MIN), (c + 0.05).min(F_BEAT_MAX))
+    } else {
+        (lo, hi)
+    }
 }
 
 fn smoothstep(lo: f32, hi: f32, x: f32) -> f32 {
@@ -653,6 +734,159 @@ mod tests {
             s.measure.confidence < 0.1,
             "accent-free beat should read ~0 measure confidence, got {}",
             s.measure.confidence
+        );
+    }
+
+    /// Run a jittered beat through a configured network and report the
+    /// confidence reached after `secs`. Shared by the stability assays.
+    fn run_jittered(shaping: MeterShaping, beat_hz: f32, secs: f32, jitter: f32) -> f32 {
+        let mut net = MeterNetwork::new();
+        net.set_shaping(shaping);
+        let mut seed: u32 = 0x51A8_1117;
+        let mut next_rng = || {
+            seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            (seed >> 8) as f32 / (1u32 << 24) as f32
+        };
+        let period = 1.0 / beat_hz;
+        let total = secs;
+        let n = (total / DT) as usize;
+        let mut t = 0.0f32;
+        let mut next_beat = 0.0f32;
+        let mut last = 0.0f32;
+        for _ in 0..n {
+            let mut drive = 0.0;
+            if t >= next_beat {
+                drive = 1.0;
+                next_beat = t + period + jitter * (next_rng() - 0.5);
+            }
+            last = net.process(DT, drive).beat.confidence;
+            t += DT;
+        }
+        last
+    }
+
+    #[test]
+    fn higher_stability_speeds_beat_lock() {
+        // Clean 2 Hz beat, measured in a short window before either net has fully
+        // committed. A deeper attractor (higher stability) is a top-down prior
+        // that commits with less evidence, so it reads a far higher confidence
+        // early. Both reach the same ceiling given enough time (checked below) --
+        // stability sets how readily a pulse forms, not the confidence cap, which
+        // the stimulus regularity owns.
+        let neutral_early = run_jittered(MeterShaping::default(), 2.0, 1.5, 0.0);
+        let deep_early = run_jittered(
+            MeterShaping {
+                stability: 1.0,
+                basin_hz: None,
+            },
+            2.0,
+            1.5,
+            0.0,
+        );
+        assert!(
+            deep_early > neutral_early + 0.2,
+            "high stability should commit sooner: neutral {neutral_early} deep {deep_early}"
+        );
+        // Same ceiling once both have enough evidence.
+        let neutral_late = run_jittered(MeterShaping::default(), 2.0, 5.0, 0.0);
+        let deep_late = run_jittered(
+            MeterShaping {
+                stability: 1.0,
+                basin_hz: None,
+            },
+            2.0,
+            5.0,
+            0.0,
+        );
+        assert!(
+            (deep_late - neutral_late).abs() < 0.1,
+            "stability must not raise the ceiling: neutral {neutral_late} deep {deep_late}"
+        );
+    }
+
+    #[test]
+    fn high_stability_does_not_fabricate_beat_from_rain() {
+        // A deep attractor must still read low confidence on renewal rain: it
+        // amplifies forcing toward a real phase, it does not invent one.
+        let mut net = MeterNetwork::new();
+        net.set_shaping(MeterShaping {
+            stability: 1.0,
+            basin_hz: None,
+        });
+        let mut seed: u32 = 0x1234_5678;
+        let mut next_rng = || {
+            seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            (seed >> 8) as f32 / (1u32 << 24) as f32
+        };
+        let mean_ioi = 0.5;
+        let mut t = 0.0f32;
+        let mut next_onset = -mean_ioi * (1.0 - next_rng()).ln();
+        let n = (25.0f32 / DT) as usize;
+        for _ in 0..n {
+            let mut drive = 0.0;
+            if t >= next_onset {
+                drive = 1.0;
+                next_onset = t - mean_ioi * (1.0 - next_rng()).ln();
+            }
+            net.process(DT, drive);
+            t += DT;
+        }
+        assert!(
+            net.state().beat.confidence < 0.5,
+            "deep attractor must not fabricate a beat from rain, got {}",
+            net.state().beat.confidence
+        );
+    }
+
+    #[test]
+    fn temporal_basin_biases_free_running_beat_frequency() {
+        // With only weak/sparse drive, the basin prior should pull the resting
+        // beat frequency toward the basin center (terrain shaping), away from the
+        // 2 Hz default seed.
+        let mut net = MeterNetwork::new();
+        net.set_shaping(MeterShaping {
+            stability: 0.0,
+            basin_hz: Some((2.8, 3.4)),
+        });
+        // Seeded at the basin center already; coast with no drive and confirm it
+        // stays in-band rather than drifting back to the 2 Hz default.
+        for _ in 0..(8.0f32 / DT) as usize {
+            net.process(DT, 0.0);
+        }
+        let f = net.state().beat.freq_hz;
+        assert!(
+            (2.8..=3.4).contains(&f),
+            "basin should hold the beat frequency in-band, got {f}"
+        );
+    }
+
+    #[test]
+    fn temporal_basin_alone_induces_no_measure() {
+        // Setting a basin must shape only the beat frequency. A uniform beat in
+        // the basin still has no accent, so no measure may be claimed: emergence,
+        // not the prior, produces the grouping.
+        let mut net = MeterNetwork::new();
+        net.set_shaping(MeterShaping {
+            stability: 0.5,
+            basin_hz: Some((2.5, 3.5)),
+        });
+        let period = 1.0 / 3.0;
+        let mut t = 0.0f32;
+        for _ in 0..(40.0f32 / DT) as usize {
+            let drive = pulse(t % period, 0.02);
+            net.process(DT, drive);
+            t += DT;
+        }
+        let s = net.state();
+        assert!(
+            s.beat.confidence > 0.7,
+            "uniform in-basin beat should still lock, got {}",
+            s.beat.confidence
+        );
+        assert_eq!(
+            s.measure_ratio, 0,
+            "a basin alone must not fabricate a measure, got ratio {}",
+            s.measure_ratio
         );
     }
 }

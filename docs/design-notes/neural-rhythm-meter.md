@@ -1,8 +1,22 @@
 # Neural Rhythm and Meter Design
 
-Status: Phase 1 (perception meter core) landed; Phases 2-4 pending; in scope for v0.4.0
+Status: Phases 1-4 landed (emergent meter core, accent/measure shaping, coupling-
+continuum composer API, backend collapse); musical audition of the curated demos
+is the remaining acceptance step. In scope for v0.4.0
 Scope: conchordal rhythm architecture, DCC time-axis coupling, composer API
-Date: 2026-06-04 (Phase 1 outcome appended 2026-06-05)
+Date: 2026-06-04 (Phase 1-2 outcomes appended 2026-06-05; Phases 3-4 landed 2026-06-10)
+
+Phase 3-4 outcome (2026-06-10): the externally-imposed fixed clock is gone.
+Production timing is now a per-voice phase-coupling clock (`CouplingClock`) that
+entrains to the shared production meter; one `coupling` strength spans the
+flow / entrained / metric continuum. The composer API is `metric()` /
+`entrained()` / `flow()` presets plus `entrainment()` / `rhythm_role()` /
+`microtiming()` modifiers, with director-level `metric_stability()` (attractor
+depth) and `temporal_basin()` (tempo region) shaping the emergent meter. Accent
+role emits a stronger onset that drives the meter, so the measure subharmonic
+can emerge from a recurring downbeat (the Phase-2 gap). `metric_beat(Hz)` /
+`entrained_beat(Hz)` / `flow_timing(Hz)` / `beat_strength` / the `FixedRate`
+backend are removed.
 
 This memo records the working design position for conchordal's rhythm layer
 before implementation. It is the implementation-facing companion to

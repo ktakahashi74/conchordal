@@ -215,30 +215,31 @@ impl ScriptHost {
             species.spec.set_phonation(PhonationKind::Repeat);
             species
         });
+        // Tier-1 rhythm presets over the coupling continuum. No Hz argument: the
+        // tempo region is the director's `temporal_basin`; a preset only sets how
+        // the voice relates to the shared emergent beat (free .. locked).
+        engine.register_fn("metric", |mut species: SpeciesHandle| {
+            species.spec.set_metric();
+            species
+        });
+        engine.register_fn("entrained", |mut species: SpeciesHandle| {
+            species.spec.set_entrained();
+            species
+        });
+        engine.register_fn("flow", |mut species: SpeciesHandle| {
+            species.spec.set_flow();
+            species
+        });
+        engine.register_fn("rhythm_role", |mut species: SpeciesHandle, name: &str| {
+            species.spec.set_rhythm_role(name);
+            species
+        });
         register_species_numeric_methods(
             &mut engine,
             &[
-                ("metric_beat", SpeciesSpec::set_metric_beat),
-                ("entrained_beat", SpeciesSpec::set_entrained_beat),
+                ("entrainment", SpeciesSpec::set_entrainment),
+                ("microtiming", SpeciesSpec::set_microtiming),
             ],
-        );
-        register_species_pair_numeric_methods(
-            &mut engine,
-            &[("flow_timing", SpeciesSpec::set_flow_timing)],
-        );
-        engine.register_fn(
-            "flow_timing",
-            |mut species: SpeciesHandle, mean_rate: FLOAT| {
-                species.spec.set_flow_timing(mean_rate as f32, 0.65);
-                species
-            },
-        );
-        engine.register_fn(
-            "flow_timing",
-            |mut species: SpeciesHandle, mean_rate: INT| {
-                species.spec.set_flow_timing(mean_rate as f32, 0.65);
-                species
-            },
         );
         // Tier 2: explicit when/duration
         engine.register_fn("once", |mut species: SpeciesHandle| {
@@ -263,7 +264,6 @@ impl ScriptHost {
             &mut engine,
             &[
                 ("pulse_lock", SpeciesSpec::set_pulse_lock),
-                ("beat_strength", SpeciesSpec::set_beat_strength),
                 ("social", SpeciesSpec::set_social),
                 ("shorten_on_drop", SpeciesSpec::set_shorten_on_drop),
             ],
@@ -1414,23 +1414,19 @@ impl ScriptHost {
                 );
             }};
         }
+        register_group_draft_fn!("metric", ctx, engine, |s| s.set_metric());
+        register_group_draft_fn!("entrained", ctx, engine, |s| s.set_entrained());
+        register_group_draft_fn!("flow", ctx, engine, |s| s.set_flow());
+        register_group_draft_fn1!("rhythm_role", ctx, engine, |s, name: &str| s
+            .set_rhythm_role(name));
         register_group_draft_numeric_methods(
             &mut engine,
             ctx.clone(),
             &[
-                ("metric_beat", SpeciesSpec::set_metric_beat),
-                ("entrained_beat", SpeciesSpec::set_entrained_beat),
+                ("entrainment", SpeciesSpec::set_entrainment),
+                ("microtiming", SpeciesSpec::set_microtiming),
             ],
         );
-        register_group_draft_pair_numeric_methods(
-            &mut engine,
-            ctx.clone(),
-            &[("flow_timing", SpeciesSpec::set_flow_timing)],
-        );
-        register_group_draft_fn1!("flow_timing", ctx, engine, |s, mean: FLOAT| s
-            .set_flow_timing(mean as f32, 0.65));
-        register_group_draft_fn1!("flow_timing", ctx, engine, |s, mean: INT| s
-            .set_flow_timing(mean as f32, 0.65));
         register_group_draft_fn!("once", ctx, engine, |s| s.set_when_once());
         register_group_draft_fn!("while_alive", ctx, engine, |s| s.set_duration_while_alive());
         register_group_draft_fn1!("cycles", ctx, engine, |s, n: INT| s
@@ -1443,7 +1439,6 @@ impl ScriptHost {
             &[
                 ("pulse", SpeciesSpec::set_when_pulse),
                 ("pulse_lock", SpeciesSpec::set_pulse_lock),
-                ("beat_strength", SpeciesSpec::set_beat_strength),
                 ("social", SpeciesSpec::set_social),
                 ("shorten_on_drop", SpeciesSpec::set_shorten_on_drop),
             ],
@@ -1835,6 +1830,46 @@ impl ScriptHost {
                 ctx.push_event(cursor, vec![Action::SetHarmonicityParams { update }]);
             },
         );
+        // Director-level shaping of the emergent production meter (scene-global
+        // soft priors, symmetric to the consonance-field ops). These never
+        // schedule a beat: `metric_stability` sets how readily a pulse forms,
+        // `temporal_basin` sets the tempo region the pulse gravitates toward.
+        let ctx_for_metric_stability_f = ctx.clone();
+        engine.register_fn(
+            "metric_stability",
+            move |_call_ctx: NativeCallContext, value: FLOAT| {
+                let mut ctx = ctx_for_metric_stability_f
+                    .lock()
+                    .expect("lock script context");
+                ctx.scenario.meter_shaping.stability = (value as f32).clamp(0.0, 1.0);
+            },
+        );
+        let ctx_for_metric_stability_i = ctx.clone();
+        engine.register_fn(
+            "metric_stability",
+            move |_call_ctx: NativeCallContext, value: INT| {
+                let mut ctx = ctx_for_metric_stability_i
+                    .lock()
+                    .expect("lock script context");
+                ctx.scenario.meter_shaping.stability = (value as f32).clamp(0.0, 1.0);
+            },
+        );
+        macro_rules! register_temporal_basin {
+            ($min_ty:ty, $max_ty:ty) => {{
+                let ctx_clone = ctx.clone();
+                engine.register_fn(
+                    "temporal_basin",
+                    move |_call_ctx: NativeCallContext, min: $min_ty, max: $max_ty| {
+                        let mut ctx = ctx_clone.lock().expect("lock script context");
+                        ctx.scenario.meter_shaping.basin_hz = Some((min as f32, max as f32));
+                    },
+                );
+            }};
+        }
+        register_temporal_basin!(FLOAT, FLOAT);
+        register_temporal_basin!(INT, INT);
+        register_temporal_basin!(FLOAT, INT);
+        register_temporal_basin!(INT, FLOAT);
         let ctx_for_set_pitch_objective = ctx.clone();
         engine.register_fn(
             "set_pitch_objective",

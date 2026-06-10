@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-30654c20.js";
+            window.path_to_searchindex_js = "../searchindex-716b7a91.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-33c4e52c.js"></script>
@@ -343,7 +343,10 @@ let bell = derive(modal).modes(stiff_string_modes(0.02).count(8));
 </div>
 <h3 id="phonation"><a class="header" href="#phonation">Phonation</a></h3>
 <p>Phonation is configured in three tiers of increasing detail.</p>
-<p><strong>Tier 1 – Presets:</strong></p>
+<p><strong>Tier 1 – Continuum presets + modifiers:</strong></p>
+<p>All metric voices share one emergent meter; a preset only picks where on the
+coupling continuum the voice sits (no rate argument – tempo is director-level
+terrain, see below).</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -352,10 +355,12 @@ let bell = derive(modal).modes(stiff_string_modes(0.02).count(8));
 <tbody>
 <tr><td><code>sustain()</code></td><td>Sustain mode (default)</td></tr>
 <tr><td><code>repeat()</code></td><td>Repeated/pulsed mode</td></tr>
-<tr><td><code>metric_beat(rate_hz)</code></td><td>Composer-facing metric beat intent</td></tr>
-<tr><td><code>entrained_beat(rate_hz)</code></td><td>Agent-phase entrainment intent</td></tr>
-<tr><td><code>flow_timing(mean_rate_hz)</code></td><td>Flow timing with default depth</td></tr>
-<tr><td><code>flow_timing(mean_rate_hz, depth)</code></td><td>Flow timing with explicit depth 0–1</td></tr>
+<tr><td><code>metric()</code></td><td>High coupling: deep attractor, stable pulse</td></tr>
+<tr><td><code>entrained()</code></td><td>Medium coupling: synchronization emerges over time</td></tr>
+<tr><td><code>flow()</code></td><td>Near-zero coupling: free renewal, non-metric texture</td></tr>
+<tr><td><code>entrainment(strength)</code></td><td>Override coupling 0–1 (free .. locked)</td></tr>
+<tr><td><code>rhythm_role(name)</code></td><td><code>"beat"</code>, <code>"subdivision"</code>, <code>"accent"</code>, or <code>"texture"</code></td></tr>
+<tr><td><code>microtiming(amount)</code></td><td>Signed beat-phase offset -0.5–0.5 (syncopation)</td></tr>
 </tbody>
 </table>
 </div>
@@ -381,28 +386,33 @@ let bell = derive(modal).modes(stiff_string_modes(0.02).count(8));
 <tr><th>Method</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>beat_strength(depth)</code></td><td>Metric/pulse phase strength 0–1</td></tr>
 <tr><td><code>pulse_lock(depth)</code></td><td>Low-level pulse phase weighting 0–1</td></tr>
-<tr><td><code>social(coupling)</code></td><td>Social coupling for <code>entrained_beat</code> or <code>pulse</code>, 0–1</td></tr>
+<tr><td><code>social(coupling)</code></td><td>Social coupling for <code>entrained()</code> or <code>pulse</code>, 0–1</td></tr>
 <tr><td><code>duration_range(min, max)</code></td><td>Adaptive duration range in rhythm cycles</td></tr>
 <tr><td><code>duration_curve(k, x0)</code></td><td>Adaptive duration curve parameters</td></tr>
 <tr><td><code>shorten_on_drop(gain)</code></td><td>Shorten adaptive duration when field support drops</td></tr>
 </tbody>
 </table>
 </div>
+<p><strong>Director-level rhythm terrain</strong> (scene-global, not per voice): <code>metric_stability(value)</code>
+sets attractor depth 0–1 (how readily a pulse forms), and <code>temporal_basin(min_hz, max_hz)</code>
+sets the tempo region the emergent beat gravitates toward. Both are soft priors –
+they shape the terrain and never schedule a beat or force a measure.</p>
 <p>Calls on the same axis are last-write-wins: the last timing mode and the last
-duration mode determine the final behavior. Tuning calls are remembered and
-applied when their matching mode is selected, so
-<code>beat_strength(0.7).metric_beat(2.0)</code> and
-<code>metric_beat(2.0).beat_strength(0.7)</code> are equivalent. The same applies to
+duration mode determine the final behavior. Modifiers are remembered and applied
+when their matching preset is selected, so <code>entrainment(0.8).metric()</code> and
+<code>metric().entrainment(0.8)</code> are equivalent. The same applies to
 <code>duration_range(...).adaptive_duration()</code> and the reverse order.</p>
 <p>Every numeric argument here accepts an integer or a float literal
-interchangeably, so <code>metric_beat(2)</code> and <code>metric_beat(2.0)</code> are the same. All of
+interchangeably, so <code>entrainment(1)</code> and <code>entrainment(1.0)</code> are the same. All of
 these phonation verbs apply to both a <code>Material</code> (species) and a draft
 <code>Participant</code> (group) handle.</p>
-<pre><code class="language-ts">let beat = derive(harmonic).metric_beat(2.0).beat_strength(0.7).cycles(2);
-let entrained = derive(harmonic).entrained_beat(2.0).cycles(2);
-let flow = derive(harmonic).flow_timing(3.0, 0.7).cycles(1);
+<pre><code class="language-ts">metric_stability(0.85);
+temporal_basin(1.8, 2.2);
+let beat = derive(harmonic).metric().rhythm_role("accent").cycles(2);
+let entrained = derive(harmonic).entrained().cycles(2);
+let flow = derive(harmonic).flow().cycles(1);
+let offbeat = derive(harmonic).metric().microtiming(0.5).cycles(2);
 let pulsed = derive(harmonic).repeat().pulse(3.0).pulse_lock(0.6).social(0.3);
 let fielded = derive(sine).adaptive_duration().duration_range(0.2, 0.8);
 </code></pre>
@@ -654,9 +664,9 @@ release(g);
 <code>ratio_candidates</code>, <code>move_cost_time_scale</code>, <code>pitch_apply_mode</code></p>
 <p><strong>Draft-only</strong> (ignored with a warning if called on a live group):</p>
 <p><code>brain</code>, <code>consonance_movement</code>, <code>pitch_mode</code>, <code>pitch_core</code>, <code>sustain</code>,
-<code>repeat</code>, <code>once</code>, <code>metric_beat</code>, <code>entrained_beat</code>, <code>flow_timing</code>, <code>pulse</code>,
-<code>while_alive</code>, <code>cycles</code>, <code>adaptive_duration</code>, <code>beat_strength</code>, <code>pulse_lock</code>,
-<code>social</code>, <code>duration_range</code>, <code>duration_curve</code>, <code>shorten_on_drop</code>, <code>metabolism</code>,
+<code>repeat</code>, <code>once</code>, <code>metric</code>, <code>entrained</code>, <code>flow</code>, <code>entrainment</code>, <code>rhythm_role</code>,
+<code>microtiming</code>, <code>pulse</code>, <code>while_alive</code>, <code>cycles</code>, <code>adaptive_duration</code>,
+<code>pulse_lock</code>, <code>social</code>, <code>duration_range</code>, <code>duration_curve</code>, <code>shorten_on_drop</code>, <code>metabolism</code>,
 <code>initial_energy</code>, <code>recharge_rate</code>, <code>action_cost</code>, <code>viability_rate</code>,
 <code>consonance_viability</code>, <code>viability_scope</code>, <code>dissonance_cost</code>,
 <code>energy_cap</code>, <code>adsr</code>, <code>rhythm_coupling</code>, <code>rhythm_coupling_vitality</code>,

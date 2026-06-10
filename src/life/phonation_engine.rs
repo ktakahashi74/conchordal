@@ -155,10 +155,11 @@ impl ThetaGrid {
     }
 
     /// Extend the gate grid up to `target_gate_plus_1`. `fixed_period`, when set,
-    /// extends at a constant tick spacing (a `FixedRate` clock) so a note-off
-    /// lands on the same isochronous grid that generated the onset. When `None`,
-    /// the grid follows the adaptive theta (a `ThetaGate` clock). Using theta to
-    /// extend a fixed-rate voice would make its note length drift with theta.
+    /// extends at a constant tick spacing (the coupling clock's nominal onset
+    /// period) so a note-off lands on the same grid that generated the onset.
+    /// When `None`, the grid follows the adaptive theta (a `ThetaGate` clock).
+    /// Using theta to extend a coupling-clock voice would make its note length
+    /// drift with theta.
     pub fn ensure_boundaries_until(
         &mut self,
         ctx: &CoreTickCtx,
@@ -393,73 +394,173 @@ impl ThetaGateClock {
     }
 }
 
-/// Isochronous gate clock at a fixed wall-clock rate, independent of the
-/// adaptive theta. The grid is anchored to absolute tick 0, so every voice at
-/// the same rate shares the same beat phase and a metric pulse stays coherent
-/// across voices regardless of when each voice was placed.
-#[derive(Debug, Default)]
-pub struct FixedRateClock {
-    rate_hz: f32,
-    /// Absolute (tick 0) anchor when true — all voices at this rate share the
-    /// beat phase (metric). Per-voice anchor when false — each voice keeps its
-    /// own phase so voices stay independent (flow droplets).
-    shared_grid: bool,
-    anchor_tick: Option<Tick>,
-    gate: ThetaGateClock,
+/// Upper bound on a clock's effective onset rate. Caps candidate density so a
+/// pathological base/meter rate cannot collapse the period to ~1 tick and emit
+/// a candidate at every sample.
+const MAX_ONSET_RATE_HZ: f32 = 200.0;
+
+/// Strength of the phase pull toward the shared meter beat. Kept at 1.0 so the
+/// effective-frequency factor `1 + lock * PULL_K * err` stays in `[0.5, 1.5]`
+/// (with `lock` in `[0,1]` and `err` in `[-0.5, 0.5]`) and the phase advances
+/// monotonically. A backward phase jump would corrupt the in-hop integer-
+/// crossing emission below.
+const COUPLING_PULL_K: f32 = 1.0;
+
+/// Per-voice phase oscillator that entrains its onset phase to the shared
+/// production meter beat with a coupling strength `coupling`. This single
+/// mechanism spans the rhythm family continuum: `coupling -> 0` is a free
+/// renewal process (flow texture), medium coupling entrains loosely as the
+/// meter gains confidence (entrained beat), and high coupling locks into the
+/// shared beat as a deep attractor (metric beat). Onsets are emitted at integer
+/// crossings of the oscillator phase; a phase pull toward the meter beat phase
+/// drags those crossings into a common alignment, so independently placed
+/// voices synchronize without any externally imposed grid.
+pub struct CouplingClock {
+    coupling: f32,
+    base_rate_hz: f32,
+    flow_depth: f32,
+    microtiming: f32,
+    /// Monotonic oscillator phase in cycles.
+    phase: f64,
+    /// Intrinsic onset rate for the current interval, redrawn from the renewal
+    /// distribution at each onset (constant when `flow_depth == 0`).
+    intrinsic_rate_hz: f32,
+    /// Last effective rate, used to estimate a nominal period for duration grid
+    /// extrapolation.
+    last_f_eff_hz: f32,
+    cluster_remaining: u8,
+    rng: SmallRng,
+    gate_index: u64,
+    has_gate: bool,
 }
 
-/// Upper bound on the fixed grid rate. Caps candidate density so a pathological
-/// `metric_beat`/flow rate cannot collapse the period to ~1 tick and emit a
-/// candidate at every sample.
-const MAX_FIXED_GRID_HZ: f32 = 200.0;
-
-impl FixedRateClock {
-    fn new(rate_hz: f32, shared_grid: bool) -> Self {
-        let rate_hz = if rate_hz.is_finite() {
-            rate_hz.clamp(0.01, MAX_FIXED_GRID_HZ)
+impl CouplingClock {
+    fn new(coupling: f32, base_rate_hz: f32, flow_depth: f32, microtiming: f32, seed: u64) -> Self {
+        let base_rate_hz = if base_rate_hz.is_finite() {
+            base_rate_hz.clamp(0.01, MAX_ONSET_RATE_HZ)
         } else {
             1.0
         };
+        let flow_depth = flow_depth.clamp(0.0, 1.0);
+        let mut rng = SmallRng::seed_from_u64(seed ^ 0xC0D1_4E55_7A1C_0911);
+        let mut cluster_remaining = 0u8;
+        let first_ioi =
+            OnsetRule::flow_next_ioi(base_rate_hz, flow_depth, &mut cluster_remaining, &mut rng);
+        // Random initial phase so free-running voices placed together do not all
+        // fire on the same tick before the meter entrains them.
+        let phase: f64 = rng.random_range(0.0..1.0);
         Self {
-            rate_hz,
-            shared_grid,
-            anchor_tick: None,
-            gate: ThetaGateClock::default(),
+            coupling: coupling.clamp(0.0, 1.0),
+            base_rate_hz,
+            flow_depth,
+            microtiming: if microtiming.is_finite() {
+                microtiming
+            } else {
+                0.0
+            },
+            phase,
+            intrinsic_rate_hz: (1.0 / first_ioi).clamp(0.01, MAX_ONSET_RATE_HZ),
+            last_f_eff_hz: base_rate_hz,
+            cluster_remaining,
+            rng,
+            gate_index: 0,
+            has_gate: false,
+        }
+    }
+
+    fn nominal_period_ticks(&self, fs: f32) -> Option<f64> {
+        if fs.is_finite() && fs > 0.0 {
+            Some((fs as f64 / self.last_f_eff_hz.max(0.01) as f64).max(1.0))
+        } else {
+            None
         }
     }
 
     fn gather_candidates_impl(&mut self, ctx: &CoreTickCtx, out: &mut Vec<CandidatePoint>) {
-        if !ctx.fs.is_finite() || ctx.fs <= 0.0 {
+        let fs = ctx.fs;
+        if !fs.is_finite() || fs <= 0.0 || ctx.frame_end <= ctx.now_tick {
             return;
         }
-        // Shared grid anchors at absolute 0 (coherent across voices); per-voice
-        // grid anchors at this voice's first observed tick (independent phase).
-        let anchor = if self.shared_grid {
-            0
-        } else {
-            *self.anchor_tick.get_or_insert(ctx.now_tick)
+        let conf = ctx.rhythms.delta.alpha.clamp(0.0, 1.0);
+        let lock = (self.coupling * conf).clamp(0.0, 1.0);
+        let f_band = {
+            let f = ctx.rhythms.delta.freq_hz;
+            if f.is_finite() && f > 0.0 { f } else { 2.0 }
         };
-        // f64 throughout: the offset grows unbounded over a session, so f32 would
-        // lose integer resolution past ~2^24 ticks and jitter the grid. f64 keeps
-        // tick-exact placement for any realistic run.
-        let period = (ctx.fs as f64 / self.rate_hz.max(0.01) as f64).max(1.0);
-        let step = (period.round() as Tick).max(1);
-        self.gate.gather_candidates_core(ctx, out, |cursor, _ctx| {
-            let offset = cursor.saturating_sub(anchor) as f64;
-            let k = (offset / period).ceil().max(0.0);
-            let tick = anchor.saturating_add((k * period).round() as Tick);
-            if tick < cursor {
-                Some(tick.saturating_add(step))
-            } else {
-                Some(tick)
+        // Meter beat phase in cycles, [0,1); microtiming offsets the lock target.
+        let target_frac = ((ctx.rhythms.delta.phase / TAU) + self.microtiming).rem_euclid(1.0);
+
+        let frame_end = ctx.frame_end as f64;
+        let mut cursor = ctx.now_tick as f64;
+        // Defensive bound on in-hop crossings (degenerate rates only).
+        let mut guard = 0u32;
+        loop {
+            guard += 1;
+            if guard > 100_000 {
+                break;
             }
-        });
+            let f_intrinsic = self.intrinsic_rate_hz.max(0.01);
+            let mut f_eff = (1.0 - lock) * f_intrinsic + lock * f_band;
+            if !f_eff.is_finite() {
+                f_eff = f_intrinsic;
+            }
+            f_eff = f_eff.clamp(0.01, MAX_ONSET_RATE_HZ);
+            self.last_f_eff_hz = f_eff;
+
+            let my_frac = self.phase.rem_euclid(1.0) as f32;
+            let raw_err = target_frac - my_frac;
+            let err = raw_err - raw_err.round(); // signed phase error in [-0.5, 0.5]
+            let mut phase_dot = f_eff * (1.0 + lock * COUPLING_PULL_K * err);
+            if !phase_dot.is_finite() || phase_dot <= 0.0 {
+                phase_dot = f_eff.max(0.01);
+            }
+
+            // Cycles to the next integer crossing (a full cycle when on a beat).
+            let frac_to_next = 1.0 - my_frac as f64;
+            let dt_cross_sec = frac_to_next / phase_dot as f64;
+            let cross_tick = cursor + dt_cross_sec * fs as f64;
+            if !cross_tick.is_finite() || cross_tick >= frame_end {
+                let remaining_sec = (frame_end - cursor) / fs as f64;
+                if remaining_sec > 0.0 {
+                    self.phase += phase_dot as f64 * remaining_sec;
+                }
+                break;
+            }
+
+            let adv_sec = (cross_tick - cursor) / fs as f64;
+            self.phase += phase_dot as f64 * adv_sec;
+            // Land exactly on the integer to stop floating drift accumulating.
+            self.phase = self.phase.round();
+
+            let tick = (cross_tick.round() as Tick).clamp(ctx.now_tick, ctx.frame_end - 1);
+            if self.has_gate {
+                self.gate_index = self.gate_index.saturating_add(1);
+            } else {
+                self.has_gate = true;
+            }
+            out.push(CandidatePoint {
+                tick,
+                gate: self.gate_index,
+                theta_pos: self.gate_index as f64,
+                phase_in_gate: 0.0,
+            });
+
+            // Renewal: redraw the intrinsic rate for the next interval.
+            let ioi = OnsetRule::flow_next_ioi(
+                self.base_rate_hz,
+                self.flow_depth,
+                &mut self.cluster_remaining,
+                &mut self.rng,
+            );
+            self.intrinsic_rate_hz = (1.0 / ioi).clamp(0.01, MAX_ONSET_RATE_HZ);
+            cursor = cross_tick;
+        }
     }
 }
 
 pub enum PhonationClock {
     ThetaGate(ThetaGateClock),
-    FixedRate(FixedRateClock),
+    Coupling(CouplingClock),
     #[cfg(test)]
     Custom(Box<dyn FnMut(&CoreTickCtx, &mut Vec<CandidatePoint>) + Send>),
 }
@@ -470,7 +571,7 @@ impl PhonationClock {
             PhonationClock::ThetaGate(clock) => {
                 clock.gather_candidates_impl(ctx, out);
             }
-            PhonationClock::FixedRate(clock) => {
+            PhonationClock::Coupling(clock) => {
                 clock.gather_candidates_impl(ctx, out);
             }
             #[cfg(test)]
@@ -478,33 +579,39 @@ impl PhonationClock {
         }
     }
 
-    fn is_fixed_rate(&self) -> bool {
-        matches!(self, PhonationClock::FixedRate(_))
+    /// Whether onsets should bypass the adaptive `env_open`/social gating and use
+    /// a flat timing field. The coupling clock owns its own timing (an internal
+    /// entrained oscillator); gating it by theta would double-count the
+    /// entrainment and destroy the renewal / lock continuum it produces.
+    fn uses_flat_field(&self) -> bool {
+        matches!(self, PhonationClock::Coupling(_))
     }
 
-    /// Constant tick spacing of a `FixedRate` clock, used to extend the duration
-    /// grid without falling back to the adaptive theta. `None` for theta-driven
-    /// clocks, whose spacing is not constant.
+    /// Nominal tick spacing used to extend the duration grid without falling back
+    /// to the adaptive theta. The last effective period for `Coupling`. `None`
+    /// for theta-driven clocks, whose spacing is not constant.
     fn fixed_period_ticks(&self, fs: f32) -> Option<f64> {
         match self {
-            PhonationClock::FixedRate(clock) => {
-                if fs.is_finite() && fs > 0.0 {
-                    Some((fs as f64 / clock.rate_hz.max(0.01) as f64).max(1.0))
-                } else {
-                    None
-                }
-            }
+            PhonationClock::Coupling(clock) => clock.nominal_period_ticks(fs),
             _ => None,
         }
     }
 
-    pub(crate) fn from_config(config: &PhonationClockConfig) -> Self {
+    pub(crate) fn from_config(config: &PhonationClockConfig, seed: u64) -> Self {
         match config {
             PhonationClockConfig::ThetaGate => PhonationClock::ThetaGate(ThetaGateClock::default()),
-            PhonationClockConfig::FixedRate {
-                rate_hz,
-                shared_grid,
-            } => PhonationClock::FixedRate(FixedRateClock::new(*rate_hz, *shared_grid)),
+            PhonationClockConfig::Coupling {
+                coupling,
+                base_rate_hz,
+                flow_depth,
+                microtiming,
+            } => PhonationClock::Coupling(CouplingClock::new(
+                *coupling,
+                *base_rate_hz,
+                *flow_depth,
+                *microtiming,
+                seed,
+            )),
         }
     }
 }
@@ -544,19 +651,17 @@ impl SubThetaMod {
 
 pub enum OnsetRule {
     None,
+    /// Fire on every live candidate, each onset carrying `strength` (1.0 = plain
+    /// beat, > 1.0 = accent). The coupling clock emits candidates exactly at
+    /// onset times, so no further timing decision is needed here.
+    Always {
+        strength: f32,
+    },
     Accumulator {
         rate_hz: f32,
         refractory_gates: u32,
         acc: f32,
         next_allowed_gate: u64,
-    },
-    Flow {
-        mean_rate_hz: f32,
-        depth: f32,
-        elapsed_sec: f32,
-        next_ioi_sec: f32,
-        cluster_remaining: u8,
-        rng: SmallRng,
     },
     #[cfg(test)]
     Custom(Box<dyn FnMut(&IntervalInput, &CoreState) -> Option<OnsetKick> + Send>),
@@ -574,22 +679,9 @@ impl OnsetRule {
         }
     }
 
-    pub fn flow(mean_rate_hz: f32, depth: f32, seed: u64) -> Self {
-        let mut rng = SmallRng::seed_from_u64(seed ^ 0xA53C_9E71_8D4B_2F10);
-        let mut cluster_remaining = 0;
-        let next_ioi_sec =
-            Self::flow_next_ioi(mean_rate_hz, depth, &mut cluster_remaining, &mut rng);
-        let elapsed_sec = rng.random_range(0.0..next_ioi_sec);
-        OnsetRule::Flow {
-            mean_rate_hz,
-            depth,
-            elapsed_sec,
-            next_ioi_sec,
-            cluster_remaining,
-            rng,
-        }
-    }
-
+    /// Renewal inter-onset interval used by the coupling clock to shape the
+    /// free-running (low-coupling) limit: a regular period when `depth == 0` and
+    /// a clustered, gappy non-metric texture as `depth` rises.
     fn flow_next_ioi(
         mean_rate_hz: f32,
         depth: f32,
@@ -632,6 +724,14 @@ impl OnsetRule {
     pub fn on_candidate(&mut self, c: &IntervalInput, state: &CoreState) -> Option<OnsetKick> {
         match self {
             OnsetRule::None => None,
+            OnsetRule::Always { strength } => {
+                if !state.is_alive || c.weight <= 0.0 {
+                    return None;
+                }
+                Some(OnsetKick {
+                    strength: *strength,
+                })
+            }
             OnsetRule::Accumulator {
                 rate_hz,
                 refractory_gates,
@@ -658,34 +758,6 @@ impl OnsetRule {
                 }
                 None
             }
-            OnsetRule::Flow {
-                mean_rate_hz,
-                depth,
-                elapsed_sec,
-                next_ioi_sec,
-                cluster_remaining,
-                rng,
-            } => {
-                if !state.is_alive {
-                    return None;
-                }
-                if !mean_rate_hz.is_finite() || *mean_rate_hz <= 0.0 {
-                    return None;
-                }
-                *elapsed_sec += c.dt_sec.max(0.0);
-                if !elapsed_sec.is_finite() || *elapsed_sec > 16.0 {
-                    *elapsed_sec = 16.0;
-                }
-                let can_fire = c.weight > 0.0 && *elapsed_sec >= *next_ioi_sec;
-                if can_fire {
-                    *elapsed_sec = (*elapsed_sec - *next_ioi_sec).min(*next_ioi_sec);
-                    *next_ioi_sec =
-                        Self::flow_next_ioi(*mean_rate_hz, *depth, cluster_remaining, rng);
-                    let strength = (0.48 + 0.14 * depth.clamp(0.0, 1.0)).clamp(0.30, 0.66);
-                    return Some(OnsetKick { strength });
-                }
-                None
-            }
             #[cfg(test)]
             OnsetRule::Custom(f) => f(c, state),
         }
@@ -694,10 +766,12 @@ impl OnsetRule {
     fn from_config(config: &OnsetConfig, seed: u64) -> Self {
         match config {
             OnsetConfig::None => OnsetRule::None,
+            OnsetConfig::Always { strength } => OnsetRule::Always {
+                strength: *strength,
+            },
             OnsetConfig::Accumulator { rate, refractory } => {
                 OnsetRule::accumulator(*rate, *refractory, seed)
             }
-            OnsetConfig::Flow { mean_rate, depth } => OnsetRule::flow(*mean_rate, *depth, seed),
         }
     }
 
@@ -713,23 +787,6 @@ impl OnsetRule {
             ) => {
                 *rate_hz = *rate;
                 *refractory_gates = *refractory;
-            }
-            (
-                OnsetConfig::Flow { mean_rate, depth },
-                OnsetRule::Flow {
-                    mean_rate_hz,
-                    depth: current_depth,
-                    next_ioi_sec,
-                    cluster_remaining,
-                    rng,
-                    ..
-                },
-            ) => {
-                *mean_rate_hz = *mean_rate;
-                *current_depth = *depth;
-                if !next_ioi_sec.is_finite() || *next_ioi_sec <= 0.0 {
-                    *next_ioi_sec = Self::flow_next_ioi(*mean_rate, *depth, cluster_remaining, rng);
-                }
             }
             _ => {
                 *self = Self::from_config(config, seed);
@@ -955,7 +1012,7 @@ impl PhonationEngine {
         let sub_theta_mod = SubThetaMod::from_config(&config.sub_theta_mod);
         let duration_rule = DurationRule::from_config(&config.duration);
         Self {
-            clock: PhonationClock::from_config(&config.clock),
+            clock: PhonationClock::from_config(&config.clock, seed),
             onset_rule,
             duration_rule,
             sub_theta_mod,
@@ -1147,11 +1204,12 @@ impl PhonationEngine {
         Self::merge_candidates_into(&mut self.scratch_merged, &mut self.scratch_candidates);
         let merged = std::mem::take(&mut self.scratch_merged);
         let mut timing_grid = ThetaGrid::from_candidates(&merged);
-        // Fixed-rate clocks (metric, flow) are external/renewal clocks: their
-        // onsets must not be gated by the adaptive `env_open`, or they would
-        // re-couple to theta (metric loses its steady pulse; flow droplets lock
-        // to one period instead of staying independent). Use a flat field.
-        let timing_field = if self.clock.is_fixed_rate() {
+        // Fixed-rate and coupling clocks own their own timing (an external grid
+        // or an internal entrained oscillator): their onsets must not be gated by
+        // the adaptive `env_open`, or they would re-couple to theta (metric loses
+        // its steady pulse; flow droplets lock to one period; the coupling clock's
+        // entrainment is double-counted). Use a flat field.
+        let timing_field = if self.clock.uses_flat_field() {
             TimingField::flat(&timing_grid)
         } else {
             TimingField::build_from(
@@ -1638,9 +1696,12 @@ mod tests {
     }
 
     #[test]
-    fn fixed_rate_clock_emits_isochronous_anchored_gates() {
-        let mut clock = FixedRateClock::new(10.0, true); // period = fs/10 = 100 ticks
-        let rhythms = NeuralRhythms::default();
+    fn coupling_clock_free_runs_at_base_rate_with_zero_confidence() {
+        // No metrical confidence -> lock collapses to 0 and the clock free-runs
+        // at its intrinsic base rate (renewal/flow limit). depth = 0 keeps the
+        // period regular so the assay is deterministic.
+        let mut clock = CouplingClock::new(0.95, 10.0, 0.0, 0.0, 1);
+        let rhythms = NeuralRhythms::default(); // delta.alpha (confidence) = 0
         let ctx = CoreTickCtx {
             now_tick: 0,
             frame_end: 350,
@@ -1649,62 +1710,18 @@ mod tests {
         };
         let mut out = Vec::new();
         clock.gather_candidates_impl(&ctx, &mut out);
-        assert_eq!(
-            out.iter().map(|c| c.tick).collect::<Vec<_>>(),
-            vec![0, 100, 200, 300]
-        );
-        assert!(out.iter().all(|c| c.phase_in_gate == 0.0));
-        assert_eq!(
-            out.iter().map(|c| c.gate).collect::<Vec<_>>(),
-            vec![0, 1, 2, 3]
-        );
-
-        // Next hop continues on the same anchored grid with no drift.
-        let ctx2 = CoreTickCtx {
-            now_tick: 350,
-            frame_end: 650,
-            fs: 1000.0,
-            rhythms,
-        };
-        let mut out2 = Vec::new();
-        clock.gather_candidates_impl(&ctx2, &mut out2);
-        assert_eq!(
-            out2.iter().map(|c| c.tick).collect::<Vec<_>>(),
-            vec![400, 500, 600]
-        );
+        // base_rate 10 Hz @ fs 1000 -> 100-tick period; a few onsets per hop,
+        // never one-per-tick.
+        assert!(out.len() >= 2 && out.len() <= 5, "got {}", out.len());
+        for pair in out.windows(2) {
+            assert!(pair[1].tick - pair[0].tick >= 80);
+        }
     }
 
     #[test]
-    fn fixed_rate_clock_per_voice_anchor_uses_own_start() {
-        // shared_grid = false: the grid is anchored to the voice's first tick,
-        // so two voices placed at different times keep independent phase.
-        let rhythms = NeuralRhythms::default();
-        let mut a = FixedRateClock::new(10.0, false); // period 100 @ fs 1000
-        let mut b = FixedRateClock::new(10.0, false);
-        let ctx_a = CoreTickCtx {
-            now_tick: 30,
-            frame_end: 260,
-            fs: 1000.0,
-            rhythms,
-        };
-        let ctx_b = CoreTickCtx {
-            now_tick: 70,
-            frame_end: 300,
-            fs: 1000.0,
-            rhythms,
-        };
-        let (mut oa, mut ob) = (Vec::new(), Vec::new());
-        a.gather_candidates_impl(&ctx_a, &mut oa);
-        b.gather_candidates_impl(&ctx_b, &mut ob);
-        // Each anchors at its own start, so the phases differ (not a shared grid).
-        assert_eq!(oa.first().map(|c| c.tick), Some(30));
-        assert_eq!(ob.first().map(|c| c.tick), Some(70));
-    }
-
-    #[test]
-    fn fixed_rate_clock_clamps_extreme_rate() {
-        // A pathological rate must not collapse the period to ~1 tick.
-        let mut clock = FixedRateClock::new(1.0e9, true);
+    fn coupling_clock_clamps_extreme_base_rate() {
+        // A pathological base rate must not collapse the period to ~1 tick.
+        let mut clock = CouplingClock::new(0.0, 1.0e9, 0.0, 0.0, 1);
         let rhythms = NeuralRhythms::default();
         let ctx = CoreTickCtx {
             now_tick: 0,
@@ -1714,15 +1731,43 @@ mod tests {
         };
         let mut out = Vec::new();
         clock.gather_candidates_impl(&ctx, &mut out);
-        // At the 200 Hz cap, fs/200 = 240-tick period -> at most a few gates in
-        // a 1000-tick hop, never one-per-tick.
+        // At the MAX_ONSET_RATE_HZ cap, fs/200 = 240-tick period -> only a few
+        // onsets in a 1000-tick hop, never one-per-tick.
         assert!(
             out.len() <= 1000 / 200 + 2,
-            "clamped grid emitted too many gates: {}",
+            "clamped clock emitted too many onsets: {}",
             out.len()
         );
         for pair in out.windows(2) {
             assert!(pair[1].tick - pair[0].tick >= 200);
+        }
+    }
+
+    #[test]
+    fn coupling_clock_high_coupling_locks_to_beat_band() {
+        // With strong confidence and high coupling, the effective rate is pulled
+        // toward the shared beat (delta) band, not the intrinsic base rate.
+        let mut rhythms = NeuralRhythms::default();
+        rhythms.delta.alpha = 1.0; // full confidence
+        rhythms.delta.freq_hz = 2.0; // shared beat at 2 Hz
+        let mut clock = CouplingClock::new(1.0, 10.0, 0.0, 0.0, 7);
+        let ctx = CoreTickCtx {
+            now_tick: 0,
+            frame_end: 4000,
+            fs: 1000.0,
+            rhythms,
+        };
+        let mut out = Vec::new();
+        clock.gather_candidates_impl(&ctx, &mut out);
+        // Locked to 2 Hz (500-tick period), the free-run base of 10 Hz would have
+        // produced ~40 onsets; locking yields far fewer.
+        assert!(
+            out.len() <= 12,
+            "expected beat-locked onsets near 2 Hz, got {}",
+            out.len()
+        );
+        for pair in out.windows(2) {
+            assert!(pair[1].tick - pair[0].tick >= 300);
         }
     }
 
@@ -3328,35 +3373,6 @@ mod tests {
     }
 
     #[test]
-    fn flow_onset_process_is_seed_deterministic() {
-        fn run(seed: u64) -> Vec<u64> {
-            let mut rule = OnsetRule::flow(3.0, 0.8, seed);
-            let state = CoreState { is_alive: true };
-            let mut fired = Vec::new();
-            for gate in 0..80 {
-                let input = IntervalInput {
-                    gate,
-                    tick: gate * 100,
-                    dt_theta: 1.0,
-                    dt_sec: 0.1,
-                    weight: 1.0,
-                };
-                if rule.on_candidate(&input, &state).is_some() {
-                    fired.push(gate);
-                }
-            }
-            fired
-        }
-
-        let a = run(42);
-        let b = run(42);
-        let c = run(43);
-        assert_eq!(a, b);
-        assert_ne!(a, c);
-        assert!(!a.is_empty());
-    }
-
-    #[test]
     fn flow_next_ioi_depth_zero_returns_base_interval() {
         let mut cluster_remaining = 2;
         let mut rng = SmallRng::seed_from_u64(7);
@@ -3389,29 +3405,5 @@ mod tests {
         assert!(max / min < 1.55, "block means drifted too far: {iois:?}");
         assert!(iois.iter().any(|ioi| *ioi < 0.28));
         assert!(iois.iter().any(|ioi| *ioi > 0.50));
-    }
-
-    #[test]
-    fn flow_onset_direct_ioi_allows_same_gate_clusters() {
-        let mut rule = OnsetRule::Flow {
-            mean_rate_hz: 40.0,
-            depth: 0.0,
-            elapsed_sec: 0.06,
-            next_ioi_sec: 0.05,
-            cluster_remaining: 0,
-            rng: SmallRng::seed_from_u64(7),
-        };
-        let state = CoreState { is_alive: true };
-        let input = |tick, dt_sec| IntervalInput {
-            gate: 3,
-            tick,
-            dt_theta: dt_sec * 6.0,
-            dt_sec,
-            weight: 1.0,
-        };
-
-        assert!(rule.on_candidate(&input(100, 0.0), &state).is_some());
-        assert!(rule.on_candidate(&input(120, 0.01), &state).is_none());
-        assert!(rule.on_candidate(&input(170, 0.05), &state).is_some());
     }
 }

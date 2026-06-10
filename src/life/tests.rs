@@ -140,6 +140,7 @@ fn conductor_dispatches_finish_on_time() {
         seed: 0,
         control_update_mode: crate::scenario::ControlUpdateMode::SnapshotPhased,
         scaffold: crate::scenario::ScaffoldConfig::Off,
+        meter_shaping: crate::core::meter::MeterShaping::default(),
         scene_markers: Vec::new(),
         events: vec![event],
         duration_sec: 2.0,

@@ -918,6 +918,7 @@ pub(crate) fn init_runtime(
         pop.enable_auto_observe();
     }
     let scaffold = scenario.scaffold;
+    let meter_shaping = scenario.meter_shaping;
     let conductor = Conductor::from_scenario(scenario);
 
     // Spawn worker thread
@@ -943,6 +944,7 @@ pub(crate) fn init_runtime(
                     None,
                     reporter,
                     scaffold,
+                    meter_shaping,
                     guard_meter.clone(),
                     dcc_coupler,
                     stop_flag_worker,
@@ -1082,6 +1084,7 @@ pub fn run_render(
     pop.set_seed(scenario.seed);
     pop.set_control_update_mode(scenario.control_update_mode);
     let scaffold = scenario.scaffold;
+    let meter_shaping = scenario.meter_shaping;
     let conductor = Conductor::from_scenario(scenario);
 
     let stop_flag_worker = stop_flag.clone();
@@ -1133,6 +1136,7 @@ pub fn run_render(
                 Some(wav_tx),
                 None,
                 scaffold,
+                meter_shaping,
                 guard_meter,
                 dcc_coupler,
                 stop_flag_worker,
@@ -1186,6 +1190,7 @@ fn worker_loop(
     mut wav_tx: Option<Sender<Arc<[f32]>>>,
     mut reporter: Option<JsonlReporter>,
     scaffold: ScaffoldConfig,
+    meter_shaping: crate::core::meter::MeterShaping,
     guard_meter: Option<Arc<LimiterMeter>>,
     dcc_coupler: DccCoupler,
     exiting: Arc<AtomicBool>,
@@ -1223,7 +1228,9 @@ fn worker_loop(
     let timebase = crate::core::timebase::Timebase { fs, hop };
     // Production-side meter core (auditory-motor coupling), separate from the
     // perception meter inside ListenerTwin. See "Perception vs Production".
+    // Composer-set terrain priors (metric_stability / temporal_basin) seed it.
     let mut prod_meter = MeterNetwork::new();
+    prod_meter.set_shaping(meter_shaping);
     let mut generator_model =
         crate::life::generator_model::GeneratorModel::new(timebase, log_space.clone());
     let mut schedule_renderer = ScheduleRenderer::new(timebase);
@@ -1484,14 +1491,20 @@ fn worker_loop(
                 (presentation_chunk, habitat_chunk, max_p, [max_p, max_p])
             };
 
-            // Generator rhythm derives from the habitat bus via the production
-            // meter core. Dorsal still runs the flux front-end; its drive feeds
-            // the meter network instead of the legacy theta/delta engine.
+            // Drive the production meter from both the habitat-bus flux and the
+            // population's own onsets (low-latency auditory-motor reinforcement).
+            // Combined via max() and kept weak to avoid closed-loop wobble; flux
+            // alone is the fallback when no onset fires.
             if !finished {
                 dorsal.process(habitat_chunk.as_ref());
-                let drive = (dorsal.last_metrics().flux.max(0.0) * 500.0)
+                let flux_drive = (dorsal.last_metrics().flux.max(0.0) * 500.0)
                     .tanh()
                     .clamp(0.0, 1.0);
+                const ONSET_DRIVE_GAIN: f32 = 0.25;
+                let onset_drive = (pop.last_phonation_onset_strength_in_hop().unwrap_or(0.0)
+                    * ONSET_DRIVE_GAIN)
+                    .clamp(0.0, 1.0);
+                let drive = flux_drive.max(onset_drive);
                 let meter_state = prod_meter.process(hop_duration.as_secs_f32(), drive);
                 current_landscape.rhythm = NeuralRhythms::from_meter_state(&meter_state);
             }

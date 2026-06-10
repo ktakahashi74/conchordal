@@ -4,7 +4,6 @@
 seed(20260509);
 
 let root_hz = 196.0;
-let beat_hz = 1.8;
 
 let field_anchor = harmonic()
     .brain("drone")
@@ -19,7 +18,7 @@ let field_anchor = harmonic()
 
 let colony = harmonic()
     .amp(0.040)
-    .entrained_beat(beat_hz)
+    .entrained()
     .cycles(3)
     .seek_consonance()
     .pitch_apply_mode("gate_snap")
@@ -37,7 +36,9 @@ let colony = harmonic()
 
 let late_colony = variant(colony)
     .amp(0.032)
-    .entrained_beat(beat_hz * 1.25)
+    .entrained()
+    // Locks a touch tighter, so the later cohort tips the groove toward coherence.
+    .entrainment(0.65)
     .cycles(2)
     .brightness(0.62)
     .avoid_neighbors(0.70);
@@ -45,6 +46,10 @@ let late_colony = variant(colony)
 section("Entrained Beat", || {
     set_control_update_mode("snapshot_phased");
     harmonic_mirror(0.05);
+    // Medium attractor in a ~1.8 Hz region: synchronization should EMERGE from
+    // the colony's coupling and survival, not be forced by a deep prior.
+    metric_stability(0.45);
+    temporal_basin(1.6, 2.0);
 
     let root = place(field_anchor, at(root_hz).count(1));
     wait(2.0);

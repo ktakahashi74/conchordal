@@ -231,25 +231,35 @@ previous implementation-level control.
 
 ## Rhythm Redesign
 
-The v0.4.0 rhythm surface is being redesigned so rhythm is a core part of the
-same ecology as consonance, viability, movement, and respawn. The redesign must
-cover metric beat, entrained beat, and flow timing.
+In v0.4.0 rhythm is a core part of the same ecology as consonance, viability,
+movement, and respawn: one coupling continuum on a single emergent meter the
+population drives. Metric, entrained, and flow are three regions of that
+continuum (high / medium / near-zero coupling), not separate clocks.
 
-The new entry points name the musical timing intent directly:
+The director sets the rhythmic terrain (tempo region + attractor depth); each
+voice picks a preset and, optionally, refines its coupling, role, and phase:
 
 ```ts
+metric_stability(0.85);     // attractor depth: how readily a pulse forms
+temporal_basin(1.8, 2.2);   // tempo region the emergent beat gravitates toward
+
 let beat = harmonic()
-    .metric_beat(2.0)
-    .beat_strength(0.7)
+    .metric()
+    .rhythm_role("accent")  // a strong onset that drives the shared beat
     .cycles(2);
 
 let entrained = harmonic()
-    .entrained_beat(2.0)
+    .entrained()
     .cycles(2);
 
 let flow = harmonic()
-    .flow_timing(3.0, 0.7)
+    .flow()
     .cycles(1);
+
+let offbeat = harmonic()
+    .metric()
+    .microtiming(0.5)       // a half-beat offset reads as syncopation
+    .cycles(2);
 ```
 
 The current low-level tools remain useful for mechanism-level scripts:

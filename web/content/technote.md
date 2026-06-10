@@ -18,11 +18,12 @@ This technical note serves as an exhaustive reference for the system's architect
 
 The emergent behavior of the system is driven by a unified fitness function: the pursuit of Consonance. Agents within the Conchordal ecosystem do not follow a pre-written score. Instead, they continuously analyze their environment to maximize their "Spectral Comfort"—defined as the minimization of sensory roughness—and their "Harmonic Stability," or the maximization of virtual root strength. The result is a self-organizing soundscape where harmony, rhythm, and timbre evolve organically through the interactions of physical laws rather than deterministic sequencing.
 
-This document explores the three foundational pillars of the Conchordal architecture:
+This document explores the four foundational pillars of the Conchordal architecture, mirroring the Manifesto's two perceptual axes:
 
 1.  **The Psychoacoustic Coordinate System**: The mathematical framework of `Log2Space` and ERB scales that replaces linear Hertz and integer MIDI notes.
-2.  **The Cognitive Landscape**: The real-time DSP pipeline that computes Roughness ($R$) and Harmonicity ($H$) fields from the raw audio stream.
-3.  **The Life Engine**: The agent-based model governing the metabolism, movement, and neural entrainment of the audio entities.
+2.  **The Frequency Axis — the Auditory Landscape**: The real-time DSP pipeline that computes Roughness ($R$) and Harmonicity ($H$) fields from the raw audio stream.
+3.  **The Temporal Axis — the Emergent Meter**: The coupled-oscillator model that forms a metrical percept from the ecosystem's own onsets.
+4.  **The Life Engine**: The agent-based model governing the metabolism, movement, and entrainment of the audio entities that inhabit both terrains.
 
 # 2. The Psychoacoustic Coordinate System
 
@@ -79,7 +80,13 @@ $$ BW_{ERB}(f) = 24.7(0.00437f + 1) $$
 
 This scale is distinct from `Log2Space`. While `Log2Space` is the domain for pitch and harmonicity (where relationships are octave-invariant), the roughness calculation requires mapping spectral energy into the ERB domain to evaluate interference. The system effectively maintains a dual-view of the spectrum: one strictly logarithmic for harmonic templates, and one psychoacoustic for dissonance evaluation.
 
-# 3. The Auditory Landscape: Analyzing the Environment
+# 3. The Frequency Axis: The Auditory Landscape
+
+Music cognition treats consonance not as a property of notation but as a *percept* with two distinct components. **Sensory dissonance** is a bottom-up sensation: when two partials fall within the same critical band on the basilar membrane, their interference is heard as beating and roughness—a phenomenon present for any listener, musical training or not. **Tonal fusion** is a structural percept: partials standing in harmonic relation are bound by the auditory system into a single tone with a single (possibly *virtual*) pitch, heard as one voice rather than many. What musicians call consonance is the integration of the two—low roughness *and* strong fusion. The small-integer ratios celebrated since Pythagoras are properties of the *stimulus*; the harmony itself is constructed in the listener.
+
+Both components have quantitative models. Helmholtz located dissonance in beating; Plomp and Levelt measured its dependence on critical bandwidth, yielding the roughness curve that peaks at roughly a quarter of a critical band and vanishes beyond it. Fusion runs through Stumpf's *Tonverschmelzung* to Terhardt's virtual pitch: the auditory brainstem, phase-locked to temporal fine structure, matches incoming partials against harmonic templates and infers the fundamental that best explains them—even when that fundamental is physically absent. The two mechanisms are separable: a sound can be smooth yet unfused, or fused yet rough.
+
+Conchordal adopts this account literally. The system runs a cochlear front end on its own sound, computes a Roughness field and a Harmonicity field over the entire frequency axis, and integrates them into Consonance—a terrain whose peaks are where a new tone would *fuse* and whose valleys are where it would *grate*. Nothing in the system knows an interval name or a ratio; agents feel only this terrain. Section 4 applies the same move to time: just as harmony is computed from a model of the cochlea rather than imposed, meter will be computed from a model of beat perception rather than scheduled.
 
 The "Landscape" is the central data structure in Conchordal. It acts as the shared environment for all agents, a dynamic scalar field representing the psychoacoustic "potential" of every frequency bin. Agents do not interact directly with each other; they interact with the Landscape, which aggregates the spectral energy of the entire population. This decouples the complexity of the simulation from the number of agents ($O(N)$ vs $O(N^2)$).
 
@@ -88,27 +95,7 @@ The Landscape is updated every audio frame (or block) by the Analysis Worker. It
 *   **Roughness ($R$)**: The sensory dissonance caused by rapid beating between proximal partials.
 *   **Harmonicity ($H$)**: The measure of virtual pitch strength and spectral periodicity.
 
-Both metrics are normalized to the $[0, 1]$ range. Consonance is then derived in two layers: a **Consonance Kernel** that fuses the observables into a single fitness score, and a set of **Representation transforms** that reshape that score for different downstream consumers.
-
-**Layer 1 — Consonance Kernel (bilinear family):**
-
-$$ C_{score} = a \cdot H_{01} + b \cdot R_{01} + c \cdot H_{01} R_{01} + d $$
-
-Default coefficients: $a = 1.0$, $b = -1.35$, $c = 1.0$, $d = 0.0$. Because $b < 0$, roughness acts as a penalty; because $c > 0$, high harmonicity attenuates that penalty (the interaction term $c \cdot H_{01} R_{01}$ partially cancels $b \cdot R_{01}$ when $H_{01}$ is large). The bilinear family subsumes the earlier $\alpha H - wR$ formulation as the special case $c = 0$.
-
-**Layer 2 — Representations:**
-
-| Name | Formula | Range | Meaning |
-| :--- | :--- | :--- | :--- |
-| $C_{score}$ | $aH + bR + cHR + d$ | $(-\infty,+\infty)$ | raw fitness from the kernel |
-| $C_{level01}$ | $\sigma(\beta(C_{score} - \theta))$ | $[0,1]$ | metabolism gate (sigmoid) |
-| $C_{density\_mass}$ | $\max(0,\;H_{01}(1 - \rho R_{01}))$ | $[0,+\infty)$ | raw density mass ($\rho$-kernel) |
-| $C_{density\_pmf}$ | $\text{normalize}(C_{density\_mass})$ | $[0,1],\;\Sigma=1$ | pitch-selection PMF |
-| $C_{energy}$ | $-C_{score}$ | $(-\infty,+\infty)$ | energy for minimization |
-
-where $\sigma(x) = 1/(1+e^{-x})$, $\beta$ controls sigmoid steepness (default 2.0), and $\theta$ is the sigmoid threshold (default 0.0). The density mass uses a separate $\rho$-kernel with coefficients $a{=}1, b{=}0, c{=}{-}\rho, d{=}0$, so that $C_{density\_mass} = H_{01}(1 - \rho R_{01})$ clamped to $\geq 0$; the parameter $\rho$ (`consonance_density_roughness_gain`, default 1.0) controls how strongly roughness suppresses spawn probability.
-
-Individual agents maintain their own perceptual context (`PerceptualContext`) which tracks per-agent boredom and familiarity, providing additional score adjustments during pitch selection.
+Both metrics are normalized to the $[0, 1]$ range. The rest of this chapter follows the analysis pipeline in order: Section 3.1 builds the log-frequency spectrum (NSGT), Sections 3.2 and 3.3 derive the Roughness and Harmonicity fields from it, and Section 3.4 integrates the two into the Consonance terrain that agents actually climb.
 
 ## 3.1 Non-Stationary Gabor Transform (NSGT)
 
@@ -216,11 +203,11 @@ The algorithm posits that any spectral peak at frequency $f$ implies the potenti
 
 The algorithm operates on the `Log2Space` spectrum in two passes, utilizing the integer properties of the logarithmic grid:
 
-1.  **Downward Projection (Root Search)**: The current spectral envelope is "smeared" downward. For every bin $i$ with energy, the algorithm adds energy to bins $i - \log_2(k)$ for integers $k \in \{1, 2, \dots, N\}$.
+1.  **Downward Projection (Root Search)**: The current spectral envelope is "smeared" downward. In scatter form: every bin $i$ with energy adds evidence to the bins $i - \log_2(k)$ for integers $k \in \{1, 2, \dots, N\}$ (its candidate roots). The implementation uses the equivalent gather form—each bin collects evidence from the positions where its harmonics would lie:
 
     $$ Roots[i] = \sum_k A[i + \log_2(k)] \cdot w_k $$
 
-    Here, $w_k$ is a weighting factor that decays with harmonic index $k$ (e.g., $k^{-\rho}$), reflecting that lower harmonics imply their roots more strongly than higher ones. The result `Roots` describes the strength of the virtual pitch at every frequency.
+    On the log-frequency grid, $\log_2(k)$ is a constant bin offset (non-integer offsets are interpolated). $w_k$ is a weighting factor that decays with harmonic index $k$ (e.g., $k^{-\rho}$), reflecting that lower harmonics imply their roots more strongly than higher ones. The result `Roots` describes the strength of the virtual pitch at every frequency.
 
 2.  **Upward Projection (Harmonic Resonance)**: The system then projects the `Roots` spectrum back upwards. If a strong root exists at $f_r$, it implies stability for all its natural harmonics ($f_r, 2f_r, 3f_r \dots$).
 
@@ -246,11 +233,81 @@ $$ H_{final} = (1-\alpha)H_{overtone} + \alpha H_{undertone} $$
 
 By modulating `mirror_weight`, a user can continuously morph the fundamental physics of the universe from Major-centric to Minor-centric, observing how the ecosystem reorganizes itself in response.
 
-# 4. The Life Engine: Agents and Autonomy
+## 3.4 Consonance: Integrating the Fields
 
-The "Life Engine" is the agent-based simulation layer that runs atop the DSP landscape. It manages the population of "Voices," handling their lifecycle, sensory processing, and actuation (audio synthesis).
+With $R_{01}$ and $H_{01}$ in hand, Consonance is derived in two layers: a **Consonance Kernel** that fuses the two observables into a single fitness score, and a set of **representation transforms** that reshape that score for its different consumers in the Life Engine (Section 5).
 
-## 4.1 The Voice Architecture
+**Layer 1 — Consonance Kernel (bilinear family):**
+
+$$ C_{score} = a \cdot H_{01} + b \cdot R_{01} + c \cdot H_{01} R_{01} + d $$
+
+Default coefficients: $a = 1.0$, $b = -1.35$, $c = 1.0$, $d = 0.0$. Because $b < 0$, roughness acts as a penalty; because $c > 0$, high harmonicity attenuates that penalty (the interaction term $c \cdot H_{01} R_{01}$ partially cancels $b \cdot R_{01}$ when $H_{01}$ is large). The bilinear family subsumes the earlier $\alpha H - wR$ formulation as the special case $c = 0$.
+
+**Layer 2 — Representations:**
+
+| Name | Formula | Range | Meaning |
+| :--- | :--- | :--- | :--- |
+| $C_{score}$ | $aH + bR + cHR + d$ | $(-\infty,+\infty)$ | raw fitness from the kernel |
+| $C_{level01}$ | $\sigma(\beta(C_{score} - \theta))$ | $[0,1]$ | metabolism gate (sigmoid) |
+| $C_{density\_mass}$ | $\max(0,\;H_{01}(1 - \rho R_{01}))$ | $[0,+\infty)$ | raw density mass ($\rho$-kernel) |
+| $C_{density\_pmf}$ | $\text{normalize}(C_{density\_mass})$ | $[0,1],\;\Sigma=1$ | pitch-selection PMF |
+| $C_{energy}$ | $-C_{score}$ | $(-\infty,+\infty)$ | energy for minimization |
+
+where $\sigma(x) = 1/(1+e^{-x})$, $\beta$ controls sigmoid steepness (default 2.0), and $\theta$ is the sigmoid threshold (default 0.0). Each representation serves one consumer: $C_{level01}$ gates agent metabolism (Section 5.2), and $C_{density\_pmf}$ is the probability distribution from which new agents' frequencies are drawn at spawn time. The density mass uses a separate $\rho$-kernel with coefficients $a{=}1, b{=}0, c{=}{-}\rho, d{=}0$, so that $C_{density\_mass} = H_{01}(1 - \rho R_{01})$ clamped to $\geq 0$; the parameter $\rho$ (`consonance_density_roughness_gain`, default 1.0) controls how strongly roughness suppresses spawn probability.
+
+Finally, the terrain is not identical for every agent: each Voice maintains its own perceptual context (`PerceptualContext`) tracking per-agent boredom and familiarity, which adds score adjustments during pitch selection (perceptual adaptation).
+
+# 4. The Temporal Axis: The Emergent Meter
+
+Music cognition distinguishes three layers of musical time. **Rhythm** is the surface: the actual pattern of onsets as they occur. **Pulse** (the tactus) is the perceived regular beat a listener taps along to—already an inference, since the surface rarely contains it explicitly. **Meter** is the hierarchical organization of that pulse: nested periodicities (subdivision, beat, measure) with alternating strong and weak positions. Crucially, meter in this sense is a *percept*, not a notation. A time signature is an instruction; meter is what a listener's brain constructs from the sound—and constructs even from sound that was never notated.
+
+This percept has well-studied dynamics. It takes a few cycles of evidence to establish (*beat induction*); once established it persists through syncopation, gaps, and silence, with events heard *against* the induced grid rather than destroying it; and it is plastic, re-locking when the input tempo drifts. Neural resonance theories (Large and colleagues) explain these properties mechanistically: populations of neural oscillators entrain to acoustic onsets, and the self-sustaining dynamics of the oscillation—not the stimulus itself—carry the pulse across interruptions.
+
+Conchordal adopts this account literally. It eschews the concept of a master clock or metronome; time is structured by an **emergent meter**—a coupled limit-cycle oscillator network implementing the neural resonance model—that *listens* to the ecosystem's own onsets and forms a metrical percept from them. Voices, in turn, entrain their onset timing to this perceived pulse with per-voice coupling strengths (Section 5.4). Rhythm is therefore a closed perception–action loop: nothing schedules a beat; a beat condenses out of the population's behavior and then attracts it. This is the temporal mirror of the harmonic landscape (Section 3): just as consonance is not imposed but computed from a model of the cochlea, meter is not imposed but computed from a model of beat perception.
+
+## 4.1 The Meter Core: A Forced Limit-Cycle Oscillator
+
+The `MeterNetwork` (`core/meter.rs`) maintains a beat oscillator as a forced Hopf normal form—the canonical equations of a system at the threshold of self-sustained oscillation—integrated in polar coordinates $(r, \varphi)$:
+
+$$ \dot{r} = \alpha r + \beta r^3 + F_a\, s(t) \cos\varphi $$
+$$ \dot{\varphi} = \omega - F_p \frac{s(t)}{r} \sin\varphi $$
+
+With $\alpha > 0$ and $\beta < 0$ the unforced system has a stable limit cycle of radius $\sqrt{-\alpha/\beta} = 1$: the beat is **self-sustaining** and coasts through gaps in the input (the persistence regime of beat induction). The drive $s(t)$ is a rectified onset signal combining spectral flux—the frame-to-frame increase in spectral energy, a generic onset detector—extracted by the `DorsalStream` (`core/stream/dorsal.rs`, a 3-band crossover flux detector) with the population's own phonation onset strengths—a low-latency auditory–motor reinforcement path.
+
+The oscillator's natural frequency is plastic. A Hebbian learning rule shifts $\omega$ to reduce the phase error to the stimulus:
+
+$$ \dot{\omega} = -\eta\, s(t) \sin\varphi $$
+
+Random input (a renewal process: independently drawn inter-onset intervals, with no preferred phase) averages to zero net shift, so the beat does not chase noise; periodic input pulls $\omega$ toward the stimulus rate within the beat band (0.5–4 Hz). On top of the beat, the network tracks an entrained **subdivision** and a slow **measure** subharmonic (ratios 2, 3, 4 against the unwrapped beat count), giving a three-level metrical state (`MeterState`).
+
+**Perception vs production.** The runtime maintains two meter instances. The *production meter* runs in the worker thread on the habitat bus and drives all voice behavior. The *perception meter* lives inside the `ListenerTwin` (`listener_twin/`), which analyzes the presentation audio exactly as an audience member would hear it; its beat confidence feeds the UI, the headless report, and the Direct Cognitive Coupling (DCC) pressure path.
+
+## 4.2 Beat Confidence: Phase-Locking Value
+
+The meter does not merely track a beat—it knows *how much* beat there is. Each detected onset deposits a unit phasor (a unit complex vector at the current beat phase) into leaky accumulators; the length of their resultant is a phase-locking value (PLV): 1.0 when all onsets land at the same phase, near 0 when phases are scattered. Confidence is the PLV gated by a *presence* term that requires roughly four accumulated onsets of evidence before it saturates—matching the psychological observation that beat induction needs a few cycles—and decays in silence. Scattered onset phases keep the resultant low, so confidence cannot be fabricated by density alone.
+
+## 4.3 From Meter to Modulation: NeuralRhythms
+
+`NeuralRhythms::from_meter_state` (`core/modulation.rs`) projects the metrical state onto the modulation bands consumed by voice behavior:
+
+*   **Delta** ← the beat (tactus): phase and tempo of the pulse. Its phase drives `env_open`, a cosine gate that sharpens the articulation envelope toward the downbeat as confidence rises and leaves it open when the beat is uncertain.
+*   **Theta** ← the subdivision: the note-rate band that the breath oscillator (Section 5.5) locks to.
+*   Band precision (`alpha`) equals beat confidence; prediction error (`beta`) is its complement.
+
+## 4.4 Composer Priors: Shaping the Temporal Terrain
+
+The director can bend the terrain the pulse forms on—never schedule it—via `MeterShaping` (set from Rhai):
+
+*   `meter_stability(v)` — attractor depth in $[0,1]$. Scales the entrainment forcing and frequency learning, and lowers the presence threshold (a top-down prior that commits with less evidence). Because forcing acts only in the stimulus direction, random input still cancels: stability cannot fabricate a beat.
+*   `temporal_basin(min_hz, max_hz)` — a tempo prior. The beat frequency is seeded at the basin's center, gently pulled toward it (a weak restoring rate), and its Hebbian learning is confined to the band. The basin shapes *where* a pulse settles; onset entrainment within the basin still does the work.
+
+These are the temporal analogue of the consonance-field operations: soft priors on an emergent process, in keeping with the Manifesto's rejection of imposed grids.
+
+# 5. The Life Engine: Agents and Autonomy
+
+The "Life Engine" is the agent-based simulation layer that inhabits the two terrains established above—the consonance landscape (Section 3) and the emergent meter (Section 4). It manages the population of "Voices," handling their lifecycle, sensory processing, and actuation (audio synthesis).
+
+## 5.1 The Voice Architecture
 
 The `Voice` struct (`life/voice.rs`) is the atomic unit of the ecosystem. It is composed of several components:
 
@@ -263,7 +320,7 @@ The `Voice` struct (`life/voice.rs`) is the atomic unit of the ecosystem. It is 
 
 The Voice itself acts as an integration layer, managing the control-plane signals that coordinate the components without coupling them directly.
 
-### 4.1.1 The SoundBody (Actuator)
+### 5.1.1 The SoundBody (Actuator)
 
 The `BodyMethod` enum defines three synthesis body types, each projecting a distinct spectral footprint onto the Landscape:
 
@@ -286,12 +343,12 @@ Sound generation is dispatched through the `AnyBackend` enum:
 
 The `HarmonicBody` allows for the evolution of timbre. An agent with high stiffness might find survival difficult in a purely harmonic landscape, forcing it to seek out unique "spectral niches" where its inharmonic partials do not clash with the population.
 
-### 4.1.2 The Core Stack
+### 5.1.2 The Core Stack
 
 Behavior is split into three focused cores plus the `PhonationEngine`, each defined in a separate file:
 
 *   **ArticulationCore (When/Gate)** — `life/articulation_core.rs`: Manages gating and envelope dynamics. Three variants exist:
-    *   `KuramotoCore`: Coupled "breath" oscillator with an energy/vitality model, rhythm coupling modes (`TemporalOnly`, `TemporalTimesVitality`), rhythm reward (metabolism bonus for phase match), and autonomous attack capability. It entrains its envelope to the meter-derived rhythm bands (Section 5.3). Fields include `energy`, `energy_cap`, `vitality_level`, and `vitality_exponent`.
+    *   `KuramotoCore`: Coupled "breath" oscillator with an energy/vitality model, rhythm coupling modes (`TemporalOnly`, `TemporalTimesVitality`), rhythm reward (metabolism bonus for phase match), and autonomous attack capability. It entrains its envelope to the meter-derived rhythm bands (Section 4.3). Fields include `energy`, `energy_cap`, `vitality_level`, and `vitality_exponent`.
     *   `SequencedCore`: Fixed-duration gate patterns.
     *   `DroneCore`: Sustained output with optional sway modulation.
 
@@ -303,7 +360,7 @@ Behavior is split into three focused cores plus the `PhonationEngine`, each defi
     *   **When**: `Once` (single trigger), `Pulse { rate_hz, sync, social }` (repeated triggers on the adaptive gate clock), or `Coupled(CoupledTimingSpec)` — the rhythm-family continuum in which a per-voice phase oscillator entrains to the shared emergent meter (Section 5.4).
     *   **Duration**: `WhileAlive`, `Gates(n)`, `Field { hold_min_theta, hold_max_theta, curve_k, curve_x0, drop_gain }`.
 
-### 4.1.3 The Sound Pipeline
+### 5.1.3 The Sound Pipeline
 
 Audio rendering is handled by `ScheduleRenderer` (`life/schedule_renderer.rs`), which maintains a `HashMap<ToneKey, RoutedTone>` of active tones, each routed to one of two buses (Section 6.2): the **habitat bus** (analyzed as the landscape's environment) and the **presentation bus** (what the audience hears).
 
@@ -317,7 +374,7 @@ The `Tone` struct (`life/sound/tone.rs`) combines:
 
 The processing flow proceeds as follows: the `PhonationEngine` emits `ToneCmd` commands; the `ScheduleRenderer` creates, updates, or releases `Tone` instances accordingly; each `Tone` renders through its backend with ADSR shaping; the results are mixed per bus.
 
-### 4.1.4 Control-Plane Signals: Planned and Error
+### 5.1.4 Control-Plane Signals: Planned and Error
 
 The Voice coordinates its cores through two orthogonal signals rather than direct coupling:
 
@@ -326,7 +383,7 @@ The Voice coordinates its cores through two orthogonal signals rather than direc
 
 This separation keeps each core focused: PitchCore explores the landscape, ArticulationCore shapes the envelope, and the Voice orchestrates timing and state transitions.
 
-## 4.2 Lifecycle and Metabolism
+## 5.2 Lifecycle and Metabolism
 
 Agents in Conchordal are governed by energy dynamics modeled on biological metabolism. The `LifecycleConfig` defines two modes of existence:
 
@@ -338,18 +395,18 @@ Agents in Conchordal are governed by energy dynamics modeled on biological metab
 
 This mechanic creates a Darwinian pressure: **Survival of the Consonant**. Agents in dissonant (low $C_{level01}$) regions starve—energy depletes, amplitude fades, and they die. Agents in consonant (high $C_{level01}$) regions thrive—they maintain or gain energy, allowing them to sing louder and live longer. The musical structure emerges because only agents that find harmonic relationships survive to be heard.
 
-## 4.3 Pitch Retargeting Logic
+## 5.3 Pitch Retargeting Logic
 
-Agents are not static; they move through frequency space to improve their fitness. The execution layer applies a retarget gate (theta zero-crossing plus an integration window) and then asks the PitchCore to propose the next target.
+Agents are not static; they move through frequency space to improve their fitness. The execution layer applies a retarget gate (a zero-crossing of the meter-derived theta band, Section 4.3, plus an integration window) and then asks the PitchCore to propose the next target.
 
-### 4.3.1 Pitch Application Modes
+### 5.3.1 Pitch Application Modes
 
 Two modes govern how a new pitch target is applied:
 
 *   **GateSnap** (default): Discrete hop at note boundaries. The pitch snaps to the new target at note onset, so each note sounds a single stable frequency. Ordering matters: on the sample where the snap occurs, the pitch is updated *before* consonance is evaluated, ensuring the Landscape score reflects the agent's actual sounding frequency.
 *   **Glide**: Smooth continuous pitch transition with a configurable time constant $\tau$. The SoundBody interpolates exponentially toward the target frequency, producing portamento effects. Suited for drone-like species or slow melodic movement.
 
-### 4.3.2 Crowding and Leave-Self-Out
+### 5.3.2 Crowding and Leave-Self-Out
 
 The crowding system prevents agents from collapsing to identical frequencies. Rather than using ad-hoc constants, it employs an analytical roughness complement: a Gaussian penalty centered on each occupied frequency, with width $\sigma$ that can be derived from the roughness kernel's critical band width (`crowding_sigma_from_roughness`). A pairwise split bias further prevents frequency degeneracy.
 
@@ -360,52 +417,17 @@ When evaluating landscape fitness, an agent can subtract its own spectral contri
 
 These timing-sensitive transitions and crowding evaluations are guarded by regression tests to prevent subtle breakage.
 
-# 5. Temporal Dynamics: The Emergent Meter
-
-Music cognition distinguishes three layers of musical time. **Rhythm** is the surface: the actual pattern of onsets as they occur. **Pulse** (the tactus) is the perceived regular beat a listener taps along to—already an inference, since the surface rarely contains it explicitly. **Meter** is the hierarchical organization of that pulse: nested periodicities (subdivision, beat, measure) with alternating strong and weak positions. Crucially, meter in this sense is a *percept*, not a notation. A time signature is an instruction; meter is what a listener's brain constructs from the sound—and constructs even from sound that was never notated.
-
-This percept has well-studied dynamics. It takes a few cycles of evidence to establish (*beat induction*); once established it persists through syncopation, gaps, and silence, with events heard *against* the induced grid rather than destroying it; and it is plastic, re-locking when the input tempo drifts. Neural resonance theories (Large and colleagues) explain these properties mechanistically: populations of neural oscillators entrain to acoustic onsets, and the self-sustaining dynamics of the oscillation—not the stimulus itself—carry the pulse across interruptions.
-
-Conchordal adopts this account literally. It eschews the concept of a master clock or metronome; time is structured by an **emergent meter**—a coupled limit-cycle oscillator network implementing the neural resonance model—that *listens* to the ecosystem's own onsets and forms a metrical percept from them. Voices, in turn, entrain their onset timing to this perceived pulse with per-voice coupling strengths. Rhythm is therefore a closed perception–action loop: nothing schedules a beat; a beat condenses out of the population's behavior and then attracts it. This is the temporal mirror of the harmonic landscape: just as consonance is not imposed but computed from a model of the cochlea, meter is not imposed but computed from a model of beat perception.
-
-## 5.1 The Meter Core: A Forced Limit-Cycle Oscillator
-
-The `MeterNetwork` (`core/meter.rs`) maintains a beat oscillator as a forced Hopf normal form, integrated in polar coordinates $(r, \varphi)$:
-
-$$ \dot{r} = \alpha r + \beta r^3 + F_a\, s(t) \cos\varphi $$
-$$ \dot{\varphi} = \omega - F_p \frac{s(t)}{r} \sin\varphi $$
-
-With $\alpha > 0$ and $\beta < 0$ the unforced system has a stable limit cycle of radius $\sqrt{-\alpha/\beta} = 1$: the beat is **self-sustaining** and coasts through gaps in the input (the persistence regime of beat induction). The drive $s(t)$ is a rectified onset signal combining spectral flux extracted by the `DorsalStream` (`core/stream/dorsal.rs`, a 3-band crossover flux detector) with the population's own phonation onset strengths—a low-latency auditory–motor reinforcement path.
-
-The oscillator's natural frequency is plastic. A Hebbian learning rule shifts $\omega$ to reduce the phase error to the stimulus:
-
-$$ \dot{\omega} = -\eta\, s(t) \sin\varphi $$
-
-Random (renewal-process) input averages to zero net shift, so the beat does not chase noise; periodic input pulls $\omega$ toward the stimulus rate within the beat band (0.5–4 Hz). On top of the beat, the network tracks an entrained **subdivision** and a slow **measure** subharmonic (ratios 2, 3, 4 against the unwrapped beat count), giving a three-level metrical state (`MeterState`).
-
-**Perception vs production.** The runtime maintains two meter instances. The *production meter* runs in the worker thread on the habitat bus and drives all voice behavior. The *perception meter* lives inside the `ListenerTwin` (`listener_twin/`), which analyzes the presentation audio exactly as an audience member would hear it; its beat confidence feeds the UI, the headless report, and the Direct Cognitive Coupling (DCC) pressure path.
-
-## 5.2 Beat Confidence: Phase-Locking Value
-
-The meter does not merely track a beat—it knows *how much* beat there is. Each detected onset deposits a unit phasor at the current beat phase into leaky accumulators; their resultant length is a phase-locking value (PLV). Confidence is the PLV gated by a *presence* term that requires roughly four accumulated onsets of evidence before it saturates—matching the psychological observation that beat induction needs a few cycles—and decays in silence. Scattered onset phases keep the resultant low, so confidence cannot be fabricated by density alone.
-
-## 5.3 From Meter to Modulation: NeuralRhythms
-
-`NeuralRhythms::from_meter_state` (`core/modulation.rs`) projects the metrical state onto the modulation bands consumed by voice behavior:
-
-*   **Delta** ← the beat (tactus): phase and tempo of the pulse. Its phase drives `env_open`, a cosine gate that sharpens the articulation envelope toward the downbeat as confidence rises and leaves it open when the beat is uncertain.
-*   **Theta** ← the subdivision: the note-rate band that the breath oscillator (Section 5.5) locks to.
-*   Band precision (`alpha`) equals beat confidence; prediction error (`beta`) is its complement.
-
-## 5.4 The Coupling Continuum: One Mechanism, Three Rhythm Families
+## 5.4 Onset Timing: The Coupling Continuum
 
 Onset timing for repeated phonation is generated by the `CouplingClock` (`life/phonation_engine.rs`): a per-voice phase oscillator that emits an onset at every integer crossing of its phase. Its effective rate blends an intrinsic renewal rate with the shared beat:
 
 $$ f_{eff} = (1 - \ell)\, f_{int} + \ell\, f_{beat}, \qquad \ell = \kappa \cdot c $$
 
-where $\kappa$ is the voice's coupling strength (`entrainment`, 0–1) and $c$ is the meter's beat confidence. A phase pull drags the oscillator's crossings toward the beat phase (optionally offset by `microtiming`):
+where $\kappa$ is the voice's coupling strength (`entrainment`, 0–1) and $c$ is the meter's beat confidence (Section 4.2)—so a voice can only lock as strongly as the meter is believed. A phase pull drags the oscillator's crossings toward the beat phase (optionally offset by `microtiming`):
 
 $$ \dot{\phi} = f_{eff} \left(1 + \ell K \,\mathrm{err}(\phi_{beat} - \phi)\right) $$
+
+where $\mathrm{err}(\cdot)$ is the wrapped phase error in cycles ($[-0.5, 0.5]$) and $K$ a fixed pull gain chosen so the rate factor stays positive—the phase always advances, only faster or slower.
 
 This single mechanism spans the rhythm-family continuum selected by the Rhai presets:
 
@@ -415,26 +437,17 @@ This single mechanism spans the rhythm-family continuum selected by the Rhai pre
 
 Each onset carries a strength set by the voice's `rhythm_role`—beat 1.0, subdivision 0.7, accent 2.5, texture 0.85—and these strengths feed back into the production meter's drive. A recurring accent therefore drives the meter harder, allowing a downbeat (and eventually a measure) to be *induced* by the population rather than declared. There is no externally imposed grid anywhere in this loop.
 
-## 5.5 Kuramoto Articulation: The Breath Oscillator
+## 5.5 The Breath Oscillator: Kuramoto Articulation
 
 Independent of onset scheduling, the `KuramotoCore` ArticulationCore entrains each voice's *envelope* (its breath) to the meter-derived theta band, using a mean-field Kuramoto phase step:
 
 $$ K_{eff} = \omega_{target} \cdot K_{global} \cdot s_\theta \cdot |\theta_{mag}| \cdot \theta_\alpha \cdot g_{env} \cdot a_{env} $$
 
-where $s_\theta$ is the voice's theta sensitivity, $|\theta_{mag}|$ and $\theta_\alpha$ derive from beat confidence, and $g_{env}$, $a_{env}$ are the envelope gate and amplitude. Helper functions `kuramoto_k_eff()` and `kuramoto_phase_step()` are exposed for external simulation (paper experiments). The energy/vitality subsystems interact with this coupling:
+where $\omega_{target}$ is the theta band's angular frequency, $K_{global}$ the scene-wide coupling gain (`set_global_coupling`), $s_\theta$ the voice's theta sensitivity, $|\theta_{mag}|$ and $\theta_\alpha$ derive from beat confidence, and $g_{env}$, $a_{env}$ are the envelope gate and amplitude. Helper functions `kuramoto_k_eff()` and `kuramoto_phase_step()` are exposed for external simulation (paper experiments). The energy/vitality subsystems interact with this coupling:
 
 *   **Rhythm Coupling Modes**: `TemporalOnly` (pure phase coupling) or `TemporalTimesVitality { lambda_v, v_floor }` (healthy agents synchronize more strongly).
 *   **Rhythm Reward**: an optional `MetabolismRhythmReward` (`rho_t`, `AttackPhaseMatch`) grants a metabolic bonus for phase-matched onsets, linking rhythmic conformity to survival.
 *   **Autonomous Attack**: self-triggered attacks when envelope-gate and confidence thresholds align.
-
-## 5.6 Composer Priors: Shaping the Temporal Terrain
-
-The director can bend the terrain the pulse forms on—never schedule it—via `MeterShaping` (set from Rhai):
-
-*   `meter_stability(v)` — attractor depth in $[0,1]$. Scales the entrainment forcing and frequency learning, and lowers the presence threshold (a top-down prior that commits with less evidence). Because forcing acts only in the stimulus direction, random input still cancels: stability cannot fabricate a beat.
-*   `temporal_basin(min_hz, max_hz)` — a tempo prior. The beat frequency is seeded at the basin's center, gently pulled toward it (a weak restoring rate), and its Hebbian learning is confined to the band. The basin shapes *where* a pulse settles; onset entrainment within the basin still does the work.
-
-These are the temporal analogue of the consonance-field operations: soft priors on an emergent process, in keeping with the Manifesto's rejection of imposed grids.
 
 # 6. System Architecture and Implementation Details
 
@@ -540,7 +553,7 @@ Live groups support patching of pitch parameters, amplitude, and timbre during e
 Scene-global terrain shaping, on both axes:
 
 *   **Harmonic terrain**: `harmonic_mirror(v)` (overtone/undertone gravity blend), `set_roughness_k(v)`, `set_pitch_objective("consonance"|"dissonance")`.
-*   **Temporal terrain**: `meter_stability(v)`, `temporal_basin(min_hz, max_hz)` (Section 5.6).
+*   **Temporal terrain**: `meter_stability(v)`, `temporal_basin(min_hz, max_hz)` (Section 4.4).
 *   **Interaction**: `set_global_coupling(v)` scales agent interaction strength.
 
 **Scenario Parsing**: Scenarios are loaded from `.rhai` files. This separation allows users to compose the "Macro-Structure" (the narrative arc, the changing laws of physics) while the "Micro-Structure" (the specific notes and rhythms) emerges from the agents' adaptation to those changes.

@@ -5,7 +5,7 @@ let pad = harmonic()
     .amp(0.05)
     .sustain()
     .brightness(0.7)
-    .pitch_mode("lock");
+    .anchor();
 
 let step = |root, dur| {
     let settle = 0.20;

@@ -13,7 +13,7 @@ let anchor = harmonic()
     .send(habitat_bus)
     .amp(0.060)
     .sustain()
-    .pitch_mode("lock")
+    .anchor()
     .modes(harmonic_modes().count(7))
     .brightness(0.22)
     .sustain_drive(0.002)
@@ -24,7 +24,7 @@ let reference = harmonic()
     .send(presentation_bus)
     .amp(0.024)
     .sustain()
-    .pitch_mode("lock")
+    .anchor()
     .modes(harmonic_modes().count(4))
     .brightness(0.16)
     .adsr(0.20, 0.55, 0.84, 1.2);
@@ -54,7 +54,6 @@ let mover = harmonic()
     .adsr(0.24, 0.70, 0.82, 1.3);
 
 section("Consonance Field Control", || {
-    set_control_update_mode("snapshot_phased");
     harmonic_mirror(0.0);
 
     let field = place(anchor, at(field_a_hz).count(1));

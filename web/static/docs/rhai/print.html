@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-1ec51375.js";
+            window.path_to_searchindex_js = "searchindex-d58e5cad.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-ebd22986.js"></script>
@@ -246,7 +246,7 @@ where the peaks are.</p>
     .brain("drone")
     .amp(0.06)
     .sustain()
-    .pitch_mode("lock");
+    .anchor();
 
 let voice = harmonic()
     .amp(0.04)
@@ -391,7 +391,7 @@ root. Use it when the musical thought is “start from this harmonic center”.<
     .brain("drone")
     .amp(0.06)
     .sustain()
-    .pitch_mode("lock");
+    .anchor();
 
 let voice = harmonic()
     .amp(0.04)
@@ -447,11 +447,18 @@ place(mover, density(80.0, 900.0).count(8));
 wait(12.0);
 </code></pre>
 <p><code>avoid_neighbors(strength)</code> adds crowding repulsion so movers spread out
-instead of collapsing onto the same peak. Mechanism-level controls
-(<code>pitch_mode()</code>, <code>pitch_core()</code>, <code>pitch_apply_mode()</code>, and the hill-climb /
-peak-sampler tuning in the <a href="#api-reference">API Reference</a>) remain
-available for research scripts; prefer <code>seek_consonance()</code> and <code>glide()</code> in
-curated work.</p>
+instead of collapsing onto the same peak.</p>
+<p>The opposite of movement is <code>anchor()</code>: an anchored voice holds its pitch and
+only deforms the terrain for others. Voices placed with <code>at()</code> or given
+<code>freq()</code> are anchored implicitly; use <code>anchor()</code> to freeze strategy-placed
+voices at their settled position.</p>
+<p>How movement lands is resolved from phonation: sustained movers glide,
+re-attacking movers (<code>pulse()</code>, <code>metric()</code>, <code>entrained()</code>, <code>flow()</code>) snap to
+their new pitch at each onset. Override with <code>pitch_apply_mode()</code> when a
+script needs the other behavior. Mechanism-level controls (<code>pitch_core()</code> and
+the hill-climb / peak-sampler tuning in the
+<a href="#api-reference">API Reference</a>) remain available for research scripts;
+prefer <code>seek_consonance()</code> and <code>glide()</code> in curated work.</p>
 <h2 id="consonance-viability-and-respawn"><a class="header" href="#consonance-viability-and-respawn">Consonance Viability and Respawn</a></h2>
 <p>Viability makes field fit matter over time. <code>consonance_viability(low, high)</code>
 defines the consonance window, and <code>viability_rate(rate)</code> controls continuous
@@ -839,7 +846,7 @@ play(callback, [args])
 <pre><code class="language-rhai ignore">freq(hz)
 </code></pre>
 <p>Applies to: <code>Material</code> and <code>Participant</code>. Live-patchable: updates running voices on a live <code>Participant</code>.</p>
-<p>Frequency lock in Hz.</p>
+<p>Frequency lock in Hz; implies an anchored pitch (see <code>anchor()</code>).</p>
 <h3 id="brightness"><a class="header" href="#brightness"><code>brightness</code></a></h3>
 <pre><code class="language-rhai ignore">brightness(value)
 </code></pre>
@@ -979,11 +986,16 @@ play(callback, [args])
 <p>Energy reward for timing fit; metric is <code>"attack_phase_match"</code> or <code>"none"</code>.</p>
 <h2 id="pitch-movement"><a class="header" href="#pitch-movement">Pitch Movement</a></h2>
 <p>How a voice moves through the consonance field. <code>seek_consonance()</code> plus <code>glide()</code> is the curated surface; the rest tunes the hill-climb and peak-sampler mechanisms.</p>
+<h3 id="anchor"><a class="header" href="#anchor"><code>anchor</code></a></h3>
+<pre><code class="language-rhai ignore">anchor()
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
+<p>Hold the voice at its pitch: an anchored voice never moves. Voices placed with <code>at()</code> or given <code>freq()</code> are anchored implicitly; use <code>anchor()</code> to hold strategy-placed voices (<code>peaks()</code>, <code>density()</code>, …) at their settled position, or to state the intent explicitly.</p>
 <h3 id="seek_consonance"><a class="header" href="#seek_consonance"><code>seek_consonance</code></a></h3>
 <pre><code class="language-rhai ignore">seek_consonance()
 </code></pre>
 <p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
-<p>Free hill-climb movement toward better field positions, with glide defaults.</p>
+<p>Free hill-climb movement toward better field positions, with glide defaults. How pitch decisions land is resolved at commit unless <code>pitch_apply_mode()</code> was called: sustained voices glide, re-attacking voices (<code>pulse()</code>, <code>metric()</code>, <code>entrained()</code>, <code>flow()</code>) snap at onsets.</p>
 <h3 id="glide"><a class="header" href="#glide"><code>glide</code></a></h3>
 <pre><code class="language-rhai ignore">glide(tau_sec)
 </code></pre>
@@ -994,11 +1006,6 @@ play(callback, [args])
 </code></pre>
 <p>Applies to: <code>Material</code> and <code>Participant</code>. Live-patchable: updates running voices on a live <code>Participant</code>.</p>
 <p>Pitch smoothing time constant in seconds.</p>
-<h3 id="pitch_mode"><a class="header" href="#pitch_mode"><code>pitch_mode</code></a></h3>
-<pre><code class="language-rhai ignore">pitch_mode(name)
-</code></pre>
-<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
-<p><code>"free"</code> or <code>"lock"</code>. Research control; prefer <code>seek_consonance()</code>.</p>
 <h3 id="pitch_core"><a class="header" href="#pitch_core"><code>pitch_core</code></a></h3>
 <pre><code class="language-rhai ignore">pitch_core(name)
 </code></pre>
@@ -1008,7 +1015,7 @@ play(callback, [args])
 <pre><code class="language-rhai ignore">pitch_apply_mode(name)
 </code></pre>
 <p>Applies to: <code>Material</code> and <code>Participant</code>. Live-patchable: updates running voices on a live <code>Participant</code>.</p>
-<p><code>"gate_snap"</code> or <code>"glide"</code>. Research control.</p>
+<p><code>"gate_snap"</code> or <code>"glide"</code>: override how pitch decisions are applied. Without an explicit call, moving voices resolve this at commit from their phonation: sustained voices glide, re-attacking voices snap at onsets.</p>
 <h3 id="landscape_weight"><a class="header" href="#landscape_weight"><code>landscape_weight</code></a></h3>
 <pre><code class="language-rhai ignore">landscape_weight(value)
 </code></pre>
@@ -1322,7 +1329,7 @@ avoid_neighbors(strength, sigma_cents)
 <h3 id="set_control_update_mode"><a class="header" href="#set_control_update_mode"><code>set_control_update_mode</code></a></h3>
 <pre><code class="language-rhai ignore">set_control_update_mode(name)
 </code></pre>
-<p><code>"snapshot_phased"</code>/<code>"snapshot"</code> or <code>"sequential_rotating"</code>/<code>"sequential"</code>. Research control.</p>
+<p><code>"snapshot_phased"</code>/<code>"snapshot"</code> (default) or <code>"sequential_rotating"</code>/<code>"sequential"</code>. Research control.</p>
 <h3 id="set_scaffold_off"><a class="header" href="#set_scaffold_off"><code>set_scaffold_off</code></a></h3>
 <pre><code class="language-rhai ignore">set_scaffold_off()
 </code></pre>

@@ -26,7 +26,7 @@ let field_anchor = harmonic()
     .send(habitat_bus)
     .amp(0.060)
     .sustain()
-    .pitch_mode("lock")
+    .anchor()
     .modes(harmonic_modes().count(8))
     .brightness(0.24)
     .sustain_drive(0.0015)
@@ -39,7 +39,7 @@ let metric_body = harmonic()
     .metric()
     .rhythm_role("accent")
     .cycles(2)
-    .pitch_mode("lock")
+    .anchor()
     .modes(odd_modes().count(5))
     .brightness(0.40)
     .adsr(0.006, 0.080, 0.45, 0.18);
@@ -53,7 +53,6 @@ let consonance_colony = harmonic()
     .metric()
     .cycles(3)
     .seek_consonance()
-    .pitch_apply_mode("gate_snap")
     .modes(harmonic_modes().count(7))
     .brightness(0.48)
     .avoid_neighbors(0.60)
@@ -77,15 +76,12 @@ let flow_particles = modal()
     .flow()
     .cycles(3)
     .seek_consonance()
-    .pitch_apply_mode("gate_snap")
     .modes(landscape_density_modes().count(6).range(1.2, 5.4).gamma(1.4))
     .brightness(0.72)
     .avoid_neighbors(0.42)
     .adsr(0.024, 0.320, 0.38, 0.74);
 
 section("Conchordal -- Emergence and Resolution", || {
-    set_control_update_mode("snapshot_phased");
-
     // I. Genesis: consonant ground rises from silence.
     harmonic_mirror(0.12);
     let root = place(field_anchor, at(root_hz).count(1));

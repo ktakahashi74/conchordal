@@ -10,7 +10,7 @@ let field_anchor = harmonic()
     .send(habitat_bus)
     .amp(0.060)
     .sustain()
-    .pitch_mode("lock")
+    .anchor()
     .modes(harmonic_modes().count(8))
     .brightness(0.28)
     .sustain_drive(0.002)
@@ -21,7 +21,6 @@ let colony = harmonic()
     .entrained()
     .cycles(3)
     .seek_consonance()
-    .pitch_apply_mode("gate_snap")
     .modes(harmonic_modes().count(7))
     .brightness(0.46)
     .avoid_neighbors(0.55)
@@ -44,7 +43,6 @@ let late_colony = variant(colony)
     .avoid_neighbors(0.70);
 
 section("Entrained Beat", || {
-    set_control_update_mode("snapshot_phased");
     harmonic_mirror(0.05);
     // Medium attractor in a ~1.8 Hz region: synchronization should EMERGE from
     // the colony's coupling and survival, not be forced by a deep prior.

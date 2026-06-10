@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-1ec51375.js";
+            window.path_to_searchindex_js = "../searchindex-d58e5cad.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-ebd22986.js"></script>
@@ -191,7 +191,7 @@ root. Use it when the musical thought is “start from this harmonic center”.<
     .brain("drone")
     .amp(0.06)
     .sustain()
-    .pitch_mode("lock");
+    .anchor();
 
 let voice = harmonic()
     .amp(0.04)
@@ -247,11 +247,18 @@ place(mover, density(80.0, 900.0).count(8));
 wait(12.0);
 </code></pre>
 <p><code>avoid_neighbors(strength)</code> adds crowding repulsion so movers spread out
-instead of collapsing onto the same peak. Mechanism-level controls
-(<code>pitch_mode()</code>, <code>pitch_core()</code>, <code>pitch_apply_mode()</code>, and the hill-climb /
-peak-sampler tuning in the <a href="../reference/api.html">API Reference</a>) remain
-available for research scripts; prefer <code>seek_consonance()</code> and <code>glide()</code> in
-curated work.</p>
+instead of collapsing onto the same peak.</p>
+<p>The opposite of movement is <code>anchor()</code>: an anchored voice holds its pitch and
+only deforms the terrain for others. Voices placed with <code>at()</code> or given
+<code>freq()</code> are anchored implicitly; use <code>anchor()</code> to freeze strategy-placed
+voices at their settled position.</p>
+<p>How movement lands is resolved from phonation: sustained movers glide,
+re-attacking movers (<code>pulse()</code>, <code>metric()</code>, <code>entrained()</code>, <code>flow()</code>) snap to
+their new pitch at each onset. Override with <code>pitch_apply_mode()</code> when a
+script needs the other behavior. Mechanism-level controls (<code>pitch_core()</code> and
+the hill-climb / peak-sampler tuning in the
+<a href="../reference/api.html">API Reference</a>) remain available for research scripts;
+prefer <code>seek_consonance()</code> and <code>glide()</code> in curated work.</p>
 <h2 id="consonance-viability-and-respawn"><a class="header" href="#consonance-viability-and-respawn">Consonance Viability and Respawn</a></h2>
 <p>Viability makes field fit matter over time. <code>consonance_viability(low, high)</code>
 defines the consonance window, and <code>viability_rate(rate)</code> controls continuous

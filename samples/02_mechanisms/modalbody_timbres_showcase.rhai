@@ -1,77 +1,77 @@
 let modal_sustain = modal().sustain();
 
 let table_uniform_aluminum_bar = variant(modal_sustain)
-    .pitch_mode("lock")
+    .anchor()
     .freq(196.0)
     .amp(0.12)
     .brightness(0.58)
     .modes(modal_table("uniform_aluminum_bar").count(6));
 
 let table_uniform_wooden_bar = variant(modal_sustain)
-    .pitch_mode("lock")
+    .anchor()
     .freq(196.0)
     .amp(0.12)
     .brightness(0.42)
     .modes(modal_table("uniform_wooden_bar").count(6));
 
 let table_xylophone = variant(modal_sustain)
-    .pitch_mode("lock")
+    .anchor()
     .freq(220.0)
     .amp(0.11)
     .brightness(0.70)
     .modes(modal_table("xylophone").count(6));
 
 let table_vibraphone_1 = variant(modal_sustain)
-    .pitch_mode("lock")
+    .anchor()
     .freq(220.0)
     .amp(0.11)
     .brightness(0.62)
     .modes(modal_table("vibraphone_1").count(5));
 
 let table_vibraphone_2 = variant(modal_sustain)
-    .pitch_mode("lock")
+    .anchor()
     .freq(220.0)
     .amp(0.11)
     .brightness(0.66)
     .modes(modal_table("vibraphone_2").count(5));
 
 let table_wine_glass = variant(modal_sustain)
-    .pitch_mode("lock")
+    .anchor()
     .freq(330.0)
     .amp(0.10)
     .brightness(0.86)
     .modes(modal_table("wine_glass").count(6));
 
 let gen_harmonic = variant(modal_sustain)
-    .pitch_mode("lock")
+    .anchor()
     .freq(110.0)
     .amp(0.10)
     .brightness(0.72)
     .modes(harmonic_modes().count(10));
 
 let gen_odd = variant(modal_sustain)
-    .pitch_mode("lock")
+    .anchor()
     .freq(110.0)
     .amp(0.10)
     .brightness(0.64)
     .modes(odd_modes().count(6));
 
 let gen_power = variant(modal_sustain)
-    .pitch_mode("lock")
+    .anchor()
     .freq(130.81)
     .amp(0.10)
     .brightness(0.68)
     .modes(power_modes(1.35).count(6));
 
 let gen_stiff_string = variant(modal_sustain)
-    .pitch_mode("lock")
+    .anchor()
     .freq(130.81)
     .amp(0.10)
     .brightness(0.60)
     .modes(stiff_string_modes(0.003).count(9));
 
 let gen_custom = variant(modal_sustain)
-    .pitch_mode("lock")
+    .anchor()
     .freq(146.83)
     .amp(0.10)
     .brightness(0.74)
@@ -82,13 +82,11 @@ let gen_custom = variant(modal_sustain)
     );
 
 let landscape_seed = variant(modal_sustain)
-    .pitch_mode("free")
     .amp(0.045)
     .brightness(0.64)
     .modes(harmonic_modes().count(4));
 
 let landscape_density = variant(modal_sustain)
-    .pitch_mode("free")
     .amp(0.05)
     .brightness(0.70)
     .modes(
@@ -102,7 +100,6 @@ let landscape_density = variant(modal_sustain)
     );
 
 let landscape_peaks = variant(modal_sustain)
-    .pitch_mode("free")
     .amp(0.05)
     .brightness(0.74)
     .modes(
@@ -192,12 +189,10 @@ section("Modal Gen: Custom Modes", || {
 });
 
 section("Modal Landscape: Density Modes", || {
-    let bed = place(landscape_seed, density(110.0, 880.0).count(8))
-        .pitch_mode("free");
+    let bed = place(landscape_seed, density(110.0, 880.0).count(8));
     wait(3.0);
 
-    let g = place(landscape_density, density(110.0, 880.0).count(3))
-        .pitch_mode("free");
+    let g = place(landscape_density, density(110.0, 880.0).count(3));
     wait(2.4);
 
     release(g);
@@ -206,12 +201,10 @@ section("Modal Landscape: Density Modes", || {
 });
 
 section("Modal Landscape: Peaks Modes", || {
-    let bed = place(landscape_seed, density(110.0, 880.0).count(8))
-        .pitch_mode("free");
+    let bed = place(landscape_seed, density(110.0, 880.0).count(8));
     wait(3.0);
 
-    let g = place(landscape_peaks, density(110.0, 880.0).count(3))
-        .pitch_mode("free");
+    let g = place(landscape_peaks, density(110.0, 880.0).count(3));
     wait(2.4);
 
     release(g);

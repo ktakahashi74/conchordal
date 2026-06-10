@@ -23,7 +23,7 @@ let field_anchor = harmonic()
     .amp(0.075)
     .send(habitat_bus)
     .sustain()
-    .pitch_mode("lock")
+    .anchor()
     .modes(harmonic_modes().count(8))
     .brightness(0.30)
     .sustain_drive(0.002)
@@ -84,7 +84,6 @@ let shimmer = modal()
     .adsr(0.8, 1.4, 0.78, 2.2);
 
 section("Consonance Ecology", || {
-    set_control_update_mode("snapshot_phased");
     harmonic_mirror(0.0);
 
     let root_field = place(field_anchor, at(root_hz));

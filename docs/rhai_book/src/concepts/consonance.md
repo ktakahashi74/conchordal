@@ -21,7 +21,7 @@ let anchor = harmonic()
     .brain("drone")
     .amp(0.06)
     .sustain()
-    .pitch_mode("lock");
+    .anchor();
 
 let voice = harmonic()
     .amp(0.04)
@@ -91,11 +91,20 @@ wait(12.0);
 ```
 
 `avoid_neighbors(strength)` adds crowding repulsion so movers spread out
-instead of collapsing onto the same peak. Mechanism-level controls
-(`pitch_mode()`, `pitch_core()`, `pitch_apply_mode()`, and the hill-climb /
-peak-sampler tuning in the [API Reference](../reference/api.md)) remain
-available for research scripts; prefer `seek_consonance()` and `glide()` in
-curated work.
+instead of collapsing onto the same peak.
+
+The opposite of movement is `anchor()`: an anchored voice holds its pitch and
+only deforms the terrain for others. Voices placed with `at()` or given
+`freq()` are anchored implicitly; use `anchor()` to freeze strategy-placed
+voices at their settled position.
+
+How movement lands is resolved from phonation: sustained movers glide,
+re-attacking movers (`pulse()`, `metric()`, `entrained()`, `flow()`) snap to
+their new pitch at each onset. Override with `pitch_apply_mode()` when a
+script needs the other behavior. Mechanism-level controls (`pitch_core()` and
+the hill-climb / peak-sampler tuning in the
+[API Reference](../reference/api.md)) remain available for research scripts;
+prefer `seek_consonance()` and `glide()` in curated work.
 
 ## Consonance Viability and Respawn
 

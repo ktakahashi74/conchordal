@@ -10,7 +10,7 @@ let field_anchor = harmonic()
     .send(habitat_bus)
     .amp(0.065)
     .sustain()
-    .pitch_mode("lock")
+    .anchor()
     .modes(harmonic_modes().count(8))
     .brightness(0.26)
     .sustain_drive(0.002)
@@ -21,7 +21,7 @@ let metric_body = harmonic()
     .metric()
     .rhythm_role("accent")
     .cycles(2)
-    .pitch_mode("lock")
+    .anchor()
     .modes(odd_modes().count(5))
     .brightness(0.42)
     .adsr(0.006, 0.080, 0.45, 0.18);
@@ -31,7 +31,6 @@ let entrained_colony = harmonic()
     .entrained()
     .cycles(3)
     .seek_consonance()
-    .pitch_apply_mode("gate_snap")
     .modes(harmonic_modes().count(7))
     .brightness(0.48)
     .avoid_neighbors(0.62)
@@ -53,14 +52,12 @@ let flow_particles = modal()
     .flow()
     .cycles(3)
     .seek_consonance()
-    .pitch_apply_mode("gate_snap")
     .modes(landscape_density_modes().count(6).range(1.0, 5.5).gamma(1.4))
     .brightness(0.74)
     .avoid_neighbors(0.45)
     .adsr(0.026, 0.330, 0.40, 0.78);
 
 section("Conchordal Ecology", || {
-    set_control_update_mode("snapshot_phased");
     harmonic_mirror(0.10);
     // Metric beat, entrained colony, and flow all share one ~2 Hz emergent
     // attractor; coverage demo, not the musical showcase.

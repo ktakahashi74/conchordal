@@ -222,16 +222,18 @@ The algorithm operates on the `Log2Space` spectrum in two passes, utilizing the 
 
 Thus, without any hardcoded knowledge of Western music theory, the system naturally generates stability peaks at the Major 3rd and Perfect 5th relationships, simply as a consequence of the physics of the harmonic series. An agent at 200 Hz creates a "gravity well" at 300 Hz and 500 Hz, inviting other agents to form a major triad.
 
-### 3.3.3 Mirror Dualism: Overtone vs. Undertone
+### 3.3.3 The Mirror: Overtone vs. Undertone Projection
 
-The implementation in `core/harmonicity_kernel.rs` includes a profound parameter: `mirror_weight` ($\alpha$). This parameter blends two distinct projection paths:
+The implementation in `core/harmonicity_kernel.rs` includes a parameter `mirror_weight` ($\alpha$) that blends two projection paths:
 
-*   **Path A (Overtone/Major)**: The standard "Down-then-Up" projection described above. It creates gravity based on the Overtone Series, favoring Major tonalities.
-*   **Path B (Undertone/Minor)**: An inverted "Up-then-Down" projection. It finds common overtones and projects undertones. This is the theoretical dual of Path A and favors Minor or Phrygian tonalities (the Undertone Series).
+*   **Path A (Overtone)**: The standard "Down-then-Up" projection described above. It creates gravity based on the overtone series—the frequency-domain counterpart of virtual pitch.
+*   **Path B (Undertone)**: The inverted "Up-then-Down" projection: it finds common overtones and projects undertones. This is the implementation of Riemann's *harmonic dualism* (minor as the mirror image of major).
 
 $$ H_{final} = (1-\alpha)H_{overtone} + \alpha H_{undertone} $$
 
-By modulating `mirror_weight`, a user can continuously morph the fundamental physics of the universe from Major-centric to Minor-centric, observing how the ecosystem reorganizes itself in response.
+Path B must be read with care, on three grounds. *Physically*, there is no undertone series—every vibrating body radiates overtones—so the undertone terrain has no stimulus counterpart. *Perceptually*, no mechanism comparable to virtual pitch binds tones by common overtones; modern psychoacoustics models the minor triad as a chord with a weak, ambiguous virtual root, not as a mirror image of the major. And *ecologically*, the closed loop breaks the dualism on the production side: an agent attracted to an overtone position radiates a spectrum that *reinforces* the very root structure that attracted it (a self-stabilizing attractor), whereas an agent attracted to an undertone position radiates overtones that do *not* reinforce the common-overtone structure that attracted it—the feedback loop does not close. Consistent with this analysis, the paper's controlled experiments reproduced overtone clustering but not an undertone (minor) reorganization; the original "major/minor switch" hypothesis was abandoned.
+
+What survives is empirically useful: raising `mirror_weight` degrades the terrain's coherence for overtone-radiating bodies, which is heard as *harmonic tension*. This is exactly how the flagship etude uses it—a `harmonic_mirror` arch as the tension–release axis of the piece (Section 7.3)—rather than as a tonality switch.
 
 ## 3.4 Consonance: Integrating the Fields
 
@@ -570,15 +572,7 @@ Three sibling scripts demonstrate that one coupling mechanism (Section 5.4) span
 2.  **Entrained** (`entrained_beat.rhai`): medium coupling plus vitality coupling and attack reward. Synchronization is not immediate; it *emerges* over tens of seconds as confidence accumulates, and degrades if the colony weakens—rhythmic coherence is tied to ecological health.
 3.  **Flow** (`flow_timing_field.rhai`): near-zero coupling with high `flow_depth`. Onsets follow a clustered renewal process—rain on a roof—non-metric by construction, while pitch behavior still rides the consonance field.
 
-## 7.2 Case Study: Mirror Dualism (`samples/04_ecosystems/mirror_dualism.rhai`)
-
-This script explores the structural role of the `mirror_weight` parameter.
-
-1.  **Setup**: An anchor drone is established at C4 (261.63 Hz).
-2.  **State A (Major)**: `harmonic_mirror(0.0)`. The system uses the Common Root projection (Overtone Series). Agents seeking consonance cluster around E4 and G4, forming a C Major triad.
-3.  **State B (Minor)**: `harmonic_mirror(1.0)`. The system switches to Common Overtone projection (Undertone Series). The "gravity" of the landscape inverts. Agents now find stability at Ab3 and F3 (intervals of a minor sixth and perfect fourth relative to C), creating a Phrygian/Minor texture. This demonstrates that "Tonality" in Conchordal is a manipulable environmental variable, akin to temperature or gravity.
-
-## 7.3 Case Study: Drift and Flow (`samples/04_ecosystems/drift_flow.rhai`)
+## 7.2 Case Study: Drift and Flow (`samples/04_ecosystems/drift_flow.rhai`)
 
 This script validates the hop-based movement logic.
 
@@ -586,7 +580,7 @@ This script validates the hop-based movement logic.
 2.  **Observation**: The C#3 agent makes discrete hops in pitch. It is "pulled" by the Harmonicity field, fading out and snapping to a nearby harmonic "well" (likely E3 or G3).
 3.  **Dynamics**: If per-agent boredom is enabled, the agent will settle at E3 for a few seconds, then "get bored" (local consonance drops due to perceptual adaptation), and hop away again to find a new stable interval. This results in an endless, non-repeating melody generated by simple physical rules of attraction and repulsion.
 
-## 7.4 Case Study: Emergence and Resolution (`samples/04_ecosystems/conchordal_flagship.rhai`)
+## 7.3 Case Study: Emergence and Resolution (`samples/04_ecosystems/conchordal_flagship.rhai`)
 
 The v0.4 flagship etude composes the full stack as a single directed arc. The composer touches only two macro knobs—a `harmonic_mirror` arch (consonant → dissonant → consonant) and register transposition—while everything else emerges: a metric heartbeat (an accent-role voice driving a deep beat attractor), a living colony that locks to the *same* emergent beat while climbing toward consonance, and a non-metric flow shimmer appearing only at the tension peak. The colony's survival through the dissonant peak (consonance-gated viability plus consonance-biased respawn) *is* the resolution: the return of tonal gravity is enacted by the ecosystem rather than written into a score.
 
@@ -608,7 +602,7 @@ Future development will focus on meter-level accent structure (measure emphasis)
 | :--- | :--- | :--- | :--- |
 | `bins_per_oct` | `Log2Space` | Int | Resolution of the frequency grid (typ. 48-96). |
 | `sigma_cents` | `HarmonicityParams` | Cents | Width of harmonic peaks. Lower = stricter intonation. |
-| `mirror_weight` | `HarmonicityParams` | 0.0-1.0 | Balance between Overtone (Major) and Undertone (Minor) gravity. |
+| `mirror_weight` | `HarmonicityParams` | 0.0-1.0 | Overtone/undertone blend of harmonic gravity; in practice a harmonic-tension dial. |
 | `roughness_k` | `LandscapeParams` | Float | Saturation parameter for roughness mapping. Default: $(1/0.7) - 1 \approx 0.4286$ (so $x=1$ maps to $\approx 0.7$). |
 | `kernel.a` | `ConsonanceKernel` | Float | Harmonicity coefficient (default 1.0). |
 | `kernel.b` | `ConsonanceKernel` | Float | Roughness coefficient (default -1.35; negative penalizes roughness). |

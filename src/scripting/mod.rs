@@ -104,6 +104,8 @@ struct SpeciesSpec {
     rhythm_reward: Option<MetabolismRhythmReward>,
     rhythm_freq: Option<f32>,
     energy_cap: Option<f32>,
+    consonance_movement: bool,
+    pitch_apply_mode_user_set: bool,
 }
 
 impl SpeciesSpec {
@@ -142,6 +144,8 @@ impl SpeciesSpec {
             rhythm_reward: None,
             rhythm_freq: None,
             energy_cap: None,
+            consonance_movement: false,
+            pitch_apply_mode_user_set: false,
         }
     }
 
@@ -262,6 +266,18 @@ impl SpeciesSpec {
     fn spawn_spec(&self) -> VoiceSpec {
         let mut control = self.control.clone();
         control.phonation.spec = self.phonation_spec.clone();
+        // Resolve how seek_consonance() pitch decisions land, unless the script
+        // chose explicitly: re-attacking voices snap at onsets, sustained voices
+        // glide. Order-independent (resolved at commit, not at call time).
+        if self.consonance_movement && !self.pitch_apply_mode_user_set {
+            let apply = match self.phonation_spec.timing {
+                PhonationTiming::Once => PitchApplyMode::Glide,
+                PhonationTiming::Pulse { .. } | PhonationTiming::Coupled(_) => {
+                    PitchApplyMode::GateSnap
+                }
+            };
+            control.pitch.set_pitch_apply_mode(apply);
+        }
         VoiceSpec {
             control,
             articulation: self.articulation_config(),
@@ -424,9 +440,14 @@ impl SpeciesSpec {
                     "pitch_apply_mode() expects 'gate_snap' or 'glide', got '{}'",
                     other
                 );
-                self.control.pitch.pitch_apply_mode
+                return;
             }
         };
+        self.set_pitch_apply_mode_resolved(mode);
+    }
+
+    fn set_pitch_apply_mode_resolved(&mut self, mode: PitchApplyMode) {
+        self.pitch_apply_mode_user_set = true;
         self.control.pitch.set_pitch_apply_mode(mode);
     }
 
@@ -435,26 +456,17 @@ impl SpeciesSpec {
     }
 
     fn set_consonance_movement(&mut self) {
+        self.consonance_movement = true;
         self.control.pitch.mode = PitchMode::Free;
         self.control.pitch.core_kind = PitchCoreKind::HillClimb;
-        self.control
-            .pitch
-            .set_pitch_apply_mode(PitchApplyMode::Glide);
         self.control
             .pitch
             .set_pitch_glide_tau_sec_clamped(DEFAULT_CONSONANCE_MOVEMENT_GLIDE_TAU_SEC);
     }
 
-    fn set_pitch_mode(&mut self, name: &str) {
-        let lowered = name.trim().to_ascii_lowercase();
-        self.control.pitch.mode = match lowered.as_str() {
-            "free" => PitchMode::Free,
-            "lock" => PitchMode::Lock,
-            other => {
-                warn!("pitch_mode() expects 'free' or 'lock', got '{}'", other);
-                self.control.pitch.mode
-            }
-        };
+    fn set_anchor(&mut self) {
+        self.consonance_movement = false;
+        self.control.pitch.mode = PitchMode::Lock;
     }
 
     fn set_pitch_core(&mut self, name: &str) {

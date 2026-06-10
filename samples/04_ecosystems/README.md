@@ -71,7 +71,6 @@ These scripts remain useful, but they are not the first v0.4 user path.
 | Scripts | Role |
 |---|---|
 | `consonance_field_control.rhai` | Demoted harmony-control sketch; useful for mechanism comparison, but not clear enough as a first-listen demo. |
-| `mirror_dualism*.rhai` | Compact mirror/field comparison sketches. |
 | `temporal_scaffolding_*.rhai` | External scaffold comparisons for rhythm-coupling behavior. |
 | `hereditary_adaptation_*.rhai` | Reference assays for selection, heredity, and approximate leave-one-out variants. |
 | `drift_flow.rhai`, `emergent_harmony.rhai`, `symbiotic_field.rhai` | Earlier ecosystem sketches retained for mechanism exploration. |

@@ -37,6 +37,11 @@ fn amp(arg0: Participant, arg1: f64) -> Participant;
 /// Amplitude in 0.0-1.0.
 fn amp(arg0: Participant, arg1: i64) -> Participant;
 
+/// Hold the voice at its pitch: an anchored voice never moves.
+fn anchor(arg0: Material) -> Material;
+/// Hold the voice at its pitch: an anchored voice never moves.
+fn anchor(arg0: Participant) -> Participant;
+
 /// Annealing temperature.
 fn anneal_temp(arg0: Material, arg1: f64) -> Material;
 /// Annealing temperature.
@@ -218,13 +223,13 @@ fn flow(arg0: Participant) -> Participant;
 /// Commit pending drafts without advancing time.
 fn flush();
 
-/// Frequency lock in Hz.
+/// Frequency lock in Hz; implies an anchored pitch (see `anchor()`).
 fn freq(arg0: Material, arg1: f64) -> Material;
-/// Frequency lock in Hz.
+/// Frequency lock in Hz; implies an anchored pitch (see `anchor()`).
 fn freq(arg0: Material, arg1: i64) -> Material;
-/// Frequency lock in Hz.
+/// Frequency lock in Hz; implies an anchored pitch (see `anchor()`).
 fn freq(arg0: Participant, arg1: f64) -> Participant;
-/// Frequency lock in Hz.
+/// Frequency lock in Hz; implies an anchored pitch (see `anchor()`).
 fn freq(arg0: Participant, arg1: i64) -> Participant;
 
 /// Density sharpening exponent; only valid on `landscape_density_modes()`.
@@ -420,20 +425,15 @@ fn persistence(arg0: Participant, arg1: f64) -> Participant;
 /// Persistence bias of the hill-climb.
 fn persistence(arg0: Participant, arg1: i64) -> Participant;
 
-/// `"gate_snap"` or `"glide"`. Research control.
+/// `"gate_snap"` or `"glide"`: override how pitch decisions are applied.
 fn pitch_apply_mode(arg0: Material, arg1: String) -> Material;
-/// `"gate_snap"` or `"glide"`. Research control.
+/// `"gate_snap"` or `"glide"`: override how pitch decisions are applied.
 fn pitch_apply_mode(arg0: Participant, arg1: String) -> Participant;
 
 /// `"hill_climb"` or `"peak_sampler"`. Research control.
 fn pitch_core(arg0: Material, arg1: String) -> Material;
 /// `"hill_climb"` or `"peak_sampler"`. Research control.
 fn pitch_core(arg0: Participant, arg1: String) -> Participant;
-
-/// `"free"` or `"lock"`. Research control; prefer `seek_consonance()`.
-fn pitch_mode(arg0: Material, arg1: String) -> Material;
-/// `"free"` or `"lock"`. Research control; prefer `seek_consonance()`.
-fn pitch_mode(arg0: Participant, arg1: String) -> Participant;
 
 /// Pitch smoothing time constant in seconds.
 fn pitch_smooth(arg0: Material, arg1: f64) -> Material;
@@ -651,7 +651,7 @@ fn send(arg0: Material, arg1: Bus) -> Material;
 /// Route the voice to specific buses; accepts a `Bus` or a `BusSet`.
 fn send(arg0: Material, arg1: BusSet) -> Material;
 
-/// `"snapshot_phased"`/`"snapshot"` or `"sequential_rotating"`/`"sequential"`. Research control.
+/// `"snapshot_phased"`/`"snapshot"` (default) or `"sequential_rotating"`/`"sequential"`. Research control.
 fn set_control_update_mode(arg0: String);
 
 /// Voice interaction strength.

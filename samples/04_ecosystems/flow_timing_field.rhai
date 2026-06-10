@@ -10,7 +10,7 @@ let field_anchor = harmonic()
     .send(habitat_bus)
     .amp(0.052)
     .sustain()
-    .pitch_mode("lock")
+    .anchor()
     .modes(harmonic_modes().count(8))
     .brightness(0.22)
     .sustain_drive(0.0018)
@@ -21,7 +21,6 @@ let droplet = modal()
     .flow()
     .cycles(3)
     .seek_consonance()
-    .pitch_apply_mode("gate_snap")
     .modes(landscape_density_modes().count(6).range(1.0, 5.0).gamma(1.5))
     .brightness(0.74)
     .avoid_neighbors(0.42)
@@ -33,14 +32,12 @@ let stream = harmonic()
     // A longer hold makes this layer read as a slow stream under the droplets.
     .cycles(4)
     .seek_consonance()
-    .pitch_apply_mode("gate_snap")
     .modes(harmonic_modes().count(5))
     .brightness(0.50)
     .avoid_neighbors(0.55)
     .adsr(0.045, 0.540, 0.62, 1.10);
 
 section("Flow Timing Field", || {
-    set_control_update_mode("snapshot_phased");
     harmonic_mirror(0.25);
     // Flow voices barely couple, so no beat forms: the terrain priors are gentle
     // and the texture stays non-metric over consonance-biased placement.

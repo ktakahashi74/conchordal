@@ -84,6 +84,8 @@ fn samples_have_no_legacy_keys() {
         "linear(".to_string(),
         ".field_only(".to_string(),
         ".presentation_only(".to_string(),
+        // Replaced by anchor() (lock) / default (free).
+        ".pitch_mode(".to_string(),
         // Pre-continuum rhythm verbs (replaced by metric()/entrained()/flow()
         // + entrainment()/rhythm_role()/microtiming() and director
         // meter_stability()/temporal_basin()).

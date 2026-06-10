@@ -53,7 +53,7 @@ let anchor = harmonic()
     .brain("drone")
     .amp(0.06)
     .sustain()
-    .pitch_mode("lock");
+    .anchor();
 
 let voice = harmonic()
     .amp(0.04)

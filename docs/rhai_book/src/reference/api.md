@@ -266,7 +266,7 @@ freq(hz)
 
 Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
 
-Frequency lock in Hz.
+Frequency lock in Hz; implies an anchored pitch (see `anchor()`).
 
 ### `brightness`
 
@@ -546,6 +546,16 @@ Energy reward for timing fit; metric is `"attack_phase_match"` or `"none"`.
 
 How a voice moves through the consonance field. `seek_consonance()` plus `glide()` is the curated surface; the rest tunes the hill-climb and peak-sampler mechanisms.
 
+### `anchor`
+
+```rhai,ignore
+anchor()
+```
+
+Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+
+Hold the voice at its pitch: an anchored voice never moves. Voices placed with `at()` or given `freq()` are anchored implicitly; use `anchor()` to hold strategy-placed voices (`peaks()`, `density()`, ...) at their settled position, or to state the intent explicitly.
+
 ### `seek_consonance`
 
 ```rhai,ignore
@@ -554,7 +564,7 @@ seek_consonance()
 
 Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
 
-Free hill-climb movement toward better field positions, with glide defaults.
+Free hill-climb movement toward better field positions, with glide defaults. How pitch decisions land is resolved at commit unless `pitch_apply_mode()` was called: sustained voices glide, re-attacking voices (`pulse()`, `metric()`, `entrained()`, `flow()`) snap at onsets.
 
 ### `glide`
 
@@ -576,16 +586,6 @@ Applies to: `Material` and `Participant`. Live-patchable: updates running voices
 
 Pitch smoothing time constant in seconds.
 
-### `pitch_mode`
-
-```rhai,ignore
-pitch_mode(name)
-```
-
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
-
-`"free"` or `"lock"`. Research control; prefer `seek_consonance()`.
-
 ### `pitch_core`
 
 ```rhai,ignore
@@ -604,7 +604,7 @@ pitch_apply_mode(name)
 
 Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
 
-`"gate_snap"` or `"glide"`. Research control.
+`"gate_snap"` or `"glide"`: override how pitch decisions are applied. Without an explicit call, moving voices resolve this at commit from their phonation: sustained voices glide, re-attacking voices snap at onsets.
 
 ### `landscape_weight`
 
@@ -1230,7 +1230,7 @@ set_pitch_objective(name)
 set_control_update_mode(name)
 ```
 
-`"snapshot_phased"`/`"snapshot"` or `"sequential_rotating"`/`"sequential"`. Research control.
+`"snapshot_phased"`/`"snapshot"` (default) or `"sequential_rotating"`/`"sequential"`. Research control.
 
 ### `set_scaffold_off`
 

@@ -11,7 +11,7 @@ let field_anchor = harmonic()
     .send(habitat_bus)
     .amp(0.055)
     .sustain()
-    .pitch_mode("lock")
+    .anchor()
     .modes(harmonic_modes().count(6))
     .brightness(0.20)
     .sustain_drive(0.0015)
@@ -22,7 +22,7 @@ let clock_voice = sine()
     .repeat()
     .pulse(pulse_hz)
     .cycles(1)
-    .pitch_mode("lock")
+    .anchor()
     .adsr(0.01, 0.08, 0.55, 0.18);
 
 let follower = harmonic()
@@ -45,7 +45,6 @@ let follower = harmonic()
     .adsr(0.04, 0.14, 0.90, 0.62);
 
 section("Pulse Foundation", || {
-    set_control_update_mode("snapshot_phased");
     harmonic_mirror(0.15);
 
     let drone = place(field_anchor, at(root_hz).count(1));

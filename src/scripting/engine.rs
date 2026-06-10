@@ -195,8 +195,8 @@ impl ScriptHost {
             species.spec.set_consonance_movement();
             species
         });
-        engine.register_fn("pitch_mode", |mut species: SpeciesHandle, name: &str| {
-            species.spec.set_pitch_mode(name);
+        engine.register_fn("anchor", |mut species: SpeciesHandle| {
+            species.spec.set_anchor();
             species
         });
         engine.register_fn("pitch_core", |mut species: SpeciesHandle, name: &str| {
@@ -1197,9 +1197,9 @@ impl ScriptHost {
                     }
                 };
                 match group.status {
-                    GroupStatus::Draft => group.spec.control.pitch.set_pitch_apply_mode(mode),
+                    GroupStatus::Draft => group.spec.set_pitch_apply_mode_resolved(mode),
                     GroupStatus::Live => {
-                        group.spec.control.pitch.set_pitch_apply_mode(mode);
+                        group.spec.set_pitch_apply_mode_resolved(mode);
                         group.pending_patch.pitch_apply_mode = Some(mode);
                     }
                     _ => ctx.warn_live_builder(handle.id, "pitch_apply_mode"),
@@ -1253,21 +1253,19 @@ impl ScriptHost {
                 Ok(handle)
             },
         );
-        let ctx_for_group_pitch_mode = ctx.clone();
+        let ctx_for_group_anchor = ctx.clone();
         engine.register_fn(
-            "pitch_mode",
-            move |handle: GroupHandle, name: &str| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_pitch_mode
-                    .lock()
-                    .expect("lock script context");
+            "anchor",
+            move |handle: GroupHandle| -> Result<GroupHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_group_anchor.lock().expect("lock script context");
                 let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("pitch_mode ignored for unknown group {}", handle.id);
+                    warn!("anchor ignored for unknown group {}", handle.id);
                     return Ok(handle);
                 };
                 match group.status {
-                    GroupStatus::Draft => group.spec.set_pitch_mode(name),
-                    GroupStatus::Live => ctx.warn_live_builder(handle.id, "pitch_mode"),
-                    _ => ctx.warn_live_builder(handle.id, "pitch_mode"),
+                    GroupStatus::Draft => group.spec.set_anchor(),
+                    GroupStatus::Live => ctx.warn_live_builder(handle.id, "anchor"),
+                    _ => ctx.warn_live_builder(handle.id, "anchor"),
                 }
                 Ok(handle)
             },

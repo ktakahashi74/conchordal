@@ -4,7 +4,7 @@ let pad = harmonic()
     .amp(0.1)
     .sustain()
     .adsr(0.2, 0.2, 0.8, 1.0)
-    .pitch_mode("lock");
+    .anchor();
 let bass = sine().amp(0.18).sustain();
 
 let chord = |root| {

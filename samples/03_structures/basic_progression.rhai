@@ -8,7 +8,7 @@ let pad = harmonic()
     .amp(0.11)
     .sustain()
     .adsr(0.2, 0.3, 0.8, 1.0)
-    .pitch_mode("lock");
+    .anchor();
 
 let chord = |root, dur| {
     let settle = 0.20;

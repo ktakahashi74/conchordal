@@ -48,16 +48,15 @@ fn first_spawn_spec_for_script(src: &str) -> VoiceSpec {
 }
 
 const E4_STEP_RESPONSE_SCRIPT: &str = r#"
-        let anchor = harmonic().pitch_mode("lock");
-        let probe = harmonic().pitch_mode("free").pitch_core("peak_sampler");
+        let anchor = harmonic().anchor();
+        let probe = harmonic().pitch_core("peak_sampler");
 
         section("E4 Step Response Test", || {
             let base = create(anchor, 1).freq(196.0);
             flush();
 
             let probes = create(probe, 12)
-                .place(peaks(196.0).range(0.8, 2.5).spacing(0.9))
-                .pitch_mode("free");
+                .place(peaks(196.0).range(0.8, 2.5).spacing(0.9));
             flush();
 
             harmonic_mirror(0.0);
@@ -74,8 +73,8 @@ const E4_STEP_RESPONSE_SCRIPT: &str = r#"
     "#;
 
 const E4_BETWEEN_RUNS_SCRIPT: &str = r#"
-        let anchor = harmonic().pitch_mode("lock");
-        let probe = harmonic().pitch_mode("free").pitch_core("peak_sampler");
+        let anchor = harmonic().anchor();
+        let probe = harmonic().pitch_core("peak_sampler");
 
         section("E4 Between Runs Test", || {
             let weights = [0.0, 0.5, 1.0];
@@ -85,8 +84,7 @@ const E4_BETWEEN_RUNS_SCRIPT: &str = r#"
 
                 let base = create(anchor, 1).freq(196.0);
                 let probes = create(probe, 8)
-                    .place(peaks(196.0).range(0.8, 2.5).spacing(0.9))
-                    .pitch_mode("free");
+                    .place(peaks(196.0).range(0.8, 2.5).spacing(0.9));
                 flush();
 
                 release(probes);
@@ -346,10 +344,10 @@ fn freq_then_place_sets_strategy() {
 }
 
 #[test]
-fn place_then_pitch_mode_free_overrides_lock() {
+fn place_then_anchor_locks_spawn_mode() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(sine(), 4).place(peaks(220.0)).pitch_mode("free");
+            create(sine(), 4).place(peaks(220.0)).anchor();
             flush();
         "#,
     );
@@ -365,14 +363,14 @@ fn place_then_pitch_mode_free_overrides_lock() {
         })
         .expect("spawn action");
     assert!(matches!(strategy, Some(SpawnStrategy::Consonance { .. })));
-    assert_eq!(mode, PitchMode::Free);
+    assert_eq!(mode, PitchMode::Lock);
 }
 
 #[test]
-fn place_then_pitch_mode_free_survives_spawn() {
+fn place_then_anchor_survives_spawn() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(sine(), 2).place(peaks(220.0)).pitch_mode("free");
+            create(sine(), 2).place(peaks(220.0)).anchor();
             flush();
         "#,
     );
@@ -394,8 +392,8 @@ fn place_then_pitch_mode_free_survives_spawn() {
     pop.apply_action(spawn_action, &landscape, None);
 
     let voice = pop.voices.first().expect("spawned");
-    assert_eq!(voice.base_control.pitch.mode, PitchMode::Free);
-    assert_eq!(voice.effective_control.pitch.mode, PitchMode::Free);
+    assert_eq!(voice.base_control.pitch.mode, PitchMode::Lock);
+    assert_eq!(voice.effective_control.pitch.mode, PitchMode::Lock);
 }
 
 #[test]
@@ -419,10 +417,10 @@ fn place_preserves_default_pitch_mode() {
 }
 
 #[test]
-fn pitch_mode_free_then_place_preserves_free() {
+fn anchor_then_place_preserves_lock() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(sine(), 4).pitch_mode("free").place(peaks(220.0));
+            create(sine(), 4).anchor().place(peaks(220.0));
             flush();
         "#,
     );
@@ -435,14 +433,14 @@ fn pitch_mode_free_then_place_preserves_free() {
             _ => None,
         })
         .expect("spawn action");
-    assert_eq!(mode, PitchMode::Free);
+    assert_eq!(mode, PitchMode::Lock);
 }
 
 #[test]
-fn species_pitch_mode_sets_spawn_mode() {
+fn species_anchor_sets_spawn_mode() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(sine().pitch_mode("lock"), 1);
+            create(sine().anchor(), 1);
             flush();
         "#,
     );
@@ -491,6 +489,38 @@ fn consonance_movement_sets_free_hill_climb_glide_defaults() {
         PitchApplyMode::Glide
     );
     assert!((voice.effective_control.pitch.pitch_glide_tau_sec - 0.30).abs() <= 1e-6);
+}
+
+#[test]
+fn consonance_movement_snaps_on_reattacking_phonation() {
+    for preset in ["metric()", "entrained()", "flow()", "repeat().pulse(2.0)"] {
+        let spec = first_spawn_spec_for_script(&format!(
+            r#"
+                create(sine().{preset}.seek_consonance(), 1);
+                flush();
+            "#
+        ));
+        assert_eq!(
+            spec.control.pitch.pitch_apply_mode,
+            PitchApplyMode::GateSnap,
+            "seek_consonance with {preset} should snap at onsets"
+        );
+    }
+}
+
+#[test]
+fn explicit_pitch_apply_mode_is_order_independent() {
+    for script in [
+        r#"create(sine().pitch_apply_mode("glide").metric().seek_consonance(), 1); flush();"#,
+        r#"create(sine().metric().seek_consonance().pitch_apply_mode("glide"), 1); flush();"#,
+    ] {
+        let spec = first_spawn_spec_for_script(script);
+        assert_eq!(
+            spec.control.pitch.pitch_apply_mode,
+            PitchApplyMode::Glide,
+            "explicit pitch_apply_mode must win regardless of call order"
+        );
+    }
 }
 
 #[test]
@@ -2254,8 +2284,8 @@ fn e4_step_response_script_has_fixed_population_spawns() {
         "E4 step response must use harmonic bodies"
     );
     assert!(
-        script.contains(".pitch_mode(\"lock\")"),
-        "E4 step response anchor must lock pitch mode"
+        script.contains(".anchor()"),
+        "E4 step response anchor must lock pitch"
     );
     let (scenario, _warnings) = run_script(script);
 
@@ -2289,8 +2319,8 @@ fn e4_between_runs_script_pairs_spawns_and_releases_per_weight() {
         "E4 between-runs must use harmonic bodies"
     );
     assert!(
-        script.contains(".pitch_mode(\"lock\")"),
-        "E4 between-runs anchor must lock pitch mode"
+        script.contains(".anchor()"),
+        "E4 between-runs anchor must lock pitch"
     );
     let (scenario, _warnings) = run_script(script);
 

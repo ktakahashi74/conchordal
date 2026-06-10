@@ -14,7 +14,7 @@ let field_anchor = harmonic()
     .send(habitat_bus)
     .amp(0.052)
     .sustain()
-    .pitch_mode("lock")
+    .anchor()
     .modes(harmonic_modes().count(7))
     .brightness(0.24)
     .sustain_drive(0.0015)
@@ -25,7 +25,7 @@ let downbeat = harmonic()
     .metric()
     .rhythm_role("accent")
     .cycles(2)
-    .pitch_mode("lock")
+    .anchor()
     .modes(odd_modes().count(5))
     .brightness(0.36)
     .adsr(0.006, 0.070, 0.42, 0.16);
@@ -35,7 +35,6 @@ let consonant_pulse = harmonic()
     .metric()
     .cycles(3)
     .seek_consonance()
-    .pitch_apply_mode("gate_snap")
     .modes(harmonic_modes().count(6))
     .brightness(0.48)
     .avoid_neighbors(0.45)
@@ -48,13 +47,12 @@ let offbeat = modal()
     // Half a beat of phase offset reads as a syncopated note between the beats.
     .microtiming(0.5)
     .cycles(2)
-    .pitch_mode("lock")
+    .anchor()
     .modes(landscape_density_modes().count(5).range(1.0, 4.0).gamma(1.2))
     .brightness(0.62)
     .adsr(0.004, 0.060, 0.36, 0.12);
 
 section("Metric Beat Foundation", || {
-    set_control_update_mode("snapshot_phased");
     harmonic_mirror(0.15);
     // Deep attractor in a ~2 Hz tempo region: the pulse forms readily and reads
     // as a stable metric heartbeat without any imposed grid.

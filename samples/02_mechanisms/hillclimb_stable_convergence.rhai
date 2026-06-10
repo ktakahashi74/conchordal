@@ -3,7 +3,7 @@ let bed = sine()
     .sustain()
     .metabolism(0.0)
     .sustain_drive(0.01)
-    .pitch_mode("lock");
+    .anchor();
 
 let mover = sine()
     .amp(0.05)

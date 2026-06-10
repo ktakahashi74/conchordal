@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Quick Start - Conchordal Script Reference</title>
+        <title>Rhythm: One Coupling Continuum - Conchordal Script Reference</title>
 
 
         <!-- Custom HTML head -->
@@ -12,33 +12,33 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
-        <link rel="icon" href="favicon-de23e50b.svg">
-        <link rel="shortcut icon" href="favicon-8114d1fc.png">
-        <link rel="stylesheet" href="css/variables-8adf115d.css">
-        <link rel="stylesheet" href="css/general-2459343d.css">
-        <link rel="stylesheet" href="css/chrome-ae938929.css">
-        <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
+        <link rel="icon" href="../favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="../favicon-8114d1fc.png">
+        <link rel="stylesheet" href="../css/variables-8adf115d.css">
+        <link rel="stylesheet" href="../css/general-2459343d.css">
+        <link rel="stylesheet" href="../css/chrome-ae938929.css">
+        <link rel="stylesheet" href="../css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
-        <link rel="stylesheet" href="fonts/fonts-9644e21d.css">
+        <link rel="stylesheet" href="../fonts/fonts-9644e21d.css">
 
         <!-- Highlight.js Stylesheets -->
-        <link rel="stylesheet" id="mdbook-highlight-css" href="highlight-493f70e1.css">
-        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="tomorrow-night-4c0ae647.css">
-        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
+        <link rel="stylesheet" id="mdbook-highlight-css" href="../highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="../tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
 
 
         <!-- Provide site root and default themes to javascript -->
         <script>
-            const path_to_root = "";
+            const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-93be7dfe.js";
+            window.path_to_searchindex_js = "../searchindex-1ec51375.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-33c4e52c.js"></script>
+        <script src="../toc-ebd22986.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -105,7 +105,7 @@
             <!-- populated by js -->
             <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
             <noscript>
-                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
             </noscript>
             <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
                 <div class="sidebar-resize-indicator"></div>
@@ -140,7 +140,7 @@
                     <h1 class="menu-title">Conchordal Script Reference</h1>
 
                     <div class="right-buttons">
-                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
                             <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
                         </a>
 
@@ -174,189 +174,49 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="quick-start-guide"><a class="header" href="#quick-start-guide">Quick Start Guide</a></h1>
-<p>Conchordal v0.4.0-dev is a research-composer scripting surface. The central
-idea is not note scheduling. The central idea is shaping a perceptual consonance
-field, then letting populations move, survive, and reorganize inside it.</p>
-<p>For a guided listening path, see the <a href="alpha_guide.html">Alpha Guide</a>. For the full
-function list, see the <a href="reference/life.html">API Reference</a>.</p>
-<h2 id="editor-setup-recommended"><a class="header" href="#editor-setup-recommended">Editor Setup (Recommended)</a></h2>
-<p>Conchordal ships a Rhai LSP definition file describing the entire scripting
-surface. Hooking your editor up to it gives you completion, hover, go-to-def,
-and inline diagnostics for every conchordal function — <code>place</code>, <code>harmonic</code>,
-<code>.brain()</code>, <code>.send(habitat_bus)</code>, and so on.</p>
-<p>The two files that drive this are committed at the repo root:</p>
+                        <h1 id="rhythm-one-coupling-continuum"><a class="header" href="#rhythm-one-coupling-continuum">Rhythm: One Coupling Continuum</a></h1>
+<p>Rhythm in conchordal is <strong>one coupling continuum on a shared emergent meter</strong>,
+not a set of independent clocks. The population drives a single production
+meter (a coupled-oscillator beat); each voice is a phase oscillator that
+entrains its onset phase to that emergent beat with a coupling strength. There
+is no externally imposed grid — coherence (or its absence) emerges from how
+tightly each voice locks to the meter the population itself drives.</p>
+<p>The three rhythm “families” are just three regions of the continuum:</p>
 <ul>
-<li><code>Rhai.toml</code> — workspace config picked up by <code>rhai-lsp</code></li>
-<li><code>rhai-defs/conchordal.d.rhai</code> — auto-generated type/fn declarations</li>
+<li><strong>metric</strong>: high coupling — a deep attractor, reads as a stable pulse.</li>
+<li><strong>entrained</strong>: medium coupling — synchronization emerges over time, still
+drifts.</li>
+<li><strong>flow</strong>: near-zero coupling — a free renewal process, non-metric texture.</li>
 </ul>
-<p>Install the <a href="https://github.com/rhaiscript/lsp">rhai-lsp</a> server once (it is
-not on crates.io; install directly from the git repo):</p>
-<pre><code class="language-bash">cargo install --git https://github.com/rhaiscript/lsp rhai-cli
-</code></pre>
-<p>This builds a binary named <code>rhai</code> with the <code>lsp</code> subcommand.</p>
-<p>Then wire your editor:</p>
-<h3 id="vs-code"><a class="header" href="#vs-code">VS Code</a></h3>
-<p>The official <a href="https://marketplace.visualstudio.com/items?itemName=rhaiscript.vscode-rhai">Rhai</a>
-extension currently provides syntax highlighting only. It does not launch
-<code>rhai-lsp</code>. For LSP features in VS Code, use an LSP client/extension that can
-launch this command from the conchordal workspace:</p>
-<pre><code class="language-bash">rhai lsp stdio --config Rhai.toml
-</code></pre>
-<h3 id="neovim-nvim-lspconfig"><a class="header" href="#neovim-nvim-lspconfig">Neovim (nvim-lspconfig)</a></h3>
-<pre><code class="language-lua">require("lspconfig").rhai.setup({
-  cmd = { "rhai", "lsp", "stdio" },
-  filetypes = { "rhai" },
-  root_dir = require("lspconfig.util").root_pattern("Rhai.toml", ".git"),
-})
-</code></pre>
-<h3 id="helix"><a class="header" href="#helix">Helix</a></h3>
-<p>In <code>~/.config/helix/languages.toml</code>:</p>
-<pre><code class="language-toml">[[language]]
-name = "rhai"
-scope = "source.rhai"
-file-types = ["rhai"]
-language-servers = ["rhai-lsp"]
-
-[language-server.rhai-lsp]
-command = "rhai"
-args = ["lsp", "stdio"]
-</code></pre>
-<h3 id="emacs-eglot"><a class="header" href="#emacs-eglot">Emacs (eglot)</a></h3>
-<pre><code class="language-elisp">(add-to-list 'eglot-server-programs
-             '(rhai-mode . ("rhai" "lsp" "stdio")))
-(add-hook 'rhai-mode-hook #'eglot-ensure)
-</code></pre>
-<h3 id="regenerating-the-definition-file"><a class="header" href="#regenerating-the-definition-file">Regenerating the definition file</a></h3>
-<p>The definition file is auto-generated from the host’s <code>register_fn</code> calls.
-If you pull a new conchordal version and miss diagnostics, regenerate:</p>
-<pre><code class="language-bash">cargo run --bin gen_rhai_defs &gt; rhai-defs/conchordal.d.rhai
-</code></pre>
-<h2 id="minimal-sound"><a class="header" href="#minimal-sound">Minimal Sound</a></h2>
-<pre><code class="language-ts">place(sine().amp(0.08).sustain(), at(440.0));
-wait(2.0);
-</code></pre>
-<p><code>place(material, placement)</code> stages a <code>Participant</code> at the current script time.
-It is committed by <code>wait(seconds)</code> or <code>flush()</code>, then can be patched while it is
-alive.</p>
-<h2 id="basic-objects"><a class="header" href="#basic-objects">Basic Objects</a></h2>
+<p>Rhythm is part of the same ecology as consonance, viability, movement, and
+respawn: timing can affect survival, and survival reorganizes timing.</p>
+<h2 id="director-level-terrain"><a class="header" href="#director-level-terrain">Director-level terrain</a></h2>
+<p>The director shapes the rhythmic terrain, symmetric to the consonance-field
+operations. These are soft priors, never a schedule — emergence still does the
+work:</p>
 <ul>
-<li><strong>Materials</strong> are voice templates made with <code>sine()</code>, <code>harmonic()</code>,
-<code>modal()</code>, <code>saw()</code>, <code>square()</code>, and <code>noise()</code>.</li>
-<li><strong>Variants</strong> clone a material with <code>variant(material)</code>.</li>
-<li><strong>Placements</strong> decide where participants enter: <code>at()</code>, <code>peaks()</code>,
-<code>density()</code>, <code>random()</code>, and <code>line()</code>.</li>
-<li><strong>Participants</strong> are collections returned by <code>place()</code>. Before the next
-<code>wait()</code> or <code>flush()</code>, participant builder methods still shape the initial
-spawn; after that, patchable methods update running voices.</li>
-<li><strong>Sections</strong> scope participants and release them automatically.</li>
+<li><code>meter_stability(value)</code> — attractor depth in <code>[0,1]</code>: how readily a pulse
+forms. It only deepens the basin for a <em>real</em> periodicity; it never
+fabricates a beat from non-metric input.</li>
+<li><code>temporal_basin(min_hz, max_hz)</code> — the tempo region the emergent beat
+gravitates toward (the time-axis analogue of <code>density(min, max)</code>). It shapes
+the terrain; it does not place a beat, and it never forces a measure.</li>
 </ul>
-<pre><code class="language-ts">let voice = harmonic()
-    .amp(0.08)
-    .sustain()
-    .brightness(0.35);
-
-section("plain entry", || {
-    place(voice, line(220.0, 440.0).count(3));
-    wait(4.0);
-});
-</code></pre>
-<h2 id="consonance-field"><a class="header" href="#consonance-field">Consonance Field</a></h2>
-<p><code>peaks(root_hz)</code> places voices at high Consonance Field positions around a
-root. The field is shaped by what the system perceives.</p>
-<pre><code class="language-ts">let anchor = harmonic()
-    .brain("drone")
-    .amp(0.06)
-    .sustain()
-    .pitch_mode("lock");
-
-let voice = harmonic()
-    .amp(0.04)
-    .sustain();
-
-section("field placement", || {
-    place(anchor, at(110.0));
-    wait(1.0);
-
-    place(voice, peaks(110.0).range(1.0, 4.0).count(6).spacing(0.9));
-    wait(6.0);
-});
-</code></pre>
-<p><code>harmonic_mirror(value)</code> bends the harmonicity field from overtone emphasis
-toward undertone emphasis.</p>
-<pre><code class="language-ts">harmonic_mirror(0.0);
-wait(4.0);
-harmonic_mirror(1.0);
-wait(4.0);
-</code></pre>
-<h2 id="consonance-density"><a class="header" href="#consonance-density">Consonance Density</a></h2>
-<p><code>density(min_hz, max_hz)</code> samples from the density view of the field.
-Use it when the musical thought is a population seeded by the current terrain.</p>
-<pre><code class="language-ts">let cloud = harmonic().amp(0.035).sustain();
-
-place(cloud, density(90.0, 1200.0).count(10).spacing(0.8));
-wait(8.0);
-</code></pre>
-<p>Density is not just “random but harmonic”. It is a normalized distribution
-derived from the consonance model, and it remains well-defined inside the
-requested range.</p>
-<h2 id="consonance-movement"><a class="header" href="#consonance-movement">Consonance Movement</a></h2>
-<p>Use <code>seek_consonance()</code> when voices should actively seek better field
-positions. It sets free hill-climb movement with glide defaults.</p>
-<pre><code class="language-ts">let mover = harmonic()
-    .amp(0.045)
-    .sustain()
-    .seek_consonance()
-    .glide(0.35)
-    .avoid_neighbors(0.6)
-    .global_peaks(8, 70.0)
-    .ratio_candidates(5);
-
-place(mover, density(80.0, 900.0).count(8));
-wait(12.0);
-</code></pre>
-<p>Advanced controls such as <code>pitch_mode()</code>, <code>pitch_core()</code>,
-and <code>pitch_apply_mode()</code> remain available for mechanism-level work. Prefer
-<code>seek_consonance()</code> and <code>glide()</code> in curated v0.4.0 scripts.</p>
-<h2 id="consonance-viability-and-respawn"><a class="header" href="#consonance-viability-and-respawn">Consonance Viability And Respawn</a></h2>
-<p>Viability makes field fit matter over time. <code>consonance_viability(low, high)</code>
-defines the consonance window, and <code>viability_rate(rate)</code> controls continuous
-recharge. By default, viability uses environment-relative scoring.</p>
-<pre><code class="language-ts">let settle = density(70.0, 1100.0).spacing(0.8);
-
-let ecology = harmonic()
-    .amp(0.04)
-    .repeat()
-    .pulse(1.5)
-    .cycles(3)
-    .seek_consonance()
-    .glide(0.45)
-    .initial_energy(0.7)
-    .energy_cap(1.0)
-    .metabolism(0.09)
-    .action_cost(0.012)
-    .viability_rate(0.18)
-    .consonance_viability(0.32, 0.82)
-    .respawn_consonance()
-    .respawn_capacity(14)
-    .respawn_settle(settle);
-
-place(ecology, density(70.0, 1100.0).count(14));
-wait(30.0);
-</code></pre>
-<p>Use <code>viability_scope("total")</code> when the compositional question is explicitly
-total-field viability. The default <code>viability_scope("environment")</code> keeps
-v0.4.0 ecology centered on whether a voice is supported by its surroundings.
-Use <code>selection_approx_loo(false)</code> only for older reference assays that need the
-previous implementation-level control.</p>
-<h2 id="rhythm-redesign"><a class="header" href="#rhythm-redesign">Rhythm Redesign</a></h2>
-<p>In v0.4.0 rhythm is a core part of the same ecology as consonance, viability,
-movement, and respawn: one coupling continuum on a single emergent meter the
-population drives. Metric, entrained, and flow are three regions of that
-continuum (high / medium / near-zero coupling), not separate clocks.</p>
-<p>The director sets the rhythmic terrain (tempo region + attractor depth); each
-voice picks a preset and, optionally, refines its coupling, role, and phase:</p>
-<pre><code class="language-ts">metric_stability(0.85);     // attractor depth: how readily a pulse forms
+<h2 id="per-voice-presets-and-modifiers"><a class="header" href="#per-voice-presets-and-modifiers">Per-voice presets and modifiers</a></h2>
+<p>The Tier-1 presets take <strong>no rate argument</strong>: <code>metric()</code>, <code>entrained()</code>, and
+<code>flow()</code>. The tempo region is a property of the terrain, set once at the
+director level, not per voice. They work on both a <code>Material</code> and a draft
+<code>Participant</code>.</p>
+<p>Per-voice modifiers refine where on the continuum a voice sits:</p>
+<ul>
+<li><code>entrainment(strength)</code> — coupling in <code>[0,1]</code>, free (<code>0</code>) .. locked (<code>1</code>).</li>
+<li><code>rhythm_role("beat"|"subdivision"|"accent"|"texture")</code> — the voice’s
+metrical job. <code>accent</code> emits a stronger onset that drives the shared meter
+harder, so a recurring downbeat can seed an emergent measure.</li>
+<li><code>microtiming(amount)</code> — a signed beat-phase offset in <code>[-0.5, 0.5]</code>. <code>0.5</code>
+places a voice a half-beat off, reading as syncopation.</li>
+</ul>
+<pre><code class="language-rhai">meter_stability(0.85);     // attractor depth: how readily a pulse forms
 temporal_basin(1.8, 2.2);   // tempo region the emergent beat gravitates toward
 
 let beat = harmonic()
@@ -368,7 +228,7 @@ let entrained = harmonic()
     .entrained()
     .cycles(2);
 
-let flow = harmonic()
+let drift = harmonic()
     .flow()
     .cycles(1);
 
@@ -376,81 +236,56 @@ let offbeat = harmonic()
     .metric()
     .microtiming(0.5)       // a half-beat offset reads as syncopation
     .cycles(2);
+
+place(beat, at(110.0));
+place(entrained, peaks(110.0).count(3));
+place(drift, density(300.0, 1200.0).count(4));
+place(offbeat, at(220.0));
+wait(12.0);
 </code></pre>
-<p>The current low-level tools remain useful for mechanism-level scripts:</p>
-<pre><code class="language-ts">let pulse_voice = harmonic()
+<p>Calls on the same axis are last-write-wins: the last timing mode and the last
+duration mode determine the final behavior. Modifiers are remembered and
+applied when their matching preset is selected, so <code>entrainment(0.8).metric()</code>
+and <code>metric().entrainment(0.8)</code> are equivalent. The same applies to
+<code>duration_range(...).adaptive_duration()</code> and the reverse order.</p>
+<h2 id="explicit-whenduration-tier-2"><a class="header" href="#explicit-whenduration-tier-2">Explicit when/duration (Tier 2)</a></h2>
+<p>Below the presets sit explicit controls: <code>once()</code>, <code>pulse(rate_hz)</code>,
+<code>while_alive()</code>, <code>cycles(n)</code>, and <code>adaptive_duration()</code> (with
+<code>duration_range</code>, <code>duration_curve</code>, and <code>shorten_on_drop</code> for tuning).</p>
+<h2 id="timing-as-survival-tier-3"><a class="header" href="#timing-as-survival-tier-3">Timing as survival (Tier 3)</a></h2>
+<p>Use <code>rhythm_coupling_vitality(lambda_v, v_floor)</code> and
+<code>rhythm_reward(rho_t, "attack_phase_match")</code> when timing should affect
+survival and reorganization, and <code>rhythm_freq(freq_hz)</code> to set the internal
+oscillator directly:</p>
+<pre><code class="language-rhai">let pulse_voice = harmonic()
     .repeat()
     .pulse(2.0)
     .cycles(2)
     .rhythm_freq(2.0)
     .rhythm_coupling_vitality(0.8, 0.4)
     .rhythm_reward(0.4, "attack_phase_match");
+
+place(pulse_voice, at(165.0));
+wait(8.0);
 </code></pre>
-<p>Scaffold functions are external comparison controls:</p>
-<pre><code class="language-ts">set_scaffold_off();
+<h2 id="scaffolds-research-controls"><a class="header" href="#scaffolds-research-controls">Scaffolds (research controls)</a></h2>
+<p>The scaffold functions impose an <em>external</em> pulse for comparison assays:</p>
+<pre><code class="language-rhai">set_scaffold_off();
 set_scaffold_shared(2.0);
 set_scaffold_scrambled(2.0, 17);
 </code></pre>
-<p>They are useful for demos and assays. They are not the final rhythm-composition
-abstraction.</p>
-<h2 id="modal-bodies"><a class="header" href="#modal-bodies">Modal Bodies</a></h2>
-<p>The <code>modal</code> preset can use inharmonic mode patterns. Landscape-aware modes can
-sample the live field.</p>
-<pre><code class="language-ts">let shimmer_modes = landscape_density_modes()
-    .count(10)
-    .range(1.0, 5.5)
-    .gamma(1.6)
-    .spacing(0.7);
-
-let shimmer = modal()
-    .amp(0.025)
-    .sustain()
-    .seek_consonance()
-    .modes(shimmer_modes)
-    .brightness(0.7);
-</code></pre>
-<p>Mode constructors include <code>harmonic_modes()</code>, <code>odd_modes()</code>,
-<code>power_modes(beta)</code>, <code>stiff_string_modes(stiffness)</code>,
-<code>custom_modes([ratios])</code>, <code>modal_table(name)</code>, <code>landscape_density_modes()</code>, and
-<code>landscape_peaks_modes()</code>.</p>
-<h2 id="live-patching"><a class="header" href="#live-patching">Live Patching</a></h2>
-<p>Some participant methods patch running voices. Material-only methods must be set
-before <code>place()</code>.</p>
-<pre><code class="language-ts">let g = place(
-    harmonic().amp(0.04),
-    peaks(220.0).count(3)
-);
-
-g.amp(0.02);
-g.glide(0.8);
-wait(3.0);
-release(g);
-</code></pre>
-<p>See the <a href="reference/life.html">API Reference</a> for the live-patchable and
-draft-only method lists.</p>
-<h2 id="current-candidate-path"><a class="header" href="#current-candidate-path">Current Candidate Path</a></h2>
-<p>The active v0.4.0 candidate path is the redesigned rhythm/harmony set:</p>
-<pre><code class="language-bash">cargo run --release -- samples/04_ecosystems/metric_beat_foundation.rhai
-cargo run --release -- samples/04_ecosystems/entrained_beat.rhai
-cargo run --release -- samples/04_ecosystems/flow_timing_field.rhai
-cargo run --release -- samples/04_ecosystems/rhythm_harmony_ecology.rhai
-cargo run --release -- samples/04_ecosystems/conchordal_ecology.rhai
-</code></pre>
-<p>These scripts cover metric beat, entrained beat, flow timing, functional
-rhythm/harmony integration, and musical-showcase candidate material. Functional
-integration is not the same as the musical showcase; a separate etude should be
-judged by musical result rather than feature coverage. These scripts still need
-audition before final release curation.
-<code>consonance_ecology.rhai</code>, <code>pulse_foundation.rhai</code>, and
-<code>consonance_field_control.rhai</code> remain useful research comparisons, but they are
-not the first alpha-user path.</p>
+<p>They are useful for demos and assays. They are not the rhythm-composition
+abstraction: composed rhythm should come from the continuum and the terrain.</p>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../concepts/consonance.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                            </a>
 
-                            <a rel="next prefetch" href="alpha_guide.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../concepts/routing.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -460,8 +295,11 @@ not the first alpha-user path.</p>
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../concepts/consonance.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                    </a>
 
-                    <a rel="next prefetch" href="alpha_guide.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../concepts/routing.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>
@@ -481,15 +319,16 @@ not the first alpha-user path.</p>
         </script>
 
 
-        <script src="elasticlunr-ef4e11c1.min.js"></script>
-        <script src="mark-09e88c2c.min.js"></script>
-        <script src="searcher-c2a407aa.js"></script>
+        <script src="../elasticlunr-ef4e11c1.min.js"></script>
+        <script src="../mark-09e88c2c.min.js"></script>
+        <script src="../searcher-c2a407aa.js"></script>
 
-        <script src="clipboard-1626706a.min.js"></script>
-        <script src="highlight-abc7f01d.js"></script>
-        <script src="book-a0b12cfe.js"></script>
+        <script src="../clipboard-1626706a.min.js"></script>
+        <script src="../highlight-abc7f01d.js"></script>
+        <script src="../book-a0b12cfe.js"></script>
 
         <!-- Custom JS scripts -->
+        <script src="../theme/rhai-highlight-f40c858c.js"></script>
 
 
 

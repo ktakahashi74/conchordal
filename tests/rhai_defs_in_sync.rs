@@ -1,29 +1,41 @@
-//! Drift check: `rhai-defs/conchordal.d.rhai` must match the output of
-//! `cargo run --bin gen_rhai_defs`. If a new `register_fn` was added without
-//! regenerating the file, editor completion / diagnostics fall out of sync
-//! with the engine. This test catches that on CI.
+//! Drift checks for the artifacts generated from the scripting surface.
 //!
-//! Fix: `cargo run --bin gen_rhai_defs > rhai-defs/conchordal.d.rhai`
+//! `rhai-defs/conchordal.d.rhai` and `docs/rhai_book/src/reference/api.md`
+//! must match the output of `cargo run --bin gen_rhai_defs`, and every
+//! registered function must have a doc entry in `src/scripting/docs.rs`.
+//! If any of these fail, editor completion/diagnostics or the book reference
+//! fall out of sync with the engine.
+//!
+//! Fix: update `src/scripting/docs.rs` if a function was added/removed, then
+//! regenerate with `cargo run --bin gen_rhai_defs`.
 
 use std::fs;
 use std::path::PathBuf;
-use std::process::Command;
+
+use conchordal::scripting::defs_gen;
+
+#[test]
+fn docs_registry_matches_engine_surface() {
+    if let Err(err) = defs_gen::check() {
+        panic!("src/scripting/docs.rs is out of sync with the engine surface:\n{err}");
+    }
+}
 
 #[test]
 fn rhai_defs_match_generator_output() {
-    let bin = env!("CARGO_BIN_EXE_gen_rhai_defs");
-    let output = Command::new(bin)
-        .output()
-        .expect("failed to run gen_rhai_defs");
-    assert!(
-        output.status.success(),
-        "gen_rhai_defs exited non-zero: {}\nstderr:\n{}",
-        output.status,
-        String::from_utf8_lossy(&output.stderr),
-    );
-    let generated = String::from_utf8(output.stdout).expect("non-UTF8 stdout");
+    assert_generated_matches("rhai-defs/conchordal.d.rhai", &defs_gen::render_d_rhai());
+}
 
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("rhai-defs/conchordal.d.rhai");
+#[test]
+fn book_api_reference_matches_generator_output() {
+    assert_generated_matches(
+        "docs/rhai_book/src/reference/api.md",
+        &defs_gen::render_reference_md(),
+    );
+}
+
+fn assert_generated_matches(rel_path: &str, generated: &str) {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(rel_path);
     let committed =
         fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {}", path.display(), e));
 
@@ -46,8 +58,8 @@ fn rhai_defs_match_generator_output() {
             ),
         };
         panic!(
-            "rhai-defs/conchordal.d.rhai is stale.\n\
-             Regenerate with: cargo run --bin gen_rhai_defs > rhai-defs/conchordal.d.rhai\n\
+            "{rel_path} is stale.\n\
+             Regenerate with: cargo run --bin gen_rhai_defs\n\
              {hint}"
         );
     }

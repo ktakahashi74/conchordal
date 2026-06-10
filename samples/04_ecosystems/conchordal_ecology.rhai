@@ -64,7 +64,7 @@ section("Conchordal Ecology", || {
     harmonic_mirror(0.10);
     // Metric beat, entrained colony, and flow all share one ~2 Hz emergent
     // attractor; coverage demo, not the musical showcase.
-    metric_stability(0.7);
+    meter_stability(0.7);
     temporal_basin(1.8, 2.2);
 
     let root = place(field_anchor, at(root_hz).count(1));

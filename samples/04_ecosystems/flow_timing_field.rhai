@@ -44,7 +44,7 @@ section("Flow Timing Field", || {
     harmonic_mirror(0.25);
     // Flow voices barely couple, so no beat forms: the terrain priors are gentle
     // and the texture stays non-metric over consonance-biased placement.
-    metric_stability(0.1);
+    meter_stability(0.1);
     temporal_basin(1.0, 2.6);
 
     let root = place(field_anchor, at(root_hz).count(1));

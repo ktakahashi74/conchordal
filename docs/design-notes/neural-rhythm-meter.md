@@ -11,7 +11,7 @@ Production timing is now a per-voice phase-coupling clock (`CouplingClock`) that
 entrains to the shared production meter; one `coupling` strength spans the
 flow / entrained / metric continuum. The composer API is `metric()` /
 `entrained()` / `flow()` presets plus `entrainment()` / `rhythm_role()` /
-`microtiming()` modifiers, with director-level `metric_stability()` (attractor
+`microtiming()` modifiers, with director-level `meter_stability()` (attractor
 depth) and `temporal_basin()` (tempo region) shaping the emergent meter. Accent
 role emits a stronger onset that drives the meter, so the measure subharmonic
 can emerge from a recurring downbeat (the Phase-2 gap). `metric_beat(Hz)` /
@@ -210,9 +210,9 @@ parameterized along one perceptual axis. The named families stay as presets over
 this continuum, not as separate backends:
 
 ```text
-flow:      metric_stability low,    entrainment free,          confidence low
-entrained: metric_stability medium, entrainment loose..joined, confidence grows over time
-metric:    metric_stability high,   entrainment locked,        stable beat emerges
+flow:      meter_stability low,    entrainment free,          confidence low
+entrained: meter_stability medium, entrainment loose..joined, confidence grows over time
+metric:    meter_stability high,   entrainment locked,        stable beat emerges
 ```
 
 ## Composer API
@@ -232,7 +232,7 @@ views.
 
 Field level (Scenario / director), symmetric to consonance-field operations:
 
-- `metric_stability`: attractor depth -- how strongly a pulse wants to form. A
+- `meter_stability`: attractor depth -- how strongly a pulse wants to form. A
   property of the temporal terrain, not a tempo.
 - temporal basin: the time scale the pulse gravitates toward, expressed as the
   time-axis analogue of `density(min_hz, max_hz)` -- a period/rate region that
@@ -311,7 +311,7 @@ Land the well-supported core first; defer speculative layers.
    `measure_hz / measure_ratio / measure_confidence`. Subdivision microtiming and
    the alpha/beta intent mapping remain for later in this phase.
 3. Composer API: replace `metric_beat(Hz)` with relational voice verbs and field
-   `metric_stability` / tempo-region / layer-emphasis operations. Rewrite the
+   `meter_stability` / tempo-region / layer-emphasis operations. Rewrite the
    sample `.rhai` files.
 4. Family continuum: drive metric/entrained/flow purely from coupling strength on
    the production substrate; remove `FixedRate` and `ThetaGate` special cases.
@@ -424,7 +424,7 @@ Calibration decisions:
 - Do not expose neural / engine vocabulary (Hz, PLV, Kuramoto, `FixedRate`,
   `ThetaGate`) to scenario authors. Keep `habitat_bus` / `presentation_bus` as
   composer routing; type-lock only the `ListenerTwin` input.
-- Do not let composer-facing priors (`metric_stability`, the temporal basin,
+- Do not let composer-facing priors (`meter_stability`, the temporal basin,
   `layer_emphasis`) accumulate into a de-facto grid. Keep them low-dimensional
   and genuinely soft; emergence must still do real work.
 - Do not dress the vocabulary in everyday or genre wrappers (no `walking` /
@@ -442,7 +442,7 @@ Calibration decisions:
   anticipation test needed before coupling confidence into behavior?
 - Prior budget: where is the line between shaping the attractor and imposing
   meter? Define a headless check that confirms emergence still does real work
-  once `metric_stability` + the temporal basin are both active. (The basin
+  once `meter_stability` + the temporal basin are both active. (The basin
   resolves "how to express a tempo region without Hz" as a soft preference, not
   a target.) Metrical grouping is intentionally left to emergence, not a seeded
   meter symbol; the same check must confirm grouping arises as a subharmonic

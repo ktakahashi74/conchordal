@@ -1964,6 +1964,8 @@ fn draft_clear_strategy(group: &mut GroupState) {
 
 pub struct ScriptHost;
 
+pub mod defs_gen;
+pub mod docs;
 mod engine;
 
 #[derive(Debug, Clone)]

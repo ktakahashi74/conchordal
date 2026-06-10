@@ -1221,7 +1221,7 @@ fn worker_loop(
     let timebase = crate::core::timebase::Timebase { fs, hop };
     // Production-side meter core (auditory-motor coupling), separate from the
     // perception meter inside ListenerTwin. See "Perception vs Production".
-    // Composer-set terrain priors (metric_stability / temporal_basin) seed it.
+    // Composer-set terrain priors (meter_stability / temporal_basin) seed it.
     let mut prod_meter = MeterNetwork::new();
     prod_meter.set_shaping(meter_shaping);
     let mut generator_model =

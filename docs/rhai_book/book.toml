@@ -4,3 +4,6 @@ src = "src"
 
 [build]
 build-dir = "../../web/static/docs/rhai"
+
+[output.html]
+additional-js = ["theme/rhai-highlight.js"]

@@ -86,7 +86,7 @@ fn samples_have_no_legacy_keys() {
         ".presentation_only(".to_string(),
         // Pre-continuum rhythm verbs (replaced by metric()/entrained()/flow()
         // + entrainment()/rhythm_role()/microtiming() and director
-        // metric_stability()/temporal_basin()).
+        // meter_stability()/temporal_basin()).
         "metric_beat(".to_string(),
         "entrained_beat(".to_string(),
         "flow_timing(".to_string(),

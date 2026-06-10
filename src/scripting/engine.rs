@@ -1742,23 +1742,23 @@ impl ScriptHost {
         );
         // Director-level shaping of the emergent production meter (scene-global
         // soft priors, symmetric to the consonance-field ops). These never
-        // schedule a beat: `metric_stability` sets how readily a pulse forms,
+        // schedule a beat: `meter_stability` sets how readily a pulse forms,
         // `temporal_basin` sets the tempo region the pulse gravitates toward.
-        let ctx_for_metric_stability_f = ctx.clone();
+        let ctx_for_meter_stability_f = ctx.clone();
         engine.register_fn(
-            "metric_stability",
+            "meter_stability",
             move |_call_ctx: NativeCallContext, value: FLOAT| {
-                let mut ctx = ctx_for_metric_stability_f
+                let mut ctx = ctx_for_meter_stability_f
                     .lock()
                     .expect("lock script context");
                 ctx.scenario.meter_shaping.stability = (value as f32).clamp(0.0, 1.0);
             },
         );
-        let ctx_for_metric_stability_i = ctx.clone();
+        let ctx_for_meter_stability_i = ctx.clone();
         engine.register_fn(
-            "metric_stability",
+            "meter_stability",
             move |_call_ctx: NativeCallContext, value: INT| {
-                let mut ctx = ctx_for_metric_stability_i
+                let mut ctx = ctx_for_meter_stability_i
                     .lock()
                     .expect("lock script context");
                 ctx.scenario.meter_shaping.stability = (value as f32).clamp(0.0, 1.0);

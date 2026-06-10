@@ -2218,10 +2218,10 @@ fn flow_sets_low_coupling_intent() {
 }
 
 #[test]
-fn metric_stability_and_temporal_basin_set_scene_meter_shaping() {
+fn meter_stability_and_temporal_basin_set_scene_meter_shaping() {
     let (scenario, _warnings) = run_script(
         r#"
-            metric_stability(0.7);
+            meter_stability(0.7);
             temporal_basin(1.8, 2.4);
             create(sine().metric().cycles(1), 1);
             flush();

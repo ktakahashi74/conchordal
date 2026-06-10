@@ -2,7 +2,7 @@
 // A legible pulse that is a DEEP EMERGENT ATTRACTOR: each voice locks its onset
 // phase to the shared production meter the population itself drives -- there is
 // no externally imposed clock. The tempo region and attractor depth are
-// director-level terrain (temporal_basin / metric_stability); a voice only
+// director-level terrain (temporal_basin / meter_stability); a voice only
 // chooses how it relates to the emergent beat (lock strength, role, phase).
 
 seed(20260508);
@@ -58,7 +58,7 @@ section("Metric Beat Foundation", || {
     harmonic_mirror(0.15);
     // Deep attractor in a ~2 Hz tempo region: the pulse forms readily and reads
     // as a stable metric heartbeat without any imposed grid.
-    metric_stability(0.85);
+    meter_stability(0.85);
     temporal_basin(1.8, 2.2);
 
     let root = place(field_anchor, at(root_hz).count(1));

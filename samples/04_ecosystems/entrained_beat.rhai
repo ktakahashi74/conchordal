@@ -48,7 +48,7 @@ section("Entrained Beat", || {
     harmonic_mirror(0.05);
     // Medium attractor in a ~1.8 Hz region: synchronization should EMERGE from
     // the colony's coupling and survival, not be forced by a deep prior.
-    metric_stability(0.45);
+    meter_stability(0.45);
     temporal_basin(1.6, 2.0);
 
     let root = place(field_anchor, at(root_hz).count(1));

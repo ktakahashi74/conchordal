@@ -88,7 +88,7 @@ section("Rhythm Harmony Ecology", || {
     harmonic_mirror(0.18);
     // One shared ~2 Hz attractor: the metric ground locks tightly, the colony
     // entrains over time, and flow stays free -- all on the same emergent meter.
-    metric_stability(0.7);
+    meter_stability(0.7);
     temporal_basin(1.8, 2.2);
 
     let field = place(field_anchor, at(root_hz));

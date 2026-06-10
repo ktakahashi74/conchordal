@@ -5,7 +5,7 @@
 // consonant) and register transposition -- while harmony emerges from the
 // agents. Rhythm stays meaningful because every metric voice locks to ONE shared
 // emergent attractor (the production meter the population itself drives -- there
-// is no imposed clock). metric_stability makes that attractor deep, so the pulse
+// is no imposed clock). meter_stability makes that attractor deep, so the pulse
 // forms readily and reads as a load-bearing heartbeat:
 //   metric heartbeat -> an accented spine that drives the shared beat hard
 //   metric colony    -> a living chord that locks to the SAME emergent beat and

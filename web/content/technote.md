@@ -405,8 +405,10 @@ Agents are not static; they move through frequency space to improve their fitnes
 
 Two modes govern how a new pitch target is applied:
 
-*   **GateSnap** (default): Discrete hop at note boundaries. The pitch snaps to the new target at note onset, so each note sounds a single stable frequency. Ordering matters: on the sample where the snap occurs, the pitch is updated *before* consonance is evaluated, ensuring the Landscape score reflects the agent's actual sounding frequency.
+*   **GateSnap**: Discrete hop at note boundaries. The pitch snaps to the new target at note onset, so each note sounds a single stable frequency. Ordering matters: on the sample where the snap occurs, the pitch is updated *before* consonance is evaluated, ensuring the Landscape score reflects the agent's actual sounding frequency.
 *   **Glide**: Smooth continuous pitch transition with a configurable time constant $\tau$. The SoundBody interpolates exponentially toward the target frequency, producing portamento effects. Suited for drone-like species or slow melodic movement.
+
+For `seek_consonance()` voices the mode is resolved automatically from the phonation timing unless the script chooses explicitly: sustained voices (`once()`) glide, while re-attacking voices (pulse or coupled timing) snap at onsets.
 
 ### 5.3.2 Crowding and Leave-Self-Out
 
@@ -509,7 +511,7 @@ A Material begins with a preset and is refined through method chaining:
 
 **Body**: `amp(v)`, `freq(v)`, `brightness(v)`, `spread(v)`, `unison(n)`, `modes(pattern)`, `adsr(a,d,s,r)`, `send(bus)` (habitat/presentation routing).
 
-**Pitch**: `pitch_mode("free"|"lock")`, `seek_consonance()`, `pitch_core("hill_climb"|"peak_sampler")`, `pitch_apply_mode("gate_snap"|"glide")`, `glide(v)`, `landscape_weight(v)`, `neighbor_step_cents(v)`, `tessitura_gravity(v)`, `exploration(v)`, `persistence(v)`, `move_cost(v)`, `improvement_threshold(v)`, `proposal_interval(sec)`, `global_peaks(n)`, `ratio_candidates(n)`, plus peak-sampler knobs (`window_cents`, `top_k`, `temperature`, `sigma_cents`, `random_candidates`).
+**Pitch**: `anchor()` (hold the voice at its pitch; implied by `freq(hz)`), `seek_consonance()` (climb the consonance terrain; the apply mode is then resolved automatically—sustained voices glide, re-attacking voices snap at onsets—unless overridden via `pitch_apply_mode("gate_snap"|"glide")`), `pitch_core("hill_climb"|"peak_sampler")`, `glide(v)`, `landscape_weight(v)`, `neighbor_step_cents(v)`, `tessitura_gravity(v)`, `exploration(v)`, `persistence(v)`, `move_cost(v)`, `improvement_threshold(v)`, `proposal_interval(sec)`, `global_peaks(n)`, `ratio_candidates(n)`, plus peak-sampler knobs (`window_cents`, `top_k`, `temperature`, `sigma_cents`, `random_candidates`).
 
 **Crowding**: `avoid_neighbors(strength)` (auto-sigma from the roughness kernel), `avoid_neighbors(strength, sigma_cents)`, `crowding_target(same, other)`, `leave_self_out(bool)`, `leave_self_out_mode("approx"|"exact")`, `leave_self_out_harmonics(n)`.
 

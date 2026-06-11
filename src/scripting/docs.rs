@@ -41,6 +41,108 @@ pub enum Patch {
     Na,
 }
 
+/// Progressive-disclosure tier of the scripting surface.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub enum Tier {
+    /// Curated composing surface; enough for every curated sample.
+    Core,
+    /// Candidate core verbs under audition: composing purpose, but
+    /// research-grade stability until validated.
+    Experimental,
+    /// Mechanism-level fine tuning behind the core verbs.
+    Tuning,
+    /// For studying the instrument, not composing with it; weakest stability.
+    Research,
+}
+
+/// Candidate core verbs under audition. Currently empty; expected first
+/// inhabitants are incubating rhythm-shaping verbs (e.g. layer emphasis).
+const EXPERIMENTAL_FNS: &[&str] = &[];
+
+/// Mechanism-tuning functions. Everything not listed here or in
+/// [`RESEARCH_FNS`] is `Tier::Core`. `defs_gen::check()` verifies that every
+/// listed name exists in [`FN_DOCS`].
+const TUNING_FNS: &[&str] = &[
+    // placement
+    "reject_targets",
+    // phonation tiers 2/3
+    "once",
+    "while_alive",
+    "adaptive_duration",
+    "pulse_lock",
+    "social",
+    "duration_range",
+    "duration_curve",
+    "shorten_on_drop",
+    "rhythm_freq",
+    "rhythm_coupling_vitality",
+    "rhythm_reward",
+    // pitch movement mechanisms (hill-climb / peak-sampler)
+    "pitch_smooth",
+    "pitch_apply_mode",
+    "landscape_weight",
+    "exploration",
+    "persistence",
+    "anneal_temp",
+    "temperature",
+    "neighbor_step_cents",
+    "improvement_threshold",
+    "move_cost",
+    "move_cost_exp",
+    "proposal_interval",
+    "tessitura_gravity",
+    "window_cents",
+    "top_k",
+    "sigma_cents",
+    "random_candidates",
+    "global_peaks",
+    "ratio_candidates",
+    // neighbor awareness details
+    "crowding_target",
+    "leave_self_out",
+    "leave_self_out_harmonics",
+    // lifecycle / respawn details
+    "viability_scope",
+    "respawn_min_c_level",
+    "respawn_background_death_rate",
+    // global psychoacoustic tuning
+    "set_roughness_k",
+    "set_global_coupling",
+];
+
+/// Research/assay controls. See [`TUNING_FNS`] for the tier rules.
+const RESEARCH_FNS: &[&str] = &[
+    "pitch_core",
+    "move_cost_time_scale",
+    "leave_self_out_mode",
+    "selection_approx_loo",
+    "set_pitch_objective",
+    "set_control_update_mode",
+    "set_scaffold_off",
+    "set_scaffold_shared",
+    "set_scaffold_scrambled",
+];
+
+pub fn tier_of(name: &str) -> Tier {
+    if RESEARCH_FNS.contains(&name) {
+        Tier::Research
+    } else if TUNING_FNS.contains(&name) {
+        Tier::Tuning
+    } else if EXPERIMENTAL_FNS.contains(&name) {
+        Tier::Experimental
+    } else {
+        Tier::Core
+    }
+}
+
+pub fn tier_lists() -> impl Iterator<Item = (&'static str, Tier)> {
+    EXPERIMENTAL_FNS
+        .iter()
+        .map(|n| (*n, Tier::Experimental))
+        .chain(TUNING_FNS.iter().map(|n| (*n, Tier::Tuning)))
+        .chain(RESEARCH_FNS.iter().map(|n| (*n, Tier::Research)))
+}
+
 pub struct FnDoc {
     pub name: &'static str,
     pub owner: Owner,
@@ -848,7 +950,7 @@ phonation: sustained voices glide, re-attacking voices snap at onsets.",
         style: Style::Method,
         patch: Patch::Live,
         usage: &["anneal_temp(value)"],
-        summary: "Annealing temperature.",
+        summary: "Annealing temperature of the hill-climb.",
         details: "",
     },
     FnDoc {
@@ -858,7 +960,7 @@ phonation: sustained voices glide, re-attacking voices snap at onsets.",
         style: Style::Method,
         patch: Patch::Live,
         usage: &["temperature(value)"],
-        summary: "Alias for `anneal_temp()`.",
+        summary: "Selection temperature of the peak sampler (softness of candidate choice).",
         details: "",
     },
     FnDoc {

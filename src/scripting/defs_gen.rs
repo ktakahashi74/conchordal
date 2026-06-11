@@ -10,7 +10,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::sync::{Arc, Mutex};
 
-use super::docs::{self, FnDoc, Owner, Patch, Style};
+use super::docs::{self, FnDoc, Owner, Patch, Style, Tier};
 use super::{ScriptContext, ScriptHost};
 
 /// Rhai reserved keywords that cannot appear as fn names in a `.d.rhai`.
@@ -275,6 +275,19 @@ pub fn check() -> Result<(), String> {
         ));
     }
 
+    let doc_names: BTreeSet<&str> = docs::FN_DOCS.iter().map(|d| d.name).collect();
+    let mut tiered = BTreeSet::new();
+    for (name, tier) in docs::tier_lists() {
+        if !doc_names.contains(name) {
+            errors.push(format!(
+                "tier list entry {name:?} ({tier:?}) has no doc entry (stale?)"
+            ));
+        }
+        if !tiered.insert(name) {
+            errors.push(format!("tier list entry {name:?} appears more than once"));
+        }
+    }
+
     if errors.is_empty() {
         Ok(())
     } else {
@@ -311,9 +324,15 @@ pub fn render_d_rhai() -> String {
         let doc = index
             .get(&(name.as_str(), *owner))
             .expect("doc presence validated by check()");
+        let tag = match docs::tier_of(doc.name) {
+            Tier::Core => "",
+            Tier::Experimental => "[experimental] ",
+            Tier::Tuning => "[tuning] ",
+            Tier::Research => "[research] ",
+        };
         out.push('\n');
         for sig in sigs {
-            let _ = writeln!(out, "/// {}", doc.summary);
+            let _ = writeln!(out, "/// {tag}{}", doc.summary);
             let _ = writeln!(out, "{}", sig.decl());
         }
     }
@@ -344,6 +363,13 @@ drifts from the engine. Regenerate with:\n\n```bash\ncargo run --bin gen_rhai_de
 are interchangeable wherever both overloads are registered; the generated LSP definitions \
 (`rhai-defs/conchordal.d.rhai`) list the exact overloads.\n\n",
     );
+    out.push_str(
+        "The surface is split into three tiers. **Core API** is the curated composing \
+surface — it is enough for every curated sample. **Mechanism Tuning** adjusts the \
+mechanisms behind the core verbs when a piece needs a behavior the core surface does not \
+express. **Research Controls** exist for studying the instrument, not composing with \
+it.\n\n",
+    );
 
     out.push_str("## Types\n\n| Type | Description |\n|------|-------------|\n");
     for t in docs::TYPE_DOCS {
@@ -354,34 +380,79 @@ are interchangeable wherever both overloads are registered; the generated LSP de
         let _ = writeln!(out, "| `{}` | `{}` | {} |", c.name, c.ty, c.summary);
     }
 
-    for category in docs::CATEGORY_DOCS {
-        let _ = write!(out, "\n## {}\n\n{}\n", category.title, category.intro);
-        for doc in docs::FN_DOCS.iter().filter(|d| d.category == category.id) {
-            let sigs = groups
-                .get(&(doc.name.to_string(), doc.owner))
-                .expect("group presence validated by check()");
-            let _ = write!(out, "\n### `{}`\n\n```rhai,ignore\n", doc.name);
-            let ret = free_return(doc, sigs);
-            for usage in doc.usage {
-                match &ret {
-                    Some(ret) => {
-                        let _ = writeln!(out, "{usage} -> {ret}");
-                    }
-                    None => {
-                        let _ = writeln!(out, "{usage}");
+    const PARTS: &[(Tier, &str, &str)] = &[
+        (
+            Tier::Core,
+            "Core API",
+            "The curated composing surface. These verbs are enough for every curated sample.",
+        ),
+        (
+            Tier::Experimental,
+            "Experimental",
+            "Candidate core verbs under audition: composing surface by intent, but with \
+research-grade stability until validated.",
+        ),
+        (
+            Tier::Tuning,
+            "Mechanism Tuning",
+            "Fine-grained control over the mechanisms behind the core verbs. Defaults are \
+calibrated; reach for these when a piece needs a specific behavior the core surface does \
+not express.",
+        ),
+        (
+            Tier::Research,
+            "Research Controls",
+            "For studying the instrument, not composing with it. Normal composing never \
+touches this tier, and it has the weakest stability guarantee: entries may change or \
+disappear as their research questions settle.",
+        ),
+    ];
+
+    for (tier, part_title, part_intro) in PARTS {
+        let _ = write!(out, "\n## {part_title}\n\n{part_intro}\n");
+        if !docs::FN_DOCS.iter().any(|d| docs::tier_of(d.name) == *tier) {
+            out.push_str("\nEmpty right now.\n");
+            continue;
+        }
+        for category in docs::CATEGORY_DOCS {
+            let entries: Vec<&docs::FnDoc> = docs::FN_DOCS
+                .iter()
+                .filter(|d| d.category == category.id && docs::tier_of(d.name) == *tier)
+                .collect();
+            if entries.is_empty() {
+                continue;
+            }
+            let _ = write!(out, "\n### {}\n", category.title);
+            if *tier == Tier::Core {
+                let _ = write!(out, "\n{}\n", category.intro);
+            }
+            for doc in entries {
+                let sigs = groups
+                    .get(&(doc.name.to_string(), doc.owner))
+                    .expect("group presence validated by check()");
+                let _ = write!(out, "\n#### `{}`\n\n```rhai,ignore\n", doc.name);
+                let ret = free_return(doc, sigs);
+                for usage in doc.usage {
+                    match &ret {
+                        Some(ret) => {
+                            let _ = writeln!(out, "{usage} -> {ret}");
+                        }
+                        None => {
+                            let _ = writeln!(out, "{usage}");
+                        }
                     }
                 }
+                out.push_str("```\n\n");
+                if let Some(applies) = applies_line(doc, sigs) {
+                    let _ = writeln!(out, "{applies}\n");
+                }
+                out.push_str(doc.summary);
+                if !doc.details.is_empty() {
+                    out.push(' ');
+                    out.push_str(doc.details);
+                }
+                out.push('\n');
             }
-            out.push_str("```\n\n");
-            if let Some(applies) = applies_line(doc, sigs) {
-                let _ = writeln!(out, "{applies}\n");
-            }
-            out.push_str(doc.summary);
-            if !doc.details.is_empty() {
-                out.push(' ');
-                out.push_str(doc.details);
-            }
-            out.push('\n');
         }
     }
     out

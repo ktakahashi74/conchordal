@@ -26,7 +26,10 @@ music-production vocabulary.
 - **Reference** is the complete, generated
   [API Reference](reference/api.md) — it is produced from the engine's
   registered scripting surface, so it cannot drift — and the
-  [Curated Samples](reference/samples.md) listening path.
+  [Curated Samples](reference/samples.md) listening path. The reference is
+  split into three tiers: the **Core API** (enough for every curated sample),
+  **Mechanism Tuning**, and **Research Controls**. Start with Core and ignore
+  the rest until a piece demands it.
 
 Every `rhai` code block in this book is executed against the real script
 engine by the test suite, so the examples are guaranteed to run.

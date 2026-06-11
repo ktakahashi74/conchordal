@@ -10,6 +10,8 @@ cargo run --bin gen_rhai_defs
 
 Builder methods return their receiver and are chainable. Integer and float literals are interchangeable wherever both overloads are registered; the generated LSP definitions (`rhai-defs/conchordal.d.rhai`) list the exact overloads.
 
+The surface is split into three tiers. **Core API** is the curated composing surface — it is enough for every curated sample. **Mechanism Tuning** adjusts the mechanisms behind the core verbs when a piece needs a behavior the core surface does not express. **Research Controls** exist for studying the instrument, not composing with it.
+
 ## Types
 
 | Type | Description |
@@ -28,11 +30,15 @@ Builder methods return their receiver and are chainable. Integer and float liter
 | `habitat_bus` | `Bus` | Analysis bus: NSGT -> landscape; what the ecology senses. |
 | `presentation_bus` | `Bus` | Presentation bus: cpal output, recording, UI metering; what the listener hears. |
 
-## Materials
+## Core API
+
+The curated composing surface. These verbs are enough for every curated sample.
+
+### Materials
 
 Materials are voice templates. A constructor returns a `Material`; builder methods refine it; `place()` turns it into living voices.
 
-### `sine`
+#### `sine`
 
 ```rhai,ignore
 sine() -> Material
@@ -40,7 +46,7 @@ sine() -> Material
 
 Material with a pure sine body.
 
-### `harmonic`
+#### `harmonic`
 
 ```rhai,ignore
 harmonic() -> Material
@@ -48,7 +54,7 @@ harmonic() -> Material
 
 Material with a harmonic-series body.
 
-### `modal`
+#### `modal`
 
 ```rhai,ignore
 modal() -> Material
@@ -56,7 +62,7 @@ modal() -> Material
 
 Material with a resonator-based modal body; shape it with `modes()`.
 
-### `saw`
+#### `saw`
 
 ```rhai,ignore
 saw() -> Material
@@ -64,7 +70,7 @@ saw() -> Material
 
 Harmonic-body preset with brightness 0.85.
 
-### `square`
+#### `square`
 
 ```rhai,ignore
 square() -> Material
@@ -72,7 +78,7 @@ square() -> Material
 
 Harmonic-body preset with brightness 0.65.
 
-### `noise`
+#### `noise`
 
 ```rhai,ignore
 noise() -> Material
@@ -80,7 +86,7 @@ noise() -> Material
 
 Harmonic-body preset with brightness 1.0 and motion 1.0.
 
-### `variant`
+#### `variant`
 
 ```rhai,ignore
 variant(material) -> Material
@@ -88,11 +94,11 @@ variant(material) -> Material
 
 Clone a material so the copy can be modified independently.
 
-## Placement
+### Placement
 
 Placements decide where voices enter the frequency field. Constructors return a `Placement`; modifiers refine it before it is passed to `place()`.
 
-### `at`
+#### `at`
 
 ```rhai,ignore
 at(freq_hz) -> Placement
@@ -100,7 +106,7 @@ at(freq_hz) -> Placement
 
 Place at a fixed frequency in Hz.
 
-### `peaks`
+#### `peaks`
 
 ```rhai,ignore
 peaks(root_hz) -> Placement
@@ -108,7 +114,7 @@ peaks(root_hz) -> Placement
 
 Place at high Consonance Field positions around a root. Default multiplier range is 1x-4x of the root (see `range()`) with 1.0 ERB spacing (see `spacing()`).
 
-### `density`
+#### `density`
 
 ```rhai,ignore
 density(min_hz, max_hz) -> Placement
@@ -116,7 +122,7 @@ density(min_hz, max_hz) -> Placement
 
 Sample positions from Consonance Density inside a frequency range. Density is a normalized distribution derived from the consonance model and remains well-defined inside the requested range. Default spacing is 1.0 ERB.
 
-### `random`
+#### `random`
 
 ```rhai,ignore
 random(min_hz, max_hz) -> Placement
@@ -124,7 +130,7 @@ random(min_hz, max_hz) -> Placement
 
 Log-uniform random placement inside a frequency range.
 
-### `line`
+#### `line`
 
 ```rhai,ignore
 line(start_hz, end_hz) -> Placement
@@ -132,7 +138,7 @@ line(start_hz, end_hz) -> Placement
 
 Linear interpolation of positions between two frequencies.
 
-### `count`
+#### `count`
 
 ```rhai,ignore
 count(n)
@@ -142,7 +148,7 @@ Applies to: `Placement`.
 
 Number of voices to place (default 1).
 
-### `range`
+#### `range`
 
 ```rhai,ignore
 range(min_mul, max_mul)
@@ -152,7 +158,7 @@ Applies to: `Placement`.
 
 Multiplier range relative to the root; only valid on `peaks()`.
 
-### `spacing`
+#### `spacing`
 
 ```rhai,ignore
 spacing(min_erb)
@@ -162,21 +168,11 @@ Applies to: `Placement`.
 
 Minimum ERB distance between placed voices; valid on `peaks()` and `density()`.
 
-### `reject_targets`
-
-```rhai,ignore
-reject_targets(anchor_hz, targets_st, exclusion_st, max_tries)
-```
-
-Applies to: `Placement`.
-
-Reject sampled positions near specified semitone targets. `targets_st` is an array of semitone offsets from `anchor_hz`, `exclusion_st` is the exclusion zone width in semitones, and `max_tries` is the retry limit. Wraps any strategy-bearing placement (`peaks()`, `density()`, `random()`, `line()`).
-
-## Timeline & Staging
+### Timeline & Staging
 
 Staging verbs commit voices and move script time. `place()` stages a draft `Participant`; `wait()`/`flush()` commit drafts; scopes release groups automatically.
 
-### `place`
+#### `place`
 
 ```rhai,ignore
 place(material, placement) -> Participant
@@ -184,7 +180,7 @@ place(material, placement) -> Participant
 
 Stage a Participant at the current script time. Committed by the next `wait()` or `flush()`. Until then, builder methods on the returned `Participant` shape the initial spawn; afterwards, live-patchable methods update running voices. Calling `place(participant, placement)` on a draft re-places it (sets frequency, count, and strategy).
 
-### `wait`
+#### `wait`
 
 ```rhai,ignore
 wait(seconds)
@@ -192,7 +188,7 @@ wait(seconds)
 
 Commit pending drafts, then advance the timeline cursor.
 
-### `flush`
+#### `flush`
 
 ```rhai,ignore
 flush()
@@ -200,7 +196,7 @@ flush()
 
 Commit pending drafts without advancing time.
 
-### `release`
+#### `release`
 
 ```rhai,ignore
 release(participant)
@@ -208,7 +204,7 @@ release(participant)
 
 Release a live group; its voices enter their release phase and fade out.
 
-### `section`
+#### `section`
 
 ```rhai,ignore
 section(name, callback)
@@ -216,7 +212,7 @@ section(name, callback)
 
 Named scope; groups placed inside are released when the callback returns.
 
-### `play`
+#### `play`
 
 ```rhai,ignore
 play(callback)
@@ -228,7 +224,7 @@ play(callback, [args])
 
 Scoped callback execution with automatic group release. Accepts 0-3 positional arguments, or an array of arguments.
 
-### `parallel`
+#### `parallel`
 
 ```rhai,ignore
 parallel(callbacks)
@@ -236,7 +232,7 @@ parallel(callbacks)
 
 Run an array of closures on parallel timelines from the current cursor. Each branch starts at the current cursor; the cursor advances to the latest branch end.
 
-### `seed`
+#### `seed`
 
 ```rhai,ignore
 seed(value)
@@ -244,11 +240,11 @@ seed(value)
 
 Set the random seed for reproducible scenarios.
 
-## Body & Timbre
+### Body & Timbre
 
 Sound body parameters of a voice: level, spectrum, detuning, and envelope.
 
-### `amp`
+#### `amp`
 
 ```rhai,ignore
 amp(value)
@@ -258,7 +254,7 @@ Applies to: `Material` and `Participant`. Live-patchable: updates running voices
 
 Amplitude in 0.0-1.0.
 
-### `freq`
+#### `freq`
 
 ```rhai,ignore
 freq(hz)
@@ -268,7 +264,7 @@ Applies to: `Material` and `Participant`. Live-patchable: updates running voices
 
 Frequency lock in Hz; implies an anchored pitch (see `anchor()`).
 
-### `brightness`
+#### `brightness`
 
 ```rhai,ignore
 brightness(value)
@@ -278,7 +274,7 @@ Applies to: `Material` and `Participant`. Live-patchable: updates running voices
 
 Spectral brightness in 0.0-1.0 (harmonic/modal bodies).
 
-### `spread`
+#### `spread`
 
 ```rhai,ignore
 spread(value)
@@ -288,7 +284,7 @@ Applies to: `Material` and `Participant`. Live-patchable: updates running voices
 
 Detuning spread.
 
-### `unison`
+#### `unison`
 
 ```rhai,ignore
 unison(count)
@@ -298,7 +294,7 @@ Applies to: `Material` and `Participant`. Live-patchable: updates running voices
 
 Number of unison detuning copies.
 
-### `modes`
+#### `modes`
 
 ```rhai,ignore
 modes(pattern)
@@ -308,7 +304,7 @@ Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on 
 
 Set the mode pattern of a modal body. See the Mode Patterns section for constructors and modifiers.
 
-### `adsr`
+#### `adsr`
 
 ```rhai,ignore
 adsr(attack_sec, decay_sec, sustain_level, release_sec)
@@ -318,11 +314,11 @@ Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on 
 
 ADSR amplitude envelope.
 
-## Phonation & Rhythm
+### Phonation & Rhythm
 
 When and how long a voice sounds. Tier 1 picks a region on the rhythm coupling continuum (`metric()`, `entrained()`, `flow()`); Tier 2 sets explicit when/duration; Tier 3 is expert tuning. Calls on the same axis are last-write-wins, and modifiers are remembered and applied when their matching preset is selected.
 
-### `brain`
+#### `brain`
 
 ```rhai,ignore
 brain(name)
@@ -332,7 +328,7 @@ Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on 
 
 Articulation brain: `"entrain"` (default), `"seq"`, or `"drone"`. `entrain` synchronizes with detected rhythms in the field, `seq` does fixed-duration note sequencing, `drone` sustains with slow frequency sway.
 
-### `sustain`
+#### `sustain`
 
 ```rhai,ignore
 sustain()
@@ -342,7 +338,7 @@ Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on 
 
 Sustain phonation mode (default).
 
-### `repeat`
+#### `repeat`
 
 ```rhai,ignore
 repeat()
@@ -352,7 +348,7 @@ Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on 
 
 Repeated/pulsed phonation mode.
 
-### `metric`
+#### `metric`
 
 ```rhai,ignore
 metric()
@@ -362,7 +358,7 @@ Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on 
 
 High coupling to the shared emergent meter: deep attractor, stable pulse. Takes no rate argument: the tempo region is director-level terrain (`temporal_basin`).
 
-### `entrained`
+#### `entrained`
 
 ```rhai,ignore
 entrained()
@@ -372,7 +368,7 @@ Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on 
 
 Medium coupling: synchronization emerges over time, still drifts.
 
-### `flow`
+#### `flow`
 
 ```rhai,ignore
 flow()
@@ -382,7 +378,7 @@ Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on 
 
 Near-zero coupling: free renewal process, non-metric texture.
 
-### `entrainment`
+#### `entrainment`
 
 ```rhai,ignore
 entrainment(strength)
@@ -392,7 +388,7 @@ Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on 
 
 Override coupling strength in 0-1 (free .. locked). Order-independent with presets: `entrainment(0.8).metric()` and `metric().entrainment(0.8)` are equivalent.
 
-### `rhythm_role`
+#### `rhythm_role`
 
 ```rhai,ignore
 rhythm_role(name)
@@ -402,7 +398,7 @@ Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on 
 
 Metrical job: `"beat"`, `"subdivision"`, `"accent"`, or `"texture"`. `accent` emits a stronger onset that drives the shared meter harder, so a recurring downbeat can seed an emergent measure.
 
-### `microtiming`
+#### `microtiming`
 
 ```rhai,ignore
 microtiming(amount)
@@ -412,17 +408,7 @@ Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on 
 
 Signed beat-phase offset in -0.5..0.5; 0.5 reads as syncopation.
 
-### `once`
-
-```rhai,ignore
-once()
-```
-
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
-
-Single trigger.
-
-### `pulse`
+#### `pulse`
 
 ```rhai,ignore
 pulse(rate_hz)
@@ -432,17 +418,7 @@ Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on 
 
 Pulse at an explicit rate in Hz.
 
-### `while_alive`
-
-```rhai,ignore
-while_alive()
-```
-
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
-
-Hold/sustain until release.
-
-### `cycles`
+#### `cycles`
 
 ```rhai,ignore
 cycles(n)
@@ -452,101 +428,11 @@ Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on 
 
 Duration of n rhythm cycles.
 
-### `adaptive_duration`
-
-```rhai,ignore
-adaptive_duration()
-```
-
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
-
-Duration follows field support.
-
-### `pulse_lock`
-
-```rhai,ignore
-pulse_lock(depth)
-```
-
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
-
-Low-level pulse phase weighting in 0-1.
-
-### `social`
-
-```rhai,ignore
-social(coupling)
-```
-
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
-
-Social coupling for `entrained()` or `pulse()`, in 0-1.
-
-### `duration_range`
-
-```rhai,ignore
-duration_range(min_cycles, max_cycles)
-```
-
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
-
-Adaptive duration range in rhythm cycles.
-
-### `duration_curve`
-
-```rhai,ignore
-duration_curve(k, x0)
-```
-
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
-
-Adaptive duration curve parameters.
-
-### `shorten_on_drop`
-
-```rhai,ignore
-shorten_on_drop(gain)
-```
-
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
-
-Shorten adaptive duration when field support drops.
-
-### `rhythm_freq`
-
-```rhai,ignore
-rhythm_freq(freq_hz)
-```
-
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
-
-Internal theta/rhythm oscillator frequency.
-
-### `rhythm_coupling_vitality`
-
-```rhai,ignore
-rhythm_coupling_vitality(lambda_v, v_floor)
-```
-
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
-
-Vitality-modulated rhythm coupling.
-
-### `rhythm_reward`
-
-```rhai,ignore
-rhythm_reward(rho_t, metric)
-```
-
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
-
-Energy reward for timing fit; metric is `"attack_phase_match"` or `"none"`.
-
-## Pitch Movement
+### Pitch Movement
 
 How a voice moves through the consonance field. `seek_consonance()` plus `glide()` is the curated surface; the rest tunes the hill-climb and peak-sampler mechanisms.
 
-### `anchor`
+#### `anchor`
 
 ```rhai,ignore
 anchor()
@@ -556,7 +442,7 @@ Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on 
 
 Hold the voice at its pitch: an anchored voice never moves. Voices placed with `at()` or given `freq()` are anchored implicitly; use `anchor()` to hold strategy-placed voices (`peaks()`, `density()`, ...) at their settled position, or to state the intent explicitly.
 
-### `seek_consonance`
+#### `seek_consonance`
 
 ```rhai,ignore
 seek_consonance()
@@ -566,7 +452,7 @@ Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on 
 
 Free hill-climb movement toward better field positions, with glide defaults. How pitch decisions land is resolved at commit unless `pitch_apply_mode()` was called: sustained voices glide, re-attacking voices (`pulse()`, `metric()`, `entrained()`, `flow()`) snap at onsets.
 
-### `glide`
+#### `glide`
 
 ```rhai,ignore
 glide(tau_sec)
@@ -576,222 +462,11 @@ Applies to: `Material` and `Participant`. Live-patchable: updates running voices
 
 Pitch glide time constant in seconds.
 
-### `pitch_smooth`
-
-```rhai,ignore
-pitch_smooth(tau_sec)
-```
-
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
-
-Pitch smoothing time constant in seconds.
-
-### `pitch_core`
-
-```rhai,ignore
-pitch_core(name)
-```
-
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
-
-`"hill_climb"` or `"peak_sampler"`. Research control.
-
-### `pitch_apply_mode`
-
-```rhai,ignore
-pitch_apply_mode(name)
-```
-
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
-
-`"gate_snap"` or `"glide"`: override how pitch decisions are applied. Without an explicit call, moving voices resolve this at commit from their phonation: sustained voices glide, re-attacking voices snap at onsets.
-
-### `landscape_weight`
-
-```rhai,ignore
-landscape_weight(value)
-```
-
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
-
-Weight of the landscape objective.
-
-### `exploration`
-
-```rhai,ignore
-exploration(value)
-```
-
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
-
-Exploration tendency of the hill-climb.
-
-### `persistence`
-
-```rhai,ignore
-persistence(value)
-```
-
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
-
-Persistence bias of the hill-climb.
-
-### `anneal_temp`
-
-```rhai,ignore
-anneal_temp(value)
-```
-
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
-
-Annealing temperature.
-
-### `temperature`
-
-```rhai,ignore
-temperature(value)
-```
-
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
-
-Alias for `anneal_temp()`.
-
-### `neighbor_step_cents`
-
-```rhai,ignore
-neighbor_step_cents(value)
-```
-
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
-
-Step size for neighbor exploration in cents.
-
-### `improvement_threshold`
-
-```rhai,ignore
-improvement_threshold(value)
-```
-
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
-
-Minimum improvement to accept a move.
-
-### `move_cost`
-
-```rhai,ignore
-move_cost(coeff)
-```
-
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
-
-Cost multiplier for pitch changes.
-
-### `move_cost_exp`
-
-```rhai,ignore
-move_cost_exp(exp)
-```
-
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
-
-Exponent for the move cost.
-
-### `move_cost_time_scale`
-
-```rhai,ignore
-move_cost_time_scale(name)
-```
-
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
-
-`"legacy"`/`"integration_window"` or `"proposal"`/`"proposal_interval"`.
-
-### `proposal_interval`
-
-```rhai,ignore
-proposal_interval(seconds)
-```
-
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
-
-Proposal generation interval in seconds.
-
-### `tessitura_gravity`
-
-```rhai,ignore
-tessitura_gravity(value)
-```
-
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
-
-Gravity toward the tessitura center.
-
-### `window_cents`
-
-```rhai,ignore
-window_cents(width)
-```
-
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
-
-Peak-sampler search window width in cents.
-
-### `top_k`
-
-```rhai,ignore
-top_k(count)
-```
-
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
-
-Number of top candidates kept by the peak sampler.
-
-### `sigma_cents`
-
-```rhai,ignore
-sigma_cents(spread)
-```
-
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
-
-Gaussian spread of the peak sampler in cents.
-
-### `random_candidates`
-
-```rhai,ignore
-random_candidates(count)
-```
-
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
-
-Number of random candidates considered.
-
-### `global_peaks`
-
-```rhai,ignore
-global_peaks(count)
-global_peaks(count, min_sep_cents)
-```
-
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
-
-Global field peaks as movement candidates, with optional minimum separation.
-
-### `ratio_candidates`
-
-```rhai,ignore
-ratio_candidates(count)
-```
-
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
-
-Ratio-based movement candidates; 0 disables.
-
-## Neighbor Awareness
+### Neighbor Awareness
 
 How a voice perceives other voices and its own spectral footprint when evaluating the field.
 
-### `avoid_neighbors`
+#### `avoid_neighbors`
 
 ```rhai,ignore
 avoid_neighbors(strength)
@@ -802,51 +477,11 @@ Applies to: `Material` and `Participant`. Live-patchable: updates running voices
 
 Crowding repulsion from neighboring voices. With one argument the repulsion width is derived from the roughness kernel; the two-argument form sets it explicitly in cents.
 
-### `crowding_target`
-
-```rhai,ignore
-crowding_target(same_visible, other_visible)
-```
-
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
-
-Which voices are visible to crowding: own group, other groups (booleans).
-
-### `leave_self_out`
-
-```rhai,ignore
-leave_self_out(enabled)
-```
-
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
-
-Subtract the voice's own spectral contribution when evaluating the field.
-
-### `leave_self_out_mode`
-
-```rhai,ignore
-leave_self_out_mode(name)
-```
-
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
-
-`"approx"`/`"approx_harmonics"` or `"exact"`/`"exact_scan"`.
-
-### `leave_self_out_harmonics`
-
-```rhai,ignore
-leave_self_out_harmonics(count)
-```
-
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
-
-Number of harmonics used for approximate self-subtraction.
-
-## Lifecycle & Viability
+### Lifecycle & Viability
 
 Energy budget and survival. Viability makes field fit matter over time: `consonance_viability()` defines the consonance window and `viability_rate()` controls continuous recharge, with environment-relative scoring by default.
 
-### `metabolism`
+#### `metabolism`
 
 ```rhai,ignore
 metabolism(rate)
@@ -856,7 +491,7 @@ Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on 
 
 Energy consumption rate.
 
-### `initial_energy`
+#### `initial_energy`
 
 ```rhai,ignore
 initial_energy(value)
@@ -866,7 +501,7 @@ Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on 
 
 Starting energy.
 
-### `energy_cap`
+#### `energy_cap`
 
 ```rhai,ignore
 energy_cap(value)
@@ -876,7 +511,7 @@ Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on 
 
 Maximum energy after recharge/reward.
 
-### `recharge_rate`
+#### `recharge_rate`
 
 ```rhai,ignore
 recharge_rate(rate)
@@ -886,7 +521,7 @@ Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on 
 
 Energy gained per attack.
 
-### `action_cost`
+#### `action_cost`
 
 ```rhai,ignore
 action_cost(cost)
@@ -896,7 +531,7 @@ Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on 
 
 Energy cost per attack.
 
-### `sustain_drive`
+#### `sustain_drive`
 
 ```rhai,ignore
 sustain_drive(value)
@@ -906,7 +541,7 @@ Applies to: `Material` and `Participant`. Live-patchable: updates running voices
 
 Continuous drive level for sustained voices.
 
-### `viability_rate`
+#### `viability_rate`
 
 ```rhai,ignore
 viability_rate(rate)
@@ -916,7 +551,7 @@ Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on 
 
 Continuous consonance-driven energy recharge rate.
 
-### `consonance_viability`
+#### `consonance_viability`
 
 ```rhai,ignore
 consonance_viability(low, high)
@@ -926,17 +561,7 @@ Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on 
 
 Consonance window used for viability scoring. Enables environment-relative scoring by default: a voice is evaluated against the field with its own footprint approximately removed (see `viability_scope()`).
 
-### `viability_scope`
-
-```rhai,ignore
-viability_scope(name)
-```
-
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
-
-`"environment"` (default) or `"total"` viability scoring scope. Use `"total"` only when the selection question should include the voice's own contribution.
-
-### `dissonance_cost`
+#### `dissonance_cost`
 
 ```rhai,ignore
 dissonance_cost(cost)
@@ -946,21 +571,11 @@ Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on 
 
 Extra energy cost at low consonance.
 
-### `selection_approx_loo`
-
-```rhai,ignore
-selection_approx_loo(enabled)
-```
-
-Applies to: `Material` only.
-
-Override environment-relative viability scoring; research/reference control. Material only. Use only for older reference assays that need the previous implementation-level control.
-
-## Respawn
+### Respawn
 
 Population turnover. A respawn policy decides where replacements appear when voices die; capacity and acceptance thresholds shape ecology-scale behavior.
 
-### `respawn_random`
+#### `respawn_random`
 
 ```rhai,ignore
 respawn_random()
@@ -970,7 +585,7 @@ Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on 
 
 Respawn at random locations.
 
-### `respawn_hereditary`
+#### `respawn_hereditary`
 
 ```rhai,ignore
 respawn_hereditary(sigma_oct)
@@ -980,7 +595,7 @@ Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on 
 
 Hereditary respawn with frequency variance in octaves.
 
-### `respawn_consonance`
+#### `respawn_consonance`
 
 ```rhai,ignore
 respawn_consonance()
@@ -990,7 +605,7 @@ Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on 
 
 Respawn from consonance-biased parental peaks.
 
-### `respawn_capacity`
+#### `respawn_capacity`
 
 ```rhai,ignore
 respawn_capacity(count)
@@ -1000,7 +615,7 @@ Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on 
 
 Maintain population up to a capacity.
 
-### `respawn_settle`
+#### `respawn_settle`
 
 ```rhai,ignore
 respawn_settle(placement)
@@ -1010,31 +625,11 @@ Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on 
 
 Placement used for replacements. Requires a strategy-bearing placement: `density()`, `peaks()`, `random()`, or `line()` (not `at()`).
 
-### `respawn_min_c_level`
-
-```rhai,ignore
-respawn_min_c_level(level)
-```
-
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
-
-Minimum consonance level for respawn acceptance.
-
-### `respawn_background_death_rate`
-
-```rhai,ignore
-respawn_background_death_rate(rate)
-```
-
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
-
-Background turnover rate per second.
-
-## Mode Patterns
+### Mode Patterns
 
 Frequency relationships for `modal()` bodies. Constructors return a `ModePattern`; modifiers are chainable. Landscape-aware patterns sample the live field.
 
-### `harmonic_modes`
+#### `harmonic_modes`
 
 ```rhai,ignore
 harmonic_modes() -> ModePattern
@@ -1042,7 +637,7 @@ harmonic_modes() -> ModePattern
 
 Harmonic series: f, 2f, 3f, ...
 
-### `odd_modes`
+#### `odd_modes`
 
 ```rhai,ignore
 odd_modes() -> ModePattern
@@ -1050,7 +645,7 @@ odd_modes() -> ModePattern
 
 Odd harmonics: f, 3f, 5f, ...
 
-### `power_modes`
+#### `power_modes`
 
 ```rhai,ignore
 power_modes(beta) -> ModePattern
@@ -1058,7 +653,7 @@ power_modes(beta) -> ModePattern
 
 Power law: f * n^beta.
 
-### `stiff_string_modes`
+#### `stiff_string_modes`
 
 ```rhai,ignore
 stiff_string_modes(stiffness) -> ModePattern
@@ -1066,7 +661,7 @@ stiff_string_modes(stiffness) -> ModePattern
 
 Stiffness-adjusted harmonics.
 
-### `custom_modes`
+#### `custom_modes`
 
 ```rhai,ignore
 custom_modes(ratios) -> ModePattern
@@ -1074,7 +669,7 @@ custom_modes(ratios) -> ModePattern
 
 Custom frequency ratios from an array.
 
-### `modal_table`
+#### `modal_table`
 
 ```rhai,ignore
 modal_table(name) -> ModePattern
@@ -1082,7 +677,7 @@ modal_table(name) -> ModePattern
 
 Named mode table lookup. Falls back to `harmonic_modes()` with a warning if the name is unknown.
 
-### `landscape_density_modes`
+#### `landscape_density_modes`
 
 ```rhai,ignore
 landscape_density_modes() -> ModePattern
@@ -1090,7 +685,7 @@ landscape_density_modes() -> ModePattern
 
 Modes sampled from the live landscape density.
 
-### `landscape_peaks_modes`
+#### `landscape_peaks_modes`
 
 ```rhai,ignore
 landscape_peaks_modes() -> ModePattern
@@ -1098,7 +693,7 @@ landscape_peaks_modes() -> ModePattern
 
 Modes sampled from live landscape peaks.
 
-### `count`
+#### `count`
 
 ```rhai,ignore
 count(n)
@@ -1108,7 +703,7 @@ Applies to: `ModePattern`.
 
 Number of modes.
 
-### `range`
+#### `range`
 
 ```rhai,ignore
 range(min_mul, max_mul)
@@ -1118,7 +713,7 @@ Applies to: `ModePattern`.
 
 Frequency range; only valid on `landscape_*_modes()`.
 
-### `spacing`
+#### `spacing`
 
 ```rhai,ignore
 spacing(min_erb)
@@ -1128,7 +723,7 @@ Applies to: `ModePattern`.
 
 Minimum ERB distance between modes; only valid on `landscape_*_modes()`.
 
-### `gamma`
+#### `gamma`
 
 ```rhai,ignore
 gamma(g)
@@ -1138,7 +733,7 @@ Applies to: `ModePattern`.
 
 Density sharpening exponent; only valid on `landscape_density_modes()`.
 
-### `jitter`
+#### `jitter`
 
 ```rhai,ignore
 jitter(cents)
@@ -1148,7 +743,7 @@ Applies to: `ModePattern`.
 
 Randomize mode frequencies by up to the given cents.
 
-### `seed`
+#### `seed`
 
 ```rhai,ignore
 seed(value)
@@ -1158,11 +753,11 @@ Applies to: `ModePattern`.
 
 Random seed for jittered patterns (>= 0).
 
-## Routing
+### Routing
 
 Each voice contributes to two independent mono buses: the presentation bus (the work as heard) and the habitat bus (what the ecology senses through NSGT analysis). By default a voice feeds both.
 
-### `send`
+#### `send`
 
 ```rhai,ignore
 send(bus)
@@ -1172,11 +767,11 @@ Applies to: `Material` only.
 
 Route the voice to specific buses; accepts a `Bus` or a `BusSet`. Material only. `send(habitat_bus)` makes a voice sensed by the ecology but absent from the presented sound; `send(presentation_bus)` is heard without perturbing the ecology; `send(habitat_bus | presentation_bus)` feeds both (the default).
 
-## Director & Global Parameters
+### Director & Global Parameters
 
 Scene-global terrain shaping and research controls. Director verbs are soft priors: they shape the terrain and never schedule a beat or force a measure.
 
-### `harmonic_mirror`
+#### `harmonic_mirror`
 
 ```rhai,ignore
 harmonic_mirror(value)
@@ -1184,7 +779,7 @@ harmonic_mirror(value)
 
 Overtone/undertone balance of the harmonicity field, in 0.0-1.0. 0.0 is overtone-dominant, 1.0 undertone-dominant. The most direct way to bend the harmonic terrain during a scene.
 
-### `meter_stability`
+#### `meter_stability`
 
 ```rhai,ignore
 meter_stability(value)
@@ -1192,7 +787,7 @@ meter_stability(value)
 
 Attractor depth in 0-1: how readily a pulse forms. A soft prior: it only deepens the basin for a real periodicity; it never fabricates a beat from non-metric input.
 
-### `temporal_basin`
+#### `temporal_basin`
 
 ```rhai,ignore
 temporal_basin(min_hz, max_hz)
@@ -1200,7 +795,402 @@ temporal_basin(min_hz, max_hz)
 
 Tempo region the emergent beat gravitates toward. The time-axis analogue of `density(min, max)`: it shapes the terrain, does not place a beat, and never forces a measure.
 
-### `set_roughness_k`
+## Experimental
+
+Candidate core verbs under audition: composing surface by intent, but with research-grade stability until validated.
+
+Empty right now.
+
+## Mechanism Tuning
+
+Fine-grained control over the mechanisms behind the core verbs. Defaults are calibrated; reach for these when a piece needs a specific behavior the core surface does not express.
+
+### Placement
+
+#### `reject_targets`
+
+```rhai,ignore
+reject_targets(anchor_hz, targets_st, exclusion_st, max_tries)
+```
+
+Applies to: `Placement`.
+
+Reject sampled positions near specified semitone targets. `targets_st` is an array of semitone offsets from `anchor_hz`, `exclusion_st` is the exclusion zone width in semitones, and `max_tries` is the retry limit. Wraps any strategy-bearing placement (`peaks()`, `density()`, `random()`, `line()`).
+
+### Phonation & Rhythm
+
+#### `once`
+
+```rhai,ignore
+once()
+```
+
+Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+
+Single trigger.
+
+#### `while_alive`
+
+```rhai,ignore
+while_alive()
+```
+
+Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+
+Hold/sustain until release.
+
+#### `adaptive_duration`
+
+```rhai,ignore
+adaptive_duration()
+```
+
+Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+
+Duration follows field support.
+
+#### `pulse_lock`
+
+```rhai,ignore
+pulse_lock(depth)
+```
+
+Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+
+Low-level pulse phase weighting in 0-1.
+
+#### `social`
+
+```rhai,ignore
+social(coupling)
+```
+
+Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+
+Social coupling for `entrained()` or `pulse()`, in 0-1.
+
+#### `duration_range`
+
+```rhai,ignore
+duration_range(min_cycles, max_cycles)
+```
+
+Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+
+Adaptive duration range in rhythm cycles.
+
+#### `duration_curve`
+
+```rhai,ignore
+duration_curve(k, x0)
+```
+
+Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+
+Adaptive duration curve parameters.
+
+#### `shorten_on_drop`
+
+```rhai,ignore
+shorten_on_drop(gain)
+```
+
+Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+
+Shorten adaptive duration when field support drops.
+
+#### `rhythm_freq`
+
+```rhai,ignore
+rhythm_freq(freq_hz)
+```
+
+Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+
+Internal theta/rhythm oscillator frequency.
+
+#### `rhythm_coupling_vitality`
+
+```rhai,ignore
+rhythm_coupling_vitality(lambda_v, v_floor)
+```
+
+Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+
+Vitality-modulated rhythm coupling.
+
+#### `rhythm_reward`
+
+```rhai,ignore
+rhythm_reward(rho_t, metric)
+```
+
+Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+
+Energy reward for timing fit; metric is `"attack_phase_match"` or `"none"`.
+
+### Pitch Movement
+
+#### `pitch_smooth`
+
+```rhai,ignore
+pitch_smooth(tau_sec)
+```
+
+Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+
+Pitch smoothing time constant in seconds.
+
+#### `pitch_apply_mode`
+
+```rhai,ignore
+pitch_apply_mode(name)
+```
+
+Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+
+`"gate_snap"` or `"glide"`: override how pitch decisions are applied. Without an explicit call, moving voices resolve this at commit from their phonation: sustained voices glide, re-attacking voices snap at onsets.
+
+#### `landscape_weight`
+
+```rhai,ignore
+landscape_weight(value)
+```
+
+Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+
+Weight of the landscape objective.
+
+#### `exploration`
+
+```rhai,ignore
+exploration(value)
+```
+
+Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+
+Exploration tendency of the hill-climb.
+
+#### `persistence`
+
+```rhai,ignore
+persistence(value)
+```
+
+Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+
+Persistence bias of the hill-climb.
+
+#### `anneal_temp`
+
+```rhai,ignore
+anneal_temp(value)
+```
+
+Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+
+Annealing temperature of the hill-climb.
+
+#### `temperature`
+
+```rhai,ignore
+temperature(value)
+```
+
+Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+
+Selection temperature of the peak sampler (softness of candidate choice).
+
+#### `neighbor_step_cents`
+
+```rhai,ignore
+neighbor_step_cents(value)
+```
+
+Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+
+Step size for neighbor exploration in cents.
+
+#### `improvement_threshold`
+
+```rhai,ignore
+improvement_threshold(value)
+```
+
+Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+
+Minimum improvement to accept a move.
+
+#### `move_cost`
+
+```rhai,ignore
+move_cost(coeff)
+```
+
+Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+
+Cost multiplier for pitch changes.
+
+#### `move_cost_exp`
+
+```rhai,ignore
+move_cost_exp(exp)
+```
+
+Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+
+Exponent for the move cost.
+
+#### `proposal_interval`
+
+```rhai,ignore
+proposal_interval(seconds)
+```
+
+Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+
+Proposal generation interval in seconds.
+
+#### `tessitura_gravity`
+
+```rhai,ignore
+tessitura_gravity(value)
+```
+
+Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+
+Gravity toward the tessitura center.
+
+#### `window_cents`
+
+```rhai,ignore
+window_cents(width)
+```
+
+Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+
+Peak-sampler search window width in cents.
+
+#### `top_k`
+
+```rhai,ignore
+top_k(count)
+```
+
+Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+
+Number of top candidates kept by the peak sampler.
+
+#### `sigma_cents`
+
+```rhai,ignore
+sigma_cents(spread)
+```
+
+Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+
+Gaussian spread of the peak sampler in cents.
+
+#### `random_candidates`
+
+```rhai,ignore
+random_candidates(count)
+```
+
+Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+
+Number of random candidates considered.
+
+#### `global_peaks`
+
+```rhai,ignore
+global_peaks(count)
+global_peaks(count, min_sep_cents)
+```
+
+Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+
+Global field peaks as movement candidates, with optional minimum separation.
+
+#### `ratio_candidates`
+
+```rhai,ignore
+ratio_candidates(count)
+```
+
+Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+
+Ratio-based movement candidates; 0 disables.
+
+### Neighbor Awareness
+
+#### `crowding_target`
+
+```rhai,ignore
+crowding_target(same_visible, other_visible)
+```
+
+Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+
+Which voices are visible to crowding: own group, other groups (booleans).
+
+#### `leave_self_out`
+
+```rhai,ignore
+leave_self_out(enabled)
+```
+
+Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+
+Subtract the voice's own spectral contribution when evaluating the field.
+
+#### `leave_self_out_harmonics`
+
+```rhai,ignore
+leave_self_out_harmonics(count)
+```
+
+Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+
+Number of harmonics used for approximate self-subtraction.
+
+### Lifecycle & Viability
+
+#### `viability_scope`
+
+```rhai,ignore
+viability_scope(name)
+```
+
+Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+
+`"environment"` (default) or `"total"` viability scoring scope. Use `"total"` only when the selection question should include the voice's own contribution.
+
+### Respawn
+
+#### `respawn_min_c_level`
+
+```rhai,ignore
+respawn_min_c_level(level)
+```
+
+Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+
+Minimum consonance level for respawn acceptance.
+
+#### `respawn_background_death_rate`
+
+```rhai,ignore
+respawn_background_death_rate(rate)
+```
+
+Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+
+Background turnover rate per second.
+
+### Director & Global Parameters
+
+#### `set_roughness_k`
 
 ```rhai,ignore
 set_roughness_k(value)
@@ -1208,7 +1198,7 @@ set_roughness_k(value)
 
 Roughness tolerance of the landscape.
 
-### `set_global_coupling`
+#### `set_global_coupling`
 
 ```rhai,ignore
 set_global_coupling(value)
@@ -1216,7 +1206,59 @@ set_global_coupling(value)
 
 Voice interaction strength.
 
-### `set_pitch_objective`
+## Research Controls
+
+For studying the instrument, not composing with it. Normal composing never touches this tier, and it has the weakest stability guarantee: entries may change or disappear as their research questions settle.
+
+### Pitch Movement
+
+#### `pitch_core`
+
+```rhai,ignore
+pitch_core(name)
+```
+
+Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+
+`"hill_climb"` or `"peak_sampler"`. Research control.
+
+#### `move_cost_time_scale`
+
+```rhai,ignore
+move_cost_time_scale(name)
+```
+
+Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+
+`"legacy"`/`"integration_window"` or `"proposal"`/`"proposal_interval"`.
+
+### Neighbor Awareness
+
+#### `leave_self_out_mode`
+
+```rhai,ignore
+leave_self_out_mode(name)
+```
+
+Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+
+`"approx"`/`"approx_harmonics"` or `"exact"`/`"exact_scan"`.
+
+### Lifecycle & Viability
+
+#### `selection_approx_loo`
+
+```rhai,ignore
+selection_approx_loo(enabled)
+```
+
+Applies to: `Material` only.
+
+Override environment-relative viability scoring; research/reference control. Material only. Use only for older reference assays that need the previous implementation-level control.
+
+### Director & Global Parameters
+
+#### `set_pitch_objective`
 
 ```rhai,ignore
 set_pitch_objective(name)
@@ -1224,7 +1266,7 @@ set_pitch_objective(name)
 
 `"consonance"`/`"positive"` or `"dissonance"`/`"negative"`. Research control.
 
-### `set_control_update_mode`
+#### `set_control_update_mode`
 
 ```rhai,ignore
 set_control_update_mode(name)
@@ -1232,7 +1274,7 @@ set_control_update_mode(name)
 
 `"snapshot_phased"`/`"snapshot"` (default) or `"sequential_rotating"`/`"sequential"`. Research control.
 
-### `set_scaffold_off`
+#### `set_scaffold_off`
 
 ```rhai,ignore
 set_scaffold_off()
@@ -1240,7 +1282,7 @@ set_scaffold_off()
 
 Disable the external rhythm scaffold. Scaffolds are external comparison controls for demos and assays, not the rhythm-composition abstraction.
 
-### `set_scaffold_shared`
+#### `set_scaffold_shared`
 
 ```rhai,ignore
 set_scaffold_shared(freq_hz)
@@ -1248,7 +1290,7 @@ set_scaffold_shared(freq_hz)
 
 Shared external scaffold pulse.
 
-### `set_scaffold_scrambled`
+#### `set_scaffold_scrambled`
 
 ```rhai,ignore
 set_scaffold_scrambled(freq_hz, seed)

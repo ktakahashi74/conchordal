@@ -18,9 +18,9 @@ fn action_cost(arg0: Participant, arg1: f64) -> Participant;
 /// Energy cost per attack.
 fn action_cost(arg0: Participant, arg1: i64) -> Participant;
 
-/// Duration follows field support.
+/// [tuning] Duration follows field support.
 fn adaptive_duration(arg0: Material) -> Material;
-/// Duration follows field support.
+/// [tuning] Duration follows field support.
 fn adaptive_duration(arg0: Participant) -> Participant;
 
 /// ADSR amplitude envelope.
@@ -42,13 +42,13 @@ fn anchor(arg0: Material) -> Material;
 /// Hold the voice at its pitch: an anchored voice never moves.
 fn anchor(arg0: Participant) -> Participant;
 
-/// Annealing temperature.
+/// [tuning] Annealing temperature of the hill-climb.
 fn anneal_temp(arg0: Material, arg1: f64) -> Material;
-/// Annealing temperature.
+/// [tuning] Annealing temperature of the hill-climb.
 fn anneal_temp(arg0: Material, arg1: i64) -> Material;
-/// Annealing temperature.
+/// [tuning] Annealing temperature of the hill-climb.
 fn anneal_temp(arg0: Participant, arg1: f64) -> Participant;
-/// Annealing temperature.
+/// [tuning] Annealing temperature of the hill-climb.
 fn anneal_temp(arg0: Participant, arg1: i64) -> Participant;
 
 /// Place at a fixed frequency in Hz.
@@ -118,9 +118,9 @@ fn count(arg0: Placement, arg1: i64) -> Placement;
 /// Number of modes.
 fn count(arg0: ModePattern, arg1: i64) -> ModePattern;
 
-/// Which voices are visible to crowding: own group, other groups (booleans).
+/// [tuning] Which voices are visible to crowding: own group, other groups (booleans).
 fn crowding_target(arg0: Material, arg1: bool, arg2: bool) -> Material;
-/// Which voices are visible to crowding: own group, other groups (booleans).
+/// [tuning] Which voices are visible to crowding: own group, other groups (booleans).
 fn crowding_target(arg0: Participant, arg1: bool, arg2: bool) -> Participant;
 
 /// Custom frequency ratios from an array.
@@ -149,38 +149,38 @@ fn dissonance_cost(arg0: Participant, arg1: f64) -> Participant;
 /// Extra energy cost at low consonance.
 fn dissonance_cost(arg0: Participant, arg1: i64) -> Participant;
 
-/// Adaptive duration curve parameters.
+/// [tuning] Adaptive duration curve parameters.
 fn duration_curve(arg0: Material, arg1: f64, arg2: f64) -> Material;
-/// Adaptive duration curve parameters.
+/// [tuning] Adaptive duration curve parameters.
 fn duration_curve(arg0: Material, arg1: f64, arg2: i64) -> Material;
-/// Adaptive duration curve parameters.
+/// [tuning] Adaptive duration curve parameters.
 fn duration_curve(arg0: Material, arg1: i64, arg2: f64) -> Material;
-/// Adaptive duration curve parameters.
+/// [tuning] Adaptive duration curve parameters.
 fn duration_curve(arg0: Material, arg1: i64, arg2: i64) -> Material;
-/// Adaptive duration curve parameters.
+/// [tuning] Adaptive duration curve parameters.
 fn duration_curve(arg0: Participant, arg1: f64, arg2: f64) -> Participant;
-/// Adaptive duration curve parameters.
+/// [tuning] Adaptive duration curve parameters.
 fn duration_curve(arg0: Participant, arg1: f64, arg2: i64) -> Participant;
-/// Adaptive duration curve parameters.
+/// [tuning] Adaptive duration curve parameters.
 fn duration_curve(arg0: Participant, arg1: i64, arg2: f64) -> Participant;
-/// Adaptive duration curve parameters.
+/// [tuning] Adaptive duration curve parameters.
 fn duration_curve(arg0: Participant, arg1: i64, arg2: i64) -> Participant;
 
-/// Adaptive duration range in rhythm cycles.
+/// [tuning] Adaptive duration range in rhythm cycles.
 fn duration_range(arg0: Material, arg1: f64, arg2: f64) -> Material;
-/// Adaptive duration range in rhythm cycles.
+/// [tuning] Adaptive duration range in rhythm cycles.
 fn duration_range(arg0: Material, arg1: f64, arg2: i64) -> Material;
-/// Adaptive duration range in rhythm cycles.
+/// [tuning] Adaptive duration range in rhythm cycles.
 fn duration_range(arg0: Material, arg1: i64, arg2: f64) -> Material;
-/// Adaptive duration range in rhythm cycles.
+/// [tuning] Adaptive duration range in rhythm cycles.
 fn duration_range(arg0: Material, arg1: i64, arg2: i64) -> Material;
-/// Adaptive duration range in rhythm cycles.
+/// [tuning] Adaptive duration range in rhythm cycles.
 fn duration_range(arg0: Participant, arg1: f64, arg2: f64) -> Participant;
-/// Adaptive duration range in rhythm cycles.
+/// [tuning] Adaptive duration range in rhythm cycles.
 fn duration_range(arg0: Participant, arg1: f64, arg2: i64) -> Participant;
-/// Adaptive duration range in rhythm cycles.
+/// [tuning] Adaptive duration range in rhythm cycles.
 fn duration_range(arg0: Participant, arg1: i64, arg2: f64) -> Participant;
-/// Adaptive duration range in rhythm cycles.
+/// [tuning] Adaptive duration range in rhythm cycles.
 fn duration_range(arg0: Participant, arg1: i64, arg2: i64) -> Participant;
 
 /// Maximum energy after recharge/reward.
@@ -206,13 +206,13 @@ fn entrainment(arg0: Participant, arg1: f64) -> Participant;
 /// Override coupling strength in 0-1 (free .. locked).
 fn entrainment(arg0: Participant, arg1: i64) -> Participant;
 
-/// Exploration tendency of the hill-climb.
+/// [tuning] Exploration tendency of the hill-climb.
 fn exploration(arg0: Material, arg1: f64) -> Material;
-/// Exploration tendency of the hill-climb.
+/// [tuning] Exploration tendency of the hill-climb.
 fn exploration(arg0: Material, arg1: i64) -> Material;
-/// Exploration tendency of the hill-climb.
+/// [tuning] Exploration tendency of the hill-climb.
 fn exploration(arg0: Participant, arg1: f64) -> Participant;
-/// Exploration tendency of the hill-climb.
+/// [tuning] Exploration tendency of the hill-climb.
 fn exploration(arg0: Participant, arg1: i64) -> Participant;
 
 /// Near-zero coupling: free renewal process, non-metric texture.
@@ -244,17 +244,17 @@ fn glide(arg0: Participant, arg1: f64) -> Participant;
 /// Pitch glide time constant in seconds.
 fn glide(arg0: Participant, arg1: i64) -> Participant;
 
-/// Global field peaks as movement candidates, with optional minimum separation.
+/// [tuning] Global field peaks as movement candidates, with optional minimum separation.
 fn global_peaks(arg0: Material, arg1: i64) -> Material;
-/// Global field peaks as movement candidates, with optional minimum separation.
+/// [tuning] Global field peaks as movement candidates, with optional minimum separation.
 fn global_peaks(arg0: Material, arg1: i64, arg2: f64) -> Material;
-/// Global field peaks as movement candidates, with optional minimum separation.
+/// [tuning] Global field peaks as movement candidates, with optional minimum separation.
 fn global_peaks(arg0: Material, arg1: i64, arg2: i64) -> Material;
-/// Global field peaks as movement candidates, with optional minimum separation.
+/// [tuning] Global field peaks as movement candidates, with optional minimum separation.
 fn global_peaks(arg0: Participant, arg1: i64) -> Participant;
-/// Global field peaks as movement candidates, with optional minimum separation.
+/// [tuning] Global field peaks as movement candidates, with optional minimum separation.
 fn global_peaks(arg0: Participant, arg1: i64, arg2: f64) -> Participant;
-/// Global field peaks as movement candidates, with optional minimum separation.
+/// [tuning] Global field peaks as movement candidates, with optional minimum separation.
 fn global_peaks(arg0: Participant, arg1: i64, arg2: i64) -> Participant;
 
 /// Material with a harmonic-series body.
@@ -266,13 +266,13 @@ fn harmonic_mirror(arg0: f64);
 /// Harmonic series: f, 2f, 3f, ...
 fn harmonic_modes() -> ModePattern;
 
-/// Minimum improvement to accept a move.
+/// [tuning] Minimum improvement to accept a move.
 fn improvement_threshold(arg0: Material, arg1: f64) -> Material;
-/// Minimum improvement to accept a move.
+/// [tuning] Minimum improvement to accept a move.
 fn improvement_threshold(arg0: Material, arg1: i64) -> Material;
-/// Minimum improvement to accept a move.
+/// [tuning] Minimum improvement to accept a move.
 fn improvement_threshold(arg0: Participant, arg1: f64) -> Participant;
-/// Minimum improvement to accept a move.
+/// [tuning] Minimum improvement to accept a move.
 fn improvement_threshold(arg0: Participant, arg1: i64) -> Participant;
 
 /// Starting energy.
@@ -293,28 +293,28 @@ fn landscape_density_modes() -> ModePattern;
 /// Modes sampled from live landscape peaks.
 fn landscape_peaks_modes() -> ModePattern;
 
-/// Weight of the landscape objective.
+/// [tuning] Weight of the landscape objective.
 fn landscape_weight(arg0: Material, arg1: f64) -> Material;
-/// Weight of the landscape objective.
+/// [tuning] Weight of the landscape objective.
 fn landscape_weight(arg0: Material, arg1: i64) -> Material;
-/// Weight of the landscape objective.
+/// [tuning] Weight of the landscape objective.
 fn landscape_weight(arg0: Participant, arg1: f64) -> Participant;
-/// Weight of the landscape objective.
+/// [tuning] Weight of the landscape objective.
 fn landscape_weight(arg0: Participant, arg1: i64) -> Participant;
 
-/// Subtract the voice's own spectral contribution when evaluating the field.
+/// [tuning] Subtract the voice's own spectral contribution when evaluating the field.
 fn leave_self_out(arg0: Material, arg1: bool) -> Material;
-/// Subtract the voice's own spectral contribution when evaluating the field.
+/// [tuning] Subtract the voice's own spectral contribution when evaluating the field.
 fn leave_self_out(arg0: Participant, arg1: bool) -> Participant;
 
-/// Number of harmonics used for approximate self-subtraction.
+/// [tuning] Number of harmonics used for approximate self-subtraction.
 fn leave_self_out_harmonics(arg0: Material, arg1: i64) -> Material;
-/// Number of harmonics used for approximate self-subtraction.
+/// [tuning] Number of harmonics used for approximate self-subtraction.
 fn leave_self_out_harmonics(arg0: Participant, arg1: i64) -> Participant;
 
-/// `"approx"`/`"approx_harmonics"` or `"exact"`/`"exact_scan"`.
+/// [research] `"approx"`/`"approx_harmonics"` or `"exact"`/`"exact_scan"`.
 fn leave_self_out_mode(arg0: Material, arg1: String) -> Material;
-/// `"approx"`/`"approx_harmonics"` or `"exact"`/`"exact_scan"`.
+/// [research] `"approx"`/`"approx_harmonics"` or `"exact"`/`"exact_scan"`.
 fn leave_self_out_mode(arg0: Participant, arg1: String) -> Participant;
 
 /// Linear interpolation of positions between two frequencies.
@@ -365,36 +365,36 @@ fn modes(arg0: Material, arg1: ModePattern) -> Material;
 /// Set the mode pattern of a modal body.
 fn modes(arg0: Participant, arg1: ModePattern) -> Participant;
 
-/// Cost multiplier for pitch changes.
+/// [tuning] Cost multiplier for pitch changes.
 fn move_cost(arg0: Material, arg1: f64) -> Material;
-/// Cost multiplier for pitch changes.
+/// [tuning] Cost multiplier for pitch changes.
 fn move_cost(arg0: Material, arg1: i64) -> Material;
-/// Cost multiplier for pitch changes.
+/// [tuning] Cost multiplier for pitch changes.
 fn move_cost(arg0: Participant, arg1: f64) -> Participant;
-/// Cost multiplier for pitch changes.
+/// [tuning] Cost multiplier for pitch changes.
 fn move_cost(arg0: Participant, arg1: i64) -> Participant;
 
-/// Exponent for the move cost.
+/// [tuning] Exponent for the move cost.
 fn move_cost_exp(arg0: Material, arg1: f64) -> Material;
-/// Exponent for the move cost.
+/// [tuning] Exponent for the move cost.
 fn move_cost_exp(arg0: Material, arg1: i64) -> Material;
-/// Exponent for the move cost.
+/// [tuning] Exponent for the move cost.
 fn move_cost_exp(arg0: Participant, arg1: f64) -> Participant;
-/// Exponent for the move cost.
+/// [tuning] Exponent for the move cost.
 fn move_cost_exp(arg0: Participant, arg1: i64) -> Participant;
 
-/// `"legacy"`/`"integration_window"` or `"proposal"`/`"proposal_interval"`.
+/// [research] `"legacy"`/`"integration_window"` or `"proposal"`/`"proposal_interval"`.
 fn move_cost_time_scale(arg0: Material, arg1: String) -> Material;
-/// `"legacy"`/`"integration_window"` or `"proposal"`/`"proposal_interval"`.
+/// [research] `"legacy"`/`"integration_window"` or `"proposal"`/`"proposal_interval"`.
 fn move_cost_time_scale(arg0: Participant, arg1: String) -> Participant;
 
-/// Step size for neighbor exploration in cents.
+/// [tuning] Step size for neighbor exploration in cents.
 fn neighbor_step_cents(arg0: Material, arg1: f64) -> Material;
-/// Step size for neighbor exploration in cents.
+/// [tuning] Step size for neighbor exploration in cents.
 fn neighbor_step_cents(arg0: Material, arg1: i64) -> Material;
-/// Step size for neighbor exploration in cents.
+/// [tuning] Step size for neighbor exploration in cents.
 fn neighbor_step_cents(arg0: Participant, arg1: f64) -> Participant;
-/// Step size for neighbor exploration in cents.
+/// [tuning] Step size for neighbor exploration in cents.
 fn neighbor_step_cents(arg0: Participant, arg1: i64) -> Participant;
 
 /// Harmonic-body preset with brightness 1.0 and motion 1.0.
@@ -403,9 +403,9 @@ fn noise() -> Material;
 /// Odd harmonics: f, 3f, 5f, ...
 fn odd_modes() -> ModePattern;
 
-/// Single trigger.
+/// [tuning] Single trigger.
 fn once(arg0: Material) -> Material;
-/// Single trigger.
+/// [tuning] Single trigger.
 fn once(arg0: Participant) -> Participant;
 
 /// Run an array of closures on parallel timelines from the current cursor.
@@ -416,32 +416,32 @@ fn peaks(arg0: f64) -> Placement;
 /// Place at high Consonance Field positions around a root.
 fn peaks(arg0: i64) -> Placement;
 
-/// Persistence bias of the hill-climb.
+/// [tuning] Persistence bias of the hill-climb.
 fn persistence(arg0: Material, arg1: f64) -> Material;
-/// Persistence bias of the hill-climb.
+/// [tuning] Persistence bias of the hill-climb.
 fn persistence(arg0: Material, arg1: i64) -> Material;
-/// Persistence bias of the hill-climb.
+/// [tuning] Persistence bias of the hill-climb.
 fn persistence(arg0: Participant, arg1: f64) -> Participant;
-/// Persistence bias of the hill-climb.
+/// [tuning] Persistence bias of the hill-climb.
 fn persistence(arg0: Participant, arg1: i64) -> Participant;
 
-/// `"gate_snap"` or `"glide"`: override how pitch decisions are applied.
+/// [tuning] `"gate_snap"` or `"glide"`: override how pitch decisions are applied.
 fn pitch_apply_mode(arg0: Material, arg1: String) -> Material;
-/// `"gate_snap"` or `"glide"`: override how pitch decisions are applied.
+/// [tuning] `"gate_snap"` or `"glide"`: override how pitch decisions are applied.
 fn pitch_apply_mode(arg0: Participant, arg1: String) -> Participant;
 
-/// `"hill_climb"` or `"peak_sampler"`. Research control.
+/// [research] `"hill_climb"` or `"peak_sampler"`. Research control.
 fn pitch_core(arg0: Material, arg1: String) -> Material;
-/// `"hill_climb"` or `"peak_sampler"`. Research control.
+/// [research] `"hill_climb"` or `"peak_sampler"`. Research control.
 fn pitch_core(arg0: Participant, arg1: String) -> Participant;
 
-/// Pitch smoothing time constant in seconds.
+/// [tuning] Pitch smoothing time constant in seconds.
 fn pitch_smooth(arg0: Material, arg1: f64) -> Material;
-/// Pitch smoothing time constant in seconds.
+/// [tuning] Pitch smoothing time constant in seconds.
 fn pitch_smooth(arg0: Material, arg1: i64) -> Material;
-/// Pitch smoothing time constant in seconds.
+/// [tuning] Pitch smoothing time constant in seconds.
 fn pitch_smooth(arg0: Participant, arg1: f64) -> Participant;
-/// Pitch smoothing time constant in seconds.
+/// [tuning] Pitch smoothing time constant in seconds.
 fn pitch_smooth(arg0: Participant, arg1: i64) -> Participant;
 
 /// Stage a Participant at the current script time.
@@ -463,13 +463,13 @@ fn play(arg0: Fn, arg1: [?]);
 /// Power law: f * n^beta.
 fn power_modes(arg0: f64) -> ModePattern;
 
-/// Proposal generation interval in seconds.
+/// [tuning] Proposal generation interval in seconds.
 fn proposal_interval(arg0: Material, arg1: f64) -> Material;
-/// Proposal generation interval in seconds.
+/// [tuning] Proposal generation interval in seconds.
 fn proposal_interval(arg0: Material, arg1: i64) -> Material;
-/// Proposal generation interval in seconds.
+/// [tuning] Proposal generation interval in seconds.
 fn proposal_interval(arg0: Participant, arg1: f64) -> Participant;
-/// Proposal generation interval in seconds.
+/// [tuning] Proposal generation interval in seconds.
 fn proposal_interval(arg0: Participant, arg1: i64) -> Participant;
 
 /// Pulse at an explicit rate in Hz.
@@ -481,13 +481,13 @@ fn pulse(arg0: Participant, arg1: f64) -> Participant;
 /// Pulse at an explicit rate in Hz.
 fn pulse(arg0: Participant, arg1: i64) -> Participant;
 
-/// Low-level pulse phase weighting in 0-1.
+/// [tuning] Low-level pulse phase weighting in 0-1.
 fn pulse_lock(arg0: Material, arg1: f64) -> Material;
-/// Low-level pulse phase weighting in 0-1.
+/// [tuning] Low-level pulse phase weighting in 0-1.
 fn pulse_lock(arg0: Material, arg1: i64) -> Material;
-/// Low-level pulse phase weighting in 0-1.
+/// [tuning] Low-level pulse phase weighting in 0-1.
 fn pulse_lock(arg0: Participant, arg1: f64) -> Participant;
-/// Low-level pulse phase weighting in 0-1.
+/// [tuning] Low-level pulse phase weighting in 0-1.
 fn pulse_lock(arg0: Participant, arg1: i64) -> Participant;
 
 /// Log-uniform random placement inside a frequency range.
@@ -499,13 +499,13 @@ fn random(arg0: i64, arg1: f64) -> Placement;
 /// Log-uniform random placement inside a frequency range.
 fn random(arg0: i64, arg1: i64) -> Placement;
 
-/// Number of random candidates considered.
+/// [tuning] Number of random candidates considered.
 fn random_candidates(arg0: Material, arg1: f64) -> Material;
-/// Number of random candidates considered.
+/// [tuning] Number of random candidates considered.
 fn random_candidates(arg0: Material, arg1: i64) -> Material;
-/// Number of random candidates considered.
+/// [tuning] Number of random candidates considered.
 fn random_candidates(arg0: Participant, arg1: f64) -> Participant;
-/// Number of random candidates considered.
+/// [tuning] Number of random candidates considered.
 fn random_candidates(arg0: Participant, arg1: i64) -> Participant;
 
 /// Multiplier range relative to the root; only valid on `peaks()`.
@@ -520,9 +520,9 @@ fn range(arg0: Placement, arg1: i64, arg2: i64) -> Placement;
 /// Frequency range; only valid on `landscape_*_modes()`.
 fn range(arg0: ModePattern, arg1: f64, arg2: f64) -> ModePattern;
 
-/// Ratio-based movement candidates; 0 disables.
+/// [tuning] Ratio-based movement candidates; 0 disables.
 fn ratio_candidates(arg0: Material, arg1: i64) -> Material;
-/// Ratio-based movement candidates; 0 disables.
+/// [tuning] Ratio-based movement candidates; 0 disables.
 fn ratio_candidates(arg0: Participant, arg1: i64) -> Participant;
 
 /// Energy gained per attack.
@@ -534,13 +534,13 @@ fn recharge_rate(arg0: Participant, arg1: f64) -> Participant;
 /// Energy gained per attack.
 fn recharge_rate(arg0: Participant, arg1: i64) -> Participant;
 
-/// Reject sampled positions near specified semitone targets.
+/// [tuning] Reject sampled positions near specified semitone targets.
 fn reject_targets(arg0: Placement, arg1: f64, arg2: [?], arg3: f64, arg4: i64) -> Placement;
-/// Reject sampled positions near specified semitone targets.
+/// [tuning] Reject sampled positions near specified semitone targets.
 fn reject_targets(arg0: Placement, arg1: f64, arg2: [?], arg3: i64, arg4: i64) -> Placement;
-/// Reject sampled positions near specified semitone targets.
+/// [tuning] Reject sampled positions near specified semitone targets.
 fn reject_targets(arg0: Placement, arg1: i64, arg2: [?], arg3: f64, arg4: i64) -> Placement;
-/// Reject sampled positions near specified semitone targets.
+/// [tuning] Reject sampled positions near specified semitone targets.
 fn reject_targets(arg0: Placement, arg1: i64, arg2: [?], arg3: i64, arg4: i64) -> Placement;
 
 /// Release a live group; its voices enter their release phase and fade out.
@@ -551,13 +551,13 @@ fn repeat(arg0: Material) -> Material;
 /// Repeated/pulsed phonation mode.
 fn repeat(arg0: Participant) -> Participant;
 
-/// Background turnover rate per second.
+/// [tuning] Background turnover rate per second.
 fn respawn_background_death_rate(arg0: Material, arg1: f64) -> Material;
-/// Background turnover rate per second.
+/// [tuning] Background turnover rate per second.
 fn respawn_background_death_rate(arg0: Material, arg1: i64) -> Material;
-/// Background turnover rate per second.
+/// [tuning] Background turnover rate per second.
 fn respawn_background_death_rate(arg0: Participant, arg1: f64) -> Participant;
-/// Background turnover rate per second.
+/// [tuning] Background turnover rate per second.
 fn respawn_background_death_rate(arg0: Participant, arg1: i64) -> Participant;
 
 /// Maintain population up to a capacity.
@@ -583,13 +583,13 @@ fn respawn_hereditary(arg0: Participant, arg1: f64) -> Participant;
 /// Hereditary respawn with frequency variance in octaves.
 fn respawn_hereditary(arg0: Participant, arg1: i64) -> Participant;
 
-/// Minimum consonance level for respawn acceptance.
+/// [tuning] Minimum consonance level for respawn acceptance.
 fn respawn_min_c_level(arg0: Material, arg1: f64) -> Material;
-/// Minimum consonance level for respawn acceptance.
+/// [tuning] Minimum consonance level for respawn acceptance.
 fn respawn_min_c_level(arg0: Material, arg1: i64) -> Material;
-/// Minimum consonance level for respawn acceptance.
+/// [tuning] Minimum consonance level for respawn acceptance.
 fn respawn_min_c_level(arg0: Participant, arg1: f64) -> Participant;
-/// Minimum consonance level for respawn acceptance.
+/// [tuning] Minimum consonance level for respawn acceptance.
 fn respawn_min_c_level(arg0: Participant, arg1: i64) -> Participant;
 
 /// Respawn at random locations.
@@ -602,23 +602,23 @@ fn respawn_settle(arg0: Material, arg1: Placement) -> Material;
 /// Placement used for replacements.
 fn respawn_settle(arg0: Participant, arg1: Placement) -> Participant;
 
-/// Vitality-modulated rhythm coupling.
+/// [tuning] Vitality-modulated rhythm coupling.
 fn rhythm_coupling_vitality(arg0: Material, arg1: f64, arg2: f64) -> Material;
-/// Vitality-modulated rhythm coupling.
+/// [tuning] Vitality-modulated rhythm coupling.
 fn rhythm_coupling_vitality(arg0: Participant, arg1: f64, arg2: f64) -> Participant;
 
-/// Internal theta/rhythm oscillator frequency.
+/// [tuning] Internal theta/rhythm oscillator frequency.
 fn rhythm_freq(arg0: Material, arg1: f64) -> Material;
-/// Internal theta/rhythm oscillator frequency.
+/// [tuning] Internal theta/rhythm oscillator frequency.
 fn rhythm_freq(arg0: Material, arg1: i64) -> Material;
-/// Internal theta/rhythm oscillator frequency.
+/// [tuning] Internal theta/rhythm oscillator frequency.
 fn rhythm_freq(arg0: Participant, arg1: f64) -> Participant;
-/// Internal theta/rhythm oscillator frequency.
+/// [tuning] Internal theta/rhythm oscillator frequency.
 fn rhythm_freq(arg0: Participant, arg1: i64) -> Participant;
 
-/// Energy reward for timing fit; metric is `"attack_phase_match"` or `"none"`.
+/// [tuning] Energy reward for timing fit; metric is `"attack_phase_match"` or `"none"`.
 fn rhythm_reward(arg0: Material, arg1: f64, arg2: String) -> Material;
-/// Energy reward for timing fit; metric is `"attack_phase_match"` or `"none"`.
+/// [tuning] Energy reward for timing fit; metric is `"attack_phase_match"` or `"none"`.
 fn rhythm_reward(arg0: Participant, arg1: f64, arg2: String) -> Participant;
 
 /// Metrical job: `"beat"`, `"subdivision"`, `"accent"`, or `"texture"`.
@@ -643,7 +643,7 @@ fn seek_consonance(arg0: Material) -> Material;
 /// Free hill-climb movement toward better field positions, with glide defaults.
 fn seek_consonance(arg0: Participant) -> Participant;
 
-/// Override environment-relative viability scoring; research/reference control.
+/// [research] Override environment-relative viability scoring; research/reference control.
 fn selection_approx_loo(arg0: Material, arg1: bool) -> Material;
 
 /// Route the voice to specific buses; accepts a `Bus` or a `BusSet`.
@@ -651,59 +651,59 @@ fn send(arg0: Material, arg1: Bus) -> Material;
 /// Route the voice to specific buses; accepts a `Bus` or a `BusSet`.
 fn send(arg0: Material, arg1: BusSet) -> Material;
 
-/// `"snapshot_phased"`/`"snapshot"` (default) or `"sequential_rotating"`/`"sequential"`. Research control.
+/// [research] `"snapshot_phased"`/`"snapshot"` (default) or `"sequential_rotating"`/`"sequential"`. Research control.
 fn set_control_update_mode(arg0: String);
 
-/// Voice interaction strength.
+/// [tuning] Voice interaction strength.
 fn set_global_coupling(arg0: f64);
 
-/// `"consonance"`/`"positive"` or `"dissonance"`/`"negative"`. Research control.
+/// [research] `"consonance"`/`"positive"` or `"dissonance"`/`"negative"`. Research control.
 fn set_pitch_objective(arg0: String);
 
-/// Roughness tolerance of the landscape.
+/// [tuning] Roughness tolerance of the landscape.
 fn set_roughness_k(arg0: f64);
 
-/// Disable the external rhythm scaffold.
+/// [research] Disable the external rhythm scaffold.
 fn set_scaffold_off();
 
-/// Per-voice scrambled scaffold pulse.
+/// [research] Per-voice scrambled scaffold pulse.
 fn set_scaffold_scrambled(arg0: f64, arg1: i64);
-/// Per-voice scrambled scaffold pulse.
+/// [research] Per-voice scrambled scaffold pulse.
 fn set_scaffold_scrambled(arg0: i64, arg1: i64);
 
-/// Shared external scaffold pulse.
+/// [research] Shared external scaffold pulse.
 fn set_scaffold_shared(arg0: f64);
-/// Shared external scaffold pulse.
+/// [research] Shared external scaffold pulse.
 fn set_scaffold_shared(arg0: i64);
 
-/// Shorten adaptive duration when field support drops.
+/// [tuning] Shorten adaptive duration when field support drops.
 fn shorten_on_drop(arg0: Material, arg1: f64) -> Material;
-/// Shorten adaptive duration when field support drops.
+/// [tuning] Shorten adaptive duration when field support drops.
 fn shorten_on_drop(arg0: Material, arg1: i64) -> Material;
-/// Shorten adaptive duration when field support drops.
+/// [tuning] Shorten adaptive duration when field support drops.
 fn shorten_on_drop(arg0: Participant, arg1: f64) -> Participant;
-/// Shorten adaptive duration when field support drops.
+/// [tuning] Shorten adaptive duration when field support drops.
 fn shorten_on_drop(arg0: Participant, arg1: i64) -> Participant;
 
-/// Gaussian spread of the peak sampler in cents.
+/// [tuning] Gaussian spread of the peak sampler in cents.
 fn sigma_cents(arg0: Material, arg1: f64) -> Material;
-/// Gaussian spread of the peak sampler in cents.
+/// [tuning] Gaussian spread of the peak sampler in cents.
 fn sigma_cents(arg0: Material, arg1: i64) -> Material;
-/// Gaussian spread of the peak sampler in cents.
+/// [tuning] Gaussian spread of the peak sampler in cents.
 fn sigma_cents(arg0: Participant, arg1: f64) -> Participant;
-/// Gaussian spread of the peak sampler in cents.
+/// [tuning] Gaussian spread of the peak sampler in cents.
 fn sigma_cents(arg0: Participant, arg1: i64) -> Participant;
 
 /// Material with a pure sine body.
 fn sine() -> Material;
 
-/// Social coupling for `entrained()` or `pulse()`, in 0-1.
+/// [tuning] Social coupling for `entrained()` or `pulse()`, in 0-1.
 fn social(arg0: Material, arg1: f64) -> Material;
-/// Social coupling for `entrained()` or `pulse()`, in 0-1.
+/// [tuning] Social coupling for `entrained()` or `pulse()`, in 0-1.
 fn social(arg0: Material, arg1: i64) -> Material;
-/// Social coupling for `entrained()` or `pulse()`, in 0-1.
+/// [tuning] Social coupling for `entrained()` or `pulse()`, in 0-1.
 fn social(arg0: Participant, arg1: f64) -> Participant;
-/// Social coupling for `entrained()` or `pulse()`, in 0-1.
+/// [tuning] Social coupling for `entrained()` or `pulse()`, in 0-1.
 fn social(arg0: Participant, arg1: i64) -> Participant;
 
 /// Minimum ERB distance between placed voices; valid on `peaks()` and `density()`.
@@ -743,13 +743,13 @@ fn sustain_drive(arg0: Participant, arg1: f64) -> Participant;
 /// Continuous drive level for sustained voices.
 fn sustain_drive(arg0: Participant, arg1: i64) -> Participant;
 
-/// Alias for `anneal_temp()`.
+/// [tuning] Selection temperature of the peak sampler (softness of candidate choice).
 fn temperature(arg0: Material, arg1: f64) -> Material;
-/// Alias for `anneal_temp()`.
+/// [tuning] Selection temperature of the peak sampler (softness of candidate choice).
 fn temperature(arg0: Material, arg1: i64) -> Material;
-/// Alias for `anneal_temp()`.
+/// [tuning] Selection temperature of the peak sampler (softness of candidate choice).
 fn temperature(arg0: Participant, arg1: f64) -> Participant;
-/// Alias for `anneal_temp()`.
+/// [tuning] Selection temperature of the peak sampler (softness of candidate choice).
 fn temperature(arg0: Participant, arg1: i64) -> Participant;
 
 /// Tempo region the emergent beat gravitates toward.
@@ -761,22 +761,22 @@ fn temporal_basin(arg0: i64, arg1: f64);
 /// Tempo region the emergent beat gravitates toward.
 fn temporal_basin(arg0: i64, arg1: i64);
 
-/// Gravity toward the tessitura center.
+/// [tuning] Gravity toward the tessitura center.
 fn tessitura_gravity(arg0: Material, arg1: f64) -> Material;
-/// Gravity toward the tessitura center.
+/// [tuning] Gravity toward the tessitura center.
 fn tessitura_gravity(arg0: Material, arg1: i64) -> Material;
-/// Gravity toward the tessitura center.
+/// [tuning] Gravity toward the tessitura center.
 fn tessitura_gravity(arg0: Participant, arg1: f64) -> Participant;
-/// Gravity toward the tessitura center.
+/// [tuning] Gravity toward the tessitura center.
 fn tessitura_gravity(arg0: Participant, arg1: i64) -> Participant;
 
-/// Number of top candidates kept by the peak sampler.
+/// [tuning] Number of top candidates kept by the peak sampler.
 fn top_k(arg0: Material, arg1: f64) -> Material;
-/// Number of top candidates kept by the peak sampler.
+/// [tuning] Number of top candidates kept by the peak sampler.
 fn top_k(arg0: Material, arg1: i64) -> Material;
-/// Number of top candidates kept by the peak sampler.
+/// [tuning] Number of top candidates kept by the peak sampler.
 fn top_k(arg0: Participant, arg1: f64) -> Participant;
-/// Number of top candidates kept by the peak sampler.
+/// [tuning] Number of top candidates kept by the peak sampler.
 fn top_k(arg0: Participant, arg1: i64) -> Participant;
 
 /// Number of unison detuning copies.
@@ -800,9 +800,9 @@ fn viability_rate(arg0: Participant, arg1: f64) -> Participant;
 /// Continuous consonance-driven energy recharge rate.
 fn viability_rate(arg0: Participant, arg1: i64) -> Participant;
 
-/// `"environment"` (default) or `"total"` viability scoring scope.
+/// [tuning] `"environment"` (default) or `"total"` viability scoring scope.
 fn viability_scope(arg0: Material, arg1: String) -> Material;
-/// `"environment"` (default) or `"total"` viability scoring scope.
+/// [tuning] `"environment"` (default) or `"total"` viability scoring scope.
 fn viability_scope(arg0: Participant, arg1: String) -> Participant;
 
 /// Commit pending drafts, then advance the timeline cursor.
@@ -810,18 +810,18 @@ fn wait(arg0: f64);
 /// Commit pending drafts, then advance the timeline cursor.
 fn wait(arg0: i64);
 
-/// Hold/sustain until release.
+/// [tuning] Hold/sustain until release.
 fn while_alive(arg0: Material) -> Material;
-/// Hold/sustain until release.
+/// [tuning] Hold/sustain until release.
 fn while_alive(arg0: Participant) -> Participant;
 
-/// Peak-sampler search window width in cents.
+/// [tuning] Peak-sampler search window width in cents.
 fn window_cents(arg0: Material, arg1: f64) -> Material;
-/// Peak-sampler search window width in cents.
+/// [tuning] Peak-sampler search window width in cents.
 fn window_cents(arg0: Material, arg1: i64) -> Material;
-/// Peak-sampler search window width in cents.
+/// [tuning] Peak-sampler search window width in cents.
 fn window_cents(arg0: Participant, arg1: f64) -> Participant;
-/// Peak-sampler search window width in cents.
+/// [tuning] Peak-sampler search window width in cents.
 fn window_cents(arg0: Participant, arg1: i64) -> Participant;
 
 // Skipped (reserved keyword or non-identifier function name):

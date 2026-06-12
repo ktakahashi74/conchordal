@@ -57,12 +57,12 @@ impl PitchController {
         self.last_target_salience
     }
 
-    pub fn core_mut(&mut self) -> &mut AnyPitchCore {
-        &mut self.core
-    }
-
     pub fn adaptation_mut(&mut self) -> &mut AdaptationContext {
         &mut self.adaptation
+    }
+
+    pub(crate) fn apply_control(&mut self, pitch: &PitchControl) {
+        self.core.apply_control(pitch);
     }
 
     pub fn set_adaptation_enabled(&mut self, enabled: bool) {
@@ -89,6 +89,7 @@ impl PitchController {
         pitch: &PitchControl,
         neighbor_pitch_log2: &[f32],
         neighbor_salience: &[f32],
+        exploration_bonus: f32,
     ) {
         let dt_sec = dt_sec.max(0.0);
         let current_freq = current_freq_hz.max(1.0);
@@ -100,6 +101,12 @@ impl PitchController {
         };
         self.integration_window = Self::integration_window_for_freq(current_freq);
         self.accumulated_time += dt_sec;
+        let effective_exploration = if exploration_bonus.is_finite() {
+            (pitch.exploration + exploration_bonus).clamp(0.0, 1.0)
+        } else {
+            pitch.exploration.clamp(0.0, 1.0)
+        };
+        self.core.set_exploration(effective_exploration);
         let proposal_interval_sec = if pitch.proposal_interval_sec.is_some_and(|v| v > 0.0) {
             pitch.proposal_interval_sec
         } else {

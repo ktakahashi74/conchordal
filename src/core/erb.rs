@@ -41,6 +41,15 @@ impl ErbSpace {
     /// * `f_max` - highest frequency [Hz]
     /// * `erb_step` - ERB step (smaller → denser sampling)
     pub fn new(f_min: f32, f_max: f32, erb_step: f32) -> Self {
+        assert!(
+            f_min.is_finite()
+                && f_max.is_finite()
+                && erb_step.is_finite()
+                && f_min > 0.0
+                && f_max > f_min
+                && erb_step > 0.0,
+            "ErbSpace bounds and step must be finite and ordered"
+        );
         let erb_min = hz_to_erb(f_min);
         let erb_max = hz_to_erb(f_max);
 
@@ -93,6 +102,9 @@ impl ErbSpace {
     }
 
     pub fn index_of_freq(&self, f_hz: f32) -> usize {
+        if self.freqs_hz.is_empty() || !f_hz.is_finite() {
+            return 0;
+        }
         self.freqs_hz
             .iter()
             .position(|&f| f >= f_hz)

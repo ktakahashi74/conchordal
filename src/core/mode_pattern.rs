@@ -1,7 +1,7 @@
 use crate::core::erb::hz_to_erb;
 use crate::core::landscape::LandscapeFrame;
 use crate::core::log2space::Log2Space;
-use rand::{Rng, SeedableRng, rngs::SmallRng};
+use rand::{Rng, RngExt, SeedableRng, rngs::SmallRng};
 use tracing::warn;
 
 pub(crate) const DEFAULT_MODE_COUNT: usize = 16;
@@ -528,27 +528,7 @@ fn sanitize_ratio_list(mut ratios: Vec<f32>) -> Vec<f32> {
 }
 
 fn freq_range_to_bins(space: &Log2Space, min_hz: f32, max_hz: f32) -> Option<(usize, usize)> {
-    if space.n_bins() == 0 {
-        return None;
-    }
-    let min_hz = min_hz.max(space.fmin).min(space.fmax);
-    let max_hz = max_hz.max(space.fmin).min(space.fmax);
-    let mut idx_min = space.index_of_freq(min_hz).unwrap_or(0);
-    let mut idx_max = space
-        .index_of_freq(max_hz)
-        .unwrap_or_else(|| space.n_bins().saturating_sub(1));
-    if idx_min > idx_max {
-        std::mem::swap(&mut idx_min, &mut idx_max);
-    }
-    if idx_min >= space.n_bins() {
-        return None;
-    }
-    idx_max = idx_max.min(space.n_bins().saturating_sub(1));
-    if idx_min > idx_max {
-        None
-    } else {
-        Some((idx_min, idx_max))
-    }
+    space.bin_range_of_freqs(min_hz, max_hz)
 }
 
 fn suppress_neighbor_weights(

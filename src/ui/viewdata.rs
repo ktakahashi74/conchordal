@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use crate::core::landscape::LandscapeFrame;
+use crate::core::meter::MeterState;
 use crate::core::timebase::Tick;
 
 #[derive(Clone, Debug)]
@@ -21,6 +22,22 @@ pub struct DorsalFrame {
     pub e_mid: f32,
     pub e_high: f32,
     pub flux: f32,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ListenerFrame {
+    pub time_sec: f32,
+    pub generated_frame_id: u64,
+    pub analysis_frame_id: u64,
+    pub analysis_lag_frames: u64,
+    pub attention_level: f32,
+    pub attention: DorsalFrame,
+    pub meter: MeterState,
+    pub stability_level: f32,
+    pub resolvability_level: f32,
+    pub tension_level: f32,
+    pub has_fast_state: bool,
+    pub has_state: bool,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -56,6 +73,8 @@ pub struct SimulationMeta {
     pub window_peak: [f32; 2],
     pub kuramoto_order_r: Option<f32>,
     pub kuramoto_active_count: usize,
+    /// Offset-removed entrainment phases (radians) of live voices, for the phase circle.
+    pub entrain_phases: Vec<f32>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -83,9 +102,8 @@ pub struct PredictionFrame {
 pub struct UiFrame {
     pub wave: WaveFrame,
     pub spec: SpecFrame,
-    pub dorsal: DorsalFrame,
+    pub listener: ListenerFrame,
     pub landscape: LandscapeFrame,
-    pub time_sec: f32,
     pub meta: SimulationMeta,
     pub prediction: PredictionFrame,
     pub voices: Vec<VoiceStateInfo>,

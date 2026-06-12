@@ -5,14 +5,13 @@ use crate::core::a_weighting;
 use crate::core::density;
 use crate::core::landscape::LandscapeParams;
 use crate::core::log2space::Log2Space;
-use crate::core::peak_extraction::{Peak, PeakExtractConfig, extract_peaks_density_with_grid};
+use crate::core::peak_extraction::{PeakExtractConfig, extract_peaks_density_with_grid};
 use crate::core::roughness_kernel::erb_grid;
 
 #[derive(Clone, Debug)]
 pub struct SpectralFrame {
     pub subjective_intensity: Vec<f32>,
     pub loudness_mass: f32,
-    pub peaks_raw: Vec<Peak>,
 }
 
 pub struct SpectralFrontEnd {
@@ -97,7 +96,6 @@ impl SpectralFrontEnd {
         SpectralFrame {
             subjective_intensity,
             loudness_mass,
-            peaks_raw: peaks,
         }
     }
 }
@@ -107,7 +105,7 @@ mod tests {
     use super::*;
     use crate::core::consonance_kernel::{ConsonanceKernel, ConsonanceRepresentationParams};
     use crate::core::harmonicity_kernel::{HarmonicityKernel, HarmonicityParams};
-    use crate::core::landscape::{LandscapeParams, RoughnessScalarMode};
+    use crate::core::landscape::LandscapeParams;
     use crate::core::log2space::Log2Space;
     use crate::core::roughness_kernel::{KernelParams, RoughnessKernel};
 
@@ -120,8 +118,6 @@ mod tests {
             consonance_kernel: ConsonanceKernel::default(),
             consonance_representation: ConsonanceRepresentationParams::default(),
             consonance_density_roughness_gain: 1.0,
-            roughness_scalar_mode: RoughnessScalarMode::Total,
-            roughness_half: 0.1,
             loudness_exp: 1.0,
             ref_power: 1.0,
             tau_ms: 1.0,

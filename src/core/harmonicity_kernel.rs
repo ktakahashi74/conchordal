@@ -114,6 +114,7 @@ pub struct DualPathHarmonicity {
 
 impl HarmonicityKernel {
     pub fn new(space: &Log2Space, params: HarmonicityParams) -> Self {
+        let params = Self::sanitize_params(params);
         let (sub_limit, harm_limit, max_limit) = Self::effective_limits(&params);
 
         // 1. Pre-calculate smoothing kernel
@@ -172,12 +173,12 @@ impl HarmonicityKernel {
         envelope: &[f32],
         space: &Log2Space,
     ) -> DualPathHarmonicity {
-        debug_assert_eq!(
+        assert_eq!(
             space.bins_per_oct, self.bins_per_oct,
             "Log2Space bins_per_oct mismatch (space={}, kernel={})",
             space.bins_per_oct, self.bins_per_oct
         );
-        debug_assert_eq!(
+        assert_eq!(
             envelope.len(),
             space.n_bins(),
             "envelope length mismatch (env={}, space={})",
@@ -347,6 +348,22 @@ impl HarmonicityKernel {
             metrics,
         }
     }
+    fn sanitize_params(mut params: HarmonicityParams) -> HarmonicityParams {
+        let defaults = HarmonicityParams::default();
+        params.rho_common_root = finite_or(params.rho_common_root, defaults.rho_common_root);
+        params.rho_common_overtone =
+            finite_or(params.rho_common_overtone, defaults.rho_common_overtone);
+        params.sigma_cents = finite_or(params.sigma_cents, defaults.sigma_cents).max(0.0);
+        params.mirror_weight =
+            finite_or(params.mirror_weight, defaults.mirror_weight).clamp(0.0, 1.0);
+        params.gamma_root = finite_or(params.gamma_root, defaults.gamma_root).max(1e-3);
+        params.gamma_overtone = finite_or(params.gamma_overtone, defaults.gamma_overtone).max(1e-3);
+        params.diag_weight = finite_or(params.diag_weight, defaults.diag_weight).clamp(0.0, 1.0);
+        params.tfs_f_pl_hz = finite_or(params.tfs_f_pl_hz, defaults.tfs_f_pl_hz).max(1e-6);
+        params.tfs_eta = finite_or(params.tfs_eta, defaults.tfs_eta).max(1e-6);
+        params
+    }
+
     fn effective_limits(params: &HarmonicityParams) -> (u32, u32, u32) {
         let sub = params.num_subharmonics.max(1);
         let harm = params.num_harmonics.max(1);
@@ -400,7 +417,10 @@ impl HarmonicityKernel {
         // Convolution is heavy, but here kernel is small.
         // Optimization: Use separate loop for the main part to avoid boundary checks.
         if self.smooth_kernel.len() == 1 {
-            return input.to_vec();
+            return input
+                .iter()
+                .map(|&v| if v.is_finite() { v.max(0.0) } else { 0.0 })
+                .collect();
         }
         let n = input.len();
         let mut output = vec![0.0; n];
@@ -421,7 +441,12 @@ impl HarmonicityKernel {
 
             for j in start_k..end_k {
                 let input_idx = i + j - half;
-                acc += input[input_idx] * self.smooth_kernel[j];
+                let x = if input[input_idx].is_finite() {
+                    input[input_idx].max(0.0)
+                } else {
+                    0.0
+                };
+                acc += x * self.smooth_kernel[j];
             }
             *out_val = acc;
         }
@@ -450,6 +475,11 @@ impl HarmonicityKernel {
             (dot / denom).clamp(-1.0, 1.0)
         }
     }
+}
+
+#[inline]
+fn finite_or(x: f32, fallback: f32) -> f32 {
+    if x.is_finite() { x } else { fallback }
 }
 
 #[cfg(test)]
@@ -888,6 +918,32 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn constructor_sanitizes_non_finite_params() {
+        let space = Log2Space::new(80.0, 2000.0, 96);
+        let params = HarmonicityParams {
+            rho_common_root: f32::NAN,
+            rho_common_overtone: f32::NAN,
+            sigma_cents: f32::NAN,
+            mirror_weight: f32::NAN,
+            gamma_root: f32::NAN,
+            gamma_overtone: f32::NAN,
+            diag_weight: f32::NAN,
+            tfs_f_pl_hz: f32::NAN,
+            tfs_eta: f32::NAN,
+            ..HarmonicityParams::default()
+        };
+        let hk = HarmonicityKernel::new(&space, params);
+        let env = vec![f32::NAN; space.n_bins()];
+        let dual = hk.potential_h_dual_from_log2_spectrum(&env, &space);
+
+        assert!(hk.params.mirror_weight.is_finite());
+        assert!(
+            dual.blended.iter().all(|v| v.is_finite() && *v >= 0.0),
+            "harmonicity output must stay finite"
+        );
     }
 
     #[test]

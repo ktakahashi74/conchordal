@@ -1,0 +1,769 @@
+use std::fmt;
+
+use crate::core::float::sanitize_nonnegative_finite;
+use crate::core::landscape::LandscapeUpdate;
+use crate::core::meter::MeterShaping;
+use crate::life::control::{ControlUpdate, VoiceControl};
+use crate::life::lifecycle::LifecycleConfig;
+use crate::life::voice::{Voice, VoiceMetadata};
+
+#[derive(Debug, Clone)]
+pub struct Scenario {
+    pub seed: u64,
+    pub control_update_mode: ControlUpdateMode,
+    pub scaffold: ScaffoldConfig,
+    /// Scene-global shaping of the emergent production meter (composer-set soft
+    /// priors: attractor depth + frequency basin). Default = neutral.
+    pub meter_shaping: MeterShaping,
+    pub scene_markers: Vec<SceneMarker>,
+    pub events: Vec<TimedEvent>,
+    pub duration_sec: f32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ControlUpdateMode {
+    #[default]
+    SnapshotPhased,
+    SequentialRotating,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum ScaffoldConfig {
+    #[default]
+    Off,
+    Shared {
+        freq_hz: f32,
+    },
+    Scrambled {
+        freq_hz: f32,
+        seed: u64,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub struct SceneMarker {
+    pub name: String,
+    pub time: f32,
+    pub order: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct TimedEvent {
+    pub time: f32,
+    pub order: u64,
+    pub actions: Vec<Action>,
+}
+
+#[derive(Debug, Clone)]
+pub struct EnvelopeConfig {
+    pub attack_sec: f32,
+    pub decay_sec: f32,
+    pub sustain_level: f32,
+    pub release_sec: f32,
+}
+
+impl Default for EnvelopeConfig {
+    fn default() -> Self {
+        Self {
+            attack_sec: 0.01,
+            decay_sec: 0.1,
+            sustain_level: 0.0,
+            release_sec: 0.03,
+        }
+    }
+}
+
+impl EnvelopeConfig {
+    pub fn for_body_method(method: crate::life::control::BodyMethod) -> Self {
+        use crate::life::control::BodyMethod;
+        match method {
+            BodyMethod::Sine => Self {
+                attack_sec: 0.005,
+                decay_sec: 0.05,
+                sustain_level: 0.9,
+                release_sec: 0.050,
+            },
+            BodyMethod::Harmonic => Self {
+                attack_sec: 0.030,
+                decay_sec: 0.10,
+                sustain_level: 0.9,
+                release_sec: 0.300,
+            },
+            BodyMethod::Modal => Self {
+                attack_sec: 0.005,
+                decay_sec: 0.10,
+                sustain_level: 0.9,
+                release_sec: 0.800,
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum HarmonicMode {
+    Harmonic, // Integer multiples (1, 2, 3...)
+    Metallic, // Non-integer ratios (e.g., k^1.4)
+}
+
+#[derive(Debug, Clone)]
+pub struct TimbreGenotype {
+    pub mode: HarmonicMode,
+
+    // --- Structure ---
+    pub stiffness: f32, // Inharmonicity coefficient
+
+    // --- Color ---
+    pub spectral_slope: f32, // Harmonic spectral decay exponent
+    pub comb: f32,           // Even harmonic attenuation
+
+    // --- Physics (Time-variant) ---
+    pub damping: f32, // High-frequency decay factor based on energy level
+
+    // --- Fluctuation & Texture ---
+    pub vibrato_rate: f32,
+    pub vibrato_depth: f32,
+    pub jitter: f32, // 1/f Pink Noise FM strength
+}
+
+impl Default for TimbreGenotype {
+    fn default() -> Self {
+        Self {
+            mode: HarmonicMode::Harmonic,
+            stiffness: 0.0,
+            spectral_slope: 0.6,
+            comb: 0.0,
+            damping: 0.5,
+            vibrato_rate: 5.0,
+            vibrato_depth: 0.0,
+            jitter: 0.0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum OnsetConfig {
+    None,
+    /// Fire on every candidate the clock emits (gated only by liveness). The
+    /// coupling clock already emits candidates exactly at onset times, so the
+    /// onset rule does not need to re-decide timing. Each onset carries
+    /// `strength`: 1.0 is a plain beat, > 1.0 marks an accent that drives the
+    /// shared meter harder so a recurring downbeat can seed an emergent measure.
+    Always {
+        strength: f32,
+    },
+    Accumulator {
+        rate: f32,
+        refractory: u32,
+    },
+}
+
+impl Default for OnsetConfig {
+    fn default() -> Self {
+        OnsetConfig::Accumulator {
+            rate: 1.0,
+            refractory: 1,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub(crate) enum PhonationClockConfig {
+    #[default]
+    ThetaGate,
+    /// Per-voice phase oscillator that entrains its onset phase to the shared
+    /// production meter beat with a coupling strength `coupling`. This is the
+    /// single mechanism behind the rhythm family continuum: `coupling -> 0` is a
+    /// free renewal process (flow), medium coupling entrains loosely over time
+    /// (entrained beat), and high coupling locks into the shared beat as a deep
+    /// attractor (metric beat). `base_rate_hz` is the intrinsic onset rate the
+    /// voice free-runs at before/while it entrains; `flow_depth` shapes the
+    /// renewal clustering (0 = regular); `microtiming` is a signed beat-phase
+    /// offset applied to the lock target.
+    Coupling {
+        coupling: f32,
+        base_rate_hz: f32,
+        flow_depth: f32,
+        microtiming: f32,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum DurationConfig {
+    FixedGate {
+        length_gates: u32,
+    },
+    Field {
+        hold_min_theta: f32,
+        hold_max_theta: f32,
+        curve_k: f32,
+        curve_x0: f32,
+        drop_gain: f32,
+    },
+}
+
+impl Default for DurationConfig {
+    fn default() -> Self {
+        DurationConfig::FixedGate { length_gates: 8 }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PhonationMode {
+    #[default]
+    Gated,
+    Hold,
+}
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct PhonationConfig {
+    pub(crate) mode: PhonationMode,
+    pub(crate) onset: OnsetConfig,
+    pub(crate) duration: DurationConfig,
+    pub(crate) clock: PhonationClockConfig,
+}
+
+// --- Rhythm intention and phonation specification ---
+
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum PhonationTiming {
+    #[default]
+    Once,
+    Pulse {
+        rate_hz: f32,
+        sync: f32,
+        social: f32,
+    },
+    /// The rhythm-family continuum. One phase-coupling clock whose `coupling`
+    /// selects the family on the shared emergent meter: low = flow (free
+    /// renewal), medium = entrained (lock emerges over time), high = metric
+    /// (deep attractor). See `PhonationClockConfig::Coupling`.
+    Coupled(CoupledTimingSpec),
+}
+
+/// What metrical job a coupled voice does. The role tunes its onset emphasis and
+/// (for accent) lets a recurring strong onset seed an emergent measure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RhythmRole {
+    /// Carries the tactus.
+    #[default]
+    Beat,
+    /// Fills between beats (lighter onsets).
+    Subdivision,
+    /// Emphasized onset: drives the shared meter harder so a recurring downbeat
+    /// can induce a measure.
+    Accent,
+    /// Non-metric texture (lightest onsets); pairs with low coupling.
+    Texture,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CoupledTimingSpec {
+    /// Entrainment strength in [0, 1]: free renewal (0) .. locked beat (1).
+    pub coupling: f32,
+    /// Intrinsic onset rate the voice free-runs at before/while it entrains, and
+    /// the renewal mean for flow. The shared meter (shaped by `temporal_basin`)
+    /// is the real tempo authority once the voice locks.
+    pub base_rate_hz: f32,
+    /// Renewal clustering for the low-coupling (flow) limit; 0 = regular.
+    pub flow_depth: f32,
+    /// Signed beat-phase offset (timing elasticity) in [-0.5, 0.5].
+    pub microtiming: f32,
+    pub role: RhythmRole,
+    /// Survival coupling. Non-zero only when the voice's timing should feed its
+    /// life cycle (the entrained preset); zero leaves the life cycle untouched.
+    pub social: f32,
+    pub vitality_lambda: f32,
+    pub vitality_floor: f32,
+    pub reward: f32,
+}
+
+impl Default for CoupledTimingSpec {
+    fn default() -> Self {
+        Self {
+            coupling: 0.5,
+            base_rate_hz: 2.0,
+            flow_depth: 0.0,
+            microtiming: 0.0,
+            role: RhythmRole::Beat,
+            social: 0.0,
+            vitality_lambda: 0.0,
+            vitality_floor: 0.0,
+            reward: 0.0,
+        }
+    }
+}
+
+impl CoupledTimingSpec {
+    pub fn sanitized(self) -> Self {
+        Self {
+            coupling: self.coupling.clamp(0.0, 1.0),
+            base_rate_hz: sanitize_positive_rate_hz(self.base_rate_hz),
+            flow_depth: self.flow_depth.clamp(0.0, 1.0),
+            microtiming: if self.microtiming.is_finite() {
+                self.microtiming.clamp(-0.5, 0.5)
+            } else {
+                0.0
+            },
+            role: self.role,
+            social: self.social.clamp(0.0, 1.0),
+            vitality_lambda: sanitize_nonnegative_finite(self.vitality_lambda, 0.0),
+            vitality_floor: sanitize_v_floor(self.vitality_floor),
+            reward: sanitize_nonnegative_finite(self.reward, 0.0),
+        }
+    }
+}
+
+fn sanitize_positive_rate_hz(rate_hz: f32) -> f32 {
+    if rate_hz.is_finite() {
+        rate_hz.max(0.01)
+    } else {
+        1.0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PhonationSpec {
+    pub timing: PhonationTiming,
+    pub duration: DurationSpec,
+}
+
+impl PhonationSpec {
+    pub fn social_coupling(&self) -> f32 {
+        match self.timing {
+            PhonationTiming::Coupled(spec) => spec.sanitized().social,
+            PhonationTiming::Pulse { social, .. } => social.clamp(0.0, 1.0),
+            PhonationTiming::Once => 0.0,
+        }
+    }
+
+    pub fn prediction_sync(&self) -> f32 {
+        match self.timing {
+            PhonationTiming::Coupled(spec) => (spec.sanitized().coupling * 0.25).clamp(0.0, 1.0),
+            PhonationTiming::Pulse { sync, .. } => sync.clamp(0.0, 1.0),
+            PhonationTiming::Once => 0.0,
+        }
+    }
+
+    pub(crate) fn timing_update_kind(&self) -> PhonationTimingUpdateKind {
+        match self.timing {
+            PhonationTiming::Once => PhonationTimingUpdateKind::Once,
+            PhonationTiming::Pulse { .. } | PhonationTiming::Coupled(_) => {
+                PhonationTimingUpdateKind::Repeating
+            }
+        }
+    }
+}
+
+impl Default for PhonationSpec {
+    fn default() -> Self {
+        Self {
+            timing: PhonationTiming::Once,
+            duration: DurationSpec::WhileAlive,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PhonationTimingUpdateKind {
+    Once,
+    Repeating,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum DurationSpec {
+    WhileAlive,
+    Gates(u32),
+    Field(FieldDurationSpec),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FieldDurationSpec {
+    pub hold_min_theta: f32,
+    pub hold_max_theta: f32,
+    pub curve_k: f32,
+    pub curve_x0: f32,
+    pub drop_gain: f32,
+}
+
+impl Default for FieldDurationSpec {
+    fn default() -> Self {
+        Self {
+            hold_min_theta: 0.2,
+            hold_max_theta: 0.8,
+            curve_k: 2.0,
+            curve_x0: 0.5,
+            drop_gain: 0.5,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct VoiceSpec {
+    pub control: VoiceControl,
+    pub articulation: ArticulationCoreConfig,
+}
+
+#[derive(Debug, Clone)]
+pub enum SoundBodyConfig {
+    Sine {
+        phase: Option<f32>,
+    },
+    Harmonic {
+        genotype: TimbreGenotype,
+        partials: Option<usize>,
+    },
+}
+
+impl Default for SoundBodyConfig {
+    fn default() -> Self {
+        SoundBodyConfig::Sine { phase: None }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum ArticulationCoreConfig {
+    Entrain {
+        lifecycle: LifecycleConfig,
+        rhythm_freq: Option<f32>,
+        rhythm_coupling: RhythmCouplingMode,
+        rhythm_reward: Option<MetabolismRhythmReward>,
+        breath_gain_init: Option<f32>,
+        energy_cap: Option<f32>,
+    },
+    Seq {
+        duration: f32,
+        breath_gain_init: Option<f32>,
+    },
+    Drone {
+        sway: Option<f32>,
+        breath_gain_init: Option<f32>,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum RhythmCouplingMode {
+    #[default]
+    TemporalOnly,
+    TemporalTimesVitality {
+        lambda_v: f32,
+        v_floor: f32,
+    },
+}
+
+impl RhythmCouplingMode {
+    pub fn sanitized(self) -> Self {
+        match self {
+            RhythmCouplingMode::TemporalOnly => RhythmCouplingMode::TemporalOnly,
+            RhythmCouplingMode::TemporalTimesVitality { lambda_v, v_floor } => {
+                RhythmCouplingMode::TemporalTimesVitality {
+                    lambda_v: sanitize_nonnegative_finite(lambda_v, 0.0),
+                    v_floor: sanitize_v_floor(v_floor),
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RhythmRewardMetric {
+    AttackPhaseMatch,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct MetabolismRhythmReward {
+    pub rho_t: f32,
+    pub metric: RhythmRewardMetric,
+}
+
+impl MetabolismRhythmReward {
+    pub fn sanitized(self) -> Self {
+        Self {
+            rho_t: sanitize_nonnegative_finite(self.rho_t, 0.0),
+            metric: self.metric,
+        }
+    }
+}
+
+fn sanitize_v_floor(v_floor: f32) -> f32 {
+    if v_floor.is_finite() {
+        // Keep denominator in g(v) = (v - v_floor) / (1 - v_floor) stable.
+        v_floor.clamp(0.0, 0.999)
+    } else {
+        0.0
+    }
+}
+
+impl Default for ArticulationCoreConfig {
+    fn default() -> Self {
+        ArticulationCoreConfig::Entrain {
+            lifecycle: LifecycleConfig::default(),
+            rhythm_freq: None,
+            rhythm_coupling: RhythmCouplingMode::TemporalOnly,
+            rhythm_reward: None,
+            breath_gain_init: None,
+            energy_cap: None,
+        }
+    }
+}
+
+// Scenes are represented by SceneMarker and do not own events.
+
+impl VoiceSpec {
+    pub fn spawn(
+        &self,
+        assigned_id: u64,
+        start_frame: u64,
+        metadata: VoiceMetadata,
+        fs: f32,
+        seed_offset: u64,
+    ) -> Voice {
+        self.spawn_with_landscape(assigned_id, start_frame, metadata, fs, None, seed_offset)
+    }
+
+    pub fn spawn_with_landscape(
+        &self,
+        assigned_id: u64,
+        start_frame: u64,
+        metadata: VoiceMetadata,
+        fs: f32,
+        landscape: Option<&crate::core::landscape::LandscapeFrame>,
+        seed_offset: u64,
+    ) -> Voice {
+        Voice::spawn_from_control(
+            self.control.clone(),
+            self.articulation.clone(),
+            assigned_id,
+            start_frame,
+            metadata,
+            fs,
+            landscape,
+            seed_offset,
+        )
+    }
+}
+
+impl fmt::Display for VoiceSpec {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Voice(control={:?})", self.control)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum SpawnStrategy {
+    Consonance {
+        root_freq: f32,
+        min_mul: f32,
+        max_mul: f32,
+        min_dist_erb: f32,
+    },
+    ConsonanceDensity {
+        min_freq: f32,
+        max_freq: f32,
+        min_dist_erb: f32,
+    },
+    RandomLog {
+        min_freq: f32,
+        max_freq: f32,
+    },
+    RejectTargets {
+        base: Box<SpawnStrategy>,
+        anchor_hz: f32,
+        targets_st: Vec<f32>,
+        exclusion_st: f32,
+        max_tries: usize,
+    },
+    Linear {
+        start_freq: f32,
+        end_freq: f32,
+    },
+}
+
+impl SpawnStrategy {
+    pub fn freq_range_hz(&self) -> (f32, f32) {
+        match self {
+            SpawnStrategy::Consonance {
+                root_freq,
+                min_mul,
+                max_mul,
+                ..
+            } => (root_freq * min_mul, root_freq * max_mul),
+            SpawnStrategy::ConsonanceDensity {
+                min_freq, max_freq, ..
+            }
+            | SpawnStrategy::RandomLog { min_freq, max_freq }
+            | SpawnStrategy::Linear {
+                start_freq: min_freq,
+                end_freq: max_freq,
+            } => (*min_freq, *max_freq),
+            SpawnStrategy::RejectTargets { base, .. } => base.freq_range_hz(),
+        }
+    }
+
+    pub fn min_dist_erb(&self) -> f32 {
+        match self {
+            SpawnStrategy::Consonance { min_dist_erb, .. }
+            | SpawnStrategy::ConsonanceDensity { min_dist_erb, .. } => *min_dist_erb,
+            SpawnStrategy::RejectTargets { base, .. } => base.min_dist_erb(),
+            _ => 0.0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum RespawnPolicy {
+    #[default]
+    None,
+    Random,
+    Hereditary {
+        sigma_oct: f32,
+    },
+    PeakBiased {
+        config: RespawnPeakBiasConfig,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RespawnPeakBiasConfig {
+    pub proposal_sigma_st: f32,
+    pub same_band_discount: f32,
+    pub same_band_window_cents: f32,
+    pub octave_discount: f32,
+    pub octave_window_cents: f32,
+    pub local_search_radius_st: f32,
+    pub local_search_step_st: f32,
+    pub scene_score_exponent: f32,
+}
+
+impl Default for RespawnPeakBiasConfig {
+    fn default() -> Self {
+        Self {
+            proposal_sigma_st: 9.0,
+            same_band_discount: 0.08,
+            same_band_window_cents: 35.0,
+            octave_discount: 0.20,
+            octave_window_cents: 35.0,
+            local_search_radius_st: 0.50,
+            local_search_step_st: 0.05,
+            scene_score_exponent: 0.35,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+#[allow(clippy::large_enum_variant)]
+pub enum Action {
+    Spawn {
+        group_id: u64,
+        ids: Vec<u64>,
+        spec: VoiceSpec,
+        strategy: Option<SpawnStrategy>,
+    },
+    UpdateGroup {
+        group_id: u64,
+        /// Partial control patch applied to runtime current members of `group_id`.
+        patch: ControlUpdate,
+    },
+    ReleaseGroup {
+        group_id: u64,
+        fade_sec: f32,
+    },
+    SetRespawnPolicy {
+        group_id: u64,
+        policy: RespawnPolicy,
+        settle_strategy: Option<SpawnStrategy>,
+        capacity: usize,
+        min_c_level: Option<f32>,
+        background_death_rate_per_sec: f32,
+    },
+    SetGroupCrowdingTarget {
+        group_id: u64,
+        same_group_visible: bool,
+        other_group_visible: bool,
+    },
+    SetHarmonicityParams {
+        update: LandscapeUpdate,
+    },
+    SetGlobalCoupling {
+        value: f32,
+    },
+    SetRoughnessTolerance {
+        value: f32,
+    },
+    Finish,
+}
+
+impl fmt::Display for Action {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Action::Spawn { group_id, ids, .. } => {
+                write!(f, "Spawn group={} count={}", group_id, ids.len())
+            }
+            Action::UpdateGroup { group_id, .. } => write!(f, "Update group={}", group_id),
+            Action::ReleaseGroup { group_id, fade_sec } => {
+                write!(f, "Release group={} fade={:.3}", group_id, fade_sec)
+            }
+            Action::SetRespawnPolicy {
+                group_id,
+                policy,
+                capacity,
+                background_death_rate_per_sec,
+                ..
+            } => {
+                write!(
+                    f,
+                    "SetRespawnPolicy group={} policy={:?} capacity={} background_death_rate_per_sec={:.3}",
+                    group_id, policy, capacity, background_death_rate_per_sec
+                )
+            }
+            Action::SetGroupCrowdingTarget {
+                group_id,
+                same_group_visible,
+                other_group_visible,
+            } => write!(
+                f,
+                "SetGroupCrowdingTarget group={} same={} other={}",
+                group_id, same_group_visible, other_group_visible
+            ),
+            Action::SetHarmonicityParams { update } => write!(
+                f,
+                "SetHarmonicityParams mirror={:?} roughness_k={:?}",
+                update.mirror, update.roughness_k
+            ),
+            Action::SetGlobalCoupling { value } => {
+                write!(f, "SetGlobalCoupling value={:.3}", value)
+            }
+            Action::SetRoughnessTolerance { value } => {
+                write!(f, "SetRoughnessTolerance value={:.3}", value)
+            }
+            Action::Finish => write!(f, "Finish"),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rhythm_sanitizers_handle_nonfinite_and_negative_inputs() {
+        let mode = RhythmCouplingMode::TemporalTimesVitality {
+            lambda_v: f32::NAN,
+            v_floor: f32::INFINITY,
+        }
+        .sanitized();
+        assert_eq!(
+            mode,
+            RhythmCouplingMode::TemporalTimesVitality {
+                lambda_v: 0.0,
+                v_floor: 0.0
+            }
+        );
+
+        let reward = MetabolismRhythmReward {
+            rho_t: -1.0,
+            metric: RhythmRewardMetric::AttackPhaseMatch,
+        }
+        .sanitized();
+        assert_eq!(reward.rho_t, 0.0);
+    }
+}

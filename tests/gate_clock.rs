@@ -42,11 +42,7 @@ fn same_phase_goes_to_next_cycle() {
     let expected = (fs / freq_hz).round() as u64;
     assert!(next > now_tick);
     let delta = next - now_tick;
-    let diff = if delta > expected {
-        delta - expected
-    } else {
-        expected - delta
-    };
+    let diff = delta.abs_diff(expected);
     assert!(diff <= 1, "delta={delta} expected={expected}");
 }
 

@@ -230,7 +230,7 @@ impl SoundBodyFactory for ModalBodyFactory {
             timbre.unison,
         );
         let mut body = body;
-        body.seed_modal_phases(rand::RngCore::next_u64(rng));
+        body.seed_modal_phases(rand::Rng::next_u64(rng));
         AnySoundBody::from_dyn(Box::new(body))
     }
 }

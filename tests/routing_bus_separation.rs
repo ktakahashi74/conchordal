@@ -2,11 +2,11 @@ use conchordal::core::landscape::Landscape;
 use conchordal::core::log2space::Log2Space;
 use conchordal::core::timebase::{Tick, Timebase};
 use conchordal::life::control::{Routing, VoiceControl};
+use conchordal::life::generator_model::GeneratorModel;
 use conchordal::life::population::Population;
-use conchordal::life::scenario::{ArticulationCoreConfig, VoiceConfig};
 use conchordal::life::schedule_renderer::ScheduleRenderer;
 use conchordal::life::voice::VoiceMetadata;
-use conchordal::life::world_model::WorldModel;
+use conchordal::scenario::{ArticulationCoreConfig, VoiceSpec};
 
 fn test_timebase() -> Timebase {
     Timebase {
@@ -15,12 +15,12 @@ fn test_timebase() -> Timebase {
     }
 }
 
-fn spawn_voice_with_routing(routing: Routing) -> VoiceConfig {
+fn spawn_voice_with_routing(routing: Routing) -> VoiceSpec {
     let mut control = VoiceControl::default();
     control.pitch.freq = 440.0;
     control.body.amp = 0.4;
     control.body.routing = routing;
-    VoiceConfig {
+    VoiceSpec {
         control,
         articulation: ArticulationCoreConfig::default(),
     }
@@ -29,7 +29,7 @@ fn spawn_voice_with_routing(routing: Routing) -> VoiceConfig {
 fn render_one_frame(routing: Routing) -> (bool, bool) {
     let tb = test_timebase();
     let space = Log2Space::new(55.0, 8000.0, 96);
-    let mut world = WorldModel::new(tb, space.clone());
+    let mut world = GeneratorModel::new(tb, space.clone());
     let mut pop = Population::new(tb);
 
     let cfg = spawn_voice_with_routing(routing);
@@ -48,45 +48,48 @@ fn render_one_frame(routing: Routing) -> (bool, bool) {
     let mut renderer = ScheduleRenderer::new(tb);
     let frame = renderer.render(&batches, now, &landscape.rhythm);
     let presentation_active = frame.presentation.iter().any(|s| s.abs() > 1e-6);
-    let field_active = frame.field.iter().any(|s| s.abs() > 1e-6);
-    (presentation_active, field_active)
+    let habitat_active = frame.habitat.iter().any(|s| s.abs() > 1e-6);
+    (presentation_active, habitat_active)
 }
 
 #[test]
 fn default_routing_fills_both_buses() {
-    let (presentation, field) = render_one_frame(Routing::default());
+    let (presentation, habitat) = render_one_frame(Routing::default());
     assert!(presentation, "default routing must feed presentation bus");
-    assert!(field, "default routing must feed field bus");
+    assert!(habitat, "default routing must feed habitat bus");
 }
 
 #[test]
-fn field_only_suppresses_only_presentation_bus() {
+fn habitat_only_suppresses_only_presentation_bus() {
     let routing = Routing {
         to_presentation: false,
-        to_field: true,
+        to_habitat: true,
     };
-    let (presentation, field) = render_one_frame(routing);
+    let (presentation, habitat) = render_one_frame(routing);
     assert!(
         !presentation,
-        "field-only voice must not leak into presentation bus"
+        "habitat-only voice must not leak into presentation bus"
     );
-    assert!(field, "field-only voice must still contribute to field bus");
+    assert!(
+        habitat,
+        "habitat-only voice must still contribute to habitat bus"
+    );
 }
 
 #[test]
-fn presentation_only_suppresses_only_field_bus() {
+fn presentation_only_suppresses_only_habitat_bus() {
     let routing = Routing {
         to_presentation: true,
-        to_field: false,
+        to_habitat: false,
     };
-    let (presentation, field) = render_one_frame(routing);
+    let (presentation, habitat) = render_one_frame(routing);
     assert!(
         presentation,
         "presentation-only voice must still reach presentation bus"
     );
     assert!(
-        !field,
-        "presentation-only voice must not leak into field bus"
+        !habitat,
+        "presentation-only voice must not leak into habitat bus"
     );
 }
 
@@ -94,9 +97,9 @@ fn presentation_only_suppresses_only_field_bus() {
 fn both_flags_off_produces_silence_everywhere() {
     let routing = Routing {
         to_presentation: false,
-        to_field: false,
+        to_habitat: false,
     };
-    let (presentation, field) = render_one_frame(routing);
+    let (presentation, habitat) = render_one_frame(routing);
     assert!(!presentation);
-    assert!(!field);
+    assert!(!habitat);
 }

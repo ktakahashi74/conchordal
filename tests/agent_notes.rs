@@ -2,13 +2,13 @@ use conchordal::core::landscape::Landscape;
 use conchordal::core::log2space::Log2Space;
 use conchordal::core::timebase::{Tick, Timebase};
 use conchordal::life::control::VoiceControl;
+use conchordal::life::generator_model::GeneratorModel;
 use conchordal::life::population::Population;
-use conchordal::life::scenario::{
-    ArticulationCoreConfig, DurationSpec, PhonationSpec, VoiceConfig, WhenSpec,
-};
 use conchordal::life::schedule_renderer::ScheduleRenderer;
 use conchordal::life::voice::VoiceMetadata;
-use conchordal::life::world_model::WorldModel;
+use conchordal::scenario::{
+    ArticulationCoreConfig, DurationSpec, PhonationSpec, PhonationTiming, VoiceSpec,
+};
 
 #[test]
 fn agents_publish_notes_and_render_audio() {
@@ -17,20 +17,20 @@ fn agents_publish_notes_and_render_audio() {
         hop: 64,
     };
     let space = Log2Space::new(55.0, 8000.0, 96);
-    let mut world = WorldModel::new(tb, space.clone());
+    let mut world = GeneratorModel::new(tb, space.clone());
     let mut pop = Population::new(tb);
     let mut control = VoiceControl::default();
     control.pitch.freq = 440.0;
     control.body.amp = 0.4;
     control.phonation.spec = PhonationSpec {
-        when: WhenSpec::Pulse {
-            rate: 3.3,
+        timing: PhonationTiming::Pulse {
+            rate_hz: 3.3,
             sync: 0.0,
             social: 0.0,
         },
         duration: DurationSpec::Gates(5),
     };
-    let agent_cfg = VoiceConfig {
+    let agent_cfg = VoiceSpec {
         control,
         articulation: ArticulationCoreConfig::default(),
     };
@@ -77,20 +77,20 @@ fn publish_notes_runs_when_gate_in_hop_window() {
         hop: 64,
     };
     let space = Log2Space::new(55.0, 8000.0, 96);
-    let mut world = WorldModel::new(tb, space.clone());
+    let mut world = GeneratorModel::new(tb, space.clone());
     let mut pop = Population::new(tb);
     let mut control = VoiceControl::default();
     control.pitch.freq = 440.0;
     control.body.amp = 0.4;
     control.phonation.spec = PhonationSpec {
-        when: WhenSpec::Pulse {
-            rate: 3.3,
+        timing: PhonationTiming::Pulse {
+            rate_hz: 3.3,
             sync: 0.0,
             social: 0.0,
         },
         duration: DurationSpec::Gates(5),
     };
-    let agent_cfg = VoiceConfig {
+    let agent_cfg = VoiceSpec {
         control,
         articulation: ArticulationCoreConfig::default(),
     };
@@ -129,7 +129,7 @@ fn publish_notes_runs_when_gate_in_hop_window() {
     landscape_off.rhythm.theta.phase = 0.0;
     landscape_off.rhythm.env_open = 1.0;
     landscape_off.rhythm.env_level = 1.0;
-    let mut world_off = WorldModel::new(tb, Log2Space::new(20.0, 20_000.0, 24));
+    let mut world_off = GeneratorModel::new(tb, Log2Space::new(20.0, 20_000.0, 24));
     let mut pop_off = Population::new(tb);
     let agent = agent_cfg.spawn(assigned_id, 0, metadata, tb.fs, 0);
     pop_off.add_voice(agent);

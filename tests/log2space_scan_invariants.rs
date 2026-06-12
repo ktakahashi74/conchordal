@@ -43,8 +43,7 @@ fn pot_state_scan_len_invariants_hold() {
     compose_consonance_field_level_scan(&h_state, &r_state, &kernel, &repr, &mut c_level);
 }
 
-// compose_consonance_field_level_scan uses debug_assert for length checks in debug builds.
-#[cfg(debug_assertions)]
+// compose_consonance_field_level_scan enforces scan lengths in all builds.
 #[test]
 #[should_panic]
 fn compose_panics_on_len_mismatch() {

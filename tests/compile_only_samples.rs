@@ -7,7 +7,7 @@ use conchordal::cli::Args;
 use conchordal::config::AppConfig;
 
 fn args_for_path(path: &Path) -> Args {
-    let args = Args {
+    Args {
         play: false,
         scenario_path: path.to_string_lossy().to_string(),
         config: "config.toml".to_string(),
@@ -16,8 +16,7 @@ fn args_for_path(path: &Path) -> Args {
         nogui: false,
         compile_only: false,
         report: None,
-    };
-    args
+    }
 }
 
 fn default_config() -> AppConfig {

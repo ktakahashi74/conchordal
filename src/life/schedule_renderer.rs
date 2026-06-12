@@ -20,13 +20,13 @@ struct RoutedTone {
 
 pub struct RenderFrame<'a> {
     pub presentation: &'a [f32],
-    pub field: &'a [f32],
+    pub habitat: &'a [f32],
 }
 
 pub struct ScheduleRenderer {
     time: Timebase,
     buf_presentation: Vec<f32>,
-    buf_field: Vec<f32>,
+    buf_habitat: Vec<f32>,
     tones: HashMap<ToneKey, RoutedTone>,
     cutoff_tick: Option<Tick>,
 }
@@ -38,7 +38,7 @@ impl ScheduleRenderer {
         Self {
             time,
             buf_presentation: vec![0.0; time.hop],
-            buf_field: vec![0.0; time.hop],
+            buf_habitat: vec![0.0; time.hop],
             tones: HashMap::new(),
             cutoff_tick: None,
         }
@@ -54,17 +54,17 @@ impl ScheduleRenderer {
         if self.buf_presentation.len() != hop {
             self.buf_presentation.resize(hop, 0.0);
         }
-        if self.buf_field.len() != hop {
-            self.buf_field.resize(hop, 0.0);
+        if self.buf_habitat.len() != hop {
+            self.buf_habitat.resize(hop, 0.0);
         }
         self.buf_presentation.fill(0.0);
-        self.buf_field.fill(0.0);
+        self.buf_habitat.fill(0.0);
 
         let fs = self.time.fs;
         if fs <= 0.0 {
             return RenderFrame {
                 presentation: &self.buf_presentation,
-                field: &self.buf_field,
+                habitat: &self.buf_habitat,
             };
         }
 
@@ -77,7 +77,7 @@ impl ScheduleRenderer {
         for tick in now..end {
             let idx = (tick - now) as usize;
             let mut acc_presentation = 0.0f32;
-            let mut acc_field = 0.0f32;
+            let mut acc_habitat = 0.0f32;
             for (_key, rt) in self.tones.iter_mut() {
                 rt.tone.apply_updates_if_due(tick);
                 rt.tone.kick_planned_if_due(tick);
@@ -85,18 +85,18 @@ impl ScheduleRenderer {
                 if rt.routing.to_presentation {
                     acc_presentation += sample;
                 }
-                if rt.routing.to_field {
-                    acc_field += sample;
+                if rt.routing.to_habitat {
+                    acc_habitat += sample;
                 }
             }
             self.buf_presentation[idx] = acc_presentation;
-            self.buf_field[idx] = acc_field;
+            self.buf_habitat[idx] = acc_habitat;
             rhythms.advance_in_place(dt);
         }
 
         RenderFrame {
             presentation: &self.buf_presentation,
-            field: &self.buf_field,
+            habitat: &self.buf_habitat,
         }
     }
 

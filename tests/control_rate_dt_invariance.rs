@@ -2,14 +2,14 @@ use conchordal::core::landscape::Landscape;
 use conchordal::core::log2space::Log2Space;
 use conchordal::core::modulation::{NeuralRhythms, RhythmBand};
 use conchordal::life::control::VoiceControl;
-use conchordal::life::scenario::{ArticulationCoreConfig, VoiceConfig};
 use conchordal::life::voice::{AnyArticulationCore, ArticulationState, Voice, VoiceMetadata};
+use conchordal::scenario::{ArticulationCoreConfig, VoiceSpec};
 
 fn build_agent() -> Voice {
     let mut control = VoiceControl::default();
     control.pitch.freq = 440.0;
     control.body.amp = 0.3;
-    let cfg = VoiceConfig {
+    let cfg = VoiceSpec {
         control,
         articulation: ArticulationCoreConfig::default(),
     };

@@ -49,7 +49,7 @@ mod tests {
     use super::*;
     use crate::core::consonance_kernel::{ConsonanceKernel, ConsonanceRepresentationParams};
     use crate::core::harmonicity_kernel::{HarmonicityKernel, HarmonicityParams};
-    use crate::core::landscape::{LandscapeParams, RoughnessScalarMode};
+    use crate::core::landscape::LandscapeParams;
     use crate::core::log2space::Log2Space;
     use crate::core::nsgt_kernel::{NsgtKernelLog2, NsgtLog2Config, PowerMode};
     use crate::core::nsgt_rt::RtNsgtKernelLog2;
@@ -68,8 +68,6 @@ mod tests {
             consonance_kernel: ConsonanceKernel::default(),
             consonance_representation: ConsonanceRepresentationParams::default(),
             consonance_density_roughness_gain: 1.0,
-            roughness_scalar_mode: RoughnessScalarMode::Total,
-            roughness_half: 0.1,
             loudness_exp: 1.0,
             ref_power: 1.0,
             tau_ms: 1.0,
@@ -122,14 +120,14 @@ mod tests {
         let mut last_analysis: Option<u64> = None;
 
         for frame_idx in 0..steps {
-            if frame_idx >= warmup {
-                if let Some(analysis_id) = last_analysis {
-                    let age = frame_idx.saturating_sub(analysis_id);
-                    assert!(
-                        age <= 1,
-                        "expected landscape_age<=1 after warmup (frame={frame_idx}, id={analysis_id}, age={age})"
-                    );
-                }
+            if frame_idx >= warmup
+                && let Some(analysis_id) = last_analysis
+            {
+                let age = frame_idx.saturating_sub(analysis_id);
+                assert!(
+                    age <= 1,
+                    "expected landscape_age<=1 after warmup (frame={frame_idx}, id={analysis_id}, age={age})"
+                );
             }
 
             hop_tx

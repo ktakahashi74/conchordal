@@ -1,15 +1,18 @@
-use super::scenario::{
-    Action, ControlUpdateMode, RespawnPeakBiasConfig, RespawnPolicy, SpawnStrategy, VoiceConfig,
-};
 use super::telemetry::LifeRecord;
 use super::voice::{AnyArticulationCore, PhonationBatch, SoundBody, Voice, VoiceMetadata};
 use crate::core::landscape::{Landscape, LandscapeFrame, LandscapeUpdate};
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
+use crate::dcc_coupler::ListenerPressure;
 use crate::life::control::{MAX_FREQ_HZ, MIN_FREQ_HZ};
+use crate::life::generator_model::GeneratorModel;
 use crate::life::social_density::SocialDensityTrace;
-use crate::life::world_model::WorldModel;
-use rand::{Rng, SeedableRng, distr::Distribution, distr::weighted::WeightedIndex, rngs::SmallRng};
+use crate::scenario::{
+    Action, ControlUpdateMode, RespawnPeakBiasConfig, RespawnPolicy, SpawnStrategy, VoiceSpec,
+};
+use rand::{
+    Rng, RngExt, SeedableRng, distr::Distribution, distr::weighted::WeightedIndex, rngs::SmallRng,
+};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use tracing::{debug, info, warn};
@@ -96,6 +99,7 @@ pub struct Population {
     last_pred_gate_stats: Option<PredGateStats>,
     last_gate_boundary_in_hop: Option<bool>,
     last_phonation_onsets_in_hop: Option<u32>,
+    last_phonation_onset_strength_in_hop: Option<f32>,
     death_records: Vec<LifeRecord>,
     auto_observe: Option<ObservationConfig>,
     runtime_events: Vec<RuntimeEvent>,
@@ -104,7 +108,7 @@ pub struct Population {
 
 #[derive(Debug, Clone)]
 struct RuntimeGroupState {
-    template: VoiceConfig,
+    template: VoiceSpec,
     strategy: Option<SpawnStrategy>,
     respawn_policy: RespawnPolicy,
     respawn_settle_strategy: Option<SpawnStrategy>,
@@ -236,6 +240,7 @@ impl Population {
             last_pred_gate_stats: None,
             last_gate_boundary_in_hop: None,
             last_phonation_onsets_in_hop: None,
+            last_phonation_onset_strength_in_hop: None,
             death_records: Vec::new(),
             auto_observe: None,
             runtime_events: Vec::new(),
@@ -256,6 +261,10 @@ impl Population {
             first_k: DEFAULT_REPORT_FIRST_K,
             plv_window: DEFAULT_REPORT_PLV_WINDOW,
         });
+    }
+
+    pub fn reserve_runtime_ids_through(&mut self, max_id: u64) {
+        self.track_runtime_id(max_id);
     }
 
     pub fn drain_runtime_events(&mut self) -> Vec<RuntimeEvent> {
@@ -339,43 +348,51 @@ impl Population {
         self.last_phonation_onsets_in_hop
     }
 
+    /// Sum of onset strengths fired this hop. Accented onsets weigh more, so the
+    /// production meter can sense a recurring downbeat (the seed of an emergent
+    /// measure), not just an onset count.
+    pub fn last_phonation_onset_strength_in_hop(&self) -> Option<f32> {
+        self.last_phonation_onset_strength_in_hop
+    }
+
     pub fn collect_phonation_batches(
         &mut self,
-        world: &mut WorldModel,
+        generator_model: &mut GeneratorModel,
         landscape: &LandscapeFrame,
         now: Tick,
     ) -> Vec<PhonationBatch> {
         let mut batches = Vec::new();
-        let count = self.collect_phonation_batches_into(world, landscape, now, &mut batches);
+        let count =
+            self.collect_phonation_batches_into(generator_model, landscape, now, &mut batches);
         batches.truncate(count);
         batches
     }
 
     pub(crate) fn collect_phonation_batches_into(
         &mut self,
-        world: &mut WorldModel,
+        generator_model: &mut GeneratorModel,
         landscape: &LandscapeFrame,
         now: Tick,
         out: &mut Vec<PhonationBatch>,
     ) -> usize {
-        let tb = world.time;
+        let tb = generator_model.time;
         let hop_tick = (tb.hop as Tick).max(1);
         let frame_end = now.saturating_add(hop_tick);
-        let gate_boundary_in_hop = world
+        let gate_boundary_in_hop = generator_model
             .next_gate_tick_est
             .is_some_and(|gate_tick| gate_tick > now && gate_tick <= frame_end);
-        let pred_scan =
-            world
-                .predict_consonance_field_level_next_gate()
-                .and_then(|(gate_tick, scan)| {
-                    if gate_tick >= now && gate_tick < frame_end {
-                        Some(scan)
-                    } else {
-                        None
-                    }
-                });
+        let pred_scan = generator_model
+            .predict_consonance_field_level_next_gate()
+            .and_then(|(gate_tick, scan)| {
+                if gate_tick >= now && gate_tick < frame_end {
+                    Some(scan)
+                } else {
+                    None
+                }
+            });
         let mut pred_acc = PredGateAccum::default();
         let mut phonation_onsets_in_hop = 0u32;
+        let mut phonation_onset_strength_in_hop = 0.0f32;
         let mut used = 0usize;
         let social_trace = self.social_trace.as_ref();
         for voice in &mut self.voices {
@@ -387,13 +404,10 @@ impl Population {
             let consonance = landscape.evaluate_pitch_level(voice.body.base_freq_hz());
             let extra_gate_gain = match pred_scan.as_ref() {
                 Some(scan) => {
-                    let gain_raw = world
+                    let gain_raw = generator_model
                         .sample_scan_field_level(scan, voice.body.base_freq_hz())
                         .clamp(0.0, 1.0);
-                    let sync = match &voice.effective_control.phonation.spec.when {
-                        crate::life::scenario::WhenSpec::Pulse { sync, .. } => sync.clamp(0.0, 1.0),
-                        _ => 0.0,
-                    };
+                    let sync = voice.effective_control.phonation.spec.prediction_sync();
                     let mixed = mix_pred_gate_gain(sync, gain_raw);
                     let mixed = if mixed.is_finite() { mixed } else { 1.0 };
                     pred_acc.push(gain_raw, mixed, sync);
@@ -413,6 +427,11 @@ impl Population {
             );
             phonation_onsets_in_hop = phonation_onsets_in_hop
                 .saturating_add(batch.onsets.len().min(u32::MAX as usize) as u32);
+            phonation_onset_strength_in_hop += batch
+                .onsets
+                .iter()
+                .map(|o| o.strength.max(0.0))
+                .sum::<f32>();
             let has_output =
                 !(batch.cmds.is_empty() && batch.tones.is_empty() && batch.onsets.is_empty());
             if has_output {
@@ -437,6 +456,7 @@ impl Population {
         }
         self.last_gate_boundary_in_hop = Some(gate_boundary_in_hop);
         self.last_phonation_onsets_in_hop = Some(phonation_onsets_in_hop);
+        self.last_phonation_onset_strength_in_hop = Some(phonation_onset_strength_in_hop);
         self.last_pred_gate_stats = pred_acc.finalize();
         used
     }
@@ -654,7 +674,7 @@ impl Population {
         }
     }
 
-    fn spawn_one(&mut self, params: SpawnParams, spec: &VoiceConfig, landscape: &LandscapeFrame) {
+    fn spawn_one(&mut self, params: SpawnParams, spec: &VoiceSpec, landscape: &LandscapeFrame) {
         let SpawnParams {
             id,
             group_id,
@@ -678,7 +698,7 @@ impl Population {
             generation,
             parent_id,
         };
-        let cfg = VoiceConfig {
+        let cfg = VoiceSpec {
             control: control.clone(),
             articulation: spec.articulation.clone(),
         };
@@ -694,7 +714,6 @@ impl Population {
             spawned.life_accumulator = Some(super::telemetry::LifeAccumulator::new(
                 self.current_frame,
                 observe.first_k,
-                landscape.evaluate_pitch_level(resolved_freq_hz),
             ));
             if let AnyArticulationCore::Entrain(ref mut core) = spawned.articulation.core {
                 core.enable_plv(observe.plv_window);
@@ -719,7 +738,7 @@ impl Population {
     fn ensure_group_state(
         &mut self,
         group_id: u64,
-        spec: VoiceConfig,
+        spec: VoiceSpec,
         strategy: Option<SpawnStrategy>,
         member_count: usize,
     ) {
@@ -1213,7 +1232,7 @@ impl Population {
         &mut self,
         group_id: u64,
         ids: Vec<u64>,
-        spec: VoiceConfig,
+        spec: VoiceSpec,
         strategy: Option<SpawnStrategy>,
         landscape: &LandscapeFrame,
     ) {
@@ -1320,7 +1339,9 @@ impl Population {
         self.pending_update.take()
     }
 
-    pub fn kuramoto_order_parameter(&self) -> Option<(f32, usize)> {
+    /// Offset-removed entrainment phases of live voices, one per `Entrain` core.
+    /// Used for the Kuramoto order parameter and the GUI phase circle.
+    pub fn entrain_aligned_phases(&self) -> Vec<f32> {
         let mut phases = Vec::with_capacity(self.voices.len());
         for voice in &self.voices {
             if !voice.is_alive() {
@@ -1329,12 +1350,27 @@ impl Population {
             let AnyArticulationCore::Entrain(core) = &voice.articulation.core else {
                 continue;
             };
-            if core.rhythm_phase.is_finite() {
-                phases.push(core.rhythm_phase);
+            let aligned_phase =
+                (core.rhythm_phase - core.phase_offset).rem_euclid(std::f32::consts::TAU);
+            if aligned_phase.is_finite() {
+                phases.push(aligned_phase);
             }
         }
+        phases
+    }
+
+    pub fn kuramoto_order_parameter(&self) -> Option<(f32, usize)> {
+        let phases = self.entrain_aligned_phases();
         let r = kuramoto_order_from_phases(&phases)?;
         Some((r, phases.len()))
+    }
+
+    /// Entrainment phases plus their Kuramoto order in a single voice scan, for
+    /// the UI frame (avoids scanning + allocating twice per frame).
+    pub fn entrain_phases_and_order(&self) -> (Vec<f32>, Option<f32>) {
+        let phases = self.entrain_aligned_phases();
+        let r = kuramoto_order_from_phases(&phases);
+        (phases, r)
     }
 
     /// Assumes `set_current_frame` has been called for the current hop.
@@ -1352,6 +1388,23 @@ impl Population {
         current_frame: u64,
         dt_sec: f32,
         landscape: &Landscape,
+    ) {
+        self.advance_with_listener_pressure(
+            samples_len,
+            current_frame,
+            dt_sec,
+            landscape,
+            ListenerPressure::default(),
+        );
+    }
+
+    pub(crate) fn advance_with_listener_pressure(
+        &mut self,
+        samples_len: usize,
+        current_frame: u64,
+        dt_sec: f32,
+        landscape: &Landscape,
+        listener_pressure: ListenerPressure,
     ) {
         self.current_frame = current_frame;
         if !dt_sec.is_finite() || dt_sec <= 0.0 {
@@ -1371,7 +1424,13 @@ impl Population {
             match self.control_update_mode {
                 ControlUpdateMode::SnapshotPhased => {
                     self.prepare_substep_snapshot(crowding_active);
-                    self.decide_substep(dt_step_sec, &rhythms, landscape, crowding_active);
+                    self.decide_substep(
+                        dt_step_sec,
+                        &rhythms,
+                        landscape,
+                        crowding_active,
+                        listener_pressure,
+                    );
                     self.commit_substep(dt_step_sec, &rhythms, landscape, global_coupling);
                 }
                 ControlUpdateMode::SequentialRotating => {
@@ -1382,6 +1441,7 @@ impl Population {
                         global_coupling,
                         crowding_active,
                         current_frame as usize + substep_idx,
+                        listener_pressure,
                     );
                 }
             }
@@ -1432,6 +1492,7 @@ impl Population {
         rhythms: &NeuralRhythms,
         landscape: &Landscape,
         crowding_active: bool,
+        listener_pressure: ListenerPressure,
     ) {
         // Decide phase: evaluate all alive voices against a stable snapshot.
         for voice_idx in 0..self.voices.len() {
@@ -1456,12 +1517,13 @@ impl Population {
                 &[]
             };
             if let Some(voice) = self.voices.get_mut(voice_idx) {
-                voice.decide_pitch_target(
+                voice.decide_pitch_target_with_listener_pressure(
                     dt_step_sec,
                     rhythms,
                     landscape,
                     neighbors,
                     neighbor_weights,
+                    listener_pressure,
                 );
             }
             self.advance_scratch
@@ -1576,6 +1638,7 @@ impl Population {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn advance_substep_sequential_current(
         &mut self,
         dt_step_sec: f32,
@@ -1584,6 +1647,7 @@ impl Population {
         global_coupling: f32,
         crowding_active: bool,
         order_offset: usize,
+        listener_pressure: ListenerPressure,
     ) {
         if self.voices.is_empty() {
             return;
@@ -1616,12 +1680,13 @@ impl Population {
                 &[]
             };
             if let Some(voice) = self.voices.get_mut(voice_idx) {
-                voice.decide_pitch_target(
+                voice.decide_pitch_target_with_listener_pressure(
                     dt_step_sec,
                     rhythms,
                     landscape,
                     neighbors,
                     neighbor_weights,
+                    listener_pressure,
                 );
                 voice.commit_decided_control(dt_step_sec, rhythms, landscape, global_coupling);
             }
@@ -1735,15 +1800,15 @@ mod tests {
     use crate::core::log2space::Log2Space;
     use crate::core::timebase::Timebase;
     use crate::life::control::{ControlUpdate, PitchMode, VoiceControl};
+    use crate::life::generator_model::GeneratorModel;
     use crate::life::lifecycle::LifecycleConfig;
     use crate::life::phonation_engine::{OnsetEvent, OnsetKick, ToneCmd};
-    use crate::life::scenario::{
-        Action, ArticulationCoreConfig, RespawnPeakBiasConfig, RespawnPolicy, SpawnSpec,
-        SpawnStrategy,
-    };
     use crate::life::sound::{BodyKind, BodySnapshot};
-    use crate::life::world_model::WorldModel;
-    use rand::{Rng, SeedableRng};
+    use crate::scenario::{
+        Action, ArticulationCoreConfig, RespawnPeakBiasConfig, RespawnPolicy, SpawnStrategy,
+        VoiceSpec,
+    };
+    use rand::{RngExt, SeedableRng};
     use std::collections::HashSet;
 
     fn test_pop() -> Population {
@@ -1779,19 +1844,19 @@ mod tests {
         }
     }
 
-    fn spawn_spec_with_freq(freq: f32) -> SpawnSpec {
+    fn spawn_spec_with_freq(freq: f32) -> VoiceSpec {
         let mut control = VoiceControl::default();
         control.pitch.freq = freq;
-        SpawnSpec {
+        VoiceSpec {
             control,
             articulation: ArticulationCoreConfig::default(),
         }
     }
 
-    fn decay_spawn_spec_with_freq(freq: f32, half_life_sec: f32) -> SpawnSpec {
+    fn decay_spawn_spec_with_freq(freq: f32, half_life_sec: f32) -> VoiceSpec {
         let mut control = VoiceControl::default();
         control.pitch.freq = freq;
-        SpawnSpec {
+        VoiceSpec {
             control,
             articulation: ArticulationCoreConfig::Entrain {
                 lifecycle: LifecycleConfig::Decay {
@@ -1800,22 +1865,18 @@ mod tests {
                     attack_sec: 0.001,
                 },
                 rhythm_freq: None,
-                rhythm_sensitivity: None,
-                rhythm_coupling: crate::life::scenario::RhythmCouplingMode::TemporalOnly,
+                rhythm_coupling: crate::scenario::RhythmCouplingMode::TemporalOnly,
                 rhythm_reward: None,
                 breath_gain_init: None,
-                k_omega: None,
-                base_sigma: None,
-                gate_thresholds: None,
                 energy_cap: None,
             },
         }
     }
 
-    fn sustain_spawn_spec_with_freq(freq: f32) -> SpawnSpec {
+    fn sustain_spawn_spec_with_freq(freq: f32) -> VoiceSpec {
         let mut control = VoiceControl::default();
         control.pitch.freq = freq;
-        SpawnSpec {
+        VoiceSpec {
             control,
             articulation: ArticulationCoreConfig::Entrain {
                 lifecycle: LifecycleConfig::Sustain {
@@ -1828,16 +1889,12 @@ mod tests {
                     continuous_recharge_score_high: None,
                     selection_approx_loo: false,
                     dissonance_cost: None,
-                    envelope: crate::life::scenario::EnvelopeConfig::default(),
+                    envelope: crate::scenario::EnvelopeConfig::default(),
                 },
                 rhythm_freq: None,
-                rhythm_sensitivity: None,
-                rhythm_coupling: crate::life::scenario::RhythmCouplingMode::TemporalOnly,
+                rhythm_coupling: crate::scenario::RhythmCouplingMode::TemporalOnly,
                 rhythm_reward: None,
                 breath_gain_init: None,
-                k_omega: None,
-                base_sigma: None,
-                gate_thresholds: None,
                 energy_cap: None,
             },
         }
@@ -1990,7 +2047,7 @@ mod tests {
             Action::SetGroupCrowdingTarget {
                 group_id: 71,
                 same_group_visible: true,
-                other_group_visible: other_group_visible,
+                other_group_visible,
             },
             &landscape,
             None,
@@ -2427,6 +2484,16 @@ mod tests {
         );
         let spawned = pop.voices.first().expect("spawned");
         assert!((spawned.body.base_freq_hz() - 275.0).abs() <= 1e-6);
+    }
+
+    #[test]
+    fn reserved_scenario_ids_are_not_reused_by_runtime_spawns() {
+        let mut pop = test_pop();
+        pop.reserve_runtime_ids_through(12);
+
+        let id = pop.allocate_runtime_id();
+
+        assert_eq!(id, 13);
     }
 
     #[test]
@@ -3077,6 +3144,35 @@ mod tests {
     }
 
     #[test]
+    fn kuramoto_order_parameter_uses_relative_phase_offset() {
+        let mut pop = test_pop();
+        let landscape = LandscapeFrame::default();
+        pop.apply_action(
+            Action::Spawn {
+                group_id: 1,
+                ids: vec![1, 2, 3],
+                spec: spawn_spec_with_freq(220.0),
+                strategy: None,
+            },
+            &landscape,
+            None,
+        );
+        let shared_phase = 0.75;
+        for (idx, voice) in pop.voices.iter_mut().enumerate() {
+            let AnyArticulationCore::Entrain(core) = &mut voice.articulation.core else {
+                panic!("expected entrain core");
+            };
+            core.phase_offset = idx as f32 * 2.0;
+            core.rhythm_phase = shared_phase + core.phase_offset;
+        }
+
+        let (order, count) = pop.kuramoto_order_parameter().expect("order");
+
+        assert_eq!(count, 3);
+        assert!(order > 0.99);
+    }
+
+    #[test]
     fn collect_phonation_batches_into_clears_stale_batch() {
         let time = Timebase {
             fs: 48_000.0,
@@ -3084,7 +3180,7 @@ mod tests {
         };
         let space = Log2Space::new(55.0, 880.0, 12);
         let landscape = LandscapeFrame::new(space.clone());
-        let mut world = WorldModel::new(time, space);
+        let mut world = GeneratorModel::new(time, space);
         let mut pop = Population::new(time);
         let spec = spawn_spec_with_freq(440.0);
         pop.apply_action(

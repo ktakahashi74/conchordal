@@ -431,7 +431,7 @@ mod tests {
         let cfg = PeakExtractConfig::strict();
         let peaks = extract_peaks_density(&density, &space, &cfg);
 
-        assert!(peaks.len() >= 1);
+        assert!(!peaks.is_empty());
         assert!(
             peaks
                 .iter()

@@ -5,12 +5,7 @@
 
 use crate::core::density;
 use crate::core::erb::hz_to_erb;
-use crate::core::fft::apply_hann_window_complex;
-#[cfg(test)]
-use crate::core::fft::hilbert;
 use crate::core::log2space::Log2Space;
-use crate::core::peak_extraction::Peak;
-use rustfft::{FftPlanner, num_complex::Complex32};
 
 // ======================================================================
 // Kernel parameter definition (Sethares-inspired, ΔERB domain)
@@ -70,21 +65,28 @@ impl Default for KernelParams {
 /// This is the masking-off reference family:
 ///   gain * max(0, exp(-b*u) - exp(-c*u)), u = |d_erb| / kappa_erb.
 #[inline]
+fn finite_or(x: f32, fallback: f32) -> f32 {
+    if x.is_finite() { x } else { fallback }
+}
+
+#[inline]
 fn sethares_shape_params(params: &KernelParams) -> (f32, f32, f32, f32) {
-    let gain = params.sethares_gain.max(0.0);
-    let b = params.sethares_b.max(1e-6);
-    let c = params.sethares_c.max(b + 1e-6);
-    let kappa = params.sethares_kappa_erb.max(1e-6);
+    let defaults = KernelParams::default();
+    let gain = finite_or(params.sethares_gain, defaults.sethares_gain).max(0.0);
+    let b = finite_or(params.sethares_b, defaults.sethares_b).max(1e-6);
+    let c = finite_or(params.sethares_c, defaults.sethares_c).max(b + 1e-6);
+    let kappa = finite_or(params.sethares_kappa_erb, defaults.sethares_kappa_erb).max(1e-6);
     (gain, b, c, kappa)
 }
 
 #[inline]
 fn asymmetry_gain(params: &KernelParams, d_erb: f32) -> f32 {
-    let mix = params.mix_tail.clamp(0.0, 0.99);
+    let defaults = KernelParams::default();
+    let mix = finite_or(params.mix_tail, defaults.mix_tail).clamp(0.0, 0.99);
     if mix <= 0.0 {
         return 1.0;
     }
-    let tau = params.tau_erb.max(1e-6);
+    let tau = finite_or(params.tau_erb, defaults.tau_erb).max(1e-6);
     if d_erb >= 0.0 {
         1.0 + mix * (-d_erb / tau).exp()
     } else {
@@ -102,16 +104,22 @@ fn eval_kernel_base_no_dip(params: &KernelParams, d_erb: f32) -> f32 {
 
 #[inline]
 pub fn eval_kernel_delta_erb(params: &KernelParams, d_erb: f32) -> f32 {
-    let s_sup = params.suppress_sigma_erb.max(1e-6);
-    let sig_n = params.sigma_neural_erb.max(1e-6);
+    if !d_erb.is_finite() {
+        return 0.0;
+    }
+    let defaults = KernelParams::default();
+    let s_sup = finite_or(params.suppress_sigma_erb, defaults.suppress_sigma_erb).max(1e-6);
+    let sig_n = finite_or(params.sigma_neural_erb, defaults.sigma_neural_erb).max(1e-6);
+    let suppress_pow = finite_or(params.suppress_pow, defaults.suppress_pow).max(1e-6);
+    let w_neural = finite_or(params.w_neural, defaults.w_neural).clamp(0.0, 1.0);
 
     let desq = d_erb * d_erb;
     let base = eval_kernel_base_no_dip(params, d_erb);
 
     let suppress = (1.0 - (-desq / (2.0 * s_sup * s_sup)).exp()).clamp(0.0, 1.0);
-    let g_coch = base * suppress.powf(params.suppress_pow);
+    let g_coch = base * suppress.powf(suppress_pow);
     let g_neural = (-desq / (2.0 * sig_n * sig_n)).exp();
-    (1.0 - params.w_neural) * g_coch + params.w_neural * g_neural
+    (1.0 - w_neural) * g_coch + w_neural * g_neural
 }
 
 /// Runtime crowding profile used for behavior-side anti-unison pressure.
@@ -127,6 +135,9 @@ pub fn eval_kernel_delta_erb(params: &KernelParams, d_erb: f32) -> f32 {
 /// R′(peak) ≈ 0.
 #[inline]
 pub fn crowding_runtime_delta_erb(params: &KernelParams, d_erb: f32) -> f32 {
+    if !d_erb.is_finite() {
+        return 0.0;
+    }
     let (_, b, c, kappa_erb) = sethares_shape_params(params);
     let denom = (c - b).max(1e-6);
     let ratio = (c / b).max(1.0 + 1e-6);
@@ -147,7 +158,15 @@ pub fn crowding_runtime_delta_erb(params: &KernelParams, d_erb: f32) -> f32 {
 }
 
 pub fn build_kernel_erbstep(params: &KernelParams, erb_step: f32) -> (Vec<f32>, usize) {
-    let hw_erb = params.half_width_erb;
+    assert!(
+        erb_step.is_finite() && erb_step > 0.0,
+        "erb_step must be finite and positive"
+    );
+    let hw_erb = finite_or(
+        params.half_width_erb,
+        KernelParams::default().half_width_erb,
+    )
+    .max(0.0);
     let n_side = (hw_erb / erb_step).ceil() as usize;
     let len = 2 * n_side + 1;
 
@@ -228,88 +247,6 @@ impl RoughnessKernel {
         }
     }
 
-    // ------------------------------------------------------------------
-    // Potential R from amplitude spectrum (linear frequency axis)
-    // d = erb_probe - erb_masker
-    // ------------------------------------------------------------------
-
-    pub fn potential_r_from_spectrum(&self, amps_hz: &[f32], fs: f32) -> (Vec<f32>, f32) {
-        let n = amps_hz.len();
-        if n == 0 {
-            return (vec![], 0.0);
-        }
-
-        let nfft = 2 * n;
-        let df = fs / nfft as f32;
-
-        let f: Vec<f32> = (0..n).map(|i| i as f32 * df).collect();
-        let erb: Vec<f32> = f.iter().map(|&x| hz_to_erb(x)).collect();
-        let half_width = self.params.half_width_erb;
-        let du = local_du_from_grid(&erb);
-
-        let mut r = vec![0.0f32; n];
-        for i in 0..n {
-            let fi_erb = erb[i];
-            let mut sum = 0.0f32;
-
-            let j_lo = erb.partition_point(|&x| x < fi_erb - half_width);
-            let j_hi = erb.partition_point(|&x| x <= fi_erb + half_width);
-            for j in j_lo..j_hi {
-                if j == i {
-                    continue;
-                }
-                let d = fi_erb - erb[j];
-                if d.abs() > half_width {
-                    continue;
-                }
-                let w = lut_interp(&self.lut, self.erb_step, self.hw, d);
-                sum += amps_hz[j] * w * du[j];
-            }
-            r[i] = sum;
-        }
-
-        // Integrate over ERB axis
-        let r_total = density::density_to_mass(&r, &du);
-
-        (r, r_total)
-    }
-
-    // ------------------------------------------------------------------
-    // Potential R from analytic (Hilbert) signal
-    // ------------------------------------------------------------------
-
-    pub fn potential_r_from_analytic(&self, analytic: &[Complex32], fs: f32) -> (Vec<f32>, f32) {
-        if analytic.is_empty() {
-            return (vec![], 0.0);
-        }
-
-        let n0 = analytic.len();
-        let n = n0.next_power_of_two();
-        let mut buf: Vec<Complex32> = Vec::with_capacity(n);
-        buf.extend_from_slice(analytic);
-        if n > n0 {
-            buf.resize(n, Complex32::new(0.0, 0.0));
-        }
-
-        // Apply Hann window (complex)
-        let window_gain = apply_hann_window_complex(&mut buf);
-
-        // FFT
-        let mut planner = FftPlanner::new();
-        let fft = planner.plan_fft_forward(n);
-        fft.process(&mut buf);
-
-        // Convert to amplitude spectrum
-        let n_half = n / 2;
-        let df = fs / n as f32;
-        let base_scale = 1.0 / (fs * n as f32 * window_gain);
-        let amps: Vec<f32> = (0..n_half)
-            .map(|i| (buf[i].norm_sqr() * base_scale * 2.0 * df).sqrt())
-            .collect();
-
-        self.potential_r_from_spectrum(&amps, fs)
-    }
-
     /// Compute perc_potential_R roughness from log2-domain amplitude spectrum (NSGT).
     /// Uses `d = erb_probe - erb_masker`.
     /// Input values are ERB power densities (mass per ERB), so the internal
@@ -337,7 +274,11 @@ impl RoughnessKernel {
         let (erb, du) = erb_grid(space);
 
         // (2) Convolution over ERB axis
-        let half_width_erb = self.params.half_width_erb;
+        let half_width_erb = finite_or(
+            self.params.half_width_erb,
+            KernelParams::default().half_width_erb,
+        )
+        .max(0.0);
         let mut r = vec![0.0f32; n];
 
         for i in 0..n {
@@ -346,10 +287,9 @@ impl RoughnessKernel {
 
             let lo_hz = erb_to_hz(fi_erb - half_width_erb);
             let hi_hz = erb_to_hz(fi_erb + half_width_erb);
-            let j_lo = space.index_of_freq(lo_hz).unwrap_or(0);
-            let j_hi = space.index_of_freq(hi_hz).unwrap_or(n - 1);
+            let (j_lo, j_hi) = space.bin_range_of_freqs(lo_hz, hi_hz).unwrap_or((0, n - 1));
 
-            for j in j_lo..j_hi {
+            for j in j_lo..=j_hi {
                 if j == i {
                     continue;
                 }
@@ -365,55 +305,6 @@ impl RoughnessKernel {
 
         (r, r_total)
     }
-
-    /// Compatibility wrapper for ERB-density input.
-    pub fn potential_r_from_log2_spectrum(
-        &self,
-        amps: &[f32],
-        space: &Log2Space,
-    ) -> (Vec<f32>, f32) {
-        self.potential_r_from_log2_spectrum_density(amps, space)
-    }
-
-    /// Compute perc_potential_R roughness from delta peaks (pure-tone interactions).
-    /// Uses `d = erb_probe - erb_masker`.
-    /// Each peak mass is the ERB-integrated area (sum of density * du).
-    pub fn potential_r_from_peaks(&self, peaks: &[Peak], space: &Log2Space) -> Vec<f32> {
-        if peaks.is_empty() || space.centers_hz.is_empty() {
-            return vec![];
-        }
-
-        use crate::core::erb::erb_to_hz;
-
-        let (erb, _du) = erb_grid(space);
-        let half_width_erb = self.params.half_width_erb;
-        let mut r = vec![0.0f32; erb.len()];
-
-        for (i, &u_i) in erb.iter().enumerate() {
-            let mut sum = 0.0f32;
-            let lo_hz = erb_to_hz(u_i - half_width_erb);
-            let hi_hz = erb_to_hz(u_i + half_width_erb);
-            let j_lo = space.index_of_freq(lo_hz).unwrap_or(0);
-            let j_hi = space.index_of_freq(hi_hz).unwrap_or(erb.len() - 1);
-            for peak in peaks {
-                if peak.bin_idx == i {
-                    continue;
-                }
-                let d = u_i - peak.u_erb;
-                if d.abs() > half_width_erb {
-                    continue;
-                }
-                if peak.bin_idx < erb.len() && (peak.bin_idx < j_lo || peak.bin_idx >= j_hi) {
-                    continue;
-                }
-                let w = lut_interp(&self.lut, self.erb_step, self.hw, d);
-                sum += peak.mass * w;
-            }
-            r[i] = sum;
-        }
-
-        r
-    }
 }
 
 #[cfg(test)]
@@ -427,9 +318,6 @@ mod tests {
     use crate::core::utils::ensure_plots_dir;
     #[cfg(feature = "plotcheck")]
     use plotters::prelude::*;
-    use rand::{Rng, SeedableRng};
-    #[cfg(feature = "plotcheck")]
-    use std::fs::File;
     #[cfg(feature = "plotcheck")]
     use std::path::Path;
 
@@ -438,6 +326,30 @@ mod tests {
     fn make_kernel() -> RoughnessKernel {
         let p = KernelParams::default();
         RoughnessKernel::new(p, ERB_STEP)
+    }
+
+    #[test]
+    fn kernel_eval_sanitizes_non_finite_params() {
+        let p = KernelParams {
+            tau_erb: f32::NAN,
+            mix_tail: f32::NAN,
+            sethares_gain: f32::NAN,
+            sethares_b: f32::NAN,
+            sethares_c: f32::NAN,
+            sethares_kappa_erb: f32::NAN,
+            half_width_erb: f32::NAN,
+            suppress_sigma_erb: f32::NAN,
+            suppress_pow: f32::NAN,
+            sigma_neural_erb: f32::NAN,
+            w_neural: f32::NAN,
+        };
+
+        let v = eval_kernel_delta_erb(&p, 0.25);
+        assert!(v.is_finite() && v >= 0.0, "v={v}");
+        assert_eq!(eval_kernel_delta_erb(&p, f32::NAN), 0.0);
+        let k = RoughnessKernel::new(p, ERB_STEP);
+        assert!(!k.lut.is_empty());
+        assert!(k.lut.iter().all(|v| v.is_finite() && *v >= 0.0));
     }
 
     // ------------------------------------------------------------
@@ -861,7 +773,7 @@ mod tests {
         let mid = amps.len() / 2;
         amps[mid] = 1.0;
 
-        let (r_vec, _) = k.potential_r_from_log2_spectrum(&amps, &space);
+        let (r_vec, _) = k.potential_r_from_log2_spectrum_density(&amps, &space);
 
         let g_ref = &k.lut;
         let hw = k.hw;
@@ -913,7 +825,7 @@ mod tests {
         let mid = amps.len() / 2;
         amps[mid] = 1.0;
 
-        let (r_vec, _) = k.potential_r_from_log2_spectrum(&amps, &space);
+        let (r_vec, _) = k.potential_r_from_log2_spectrum_density(&amps, &space);
         let (erb, _du) = erb_grid(&space);
         let u0 = erb[mid];
         let d = 0.3f32;
@@ -954,43 +866,6 @@ mod tests {
     }
 
     #[test]
-    fn potential_r_peaks_matches_density_delta_input() {
-        let k = make_kernel();
-        let space = Log2Space::new(40.0, 8000.0, 256);
-        let (erb, du) = erb_grid(&space);
-
-        let mut rng = rand::rngs::StdRng::seed_from_u64(7);
-        let mut peaks = Vec::new();
-        let mut density = vec![0.0f32; erb.len()];
-        let mut used = vec![false; erb.len()];
-
-        for _ in 0..12 {
-            let mut idx = rng.random_range(0..erb.len());
-            while used[idx] {
-                idx = rng.random_range(0..erb.len());
-            }
-            used[idx] = true;
-            let mass = rng.random_range(0.1f32..2.0f32);
-            if du[idx] > 0.0 {
-                density[idx] += mass / du[idx];
-            }
-            peaks.push(Peak {
-                u_erb: erb[idx],
-                mass,
-                bin_idx: idx,
-            });
-        }
-
-        let (r_density, _) = k.potential_r_from_log2_spectrum_density(&density, &space);
-        let r_peaks = k.potential_r_from_peaks(&peaks, &space);
-
-        for i in 0..r_density.len() {
-            let diff = (r_density[i] - r_peaks[i]).abs();
-            assert!(diff < 1e-4, "bin {} diff {}", i, diff);
-        }
-    }
-
-    #[test]
     fn peak_extraction_conserves_cluster_mass() {
         let space = Log2Space::new(80.0, 8000.0, 128);
         let (erb, du) = erb_grid(&space);
@@ -1018,30 +893,6 @@ mod tests {
         assert_eq!(peaks.len(), 1);
         let diff = (peaks[0].mass - total_mass).abs();
         assert!(diff < 1e-4, "mass diff {}", diff);
-    }
-
-    #[test]
-    fn potential_r_stable_across_fs() {
-        let p = KernelParams::default();
-        let k = RoughnessKernel::new(p, ERB_STEP);
-        let base = 1000.0;
-
-        let fs1 = 48000.0;
-        let n1 = 4096;
-        let sig1: Vec<f32> = (0..n1)
-            .map(|i| (2.0 * std::f32::consts::PI * base * i as f32 / fs1).sin())
-            .collect();
-        let (_r1, rtot1) = k.potential_r_from_analytic(&hilbert(&sig1), fs1);
-
-        let fs2 = 96000.0;
-        let n2 = 8192;
-        let sig2: Vec<f32> = (0..n2)
-            .map(|i| (2.0 * std::f32::consts::PI * base * i as f32 / fs2).sin())
-            .collect();
-        let (_r2, rtot2) = k.potential_r_from_analytic(&hilbert(&sig2), fs2);
-
-        let rel_err = ((rtot2 - rtot1) / rtot1.abs()).abs();
-        assert!(rel_err < 0.001, "R_total rel_err={rel_err}");
     }
 
     // ------------------------------------------------------------
@@ -1478,78 +1329,6 @@ mod tests {
 
     #[test]
     #[cfg(feature = "plotcheck")]
-    fn plot_potential_r_from_signal_direct_erb() {
-        ensure_plots_dir().expect("create target/plots");
-        let fs = 48000.0;
-        let k = RoughnessKernel::new(KernelParams::default(), 0.005);
-        let base = 440.0;
-        let n = 16384;
-
-        let mut sig1 = vec![0.0f32; n];
-        for i in 0..n {
-            let t = i as f32 / fs;
-            sig1[i] = (2.0 * std::f32::consts::PI * base * t).sin();
-        }
-        let (r1, _) = k.potential_r_from_analytic(&hilbert(&sig1), fs);
-
-        let mut sig2 = vec![0.0f32; n];
-        let f2 = base * 1.2;
-        for i in 0..n {
-            let t = i as f32 / fs;
-            sig2[i] = (2.0 * std::f32::consts::PI * base * t).sin()
-                + (2.0 * std::f32::consts::PI * f2 * t).sin();
-        }
-        let (r2, _) = k.potential_r_from_analytic(&hilbert(&sig2), fs);
-
-        let df = fs / n as f32;
-        let f0_erb = hz_to_erb(base);
-        let x_erb: Vec<f32> = (0..r1.len())
-            .map(|i| hz_to_erb(i as f32 * df) - f0_erb)
-            .collect();
-
-        let out_path = "target/plots/it_roughness_potential_r_signal_direct_erb.png";
-        let root = BitMapBackend::new(out_path, (1600, 1000)).into_drawing_area();
-        root.fill(&WHITE).unwrap();
-        let mut chart = ChartBuilder::on(&root)
-            .caption("Potential R from Signal (ΔERB axis)", ("sans-serif", 30))
-            .margin(10)
-            .build_cartesian_2d(
-                -5.0f32..5.0f32,
-                0.0f32..r2.iter().cloned().fold(0.0, f32::max) * 1.1,
-            )
-            .unwrap();
-
-        chart
-            .configure_mesh()
-            .x_desc("ΔERB")
-            .y_desc("R(f)")
-            .draw()
-            .unwrap();
-        chart
-            .draw_series(LineSeries::new(
-                x_erb.iter().zip(r1.iter()).map(|(&x, &y)| (x, y)),
-                &BLUE,
-            ))
-            .unwrap()
-            .label("pure tone");
-        chart
-            .draw_series(LineSeries::new(
-                x_erb.iter().zip(r2.iter()).map(|(&x, &y)| (x, y)),
-                &RED,
-            ))
-            .unwrap()
-            .label("two-tone ΔERB≈0.3");
-        chart
-            .configure_series_labels()
-            .border_style(&BLACK)
-            .draw()
-            .unwrap();
-        root.present().unwrap();
-        assert!(File::open(out_path).is_ok());
-    }
-
-    #[test]
-    #[cfg(feature = "plotcheck")]
     fn plot_potential_r_from_log2_spectrum_delta_input() -> Result<(), Box<dyn std::error::Error>> {
         use crate::core::erb::hz_to_erb;
         use crate::core::log2space::Log2Space;
@@ -1563,7 +1342,7 @@ mod tests {
         let mid = amps.len() / 2;
         amps[mid] = 1.0;
 
-        let (r_vec, _) = k.potential_r_from_log2_spectrum(&amps, &space);
+        let (r_vec, _) = k.potential_r_from_log2_spectrum_density(&amps, &space);
 
         let mid = amps.len() / 2;
         let _f0_erb = hz_to_erb(space.centers_hz[mid]);
@@ -1630,53 +1409,6 @@ mod tests {
             .draw()?;
         root.present()?;
         assert!(std::path::Path::new(out_path).exists());
-        Ok(())
-    }
-
-    #[test]
-    #[cfg(feature = "plotcheck")]
-    fn plot_potential_r_delta_input_all_methods() -> Result<(), Box<dyn std::error::Error>> {
-        use crate::core::fft::hilbert;
-        use crate::core::log2space::Log2Space;
-        use rustfft::{FftPlanner, num_complex::Complex32};
-
-        ensure_plots_dir()?;
-        let fs = 48_000.0;
-        let params = KernelParams::default();
-        let k = RoughnessKernel::new(params, 0.005);
-        let space = Log2Space::new(20.0, 8000.0, 144);
-        let nfft = 163_84;
-
-        let mut amps_log2 = vec![0.0f32; space.centers_hz.len()];
-        let mid = amps_log2.len() / 2;
-        amps_log2[mid] = 1.0;
-
-        let (_r_log2, _) = k.potential_r_from_log2_spectrum(&amps_log2, &space);
-
-        let df = fs / nfft as f32;
-        let mut amps_lin = vec![0.0f32; nfft / 2];
-        for (kidx, &f) in space.centers_hz.iter().enumerate() {
-            let bin = (f / df).round() as usize;
-            if bin < amps_lin.len() {
-                amps_lin[bin] += amps_log2[kidx];
-            }
-        }
-        let (_r_spec, _) = k.potential_r_from_spectrum(&amps_lin, fs);
-
-        let mut buf = vec![Complex32::new(0.0, 0.0); nfft];
-        for (i, &amp) in amps_lin.iter().enumerate() {
-            buf[i] = Complex32::new(amp, 0.0);
-        }
-        for i in 1..(nfft / 2) {
-            buf[nfft - i] = buf[i].conj();
-        }
-        let mut planner = FftPlanner::new();
-        let ifft = planner.plan_fft_inverse(nfft);
-        ifft.process(&mut buf);
-        let sig: Vec<f32> = buf.iter().map(|z| z.re / nfft as f32).collect();
-        let (_r_analytic, _) = k.potential_r_from_analytic(&hilbert(&sig), fs);
-
-        // plotting same as original (omitted for brevity)
         Ok(())
     }
 }

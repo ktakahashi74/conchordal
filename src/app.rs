@@ -5,7 +5,7 @@ use std::sync::{
 };
 use std::time::Duration;
 
-use crossbeam_channel::{Receiver, Sender};
+use crossbeam_channel::Receiver;
 use tracing::debug;
 
 use crate::audio::output::AudioOutput;
@@ -19,7 +19,6 @@ pub use crate::runtime::{
 
 pub struct App {
     ui_frame_rx: Receiver<UiFrame>,
-    _ctrl_tx: Sender<()>, // placeholder
     last_frame: UiFrame,
     ui_queue: VecDeque<UiFrame>,
     visual_delay_frames: usize,
@@ -27,9 +26,10 @@ pub struct App {
     audio_init_error: Option<String>,
     worker_handle: Option<std::thread::JoinHandle<()>>,
     analysis_handle: Option<std::thread::JoinHandle<()>>,
+    listener_analysis_handle: Option<std::thread::JoinHandle<()>>,
     exiting: Arc<AtomicBool>,
-    rhythm_history: VecDeque<(f64, crate::core::modulation::NeuralRhythms)>,
-    dorsal_history: VecDeque<(f64, DorsalFrame)>,
+    listener_rhythm_history: VecDeque<(f64, crate::core::meter::MeterState)>,
+    listener_attention_history: VecDeque<(f64, DorsalFrame)>,
     start_flag: Arc<AtomicBool>,
     level_history: VecDeque<(std::time::Instant, [f32; 2])>,
     show_raw_nsgt_power: bool,
@@ -73,7 +73,6 @@ impl App {
 
         Self {
             ui_frame_rx: rt.ui_frame_rx,
-            _ctrl_tx: rt.ctrl_tx,
             last_frame: UiFrame::default(),
             ui_queue: VecDeque::new(),
             visual_delay_frames: rt.visual_delay_frames,
@@ -81,9 +80,10 @@ impl App {
             audio_init_error: rt.audio_init_error,
             worker_handle: rt.worker_handle,
             analysis_handle: rt.analysis_handle,
+            listener_analysis_handle: rt.listener_analysis_handle,
             exiting: stop_flag,
-            rhythm_history: VecDeque::with_capacity(4096),
-            dorsal_history: VecDeque::with_capacity(4096),
+            listener_rhythm_history: VecDeque::with_capacity(4096),
+            listener_attention_history: VecDeque::with_capacity(4096),
             start_flag: rt.start_flag,
             level_history: VecDeque::with_capacity(256),
             show_raw_nsgt_power: false,
@@ -94,32 +94,35 @@ impl App {
     fn apply_ui_frame(&mut self, frame: UiFrame) {
         self.last_frame = frame;
 
-        let t = self.last_frame.time_sec as f64;
-        if self.last_frame.meta.playback_state != PlaybackState::Finished {
-            self.rhythm_history
-                .push_back((t, self.last_frame.landscape.rhythm));
-            self.dorsal_history.push_back((t, self.last_frame.dorsal));
+        let t = self.last_frame.meta.time_sec as f64;
+        if self.last_frame.meta.playback_state != PlaybackState::Finished
+            && self.last_frame.listener.has_fast_state
+        {
+            self.listener_rhythm_history
+                .push_back((t, self.last_frame.listener.meter));
+            self.listener_attention_history
+                .push_back((t, self.last_frame.listener.attention));
         }
 
         let t_last = self
-            .rhythm_history
+            .listener_rhythm_history
             .back()
             .map(|(t, _)| *t)
-            .or_else(|| self.dorsal_history.back().map(|(t, _)| *t));
+            .or_else(|| self.listener_attention_history.back().map(|(t, _)| *t));
         if let Some(t_last) = t_last {
             while self
-                .rhythm_history
+                .listener_rhythm_history
                 .front()
                 .is_some_and(|(time, _)| *time < t_last - 5.0)
             {
-                self.rhythm_history.pop_front();
+                self.listener_rhythm_history.pop_front();
             }
             while self
-                .dorsal_history
+                .listener_attention_history
                 .front()
                 .is_some_and(|(time, _)| *time < t_last - 5.0)
             {
-                self.dorsal_history.pop_front();
+                self.listener_attention_history.pop_front();
             }
         }
 
@@ -144,7 +147,7 @@ impl App {
 }
 
 impl eframe::App for App {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         if ctx.input(|i| i.viewport().close_requested()) {
             self.exiting.store(true, Ordering::SeqCst);
         }
@@ -170,17 +173,20 @@ impl eframe::App for App {
             }
         }
 
+        ctx.request_repaint_after(Duration::from_millis(16));
+    }
+
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         crate::ui::windows::main_window(
-            ctx,
+            ui,
             &self.last_frame,
-            &self.rhythm_history,
-            &self.dorsal_history,
+            &self.listener_rhythm_history,
+            &self.listener_attention_history,
             self.audio_init_error.as_deref(),
             &self.exiting,
             &self.start_flag,
             &mut self.show_raw_nsgt_power,
         );
-        ctx.request_repaint_after(Duration::from_millis(16));
     }
 }
 
@@ -193,6 +199,9 @@ impl Drop for App {
             let _ = handle.join();
         }
         if let Some(handle) = self.analysis_handle.take() {
+            let _ = handle.join();
+        }
+        if let Some(handle) = self.listener_analysis_handle.take() {
             let _ = handle.join();
         }
     }

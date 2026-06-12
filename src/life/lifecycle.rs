@@ -1,5 +1,5 @@
-use super::scenario::EnvelopeConfig;
 use crate::life::metabolism_policy::{DEFAULT_ACTION_COST_PER_ATTACK, DEFAULT_RECHARGE_PER_ATTACK};
+use crate::scenario::EnvelopeConfig;
 use std::fmt;
 
 #[derive(Debug, Clone)]

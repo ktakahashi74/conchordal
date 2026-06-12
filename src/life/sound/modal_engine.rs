@@ -1,8 +1,8 @@
 use crate::core::log2space::Log2Space;
-use crate::life::scenario::TimbreGenotype;
 use crate::life::sound::control::ToneControlBlock;
 use crate::life::sound::spectral::{add_log2_energy, harmonic_gain, harmonic_ratio};
 use crate::life::voice::ArticulationSignal;
+use crate::scenario::TimbreGenotype;
 use crate::synth::SynthError;
 use crate::synth::modes::ModeParams;
 use crate::synth::resonator::ResonatorBank;

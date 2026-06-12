@@ -36,10 +36,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-214be9d8.js";
+            window.path_to_searchindex_js = "searchindex-139f4aaa.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-dd2a5500.js"></script>
+        <script src="toc-ebd22986.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -175,685 +175,1243 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="quick-start-guide"><a class="header" href="#quick-start-guide">Quick Start Guide</a></h1>
-<p>Conchordal v0.3.0 scripting API overview. For full details, see the <a href="#rhai-scripting-api-reference-v030">API Reference</a>.</p>
-<h2 id="basic-concepts"><a class="header" href="#basic-concepts">Basic Concepts</a></h2>
+                        <h1 id="introduction"><a class="header" href="#introduction">Introduction</a></h1>
+<p>Conchordal is a research-composer scripting surface. The central idea is not
+note scheduling. The central idea is shaping a perceptual consonance field,
+then letting populations of voices move, survive, and reorganize inside it.</p>
+<p>A scenario script defines <strong>Materials</strong> (voice templates), places them into the
+field as <strong>Participants</strong>, and shapes the terrain they live on. Harmony emerges
+from psychoacoustics (roughness and harmonicity); rhythm emerges from coupled
+oscillators on a shared meter the population itself drives. The script is a
+director, not a sequencer.</p>
+<p>Conchordal v0.4.0 is aimed at research composers who want to work with these
+concepts directly. It is not trying to hide the model behind common
+music-production vocabulary.</p>
+<h2 id="how-this-book-is-organized"><a class="header" href="#how-this-book-is-organized">How this book is organized</a></h2>
 <ul>
-<li><strong>Species</strong>: Agent templates created with <code>derive()</code> from presets (<code>sine</code>, <code>harmonic</code>, <code>saw</code>, <code>square</code>, <code>noise</code>, <code>modal</code>).</li>
-<li><strong>Groups</strong>: Collections of agents spawned from a species via <code>create(species, count)</code>. Returns a <code>GroupHandle</code>.</li>
-<li><strong>Timeline</strong>: <code>wait(seconds)</code> advances the clock. <code>flush()</code> forces immediate dispatch. <code>scene()</code> scopes groups with auto-release. <code>parallel()</code> runs branches concurrently.</li>
-<li><strong>Strategies</strong>: Placement methods for multi-agent frequency assignment: <code>consonance()</code>, <code>consonance_density_pmf()</code>, <code>random_log()</code>, <code>linear()</code>.</li>
+<li><strong>Tutorial</strong> gets a first sound out and your editor wired up:
+<a href="#quick-start">Quick Start</a>,
+<a href="#editor-setup-lsp">Editor Setup</a>.</li>
+<li><strong>Concepts</strong> explains the three pillars of the model:
+<a href="#the-consonance-field">the Consonance Field</a>,
+<a href="#rhythm-one-coupling-continuum">Rhythm</a>, and
+<a href="#routing-and-the-listener-twin">Routing and the Listener Twin</a>.</li>
+<li><strong>Reference</strong> is the complete, generated
+<a href="#api-reference">API Reference</a> — it is produced from the engine’s
+registered scripting surface, so it cannot drift — and the
+<a href="#études">Curated Samples</a> listening path. The reference is
+split into three tiers: the <strong>Core API</strong> (enough for every curated sample),
+<strong>Mechanism Tuning</strong>, and <strong>Research Controls</strong>. Start with Core and ignore
+the rest until a piece demands it.</li>
 </ul>
-<h2 id="minimal-example"><a class="header" href="#minimal-example">Minimal Example</a></h2>
-<pre><code class="language-ts">// Single sine agent at 440 Hz for 2 seconds
-create(sine, 1).freq(440.0);
+<p>Every <code>rhai</code> code block in this book is executed against the real script
+engine by the test suite, so the examples are guaranteed to run.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h1>
+<p>Run a scenario script with the real-time instrument (release mode is
+recommended for real-time DSP):</p>
+<pre><code class="language-bash">cargo run --release -- samples/01_a_single_voice.rhai
+</code></pre>
+<h2 id="minimal-sound"><a class="header" href="#minimal-sound">Minimal Sound</a></h2>
+<pre><code class="language-rhai">place(sine().amp(0.08).sustain(), at(440.0));
 wait(2.0);
 </code></pre>
-<h2 id="common-patterns"><a class="header" href="#common-patterns">Common Patterns</a></h2>
-<h3 id="custom-species-definition"><a class="header" href="#custom-species-definition">Custom Species Definition</a></h3>
-<pre><code class="language-ts">let voice = derive(harmonic)
-    .amp(0.5)
+<p><code>place(material, placement)</code> stages a <code>Participant</code> at the current script time.
+It is committed by <code>wait(seconds)</code> or <code>flush()</code>, then can be patched while it
+is alive.</p>
+<h2 id="basic-objects"><a class="header" href="#basic-objects">Basic Objects</a></h2>
+<ul>
+<li><strong>Materials</strong> are voice templates made with <code>sine()</code>, <code>harmonic()</code>,
+<code>modal()</code>, <code>saw()</code>, <code>square()</code>, and <code>noise()</code>.</li>
+<li><strong>Variants</strong> clone a material with <code>variant(material)</code>.</li>
+<li><strong>Placements</strong> decide where participants enter: <code>at()</code>, <code>peaks()</code>,
+<code>density()</code>, <code>random()</code>, and <code>line()</code>.</li>
+<li><strong>Participants</strong> are the handles returned by <code>place()</code>. Before the next
+<code>wait()</code> or <code>flush()</code>, participant builder methods still shape the initial
+spawn; after that, patchable methods update running voices.</li>
+<li><strong>Sections</strong> scope participants and release them automatically.</li>
+</ul>
+<pre><code class="language-rhai">let voice = harmonic()
+    .amp(0.08)
     .sustain()
-    .brightness(0.7)
-    .spread(0.2)
-    .voices(4);
-</code></pre>
-<p>Body parameters are individual methods: <code>brightness(v)</code>, <code>spread(v)</code>, <code>voices(n)</code>.
-Use <code>energy(v)</code> as an alias for <code>amp(v)</code>.</p>
-<h3 id="multiple-agents-with-consonance-strategy"><a class="header" href="#multiple-agents-with-consonance-strategy">Multiple Agents with Consonance Strategy</a></h3>
-<pre><code class="language-ts">let base = derive(harmonic).energy(0.1).sustain();
+    .brightness(0.35);
 
-// Place 4 agents using harmonic consonance relative to 220 Hz
-create(base, 4)
-    .place(consonance(220.0).range(1.0, 4.0).min_dist(1.0));
-wait(2.0);
-
-// Or use landscape-derived density placement
-create(base, 4).place(consonance_density_pmf(110.0, 880.0));
-wait(2.0);
-</code></pre>
-<h3 id="scene-with-auto-cleanup"><a class="header" href="#scene-with-auto-cleanup">Scene with Auto Cleanup</a></h3>
-<pre><code class="language-ts">let drone = derive(sine).amp(0.3).sustain();
-let seeker = derive(sine).amp(0.2).sustain();
-
-scene("Introduction", || {
-    let a = create(drone, 1).freq(110.0);
-    let s = create(seeker, 1).freq(220.0);
-    wait(3.0);
-    // All groups auto-released when scene ends
+section("plain entry", || {
+    place(voice, line(220.0, 440.0).count(3));
+    wait(4.0);
 });
 </code></pre>
-<h3 id="parallel-timelines"><a class="header" href="#parallel-timelines">Parallel Timelines</a></h3>
-<pre><code class="language-ts">parallel([
-    || {
-        // Bass layer
-        create(sine, 1).freq(110.0).sustain();
-        wait(2.0);
-    },
-    || {
-        // Melody layer
-        create(harmonic, 1).freq(440.0).sustain();
-        wait(1.0);
-        create(harmonic, 1).freq(550.0).sustain();
-        wait(1.0);
-    }
-]);
-</code></pre>
-<h3 id="modal-body-with-custom-modes"><a class="header" href="#modal-body-with-custom-modes">Modal Body with Custom Modes</a></h3>
-<p>The <code>modal</code> preset uses inharmonic mode patterns for bell/bar/glass timbres.
-Configure modes with <code>modes(pattern)</code> and control brightness.</p>
-<pre><code class="language-ts">let bell = derive(modal)
+<h2 id="placing-into-the-field"><a class="header" href="#placing-into-the-field">Placing Into the Field</a></h2>
+<p><code>peaks(root_hz)</code> places voices at high Consonance Field positions around a
+root. The field is shaped by what the system perceives — an anchor changes
+where the peaks are.</p>
+<pre><code class="language-rhai">let anchor = harmonic()
+    .brain("drone")
+    .amp(0.06)
     .sustain()
-    .pitch_mode("lock")
-    .freq(220.0)
-    .amp(0.11)
-    .brightness(0.7)
-    .modes(modal_table("vibraphone_1").count(5));
+    .anchor();
 
-create(bell, 1);
-wait(2.0);
+let voice = harmonic()
+    .amp(0.04)
+    .sustain();
+
+section("field placement", || {
+    place(anchor, at(110.0));
+    wait(1.0);
+
+    place(voice, peaks(110.0).range(1.0, 4.0).count(6).spacing(0.9));
+    wait(6.0);
+});
 </code></pre>
-<p>Mode pattern constructors: <code>harmonic_modes()</code>, <code>odd_modes()</code>, <code>power_modes(beta)</code>,
-<code>stiff_string_modes(stiffness)</code>, <code>custom_modes([ratios])</code>, <code>modal_table(name)</code>.
-Chain <code>.count(n)</code>, <code>.jitter(cents)</code>, <code>.seed(n)</code> to refine patterns.</p>
-<p>Landscape-aware modes sample from the live perceptual field:</p>
-<pre><code class="language-ts">let adaptive = derive(modal)
-    .sustain()
-    .pitch_mode("free")
+<p>How the field works — and how voices move, survive, and respawn inside it — is
+the subject of <a href="#the-consonance-field">The Consonance Field</a>.</p>
+<h2 id="live-patching"><a class="header" href="#live-patching">Live Patching</a></h2>
+<p>Some participant methods patch running voices; others only shape the draft and
+must be set before the group is committed. The
+<a href="#api-reference">API Reference</a> tags every method as live-patchable or
+draft-only.</p>
+<pre><code class="language-rhai">let g = place(
+    harmonic().amp(0.04).sustain(),
+    peaks(220.0).count(3)
+);
+wait(2.0);     // commit: the group is now live
+
+g.amp(0.02);   // live patch on running voices
+g.glide(0.8);
+wait(3.0);
+release(g);
+</code></pre>
+<h2 id="a-complete-miniature"><a class="header" href="#a-complete-miniature">A Complete Miniature</a></h2>
+<pre><code class="language-rhai">seed(7);
+
+let anchor = harmonic()
+    .brain("drone")
     .amp(0.05)
-    .brightness(0.7)
-    .modes(landscape_density_modes().count(16).range(1.0, 3.5).min_dist(0.9));
-</code></pre>
-<h3 id="phonation-control"><a class="header" href="#phonation-control">Phonation Control</a></h3>
-<p>Phonation follows a tiered system.</p>
-<p><strong>Tier 1 – Presets</strong> set sensible defaults for common use:</p>
-<pre><code class="language-ts">derive(sine).sustain();   // Sustained tone, tied to lifecycle
-derive(sine).repeat();    // Interval-based retriggering
-</code></pre>
-<p><strong>Tier 2 – Explicit when/duration</strong> for finer control:</p>
-<pre><code class="language-ts">derive(sine).once();              // Single trigger
-derive(sine).pulse(2.0);         // Retrigger at 2 Hz
-derive(sine).while_alive();      // Duration spans full lifecycle
-derive(sine).gates(4);           // Hold for 4 gate cycles
-derive(sine).field();            // Field-driven duration
-</code></pre>
-<p>These compose: <code>derive(sine).pulse(3.0).gates(2)</code> pulses at 3 Hz, each lasting 2 gates.</p>
-<h3 id="pitch-control"><a class="header" href="#pitch-control">Pitch Control</a></h3>
-<pre><code class="language-ts">// "lock" keeps initial frequency; "free" allows hill-climbing
-derive(sine).pitch_mode("lock");
-derive(sine).pitch_mode("free");
+    .sustain();
 
-// "gate_snap" applies pitch on gate boundaries; "glide" interpolates
-derive(sine).pitch_apply("gate_snap");
-derive(sine).pitch_apply("glide").pitch_glide(0.05);
-</code></pre>
-<h3 id="live-parameter-patching"><a class="header" href="#live-parameter-patching">Live Parameter Patching</a></h3>
-<p>Groups support live updates on spawned agents:</p>
-<pre><code class="language-ts">let g = create(sine, 1).freq(220.0).sustain();
-flush();
-wait(1.0);
+let colony = harmonic()
+    .amp(0.035)
+    .sustain()
+    .seek_consonance()
+    .glide(0.4)
+    .avoid_neighbors(0.6);
 
-g.freq(440.0);   // Slide to new frequency
-g.amp(0.3);      // Adjust amplitude
-flush();
-wait(1.0);
-</code></pre>
-<h3 id="global-parameter-modulation"><a class="header" href="#global-parameter-modulation">Global Parameter Modulation</a></h3>
-<pre><code class="language-ts">// Overtone series emphasis (major quality)
-set_harmonicity_mirror_weight(0.0);
-create(sine, 4).place(consonance(261.63).range(1.0, 3.0));
-wait(2.0);
+section("emergence", || {
+    place(anchor, at(110.0));
+    wait(2.0);
 
-// Shift toward undertone series (minor quality)
-set_harmonicity_mirror_weight(1.0);
-wait(2.0);
+    place(colony, density(90.0, 900.0).count(8).spacing(0.8));
+    wait(8.0);
+
+    harmonic_mirror(1.0);   // bend the harmonic terrain under them
+    wait(8.0);
+});
 </code></pre>
-<h2 id="preset-species"><a class="header" href="#preset-species">Preset Species</a></h2>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Preset</th><th>Body</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>sine</code></td><td>Sine</td><td>Pure sine wave</td></tr>
-<tr><td><code>harmonic</code></td><td>Harmonic</td><td>Harmonic series synthesis</td></tr>
-<tr><td><code>saw</code></td><td>Harmonic</td><td>Sawtooth-like (bright)</td></tr>
-<tr><td><code>square</code></td><td>Harmonic</td><td>Square-like (odd harmonics)</td></tr>
-<tr><td><code>noise</code></td><td>Harmonic</td><td>Noise-like (full spectrum)</td></tr>
-<tr><td><code>modal</code></td><td>Modal</td><td>Inharmonic mode synthesis</td></tr>
-</tbody>
-</table>
-</div>
-<h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
-<p>See the <a href="#rhai-scripting-api-reference-v030">API Reference</a> for the complete function list, type details, and advanced parameters.</p>
+<h2 id="where-to-go-next"><a class="header" href="#where-to-go-next">Where to go next</a></h2>
+<ul>
+<li><a href="#editor-setup-lsp">Editor Setup</a> — completion, hover docs, and diagnostics
+for the whole scripting surface.</li>
+<li><a href="#the-consonance-field">The Consonance Field</a> — field, density,
+movement, viability, respawn.</li>
+<li><a href="#rhythm-one-coupling-continuum">Rhythm</a> — the coupling continuum and the director’s
+rhythmic terrain.</li>
+<li><a href="#études">Curated Samples</a> — the guided listening path.</li>
+</ul>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="rhai-scripting-api-reference-v030"><a class="header" href="#rhai-scripting-api-reference-v030">Rhai Scripting API Reference (v0.3.0)</a></h1>
-<p>This reference documents the complete Rhai scripting API for Conchordal’s Life
-Engine. Scenarios are scripts that define species, spawn agent groups, control
-the timeline, and tune global parameters.</p>
-<hr>
-<h2 id="registered-types"><a class="header" href="#registered-types">Registered Types</a></h2>
+<h1 id="editor-setup-lsp"><a class="header" href="#editor-setup-lsp">Editor Setup (LSP)</a></h1>
+<p>Conchordal ships a Rhai LSP definition file describing the entire scripting
+surface, including hover documentation for every function. Hooking your editor
+up to it gives you completion, hover, go-to-def, and inline diagnostics for
+every conchordal function — <code>place</code>, <code>harmonic</code>, <code>.brain()</code>,
+<code>.send(habitat_bus)</code>, and so on.</p>
+<p>The two files that drive this are committed at the repo root:</p>
+<ul>
+<li><code>Rhai.toml</code> — workspace config picked up by <code>rhai-lsp</code></li>
+<li><code>rhai-defs/conchordal.d.rhai</code> — auto-generated type/fn declarations with
+doc comments</li>
+</ul>
+<p>Install the <a href="https://github.com/rhaiscript/lsp">rhai-lsp</a> server once (it is
+not on crates.io; install directly from the git repo):</p>
+<pre><code class="language-bash">cargo install --git https://github.com/rhaiscript/lsp rhai-cli
+</code></pre>
+<p>This builds a binary named <code>rhai</code> with the <code>lsp</code> subcommand.</p>
+<p>Then wire your editor:</p>
+<h2 id="vs-code"><a class="header" href="#vs-code">VS Code</a></h2>
+<p>The official <a href="https://marketplace.visualstudio.com/items?itemName=rhaiscript.vscode-rhai">Rhai</a>
+extension currently provides syntax highlighting only. It does not launch
+<code>rhai-lsp</code>. For LSP features in VS Code, use an LSP client/extension that can
+launch this command from the conchordal workspace:</p>
+<pre><code class="language-bash">rhai lsp stdio --config Rhai.toml
+</code></pre>
+<h2 id="neovim-nvim-lspconfig"><a class="header" href="#neovim-nvim-lspconfig">Neovim (nvim-lspconfig)</a></h2>
+<pre><code class="language-lua">require("lspconfig").rhai.setup({
+  cmd = { "rhai", "lsp", "stdio" },
+  filetypes = { "rhai" },
+  root_dir = require("lspconfig.util").root_pattern("Rhai.toml", ".git"),
+})
+</code></pre>
+<h2 id="helix"><a class="header" href="#helix">Helix</a></h2>
+<p>In <code>~/.config/helix/languages.toml</code>:</p>
+<pre><code class="language-toml">[[language]]
+name = "rhai"
+scope = "source.rhai"
+file-types = ["rhai"]
+language-servers = ["rhai-lsp"]
+
+[language-server.rhai-lsp]
+command = "rhai"
+args = ["lsp", "stdio"]
+</code></pre>
+<h2 id="emacs-eglot"><a class="header" href="#emacs-eglot">Emacs (eglot)</a></h2>
+<pre><code class="language-elisp">(add-to-list 'eglot-server-programs
+             '(rhai-mode . ("rhai" "lsp" "stdio")))
+(add-hook 'rhai-mode-hook #'eglot-ensure)
+</code></pre>
+<h2 id="regenerating-the-definition-file"><a class="header" href="#regenerating-the-definition-file">Regenerating the definition file</a></h2>
+<p>The definition file and the <a href="#api-reference">API Reference</a> are both
+generated from the engine’s <code>register_fn</code> surface joined with the
+documentation registry (<code>src/scripting/docs.rs</code>). If you pull a new conchordal
+version and miss diagnostics, regenerate both:</p>
+<pre><code class="language-bash">cargo run --bin gen_rhai_defs
+</code></pre>
+<p>CI tests fail whenever the committed artifacts are stale, so in a clean
+checkout they are always in sync with the engine.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="the-consonance-field"><a class="header" href="#the-consonance-field">The Consonance Field</a></h1>
+<p>Conchordal’s perception core (the <strong>Landscape</strong>) listens to the habitat bus,
+transforms it into log-frequency space, and computes two potentials:
+<strong>roughness</strong> (sensory dissonance from amplitude fluctuations within critical
+bands) and <strong>harmonicity</strong> (periodicity and template matching). Their
+combination is the <strong>Consonance Field</strong>: an evaluation terrain over frequency
+that placement, movement, prediction, and survival all read from.</p>
+<p>Because the field is computed from what the system actually hears, every voice
+deforms the terrain for every other voice. That feedback loop — not a chord
+chart — is where harmony comes from.</p>
+<h2 id="field-placement-peaks"><a class="header" href="#field-placement-peaks">Field placement: <code>peaks</code></a></h2>
+<p><code>peaks(root_hz)</code> places voices at high Consonance Field positions around a
+root. Use it when the musical thought is “start from this harmonic center”.</p>
+<pre><code class="language-rhai">let anchor = harmonic()
+    .brain("drone")
+    .amp(0.06)
+    .sustain()
+    .anchor();
+
+let voice = harmonic()
+    .amp(0.04)
+    .sustain();
+
+section("field placement", || {
+    place(anchor, at(110.0));
+    wait(1.0);
+
+    place(voice, peaks(110.0).range(1.0, 4.0).count(6).spacing(0.9));
+    wait(6.0);
+});
+</code></pre>
+<h2 id="bending-the-terrain-harmonic_mirror"><a class="header" href="#bending-the-terrain-harmonic_mirror">Bending the terrain: <code>harmonic_mirror</code></a></h2>
+<p><code>harmonic_mirror(value)</code> is the harmonic-tension dial. Mechanically it blends
+the harmonicity terrain from overtone (<code>0.0</code>) toward undertone (<code>1.0</code>)
+projection; perceptually, raising it degrades the terrain’s coherence for
+overtone-radiating bodies, which is heard as harmonic tension. It is a
+tension–release axis — not a tonality (major/minor) switch — and the most
+direct way for the director to shape drama during a scene.</p>
+<pre><code class="language-rhai">let voice = harmonic().amp(0.04).sustain();
+place(voice, peaks(110.0).count(5));
+
+harmonic_mirror(0.1);   // consonant gravity
+wait(4.0);
+harmonic_mirror(0.8);   // tension: the terrain loses coherence
+wait(4.0);
+harmonic_mirror(0.1);   // release
+wait(4.0);
+</code></pre>
+<h2 id="consonance-density-density"><a class="header" href="#consonance-density-density">Consonance Density: <code>density</code></a></h2>
+<p><code>density(min_hz, max_hz)</code> samples from the density view of the field. Use it
+when the musical thought is “let the field seed a population inside this
+range”.</p>
+<pre><code class="language-rhai">let cloud = harmonic().amp(0.035).sustain();
+
+place(cloud, density(90.0, 1200.0).count(10).spacing(0.8));
+wait(8.0);
+</code></pre>
+<p>Density is not just “random but harmonic”. It is a normalized distribution
+derived from the consonance model, and it remains well-defined inside the
+requested range.</p>
+<h2 id="consonance-movement-seek_consonance"><a class="header" href="#consonance-movement-seek_consonance">Consonance Movement: <code>seek_consonance</code></a></h2>
+<p>Use <code>seek_consonance()</code> when voices should actively seek better field
+positions. It sets free hill-climb movement with glide defaults. Use
+<code>glide(tau_sec)</code> when the musical thought is “same movement idea, slower or
+faster pitch motion”.</p>
+<pre><code class="language-rhai">let mover = harmonic()
+    .amp(0.045)
+    .sustain()
+    .seek_consonance()
+    .glide(0.35)
+    .avoid_neighbors(0.6)
+    .global_peaks(8, 70.0)
+    .ratio_candidates(5);
+
+place(mover, density(80.0, 900.0).count(8));
+wait(12.0);
+</code></pre>
+<p><code>avoid_neighbors(strength)</code> adds crowding repulsion so movers spread out
+instead of collapsing onto the same peak.</p>
+<p>The opposite of movement is <code>anchor()</code>: an anchored voice holds its pitch and
+only deforms the terrain for others. Voices placed with <code>at()</code> or given
+<code>freq()</code> are anchored implicitly; use <code>anchor()</code> to freeze strategy-placed
+voices at their settled position.</p>
+<p>How movement lands is resolved from phonation: sustained movers glide,
+re-attacking movers (<code>pulse()</code>, <code>metric()</code>, <code>entrained()</code>, <code>flow()</code>) snap to
+their new pitch at each onset. Override with <code>pitch_apply_mode()</code> when a
+script needs the other behavior. Mechanism-level controls (<code>pitch_core()</code> and
+the hill-climb / peak-sampler tuning in the
+<a href="#api-reference">API Reference</a>) remain available for research scripts;
+prefer <code>seek_consonance()</code> and <code>glide()</code> in curated work.</p>
+<h2 id="consonance-viability-and-respawn"><a class="header" href="#consonance-viability-and-respawn">Consonance Viability and Respawn</a></h2>
+<p>Viability makes field fit matter over time. <code>consonance_viability(low, high)</code>
+defines the consonance window, and <code>viability_rate(rate)</code> controls continuous
+recharge: a voice in a well-fitting place is sustained, a voice in a poor
+place starves.</p>
+<p>By default viability uses <strong>environment-relative</strong> scoring: a voice is
+evaluated against the field with its own footprint approximately removed. Use
+<code>viability_scope("total")</code> only when the compositional question is explicitly
+total-field viability.</p>
+<p>Respawn closes the loop into an ecology: when voices die, replacements appear
+according to a respawn policy. <code>respawn_consonance()</code> draws them from
+consonance-biased parental peaks; <code>respawn_capacity(count)</code> keeps the
+population bounded; <code>respawn_settle(placement)</code> decides where replacements
+settle.</p>
+<pre><code class="language-rhai">let settle = density(70.0, 1100.0).spacing(0.8);
+
+let ecology = harmonic()
+    .amp(0.04)
+    .repeat()
+    .pulse(1.5)
+    .cycles(3)
+    .seek_consonance()
+    .glide(0.45)
+    .initial_energy(0.7)
+    .energy_cap(1.0)
+    .metabolism(0.09)
+    .action_cost(0.012)
+    .viability_rate(0.18)
+    .consonance_viability(0.32, 0.82)
+    .respawn_consonance()
+    .respawn_capacity(14)
+    .respawn_settle(settle);
+
+place(ecology, density(70.0, 1100.0).count(14));
+wait(30.0);
+</code></pre>
+<p>The full lifecycle surface (energy, metabolism, costs) and the respawn
+policies are documented in the <a href="#api-reference">API Reference</a>.</p>
+<h2 id="landscape-aware-timbre"><a class="header" href="#landscape-aware-timbre">Landscape-aware timbre</a></h2>
+<p>The field can shape timbre as well as pitch. The <code>modal()</code> body takes a mode
+pattern, and landscape-aware patterns sample the live field, so a bell’s
+partials can sit where the terrain already supports them.</p>
+<pre><code class="language-rhai">let shimmer_modes = landscape_density_modes()
+    .count(10)
+    .range(1.0, 5.5)
+    .gamma(1.6)
+    .spacing(0.7);
+
+let shimmer = modal()
+    .amp(0.025)
+    .sustain()
+    .seek_consonance()
+    .modes(shimmer_modes)
+    .brightness(0.7);
+
+place(shimmer, density(200.0, 1600.0).count(4));
+wait(8.0);
+</code></pre>
+<p>Mode constructors include <code>harmonic_modes()</code>, <code>odd_modes()</code>,
+<code>power_modes(beta)</code>, <code>stiff_string_modes(stiffness)</code>,
+<code>custom_modes([ratios])</code>, <code>modal_table(name)</code>, <code>landscape_density_modes()</code>,
+and <code>landscape_peaks_modes()</code> — see the
+<a href="#mode-patterns">API Reference</a>.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="rhythm-one-coupling-continuum"><a class="header" href="#rhythm-one-coupling-continuum">Rhythm: One Coupling Continuum</a></h1>
+<p>Rhythm in conchordal is <strong>one coupling continuum on a shared emergent meter</strong>,
+not a set of independent clocks. The population drives a single production
+meter (a coupled-oscillator beat); each voice is a phase oscillator that
+entrains its onset phase to that emergent beat with a coupling strength. There
+is no externally imposed grid — coherence (or its absence) emerges from how
+tightly each voice locks to the meter the population itself drives.</p>
+<p>The three rhythm “families” are just three regions of the continuum:</p>
+<ul>
+<li><strong>metric</strong>: high coupling — a deep attractor, reads as a stable pulse.</li>
+<li><strong>entrained</strong>: medium coupling — synchronization emerges over time, still
+drifts.</li>
+<li><strong>flow</strong>: near-zero coupling — a free renewal process, non-metric texture.</li>
+</ul>
+<p>Rhythm is part of the same ecology as consonance, viability, movement, and
+respawn: timing can affect survival, and survival reorganizes timing.</p>
+<h2 id="director-level-terrain"><a class="header" href="#director-level-terrain">Director-level terrain</a></h2>
+<p>The director shapes the rhythmic terrain, symmetric to the consonance-field
+operations. These are soft priors, never a schedule — emergence still does the
+work:</p>
+<ul>
+<li><code>meter_stability(value)</code> — attractor depth in <code>[0,1]</code>: how readily a pulse
+forms. It only deepens the basin for a <em>real</em> periodicity; it never
+fabricates a beat from non-metric input.</li>
+<li><code>temporal_basin(min_hz, max_hz)</code> — the tempo region the emergent beat
+gravitates toward (the time-axis analogue of <code>density(min, max)</code>). It shapes
+the terrain; it does not place a beat, and it never forces a measure.</li>
+</ul>
+<h2 id="per-voice-presets-and-modifiers"><a class="header" href="#per-voice-presets-and-modifiers">Per-voice presets and modifiers</a></h2>
+<p>The Tier-1 presets take <strong>no rate argument</strong>: <code>metric()</code>, <code>entrained()</code>, and
+<code>flow()</code>. The tempo region is a property of the terrain, set once at the
+director level, not per voice. They work on both a <code>Material</code> and a draft
+<code>Participant</code>.</p>
+<p>Per-voice modifiers refine where on the continuum a voice sits:</p>
+<ul>
+<li><code>entrainment(strength)</code> — coupling in <code>[0,1]</code>, free (<code>0</code>) .. locked (<code>1</code>).</li>
+<li><code>rhythm_role("beat"|"subdivision"|"accent"|"texture")</code> — the voice’s
+metrical job. <code>accent</code> emits a stronger onset that drives the shared meter
+harder, so a recurring downbeat can seed an emergent measure.</li>
+<li><code>microtiming(amount)</code> — a signed beat-phase offset in <code>[-0.5, 0.5]</code>. <code>0.5</code>
+places a voice a half-beat off, reading as syncopation.</li>
+</ul>
+<pre><code class="language-rhai">meter_stability(0.85);     // attractor depth: how readily a pulse forms
+temporal_basin(1.8, 2.2);   // tempo region the emergent beat gravitates toward
+
+let beat = harmonic()
+    .metric()
+    .rhythm_role("accent")  // a strong onset that drives the shared beat
+    .cycles(2);
+
+let entrained = harmonic()
+    .entrained()
+    .cycles(2);
+
+let drift = harmonic()
+    .flow()
+    .cycles(1);
+
+let offbeat = harmonic()
+    .metric()
+    .microtiming(0.5)       // a half-beat offset reads as syncopation
+    .cycles(2);
+
+place(beat, at(110.0));
+place(entrained, peaks(110.0).count(3));
+place(drift, density(300.0, 1200.0).count(4));
+place(offbeat, at(220.0));
+wait(12.0);
+</code></pre>
+<p>Calls on the same axis are last-write-wins: the last timing mode and the last
+duration mode determine the final behavior. Modifiers are remembered and
+applied when their matching preset is selected, so <code>entrainment(0.8).metric()</code>
+and <code>metric().entrainment(0.8)</code> are equivalent. The same applies to
+<code>duration_range(...).adaptive_duration()</code> and the reverse order.</p>
+<h2 id="explicit-whenduration-tier-2"><a class="header" href="#explicit-whenduration-tier-2">Explicit when/duration (Tier 2)</a></h2>
+<p>Below the presets sit explicit controls: <code>once()</code>, <code>pulse(rate_hz)</code>,
+<code>while_alive()</code>, <code>cycles(n)</code>, and <code>adaptive_duration()</code> (with
+<code>duration_range</code>, <code>duration_curve</code>, and <code>shorten_on_drop</code> for tuning).</p>
+<h2 id="timing-as-survival-tier-3"><a class="header" href="#timing-as-survival-tier-3">Timing as survival (Tier 3)</a></h2>
+<p>Use <code>rhythm_coupling_vitality(lambda_v, v_floor)</code> and
+<code>rhythm_reward(rho_t, "attack_phase_match")</code> when timing should affect
+survival and reorganization, and <code>rhythm_freq(freq_hz)</code> to set the internal
+oscillator directly:</p>
+<pre><code class="language-rhai">let pulse_voice = harmonic()
+    .repeat()
+    .pulse(2.0)
+    .cycles(2)
+    .rhythm_freq(2.0)
+    .rhythm_coupling_vitality(0.8, 0.4)
+    .rhythm_reward(0.4, "attack_phase_match");
+
+place(pulse_voice, at(165.0));
+wait(8.0);
+</code></pre>
+<h2 id="scaffolds-research-controls"><a class="header" href="#scaffolds-research-controls">Scaffolds (research controls)</a></h2>
+<p>The scaffold functions impose an <em>external</em> pulse for comparison assays:</p>
+<pre><code class="language-rhai">set_scaffold_off();
+set_scaffold_shared(2.0);
+set_scaffold_scrambled(2.0, 17);
+</code></pre>
+<p>They are useful for demos and assays. They are not the rhythm-composition
+abstraction: composed rhythm should come from the continuum and the terrain.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="routing-and-the-listener-twin"><a class="header" href="#routing-and-the-listener-twin">Routing and the Listener Twin</a></h1>
+<h2 id="two-buses"><a class="header" href="#two-buses">Two buses</a></h2>
+<p>Each voice contributes to two independent mono buses:</p>
+<ul>
+<li><strong>presentation bus</strong> → cpal output / offline render / UI metering (the work
+as presented)</li>
+<li><strong>habitat bus</strong> → NSGT analysis → landscape (what the ALife ecology responds
+to)</li>
+</ul>
+<p>By default both buses receive the voice. Use <code>send()</code> when a voice should feed
+only one side, or combine buses with <code>|</code>:</p>
+<pre><code class="language-rhai">// Reference anchor: sensed by the ecology, absent from the presented sound.
+let anchor = harmonic().brain("drone").send(habitat_bus);
+
+// Presented decor that does not influence the ecology.
+let decor = sine().send(presentation_bus);
+
+// Explicitly both (the default).
+let normal = harmonic().send(habitat_bus | presentation_bus);
+
+place(anchor, at(110.0));
+place(decor, at(880.0));
+place(normal, peaks(110.0).count(3));
+wait(4.0);
+</code></pre>
+<p>Keeping the buses separate is a composition tool. A hidden anchor on
+<code>send(habitat_bus)</code> can shape how the population organizes without ever
+becoming audible, and presented decor on <code>send(presentation_bus)</code> can be heard
+without perturbing the ecology.</p>
+<h2 id="the-listener-twin"><a class="header" href="#the-listener-twin">The Listener Twin</a></h2>
+<p>conchordal keeps a <code>ListenerTwin</code>: a listener-side model of the <em>presented</em>
+sound only. It never reads the habitat bus, so hidden scaffolds cannot create
+fake listener tension. It reports five state values:</p>
+<ul>
+<li><code>stability_level</code>: how stable / consonant the current audible sound is.</li>
+<li><code>resolvability_level</code>: whether a nearby audible state offers a plausible,
+more stable continuation.</li>
+<li><code>tension_level</code>: <code>(1 - stability) * resolvability</code> — unstable now, but with
+a reachable path toward improvement.</li>
+<li><code>attention_level</code>: presentation-derived onset / spectral-flux salience.</li>
+<li><code>neural_rhythms</code>: presentation-derived listener-side rhythm (delta/theta).</li>
+</ul>
+<p>There is no scripting verb for the twin. It is observed, not commanded: when
+you run with reporting enabled it emits <code>listener_state</code> records, and the GUI
+shows the same state. Use it to check whether the tension you hear matches
+what the twin reports before coupling it back into generation.</p>
+<h2 id="dcc-coupling-the-twin-back"><a class="header" href="#dcc-coupling-the-twin-back">DCC: coupling the twin back</a></h2>
+<p>That optional coupling is <strong>DCC</strong>, configured in <code>conchordal.toml</code>, not in
+script:</p>
+<pre><code class="language-toml">[dcc]
+# Listener pressure is report/UI-only by default.
+# coupling_strength = 0.0
+# max_exploration_bonus = 0.10
+</code></pre>
+<ul>
+<li><code>coupling_strength</code> (<code>0.0</code>–<code>1.0</code>, default <code>0.0</code>): at <code>0.0</code> the twin is
+report/UI-only and generation is unchanged. Above <code>0.0</code> it applies
+<code>tension_pressure = tension_level * resolvability_level * coupling_strength</code>
+as a transient pitch-exploration bonus only. It never sets target pitches or
+changes rhythm synchronization.</li>
+<li><code>max_exploration_bonus</code> (default <code>0.10</code>): ceiling on that transient bonus.</li>
+</ul>
+<p>Raise <code>coupling_strength</code> gradually, and only after the reported
+<code>listener_state</code> looks musically legible.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="api-reference"><a class="header" href="#api-reference">API Reference</a></h1>
+<!-- Auto-generated by `cargo run --bin gen_rhai_defs`. DO NOT EDIT. -->
+<p>This page is generated from the engine’s registered scripting surface joined with the documentation registry (<code>src/scripting/docs.rs</code>). A CI test fails whenever this page drifts from the engine. Regenerate with:</p>
+<pre><code class="language-bash">cargo run --bin gen_rhai_defs
+</code></pre>
+<p>Builder methods return their receiver and are chainable. Integer and float literals are interchangeable wherever both overloads are registered; the generated LSP definitions (<code>rhai-defs/conchordal.d.rhai</code>) list the exact overloads.</p>
+<p>The surface is split into three tiers. <strong>Core API</strong> is the curated composing surface — it is enough for every curated sample. <strong>Mechanism Tuning</strong> adjusts the mechanisms behind the core verbs when a piece needs a behavior the core surface does not express. <strong>Research Controls</strong> exist for studying the instrument, not composing with it.</p>
+<h2 id="types"><a class="header" href="#types">Types</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Type</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>SpeciesHandle</code></td><td>Species template, built with the builder pattern</td></tr>
-<tr><td><code>GroupHandle</code></td><td>Handle to an agent group (draft or live)</td></tr>
-<tr><td><code>SpawnStrategy</code></td><td>Frequency allocation strategy for placement</td></tr>
-<tr><td><code>ModePattern</code></td><td>Frequency pattern for modal synthesis bodies</td></tr>
+<tr><td><code>Material</code></td><td>Voice template built from a constructor such as <code>sine()</code> or <code>harmonic()</code>; all builder methods are chainable.</td></tr>
+<tr><td><code>Participant</code></td><td>Handle to a placed voice group returned by <code>place()</code>; draft until the next <code>wait()</code>/<code>flush()</code>, then live.</td></tr>
+<tr><td><code>Placement</code></td><td>Where voices enter the field: built by <code>at()</code>, <code>peaks()</code>, <code>density()</code>, <code>random()</code>, or <code>line()</code>.</td></tr>
+<tr><td><code>ModePattern</code></td><td>Frequency pattern for modal synthesis bodies; built by <code>*_modes()</code> constructors.</td></tr>
+<tr><td><code>Bus</code></td><td>One of the two mono output buses; combine with `</td></tr>
+<tr><td><code>BusSet</code></td><td>Combination of buses produced by `bus</td></tr>
 </tbody>
 </table>
 </div>
-<hr>
-<h2 id="preset-species-1"><a class="header" href="#preset-species-1">Preset Species</a></h2>
-<p>Global constants available in every script:</p>
+<h2 id="built-in-constants"><a class="header" href="#built-in-constants">Built-in Constants</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Preset</th><th>Body</th><th>Notes</th></tr>
+<tr><th>Constant</th><th>Type</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>sine</code></td><td>Sine</td><td>Pure sine wave</td></tr>
-<tr><td><code>harmonic</code></td><td>Harmonic</td><td>Harmonic series synthesis</td></tr>
-<tr><td><code>saw</code></td><td>Harmonic</td><td>brightness = 0.85</td></tr>
-<tr><td><code>square</code></td><td>Harmonic</td><td>brightness = 0.65</td></tr>
-<tr><td><code>noise</code></td><td>Harmonic</td><td>brightness = 1.0, motion = 1.0</td></tr>
-<tr><td><code>modal</code></td><td>Modal</td><td>Resonator-based modal synthesis</td></tr>
+<tr><td><code>habitat_bus</code></td><td><code>Bus</code></td><td>Analysis bus: NSGT -&gt; landscape; what the ecology senses.</td></tr>
+<tr><td><code>presentation_bus</code></td><td><code>Bus</code></td><td>Presentation bus: cpal output, recording, UI metering; what the listener hears.</td></tr>
 </tbody>
 </table>
 </div>
-<pre><code class="language-ts">let voice = derive(harmonic).amp(0.4).brightness(0.7);
+<h2 id="core-api"><a class="header" href="#core-api">Core API</a></h2>
+<p>The curated composing surface. These verbs are enough for every curated sample.</p>
+<h3 id="materials"><a class="header" href="#materials">Materials</a></h3>
+<p>Materials are voice templates. A constructor returns a <code>Material</code>; builder methods refine it; <code>place()</code> turns it into living voices.</p>
+<h4 id="sine"><a class="header" href="#sine"><code>sine</code></a></h4>
+<pre><code class="language-rhai ignore">sine() -&gt; Material
 </code></pre>
-<hr>
-<h2 id="species-definition"><a class="header" href="#species-definition">Species Definition</a></h2>
-<h3 id="deriveparent---specieshandle"><a class="header" href="#deriveparent---specieshandle">derive(parent) -&gt; SpeciesHandle</a></h3>
-<p>Clone a preset or existing species for modification.</p>
-<pre><code class="language-ts">let pluck = derive(harmonic).amp(0.3).adsr(0.01, 0.1, 0.3, 0.2);
+<p>Material with a pure sine body.</p>
+<h4 id="harmonic"><a class="header" href="#harmonic"><code>harmonic</code></a></h4>
+<pre><code class="language-rhai ignore">harmonic() -&gt; Material
 </code></pre>
-<p>All species methods are chainable and return <code>SpeciesHandle</code>.</p>
-<h3 id="body-and-amplitude"><a class="header" href="#body-and-amplitude">Body and Amplitude</a></h3>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Method</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>amp(value)</code></td><td>Amplitude 0.0–1.0</td></tr>
-<tr><td><code>energy(value)</code></td><td>Alias for <code>amp</code></td></tr>
-<tr><td><code>freq(value)</code></td><td>Frequency lock in Hz</td></tr>
-<tr><td><code>brightness(value)</code></td><td>Spectral brightness 0.0–1.0 (harmonic/modal bodies)</td></tr>
-<tr><td><code>spread(value)</code></td><td>Detuning spread</td></tr>
-<tr><td><code>voices(count)</code></td><td>Number of unison voices</td></tr>
-<tr><td><code>modes(pattern)</code></td><td>Set mode pattern (modal body); see <a href="#mode-patterns">Mode Patterns</a></td></tr>
-</tbody>
-</table>
-</div>
-<pre><code class="language-ts">let pad = derive(harmonic).amp(0.5).brightness(0.6).spread(0.02).voices(3);
-let bell = derive(modal).modes(stiff_string_modes(0.02).count(8));
+<p>Material with a harmonic-series body.</p>
+<h4 id="modal"><a class="header" href="#modal"><code>modal</code></a></h4>
+<pre><code class="language-rhai ignore">modal() -&gt; Material
 </code></pre>
-<h3 id="pitch-control-1"><a class="header" href="#pitch-control-1">Pitch Control</a></h3>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Method</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>pitch_mode(name)</code></td><td><code>"free"</code> or <code>"lock"</code></td></tr>
-<tr><td><code>mode(name)</code></td><td>Alias for <code>pitch_mode</code></td></tr>
-<tr><td><code>pitch_core(name)</code></td><td><code>"hill_climb"</code> or <code>"peak_sampler"</code></td></tr>
-<tr><td><code>pitch_apply(name)</code></td><td><code>"gate_snap"</code> or <code>"glide"</code></td></tr>
-<tr><td><code>pitch_apply_mode(name)</code></td><td>Alias for <code>pitch_apply</code></td></tr>
-<tr><td><code>pitch_glide(tau_sec)</code></td><td>Glide time constant in seconds</td></tr>
-<tr><td><code>pitch_smooth(tau_sec)</code></td><td>Pitch smoothing time constant</td></tr>
-</tbody>
-</table>
-</div>
-<pre><code class="language-ts">let glider = derive(sine).pitch_mode("free").pitch_core("hill_climb")
-    .pitch_apply("glide").pitch_glide(0.1);
+<p>Material with a resonator-based modal body; shape it with <code>modes()</code>.</p>
+<h4 id="saw"><a class="header" href="#saw"><code>saw</code></a></h4>
+<pre><code class="language-rhai ignore">saw() -&gt; Material
 </code></pre>
-<h3 id="hill-climb-tuning"><a class="header" href="#hill-climb-tuning">Hill-Climb Tuning</a></h3>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Method</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>landscape_weight(value)</code></td><td>Weight of landscape objective</td></tr>
-<tr><td><code>neighbor_step_cents(value)</code></td><td>Step size for neighbor exploration</td></tr>
-<tr><td><code>tessitura_gravity(value)</code></td><td>Gravity toward tessitura center</td></tr>
-<tr><td><code>exploration(value)</code></td><td>Exploration tendency</td></tr>
-<tr><td><code>persistence(value)</code></td><td>Persistence bias</td></tr>
-<tr><td><code>anneal_temp(value)</code></td><td>Annealing temperature</td></tr>
-<tr><td><code>temperature(value)</code></td><td>Alias for <code>anneal_temp</code></td></tr>
-<tr><td><code>improvement_threshold(value)</code></td><td>Minimum improvement to accept move</td></tr>
-<tr><td><code>move_cost(coeff)</code></td><td>Cost multiplier for pitch changes</td></tr>
-<tr><td><code>move_cost_exp(exp)</code></td><td>Exponent for move cost</td></tr>
-<tr><td><code>move_cost_time_scale(name)</code></td><td><code>"legacy"</code>/<code>"integration_window"</code> or <code>"proposal"</code>/<code>"proposal_interval"</code></td></tr>
-<tr><td><code>proposal_interval(seconds)</code></td><td>Proposal generation interval</td></tr>
-</tbody>
-</table>
-</div>
-<h3 id="peak-sampler-tuning"><a class="header" href="#peak-sampler-tuning">Peak Sampler Tuning</a></h3>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Method</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>window_cents(width)</code></td><td>Search window width in cents</td></tr>
-<tr><td><code>top_k(count)</code></td><td>Top-k candidates</td></tr>
-<tr><td><code>sigma_cents(spread)</code></td><td>Gaussian spread in cents</td></tr>
-<tr><td><code>random_candidates(count)</code></td><td>Number of random candidates</td></tr>
-<tr><td><code>global_peaks(count)</code></td><td>Global peak candidates (min_sep = 0)</td></tr>
-<tr><td><code>global_peaks(count, min_sep_cents)</code></td><td>Global peak candidates with separation</td></tr>
-<tr><td><code>ratio_candidates(count)</code></td><td>Enable ratio-based candidates (0 to disable)</td></tr>
-</tbody>
-</table>
-</div>
-<h3 id="crowding"><a class="header" href="#crowding">Crowding</a></h3>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Method</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>crowding(strength)</code></td><td>Auto-sigma from roughness kernel</td></tr>
-<tr><td><code>crowding(strength, sigma_cents)</code></td><td>Explicit sigma</td></tr>
-<tr><td><code>crowding_target(same_visible, other_visible)</code></td><td>Target visibility (booleans)</td></tr>
-<tr><td><code>leave_self_out(enabled)</code></td><td>Subtract own spectral contribution</td></tr>
-<tr><td><code>leave_self_out_mode(name)</code></td><td><code>"approx"</code>/<code>"approx_harmonics"</code> or <code>"exact"</code>/<code>"exact_scan"</code></td></tr>
-<tr><td><code>leave_self_out_harmonics(count)</code></td><td>Number of harmonics for self-subtraction</td></tr>
-</tbody>
-</table>
-</div>
-<pre><code class="language-ts">let social = derive(harmonic)
-    .crowding(0.8)
-    .crowding_target(true, true)
-    .leave_self_out(true).leave_self_out_mode("approx");
+<p>Harmonic-body preset with brightness 0.85.</p>
+<h4 id="square"><a class="header" href="#square"><code>square</code></a></h4>
+<pre><code class="language-rhai ignore">square() -&gt; Material
 </code></pre>
-<h3 id="brain-articulation"><a class="header" href="#brain-articulation">Brain (Articulation)</a></h3>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Method</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>brain(name)</code></td><td><code>"entrain"</code>, <code>"seq"</code>, or <code>"drone"</code></td></tr>
-</tbody>
-</table>
-</div>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Brain</th><th>Behavior</th></tr>
-</thead>
-<tbody>
-<tr><td><code>entrain</code></td><td>Synchronizes with detected rhythms in the field (default)</td></tr>
-<tr><td><code>seq</code></td><td>Fixed-duration note sequencing</td></tr>
-<tr><td><code>drone</code></td><td>Sustained tone with slow frequency sway</td></tr>
-</tbody>
-</table>
-</div>
-<h3 id="phonation"><a class="header" href="#phonation">Phonation</a></h3>
-<p>Phonation is configured in three tiers of increasing detail.</p>
-<p><strong>Tier 1 – Presets:</strong></p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Method</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>sustain()</code></td><td>Sustain mode (default)</td></tr>
-<tr><td><code>repeat()</code></td><td>Repeated/pulsed mode</td></tr>
-</tbody>
-</table>
-</div>
-<p><strong>Tier 2 – Explicit when/duration:</strong></p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Method</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>once()</code></td><td>Single trigger</td></tr>
-<tr><td><code>pulse(rate_hz)</code></td><td>Pulse at given rate</td></tr>
-<tr><td><code>while_alive()</code></td><td>Duration: while agent alive</td></tr>
-<tr><td><code>gates(n)</code></td><td>Duration: n theta gates</td></tr>
-<tr><td><code>field()</code></td><td>Duration: field-based</td></tr>
-</tbody>
-</table>
-</div>
-<p><strong>Tier 3 – Expert tuning:</strong></p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Method</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>sync(depth)</code></td><td>Sync depth 0–1 (requires <code>pulse</code>)</td></tr>
-<tr><td><code>social(coupling)</code></td><td>Social coupling 0–1 (requires <code>pulse</code>)</td></tr>
-<tr><td><code>field_window(min, max)</code></td><td>Field theta window 0–1 (requires <code>field</code>)</td></tr>
-<tr><td><code>field_curve(k, x0)</code></td><td>Field curve parameters (requires <code>field</code>)</td></tr>
-<tr><td><code>field_drop(gain)</code></td><td>Field drop gain (requires <code>field</code>)</td></tr>
-</tbody>
-</table>
-</div>
-<pre><code class="language-ts">let pulsed = derive(harmonic).repeat().pulse(3.0).sync(0.6).social(0.3);
-let fielded = derive(sine).field().field_window(0.2, 0.8);
+<p>Harmonic-body preset with brightness 0.65.</p>
+<h4 id="noise"><a class="header" href="#noise"><code>noise</code></a></h4>
+<pre><code class="language-rhai ignore">noise() -&gt; Material
 </code></pre>
-<h3 id="lifecycle"><a class="header" href="#lifecycle">Lifecycle</a></h3>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Method</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>metabolism(rate)</code></td><td>Energy consumption rate</td></tr>
-<tr><td><code>adsr(attack_sec, decay_sec, sustain_level, release_sec)</code></td><td>ADSR envelope</td></tr>
-</tbody>
-</table>
-</div>
-<pre><code class="language-ts">let pluck = derive(harmonic).metabolism(0.5).adsr(0.01, 0.1, 0.3, 0.2);
+<p>Harmonic-body preset with brightness 1.0 and motion 1.0.</p>
+<h4 id="variant"><a class="header" href="#variant"><code>variant</code></a></h4>
+<pre><code class="language-rhai ignore">variant(material) -&gt; Material
 </code></pre>
-<h3 id="rhythm"><a class="header" href="#rhythm">Rhythm</a></h3>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Method</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>rhythm_coupling(mode)</code></td><td><code>"temporal"</code> / <code>"temporal_only"</code></td></tr>
-<tr><td><code>rhythm_coupling_vitality(lambda_v, v_floor)</code></td><td>Vitality-modulated coupling</td></tr>
-<tr><td><code>rhythm_reward(rho_t, metric)</code></td><td><code>"attack_phase_match"</code> or <code>"none"</code></td></tr>
-</tbody>
-</table>
-</div>
-<h3 id="respawn"><a class="header" href="#respawn">Respawn</a></h3>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Method</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>respawn_random()</code></td><td>Random respawn locations</td></tr>
-<tr><td><code>respawn_hereditary(sigma_oct)</code></td><td>Hereditary with frequency variance in octaves</td></tr>
-</tbody>
-</table>
-</div>
-<h3 id="telemetry"><a class="header" href="#telemetry">Telemetry</a></h3>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Method</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>enable_telemetry(first_k)</code></td><td>Enable for first k agents</td></tr>
-<tr><td><code>enable_plv(window)</code></td><td>Enable Phase Locking Value computation</td></tr>
-</tbody>
-</table>
-</div>
-<h3 id="sustain-drive"><a class="header" href="#sustain-drive">Sustain Drive</a></h3>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Method</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>sustain_drive(value)</code></td><td>Continuous drive level</td></tr>
-</tbody>
-</table>
-</div>
-<hr>
-<h2 id="mode-patterns"><a class="header" href="#mode-patterns">Mode Patterns</a></h2>
-<p>Mode patterns define frequency relationships for modal synthesis bodies.</p>
-<h3 id="constructors"><a class="header" href="#constructors">Constructors</a></h3>
-<p>All constructors return <code>ModePattern</code>.</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Function</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>harmonic_modes()</code></td><td>Harmonic series: f, 2f, 3f, …</td></tr>
-<tr><td><code>odd_modes()</code></td><td>Odd harmonics: f, 3f, 5f, …</td></tr>
-<tr><td><code>power_modes(beta)</code></td><td>Power law: f * n^beta</td></tr>
-<tr><td><code>stiff_string_modes(stiffness)</code></td><td>Stiffness-adjusted harmonics</td></tr>
-<tr><td><code>custom_modes(ratios)</code></td><td>Custom frequency ratios from array</td></tr>
-<tr><td><code>modal_table(name)</code></td><td>Named mode table lookup</td></tr>
-<tr><td><code>landscape_density_modes()</code></td><td>Modes from landscape density</td></tr>
-<tr><td><code>landscape_peaks_modes()</code></td><td>Modes from landscape peaks</td></tr>
-</tbody>
-</table>
-</div>
-<h3 id="modifiers"><a class="header" href="#modifiers">Modifiers</a></h3>
-<p>All modifiers are chainable and return <code>ModePattern</code>.</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Method</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>.count(n)</code></td><td>Number of modes</td></tr>
-<tr><td><code>.range(min_mul, max_mul)</code></td><td>Frequency range (landscape modes only)</td></tr>
-<tr><td><code>.min_dist(d)</code></td><td>Min ERB distance (landscape modes only)</td></tr>
-<tr><td><code>.gamma(g)</code></td><td>Gamma parameter (landscape_density only)</td></tr>
-<tr><td><code>.jitter(cents)</code></td><td>Randomization in cents</td></tr>
-<tr><td><code>.seed(s)</code></td><td>Random seed</td></tr>
-</tbody>
-</table>
-</div>
-<pre><code class="language-ts">let bell_modes = stiff_string_modes(0.03).count(12).jitter(5.0);
-let adaptive = landscape_density_modes().count(6).range(1.0, 8.0).gamma(2.0);
+<p>Clone a material so the copy can be modified independently.</p>
+<h3 id="placement"><a class="header" href="#placement">Placement</a></h3>
+<p>Placements decide where voices enter the frequency field. Constructors return a <code>Placement</code>; modifiers refine it before it is passed to <code>place()</code>.</p>
+<h4 id="at"><a class="header" href="#at"><code>at</code></a></h4>
+<pre><code class="language-rhai ignore">at(freq_hz) -&gt; Placement
 </code></pre>
-<hr>
-<h2 id="spawn-strategies"><a class="header" href="#spawn-strategies">Spawn Strategies</a></h2>
-<p>Strategies define how frequencies are allocated when spawning a group.</p>
-<h3 id="constructors-1"><a class="header" href="#constructors-1">Constructors</a></h3>
-<p>All constructors return <code>SpawnStrategy</code>.</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Function</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>consonance(root_freq)</code></td><td>Highest consonance positions (default range 1x–4x)</td></tr>
-<tr><td><code>consonance_density_pmf(min_freq, max_freq)</code></td><td>Weighted-random from density PMF</td></tr>
-<tr><td><code>random_log(min_freq, max_freq)</code></td><td>Log-uniform random</td></tr>
-<tr><td><code>linear(start_freq, end_freq)</code></td><td>Linear interpolation</td></tr>
-</tbody>
-</table>
-</div>
-<h3 id="modifiers-1"><a class="header" href="#modifiers-1">Modifiers</a></h3>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Method</th><th>Applies to</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>.range(min_mul, max_mul)</code></td><td><code>consonance</code></td><td>Multiplier range relative to root</td></tr>
-<tr><td><code>.min_dist(d)</code></td><td><code>consonance</code>, <code>consonance_density_pmf</code></td><td>Min ERB distance between agents</td></tr>
-<tr><td><code>.reject_targets(anchor_hz, targets_st, exclusion_st, max_tries)</code></td><td>Any</td><td>Reject positions near specified targets</td></tr>
-</tbody>
-</table>
-</div>
-<p><code>reject_targets</code> wraps any strategy: <code>targets_st</code> is an array of semitone offsets
-from <code>anchor_hz</code>, <code>exclusion_st</code> is the exclusion zone width in semitones, and
-<code>max_tries</code> is the retry limit.</p>
-<pre><code class="language-ts">let strat = consonance(220.0).range(1.0, 3.0).min_dist(0.9);
-create(harmonic, 6).place(strat);
-
-let density = consonance_density_pmf(100.0, 800.0).min_dist(1.0);
-create(sine, 8).place(density);
-
-// Avoid octaves and fifths of 220 Hz
-let filtered = random_log(100.0, 1000.0)
-    .reject_targets(220.0, [0.0, 12.0, 7.0, 19.0], 0.5, 50);
+<p>Place at a fixed frequency in Hz.</p>
+<h4 id="peaks"><a class="header" href="#peaks"><code>peaks</code></a></h4>
+<pre><code class="language-rhai ignore">peaks(root_hz) -&gt; Placement
 </code></pre>
-<hr>
-<h2 id="group-creation-and-operations"><a class="header" href="#group-creation-and-operations">Group Creation and Operations</a></h2>
-<h3 id="createspecies-count---grouphandle"><a class="header" href="#createspecies-count---grouphandle">create(species, count) -&gt; GroupHandle</a></h3>
-<p>Create a draft group of <code>count</code> agents. The group spawns on the next <code>flush()</code> or
-<code>wait()</code> call.</p>
-<pre><code class="language-ts">let g = create(sine, 4).amp(0.3);
-flush();  // spawns the group
+<p>Place at high Consonance Field positions around a root. Default multiplier range is 1x-4x of the root (see <code>range()</code>) with 1.0 ERB spacing (see <code>spacing()</code>).</p>
+<h4 id="density"><a class="header" href="#density"><code>density</code></a></h4>
+<pre><code class="language-rhai ignore">density(min_hz, max_hz) -&gt; Placement
 </code></pre>
-<h3 id="placestrategy---grouphandle"><a class="header" href="#placestrategy---grouphandle">place(strategy) -&gt; GroupHandle</a></h3>
-<p>Set spawn strategy (draft only).</p>
-<pre><code class="language-ts">create(harmonic, 6).place(consonance(220.0).range(1.0, 4.0));
+<p>Sample positions from Consonance Density inside a frequency range. Density is a normalized distribution derived from the consonance model and remains well-defined inside the requested range. Default spacing is 1.0 ERB.</p>
+<h4 id="random"><a class="header" href="#random"><code>random</code></a></h4>
+<pre><code class="language-rhai ignore">random(min_hz, max_hz) -&gt; Placement
 </code></pre>
-<h3 id="releasegroup"><a class="header" href="#releasegroup">release(group)</a></h3>
-<p>Release a live group. Agents enter their release phase and fade out.</p>
-<pre><code class="language-ts">let g = create(sine, 1).freq(440.0);
-flush();
-wait(2.0);
-release(g);
+<p>Log-uniform random placement inside a frequency range.</p>
+<h4 id="line"><a class="header" href="#line"><code>line</code></a></h4>
+<pre><code class="language-rhai ignore">line(start_hz, end_hz) -&gt; Placement
 </code></pre>
-<h3 id="draft-vs-live-methods"><a class="header" href="#draft-vs-live-methods">Draft vs. Live Methods</a></h3>
-<p>Group methods work in two contexts:</p>
-<ul>
-<li><strong>Draft</strong> (before <code>flush()</code>/<code>wait()</code>): configures the group before spawning.</li>
-<li><strong>Live</strong> (after spawning): patches parameters on running agents.</li>
-</ul>
-<p><strong>Live-patchable</strong> (work in both draft and live):</p>
-<p><code>amp</code>, <code>energy</code>, <code>freq</code>, <code>landscape_weight</code>, <code>neighbor_step_cents</code>,
-<code>tessitura_gravity</code>, <code>sustain_drive</code>, <code>pitch_smooth</code>, <code>exploration</code>,
-<code>persistence</code>, <code>anneal_temp</code>, <code>temperature</code>, <code>move_cost</code>, <code>move_cost_exp</code>,
-<code>improvement_threshold</code>, <code>proposal_interval</code>, <code>window_cents</code>, <code>top_k</code>,
-<code>sigma_cents</code>, <code>random_candidates</code>, <code>brightness</code>, <code>spread</code>, <code>voices</code>,
-<code>pitch_glide</code>, <code>leave_self_out</code>, <code>leave_self_out_mode</code>,
-<code>leave_self_out_harmonics</code>, <code>crowding</code>, <code>crowding_target</code>, <code>global_peaks</code>,
-<code>ratio_candidates</code>, <code>move_cost_time_scale</code>, <code>pitch_apply_mode</code>, <code>pitch_apply</code></p>
-<p><strong>Draft-only</strong> (ignored with a warning if called on a live group):</p>
-<p><code>brain</code>, <code>pitch_mode</code>, <code>mode</code>, <code>pitch_core</code>, <code>sustain</code>, <code>repeat</code>, <code>once</code>,
-<code>pulse</code>, <code>while_alive</code>, <code>gates</code>, <code>field</code>, <code>sync</code>, <code>social</code>, <code>field_window</code>,
-<code>field_curve</code>, <code>field_drop</code>, <code>metabolism</code>, <code>adsr</code>, <code>rhythm_coupling</code>,
-<code>rhythm_coupling_vitality</code>, <code>rhythm_reward</code>, <code>respawn_random</code>,
-<code>respawn_hereditary</code>, <code>modes</code>, <code>place</code></p>
-<pre><code class="language-ts">let g = create(harmonic, 4)
-    .brightness(0.7)          // draft: sets initial value
-    .brain("entrain")         // draft-only
-    .place(consonance(220.0));
-flush();
-
-g.brightness(0.3);            // live: patches running agents
-wait(2.0);
-release(g);
+<p>Linear interpolation of positions between two frequencies.</p>
+<h4 id="count"><a class="header" href="#count"><code>count</code></a></h4>
+<pre><code class="language-rhai ignore">count(n)
 </code></pre>
-<hr>
-<h2 id="timeline-and-control-flow"><a class="header" href="#timeline-and-control-flow">Timeline and Control Flow</a></h2>
-<h3 id="waitseconds"><a class="header" href="#waitseconds">wait(seconds)</a></h3>
-<p>Flush pending groups, then advance the timeline cursor.</p>
-<pre><code class="language-ts">create(sine, 1).freq(440.0);
-wait(2.0);  // spawn + wait 2 seconds
+<p>Applies to: <code>Placement</code>.</p>
+<p>Number of voices to place (default 1).</p>
+<h4 id="range"><a class="header" href="#range"><code>range</code></a></h4>
+<pre><code class="language-rhai ignore">range(min_mul, max_mul)
 </code></pre>
-<h3 id="flush"><a class="header" href="#flush">flush()</a></h3>
-<p>Commit pending draft groups without advancing time.</p>
-<pre><code class="language-ts">create(sine, 1).freq(440.0);
-flush();  // spawn immediately at current cursor
+<p>Applies to: <code>Placement</code>.</p>
+<p>Multiplier range relative to the root; only valid on <code>peaks()</code>.</p>
+<h4 id="spacing"><a class="header" href="#spacing"><code>spacing</code></a></h4>
+<pre><code class="language-rhai ignore">spacing(min_erb)
 </code></pre>
-<h3 id="seedvalue"><a class="header" href="#seedvalue">seed(value)</a></h3>
+<p>Applies to: <code>Placement</code>.</p>
+<p>Minimum ERB distance between placed voices; valid on <code>peaks()</code> and <code>density()</code>.</p>
+<h3 id="timeline--staging"><a class="header" href="#timeline--staging">Timeline &amp; Staging</a></h3>
+<p>Staging verbs commit voices and move script time. <code>place()</code> stages a draft <code>Participant</code>; <code>wait()</code>/<code>flush()</code> commit drafts; scopes release groups automatically.</p>
+<h4 id="place"><a class="header" href="#place"><code>place</code></a></h4>
+<pre><code class="language-rhai ignore">place(material, placement) -&gt; Participant
+</code></pre>
+<p>Stage a Participant at the current script time. Committed by the next <code>wait()</code> or <code>flush()</code>. Until then, builder methods on the returned <code>Participant</code> shape the initial spawn; afterwards, live-patchable methods update running voices. Calling <code>place(participant, placement)</code> on a draft re-places it (sets frequency, count, and strategy).</p>
+<h4 id="wait"><a class="header" href="#wait"><code>wait</code></a></h4>
+<pre><code class="language-rhai ignore">wait(seconds)
+</code></pre>
+<p>Commit pending drafts, then advance the timeline cursor.</p>
+<h4 id="flush"><a class="header" href="#flush"><code>flush</code></a></h4>
+<pre><code class="language-rhai ignore">flush()
+</code></pre>
+<p>Commit pending drafts without advancing time.</p>
+<h4 id="release"><a class="header" href="#release"><code>release</code></a></h4>
+<pre><code class="language-rhai ignore">release(participant)
+</code></pre>
+<p>Release a live group; its voices enter their release phase and fade out.</p>
+<h4 id="section"><a class="header" href="#section"><code>section</code></a></h4>
+<pre><code class="language-rhai ignore">section(name, callback)
+</code></pre>
+<p>Named scope; groups placed inside are released when the callback returns.</p>
+<h4 id="play"><a class="header" href="#play"><code>play</code></a></h4>
+<pre><code class="language-rhai ignore">play(callback)
+play(callback, arg1)
+play(callback, arg1, arg2)
+play(callback, arg1, arg2, arg3)
+play(callback, [args])
+</code></pre>
+<p>Scoped callback execution with automatic group release. Accepts 0-3 positional arguments, or an array of arguments.</p>
+<h4 id="parallel"><a class="header" href="#parallel"><code>parallel</code></a></h4>
+<pre><code class="language-rhai ignore">parallel(callbacks)
+</code></pre>
+<p>Run an array of closures on parallel timelines from the current cursor. Each branch starts at the current cursor; the cursor advances to the latest branch end.</p>
+<h4 id="seed"><a class="header" href="#seed"><code>seed</code></a></h4>
+<pre><code class="language-rhai ignore">seed(value)
+</code></pre>
 <p>Set the random seed for reproducible scenarios.</p>
-<pre><code class="language-ts">seed(42);
+<h3 id="body--timbre"><a class="header" href="#body--timbre">Body &amp; Timbre</a></h3>
+<p>Sound body parameters of a voice: level, spectrum, detuning, and envelope.</p>
+<h4 id="amp"><a class="header" href="#amp"><code>amp</code></a></h4>
+<pre><code class="language-rhai ignore">amp(value)
 </code></pre>
-<h3 id="scenename-callback"><a class="header" href="#scenename-callback">scene(name, callback)</a></h3>
-<p>Named scope with automatic group release when the callback returns.</p>
-<pre><code class="language-ts">scene("Intro", || {
-    create(sine, 2).freq(220.0);
-    flush();
-    wait(4.0);
-    // all groups auto-released here
-});
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Live-patchable: updates running voices on a live <code>Participant</code>.</p>
+<p>Amplitude in 0.0-1.0.</p>
+<h4 id="freq"><a class="header" href="#freq"><code>freq</code></a></h4>
+<pre><code class="language-rhai ignore">freq(hz)
 </code></pre>
-<h3 id="playcallback--args"><a class="header" href="#playcallback--args">play(callback [, args…])</a></h3>
-<p>Scoped callback execution with automatic cleanup.
-Accepts 0–3 positional arguments, or an array.</p>
-<pre><code class="language-ts">let chord = |root| {
-    create(sine, 1).freq(root);
-    create(sine, 1).freq(root * 1.25);
-    create(sine, 1).freq(root * 1.5);
-    flush();
-};
-
-play(chord, 220.0);
-wait(2.0);
-// groups auto-released when play scope ends
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Live-patchable: updates running voices on a live <code>Participant</code>.</p>
+<p>Frequency lock in Hz; implies an anchored pitch (see <code>anchor()</code>).</p>
+<h4 id="brightness"><a class="header" href="#brightness"><code>brightness</code></a></h4>
+<pre><code class="language-rhai ignore">brightness(value)
 </code></pre>
-<h3 id="parallelcallbacks"><a class="header" href="#parallelcallbacks">parallel(callbacks)</a></h3>
-<p>Execute closures on parallel timelines. Each branch starts at the current cursor.
-The cursor advances to the latest branch end.</p>
-<pre><code class="language-ts">parallel([
-    || {
-        create(sine, 1).freq(220.0);
-        wait(1.0);
-    },
-    || {
-        create(sine, 1).freq(330.0);
-        wait(3.0);
-    },
-]);
-// cursor is now at +3.0 seconds
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Live-patchable: updates running voices on a live <code>Participant</code>.</p>
+<p>Spectral brightness in 0.0-1.0 (harmonic/modal bodies).</p>
+<h4 id="spread"><a class="header" href="#spread"><code>spread</code></a></h4>
+<pre><code class="language-rhai ignore">spread(value)
 </code></pre>
-<hr>
-<h2 id="global-parameters"><a class="header" href="#global-parameters">Global Parameters</a></h2>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Function</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>set_harmonicity_mirror_weight(value)</code></td><td>Overtone/undertone balance 0.0–1.0</td></tr>
-<tr><td><code>set_roughness_k(value)</code></td><td>Roughness tolerance</td></tr>
-<tr><td><code>set_global_coupling(value)</code></td><td>Agent interaction strength</td></tr>
-<tr><td><code>set_pitch_objective(name)</code></td><td><code>"consonance"</code>/<code>"positive"</code> or <code>"dissonance"</code>/<code>"negative"</code></td></tr>
-</tbody>
-</table>
-</div>
-<pre><code class="language-ts">set_harmonicity_mirror_weight(0.0);  // overtone-dominant (major)
-wait(4.0);
-set_harmonicity_mirror_weight(1.0);  // undertone-dominant (minor)
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Live-patchable: updates running voices on a live <code>Participant</code>.</p>
+<p>Detuning spread.</p>
+<h4 id="unison"><a class="header" href="#unison"><code>unison</code></a></h4>
+<pre><code class="language-rhai ignore">unison(count)
 </code></pre>
-<hr>
-<h2 id="complete-example"><a class="header" href="#complete-example">Complete Example</a></h2>
-<pre><code class="language-ts">seed(1);
-
-// Define species
-let anchor = derive(sine).amp(0.6).sustain();
-let voice = derive(harmonic)
-    .amp(0.3)
-    .brightness(0.5)
-    .pitch_mode("free")
-    .pitch_core("hill_climb")
-    .pitch_apply("glide").pitch_glide(0.08)
-    .crowding(0.5)
-    .metabolism(0.4)
-    .adsr(0.05, 0.1, 0.7, 0.3)
-    .repeat().pulse(2.25).sync(0.5);
-
-scene("Opening", || {
-    // Anchor drone
-    let root = create(anchor, 1).freq(220.0);
-    flush();
-    wait(1.0);
-
-    // Consonant voices
-    let strat = consonance(220.0).range(1.0, 3.0).min_dist(0.9);
-    create(voice, 6).place(strat);
-    wait(4.0);
-
-    // Shift to undertone mode
-    set_harmonicity_mirror_weight(1.0);
-    wait(4.0);
-});
-
-scene("Development", || {
-    let dense = derive(voice).exploration(0.8).anneal_temp(0.5);
-    let strat = consonance_density_pmf(100.0, 800.0).min_dist(0.8);
-    create(dense, 12).place(strat);
-    wait(8.0);
-});
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Live-patchable: updates running voices on a live <code>Participant</code>.</p>
+<p>Number of unison detuning copies.</p>
+<h4 id="modes"><a class="header" href="#modes"><code>modes</code></a></h4>
+<pre><code class="language-rhai ignore">modes(pattern)
 </code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
+<p>Set the mode pattern of a modal body. See the Mode Patterns section for constructors and modifiers.</p>
+<h4 id="adsr"><a class="header" href="#adsr"><code>adsr</code></a></h4>
+<pre><code class="language-rhai ignore">adsr(attack_sec, decay_sec, sustain_level, release_sec)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
+<p>ADSR amplitude envelope.</p>
+<h3 id="phonation--rhythm"><a class="header" href="#phonation--rhythm">Phonation &amp; Rhythm</a></h3>
+<p>When and how long a voice sounds. Tier 1 picks a region on the rhythm coupling continuum (<code>metric()</code>, <code>entrained()</code>, <code>flow()</code>); Tier 2 sets explicit when/duration; Tier 3 is expert tuning. Calls on the same axis are last-write-wins, and modifiers are remembered and applied when their matching preset is selected.</p>
+<h4 id="brain"><a class="header" href="#brain"><code>brain</code></a></h4>
+<pre><code class="language-rhai ignore">brain(name)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
+<p>Articulation brain: <code>"entrain"</code> (default), <code>"seq"</code>, or <code>"drone"</code>. <code>entrain</code> synchronizes with detected rhythms in the field, <code>seq</code> does fixed-duration note sequencing, <code>drone</code> sustains with slow frequency sway.</p>
+<h4 id="sustain"><a class="header" href="#sustain"><code>sustain</code></a></h4>
+<pre><code class="language-rhai ignore">sustain()
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
+<p>Sustain phonation mode (default).</p>
+<h4 id="repeat"><a class="header" href="#repeat"><code>repeat</code></a></h4>
+<pre><code class="language-rhai ignore">repeat()
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
+<p>Repeated/pulsed phonation mode.</p>
+<h4 id="metric"><a class="header" href="#metric"><code>metric</code></a></h4>
+<pre><code class="language-rhai ignore">metric()
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
+<p>High coupling to the shared emergent meter: deep attractor, stable pulse. Takes no rate argument: the tempo region is director-level terrain (<code>temporal_basin</code>).</p>
+<h4 id="entrained"><a class="header" href="#entrained"><code>entrained</code></a></h4>
+<pre><code class="language-rhai ignore">entrained()
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
+<p>Medium coupling: synchronization emerges over time, still drifts.</p>
+<h4 id="flow"><a class="header" href="#flow"><code>flow</code></a></h4>
+<pre><code class="language-rhai ignore">flow()
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
+<p>Near-zero coupling: free renewal process, non-metric texture.</p>
+<h4 id="entrainment"><a class="header" href="#entrainment"><code>entrainment</code></a></h4>
+<pre><code class="language-rhai ignore">entrainment(strength)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
+<p>Override coupling strength in 0-1 (free .. locked). Order-independent with presets: <code>entrainment(0.8).metric()</code> and <code>metric().entrainment(0.8)</code> are equivalent.</p>
+<h4 id="rhythm_role"><a class="header" href="#rhythm_role"><code>rhythm_role</code></a></h4>
+<pre><code class="language-rhai ignore">rhythm_role(name)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
+<p>Metrical job: <code>"beat"</code>, <code>"subdivision"</code>, <code>"accent"</code>, or <code>"texture"</code>. <code>accent</code> emits a stronger onset that drives the shared meter harder, so a recurring downbeat can seed an emergent measure.</p>
+<h4 id="microtiming"><a class="header" href="#microtiming"><code>microtiming</code></a></h4>
+<pre><code class="language-rhai ignore">microtiming(amount)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
+<p>Signed beat-phase offset in -0.5..0.5; 0.5 reads as syncopation.</p>
+<h4 id="pulse"><a class="header" href="#pulse"><code>pulse</code></a></h4>
+<pre><code class="language-rhai ignore">pulse(rate_hz)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
+<p>Pulse at an explicit rate in Hz.</p>
+<h4 id="cycles"><a class="header" href="#cycles"><code>cycles</code></a></h4>
+<pre><code class="language-rhai ignore">cycles(n)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
+<p>Duration of n rhythm cycles.</p>
+<h3 id="pitch-movement"><a class="header" href="#pitch-movement">Pitch Movement</a></h3>
+<p>How a voice moves through the consonance field. <code>seek_consonance()</code> plus <code>glide()</code> is the curated surface; the rest tunes the hill-climb and peak-sampler mechanisms.</p>
+<h4 id="anchor"><a class="header" href="#anchor"><code>anchor</code></a></h4>
+<pre><code class="language-rhai ignore">anchor()
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
+<p>Hold the voice at its pitch: an anchored voice never moves. Voices placed with <code>at()</code> or given <code>freq()</code> are anchored implicitly; use <code>anchor()</code> to hold strategy-placed voices (<code>peaks()</code>, <code>density()</code>, …) at their settled position, or to state the intent explicitly.</p>
+<h4 id="seek_consonance"><a class="header" href="#seek_consonance"><code>seek_consonance</code></a></h4>
+<pre><code class="language-rhai ignore">seek_consonance()
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
+<p>Free hill-climb movement toward better field positions, with glide defaults. How pitch decisions land is resolved at commit unless <code>pitch_apply_mode()</code> was called: sustained voices glide, re-attacking voices (<code>pulse()</code>, <code>metric()</code>, <code>entrained()</code>, <code>flow()</code>) snap at onsets.</p>
+<h4 id="glide"><a class="header" href="#glide"><code>glide</code></a></h4>
+<pre><code class="language-rhai ignore">glide(tau_sec)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Live-patchable: updates running voices on a live <code>Participant</code>.</p>
+<p>Pitch glide time constant in seconds.</p>
+<h3 id="neighbor-awareness"><a class="header" href="#neighbor-awareness">Neighbor Awareness</a></h3>
+<p>How a voice perceives other voices and its own spectral footprint when evaluating the field.</p>
+<h4 id="avoid_neighbors"><a class="header" href="#avoid_neighbors"><code>avoid_neighbors</code></a></h4>
+<pre><code class="language-rhai ignore">avoid_neighbors(strength)
+avoid_neighbors(strength, sigma_cents)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Live-patchable: updates running voices on a live <code>Participant</code>.</p>
+<p>Crowding repulsion from neighboring voices. With one argument the repulsion width is derived from the roughness kernel; the two-argument form sets it explicitly in cents.</p>
+<h3 id="lifecycle--viability"><a class="header" href="#lifecycle--viability">Lifecycle &amp; Viability</a></h3>
+<p>Energy budget and survival. Viability makes field fit matter over time: <code>consonance_viability()</code> defines the consonance window and <code>viability_rate()</code> controls continuous recharge, with environment-relative scoring by default.</p>
+<h4 id="metabolism"><a class="header" href="#metabolism"><code>metabolism</code></a></h4>
+<pre><code class="language-rhai ignore">metabolism(rate)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
+<p>Energy consumption rate.</p>
+<h4 id="initial_energy"><a class="header" href="#initial_energy"><code>initial_energy</code></a></h4>
+<pre><code class="language-rhai ignore">initial_energy(value)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
+<p>Starting energy.</p>
+<h4 id="energy_cap"><a class="header" href="#energy_cap"><code>energy_cap</code></a></h4>
+<pre><code class="language-rhai ignore">energy_cap(value)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
+<p>Maximum energy after recharge/reward.</p>
+<h4 id="recharge_rate"><a class="header" href="#recharge_rate"><code>recharge_rate</code></a></h4>
+<pre><code class="language-rhai ignore">recharge_rate(rate)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
+<p>Energy gained per attack.</p>
+<h4 id="action_cost"><a class="header" href="#action_cost"><code>action_cost</code></a></h4>
+<pre><code class="language-rhai ignore">action_cost(cost)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
+<p>Energy cost per attack.</p>
+<h4 id="sustain_drive"><a class="header" href="#sustain_drive"><code>sustain_drive</code></a></h4>
+<pre><code class="language-rhai ignore">sustain_drive(value)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Live-patchable: updates running voices on a live <code>Participant</code>.</p>
+<p>Continuous drive level for sustained voices.</p>
+<h4 id="viability_rate"><a class="header" href="#viability_rate"><code>viability_rate</code></a></h4>
+<pre><code class="language-rhai ignore">viability_rate(rate)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
+<p>Continuous consonance-driven energy recharge rate.</p>
+<h4 id="consonance_viability"><a class="header" href="#consonance_viability"><code>consonance_viability</code></a></h4>
+<pre><code class="language-rhai ignore">consonance_viability(low, high)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
+<p>Consonance window used for viability scoring. Enables environment-relative scoring by default: a voice is evaluated against the field with its own footprint approximately removed (see <code>viability_scope()</code>).</p>
+<h4 id="dissonance_cost"><a class="header" href="#dissonance_cost"><code>dissonance_cost</code></a></h4>
+<pre><code class="language-rhai ignore">dissonance_cost(cost)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
+<p>Extra energy cost at low consonance.</p>
+<h3 id="respawn"><a class="header" href="#respawn">Respawn</a></h3>
+<p>Population turnover. A respawn policy decides where replacements appear when voices die; capacity and acceptance thresholds shape ecology-scale behavior.</p>
+<h4 id="respawn_random"><a class="header" href="#respawn_random"><code>respawn_random</code></a></h4>
+<pre><code class="language-rhai ignore">respawn_random()
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
+<p>Respawn at random locations.</p>
+<h4 id="respawn_hereditary"><a class="header" href="#respawn_hereditary"><code>respawn_hereditary</code></a></h4>
+<pre><code class="language-rhai ignore">respawn_hereditary(sigma_oct)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
+<p>Hereditary respawn with frequency variance in octaves.</p>
+<h4 id="respawn_consonance"><a class="header" href="#respawn_consonance"><code>respawn_consonance</code></a></h4>
+<pre><code class="language-rhai ignore">respawn_consonance()
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
+<p>Respawn from consonance-biased parental peaks.</p>
+<h4 id="respawn_capacity"><a class="header" href="#respawn_capacity"><code>respawn_capacity</code></a></h4>
+<pre><code class="language-rhai ignore">respawn_capacity(count)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
+<p>Maintain population up to a capacity.</p>
+<h4 id="respawn_settle"><a class="header" href="#respawn_settle"><code>respawn_settle</code></a></h4>
+<pre><code class="language-rhai ignore">respawn_settle(placement)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
+<p>Placement used for replacements. Requires a strategy-bearing placement: <code>density()</code>, <code>peaks()</code>, <code>random()</code>, or <code>line()</code> (not <code>at()</code>).</p>
+<h3 id="mode-patterns"><a class="header" href="#mode-patterns">Mode Patterns</a></h3>
+<p>Frequency relationships for <code>modal()</code> bodies. Constructors return a <code>ModePattern</code>; modifiers are chainable. Landscape-aware patterns sample the live field.</p>
+<h4 id="harmonic_modes"><a class="header" href="#harmonic_modes"><code>harmonic_modes</code></a></h4>
+<pre><code class="language-rhai ignore">harmonic_modes() -&gt; ModePattern
+</code></pre>
+<p>Harmonic series: f, 2f, 3f, …</p>
+<h4 id="odd_modes"><a class="header" href="#odd_modes"><code>odd_modes</code></a></h4>
+<pre><code class="language-rhai ignore">odd_modes() -&gt; ModePattern
+</code></pre>
+<p>Odd harmonics: f, 3f, 5f, …</p>
+<h4 id="power_modes"><a class="header" href="#power_modes"><code>power_modes</code></a></h4>
+<pre><code class="language-rhai ignore">power_modes(beta) -&gt; ModePattern
+</code></pre>
+<p>Power law: f * n^beta.</p>
+<h4 id="stiff_string_modes"><a class="header" href="#stiff_string_modes"><code>stiff_string_modes</code></a></h4>
+<pre><code class="language-rhai ignore">stiff_string_modes(stiffness) -&gt; ModePattern
+</code></pre>
+<p>Stiffness-adjusted harmonics.</p>
+<h4 id="custom_modes"><a class="header" href="#custom_modes"><code>custom_modes</code></a></h4>
+<pre><code class="language-rhai ignore">custom_modes(ratios) -&gt; ModePattern
+</code></pre>
+<p>Custom frequency ratios from an array.</p>
+<h4 id="modal_table"><a class="header" href="#modal_table"><code>modal_table</code></a></h4>
+<pre><code class="language-rhai ignore">modal_table(name) -&gt; ModePattern
+</code></pre>
+<p>Named mode table lookup. Falls back to <code>harmonic_modes()</code> with a warning if the name is unknown.</p>
+<h4 id="landscape_density_modes"><a class="header" href="#landscape_density_modes"><code>landscape_density_modes</code></a></h4>
+<pre><code class="language-rhai ignore">landscape_density_modes() -&gt; ModePattern
+</code></pre>
+<p>Modes sampled from the live landscape density.</p>
+<h4 id="landscape_peaks_modes"><a class="header" href="#landscape_peaks_modes"><code>landscape_peaks_modes</code></a></h4>
+<pre><code class="language-rhai ignore">landscape_peaks_modes() -&gt; ModePattern
+</code></pre>
+<p>Modes sampled from live landscape peaks.</p>
+<h4 id="count-1"><a class="header" href="#count-1"><code>count</code></a></h4>
+<pre><code class="language-rhai ignore">count(n)
+</code></pre>
+<p>Applies to: <code>ModePattern</code>.</p>
+<p>Number of modes.</p>
+<h4 id="range-1"><a class="header" href="#range-1"><code>range</code></a></h4>
+<pre><code class="language-rhai ignore">range(min_mul, max_mul)
+</code></pre>
+<p>Applies to: <code>ModePattern</code>.</p>
+<p>Frequency range; only valid on <code>landscape_*_modes()</code>.</p>
+<h4 id="spacing-1"><a class="header" href="#spacing-1"><code>spacing</code></a></h4>
+<pre><code class="language-rhai ignore">spacing(min_erb)
+</code></pre>
+<p>Applies to: <code>ModePattern</code>.</p>
+<p>Minimum ERB distance between modes; only valid on <code>landscape_*_modes()</code>.</p>
+<h4 id="gamma"><a class="header" href="#gamma"><code>gamma</code></a></h4>
+<pre><code class="language-rhai ignore">gamma(g)
+</code></pre>
+<p>Applies to: <code>ModePattern</code>.</p>
+<p>Density sharpening exponent; only valid on <code>landscape_density_modes()</code>.</p>
+<h4 id="jitter"><a class="header" href="#jitter"><code>jitter</code></a></h4>
+<pre><code class="language-rhai ignore">jitter(cents)
+</code></pre>
+<p>Applies to: <code>ModePattern</code>.</p>
+<p>Randomize mode frequencies by up to the given cents.</p>
+<h4 id="seed-1"><a class="header" href="#seed-1"><code>seed</code></a></h4>
+<pre><code class="language-rhai ignore">seed(value)
+</code></pre>
+<p>Applies to: <code>ModePattern</code>.</p>
+<p>Random seed for jittered patterns (&gt;= 0).</p>
+<h3 id="routing"><a class="header" href="#routing">Routing</a></h3>
+<p>Each voice contributes to two independent mono buses: the presentation bus (the work as heard) and the habitat bus (what the ecology senses through NSGT analysis). By default a voice feeds both.</p>
+<h4 id="send"><a class="header" href="#send"><code>send</code></a></h4>
+<pre><code class="language-rhai ignore">send(bus)
+</code></pre>
+<p>Applies to: <code>Material</code> only.</p>
+<p>Route the voice to specific buses; accepts a <code>Bus</code> or a <code>BusSet</code>. Material only. <code>send(habitat_bus)</code> makes a voice sensed by the ecology but absent from the presented sound; <code>send(presentation_bus)</code> is heard without perturbing the ecology; <code>send(habitat_bus | presentation_bus)</code> feeds both (the default).</p>
+<h3 id="director--global-parameters"><a class="header" href="#director--global-parameters">Director &amp; Global Parameters</a></h3>
+<p>Scene-global terrain shaping and research controls. Director verbs are soft priors: they shape the terrain and never schedule a beat or force a measure.</p>
+<h4 id="harmonic_mirror"><a class="header" href="#harmonic_mirror"><code>harmonic_mirror</code></a></h4>
+<pre><code class="language-rhai ignore">harmonic_mirror(value)
+</code></pre>
+<p>Harmonic-tension dial in 0.0-1.0: blends the harmonicity terrain from overtone toward undertone projection. Raising it degrades the terrain’s coherence for overtone-radiating bodies, heard as harmonic tension; lowering it restores consonant gravity. It is a tension-release axis, not a tonality (major/minor) switch.</p>
+<h4 id="meter_stability"><a class="header" href="#meter_stability"><code>meter_stability</code></a></h4>
+<pre><code class="language-rhai ignore">meter_stability(value)
+</code></pre>
+<p>Attractor depth in 0-1: how readily a pulse forms. A soft prior: it only deepens the basin for a real periodicity; it never fabricates a beat from non-metric input.</p>
+<h4 id="temporal_basin"><a class="header" href="#temporal_basin"><code>temporal_basin</code></a></h4>
+<pre><code class="language-rhai ignore">temporal_basin(min_hz, max_hz)
+</code></pre>
+<p>Tempo region the emergent beat gravitates toward. The time-axis analogue of <code>density(min, max)</code>: it shapes the terrain, does not place a beat, and never forces a measure.</p>
+<h2 id="experimental"><a class="header" href="#experimental">Experimental</a></h2>
+<p>Candidate core verbs under audition: composing surface by intent, but with research-grade stability until validated.</p>
+<p>Empty right now.</p>
+<h2 id="mechanism-tuning"><a class="header" href="#mechanism-tuning">Mechanism Tuning</a></h2>
+<p>Fine-grained control over the mechanisms behind the core verbs. Defaults are calibrated; reach for these when a piece needs a specific behavior the core surface does not express.</p>
+<h3 id="placement-1"><a class="header" href="#placement-1">Placement</a></h3>
+<h4 id="reject_targets"><a class="header" href="#reject_targets"><code>reject_targets</code></a></h4>
+<pre><code class="language-rhai ignore">reject_targets(anchor_hz, targets_st, exclusion_st, max_tries)
+</code></pre>
+<p>Applies to: <code>Placement</code>.</p>
+<p>Reject sampled positions near specified semitone targets. <code>targets_st</code> is an array of semitone offsets from <code>anchor_hz</code>, <code>exclusion_st</code> is the exclusion zone width in semitones, and <code>max_tries</code> is the retry limit. Wraps any strategy-bearing placement (<code>peaks()</code>, <code>density()</code>, <code>random()</code>, <code>line()</code>).</p>
+<h3 id="phonation--rhythm-1"><a class="header" href="#phonation--rhythm-1">Phonation &amp; Rhythm</a></h3>
+<h4 id="once"><a class="header" href="#once"><code>once</code></a></h4>
+<pre><code class="language-rhai ignore">once()
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
+<p>Single trigger.</p>
+<h4 id="while_alive"><a class="header" href="#while_alive"><code>while_alive</code></a></h4>
+<pre><code class="language-rhai ignore">while_alive()
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
+<p>Hold/sustain until release.</p>
+<h4 id="adaptive_duration"><a class="header" href="#adaptive_duration"><code>adaptive_duration</code></a></h4>
+<pre><code class="language-rhai ignore">adaptive_duration()
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
+<p>Duration follows field support.</p>
+<h4 id="pulse_lock"><a class="header" href="#pulse_lock"><code>pulse_lock</code></a></h4>
+<pre><code class="language-rhai ignore">pulse_lock(depth)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
+<p>Low-level pulse phase weighting in 0-1.</p>
+<h4 id="social"><a class="header" href="#social"><code>social</code></a></h4>
+<pre><code class="language-rhai ignore">social(coupling)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
+<p>Social coupling for <code>entrained()</code> or <code>pulse()</code>, in 0-1.</p>
+<h4 id="duration_range"><a class="header" href="#duration_range"><code>duration_range</code></a></h4>
+<pre><code class="language-rhai ignore">duration_range(min_cycles, max_cycles)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
+<p>Adaptive duration range in rhythm cycles.</p>
+<h4 id="duration_curve"><a class="header" href="#duration_curve"><code>duration_curve</code></a></h4>
+<pre><code class="language-rhai ignore">duration_curve(k, x0)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
+<p>Adaptive duration curve parameters.</p>
+<h4 id="shorten_on_drop"><a class="header" href="#shorten_on_drop"><code>shorten_on_drop</code></a></h4>
+<pre><code class="language-rhai ignore">shorten_on_drop(gain)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
+<p>Shorten adaptive duration when field support drops.</p>
+<h4 id="rhythm_freq"><a class="header" href="#rhythm_freq"><code>rhythm_freq</code></a></h4>
+<pre><code class="language-rhai ignore">rhythm_freq(freq_hz)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
+<p>Internal theta/rhythm oscillator frequency.</p>
+<h4 id="rhythm_coupling_vitality"><a class="header" href="#rhythm_coupling_vitality"><code>rhythm_coupling_vitality</code></a></h4>
+<pre><code class="language-rhai ignore">rhythm_coupling_vitality(lambda_v, v_floor)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
+<p>Vitality-modulated rhythm coupling.</p>
+<h4 id="rhythm_reward"><a class="header" href="#rhythm_reward"><code>rhythm_reward</code></a></h4>
+<pre><code class="language-rhai ignore">rhythm_reward(rho_t, metric)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
+<p>Energy reward for timing fit; metric is <code>"attack_phase_match"</code> or <code>"none"</code>.</p>
+<h3 id="pitch-movement-1"><a class="header" href="#pitch-movement-1">Pitch Movement</a></h3>
+<h4 id="pitch_smooth"><a class="header" href="#pitch_smooth"><code>pitch_smooth</code></a></h4>
+<pre><code class="language-rhai ignore">pitch_smooth(tau_sec)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Live-patchable: updates running voices on a live <code>Participant</code>.</p>
+<p>Pitch smoothing time constant in seconds.</p>
+<h4 id="pitch_apply_mode"><a class="header" href="#pitch_apply_mode"><code>pitch_apply_mode</code></a></h4>
+<pre><code class="language-rhai ignore">pitch_apply_mode(name)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Live-patchable: updates running voices on a live <code>Participant</code>.</p>
+<p><code>"gate_snap"</code> or <code>"glide"</code>: override how pitch decisions are applied. Without an explicit call, moving voices resolve this at commit from their phonation: sustained voices glide, re-attacking voices snap at onsets.</p>
+<h4 id="landscape_weight"><a class="header" href="#landscape_weight"><code>landscape_weight</code></a></h4>
+<pre><code class="language-rhai ignore">landscape_weight(value)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Live-patchable: updates running voices on a live <code>Participant</code>.</p>
+<p>Weight of the landscape objective.</p>
+<h4 id="exploration"><a class="header" href="#exploration"><code>exploration</code></a></h4>
+<pre><code class="language-rhai ignore">exploration(value)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Live-patchable: updates running voices on a live <code>Participant</code>.</p>
+<p>Exploration tendency of the hill-climb.</p>
+<h4 id="persistence"><a class="header" href="#persistence"><code>persistence</code></a></h4>
+<pre><code class="language-rhai ignore">persistence(value)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Live-patchable: updates running voices on a live <code>Participant</code>.</p>
+<p>Persistence bias of the hill-climb.</p>
+<h4 id="anneal_temp"><a class="header" href="#anneal_temp"><code>anneal_temp</code></a></h4>
+<pre><code class="language-rhai ignore">anneal_temp(value)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Live-patchable: updates running voices on a live <code>Participant</code>.</p>
+<p>Annealing temperature of the hill-climb.</p>
+<h4 id="temperature"><a class="header" href="#temperature"><code>temperature</code></a></h4>
+<pre><code class="language-rhai ignore">temperature(value)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Live-patchable: updates running voices on a live <code>Participant</code>.</p>
+<p>Selection temperature of the peak sampler (softness of candidate choice).</p>
+<h4 id="neighbor_step_cents"><a class="header" href="#neighbor_step_cents"><code>neighbor_step_cents</code></a></h4>
+<pre><code class="language-rhai ignore">neighbor_step_cents(value)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Live-patchable: updates running voices on a live <code>Participant</code>.</p>
+<p>Step size for neighbor exploration in cents.</p>
+<h4 id="improvement_threshold"><a class="header" href="#improvement_threshold"><code>improvement_threshold</code></a></h4>
+<pre><code class="language-rhai ignore">improvement_threshold(value)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Live-patchable: updates running voices on a live <code>Participant</code>.</p>
+<p>Minimum improvement to accept a move.</p>
+<h4 id="move_cost"><a class="header" href="#move_cost"><code>move_cost</code></a></h4>
+<pre><code class="language-rhai ignore">move_cost(coeff)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Live-patchable: updates running voices on a live <code>Participant</code>.</p>
+<p>Cost multiplier for pitch changes.</p>
+<h4 id="move_cost_exp"><a class="header" href="#move_cost_exp"><code>move_cost_exp</code></a></h4>
+<pre><code class="language-rhai ignore">move_cost_exp(exp)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Live-patchable: updates running voices on a live <code>Participant</code>.</p>
+<p>Exponent for the move cost.</p>
+<h4 id="proposal_interval"><a class="header" href="#proposal_interval"><code>proposal_interval</code></a></h4>
+<pre><code class="language-rhai ignore">proposal_interval(seconds)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Live-patchable: updates running voices on a live <code>Participant</code>.</p>
+<p>Proposal generation interval in seconds.</p>
+<h4 id="tessitura_gravity"><a class="header" href="#tessitura_gravity"><code>tessitura_gravity</code></a></h4>
+<pre><code class="language-rhai ignore">tessitura_gravity(value)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Live-patchable: updates running voices on a live <code>Participant</code>.</p>
+<p>Gravity toward the tessitura center.</p>
+<h4 id="window_cents"><a class="header" href="#window_cents"><code>window_cents</code></a></h4>
+<pre><code class="language-rhai ignore">window_cents(width)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Live-patchable: updates running voices on a live <code>Participant</code>.</p>
+<p>Peak-sampler search window width in cents.</p>
+<h4 id="top_k"><a class="header" href="#top_k"><code>top_k</code></a></h4>
+<pre><code class="language-rhai ignore">top_k(count)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Live-patchable: updates running voices on a live <code>Participant</code>.</p>
+<p>Number of top candidates kept by the peak sampler.</p>
+<h4 id="sigma_cents"><a class="header" href="#sigma_cents"><code>sigma_cents</code></a></h4>
+<pre><code class="language-rhai ignore">sigma_cents(spread)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Live-patchable: updates running voices on a live <code>Participant</code>.</p>
+<p>Gaussian spread of the peak sampler in cents.</p>
+<h4 id="random_candidates"><a class="header" href="#random_candidates"><code>random_candidates</code></a></h4>
+<pre><code class="language-rhai ignore">random_candidates(count)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Live-patchable: updates running voices on a live <code>Participant</code>.</p>
+<p>Number of random candidates considered.</p>
+<h4 id="global_peaks"><a class="header" href="#global_peaks"><code>global_peaks</code></a></h4>
+<pre><code class="language-rhai ignore">global_peaks(count)
+global_peaks(count, min_sep_cents)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Live-patchable: updates running voices on a live <code>Participant</code>.</p>
+<p>Global field peaks as movement candidates, with optional minimum separation.</p>
+<h4 id="ratio_candidates"><a class="header" href="#ratio_candidates"><code>ratio_candidates</code></a></h4>
+<pre><code class="language-rhai ignore">ratio_candidates(count)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Live-patchable: updates running voices on a live <code>Participant</code>.</p>
+<p>Ratio-based movement candidates; 0 disables.</p>
+<h3 id="neighbor-awareness-1"><a class="header" href="#neighbor-awareness-1">Neighbor Awareness</a></h3>
+<h4 id="crowding_target"><a class="header" href="#crowding_target"><code>crowding_target</code></a></h4>
+<pre><code class="language-rhai ignore">crowding_target(same_visible, other_visible)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Live-patchable: updates running voices on a live <code>Participant</code>.</p>
+<p>Which voices are visible to crowding: own group, other groups (booleans).</p>
+<h4 id="leave_self_out"><a class="header" href="#leave_self_out"><code>leave_self_out</code></a></h4>
+<pre><code class="language-rhai ignore">leave_self_out(enabled)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Live-patchable: updates running voices on a live <code>Participant</code>.</p>
+<p>Subtract the voice’s own spectral contribution when evaluating the field.</p>
+<h4 id="leave_self_out_harmonics"><a class="header" href="#leave_self_out_harmonics"><code>leave_self_out_harmonics</code></a></h4>
+<pre><code class="language-rhai ignore">leave_self_out_harmonics(count)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Live-patchable: updates running voices on a live <code>Participant</code>.</p>
+<p>Number of harmonics used for approximate self-subtraction.</p>
+<h3 id="lifecycle--viability-1"><a class="header" href="#lifecycle--viability-1">Lifecycle &amp; Viability</a></h3>
+<h4 id="viability_scope"><a class="header" href="#viability_scope"><code>viability_scope</code></a></h4>
+<pre><code class="language-rhai ignore">viability_scope(name)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
+<p><code>"environment"</code> (default) or <code>"total"</code> viability scoring scope. Use <code>"total"</code> only when the selection question should include the voice’s own contribution.</p>
+<h3 id="respawn-1"><a class="header" href="#respawn-1">Respawn</a></h3>
+<h4 id="respawn_min_c_level"><a class="header" href="#respawn_min_c_level"><code>respawn_min_c_level</code></a></h4>
+<pre><code class="language-rhai ignore">respawn_min_c_level(level)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
+<p>Minimum consonance level for respawn acceptance.</p>
+<h4 id="respawn_background_death_rate"><a class="header" href="#respawn_background_death_rate"><code>respawn_background_death_rate</code></a></h4>
+<pre><code class="language-rhai ignore">respawn_background_death_rate(rate)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
+<p>Background turnover rate per second.</p>
+<h3 id="director--global-parameters-1"><a class="header" href="#director--global-parameters-1">Director &amp; Global Parameters</a></h3>
+<h4 id="set_roughness_k"><a class="header" href="#set_roughness_k"><code>set_roughness_k</code></a></h4>
+<pre><code class="language-rhai ignore">set_roughness_k(value)
+</code></pre>
+<p>Roughness tolerance of the landscape.</p>
+<h4 id="set_global_coupling"><a class="header" href="#set_global_coupling"><code>set_global_coupling</code></a></h4>
+<pre><code class="language-rhai ignore">set_global_coupling(value)
+</code></pre>
+<p>Voice interaction strength.</p>
+<h2 id="research-controls"><a class="header" href="#research-controls">Research Controls</a></h2>
+<p>For studying the instrument, not composing with it. Normal composing never touches this tier, and it has the weakest stability guarantee: entries may change or disappear as their research questions settle.</p>
+<h3 id="pitch-movement-2"><a class="header" href="#pitch-movement-2">Pitch Movement</a></h3>
+<h4 id="pitch_core"><a class="header" href="#pitch_core"><code>pitch_core</code></a></h4>
+<pre><code class="language-rhai ignore">pitch_core(name)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
+<p><code>"hill_climb"</code> or <code>"peak_sampler"</code>. Research control.</p>
+<h4 id="move_cost_time_scale"><a class="header" href="#move_cost_time_scale"><code>move_cost_time_scale</code></a></h4>
+<pre><code class="language-rhai ignore">move_cost_time_scale(name)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Live-patchable: updates running voices on a live <code>Participant</code>.</p>
+<p><code>"legacy"</code>/<code>"integration_window"</code> or <code>"proposal"</code>/<code>"proposal_interval"</code>.</p>
+<h3 id="neighbor-awareness-2"><a class="header" href="#neighbor-awareness-2">Neighbor Awareness</a></h3>
+<h4 id="leave_self_out_mode"><a class="header" href="#leave_self_out_mode"><code>leave_self_out_mode</code></a></h4>
+<pre><code class="language-rhai ignore">leave_self_out_mode(name)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Live-patchable: updates running voices on a live <code>Participant</code>.</p>
+<p><code>"approx"</code>/<code>"approx_harmonics"</code> or <code>"exact"</code>/<code>"exact_scan"</code>.</p>
+<h3 id="lifecycle--viability-2"><a class="header" href="#lifecycle--viability-2">Lifecycle &amp; Viability</a></h3>
+<h4 id="selection_approx_loo"><a class="header" href="#selection_approx_loo"><code>selection_approx_loo</code></a></h4>
+<pre><code class="language-rhai ignore">selection_approx_loo(enabled)
+</code></pre>
+<p>Applies to: <code>Material</code> only.</p>
+<p>Override environment-relative viability scoring; research/reference control. Material only. Use only for older reference assays that need the previous implementation-level control.</p>
+<h3 id="director--global-parameters-2"><a class="header" href="#director--global-parameters-2">Director &amp; Global Parameters</a></h3>
+<h4 id="set_pitch_objective"><a class="header" href="#set_pitch_objective"><code>set_pitch_objective</code></a></h4>
+<pre><code class="language-rhai ignore">set_pitch_objective(name)
+</code></pre>
+<p><code>"consonance"</code>/<code>"positive"</code> or <code>"dissonance"</code>/<code>"negative"</code>. Research control.</p>
+<h4 id="set_control_update_mode"><a class="header" href="#set_control_update_mode"><code>set_control_update_mode</code></a></h4>
+<pre><code class="language-rhai ignore">set_control_update_mode(name)
+</code></pre>
+<p><code>"snapshot_phased"</code>/<code>"snapshot"</code> (default) or <code>"sequential_rotating"</code>/<code>"sequential"</code>. Research control.</p>
+<h4 id="set_scaffold_off"><a class="header" href="#set_scaffold_off"><code>set_scaffold_off</code></a></h4>
+<pre><code class="language-rhai ignore">set_scaffold_off()
+</code></pre>
+<p>Disable the external rhythm scaffold. Scaffolds are external comparison controls for demos and assays, not the rhythm-composition abstraction.</p>
+<h4 id="set_scaffold_shared"><a class="header" href="#set_scaffold_shared"><code>set_scaffold_shared</code></a></h4>
+<pre><code class="language-rhai ignore">set_scaffold_shared(freq_hz)
+</code></pre>
+<p>Shared external scaffold pulse.</p>
+<h4 id="set_scaffold_scrambled"><a class="header" href="#set_scaffold_scrambled"><code>set_scaffold_scrambled</code></a></h4>
+<pre><code class="language-rhai ignore">set_scaffold_scrambled(freq_hz, seed)
+</code></pre>
+<p>Per-voice scrambled scaffold pulse.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="études"><a class="header" href="#études">Études</a></h1>
+<p>The samples are a book of twelve études — small pieces, in order. Played and
+read one after another, they are the instrument: each is written around one
+of its capacities, and the script itself is the score.</p>
+<pre><code class="language-bash">cargo run --release -- samples/01_a_single_voice.rhai
+</code></pre>
+<ol>
+<li><strong>A Single Voice</strong> — one voice appears, holds its breath, and leaves.</li>
+<li><strong>Constellation</strong> — four ways to enter: a line, the peaks, the density,
+chance.</li>
+<li><strong>Gravity</strong> — the same root under two suns; the peaks listen to what is
+sounding, not to a chart.</li>
+<li><strong>Tension</strong> — the director leans on the terrain until it strains, then
+lets the gravity come home.</li>
+<li><strong>Settling</strong> — scattered voices glide to where the field can hold them.</li>
+<li><strong>Bells</strong> — struck bodies; the last bell lets the field choose its
+partials.</li>
+<li><strong>Heartbeat</strong> — no clock is imposed; a pulse forms because the population
+drives one.</li>
+<li><strong>Murmuration</strong> — a flock drifts into step, never commanded.</li>
+<li><strong>Rain</strong> — time without a beat, falling along the field.</li>
+<li><strong>Generations</strong> — voices live, starve, and are reborn where harmony can
+hold them.</li>
+<li><strong>Autumn Cycle</strong> — a directed harmony; the season turns and comes home.</li>
+<li><strong>Emergence and Resolution</strong> — everything at once, bent into a single
+arc.</li>
+</ol>
+<p>Études 1–6 walk the consonance terrain (placement, gravity, tension,
+movement, timbre); 7–9 walk the rhythm continuum one region at a time;
+10 closes the loop into life; 11–12 are directed by the composer. All études
+are compile-checked by the test suite, so they always match the current API.</p>
+<h2 id="research-assays"><a class="header" href="#research-assays">Research assays</a></h2>
+<p><code>samples/research/</code> holds comparison fixtures — heredity/selection ablations,
+external-scaffold rhythm controls, and mechanism studies. They study the
+instrument rather than play it, and are not part of the path.</p>
+<h2 id="offline-rendering"><a class="header" href="#offline-rendering">Offline rendering</a></h2>
+<p>The <code>conchordal</code> instrument never writes audio to disk — performances are
+ephemeral by design. For offline WAV rendering use the separate
+<code>conchordal-render</code> binary, which shares the core engine but is not the
+instrument.</p>
 
                     </main>
 
@@ -894,6 +1452,7 @@ scene("Development", || {
         <script src="book-a0b12cfe.js"></script>
 
         <!-- Custom JS scripts -->
+        <script src="theme/rhai-highlight-f40c858c.js"></script>
 
         <script>
         window.addEventListener('load', function() {

@@ -1,7 +1,6 @@
 use crate::core::log2space::Log2Space;
 use crate::core::mode_pattern::DEFAULT_MODE_COUNT;
 use crate::life::articulation_core::PinkNoise;
-use crate::life::scenario::{HarmonicMode, TimbreGenotype};
 use crate::life::sound::control::ToneControlBlock;
 use crate::life::sound::mode_utils::{
     active_cluster_unison, cluster_detune_mul, cluster_gain, cluster_spread_cents_from_public,
@@ -11,6 +10,7 @@ use crate::life::sound::spectral::{
 };
 use crate::life::sound::{BodyKind, BodySnapshot};
 use crate::life::voice::ArticulationSignal;
+use crate::scenario::{HarmonicMode, TimbreGenotype};
 use crate::synth::SynthError;
 use std::f32::consts::TAU;
 use std::sync::Arc;

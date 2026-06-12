@@ -91,10 +91,9 @@ pub fn compose_consonance_field_level_scan(
     repr: &ConsonanceRepresentationParams,
     out: &mut [f32],
 ) {
-    debug_assert_eq!(h01_scan.len(), r01_scan.len());
-    debug_assert_eq!(out.len(), h01_scan.len());
-    let len = out.len().min(h01_scan.len()).min(r01_scan.len());
-    for i in 0..len {
+    assert_eq!(h01_scan.len(), r01_scan.len(), "h/r scan length mismatch");
+    assert_eq!(out.len(), h01_scan.len(), "output scan length mismatch");
+    for i in 0..out.len() {
         let score = kernel.score(h01_scan[i], r01_scan[i]);
         out[i] = repr.level(score);
     }

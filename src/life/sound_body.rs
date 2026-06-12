@@ -4,7 +4,6 @@ use crate::core::log2space::Log2Space;
 use crate::core::mode_pattern::DEFAULT_MODE_COUNT;
 use crate::life::control::DEFAULT_TIMBRE_UNISON;
 use crate::life::control::{BodyMethod, VoiceControl};
-use crate::life::scenario::{SoundBodyConfig, TimbreGenotype};
 use crate::life::sound::mode_utils::{
     active_cluster_unison, cluster_detune_mul, cluster_gain, cluster_spread_cents_from_public,
     public_spread_from_cluster_spread_cents, sanitize_cluster_unison,
@@ -14,7 +13,8 @@ use crate::life::sound::spectral::{
     spectral_slope_from_brightness,
 };
 use crate::life::sound::{BodyKind, BodySnapshot};
-use rand::{Rng, RngCore, rngs::SmallRng};
+use crate::scenario::{SoundBodyConfig, TimbreGenotype};
+use rand::{Rng, RngExt, rngs::SmallRng};
 use std::collections::HashMap;
 use std::f32::consts::PI;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -565,7 +565,7 @@ impl SoundBodyFactory for HarmonicBodyFactory {
     fn build(&self, input: &SoundBodyBuildInput<'_>, rng: &mut SmallRng) -> AnySoundBody {
         let timbre = &input.control.body.timbre;
         let genotype = TimbreGenotype {
-            mode: crate::life::scenario::HarmonicMode::Harmonic,
+            mode: crate::scenario::HarmonicMode::Harmonic,
             stiffness: timbre.inharmonic,
             spectral_slope: spectral_slope_from_brightness(timbre.brightness),
             comb: 0.0,

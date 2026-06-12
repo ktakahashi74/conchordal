@@ -221,7 +221,36 @@ pub struct AppConfig {
     #[serde(default)]
     pub psychoacoustics: PsychoAcousticsConfig,
     #[serde(default)]
+    pub dcc: DccConfig,
+    #[serde(default)]
     pub playback: PlaybackConfig,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct DccConfig {
+    #[serde(default = "DccConfig::default_coupling_strength")]
+    pub coupling_strength: f32,
+    #[serde(default = "DccConfig::default_max_exploration_bonus")]
+    pub max_exploration_bonus: f32,
+}
+
+impl DccConfig {
+    fn default_coupling_strength() -> f32 {
+        0.0
+    }
+
+    fn default_max_exploration_bonus() -> f32 {
+        0.10
+    }
+}
+
+impl Default for DccConfig {
+    fn default() -> Self {
+        Self {
+            coupling_strength: Self::default_coupling_strength(),
+            max_exploration_bonus: Self::default_max_exploration_bonus(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -288,6 +317,19 @@ impl AppConfig {
             density.roughness_gain.max(0.0)
         } else {
             1.0
+        };
+
+        self.dcc.coupling_strength = Self::round_f32(self.dcc.coupling_strength);
+        self.dcc.coupling_strength = if self.dcc.coupling_strength.is_finite() {
+            self.dcc.coupling_strength.clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        self.dcc.max_exploration_bonus = Self::round_f32(self.dcc.max_exploration_bonus);
+        self.dcc.max_exploration_bonus = if self.dcc.max_exploration_bonus.is_finite() {
+            self.dcc.max_exploration_bonus.max(0.0)
+        } else {
+            DccConfig::default_max_exploration_bonus()
         };
     }
 
@@ -400,6 +442,8 @@ mod tests {
         assert_eq!(cfg.psychoacoustics.consonance.field.level.theta, 0.0);
         assert_eq!(cfg.psychoacoustics.consonance.density.roughness_gain, 1.0);
         assert!(!cfg.psychoacoustics.use_incoherent_power);
+        assert_eq!(cfg.dcc.coupling_strength, 0.0);
+        assert_eq!(cfg.dcc.max_exploration_bonus, 0.10);
 
         let contents = fs::read_to_string(&path).expect("read written config");
         assert!(
@@ -421,6 +465,10 @@ mod tests {
         assert!(
             contents.contains("# use_incoherent_power = false"),
             "should write commented use_incoherent_power"
+        );
+        assert!(
+            contents.contains("# coupling_strength = 0.0"),
+            "should write commented dcc.coupling_strength"
         );
 
         let _ = fs::remove_file(&path);
@@ -468,6 +516,10 @@ mod tests {
                 wait_user_exit: false,
                 wait_user_start: true,
             },
+            dcc: DccConfig {
+                coupling_strength: 0.25,
+                max_exploration_bonus: 0.12,
+            },
         };
         let text = toml::to_string_pretty(&custom).unwrap();
         fs::write(&path, text).unwrap();
@@ -489,6 +541,8 @@ mod tests {
         assert_eq!(cfg.psychoacoustics.consonance.field.level.theta, -0.15);
         assert_eq!(cfg.psychoacoustics.consonance.density.roughness_gain, 0.5);
         assert!(!cfg.psychoacoustics.use_incoherent_power);
+        assert_eq!(cfg.dcc.coupling_strength, 0.25);
+        assert_eq!(cfg.dcc.max_exploration_bonus, 0.12);
         assert!(!cfg.playback.wait_user_exit);
         assert!(cfg.playback.wait_user_start);
 
@@ -529,5 +583,18 @@ roughness_gain = -1.0
         cfg.psychoacoustics.consonance.density.roughness_gain = f32::NAN;
         cfg.round_f32_inplace();
         assert_eq!(cfg.psychoacoustics.consonance.density.roughness_gain, 1.0);
+    }
+
+    #[test]
+    fn round_f32_inplace_sanitizes_dcc_coupling() {
+        let mut cfg = AppConfig::default();
+        cfg.dcc.coupling_strength = 2.0;
+        cfg.dcc.max_exploration_bonus = f32::NAN;
+        cfg.round_f32_inplace();
+        assert_eq!(cfg.dcc.coupling_strength, 1.0);
+        assert_eq!(
+            cfg.dcc.max_exploration_bonus,
+            DccConfig::default_max_exploration_bonus()
+        );
     }
 }

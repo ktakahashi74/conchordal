@@ -4,8 +4,8 @@ use std::collections::VecDeque;
 use tracing::info;
 
 use super::population::Population;
-use super::scenario::{Action, Scenario, SceneMarker, TimedEvent};
 use crate::core::landscape::LandscapeFrame;
+use crate::scenario::{Action, Scenario, SceneMarker, TimedEvent};
 
 #[derive(Debug, Clone)]
 pub struct QueuedEvent {

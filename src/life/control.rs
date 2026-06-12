@@ -12,10 +12,7 @@ pub(crate) const DEFAULT_TIMBRE_UNISON: usize = 1;
 pub(crate) const MAX_TIMBRE_UNISON: usize = 9;
 
 use crate::core::mode_pattern::ModePattern;
-use crate::life::scenario::EnvelopeConfig;
-
-#[derive(Debug, Clone, Default)]
-pub struct WorldControl {}
+use crate::scenario::EnvelopeConfig;
 
 #[derive(Debug, Clone, Default)]
 pub struct VoiceControl {
@@ -37,12 +34,6 @@ impl VoiceControl {
     #[inline]
     pub fn set_amp_clamped(&mut self, amp: f32) {
         self.body.amp = amp.clamp(0.0, 1.0);
-    }
-
-    #[inline]
-    pub fn set_freq_lock_clamped(&mut self, freq: f32) {
-        self.pitch.freq = freq.clamp(MIN_FREQ_HZ, MAX_FREQ_HZ);
-        self.pitch.mode = PitchMode::Lock;
     }
 
     #[inline]
@@ -75,77 +66,6 @@ impl VoiceControl {
     }
 
     #[inline]
-    pub fn set_landscape_weight_clamped(&mut self, weight: f32) {
-        self.pitch.landscape_weight = if weight.is_finite() {
-            weight.max(0.0)
-        } else {
-            1.0
-        };
-    }
-
-    #[inline]
-    pub fn set_neighbor_step_cents_clamped(&mut self, value: f32) {
-        self.pitch.neighbor_step_cents = Some(if value.is_finite() {
-            value.max(0.0)
-        } else {
-            0.0
-        });
-    }
-
-    #[inline]
-    pub fn set_tessitura_gravity_clamped(&mut self, value: f32) {
-        self.pitch.tessitura_gravity = Some(if value.is_finite() {
-            value.max(0.0)
-        } else {
-            0.0
-        });
-    }
-
-    #[inline]
-    pub fn set_exploration_clamped(&mut self, value: f32) {
-        self.pitch.exploration = value.clamp(0.0, 1.0);
-    }
-
-    #[inline]
-    pub fn set_persistence_clamped(&mut self, value: f32) {
-        self.pitch.persistence = value.clamp(0.0, 1.0);
-    }
-
-    #[inline]
-    pub fn set_crowding_strength_clamped(&mut self, value: f32) {
-        self.pitch.crowding_strength = if value.is_finite() {
-            value.max(0.0)
-        } else {
-            0.0
-        };
-    }
-
-    #[inline]
-    pub fn set_crowding_sigma_cents_clamped(&mut self, value: f32) {
-        self.pitch.crowding_sigma_cents = if value.is_finite() {
-            value.max(1e-3)
-        } else {
-            DEFAULT_CROWDING_SIGMA_CENTS
-        };
-        self.pitch.crowding_sigma_from_roughness = false;
-    }
-
-    #[inline]
-    pub fn set_crowding_sigma_from_roughness(&mut self, enabled: bool) {
-        self.pitch.crowding_sigma_from_roughness = enabled;
-    }
-
-    #[inline]
-    pub fn set_leave_self_out(&mut self, enabled: bool) {
-        self.pitch.leave_self_out = enabled;
-    }
-
-    #[inline]
-    pub fn set_leave_self_out_mode(&mut self, mode: LeaveSelfOutMode) {
-        self.pitch.leave_self_out_mode = mode;
-    }
-
-    #[inline]
     pub fn set_continuous_drive_clamped(&mut self, value: f32) {
         self.body.continuous_drive = if value.is_finite() {
             value.max(0.0)
@@ -162,132 +82,6 @@ impl VoiceControl {
             0.0
         };
     }
-
-    #[inline]
-    pub fn set_anneal_temp_clamped(&mut self, value: f32) {
-        self.pitch.anneal_temp = if value.is_finite() {
-            value.max(0.0)
-        } else {
-            DEFAULT_ANNEAL_TEMP
-        };
-    }
-
-    #[inline]
-    pub fn set_move_cost_coeff_clamped(&mut self, value: f32) {
-        self.pitch.move_cost_coeff = if value.is_finite() {
-            value.max(0.0)
-        } else {
-            DEFAULT_MOVE_COST_COEFF
-        };
-    }
-
-    #[inline]
-    pub fn set_move_cost_exp_clamped(&mut self, value: i64) {
-        self.pitch.move_cost_exp = Some(if value == 2 { 2 } else { 1 });
-    }
-
-    #[inline]
-    pub fn set_improvement_threshold_clamped(&mut self, value: f32) {
-        self.pitch.improvement_threshold = if value.is_finite() {
-            value.max(0.0)
-        } else {
-            DEFAULT_IMPROVEMENT_THRESHOLD
-        };
-    }
-
-    #[inline]
-    pub fn set_proposal_interval_sec_clamped(&mut self, value: f32) {
-        self.pitch.proposal_interval_sec = if value.is_finite() && value > 0.0 {
-            Some(value)
-        } else {
-            None
-        };
-    }
-
-    #[inline]
-    pub fn set_global_peak_count_clamped(&mut self, value: i64) {
-        self.pitch.global_peak_count = value.max(0) as usize;
-    }
-
-    #[inline]
-    pub fn set_global_peak_min_sep_cents_clamped(&mut self, value: f32) {
-        self.pitch.global_peak_min_sep_cents = if value.is_finite() {
-            value.max(0.0)
-        } else {
-            DEFAULT_GLOBAL_PEAK_MIN_SEP_CENTS
-        };
-    }
-
-    #[inline]
-    pub fn set_use_ratio_candidates(&mut self, enabled: bool) {
-        self.pitch.use_ratio_candidates = enabled;
-    }
-
-    #[inline]
-    pub fn set_ratio_candidate_count_clamped(&mut self, value: i64) {
-        self.pitch.ratio_candidate_count = value.max(0) as usize;
-    }
-
-    #[inline]
-    pub fn set_window_cents_clamped(&mut self, value: f32) {
-        self.pitch.window_cents = Some(if value.is_finite() {
-            value.max(1.0)
-        } else {
-            1.0
-        });
-    }
-
-    #[inline]
-    pub fn set_top_k_clamped(&mut self, value: i64) {
-        self.pitch.top_k = Some(value.max(1) as usize);
-    }
-
-    #[inline]
-    pub fn set_temperature_clamped(&mut self, value: f32) {
-        self.pitch.temperature = Some(if value.is_finite() {
-            value.max(0.0)
-        } else {
-            0.0
-        });
-    }
-
-    #[inline]
-    pub fn set_sigma_cents_clamped(&mut self, value: f32) {
-        self.pitch.sigma_cents = Some(if value.is_finite() {
-            value.max(0.0)
-        } else {
-            0.0
-        });
-    }
-
-    #[inline]
-    pub fn set_random_candidates_clamped(&mut self, value: i64) {
-        self.pitch.random_candidates = Some(value.max(0) as usize);
-    }
-
-    #[inline]
-    pub fn set_move_cost_time_scale(&mut self, value: MoveCostTimeScale) {
-        self.pitch.move_cost_time_scale = value;
-    }
-
-    #[inline]
-    pub fn set_leave_self_out_harmonics_clamped(&mut self, value: i64) {
-        self.pitch.leave_self_out_harmonics = value.clamp(1, i64::from(u8::MAX)) as u8;
-    }
-
-    #[inline]
-    pub fn set_pitch_apply_mode(&mut self, value: PitchApplyMode) {
-        self.pitch.pitch_apply_mode = value;
-    }
-
-    #[inline]
-    pub fn set_pitch_glide_tau_sec_clamped(&mut self, value: f32) {
-        self.pitch.pitch_glide_tau_sec = if value.is_finite() {
-            value.max(0.0)
-        } else {
-            DEFAULT_PITCH_GLIDE_TAU_SEC
-        };
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -301,14 +95,14 @@ pub enum BodyMethod {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Routing {
     pub to_presentation: bool,
-    pub to_field: bool,
+    pub to_habitat: bool,
 }
 
 impl Default for Routing {
     fn default() -> Self {
         Self {
             to_presentation: true,
-            to_field: true,
+            to_habitat: true,
         }
     }
 }
@@ -477,7 +271,7 @@ impl Default for PitchControl {
 
 #[derive(Debug, Clone, Default)]
 pub struct PhonationControl {
-    pub spec: crate::life::scenario::PhonationSpec,
+    pub spec: crate::scenario::PhonationSpec,
 }
 
 #[derive(Debug, Clone)]
@@ -540,11 +334,217 @@ pub struct ControlUpdate {
     pub pitch_glide_tau_sec: Option<f32>,
 }
 
-impl VoiceControl {
+impl PitchControl {
+    #[inline]
+    pub fn resolved_tessitura_gravity(&self) -> f32 {
+        self.tessitura_gravity
+            .unwrap_or_else(|| self.gravity.clamp(0.0, 1.0) * 0.2)
+    }
+
+    #[inline]
+    pub fn set_freq_lock_clamped(&mut self, freq: f32) {
+        self.freq = freq.clamp(MIN_FREQ_HZ, MAX_FREQ_HZ);
+        self.mode = PitchMode::Lock;
+    }
+
+    #[inline]
+    pub fn set_landscape_weight_clamped(&mut self, weight: f32) {
+        self.landscape_weight = if weight.is_finite() {
+            weight.max(0.0)
+        } else {
+            1.0
+        };
+    }
+
+    #[inline]
+    pub fn set_neighbor_step_cents_clamped(&mut self, value: f32) {
+        self.neighbor_step_cents = Some(if value.is_finite() {
+            value.max(0.0)
+        } else {
+            0.0
+        });
+    }
+
+    #[inline]
+    pub fn set_tessitura_gravity_clamped(&mut self, value: f32) {
+        self.tessitura_gravity = Some(if value.is_finite() {
+            value.max(0.0)
+        } else {
+            0.0
+        });
+    }
+
+    #[inline]
+    pub fn set_exploration_clamped(&mut self, value: f32) {
+        self.exploration = value.clamp(0.0, 1.0);
+    }
+
+    #[inline]
+    pub fn set_persistence_clamped(&mut self, value: f32) {
+        self.persistence = value.clamp(0.0, 1.0);
+    }
+
+    #[inline]
+    pub fn set_crowding_strength_clamped(&mut self, value: f32) {
+        self.crowding_strength = if value.is_finite() {
+            value.max(0.0)
+        } else {
+            0.0
+        };
+    }
+
+    #[inline]
+    pub fn set_crowding_sigma_cents_clamped(&mut self, value: f32) {
+        self.crowding_sigma_cents = if value.is_finite() {
+            value.max(1e-3)
+        } else {
+            DEFAULT_CROWDING_SIGMA_CENTS
+        };
+        self.crowding_sigma_from_roughness = false;
+    }
+
+    #[inline]
+    pub fn set_crowding_sigma_from_roughness(&mut self, enabled: bool) {
+        self.crowding_sigma_from_roughness = enabled;
+    }
+
+    #[inline]
+    pub fn set_leave_self_out(&mut self, enabled: bool) {
+        self.leave_self_out = enabled;
+    }
+
+    #[inline]
+    pub fn set_leave_self_out_mode(&mut self, mode: LeaveSelfOutMode) {
+        self.leave_self_out_mode = mode;
+    }
+
+    #[inline]
+    pub fn set_anneal_temp_clamped(&mut self, value: f32) {
+        self.anneal_temp = if value.is_finite() {
+            value.max(0.0)
+        } else {
+            DEFAULT_ANNEAL_TEMP
+        };
+    }
+
+    #[inline]
+    pub fn set_move_cost_coeff_clamped(&mut self, value: f32) {
+        self.move_cost_coeff = if value.is_finite() {
+            value.max(0.0)
+        } else {
+            DEFAULT_MOVE_COST_COEFF
+        };
+    }
+
+    #[inline]
+    pub fn set_move_cost_exp_clamped(&mut self, value: i64) {
+        self.move_cost_exp = Some(if value == 2 { 2 } else { 1 });
+    }
+
+    #[inline]
+    pub fn set_improvement_threshold_clamped(&mut self, value: f32) {
+        self.improvement_threshold = if value.is_finite() {
+            value.max(0.0)
+        } else {
+            DEFAULT_IMPROVEMENT_THRESHOLD
+        };
+    }
+
+    #[inline]
+    pub fn set_proposal_interval_sec_clamped(&mut self, value: f32) {
+        self.proposal_interval_sec = if value.is_finite() && value > 0.0 {
+            Some(value)
+        } else {
+            None
+        };
+    }
+
+    #[inline]
+    pub fn set_global_peak_count_clamped(&mut self, value: i64) {
+        self.global_peak_count = value.max(0) as usize;
+    }
+
+    #[inline]
+    pub fn set_global_peak_min_sep_cents_clamped(&mut self, value: f32) {
+        self.global_peak_min_sep_cents = if value.is_finite() {
+            value.max(0.0)
+        } else {
+            DEFAULT_GLOBAL_PEAK_MIN_SEP_CENTS
+        };
+    }
+
+    #[inline]
+    pub fn set_use_ratio_candidates(&mut self, enabled: bool) {
+        self.use_ratio_candidates = enabled;
+    }
+
+    #[inline]
+    pub fn set_ratio_candidate_count_clamped(&mut self, value: i64) {
+        self.ratio_candidate_count = value.max(0) as usize;
+    }
+
+    #[inline]
+    pub fn set_window_cents_clamped(&mut self, value: f32) {
+        self.window_cents = Some(if value.is_finite() {
+            value.max(1.0)
+        } else {
+            1.0
+        });
+    }
+
+    #[inline]
+    pub fn set_top_k_clamped(&mut self, value: i64) {
+        self.top_k = Some(value.max(1) as usize);
+    }
+
+    #[inline]
+    pub fn set_temperature_clamped(&mut self, value: f32) {
+        self.temperature = Some(if value.is_finite() {
+            value.max(0.0)
+        } else {
+            0.0
+        });
+    }
+
+    #[inline]
+    pub fn set_sigma_cents_clamped(&mut self, value: f32) {
+        self.sigma_cents = Some(if value.is_finite() {
+            value.max(0.0)
+        } else {
+            0.0
+        });
+    }
+
+    #[inline]
+    pub fn set_random_candidates_clamped(&mut self, value: i64) {
+        self.random_candidates = Some(value.max(0) as usize);
+    }
+
+    #[inline]
+    pub fn set_move_cost_time_scale(&mut self, value: MoveCostTimeScale) {
+        self.move_cost_time_scale = value;
+    }
+
+    #[inline]
+    pub fn set_leave_self_out_harmonics_clamped(&mut self, value: i64) {
+        self.leave_self_out_harmonics = value.clamp(1, i64::from(u8::MAX)) as u8;
+    }
+
+    #[inline]
+    pub fn set_pitch_apply_mode(&mut self, value: PitchApplyMode) {
+        self.pitch_apply_mode = value;
+    }
+
+    #[inline]
+    pub fn set_pitch_glide_tau_sec_clamped(&mut self, value: f32) {
+        self.pitch_glide_tau_sec = if value.is_finite() {
+            value.max(0.0)
+        } else {
+            DEFAULT_PITCH_GLIDE_TAU_SEC
+        };
+    }
+
     pub fn apply_update(&mut self, update: &ControlUpdate) {
-        if let Some(amp) = update.amp {
-            self.set_amp_clamped(amp);
-        }
         if let Some(freq) = update.freq {
             self.set_freq_lock_clamped(freq);
         }
@@ -580,27 +580,6 @@ impl VoiceControl {
         }
         if let Some(anneal_temp) = update.anneal_temp {
             self.set_anneal_temp_clamped(anneal_temp);
-        }
-        if let Some(brightness) = update.timbre_brightness {
-            self.set_timbre_brightness_clamped(brightness);
-        }
-        if let Some(inharmonic) = update.timbre_inharmonic {
-            self.set_timbre_inharmonic_clamped(inharmonic);
-        }
-        if let Some(motion) = update.timbre_motion {
-            self.set_timbre_motion_clamped(motion);
-        }
-        if let Some(spread) = update.timbre_spread {
-            self.set_timbre_spread_clamped(spread);
-        }
-        if let Some(unison) = update.timbre_unison {
-            self.set_timbre_unison_clamped(unison);
-        }
-        if let Some(drive) = update.continuous_drive {
-            self.set_continuous_drive_clamped(drive);
-        }
-        if let Some(tau) = update.pitch_smooth_tau {
-            self.set_pitch_smooth_tau_clamped(tau);
         }
         if let Some(coeff) = update.move_cost_coeff {
             self.set_move_cost_coeff_clamped(coeff);
@@ -653,6 +632,36 @@ impl VoiceControl {
         if let Some(tau) = update.pitch_glide_tau_sec {
             self.set_pitch_glide_tau_sec_clamped(tau);
         }
+    }
+}
+
+impl VoiceControl {
+    pub fn apply_update(&mut self, update: &ControlUpdate) {
+        if let Some(amp) = update.amp {
+            self.set_amp_clamped(amp);
+        }
+        if let Some(brightness) = update.timbre_brightness {
+            self.set_timbre_brightness_clamped(brightness);
+        }
+        if let Some(inharmonic) = update.timbre_inharmonic {
+            self.set_timbre_inharmonic_clamped(inharmonic);
+        }
+        if let Some(motion) = update.timbre_motion {
+            self.set_timbre_motion_clamped(motion);
+        }
+        if let Some(spread) = update.timbre_spread {
+            self.set_timbre_spread_clamped(spread);
+        }
+        if let Some(unison) = update.timbre_unison {
+            self.set_timbre_unison_clamped(unison);
+        }
+        if let Some(drive) = update.continuous_drive {
+            self.set_continuous_drive_clamped(drive);
+        }
+        if let Some(tau) = update.pitch_smooth_tau {
+            self.set_pitch_smooth_tau_clamped(tau);
+        }
+        self.pitch.apply_update(update);
     }
 }
 
@@ -752,7 +761,7 @@ mod tests {
     #[test]
     fn set_freq_lock_uses_min_bound() {
         let mut control = VoiceControl::default();
-        control.set_freq_lock_clamped(-10.0);
+        control.pitch.set_freq_lock_clamped(-10.0);
         assert_eq!(control.pitch.mode, PitchMode::Lock);
         assert!((control.pitch.freq - MIN_FREQ_HZ).abs() <= 1e-6);
     }

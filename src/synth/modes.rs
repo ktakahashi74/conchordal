@@ -127,7 +127,7 @@ mod tests {
             in_gain: 0.0,
         };
         let coeffs = compile_mode(&params, fs);
-        let n = (fs * t60_s) as f32;
+        let n = fs * t60_s;
         let decay = coeffs.r.powf(n);
         let expected = 1.0e-3_f32;
         let rel_err = ((decay / expected) - 1.0).abs();

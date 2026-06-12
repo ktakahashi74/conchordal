@@ -1,5 +1,5 @@
 print("TEST_OK: consonance_density_reversed_range");
-let base = derive(harmonic).amp(0.08).sustain();
-create(base, 4).place(consonance_density(880.0, 110.0));
+let base = harmonic().amp(0.08).sustain();
+place(base, density(880.0, 110.0).count(4));
 flush();
 wait(0.2);

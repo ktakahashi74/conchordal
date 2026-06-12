@@ -81,23 +81,35 @@ Run a sample scenario.
 ```bash
 git clone https://github.com/ktakahashi74/conchordal.git
 cd conchordal
-cargo run --release -- samples/03_structures/autumn_cycle.rhai
+cargo run --release -- samples/12_emergence_and_resolution.rhai
 ```
 
 On Linux, you need `libasound2-dev` installed (ALSA headers required by `cpal`).
 
+The alpha ships as a book of twelve études under `samples/` — small pieces,
+in order; played and read one after another, they are the instrument:
+
+```bash
+cargo run --release -- samples/01_a_single_voice.rhai
+cargo run --release -- samples/07_heartbeat.rhai
+cargo run --release -- samples/12_emergence_and_resolution.rhai
+```
+
+See [`samples/README.md`](samples/README.md) for the full path. These are
+études, not polished works; musical compositions arrive with the beta.
+`samples/research/` holds comparison assays outside the path.
 
 ### Scenario scripting example
 
 Create a scenario using Rhai scripts as follows and save it as `sample.rhai`.
 
 ```rust
-let soft = derive(sine).amp(0.2).phonation("hold");
+let soft = sine()
+    .amp(0.08)
+    .sustain();
 
-for i in 0..5 {
-    create(soft, 1);
-    wait(0.5);
-}
+place(soft, line(220.0, 440.0).count(3));
+wait(2.0);
 ```
 
 then run the script with
@@ -161,7 +173,7 @@ log levels are either `error`, `warn`, `info`, `debug`, or `trace`.
 - **Aug 25, 2025** — Project started 
 - **Dec 25, 2025** — Source & web release (pre-alpha)
 - **Mar 2026** — v0.3.0 pre-alpha paper release
-- **May 2026** — v0.4.0 alpha preparation: consonance-first API and curated demos ← *current*
+- **Jun 2026** — v0.4.0 alpha: emergent-meter rhythm/harmony ecology, listener twin, tiered scripting API ← *current*
 - **Summer 2026** — Beta, featuring first compositions
 
 
@@ -176,4 +188,4 @@ Distributed under the terms of both the MIT license and the Apache License (Vers
 
 ### Author
 
-Created by Koichi Takahashi <info@conchordal.org>
+Created by Koichi Takahashi <contact@conchordal.org>

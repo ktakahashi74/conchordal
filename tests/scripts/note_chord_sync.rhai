@@ -1,5 +1,5 @@
 print("TEST_OK: note_chord_sync");
-let chord = create(sine, 3).freq(440.0).amp(0.4);
+let chord = place(sine(), at(440.0).count(3)).amp(0.4);
 flush();
 wait(1.2);
 release(chord);

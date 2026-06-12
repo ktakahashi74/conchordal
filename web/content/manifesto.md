@@ -4,12 +4,12 @@ description = "Music is the drama that unfolds between physical vibration and th
 
 [extra]
 author = "Koichi Takahashi"
-author_email = "info@conchordal.org"
+author_email = "contact@conchordal.org"
 +++
 
 **Author:** Koichi Takahashi  
 **Date:** 2025-12-25  
-**Email:** info@conchordal.org
+**Email:** contact@conchordal.org
 
 ***Music is the drama that unfolds between physical vibration and the human cognitive system that receives it.***
 

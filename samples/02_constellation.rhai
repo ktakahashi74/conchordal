@@ -10,24 +10,24 @@ let star = sine()
 
 section("a line", || {
     place(star, line(220.0, 880.0).count(5));
-    wait(5.0);
+    wait(3.3);
 });
 
 section("the peaks", || {
     place(star, at(110.0));
-    wait(1.0);
+    wait(0.7);
     place(star, peaks(110.0).range(1.0, 4.0).count(5).spacing(0.9));
-    wait(6.0);
+    wait(4.0);
 });
 
 section("the density", || {
     place(star, at(110.0));
-    wait(1.0);
+    wait(0.7);
     place(star, density(110.0, 880.0).count(7).spacing(0.8));
-    wait(6.0);
+    wait(4.0);
 });
 
 section("chance", || {
     place(star, random(110.0, 880.0).count(5));
-    wait(5.0);
+    wait(3.3);
 });

@@ -86,17 +86,17 @@ section("generations", || {
     harmonic_mirror(0.0);
 
     let root_field = place(field_anchor, at(root_hz));
-    wait(1.5);
+    wait(1.0);
 
     let colony_a = place(colony_voice, open_density.count(4));
-    wait(1.7);
+    wait(1.1);
     let colony_b = place(variant(colony_voice).amp(0.046), open_density.count(3));
-    wait(1.9);
+    wait(1.3);
     let colony_c = place(
         variant(colony_voice).amp(0.040).glide(0.40),
         open_density.count(3)
     );
-    wait(2.4);
+    wait(1.6);
 
     let shimmer_group = place(shimmer, high_density.count(4));
     let bridge = place(quiet_bridge, mirror_density.count(7));
@@ -104,39 +104,39 @@ section("generations", || {
     shimmer_group.amp(0.004);
     bridge.amp(0.001);
     final_colony.amp(0.001);
-    wait(8.0);
+    wait(5.3);
 
     shimmer_group.amp(0.035);
-    wait(10.0);
+    wait(6.7);
 
     harmonic_mirror(0.55);
     root_field.freq(root_hz * 1.25);
     bridge.amp(0.045);
-    wait(12.0);
+    wait(8.0);
 
     harmonic_mirror(1.0);
     final_colony.amp(0.050);
     colony_a.amp(0.032);
     colony_b.amp(0.030);
     colony_c.amp(0.028);
-    wait(5.0);
+    wait(3.3);
 
     final_colony.glide(0.26);
     shimmer_group.amp(0.020);
-    wait(14.0);
+    wait(9.3);
 
     release(colony_a);
-    wait(0.9);
+    wait(0.6);
     release(colony_b);
-    wait(1.1);
+    wait(0.7);
     release(colony_c);
-    wait(1.3);
+    wait(0.9);
     release(final_colony);
-    wait(1.6);
+    wait(1.1);
     release(bridge);
-    wait(1.2);
+    wait(0.8);
     release(shimmer_group);
-    wait(3.0);
+    wait(2.0);
     release(root_field);
-    wait(8.0);
+    wait(5.3);
 });

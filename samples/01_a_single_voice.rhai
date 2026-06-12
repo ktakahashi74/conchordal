@@ -8,7 +8,7 @@ let voice = sine()
 
 section("a single voice", || {
     let v = place(voice, at(220.0));
-    wait(6.0);
+    wait(4.0);
     release(v);
-    wait(3.0);
+    wait(2.0);
 });

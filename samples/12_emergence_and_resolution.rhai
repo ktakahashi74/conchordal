@@ -28,8 +28,8 @@ let metric_body = harmonic()
     .cycles(2)
     .anchor()
     .modes(odd_modes().count(5))
-    .brightness(0.40)
-    .adsr(0.006, 0.080, 0.45, 0.18);
+    .brightness(0.32)
+    .adsr(0.010, 0.170, 0.52, 0.32);
 
 // The living colony: fires on the shared pulse grid, climbs toward consonance,
 // and survives the dissonant peak through consonance-biased respawn.
@@ -72,28 +72,28 @@ section("emergence and resolution", || {
     meter_stability(0.85);
     temporal_basin(1.8, 2.2);
     let root = place(field_anchor, at(root_hz).count(1));
-    wait(3.5);
+    wait(2.3);
 
     // II. Pulse: the heartbeat enters alone over the ground.
     let pulse = place(metric_body, at(root_hz).count(1));
-    wait(5.5);
+    wait(3.7);
 
     // III. The colony: it fires on the shared pulse grid and climbs toward
     // consonance, while the field slowly bends toward tension.
     let colony = place(consonance_colony, density(80.0, 900.0).count(8).spacing(0.84));
-    wait(7.0);
+    wait(4.7);
     harmonic_mirror(0.40);
-    wait(7.0);
+    wait(4.7);
 
     // IV. Tension peak: strained field, lifted register, shimmering flow.
     harmonic_mirror(0.72);
     root.freq(root_hz * 1.5);
     pulse.freq(root_hz * 1.5);
     colony.amp(0.034);
-    wait(5.0);
+    wait(3.3);
     let flow = place(flow_particles, density(200.0, 1500.0).count(9).spacing(0.66));
     harmonic_mirror(0.88);
-    wait(8.0);
+    wait(5.3);
 
     // V. Resolution: the field returns to consonance and the register falls
     // home; agents settle onto stable peaks -- the return of tonal gravity.
@@ -102,16 +102,16 @@ section("emergence and resolution", || {
     colony.glide(0.22);
     root.freq(root_hz);
     pulse.freq(root_hz);
-    wait(5.0);
+    wait(3.3);
     release(flow);
-    wait(2.0);
+    wait(1.3);
     harmonic_mirror(0.10);
     colony.amp(0.028);
-    wait(8.0);
+    wait(5.3);
     release(colony);
-    wait(3.0);
-    release(pulse);
     wait(2.0);
+    release(pulse);
+    wait(1.3);
     release(root);
-    wait(6.0);
+    wait(4.0);
 });

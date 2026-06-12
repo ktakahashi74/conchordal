@@ -50,24 +50,24 @@ section("murmuration", || {
     temporal_basin(1.6, 2.0);
 
     let root = place(field_anchor, at(root_hz).count(1));
-    wait(2.0);
+    wait(1.3);
 
     let a = place(colony, density(90.0, 780.0).spacing(0.85).count(7));
-    wait(12.0);
+    wait(8.0);
 
     let b = place(late_colony, density(160.0, 1100.0).spacing(0.75).count(5));
-    wait(10.0);
+    wait(6.7);
 
     harmonic_mirror(0.55);
     root.freq(root_hz * 1.5);
     a.amp(0.034);
     b.amp(0.036);
-    wait(12.0);
+    wait(8.0);
 
     release(b);
-    wait(1.2);
+    wait(0.8);
     release(a);
-    wait(1.5);
+    wait(1.0);
     release(root);
-    wait(4.0);
+    wait(2.7);
 });

@@ -215,6 +215,7 @@ Scenarios should be approachable for newcomers while remaining expressive for ad
 
 ## Other
 - Don't touch `web/` when editing sourcecode. Don't touch `src/` when editing `web/`, unless otherwise specified.
+- `docs/principles.md` holds version-independent first principles (perception science, loop-level findings, compositional grammar). New foundational insights go there, not into version-specific design notes; the technote documents only what is implemented.
 - `web/content/technote.md` (+ `.ja.md`) is hand-curated; keep it in sync with the code when core algorithms change. There is no generation pipeline.
 - `docs/rhai_book` is the Rhai API reference (mdBook source); build with `mdbook build docs/rhai_book`.
 

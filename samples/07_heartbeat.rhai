@@ -23,8 +23,8 @@ let downbeat = harmonic()
     .cycles(2)
     .anchor()
     .modes(odd_modes().count(5))
-    .brightness(0.36)
-    .adsr(0.006, 0.070, 0.42, 0.16);
+    .brightness(0.30)
+    .adsr(0.010, 0.160, 0.50, 0.30);
 
 let consonant_pulse = harmonic()
     .amp(0.045)
@@ -36,17 +36,14 @@ let consonant_pulse = harmonic()
     .avoid_neighbors(0.45)
     .adsr(0.018, 0.120, 0.72, 0.34);
 
-let offbeat = modal()
+// The syncopation is alive: a colony voice leaning half a beat across the grid.
+let offbeat = variant(consonant_pulse)
     .amp(0.030)
-    .metric()
     .rhythm_role("subdivision")
-    // Half a beat of phase offset reads as a syncopated note between the beats.
     .microtiming(0.5)
     .cycles(2)
-    .anchor()
-    .modes(landscape_density_modes().count(5).range(1.0, 4.0).gamma(1.2))
-    .brightness(0.62)
-    .adsr(0.004, 0.060, 0.36, 0.12);
+    .brightness(0.58)
+    .adsr(0.010, 0.100, 0.55, 0.26);
 
 section("heartbeat", || {
     harmonic_mirror(0.15);
@@ -55,28 +52,28 @@ section("heartbeat", || {
     temporal_basin(1.8, 2.2);
 
     let root = place(field_anchor, at(root_hz).count(1));
-    wait(1.5);
+    wait(1.0);
 
     let beat = place(downbeat, at(root_hz * 0.5).count(1));
-    wait(3.0);
+    wait(2.0);
 
     let voices = place(consonant_pulse, density(120.0, 900.0).spacing(0.85).count(8));
-    wait(12.0);
+    wait(8.0);
 
     let cross = place(offbeat, density(260.0, 1320.0).spacing(0.75).count(4));
-    wait(9.0);
+    wait(6.0);
 
     harmonic_mirror(0.65);
     root.freq(root_hz * 1.25);
     voices.amp(0.037);
-    wait(10.0);
+    wait(6.7);
 
     release(cross);
-    wait(1.0);
+    wait(0.7);
     release(voices);
-    wait(1.0);
+    wait(0.7);
     release(beat);
-    wait(0.8);
+    wait(0.5);
     release(root);
-    wait(3.0);
+    wait(2.0);
 });

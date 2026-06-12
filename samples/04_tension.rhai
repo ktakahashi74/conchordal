@@ -6,6 +6,7 @@ seed(4);
 
 let ground = harmonic()
     .brain("drone")
+    .send(habitat_bus)
     .amp(0.05)
     .sustain()
     .anchor()
@@ -22,13 +23,13 @@ let chord = harmonic()
 section("tension and release", || {
     harmonic_mirror(0.1);
     place(ground, at(110.0));
-    wait(2.0);
+    wait(1.3);
     place(chord, peaks(110.0).range(1.0, 4.0).count(5).spacing(0.9));
-    wait(6.0);
+    wait(4.0);
 
     harmonic_mirror(0.8);   // the terrain loses its coherence
-    wait(8.0);
+    wait(5.3);
 
     harmonic_mirror(0.1);   // release
-    wait(8.0);
+    wait(5.3);
 });

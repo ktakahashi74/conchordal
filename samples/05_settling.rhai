@@ -5,6 +5,7 @@ seed(5);
 
 let ground = harmonic()
     .brain("drone")
+    .send(habitat_bus)
     .amp(0.05)
     .sustain()
     .anchor()
@@ -20,7 +21,7 @@ let seeker = harmonic()
 
 section("settling", || {
     place(ground, at(110.0));
-    wait(1.5);
+    wait(1.0);
     place(seeker, random(120.0, 1000.0).count(7));
-    wait(16.0);
+    wait(10.7);
 });

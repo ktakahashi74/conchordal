@@ -14,7 +14,7 @@ section("a bar", || {
         variant(bell).brightness(0.58).modes(modal_table("uniform_aluminum_bar").count(6)),
         at(196.0)
     );
-    wait(3.2);
+    wait(2.1);
 });
 
 section("a stiff string", || {
@@ -22,7 +22,7 @@ section("a stiff string", || {
         variant(bell).brightness(0.6).modes(stiff_string_modes(0.004).count(9)),
         at(130.81)
     );
-    wait(3.2);
+    wait(2.1);
 });
 
 section("a glass", || {
@@ -30,15 +30,15 @@ section("a glass", || {
         variant(bell).brightness(0.85).modes(modal_table("wine_glass").count(6)),
         at(330.0)
     );
-    wait(3.2);
+    wait(2.1);
 });
 
 section("a bell of the field", || {
     let ground = place(
-        harmonic().brain("drone").amp(0.05).sustain().anchor().brightness(0.26),
+        harmonic().brain("drone").send(habitat_bus).amp(0.05).sustain().anchor().brightness(0.26),
         at(110.0)
     );
-    wait(1.5);
+    wait(1.0);
     place(
         variant(bell)
             .amp(0.07)
@@ -46,7 +46,7 @@ section("a bell of the field", || {
             .modes(landscape_density_modes().count(10).range(1.0, 5.5).gamma(1.5).spacing(0.7)),
         at(220.0)
     );
-    wait(5.0);
+    wait(3.3);
     release(ground);
-    wait(2.0);
+    wait(1.3);
 });

@@ -44,24 +44,24 @@ section("rain", || {
     temporal_basin(1.0, 2.6);
 
     let root = place(field_anchor, at(root_hz).count(1));
-    wait(2.0);
+    wait(1.3);
 
     let low_stream = place(stream, density(80.0, 720.0).spacing(0.80).count(7));
-    wait(8.0);
+    wait(5.3);
 
     let high_drops = place(droplet, density(220.0, 1600.0).spacing(0.65).count(10));
-    wait(12.0);
+    wait(8.0);
 
     harmonic_mirror(0.80);
     root.freq(root_hz * 1.25);
     low_stream.amp(0.023);
     high_drops.amp(0.030);
-    wait(12.0);
+    wait(8.0);
 
     release(high_drops);
-    wait(1.0);
+    wait(0.7);
     release(low_stream);
-    wait(1.2);
+    wait(0.8);
     release(root);
-    wait(4.0);
+    wait(2.7);
 });

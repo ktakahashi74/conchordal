@@ -4,7 +4,7 @@ Run a scenario script with the real-time instrument (release mode is
 recommended for real-time DSP):
 
 ```bash
-cargo run --release -- samples/01_fundamentals/basic.rhai
+cargo run --release -- samples/01_a_single_voice.rhai
 ```
 
 ## Minimal Sound

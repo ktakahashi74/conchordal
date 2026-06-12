@@ -1,19 +1,6 @@
-// Conchordal v0.4 flagship etude: "Emergence and Resolution".
-//
-// A single directed arc, not a feature catalogue. The composer shapes the macro
-// drama with two knobs only -- a harmonic_mirror arch (consonant -> dissonant ->
-// consonant) and register transposition -- while harmony emerges from the
-// agents. Rhythm stays meaningful because every metric voice locks to ONE shared
-// emergent attractor (the production meter the population itself drives -- there
-// is no imposed clock). meter_stability makes that attractor deep, so the pulse
-// forms readily and reads as a load-bearing heartbeat:
-//   metric heartbeat -> an accented spine that drives the shared beat hard
-//   metric colony    -> a living chord that locks to the SAME emergent beat and
-//                       snaps to consonance each onset, so it reads as one with
-//                       the heartbeat
-//   flow             -> non-metric shimmer that appears only at the tension peak
-// The colony's viability + respawn is what lets it survive the dissonant peak
-// and reach the resolution: the return of tonal gravity (see the Manifesto).
+// Étude 12 — Emergence and Resolution
+// One arc: the terrain bends toward tension and the register lifts;
+// life survives the strain, and gravity returns.
 
 seed(20260609);
 
@@ -45,9 +32,7 @@ let metric_body = harmonic()
     .adsr(0.006, 0.080, 0.45, 0.18);
 
 // The living colony: fires on the shared pulse grid, climbs toward consonance,
-// and survives the dissonant peak through consonance-biased respawn. Its life is
-// harmonic (which pitches snap in and survive each onset), not rhythmic drift --
-// so it reads as locked to the heartbeat while the chord stays alive.
+// and survives the dissonant peak through consonance-biased respawn.
 let consonance_colony = harmonic()
     .amp(0.038)
     .metric()
@@ -81,9 +66,11 @@ let flow_particles = modal()
     .avoid_neighbors(0.42)
     .adsr(0.024, 0.320, 0.38, 0.74);
 
-section("Conchordal -- Emergence and Resolution", || {
+section("emergence and resolution", || {
     // I. Genesis: consonant ground rises from silence.
     harmonic_mirror(0.12);
+    meter_stability(0.85);
+    temporal_basin(1.8, 2.2);
     let root = place(field_anchor, at(root_hz).count(1));
     wait(3.5);
 
@@ -98,7 +85,7 @@ section("Conchordal -- Emergence and Resolution", || {
     harmonic_mirror(0.40);
     wait(7.0);
 
-    // IV. Tension peak: dissonant field, lifted register, shimmering flow.
+    // IV. Tension peak: strained field, lifted register, shimmering flow.
     harmonic_mirror(0.72);
     root.freq(root_hz * 1.5);
     pulse.freq(root_hz * 1.5);

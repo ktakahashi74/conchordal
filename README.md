@@ -81,34 +81,34 @@ Run a sample scenario.
 ```bash
 git clone https://github.com/ktakahashi74/conchordal.git
 cd conchordal
-cargo run --release -- samples/04_ecosystems/conchordal_ecology.rhai
+cargo run --release -- samples/12_emergence_and_resolution.rhai
 ```
 
 On Linux, you need `libasound2-dev` installed (ALSA headers required by `cpal`).
 
-The current v0.4.0 alpha candidates are being rebuilt around rhythm/harmony
-ecology:
+The alpha ships as a book of twelve études under `samples/` — small pieces,
+in order; played and read one after another, they are the instrument:
 
 ```bash
-cargo run --release -- samples/04_ecosystems/metric_beat_foundation.rhai
-cargo run --release -- samples/04_ecosystems/entrained_beat.rhai
-cargo run --release -- samples/04_ecosystems/flow_timing_field.rhai
-cargo run --release -- samples/04_ecosystems/conchordal_ecology.rhai
+cargo run --release -- samples/01_a_single_voice.rhai
+cargo run --release -- samples/07_heartbeat.rhai
+cargo run --release -- samples/12_emergence_and_resolution.rhai
 ```
 
-These are alpha candidates, not polished works. They are intended to exercise
-metric beat, agent entrainment, flow timing, and the integrated ecology.
+See [`samples/README.md`](samples/README.md) for the full path. These are
+études, not polished works; musical compositions arrive with the beta.
+`samples/research/` holds comparison assays outside the path.
 
 ### Scenario scripting example
 
 Create a scenario using Rhai scripts as follows and save it as `sample.rhai`.
 
 ```rust
-let soft = derive(sine)
+let soft = sine()
     .amp(0.08)
     .sustain();
 
-create(soft, 3).place(linear(220.0, 440.0));
+place(soft, line(220.0, 440.0).count(3));
 wait(2.0);
 ```
 
@@ -173,7 +173,7 @@ log levels are either `error`, `warn`, `info`, `debug`, or `trace`.
 - **Aug 25, 2025** — Project started 
 - **Dec 25, 2025** — Source & web release (pre-alpha)
 - **Mar 2026** — v0.3.0 pre-alpha paper release
-- **May 2026** — v0.4.0 alpha preparation: rhythm/harmony ecology API and curated demos ← *current*
+- **Jun 2026** — v0.4.0 alpha: emergent-meter rhythm/harmony ecology, listener twin, tiered scripting API ← *current*
 - **Summer 2026** — Beta, featuring first compositions
 
 

@@ -1,9 +1,5 @@
-// v0.4 metric beat candidate.
-// A legible pulse that is a DEEP EMERGENT ATTRACTOR: each voice locks its onset
-// phase to the shared production meter the population itself drives -- there is
-// no externally imposed clock. The tempo region and attractor depth are
-// director-level terrain (temporal_basin / meter_stability); a voice only
-// chooses how it relates to the emergent beat (lock strength, role, phase).
+// Étude 7 — Heartbeat
+// No clock is imposed. A pulse forms because the population drives one.
 
 seed(20260508);
 
@@ -52,10 +48,9 @@ let offbeat = modal()
     .brightness(0.62)
     .adsr(0.004, 0.060, 0.36, 0.12);
 
-section("Metric Beat Foundation", || {
+section("heartbeat", || {
     harmonic_mirror(0.15);
-    // Deep attractor in a ~2 Hz tempo region: the pulse forms readily and reads
-    // as a stable metric heartbeat without any imposed grid.
+    // A deep attractor in a ~2 Hz tempo region: the pulse forms readily.
     meter_stability(0.85);
     temporal_basin(1.8, 2.2);
 

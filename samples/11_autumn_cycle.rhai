@@ -1,3 +1,5 @@
+// Étude 11 — Autumn Cycle
+
 seed(12);
 
 let bass = sine().amp(0.1).sustain();

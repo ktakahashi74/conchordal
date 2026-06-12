@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-8928bd8c.js";
+            window.path_to_searchindex_js = "searchindex-139f4aaa.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-ebd22986.js"></script>
@@ -199,7 +199,7 @@ music-production vocabulary.</p>
 <li><strong>Reference</strong> is the complete, generated
 <a href="#api-reference">API Reference</a> — it is produced from the engine’s
 registered scripting surface, so it cannot drift — and the
-<a href="#curated-samples">Curated Samples</a> listening path. The reference is
+<a href="#études">Curated Samples</a> listening path. The reference is
 split into three tiers: the <strong>Core API</strong> (enough for every curated sample),
 <strong>Mechanism Tuning</strong>, and <strong>Research Controls</strong>. Start with Core and ignore
 the rest until a piece demands it.</li>
@@ -210,7 +210,7 @@ engine by the test suite, so the examples are guaranteed to run.</p>
 <h1 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h1>
 <p>Run a scenario script with the real-time instrument (release mode is
 recommended for real-time DSP):</p>
-<pre><code class="language-bash">cargo run --release -- samples/01_fundamentals/basic.rhai
+<pre><code class="language-bash">cargo run --release -- samples/01_a_single_voice.rhai
 </code></pre>
 <h2 id="minimal-sound"><a class="header" href="#minimal-sound">Minimal Sound</a></h2>
 <pre><code class="language-rhai">place(sine().amp(0.08).sustain(), at(440.0));
@@ -315,7 +315,7 @@ for the whole scripting surface.</li>
 movement, viability, respawn.</li>
 <li><a href="#rhythm-one-coupling-continuum">Rhythm</a> — the coupling continuum and the director’s
 rhythmic terrain.</li>
-<li><a href="#curated-samples">Curated Samples</a> — the guided listening path.</li>
+<li><a href="#études">Curated Samples</a> — the guided listening path.</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="editor-setup-lsp"><a class="header" href="#editor-setup-lsp">Editor Setup (LSP)</a></h1>
@@ -409,15 +409,20 @@ section("field placement", || {
 });
 </code></pre>
 <h2 id="bending-the-terrain-harmonic_mirror"><a class="header" href="#bending-the-terrain-harmonic_mirror">Bending the terrain: <code>harmonic_mirror</code></a></h2>
-<p><code>harmonic_mirror(value)</code> bends the harmonicity field from overtone emphasis
-(<code>0.0</code>) toward undertone emphasis (<code>1.0</code>). It is the most direct way to
-reshape the harmonic terrain during a scene.</p>
+<p><code>harmonic_mirror(value)</code> is the harmonic-tension dial. Mechanically it blends
+the harmonicity terrain from overtone (<code>0.0</code>) toward undertone (<code>1.0</code>)
+projection; perceptually, raising it degrades the terrain’s coherence for
+overtone-radiating bodies, which is heard as harmonic tension. It is a
+tension–release axis — not a tonality (major/minor) switch — and the most
+direct way for the director to shape drama during a scene.</p>
 <pre><code class="language-rhai">let voice = harmonic().amp(0.04).sustain();
 place(voice, peaks(110.0).count(5));
 
-harmonic_mirror(0.0);
+harmonic_mirror(0.1);   // consonant gravity
 wait(4.0);
-harmonic_mirror(1.0);
+harmonic_mirror(0.8);   // tension: the terrain loses coherence
+wait(4.0);
+harmonic_mirror(0.1);   // release
 wait(4.0);
 </code></pre>
 <h2 id="consonance-density-density"><a class="header" href="#consonance-density-density">Consonance Density: <code>density</code></a></h2>
@@ -1105,7 +1110,7 @@ avoid_neighbors(strength, sigma_cents)
 <h4 id="harmonic_mirror"><a class="header" href="#harmonic_mirror"><code>harmonic_mirror</code></a></h4>
 <pre><code class="language-rhai ignore">harmonic_mirror(value)
 </code></pre>
-<p>Overtone/undertone balance of the harmonicity field, in 0.0-1.0. 0.0 is overtone-dominant, 1.0 undertone-dominant. The most direct way to bend the harmonic terrain during a scene.</p>
+<p>Harmonic-tension dial in 0.0-1.0: blends the harmonicity terrain from overtone toward undertone projection. Raising it degrades the terrain’s coherence for overtone-radiating bodies, heard as harmonic tension; lowering it restores consonant gravity. It is a tension-release axis, not a tonality (major/minor) switch.</p>
 <h4 id="meter_stability"><a class="header" href="#meter_stability"><code>meter_stability</code></a></h4>
 <pre><code class="language-rhai ignore">meter_stability(value)
 </code></pre>
@@ -1367,54 +1372,41 @@ global_peaks(count, min_sep_cents)
 </code></pre>
 <p>Per-voice scrambled scaffold pulse.</p>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="curated-samples"><a class="header" href="#curated-samples">Curated Samples</a></h1>
-<p>The curated v0.4.0 listening path is the rhythm/harmony ecology set under
-<code>samples/04_ecosystems/</code>. Run each with:</p>
-<pre><code class="language-bash">cargo run --release -- samples/04_ecosystems/metric_beat_foundation.rhai
-cargo run --release -- samples/04_ecosystems/entrained_beat.rhai
-cargo run --release -- samples/04_ecosystems/flow_timing_field.rhai
-cargo run --release -- samples/04_ecosystems/rhythm_harmony_ecology.rhai
-cargo run --release -- samples/04_ecosystems/conchordal_ecology.rhai
-cargo run --release -- samples/04_ecosystems/conchordal_flagship.rhai
+<h1 id="études"><a class="header" href="#études">Études</a></h1>
+<p>The samples are a book of twelve études — small pieces, in order. Played and
+read one after another, they are the instrument: each is written around one
+of its capacities, and the script itself is the score.</p>
+<pre><code class="language-bash">cargo run --release -- samples/01_a_single_voice.rhai
 </code></pre>
-<h2 id="what-to-listen-for"><a class="header" href="#what-to-listen-for">What to listen for</a></h2>
-<p><strong><code>metric_beat_foundation.rhai</code></strong> — the metric region of the coupling
-continuum. A Western-music-like pulse should surface and be immediately
-legible.</p>
-<p><strong><code>entrained_beat.rhai</code></strong> — the entrained region. Synchronization emerges from
-agent phase, social onset feedback, vitality coupling, and attack reward; the
-beat drifts with the population.</p>
-<p><strong><code>flow_timing_field.rhai</code></strong> — the flow region. Non-metric but structured
-timing over consonance-biased placement.</p>
-<p><strong><code>rhythm_harmony_ecology.rhai</code></strong> — functional integration demo. The metric
-groove stays stable while entrained agents, non-metric flow, consonance
-movement, and harmonic field changes coexist on one field. Judge it as
-integration, not as the musical showcase.</p>
-<p><strong><code>conchordal_ecology.rhai</code></strong> — feature-integration coverage. Metric beat,
-entrained beat, flow timing, consonance movement, viability, and respawn
-coexist on one field. Judge it as coverage, not as the musical showcase.</p>
-<p><strong><code>conchordal_flagship.rhai</code></strong> — the dedicated musical etude, <em>Emergence and
-Resolution</em>. A single directed arc: a <code>harmonic_mirror</code> arch (consonant →
-dissonant → consonant) and register transposition shape the tension/release
-drama, while harmony emerges from the agents. The pulse is a deep emergent
-attractor: a metric heartbeat (an <code>accent</code> role with high <code>meter_stability</code>)
-drives the shared meter, and a living colony locks to that <em>same</em> emergent
-beat — its life is harmonic (which pitches snap in and survive each onset),
-not rhythmic drift. Flow appears only as non-metric shimmer at the tension
-peak. It uses only the features that serve the form.</p>
-<h2 id="other-sample-directories"><a class="header" href="#other-sample-directories">Other sample directories</a></h2>
-<ul>
-<li><code>samples/01_fundamentals/</code> — minimal mechanics: spawning, tone generation,
-basic placement.</li>
-<li><code>samples/02_mechanisms/</code> — single-mechanism studies (hill-climb convergence,
-rhythmic sync, modal timbres, spectral gaps).</li>
-<li><code>samples/03_structures/</code> — directed harmonic structures.</li>
-<li>The rest of <code>samples/04_ecosystems/</code> contains research comparisons and
-mechanism sketches (e.g. <code>consonance_ecology.rhai</code>, <code>pulse_foundation.rhai</code>,
-the <code>hereditary_adaptation_*</code> and <code>temporal_scaffolding_*</code> assay sets).</li>
-</ul>
-<p>All samples are compile-checked by the test suite, so they always match the
-current API.</p>
+<ol>
+<li><strong>A Single Voice</strong> — one voice appears, holds its breath, and leaves.</li>
+<li><strong>Constellation</strong> — four ways to enter: a line, the peaks, the density,
+chance.</li>
+<li><strong>Gravity</strong> — the same root under two suns; the peaks listen to what is
+sounding, not to a chart.</li>
+<li><strong>Tension</strong> — the director leans on the terrain until it strains, then
+lets the gravity come home.</li>
+<li><strong>Settling</strong> — scattered voices glide to where the field can hold them.</li>
+<li><strong>Bells</strong> — struck bodies; the last bell lets the field choose its
+partials.</li>
+<li><strong>Heartbeat</strong> — no clock is imposed; a pulse forms because the population
+drives one.</li>
+<li><strong>Murmuration</strong> — a flock drifts into step, never commanded.</li>
+<li><strong>Rain</strong> — time without a beat, falling along the field.</li>
+<li><strong>Generations</strong> — voices live, starve, and are reborn where harmony can
+hold them.</li>
+<li><strong>Autumn Cycle</strong> — a directed harmony; the season turns and comes home.</li>
+<li><strong>Emergence and Resolution</strong> — everything at once, bent into a single
+arc.</li>
+</ol>
+<p>Études 1–6 walk the consonance terrain (placement, gravity, tension,
+movement, timbre); 7–9 walk the rhythm continuum one region at a time;
+10 closes the loop into life; 11–12 are directed by the composer. All études
+are compile-checked by the test suite, so they always match the current API.</p>
+<h2 id="research-assays"><a class="header" href="#research-assays">Research assays</a></h2>
+<p><code>samples/research/</code> holds comparison fixtures — heredity/selection ablations,
+external-scaffold rhythm controls, and mechanism studies. They study the
+instrument rather than play it, and are not part of the path.</p>
 <h2 id="offline-rendering"><a class="header" href="#offline-rendering">Offline rendering</a></h2>
 <p>The <code>conchordal</code> instrument never writes audio to disk — performances are
 ephemeral by design. For offline WAV rendering use the separate

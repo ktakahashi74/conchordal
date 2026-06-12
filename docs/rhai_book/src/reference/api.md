@@ -777,7 +777,7 @@ Scene-global terrain shaping and research controls. Director verbs are soft prio
 harmonic_mirror(value)
 ```
 
-Overtone/undertone balance of the harmonicity field, in 0.0-1.0. 0.0 is overtone-dominant, 1.0 undertone-dominant. The most direct way to bend the harmonic terrain during a scene.
+Harmonic-tension dial in 0.0-1.0: blends the harmonicity terrain from overtone toward undertone projection. Raising it degrades the terrain's coherence for overtone-radiating bodies, heard as harmonic tension; lowering it restores consonant gravity. It is a tension-release axis, not a tonality (major/minor) switch.
 
 #### `meter_stability`
 

@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-8928bd8c.js";
+            window.path_to_searchindex_js = "../searchindex-139f4aaa.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-ebd22986.js"></script>
@@ -206,15 +206,20 @@ section("field placement", || {
 });
 </code></pre>
 <h2 id="bending-the-terrain-harmonic_mirror"><a class="header" href="#bending-the-terrain-harmonic_mirror">Bending the terrain: <code>harmonic_mirror</code></a></h2>
-<p><code>harmonic_mirror(value)</code> bends the harmonicity field from overtone emphasis
-(<code>0.0</code>) toward undertone emphasis (<code>1.0</code>). It is the most direct way to
-reshape the harmonic terrain during a scene.</p>
+<p><code>harmonic_mirror(value)</code> is the harmonic-tension dial. Mechanically it blends
+the harmonicity terrain from overtone (<code>0.0</code>) toward undertone (<code>1.0</code>)
+projection; perceptually, raising it degrades the terrain’s coherence for
+overtone-radiating bodies, which is heard as harmonic tension. It is a
+tension–release axis — not a tonality (major/minor) switch — and the most
+direct way for the director to shape drama during a scene.</p>
 <pre><code class="language-rhai">let voice = harmonic().amp(0.04).sustain();
 place(voice, peaks(110.0).count(5));
 
-harmonic_mirror(0.0);
+harmonic_mirror(0.1);   // consonant gravity
 wait(4.0);
-harmonic_mirror(1.0);
+harmonic_mirror(0.8);   // tension: the terrain loses coherence
+wait(4.0);
+harmonic_mirror(0.1);   // release
 wait(4.0);
 </code></pre>
 <h2 id="consonance-density-density"><a class="header" href="#consonance-density-density">Consonance Density: <code>density</code></a></h2>

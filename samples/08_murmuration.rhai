@@ -1,5 +1,5 @@
-// v0.4 entrained beat candidate.
-// Uses agent phase, social timing, vitality coupling, and attack reward.
+// Étude 8 — Murmuration
+// A flock drifts into step. Nothing commands it; coupling and survival do.
 
 seed(20260509);
 
@@ -36,16 +36,16 @@ let colony = harmonic()
 let late_colony = variant(colony)
     .amp(0.032)
     .entrained()
-    // Locks a touch tighter, so the later cohort tips the groove toward coherence.
+    // Locks a touch tighter, so the later cohort tips the flock toward coherence.
     .entrainment(0.65)
     .cycles(2)
     .brightness(0.62)
     .avoid_neighbors(0.70);
 
-section("Entrained Beat", || {
+section("murmuration", || {
     harmonic_mirror(0.05);
-    // Medium attractor in a ~1.8 Hz region: synchronization should EMERGE from
-    // the colony's coupling and survival, not be forced by a deep prior.
+    // A medium attractor: synchronization emerges from coupling and survival,
+    // never forced by a deep prior.
     meter_stability(0.45);
     temporal_basin(1.6, 2.0);
 

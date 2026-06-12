@@ -1,6 +1,5 @@
-// v0.4 harmony-first ecology demo.
-// Designed to make the mechanisms audible: field setup, density seeding,
-// active consonance movement, viability pressure, respawn, and mirror shifts.
+// Étude 10 — Generations
+// Voices live, starve, and are reborn where harmony can hold them.
 
 seed(20260506);
 
@@ -83,7 +82,7 @@ let shimmer = modal()
     .avoid_neighbors(0.45)
     .adsr(0.8, 1.4, 0.78, 2.2);
 
-section("Consonance Ecology", || {
+section("generations", || {
     harmonic_mirror(0.0);
 
     let root_field = place(field_anchor, at(root_hz));

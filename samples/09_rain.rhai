@@ -1,5 +1,5 @@
-// v0.4 flow timing candidate.
-// Non-metric onset flow over consonance-biased pitch regions.
+// Étude 9 — Rain
+// Time without a beat, falling along the field.
 
 seed(20260510);
 
@@ -37,10 +37,9 @@ let stream = harmonic()
     .avoid_neighbors(0.55)
     .adsr(0.045, 0.540, 0.62, 1.10);
 
-section("Flow Timing Field", || {
+section("rain", || {
     harmonic_mirror(0.25);
-    // Flow voices barely couple, so no beat forms: the terrain priors are gentle
-    // and the texture stays non-metric over consonance-biased placement.
+    // Flow voices barely couple, so no beat forms: the priors stay gentle.
     meter_stability(0.1);
     temporal_basin(1.0, 2.6);
 

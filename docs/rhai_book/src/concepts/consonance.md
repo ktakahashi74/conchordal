@@ -38,17 +38,22 @@ section("field placement", || {
 
 ## Bending the terrain: `harmonic_mirror`
 
-`harmonic_mirror(value)` bends the harmonicity field from overtone emphasis
-(`0.0`) toward undertone emphasis (`1.0`). It is the most direct way to
-reshape the harmonic terrain during a scene.
+`harmonic_mirror(value)` is the harmonic-tension dial. Mechanically it blends
+the harmonicity terrain from overtone (`0.0`) toward undertone (`1.0`)
+projection; perceptually, raising it degrades the terrain's coherence for
+overtone-radiating bodies, which is heard as harmonic tension. It is a
+tension–release axis — not a tonality (major/minor) switch — and the most
+direct way for the director to shape drama during a scene.
 
 ```rhai
 let voice = harmonic().amp(0.04).sustain();
 place(voice, peaks(110.0).count(5));
 
-harmonic_mirror(0.0);
+harmonic_mirror(0.1);   // consonant gravity
 wait(4.0);
-harmonic_mirror(1.0);
+harmonic_mirror(0.8);   // tension: the terrain loses coherence
+wait(4.0);
+harmonic_mirror(0.1);   // release
 wait(4.0);
 ```
 

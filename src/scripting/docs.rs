@@ -1496,9 +1496,10 @@ ecology; `send(habitat_bus | presentation_bus)` feeds both (the default).",
         style: Style::Free,
         patch: Patch::Na,
         usage: &["harmonic_mirror(value)"],
-        summary: "Overtone/undertone balance of the harmonicity field, in 0.0-1.0.",
-        details: "0.0 is overtone-dominant, 1.0 undertone-dominant. The most direct way to bend \
-the harmonic terrain during a scene.",
+        summary: "Harmonic-tension dial in 0.0-1.0: blends the harmonicity terrain from overtone toward undertone projection.",
+        details: "Raising it degrades the terrain's coherence for overtone-radiating bodies, \
+heard as harmonic tension; lowering it restores consonant gravity. It is a tension-release \
+axis, not a tonality (major/minor) switch.",
     },
     FnDoc {
         name: "meter_stability",

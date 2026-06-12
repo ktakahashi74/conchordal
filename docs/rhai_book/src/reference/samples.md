@@ -1,62 +1,43 @@
-# Curated Samples
+# Études
 
-The curated v0.4.0 listening path is the rhythm/harmony ecology set under
-`samples/04_ecosystems/`. Run each with:
+The samples are a book of twelve études — small pieces, in order. Played and
+read one after another, they are the instrument: each is written around one
+of its capacities, and the script itself is the score.
 
 ```bash
-cargo run --release -- samples/04_ecosystems/metric_beat_foundation.rhai
-cargo run --release -- samples/04_ecosystems/entrained_beat.rhai
-cargo run --release -- samples/04_ecosystems/flow_timing_field.rhai
-cargo run --release -- samples/04_ecosystems/rhythm_harmony_ecology.rhai
-cargo run --release -- samples/04_ecosystems/conchordal_ecology.rhai
-cargo run --release -- samples/04_ecosystems/conchordal_flagship.rhai
+cargo run --release -- samples/01_a_single_voice.rhai
 ```
 
-## What to listen for
+1. **A Single Voice** — one voice appears, holds its breath, and leaves.
+2. **Constellation** — four ways to enter: a line, the peaks, the density,
+   chance.
+3. **Gravity** — the same root under two suns; the peaks listen to what is
+   sounding, not to a chart.
+4. **Tension** — the director leans on the terrain until it strains, then
+   lets the gravity come home.
+5. **Settling** — scattered voices glide to where the field can hold them.
+6. **Bells** — struck bodies; the last bell lets the field choose its
+   partials.
+7. **Heartbeat** — no clock is imposed; a pulse forms because the population
+   drives one.
+8. **Murmuration** — a flock drifts into step, never commanded.
+9. **Rain** — time without a beat, falling along the field.
+10. **Generations** — voices live, starve, and are reborn where harmony can
+    hold them.
+11. **Autumn Cycle** — a directed harmony; the season turns and comes home.
+12. **Emergence and Resolution** — everything at once, bent into a single
+    arc.
 
-**`metric_beat_foundation.rhai`** — the metric region of the coupling
-continuum. A Western-music-like pulse should surface and be immediately
-legible.
+Études 1–6 walk the consonance terrain (placement, gravity, tension,
+movement, timbre); 7–9 walk the rhythm continuum one region at a time;
+10 closes the loop into life; 11–12 are directed by the composer. All études
+are compile-checked by the test suite, so they always match the current API.
 
-**`entrained_beat.rhai`** — the entrained region. Synchronization emerges from
-agent phase, social onset feedback, vitality coupling, and attack reward; the
-beat drifts with the population.
+## Research assays
 
-**`flow_timing_field.rhai`** — the flow region. Non-metric but structured
-timing over consonance-biased placement.
-
-**`rhythm_harmony_ecology.rhai`** — functional integration demo. The metric
-groove stays stable while entrained agents, non-metric flow, consonance
-movement, and harmonic field changes coexist on one field. Judge it as
-integration, not as the musical showcase.
-
-**`conchordal_ecology.rhai`** — feature-integration coverage. Metric beat,
-entrained beat, flow timing, consonance movement, viability, and respawn
-coexist on one field. Judge it as coverage, not as the musical showcase.
-
-**`conchordal_flagship.rhai`** — the dedicated musical etude, *Emergence and
-Resolution*. A single directed arc: a `harmonic_mirror` arch (consonant →
-dissonant → consonant) and register transposition shape the tension/release
-drama, while harmony emerges from the agents. The pulse is a deep emergent
-attractor: a metric heartbeat (an `accent` role with high `meter_stability`)
-drives the shared meter, and a living colony locks to that *same* emergent
-beat — its life is harmonic (which pitches snap in and survive each onset),
-not rhythmic drift. Flow appears only as non-metric shimmer at the tension
-peak. It uses only the features that serve the form.
-
-## Other sample directories
-
-- `samples/01_fundamentals/` — minimal mechanics: spawning, tone generation,
-  basic placement.
-- `samples/02_mechanisms/` — single-mechanism studies (hill-climb convergence,
-  rhythmic sync, modal timbres, spectral gaps).
-- `samples/03_structures/` — directed harmonic structures.
-- The rest of `samples/04_ecosystems/` contains research comparisons and
-  mechanism sketches (e.g. `consonance_ecology.rhai`, `pulse_foundation.rhai`,
-  the `hereditary_adaptation_*` and `temporal_scaffolding_*` assay sets).
-
-All samples are compile-checked by the test suite, so they always match the
-current API.
+`samples/research/` holds comparison fixtures — heredity/selection ablations,
+external-scaffold rhythm controls, and mechanism studies. They study the
+instrument rather than play it, and are not part of the path.
 
 ## Offline rendering
 

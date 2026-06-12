@@ -20,5 +20,13 @@ cargo run --release -- samples/01_a_single_voice.rhai
 11. **Autumn Cycle** — a directed harmony; the season turns and comes home.
 12. **Emergence and Resolution** — everything at once, bent into a single arc.
 
+One craft rule holds across the path: **scaffolding is inaudible or
+embodied**. Terrain anchors sing to the habitat bus, not to the audience —
+unless the drone is itself the subject, as with the suns of *Gravity*. And
+nothing stands on stage whose only content is being the beat: pulse carriers
+get resonant bodies and lives of their own, or the pulse is left to condense
+from the colony.
+
 `research/` holds comparison assays. They study the instrument rather than
-play it, and are not part of the path.
+play it, and are not part of the path. There the scaffolding is the subject,
+and the rule above does not apply.

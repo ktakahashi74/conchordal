@@ -596,7 +596,42 @@ Version 0.4.0 integrates the paper findings into the instrument itself and compl
 
 The technical architecture—anchored by the `Log2Space` coordinate system and the "Sibling Projection" algorithm—provides a robust mathematical foundation for this paradigm. The use of Rust ensures that these complex biological simulations can run in real-time, bridging the gap between ALife research and performative musical instruments.
 
-Future development will focus on meter-level accent structure (measure emphasis), spatialization (extending the landscape to 3D space), evolutionary genetics (allowing successful agents to pass on their `TimbreGenotype`), and biosignal feedback toward the full Direct Cognitive Coupling closed loop, further deepening the analogy between sound and life.
+Chapter 9 closes the document by auditing the distance between the Manifesto's commitments and this implementation: what is discharged, what remains open, and what the implementation taught back.
+
+# 9. Manifesto Correspondence and Open Problems
+
+The Manifesto declares commitments; this chapter audits them. Each row of the ledger maps a commitment onto the mechanism that discharges it—or onto the gap where none yet does—so that the distance between declaration and implementation stays explicit. Findings that flowed *backward*, where implementation results revised the Manifesto's mechanism-level sketches, are recorded separately (Section 9.3): the principles stand; the sketches are corrigible.
+
+## 9.1 The Ledger
+
+| Manifesto commitment | Mechanism | Section | Status |
+| :--- | :--- | :--- | :--- |
+| Generation without symbolic intermediaries | `Log2Space` + landscape; no note names, scales, or time signatures anywhere in the engine | §2–4 | Implemented |
+| Frequency-axis terrain (cochlea/brainstem models) | Roughness, Harmonicity, Consonance kernels | §3 | Implemented |
+| Temporal-axis terrain (neural oscillation) | Emergent meter: forced limit cycle, Hebbian tempo learning, PLV confidence | §4 | Implemented; mechanism sketch revised (9.3). Measure-level accent *production* remains open |
+| Landscape variability (culture, individual, unknown principles) | `mirror_weight`, `roughness_k`, consonance kernel coefficients | §3.4, §6.3.6 | Partial — cultural tuning systems not yet absorbed |
+| Adaptation and expectation | per-voice `PerceptualContext` only | — | **Open — the largest gap (9.2)** |
+| Acoustic life: perception, metabolism, autonomy | The Voice: cores, energy, viability | §5 | Implemented |
+| Population: niches, symbiosis, terrain deformation | Crowding, respawn, the closed loop | §5 | Implemented |
+| No central conductor | Local perception only; the meter emerges from the population's own onsets | §4–5 | Implemented (temporal scaffolding remains an explicit experiment) |
+| Scenario as macro direction | Director terrain operations | §6.3.6 | Implemented; grounded by the scene window (9.2) |
+| DCC stage two: biosignal closed loop | `ListenerTwin` + report-only DCC pressure as the simulated precursor | §4.1 | Open — direction only |
+| Dissolution of roles; spatial landscapes; heredity of timbre; other domains | Hereditary respawn exists as assays | — | Horizon |
+
+## 9.2 The Missing Mechanism: Adaptation
+
+Human temporal cognition layers experience in three windows. Within the **perceptual present** (~3 s, upper bound ~8 s) no change is needed; texture itself carries. In the **prediction window** (3–8 s)—where musical phrases live—boredom is the operational state of a prediction engine with nothing left to update: beyond roughly eight seconds without a *perceptible* change, attention releases. And at the **scene window** (15–30 s), segmentation boundaries must arrive or the mind wanders. Beneath all three sits habituation: auditory cortex adapts to repeated spectra (stimulus-specific adaptation), so an unchanging percept literally fades from salience and recovers after withdrawal.
+
+For a system whose terrain *is* a model of perception, the consequence is structural: **consonance is a meal, not a place**. A landscape that models the listener must devalue what has been sounding—habituation as terrain erosion, with a time constant on the order of the prediction window—and let it recover after release. Stasis avoidance then belongs to the ecology rather than to authored pacing, and the three windows assign a clean division of labor: the **body** owns the micro layer (jitter, breath, beating), the **ecology** owns the meso layer (adaptation-driven movement, life and death), and the **scenario** owns the macro layer—the one window the Manifesto explicitly assigns to the human director, who owes the listener a boundary at this scale and cannot delegate it.
+
+Fragments exist: the per-voice boredom/familiarity of `PerceptualContext` is the agent-side preview, and the `ListenerTwin`'s tension and attention reporting—with its currently report-only DCC pressure path—is the feedback channel that would close the loop. A landscape-level habituation field is future work; until it lands, "no more than ~8 s without perceptible change" serves as a *diagnostic* for the étude path, not a property of the system.
+
+## 9.3 Upstream Revisions
+
+Implementation results have twice revised the Manifesto's mechanism-level sketches while confirming its principles:
+
+*   **The four-band table → an emergent metrical hierarchy.** The Manifesto sketches fixed delta/theta/alpha/beta bands with assigned musical roles. Building that taught otherwise: a fixed filterbank is an imposed grid in disguise. What survives the perception research is the principle—neural oscillation structures musical time—realized as a self-organizing beat–subdivision–measure hierarchy with confidence (Section 4).
+*   **Mirror dualism → the production-loop fixed-point requirement.** The undertone terrain is computable, but no minor tonality emerged, and the analysis generalizes: a perceptual symmetry is musically real only if the agents it attracts radiate spectra that reinforce it. Perception can be mirrored; production cannot—every body radiates overtones (Section 3.3.3). Any future terrain operation must pass both tests: a perceptual mechanism must exist, and the loop must close on the production side.
 
 # Appendix A: Key System Parameters
 

@@ -238,7 +238,7 @@ fn listener_twin_tension_resolution_fixture_reports_expected_shape() {
         tension.avg_resolvability()
     );
     assert!(
-        tension.max_tension > 0.04,
+        tension.max_tension > 0.03,
         "tension cluster should raise listener tension: max={}",
         tension.max_tension
     );

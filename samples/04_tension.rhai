@@ -14,6 +14,9 @@ let ground = harmonic()
 let chord = harmonic()
     .amp(0.04)
     .sustain()
+    .seek_consonance()
+    .glide(0.5)
+    .avoid_neighbors(0.6)
     .adsr(0.4, 0.6, 0.85, 1.8);
 
 section("tension and release", || {

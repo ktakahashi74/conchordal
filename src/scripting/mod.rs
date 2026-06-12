@@ -213,7 +213,7 @@ impl SpeciesSpec {
     }
 
     fn lifecycle_config(&self) -> LifecycleConfig {
-        if self.metabolism_rate.is_some()
+        let energy_knobs = self.metabolism_rate.is_some()
             || self.initial_energy.is_some()
             || self.recharge_rate.is_some()
             || self.action_cost.is_some()
@@ -221,10 +221,14 @@ impl SpeciesSpec {
             || self.continuous_recharge_score_low.is_some()
             || self.continuous_recharge_score_high.is_some()
             || self.selection_approx_loo
-            || self.dissonance_cost.is_some()
-            || self.adsr_user_set
-        {
-            let metabolism_rate = self.metabolism_rate.unwrap_or(0.5).max(1e-6);
+            || self.dissonance_cost.is_some();
+        if energy_knobs || self.adsr_user_set {
+            // An explicit ADSR is a timbral statement, not a mortality
+            // statement: without any energy knob the voice has no basal drain
+            // and sings until released. Declaring an energy economy opts into
+            // the starving default.
+            let default_metabolism = if energy_knobs { 0.5 } else { 0.0 };
+            let metabolism_rate = self.metabolism_rate.unwrap_or(default_metabolism).max(1e-6);
             LifecycleConfig::Sustain {
                 initial_energy: self.initial_energy.unwrap_or(1.0).max(0.0),
                 metabolism_rate,

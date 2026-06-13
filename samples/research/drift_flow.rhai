@@ -1,3 +1,8 @@
+// Early drift/flow sketch.
+// Retained as a compact historical fixture for pitch motion against perceived peaks.
+
+seed(20260401);
+
 let anchor = sine().amp(0.3).sustain();
 let slider = sine().amp(0.2).sustain();
 let swarm = sine().amp(0.08).sustain();

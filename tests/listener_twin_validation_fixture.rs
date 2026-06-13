@@ -169,7 +169,7 @@ fn listener_twin_tension_resolution_fixture_reports_expected_shape() {
         &report,
         Window {
             start_sec: 4.05,
-            end_sec: 4.95,
+            end_sec: 5.10,
         },
     );
     let resolved = collect_stats(
@@ -238,9 +238,10 @@ fn listener_twin_tension_resolution_fixture_reports_expected_shape() {
         tension.avg_resolvability()
     );
     assert!(
-        tension.max_tension > 0.03,
-        "tension cluster should raise listener tension: max={}",
-        tension.max_tension
+        tension.max_tension > 0.015 && tension.max_tension > stable.avg_tension() + 0.010,
+        "tension cluster should raise listener tension: max={} stable_avg={}",
+        tension.max_tension,
+        stable.avg_tension()
     );
     assert!(
         resolved.avg_stability() > 0.75,

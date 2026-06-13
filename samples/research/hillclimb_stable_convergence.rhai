@@ -1,3 +1,8 @@
+// Movement-mechanism assay.
+// Movers converge against a stable harmonic bed with explicit hill-climb tuning.
+
+seed(20260402);
+
 let bed = sine()
     .amp(0.05)
     .sustain()

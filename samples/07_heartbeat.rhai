@@ -1,5 +1,5 @@
 // Étude 7 — Heartbeat
-// No clock is imposed. A pulse forms because the population drives one.
+// No external scaffold is imposed; the population locks into a shared pulse.
 
 seed(20260508);
 

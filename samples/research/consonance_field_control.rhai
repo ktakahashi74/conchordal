@@ -1,4 +1,4 @@
-// v0.4 harmony control demo.
+// Harmony control assay.
 // Shows audible field states, then a guide voice snapping to each state.
 
 seed(20260507);

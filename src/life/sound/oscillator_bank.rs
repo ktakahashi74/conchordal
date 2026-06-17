@@ -299,6 +299,20 @@ impl OscillatorBank {
         }
     }
 
+    // The rotation kernel preserves state magnitude in exact arithmetic; with f32 it
+    // drifts (or diverges near instability). Active lanes start at unit norm, so a large
+    // departure signals drift/blowup rather than normal operation. Debug-only guard.
+    #[cfg(debug_assertions)]
+    fn debug_assert_state_norms_sane(&self) {
+        for idx in 0..self.active_lane_len {
+            let norm_sq = self.x[idx].mul_add(self.x[idx], self.y[idx] * self.y[idx]);
+            debug_assert!(
+                norm_sq.is_finite() && (0.25..=4.0).contains(&norm_sq),
+                "oscillator lane {idx} magnitude drifted: |state|^2 = {norm_sq}"
+            );
+        }
+    }
+
     #[allow(dead_code)]
     fn process_sample_basic(&mut self, use_motion: bool, motion_s: f32, motion_c: f32) -> f32 {
         let mut out = 0.0;
@@ -452,6 +466,9 @@ impl OscillatorBank {
             self.pitch_counter = (self.pitch_counter + 1) % PITCH_REFRESH_PERIOD_SAMPLES;
             self.motion_counter = (self.motion_counter + 1) % MOTION_REFRESH_PERIOD_SAMPLES;
         }
+
+        #[cfg(debug_assertions)]
+        self.debug_assert_state_norms_sane();
     }
 
     pub fn project_spectral(

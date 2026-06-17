@@ -16,7 +16,7 @@
 
 use crate::core::log2space::Log2Space;
 use crate::core::nsgt_kernel::{NsgtKernelLog2, PowerMode};
-use rustfft::{FftPlanner, num_complex::Complex32};
+use rustfft::num_complex::Complex32;
 use std::sync::Arc;
 
 /// Smoothing configuration.
@@ -49,7 +49,7 @@ pub struct BandState {
     pub tau: f32,
     /// α = exp(−dt/τ).
     pub alpha: f32,
-    /// ENBW [Hz] (Hann ≈ 1.5*fs/Lk).
+    /// ENBW [Hz] (sourced from the band kernel; Blackman-Harris ≈ 2.0*fs/Lk).
     pub enbw_hz: f32,
     /// Smoothed band power (running state).
     pub smooth: f32,
@@ -94,9 +94,8 @@ impl RtNsgtKernelLog2 {
         let dt = hop as f32 / fs;
         let power_mode = nsgt.power_mode;
 
-        // Our own FFT plan (no per-hop allocation; same size as nsgt).
-        let mut planner = FftPlanner::<f32>::new();
-        let fft = planner.plan_fft_forward(nfft);
+        // Reuse nsgt's forward FFT plan (same nfft); avoids a duplicate plan.
+        let fft = nsgt.fft();
 
         // Build band states (τ mapping and ENBW precompute).
         let bands_state = nsgt
@@ -108,7 +107,9 @@ impl RtNsgtKernelLog2 {
                 let mut tau = cfg.tau_min + (cfg.tau_max - cfg.tau_min) * ratio;
                 tau = tau.clamp(cfg.tau_min, cfg.tau_max);
                 let alpha = (-dt / tau).exp();
-                let enbw_hz = 1.5_f32 * fs / (b.win_len as f32);
+                // Reuse the kernel's correct ENBW (matches the Blackman-Harris window)
+                // instead of a Hann approximation.
+                let enbw_hz = b.enbw_hz;
                 BandState {
                     f_hz: b.f_hz,
                     tau,

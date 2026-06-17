@@ -332,6 +332,10 @@ impl NsgtKernelLog2 {
     pub fn bands(&self) -> &[KernelBand] {
         &self.bands
     }
+    /// Shared forward FFT plan (same nfft as the bands), reusable by the RT analyzer.
+    pub fn fft(&self) -> Arc<dyn rustfft::Fft<f32>> {
+        self.fft.clone()
+    }
     #[inline]
     pub fn time_ref_sample_in_frame(&self) -> usize {
         match self.cfg.kernel_align {

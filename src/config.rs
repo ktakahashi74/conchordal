@@ -49,7 +49,7 @@ pub struct AnalysisConfig {
     pub hop_size: usize,
     #[serde(default = "AnalysisConfig::default_tau_ms")]
     pub tau_ms: f32,
-    #[serde(default)]
+    #[serde(default = "AnalysisConfig::default_kernel_align")]
     pub kernel_align: KernelAlign,
 }
 
@@ -62,6 +62,11 @@ impl AnalysisConfig {
     }
     fn default_tau_ms() -> f32 {
         10.0
+    }
+    fn default_kernel_align() -> KernelAlign {
+        // Match the Default impl: runtime stamps observations at frame end,
+        // which assumes right-aligned kernels.
+        KernelAlign::Right
     }
 }
 

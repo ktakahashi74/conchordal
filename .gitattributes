@@ -1,0 +1,5 @@
+# Normalize line endings to LF for all detected text files.
+# Without this, Windows checkouts (core.autocrlf=true) convert committed LF
+# files to CRLF, which breaks byte-exact drift checks for generated artifacts
+# (e.g. rhai-defs/conchordal.d.rhai, docs/rhai_book/src/reference/api.md).
+* text=auto eol=lf

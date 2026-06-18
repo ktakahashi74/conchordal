@@ -902,6 +902,7 @@ mod tests {
     #[test]
     #[cfg(feature = "plotcheck")]
     fn plot_kernel_shape_png() {
+        use std::fs::File;
         ensure_plots_dir().expect("create target/plots");
         let k = make_kernel();
         let params = k.params;

@@ -47,10 +47,51 @@ right one?
   and the `research/` scenarios add `ratio_candidates` / `global_peaks`; the
   annealing **temperature is unused** (one scenario sets `exploration(0.10)`).
 
+## Method (reproducible)
+
+The supporting experiments are a small standalone model (no engine code) and can
+be reproduced from this spec alone.
+
+**Model.** Each voice is a harmonic complex tone: K=6 partials at k*f0 (k=1..6),
+amplitude 1/k. Pitch in cents; f = base * 2^(cents/1200), base ~= 1000 Hz.
+
+**Roughness / dissonance (Sethares).** For two partials (f1,a1),(f2,a2) with
+fmin=min(f1,f2): s = 0.24/(0.0207*fmin + 18.96); df = |f1-f2|;
+d = a1*a2*(exp(-3.5*s*df) - exp(-5.75*s*df)). Total roughness R = sum of d over
+partial pairs. A voice's leave-self-out (LSO) consonance score
+= -(sum of d between its partials and all *other* voices' partials); higher =
+more consonant with the rest. Note this is high at unison -- the core problem.
+
+**Spectral density.** A(x) on a cents grid (~3c) = sum of each partial's
+amplitude deposited as a Gaussian (sigma ~= 12c). Coverage_p = sum A(x)^p
+(p<1 concave/saturating, p>1 convex).
+
+**Experiment 1 - static self-organization.** Coordinate-ascent each voice's f0
+from a near-unison start (e.g. 0/7/13/19 c) to maximize an objective; report the
+final intervals. Objectives compared: `-R` (naive); `ALPHA*Coverage_0.5 - R` and
+`ALPHA*Coverage_2 - R` (concave vs convex, full spectrum); `-R +
+GAMMA*Coverage_0.5` over the *fundamentals only*; `-R - strength*sum_pairs
+exp(-|df0|/sigma_c)`.
+
+**Experiment 2 - crowding-shape landscape.** Two voices, one fixed; sweep
+separation d in [0,1400] c. Objective = `-R_dyad(d) - strength*crowd(d)`. Crowd
+shapes: complement = clamp(0, 1 - R(d/kappa)/Rpeak), kappa=2.1 (flat-topped, the
+current shape); cusp = exp(-d/40); reach = exp(-d/180). Find local maxima
+(attractors), whether d=0 is one, and each maximum's objective value.
+
+**Experiment 3 - dynamics (search modulation).** N=3 voices, time-stepped
+(T=160, 24 trials), near-unison start. Degeneracy = min neighbor |df0| < D_deg
+(=50 c). Candidates per step: current + 6 Gaussian random (sigma=30c), optionally
+ratio candidates at neighbor +/- {316,386,498,702,884,1200} c. Policies:
+P0 = greedy on consonance; PA / PAr = greedy on `consonance - strength*sum
+exp(-|df0|/80c)` (PAr also offers ratio candidates); PB = pure consonance with
+the degeneracy zone excluded from candidates, plus a forced jump to the best
+consonant (ratio) candidate while currently degenerate, else greedy-settle.
+strength ~= 0.8. Metrics: unison-dwell %, escape %, escape step, final intervals.
+
 ## Findings (toy Sethares model; directional, not quantitative)
 
-Scripts: `uni_proto.py`, `crowd_cmp.py` (Hz-domain Sethares, harmonic tones,
-2–4 voices, greedy search). Conclusions held across the parameters swept.
+Conclusions below held across the parameters swept.
 
 1. **Not unifiable into one spectral measure.** A single concave (submodular)
    aggregation over the *full* spectrum (`∫ A^0.5 − roughness`) avoids unison but
@@ -115,8 +156,8 @@ degeneracy as a trigger that raises restlessness (lowers persistence, raises
 jump probability) and offers *targeted* consonant (ratio) candidates — while
 leaving the consonance landscape pure (no crowding penalty).
 
-A toy dynamics comparison (`dyn_cmp.py`, 3 harmonic voices started near unison,
-24 trials) supports this:
+A toy dynamics comparison (Experiment 3 in Method, 3 harmonic voices started
+near unison, 24 trials) supports this:
 
 | policy | unison dwell | escaped | escape step | example final |
 |---|---|---|---|---|

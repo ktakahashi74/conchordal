@@ -1315,9 +1315,9 @@ mod tests {
         );
 
         // Noise generation.
-        let white: Vec<f32> = white_noise(n, 42).iter().map(|&v| v as f32).collect();
-        let pink: Vec<f32> = pink_noise(n, 42).iter().map(|&v| v as f32).collect();
-        let brown: Vec<f32> = brown_noise(n, 42).iter().map(|&v| v as f32).collect();
+        let white: Vec<f32> = white_noise(n, 42).to_vec();
+        let pink: Vec<f32> = pink_noise(n, 42).to_vec();
+        let brown: Vec<f32> = brown_noise(n, 42).to_vec();
 
         // Get per-Hz normalized PSD.
         let w_psd = nsgt.analyze_psd(&white);
@@ -1400,7 +1400,7 @@ mod tests {
 
         chart
             .configure_series_labels()
-            .border_style(&BLACK)
+            .border_style(BLACK)
             .draw()
             .unwrap();
 

@@ -1003,7 +1003,7 @@ mod tests {
             ))
             .unwrap()
             .label("kernel")
-            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], &BLACK));
+            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], BLACK));
         chart
             .draw_series(LineSeries::new(
                 d_erb
@@ -1014,10 +1014,10 @@ mod tests {
             ))
             .unwrap()
             .label("Sethares+GM-like masking reference")
-            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], &MAGENTA));
+            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], MAGENTA));
         chart
             .configure_series_labels()
-            .border_style(&BLACK)
+            .border_style(BLACK)
             .draw()
             .unwrap();
         root.present().unwrap();
@@ -1076,17 +1076,17 @@ mod tests {
                 &BLUE,
             ))?
             .label("discrete")
-            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], &BLUE));
+            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], BLUE));
         chart
             .draw_series(LineSeries::new(
                 d_erb_vec.iter().zip(g2.iter()).map(|(&x, &y)| (x, y)),
                 &RED,
             ))?
             .label("eval()")
-            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], &RED));
+            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], RED));
         chart
             .configure_series_labels()
-            .border_style(&BLACK)
+            .border_style(BLACK)
             .draw()?;
         root.present()?;
         Ok(())
@@ -1169,7 +1169,7 @@ mod tests {
                 &BLUE,
             ))?
             .label("roughness (with dip)")
-            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], &BLUE));
+            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], BLUE));
         chart
             .draw_series(LineSeries::new(
                 d_erb
@@ -1179,7 +1179,7 @@ mod tests {
                 &GREEN,
             ))?
             .label("crowding (runtime)")
-            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], &GREEN));
+            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], GREEN));
         chart
             .draw_series(DashedLineSeries::new(
                 d_erb.iter().zip(sum_runtime.iter()).map(|(&x, &y)| (x, y)),
@@ -1192,7 +1192,7 @@ mod tests {
                 },
             ))?
             .label("roughness + runtime crowding (reference)")
-            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], &RED));
+            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], RED));
         chart
             .draw_series(LineSeries::new(
                 d_erb
@@ -1202,10 +1202,10 @@ mod tests {
                 &BLACK,
             ))?
             .label("roughness (no dip)")
-            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], &BLACK));
+            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], BLACK));
         chart
             .configure_series_labels()
-            .border_style(&BLACK)
+            .border_style(BLACK)
             .draw()?;
         root.present()?;
         assert!(std::path::Path::new(out_path).exists());
@@ -1308,7 +1308,7 @@ mod tests {
                 &BLACK,
             ))?
             .label("kernel (masking off)")
-            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], &BLACK));
+            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], BLACK));
         chart
             .draw_series(LineSeries::new(
                 d_erb
@@ -1318,10 +1318,10 @@ mod tests {
                 &MAGENTA,
             ))?
             .label("Sethares reference")
-            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], &MAGENTA));
+            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], MAGENTA));
         chart
             .configure_series_labels()
-            .border_style(&BLACK)
+            .border_style(BLACK)
             .draw()?;
         root.present()?;
         assert!(std::path::Path::new(out_path).exists());
@@ -1393,7 +1393,7 @@ mod tests {
                 &BLUE,
             ))?
             .label("R(log2 input)")
-            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], &BLUE));
+            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], BLUE));
         chart
             .draw_series(LineSeries::new(
                 d_erb_kernel
@@ -1403,10 +1403,10 @@ mod tests {
                 &GREEN,
             ))?
             .label("Kernel g(ΔERB)")
-            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], &GREEN));
+            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], GREEN));
         chart
             .configure_series_labels()
-            .border_style(&BLACK)
+            .border_style(BLACK)
             .draw()?;
         root.present()?;
         assert!(std::path::Path::new(out_path).exists());

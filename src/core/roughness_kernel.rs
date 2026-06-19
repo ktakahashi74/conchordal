@@ -1084,10 +1084,7 @@ mod tests {
             ))?
             .label("eval()")
             .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], RED));
-        chart
-            .configure_series_labels()
-            .border_style(BLACK)
-            .draw()?;
+        chart.configure_series_labels().border_style(BLACK).draw()?;
         root.present()?;
         Ok(())
     }
@@ -1203,10 +1200,7 @@ mod tests {
             ))?
             .label("roughness (no dip)")
             .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], BLACK));
-        chart
-            .configure_series_labels()
-            .border_style(BLACK)
-            .draw()?;
+        chart.configure_series_labels().border_style(BLACK).draw()?;
         root.present()?;
         assert!(std::path::Path::new(out_path).exists());
         Ok(())
@@ -1319,10 +1313,7 @@ mod tests {
             ))?
             .label("Sethares reference")
             .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], MAGENTA));
-        chart
-            .configure_series_labels()
-            .border_style(BLACK)
-            .draw()?;
+        chart.configure_series_labels().border_style(BLACK).draw()?;
         root.present()?;
         assert!(std::path::Path::new(out_path).exists());
         Ok(())
@@ -1404,10 +1395,7 @@ mod tests {
             ))?
             .label("Kernel g(ΔERB)")
             .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], GREEN));
-        chart
-            .configure_series_labels()
-            .border_style(BLACK)
-            .draw()?;
+        chart.configure_series_labels().border_style(BLACK).draw()?;
         root.present()?;
         assert!(std::path::Path::new(out_path).exists());
         Ok(())

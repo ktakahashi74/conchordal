@@ -2129,7 +2129,7 @@ mod tests {
     fn crowding_strength_zero_keeps_behavior_with_neighbors() {
         let landscape = test_landscape(&[(330.0, 1.0)]);
         let perceptual = test_adaptation(landscape.space.n_bins());
-        let features = FeaturesNow::from_subjective_intensity(&landscape.subjective_intensity);
+        let features = FeaturesNow::from_occupancy_scan(&landscape.subjective_intensity);
         let mut core = PitchHillClimbPitchCore::new(120.0, 330.0f32.log2(), 0.0, 0.0, 0.0, 0.0);
         core.set_crowding(0.0, 20.0, false);
 
@@ -2166,7 +2166,7 @@ mod tests {
     fn peak_sampler_crowding_zero_ignores_neighbors() {
         let landscape = test_landscape(&[(330.0, 1.0)]);
         let perceptual = test_adaptation(landscape.space.n_bins());
-        let features = FeaturesNow::from_subjective_intensity(&landscape.subjective_intensity);
+        let features = FeaturesNow::from_occupancy_scan(&landscape.subjective_intensity);
         let mut core = PitchPeakSamplerCore::new(
             120.0,
             330.0f32.log2(),
@@ -2214,7 +2214,7 @@ mod tests {
     fn peak_sampler_crowding_penalizes_close_neighbor_selection() {
         let landscape = test_landscape(&[(330.0, 1.0)]);
         let perceptual = test_adaptation(landscape.space.n_bins());
-        let features = FeaturesNow::from_subjective_intensity(&landscape.subjective_intensity);
+        let features = FeaturesNow::from_occupancy_scan(&landscape.subjective_intensity);
         let mut no_crowding = PitchPeakSamplerCore::new(
             24.0,
             330.0f32.log2(),
@@ -2269,7 +2269,7 @@ mod tests {
     fn hillclimb_anneal_temp_zero_matches_legacy_behavior() {
         let landscape = test_landscape(&[(330.0, 1.0)]);
         let perceptual = test_adaptation(landscape.space.n_bins());
-        let features = FeaturesNow::from_subjective_intensity(&landscape.subjective_intensity);
+        let features = FeaturesNow::from_occupancy_scan(&landscape.subjective_intensity);
         let mut legacy = PitchHillClimbPitchCore::new(120.0, 330.0f32.log2(), 0.0, 0.0, 0.0, 0.0);
         let mut anneal_zero =
             PitchHillClimbPitchCore::new(120.0, 330.0f32.log2(), 0.0, 0.0, 0.0, 0.0);
@@ -2317,7 +2317,7 @@ mod tests {
             landscape.consonance_field_level[idx] = score.clamp(0.0, 1.0);
         }
         let perceptual = test_adaptation(landscape.space.n_bins());
-        let features = FeaturesNow::from_subjective_intensity(&landscape.subjective_intensity);
+        let features = FeaturesNow::from_occupancy_scan(&landscape.subjective_intensity);
         let trials = 256u64;
         let mut moved_with_anneal = 0usize;
         let mut moved_without_anneal = 0usize;
@@ -2382,7 +2382,7 @@ mod tests {
             landscape.consonance_field_level[idx] = score.clamp(0.0, 1.0);
         }
         let perceptual = test_adaptation(landscape.space.n_bins());
-        let features = FeaturesNow::from_subjective_intensity(&landscape.subjective_intensity);
+        let features = FeaturesNow::from_occupancy_scan(&landscape.subjective_intensity);
 
         let mut without_crowding =
             PitchHillClimbPitchCore::new(24.0, center_log2, 0.0, 0.0, 0.0, 0.0);
@@ -2428,7 +2428,7 @@ mod tests {
         let distant_hz = 330.0;
         let landscape = test_landscape(&[(current_hz, 0.4), (distant_hz, 1.0)]);
         let perceptual = test_adaptation(landscape.space.n_bins());
-        let features = FeaturesNow::from_subjective_intensity(&landscape.subjective_intensity);
+        let features = FeaturesNow::from_occupancy_scan(&landscape.subjective_intensity);
         let current_log2 = current_hz.log2();
 
         let mut local_only = PitchHillClimbPitchCore::new(120.0, current_log2, 0.0, 0.0, 0.0, 0.0);
@@ -2474,7 +2474,7 @@ mod tests {
         let peak_hz = 330.0;
         let landscape = test_landscape(&[(peak_hz, 1.0)]);
         let perceptual = test_adaptation(landscape.space.n_bins());
-        let features = FeaturesNow::from_subjective_intensity(&landscape.subjective_intensity);
+        let features = FeaturesNow::from_occupancy_scan(&landscape.subjective_intensity);
         let mut rng = SmallRng::seed_from_u64(17);
 
         let mut core = PitchPeakSamplerCore::new(
@@ -2521,7 +2521,7 @@ mod tests {
         right_peak_hz: f32,
     ) -> f32 {
         let perceptual = test_adaptation(landscape.space.n_bins());
-        let features = FeaturesNow::from_subjective_intensity(&landscape.subjective_intensity);
+        let features = FeaturesNow::from_occupancy_scan(&landscape.subjective_intensity);
         let mut rng = SmallRng::seed_from_u64(seed);
         let mut right_hits = 0u32;
         let trials = 512u32;
@@ -2621,7 +2621,7 @@ mod tests {
         let peak_hz = 347.0;
         let landscape = test_landscape(&[(peak_hz, 1.0)]);
         let perceptual = test_adaptation(landscape.space.n_bins());
-        let features = FeaturesNow::from_subjective_intensity(&landscape.subjective_intensity);
+        let features = FeaturesNow::from_occupancy_scan(&landscape.subjective_intensity);
 
         let mut hill_rng = SmallRng::seed_from_u64(123);
         let mut hill = PitchHillClimbPitchCore::new(120.0, 330.0f32.log2(), 0.0, 0.0, 0.0, 0.0);
@@ -2769,7 +2769,7 @@ mod tests {
     fn peak_sampler_proposal_unchanged_after_refactor() {
         let landscape = test_landscape(&[(330.0, 1.0)]);
         let perceptual = test_adaptation(landscape.space.n_bins());
-        let features = FeaturesNow::from_subjective_intensity(&landscape.subjective_intensity);
+        let features = FeaturesNow::from_occupancy_scan(&landscape.subjective_intensity);
         let mut core_a = PitchPeakSamplerCore::new(
             120.0,
             330.0f32.log2(),
@@ -2819,7 +2819,7 @@ mod tests {
     fn propose_with_scorer_default_matches_trait_method() {
         let landscape = test_landscape(&[(330.0, 1.0), (440.0, 0.6)]);
         let perceptual = test_adaptation(landscape.space.n_bins());
-        let features = FeaturesNow::from_subjective_intensity(&landscape.subjective_intensity);
+        let features = FeaturesNow::from_occupancy_scan(&landscape.subjective_intensity);
         let core = PitchHillClimbPitchCore::new(120.0, 330.0f32.log2(), 0.0, 0.0, 0.0, 0.0);
         let current = 330.0f32.log2();
 

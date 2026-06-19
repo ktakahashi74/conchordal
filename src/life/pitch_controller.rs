@@ -1,5 +1,6 @@
 use super::pitch_core::{AnyPitchCore, PitchCore};
 use crate::core::landscape::Landscape;
+use crate::core::log2space::Log2Space;
 use crate::core::modulation::NeuralRhythms;
 use crate::life::adaptation::{AdaptationContext, FeaturesNow};
 use crate::life::control::{PitchControl, PitchMode};
@@ -17,6 +18,8 @@ pub struct PitchController {
     last_target_salience: f32,
     rng: SmallRng,
     adaptation_enabled: bool,
+    /// Reusable buffer for the predictive fundamental-occupancy scan (Stage 1.5).
+    occupancy_scan: Vec<f32>,
 }
 
 impl PitchController {
@@ -42,6 +45,35 @@ impl PitchController {
             last_target_salience: 0.0,
             rng,
             adaptation_enabled: true,
+            occupancy_scan: Vec::new(),
+        }
+    }
+
+    /// Build the predictive fundamental-occupancy scan from visible neighbors'
+    /// fundamentals: deposit a narrow Gaussian (σ≈50c, the perceptual fusion
+    /// width) at each neighbor's f0 on the Log2Space grid. Self is already
+    /// excluded upstream, so this is the leave-self-out spatial slice of the
+    /// occupancy field `F`. See docs/design-notes/voice-movement-redesign.md.
+    fn build_neighbor_occupancy(&mut self, space: &Log2Space, neighbors: &[f32]) {
+        let n = space.n_bins();
+        self.occupancy_scan.clear();
+        self.occupancy_scan.resize(n, 0.0);
+        if neighbors.is_empty() || n == 0 {
+            return;
+        }
+        let sigma_log2 = 50.0 / 1200.0;
+        let inv_two_sig2 = 1.0 / (2.0 * sigma_log2 * sigma_log2);
+        let win = ((4.0 * sigma_log2) * space.bins_per_oct as f32).ceil() as isize;
+        for &nb in neighbors {
+            let Some(center) = space.index_of_log2(nb) else {
+                continue;
+            };
+            let lo = (center as isize - win).max(0) as usize;
+            let hi = ((center as isize + win).max(0) as usize).min(n - 1);
+            for i in lo..=hi {
+                let d = space.centers_log2[i] - nb;
+                self.occupancy_scan[i] += (-(d * d) * inv_two_sig2).exp();
+            }
         }
     }
 
@@ -148,7 +180,13 @@ impl PitchController {
             } else {
                 0.0
             };
-            let features = FeaturesNow::from_subjective_intensity(&landscape.subjective_intensity);
+            // Stage 1.5 of the occupancy redesign: adaptation's environment term is
+            // fed by the predictive fundamental-occupancy of visible neighbors
+            // (f0-based, zero-latency, self-excluded), not full-spectrum intensity,
+            // so consonant intervals' shared harmonics are not treated as "already
+            // occupied". See docs/design-notes/voice-movement-redesign.md.
+            self.build_neighbor_occupancy(&landscape.space, neighbor_pitch_log2);
+            let features = FeaturesNow::from_occupancy_scan(&self.occupancy_scan);
             debug_assert_eq!(features.density.len(), landscape.space.n_bins());
             self.adaptation.ensure_len(features.density.len());
             let proposal = self.core.propose_target_with_crowding_salience(

@@ -17,7 +17,11 @@ pub struct FeaturesNow {
 }
 
 impl FeaturesNow {
-    pub fn from_subjective_intensity(raw: &[f32]) -> Self {
+    /// Build a normalized density (PMF over Log2Space bins) from a non-negative
+    /// fundamental-occupancy scan. `mass` is the pre-normalization total, used to
+    /// detect silence. The input must be on fundamentals, not the full spectrum,
+    /// so that shared harmonics of consonant intervals are not counted as occupied.
+    pub fn from_occupancy_scan(raw: &[f32]) -> Self {
         let mut density = Vec::with_capacity(raw.len());
         let mut sum = 0.0f32;
         for &v in raw {

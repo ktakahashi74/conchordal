@@ -336,6 +336,10 @@ impl SpeciesSpec {
         self.control.pitch.set_crowding_sigma_from_roughness(true);
     }
 
+    fn set_octave_avoidance(&mut self, weight: f32) {
+        self.control.pitch.set_octave_avoidance_clamped(weight);
+    }
+
     fn set_routing(&mut self, routing: Routing) {
         self.control.body.routing = routing;
     }

@@ -62,6 +62,7 @@ impl PitchController {
         neighbors: &[f32],
         neighbor_salience: &[f32],
         sigma_cents: f32,
+        octave_avoidance: f32,
     ) {
         let n = space.n_bins();
         self.occupancy_scan.clear();
@@ -76,11 +77,26 @@ impl PitchController {
                 continue;
             };
             let split_sign = neighbor_salience.get(idx).copied().unwrap_or(0.0);
-            let lo = (center as isize - win).max(0) as usize;
-            let hi = ((center as isize + win).max(0) as usize).min(n - 1);
+            // The chroma term is octave-periodic: octave avoidance must reach every
+            // octave in the scan, so cover the whole space rather than a local
+            // window around the neighbor. Without it, the Gaussian on raw f0 only
+            // needs a local window.
+            let (lo, hi) = if octave_avoidance > 0.0 {
+                (0, n - 1)
+            } else {
+                (
+                    (center as isize - win).max(0) as usize,
+                    ((center as isize + win).max(0) as usize).min(n - 1),
+                )
+            };
             for i in lo..=hi {
-                self.occupancy_scan[i] +=
-                    occupancy_contribution(space.centers_log2[i], nb, split_sign, sigma_log2);
+                self.occupancy_scan[i] += occupancy_contribution(
+                    space.centers_log2[i],
+                    nb,
+                    split_sign,
+                    sigma_log2,
+                    octave_avoidance,
+                );
             }
         }
     }
@@ -198,6 +214,7 @@ impl PitchController {
                 neighbor_pitch_log2,
                 neighbor_salience,
                 pitch.crowding_sigma_cents,
+                pitch.octave_avoidance,
             );
             let features = FeaturesNow::from_occupancy_scan(&self.occupancy_scan);
             debug_assert_eq!(features.density.len(), landscape.space.n_bins());

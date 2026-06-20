@@ -207,6 +207,7 @@ pub struct PitchControl {
     pub crowding_strength: f32,
     pub crowding_sigma_cents: f32,
     pub crowding_sigma_from_roughness: bool,
+    pub octave_avoidance: f32,
     pub leave_self_out: bool,
     pub leave_self_out_mode: LeaveSelfOutMode,
     pub anneal_temp: f32,
@@ -245,6 +246,7 @@ impl Default for PitchControl {
             crowding_strength: 0.0,
             crowding_sigma_cents: DEFAULT_CROWDING_SIGMA_CENTS,
             crowding_sigma_from_roughness: true,
+            octave_avoidance: 0.0,
             leave_self_out: false,
             leave_self_out_mode: LeaveSelfOutMode::ApproxHarmonics,
             anneal_temp: DEFAULT_ANNEAL_TEMP,
@@ -401,6 +403,15 @@ impl PitchControl {
             DEFAULT_CROWDING_SIGMA_CENTS
         };
         self.crowding_sigma_from_roughness = false;
+    }
+
+    #[inline]
+    pub fn set_octave_avoidance_clamped(&mut self, value: f32) {
+        self.octave_avoidance = if value.is_finite() {
+            value.max(0.0)
+        } else {
+            0.0
+        };
     }
 
     #[inline]

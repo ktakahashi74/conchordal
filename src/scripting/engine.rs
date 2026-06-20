@@ -96,6 +96,20 @@ impl ScriptHost {
             },
         );
         engine.register_fn(
+            "octave_avoidance",
+            |mut species: SpeciesHandle, weight: FLOAT| {
+                species.spec.set_octave_avoidance(weight as f32);
+                species
+            },
+        );
+        engine.register_fn(
+            "octave_avoidance",
+            |mut species: SpeciesHandle, weight: INT| {
+                species.spec.set_octave_avoidance(weight as f32);
+                species
+            },
+        );
+        engine.register_fn(
             "crowding_target",
             |mut species: SpeciesHandle, same_group_visible: bool, other_group_visible: bool| {
                 species

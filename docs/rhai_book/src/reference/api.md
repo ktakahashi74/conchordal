@@ -1124,6 +1124,16 @@ Ratio-based movement candidates; 0 disables.
 
 ### Neighbor Awareness
 
+#### `octave_avoidance`
+
+```rhai,ignore
+octave_avoidance(weight)
+```
+
+Applies to: `Material` only. Draft-only: ignored with a warning on a live `Participant`.
+
+Repel octave/unison doubling so voices settle on distinct chord tones. Adds an octave-equivalence (chroma) term to the occupancy field shared by crowding and adaptation. 0 leaves octaves free to converge; higher weights push voices off octave-doublings toward distinct pitches. Pairs with avoid_neighbors, which only repels near-unison.
+
 #### `crowding_target`
 
 ```rhai,ignore

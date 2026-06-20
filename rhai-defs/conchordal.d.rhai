@@ -400,6 +400,11 @@ fn neighbor_step_cents(arg0: Participant, arg1: i64) -> Participant;
 /// Harmonic-body preset with brightness 1.0 and motion 1.0.
 fn noise() -> Material;
 
+/// [tuning] Repel octave/unison doubling so voices settle on distinct chord tones.
+fn octave_avoidance(arg0: Material, arg1: f64) -> Material;
+/// [tuning] Repel octave/unison doubling so voices settle on distinct chord tones.
+fn octave_avoidance(arg0: Material, arg1: i64) -> Material;
+
 /// Odd harmonics: f, 3f, 5f, ...
 fn odd_modes() -> ModePattern;
 

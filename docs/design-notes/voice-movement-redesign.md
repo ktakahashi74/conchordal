@@ -323,14 +323,39 @@ tune *overall* convergence (`landscape_weight`, `avoid_neighbors`,
 forbid octave-doubling to land a *distinct* chord. Octave-convergence as intent is
 fine; octave-convergence as the only reachable outcome is not.
 
-**Next: octave-aware occupancy (controllable).** Add an octave-equivalence (chroma)
-term to the occupancy field, weighted by a composer knob `octave_avoidance`:
+**Octave-aware occupancy (implemented 2026-06-20).** An octave-equivalence (chroma)
+term was added to the shared occupancy kernel `occupancy_contribution`, weighted by
+a composer knob `octave_avoidance` (Rhai `octave_avoidance(weight)`, draft-only):
 `occupancy = Gaussian(Δf0) + octave_avoidance · Gaussian(Δ_chroma)` where
 `Δ_chroma` folds Δf0 into one octave. `0` = octaves allowed (converge), `>0` =
-octaves repelled (distinct chords). This reflects both intents from one knob and
-extends the single occupancy definition rather than adding a parallel mechanism.
-Stage 2b (remove the vestigial `crowding_sigma_from_roughness`) folds into this
-step since both touch the same crowding config/API.
+octaves repelled (distinct chords). One knob feeds both consumers (crowding penalty
+and adaptation occupancy), so it extends the single occupancy definition rather than
+adding a parallel mechanism.
+
+*Audition:* `05_settling` with `octave_avoidance(1.0)` no longer collapses to
+octave/unison. With 7 seekers the result is a distinct, consonant, *moving*
+texture (octave-doubling is forbidden, so 7 voices cannot fold into a 3-note triad,
+and packing that many distinct pitches has no still equilibrium — judged fine). With
+3 seekers it settles into a distinct triad in the final 1–2 s. So the composer now
+chooses octave-convergence vs distinct chords via the knob, and voice count vs the
+`octave_avoidance` weight trade off doubling against distinctness. Adopted as-is
+(the chroma term is intentionally applied to both crowding and the adaptation feed;
+the resulting drift is wanted).
+
+*Window fix (A/B, 2026-06-20).* A review caught that the adaptation occupancy scan
+used a local ±(0.5+4σ)≈0.7-octave deposit window, which does not reach the octave
+(±1.0), so octave avoidance was effectively crowding-only (the crowding penalty is
+windowless and was correct). An A/B render compared (a) the local window vs (b)
+covering the whole scan when `octave_avoidance > 0` (the chroma term is
+octave-periodic, so it cannot be captured by a single local window). (b) was chosen
+by ear, so the scan now deposits across the full Log2Space when octave avoidance is
+on, making the adaptation feed genuinely octave-aware as intended. (Cost: O(n_bins ×
+neighbors) per proposal when the knob is on; acceptable at control rate, optimizable
+later to per-octave windows if needed.)
+
+**Remaining cleanup — Stage 2b.** The vestigial `crowding_sigma_from_roughness`
+(plumbed but ignored since Stage 2) should still be removed from the core / config /
+Rhai / docs surface. Deferred to keep the octave_avoidance change contained.
 
 ### Mismatches to resolve
 

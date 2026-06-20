@@ -99,6 +99,7 @@ const TUNING_FNS: &[&str] = &[
     "ratio_candidates",
     // neighbor awareness details
     "crowding_target",
+    "octave_avoidance",
     "leave_self_out",
     "leave_self_out_harmonics",
     // lifecycle / respawn details
@@ -1107,6 +1108,19 @@ phonation: sustained voices glide, re-attacking voices snap at onsets.",
         summary: "Crowding repulsion from neighboring voices.",
         details: "With one argument the repulsion width is derived from the roughness kernel; \
 the two-argument form sets it explicitly in cents.",
+    },
+    FnDoc {
+        name: "octave_avoidance",
+        owner: Owner::Voice,
+        category: "neighbors",
+        style: Style::Method,
+        patch: Patch::Draft,
+        usage: &["octave_avoidance(weight)"],
+        summary: "Repel octave/unison doubling so voices settle on distinct chord tones.",
+        details: "Adds an octave-equivalence (chroma) term to the occupancy field shared by \
+crowding and adaptation. 0 leaves octaves free to converge; higher weights push voices off \
+octave-doublings toward distinct pitches. Pairs with avoid_neighbors, which only repels \
+near-unison.",
     },
     FnDoc {
         name: "crowding_target",

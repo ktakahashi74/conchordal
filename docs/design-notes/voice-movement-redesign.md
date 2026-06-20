@@ -325,7 +325,7 @@ fine; octave-convergence as the only reachable outcome is not.
 
 **Octave-aware occupancy (implemented 2026-06-20).** An octave-equivalence (chroma)
 term was added to the shared occupancy kernel `occupancy_contribution`, weighted by
-a composer knob `octave_avoidance` (Rhai `octave_avoidance(weight)`, draft-only):
+a composer knob `octave_avoidance` (Rhai `octave_avoidance(weight)` on `Material`/`Participant`):
 `occupancy = Gaussian(Δf0) + octave_avoidance · Gaussian(Δ_chroma)` where
 `Δ_chroma` folds Δf0 into one octave. `0` = octaves allowed (converge), `>0` =
 octaves repelled (distinct chords). One knob feeds both consumers (crowding penalty
@@ -356,9 +356,19 @@ full O(n_bins × neighbors) scan to a window around each octave multiple of the
 neighbor (`fill_occupancy_scan`), skipping the negligible gaps between octaves. A
 unit test asserts it matches the full scan, so this is behavior-neutral.
 
-**Remaining cleanup — Stage 2b.** The vestigial `crowding_sigma_from_roughness`
-(plumbed but ignored since Stage 2) should still be removed from the core / config /
-Rhai / docs surface. Deferred to keep the octave_avoidance change contained.
+**Stage 2b (2026-06-20).** Done — the vestigial `crowding_sigma_from_roughness`
+(plumbed but ignored since Stage 2) was removed from the core / config / Rhai / docs
+surface, and the `avoid_neighbors` one-arg docs were updated (the width no longer
+derives from the roughness kernel).
+
+**Stage 3 (2026-06-20).** Done — `improvement_threshold` / `persistence` /
+`exploration` / `anneal_temp` collapsed into one `temperature` knob shared by both
+pitch cores (`temperature(weight)`; `0` settles greedily, higher is more
+exploratory). Defaults keep `seek_consonance()` greedy, so prior settling behavior
+is preserved at defaults; the boredom/occupancy temporal slice is the intended
+driver behind the knob. This realizes the redesign's field/search split
+(`U = consonance − F − effort` with a single search temperature). The removed knobs
+are gone from the Rhai surface. Tests and clippy pass.
 
 ### Mismatches to resolve
 

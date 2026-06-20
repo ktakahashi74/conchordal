@@ -168,6 +168,18 @@ pub enum PitchCoreKind {
     PeakSampler,
 }
 
+impl PitchCoreKind {
+    /// Default search temperature when the script leaves `temperature` unset:
+    /// the hill-climb settles greedily, the peak sampler stays mildly stochastic.
+    #[inline]
+    pub fn default_temperature(self) -> f32 {
+        match self {
+            PitchCoreKind::HillClimb => 0.0,
+            PitchCoreKind::PeakSampler => 0.08,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum MoveCostTimeScale {
     #[default]

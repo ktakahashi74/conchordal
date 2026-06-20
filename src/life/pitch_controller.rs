@@ -3,7 +3,7 @@ use crate::core::landscape::Landscape;
 use crate::core::log2space::Log2Space;
 use crate::core::modulation::NeuralRhythms;
 use crate::life::adaptation::{AdaptationContext, FeaturesNow};
-use crate::life::control::{PitchControl, PitchCoreKind, PitchMode};
+use crate::life::control::{PitchControl, PitchMode};
 use rand::rngs::SmallRng;
 
 #[derive(Debug)]
@@ -130,12 +130,11 @@ impl PitchController {
         };
         self.integration_window = Self::integration_window_for_freq(current_freq);
         self.accumulated_time += dt_sec;
-        // Listener pressure feeds the search temperature: base (per-core default)
-        // plus the tension-driven bonus. The base mirrors `apply_*_control`.
-        let base_temperature = match pitch.core_kind {
-            PitchCoreKind::HillClimb => pitch.temperature.unwrap_or(0.0),
-            PitchCoreKind::PeakSampler => pitch.temperature.unwrap_or(0.08),
-        };
+        // Listener pressure feeds the search temperature: the per-core default
+        // plus the tension-driven bonus.
+        let base_temperature = pitch
+            .temperature
+            .unwrap_or_else(|| pitch.core_kind.default_temperature());
         let bonus = if temperature_bonus.is_finite() {
             temperature_bonus.max(0.0)
         } else {

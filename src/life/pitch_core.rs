@@ -1442,7 +1442,9 @@ impl AnyPitchCore {
                     pitch.resolved_tessitura_gravity(),
                     pitch.window_cents.unwrap_or(DEFAULT_LOCAL_WINDOW_CENTS),
                     pitch.top_k.unwrap_or(DEFAULT_LOCAL_TOP_K),
-                    pitch.temperature.unwrap_or(0.08),
+                    pitch
+                        .temperature
+                        .unwrap_or(PitchCoreKind::PeakSampler.default_temperature()),
                     pitch.sigma_cents.unwrap_or(DEFAULT_RANDOM_SIGMA_CENTS),
                     pitch.random_candidates.unwrap_or(DEFAULT_RANDOM_CANDIDATES),
                 ))
@@ -1477,7 +1479,11 @@ fn apply_hill_climb_control(core: &mut PitchHillClimbPitchCore, pitch: &PitchCon
     core.set_tessitura_center(pitch.freq.max(1.0).log2());
     core.set_tessitura_gravity(pitch.resolved_tessitura_gravity());
     core.set_landscape_weight(pitch.landscape_weight);
-    core.set_temperature(pitch.temperature.unwrap_or(0.0));
+    core.set_temperature(
+        pitch
+            .temperature
+            .unwrap_or(PitchCoreKind::HillClimb.default_temperature()),
+    );
     core.set_crowding(pitch.crowding_strength, pitch.crowding_sigma_cents);
     core.set_octave_avoidance(pitch.octave_avoidance);
     core.set_leave_self_out(pitch.leave_self_out);
@@ -1500,7 +1506,11 @@ fn apply_peak_sampler_control(core: &mut PitchPeakSamplerCore, pitch: &PitchCont
     core.set_tessitura_center(pitch.freq.max(1.0).log2());
     core.set_tessitura_gravity(pitch.resolved_tessitura_gravity());
     core.set_landscape_weight(pitch.landscape_weight);
-    core.set_temperature(pitch.temperature.unwrap_or(0.08));
+    core.set_temperature(
+        pitch
+            .temperature
+            .unwrap_or(PitchCoreKind::PeakSampler.default_temperature()),
+    );
     core.set_crowding(pitch.crowding_strength, pitch.crowding_sigma_cents);
     core.set_octave_avoidance(pitch.octave_avoidance);
     core.set_leave_self_out(pitch.leave_self_out);

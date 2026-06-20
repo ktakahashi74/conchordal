@@ -323,7 +323,7 @@ impl SpeciesSpec {
             .set_crowding_sigma_cents_clamped(sigma_cents);
     }
 
-    fn set_crowding_auto_sigma(&mut self, strength: f32) {
+    fn set_crowding_strength_only(&mut self, strength: f32) {
         self.control.pitch.set_crowding_strength_clamped(strength);
     }
 
@@ -1761,7 +1761,7 @@ fn apply_group_crowding(
     match group.status {
         GroupStatus::Draft => match sigma_cents {
             Some(sigma) => group.spec.set_crowding(strength, sigma),
-            None => group.spec.set_crowding_auto_sigma(strength),
+            None => group.spec.set_crowding_strength_only(strength),
         },
         GroupStatus::Live => match sigma_cents {
             Some(sigma) => {
@@ -1770,7 +1770,7 @@ fn apply_group_crowding(
                 group.pending_patch.crowding_sigma_cents = Some(sigma);
             }
             None => {
-                group.spec.set_crowding_auto_sigma(strength);
+                group.spec.set_crowding_strength_only(strength);
                 group.pending_patch.crowding_strength = Some(strength);
             }
         },

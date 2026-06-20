@@ -83,14 +83,14 @@ impl ScriptHost {
         engine.register_fn(
             "avoid_neighbors",
             |mut species: SpeciesHandle, strength: FLOAT| {
-                species.spec.set_crowding_auto_sigma(strength as f32);
+                species.spec.set_crowding_strength_only(strength as f32);
                 species
             },
         );
         engine.register_fn(
             "avoid_neighbors",
             |mut species: SpeciesHandle, strength: INT| {
-                species.spec.set_crowding_auto_sigma(strength as f32);
+                species.spec.set_crowding_strength_only(strength as f32);
                 species
             },
         );

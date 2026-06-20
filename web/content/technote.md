@@ -355,8 +355,8 @@ Behavior is split into three focused cores plus the `PhonationEngine`, each defi
     *   `DroneCore`: Sustained output with optional sway modulation.
 
 *   **PitchCore (Where)** — `life/pitch_core.rs`: Proposes the next target in log-frequency space. Two implementations:
-    *   `PitchHillClimbPitchCore`: Local search with crowding penalties. Parameters: `neighbor_step_log2`, `tessitura_gravity`, `landscape_weight`, `move_cost_coeff`, `move_cost_exp`, `improvement_threshold`, `exploration`, `persistence`, `anneal_temp`. Crowding: `crowding_strength`, `crowding_sigma_cents`, `crowding_sigma_from_roughness` (derives sigma from the roughness kernel's critical band width). Leave-self-out analysis supports `ApproxHarmonics` and `ExactScan` modes.
-    *   `PitchPeakSamplerCore`: Probabilistic peak sampling with `window_cents`, `top_k`, `temperature`, `sigma_cents`.
+    *   `PitchHillClimbPitchCore`: Local search over the consonance terrain. Parameters: `neighbor_step_log2`, `tessitura_gravity`, `landscape_weight`, `move_cost_coeff`, `move_cost_exp`, and a single search `temperature` (0 = greedy settling; higher accepts downhill moves via a Metropolis rule). Occupancy/crowding: `crowding_strength`, `crowding_sigma_cents`, `octave_avoidance`. Leave-self-out analysis supports `ApproxHarmonics` and `ExactScan` modes.
+    *   `PitchPeakSamplerCore`: Probabilistic peak sampling with `window_cents`, `top_k`, `sigma_cents`, `random_candidates`, and the same search `temperature` (softmax over candidates).
 
 *   **PhonationEngine** — `life/phonation_engine.rs`: Manages note-level command scheduling. Issues `ToneCmd` (On, Off, Update) to the `ScheduleRenderer`. Uses a gate grid (`ThetaGrid`) for onset bookkeeping and note-off placement. Configuration is via `PhonationSpec`:
     *   **When**: `Once` (single trigger), `Pulse { rate_hz, sync, social }` (repeated triggers on the adaptive gate clock), or `Coupled(CoupledTimingSpec)` — the rhythm-family continuum in which a per-voice phase oscillator entrains to the shared emergent meter (Section 5.4).
@@ -412,7 +412,7 @@ For `seek_consonance()` voices the mode is resolved automatically from the phona
 
 ### 5.3.2 Crowding and Leave-Self-Out
 
-The crowding system prevents agents from collapsing to identical frequencies. Rather than using ad-hoc constants, it employs an analytical roughness complement: a Gaussian penalty centered on each occupied frequency, with width $\sigma$ that can be derived from the roughness kernel's critical band width (`crowding_sigma_from_roughness`). A pairwise split bias further prevents frequency degeneracy.
+The crowding system prevents agents from collapsing to identical frequencies. Both crowding (mutual repulsion) and pitch adaptation read one shared occupancy field: a Gaussian penalty centered on each occupied frequency, with width set by `crowding_sigma_cents` (default 60). An optional octave-equivalence (chroma) term, weighted by the composer knob `octave_avoidance`, folds the frequency distance into a single octave so that octave and unison doublings are repelled while distinct chord tones stay free: `occupancy = Gaussian(Δf₀) + octave_avoidance · Gaussian(Δ_chroma)`. A pairwise split bias further prevents frequency degeneracy.
 
 When evaluating landscape fitness, an agent can subtract its own spectral contribution via leave-self-out analysis. Two modes are supported:
 
@@ -511,9 +511,9 @@ A Material begins with a preset and is refined through method chaining:
 
 **Body**: `amp(v)`, `freq(v)`, `brightness(v)`, `spread(v)`, `unison(n)`, `modes(pattern)`, `adsr(a,d,s,r)`, `send(bus)` (habitat/presentation routing).
 
-**Pitch**: `anchor()` (hold the voice at its pitch; implied by `freq(hz)`), `seek_consonance()` (climb the consonance terrain; the apply mode is then resolved automatically—sustained voices glide, re-attacking voices snap at onsets—unless overridden via `pitch_apply_mode("gate_snap"|"glide")`), `pitch_core("hill_climb"|"peak_sampler")`, `glide(v)`, `landscape_weight(v)`, `neighbor_step_cents(v)`, `tessitura_gravity(v)`, `exploration(v)`, `persistence(v)`, `move_cost(v)`, `improvement_threshold(v)`, `proposal_interval(sec)`, `global_peaks(n)`, `ratio_candidates(n)`, plus peak-sampler knobs (`window_cents`, `top_k`, `temperature`, `sigma_cents`, `random_candidates`).
+**Pitch**: `anchor()` (hold the voice at its pitch; implied by `freq(hz)`), `seek_consonance()` (climb the consonance terrain; the apply mode is then resolved automatically—sustained voices glide, re-attacking voices snap at onsets—unless overridden via `pitch_apply_mode("gate_snap"|"glide")`), `pitch_core("hill_climb"|"peak_sampler")`, `glide(v)`, `landscape_weight(v)`, `neighbor_step_cents(v)`, `tessitura_gravity(v)`, `temperature(v)` (one search-stochasticity knob shared by both cores; 0 settles greedily), `move_cost(v)`, `proposal_interval(sec)`, `global_peaks(n)`, `ratio_candidates(n)`, plus peak-sampler knobs (`window_cents`, `top_k`, `sigma_cents`, `random_candidates`).
 
-**Crowding**: `avoid_neighbors(strength)` (auto-sigma from the roughness kernel), `avoid_neighbors(strength, sigma_cents)`, `crowding_target(same, other)`, `leave_self_out(bool)`, `leave_self_out_mode("approx"|"exact")`, `leave_self_out_harmonics(n)`.
+**Crowding**: `avoid_neighbors(strength)` (default sigma) / `avoid_neighbors(strength, sigma_cents)`, `octave_avoidance(weight)` (repel octave/unison doublings), `crowding_target(same, other)`, `leave_self_out(bool)`, `leave_self_out_mode("approx"|"exact")`, `leave_self_out_harmonics(n)`.
 
 **Brain/Phonation**: `brain("entrain"|"seq"|"drone")`, `sustain()`, `repeat()`, `once()`, `pulse(rate)`, `pulse_lock(depth)`, `social(coupling)`; duration via `while_alive()`, `cycles(n)`, `adaptive_duration()`, `duration_range(min,max)`, `duration_curve(k,x0)`, `shorten_on_drop(gain)`.
 
@@ -653,11 +653,11 @@ Implementation results have twice revised the Manifesto's mechanism-level sketch
 | `coupling` | `CoupledTimingSpec` | 0.0-1.0 | Per-voice lock strength onto the shared beat (`entrainment`). |
 | `flow_depth` | `CoupledTimingSpec` | 0.0-1.0 | Renewal clustering of free-running onsets (0 = regular). |
 | `microtiming` | `CoupledTimingSpec` | cycles | Signed beat-phase offset of the lock target. |
-| `persistence` | `PitchHillClimbPitchCore` | 0.0-1.0 | Resistance to movement/change (policy bias within pitch selection). |
+| `temperature` | `PitchHillClimbPitchCore` / `PitchPeakSamplerCore` | Float ≥ 0 | Search stochasticity shared by both pitch cores; 0 settles greedily, higher explores. |
 | `crowding_strength` | `PitchHillClimbPitchCore` | Float | Strength of frequency-space crowding avoidance. |
 | `crowding_sigma_cents` | `PitchHillClimbPitchCore` | Cents | Width of crowding penalty Gaussian (default 60). |
 | `leave_self_out` | `PitchHillClimbPitchCore` | Bool | Whether to subtract own spectral contribution during evaluation. |
-| `anneal_temp` | `PitchHillClimbPitchCore` | Float | Simulated annealing temperature for pitch proposals. |
+| `octave_avoidance` | occupancy field | Float ≥ 0 | Chroma-term weight repelling octave/unison doublings; 0 leaves octaves free to converge. |
 | `attack_step` | `KuramotoCore` | Float | Envelope attack step size. |
 | `decay_rate` | `KuramotoCore` | Float | Envelope decay rate. |
 

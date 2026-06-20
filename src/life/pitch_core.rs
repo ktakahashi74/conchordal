@@ -1,9 +1,8 @@
-use crate::core::erb::hz_to_erb;
 use crate::core::harmonic_ratios::{HARMONIC_RATIOS, ratio_to_f32};
 use crate::core::harmonicity_kernel::HarmonicityKernel;
 use crate::core::landscape::Landscape;
 use crate::core::psycho_state::{normalize_density, roughness_ratio_to_state01};
-use crate::core::roughness_kernel::{RoughnessKernel, crowding_runtime_delta_erb, erb_grid};
+use crate::core::roughness_kernel::{RoughnessKernel, erb_grid};
 use crate::life::adaptation::{AdaptationContext, FeaturesNow};
 use crate::life::control::{LeaveSelfOutMode, MoveCostTimeScale, PitchControl, PitchCoreKind};
 use rand::{Rng, RngExt};
@@ -769,11 +768,24 @@ fn window_bins_from_cents(landscape: &Landscape, cents: f32) -> usize {
     (span_log2 / step).ceil() as usize
 }
 
-fn crowding_sigma_erb(pitch_log2: f32, sigma_cents: f32) -> f32 {
-    let sigma_log2 = cents_to_log2(sigma_cents.max(1e-3));
-    let base_hz = 2.0f32.powf(pitch_log2).max(1e-6);
-    let plus_hz = 2.0f32.powf(pitch_log2 + sigma_log2).max(1e-6);
-    (hz_to_erb(plus_hz) - hz_to_erb(base_hz)).abs().max(1e-6)
+/// Single fundamental-occupancy contribution of one neighbor at `candidate_log2`:
+/// a Gaussian on octave (log2) distance with the pairwise split bias that keeps
+/// two voices at the same f0 from drifting in lockstep. This is the one shared
+/// definition of "how occupied is this fundamental", used by both the crowding
+/// penalty and the adaptation occupancy feed (`PitchController`).
+#[inline]
+pub(crate) fn occupancy_contribution(
+    candidate_log2: f32,
+    neighbor_log2: f32,
+    split_sign: f32,
+    sigma_log2: f32,
+) -> f32 {
+    let sigma = sigma_log2.max(1e-9);
+    let eps = sigma * DEFAULT_CROWDING_PAIR_SPLIT_EPS_FRAC;
+    let split = split_sign.clamp(-1.0, 1.0);
+    let d = candidate_log2 - (neighbor_log2 - split * eps);
+    let z = d / sigma;
+    (-0.5 * z * z).exp()
 }
 
 #[cfg(test)]
@@ -907,40 +919,21 @@ fn adjusted_pitch_score_impl(
     let gravity_penalty = dist * dist * tessitura_gravity;
     let weighted_score =
         landscape_weight.max(0.0) * landscape.pitch_objective_mode.apply_consonance_score(score);
+    // Stage 2 of the occupancy redesign: crowding samples the same fundamental-
+    // occupancy kernel as the adaptation feed (Log2 Gaussian, sigma from
+    // crowding_sigma_cents, self already excluded upstream). `crowding_sigma_from_roughness`
+    // is vestigial after this unification; the roughness-derived ERB width is gone.
+    // See docs/design-notes/voice-movement-redesign.md.
+    let _ = crowding_sigma_from_roughness;
     let crowding_penalty = if crowding_strength > 0.0 && !neighbor_pitch_log2.is_empty() {
-        let candidate_hz = 2.0f32.powf(clamped).max(1e-6);
-        let candidate_erb = hz_to_erb(candidate_hz);
+        let sigma_log2 = cents_to_log2(crowding_sigma_cents.max(1e-3));
         let mut sum = 0.0f32;
-        let sigma_erb_explicit = crowding_sigma_erb(clamped, crowding_sigma_cents);
-        let split_ref_sigma = if crowding_sigma_from_roughness {
-            landscape
-                .roughness_kernel_params
-                .suppress_sigma_erb
-                .max(1e-6)
-        } else {
-            sigma_erb_explicit
-        };
-        let split_eps_erb = split_ref_sigma * DEFAULT_CROWDING_PAIR_SPLIT_EPS_FRAC;
         for (idx, &neighbor_log2) in neighbor_pitch_log2.iter().enumerate() {
             if !neighbor_log2.is_finite() {
                 continue;
             }
-            let neighbor_hz = 2.0f32.powf(neighbor_log2).max(1e-6);
-            let d_erb_signed = candidate_erb - hz_to_erb(neighbor_hz);
-            let split_sign = neighbor_salience
-                .get(idx)
-                .copied()
-                .filter(|v| v.is_finite())
-                .unwrap_or(0.0)
-                .clamp(-1.0, 1.0);
-            let d_erb_biased = d_erb_signed + split_sign * split_eps_erb;
-            let term = if crowding_sigma_from_roughness {
-                crowding_runtime_delta_erb(&landscape.roughness_kernel_params, d_erb_biased)
-            } else {
-                let z = d_erb_biased.abs() / sigma_erb_explicit;
-                (-0.5 * z * z).exp()
-            };
-            sum += term;
+            let split_sign = neighbor_salience.get(idx).copied().unwrap_or(0.0);
+            sum += occupancy_contribution(clamped, neighbor_log2, split_sign, sigma_log2);
         }
         crowding_strength * sum
     } else {
@@ -1909,7 +1902,7 @@ mod tests {
     }
 
     #[test]
-    fn crowding_sigma_from_roughness_uses_runtime_landscape_sigma() {
+    fn crowding_samples_sigma_cents_gaussian_not_roughness() {
         let mut landscape = Landscape::new(Log2Space::new(110.0, 880.0, 96));
         let idx = landscape.space.n_bins() / 2;
         let pitch_log2 = landscape.space.centers_log2[idx];
@@ -1959,8 +1952,8 @@ mod tests {
             &[1.0],
         );
         assert!(
-            wide < narrow - 1e-6,
-            "wider roughness suppress sigma should increase crowding penalty"
+            (wide - narrow).abs() <= 1e-6,
+            "after Stage 2 crowding samples a fixed sigma_cents Gaussian and ignores roughness sigma"
         );
 
         landscape.roughness_suppress_sigma_erb = 0.04;

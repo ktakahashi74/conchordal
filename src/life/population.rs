@@ -1967,7 +1967,9 @@ mod tests {
         spec.control.pitch.exploration = 0.0;
         spec.control.pitch.persistence = 0.0;
         spec.control.pitch.crowding_strength = crowding_strength;
-        spec.control.pitch.crowding_sigma_cents = 20.0;
+        // Post-Stage-2 crowding samples a literal sigma_cents Gaussian; this width
+        // must reach the ~53c-spaced voices for sequential order to matter.
+        spec.control.pitch.crowding_sigma_cents = 60.0;
         pop.apply_action(
             Action::Spawn {
                 group_id: 66,

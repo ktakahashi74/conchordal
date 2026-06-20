@@ -295,6 +295,43 @@ its movement/life, so boredom-driven drift survives — no freezing observed.
 Stage 1.5 is therefore adopted. Coefficient balance (`strength` / `rho_self`)
 remains available if a future piece needs more or less drift.
 
+**Stage 2 (2026-06-20):** the crowding penalty and the adaptation occupancy feed
+now share one definition — `occupancy_contribution` (a Log2 Gaussian of width
+`crowding_sigma_cents` with the pairwise split bias). The ERB roughness-complement
+crowding path is gone (`crowding_sigma_erb`, `crowding_runtime_delta_erb`, and the
+`hz_to_erb` use in pitch behavior are removed). This is the "single evaluation,
+multiple responses" the redesign set out to reach: crowding (a per-candidate
+penalty) and adaptation (boredom/drift) read the same occupancy field, and
+`crowding_strength = 0` by default so the penalty is opt-in while the boredom
+response is always on. The narrower Gaussian also fixes Finding 4 (the old wide
+reach bled penalty into close consonant wells). Residual cleanup (**Stage 2b**):
+`crowding_sigma_from_roughness` is now vestigial — still plumbed but ignored — and
+should be removed from the config / Rhai surface, with the `avoid_neighbors`
+one-arg docs updated (the width no longer derives from the roughness kernel).
+Tests and clippy pass. **Audition (2026-06-20):** Stage 2 is behavior-neutral —
+`05_settling` and `08_murmuration` render essentially the same as Stage 1.5
+(s2 ≈ s15), confirming the kernel swap unified the definition without changing
+behavior. Stage 2 adopted.
+
+**Octave-convergence finding (2026-06-20).** Auditioning the endings exposed a
+real gap: `05_settling` converges to near octave/unison (the deepest, most-fused
+consonance), and no parameter cleanly prevents it. The occupancy field is on raw
+f0 distance, so it repels unison (Δf0≈0) but is blind to octaves (Δf0=1200c →
+occupancy≈0), which are also the most consonant wells. So a composer can already
+tune *overall* convergence (`landscape_weight`, `avoid_neighbors`,
+`persistence`/`exploration`/`anneal_temp`, `move_cost`, `range_oct`) but cannot
+forbid octave-doubling to land a *distinct* chord. Octave-convergence as intent is
+fine; octave-convergence as the only reachable outcome is not.
+
+**Next: octave-aware occupancy (controllable).** Add an octave-equivalence (chroma)
+term to the occupancy field, weighted by a composer knob `octave_avoidance`:
+`occupancy = Gaussian(Δf0) + octave_avoidance · Gaussian(Δ_chroma)` where
+`Δ_chroma` folds Δf0 into one octave. `0` = octaves allowed (converge), `>0` =
+octaves repelled (distinct chords). This reflects both intents from one knob and
+extends the single occupancy definition rather than adding a parallel mechanism.
+Stage 2b (remove the vestigial `crowding_sigma_from_roughness`) folds into this
+step since both touch the same crowding config/API.
+
 ### Mismatches to resolve
 
 - **ERB vs Log2:** crowding/spawn use ERB; `harmonicity`/adaptation use Log2Space.

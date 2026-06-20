@@ -1,6 +1,6 @@
 +++
 title = "Documentation"
-description = "Comprehensive documentation for Conchordal bio-acoustic instrument"
+description = "Comprehensive documentation for Conchordal psychoacoustic instrument"
 sort_by = "weight"
 +++
 

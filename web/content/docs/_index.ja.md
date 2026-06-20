@@ -1,6 +1,6 @@
 +++
 title = "ドキュメント"
-description = "Conchordal生体音響楽器の包括的なドキュメント"
+description = "心理音響に基づく生成音楽エンジンConchordalの包括的なドキュメント"
 sort_by = "weight"
 +++
 

@@ -1106,7 +1106,7 @@ phonation: sustained voices glide, re-attacking voices snap at onsets.",
             "avoid_neighbors(strength, sigma_cents)",
         ],
         summary: "Crowding repulsion from neighboring voices.",
-        details: "With one argument the repulsion width is derived from the roughness kernel; \
+        details: "With one argument the repulsion width uses the default; \
 the two-argument form sets it explicitly in cents.",
     },
     FnDoc {

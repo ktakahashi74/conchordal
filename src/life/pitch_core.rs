@@ -86,7 +86,6 @@ pub struct PitchHillClimbPitchCore {
     persistence: f32,
     crowding_strength: f32,
     crowding_sigma_cents: f32,
-    crowding_sigma_from_roughness: bool,
     octave_avoidance: f32,
     leave_self_out: bool,
     leave_self_out_mode: LeaveSelfOutMode,
@@ -126,7 +125,6 @@ impl PitchHillClimbPitchCore {
             persistence: persistence.clamp(0.0, 1.0),
             crowding_strength: 0.0,
             crowding_sigma_cents: 60.0,
-            crowding_sigma_from_roughness: true,
             octave_avoidance: 0.0,
             leave_self_out: false,
             leave_self_out_mode: LeaveSelfOutMode::ApproxHarmonics,
@@ -147,7 +145,7 @@ impl PitchHillClimbPitchCore {
         self.persistence = value.clamp(0.0, 1.0);
     }
 
-    pub fn set_crowding(&mut self, strength: f32, sigma_cents: f32, sigma_from_roughness: bool) {
+    pub fn set_crowding(&mut self, strength: f32, sigma_cents: f32) {
         self.crowding_strength = if strength.is_finite() {
             strength.max(0.0)
         } else {
@@ -158,7 +156,6 @@ impl PitchHillClimbPitchCore {
         } else {
             60.0
         };
-        self.crowding_sigma_from_roughness = sigma_from_roughness;
     }
 
     /// Octave-equivalence (chroma) weight for the occupancy field: 0 leaves
@@ -467,7 +464,6 @@ impl PitchCore for PitchHillClimbPitchCore {
         let leave_self_out_harmonics = self.leave_self_out_harmonics;
         let crowding_strength = self.crowding_strength;
         let crowding_sigma_cents = self.crowding_sigma_cents;
-        let crowding_sigma_from_roughness = self.crowding_sigma_from_roughness;
         let octave_avoidance = self.octave_avoidance;
         let exact_loo_scan =
             exact_loo_consonance_score_scan(landscape, current_pitch_log2, leave_self_out_mode);
@@ -495,7 +491,6 @@ impl PitchCore for PitchHillClimbPitchCore {
                     exact_loo_scan.as_deref(),
                     crowding_strength,
                     crowding_sigma_cents,
-                    crowding_sigma_from_roughness,
                     octave_avoidance,
                     neighbor_pitch_log2,
                     neighbor_salience,
@@ -520,7 +515,6 @@ pub struct PitchPeakSamplerCore {
     persistence: f32,
     crowding_strength: f32,
     crowding_sigma_cents: f32,
-    crowding_sigma_from_roughness: bool,
     octave_avoidance: f32,
     leave_self_out: bool,
 }
@@ -557,7 +551,6 @@ impl PitchPeakSamplerCore {
             persistence: persistence.clamp(0.0, 1.0),
             crowding_strength: 0.0,
             crowding_sigma_cents: 60.0,
-            crowding_sigma_from_roughness: true,
             octave_avoidance: 0.0,
             leave_self_out: false,
         }
@@ -571,7 +564,7 @@ impl PitchPeakSamplerCore {
         self.persistence = value.clamp(0.0, 1.0);
     }
 
-    pub fn set_crowding(&mut self, strength: f32, sigma_cents: f32, sigma_from_roughness: bool) {
+    pub fn set_crowding(&mut self, strength: f32, sigma_cents: f32) {
         self.crowding_strength = if strength.is_finite() {
             strength.max(0.0)
         } else {
@@ -582,7 +575,6 @@ impl PitchPeakSamplerCore {
         } else {
             60.0
         };
-        self.crowding_sigma_from_roughness = sigma_from_roughness;
     }
 
     /// Octave-equivalence (chroma) weight for the occupancy field: 0 leaves
@@ -706,7 +698,6 @@ impl PitchCore for PitchPeakSamplerCore {
         let leave_self_out = self.leave_self_out;
         let crowding_strength = self.crowding_strength;
         let crowding_sigma_cents = self.crowding_sigma_cents;
-        let crowding_sigma_from_roughness = self.crowding_sigma_from_roughness;
         let octave_avoidance = self.octave_avoidance;
         let mut scorer = |pitch_log2: f32| -> f32 {
             adjusted_pitch_score_impl(
@@ -726,7 +717,6 @@ impl PitchCore for PitchPeakSamplerCore {
                 None,
                 crowding_strength,
                 crowding_sigma_cents,
-                crowding_sigma_from_roughness,
                 octave_avoidance,
                 neighbor_pitch_log2,
                 neighbor_salience,
@@ -843,7 +833,6 @@ fn adjusted_pitch_score(
     leave_self_out: bool,
     crowding_strength: f32,
     crowding_sigma_cents: f32,
-    crowding_sigma_from_roughness: bool,
     neighbor_pitch_log2: &[f32],
     neighbor_salience: &[f32],
 ) -> f32 {
@@ -864,7 +853,6 @@ fn adjusted_pitch_score(
         None,
         crowding_strength,
         crowding_sigma_cents,
-        crowding_sigma_from_roughness,
         0.0,
         neighbor_pitch_log2,
         neighbor_salience,
@@ -888,7 +876,6 @@ fn adjusted_pitch_score_with_loo_harmonics(
     leave_self_out_harmonics: u8,
     crowding_strength: f32,
     crowding_sigma_cents: f32,
-    crowding_sigma_from_roughness: bool,
     neighbor_pitch_log2: &[f32],
     neighbor_salience: &[f32],
 ) -> f32 {
@@ -909,7 +896,6 @@ fn adjusted_pitch_score_with_loo_harmonics(
         None,
         crowding_strength,
         crowding_sigma_cents,
-        crowding_sigma_from_roughness,
         0.0,
         neighbor_pitch_log2,
         neighbor_salience,
@@ -934,7 +920,6 @@ fn adjusted_pitch_score_impl(
     exact_loo_scan: Option<&[f32]>,
     crowding_strength: f32,
     crowding_sigma_cents: f32,
-    crowding_sigma_from_roughness: bool,
     octave_avoidance: f32,
     neighbor_pitch_log2: &[f32],
     neighbor_salience: &[f32],
@@ -962,11 +947,9 @@ fn adjusted_pitch_score_impl(
     let weighted_score =
         landscape_weight.max(0.0) * landscape.pitch_objective_mode.apply_consonance_score(score);
     // Stage 2 of the occupancy redesign: crowding samples the same fundamental-
-    // occupancy kernel as the adaptation feed (Log2 Gaussian, sigma from
-    // crowding_sigma_cents, self already excluded upstream). `crowding_sigma_from_roughness`
-    // is vestigial after this unification; the roughness-derived ERB width is gone.
+    // occupancy kernel as the adaptation feed (Log2 Gaussian of width
+    // crowding_sigma_cents, self already excluded upstream).
     // See docs/design-notes/voice-movement-redesign.md.
-    let _ = crowding_sigma_from_roughness;
     let crowding_penalty = if crowding_strength > 0.0 && !neighbor_pitch_log2.is_empty() {
         let sigma_log2 = cents_to_log2(crowding_sigma_cents.max(1e-3));
         let mut sum = 0.0f32;
@@ -1494,11 +1477,7 @@ fn apply_hill_climb_control(core: &mut PitchHillClimbPitchCore, pitch: &PitchCon
     core.set_landscape_weight(pitch.landscape_weight);
     core.set_exploration(pitch.exploration);
     core.set_persistence(pitch.persistence);
-    core.set_crowding(
-        pitch.crowding_strength,
-        pitch.crowding_sigma_cents,
-        pitch.crowding_sigma_from_roughness,
-    );
+    core.set_crowding(pitch.crowding_strength, pitch.crowding_sigma_cents);
     core.set_octave_avoidance(pitch.octave_avoidance);
     core.set_leave_self_out(pitch.leave_self_out);
     core.set_leave_self_out_mode(pitch.leave_self_out_mode);
@@ -1524,11 +1503,7 @@ fn apply_peak_sampler_control(core: &mut PitchPeakSamplerCore, pitch: &PitchCont
     core.set_landscape_weight(pitch.landscape_weight);
     core.set_exploration(pitch.exploration);
     core.set_persistence(pitch.persistence);
-    core.set_crowding(
-        pitch.crowding_strength,
-        pitch.crowding_sigma_cents,
-        pitch.crowding_sigma_from_roughness,
-    );
+    core.set_crowding(pitch.crowding_strength, pitch.crowding_sigma_cents);
     core.set_octave_avoidance(pitch.octave_avoidance);
     core.set_leave_self_out(pitch.leave_self_out);
     if let Some(cents) = pitch.neighbor_step_cents {
@@ -1665,13 +1640,6 @@ impl AnyPitchCore {
         }
     }
 
-    pub(crate) fn crowding_sigma_from_roughness_for_test(&self) -> bool {
-        match self {
-            AnyPitchCore::PitchHillClimb(core) => core.crowding_sigma_from_roughness,
-            AnyPitchCore::PitchPeakSampler(core) => core.crowding_sigma_from_roughness,
-        }
-    }
-
     pub(crate) fn neighbor_step_cents_for_test(&self) -> f32 {
         match self {
             AnyPitchCore::PitchHillClimb(core) => core.neighbor_step_log2 * 1200.0,
@@ -1782,7 +1750,6 @@ mod tests {
             false,
             0.0,
             0.0,
-            false,
             &[],
             &[],
         );
@@ -1800,7 +1767,6 @@ mod tests {
             false,
             0.0,
             0.0,
-            false,
             &[],
             &[],
         );
@@ -1847,7 +1813,6 @@ mod tests {
             false,
             1.0,
             20.0,
-            false,
             &[],
             &[],
         );
@@ -1865,7 +1830,6 @@ mod tests {
             false,
             1.0,
             20.0,
-            false,
             &[pitch_log2],
             &[1.0],
         );
@@ -1900,7 +1864,6 @@ mod tests {
             false,
             4.0,
             60.0,
-            true,
             &neighbor,
             &[1.0],
         );
@@ -1918,7 +1881,6 @@ mod tests {
             false,
             4.0,
             60.0,
-            true,
             &neighbor,
             &[1.0],
         );
@@ -1936,7 +1898,6 @@ mod tests {
             false,
             4.0,
             60.0,
-            true,
             &neighbor,
             &[-1.0],
         );
@@ -1954,7 +1915,6 @@ mod tests {
             false,
             4.0,
             60.0,
-            true,
             &neighbor,
             &[-1.0],
         );
@@ -1992,7 +1952,6 @@ mod tests {
             false,
             1.0,
             20.0,
-            true,
             &[neighbor_log2],
             &[1.0],
         );
@@ -2013,58 +1972,12 @@ mod tests {
             false,
             1.0,
             20.0,
-            true,
             &[neighbor_log2],
             &[1.0],
         );
         assert!(
             (wide - narrow).abs() <= 1e-6,
-            "after Stage 2 crowding samples a fixed sigma_cents Gaussian and ignores roughness sigma"
-        );
-
-        landscape.roughness_suppress_sigma_erb = 0.04;
-        landscape.roughness_kernel_params.suppress_sigma_erb = 0.04;
-        let explicit_a = adjusted_pitch_score(
-            pitch_log2,
-            pitch_log2,
-            0.0,
-            pitch_log2,
-            0.0,
-            1.0,
-            0.0,
-            1,
-            &landscape,
-            &perceptual,
-            false,
-            1.0,
-            20.0,
-            false,
-            &[neighbor_log2],
-            &[1.0],
-        );
-        landscape.roughness_suppress_sigma_erb = 0.10;
-        landscape.roughness_kernel_params.suppress_sigma_erb = 0.10;
-        let explicit_b = adjusted_pitch_score(
-            pitch_log2,
-            pitch_log2,
-            0.0,
-            pitch_log2,
-            0.0,
-            1.0,
-            0.0,
-            1,
-            &landscape,
-            &perceptual,
-            false,
-            1.0,
-            20.0,
-            false,
-            &[neighbor_log2],
-            &[1.0],
-        );
-        assert!(
-            (explicit_a - explicit_b).abs() <= 1e-6,
-            "explicit sigma path must ignore landscape suppress sigma"
+            "crowding samples a fixed sigma_cents Gaussian and ignores roughness sigma"
         );
     }
 
@@ -2090,7 +2003,6 @@ mod tests {
             false,
             0.0,
             0.0,
-            false,
             &[],
             &[],
         );
@@ -2121,7 +2033,6 @@ mod tests {
             false,
             0.0,
             0.0,
-            false,
             &[],
             &[],
         );
@@ -2139,7 +2050,6 @@ mod tests {
             false,
             0.0,
             0.0,
-            false,
             &[],
             &[],
         );
@@ -2159,7 +2069,6 @@ mod tests {
             true,
             0.0,
             0.0,
-            false,
             &[],
             &[],
         );
@@ -2177,7 +2086,6 @@ mod tests {
             true,
             0.0,
             0.0,
-            false,
             &[],
             &[],
         );
@@ -2190,7 +2098,7 @@ mod tests {
         let perceptual = test_adaptation(landscape.space.n_bins());
         let features = FeaturesNow::from_occupancy_scan(&landscape.subjective_intensity);
         let mut core = PitchHillClimbPitchCore::new(120.0, 330.0f32.log2(), 0.0, 0.0, 0.0, 0.0);
-        core.set_crowding(0.0, 20.0, false);
+        core.set_crowding(0.0, 20.0);
 
         let mut rng_a = SmallRng::seed_from_u64(77);
         let mut rng_b = SmallRng::seed_from_u64(77);
@@ -2238,7 +2146,7 @@ mod tests {
             1.0,
             0.0,
         );
-        core.set_crowding(0.0, 20.0, false);
+        core.set_crowding(0.0, 20.0);
 
         let mut rng_a = SmallRng::seed_from_u64(71);
         let mut rng_b = SmallRng::seed_from_u64(71);
@@ -2287,8 +2195,8 @@ mod tests {
             0.0,
         );
         let mut with_crowding = no_crowding.clone();
-        no_crowding.set_crowding(0.0, 8.0, false);
-        with_crowding.set_crowding(3.0, 8.0, false);
+        no_crowding.set_crowding(0.0, 8.0);
+        with_crowding.set_crowding(3.0, 8.0);
         let neighbor = 330.0f32.log2();
 
         let mut rng_a = SmallRng::seed_from_u64(99);
@@ -2446,8 +2354,8 @@ mod tests {
         let mut without_crowding =
             PitchHillClimbPitchCore::new(24.0, center_log2, 0.0, 0.0, 0.0, 0.0);
         let mut with_crowding = without_crowding.clone();
-        without_crowding.set_crowding(0.0, 60.0, false);
-        with_crowding.set_crowding(6.0, 60.0, false);
+        without_crowding.set_crowding(0.0, 60.0);
+        with_crowding.set_crowding(6.0, 60.0);
 
         let mut rng_a = SmallRng::seed_from_u64(6001);
         let mut rng_b = SmallRng::seed_from_u64(6001);
@@ -2793,7 +2701,6 @@ mod tests {
                 loo,
                 0.0,
                 0.0,
-                false,
                 &neighbor,
                 &salience,
             );
@@ -2812,7 +2719,6 @@ mod tests {
                 DEFAULT_LOO_HARMONICS,
                 0.0,
                 0.0,
-                false,
                 &neighbor,
                 &salience,
             );
@@ -2905,7 +2811,6 @@ mod tests {
                     DEFAULT_LOO_HARMONICS,
                     0.0,
                     0.0,
-                    false,
                     &[],
                     &[],
                 )

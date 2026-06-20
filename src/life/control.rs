@@ -206,7 +206,6 @@ pub struct PitchControl {
     pub persistence: f32,
     pub crowding_strength: f32,
     pub crowding_sigma_cents: f32,
-    pub crowding_sigma_from_roughness: bool,
     pub octave_avoidance: f32,
     pub leave_self_out: bool,
     pub leave_self_out_mode: LeaveSelfOutMode,
@@ -245,7 +244,6 @@ impl Default for PitchControl {
             persistence: 0.5,
             crowding_strength: 0.0,
             crowding_sigma_cents: DEFAULT_CROWDING_SIGMA_CENTS,
-            crowding_sigma_from_roughness: true,
             octave_avoidance: 0.0,
             leave_self_out: false,
             leave_self_out_mode: LeaveSelfOutMode::ApproxHarmonics,
@@ -306,7 +304,6 @@ pub struct ControlUpdate {
     pub persistence: Option<f32>,
     pub crowding_strength: Option<f32>,
     pub crowding_sigma_cents: Option<f32>,
-    pub crowding_sigma_from_roughness: Option<bool>,
     pub leave_self_out: Option<bool>,
     pub leave_self_out_mode: Option<LeaveSelfOutMode>,
     pub anneal_temp: Option<f32>,
@@ -402,7 +399,6 @@ impl PitchControl {
         } else {
             DEFAULT_CROWDING_SIGMA_CENTS
         };
-        self.crowding_sigma_from_roughness = false;
     }
 
     #[inline]
@@ -412,11 +408,6 @@ impl PitchControl {
         } else {
             0.0
         };
-    }
-
-    #[inline]
-    pub fn set_crowding_sigma_from_roughness(&mut self, enabled: bool) {
-        self.crowding_sigma_from_roughness = enabled;
     }
 
     #[inline]
@@ -580,9 +571,6 @@ impl PitchControl {
         if let Some(sigma) = update.crowding_sigma_cents {
             self.set_crowding_sigma_cents_clamped(sigma);
         }
-        if let Some(enabled) = update.crowding_sigma_from_roughness {
-            self.set_crowding_sigma_from_roughness(enabled);
-        }
         if let Some(enabled) = update.leave_self_out {
             self.set_leave_self_out(enabled);
         }
@@ -694,7 +682,6 @@ mod tests {
             persistence: Some(-1.0),
             crowding_strength: Some(-4.0),
             crowding_sigma_cents: Some(-3.0),
-            crowding_sigma_from_roughness: Some(false),
             leave_self_out: Some(true),
             leave_self_out_mode: Some(LeaveSelfOutMode::ExactScan),
             anneal_temp: Some(-0.5),
@@ -733,7 +720,6 @@ mod tests {
         assert!((control.pitch.persistence - 0.0).abs() <= 1e-6);
         assert!((control.pitch.crowding_strength - 0.0).abs() <= 1e-6);
         assert!((control.pitch.crowding_sigma_cents - 1e-3).abs() <= 1e-6);
-        assert!(!control.pitch.crowding_sigma_from_roughness);
         assert!(control.pitch.leave_self_out);
         assert_eq!(
             control.pitch.leave_self_out_mode,

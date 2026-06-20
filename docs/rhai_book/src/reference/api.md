@@ -475,7 +475,7 @@ avoid_neighbors(strength, sigma_cents)
 
 Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
 
-Crowding repulsion from neighboring voices. With one argument the repulsion width is derived from the roughness kernel; the two-argument form sets it explicitly in cents.
+Crowding repulsion from neighboring voices. With one argument the repulsion width uses the default; the two-argument form sets it explicitly in cents.
 
 ### Lifecycle & Viability
 

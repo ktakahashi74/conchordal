@@ -2020,7 +2020,6 @@ mod tests {
         mover_spec.control.pitch.persistence = 0.0;
         mover_spec.control.pitch.crowding_strength = 3.0;
         mover_spec.control.pitch.crowding_sigma_cents = 20.0;
-        mover_spec.control.pitch.crowding_sigma_from_roughness = false;
 
         let mut neighbor_spec = spawn_spec_with_freq(330.0);
         neighbor_spec.control.pitch.mode = PitchMode::Lock;

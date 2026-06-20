@@ -786,9 +786,8 @@ fn group_live_update_last_write_wins_within_flush() {
     assert_eq!(updates.len(), 3, "expected three live update flushes");
     assert_eq!(updates[0].amp, Some(0.8));
     assert_eq!(updates[1].crowding_strength, Some(1.0));
-    assert_eq!(updates[1].crowding_sigma_from_roughness, Some(true));
+    assert_eq!(updates[1].crowding_sigma_cents, Some(35.0));
     assert_eq!(updates[2].crowding_strength, Some(1.0));
-    assert_eq!(updates[2].crowding_sigma_from_roughness, Some(false));
     assert_eq!(updates[2].crowding_sigma_cents, Some(35.0));
 }
 
@@ -943,11 +942,6 @@ fn species_crowding_single_arg_uses_default_sigma() {
     let voice = pop.voices.first().expect("spawned");
     assert!((voice.pitch_core_for_test().crowding_strength_for_test() - 0.8).abs() <= 1e-6);
     assert!((voice.pitch_core_for_test().crowding_sigma_cents_for_test() - 60.0).abs() <= 1e-3);
-    assert!(
-        voice
-            .pitch_core_for_test()
-            .crowding_sigma_from_roughness_for_test()
-    );
 }
 
 #[test]

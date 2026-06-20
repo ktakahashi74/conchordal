@@ -333,7 +333,6 @@ impl SpeciesSpec {
 
     fn set_crowding_auto_sigma(&mut self, strength: f32) {
         self.control.pitch.set_crowding_strength_clamped(strength);
-        self.control.pitch.set_crowding_sigma_from_roughness(true);
     }
 
     fn set_octave_avoidance(&mut self, weight: f32) {
@@ -1785,12 +1784,10 @@ fn apply_group_crowding(
                 group.spec.set_crowding(strength, sigma);
                 group.pending_patch.crowding_strength = Some(strength);
                 group.pending_patch.crowding_sigma_cents = Some(sigma);
-                group.pending_patch.crowding_sigma_from_roughness = Some(false);
             }
             None => {
                 group.spec.set_crowding_auto_sigma(strength);
                 group.pending_patch.crowding_strength = Some(strength);
-                group.pending_patch.crowding_sigma_from_roughness = Some(true);
             }
         },
         _ => ctx.warn_live_builder(handle.id, label),

@@ -161,7 +161,6 @@ impl Dirty {
             || update.persistence.is_some()
             || update.crowding_strength.is_some()
             || update.crowding_sigma_cents.is_some()
-            || update.crowding_sigma_from_roughness.is_some()
             || update.leave_self_out.is_some()
             || update.leave_self_out_mode.is_some()
             || update.anneal_temp.is_some()

@@ -126,6 +126,12 @@
                 <div class="masthead-media">
                     <img src="/screenshot1.png" alt="Conchordal Screenshot" class="masthead-image">
                 </div>
+                {% if section is defined and section.extra.lede %}
+                    <p class="text-white-50 mx-auto mt-4 masthead-lede">{{ section.extra.lede }}</p>
+                    <p class="masthead-cta">
+                        <a href="/docs/rhai/tutorial/quick_start.html">{% if lang == 'ja' %}クイックスタート →{% else %}Quick Start →{% endif %}</a>
+                    </p>
+                {% endif %}
             </div>
         </div>
     </div>

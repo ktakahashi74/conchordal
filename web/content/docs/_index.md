@@ -12,9 +12,9 @@ Composition in Conchordal is **scenario scripting**. You write **Rhai** scripts 
 
 - [Scenario Scripting Reference](/docs/rhai/)
 
-## Project status
+## Overview
 
-Conchordal is preparing its **v0.4.0 alpha**. The current scope:
+Conchordal at a glance:
 
 - Harmony as a perceptual terrain: Consonance Field, Density, Movement, and Viability, closed into an ecology by respawn.
 - Rhythm as one coupling continuum on an emergent meter the population itself drives (`metric` / `entrained` / `flow`), shaped by director-level soft priors.

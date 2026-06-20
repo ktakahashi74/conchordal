@@ -82,7 +82,8 @@
     font-size: 1.1rem;
 }
 
-.masthead-content {
+.masthead-content,
+.masthead-cta {
     font-size: 1rem;
 }
 
@@ -91,16 +92,30 @@
     word-break: break-word;
 }
 
-.masthead-content a {
+.masthead-content a,
+.masthead-cta a {
     color: #3b82f6;
 }
 
-.masthead-content a:hover {
+.masthead-content a:hover,
+.masthead-cta a:hover {
     color: #60a5fa;
+}
+
+.masthead-cta {
+    margin-top: 1rem;
 }
 
 .masthead-media {
     margin-top: 2rem;
+}
+
+.masthead-lede {
+    font-size: 0.95rem;
+    line-height: 1.6;
+    max-width: 675px;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .masthead-image {

@@ -4,10 +4,15 @@ use crate::life::control::Routing;
 use crate::life::phonation_engine::ToneCmd;
 use crate::life::sound::Tone;
 use crate::life::voice::PhonationBatch;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use tracing::debug;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+// Ordered so the per-tick mixdown sums tones in a fixed (source_id, tone_id)
+// order. HashMap iteration order is process-randomized, which makes the
+// non-associative float accumulation below differ run-to-run. The habitat sum
+// feeds NSGT analysis -> landscape -> pitch decisions, so that drift would make
+// the pre-synth ALIFE/landscape computation non-deterministic across renders.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct ToneKey {
     source_id: u64,
     tone_id: u64,
@@ -27,7 +32,7 @@ pub struct ScheduleRenderer {
     time: Timebase,
     buf_presentation: Vec<f32>,
     buf_habitat: Vec<f32>,
-    tones: HashMap<ToneKey, RoutedTone>,
+    tones: BTreeMap<ToneKey, RoutedTone>,
     cutoff_tick: Option<Tick>,
 }
 
@@ -39,7 +44,7 @@ impl ScheduleRenderer {
             time,
             buf_presentation: vec![0.0; time.hop],
             buf_habitat: vec![0.0; time.hop],
-            tones: HashMap::new(),
+            tones: BTreeMap::new(),
             cutoff_tick: None,
         }
     }

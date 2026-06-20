@@ -444,10 +444,12 @@ fn merge_latest_listener_analysis_results(
     lparams: &LandscapeParams,
     timebase: crate::core::timebase::Timebase,
     generated_frame_id: u64,
+    last_listener_analysis_frame: &mut Option<u64>,
 ) -> Option<ListenerState> {
     let rx = listener_result_rx?;
     let mut latest_audio: Option<(u64, Landscape)> = None;
     while let Ok((analyzed_id, frame)) = rx.try_recv() {
+        *last_listener_analysis_frame = Some(analyzed_id);
         latest_audio = Some((analyzed_id, frame));
     }
     let (analysis_frame_id, mut frame) = latest_audio?;
@@ -951,6 +953,7 @@ pub(crate) fn init_runtime(
                     hop,
                     hop_duration,
                     fs,
+                    false,
                 )
             })
             .expect("spawn worker"),
@@ -1142,6 +1145,7 @@ pub fn run_render(
                 hop,
                 hop_duration,
                 fs,
+                true,
             )
         })
         .expect("spawn worker");
@@ -1196,6 +1200,9 @@ fn worker_loop(
     hop: usize,
     hop_duration: Duration,
     fs: f32,
+    // Offline render only: consume analysis with a fixed lag so the same scenario
+    // renders identically across runs. Real-time leaves the listener best-effort.
+    deterministic_analysis: bool,
 ) {
     let mut current_landscape: LandscapeFrame = current_landscape;
     let mut playback_state = if start_flag.load(Ordering::SeqCst) {
@@ -1214,6 +1221,7 @@ fn worker_loop(
     let mut last_ui_update = Instant::now();
     let ui_min_interval = Duration::from_millis(33);
     let mut last_analysis_frame: Option<u64> = None;
+    let mut last_listener_analysis_frame: Option<u64> = None;
     let mut listener_twin =
         ListenerTwin::with_sample_rate(fs, crate::listener_twin::ListenerTwinConfig::default());
     let mut latest_listener_fast_state: Option<ListenerFastState> = None;
@@ -1337,13 +1345,37 @@ fn worker_loop(
 
             apply_scaffold(&mut current_landscape.rhythm, scaffold, now_sec, frame_idx);
             generator_model.update_gate_from_rhythm(now_tick, &current_landscape.rhythm);
-            let listener_state_update = merge_latest_listener_analysis_results(
-                listener_result_rx.as_ref(),
-                &mut listener_twin,
-                &lparams,
-                timebase,
-                frame_idx,
-            );
+            // Deterministic render mirrors the main-analysis fixed-lag wait so the
+            // listener frame consumed at render-frame N does not depend on worker
+            // scheduling. Real-time keeps the single best-effort drain to avoid
+            // stalling the generator on listener-analysis latency.
+            let mut listener_state_update: Option<ListenerState> = None;
+            loop {
+                if let Some(state) = merge_latest_listener_analysis_results(
+                    listener_result_rx.as_ref(),
+                    &mut listener_twin,
+                    &lparams,
+                    timebase,
+                    frame_idx,
+                    &mut last_listener_analysis_frame,
+                ) {
+                    listener_state_update = Some(state);
+                }
+                if !deterministic_analysis || listener_result_rx.is_none() {
+                    break;
+                }
+                if analysis_ok(
+                    frame_idx,
+                    last_listener_analysis_frame,
+                    MAX_LANDSCAPE_LAG_FRAMES,
+                ) {
+                    break;
+                }
+                if exiting.load(Ordering::SeqCst) {
+                    break;
+                }
+                thread::sleep(Duration::from_micros(200));
+            }
             if let Some(state) = listener_state_update {
                 latest_listener_state = Some(state);
             }
@@ -1469,14 +1501,25 @@ fn worker_loop(
                     exiting.store(true, Ordering::SeqCst);
                 }
                 if let Some(tx) = presentation_to_listener_tx.as_ref() {
-                    match tx.try_send((frame_idx, Arc::clone(&presentation_chunk))) {
-                        Ok(()) => {}
-                        Err(TrySendError::Full(_)) => {
-                            debug!("listener analysis backlog full; dropped presentation hop");
-                        }
-                        Err(TrySendError::Disconnected(_)) => {
-                            warn!("listener analysis worker disconnected");
+                    if deterministic_analysis {
+                        // Never drop a presentation hop: the listener worker must
+                        // observe the same hop sequence every run. Blocking applies
+                        // backpressure but cannot deadlock, because the fixed-lag
+                        // consume above keeps the worker at most one frame behind.
+                        if let Err(err) = tx.send((frame_idx, Arc::clone(&presentation_chunk))) {
+                            warn!("listener analysis worker disconnected: {err}");
                             presentation_to_listener_tx = None;
+                        }
+                    } else {
+                        match tx.try_send((frame_idx, Arc::clone(&presentation_chunk))) {
+                            Ok(()) => {}
+                            Err(TrySendError::Full(_)) => {
+                                debug!("listener analysis backlog full; dropped presentation hop");
+                            }
+                            Err(TrySendError::Disconnected(_)) => {
+                                warn!("listener analysis worker disconnected");
+                                presentation_to_listener_tx = None;
+                            }
                         }
                     }
                 }

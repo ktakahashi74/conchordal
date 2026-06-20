@@ -20,11 +20,9 @@ let mover = sine()
     .global_peaks(6, 60.0)
     .ratio_candidates(4)
     .move_cost(0.65)
-    .improvement_threshold(0.12)
     .move_cost_time_scale("proposal_interval")
     .leave_self_out_harmonics(1)
-    .exploration(0.10)
-    .persistence(0.72)
+    .temperature(0.1)
     .avoid_neighbors(1.20)
     .glide(0.40);
 

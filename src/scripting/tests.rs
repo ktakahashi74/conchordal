@@ -611,10 +611,10 @@ fn species_landscape_weight_reaches_spawned_individual() {
 }
 
 #[test]
-fn species_exploration_persistence_reach_spawned_core() {
+fn species_temperature_reaches_spawned_core() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(sine().exploration(0.8).persistence(0.2), 1);
+            create(sine().temperature(0.3), 1);
             flush();
         "#,
     );
@@ -633,8 +633,7 @@ fn species_exploration_persistence_reach_spawned_core() {
         }
     }
     let voice = pop.voices.first().expect("spawned");
-    assert!((voice.pitch_core_for_test().exploration_for_test() - 0.8).abs() <= 1e-6);
-    assert!((voice.pitch_core_for_test().persistence_for_test() - 0.2).abs() <= 1e-6);
+    assert!((voice.pitch_core_for_test().temperature_for_test() - 0.3).abs() <= 1e-6);
 }
 
 #[test]
@@ -835,12 +834,12 @@ fn flush_emits_update_before_release_for_same_group() {
 }
 
 #[test]
-fn group_exploration_persistence_live_update_reaches_individual() {
+fn group_temperature_live_update_reaches_individual() {
     let (scenario, _warnings) = run_script(
         r#"
             let g = create(sine(), 1);
             flush();
-            let g = g.exploration(0.75).persistence(0.1);
+            let g = g.temperature(0.4);
             flush();
         "#,
     );
@@ -862,8 +861,7 @@ fn group_exploration_persistence_live_update_reaches_individual() {
         }
     }
     let voice = pop.voices.first().expect("spawned");
-    assert!((voice.pitch_core_for_test().exploration_for_test() - 0.75).abs() <= 1e-6);
-    assert!((voice.pitch_core_for_test().persistence_for_test() - 0.1).abs() <= 1e-6);
+    assert!((voice.pitch_core_for_test().temperature_for_test() - 0.4).abs() <= 1e-6);
 }
 
 #[test]
@@ -1072,10 +1070,10 @@ fn group_crowding_target_emits_actions_for_draft_and_live_updates() {
 }
 
 #[test]
-fn species_leave_self_out_and_anneal_reach_spawned_core() {
+fn species_leave_self_out_and_temperature_reach_spawned_core() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(sine().leave_self_out(true).anneal_temp(0.12), 1);
+            create(sine().leave_self_out(true).temperature(0.12), 1);
             flush();
         "#,
     );
@@ -1095,16 +1093,16 @@ fn species_leave_self_out_and_anneal_reach_spawned_core() {
     }
     let voice = pop.voices.first().expect("spawned");
     assert!(voice.pitch_core_for_test().leave_self_out_for_test());
-    assert!((voice.pitch_core_for_test().anneal_temp_for_test() - 0.12).abs() <= 1e-6);
+    assert!((voice.pitch_core_for_test().temperature_for_test() - 0.12).abs() <= 1e-6);
 }
 
 #[test]
-fn group_leave_self_out_and_anneal_live_update_reaches_individual() {
+fn group_leave_self_out_and_temperature_live_update_reaches_individual() {
     let (scenario, _warnings) = run_script(
         r#"
             let g = create(sine(), 1);
             flush();
-            let g = g.leave_self_out(true).anneal_temp(0.2);
+            let g = g.leave_self_out(true).temperature(0.2);
             flush();
         "#,
     );
@@ -1127,14 +1125,14 @@ fn group_leave_self_out_and_anneal_live_update_reaches_individual() {
     }
     let voice = pop.voices.first().expect("spawned");
     assert!(voice.pitch_core_for_test().leave_self_out_for_test());
-    assert!((voice.pitch_core_for_test().anneal_temp_for_test() - 0.2).abs() <= 1e-6);
+    assert!((voice.pitch_core_for_test().temperature_for_test() - 0.2).abs() <= 1e-6);
 }
 
 #[test]
-fn species_move_cost_and_improvement_threshold_reach_spawned_core() {
+fn species_move_cost_reaches_spawned_core() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(sine().move_cost(0.9).improvement_threshold(0.07), 1);
+            create(sine().move_cost(0.9), 1);
             flush();
         "#,
     );
@@ -1154,16 +1152,15 @@ fn species_move_cost_and_improvement_threshold_reach_spawned_core() {
     }
     let voice = pop.voices.first().expect("spawned");
     assert!((voice.pitch_core_for_test().move_cost_coeff_for_test() - 0.9).abs() <= 1e-6);
-    assert!((voice.pitch_core_for_test().improvement_threshold_for_test() - 0.07).abs() <= 1e-6);
 }
 
 #[test]
-fn group_move_cost_and_improvement_threshold_live_update_reaches_individual() {
+fn group_move_cost_live_update_reaches_individual() {
     let (scenario, _warnings) = run_script(
         r#"
             let g = create(sine(), 1);
             flush();
-            let g = g.move_cost(0.8).improvement_threshold(0.05);
+            let g = g.move_cost(0.8);
             flush();
         "#,
     );
@@ -1186,7 +1183,6 @@ fn group_move_cost_and_improvement_threshold_live_update_reaches_individual() {
     }
     let voice = pop.voices.first().expect("spawned");
     assert!((voice.pitch_core_for_test().move_cost_coeff_for_test() - 0.8).abs() <= 1e-6);
-    assert!((voice.pitch_core_for_test().improvement_threshold_for_test() - 0.05).abs() <= 1e-6);
 }
 
 #[test]

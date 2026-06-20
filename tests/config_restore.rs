@@ -105,9 +105,9 @@ fn assert_config_eq(actual: &AppConfig, expected: &AppConfig) {
         "dcc.coupling_strength",
     );
     assert_close(
-        actual.dcc.max_exploration_bonus,
-        expected.dcc.max_exploration_bonus,
-        "dcc.max_exploration_bonus",
+        actual.dcc.max_temperature_bonus,
+        expected.dcc.max_temperature_bonus,
+        "dcc.max_temperature_bonus",
     );
 }
 
@@ -163,7 +163,7 @@ fn config_load_custom_values() {
         },
         dcc: DccConfig {
             coupling_strength: 0.25,
-            max_exploration_bonus: 0.12,
+            max_temperature_bonus: 0.12,
         },
     };
     let text = toml::to_string_pretty(&custom).expect("serialize custom");

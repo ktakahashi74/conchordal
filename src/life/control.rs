@@ -2,9 +2,7 @@ const RANGE_OCT_MAX: f32 = 6.0;
 pub const MIN_FREQ_HZ: f32 = 1.0;
 pub const MAX_FREQ_HZ: f32 = 20_000.0;
 const DEFAULT_CROWDING_SIGMA_CENTS: f32 = 60.0;
-const DEFAULT_ANNEAL_TEMP: f32 = 0.0;
 const DEFAULT_MOVE_COST_COEFF: f32 = 0.5;
-const DEFAULT_IMPROVEMENT_THRESHOLD: f32 = 0.1;
 const DEFAULT_GLOBAL_PEAK_MIN_SEP_CENTS: f32 = 0.0;
 const DEFAULT_PITCH_GLIDE_TAU_SEC: f32 = 0.0;
 pub(crate) const DEFAULT_TIMBRE_SPREAD: f32 = 0.0;
@@ -202,17 +200,13 @@ pub struct PitchControl {
     pub neighbor_step_cents: Option<f32>,
     pub tessitura_gravity: Option<f32>,
     pub landscape_weight: f32,
-    pub exploration: f32,
-    pub persistence: f32,
     pub crowding_strength: f32,
     pub crowding_sigma_cents: f32,
     pub octave_avoidance: f32,
     pub leave_self_out: bool,
     pub leave_self_out_mode: LeaveSelfOutMode,
-    pub anneal_temp: f32,
     pub move_cost_coeff: f32,
     pub move_cost_exp: Option<u8>,
-    pub improvement_threshold: f32,
     pub proposal_interval_sec: Option<f32>,
     pub global_peak_count: usize,
     pub global_peak_min_sep_cents: f32,
@@ -240,17 +234,13 @@ impl Default for PitchControl {
             neighbor_step_cents: None,
             tessitura_gravity: None,
             landscape_weight: 1.0,
-            exploration: 0.0,
-            persistence: 0.5,
             crowding_strength: 0.0,
             crowding_sigma_cents: DEFAULT_CROWDING_SIGMA_CENTS,
             octave_avoidance: 0.0,
             leave_self_out: false,
             leave_self_out_mode: LeaveSelfOutMode::ApproxHarmonics,
-            anneal_temp: DEFAULT_ANNEAL_TEMP,
             move_cost_coeff: DEFAULT_MOVE_COST_COEFF,
             move_cost_exp: None,
-            improvement_threshold: DEFAULT_IMPROVEMENT_THRESHOLD,
             proposal_interval_sec: None,
             global_peak_count: 0,
             global_peak_min_sep_cents: DEFAULT_GLOBAL_PEAK_MIN_SEP_CENTS,
@@ -300,14 +290,11 @@ pub struct ControlUpdate {
     pub neighbor_step_cents: Option<f32>,
     pub tessitura_gravity: Option<f32>,
     pub landscape_weight: Option<f32>,
-    pub exploration: Option<f32>,
-    pub persistence: Option<f32>,
     pub crowding_strength: Option<f32>,
     pub crowding_sigma_cents: Option<f32>,
     pub octave_avoidance: Option<f32>,
     pub leave_self_out: Option<bool>,
     pub leave_self_out_mode: Option<LeaveSelfOutMode>,
-    pub anneal_temp: Option<f32>,
     pub timbre_brightness: Option<f32>,
     pub timbre_inharmonic: Option<f32>,
     pub timbre_motion: Option<f32>,
@@ -317,7 +304,6 @@ pub struct ControlUpdate {
     pub pitch_smooth_tau: Option<f32>,
     pub move_cost_coeff: Option<f32>,
     pub move_cost_exp: Option<i64>,
-    pub improvement_threshold: Option<f32>,
     pub proposal_interval_sec: Option<f32>,
     pub global_peak_count: Option<i64>,
     pub global_peak_min_sep_cents: Option<f32>,
@@ -375,16 +361,6 @@ impl PitchControl {
     }
 
     #[inline]
-    pub fn set_exploration_clamped(&mut self, value: f32) {
-        self.exploration = value.clamp(0.0, 1.0);
-    }
-
-    #[inline]
-    pub fn set_persistence_clamped(&mut self, value: f32) {
-        self.persistence = value.clamp(0.0, 1.0);
-    }
-
-    #[inline]
     pub fn set_crowding_strength_clamped(&mut self, value: f32) {
         self.crowding_strength = if value.is_finite() {
             value.max(0.0)
@@ -422,15 +398,6 @@ impl PitchControl {
     }
 
     #[inline]
-    pub fn set_anneal_temp_clamped(&mut self, value: f32) {
-        self.anneal_temp = if value.is_finite() {
-            value.max(0.0)
-        } else {
-            DEFAULT_ANNEAL_TEMP
-        };
-    }
-
-    #[inline]
     pub fn set_move_cost_coeff_clamped(&mut self, value: f32) {
         self.move_cost_coeff = if value.is_finite() {
             value.max(0.0)
@@ -442,15 +409,6 @@ impl PitchControl {
     #[inline]
     pub fn set_move_cost_exp_clamped(&mut self, value: i64) {
         self.move_cost_exp = Some(if value == 2 { 2 } else { 1 });
-    }
-
-    #[inline]
-    pub fn set_improvement_threshold_clamped(&mut self, value: f32) {
-        self.improvement_threshold = if value.is_finite() {
-            value.max(0.0)
-        } else {
-            DEFAULT_IMPROVEMENT_THRESHOLD
-        };
     }
 
     #[inline]
@@ -560,12 +518,6 @@ impl PitchControl {
         if let Some(weight) = update.landscape_weight {
             self.set_landscape_weight_clamped(weight);
         }
-        if let Some(exploration) = update.exploration {
-            self.set_exploration_clamped(exploration);
-        }
-        if let Some(persistence) = update.persistence {
-            self.set_persistence_clamped(persistence);
-        }
         if let Some(strength) = update.crowding_strength {
             self.set_crowding_strength_clamped(strength);
         }
@@ -581,17 +533,11 @@ impl PitchControl {
         if let Some(mode) = update.leave_self_out_mode {
             self.set_leave_self_out_mode(mode);
         }
-        if let Some(anneal_temp) = update.anneal_temp {
-            self.set_anneal_temp_clamped(anneal_temp);
-        }
         if let Some(coeff) = update.move_cost_coeff {
             self.set_move_cost_coeff_clamped(coeff);
         }
         if let Some(exp) = update.move_cost_exp {
             self.set_move_cost_exp_clamped(exp);
-        }
-        if let Some(threshold) = update.improvement_threshold {
-            self.set_improvement_threshold_clamped(threshold);
         }
         if let Some(interval) = update.proposal_interval_sec {
             self.set_proposal_interval_sec_clamped(interval);
@@ -682,14 +628,11 @@ mod tests {
             neighbor_step_cents: Some(-25.0),
             tessitura_gravity: Some(-0.3),
             landscape_weight: Some(-2.0),
-            exploration: Some(2.0),
-            persistence: Some(-1.0),
             crowding_strength: Some(-4.0),
             crowding_sigma_cents: Some(-3.0),
             octave_avoidance: Some(-1.0),
             leave_self_out: Some(true),
             leave_self_out_mode: Some(LeaveSelfOutMode::ExactScan),
-            anneal_temp: Some(-0.5),
             timbre_brightness: Some(-0.1),
             timbre_inharmonic: Some(2.0),
             timbre_motion: Some(0.5),
@@ -699,7 +642,6 @@ mod tests {
             pitch_smooth_tau: None,
             move_cost_coeff: Some(-0.2),
             move_cost_exp: Some(7),
-            improvement_threshold: Some(-0.5),
             proposal_interval_sec: Some(-1.0),
             global_peak_count: Some(8),
             global_peak_min_sep_cents: Some(-9.0),
@@ -721,8 +663,6 @@ mod tests {
         assert_eq!(control.pitch.mode, PitchMode::Lock);
         assert!((control.pitch.freq - MAX_FREQ_HZ).abs() <= 1e-6);
         assert!((control.pitch.landscape_weight - 0.0).abs() <= 1e-6);
-        assert!((control.pitch.exploration - 1.0).abs() <= 1e-6);
-        assert!((control.pitch.persistence - 0.0).abs() <= 1e-6);
         assert!((control.pitch.crowding_strength - 0.0).abs() <= 1e-6);
         assert!((control.pitch.crowding_sigma_cents - 1e-3).abs() <= 1e-6);
         assert!((control.pitch.octave_avoidance - 0.0).abs() <= 1e-6);
@@ -731,12 +671,10 @@ mod tests {
             control.pitch.leave_self_out_mode,
             LeaveSelfOutMode::ExactScan
         );
-        assert!((control.pitch.anneal_temp - 0.0).abs() <= 1e-6);
         assert_eq!(control.pitch.neighbor_step_cents, Some(0.0));
         assert_eq!(control.pitch.tessitura_gravity, Some(0.0));
         assert!((control.pitch.move_cost_coeff - 0.0).abs() <= 1e-6);
         assert_eq!(control.pitch.move_cost_exp, Some(1));
-        assert!((control.pitch.improvement_threshold - 0.0).abs() <= 1e-6);
         assert_eq!(control.pitch.window_cents, Some(1.0));
         assert_eq!(control.pitch.top_k, Some(1));
         assert_eq!(control.pitch.temperature, Some(0.0));

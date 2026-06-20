@@ -1964,8 +1964,6 @@ mod tests {
         let mut spec = spawn_spec_with_freq(330.0);
         spec.control.pitch.mode = PitchMode::Free;
         spec.control.pitch.range_oct = 1.5;
-        spec.control.pitch.exploration = 0.0;
-        spec.control.pitch.persistence = 0.0;
         spec.control.pitch.crowding_strength = crowding_strength;
         // Post-Stage-2 crowding samples a literal sigma_cents Gaussian; this width
         // must reach the ~53c-spaced voices for sequential order to matter.
@@ -2016,8 +2014,6 @@ mod tests {
         let mut mover_spec = spawn_spec_with_freq(330.0);
         mover_spec.control.pitch.mode = PitchMode::Free;
         mover_spec.control.pitch.range_oct = 1.5;
-        mover_spec.control.pitch.exploration = 0.0;
-        mover_spec.control.pitch.persistence = 0.0;
         mover_spec.control.pitch.crowding_strength = 3.0;
         mover_spec.control.pitch.crowding_sigma_cents = 20.0;
 

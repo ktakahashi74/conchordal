@@ -4,20 +4,20 @@ use crate::listener_twin::ListenerState;
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(crate) struct ListenerPressure {
     pub(crate) tension_pressure: f32,
-    pub(crate) exploration_bonus: f32,
+    pub(crate) temperature_bonus: f32,
 }
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct DccCoupler {
     coupling_strength: f32,
-    max_exploration_bonus: f32,
+    max_temperature_bonus: f32,
 }
 
 impl DccCoupler {
     pub(crate) fn new(config: DccConfig) -> Self {
         Self {
             coupling_strength: sanitize_unit(config.coupling_strength),
-            max_exploration_bonus: sanitize_nonnegative(config.max_exploration_bonus, 0.10),
+            max_temperature_bonus: sanitize_nonnegative(config.max_temperature_bonus, 0.10),
         }
     }
 
@@ -34,7 +34,7 @@ impl DccCoupler {
             * self.coupling_strength;
         ListenerPressure {
             tension_pressure,
-            exploration_bonus: tension_pressure * self.max_exploration_bonus,
+            temperature_bonus: tension_pressure * self.max_temperature_bonus,
         }
     }
 }
@@ -92,26 +92,26 @@ mod tests {
     fn pressure_requires_tension_and_resolvability() {
         let coupler = DccCoupler::new(DccConfig {
             coupling_strength: 0.5,
-            max_exploration_bonus: 0.2,
+            max_temperature_bonus: 0.2,
         });
 
         let pressure = coupler.pressure(Some(listener_state(0.8, 0.25)));
 
         assert!((pressure.tension_pressure - 0.1).abs() < 1e-6);
-        assert!((pressure.exploration_bonus - 0.02).abs() < 1e-6);
+        assert!((pressure.temperature_bonus - 0.02).abs() < 1e-6);
     }
 
     #[test]
     fn pressure_sanitizes_inputs() {
         let coupler = DccCoupler::new(DccConfig {
             coupling_strength: 2.0,
-            max_exploration_bonus: f32::NAN,
+            max_temperature_bonus: f32::NAN,
         });
 
         let pressure = coupler.pressure(Some(listener_state(2.0, -1.0)));
 
         assert_eq!(coupler.coupling_strength(), 1.0);
         assert_eq!(pressure.tension_pressure, 0.0);
-        assert_eq!(pressure.exploration_bonus, 0.0);
+        assert_eq!(pressure.temperature_bonus, 0.0);
     }
 }

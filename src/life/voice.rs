@@ -157,17 +157,13 @@ impl Dirty {
             || update.neighbor_step_cents.is_some()
             || update.tessitura_gravity.is_some()
             || update.landscape_weight.is_some()
-            || update.exploration.is_some()
-            || update.persistence.is_some()
             || update.crowding_strength.is_some()
             || update.crowding_sigma_cents.is_some()
             || update.octave_avoidance.is_some()
             || update.leave_self_out.is_some()
             || update.leave_self_out_mode.is_some()
-            || update.anneal_temp.is_some()
             || update.move_cost_coeff.is_some()
             || update.move_cost_exp.is_some()
-            || update.improvement_threshold.is_some()
             || update.proposal_interval_sec.is_some()
             || update.global_peak_count.is_some()
             || update.global_peak_min_sep_cents.is_some()
@@ -508,7 +504,7 @@ impl Voice {
             &self.effective_control.pitch,
             neighbor_pitch_log2,
             neighbor_salience,
-            listener_pressure.exploration_bonus,
+            listener_pressure.temperature_bonus,
         );
     }
 

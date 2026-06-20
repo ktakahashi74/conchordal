@@ -316,14 +316,6 @@ impl SpeciesSpec {
         self.control.set_pitch_smooth_tau_clamped(value);
     }
 
-    fn set_exploration(&mut self, value: f32) {
-        self.control.pitch.set_exploration_clamped(value);
-    }
-
-    fn set_persistence(&mut self, value: f32) {
-        self.control.pitch.set_persistence_clamped(value);
-    }
-
     fn set_crowding(&mut self, strength: f32, sigma_cents: f32) {
         self.control.pitch.set_crowding_strength_clamped(strength);
         self.control
@@ -357,10 +349,6 @@ impl SpeciesSpec {
         self.control.pitch.set_leave_self_out_mode(mode);
     }
 
-    fn set_anneal_temp(&mut self, value: f32) {
-        self.control.pitch.set_anneal_temp_clamped(value);
-    }
-
     fn set_move_cost_coeff(&mut self, value: f32) {
         self.control.pitch.set_move_cost_coeff_clamped(value);
     }
@@ -369,10 +357,6 @@ impl SpeciesSpec {
         self.control
             .pitch
             .set_move_cost_exp_clamped(value.round() as i64);
-    }
-
-    fn set_improvement_threshold(&mut self, value: f32) {
-        self.control.pitch.set_improvement_threshold_clamped(value);
     }
 
     fn set_proposal_interval_sec(&mut self, value: f32) {
@@ -1907,14 +1891,6 @@ fn patch_pitch_smooth_tau(update: &mut ControlUpdate, value: f32) {
     update.pitch_smooth_tau = Some(value);
 }
 
-fn patch_exploration(update: &mut ControlUpdate, value: f32) {
-    update.exploration = Some(value);
-}
-
-fn patch_persistence(update: &mut ControlUpdate, value: f32) {
-    update.persistence = Some(value);
-}
-
 fn patch_octave_avoidance(update: &mut ControlUpdate, value: f32) {
     update.octave_avoidance = Some(value);
 }
@@ -1923,20 +1899,12 @@ fn patch_leave_self_out_mode(update: &mut ControlUpdate, mode: LeaveSelfOutMode)
     update.leave_self_out_mode = Some(mode);
 }
 
-fn patch_anneal_temp(update: &mut ControlUpdate, value: f32) {
-    update.anneal_temp = Some(value);
-}
-
 fn patch_move_cost_coeff(update: &mut ControlUpdate, value: f32) {
     update.move_cost_coeff = Some(value);
 }
 
 fn patch_move_cost_exp(update: &mut ControlUpdate, value: f32) {
     update.move_cost_exp = Some(value.round() as i64);
-}
-
-fn patch_improvement_threshold(update: &mut ControlUpdate, value: f32) {
-    update.improvement_threshold = Some(value);
 }
 
 fn patch_proposal_interval(update: &mut ControlUpdate, value: f32) {

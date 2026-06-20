@@ -42,15 +42,6 @@ fn anchor(arg0: Material) -> Material;
 /// Hold the voice at its pitch: an anchored voice never moves.
 fn anchor(arg0: Participant) -> Participant;
 
-/// [tuning] Annealing temperature of the hill-climb.
-fn anneal_temp(arg0: Material, arg1: f64) -> Material;
-/// [tuning] Annealing temperature of the hill-climb.
-fn anneal_temp(arg0: Material, arg1: i64) -> Material;
-/// [tuning] Annealing temperature of the hill-climb.
-fn anneal_temp(arg0: Participant, arg1: f64) -> Participant;
-/// [tuning] Annealing temperature of the hill-climb.
-fn anneal_temp(arg0: Participant, arg1: i64) -> Participant;
-
 /// Place at a fixed frequency in Hz.
 fn at(arg0: f64) -> Placement;
 /// Place at a fixed frequency in Hz.
@@ -206,15 +197,6 @@ fn entrainment(arg0: Participant, arg1: f64) -> Participant;
 /// Override coupling strength in 0-1 (free .. locked).
 fn entrainment(arg0: Participant, arg1: i64) -> Participant;
 
-/// [tuning] Exploration tendency of the hill-climb.
-fn exploration(arg0: Material, arg1: f64) -> Material;
-/// [tuning] Exploration tendency of the hill-climb.
-fn exploration(arg0: Material, arg1: i64) -> Material;
-/// [tuning] Exploration tendency of the hill-climb.
-fn exploration(arg0: Participant, arg1: f64) -> Participant;
-/// [tuning] Exploration tendency of the hill-climb.
-fn exploration(arg0: Participant, arg1: i64) -> Participant;
-
 /// Near-zero coupling: free renewal process, non-metric texture.
 fn flow(arg0: Material) -> Material;
 /// Near-zero coupling: free renewal process, non-metric texture.
@@ -265,15 +247,6 @@ fn harmonic_mirror(arg0: f64);
 
 /// Harmonic series: f, 2f, 3f, ...
 fn harmonic_modes() -> ModePattern;
-
-/// [tuning] Minimum improvement to accept a move.
-fn improvement_threshold(arg0: Material, arg1: f64) -> Material;
-/// [tuning] Minimum improvement to accept a move.
-fn improvement_threshold(arg0: Material, arg1: i64) -> Material;
-/// [tuning] Minimum improvement to accept a move.
-fn improvement_threshold(arg0: Participant, arg1: f64) -> Participant;
-/// [tuning] Minimum improvement to accept a move.
-fn improvement_threshold(arg0: Participant, arg1: i64) -> Participant;
 
 /// Starting energy.
 fn initial_energy(arg0: Material, arg1: f64) -> Material;
@@ -424,15 +397,6 @@ fn parallel(arg0: [?]);
 fn peaks(arg0: f64) -> Placement;
 /// Place at high Consonance Field positions around a root.
 fn peaks(arg0: i64) -> Placement;
-
-/// [tuning] Persistence bias of the hill-climb.
-fn persistence(arg0: Material, arg1: f64) -> Material;
-/// [tuning] Persistence bias of the hill-climb.
-fn persistence(arg0: Material, arg1: i64) -> Material;
-/// [tuning] Persistence bias of the hill-climb.
-fn persistence(arg0: Participant, arg1: f64) -> Participant;
-/// [tuning] Persistence bias of the hill-climb.
-fn persistence(arg0: Participant, arg1: i64) -> Participant;
 
 /// [tuning] `"gate_snap"` or `"glide"`: override how pitch decisions are applied.
 fn pitch_apply_mode(arg0: Material, arg1: String) -> Material;
@@ -752,13 +716,13 @@ fn sustain_drive(arg0: Participant, arg1: f64) -> Participant;
 /// Continuous drive level for sustained voices.
 fn sustain_drive(arg0: Participant, arg1: i64) -> Participant;
 
-/// [tuning] Selection temperature of the peak sampler (softness of candidate choice).
+/// [tuning] Search temperature shared by both pitch cores: 0 settles greedily, higher is more exploratory.
 fn temperature(arg0: Material, arg1: f64) -> Material;
-/// [tuning] Selection temperature of the peak sampler (softness of candidate choice).
+/// [tuning] Search temperature shared by both pitch cores: 0 settles greedily, higher is more exploratory.
 fn temperature(arg0: Material, arg1: i64) -> Material;
-/// [tuning] Selection temperature of the peak sampler (softness of candidate choice).
+/// [tuning] Search temperature shared by both pitch cores: 0 settles greedily, higher is more exploratory.
 fn temperature(arg0: Participant, arg1: f64) -> Participant;
-/// [tuning] Selection temperature of the peak sampler (softness of candidate choice).
+/// [tuning] Search temperature shared by both pitch cores: 0 settles greedily, higher is more exploratory.
 fn temperature(arg0: Participant, arg1: i64) -> Participant;
 
 /// Tempo region the emergent beat gravitates toward.

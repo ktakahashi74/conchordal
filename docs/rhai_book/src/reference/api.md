@@ -961,36 +961,6 @@ Applies to: `Material` and `Participant`. Live-patchable: updates running voices
 
 Weight of the landscape objective.
 
-#### `exploration`
-
-```rhai,ignore
-exploration(value)
-```
-
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
-
-Exploration tendency of the hill-climb.
-
-#### `persistence`
-
-```rhai,ignore
-persistence(value)
-```
-
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
-
-Persistence bias of the hill-climb.
-
-#### `anneal_temp`
-
-```rhai,ignore
-anneal_temp(value)
-```
-
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
-
-Annealing temperature of the hill-climb.
-
 #### `temperature`
 
 ```rhai,ignore
@@ -999,7 +969,7 @@ temperature(value)
 
 Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
 
-Selection temperature of the peak sampler (softness of candidate choice).
+Search temperature shared by both pitch cores: 0 settles greedily, higher is more exploratory. The single stochastic-search knob. At 0 the hill-climb is greedy (move only on a clear improvement, otherwise stay) and the peak sampler takes the argmax candidate. Higher values let the hill-climb accept downhill moves (Metropolis) and soften the peak sampler's candidate choice.
 
 #### `neighbor_step_cents`
 
@@ -1010,16 +980,6 @@ neighbor_step_cents(value)
 Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
 
 Step size for neighbor exploration in cents.
-
-#### `improvement_threshold`
-
-```rhai,ignore
-improvement_threshold(value)
-```
-
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
-
-Minimum improvement to accept a move.
 
 #### `move_cost`
 

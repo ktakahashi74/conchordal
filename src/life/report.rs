@@ -163,7 +163,7 @@ enum ReportRecord<'a> {
     DccPressure {
         time_sec: f32,
         tension_pressure: f32,
-        exploration_bonus: f32,
+        temperature_bonus: f32,
     },
     RhythmSummary {
         time_sec: f32,
@@ -350,7 +350,7 @@ impl JsonlReporter {
         self.write_record(&ReportRecord::DccPressure {
             time_sec,
             tension_pressure: pressure.tension_pressure,
-            exploration_bonus: pressure.exploration_bonus,
+            temperature_bonus: pressure.temperature_bonus,
         })
     }
 

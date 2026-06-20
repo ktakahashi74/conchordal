@@ -20,6 +20,8 @@ const DEFAULT_RUNTIME_RATIO_CANDIDATE_COUNT: usize = 0;
 const DEFAULT_LOO_HARMONICS: u8 = 1;
 const DEFAULT_CROWDING_PAIR_SPLIT_EPS_FRAC: f32 = 0.25;
 const EXACT_LOO_ROUGHNESS_ERB_STEP: f32 = 0.005;
+/// Minimum field improvement required to accept a greedy hill-climb move.
+const IMPROVEMENT_THRESHOLD: f32 = 0.1;
 
 #[derive(Debug, Clone, Copy)]
 pub struct TargetProposal {
@@ -79,18 +81,15 @@ pub struct PitchHillClimbPitchCore {
     landscape_weight: f32,
     move_cost_coeff: f32,
     move_cost_exp: u8,
-    improvement_threshold: f32,
     move_cost_time_scale: MoveCostTimeScale,
     proposal_interval_sec: Option<f32>,
-    exploration: f32,
-    persistence: f32,
+    temperature: f32,
     crowding_strength: f32,
     crowding_sigma_cents: f32,
     octave_avoidance: f32,
     leave_self_out: bool,
     leave_self_out_mode: LeaveSelfOutMode,
     leave_self_out_harmonics: u8,
-    anneal_temp: f32,
     global_peak_count: usize,
     global_peak_min_sep_log2: f32,
     use_ratio_candidates: bool,
@@ -98,14 +97,7 @@ pub struct PitchHillClimbPitchCore {
 }
 
 impl PitchHillClimbPitchCore {
-    pub fn new(
-        neighbor_step_cents: f32,
-        tessitura_center: f32,
-        tessitura_gravity: f32,
-        improvement_threshold: f32,
-        exploration: f32,
-        persistence: f32,
-    ) -> Self {
+    pub fn new(neighbor_step_cents: f32, tessitura_center: f32, tessitura_gravity: f32) -> Self {
         let mut neighbor_step_cents = neighbor_step_cents;
         if !neighbor_step_cents.is_finite() {
             neighbor_step_cents = 0.0;
@@ -118,18 +110,15 @@ impl PitchHillClimbPitchCore {
             landscape_weight: 1.0,
             move_cost_coeff: DEFAULT_MOVE_COST_COEFF,
             move_cost_exp: DEFAULT_MOVE_COST_EXP,
-            improvement_threshold,
             move_cost_time_scale: MoveCostTimeScale::LegacyIntegrationWindow,
             proposal_interval_sec: None,
-            exploration: exploration.clamp(0.0, 1.0),
-            persistence: persistence.clamp(0.0, 1.0),
+            temperature: 0.0,
             crowding_strength: 0.0,
             crowding_sigma_cents: 60.0,
             octave_avoidance: 0.0,
             leave_self_out: false,
             leave_self_out_mode: LeaveSelfOutMode::ApproxHarmonics,
             leave_self_out_harmonics: DEFAULT_LOO_HARMONICS,
-            anneal_temp: 0.0,
             global_peak_count: DEFAULT_GLOBAL_PEAK_COUNT,
             global_peak_min_sep_log2: cents_to_log2(DEFAULT_GLOBAL_PEAK_MIN_SEP_CENTS),
             use_ratio_candidates: false,
@@ -137,12 +126,12 @@ impl PitchHillClimbPitchCore {
         }
     }
 
-    pub fn set_exploration(&mut self, value: f32) {
-        self.exploration = value.clamp(0.0, 1.0);
-    }
-
-    pub fn set_persistence(&mut self, value: f32) {
-        self.persistence = value.clamp(0.0, 1.0);
+    pub fn set_temperature(&mut self, value: f32) {
+        self.temperature = if value.is_finite() {
+            value.max(0.0)
+        } else {
+            0.0
+        };
     }
 
     pub fn set_crowding(&mut self, strength: f32, sigma_cents: f32) {
@@ -174,14 +163,6 @@ impl PitchHillClimbPitchCore {
 
     pub fn set_leave_self_out_mode(&mut self, mode: LeaveSelfOutMode) {
         self.leave_self_out_mode = mode;
-    }
-
-    pub fn set_anneal_temp(&mut self, value: f32) {
-        self.anneal_temp = if value.is_finite() {
-            value.max(0.0)
-        } else {
-            0.0
-        };
     }
 
     pub fn set_neighbor_step_cents(&mut self, value: f32) {
@@ -220,14 +201,6 @@ impl PitchHillClimbPitchCore {
 
     pub fn set_move_cost_exp(&mut self, value: u8) {
         self.move_cost_exp = if value == 2 { 2 } else { 1 };
-    }
-
-    pub fn set_improvement_threshold(&mut self, value: f32) {
-        self.improvement_threshold = if value.is_finite() {
-            value.max(0.0)
-        } else {
-            0.1
-        };
     }
 
     pub fn set_move_cost_time_scale(&mut self, value: MoveCostTimeScale) {
@@ -361,50 +334,26 @@ impl PitchHillClimbPitchCore {
         let improvement = best_score - current_adjusted;
         let mut target_pitch_log2 = current_target_log2;
 
-        if improvement > self.improvement_threshold {
+        if improvement > IMPROVEMENT_THRESHOLD {
             target_pitch_log2 = best_pitch;
-        } else {
-            if self.anneal_temp <= 0.0 && self.exploration <= 0.0 {
-                return TargetProposal {
-                    target_pitch_log2,
-                    salience: (improvement / 0.2).clamp(0.0, 1.0),
-                };
-            }
-            let satisfaction = ((current_adjusted + 1.0) * 0.5).clamp(0.0, 1.0);
-            let mut stay_prob = self.persistence.clamp(0.0, 1.0) * satisfaction;
-            stay_prob = stay_prob.clamp(0.0, 1.0);
-            let exploration = self.exploration.clamp(0.0, 1.0);
-            stay_prob = (stay_prob * (1.0 - exploration)).clamp(0.0, 1.0);
-            if rng.random_range(0.0..1.0) > stay_prob {
-                if self.anneal_temp > 0.0 {
-                    let mut movable: Vec<(f32, f32)> = scored
-                        .iter()
-                        .copied()
-                        .filter(|(pitch, _)| (*pitch - current_target_log2).abs() > 1e-9)
-                        .collect();
-                    if !movable.is_empty() {
-                        let pick = rng.random_range(0..movable.len());
-                        let (candidate_pitch, candidate_score) = movable.swap_remove(pick);
-                        let delta = candidate_score - current_adjusted;
-                        if delta >= 0.0 {
-                            target_pitch_log2 = candidate_pitch;
-                        } else {
-                            let accept_prob = (delta / self.anneal_temp).exp().clamp(0.0, 1.0);
-                            if rng.random_range(0.0..1.0) < accept_prob {
-                                target_pitch_log2 = candidate_pitch;
-                            }
-                        }
-                    } else {
-                        target_pitch_log2 = best_pitch;
-                    }
-                } else {
-                    // Keep non-annealed hill-climb greedy: do not take downhill moves.
-                    if best_score >= current_adjusted {
-                        target_pitch_log2 = best_pitch;
-                    }
+        } else if self.temperature > 0.0 {
+            // Metropolis step: pick a random movable candidate and accept it if it
+            // improves, or with Boltzmann probability if it is downhill.
+            let mut movable: Vec<(f32, f32)> = scored
+                .iter()
+                .copied()
+                .filter(|(pitch, _)| (*pitch - current_target_log2).abs() > 1e-9)
+                .collect();
+            if !movable.is_empty() {
+                let pick = rng.random_range(0..movable.len());
+                let (candidate_pitch, candidate_score) = movable.swap_remove(pick);
+                let delta = candidate_score - current_adjusted;
+                if delta >= 0.0 || rng.random_range(0.0..1.0) < (delta / self.temperature).exp() {
+                    target_pitch_log2 = candidate_pitch;
                 }
             }
         }
+        // else: temperature == 0, settle (greedy hill-climb stays put).
 
         TargetProposal {
             target_pitch_log2,
@@ -511,8 +460,6 @@ pub struct PitchPeakSamplerCore {
     tessitura_center: f32,
     tessitura_gravity: f32,
     landscape_weight: f32,
-    exploration: f32,
-    persistence: f32,
     crowding_strength: f32,
     crowding_sigma_cents: f32,
     octave_avoidance: f32,
@@ -530,8 +477,6 @@ impl PitchPeakSamplerCore {
         temperature: f32,
         sigma_cents: f32,
         random_candidates: usize,
-        exploration: f32,
-        persistence: f32,
     ) -> Self {
         Self {
             neighbor_step_log2: cents_to_log2(neighbor_step_cents.max(0.0)),
@@ -547,21 +492,11 @@ impl PitchPeakSamplerCore {
             tessitura_center,
             tessitura_gravity,
             landscape_weight: 1.0,
-            exploration: exploration.clamp(0.0, 1.0),
-            persistence: persistence.clamp(0.0, 1.0),
             crowding_strength: 0.0,
             crowding_sigma_cents: 60.0,
             octave_avoidance: 0.0,
             leave_self_out: false,
         }
-    }
-
-    pub fn set_exploration(&mut self, value: f32) {
-        self.exploration = value.clamp(0.0, 1.0);
-    }
-
-    pub fn set_persistence(&mut self, value: f32) {
-        self.persistence = value.clamp(0.0, 1.0);
     }
 
     pub fn set_crowding(&mut self, strength: f32, sigma_cents: f32) {
@@ -758,15 +693,17 @@ impl PitchCore for PitchPeakSamplerCore {
         }
         let improvement = best_score - current_adjusted;
 
-        let satisfaction = ((current_adjusted + 1.0) * 0.5).clamp(0.0, 1.0);
-        let mut stay_prob = self.persistence * satisfaction;
-        stay_prob = (stay_prob * (1.0 - self.exploration)).clamp(0.0, 1.0);
-
-        let target_pitch_log2 = if rng.random_range(0.0..1.0) < stay_prob {
-            current_target_log2
+        let target_pitch_log2 = if self.temperature > 0.0 {
+            sample_softmax_candidate(&scored, self.temperature, rng).clamp(fmin, fmax)
         } else {
-            let effective_temperature = self.temperature * (1.0 + 2.0 * self.exploration);
-            sample_softmax_candidate(&scored, effective_temperature, rng).clamp(fmin, fmax)
+            // Greedy: settle on the highest-scoring candidate (current target is
+            // always among `scored`, so this never moves downhill).
+            scored
+                .iter()
+                .max_by(|a, b| a.1.total_cmp(&b.1))
+                .map(|(pitch, _)| *pitch)
+                .unwrap_or(current_target_log2)
+                .clamp(fmin, fmax)
         };
 
         TargetProposal {
@@ -1427,9 +1364,6 @@ impl AnyPitchCore {
                 pitch.neighbor_step_cents.unwrap_or(200.0),
                 initial_pitch_log2,
                 pitch.resolved_tessitura_gravity(),
-                pitch.improvement_threshold,
-                pitch.exploration,
-                pitch.persistence,
             )),
             PitchCoreKind::PeakSampler => {
                 AnyPitchCore::PitchPeakSampler(PitchPeakSamplerCore::new(
@@ -1441,8 +1375,6 @@ impl AnyPitchCore {
                     pitch.temperature.unwrap_or(0.08),
                     pitch.sigma_cents.unwrap_or(DEFAULT_RANDOM_SIGMA_CENTS),
                     pitch.random_candidates.unwrap_or(DEFAULT_RANDOM_CANDIDATES),
-                    pitch.exploration,
-                    pitch.persistence,
                 ))
             }
         };
@@ -1457,10 +1389,10 @@ impl AnyPitchCore {
         }
     }
 
-    pub(crate) fn set_exploration(&mut self, value: f32) {
+    pub(crate) fn set_temperature(&mut self, value: f32) {
         match self {
-            AnyPitchCore::PitchHillClimb(core) => core.set_exploration(value),
-            AnyPitchCore::PitchPeakSampler(core) => core.set_exploration(value),
+            AnyPitchCore::PitchHillClimb(core) => core.set_temperature(value),
+            AnyPitchCore::PitchPeakSampler(core) => core.set_temperature(value),
         }
     }
 
@@ -1475,8 +1407,7 @@ fn apply_hill_climb_control(core: &mut PitchHillClimbPitchCore, pitch: &PitchCon
     core.set_tessitura_center(pitch.freq.max(1.0).log2());
     core.set_tessitura_gravity(pitch.resolved_tessitura_gravity());
     core.set_landscape_weight(pitch.landscape_weight);
-    core.set_exploration(pitch.exploration);
-    core.set_persistence(pitch.persistence);
+    core.set_temperature(pitch.temperature.unwrap_or(0.0));
     core.set_crowding(pitch.crowding_strength, pitch.crowding_sigma_cents);
     core.set_octave_avoidance(pitch.octave_avoidance);
     core.set_leave_self_out(pitch.leave_self_out);
@@ -1484,12 +1415,10 @@ fn apply_hill_climb_control(core: &mut PitchHillClimbPitchCore, pitch: &PitchCon
     if let Some(cents) = pitch.neighbor_step_cents {
         core.set_neighbor_step_cents(cents);
     }
-    core.set_anneal_temp(pitch.anneal_temp);
     core.set_move_cost_coeff(pitch.move_cost_coeff);
     if let Some(exp) = pitch.move_cost_exp {
         core.set_move_cost_exp(exp);
     }
-    core.set_improvement_threshold(pitch.improvement_threshold);
     core.set_global_peaks(pitch.global_peak_count, pitch.global_peak_min_sep_cents);
     core.set_ratio_candidates(pitch.use_ratio_candidates, pitch.ratio_candidate_count);
     core.set_move_cost_time_scale(pitch.move_cost_time_scale);
@@ -1501,8 +1430,7 @@ fn apply_peak_sampler_control(core: &mut PitchPeakSamplerCore, pitch: &PitchCont
     core.set_tessitura_center(pitch.freq.max(1.0).log2());
     core.set_tessitura_gravity(pitch.resolved_tessitura_gravity());
     core.set_landscape_weight(pitch.landscape_weight);
-    core.set_exploration(pitch.exploration);
-    core.set_persistence(pitch.persistence);
+    core.set_temperature(pitch.temperature.unwrap_or(0.08));
     core.set_crowding(pitch.crowding_strength, pitch.crowding_sigma_cents);
     core.set_octave_avoidance(pitch.octave_avoidance);
     core.set_leave_self_out(pitch.leave_self_out);
@@ -1515,9 +1443,6 @@ fn apply_peak_sampler_control(core: &mut PitchPeakSamplerCore, pitch: &PitchCont
     if let Some(top_k) = pitch.top_k {
         core.set_top_k(top_k);
     }
-    if let Some(temperature) = pitch.temperature {
-        core.set_temperature(temperature);
-    }
     if let Some(cents) = pitch.sigma_cents {
         core.set_sigma_cents(cents);
     }
@@ -1528,20 +1453,6 @@ fn apply_peak_sampler_control(core: &mut PitchPeakSamplerCore, pitch: &PitchCont
 
 #[cfg(test)]
 impl AnyPitchCore {
-    pub(crate) fn exploration_for_test(&self) -> f32 {
-        match self {
-            AnyPitchCore::PitchHillClimb(core) => core.exploration,
-            AnyPitchCore::PitchPeakSampler(core) => core.exploration,
-        }
-    }
-
-    pub(crate) fn persistence_for_test(&self) -> f32 {
-        match self {
-            AnyPitchCore::PitchHillClimb(core) => core.persistence,
-            AnyPitchCore::PitchPeakSampler(core) => core.persistence,
-        }
-    }
-
     pub(crate) fn leave_self_out_for_test(&self) -> bool {
         match self {
             AnyPitchCore::PitchHillClimb(core) => core.leave_self_out,
@@ -1556,13 +1467,6 @@ impl AnyPitchCore {
         }
     }
 
-    pub(crate) fn anneal_temp_for_test(&self) -> f32 {
-        match self {
-            AnyPitchCore::PitchHillClimb(core) => core.anneal_temp,
-            AnyPitchCore::PitchPeakSampler(_) => 0.0,
-        }
-    }
-
     pub(crate) fn move_cost_coeff_for_test(&self) -> f32 {
         match self {
             AnyPitchCore::PitchHillClimb(core) => core.move_cost_coeff,
@@ -1574,13 +1478,6 @@ impl AnyPitchCore {
         match self {
             AnyPitchCore::PitchHillClimb(core) => core.move_cost_exp,
             AnyPitchCore::PitchPeakSampler(_) => DEFAULT_MOVE_COST_EXP,
-        }
-    }
-
-    pub(crate) fn improvement_threshold_for_test(&self) -> f32 {
-        match self {
-            AnyPitchCore::PitchHillClimb(core) => core.improvement_threshold,
-            AnyPitchCore::PitchPeakSampler(_) => 0.0,
         }
     }
 
@@ -1670,7 +1567,7 @@ impl AnyPitchCore {
 
     pub(crate) fn temperature_for_test(&self) -> f32 {
         match self {
-            AnyPitchCore::PitchHillClimb(_) => 0.0,
+            AnyPitchCore::PitchHillClimb(core) => core.temperature,
             AnyPitchCore::PitchPeakSampler(core) => core.temperature,
         }
     }
@@ -2097,7 +1994,7 @@ mod tests {
         let landscape = test_landscape(&[(330.0, 1.0)]);
         let perceptual = test_adaptation(landscape.space.n_bins());
         let features = FeaturesNow::from_occupancy_scan(&landscape.subjective_intensity);
-        let mut core = PitchHillClimbPitchCore::new(120.0, 330.0f32.log2(), 0.0, 0.0, 0.0, 0.0);
+        let mut core = PitchHillClimbPitchCore::new(120.0, 330.0f32.log2(), 0.0);
         core.set_crowding(0.0, 20.0);
 
         let mut rng_a = SmallRng::seed_from_u64(77);
@@ -2134,18 +2031,8 @@ mod tests {
         let landscape = test_landscape(&[(330.0, 1.0)]);
         let perceptual = test_adaptation(landscape.space.n_bins());
         let features = FeaturesNow::from_occupancy_scan(&landscape.subjective_intensity);
-        let mut core = PitchPeakSamplerCore::new(
-            120.0,
-            330.0f32.log2(),
-            0.0,
-            700.0,
-            16,
-            0.03,
-            10.0,
-            2,
-            1.0,
-            0.0,
-        );
+        let mut core =
+            PitchPeakSamplerCore::new(120.0, 330.0f32.log2(), 0.0, 700.0, 16, 0.03, 10.0, 2);
         core.set_crowding(0.0, 20.0);
 
         let mut rng_a = SmallRng::seed_from_u64(71);
@@ -2182,18 +2069,8 @@ mod tests {
         let landscape = test_landscape(&[(330.0, 1.0)]);
         let perceptual = test_adaptation(landscape.space.n_bins());
         let features = FeaturesNow::from_occupancy_scan(&landscape.subjective_intensity);
-        let mut no_crowding = PitchPeakSamplerCore::new(
-            24.0,
-            330.0f32.log2(),
-            0.0,
-            700.0,
-            16,
-            0.001,
-            0.0,
-            0,
-            1.0,
-            0.0,
-        );
+        let mut no_crowding =
+            PitchPeakSamplerCore::new(24.0, 330.0f32.log2(), 0.0, 700.0, 16, 0.001, 0.0, 0);
         let mut with_crowding = no_crowding.clone();
         no_crowding.set_crowding(0.0, 8.0);
         with_crowding.set_crowding(3.0, 8.0);
@@ -2233,46 +2110,45 @@ mod tests {
     }
 
     #[test]
-    fn hillclimb_anneal_temp_zero_matches_legacy_behavior() {
-        let landscape = test_landscape(&[(330.0, 1.0)]);
+    fn hillclimb_temperature_zero_makes_no_downhill_move() {
+        // On a plateau (no improvement above threshold) a zero-temperature
+        // hill-climb must stay put: greedy, never downhill.
+        let mut landscape = Landscape::new(Log2Space::new(220.0, 440.0, 256));
+        let idx_center = landscape.space.n_bins() / 2;
+        let current = landscape.space.centers_log2[idx_center];
+        let width_cents = 40.0f32;
+        for (idx, &bin_log2) in landscape.space.centers_log2.iter().enumerate() {
+            let d_cents = (bin_log2 - current).abs() * 1200.0;
+            let score = (-(d_cents * d_cents) / (2.0 * width_cents * width_cents)).exp();
+            landscape.consonance_field_score[idx] = score;
+            landscape.consonance_field_level[idx] = score.clamp(0.0, 1.0);
+        }
         let perceptual = test_adaptation(landscape.space.n_bins());
         let features = FeaturesNow::from_occupancy_scan(&landscape.subjective_intensity);
-        let mut legacy = PitchHillClimbPitchCore::new(120.0, 330.0f32.log2(), 0.0, 0.0, 0.0, 0.0);
-        let mut anneal_zero =
-            PitchHillClimbPitchCore::new(120.0, 330.0f32.log2(), 0.0, 0.0, 0.0, 0.0);
-        anneal_zero.set_anneal_temp(0.0);
 
-        let mut rng_a = SmallRng::seed_from_u64(2024);
-        let mut rng_b = SmallRng::seed_from_u64(2024);
-        let base = legacy.propose_target(
-            330.0f32.log2(),
-            330.0f32.log2(),
-            330.0,
-            1.0,
-            &landscape,
-            &perceptual,
-            &features,
-            &[],
-            &mut rng_a,
-        );
-        let with_zero = anneal_zero.propose_target(
-            330.0f32.log2(),
-            330.0f32.log2(),
-            330.0,
-            1.0,
-            &landscape,
-            &perceptual,
-            &features,
-            &[],
-            &mut rng_b,
-        );
-
-        assert!((base.target_pitch_log2 - with_zero.target_pitch_log2).abs() <= 1e-6);
-        assert!((base.salience - with_zero.salience).abs() <= 1e-6);
+        for seed in 0..256u64 {
+            let mut core = PitchHillClimbPitchCore::new(30.0, current, 0.0);
+            let mut rng = SmallRng::seed_from_u64(5_000 + seed);
+            let p = core.propose_target(
+                current,
+                current,
+                2.0f32.powf(current),
+                1.0,
+                &landscape,
+                &perceptual,
+                &features,
+                &[],
+                &mut rng,
+            );
+            assert!(
+                (p.target_pitch_log2 - current).abs() <= 1e-6,
+                "temperature=0 should keep greedy hill-climb behavior (no downhill move)"
+            );
+        }
     }
 
     #[test]
-    fn hillclimb_anneal_accepts_downhill_moves_probabilistically() {
+    fn hillclimb_temperature_accepts_downhill_moves_probabilistically() {
         let mut landscape = Landscape::new(Log2Space::new(220.0, 440.0, 256));
         let idx_center = landscape.space.n_bins() / 2;
         let current = landscape.space.centers_log2[idx_center];
@@ -2286,18 +2162,18 @@ mod tests {
         let perceptual = test_adaptation(landscape.space.n_bins());
         let features = FeaturesNow::from_occupancy_scan(&landscape.subjective_intensity);
         let trials = 256u64;
-        let mut moved_with_anneal = 0usize;
-        let mut moved_without_anneal = 0usize;
+        let mut moved_with_temp = 0usize;
+        let mut moved_without_temp = 0usize;
 
         for seed in 0..trials {
-            let mut no_anneal = PitchHillClimbPitchCore::new(30.0, current, 0.0, 0.1, 0.0, 0.0);
-            no_anneal.set_anneal_temp(0.0);
-            let mut with_anneal = PitchHillClimbPitchCore::new(30.0, current, 0.0, 0.1, 0.0, 0.0);
-            with_anneal.set_anneal_temp(0.2);
+            let mut cold = PitchHillClimbPitchCore::new(30.0, current, 0.0);
+            cold.set_temperature(0.0);
+            let mut hot = PitchHillClimbPitchCore::new(30.0, current, 0.0);
+            hot.set_temperature(0.2);
 
             let mut rng_a = SmallRng::seed_from_u64(5_000 + seed);
             let mut rng_b = SmallRng::seed_from_u64(5_000 + seed);
-            let p0 = no_anneal.propose_target(
+            let p0 = cold.propose_target(
                 current,
                 current,
                 2.0f32.powf(current),
@@ -2308,7 +2184,7 @@ mod tests {
                 &[],
                 &mut rng_a,
             );
-            let p1 = with_anneal.propose_target(
+            let p1 = hot.propose_target(
                 current,
                 current,
                 2.0f32.powf(current),
@@ -2320,20 +2196,20 @@ mod tests {
                 &mut rng_b,
             );
             if (p0.target_pitch_log2 - current).abs() > 1e-6 {
-                moved_without_anneal += 1;
+                moved_without_temp += 1;
             }
             if (p1.target_pitch_log2 - current).abs() > 1e-6 {
-                moved_with_anneal += 1;
+                moved_with_temp += 1;
             }
         }
 
         assert_eq!(
-            moved_without_anneal, 0,
-            "anneal_temp=0 should keep greedy hill-climb behavior"
+            moved_without_temp, 0,
+            "temperature=0 should keep greedy hill-climb behavior"
         );
         assert!(
-            moved_with_anneal > 0 && moved_with_anneal < trials as usize,
-            "anneal should probabilistically accept downhill moves"
+            moved_with_temp > 0 && moved_with_temp < trials as usize,
+            "temperature should probabilistically accept downhill moves"
         );
     }
 
@@ -2351,8 +2227,7 @@ mod tests {
         let perceptual = test_adaptation(landscape.space.n_bins());
         let features = FeaturesNow::from_occupancy_scan(&landscape.subjective_intensity);
 
-        let mut without_crowding =
-            PitchHillClimbPitchCore::new(24.0, center_log2, 0.0, 0.0, 0.0, 0.0);
+        let mut without_crowding = PitchHillClimbPitchCore::new(24.0, center_log2, 0.0);
         let mut with_crowding = without_crowding.clone();
         without_crowding.set_crowding(0.0, 60.0);
         with_crowding.set_crowding(6.0, 60.0);
@@ -2398,7 +2273,7 @@ mod tests {
         let features = FeaturesNow::from_occupancy_scan(&landscape.subjective_intensity);
         let current_log2 = current_hz.log2();
 
-        let mut local_only = PitchHillClimbPitchCore::new(120.0, current_log2, 0.0, 0.0, 0.0, 0.0);
+        let mut local_only = PitchHillClimbPitchCore::new(120.0, current_log2, 0.0);
         local_only.set_global_peaks(0, 0.0);
         let mut with_global = local_only.clone();
         with_global.set_global_peaks(8, 20.0);
@@ -2444,18 +2319,8 @@ mod tests {
         let features = FeaturesNow::from_occupancy_scan(&landscape.subjective_intensity);
         let mut rng = SmallRng::seed_from_u64(17);
 
-        let mut core = PitchPeakSamplerCore::new(
-            120.0,
-            300.0f32.log2(),
-            0.0,
-            700.0,
-            16,
-            0.03,
-            10.0,
-            2,
-            1.0,
-            0.0,
-        );
+        let mut core =
+            PitchPeakSamplerCore::new(120.0, 300.0f32.log2(), 0.0, 700.0, 16, 0.03, 10.0, 2);
 
         let mut target_log2 = 300.0f32.log2();
         for _ in 0..24 {
@@ -2523,30 +2388,10 @@ mod tests {
         let right_peak_hz = 360.0;
         let landscape = test_landscape(&[(left_peak_hz, 1.0), (right_peak_hz, 0.95)]);
 
-        let mut cold = PitchPeakSamplerCore::new(
-            90.0,
-            330.0f32.log2(),
-            0.0,
-            900.0,
-            18,
-            0.01,
-            0.0,
-            0,
-            1.0,
-            0.0,
-        );
-        let mut hot = PitchPeakSamplerCore::new(
-            90.0,
-            330.0f32.log2(),
-            0.0,
-            900.0,
-            18,
-            0.25,
-            40.0,
-            3,
-            1.0,
-            0.0,
-        );
+        let mut cold =
+            PitchPeakSamplerCore::new(90.0, 330.0f32.log2(), 0.0, 900.0, 18, 0.01, 0.0, 0);
+        let mut hot =
+            PitchPeakSamplerCore::new(90.0, 330.0f32.log2(), 0.0, 900.0, 18, 0.25, 40.0, 3);
 
         let cold_right = right_peak_ratio(&mut cold, &landscape, 99, left_peak_hz, right_peak_hz);
         let hot_right = right_peak_ratio(&mut hot, &landscape, 99, left_peak_hz, right_peak_hz);
@@ -2591,7 +2436,7 @@ mod tests {
         let features = FeaturesNow::from_occupancy_scan(&landscape.subjective_intensity);
 
         let mut hill_rng = SmallRng::seed_from_u64(123);
-        let mut hill = PitchHillClimbPitchCore::new(120.0, 330.0f32.log2(), 0.0, 0.0, 0.0, 0.0);
+        let mut hill = PitchHillClimbPitchCore::new(120.0, 330.0f32.log2(), 0.0);
         let mut hill_target = 330.0f32.log2();
         for _ in 0..32 {
             let proposal = hill.propose_target(
@@ -2614,18 +2459,8 @@ mod tests {
         );
 
         let mut sampler_rng = SmallRng::seed_from_u64(456);
-        let mut sampler = PitchPeakSamplerCore::new(
-            120.0,
-            330.0f32.log2(),
-            0.0,
-            700.0,
-            16,
-            0.03,
-            10.0,
-            2,
-            1.0,
-            0.0,
-        );
+        let mut sampler =
+            PitchPeakSamplerCore::new(120.0, 330.0f32.log2(), 0.0, 700.0, 16, 0.03, 10.0, 2);
         let mut sampler_target = 330.0f32.log2();
         for _ in 0..32 {
             let proposal = sampler.propose_target(
@@ -2735,18 +2570,8 @@ mod tests {
         let landscape = test_landscape(&[(330.0, 1.0)]);
         let perceptual = test_adaptation(landscape.space.n_bins());
         let features = FeaturesNow::from_occupancy_scan(&landscape.subjective_intensity);
-        let mut core_a = PitchPeakSamplerCore::new(
-            120.0,
-            330.0f32.log2(),
-            0.0,
-            700.0,
-            16,
-            0.03,
-            10.0,
-            2,
-            1.0,
-            0.0,
-        );
+        let mut core_a =
+            PitchPeakSamplerCore::new(120.0, 330.0f32.log2(), 0.0, 700.0, 16, 0.03, 10.0, 2);
         core_a.set_leave_self_out(true);
         let mut core_b = core_a.clone();
 
@@ -2785,7 +2610,7 @@ mod tests {
         let landscape = test_landscape(&[(330.0, 1.0), (440.0, 0.6)]);
         let perceptual = test_adaptation(landscape.space.n_bins());
         let features = FeaturesNow::from_occupancy_scan(&landscape.subjective_intensity);
-        let core = PitchHillClimbPitchCore::new(120.0, 330.0f32.log2(), 0.0, 0.0, 0.0, 0.0);
+        let core = PitchHillClimbPitchCore::new(120.0, 330.0f32.log2(), 0.0);
         let current = 330.0f32.log2();
 
         let mut rng_a = SmallRng::seed_from_u64(99);
@@ -2841,7 +2666,7 @@ mod tests {
     fn propose_with_scorer_negated_prefers_different_peak() {
         let landscape = test_landscape(&[(330.0, 1.0), (550.0, 0.3)]);
         let _perceptual = test_adaptation(landscape.space.n_bins());
-        let mut core = PitchHillClimbPitchCore::new(120.0, 440.0f32.log2(), 0.0, 0.0, 0.0, 0.0);
+        let mut core = PitchHillClimbPitchCore::new(120.0, 440.0f32.log2(), 0.0);
         core.set_global_peaks(3, 0.0);
         let current = 440.0f32.log2();
 
@@ -2877,7 +2702,7 @@ mod tests {
     #[test]
     fn propose_with_scorer_non_exploratory_plateau_stays_put() {
         let landscape = test_landscape(&[(330.0, 1.0), (550.0, 0.3)]);
-        let mut core = PitchHillClimbPitchCore::new(120.0, 440.0f32.log2(), 0.0, 0.02, 0.0, 0.0);
+        let mut core = PitchHillClimbPitchCore::new(120.0, 440.0f32.log2(), 0.0);
         core.set_global_peaks(3, 0.0);
         let current = 440.0f32.log2();
 

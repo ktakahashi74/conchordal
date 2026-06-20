@@ -235,8 +235,8 @@ pub struct AppConfig {
 pub struct DccConfig {
     #[serde(default = "DccConfig::default_coupling_strength")]
     pub coupling_strength: f32,
-    #[serde(default = "DccConfig::default_max_exploration_bonus")]
-    pub max_exploration_bonus: f32,
+    #[serde(default = "DccConfig::default_max_temperature_bonus")]
+    pub max_temperature_bonus: f32,
 }
 
 impl DccConfig {
@@ -244,7 +244,7 @@ impl DccConfig {
         0.0
     }
 
-    fn default_max_exploration_bonus() -> f32 {
+    fn default_max_temperature_bonus() -> f32 {
         0.10
     }
 }
@@ -253,7 +253,7 @@ impl Default for DccConfig {
     fn default() -> Self {
         Self {
             coupling_strength: Self::default_coupling_strength(),
-            max_exploration_bonus: Self::default_max_exploration_bonus(),
+            max_temperature_bonus: Self::default_max_temperature_bonus(),
         }
     }
 }
@@ -330,11 +330,11 @@ impl AppConfig {
         } else {
             0.0
         };
-        self.dcc.max_exploration_bonus = Self::round_f32(self.dcc.max_exploration_bonus);
-        self.dcc.max_exploration_bonus = if self.dcc.max_exploration_bonus.is_finite() {
-            self.dcc.max_exploration_bonus.max(0.0)
+        self.dcc.max_temperature_bonus = Self::round_f32(self.dcc.max_temperature_bonus);
+        self.dcc.max_temperature_bonus = if self.dcc.max_temperature_bonus.is_finite() {
+            self.dcc.max_temperature_bonus.max(0.0)
         } else {
-            DccConfig::default_max_exploration_bonus()
+            DccConfig::default_max_temperature_bonus()
         };
     }
 
@@ -448,7 +448,7 @@ mod tests {
         assert_eq!(cfg.psychoacoustics.consonance.density.roughness_gain, 1.0);
         assert!(!cfg.psychoacoustics.use_incoherent_power);
         assert_eq!(cfg.dcc.coupling_strength, 0.0);
-        assert_eq!(cfg.dcc.max_exploration_bonus, 0.10);
+        assert_eq!(cfg.dcc.max_temperature_bonus, 0.10);
 
         let contents = fs::read_to_string(&path).expect("read written config");
         assert!(
@@ -523,7 +523,7 @@ mod tests {
             },
             dcc: DccConfig {
                 coupling_strength: 0.25,
-                max_exploration_bonus: 0.12,
+                max_temperature_bonus: 0.12,
             },
         };
         let text = toml::to_string_pretty(&custom).unwrap();
@@ -547,7 +547,7 @@ mod tests {
         assert_eq!(cfg.psychoacoustics.consonance.density.roughness_gain, 0.5);
         assert!(!cfg.psychoacoustics.use_incoherent_power);
         assert_eq!(cfg.dcc.coupling_strength, 0.25);
-        assert_eq!(cfg.dcc.max_exploration_bonus, 0.12);
+        assert_eq!(cfg.dcc.max_temperature_bonus, 0.12);
         assert!(!cfg.playback.wait_user_exit);
         assert!(cfg.playback.wait_user_start);
 
@@ -594,12 +594,12 @@ roughness_gain = -1.0
     fn round_f32_inplace_sanitizes_dcc_coupling() {
         let mut cfg = AppConfig::default();
         cfg.dcc.coupling_strength = 2.0;
-        cfg.dcc.max_exploration_bonus = f32::NAN;
+        cfg.dcc.max_temperature_bonus = f32::NAN;
         cfg.round_f32_inplace();
         assert_eq!(cfg.dcc.coupling_strength, 1.0);
         assert_eq!(
-            cfg.dcc.max_exploration_bonus,
-            DccConfig::default_max_exploration_bonus()
+            cfg.dcc.max_temperature_bonus,
+            DccConfig::default_max_temperature_bonus()
         );
     }
 }

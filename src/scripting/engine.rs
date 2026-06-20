@@ -73,8 +73,6 @@ impl ScriptHost {
                 ("tessitura_gravity", SpeciesSpec::set_tessitura_gravity),
                 ("sustain_drive", SpeciesSpec::set_continuous_drive),
                 ("pitch_smooth", SpeciesSpec::set_pitch_smooth_tau),
-                ("exploration", SpeciesSpec::set_exploration),
-                ("persistence", SpeciesSpec::set_persistence),
                 ("octave_avoidance", SpeciesSpec::set_octave_avoidance),
             ],
         );
@@ -122,13 +120,8 @@ impl ScriptHost {
         register_species_numeric_methods(
             &mut engine,
             &[
-                ("anneal_temp", SpeciesSpec::set_anneal_temp),
                 ("move_cost", SpeciesSpec::set_move_cost_coeff),
                 ("move_cost_exp", SpeciesSpec::set_move_cost_exp),
-                (
-                    "improvement_threshold",
-                    SpeciesSpec::set_improvement_threshold,
-                ),
                 ("proposal_interval", SpeciesSpec::set_proposal_interval_sec),
             ],
         );
@@ -848,18 +841,6 @@ impl ScriptHost {
                     None,
                 ),
                 (
-                    "exploration",
-                    SpeciesSpec::set_exploration,
-                    patch_exploration,
-                    None,
-                ),
-                (
-                    "persistence",
-                    SpeciesSpec::set_persistence,
-                    patch_persistence,
-                    None,
-                ),
-                (
                     "octave_avoidance",
                     SpeciesSpec::set_octave_avoidance,
                     patch_octave_avoidance,
@@ -960,12 +941,6 @@ impl ScriptHost {
             ctx.clone(),
             &[
                 (
-                    "anneal_temp",
-                    SpeciesSpec::set_anneal_temp,
-                    patch_anneal_temp,
-                    None,
-                ),
-                (
                     "move_cost",
                     SpeciesSpec::set_move_cost_coeff,
                     patch_move_cost_coeff,
@@ -975,12 +950,6 @@ impl ScriptHost {
                     "move_cost_exp",
                     SpeciesSpec::set_move_cost_exp,
                     patch_move_cost_exp,
-                    None,
-                ),
-                (
-                    "improvement_threshold",
-                    SpeciesSpec::set_improvement_threshold,
-                    patch_improvement_threshold,
                     None,
                 ),
                 (

@@ -3,7 +3,7 @@ use crate::core::landscape::Landscape;
 use crate::core::log2space::Log2Space;
 use crate::core::modulation::NeuralRhythms;
 use crate::life::adaptation::{AdaptationContext, FeaturesNow};
-use crate::life::control::{PitchControl, PitchMode};
+use crate::life::control::{PitchControl, PitchCoreKind, PitchMode};
 use rand::rngs::SmallRng;
 
 #[derive(Debug)]
@@ -145,7 +145,7 @@ impl PitchController {
         pitch: &PitchControl,
         neighbor_pitch_log2: &[f32],
         neighbor_salience: &[f32],
-        exploration_bonus: f32,
+        temperature_bonus: f32,
     ) {
         let dt_sec = dt_sec.max(0.0);
         let current_freq = current_freq_hz.max(1.0);
@@ -157,12 +157,18 @@ impl PitchController {
         };
         self.integration_window = Self::integration_window_for_freq(current_freq);
         self.accumulated_time += dt_sec;
-        let effective_exploration = if exploration_bonus.is_finite() {
-            (pitch.exploration + exploration_bonus).clamp(0.0, 1.0)
-        } else {
-            pitch.exploration.clamp(0.0, 1.0)
+        // Listener pressure feeds the search temperature: base (per-core default)
+        // plus the tension-driven bonus. The base mirrors `apply_*_control`.
+        let base_temperature = match pitch.core_kind {
+            PitchCoreKind::HillClimb => pitch.temperature.unwrap_or(0.0),
+            PitchCoreKind::PeakSampler => pitch.temperature.unwrap_or(0.08),
         };
-        self.core.set_exploration(effective_exploration);
+        let bonus = if temperature_bonus.is_finite() {
+            temperature_bonus.max(0.0)
+        } else {
+            0.0
+        };
+        self.core.set_temperature(base_temperature + bonus);
         let proposal_interval_sec = if pitch.proposal_interval_sec.is_some_and(|v| v > 0.0) {
             pitch.proposal_interval_sec
         } else {

@@ -25,7 +25,7 @@ struct ListenerStats {
 struct PressureStats {
     n: usize,
     max_tension_pressure: f64,
-    max_exploration_bonus: f64,
+    max_temperature_bonus: f64,
 }
 
 impl PressureStats {
@@ -34,9 +34,9 @@ impl PressureStats {
         self.max_tension_pressure = self
             .max_tension_pressure
             .max(record["tension_pressure"].as_f64().unwrap_or(0.0));
-        self.max_exploration_bonus = self
-            .max_exploration_bonus
-            .max(record["exploration_bonus"].as_f64().unwrap_or(0.0));
+        self.max_temperature_bonus = self
+            .max_temperature_bonus
+            .max(record["temperature_bonus"].as_f64().unwrap_or(0.0));
     }
 }
 
@@ -123,7 +123,7 @@ fn listener_twin_tension_resolution_fixture_reports_expected_shape() {
     let config_path = config_path();
     fs::write(
         &config_path,
-        "[dcc]\ncoupling_strength = 0.0\nmax_exploration_bonus = 0.1\n",
+        "[dcc]\ncoupling_strength = 0.0\nmax_temperature_bonus = 0.1\n",
     )
     .expect("write test config");
     let output = Command::new(exe)
@@ -198,10 +198,10 @@ fn listener_twin_tension_resolution_fixture_reports_expected_shape() {
         "dcc_pressure should be reported beside listener_state"
     );
     assert!(
-        pressure.max_tension_pressure < 1.0e-6 && pressure.max_exploration_bonus < 1.0e-6,
+        pressure.max_tension_pressure < 1.0e-6 && pressure.max_temperature_bonus < 1.0e-6,
         "default DCC coupling should be report-only: pressure={} bonus={}",
         pressure.max_tension_pressure,
-        pressure.max_exploration_bonus
+        pressure.max_temperature_bonus
     );
 
     assert!(

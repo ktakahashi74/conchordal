@@ -1,6 +1,7 @@
 use crate::core::harmonic_ratios::{HARMONIC_RATIOS, ratio_to_f32};
 use crate::core::harmonicity_kernel::HarmonicityKernel;
 use crate::core::landscape::Landscape;
+use crate::core::log2space::Log2Space;
 use crate::core::psycho_state::{normalize_density, roughness_ratio_to_state01};
 use crate::core::roughness_kernel::{RoughnessKernel, erb_grid};
 use crate::life::adaptation::{AdaptationContext, FeaturesNow};
@@ -751,6 +752,75 @@ pub(crate) fn occupancy_contribution(
         raw + octave_avoidance * (-0.5 * (d_chroma / sigma).powi(2)).exp()
     } else {
         raw
+    }
+}
+
+/// Fill `out` with the fundamental-occupancy scan (the leave-self-out spatial
+/// slice of `F`): deposit each visible neighbor's `occupancy_contribution` across
+/// the Log2Space. The Gaussian on raw f0 only reaches a local window around the
+/// neighbor; with octave avoidance the chroma term is octave-periodic, so deposits
+/// land in a window around each octave multiple of the neighbor. Skipping the
+/// negligible gaps between octaves makes this equivalent to a full scan but
+/// O(octaves x window) instead of O(n_bins) per neighbor.
+pub(crate) fn fill_occupancy_scan(
+    out: &mut Vec<f32>,
+    space: &Log2Space,
+    neighbors: &[f32],
+    neighbor_salience: &[f32],
+    sigma_cents: f32,
+    octave_avoidance: f32,
+) {
+    let n = space.n_bins();
+    out.clear();
+    out.resize(n, 0.0);
+    if neighbors.is_empty() || n == 0 {
+        return;
+    }
+    let sigma_log2 = (sigma_cents.max(1e-3)) / 1200.0;
+    let margin = 4.0 * sigma_log2;
+    let win = (margin * space.bins_per_oct as f32).ceil() as isize;
+    let base = space.centers_log2[0];
+    let top = space.centers_log2[n - 1];
+    let bins_per_oct = space.bins_per_oct as f32;
+    let n_isize = n as isize;
+    for (idx, &nb) in neighbors.iter().enumerate() {
+        let Some(center) = space.index_of_log2(nb) else {
+            continue;
+        };
+        let split_sign = neighbor_salience.get(idx).copied().unwrap_or(0.0);
+        // Octave offsets whose window intersects the space (k = 0 only without
+        // octave avoidance, since the chroma term is then absent).
+        let (k_min, k_max) = if octave_avoidance > 0.0 {
+            (
+                (base - margin - nb).ceil() as isize,
+                (top + margin - nb).floor() as isize,
+            )
+        } else {
+            (0, 0)
+        };
+        let mut prev_hi: isize = -1;
+        for k in k_min..=k_max {
+            let center_bin = if k == 0 {
+                center as isize
+            } else {
+                ((nb + k as f32 - base) * bins_per_oct).round() as isize
+            };
+            let lo = (center_bin - win).max(0).max(prev_hi + 1);
+            let hi = (center_bin + win).min(n_isize - 1);
+            if hi < lo {
+                continue;
+            }
+            for i in lo..=hi {
+                out[i as usize] += occupancy_contribution(
+                    space.centers_log2[i as usize],
+                    nb,
+                    split_sign,
+                    sigma_log2,
+                    octave_avoidance,
+                );
+            }
+            prev_hi = hi;
+        }
     }
 }
 
@@ -1686,6 +1756,58 @@ mod tests {
         assert!(occupancy_contribution(fifth, unison, 0.0, sigma, 1.0) < 0.1);
         // Unison is always occupied.
         assert!(occupancy_contribution(unison, unison, 0.0, sigma, 0.0) > 0.9);
+    }
+
+    #[test]
+    fn fill_occupancy_scan_octave_windows_match_full_scan() {
+        let space = Log2Space::new(110.0, 880.0, 48);
+        let n = space.n_bins();
+        let neighbors = [220.0_f32.log2(), 330.0_f32.log2()];
+        let salience = [1.0_f32, -1.0];
+        let sigma_cents = 60.0;
+        let octave_avoidance = 1.0_f32;
+
+        let mut windowed = Vec::new();
+        fill_occupancy_scan(
+            &mut windowed,
+            &space,
+            &neighbors,
+            &salience,
+            sigma_cents,
+            octave_avoidance,
+        );
+
+        // Reference: brute-force full scan over every bin.
+        let sigma_log2 = sigma_cents / 1200.0;
+        let mut full = vec![0.0f32; n];
+        for (idx, &nb) in neighbors.iter().enumerate() {
+            let split = salience[idx];
+            for (i, slot) in full.iter_mut().enumerate() {
+                *slot += occupancy_contribution(
+                    space.centers_log2[i],
+                    nb,
+                    split,
+                    sigma_log2,
+                    octave_avoidance,
+                );
+            }
+        }
+
+        let max_diff = windowed
+            .iter()
+            .zip(full.iter())
+            .map(|(a, b)| (a - b).abs())
+            .fold(0.0f32, f32::max);
+        assert!(
+            max_diff < 1e-3,
+            "octave-windowed occupancy must match the full scan (max_diff={max_diff})"
+        );
+        // And it must actually be octave-aware: the octave of 220 (=440) is occupied.
+        let oct_bin = space.index_of_log2(440.0f32.log2()).unwrap();
+        assert!(
+            windowed[oct_bin] > 0.1,
+            "a neighbor's octave should be occupied"
+        );
     }
 
     #[test]

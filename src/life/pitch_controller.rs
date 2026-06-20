@@ -1,4 +1,4 @@
-use super::pitch_core::{AnyPitchCore, PitchCore, occupancy_contribution};
+use super::pitch_core::{AnyPitchCore, PitchCore, fill_occupancy_scan};
 use crate::core::landscape::Landscape;
 use crate::core::log2space::Log2Space;
 use crate::core::modulation::NeuralRhythms;
@@ -64,41 +64,14 @@ impl PitchController {
         sigma_cents: f32,
         octave_avoidance: f32,
     ) {
-        let n = space.n_bins();
-        self.occupancy_scan.clear();
-        self.occupancy_scan.resize(n, 0.0);
-        if neighbors.is_empty() || n == 0 {
-            return;
-        }
-        let sigma_log2 = (sigma_cents.max(1e-3)) / 1200.0;
-        let win = ((4.0 * sigma_log2) * space.bins_per_oct as f32).ceil() as isize;
-        for (idx, &nb) in neighbors.iter().enumerate() {
-            let Some(center) = space.index_of_log2(nb) else {
-                continue;
-            };
-            let split_sign = neighbor_salience.get(idx).copied().unwrap_or(0.0);
-            // The chroma term is octave-periodic: octave avoidance must reach every
-            // octave in the scan, so cover the whole space rather than a local
-            // window around the neighbor. Without it, the Gaussian on raw f0 only
-            // needs a local window.
-            let (lo, hi) = if octave_avoidance > 0.0 {
-                (0, n - 1)
-            } else {
-                (
-                    (center as isize - win).max(0) as usize,
-                    ((center as isize + win).max(0) as usize).min(n - 1),
-                )
-            };
-            for i in lo..=hi {
-                self.occupancy_scan[i] += occupancy_contribution(
-                    space.centers_log2[i],
-                    nb,
-                    split_sign,
-                    sigma_log2,
-                    octave_avoidance,
-                );
-            }
-        }
+        fill_occupancy_scan(
+            &mut self.occupancy_scan,
+            space,
+            neighbors,
+            neighbor_salience,
+            sigma_cents,
+            octave_avoidance,
+        );
     }
 
     pub fn target_pitch_log2(&self) -> f32 {

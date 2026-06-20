@@ -349,9 +349,12 @@ windowless and was correct). An A/B render compared (a) the local window vs (b)
 covering the whole scan when `octave_avoidance > 0` (the chroma term is
 octave-periodic, so it cannot be captured by a single local window). (b) was chosen
 by ear, so the scan now deposits across the full Log2Space when octave avoidance is
-on, making the adaptation feed genuinely octave-aware as intended. (Cost: O(n_bins ×
-neighbors) per proposal when the knob is on; acceptable at control rate, optimizable
-later to per-octave windows if needed.)
+on, making the adaptation feed genuinely octave-aware as intended.
+
+*Perf (2026-06-20).* The octave-avoidance occupancy deposit was optimized from a
+full O(n_bins × neighbors) scan to a window around each octave multiple of the
+neighbor (`fill_occupancy_scan`), skipping the negligible gaps between octaves. A
+unit test asserts it matches the full scan, so this is behavior-neutral.
 
 **Remaining cleanup — Stage 2b.** The vestigial `crowding_sigma_from_roughness`
 (plumbed but ignored since Stage 2) should still be removed from the core / config /

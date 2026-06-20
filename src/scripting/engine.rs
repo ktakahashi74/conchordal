@@ -75,6 +75,7 @@ impl ScriptHost {
                 ("pitch_smooth", SpeciesSpec::set_pitch_smooth_tau),
                 ("exploration", SpeciesSpec::set_exploration),
                 ("persistence", SpeciesSpec::set_persistence),
+                ("octave_avoidance", SpeciesSpec::set_octave_avoidance),
             ],
         );
         register_species_pair_numeric_methods(
@@ -92,20 +93,6 @@ impl ScriptHost {
             "avoid_neighbors",
             |mut species: SpeciesHandle, strength: INT| {
                 species.spec.set_crowding_auto_sigma(strength as f32);
-                species
-            },
-        );
-        engine.register_fn(
-            "octave_avoidance",
-            |mut species: SpeciesHandle, weight: FLOAT| {
-                species.spec.set_octave_avoidance(weight as f32);
-                species
-            },
-        );
-        engine.register_fn(
-            "octave_avoidance",
-            |mut species: SpeciesHandle, weight: INT| {
-                species.spec.set_octave_avoidance(weight as f32);
                 species
             },
         );
@@ -870,6 +857,12 @@ impl ScriptHost {
                     "persistence",
                     SpeciesSpec::set_persistence,
                     patch_persistence,
+                    None,
+                ),
+                (
+                    "octave_avoidance",
+                    SpeciesSpec::set_octave_avoidance,
+                    patch_octave_avoidance,
                     None,
                 ),
             ],

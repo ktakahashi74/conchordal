@@ -404,6 +404,10 @@ fn noise() -> Material;
 fn octave_avoidance(arg0: Material, arg1: f64) -> Material;
 /// [tuning] Repel octave/unison doubling so voices settle on distinct chord tones.
 fn octave_avoidance(arg0: Material, arg1: i64) -> Material;
+/// [tuning] Repel octave/unison doubling so voices settle on distinct chord tones.
+fn octave_avoidance(arg0: Participant, arg1: f64) -> Participant;
+/// [tuning] Repel octave/unison doubling so voices settle on distinct chord tones.
+fn octave_avoidance(arg0: Participant, arg1: i64) -> Participant;
 
 /// Odd harmonics: f, 3f, 5f, ...
 fn odd_modes() -> ModePattern;

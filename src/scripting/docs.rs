@@ -1114,7 +1114,7 @@ the two-argument form sets it explicitly in cents.",
         owner: Owner::Voice,
         category: "neighbors",
         style: Style::Method,
-        patch: Patch::Draft,
+        patch: Patch::Live,
         usage: &["octave_avoidance(weight)"],
         summary: "Repel octave/unison doubling so voices settle on distinct chord tones.",
         details: "Adds an octave-equivalence (chroma) term to the occupancy field shared by \

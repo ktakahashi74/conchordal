@@ -1915,6 +1915,10 @@ fn patch_persistence(update: &mut ControlUpdate, value: f32) {
     update.persistence = Some(value);
 }
 
+fn patch_octave_avoidance(update: &mut ControlUpdate, value: f32) {
+    update.octave_avoidance = Some(value);
+}
+
 fn patch_leave_self_out_mode(update: &mut ControlUpdate, mode: LeaveSelfOutMode) {
     update.leave_self_out_mode = Some(mode);
 }

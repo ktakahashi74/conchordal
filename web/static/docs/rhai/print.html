@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-7ac3c3e2.js";
+            window.path_to_searchindex_js = "searchindex-8d1646ce.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-ebd22986.js"></script>
@@ -224,8 +224,9 @@ is alive.</p>
 <li><strong>Materials</strong> are voice templates made with <code>sine()</code>, <code>harmonic()</code>,
 <code>modal()</code>, <code>saw()</code>, <code>square()</code>, and <code>noise()</code>.</li>
 <li><strong>Variants</strong> clone a material with <code>variant(material)</code>.</li>
-<li><strong>Placements</strong> decide where participants enter: <code>at()</code>, <code>peaks()</code>,
-<code>density()</code>, <code>random()</code>, and <code>line()</code>.</li>
+<li><strong>Placements</strong> decide where participants enter: field targets
+<code>consonance()</code>, <code>dissonance()</code>, <code>edge()</code>, <code>gap()</code> (cloud by default,
+<code>.peak()</code> for the extremum), plus <code>random()</code>, <code>at()</code>, and <code>line()</code>.</li>
 <li><strong>Participants</strong> are the handles returned by <code>place()</code>. Before the next
 <code>wait()</code> or <code>flush()</code>, participant builder methods still shape the initial
 spawn; after that, patchable methods update running voices.</li>
@@ -242,9 +243,9 @@ section("plain entry", || {
 });
 </code></pre>
 <h2 id="placing-into-the-field"><a class="header" href="#placing-into-the-field">Placing Into the Field</a></h2>
-<p><code>peaks(root_hz)</code> places voices at high Consonance Field positions around a
-root. The field is shaped by what the system perceives — an anchor changes
-where the peaks are.</p>
+<p><code>consonance(root_hz).peak()</code> places voices at high Consonance Field positions
+around a root. The field is shaped by what the system perceives — an anchor
+changes where the peaks are.</p>
 <pre><code class="language-rhai">let anchor = harmonic()
     .brain("drone")
     .amp(0.06)
@@ -259,7 +260,7 @@ section("field placement", || {
     place(anchor, at(110.0));
     wait(1.0);
 
-    place(voice, peaks(110.0).range(1.0, 4.0).count(6).spacing(0.9));
+    place(voice, consonance(110.0).peak().range(1.0, 4.0).count(6).spacing(0.9));
     wait(6.0);
 });
 </code></pre>
@@ -272,7 +273,7 @@ must be set before the group is committed. The
 draft-only.</p>
 <pre><code class="language-rhai">let g = place(
     harmonic().amp(0.04).sustain(),
-    peaks(220.0).count(3)
+    consonance(220.0).peak().count(3)
 );
 wait(2.0);     // commit: the group is now live
 
@@ -300,7 +301,7 @@ section("emergence", || {
     place(anchor, at(110.0));
     wait(2.0);
 
-    place(colony, density(90.0, 900.0).count(8).spacing(0.8));
+    place(colony, consonance(90.0, 900.0).count(8).spacing(0.8));
     wait(8.0);
 });
 </code></pre>
@@ -384,9 +385,18 @@ that placement, movement, prediction, and survival all read from.</p>
 <p>Because the field is computed from what the system actually hears, every voice
 deforms the terrain for every other voice. That feedback loop — not a chord
 chart — is where harmony comes from.</p>
-<h2 id="field-placement-peaks"><a class="header" href="#field-placement-peaks">Field placement: <code>peaks</code></a></h2>
-<p><code>peaks(root_hz)</code> places voices at high Consonance Field positions around a
-root. Use it when the musical thought is “start from this harmonic center”.</p>
+<h2 id="placing-into-the-field-consonance-dissonance-edge-gap"><a class="header" href="#placing-into-the-field-consonance-dissonance-edge-gap">Placing into the field: <code>consonance</code>, <code>dissonance</code>, <code>edge</code>, <code>gap</code></a></h2>
+<p>A field-relative placement names a <strong>target</strong> — a region of the field — and is
+realized either as a cloud (the default) or as a deterministic extremum with
+<code>.peak()</code>. The targets are:</p>
+<ul>
+<li><code>consonance</code> — high-consonance positions (harmonic centers, fusion).</li>
+<li><code>dissonance</code> — low-consonance positions (tension, clusters, color).</li>
+<li><code>edge</code> — the consonance/dissonance boundary (the metastable middle).</li>
+<li><code>gap</code> — empty registers (fill the room, avoid masking).</li>
+</ul>
+<p><code>consonance(root)</code> takes a harmonic window around a root (multiples via
+<code>range()</code>); every target also takes an absolute <code>(min_hz, max_hz)</code> range.</p>
 <pre><code class="language-rhai">let anchor = harmonic()
     .brain("drone")
     .amp(0.06)
@@ -401,22 +411,22 @@ section("field placement", || {
     place(anchor, at(110.0));
     wait(1.0);
 
-    place(voice, peaks(110.0).range(1.0, 4.0).count(6).spacing(0.9));
+    place(voice, consonance(110.0).peak().range(1.0, 4.0).count(6).spacing(0.9));
     wait(6.0);
 });
 </code></pre>
-<h2 id="consonance-density-density"><a class="header" href="#consonance-density-density">Consonance Density: <code>density</code></a></h2>
-<p><code>density(min_hz, max_hz)</code> samples from the density view of the field. Use it
-when the musical thought is “let the field seed a population inside this
-range”.</p>
+<p>A target with no modifier is a <strong>density cloud</strong>: not “random but harmonic” but
+a normalized distribution derived from the consonance model, well-defined inside
+the range. Placement is independent of behavior — enter at <code>dissonance</code> and
+<code>anchor()</code> for a held cluster, or enter at <code>dissonance</code> and <code>seek_consonance()</code>
+for a resolution gesture.</p>
 <pre><code class="language-rhai">let cloud = harmonic().amp(0.035).sustain();
 
-place(cloud, density(90.0, 1200.0).count(10).spacing(0.8));
+place(cloud, consonance(90.0, 1200.0).count(10).spacing(0.8));
 wait(8.0);
 </code></pre>
-<p>Density is not just “random but harmonic”. It is a normalized distribution
-derived from the consonance model, and it remains well-defined inside the
-requested range.</p>
+<p>The field-agnostic placements are <code>random(min_hz, max_hz)</code> (log-uniform) and the
+geometric <code>at(hz)</code> and <code>line(start_hz, end_hz)</code>.</p>
 <h2 id="consonance-movement-seek_consonance"><a class="header" href="#consonance-movement-seek_consonance">Consonance Movement: <code>seek_consonance</code></a></h2>
 <p>Use <code>seek_consonance()</code> when voices should actively seek better field
 positions. It sets free hill-climb movement with glide defaults. Use
@@ -431,7 +441,7 @@ faster pitch motion”.</p>
     .global_peaks(8, 70.0)
     .ratio_candidates(5);
 
-place(mover, density(80.0, 900.0).count(8));
+place(mover, consonance(80.0, 900.0).count(8));
 wait(12.0);
 </code></pre>
 <p><code>avoid_neighbors(strength)</code> adds crowding repulsion so movers spread out
@@ -461,7 +471,7 @@ according to a respawn policy. <code>respawn_consonance()</code> draws them from
 consonance-biased parental peaks; <code>respawn_capacity(count)</code> keeps the
 population bounded; <code>respawn_settle(placement)</code> decides where replacements
 settle.</p>
-<pre><code class="language-rhai">let settle = density(70.0, 1100.0).spacing(0.8);
+<pre><code class="language-rhai">let settle = consonance(70.0, 1100.0).spacing(0.8);
 
 let ecology = harmonic()
     .amp(0.04)
@@ -480,7 +490,7 @@ let ecology = harmonic()
     .respawn_capacity(14)
     .respawn_settle(settle);
 
-place(ecology, density(70.0, 1100.0).count(14));
+place(ecology, consonance(70.0, 1100.0).count(14));
 wait(30.0);
 </code></pre>
 <p>The full lifecycle surface (energy, metabolism, costs) and the respawn
@@ -502,7 +512,7 @@ let shimmer = modal()
     .modes(shimmer_modes)
     .brightness(0.7);
 
-place(shimmer, density(200.0, 1600.0).count(4));
+place(shimmer, consonance(200.0, 1600.0).count(4));
 wait(8.0);
 </code></pre>
 <p>Mode constructors include <code>harmonic_modes()</code>, <code>odd_modes()</code>,
@@ -522,7 +532,7 @@ perceptual mechanism behind it, so this is a useful artifact (a tension knob tha
 happens to work), not a tonality (major/minor) switch and not a grounded terrain
 operation. Do not read musical meaning into the projection itself.</p>
 <pre><code class="language-rhai">let voice = harmonic().amp(0.04).sustain();
-place(voice, peaks(110.0).count(5));
+place(voice, consonance(110.0).peak().count(5));
 
 harmonic_tension(0.1);   // consonant gravity
 wait(4.0);
@@ -557,7 +567,7 @@ work:</p>
 forms. It only deepens the basin for a <em>real</em> periodicity; it never
 fabricates a beat from non-metric input.</li>
 <li><code>temporal_basin(min_hz, max_hz)</code> — the tempo region the emergent beat
-gravitates toward (the time-axis analogue of <code>density(min, max)</code>). It shapes
+gravitates toward (the time-axis analogue of <code>consonance(min, max)</code>). It shapes
 the terrain; it does not place a beat, and it never forces a measure.</li>
 </ul>
 <h2 id="per-voice-presets-and-modifiers"><a class="header" href="#per-voice-presets-and-modifiers">Per-voice presets and modifiers</a></h2>
@@ -596,8 +606,8 @@ let offbeat = harmonic()
     .cycles(2);
 
 place(beat, at(110.0));
-place(entrained, peaks(110.0).count(3));
-place(drift, density(300.0, 1200.0).count(4));
+place(entrained, consonance(110.0).peak().count(3));
+place(drift, consonance(300.0, 1200.0).count(4));
 place(offbeat, at(220.0));
 wait(12.0);
 </code></pre>
@@ -657,7 +667,7 @@ let normal = harmonic().send(habitat_bus | presentation_bus);
 
 place(anchor, at(110.0));
 place(decor, at(880.0));
-place(normal, peaks(110.0).count(3));
+place(normal, consonance(110.0).peak().count(3));
 wait(4.0);
 </code></pre>
 <p>Keeping the buses separate is a composition tool. A hidden anchor on
@@ -716,7 +726,7 @@ changes rhythm synchronization.</li>
 <tbody>
 <tr><td><code>Material</code></td><td>Voice template built from a constructor such as <code>sine()</code> or <code>harmonic()</code>; all builder methods are chainable.</td></tr>
 <tr><td><code>Participant</code></td><td>Handle to a placed voice group returned by <code>place()</code>; draft until the next <code>wait()</code>/<code>flush()</code>, then live.</td></tr>
-<tr><td><code>Placement</code></td><td>Where voices enter the field: built by <code>at()</code>, <code>peaks()</code>, <code>density()</code>, <code>random()</code>, or <code>line()</code>.</td></tr>
+<tr><td><code>Placement</code></td><td>Where voices enter the field: built by <code>at()</code>, <code>consonance()</code>, <code>dissonance()</code>, <code>edge()</code>, <code>gap()</code>, <code>random()</code>, or <code>line()</code>.</td></tr>
 <tr><td><code>ModePattern</code></td><td>Frequency pattern for modal synthesis bodies; built by <code>*_modes()</code> constructors.</td></tr>
 <tr><td><code>Bus</code></td><td>One of the two mono output buses; combine with `</td></tr>
 <tr><td><code>BusSet</code></td><td>Combination of buses produced by `bus</td></tr>
@@ -773,14 +783,33 @@ changes rhythm synchronization.</li>
 <pre><code class="language-rhai ignore">at(freq_hz) -&gt; Placement
 </code></pre>
 <p>Place at a fixed frequency in Hz.</p>
-<h4 id="peaks"><a class="header" href="#peaks"><code>peaks</code></a></h4>
-<pre><code class="language-rhai ignore">peaks(root_hz) -&gt; Placement
+<h4 id="consonance"><a class="header" href="#consonance"><code>consonance</code></a></h4>
+<pre><code class="language-rhai ignore">consonance(root_hz) -&gt; Placement
+consonance(min_hz, max_hz) -&gt; Placement
 </code></pre>
-<p>Place at high Consonance Field positions around a root. Default multiplier range is 1x-4x of the root (see <code>range()</code>) with 1.0 ERB spacing (see <code>spacing()</code>).</p>
+<p>Target consonance maxima. Density cloud by default; <code>.peak()</code> for the extremum. <code>consonance(root)</code> takes a harmonic window around a root (default 1x-4x, set multiples with <code>range()</code>); <code>consonance(min, max)</code> takes an absolute range. Default spacing is 1.0 ERB.</p>
+<h4 id="dissonance"><a class="header" href="#dissonance"><code>dissonance</code></a></h4>
+<pre><code class="language-rhai ignore">dissonance(min_hz, max_hz) -&gt; Placement
+</code></pre>
+<p>Target consonance minima (tension, clusters). Density cloud by default; <code>.peak()</code> for the most dissonant point.</p>
+<h4 id="edge"><a class="header" href="#edge"><code>edge</code></a></h4>
+<pre><code class="language-rhai ignore">edge(min_hz, max_hz) -&gt; Placement
+</code></pre>
+<p>Target the consonance/dissonance boundary (C near its midpoint). The metastable region between fusion and beating. Density band by default; <code>.peak()</code> for the point closest to the boundary.</p>
+<h4 id="gap"><a class="header" href="#gap"><code>gap</code></a></h4>
+<pre><code class="language-rhai ignore">gap(min_hz, max_hz) -&gt; Placement
+</code></pre>
+<p>Target empty registers (low subjective intensity); fill the room. Density cloud by default; <code>.peak()</code> for the emptiest position.</p>
+<h4 id="peak"><a class="header" href="#peak"><code>peak</code></a></h4>
+<pre><code class="language-rhai ignore">peak()
+</code></pre>
+<p>Applies to: <code>Placement</code>.</p>
+<p>Realize a field target as its deterministic extremum.</p>
 <h4 id="density"><a class="header" href="#density"><code>density</code></a></h4>
-<pre><code class="language-rhai ignore">density(min_hz, max_hz) -&gt; Placement
+<pre><code class="language-rhai ignore">density()
 </code></pre>
-<p>Sample positions from Consonance Density inside a frequency range. Density is a normalized distribution derived from the consonance model and remains well-defined inside the requested range. Default spacing is 1.0 ERB.</p>
+<p>Applies to: <code>Placement</code>.</p>
+<p>Realize a field target as a stochastic cloud (the default).</p>
 <h4 id="random"><a class="header" href="#random"><code>random</code></a></h4>
 <pre><code class="language-rhai ignore">random(min_hz, max_hz) -&gt; Placement
 </code></pre>
@@ -798,12 +827,12 @@ changes rhythm synchronization.</li>
 <pre><code class="language-rhai ignore">range(min_mul, max_mul)
 </code></pre>
 <p>Applies to: <code>Placement</code>.</p>
-<p>Multiplier range relative to the root; only valid on <code>peaks()</code>.</p>
+<p>Multiplier range relative to the root; only valid on <code>consonance(root)</code>.</p>
 <h4 id="spacing"><a class="header" href="#spacing"><code>spacing</code></a></h4>
 <pre><code class="language-rhai ignore">spacing(min_erb)
 </code></pre>
 <p>Applies to: <code>Placement</code>.</p>
-<p>Minimum ERB distance between placed voices; valid on <code>peaks()</code> and <code>density()</code>.</p>
+<p>Minimum ERB distance between placed voices; valid on field placements.</p>
 <h3 id="timeline--staging"><a class="header" href="#timeline--staging">Timeline &amp; Staging</a></h3>
 <p>Staging verbs commit voices and move script time. <code>place()</code> stages a draft <code>Participant</code>; <code>wait()</code>/<code>flush()</code> commit drafts; scopes release groups automatically.</p>
 <h4 id="place"><a class="header" href="#place"><code>place</code></a></h4>
@@ -937,7 +966,7 @@ play(callback, [args])
 <pre><code class="language-rhai ignore">anchor()
 </code></pre>
 <p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
-<p>Hold the voice at its pitch: an anchored voice never moves. Voices placed with <code>at()</code> or given <code>freq()</code> are anchored implicitly; use <code>anchor()</code> to hold strategy-placed voices (<code>peaks()</code>, <code>density()</code>, …) at their settled position, or to state the intent explicitly.</p>
+<p>Hold the voice at its pitch: an anchored voice never moves. Voices placed with <code>at()</code> or given <code>freq()</code> are anchored implicitly; use <code>anchor()</code> to hold strategy-placed voices (<code>consonance()</code>, <code>dissonance()</code>, …) at their settled position, or to state the intent explicitly.</p>
 <h4 id="seek_consonance"><a class="header" href="#seek_consonance"><code>seek_consonance</code></a></h4>
 <pre><code class="language-rhai ignore">seek_consonance()
 </code></pre>
@@ -1029,7 +1058,7 @@ avoid_neighbors(strength, sigma_cents)
 <pre><code class="language-rhai ignore">respawn_settle(placement)
 </code></pre>
 <p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
-<p>Placement used for replacements. Requires a strategy-bearing placement: <code>density()</code>, <code>peaks()</code>, <code>random()</code>, or <code>line()</code> (not <code>at()</code>).</p>
+<p>Placement used for replacements. Requires a strategy-bearing placement: <code>consonance()</code>, <code>dissonance()</code>, <code>edge()</code>, <code>gap()</code>, <code>random()</code>, or <code>line()</code> (not <code>at()</code>).</p>
 <h4 id="respawn_min_c_level"><a class="header" href="#respawn_min_c_level"><code>respawn_min_c_level</code></a></h4>
 <pre><code class="language-rhai ignore">respawn_min_c_level(level)
 </code></pre>
@@ -1124,7 +1153,7 @@ avoid_neighbors(strength, sigma_cents)
 <h4 id="temporal_basin"><a class="header" href="#temporal_basin"><code>temporal_basin</code></a></h4>
 <pre><code class="language-rhai ignore">temporal_basin(min_hz, max_hz)
 </code></pre>
-<p>Tempo region the emergent beat gravitates toward. The time-axis analogue of <code>density(min, max)</code>: it shapes the terrain, does not place a beat, and never forces a measure.</p>
+<p>Tempo region the emergent beat gravitates toward. The time-axis analogue of <code>consonance(min, max)</code>: it shapes the terrain, does not place a beat, and never forces a measure.</p>
 <h2 id="experimental"><a class="header" href="#experimental">Experimental</a></h2>
 <p>Candidate core verbs under audition: composing surface by intent, but with research-grade stability until validated.</p>
 <p>Empty right now.</p>
@@ -1135,7 +1164,7 @@ avoid_neighbors(strength, sigma_cents)
 <pre><code class="language-rhai ignore">reject_targets(anchor_hz, targets_st, exclusion_st, max_tries)
 </code></pre>
 <p>Applies to: <code>Placement</code>.</p>
-<p>Reject sampled positions near specified semitone targets. <code>targets_st</code> is an array of semitone offsets from <code>anchor_hz</code>, <code>exclusion_st</code> is the exclusion zone width in semitones, and <code>max_tries</code> is the retry limit. Wraps any strategy-bearing placement (<code>peaks()</code>, <code>density()</code>, <code>random()</code>, <code>line()</code>).</p>
+<p>Reject sampled positions near specified semitone targets. <code>targets_st</code> is an array of semitone offsets from <code>anchor_hz</code>, <code>exclusion_st</code> is the exclusion zone width in semitones, and <code>max_tries</code> is the retry limit. Wraps any strategy-bearing placement (<code>consonance()</code>, <code>dissonance()</code>, <code>random()</code>, <code>line()</code>, …).</p>
 <h3 id="phonation--rhythm-1"><a class="header" href="#phonation--rhythm-1">Phonation &amp; Rhythm</a></h3>
 <h4 id="once"><a class="header" href="#once"><code>once</code></a></h4>
 <pre><code class="language-rhai ignore">once()

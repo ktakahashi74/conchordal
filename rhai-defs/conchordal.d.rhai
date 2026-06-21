@@ -86,6 +86,19 @@ fn brightness(arg0: Participant, arg1: f64) -> Participant;
 /// Spectral brightness in 0.0-1.0 (harmonic/modal bodies).
 fn brightness(arg0: Participant, arg1: i64) -> Participant;
 
+/// Target consonance maxima. Density cloud by default; `.peak()` for the extremum.
+fn consonance(arg0: f64) -> Placement;
+/// Target consonance maxima. Density cloud by default; `.peak()` for the extremum.
+fn consonance(arg0: f64, arg1: f64) -> Placement;
+/// Target consonance maxima. Density cloud by default; `.peak()` for the extremum.
+fn consonance(arg0: f64, arg1: i64) -> Placement;
+/// Target consonance maxima. Density cloud by default; `.peak()` for the extremum.
+fn consonance(arg0: i64) -> Placement;
+/// Target consonance maxima. Density cloud by default; `.peak()` for the extremum.
+fn consonance(arg0: i64, arg1: f64) -> Placement;
+/// Target consonance maxima. Density cloud by default; `.peak()` for the extremum.
+fn consonance(arg0: i64, arg1: i64) -> Placement;
+
 /// Consonance window used for viability scoring.
 fn consonance_viability(arg0: Material, arg1: f64, arg2: f64) -> Material;
 /// Consonance window used for viability scoring.
@@ -122,14 +135,17 @@ fn cycles(arg0: Material, arg1: i64) -> Material;
 /// Duration of n rhythm cycles.
 fn cycles(arg0: Participant, arg1: i64) -> Participant;
 
-/// Sample positions from Consonance Density inside a frequency range.
-fn density(arg0: f64, arg1: f64) -> Placement;
-/// Sample positions from Consonance Density inside a frequency range.
-fn density(arg0: f64, arg1: i64) -> Placement;
-/// Sample positions from Consonance Density inside a frequency range.
-fn density(arg0: i64, arg1: f64) -> Placement;
-/// Sample positions from Consonance Density inside a frequency range.
-fn density(arg0: i64, arg1: i64) -> Placement;
+/// Realize a field target as a stochastic cloud (the default).
+fn density(arg0: Placement) -> Placement;
+
+/// Target consonance minima (tension, clusters). Density cloud by default; `.peak()` for the most dissonant point.
+fn dissonance(arg0: f64, arg1: f64) -> Placement;
+/// Target consonance minima (tension, clusters). Density cloud by default; `.peak()` for the most dissonant point.
+fn dissonance(arg0: f64, arg1: i64) -> Placement;
+/// Target consonance minima (tension, clusters). Density cloud by default; `.peak()` for the most dissonant point.
+fn dissonance(arg0: i64, arg1: f64) -> Placement;
+/// Target consonance minima (tension, clusters). Density cloud by default; `.peak()` for the most dissonant point.
+fn dissonance(arg0: i64, arg1: i64) -> Placement;
 
 /// Extra energy cost at low consonance.
 fn dissonance_cost(arg0: Material, arg1: f64) -> Material;
@@ -174,6 +190,15 @@ fn duration_range(arg0: Participant, arg1: i64, arg2: f64) -> Participant;
 /// [tuning] Adaptive duration range in rhythm cycles.
 fn duration_range(arg0: Participant, arg1: i64, arg2: i64) -> Participant;
 
+/// Target the consonance/dissonance boundary (C near its midpoint).
+fn edge(arg0: f64, arg1: f64) -> Placement;
+/// Target the consonance/dissonance boundary (C near its midpoint).
+fn edge(arg0: f64, arg1: i64) -> Placement;
+/// Target the consonance/dissonance boundary (C near its midpoint).
+fn edge(arg0: i64, arg1: f64) -> Placement;
+/// Target the consonance/dissonance boundary (C near its midpoint).
+fn edge(arg0: i64, arg1: i64) -> Placement;
+
 /// Maximum energy after recharge/reward.
 fn energy_cap(arg0: Material, arg1: f64) -> Material;
 /// Maximum energy after recharge/reward.
@@ -216,6 +241,15 @@ fn freq(arg0: Participant, arg1: i64) -> Participant;
 
 /// Density sharpening exponent; only valid on `landscape_density_modes()`.
 fn gamma(arg0: ModePattern, arg1: f64) -> ModePattern;
+
+/// Target empty registers (low subjective intensity); fill the room.
+fn gap(arg0: f64, arg1: f64) -> Placement;
+/// Target empty registers (low subjective intensity); fill the room.
+fn gap(arg0: f64, arg1: i64) -> Placement;
+/// Target empty registers (low subjective intensity); fill the room.
+fn gap(arg0: i64, arg1: f64) -> Placement;
+/// Target empty registers (low subjective intensity); fill the room.
+fn gap(arg0: i64, arg1: i64) -> Placement;
 
 /// Pitch glide time constant in seconds.
 fn glide(arg0: Material, arg1: f64) -> Material;
@@ -393,10 +427,8 @@ fn once(arg0: Participant) -> Participant;
 /// Run an array of closures on parallel timelines from the current cursor.
 fn parallel(arg0: [?]);
 
-/// Place at high Consonance Field positions around a root.
-fn peaks(arg0: f64) -> Placement;
-/// Place at high Consonance Field positions around a root.
-fn peaks(arg0: i64) -> Placement;
+/// Realize a field target as its deterministic extremum.
+fn peak(arg0: Placement) -> Placement;
 
 /// [tuning] `"gate_snap"` or `"glide"`: override how pitch decisions are applied.
 fn pitch_apply_mode(arg0: Material, arg1: String) -> Material;
@@ -481,13 +513,13 @@ fn random_candidates(arg0: Participant, arg1: f64) -> Participant;
 /// [tuning] Number of random candidates considered.
 fn random_candidates(arg0: Participant, arg1: i64) -> Participant;
 
-/// Multiplier range relative to the root; only valid on `peaks()`.
+/// Multiplier range relative to the root; only valid on `consonance(root)`.
 fn range(arg0: Placement, arg1: f64, arg2: f64) -> Placement;
-/// Multiplier range relative to the root; only valid on `peaks()`.
+/// Multiplier range relative to the root; only valid on `consonance(root)`.
 fn range(arg0: Placement, arg1: f64, arg2: i64) -> Placement;
-/// Multiplier range relative to the root; only valid on `peaks()`.
+/// Multiplier range relative to the root; only valid on `consonance(root)`.
 fn range(arg0: Placement, arg1: i64, arg2: f64) -> Placement;
-/// Multiplier range relative to the root; only valid on `peaks()`.
+/// Multiplier range relative to the root; only valid on `consonance(root)`.
 fn range(arg0: Placement, arg1: i64, arg2: i64) -> Placement;
 
 /// Frequency range; only valid on `landscape_*_modes()`.
@@ -679,9 +711,9 @@ fn social(arg0: Participant, arg1: f64) -> Participant;
 /// [tuning] Social coupling for `entrained()` or `pulse()`, in 0-1.
 fn social(arg0: Participant, arg1: i64) -> Participant;
 
-/// Minimum ERB distance between placed voices; valid on `peaks()` and `density()`.
+/// Minimum ERB distance between placed voices; valid on field placements.
 fn spacing(arg0: Placement, arg1: f64) -> Placement;
-/// Minimum ERB distance between placed voices; valid on `peaks()` and `density()`.
+/// Minimum ERB distance between placed voices; valid on field placements.
 fn spacing(arg0: Placement, arg1: i64) -> Placement;
 
 /// Minimum ERB distance between modes; only valid on `landscape_*_modes()`.

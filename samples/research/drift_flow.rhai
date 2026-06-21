@@ -19,7 +19,7 @@ section("Drift Flow", || {
     wait(0.5);
 
     for i in 0..5 {
-        let strat = peaks(130.0).range(1.0, 4.0).spacing(1.0);
+        let strat = consonance(130.0).peak().range(1.0, 4.0).spacing(1.0);
         place(swarm, strat.count(1));
         wait(0.6);
     }

@@ -27,7 +27,7 @@ work:
   forms. It only deepens the basin for a *real* periodicity; it never
   fabricates a beat from non-metric input.
 - `temporal_basin(min_hz, max_hz)` — the tempo region the emergent beat
-  gravitates toward (the time-axis analogue of `density(min, max)`). It shapes
+  gravitates toward (the time-axis analogue of `consonance(min, max)`). It shapes
   the terrain; it does not place a beat, and it never forces a measure.
 
 ## Per-voice presets and modifiers
@@ -69,8 +69,8 @@ let offbeat = harmonic()
     .cycles(2);
 
 place(beat, at(110.0));
-place(entrained, peaks(110.0).count(3));
-place(drift, density(300.0, 1200.0).count(4));
+place(entrained, consonance(110.0).peak().count(3));
+place(drift, consonance(300.0, 1200.0).count(4));
 place(offbeat, at(220.0));
 wait(12.0);
 ```

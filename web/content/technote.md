@@ -533,7 +533,7 @@ Modifiers: `.count(n)`, `.range(min, max)`, `.spacing(d)`, `.gamma(g)`, `.jitter
 
 ### 6.3.3 Placements
 
-Placements determine initial frequency allocation when a Material enters the ecosystem: `peaks(root)` (highest-consonance positions), `density(min, max)` (weighted-random from the consonance density PMF), `line(start, end)`, `random(min, max)`, `at(freq)`. Modifiers: `.count(n)`, `.range(min_mul, max_mul)`, `.spacing(d)` (minimum ERB distance), `.reject_targets(...)`.
+Placements determine initial frequency allocation when a Material enters the ecosystem. A field-relative placement names a target — `consonance`, `dissonance`, `edge` (the consonance/dissonance boundary), `gap` (low-intensity registers) — realized as a density cloud by default or a deterministic extremum with `.peak()`; `consonance(root)` takes a harmonic window, the others an absolute `(min, max)` range. Field-agnostic placements are `random(min, max)` (log-uniform) and the geometric `at(freq)` / `line(start, end)`. Modifiers: `.count(n)`, `.range(min_mul, max_mul)`, `.spacing(d)` (minimum ERB distance), `.reject_targets(...)`.
 
 ### 6.3.4 Participants and Groups
 

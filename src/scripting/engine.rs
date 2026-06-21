@@ -390,7 +390,7 @@ impl ScriptHost {
                 if let Some(strategy) = placement.strategy() {
                     species.spec.set_respawn_settle_strategy(strategy);
                 } else {
-                    warn!("respawn_settle() requires density(), peaks(), random(), or line()");
+                    warn!("respawn_settle() requires consonance(), dissonance(), edge(), gap(), random(), or line()");
                 }
                 species
             },
@@ -664,45 +664,33 @@ impl ScriptHost {
 
         engine.register_fn("at", |freq: FLOAT| Placement::at(freq as f32));
         engine.register_fn("at", |freq: INT| Placement::at(freq as f32));
-        engine.register_fn("density", |min_freq: FLOAT, max_freq: FLOAT| {
-            Placement::density(min_freq as f32, max_freq as f32)
+        // Field targets: consonance also takes a 1-arg root form; all field
+        // targets and the geometric line take a 2-arg (lo, hi) range.
+        engine.register_fn("consonance", |root: FLOAT| {
+            Placement::consonance_root(root as f32)
         });
-        engine.register_fn("density", |min_freq: INT, max_freq: FLOAT| {
-            Placement::density(min_freq as f32, max_freq as f32)
+        engine.register_fn("consonance", |root: INT| {
+            Placement::consonance_root(root as f32)
         });
-        engine.register_fn("density", |min_freq: FLOAT, max_freq: INT| {
-            Placement::density(min_freq as f32, max_freq as f32)
+        macro_rules! reg_range {
+            ($name:expr, $ctor:path) => {
+                engine.register_fn($name, |a: FLOAT, b: FLOAT| $ctor(a as f32, b as f32));
+                engine.register_fn($name, |a: INT, b: FLOAT| $ctor(a as f32, b as f32));
+                engine.register_fn($name, |a: FLOAT, b: INT| $ctor(a as f32, b as f32));
+                engine.register_fn($name, |a: INT, b: INT| $ctor(a as f32, b as f32));
+            };
+        }
+        reg_range!("consonance", Placement::consonance_range);
+        reg_range!("dissonance", Placement::dissonance);
+        reg_range!("edge", Placement::edge);
+        reg_range!("gap", Placement::gap);
+        reg_range!("random", Placement::random);
+        reg_range!("line", Placement::line);
+        engine.register_fn("peak", |placement: Placement| {
+            placement.with_sampling(FieldSampling::Peak)
         });
-        engine.register_fn("density", |min_freq: INT, max_freq: INT| {
-            Placement::density(min_freq as f32, max_freq as f32)
-        });
-        engine.register_fn("peaks", |root_freq: FLOAT| {
-            Placement::peaks(root_freq as f32)
-        });
-        engine.register_fn("peaks", |root_freq: INT| Placement::peaks(root_freq as f32));
-        engine.register_fn("random", |min_freq: FLOAT, max_freq: FLOAT| {
-            Placement::random(min_freq as f32, max_freq as f32)
-        });
-        engine.register_fn("random", |min_freq: INT, max_freq: FLOAT| {
-            Placement::random(min_freq as f32, max_freq as f32)
-        });
-        engine.register_fn("random", |min_freq: FLOAT, max_freq: INT| {
-            Placement::random(min_freq as f32, max_freq as f32)
-        });
-        engine.register_fn("random", |min_freq: INT, max_freq: INT| {
-            Placement::random(min_freq as f32, max_freq as f32)
-        });
-        engine.register_fn("line", |start_freq: FLOAT, end_freq: FLOAT| {
-            Placement::line(start_freq as f32, end_freq as f32)
-        });
-        engine.register_fn("line", |start_freq: INT, end_freq: FLOAT| {
-            Placement::line(start_freq as f32, end_freq as f32)
-        });
-        engine.register_fn("line", |start_freq: FLOAT, end_freq: INT| {
-            Placement::line(start_freq as f32, end_freq as f32)
-        });
-        engine.register_fn("line", |start_freq: INT, end_freq: INT| {
-            Placement::line(start_freq as f32, end_freq as f32)
+        engine.register_fn("density", |placement: Placement| {
+            placement.with_sampling(FieldSampling::Density)
         });
         engine.register_fn("count", |placement: Placement, count: INT| {
             placement.with_count(count)
@@ -1662,7 +1650,7 @@ impl ScriptHost {
                             group.spec.set_respawn_settle_strategy(strategy);
                         } else {
                             warn!(
-                                "respawn_settle() requires density(), peaks(), random(), or line()"
+                                "respawn_settle() requires consonance(), dissonance(), edge(), gap(), random(), or line()"
                             );
                         }
                     }

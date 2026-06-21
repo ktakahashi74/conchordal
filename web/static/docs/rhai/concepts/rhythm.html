@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-7ac3c3e2.js";
+            window.path_to_searchindex_js = "../searchindex-8d1646ce.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-ebd22986.js"></script>
@@ -199,7 +199,7 @@ work:</p>
 forms. It only deepens the basin for a <em>real</em> periodicity; it never
 fabricates a beat from non-metric input.</li>
 <li><code>temporal_basin(min_hz, max_hz)</code> — the tempo region the emergent beat
-gravitates toward (the time-axis analogue of <code>density(min, max)</code>). It shapes
+gravitates toward (the time-axis analogue of <code>consonance(min, max)</code>). It shapes
 the terrain; it does not place a beat, and it never forces a measure.</li>
 </ul>
 <h2 id="per-voice-presets-and-modifiers"><a class="header" href="#per-voice-presets-and-modifiers">Per-voice presets and modifiers</a></h2>
@@ -238,8 +238,8 @@ let offbeat = harmonic()
     .cycles(2);
 
 place(beat, at(110.0));
-place(entrained, peaks(110.0).count(3));
-place(drift, density(300.0, 1200.0).count(4));
+place(entrained, consonance(110.0).peak().count(3));
+place(drift, consonance(300.0, 1200.0).count(4));
 place(offbeat, at(220.0));
 wait(12.0);
 </code></pre>

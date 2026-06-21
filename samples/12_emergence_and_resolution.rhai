@@ -81,7 +81,7 @@ section("emergence and resolution", || {
 
     // III. The colony: it fires on the shared pulse grid and climbs toward
     // consonance, while the field slowly bends toward tension.
-    let colony = place(consonance_colony, density(80.0, 900.0).count(8).spacing(0.84));
+    let colony = place(consonance_colony, consonance(80.0, 900.0).count(8).spacing(0.84));
     wait(4.7);
     harmonic_tension(0.40);
     wait(4.7);
@@ -92,7 +92,7 @@ section("emergence and resolution", || {
     pulse.freq(root_hz * 1.5);
     colony.amp(0.034);
     wait(3.3);
-    let flow = place(flow_particles, density(200.0, 1500.0).count(9).spacing(0.66));
+    let flow = place(flow_particles, consonance(200.0, 1500.0).count(9).spacing(0.66));
     harmonic_tension(0.88);
     wait(5.3);
 

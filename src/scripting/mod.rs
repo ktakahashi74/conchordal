@@ -18,9 +18,9 @@ use crate::life::lifecycle::LifecycleConfig;
 use crate::scenario::PhonationTiming;
 use crate::scenario::{
     Action, ArticulationCoreConfig, ControlUpdateMode, CoupledTimingSpec, DurationSpec,
-    EnvelopeConfig, FieldDurationSpec, MetabolismRhythmReward, PhonationSpec,
-    RespawnPeakBiasConfig, RespawnPolicy, RhythmCouplingMode, RhythmRewardMetric, RhythmRole,
-    ScaffoldConfig, Scenario, SceneMarker, SpawnStrategy, TimedEvent, VoiceSpec,
+    EnvelopeConfig, FieldDurationSpec, FieldSampling, FieldTarget, MetabolismRhythmReward,
+    PhonationSpec, RespawnPeakBiasConfig, RespawnPolicy, RhythmCouplingMode, RhythmRewardMetric,
+    RhythmRole, ScaffoldConfig, Scenario, SceneMarker, SpawnStrategy, TimedEvent, VoiceSpec,
 };
 
 const DEFAULT_SEQ_DURATION_SEC: f32 = 1.0;
@@ -915,48 +915,61 @@ pub struct Placement {
     count: usize,
     strategy: Option<SpawnStrategy>,
     freq_hz: Option<f32>,
+    /// Set when built from `consonance(root)`, so `range()` reads multiples.
+    root_hz: Option<f32>,
 }
 
 impl Placement {
+    fn field(target: FieldTarget, min_freq: f32, max_freq: f32, min_dist_erb: f32) -> Self {
+        Self {
+            count: 1,
+            strategy: Some(SpawnStrategy::Field {
+                target,
+                sampling: FieldSampling::Density,
+                min_freq,
+                max_freq,
+                min_dist_erb,
+            }),
+            freq_hz: None,
+            root_hz: None,
+        }
+    }
+
     fn at(freq_hz: f32) -> Self {
         Self {
             count: 1,
             strategy: None,
             freq_hz: Some(freq_hz),
+            root_hz: None,
         }
     }
 
-    fn density(min_freq: f32, max_freq: f32) -> Self {
-        Self {
-            count: 1,
-            strategy: Some(SpawnStrategy::ConsonanceDensity {
-                min_freq,
-                max_freq,
-                min_dist_erb: 1.0,
-            }),
-            freq_hz: None,
-        }
+    fn consonance_range(min_freq: f32, max_freq: f32) -> Self {
+        Self::field(FieldTarget::Consonance, min_freq, max_freq, 1.0)
     }
 
-    fn peaks(root_freq: f32) -> Self {
-        Self {
-            count: 1,
-            strategy: Some(SpawnStrategy::Consonance {
-                root_freq,
-                min_mul: 1.0,
-                max_mul: 4.0,
-                min_dist_erb: 1.0,
-            }),
-            freq_hz: None,
-        }
+    fn consonance_root(root_freq: f32) -> Self {
+        // Default harmonic window [1x, 4x]; `range(lo, hi)` overrides the multiples.
+        let mut p = Self::field(FieldTarget::Consonance, root_freq, root_freq * 4.0, 1.0);
+        p.root_hz = Some(root_freq);
+        p
+    }
+
+    fn dissonance(min_freq: f32, max_freq: f32) -> Self {
+        Self::field(FieldTarget::Dissonance, min_freq, max_freq, 1.0)
+    }
+
+    fn edge(min_freq: f32, max_freq: f32) -> Self {
+        Self::field(FieldTarget::Edge, min_freq, max_freq, 1.0)
+    }
+
+    fn gap(min_freq: f32, max_freq: f32) -> Self {
+        Self::field(FieldTarget::Gap, min_freq, max_freq, 1.0)
     }
 
     fn random(min_freq: f32, max_freq: f32) -> Self {
-        Self {
-            count: 1,
-            strategy: Some(SpawnStrategy::RandomLog { min_freq, max_freq }),
-            freq_hz: None,
-        }
+        // Uniform measure; no crowding spacing by default.
+        Self::field(FieldTarget::Uniform, min_freq, max_freq, 0.0)
     }
 
     fn line(start_freq: f32, end_freq: f32) -> Self {
@@ -967,6 +980,7 @@ impl Placement {
                 end_freq,
             }),
             freq_hz: None,
+            root_hz: None,
         }
     }
 
@@ -975,47 +989,73 @@ impl Placement {
         self
     }
 
-    fn with_range(mut self, min_mul: f32, max_mul: f32) -> Self {
-        if let Some(SpawnStrategy::Consonance {
-            root_freq,
-            min_dist_erb,
-            ..
-        }) = self.strategy
-        {
-            self.strategy = Some(SpawnStrategy::Consonance {
-                root_freq,
-                min_mul,
-                max_mul,
+    fn with_sampling(mut self, sampling: FieldSampling) -> Self {
+        self.strategy = self.strategy.map(|strategy| match strategy {
+            SpawnStrategy::Field {
+                target,
+                min_freq,
+                max_freq,
                 min_dist_erb,
-            });
-        } else {
-            warn!("range() is only supported for peaks(); ignored");
+                ..
+            } => SpawnStrategy::Field {
+                target,
+                sampling,
+                min_freq,
+                max_freq,
+                min_dist_erb,
+            },
+            other => {
+                warn!("peak()/density() only apply to field placements; ignored");
+                other
+            }
+        });
+        self
+    }
+
+    fn with_range(mut self, min_mul: f32, max_mul: f32) -> Self {
+        match (self.root_hz, self.strategy.take()) {
+            (
+                Some(root),
+                Some(SpawnStrategy::Field {
+                    target,
+                    sampling,
+                    min_dist_erb,
+                    ..
+                }),
+            ) => {
+                self.strategy = Some(SpawnStrategy::Field {
+                    target,
+                    sampling,
+                    min_freq: root * min_mul,
+                    max_freq: root * max_mul,
+                    min_dist_erb,
+                });
+            }
+            (_, strategy) => {
+                self.strategy = strategy;
+                warn!("range() is only supported for consonance(root); ignored");
+            }
         }
         self
     }
 
     fn with_spacing(mut self, spacing: f32) -> Self {
         self.strategy = self.strategy.map(|strategy| match strategy {
-            SpawnStrategy::Consonance {
-                root_freq,
-                min_mul,
-                max_mul,
+            SpawnStrategy::Field {
+                target,
+                sampling,
+                min_freq,
+                max_freq,
                 ..
-            } => SpawnStrategy::Consonance {
-                root_freq,
-                min_mul,
-                max_mul,
-                min_dist_erb: spacing,
-            },
-            SpawnStrategy::ConsonanceDensity {
-                min_freq, max_freq, ..
-            } => SpawnStrategy::ConsonanceDensity {
+            } => SpawnStrategy::Field {
+                target,
+                sampling,
                 min_freq,
                 max_freq,
                 min_dist_erb: spacing,
             },
             other => {
-                warn!("spacing() is only supported for peaks() and density(); ignored");
+                warn!("spacing() is only supported for field placements; ignored");
                 other
             }
         });
@@ -1038,7 +1078,9 @@ impl Placement {
                 max_tries: max_tries.max(1) as usize,
             });
         } else {
-            warn!("reject_targets() requires density(), peaks(), random(), or line()");
+            warn!(
+                "reject_targets() requires consonance(), dissonance(), edge(), gap(), random(), or line()"
+            );
         }
         self
     }

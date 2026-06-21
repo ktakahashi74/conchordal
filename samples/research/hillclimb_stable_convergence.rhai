@@ -32,7 +32,7 @@ section("HillClimb Stable Convergence", || {
     place(bed, at(220.0).count(1));
     wait(0.6);
 
-    let movers = place(mover, density(90.0, 420.0).count(6));
+    let movers = place(mover, consonance(90.0, 420.0).count(6));
 
     wait(28.0);
     release(movers);

@@ -16,14 +16,14 @@ section("a line", || {
 section("the peaks", || {
     place(star, at(110.0));
     wait(0.7);
-    place(star, peaks(110.0).range(1.0, 4.0).count(5).spacing(0.9));
+    place(star, consonance(110.0).peak().range(1.0, 4.0).count(5).spacing(0.9));
     wait(4.0);
 });
 
 section("the density", || {
     place(star, at(110.0));
     wait(0.7);
-    place(star, density(110.0, 880.0).count(7).spacing(0.8));
+    place(star, consonance(110.0, 880.0).count(7).spacing(0.8));
     wait(4.0);
 });
 

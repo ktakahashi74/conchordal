@@ -11,10 +11,19 @@ Because the field is computed from what the system actually hears, every voice
 deforms the terrain for every other voice. That feedback loop — not a chord
 chart — is where harmony comes from.
 
-## Field placement: `peaks`
+## Placing into the field: `consonance`, `dissonance`, `edge`, `gap`
 
-`peaks(root_hz)` places voices at high Consonance Field positions around a
-root. Use it when the musical thought is "start from this harmonic center".
+A field-relative placement names a **target** — a region of the field — and is
+realized either as a cloud (the default) or as a deterministic extremum with
+`.peak()`. The targets are:
+
+- `consonance` — high-consonance positions (harmonic centers, fusion).
+- `dissonance` — low-consonance positions (tension, clusters, color).
+- `edge` — the consonance/dissonance boundary (the metastable middle).
+- `gap` — empty registers (fill the room, avoid masking).
+
+`consonance(root)` takes a harmonic window around a root (multiples via
+`range()`); every target also takes an absolute `(min_hz, max_hz)` range.
 
 ```rhai
 let anchor = harmonic()
@@ -31,27 +40,26 @@ section("field placement", || {
     place(anchor, at(110.0));
     wait(1.0);
 
-    place(voice, peaks(110.0).range(1.0, 4.0).count(6).spacing(0.9));
+    place(voice, consonance(110.0).peak().range(1.0, 4.0).count(6).spacing(0.9));
     wait(6.0);
 });
 ```
 
-## Consonance Density: `density`
-
-`density(min_hz, max_hz)` samples from the density view of the field. Use it
-when the musical thought is "let the field seed a population inside this
-range".
+A target with no modifier is a **density cloud**: not "random but harmonic" but
+a normalized distribution derived from the consonance model, well-defined inside
+the range. Placement is independent of behavior — enter at `dissonance` and
+`anchor()` for a held cluster, or enter at `dissonance` and `seek_consonance()`
+for a resolution gesture.
 
 ```rhai
 let cloud = harmonic().amp(0.035).sustain();
 
-place(cloud, density(90.0, 1200.0).count(10).spacing(0.8));
+place(cloud, consonance(90.0, 1200.0).count(10).spacing(0.8));
 wait(8.0);
 ```
 
-Density is not just "random but harmonic". It is a normalized distribution
-derived from the consonance model, and it remains well-defined inside the
-requested range.
+The field-agnostic placements are `random(min_hz, max_hz)` (log-uniform) and the
+geometric `at(hz)` and `line(start_hz, end_hz)`.
 
 ## Consonance Movement: `seek_consonance`
 
@@ -70,7 +78,7 @@ let mover = harmonic()
     .global_peaks(8, 70.0)
     .ratio_candidates(5);
 
-place(mover, density(80.0, 900.0).count(8));
+place(mover, consonance(80.0, 900.0).count(8));
 wait(12.0);
 ```
 
@@ -109,7 +117,7 @@ population bounded; `respawn_settle(placement)` decides where replacements
 settle.
 
 ```rhai
-let settle = density(70.0, 1100.0).spacing(0.8);
+let settle = consonance(70.0, 1100.0).spacing(0.8);
 
 let ecology = harmonic()
     .amp(0.04)
@@ -128,7 +136,7 @@ let ecology = harmonic()
     .respawn_capacity(14)
     .respawn_settle(settle);
 
-place(ecology, density(70.0, 1100.0).count(14));
+place(ecology, consonance(70.0, 1100.0).count(14));
 wait(30.0);
 ```
 
@@ -155,7 +163,7 @@ let shimmer = modal()
     .modes(shimmer_modes)
     .brightness(0.7);
 
-place(shimmer, density(200.0, 1600.0).count(4));
+place(shimmer, consonance(200.0, 1600.0).count(4));
 wait(8.0);
 ```
 
@@ -181,7 +189,7 @@ operation. Do not read musical meaning into the projection itself.
 
 ```rhai
 let voice = harmonic().amp(0.04).sustain();
-place(voice, peaks(110.0).count(5));
+place(voice, consonance(110.0).peak().count(5));
 
 harmonic_tension(0.1);   // consonant gravity
 wait(4.0);

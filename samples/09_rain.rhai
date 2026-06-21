@@ -46,10 +46,10 @@ section("rain", || {
     let root = place(field_anchor, at(root_hz).count(1));
     wait(1.3);
 
-    let low_stream = place(stream, density(80.0, 720.0).spacing(0.80).count(7));
+    let low_stream = place(stream, consonance(80.0, 720.0).spacing(0.80).count(7));
     wait(5.3);
 
-    let high_drops = place(droplet, density(220.0, 1600.0).spacing(0.65).count(10));
+    let high_drops = place(droplet, consonance(220.0, 1600.0).spacing(0.65).count(10));
     wait(8.0);
 
     harmonic_tension(0.80);

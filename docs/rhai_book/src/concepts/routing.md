@@ -24,7 +24,7 @@ let normal = harmonic().send(habitat_bus | presentation_bus);
 
 place(anchor, at(110.0));
 place(decor, at(880.0));
-place(normal, peaks(110.0).count(3));
+place(normal, consonance(110.0).peak().count(3));
 wait(4.0);
 ```
 

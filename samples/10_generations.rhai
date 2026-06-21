@@ -5,8 +5,8 @@ seed(10);
 
 let root_hz = 110.0;
 
-let settle_strategy = density(70.0, 1250.0).spacing(0.75);
-let open_density = density(90.0, 900.0).spacing(0.8);
+let settle_strategy = consonance(70.0, 1250.0).spacing(0.75);
+let open_density = consonance(90.0, 900.0).spacing(0.8);
 
 let field_anchor = harmonic()
     .brain("drone")

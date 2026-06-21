@@ -235,7 +235,7 @@ Field level (Scenario / director), symmetric to consonance-field operations:
 - `meter_stability`: attractor depth -- how strongly a pulse wants to form. A
   property of the temporal terrain, not a tempo.
 - temporal basin: the time scale the pulse gravitates toward, expressed as the
-  time-axis analogue of `density(min_hz, max_hz)` -- a period/rate region that
+  time-axis analogue of `consonance(min_hz, max_hz)` -- a period/rate region that
   shapes the terrain (a basin), never a scheduled `beat_hz`. Numeric ranges are
   fine here for the same reason `density` ranges are: they parameterize a field,
   they do not place events.

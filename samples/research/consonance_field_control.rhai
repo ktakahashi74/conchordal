@@ -60,10 +60,10 @@ section("Consonance Field Control", || {
     let root = place(reference, at(field_a_hz).count(1));
     wait(0.8);
 
-    let marker_a = place(marker, peaks(field_a_hz).range(1.0, 2.0).spacing(0.95).count(2));
+    let marker_a = place(marker, consonance(field_a_hz).peak().range(1.0, 2.0).spacing(0.95).count(2));
     wait(4.0);
 
-    let guide = place(mover, density(140.0, 720.0).spacing(1.4).count(1));
+    let guide = place(mover, consonance(140.0, 720.0).spacing(1.4).count(1));
     wait(5.5);
 
     release(marker_a);
@@ -71,7 +71,7 @@ section("Consonance Field Control", || {
     harmonic_tension(0.35);
     field.freq(field_b_hz);
     root.freq(field_b_hz);
-    let marker_b = place(marker, peaks(field_b_hz).range(0.9, 2.1).spacing(0.95).count(2));
+    let marker_b = place(marker, consonance(field_b_hz).peak().range(0.9, 2.1).spacing(0.95).count(2));
     wait(6.5);
 
     release(marker_b);
@@ -79,7 +79,7 @@ section("Consonance Field Control", || {
     harmonic_tension(0.85);
     field.freq(field_c_hz);
     root.freq(field_c_hz);
-    let marker_c = place(variant(marker).brightness(0.42), peaks(field_c_hz).range(0.8, 1.9).spacing(0.95).count(2));
+    let marker_c = place(variant(marker).brightness(0.42), consonance(field_c_hz).peak().range(0.8, 1.9).spacing(0.95).count(2));
     wait(6.5);
 
     release(guide);

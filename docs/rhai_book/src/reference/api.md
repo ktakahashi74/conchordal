@@ -18,7 +18,7 @@ The surface is split into three tiers. **Core API** is the curated composing sur
 |------|-------------|
 | `Material` | Voice template built from a constructor such as `sine()` or `harmonic()`; all builder methods are chainable. |
 | `Participant` | Handle to a placed voice group returned by `place()`; draft until the next `wait()`/`flush()`, then live. |
-| `Placement` | Where voices enter the field: built by `at()`, `peaks()`, `density()`, `random()`, or `line()`. |
+| `Placement` | Where voices enter the field: built by `at()`, `consonance()`, `dissonance()`, `edge()`, `gap()`, `random()`, or `line()`. |
 | `ModePattern` | Frequency pattern for modal synthesis bodies; built by `*_modes()` constructors. |
 | `Bus` | One of the two mono output buses; combine with `|` into a `BusSet`. |
 | `BusSet` | Combination of buses produced by `bus | bus`, accepted by `send()`. |
@@ -106,21 +106,58 @@ at(freq_hz) -> Placement
 
 Place at a fixed frequency in Hz.
 
-#### `peaks`
+#### `consonance`
 
 ```rhai,ignore
-peaks(root_hz) -> Placement
+consonance(root_hz) -> Placement
+consonance(min_hz, max_hz) -> Placement
 ```
 
-Place at high Consonance Field positions around a root. Default multiplier range is 1x-4x of the root (see `range()`) with 1.0 ERB spacing (see `spacing()`).
+Target consonance maxima. Density cloud by default; `.peak()` for the extremum. `consonance(root)` takes a harmonic window around a root (default 1x-4x, set multiples with `range()`); `consonance(min, max)` takes an absolute range. Default spacing is 1.0 ERB.
+
+#### `dissonance`
+
+```rhai,ignore
+dissonance(min_hz, max_hz) -> Placement
+```
+
+Target consonance minima (tension, clusters). Density cloud by default; `.peak()` for the most dissonant point.
+
+#### `edge`
+
+```rhai,ignore
+edge(min_hz, max_hz) -> Placement
+```
+
+Target the consonance/dissonance boundary (C near its midpoint). The metastable region between fusion and beating. Density band by default; `.peak()` for the point closest to the boundary.
+
+#### `gap`
+
+```rhai,ignore
+gap(min_hz, max_hz) -> Placement
+```
+
+Target empty registers (low subjective intensity); fill the room. Density cloud by default; `.peak()` for the emptiest position.
+
+#### `peak`
+
+```rhai,ignore
+peak()
+```
+
+Applies to: `Placement`.
+
+Realize a field target as its deterministic extremum.
 
 #### `density`
 
 ```rhai,ignore
-density(min_hz, max_hz) -> Placement
+density()
 ```
 
-Sample positions from Consonance Density inside a frequency range. Density is a normalized distribution derived from the consonance model and remains well-defined inside the requested range. Default spacing is 1.0 ERB.
+Applies to: `Placement`.
+
+Realize a field target as a stochastic cloud (the default).
 
 #### `random`
 
@@ -156,7 +193,7 @@ range(min_mul, max_mul)
 
 Applies to: `Placement`.
 
-Multiplier range relative to the root; only valid on `peaks()`.
+Multiplier range relative to the root; only valid on `consonance(root)`.
 
 #### `spacing`
 
@@ -166,7 +203,7 @@ spacing(min_erb)
 
 Applies to: `Placement`.
 
-Minimum ERB distance between placed voices; valid on `peaks()` and `density()`.
+Minimum ERB distance between placed voices; valid on field placements.
 
 ### Timeline & Staging
 
@@ -430,7 +467,7 @@ anchor()
 
 Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
 
-Hold the voice at its pitch: an anchored voice never moves. Voices placed with `at()` or given `freq()` are anchored implicitly; use `anchor()` to hold strategy-placed voices (`peaks()`, `density()`, ...) at their settled position, or to state the intent explicitly.
+Hold the voice at its pitch: an anchored voice never moves. Voices placed with `at()` or given `freq()` are anchored implicitly; use `anchor()` to hold strategy-placed voices (`consonance()`, `dissonance()`, ...) at their settled position, or to state the intent explicitly.
 
 #### `seek_consonance`
 
@@ -613,7 +650,7 @@ respawn_settle(placement)
 
 Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
 
-Placement used for replacements. Requires a strategy-bearing placement: `density()`, `peaks()`, `random()`, or `line()` (not `at()`).
+Placement used for replacements. Requires a strategy-bearing placement: `consonance()`, `dissonance()`, `edge()`, `gap()`, `random()`, or `line()` (not `at()`).
 
 #### `respawn_min_c_level`
 
@@ -803,7 +840,7 @@ Attractor depth in 0-1: how readily a pulse forms. A soft prior: it only deepens
 temporal_basin(min_hz, max_hz)
 ```
 
-Tempo region the emergent beat gravitates toward. The time-axis analogue of `density(min, max)`: it shapes the terrain, does not place a beat, and never forces a measure.
+Tempo region the emergent beat gravitates toward. The time-axis analogue of `consonance(min, max)`: it shapes the terrain, does not place a beat, and never forces a measure.
 
 ## Experimental
 
@@ -825,7 +862,7 @@ reject_targets(anchor_hz, targets_st, exclusion_st, max_tries)
 
 Applies to: `Placement`.
 
-Reject sampled positions near specified semitone targets. `targets_st` is an array of semitone offsets from `anchor_hz`, `exclusion_st` is the exclusion zone width in semitones, and `max_tries` is the retry limit. Wraps any strategy-bearing placement (`peaks()`, `density()`, `random()`, `line()`).
+Reject sampled positions near specified semitone targets. `targets_st` is an array of semitone offsets from `anchor_hz`, `exclusion_st` is the exclusion zone width in semitones, and `max_tries` is the retry limit. Wraps any strategy-bearing placement (`consonance()`, `dissonance()`, `random()`, `line()`, ...).
 
 ### Phonation & Rhythm
 

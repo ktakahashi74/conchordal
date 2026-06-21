@@ -548,22 +548,40 @@ impl fmt::Display for VoiceSpec {
     }
 }
 
+/// Which region of the consonance field a placement targets.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FieldTarget {
+    /// Consonance maxima (fusion, harmonic centers).
+    Consonance,
+    /// Consonance minima (tension, clusters, color).
+    Dissonance,
+    /// The consonance/dissonance boundary (C near its midpoint).
+    Edge,
+    /// Empty registers (low subjective intensity).
+    Gap,
+    /// Ignore the field: a flat (log-uniform) measure.
+    Uniform,
+}
+
+/// How a field target is realized into positions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FieldSampling {
+    /// Deterministic extremum of the target.
+    Peak,
+    /// Stochastic cloud weighted by the target (the default).
+    #[default]
+    Density,
+}
+
 #[derive(Debug, Clone)]
 pub enum SpawnStrategy {
-    Consonance {
-        root_freq: f32,
-        min_mul: f32,
-        max_mul: f32,
-        min_dist_erb: f32,
-    },
-    ConsonanceDensity {
+    /// Field-relative placement: a `target` realized by a `sampling` mode.
+    Field {
+        target: FieldTarget,
+        sampling: FieldSampling,
         min_freq: f32,
         max_freq: f32,
         min_dist_erb: f32,
-    },
-    RandomLog {
-        min_freq: f32,
-        max_freq: f32,
     },
     RejectTargets {
         base: Box<SpawnStrategy>,
@@ -581,16 +599,9 @@ pub enum SpawnStrategy {
 impl SpawnStrategy {
     pub fn freq_range_hz(&self) -> (f32, f32) {
         match self {
-            SpawnStrategy::Consonance {
-                root_freq,
-                min_mul,
-                max_mul,
-                ..
-            } => (root_freq * min_mul, root_freq * max_mul),
-            SpawnStrategy::ConsonanceDensity {
+            SpawnStrategy::Field {
                 min_freq, max_freq, ..
             }
-            | SpawnStrategy::RandomLog { min_freq, max_freq }
             | SpawnStrategy::Linear {
                 start_freq: min_freq,
                 end_freq: max_freq,
@@ -601,8 +612,7 @@ impl SpawnStrategy {
 
     pub fn min_dist_erb(&self) -> f32 {
         match self {
-            SpawnStrategy::Consonance { min_dist_erb, .. }
-            | SpawnStrategy::ConsonanceDensity { min_dist_erb, .. } => *min_dist_erb,
+            SpawnStrategy::Field { min_dist_erb, .. } => *min_dist_erb,
             SpawnStrategy::RejectTargets { base, .. } => base.min_dist_erb(),
             _ => 0.0,
         }

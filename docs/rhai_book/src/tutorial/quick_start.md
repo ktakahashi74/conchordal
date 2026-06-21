@@ -23,8 +23,9 @@ is alive.
 - **Materials** are voice templates made with `sine()`, `harmonic()`,
   `modal()`, `saw()`, `square()`, and `noise()`.
 - **Variants** clone a material with `variant(material)`.
-- **Placements** decide where participants enter: `at()`, `peaks()`,
-  `density()`, `random()`, and `line()`.
+- **Placements** decide where participants enter: field targets
+  `consonance()`, `dissonance()`, `edge()`, `gap()` (cloud by default,
+  `.peak()` for the extremum), plus `random()`, `at()`, and `line()`.
 - **Participants** are the handles returned by `place()`. Before the next
   `wait()` or `flush()`, participant builder methods still shape the initial
   spawn; after that, patchable methods update running voices.
@@ -44,9 +45,9 @@ section("plain entry", || {
 
 ## Placing Into the Field
 
-`peaks(root_hz)` places voices at high Consonance Field positions around a
-root. The field is shaped by what the system perceives — an anchor changes
-where the peaks are.
+`consonance(root_hz).peak()` places voices at high Consonance Field positions
+around a root. The field is shaped by what the system perceives — an anchor
+changes where the peaks are.
 
 ```rhai
 let anchor = harmonic()
@@ -63,7 +64,7 @@ section("field placement", || {
     place(anchor, at(110.0));
     wait(1.0);
 
-    place(voice, peaks(110.0).range(1.0, 4.0).count(6).spacing(0.9));
+    place(voice, consonance(110.0).peak().range(1.0, 4.0).count(6).spacing(0.9));
     wait(6.0);
 });
 ```
@@ -81,7 +82,7 @@ draft-only.
 ```rhai
 let g = place(
     harmonic().amp(0.04).sustain(),
-    peaks(220.0).count(3)
+    consonance(220.0).peak().count(3)
 );
 wait(2.0);     // commit: the group is now live
 
@@ -112,7 +113,7 @@ section("emergence", || {
     place(anchor, at(110.0));
     wait(2.0);
 
-    place(colony, density(90.0, 900.0).count(8).spacing(0.8));
+    place(colony, consonance(90.0, 900.0).count(8).spacing(0.8));
     wait(8.0);
 });
 ```

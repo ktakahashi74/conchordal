@@ -24,7 +24,7 @@ section("tension and release", || {
     harmonic_tension(0.1);
     place(ground, at(110.0));
     wait(1.3);
-    place(chord, peaks(110.0).range(1.0, 4.0).count(5).spacing(0.9));
+    place(chord, consonance(110.0).peak().range(1.0, 4.0).count(5).spacing(0.9));
     wait(4.0);
 
     harmonic_tension(0.8);   // the terrain loses its coherence

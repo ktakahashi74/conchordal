@@ -4,7 +4,9 @@ use crate::core::timebase::Timebase;
 use crate::life::population::Population;
 use crate::life::voice::AnyArticulationCore;
 use crate::life::voice::sound_body::SoundBody;
-use crate::scenario::{DurationSpec, PhonationTiming, RhythmCouplingMode, RhythmRole};
+use crate::scenario::{
+    DurationSpec, FieldSampling, FieldTarget, PhonationTiming, RhythmCouplingMode, RhythmRole,
+};
 use rand::SeedableRng;
 use std::collections::HashMap;
 
@@ -56,7 +58,7 @@ const E4_STEP_RESPONSE_SCRIPT: &str = r#"
             flush();
 
             let probes = create(probe, 12)
-                .place(peaks(196.0).range(0.8, 2.5).spacing(0.9));
+                .place(consonance(196.0).peak().range(0.8, 2.5).spacing(0.9));
             flush();
 
             harmonic_tension(0.0);
@@ -84,7 +86,7 @@ const E4_BETWEEN_RUNS_SCRIPT: &str = r#"
 
                 let base = create(anchor, 1).freq(196.0);
                 let probes = create(probe, 8)
-                    .place(peaks(196.0).range(0.8, 2.5).spacing(0.9));
+                    .place(consonance(196.0).peak().range(0.8, 2.5).spacing(0.9));
                 flush();
 
                 release(probes);
@@ -220,7 +222,7 @@ fn place_material_builds_draft_participant_until_flush() {
         r#"
             let p = place(
                 harmonic().amp(0.04).send(habitat_bus | presentation_bus),
-                density(90.0, 900.0).count(3).spacing(0.8)
+                consonance(90.0, 900.0).count(3).spacing(0.8)
             );
             p.amp(0.02);
             flush();
@@ -253,7 +255,10 @@ fn place_material_builds_draft_participant_until_flush() {
     assert!(control.body.routing.to_presentation);
     assert!(matches!(
         strategy,
-        Some(SpawnStrategy::ConsonanceDensity { .. })
+        Some(SpawnStrategy::Field {
+            target: FieldTarget::Consonance,
+            ..
+        })
     ));
 }
 
@@ -307,7 +312,7 @@ fn flush_events_have_increasing_order_at_same_time() {
 fn place_then_freq_clears_strategy() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(sine(), 4).place(peaks(220.0)).freq(330.0);
+            create(sine(), 4).place(consonance(220.0).peak()).freq(330.0);
             flush();
         "#,
     );
@@ -327,7 +332,7 @@ fn place_then_freq_clears_strategy() {
 fn freq_then_place_sets_strategy() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(sine(), 4).freq(330.0).place(peaks(220.0));
+            create(sine(), 4).freq(330.0).place(consonance(220.0).peak());
             flush();
         "#,
     );
@@ -340,14 +345,20 @@ fn freq_then_place_sets_strategy() {
             _ => None,
         })
         .expect("spawn action");
-    assert!(matches!(strategy, Some(SpawnStrategy::Consonance { .. })));
+    assert!(matches!(
+        strategy,
+        Some(SpawnStrategy::Field {
+            target: FieldTarget::Consonance,
+            ..
+        })
+    ));
 }
 
 #[test]
 fn place_then_anchor_locks_spawn_mode() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(sine(), 4).place(peaks(220.0)).anchor();
+            create(sine(), 4).place(consonance(220.0).peak()).anchor();
             flush();
         "#,
     );
@@ -362,7 +373,13 @@ fn place_then_anchor_locks_spawn_mode() {
             _ => None,
         })
         .expect("spawn action");
-    assert!(matches!(strategy, Some(SpawnStrategy::Consonance { .. })));
+    assert!(matches!(
+        strategy,
+        Some(SpawnStrategy::Field {
+            target: FieldTarget::Consonance,
+            ..
+        })
+    ));
     assert_eq!(mode, PitchMode::Lock);
 }
 
@@ -370,7 +387,7 @@ fn place_then_anchor_locks_spawn_mode() {
 fn place_then_anchor_survives_spawn() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(sine(), 2).place(peaks(220.0)).anchor();
+            create(sine(), 2).place(consonance(220.0).peak()).anchor();
             flush();
         "#,
     );
@@ -400,7 +417,7 @@ fn place_then_anchor_survives_spawn() {
 fn place_preserves_default_pitch_mode() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(sine(), 4).place(peaks(220.0));
+            create(sine(), 4).place(consonance(220.0).peak());
             flush();
         "#,
     );
@@ -420,7 +437,7 @@ fn place_preserves_default_pitch_mode() {
 fn anchor_then_place_preserves_lock() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(sine(), 4).anchor().place(peaks(220.0));
+            create(sine(), 4).anchor().place(consonance(220.0).peak());
             flush();
         "#,
     );
@@ -697,7 +714,7 @@ fn group_landscape_weight_live_update_reaches_individual() {
 fn group_amp_live_update_preserves_member_pitch_centers() {
     let (scenario, _warnings) = run_script(
         r#"
-            let g = create(sine(), 4).place(peaks(196.0).range(0.8, 2.5).spacing(0.9));
+            let g = create(sine(), 4).place(consonance(196.0).peak().range(0.8, 2.5).spacing(0.9));
             flush();
             let g = g.amp(0.33);
             flush();
@@ -1433,7 +1450,13 @@ fn reject_targets_wraps_spawn_strategy() {
             exclusion_st,
             max_tries,
         } => {
-            assert!(matches!(*base, SpawnStrategy::RandomLog { .. }));
+            assert!(matches!(
+                *base,
+                SpawnStrategy::Field {
+                    target: FieldTarget::Uniform,
+                    ..
+                }
+            ));
             assert!((anchor_hz - 220.0).abs() <= 1e-6);
             assert_eq!(targets_st, vec![0.0, 7.0, 12.0]);
             assert!((exclusion_st - 0.35).abs() <= 1e-6);
@@ -1575,7 +1598,7 @@ fn group_respawn_tier2_settings_reach_runtime_action() {
         r#"
             let g = create(sine(), 1)
                 .respawn_hereditary(0.03)
-                .respawn_settle(peaks(220.0).range(0.75, 1.5).spacing(0.5))
+                .respawn_settle(consonance(220.0).peak().range(0.75, 1.5).spacing(0.5))
                 .respawn_capacity(3)
                 .respawn_min_c_level(0.4)
                 .respawn_background_death_rate(0.03);
@@ -1604,14 +1627,14 @@ fn group_respawn_tier2_settings_reach_runtime_action() {
             assert!((*background_death_rate_per_sec - 0.03).abs() <= 1e-6);
             assert!(matches!(
                 settle_strategy,
-                Some(SpawnStrategy::Consonance {
-                    root_freq,
-                    min_mul,
-                    max_mul,
+                Some(SpawnStrategy::Field {
+                    target: FieldTarget::Consonance,
+                    sampling: FieldSampling::Peak,
+                    min_freq,
+                    max_freq,
                     min_dist_erb,
-                }) if (*root_freq - 220.0).abs() <= 1e-6
-                    && (*min_mul - 0.75).abs() <= 1e-6
-                    && (*max_mul - 1.5).abs() <= 1e-6
+                }) if (*min_freq - 220.0 * 0.75).abs() <= 1e-4
+                    && (*max_freq - 220.0 * 1.5).abs() <= 1e-4
                     && (*min_dist_erb - 0.5).abs() <= 1e-6
             ));
             saw_policy = true;

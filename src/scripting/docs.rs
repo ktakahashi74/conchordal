@@ -184,7 +184,7 @@ pub const TYPE_DOCS: &[TypeDoc] = &[
     },
     TypeDoc {
         name: "Placement",
-        summary: "Where voices enter the field: built by `at()`, `peaks()`, `density()`, `random()`, or `line()`.",
+        summary: "Where voices enter the field: built by `at()`, `consonance()`, `dissonance()`, `edge()`, `gap()`, `random()`, or `line()`.",
     },
     TypeDoc {
         name: "ModePattern",
@@ -375,26 +375,68 @@ pub const FN_DOCS: &[FnDoc] = &[
         details: "",
     },
     FnDoc {
-        name: "peaks",
+        name: "consonance",
         owner: Owner::Global,
         category: "placement",
         style: Style::Free,
         patch: Patch::Na,
-        usage: &["peaks(root_hz)"],
-        summary: "Place at high Consonance Field positions around a root.",
-        details: "Default multiplier range is 1x-4x of the root (see `range()`) with 1.0 ERB \
-spacing (see `spacing()`).",
+        usage: &["consonance(root_hz)", "consonance(min_hz, max_hz)"],
+        summary: "Target consonance maxima. Density cloud by default; `.peak()` for the extremum.",
+        details: "`consonance(root)` takes a harmonic window around a root (default 1x-4x, set \
+multiples with `range()`); `consonance(min, max)` takes an absolute range. Default spacing is \
+1.0 ERB.",
+    },
+    FnDoc {
+        name: "dissonance",
+        owner: Owner::Global,
+        category: "placement",
+        style: Style::Free,
+        patch: Patch::Na,
+        usage: &["dissonance(min_hz, max_hz)"],
+        summary: "Target consonance minima (tension, clusters). Density cloud by default; \
+`.peak()` for the most dissonant point.",
+        details: "",
+    },
+    FnDoc {
+        name: "edge",
+        owner: Owner::Global,
+        category: "placement",
+        style: Style::Free,
+        patch: Patch::Na,
+        usage: &["edge(min_hz, max_hz)"],
+        summary: "Target the consonance/dissonance boundary (C near its midpoint).",
+        details: "The metastable region between fusion and beating. Density band by default; \
+`.peak()` for the point closest to the boundary.",
+    },
+    FnDoc {
+        name: "gap",
+        owner: Owner::Global,
+        category: "placement",
+        style: Style::Free,
+        patch: Patch::Na,
+        usage: &["gap(min_hz, max_hz)"],
+        summary: "Target empty registers (low subjective intensity); fill the room.",
+        details: "Density cloud by default; `.peak()` for the emptiest position.",
+    },
+    FnDoc {
+        name: "peak",
+        owner: Owner::Placement,
+        category: "placement",
+        style: Style::Method,
+        patch: Patch::Na,
+        usage: &["peak()"],
+        summary: "Realize a field target as its deterministic extremum.",
+        details: "",
     },
     FnDoc {
         name: "density",
-        owner: Owner::Global,
+        owner: Owner::Placement,
         category: "placement",
-        style: Style::Free,
+        style: Style::Method,
         patch: Patch::Na,
-        usage: &["density(min_hz, max_hz)"],
-        summary: "Sample positions from Consonance Density inside a frequency range.",
-        details: "Density is a normalized distribution derived from the consonance model and \
-remains well-defined inside the requested range. Default spacing is 1.0 ERB.",
+        usage: &["density()"],
+        summary: "Realize a field target as a stochastic cloud (the default).",
+        details: "",
     },
     FnDoc {
         name: "random",
@@ -433,7 +475,7 @@ remains well-defined inside the requested range. Default spacing is 1.0 ERB.",
         style: Style::Method,
         patch: Patch::Na,
         usage: &["range(min_mul, max_mul)"],
-        summary: "Multiplier range relative to the root; only valid on `peaks()`.",
+        summary: "Multiplier range relative to the root; only valid on `consonance(root)`.",
         details: "",
     },
     FnDoc {
@@ -443,7 +485,7 @@ remains well-defined inside the requested range. Default spacing is 1.0 ERB.",
         style: Style::Method,
         patch: Patch::Na,
         usage: &["spacing(min_erb)"],
-        summary: "Minimum ERB distance between placed voices; valid on `peaks()` and `density()`.",
+        summary: "Minimum ERB distance between placed voices; valid on field placements.",
         details: "",
     },
     FnDoc {
@@ -456,7 +498,7 @@ remains well-defined inside the requested range. Default spacing is 1.0 ERB.",
         summary: "Reject sampled positions near specified semitone targets.",
         details: "`targets_st` is an array of semitone offsets from `anchor_hz`, `exclusion_st` \
 is the exclusion zone width in semitones, and `max_tries` is the retry limit. Wraps any \
-strategy-bearing placement (`peaks()`, `density()`, `random()`, `line()`).",
+strategy-bearing placement (`consonance()`, `dissonance()`, `random()`, `line()`, ...).",
     },
     // --- timeline ---
     FnDoc {
@@ -855,7 +897,7 @@ recurring downbeat can seed an emergent measure.",
         usage: &["anchor()"],
         summary: "Hold the voice at its pitch: an anchored voice never moves.",
         details: "Voices placed with `at()` or given `freq()` are anchored implicitly; use \
-`anchor()` to hold strategy-placed voices (`peaks()`, `density()`, ...) at their settled \
+`anchor()` to hold strategy-placed voices (`consonance()`, `dissonance()`, ...) at their settled \
 position, or to state the intent explicitly.",
     },
     FnDoc {
@@ -1285,7 +1327,7 @@ implementation-level control.",
         patch: Patch::Draft,
         usage: &["respawn_settle(placement)"],
         summary: "Placement used for replacements.",
-        details: "Requires a strategy-bearing placement: `density()`, `peaks()`, `random()`, or \
+        details: "Requires a strategy-bearing placement: `consonance()`, `dissonance()`, `edge()`, `gap()`, `random()`, or \
 `line()` (not `at()`).",
     },
     FnDoc {
@@ -1494,7 +1536,7 @@ fabricates a beat from non-metric input.",
         patch: Patch::Na,
         usage: &["temporal_basin(min_hz, max_hz)"],
         summary: "Tempo region the emergent beat gravitates toward.",
-        details: "The time-axis analogue of `density(min, max)`: it shapes the terrain, does \
+        details: "The time-axis analogue of `consonance(min, max)`: it shapes the terrain, does \
 not place a beat, and never forces a measure.",
     },
     FnDoc {

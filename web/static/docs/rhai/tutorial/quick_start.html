@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-7ac3c3e2.js";
+            window.path_to_searchindex_js = "../searchindex-8d1646ce.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-ebd22986.js"></script>
@@ -191,8 +191,9 @@ is alive.</p>
 <li><strong>Materials</strong> are voice templates made with <code>sine()</code>, <code>harmonic()</code>,
 <code>modal()</code>, <code>saw()</code>, <code>square()</code>, and <code>noise()</code>.</li>
 <li><strong>Variants</strong> clone a material with <code>variant(material)</code>.</li>
-<li><strong>Placements</strong> decide where participants enter: <code>at()</code>, <code>peaks()</code>,
-<code>density()</code>, <code>random()</code>, and <code>line()</code>.</li>
+<li><strong>Placements</strong> decide where participants enter: field targets
+<code>consonance()</code>, <code>dissonance()</code>, <code>edge()</code>, <code>gap()</code> (cloud by default,
+<code>.peak()</code> for the extremum), plus <code>random()</code>, <code>at()</code>, and <code>line()</code>.</li>
 <li><strong>Participants</strong> are the handles returned by <code>place()</code>. Before the next
 <code>wait()</code> or <code>flush()</code>, participant builder methods still shape the initial
 spawn; after that, patchable methods update running voices.</li>
@@ -209,9 +210,9 @@ section("plain entry", || {
 });
 </code></pre>
 <h2 id="placing-into-the-field"><a class="header" href="#placing-into-the-field">Placing Into the Field</a></h2>
-<p><code>peaks(root_hz)</code> places voices at high Consonance Field positions around a
-root. The field is shaped by what the system perceives — an anchor changes
-where the peaks are.</p>
+<p><code>consonance(root_hz).peak()</code> places voices at high Consonance Field positions
+around a root. The field is shaped by what the system perceives — an anchor
+changes where the peaks are.</p>
 <pre><code class="language-rhai">let anchor = harmonic()
     .brain("drone")
     .amp(0.06)
@@ -226,7 +227,7 @@ section("field placement", || {
     place(anchor, at(110.0));
     wait(1.0);
 
-    place(voice, peaks(110.0).range(1.0, 4.0).count(6).spacing(0.9));
+    place(voice, consonance(110.0).peak().range(1.0, 4.0).count(6).spacing(0.9));
     wait(6.0);
 });
 </code></pre>
@@ -239,7 +240,7 @@ must be set before the group is committed. The
 draft-only.</p>
 <pre><code class="language-rhai">let g = place(
     harmonic().amp(0.04).sustain(),
-    peaks(220.0).count(3)
+    consonance(220.0).peak().count(3)
 );
 wait(2.0);     // commit: the group is now live
 
@@ -267,7 +268,7 @@ section("emergence", || {
     place(anchor, at(110.0));
     wait(2.0);
 
-    place(colony, density(90.0, 900.0).count(8).spacing(0.8));
+    place(colony, consonance(90.0, 900.0).count(8).spacing(0.8));
     wait(8.0);
 });
 </code></pre>

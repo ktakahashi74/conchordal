@@ -57,10 +57,10 @@ section("heartbeat", || {
     let beat = place(downbeat, at(root_hz * 0.5).count(1));
     wait(2.0);
 
-    let voices = place(consonant_pulse, density(120.0, 900.0).spacing(0.85).count(8));
+    let voices = place(consonant_pulse, consonance(120.0, 900.0).spacing(0.85).count(8));
     wait(8.0);
 
-    let cross = place(offbeat, density(260.0, 1320.0).spacing(0.75).count(4));
+    let cross = place(offbeat, consonance(260.0, 1320.0).spacing(0.75).count(4));
     wait(6.0);
 
     harmonic_tension(0.65);

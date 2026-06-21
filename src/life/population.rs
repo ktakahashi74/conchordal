@@ -8,7 +8,8 @@ use crate::life::control::{MAX_FREQ_HZ, MIN_FREQ_HZ};
 use crate::life::generator_model::GeneratorModel;
 use crate::life::social_density::SocialDensityTrace;
 use crate::scenario::{
-    Action, ControlUpdateMode, RespawnPeakBiasConfig, RespawnPolicy, SpawnStrategy, VoiceSpec,
+    Action, ControlUpdateMode, FieldSampling, FieldTarget, RespawnPeakBiasConfig, RespawnPolicy,
+    SpawnStrategy, VoiceSpec,
 };
 use rand::{
     Rng, RngExt, SeedableRng, distr::Distribution, distr::weighted::WeightedIndex, rngs::SmallRng,
@@ -19,6 +20,79 @@ use tracing::{debug, info, warn};
 
 const DEFAULT_REPORT_FIRST_K: u32 = 10;
 const DEFAULT_REPORT_PLV_WINDOW: usize = 200;
+
+/// Peak score for a field target at bin `i` (higher = better extremum).
+fn field_peak_score(target: FieldTarget, landscape: &LandscapeFrame, i: usize) -> f32 {
+    match target {
+        FieldTarget::Consonance => landscape
+            .consonance_field_level
+            .get(i)
+            .copied()
+            .unwrap_or(f32::MIN),
+        FieldTarget::Dissonance => -landscape
+            .consonance_field_level
+            .get(i)
+            .copied()
+            .unwrap_or(f32::MAX),
+        FieldTarget::Edge => {
+            let v = landscape
+                .consonance_field_level
+                .get(i)
+                .copied()
+                .unwrap_or(f32::MAX);
+            -(v - 0.5).abs()
+        }
+        FieldTarget::Gap => -landscape
+            .subjective_intensity
+            .get(i)
+            .copied()
+            .unwrap_or(f32::MAX),
+        FieldTarget::Uniform => 0.0,
+    }
+}
+
+/// Non-negative density mass for a field target at bin `i`. `gap_ref` is the
+/// loudest in-range intensity, used only by `Gap`.
+fn field_density_mass(
+    target: FieldTarget,
+    landscape: &LandscapeFrame,
+    i: usize,
+    gap_ref: f32,
+) -> f32 {
+    match target {
+        FieldTarget::Consonance => landscape
+            .consonance_density_mass
+            .get(i)
+            .copied()
+            .unwrap_or(0.0),
+        FieldTarget::Dissonance => {
+            // Missing bins default to fully consonant so they get zero mass.
+            let v = landscape
+                .consonance_field_level
+                .get(i)
+                .copied()
+                .unwrap_or(1.0);
+            (1.0 - v).max(0.0)
+        }
+        FieldTarget::Edge => {
+            let v = landscape
+                .consonance_field_level
+                .get(i)
+                .copied()
+                .unwrap_or(0.0);
+            (1.0 - 2.0 * (v - 0.5).abs()).max(0.0)
+        }
+        FieldTarget::Gap => {
+            let e = landscape
+                .subjective_intensity
+                .get(i)
+                .copied()
+                .unwrap_or(gap_ref);
+            (gap_ref - e).max(0.0)
+        }
+        FieldTarget::Uniform => 1.0,
+    }
+}
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct PredGateStats {
@@ -513,29 +587,58 @@ impl Population {
         };
 
         let pick_idx = match strategy {
-            SpawnStrategy::Consonance { .. } => {
+            // Flat (log-uniform) measure: sample continuously, retrying occupancy.
+            SpawnStrategy::Field {
+                target: FieldTarget::Uniform,
+                ..
+            } => {
+                let min_l = min_freq.log2();
+                let max_l = max_freq.log2();
+                if !min_l.is_finite() || !max_l.is_finite() || min_l >= max_l {
+                    return min_freq.max(1e-6);
+                }
+                for _ in 0..32 {
+                    let r = rng.random_range(min_l..max_l);
+                    let f = 2.0f32.powf(r);
+                    if !self.is_range_occupied_with(f, min_dist_erb, reserved) {
+                        return f;
+                    }
+                }
+                return 2.0f32.powf(rng.random_range(min_l..max_l));
+            }
+            // Deterministic extremum of the target (higher score = better).
+            SpawnStrategy::Field {
+                target,
+                sampling: FieldSampling::Peak,
+                ..
+            } => {
                 let mut best_free = None;
                 let mut best_any = (idx_min, f32::MIN);
                 for i in idx_min..=idx_max {
-                    let c_val = landscape
-                        .consonance_field_level
-                        .get(i)
-                        .copied()
-                        .unwrap_or(f32::MIN);
-                    if c_val > best_any.1 {
-                        best_any = (i, c_val);
+                    let score = field_peak_score(*target, landscape, i);
+                    if score > best_any.1 {
+                        best_any = (i, score);
                     }
                     let f = space.freq_of_index(i);
                     if !self.is_range_occupied_with(f, min_dist_erb, reserved)
-                        && c_val > best_free.map_or(f32::MIN, |(_, v)| v)
+                        && score > best_free.map_or(f32::MIN, |(_, v)| v)
                     {
-                        best_free = Some((i, c_val));
+                        best_free = Some((i, score));
                     }
                 }
                 best_free.unwrap_or(best_any).0
             }
-            SpawnStrategy::ConsonanceDensity { .. } => {
+            // Stochastic cloud weighted by the target mass.
+            SpawnStrategy::Field { target, .. } => {
                 let range_len = idx_max - idx_min + 1;
+                // Gap mass is measured relative to the loudest bin in range.
+                let gap_ref = if *target == FieldTarget::Gap {
+                    (idx_min..=idx_max)
+                        .filter_map(|i| landscape.subjective_intensity.get(i).copied())
+                        .fold(0.0f32, f32::max)
+                } else {
+                    0.0
+                };
                 let mut weights = Vec::with_capacity(range_len);
                 let mut has_unoccupied = false;
                 let mut sum = 0.0f32;
@@ -545,17 +648,13 @@ impl Population {
                     if !occupied {
                         has_unoccupied = true;
                     }
-                    let raw = landscape
-                        .consonance_density_mass
-                        .get(i)
-                        .copied()
-                        .unwrap_or(0.0);
+                    let raw = field_density_mass(*target, landscape, i, gap_ref);
                     let w = if occupied { 0.0 } else { raw.max(0.0) };
                     let w = if w.is_finite() { w } else { 0.0 };
                     weights.push((w, occupied));
                     sum += w;
                 }
-                // Fallback: if density mass sums to zero, use uniform over unoccupied bins.
+                // Fallback: if mass sums to zero, use uniform over unoccupied bins.
                 if !(sum > 0.0 && sum.is_finite()) {
                     for (w, occupied) in &mut weights {
                         *w = if *occupied && has_unoccupied {
@@ -592,21 +691,6 @@ impl Population {
                     }
                 }
                 return last;
-            }
-            SpawnStrategy::RandomLog { .. } => {
-                let min_l = min_freq.log2();
-                let max_l = max_freq.log2();
-                if !min_l.is_finite() || !max_l.is_finite() || min_l >= max_l {
-                    return min_freq.max(1e-6);
-                }
-                for _ in 0..32 {
-                    let r = rng.random_range(min_l..max_l);
-                    let f = 2.0f32.powf(r);
-                    if !self.is_range_occupied_with(f, min_dist_erb, reserved) {
-                        return f;
-                    }
-                }
-                return 2.0f32.powf(rng.random_range(min_l..max_l));
             }
             SpawnStrategy::Linear { .. } => idx_min,
         };
@@ -2073,10 +2157,11 @@ mod tests {
         landscape.consonance_field_score[idx_raw] = 10.0;
 
         let pop = test_pop();
-        let strategy = SpawnStrategy::Consonance {
-            root_freq: 100.0,
-            min_mul: 1.0,
-            max_mul: 4.0,
+        let strategy = SpawnStrategy::Field {
+            target: FieldTarget::Consonance,
+            sampling: FieldSampling::Peak,
+            min_freq: 100.0,
+            max_freq: 400.0,
             min_dist_erb: 0.0,
         };
         let mut rng = rand::rngs::StdRng::seed_from_u64(7);
@@ -2134,7 +2219,9 @@ mod tests {
         landscape.consonance_density_mass[idx_target] = 1.0;
 
         let pop = test_pop();
-        let strategy = SpawnStrategy::ConsonanceDensity {
+        let strategy = SpawnStrategy::Field {
+            target: FieldTarget::Consonance,
+            sampling: FieldSampling::Density,
             min_freq: space.fmin,
             max_freq: space.fmax,
             min_dist_erb: 0.0,
@@ -2161,7 +2248,9 @@ mod tests {
         }
 
         let pop = test_pop();
-        let strategy = SpawnStrategy::ConsonanceDensity {
+        let strategy = SpawnStrategy::Field {
+            target: FieldTarget::Consonance,
+            sampling: FieldSampling::Density,
             min_freq: space.freq_of_index(idx_min),
             max_freq: space.freq_of_index(idx_max),
             min_dist_erb: 0.0,
@@ -2198,7 +2287,9 @@ mod tests {
             .collect();
 
         let pop = test_pop();
-        let strategy = SpawnStrategy::ConsonanceDensity {
+        let strategy = SpawnStrategy::Field {
+            target: FieldTarget::Consonance,
+            sampling: FieldSampling::Density,
             min_freq: space.freq_of_index(idx_min),
             max_freq: space.freq_of_index(idx_max),
             min_dist_erb: 1e-4,
@@ -2227,7 +2318,9 @@ mod tests {
         let reserved = vec![space.freq_of_index(idx_occupied)];
 
         let pop = test_pop();
-        let strategy = SpawnStrategy::ConsonanceDensity {
+        let strategy = SpawnStrategy::Field {
+            target: FieldTarget::Consonance,
+            sampling: FieldSampling::Density,
             min_freq: space.freq_of_index(idx_min),
             max_freq: space.freq_of_index(idx_max),
             min_dist_erb: 1e-4,
@@ -2263,7 +2356,9 @@ mod tests {
         let reserved = vec![space.freq_of_index(idx_occupied)];
 
         let pop = test_pop();
-        let strategy = SpawnStrategy::ConsonanceDensity {
+        let strategy = SpawnStrategy::Field {
+            target: FieldTarget::Consonance,
+            sampling: FieldSampling::Density,
             min_freq: space.freq_of_index(idx_min),
             max_freq: space.freq_of_index(idx_max),
             min_dist_erb: 1e-4,
@@ -2296,7 +2391,9 @@ mod tests {
         landscape.consonance_density_mass[idx_target] = 1.0;
 
         let pop = test_pop();
-        let strategy = SpawnStrategy::ConsonanceDensity {
+        let strategy = SpawnStrategy::Field {
+            target: FieldTarget::Consonance,
+            sampling: FieldSampling::Density,
             // Intentionally reversed order to emulate Rhai-side input mistakes.
             min_freq: space.freq_of_index(idx_high),
             max_freq: space.freq_of_index(idx_low),

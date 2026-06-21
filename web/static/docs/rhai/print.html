@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-139f4aaa.js";
+            window.path_to_searchindex_js = "searchindex-7ac3c3e2.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-ebd22986.js"></script>
@@ -302,9 +302,6 @@ section("emergence", || {
 
     place(colony, density(90.0, 900.0).count(8).spacing(0.8));
     wait(8.0);
-
-    harmonic_mirror(1.0);   // bend the harmonic terrain under them
-    wait(8.0);
 });
 </code></pre>
 <h2 id="where-to-go-next"><a class="header" href="#where-to-go-next">Where to go next</a></h2>
@@ -407,23 +404,6 @@ section("field placement", || {
     place(voice, peaks(110.0).range(1.0, 4.0).count(6).spacing(0.9));
     wait(6.0);
 });
-</code></pre>
-<h2 id="bending-the-terrain-harmonic_mirror"><a class="header" href="#bending-the-terrain-harmonic_mirror">Bending the terrain: <code>harmonic_mirror</code></a></h2>
-<p><code>harmonic_mirror(value)</code> is the harmonic-tension dial. Mechanically it blends
-the harmonicity terrain from overtone (<code>0.0</code>) toward undertone (<code>1.0</code>)
-projection; perceptually, raising it degrades the terrain’s coherence for
-overtone-radiating bodies, which is heard as harmonic tension. It is a
-tension–release axis — not a tonality (major/minor) switch — and the most
-direct way for the director to shape drama during a scene.</p>
-<pre><code class="language-rhai">let voice = harmonic().amp(0.04).sustain();
-place(voice, peaks(110.0).count(5));
-
-harmonic_mirror(0.1);   // consonant gravity
-wait(4.0);
-harmonic_mirror(0.8);   // tension: the terrain loses coherence
-wait(4.0);
-harmonic_mirror(0.1);   // release
-wait(4.0);
 </code></pre>
 <h2 id="consonance-density-density"><a class="header" href="#consonance-density-density">Consonance Density: <code>density</code></a></h2>
 <p><code>density(min_hz, max_hz)</code> samples from the density view of the field. Use it
@@ -530,6 +510,27 @@ wait(8.0);
 <code>custom_modes([ratios])</code>, <code>modal_table(name)</code>, <code>landscape_density_modes()</code>,
 and <code>landscape_peaks_modes()</code> — see the
 <a href="#mode-patterns">API Reference</a>.</p>
+<h2 id="a-directors-tension-dial-harmonic_tension"><a class="header" href="#a-directors-tension-dial-harmonic_tension">A director’s tension dial: <code>harmonic_tension</code></a></h2>
+<p><code>harmonic_tension(value)</code> is a director-level tension–release dial, not a
+foundational field operation. Raising it degrades the harmonicity terrain’s
+coherence for overtone-radiating bodies, heard as harmonic tension; lowering it
+restores consonant gravity. Reach for it to shape drama across a scene.</p>
+<p>A caveat on what it is: mechanically it blends the terrain from overtone (<code>0.0</code>)
+toward an <em>undertone</em> projection (<code>1.0</code>) — a leftover of an abandoned
+harmonic-dualism hypothesis. There is no undertone series in nature and no
+perceptual mechanism behind it, so this is a useful artifact (a tension knob that
+happens to work), not a tonality (major/minor) switch and not a grounded terrain
+operation. Do not read musical meaning into the projection itself.</p>
+<pre><code class="language-rhai">let voice = harmonic().amp(0.04).sustain();
+place(voice, peaks(110.0).count(5));
+
+harmonic_tension(0.1);   // consonant gravity
+wait(4.0);
+harmonic_tension(0.8);   // tension: the terrain loses coherence
+wait(4.0);
+harmonic_tension(0.1);   // release
+wait(4.0);
+</code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="rhythm-one-coupling-continuum"><a class="header" href="#rhythm-one-coupling-continuum">Rhythm: One Coupling Continuum</a></h1>
 <p>Rhythm in conchordal is <strong>one coupling continuum on a shared emergent meter</strong>,
@@ -925,11 +926,6 @@ play(callback, [args])
 </code></pre>
 <p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
 <p>Signed beat-phase offset in -0.5..0.5; 0.5 reads as syncopation.</p>
-<h4 id="pulse"><a class="header" href="#pulse"><code>pulse</code></a></h4>
-<pre><code class="language-rhai ignore">pulse(rate_hz)
-</code></pre>
-<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
-<p>Pulse at an explicit rate in Hz.</p>
 <h4 id="cycles"><a class="header" href="#cycles"><code>cycles</code></a></h4>
 <pre><code class="language-rhai ignore">cycles(n)
 </code></pre>
@@ -959,7 +955,7 @@ play(callback, [args])
 avoid_neighbors(strength, sigma_cents)
 </code></pre>
 <p>Applies to: <code>Material</code> and <code>Participant</code>. Live-patchable: updates running voices on a live <code>Participant</code>.</p>
-<p>Crowding repulsion from neighboring voices. With one argument the repulsion width is derived from the roughness kernel; the two-argument form sets it explicitly in cents.</p>
+<p>Crowding repulsion from neighboring voices. With one argument the repulsion width uses the default; the two-argument form sets it explicitly in cents.</p>
 <h3 id="lifecycle--viability"><a class="header" href="#lifecycle--viability">Lifecycle &amp; Viability</a></h3>
 <p>Energy budget and survival. Viability makes field fit matter over time: <code>consonance_viability()</code> defines the consonance window and <code>viability_rate()</code> controls continuous recharge, with environment-relative scoring by default.</p>
 <h4 id="metabolism"><a class="header" href="#metabolism"><code>metabolism</code></a></h4>
@@ -1034,6 +1030,16 @@ avoid_neighbors(strength, sigma_cents)
 </code></pre>
 <p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
 <p>Placement used for replacements. Requires a strategy-bearing placement: <code>density()</code>, <code>peaks()</code>, <code>random()</code>, or <code>line()</code> (not <code>at()</code>).</p>
+<h4 id="respawn_min_c_level"><a class="header" href="#respawn_min_c_level"><code>respawn_min_c_level</code></a></h4>
+<pre><code class="language-rhai ignore">respawn_min_c_level(level)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
+<p>Minimum consonance level for respawn acceptance.</p>
+<h4 id="respawn_background_death_rate"><a class="header" href="#respawn_background_death_rate"><code>respawn_background_death_rate</code></a></h4>
+<pre><code class="language-rhai ignore">respawn_background_death_rate(rate)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
+<p>Background turnover rate per second.</p>
 <h3 id="mode-patterns"><a class="header" href="#mode-patterns">Mode Patterns</a></h3>
 <p>Frequency relationships for <code>modal()</code> bodies. Constructors return a <code>ModePattern</code>; modifiers are chainable. Landscape-aware patterns sample the live field.</p>
 <h4 id="harmonic_modes"><a class="header" href="#harmonic_modes"><code>harmonic_modes</code></a></h4>
@@ -1107,8 +1113,8 @@ avoid_neighbors(strength, sigma_cents)
 <p>Route the voice to specific buses; accepts a <code>Bus</code> or a <code>BusSet</code>. Material only. <code>send(habitat_bus)</code> makes a voice sensed by the ecology but absent from the presented sound; <code>send(presentation_bus)</code> is heard without perturbing the ecology; <code>send(habitat_bus | presentation_bus)</code> feeds both (the default).</p>
 <h3 id="director--global-parameters"><a class="header" href="#director--global-parameters">Director &amp; Global Parameters</a></h3>
 <p>Scene-global terrain shaping and research controls. Director verbs are soft priors: they shape the terrain and never schedule a beat or force a measure.</p>
-<h4 id="harmonic_mirror"><a class="header" href="#harmonic_mirror"><code>harmonic_mirror</code></a></h4>
-<pre><code class="language-rhai ignore">harmonic_mirror(value)
+<h4 id="harmonic_tension"><a class="header" href="#harmonic_tension"><code>harmonic_tension</code></a></h4>
+<pre><code class="language-rhai ignore">harmonic_tension(value)
 </code></pre>
 <p>Harmonic-tension dial in 0.0-1.0: blends the harmonicity terrain from overtone toward undertone projection. Raising it degrades the terrain’s coherence for overtone-radiating bodies, heard as harmonic tension; lowering it restores consonant gravity. It is a tension-release axis, not a tonality (major/minor) switch.</p>
 <h4 id="meter_stability"><a class="header" href="#meter_stability"><code>meter_stability</code></a></h4>
@@ -1136,6 +1142,11 @@ avoid_neighbors(strength, sigma_cents)
 </code></pre>
 <p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
 <p>Single trigger.</p>
+<h4 id="pulse"><a class="header" href="#pulse"><code>pulse</code></a></h4>
+<pre><code class="language-rhai ignore">pulse(rate_hz)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
+<p>Pulse at an explicit rate in Hz.</p>
 <h4 id="while_alive"><a class="header" href="#while_alive"><code>while_alive</code></a></h4>
 <pre><code class="language-rhai ignore">while_alive()
 </code></pre>
@@ -1202,36 +1213,16 @@ avoid_neighbors(strength, sigma_cents)
 </code></pre>
 <p>Applies to: <code>Material</code> and <code>Participant</code>. Live-patchable: updates running voices on a live <code>Participant</code>.</p>
 <p>Weight of the landscape objective.</p>
-<h4 id="exploration"><a class="header" href="#exploration"><code>exploration</code></a></h4>
-<pre><code class="language-rhai ignore">exploration(value)
-</code></pre>
-<p>Applies to: <code>Material</code> and <code>Participant</code>. Live-patchable: updates running voices on a live <code>Participant</code>.</p>
-<p>Exploration tendency of the hill-climb.</p>
-<h4 id="persistence"><a class="header" href="#persistence"><code>persistence</code></a></h4>
-<pre><code class="language-rhai ignore">persistence(value)
-</code></pre>
-<p>Applies to: <code>Material</code> and <code>Participant</code>. Live-patchable: updates running voices on a live <code>Participant</code>.</p>
-<p>Persistence bias of the hill-climb.</p>
-<h4 id="anneal_temp"><a class="header" href="#anneal_temp"><code>anneal_temp</code></a></h4>
-<pre><code class="language-rhai ignore">anneal_temp(value)
-</code></pre>
-<p>Applies to: <code>Material</code> and <code>Participant</code>. Live-patchable: updates running voices on a live <code>Participant</code>.</p>
-<p>Annealing temperature of the hill-climb.</p>
 <h4 id="temperature"><a class="header" href="#temperature"><code>temperature</code></a></h4>
 <pre><code class="language-rhai ignore">temperature(value)
 </code></pre>
 <p>Applies to: <code>Material</code> and <code>Participant</code>. Live-patchable: updates running voices on a live <code>Participant</code>.</p>
-<p>Selection temperature of the peak sampler (softness of candidate choice).</p>
+<p>Search temperature shared by both pitch cores: 0 settles greedily, higher is more exploratory. The single stochastic-search knob. At 0 the hill-climb is greedy (move only on a clear improvement, otherwise stay) and the peak sampler takes the argmax candidate. Higher values let the hill-climb accept downhill moves (Metropolis) and soften the peak sampler’s candidate choice.</p>
 <h4 id="neighbor_step_cents"><a class="header" href="#neighbor_step_cents"><code>neighbor_step_cents</code></a></h4>
 <pre><code class="language-rhai ignore">neighbor_step_cents(value)
 </code></pre>
 <p>Applies to: <code>Material</code> and <code>Participant</code>. Live-patchable: updates running voices on a live <code>Participant</code>.</p>
 <p>Step size for neighbor exploration in cents.</p>
-<h4 id="improvement_threshold"><a class="header" href="#improvement_threshold"><code>improvement_threshold</code></a></h4>
-<pre><code class="language-rhai ignore">improvement_threshold(value)
-</code></pre>
-<p>Applies to: <code>Material</code> and <code>Participant</code>. Live-patchable: updates running voices on a live <code>Participant</code>.</p>
-<p>Minimum improvement to accept a move.</p>
 <h4 id="move_cost"><a class="header" href="#move_cost"><code>move_cost</code></a></h4>
 <pre><code class="language-rhai ignore">move_cost(coeff)
 </code></pre>
@@ -1284,6 +1275,11 @@ global_peaks(count, min_sep_cents)
 <p>Applies to: <code>Material</code> and <code>Participant</code>. Live-patchable: updates running voices on a live <code>Participant</code>.</p>
 <p>Ratio-based movement candidates; 0 disables.</p>
 <h3 id="neighbor-awareness-1"><a class="header" href="#neighbor-awareness-1">Neighbor Awareness</a></h3>
+<h4 id="octave_avoidance"><a class="header" href="#octave_avoidance"><code>octave_avoidance</code></a></h4>
+<pre><code class="language-rhai ignore">octave_avoidance(weight)
+</code></pre>
+<p>Applies to: <code>Material</code> and <code>Participant</code>. Live-patchable: updates running voices on a live <code>Participant</code>.</p>
+<p>Repel octave/unison doubling so voices settle on distinct chord tones. Adds an octave-equivalence (chroma) term to the occupancy field shared by crowding and adaptation. 0 leaves octaves free to converge; higher weights push voices off octave-doublings toward distinct pitches. Pairs with avoid_neighbors, which only repels near-unison.</p>
 <h4 id="crowding_target"><a class="header" href="#crowding_target"><code>crowding_target</code></a></h4>
 <pre><code class="language-rhai ignore">crowding_target(same_visible, other_visible)
 </code></pre>
@@ -1305,17 +1301,6 @@ global_peaks(count, min_sep_cents)
 </code></pre>
 <p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
 <p><code>"environment"</code> (default) or <code>"total"</code> viability scoring scope. Use <code>"total"</code> only when the selection question should include the voice’s own contribution.</p>
-<h3 id="respawn-1"><a class="header" href="#respawn-1">Respawn</a></h3>
-<h4 id="respawn_min_c_level"><a class="header" href="#respawn_min_c_level"><code>respawn_min_c_level</code></a></h4>
-<pre><code class="language-rhai ignore">respawn_min_c_level(level)
-</code></pre>
-<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
-<p>Minimum consonance level for respawn acceptance.</p>
-<h4 id="respawn_background_death_rate"><a class="header" href="#respawn_background_death_rate"><code>respawn_background_death_rate</code></a></h4>
-<pre><code class="language-rhai ignore">respawn_background_death_rate(rate)
-</code></pre>
-<p>Applies to: <code>Material</code> and <code>Participant</code>. Draft-only: ignored with a warning on a live <code>Participant</code>.</p>
-<p>Background turnover rate per second.</p>
 <h3 id="director--global-parameters-1"><a class="header" href="#director--global-parameters-1">Director &amp; Global Parameters</a></h3>
 <h4 id="set_roughness_k"><a class="header" href="#set_roughness_k"><code>set_roughness_k</code></a></h4>
 <pre><code class="language-rhai ignore">set_roughness_k(value)
@@ -1389,8 +1374,8 @@ lets the gravity come home.</li>
 <li><strong>Settling</strong> — scattered voices glide to where the field can hold them.</li>
 <li><strong>Bells</strong> — struck bodies; the last bell lets the field choose its
 partials.</li>
-<li><strong>Heartbeat</strong> — no clock is imposed; a pulse forms because the population
-drives one.</li>
+<li><strong>Heartbeat</strong> — no external scaffold is imposed; the population locks into a
+shared pulse.</li>
 <li><strong>Murmuration</strong> — a flock drifts into step, never commanded.</li>
 <li><strong>Rain</strong> — time without a beat, falling along the field.</li>
 <li><strong>Generations</strong> — voices live, starve, and are reborn where harmony can
@@ -1403,6 +1388,11 @@ arc.</li>
 movement, timbre); 7–9 walk the rhythm continuum one region at a time;
 10 closes the loop into life; 11–12 are directed by the composer. All études
 are compile-checked by the test suite, so they always match the current API.</p>
+<p>One craft rule holds across the path: <strong>scaffolding is inaudible or
+embodied</strong>. Terrain anchors sing to the habitat bus, not to the audience,
+unless the drone is itself the subject, as with the suns of <em>Gravity</em>. Pulse
+carriers get resonant bodies and lives of their own, or the pulse is left to
+condense from the colony.</p>
 <h2 id="research-assays"><a class="header" href="#research-assays">Research assays</a></h2>
 <p><code>samples/research/</code> holds comparison fixtures — heredity/selection ablations,
 external-scaffold rhythm controls, and mechanism studies. They study the

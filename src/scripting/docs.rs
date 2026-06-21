@@ -1464,12 +1464,12 @@ ecology; `send(habitat_bus | presentation_bus)` feeds both (the default).",
     },
     // --- director ---
     FnDoc {
-        name: "harmonic_mirror",
+        name: "harmonic_tension",
         owner: Owner::Global,
         category: "director",
         style: Style::Free,
         patch: Patch::Na,
-        usage: &["harmonic_mirror(value)"],
+        usage: &["harmonic_tension(value)"],
         summary: "Harmonic-tension dial in 0.0-1.0: blends the harmonicity terrain from overtone toward undertone projection.",
         details: "Raising it degrades the terrain's coherence for overtone-radiating bodies, \
 heard as harmonic tension; lowering it restores consonant gravity. It is a tension-release \

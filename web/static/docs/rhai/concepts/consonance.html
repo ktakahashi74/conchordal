@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-139f4aaa.js";
+            window.path_to_searchindex_js = "../searchindex-7ac3c3e2.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-ebd22986.js"></script>
@@ -205,23 +205,6 @@ section("field placement", || {
     wait(6.0);
 });
 </code></pre>
-<h2 id="bending-the-terrain-harmonic_mirror"><a class="header" href="#bending-the-terrain-harmonic_mirror">Bending the terrain: <code>harmonic_mirror</code></a></h2>
-<p><code>harmonic_mirror(value)</code> is the harmonic-tension dial. Mechanically it blends
-the harmonicity terrain from overtone (<code>0.0</code>) toward undertone (<code>1.0</code>)
-projection; perceptually, raising it degrades the terrain’s coherence for
-overtone-radiating bodies, which is heard as harmonic tension. It is a
-tension–release axis — not a tonality (major/minor) switch — and the most
-direct way for the director to shape drama during a scene.</p>
-<pre><code class="language-rhai">let voice = harmonic().amp(0.04).sustain();
-place(voice, peaks(110.0).count(5));
-
-harmonic_mirror(0.1);   // consonant gravity
-wait(4.0);
-harmonic_mirror(0.8);   // tension: the terrain loses coherence
-wait(4.0);
-harmonic_mirror(0.1);   // release
-wait(4.0);
-</code></pre>
 <h2 id="consonance-density-density"><a class="header" href="#consonance-density-density">Consonance Density: <code>density</code></a></h2>
 <p><code>density(min_hz, max_hz)</code> samples from the density view of the field. Use it
 when the musical thought is “let the field seed a population inside this
@@ -327,6 +310,27 @@ wait(8.0);
 <code>custom_modes([ratios])</code>, <code>modal_table(name)</code>, <code>landscape_density_modes()</code>,
 and <code>landscape_peaks_modes()</code> — see the
 <a href="../reference/api.html#mode-patterns">API Reference</a>.</p>
+<h2 id="a-directors-tension-dial-harmonic_tension"><a class="header" href="#a-directors-tension-dial-harmonic_tension">A director’s tension dial: <code>harmonic_tension</code></a></h2>
+<p><code>harmonic_tension(value)</code> is a director-level tension–release dial, not a
+foundational field operation. Raising it degrades the harmonicity terrain’s
+coherence for overtone-radiating bodies, heard as harmonic tension; lowering it
+restores consonant gravity. Reach for it to shape drama across a scene.</p>
+<p>A caveat on what it is: mechanically it blends the terrain from overtone (<code>0.0</code>)
+toward an <em>undertone</em> projection (<code>1.0</code>) — a leftover of an abandoned
+harmonic-dualism hypothesis. There is no undertone series in nature and no
+perceptual mechanism behind it, so this is a useful artifact (a tension knob that
+happens to work), not a tonality (major/minor) switch and not a grounded terrain
+operation. Do not read musical meaning into the projection itself.</p>
+<pre><code class="language-rhai">let voice = harmonic().amp(0.04).sustain();
+place(voice, peaks(110.0).count(5));
+
+harmonic_tension(0.1);   // consonant gravity
+wait(4.0);
+harmonic_tension(0.8);   // tension: the terrain loses coherence
+wait(4.0);
+harmonic_tension(0.1);   // release
+wait(4.0);
+</code></pre>
 
                     </main>
 

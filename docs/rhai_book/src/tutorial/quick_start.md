@@ -114,9 +114,6 @@ section("emergence", || {
 
     place(colony, density(90.0, 900.0).count(8).spacing(0.8));
     wait(8.0);
-
-    harmonic_mirror(1.0);   // bend the harmonic terrain under them
-    wait(8.0);
 });
 ```
 

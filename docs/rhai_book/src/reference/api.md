@@ -781,10 +781,10 @@ Route the voice to specific buses; accepts a `Bus` or a `BusSet`. Material only.
 
 Scene-global terrain shaping and research controls. Director verbs are soft priors: they shape the terrain and never schedule a beat or force a measure.
 
-#### `harmonic_mirror`
+#### `harmonic_tension`
 
 ```rhai,ignore
-harmonic_mirror(value)
+harmonic_tension(value)
 ```
 
 Harmonic-tension dial in 0.0-1.0: blends the harmonicity terrain from overtone toward undertone projection. Raising it degrades the terrain's coherence for overtone-radiating bodies, heard as harmonic tension; lowering it restores consonant gravity. It is a tension-release axis, not a tonality (major/minor) switch.

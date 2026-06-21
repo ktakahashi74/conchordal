@@ -54,7 +54,7 @@ let mover = harmonic()
     .adsr(0.24, 0.70, 0.82, 1.3);
 
 section("Consonance Field Control", || {
-    harmonic_mirror(0.0);
+    harmonic_tension(0.0);
 
     let field = place(anchor, at(field_a_hz).count(1));
     let root = place(reference, at(field_a_hz).count(1));
@@ -68,7 +68,7 @@ section("Consonance Field Control", || {
 
     release(marker_a);
     wait(0.4);
-    harmonic_mirror(0.35);
+    harmonic_tension(0.35);
     field.freq(field_b_hz);
     root.freq(field_b_hz);
     let marker_b = place(marker, peaks(field_b_hz).range(0.9, 2.1).spacing(0.95).count(2));
@@ -76,7 +76,7 @@ section("Consonance Field Control", || {
 
     release(marker_b);
     wait(0.4);
-    harmonic_mirror(0.85);
+    harmonic_tension(0.85);
     field.freq(field_c_hz);
     root.freq(field_c_hz);
     let marker_c = place(variant(marker).brightness(0.42), peaks(field_c_hz).range(0.8, 1.9).spacing(0.95).count(2));

@@ -77,6 +77,7 @@ fn samples_have_no_legacy_keys() {
         "field | presentation".to_string(),
         ".crowding(".to_string(),
         "set_harmonic_mirror(".to_string(),
+        "harmonic_mirror(".to_string(),
         ".movement_glide(".to_string(),
         ".pitch_glide(".to_string(),
         "consonance_density(".to_string(),

@@ -46,7 +46,7 @@ let offbeat = variant(consonant_pulse)
     .adsr(0.010, 0.100, 0.55, 0.26);
 
 section("heartbeat", || {
-    harmonic_mirror(0.15);
+    harmonic_tension(0.15);
     // A deep attractor in a ~2 Hz tempo region: the pulse forms readily.
     meter_stability(0.85);
     temporal_basin(1.8, 2.2);
@@ -63,7 +63,7 @@ section("heartbeat", || {
     let cross = place(offbeat, density(260.0, 1320.0).spacing(0.75).count(4));
     wait(6.0);
 
-    harmonic_mirror(0.65);
+    harmonic_tension(0.65);
     root.freq(root_hz * 1.25);
     voices.amp(0.037);
     wait(6.7);

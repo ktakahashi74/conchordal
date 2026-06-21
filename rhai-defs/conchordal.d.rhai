@@ -242,11 +242,11 @@ fn global_peaks(arg0: Participant, arg1: i64, arg2: i64) -> Participant;
 /// Material with a harmonic-series body.
 fn harmonic() -> Material;
 
-/// Harmonic-tension dial in 0.0-1.0: blends the harmonicity terrain from overtone toward undertone projection.
-fn harmonic_mirror(arg0: f64);
-
 /// Harmonic series: f, 2f, 3f, ...
 fn harmonic_modes() -> ModePattern;
+
+/// Harmonic-tension dial in 0.0-1.0: blends the harmonicity terrain from overtone toward undertone projection.
+fn harmonic_tension(arg0: f64);
 
 /// Starting energy.
 fn initial_energy(arg0: Material, arg1: f64) -> Material;

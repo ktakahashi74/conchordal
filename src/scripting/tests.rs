@@ -59,11 +59,11 @@ const E4_STEP_RESPONSE_SCRIPT: &str = r#"
                 .place(peaks(196.0).range(0.8, 2.5).spacing(0.9));
             flush();
 
-            harmonic_mirror(0.0);
+            harmonic_tension(0.0);
             flush();
-            harmonic_mirror(0.5);
+            harmonic_tension(0.5);
             flush();
-            harmonic_mirror(1.0);
+            harmonic_tension(1.0);
             flush();
 
             release(probes);
@@ -79,7 +79,7 @@ const E4_BETWEEN_RUNS_SCRIPT: &str = r#"
         section("E4 Between Runs Test", || {
             let weights = [0.0, 0.5, 1.0];
             for w in weights {
-                harmonic_mirror(w);
+                harmonic_tension(w);
                 flush();
 
                 let base = create(anchor, 1).freq(196.0);

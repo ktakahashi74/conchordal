@@ -69,7 +69,7 @@ let flow_particles = modal()
 
 section("emergence and resolution", || {
     // I. Genesis: consonant ground rises from silence.
-    harmonic_mirror(0.12);
+    harmonic_tension(0.12);
     meter_stability(0.85);
     temporal_basin(1.8, 2.2);
     let root = place(field_anchor, at(root_hz).count(1));
@@ -83,22 +83,22 @@ section("emergence and resolution", || {
     // consonance, while the field slowly bends toward tension.
     let colony = place(consonance_colony, density(80.0, 900.0).count(8).spacing(0.84));
     wait(4.7);
-    harmonic_mirror(0.40);
+    harmonic_tension(0.40);
     wait(4.7);
 
     // IV. Tension peak: strained field, lifted register, shimmering flow.
-    harmonic_mirror(0.72);
+    harmonic_tension(0.72);
     root.freq(root_hz * 1.5);
     pulse.freq(root_hz * 1.5);
     colony.amp(0.034);
     wait(3.3);
     let flow = place(flow_particles, density(200.0, 1500.0).count(9).spacing(0.66));
-    harmonic_mirror(0.88);
+    harmonic_tension(0.88);
     wait(5.3);
 
     // V. Resolution: the field returns to consonance and the register falls
     // home; agents settle onto stable peaks -- the return of tonal gravity.
-    harmonic_mirror(0.45);
+    harmonic_tension(0.45);
     flow.amp(0.014);
     colony.glide(0.22);
     root.freq(root_hz);
@@ -106,7 +106,7 @@ section("emergence and resolution", || {
     wait(3.3);
     release(flow);
     wait(1.3);
-    harmonic_mirror(0.10);
+    harmonic_tension(0.10);
     colony.amp(0.028);
     wait(5.3);
     release(colony);

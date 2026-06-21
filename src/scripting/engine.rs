@@ -1701,11 +1701,13 @@ impl ScriptHost {
             },
         );
 
-        let ctx_for_harmonic_mirror = ctx.clone();
+        let ctx_for_harmonic_tension = ctx.clone();
         engine.register_fn(
-            "harmonic_mirror",
+            "harmonic_tension",
             move |_call_ctx: NativeCallContext, mirror: FLOAT| {
-                let mut ctx = ctx_for_harmonic_mirror.lock().expect("lock script context");
+                let mut ctx = ctx_for_harmonic_tension
+                    .lock()
+                    .expect("lock script context");
                 let update = crate::core::landscape::LandscapeUpdate {
                     mirror: Some(mirror as f32),
                     ..crate::core::landscape::LandscapeUpdate::default()

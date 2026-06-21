@@ -323,7 +323,25 @@ tune *overall* convergence (`landscape_weight`, `avoid_neighbors`,
 forbid octave-doubling to land a *distinct* chord. Octave-convergence as intent is
 fine; octave-convergence as the only reachable outcome is not.
 
-**Octave-aware occupancy (implemented 2026-06-20).** An octave-equivalence (chroma)
+**REMOVED (2026-06-21).** `octave_avoidance` (the chroma term below) was removed
+after a closer audition. As a *flat* penalty decoupled from the consonance
+potential, it has no stable operating point: an A/B sweep on `05_settling` found a
+cliff (`0.01` ≈ octave fusion, `0.02` already tense) with no "consonant chord with
+octave doublings" regime in between. The cause is structural — with N voices on a
+single root the strongly-consonant *distinct* pitch classes are few (~3-4:
+octave/unison, fifth, fourth, third), so once a chroma penalty pushes voices off
+the octave at all, the surplus is forced onto tense classes; and the per-class
+occupancy *sums* over voices, so even tiny weights overshoot. The diagnosis (from
+the audition): a working avoidance must be **derived from the consonance potential**
+(move off a doubling only when a comparably-consonant alternative exists), i.e. a
+single occupancy-aware potential, not a free-floating flat term. That is the
+occupancy-unified-drive's job. With `octave_avoidance` gone, movement reverts to
+`avoid_neighbors` (raw-f0 crowding) only: voices avoid near-unison pile-up but may
+octave-stack (consonant), and a distinct triad is left to the unified-drive
+redesign / a mutual-consonance objective. The historical record of the removed
+mechanism follows.
+
+**Octave-aware occupancy (implemented 2026-06-20; removed 2026-06-21).** An octave-equivalence (chroma)
 term was added to the shared occupancy kernel `occupancy_contribution`, weighted by
 a composer knob `octave_avoidance` (Rhai `octave_avoidance(weight)` on `Material`/`Participant`):
 `occupancy = Gaussian(Δf0) + octave_avoidance · Gaussian(Δ_chroma)` where

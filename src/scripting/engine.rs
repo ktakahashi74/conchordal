@@ -73,7 +73,6 @@ impl ScriptHost {
                 ("tessitura_gravity", SpeciesSpec::set_tessitura_gravity),
                 ("sustain_drive", SpeciesSpec::set_continuous_drive),
                 ("pitch_smooth", SpeciesSpec::set_pitch_smooth_tau),
-                ("octave_avoidance", SpeciesSpec::set_octave_avoidance),
             ],
         );
         register_species_pair_numeric_methods(
@@ -826,12 +825,6 @@ impl ScriptHost {
                     "pitch_smooth",
                     SpeciesSpec::set_pitch_smooth_tau,
                     patch_pitch_smooth_tau,
-                    None,
-                ),
-                (
-                    "octave_avoidance",
-                    SpeciesSpec::set_octave_avoidance,
-                    patch_octave_avoidance,
                     None,
                 ),
             ],

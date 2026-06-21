@@ -214,7 +214,6 @@ pub struct PitchControl {
     pub landscape_weight: f32,
     pub crowding_strength: f32,
     pub crowding_sigma_cents: f32,
-    pub octave_avoidance: f32,
     pub leave_self_out: bool,
     pub leave_self_out_mode: LeaveSelfOutMode,
     pub move_cost_coeff: f32,
@@ -248,7 +247,6 @@ impl Default for PitchControl {
             landscape_weight: 1.0,
             crowding_strength: 0.0,
             crowding_sigma_cents: DEFAULT_CROWDING_SIGMA_CENTS,
-            octave_avoidance: 1.0,
             leave_self_out: false,
             leave_self_out_mode: LeaveSelfOutMode::ApproxHarmonics,
             move_cost_coeff: DEFAULT_MOVE_COST_COEFF,
@@ -304,7 +302,6 @@ pub struct ControlUpdate {
     pub landscape_weight: Option<f32>,
     pub crowding_strength: Option<f32>,
     pub crowding_sigma_cents: Option<f32>,
-    pub octave_avoidance: Option<f32>,
     pub leave_self_out: Option<bool>,
     pub leave_self_out_mode: Option<LeaveSelfOutMode>,
     pub timbre_brightness: Option<f32>,
@@ -387,15 +384,6 @@ impl PitchControl {
             value.max(1e-3)
         } else {
             DEFAULT_CROWDING_SIGMA_CENTS
-        };
-    }
-
-    #[inline]
-    pub fn set_octave_avoidance_clamped(&mut self, value: f32) {
-        self.octave_avoidance = if value.is_finite() {
-            value.max(0.0)
-        } else {
-            0.0
         };
     }
 
@@ -536,9 +524,6 @@ impl PitchControl {
         if let Some(sigma) = update.crowding_sigma_cents {
             self.set_crowding_sigma_cents_clamped(sigma);
         }
-        if let Some(weight) = update.octave_avoidance {
-            self.set_octave_avoidance_clamped(weight);
-        }
         if let Some(enabled) = update.leave_self_out {
             self.set_leave_self_out(enabled);
         }
@@ -642,7 +627,6 @@ mod tests {
             landscape_weight: Some(-2.0),
             crowding_strength: Some(-4.0),
             crowding_sigma_cents: Some(-3.0),
-            octave_avoidance: Some(-1.0),
             leave_self_out: Some(true),
             leave_self_out_mode: Some(LeaveSelfOutMode::ExactScan),
             timbre_brightness: Some(-0.1),
@@ -677,7 +661,6 @@ mod tests {
         assert!((control.pitch.landscape_weight - 0.0).abs() <= 1e-6);
         assert!((control.pitch.crowding_strength - 0.0).abs() <= 1e-6);
         assert!((control.pitch.crowding_sigma_cents - 1e-3).abs() <= 1e-6);
-        assert!((control.pitch.octave_avoidance - 0.0).abs() <= 1e-6);
         assert!(control.pitch.leave_self_out);
         assert_eq!(
             control.pitch.leave_self_out_mode,

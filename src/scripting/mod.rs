@@ -327,10 +327,6 @@ impl SpeciesSpec {
         self.control.pitch.set_crowding_strength_clamped(strength);
     }
 
-    fn set_octave_avoidance(&mut self, weight: f32) {
-        self.control.pitch.set_octave_avoidance_clamped(weight);
-    }
-
     fn set_routing(&mut self, routing: Routing) {
         self.control.body.routing = routing;
     }
@@ -1931,10 +1927,6 @@ fn patch_continuous_drive(update: &mut ControlUpdate, value: f32) {
 
 fn patch_pitch_smooth_tau(update: &mut ControlUpdate, value: f32) {
     update.pitch_smooth_tau = Some(value);
-}
-
-fn patch_octave_avoidance(update: &mut ControlUpdate, value: f32) {
-    update.octave_avoidance = Some(value);
 }
 
 fn patch_leave_self_out_mode(update: &mut ControlUpdate, mode: LeaveSelfOutMode) {

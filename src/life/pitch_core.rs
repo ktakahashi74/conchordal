@@ -87,7 +87,6 @@ pub struct PitchHillClimbPitchCore {
     temperature: f32,
     crowding_strength: f32,
     crowding_sigma_cents: f32,
-    octave_avoidance: f32,
     leave_self_out: bool,
     leave_self_out_mode: LeaveSelfOutMode,
     leave_self_out_harmonics: u8,
@@ -116,7 +115,6 @@ impl PitchHillClimbPitchCore {
             temperature: 0.0,
             crowding_strength: 0.0,
             crowding_sigma_cents: 60.0,
-            octave_avoidance: 1.0,
             leave_self_out: false,
             leave_self_out_mode: LeaveSelfOutMode::ApproxHarmonics,
             leave_self_out_harmonics: DEFAULT_LOO_HARMONICS,
@@ -145,16 +143,6 @@ impl PitchHillClimbPitchCore {
             sigma_cents.max(1e-3)
         } else {
             60.0
-        };
-    }
-
-    /// Octave-equivalence (chroma) weight for the occupancy field: 0 leaves
-    /// octaves free, > 0 repels octave-doubling toward distinct chord tones.
-    pub fn set_octave_avoidance(&mut self, value: f32) {
-        self.octave_avoidance = if value.is_finite() {
-            value.max(0.0)
-        } else {
-            0.0
         };
     }
 
@@ -414,7 +402,6 @@ impl PitchCore for PitchHillClimbPitchCore {
         let leave_self_out_harmonics = self.leave_self_out_harmonics;
         let crowding_strength = self.crowding_strength;
         let crowding_sigma_cents = self.crowding_sigma_cents;
-        let octave_avoidance = self.octave_avoidance;
         let exact_loo_scan =
             exact_loo_consonance_score_scan(landscape, current_pitch_log2, leave_self_out_mode);
         self.propose_with_scorer(
@@ -441,7 +428,6 @@ impl PitchCore for PitchHillClimbPitchCore {
                     exact_loo_scan.as_deref(),
                     crowding_strength,
                     crowding_sigma_cents,
-                    octave_avoidance,
                     neighbor_pitch_log2,
                     neighbor_salience,
                 )
@@ -463,7 +449,6 @@ pub struct PitchPeakSamplerCore {
     landscape_weight: f32,
     crowding_strength: f32,
     crowding_sigma_cents: f32,
-    octave_avoidance: f32,
     leave_self_out: bool,
 }
 
@@ -495,7 +480,6 @@ impl PitchPeakSamplerCore {
             landscape_weight: 1.0,
             crowding_strength: 0.0,
             crowding_sigma_cents: 60.0,
-            octave_avoidance: 1.0,
             leave_self_out: false,
         }
     }
@@ -510,16 +494,6 @@ impl PitchPeakSamplerCore {
             sigma_cents.max(1e-3)
         } else {
             60.0
-        };
-    }
-
-    /// Octave-equivalence (chroma) weight for the occupancy field: 0 leaves
-    /// octaves free, > 0 repels octave-doubling toward distinct chord tones.
-    pub fn set_octave_avoidance(&mut self, value: f32) {
-        self.octave_avoidance = if value.is_finite() {
-            value.max(0.0)
-        } else {
-            0.0
         };
     }
 
@@ -634,7 +608,6 @@ impl PitchCore for PitchPeakSamplerCore {
         let leave_self_out = self.leave_self_out;
         let crowding_strength = self.crowding_strength;
         let crowding_sigma_cents = self.crowding_sigma_cents;
-        let octave_avoidance = self.octave_avoidance;
         let mut scorer = |pitch_log2: f32| -> f32 {
             adjusted_pitch_score_impl(
                 pitch_log2,
@@ -653,7 +626,6 @@ impl PitchCore for PitchPeakSamplerCore {
                 None,
                 crowding_strength,
                 crowding_sigma_cents,
-                octave_avoidance,
                 neighbor_pitch_log2,
                 neighbor_salience,
             )
@@ -729,46 +701,30 @@ fn window_bins_from_cents(landscape: &Landscape, cents: f32) -> usize {
 /// two voices at the same f0 from drifting in lockstep. This is the one shared
 /// definition of "how occupied is this fundamental", used by both the crowding
 /// penalty and the adaptation occupancy feed (`PitchController`).
-///
-/// `octave_avoidance` (>= 0) adds an octave-equivalence (chroma) term: distance is
-/// folded into one octave so unison *and* octaves count as occupied. `0` leaves
-/// octaves free (they may converge); `> 0` repels octave-doubling toward distinct
-/// chord tones. See docs/design-notes/voice-movement-redesign.md.
 #[inline]
 pub(crate) fn occupancy_contribution(
     candidate_log2: f32,
     neighbor_log2: f32,
     split_sign: f32,
     sigma_log2: f32,
-    octave_avoidance: f32,
 ) -> f32 {
     let sigma = sigma_log2.max(1e-9);
     let eps = sigma * DEFAULT_CROWDING_PAIR_SPLIT_EPS_FRAC;
     let split = split_sign.clamp(-1.0, 1.0);
     let d = candidate_log2 - (neighbor_log2 - split * eps);
-    let raw = (-0.5 * (d / sigma).powi(2)).exp();
-    if octave_avoidance > 0.0 {
-        let d_chroma = d - d.round(); // fold to [-0.5, 0.5] octave
-        raw + octave_avoidance * (-0.5 * (d_chroma / sigma).powi(2)).exp()
-    } else {
-        raw
-    }
+    (-0.5 * (d / sigma).powi(2)).exp()
 }
 
 /// Fill `out` with the fundamental-occupancy scan (the leave-self-out spatial
 /// slice of `F`): deposit each visible neighbor's `occupancy_contribution` across
 /// the Log2Space. The Gaussian on raw f0 only reaches a local window around the
-/// neighbor; with octave avoidance the chroma term is octave-periodic, so deposits
-/// land in a window around each octave multiple of the neighbor. Skipping the
-/// negligible gaps between octaves makes this equivalent to a full scan but
-/// O(octaves x window) instead of O(n_bins) per neighbor.
+/// neighbor, so each deposit touches O(window) bins.
 pub(crate) fn fill_occupancy_scan(
     out: &mut Vec<f32>,
     space: &Log2Space,
     neighbors: &[f32],
     neighbor_salience: &[f32],
     sigma_cents: f32,
-    octave_avoidance: f32,
 ) {
     let n = space.n_bins();
     out.clear();
@@ -779,47 +735,21 @@ pub(crate) fn fill_occupancy_scan(
     let sigma_log2 = (sigma_cents.max(1e-3)) / 1200.0;
     let margin = 4.0 * sigma_log2;
     let win = (margin * space.bins_per_oct as f32).ceil() as isize;
-    let base = space.centers_log2[0];
-    let top = space.centers_log2[n - 1];
-    let bins_per_oct = space.bins_per_oct as f32;
     let n_isize = n as isize;
     for (idx, &nb) in neighbors.iter().enumerate() {
         let Some(center) = space.index_of_log2(nb) else {
             continue;
         };
         let split_sign = neighbor_salience.get(idx).copied().unwrap_or(0.0);
-        // Octave offsets whose window intersects the space (k = 0 only without
-        // octave avoidance, since the chroma term is then absent).
-        let (k_min, k_max) = if octave_avoidance > 0.0 {
-            (
-                (base - margin - nb).ceil() as isize,
-                (top + margin - nb).floor() as isize,
-            )
-        } else {
-            (0, 0)
-        };
-        let mut prev_hi: isize = -1;
-        for k in k_min..=k_max {
-            let center_bin = if k == 0 {
-                center as isize
-            } else {
-                ((nb + k as f32 - base) * bins_per_oct).round() as isize
-            };
-            let lo = (center_bin - win).max(0).max(prev_hi + 1);
-            let hi = (center_bin + win).min(n_isize - 1);
-            if hi < lo {
-                continue;
-            }
-            for i in lo..=hi {
-                out[i as usize] += occupancy_contribution(
-                    space.centers_log2[i as usize],
-                    nb,
-                    split_sign,
-                    sigma_log2,
-                    octave_avoidance,
-                );
-            }
-            prev_hi = hi;
+        let center_bin = center as isize;
+        let lo = (center_bin - win).max(0);
+        let hi = (center_bin + win).min(n_isize - 1);
+        if hi < lo {
+            continue;
+        }
+        for i in lo..=hi {
+            out[i as usize] +=
+                occupancy_contribution(space.centers_log2[i as usize], nb, split_sign, sigma_log2);
         }
     }
 }
@@ -860,7 +790,6 @@ fn adjusted_pitch_score(
         None,
         crowding_strength,
         crowding_sigma_cents,
-        0.0,
         neighbor_pitch_log2,
         neighbor_salience,
     )
@@ -903,7 +832,6 @@ fn adjusted_pitch_score_with_loo_harmonics(
         None,
         crowding_strength,
         crowding_sigma_cents,
-        0.0,
         neighbor_pitch_log2,
         neighbor_salience,
     )
@@ -927,7 +855,6 @@ fn adjusted_pitch_score_impl(
     exact_loo_scan: Option<&[f32]>,
     crowding_strength: f32,
     crowding_sigma_cents: f32,
-    octave_avoidance: f32,
     neighbor_pitch_log2: &[f32],
     neighbor_salience: &[f32],
 ) -> f32 {
@@ -965,13 +892,7 @@ fn adjusted_pitch_score_impl(
                 continue;
             }
             let split_sign = neighbor_salience.get(idx).copied().unwrap_or(0.0);
-            sum += occupancy_contribution(
-                clamped,
-                neighbor_log2,
-                split_sign,
-                sigma_log2,
-                octave_avoidance,
-            );
+            sum += occupancy_contribution(clamped, neighbor_log2, split_sign, sigma_log2);
         }
         crowding_strength * sum
     } else {
@@ -1485,7 +1406,6 @@ fn apply_hill_climb_control(core: &mut PitchHillClimbPitchCore, pitch: &PitchCon
             .unwrap_or(PitchCoreKind::HillClimb.default_temperature()),
     );
     core.set_crowding(pitch.crowding_strength, pitch.crowding_sigma_cents);
-    core.set_octave_avoidance(pitch.octave_avoidance);
     core.set_leave_self_out(pitch.leave_self_out);
     core.set_leave_self_out_mode(pitch.leave_self_out_mode);
     if let Some(cents) = pitch.neighbor_step_cents {
@@ -1512,7 +1432,6 @@ fn apply_peak_sampler_control(core: &mut PitchPeakSamplerCore, pitch: &PitchCont
             .unwrap_or(PitchCoreKind::PeakSampler.default_temperature()),
     );
     core.set_crowding(pitch.crowding_strength, pitch.crowding_sigma_cents);
-    core.set_octave_avoidance(pitch.octave_avoidance);
     core.set_leave_self_out(pitch.leave_self_out);
     if let Some(cents) = pitch.neighbor_step_cents {
         core.set_neighbor_step_cents(cents);
@@ -1750,74 +1669,6 @@ mod tests {
 
         assert!((weighted - 1.75).abs() <= 1e-6);
         assert!(without_landscape.abs() <= 1e-6);
-    }
-
-    #[test]
-    fn occupancy_octave_avoidance_repels_octave_but_not_fifth() {
-        let sigma = 60.0 / 1200.0;
-        let unison = 0.0_f32;
-        let octave = 1.0_f32; // log2 distance of one octave
-        let fifth = (3.0_f32 / 2.0).log2();
-        // Without octave avoidance the octave is invisible (far in raw f0).
-        assert!(occupancy_contribution(octave, unison, 0.0, sigma, 0.0) < 1e-3);
-        // With octave avoidance the octave is repelled (chroma folds to unison).
-        assert!(occupancy_contribution(octave, unison, 0.0, sigma, 1.0) > 0.5);
-        // A fifth stays free even with octave avoidance (chroma ~415c away).
-        assert!(occupancy_contribution(fifth, unison, 0.0, sigma, 1.0) < 0.1);
-        // Unison is always occupied.
-        assert!(occupancy_contribution(unison, unison, 0.0, sigma, 0.0) > 0.9);
-    }
-
-    #[test]
-    fn fill_occupancy_scan_octave_windows_match_full_scan() {
-        let space = Log2Space::new(110.0, 880.0, 48);
-        let n = space.n_bins();
-        let neighbors = [220.0_f32.log2(), 330.0_f32.log2()];
-        let salience = [1.0_f32, -1.0];
-        let sigma_cents = 60.0;
-        let octave_avoidance = 1.0_f32;
-
-        let mut windowed = Vec::new();
-        fill_occupancy_scan(
-            &mut windowed,
-            &space,
-            &neighbors,
-            &salience,
-            sigma_cents,
-            octave_avoidance,
-        );
-
-        // Reference: brute-force full scan over every bin.
-        let sigma_log2 = sigma_cents / 1200.0;
-        let mut full = vec![0.0f32; n];
-        for (idx, &nb) in neighbors.iter().enumerate() {
-            let split = salience[idx];
-            for (i, slot) in full.iter_mut().enumerate() {
-                *slot += occupancy_contribution(
-                    space.centers_log2[i],
-                    nb,
-                    split,
-                    sigma_log2,
-                    octave_avoidance,
-                );
-            }
-        }
-
-        let max_diff = windowed
-            .iter()
-            .zip(full.iter())
-            .map(|(a, b)| (a - b).abs())
-            .fold(0.0f32, f32::max);
-        assert!(
-            max_diff < 1e-3,
-            "octave-windowed occupancy must match the full scan (max_diff={max_diff})"
-        );
-        // And it must actually be octave-aware: the octave of 220 (=440) is occupied.
-        let oct_bin = space.index_of_log2(440.0f32.log2()).unwrap();
-        assert!(
-            windowed[oct_bin] > 0.1,
-            "a neighbor's octave should be occupied"
-        );
     }
 
     #[test]

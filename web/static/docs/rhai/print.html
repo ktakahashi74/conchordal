@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-8d1646ce.js";
+            window.path_to_searchindex_js = "searchindex-0557f444.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-ebd22986.js"></script>
@@ -1304,11 +1304,6 @@ global_peaks(count, min_sep_cents)
 <p>Applies to: <code>Material</code> and <code>Participant</code>. Live-patchable: updates running voices on a live <code>Participant</code>.</p>
 <p>Ratio-based movement candidates; 0 disables.</p>
 <h3 id="neighbor-awareness-1"><a class="header" href="#neighbor-awareness-1">Neighbor Awareness</a></h3>
-<h4 id="octave_avoidance"><a class="header" href="#octave_avoidance"><code>octave_avoidance</code></a></h4>
-<pre><code class="language-rhai ignore">octave_avoidance(weight)
-</code></pre>
-<p>Applies to: <code>Material</code> and <code>Participant</code>. Live-patchable: updates running voices on a live <code>Participant</code>.</p>
-<p>Repel octave/unison doubling so voices settle on distinct chord tones. Adds an octave-equivalence (chroma) term to the occupancy field shared by crowding and adaptation. 0 leaves octaves free to converge; higher weights push voices off octave-doublings toward distinct pitches. Pairs with avoid_neighbors, which only repels near-unison.</p>
 <h4 id="crowding_target"><a class="header" href="#crowding_target"><code>crowding_target</code></a></h4>
 <pre><code class="language-rhai ignore">crowding_target(same_visible, other_visible)
 </code></pre>

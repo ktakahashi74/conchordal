@@ -62,7 +62,6 @@ impl PitchController {
         neighbors: &[f32],
         neighbor_salience: &[f32],
         sigma_cents: f32,
-        octave_avoidance: f32,
     ) {
         fill_occupancy_scan(
             &mut self.occupancy_scan,
@@ -70,7 +69,6 @@ impl PitchController {
             neighbors,
             neighbor_salience,
             sigma_cents,
-            octave_avoidance,
         );
     }
 
@@ -192,7 +190,6 @@ impl PitchController {
                 neighbor_pitch_log2,
                 neighbor_salience,
                 pitch.crowding_sigma_cents,
-                pitch.octave_avoidance,
             );
             let features = FeaturesNow::from_occupancy_scan(&self.occupancy_scan);
             debug_assert_eq!(features.density.len(), landscape.space.n_bins());

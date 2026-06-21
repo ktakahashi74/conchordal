@@ -67,6 +67,9 @@ const TUNING_FNS: &[&str] = &[
     "reject_targets",
     // phonation tiers 2/3
     "once",
+    // Explicit-Hz timer: outside the emergent-meter composing surface
+    // (metric/entrained/flow), kept for utility and research scaffolds.
+    "pulse",
     "while_alive",
     "adaptive_duration",
     "pulse_lock",
@@ -100,8 +103,6 @@ const TUNING_FNS: &[&str] = &[
     "leave_self_out_harmonics",
     // lifecycle / respawn details
     "viability_scope",
-    "respawn_min_c_level",
-    "respawn_background_death_rate",
     // global psychoacoustic tuning
     "set_roughness_k",
     "set_global_coupling",

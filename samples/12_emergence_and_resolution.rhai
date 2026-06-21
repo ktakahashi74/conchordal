@@ -2,7 +2,8 @@
 // One arc: the terrain bends toward tension and the register lifts;
 // life survives the strain, and gravity returns.
 
-seed(20260609);
+// #11 (Autumn Cycle) keeps its finalized seed(12); 12 uses 13 to stay unique.
+seed(13);
 
 let root_hz = 110.0;
 

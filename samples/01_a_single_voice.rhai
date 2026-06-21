@@ -1,6 +1,8 @@
 // Étude 1 — A Single Voice
 // One voice appears, holds its breath, and leaves.
 
+seed(1);
+
 let voice = sine()
     .amp(0.08)
     .sustain()

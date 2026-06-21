@@ -248,7 +248,7 @@ impl Default for PitchControl {
             landscape_weight: 1.0,
             crowding_strength: 0.0,
             crowding_sigma_cents: DEFAULT_CROWDING_SIGMA_CENTS,
-            octave_avoidance: 0.0,
+            octave_avoidance: 1.0,
             leave_self_out: false,
             leave_self_out_mode: LeaveSelfOutMode::ApproxHarmonics,
             move_cost_coeff: DEFAULT_MOVE_COST_COEFF,

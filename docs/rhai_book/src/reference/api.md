@@ -408,16 +408,6 @@ Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on 
 
 Signed beat-phase offset in -0.5..0.5; 0.5 reads as syncopation.
 
-#### `pulse`
-
-```rhai,ignore
-pulse(rate_hz)
-```
-
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
-
-Pulse at an explicit rate in Hz.
-
 #### `cycles`
 
 ```rhai,ignore
@@ -625,6 +615,26 @@ Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on 
 
 Placement used for replacements. Requires a strategy-bearing placement: `density()`, `peaks()`, `random()`, or `line()` (not `at()`).
 
+#### `respawn_min_c_level`
+
+```rhai,ignore
+respawn_min_c_level(level)
+```
+
+Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+
+Minimum consonance level for respawn acceptance.
+
+#### `respawn_background_death_rate`
+
+```rhai,ignore
+respawn_background_death_rate(rate)
+```
+
+Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+
+Background turnover rate per second.
+
 ### Mode Patterns
 
 Frequency relationships for `modal()` bodies. Constructors return a `ModePattern`; modifiers are chainable. Landscape-aware patterns sample the live field.
@@ -828,6 +838,16 @@ once()
 Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
 
 Single trigger.
+
+#### `pulse`
+
+```rhai,ignore
+pulse(rate_hz)
+```
+
+Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+
+Pulse at an explicit rate in Hz.
 
 #### `while_alive`
 
@@ -1135,28 +1155,6 @@ viability_scope(name)
 Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
 
 `"environment"` (default) or `"total"` viability scoring scope. Use `"total"` only when the selection question should include the voice's own contribution.
-
-### Respawn
-
-#### `respawn_min_c_level`
-
-```rhai,ignore
-respawn_min_c_level(level)
-```
-
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
-
-Minimum consonance level for respawn acceptance.
-
-#### `respawn_background_death_rate`
-
-```rhai,ignore
-respawn_background_death_rate(rate)
-```
-
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
-
-Background turnover rate per second.
 
 ### Director & Global Parameters
 

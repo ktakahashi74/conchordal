@@ -1,7 +1,7 @@
 // Étude 7 — Heartbeat
 // No external scaffold is imposed; the population locks into a shared pulse.
 
-seed(20260508);
+seed(7);
 
 let root_hz = 220.0;
 

@@ -1,7 +1,7 @@
 // Étude 10 — Generations
 // Voices live, starve, and are reborn where harmony can hold them.
 
-seed(20260506);
+seed(10);
 
 let root_hz = 110.0;
 let low_band = 70.0;
@@ -35,10 +35,7 @@ let colony_body = harmonic()
     .glide(0.32)
     .modes(harmonic_modes().count(7))
     .brightness(0.42)
-    .avoid_neighbors(0.70)
-    .leave_self_out_harmonics(3)
-    .global_peaks(10, 55.0)
-    .ratio_candidates(6);
+    .avoid_neighbors(0.70);
 
 let colony_life = variant(colony_body)
     .metabolism(0.15)

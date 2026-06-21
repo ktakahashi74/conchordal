@@ -1,7 +1,7 @@
 // Étude 9 — Rain
 // Time without a beat, falling along the field.
 
-seed(20260510);
+seed(9);
 
 let root_hz = 146.83;
 

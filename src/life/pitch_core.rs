@@ -116,7 +116,7 @@ impl PitchHillClimbPitchCore {
             temperature: 0.0,
             crowding_strength: 0.0,
             crowding_sigma_cents: 60.0,
-            octave_avoidance: 0.0,
+            octave_avoidance: 1.0,
             leave_self_out: false,
             leave_self_out_mode: LeaveSelfOutMode::ApproxHarmonics,
             leave_self_out_harmonics: DEFAULT_LOO_HARMONICS,
@@ -495,7 +495,7 @@ impl PitchPeakSamplerCore {
             landscape_weight: 1.0,
             crowding_strength: 0.0,
             crowding_sigma_cents: 60.0,
-            octave_avoidance: 0.0,
+            octave_avoidance: 1.0,
             leave_self_out: false,
         }
     }

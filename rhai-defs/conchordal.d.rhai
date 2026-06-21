@@ -445,13 +445,13 @@ fn proposal_interval(arg0: Participant, arg1: f64) -> Participant;
 /// [tuning] Proposal generation interval in seconds.
 fn proposal_interval(arg0: Participant, arg1: i64) -> Participant;
 
-/// Pulse at an explicit rate in Hz.
+/// [tuning] Pulse at an explicit rate in Hz.
 fn pulse(arg0: Material, arg1: f64) -> Material;
-/// Pulse at an explicit rate in Hz.
+/// [tuning] Pulse at an explicit rate in Hz.
 fn pulse(arg0: Material, arg1: i64) -> Material;
-/// Pulse at an explicit rate in Hz.
+/// [tuning] Pulse at an explicit rate in Hz.
 fn pulse(arg0: Participant, arg1: f64) -> Participant;
-/// Pulse at an explicit rate in Hz.
+/// [tuning] Pulse at an explicit rate in Hz.
 fn pulse(arg0: Participant, arg1: i64) -> Participant;
 
 /// [tuning] Low-level pulse phase weighting in 0-1.
@@ -524,13 +524,13 @@ fn repeat(arg0: Material) -> Material;
 /// Repeated/pulsed phonation mode.
 fn repeat(arg0: Participant) -> Participant;
 
-/// [tuning] Background turnover rate per second.
+/// Background turnover rate per second.
 fn respawn_background_death_rate(arg0: Material, arg1: f64) -> Material;
-/// [tuning] Background turnover rate per second.
+/// Background turnover rate per second.
 fn respawn_background_death_rate(arg0: Material, arg1: i64) -> Material;
-/// [tuning] Background turnover rate per second.
+/// Background turnover rate per second.
 fn respawn_background_death_rate(arg0: Participant, arg1: f64) -> Participant;
-/// [tuning] Background turnover rate per second.
+/// Background turnover rate per second.
 fn respawn_background_death_rate(arg0: Participant, arg1: i64) -> Participant;
 
 /// Maintain population up to a capacity.
@@ -556,13 +556,13 @@ fn respawn_hereditary(arg0: Participant, arg1: f64) -> Participant;
 /// Hereditary respawn with frequency variance in octaves.
 fn respawn_hereditary(arg0: Participant, arg1: i64) -> Participant;
 
-/// [tuning] Minimum consonance level for respawn acceptance.
+/// Minimum consonance level for respawn acceptance.
 fn respawn_min_c_level(arg0: Material, arg1: f64) -> Material;
-/// [tuning] Minimum consonance level for respawn acceptance.
+/// Minimum consonance level for respawn acceptance.
 fn respawn_min_c_level(arg0: Material, arg1: i64) -> Material;
-/// [tuning] Minimum consonance level for respawn acceptance.
+/// Minimum consonance level for respawn acceptance.
 fn respawn_min_c_level(arg0: Participant, arg1: f64) -> Participant;
-/// [tuning] Minimum consonance level for respawn acceptance.
+/// Minimum consonance level for respawn acceptance.
 fn respawn_min_c_level(arg0: Participant, arg1: i64) -> Participant;
 
 /// Respawn at random locations.

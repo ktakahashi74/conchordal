@@ -1682,21 +1682,6 @@ impl ScriptHost {
             },
         );
 
-        let ctx_for_harmonic_tension = ctx.clone();
-        engine.register_fn(
-            "harmonic_tension",
-            move |_call_ctx: NativeCallContext, mirror: FLOAT| {
-                let mut ctx = ctx_for_harmonic_tension
-                    .lock()
-                    .expect("lock script context");
-                let update = crate::core::landscape::LandscapeUpdate {
-                    mirror: Some(mirror as f32),
-                    ..crate::core::landscape::LandscapeUpdate::default()
-                };
-                let cursor = ctx.cursor;
-                ctx.push_event(cursor, vec![Action::SetHarmonicityParams { update }]);
-            },
-        );
         // Director-level shaping of the emergent production meter (scene-global
         // soft priors, symmetric to the consonance-field ops). These never
         // schedule a beat: `meter_stability` sets how readily a pulse forms,

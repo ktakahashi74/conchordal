@@ -8,7 +8,6 @@ use crate::scenario::{
     DurationSpec, FieldSampling, FieldTarget, PhonationTiming, RhythmCouplingMode, RhythmRole,
 };
 use rand::SeedableRng;
-use std::collections::HashMap;
 
 fn run_script(src: &str) -> (Scenario, ScriptWarnings) {
     let ctx = Arc::new(Mutex::new(ScriptContext::default()));
@@ -48,53 +47,6 @@ fn first_spawn_spec_for_script(src: &str) -> VoiceSpec {
         })
         .expect("spawn action")
 }
-
-const E4_STEP_RESPONSE_SCRIPT: &str = r#"
-        let anchor = harmonic().anchor();
-        let probe = harmonic().pitch_core("peak_sampler");
-
-        section("E4 Step Response Test", || {
-            let base = create(anchor, 1).freq(196.0);
-            flush();
-
-            let probes = create(probe, 12)
-                .place(consonance(196.0).peak().range(0.8, 2.5).spacing(0.9));
-            flush();
-
-            harmonic_tension(0.0);
-            flush();
-            harmonic_tension(0.5);
-            flush();
-            harmonic_tension(1.0);
-            flush();
-
-            release(probes);
-            release(base);
-            flush();
-        });
-    "#;
-
-const E4_BETWEEN_RUNS_SCRIPT: &str = r#"
-        let anchor = harmonic().anchor();
-        let probe = harmonic().pitch_core("peak_sampler");
-
-        section("E4 Between Runs Test", || {
-            let weights = [0.0, 0.5, 1.0];
-            for w in weights {
-                harmonic_tension(w);
-                flush();
-
-                let base = create(anchor, 1).freq(196.0);
-                let probes = create(probe, 8)
-                    .place(consonance(196.0).peak().range(0.8, 2.5).spacing(0.9));
-                flush();
-
-                release(probes);
-                release(base);
-                flush();
-            }
-        });
-    "#;
 
 #[test]
 fn draft_group_without_commit_is_dropped() {
@@ -2287,83 +2239,4 @@ fn microtiming_sets_signed_beat_phase_offset() {
         panic!("expected coupled timing intent");
     };
     assert!((spec.microtiming + 0.1).abs() <= 1e-6);
-}
-
-#[test]
-fn e4_step_response_script_has_fixed_population_spawns() {
-    let script = E4_STEP_RESPONSE_SCRIPT;
-    assert!(
-        script.contains("let anchor = harmonic()") && script.contains("let probe = harmonic()"),
-        "E4 step response must use harmonic bodies"
-    );
-    assert!(
-        script.contains(".anchor()"),
-        "E4 step response anchor must lock pitch"
-    );
-    let (scenario, _warnings) = run_script(script);
-
-    let mut spawn_actions = 0usize;
-    let mut spawned_agents = 0usize;
-    let mut mirror_updates = 0usize;
-    for action in scenario.events.iter().flat_map(|ev| ev.actions.iter()) {
-        match action {
-            Action::Spawn { ids, .. } => {
-                spawn_actions += 1;
-                spawned_agents += ids.len();
-            }
-            Action::SetHarmonicityParams { update } if update.mirror.is_some() => {
-                mirror_updates += 1;
-            }
-            _ => {}
-        }
-    }
-
-    // One anchor group + one probe group should spawn once each.
-    assert_eq!(spawn_actions, 2);
-    assert_eq!(spawned_agents, 13);
-    assert!(spawn_actions < mirror_updates);
-}
-
-#[test]
-fn e4_between_runs_script_pairs_spawns_and_releases_per_weight() {
-    let script = E4_BETWEEN_RUNS_SCRIPT;
-    assert!(
-        script.contains("let anchor = harmonic()") && script.contains("let probe = harmonic()"),
-        "E4 between-runs must use harmonic bodies"
-    );
-    assert!(
-        script.contains(".anchor()"),
-        "E4 between-runs anchor must lock pitch"
-    );
-    let (scenario, _warnings) = run_script(script);
-
-    let mut mirror_updates = 0usize;
-    let mut spawn_by_group: HashMap<u64, usize> = HashMap::new();
-    let mut release_by_group: HashMap<u64, usize> = HashMap::new();
-
-    for action in scenario.events.iter().flat_map(|ev| ev.actions.iter()) {
-        match action {
-            Action::SetHarmonicityParams { update } if update.mirror.is_some() => {
-                mirror_updates += 1;
-            }
-            Action::Spawn { group_id, .. } => {
-                *spawn_by_group.entry(*group_id).or_insert(0) += 1;
-            }
-            Action::ReleaseGroup { group_id, .. } => {
-                *release_by_group.entry(*group_id).or_insert(0) += 1;
-            }
-            _ => {}
-        }
-    }
-
-    assert_eq!(spawn_by_group.len(), mirror_updates * 2);
-    assert_eq!(release_by_group.len(), mirror_updates * 2);
-    for (group_id, spawn_count) in &spawn_by_group {
-        assert_eq!(*spawn_count, 1, "group {group_id} spawned more than once");
-        assert_eq!(
-            release_by_group.get(group_id).copied().unwrap_or(0),
-            1,
-            "group {group_id} does not have exactly one matching release"
-        );
-    }
 }

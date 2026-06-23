@@ -36,22 +36,14 @@ pub struct HarmonicityParams {
     pub num_subharmonics: u32,
     /// Upward projections for harmonic candidates.
     pub num_harmonics: u32,
-    /// Decay exponent for Path A (common root path).
+    /// Decay exponent for the common-root path.
     pub rho_common_root: f32,
-    /// Decay exponent for Path B (common overtone/undertone path).
-    pub rho_common_overtone: f32,
     /// Gaussian smoothing width in cents on log2 spectrum.
     pub sigma_cents: f32,
     /// Normalize output to peak of 1.0.
     pub normalize_output: bool,
-    /// Blend ratio: 0 = Path A only, 1 = Path B only.
-    pub mirror_weight: f32,
     /// Nonlinear emphasis for root spectrum coincidence (1.0 = linear).
     pub gamma_root: f32,
-    /// Nonlinear emphasis for overtone spectrum coincidence (1.0 = linear).
-    pub gamma_overtone: f32,
-    /// Normalize A/B paths to peak 1.0 before blending.
-    pub normalize_paths_before_blend: bool,
     /// Scale for diagonal (m=k) self-reinforcement (expected self term).
     /// 1.0 = legacy behavior, <1.0 reduces unison dominance.
     pub diag_weight: f32,
@@ -69,13 +61,9 @@ impl Default for HarmonicityParams {
             num_subharmonics: 16,
             num_harmonics: 16,
             rho_common_root: 0.4,
-            rho_common_overtone: 0.2,
             sigma_cents: 3.0, // Slightly wider peaks to ease sampling
             normalize_output: true,
-            mirror_weight: 0.3,
             gamma_root: 1.0,
-            gamma_overtone: 1.0,
-            normalize_paths_before_blend: false,
             diag_weight: 0.65,
             freq_gate: false,
             tfs_f_pl_hz: 4500.0,
@@ -94,22 +82,6 @@ pub struct HarmonicityKernel {
     harm_limit: u32,
     #[allow(dead_code)]
     max_limit: u32,
-}
-
-#[derive(Clone, Copy, Debug, Default)]
-pub struct HarmonicBindingMetrics {
-    pub root_affinity: f32,
-    pub overtone_affinity: f32,
-    pub binding_strength: f32,
-    pub harmonic_tilt: f32,
-}
-
-#[derive(Clone, Debug)]
-pub struct DualPathHarmonicity {
-    pub blended: Vec<f32>,
-    pub path_a: Vec<f32>,
-    pub path_b: Vec<f32>,
-    pub metrics: HarmonicBindingMetrics,
 }
 
 impl HarmonicityKernel {
@@ -153,26 +125,13 @@ impl HarmonicityKernel {
         }
     }
 
-    /// The core function: Env -> Roots -> Landscape
+    /// The core function: Env -> common-root series -> harmonicity landscape.
+    /// Returns the landscape and its reporting max (1.0 when normalized).
     pub fn potential_h_from_log2_spectrum(
         &self,
         envelope: &[f32],
         space: &Log2Space,
     ) -> (Vec<f32>, f32) {
-        let dual = self.potential_h_dual_from_log2_spectrum(envelope, space);
-        let max_val = if self.params.normalize_output {
-            1.0
-        } else {
-            dual.blended.iter().copied().fold(1e-12f32, f32::max)
-        };
-        (dual.blended, max_val)
-    }
-
-    pub fn potential_h_dual_from_log2_spectrum(
-        &self,
-        envelope: &[f32],
-        space: &Log2Space,
-    ) -> DualPathHarmonicity {
         assert_eq!(
             space.bins_per_oct, self.bins_per_oct,
             "Log2Space bins_per_oct mismatch (space={}, kernel={})",
@@ -187,7 +146,6 @@ impl HarmonicityKernel {
         );
         let n_bins = envelope.len();
         let bins_per_oct = self.bins_per_oct as f32;
-        let mirror = self.params.mirror_weight.clamp(0.0, 1.0);
         let sub_limit = self.sub_limit.max(1);
         let harm_limit = self.harm_limit.max(1);
         let k_diag = sub_limit.min(harm_limit).max(1);
@@ -195,31 +153,27 @@ impl HarmonicityKernel {
         // Step 0: Smooth Input (O(N))
         let smeared_env = self.convolve_smooth(envelope);
 
-        // Diagonal self-term correction factors.
+        // Diagonal self-term correction factor.
         let diag_w = self.params.diag_weight.clamp(0.0, 1.0);
-        let (diag_a, diag_b) = if diag_w < 1.0 {
+        let diag_a = if diag_w < 1.0 {
             let mut sum_a = 0.0f32;
-            let mut sum_b = 0.0f32;
             for k in 1..=k_diag {
-                let kk = k as f32;
-                let a = kk.powf(-self.params.rho_common_root);
-                let b = kk.powf(-self.params.rho_common_overtone);
+                let a = (k as f32).powf(-self.params.rho_common_root);
                 sum_a += a * a;
-                sum_b += b * b;
             }
-            (sum_a, sum_b)
+            sum_a
         } else {
-            (0.0, 0.0)
+            0.0
         };
 
-        // Buffer for Virtual Roots / Overtones (centered with padding on both sides)
+        // Buffer for virtual roots (centered with padding on both sides).
         let padding = self.pad_bins;
         let center_offset = padding as f32;
         let buf_len = n_bins + 2 * padding;
         let mut root_spectrum = vec![0.0f32; buf_len];
-        let mut overtone_spectrum = vec![0.0f32; buf_len];
 
-        // === Path A: Common Root / Overtone Series (down then up) ===
+        // Common-root series: project the spectrum down to virtual roots,
+        // then back up to harmonics.
         for k in 1..=sub_limit {
             let shift_bins = (k as f32).log2() * bins_per_oct;
             let weight = (k as f32).powf(-self.params.rho_common_root);
@@ -233,98 +187,25 @@ impl HarmonicityKernel {
             }
         }
 
-        let mut landscape_a = vec![0.0f32; n_bins];
+        let mut landscape = vec![0.0f32; n_bins];
         for m in 1..=harm_limit {
             let shift_bins = (m as f32).log2() * bins_per_oct;
             let weight = (m as f32).powf(-self.params.rho_common_root);
             let offset = shift_bins - center_offset;
-            Self::accumulate_shifted(&root_spectrum, &mut landscape_a, offset, weight);
+            Self::accumulate_shifted(&root_spectrum, &mut landscape, offset, weight);
         }
         if diag_w < 1.0 {
             let scale = 1.0 - diag_w;
             for i in 0..n_bins {
-                let adjusted = landscape_a[i] - scale * diag_a * smeared_env[i];
-                landscape_a[i] = adjusted.max(0.0);
+                let adjusted = landscape[i] - scale * diag_a * smeared_env[i];
+                landscape[i] = adjusted.max(0.0);
             }
         }
 
-        // === Path B: Common Overtone / Undertone Series (up then down) ===
-        for k in 1..=harm_limit {
-            let shift_bins = (k as f32).log2() * bins_per_oct;
-            let weight = (k as f32).powf(-self.params.rho_common_overtone);
-            let offset = center_offset + shift_bins;
-            Self::accumulate_shifted(&smeared_env, &mut overtone_spectrum, offset, weight);
-        }
-        let gamma_overtone = self.params.gamma_overtone.max(1e-3);
-        if (gamma_overtone - 1.0).abs() > 1e-6 {
-            for v in &mut overtone_spectrum {
-                *v = v.max(0.0).powf(gamma_overtone);
-            }
-        }
-
-        let mut landscape_b = vec![0.0f32; n_bins];
-        for m in 1..=sub_limit {
-            let shift_bins = (m as f32).log2() * bins_per_oct;
-            let weight = (m as f32).powf(-self.params.rho_common_overtone);
-            let offset = -shift_bins - center_offset;
-            Self::accumulate_shifted(&overtone_spectrum, &mut landscape_b, offset, weight);
-        }
-        if diag_w < 1.0 {
-            let scale = 1.0 - diag_w;
-            for i in 0..n_bins {
-                let adjusted = landscape_b[i] - scale * diag_b * smeared_env[i];
-                landscape_b[i] = adjusted.max(0.0);
-            }
-        }
-
-        if self.params.normalize_paths_before_blend {
-            let mut max_a = 0.0f32;
-            let mut max_b = 0.0f32;
-            for i in 0..n_bins {
-                if landscape_a[i] > max_a {
-                    max_a = landscape_a[i];
-                }
-                if landscape_b[i] > max_b {
-                    max_b = landscape_b[i];
-                }
-            }
-            if max_a > 0.0 {
-                let inv = 1.0 / max_a;
-                for v in &mut landscape_a {
-                    *v *= inv;
-                }
-            }
-            if max_b > 0.0 {
-                let inv = 1.0 / max_b;
-                for v in &mut landscape_b {
-                    *v *= inv;
-                }
-            }
-        }
-
-        let root_affinity = Self::cosine_similarity(&smeared_env, &landscape_a);
-        let overtone_affinity = Self::cosine_similarity(&smeared_env, &landscape_b);
-        let binding_strength = root_affinity + overtone_affinity;
-        let harmonic_tilt = (root_affinity - overtone_affinity) / (binding_strength + 1e-9);
-        let metrics = HarmonicBindingMetrics {
-            root_affinity,
-            overtone_affinity,
-            binding_strength,
-            harmonic_tilt,
-        };
-
-        // Blend A/B
-        let mut landscape = vec![0.0f32; n_bins];
-        for i in 0..n_bins {
-            landscape[i] = (1.0 - mirror) * landscape_a[i] + mirror * landscape_b[i];
-        }
-
-        // Step 3: Post-processing
+        // Step 3: Post-processing (optional gating, then peak find / normalize).
         let mut max_val = 1e-12;
         let do_gate = self.params.freq_gate;
         let do_norm = self.params.normalize_output;
-
-        // Combined loop for gating and max-finding (Auto-vectorized)
         for (i, v) in landscape.iter_mut().enumerate().take(n_bins) {
             if do_gate {
                 *v *= Self::absfreq_gate(space.freq_of_index(i), &self.params);
@@ -333,7 +214,6 @@ impl HarmonicityKernel {
                 max_val = *v;
             }
         }
-
         if do_norm {
             let scale = 1.0 / max_val;
             for v in &mut landscape {
@@ -341,23 +221,14 @@ impl HarmonicityKernel {
             }
         }
 
-        DualPathHarmonicity {
-            blended: landscape,
-            path_a: landscape_a,
-            path_b: landscape_b,
-            metrics,
-        }
+        let report_max = if do_norm { 1.0 } else { max_val };
+        (landscape, report_max)
     }
     fn sanitize_params(mut params: HarmonicityParams) -> HarmonicityParams {
         let defaults = HarmonicityParams::default();
         params.rho_common_root = finite_or(params.rho_common_root, defaults.rho_common_root);
-        params.rho_common_overtone =
-            finite_or(params.rho_common_overtone, defaults.rho_common_overtone);
         params.sigma_cents = finite_or(params.sigma_cents, defaults.sigma_cents).max(0.0);
-        params.mirror_weight =
-            finite_or(params.mirror_weight, defaults.mirror_weight).clamp(0.0, 1.0);
         params.gamma_root = finite_or(params.gamma_root, defaults.gamma_root).max(1e-3);
-        params.gamma_overtone = finite_or(params.gamma_overtone, defaults.gamma_overtone).max(1e-3);
         params.diag_weight = finite_or(params.diag_weight, defaults.diag_weight).clamp(0.0, 1.0);
         params.tfs_f_pl_hz = finite_or(params.tfs_f_pl_hz, defaults.tfs_f_pl_hz).max(1e-6);
         params.tfs_eta = finite_or(params.tfs_eta, defaults.tfs_eta).max(1e-6);
@@ -457,24 +328,6 @@ impl HarmonicityKernel {
     fn absfreq_gate(f_hz: f32, p: &HarmonicityParams) -> f32 {
         1.0 / (1.0 + (f_hz / p.tfs_f_pl_hz).powf(p.tfs_eta))
     }
-
-    fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
-        let eps = 1e-9f32;
-        let mut dot = 0.0f32;
-        let mut na2 = 0.0f32;
-        let mut nb2 = 0.0f32;
-        for (&x, &y) in a.iter().zip(b.iter()) {
-            dot += x * y;
-            na2 += x * x;
-            nb2 += y * y;
-        }
-        let denom = na2.sqrt() * nb2.sqrt() + eps;
-        if denom <= eps || !denom.is_finite() {
-            0.0
-        } else {
-            (dot / denom).clamp(-1.0, 1.0)
-        }
-    }
 }
 
 #[inline]
@@ -488,70 +341,6 @@ mod tests {
     use crate::core::log2space::Log2Space;
     #[cfg(feature = "plotcheck")]
     use crate::core::utils::ensure_plots_dir;
-
-    fn rel_l2(a: &[f32], b: &[f32]) -> f32 {
-        let mut diff2 = 0.0f32;
-        let mut norm2 = 0.0f32;
-        for (&x, &y) in a.iter().zip(b.iter()) {
-            let d = x - y;
-            diff2 += d * d;
-            norm2 += x * x;
-        }
-        diff2.sqrt() / (norm2.sqrt() + 1e-9)
-    }
-
-    fn build_sparse_env(space: &Log2Space, freqs: &[f32]) -> Vec<f32> {
-        let mut env = vec![0.0f32; space.n_bins()];
-        for &hz in freqs {
-            if let Some(i) = space.index_of_freq(hz) {
-                env[i] += 1.0;
-            }
-        }
-        env
-    }
-
-    #[test]
-    fn test_minor_triad_lcm_reach() {
-        let space = Log2Space::new(80.0, 2000.0, 180);
-        let mut params = HarmonicityParams::default();
-        params.num_harmonics = 8;
-        params.mirror_weight = 1.0;
-        let hk = HarmonicityKernel::new(&space, params);
-
-        let mut env = vec![0.0; space.n_bins()];
-        let triad = [200.0, 240.0, 300.0]; // 10:12:15 (Just minor triad)
-        for &f in &triad {
-            if let Some(idx) = space.index_of_freq(f) {
-                env[idx] = 1.0;
-            }
-        }
-
-        let (landscape, _) = hk.potential_h_from_log2_spectrum(&env, &space);
-        let triad_indices: Vec<usize> = triad
-            .iter()
-            .filter_map(|&f| space.index_of_freq(f))
-            .collect();
-
-        let triad_max = triad_indices
-            .iter()
-            .map(|&i| landscape[i])
-            .fold(0.0f32, f32::max);
-        let idx_tritone = space
-            .index_of_freq(200.0 * 1.414)
-            .expect("tritone bin exists");
-        let dissonant = landscape[idx_tritone];
-
-        assert!(
-            triad_max > dissonant * 1.2,
-            "Mirror path should reinforce triad members relative to dissonance (triad={triad_max:.4} tritone={dissonant:.4})"
-        );
-        for idx in triad_indices {
-            assert!(
-                landscape[idx] > 1e-3,
-                "Triad bin should accumulate stability"
-            );
-        }
-    }
 
     #[test]
     fn test_num_harmonics_affects_peak_strength() {
@@ -811,125 +600,12 @@ mod tests {
     }
 
     #[test]
-    fn mirror_weight_changes_output_when_rhos_far_apart() {
-        let space = Log2Space::new(20.0, 8000.0, 400);
-        let env = build_sparse_env(&space, &[110.0, 165.0, 220.0, 275.0, 330.0, 440.0, 550.0]);
-
-        let mut rel_l2_norm_false = 0.0f32;
-        let mut rel_l2_norm_true = 0.0f32;
-
-        for &normalize_output in &[false, true] {
-            let mut params = HarmonicityParams::default();
-            params.normalize_output = normalize_output;
-            params.rho_common_root = 0.5;
-            params.rho_common_overtone = 3.0;
-            params.mirror_weight = 0.0;
-            let hk0 = HarmonicityKernel::new(&space, params);
-            let (y0, _) = hk0.potential_h_from_log2_spectrum(&env, &space);
-
-            params.mirror_weight = 1.0;
-            let hk1 = HarmonicityKernel::new(&space, params);
-            let (y1, _) = hk1.potential_h_from_log2_spectrum(&env, &space);
-
-            assert!(y0.iter().all(|v| v.is_finite()));
-            assert!(y1.iter().all(|v| v.is_finite()));
-
-            let d = rel_l2(&y0, &y1);
-            if normalize_output {
-                rel_l2_norm_true = d;
-            } else {
-                rel_l2_norm_false = d;
-            }
-        }
-
-        assert!(
-            rel_l2_norm_false > 0.02,
-            "mirror diff should be visible without normalization (rel_l2={rel_l2_norm_false:.6})"
-        );
-        assert!(
-            rel_l2_norm_true > 0.005,
-            "normalize_output=true collapsed mirror diff too much (rel_l2={rel_l2_norm_true:.6})"
-        );
-    }
-
-    #[test]
-    fn mirror_weight_is_nearly_noop_when_rhos_equal() {
-        let space = Log2Space::new(40.0, 3000.0, 240);
-        let env = build_sparse_env(&space, &[220.0, 330.0, 440.0]);
-
-        for &normalize_output in &[false, true] {
-            let mut params = HarmonicityParams::default();
-            params.num_subharmonics = 1;
-            params.num_harmonics = 1;
-            params.diag_weight = 1.0;
-            params.rho_common_root = 1.25;
-            params.rho_common_overtone = 1.25;
-            params.normalize_output = normalize_output;
-            params.mirror_weight = 0.0;
-            let hk0 = HarmonicityKernel::new(&space, params);
-            let (y0, _) = hk0.potential_h_from_log2_spectrum(&env, &space);
-
-            params.mirror_weight = 1.0;
-            let hk1 = HarmonicityKernel::new(&space, params);
-            let (y1, _) = hk1.potential_h_from_log2_spectrum(&env, &space);
-
-            let d = rel_l2(&y0, &y1);
-            assert!(
-                d < 1e-4,
-                "mirror should be near no-op when rho_root == rho_overtone and paths are symmetric (rel_l2={d:.8})"
-            );
-        }
-    }
-
-    #[test]
-    fn mirror_weight_never_nan() {
-        let space = Log2Space::new(20.0, 8000.0, 240);
-        let mut lcg_state = 0x1234_5678_9abc_def0u64;
-        let mut random_freqs = Vec::with_capacity(8);
-        let lo = 80.0f32.log2();
-        let hi = 2000.0f32.log2();
-        for _ in 0..8 {
-            lcg_state = lcg_state.wrapping_mul(6364136223846793005).wrapping_add(1);
-            let u = ((lcg_state >> 32) as u32) as f32 / u32::MAX as f32;
-            random_freqs.push(2f32.powf(lo + (hi - lo) * u));
-        }
-
-        let cases = vec![
-            build_sparse_env(&space, &[220.0]),
-            build_sparse_env(&space, &[220.0, 330.0]),
-            build_sparse_env(&space, &[220.0, 275.0, 330.0]),
-            build_sparse_env(&space, &[220.0, 264.0, 330.0]),
-            build_sparse_env(&space, &random_freqs),
-        ];
-
-        for env in &cases {
-            for &normalize_output in &[false, true] {
-                for &mirror in &[0.0f32, 0.25, 0.5, 0.75, 1.0] {
-                    let mut params = HarmonicityParams::default();
-                    params.normalize_output = normalize_output;
-                    params.mirror_weight = mirror;
-                    let hk = HarmonicityKernel::new(&space, params);
-                    let (y, max_v) = hk.potential_h_from_log2_spectrum(env, &space);
-                    assert!(max_v.is_finite(), "max should be finite");
-                    assert!(
-                        y.iter().all(|v| v.is_finite() && *v >= 0.0),
-                        "landscape should be finite and non-negative for mirror={mirror}"
-                    );
-                }
-            }
-        }
-    }
-
-    #[test]
     fn constructor_sanitizes_non_finite_params() {
         let space = Log2Space::new(80.0, 2000.0, 96);
         let params = HarmonicityParams {
             rho_common_root: f32::NAN,
-            rho_common_overtone: f32::NAN,
             sigma_cents: f32::NAN,
-            mirror_weight: f32::NAN,
             gamma_root: f32::NAN,
-            gamma_overtone: f32::NAN,
             diag_weight: f32::NAN,
             tfs_f_pl_hz: f32::NAN,
             tfs_eta: f32::NAN,
@@ -937,68 +613,12 @@ mod tests {
         };
         let hk = HarmonicityKernel::new(&space, params);
         let env = vec![f32::NAN; space.n_bins()];
-        let dual = hk.potential_h_dual_from_log2_spectrum(&env, &space);
+        let (landscape, _) = hk.potential_h_from_log2_spectrum(&env, &space);
 
-        assert!(hk.params.mirror_weight.is_finite());
+        assert!(hk.params.rho_common_root.is_finite());
         assert!(
-            dual.blended.iter().all(|v| v.is_finite() && *v >= 0.0),
+            landscape.iter().all(|v| v.is_finite() && *v >= 0.0),
             "harmonicity output must stay finite"
         );
-    }
-
-    #[test]
-    fn pure_tone_harmonic_tilt_is_near_zero() {
-        let space = Log2Space::new(80.0, 2000.0, 144);
-        let env = build_sparse_env(&space, &[220.0]);
-        let mut params = HarmonicityParams::default();
-        params.mirror_weight = 0.5;
-        let hk = HarmonicityKernel::new(&space, params);
-        let dual = hk.potential_h_dual_from_log2_spectrum(&env, &space);
-        assert!(
-            dual.metrics.harmonic_tilt.abs() < 0.08,
-            "pure tone should stay near neutral tilt, got {}",
-            dual.metrics.harmonic_tilt
-        );
-    }
-
-    #[test]
-    fn harmonic_series_prefers_root_affinity() {
-        let space = Log2Space::new(80.0, 4000.0, 144);
-        let env = build_sparse_env(&space, &[220.0, 440.0, 660.0, 880.0, 1100.0, 1320.0]);
-        let mut params = HarmonicityParams::default();
-        params.mirror_weight = 0.5;
-        let hk = HarmonicityKernel::new(&space, params);
-        let dual = hk.potential_h_dual_from_log2_spectrum(&env, &space);
-        assert!(
-            dual.metrics.root_affinity > dual.metrics.overtone_affinity,
-            "expected root_affinity > overtone_affinity ({} <= {})",
-            dual.metrics.root_affinity,
-            dual.metrics.overtone_affinity
-        );
-        assert!(
-            dual.metrics.harmonic_tilt > 0.02,
-            "expected positive harmonic tilt for overtone-rich series, got {}",
-            dual.metrics.harmonic_tilt
-        );
-    }
-
-    #[test]
-    fn dual_api_blended_matches_legacy_output() {
-        let space = Log2Space::new(60.0, 3000.0, 120);
-        let env = build_sparse_env(&space, &[196.0, 294.0, 392.0, 523.25]);
-        let mut params = HarmonicityParams::default();
-        params.normalize_output = true;
-        params.mirror_weight = 0.37;
-        let hk = HarmonicityKernel::new(&space, params);
-
-        let (legacy, _legacy_peak) = hk.potential_h_from_log2_spectrum(&env, &space);
-        let dual = hk.potential_h_dual_from_log2_spectrum(&env, &space);
-        assert_eq!(legacy.len(), dual.blended.len());
-        for (a, b) in legacy.iter().zip(dual.blended.iter()) {
-            assert!(
-                (a - b).abs() < 1e-6,
-                "legacy and dual blended diverged: {a} vs {b}"
-            );
-        }
     }
 }

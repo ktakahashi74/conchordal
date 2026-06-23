@@ -736,8 +736,8 @@ impl fmt::Display for Action {
             ),
             Action::SetHarmonicityParams { update } => write!(
                 f,
-                "SetHarmonicityParams mirror={:?} roughness_k={:?}",
-                update.mirror, update.roughness_k
+                "SetHarmonicityParams roughness_k={:?}",
+                update.roughness_k
             ),
             Action::SetGlobalCoupling { value } => {
                 write!(f, "SetGlobalCoupling value={:.3}", value)

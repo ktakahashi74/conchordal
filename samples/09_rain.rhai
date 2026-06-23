@@ -38,7 +38,6 @@ let stream = harmonic()
     .adsr(0.045, 0.540, 0.62, 1.10);
 
 section("rain", || {
-    harmonic_tension(0.25);
     // Flow voices barely couple, so no beat forms: the priors stay gentle.
     meter_stability(0.1);
     temporal_basin(1.0, 2.6);
@@ -52,7 +51,6 @@ section("rain", || {
     let high_drops = place(droplet, consonance(220.0, 1600.0).spacing(0.65).count(10));
     wait(8.0);
 
-    harmonic_tension(0.80);
     root.freq(root_hz * 1.25);
     low_stream.amp(0.023);
     high_drops.amp(0.030);

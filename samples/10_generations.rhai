@@ -48,7 +48,6 @@ let colony_voice = variant(colony_life)
 
 section("generations", || {
     // A consonant ground the ecology senses but never hears.
-    harmonic_tension(0.0);
     let root_field = place(field_anchor, at(root_hz));
     wait(1.0);
 
@@ -60,12 +59,10 @@ section("generations", || {
 
     // The terrain strains and the register lifts: voices on lost ground starve,
     // and respawn carries the colony toward the new consonant peaks.
-    harmonic_tension(0.6);
     root_field.freq(root_hz * 1.25);
     wait(9.0);
 
     // Gravity returns: the reborn colony settles where harmony can hold it.
-    harmonic_tension(0.0);
     root_field.freq(root_hz);
     colony_a.glide(0.26);
     wait(9.0);

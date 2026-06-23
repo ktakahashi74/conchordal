@@ -1407,9 +1407,6 @@ impl Population {
 
     fn merge_landscape_update(&mut self, update: LandscapeUpdate) {
         let mut merged = self.pending_update.unwrap_or_default();
-        if update.mirror.is_some() {
-            merged.mirror = update.mirror;
-        }
         if update.roughness_k.is_some() {
             merged.roughness_k = update.roughness_k;
         }

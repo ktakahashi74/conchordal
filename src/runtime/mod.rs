@@ -376,18 +376,11 @@ fn merge_latest_analysis_results(
     current_landscape.roughness_shape_raw = frame.roughness_shape_raw;
     current_landscape.roughness01 = frame.roughness01;
     current_landscape.harmonicity = frame.harmonicity;
-    current_landscape.harmonicity_path_a = frame.harmonicity_path_a;
-    current_landscape.harmonicity_path_b = frame.harmonicity_path_b;
     current_landscape.roughness_total = frame.roughness_total;
     current_landscape.roughness_scalar_raw = frame.roughness_scalar_raw;
     current_landscape.roughness_norm = frame.roughness_norm;
     current_landscape.roughness01_scalar = frame.roughness01_scalar;
     current_landscape.loudness_mass = frame.loudness_mass;
-    current_landscape.root_affinity = frame.root_affinity;
-    current_landscape.overtone_affinity = frame.overtone_affinity;
-    current_landscape.binding_strength = frame.binding_strength;
-    current_landscape.harmonic_tilt = frame.harmonic_tilt;
-    current_landscape.harmonicity_mirror_weight = frame.harmonicity_mirror_weight;
     current_landscape.pitch_objective_mode = frame.pitch_objective_mode;
     current_landscape.harmonicity_params = frame.harmonicity_params;
     current_landscape.consonance_kernel = frame.consonance_kernel;
@@ -1723,46 +1716,18 @@ fn recompute_harmonicity_from_nsgt_power(
     {
         return false;
     }
-    let dual = params
+    let (harmonicity, _) = params
         .harmonicity_kernel
-        .potential_h_dual_from_log2_spectrum(
-            &current_landscape.nsgt_power,
-            &current_landscape.space,
-        );
-    if dual.blended.len() != current_landscape.harmonicity.len()
-        || dual.path_a.len() != current_landscape.harmonicity.len()
-        || dual.path_b.len() != current_landscape.harmonicity.len()
-    {
+        .potential_h_from_log2_spectrum(&current_landscape.nsgt_power, &current_landscape.space);
+    if harmonicity.len() != current_landscape.harmonicity.len() {
         return false;
     }
-    current_landscape.harmonicity = dual.blended;
-    current_landscape.harmonicity_path_a = dual.path_a;
-    current_landscape.harmonicity_path_b = dual.path_b;
-    current_landscape.root_affinity = dual.metrics.root_affinity;
-    current_landscape.overtone_affinity = dual.metrics.overtone_affinity;
-    current_landscape.binding_strength = dual.metrics.binding_strength;
-    current_landscape.harmonic_tilt = dual.metrics.harmonic_tilt;
-    let mirror = params.harmonicity_kernel.params.mirror_weight;
-    current_landscape.harmonicity_mirror_weight = if mirror.is_finite() {
-        mirror.clamp(0.0, 1.0)
-    } else {
-        0.0
-    };
+    current_landscape.harmonicity = harmonicity;
     true
 }
 
 fn apply_params_update(params: &mut LandscapeParams, upd: &LandscapeUpdate) -> ParamsUpdateEffect {
     let mut effect = ParamsUpdateEffect::default();
-    if let Some(m) = upd.mirror {
-        let mirror = if m.is_finite() {
-            m.clamp(0.0, 1.0)
-        } else {
-            0.0
-        };
-        let prev = params.harmonicity_kernel.params.mirror_weight;
-        params.harmonicity_kernel.params.mirror_weight = mirror;
-        effect.harmonicity_changed = (prev - mirror).abs() > f32::EPSILON;
-    }
     if let Some(k) = upd.roughness_k {
         let roughness_k = if k.is_finite() { k.max(1e-6) } else { 1e-6 };
         let prev = params.roughness_k;
@@ -1848,84 +1813,6 @@ mod tests {
         }
     }
 
-    fn synthetic_nsgt_power(space: &Log2Space) -> Vec<f32> {
-        let mut spectrum = vec![0.0f32; space.n_bins()];
-        for (hz, amp) in [
-            (196.0f32, 1.0f32),
-            (347.0, 0.8),
-            (523.25, 0.6),
-            (739.99, 0.45),
-        ] {
-            if let Some(idx) = space.index_of_freq(hz) {
-                spectrum[idx] = amp;
-            }
-        }
-        spectrum
-    }
-
-    fn l2_norm_diff(a: &[f32], b: &[f32]) -> f32 {
-        a.iter()
-            .zip(b.iter())
-            .map(|(x, y)| {
-                let d = x - y;
-                d * d
-            })
-            .sum::<f32>()
-            .sqrt()
-    }
-
-    #[test]
-    fn pending_mirror_update_changes_current_landscape_before_dispatch() {
-        let space = Log2Space::new(80.0, 2_000.0, 96);
-        let mut params = build_test_params(&space);
-        params.harmonicity_kernel.params.mirror_weight = 0.0;
-
-        let mut landscape = Landscape::new(space.clone());
-        landscape.nsgt_power = synthetic_nsgt_power(&space);
-        landscape.roughness01.fill(0.2);
-        let (h0, _) = params
-            .harmonicity_kernel
-            .potential_h_from_log2_spectrum(&landscape.nsgt_power, &landscape.space);
-        landscape.harmonicity = h0;
-        landscape.recompute_consonance(&params);
-        let before = landscape.harmonicity.clone();
-
-        let mut pop = Population::new(Timebase {
-            fs: 48_000.0,
-            hop: 256,
-        });
-        pop.apply_action(
-            Action::SetHarmonicityParams {
-                update: LandscapeUpdate {
-                    mirror: Some(1.0),
-                    roughness_k: None,
-                    pitch_objective_mode: None,
-                },
-            },
-            &landscape,
-            None::<&mut crate::core::stream::analysis::AnalysisStream>,
-        );
-
-        let (analysis_update_tx, analysis_update_rx) = bounded::<LandscapeUpdate>(1);
-        apply_pending_landscape_update(
-            &mut pop,
-            &mut params,
-            &mut landscape,
-            &analysis_update_tx,
-            None,
-        );
-
-        let sent = analysis_update_rx
-            .try_recv()
-            .expect("pending update should be forwarded to analysis");
-        assert_eq!(sent.mirror, Some(1.0));
-        let delta = l2_norm_diff(&before, &landscape.harmonicity);
-        assert!(
-            delta > 1e-3,
-            "mirror update should affect current harmonicity before dispatch, delta={delta}"
-        );
-    }
-
     #[test]
     fn pending_update_does_not_panic_when_analysis_channel_is_disconnected() {
         let space = Log2Space::new(80.0, 2_000.0, 96);
@@ -1939,8 +1826,7 @@ mod tests {
         pop.apply_action(
             Action::SetHarmonicityParams {
                 update: LandscapeUpdate {
-                    mirror: Some(1.0),
-                    roughness_k: None,
+                    roughness_k: Some(2.0),
                     pitch_objective_mode: None,
                 },
             },
@@ -1958,27 +1844,5 @@ mod tests {
             None,
         );
         assert!(changed);
-    }
-
-    #[test]
-    fn mirror_extremes_produce_distinct_harmonicity_potentials() {
-        let space = Log2Space::new(80.0, 2_000.0, 96);
-        let spectrum = synthetic_nsgt_power(&space);
-
-        let mut root_params = HarmonicityParams::default();
-        root_params.mirror_weight = 0.0;
-        let mut ceil_params = root_params;
-        ceil_params.mirror_weight = 1.0;
-
-        let root_kernel = HarmonicityKernel::new(&space, root_params);
-        let ceil_kernel = HarmonicityKernel::new(&space, ceil_params);
-        let (h_root, _) = root_kernel.potential_h_from_log2_spectrum(&spectrum, &space);
-        let (h_ceil, _) = ceil_kernel.potential_h_from_log2_spectrum(&spectrum, &space);
-
-        let delta = l2_norm_diff(&h_root, &h_ceil);
-        assert!(
-            delta > 1e-3,
-            "mirror=0 and mirror=1 should differ for fixed spectrum, delta={delta}"
-        );
     }
 }

@@ -982,8 +982,8 @@ fn exact_loo_consonance_score_scan(
     density_loo[current_idx] = (density_loo[current_idx] - current_mass).max(0.0);
 
     let harmonicity_kernel = HarmonicityKernel::new(&landscape.space, landscape.harmonicity_params);
-    let h_dual =
-        harmonicity_kernel.potential_h_dual_from_log2_spectrum(&density_loo, &landscape.space);
+    let (h_blended, _) =
+        harmonicity_kernel.potential_h_from_log2_spectrum(&density_loo, &landscape.space);
     let roughness_kernel = RoughnessKernel::new(
         landscape.roughness_kernel_params,
         EXACT_LOO_ROUGHNESS_ERB_STEP,
@@ -1002,12 +1002,7 @@ fn exact_loo_consonance_score_scan(
     let roughness_k = landscape.roughness_k.max(1e-6);
     let mut out = Vec::with_capacity(n);
     for (i, r_shape) in r_shape_raw.iter().enumerate().take(n) {
-        let h01 = h_dual
-            .blended
-            .get(i)
-            .copied()
-            .unwrap_or(0.0)
-            .clamp(0.0, 1.0);
+        let h01 = h_blended.get(i).copied().unwrap_or(0.0).clamp(0.0, 1.0);
         let r01 = roughness_ratio_to_state01(*r_shape / roughness_ref_peak, roughness_k);
         out.push(landscape.consonance_kernel.score(h01, r01));
     }

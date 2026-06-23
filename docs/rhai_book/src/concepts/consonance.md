@@ -172,29 +172,3 @@ Mode constructors include `harmonic_modes()`, `odd_modes()`,
 `custom_modes([ratios])`, `modal_table(name)`, `landscape_density_modes()`,
 and `landscape_peaks_modes()` — see the
 [API Reference](../reference/api.md#mode-patterns).
-
-## A director's tension dial: `harmonic_tension`
-
-`harmonic_tension(value)` is a director-level tension–release dial, not a
-foundational field operation. Raising it degrades the harmonicity terrain's
-coherence for overtone-radiating bodies, heard as harmonic tension; lowering it
-restores consonant gravity. Reach for it to shape drama across a scene.
-
-A caveat on what it is: mechanically it blends the terrain from overtone (`0.0`)
-toward an *undertone* projection (`1.0`) — a leftover of an abandoned
-harmonic-dualism hypothesis. There is no undertone series in nature and no
-perceptual mechanism behind it, so this is a useful artifact (a tension knob that
-happens to work), not a tonality (major/minor) switch and not a grounded terrain
-operation. Do not read musical meaning into the projection itself.
-
-```rhai
-let voice = harmonic().amp(0.04).sustain();
-place(voice, consonance(110.0).peak().count(5));
-
-harmonic_tension(0.1);   // consonant gravity
-wait(4.0);
-harmonic_tension(0.8);   // tension: the terrain loses coherence
-wait(4.0);
-harmonic_tension(0.1);   // release
-wait(4.0);
-```

@@ -43,7 +43,6 @@ let late_colony = variant(colony)
     .avoid_neighbors(0.70);
 
 section("murmuration", || {
-    harmonic_tension(0.05);
     // A medium attractor: synchronization emerges from coupling and survival,
     // never forced by a deep prior.
     meter_stability(0.45);
@@ -58,7 +57,6 @@ section("murmuration", || {
     let b = place(late_colony, consonance(160.0, 1100.0).spacing(0.75).count(5));
     wait(6.7);
 
-    harmonic_tension(0.55);
     root.freq(root_hz * 1.5);
     a.amp(0.034);
     b.amp(0.036);

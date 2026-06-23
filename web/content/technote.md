@@ -222,18 +222,15 @@ The algorithm operates on the `Log2Space` spectrum in two passes, utilizing the 
 
 Thus, without any hardcoded knowledge of Western music theory, the system naturally generates stability peaks at the Major 3rd and Perfect 5th relationships, simply as a consequence of the physics of the harmonic series. An agent at 200 Hz creates a "gravity well" at 300 Hz and 500 Hz, inviting other agents to form a major triad.
 
-### 3.3.3 The Mirror: Overtone vs. Undertone Projection
+### 3.3.3 A Single Overtone Path (and the Mirror That Was Removed)
 
-The implementation in `core/harmonicity_kernel.rs` includes a parameter `mirror_weight` ($\alpha$) that blends two projection paths:
+The harmonicity terrain is built from a single "Down-then-Up" projection: each spectral component is projected down to its candidate virtual roots and back up to their harmonics (Section 3.3.2), the frequency-domain counterpart of virtual pitch. It has no undertone counterpart, and that is deliberate.
 
-*   **Path A (Overtone)**: The standard "Down-then-Up" projection described above. It creates gravity based on the overtone series—the frequency-domain counterpart of virtual pitch.
-*   **Path B (Undertone)**: The inverted "Up-then-Down" projection: it finds common overtones and projects undertones. This is the implementation of Riemann's *harmonic dualism* (minor as the mirror image of major).
+An earlier implementation blended in a second, inverted "Up-then-Down" path weighted by `mirror_weight` ($\alpha$), $H = (1-\alpha)H_{overtone} + \alpha H_{undertone}$ — Riemann's *harmonic dualism*, minor as the mirror image of major. It was removed on two independent grounds.
 
-$$ H_{final} = (1-\alpha)H_{overtone} + \alpha H_{undertone} $$
+**The dualism is structurally wrong**, on three counts. *Physically*, there is no undertone series—every vibrating body radiates overtones—so the undertone terrain has no stimulus counterpart. *Perceptually*, no mechanism comparable to virtual pitch binds tones by common overtones; modern psychoacoustics models the minor triad as a chord with a weak, ambiguous virtual root, not as a mirror image of the major. And *ecologically*, the closed loop breaks the dualism on the production side: an agent attracted to an overtone position radiates a spectrum that *reinforces* the root structure that attracted it (a self-stabilizing attractor), whereas an agent at an undertone position radiates overtones that do *not* reinforce the common-overtone structure that attracted it—the feedback loop does not close. The paper's controlled experiments reproduced overtone clustering but not an undertone (minor) reorganization.
 
-Path B must be read with care, on three grounds. *Physically*, there is no undertone series—every vibrating body radiates overtones—so the undertone terrain has no stimulus counterpart. *Perceptually*, no mechanism comparable to virtual pitch binds tones by common overtones; modern psychoacoustics models the minor triad as a chord with a weak, ambiguous virtual root, not as a mirror image of the major. And *ecologically*, the closed loop breaks the dualism on the production side: an agent attracted to an overtone position radiates a spectrum that *reinforces* the very root structure that attracted it (a self-stabilizing attractor), whereas an agent attracted to an undertone position radiates overtones that do *not* reinforce the common-overtone structure that attracted it—the feedback loop does not close. Consistent with this analysis, the paper's controlled experiments reproduced overtone clustering but not an undertone (minor) reorganization; the original "major/minor switch" hypothesis was abandoned.
-
-What survives is empirically useful: raising `mirror_weight` degrades the terrain's coherence for overtone-radiating bodies, which is heard as *harmonic tension*. This is exactly how the flagship etude uses it—a `harmonic_tension` arch as the tension–release axis of the piece (Section 7.3)—rather than as a tonality switch.
+**And the second path was mathematically redundant.** Written as a log2-frequency convolution, each path is $\text{env} \circledast h_\rho$ with the *same even kernel* $h_\rho(s) = \sum_{\log_2(k/m)=s} (mk)^{-\rho}$ — even because exchanging $m \leftrightarrow k$ negates the shift $\log_2(k/m)$ while leaving the weight $(mk)^{-\rho}$ unchanged. Path A used $\rho = \rho_{root}$ and Path B used $\rho = \rho_{overtone}$: identical when the exponents match, and otherwise merely two decay exponents of one even kernel. An even kernel has no overtone/undertone *direction*, so Path B carried no information Path A did not, and the blend $(1-\alpha)h_{\rho_{root}} + \alpha\,h_{\rho_{overtone}}$ collapses to a single effective kernel. The `harmonic_tension` dial (which only varied $\alpha$) was additionally confirmed not to control audible tension: it left the consonant peaks the ecology actually reads unchanged across the whole register. Both the second path and the dial were removed (see the ledger in Section 7); what remains is the single overtone path.
 
 ## 3.4 Consonance: Integrating the Fields
 
@@ -556,7 +553,7 @@ Live groups support patching of pitch parameters, amplitude, and timbre during e
 
 Scene-global terrain shaping, on both axes:
 
-*   **Harmonic terrain**: `harmonic_tension(v)` (overtone/undertone gravity blend), `set_roughness_k(v)`, `set_pitch_objective("consonance"|"dissonance")`.
+*   **Harmonic terrain**: `set_roughness_k(v)`, `set_pitch_objective("consonance"|"dissonance")`.
 *   **Temporal terrain**: `meter_stability(v)`, `temporal_basin(min_hz, max_hz)` (Section 4.4).
 *   **Interaction**: `set_global_coupling(v)` scales agent interaction strength.
 
@@ -584,7 +581,7 @@ This script validates the hop-based movement logic.
 
 ## 7.3 Case Study: Emergence and Resolution (`samples/12_emergence_and_resolution.rhai`)
 
-The closing étude of the v0.4 book composes the full stack as a single directed arc. The composer touches only two macro knobs—a `harmonic_tension` arch (consonant → dissonant → consonant) and register transposition—while everything else emerges: a metric heartbeat (an accent-role voice driving a deep beat attractor), a living colony that locks to the *same* emergent beat while climbing toward consonance, and a non-metric flow shimmer appearing only at the tension peak. The colony's survival through the dissonant peak (consonance-gated viability plus consonance-biased respawn) *is* the resolution: the return of tonal gravity is enacted by the ecosystem rather than written into a score.
+The closing étude of the v0.4 book composes the full stack as a single directed arc. The composer touches only register transposition—lifting the register slides the consonant ground out from under the colony that had settled on it—while everything else emerges: a metric heartbeat (an accent-role voice driving a deep beat attractor), a living colony that locks to the *same* emergent beat while climbing toward consonance, and a non-metric flow shimmer appearing only at the tension peak. The colony's survival through the dissonant peak (consonance-gated viability plus consonance-biased respawn) *is* the resolution: the return of tonal gravity is enacted by the ecosystem rather than written into a score.
 
 # 8. Conclusion
 
@@ -631,7 +628,7 @@ Fragments exist: the per-voice boredom/familiarity of `PerceptualContext` is the
 Implementation results have twice revised the Manifesto's mechanism-level sketches while confirming its principles:
 
 *   **The four-band table → an emergent metrical hierarchy.** The Manifesto sketches fixed delta/theta/alpha/beta bands with assigned musical roles. Building that taught otherwise: a fixed filterbank is an imposed grid in disguise. What survives the perception research is the principle—neural oscillation structures musical time—realized as a self-organizing beat–subdivision–measure hierarchy with confidence (Section 4).
-*   **Mirror dualism → the production-loop fixed-point requirement.** The undertone terrain is computable, but no minor tonality emerged, and the analysis generalizes: a perceptual symmetry is musically real only if the agents it attracts radiate spectra that reinforce it. Perception can be mirrored; production cannot—every body radiates overtones (Section 3.3.3). Any future terrain operation must pass both tests: a perceptual mechanism must exist, and the loop must close on the production side. The surviving `harmonic_tension` tension dial does not itself pass them—its undertone blend has no stimulus or perceptual counterpart—so designing a tension axis that does (e.g. direct roughness or dissonance modulation) is open work (v0.5).
+*   **Mirror dualism → the production-loop fixed-point requirement.** The undertone terrain is computable, but no minor tonality emerged, and the analysis generalizes: a perceptual symmetry is musically real only if the agents it attracts radiate spectra that reinforce it. Perception can be mirrored; production cannot—every body radiates overtones (Section 3.3.3). Any future terrain operation must pass both tests: a perceptual mechanism must exist, and the loop must close on the production side. The `harmonic_tension` dial that briefly survived as a tension knob was itself removed (v0.4): it passed neither test, was confirmed not to move the consonant peaks the ecology reads, and was in any case mathematically redundant—its two projection paths are one even convolution kernel at two decay exponents (Section 3.3.3). Designing a tension axis that does pass the tests (e.g. direct roughness or dissonance modulation) is open work (v0.5).
 
 # Appendix A: Key System Parameters
 
@@ -639,7 +636,6 @@ Implementation results have twice revised the Manifesto's mechanism-level sketch
 | :--- | :--- | :--- | :--- |
 | `bins_per_oct` | `Log2Space` | Int | Resolution of the frequency grid (typ. 48-96). |
 | `sigma_cents` | `HarmonicityParams` | Cents | Width of harmonic peaks. Lower = stricter intonation. |
-| `mirror_weight` | `HarmonicityParams` | 0.0-1.0 | Overtone/undertone blend of harmonic gravity; in practice a harmonic-tension dial. |
 | `roughness_k` | `LandscapeParams` | Float | Saturation parameter for roughness mapping. Default: $(1/0.7) - 1 \approx 0.4286$ (so $x=1$ maps to $\approx 0.7$). |
 | `kernel.a` | `ConsonanceKernel` | Float | Harmonicity coefficient (default 1.0). |
 | `kernel.b` | `ConsonanceKernel` | Float | Roughness coefficient (default -1.35; negative penalizes roughness). |

@@ -79,12 +79,13 @@ section("emergence and resolution", || {
     wait(3.7);
 
     // III. The colony: it fires on the shared pulse grid and climbs toward
-    // consonance, while the field slowly bends toward tension.
+    // consonance.
     let colony = place(consonance_colony, consonance(80.0, 900.0).count(8).spacing(0.84));
-    wait(4.7);
-    wait(4.7);
+    wait(9.4);
 
-    // IV. Tension peak: strained field, lifted register, shimmering flow.
+    // IV. Tension peak: the search heats up so the colony grows restless and
+    // strays off consonance; the register lifts and flow shimmers over it.
+    colony.temperature(0.85);
     root.freq(root_hz * 1.5);
     pulse.freq(root_hz * 1.5);
     colony.amp(0.034);
@@ -92,8 +93,9 @@ section("emergence and resolution", || {
     let flow = place(flow_particles, consonance(200.0, 1500.0).count(9).spacing(0.66));
     wait(5.3);
 
-    // V. Resolution: the field returns to consonance and the register falls
-    // home; agents settle onto stable peaks -- the return of tonal gravity.
+    // V. Resolution: the search cools, the register falls home, and the colony
+    // settles back onto stable consonant peaks -- the return of tonal gravity.
+    colony.temperature(0.0);
     flow.amp(0.014);
     colony.glide(0.22);
     root.freq(root_hz);

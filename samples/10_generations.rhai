@@ -57,13 +57,17 @@ section("generations", || {
     let colony_b = place(variant(colony_voice).amp(0.046), open_density.count(4));
     wait(6.0);
 
-    // The terrain strains and the register lifts: voices on lost ground starve,
-    // and respawn carries the colony toward the new consonant peaks.
-    root_field.freq(root_hz * 1.25);
+    // The colony grows restless: the search heats up, voices stray off
+    // consonance onto dissonant ground and starve, and respawn carries the
+    // survivors back toward consonant peaks.
+    colony_a.temperature(0.8);
+    colony_b.temperature(0.8);
     wait(9.0);
 
-    // Gravity returns: the reborn colony settles where harmony can hold it.
-    root_field.freq(root_hz);
+    // Calm returns: the search cools and the reborn colony settles where harmony
+    // can hold it.
+    colony_a.temperature(0.0);
+    colony_b.temperature(0.0);
     colony_a.glide(0.26);
     wait(9.0);
 

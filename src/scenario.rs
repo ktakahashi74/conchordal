@@ -582,6 +582,11 @@ pub enum SpawnStrategy {
         min_freq: f32,
         max_freq: f32,
         min_dist_erb: f32,
+        /// Tension degree in [0,1] (Consonance target only): 0 aims at the
+        /// strongest consonance, higher aims at a weaker metastable step
+        /// (`target = L_max - tension*(L_max - L_min)` over the range, in
+        /// field_score). Ignored by other targets.
+        tension: f32,
     },
     RejectTargets {
         base: Box<SpawnStrategy>,

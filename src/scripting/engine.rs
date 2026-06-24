@@ -691,6 +691,12 @@ impl ScriptHost {
         engine.register_fn("density", |placement: Placement| {
             placement.with_sampling(FieldSampling::Density)
         });
+        engine.register_fn("tension", |placement: Placement, t: FLOAT| {
+            placement.with_tension(t as f32)
+        });
+        engine.register_fn("tension", |placement: Placement, t: INT| {
+            placement.with_tension(t as f32)
+        });
         engine.register_fn("count", |placement: Placement, count: INT| {
             placement.with_count(count)
         });

@@ -754,6 +754,11 @@ fn temporal_basin(arg0: i64, arg1: f64);
 /// Tempo region the emergent beat gravitates toward.
 fn temporal_basin(arg0: i64, arg1: i64);
 
+/// Place at a metastable consonance below the strongest (degree 0..1).
+fn tension(arg0: Placement, arg1: f64) -> Placement;
+/// Place at a metastable consonance below the strongest (degree 0..1).
+fn tension(arg0: Placement, arg1: i64) -> Placement;
+
 /// [tuning] Gravity toward the tessitura center.
 fn tessitura_gravity(arg0: Material, arg1: f64) -> Material;
 /// [tuning] Gravity toward the tessitura center.

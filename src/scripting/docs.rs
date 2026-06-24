@@ -438,6 +438,19 @@ multiples with `range()`); `consonance(min, max)` takes an absolute range. Defau
         details: "",
     },
     FnDoc {
+        name: "tension",
+        owner: Owner::Placement,
+        category: "placement",
+        style: Style::Method,
+        patch: Patch::Na,
+        usage: &["tension(degree)"],
+        summary: "Place at a metastable consonance below the strongest (degree 0..1).",
+        details: "Consonance placement only. 0 targets the strongest consonance \
+(resolved); higher targets a weaker, more tense step \
+(target = L_max - degree*(L_max - L_min) over the range, in field_score). \
+Pairs with peak() (nearest step, sharp) or density (a broader cloud around it).",
+    },
+    FnDoc {
         name: "random",
         owner: Owner::Global,
         category: "placement",

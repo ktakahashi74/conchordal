@@ -1585,6 +1585,7 @@ fn group_respawn_tier2_settings_reach_runtime_action() {
                     min_freq,
                     max_freq,
                     min_dist_erb,
+                    ..
                 }) if (*min_freq - 220.0 * 0.75).abs() <= 1e-4
                     && (*max_freq - 220.0 * 1.5).abs() <= 1e-4
                     && (*min_dist_erb - 0.5).abs() <= 1e-6

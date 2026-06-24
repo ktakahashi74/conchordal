@@ -1,128 +1,167 @@
-# Tension as Temperature
+# Tension: Temperature in Movement, Relative Level in Placement
 
-Status: Design (v0.5 candidate). Supersedes the rung/level sketches in this file's
-history.
-Scope: define the *degree* of harmonic tension as the voice's pitch-search
-**temperature** — reusing existing machinery, and dissolving the
-level/rung/sigmoid difficulties that earlier framings hit.
+Status: Design (v0.5 candidate). Final form; supersedes the rung / level /
+temperature-only sketches in this file's history.
+Scope: make the *degree* of harmonic tension a composer parameter across both
+phases — where a voice is placed, and how it moves — without warping the terrain
+or adding mechanisms conchordal does not already have.
 
 ## Problem
 
-`harmonic_tension` was removed (it warped the terrain from outside — no
-perceptual mechanism, no closed production loop). We still want a composer dial
-for *how much tension*. Successive attempts to define it as a target consonance
-*level*, or a *rung* below the resolution, kept hitting walls:
+`harmonic_tension` was removed (it warped the terrain from outside: no perceptual
+mechanism, no closed production loop, mathematically redundant). We still want a
+grounded handle for *how much tension*. A long exploration — target consonance
+level, a rung below `L_max`, percentile, resolvability — kept hitting walls:
+sigmoid distortion of `field_level`, "is the target a peak or a slope?", absolute
+vs relative to a shifting `L_max`, heavy per-bin scans. The recurring
+weight/difficulty was itself the signal that tension was being framed as an
+*external target constraint* on the voice — the same shape as `harmonic_tension`.
 
-- the `sigmoid` in `field_level` distorts any level-based degree;
-- "is the target a peak or a slope?" — a level names a point that may be
-  unstable;
-- absolute level vs relative to a shifting `L_max` (the peak depends on what is
-  sounding);
-- discrete rungs vs continuous.
+Two heuristics cut through (both the user's): (1) computational weight is a sign
+of conceptual mismatch; (2) *persistent* difficulty in finding a natural form
+means the premise is wrong.
 
-The *persistent* difficulty was itself the sign of a mismatch: all those framings
-treat tension as an **external target constraint** on the voice's climb — the
-same shape as the failed `harmonic_tension`.
+## Principle
 
-## Principle: tension = temperature
+Tension is the distance to a predicted resolution (a strong consonance) — a
+metastable state below it. It shows up in two phases, and conchordal already has
+the right primitive for each:
 
-Treat the consonance field as a potential, `U(f) = −score(f)` (the existing
-`consonance_field_energy`; lower = more consonant). A voice's stationary pitch
+- **Movement** (how a placed voice moves): tension = **temperature**.
+- **Placement** (where a voice is spawned): tension = **relative level (τ) ×
+  sharpness (temperature)**.
+
+The shared substrate is the continuous consonance field plus a single notion of
+temperature.
+
+## Movement: tension = temperature
+
+Treat the consonance field as a potential `U = −score`; a voice's pitch
 distribution is Boltzmann:
 
 ```
-P(f)  ∝  exp( score(f) / T )
+P(f) ∝ exp( score(f) / T )
 ```
 
-- `T → 0`: the voice concentrates on the most consonant point (U minimum) —
-  full resolution (greedy settling).
-- `T` large: the distribution spreads into lower-score (less consonant) regions
-  — fluctuation and excursion, i.e. tension.
+- `T → 0`: settles on the most consonant point (resolution).
+- `T` large: spreads into lower-score regions (fluctuation = tension).
 
-**Tension is the temperature `T`.** Nothing else.
+This **is** the pitch core's existing search temperature (HillClimb Metropolis /
+PeakSampler softmax); DCC already routes listener tension into a
+`temperature_bonus`. **No new movement API — `temperature(v)` is it.**
+`seek_consonance` is the *pull* (wins at low `T`); temperature is the
+*fluctuation* (wins at high `T`), so resolution is built in and the voice's
+autonomy / the closed loop are preserved.
 
-## Why temperature dissolves every earlier difficulty
+Scope: temperature is set per species and copied per voice; per-voice differences
+come only from the DCC bonus today (per-voice operation is an open question).
 
-| earlier difficulty | under temperature |
-|---|---|
-| sigmoid distortion of `field_level` | `T` acts on the energy `score`, never on the sigmoid `field_level` |
-| target a peak or a slope? | `T` is the *spread* of a distribution; it names no point, so the question never arises |
-| absolute vs relative to a shifting `L_max` | `exp(Δscore/T)` is a ratio of energy-gap to temperature — a deep consonant well holds even at high `T`, a shallow one fluctuates even at low `T`. **Relativity is built in; no `L_max` detection.** |
-| discrete rungs vs continuous | `T` is one continuous scalar — no quantization, no ranking |
+Why temperature dissolves the movement difficulties: it acts on the energy
+`score`, not the sigmoid `field_level`; it names no point (a distribution spread,
+so the peak/slope question vanishes); `exp(Δscore/T)` makes a deep well hold and
+a shallow one fluctuate (relativity built in, no `L_max` detection); one
+continuous scalar.
 
-All of it collapses into a single scalar.
+## Placement: relative level (τ) × sharpness (temperature)
 
-## Existing machinery — conchordal already does this
+Placement is a *one-shot selection* among the field's peaks at spawn, so the
+difficulties that killed a movement "rung" do not arise (no continuous climb, no
+slope to slip down). Two orthogonal axes:
 
-- `temperature` is already the pitch core's search temperature (HillClimb
-  Metropolis, PeakSampler softmax; defaults 0.0 / 0.08). `exp(score/T)` is
-  already implemented in the cores.
-- **DCC already routes `listener tension → temperature_bonus`**
-  (`src/dcc_coupler.rs`): higher listener tension raises the search temperature.
+### 1. Relative level τ — the tension degree
 
-So this is not a new mechanism. "Define tension as temperature" *promotes the
-existing temperature axis to be the meaning of tension*. The implementation is
-minimal.
+Rank the consonance-field peaks in the voice's range by height. Let `L_max` /
+`L_min` be the highest / lowest, in **`field_score`** (the linear scale — NOT the
+sigmoid `field_level`). The target consonance level is:
 
-## Resolution is built in (no external target)
+```
+target = L_max − τ · (L_max − L_min)      τ ∈ [0,1]
+```
 
-- `seek_consonance` is the **pull** toward consonance — dominant at low `T`.
-- temperature is the **fluctuation** — dominant at high `T`.
+- `τ = 0` → `L_max`: the strongest consonance (resolved placement).
+- `τ` large → a weaker, metastable consonance (tense placement).
 
-Low `T` resolves (the pull wins); high `T` holds tension (fluctuation wins). The
-voice is never told "stop at this rung" — its autonomy is intact and temperature
-only adds jitter. Both technote tests pass (perceptual mechanism = stochastic
-exploration under a real potential; production loop stays closed), and
-`harmonic_tension`'s external-warp trap is avoided.
+Place at the peak nearest `target`. `τ` is "how far below the strongest reachable
+consonance", normalized in `field_score` so the sigmoid never distorts it and
+`0..1` reads intuitively.
+
+**Why relative level, not rank.** rank (top-XX%) depends on the *number* of
+peaks, which is scene-dependent (the same rank points at different steps as the
+sounding changes); relative level is by *height*, peak-count-independent. rank is
+a meta-structure over the field; relative level rides the field's own continuous
+scale, and it generalizes the existing density machinery (peak = the `τ=0`
+special case). A continuous `τ` maps onto the discrete peaks, so the musical
+"step" feel comes for free.
+
+### 2. Sharpness — temperature
+
+How tightly the spawn concentrates around `target`: `peak()` (sharp,
+deterministic ≈ `T→0`) ↔ `density` (broad, stochastic ≈ `T>0`). This is the
+**same temperature** as movement, in its placement guise — `peak`/`density` are
+its two extremes, and any sharpness between them is a temperature.
+
+## Unification
+
+| phase | tension degree | temperature |
+|---|---|---|
+| **placement** | relative level `τ` (which consonant step) | sharpness (`peak`↔`density`: how concentrated) |
+| **movement** | (emerges from the climb) | fluctuation (how restless once placed) |
+
+**Temperature runs through both phases** (sharpness at placement, fluctuation in
+movement). Placement adds the explicit degree `τ` (which step to aim at); in
+movement the degree emerges from the climb under its temperature. Neither warps
+the terrain — both read the real, ecology-built field — so both pass the
+technote's two tests and avoid `harmonic_tension`'s trap.
 
 ## API
 
-`tension(τ)` on a voice / group / director, mapping to the search temperature.
-`τ = 0` → cool: the voice settles into consonance (release). Raising `τ` heats it
-(tension). Time-vary `τ` for a tension–release arc, or hold it for standing
-tension. Same one-dial ergonomics as the removed `harmonic_tension`, but it is
-the voice's **own search temperature**, not a terrain deformation.
+Movement:
+```
+temperature(v)        # existing; species / group / DCC. Low = settle, high = restless.
+```
 
-## Caveat: fluctuating tension, not a held chord
+Placement:
+```
+consonance(110.0).peak()               # τ=0, sharp: strongest consonance (resolved)
+consonance(110.0).peak().tension(0.4)  # τ=0.4 step, sharply (tense placement)
+consonance(110.0).tension(0.4)         # same step, density (broader)
+```
 
-Temperature gives a *fluctuating* tension (restless, wants to move), not a
-*static* one (a voice parked on a specific dissonant chord tone). But a deep
-consonant well **plus** temperature gives "pulled toward consonance while
-jittering", which suits conchordal's living ecology. If a held, named tension (a
-tension *chord*) is ever genuinely needed, add discrete rungs then — not now.
-
-## Habituation — autonomous complement (unchanged role)
-
-`τ`/temperature is the *static degree* of restlessness; habituation (sustained
-occupancy erodes a held peak's fusion) supplies *when* a settled voice is forced
-to move again. A complement, not the tension mechanism.
-
-## Placement
-
-Seed tension at spawn with the existing `dissonance()` / `edge()` targets
-(static, local, cheap). Whether a seeded voice resolves emerges afterward from
-its climb under its temperature — not from a placement-time prediction.
+`tension(τ)` here is the *placement degree*; movement uses `temperature`. If a
+single verb is preferred, `tension` could also set a voice's temperature — but
+that is naming, not a new mechanism.
 
 ## Implementation
 
-- Map `tension(τ)` to the pitch-core search temperature (reuse the `temperature`
-  / `set_temperature` plumbing — the same path DCC's `temperature_bonus` already
-  feeds).
-- No `L_max`, no rung ranking, no per-bin resolvability scan, no sigmoid
-  handling.
-- Observed tension for reports = the voice's current `T` (or, richer, how far
-  below the local consonant peak it actually sits on average).
-- Determinism: temperature is a parameter; with a fixed seed the
-  Metropolis / softmax draws are already deterministic in render.
+- Placement degree: reuse `global_peaks(n, min_sep)` to get range peaks;
+  `L_max`/`L_min` = max/min of their `field_score`; `target = L_max −
+  τ·(L_max−L_min)`; select the peak nearest `target`.
+- Placement sharpness: the existing `peak`/`density` sampling (a continuous
+  temperature form is future work).
+- Movement: the existing `temperature` / `set_temperature` path (the one DCC's
+  bonus already feeds).
+- Always normalize in `field_score` (linear), never the sigmoid `field_level`.
+  No `L_max` detection in movement, no per-bin resolvability scan, no rung
+  ranking as a movement axis.
+- Determinism: terrain unchanged; peak selection and Boltzmann draws are
+  deterministic in render.
+
+## What we are deliberately NOT building
+
+- No `harmonic_tension`-style terrain warp (removed; the reason this note exists).
+- No rung as an *operated movement* axis (movement uses temperature).
+- No `resolvability()` placement target or per-bin resolvability scan (heavy,
+  breaks placement ⊥ movement; resolvability stays emergent, observed by
+  listener-twin).
+- Habituation (occupancy erodes a held peak) is a *possible later* autonomous-
+  release complement, not part of this.
 
 ## Open questions
 
-- **`τ → T` mapping**: linear, or a curve (the Metropolis/softmax response to `T`
-  is nonlinear, so a little `τ` may already loosen a tight resolution).
-- **Scope**: per-voice vs group/director temperature. DCC sets a global
-  `temperature_bonus` today; a composer `τ` could be per-voice.
-- **Composition with the core's intrinsic `temperature`** (PeakSampler's 0.08):
-  does `tension(τ)` add to it or override it?
-- **DCC interaction**: composer `tension(τ)` and listener-driven
-  `temperature_bonus` both heat the search — decide how they combine.
-- **Static held tension** (discrete rungs) deferred until a concrete need appears.
+- `τ → step` when peaks are sparse: nearest peak — how far off is acceptable.
+- Placement sharpness as a continuous temperature vs the current `peak`/`density`
+  pair (unify now, or keep the pair).
+- Per-voice movement temperature (today: species + DCC bonus).
+- Combining composer `temperature` with DCC's listener-driven `temperature_bonus`.
+- **Chord-level tension**: distributing `τ` across voices (some at `τ=0` resolved,
+  some tense) — the tension-chord case, realized through placement.

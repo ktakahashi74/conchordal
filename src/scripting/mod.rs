@@ -925,6 +925,7 @@ impl Placement {
                 min_freq,
                 max_freq,
                 min_dist_erb,
+                tension: 0.0,
             }),
             freq_hz: None,
             root_hz: None,
@@ -992,6 +993,7 @@ impl Placement {
                 min_freq,
                 max_freq,
                 min_dist_erb,
+                tension,
                 ..
             } => SpawnStrategy::Field {
                 target,
@@ -999,12 +1001,29 @@ impl Placement {
                 min_freq,
                 max_freq,
                 min_dist_erb,
+                tension,
             },
             other => {
                 warn!("peak()/density() only apply to field placements; ignored");
                 other
             }
         });
+        self
+    }
+
+    fn with_tension(mut self, tension: f32) -> Self {
+        let t = if tension.is_finite() {
+            tension.clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        match self.strategy {
+            Some(SpawnStrategy::Field {
+                tension: ref mut tn,
+                ..
+            }) => *tn = t,
+            _ => warn!("tension() only applies to consonance/field placements; ignored"),
+        }
         self
     }
 
@@ -1016,6 +1035,7 @@ impl Placement {
                     target,
                     sampling,
                     min_dist_erb,
+                    tension,
                     ..
                 }),
             ) => {
@@ -1025,6 +1045,7 @@ impl Placement {
                     min_freq: root * min_mul,
                     max_freq: root * max_mul,
                     min_dist_erb,
+                    tension,
                 });
             }
             (_, strategy) => {
@@ -1042,6 +1063,7 @@ impl Placement {
                 sampling,
                 min_freq,
                 max_freq,
+                tension,
                 ..
             } => SpawnStrategy::Field {
                 target,
@@ -1049,6 +1071,7 @@ impl Placement {
                 min_freq,
                 max_freq,
                 min_dist_erb: spacing,
+                tension,
             },
             other => {
                 warn!("spacing() is only supported for field placements; ignored");

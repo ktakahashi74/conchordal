@@ -20,6 +20,9 @@ use tracing::{debug, info, warn};
 
 const DEFAULT_REPORT_FIRST_K: u32 = 10;
 const DEFAULT_REPORT_PLV_WINDOW: usize = 200;
+/// Width (fraction of the range's field_score span) of the Gaussian that weights
+/// peaks near the tension target in density placement.
+const TENSION_LEVEL_SIGMA_FRAC: f32 = 0.15;
 
 /// Peak score for a field target at bin `i` (higher = better extremum).
 fn field_peak_score(target: FieldTarget, landscape: &LandscapeFrame, i: usize) -> f32 {
@@ -564,6 +567,41 @@ impl Population {
 
         let min_dist_erb = strategy.min_dist_erb();
 
+        // Tension (Consonance only): aim at a metastable step below the strongest
+        // peak — target = L_max - tension*(L_max - L_min) in field_score over the
+        // range. None when tension == 0 (plain strongest-consonance behaviour).
+        let tension = match strategy {
+            SpawnStrategy::Field {
+                target: FieldTarget::Consonance,
+                tension,
+                ..
+            } => (*tension).clamp(0.0, 1.0),
+            _ => 0.0,
+        };
+        let (target_score, tension_sigma) = if tension > 0.0 {
+            let mut lmax = f32::MIN;
+            let mut lmin = f32::MAX;
+            for i in idx_min..=idx_max {
+                let s = landscape
+                    .consonance_field_score
+                    .get(i)
+                    .copied()
+                    .unwrap_or(f32::NAN);
+                if s.is_finite() {
+                    lmax = lmax.max(s);
+                    lmin = lmin.min(s);
+                }
+            }
+            if lmax > lmin {
+                let sigma = ((lmax - lmin) * TENSION_LEVEL_SIGMA_FRAC).max(1e-6);
+                (Some(lmax - tension * (lmax - lmin)), sigma)
+            } else {
+                (None, 1.0)
+            }
+        } else {
+            (None, 1.0)
+        };
+
         let jitter_bin = |idx: usize, rng: &mut R| -> f32 {
             let idx = idx.min(n_bins - 1);
             let center = space.freq_of_index(idx);
@@ -615,7 +653,17 @@ impl Population {
                 let mut best_free = None;
                 let mut best_any = (idx_min, f32::MIN);
                 for i in idx_min..=idx_max {
-                    let score = field_peak_score(*target, landscape, i);
+                    let score = match target_score {
+                        Some(t) => {
+                            let s = landscape
+                                .consonance_field_score
+                                .get(i)
+                                .copied()
+                                .unwrap_or(f32::MIN);
+                            -(s - t).abs() // nearest to the tension target = best
+                        }
+                        None => field_peak_score(*target, landscape, i),
+                    };
                     if score > best_any.1 {
                         best_any = (i, score);
                     }
@@ -648,7 +696,18 @@ impl Population {
                     if !occupied {
                         has_unoccupied = true;
                     }
-                    let raw = field_density_mass(*target, landscape, i, gap_ref);
+                    let raw = match target_score {
+                        Some(t) => {
+                            let s = landscape
+                                .consonance_field_score
+                                .get(i)
+                                .copied()
+                                .unwrap_or(f32::MIN);
+                            let base = field_density_mass(*target, landscape, i, gap_ref);
+                            base * (-(s - t).powi(2) / (2.0 * tension_sigma * tension_sigma)).exp()
+                        }
+                        None => field_density_mass(*target, landscape, i, gap_ref),
+                    };
                     let w = if occupied { 0.0 } else { raw.max(0.0) };
                     let w = if w.is_finite() { w } else { 0.0 };
                     weights.push((w, occupied));
@@ -2160,6 +2219,7 @@ mod tests {
             min_freq: 100.0,
             max_freq: 400.0,
             min_dist_erb: 0.0,
+            tension: 0.0,
         };
         let mut rng = rand::rngs::StdRng::seed_from_u64(7);
         let freq = pop.decide_frequency(&strategy, &landscape, &mut rng, &[]);
@@ -2222,6 +2282,7 @@ mod tests {
             min_freq: space.fmin,
             max_freq: space.fmax,
             min_dist_erb: 0.0,
+            tension: 0.0,
         };
         let mut rng = rand::rngs::StdRng::seed_from_u64(1234);
 
@@ -2230,6 +2291,39 @@ mod tests {
             let picked_idx = space.index_of_freq(freq).expect("picked idx");
             assert_eq!(picked_idx, idx_target);
         }
+    }
+
+    #[test]
+    fn consonance_tension_peak_targets_a_lower_step() {
+        let space = Log2Space::new(100.0, 800.0, 48);
+        let mut landscape = LandscapeFrame::new(space.clone());
+        // Background well below the three steps so L_min is the background.
+        for s in landscape.consonance_field_score.iter_mut() {
+            *s = -1.0;
+        }
+        let idx_strong = space.index_of_freq(200.0).expect("strong");
+        let idx_mid = space.index_of_freq(300.0).expect("mid");
+        let idx_weak = space.index_of_freq(500.0).expect("weak");
+        landscape.consonance_field_score[idx_strong] = 1.0; // L_max
+        landscape.consonance_field_score[idx_mid] = 0.5;
+        landscape.consonance_field_score[idx_weak] = 0.0;
+
+        let pop = test_pop();
+        let mk = |t: f32| SpawnStrategy::Field {
+            target: FieldTarget::Consonance,
+            sampling: FieldSampling::Peak,
+            min_freq: 100.0,
+            max_freq: 800.0,
+            min_dist_erb: 0.0,
+            tension: t,
+        };
+        let mut rng = rand::rngs::StdRng::seed_from_u64(1);
+        // L_max=1, L_min=-1: target = 1 - 2*tension.
+        // tension=0.25 -> 0.5 (mid step); tension=0.5 -> 0.0 (weak step).
+        let f_mid = pop.decide_frequency(&mk(0.25), &landscape, &mut rng, &[]);
+        assert_eq!(space.index_of_freq(f_mid).expect("idx"), idx_mid);
+        let f_weak = pop.decide_frequency(&mk(0.5), &landscape, &mut rng, &[]);
+        assert_eq!(space.index_of_freq(f_weak).expect("idx"), idx_weak);
     }
 
     #[test]
@@ -2251,6 +2345,7 @@ mod tests {
             min_freq: space.freq_of_index(idx_min),
             max_freq: space.freq_of_index(idx_max),
             min_dist_erb: 0.0,
+            tension: 0.0,
         };
         let mut rng = rand::rngs::StdRng::seed_from_u64(11);
         let mut seen = HashSet::new();
@@ -2290,6 +2385,7 @@ mod tests {
             min_freq: space.freq_of_index(idx_min),
             max_freq: space.freq_of_index(idx_max),
             min_dist_erb: 1e-4,
+            tension: 0.0,
         };
         let mut rng = rand::rngs::StdRng::seed_from_u64(12);
 
@@ -2321,6 +2417,7 @@ mod tests {
             min_freq: space.freq_of_index(idx_min),
             max_freq: space.freq_of_index(idx_max),
             min_dist_erb: 1e-4,
+            tension: 0.0,
         };
         let mut rng = rand::rngs::StdRng::seed_from_u64(13);
 
@@ -2359,6 +2456,7 @@ mod tests {
             min_freq: space.freq_of_index(idx_min),
             max_freq: space.freq_of_index(idx_max),
             min_dist_erb: 1e-4,
+            tension: 0.0,
         };
         let mut rng = rand::rngs::StdRng::seed_from_u64(14);
 
@@ -2395,6 +2493,7 @@ mod tests {
             min_freq: space.freq_of_index(idx_high),
             max_freq: space.freq_of_index(idx_low),
             min_dist_erb: 0.0,
+            tension: 0.0,
         };
         let mut rng = rand::rngs::StdRng::seed_from_u64(15);
 

@@ -58,6 +58,26 @@ place(cloud, consonance(90.0, 1200.0).count(10).spacing(0.8));
 wait(8.0);
 ```
 
+## Placement tension: `tension(τ)`
+
+`consonance` aims at the *strongest* peak. `tension(τ)` aims a step **below** it:
+`τ ∈ [0, 1]` is the tension degree, where `0` keeps the resolved peak and larger
+values target progressively weaker, metastable steps
+(`target = L_max − τ·(L_max − L_min)` over the range, in field score). It is the
+placement twin of movement's search `temperature` — the dial for *how resolved* a
+spawn should sit — and it reads the field's score directly, so the degree rides
+the terrain's own scale rather than the count of peaks that happen to be
+sounding. With `.peak()` it snaps to the nearest step; as a cloud it concentrates
+the distribution around the target.
+
+```rhai
+let tense = harmonic().amp(0.035).sustain();
+
+// A metastable step below the strongest peak — placed, not resolved.
+place(tense, consonance(110.0, 1200.0).peak().tension(0.4).count(6).spacing(0.8));
+wait(6.0);
+```
+
 The field-agnostic placements are `random(min_hz, max_hz)` (log-uniform) and the
 geometric `at(hz)` and `line(start_hz, end_hz)`.
 

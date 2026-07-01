@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-0557f444.js";
+            window.path_to_searchindex_js = "../searchindex-0bf5c79c.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-ebd22986.js"></script>
@@ -274,6 +274,11 @@ consonance(min_hz, max_hz) -&gt; Placement
 </code></pre>
 <p>Applies to: <code>Placement</code>.</p>
 <p>Realize a field target as a stochastic cloud (the default).</p>
+<h4 id="tension"><a class="header" href="#tension"><code>tension</code></a></h4>
+<pre><code class="language-rhai ignore">tension(degree)
+</code></pre>
+<p>Applies to: <code>Placement</code>.</p>
+<p>Place at a metastable consonance below the strongest (degree 0..1). Consonance placement only. 0 targets the strongest consonance (resolved); higher targets a weaker, more tense step (target = L_max - degree*(L_max - L_min) over the range, in field_score). Pairs with peak() (nearest step, sharp) or density (a broader cloud around it).</p>
 <h4 id="random"><a class="header" href="#random"><code>random</code></a></h4>
 <pre><code class="language-rhai ignore">random(min_hz, max_hz) -&gt; Placement
 </code></pre>
@@ -606,10 +611,6 @@ avoid_neighbors(strength, sigma_cents)
 <p>Route the voice to specific buses; accepts a <code>Bus</code> or a <code>BusSet</code>. Material only. <code>send(habitat_bus)</code> makes a voice sensed by the ecology but absent from the presented sound; <code>send(presentation_bus)</code> is heard without perturbing the ecology; <code>send(habitat_bus | presentation_bus)</code> feeds both (the default).</p>
 <h3 id="director--global-parameters"><a class="header" href="#director--global-parameters">Director &amp; Global Parameters</a></h3>
 <p>Scene-global terrain shaping and research controls. Director verbs are soft priors: they shape the terrain and never schedule a beat or force a measure.</p>
-<h4 id="harmonic_tension"><a class="header" href="#harmonic_tension"><code>harmonic_tension</code></a></h4>
-<pre><code class="language-rhai ignore">harmonic_tension(value)
-</code></pre>
-<p>Harmonic-tension dial in 0.0-1.0: blends the harmonicity terrain from overtone toward undertone projection. Raising it degrades the terrain’s coherence for overtone-radiating bodies, heard as harmonic tension; lowering it restores consonant gravity. It is a tension-release axis, not a tonality (major/minor) switch.</p>
 <h4 id="meter_stability"><a class="header" href="#meter_stability"><code>meter_stability</code></a></h4>
 <pre><code class="language-rhai ignore">meter_stability(value)
 </code></pre>

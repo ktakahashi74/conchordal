@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-0557f444.js";
+            window.path_to_searchindex_js = "../searchindex-0bf5c79c.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-ebd22986.js"></script>
@@ -224,6 +224,22 @@ for a resolution gesture.</p>
 place(cloud, consonance(90.0, 1200.0).count(10).spacing(0.8));
 wait(8.0);
 </code></pre>
+<h2 id="placement-tension-tensionτ"><a class="header" href="#placement-tension-tensionτ">Placement tension: <code>tension(τ)</code></a></h2>
+<p><code>consonance</code> aims at the <em>strongest</em> peak. <code>tension(τ)</code> aims a step <strong>below</strong> it:
+<code>τ ∈ [0, 1]</code> is the tension degree, where <code>0</code> keeps the resolved peak and larger
+values target progressively weaker, metastable steps
+(<code>target = L_max − τ·(L_max − L_min)</code> over the range, in field score). It is the
+placement twin of movement’s search <code>temperature</code> — the dial for <em>how resolved</em> a
+spawn should sit — and it reads the field’s score directly, so the degree rides
+the terrain’s own scale rather than the count of peaks that happen to be
+sounding. With <code>.peak()</code> it snaps to the nearest step; as a cloud it concentrates
+the distribution around the target.</p>
+<pre><code class="language-rhai">let tense = harmonic().amp(0.035).sustain();
+
+// A metastable step below the strongest peak — placed, not resolved.
+place(tense, consonance(110.0, 1200.0).peak().tension(0.4).count(6).spacing(0.8));
+wait(6.0);
+</code></pre>
 <p>The field-agnostic placements are <code>random(min_hz, max_hz)</code> (log-uniform) and the
 geometric <code>at(hz)</code> and <code>line(start_hz, end_hz)</code>.</p>
 <h2 id="consonance-movement-seek_consonance"><a class="header" href="#consonance-movement-seek_consonance">Consonance Movement: <code>seek_consonance</code></a></h2>
@@ -319,27 +335,6 @@ wait(8.0);
 <code>custom_modes([ratios])</code>, <code>modal_table(name)</code>, <code>landscape_density_modes()</code>,
 and <code>landscape_peaks_modes()</code> — see the
 <a href="../reference/api.html#mode-patterns">API Reference</a>.</p>
-<h2 id="a-directors-tension-dial-harmonic_tension"><a class="header" href="#a-directors-tension-dial-harmonic_tension">A director’s tension dial: <code>harmonic_tension</code></a></h2>
-<p><code>harmonic_tension(value)</code> is a director-level tension–release dial, not a
-foundational field operation. Raising it degrades the harmonicity terrain’s
-coherence for overtone-radiating bodies, heard as harmonic tension; lowering it
-restores consonant gravity. Reach for it to shape drama across a scene.</p>
-<p>A caveat on what it is: mechanically it blends the terrain from overtone (<code>0.0</code>)
-toward an <em>undertone</em> projection (<code>1.0</code>) — a leftover of an abandoned
-harmonic-dualism hypothesis. There is no undertone series in nature and no
-perceptual mechanism behind it, so this is a useful artifact (a tension knob that
-happens to work), not a tonality (major/minor) switch and not a grounded terrain
-operation. Do not read musical meaning into the projection itself.</p>
-<pre><code class="language-rhai">let voice = harmonic().amp(0.04).sustain();
-place(voice, consonance(110.0).peak().count(5));
-
-harmonic_tension(0.1);   // consonant gravity
-wait(4.0);
-harmonic_tension(0.8);   // tension: the terrain loses coherence
-wait(4.0);
-harmonic_tension(0.1);   // release
-wait(4.0);
-</code></pre>
 
                     </main>
 

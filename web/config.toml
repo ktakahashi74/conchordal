@@ -14,11 +14,11 @@ default_language = "en"
 
 [languages.en]
 title = "Conchordal"
-description = "A psychoacoustic instrument for generative composition"
+description = "A living generative music instrument for emergent harmony"
 
 [languages.ja]
 title = "Conchordal"
-description = "A psychoacoustic instrument for generative composition"
+description = "A living generative music instrument for emergent harmony"
 
 [markdown]
 # Syntax highlighting configuration
@@ -30,4 +30,4 @@ theme = "material-theme-ocean"
 # Put all your custom variables here
 github_url = "https://github.com/ktakahashi74/conchordal"
 x_url = "https://x.com/conchordal"
-project_tagline = "A psychoacoustic instrument for generative composition"
+project_tagline = "A living generative music instrument for emergent harmony"

@@ -80,6 +80,10 @@
 
 .masthead h2 {
     font-size: 1.1rem;
+    /* Override theme's 20/30rem cap so the tagline fits one line on desktop;
+       parent container (720px) still bounds it, and it wraps balanced on mobile. */
+    max-width: 40rem;
+    text-wrap: balance;
 }
 
 .masthead-content,

@@ -1,9 +1,9 @@
 +++
 title = "Conchordal"
-description = "A psychoacoustic instrument for generative composition"
+description = "A living generative music instrument for emergent harmony"
 
 [extra]
-lede = "オープンソースかつRust製のConchordalは、Rhaiによる直感的なスクリプティングインターフェースを備えています。心理音響を土台とし、音をグリッドへ配置するのではなく、自律した音のエージェントが知覚のランドスケープ上で自ら協和を見つけ出します。"
+lede = "心理音響を土台に、自律した音のエージェントが知覚のランドスケープ上で自ら協和を見つけ出します。音をグリッドへ配置するのではなく、調和がおのずと創発する。オープンソース・Rust製で、Rhaiによる直感的なスクリプティングインターフェースを備えています。"
 +++
 
 

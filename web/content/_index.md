@@ -1,9 +1,9 @@
 +++
 title = "Conchordal"
-description = "A psychoacoustic instrument for generative composition"
+description = "A living generative music instrument for emergent harmony"
 
 [extra]
-lede = "Open source and written in Rust, Conchordal provides an intuitive scripting interface in Rhai. Grounded in psychoacoustics, it lets autonomous sound agents find their own consonance on a perceptual landscape instead of placing notes on a grid."
+lede = "Grounded in psychoacoustics, Conchordal lets autonomous sound agents find their own consonance — emergent harmony on a perceptual landscape, rather than notes placed on a grid. Open source, written in Rust, and scriptable in Rhai."
 +++
 
 

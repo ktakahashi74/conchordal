@@ -1,6 +1,6 @@
 # Hereditary Adaptation サンプル比較 (E6)
 
-`samples/04_ecosystems/hereditary_adaptation_*.rhai` は、論文 (arXiv:2603.25637)
+`samples/research/hereditary_adaptation_*.rhai` は、論文 (arXiv:2603.25637)
 実験 **E6 — Hereditary Adaptation** を live assay に圧縮して再生するサンプル群。
 6 変種で「遺伝の有無」「選択圧の有無」「選択の正確さ (Approx LOO)」の 3 軸を直交化している。
 

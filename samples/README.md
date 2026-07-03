@@ -8,9 +8,9 @@ cargo run --release -- samples/01_a_single_voice.rhai
 ```
 
 1. **A Single Voice** — one voice appears, holds its breath, and leaves.
-2. **Constellation** — four ways to enter: a line, the peaks, the density, chance.
+2. **Constellation** — six ways to enter a field: a line, the peaks, the density, the strain, the gaps, and chance.
 3. **Gravity** — the same root under two suns; the peaks listen to what is sounding.
-4. **Tension** — the director leans on the terrain until it strains.
+4. **Tension** — the voices settle onto consonance, grow restless and stray, then cool and settle again.
 5. **Settling** — scattered voices glide to where the field can hold them.
 6. **Bells** — struck bodies; the last bell lets the field choose its partials.
 7. **Heartbeat** — no external scaffold is imposed; the population locks into a shared pulse.

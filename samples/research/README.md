@@ -2,8 +2,10 @@
 
 Comparison fixtures for studying the instrument, not for playing it:
 
-- `hereditary_adaptation_*.rhai` — heredity/selection ablations (E6), including
-  the approximate leave-one-out variants.
+- `hereditary_adaptation_*.rhai` — heredity/selection ablations (E6, the
+  paper's Hereditary Adaptation experiment; see
+  `docs/hereditary_adaptation_samples.md`), including the approximate
+  leave-one-out variants.
 - `temporal_scaffolding_*.rhai` — external-scaffold rhythm controls
   (off / shared / scrambled) against the emergent meter.
 - `consonance_field_control.rhai` — field-state navigation mechanism study.

@@ -9,7 +9,6 @@ pub use voice::articulation_core;
 pub mod adaptation;
 pub mod generator_model;
 pub mod lifecycle;
-pub mod meta;
 pub mod metabolism_policy;
 pub mod modal;
 pub mod phonation_engine;

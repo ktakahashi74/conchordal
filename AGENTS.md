@@ -13,10 +13,9 @@
     - `erb.rs`: Equivalent Rectangular Bandwidth scales.
   - `audio/` (Real-time I/O):
     - `output.rs`: cpal stream management (ringbuffer producer).
-    - `buffer.rs`: Interleaved audio buffer types.
     - `writer.rs`: Disk recording (WAV).
   - `synth/` (Synthesis engine):
-    - Phase-vocoder/additive synthesis based on NSGT bins.
+    - Modal resonator bank and mode-table primitives (Hz/sec domain).
   - `ui/` (UI and visualization):
     - Egui views, plots, and visualization logic.
   - `life/` (Voices and behaviors):
@@ -138,7 +137,7 @@ Potential/representation is orthogonal to pred/perc:
 - Usage: hill-climb evaluation in `src/life/pitch_core.rs`.
 2. `consonance_field_level`
 - Definition: `sigmoid(beta*(score-theta))`.
-- Usage: voice behavior, world model, UI in `src/life/population.rs`, `src/life/world_model.rs`, `src/ui/windows.rs`.
+- Usage: voice behavior, listener model, UI in `src/life/population.rs`, `src/listener_twin/mod.rs`, `src/ui/windows.rs`.
 3. `consonance_field_energy`
 - Definition: `-score`.
 - Usage: retained for minimization view and consistency checks.

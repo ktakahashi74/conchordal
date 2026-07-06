@@ -7,6 +7,7 @@ use crate::core::roughness_kernel::{RoughnessKernel, erb_grid};
 use crate::life::adaptation::{AdaptationContext, FeaturesNow};
 use crate::life::control::{LeaveSelfOutMode, MoveCostTimeScale, PitchControl, PitchCoreKind};
 use rand::{Rng, RngExt};
+use std::sync::Arc;
 
 const DEFAULT_LOCAL_WINDOW_CENTS: f32 = 240.0;
 const DEFAULT_LOCAL_TOP_K: usize = 10;
@@ -94,6 +95,9 @@ pub struct PitchHillClimbPitchCore {
     global_peak_min_sep_log2: f32,
     use_ratio_candidates: bool,
     ratio_candidate_count: usize,
+    /// The voice's own partial ratios, for "perceive with your own body" LOO.
+    /// `None` falls back to the generic assumed harmonic series.
+    body_ratios: Option<Arc<[f32]>>,
 }
 
 impl PitchHillClimbPitchCore {
@@ -122,7 +126,12 @@ impl PitchHillClimbPitchCore {
             global_peak_min_sep_log2: cents_to_log2(DEFAULT_GLOBAL_PEAK_MIN_SEP_CENTS),
             use_ratio_candidates: false,
             ratio_candidate_count: DEFAULT_RUNTIME_RATIO_CANDIDATE_COUNT,
+            body_ratios: None,
         }
+    }
+
+    pub fn set_body_ratios(&mut self, ratios: Option<Arc<[f32]>>) {
+        self.body_ratios = ratios;
     }
 
     pub fn set_temperature(&mut self, value: f32) {
@@ -402,6 +411,7 @@ impl PitchCore for PitchHillClimbPitchCore {
         let leave_self_out_harmonics = self.leave_self_out_harmonics;
         let crowding_strength = self.crowding_strength;
         let crowding_sigma_cents = self.crowding_sigma_cents;
+        let body_ratios = self.body_ratios.clone();
         let exact_loo_scan =
             exact_loo_consonance_score_scan(landscape, current_pitch_log2, leave_self_out_mode);
         self.propose_with_scorer(
@@ -426,6 +436,7 @@ impl PitchCore for PitchHillClimbPitchCore {
                     leave_self_out_mode,
                     leave_self_out_harmonics,
                     exact_loo_scan.as_deref(),
+                    body_ratios.as_deref(),
                     crowding_strength,
                     crowding_sigma_cents,
                     neighbor_pitch_log2,
@@ -450,6 +461,9 @@ pub struct PitchPeakSamplerCore {
     crowding_strength: f32,
     crowding_sigma_cents: f32,
     leave_self_out: bool,
+    /// The voice's own partial ratios, for "perceive with your own body" LOO.
+    /// `None` falls back to the generic assumed harmonic series.
+    body_ratios: Option<Arc<[f32]>>,
 }
 
 impl PitchPeakSamplerCore {
@@ -481,7 +495,12 @@ impl PitchPeakSamplerCore {
             crowding_strength: 0.0,
             crowding_sigma_cents: 60.0,
             leave_self_out: false,
+            body_ratios: None,
         }
+    }
+
+    pub fn set_body_ratios(&mut self, ratios: Option<Arc<[f32]>>) {
+        self.body_ratios = ratios;
     }
 
     pub fn set_crowding(&mut self, strength: f32, sigma_cents: f32) {
@@ -608,6 +627,7 @@ impl PitchCore for PitchPeakSamplerCore {
         let leave_self_out = self.leave_self_out;
         let crowding_strength = self.crowding_strength;
         let crowding_sigma_cents = self.crowding_sigma_cents;
+        let body_ratios = self.body_ratios.clone();
         let mut scorer = |pitch_log2: f32| -> f32 {
             adjusted_pitch_score_impl(
                 pitch_log2,
@@ -624,6 +644,7 @@ impl PitchCore for PitchPeakSamplerCore {
                 LeaveSelfOutMode::ApproxHarmonics,
                 DEFAULT_LOO_HARMONICS,
                 None,
+                body_ratios.as_deref(),
                 crowding_strength,
                 crowding_sigma_cents,
                 neighbor_pitch_log2,
@@ -788,6 +809,7 @@ fn adjusted_pitch_score(
         LeaveSelfOutMode::ApproxHarmonics,
         DEFAULT_LOO_HARMONICS,
         None,
+        None,
         crowding_strength,
         crowding_sigma_cents,
         neighbor_pitch_log2,
@@ -830,6 +852,7 @@ fn adjusted_pitch_score_with_loo_harmonics(
         LeaveSelfOutMode::ApproxHarmonics,
         leave_self_out_harmonics,
         None,
+        None,
         crowding_strength,
         crowding_sigma_cents,
         neighbor_pitch_log2,
@@ -853,6 +876,7 @@ fn adjusted_pitch_score_impl(
     leave_self_out_mode: LeaveSelfOutMode,
     leave_self_out_harmonics: u8,
     exact_loo_scan: Option<&[f32]>,
+    body_ratios: Option<&[f32]>,
     crowding_strength: f32,
     crowding_sigma_cents: f32,
     neighbor_pitch_log2: &[f32],
@@ -868,6 +892,7 @@ fn adjusted_pitch_score_impl(
         leave_self_out_mode,
         leave_self_out_harmonics,
         exact_loo_scan,
+        body_ratios,
     );
     let distance_oct = (clamped - current_pitch_log2).abs();
     let dist_cost = if move_cost_exp == 2 {
@@ -903,6 +928,7 @@ fn adjusted_pitch_score_impl(
     base + perceptual.score_adjustment(idx)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn sample_consonance_score_with_loo(
     pitch_log2: f32,
     current_pitch_log2: f32,
@@ -911,6 +937,7 @@ fn sample_consonance_score_with_loo(
     leave_self_out_mode: LeaveSelfOutMode,
     leave_self_out_harmonics: u8,
     exact_loo_scan: Option<&[f32]>,
+    body_ratios: Option<&[f32]>,
 ) -> f32 {
     if leave_self_out
         && matches!(leave_self_out_mode, LeaveSelfOutMode::ExactScan)
@@ -923,27 +950,58 @@ fn sample_consonance_score_with_loo(
     let mut score = landscape.evaluate_pitch_score_log2(clamped);
     if leave_self_out {
         let current_clamped = current_pitch_log2.clamp(fmin, fmax);
-        let harmonics = leave_self_out_harmonics.max(1);
         let sigma = cents_to_log2(DEFAULT_APPROX_LOO_SIGMA_CENTS).max(1e-6);
-        for harmonic in 1..=harmonics {
-            let harmonic_f = harmonic as f32;
-            let harmonic_log2 = current_clamped + harmonic_f.log2();
-            if harmonic_log2 < fmin || harmonic_log2 > fmax {
-                continue;
+        if let Some(ratios) = body_ratios {
+            // Perceive with your own body: subtract the voice's actual partials.
+            // Position is ratio -> log2 offset from the fundamental; weight follows
+            // the same per-index 1/n law as the generic series (index 0 -> 1/1).
+            for (idx, &ratio) in ratios.iter().enumerate() {
+                if !ratio.is_finite() || ratio <= 0.0 {
+                    continue;
+                }
+                // Match the render-side ratio clamp so subtraction lands where
+                // the partial actually sounds (see harmonic_ratio/partial_ratio).
+                let ratio = ratio.max(0.1);
+                let partial_log2 = current_clamped + ratio.log2();
+                if partial_log2 < fmin || partial_log2 > fmax {
+                    continue;
+                }
+                let self_score = landscape.evaluate_pitch_score_log2(partial_log2);
+                if !self_score.is_finite() || self_score <= 0.0 {
+                    continue;
+                }
+                let d = (clamped - partial_log2).abs();
+                let weight = 1.0 / (idx as f32 + 1.0);
+                score -= weight * self_score * (-d / sigma).exp();
             }
-            let self_score = landscape.evaluate_pitch_score_log2(harmonic_log2);
-            if !self_score.is_finite() || self_score <= 0.0 {
-                continue;
+        } else {
+            // Generic assumed harmonic series (bodies without ratios, e.g. Sine).
+            let harmonics = leave_self_out_harmonics.max(1);
+            for harmonic in 1..=harmonics {
+                let harmonic_f = harmonic as f32;
+                let harmonic_log2 = current_clamped + harmonic_f.log2();
+                if harmonic_log2 < fmin || harmonic_log2 > fmax {
+                    continue;
+                }
+                let self_score = landscape.evaluate_pitch_score_log2(harmonic_log2);
+                if !self_score.is_finite() || self_score <= 0.0 {
+                    continue;
+                }
+                let d = (clamped - harmonic_log2).abs();
+                let harmonic_weight = 1.0 / harmonic_f.max(1.0);
+                score -= harmonic_weight * self_score * (-d / sigma).exp();
             }
-            let d = (clamped - harmonic_log2).abs();
-            let harmonic_weight = 1.0 / harmonic_f.max(1.0);
-            score -= harmonic_weight * self_score * (-d / sigma).exp();
         }
     }
     score
 }
 
-pub(crate) fn approx_loo_pitch_score(landscape: &Landscape, freq_hz: f32, harmonics: u8) -> f32 {
+pub(crate) fn approx_loo_pitch_score(
+    landscape: &Landscape,
+    freq_hz: f32,
+    harmonics: u8,
+    body_ratios: Option<&[f32]>,
+) -> f32 {
     let pitch_log2 = freq_hz.max(1.0).log2();
     sample_consonance_score_with_loo(
         pitch_log2,
@@ -953,6 +1011,7 @@ pub(crate) fn approx_loo_pitch_score(landscape: &Landscape, freq_hz: f32, harmon
         LeaveSelfOutMode::ApproxHarmonics,
         harmonics.max(1),
         None,
+        body_ratios,
     )
 }
 
@@ -1389,6 +1448,13 @@ impl AnyPitchCore {
             core.set_proposal_interval_sec(value);
         }
     }
+
+    pub(crate) fn set_body_ratios(&mut self, ratios: Option<Arc<[f32]>>) {
+        match self {
+            AnyPitchCore::PitchHillClimb(core) => core.set_body_ratios(ratios),
+            AnyPitchCore::PitchPeakSampler(core) => core.set_body_ratios(ratios),
+        }
+    }
 }
 
 fn apply_hill_climb_control(core: &mut PitchHillClimbPitchCore, pitch: &PitchControl) {
@@ -1613,10 +1679,111 @@ mod tests {
     fn approx_loo_pitch_score_reduces_positive_self_peak_score() {
         let landscape = test_landscape(&[(220.0, 1.0)]);
         let raw = landscape.evaluate_pitch_score(220.0);
-        let loo = approx_loo_pitch_score(&landscape, 220.0, 1);
+        let loo = approx_loo_pitch_score(&landscape, 220.0, 1, None);
 
         assert!(raw > 0.0);
         assert!(loo < raw);
+    }
+
+    #[test]
+    fn approx_loo_uses_body_ratios_not_generic_series() {
+        // Body partials sit at 1.0 and 2.5; the generic 2-harmonic series sits at
+        // 1.0 and 2.0. LOO must subtract at the body's positions, not the series'.
+        let f0 = 220.0f32;
+        let landscape = test_landscape(&[(f0, 1.0), (2.0 * f0, 1.0), (2.5 * f0, 1.0)]);
+        let current = f0.log2();
+        let ratios = [1.0f32, 2.5];
+
+        // On the body's own 2.5 partial: body path subtracts it, generic path does not.
+        let cand_25 = (2.5 * f0).log2();
+        let body_25 = sample_consonance_score_with_loo(
+            cand_25,
+            current,
+            &landscape,
+            true,
+            LeaveSelfOutMode::ApproxHarmonics,
+            2,
+            None,
+            Some(&ratios),
+        );
+        let generic_25 = sample_consonance_score_with_loo(
+            cand_25,
+            current,
+            &landscape,
+            true,
+            LeaveSelfOutMode::ApproxHarmonics,
+            2,
+            None,
+            None,
+        );
+        assert!(
+            body_25 < generic_25 - 1e-4,
+            "body must subtract its own 2.5 partial (body={body_25}, generic={generic_25})"
+        );
+
+        // On the 2f position: generic (k=2) subtracts it, the body ([1.0, 2.5]) must not.
+        let cand_20 = (2.0 * f0).log2();
+        let body_20 = sample_consonance_score_with_loo(
+            cand_20,
+            current,
+            &landscape,
+            true,
+            LeaveSelfOutMode::ApproxHarmonics,
+            2,
+            None,
+            Some(&ratios),
+        );
+        let generic_20 = sample_consonance_score_with_loo(
+            cand_20,
+            current,
+            &landscape,
+            true,
+            LeaveSelfOutMode::ApproxHarmonics,
+            2,
+            None,
+            None,
+        );
+        assert!(
+            generic_20 < body_20 - 1e-4,
+            "generic series subtracts 2f, the body must not (body={body_20}, generic={generic_20})"
+        );
+    }
+
+    #[test]
+    fn approx_loo_harmonic_ratios_match_generic_series() {
+        // A plain harmonic ratio set must reproduce the generic integer series
+        // exactly (same positions, same per-index 1/n weights).
+        let f0 = 220.0f32;
+        let landscape = test_landscape(&[(f0, 1.0), (2.0 * f0, 0.8), (3.0 * f0, 0.6)]);
+        let current = f0.log2();
+        let harmonic_ratios = [1.0f32, 2.0, 3.0];
+        for cand_hz in [f0, 1.5 * f0, 2.0 * f0, 2.7 * f0, 3.0 * f0] {
+            let cand = cand_hz.log2();
+            let body = sample_consonance_score_with_loo(
+                cand,
+                current,
+                &landscape,
+                true,
+                LeaveSelfOutMode::ApproxHarmonics,
+                3,
+                None,
+                Some(&harmonic_ratios),
+            );
+            let generic = sample_consonance_score_with_loo(
+                cand,
+                current,
+                &landscape,
+                true,
+                LeaveSelfOutMode::ApproxHarmonics,
+                3,
+                None,
+                None,
+            );
+            assert!(
+                (body - generic).abs() <= 1e-5,
+                "harmonic ratios must match generic k=3 series at {cand_hz} Hz (body={body}, generic={generic})"
+            );
+        }
     }
 
     #[test]

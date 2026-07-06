@@ -328,7 +328,7 @@ The `BodyMethod` enum defines three synthesis body types, each projecting a dist
     *   `stiffness`: Inharmonicity coefficient (stretching the partial series).
     *   `brightness`: Spectral slope (decay of higher partials).
     *   `comb`: Even harmonic attenuation.
-    *   `damping`: Frequency-dependent decay rates.
+    *   `damping`: Energy-dependent thinning of upper partials. A slow spectral-energy envelope tracks the excitation (fast attack, ~0.5 s release, floored so ringing notes stay audible) and darkens the tone as drive fades.
     *   `vibrato_rate` / `vibrato_depth`: LFO-based pitch modulation.
     *   `jitter`: 1/f pink noise FM strength for organic fluctuation.
     *   `unison`: Detuned copy amount for chorus-like thickening.
@@ -413,7 +413,7 @@ The crowding system prevents agents from collapsing to identical frequencies. Bo
 
 When evaluating landscape fitness, an agent can subtract its own spectral contribution via leave-self-out analysis. Two modes are supported:
 
-*   **`ApproxHarmonics`**: Fast approximation using ~24 cent Gaussian subtraction.
+*   **`ApproxHarmonics`**: Fast approximation using ~24 cent Gaussian subtraction. When the body defines explicit mode ratios, the voice subtracts its *own* partial set; bodies without ratios fall back to the integer harmonic series.
 *   **`ExactScan`**: Full ERB grid scan for precise spectral subtraction.
 
 These timing-sensitive transitions and crowding evaluations are guarded by regression tests to prevent subtle breakage.

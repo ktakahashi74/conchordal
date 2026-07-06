@@ -20,6 +20,15 @@ use wide::f32x8;
 const PITCH_REFRESH_PERIOD_SAMPLES: usize = 64;
 const MOTION_REFRESH_PERIOD_SAMPLES: usize = 8;
 
+// Slow spectral-energy envelope for state->timbre coupling (TimbreGenotype.damping).
+// Instant attack tracks the drive; slow release lets a ringing note darken toward
+// a floor instead of freezing its attack brightness.
+const SPECTRAL_ENV_RELEASE_SEC: f32 = 0.5;
+// Undriven-but-ringing floor: sustained notes darken but stay audible (energy never 0).
+const SPECTRAL_ENERGY_FLOOR: f32 = 0.3;
+// Below this damping the coupling is inert; skip the machinery entirely.
+const DAMPING_EPSILON: f32 = 1.0e-4;
+
 #[cfg(any(target_feature = "fma", target_feature = "neon"))]
 #[inline(always)]
 fn mul_add_fast(a: f32, b: f32, c: f32) -> f32 {
@@ -44,6 +53,7 @@ pub struct OscillatorBank {
     profile: OscillatorProfile,
     freq_mul: Vec<f32>,
     base_gain: Vec<f32>,
+    damp_exp: Vec<f32>,
     x: Vec<f32>,
     y: Vec<f32>,
     rot_c: Vec<f32>,
@@ -59,6 +69,9 @@ pub struct OscillatorBank {
     jitter_gen: PinkNoise,
     drive_env: f32,
     drive_decay: f32,
+    spectral_env: f32,
+    spectral_env_decay: f32,
+    spectral_damping_active: bool,
     pitch_counter: usize,
     motion_counter: usize,
     current_motion_s: f32,
@@ -76,10 +89,17 @@ impl OscillatorBank {
             return Err(SynthError::InvalidSampleRate);
         }
 
-        let (profile, freq_mul, base_gain, lane_len_real) = match snapshot.kind {
+        let (profile, freq_mul, base_gain, damp_exp, lane_len_real) = match snapshot.kind {
             BodyKind::Sine => {
                 let (freq_mul, base_gain, lane_len_real) = build_sine_lanes();
-                (OscillatorProfile::Sine, freq_mul, base_gain, lane_len_real)
+                let damp_exp = vec![0.0; lane_len_real];
+                (
+                    OscillatorProfile::Sine,
+                    freq_mul,
+                    base_gain,
+                    damp_exp,
+                    lane_len_real,
+                )
             }
             BodyKind::Harmonic => {
                 let genotype = TimbreGenotype {
@@ -98,7 +118,7 @@ impl OscillatorBank {
                     .map_or(DEFAULT_MODE_COUNT, |ratios| ratios.len())
                     .max(1);
                 let cluster_spread_cents = cluster_spread_cents_from_public(snapshot.spread);
-                let (freq_mul, base_gain, lane_len_real) = build_harmonic_lanes(
+                let (freq_mul, base_gain, damp_exp, lane_len_real) = build_harmonic_lanes(
                     partials,
                     cluster_spread_cents,
                     snapshot.unison,
@@ -109,6 +129,7 @@ impl OscillatorBank {
                     OscillatorProfile::Harmonic { genotype },
                     freq_mul,
                     base_gain,
+                    damp_exp,
                     lane_len_real,
                 )
             }
@@ -118,21 +139,36 @@ impl OscillatorBank {
                     "modal snapshots must not be routed to OscillatorBank"
                 );
                 let (freq_mul, base_gain, lane_len_real) = build_sine_lanes();
-                (OscillatorProfile::Sine, freq_mul, base_gain, lane_len_real)
+                let damp_exp = vec![0.0; lane_len_real];
+                (
+                    OscillatorProfile::Sine,
+                    freq_mul,
+                    base_gain,
+                    damp_exp,
+                    lane_len_real,
+                )
             }
+        };
+
+        let spectral_damping_active = match &profile {
+            OscillatorProfile::Harmonic { genotype } => genotype.damping > DAMPING_EPSILON,
+            OscillatorProfile::Sine => false,
         };
 
         let lane_len_simd = round_up_to_8(lane_len_real.max(1));
         let mut freq_mul_padded = vec![0.0; lane_len_simd];
         let mut base_gain_padded = vec![0.0; lane_len_simd];
+        let mut damp_exp_padded = vec![0.0; lane_len_simd];
         freq_mul_padded[..lane_len_real].copy_from_slice(&freq_mul);
         base_gain_padded[..lane_len_real].copy_from_slice(&base_gain);
+        damp_exp_padded[..lane_len_real].copy_from_slice(&damp_exp);
 
         Ok(Self {
             fs,
             profile,
             freq_mul: freq_mul_padded,
             base_gain: base_gain_padded,
+            damp_exp: damp_exp_padded,
             x: padded_unit_x(lane_len_simd),
             y: vec![0.0; lane_len_simd],
             rot_c: padded_unit_x(lane_len_simd),
@@ -148,6 +184,9 @@ impl OscillatorBank {
             jitter_gen: PinkNoise::new(0xA5A5_5A5A_DEAD_BEEF, 0.001),
             drive_env: 0.0,
             drive_decay: (-1.0 / (0.08 * fs)).exp(),
+            spectral_env: 0.0,
+            spectral_env_decay: (-1.0 / (SPECTRAL_ENV_RELEASE_SEC * fs)).exp(),
+            spectral_damping_active,
             pitch_counter: 0,
             motion_counter: 0,
             current_motion_s: 0.0,
@@ -299,6 +338,28 @@ impl OscillatorBank {
         }
     }
 
+    // Track the slow spectral-energy envelope from the drive input: instant attack,
+    // slow release. Cheap per-sample update; the powf recompute is periodic.
+    fn advance_spectral_env(&mut self, drive: f32) {
+        let drive = drive.clamp(0.0, 1.0);
+        self.spectral_env = (self.spectral_env * self.spectral_env_decay).max(drive);
+    }
+
+    // Effective excitation energy in [floor, 1]; the floor keeps a ringing note audible.
+    fn spectral_energy(&self) -> f32 {
+        (SPECTRAL_ENERGY_FLOOR + (1.0 - SPECTRAL_ENERGY_FLOOR) * self.spectral_env)
+            .clamp(SPECTRAL_ENERGY_FLOOR, 1.0)
+    }
+
+    // Thin upper partials as energy decays: gain_mask = base_gain * energy^(damping*k).
+    // Called only right after a pitch-state refresh (which resets gain_mask to base gains).
+    fn apply_spectral_damping(&mut self) {
+        let energy = self.spectral_energy();
+        for idx in 0..self.active_lane_len {
+            self.gain_mask[idx] = self.base_gain[idx] * energy.powf(self.damp_exp[idx]);
+        }
+    }
+
     // The rotation kernel preserves state magnitude in exact arithmetic; with f32 it
     // drifts (or diverges near instability). Active lanes start at unit norm, so a large
     // departure signals drift/blowup rather than normal operation. Debug-only guard.
@@ -446,11 +507,22 @@ impl OscillatorBank {
                 pitch_hz
             };
             let amp = ctrl.amp.start + ctrl.amp.step * idx as f32;
-            if self.pitch_counter == 0 || self.needs_pitch_state_refresh(nominal_pitch_hz) {
+            let drive_sample = drive.get(idx).copied().unwrap_or(0.0);
+            let refreshed =
+                self.pitch_counter == 0 || self.needs_pitch_state_refresh(nominal_pitch_hz);
+            if refreshed {
                 self.refresh_pitch_state(nominal_pitch_hz);
             }
             if self.motion_counter == 0 {
                 self.refresh_motion_state(amp.max(0.0), nominal_pitch_hz);
+            }
+            if self.spectral_damping_active {
+                self.advance_spectral_env(drive_sample);
+                // Recompute the powf gains only on the pitch cadence (every 64 samples)
+                // and after each pitch refresh, never per sample.
+                if refreshed {
+                    self.apply_spectral_damping();
+                }
             }
 
             let sample = self.process_sample(
@@ -459,7 +531,7 @@ impl OscillatorBank {
                 self.current_motion_c,
             );
             if amp.is_finite() {
-                let drive_gain = self.excitation_gain(drive.get(idx).copied().unwrap_or(0.0));
+                let drive_gain = self.excitation_gain(drive_sample);
                 *y += amp.max(0.0) * drive_gain * sample;
             }
 
@@ -490,13 +562,15 @@ impl OscillatorBank {
             return;
         }
 
+        // Use gain_mask so the predictive projection matches the effective (damped)
+        // gains the ecology actually hears. gain_mask zeros Nyquist-culled lanes.
         let max_freq_hz = (self.fs * 0.49).max(1.0);
         for idx in 0..self.lane_len_real {
             let freq_hz = pitch_hz * self.freq_mul[idx];
             if !freq_hz.is_finite() || freq_hz <= 0.0 || freq_hz > max_freq_hz {
                 continue;
             }
-            add_log2_energy(amps, space, freq_hz, amp_scale * self.base_gain[idx]);
+            add_log2_energy(amps, space, freq_hz, amp_scale * self.gain_mask[idx]);
         }
     }
 
@@ -520,11 +594,20 @@ impl OscillatorBank {
                 pitch_hz
             };
             let amp = ctrl.amp.start + ctrl.amp.step * idx as f32;
-            if self.pitch_counter == 0 || self.needs_pitch_state_refresh(nominal_pitch_hz) {
+            let drive_sample = drive.get(idx).copied().unwrap_or(0.0);
+            let refreshed =
+                self.pitch_counter == 0 || self.needs_pitch_state_refresh(nominal_pitch_hz);
+            if refreshed {
                 self.refresh_pitch_state(nominal_pitch_hz);
             }
             if self.motion_counter == 0 {
                 self.refresh_motion_state(amp.max(0.0), nominal_pitch_hz);
+            }
+            if self.spectral_damping_active {
+                self.advance_spectral_env(drive_sample);
+                if refreshed {
+                    self.apply_spectral_damping();
+                }
             }
 
             let sample = if use_optimized {
@@ -553,7 +636,7 @@ impl OscillatorBank {
             };
 
             if amp.is_finite() {
-                let drive_gain = self.excitation_gain(drive.get(idx).copied().unwrap_or(0.0));
+                let drive_gain = self.excitation_gain(drive_sample);
                 *y += amp.max(0.0) * drive_gain * sample;
             }
 
@@ -573,28 +656,41 @@ fn build_harmonic_lanes(
     cluster_unison: usize,
     genotype: &TimbreGenotype,
     ratios: Option<&Arc<[f32]>>,
-) -> (Vec<f32>, Vec<f32>, usize) {
+) -> (Vec<f32>, Vec<f32>, Vec<f32>, usize) {
     let cluster_unison = active_cluster_unison(cluster_spread_cents, cluster_unison);
     let lane_len_real = partials.max(1) * cluster_unison.max(1);
     let mut lanes = Vec::with_capacity(lane_len_real);
+    // Base gains stay damping-free (energy = 1); damping is applied dynamically on
+    // top at render time via the per-lane exponent below.
     let energy = 1.0;
+    let damping = genotype.damping.max(0.0);
 
     for partial_idx in 0..partials.max(1) {
+        let k = partial_idx.saturating_add(1);
         let ratio = partial_ratio(ratios, genotype, partial_idx);
         let partial_gain = cluster_gain(
-            harmonic_gain(genotype, partial_idx.saturating_add(1), energy),
+            harmonic_gain(genotype, k, energy),
             cluster_spread_cents,
             cluster_unison,
         );
+        // Per-partial damping exponent matches harmonic_gain: energy^(damping * k).
+        let damp_exp = damping * k as f32;
         for unison_idx in 0..cluster_unison {
             let detune = cluster_detune_mul(cluster_spread_cents, cluster_unison, unison_idx);
-            lanes.push((ratio * detune, partial_gain));
+            lanes.push((ratio * detune, partial_gain, damp_exp));
         }
     }
 
-    lanes.sort_by(|(lhs, _), (rhs, _)| lhs.total_cmp(rhs));
-    let (freq_mul, base_gain): (Vec<_>, Vec<_>) = lanes.into_iter().unzip();
-    (freq_mul, base_gain, lane_len_real)
+    lanes.sort_by(|(lhs, ..), (rhs, ..)| lhs.total_cmp(rhs));
+    let mut freq_mul = Vec::with_capacity(lane_len_real);
+    let mut base_gain = Vec::with_capacity(lane_len_real);
+    let mut damp_exp = Vec::with_capacity(lane_len_real);
+    for (ratio, gain, exp) in lanes {
+        freq_mul.push(ratio);
+        base_gain.push(gain);
+        damp_exp.push(exp);
+    }
+    (freq_mul, base_gain, damp_exp, lane_len_real)
 }
 
 fn partial_ratio(ratios: Option<&Arc<[f32]>>, genotype: &TimbreGenotype, idx: usize) -> f32 {
@@ -980,6 +1076,126 @@ mod tests {
                 basic.y[idx],
                 optimized.y[idx]
             );
+        }
+    }
+
+    fn steady_ctrl(pitch_hz: f32, amp: f32) -> ToneControlBlock {
+        ToneControlBlock {
+            pitch_hz: ControlRamp {
+                start: pitch_hz,
+                step: 0.0,
+            },
+            amp: ControlRamp {
+                start: amp,
+                step: 0.0,
+            },
+        }
+    }
+
+    // Highest active partial gain relative to the fundamental.
+    fn upper_over_fundamental(bank: &OscillatorBank) -> f32 {
+        let hi = bank.active_lane_len.saturating_sub(1);
+        bank.gain_mask[hi] / bank.gain_mask[0].max(1e-12)
+    }
+
+    #[test]
+    fn upper_partials_thin_as_ringing_note_decays() {
+        let mut bank =
+            OscillatorBank::from_snapshot(48_000.0, &harmonic_snapshot(0.0)).expect("backend");
+        bank.seed_phases(7);
+        let ctrl = steady_ctrl(220.0, 0.5);
+
+        // Impulse on the first sample: brightest attack (energy = 1, no damping).
+        let mut drive = [0.0f32; 64];
+        drive[0] = 1.0;
+        let mut block = [0.0f32; 64];
+        bank.render_block(&drive, ctrl, &mut block);
+        let bright_ratio = upper_over_fundamental(&bank);
+
+        // Ring down for ~2 s with no drive: energy falls toward the floor.
+        let silent = [0.0f32; 64];
+        for _ in 0..(2 * 48_000 / 64) {
+            block.fill(0.0);
+            bank.render_block(&silent, ctrl, &mut block);
+        }
+        let dark_ratio = upper_over_fundamental(&bank);
+
+        assert!(
+            dark_ratio < bright_ratio,
+            "sustain must be darker than attack: bright={bright_ratio} dark={dark_ratio}"
+        );
+    }
+
+    #[test]
+    fn ringing_harmonic_stays_audible_and_respects_energy_floor() {
+        let mut bank =
+            OscillatorBank::from_snapshot(48_000.0, &harmonic_snapshot(0.0)).expect("backend");
+        bank.seed_phases(11);
+        let ctrl = steady_ctrl(220.0, 0.5);
+
+        let mut drive = [0.0f32; 64];
+        drive[0] = 1.0;
+        let mut block = [0.0f32; 64];
+        bank.render_block(&drive, ctrl, &mut block);
+
+        let silent = [0.0f32; 64];
+        for _ in 0..(2 * 48_000 / 64) {
+            block.fill(0.0);
+            bank.render_block(&silent, ctrl, &mut block);
+        }
+        let peak = block.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
+        assert!(peak > 1e-4, "ringing note should stay audible: peak={peak}");
+
+        // Effective gains never drop below the floor-implied bound.
+        for idx in 0..bank.active_lane_len {
+            let bound = bank.base_gain[idx] * SPECTRAL_ENERGY_FLOOR.powf(bank.damp_exp[idx]);
+            assert!(
+                bank.gain_mask[idx] >= bound - 1e-6,
+                "lane {idx} fell below floor bound"
+            );
+        }
+    }
+
+    #[test]
+    fn identical_drive_produces_identical_output() {
+        let snapshot = harmonic_snapshot(0.0);
+        let mut a = OscillatorBank::from_snapshot(48_000.0, &snapshot).expect("a");
+        a.seed_phases(99);
+        let mut b = a.clone();
+        let ctrl = steady_ctrl(220.0, 0.5);
+        let drive: Vec<f32> = (0..256)
+            .map(|i| if i % 40 == 0 { 0.7 } else { 0.0 })
+            .collect();
+        let mut out_a = vec![0.0f32; drive.len()];
+        let mut out_b = vec![0.0f32; drive.len()];
+        a.render_block(&drive, ctrl, &mut out_a);
+        b.render_block(&drive, ctrl, &mut out_b);
+        assert_eq!(out_a, out_b);
+    }
+
+    #[test]
+    fn sine_profile_skips_damping_machinery() {
+        let snapshot = BodySnapshot {
+            kind: BodyKind::Sine,
+            amp_scale: 1.0,
+            brightness: 0.0,
+            inharmonic: 0.0,
+            spread: 0.0,
+            unison: 1,
+            motion: 0.0,
+            ratios: None,
+        };
+        let mut bank = OscillatorBank::from_snapshot(48_000.0, &snapshot).expect("backend");
+        assert!(!bank.spectral_damping_active);
+        bank.seed_phases(3);
+        let ctrl = steady_ctrl(440.0, 0.5);
+        // Heavy drive must not engage any damping state for Sine.
+        let drive = [1.0f32; 64];
+        let mut block = [0.0f32; 64];
+        bank.render_block(&drive, ctrl, &mut block);
+        assert_eq!(bank.spectral_env, 0.0);
+        for idx in 0..bank.active_lane_len {
+            assert_eq!(bank.gain_mask[idx], bank.base_gain[idx]);
         }
     }
 }

@@ -226,7 +226,7 @@ impl Voice {
         let phonation_engine = PhonationEngine::from_spec(&effective_control.phonation.spec, seed);
         let social_coupling = effective_control.phonation.spec.social_coupling();
 
-        let pitch = AnyPitchCore::from_control(&effective_control.pitch, target_pitch_log2);
+        let mut pitch = AnyPitchCore::from_control(&effective_control.pitch, target_pitch_log2);
         let adaptation_config = adaptation_config_from_control(&effective_control.adaptation);
         let adaptation =
             crate::life::adaptation::AdaptationContext::from_config(&adaptation_config, 0);
@@ -238,6 +238,11 @@ impl Voice {
             landscape,
             &mut rng,
         );
+
+        // Perceive with your own body: the LOO pitch search subtracts the voice's
+        // own partials. Ratios are fixed at spawn (timbre patches never change the
+        // base ratios), so this one-time wiring is sufficient.
+        pitch.set_body_ratios(body.snapshot().ratios);
 
         let mut pitch_ctl = PitchController::new(
             pitch,
@@ -696,10 +701,12 @@ impl Voice {
     ) -> ArticulationSignal {
         let consonance_level = landscape.evaluate_pitch_level(self.body.base_freq_hz());
         let selection_score = if self.selection_approx_loo {
+            let ratios = self.body.snapshot().ratios;
             approx_loo_pitch_score(
                 landscape,
                 self.body.base_freq_hz(),
                 self.effective_control.pitch.leave_self_out_harmonics,
+                ratios.as_deref(),
             )
         } else {
             landscape.evaluate_pitch_score(self.body.base_freq_hz())

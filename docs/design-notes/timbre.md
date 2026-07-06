@@ -1,7 +1,8 @@
 # Timbre: Phenotype, Excitation × Resonance, State Leakage
 
-Status: Design (v0.5 direction). First-principles frame for what a voice's
-timbre should be; no implementation yet.
+Status: Design (v0.5 direction). Consequences 1–2 are implemented (energy-driven
+`damping` in the scheduled harmonic path; body-ratio LOO in `ApproxHarmonics`);
+3–5 remain open.
 Scope: give timbre the same kind of *necessity* that pitch and rhythm already
 have — grounded in the ecology, in the physics of sounding bodies, and in the
 life state of the voice — without inventing mechanisms conchordal does not

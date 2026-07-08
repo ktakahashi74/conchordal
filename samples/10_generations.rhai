@@ -1,8 +1,6 @@
 // Étude 10 — Generations
 // Voices live, starve, and are reborn where harmony can hold them.
 
-seed(10);
-
 let root_hz = 110.0;
 
 let settle_strategy = consonance(70.0, 1250.0).spacing(0.75);

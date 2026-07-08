@@ -1,8 +1,6 @@
 // Étude 5 — Settling
 // Scattered by chance, the voices glide to where the field can hold them.
 
-seed(5);
-
 let ground = harmonic()
     .brain("drone")
     .send(habitat_bus)

@@ -24,6 +24,9 @@ cargo run --release -- samples/01_a_single_voice.rhai
 movement, timbre); 7–9 walk the rhythm continuum one region at a time;
 10 closes the loop into life; 11–12 are directed by the composer. All études
 are compile-checked by the test suite, so they always match the current API.
+Top-level études intentionally do not call `seed(...)`: each run starts from
+a fresh scenario seed. Research assays keep fixed seeds so comparisons remain
+reproducible.
 
 One craft rule holds across the path: **scaffolding is inaudible or
 embodied**. Terrain anchors sing to the habitat bus, not to the audience —

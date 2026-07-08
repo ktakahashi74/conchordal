@@ -1,8 +1,6 @@
 // Étude 6 — Bells
 // Struck bodies. The last bell lets the field choose its partials.
 
-seed(6);
-
 let bell = modal()
     .amp(0.10)
     .sustain()

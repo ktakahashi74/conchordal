@@ -1,8 +1,6 @@
 // Étude 9 — Rain
 // Time without a beat, falling along the field.
 
-seed(9);
-
 let root_hz = 146.83;
 
 let field_anchor = harmonic()

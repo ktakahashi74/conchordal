@@ -2,8 +2,6 @@
 // The same root under two suns. The peaks listen to what is sounding,
 // not to a chart.
 
-seed(3);
-
 let body = harmonic()
     .amp(0.04)
     .sustain()

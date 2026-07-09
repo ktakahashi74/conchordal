@@ -4,7 +4,7 @@ use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
 use crate::dcc_coupler::ListenerPressure;
 use crate::life::control::{
-    BodyControl, BodyMethod, ControlUpdate, PitchApplyMode, PitchMode, VoiceControl,
+    BodyControl, BodyMethod, ControlUpdate, PhonationGate, PitchApplyMode, PitchMode, VoiceControl,
 };
 use crate::life::control_adapters::adaptation_config_from_control;
 use crate::life::lifecycle::LifecycleConfig;
@@ -68,6 +68,11 @@ pub struct Voice {
     active_render_notes: Vec<TrackedRenderNote>,
     pub(crate) life_accumulator: Option<super::telemetry::LifeAccumulator>,
     voice_adsr: Option<super::sound::ToneAdsr>,
+    /// One-way latch for `phonate_when_viable()`: starts open for
+    /// `PhonationGate::Immediate` (the default), starts closed for
+    /// `PhonationGate::WhenViable` until perceived consonance reaches the low
+    /// bound of the viability window, then never re-closes.
+    phonation_gate_open: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -295,6 +300,9 @@ impl Voice {
             breath_gain
         );
 
+        let phonation_gate_open =
+            !matches!(effective_control.phonation.gate, PhonationGate::WhenViable);
+
         Voice {
             id: assigned_id,
             metadata,
@@ -321,6 +329,7 @@ impl Voice {
             active_render_notes: Vec::new(),
             life_accumulator: None,
             voice_adsr,
+            phonation_gate_open,
         }
     }
 
@@ -790,8 +799,18 @@ impl Voice {
             fs: tb.fs,
             rhythms: *rhythms,
         };
+        // Target amp and the phonation gate are both evaluated up front and fed
+        // into `onset_allowed`, which the engine uses to gate onset *emission*.
+        // This must happen before the engine ticks: gating emission (instead of
+        // discarding an already-emitted onset afterward) is what keeps Hold's
+        // one-shot latch (`note_on_sent`) from being consumed while the onset
+        // cannot be heard, so it can still fire once amp/gate allow it later.
+        let target_amp = self.compute_target_amp();
+        self.update_phonation_gate(consonance);
+        let onset_allowed = target_amp > Self::AMP_EPS && self.phonation_gate_open;
         let state = CoreState {
             is_alive: self.is_alive() && !self.remove_pending,
+            onset_allowed,
         };
         self.phonation_engine.tick(
             &ctx,
@@ -832,7 +851,6 @@ impl Voice {
                 self.body.set_pitch_log2(self.target_pitch_log2());
             }
         }
-        let target_amp = self.compute_target_amp();
         let freq_hz = self.body.base_freq_hz();
         let continuous_drive = self.effective_control.body.continuous_drive;
         self.emit_phonation_updates(now, target_amp, freq_hz, continuous_drive, &mut out.cmds);
@@ -850,13 +868,13 @@ impl Voice {
             self.phonation_scratch.events.clear();
             return;
         }
-        if target_amp <= Self::AMP_EPS {
-            if had_tone_on {
-                Self::discard_pending_render_tone_ons(&mut out.cmds);
-            }
-            self.phonation_scratch.events.clear();
-            return;
-        }
+        // `onset_allowed` already prevented the engine from emitting any onset
+        // event while `target_amp <= AMP_EPS`, so a non-empty events list here
+        // guarantees `target_amp` is materializable.
+        debug_assert!(
+            target_amp > Self::AMP_EPS,
+            "onset gating must prevent tone events at/below AMP_EPS"
+        );
         let render_modulator = self.articulation.render_modulator_spec(phonation_mode);
         let body = self.body_snapshot();
         let smoothing_tau_sec = Self::PHONATION_UPDATE_SMOOTH_TAU_SEC;
@@ -981,6 +999,19 @@ impl Voice {
         amp.max(0.0)
     }
 
+    /// Advance the one-way phonation gate (`phonate_when_viable()`): once
+    /// perceived consonance reaches the low bound of the viability window, the
+    /// gate opens and never closes again. Later consonance drops are the
+    /// energy/viability system's business, not the gate's.
+    fn update_phonation_gate(&mut self, consonance: f32) {
+        if self.phonation_gate_open {
+            return;
+        }
+        if consonance >= self.articulation.consonance_viability_low() {
+            self.phonation_gate_open = true;
+        }
+    }
+
     pub(crate) fn compute_output_gain(&self) -> f32 {
         let gate = self.articulation.gate().clamp(0.0, 1.0);
         let release = self.release_gain.clamp(0.0, 1.0);
@@ -1087,5 +1118,196 @@ mod tests {
 
         voice.active_render_notes.clear();
         assert!(!voice.should_retain());
+    }
+
+    fn drone_voice_with_control(control: VoiceControl) -> Voice {
+        Voice::spawn_from_control(
+            control,
+            ArticulationCoreConfig::Drone {
+                sway: None,
+                breath_gain_init: None,
+            },
+            1,
+            0,
+            VoiceMetadata::default(),
+            48_000.0,
+            None,
+            0,
+        )
+    }
+
+    /// Entrain-brained voice with a consonance-viability window, so
+    /// `ArticulationWrapper::consonance_viability_low()` returns `low` instead
+    /// of the always-open (0.0) default.
+    fn entrain_voice_with_viability_low(control: VoiceControl, low: f32) -> Voice {
+        let lifecycle = crate::life::lifecycle::LifecycleConfig::Sustain {
+            initial_energy: 1.0,
+            metabolism_rate: 0.1,
+            recharge_rate: None,
+            action_cost: None,
+            continuous_recharge_rate: None,
+            continuous_recharge_score_low: Some(low),
+            continuous_recharge_score_high: Some(0.95),
+            selection_approx_loo: false,
+            dissonance_cost: None,
+            envelope: crate::scenario::EnvelopeConfig::default(),
+        };
+        Voice::spawn_from_control(
+            control,
+            ArticulationCoreConfig::Entrain {
+                lifecycle,
+                rhythm_freq: None,
+                rhythm_coupling: crate::scenario::RhythmCouplingMode::TemporalOnly,
+                rhythm_reward: None,
+                breath_gain_init: Some(1.0),
+                energy_cap: None,
+            },
+            1,
+            0,
+            VoiceMetadata::default(),
+            48_000.0,
+            None,
+            0,
+        )
+    }
+
+    // --- Item A: Hold onset must not be consumed while amp is ~0 ---
+
+    #[test]
+    fn hold_voice_with_zero_amp_defers_onset_until_amp_rises() {
+        // VoiceControl::default() phonation spec is once()+while_alive() (Hold).
+        let mut control = VoiceControl::default();
+        control.body.amp = 0.0;
+        let mut voice = drone_voice_with_control(control);
+        let tb = Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        };
+        let rhythms = NeuralRhythms::default();
+        let mut batch = PhonationBatch::default();
+
+        voice.tick_phonation_into(&tb, 0, &rhythms, None, 0.0, 1.0, 0.5, &mut batch);
+        assert!(
+            batch.tones.is_empty(),
+            "no tone spec while target amp is ~0"
+        );
+        assert!(!batch.cmds.iter().any(|c| matches!(c, ToneCmd::On { .. })));
+
+        voice
+            .apply_patch(&ControlUpdate {
+                amp: Some(0.5),
+                ..Default::default()
+            })
+            .expect("amp patch applies");
+        voice.tick_phonation_into(&tb, 64, &rhythms, None, 0.0, 1.0, 0.5, &mut batch);
+        assert!(
+            !batch.tones.is_empty(),
+            "the withheld onset should fire once amp rises above AMP_EPS"
+        );
+        assert!(batch.cmds.iter().any(|c| matches!(c, ToneCmd::On { .. })));
+    }
+
+    // --- Item B: phonate_when_viable() gate ---
+
+    #[test]
+    fn when_viable_gate_blocks_hold_onset_until_consonance_reaches_low_bound() {
+        let mut control = VoiceControl::default();
+        control.body.amp = 0.5;
+        control.phonation.gate = PhonationGate::WhenViable;
+        let mut voice = entrain_voice_with_viability_low(control, 0.5);
+        let tb = Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        };
+        let rhythms = NeuralRhythms::default();
+        let mut batch = PhonationBatch::default();
+
+        for hop in 0..5u64 {
+            voice.tick_phonation_into(&tb, hop * 64, &rhythms, None, 0.0, 1.0, 0.2, &mut batch);
+            assert!(
+                batch.tones.is_empty(),
+                "gated: no tone spec while consonance stays below the low bound"
+            );
+            assert!(!batch.cmds.iter().any(|c| matches!(c, ToneCmd::On { .. })));
+        }
+
+        // Consonance reaches the low bound: the withheld onset fires.
+        voice.tick_phonation_into(&tb, 5 * 64, &rhythms, None, 0.0, 1.0, 0.6, &mut batch);
+        assert!(
+            !batch.tones.is_empty(),
+            "onset should fire once consonance reaches the viability window"
+        );
+        assert!(batch.cmds.iter().any(|c| matches!(c, ToneCmd::On { .. })));
+        assert!(voice.phonation_gate_open);
+
+        // The latch does not re-close: a later consonance drop must not turn
+        // the already-phonating note off (metabolism/viability handles
+        // survival, not the gate).
+        voice.tick_phonation_into(&tb, 6 * 64, &rhythms, None, 0.0, 1.0, 0.0, &mut batch);
+        assert!(!batch.cmds.iter().any(|c| matches!(c, ToneCmd::Off { .. })));
+        assert!(
+            voice.phonation_gate_open,
+            "the gate latch must stay open after consonance drops"
+        );
+    }
+
+    #[test]
+    fn when_viable_gate_on_coupled_voice_suppresses_then_resumes_and_stays_open() {
+        // Non-Hold (candidate-processing) path: a coupled voice fires onsets
+        // repeatedly via `OnsetConfig::Always` on the coupling clock's own
+        // timing. base_rate_hz=20 at fs=1000 gives a 50-tick period, matching
+        // the 50-tick hop below so each open hop yields an onset.
+        let mut control = VoiceControl::default();
+        control.body.amp = 0.5;
+        control.phonation.gate = PhonationGate::WhenViable;
+        control.phonation.spec = crate::scenario::PhonationSpec {
+            timing: crate::scenario::PhonationTiming::Coupled(crate::scenario::CoupledTimingSpec {
+                coupling: 0.0,
+                base_rate_hz: 20.0,
+                flow_depth: 0.0,
+                microtiming: 0.0,
+                role: crate::scenario::RhythmRole::Beat,
+                social: 0.0,
+                vitality_lambda: 0.0,
+                vitality_floor: 0.0,
+                reward: 0.0,
+            }),
+            duration: crate::scenario::DurationSpec::Gates(1),
+        };
+        let mut voice = entrain_voice_with_viability_low(control, 0.5);
+        let tb = Timebase {
+            fs: 1000.0,
+            hop: 50,
+        };
+        let rhythms = NeuralRhythms::default();
+        let mut batch = PhonationBatch::default();
+
+        let mut gated_onsets = 0usize;
+        for hop in 0..6u64 {
+            voice.tick_phonation_into(&tb, hop * 50, &rhythms, None, 0.0, 1.0, 0.1, &mut batch);
+            gated_onsets += batch.onsets.len();
+        }
+        assert_eq!(gated_onsets, 0, "no onsets while gated");
+
+        let mut resumed_onsets = 0usize;
+        for hop in 6..12u64 {
+            voice.tick_phonation_into(&tb, hop * 50, &rhythms, None, 0.0, 1.0, 0.6, &mut batch);
+            resumed_onsets += batch.onsets.len();
+        }
+        assert!(
+            resumed_onsets > 0,
+            "onsets should resume promptly once the gate opens"
+        );
+
+        // Consonance drops again; the latch must stay open (onsets keep firing).
+        let mut post_drop_onsets = 0usize;
+        for hop in 12..18u64 {
+            voice.tick_phonation_into(&tb, hop * 50, &rhythms, None, 0.0, 1.0, 0.1, &mut batch);
+            post_drop_onsets += batch.onsets.len();
+        }
+        assert!(
+            post_drop_onsets > 0,
+            "the gate latch must not re-close when consonance drops again"
+        );
     }
 }

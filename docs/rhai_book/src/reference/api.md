@@ -858,7 +858,17 @@ Tempo region the emergent beat gravitates toward. The time-axis analogue of `con
 
 Candidate core verbs under audition: composing surface by intent, but with research-grade stability until validated.
 
-Empty right now.
+### Phonation & Rhythm
+
+#### `phonate_when_viable`
+
+```rhai,ignore
+phonate_when_viable()
+```
+
+Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+
+Withhold the first onset until perceived consonance is viable. Silently settles into the field until consonance reaches the low bound of the voice's consonance-viability window (`consonance_viability()`, or always-viable if that window was never set), then phonates normally and never re-gates. A voice that never settles dies unheard and the respawn policy replaces it -- there is no timeout parameter, the energy economy is the timeout.
 
 ## Mechanism Tuning
 

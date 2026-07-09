@@ -418,6 +418,11 @@ fn parallel(arg0: [?]);
 /// Realize a field target as its deterministic extremum.
 fn peak(arg0: Placement) -> Placement;
 
+/// [experimental] Withhold the first onset until perceived consonance is viable.
+fn phonate_when_viable(arg0: Material) -> Material;
+/// [experimental] Withhold the first onset until perceived consonance is viable.
+fn phonate_when_viable(arg0: Participant) -> Participant;
+
 /// [tuning] `"gate_snap"` or `"glide"`: override how pitch decisions are applied.
 fn pitch_apply_mode(arg0: Material, arg1: String) -> Material;
 /// [tuning] `"gate_snap"` or `"glide"`: override how pitch decisions are applied.

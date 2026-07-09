@@ -272,6 +272,20 @@ impl Default for PitchControl {
 #[derive(Debug, Clone, Default)]
 pub struct PhonationControl {
     pub spec: crate::scenario::PhonationSpec,
+    pub gate: PhonationGate,
+}
+
+/// When a voice is allowed to phonate its first onset.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PhonationGate {
+    /// Phonate immediately at spawn (existing behavior).
+    #[default]
+    Immediate,
+    /// Withhold the first onset until perceived consonance reaches the low
+    /// bound of the voice's consonance-viability window, then latch open.
+    /// The latch never re-closes; a later consonance drop is the
+    /// energy/viability system's business, not the gate's.
+    WhenViable,
 }
 
 #[derive(Debug, Clone)]

@@ -129,6 +129,12 @@ impl ArticulationWrapper {
     pub fn render_modulator_spec(&self, phonation_mode: PhonationMode) -> RenderModulatorSpec {
         self.core.render_modulator_spec(phonation_mode)
     }
+
+    /// Low bound of the consonance-viability window, used by the phonation
+    /// gate (`phonate_when_viable()`) to decide when a voice may open.
+    pub fn consonance_viability_low(&self) -> f32 {
+        self.core.consonance_viability_low()
+    }
 }
 
 pub trait ArticulationCore {
@@ -915,6 +921,19 @@ impl AnyArticulationCore {
                 phase: core.phase,
                 sway_rate: core.sway_rate.max(0.01),
             },
+        }
+    }
+
+    /// Low bound of the consonance-viability window (`consonance_viability(low, _)`).
+    /// `None` (window never configured) resolves to 0.0, matching
+    /// `MetabolismPolicy::continuous_recharge_signal`'s fallback of treating
+    /// the full `[0,1]` range as viable when no window is set. Cores without a
+    /// metabolism economy (Seq/Drone) have no window either and resolve the
+    /// same way, so the phonation gate opens immediately for them.
+    fn consonance_viability_low(&self) -> f32 {
+        match self {
+            AnyArticulationCore::Entrain(core) => core.continuous_recharge_score_low.unwrap_or(0.0),
+            AnyArticulationCore::Seq(_) | AnyArticulationCore::Drone(_) => 0.0,
         }
     }
 }

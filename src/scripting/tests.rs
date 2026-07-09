@@ -2143,6 +2143,49 @@ fn while_alive_and_beat_modes_are_last_write_wins() {
 }
 
 #[test]
+fn phonate_when_viable_sets_gate_on_material_and_draft_participant() {
+    let from_material = first_spawn_spec_for_script(
+        r#"
+            create(sine().phonate_when_viable(), 1);
+            flush();
+        "#,
+    );
+    assert_eq!(
+        from_material.control.phonation.gate,
+        PhonationGate::WhenViable
+    );
+
+    let from_draft_participant = first_spawn_spec_for_script(
+        r#"
+            create(sine(), 1).phonate_when_viable();
+            flush();
+        "#,
+    );
+    assert_eq!(
+        from_draft_participant.control.phonation.gate,
+        PhonationGate::WhenViable
+    );
+}
+
+#[test]
+fn phonate_when_viable_is_ignored_on_live_participant() {
+    let ctx = Arc::new(Mutex::new(ScriptContext::default()));
+    let engine = ScriptHost::create_engine(ctx.clone());
+    let _ = engine
+        .eval::<Dynamic>(
+            r#"
+                let p = create(sine(), 1);
+                flush();
+                p.phonate_when_viable();
+            "#,
+        )
+        .expect("script runs");
+    let ctx = ctx.lock().expect("lock script context");
+    let group = ctx.groups.values().next().expect("group exists");
+    assert_eq!(group.spec.phonation_gate, PhonationGate::Immediate);
+}
+
+#[test]
 fn flow_sets_low_coupling_intent() {
     let (scenario, _warnings) = run_script(
         r#"

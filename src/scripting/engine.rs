@@ -244,6 +244,10 @@ impl ScriptHost {
             species.spec.set_duration_while_alive();
             species
         });
+        engine.register_fn("phonate_when_viable", |mut species: SpeciesHandle| {
+            species.spec.set_phonate_when_viable();
+            species
+        });
         engine.register_fn("cycles", |mut species: SpeciesHandle, n: INT| {
             species.spec.set_duration_cycles(n.max(1) as u32);
             species
@@ -1291,6 +1295,8 @@ impl ScriptHost {
         );
         register_group_draft_fn!("once", ctx, engine, |s| s.set_when_once());
         register_group_draft_fn!("while_alive", ctx, engine, |s| s.set_duration_while_alive());
+        register_group_draft_fn!("phonate_when_viable", ctx, engine, |s| s
+            .set_phonate_when_viable());
         register_group_draft_fn1!("cycles", ctx, engine, |s, n: INT| s
             .set_duration_cycles(n.max(1) as u32));
         register_group_draft_fn!("adaptive_duration", ctx, engine, |s| s

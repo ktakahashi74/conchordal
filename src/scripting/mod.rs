@@ -11,8 +11,8 @@ use crate::core::mode_pattern::ModePattern;
 
 use crate::core::meter::MeterShaping;
 use crate::life::control::{
-    BodyMethod, ControlUpdate, LeaveSelfOutMode, MoveCostTimeScale, PitchApplyMode, PitchCoreKind,
-    PitchMode, Routing, VoiceControl,
+    BodyMethod, ControlUpdate, LeaveSelfOutMode, MoveCostTimeScale, PhonationGate, PitchApplyMode,
+    PitchCoreKind, PitchMode, Routing, VoiceControl,
 };
 use crate::life::lifecycle::LifecycleConfig;
 use crate::scenario::PhonationTiming;
@@ -84,6 +84,7 @@ struct SpeciesSpec {
     crowding_target_other: bool,
     brain: BrainKind,
     phonation_spec: PhonationSpec,
+    phonation_gate: PhonationGate,
     field_duration_spec: FieldDurationSpec,
     pulse_sync: Option<f32>,
     social_coupling: Option<f32>,
@@ -124,6 +125,7 @@ impl SpeciesSpec {
             crowding_target_other: false,
             brain: BrainKind::Entrain,
             phonation_spec: PhonationSpec::default(),
+            phonation_gate: PhonationGate::default(),
             field_duration_spec: FieldDurationSpec::default(),
             pulse_sync: None,
             social_coupling: None,
@@ -270,6 +272,7 @@ impl SpeciesSpec {
     fn spawn_spec(&self) -> VoiceSpec {
         let mut control = self.control.clone();
         control.phonation.spec = self.phonation_spec.clone();
+        control.phonation.gate = self.phonation_gate;
         // Resolve how seek_consonance() pitch decisions land, unless the script
         // chose explicitly: re-attacking voices snap at onsets, sustained voices
         // glide. Order-independent (resolved at commit, not at call time).
@@ -668,6 +671,14 @@ impl SpeciesSpec {
             timing: PhonationTiming::Once,
             duration: DurationSpec::WhileAlive,
         };
+    }
+
+    /// Withhold the voice's first onset until perceived consonance reaches the
+    /// low bound of its consonance-viability window (`consonance_viability()`,
+    /// or 0.0 -- always viable -- if that window was never set), then latch
+    /// open for good.
+    fn set_phonate_when_viable(&mut self) {
+        self.phonation_gate = PhonationGate::WhenViable;
     }
 
     fn set_duration_cycles(&mut self, n: u32) {

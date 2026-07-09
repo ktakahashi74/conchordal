@@ -329,6 +329,12 @@ pub struct CoreTickCtx {
 #[derive(Debug, Clone, Copy)]
 pub struct CoreState {
     pub is_alive: bool,
+    /// Whether a new onset may be materialized this tick. `false` suppresses
+    /// onset emission (Hold and candidate-processing paths alike) without
+    /// touching clock/candidate generation, so entrainment keeps advancing
+    /// while a voice is gated (e.g. `phonate_when_viable()`) and can join the
+    /// beat the moment it opens.
+    pub onset_allowed: bool,
 }
 
 #[derive(Debug, Default)]
@@ -1000,7 +1006,7 @@ impl PhonationEngine {
         let allow_onset = min_allowed_onset_tick
             .map(|min_tick| ctx.now_tick >= min_tick)
             .unwrap_or(true);
-        if allow_onset && state.is_alive && !self.hold.note_on_sent {
+        if allow_onset && state.onset_allowed && state.is_alive && !self.hold.note_on_sent {
             let tone_id = self.next_tone_id;
             self.next_tone_id = self.next_tone_id.wrapping_add(1);
             self.hold.note_on_sent = true;
@@ -1238,7 +1244,10 @@ impl PhonationEngine {
                 dt_sec: step.dt_sec,
                 weight: step.weight,
             };
-            if allow_onset && let Some(kick) = self.onset_rule.on_candidate(&input, state) {
+            if allow_onset
+                && state.onset_allowed
+                && let Some(kick) = self.onset_rule.on_candidate(&input, state)
+            {
                 let tone_id = self.next_tone_id;
                 self.next_tone_id = self.next_tone_id.wrapping_add(1);
                 out_cmds.push(ToneCmd::On { tone_id, kick });
@@ -1325,7 +1334,10 @@ mod tests {
             acc: 0.0,
             next_allowed_gate: 0,
         };
-        let state = CoreState { is_alive: true };
+        let state = CoreState {
+            is_alive: true,
+            onset_allowed: true,
+        };
         for gate in 0..10u64 {
             let c = candidate_at_gate(gate);
             let input = IntervalInput {
@@ -1346,7 +1358,10 @@ mod tests {
             acc: 0.0,
             next_allowed_gate: 0,
         };
-        let state = CoreState { is_alive: true };
+        let state = CoreState {
+            is_alive: true,
+            onset_allowed: true,
+        };
         let mut fired = Vec::new();
         for gate in 0..10u64 {
             let c = candidate_at_gate(gate);
@@ -1371,7 +1386,10 @@ mod tests {
             acc: 0.0,
             next_allowed_gate: 0,
         };
-        let state = CoreState { is_alive: true };
+        let state = CoreState {
+            is_alive: true,
+            onset_allowed: true,
+        };
         let mut fired = Vec::new();
         for gate in 0..6u64 {
             let c = candidate_at_gate(gate);
@@ -1396,7 +1414,10 @@ mod tests {
             acc: 0.0,
             next_allowed_gate: 0,
         };
-        let state = CoreState { is_alive: true };
+        let state = CoreState {
+            is_alive: true,
+            onset_allowed: true,
+        };
         let mut fired = Vec::new();
         let inputs = [
             IntervalInput {
@@ -1428,7 +1449,10 @@ mod tests {
             acc: 0.0,
             next_allowed_gate: 0,
         };
-        let state = CoreState { is_alive: true };
+        let state = CoreState {
+            is_alive: true,
+            onset_allowed: true,
+        };
         let input = IntervalInput {
             gate: 0,
             tick: 0,
@@ -1446,7 +1470,10 @@ mod tests {
             acc: 0.0,
             next_allowed_gate: 0,
         };
-        let state = CoreState { is_alive: true };
+        let state = CoreState {
+            is_alive: true,
+            onset_allowed: true,
+        };
         let input = IntervalInput {
             gate: 0,
             tick: 0,
@@ -1471,7 +1498,10 @@ mod tests {
             acc: 0.0,
             next_allowed_gate: 0,
         };
-        let state = CoreState { is_alive: true };
+        let state = CoreState {
+            is_alive: true,
+            onset_allowed: true,
+        };
         let input = IntervalInput {
             gate: 0,
             tick: 0,
@@ -1638,7 +1668,10 @@ mod tests {
             next_allowed_gate: 0,
         };
         let mut engine = test_engine(interval, DurationRule::fixed_gate(2));
-        let state = CoreState { is_alive: true };
+        let state = CoreState {
+            is_alive: true,
+            onset_allowed: true,
+        };
         let mut cmds = Vec::new();
         let mut events = Vec::new();
         let mut onsets = Vec::new();
@@ -1882,7 +1915,10 @@ mod tests {
             next_allowed_gate: 0,
         };
         let mut engine = test_engine(interval, DurationRule::fixed_gate(0));
-        let state = CoreState { is_alive: true };
+        let state = CoreState {
+            is_alive: true,
+            onset_allowed: true,
+        };
         let timing_field = TimingField::from_values(0, vec![1.0]);
         let candidates = vec![CandidatePoint { tick: 0, gate: 0 }];
         let mut cmds = Vec::new();
@@ -1920,7 +1956,10 @@ mod tests {
             next_allowed_gate: 0,
         };
         let mut engine = test_engine(interval, DurationRule::fixed_gate(2));
-        let state = CoreState { is_alive: true };
+        let state = CoreState {
+            is_alive: true,
+            onset_allowed: true,
+        };
         let timing_field = TimingField::from_values(0, vec![1.0]);
         let candidates = vec![CandidatePoint { tick: 0, gate: 0 }];
         let mut cmds = Vec::new();
@@ -1960,7 +1999,10 @@ mod tests {
         };
         let mut engine = test_engine(OnsetRule::None, DurationRule::fixed_gate(1));
         engine.schedule_note_off(42, 5);
-        let state = CoreState { is_alive: true };
+        let state = CoreState {
+            is_alive: true,
+            onset_allowed: true,
+        };
         let timing_field = TimingField::from_values(0, Vec::new());
         let candidates: Vec<CandidatePoint> = Vec::new();
         let mut timing_grid = ThetaGrid::from_candidates(&candidates);
@@ -2002,7 +2044,10 @@ mod tests {
             DurationRule::Custom(Box::new(|_| DurationPlan::None)),
         );
         engine.schedule_note_off(99, 0);
-        let state = CoreState { is_alive: true };
+        let state = CoreState {
+            is_alive: true,
+            onset_allowed: true,
+        };
         let mut cmds = Vec::new();
         let mut events = Vec::new();
         let mut onsets = Vec::new();
@@ -2140,7 +2185,10 @@ mod tests {
             ..base
         };
         engine.update_from_config(&changed);
-        let state = CoreState { is_alive: true };
+        let state = CoreState {
+            is_alive: true,
+            onset_allowed: true,
+        };
         let kick = engine.onset_rule.on_candidate(
             &IntervalInput {
                 gate: 0,
@@ -2197,7 +2245,10 @@ mod tests {
                 }
             },
         ));
-        let state = CoreState { is_alive: true };
+        let state = CoreState {
+            is_alive: true,
+            onset_allowed: true,
+        };
         let mut cmds = Vec::new();
         let mut events = Vec::new();
         let mut onsets = Vec::new();
@@ -2299,7 +2350,10 @@ mod tests {
             rhythms,
         };
         let timing_field = TimingField::from_values(0, vec![1.0, 1.0]);
-        let state = CoreState { is_alive: true };
+        let state = CoreState {
+            is_alive: true,
+            onset_allowed: true,
+        };
         let candidates = vec![CandidatePoint { tick: 0, gate: 0 }];
         let mut engine = test_engine(
             OnsetRule::Custom(Box::new(move |c, _| {
@@ -2340,7 +2394,10 @@ mod tests {
         let onset_tick: Tick = 0;
 
         let timing_field = TimingField::from_values(0, vec![1.0, 1.0]);
-        let state = CoreState { is_alive: true };
+        let state = CoreState {
+            is_alive: true,
+            onset_allowed: true,
+        };
         let mut engine = test_engine(
             OnsetRule::Custom(Box::new(move |c, _| {
                 if c.tick == onset_tick {
@@ -2472,5 +2529,164 @@ mod tests {
         assert!(max / min < 1.55, "block means drifted too far: {iois:?}");
         assert!(iois.iter().any(|ioi| *ioi < 0.28));
         assert!(iois.iter().any(|ioi| *ioi > 0.50));
+    }
+
+    // --- onset_allowed gating (Item A regression + phonation gate) ---
+
+    #[test]
+    fn tick_hold_defers_onset_while_disallowed_then_fires_when_allowed() {
+        // Regression for the latent Hold-mode bug: gating onset *emission*
+        // (rather than discarding an already-emitted onset downstream) must
+        // leave `note_on_sent` unconsumed while disallowed, so the onset can
+        // still fire once allowed.
+        let mut engine = test_engine(OnsetRule::None, DurationRule::fixed_gate(0));
+        engine.mode = PhonationMode::Hold;
+        let gated = CoreState {
+            is_alive: true,
+            onset_allowed: false,
+        };
+        let ctx1 = CoreTickCtx {
+            now_tick: 0,
+            frame_end: 1,
+            fs: 1000.0,
+            rhythms: NeuralRhythms::default(),
+        };
+        let mut cmds = Vec::new();
+        let mut events = Vec::new();
+        let mut onsets = Vec::new();
+        engine.tick(
+            &ctx1,
+            &gated,
+            None,
+            0.0,
+            1.0,
+            None,
+            &mut cmds,
+            &mut events,
+            &mut onsets,
+        );
+        assert!(cmds.is_empty(), "no onset while disallowed");
+        assert!(events.is_empty());
+        assert!(
+            !engine.hold.note_on_sent,
+            "note_on_sent must not be consumed while gated"
+        );
+
+        let open = CoreState {
+            is_alive: true,
+            onset_allowed: true,
+        };
+        let ctx2 = CoreTickCtx {
+            now_tick: 1,
+            frame_end: 2,
+            fs: 1000.0,
+            rhythms: NeuralRhythms::default(),
+        };
+        cmds.clear();
+        events.clear();
+        onsets.clear();
+        engine.tick(
+            &ctx2,
+            &open,
+            None,
+            0.0,
+            1.0,
+            None,
+            &mut cmds,
+            &mut events,
+            &mut onsets,
+        );
+        assert!(cmds.iter().any(|cmd| matches!(cmd, ToneCmd::On { .. })));
+        assert_eq!(events.len(), 1);
+        assert!(engine.hold.note_on_sent);
+    }
+
+    #[test]
+    fn coupling_clock_keeps_advancing_while_onset_disallowed_then_resumes_promptly() {
+        // Non-Hold (candidate-processing) suppression: the onset rule must not
+        // fire while gated, but the clock (an entrained oscillator here) must
+        // keep advancing its own phase so the voice can join the beat as soon
+        // as the gate opens, instead of restarting cold.
+        let mut engine = test_engine(
+            OnsetRule::Always { strength: 1.0 },
+            DurationRule::fixed_gate(0),
+        );
+        engine.clock = PhonationClock::Coupling(CouplingClock::new(0.0, 10.0, 0.0, 0.0, 1));
+        fn phase_of(engine: &PhonationEngine) -> f64 {
+            match &engine.clock {
+                PhonationClock::Coupling(c) => c.phase,
+                _ => panic!("expected coupling clock"),
+            }
+        }
+
+        let rhythms = NeuralRhythms::default();
+        let gated = CoreState {
+            is_alive: true,
+            onset_allowed: false,
+        };
+        let open = CoreState {
+            is_alive: true,
+            onset_allowed: true,
+        };
+
+        let phase0 = phase_of(&engine);
+
+        // base_rate_hz=10 at fs=1000 gives a ~100-tick period; a 350-tick hop
+        // would normally emit several onsets. None should fire while gated.
+        let ctx1 = CoreTickCtx {
+            now_tick: 0,
+            frame_end: 350,
+            fs: 1000.0,
+            rhythms,
+        };
+        let mut cmds = Vec::new();
+        let mut events = Vec::new();
+        let mut onsets = Vec::new();
+        engine.tick(
+            &ctx1,
+            &gated,
+            None,
+            0.0,
+            1.0,
+            None,
+            &mut cmds,
+            &mut events,
+            &mut onsets,
+        );
+        assert!(onsets.is_empty(), "no onsets while gated");
+        assert!(!cmds.iter().any(|cmd| matches!(cmd, ToneCmd::On { .. })));
+        let phase1 = phase_of(&engine);
+        assert!(
+            phase1 > phase0 + 2.0,
+            "clock phase must keep advancing while gated: {phase0} -> {phase1}"
+        );
+
+        // Gate opens: onsets resume in the very next hop, picking up the phase
+        // already accumulated during the gated window.
+        let ctx2 = CoreTickCtx {
+            now_tick: 350,
+            frame_end: 700,
+            fs: 1000.0,
+            rhythms,
+        };
+        cmds.clear();
+        events.clear();
+        onsets.clear();
+        engine.tick(
+            &ctx2,
+            &open,
+            None,
+            0.0,
+            1.0,
+            None,
+            &mut cmds,
+            &mut events,
+            &mut onsets,
+        );
+        assert!(
+            !onsets.is_empty(),
+            "onsets resume promptly once the gate opens"
+        );
+        assert!(cmds.iter().any(|cmd| matches!(cmd, ToneCmd::On { .. })));
     }
 }

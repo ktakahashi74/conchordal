@@ -55,9 +55,9 @@ pub enum Tier {
     Research,
 }
 
-/// Candidate core verbs under audition. Currently empty; expected first
-/// inhabitants are incubating rhythm-shaping verbs (e.g. layer emphasis).
-const EXPERIMENTAL_FNS: &[&str] = &[];
+/// Candidate core verbs under audition: composing purpose, but research-grade
+/// stability until validated.
+const EXPERIMENTAL_FNS: &[&str] = &["phonate_when_viable"];
 
 /// Mechanism-tuning functions. Everything not listed here or in
 /// [`RESEARCH_FNS`] is `Tier::Core`. `defs_gen::check()` verifies that every
@@ -784,6 +784,20 @@ recurring downbeat can seed an emergent measure.",
         usage: &["while_alive()"],
         summary: "Hold/sustain until release.",
         details: "",
+    },
+    FnDoc {
+        name: "phonate_when_viable",
+        owner: Owner::Voice,
+        category: "phonation",
+        style: Style::Method,
+        patch: Patch::Draft,
+        usage: &["phonate_when_viable()"],
+        summary: "Withhold the first onset until perceived consonance is viable.",
+        details: "Silently settles into the field until consonance reaches the low bound of \
+the voice's consonance-viability window (`consonance_viability()`, or always-viable if that \
+window was never set), then phonates normally and never re-gates. A voice that never settles \
+dies unheard and the respawn policy replaces it -- there is no timeout parameter, the energy \
+economy is the timeout.",
     },
     FnDoc {
         name: "cycles",

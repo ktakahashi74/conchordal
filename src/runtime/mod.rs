@@ -903,6 +903,7 @@ pub(crate) fn init_runtime(
     }
     pop.set_seed(scenario.seed);
     pop.set_control_update_mode(scenario.control_update_mode);
+    let deterministic_analysis = reporter.is_some() && !args.play;
     if reporter.is_some() {
         pop.enable_auto_observe();
     }
@@ -946,7 +947,7 @@ pub(crate) fn init_runtime(
                     hop,
                     hop_duration,
                     fs,
-                    false,
+                    deterministic_analysis,
                 )
             })
             .expect("spawn worker"),
@@ -1193,8 +1194,8 @@ fn worker_loop(
     hop: usize,
     hop_duration: Duration,
     fs: f32,
-    // Offline render only: consume analysis with a fixed lag so the same scenario
-    // renders identically across runs. Real-time leaves the listener best-effort.
+    // Offline/report paths consume analysis with a fixed lag so results do not
+    // depend on worker scheduling. Real-time leaves the listener best-effort.
     deterministic_analysis: bool,
 ) {
     let mut current_landscape: LandscapeFrame = current_landscape;

@@ -1374,51 +1374,6 @@ fn set_pitch_objective_emits_landscape_update() {
 }
 
 #[test]
-fn reject_targets_wraps_spawn_strategy() {
-    let (scenario, _warnings) = run_script(
-        r#"
-            let g = create(sine(), 1)
-                .place(reject_targets(random(200.0, 400.0), 220, [0, 7, 12], 0.35, 16));
-            flush();
-        "#,
-    );
-    let strategy = scenario
-        .events
-        .iter()
-        .flat_map(|event| event.actions.iter())
-        .find_map(|action| match action {
-            Action::Spawn {
-                strategy: Some(strategy),
-                ..
-            } => Some(strategy.clone()),
-            _ => None,
-        })
-        .expect("spawn strategy");
-    match strategy {
-        SpawnStrategy::RejectTargets {
-            base,
-            anchor_hz,
-            targets_st,
-            exclusion_st,
-            max_tries,
-        } => {
-            assert!(matches!(
-                *base,
-                SpawnStrategy::Field {
-                    target: FieldTarget::Uniform,
-                    ..
-                }
-            ));
-            assert!((anchor_hz - 220.0).abs() <= 1e-6);
-            assert_eq!(targets_st, vec![0.0, 7.0, 12.0]);
-            assert!((exclusion_st - 0.35).abs() <= 1e-6);
-            assert_eq!(max_tries, 16);
-        }
-        other => panic!("expected RejectTargets strategy, got {other:?}"),
-    }
-}
-
-#[test]
 fn group_draft_landscape_weight_sets_spawn_control() {
     let (scenario, _warnings) = run_script(
         r#"

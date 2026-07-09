@@ -5,13 +5,6 @@ use crate::life::control::{MAX_FREQ_HZ, MIN_FREQ_HZ};
 use crate::scenario::RespawnPeakBiasConfig;
 use rand::{Rng, RngExt, distr::Distribution, distr::weighted::WeightedIndex};
 
-pub(super) fn semitone_distance_from_anchor(freq_hz: f32, anchor_hz: f32) -> f32 {
-    if !freq_hz.is_finite() || freq_hz <= 0.0 || !anchor_hz.is_finite() || anchor_hz <= 0.0 {
-        return 0.0;
-    }
-    12.0 * (freq_hz / anchor_hz).log2()
-}
-
 pub(super) fn weighted_parent_select<R: Rng + ?Sized>(
     parents: &[ParentCandidate],
     rng: &mut R,
@@ -222,18 +215,4 @@ pub(super) fn choose_candidate_by_scene_score<R: Rng + ?Sized>(
     };
 
     Some(candidates[chosen_idx])
-}
-
-pub(super) fn is_rejected_target(
-    freq_hz: f32,
-    anchor_hz: f32,
-    targets_st: &[f32],
-    exclusion_st: f32,
-) -> bool {
-    let semitone_abs = semitone_distance_from_anchor(freq_hz, anchor_hz).abs();
-    targets_st.iter().any(|target| {
-        target.is_finite()
-            && exclusion_st.is_finite()
-            && (semitone_abs - target.abs()).abs() <= exclusion_st.max(0.0)
-    })
 }

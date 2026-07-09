@@ -488,7 +488,7 @@ Conductor モジュールは人間のアーティストとエコシステムの�
 *   `edge(min, max)`: 協和/不協和の境界（準安定な中点）。
 *   `gap(min, max)`: 空き帯域（低 subjective intensity）。
 *   場非依存: `random(min, max)`（対数一様）, 幾何の `at(freq)` / `line(start, end)`。
-*   修飾子: `.count(n)`, `.peak()`, `.range(min_mul, max_mul)`, `.spacing(d)`（最小ERB距離）, `.reject_targets(...)`。
+*   修飾子: `.count(n)`, `.peak()`, `.range(min_mul, max_mul)`, `.spacing(d)`（最小ERB距離）。
 
 **Participant とグループ操作**:
 *   `place(material, placement)`: ボイスを生成し Participant を返す。

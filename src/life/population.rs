@@ -730,27 +730,6 @@ impl Population {
                     idx_min + rng.random_range(0..range_len)
                 }
             }
-            SpawnStrategy::RejectTargets {
-                base,
-                anchor_hz,
-                targets_st,
-                exclusion_st,
-                max_tries,
-            } => {
-                let tries = (*max_tries).max(1);
-                let mut last = self.decide_frequency(base, landscape, rng, reserved);
-                if !is_rejected_target(last, *anchor_hz, targets_st, *exclusion_st) {
-                    return last;
-                }
-                for _ in 1..tries {
-                    let candidate = self.decide_frequency(base, landscape, rng, reserved);
-                    last = candidate;
-                    if !is_rejected_target(candidate, *anchor_hz, targets_st, *exclusion_st) {
-                        return candidate;
-                    }
-                }
-                return last;
-            }
             SpawnStrategy::Linear { .. } => idx_min,
         };
 
@@ -767,41 +746,6 @@ impl Population {
         member_count: usize,
     ) -> f32 {
         match strategy {
-            SpawnStrategy::RejectTargets {
-                base,
-                anchor_hz,
-                targets_st,
-                exclusion_st,
-                max_tries,
-            } => {
-                let tries = (*max_tries).max(1);
-                let mut last = self.resolve_strategy_frequency(
-                    base,
-                    landscape,
-                    rng,
-                    reserved,
-                    member_idx,
-                    member_count,
-                );
-                if !is_rejected_target(last, *anchor_hz, targets_st, *exclusion_st) {
-                    return last;
-                }
-                for _ in 1..tries {
-                    let candidate = self.resolve_strategy_frequency(
-                        base,
-                        landscape,
-                        rng,
-                        reserved,
-                        member_idx,
-                        member_count,
-                    );
-                    last = candidate;
-                    if !is_rejected_target(candidate, *anchor_hz, targets_st, *exclusion_st) {
-                        return candidate;
-                    }
-                }
-                last
-            }
             SpawnStrategy::Linear {
                 start_freq,
                 end_freq,

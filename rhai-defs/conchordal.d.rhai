@@ -527,15 +527,6 @@ fn recharge_rate(arg0: Participant, arg1: f64) -> Participant;
 /// Energy gained per attack.
 fn recharge_rate(arg0: Participant, arg1: i64) -> Participant;
 
-/// [tuning] Reject sampled positions near specified semitone targets.
-fn reject_targets(arg0: Placement, arg1: f64, arg2: [?], arg3: f64, arg4: i64) -> Placement;
-/// [tuning] Reject sampled positions near specified semitone targets.
-fn reject_targets(arg0: Placement, arg1: f64, arg2: [?], arg3: i64, arg4: i64) -> Placement;
-/// [tuning] Reject sampled positions near specified semitone targets.
-fn reject_targets(arg0: Placement, arg1: i64, arg2: [?], arg3: f64, arg4: i64) -> Placement;
-/// [tuning] Reject sampled positions near specified semitone targets.
-fn reject_targets(arg0: Placement, arg1: i64, arg2: [?], arg3: i64, arg4: i64) -> Placement;
-
 /// Release a live group; its voices enter their release phase and fade out.
 fn release(arg0: Participant);
 

@@ -864,18 +864,6 @@ Empty right now.
 
 Fine-grained control over the mechanisms behind the core verbs. Defaults are calibrated; reach for these when a piece needs a specific behavior the core surface does not express.
 
-### Placement
-
-#### `reject_targets`
-
-```rhai,ignore
-reject_targets(anchor_hz, targets_st, exclusion_st, max_tries)
-```
-
-Applies to: `Placement`.
-
-Reject sampled positions near specified semitone targets. `targets_st` is an array of semitone offsets from `anchor_hz`, `exclusion_st` is the exclusion zone width in semitones, and `max_tries` is the retry limit. Wraps any strategy-bearing placement (`consonance()`, `dissonance()`, `random()`, `line()`, ...).
-
 ### Phonation & Rhythm
 
 #### `once`

@@ -100,7 +100,7 @@ the compile-only sample test.
 ## Implementation
 
 `SpawnStrategy::Field { target, sampling, min_freq, max_freq, min_dist_erb }`
-(plus `Linear`, `RejectTargets`). `decide_frequency` resolves per target:
+(plus `Linear`). `decide_frequency` resolves per target:
 
 - **peak**: deterministic argextremum over the range —
   consonance `argmax(consonance_field_level)`, dissonance `argmin`, edge

@@ -588,13 +588,6 @@ pub enum SpawnStrategy {
         /// field_score). Ignored by other targets.
         tension: f32,
     },
-    RejectTargets {
-        base: Box<SpawnStrategy>,
-        anchor_hz: f32,
-        targets_st: Vec<f32>,
-        exclusion_st: f32,
-        max_tries: usize,
-    },
     Linear {
         start_freq: f32,
         end_freq: f32,
@@ -611,14 +604,12 @@ impl SpawnStrategy {
                 start_freq: min_freq,
                 end_freq: max_freq,
             } => (*min_freq, *max_freq),
-            SpawnStrategy::RejectTargets { base, .. } => base.freq_range_hz(),
         }
     }
 
     pub fn min_dist_erb(&self) -> f32 {
         match self {
             SpawnStrategy::Field { min_dist_erb, .. } => *min_dist_erb,
-            SpawnStrategy::RejectTargets { base, .. } => base.min_dist_erb(),
             _ => 0.0,
         }
     }

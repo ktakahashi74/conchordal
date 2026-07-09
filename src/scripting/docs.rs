@@ -63,8 +63,6 @@ const EXPERIMENTAL_FNS: &[&str] = &[];
 /// [`RESEARCH_FNS`] is `Tier::Core`. `defs_gen::check()` verifies that every
 /// listed name exists in [`FN_DOCS`].
 const TUNING_FNS: &[&str] = &[
-    // placement
-    "reject_targets",
     // phonation tiers 2/3
     "once",
     // Explicit-Hz timer: outside the emergent-meter composing surface
@@ -499,18 +497,6 @@ Pairs with peak() (nearest step, sharp) or density (a broader cloud around it)."
         usage: &["spacing(min_erb)"],
         summary: "Minimum ERB distance between placed voices; valid on field placements.",
         details: "",
-    },
-    FnDoc {
-        name: "reject_targets",
-        owner: Owner::Placement,
-        category: "placement",
-        style: Style::Method,
-        patch: Patch::Na,
-        usage: &["reject_targets(anchor_hz, targets_st, exclusion_st, max_tries)"],
-        summary: "Reject sampled positions near specified semitone targets.",
-        details: "`targets_st` is an array of semitone offsets from `anchor_hz`, `exclusion_st` \
-is the exclusion zone width in semitones, and `max_tries` is the retry limit. Wraps any \
-strategy-bearing placement (`consonance()`, `dissonance()`, `random()`, `line()`, ...).",
     },
     // --- timeline ---
     FnDoc {

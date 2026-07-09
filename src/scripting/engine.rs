@@ -731,67 +731,6 @@ impl ScriptHost {
             placement.with_spacing(spacing as f32)
         });
 
-        engine.register_fn(
-            "reject_targets",
-            |placement: Placement,
-             anchor_hz: FLOAT,
-             targets_st: Array,
-             exclusion_st: FLOAT,
-             max_tries: INT| {
-                placement.with_reject_targets(
-                    anchor_hz as f32,
-                    rhai_array_to_f32(targets_st, "reject_targets"),
-                    exclusion_st as f32,
-                    max_tries,
-                )
-            },
-        );
-        engine.register_fn(
-            "reject_targets",
-            |placement: Placement,
-             anchor_hz: INT,
-             targets_st: Array,
-             exclusion_st: FLOAT,
-             max_tries: INT| {
-                placement.with_reject_targets(
-                    anchor_hz as f32,
-                    rhai_array_to_f32(targets_st, "reject_targets"),
-                    exclusion_st as f32,
-                    max_tries,
-                )
-            },
-        );
-        engine.register_fn(
-            "reject_targets",
-            |placement: Placement,
-             anchor_hz: FLOAT,
-             targets_st: Array,
-             exclusion_st: INT,
-             max_tries: INT| {
-                placement.with_reject_targets(
-                    anchor_hz as f32,
-                    rhai_array_to_f32(targets_st, "reject_targets"),
-                    exclusion_st as f32,
-                    max_tries,
-                )
-            },
-        );
-        engine.register_fn(
-            "reject_targets",
-            |placement: Placement,
-             anchor_hz: INT,
-             targets_st: Array,
-             exclusion_st: INT,
-             max_tries: INT| {
-                placement.with_reject_targets(
-                    anchor_hz as f32,
-                    rhai_array_to_f32(targets_st, "reject_targets"),
-                    exclusion_st as f32,
-                    max_tries,
-                )
-            },
-        );
-
         register_group_numeric_methods(
             &mut engine,
             ctx.clone(),

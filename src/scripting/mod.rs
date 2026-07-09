@@ -1081,29 +1081,6 @@ impl Placement {
         self
     }
 
-    fn with_reject_targets(
-        mut self,
-        anchor_hz: f32,
-        targets_st: Vec<f32>,
-        exclusion_st: f32,
-        max_tries: i64,
-    ) -> Self {
-        if let Some(base) = self.strategy.take() {
-            self.strategy = Some(SpawnStrategy::RejectTargets {
-                base: Box::new(base),
-                anchor_hz,
-                targets_st,
-                exclusion_st,
-                max_tries: max_tries.max(1) as usize,
-            });
-        } else {
-            warn!(
-                "reject_targets() requires consonance(), dissonance(), edge(), gap(), random(), or line()"
-            );
-        }
-        self
-    }
-
     fn strategy(&self) -> Option<SpawnStrategy> {
         self.strategy.clone()
     }

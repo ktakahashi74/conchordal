@@ -467,7 +467,7 @@ Duration of n rhythm cycles.
 
 ### Pitch Movement
 
-How a voice moves through the consonance field. `seek_consonance()` plus `glide()` is the curated surface; the rest tunes the hill-climb and peak-sampler mechanisms.
+How a voice moves through the consonance field. `seek_consonance()`, `glide()`, and `temperature()` (movement tension) form the curated surface; the rest tunes the hill-climb and peak-sampler mechanisms.
 
 #### `anchor`
 
@@ -498,6 +498,16 @@ glide(tau_sec)
 Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
 
 Pitch glide time constant in seconds.
+
+#### `temperature`
+
+```rhai,ignore
+temperature(value)
+```
+
+Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+
+Search temperature shared by both pitch cores: 0 settles greedily, higher is more exploratory. The single stochastic-search knob. At 0 the hill-climb is greedy (move only on a clear improvement, otherwise stay) and the peak sampler takes the argmax candidate. Higher values let the hill-climb accept downhill moves (Metropolis) and soften the peak sampler's candidate choice. Musically the movement-tension dial; its placement twin is `tension()`.
 
 ### Neighbor Awareness
 
@@ -1019,16 +1029,6 @@ landscape_weight(value)
 Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
 
 Weight of the landscape objective.
-
-#### `temperature`
-
-```rhai,ignore
-temperature(value)
-```
-
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
-
-Search temperature shared by both pitch cores: 0 settles greedily, higher is more exploratory. The single stochastic-search knob. At 0 the hill-climb is greedy (move only on a clear improvement, otherwise stay) and the peak sampler takes the argmax candidate. Higher values let the hill-climb accept downhill moves (Metropolis) and soften the peak sampler's candidate choice.
 
 #### `neighbor_step_cents`
 

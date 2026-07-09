@@ -84,7 +84,6 @@ const TUNING_FNS: &[&str] = &[
     "pitch_smooth",
     "pitch_apply_mode",
     "landscape_weight",
-    "temperature",
     "neighbor_step_cents",
     "move_cost",
     "move_cost_exp",
@@ -247,8 +246,9 @@ remembered and applied when their matching preset is selected.",
     CategoryDoc {
         id: "pitch",
         title: "Pitch Movement",
-        intro: "How a voice moves through the consonance field. `seek_consonance()` plus \
-`glide()` is the curated surface; the rest tunes the hill-climb and peak-sampler mechanisms.",
+        intro: "How a voice moves through the consonance field. `seek_consonance()`, \
+`glide()`, and `temperature()` (movement tension) form the curated surface; the rest tunes \
+the hill-climb and peak-sampler mechanisms.",
     },
     CategoryDoc {
         id: "neighbors",
@@ -986,7 +986,8 @@ phonation: sustained voices glide, re-attacking voices snap at onsets.",
         details: "The single stochastic-search knob. At 0 the hill-climb is greedy (move only \
 on a clear improvement, otherwise stay) and the peak sampler takes the argmax candidate. \
 Higher values let the hill-climb accept downhill moves (Metropolis) and soften the peak \
-sampler's candidate choice.",
+sampler's candidate choice. Musically the movement-tension dial; its placement twin is \
+`tension()`.",
     },
     FnDoc {
         name: "neighbor_step_cents",

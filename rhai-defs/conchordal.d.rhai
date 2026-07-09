@@ -736,13 +736,13 @@ fn sustain_drive(arg0: Participant, arg1: f64) -> Participant;
 /// Continuous drive level for sustained voices.
 fn sustain_drive(arg0: Participant, arg1: i64) -> Participant;
 
-/// [tuning] Search temperature shared by both pitch cores: 0 settles greedily, higher is more exploratory.
+/// Search temperature shared by both pitch cores: 0 settles greedily, higher is more exploratory.
 fn temperature(arg0: Material, arg1: f64) -> Material;
-/// [tuning] Search temperature shared by both pitch cores: 0 settles greedily, higher is more exploratory.
+/// Search temperature shared by both pitch cores: 0 settles greedily, higher is more exploratory.
 fn temperature(arg0: Material, arg1: i64) -> Material;
-/// [tuning] Search temperature shared by both pitch cores: 0 settles greedily, higher is more exploratory.
+/// Search temperature shared by both pitch cores: 0 settles greedily, higher is more exploratory.
 fn temperature(arg0: Participant, arg1: f64) -> Participant;
-/// [tuning] Search temperature shared by both pitch cores: 0 settles greedily, higher is more exploratory.
+/// Search temperature shared by both pitch cores: 0 settles greedily, higher is more exploratory.
 fn temperature(arg0: Participant, arg1: i64) -> Participant;
 
 /// Tempo region the emergent beat gravitates toward.

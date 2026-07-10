@@ -18,8 +18,7 @@ let voice_attack_sec = 0.018;
 let voice_decay_sec = 0.070;
 let voice_sustain_level = 0.94;
 let voice_release_sec = 0.220;
-let voice_initial_energy = 0.10;
-let voice_energy_cap = 0.20;
+let voice_endurance_sec = 0.10 / (0.12 * audition_speedup);
 
 let anchor = harmonic()
     .brain("drone")
@@ -46,12 +45,10 @@ let assay_voice = harmonic()
     .brightness(0.20)
     .sustain_drive(0.001)
     .pitch_smooth(0.12)
-    .metabolism(0.12 * audition_speedup)
-    .initial_energy(voice_initial_energy)
-    .energy_cap(voice_energy_cap)
-    .action_cost(0.0)
-    .recharge_rate(0.0)
-    .dissonance_cost(0.0)
+    .endurance(voice_endurance_sec)
+    .attack_cost_fraction(0.0)
+    .attack_recharge_fraction(0.0)
+    .dissonance_penalty(0.0)
     .adsr(
         voice_attack_sec,
         voice_decay_sec,
@@ -60,7 +57,6 @@ let assay_voice = harmonic()
     );
 
 let heredity_turnover = variant(assay_voice)
-    .viability_rate(0.0)
     .respawn_background_death_rate(0.03 * audition_speedup)
     .respawn_consonance()
     .respawn_capacity(16);

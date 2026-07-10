@@ -204,12 +204,13 @@ struct KuramotoTelemetry {
 #[derive(Debug, Clone)]
 pub struct KuramotoCore {
     pub energy: f32,
-    pub energy_cap: f32,
+    pub endurance_sec: Option<f32>,
+    pub recovery_sec: Option<f32>,
     pub vitality_exponent: f32,
     pub vitality_level: f32,
     pub basal_cost: f32,
-    pub action_cost: f32,
-    pub recharge_rate: f32,
+    pub attack_cost_fraction: f32,
+    pub attack_recharge_fraction: f32,
     pub sensitivity: Sensitivity,
     pub rhythm_coupling: RhythmCouplingMode,
     pub rhythm_reward: Option<MetabolismRhythmReward>,
@@ -237,7 +238,7 @@ pub struct KuramotoCore {
     pub continuous_recharge_per_sec: f32,
     pub continuous_recharge_score_low: Option<f32>,
     pub continuous_recharge_score_high: Option<f32>,
-    pub dissonance_cost: f32,
+    pub dissonance_penalty: f32,
     metrics: KuramotoMetrics,
     telemetry: KuramotoTelemetry,
 }
@@ -280,12 +281,11 @@ struct ThetaView {
     beta: f32,
 }
 
-fn normalized_vitality(energy: f32, energy_cap: f32, vitality_exponent: f32) -> f32 {
-    if !energy.is_finite() || !energy_cap.is_finite() || energy_cap <= 0.0 {
+fn normalized_vitality(energy: f32, vitality_exponent: f32) -> f32 {
+    if !energy.is_finite() {
         return 0.0;
     }
-    let energy_clamped = energy.clamp(0.0, energy_cap);
-    let mut vitality = (energy_clamped / energy_cap).clamp(0.0, 1.0);
+    let mut vitality = energy.clamp(0.0, 1.0);
     let exponent = if vitality_exponent.is_finite() && vitality_exponent > 0.0 {
         vitality_exponent
     } else {
@@ -396,7 +396,7 @@ impl KuramotoCore {
 
     #[inline]
     fn apply_energy_delta(&mut self, delta: f32) {
-        self.energy += delta;
+        self.energy = (self.energy + delta).min(1.0);
         self.handle_energy_depletion();
     }
 
@@ -404,12 +404,12 @@ impl KuramotoCore {
     fn metabolism_policy(&self) -> MetabolismPolicy {
         MetabolismPolicy {
             basal_cost_per_sec: self.basal_cost,
-            action_cost_per_attack: self.action_cost,
-            recharge_per_attack: self.recharge_rate,
+            action_cost_per_attack: self.attack_cost_fraction,
+            recharge_per_attack: self.attack_recharge_fraction,
             continuous_recharge_per_sec: self.continuous_recharge_per_sec,
             continuous_recharge_score_low: self.continuous_recharge_score_low,
             continuous_recharge_score_high: self.continuous_recharge_score_high,
-            dissonance_cost: self.dissonance_cost,
+            dissonance_penalty: self.dissonance_penalty,
         }
     }
 
@@ -567,7 +567,7 @@ impl KuramotoCore {
 
     #[inline]
     fn update_vitality(&mut self) -> f32 {
-        let computed = normalized_vitality(self.energy, self.energy_cap, self.vitality_exponent);
+        let computed = normalized_vitality(self.energy, self.vitality_exponent);
         if !self.energy.is_finite() {
             self.vitality_level = 0.0;
             return self.vitality_level;
@@ -791,27 +791,25 @@ impl AnyArticulationCore {
                 rhythm_freq,
                 rhythm_coupling,
                 rhythm_reward,
-                energy_cap: cfg_energy_cap,
                 ..
             } => {
                 let derived = envelope_from_lifecycle(lifecycle);
-                let energy = derived.initial_energy;
+                let energy = 1.0;
                 let basal_cost = derived.policy.basal_cost_per_sec;
-                let recharge_rate = derived.policy.recharge_per_attack;
-                let action_cost = derived.policy.action_cost_per_attack;
+                let attack_recharge_fraction = derived.policy.recharge_per_attack;
+                let attack_cost_fraction = derived.policy.action_cost_per_attack;
                 let continuous_recharge_per_sec = derived.policy.continuous_recharge_per_sec;
                 let continuous_recharge_score_low = derived.policy.continuous_recharge_score_low;
                 let continuous_recharge_score_high = derived.policy.continuous_recharge_score_high;
-                let dissonance_cost = derived.policy.dissonance_cost;
+                let dissonance_penalty = derived.policy.dissonance_penalty;
                 let attack_step = derived.attack_step;
                 let decay_rate = derived.decay_rate;
                 let sustain_level = derived.sustain_level;
                 let state = derived.state;
                 let sensitivity = derived.sensitivity;
                 let retrigger = derived.retrigger;
-                let energy_cap = cfg_energy_cap.unwrap_or(energy).max(energy).max(0.0);
                 let vitality_exponent = 0.5;
-                let vitality_level = normalized_vitality(energy, energy_cap, vitality_exponent);
+                let vitality_level = normalized_vitality(energy, vitality_exponent);
                 let rhythm_coupling = rhythm_coupling.sanitized();
                 let rhythm_reward = rhythm_reward.map(MetabolismRhythmReward::sanitized);
                 let env_level = if matches!(state, ArticulationState::Attack) {
@@ -823,12 +821,13 @@ impl AnyArticulationCore {
                 // Phase/offset seed diversity; theta lock uses base_k ~ omega_target in process.
                 AnyArticulationCore::Entrain(KuramotoCore {
                     energy,
-                    energy_cap,
+                    endurance_sec: lifecycle.endurance_sec(),
+                    recovery_sec: lifecycle.recovery_sec(),
                     vitality_exponent,
                     vitality_level,
                     basal_cost,
-                    action_cost,
-                    recharge_rate,
+                    attack_cost_fraction,
+                    attack_recharge_fraction,
                     sensitivity,
                     rhythm_coupling,
                     rhythm_reward,
@@ -856,7 +855,7 @@ impl AnyArticulationCore {
                     continuous_recharge_per_sec,
                     continuous_recharge_score_low,
                     continuous_recharge_score_high,
-                    dissonance_cost,
+                    dissonance_penalty,
                     metrics: KuramotoMetrics::default(),
                     telemetry: KuramotoTelemetry::default(),
                 })
@@ -949,7 +948,6 @@ impl DroneCore {
 }
 
 struct LifecycleDerived {
-    initial_energy: f32,
     attack_step: f32,
     decay_rate: f32,
     sustain_level: f32,
@@ -963,7 +961,6 @@ fn envelope_from_lifecycle(lifecycle: &LifecycleConfig) -> LifecycleDerived {
     let policy = MetabolismPolicy::from_lifecycle(lifecycle);
     match lifecycle {
         LifecycleConfig::Decay {
-            initial_energy,
             half_life_sec,
             attack_sec,
         } => {
@@ -972,7 +969,6 @@ fn envelope_from_lifecycle(lifecycle: &LifecycleConfig) -> LifecycleDerived {
             let decay_sec = half_life_sec.max(0.01);
             let decay_rate = std::f32::consts::LN_2 / decay_sec;
             LifecycleDerived {
-                initial_energy: *initial_energy,
                 attack_step,
                 decay_rate,
                 sustain_level: 0.0,
@@ -982,17 +978,12 @@ fn envelope_from_lifecycle(lifecycle: &LifecycleConfig) -> LifecycleDerived {
                 policy,
             }
         }
-        LifecycleConfig::Sustain {
-            initial_energy,
-            envelope,
-            ..
-        } => {
+        LifecycleConfig::Sustain { envelope, .. } => {
             let atk = envelope.attack_sec.max(0.0005);
             let attack_step = 1.0 / atk;
             let decay_sec = envelope.decay_sec.max(0.01);
             let decay_rate = 1.0 / decay_sec;
             LifecycleDerived {
-                initial_energy: *initial_energy,
                 attack_step,
                 decay_rate,
                 sustain_level: envelope.sustain_level.clamp(0.0, 1.0),
@@ -1017,17 +1008,17 @@ mod tests {
     use std::f32::consts::{PI, TAU};
 
     fn test_core(energy: f32) -> KuramotoCore {
-        let energy_cap = 1.0;
         let vitality_exponent = 0.5;
-        let vitality_level = normalized_vitality(energy, energy_cap, vitality_exponent);
+        let vitality_level = normalized_vitality(energy, vitality_exponent);
         KuramotoCore {
             energy,
-            energy_cap,
+            endurance_sec: None,
+            recovery_sec: None,
             vitality_exponent,
             vitality_level,
             basal_cost: 0.0,
-            action_cost: 0.0,
-            recharge_rate: 0.0,
+            attack_cost_fraction: 0.0,
+            attack_recharge_fraction: 0.0,
             sensitivity: Sensitivity::default(),
             rhythm_coupling: RhythmCouplingMode::TemporalOnly,
             rhythm_reward: None,
@@ -1055,7 +1046,7 @@ mod tests {
             continuous_recharge_per_sec: 0.0,
             continuous_recharge_score_low: None,
             continuous_recharge_score_high: None,
-            dissonance_cost: 0.0,
+            dissonance_penalty: 0.0,
             metrics: KuramotoMetrics::default(),
             telemetry: KuramotoTelemetry::default(),
         }
@@ -1349,8 +1340,8 @@ mod tests {
 
     #[test]
     fn rhythm_reward_increases_energy_delta_when_attack_occurs() {
-        let mut base = test_core(1.0);
-        let mut rewarded = test_core(1.0);
+        let mut base = test_core(0.2);
+        let mut rewarded = test_core(0.2);
 
         for core in [&mut base, &mut rewarded] {
             core.state = ArticulationState::Idle;
@@ -1358,8 +1349,8 @@ mod tests {
             core.rhythm_phase = 2.0 * PI + 0.1;
             core.phase_offset = 0.0;
             core.basal_cost = 0.0;
-            core.action_cost = 0.2;
-            core.recharge_rate = 0.5;
+            core.attack_cost_fraction = 0.2;
+            core.attack_recharge_fraction = 0.5;
             core.rhythm_coupling = RhythmCouplingMode::TemporalOnly;
             core.bootstrap_timer = 0.0;
             core.env_open_threshold = 0.0;
@@ -1402,8 +1393,8 @@ mod tests {
         core.state = ArticulationState::Idle;
         core.env_level = 0.4;
         core.metrics.total_attacks = 0;
-        core.action_cost = 0.2;
-        core.recharge_rate = 0.3;
+        core.attack_cost_fraction = 0.2;
+        core.attack_recharge_fraction = 0.3;
 
         core.apply_phonation_onset(0.8, 1.0);
 
@@ -1435,6 +1426,92 @@ mod tests {
         assert_eq!(pulse.mag_threshold, 0.4);
         assert_eq!(pulse.alpha_threshold, 0.5);
         assert!((sustain_level - 0.5).abs() <= 1e-6);
+    }
+
+    #[test]
+    fn configured_endurance_depletes_at_the_zero_fit_contract() {
+        let lifecycle = LifecycleConfig::Sustain {
+            endurance_sec: Some(2.0),
+            recovery_sec: None,
+            attack_cost_fraction: Some(0.0),
+            attack_recharge_fraction: Some(0.0),
+            continuous_recharge_score_low: None,
+            continuous_recharge_score_high: None,
+            selection_approx_loo: false,
+            dissonance_penalty: 3.0,
+            envelope: crate::scenario::EnvelopeConfig::default(),
+        };
+        let config = ArticulationCoreConfig::Entrain {
+            lifecycle,
+            rhythm_freq: Some(4.0),
+            rhythm_coupling: RhythmCouplingMode::TemporalOnly,
+            rhythm_reward: None,
+            breath_gain_init: None,
+        };
+        let mut rng = rand::rngs::StdRng::seed_from_u64(7);
+        let AnyArticulationCore::Entrain(mut core) =
+            AnyArticulationCore::from_config(&config, 48_000.0, 7, &mut rng)
+        else {
+            panic!("expected entrain core");
+        };
+        core.apply_phonation_onset(0.0, 1.0);
+
+        let rhythms = NeuralRhythms::default();
+        for _ in 0..199 {
+            core.process(0.0, 0.0, &rhythms, 0.01, 0.0);
+        }
+        assert!(core.energy > 0.0);
+        core.process(0.0, 0.0, &rhythms, 0.01, 0.0);
+        assert!(core.energy <= 1e-5, "energy was {}", core.energy);
+        assert!(core.is_alive(), "envelope tail should outlive depletion");
+    }
+
+    #[test]
+    fn brain_axis_contract_assay_rejects_exact_unification() {
+        let mut entrain = AnyArticulationCore::Entrain(test_core(1.0));
+        let mut seq = AnyArticulationCore::Seq(SequencedCore {
+            timer: 0.0,
+            duration: 1.0,
+            env_level: 0.0,
+        });
+        let mut drone = AnyArticulationCore::Drone(DroneCore {
+            phase: 0.0,
+            sway_rate: 0.05,
+        });
+
+        entrain.apply_phonation_onset(1.0, 1.0);
+        seq.apply_phonation_onset(1.0, 1.0);
+        drone.apply_phonation_onset(1.0, 1.0);
+        assert!(matches!(
+            entrain.render_modulator_spec(PhonationMode::Hold),
+            RenderModulatorSpec::EntrainPulse { .. }
+        ));
+        assert!(matches!(
+            seq.render_modulator_spec(PhonationMode::Hold),
+            RenderModulatorSpec::SeqGate { .. }
+        ));
+        assert!(matches!(
+            drone.render_modulator_spec(PhonationMode::Hold),
+            RenderModulatorSpec::DroneSway { .. }
+        ));
+
+        let rhythms = NeuralRhythms::default();
+        let seq_first = seq.process(0.5, 0.5, &rhythms, 0.5, 0.0);
+        let drone_first = drone.process(0.5, 0.5, &rhythms, 0.5, 0.0);
+        assert_ne!(seq_first.amplitude, drone_first.amplitude);
+        seq.apply_phonation_onset(1.0, 1.0);
+        let AnyArticulationCore::Seq(seq_core) = &seq else {
+            unreachable!();
+        };
+        assert_eq!(seq_core.timer, 0.0, "Seq onset resets its hard timer");
+
+        seq.process(0.5, 0.5, &rhythms, 1.0, 0.0);
+        assert!(!seq.is_alive(), "Seq has a hard authored lifetime");
+        assert!(drone.is_alive(), "Drone is intentionally immortal");
+        assert!(
+            entrain.is_alive(),
+            "Entrain follows its energy/envelope economy"
+        );
     }
 
     #[test]

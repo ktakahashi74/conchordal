@@ -1625,8 +1625,8 @@ fn spawn_payload_preserves_consonance_viability_window() {
     let (scenario, _warnings) = run_script(
         r#"
             create(
-                harmonic()                    .metabolism(0.1)
-                    .viability_rate(0.3)
+                harmonic()                    .endurance(10.0)
+                    .recovery(3.3333333)
                     .consonance_viability(0.3, 0.8),
                 1
             );
@@ -1660,11 +1660,60 @@ fn spawn_payload_preserves_consonance_viability_window() {
 }
 
 #[test]
+fn lifecycle_seconds_resolve_to_normalized_runtime_rates() {
+    let spawn = first_spawn_spec_for_script(
+        r#"
+            create(
+                harmonic()
+                    .endurance(8.0)
+                    .recovery(4.0)
+                    .attack_cost_fraction(0.05)
+                    .attack_recharge_fraction(0.20)
+                    .dissonance_penalty(3.0),
+                1
+            );
+            flush();
+        "#,
+    );
+    let ArticulationCoreConfig::Entrain { lifecycle, .. } = &spawn.articulation else {
+        panic!("expected entrain articulation");
+    };
+    let LifecycleConfig::Sustain {
+        endurance_sec,
+        recovery_sec,
+        attack_cost_fraction,
+        attack_recharge_fraction,
+        dissonance_penalty,
+        ..
+    } = lifecycle
+    else {
+        panic!("expected sustain lifecycle");
+    };
+    assert_eq!(*endurance_sec, Some(8.0));
+    assert_eq!(*recovery_sec, Some(4.0));
+    assert_eq!(*attack_cost_fraction, Some(0.05));
+    assert_eq!(*attack_recharge_fraction, Some(0.20));
+    assert_eq!(*dissonance_penalty, 3.0);
+
+    let mut rng = rand::rngs::StdRng::seed_from_u64(9);
+    let core = AnyArticulationCore::from_config(&spawn.articulation, 48_000.0, 9, &mut rng);
+    let AnyArticulationCore::Entrain(core) = core else {
+        panic!("expected entrain core");
+    };
+    assert_eq!(core.endurance_sec, Some(8.0));
+    assert_eq!(core.recovery_sec, Some(4.0));
+    assert!((core.basal_cost - 1.0 / 32.0).abs() < 1e-6);
+    assert!((core.continuous_recharge_per_sec - 0.25).abs() < 1e-6);
+    assert!((core.attack_cost_fraction - 0.05).abs() < 1e-6);
+    assert!((core.attack_recharge_fraction - 0.20).abs() < 1e-6);
+}
+
+#[test]
 fn spawn_payload_preserves_selection_approx_loo() {
     let (scenario, _warnings) = run_script(
         r#"
             create(
-                harmonic()                    .metabolism(0.1)
+                harmonic()                    .endurance(10.0)
                     .selection_approx_loo(true),
                 1
             );
@@ -1698,7 +1747,7 @@ fn selection_approx_loo_can_override_consonance_viability_for_reference_assays()
     let (scenario, _warnings) = run_script(
         r#"
             create(
-                harmonic()                    .metabolism(0.1)
+                harmonic()                    .endurance(10.0)
                     .consonance_viability(0.3, 0.8)
                     .selection_approx_loo(false),
                 1
@@ -1733,7 +1782,7 @@ fn viability_scope_total_overrides_environment_default() {
     let (scenario, _warnings) = run_script(
         r#"
             create(
-                harmonic()                    .metabolism(0.1)
+                harmonic()                    .endurance(10.0)
                     .consonance_viability(0.3, 0.8)
                     .viability_scope("total"),
                 1
@@ -1768,7 +1817,7 @@ fn draft_group_viability_scope_total_overrides_environment_default() {
     let (scenario, _warnings) = run_script(
         r#"
             create(harmonic(), 1)
-                .metabolism(0.1)
+                .endurance(10.0)
                 .consonance_viability(0.3, 0.8)
                 .viability_scope("total");
             flush();
@@ -1863,6 +1912,13 @@ fn removed_pre_040_api_names_are_not_registered() {
         (r#"harmonic().field_window(0.2, 0.8);"#, "field_window"),
         (r#"harmonic().field_curve(2.0, 0.5);"#, "field_curve"),
         (r#"harmonic().field_drop(0.5);"#, "field_drop"),
+        (r#"harmonic().metabolism(0.1);"#, "metabolism"),
+        (r#"harmonic().initial_energy(1.0);"#, "initial_energy"),
+        (r#"harmonic().energy_cap(1.0);"#, "energy_cap"),
+        (r#"harmonic().recharge_rate(0.1);"#, "recharge_rate"),
+        (r#"harmonic().action_cost(0.1);"#, "action_cost"),
+        (r#"harmonic().viability_rate(0.1);"#, "viability_rate"),
+        (r#"harmonic().dissonance_cost(0.1);"#, "dissonance_cost"),
     ] {
         let err = run_script_err(script);
         assert!(

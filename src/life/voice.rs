@@ -720,9 +720,6 @@ impl Voice {
         } else {
             landscape.evaluate_pitch_score(self.body.base_freq_hz())
         };
-        if let Some(ref mut acc) = self.life_accumulator {
-            acc.accumulate_tick(consonance_level);
-        }
         let mut signal = self.articulation.process(
             consonance_level,
             selection_score,
@@ -730,6 +727,13 @@ impl Voice {
             dt_sec,
             global_coupling,
         );
+        let energy_depleted = matches!(
+            &self.articulation.core,
+            AnyArticulationCore::Entrain(core) if core.energy <= 0.0
+        );
+        if let Some(ref mut acc) = self.life_accumulator {
+            acc.accumulate_tick(consonance_level, energy_depleted, dt_sec);
+        }
         if self.release_pending {
             let step = dt_sec / self.release_sec.max(1e-6);
             self.release_gain = (self.release_gain - step).max(0.0);
@@ -1141,15 +1145,14 @@ mod tests {
     /// of the always-open (0.0) default.
     fn entrain_voice_with_viability_low(control: VoiceControl, low: f32) -> Voice {
         let lifecycle = crate::life::lifecycle::LifecycleConfig::Sustain {
-            initial_energy: 1.0,
-            metabolism_rate: 0.1,
-            recharge_rate: None,
-            action_cost: None,
-            continuous_recharge_rate: None,
+            endurance_sec: Some(10.0),
+            recovery_sec: None,
+            attack_cost_fraction: None,
+            attack_recharge_fraction: None,
             continuous_recharge_score_low: Some(low),
             continuous_recharge_score_high: Some(0.95),
             selection_approx_loo: false,
-            dissonance_cost: None,
+            dissonance_penalty: 0.0,
             envelope: crate::scenario::EnvelopeConfig::default(),
         };
         Voice::spawn_from_control(
@@ -1160,7 +1163,6 @@ mod tests {
                 rhythm_coupling: crate::scenario::RhythmCouplingMode::TemporalOnly,
                 rhythm_reward: None,
                 breath_gain_init: Some(1.0),
-                energy_cap: None,
             },
             1,
             0,

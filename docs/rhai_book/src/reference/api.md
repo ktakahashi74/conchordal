@@ -373,7 +373,7 @@ brain(name)
 
 Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
 
-Articulation brain: `"entrain"` (default), `"seq"`, or `"drone"`. `entrain` synchronizes with detected rhythms in the field, `seq` does fixed-duration note sequencing, `drone` sustains with slow frequency sway.
+Articulation life: `"entrain"` (default), `"seq"`, or `"drone"`. Selects how the voice lives while sounding; orthogonal to the rhythm coupling continuum (`metric`/`entrained`/`flow`). `entrain` is a living articulation whose vitality responds to consonance and rhythm fit, subject to the metabolism economy. `seq` holds for a fixed lifetime, ignoring the field and metabolism. `drone` is undying, sustaining forever with a slow sway -- useful as terrain material.
 
 #### `sustain`
 
@@ -526,57 +526,47 @@ Crowding repulsion from neighboring voices. With one argument the repulsion widt
 
 ### Lifecycle & Viability
 
-Energy budget and survival. Viability makes field fit matter over time: `consonance_viability()` defines the consonance window and `viability_rate()` controls continuous recharge, with environment-relative scoring by default.
+Time-domain survival and recovery. `endurance()` states nominal zero-fit lifetime; `recovery()` states full-scale continuous recovery time. `consonance_viability()` defines the recovery window, with environment-relative scoring by default.
 
-#### `metabolism`
+#### `endurance`
 
 ```rhai,ignore
-metabolism(rate)
+endurance(seconds)
 ```
 
 Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
 
-Energy consumption rate.
+Nominal survival time at zero field fit, excluding the release tail. Energy is normalized to 0-1. The runtime drain rate is derived at spawn; actual lifetime varies with field fit, attacks, recovery, and release time.
 
-#### `initial_energy`
+#### `recovery`
 
 ```rhai,ignore
-initial_energy(value)
+recovery(seconds)
 ```
 
 Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
 
-Starting energy.
+Time to refill normalized energy from empty at full viability. Optional. If omitted, continuous recovery is disabled. This does not govern the separate per-attack economy.
 
-#### `energy_cap`
+#### `attack_cost_fraction`
 
 ```rhai,ignore
-energy_cap(value)
+attack_cost_fraction(value)
 ```
 
 Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
 
-Maximum energy after recharge/reward.
+Fraction of normalized energy spent by a full-strength attack.
 
-#### `recharge_rate`
+#### `attack_recharge_fraction`
 
 ```rhai,ignore
-recharge_rate(rate)
+attack_recharge_fraction(value)
 ```
 
 Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
 
-Energy gained per attack.
-
-#### `action_cost`
-
-```rhai,ignore
-action_cost(cost)
-```
-
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
-
-Energy cost per attack.
+Maximum normalized energy restored by a fully consonant attack.
 
 #### `sustain_drive`
 
@@ -588,16 +578,6 @@ Applies to: `Material` and `Participant`. Live-patchable: updates running voices
 
 Continuous drive level for sustained voices.
 
-#### `viability_rate`
-
-```rhai,ignore
-viability_rate(rate)
-```
-
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
-
-Continuous consonance-driven energy recharge rate.
-
 #### `consonance_viability`
 
 ```rhai,ignore
@@ -608,15 +588,15 @@ Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on 
 
 Consonance window used for viability scoring. Enables environment-relative scoring by default: a voice is evaluated against the field with its own footprint approximately removed (see `viability_scope()`).
 
-#### `dissonance_cost`
+#### `dissonance_penalty`
 
 ```rhai,ignore
-dissonance_cost(cost)
+dissonance_penalty(value)
 ```
 
 Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
 
-Extra energy cost at low consonance.
+How strongly good field fit extends life beyond zero-fit endurance. The zero-fit endurance remains fixed; the penalty changes how much longer a well-fit voice survives.
 
 ### Respawn
 

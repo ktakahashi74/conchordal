@@ -428,7 +428,6 @@ pub enum ArticulationCoreConfig {
         rhythm_coupling: RhythmCouplingMode,
         rhythm_reward: Option<MetabolismRhythmReward>,
         breath_gain_init: Option<f32>,
-        energy_cap: Option<f32>,
     },
     Seq {
         duration: f32,
@@ -501,7 +500,6 @@ impl Default for ArticulationCoreConfig {
             rhythm_coupling: RhythmCouplingMode::TemporalOnly,
             rhythm_reward: None,
             breath_gain_init: None,
-            energy_cap: None,
         }
     }
 }

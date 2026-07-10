@@ -121,9 +121,9 @@ prefer `seek_consonance()` and `glide()` in curated work.
 ## Consonance Viability and Respawn
 
 Viability makes field fit matter over time. `consonance_viability(low, high)`
-defines the consonance window, and `viability_rate(rate)` controls continuous
-recharge: a voice in a well-fitting place is sustained, a voice in a poor
-place starves.
+defines the consonance window, while `recovery(seconds)` states how long a
+full-scale recharge takes: a voice in a well-fitting place is sustained, a
+voice in a poor place approaches its nominal `endurance(seconds)`.
 
 By default viability uses **environment-relative** scoring: a voice is
 evaluated against the field with its own footprint approximately removed. Use
@@ -146,11 +146,10 @@ let ecology = harmonic()
     .cycles(3)
     .seek_consonance()
     .glide(0.45)
-    .initial_energy(0.7)
-    .energy_cap(1.0)
-    .metabolism(0.09)
-    .action_cost(0.012)
-    .viability_rate(0.18)
+    .endurance(8.0)
+    .recovery(4.0)
+    .attack_cost_fraction(0.017)
+    .attack_recharge_fraction(0.70)
     .consonance_viability(0.32, 0.82)
     .respawn_consonance()
     .respawn_capacity(14)
@@ -160,8 +159,9 @@ place(ecology, consonance(70.0, 1100.0).count(14));
 wait(30.0);
 ```
 
-The full lifecycle surface (energy, metabolism, costs) and the respawn
-policies are documented in the [API Reference](../reference/api.md).
+The full lifecycle surface (time-domain endurance/recovery and normalized
+per-attack fractions) and the respawn policies are documented in the
+[API Reference](../reference/api.md).
 
 ## Landscape-aware timbre
 

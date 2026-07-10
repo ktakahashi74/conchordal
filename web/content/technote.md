@@ -347,7 +347,7 @@ The `HarmonicBody` allows for the evolution of timbre. An agent with high stiffn
 Behavior is split into three focused cores plus the `PhonationEngine`, each defined in a separate file:
 
 *   **ArticulationCore (When/Gate)** — `life/articulation_core.rs`: Manages gating and envelope dynamics. Three variants exist:
-    *   `KuramotoCore`: Coupled "breath" oscillator with an energy/vitality model, rhythm coupling modes (`TemporalOnly`, `TemporalTimesVitality`), rhythm reward (metabolism bonus for phase match), and autonomous attack capability. It entrains its envelope to the meter-derived rhythm bands (Section 4.3). Fields include `energy`, `energy_cap`, `vitality_level`, and `vitality_exponent`.
+    *   `KuramotoCore`: Coupled "breath" oscillator with a normalized energy/vitality model, rhythm coupling modes (`TemporalOnly`, `TemporalTimesVitality`), rhythm reward (metabolism bonus for phase match), and autonomous attack capability. It entrains its envelope to the meter-derived rhythm bands (Section 4.3). Energy is fixed to the 0–1 domain; the stored composing parameters are nominal `endurance_sec` and optional `recovery_sec`, while runtime rates are derived once at voice construction.
     *   `SequencedCore`: Fixed-duration gate patterns.
     *   `DroneCore`: Sustained output with optional sway modulation.
 
@@ -386,11 +386,14 @@ This separation keeps each core focused: PitchCore explores the landscape, Artic
 
 Agents in Conchordal are governed by energy dynamics modeled on biological metabolism. The `LifecycleConfig` defines two modes of existence:
 
-*   **Decay**: The agent is born with a fixed `initial_energy` pool. It expends this energy over time (half-life) and dies when it reaches zero. This models transient sounds like plucks or percussion.
-*   **Sustain**: The agent has a `metabolism_rate` (energy loss per second) and can gain energy via consonance-dependent recharge through `MetabolismPolicy`.
-    *   **Recharge**: Energy gained per phonation attack is scaled by $C_{level01}$.
-    *   **Action Cost**: An optional cost for pitch movement, penalizing excessive frequency hopping.
-    *   **Rhythm Reward**: An optional `MetabolismRhythmReward` provides a metabolic bonus for phase-matched attacks, configured via `rho_t` and `AttackPhaseMatch` metric.
+*   **Decay**: A transient articulation whose envelope decays with a configured half-life. This models plucks and percussion without exposing a redundant energy scale.
+*   **Sustain**: A living articulation with energy normalized to $[0,1]$.
+    *   **Endurance**: `endurance_sec` is the nominal energy-depletion time at zero field fit, with no attacks or recovery. The derived basal rate is $1/(T_e(1+p_d))$, where $T_e$ is endurance and $p_d$ is `dissonance_penalty`; this keeps zero-fit endurance fixed while allowing good fit to extend life.
+    *   **Continuous recovery**: Optional `recovery_sec` is the time to refill energy from 0 to 1 at a viability signal of 1, with drain and attacks disabled. The derived rate is $1/T_r$.
+    *   **Attack economy**: `attack_cost_fraction` and `attack_recharge_fraction` are fractions of normalized capacity applied per full-strength attack; consonance scales the recharge term.
+    *   **Rhythm Reward**: An optional `MetabolismRhythmReward` multiplies the recharge contribution for phase-matched attacks, configured via `rho_t` and the `AttackPhaseMatch` metric.
+
+Energy depletion disables retriggering and starts the envelope tail. Reports therefore distinguish configured endurance, energy-depletion time, and observable lifetime.
 
 This mechanic creates a Darwinian pressure: **Survival of the Consonant**. Agents in dissonant (low $C_{level01}$) regions starve—energy depletes, amplitude fades, and they die. Agents in consonant (high $C_{level01}$) regions thrive—they maintain or gain energy, allowing them to sing louder and live longer. The musical structure emerges because only agents that find harmonic relationships survive to be heard.
 
@@ -516,7 +519,7 @@ A Material begins with a preset and is refined through method chaining:
 
 **Rhythm (the coupling continuum, Section 5.4)**: presets `metric()`, `entrained()`, `flow()` select a region of the continuum—no Hz argument, since tempo belongs to the director's `temporal_basin`. Fine control: `entrainment(v)` (lock strength 0–1), `rhythm_role("beat"|"subdivision"|"accent"|"texture")`, `microtiming(v)`. Breath-level coupling: `rhythm_freq(v)`, `rhythm_coupling_vitality(lambda_v, v_floor)`, `rhythm_reward(rho_t, "attack_phase_match")`.
 
-**Lifecycle/Viability**: `metabolism(rate)`, `initial_energy(v)`, `energy_cap(v)`, `recharge_rate(v)`, `action_cost(v)`, `viability_rate(v)`, `consonance_viability(low, high)`, `dissonance_cost(v)`.
+**Lifecycle/Viability**: `endurance(sec)`, optional `recovery(sec)`, `attack_cost_fraction(v)`, `attack_recharge_fraction(v)`, `consonance_viability(low, high)`, `dissonance_penalty(v)`.
 
 **Respawn**: `respawn_random()`, `respawn_hereditary(sigma_oct)`, `respawn_consonance()`, `respawn_capacity(n)`, `respawn_settle(placement)`, `respawn_min_c_level(v)`, `respawn_background_death_rate(v)`.
 
@@ -608,7 +611,7 @@ The Manifesto declares commitments; this chapter audits them. Each row of the le
 | Temporal-axis terrain (neural oscillation) | Emergent meter: forced limit cycle, Hebbian tempo learning, PLV confidence | §4 | Implemented; mechanism sketch revised (9.3). Measure-level accent *production* remains open |
 | Landscape variability (culture, individual, unknown principles) | `roughness_k`, consonance kernel coefficients | §3.4, §6.3.6 | Partial — cultural tuning systems not yet absorbed |
 | Adaptation and expectation | per-voice `PerceptualContext` only | — | **Open — the largest gap (9.2)** |
-| Acoustic life: perception, metabolism, autonomy | The Voice: cores, energy, viability | §5 | Implemented |
+| Acoustic life: perception, metabolism, autonomy | The Voice: distinct articulation-life cores plus normalized energy, time-domain endurance/recovery, and viability | §5 | Implemented |
 | Population: niches, symbiosis, terrain deformation | Crowding, respawn, the closed loop | §5 | Implemented |
 | No central conductor | Local perception only; the meter emerges from the population's own onsets | §4–5 | Implemented (temporal scaffolding remains an explicit experiment) |
 | Scenario as macro direction | Director terrain operations | §6.3.6 | Implemented; grounded by the scene window (9.2) |
@@ -625,10 +628,11 @@ Fragments exist: the per-voice boredom/familiarity of `PerceptualContext` is the
 
 ## 9.3 Upstream Revisions
 
-Implementation results have twice revised the Manifesto's mechanism-level sketches while confirming its principles:
+Implementation results have three times revised the Manifesto's mechanism-level sketches while confirming its principles:
 
 *   **The four-band table → an emergent metrical hierarchy.** The Manifesto sketches fixed delta/theta/alpha/beta bands with assigned musical roles. Building that taught otherwise: a fixed filterbank is an imposed grid in disguise. What survives the perception research is the principle—neural oscillation structures musical time—realized as a self-organizing beat–subdivision–measure hierarchy with confidence (Section 4).
 *   **Mirror dualism → the production-loop fixed-point requirement.** The undertone terrain is computable, but no minor tonality emerged, and the analysis generalizes: a perceptual symmetry is musically real only if the agents it attracts radiate spectra that reinforce it. Perception can be mirrored; production cannot—every body radiates overtones (Section 3.3.3). Any future terrain operation must pass both tests: a perceptual mechanism must exist, and the loop must close on the production side. The `harmonic_tension` dial that briefly survived as a tension knob was itself removed (v0.4): it passed neither test, was confirmed not to move the consonant peaks the ecology reads, and was in any case mathematically redundant—its two projection paths are one even convolution kernel at two decay exponents (Section 3.3.3). A tension axis that passes both tests was then built (v0.5): movement tension is the pitch-search *temperature* (Boltzmann exploration over the real potential — a hot search strays off consonance, a cold one settles), and placement tension is a *relative consonance level* (spawn a metastable step below the strongest peak). Both read the real, ecology-built terrain rather than warping it, so both pass. See `docs/design-notes/tension.md`.
+*   **Rate archaeology → observable time contracts.** Exposing raw energy pools and per-second rates made the composer balance dimensions that the ecology could derive. The implementation assay showed that the independent contract is nominal endurance, not `initial_energy` or `energy_cap`: energy can be normalized to $[0,1]$, while zero-fit drain is derived from endurance and the dissonance shape. Continuous recovery remains a separate time contract because per-second recovery and per-attack recharge have different dimensions. The same assay rejected collapsing `Entrain`, `Seq`, and `Drone`: their onset resets, death rules, telemetry, and render modulators are observably different, so one configured core would only hide the enum behind flags.
 
 # Appendix A: Key System Parameters
 
@@ -653,6 +657,11 @@ Implementation results have twice revised the Manifesto's mechanism-level sketch
 | `crowding_strength` | `PitchHillClimbPitchCore` | Float | Strength of frequency-space crowding avoidance. |
 | `crowding_sigma_cents` | `PitchHillClimbPitchCore` | Cents | Width of crowding penalty Gaussian (default 60). |
 | `leave_self_out` | `PitchHillClimbPitchCore` | Bool | Whether to subtract own spectral contribution during evaluation. |
+| `endurance_sec` | `LifecycleConfig::Sustain` | Seconds | Nominal energy-depletion time at zero field fit, with attacks/recovery disabled. |
+| `recovery_sec` | `LifecycleConfig::Sustain` | Optional seconds | Time to refill normalized energy 0→1 at a full viability signal. |
+| `attack_cost_fraction` | `LifecycleConfig::Sustain` | Normalized energy / attack | Capacity spent by a full-strength attack. |
+| `attack_recharge_fraction` | `LifecycleConfig::Sustain` | Normalized energy / attack | Maximum capacity restored by a fully consonant attack. |
+| `dissonance_penalty` | `LifecycleConfig::Sustain` | Float ≥ 0 | Extends well-fit lifetime while preserving the zero-fit endurance contract. |
 | `attack_step` | `KuramotoCore` | Float | Envelope attack step size. |
 | `decay_rate` | `KuramotoCore` | Float | Envelope decay rate. |
 
@@ -681,6 +690,18 @@ x \cdot \frac{1}{1+k} & \text{if } 0 < x < 1 \\
 $$
 
 where $k$ is `roughness_k` (default $\approx 0.4286$). The function is continuous at $x=1$ and saturates to 1 as $x \to \infty$.
+
+**Time-domain lifecycle** (normalized energy $E\in[0,1]$):
+
+$$ b = \frac{1}{T_e(1+p_d)}, \qquad
+\Delta E_{basal} = -b\,[1+p_d(1-C_{level01})]\,\Delta t $$
+
+$$ \Delta E_{recovery} = \frac{V(C)}{T_r}\,\Delta t, \qquad
+\Delta E_{attack} = -f_c + f_r C_{level01}m_r $$
+
+where $T_e$ is endurance, $T_r$ is recovery, $p_d$ is the dissonance penalty,
+$V(C)$ is the viability-window signal, $f_c/f_r$ are attack cost/recharge
+fractions, and $m_r$ is the bounded rhythm-reward multiplier.
 
 **Harmonicity Projection (Sibling Algorithm):**
 $$ H[i] = (1-\alpha)\sum_m \left( \sum_k A[i+\log_2(k)] \right)[i-\log_2(m)] + \alpha \sum_m \left( \sum_k A[i-\log_2(k)] \right)[i+\log_2(m)] $$

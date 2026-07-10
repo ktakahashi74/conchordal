@@ -257,9 +257,9 @@ evaluating the field.",
     CategoryDoc {
         id: "lifecycle",
         title: "Lifecycle & Viability",
-        intro: "Energy budget and survival. Viability makes field fit matter over time: \
-`consonance_viability()` defines the consonance window and `viability_rate()` controls \
-continuous recharge, with environment-relative scoring by default.",
+        intro: "Time-domain survival and recovery. `endurance()` states nominal zero-fit \
+lifetime; `recovery()` states full-scale continuous recovery time. `consonance_viability()` \
+defines the recovery window, with environment-relative scoring by default.",
     },
     CategoryDoc {
         id: "respawn",
@@ -668,9 +668,12 @@ branch end.",
         style: Style::Method,
         patch: Patch::Draft,
         usage: &["brain(name)"],
-        summary: "Articulation brain: `\"entrain\"` (default), `\"seq\"`, or `\"drone\"`.",
-        details: "`entrain` synchronizes with detected rhythms in the field, `seq` does \
-fixed-duration note sequencing, `drone` sustains with slow frequency sway.",
+        summary: "Articulation life: `\"entrain\"` (default), `\"seq\"`, or `\"drone\"`.",
+        details: "Selects how the voice lives while sounding; orthogonal to the rhythm \
+coupling continuum (`metric`/`entrained`/`flow`). `entrain` is a living articulation whose \
+vitality responds to consonance and rhythm fit, subject to the metabolism economy. `seq` \
+holds for a fixed lifetime, ignoring the field and metabolism. `drone` is undying, sustaining \
+forever with a slow sway -- useful as terrain material.",
     },
     FnDoc {
         name: "sustain",
@@ -1166,53 +1169,45 @@ the two-argument form sets it explicitly in cents.",
     },
     // --- lifecycle ---
     FnDoc {
-        name: "metabolism",
+        name: "endurance",
         owner: Owner::Voice,
         category: "lifecycle",
         style: Style::Method,
         patch: Patch::Draft,
-        usage: &["metabolism(rate)"],
-        summary: "Energy consumption rate.",
+        usage: &["endurance(seconds)"],
+        summary: "Nominal survival time at zero field fit, excluding the release tail.",
+        details: "Energy is normalized to 0-1. The runtime drain rate is derived at spawn; \
+actual lifetime varies with field fit, attacks, recovery, and release time.",
+    },
+    FnDoc {
+        name: "recovery",
+        owner: Owner::Voice,
+        category: "lifecycle",
+        style: Style::Method,
+        patch: Patch::Draft,
+        usage: &["recovery(seconds)"],
+        summary: "Time to refill normalized energy from empty at full viability.",
+        details: "Optional. If omitted, continuous recovery is disabled. This does not govern \
+the separate per-attack economy.",
+    },
+    FnDoc {
+        name: "attack_cost_fraction",
+        owner: Owner::Voice,
+        category: "lifecycle",
+        style: Style::Method,
+        patch: Patch::Draft,
+        usage: &["attack_cost_fraction(value)"],
+        summary: "Fraction of normalized energy spent by a full-strength attack.",
         details: "",
     },
     FnDoc {
-        name: "initial_energy",
+        name: "attack_recharge_fraction",
         owner: Owner::Voice,
         category: "lifecycle",
         style: Style::Method,
         patch: Patch::Draft,
-        usage: &["initial_energy(value)"],
-        summary: "Starting energy.",
-        details: "",
-    },
-    FnDoc {
-        name: "energy_cap",
-        owner: Owner::Voice,
-        category: "lifecycle",
-        style: Style::Method,
-        patch: Patch::Draft,
-        usage: &["energy_cap(value)"],
-        summary: "Maximum energy after recharge/reward.",
-        details: "",
-    },
-    FnDoc {
-        name: "recharge_rate",
-        owner: Owner::Voice,
-        category: "lifecycle",
-        style: Style::Method,
-        patch: Patch::Draft,
-        usage: &["recharge_rate(rate)"],
-        summary: "Energy gained per attack.",
-        details: "",
-    },
-    FnDoc {
-        name: "action_cost",
-        owner: Owner::Voice,
-        category: "lifecycle",
-        style: Style::Method,
-        patch: Patch::Draft,
-        usage: &["action_cost(cost)"],
-        summary: "Energy cost per attack.",
+        usage: &["attack_recharge_fraction(value)"],
+        summary: "Maximum normalized energy restored by a fully consonant attack.",
         details: "",
     },
     FnDoc {
@@ -1223,16 +1218,6 @@ the two-argument form sets it explicitly in cents.",
         patch: Patch::Live,
         usage: &["sustain_drive(value)"],
         summary: "Continuous drive level for sustained voices.",
-        details: "",
-    },
-    FnDoc {
-        name: "viability_rate",
-        owner: Owner::Voice,
-        category: "lifecycle",
-        style: Style::Method,
-        patch: Patch::Draft,
-        usage: &["viability_rate(rate)"],
-        summary: "Continuous consonance-driven energy recharge rate.",
         details: "",
     },
     FnDoc {
@@ -1258,14 +1243,15 @@ the field with its own footprint approximately removed (see `viability_scope()`)
 own contribution.",
     },
     FnDoc {
-        name: "dissonance_cost",
+        name: "dissonance_penalty",
         owner: Owner::Voice,
         category: "lifecycle",
         style: Style::Method,
         patch: Patch::Draft,
-        usage: &["dissonance_cost(cost)"],
-        summary: "Extra energy cost at low consonance.",
-        details: "",
+        usage: &["dissonance_penalty(value)"],
+        summary: "How strongly good field fit extends life beyond zero-fit endurance.",
+        details: "The zero-fit endurance remains fixed; the penalty changes how much longer a \
+well-fit voice survives.",
     },
     FnDoc {
         name: "selection_approx_loo",

@@ -1,7 +1,9 @@
 # Lifecycle Time-Domain Re-parameterization and the Brain Axis
 
-Status: Plan (v0.5 candidate). Externally reviewed 2026-07-10 (Codex,
-agree-with-changes on both parts; its corrections are folded in below).
+Status: Implemented 2026-07-10. Phase C verdict: keep the three articulation
+cores; retain Seq as the fixed-authored-event life architecture. The original
+plan was externally reviewed before implementation; outcomes are recorded at
+the end of each phase below.
 Scope: two coupled core-design questions, sequenced as one program:
 (A/B) replace the rate-based lifecycle knobs with time-domain parameters,
 and (C) decide the fate of the three-variant articulation-core enum
@@ -69,6 +71,31 @@ and a deterministic assay probe for the earlier energy-depletion instant.
   reported separately) and measured error bars. The assay stays in the tree
   as the regression instrument for Phase B.
 
+### Phase A outcome
+
+- `samples/research/lifecycle_time_domain_assay.rhai` is the fixed-seed
+  regression instrument. Configured endurances of 2, 4, and 8 seconds produced
+  energy-depletion times of 2.000, 4.001, and 8.001 seconds and observable
+  deaths at 2.005, 4.011, and 8.011 seconds in the reference run. Error stayed
+  within one control step plus floating-point accumulation.
+- The assay exposed an existing telemetry bug: `lifetime_ticks` counted
+  substeps but was multiplied by hop duration, inflating lifetime eightfold in
+  this configuration. Reports now derive observable lifetime from birth/death
+  frame distance and accumulate energy-depletion time directly in seconds.
+- `energy_cap` was not an independent life parameter. Vitality was its only
+  normalization consumer; hereditary parent selection is group-local, so it
+  never compares differently configured caps across groups. Moreover, runtime
+  recharge did not actually clamp raw energy to the advertised cap. Energy is
+  now genuinely clamped to `[0,1]`, making vitality and hereditary fitness
+  comparable without a composer-facing cap.
+- Closed-form tests cover zero-fit endurance, fit-dependent penalty shaping,
+  full-signal recovery, discrete attack cost/recharge, and control-step error.
+- Stratification does not require separate endurance maps. Phonation/coupling
+  presets affect survival only through their observed attack/recharge trace;
+  respawn policy acts after death, while background turnover is an independent
+  hazard. These remain report dimensions around one nominal contract rather
+  than family-specific parameter definitions.
+
 ## Phase B — Core re-parameterization (time domain)
 
 - `LifecycleConfig` stores time-domain parameters:
@@ -107,6 +134,21 @@ and a deterministic assay probe for the earlier energy-depletion instant.
   curated études rewritten; generated docs regenerated; technote
   Appendix A (key system parameters) updated in the same change.
 
+### Phase B outcome
+
+- The public lifecycle surface is now `endurance(seconds)`, optional
+  `recovery(seconds)`, `attack_cost_fraction(value)`,
+  `attack_recharge_fraction(value)`, `consonance_viability(low, high)`, and
+  `dissonance_penalty(value)`.
+- `initial_energy`, `energy_cap`, `metabolism`, `recharge_rate`, `action_cost`,
+  `viability_rate`, and `dissonance_cost` were deleted without aliases. Energy
+  begins at 1 and is clamped to the normalized domain.
+- `AnyArticulationCore::from_config` derives runtime rates once. JSONL death
+  records report `configured_endurance_sec`, `energy_depletion_sec`, and
+  observable `lifetime_sec` separately.
+- Curated études, research assays, Rhai definitions, the API book, and both
+  technote languages use the time-domain vocabulary.
+
 ## Phase C — Brain-axis equivalence assay
 
 Reuses Phase A's measurement framework. "Equivalent" means **observable
@@ -141,6 +183,21 @@ is config archaeology, not simplification.
 in one research sample as a compositional intent (a fixed authored event
 amid living material). If no role emerges, prune it directly as a v0.5
 candidate — do not launder the deletion through unification.
+
+### Phase C outcome
+
+- `brain_axis_contract_assay_rejects_exact_unification` compares onset side
+  effects, signal behavior, death rules, and render-modulator variants. The
+  cores diverge observably: Seq resets a hard timer and emits `SeqGate`; Drone
+  is immortal and emits `DroneSway`; Entrain owns normalized energy, envelope
+  release, PLV, and `EntrainPulse`.
+- Verdict: **keep `AnyArticulationCore` and all three variants**. Reproducing
+  these contracts in one core would require the rejected disguised enum.
+- `samples/research/brain_seq_authored_event.rhai` establishes Seq's concrete
+  composing role: a fixed authored event inside living material. Events placed
+  at 2, 4, and 6 seconds each died after 1.003 seconds while the Entrain
+  population continued; the offline render completed with the three distinct
+  insertions. Seq is retained.
 
 ## Deferred (recorded here on purpose)
 

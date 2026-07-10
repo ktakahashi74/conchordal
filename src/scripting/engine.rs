@@ -290,11 +290,16 @@ impl ScriptHost {
         register_species_numeric_methods(
             &mut engine,
             &[
-                ("metabolism", SpeciesSpec::set_metabolism),
-                ("initial_energy", SpeciesSpec::set_initial_energy),
-                ("recharge_rate", SpeciesSpec::set_recharge_rate),
-                ("action_cost", SpeciesSpec::set_action_cost),
-                ("viability_rate", SpeciesSpec::set_viability_rate),
+                ("endurance", SpeciesSpec::set_endurance),
+                ("recovery", SpeciesSpec::set_recovery),
+                (
+                    "attack_cost_fraction",
+                    SpeciesSpec::set_attack_cost_fraction,
+                ),
+                (
+                    "attack_recharge_fraction",
+                    SpeciesSpec::set_attack_recharge_fraction,
+                ),
             ],
         );
         register_species_pair_numeric_methods(
@@ -320,10 +325,7 @@ impl ScriptHost {
         );
         register_species_numeric_methods(
             &mut engine,
-            &[
-                ("dissonance_cost", SpeciesSpec::set_dissonance_cost),
-                ("energy_cap", SpeciesSpec::set_energy_cap),
-            ],
+            &[("dissonance_penalty", SpeciesSpec::set_dissonance_penalty)],
         );
         engine.register_fn(
             "adsr",
@@ -1356,11 +1358,16 @@ impl ScriptHost {
             &mut engine,
             ctx.clone(),
             &[
-                ("metabolism", SpeciesSpec::set_metabolism),
-                ("initial_energy", SpeciesSpec::set_initial_energy),
-                ("recharge_rate", SpeciesSpec::set_recharge_rate),
-                ("action_cost", SpeciesSpec::set_action_cost),
-                ("viability_rate", SpeciesSpec::set_viability_rate),
+                ("endurance", SpeciesSpec::set_endurance),
+                ("recovery", SpeciesSpec::set_recovery),
+                (
+                    "attack_cost_fraction",
+                    SpeciesSpec::set_attack_cost_fraction,
+                ),
+                (
+                    "attack_recharge_fraction",
+                    SpeciesSpec::set_attack_recharge_fraction,
+                ),
             ],
         );
         register_group_draft_pair_numeric_methods(
@@ -1376,10 +1383,7 @@ impl ScriptHost {
         register_group_draft_numeric_methods(
             &mut engine,
             ctx.clone(),
-            &[
-                ("dissonance_cost", SpeciesSpec::set_dissonance_cost),
-                ("energy_cap", SpeciesSpec::set_energy_cap),
-            ],
+            &[("dissonance_penalty", SpeciesSpec::set_dissonance_penalty)],
         );
         let ctx_for_group_adsr = ctx.clone();
         engine.register_fn(

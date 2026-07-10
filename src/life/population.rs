@@ -798,9 +798,14 @@ impl Population {
             self.seed,
         );
         if let Some(observe) = self.auto_observe {
+            let endurance_sec = match &spawned.articulation.core {
+                AnyArticulationCore::Entrain(core) => core.endurance_sec,
+                AnyArticulationCore::Seq(_) | AnyArticulationCore::Drone(_) => None,
+            };
             spawned.life_accumulator = Some(super::telemetry::LifeAccumulator::new(
                 self.current_frame,
                 observe.first_k,
+                endurance_sec,
             ));
             if let AnyArticulationCore::Entrain(ref mut core) = spawned.articulation.core {
                 core.enable_plv(observe.plv_window);
@@ -1944,7 +1949,6 @@ mod tests {
             control,
             articulation: ArticulationCoreConfig::Entrain {
                 lifecycle: LifecycleConfig::Decay {
-                    initial_energy: 1.0,
                     half_life_sec,
                     attack_sec: 0.001,
                 },
@@ -1952,7 +1956,6 @@ mod tests {
                 rhythm_coupling: crate::scenario::RhythmCouplingMode::TemporalOnly,
                 rhythm_reward: None,
                 breath_gain_init: None,
-                energy_cap: None,
             },
         }
     }
@@ -1964,22 +1967,20 @@ mod tests {
             control,
             articulation: ArticulationCoreConfig::Entrain {
                 lifecycle: LifecycleConfig::Sustain {
-                    initial_energy: 1.0,
-                    metabolism_rate: 0.0,
-                    recharge_rate: Some(0.0),
-                    action_cost: Some(0.0),
-                    continuous_recharge_rate: None,
+                    endurance_sec: None,
+                    recovery_sec: None,
+                    attack_cost_fraction: Some(0.0),
+                    attack_recharge_fraction: Some(0.0),
                     continuous_recharge_score_low: None,
                     continuous_recharge_score_high: None,
                     selection_approx_loo: false,
-                    dissonance_cost: None,
+                    dissonance_penalty: 0.0,
                     envelope: crate::scenario::EnvelopeConfig::default(),
                 },
                 rhythm_freq: None,
                 rhythm_coupling: crate::scenario::RhythmCouplingMode::TemporalOnly,
                 rhythm_reward: None,
                 breath_gain_init: None,
-                energy_cap: None,
             },
         }
     }

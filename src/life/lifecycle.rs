@@ -1,24 +1,24 @@
-use crate::life::metabolism_policy::{DEFAULT_ACTION_COST_PER_ATTACK, DEFAULT_RECHARGE_PER_ATTACK};
+use crate::life::metabolism_policy::{
+    DEFAULT_ATTACK_COST_FRACTION, DEFAULT_ATTACK_RECHARGE_FRACTION,
+};
 use crate::scenario::EnvelopeConfig;
 use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum LifecycleConfig {
     Decay {
-        initial_energy: f32,
         half_life_sec: f32,
         attack_sec: f32,
     },
     Sustain {
-        initial_energy: f32,
-        metabolism_rate: f32,
-        recharge_rate: Option<f32>,
-        action_cost: Option<f32>,
-        continuous_recharge_rate: Option<f32>,
+        endurance_sec: Option<f32>,
+        recovery_sec: Option<f32>,
+        attack_cost_fraction: Option<f32>,
+        attack_recharge_fraction: Option<f32>,
         continuous_recharge_score_low: Option<f32>,
         continuous_recharge_score_high: Option<f32>,
         selection_approx_loo: bool,
-        dissonance_cost: Option<f32>,
+        dissonance_penalty: f32,
         envelope: EnvelopeConfig,
     },
 }
@@ -26,9 +26,24 @@ pub enum LifecycleConfig {
 impl Default for LifecycleConfig {
     fn default() -> Self {
         LifecycleConfig::Decay {
-            initial_energy: 1.0,
             half_life_sec: 1.0,
             attack_sec: default_decay_attack(),
+        }
+    }
+}
+
+impl LifecycleConfig {
+    pub fn endurance_sec(&self) -> Option<f32> {
+        match self {
+            LifecycleConfig::Sustain { endurance_sec, .. } => *endurance_sec,
+            LifecycleConfig::Decay { .. } => None,
+        }
+    }
+
+    pub fn recovery_sec(&self) -> Option<f32> {
+        match self {
+            LifecycleConfig::Sustain { recovery_sec, .. } => *recovery_sec,
+            LifecycleConfig::Decay { .. } => None,
         }
     }
 }
@@ -37,41 +52,41 @@ impl fmt::Display for LifecycleConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             LifecycleConfig::Decay {
-                initial_energy,
                 half_life_sec,
                 attack_sec,
             } => write!(
                 f,
-                "lifecycle=decay(init={:.2}, half={:.3}s, attack={:.3}s)",
-                initial_energy, half_life_sec, attack_sec
+                "lifecycle=decay(half={:.3}s, attack={:.3}s)",
+                half_life_sec, attack_sec
             ),
             LifecycleConfig::Sustain {
-                initial_energy,
-                metabolism_rate,
-                recharge_rate,
-                action_cost,
-                continuous_recharge_rate,
+                endurance_sec,
+                recovery_sec,
+                attack_cost_fraction,
+                attack_recharge_fraction,
                 continuous_recharge_score_low,
                 continuous_recharge_score_high,
                 selection_approx_loo,
-                dissonance_cost,
+                dissonance_penalty,
                 envelope,
                 ..
             } => {
+                let endurance =
+                    endurance_sec.map_or_else(|| "off".to_string(), |sec| format!("{sec:.3}s"));
+                let recovery =
+                    recovery_sec.map_or_else(|| "off".to_string(), |sec| format!("{sec:.3}s"));
                 write!(
                     f,
-                    "lifecycle=sustain(init={:.2}, metab={:.3}/s, recharge={:.3}, action_cost={:.3}, env=[atk={:.3}s, dec={:.3}s, sus={:.2}]",
-                    initial_energy,
-                    metabolism_rate,
-                    recharge_rate.unwrap_or(DEFAULT_RECHARGE_PER_ATTACK),
-                    action_cost.unwrap_or(DEFAULT_ACTION_COST_PER_ATTACK),
+                    "lifecycle=sustain(endurance={}, recovery={}, attack_recharge={:.3}, attack_cost={:.3}, diss_penalty={:.3}, env=[atk={:.3}s, dec={:.3}s, sus={:.2}]",
+                    endurance,
+                    recovery,
+                    attack_recharge_fraction.unwrap_or(DEFAULT_ATTACK_RECHARGE_FRACTION),
+                    attack_cost_fraction.unwrap_or(DEFAULT_ATTACK_COST_FRACTION),
+                    dissonance_penalty,
                     envelope.attack_sec,
                     envelope.decay_sec,
                     envelope.sustain_level
                 )?;
-                if let Some(rate) = continuous_recharge_rate {
-                    write!(f, ", viability_rate={rate:.3}/s")?;
-                }
                 if let (Some(low), Some(high)) = (
                     continuous_recharge_score_low,
                     continuous_recharge_score_high,
@@ -80,9 +95,6 @@ impl fmt::Display for LifecycleConfig {
                 }
                 if *selection_approx_loo {
                     write!(f, ", environment_relative")?;
-                }
-                if let Some(dc) = dissonance_cost {
-                    write!(f, ", diss_cost={dc:.3}")?;
                 }
                 write!(f, ")")
             }

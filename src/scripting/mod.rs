@@ -91,20 +91,18 @@ struct SpeciesSpec {
     entrainment: Option<f32>,
     rhythm_role: Option<RhythmRole>,
     microtiming: Option<f32>,
-    metabolism_rate: Option<f32>,
-    initial_energy: Option<f32>,
-    recharge_rate: Option<f32>,
-    action_cost: Option<f32>,
-    viability_rate: Option<f32>,
+    endurance_sec: Option<f32>,
+    recovery_sec: Option<f32>,
+    attack_cost_fraction: Option<f32>,
+    attack_recharge_fraction: Option<f32>,
     continuous_recharge_score_low: Option<f32>,
     continuous_recharge_score_high: Option<f32>,
     selection_approx_loo: bool,
-    dissonance_cost: Option<f32>,
+    dissonance_penalty: Option<f32>,
     adsr_user_set: bool,
     rhythm_coupling: RhythmCouplingMode,
     rhythm_reward: Option<MetabolismRhythmReward>,
     rhythm_freq: Option<f32>,
-    energy_cap: Option<f32>,
     consonance_movement: bool,
     pitch_apply_mode_user_set: bool,
 }
@@ -132,20 +130,18 @@ impl SpeciesSpec {
             entrainment: None,
             rhythm_role: None,
             microtiming: None,
-            metabolism_rate: None,
-            initial_energy: None,
-            recharge_rate: None,
-            action_cost: None,
-            viability_rate: None,
+            endurance_sec: None,
+            recovery_sec: None,
+            attack_cost_fraction: None,
+            attack_recharge_fraction: None,
             continuous_recharge_score_low: None,
             continuous_recharge_score_high: None,
             selection_approx_loo: false,
-            dissonance_cost: None,
+            dissonance_penalty: None,
             adsr_user_set: false,
             rhythm_coupling: RhythmCouplingMode::TemporalOnly,
             rhythm_reward: None,
             rhythm_freq: None,
-            energy_cap: None,
             consonance_movement: false,
             pitch_apply_mode_user_set: false,
         }
@@ -215,32 +211,27 @@ impl SpeciesSpec {
     }
 
     fn lifecycle_config(&self) -> LifecycleConfig {
-        let energy_knobs = self.metabolism_rate.is_some()
-            || self.initial_energy.is_some()
-            || self.recharge_rate.is_some()
-            || self.action_cost.is_some()
-            || self.viability_rate.is_some()
+        let energy_knobs = self.endurance_sec.is_some()
+            || self.recovery_sec.is_some()
+            || self.attack_cost_fraction.is_some()
+            || self.attack_recharge_fraction.is_some()
             || self.continuous_recharge_score_low.is_some()
             || self.continuous_recharge_score_high.is_some()
             || self.selection_approx_loo
-            || self.dissonance_cost.is_some();
+            || self.dissonance_penalty.is_some();
         if energy_knobs || self.adsr_user_set {
             // An explicit ADSR is a timbral statement, not a mortality
-            // statement: without any energy knob the voice has no basal drain
-            // and sings until released. Declaring an energy economy opts into
-            // the starving default.
-            let default_metabolism = if energy_knobs { 0.5 } else { 0.0 };
-            let metabolism_rate = self.metabolism_rate.unwrap_or(default_metabolism).max(1e-6);
+            // statement: without endurance the voice has no basal drain and
+            // sings until released.
             LifecycleConfig::Sustain {
-                initial_energy: self.initial_energy.unwrap_or(1.0).max(0.0),
-                metabolism_rate,
-                recharge_rate: self.recharge_rate.map(|value| value.max(0.0)),
-                action_cost: self.action_cost.map(|value| value.max(0.0)),
-                continuous_recharge_rate: self.viability_rate.map(|value| value.max(0.0)),
+                endurance_sec: self.endurance_sec,
+                recovery_sec: self.recovery_sec,
+                attack_cost_fraction: self.attack_cost_fraction,
+                attack_recharge_fraction: self.attack_recharge_fraction,
                 continuous_recharge_score_low: self.continuous_recharge_score_low,
                 continuous_recharge_score_high: self.continuous_recharge_score_high,
                 selection_approx_loo: self.selection_approx_loo,
-                dissonance_cost: self.dissonance_cost,
+                dissonance_penalty: self.dissonance_penalty.unwrap_or(0.0),
                 envelope: self.lifecycle_envelope(),
             }
         } else {
@@ -256,7 +247,6 @@ impl SpeciesSpec {
                 rhythm_coupling: self.rhythm_coupling,
                 rhythm_reward: self.rhythm_reward,
                 breath_gain_init: None,
-                energy_cap: self.energy_cap,
             },
             BrainKind::Seq => ArticulationCoreConfig::Seq {
                 duration: DEFAULT_SEQ_DURATION_SEC,
@@ -724,24 +714,36 @@ impl SpeciesSpec {
         self.apply_field_duration_spec();
     }
 
-    fn set_metabolism(&mut self, rate: f32) {
-        self.metabolism_rate = Some(rate.max(0.0));
+    fn set_endurance(&mut self, sec: f32) {
+        if sec.is_finite() && sec > 0.0 {
+            self.endurance_sec = Some(sec);
+        } else {
+            warn!("endurance() expects finite seconds greater than zero");
+        }
     }
 
-    fn set_initial_energy(&mut self, value: f32) {
-        self.initial_energy = Some(value.max(0.0));
+    fn set_recovery(&mut self, sec: f32) {
+        if sec.is_finite() && sec > 0.0 {
+            self.recovery_sec = Some(sec);
+        } else {
+            warn!("recovery() expects finite seconds greater than zero");
+        }
     }
 
-    fn set_recharge_rate(&mut self, value: f32) {
-        self.recharge_rate = Some(value.max(0.0));
+    fn set_attack_cost_fraction(&mut self, value: f32) {
+        if value.is_finite() && value >= 0.0 {
+            self.attack_cost_fraction = Some(value);
+        } else {
+            warn!("attack_cost_fraction() expects a finite non-negative value");
+        }
     }
 
-    fn set_action_cost(&mut self, value: f32) {
-        self.action_cost = Some(value.max(0.0));
-    }
-
-    fn set_viability_rate(&mut self, value: f32) {
-        self.viability_rate = Some(value.max(0.0));
+    fn set_attack_recharge_fraction(&mut self, value: f32) {
+        if value.is_finite() && value >= 0.0 {
+            self.attack_recharge_fraction = Some(value);
+        } else {
+            warn!("attack_recharge_fraction() expects a finite non-negative value");
+        }
     }
 
     fn set_consonance_viability(&mut self, low: f32, high: f32) {
@@ -769,12 +771,12 @@ impl SpeciesSpec {
         self.selection_approx_loo = enabled;
     }
 
-    fn set_dissonance_cost(&mut self, value: f32) {
-        self.dissonance_cost = Some(value.max(0.0));
-    }
-
-    fn set_energy_cap(&mut self, value: f32) {
-        self.energy_cap = Some(value.max(0.0));
+    fn set_dissonance_penalty(&mut self, value: f32) {
+        if value.is_finite() && value >= 0.0 {
+            self.dissonance_penalty = Some(value);
+        } else {
+            warn!("dissonance_penalty() expects a finite non-negative value");
+        }
     }
 
     fn set_adsr(&mut self, a: f32, d: f32, s: f32, r: f32) {

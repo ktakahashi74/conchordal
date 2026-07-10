@@ -9,15 +9,6 @@ const habitat_bus: Bus;
 /// Presentation bus: cpal output, recording, UI metering; what the listener hears.
 const presentation_bus: Bus;
 
-/// Energy cost per attack.
-fn action_cost(arg0: Material, arg1: f64) -> Material;
-/// Energy cost per attack.
-fn action_cost(arg0: Material, arg1: i64) -> Material;
-/// Energy cost per attack.
-fn action_cost(arg0: Participant, arg1: f64) -> Participant;
-/// Energy cost per attack.
-fn action_cost(arg0: Participant, arg1: i64) -> Participant;
-
 /// [tuning] Duration follows field support.
 fn adaptive_duration(arg0: Material) -> Material;
 /// [tuning] Duration follows field support.
@@ -47,6 +38,24 @@ fn at(arg0: f64) -> Placement;
 /// Place at a fixed frequency in Hz.
 fn at(arg0: i64) -> Placement;
 
+/// Fraction of normalized energy spent by a full-strength attack.
+fn attack_cost_fraction(arg0: Material, arg1: f64) -> Material;
+/// Fraction of normalized energy spent by a full-strength attack.
+fn attack_cost_fraction(arg0: Material, arg1: i64) -> Material;
+/// Fraction of normalized energy spent by a full-strength attack.
+fn attack_cost_fraction(arg0: Participant, arg1: f64) -> Participant;
+/// Fraction of normalized energy spent by a full-strength attack.
+fn attack_cost_fraction(arg0: Participant, arg1: i64) -> Participant;
+
+/// Maximum normalized energy restored by a fully consonant attack.
+fn attack_recharge_fraction(arg0: Material, arg1: f64) -> Material;
+/// Maximum normalized energy restored by a fully consonant attack.
+fn attack_recharge_fraction(arg0: Material, arg1: i64) -> Material;
+/// Maximum normalized energy restored by a fully consonant attack.
+fn attack_recharge_fraction(arg0: Participant, arg1: f64) -> Participant;
+/// Maximum normalized energy restored by a fully consonant attack.
+fn attack_recharge_fraction(arg0: Participant, arg1: i64) -> Participant;
+
 /// Crowding repulsion from neighboring voices.
 fn avoid_neighbors(arg0: Material, arg1: f64) -> Material;
 /// Crowding repulsion from neighboring voices.
@@ -72,9 +81,9 @@ fn avoid_neighbors(arg0: Participant, arg1: i64, arg2: f64) -> Participant;
 /// Crowding repulsion from neighboring voices.
 fn avoid_neighbors(arg0: Participant, arg1: i64, arg2: i64) -> Participant;
 
-/// Articulation brain: `"entrain"` (default), `"seq"`, or `"drone"`.
+/// Articulation life: `"entrain"` (default), `"seq"`, or `"drone"`.
 fn brain(arg0: Material, arg1: String) -> Material;
-/// Articulation brain: `"entrain"` (default), `"seq"`, or `"drone"`.
+/// Articulation life: `"entrain"` (default), `"seq"`, or `"drone"`.
 fn brain(arg0: Participant, arg1: String) -> Participant;
 
 /// Spectral brightness in 0.0-1.0 (harmonic/modal bodies).
@@ -147,14 +156,14 @@ fn dissonance(arg0: i64, arg1: f64) -> Placement;
 /// Target consonance minima (tension, clusters). Density cloud by default; `.peak()` for the most dissonant point.
 fn dissonance(arg0: i64, arg1: i64) -> Placement;
 
-/// Extra energy cost at low consonance.
-fn dissonance_cost(arg0: Material, arg1: f64) -> Material;
-/// Extra energy cost at low consonance.
-fn dissonance_cost(arg0: Material, arg1: i64) -> Material;
-/// Extra energy cost at low consonance.
-fn dissonance_cost(arg0: Participant, arg1: f64) -> Participant;
-/// Extra energy cost at low consonance.
-fn dissonance_cost(arg0: Participant, arg1: i64) -> Participant;
+/// How strongly good field fit extends life beyond zero-fit endurance.
+fn dissonance_penalty(arg0: Material, arg1: f64) -> Material;
+/// How strongly good field fit extends life beyond zero-fit endurance.
+fn dissonance_penalty(arg0: Material, arg1: i64) -> Material;
+/// How strongly good field fit extends life beyond zero-fit endurance.
+fn dissonance_penalty(arg0: Participant, arg1: f64) -> Participant;
+/// How strongly good field fit extends life beyond zero-fit endurance.
+fn dissonance_penalty(arg0: Participant, arg1: i64) -> Participant;
 
 /// [tuning] Adaptive duration curve parameters.
 fn duration_curve(arg0: Material, arg1: f64, arg2: f64) -> Material;
@@ -199,14 +208,14 @@ fn edge(arg0: i64, arg1: f64) -> Placement;
 /// Target the consonance/dissonance boundary (C near its midpoint).
 fn edge(arg0: i64, arg1: i64) -> Placement;
 
-/// Maximum energy after recharge/reward.
-fn energy_cap(arg0: Material, arg1: f64) -> Material;
-/// Maximum energy after recharge/reward.
-fn energy_cap(arg0: Material, arg1: i64) -> Material;
-/// Maximum energy after recharge/reward.
-fn energy_cap(arg0: Participant, arg1: f64) -> Participant;
-/// Maximum energy after recharge/reward.
-fn energy_cap(arg0: Participant, arg1: i64) -> Participant;
+/// Nominal survival time at zero field fit, excluding the release tail.
+fn endurance(arg0: Material, arg1: f64) -> Material;
+/// Nominal survival time at zero field fit, excluding the release tail.
+fn endurance(arg0: Material, arg1: i64) -> Material;
+/// Nominal survival time at zero field fit, excluding the release tail.
+fn endurance(arg0: Participant, arg1: f64) -> Participant;
+/// Nominal survival time at zero field fit, excluding the release tail.
+fn endurance(arg0: Participant, arg1: i64) -> Participant;
 
 /// Medium coupling: synchronization emerges over time, still drifts.
 fn entrained(arg0: Material) -> Material;
@@ -279,15 +288,6 @@ fn harmonic() -> Material;
 /// Harmonic series: f, 2f, 3f, ...
 fn harmonic_modes() -> ModePattern;
 
-/// Starting energy.
-fn initial_energy(arg0: Material, arg1: f64) -> Material;
-/// Starting energy.
-fn initial_energy(arg0: Material, arg1: i64) -> Material;
-/// Starting energy.
-fn initial_energy(arg0: Participant, arg1: f64) -> Participant;
-/// Starting energy.
-fn initial_energy(arg0: Participant, arg1: i64) -> Participant;
-
 /// Randomize mode frequencies by up to the given cents.
 fn jitter(arg0: ModePattern, arg1: f64) -> ModePattern;
 
@@ -329,15 +329,6 @@ fn line(arg0: f64, arg1: i64) -> Placement;
 fn line(arg0: i64, arg1: f64) -> Placement;
 /// Linear interpolation of positions between two frequencies.
 fn line(arg0: i64, arg1: i64) -> Placement;
-
-/// Energy consumption rate.
-fn metabolism(arg0: Material, arg1: f64) -> Material;
-/// Energy consumption rate.
-fn metabolism(arg0: Material, arg1: i64) -> Material;
-/// Energy consumption rate.
-fn metabolism(arg0: Participant, arg1: f64) -> Participant;
-/// Energy consumption rate.
-fn metabolism(arg0: Participant, arg1: i64) -> Participant;
 
 /// Attractor depth in 0-1: how readily a pulse forms.
 fn meter_stability(arg0: f64);
@@ -523,14 +514,14 @@ fn ratio_candidates(arg0: Material, arg1: i64) -> Material;
 /// [tuning] Ratio-based movement candidates; 0 disables.
 fn ratio_candidates(arg0: Participant, arg1: i64) -> Participant;
 
-/// Energy gained per attack.
-fn recharge_rate(arg0: Material, arg1: f64) -> Material;
-/// Energy gained per attack.
-fn recharge_rate(arg0: Material, arg1: i64) -> Material;
-/// Energy gained per attack.
-fn recharge_rate(arg0: Participant, arg1: f64) -> Participant;
-/// Energy gained per attack.
-fn recharge_rate(arg0: Participant, arg1: i64) -> Participant;
+/// Time to refill normalized energy from empty at full viability.
+fn recovery(arg0: Material, arg1: f64) -> Material;
+/// Time to refill normalized energy from empty at full viability.
+fn recovery(arg0: Material, arg1: i64) -> Material;
+/// Time to refill normalized energy from empty at full viability.
+fn recovery(arg0: Participant, arg1: f64) -> Participant;
+/// Time to refill normalized energy from empty at full viability.
+fn recovery(arg0: Participant, arg1: i64) -> Participant;
 
 /// Release a live group; its voices enter their release phase and fade out.
 fn release(arg0: Participant);
@@ -784,15 +775,6 @@ fn unison(arg0: Participant, arg1: i64) -> Participant;
 
 /// Clone a material so the copy can be modified independently.
 fn variant(arg0: Material) -> Material;
-
-/// Continuous consonance-driven energy recharge rate.
-fn viability_rate(arg0: Material, arg1: f64) -> Material;
-/// Continuous consonance-driven energy recharge rate.
-fn viability_rate(arg0: Material, arg1: i64) -> Material;
-/// Continuous consonance-driven energy recharge rate.
-fn viability_rate(arg0: Participant, arg1: f64) -> Participant;
-/// Continuous consonance-driven energy recharge rate.
-fn viability_rate(arg0: Participant, arg1: i64) -> Participant;
 
 /// [tuning] `"environment"` (default) or `"total"` viability scoring scope.
 fn viability_scope(arg0: Material, arg1: String) -> Material;

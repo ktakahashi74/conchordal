@@ -9,7 +9,7 @@
 | 軸 | 実装上の切替 |
 | --- | --- |
 | **Respawn 起源** | `respawn_consonance()` (heredity) / `respawn_random()` (random) |
-| **選択圧** | `viability_rate(0.10)` + `consonance_viability(0.30, 0.80)` を入れる (selection) / 0.0 + 未指定 (only) |
+| **選択圧** | `recovery(…)` + `consonance_viability(0.30, 0.80)` を入れる (selection) / recoveryなし (only) |
 | **選択の正確さ** | `selection_approx_loo(true)` (approx_loo) / `selection_approx_loo(false)` (baseline) |
 
 `consonance_viability()` は v0.4.0 API では環境相対をデフォルトにする。ここでは論文 E6 の比較軸を保つため、baseline 側だけ明示的に `selection_approx_loo(false)` で旧対照条件へ戻している。
@@ -37,7 +37,7 @@
 
 - `seed(20260330)`、初期個体数 16、`respawn_capacity(16)`、`random_log(55.0, 880.0)` に配置
 - `anchor` は 220 Hz の harmonic drone で **`.send(habitat_bus)`** — presentation bus には出さず、habitat bus (他 voice が反応する harmonicity 場) にのみ貢献する参照音源
-- `assay_voice` は metabolism=0.12、action/recharge/dissonance_cost=0
+- `assay_voice` は時間領域のenduranceを使い、attack cost/rechargeとdissonance penaltyは0
 - 時間スケールは E6b の step 比率 (`512/48000` s × 12000 ステップ) を live 倍速 1.0 で再生
 - intro / outro 各 0.5 s
 

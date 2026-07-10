@@ -10,6 +10,8 @@ pub struct LifeRecord {
     pub birth_frame: u64,
     pub death_frame: u64,
     pub lifetime_ticks: u32,
+    pub configured_endurance_sec: Option<f32>,
+    pub energy_depletion_sec: Option<f32>,
     pub c_level_firstk_mean: f32,
     pub plv_at_death: Option<f32>,
     pub generation: u32,
@@ -23,21 +25,31 @@ pub struct LifeAccumulator {
     firstk_sum: f32,
     firstk_count: u32,
     lifetime_count: u32,
+    elapsed_sec: f32,
+    configured_endurance_sec: Option<f32>,
+    energy_depletion_sec: Option<f32>,
 }
 
 impl LifeAccumulator {
-    pub fn new(birth_frame: u64, first_k: u32) -> Self {
+    pub fn new(birth_frame: u64, first_k: u32, configured_endurance_sec: Option<f32>) -> Self {
         Self {
             first_k,
             birth_frame,
             firstk_sum: 0.0,
             firstk_count: 0,
             lifetime_count: 0,
+            elapsed_sec: 0.0,
+            configured_endurance_sec,
+            energy_depletion_sec: None,
         }
     }
 
-    pub fn accumulate_tick(&mut self, c_level: f32) {
+    pub fn accumulate_tick(&mut self, c_level: f32, energy_depleted: bool, dt_sec: f32) {
         self.lifetime_count += 1;
+        self.elapsed_sec += dt_sec.max(0.0);
+        if energy_depleted && self.energy_depletion_sec.is_none() {
+            self.energy_depletion_sec = Some(self.elapsed_sec);
+        }
         if self.firstk_count < self.first_k {
             self.firstk_sum += c_level;
             self.firstk_count += 1;
@@ -63,6 +75,8 @@ impl LifeAccumulator {
             birth_frame: self.birth_frame,
             death_frame,
             lifetime_ticks: self.lifetime_count,
+            configured_endurance_sec: self.configured_endurance_sec,
+            energy_depletion_sec: self.energy_depletion_sec,
             c_level_firstk_mean: firstk_mean,
             plv_at_death: plv,
             generation,
@@ -76,9 +90,9 @@ mod tests {
 
     #[test]
     fn finalize_computes_firstk_mean() {
-        let mut acc = LifeAccumulator::new(100, 3);
+        let mut acc = LifeAccumulator::new(100, 3, Some(8.0));
         for v in [1.0, 2.0, 3.0, 4.0, 5.0] {
-            acc.accumulate_tick(v);
+            acc.accumulate_tick(v, v >= 4.0, 0.25);
         }
 
         let rec = acc.finalize(42, 7, 200, Some(0.9), 0);
@@ -87,6 +101,8 @@ mod tests {
         assert_eq!(rec.birth_frame, 100);
         assert_eq!(rec.death_frame, 200);
         assert_eq!(rec.lifetime_ticks, 5);
+        assert_eq!(rec.configured_endurance_sec, Some(8.0));
+        assert_eq!(rec.energy_depletion_sec, Some(1.0));
         // first-k mean: (1+2+3)/3 = 2.0
         assert!((rec.c_level_firstk_mean - 2.0).abs() < 1e-6);
         assert_eq!(rec.plv_at_death, Some(0.9));
@@ -94,9 +110,11 @@ mod tests {
 
     #[test]
     fn finalize_empty() {
-        let acc = LifeAccumulator::new(0, 5);
+        let acc = LifeAccumulator::new(0, 5, None);
         let rec = acc.finalize(1, 1, 0, None, 0);
         assert_eq!(rec.lifetime_ticks, 0);
+        assert_eq!(rec.configured_endurance_sec, None);
+        assert_eq!(rec.energy_depletion_sec, None);
         assert_eq!(rec.c_level_firstk_mean, 0.0);
         assert_eq!(rec.plv_at_death, None);
     }

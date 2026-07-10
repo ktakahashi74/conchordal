@@ -2,8 +2,8 @@ use crate::core::float::clamp01_finite;
 use crate::life::constants::MAX_RECHARGE_MULT;
 use crate::life::lifecycle::LifecycleConfig;
 
-pub const DEFAULT_ACTION_COST_PER_ATTACK: f32 = 0.02;
-pub const DEFAULT_RECHARGE_PER_ATTACK: f32 = 0.5;
+pub const DEFAULT_ATTACK_COST_FRACTION: f32 = 0.02;
+pub const DEFAULT_ATTACK_RECHARGE_FRACTION: f32 = 0.5;
 
 #[derive(Clone, Copy, Debug)]
 pub struct MetabolismPolicy {
@@ -13,7 +13,7 @@ pub struct MetabolismPolicy {
     pub continuous_recharge_per_sec: f32,
     pub continuous_recharge_score_low: Option<f32>,
     pub continuous_recharge_score_high: Option<f32>,
-    pub dissonance_cost: f32,
+    pub dissonance_penalty: f32,
 }
 
 impl MetabolismPolicy {
@@ -21,37 +21,54 @@ impl MetabolismPolicy {
         match lifecycle {
             LifecycleConfig::Decay { .. } => MetabolismPolicy {
                 basal_cost_per_sec: 0.0,
-                action_cost_per_attack: DEFAULT_ACTION_COST_PER_ATTACK,
+                action_cost_per_attack: DEFAULT_ATTACK_COST_FRACTION,
                 recharge_per_attack: 0.0,
                 continuous_recharge_per_sec: 0.0,
                 continuous_recharge_score_low: None,
                 continuous_recharge_score_high: None,
-                dissonance_cost: 0.0,
+                dissonance_penalty: 0.0,
             },
             LifecycleConfig::Sustain {
-                metabolism_rate,
-                recharge_rate,
-                action_cost,
-                continuous_recharge_rate,
+                endurance_sec,
+                recovery_sec,
+                attack_cost_fraction,
+                attack_recharge_fraction,
                 continuous_recharge_score_low,
                 continuous_recharge_score_high,
-                dissonance_cost,
+                dissonance_penalty,
                 ..
-            } => MetabolismPolicy {
-                basal_cost_per_sec: *metabolism_rate,
-                action_cost_per_attack: action_cost.unwrap_or(DEFAULT_ACTION_COST_PER_ATTACK),
-                recharge_per_attack: recharge_rate.unwrap_or(DEFAULT_RECHARGE_PER_ATTACK),
-                continuous_recharge_per_sec: continuous_recharge_rate.unwrap_or(0.0),
-                continuous_recharge_score_low: *continuous_recharge_score_low,
-                continuous_recharge_score_high: *continuous_recharge_score_high,
-                dissonance_cost: dissonance_cost.unwrap_or(0.0),
-            },
+            } => {
+                let penalty = if dissonance_penalty.is_finite() {
+                    dissonance_penalty.max(0.0)
+                } else {
+                    0.0
+                };
+                let basal_cost_per_sec = endurance_sec
+                    .filter(|sec| sec.is_finite() && *sec > 0.0)
+                    .map_or(0.0, |sec| 1.0 / (sec * (1.0 + penalty)));
+                let continuous_recharge_per_sec = recovery_sec
+                    .filter(|sec| sec.is_finite() && *sec > 0.0)
+                    .map_or(0.0, |sec| 1.0 / sec);
+                MetabolismPolicy {
+                    basal_cost_per_sec,
+                    action_cost_per_attack: attack_cost_fraction
+                        .unwrap_or(DEFAULT_ATTACK_COST_FRACTION)
+                        .max(0.0),
+                    recharge_per_attack: attack_recharge_fraction
+                        .unwrap_or(DEFAULT_ATTACK_RECHARGE_FRACTION)
+                        .max(0.0),
+                    continuous_recharge_per_sec,
+                    continuous_recharge_score_low: *continuous_recharge_score_low,
+                    continuous_recharge_score_high: *continuous_recharge_score_high,
+                    dissonance_penalty: penalty,
+                }
+            }
         }
     }
 
     pub fn basal_delta(&self, dt: f32, consonance: f32) -> f32 {
         let c = clamp01_finite(consonance);
-        let factor = 1.0 + self.dissonance_cost * (1.0 - c);
+        let factor = 1.0 + self.dissonance_penalty * (1.0 - c);
         -self.basal_cost_per_sec * factor * dt.max(0.0)
     }
 
@@ -117,7 +134,7 @@ mod tests {
             continuous_recharge_per_sec: 0.0,
             continuous_recharge_score_low: None,
             continuous_recharge_score_high: None,
-            dissonance_cost: 0.0,
+            dissonance_penalty: 0.0,
         };
         let c = 0.6;
         let base = policy.attack_delta_with_recharge_multiplier(c, 1.0);
@@ -136,7 +153,7 @@ mod tests {
             continuous_recharge_per_sec: 0.0,
             continuous_recharge_score_low: None,
             continuous_recharge_score_high: None,
-            dissonance_cost: 0.0,
+            dissonance_penalty: 0.0,
         };
         let low = policy.attack_delta_with_recharge_multiplier(0.8, -10.0);
         let high = policy.attack_delta_with_recharge_multiplier(0.8, 10.0);
@@ -152,35 +169,33 @@ mod tests {
     }
 
     #[test]
-    fn from_lifecycle_sustain_defaults_recharge_rate() {
+    fn from_lifecycle_sustain_defaults_attack_recharge_fraction() {
         let lifecycle = LifecycleConfig::Sustain {
-            initial_energy: 1.0,
-            metabolism_rate: 0.1,
-            recharge_rate: None,
-            action_cost: None,
-            continuous_recharge_rate: None,
+            endurance_sec: Some(10.0),
+            recovery_sec: None,
+            attack_cost_fraction: None,
+            attack_recharge_fraction: None,
             continuous_recharge_score_low: None,
             continuous_recharge_score_high: None,
             selection_approx_loo: false,
-            dissonance_cost: None,
+            dissonance_penalty: 0.0,
             envelope: EnvelopeConfig::default(),
         };
         let policy = MetabolismPolicy::from_lifecycle(&lifecycle);
-        approx_eq(policy.recharge_per_attack, DEFAULT_RECHARGE_PER_ATTACK);
+        approx_eq(policy.recharge_per_attack, DEFAULT_ATTACK_RECHARGE_FRACTION);
     }
 
     #[test]
-    fn from_lifecycle_sustain_zero_recharge_rate() {
+    fn from_lifecycle_sustain_zero_attack_recharge_fraction() {
         let lifecycle = LifecycleConfig::Sustain {
-            initial_energy: 1.0,
-            metabolism_rate: 0.1,
-            recharge_rate: Some(0.0),
-            action_cost: None,
-            continuous_recharge_rate: None,
+            endurance_sec: Some(10.0),
+            recovery_sec: None,
+            attack_cost_fraction: None,
+            attack_recharge_fraction: Some(0.0),
             continuous_recharge_score_low: None,
             continuous_recharge_score_high: None,
             selection_approx_loo: false,
-            dissonance_cost: None,
+            dissonance_penalty: 0.0,
             envelope: EnvelopeConfig::default(),
         };
         let policy = MetabolismPolicy::from_lifecycle(&lifecycle);
@@ -196,7 +211,7 @@ mod tests {
             continuous_recharge_per_sec: 0.5,
             continuous_recharge_score_low: None,
             continuous_recharge_score_high: None,
-            dissonance_cost: 0.0,
+            dissonance_penalty: 0.0,
         };
         approx_eq(policy.continuous_recharge_delta(1.0, 1.0, 0.0), 0.5);
         approx_eq(policy.continuous_recharge_delta(0.5, 1.0, 0.0), 0.25);
@@ -215,7 +230,7 @@ mod tests {
             continuous_recharge_per_sec: 0.0,
             continuous_recharge_score_low: None,
             continuous_recharge_score_high: None,
-            dissonance_cost: 0.0,
+            dissonance_penalty: 0.0,
         };
         approx_eq(policy.continuous_recharge_delta(1.0, 1.0, 0.0), 0.0);
         approx_eq(policy.continuous_recharge_delta(1.0, 0.5, 0.0), 0.0);
@@ -230,7 +245,7 @@ mod tests {
             continuous_recharge_per_sec: 0.5,
             continuous_recharge_score_low: Some(0.3),
             continuous_recharge_score_high: Some(0.8),
-            dissonance_cost: 0.0,
+            dissonance_penalty: 0.0,
         };
         approx_eq(policy.continuous_recharge_delta(1.0, 0.9, 0.2), 0.0);
         approx_eq(policy.continuous_recharge_delta(1.0, 0.1, 0.55), 0.25);
@@ -238,34 +253,32 @@ mod tests {
     }
 
     #[test]
-    fn from_lifecycle_sustain_viability_rate() {
+    fn from_lifecycle_derives_recovery_rate() {
         let lifecycle = LifecycleConfig::Sustain {
-            initial_energy: 1.0,
-            metabolism_rate: 0.1,
-            recharge_rate: None,
-            action_cost: None,
-            continuous_recharge_rate: Some(0.3),
+            endurance_sec: Some(10.0),
+            recovery_sec: Some(4.0),
+            attack_cost_fraction: None,
+            attack_recharge_fraction: None,
             continuous_recharge_score_low: Some(0.3),
             continuous_recharge_score_high: Some(0.8),
             selection_approx_loo: false,
-            dissonance_cost: None,
+            dissonance_penalty: 0.0,
             envelope: EnvelopeConfig::default(),
         };
         let policy = MetabolismPolicy::from_lifecycle(&lifecycle);
-        approx_eq(policy.continuous_recharge_per_sec, 0.3);
+        approx_eq(policy.continuous_recharge_per_sec, 0.25);
         assert_eq!(policy.continuous_recharge_score_low, Some(0.3));
         assert_eq!(policy.continuous_recharge_score_high, Some(0.8));
 
         let lifecycle_none = LifecycleConfig::Sustain {
-            initial_energy: 1.0,
-            metabolism_rate: 0.1,
-            recharge_rate: None,
-            action_cost: None,
-            continuous_recharge_rate: None,
+            endurance_sec: Some(10.0),
+            recovery_sec: None,
+            attack_cost_fraction: None,
+            attack_recharge_fraction: None,
             continuous_recharge_score_low: None,
             continuous_recharge_score_high: None,
             selection_approx_loo: false,
-            dissonance_cost: None,
+            dissonance_penalty: 0.0,
             envelope: EnvelopeConfig::default(),
         };
         let policy_none = MetabolismPolicy::from_lifecycle(&lifecycle_none);
@@ -273,7 +286,43 @@ mod tests {
     }
 
     #[test]
-    fn dissonance_cost_zero_backward_compatible() {
+    fn endurance_contract_is_exact_at_zero_fit() {
+        let lifecycle = LifecycleConfig::Sustain {
+            endurance_sec: Some(8.0),
+            recovery_sec: None,
+            attack_cost_fraction: Some(0.0),
+            attack_recharge_fraction: Some(0.0),
+            continuous_recharge_score_low: None,
+            continuous_recharge_score_high: None,
+            selection_approx_loo: false,
+            dissonance_penalty: 3.0,
+            envelope: EnvelopeConfig::default(),
+        };
+        let policy = MetabolismPolicy::from_lifecycle(&lifecycle);
+        approx_eq(policy.basal_cost_per_sec, 1.0 / 32.0);
+        approx_eq(policy.basal_delta(8.0, 0.0), -1.0);
+    }
+
+    #[test]
+    fn endurance_penalty_only_shapes_the_fit_response() {
+        let lifecycle = LifecycleConfig::Sustain {
+            endurance_sec: Some(8.0),
+            recovery_sec: None,
+            attack_cost_fraction: Some(0.0),
+            attack_recharge_fraction: Some(0.0),
+            continuous_recharge_score_low: None,
+            continuous_recharge_score_high: None,
+            selection_approx_loo: false,
+            dissonance_penalty: 3.0,
+            envelope: EnvelopeConfig::default(),
+        };
+        let policy = MetabolismPolicy::from_lifecycle(&lifecycle);
+        approx_eq(policy.basal_delta(8.0, 0.0), -1.0);
+        approx_eq(policy.basal_delta(8.0, 1.0), -0.25);
+    }
+
+    #[test]
+    fn zero_dissonance_penalty_is_fit_independent() {
         let policy = MetabolismPolicy {
             basal_cost_per_sec: 1.0,
             action_cost_per_attack: 0.0,
@@ -281,7 +330,7 @@ mod tests {
             continuous_recharge_per_sec: 0.0,
             continuous_recharge_score_low: None,
             continuous_recharge_score_high: None,
-            dissonance_cost: 0.0,
+            dissonance_penalty: 0.0,
         };
         let d1 = policy.basal_delta(1.0, 0.0);
         let d2 = policy.basal_delta(1.0, 1.0);
@@ -289,7 +338,7 @@ mod tests {
     }
 
     #[test]
-    fn dissonance_cost_amplifies_at_low_consonance() {
+    fn dissonance_penalty_amplifies_drain_at_low_consonance() {
         let policy = MetabolismPolicy {
             basal_cost_per_sec: 1.0,
             action_cost_per_attack: 0.0,
@@ -297,7 +346,7 @@ mod tests {
             continuous_recharge_per_sec: 0.0,
             continuous_recharge_score_low: None,
             continuous_recharge_score_high: None,
-            dissonance_cost: 2.0,
+            dissonance_penalty: 2.0,
         };
         let at_zero = policy.basal_delta(1.0, 0.0);
         let at_half = policy.basal_delta(1.0, 0.5);

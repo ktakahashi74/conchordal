@@ -6,14 +6,14 @@ seed(20260402);
 let bed = sine()
     .amp(0.05)
     .sustain()
-    .metabolism(0.0)
+    .endurance(3600.0)
     .sustain_drive(0.01)
     .anchor();
 
 let mover = sine()
     .amp(0.05)
     .sustain()
-    .metabolism(0.0)
+    .endurance(3600.0)
     .sustain_drive(0.012)
     .seek_consonance()
     .proposal_interval(0.60)

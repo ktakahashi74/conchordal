@@ -109,6 +109,8 @@ enum ReportRecord<'a> {
         voice_id: u64,
         generation: u32,
         lifetime_sec: f32,
+        configured_endurance_sec: Option<f32>,
+        energy_depletion_sec: Option<f32>,
         first_k_mean: f32,
         plv_at_death: Option<f32>,
     },
@@ -253,7 +255,10 @@ impl JsonlReporter {
                 group_id: record.group_id,
                 voice_id: record.voice_id,
                 generation: record.generation,
-                lifetime_sec: record.lifetime_ticks as f32 * frame_sec,
+                lifetime_sec: record.death_frame.saturating_sub(record.birth_frame) as f32
+                    * frame_sec,
+                configured_endurance_sec: record.configured_endurance_sec,
+                energy_depletion_sec: record.energy_depletion_sec,
                 first_k_mean: record.c_level_firstk_mean,
                 plv_at_death: record.plv_at_death,
             })?;

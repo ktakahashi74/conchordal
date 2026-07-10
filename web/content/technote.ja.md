@@ -334,7 +334,7 @@ $$ \dot{\omega} = -\eta\, s(t) \sin\varphi $$
 
 **ArticulationCore（いつ/ゲート）** — `life/articulation_core.rs`: リズム、ゲーティング、エンベロープダイナミクスを管理する。3つのバリアントが存在する。
 
-*   `KuramotoCore`: メーター由来のリズム帯域（4.3節）に同期する「呼吸」振動子。エネルギー/活力モデルを内蔵し、`rhythm_coupling`（`TemporalOnly` / `TemporalTimesVitality`）、`rhythm_reward`（リズム同期による代謝報酬）、`autonomous_attack`（自律的アタックトリガ）を備える。実効結合強度 $k_{eff}$ は活力と結合モードから計算される。
+*   `KuramotoCore`: メーター由来のリズム帯域（4.3節）に同期する「呼吸」振動子。0–1に正規化されたエネルギー/活力モデルを内蔵し、`rhythm_coupling`（`TemporalOnly` / `TemporalTimesVitality`）、`rhythm_reward`（リズム同期による代謝報酬）、`autonomous_attack`（自律的アタックトリガ）を備える。作曲側の値として `endurance_sec` と任意の `recovery_sec` を保持し、実行時rateはVoice生成時に一度だけ導出される。
 *   `SequencedCore`: 固定長エンベロープのシーケンス駆動。
 *   `DroneCore`: 緩やかな揺らぎの持続音。
 
@@ -364,12 +364,14 @@ Voice は直接結合ではなく2つの直交する信号を通じてコアを�
 
 エージェントは生物学的代謝をモデル化したエネルギーダイナミクスによって統治される。`LifecycleConfig` は2つの存在モードを定義する。
 
-*   **Decay**: エージェントは固定の `initial_energy` プールを持って生まれる。時間経過（半減期）とともにこのエネルギーを消費し、ゼロに達すると死亡する。これはプラックやパーカッションのような一過性の音をモデル化する。
-*   **Sustain**: エージェントは `metabolism_rate`（1秒あたりのエネルギー損失）を持ち、協和性依存のリチャージによってエネルギーを獲得できる。
-    *   **リチャージ**: フォネーションアタックごとに獲得されるエネルギーは、`MetabolismPolicy` を通じてエージェントの $C_{level01}$（シグモイドマッピングされた協和性）によってスケーリングされる。
-    *   **rhythm_reward**: リズム同期の精度に基づく追加の代謝報酬。`RhythmRewardMetric` で報酬の計算方法を選択する。
-    *   **action_cost**: アタックごとに消費されるエネルギーコスト。
-    *   **生存**: 不協和な領域のエージェントは「飢餓」状態になり、協和的な領域のエージェントは「栄養」を得る。
+*   **Decay**: 設定された半減期でエンベロープが減衰する一過性のアーティキュレーション。冗長なエネルギースケールを公開せず、プラックやパーカッションをモデル化する。
+*   **Sustain**: エネルギーを $[0,1]$ に正規化した生きたアーティキュレーション。
+    *   **endurance**: `endurance_sec` は、場への適合が0、アタックと回復がない条件での公称エネルギー枯渇時間である。基礎消費rateは $1/(T_e(1+p_d))$ として導出され、`dissonance_penalty` を変えてもゼロ適合時のenduranceは変わらず、良好な適合だけが寿命を延ばす。
+    *   **連続回復**: 任意の `recovery_sec` は、生存可能性信号が1、消費とアタックがない条件でエネルギーを0から1へ戻す時間であり、rateは $1/T_r$ である。
+    *   **アタック経済**: `attack_cost_fraction` と `attack_recharge_fraction` は、最大強度のアタック1回に適用する正規化容量の割合であり、回復項は協和性でスケールされる。
+    *   **rhythm_reward**: 位相の合ったアタックに対し、`MetabolismRhythmReward` が回復項だけを増幅する。
+
+エネルギー枯渇は再トリガを止め、エンベロープの余韻を開始する。このためレポートは設定endurance、エネルギー枯渇時刻、可聴上の寿命を分けて記録する。
 
 このメカニクスはダーウィン的圧力を生み出す：**協和なるものの生存（Survival of the Consonant）**。
 
@@ -474,7 +476,7 @@ Conductor モジュールは人間のアーティストとエコシステムの�
 *   クラウディング: `avoid_neighbors(strength)`（デフォルトのシグマ）／ `avoid_neighbors(strength, sigma_cents)`, `crowding_target(same, other)`, `leave_self_out(bool)`, `leave_self_out_mode("approx"|"exact")`。
 *   発声: `brain("entrain"|"seq"|"drone")`, `sustain()`, `repeat()`, `once()`, `pulse(rate)`, `pulse_lock(depth)`, `social(v)`；持続は `while_alive()`, `cycles(n)`, `adaptive_duration()`, `duration_range(min,max)`, `duration_curve(k,x0)`, `shorten_on_drop(gain)`。
 *   **リズム（カップリング連続体、5.4節）**: プリセット `metric()`, `entrained()`, `flow()` が連続体上の領域を選択する——Hz 引数はない。テンポはディレクターの `temporal_basin` の管轄である。微調整は `entrainment(v)`（ロック強度 0–1）, `rhythm_role("beat"|"subdivision"|"accent"|"texture")`, `microtiming(v)`。呼吸レベルの結合は `rhythm_freq(v)`, `rhythm_coupling_vitality(lambda_v, v_floor)`, `rhythm_reward(rho_t, "attack_phase_match")`。
-*   ライフサイクル/生存可能性: `metabolism(rate)`, `initial_energy(v)`, `energy_cap(v)`, `recharge_rate(v)`, `action_cost(v)`, `viability_rate(v)`, `consonance_viability(low, high)`, `dissonance_cost(v)`。
+*   ライフサイクル/生存可能性: `endurance(sec)`, 任意の `recovery(sec)`, `attack_cost_fraction(v)`, `attack_recharge_fraction(v)`, `consonance_viability(low, high)`, `dissonance_penalty(v)`。
 *   リスポーン: `respawn_random()`, `respawn_hereditary(sigma_oct)`, `respawn_consonance()`, `respawn_capacity(n)`, `respawn_settle(placement)`, `respawn_min_c_level(v)`, `respawn_background_death_rate(v)`。
 
 **モードパターン**: モーダル合成のためのモード比率生成関数。
@@ -554,7 +556,7 @@ Manifesto は公約を宣言する。本章はその公約を監査する。台�
 | 時間軸の地形（神経振動） | 創発メーター：強制リミットサイクル、ヘッブ的テンポ学習、PLV 確信度 | §4 | 実装済み。機構スケッチは改訂（9.3）。小節レベルのアクセント*生成*は未解決 |
 | 地形の可変性（文化・個人・未知の原理） | `roughness_k`、協和性カーネル係数 | §3.4, §6.3.6 | 部分——文化的音律体系は未取込 |
 | 順応と期待 | ボイスごとの `PerceptualContext` のみ | — | **未解決——最大のギャップ（9.2）** |
-| 音響生命：知覚・代謝・自律 | Voice：コア群、エネルギー、生存可能性 | §5 | 実装済み |
+| 音響生命：知覚・代謝・自律 | Voice：異なるアーティキュレーション生命コア、正規化エネルギー、時間領域のendurance/recovery、生存可能性 | §5 | 実装済み |
 | 集団：ニッチ・共生・地形変形 | クラウディング、リスポーン、閉ループ | §5 | 実装済み |
 | 中央指揮者の不在 | ローカルな知覚のみ。メーターは集団自身のオンセットから創発する | §4–5 | 実装済み（temporal scaffolding は明示的な実験として残存） |
 | シナリオ=マクロの演出 | ディレクターの地形操作 | §6.3.6 | 実装済み。シーン窓（9.2）が基礎づける |
@@ -571,10 +573,11 @@ Manifesto は公約を宣言する。本章はその公約を監査する。台�
 
 ## 9.3 上流への改訂
 
-実装の結果は、Manifesto の原理を裏づけながら、その機構レベルのスケッチをこれまでに二度書き換えた。
+実装の結果は、Manifesto の原理を裏づけながら、その機構レベルのスケッチをこれまでに三度書き換えた。
 
 *   **固定4帯域のテーブルから、創発するメトリカル階層へ。** Manifesto は delta/theta/alpha/beta の固定帯域に音楽的役割を割り当てるスケッチを描いていた。実際に作ってみて分かったのは逆で、固定フィルタバンクは姿を変えた「課されたグリッド」だった。知覚研究に照らして生き残るのは原理の方——神経振動が音楽的時間を構造化する——であり、それは確信度を備え自己組織化する、拍・サブディビジョン・小節の階層として実現された（第4章）。
 *   **鏡像双対性から、生成ループの不動点要件へ。** 下倍音地形は計算できるのに、短調の調性は創発しなかった。この分析は一般化できる。知覚的な対称性が音楽として実在するのは、それに引き寄せられたエージェントの放射スペクトルが、その対称性を強め返す場合に限られる。知覚は鏡像化できても、生成はできない。あらゆる身体は倍音を放射するからである（3.3.3節）。したがって今後のあらゆる地形操作は、二つの試験に合格しなければならない——知覚機構が実在すること、そして生成側でループが閉じること。緊張ノブとして一時的に生き残った `harmonic_tension` ダイアルも撤去された（v0.4）。二試験のいずれも満たさず、エコシステムが読む協和ピークを動かさないことが確認され、そもそも数学的に冗長だったからである——二つの投影パスは、減衰指数が二つある単一の偶畳み込みカーネルにすぎない（3.3.3節）。両試験を満たす緊張軸は、その後構築された（v0.5）——運動の緊張はピッチ探索の*温度*（実ポテンシャル上の Boltzmann 探索。熱い探索は協和から外れ、冷たい探索は落ち着く）であり、配置の緊張は*相対的な協和レベル*（最強ピークより一段下の準安定点へ配置する）である。いずれもエコシステムが築いた実地形を歪めずに読むため、両試験を満たす。`docs/design-notes/tension.md` を参照。
+*   **rateの考古学から、観測可能な時間契約へ。** 生のエネルギープールと毎秒rateを公開すると、エコロジーが導出できる次元まで作曲家に手計算させることになる。実装アッセイにより、独立した契約は `initial_energy` や `energy_cap` ではなく公称enduranceだと分かった。エネルギーは $[0,1]$ に正規化でき、ゼロ適合時の消費rateはenduranceと不協和形状から導出できる。一方、毎秒の連続回復とアタックごとの回復は次元が異なるため、回復時間と離散割合として分離した。同じアッセイは `Entrain`・`Seq`・`Drone` の統合も退けた。オンセット時のリセット、死亡規則、telemetry、render modulatorが観測可能に異なり、単一コア化はenumをフラグの背後へ隠すだけだからである。
 
 # 付録A：主要システムパラメータ
 
@@ -599,6 +602,11 @@ Manifesto は公約を宣言する。本章はその公約を監査する。台�
 | `crowding_strength` | `PitchHillClimbPitchCore` | Float | クラウディングペナルティの強度（デフォルト 0.0）。 |
 | `crowding_sigma_cents` | `PitchHillClimbPitchCore` | Cents | クラウディングの空間幅（デフォルト 60.0）。 |
 | `leave_self_out` | `PitchHillClimbPitchCore` | Bool | 自己排除モードの有効/無効。 |
+| `endurance_sec` | `LifecycleConfig::Sustain` | 秒 | アタックと回復がないゼロ適合時の公称エネルギー枯渇時間。 |
+| `recovery_sec` | `LifecycleConfig::Sustain` | 任意の秒 | 生存可能性信号1で正規化エネルギーを0から1へ戻す時間。 |
+| `attack_cost_fraction` | `LifecycleConfig::Sustain` | 正規化エネルギー / attack | 最大強度アタックが消費する容量。 |
+| `attack_recharge_fraction` | `LifecycleConfig::Sustain` | 正規化エネルギー / attack | 完全に協和したアタックが回復する最大容量。 |
+| `dissonance_penalty` | `LifecycleConfig::Sustain` | Float ≥ 0 | ゼロ適合enduranceを保ったまま、良好な適合による寿命延長を形づくる。 |
 | `attack_step` | `KuramotoCore` | Float | アタックエンベロープのステップサイズ。 |
 | `decay_rate` | `KuramotoCore` | Float | ディケイエンベロープのレート。 |
 
@@ -627,6 +635,16 @@ x \cdot \frac{1}{1+k} & \text{if } 0 < x < 1 \\
 $$
 
 ここで $k$ は `roughness_k`（デフォルト $\approx 0.4286$）。関数は $x=1$ で連続であり、$x \to \infty$ で1に飽和する。
+
+**時間領域ライフサイクル**（正規化エネルギー $E\in[0,1]$）：
+
+$$ b = \frac{1}{T_e(1+p_d)}, \qquad
+\Delta E_{basal} = -b\,[1+p_d(1-C_{level01})]\,\Delta t $$
+
+$$ \Delta E_{recovery} = \frac{V(C)}{T_r}\,\Delta t, \qquad
+\Delta E_{attack} = -f_c + f_r C_{level01}m_r $$
+
+$T_e$ はendurance、$T_r$ はrecovery、$p_d$ は不協和penalty、$V(C)$ は生存可能性window信号、$f_c/f_r$ はアタックcost/recharge割合、$m_r$ は上限つきリズム報酬乗数である。
 
 **調波性投影（シブリングアルゴリズム）：**
 $$ H[i] = (1-\alpha)\sum_m \left( \sum_k A[i+\log_2(k)] \right)[i-\log_2(m)] + \alpha \sum_m \left( \sum_k A[i-\log_2(k)] \right)[i+\log_2(m)] $$

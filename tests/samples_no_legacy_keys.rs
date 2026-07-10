@@ -94,6 +94,13 @@ fn samples_have_no_legacy_keys() {
         "entrained_beat(".to_string(),
         "flow_timing(".to_string(),
         "beat_strength(".to_string(),
+        ".metabolism(".to_string(),
+        ".initial_energy(".to_string(),
+        ".energy_cap(".to_string(),
+        ".recharge_rate(".to_string(),
+        ".action_cost(".to_string(),
+        ".viability_rate(".to_string(),
+        ".dissonance_cost(".to_string(),
     ];
     let phonation_key = ["pho", "nation"].concat();
     let banned_identifiers = ["field_bus", "generator_field_bus"];

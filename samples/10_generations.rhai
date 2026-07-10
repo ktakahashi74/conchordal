@@ -27,13 +27,12 @@ let colony_body = harmonic()
     .avoid_neighbors(0.70);
 
 let colony_life = variant(colony_body)
-    .metabolism(0.15)
-    .initial_energy(0.48)
-    .energy_cap(0.85)
-    .action_cost(0.020)
-    .viability_rate(0.34)
+    .endurance(1.7778)
+    .recovery(1.4118)
+    .attack_cost_fraction(0.0417)
+    .attack_recharge_fraction(1.0417)
     .consonance_viability(0.34, 0.84)
-    .dissonance_cost(0.80);
+    .dissonance_penalty(0.80);
 
 // The colony regenerates itself: starved voices respawn onto consonant peaks.
 let colony_voice = variant(colony_life)

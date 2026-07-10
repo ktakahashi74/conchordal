@@ -62,15 +62,14 @@ fn spawn_voice(freq: f32, assigned_id: u64) -> Voice {
 fn sustain_entrain_articulation() -> ArticulationCoreConfig {
     ArticulationCoreConfig::Entrain {
         lifecycle: LifecycleConfig::Sustain {
-            initial_energy: 0.2,
-            metabolism_rate: 0.0,
-            recharge_rate: Some(0.5),
-            action_cost: Some(0.1),
-            continuous_recharge_rate: None,
+            endurance_sec: None,
+            recovery_sec: None,
+            attack_cost_fraction: Some(0.1),
+            attack_recharge_fraction: Some(0.5),
             continuous_recharge_score_low: None,
             continuous_recharge_score_high: None,
             selection_approx_loo: false,
-            dissonance_cost: None,
+            dissonance_penalty: 0.0,
             envelope: EnvelopeConfig {
                 attack_sec: 0.01,
                 decay_sec: 0.05,
@@ -82,7 +81,6 @@ fn sustain_entrain_articulation() -> ArticulationCoreConfig {
         rhythm_coupling: crate::scenario::RhythmCouplingMode::TemporalOnly,
         rhythm_reward: None,
         breath_gain_init: None,
-        energy_cap: None,
     }
 }
 
@@ -186,7 +184,6 @@ fn voice_lifecycle_decay_death() {
         let voice = pop.voices.first_mut().expect("agent exists");
         let core_cfg = ArticulationCoreConfig::Entrain {
             lifecycle: LifecycleConfig::Decay {
-                initial_energy: 1.0,
                 half_life_sec: 0.05,
                 attack_sec: 0.001,
             },
@@ -194,7 +191,6 @@ fn voice_lifecycle_decay_death() {
             rhythm_coupling: crate::scenario::RhythmCouplingMode::TemporalOnly,
             rhythm_reward: None,
             breath_gain_init: None,
-            energy_cap: None,
         };
         let mut rng = rand::rngs::StdRng::seed_from_u64(7);
         let core = AnyArticulationCore::from_config(&core_cfg, fs, 1, &mut rng);
@@ -629,6 +625,10 @@ fn tick_phonation_into_gated_bridges_each_onset_to_body_articulation() {
     rhythms.env_open = 1.0;
     rhythms.env_level = 1.0;
 
+    if let AnyArticulationCore::Entrain(core) = &mut voice.articulation.core {
+        core.energy = 0.2;
+    }
+
     let energy_before = match &voice.articulation.core {
         AnyArticulationCore::Entrain(core) => core.energy,
         _ => panic!("expected entrain articulation"),
@@ -645,7 +645,7 @@ fn tick_phonation_into_gated_bridges_each_onset_to_body_articulation() {
         }
         _ => panic!("expected entrain articulation"),
     };
-    let expected = energy_before + batch.onsets.len() as f32 * 0.4;
+    let expected = (energy_before + batch.onsets.len() as f32 * 0.4).min(1.0);
     assert!(
         (energy_after - expected).abs() < 1e-4,
         "expected bridged energy {expected}, got {energy_after}"
@@ -990,7 +990,6 @@ fn articulation_snapshot_kuramoto_decay_signature() {
     let mut rng = rand::rngs::StdRng::seed_from_u64(11);
     let core = ArticulationCoreConfig::Entrain {
         lifecycle: LifecycleConfig::Decay {
-            initial_energy: 1.0,
             half_life_sec: 0.2,
             attack_sec: 0.1,
         },
@@ -998,7 +997,6 @@ fn articulation_snapshot_kuramoto_decay_signature() {
         rhythm_coupling: crate::scenario::RhythmCouplingMode::TemporalOnly,
         rhythm_reward: None,
         breath_gain_init: None,
-        energy_cap: None,
     };
     let mut articulation = AnyArticulationCore::from_config(&core, fs, 7, &mut rng);
     let mut rhythms = NeuralRhythms {
